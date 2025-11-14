@@ -1,0 +1,32 @@
+# Cloudflare Worker Configuration for e-Transfer Email Processing
+# 
+# This configuration file is used with Wrangler CLI to deploy
+# the Cloudflare Worker for processing Interac e-Transfer emails.
+#
+# @author Cody (lusky3)
+
+name = "etransfer-email-processor"
+main = "cloudflare-worker.js"
+compatibility_date = "2024-01-01"
+
+# Email routing configuration will be set up in Cloudflare dashboard
+# No additional configuration needed in wrangler.toml for email routing
+
+# Environment variables (set these in Cloudflare dashboard or via wrangler)
+# WEBHOOK_URL = "https://yoursite.com/wp-json/spat/v1/etransfer-webhook"
+# WEBHOOK_SECRET = "your-webhook-secret-from-plugin"
+# FORWARD_EMAIL = "admin@yoursite.com" (optional)
+# CUSTOM_HEADERS = '{"X-Custom-Header":"value","Authorization":"Bearer token"}' (optional)
+# DEBUG = "true" (optional - includes full headers and HTML content in webhook)
+
+# Use these commands to set the environment variables:
+# wrangler secret put WEBHOOK_SECRET
+# wrangler secret put FORWARD_EMAIL
+
+[vars]
+WEBHOOK_URL = "https://yoursite.com/wp-json/spat/v1/etransfer-webhook"
+CUSTOM_HEADERS = '{"X-Custom-Header":"value"}'
+# DEBUG = "true"  # Uncomment to enable debug mode with full headers and HTML content
+
+# Deploy with:
+# wrangler deploy

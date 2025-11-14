@@ -1,0 +1,293 @@
+/**
+ * Schedule Generator Admin Styles
+ * 
+ * @author Cody (lusky3)
+ */
+
+/* Tab Navigation */
+.spsg-nav-tabs {
+    margin-bottom: 20px;
+    border-bottom: 1px solid #ccd0d4;
+}
+
+.spsg-tab-content {
+    background: #fff;
+    padding: 20px;
+    border: 1px solid #ccd0d4;
+    border-top: none;
+}
+
+/* Division and Venue Rows */
+.spsg-division-row,
+.spsg-venue-row {
+    background: #f9f9f9;
+    padding: 15px;
+    margin-bottom: 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.spsg-division-row .form-table,
+.spsg-venue-row .form-table {
+    margin: 0;
+}
+
+/* Configuration Summary */
+.spsg-config-summary {
+    background: #f0f0f1;
+    padding: 15px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+}
+
+.spsg-config-summary ul {
+    margin: 10px 0 0 20px;
+}
+
+/* Generate Actions */
+.spsg-generate-actions {
+    text-align: center;
+    padding: 20px;
+}
+
+.spsg-generate-actions .button-large {
+    font-size: 16px;
+    padding: 10px 30px;
+    height: auto;
+}
+
+/* Time Slots */
+.spsg-day-time-slots {
+    display: inline-block;
+    width: 200px;
+    margin-right: 20px;
+    margin-bottom: 20px;
+    vertical-align: top;
+}
+
+.spsg-day-time-slots h5 {
+    margin-bottom: 5px;
+    margin-top: 0;
+}
+
+/* Schedule Preview */
+.spsg-schedule-preview {
+    margin-top: 20px;
+    padding: 20px;
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+}
+
+.spsg-schedule-preview h3 {
+    margin-top: 0;
+}
+
+.spsg-schedule-preview table {
+    margin-top: 15px;
+}
+
+.spsg-makeup-game {
+    background-color: #fff3cd !important;
+}
+
+/* Statistics */
+.spsg-stats {
+    background: #f0f0f1;
+    padding: 15px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+}
+
+.spsg-stats h4 {
+    margin-top: 0;
+}
+
+.spsg-stats ul {
+    margin: 10px 0 0 20px;
+    list-style: disc;
+}
+
+/* Export Options */
+.spsg-export-options {
+    margin-top: 20px;
+    padding: 15px;
+    background: #f0f0f1;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.spsg-export-options h4 {
+    margin-top: 0;
+}
+
+.spsg-export-options .button {
+    margin: 0 5px;
+}
+
+/* Progress Bar */
+.spsg-progress-bar {
+    width: 100%;
+    height: 30px;
+    background: #f0f0f1;
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 20px 0;
+}
+
+.spsg-progress-bar-inner {
+    height: 100%;
+    background: #2271b1;
+    width: 0;
+    animation: spsg-progress 2s ease-in-out infinite;
+}
+
+@keyframes spsg-progress {
+    0% {
+        width: 0;
+    }
+    50% {
+        width: 100%;
+    }
+    100% {
+        width: 0;
+    }
+}
+
+/* Messages */
+#spsg-messages {
+    margin: 15px 0;
+}
+
+#spsg-messages .notice {
+    margin: 5px 0;
+}
+
+/* SportsPress Import Section */
+.spsg-sportspress-import {
+    background: #e7f5fe;
+    padding: 15px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+}
+
+.spsg-sportspress-import h3 {
+    margin-top: 0;
+}
+
+/* Responsive */
+@media screen and (max-width: 782px) {
+    .spsg-day-time-slots {
+        width: 100%;
+        margin-right: 0;
+    }
+    
+    .spsg-generate-actions .button-large {
+        width: 100%;
+    }
+}
+
+/* Configuration Management */
+.spsg-config-management {
+    background: #f0f0f1;
+    padding: 15px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+}
+
+.spsg-config-management h4 {
+    margin-top: 0;
+}
+
+.spsg-config-selector {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.spsg-config-selector select {
+    flex: 1;
+    max-width: 400px;
+}
+
+.spsg-config-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.spsg-config-actions .button {
+    margin: 0;
+}
+
+/* Venue Timeslots */
+.spsg-venue-timeslots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.spsg-venue-day-timeslots {
+    flex: 0 0 calc(33.333% - 10px);
+    min-width: 200px;
+}
+
+.spsg-venue-day-timeslots label {
+    display: block;
+    margin-bottom: 5px;
+}
+
+.spsg-venue-day-times {
+    margin-left: 20px;
+    margin-top: 5px;
+}
+
+.spsg-venue-day-times textarea {
+    width: 100%;
+}
+
+/* Generic Team Filler */
+.spsg-generic-teams-section {
+    background: #f0f0f1;
+    padding: 15px;
+    border-radius: 4px;
+    margin-top: 20px;
+}
+
+.spsg-generic-teams-section h4 {
+    margin-top: 0;
+}
+
+.spsg-generic-teams-calculation {
+    margin-top: 10px;
+    padding: 10px;
+    background: #fff;
+    border-left: 4px solid #2271b1;
+}
+
+/* Team Selection */
+.spsg-team-selection {
+    margin-top: 10px;
+}
+
+.spsg-team-list {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    padding: 10px;
+    background: #fff;
+}
+
+.spsg-team-item {
+    padding: 5px;
+    margin: 2px 0;
+}
+
+.spsg-team-item:hover {
+    background: #f0f0f1;
+}
+
+.spsg-team-actions {
+    margin-top: 10px;
+}
