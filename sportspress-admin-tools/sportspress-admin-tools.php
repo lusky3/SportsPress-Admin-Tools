@@ -1,0 +1,98 @@
+<?php
+/**
+ * Plugin Name: SportsPress Admin Tools
+ * Description: Administrative tools for SportsPress
+ * Version: 1.0.0
+ * Author: Cody (lusky3)
+ * Text Domain: sportspress-admin-tools
+ * License: GPL v2 or later
+ */
+
+// Prevent direct access
+if (!defined('ABSPATH')) {
+    wp_die();
+}
+
+// Define plugin constants
+define('SPAT_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('SPAT_PLUGIN_PATH', plugin_dir_path(__FILE__));
+define('SPAT_VERSION', '1.0.0');
+
+// Main plugin class
+if (!class_exists('SportsPress_Admin_Tools')) {
+    class SportsPress_Admin_Tools {
+        
+        public function __construct() {
+            add_action('plugins_loaded', array($this, 'init'));
+            register_activation_hook(__FILE__, array($this, 'activate'));
+            register_deactivation_hook(__FILE__, array($this, 'deactivate'));
+        }
+        
+        public function init() {
+            // Load text domain
+            load_plugin_textdomain('sportspress-admin-tools', false, dirname(plugin_basename(__FILE__)) . '/languages');
+            
+            // Initialize admin
+            if (is_admin()) {
+                $this->init_admin();
+            }
+            
+            // Initialize modules
+            $this->init_modules();
+        }
+        
+        private function init_admin() {
+            require_once SPAT_PLUGIN_PATH . 'includes/class-text-helper.php';
+            require_once SPAT_PLUGIN_PATH . 'includes/class-database.php';
+            require_once SPAT_PLUGIN_PATH . 'includes/class-plugin-manager.php';
+            require_once SPAT_PLUGIN_PATH . 'includes/class-admin.php';
+            new SPAT_Admin();
+            
+            // Check if database needs setup
+            if (get_option('spat_db_version') !== '1.0.1') {
+                SPAT_Database::create_tables();
+            }
+            
+            // Migrate existing logs once
+            if (!get_option('spat_logs_migrated')) {
+                SPAT_Database::migrate_existing_logs();
+            }
+            
+            // e-Transfer admin functionality moved to child plugin
+        }
+        
+        private function init_modules() {
+            // File downloads moved to child plugins
+            
+            // All module functionality is now handled by child plugins
+            // Child plugins register with the parent and handle their own initialization
+        }
+        
+        private function is_woocommerce_active() {
+            return class_exists('WooCommerce');
+        }
+        
+        private function is_sportspress_active() {
+            return class_exists('SportsPress');
+        }
+        
+        // Notice methods removed - child plugins handle their own dependency checks
+        
+        public function activate() {
+            // Set default options
+            add_option('spat_enabled_modules', array());
+            add_option('spat_remove_data_on_uninstall', '0');
+            
+            // Create database tables
+            require_once SPAT_PLUGIN_PATH . 'includes/class-database.php';
+            SPAT_Database::create_tables();
+        }
+        
+        public function deactivate() {
+            // Cleanup if needed
+        }
+    }
+    
+    // Initialize plugin
+    new SportsPress_Admin_Tools();
+}

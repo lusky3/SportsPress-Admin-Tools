@@ -1,0 +1,146 @@
+# Requirements Document
+## Introduction
+The League Schedule Generator is a comprehensive module for SportsPress Admin Tools that automates the creation of sports league schedules. The system generates balanced schedules across multiple divisions, venues, and time slots while respecting various constraints and preferences including blackout dates, makeup games, and team distribution rules.
+## Glossary
+- **League_Schedule_Generator**: The main system module that creates and manages league schedules
+- **Division**: A group of teams within the league that compete against each other
+- **Time_Slot**: A specific time period when games can be scheduled (e.g., 7:00 PM, 8:00 PM)
+- **Venue**: A physical location where games are played
+- **Blackout_Date**: A date when no games can be scheduled due to holidays or other restrictions
+- **Makeup_Game**: A game that needs to be rescheduled due to a blackout date conflict
+- **Game_Distribution**: The balance of games across different days and time slots for each team
+- **Back_to_Back_Scheduling**: Consecutive time slots for teams from the same division
+## Requirements
+### Requirement 1
+**User Story:** As a league administrator, I want to configure basic schedule parameters, so that I can generate a season schedule that fits our league's timeframe and game requirements.
+#### Acceptance Criteria
+1. WHEN the administrator accesses the schedule generator, THE League_Schedule_Generator SHALL display configuration fields for season start date, season end date, and games per team
+2. WHEN the administrator enters a start date and end date, THE League_Schedule_Generator SHALL validate that the end date is after the start date
+3. WHEN the administrator specifies games per team, THE League_Schedule_Generator SHALL accept positive integer values only
+4. THE League_Schedule_Generator SHALL store all basic configuration parameters for schedule generation
+### Requirement 2
+**User Story:** As a league administrator, I want to define playing days and time slots, so that games are scheduled only during available periods.
+#### Acceptance Criteria
+1. WHEN the administrator selects days of the week, THE League_Schedule_Generator SHALL allow multiple day selection from Monday through Sunday
+2. WHEN the administrator adds time slots for each selected day, THE League_Schedule_Generator SHALL accept time values in standard format
+3. THE League_Schedule_Generator SHALL validate that time slots do not overlap within the same day
+4. WHEN time slots are configured, THE League_Schedule_Generator SHALL store the complete time slot matrix for schedule generation
+### Requirement 3
+**User Story:** As a league administrator, I want to manage multiple divisions and venues, so that the schedule accommodates our league structure.
+#### Acceptance Criteria
+1. WHEN the administrator creates divisions, THE League_Schedule_Generator SHALL allow multiple division definitions with unique names
+2. WHEN the administrator assigns teams to divisions, THE League_Schedule_Generator SHALL ensure each team belongs to exactly one division
+3. WHEN the administrator configures venues, THE League_Schedule_Generator SHALL allow multiple venue definitions with capacity and availability
+4. THE League_Schedule_Generator SHALL associate each game with a specific venue and division
+### Requirement 4
+**User Story:** As a league administrator, I want to specify blackout dates and makeup game logic, so that schedule conflicts are automatically resolved.
+#### Acceptance Criteria
+1. WHEN the administrator enters blackout dates, THE League_Schedule_Generator SHALL prevent game scheduling on those dates
+2. WHEN a team misses a game due to a blackout date, THE League_Schedule_Generator SHALL track the missed game for makeup scheduling
+3. WHEN the next blackout occurs on the same day of week, THE League_Schedule_Generator SHALL schedule makeup games on alternative configured days
+4. THE League_Schedule_Generator SHALL ensure all teams play the specified number of games including makeup games
+### Requirement 5
+**User Story:** As a league administrator, I want to control game distribution across days and time slots, so that teams have balanced playing schedules.
+#### Acceptance Criteria
+1. WHEN the administrator sets day distribution preferences, THE League_Schedule_Generator SHALL balance games according to specified ratios between configured days
+2. WHEN the administrator enables time slot distribution, THE League_Schedule_Generator SHALL ensure teams receive varied time slots throughout the season
+3. THE League_Schedule_Generator SHALL prevent any team from having all early games or all late games
+4. WHEN distribution rules are applied, THE League_Schedule_Generator SHALL maintain fairness across all teams in each division
+### Requirement 6
+**User Story:** As a league administrator, I want to optimize division scheduling, so that teams from the same division play in consecutive time slots when possible.
+#### Acceptance Criteria
+1. WHEN back-to-back division scheduling is enabled, THE League_Schedule_Generator SHALL prioritize consecutive time slots for division games
+2. THE League_Schedule_Generator SHALL group division games together while respecting venue capacity constraints
+3. WHEN conflicts arise between division grouping and other constraints, THE League_Schedule_Generator SHALL apply configurable priority rules
+4. THE League_Schedule_Generator SHALL maintain division grouping preferences across the entire season
+### Requirement 7
+**User Story:** As a league administrator, I want to set team-specific scheduling restrictions, so that certain teams avoid conflicts or overlapping games.
+#### Acceptance Criteria
+1. WHEN the administrator selects teams for back-to-back avoidance, THE League_Schedule_Generator SHALL prevent those teams from playing in consecutive time slots
+2. WHEN the administrator selects teams for overlap avoidance, THE League_Schedule_Generator SHALL prevent those teams from playing simultaneously
+3. THE League_Schedule_Generator SHALL validate team restriction rules before schedule generation
+4. WHEN team restrictions conflict with other requirements, THE League_Schedule_Generator SHALL provide conflict resolution options
+### Requirement 8
+**User Story:** As a league administrator, I want to export the generated schedule in multiple formats, so that I can distribute it appropriately to different audiences.
+#### Acceptance Criteria
+1. WHEN the administrator requests CSV export, THE League_Schedule_Generator SHALL generate a machine-readable CSV file with all game details
+2. WHEN the administrator requests XLSX export, THE League_Schedule_Generator SHALL generate a formatted, colorful Excel file optimized for human reading
+3. THE League_Schedule_Generator SHALL include all relevant game information in both export formats including date, time, teams, venue, and division
+4. WHEN export is complete, THE League_Schedule_Generator SHALL provide download links for the generated files
+### Requirement 9
+**User Story:** As a developer, I want the system to be extensible, so that additional scheduling criteria can be added in the future without major refactoring.
+#### Acceptance Criteria
+1. THE League_Schedule_Generator SHALL implement a plugin-based architecture for scheduling constraints
+2. THE League_Schedule_Generator SHALL provide clear interfaces for adding new constraint types
+3. WHEN new constraints are added, THE League_Schedule_Generator SHALL integrate them with existing constraint resolution logic
+4. THE League_Schedule_Generator SHALL maintain backward compatibility when new constraint types are introduced
+### Requirement 10
+**User Story:** As a league administrator, I want to ensure teams play once per week, so that the schedule maintains consistent game frequency.
+#### Acceptance Criteria
+1. THE League_Schedule_Generator SHALL enforce exactly one game per team per week
+2. WHEN calculating weekly schedules, THE League_Schedule_Generator SHALL use calendar weeks as the basis for game frequency
+3. THE League_Schedule_Generator SHALL validate that the season length accommodates the required number of games per team
+4. WHEN makeup games are scheduled, THE League_Schedule_Generator SHALL maintain the one-game-per-week constraint across the extended season
+### Requirement 11
+**User Story:** As a league administrator, I want to select a matchup style (e.g., single/double round-robin, custom pairings), so that opponents are fairly and predictably assigned.
+#### Acceptance Criteria
+1. WHEN the administrator selects a matchup style, THE League_Schedule_Generator SHALL support single round-robin, double round-robin, or custom pairing configurations
+2. WHEN round-robin is selected, THE League_Schedule_Generator SHALL validate that the games per team align with division size (e.g., for N teams, single round-robin yields N-1 games)
+3. THE League_Schedule_Generator SHALL generate all required matchups before applying time, venue, or other constraints
+4. WHEN custom pairings are provided, THE League_Schedule_Generator SHALL validate that each team meets the required games per team count
+### Requirement 12
+**User Story:** As a league administrator, I want home/away assignments, so that teams have balanced hosting responsibilities.
+#### Acceptance Criteria
+1. WHEN generating matchups, THE League_Schedule_Generator SHALL assign home and away status to each game
+2. THE League_Schedule_Generator SHALL balance home and away games equally (or as close as possible) for each team
+3. WHEN a team has a preferred home venue, THE League_Schedule_Generator SHALL prioritize assigning that venue to their home games
+4. THE League_Schedule_Generator SHALL include home/away designation in all exports and schedule outputs
+### Requirement 13
+**User Story:** As a league administrator, I want to edit the generated schedule, so that I can make targeted adjustments without restarting.
+#### Acceptance Criteria
+1. WHEN the schedule is generated, THE League_Schedule_Generator SHALL provide an editable interface for game details
+2. THE League_Schedule_Generator SHALL allow swapping of games, teams, times, or venues via drag-and-drop or form inputs
+3. AFTER any manual edit, THE League_Schedule_Generator SHALL re-validate the schedule against all active constraints
+4. WHEN validation fails, THE League_Schedule_Generator SHALL highlight conflicts and offer resolution suggestions
+### Requirement 14
+**User Story:** As a developer/administrator, I want automated conflict resolution, so that unsatisfiable constraints are identified and alternatives proposed.
+#### Acceptance Criteria
+1. BEFORE schedule generation, THE League_Schedule_Generator SHALL perform a feasibility check on all constraints
+2. WHEN a conflict is detected, THE League_Schedule_Generator SHALL generate a detailed report listing conflicting rules and affected games
+3. THE League_Schedule_Generator SHALL suggest resolution options (e.g., extend season, relax distribution rules)
+4. WHEN the administrator selects a resolution, THE League_Schedule_Generator SHALL apply it and regenerate the schedule
+### Requirement 15
+**User Story:** As a league administrator, I want the schedule imported into SportsPress, so that games become live events automatically.
+#### Acceptance Criteria
+1. WHEN the schedule is finalized, THE League_Schedule_Generator SHALL offer an option to import into SportsPress
+2. THE League_Schedule_Generator SHALL create SportsPress Event custom post types for each game
+3. THE League_Schedule_Generator SHALL map all game data (teams, date, time, venue, division) to appropriate SportsPress fields
+4. WHEN events already exist, THE League_Schedule_Generator SHALL update them or create new ones as configured
+### Requirement 16
+**User Story:** As a league administrator, I want a schedule preview with analytics, so that I can review balance before finalizing.
+#### Acceptance Criteria
+1. AFTER generation, THE League_Schedule_Generator SHALL display an interactive preview of the full schedule
+2. THE League_Schedule_Generator SHALL provide summary statistics including games per day, home/away balance, time slot distribution, and makeup game counts
+3. WHEN the administrator requests, THE League_Schedule_Generator SHALL generate a PDF report of the preview and analytics
+4. THE League_Schedule_Generator SHALL allow proceeding to export or import only after preview acknowledgment
+### Requirement 17
+**User Story:** As a league administrator, I want to support configurable inter-division games, so that cross-division play can be included.
+#### Acceptance Criteria
+1. WHEN configuring divisions, THE League_Schedule_Generator SHALL allow specification of inter-division game counts or percentages
+2. THE League_Schedule_Generator SHALL generate inter-division matchups while maintaining intra-division requirements
+3. THE League_Schedule_Generator SHALL balance inter-division games across all teams and divisions
+4. THE League_Schedule_Generator SHALL include inter-division games in all distribution, constraint, and export logic
+### Requirement 18
+**User Story:** As a league administrator, I want to set a global timezone for the schedule, so that all times are consistently saved and displayed.
+#### Acceptance Criteria
+1. WHEN configuring the schedule, THE League_Schedule_Generator SHALL provide a timezone selector defaulting to the WordPress site timezone
+2. THE League_Schedule_Generator SHALL store all game times using the selected timezone
+3. WHEN displaying or exporting times, THE League_Schedule_Generator SHALL present them in the configured timezone
+4. THE League_Schedule_Generator SHALL convert and validate all time inputs to the selected timezone
+### Requirement 19
+**User Story:** As a developer, I want performance optimization for large leagues, so that schedule generation completes efficiently.
+#### Acceptance Criteria
+1. THE League_Schedule_Generator SHALL use efficient scheduling algorithms optimized for large team and game counts
+2. DURING generation, THE League_Schedule_Generator SHALL display a progress indicator with estimated completion time
+3. WHEN generation exceeds a configurable timeout, THE League_Schedule_Generator SHALL provide partial results and allow continuation
+4. THE League_Schedule_Generator SHALL log performance metrics for optimization and debugging

@@ -1,0 +1,87 @@
+<?php
+/**
+ * Plugin Name: SportsPress Player Registration (Child Plugin)
+ * Description: Child plugin for SportsPress Admin Tools - Player Registration module
+ * Version: 1.0.0
+ * Author: Cody (lusky3)
+ * Text Domain: sportspress-player-registration
+ * License: GPL v2 or later
+ * Requires at least: 5.0
+ * Tested up to: 6.4
+ * Requires PHP: 7.4
+ * Depends: SportsPress Admin Tools
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+define('SPR_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('SPR_PLUGIN_PATH', plugin_dir_path(__FILE__));
+define('SPR_VERSION', '1.0.0');
+
+class SportsPress_Player_Registration {
+    
+    public function __construct() {
+        register_activation_hook(__FILE__, array($this, 'check_activation_requirements'));
+        add_action('plugins_loaded', array($this, 'init'));
+    }
+    
+    public function check_activation_requirements() {
+        if (!class_exists('SPAT_Plugin_Manager')) {
+            deactivate_plugins(plugin_basename(__FILE__));
+            wp_die(__('SportsPress Player Registration requires SportsPress Admin Tools to be installed and activated first.', 'sportspress-player-registration'));
+        }
+    }
+    
+    public function init() {
+        if (!$this->check_parent_plugin()) {
+            return;
+        }
+        
+        // Register with parent plugin
+        SPAT_Plugin_Manager::register_plugin('player_registration', array(
+            'name' => 'Player Registration',
+            'description' => 'Automatically creates player records from WooCommerce orders',
+            'parent_module' => 'player_registration',
+            'version' => '1.0.0',
+            'file' => __FILE__
+        ));
+        
+        // Load functionality if parent module is enabled
+        $enabled_modules = get_option('spat_enabled_modules', array());
+        if (in_array('player_registration', $enabled_modules)) {
+            $this->load_functionality();
+        }
+    }
+    
+    private function load_functionality() {
+        require_once SPR_PLUGIN_PATH . 'includes/class-database.php';
+        require_once SPR_PLUGIN_PATH . 'includes/class-player-registration.php';
+        require_once SPR_PLUGIN_PATH . 'includes/class-admin.php';
+        
+        new SPR_Player_Registration();
+        
+        if (is_admin()) {
+            new SPR_Admin();
+        }
+    }
+    
+    private function check_parent_plugin() {
+        if (!class_exists('SPAT_Plugin_Manager')) {
+            add_action('admin_notices', array($this, 'parent_plugin_missing_notice'));
+            return false;
+        }
+        return true;
+    }
+    
+    public function parent_plugin_missing_notice() {
+        echo '<div class="notice notice-error"><p>';
+        echo __('SportsPress Player Registration requires SportsPress Admin Tools to be installed and activated.', 'sportspress-player-registration');
+        echo '</p></div>';
+    }
+    
+
+}
+
+new SportsPress_Player_Registration();

@@ -1,0 +1,174 @@
+<?php
+/**
+ * Plugin Name: SportsPress Player Tools (Child Plugin)
+ * Description: Child plugin for SportsPress Admin Tools - Player Tools modules
+ * Version: 1.0.0
+ * Author: Cody (lusky3)
+ * Text Domain: sportspress-player-tools
+ * License: GPL v2 or later
+ * Requires at least: 5.0
+ * Tested up to: 6.4
+ * Requires PHP: 7.4
+ * Depends: SportsPress Admin Tools
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+error_log('SPT: Plugin file loaded - REQUEST_URI: ' . ($_SERVER['REQUEST_URI'] ?? 'none'));
+
+define('SPT_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('SPT_PLUGIN_PATH', plugin_dir_path(__FILE__));
+define('SPT_VERSION', '1.0.0');
+
+class SportsPress_Player_Tools {
+    
+    public function __construct() {
+        register_activation_hook(__FILE__, array($this, 'check_activation_requirements'));
+        add_action('init', array($this, 'init'), 1);
+    }
+    
+    public function check_activation_requirements() {
+        if (!class_exists('SPAT_Plugin_Manager')) {
+            deactivate_plugins(plugin_basename(__FILE__));
+            wp_die(__('SportsPress Player Tools requires SportsPress Admin Tools to be installed and activated first.', 'sportspress-player-tools'));
+        }
+    }
+    
+    public function init() {
+        error_log('SPT: init() called');
+        if (!$this->check_parent_plugin()) {
+            error_log('SPT: Parent plugin check failed');
+            return;
+        }
+        error_log('SPT: Parent plugin check passed');
+        
+        // Register multiple modules with parent plugin
+        SPAT_Plugin_Manager::register_plugin('player_modifications', array(
+            'name' => 'Player Modifications',
+            'description' => 'Email meta, captain selection, squad number editing',
+            'parent_module' => 'player_modifications',
+            'version' => '1.0.0',
+            'file' => __FILE__
+        ));
+        
+        SPAT_Plugin_Manager::register_plugin('player_stats_enabler', array(
+            'name' => 'Player Stats Enabler',
+            'description' => 'Automatically enable frontend statistics display',
+            'parent_module' => 'player_stats_enabler',
+            'version' => '1.0.0',
+            'file' => __FILE__
+        ));
+        
+        SPAT_Plugin_Manager::register_plugin('batch_list_creator', array(
+            'name' => 'Batch List Creator',
+            'description' => 'Batch create player lists from CSV upload',
+            'parent_module' => 'batch_list_creator',
+            'version' => '1.0.0',
+            'file' => __FILE__
+        ));
+        
+        SPAT_Plugin_Manager::register_plugin('player_profile_picture', array(
+            'name' => 'Player Profile Picture Upload',
+            'description' => 'Allow players to upload profile pictures on My Account page',
+            'parent_module' => 'player_modifications',
+            'version' => '1.0.0',
+            'file' => __FILE__
+        ));
+        
+        // Load functionality based on enabled modules
+        $this->load_enabled_modules();
+    }
+    
+    private function load_enabled_modules() {
+        $enabled_modules = get_option('spat_enabled_modules', array());
+        
+        if (get_option('spat_debug_verbose_logging', '0') === '1') {
+            error_log('SPT: Enabled modules: ' . print_r($enabled_modules, true));
+            error_log('SPT: WooCommerce exists: ' . (class_exists('WooCommerce') ? 'yes' : 'no'));
+        }
+        
+        if (in_array('player_modifications', $enabled_modules)) {
+            require_once SPT_PLUGIN_PATH . 'includes/class-player-modifications.php';
+            new SPT_Player_Modifications();
+            
+            // Load profile picture upload if enabled
+            $has_profile_pic = in_array('player_profile_picture', $enabled_modules);
+            $has_woo = class_exists('WooCommerce');
+            
+            if (get_option('spat_debug_verbose_logging', '0') === '1') {
+                error_log('SPT: player_profile_picture in modules: ' . ($has_profile_pic ? 'yes' : 'no'));
+                error_log('SPT: WooCommerce exists: ' . ($has_woo ? 'yes' : 'no'));
+            }
+            
+            if ($has_profile_pic && $has_woo) {
+                if (get_option('spat_debug_verbose_logging', '0') === '1') {
+                    error_log('SPT: Loading player profile picture class from: ' . SPT_PLUGIN_PATH . 'includes/class-player-profile-picture.php');
+                }
+                require_once SPT_PLUGIN_PATH . 'includes/class-player-profile-picture.php';
+                new SPT_Player_Profile_Picture();
+            }
+        }
+        
+        if (in_array('player_stats_enabler', $enabled_modules)) {
+            require_once SPT_PLUGIN_PATH . 'includes/class-player-stats-enabler.php';
+            new SPT_Player_Stats_Enabler();
+        }
+        
+        // Always load batch list creator
+        error_log('SPT: About to load batch list creator');
+        require_once SPT_PLUGIN_PATH . 'includes/class-batch-list-creator.php';
+        error_log('SPT: Class file loaded, creating instance');
+        $batch_creator = new SPT_Batch_List_Creator();
+        error_log('SPT: Batch list creator instance created');
+        error_log('SPT: Checking if action exists: ' . (has_action('admin_post_spt_process_list_batch') ? 'YES' : 'NO'));
+        
+        if (is_admin() && (in_array('player_modifications', $enabled_modules) || in_array('player_stats_enabler', $enabled_modules) || in_array('batch_list_creator', $enabled_modules))) {
+            require_once SPT_PLUGIN_PATH . 'includes/class-admin.php';
+            new SPT_Admin();
+        }
+    }
+    
+    private function check_parent_plugin() {
+        if (!class_exists('SPAT_Plugin_Manager')) {
+            add_action('admin_notices', array($this, 'parent_plugin_missing_notice'));
+            return false;
+        }
+        return true;
+    }
+    
+    public function parent_plugin_missing_notice() {
+        echo '<div class="notice notice-error"><p>';
+        echo __('SportsPress Player Tools requires SportsPress Admin Tools to be installed and activated.', 'sportspress-player-tools');
+        echo '</p></div>';
+    }
+}
+
+new SportsPress_Player_Tools();
+
+// Register admin_post hooks immediately at plugin load
+add_action('admin_post_spt_process_list_batch', function() {
+    try {
+        require_once SPT_PLUGIN_PATH . 'includes/class-batch-list-creator.php';
+        $creator = new SPT_Batch_List_Creator();
+        $creator->process_batch();
+    } catch (Exception $e) {
+        wp_die('Error: ' . $e->getMessage());
+    }
+});
+
+add_action('admin_post_spt_upload_list_csv', function() {
+    error_log('SPT: admin_post_spt_upload_list_csv FIRED!');
+    require_once SPT_PLUGIN_PATH . 'includes/class-batch-list-creator.php';
+    $creator = new SPT_Batch_List_Creator();
+    $creator->handle_upload();
+});
+
+error_log('SPT: admin_post hooks registered at plugin load');
+
+// Test action
+add_action('admin_post_spt_test', function() {
+    error_log('SPT: TEST ACTION FIRED!');
+    wp_die('Test action works!');
+});
