@@ -1,0 +1,21 @@
+{
+  "enabled": true,
+  "name": "Copy Plugins to Test Directory",
+  "description": "Watches for changes to any sportspress plugin files and automatically copies them from ~/git/sportspress-admin-tools/ to ~/arl-local/wp-content/plugins/ for testing",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "sportspress-admin-tools/**/*",
+      "sportspress-etransfer-automation/**/*",
+      "sportspress-events-manager/**/*",
+      "sportspress-player-registration/**/*",
+      "sportspress-player-tools/**/*",
+      "sportspress-schedule-generator/**/*"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Plugin files have been modified. Execute the following command to copy all sportspress plugins to the testing directory:\n\n```bash\ncp -r ~/git/sportspress-admin-tools/sportspress-* ~/arl-local/wp-content/plugins/\n```\n\nThis will sync all modified plugin files from the git repository to the WordPress testing environment."
+  }
+}
