@@ -13,7 +13,8 @@ if (!defined('ABSPATH')) {
 class SPET_ETransfer_Admin {
     
     public function __construct() {
-        add_action('admin_menu', array($this, 'add_woocommerce_menu'));
+        add_action('admin_menu', array($this, 'add_woocommerce_menu'), 99);
+        add_action('admin_head', array($this, 'update_menu_count'));
     }
     
     public function add_woocommerce_menu() {
@@ -43,6 +44,27 @@ class SPET_ETransfer_Admin {
         }
         
         return $menu_title;
+    }
+    
+    public function update_menu_count() {
+        global $menu, $submenu;
+        
+        if (!isset($submenu['woocommerce'])) {
+            return;
+        }
+        
+        $pending_count = SPAT_Database::count_pending_etransfer_webhooks();
+        
+        foreach ($submenu['woocommerce'] as $key => $item) {
+            if ($item[2] === 'etransfer-webhooks') {
+                $menu_title = __('e-Transfer Webhooks', 'sportspress-admin-tools');
+                if ($pending_count > 0) {
+                    $menu_title .= ' <span class="awaiting-mod"><span class="pending-count">' . $pending_count . '</span></span>';
+                }
+                $submenu['woocommerce'][$key][0] = $menu_title;
+                break;
+            }
+        }
     }
     
     public function admin_page() {
