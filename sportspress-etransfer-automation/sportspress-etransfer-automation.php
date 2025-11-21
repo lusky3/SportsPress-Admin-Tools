@@ -56,6 +56,7 @@ class SportsPress_ETransfer_Automation {
     }
     
     private function load_functionality() {
+        require_once SPET_PLUGIN_PATH . 'includes/class-name-matcher.php';
         require_once SPET_PLUGIN_PATH . 'includes/class-etransfer-automation.php';
         require_once SPET_PLUGIN_PATH . 'includes/class-admin.php';
         require_once SPET_PLUGIN_PATH . 'includes/class-etransfer-admin.php';

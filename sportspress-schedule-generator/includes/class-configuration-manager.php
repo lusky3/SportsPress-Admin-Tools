@@ -98,18 +98,36 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
         // Validate sanitized data
         $validation = $this->validate($sanitized);
         if (is_wp_error($validation)) {
+            // Log validation errors for debugging
+            SPSG_Error_Handler::log_error($validation, array(
+                'action' => 'save_configuration',
+                'config_name' => $sanitized['name'] ?? 'Unknown'
+            ));
             return $validation;
         }
         
         // Get existing configurations
         $configurations = get_option(self::OPTION_NAME, array());
         
-        // Add timestamp and ID if new
-        if (!isset($sanitized['id'])) {
-            $sanitized['id'] = uniqid('config_');
+        // Load existing config for change tracking
+        $existing_config = null;
+        $is_new = !isset($sanitized['id']);
+        
+        if (!$is_new && isset($configurations[$sanitized['id']])) {
+            $existing_config = $configurations[$sanitized['id']];
         }
-        $sanitized['created'] = current_time('mysql');
+        
+        // Add timestamp and ID if new
+        if ($is_new) {
+            $sanitized['id'] = uniqid('config_');
+            $sanitized['created'] = current_time('mysql');
+        }
         $sanitized['modified'] = current_time('mysql');
+        
+        // Track changes if this is an update
+        if ($existing_config) {
+            $this->track_changes($sanitized['id'], $existing_config, $sanitized);
+        }
         
         // Save configuration
         $configurations[$sanitized['id']] = $sanitized;
@@ -217,18 +235,179 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
         $data = json_decode($json_data, true);
         
         if (json_last_error() !== JSON_ERROR_NONE) {
-            return new WP_Error('invalid_json', __('Invalid JSON data', 'sportspress-schedule-generator'));
+            return SPSG_Error_Handler::create_error(
+                'invalid_json',
+                __('Invalid JSON data. Please ensure the file is a valid JSON configuration export.', 'sportspress-schedule-generator'),
+                array('json_error' => json_last_error_msg())
+            );
         }
         
         if (!isset($data['configuration'])) {
-            return new WP_Error('invalid_format', __('Invalid configuration format', 'sportspress-schedule-generator'));
+            return SPSG_Error_Handler::create_error(
+                'invalid_format',
+                __('Invalid configuration format. The file does not contain a valid configuration structure.', 'sportspress-schedule-generator')
+            );
         }
         
-        // Remove ID to create new configuration
-        unset($data['configuration']['id']);
-        $data['configuration']['name'] = ($data['configuration']['name'] ?? 'Imported Configuration') . ' (Imported)';
+        // Check version compatibility
+        $compatibility_check = $this->check_import_compatibility($data);
+        if (is_wp_error($compatibility_check)) {
+            return $compatibility_check;
+        }
         
-        return $this->save($data['configuration']);
+        // Apply version migrations if needed
+        $migrated_config = $this->migrate_configuration($data['configuration'], $data['version'] ?? '1.0.0');
+        
+        // Remove ID to create new configuration
+        unset($migrated_config['id']);
+        $migrated_config['name'] = ($migrated_config['name'] ?? 'Imported Configuration') . ' (Imported)';
+        
+        // Validate before saving
+        $validation = $this->validate($migrated_config);
+        if (is_wp_error($validation)) {
+            SPSG_Error_Handler::log_error($validation, array(
+                'action' => 'import_configuration',
+                'source_version' => $data['version'] ?? 'unknown'
+            ));
+            return $validation;
+        }
+        
+        return $this->save($migrated_config);
+    }
+    
+    /**
+     * Check import compatibility
+     * 
+     * @param array $data Import data
+     * @return bool|WP_Error True if compatible, WP_Error otherwise
+     */
+    private function check_import_compatibility($data) {
+        $import_version = $data['version'] ?? '1.0.0';
+        $current_version = SPSG_VERSION;
+        
+        // Parse versions
+        $import_parts = explode('.', $import_version);
+        $current_parts = explode('.', $current_version);
+        
+        $import_major = (int) ($import_parts[0] ?? 1);
+        $current_major = (int) ($current_parts[0] ?? 1);
+        
+        // Major version mismatch - may have breaking changes
+        if ($import_major > $current_major) {
+            return SPSG_Error_Handler::create_error(
+                'version_incompatible',
+                sprintf(
+                    __('This configuration was exported from a newer version (%s) and may not be compatible with your current version (%s). Please update the plugin before importing.', 'sportspress-schedule-generator'),
+                    $import_version,
+                    $current_version
+                ),
+                array(
+                    'import_version' => $import_version,
+                    'current_version' => $current_version
+                )
+            );
+        }
+        
+        // Warn about older versions but allow import
+        if ($import_major < $current_major) {
+            // Log warning but continue
+            if (get_option('spsg_enable_debug_logging', false)) {
+                error_log(sprintf(
+                    'SPSG: Importing configuration from older version %s to %s',
+                    $import_version,
+                    $current_version
+                ));
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Migrate configuration between versions
+     * 
+     * @param array $config Configuration data
+     * @param string $from_version Source version
+     * @return array Migrated configuration
+     */
+    private function migrate_configuration($config, $from_version) {
+        $from_parts = explode('.', $from_version);
+        $from_major = (int) ($from_parts[0] ?? 1);
+        $from_minor = (int) ($from_parts[1] ?? 0);
+        
+        // Add default values for new Phase 2 properties if missing
+        if (!isset($config['matchup_style'])) {
+            $config['matchup_style'] = 'double_round_robin';
+        }
+        
+        if (!isset($config['home_away_preferences'])) {
+            $config['home_away_preferences'] = array();
+        }
+        
+        if (!isset($config['inter_division_games'])) {
+            $config['inter_division_games'] = array();
+        }
+        
+        // Future migrations can be added here
+        // Example: if ($from_major === 1 && $from_minor < 1) { ... }
+        
+        return $config;
+    }
+    
+    /**
+     * Get import preview without saving
+     * 
+     * @param string $json_data JSON configuration data
+     * @return array|WP_Error Preview data or error
+     */
+    public function preview_import($json_data) {
+        $data = json_decode($json_data, true);
+        
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return SPSG_Error_Handler::create_error(
+                'invalid_json',
+                __('Invalid JSON data', 'sportspress-schedule-generator'),
+                array('json_error' => json_last_error_msg())
+            );
+        }
+        
+        if (!isset($data['configuration'])) {
+            return SPSG_Error_Handler::create_error(
+                'invalid_format',
+                __('Invalid configuration format', 'sportspress-schedule-generator')
+            );
+        }
+        
+        // Check compatibility
+        $compatibility_check = $this->check_import_compatibility($data);
+        if (is_wp_error($compatibility_check)) {
+            return $compatibility_check;
+        }
+        
+        $config = $data['configuration'];
+        
+        // Build preview summary
+        $preview = array(
+            'name' => $config['name'] ?? __('Unnamed Configuration', 'sportspress-schedule-generator'),
+            'version' => $data['version'] ?? '1.0.0',
+            'exported' => $data['exported'] ?? __('Unknown', 'sportspress-schedule-generator'),
+            'season_start' => $config['season_start'] ?? '',
+            'season_end' => $config['season_end'] ?? '',
+            'games_per_team' => $config['games_per_team'] ?? 0,
+            'divisions_count' => count($config['divisions'] ?? array()),
+            'venues_count' => count($config['venues'] ?? array()),
+            'teams_count' => 0,
+            'has_blackout_dates' => !empty($config['blackout_dates']),
+            'matchup_style' => $config['matchup_style'] ?? 'double_round_robin',
+            'compatible' => true
+        );
+        
+        // Count total teams
+        foreach ($config['divisions'] ?? array() as $division) {
+            $preview['teams_count'] += count($division['teams'] ?? array());
+        }
+        
+        return $preview;
     }
     
     /**
@@ -261,5 +440,348 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
         }
         
         return new WP_Error('config_not_found', __('Configuration not found', 'sportspress-schedule-generator'));
+    }
+    
+    /**
+     * Track configuration changes
+     * 
+     * @param string $config_id Configuration ID
+     * @param array $old_config Old configuration data
+     * @param array $new_config New configuration data
+     */
+    private function track_changes($config_id, $old_config, $new_config) {
+        // Check if change tracking is enabled
+        if (!get_option('spsg_enable_change_tracking', true)) {
+            return;
+        }
+        
+        // Fields to track for changes
+        $fields_to_track = array(
+            'name' => __('Configuration Name', 'sportspress-schedule-generator'),
+            'season_start' => __('Season Start Date', 'sportspress-schedule-generator'),
+            'season_end' => __('Season End Date', 'sportspress-schedule-generator'),
+            'games_per_team' => __('Games Per Team', 'sportspress-schedule-generator'),
+            'match_length' => __('Match Length', 'sportspress-schedule-generator'),
+            'playing_days' => __('Playing Days', 'sportspress-schedule-generator'),
+            'time_slots' => __('Time Slots', 'sportspress-schedule-generator'),
+            'divisions' => __('Divisions', 'sportspress-schedule-generator'),
+            'venues' => __('Venues', 'sportspress-schedule-generator'),
+            'blackout_dates' => __('Blackout Dates', 'sportspress-schedule-generator'),
+            'distribution_rules' => __('Distribution Rules', 'sportspress-schedule-generator'),
+            'team_restrictions' => __('Team Restrictions', 'sportspress-schedule-generator'),
+            'division_grouping' => __('Division Grouping', 'sportspress-schedule-generator'),
+            'venue_timeslots' => __('Venue Timeslots', 'sportspress-schedule-generator'),
+            'matchup_style' => __('Matchup Style', 'sportspress-schedule-generator'),
+            'home_away_preferences' => __('Home/Away Preferences', 'sportspress-schedule-generator'),
+            'inter_division_games' => __('Inter-Division Games', 'sportspress-schedule-generator')
+        );
+        
+        // Compare and track changes
+        foreach ($fields_to_track as $field => $field_label) {
+            $old_value = $old_config[$field] ?? null;
+            $new_value = $new_config[$field] ?? null;
+            
+            // Use serialize for complex comparisons
+            if (serialize($old_value) !== serialize($new_value)) {
+                $this->track_change($config_id, $field, $field_label, $old_value, $new_value);
+            }
+        }
+    }
+    
+    /**
+     * Track a single configuration change
+     * 
+     * @param string $config_id Configuration ID
+     * @param string $field Field name
+     * @param string $field_label Human-readable field label
+     * @param mixed $old_value Old value
+     * @param mixed $new_value New value
+     */
+    private function track_change($config_id, $field, $field_label, $old_value, $new_value) {
+        $changes = get_option('spsg_configuration_changes', array());
+        
+        if (!isset($changes[$config_id])) {
+            $changes[$config_id] = array();
+        }
+        
+        // Format values for display
+        $old_display = $this->format_value_for_display($field, $old_value);
+        $new_display = $this->format_value_for_display($field, $new_value);
+        
+        // Add new change to the beginning of the array
+        array_unshift($changes[$config_id], array(
+            'timestamp' => current_time('mysql'),
+            'user_id' => get_current_user_id(),
+            'field' => $field,
+            'field_label' => $field_label,
+            'old_value' => $old_display,
+            'new_value' => $new_display
+        ));
+        
+        // Keep only last 10 changes per configuration
+        $changes[$config_id] = array_slice($changes[$config_id], 0, 10);
+        
+        update_option('spsg_configuration_changes', $changes);
+    }
+    
+    /**
+     * Format value for display in change history
+     * 
+     * @param string $field Field name
+     * @param mixed $value Value to format
+     * @return string Formatted value
+     */
+    private function format_value_for_display($field, $value) {
+        if (is_null($value)) {
+            return __('(empty)', 'sportspress-schedule-generator');
+        }
+        
+        if (is_array($value)) {
+            // Special formatting for common array types
+            switch ($field) {
+                case 'playing_days':
+                    return implode(', ', $value);
+                    
+                case 'divisions':
+                    $division_names = array_map(function($div) {
+                        return $div['name'] ?? __('Unnamed', 'sportspress-schedule-generator');
+                    }, $value);
+                    return implode(', ', $division_names) . sprintf(' (%d)', count($value));
+                    
+                case 'venues':
+                    $venue_names = array_map(function($venue) {
+                        return $venue['name'] ?? __('Unnamed', 'sportspress-schedule-generator');
+                    }, $value);
+                    return implode(', ', $venue_names) . sprintf(' (%d)', count($value));
+                    
+                case 'blackout_dates':
+                    return implode(', ', $value) . sprintf(' (%d dates)', count($value));
+                    
+                case 'time_slots':
+                    $total_slots = 0;
+                    foreach ($value as $day => $slots) {
+                        $total_slots += count($slots);
+                    }
+                    return sprintf(__('%d slots across %d days', 'sportspress-schedule-generator'), $total_slots, count($value));
+                    
+                case 'home_away_preferences':
+                    return sprintf(__('%d teams with home venue preferences', 'sportspress-schedule-generator'), count($value));
+                    
+                case 'inter_division_games':
+                    $total_games = array_sum($value);
+                    return sprintf(__('%d inter-division games across %d division pairs', 'sportspress-schedule-generator'), $total_games, count($value));
+                    
+                default:
+                    return sprintf(__('(complex data: %d items)', 'sportspress-schedule-generator'), count($value));
+            }
+        }
+        
+        if (is_bool($value)) {
+            return $value ? __('Yes', 'sportspress-schedule-generator') : __('No', 'sportspress-schedule-generator');
+        }
+        
+        // Format matchup style
+        if ($field === 'matchup_style') {
+            $styles = array(
+                'single_round_robin' => __('Single Round-Robin', 'sportspress-schedule-generator'),
+                'double_round_robin' => __('Double Round-Robin', 'sportspress-schedule-generator'),
+                'custom' => __('Custom', 'sportspress-schedule-generator')
+            );
+            return $styles[$value] ?? $value;
+        }
+        
+        return (string) $value;
+    }
+    
+    /**
+     * Get change history for a configuration
+     * 
+     * @param string $config_id Configuration ID
+     * @param int $limit Maximum number of changes to return
+     * @return array Array of changes
+     */
+    public function get_change_history($config_id, $limit = 10) {
+        $changes = get_option('spsg_configuration_changes', array());
+        $history = $changes[$config_id] ?? array();
+        
+        // Limit results
+        $history = array_slice($history, 0, $limit);
+        
+        // Enrich with user information
+        foreach ($history as &$change) {
+            if (isset($change['user_id']) && $change['user_id'] > 0) {
+                $user = get_userdata($change['user_id']);
+                $change['user_name'] = $user ? $user->display_name : __('Unknown User', 'sportspress-schedule-generator');
+            } else {
+                $change['user_name'] = __('System', 'sportspress-schedule-generator');
+            }
+        }
+        
+        return $history;
+    }
+    
+    /**
+     * Clear change history for a configuration
+     * 
+     * @param string $config_id Configuration ID
+     * @return bool Success
+     */
+    public function clear_change_history($config_id) {
+        $changes = get_option('spsg_configuration_changes', array());
+        
+        if (isset($changes[$config_id])) {
+            unset($changes[$config_id]);
+            return update_option('spsg_configuration_changes', $changes);
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Get available configuration presets
+     * 
+     * @return array Array of preset metadata
+     */
+    public function list_presets() {
+        return array(
+            'youth_league' => array(
+                'name' => __('Youth League', 'sportspress-schedule-generator'),
+                'description' => __('Standard youth league with weekend games (45 min matches, 14 games per team)', 'sportspress-schedule-generator'),
+                'icon' => 'dashicons-groups'
+            ),
+            'adult_league' => array(
+                'name' => __('Adult League', 'sportspress-schedule-generator'),
+                'description' => __('Evening adult league with weekday games (60 min matches, 12 games per team)', 'sportspress-schedule-generator'),
+                'icon' => 'dashicons-calendar-alt'
+            ),
+            'tournament' => array(
+                'name' => __('Tournament', 'sportspress-schedule-generator'),
+                'description' => __('Weekend tournament format (60 min matches, 4 games per team)', 'sportspress-schedule-generator'),
+                'icon' => 'dashicons-awards'
+            )
+        );
+    }
+    
+    /**
+     * Get preset configuration
+     * 
+     * @param string $preset_name Preset identifier
+     * @return array|WP_Error Preset configuration or error
+     */
+    public function get_preset($preset_name) {
+        $presets = $this->get_preset_definitions();
+        
+        if (!isset($presets[$preset_name])) {
+            return new WP_Error('preset_not_found', __('Preset not found', 'sportspress-schedule-generator'));
+        }
+        
+        return $presets[$preset_name]['config'];
+    }
+    
+    /**
+     * Apply preset to existing configuration
+     * 
+     * @param string $preset_name Preset identifier
+     * @param array $base_config Optional base configuration to merge with
+     * @return array Merged configuration
+     */
+    public function apply_preset($preset_name, $base_config = array()) {
+        $preset = $this->get_preset($preset_name);
+        
+        if (is_wp_error($preset)) {
+            return $preset;
+        }
+        
+        // Merge preset with base config (preset values take precedence)
+        return array_merge($base_config, $preset);
+    }
+    
+    /**
+     * Define preset configurations
+     * 
+     * @return array Array of preset definitions
+     */
+    private function get_preset_definitions() {
+        return array(
+            'youth_league' => array(
+                'name' => __('Youth League', 'sportspress-schedule-generator'),
+                'description' => __('Standard youth league with weekend games', 'sportspress-schedule-generator'),
+                'config' => array(
+                    'games_per_team' => 14,
+                    'match_length' => 45,
+                    'playing_days' => array('saturday', 'sunday'),
+                    'time_slots' => array(
+                        'saturday' => array('09:00', '10:00', '11:00', '13:00', '14:00', '15:00'),
+                        'sunday' => array('09:00', '10:00', '11:00', '13:00', '14:00', '15:00')
+                    ),
+                    'distribution_rules' => array(
+                        'day_balance' => array('saturday' => 0.5, 'sunday' => 0.5),
+                        'time_slot_balance' => true,
+                        'home_away_balance' => true
+                    ),
+                    'team_restrictions' => array(
+                        'back_to_back_avoid' => array(),
+                        'overlap_avoid' => array()
+                    ),
+                    'division_grouping' => array(
+                        'enabled' => true,
+                        'priority' => 5
+                    )
+                )
+            ),
+            'adult_league' => array(
+                'name' => __('Adult League', 'sportspress-schedule-generator'),
+                'description' => __('Evening adult league with weekday games', 'sportspress-schedule-generator'),
+                'config' => array(
+                    'games_per_team' => 12,
+                    'match_length' => 60,
+                    'playing_days' => array('monday', 'wednesday', 'friday'),
+                    'time_slots' => array(
+                        'monday' => array('19:00', '20:00', '21:00'),
+                        'wednesday' => array('19:00', '20:00', '21:00'),
+                        'friday' => array('19:00', '20:00', '21:00')
+                    ),
+                    'distribution_rules' => array(
+                        'day_balance' => array('monday' => 0.33, 'wednesday' => 0.34, 'friday' => 0.33),
+                        'time_slot_balance' => true,
+                        'home_away_balance' => true
+                    ),
+                    'team_restrictions' => array(
+                        'back_to_back_avoid' => array(),
+                        'overlap_avoid' => array()
+                    ),
+                    'division_grouping' => array(
+                        'enabled' => true,
+                        'priority' => 7
+                    )
+                )
+            ),
+            'tournament' => array(
+                'name' => __('Tournament', 'sportspress-schedule-generator'),
+                'description' => __('Weekend tournament format', 'sportspress-schedule-generator'),
+                'config' => array(
+                    'games_per_team' => 4,
+                    'match_length' => 60,
+                    'playing_days' => array('saturday', 'sunday'),
+                    'time_slots' => array(
+                        'saturday' => array('09:00', '11:00', '13:00', '15:00', '17:00'),
+                        'sunday' => array('09:00', '11:00', '13:00', '15:00')
+                    ),
+                    'distribution_rules' => array(
+                        'day_balance' => array('saturday' => 0.55, 'sunday' => 0.45),
+                        'time_slot_balance' => false,
+                        'home_away_balance' => false
+                    ),
+                    'team_restrictions' => array(
+                        'back_to_back_avoid' => array(),
+                        'overlap_avoid' => array()
+                    ),
+                    'division_grouping' => array(
+                        'enabled' => false,
+                        'priority' => 3
+                    )
+                )
+            )
+        );
     }
 }
