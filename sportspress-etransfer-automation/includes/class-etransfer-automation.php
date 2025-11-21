@@ -140,7 +140,7 @@ class SPET_ETransfer_Automation {
             }
         }
         
-        // Strategy 2: Name match
+        // Strategy 2: Name match (exact or similar names)
         if (!empty($payment_data['sender_name'])) {
             $orders = wc_get_orders(array(
                 'status' => 'on-hold',
@@ -151,7 +151,7 @@ class SPET_ETransfer_Automation {
             
             foreach ($orders as $order) {
                 $billing_name = $order->get_billing_first_name() . ' ' . $order->get_billing_last_name();
-                if (strcasecmp(trim($billing_name), trim($payment_data['sender_name'])) === 0) {
+                if (SPET_Name_Matcher::names_match($billing_name, $payment_data['sender_name'])) {
                     $payment_data['match_criteria'] = 'Customer Name (' . $payment_data['sender_name'] . ')';
                     return $order->get_id();
                 }

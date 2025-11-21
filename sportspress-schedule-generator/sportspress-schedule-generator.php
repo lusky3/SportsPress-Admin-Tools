@@ -65,6 +65,9 @@ class SportsPress_Schedule_Generator {
             require_once SPSG_PLUGIN_PATH . 'includes/interfaces/interface-exporter.php';
             require_once SPSG_PLUGIN_PATH . 'includes/interfaces/interface-configuration.php';
             
+            // Load error handler
+            require_once SPSG_PLUGIN_PATH . 'includes/class-error-handler.php';
+            
             // Register constraints
             $this->register_constraints();
             

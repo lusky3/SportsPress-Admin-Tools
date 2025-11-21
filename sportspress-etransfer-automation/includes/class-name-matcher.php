@@ -1,0 +1,138 @@
+<?php
+/**
+ * Name Matching Helper Class
+ * 
+ * @author Cody (lusky3)
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+class SPET_Name_Matcher {
+    
+    private static $equivalent_names_cache = null;
+    
+    /**
+     * Check if two names are equivalent (exact match or similar names)
+     */
+    public static function names_match($name1, $name2) {
+        $name1 = trim($name1);
+        $name2 = trim($name2);
+        
+        // Exact match (case-insensitive)
+        if (strcasecmp($name1, $name2) === 0) {
+            return true;
+        }
+        
+        // Check if names are equivalent based on settings
+        return self::are_names_equivalent($name1, $name2);
+    }
+    
+    /**
+     * Check if two names are equivalent based on the equivalent names list
+     */
+    private static function are_names_equivalent($name1, $name2) {
+        $equivalent_groups = self::get_equivalent_names();
+        
+        // Normalize names for comparison
+        $name1_parts = self::normalize_name($name1);
+        $name2_parts = self::normalize_name($name2);
+        
+        // Check each part of the names
+        foreach ($name1_parts as $part1) {
+            foreach ($name2_parts as $part2) {
+                if (self::parts_are_equivalent($part1, $part2, $equivalent_groups)) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Normalize a name into parts (first, middle, last)
+     */
+    private static function normalize_name($name) {
+        $name = strtolower(trim($name));
+        $parts = preg_split('/\s+/', $name);
+        return array_filter($parts);
+    }
+    
+    /**
+     * Check if two name parts are equivalent
+     */
+    private static function parts_are_equivalent($part1, $part2, $equivalent_groups) {
+        $part1 = strtolower($part1);
+        $part2 = strtolower($part2);
+        
+        // Exact match
+        if ($part1 === $part2) {
+            return true;
+        }
+        
+        // Check if both parts are in the same equivalence group
+        foreach ($equivalent_groups as $group) {
+            $in_group_1 = in_array($part1, $group);
+            $in_group_2 = in_array($part2, $group);
+            
+            if ($in_group_1 && $in_group_2) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Get equivalent names from settings and parse into groups
+     */
+    private static function get_equivalent_names() {
+        if (self::$equivalent_names_cache !== null) {
+            return self::$equivalent_names_cache;
+        }
+        
+        $equivalent_names_text = get_option('spet_equivalent_names', '');
+        $lines = explode("\n", $equivalent_names_text);
+        $groups = array();
+        
+        foreach ($lines as $line) {
+            $line = trim($line);
+            
+            // Skip empty lines and comments
+            if (empty($line) || strpos($line, '#') === 0) {
+                continue;
+            }
+            
+            // Split by pipe character
+            $names = explode('|', $line);
+            $names = array_map('trim', $names);
+            $names = array_filter($names);
+            
+            // Validate and sanitize each name
+            $valid_names = array();
+            foreach ($names as $name) {
+                // Only allow letters, spaces, hyphens, and apostrophes
+                if (preg_match('/^[a-zA-Z\s\-\']+$/', $name) && strlen($name) <= 50) {
+                    $valid_names[] = strtolower($name);
+                }
+            }
+            
+            // Only add groups with at least 2 valid names
+            if (count($valid_names) > 1) {
+                $groups[] = array_unique($valid_names);
+            }
+        }
+        
+        self::$equivalent_names_cache = $groups;
+        return $groups;
+    }
+    
+    /**
+     * Clear the cache (useful after settings update)
+     */
+    public static function clear_cache() {
+        self::$equivalent_names_cache = null;
+    }
+}
