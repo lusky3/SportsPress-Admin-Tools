@@ -38,6 +38,8 @@ class SPSG_Admin {
         add_action('wp_ajax_spsg_import_venues', array($this, 'ajax_import_venues'));
         add_action('wp_ajax_spsg_delete_config', array($this, 'ajax_delete_config'));
         add_action('wp_ajax_spsg_load_sp_teams', array($this, 'ajax_load_sp_teams'));
+        add_action('wp_ajax_spsg_load_preset', array($this, 'ajax_load_preset'));
+        add_action('wp_ajax_spsg_get_change_history', array($this, 'ajax_get_change_history'));
     }
     
     /**
@@ -129,6 +131,7 @@ class SPSG_Admin {
         register_setting('spsg_backend_settings', 'spsg_max_generation_time');
         register_setting('spsg_backend_settings', 'spsg_enable_debug_logging');
         register_setting('spsg_backend_settings', 'spsg_default_timezone');
+        register_setting('spsg_backend_settings', 'spsg_enable_change_tracking');
         
         // Add backend setting fields
         add_settings_field(
@@ -151,6 +154,14 @@ class SPSG_Admin {
             'spsg_default_timezone',
             __('Default Timezone', 'sportspress-schedule-generator'),
             array($this, 'default_timezone_callback'),
+            'spsg_backend_settings',
+            'spsg_backend_section'
+        );
+        
+        add_settings_field(
+            'spsg_enable_change_tracking',
+            __('Enable Change Tracking', 'sportspress-schedule-generator'),
+            array($this, 'change_tracking_callback'),
             'spsg_backend_settings',
             'spsg_backend_section'
         );
@@ -201,6 +212,15 @@ class SPSG_Admin {
         }
         echo '</select>';
         echo '<p class="description">' . __('Default timezone for new schedule configurations.', 'sportspress-schedule-generator') . '</p>';
+    }
+    
+    /**
+     * Change tracking setting
+     */
+    public function change_tracking_callback() {
+        $enabled = get_option('spsg_enable_change_tracking', '1');
+        echo '<input type="checkbox" name="spsg_enable_change_tracking" value="1" ' . checked($enabled, '1', false) . ' />';
+        echo '<p class="description">' . __('Track configuration changes with user attribution and timestamps. Stores last 10 changes per configuration.', 'sportspress-schedule-generator') . '</p>';
     }
     
     /**
@@ -289,7 +309,9 @@ class SPSG_Admin {
                 'generate_schedule' => wp_create_nonce('spsg_generate_schedule'),
                 'export_schedule' => wp_create_nonce('spsg_export_schedule'),
                 'validate_config' => wp_create_nonce('spsg_validate_config'),
-                'load_sp_teams' => wp_create_nonce('spsg_load_sp_teams')
+                'load_sp_teams' => wp_create_nonce('spsg_load_sp_teams'),
+                'load_preset' => wp_create_nonce('spsg_load_preset'),
+                'get_change_history' => wp_create_nonce('spsg_get_change_history')
             )
         ));
         
@@ -763,6 +785,117 @@ class SPSG_Admin {
                     reader.readAsText(file);
                 });
                 
+                // Preset loading
+                $("#spsg-preset-selector").change(function() {
+                    var presetId = $(this).val();
+                    if (presetId) {
+                        var presets = ' . wp_json_encode($this->config_manager->list_presets()) . ';
+                        var preset = presets[presetId];
+                        if (preset) {
+                            $("#spsg-preset-description-text").text(preset.description);
+                            $("#spsg-preset-description").slideDown();
+                        }
+                    } else {
+                        $("#spsg-preset-description").slideUp();
+                    }
+                });
+                
+                $("#spsg-load-preset").click(function() {
+                    var presetId = $("#spsg-preset-selector").val();
+                    if (!presetId) {
+                        alert("' . esc_js(__('Please select a preset', 'sportspress-schedule-generator')) . '");
+                        return;
+                    }
+                    
+                    if (!confirm("' . esc_js(__('Load this preset? Current unsaved changes will be overwritten.', 'sportspress-schedule-generator')) . '")) {
+                        return;
+                    }
+                    
+                    $.ajax({
+                        url: ajaxurl,
+                        type: "POST",
+                        data: {
+                            action: "spsg_load_preset",
+                            preset_name: presetId,
+                            nonce: "' . wp_create_nonce('spsg_load_preset') . '"
+                        },
+                        success: function(response) {
+                            if (response.success) {
+                                var preset = response.data.preset;
+                                
+                                // Populate form fields
+                                $("input[name=games_per_team]").val(preset.games_per_team || "");
+                                $("input[name=match_length]").val(preset.match_length || 60);
+                                $("select[name=matchup_style]").val(preset.matchup_style || "double_round_robin").trigger("change");
+                                
+                                // Playing days
+                                $("input[name=\'playing_days[]\']").prop("checked", false);
+                                if (preset.playing_days) {
+                                    $.each(preset.playing_days, function(i, day) {
+                                        $("input[name=\'playing_days[]\'][value=\'" + day + "\']").prop("checked", true);
+                                    });
+                                }
+                                
+                                // Time slots
+                                if (preset.time_slots) {
+                                    $.each(preset.time_slots, function(day, slots) {
+                                        var textarea = $("textarea[name=\'time_slots[" + day + "]\']");
+                                        if (textarea.length) {
+                                            textarea.val(slots.join("\\n"));
+                                        }
+                                    });
+                                }
+                                
+                                alert("' . esc_js(__('Preset loaded successfully! Please add your divisions, teams, and venues.', 'sportspress-schedule-generator')) . '");
+                            } else {
+                                alert("' . esc_js(__('Error:', 'sportspress-schedule-generator')) . ' " + response.data);
+                            }
+                        }
+                    });
+                });
+                
+                // Matchup style validation
+                $("#spsg-matchup-style").change(function() {
+                    validateMatchupStyle();
+                });
+                
+                $("input[name=games_per_team]").on("input", function() {
+                    validateMatchupStyle();
+                });
+                
+                function validateMatchupStyle() {
+                    var matchupStyle = $("#spsg-matchup-style").val();
+                    var gamesPerTeam = parseInt($("input[name=games_per_team]").val()) || 0;
+                    var warning = $("#spsg-matchup-warning");
+                    var warningText = $("#spsg-matchup-warning-text");
+                    
+                    // Count teams in divisions (simplified - would need actual division data)
+                    var teamCount = 8; // Default assumption
+                    
+                    if (matchupStyle === "single_round_robin") {
+                        var required = teamCount - 1;
+                        if (gamesPerTeam < required) {
+                            warningText.text("' . esc_js(__('Single round-robin with', 'sportspress-schedule-generator')) . ' " + teamCount + " ' . esc_js(__('teams requires at least', 'sportspress-schedule-generator')) . ' " + required + " ' . esc_js(__('games per team. You have', 'sportspress-schedule-generator')) . ' " + gamesPerTeam + ".");
+                            warning.slideDown();
+                        } else {
+                            warning.slideUp();
+                        }
+                    } else if (matchupStyle === "double_round_robin") {
+                        var required = (teamCount - 1) * 2;
+                        if (gamesPerTeam < required) {
+                            warningText.text("' . esc_js(__('Double round-robin with', 'sportspress-schedule-generator')) . ' " + teamCount + " ' . esc_js(__('teams requires at least', 'sportspress-schedule-generator')) . ' " + required + " ' . esc_js(__('games per team. You have', 'sportspress-schedule-generator')) . ' " + gamesPerTeam + ".");
+                            warning.slideDown();
+                        } else {
+                            warning.slideUp();
+                        }
+                    } else {
+                        warning.slideUp();
+                    }
+                }
+                
+                // Initial validation
+                validateMatchupStyle();
+                
                 // Form validation
                 $("#spsg-config-form").submit(function(e) {
                     var isValid = true;
@@ -943,6 +1076,54 @@ class SPSG_Admin {
                         }
                         ?>
                     </select>
+                </td>
+            </tr>
+        </table>
+        
+        <h3><?php _e('Quick Start', 'sportspress-schedule-generator'); ?></h3>
+        <table class="form-table">
+            <tr>
+                <th scope="row"><?php _e('Load Preset', 'sportspress-schedule-generator'); ?></th>
+                <td>
+                    <select id="spsg-preset-selector" class="regular-text">
+                        <option value=""><?php _e('Select a preset template...', 'sportspress-schedule-generator'); ?></option>
+                        <?php
+                        $presets = $this->config_manager->list_presets();
+                        foreach ($presets as $preset_id => $preset_info) {
+                            echo '<option value="' . esc_attr($preset_id) . '">' . esc_html($preset_info['name']) . '</option>';
+                        }
+                        ?>
+                    </select>
+                    <button type="button" class="button" id="spsg-load-preset"><?php _e('Load Preset', 'sportspress-schedule-generator'); ?></button>
+                    <p class="description"><?php _e('Load a preset template with recommended settings for common league types. You can customize values after loading.', 'sportspress-schedule-generator'); ?></p>
+                    <div id="spsg-preset-description" style="display: none; margin-top: 10px; padding: 10px; background: #f0f0f1; border-left: 4px solid #2271b1;">
+                        <strong><?php _e('Preset Details:', 'sportspress-schedule-generator'); ?></strong>
+                        <p id="spsg-preset-description-text"></p>
+                    </div>
+                </td>
+            </tr>
+        </table>
+        
+        <h3><?php _e('Schedule Settings', 'sportspress-schedule-generator'); ?></h3>
+        <table class="form-table">
+            <tr>
+                <th scope="row"><?php _e('Matchup Style', 'sportspress-schedule-generator'); ?></th>
+                <td>
+                    <select name="matchup_style" id="spsg-matchup-style">
+                        <option value="single_round_robin" <?php selected($config->matchup_style ?? 'double_round_robin', 'single_round_robin'); ?>><?php _e('Single Round-Robin', 'sportspress-schedule-generator'); ?></option>
+                        <option value="double_round_robin" <?php selected($config->matchup_style ?? 'double_round_robin', 'double_round_robin'); ?>><?php _e('Double Round-Robin', 'sportspress-schedule-generator'); ?></option>
+                        <option value="custom" <?php selected($config->matchup_style ?? 'double_round_robin', 'custom'); ?>><?php _e('Custom', 'sportspress-schedule-generator'); ?></option>
+                    </select>
+                    <p class="description"><?php _e('How teams are matched throughout the season', 'sportspress-schedule-generator'); ?></p>
+                    <div id="spsg-matchup-info" style="margin-top: 10px; padding: 10px; background: #f0f0f1; border-left: 4px solid #72aee6;">
+                        <strong><?php _e('Single Round-Robin:', 'sportspress-schedule-generator'); ?></strong> <?php _e('Each team plays every other team once. For 8 teams, each plays 7 games.', 'sportspress-schedule-generator'); ?><br>
+                        <strong><?php _e('Double Round-Robin:', 'sportspress-schedule-generator'); ?></strong> <?php _e('Each team plays every other team twice (home and away). For 8 teams, each plays 14 games.', 'sportspress-schedule-generator'); ?><br>
+                        <strong><?php _e('Custom:', 'sportspress-schedule-generator'); ?></strong> <?php _e('Flexible matchup configuration for non-standard formats.', 'sportspress-schedule-generator'); ?>
+                    </div>
+                    <div id="spsg-matchup-warning" style="display: none; margin-top: 10px; padding: 10px; background: #fcf3cf; border-left: 4px solid #f39c12;">
+                        <strong><?php _e('Warning:', 'sportspress-schedule-generator'); ?></strong>
+                        <span id="spsg-matchup-warning-text"></span>
+                    </div>
                 </td>
             </tr>
         </table>
@@ -1473,6 +1654,72 @@ class SPSG_Admin {
         wp_send_json_success(array(
             'teams' => $teams,
             'count' => count($teams)
+        ));
+    }
+    
+    /**
+     * AJAX handler for loading preset configuration
+     */
+    public function ajax_load_preset() {
+        check_ajax_referer('spsg_load_preset', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+        }
+        
+        $preset_name = sanitize_text_field($_POST['preset_name'] ?? '');
+        if (empty($preset_name)) {
+            wp_send_json_error(__('Invalid preset name', 'sportspress-schedule-generator'));
+        }
+        
+        // Load preset
+        $preset = $this->config_manager->get_preset($preset_name);
+        
+        if (is_wp_error($preset)) {
+            wp_send_json_error($preset->get_error_message());
+        }
+        
+        // Get preset metadata
+        $presets = $this->config_manager->list_presets();
+        $preset_info = $presets[$preset_name] ?? array();
+        
+        wp_send_json_success(array(
+            'preset' => $preset,
+            'name' => $preset_info['name'] ?? '',
+            'description' => $preset_info['description'] ?? ''
+        ));
+    }
+    
+    /**
+     * AJAX handler for getting change history
+     */
+    public function ajax_get_change_history() {
+        check_ajax_referer('spsg_get_change_history', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+        }
+        
+        $config_id = sanitize_text_field($_POST['config_id'] ?? '');
+        if (empty($config_id)) {
+            wp_send_json_error(__('Invalid configuration ID', 'sportspress-schedule-generator'));
+        }
+        
+        $limit = intval($_POST['limit'] ?? 10);
+        
+        // Get change history
+        $history = $this->config_manager->get_change_history($config_id, $limit);
+        
+        if (empty($history)) {
+            wp_send_json_success(array(
+                'history' => array(),
+                'message' => __('No changes recorded yet', 'sportspress-schedule-generator')
+            ));
+        }
+        
+        wp_send_json_success(array(
+            'history' => $history,
+            'count' => count($history)
         ));
     }
 }
