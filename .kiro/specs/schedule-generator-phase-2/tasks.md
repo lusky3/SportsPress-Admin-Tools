@@ -119,7 +119,7 @@ The following Phase 1 components are **COMPLETE** and provide the foundation for
 - [x] 5. Enhance sanitization methods (COMPLETE)
   - [x] Add sanitization for matchup style field (pending property addition)
   - [x] Add sanitization for home/away preferences (pending property addition)
-  - [ ] Add sanitization for inter-division games (pending property addition)
+  - [x] Add sanitization for inter-division games (pending property addition)
   - [x] Ensure all string values use WordPress sanitization functions
   - [x] Add type casting for numeric values
   - _Requirements: 17.1, 17.2, 17.3, 17.4_
@@ -147,32 +147,32 @@ The following Phase 1 components are **COMPLETE** and provide the foundation for
   - _Requirements: 11.1, 11.2, 11.3, 11.4_
   - _Completed: Added check_import_compatibility(), migrate_configuration(), and preview_import() methods with version handling_
 
-- [ ] 8. Update admin interface for new features
-  - [ ] 8.1 Add matchup style selector
+- [x] 8. Update admin interface for new features
+  - [x] 8.1 Add matchup style selector
     - Add dropdown for matchup style selection
     - Show compatibility warnings based on division sizes
     - Update form validation
     - _Requirements: 13.1_
 
-  - [ ] 8.2 Add home/away preferences interface
+  - [x] 8.2 Add home/away preferences interface
     - Add venue selector for each team's preferred home venue
     - Show home/away balance toggle
     - Update form handling
     - _Requirements: 14.1, 14.2_
 
-  - [ ] 8.3 Add inter-division games configuration
+  - [x] 8.3 Add inter-division games configuration
     - Add interface for specifying inter-division game counts
     - Show division pair selectors
     - Validate total games compatibility
     - _Requirements: 15.1, 15.2_
 
-  - [ ] 8.4 Add preset selector to basic config tab
+  - [x] 8.4 Add preset selector to basic config tab
     - Add preset dropdown with descriptions
     - Implement preset loading button
     - Show confirmation before applying preset
     - _Requirements: 18.1, 18.2_
 
-  - [ ] 8.5 Add change history display
+  - [x] 8.5 Add change history display
     - Add change history section to configuration management
     - Display recent changes with timestamps and users
     - Format field names and values for readability
