@@ -896,6 +896,121 @@ class SPSG_Admin {
                 // Initial validation
                 validateMatchupStyle();
                 
+                // Inter-division games validation
+                $("input[name^=\'inter_division_games\']").on("input", function() {
+                    validateInterDivisionGames();
+                });
+                
+                $("input[name=games_per_team]").on("input", function() {
+                    validateInterDivisionGames();
+                });
+                
+                function validateInterDivisionGames() {
+                    var gamesPerTeam = parseInt($("input[name=games_per_team]").val()) || 0;
+                    var totalInterDivisionGames = 0;
+                    var warning = $("#spsg-inter-division-warning");
+                    var warningText = $("#spsg-inter-division-warning-text");
+                    
+                    // Sum all inter-division games
+                    $("input[name^=\'inter_division_games\']").each(function() {
+                        totalInterDivisionGames += parseInt($(this).val()) || 0;
+                    });
+                    
+                    if (totalInterDivisionGames > gamesPerTeam) {
+                        warningText.text("' . esc_js(__('Total inter-division games', 'sportspress-schedule-generator')) . ' (" + totalInterDivisionGames + ") ' . esc_js(__('exceeds games per team', 'sportspress-schedule-generator')) . ' (" + gamesPerTeam + "). ' . esc_js(__('Teams will not have enough games for intra-division play.', 'sportspress-schedule-generator')) . '");
+                        warning.slideDown();
+                    } else if (totalInterDivisionGames > 0 && totalInterDivisionGames === gamesPerTeam) {
+                        warningText.text("' . esc_js(__('All games are inter-division. Teams will not play within their own division.', 'sportspress-schedule-generator')) . '");
+                        warning.slideDown();
+                    } else {
+                        warning.slideUp();
+                    }
+                }
+                
+                // Initial inter-division validation
+                validateInterDivisionGames();
+                
+                // Change history display
+                $("#spsg-view-change-history").click(function() {
+                    var $button = $(this);
+                    var configId = $button.data("config-id");
+                    var $display = $("#spsg-change-history-display");
+                    var $content = $("#spsg-change-history-content");
+                    
+                    if (!configId) {
+                        alert("' . esc_js(__('Please save the configuration first to view change history', 'sportspress-schedule-generator')) . '");
+                        return;
+                    }
+                    
+                    // Toggle display
+                    if ($display.is(":visible")) {
+                        $display.slideUp();
+                        $button.text("' . esc_js(__('View Recent Changes', 'sportspress-schedule-generator')) . '");
+                        return;
+                    }
+                    
+                    $button.prop("disabled", true).text("' . esc_js(__('Loading...', 'sportspress-schedule-generator')) . '");
+                    
+                    $.ajax({
+                        url: ajaxurl,
+                        type: "POST",
+                        data: {
+                            action: "spsg_get_change_history",
+                            config_id: configId,
+                            limit: 10,
+                            nonce: "' . wp_create_nonce('spsg_get_change_history') . '"
+                        },
+                        success: function(response) {
+                            if (response.success) {
+                                var history = response.data.history;
+                                
+                                if (history.length === 0) {
+                                    $content.html(\'<p class="description">\' + (response.data.message || "' . esc_js(__('No changes recorded yet', 'sportspress-schedule-generator')) . '") + \'</p>\');
+                                } else {
+                                    var html = \'<table class="widefat striped"><thead><tr>\';
+                                    html += \'<th>\' + "' . esc_js(__('Date/Time', 'sportspress-schedule-generator')) . '" + \'</th>\';
+                                    html += \'<th>\' + "' . esc_js(__('User', 'sportspress-schedule-generator')) . '" + \'</th>\';
+                                    html += \'<th>\' + "' . esc_js(__('Field', 'sportspress-schedule-generator')) . '" + \'</th>\';
+                                    html += \'<th>\' + "' . esc_js(__('Change', 'sportspress-schedule-generator')) . '" + \'</th>\';
+                                    html += \'</tr></thead><tbody>\';
+                                    
+                                    $.each(history, function(i, change) {
+                                        html += \'<tr>\';
+                                        html += \'<td>\' + change.timestamp + \'</td>\';
+                                        html += \'<td>\' + (change.user_name || "' . esc_js(__('Unknown', 'sportspress-schedule-generator')) . '") + \'</td>\';
+                                        html += \'<td><code>\' + change.field + \'</code></td>\';
+                                        html += \'<td>\';
+                                        
+                                        if (change.old_value_display && change.new_value_display) {
+                                            html += \'<span style="color: #b32d2e; text-decoration: line-through;">\' + change.old_value_display + \'</span> → \';
+                                            html += \'<span style="color: #00a32a; font-weight: bold;">\' + change.new_value_display + \'</span>\';
+                                        } else {
+                                            html += "' . esc_js(__('Modified', 'sportspress-schedule-generator')) . '";
+                                        }
+                                        
+                                        html += \'</td>\';
+                                        html += \'</tr>\';
+                                    });
+                                    
+                                    html += \'</tbody></table>\';
+                                    $content.html(html);
+                                }
+                                
+                                $display.slideDown();
+                                $button.text("' . esc_js(__('Hide Changes', 'sportspress-schedule-generator')) . '");
+                            } else {
+                                alert("' . esc_js(__('Error:', 'sportspress-schedule-generator')) . ' " + response.data);
+                            }
+                        },
+                        error: function() {
+                            alert("' . esc_js(__('Failed to load change history', 'sportspress-schedule-generator')) . '");
+                        },
+                        complete: function() {
+                            $button.prop("disabled", false);
+                        }
+                    });
+                });
+                
                 // Form validation
                 $("#spsg-config-form").submit(function(e) {
                     var isValid = true;
@@ -1028,6 +1143,16 @@ class SPSG_Admin {
                 <button type="button" class="button" id="spsg-import-config"><?php _e('Import Configuration', 'sportspress-schedule-generator'); ?></button>
                 <input type="file" id="spsg-import-config-file" accept=".json" style="display: none;" />
             </div>
+            
+            <?php if (get_option('spsg_enable_change_tracking', '1') === '1' && !empty($config->id)): ?>
+            <div class="spsg-change-history" style="margin-top: 20px;">
+                <h4><?php _e('Change History', 'sportspress-schedule-generator'); ?></h4>
+                <button type="button" class="button" id="spsg-view-change-history" data-config-id="<?php echo esc_attr($config->id ?? ''); ?>"><?php _e('View Recent Changes', 'sportspress-schedule-generator'); ?></button>
+                <div id="spsg-change-history-display" style="display: none; margin-top: 10px; padding: 10px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px;">
+                    <div id="spsg-change-history-content"></div>
+                </div>
+            </div>
+            <?php endif; ?>
         </div>
         
         <table class="form-table">
@@ -1180,6 +1305,141 @@ class SPSG_Admin {
                 ?>
             </div>
             <button type="button" class="button" id="spsg-add-division"><?php _e('Add Division', 'sportspress-schedule-generator'); ?></button>
+        </div>
+        
+        <div class="spsg-home-away-section">
+            <h3><?php _e('Home/Away Preferences', 'sportspress-schedule-generator'); ?></h3>
+            <p class="description"><?php _e('Assign preferred home venues for teams. This helps balance home and away games across the season.', 'sportspress-schedule-generator'); ?></p>
+            
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><?php _e('Configure Home Venues', 'sportspress-schedule-generator'); ?></th>
+                    <td>
+                        <div id="spsg-home-away-preferences">
+                            <?php
+                            $home_away_prefs = $config->home_away_preferences ?? array();
+                            $all_teams = array();
+                            
+                            // Collect all teams from divisions
+                            if (!empty($config->divisions)) {
+                                foreach ($config->divisions as $division) {
+                                    if (!empty($division['teams'])) {
+                                        foreach ($division['teams'] as $team) {
+                                            $all_teams[] = $team;
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            if (empty($all_teams)) {
+                                echo '<p class="description">' . __('Add teams to divisions first to configure home venue preferences.', 'sportspress-schedule-generator') . '</p>';
+                            } else {
+                                echo '<table class="widefat striped">';
+                                echo '<thead><tr>';
+                                echo '<th>' . __('Team', 'sportspress-schedule-generator') . '</th>';
+                                echo '<th>' . __('Preferred Home Venue', 'sportspress-schedule-generator') . '</th>';
+                                echo '</tr></thead>';
+                                echo '<tbody>';
+                                
+                                foreach ($all_teams as $team) {
+                                    $team_pref = $home_away_prefs[$team] ?? '';
+                                    echo '<tr>';
+                                    echo '<td><strong>' . esc_html($team) . '</strong></td>';
+                                    echo '<td>';
+                                    echo '<select name="home_away_preferences[' . esc_attr($team) . ']" class="regular-text">';
+                                    echo '<option value="">' . __('No preference', 'sportspress-schedule-generator') . '</option>';
+                                    
+                                    // List all venues
+                                    if (!empty($config->venues)) {
+                                        foreach ($config->venues as $venue) {
+                                            $venue_id = $venue['id'] ?? '';
+                                            $venue_name = $venue['name'] ?? __('Unnamed Venue', 'sportspress-schedule-generator');
+                                            echo '<option value="' . esc_attr($venue_id) . '" ' . selected($team_pref, $venue_id, false) . '>' . esc_html($venue_name) . '</option>';
+                                        }
+                                    }
+                                    
+                                    echo '</select>';
+                                    echo '</td>';
+                                    echo '</tr>';
+                                }
+                                
+                                echo '</tbody></table>';
+                                
+                                if (empty($config->venues)) {
+                                    echo '<p class="description" style="margin-top: 10px;">' . __('Note: Add venues in the "Venues & Times" tab to assign home venue preferences.', 'sportspress-schedule-generator') . '</p>';
+                                }
+                            }
+                            ?>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+        </div>
+        
+        <div class="spsg-inter-division-section">
+            <h3><?php _e('Inter-Division Games', 'sportspress-schedule-generator'); ?></h3>
+            <p class="description"><?php _e('Configure cross-division play by specifying how many games teams from different divisions should play against each other.', 'sportspress-schedule-generator'); ?></p>
+            
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><?php _e('Configure Inter-Division Games', 'sportspress-schedule-generator'); ?></th>
+                    <td>
+                        <div id="spsg-inter-division-games">
+                            <?php
+                            $inter_division_games = $config->inter_division_games ?? array();
+                            $divisions = $config->divisions ?? array();
+                            
+                            if (count($divisions) < 2) {
+                                echo '<p class="description">' . __('Add at least 2 divisions to configure inter-division games.', 'sportspress-schedule-generator') . '</p>';
+                            } else {
+                                echo '<table class="widefat striped">';
+                                echo '<thead><tr>';
+                                echo '<th>' . __('Division Pair', 'sportspress-schedule-generator') . '</th>';
+                                echo '<th>' . __('Games Per Team', 'sportspress-schedule-generator') . '</th>';
+                                echo '</tr></thead>';
+                                echo '<tbody>';
+                                
+                                // Generate all division pairs
+                                for ($i = 0; $i < count($divisions); $i++) {
+                                    for ($j = $i + 1; $j < count($divisions); $j++) {
+                                        $div1 = $divisions[$i];
+                                        $div2 = $divisions[$j];
+                                        $div1_name = $div1['name'] ?? sprintf(__('Division %d', 'sportspress-schedule-generator'), $i + 1);
+                                        $div2_name = $div2['name'] ?? sprintf(__('Division %d', 'sportspress-schedule-generator'), $j + 1);
+                                        
+                                        // Create pair key (consistent ordering)
+                                        $div1_id = $div1['id'] ?? 'div_' . $i;
+                                        $div2_id = $div2['id'] ?? 'div_' . $j;
+                                        $pair_key = $div1_id . '_' . $div2_id;
+                                        
+                                        $games_count = $inter_division_games[$pair_key] ?? 0;
+                                        
+                                        echo '<tr>';
+                                        echo '<td><strong>' . esc_html($div1_name) . '</strong> vs <strong>' . esc_html($div2_name) . '</strong></td>';
+                                        echo '<td>';
+                                        echo '<input type="number" name="inter_division_games[' . esc_attr($pair_key) . ']" value="' . esc_attr($games_count) . '" min="0" max="10" class="small-text" /> ';
+                                        echo '<span class="description">' . __('games per team', 'sportspress-schedule-generator') . '</span>';
+                                        echo '</td>';
+                                        echo '</tr>';
+                                    }
+                                }
+                                
+                                echo '</tbody></table>';
+                                
+                                echo '<p class="description" style="margin-top: 10px;">';
+                                echo __('Specify how many games each team should play against teams from other divisions. Set to 0 to disable inter-division play for a division pair.', 'sportspress-schedule-generator');
+                                echo '</p>';
+                                
+                                echo '<div id="spsg-inter-division-warning" style="display: none; margin-top: 10px; padding: 10px; background: #fcf3cf; border-left: 4px solid #f39c12;">';
+                                echo '<strong>' . __('Warning:', 'sportspress-schedule-generator') . '</strong> ';
+                                echo '<span id="spsg-inter-division-warning-text"></span>';
+                                echo '</div>';
+                            }
+                            ?>
+                        </div>
+                    </td>
+                </tr>
+            </table>
         </div>
         
         <div class="spsg-generic-teams-section">
@@ -1717,9 +1977,21 @@ class SPSG_Admin {
             ));
         }
         
+        // Format history for display
+        $formatted_history = array();
+        foreach ($history as $change) {
+            $formatted_history[] = array(
+                'timestamp' => $change['timestamp'],
+                'user_name' => $change['user_name'],
+                'field' => $change['field_label'] ?? $change['field'],
+                'old_value_display' => $change['old_value'] ?? '',
+                'new_value_display' => $change['new_value'] ?? ''
+            );
+        }
+        
         wp_send_json_success(array(
-            'history' => $history,
-            'count' => count($history)
+            'history' => $formatted_history,
+            'count' => count($formatted_history)
         ));
     }
 }
