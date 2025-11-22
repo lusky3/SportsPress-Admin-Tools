@@ -930,6 +930,93 @@ class SPSG_Admin {
                 // Initial inter-division validation
                 validateInterDivisionGames();
                 
+                // Dynamic home/away preferences update
+                function updateHomeAwayPreferences() {
+                    var $container = $("#spsg-home-away-preferences");
+                    var teams = [];
+                    
+                    // Collect all teams from divisions
+                    $(".spsg-division-row").each(function() {
+                        $(this).find("input[name*=\'[teams]\']:checked").each(function() {
+                            var teamName = $(this).val();
+                            if (teamName && teams.indexOf(teamName) === -1) {
+                                teams.push(teamName);
+                            }
+                        });
+                    });
+                    
+                    // Collect all venues
+                    var venues = [];
+                    $(".spsg-venue-row").each(function() {
+                        var venueId = $(this).find("input[name*=\'[id]\']").val();
+                        var venueName = $(this).find("input[name*=\'[name]\']").val();
+                        if (venueId && venueName) {
+                            venues.push({id: venueId, name: venueName});
+                        }
+                    });
+                    
+                    if (teams.length === 0) {
+                        $container.html(\'<p class="description">\' + "' . esc_js(__('Add teams to divisions first to configure home venue preferences.', 'sportspress-schedule-generator')) . '" + \'</p>\');
+                        return;
+                    }
+                    
+                    // Build table
+                    var html = \'<table class="widefat striped">\';
+                    html += \'<thead><tr>\';
+                    html += \'<th>\' + "' . esc_js(__('Team', 'sportspress-schedule-generator')) . '" + \'</th>\';
+                    html += \'<th>\' + "' . esc_js(__('Preferred Home Venue', 'sportspress-schedule-generator')) . '" + \'</th>\';
+                    html += \'</tr></thead>\';
+                    html += \'<tbody>\';
+                    
+                    $.each(teams, function(i, team) {
+                        // Get existing preference if any
+                        var existingPref = $("select[name=\'home_away_preferences[" + team + "]\']").val() || "";
+                        
+                        html += \'<tr>\';
+                        html += \'<td><strong>\' + team + \'</strong></td>\';
+                        html += \'<td>\';
+                        html += \'<select name="home_away_preferences[\' + team + \']" class="regular-text">\';
+                        html += \'<option value="">\' + "' . esc_js(__('No preference', 'sportspress-schedule-generator')) . '" + \'</option>\';
+                        
+                        $.each(venues, function(j, venue) {
+                            var selected = (existingPref === venue.id) ? \' selected\' : \'\';
+                            html += \'<option value="\' + venue.id + \'"\' + selected + \'>\' + venue.name + \'</option>\';
+                        });
+                        
+                        html += \'</select>\';
+                        html += \'</td>\';
+                        html += \'</tr>\';
+                    });
+                    
+                    html += \'</tbody></table>\';
+                    
+                    if (venues.length === 0) {
+                        html += \'<p class="description" style="margin-top: 10px;">\' + "' . esc_js(__('Note: Add venues in the "Venues & Times" tab to assign home venue preferences.', 'sportspress-schedule-generator')) . '" + \'</p>\';
+                    }
+                    
+                    $container.html(html);
+                }
+                
+                // Update home/away preferences when teams or venues change
+                $(document).on("change", "input[name*=\'[teams]\']", function() {
+                    setTimeout(updateHomeAwayPreferences, 100);
+                });
+                
+                $(document).on("click", ".spsg-add-manual-team, .spsg-remove-team, .spsg-load-sp-teams", function() {
+                    setTimeout(updateHomeAwayPreferences, 200);
+                });
+                
+                $(document).on("input", "input[name*=\'venues\'][name*=\'[name]\'], input[name*=\'venues\'][name*=\'[id]\']", function() {
+                    setTimeout(updateHomeAwayPreferences, 100);
+                });
+                
+                $(document).on("click", ".spsg-add-venue, .spsg-remove-venue", function() {
+                    setTimeout(updateHomeAwayPreferences, 200);
+                });
+                
+                // Initial update on page load
+                setTimeout(updateHomeAwayPreferences, 500);
+                
                 // Change history display
                 $("#spsg-view-change-history").click(function() {
                     var $button = $(this);
