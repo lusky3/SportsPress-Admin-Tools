@@ -29,10 +29,11 @@ Phase 3 implements the core schedule generation engine, constraint integration, 
 
 - [ ] 1.3 Implement home/away assignment
   - [ ] Create `assign_home_away()` method
-  - [ ] Respect home venue preferences
-  - [ ] Balance home/away games per team
+  - [ ] Balance home/away designations per team
   - [ ] For double round-robin, ensure home/away swap
+  - [ ] For single round-robin, randomly assign or balance
   - _Requirements: 3.1, 3.2, 3.3, 3.4_
+  - _Note: Home/away are designations only, not venue assignments_
 
 - [ ] 1.4 Add matchup validation
   - [ ] Validate total matchups equal games_per_team

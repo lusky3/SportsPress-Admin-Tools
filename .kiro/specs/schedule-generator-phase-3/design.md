@@ -101,10 +101,10 @@ class SPSG_Matchup_Generator {
             $matchups = array_merge($matchups, $inter_matchups);
         }
         
-        // Assign home/away
+        // Assign home/away designations
+        // Note: Home/away are designations only, not venue assignments
         $matchups = $this->assign_home_away(
             $matchups,
-            $config->home_away_preferences,
             $config->distribution_rules['home_away_balance'] ?? true
         );
         
@@ -245,23 +245,22 @@ class SPSG_Slot_Allocator {
     private function score_slot($matchup, $slot, $schedule, $config) {
         $score = 1.0;
         
-        // Prefer home team's preferred venue
-        if (isset($matchup['home_team_preferred_venue'])) {
-            if ($slot['venue']['id'] === $matchup['home_team_preferred_venue']) {
-                $score += 0.5;
-            }
-        }
-        
         // Prefer balanced time slot distribution
         $team_time_slots = $this->get_team_time_slots($matchup['home_team'], $schedule);
         if (!in_array($slot['time'], $team_time_slots)) {
-            $score += 0.3;
+            $score += 0.4;
         }
         
         // Prefer balanced day distribution
         $team_days = $this->get_team_days($matchup['home_team'], $schedule);
         if (!in_array($slot['day'], $team_days)) {
-            $score += 0.2;
+            $score += 0.3;
+        }
+        
+        // Prefer spreading games across venues
+        $venue_usage = $this->get_venue_usage($slot['venue'], $schedule);
+        if ($venue_usage < $average_venue_usage) {
+            $score += 0.3;
         }
         
         return $score;
