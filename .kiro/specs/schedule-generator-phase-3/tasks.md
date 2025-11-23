@@ -42,11 +42,8 @@ The following Phase 2 components are **COMPLETE** and provide the foundation for
 
 ## Phase 3 Tasks
 
-### Task 1: Enhanced Matchup Generation (High Priority)
-
-**Estimated Effort:** 12-15 hours
-
-- [ ] 1.1 Create SPSG_Matchup_Generator class
+- [ ] 1. Enhanced Matchup Generation (High Priority - 12-15 hours)
+  - [ ] 1.1 Create SPSG_Matchup_Generator class
   - Create new file `includes/class-matchup-generator.php`
   - Implement `generate()` method to orchestrate matchup generation
   - Implement `generate_division_matchups()` for intra-division games
@@ -85,11 +82,8 @@ The following Phase 2 components are **COMPLETE** and provide the foundation for
   - Test home/away assignment and balance
   - Test validation logic
 
-### Task 2: Improved Slot Allocation (High Priority)
-
-**Estimated Effort:** 15-18 hours
-
-- [ ] 2.1 Enhance SPSG_Slot_Allocator class
+- [ ] 2. Improved Slot Allocation (High Priority - 15-18 hours)
+  - [ ] 2.1 Enhance SPSG_Slot_Allocator class
   - Update existing `includes/class-slot-allocator.php`
   - Implement `generate_available_slots()` method
   - Implement `greedy_allocate()` method (improve existing)
@@ -134,11 +128,8 @@ The following Phase 2 components are **COMPLETE** and provide the foundation for
   - Test feasibility checking
   - Test timeout handling
 
-### Task 3: Constraint Integration (High Priority)
-
-**Estimated Effort:** 10-12 hours
-
-- [ ] 3.1 Enhance SPSG_Constraint_Manager
+- [ ] 3. Constraint Integration (High Priority - 10-12 hours)
+  - [ ] 3.1 Enhance SPSG_Constraint_Manager
   - Update existing `includes/class-constraint-manager.php`
   - Implement `check_feasibility()` method
   - Enhance `validate_game()` to use all registered constraints
@@ -175,11 +166,8 @@ The following Phase 2 components are **COMPLETE** and provide the foundation for
   - Test feasibility checking
   - Test error messages
 
-### Task 4: Schedule Generation Orchestration (High Priority)
-
-**Estimated Effort:** 8-10 hours
-
-- [ ] 4.1 Enhance SPSG_Schedule_Engine
+- [ ] 4. Schedule Generation Orchestration (High Priority - 8-10 hours)
+  - [ ] 4.1 Enhance SPSG_Schedule_Engine
   - Update existing `includes/class-schedule-engine.php`
   - Integrate new SPSG_Matchup_Generator
   - Integrate improved SPSG_Slot_Allocator
@@ -215,11 +203,8 @@ The following Phase 2 components are **COMPLETE** and provide the foundation for
   - Test cancellation
   - Test error handling
 
-### Task 5: SportsPress Integration (High Priority)
-
-**Estimated Effort:** 12-15 hours
-
-- [ ] 5.1 Create SPSG_SportsPress_Importer class
+- [ ] 5. SportsPress Integration (High Priority - 12-15 hours)
+  - [ ] 5.1 Create SPSG_SportsPress_Importer class
   - Create new file `includes/class-sportspress-importer.php`
   - Implement `import()` method with options support
   - Implement `create_event()` method for single event
@@ -262,11 +247,8 @@ The following Phase 2 components are **COMPLETE** and provide the foundation for
   - Test team/venue mapping
   - Test error handling
 
-### Task 6: Schedule Preview UI (Medium Priority)
-
-**Estimated Effort:** 10-12 hours
-
-- [ ] 6.1 Add preview tab to admin interface
+- [ ] 6. Schedule Preview UI (Medium Priority - 10-12 hours)
+  - [ ] 6.1 Add preview tab to admin interface
   - Update `includes/class-admin.php`
   - Create `render_schedule_preview()` method
   - Add preview tab to Generate section
@@ -314,11 +296,8 @@ The following Phase 2 components are **COMPLETE** and provide the foundation for
   - Show loading states
   - Handle AJAX responses
 
-### Task 7: Schedule Statistics (Medium Priority)
-
-**Estimated Effort:** 6-8 hours
-
-- [ ] 7.1 Create SPSG_Statistics_Calculator class
+- [ ] 7. Schedule Statistics (Medium Priority - 6-8 hours)
+  - [ ] 7.1 Create SPSG_Statistics_Calculator class
   - Create new file `includes/class-statistics-calculator.php`
   - Implement `calculate()` method
   - Calculate games per team (min/max/avg/per team)
@@ -341,11 +320,8 @@ The following Phase 2 components are **COMPLETE** and provide the foundation for
   - Test imbalance detection
   - Test edge cases
 
-### Task 8: Generation Progress UI (Medium Priority)
-
-**Estimated Effort:** 5-6 hours
-
-- [ ] 8.1 Add progress indicator to UI
+- [ ] 8. Generation Progress UI (Medium Priority - 5-6 hours)
+  - [ ] 8.1 Add progress indicator to UI
   - Update `includes/class-admin.php`
   - Add progress bar HTML to generate tab
   - Show percentage complete
@@ -374,11 +350,8 @@ The following Phase 2 components are **COMPLETE** and provide the foundation for
   - Test UI updates
   - Test cancellation
 
-### Task 9: Schedule Export (Low Priority)
-
-**Estimated Effort:** 5-7 hours
-
-- [ ] 9.1 Enhance SPSG_Export_Manager
+- [ ] 9. Schedule Export (Low Priority - 5-7 hours)
+  - [ ] 9.1 Enhance SPSG_Export_Manager
   - Update existing `includes/class-export-manager.php`
   - Support filtering by division
   - Support filtering by date range
@@ -400,11 +373,8 @@ The following Phase 2 components are **COMPLETE** and provide the foundation for
   - Test filtering
   - Test file generation
 
-### Task 10: Documentation (All Priorities)
-
-**Estimated Effort:** 8-10 hours
-
-- [ ] 10.1 Write user documentation
+- [ ] 10. Documentation (All Priorities - 8-10 hours)
+  - [ ] 10.1 Write user documentation
   - Create `docs/USER-GUIDE.md`
   - How to configure a schedule
   - How to generate a schedule
@@ -425,11 +395,8 @@ The following Phase 2 components are **COMPLETE** and provide the foundation for
   - Add usage examples
   - Add screenshots (if available)
 
-### Task 11: Testing & Quality Assurance
-
-**Estimated Effort:** 10-12 hours
-
-- [ ] 11.1 Write comprehensive test suite
+- [ ] 11. Testing & Quality Assurance (10-12 hours)
+  - [ ] 11.1 Write comprehensive test suite
   - Create unit tests for all new classes
   - Create integration tests for generation flow
   - Create integration tests for SportsPress import
