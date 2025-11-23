@@ -100,17 +100,19 @@ Phase 3 focuses on implementing the core schedule generation engine that uses th
 
 ### Requirement 3: Home/Away Assignment
 
-**User Story:** As a league administrator, I want home/away assignments to be balanced and respect preferences, so that hosting is fair.
+**User Story:** As a league administrator, I want home/away designations to be balanced, so that teams are fairly distributed as "home" and "away" in matchups.
+
+**Note:** In recreational leagues, "home" and "away" are designations for which team is listed first/second in the matchup, not actual venue assignments. All games are played at neutral venues.
 
 #### Acceptance Criteria
 
-3.1 WHEN home_away_preferences is configured, THE Schedule_Engine SHALL assign teams to their preferred home venues when possible
+3.1 WHEN home_away_balance is enabled, THE Schedule_Engine SHALL ensure each team has approximately equal home and away designations
 
-3.2 WHEN home_away_balance is enabled, THE Schedule_Engine SHALL ensure each team has approximately equal home and away games
+3.2 THE Schedule_Engine SHALL track home/away counts per team during generation
 
-3.3 THE Schedule_Engine SHALL track home/away counts per team during generation
+3.3 FOR double round-robin, THE Schedule_Engine SHALL ensure each team plays every opponent once as home and once as away
 
-3.4 FOR double round-robin, THE Schedule_Engine SHALL ensure each team plays every opponent once at home and once away
+3.4 THE Schedule_Engine SHALL randomly assign home/away for single round-robin when balance is not critical
 
 ### Requirement 4: Improved Slot Allocation
 
