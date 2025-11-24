@@ -122,15 +122,27 @@ class SPSG_Schedule_Generator {
             return;
         }
         
-        // Store generated schedule in transient for export
+        // Calculate statistics using the statistics calculator
+        $stats_calculator = new SPSG_Statistics_Calculator();
+        $stats = $stats_calculator->calculate($result['schedule'], $config);
+        
+        // Add generation time to stats
+        if (isset($result['generation_time'])) {
+            $stats['generation_time'] = $result['generation_time'];
+        }
+        
+        // Store generated schedule and stats in transients
         $schedule_id = uniqid('schedule_');
+        $user_id = get_current_user_id();
         set_transient('spsg_schedule_' . $schedule_id, $result['schedule'], HOUR_IN_SECONDS);
+        set_transient('spsg_schedule_stats_' . $schedule_id, $stats, HOUR_IN_SECONDS);
+        set_transient('spsg_last_schedule_id_' . $user_id, $schedule_id, HOUR_IN_SECONDS);
         
         wp_send_json_success(array(
             'message' => __('Schedule generated successfully', 'sportspress-schedule-generator'),
             'schedule_id' => $schedule_id,
             'schedule' => $this->format_schedule_for_display($result['schedule']),
-            'stats' => $result['stats']
+            'stats' => $stats
         ));
     }
     
@@ -146,15 +158,38 @@ class SPSG_Schedule_Generator {
                 'time' => $game->time_slot,
                 'end_time' => $game->end_time ?? '',
                 'match_length' => $game->match_length ?? 60,
-                'home_team' => $game->home_team->name ?? 'Unknown',
-                'away_team' => $game->away_team->name ?? 'Unknown',
-                'venue' => $game->venue->name ?? 'Unknown',
-                'division' => $game->division->name ?? 'Unknown',
-                'is_makeup' => $game->is_makeup ?? false
+                'home_team' => array(
+                    'id' => $game->home_team->id ?? '',
+                    'name' => $game->home_team->name ?? 'Unknown'
+                ),
+                'away_team' => array(
+                    'id' => $game->away_team->id ?? '',
+                    'name' => $game->away_team->name ?? 'Unknown'
+                ),
+                'venue' => array(
+                    'id' => $game->venue->id ?? '',
+                    'name' => $game->venue->name ?? 'Unknown'
+                ),
+                'division' => array(
+                    'id' => $game->division->id ?? '',
+                    'name' => $game->division->name ?? 'Unknown'
+                ),
+                'is_makeup' => $game->is_makeup ?? false,
+                'is_inter_division' => $this->is_inter_division_game($game)
             );
         }
         
         return $formatted;
+    }
+    
+    /**
+     * Check if a game is inter-division
+     */
+    private function is_inter_division_game($game) {
+        if (!isset($game->home_team->division_id) || !isset($game->away_team->division_id)) {
+            return false;
+        }
+        return $game->home_team->division_id !== $game->away_team->division_id;
     }
     
     /**

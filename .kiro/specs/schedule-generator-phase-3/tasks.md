@@ -245,8 +245,8 @@ Phase 3 implements the core schedule generation engine, constraint integration, 
     - Add "Generate New Schedule" button
     - _Requirements: 8.4, 8.5, 9.1, 9.2, 9.3, 9.4, 9.5_
 
-- [ ] 6. Schedule Statistics (Medium Priority - 4-6 hours)
-  - [ ] 6.1 Create SPSG_Statistics_Calculator class
+- [x] 6. Schedule Statistics (Medium Priority - 4-6 hours)
+  - [x] 6.1 Create SPSG_Statistics_Calculator class
     - Create new file `includes/class-statistics-calculator.php`
     - Implement `calculate()` method
     - Calculate games per team (min/max/avg/per team)
@@ -257,7 +257,7 @@ Phase 3 implements the core schedule generation engine, constraint integration, 
     - Use existing distribution constraint helpers where applicable
     - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5_
 
-  - [ ] 6.2 Add imbalance detection
+  - [x] 6.2 Add imbalance detection
     - Detect games per team variance (flag if > 1 game difference)
     - Detect home/away imbalance (flag if difference > 2)
     - Detect venue over/under utilization (flag if > 20% variance)
