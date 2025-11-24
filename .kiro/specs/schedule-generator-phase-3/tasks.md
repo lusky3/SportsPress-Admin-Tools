@@ -288,8 +288,8 @@ Phase 3 implements the core schedule generation engine, constraint integration, 
     - Handle cancellation response
     - _Requirements: 13.1, 13.4_
 
-- [ ] 8. Schedule Export Enhancement (Low Priority - 3-4 hours)
-  - [ ] 8.1 Enhance SPSG_Export_Manager
+- [x] 8. Schedule Export Enhancement (Low Priority - 3-4 hours)
+  - [x] 8.1 Enhance SPSG_Export_Manager
     - Update existing `includes/class-export-manager.php`
     - Support filtering by division
     - Support filtering by date range

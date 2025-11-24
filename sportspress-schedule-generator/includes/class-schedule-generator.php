@@ -226,9 +226,27 @@ class SPSG_Schedule_Generator {
             return;
         }
         
+        // Get optional filters
+        $filters = array();
+        
+        if (!empty($_POST['division'])) {
+            $filters['division'] = sanitize_text_field($_POST['division']);
+        }
+        
+        if (!empty($_POST['date_from'])) {
+            $filters['date_from'] = sanitize_text_field($_POST['date_from']);
+        }
+        
+        if (!empty($_POST['date_to'])) {
+            $filters['date_to'] = sanitize_text_field($_POST['date_to']);
+        }
+        
         try {
-            // Export schedule using Export Manager
-            $result = $this->export_manager->export($schedule, $format);
+            // Load configuration for export context
+            $config = $this->config_manager->get_current();
+            
+            // Export schedule using Export Manager with filters
+            $result = $this->export_manager->export($schedule, $config, $format, $filters);
             
             if (is_wp_error($result)) {
                 wp_send_json_error(array(
