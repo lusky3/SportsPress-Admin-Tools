@@ -176,15 +176,15 @@ Phase 3 implements the core schedule generation engine, constraint integration, 
     - Log detailed errors for debugging (if debug logging enabled)
     - _Requirements: 15.1, 15.2, 15.3, 15.4_
 
-- [ ] 4. SportsPress Event Import (High Priority - 8-10 hours)
-  - [ ] 4.1 Create SPSG_SportsPress_Importer class
+- [x] 4. SportsPress Event Import (High Priority - 8-10 hours)
+  - [x] 4.1 Create SPSG_SportsPress_Importer class
     - Create new file `includes/class-sportspress-importer.php`
     - Implement `import()` method with options support
     - Use existing `SPSG_SportsPress_Integration::create_event_from_game()` as foundation
     - Implement bulk import with progress tracking
     - _Requirements: 10.1, 10.2, 10.3, 10.4_
 
-  - [ ] 4.2 Implement conflict detection and resolution
+  - [x] 4.2 Implement conflict detection and resolution
     - Create `check_conflicts()` method
     - Query existing SportsPress events by date/time/teams
     - Use existing `SPSG_SportsPress_Integration::find_existing_event()` helper
@@ -194,7 +194,7 @@ Phase 3 implements the core schedule generation engine, constraint integration, 
     - Track skipped/overwritten events in results
     - _Requirements: 11.1, 11.2, 11.3_
 
-  - [ ] 4.3 Implement team/venue mapping
+  - [x] 4.3 Implement team/venue mapping
     - Map schedule team names to SportsPress team post IDs
     - Map schedule venue names to SportsPress venue term IDs
     - Use existing `SPSG_SportsPress_Integration` helpers for lookups
@@ -202,7 +202,7 @@ Phase 3 implements the core schedule generation engine, constraint integration, 
     - Return clear error messages for mapping failures
     - _Requirements: 10.2, 10.3, 10.5_
 
-  - [ ] 4.4 Add import logging and AJAX handler
+  - [x] 4.4 Add import logging and AJAX handler
     - Log all import actions to WordPress error log
     - Track imported/skipped/failed counts
     - Store import results in transient

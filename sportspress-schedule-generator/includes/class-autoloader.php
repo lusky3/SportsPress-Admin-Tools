@@ -53,6 +53,7 @@ class SPSG_Autoloader {
             'SPSG_Schedule_Generator' => $base_path . 'class-schedule-generator.php',
             'SPSG_Admin' => $base_path . 'class-admin.php',
             'SPSG_SportsPress_Integration' => $base_path . 'class-sportspress-integration.php',
+            'SPSG_SportsPress_Importer' => $base_path . 'class-sportspress-importer.php',
             
             // Configuration classes
             'SPSG_Configuration_Manager' => $base_path . 'class-configuration-manager.php',
