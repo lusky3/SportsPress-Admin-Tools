@@ -55,7 +55,7 @@ This phase adds frontend UI controls to expose existing backend functionality. A
   - _Files: includes/class-admin.php_
   - _Estimated: 45 minutes_
 
-- [ ] 4. Add Import Dialog CSS Styles
+- [x] 4. Add Import Dialog CSS Styles
   - Add modal overlay styles (full viewport, semi-transparent)
   - Add modal content styles (centered, scrollable, max-width 600px)
   - Style form sections with proper spacing
@@ -73,7 +73,7 @@ This phase adds frontend UI controls to expose existing backend functionality. A
   - _Files: assets/css/admin.css_
   - _Estimated: 30 minutes_
 
-- [ ] 5. Implement ImportDialog JavaScript Module
+- [x] 5. Implement ImportDialog JavaScript Module
   - Create ImportDialog object in schedule-generator.js
   - Implement init(scheduleId) method
   - Implement createModal() method (verify HTML exists)
