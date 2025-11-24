@@ -1966,10 +1966,10 @@ class SPSG_Admin {
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach ($stats['venue_utilization'] as $venue_name => $game_count): ?>
+                                <?php foreach ($stats['venue_utilization'] as $venue_id => $venue_data): ?>
                                 <tr>
-                                    <td><?php echo esc_html($venue_name); ?></td>
-                                    <td><?php echo esc_html($game_count); ?></td>
+                                    <td><?php echo esc_html($venue_data['name'] ?? $venue_id); ?></td>
+                                    <td><?php echo esc_html($venue_data['games'] ?? 0); ?></td>
                                 </tr>
                                 <?php endforeach; ?>
                             </tbody>
@@ -1991,7 +1991,8 @@ class SPSG_Admin {
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach ($stats['home_away_balance'] as $team_name => $balance): 
+                                <?php foreach ($stats['home_away_balance'] as $team_id => $balance): 
+                                    $team_name = $balance['team_name'] ?? $team_id;
                                     $home = $balance['home'] ?? 0;
                                     $away = $balance['away'] ?? 0;
                                     $diff = abs($home - $away);
@@ -2019,11 +2020,11 @@ class SPSG_Admin {
                 </div>
                 
                 <!-- Imbalances and Issues -->
-                <?php if (!empty($stats['issues'])): ?>
+                <?php if (!empty($stats['imbalances'])): ?>
                 <div class="spsg-issues-panel">
                     <h4><?php _e('Issues & Imbalances', 'sportspress-schedule-generator'); ?></h4>
                     <ul class="spsg-issues-list">
-                        <?php foreach ($stats['issues'] as $issue): ?>
+                        <?php foreach ($stats['imbalances'] as $issue): ?>
                         <li class="spsg-issue-<?php echo esc_attr($issue['severity'] ?? 'info'); ?>">
                             <span class="dashicons dashicons-warning"></span>
                             <?php echo esc_html($issue['message']); ?>
