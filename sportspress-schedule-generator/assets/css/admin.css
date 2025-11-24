@@ -91,6 +91,253 @@
     background-color: #fff3cd !important;
 }
 
+/* Preview Header */
+.spsg-preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #ccd0d4;
+}
+
+.spsg-preview-header h2 {
+    margin: 0;
+    font-size: 1.5em;
+}
+
+.spsg-preview-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+/* Statistics Panel */
+.spsg-stats-panel {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #f0f0f1;
+    border-radius: 4px;
+}
+
+.spsg-stat {
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+    background: #fff;
+    border-radius: 4px;
+    border-left: 4px solid #2271b1;
+}
+
+.spsg-stat-label {
+    font-size: 0.9em;
+    color: #646970;
+    margin-bottom: 5px;
+}
+
+.spsg-stat-value {
+    font-size: 1.5em;
+    font-weight: bold;
+    color: #1d2327;
+}
+
+/* Preview Filters */
+.spsg-preview-filters {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.spsg-preview-filters select,
+.spsg-preview-filters input[type="date"] {
+    flex: 1;
+    min-width: 150px;
+    max-width: 200px;
+}
+
+/* Schedule Table */
+.spsg-schedule-table {
+    margin-top: 15px;
+}
+
+.spsg-schedule-table th {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+}
+
+.spsg-schedule-table th.spsg-sortable:hover {
+    background: #f0f0f1;
+}
+
+.spsg-schedule-table th .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    vertical-align: middle;
+    opacity: 0.5;
+}
+
+.spsg-schedule-table th.spsg-sorted-asc .dashicons-sort:before {
+    content: "\f142"; /* dashicons-arrow-up */
+    opacity: 1;
+}
+
+.spsg-schedule-table th.spsg-sorted-desc .dashicons-sort:before {
+    content: "\f140"; /* dashicons-arrow-down */
+    opacity: 1;
+}
+
+.spsg-schedule-table tbody tr:hover {
+    background: #f6f7f7 !important;
+}
+
+.spsg-schedule-table tbody tr.spsg-filtered-out {
+    display: none;
+}
+
+/* Inter-division games styling */
+.spsg-inter-division-game {
+    background-color: #e7f5fe !important;
+}
+
+.spsg-inter-division-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    margin-left: 5px;
+    font-size: 0.85em;
+    background: #2271b1;
+    color: #fff;
+    border-radius: 3px;
+}
+
+/* Detailed Statistics */
+.spsg-detailed-stats {
+    margin-top: 30px;
+    padding: 20px;
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+}
+
+.spsg-detailed-stats h3 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #ccd0d4;
+}
+
+.spsg-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.spsg-stat-section {
+    padding: 15px;
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.spsg-stat-section h4 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #1d2327;
+}
+
+.spsg-stat-section table {
+    margin: 0;
+    font-size: 0.9em;
+}
+
+.spsg-stat-section table th {
+    background: #f0f0f1;
+    font-weight: 600;
+}
+
+/* Balance indicators */
+.spsg-balance-good {
+    color: #00a32a;
+    font-weight: 600;
+}
+
+.spsg-balance-ok {
+    color: #dba617;
+}
+
+.spsg-balance-warning {
+    color: #d63638;
+    font-weight: 600;
+}
+
+.spsg-imbalance-warning {
+    background-color: #fcf3cf !important;
+}
+
+/* Issues Panel */
+.spsg-issues-panel {
+    padding: 15px;
+    background: #fcf3cf;
+    border: 1px solid #f39c12;
+    border-radius: 4px;
+    margin-top: 20px;
+}
+
+.spsg-issues-panel h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: #1d2327;
+}
+
+.spsg-issues-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.spsg-issues-list li {
+    padding: 8px 10px;
+    margin-bottom: 5px;
+    background: #fff;
+    border-left: 4px solid #f39c12;
+    border-radius: 3px;
+}
+
+.spsg-issues-list li .dashicons {
+    color: #f39c12;
+    margin-right: 5px;
+}
+
+.spsg-issue-error {
+    border-left-color: #d63638;
+}
+
+.spsg-issue-error .dashicons {
+    color: #d63638;
+}
+
+.spsg-issue-warning {
+    border-left-color: #f39c12;
+}
+
+.spsg-issue-info {
+    border-left-color: #2271b1;
+}
+
+.spsg-issue-info .dashicons {
+    color: #2271b1;
+}
+
 /* Statistics */
 .spsg-stats {
     background: #f0f0f1;

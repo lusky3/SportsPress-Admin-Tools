@@ -14,6 +14,11 @@
         init: function() {
             this.bindEvents();
             this.checkConfigurationStatus();
+            
+            // Initialize preview features if preview is already displayed
+            if ($('#spsg-schedule-preview-container').length && $('#spsg-schedule-table').length) {
+                this.initializePreviewFeatures();
+            }
         },
         
         bindEvents: function() {
@@ -97,8 +102,9 @@
                     if (response.success) {
                         self.scheduleId = response.data.schedule_id;
                         self.showMessage('success', response.data.message);
-                        self.displaySchedulePreview(response.data.schedule, response.data.stats);
-                        self.showExportOptions();
+                        
+                        // Reload the page to show the preview (server-side rendered)
+                        window.location.reload();
                     } else {
                         self.showMessage('error', response.data.message || response.data);
                         if (response.data.errors) {
@@ -152,52 +158,194 @@
         },
         
         displaySchedulePreview: function(schedule, stats) {
-            var html = '<div class="spsg-schedule-preview">';
-            html += '<h3>Generated Schedule</h3>';
+            // The preview is now rendered server-side in PHP
+            // This function is kept for backward compatibility
+            // Just show the container if it was hidden
+            $('#spsg-schedule-preview-container').show();
             
-            // Display statistics
-            if (stats) {
-                html += '<div class="spsg-stats">';
-                html += '<h4>Statistics</h4>';
-                html += '<ul>';
-                html += '<li>Total Games: ' + (stats.total_games || schedule.length) + '</li>';
-                html += '<li>Makeup Games: ' + (stats.makeup_games || 0) + '</li>';
-                html += '<li>Divisions: ' + (stats.divisions || 0) + '</li>';
-                html += '</ul>';
-                html += '</div>';
-            }
+            // Initialize filtering and sorting
+            this.initializePreviewFeatures();
+        },
+        
+        initializePreviewFeatures: function() {
+            var self = this;
             
-            // Display schedule table
-            html += '<table class="wp-list-table widefat fixed striped">';
-            html += '<thead><tr>';
-            html += '<th>Date</th>';
-            html += '<th>Start Time</th>';
-            html += '<th>End Time</th>';
-            html += '<th>Duration</th>';
-            html += '<th>Home Team</th>';
-            html += '<th>Away Team</th>';
-            html += '<th>Venue</th>';
-            html += '<th>Division</th>';
-            html += '</tr></thead>';
-            html += '<tbody>';
-            
-            $.each(schedule, function(index, game) {
-                html += '<tr' + (game.is_makeup ? ' class="spsg-makeup-game"' : '') + '>';
-                html += '<td>' + game.date + '</td>';
-                html += '<td>' + game.time + '</td>';
-                html += '<td>' + (game.end_time || '-') + '</td>';
-                html += '<td>' + (game.match_length || 60) + ' min</td>';
-                html += '<td>' + game.home_team + '</td>';
-                html += '<td>' + game.away_team + '</td>';
-                html += '<td>' + game.venue + '</td>';
-                html += '<td>' + game.division + '</td>';
-                html += '</tr>';
+            // Bind filter events
+            $('.spsg-filter').on('change', function() {
+                self.applyFilters();
             });
             
-            html += '</tbody></table>';
-            html += '</div>';
+            $('#spsg-clear-filters').on('click', function() {
+                $('.spsg-filter').val('');
+                self.applyFilters();
+            });
             
-            $('#spsg-schedule-preview-container').html(html).show();
+            // Bind sorting events
+            $('.spsg-sortable').on('click', function() {
+                var $th = $(this);
+                var sortBy = $th.data('sort');
+                var currentSort = $th.hasClass('spsg-sorted-asc') ? 'asc' : 
+                                 $th.hasClass('spsg-sorted-desc') ? 'desc' : 'none';
+                
+                // Remove sorting from all columns
+                $('.spsg-sortable').removeClass('spsg-sorted-asc spsg-sorted-desc');
+                
+                // Apply new sorting
+                if (currentSort === 'none' || currentSort === 'desc') {
+                    $th.addClass('spsg-sorted-asc');
+                    self.sortTable(sortBy, 'asc');
+                } else {
+                    $th.addClass('spsg-sorted-desc');
+                    self.sortTable(sortBy, 'desc');
+                }
+            });
+            
+            // Bind action buttons
+            $('#spsg-generate-new').on('click', function() {
+                if (confirm('Generate a new schedule? This will replace the current schedule.')) {
+                    self.generateSchedule();
+                }
+            });
+            
+            $('#spsg-import-to-sp').on('click', function() {
+                self.importToSportsPress();
+            });
+        },
+        
+        applyFilters: function() {
+            var division = $('#spsg-filter-division').val();
+            var team = $('#spsg-filter-team').val();
+            var venue = $('#spsg-filter-venue').val();
+            var dateFrom = $('#spsg-filter-date-from').val();
+            var dateTo = $('#spsg-filter-date-to').val();
+            
+            $('#spsg-schedule-table tbody tr').each(function() {
+                var $row = $(this);
+                var show = true;
+                
+                // Division filter
+                if (division && $row.data('division') !== division) {
+                    show = false;
+                }
+                
+                // Team filter (check both home and away)
+                if (team && $row.data('home-team') !== team && $row.data('away-team') !== team) {
+                    show = false;
+                }
+                
+                // Venue filter
+                if (venue && $row.data('venue') !== venue) {
+                    show = false;
+                }
+                
+                // Date range filter
+                if (dateFrom || dateTo) {
+                    var rowDate = $row.data('date');
+                    if (dateFrom && rowDate < dateFrom) {
+                        show = false;
+                    }
+                    if (dateTo && rowDate > dateTo) {
+                        show = false;
+                    }
+                }
+                
+                if (show) {
+                    $row.removeClass('spsg-filtered-out');
+                } else {
+                    $row.addClass('spsg-filtered-out');
+                }
+            });
+        },
+        
+        sortTable: function(sortBy, direction) {
+            var $tbody = $('#spsg-schedule-table tbody');
+            var rows = $tbody.find('tr').get();
+            
+            rows.sort(function(a, b) {
+                var aVal, bVal;
+                
+                switch(sortBy) {
+                    case 'date':
+                        aVal = $(a).data('date') + ' ' + $(a).data('time');
+                        bVal = $(b).data('date') + ' ' + $(b).data('time');
+                        break;
+                    case 'time':
+                        aVal = $(a).data('time');
+                        bVal = $(b).data('time');
+                        break;
+                    case 'home':
+                        aVal = $(a).data('home-team');
+                        bVal = $(b).data('home-team');
+                        break;
+                    case 'away':
+                        aVal = $(a).data('away-team');
+                        bVal = $(b).data('away-team');
+                        break;
+                    case 'venue':
+                        aVal = $(a).data('venue');
+                        bVal = $(b).data('venue');
+                        break;
+                    case 'division':
+                        aVal = $(a).data('division');
+                        bVal = $(b).data('division');
+                        break;
+                    default:
+                        return 0;
+                }
+                
+                if (aVal < bVal) {
+                    return direction === 'asc' ? -1 : 1;
+                }
+                if (aVal > bVal) {
+                    return direction === 'asc' ? 1 : -1;
+                }
+                return 0;
+            });
+            
+            $.each(rows, function(index, row) {
+                $tbody.append(row);
+            });
+        },
+        
+        importToSportsPress: function() {
+            var self = this;
+            var scheduleId = $('#spsg-current-schedule-id').val();
+            
+            if (!scheduleId) {
+                self.showMessage('error', 'No schedule to import. Please generate a schedule first.');
+                return;
+            }
+            
+            if (!confirm('Import this schedule to SportsPress? This will create events for all games.')) {
+                return;
+            }
+            
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'spsg_import_to_sportspress',
+                    nonce: spsgData.nonces.import_to_sportspress || wp.ajax.settings.nonce,
+                    schedule_id: scheduleId
+                },
+                beforeSend: function() {
+                    self.showMessage('info', 'Importing schedule to SportsPress...');
+                    $('#spsg-import-to-sp').prop('disabled', true).text('Importing...');
+                },
+                success: function(response) {
+                    if (response.success) {
+                        self.showMessage('success', response.data.message || 'Schedule imported successfully!');
+                    } else {
+                        self.showMessage('error', response.data.message || response.data);
+                    }
+                },
+                error: function() {
+                    self.showMessage('error', 'Import failed. Please try again.');
+                },
+                complete: function() {
+                    $('#spsg-import-to-sp').prop('disabled', false).text('Import to SportsPress');
+                }
+            });
         },
         
         showExportOptions: function() {

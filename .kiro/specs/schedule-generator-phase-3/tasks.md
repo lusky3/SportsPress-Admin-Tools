@@ -210,8 +210,8 @@ Phase 3 implements the core schedule generation engine, constraint integration, 
     - Add AJAX handler `spsg_import_to_sportspress` in admin class
     - _Requirements: 11.4_
 
-- [ ] 5. Schedule Preview UI (Medium Priority - 8-10 hours)
-  - [ ] 5.1 Add preview display to generate tab
+- [x] 5. Schedule Preview UI (Medium Priority - 8-10 hours)
+  - [x] 5.1 Add preview display to generate tab
     - Update `includes/class-admin.php`
     - Create `render_schedule_preview()` method
     - Modify generate tab to show preview after generation
@@ -219,7 +219,7 @@ Phase 3 implements the core schedule generation engine, constraint integration, 
     - Display schedule table with all games
     - _Requirements: 8.1, 8.2_
 
-  - [ ] 5.2 Implement schedule table and filtering
+  - [x] 5.2 Implement schedule table and filtering
     - Show all games with date, time, teams, venue, division
     - Make table sortable by column (use WordPress list table if possible)
     - Add row highlighting on hover
@@ -232,7 +232,7 @@ Phase 3 implements the core schedule generation engine, constraint integration, 
     - Implement JavaScript filtering logic in `assets/js/schedule-generator.js`
     - _Requirements: 8.2, 8.3_
 
-  - [ ] 5.3 Add statistics panel and action buttons
+  - [x] 5.3 Add statistics panel and action buttons
     - Display total games scheduled
     - Display games per team (min/max/avg)
     - Display venue utilization (games per venue)
