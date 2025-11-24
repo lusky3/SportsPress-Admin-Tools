@@ -97,7 +97,7 @@ This phase adds frontend UI controls to expose existing backend functionality. A
   - _Files: assets/js/schedule-generator.js_
   - _Estimated: 2 hours_
 
-- [ ] 6. Update Import Button Handler
+- [x] 6. Update Import Button Handler
   - Remove or refactor existing `importToSportsPress()` method
   - Update import button click handler to open ImportDialog
   - Pass schedule ID to dialog
