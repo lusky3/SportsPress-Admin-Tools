@@ -42,6 +42,8 @@ class SPSG_Admin {
         add_action('wp_ajax_spsg_get_change_history', array($this, 'ajax_get_change_history'));
         add_action('wp_ajax_spsg_get_generation_progress', array($this, 'ajax_get_generation_progress'));
         add_action('wp_ajax_spsg_cancel_generation', array($this, 'ajax_cancel_generation'));
+        add_action('wp_ajax_spsg_get_import_dialog_data', array($this, 'ajax_get_import_dialog_data'));
+        add_action('wp_ajax_spsg_get_import_progress', array($this, 'ajax_get_import_progress'));
     }
     
     /**
@@ -316,7 +318,9 @@ class SPSG_Admin {
                 'get_change_history' => wp_create_nonce('spsg_get_change_history'),
                 'import_to_sportspress' => wp_create_nonce('spsg_import_to_sportspress'),
                 'get_generation_progress' => wp_create_nonce('spsg_get_generation_progress'),
-                'cancel_generation' => wp_create_nonce('spsg_cancel_generation')
+                'cancel_generation' => wp_create_nonce('spsg_cancel_generation'),
+                'get_import_dialog_data' => wp_create_nonce('spsg_get_import_dialog_data'),
+                'get_import_progress' => wp_create_nonce('spsg_get_import_progress')
             )
         ));
         
@@ -2484,6 +2488,89 @@ class SPSG_Admin {
         
         wp_send_json_success(array(
             'message' => __('Cancellation requested. Generation will stop shortly.', 'sportspress-schedule-generator')
+        ));
+    }
+    
+    /**
+     * AJAX handler for getting import dialog data
+     * 
+     * Returns leagues and seasons from SportsPress for the import dialog
+     */
+    public function ajax_get_import_dialog_data() {
+        check_ajax_referer('spsg_get_import_dialog_data', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+        }
+        
+        // Check if SportsPress is available
+        if (!SPSG_SportsPress_Integration::is_sportspress_active()) {
+            wp_send_json_error(__('SportsPress is not active', 'sportspress-schedule-generator'));
+        }
+        
+        // Get leagues from SportsPress
+        $leagues = SPSG_SportsPress_Integration::get_leagues();
+        
+        // Get seasons from SportsPress
+        $seasons = SPSG_SportsPress_Integration::get_seasons();
+        
+        // Format leagues for response
+        $formatted_leagues = array();
+        if (!empty($leagues)) {
+            foreach ($leagues as $league) {
+                $formatted_leagues[] = array(
+                    'id' => $league->id,
+                    'name' => $league->name
+                );
+            }
+        }
+        
+        // Format seasons for response
+        $formatted_seasons = array();
+        if (!empty($seasons)) {
+            foreach ($seasons as $season) {
+                $formatted_seasons[] = array(
+                    'id' => $season->id,
+                    'name' => $season->name
+                );
+            }
+        }
+        
+        wp_send_json_success(array(
+            'leagues' => $formatted_leagues,
+            'seasons' => $formatted_seasons
+        ));
+    }
+    
+    /**
+     * AJAX handler for getting import progress
+     * 
+     * Returns the current progress of an ongoing import operation
+     */
+    public function ajax_get_import_progress() {
+        check_ajax_referer('spsg_get_import_progress', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+        }
+        
+        $user_id = get_current_user_id();
+        $progress_key = 'spsg_import_progress_' . $user_id;
+        $progress = get_transient($progress_key);
+        
+        if (!$progress) {
+            wp_send_json_error(array(
+                'message' => __('No import in progress', 'sportspress-schedule-generator'),
+                'status' => 'not_found'
+            ));
+        }
+        
+        // Return progress data
+        wp_send_json_success(array(
+            'current' => $progress['current'] ?? 0,
+            'total' => $progress['total'] ?? 0,
+            'status' => $progress['status'] ?? 'in_progress',
+            'message' => $progress['message'] ?? ''
         ));
     }
 }
