@@ -45,9 +45,12 @@ class SPSG_Slot_Allocator {
      * 
      * @param array $matchups Array of matchup objects
      * @param SPSG_Schedule_Configuration $config Configuration
+     * @param callable|null $progress_callback Callback for progress updates
+     * @param callable|null $cancellation_callback Callback to check for cancellation
+     * @param callable|null $timeout_callback Callback to check for timeout
      * @return array|WP_Error Array of game objects or error
      */
-    public function allocate($matchups, $config) {
+    public function allocate($matchups, $config, $progress_callback = null, $cancellation_callback = null, $timeout_callback = null) {
         $this->log('Starting slot allocation');
         
         // Generate available slots
@@ -63,7 +66,7 @@ class SPSG_Slot_Allocator {
         $this->log(sprintf('Generated %d available slots', count($this->available_slots)));
         
         // Try greedy allocation first (fast)
-        $schedule = $this->greedy_allocate($matchups, $config);
+        $schedule = $this->greedy_allocate($matchups, $config, $progress_callback, $cancellation_callback, $timeout_callback);
         
         if ($schedule !== false) {
             $this->log('Greedy allocation succeeded');
@@ -73,7 +76,7 @@ class SPSG_Slot_Allocator {
         $this->log('Greedy allocation failed, trying backtracking');
         
         // Greedy failed, try backtracking (slower but more thorough)
-        $schedule = $this->backtrack_allocate($matchups, $config);
+        $schedule = $this->backtrack_allocate($matchups, $config, $progress_callback, $cancellation_callback, $timeout_callback);
         
         if ($schedule === false) {
             return new WP_Error(
@@ -164,13 +167,29 @@ class SPSG_Slot_Allocator {
      * 
      * @param array $matchups Array of matchup objects
      * @param SPSG_Schedule_Configuration $config Configuration
+     * @param callable|null $progress_callback Callback for progress updates
+     * @param callable|null $cancellation_callback Callback to check for cancellation
+     * @param callable|null $timeout_callback Callback to check for timeout
      * @return array|false Array of games or false on failure
      */
-    public function greedy_allocate($matchups, $config) {
+    public function greedy_allocate($matchups, $config, $progress_callback = null, $cancellation_callback = null, $timeout_callback = null) {
         $schedule = array();
         $used_slots = array();
+        $games_scheduled = 0;
         
         foreach ($matchups as $matchup) {
+            // Check for cancellation every game
+            if ($cancellation_callback && call_user_func($cancellation_callback)) {
+                $this->log('Allocation cancelled by user');
+                return $schedule; // Return partial schedule
+            }
+            
+            // Check for timeout every game
+            if ($timeout_callback && call_user_func($timeout_callback)) {
+                $this->log('Allocation timed out');
+                return $schedule; // Return partial schedule
+            }
+            
             $best_slot = $this->find_best_slot($matchup, $used_slots, $schedule, $config);
             
             if (!$best_slot) {
@@ -181,10 +200,21 @@ class SPSG_Slot_Allocator {
             // Create game and add to schedule
             $game = $this->create_game($matchup, $best_slot, $config);
             $schedule[] = $game;
+            $games_scheduled++;
             
             // Mark slot as used
             $slot_key = $this->get_slot_key($best_slot);
             $used_slots[$slot_key] = true;
+            
+            // Update progress every 10 games
+            if ($progress_callback && $games_scheduled % 10 === 0) {
+                call_user_func($progress_callback, $games_scheduled);
+            }
+        }
+        
+        // Final progress update
+        if ($progress_callback) {
+            call_user_func($progress_callback, $games_scheduled);
         }
         
         return $schedule;
@@ -195,13 +225,16 @@ class SPSG_Slot_Allocator {
      * 
      * @param array $matchups Array of matchup objects
      * @param SPSG_Schedule_Configuration $config Configuration
+     * @param callable|null $progress_callback Callback for progress updates
+     * @param callable|null $cancellation_callback Callback to check for cancellation
+     * @param callable|null $timeout_callback Callback to check for timeout
      * @return array|false Array of games or false on failure
      */
-    public function backtrack_allocate($matchups, $config) {
+    public function backtrack_allocate($matchups, $config, $progress_callback = null, $cancellation_callback = null, $timeout_callback = null) {
         $schedule = array();
         $used_slots = array();
         
-        $result = $this->backtrack_recursive($matchups, 0, $schedule, $used_slots, $config, 0);
+        $result = $this->backtrack_recursive($matchups, 0, $schedule, $used_slots, $config, 0, $progress_callback, $cancellation_callback, $timeout_callback);
         
         return $result ? $schedule : false;
     }
@@ -215,9 +248,22 @@ class SPSG_Slot_Allocator {
      * @param array &$used_slots Used slots (by reference)
      * @param SPSG_Schedule_Configuration $config Configuration
      * @param int $depth Current recursion depth
+     * @param callable|null $progress_callback Callback for progress updates
+     * @param callable|null $cancellation_callback Callback to check for cancellation
+     * @param callable|null $timeout_callback Callback to check for timeout
      * @return bool Success
      */
-    private function backtrack_recursive($matchups, $index, &$schedule, &$used_slots, $config, $depth) {
+    private function backtrack_recursive($matchups, $index, &$schedule, &$used_slots, $config, $depth, $progress_callback = null, $cancellation_callback = null, $timeout_callback = null) {
+        // Check for cancellation
+        if ($cancellation_callback && call_user_func($cancellation_callback)) {
+            return false;
+        }
+        
+        // Check for timeout
+        if ($timeout_callback && call_user_func($timeout_callback)) {
+            return false;
+        }
+        
         // Check depth limit
         if ($depth > $this->max_backtrack_depth) {
             return false;
@@ -226,6 +272,11 @@ class SPSG_Slot_Allocator {
         // Base case: all matchups scheduled
         if ($index >= count($matchups)) {
             return true;
+        }
+        
+        // Update progress every 10 games
+        if ($progress_callback && $index % 10 === 0) {
+            call_user_func($progress_callback, $index);
         }
         
         $matchup = $matchups[$index];
@@ -250,7 +301,7 @@ class SPSG_Slot_Allocator {
             $used_slots[$slot_key] = true;
             
             // Recurse to next matchup
-            if ($this->backtrack_recursive($matchups, $index + 1, $schedule, $used_slots, $config, $depth + 1)) {
+            if ($this->backtrack_recursive($matchups, $index + 1, $schedule, $used_slots, $config, $depth + 1, $progress_callback, $cancellation_callback, $timeout_callback)) {
                 return true;
             }
             
