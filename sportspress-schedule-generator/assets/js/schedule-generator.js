@@ -10,6 +10,7 @@
     var SPSG = {
         scheduleId: null,
         generationInProgress: false,
+        progressPollInterval: null,
         
         init: function() {
             this.bindEvents();
@@ -26,6 +27,7 @@
             $('#spsg-validate-config').on('click', this.validateConfiguration.bind(this));
             $('#spsg-export-csv').on('click', function() { SPSG.exportSchedule('csv'); });
             $('#spsg-export-xlsx').on('click', function() { SPSG.exportSchedule('xlsx'); });
+            $('#spsg-cancel-generation').on('click', this.cancelGeneration.bind(this));
         },
         
         checkConfigurationStatus: function() {
@@ -93,11 +95,13 @@
                 beforeSend: function() {
                     $('#spsg-generate-schedule').prop('disabled', true).text('Generating...');
                     self.showMessage('info', 'Generating schedule... This may take a few moments.');
-                    self.showProgressBar();
+                    self.showProgressIndicator();
+                    self.startProgressPolling();
                 },
                 success: function(response) {
                     self.generationInProgress = false;
-                    self.hideProgressBar();
+                    self.stopProgressPolling();
+                    self.hideProgressIndicator();
                     
                     if (response.success) {
                         self.scheduleId = response.data.schedule_id;
@@ -115,7 +119,8 @@
                 },
                 error: function(xhr, status, error) {
                     self.generationInProgress = false;
-                    self.hideProgressBar();
+                    self.stopProgressPolling();
+                    self.hideProgressIndicator();
                     self.showMessage('error', 'Schedule generation failed: ' + error);
                     $('#spsg-generate-schedule').prop('disabled', false).text('Generate Schedule');
                 }
@@ -371,6 +376,149 @@
         
         hideProgressBar: function() {
             $('#spsg-progress-container').hide().empty();
+        },
+        
+        /**
+         * Show progress indicator (Task 7.1)
+         */
+        showProgressIndicator: function() {
+            $('#spsg-progress-container').show();
+            this.updateProgress(0, 'initializing', 'Initializing...', 0, 0, 'Calculating...');
+        },
+        
+        /**
+         * Hide progress indicator (Task 7.1)
+         */
+        hideProgressIndicator: function() {
+            $('#spsg-progress-container').hide();
+        },
+        
+        /**
+         * Update progress display (Task 7.1)
+         */
+        updateProgress: function(percentage, phase, phaseText, gamesScheduled, totalGames, estimatedRemaining) {
+            $('.spsg-progress-bar-fill').css('width', percentage + '%');
+            $('.spsg-progress-percentage').text(percentage + '%');
+            $('#spsg-progress-phase-text').text(phaseText);
+            $('#spsg-progress-games-text').text(gamesScheduled + ' / ' + totalGames);
+            $('#spsg-progress-time-text').text(estimatedRemaining);
+        },
+        
+        /**
+         * Start polling for generation progress (Task 7.2)
+         */
+        startProgressPolling: function() {
+            var self = this;
+            
+            // Poll every 2 seconds
+            this.progressPollInterval = setInterval(function() {
+                self.pollGenerationProgress();
+            }, 2000);
+            
+            // Do an immediate poll
+            this.pollGenerationProgress();
+        },
+        
+        /**
+         * Stop polling for generation progress (Task 7.2)
+         */
+        stopProgressPolling: function() {
+            if (this.progressPollInterval) {
+                clearInterval(this.progressPollInterval);
+                this.progressPollInterval = null;
+            }
+        },
+        
+        /**
+         * Poll for generation progress (Task 7.2)
+         */
+        pollGenerationProgress: function() {
+            var self = this;
+            
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'spsg_get_generation_progress',
+                    nonce: spsgData.nonces.get_generation_progress
+                },
+                success: function(response) {
+                    if (response.success) {
+                        var data = response.data;
+                        
+                        // Update progress display
+                        self.updateProgress(
+                            data.percentage,
+                            data.phase,
+                            data.phase_text,
+                            data.games_scheduled,
+                            data.total_games,
+                            data.estimated_remaining
+                        );
+                        
+                        // Check if complete
+                        if (data.status === 'complete' || data.percentage >= 100) {
+                            self.stopProgressPolling();
+                            // The main AJAX call will handle the completion
+                        }
+                        
+                        // Check if cancelled
+                        if (data.status === 'cancelled') {
+                            self.stopProgressPolling();
+                            self.hideProgressIndicator();
+                            self.generationInProgress = false;
+                            self.showMessage('warning', 'Schedule generation was cancelled.');
+                            $('#spsg-generate-schedule').prop('disabled', false).text('Generate Schedule');
+                        }
+                    } else {
+                        // If progress not found, it might not have started yet or already completed
+                        // Don't show error, just continue polling
+                        if (response.data && response.data.status === 'not_found') {
+                            // Continue polling - generation might not have started yet
+                        }
+                    }
+                },
+                error: function() {
+                    // Silently fail - don't stop polling on network errors
+                    // The main generation AJAX call will handle errors
+                }
+            });
+        },
+        
+        /**
+         * Cancel generation (Task 7.2)
+         */
+        cancelGeneration: function() {
+            var self = this;
+            
+            if (!confirm('Are you sure you want to cancel schedule generation?')) {
+                return;
+            }
+            
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'spsg_cancel_generation',
+                    nonce: spsgData.nonces.cancel_generation
+                },
+                beforeSend: function() {
+                    $('#spsg-cancel-generation').prop('disabled', true).text('Cancelling...');
+                },
+                success: function(response) {
+                    if (response.success) {
+                        self.showMessage('info', response.data.message);
+                        // Polling will detect the cancellation and clean up
+                    } else {
+                        self.showMessage('error', response.data.message || response.data);
+                        $('#spsg-cancel-generation').prop('disabled', false).text('Cancel Generation');
+                    }
+                },
+                error: function() {
+                    self.showMessage('error', 'Failed to cancel generation. Please try again.');
+                    $('#spsg-cancel-generation').prop('disabled', false).text('Cancel Generation');
+                }
+            });
         },
         
         showMessage: function(type, message) {

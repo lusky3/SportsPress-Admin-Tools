@@ -265,8 +265,8 @@ Phase 3 implements the core schedule generation engine, constraint integration, 
     - Integrate with preview UI to highlight issues
     - _Requirements: 9.6_
 
-- [ ] 7. Generation Progress UI (Medium Priority - 4-5 hours)
-  - [ ] 7.1 Add progress indicator to generate tab
+- [x] 7. Generation Progress UI (Medium Priority - 4-5 hours)
+  - [x] 7.1 Add progress indicator to generate tab
     - Update `includes/class-admin.php`
     - Add progress bar HTML to generate tab
     - Show percentage complete
@@ -274,7 +274,7 @@ Phase 3 implements the core schedule generation engine, constraint integration, 
     - Show games scheduled count
     - _Requirements: 13.1, 13.2, 13.3_
 
-  - [ ] 7.2 Implement AJAX polling and cancellation
+  - [x] 7.2 Implement AJAX polling and cancellation
     - Add AJAX handler `spsg_get_generation_progress` in admin class
     - Add JavaScript to poll for progress every 2 seconds in `assets/js/schedule-generator.js`
     - Update progress bar width

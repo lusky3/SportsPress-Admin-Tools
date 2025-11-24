@@ -40,6 +40,8 @@ class SPSG_Admin {
         add_action('wp_ajax_spsg_load_sp_teams', array($this, 'ajax_load_sp_teams'));
         add_action('wp_ajax_spsg_load_preset', array($this, 'ajax_load_preset'));
         add_action('wp_ajax_spsg_get_change_history', array($this, 'ajax_get_change_history'));
+        add_action('wp_ajax_spsg_get_generation_progress', array($this, 'ajax_get_generation_progress'));
+        add_action('wp_ajax_spsg_cancel_generation', array($this, 'ajax_cancel_generation'));
     }
     
     /**
@@ -312,7 +314,9 @@ class SPSG_Admin {
                 'load_sp_teams' => wp_create_nonce('spsg_load_sp_teams'),
                 'load_preset' => wp_create_nonce('spsg_load_preset'),
                 'get_change_history' => wp_create_nonce('spsg_get_change_history'),
-                'import_to_sportspress' => wp_create_nonce('spsg_import_to_sportspress')
+                'import_to_sportspress' => wp_create_nonce('spsg_import_to_sportspress'),
+                'get_generation_progress' => wp_create_nonce('spsg_get_generation_progress'),
+                'cancel_generation' => wp_create_nonce('spsg_cancel_generation')
             )
         ));
         
@@ -1847,7 +1851,41 @@ class SPSG_Admin {
             </div>
             
             <div id="spsg-messages"></div>
-            <div id="spsg-progress-container"></div>
+            
+            <!-- Progress Indicator -->
+            <div id="spsg-progress-container" style="display: none;">
+                <div class="spsg-progress-wrapper">
+                    <h4><?php _e('Generation Progress', 'sportspress-schedule-generator'); ?></h4>
+                    
+                    <div class="spsg-progress-bar-container">
+                        <div class="spsg-progress-bar">
+                            <div class="spsg-progress-bar-fill" style="width: 0%;"></div>
+                        </div>
+                        <div class="spsg-progress-percentage">0%</div>
+                    </div>
+                    
+                    <div class="spsg-progress-details">
+                        <div class="spsg-progress-phase">
+                            <strong><?php _e('Current Phase:', 'sportspress-schedule-generator'); ?></strong>
+                            <span id="spsg-progress-phase-text"><?php _e('Initializing...', 'sportspress-schedule-generator'); ?></span>
+                        </div>
+                        <div class="spsg-progress-games">
+                            <strong><?php _e('Games Scheduled:', 'sportspress-schedule-generator'); ?></strong>
+                            <span id="spsg-progress-games-text">0 / 0</span>
+                        </div>
+                        <div class="spsg-progress-time">
+                            <strong><?php _e('Estimated Time Remaining:', 'sportspress-schedule-generator'); ?></strong>
+                            <span id="spsg-progress-time-text"><?php _e('Calculating...', 'sportspress-schedule-generator'); ?></span>
+                        </div>
+                    </div>
+                    
+                    <div class="spsg-progress-actions">
+                        <button type="button" class="button" id="spsg-cancel-generation">
+                            <?php _e('Cancel Generation', 'sportspress-schedule-generator'); ?>
+                        </button>
+                    </div>
+                </div>
+            </div>
             
             <?php if ($schedule && !empty($schedule)): ?>
                 <?php $this->render_schedule_preview($schedule, $stats, $schedule_id); ?>
@@ -2341,6 +2379,111 @@ class SPSG_Admin {
         wp_send_json_success(array(
             'history' => $formatted_history,
             'count' => count($formatted_history)
+        ));
+    }
+    
+    /**
+     * AJAX handler for getting generation progress
+     */
+    public function ajax_get_generation_progress() {
+        check_ajax_referer('spsg_get_generation_progress', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+        }
+        
+        $user_id = get_current_user_id();
+        $progress_key = 'spsg_generation_progress_' . $user_id;
+        $progress = get_transient($progress_key);
+        
+        if (!$progress) {
+            wp_send_json_error(array(
+                'message' => __('No generation in progress', 'sportspress-schedule-generator'),
+                'status' => 'not_found'
+            ));
+        }
+        
+        // Calculate percentage
+        $total_games = $progress['total_games'] ?? 0;
+        $games_scheduled = $progress['games_scheduled'] ?? 0;
+        $percentage = $total_games > 0 ? round(($games_scheduled / $total_games) * 100) : 0;
+        
+        // Format phase text
+        $phase_text = '';
+        switch ($progress['phase'] ?? 'initializing') {
+            case 'matchups':
+                $phase_text = __('Generating matchups', 'sportspress-schedule-generator');
+                break;
+            case 'allocation':
+                $phase_text = __('Allocating slots', 'sportspress-schedule-generator');
+                break;
+            case 'validation':
+                $phase_text = __('Validating schedule', 'sportspress-schedule-generator');
+                break;
+            case 'complete':
+                $phase_text = __('Complete', 'sportspress-schedule-generator');
+                break;
+            default:
+                $phase_text = __('Initializing', 'sportspress-schedule-generator');
+        }
+        
+        // Calculate estimated time remaining
+        $elapsed_time = $progress['elapsed_time'] ?? 0;
+        $estimated_remaining = '';
+        if ($percentage > 0 && $percentage < 100) {
+            $total_estimated = ($elapsed_time / $percentage) * 100;
+            $remaining_seconds = max(0, $total_estimated - $elapsed_time);
+            
+            if ($remaining_seconds < 60) {
+                $estimated_remaining = sprintf(__('%d seconds', 'sportspress-schedule-generator'), round($remaining_seconds));
+            } else {
+                $minutes = floor($remaining_seconds / 60);
+                $seconds = round($remaining_seconds % 60);
+                $estimated_remaining = sprintf(__('%d min %d sec', 'sportspress-schedule-generator'), $minutes, $seconds);
+            }
+        } elseif ($percentage >= 100) {
+            $estimated_remaining = __('Complete', 'sportspress-schedule-generator');
+        } else {
+            $estimated_remaining = __('Calculating...', 'sportspress-schedule-generator');
+        }
+        
+        wp_send_json_success(array(
+            'percentage' => $percentage,
+            'phase' => $progress['phase'] ?? 'initializing',
+            'phase_text' => $phase_text,
+            'games_scheduled' => $games_scheduled,
+            'total_games' => $total_games,
+            'estimated_remaining' => $estimated_remaining,
+            'status' => $progress['status'] ?? 'in_progress'
+        ));
+    }
+    
+    /**
+     * AJAX handler for canceling generation
+     */
+    public function ajax_cancel_generation() {
+        check_ajax_referer('spsg_cancel_generation', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+        }
+        
+        $user_id = get_current_user_id();
+        $cancel_key = 'spsg_cancel_generation_' . $user_id;
+        $progress_key = 'spsg_generation_progress_' . $user_id;
+        
+        // Set cancellation flag
+        set_transient($cancel_key, true, 300); // 5 minutes
+        
+        // Update progress status
+        $progress = get_transient($progress_key);
+        if ($progress) {
+            $progress['status'] = 'cancelled';
+            set_transient($progress_key, $progress, 300);
+        }
+        
+        wp_send_json_success(array(
+            'message' => __('Cancellation requested. Generation will stop shortly.', 'sportspress-schedule-generator')
         ));
     }
 }
