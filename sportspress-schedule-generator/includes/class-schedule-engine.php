@@ -51,6 +51,21 @@ class SPSG_Schedule_Engine {
     private $max_generation_time = 300; // 5 minutes default
     
     /**
+     * Progress tracking transient key
+     */
+    private $progress_transient_key;
+    
+    /**
+     * Total matchups to schedule
+     */
+    private $total_matchups = 0;
+    
+    /**
+     * Current phase of generation
+     */
+    private $current_phase = '';
+    
+    /**
      * Constructor
      */
     public function __construct($constraint_manager = null, $matchup_generator = null, $slot_allocator = null) {
@@ -58,6 +73,10 @@ class SPSG_Schedule_Engine {
         $this->matchup_generator = $matchup_generator ?: new SPSG_Matchup_Generator();
         $this->slot_allocator = $slot_allocator ?: new SPSG_Slot_Allocator($this->constraint_manager);
         $this->init_stats();
+        
+        // Set progress transient key based on current user
+        $user_id = get_current_user_id();
+        $this->progress_transient_key = 'spsg_generation_progress_' . $user_id;
     }
     
     /**
@@ -71,37 +90,71 @@ class SPSG_Schedule_Engine {
         $this->current_schedule = array();
         $this->init_stats();
         
+        // Initialize progress tracking
+        $this->init_progress_tracking();
+        
         // Get max generation time from config or use default
         $this->max_generation_time = get_option('spsg_max_generation_time', 300);
         
+        // Check for cancellation before starting
+        if ($this->is_cancelled()) {
+            $this->clear_progress();
+            return new WP_Error('generation_cancelled', __('Schedule generation was cancelled.', 'sportspress-schedule-generator'));
+        }
+        
         // Validate configuration
+        $this->update_progress('validation', 0, __('Validating configuration...', 'sportspress-schedule-generator'));
         $feasibility_check = $this->constraint_manager->check_feasibility($config);
         if ($feasibility_check !== true) {
-            return new WP_Error('infeasible_config', __('Configuration is not feasible', 'sportspress-schedule-generator'), $feasibility_check);
+            $this->clear_progress();
+            return $this->create_configuration_error($feasibility_check);
         }
         
         // Generate matchups
+        $this->update_progress('matchups', 5, __('Generating matchups...', 'sportspress-schedule-generator'));
         $matchups = $this->generate_matchups($config);
         if (is_wp_error($matchups)) {
+            $this->clear_progress();
             return $matchups;
         }
         
-        // Check timeout before allocation
+        // Store total matchups for progress calculation
+        $this->total_matchups = count($matchups);
+        
+        // Check timeout and cancellation before allocation
         if ($this->is_timeout()) {
+            $this->clear_progress();
             return $this->create_timeout_error();
         }
         
+        if ($this->is_cancelled()) {
+            $this->clear_progress();
+            return new WP_Error('generation_cancelled', __('Schedule generation was cancelled.', 'sportspress-schedule-generator'));
+        }
+        
         // Schedule games using slot allocator
+        $this->update_progress('allocation', 10, __('Allocating time slots...', 'sportspress-schedule-generator'));
         $result = $this->schedule_games($matchups, $config);
         if (is_wp_error($result)) {
+            $this->clear_progress();
             return $result;
         }
         
+        // Check cancellation before makeup games
+        if ($this->is_cancelled()) {
+            $this->clear_progress();
+            return new WP_Error('generation_cancelled', __('Schedule generation was cancelled.', 'sportspress-schedule-generator'));
+        }
+        
         // Handle makeup games
+        $this->update_progress('validation', 90, __('Handling makeup games...', 'sportspress-schedule-generator'));
         $this->handle_makeup_games($config);
         
         $this->stats['generation_time'] = microtime(true) - $this->generation_start_time;
         $this->log(sprintf('Schedule generation completed in %.2f seconds', $this->stats['generation_time']));
+        
+        // Clear progress tracking on success
+        $this->update_progress('complete', 100, __('Schedule generation complete!', 'sportspress-schedule-generator'));
         
         return array(
             'schedule' => $this->current_schedule,
@@ -299,8 +352,19 @@ class SPSG_Schedule_Engine {
     private function schedule_games($matchups, $config) {
         $this->log('Starting slot allocation');
         
+        // Set progress callback for slot allocator
+        $progress_callback = array($this, 'update_allocation_progress');
+        $cancellation_callback = array($this, 'is_cancelled');
+        $timeout_callback = array($this, 'is_timeout');
+        
         // Use slot allocator for improved allocation
-        $schedule = $this->slot_allocator->allocate($matchups, $config);
+        $schedule = $this->slot_allocator->allocate(
+            $matchups, 
+            $config,
+            $progress_callback,
+            $cancellation_callback,
+            $timeout_callback
+        );
         
         if (is_wp_error($schedule)) {
             return $schedule;
@@ -314,6 +378,24 @@ class SPSG_Schedule_Engine {
             $this->stats['failed_games'] = count($matchups) - count($schedule);
             
             return $this->create_timeout_error();
+        }
+        
+        // Check for cancellation
+        if ($this->is_cancelled()) {
+            // Save partial results
+            $this->current_schedule = $schedule;
+            $this->stats['games_scheduled'] = count($schedule);
+            $this->stats['failed_games'] = count($matchups) - count($schedule);
+            
+            return new WP_Error(
+                'generation_cancelled',
+                __('Schedule generation was cancelled by user.', 'sportspress-schedule-generator'),
+                array(
+                    'games_scheduled' => count($schedule),
+                    'total_games' => count($matchups),
+                    'partial_schedule' => $schedule
+                )
+            );
         }
         
         // Set current schedule
@@ -571,5 +653,167 @@ class SPSG_Schedule_Engine {
      */
     public function get_stats() {
         return $this->stats;
+    }
+    
+    /**
+     * Initialize progress tracking
+     */
+    private function init_progress_tracking() {
+        $progress = array(
+            'phase' => 'starting',
+            'percentage' => 0,
+            'message' => __('Initializing schedule generation...', 'sportspress-schedule-generator'),
+            'games_scheduled' => 0,
+            'total_games' => 0,
+            'start_time' => microtime(true),
+            'estimated_time_remaining' => null,
+            'cancelled' => false
+        );
+        
+        set_transient($this->progress_transient_key, $progress, HOUR_IN_SECONDS);
+    }
+    
+    /**
+     * Update progress tracking
+     * 
+     * @param string $phase Current phase (matchups/allocation/validation/complete)
+     * @param int $percentage Percentage complete (0-100)
+     * @param string $message Status message
+     */
+    private function update_progress($phase, $percentage, $message = '') {
+        $progress = get_transient($this->progress_transient_key);
+        
+        if ($progress === false) {
+            $progress = array();
+        }
+        
+        $progress['phase'] = $phase;
+        $progress['percentage'] = $percentage;
+        $progress['message'] = $message;
+        $progress['games_scheduled'] = count($this->current_schedule);
+        $progress['total_games'] = $this->total_matchups;
+        
+        // Calculate estimated time remaining
+        if (isset($progress['start_time']) && $percentage > 0 && $percentage < 100) {
+            $elapsed = microtime(true) - $progress['start_time'];
+            $estimated_total = ($elapsed / $percentage) * 100;
+            $progress['estimated_time_remaining'] = max(0, $estimated_total - $elapsed);
+        }
+        
+        set_transient($this->progress_transient_key, $progress, HOUR_IN_SECONDS);
+        
+        $this->log(sprintf('Progress: %s - %d%% - %s', $phase, $percentage, $message));
+    }
+    
+    /**
+     * Update progress during allocation
+     * Called by slot allocator every N games
+     * 
+     * @param int $games_scheduled Number of games scheduled so far
+     */
+    public function update_allocation_progress($games_scheduled) {
+        if ($this->total_matchups > 0) {
+            // Calculate percentage (10% for matchups, 80% for allocation, 10% for validation)
+            $allocation_percentage = ($games_scheduled / $this->total_matchups) * 80;
+            $total_percentage = 10 + $allocation_percentage;
+            
+            $message = sprintf(
+                __('Scheduling games... %d of %d', 'sportspress-schedule-generator'),
+                $games_scheduled,
+                $this->total_matchups
+            );
+            
+            $this->update_progress('allocation', $total_percentage, $message);
+        }
+    }
+    
+    /**
+     * Check if generation has been cancelled
+     * 
+     * @return bool True if cancelled
+     */
+    private function is_cancelled() {
+        $progress = get_transient($this->progress_transient_key);
+        
+        if ($progress === false) {
+            return false;
+        }
+        
+        return isset($progress['cancelled']) && $progress['cancelled'] === true;
+    }
+    
+    /**
+     * Set cancellation flag
+     * Called externally via AJAX handler
+     */
+    public function cancel_generation() {
+        $progress = get_transient($this->progress_transient_key);
+        
+        if ($progress !== false) {
+            $progress['cancelled'] = true;
+            $progress['message'] = __('Cancelling generation...', 'sportspress-schedule-generator');
+            set_transient($this->progress_transient_key, $progress, HOUR_IN_SECONDS);
+        }
+        
+        $this->log('Generation cancellation requested');
+    }
+    
+    /**
+     * Clear progress tracking
+     */
+    private function clear_progress() {
+        delete_transient($this->progress_transient_key);
+    }
+    
+    /**
+     * Get current progress
+     * Called externally via AJAX handler
+     * 
+     * @return array|false Progress data or false if not found
+     */
+    public function get_progress() {
+        return get_transient($this->progress_transient_key);
+    }
+    
+    /**
+     * Create configuration error with suggestions
+     * 
+     * @param array $issues Array of configuration issues
+     * @return WP_Error Configuration error with suggestions
+     */
+    private function create_configuration_error($issues) {
+        $suggestions = array();
+        
+        // Analyze issues and provide actionable suggestions
+        foreach ($issues as $issue) {
+            if (strpos($issue, 'Not enough time slots') !== false) {
+                $suggestions[] = __('Try adding more time slots, reducing games per team, or extending the season dates.', 'sportspress-schedule-generator');
+            } elseif (strpos($issue, 'No venues configured') !== false) {
+                $suggestions[] = __('Add at least one venue in the Venues tab.', 'sportspress-schedule-generator');
+            } elseif (strpos($issue, 'Season too short') !== false) {
+                $suggestions[] = __('Extend the season end date or reduce the number of games per team.', 'sportspress-schedule-generator');
+            } elseif (strpos($issue, 'blackout') !== false) {
+                $suggestions[] = __('Reduce the number of blackout dates or extend the season.', 'sportspress-schedule-generator');
+            } elseif (strpos($issue, 'division') !== false) {
+                $suggestions[] = __('Check your division and inter-division game configuration.', 'sportspress-schedule-generator');
+            } else {
+                $suggestions[] = __('Review your configuration settings and try again.', 'sportspress-schedule-generator');
+            }
+        }
+        
+        // Remove duplicate suggestions
+        $suggestions = array_unique($suggestions);
+        
+        $error_message = __('Configuration validation failed. Please fix the following issues:', 'sportspress-schedule-generator');
+        
+        return new WP_Error(
+            'configuration_error',
+            $error_message,
+            array(
+                'issues' => $issues,
+                'suggestions' => $suggestions,
+                'type' => 'configuration'
+            )
+        );
     }
 }
