@@ -38,7 +38,7 @@ This phase adds frontend UI controls to expose existing backend functionality. A
   - _Files: includes/class-admin.php (enqueue_admin_scripts method)_
   - _Estimated: 10 minutes_
 
-- [ ] 3. Create Import Dialog HTML Structure
+- [x] 3. Create Import Dialog HTML Structure
   - Create `render_import_dialog()` method in SPSG_Admin
   - Add modal overlay and content container
   - Add conflict resolution radio buttons (skip/overwrite)
