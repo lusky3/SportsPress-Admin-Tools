@@ -29,7 +29,7 @@ This phase adds frontend UI controls to expose existing backend functionality. A
   - _Files: includes/class-admin.php_
   - _Estimated: 30 minutes_
 
-- [ ] 2. Register Import Dialog Nonces
+- [x] 2. Register Import Dialog Nonces
   - Add `get_import_dialog_data` nonce to spsgData.nonces array
   - Add `get_import_progress` nonce to spsgData.nonces array
   - Verify nonces are available in JavaScript console
