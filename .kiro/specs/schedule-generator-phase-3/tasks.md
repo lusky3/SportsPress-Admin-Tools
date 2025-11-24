@@ -41,8 +41,8 @@ Phase 3 implements the core schedule generation engine, constraint integration, 
 
 ## Phase 3 Tasks
 
-- [ ] 1. Enhanced Matchup Generation (High Priority - 8-10 hours)
-  - [ ] 1.1 Create SPSG_Matchup_Generator class
+- [x] 1. Enhanced Matchup Generation (High Priority - 8-10 hours) ✅ COMPLETE
+  - [x] 1.1 Create SPSG_Matchup_Generator class
     - Create new file `includes/class-matchup-generator.php`
     - Implement `generate()` method to orchestrate matchup generation
     - Implement `round_robin()` algorithm for single and double round-robin
@@ -51,14 +51,14 @@ Phase 3 implements the core schedule generation engine, constraint integration, 
     - Support custom matchup style (generate to meet games_per_team)
     - _Requirements: 1.1, 1.2, 1.3_
 
-  - [ ] 1.2 Implement inter-division matchup generation
+  - [x] 1.2 Implement inter-division matchup generation
     - Create `generate_inter_division_matchups()` method
     - Balance games across teams in each division
     - Respect configured game counts per division pair from config
     - Ensure fair distribution of inter-division opponents
     - _Requirements: 2.1, 2.2, 2.3_
 
-  - [ ] 1.3 Implement home/away assignment
+  - [x] 1.3 Implement home/away assignment
     - Create `assign_home_away()` method
     - Balance home/away designations per team (not venue assignments)
     - For double round-robin, ensure home/away swap between matchups
@@ -67,7 +67,7 @@ Phase 3 implements the core schedule generation engine, constraint integration, 
     - _Requirements: 3.1, 3.2, 3.3, 3.4_
     - _Note: Home/away are designations only, all games at neutral venues_
 
-  - [ ] 1.4 Integrate matchup generator into schedule engine
+  - [x] 1.4 Integrate matchup generator into schedule engine
     - Update `SPSG_Schedule_Engine::generate_matchups()` to use new generator
     - Replace simple round-robin with full matchup generator
     - Add matchup validation (total matchups equal games_per_team)
@@ -75,8 +75,8 @@ Phase 3 implements the core schedule generation engine, constraint integration, 
     - Return WP_Error with clear messages on validation failure
     - _Requirements: 1.4, 2.4_
 
-- [ ] 2. Improved Slot Allocation (High Priority - 10-12 hours)
-  - [ ] 2.1 Create SPSG_Slot_Allocator class
+- [x] 2. Improved Slot Allocation (High Priority - 10-12 hours)
+  - [x] 2.1 Create SPSG_Slot_Allocator class
     - Create new file `includes/class-slot-allocator.php`
     - Implement `allocate()` method to orchestrate slot allocation
     - Implement `generate_available_slots()` method
@@ -85,7 +85,7 @@ Phase 3 implements the core schedule generation engine, constraint integration, 
     - Implement `find_best_slot()` method with scoring
     - _Requirements: 4.1, 4.2_
 
-  - [ ] 2.2 Implement slot scoring and validation
+  - [x] 2.2 Implement slot scoring and validation
     - Create `score_slot()` method
     - Score based on time slot distribution (prefer variety)
     - Score based on day distribution (prefer variety)
@@ -97,7 +97,7 @@ Phase 3 implements the core schedule generation engine, constraint integration, 
     - Integrate with constraint manager for validation
     - _Requirements: 4.4, 5.1, 5.2_
 
-  - [ ] 2.3 Enhance feasibility checking in constraint manager
+  - [x] 2.3 Enhance feasibility checking in constraint manager
     - Improve `SPSG_Constraint_Manager::check_feasibility()` method
     - Count total games needed from configuration more accurately
     - Count available slots (dates × times × venues - blackouts)
@@ -106,7 +106,7 @@ Phase 3 implements the core schedule generation engine, constraint integration, 
     - Return detailed array of issues with actionable messages
     - _Requirements: 4.2, 12.1, 12.2, 12.3, 12.4_
 
-  - [ ] 2.4 Integrate slot allocator into schedule engine
+  - [x] 2.4 Integrate slot allocator into schedule engine
     - Update `SPSG_Schedule_Engine::schedule_games()` to use new allocator
     - Replace greedy logic with slot allocator
     - Add timeout handling (respect max generation time from SPAT settings)

@@ -21,6 +21,16 @@ class SPSG_Schedule_Engine {
     private $constraint_manager;
     
     /**
+     * Matchup generator
+     */
+    private $matchup_generator;
+    
+    /**
+     * Slot allocator
+     */
+    private $slot_allocator;
+    
+    /**
      * Current schedule being generated
      */
     private $current_schedule = array();
@@ -31,10 +41,22 @@ class SPSG_Schedule_Engine {
     private $stats = array();
     
     /**
+     * Generation start time
+     */
+    private $generation_start_time;
+    
+    /**
+     * Maximum generation time in seconds
+     */
+    private $max_generation_time = 300; // 5 minutes default
+    
+    /**
      * Constructor
      */
-    public function __construct($constraint_manager = null) {
+    public function __construct($constraint_manager = null, $matchup_generator = null, $slot_allocator = null) {
         $this->constraint_manager = $constraint_manager ?: new SPSG_Constraint_Manager();
+        $this->matchup_generator = $matchup_generator ?: new SPSG_Matchup_Generator();
+        $this->slot_allocator = $slot_allocator ?: new SPSG_Slot_Allocator($this->constraint_manager);
         $this->init_stats();
     }
     
@@ -43,11 +65,14 @@ class SPSG_Schedule_Engine {
      */
     public function generate_schedule($config) {
         $this->log('Starting schedule generation');
-        $start_time = microtime(true);
+        $this->generation_start_time = microtime(true);
         
         // Reset state
         $this->current_schedule = array();
         $this->init_stats();
+        
+        // Get max generation time from config or use default
+        $this->max_generation_time = get_option('spsg_max_generation_time', 300);
         
         // Validate configuration
         $feasibility_check = $this->constraint_manager->check_feasibility($config);
@@ -61,7 +86,12 @@ class SPSG_Schedule_Engine {
             return $matchups;
         }
         
-        // Schedule games using constraint satisfaction
+        // Check timeout before allocation
+        if ($this->is_timeout()) {
+            return $this->create_timeout_error();
+        }
+        
+        // Schedule games using slot allocator
         $result = $this->schedule_games($matchups, $config);
         if (is_wp_error($result)) {
             return $result;
@@ -70,7 +100,7 @@ class SPSG_Schedule_Engine {
         // Handle makeup games
         $this->handle_makeup_games($config);
         
-        $this->stats['generation_time'] = microtime(true) - $start_time;
+        $this->stats['generation_time'] = microtime(true) - $this->generation_start_time;
         $this->log(sprintf('Schedule generation completed in %.2f seconds', $this->stats['generation_time']));
         
         return array(
@@ -83,73 +113,214 @@ class SPSG_Schedule_Engine {
      * Generate team matchups based on configuration
      */
     private function generate_matchups($config) {
-        $matchups = array();
+        $this->log('Generating matchups');
         
-        foreach ($config->divisions as $division) {
-            $division_matchups = $this->generate_division_matchups($division, $config);
-            $matchups = array_merge($matchups, $division_matchups);
+        // Use matchup generator
+        $matchups = $this->matchup_generator->generate($config);
+        
+        // Validate matchups
+        $validation = $this->validate_matchups($matchups, $config);
+        if (is_wp_error($validation)) {
+            return $validation;
         }
         
-        return $matchups;
+        // Convert array matchups to objects for compatibility with existing code
+        $object_matchups = array();
+        foreach ($matchups as $matchup) {
+            $object_matchups[] = (object) $matchup;
+        }
+        
+        $this->log(sprintf('Generated %d matchups', count($object_matchups)));
+        
+        return $object_matchups;
     }
     
     /**
-     * Generate matchups for a single division
+     * Validate generated matchups
+     * 
+     * @param array $matchups Array of matchups
+     * @param SPSG_Schedule_Configuration $config Configuration
+     * @return bool|WP_Error True if valid, WP_Error otherwise
      */
-    private function generate_division_matchups($division, $config) {
-        $teams = $division->teams;
-        $matchups = array();
+    private function validate_matchups($matchups, $config) {
+        // Count games per team
+        $team_games = array();
         
-        // Simple round-robin for now
-        for ($i = 0; $i < count($teams); $i++) {
-            for ($j = $i + 1; $j < count($teams); $j++) {
-                $matchups[] = (object) array(
-                    'home_team' => $teams[$i],
-                    'away_team' => $teams[$j],
-                    'division' => $division
+        foreach ($matchups as $matchup) {
+            $home_id = is_array($matchup['home_team']) ? $matchup['home_team']['id'] : $matchup['home_team']->id;
+            $away_id = is_array($matchup['away_team']) ? $matchup['away_team']['id'] : $matchup['away_team']->id;
+            
+            if (!isset($team_games[$home_id])) {
+                $team_games[$home_id] = 0;
+            }
+            if (!isset($team_games[$away_id])) {
+                $team_games[$away_id] = 0;
+            }
+            
+            $team_games[$home_id]++;
+            $team_games[$away_id]++;
+        }
+        
+        // Validate each team has correct number of games
+        $expected_games = $config->games_per_team;
+        $errors = array();
+        
+        foreach ($team_games as $team_id => $game_count) {
+            if ($game_count !== $expected_games) {
+                $team_name = $this->get_team_name($team_id, $config);
+                $errors[] = sprintf(
+                    __('Team "%s" has %d games but expected %d', 'sportspress-schedule-generator'),
+                    $team_name,
+                    $game_count,
+                    $expected_games
                 );
             }
         }
         
-        return $matchups;
+        if (!empty($errors)) {
+            return new WP_Error(
+                'matchup_validation_failed',
+                __('Matchup validation failed. Game counts do not match configuration.', 'sportspress-schedule-generator'),
+                array('errors' => $errors)
+            );
+        }
+        
+        // Validate inter-division + intra-division totals if inter-division games configured
+        if (!empty($config->inter_division_games)) {
+            $validation = $this->validate_inter_division_totals($matchups, $config);
+            if (is_wp_error($validation)) {
+                return $validation;
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Validate inter-division game totals
+     * 
+     * @param array $matchups Array of matchups
+     * @param SPSG_Schedule_Configuration $config Configuration
+     * @return bool|WP_Error True if valid, WP_Error otherwise
+     */
+    private function validate_inter_division_totals($matchups, $config) {
+        // Count inter-division games per division pair
+        $inter_division_counts = array();
+        
+        foreach ($matchups as $matchup) {
+            if (!isset($matchup['is_inter_division']) || !$matchup['is_inter_division']) {
+                continue;
+            }
+            
+            // Get division IDs
+            $home_div = $this->get_team_division($matchup['home_team'], $config);
+            $away_div = $this->get_team_division($matchup['away_team'], $config);
+            
+            if ($home_div && $away_div && $home_div !== $away_div) {
+                $pair_key = $home_div < $away_div ? "{$home_div}:{$away_div}" : "{$away_div}:{$home_div}";
+                
+                if (!isset($inter_division_counts[$pair_key])) {
+                    $inter_division_counts[$pair_key] = 0;
+                }
+                $inter_division_counts[$pair_key]++;
+            }
+        }
+        
+        // Validate counts match configuration
+        $errors = array();
+        foreach ($config->inter_division_games as $pair_key => $expected_count) {
+            $actual_count = $inter_division_counts[$pair_key] ?? 0;
+            
+            if ($actual_count !== $expected_count) {
+                $errors[] = sprintf(
+                    __('Division pair "%s" has %d inter-division games but expected %d', 'sportspress-schedule-generator'),
+                    $pair_key,
+                    $actual_count,
+                    $expected_count
+                );
+            }
+        }
+        
+        if (!empty($errors)) {
+            return new WP_Error(
+                'inter_division_validation_failed',
+                __('Inter-division game validation failed.', 'sportspress-schedule-generator'),
+                array('errors' => $errors)
+            );
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Get team name by ID
+     * 
+     * @param string $team_id Team ID
+     * @param SPSG_Schedule_Configuration $config Configuration
+     * @return string Team name
+     */
+    private function get_team_name($team_id, $config) {
+        foreach ($config->divisions as $division) {
+            foreach ($division['teams'] as $team) {
+                $id = is_array($team) ? $team['id'] : $team->id;
+                if ($id === $team_id) {
+                    return is_array($team) ? $team['name'] : $team->name;
+                }
+            }
+        }
+        return $team_id;
+    }
+    
+    /**
+     * Get team's division ID
+     * 
+     * @param array|object $team Team data
+     * @param SPSG_Schedule_Configuration $config Configuration
+     * @return string|null Division ID or null
+     */
+    private function get_team_division($team, $config) {
+        $team_id = is_array($team) ? $team['id'] : $team->id;
+        
+        foreach ($config->divisions as $division) {
+            foreach ($division['teams'] as $div_team) {
+                $id = is_array($div_team) ? $div_team['id'] : $div_team->id;
+                if ($id === $team_id) {
+                    return $division['id'];
+                }
+            }
+        }
+        
+        return null;
     }    
    
  /**
-     * Schedule games using constraint satisfaction
+     * Schedule games using slot allocator
      */
     private function schedule_games($matchups, $config) {
-        $max_attempts = 1000;
-        $attempt = 0;
+        $this->log('Starting slot allocation');
         
-        foreach ($matchups as $matchup) {
-            $scheduled = false;
-            $attempt = 0;
-            
-            while (!$scheduled && $attempt < $max_attempts) {
-                $game_slot = $this->find_valid_slot($matchup, $config);
-                
-                if ($game_slot) {
-                    $game = $this->create_game($matchup, $game_slot, $config);
-                    $validation = $this->constraint_manager->validate_game($game, $this->current_schedule, $config);
-                    
-                    if ($validation === true) {
-                        $this->current_schedule[] = $game;
-                        $scheduled = true;
-                        $this->stats['games_scheduled']++;
-                    }
-                }
-                
-                $attempt++;
-            }
-            
-            if (!$scheduled) {
-                $this->stats['failed_games']++;
-                $this->log(sprintf('Failed to schedule game: %s vs %s', 
-                    $matchup->home_team->name, 
-                    $matchup->away_team->name
-                ), 'warning');
-            }
+        // Use slot allocator for improved allocation
+        $schedule = $this->slot_allocator->allocate($matchups, $config);
+        
+        if (is_wp_error($schedule)) {
+            return $schedule;
         }
+        
+        // Check timeout periodically during allocation
+        if ($this->is_timeout()) {
+            // Save partial results
+            $this->current_schedule = $schedule;
+            $this->stats['games_scheduled'] = count($schedule);
+            $this->stats['failed_games'] = count($matchups) - count($schedule);
+            
+            return $this->create_timeout_error();
+        }
+        
+        // Set current schedule
+        $this->current_schedule = $schedule;
+        $this->stats['games_scheduled'] = count($schedule);
+        
+        $this->log(sprintf('Successfully allocated %d games', count($schedule)));
         
         return true;
     }
@@ -345,6 +516,44 @@ class SPSG_Schedule_Engine {
             'makeup_games' => 0,
             'generation_time' => 0,
             'constraint_violations' => 0
+        );
+    }
+    
+    /**
+     * Check if generation has timed out
+     * 
+     * @return bool True if timed out
+     */
+    private function is_timeout() {
+        if (!isset($this->generation_start_time)) {
+            return false;
+        }
+        
+        $elapsed = microtime(true) - $this->generation_start_time;
+        return $elapsed >= $this->max_generation_time;
+    }
+    
+    /**
+     * Create timeout error with progress info
+     * 
+     * @return WP_Error Timeout error
+     */
+    private function create_timeout_error() {
+        $elapsed = microtime(true) - $this->generation_start_time;
+        
+        return new WP_Error(
+            'generation_timeout',
+            sprintf(
+                __('Schedule generation timed out after %.1f seconds. Partial results have been saved.', 'sportspress-schedule-generator'),
+                $elapsed
+            ),
+            array(
+                'elapsed_time' => $elapsed,
+                'max_time' => $this->max_generation_time,
+                'games_scheduled' => $this->stats['games_scheduled'],
+                'failed_games' => $this->stats['failed_games'],
+                'partial_schedule' => $this->current_schedule
+            )
         );
     }
     

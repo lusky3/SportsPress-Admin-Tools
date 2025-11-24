@@ -60,9 +60,12 @@ class SPSG_Autoloader {
             
             // Engine classes
             'SPSG_Schedule_Engine' => $base_path . 'class-schedule-engine.php',
+            'SPSG_Matchup_Generator' => $base_path . 'class-matchup-generator.php',
+            'SPSG_Slot_Allocator' => $base_path . 'class-slot-allocator.php',
             'SPSG_Constraint_Manager' => $base_path . 'class-constraint-manager.php',
             'SPSG_Constraint_Registry' => $base_path . 'class-constraint-registry.php',
             'SPSG_Abstract_Constraint' => $base_path . 'abstract-constraint.php',
+            'SPSG_Error_Handler' => $base_path . 'class-error-handler.php',
             
             // Constraint classes
             'SPSG_Blackout_Constraint' => $base_path . 'constraints/class-blackout-constraint.php',
