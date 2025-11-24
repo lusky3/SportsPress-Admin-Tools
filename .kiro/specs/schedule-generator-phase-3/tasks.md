@@ -298,8 +298,8 @@ Phase 3 implements the core schedule generation engine, constraint integration, 
     - Export AJAX handlers already exist in `SPSG_Schedule_Generator::ajax_export_schedule()`
     - _Requirements: 14.1, 14.2, 14.3, 14.4_
 
-- [ ] 9. Testing & Quality Assurance (6-8 hours)
-  - [ ] 9.1 Manual testing scenarios
+- [x] 9. Testing & Quality Assurance (6-8 hours)
+  - [x] 9.1 Manual testing scenarios
     - Test small league (2 divisions, 4 teams each, 12 games/team)
     - Test medium league (4 divisions, 6 teams each, 14 games/team)
     - Test with blackout dates (10% of season)
@@ -309,7 +309,7 @@ Phase 3 implements the core schedule generation engine, constraint integration, 
     - Test home/away balance
     - Test SportsPress import with conflict detection
 
-  - [ ] 9.2 Bug fixes and refinements
+  - [x] 9.2 Bug fixes and refinements
     - Fix any bugs found during testing
     - Refine error messages based on testing
     - Improve UI/UX based on testing feedback

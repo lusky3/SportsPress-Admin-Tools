@@ -606,7 +606,7 @@ class SPSG_Schedule_Engine {
      * 
      * @return bool True if timed out
      */
-    private function is_timeout() {
+    public function is_timeout() {
         if (!isset($this->generation_start_time)) {
             return false;
         }
@@ -732,7 +732,7 @@ class SPSG_Schedule_Engine {
      * 
      * @return bool True if cancelled
      */
-    private function is_cancelled() {
+    public function is_cancelled() {
         $progress = get_transient($this->progress_transient_key);
         
         if ($progress === false) {
