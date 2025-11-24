@@ -206,13 +206,13 @@
             });
             
             // Bind action buttons
-            $('#spsg-generate-new').on('click', function() {
+            $('#spsg-generate-new').off('click').on('click', function() {
                 if (confirm('Generate a new schedule? This will replace the current schedule.')) {
                     self.generateSchedule();
                 }
             });
             
-            $('#spsg-import-to-sp').on('click', function() {
+            $('#spsg-import-to-sp').off('click').on('click', function() {
                 self.importToSportsPress();
             });
         },
