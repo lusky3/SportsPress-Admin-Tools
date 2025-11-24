@@ -612,3 +612,342 @@
 .spsg-team-actions {
     margin-top: 10px;
 }
+
+/* ============================================
+   Import Dialog Modal Styles (Task 4)
+   Requirements: 1.1, 1.7, 12.1, 12.2, 12.3, 12.4, 12.5
+   ============================================ */
+
+/* Modal Base Styles - Full viewport overlay */
+.spsg-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 100000;
+    display: none;
+}
+
+/* Semi-transparent overlay */
+.spsg-modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+}
+
+/* Modal content - centered, scrollable, max-width 600px */
+.spsg-modal-content {
+    position: relative;
+    max-width: 600px;
+    max-height: 90vh;
+    margin: 5vh auto;
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Modal Header with proper spacing */
+.spsg-modal-header {
+    padding: 20px;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f9f9f9;
+}
+
+.spsg-modal-header h2 {
+    margin: 0;
+    font-size: 20px;
+    color: #1d2327;
+}
+
+/* Close button positioned in header */
+.spsg-modal-close {
+    background: none;
+    border: none;
+    font-size: 28px;
+    line-height: 1;
+    cursor: pointer;
+    color: #666;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    transition: all 0.2s ease;
+}
+
+.spsg-modal-close:hover {
+    color: #000;
+    background: #e0e0e0;
+}
+
+.spsg-modal-close:focus {
+    outline: 2px solid #2271b1;
+    outline-offset: 2px;
+}
+
+/* Modal Body - scrollable */
+.spsg-modal-body {
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+/* Modal Footer - right-aligned buttons */
+.spsg-modal-footer {
+    padding: 15px 20px;
+    border-top: 1px solid #ddd;
+    text-align: right;
+    background: #f9f9f9;
+}
+
+.spsg-modal-footer .button {
+    margin-left: 10px;
+}
+
+/* Form sections with proper spacing */
+.spsg-form-group {
+    margin-bottom: 20px;
+}
+
+.spsg-form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 600;
+    color: #1d2327;
+}
+
+.spsg-form-group input[type="radio"],
+.spsg-form-group input[type="checkbox"] {
+    margin-right: 5px;
+}
+
+.spsg-form-group label input[type="radio"],
+.spsg-form-group label input[type="checkbox"] {
+    margin-right: 8px;
+}
+
+.spsg-form-group .description {
+    margin-top: 5px;
+    font-size: 13px;
+    color: #646970;
+    font-style: italic;
+}
+
+.spsg-form-group select {
+    width: 100%;
+    max-width: 100%;
+}
+
+/* Import Options Section */
+.spsg-import-options h3 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    font-size: 16px;
+    color: #1d2327;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 10px;
+}
+
+/* Progress Section */
+.spsg-import-progress {
+    text-align: center;
+}
+
+.spsg-import-progress h3 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    font-size: 16px;
+    color: #1d2327;
+}
+
+/* Progress bar with animated fill */
+.spsg-import-progress .spsg-progress-bar {
+    width: 100%;
+    height: 30px;
+    background: #f0f0f1;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 15px;
+    border: 1px solid #ddd;
+}
+
+.spsg-import-progress .spsg-progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #2271b1 0%, #135e96 100%);
+    transition: width 0.3s ease;
+    border-radius: 4px;
+    animation: spsg-progress-pulse 2s ease-in-out infinite;
+}
+
+@keyframes spsg-progress-pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.8;
+    }
+}
+
+.spsg-progress-text {
+    text-align: center;
+    margin-bottom: 15px;
+    font-size: 14px;
+    color: #1d2327;
+}
+
+/* Results Section */
+.spsg-import-results h3 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    font-size: 16px;
+    color: #1d2327;
+}
+
+/* Results summary with grid layout (2 columns) */
+.spsg-results-summary {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.spsg-result-stat {
+    padding: 15px;
+    border-radius: 4px;
+    text-align: center;
+}
+
+/* Color coding: success (green), warning (yellow), error (red), info (blue) */
+.spsg-result-success {
+    background: #d5f4e6;
+    border-left: 4px solid #00a32a;
+}
+
+.spsg-result-warning {
+    background: #fcf3cf;
+    border-left: 4px solid #f0b849;
+}
+
+.spsg-result-info {
+    background: #e5f5fa;
+    border-left: 4px solid #2271b1;
+}
+
+.spsg-result-error {
+    background: #f8d7da;
+    border-left: 4px solid #b32d2e;
+}
+
+.spsg-result-label {
+    display: block;
+    font-size: 13px;
+    margin-bottom: 5px;
+    color: #646970;
+}
+
+.spsg-result-value {
+    display: block;
+    font-size: 24px;
+    font-weight: bold;
+    color: #1d2327;
+}
+
+/* Import Errors Section */
+.spsg-import-errors {
+    margin-top: 20px;
+    padding: 15px;
+    background: #f8d7da;
+    border: 1px solid #b32d2e;
+    border-radius: 4px;
+}
+
+.spsg-import-errors h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: #1d2327;
+}
+
+.spsg-import-errors ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.spsg-import-errors li {
+    margin-bottom: 5px;
+    color: #1d2327;
+}
+
+/* Prevent body scroll when modal open */
+body.spsg-modal-open {
+    overflow: hidden;
+}
+
+/* Mobile Responsive (< 768px, single column) */
+@media (max-width: 768px) {
+    .spsg-modal-content {
+        max-width: 95%;
+        margin: 2.5vh auto;
+        max-height: 95vh;
+    }
+    
+    .spsg-modal-header {
+        padding: 15px;
+    }
+    
+    .spsg-modal-header h2 {
+        font-size: 18px;
+    }
+    
+    .spsg-modal-body {
+        padding: 15px;
+    }
+    
+    .spsg-modal-footer {
+        padding: 12px 15px;
+    }
+    
+    /* Single column layout for results */
+    .spsg-results-summary {
+        grid-template-columns: 1fr;
+    }
+    
+    /* Stack buttons vertically on mobile */
+    .spsg-modal-footer .button {
+        display: block;
+        width: 100%;
+        margin: 5px 0;
+    }
+    
+    /* Touch-friendly button sizing (min 44x44px) */
+    .spsg-modal-footer .button,
+    .spsg-modal-close {
+        min-height: 44px;
+        min-width: 44px;
+    }
+}
+
+/* Tablet responsive (768px) */
+@media (min-width: 768px) and (max-width: 1024px) {
+    .spsg-modal-content {
+        max-width: 90%;
+    }
+}
+
+/* Desktop responsive (1024px, 1366px, 1920px) */
+@media (min-width: 1024px) {
+    .spsg-modal-content {
+        max-width: 600px;
+    }
+}

@@ -16,7 +16,7 @@
   },
   "then": {
     "type": "askAgent",
-    "prompt": "Files have been modified in the workspace. Please:\n1. Review the git status to see what files have changed\n2. Generate a clear, descriptive commit message that summarizes the changes made\n3. Stage all changes with 'git add .'\n4. Commit with the descriptive message\n5. Commits are GPG signed, use environment variable GPG_KEY for the unlock passphrase.\n6. Push to the remote repository with 'git push'\n\nMake sure the commit message follows best practices: use present tense, be specific about what changed, and mention the affected plugins/components."
+    "prompt": "Files have been modified in the workspace. Please:\n1. Review the git status to see what files have changed\n2. Generate a clear, descriptive commit message that summarizes the changes made\n3. Stage all changes with 'git add .'\n4. Commit with the descriptive message\n5. Commits are GPG signed, use environment variable GPG_KEY for the unlock passphrase. (Using --passphrase \"$GPG_KEY\")\n6. Push to the remote repository with 'git push'\n\nMake sure the commit message follows best practices: use present tense, be specific about what changed, and mention the affected plugins/components."
   },
   "workspaceFolderName": "sportspress-admin-tools",
   "shortName": "periodic-git-commit"

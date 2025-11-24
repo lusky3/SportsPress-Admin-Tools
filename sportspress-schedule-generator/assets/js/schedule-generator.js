@@ -313,44 +313,15 @@
         },
         
         importToSportsPress: function() {
-            var self = this;
             var scheduleId = $('#spsg-current-schedule-id').val();
             
             if (!scheduleId) {
-                self.showMessage('error', 'No schedule to import. Please generate a schedule first.');
+                this.showMessage('error', 'No schedule to import. Please generate a schedule first.');
                 return;
             }
             
-            if (!confirm('Import this schedule to SportsPress? This will create events for all games.')) {
-                return;
-            }
-            
-            $.ajax({
-                url: ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'spsg_import_to_sportspress',
-                    nonce: spsgData.nonces.import_to_sportspress || wp.ajax.settings.nonce,
-                    schedule_id: scheduleId
-                },
-                beforeSend: function() {
-                    self.showMessage('info', 'Importing schedule to SportsPress...');
-                    $('#spsg-import-to-sp').prop('disabled', true).text('Importing...');
-                },
-                success: function(response) {
-                    if (response.success) {
-                        self.showMessage('success', response.data.message || 'Schedule imported successfully!');
-                    } else {
-                        self.showMessage('error', response.data.message || response.data);
-                    }
-                },
-                error: function() {
-                    self.showMessage('error', 'Import failed. Please try again.');
-                },
-                complete: function() {
-                    $('#spsg-import-to-sp').prop('disabled', false).text('Import to SportsPress');
-                }
-            });
+            // Open the import dialog instead of direct import
+            ImportDialog.init(scheduleId);
         },
         
         showExportOptions: function() {
@@ -535,6 +506,371 @@
                     });
                 }, 5000);
             }
+        }
+    };
+    
+    /**
+     * Import Dialog Module
+     * Handles the import options dialog for importing schedules to SportsPress
+     */
+    var ImportDialog = {
+        scheduleId: null,
+        importInProgress: false,
+        progressPollInterval: null,
+        
+        /**
+         * Initialize the import dialog
+         * @param {string} scheduleId - The schedule ID to import
+         */
+        init: function(scheduleId) {
+            this.scheduleId = scheduleId;
+            this.createModal();
+            this.loadDialogData();
+            this.bindEvents();
+            this.show();
+        },
+        
+        /**
+         * Verify modal HTML exists
+         */
+        createModal: function() {
+            if (!$('#spsg-import-dialog').length) {
+                console.error('Import dialog HTML not found. Modal must be rendered server-side.');
+                SPSG.showMessage('error', 'Import dialog not available. Please refresh the page.');
+                return false;
+            }
+            return true;
+        },
+        
+        /**
+         * Load dialog data via AJAX (populate leagues and seasons)
+         */
+        loadDialogData: function() {
+            var self = this;
+            
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'spsg_get_import_dialog_data',
+                    nonce: spsgData.nonces.get_import_dialog_data
+                },
+                success: function(response) {
+                    if (response.success) {
+                        var data = response.data;
+                        
+                        // Populate leagues
+                        if (data.leagues && data.leagues.length > 0) {
+                            var $leagueSelect = $('#spsg-import-league');
+                            $leagueSelect.empty().append('<option value="">No league</option>');
+                            data.leagues.forEach(function(league) {
+                                $leagueSelect.append('<option value="' + league.id + '">' + league.name + '</option>');
+                            });
+                        }
+                        
+                        // Populate seasons
+                        if (data.seasons && data.seasons.length > 0) {
+                            var $seasonSelect = $('#spsg-import-season');
+                            $seasonSelect.empty().append('<option value="">No season</option>');
+                            data.seasons.forEach(function(season) {
+                                $seasonSelect.append('<option value="' + season.id + '">' + season.name + '</option>');
+                            });
+                        }
+                    } else {
+                        console.warn('Failed to load import dialog data:', response.data);
+                        // Continue anyway - leagues and seasons are optional
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error loading import dialog data:', error);
+                    // Continue anyway - leagues and seasons are optional
+                }
+            });
+        },
+        
+        /**
+         * Bind event handlers
+         */
+        bindEvents: function() {
+            var self = this;
+            
+            // Start import button
+            $('#spsg-start-import').off('click').on('click', function() {
+                self.startImport();
+            });
+            
+            // Close/cancel buttons
+            $('#spsg-close-import-dialog, .spsg-modal-close').off('click').on('click', function() {
+                if (!self.importInProgress) {
+                    self.hide();
+                } else {
+                    if (confirm('Import is in progress. Are you sure you want to close?')) {
+                        self.cancelImport();
+                    }
+                }
+            });
+            
+            // Cancel import button
+            $('#spsg-cancel-import').off('click').on('click', function() {
+                self.cancelImport();
+            });
+            
+            // Close on overlay click (only if not importing)
+            $('.spsg-modal-overlay').off('click').on('click', function() {
+                if (!self.importInProgress) {
+                    self.hide();
+                }
+            });
+            
+            // Escape key to close
+            $(document).off('keydown.spsg-import-dialog').on('keydown.spsg-import-dialog', function(e) {
+                if (e.key === 'Escape' && $('#spsg-import-dialog').is(':visible')) {
+                    if (!self.importInProgress) {
+                        self.hide();
+                    }
+                }
+            });
+        },
+        
+        /**
+         * Start the import process
+         */
+        startImport: function() {
+            var self = this;
+            
+            if (this.importInProgress) {
+                return;
+            }
+            
+            // Collect options
+            var options = {
+                schedule_id: this.scheduleId,
+                conflict_resolution: $('input[name="conflict_resolution"]:checked').val(),
+                event_status: $('#spsg-event-status').val(),
+                league_id: $('#spsg-import-league').val(),
+                season_id: $('#spsg-import-season').val(),
+                dry_run: $('#spsg-dry-run').is(':checked') ? '1' : '0'
+            };
+            
+            this.importInProgress = true;
+            
+            // Hide options, show progress
+            $('.spsg-import-options').hide();
+            $('#spsg-import-progress').show();
+            $('#spsg-start-import').prop('disabled', true);
+            
+            // Start progress polling
+            this.startProgressPolling();
+            
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'spsg_import_to_sportspress',
+                    nonce: spsgData.nonces.import_to_sportspress,
+                    schedule_id: options.schedule_id,
+                    conflict_resolution: options.conflict_resolution,
+                    event_status: options.event_status,
+                    league_id: options.league_id,
+                    season_id: options.season_id,
+                    dry_run: options.dry_run
+                },
+                success: function(response) {
+                    self.importInProgress = false;
+                    self.stopProgressPolling();
+                    
+                    if (response.success) {
+                        self.showResults(response.data);
+                    } else {
+                        var errorMsg = response.data.message || response.data || 'Import failed';
+                        SPSG.showMessage('error', errorMsg);
+                        self.hide();
+                    }
+                },
+                error: function(xhr, status, error) {
+                    self.importInProgress = false;
+                    self.stopProgressPolling();
+                    SPSG.showMessage('error', 'Import request failed: ' + error);
+                    self.hide();
+                }
+            });
+        },
+        
+        /**
+         * Start polling for import progress
+         */
+        startProgressPolling: function() {
+            var self = this;
+            
+            // Poll every 2 seconds
+            this.progressPollInterval = setInterval(function() {
+                self.pollProgress();
+            }, 2000);
+            
+            // Do an immediate poll
+            this.pollProgress();
+        },
+        
+        /**
+         * Stop polling for import progress
+         */
+        stopProgressPolling: function() {
+            if (this.progressPollInterval) {
+                clearInterval(this.progressPollInterval);
+                this.progressPollInterval = null;
+            }
+        },
+        
+        /**
+         * Poll for import progress
+         */
+        pollProgress: function() {
+            var self = this;
+            
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'spsg_get_import_progress',
+                    nonce: spsgData.nonces.get_import_progress
+                },
+                success: function(response) {
+                    if (response.success) {
+                        self.updateProgress(response.data);
+                    }
+                },
+                error: function() {
+                    // Silently fail - don't stop polling on network errors
+                }
+            });
+        },
+        
+        /**
+         * Update progress display
+         * @param {object} data - Progress data from server
+         */
+        updateProgress: function(data) {
+            if (!data) return;
+            
+            var current = data.current || 0;
+            var total = data.total || 0;
+            var percentage = total > 0 ? Math.round((current / total) * 100) : 0;
+            
+            $('.spsg-progress-bar-fill').css('width', percentage + '%');
+            $('#spsg-import-current').text(current);
+            $('#spsg-import-total').text(total);
+        },
+        
+        /**
+         * Show import results
+         * @param {object} results - Import results from server
+         */
+        showResults: function(results) {
+            $('#spsg-import-progress').hide();
+            $('#spsg-import-results').show();
+            
+            // Update counts
+            $('#spsg-imported-count').text(results.imported || 0);
+            $('#spsg-overwritten-count').text(results.overwritten || 0);
+            $('#spsg-skipped-count').text(results.skipped || 0);
+            $('#spsg-failed-count').text(results.failed || 0);
+            
+            // Show errors if any
+            if (results.errors && results.errors.length > 0) {
+                var $errorList = $('#spsg-error-list');
+                $errorList.empty();
+                results.errors.forEach(function(error) {
+                    $errorList.append('<li>' + error + '</li>');
+                });
+                $('#spsg-import-errors').show();
+            } else {
+                $('#spsg-import-errors').hide();
+            }
+            
+            // Update buttons
+            $('#spsg-start-import').hide();
+            $('#spsg-close-import-dialog').text('Close').prop('disabled', false);
+            
+            // Show success message in main UI
+            var message = results.message || 'Import completed successfully!';
+            SPSG.showMessage('success', message);
+        },
+        
+        /**
+         * Cancel import
+         */
+        cancelImport: function() {
+            this.stopProgressPolling();
+            this.importInProgress = false;
+            this.hide();
+        },
+        
+        /**
+         * Show the modal
+         */
+        show: function() {
+            if (!this.createModal()) {
+                return;
+            }
+            
+            $('#spsg-import-dialog').fadeIn(200);
+            $('body').addClass('spsg-modal-open');
+            
+            // Focus the first input for accessibility
+            setTimeout(function() {
+                $('#spsg-import-dialog input:visible:first').focus();
+            }, 250);
+        },
+        
+        /**
+         * Hide the modal and reset state
+         */
+        hide: function() {
+            $('#spsg-import-dialog').fadeOut(200);
+            $('body').removeClass('spsg-modal-open');
+            
+            // Reset dialog state
+            var self = this;
+            setTimeout(function() {
+                self.resetDialog();
+            }, 200);
+            
+            // Remove escape key handler
+            $(document).off('keydown.spsg-import-dialog');
+        },
+        
+        /**
+         * Reset dialog to initial state
+         */
+        resetDialog: function() {
+            // Show options, hide progress and results
+            $('.spsg-import-options').show();
+            $('#spsg-import-progress, #spsg-import-results').hide();
+            
+            // Reset form
+            $('input[name="conflict_resolution"][value="skip"]').prop('checked', true);
+            $('#spsg-event-status').val('publish');
+            $('#spsg-import-league').val('');
+            $('#spsg-import-season').val('');
+            $('#spsg-dry-run').prop('checked', false);
+            
+            // Reset progress
+            $('.spsg-progress-bar-fill').css('width', '0%');
+            $('#spsg-import-current').text('0');
+            $('#spsg-import-total').text('0');
+            
+            // Reset results
+            $('#spsg-imported-count, #spsg-overwritten-count, #spsg-skipped-count, #spsg-failed-count').text('0');
+            $('#spsg-error-list').empty();
+            $('#spsg-import-errors').hide();
+            
+            // Reset buttons
+            $('#spsg-start-import').prop('disabled', false).show();
+            $('#spsg-close-import-dialog').text('Cancel').prop('disabled', false);
+            
+            // Reset state
+            this.importInProgress = false;
+            this.scheduleId = null;
         }
     };
     
