@@ -45,6 +45,7 @@ class SPSG_Schedule_Generator {
         add_action('wp_ajax_spsg_generate_schedule', array($this, 'ajax_generate_schedule'));
         add_action('wp_ajax_spsg_export_schedule', array($this, 'ajax_export_schedule'));
         add_action('wp_ajax_spsg_validate_config', array($this, 'ajax_validate_config'));
+        add_action('wp_ajax_spsg_import_to_sportspress', array($this, 'ajax_import_to_sportspress'));
     }
     
     /**
@@ -303,6 +304,129 @@ class SPSG_Schedule_Generator {
             wp_send_json_error(array(
                 'message' => __('Validation failed due to an error', 'sportspress-schedule-generator'),
                 'errors' => array($e->getMessage())
+            ));
+        }
+    }
+    
+    /**
+     * AJAX handler for importing schedule to SportsPress
+     */
+    public function ajax_import_to_sportspress() {
+        check_ajax_referer('spsg_import_to_sportspress', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            return;
+        }
+        
+        // Get schedule ID from request
+        $schedule_id = sanitize_text_field($_POST['schedule_id'] ?? '');
+        
+        if (empty($schedule_id)) {
+            wp_send_json_error(__('No schedule ID provided', 'sportspress-schedule-generator'));
+            return;
+        }
+        
+        // Load schedule from transient
+        $schedule = get_transient('spsg_schedule_' . $schedule_id);
+        
+        if (!$schedule) {
+            wp_send_json_error(__('Schedule not found or expired. Please regenerate the schedule.', 'sportspress-schedule-generator'));
+            return;
+        }
+        
+        // Get import options from request
+        $options = array(
+            'conflict_resolution' => sanitize_text_field($_POST['conflict_resolution'] ?? 'skip'),
+            'event_status' => sanitize_text_field($_POST['event_status'] ?? 'publish'),
+            'dry_run' => filter_var($_POST['dry_run'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            'league_id' => isset($_POST['league_id']) ? absint($_POST['league_id']) : null,
+            'season_id' => isset($_POST['season_id']) ? absint($_POST['season_id']) : null
+        );
+        
+        // Validate conflict resolution option
+        if (!in_array($options['conflict_resolution'], array('skip', 'overwrite'))) {
+            wp_send_json_error(__('Invalid conflict resolution option', 'sportspress-schedule-generator'));
+            return;
+        }
+        
+        // Validate event status
+        $valid_statuses = array('publish', 'draft', 'pending', 'future');
+        if (!in_array($options['event_status'], $valid_statuses)) {
+            wp_send_json_error(__('Invalid event status', 'sportspress-schedule-generator'));
+            return;
+        }
+        
+        try {
+            // Create importer instance
+            $importer = new SPSG_SportsPress_Importer();
+            
+            // Import schedule
+            $results = $importer->import($schedule, $options);
+            
+            if (is_wp_error($results)) {
+                wp_send_json_error(array(
+                    'message' => __('Import failed', 'sportspress-schedule-generator'),
+                    'error' => $results->get_error_message()
+                ));
+                return;
+            }
+            
+            // Build success message
+            $message_parts = array();
+            
+            if ($results['imported'] > 0) {
+                $message_parts[] = sprintf(
+                    _n('%d event imported', '%d events imported', $results['imported'], 'sportspress-schedule-generator'),
+                    $results['imported']
+                );
+            }
+            
+            if ($results['overwritten'] > 0) {
+                $message_parts[] = sprintf(
+                    _n('%d event updated', '%d events updated', $results['overwritten'], 'sportspress-schedule-generator'),
+                    $results['overwritten']
+                );
+            }
+            
+            if ($results['skipped'] > 0) {
+                $message_parts[] = sprintf(
+                    _n('%d event skipped', '%d events skipped', $results['skipped'], 'sportspress-schedule-generator'),
+                    $results['skipped']
+                );
+            }
+            
+            if ($results['failed'] > 0) {
+                $message_parts[] = sprintf(
+                    _n('%d event failed', '%d events failed', $results['failed'], 'sportspress-schedule-generator'),
+                    $results['failed']
+                );
+            }
+            
+            $message = !empty($message_parts) 
+                ? implode(', ', $message_parts) 
+                : __('Import completed', 'sportspress-schedule-generator');
+            
+            // Determine if import was successful
+            $is_success = ($results['failed'] === 0) || ($results['imported'] > 0 || $results['overwritten'] > 0);
+            
+            if ($is_success) {
+                wp_send_json_success(array(
+                    'message' => $message,
+                    'results' => $results
+                ));
+            } else {
+                wp_send_json_error(array(
+                    'message' => $message,
+                    'results' => $results
+                ));
+            }
+            
+        } catch (Exception $e) {
+            error_log('[SPSG] Import error: ' . $e->getMessage());
+            wp_send_json_error(array(
+                'message' => __('Import failed due to an error', 'sportspress-schedule-generator'),
+                'error' => $e->getMessage()
             ));
         }
     }
