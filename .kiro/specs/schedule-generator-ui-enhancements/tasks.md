@@ -144,7 +144,7 @@ The import dialog with AJAX handlers, nonces, HTML structure, CSS styles, JavaSc
   - _Files: includes/class-admin.php_
   - _Estimated: 30 minutes_
 
-- [ ] 12. Create Import Preview Modal HTML
+- [x] 12. Create Import Preview Modal HTML
   - Add modal HTML structure in `render_basic_config_tab()`
   - Add modal overlay and content container
   - Display configuration name

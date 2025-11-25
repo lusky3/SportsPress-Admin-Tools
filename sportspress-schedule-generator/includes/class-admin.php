@@ -1759,6 +1759,61 @@ class SPSG_Admin {
             <?php endif; ?>
         </div>
         
+        <!-- Import Preview Modal -->
+        <div id="spsg-import-preview-modal" class="spsg-modal" style="display: none;">
+            <div class="spsg-modal-overlay"></div>
+            <div class="spsg-modal-content">
+                <div class="spsg-modal-header">
+                    <h2><?php _e('Configuration Import Preview', 'sportspress-schedule-generator'); ?></h2>
+                    <button type="button" class="spsg-modal-close" aria-label="<?php esc_attr_e('Close', 'sportspress-schedule-generator'); ?>">&times;</button>
+                </div>
+                
+                <div class="spsg-modal-body">
+                    <div class="spsg-preview-summary">
+                        <h3><?php _e('Configuration Details', 'sportspress-schedule-generator'); ?></h3>
+                        <table class="widefat">
+                            <tbody>
+                                <tr>
+                                    <th scope="row"><?php _e('Name:', 'sportspress-schedule-generator'); ?></th>
+                                    <td id="spsg-preview-name"></td>
+                                </tr>
+                                <tr>
+                                    <th scope="row"><?php _e('Season:', 'sportspress-schedule-generator'); ?></th>
+                                    <td id="spsg-preview-season"></td>
+                                </tr>
+                                <tr>
+                                    <th scope="row"><?php _e('Games per Team:', 'sportspress-schedule-generator'); ?></th>
+                                    <td id="spsg-preview-games"></td>
+                                </tr>
+                                <tr>
+                                    <th scope="row"><?php _e('Divisions:', 'sportspress-schedule-generator'); ?></th>
+                                    <td id="spsg-preview-divisions"></td>
+                                </tr>
+                                <tr>
+                                    <th scope="row"><?php _e('Teams:', 'sportspress-schedule-generator'); ?></th>
+                                    <td id="spsg-preview-teams"></td>
+                                </tr>
+                                <tr>
+                                    <th scope="row"><?php _e('Venues:', 'sportspress-schedule-generator'); ?></th>
+                                    <td id="spsg-preview-venues"></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div id="spsg-preview-warnings" class="spsg-preview-warnings" style="display: none;">
+                        <h3><?php _e('Compatibility Warnings', 'sportspress-schedule-generator'); ?></h3>
+                        <ul id="spsg-warning-list"></ul>
+                    </div>
+                </div>
+                
+                <div class="spsg-modal-footer">
+                    <button type="button" class="button button-primary" id="spsg-apply-import"><?php _e('Apply Import', 'sportspress-schedule-generator'); ?></button>
+                    <button type="button" class="button" id="spsg-cancel-import-preview"><?php _e('Cancel', 'sportspress-schedule-generator'); ?></button>
+                </div>
+            </div>
+        </div>
+        
         <table class="form-table">
             <tr>
                 <th scope="row"><?php _e('Configuration Name', 'sportspress-schedule-generator'); ?></th>
