@@ -125,15 +125,18 @@ class SPSG_SportsPress_Integration {
         }
         
         $defaults = array(
-            'post_type' => 'sp_venue',
-            'posts_per_page' => -1,
-            'post_status' => 'publish',
-            'orderby' => 'title',
+            'taxonomy' => 'sp_venue',
+            'hide_empty' => false,
+            'orderby' => 'name',
             'order' => 'ASC'
         );
         
         $args = wp_parse_args($args, $defaults);
-        $venues = get_posts($args);
+        $venues = get_terms($args);
+        
+        if (is_wp_error($venues)) {
+            return array();
+        }
         
         $formatted_venues = array();
         foreach ($venues as $venue) {
@@ -148,20 +151,20 @@ class SPSG_SportsPress_Integration {
      */
     private static function format_venue_data($venue) {
         $venue_data = array(
-            'id' => $venue->ID,
-            'name' => $venue->post_title,
-            'slug' => $venue->post_name
+            'id' => $venue->term_id,
+            'name' => $venue->name,
+            'slug' => $venue->slug
         );
         
-        // Get venue address
-        $address = get_post_meta($venue->ID, 'sp_address', true);
+        // Get venue address from term meta
+        $address = get_term_meta($venue->term_id, 'sp_address', true);
         if ($address) {
             $venue_data['address'] = $address;
         }
         
-        // Get venue latitude/longitude
-        $latitude = get_post_meta($venue->ID, 'sp_latitude', true);
-        $longitude = get_post_meta($venue->ID, 'sp_longitude', true);
+        // Get venue latitude/longitude from term meta
+        $latitude = get_term_meta($venue->term_id, 'sp_latitude', true);
+        $longitude = get_term_meta($venue->term_id, 'sp_longitude', true);
         
         if ($latitude && $longitude) {
             $venue_data['latitude'] = $latitude;
