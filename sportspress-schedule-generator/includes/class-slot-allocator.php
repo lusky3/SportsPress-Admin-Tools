@@ -142,8 +142,8 @@ class SPSG_Slot_Allocator {
             // Generate slots for each time and venue
             foreach ($time_slots as $time_slot) {
                 foreach ($config->venues as $venue) {
-                    // Check if venue is available for this day/time
-                    if (!$this->is_venue_available($venue, $day_name, $time_slot, $config)) {
+                    // Check if venue is available for this day/time/date
+                    if (!$this->is_venue_available($venue, $day_name, $time_slot, $date_str, $config)) {
                         continue;
                     }
                     
@@ -352,21 +352,29 @@ class SPSG_Slot_Allocator {
     }
     
     /**
-     * Check if venue is available for specific day and time
+     * Check if venue is available for specific day, time, and date
      * 
      * @param array|object $venue Venue data
      * @param string $day_name Day name (lowercase)
      * @param string $time_slot Time slot
+     * @param string $date Date in YYYY-MM-DD format
      * @param SPSG_Schedule_Configuration $config Configuration
      * @return bool True if available
      */
-    private function is_venue_available($venue, $day_name, $time_slot, $config) {
+    private function is_venue_available($venue, $day_name, $time_slot, $date, $config) {
+        $venue_id = is_object($venue) ? $venue->id : $venue['id'];
+        
+        // Check venue-specific blackout dates first
+        if (!empty($config->venue_blackout_dates[$venue_id])) {
+            if (in_array($date, $config->venue_blackout_dates[$venue_id])) {
+                return false;
+            }
+        }
+        
         // If no venue-specific timeslots configured, venue is available for all times
         if (empty($config->venue_timeslots)) {
             return true;
         }
-        
-        $venue_id = is_object($venue) ? $venue->id : $venue['id'];
         
         // If this venue has no specific timeslots configured, it's available for all times
         if (!isset($config->venue_timeslots[$venue_id])) {

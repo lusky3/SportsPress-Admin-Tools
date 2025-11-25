@@ -509,6 +509,14 @@ class SPSG_Admin {
                                         html += \'</div>\';
                                         html += \'<p class="description">' . esc_js(__('Select which days and times this venue is available. Leave unchecked if venue is available all configured times.', 'sportspress-schedule-generator')) . '</p>\';
                                         html += \'</td></tr>\';
+                                        
+                                        // Venue blackout dates row
+                                        html += \'<tr><th scope="row">' . esc_js(__('Venue Blackout Dates', 'sportspress-schedule-generator')) . '</th>\';
+                                        html += \'<td>\';
+                                        html += \'<textarea name="venue_blackout_dates[\' + venueId + \']" rows="3" class="large-text" placeholder="' . esc_js(__('Enter dates when this venue is unavailable (e.g., 2024-01-15, 2024-02-20)', 'sportspress-schedule-generator')) . '"></textarea>\';
+                                        html += \'<p class="description">' . esc_js(__('Specific dates when this venue is unavailable. Enter one date per line in YYYY-MM-DD format.', 'sportspress-schedule-generator')) . '</p>\';
+                                        html += \'</td></tr>\';
+                                        
                                         html += \'</table></div>\';
                                         
                                         $("#spsg-venues-container").append(html);
@@ -1982,6 +1990,16 @@ class SPSG_Admin {
                             <?php endforeach; ?>
                         </div>
                         <p class="description"><?php _e('Select which days and times this venue is available. Leave unchecked if venue is available all configured times.', 'sportspress-schedule-generator'); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php _e('Venue Blackout Dates', 'sportspress-schedule-generator'); ?></th>
+                    <td>
+                        <textarea name="venue_blackout_dates[<?php echo esc_attr($venue_id); ?>]" rows="3" class="large-text" placeholder="<?php _e('Enter dates when this venue is unavailable (e.g., 2024-01-15, 2024-02-20)', 'sportspress-schedule-generator'); ?>"><?php 
+                            $venue_blackouts = $venue['blackout_dates'] ?? array();
+                            echo esc_textarea(is_array($venue_blackouts) ? implode("\n", $venue_blackouts) : $venue_blackouts);
+                        ?></textarea>
+                        <p class="description"><?php _e('Specific dates when this venue is unavailable. Enter one date per line in YYYY-MM-DD format. This is useful when a venue is temporarily closed or unavailable on specific days.', 'sportspress-schedule-generator'); ?></p>
                     </td>
                 </tr>
             </table>

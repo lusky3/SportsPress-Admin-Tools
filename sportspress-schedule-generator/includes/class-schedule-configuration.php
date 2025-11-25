@@ -64,6 +64,12 @@ class SPSG_Schedule_Configuration {
     public $venue_timeslots;
     
     /**
+     * Venue-specific blackout dates (venue_id => array of dates)
+     * @var array
+     */
+    public $venue_blackout_dates;
+    
+    /**
      * Match length in minutes
      * @var int
      */
@@ -141,6 +147,7 @@ class SPSG_Schedule_Configuration {
         $this->division_grouping = isset($data['division_grouping']) ? (array) $data['division_grouping'] : array();
         $this->timezone = isset($data['timezone']) ? $data['timezone'] : wp_timezone_string();
         $this->venue_timeslots = isset($data['venue_timeslots']) ? (array) $data['venue_timeslots'] : array();
+        $this->venue_blackout_dates = isset($data['venue_blackout_dates']) ? (array) $data['venue_blackout_dates'] : array();
         $this->match_length = isset($data['match_length']) ? (int) $data['match_length'] : 60;
         $this->matchup_style = isset($data['matchup_style']) ? $data['matchup_style'] : 'double_round_robin';
         $this->home_away_preferences = isset($data['home_away_preferences']) ? (array) $data['home_away_preferences'] : array();
@@ -165,6 +172,7 @@ class SPSG_Schedule_Configuration {
             'division_grouping' => $this->division_grouping,
             'timezone' => $this->timezone,
             'venue_timeslots' => $this->venue_timeslots,
+            'venue_blackout_dates' => $this->venue_blackout_dates,
             'match_length' => $this->match_length,
             'matchup_style' => $this->matchup_style,
             'home_away_preferences' => $this->home_away_preferences,
@@ -518,6 +526,7 @@ class SPSG_Schedule_Configuration {
         $sanitized['team_restrictions'] = $this->sanitize_team_restrictions($data['team_restrictions'] ?? array());
         $sanitized['division_grouping'] = $this->sanitize_division_grouping($data['division_grouping'] ?? array());
         $sanitized['venue_timeslots'] = $this->sanitize_venue_timeslots($data['venue_timeslots'] ?? array());
+        $sanitized['venue_blackout_dates'] = $this->sanitize_venue_blackout_dates($data['venue_blackout_dates'] ?? array());
         $sanitized['match_length'] = absint($data['match_length'] ?? 60);
         
         // Sanitize new Phase 2 properties
@@ -647,6 +656,36 @@ class SPSG_Schedule_Configuration {
             foreach ((array) $timeslots as $day => $slots) {
                 $day = sanitize_text_field($day);
                 $sanitized[$venue_id][$day] = array_map('sanitize_text_field', (array) $slots);
+            }
+        }
+        return $sanitized;
+    }
+    
+    /**
+     * Sanitize venue blackout dates
+     */
+    private function sanitize_venue_blackout_dates($venue_blackout_dates) {
+        $sanitized = array();
+        foreach ((array) $venue_blackout_dates as $venue_id => $dates) {
+            $venue_id = sanitize_text_field($venue_id);
+            
+            // Handle both string (textarea) and array input
+            if (is_string($dates)) {
+                $dates = array_filter(array_map('trim', explode("\n", $dates)));
+            }
+            
+            // Validate and sanitize each date
+            $valid_dates = array();
+            foreach ((array) $dates as $date) {
+                $date = sanitize_text_field($date);
+                // Validate date format (YYYY-MM-DD)
+                if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+                    $valid_dates[] = $date;
+                }
+            }
+            
+            if (!empty($valid_dates)) {
+                $sanitized[$venue_id] = $valid_dates;
             }
         }
         return $sanitized;

@@ -424,13 +424,15 @@ class SPSG_Schedule_Engine {
             if (in_array($day_name, $config->playing_days) && isset($config->time_slots[$day_name])) {
                 foreach ($config->time_slots[$day_name] as $time_slot) {
                     foreach ($config->venues as $venue) {
-                        // Check if venue is available for this day/time
-                        if (!$this->is_venue_available($venue, $day_name, $time_slot, $config)) {
+                        $date_str = $current_date->format('Y-m-d');
+                        
+                        // Check if venue is available for this day/time/date
+                        if (!$this->is_venue_available($venue, $day_name, $time_slot, $date_str, $config)) {
                             continue;
                         }
                         
                         $slot = (object) array(
-                            'date' => $current_date->format('Y-m-d'),
+                            'date' => $date_str,
                             'time_slot' => $time_slot,
                             'venue' => $venue
                         );
@@ -450,15 +452,22 @@ class SPSG_Schedule_Engine {
     }
     
     /**
-     * Check if venue is available for specific day and time
+     * Check if venue is available for specific day, time, and date
      */
-    private function is_venue_available($venue, $day_name, $time_slot, $config) {
+    private function is_venue_available($venue, $day_name, $time_slot, $date, $config) {
+        $venue_id = is_object($venue) ? $venue->id : $venue['id'];
+        
+        // Check venue-specific blackout dates first
+        if (!empty($config->venue_blackout_dates[$venue_id])) {
+            if (in_array($date, $config->venue_blackout_dates[$venue_id])) {
+                return false;
+            }
+        }
+        
         // If no venue-specific timeslots configured, venue is available for all times
         if (empty($config->venue_timeslots)) {
             return true;
         }
-        
-        $venue_id = is_object($venue) ? $venue->id : $venue['id'];
         
         // If this venue has no specific timeslots configured, it's available for all times
         if (!isset($config->venue_timeslots[$venue_id])) {
