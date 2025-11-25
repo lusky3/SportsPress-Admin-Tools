@@ -1135,6 +1135,56 @@ class SPSG_Admin {
                     });
                 });
                 
+                // Team restrictions - Add restriction
+                $("#spsg-add-team-restriction").click(function() {
+                    var container = $("#spsg-team-restrictions-container");
+                    var index = container.children().length;
+                    var template = $(".spsg-team-restriction-row:first").clone();
+                    
+                    // Update indices in the cloned template
+                    template.find("select, input").each(function() {
+                        var name = $(this).attr("name");
+                        if (name) {
+                            $(this).attr("name", name.replace(/\[\d+\]/, "[" + index + "]"));
+                        }
+                    });
+                    
+                    // Clear selections
+                    template.find("select option").prop("selected", false);
+                    template.attr("data-index", index);
+                    
+                    container.append(template);
+                    
+                    // Reinitialize Select2 if enabled
+                    if (typeof $.fn.select2 !== "undefined") {
+                        template.find(".spsg-team-restriction-select").select2({
+                            width: "100%",
+                            placeholder: "' . esc_js(__('Select teams...', 'sportspress-schedule-generator')) . '",
+                            allowClear: true
+                        });
+                    }
+                });
+                
+                // Team restrictions - Remove restriction
+                $(document).on("click", ".spsg-remove-team-restriction", function() {
+                    if ($(".spsg-team-restriction-row").length > 1) {
+                        if (confirm("' . esc_js(__('Remove this team restriction?', 'sportspress-schedule-generator')) . '")) {
+                            $(this).closest(".spsg-team-restriction-row").remove();
+                        }
+                    } else {
+                        alert("' . esc_js(__('At least one restriction row must remain. Clear the teams instead if not needed.', 'sportspress-schedule-generator')) . '");
+                    }
+                });
+                
+                // Initialize Select2 on team restriction selects if enabled
+                if (typeof $.fn.select2 !== "undefined") {
+                    $(".spsg-team-restriction-select").select2({
+                        width: "100%",
+                        placeholder: "' . esc_js(__('Select teams...', 'sportspress-schedule-generator')) . '",
+                        allowClear: true
+                    });
+                }
+                
                 // Form validation
                 $("#spsg-config-form").submit(function(e) {
                     var isValid = true;
@@ -1816,6 +1866,55 @@ class SPSG_Admin {
                 </tr>
             </table>
             
+            <h3><?php _e('Day Weighting / Priority', 'sportspress-schedule-generator'); ?></h3>
+            <p class="description"><?php _e('Set the relative weight for each playing day to control how many games are scheduled. Higher weights mean more games on that day. Teams will still get balanced distribution across all days.', 'sportspress-schedule-generator'); ?></p>
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><?php _e('Day Weights', 'sportspress-schedule-generator'); ?></th>
+                    <td>
+                        <div id="spsg-day-weights-container">
+                            <?php
+                            $days = array('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday');
+                            $selected_days = $config->playing_days ?: array();
+                            $day_ratios = $config->distribution_rules['day_ratios'] ?? array();
+                            
+                            foreach ($days as $day) {
+                                if (in_array($day, $selected_days)) {
+                                    $weight = isset($day_ratios[$day]) ? round($day_ratios[$day] * 100) : round((1.0 / count($selected_days)) * 100);
+                                    ?>
+                                    <div class="spsg-day-weight-row" style="margin-bottom: 10px;">
+                                        <label style="display: inline-block; width: 120px; font-weight: 600;">
+                                            <?php echo esc_html(ucfirst($day)); ?>:
+                                        </label>
+                                        <input type="number" 
+                                               name="distribution_rules[day_weights][<?php echo esc_attr($day); ?>]" 
+                                               value="<?php echo esc_attr($weight); ?>" 
+                                               min="1" 
+                                               max="100" 
+                                               step="1"
+                                               class="small-text spsg-day-weight-input"
+                                               data-day="<?php echo esc_attr($day); ?>" />
+                                        <span class="spsg-day-weight-percentage"><?php echo esc_html($weight); ?>%</span>
+                                    </div>
+                                    <?php
+                                }
+                            }
+                            ?>
+                        </div>
+                        <p class="description">
+                            <?php _e('Example: Set Friday to 75 and Sunday to 25 for a 3:1 ratio (75% of games on Friday, 25% on Sunday).', 'sportspress-schedule-generator'); ?>
+                            <br>
+                            <strong><?php _e('Total:', 'sportspress-schedule-generator'); ?></strong> <span id="spsg-day-weights-total">100</span>%
+                            <span id="spsg-day-weights-warning" style="color: #d63638; display: none; margin-left: 10px;">
+                                <?php _e('⚠ Weights should total 100%', 'sportspress-schedule-generator'); ?>
+                            </span>
+                        </p>
+                        <button type="button" class="button" id="spsg-normalize-day-weights"><?php _e('Normalize to 100%', 'sportspress-schedule-generator'); ?></button>
+                        <button type="button" class="button" id="spsg-reset-day-weights"><?php _e('Reset to Equal', 'sportspress-schedule-generator'); ?></button>
+                    </td>
+                </tr>
+            </table>
+            
             <h3><?php _e('Division Grouping', 'sportspress-schedule-generator'); ?></h3>
             <table class="form-table">
                 <tr>
@@ -1858,6 +1957,54 @@ class SPSG_Admin {
         <p class="submit">
             <input type="submit" name="submit" class="button-primary" value="<?php _e('Save Configuration', 'sportspress-schedule-generator'); ?>" />
         </p>
+        <?php
+    }
+    
+    /**
+     * Render team restriction row
+     */
+    private function render_team_restriction_row($restriction, $index, $config) {
+        $teams = $restriction['teams'] ?? array();
+        
+        // Get all teams from divisions for selection
+        $all_teams = array();
+        if (!empty($config->divisions)) {
+            foreach ($config->divisions as $division) {
+                if (!empty($division['teams'])) {
+                    foreach ($division['teams'] as $team) {
+                        if (!in_array($team, $all_teams)) {
+                            $all_teams[] = $team;
+                        }
+                    }
+                }
+            }
+        }
+        sort($all_teams);
+        ?>
+        <div class="spsg-team-restriction-row" data-index="<?php echo esc_attr($index); ?>" style="background: #f9f9f9; padding: 15px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 4px;">
+            <table class="form-table" style="margin: 0;">
+                <tr>
+                    <th scope="row"><?php _e('Teams That Cannot Play Simultaneously', 'sportspress-schedule-generator'); ?></th>
+                    <td>
+                        <div class="spsg-team-restriction-teams">
+                            <?php if (!empty($all_teams)): ?>
+                                <select name="team_restrictions[overlap_avoidance][<?php echo esc_attr($index); ?>][teams][]" multiple class="spsg-team-restriction-select" style="width: 100%; min-height: 120px;">
+                                    <?php foreach ($all_teams as $team): ?>
+                                        <option value="<?php echo esc_attr($team); ?>" <?php selected(in_array($team, $teams)); ?>>
+                                            <?php echo esc_html($team); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <p class="description"><?php _e('Select 2 or more teams that cannot play at the same time. Hold Ctrl/Cmd to select multiple teams.', 'sportspress-schedule-generator'); ?></p>
+                            <?php else: ?>
+                                <p class="description" style="color: #d63638;"><?php _e('Please add teams to divisions first before configuring team restrictions.', 'sportspress-schedule-generator'); ?></p>
+                            <?php endif; ?>
+                        </div>
+                        <button type="button" class="button spsg-remove-team-restriction" style="margin-top: 10px;"><?php _e('Remove Restriction', 'sportspress-schedule-generator'); ?></button>
+                    </td>
+                </tr>
+            </table>
+        </div>
         <?php
     }
     
