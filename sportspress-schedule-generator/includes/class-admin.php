@@ -400,14 +400,42 @@ class SPSG_Admin {
                                 // Clear existing venues
                                 $("#spsg-venues-container").empty();
                                 
-                                // Add imported venues
+                                // Add imported venues with full structure including date availability
                                 $.each(response.data.venues, function(index, venue) {
+                                    var venueId = venue.id || "venue_" + index;
+                                    var days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+                                    
                                     var html = \'<div class="spsg-venue-row" data-index="\' + index + \'">\';
-                                    html += \'<table class="form-table"><tr>\';
-                                    html += \'<th scope="row">Venue Name</th>\';
-                                    html += \'<td><input type="text" name="venues[\' + index + \'][name]" value="\' + venue.name + \'" class="regular-text" />\';
-                                    html += \'<button type="button" class="button spsg-remove-venue">Remove</button></td></tr>\';
+                                    html += \'<table class="form-table">\';
+                                    
+                                    // Venue name row
+                                    html += \'<tr><th scope="row">' . esc_js(__('Venue Name', 'sportspress-schedule-generator')) . '</th>\';
+                                    html += \'<td>\';
+                                    html += \'<input type="text" name="venues[\' + index + \'][name]" value="\' + venue.name + \'" class="regular-text" required />\';
+                                    html += \'<input type="hidden" name="venues[\' + index + \'][id]" value="\' + venueId + \'" />\';
+                                    html += \'<button type="button" class="button spsg-remove-venue">' . esc_js(__('Remove', 'sportspress-schedule-generator')) . '</button>\';
+                                    html += \'</td></tr>\';
+                                    
+                                    // Available days & times row
+                                    html += \'<tr><th scope="row">' . esc_js(__('Available Days & Times', 'sportspress-schedule-generator')) . '</th>\';
+                                    html += \'<td><div class="spsg-venue-timeslots">\';
+                                    
+                                    $.each(days, function(i, day) {
+                                        html += \'<div class="spsg-venue-day-timeslots">\';
+                                        html += \'<label>\';
+                                        html += \'<input type="checkbox" class="spsg-venue-day-toggle" data-day="\' + day + \'" />\';
+                                        html += \'<strong>\' + day.charAt(0).toUpperCase() + day.slice(1) + \'</strong>\';
+                                        html += \'</label>\';
+                                        html += \'<div class="spsg-venue-day-times" style="display:none;">\';
+                                        html += \'<textarea name="venue_timeslots[\' + venueId + \'][\' + day + \']" rows="2" class="regular-text" placeholder="' . esc_js(__('Enter times (e.g., 19:00, 20:00)', 'sportspress-schedule-generator')) . '"></textarea>\';
+                                        html += \'</div></div>\';
+                                    });
+                                    
+                                    html += \'</div>\';
+                                    html += \'<p class="description">' . esc_js(__('Select which days and times this venue is available. Leave unchecked if venue is available all configured times.', 'sportspress-schedule-generator')) . '</p>\';
+                                    html += \'</td></tr>\';
                                     html += \'</table></div>\';
+                                    
                                     $("#spsg-venues-container").append(html);
                                 });
                                 
