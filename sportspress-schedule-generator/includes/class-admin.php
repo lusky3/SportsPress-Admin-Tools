@@ -1532,31 +1532,109 @@ class SPSG_Admin {
                     });
                 }
                 
-                // Form validation
+                // AJAX form validation and submission
                 $("#spsg-config-form").submit(function(e) {
-                    var isValid = true;
-                    var errors = [];
+                    e.preventDefault();
                     
-                    // Basic validation
-                    if (!$("input[name=name]").val()) {
-                        errors.push("Configuration name is required");
-                        isValid = false;
-                    }
+                    // Clear previous errors
+                    $(".spsg-validation-error").remove();
+                    $("#spsg-validation-summary").remove();
                     
-                    if (!$("input[name=season_start]").val()) {
-                        errors.push("Season start date is required");
-                        isValid = false;
-                    }
+                    var $form = $(this);
+                    var $submitBtn = $form.find("input[type=submit]");
+                    var originalBtnText = $submitBtn.val();
                     
-                    if (!$("input[name=season_end]").val()) {
-                        errors.push("Season end date is required");
-                        isValid = false;
-                    }
+                    // Disable submit button
+                    $submitBtn.prop("disabled", true).val("' . esc_js(__('Validating...', 'sportspress-schedule-generator')) . '");
                     
-                    if (!isValid) {
-                        alert("Please fix the following errors:\\n" + errors.join("\\n"));
-                        e.preventDefault();
-                    }
+                    // Serialize form data
+                    var formData = $form.serialize();
+                    
+                    // First, validate the configuration
+                    $.ajax({
+                        url: ajaxurl,
+                        type: "POST",
+                        data: formData + "&action=spsg_validate_config",
+                        success: function(response) {
+                            if (response.success) {
+                                // Validation passed, now save
+                                $submitBtn.val("' . esc_js(__('Saving...', 'sportspress-schedule-generator')) . '");
+                                
+                                $.ajax({
+                                    url: ajaxurl,
+                                    type: "POST",
+                                    data: formData + "&action=spsg_save_config",
+                                    success: function(saveResponse) {
+                                        if (saveResponse.success) {
+                                            // Show success message
+                                            var successMsg = \'<div id="spsg-validation-summary" class="notice notice-success is-dismissible" style="margin: 20px 0;"><p><strong>' . esc_js(__('Success!', 'sportspress-schedule-generator')) . '</strong> \' + saveResponse.data.message + \'</p></div>\';
+                                            $form.before(successMsg);
+                                            
+                                            // Scroll to top to show message
+                                            $("html, body").animate({ scrollTop: 0 }, 300);
+                                            
+                                            // Auto-dismiss after 5 seconds
+                                            setTimeout(function() {
+                                                $("#spsg-validation-summary").fadeOut(function() {
+                                                    $(this).remove();
+                                                });
+                                            }, 5000);
+                                        } else {
+                                            // Save failed
+                                            var errorMsg = \'<div id="spsg-validation-summary" class="notice notice-error" style="margin: 20px 0;"><p><strong>' . esc_js(__('Error:', 'sportspress-schedule-generator')) . '</strong> \' + saveResponse.data + \'</p></div>\';
+                                            $form.before(errorMsg);
+                                            $("html, body").animate({ scrollTop: 0 }, 300);
+                                        }
+                                    },
+                                    error: function() {
+                                        var errorMsg = \'<div id="spsg-validation-summary" class="notice notice-error" style="margin: 20px 0;"><p><strong>' . esc_js(__('Error:', 'sportspress-schedule-generator')) . '</strong> ' . esc_js(__('Failed to save configuration. Please try again.', 'sportspress-schedule-generator')) . '</p></div>\';
+                                        $form.before(errorMsg);
+                                        $("html, body").animate({ scrollTop: 0 }, 300);
+                                    },
+                                    complete: function() {
+                                        $submitBtn.prop("disabled", false).val(originalBtnText);
+                                    }
+                                });
+                            } else {
+                                // Validation failed - show errors
+                                var errors = response.data.errors || {};
+                                var errorCount = Object.keys(errors).length;
+                                
+                                // Show summary at top
+                                var summaryHtml = \'<div id="spsg-validation-summary" class="notice notice-error" style="margin: 20px 0;">\';
+                                summaryHtml += \'<p><strong>' . esc_js(__('Configuration Validation Failed', 'sportspress-schedule-generator')) . '</strong></p>\';
+                                summaryHtml += \'<p>' . esc_js(__('Please fix the following errors:', 'sportspress-schedule-generator')) . '</p>\';
+                                summaryHtml += \'<ul style="list-style: disc; margin-left: 20px;">\';
+                                
+                                $.each(errors, function(field, message) {
+                                    summaryHtml += \'<li>\' + message + \'</li>\';
+                                    
+                                    // Add inline error near the field
+                                    var $field = $(\'[name="\' + field + \'"]\');
+                                    if ($field.length) {
+                                        $field.css("border-color", "#d63638");
+                                        $field.after(\'<p class="spsg-validation-error" style="color: #d63638; margin-top: 5px;"><strong>⚠</strong> \' + message + \'</p>\');
+                                    }
+                                });
+                                
+                                summaryHtml += \'</ul></div>\';
+                                $form.before(summaryHtml);
+                                
+                                // Scroll to top to show errors
+                                $("html, body").animate({ scrollTop: 0 }, 300);
+                                
+                                $submitBtn.prop("disabled", false).val(originalBtnText);
+                            }
+                        },
+                        error: function() {
+                            var errorMsg = \'<div id="spsg-validation-summary" class="notice notice-error" style="margin: 20px 0;"><p><strong>' . esc_js(__('Error:', 'sportspress-schedule-generator')) . '</strong> ' . esc_js(__('Failed to validate configuration. Please try again.', 'sportspress-schedule-generator')) . '</p></div>\';
+                            $form.before(errorMsg);
+                            $("html, body").animate({ scrollTop: 0 }, 300);
+                            $submitBtn.prop("disabled", false).val(originalBtnText);
+                        }
+                    });
+                    
+                    return false;
                 });
             });
         ');
@@ -2920,7 +2998,7 @@ class SPSG_Admin {
      * AJAX handler for saving configuration
      */
     public function ajax_save_config() {
-        check_ajax_referer('spsg_admin_action', 'nonce');
+        check_ajax_referer('spsg_admin_action', 'spsg_nonce');
         
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
@@ -2932,7 +3010,9 @@ class SPSG_Admin {
         if (is_wp_error($result)) {
             wp_send_json_error($result->get_error_message());
         } else {
-            wp_send_json_success(__('Configuration saved successfully', 'sportspress-schedule-generator'));
+            wp_send_json_success(array(
+                'message' => __('Configuration saved successfully! Your changes have been preserved.', 'sportspress-schedule-generator')
+            ));
         }
     }
     
@@ -2962,7 +3042,7 @@ class SPSG_Admin {
      * AJAX handler for validating configuration
      */
     public function ajax_validate_config() {
-        check_ajax_referer('spsg_admin_action', 'nonce');
+        check_ajax_referer('spsg_admin_action', 'spsg_nonce');
         
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
@@ -2972,9 +3052,20 @@ class SPSG_Admin {
         $validation = $this->config_manager->validate($config_data);
         
         if (is_wp_error($validation)) {
-            wp_send_json_error($validation->get_error_message());
+            // Get all error messages
+            $errors = array();
+            foreach ($validation->get_error_codes() as $code) {
+                $errors[$code] = $validation->get_error_message($code);
+            }
+            
+            wp_send_json_error(array(
+                'errors' => $errors,
+                'message' => __('Configuration validation failed', 'sportspress-schedule-generator')
+            ));
         } else {
-            wp_send_json_success(__('Configuration is valid', 'sportspress-schedule-generator'));
+            wp_send_json_success(array(
+                'message' => __('Configuration is valid', 'sportspress-schedule-generator')
+            ));
         }
     }
     
