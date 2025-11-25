@@ -128,7 +128,7 @@ The import dialog with AJAX handlers, nonces, HTML structure, CSS styles, JavaSc
   - _Files: assets/js/schedule-generator.js_
   - _Estimated: 30 minutes_
 
-- [ ] 11. Add Import Preview AJAX Handler
+- [x] 11. Add Import Preview AJAX Handler
   - Add `ajax_preview_import()` method to SPSG_Admin class
   - Hook method to WordPress AJAX action
   - Accept JSON configuration data from POST

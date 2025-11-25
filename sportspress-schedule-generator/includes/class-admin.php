@@ -48,6 +48,7 @@ class SPSG_Admin {
         add_action('wp_ajax_spsg_upload_venue_csv', array($this, 'ajax_upload_venue_csv'));
         add_action('wp_ajax_spsg_import_venue_schedule', array($this, 'ajax_import_venue_schedule'));
         add_action('wp_ajax_spsg_clone_config', array($this, 'ajax_clone_config'));
+        add_action('wp_ajax_spsg_preview_import', array($this, 'ajax_preview_import'));
     }
     
     /**
@@ -328,7 +329,8 @@ class SPSG_Admin {
                 'get_available_venues' => wp_create_nonce('spsg_get_available_venues'),
                 'upload_venue_csv' => wp_create_nonce('spsg_upload_venue_csv'),
                 'import_venue_schedule' => wp_create_nonce('spsg_import_venue_schedule'),
-                'clone_config' => wp_create_nonce('spsg_clone_config')
+                'clone_config' => wp_create_nonce('spsg_clone_config'),
+                'preview_import' => wp_create_nonce('spsg_preview_import')
             )
         ));
         
@@ -3200,6 +3202,38 @@ class SPSG_Admin {
             'message' => __('Configuration cloned successfully', 'sportspress-schedule-generator'),
             'new_config_id' => $new_config_id
         ));
+    }
+    
+    /**
+     * AJAX handler for previewing configuration import
+     * 
+     * Accepts JSON configuration data and returns preview information
+     * including name, dates, counts, and compatibility warnings.
+     */
+    public function ajax_preview_import() {
+        check_ajax_referer('spsg_preview_import', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+        }
+        
+        // Get JSON data from POST
+        $json_data = wp_unslash($_POST['config_data'] ?? '');
+        
+        if (empty($json_data)) {
+            wp_send_json_error(__('No configuration data provided', 'sportspress-schedule-generator'));
+        }
+        
+        // Call the configuration manager's preview_import method
+        $preview = $this->config_manager->preview_import($json_data);
+        
+        // Check if preview returned an error
+        if (is_wp_error($preview)) {
+            wp_send_json_error($preview->get_error_message());
+        }
+        
+        // Return preview data
+        wp_send_json_success($preview);
     }
     
     /**
