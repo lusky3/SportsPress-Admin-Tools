@@ -28,6 +28,7 @@
             $('#spsg-export-csv').on('click', function() { SPSG.exportSchedule('csv'); });
             $('#spsg-export-xlsx').on('click', function() { SPSG.exportSchedule('xlsx'); });
             $('#spsg-cancel-generation').on('click', this.cancelGeneration.bind(this));
+            $('#spsg-clone-config').on('click', this.cloneConfiguration.bind(this));
         },
         
         checkConfigurationStatus: function() {
@@ -68,6 +69,68 @@
                 },
                 error: function() {
                     self.showMessage('error', 'Validation request failed');
+                }
+            });
+        },
+        
+        cloneConfiguration: function() {
+            var self = this;
+            
+            // Validate configuration is selected
+            var configId = $('#spsg-config-selector').val();
+            if (!configId) {
+                this.showMessage('error', 'Please select a configuration to clone');
+                return;
+            }
+            
+            // Prompt user for new configuration name
+            var newName = prompt('Enter a name for the cloned configuration:');
+            
+            // Handle cancel (user closes prompt)
+            if (newName === null) {
+                return;
+            }
+            
+            // Handle empty name (show validation error)
+            if (!newName || newName.trim() === '') {
+                this.showMessage('error', 'Configuration name cannot be empty');
+                return;
+            }
+            
+            // Trim the name
+            newName = newName.trim();
+            
+            // Make AJAX call with config ID and new name
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'spsg_clone_config',
+                    nonce: spsgData.nonces.clone_config,
+                    config_id: configId,
+                    new_name: newName
+                },
+                beforeSend: function() {
+                    self.showMessage('info', 'Cloning configuration...');
+                },
+                success: function(response) {
+                    if (response.success) {
+                        // Show success message on completion
+                        self.showMessage('success', response.data.message);
+                        
+                        // Reload page to show new config
+                        setTimeout(function() {
+                            window.location.href = '?page=spsg-schedule-generator&config_id=' + response.data.new_config_id;
+                        }, 1000);
+                    } else {
+                        // Show error message on failure
+                        var errorMsg = response.data.message || response.data || 'Failed to clone configuration';
+                        self.showMessage('error', errorMsg);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    // Show error message on failure
+                    self.showMessage('error', 'Clone request failed: ' + error);
                 }
             });
         },
