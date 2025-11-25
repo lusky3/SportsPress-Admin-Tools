@@ -21,7 +21,7 @@ Complete guide to all documentation for the SportsPress Schedule Generator plugi
 
 ### Development
 - **[DEVELOPMENT-HISTORY.md](DEVELOPMENT-HISTORY.md)** - Complete development history, phases, and completed features
-- **[../UNUSED-CODE-AUDIT.md](../UNUSED-CODE-AUDIT.md)** - Code audit findings and cleanup recommendations
+- **[cleanup/](cleanup/)** - Cleanup documentation and audit reports (November 2025)
 
 ### Architecture
 - **Architecture Overview** - See README.md "Architecture" section
@@ -81,7 +81,7 @@ Complete guide to all documentation for the SportsPress Schedule Generator plugi
 
 ### Development
 - [Development History](DEVELOPMENT-HISTORY.md) - Complete development timeline
-- [Unused Code Audit](../UNUSED-CODE-AUDIT.md) - Code cleanup findings
+- [Cleanup Documentation](cleanup/) - Code audit and cleanup reports
 
 ---
 
