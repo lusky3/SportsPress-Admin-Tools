@@ -2136,13 +2136,15 @@ class SPSG_Admin {
                             <pre style="background: #fff; padding: 10px; overflow-x: auto;">Week Start Date,Venue Name,Time Slots
 2024-01-01,Arena A,18:00-23:00
 2024-01-01,Arena B,18:45-22:45
-2024-01-08,Arena A,18:00-23:00
-2024-01-08,Arena D,18:00</pre>
+2024-01-08,Arena A,6:00-12:00
+2024-01-08,Arena D,14:30, 16:00, 17:30
+2024-01-15,Arena C,9:00</pre>
                             <p><strong><?php _e('Time Slot Formats:', 'sportspress-schedule-generator'); ?></strong></p>
                             <ul>
-                                <li><?php _e('Range: 18:00-23:00 (generates hourly slots)', 'sportspress-schedule-generator'); ?></li>
-                                <li><?php _e('List: 18:00, 19:00, 20:00', 'sportspress-schedule-generator'); ?></li>
-                                <li><?php _e('Single: 18:00', 'sportspress-schedule-generator'); ?></li>
+                                <li><?php _e('Range: 18:00-23:00 (generates hourly slots from start to end)', 'sportspress-schedule-generator'); ?></li>
+                                <li><?php _e('List: 18:00, 19:00, 20:00 (comma-separated specific times)', 'sportspress-schedule-generator'); ?></li>
+                                <li><?php _e('Single: 18:00 (one time slot)', 'sportspress-schedule-generator'); ?></li>
+                                <li><?php _e('Any time from 0:00 to 23:59 is supported', 'sportspress-schedule-generator'); ?></li>
                             </ul>
                         </div>
                     </details>
@@ -2387,8 +2389,8 @@ class SPSG_Admin {
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
-                                <p class="description"><?php _e('Select 2 or more teams that cannot play at the same time. Hold Ctrl/Cmd to select multiple teams.', 'sportspress-schedule-generator'); ?></p>p>
-                             ?php else: ?>
+                                <p class="description"><?php _e('Select 2 or more teams that cannot play at the same time. Hold Ctrl/Cmd to select multiple teams.', 'sportspress-schedule-generator'); ?></p>
+                            <?php else: ?>
                                 <p class="description" style="color: #d63638;"><?php _e('Please add teams to divisions first before configuring team restrictions.', 'sportspress-schedule-generator'); ?></p>
                             <?php endif; ?>
                         </div>
