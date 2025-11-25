@@ -2,6 +2,54 @@
 
 This directory contains unit and integration tests for the Schedule Generator plugin.
 
+## Test File Organization
+
+### Automated Tests (tests/ root)
+Standard test files that use proper WordPress test environment via `bootstrap.php`:
+- `test-*.php` - Automated tests run by test suite
+- Use WordPress test library
+- Suitable for CI/CD
+- Part of regular test runs
+
+### Manual Verification Scripts (tests/manual/)
+Manual testing and debugging tools:
+- `verify-*.php` - Interactive verification scripts
+- Require running WordPress installation
+- Not part of automated test suite
+- See `manual/README.md` for usage
+
+### Test Reports (tests/reports/)
+Historical test verification reports:
+- Markdown files documenting test results
+- Archived for reference
+- See `reports/README.md` for details
+
+### Test Subdirectories
+- `unit/` - Unit tests for individual classes
+- `integration/` - Integration tests for component interactions
+
+## Available Test Files
+
+### Core Tests
+- `test-configuration-lifecycle.php` - Configuration CRUD operations
+- `test-validation.php` - Validation system
+- `test-export-filtering.php` - Export filtering functionality
+- `test-import-dialog-ajax.php` - Import dialog AJAX handlers
+- `test-nonce-registration.php` - Nonce security
+
+### Feature Tests
+- `test-home-away-sanitization.php` - Home/away preferences
+- `test-inter-division-sanitization.php` - Inter-division games
+- `test-matchup-style-sanitization.php` - Matchup style validation
+- `test-matchup-generator.php` - Matchup generation algorithms
+- `test-slot-allocator.php` - Slot allocation logic
+- `test-progress-tracking.php` - Progress tracking and cancellation
+- `test-statistics-calculator.php` - Schedule statistics
+
+### Integration Tests
+- `test-manual-scenarios.php` - End-to-end scenarios
+- `test-sportspress-importer.php` - SportsPress integration
+
 ## Test Coverage
 
 ### Unit Tests (test-validation.php)

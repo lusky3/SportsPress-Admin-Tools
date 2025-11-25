@@ -82,9 +82,8 @@ class SPSG_Autoloader {
             
             // Data models
             'SPSG_Game' => $base_path . 'models/class-game.php',
-            'SPSG_Team' => $base_path . 'models/class-team.php',
-            'SPSG_Venue' => $base_path . 'models/class-venue.php',
-            'SPSG_Division' => $base_path . 'models/class-division.php',
+            // Note: Team, Venue, and Division models not yet implemented
+            // Data is currently handled as arrays in configuration
         );
     }
 }
