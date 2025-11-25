@@ -47,6 +47,7 @@ class SPSG_Admin {
         add_action('wp_ajax_spsg_get_import_progress', array($this, 'ajax_get_import_progress'));
         add_action('wp_ajax_spsg_upload_venue_csv', array($this, 'ajax_upload_venue_csv'));
         add_action('wp_ajax_spsg_import_venue_schedule', array($this, 'ajax_import_venue_schedule'));
+        add_action('wp_ajax_spsg_clone_config', array($this, 'ajax_clone_config'));
     }
     
     /**
@@ -326,7 +327,8 @@ class SPSG_Admin {
                 'get_import_progress' => wp_create_nonce('spsg_get_import_progress'),
                 'get_available_venues' => wp_create_nonce('spsg_get_available_venues'),
                 'upload_venue_csv' => wp_create_nonce('spsg_upload_venue_csv'),
-                'import_venue_schedule' => wp_create_nonce('spsg_import_venue_schedule')
+                'import_venue_schedule' => wp_create_nonce('spsg_import_venue_schedule'),
+                'clone_config' => wp_create_nonce('spsg_clone_config')
             )
         ));
         
@@ -3151,6 +3153,52 @@ class SPSG_Admin {
         update_option('spsg_saved_configurations', $saved_configs);
         
         wp_send_json_success(__('Configuration deleted successfully', 'sportspress-schedule-generator'));
+    }
+    
+    /**
+     * AJAX handler for cloning configuration
+     */
+    public function ajax_clone_config() {
+        check_ajax_referer('spsg_clone_config', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+        }
+        
+        $config_id = sanitize_text_field($_POST['config_id'] ?? '');
+        $new_name = sanitize_text_field($_POST['new_name'] ?? '');
+        
+        if (empty($config_id)) {
+            wp_send_json_error(__('No configuration ID provided', 'sportspress-schedule-generator'));
+        }
+        
+        if (empty($new_name)) {
+            wp_send_json_error(__('No name provided for cloned configuration', 'sportspress-schedule-generator'));
+        }
+        
+        $result = $this->config_manager->clone_configuration($config_id, $new_name);
+        
+        if (is_wp_error($result)) {
+            wp_send_json_error($result->get_error_message());
+        }
+        
+        // The clone_configuration method returns true on success, not the new config ID
+        // We need to get the newly created config ID
+        $all_configs = $this->config_manager->get_all_configurations();
+        $new_config_id = null;
+        
+        // Find the most recently created config with the matching name
+        foreach ($all_configs as $id => $config_info) {
+            if ($config_info['name'] === $new_name) {
+                $new_config_id = $id;
+                break;
+            }
+        }
+        
+        wp_send_json_success(array(
+            'message' => __('Configuration cloned successfully', 'sportspress-schedule-generator'),
+            'new_config_id' => $new_config_id
+        ));
     }
     
     /**
