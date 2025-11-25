@@ -575,21 +575,54 @@ class SPSG_Schedule_Configuration {
      * Sanitize distribution rules
      */
     private function sanitize_distribution_rules($rules) {
-        return array(
+        $sanitized = array(
             'day_balance' => array_map('floatval', (array) ($rules['day_balance'] ?? array())),
             'time_slot_balance' => (bool) ($rules['time_slot_balance'] ?? true),
             'home_away_balance' => (bool) ($rules['home_away_balance'] ?? true)
         );
+        
+        // Process day weights and convert to ratios
+        if (isset($rules['day_weights']) && is_array($rules['day_weights'])) {
+            $day_weights = array_map('floatval', $rules['day_weights']);
+            $total_weight = array_sum($day_weights);
+            
+            // Convert weights to ratios (0.0 to 1.0)
+            if ($total_weight > 0) {
+                $day_ratios = array();
+                foreach ($day_weights as $day => $weight) {
+                    $day_ratios[sanitize_key($day)] = $weight / $total_weight;
+                }
+                $sanitized['day_ratios'] = $day_ratios;
+            }
+        }
+        
+        return $sanitized;
     }
     
     /**
      * Sanitize team restrictions
      */
     private function sanitize_team_restrictions($restrictions) {
-        return array(
+        $sanitized = array(
             'back_to_back_avoid' => array_map('sanitize_text_field', (array) ($restrictions['back_to_back_avoid'] ?? array())),
-            'overlap_avoid' => array_map('sanitize_text_field', (array) ($restrictions['overlap_avoid'] ?? array()))
+            'overlap_avoid' => array()
         );
+        
+        // Sanitize overlap_avoidance (array of restriction groups)
+        if (isset($restrictions['overlap_avoidance']) && is_array($restrictions['overlap_avoidance'])) {
+            foreach ($restrictions['overlap_avoidance'] as $restriction) {
+                if (isset($restriction['teams']) && is_array($restriction['teams']) && count($restriction['teams']) >= 2) {
+                    $buffer_minutes = isset($restriction['buffer_minutes']) ? absint($restriction['buffer_minutes']) : 0;
+                    
+                    $sanitized['overlap_avoidance'][] = array(
+                        'teams' => array_map('sanitize_text_field', $restriction['teams']),
+                        'buffer_minutes' => min($buffer_minutes, 240) // Cap at 240 minutes (4 hours)
+                    );
+                }
+            }
+        }
+        
+        return $sanitized;
     }
     
     /**

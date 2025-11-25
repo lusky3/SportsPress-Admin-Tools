@@ -36,6 +36,7 @@ class SPSG_Admin {
         add_action('wp_ajax_spsg_validate_config', array($this, 'ajax_validate_config'));
         add_action('wp_ajax_spsg_import_league', array($this, 'ajax_import_league'));
         add_action('wp_ajax_spsg_import_venues', array($this, 'ajax_import_venues'));
+        add_action('wp_ajax_spsg_get_available_venues', array($this, 'ajax_get_available_venues'));
         add_action('wp_ajax_spsg_delete_config', array($this, 'ajax_delete_config'));
         add_action('wp_ajax_spsg_load_sp_teams', array($this, 'ajax_load_sp_teams'));
         add_action('wp_ajax_spsg_load_preset', array($this, 'ajax_load_preset'));
@@ -1135,6 +1136,74 @@ class SPSG_Admin {
                     });
                 });
                 
+                // Day weights - Calculate total and update display
+                function updateDayWeightsTotal() {
+                    var total = 0;
+                    $(".spsg-day-weight-input").each(function() {
+                        var value = parseFloat($(this).val()) || 0;
+                        total += value;
+                        $(this).siblings(".spsg-day-weight-percentage").text(value + "%");
+                    });
+                    
+                    $("#spsg-day-weights-total").text(total.toFixed(0));
+                    
+                    if (Math.abs(total - 100) > 0.5) {
+                        $("#spsg-day-weights-warning").show();
+                    } else {
+                        $("#spsg-day-weights-warning").hide();
+                    }
+                }
+                
+                // Day weights - Update on input
+                $(document).on("input", ".spsg-day-weight-input", function() {
+                    updateDayWeightsTotal();
+                });
+                
+                // Day weights - Normalize to 100%
+                $("#spsg-normalize-day-weights").click(function() {
+                    var inputs = $(".spsg-day-weight-input");
+                    var total = 0;
+                    
+                    inputs.each(function() {
+                        total += parseFloat($(this).val()) || 0;
+                    });
+                    
+                    if (total === 0) {
+                        alert("' . esc_js(__('Please enter at least one non-zero weight', 'sportspress-schedule-generator')) . '");
+                        return;
+                    }
+                    
+                    inputs.each(function() {
+                        var currentValue = parseFloat($(this).val()) || 0;
+                        var normalized = Math.round((currentValue / total) * 100);
+                        $(this).val(normalized);
+                    });
+                    
+                    updateDayWeightsTotal();
+                });
+                
+                // Day weights - Reset to equal distribution
+                $("#spsg-reset-day-weights").click(function() {
+                    var inputs = $(".spsg-day-weight-input");
+                    var count = inputs.length;
+                    var equalWeight = Math.round(100 / count);
+                    
+                    inputs.each(function(index) {
+                        // Adjust last one to ensure total is exactly 100
+                        if (index === count - 1) {
+                            var currentTotal = equalWeight * (count - 1);
+                            $(this).val(100 - currentTotal);
+                        } else {
+                            $(this).val(equalWeight);
+                        }
+                    });
+                    
+                    updateDayWeightsTotal();
+                });
+                
+                // Initialize day weights total on page load
+                updateDayWeightsTotal();
+                
                 // Team restrictions - Add restriction
                 $("#spsg-add-team-restriction").click(function() {
                     var container = $("#spsg-team-restrictions-container");
@@ -1772,8 +1841,8 @@ class SPSG_Admin {
             <?php if ($sp_available): ?>
             <div class="spsg-sportspress-import">
                 <h3><?php _e('Import Venues from SportsPress', 'sportspress-schedule-generator'); ?></h3>
-                <button type="button" class="button" id="spsg-import-venues-btn"><?php _e('Import All Venues', 'sportspress-schedule-generator'); ?></button>
-                <p class="description"><?php _e('Import all venues from SportsPress', 'sportspress-schedule-generator'); ?></p>
+                <button type="button" class="button" id="spsg-import-venues-btn"><?php _e('Select Venues to Import', 'sportspress-schedule-generator'); ?></button>
+                <p class="description"><?php _e('Choose which venues to import from SportsPress', 'sportspress-schedule-generator'); ?></p>
             </div>
             <hr>
             <?php endif; ?>
@@ -1965,6 +2034,7 @@ class SPSG_Admin {
      */
     private function render_team_restriction_row($restriction, $index, $config) {
         $teams = $restriction['teams'] ?? array();
+        $buffer_minutes = $restriction['buffer_minutes'] ?? 0;
         
         // Get all teams from divisions for selection
         $all_teams = array();
@@ -1995,12 +2065,34 @@ class SPSG_Admin {
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
-                                <p class="description"><?php _e('Select 2 or more teams that cannot play at the same time. Hold Ctrl/Cmd to select multiple teams.', 'sportspress-schedule-generator'); ?></p>
-                            <?php else: ?>
+                                <p class="description"><?php _e('Select 2 or more teams that cannot play at the same time. Hold Ctrl/Cmd to select multiple teams.', 'sportspress-schedule-generator'); ?></p>p>
+                             ?php else: ?>
                                 <p class="description" style="color: #d63638;"><?php _e('Please add teams to divisions first before configuring team restrictions.', 'sportspress-schedule-generator'); ?></p>
                             <?php endif; ?>
                         </div>
-                        <button type="button" class="button spsg-remove-team-restriction" style="margin-top: 10px;"><?php _e('Remove Restriction', 'sportspress-schedule-generator'); ?></button>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php _e('Buffer Time (minutes)', 'sportspress-schedule-generator'); ?></th>
+                    <td>
+                        <input type="number" 
+                               name="team_restrictions[overlap_avoidance][<?php echo esc_attr($index); ?>][buffer_minutes]" 
+                               value="<?php echo esc_attr($buffer_minutes); ?>" 
+                               min="0" 
+                               max="240" 
+                               step="15"
+                               class="small-text" />
+                        <p class="description">
+                            <?php _e('Minimum time gap required between these teams\' games. Set to 0 to allow back-to-back games.', 'sportspress-schedule-generator'); ?>
+                            <br>
+                            <strong><?php _e('Example:', 'sportspress-schedule-generator'); ?></strong> 
+                            <?php _e('With 30 minutes buffer and 60-minute games: If Team A plays at 8:00 PM, Team B can only play before 6:30 PM or after 9:30 PM.', 'sportspress-schedule-generator'); ?>
+                        </p>
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="2">
+                        <button type="button" class="button spsg-remove-team-restriction"><?php _e('Remove Restriction', 'sportspress-schedule-generator'); ?></button>
                     </td>
                 </tr>
             </table>
