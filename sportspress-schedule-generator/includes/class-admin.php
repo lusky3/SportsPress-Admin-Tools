@@ -45,6 +45,8 @@ class SPSG_Admin {
         add_action('wp_ajax_spsg_cancel_generation', array($this, 'ajax_cancel_generation'));
         add_action('wp_ajax_spsg_get_import_dialog_data', array($this, 'ajax_get_import_dialog_data'));
         add_action('wp_ajax_spsg_get_import_progress', array($this, 'ajax_get_import_progress'));
+        add_action('wp_ajax_spsg_upload_venue_csv', array($this, 'ajax_upload_venue_csv'));
+        add_action('wp_ajax_spsg_import_venue_schedule', array($this, 'ajax_import_venue_schedule'));
     }
     
     /**
@@ -322,7 +324,9 @@ class SPSG_Admin {
                 'cancel_generation' => wp_create_nonce('spsg_cancel_generation'),
                 'get_import_dialog_data' => wp_create_nonce('spsg_get_import_dialog_data'),
                 'get_import_progress' => wp_create_nonce('spsg_get_import_progress'),
-                'get_available_venues' => wp_create_nonce('spsg_get_available_venues')
+                'get_available_venues' => wp_create_nonce('spsg_get_available_venues'),
+                'upload_venue_csv' => wp_create_nonce('spsg_upload_venue_csv'),
+                'import_venue_schedule' => wp_create_nonce('spsg_import_venue_schedule')
             )
         ));
         
@@ -533,6 +537,194 @@ class SPSG_Admin {
                         }
                     });
                 });
+                
+                // CSV venue schedule upload
+                $("#spsg-upload-venue-csv-btn").click(function() {
+                    $("#spsg-venue-csv-file").click();
+                });
+                
+                $("#spsg-venue-csv-file").change(function() {
+                    var file = this.files[0];
+                    if (file) {
+                        $("#spsg-csv-filename").text(file.name);
+                        $("#spsg-preview-venue-csv-btn").show();
+                    }
+                });
+                
+                $("#spsg-preview-venue-csv-btn").click(function() {
+                    var fileInput = document.getElementById("spsg-venue-csv-file");
+                    if (!fileInput.files.length) {
+                        alert("Please select a CSV file first");
+                        return;
+                    }
+                    
+                    var formData = new FormData();
+                    formData.append("action", "spsg_upload_venue_csv");
+                    formData.append("nonce", spsgData.nonces.upload_venue_csv);
+                    formData.append("csv_file", fileInput.files[0]);
+                    
+                    var $btn = $(this);
+                    $btn.prop("disabled", true).text("Processing...");
+                    
+                    $.ajax({
+                        url: ajaxurl,
+                        type: "POST",
+                        data: formData,
+                        processData: false,
+                        contentType: false,
+                        success: function(response) {
+                            if (response.success) {
+                                showVenueSchedulePreview(response.data);
+                            } else {
+                                alert("Error: " + response.data);
+                            }
+                        },
+                        error: function() {
+                            alert("Failed to upload CSV. Please try again.");
+                        },
+                        complete: function() {
+                            $btn.prop("disabled", false).text("' . esc_js(__('Preview & Import', 'sportspress-schedule-generator')) . '");
+                        }
+                    });
+                });
+                
+                function showVenueSchedulePreview(data) {
+                    var schedules = data.schedules;
+                    var suggestions = data.venue_mapping;
+                    var existingVenues = data.existing_venues;
+                    
+                    // Create modal dialog
+                    var html = \'<div id="spsg-venue-schedule-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 100000; overflow-y: auto;">\';
+                    html += \'<div style="max-width: 900px; margin: 50px auto; background: #fff; border-radius: 4px; box-shadow: 0 2px 10px rgba(0,0,0,0.3);">\';
+                    
+                    // Header
+                    html += \'<div style="padding: 20px; border-bottom: 1px solid #ddd; background: #f9f9f9;">\';
+                    html += \'<h2 style="margin: 0;">' . esc_js(__('Import Venue Schedule', 'sportspress-schedule-generator')) . '</h2>\';
+                    html += \'<button type="button" class="button" id="spsg-close-venue-modal" style="float: right; margin-top: -30px;">×</button>\';
+                    html += \'</div>\';
+                    
+                    // Body
+                    html += \'<div style="padding: 20px; max-height: 60vh; overflow-y: auto;">\';
+                    
+                    // Preview section
+                    html += \'<h3>' . esc_js(__('Schedule Preview', 'sportspress-schedule-generator')) . '</h3>\';
+                    html += \'<p>' . esc_js(__('Found', 'sportspress-schedule-generator')) . ' \' + schedules.length + \' ' . esc_js(__('venue schedules', 'sportspress-schedule-generator')) . '</p>\';
+                    html += \'<table class="wp-list-table widefat fixed striped" style="margin-bottom: 20px;">\';
+                    html += \'<thead><tr><th>' . esc_js(__('Week Start', 'sportspress-schedule-generator')) . '</th><th>' . esc_js(__('Venue', 'sportspress-schedule-generator')) . '</th><th>' . esc_js(__('Time Slots', 'sportspress-schedule-generator')) . '</th></tr></thead><tbody>\';
+                    
+                    $.each(schedules.slice(0, 10), function(i, schedule) {
+                        html += \'<tr><td>\' + schedule.week_start + \'</td><td>\' + schedule.venue_name + \'</td><td>\' + schedule.time_slots.join(\', \') + \'</td></tr>\';
+                    });
+                    
+                    if (schedules.length > 10) {
+                        html += \'<tr><td colspan="3" style="text-align: center; font-style: italic;">... and \' + (schedules.length - 10) + \' more</td></tr>\';
+                    }
+                    
+                    html += \'</tbody></table>\';
+                    
+                    // Venue mapping section
+                    html += \'<h3>' . esc_js(__('Map Venue Names', 'sportspress-schedule-generator')) . '</h3>\';
+                    html += \'<p class="description">' . esc_js(__('Match CSV venue names to existing venues or create new ones', 'sportspress-schedule-generator')) . '</p>\';
+                    html += \'<table class="wp-list-table widefat fixed striped">\';
+                    html += \'<thead><tr><th>' . esc_js(__('CSV Name', 'sportspress-schedule-generator')) . '</th><th>' . esc_js(__('Action', 'sportspress-schedule-generator')) . '</th><th>' . esc_js(__('Map To', 'sportspress-schedule-generator')) . '</th></tr></thead><tbody>\';
+                    
+                    $.each(suggestions, function(csvName, suggestion) {
+                        html += \'<tr>\';
+                        html += \'<td><strong>\' + csvName + \'</strong></td>\';
+                        html += \'<td><select class="spsg-venue-action" data-csv-name="\' + csvName + \'">\';
+                        html += \'<option value="map" \' + (suggestion.action === \'map\' ? \'selected\' : \'\') + \'>' . esc_js(__('Map to existing', 'sportspress-schedule-generator')) . '</option>\';
+                        html += \'<option value="create" \' + (suggestion.action === \'create\' ? \'selected\' : \'\') + \'>' . esc_js(__('Create new venue', 'sportspress-schedule-generator')) . '</option>\';
+                        html += \'</select></td>\';
+                        html += \'<td><select class="spsg-venue-mapping" data-csv-name="\' + csvName + \'" \' + (suggestion.action === \'create\' ? \'disabled\' : \'\') + \'>\';
+                        
+                        if (suggestion.suggested_match) {
+                            var matchId = suggestion.suggested_match.id;
+                            var matchName = suggestion.suggested_match.name;
+                            html += \'<option value="\' + matchId + \'" selected>\' + matchName + \' (suggested)</option>\';
+                        }
+                        
+                        $.each(existingVenues, function(i, venue) {
+                            if (!suggestion.suggested_match || venue.id !== suggestion.suggested_match.id) {
+                                html += \'<option value="\' + venue.id + \'">\' + venue.name + \'</option>\';
+                            }
+                        });
+                        
+                        html += \'</select></td>\';
+                        html += \'</tr>\';
+                    });
+                    
+                    html += \'</tbody></table>\';
+                    html += \'</div>\';
+                    
+                    // Footer
+                    html += \'<div style="padding: 15px 20px; border-top: 1px solid #ddd; text-align: right; background: #f9f9f9;">\';
+                    html += \'<button type="button" class="button" id="spsg-cancel-venue-import">' . esc_js(__('Cancel', 'sportspress-schedule-generator')) . '</button> \';
+                    html += \'<button type="button" class="button button-primary" id="spsg-confirm-venue-import">' . esc_js(__('Import Schedule', 'sportspress-schedule-generator')) . '</button>\';
+                    html += \'</div>\';
+                    
+                    html += \'</div></div>\';
+                    
+                    $("body").append(html);
+                    
+                    // Handle action change
+                    $(document).on("change", ".spsg-venue-action", function() {
+                        var action = $(this).val();
+                        var $mapping = $(this).closest("tr").find(".spsg-venue-mapping");
+                        $mapping.prop("disabled", action === "create");
+                    });
+                    
+                    // Close modal
+                    $("#spsg-close-venue-modal, #spsg-cancel-venue-import").click(function() {
+                        $("#spsg-venue-schedule-modal").remove();
+                    });
+                    
+                    // Confirm import
+                    $("#spsg-confirm-venue-import").click(function() {
+                        var venueMapping = {};
+                        var newVenues = [];
+                        
+                        $(".spsg-venue-action").each(function() {
+                            var csvName = $(this).data("csv-name");
+                            var action = $(this).val();
+                            
+                            if (action === "map") {
+                                var venueId = $(this).closest("tr").find(".spsg-venue-mapping").val();
+                                venueMapping[csvName] = venueId;
+                            } else {
+                                newVenues.push(csvName);
+                            }
+                        });
+                        
+                        var $btn = $(this);
+                        $btn.prop("disabled", true).text("' . esc_js(__('Importing...', 'sportspress-schedule-generator')) . '");
+                        
+                        $.ajax({
+                            url: ajaxurl,
+                            type: "POST",
+                            data: {
+                                action: "spsg_import_venue_schedule",
+                                nonce: spsgData.nonces.import_venue_schedule,
+                                schedules: schedules,
+                                venue_mapping: venueMapping,
+                                new_venues: newVenues
+                            },
+                            success: function(response) {
+                                if (response.success) {
+                                    alert("' . esc_js(__('Venue schedule imported successfully!', 'sportspress-schedule-generator')) . '\\n" + response.data.message);
+                                    $("#spsg-venue-schedule-modal").remove();
+                                    location.reload(); // Reload to show updated data
+                                } else {
+                                    alert("Error: " + response.data);
+                                    $btn.prop("disabled", false).text("' . esc_js(__('Import Schedule', 'sportspress-schedule-generator')) . '");
+                                }
+                            },
+                            error: function() {
+                                alert("' . esc_js(__('Failed to import schedule. Please try again.', 'sportspress-schedule-generator')) . '");
+                                $btn.prop("disabled", false).text("' . esc_js(__('Import Schedule', 'sportspress-schedule-generator')) . '");
+                            }
+                        });
+                    });
+                }
                 
                 // Tab switching
                 $(".spsg-nav-tabs .nav-tab").click(function(e) {
@@ -1924,6 +2116,40 @@ class SPSG_Admin {
         </div>
         
         <div class="spsg-venues-section">
+            <div class="spsg-csv-import">
+                <h3><?php _e('Import Venue Schedule from CSV', 'sportspress-schedule-generator'); ?></h3>
+                <p class="description"><?php _e('Upload a CSV file with week-by-week venue availability. This is useful when venues and time slots change weekly.', 'sportspress-schedule-generator'); ?></p>
+                
+                <div class="spsg-csv-upload-section">
+                    <input type="file" id="spsg-venue-csv-file" accept=".csv" style="display: none;" />
+                    <button type="button" class="button" id="spsg-upload-venue-csv-btn"><?php _e('Choose CSV File', 'sportspress-schedule-generator'); ?></button>
+                    <span id="spsg-csv-filename" style="margin-left: 10px; color: #666;"></span>
+                    <button type="button" class="button button-primary" id="spsg-preview-venue-csv-btn" style="display: none;"><?php _e('Preview & Import', 'sportspress-schedule-generator'); ?></button>
+                </div>
+                
+                <div class="spsg-csv-format-help" style="margin-top: 10px;">
+                    <details>
+                        <summary style="cursor: pointer; color: #2271b1;"><?php _e('CSV Format Help', 'sportspress-schedule-generator'); ?></summary>
+                        <div style="margin-top: 10px; padding: 10px; background: #f9f9f9; border-left: 4px solid #2271b1;">
+                            <p><strong><?php _e('Required columns:', 'sportspress-schedule-generator'); ?></strong> Week Start Date, Venue Name, Time Slots</p>
+                            <p><strong><?php _e('Example:', 'sportspress-schedule-generator'); ?></strong></p>
+                            <pre style="background: #fff; padding: 10px; overflow-x: auto;">Week Start Date,Venue Name,Time Slots
+2024-01-01,Arena A,18:00-23:00
+2024-01-01,Arena B,18:45-22:45
+2024-01-08,Arena A,18:00-23:00
+2024-01-08,Arena D,18:00</pre>
+                            <p><strong><?php _e('Time Slot Formats:', 'sportspress-schedule-generator'); ?></strong></p>
+                            <ul>
+                                <li><?php _e('Range: 18:00-23:00 (generates hourly slots)', 'sportspress-schedule-generator'); ?></li>
+                                <li><?php _e('List: 18:00, 19:00, 20:00', 'sportspress-schedule-generator'); ?></li>
+                                <li><?php _e('Single: 18:00', 'sportspress-schedule-generator'); ?></li>
+                            </ul>
+                        </div>
+                    </details>
+                </div>
+            </div>
+            <hr>
+            
             <?php if ($sp_available): ?>
             <div class="spsg-sportspress-import">
                 <h3><?php _e('Import Venues from SportsPress', 'sportspress-schedule-generator'); ?></h3>
@@ -3125,6 +3351,142 @@ class SPSG_Admin {
             'total' => $progress['total'] ?? 0,
             'status' => $progress['status'] ?? 'in_progress',
             'message' => $progress['message'] ?? ''
+        ));
+    }
+    
+    /**
+     * AJAX handler for uploading and parsing venue CSV
+     */
+    public function ajax_upload_venue_csv() {
+        check_ajax_referer('spsg_upload_venue_csv', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+        }
+        
+        if (!isset($_FILES['csv_file'])) {
+            wp_send_json_error(__('No file uploaded', 'sportspress-schedule-generator'));
+        }
+        
+        $file = $_FILES['csv_file'];
+        
+        // Validate file type
+        $file_ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if ($file_ext !== 'csv') {
+            wp_send_json_error(__('Please upload a CSV file', 'sportspress-schedule-generator'));
+        }
+        
+        // Parse CSV
+        require_once plugin_dir_path(__FILE__) . 'class-venue-schedule-importer.php';
+        $schedules = SPSG_Venue_Schedule_Importer::parse_csv($file['tmp_name']);
+        
+        if (is_wp_error($schedules)) {
+            wp_send_json_error($schedules->get_error_message());
+        }
+        
+        // Get unique venue names
+        $csv_venues = SPSG_Venue_Schedule_Importer::get_unique_venues($schedules);
+        
+        // Get existing venues from configuration
+        $config = $this->config_manager->get_current();
+        $existing_venues = $config->venues ?? array();
+        
+        // Also get venues from SportsPress if available
+        if (class_exists('SPSG_SportsPress_Integration')) {
+            $sp_venues = SPSG_SportsPress_Integration::get_venues();
+            foreach ($sp_venues as $sp_venue) {
+                $existing_venues[] = array(
+                    'id' => $sp_venue->id,
+                    'name' => $sp_venue->name
+                );
+            }
+        }
+        
+        // Get venue mapping suggestions
+        $venue_mapping = SPSG_Venue_Schedule_Importer::suggest_venue_mapping($csv_venues, $existing_venues);
+        
+        wp_send_json_success(array(
+            'schedules' => $schedules,
+            'venue_mapping' => $venue_mapping,
+            'existing_venues' => $existing_venues
+        ));
+    }
+    
+    /**
+     * AJAX handler for importing venue schedule
+     */
+    public function ajax_import_venue_schedule() {
+        check_ajax_referer('spsg_import_venue_schedule', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+        }
+        
+        $schedules = $_POST['schedules'] ?? array();
+        $venue_mapping = $_POST['venue_mapping'] ?? array();
+        $new_venues = $_POST['new_venues'] ?? array();
+        
+        if (empty($schedules)) {
+            wp_send_json_error(__('No schedule data provided', 'sportspress-schedule-generator'));
+        }
+        
+        // Load current configuration
+        $config = $this->config_manager->get_current();
+        $config_data = $config->to_array();
+        
+        // Create new venues if needed
+        $venue_id_map = $venue_mapping;
+        foreach ($new_venues as $venue_name) {
+            // Generate a unique ID for the new venue
+            $venue_id = 'venue_' . sanitize_title($venue_name) . '_' . time();
+            
+            // Add to venues array
+            $config_data['venues'][] = array(
+                'id' => $venue_id,
+                'name' => $venue_name
+            );
+            
+            $venue_id_map[$venue_name] = $venue_id;
+        }
+        
+        // Convert schedules to venue availability format
+        require_once plugin_dir_path(__FILE__) . 'class-venue-schedule-importer.php';
+        $venue_availability = SPSG_Venue_Schedule_Importer::convert_to_availability($schedules, $venue_id_map);
+        
+        // Merge with existing venue_date_availability
+        if (!isset($config_data['venue_date_availability'])) {
+            $config_data['venue_date_availability'] = array();
+        }
+        
+        foreach ($venue_availability as $venue_id => $date_ranges) {
+            if (!isset($config_data['venue_date_availability'][$venue_id])) {
+                $config_data['venue_date_availability'][$venue_id] = array();
+            }
+            
+            // Append new date ranges
+            $config_data['venue_date_availability'][$venue_id] = array_merge(
+                $config_data['venue_date_availability'][$venue_id],
+                $date_ranges
+            );
+        }
+        
+        // Save configuration
+        $result = $this->config_manager->save($config_data);
+        
+        if (is_wp_error($result)) {
+            wp_send_json_error($result->get_error_message());
+        }
+        
+        $message = sprintf(
+            __('Imported %d venue schedules. Created %d new venues.', 'sportspress-schedule-generator'),
+            count($schedules),
+            count($new_venues)
+        );
+        
+        wp_send_json_success(array(
+            'message' => $message,
+            'schedules_imported' => count($schedules),
+            'venues_created' => count($new_venues)
         ));
     }
 }
