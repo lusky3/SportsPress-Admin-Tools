@@ -1827,6 +1827,23 @@ class SPSG_Admin {
                 </tr>
             </table>
             
+            <h3><?php _e('Team Restrictions', 'sportspress-schedule-generator'); ?></h3>
+            <p class="description"><?php _e('Configure restrictions for teams that cannot play at the same time (e.g., teams sharing players or facilities).', 'sportspress-schedule-generator'); ?></p>
+            
+            <div id="spsg-team-restrictions-container">
+                <?php
+                $overlap_restrictions = $config->team_restrictions['overlap_avoidance'] ?? array();
+                if (!empty($overlap_restrictions)) {
+                    foreach ($overlap_restrictions as $index => $restriction) {
+                        $this->render_team_restriction_row($restriction, $index, $config);
+                    }
+                } else {
+                    $this->render_team_restriction_row(array(), 0, $config);
+                }
+                ?>
+            </div>
+            <button type="button" class="button" id="spsg-add-team-restriction"><?php _e('Add Team Restriction', 'sportspress-schedule-generator'); ?></button>
+            
             <h3><?php _e('Blackout Dates', 'sportspress-schedule-generator'); ?></h3>
             <table class="form-table">
                 <tr>
