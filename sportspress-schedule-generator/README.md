@@ -15,6 +15,9 @@ A comprehensive child plugin for SportsPress Admin Tools that automates the crea
 ### Venue & Time Management
 
 - **Venue Management**: Assign games across multiple venues with automatic distribution
+- **Venue Import**: Import all venues from SportsPress with one click
+- **Venue-Specific Blackout Dates**: Mark individual venues unavailable on specific dates
+- **CSV Venue Schedule Import**: Import week-by-week venue availability with flexible time formats
 - **Time Slot Configuration**: Flexible time slot management across multiple days and times
 - **Blackout Date Handling**: Automatic avoidance of blackout dates during scheduling
 - **Distribution Rules**: Balance games across time slots and days of the week
@@ -32,7 +35,8 @@ A comprehensive child plugin for SportsPress Admin Tools that automates the crea
 - **Schedule Statistics**: Comprehensive statistics including games per team, venue utilization, and balance metrics
 - **Progress Tracking**: Real-time progress indicators during generation with cancellation support
 - **Multiple Export Formats**: CSV for data processing and styled XLSX for human reading
-- **SportsPress Integration**: Direct import of generated schedules into SportsPress events with conflict detection
+- **SportsPress Integration**: Direct import of generated schedules into SportsPress events with import dialog and conflict detection
+- **AJAX Validation**: Form validation without data loss - all entered data preserved on validation errors
 
 ## Requirements
 

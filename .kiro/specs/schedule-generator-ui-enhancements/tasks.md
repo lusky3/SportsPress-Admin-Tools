@@ -4,6 +4,8 @@
 
 This phase adds frontend UI controls to expose existing backend functionality. All backend features are already implemented - this is purely frontend work.
 
+**Status:** Partially complete - Import dialog implemented, venue management enhanced, validation improved
+
 **Total Estimated Effort:** 52 hours (1-1.5 weeks full-time)
 
 **Implementation Approach:**
@@ -12,103 +14,44 @@ This phase adds frontend UI controls to expose existing backend functionality. A
 - High-priority features second (P1)
 - Polish and optimization last (P2-P3)
 
+## Recent Implementations (Not in Original Spec)
+
+The following features were implemented outside the original task list:
+
+### ✅ Venue Import Fix
+- Fixed venue import to use `get_terms()` for SportsPress taxonomy instead of `get_posts()`
+- Now correctly imports all venues from SportsPress
+- **Files Modified:** `class-admin.php`, `class-sportspress-integration.php`
+
+### ✅ Venue-Specific Blackout Dates
+- Added ability to mark specific venues unavailable on certain dates
+- Textarea input with date validation
+- **Files Modified:** `class-admin.php`, `class-schedule-configuration.php`
+
+### ✅ CSV Venue Schedule Import System
+- Created comprehensive CSV import for week-by-week venue availability
+- Intelligent venue name matching with confidence scoring
+- Visual venue mapping dialog
+- Support for flexible time formats (ranges, lists, single times)
+- **Files Created:** `class-venue-schedule-importer.php`, `docs/VENUE-CSV-IMPORT-PLAN.md`
+- **Files Modified:** `class-admin.php`, `class-slot-allocator.php`, `class-schedule-engine.php`, `admin.css`
+
+### ✅ AJAX Form Validation
+- Replaced form submission with AJAX validation to prevent data loss
+- Inline error display preserves all entered data
+- **Files Modified:** `class-admin.php`, `schedule-generator.js`
+
+### ✅ PHP Syntax Error Fixes
+- Fixed malformed closing tags and missing PHP opening tags on constraints page
+- **Files Modified:** `class-admin.php`
+
 ## Sprint 1: Import Dialog (Week 1) - 8 hours
 
 ### Critical Priority (P0) - Must Have
 
-- [x] 1. Add Import Dialog AJAX Handlers
-  - Add `ajax_get_import_dialog_data()` method to SPSG_Admin class
-  - Add `ajax_get_import_progress()` method to SPSG_Admin class
-  - Hook both methods to WordPress AJAX actions in constructor
-  - Verify nonces and user capabilities in both methods
-  - Return proper JSON responses with league/season data
-  - Test AJAX calls return expected data
-  - Test with invalid nonce (should fail)
-  - Test with non-admin user (should fail)
-  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3_
-  - _Files: includes/class-admin.php_
-  - _Estimated: 30 minutes_
+✅ **Tasks 1-6: Import Dialog Implementation - COMPLETE**
 
-- [x] 2. Register Import Dialog Nonces
-  - Add `get_import_dialog_data` nonce to spsgData.nonces array
-  - Add `get_import_progress` nonce to spsgData.nonces array
-  - Verify nonces are available in JavaScript console
-  - Test nonces are unique strings
-  - _Requirements: 1.1, 2.1_
-  - _Files: includes/class-admin.php (enqueue_admin_scripts method)_
-  - _Estimated: 10 minutes_
-
-- [x] 3. Create Import Dialog HTML Structure
-  - Create `render_import_dialog()` method in SPSG_Admin
-  - Add modal overlay and content container
-  - Add conflict resolution radio buttons (skip/overwrite)
-  - Add event status dropdown (publish/draft/pending/future)
-  - Add league/season dropdowns (populated via AJAX)
-  - Add dry run checkbox with description
-  - Add progress section (hidden by default) with progress bar
-  - Add results section (hidden by default) with stat grid
-  - Add modal footer with action buttons
-  - Call method from `render_generate_tab()`
-  - Validate HTML structure in browser dev tools
-  - Check accessibility (labels, ARIA attributes)
-  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7_
-  - _Files: includes/class-admin.php_
-  - _Estimated: 45 minutes_
-
-- [x] 4. Add Import Dialog CSS Styles
-  - Add modal overlay styles (full viewport, semi-transparent)
-  - Add modal content styles (centered, scrollable, max-width 600px)
-  - Style form sections with proper spacing
-  - Style progress bar with animated fill
-  - Style results summary with grid layout (2 columns)
-  - Add color coding: success (green), warning (yellow), error (red), info (blue)
-  - Make responsive on mobile (< 768px, single column)
-  - Style close button and position in header
-  - Align buttons in footer (right-aligned)
-  - Test on desktop (1920px, 1366px, 1024px)
-  - Test on tablet (768px)
-  - Test on mobile (375px, 320px)
-  - Test in Chrome, Firefox, Safari, Edge
-  - _Requirements: 1.1, 1.7, 12.1, 12.2, 12.3, 12.4, 12.5_
-  - _Files: assets/css/admin.css_
-  - _Estimated: 30 minutes_
-
-- [x] 5. Implement ImportDialog JavaScript Module
-  - Create ImportDialog object in schedule-generator.js
-  - Implement init(scheduleId) method
-  - Implement createModal() method (verify HTML exists)
-  - Implement loadDialogData() method (AJAX to populate leagues/seasons)
-  - Implement bindEvents() method (wire up all event handlers)
-  - Implement startImport() method (collect options, start AJAX)
-  - Implement startProgressPolling() method (poll every 2 seconds)
-  - Implement stopProgressPolling() method
-  - Implement pollProgress() method (AJAX to get progress)
-  - Implement updateProgress() method (update UI)
-  - Implement showResults() method (display import summary)
-  - Implement show() method (fade in modal, prevent body scroll)
-  - Implement hide() method (fade out modal, restore scroll, reset state)
-  - Handle errors gracefully with user-friendly messages
-  - Test modal opens when import button clicked
-  - Test leagues and seasons populate from AJAX
-  - Test form submission collects all options correctly
-  - Test progress polling starts and updates every 2 seconds
-  - Test results display after completion
-  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 2.1, 2.2, 2.3, 2.4, 2.5_
-  - _Files: assets/js/schedule-generator.js_
-  - _Estimated: 2 hours_
-
-- [x] 6. Update Import Button Handler
-  - Remove or refactor existing `importToSportsPress()` method
-  - Update import button click handler to open ImportDialog
-  - Pass schedule ID to dialog
-  - Ensure no duplicate event handlers
-  - Maintain backward compatibility
-  - Test import button click opens modal
-  - Test schedule ID is passed correctly
-  - Test old confirm() dialog doesn't appear
-  - _Requirements: 1.1_
-  - _Files: assets/js/schedule-generator.js_
-  - _Estimated: 15 minutes_
+The import dialog with AJAX handlers, nonces, HTML structure, CSS styles, JavaScript module, and button handler have all been implemented.
 
 - [ ] 7. Integration Testing - Import Dialog
   - Test modal opens correctly with all elements visible
@@ -129,7 +72,7 @@ This phase adds frontend UI controls to expose existing backend functionality. A
   - _Testing Environment: WordPress 5.0+, SportsPress latest, Chrome/Firefox/Safari/Edge, Desktop and mobile_
   - _Estimated: 1 hour_
 
-**Sprint 1 Total: ~5 hours**
+**Sprint 1 Status: 6/7 tasks complete (~4.5 hours done, 1 hour testing remaining)**
 
 
 
@@ -619,9 +562,9 @@ This phase adds frontend UI controls to expose existing backend functionality. A
 - **Post-Sprint:** 3 tasks, ongoing
 
 ### By Status
-- ⬜ Not Started: 33 tasks
+- ⬜ Not Started: 27 tasks
 - 🔄 In Progress: 0 tasks
-- ✅ Complete: 0 tasks
+- ✅ Complete: 6 tasks (Import Dialog implementation)
 - ❌ Blocked: 0 tasks
 
 ## Implementation Order

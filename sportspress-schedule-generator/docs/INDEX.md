@@ -39,6 +39,7 @@ Complete guide to all documentation for the SportsPress Schedule Generator plugi
 ### Technical Specifications
 - **[IMPORT-DIALOG-SPEC.md](IMPORT-DIALOG-SPEC.md)** - Import dialog specification
 - **[PROGRESS-TRACKING-API.md](PROGRESS-TRACKING-API.md)** - Progress tracking API documentation
+- **[VENUE-CSV-IMPORT-PLAN.md](VENUE-CSV-IMPORT-PLAN.md)** - CSV venue schedule import implementation plan
 
 ---
 
@@ -132,8 +133,9 @@ Complete guide to all documentation for the SportsPress Schedule Generator plugi
 ## 🔄 Documentation Maintenance
 
 ### Last Updated
-- **Documentation Index:** November 24, 2025
-- **Development History:** November 24, 2025
+- **Documentation Index:** November 25, 2025
+- **Development History:** November 25, 2025
+- **Venue CSV Import Plan:** November 25, 2025
 - **User Documentation:** June 2024
 - **Configuration Reference:** January 2024
 
@@ -209,6 +211,6 @@ Found an issue with documentation?
 
 ---
 
-**Index Version:** 1.0  
-**Last Updated:** November 24, 2025  
+**Index Version:** 1.1  
+**Last Updated:** November 25, 2025  
 **Maintained By:** Development Team
