@@ -271,6 +271,7 @@ class SPSG_SportsPress_Integration {
         ));
         
         if (!is_wp_error($divisions) && !empty($divisions)) {
+            // League has subdivisions - import each subdivision as a division
             foreach ($divisions as $division) {
                 $division_teams = self::get_teams_by_league($division->term_id);
                 
@@ -279,6 +280,16 @@ class SPSG_SportsPress_Integration {
                     'name' => $division->name,
                     'slug' => $division->slug,
                     'teams' => $division_teams
+                );
+            }
+        } else {
+            // No subdivisions - treat the league itself as a single division
+            if (!empty($structure['teams'])) {
+                $structure['divisions'][] = (object) array(
+                    'id' => $league->term_id,
+                    'name' => $league->name,
+                    'slug' => $league->slug,
+                    'teams' => $structure['teams']
                 );
             }
         }
