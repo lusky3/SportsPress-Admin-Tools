@@ -644,14 +644,14 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
      */
     public function list_presets() {
         return array(
-            'youth_league' => array(
-                'name' => __('Youth League', 'sportspress-schedule-generator'),
-                'description' => __('Standard youth league with weekend games (45 min matches, 14 games per team)', 'sportspress-schedule-generator'),
-                'icon' => 'dashicons-groups'
+            'summer_league' => array(
+                'name' => __('Summer League', 'sportspress-schedule-generator'),
+                'description' => __('Summer season with Friday night games (60 min matches, 18 games per team, 6:00 PM - 11:00 PM)', 'sportspress-schedule-generator'),
+                'icon' => 'dashicons-palmtree'
             ),
-            'adult_league' => array(
-                'name' => __('Adult League', 'sportspress-schedule-generator'),
-                'description' => __('Evening adult league with weekday games (60 min matches, 12 games per team)', 'sportspress-schedule-generator'),
+            'winter_league' => array(
+                'name' => __('Winter League', 'sportspress-schedule-generator'),
+                'description' => __('Winter season with Friday and Sunday night games (60 min matches, 24 games per team)', 'sportspress-schedule-generator'),
                 'icon' => 'dashicons-calendar-alt'
             ),
             'tournament' => array(
@@ -703,19 +703,18 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
      */
     private function get_preset_definitions() {
         return array(
-            'youth_league' => array(
-                'name' => __('Youth League', 'sportspress-schedule-generator'),
-                'description' => __('Standard youth league with weekend games', 'sportspress-schedule-generator'),
+            'summer_league' => array(
+                'name' => __('Summer League', 'sportspress-schedule-generator'),
+                'description' => __('Summer season with Friday night games', 'sportspress-schedule-generator'),
                 'config' => array(
-                    'games_per_team' => 14,
-                    'match_length' => 45,
-                    'playing_days' => array('saturday', 'sunday'),
+                    'games_per_team' => 18,
+                    'match_length' => 60,
+                    'playing_days' => array('friday'),
                     'time_slots' => array(
-                        'saturday' => array('09:00', '10:00', '11:00', '13:00', '14:00', '15:00'),
-                        'sunday' => array('09:00', '10:00', '11:00', '13:00', '14:00', '15:00')
+                        'friday' => array('18:00', '19:00', '20:00', '21:00', '22:00', '23:00')
                     ),
                     'distribution_rules' => array(
-                        'day_balance' => array('saturday' => 0.5, 'sunday' => 0.5),
+                        'day_balance' => array('friday' => 1.0),
                         'time_slot_balance' => true,
                         'home_away_balance' => true
                     ),
@@ -729,20 +728,19 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
                     )
                 )
             ),
-            'adult_league' => array(
-                'name' => __('Adult League', 'sportspress-schedule-generator'),
-                'description' => __('Evening adult league with weekday games', 'sportspress-schedule-generator'),
+            'winter_league' => array(
+                'name' => __('Winter League', 'sportspress-schedule-generator'),
+                'description' => __('Winter season with Friday and Sunday night games', 'sportspress-schedule-generator'),
                 'config' => array(
-                    'games_per_team' => 12,
+                    'games_per_team' => 24,
                     'match_length' => 60,
-                    'playing_days' => array('monday', 'wednesday', 'friday'),
+                    'playing_days' => array('friday', 'sunday'),
                     'time_slots' => array(
-                        'monday' => array('19:00', '20:00', '21:00'),
-                        'wednesday' => array('19:00', '20:00', '21:00'),
-                        'friday' => array('19:00', '20:00', '21:00')
+                        'friday' => array('18:00', '19:00', '20:00', '21:00', '22:00', '23:00'),
+                        'sunday' => array('17:00', '18:00', '19:00', '20:00', '21:00')
                     ),
                     'distribution_rules' => array(
-                        'day_balance' => array('monday' => 0.33, 'wednesday' => 0.34, 'friday' => 0.33),
+                        'day_balance' => array('friday' => 0.75, 'sunday' => 0.25),
                         'time_slot_balance' => true,
                         'home_away_balance' => true
                     ),

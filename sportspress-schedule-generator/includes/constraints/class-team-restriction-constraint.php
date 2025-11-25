@@ -91,7 +91,7 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint {
     }    
 
     /**
-     * Validate overlap restrictions (simultaneous games)
+     * Validate overlap restrictions (simultaneous games and buffer time)
      */
     private function validate_overlap_restrictions($game, $schedule, $config) {
         if (!isset($config->team_restrictions['overlap_avoidance'])) {
@@ -103,6 +103,7 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint {
         
         foreach ($restrictions as $restriction) {
             $restricted_teams = $restriction['teams'];
+            $buffer_minutes = isset($restriction['buffer_minutes']) ? (int) $restriction['buffer_minutes'] : 0;
             
             // Check if any of the game teams are in the restriction
             $affected_teams = array_intersect($game_teams, $restricted_teams);
@@ -110,18 +111,38 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint {
                 continue;
             }
             
-            // Find overlapping games on the same date and time
-            $overlapping_games = $this->find_overlapping_games($game, $schedule, $restricted_teams);
+            // Get match length from config (default 60 minutes)
+            $match_length = isset($config->match_length) ? (int) $config->match_length : 60;
             
-            if (!empty($overlapping_games)) {
-                $this->log(sprintf('Overlap violation: Teams %s cannot play simultaneously', 
-                    implode(', ', $restricted_teams)
+            // Find games that violate the buffer time restriction
+            $buffer_violations = $this->find_buffer_time_violations(
+                $game, 
+                $schedule, 
+                $restricted_teams, 
+                $buffer_minutes,
+                $match_length
+            );
+            
+            if (!empty($buffer_violations)) {
+                $violation = $buffer_violations[0];
+                $this->log(sprintf('Buffer time violation: Teams %s require %d minute buffer', 
+                    implode(', ', $restricted_teams),
+                    $buffer_minutes
                 ));
                 
-                return new WP_Error('overlap_violation', sprintf(
-                    __('Teams cannot play simultaneously: %s', 'sportspress-schedule-generator'),
-                    implode(', ', $this->get_team_names($restricted_teams))
-                ));
+                if ($buffer_minutes > 0) {
+                    return new WP_Error('buffer_time_violation', sprintf(
+                        __('Teams require %d minute buffer between games: %s (conflicting game at %s)', 'sportspress-schedule-generator'),
+                        $buffer_minutes,
+                        implode(', ', $this->get_team_names($restricted_teams)),
+                        $violation['time_slot']
+                    ));
+                } else {
+                    return new WP_Error('overlap_violation', sprintf(
+                        __('Teams cannot play simultaneously: %s', 'sportspress-schedule-generator'),
+                        implode(', ', $this->get_team_names($restricted_teams))
+                    ));
+                }
             }
         }
         
@@ -218,6 +239,66 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint {
         }
         
         return $overlapping;
+    }
+    
+    /**
+     * Find games that violate buffer time restrictions
+     * 
+     * @param object $game The game being validated
+     * @param array $schedule Existing scheduled games
+     * @param array $restricted_teams Teams that need buffer time
+     * @param int $buffer_minutes Required buffer time in minutes
+     * @param int $match_length Length of each match in minutes
+     * @return array Violations found
+     */
+    private function find_buffer_time_violations($game, $schedule, $restricted_teams, $buffer_minutes, $match_length) {
+        $violations = array();
+        
+        // Parse game time
+        $game_datetime = new DateTime($game->date . ' ' . $game->time_slot);
+        $game_end_time = clone $game_datetime;
+        $game_end_time->modify('+' . $match_length . ' minutes');
+        
+        // Calculate buffer window
+        $buffer_start = clone $game_datetime;
+        $buffer_start->modify('-' . ($match_length + $buffer_minutes) . ' minutes');
+        
+        $buffer_end = clone $game_end_time;
+        $buffer_end->modify('+' . $buffer_minutes . ' minutes');
+        
+        // Check all existing games
+        foreach ($schedule as $existing_game) {
+            // Only check games on the same date
+            if ($existing_game->date !== $game->date) {
+                continue;
+            }
+            
+            // Check if existing game involves restricted teams
+            $existing_teams = array($existing_game->home_team->id, $existing_game->away_team->id);
+            $team_overlap = array_intersect($existing_teams, $restricted_teams);
+            
+            if (empty($team_overlap)) {
+                continue;
+            }
+            
+            // Parse existing game time
+            $existing_datetime = new DateTime($existing_game->date . ' ' . $existing_game->time_slot);
+            $existing_end_time = clone $existing_datetime;
+            $existing_end_time->modify('+' . $match_length . ' minutes');
+            
+            // Check if existing game falls within the buffer window
+            // Game violates if it starts before buffer_end AND ends after buffer_start
+            if ($existing_datetime < $buffer_end && $existing_end_time > $buffer_start) {
+                $violations[] = array(
+                    'game' => $existing_game,
+                    'teams' => $team_overlap,
+                    'time_slot' => $existing_game->time_slot,
+                    'buffer_minutes' => $buffer_minutes
+                );
+            }
+        }
+        
+        return $violations;
     }
     
     /**
