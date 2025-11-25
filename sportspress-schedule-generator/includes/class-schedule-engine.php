@@ -420,17 +420,17 @@ class SPSG_Schedule_Engine {
         
         while ($current_date <= $season_end && $attempts < $max_attempts) {
             $day_name = strtolower($current_date->format('l'));
+            $date_str = $current_date->format('Y-m-d');
             
-            if (in_array($day_name, $config->playing_days) && isset($config->time_slots[$day_name])) {
-                foreach ($config->time_slots[$day_name] as $time_slot) {
-                    foreach ($config->venues as $venue) {
-                        $date_str = $current_date->format('Y-m-d');
-                        
-                        // Check if venue is available for this day/time/date
-                        if (!$this->is_venue_available($venue, $day_name, $time_slot, $date_str, $config)) {
-                            continue;
-                        }
-                        
+            if (in_array($day_name, $config->playing_days)) {
+                // Get available venues for this specific date
+                $available_venues = $this->get_available_venues_for_date($date_str, $day_name, $config);
+                
+                foreach ($available_venues as $venue_data) {
+                    $venue = $venue_data['venue'];
+                    $time_slots = $venue_data['time_slots'];
+                    
+                    foreach ($time_slots as $time_slot) {
                         $slot = (object) array(
                             'date' => $date_str,
                             'time_slot' => $time_slot,
@@ -449,6 +449,61 @@ class SPSG_Schedule_Engine {
         }
         
         return null;
+    }
+    
+    /**
+     * Get available venues for a specific date with their time slots
+     * 
+     * @param string $date Date in YYYY-MM-DD format
+     * @param string $day_name Day name (lowercase)
+     * @param SPSG_Schedule_Configuration $config Configuration
+     * @return array Array of venue data with time slots
+     */
+    private function get_available_venues_for_date($date, $day_name, $config) {
+        $available = array();
+        
+        foreach ($config->venues as $venue) {
+            $venue_id = is_object($venue) ? $venue->id : $venue['id'];
+            
+            // Check venue-specific blackout dates first
+            if (!empty($config->venue_blackout_dates[$venue_id])) {
+                if (in_array($date, $config->venue_blackout_dates[$venue_id])) {
+                    continue;
+                }
+            }
+            
+            $time_slots = null;
+            
+            // Priority 1: Check date-specific availability
+            if (!empty($config->venue_date_availability[$venue_id])) {
+                foreach ($config->venue_date_availability[$venue_id] as $range) {
+                    if ($date >= $range['start_date'] && $date <= $range['end_date']) {
+                        $time_slots = $range['time_slots'];
+                        break;
+                    }
+                }
+            }
+            
+            // Priority 2: Check venue-specific timeslots for this day
+            if ($time_slots === null && !empty($config->venue_timeslots[$venue_id][$day_name])) {
+                $time_slots = $config->venue_timeslots[$venue_id][$day_name];
+            }
+            
+            // Priority 3: Fall back to global time slots for this day
+            if ($time_slots === null && !empty($config->time_slots[$day_name])) {
+                $time_slots = $config->time_slots[$day_name];
+            }
+            
+            // If we have time slots, add this venue to available list
+            if (!empty($time_slots)) {
+                $available[] = array(
+                    'venue' => $venue,
+                    'time_slots' => $time_slots
+                );
+            }
+        }
+        
+        return $available;
     }
     
     /**
