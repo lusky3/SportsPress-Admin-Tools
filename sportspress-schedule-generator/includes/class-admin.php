@@ -1739,6 +1739,7 @@ class SPSG_Admin {
             </div>
             <div class="spsg-config-actions">
                 <button type="button" class="button" id="spsg-save-as-new"><?php _e('Save As New', 'sportspress-schedule-generator'); ?></button>
+                <button type="button" class="button" id="spsg-clone-config" style="<?php echo empty($config->id) ? 'display:none;' : ''; ?>"><?php _e('Clone Configuration', 'sportspress-schedule-generator'); ?></button>
                 <button type="button" class="button" id="spsg-delete-config"><?php _e('Delete Configuration', 'sportspress-schedule-generator'); ?></button>
                 <button type="button" class="button" id="spsg-export-config"><?php _e('Export Configuration (JSON)', 'sportspress-schedule-generator'); ?></button>
                 <button type="button" class="button" id="spsg-import-config"><?php _e('Import Configuration', 'sportspress-schedule-generator'); ?></button>
