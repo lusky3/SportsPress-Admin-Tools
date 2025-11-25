@@ -952,6 +952,115 @@ body.spsg-modal-open {
     }
 }
 
+/* ============================================
+   Import Preview Modal Styles (Task 12)
+   Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6
+   ============================================ */
+
+/* Preview Summary Section */
+.spsg-preview-summary {
+    margin-bottom: 20px;
+}
+
+.spsg-preview-summary h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 16px;
+    color: #1d2327;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 10px;
+}
+
+.spsg-preview-summary table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.spsg-preview-summary table th {
+    text-align: left;
+    padding: 10px;
+    background: #f9f9f9;
+    font-weight: 600;
+    color: #1d2327;
+    width: 40%;
+    border-bottom: 1px solid #ddd;
+}
+
+.spsg-preview-summary table td {
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+    color: #1d2327;
+}
+
+.spsg-preview-summary table tr:last-child th,
+.spsg-preview-summary table tr:last-child td {
+    border-bottom: none;
+}
+
+/* Preview Warnings Section */
+.spsg-preview-warnings {
+    margin-top: 20px;
+    padding: 15px;
+    background: #fcf3cf;
+    border: 1px solid #f0b849;
+    border-radius: 4px;
+}
+
+.spsg-preview-warnings h3 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 16px;
+    color: #1d2327;
+}
+
+.spsg-preview-warnings ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.spsg-preview-warnings li {
+    margin-bottom: 8px;
+    color: #856404;
+    line-height: 1.5;
+}
+
+.spsg-preview-warnings li:last-child {
+    margin-bottom: 0;
+}
+
+/* Warning icon */
+.spsg-preview-warnings li:before {
+    content: "⚠ ";
+    font-weight: bold;
+    margin-right: 5px;
+}
+
+/* Mobile responsive for preview modal */
+@media (max-width: 768px) {
+    .spsg-preview-summary table th {
+        width: 35%;
+        font-size: 13px;
+        padding: 8px;
+    }
+    
+    .spsg-preview-summary table td {
+        font-size: 13px;
+        padding: 8px;
+    }
+    
+    .spsg-preview-warnings {
+        padding: 12px;
+    }
+    
+    .spsg-preview-warnings h3 {
+        font-size: 14px;
+    }
+    
+    .spsg-preview-warnings li {
+        font-size: 13px;
+    }
+}
+
 /* Venue Selection Dialog */
 #spsg-venue-selection-dialog {
     position: fixed;
