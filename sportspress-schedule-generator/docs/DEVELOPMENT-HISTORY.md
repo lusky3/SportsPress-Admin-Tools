@@ -297,6 +297,70 @@ Implement the core schedule generation engine with advanced algorithms and Sport
 
 ---
 
+## Phase 3.5: Venue Management Enhancements (Complete)
+
+**Status:** ✅ Complete  
+**Timeline:** November 2025  
+**Priority:** High
+
+### Implemented Features
+
+#### Venue Import Fix
+- **Problem:** Only 2 venues importing from SportsPress
+- **Solution:** Fixed to use `get_terms()` for sp_venue taxonomy instead of `get_posts()`
+- **Impact:** All SportsPress venues now import correctly
+- **Files:** `class-admin.php`, `class-sportspress-integration.php`
+
+#### Venue-Specific Blackout Dates
+- **Feature:** Individual venues can be marked unavailable on specific dates
+- **UI:** Textarea input with date validation (YYYY-MM-DD format)
+- **Use Case:** Handle venue maintenance, conflicts, or temporary closures
+- **Files:** `class-admin.php`, `class-schedule-configuration.php`
+
+#### CSV Venue Schedule Import
+- **Feature:** Import week-by-week venue availability from CSV files
+- **Capabilities:**
+  - Intelligent venue name matching with confidence scoring
+  - Visual venue mapping dialog for unmatched venues
+  - Support for flexible time formats (ranges, lists, single times)
+  - Date-specific slot generation with priority system
+- **CSV Format:** `Week Start Date, Venue Name, Time Slots`
+- **Time Formats Supported:**
+  - Range: `18:00-23:00` (generates hourly slots)
+  - List: `18:00, 19:00, 20:00` (explicit slots)
+  - Single: `18:00` (single slot)
+- **Files Created:** `class-venue-schedule-importer.php`, `docs/VENUE-CSV-IMPORT-PLAN.md`
+- **Files Modified:** `class-admin.php`, `class-slot-allocator.php`, `class-schedule-engine.php`, `admin.css`
+
+#### AJAX Form Validation
+- **Problem:** Data loss when validation fails on form submission
+- **Solution:** Replaced form submission with AJAX validation
+- **Benefits:**
+  - All entered data preserved on validation errors
+  - Inline error display
+  - Better user experience
+- **Files:** `class-admin.php`, `schedule-generator.js`
+
+#### Import Dialog Implementation
+- **Feature:** Modal dialog for SportsPress import configuration
+- **Options:**
+  - Conflict resolution (skip/overwrite)
+  - Event status (publish/draft/pending/future)
+  - League/season selection
+  - Dry run mode
+- **Progress Tracking:** Real-time progress with polling
+- **Results Display:** Imported/overwritten/skipped/failed counts
+- **Files:** `class-admin.php`, `schedule-generator.js`, `admin.css`
+
+### Technical Improvements
+
+- Fixed PHP syntax errors on constraints page
+- Added AJAX handlers for import dialog data and progress
+- Enhanced slot allocation to use date-specific venue availability
+- Improved venue matching algorithm with fuzzy matching
+
+---
+
 ## Phase 4+: Future Enhancements (Planned)
 
 **Status:** 🎯 Planned  

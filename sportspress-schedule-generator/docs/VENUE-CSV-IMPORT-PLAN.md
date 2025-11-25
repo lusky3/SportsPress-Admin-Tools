@@ -4,9 +4,20 @@
 Allow importing week-by-week venue availability from CSV files to handle dynamic venue schedules where venues and time slots change weekly.
 
 ## Current Status
-✅ Created `SPSG_Venue_Schedule_Importer` class with CSV parsing
-✅ Added `venue_date_availability` property to configuration
-✅ Added sanitization for date-specific venue availability
+
+### ✅ Completed
+- Created `SPSG_Venue_Schedule_Importer` class with CSV parsing
+- Added `venue_date_availability` property to configuration
+- Added sanitization for date-specific venue availability
+- Fixed venue import to use `get_terms()` for SportsPress taxonomy
+- Added venue-specific blackout dates feature
+- Implemented AJAX validation to prevent data loss on save
+- Added venue mapping dialog UI components
+- Updated slot generation to use date-specific venue availability
+
+### 🔄 In Progress
+- CSV upload interface (UI partially complete)
+- Full venue mapping workflow testing
 
 ## Remaining Implementation Tasks
 
