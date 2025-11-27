@@ -166,7 +166,7 @@ The import dialog with AJAX handlers, nonces, HTML structure, CSS styles, JavaSc
   - _Files: includes/class-admin.php, assets/css/admin.css_
   - _Estimated: 1 hour_
 
-- [ ] 13. Implement Import Preview JavaScript
+- [x] 13. Implement Import Preview JavaScript
   - Intercept file selection on import config file input
   - Read file content using FileReader API
   - Make AJAX call to preview endpoint with file content
@@ -187,7 +187,7 @@ The import dialog with AJAX handlers, nonces, HTML structure, CSS styles, JavaSc
   - _Files: assets/js/schedule-generator.js_
   - _Estimated: 1.5 hours_
 
-- [ ] 14. Add Export Filter UI
+- [x] 14. Add Export Filter UI
   - Add filter section to generate tab in `render_generate_tab()`
   - Add division dropdown (populated from schedule)
   - Add "From Date" input (type="date")
@@ -205,7 +205,7 @@ The import dialog with AJAX handlers, nonces, HTML structure, CSS styles, JavaSc
   - _Files: includes/class-admin.php, assets/css/admin.css_
   - _Estimated: 1 hour_
 
-- [ ] 15. Populate Export Filters from Schedule
+- [x] 15. Populate Export Filters from Schedule
   - Create `populateExportFilters()` function in JavaScript
   - Extract unique divisions from schedule data
   - Populate division dropdown with divisions
@@ -221,7 +221,7 @@ The import dialog with AJAX handlers, nonces, HTML structure, CSS styles, JavaSc
   - _Files: assets/js/schedule-generator.js_
   - _Estimated: 45 minutes_
 
-- [ ] 16. Update Export JavaScript with Filters
+- [x] 16. Update Export JavaScript with Filters
   - Update `exportSchedule()` method to collect filter values
   - Collect division filter value
   - Collect date from filter value
@@ -240,7 +240,7 @@ The import dialog with AJAX handlers, nonces, HTML structure, CSS styles, JavaSc
   - _Files: assets/js/schedule-generator.js_
   - _Estimated: 45 minutes_
 
-- [ ] 17. Add Enhanced Statistics Panel HTML
+- [x] 17. Add Enhanced Statistics Panel HTML
   - Add statistics panel section in `render_generate_tab()`
   - Add collapsible panel with header and toggle button
   - Add summary stats section (total games, games per team, inter-division)
@@ -258,7 +258,7 @@ The import dialog with AJAX handlers, nonces, HTML structure, CSS styles, JavaSc
   - _Files: includes/class-admin.php, assets/css/admin.css_
   - _Estimated: 1.5 hours_
 
-- [ ] 18. Implement Statistics Display JavaScript
+- [x] 18. Implement Statistics Display JavaScript
   - Create `displayStatistics()` function
   - Populate summary stats (total, avg, range)
   - Populate home/away balance table
@@ -281,7 +281,7 @@ The import dialog with AJAX handlers, nonces, HTML structure, CSS styles, JavaSc
   - _Files: assets/js/schedule-generator.js_
   - _Estimated: 2 hours_
 
-- [ ] 19. Add Dynamic Export Format Detection
+- [x] 19. Add Dynamic Export Format Detection
   - Add `ajax_get_export_formats()` method to SPSG_Admin
   - Check for PhpSpreadsheet class existence
   - Return available formats (CSV always, XLSX if available)
@@ -297,7 +297,7 @@ The import dialog with AJAX handlers, nonces, HTML structure, CSS styles, JavaSc
   - _Files: includes/class-admin.php, assets/js/schedule-generator.js_
   - _Estimated: 1 hour_
 
-- [ ] 20. Add Clear Change History Feature
+- [x] 20. Add Clear Change History Feature
   - Add `ajax_clear_change_history()` method to SPSG_Admin
   - Call `SPSG_Configuration_Manager::clear_change_history()`
   - Add "Clear History" button to change history display
@@ -313,7 +313,7 @@ The import dialog with AJAX handlers, nonces, HTML structure, CSS styles, JavaSc
   - _Files: includes/class-admin.php, assets/js/schedule-generator.js_
   - _Estimated: 45 minutes_
 
-- [ ] 21. Add Configuration Preset Selector UI
+- [x] 21. Add Configuration Preset Selector UI
   - Preset selector already exists in basic config tab
   - Verify preset dropdown displays available presets
   - Verify "Apply Preset" button is functional
@@ -327,7 +327,7 @@ The import dialog with AJAX handlers, nonces, HTML structure, CSS styles, JavaSc
   - _Files: includes/class-admin.php (verify existing), assets/js/schedule-generator.js (verify existing)_
   - _Estimated: 30 minutes (verification and testing)_
 
-- [ ] 22. Integration Testing - Configuration Management
+- [x] 22. Integration Testing - Configuration Management
   - Test clone configuration works end-to-end
   - Test cloned config has all original data
   - Test import preview shows correct data
@@ -353,7 +353,7 @@ The import dialog with AJAX handlers, nonces, HTML structure, CSS styles, JavaSc
 
 ### Medium Priority (P2) - Nice to Have
 
-- [ ] 23. Add Tooltips and Help Text
+- [x] 23. Add Tooltips and Help Text
   - Add tooltips to complex configuration options
   - Add help text to import dialog options (conflict resolution, dry run)
   - Add help text to export filters (how filtering works)
