@@ -15,11 +15,62 @@
         init: function() {
             this.bindEvents();
             this.checkConfigurationStatus();
+            this.checkExportFormats();
             
             // Initialize preview features if preview is already displayed
             if ($('#spsg-schedule-preview-container').length && $('#spsg-schedule-table').length) {
                 this.initializePreviewFeatures();
             }
+        },
+        
+        /**
+         * Check available export formats and hide unavailable ones
+         */
+        checkExportFormats: function() {
+            var self = this;
+            
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'spsg_get_export_formats',
+                    nonce: spsgData.nonces.get_export_formats
+                },
+                success: function(response) {
+                    if (response.success) {
+                        var formats = response.data;
+                        
+                        // Hide XLSX button if PhpSpreadsheet not available
+                        if (formats.xlsx && !formats.xlsx.available) {
+                            $('#spsg-export-xlsx').hide();
+                            
+                            // Add tooltip explaining why format unavailable
+                            var tooltip = $('<span class="spsg-format-unavailable-tooltip"></span>')
+                                .text(formats.xlsx.reason || 'Format not available')
+                                .hide();
+                            
+                            $('#spsg-export-xlsx').after(tooltip);
+                            
+                            // Show tooltip on hover of the hidden button's space
+                            $('#spsg-export-xlsx').parent().append(
+                                $('<span class="spsg-format-info"></span>')
+                                    .text('ℹ XLSX export unavailable: ' + (formats.xlsx.reason || 'PhpSpreadsheet not installed'))
+                                    .css({
+                                        'font-size': '12px',
+                                        'color': '#666',
+                                        'margin-left': '10px'
+                                    })
+                            );
+                        }
+                        
+                        // CSV button always visible (no action needed)
+                    }
+                },
+                error: function() {
+                    // Silently fail - keep both buttons visible
+                    console.warn('Failed to check export formats');
+                }
+            });
         },
         
         bindEvents: function() {
@@ -198,6 +249,13 @@
                 return;
             }
             
+            // Collect filter values
+            var filters = {
+                division: $('#spsg-export-division').val() || '',
+                date_from: $('#spsg-export-date-from').val() || '',
+                date_to: $('#spsg-export-date-to').val() || ''
+            };
+            
             $.ajax({
                 url: ajaxurl,
                 type: 'POST',
@@ -205,7 +263,8 @@
                     action: 'spsg_export_schedule',
                     nonce: spsgData.nonces.export_schedule,
                     schedule_id: this.scheduleId,
-                    format: format
+                    format: format,
+                    filters: filters
                 },
                 beforeSend: function() {
                     self.showMessage('info', 'Exporting schedule as ' + format.toUpperCase() + '...');
@@ -237,6 +296,9 @@
         
         initializePreviewFeatures: function() {
             var self = this;
+            
+            // Populate export filters from schedule
+            this.populateExportFilters();
             
             // Bind filter events
             $('.spsg-filter').on('change', function() {
@@ -278,6 +340,210 @@
             $('#spsg-import-to-sp').off('click').on('click', function() {
                 self.importToSportsPress();
             });
+            
+            // Initialize statistics panel toggle
+            this.initializeStatisticsPanel();
+        },
+        
+        /**
+         * Initialize statistics panel functionality
+         */
+        initializeStatisticsPanel: function() {
+            // Bind toggle button for detailed stats
+            $('.spsg-detailed-stats h3').css('cursor', 'pointer').on('click', function() {
+                $(this).next('.spsg-stats-grid').slideToggle();
+                $(this).toggleClass('spsg-collapsed');
+            });
+            
+            // Add collapse indicator to heading
+            if ($('.spsg-detailed-stats h3').length) {
+                $('.spsg-detailed-stats h3').append(' <span class="dashicons dashicons-arrow-down-alt2"></span>');
+            }
+            
+            // Apply color coding to home/away balance
+            this.applyBalanceColorCoding();
+            
+            // Apply color coding to venue utilization
+            this.applyVenueUtilizationColorCoding();
+        },
+        
+        /**
+         * Apply color coding to home/away balance table
+         */
+        applyBalanceColorCoding: function() {
+            $('.spsg-stat-section table tbody tr').each(function() {
+                var $row = $(this);
+                
+                // Check if this is a home/away balance row
+                if ($row.find('.spsg-balance-good, .spsg-balance-ok, .spsg-balance-warning').length) {
+                    var balanceText = $row.find('td:last').text();
+                    
+                    // Extract difference number
+                    var match = balanceText.match(/[±]?\s*(\d+)/);
+                    if (match) {
+                        var diff = parseInt(match[1]);
+                        
+                        // Apply row color coding based on difference
+                        if (diff === 0) {
+                            $row.css('background-color', '#d5f4e6');
+                        } else if (diff <= 2) {
+                            $row.css('background-color', '#fcf3cf');
+                        } else {
+                            $row.css('background-color', '#f8d7da');
+                        }
+                    }
+                }
+            });
+        },
+        
+        /**
+         * Apply color coding to venue utilization table
+         */
+        applyVenueUtilizationColorCoding: function() {
+            var $venueTable = $('.spsg-stat-section:contains("Venue Utilization") table tbody');
+            
+            if ($venueTable.length) {
+                var totalGames = 0;
+                var venueCount = 0;
+                
+                // Calculate average utilization
+                $venueTable.find('tr').each(function() {
+                    var games = parseInt($(this).find('td:last').text()) || 0;
+                    totalGames += games;
+                    venueCount++;
+                });
+                
+                var avgUtilization = venueCount > 0 ? totalGames / venueCount : 0;
+                
+                // Apply color coding based on variance from average
+                $venueTable.find('tr').each(function() {
+                    var $row = $(this);
+                    var games = parseInt($row.find('td:last').text()) || 0;
+                    var variance = avgUtilization > 0 ? Math.abs(games - avgUtilization) / avgUtilization : 0;
+                    
+                    if (variance <= 0.2) {
+                        $row.css('background-color', '#d5f4e6'); // Green - good
+                    } else if (variance <= 0.4) {
+                        $row.css('background-color', '#fcf3cf'); // Yellow - warning
+                    } else {
+                        $row.css('background-color', '#f8d7da'); // Red - critical
+                    }
+                });
+            }
+        },
+        
+        /**
+         * Populate export filters from schedule data
+         */
+        populateExportFilters: function() {
+            var self = this;
+            var divisions = [];
+            var minDate = null;
+            var maxDate = null;
+            
+            // Extract unique divisions and date range from schedule table
+            $('#spsg-schedule-table tbody tr').each(function() {
+                var $row = $(this);
+                
+                // Collect unique divisions
+                var division = $row.data('division');
+                if (division && divisions.indexOf(division) === -1) {
+                    divisions.push(division);
+                }
+                
+                // Track date range
+                var rowDate = $row.data('date');
+                if (rowDate) {
+                    if (!minDate || rowDate < minDate) {
+                        minDate = rowDate;
+                    }
+                    if (!maxDate || rowDate > maxDate) {
+                        maxDate = rowDate;
+                    }
+                }
+            });
+            
+            // Populate division dropdown with divisions
+            var $divisionSelect = $('#spsg-export-division');
+            $divisionSelect.empty();
+            
+            // Add "All Divisions" option at top
+            $divisionSelect.append('<option value="">All Divisions</option>');
+            
+            // Remove duplicate divisions and add to dropdown
+            divisions.sort();
+            divisions.forEach(function(division) {
+                $divisionSelect.append('<option value="' + division + '">' + division + '</option>');
+            });
+            
+            // Pre-fill date range with schedule min/max dates
+            if (minDate) {
+                $('#spsg-export-date-from').val(minDate);
+            }
+            if (maxDate) {
+                $('#spsg-export-date-to').val(maxDate);
+            }
+            
+            // Show export filters section
+            $('.spsg-export-filters').slideDown();
+            
+            // Update filtered count
+            this.updateFilteredCount();
+            
+            // Bind filter change events to update count
+            $('#spsg-export-division, #spsg-export-date-from, #spsg-export-date-to').on('change', function() {
+                self.updateFilteredCount();
+            });
+            
+            // Bind toggle button
+            $('.spsg-toggle-filters').on('click', function() {
+                var $button = $(this);
+                var $content = $('.spsg-filter-content');
+                
+                if ($content.is(':visible')) {
+                    $content.slideUp();
+                    $button.text('Expand');
+                } else {
+                    $content.slideDown();
+                    $button.text('Collapse');
+                }
+            });
+        },
+        
+        /**
+         * Update filtered game count
+         */
+        updateFilteredCount: function() {
+            var division = $('#spsg-export-division').val();
+            var dateFrom = $('#spsg-export-date-from').val();
+            var dateTo = $('#spsg-export-date-to').val();
+            
+            var count = 0;
+            
+            $('#spsg-schedule-table tbody tr').each(function() {
+                var $row = $(this);
+                var show = true;
+                
+                // Division filter
+                if (division && $row.data('division') !== division) {
+                    show = false;
+                }
+                
+                // Date range filter
+                if (dateFrom && $row.data('date') < dateFrom) {
+                    show = false;
+                }
+                
+                if (dateTo && $row.data('date') > dateTo) {
+                    show = false;
+                }
+                
+                if (show) {
+                    count++;
+                }
+            });
+            
+            $('#spsg-filtered-count').text(count);
         },
         
         applyFilters: function() {
@@ -937,9 +1203,354 @@
         }
     };
     
+    /**
+     * Import Preview Module
+     * Handles the configuration import preview dialog
+     */
+    var ImportPreview = {
+        configData: null,
+        
+        /**
+         * Initialize import preview functionality
+         */
+        init: function() {
+            this.bindEvents();
+        },
+        
+        /**
+         * Bind event handlers
+         */
+        bindEvents: function() {
+            var self = this;
+            
+            // Intercept file selection on import config file input
+            $('#spsg-import-config-file').on('change', function(e) {
+                self.handleFileSelection(e);
+            });
+            
+            // Apply import button
+            $('#spsg-apply-import').off('click').on('click', function() {
+                self.applyImport();
+            });
+            
+            // Cancel button
+            $('#spsg-cancel-import-preview, #spsg-import-preview-modal .spsg-modal-close').off('click').on('click', function() {
+                self.hide();
+            });
+            
+            // Close on overlay click
+            $('#spsg-import-preview-modal .spsg-modal-overlay').off('click').on('click', function() {
+                self.hide();
+            });
+            
+            // Escape key to close
+            $(document).off('keydown.spsg-import-preview').on('keydown.spsg-import-preview', function(e) {
+                if (e.key === 'Escape' && $('#spsg-import-preview-modal').is(':visible')) {
+                    self.hide();
+                }
+            });
+        },
+        
+        /**
+         * Handle file selection
+         * @param {Event} e - File input change event
+         */
+        handleFileSelection: function(e) {
+            var self = this;
+            var file = e.target.files[0];
+            
+            if (!file) {
+                return;
+            }
+            
+            // Show loading state
+            SPSG.showMessage('info', 'Reading configuration file...');
+            
+            // Read file content using FileReader API
+            var reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    var configData = e.target.result;
+                    
+                    // Validate JSON
+                    try {
+                        JSON.parse(configData);
+                    } catch (jsonError) {
+                        SPSG.showMessage('error', 'Invalid configuration file: Not valid JSON');
+                        // Reset file input
+                        $('#spsg-import-config-file').val('');
+                        return;
+                    }
+                    
+                    // Make AJAX call to preview endpoint with file content
+                    self.previewConfiguration(configData);
+                    
+                } catch (err) {
+                    SPSG.showMessage('error', 'Error reading file: ' + err.message);
+                    // Reset file input
+                    $('#spsg-import-config-file').val('');
+                }
+            };
+            
+            reader.onerror = function() {
+                SPSG.showMessage('error', 'Failed to read file. Please try again.');
+                // Reset file input
+                $('#spsg-import-config-file').val('');
+            };
+            
+            reader.readAsText(file);
+        },
+        
+        /**
+         * Preview configuration via AJAX
+         * @param {string} configData - JSON configuration data
+         */
+        previewConfiguration: function(configData) {
+            var self = this;
+            
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'spsg_preview_import',
+                    nonce: spsgData.nonces.preview_import,
+                    config_data: configData
+                },
+                beforeSend: function() {
+                    // Show loading state during AJAX call
+                    SPSG.showMessage('info', 'Analyzing configuration...');
+                },
+                success: function(response) {
+                    if (response.success) {
+                        // Display preview modal with returned data
+                        self.showPreview(response.data, configData);
+                    } else {
+                        // Handle errors gracefully (invalid file, network error)
+                        var errorMsg = response.data.message || response.data || 'Failed to preview configuration';
+                        SPSG.showMessage('error', errorMsg);
+                        // Reset file input
+                        $('#spsg-import-config-file').val('');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    // Handle errors gracefully (network error)
+                    SPSG.showMessage('error', 'Network error: Failed to preview configuration');
+                    // Reset file input
+                    $('#spsg-import-config-file').val('');
+                }
+            });
+        },
+        
+        /**
+         * Show preview modal
+         * @param {object} preview - Preview data from server
+         * @param {string} configData - Original JSON configuration data
+         */
+        showPreview: function(preview, configData) {
+            // Store config data for apply action
+            this.configData = configData;
+            
+            // Populate all preview fields (name, dates, counts)
+            $('#spsg-preview-name').text(preview.name || 'Unnamed Configuration');
+            
+            // Format season dates
+            var seasonText = '';
+            if (preview.season_start && preview.season_end) {
+                seasonText = preview.season_start + ' to ' + preview.season_end;
+            } else if (preview.season_start) {
+                seasonText = 'From ' + preview.season_start;
+            } else if (preview.season_end) {
+                seasonText = 'Until ' + preview.season_end;
+            } else {
+                seasonText = 'Not specified';
+            }
+            $('#spsg-preview-season').text(seasonText);
+            
+            $('#spsg-preview-games').text(preview.games_per_team || 'Not specified');
+            $('#spsg-preview-divisions').text(preview.division_count || 0);
+            $('#spsg-preview-teams').text(preview.team_count || 0);
+            $('#spsg-preview-venues').text(preview.venue_count || 0);
+            
+            // Show warnings if any exist
+            if (preview.warnings && preview.warnings.length > 0) {
+                var $warningList = $('#spsg-warning-list');
+                $warningList.empty();
+                
+                preview.warnings.forEach(function(warning) {
+                    $warningList.append('<li>' + warning + '</li>');
+                });
+                
+                $('#spsg-preview-warnings').show();
+            } else {
+                $('#spsg-preview-warnings').hide();
+            }
+            
+            // Show modal
+            $('#spsg-import-preview-modal').fadeIn(200);
+            $('body').addClass('spsg-modal-open');
+            
+            // Focus the apply button for accessibility
+            setTimeout(function() {
+                $('#spsg-apply-import').focus();
+            }, 250);
+            
+            // Clear any previous messages
+            SPSG.showMessage('success', 'Configuration preview loaded');
+        },
+        
+        /**
+         * Apply import (populate form with imported data)
+         */
+        applyImport: function() {
+            var self = this;
+            
+            if (!this.configData) {
+                SPSG.showMessage('error', 'No configuration data to import');
+                return;
+            }
+            
+            try {
+                var config = JSON.parse(this.configData);
+                
+                // Populate form with imported data
+                $.each(config, function(key, value) {
+                    var input = $('[name="' + key + '"]');
+                    
+                    if (input.length) {
+                        if (input.is(':checkbox')) {
+                            // Handle checkboxes
+                            input.prop('checked', value == '1' || value === true || value === 'true');
+                        } else if (input.is(':radio')) {
+                            // Handle radio buttons
+                            input.filter('[value="' + value + '"]').prop('checked', true);
+                        } else if (input.is('select')) {
+                            // Handle select dropdowns
+                            input.val(value);
+                        } else {
+                            // Handle text inputs, textareas, etc.
+                            input.val(value);
+                        }
+                    }
+                });
+                
+                // Hide modal
+                this.hide();
+                
+                // Show success message
+                SPSG.showMessage('success', 'Configuration imported successfully. Please review and save.');
+                
+                // Reset file input
+                $('#spsg-import-config-file').val('');
+                
+            } catch (err) {
+                SPSG.showMessage('error', 'Error applying import: ' + err.message);
+            }
+        },
+        
+        /**
+         * Hide the modal
+         */
+        hide: function() {
+            $('#spsg-import-preview-modal').fadeOut(200);
+            $('body').removeClass('spsg-modal-open');
+            
+            // Reset state
+            this.configData = null;
+            
+            // Reset file input
+            $('#spsg-import-config-file').val('');
+            
+            // Remove escape key handler
+            $(document).off('keydown.spsg-import-preview');
+        }
+    };
+    
+    /**
+     * Tooltip Module
+     * Handles accessible tooltips throughout the interface
+     */
+    var Tooltips = {
+        init: function() {
+            this.initializeTooltips();
+            this.bindEvents();
+        },
+        
+        /**
+         * Initialize all tooltips
+         */
+        initializeTooltips: function() {
+            // Make tooltip icons keyboard accessible
+            $('.spsg-tooltip-icon').attr('tabindex', '0');
+            
+            // Add ARIA attributes for screen readers
+            $('.spsg-tooltip').each(function() {
+                var $tooltip = $(this);
+                var $text = $tooltip.find('.spsg-tooltip-text');
+                var tooltipId = 'tooltip-' + Math.random().toString(36).substr(2, 9);
+                
+                $text.attr('id', tooltipId);
+                $text.attr('role', 'tooltip');
+                $tooltip.find('.spsg-tooltip-icon').attr('aria-describedby', tooltipId);
+            });
+        },
+        
+        /**
+         * Bind tooltip events
+         */
+        bindEvents: function() {
+            var self = this;
+            
+            // Keyboard accessibility: Show tooltip on focus
+            $('.spsg-tooltip-icon').on('focus', function() {
+                $(this).closest('.spsg-tooltip').addClass('focused');
+            });
+            
+            $('.spsg-tooltip-icon').on('blur', function() {
+                $(this).closest('.spsg-tooltip').removeClass('focused');
+            });
+            
+            // Mobile: Toggle tooltip on tap
+            if ('ontouchstart' in window) {
+                $('.spsg-tooltip').on('touchstart', function(e) {
+                    e.preventDefault();
+                    var $this = $(this);
+                    
+                    // Close other tooltips
+                    $('.spsg-tooltip').not($this).removeClass('active');
+                    
+                    // Toggle this tooltip
+                    $this.toggleClass('active');
+                });
+                
+                // Close tooltips when tapping outside
+                $(document).on('touchstart', function(e) {
+                    if (!$(e.target).closest('.spsg-tooltip').length) {
+                        $('.spsg-tooltip').removeClass('active');
+                    }
+                });
+            }
+            
+            // Keyboard: Show/hide tooltip with Enter/Space
+            $('.spsg-tooltip-icon').on('keydown', function(e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    $(this).closest('.spsg-tooltip').toggleClass('active');
+                }
+                
+                // Close with Escape
+                if (e.key === 'Escape') {
+                    $(this).closest('.spsg-tooltip').removeClass('active');
+                }
+            });
+        }
+    };
+    
     // Initialize on document ready
     $(document).ready(function() {
         SPSG.init();
+        ImportPreview.init();
+        Tooltips.init();
     });
     
 })(jQuery);
