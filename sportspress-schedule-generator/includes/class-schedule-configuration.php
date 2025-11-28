@@ -517,6 +517,20 @@ class SPSG_Schedule_Configuration {
     public function sanitize($data) {
         $sanitized = array();
         
+        // Sanitize metadata fields (id, name, timestamps)
+        if (isset($data['id'])) {
+            $sanitized['id'] = sanitize_text_field($data['id']);
+        }
+        if (isset($data['name'])) {
+            $sanitized['name'] = sanitize_text_field($data['name']);
+        }
+        if (isset($data['created'])) {
+            $sanitized['created'] = sanitize_text_field($data['created']);
+        }
+        if (isset($data['modified'])) {
+            $sanitized['modified'] = sanitize_text_field($data['modified']);
+        }
+        
         // Sanitize basic fields
         $sanitized['season_start'] = sanitize_text_field($data['season_start'] ?? '');
         $sanitized['season_end'] = sanitize_text_field($data['season_end'] ?? '');

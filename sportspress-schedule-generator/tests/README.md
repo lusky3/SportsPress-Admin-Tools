@@ -4,12 +4,21 @@ This directory contains unit and integration tests for the Schedule Generator pl
 
 ## Test File Organization
 
+### Docker Tests (tests/docker/) ⭐ NEW
+Full WordPress environment tests using Docker containers:
+- `docker/` - Complete WordPress + MySQL test environment
+- Uses `ghcr.io/lusky3/sportspress-sandbox/sportspress-test-env:latest`
+- Real WordPress integration testing
+- See `docker/README.md` or `docker/QUICK-START.md` for usage
+- **Recommended for integration testing and pre-release validation**
+
 ### Automated Tests (tests/ root)
 Standard test files that use proper WordPress test environment via `bootstrap.php`:
 - `test-*.php` - Automated tests run by test suite
 - Use WordPress test library
 - Suitable for CI/CD
 - Part of regular test runs
+- **Recommended for rapid development and CI/CD**
 
 ### Manual Verification Scripts (tests/manual/)
 Manual testing and debugging tools:
@@ -25,6 +34,7 @@ Historical test verification reports:
 - See `reports/README.md` for details
 
 ### Test Subdirectories
+- `docker/` - Docker-based WordPress environment tests
 - `unit/` - Unit tests for individual classes
 - `integration/` - Integration tests for component interactions
 
@@ -80,9 +90,35 @@ Tests the complete configuration lifecycle:
 - Validation during save
 - Phase 2 properties
 
+## Quick Start
+
+### Docker Tests (Recommended)
+
+```bash
+cd tests/docker
+./run-tests.sh
+```
+
+See `docker/QUICK-START.md` for details.
+
+### Simple Tests
+
+```bash
+# From plugin root
+phpunit tests/
+```
+
 ## Prerequisites
 
-### 1. Install WordPress Test Library
+### For Docker Tests
+
+- Docker and Docker Compose installed
+- Port 8080 available
+- That's it! No other setup needed.
+
+### For Simple Tests
+
+#### 1. Install WordPress Test Library
 
 ```bash
 # Install WordPress test library
@@ -99,7 +135,7 @@ svn co https://develop.svn.wordpress.org/trunk/ /tmp/wordpress-tests-lib
 export WP_TESTS_DIR=/tmp/wordpress-tests-lib
 ```
 
-### 2. Install PHPUnit
+#### 2. Install PHPUnit
 
 ```bash
 # Using Composer
@@ -113,7 +149,29 @@ sudo mv phpunit-7.phar /usr/local/bin/phpunit
 
 ## Running Tests
 
-### Run All Tests
+### Docker Tests (Recommended for Integration Testing)
+
+```bash
+# Run all Docker tests
+cd tests/docker
+./run-tests.sh
+
+# Run specific test suite
+./run-tests.sh validation
+./run-tests.sh configuration-lifecycle
+./run-tests.sh ajax-handlers
+
+# Setup environment for manual testing
+./run-tests.sh --setup
+# WordPress available at http://localhost:8080 (admin/admin)
+
+# Teardown when done
+./run-tests.sh --teardown
+```
+
+### Simple Tests (Recommended for Development)
+
+#### Run All Tests
 
 ```bash
 # From plugin root directory
@@ -123,7 +181,7 @@ phpunit
 phpunit tests/
 ```
 
-### Run Specific Test File
+#### Run Specific Test File
 
 ```bash
 # Run validation tests only
@@ -133,14 +191,14 @@ phpunit tests/test-validation.php
 phpunit tests/test-configuration-lifecycle.php
 ```
 
-### Run Specific Test Method
+#### Run Specific Test Method
 
 ```bash
 # Run single test method
 phpunit --filter test_valid_configuration tests/test-validation.php
 ```
 
-### Run with Verbose Output
+#### Run with Verbose Output
 
 ```bash
 # Show detailed output
