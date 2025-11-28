@@ -1,0 +1,13 @@
+# Docker volumes and data
+db_data/
+
+# Docker Compose override files
+docker-compose.override.yml
+
+# Test output files
+*.log
+test-results/
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -137,9 +137,12 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
         if ($result) {
             $this->current_config = new SPSG_Schedule_Configuration($sanitized);
             do_action('spsg_configuration_saved', $sanitized['id'], $sanitized);
+            // Return the ID on success
+            return $sanitized['id'];
         }
         
-        return $result;
+        // Return false on failure
+        return false;
     }
     
     /**
@@ -260,6 +263,8 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
         
         // Remove ID to create new configuration
         unset($migrated_config['id']);
+        unset($migrated_config['created']);
+        unset($migrated_config['modified']);
         $migrated_config['name'] = ($migrated_config['name'] ?? 'Imported Configuration') . ' (Imported)';
         
         // Validate before saving
@@ -272,6 +277,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
             return $validation;
         }
         
+        // save() now returns the new ID on success
         return $this->save($migrated_config);
     }
     
@@ -434,8 +440,11 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
         if (isset($configurations[$config_id])) {
             $config = $configurations[$config_id];
             unset($config['id']);
+            unset($config['created']);
+            unset($config['modified']);
             $config['name'] = $new_name ?: ($config['name'] ?? 'Unnamed') . ' (Copy)';
             
+            // save() now returns the new ID on success
             return $this->save($config);
         }
         
