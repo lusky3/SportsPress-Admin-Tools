@@ -9,15 +9,17 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-class SPET_Database {
-    
-    public static function create_tables() {
+class SPET_Database
+{
+
+    public static function create_tables()
+    {
         global $wpdb;
-        
+
         $table_name = $wpdb->prefix . 'spet_etransfer_logs';
-        
+
         $charset_collate = $wpdb->get_charset_collate();
-        
+
         $sql = "CREATE TABLE $table_name (
             id mediumint(9) NOT NULL AUTO_INCREMENT,
             timestamp datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -34,16 +36,17 @@ class SPET_Database {
             KEY order_id (order_id),
             KEY timestamp (timestamp)
         ) $charset_collate;";
-        
+
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql);
     }
-    
-    public static function log_etransfer_activity($data) {
+
+    public static function log_etransfer_activity($data)
+    {
         global $wpdb;
-        
+
         $table_name = $wpdb->prefix . 'spet_etransfer_logs';
-        
+
         $result = $wpdb->insert($table_name, array(
             'from_email' => sanitize_email($data['from_email']),
             'from_name' => sanitize_text_field($data['from_name']),
@@ -57,35 +60,67 @@ class SPET_Database {
         ), array(
             '%s', '%s', '%f', '%s', '%s', $data['order_id'] ? '%d' : null, '%s', '%s', '%s'
         ));
-        
+
         if ($result === false) {
             error_log('SPET Database: Failed to log e-Transfer activity - ' . $wpdb->last_error);
         }
-        
+
         return $result;
     }
-    
-    public static function get_etransfer_logs($limit = 50) {
+
+    public static function get_etransfer_logs($limit = 50)
+    {
         global $wpdb;
-        
+
         $table_name = $wpdb->prefix . 'spet_etransfer_logs';
-        
+
         return $wpdb->get_results($wpdb->prepare(
             "SELECT * FROM $table_name ORDER BY timestamp DESC LIMIT %d",
             $limit
         ));
     }
-    
-    public static function count_pending_webhooks() {
+
+    public static function get_unmatched_webhooks()
+    {
         global $wpdb;
-        
+
         $table_name = $wpdb->prefix . 'spet_etransfer_logs';
-        
+
+        return $wpdb->get_results("
+            SELECT * FROM $table_name 
+            WHERE order_id IS NULL 
+            AND result LIKE '%No matching order%' 
+            AND result != 'Hidden from management'
+            ORDER BY timestamp DESC
+        ");
+    }
+
+    public static function count_pending_webhooks()
+    {
+        global $wpdb;
+
+        $table_name = $wpdb->prefix . 'spet_etransfer_logs';
+
         return $wpdb->get_var("
             SELECT COUNT(*) FROM $table_name 
             WHERE order_id IS NULL 
             AND result LIKE '%No matching order%' 
             AND result != 'Hidden from management'
         ");
+    }
+
+    public static function hide_etransfer_log($log_id)
+    {
+        global $wpdb;
+
+        $table_name = $wpdb->prefix . 'spet_etransfer_logs';
+
+        return $wpdb->update(
+            $table_name,
+            array('result' => 'Hidden from management'),
+            array('id' => intval($log_id)),
+            array('%s'),
+            array('%d')
+        );
     }
 }
