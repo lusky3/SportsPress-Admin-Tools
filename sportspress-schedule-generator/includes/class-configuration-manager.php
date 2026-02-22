@@ -13,52 +13,58 @@ if (!defined('ABSPATH')) {
 /**
  * Configuration Manager class
  */
-class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
-    
+class SPSG_Configuration_Manager implements SPSG_Configuration_Interface
+{
+
     /**
      * Option name for storing configurations
      */
     const OPTION_NAME = 'spsg_configurations';
-    
+
     /**
      * Current configuration instance
      */
     private $current_config;
-    
+
     /**
      * Constructor
      */
-    public function __construct() {
+    public function __construct()
+    {
         add_action('init', array($this, 'init'));
     }
-    
+
     /**
      * Initialize
      */
-    public function init() {
+    public function init()
+    {
         $this->current_config = $this->load();
     }
-    
+
     /**
      * Validate configuration data
      */
-    public function validate($config) {
+    public function validate($config)
+    {
         $configuration = new SPSG_Schedule_Configuration($config);
         return $configuration->validate();
     }
-    
+
     /**
      * Sanitize configuration data
      */
-    public function sanitize($config) {
+    public function sanitize($config)
+    {
         $configuration = new SPSG_Schedule_Configuration();
         return $configuration->sanitize($config);
     }
-    
+
     /**
      * Get default configuration values
      */
-    public function get_defaults() {
+    public function get_defaults()
+    {
         return array(
             'season_start' => '',
             'season_end' => '',
@@ -86,15 +92,16 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
             ),
             'timezone' => wp_timezone_string()
         );
-    }   
- 
+    }
+
     /**
      * Save configuration to database
      */
-    public function save($config) {
+    public function save($config)
+    {
         // Sanitize before saving
         $sanitized = $this->sanitize($config);
-        
+
         // Validate sanitized data
         $validation = $this->validate($sanitized);
         if (is_wp_error($validation)) {
@@ -105,74 +112,76 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
             ));
             return $validation;
         }
-        
+
         // Get existing configurations
         $configurations = get_option(self::OPTION_NAME, array());
-        
+
         // Load existing config for change tracking
         $existing_config = null;
         $is_new = !isset($sanitized['id']);
-        
+
         if (!$is_new && isset($configurations[$sanitized['id']])) {
             $existing_config = $configurations[$sanitized['id']];
         }
-        
+
         // Add timestamp and ID if new
         if ($is_new) {
             $sanitized['id'] = uniqid('config_');
             $sanitized['created'] = current_time('mysql');
         }
         $sanitized['modified'] = current_time('mysql');
-        
+
         // Track changes if this is an update
         if ($existing_config) {
             $this->track_changes($sanitized['id'], $existing_config, $sanitized);
         }
-        
+
         // Save configuration
         $configurations[$sanitized['id']] = $sanitized;
-        
+
         $result = update_option(self::OPTION_NAME, $configurations);
-        
+
         if ($result) {
             $this->current_config = new SPSG_Schedule_Configuration($sanitized);
             do_action('spsg_configuration_saved', $sanitized['id'], $sanitized);
             // Return the ID on success
             return $sanitized['id'];
         }
-        
+
         // Return false on failure
         return false;
     }
-    
+
     /**
      * Load configuration from database
      */
-    public function load($config_id = null) {
+    public function load($config_id = null)
+    {
         $configurations = get_option(self::OPTION_NAME, array());
-        
+
         if ($config_id && isset($configurations[$config_id])) {
             return new SPSG_Schedule_Configuration($configurations[$config_id]);
         }
-        
+
         // Return most recent configuration or defaults
         if (!empty($configurations)) {
-            $latest = array_reduce($configurations, function($carry, $item) {
+            $latest = array_reduce($configurations, function ($carry, $item) {
                 return (!$carry || $item['modified'] > $carry['modified']) ? $item : $carry;
             });
             return new SPSG_Schedule_Configuration($latest);
         }
-        
+
         return new SPSG_Schedule_Configuration($this->get_defaults());
     }
-    
+
     /**
      * Get all saved configurations
      */
-    public function get_all_configurations() {
+    public function get_all_configurations()
+    {
         $configurations = get_option(self::OPTION_NAME, array());
         $result = array();
-        
+
         foreach ($configurations as $id => $config) {
             $result[$id] = array(
                 'id' => $id,
@@ -183,60 +192,63 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
                 'season_end' => $config['season_end'] ?? ''
             );
         }
-        
+
         // Sort by modified date, newest first
-        uasort($result, function($a, $b) {
+        uasort($result, function ($a, $b) {
             return strcmp($b['modified'], $a['modified']);
         });
-        
+
         return $result;
     }
-    
+
     /**
      * Delete configuration
      */
-    public function delete($config_id) {
+    public function delete($config_id)
+    {
         $configurations = get_option(self::OPTION_NAME, array());
-        
+
         if (isset($configurations[$config_id])) {
             unset($configurations[$config_id]);
             $result = update_option(self::OPTION_NAME, $configurations);
-            
+
             if ($result) {
                 do_action('spsg_configuration_deleted', $config_id);
             }
-            
+
             return $result;
         }
-        
+
         return false;
     }
-    
+
     /**
      * Export configuration
      */
-    public function export($config_id) {
+    public function export($config_id)
+    {
         $configurations = get_option(self::OPTION_NAME, array());
-        
+
         if (isset($configurations[$config_id])) {
             $export_data = array(
                 'version' => SPSG_VERSION,
                 'exported' => current_time('mysql'),
                 'configuration' => $configurations[$config_id]
             );
-            
+
             return wp_json_encode($export_data, JSON_PRETTY_PRINT);
         }
-        
+
         return new WP_Error('config_not_found', __('Configuration not found', 'sportspress-schedule-generator'));
     }
-    
+
     /**
      * Import configuration
      */
-    public function import($json_data) {
+    public function import($json_data)
+    {
         $data = json_decode($json_data, true);
-        
+
         if (json_last_error() !== JSON_ERROR_NONE) {
             return SPSG_Error_Handler::create_error(
                 'invalid_json',
@@ -244,29 +256,29 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
                 array('json_error' => json_last_error_msg())
             );
         }
-        
+
         if (!isset($data['configuration'])) {
             return SPSG_Error_Handler::create_error(
                 'invalid_format',
                 __('Invalid configuration format. The file does not contain a valid configuration structure.', 'sportspress-schedule-generator')
             );
         }
-        
+
         // Check version compatibility
         $compatibility_check = $this->check_import_compatibility($data);
         if (is_wp_error($compatibility_check)) {
             return $compatibility_check;
         }
-        
+
         // Apply version migrations if needed
         $migrated_config = $this->migrate_configuration($data['configuration'], $data['version'] ?? '1.0.0');
-        
+
         // Remove ID to create new configuration
         unset($migrated_config['id']);
         unset($migrated_config['created']);
         unset($migrated_config['modified']);
         $migrated_config['name'] = ($migrated_config['name'] ?? 'Imported Configuration') . ' (Imported)';
-        
+
         // Validate before saving
         $validation = $this->validate($migrated_config);
         if (is_wp_error($validation)) {
@@ -276,44 +288,45 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
             ));
             return $validation;
         }
-        
+
         // save() now returns the new ID on success
         return $this->save($migrated_config);
     }
-    
+
     /**
      * Check import compatibility
      * 
      * @param array $data Import data
      * @return bool|WP_Error True if compatible, WP_Error otherwise
      */
-    private function check_import_compatibility($data) {
+    private function check_import_compatibility($data)
+    {
         $import_version = $data['version'] ?? '1.0.0';
         $current_version = SPSG_VERSION;
-        
+
         // Parse versions
         $import_parts = explode('.', $import_version);
         $current_parts = explode('.', $current_version);
-        
-        $import_major = (int) ($import_parts[0] ?? 1);
-        $current_major = (int) ($current_parts[0] ?? 1);
-        
+
+        $import_major = (int)($import_parts[0] ?? 1);
+        $current_major = (int)($current_parts[0] ?? 1);
+
         // Major version mismatch - may have breaking changes
         if ($import_major > $current_major) {
             return SPSG_Error_Handler::create_error(
                 'version_incompatible',
                 sprintf(
-                    __('This configuration was exported from a newer version (%s) and may not be compatible with your current version (%s). Please update the plugin before importing.', 'sportspress-schedule-generator'),
-                    $import_version,
-                    $current_version
-                ),
+                __('This configuration was exported from a newer version (%s) and may not be compatible with your current version (%s). Please update the plugin before importing.', 'sportspress-schedule-generator'),
+                $import_version,
+                $current_version
+            ),
                 array(
-                    'import_version' => $import_version,
-                    'current_version' => $current_version
-                )
+                'import_version' => $import_version,
+                'current_version' => $current_version
+            )
             );
         }
-        
+
         // Warn about older versions but allow import
         if ($import_major < $current_major) {
             // Log warning but continue
@@ -325,10 +338,10 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
                 ));
             }
         }
-        
+
         return true;
     }
-    
+
     /**
      * Migrate configuration between versions
      * 
@@ -336,39 +349,41 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
      * @param string $from_version Source version
      * @return array Migrated configuration
      */
-    private function migrate_configuration($config, $from_version) {
+    private function migrate_configuration($config, $from_version)
+    {
         $from_parts = explode('.', $from_version);
-        $from_major = (int) ($from_parts[0] ?? 1);
-        $from_minor = (int) ($from_parts[1] ?? 0);
-        
+        $from_major = (int)($from_parts[0] ?? 1);
+        $from_minor = (int)($from_parts[1] ?? 0);
+
         // Add default values for new Phase 2 properties if missing
         if (!isset($config['matchup_style'])) {
             $config['matchup_style'] = 'double_round_robin';
         }
-        
+
         if (!isset($config['home_away_preferences'])) {
             $config['home_away_preferences'] = array();
         }
-        
+
         if (!isset($config['inter_division_games'])) {
             $config['inter_division_games'] = array();
         }
-        
+
         // Future migrations can be added here
         // Example: if ($from_major === 1 && $from_minor < 1) { ... }
-        
+
         return $config;
     }
-    
+
     /**
      * Get import preview without saving
      * 
      * @param string $json_data JSON configuration data
      * @return array|WP_Error Preview data or error
      */
-    public function preview_import($json_data) {
+    public function preview_import($json_data)
+    {
         $data = json_decode($json_data, true);
-        
+
         if (json_last_error() !== JSON_ERROR_NONE) {
             return SPSG_Error_Handler::create_error(
                 'invalid_json',
@@ -376,22 +391,22 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
                 array('json_error' => json_last_error_msg())
             );
         }
-        
+
         if (!isset($data['configuration'])) {
             return SPSG_Error_Handler::create_error(
                 'invalid_format',
                 __('Invalid configuration format', 'sportspress-schedule-generator')
             );
         }
-        
+
         // Check compatibility
         $compatibility_check = $this->check_import_compatibility($data);
         if (is_wp_error($compatibility_check)) {
             return $compatibility_check;
         }
-        
+
         $config = $data['configuration'];
-        
+
         // Build preview summary
         $preview = array(
             'name' => $config['name'] ?? __('Unnamed Configuration', 'sportspress-schedule-generator'),
@@ -407,50 +422,53 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
             'matchup_style' => $config['matchup_style'] ?? 'double_round_robin',
             'compatible' => true
         );
-        
+
         // Count total teams
         foreach ($config['divisions'] ?? array() as $division) {
             $preview['teams_count'] += count($division['teams'] ?? array());
         }
-        
+
         return $preview;
     }
-    
+
     /**
      * Get current configuration
      */
-    public function get_current() {
+    public function get_current()
+    {
         return $this->current_config;
     }
-    
+
     /**
      * Set current configuration
      */
-    public function set_current($config_id) {
+    public function set_current($config_id)
+    {
         $this->current_config = $this->load($config_id);
         return $this->current_config;
     }
-    
+
     /**
      * Clone configuration
      */
-    public function clone_configuration($config_id, $new_name = null) {
+    public function clone_configuration($config_id, $new_name = null)
+    {
         $configurations = get_option(self::OPTION_NAME, array());
-        
+
         if (isset($configurations[$config_id])) {
             $config = $configurations[$config_id];
             unset($config['id']);
             unset($config['created']);
             unset($config['modified']);
             $config['name'] = $new_name ?: ($config['name'] ?? 'Unnamed') . ' (Copy)';
-            
+
             // save() now returns the new ID on success
             return $this->save($config);
         }
-        
+
         return new WP_Error('config_not_found', __('Configuration not found', 'sportspress-schedule-generator'));
     }
-    
+
     /**
      * Track configuration changes
      * 
@@ -458,12 +476,13 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
      * @param array $old_config Old configuration data
      * @param array $new_config New configuration data
      */
-    private function track_changes($config_id, $old_config, $new_config) {
+    private function track_changes($config_id, $old_config, $new_config)
+    {
         // Check if change tracking is enabled
         if (!get_option('spsg_enable_change_tracking', true)) {
             return;
         }
-        
+
         // Fields to track for changes
         $fields_to_track = array(
             'name' => __('Configuration Name', 'sportspress-schedule-generator'),
@@ -484,19 +503,19 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
             'home_away_preferences' => __('Home/Away Preferences', 'sportspress-schedule-generator'),
             'inter_division_games' => __('Inter-Division Games', 'sportspress-schedule-generator')
         );
-        
+
         // Compare and track changes
         foreach ($fields_to_track as $field => $field_label) {
             $old_value = $old_config[$field] ?? null;
             $new_value = $new_config[$field] ?? null;
-            
+
             // Use serialize for complex comparisons
             if (serialize($old_value) !== serialize($new_value)) {
                 $this->track_change($config_id, $field, $field_label, $old_value, $new_value);
             }
         }
     }
-    
+
     /**
      * Track a single configuration change
      * 
@@ -506,17 +525,18 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
      * @param mixed $old_value Old value
      * @param mixed $new_value New value
      */
-    private function track_change($config_id, $field, $field_label, $old_value, $new_value) {
+    private function track_change($config_id, $field, $field_label, $old_value, $new_value)
+    {
         $changes = get_option('spsg_configuration_changes', array());
-        
+
         if (!isset($changes[$config_id])) {
             $changes[$config_id] = array();
         }
-        
+
         // Format values for display
         $old_display = $this->format_value_for_display($field, $old_value);
         $new_display = $this->format_value_for_display($field, $new_value);
-        
+
         // Add new change to the beginning of the array
         array_unshift($changes[$config_id], array(
             'timestamp' => current_time('mysql'),
@@ -526,13 +546,13 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
             'old_value' => $old_display,
             'new_value' => $new_display
         ));
-        
+
         // Keep only last 10 changes per configuration
         $changes[$config_id] = array_slice($changes[$config_id], 0, 10);
-        
+
         update_option('spsg_configuration_changes', $changes);
     }
-    
+
     /**
      * Format value for display in change history
      * 
@@ -540,55 +560,56 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
      * @param mixed $value Value to format
      * @return string Formatted value
      */
-    private function format_value_for_display($field, $value) {
+    private function format_value_for_display($field, $value)
+    {
         if (is_null($value)) {
             return __('(empty)', 'sportspress-schedule-generator');
         }
-        
+
         if (is_array($value)) {
             // Special formatting for common array types
             switch ($field) {
                 case 'playing_days':
                     return implode(', ', $value);
-                    
+
                 case 'divisions':
-                    $division_names = array_map(function($div) {
+                    $division_names = array_map(function ($div) {
                         return $div['name'] ?? __('Unnamed', 'sportspress-schedule-generator');
                     }, $value);
                     return implode(', ', $division_names) . sprintf(' (%d)', count($value));
-                    
+
                 case 'venues':
-                    $venue_names = array_map(function($venue) {
+                    $venue_names = array_map(function ($venue) {
                         return $venue['name'] ?? __('Unnamed', 'sportspress-schedule-generator');
                     }, $value);
                     return implode(', ', $venue_names) . sprintf(' (%d)', count($value));
-                    
+
                 case 'blackout_dates':
                     return implode(', ', $value) . sprintf(' (%d dates)', count($value));
-                    
+
                 case 'time_slots':
                     $total_slots = 0;
                     foreach ($value as $day => $slots) {
                         $total_slots += count($slots);
                     }
                     return sprintf(__('%d slots across %d days', 'sportspress-schedule-generator'), $total_slots, count($value));
-                    
+
                 case 'home_away_preferences':
                     return sprintf(__('%d teams with home venue preferences', 'sportspress-schedule-generator'), count($value));
-                    
+
                 case 'inter_division_games':
                     $total_games = array_sum($value);
                     return sprintf(__('%d inter-division games across %d division pairs', 'sportspress-schedule-generator'), $total_games, count($value));
-                    
+
                 default:
                     return sprintf(__('(complex data: %d items)', 'sportspress-schedule-generator'), count($value));
             }
         }
-        
+
         if (is_bool($value)) {
             return $value ? __('Yes', 'sportspress-schedule-generator') : __('No', 'sportspress-schedule-generator');
         }
-        
+
         // Format matchup style
         if ($field === 'matchup_style') {
             $styles = array(
@@ -598,10 +619,10 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
             );
             return $styles[$value] ?? $value;
         }
-        
-        return (string) $value;
+
+        return (string)$value;
     }
-    
+
     /**
      * Get change history for a configuration
      * 
@@ -609,49 +630,53 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
      * @param int $limit Maximum number of changes to return
      * @return array Array of changes
      */
-    public function get_change_history($config_id, $limit = 10) {
+    public function get_change_history($config_id, $limit = 10)
+    {
         $changes = get_option('spsg_configuration_changes', array());
         $history = $changes[$config_id] ?? array();
-        
+
         // Limit results
         $history = array_slice($history, 0, $limit);
-        
+
         // Enrich with user information
         foreach ($history as &$change) {
             if (isset($change['user_id']) && $change['user_id'] > 0) {
                 $user = get_userdata($change['user_id']);
                 $change['user_name'] = $user ? $user->display_name : __('Unknown User', 'sportspress-schedule-generator');
-            } else {
+            }
+            else {
                 $change['user_name'] = __('System', 'sportspress-schedule-generator');
             }
         }
-        
+
         return $history;
     }
-    
+
     /**
      * Clear change history for a configuration
      * 
      * @param string $config_id Configuration ID
      * @return bool Success
      */
-    public function clear_change_history($config_id) {
+    public function clear_change_history($config_id)
+    {
         $changes = get_option('spsg_configuration_changes', array());
-        
+
         if (isset($changes[$config_id])) {
             unset($changes[$config_id]);
             return update_option('spsg_configuration_changes', $changes);
         }
-        
+
         return false;
     }
-    
+
     /**
      * Get available configuration presets
      * 
      * @return array Array of preset metadata
      */
-    public function list_presets() {
+    public function list_presets()
+    {
         return array(
             'summer_league' => array(
                 'name' => __('Summer League', 'sportspress-schedule-generator'),
@@ -670,23 +695,24 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
             )
         );
     }
-    
+
     /**
      * Get preset configuration
      * 
      * @param string $preset_name Preset identifier
      * @return array|WP_Error Preset configuration or error
      */
-    public function get_preset($preset_name) {
+    public function get_preset($preset_name)
+    {
         $presets = $this->get_preset_definitions();
-        
+
         if (!isset($presets[$preset_name])) {
             return new WP_Error('preset_not_found', __('Preset not found', 'sportspress-schedule-generator'));
         }
-        
+
         return $presets[$preset_name]['config'];
     }
-    
+
     /**
      * Apply preset to existing configuration
      * 
@@ -694,23 +720,25 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
      * @param array $base_config Optional base configuration to merge with
      * @return array Merged configuration
      */
-    public function apply_preset($preset_name, $base_config = array()) {
+    public function apply_preset($preset_name, $base_config = array())
+    {
         $preset = $this->get_preset($preset_name);
-        
+
         if (is_wp_error($preset)) {
             return $preset;
         }
-        
+
         // Merge preset with base config (preset values take precedence)
         return array_merge($base_config, $preset);
     }
-    
+
     /**
      * Define preset configurations
      * 
      * @return array Array of preset definitions
      */
-    private function get_preset_definitions() {
+    private function get_preset_definitions()
+    {
         return array(
             'summer_league' => array(
                 'name' => __('Summer League', 'sportspress-schedule-generator'),

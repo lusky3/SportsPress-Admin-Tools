@@ -11,6 +11,9 @@
 define('SPSG_TESTS_DIR', dirname(__FILE__));
 define('SPSG_PLUGIN_DIR', dirname(SPSG_TESTS_DIR));
 
+// Load lightweight test base class
+require_once SPSG_TESTS_DIR . '/class-spsg-test-case.php';
+
 // Load WordPress test library
 $_tests_dir = getenv('WP_TESTS_DIR');
 
@@ -24,7 +27,8 @@ require_once $_tests_dir . '/includes/functions.php';
 /**
  * Manually load the plugin being tested
  */
-function _manually_load_plugin() {
+function _manually_load_plugin()
+{
     // Load plugin dependencies
     require SPSG_PLUGIN_DIR . '/includes/class-autoloader.php';
     require SPSG_PLUGIN_DIR . '/includes/interfaces/interface-configuration.php';
