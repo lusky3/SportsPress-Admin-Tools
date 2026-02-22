@@ -473,7 +473,7 @@
             // Remove duplicate divisions and add to dropdown
             divisions.sort();
             divisions.forEach(function(division) {
-                $divisionSelect.append('<option value="' + division + '">' + division + '</option>');
+                $divisionSelect.append($('<option></option>').val(division).text(division));
             });
             
             // Pre-fill date range with schedule min/max dates
@@ -902,7 +902,7 @@
                             var $seasonSelect = $('#spsg-import-season');
                             $seasonSelect.empty().append('<option value="">No season</option>');
                             data.seasons.forEach(function(season) {
-                                $seasonSelect.append('<option value="' + season.id + '">' + season.name + '</option>');
+                                $seasonSelect.append($('<option></option>').val(season.id).text(season.name));
                             });
                         }
                     } else {
@@ -982,96 +982,104 @@
             };
             
             this.importInProgress = true;
+            this.importResults = {
+                imported: 0,
+                skipped: 0,
+                failed: 0,
+                overwritten: 0,
+                errors: []
+            };
             
             // Hide options, show progress
             $('.spsg-import-options').hide();
             $('#spsg-import-progress').show();
             $('#spsg-start-import').prop('disabled', true);
             
-            // Start progress polling
-            this.startProgressPolling();
+            // Start recursive chunk processing
+            this.processImportChunk(options, 0);
+        },
+        
+        /**
+         * Process import chunk
+         */
+        processImportChunk: function(options, offset) {
+            var self = this;
+            var limit = 50; // Default chunk size
             
-            $.ajax({
+            if (!this.importInProgress) {
+                return; // Cancelled
+            }
+            
+            this.currentAjaxRequest = $.ajax({
                 url: ajaxurl,
                 type: 'POST',
-                data: {
+                data: $.extend({}, options, {
                     action: 'spsg_import_to_sportspress',
                     nonce: spsgData.nonces.import_to_sportspress,
-                    schedule_id: options.schedule_id,
-                    conflict_resolution: options.conflict_resolution,
-                    event_status: options.event_status,
-                    league_id: options.league_id,
-                    season_id: options.season_id,
-                    dry_run: options.dry_run
-                },
+                    offset: offset,
+                    limit: limit
+                }),
                 success: function(response) {
-                    self.importInProgress = false;
-                    self.stopProgressPolling();
-                    
-                    if (response.success) {
-                        self.showResults(response.data);
-                    } else {
-                        var errorMsg = response.data.message || response.data || 'Import failed';
-                        SPSG.showMessage('error', errorMsg);
-                        self.hide();
+                    if (self.importInProgress) { 
+                        if (response.success) {
+                            // Aggregate results
+                            var results = response.data.results;
+                            self.importResults.imported += (results.imported || 0);
+                            self.importResults.skipped += (results.skipped || 0);
+                            self.importResults.failed += (results.failed || 0);
+                            self.importResults.overwritten += (results.overwritten || 0);
+                            if (results.errors && results.errors.length > 0) {
+                                self.importResults.errors = self.importResults.errors.concat(results.errors);
+                            }
+
+                            // Update progress
+                            var pagination = response.data.pagination;
+                            self.updateProgress({
+                                current: Math.min(pagination.offset, pagination.total),
+                                total: pagination.total
+                            });
+                            
+                            // Continue or finish
+                            if (pagination.has_more) {
+                                self.processImportChunk(options, pagination.offset);
+                            } else {
+                                self.importInProgress = false;
+                                self.showResults(self.importResults);
+                            }
+                        } else {
+                            // Handle error
+                            var errorMsg = response.data.message || response.data || 'Import failed';
+                            SPSG.showMessage('error', errorMsg);
+                            self.importInProgress = false;
+                            
+                            // Show whatever results we have so far if any
+                            if (self.importResults.imported > 0 || self.importResults.failed > 0) {
+                                self.showResults(self.importResults);
+                            } else {
+                                self.hide();
+                            }
+                        }
                     }
                 },
                 error: function(xhr, status, error) {
-                    self.importInProgress = false;
-                    self.stopProgressPolling();
-                    SPSG.showMessage('error', 'Import request failed: ' + error);
-                    self.hide();
-                }
-            });
-        },
-        
-        /**
-         * Start polling for import progress
-         */
-        startProgressPolling: function() {
-            var self = this;
-            
-            // Poll every 2 seconds
-            this.progressPollInterval = setInterval(function() {
-                self.pollProgress();
-            }, 2000);
-            
-            // Do an immediate poll
-            this.pollProgress();
-        },
-        
-        /**
-         * Stop polling for import progress
-         */
-        stopProgressPolling: function() {
-            if (this.progressPollInterval) {
-                clearInterval(this.progressPollInterval);
-                this.progressPollInterval = null;
-            }
-        },
-        
-        /**
-         * Poll for import progress
-         */
-        pollProgress: function() {
-            var self = this;
-            
-            $.ajax({
-                url: ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'spsg_get_import_progress',
-                    nonce: spsgData.nonces.get_import_progress
-                },
-                success: function(response) {
-                    if (response.success) {
-                        self.updateProgress(response.data);
+                    if (self.importInProgress && status !== 'abort') {
+                        self.importInProgress = false;
+                        SPSG.showMessage('error', 'Import request failed: ' + error);
+                        self.hide();
                     }
-                },
-                error: function() {
-                    // Silently fail - don't stop polling on network errors
                 }
             });
+        },
+        
+        /**
+         * Cancel import
+         */
+        cancelImport: function() {
+            this.importInProgress = false;
+            if (this.currentAjaxRequest) {
+                this.currentAjaxRequest.abort();
+            }
+            this.hide();
         },
         
         /**
@@ -1109,7 +1117,7 @@
                 var $errorList = $('#spsg-error-list');
                 $errorList.empty();
                 results.errors.forEach(function(error) {
-                    $errorList.append('<li>' + error + '</li>');
+                    $errorList.append($('<li></li>').text(error));
                 });
                 $('#spsg-import-errors').show();
             } else {
@@ -1378,7 +1386,7 @@
                 $warningList.empty();
                 
                 preview.warnings.forEach(function(warning) {
-                    $warningList.append('<li>' + warning + '</li>');
+                    $warningList.append($('<li></li>').text(warning));
                 });
                 
                 $('#spsg-preview-warnings').show();

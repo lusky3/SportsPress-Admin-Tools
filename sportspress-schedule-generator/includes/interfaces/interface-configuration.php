@@ -13,8 +13,9 @@ if (!defined('ABSPATH')) {
 /**
  * Interface for configuration management
  */
-interface SPSG_Configuration_Interface {
-    
+interface SPSG_Configuration_Interface
+{
+
     /**
      * Validate configuration data
      * 
@@ -22,7 +23,7 @@ interface SPSG_Configuration_Interface {
      * @return bool|WP_Error True if valid, WP_Error with details if invalid
      */
     public function validate($config);
-    
+
     /**
      * Sanitize configuration data
      * 
@@ -30,14 +31,14 @@ interface SPSG_Configuration_Interface {
      * @return array Sanitized configuration data
      */
     public function sanitize($config);
-    
+
     /**
      * Get default configuration values
      * 
      * @return array Default configuration
      */
     public function get_defaults();
-    
+
     /**
      * Save configuration to database
      * 
@@ -45,7 +46,7 @@ interface SPSG_Configuration_Interface {
      * @return bool Success status
      */
     public function save($config);
-    
+
     /**
      * Load configuration from database
      * 

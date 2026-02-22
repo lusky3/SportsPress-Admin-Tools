@@ -13,19 +13,21 @@ if (!defined('ABSPATH')) {
 /**
  * Admin interface for Schedule Generator
  */
-class SPSG_Admin {
-    
+class SPSG_Admin
+{
+
     /**
      * Configuration manager instance
      */
     private $config_manager;
-    
+
     /**
      * Constructor
      */
-    public function __construct() {
+    public function __construct()
+    {
         $this->config_manager = new SPSG_Configuration_Manager();
-        
+
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('spat_admin_page_tabs', array($this, 'add_spat_tab'));
         add_action('spat_admin_page_content', array($this, 'add_spat_content'));
@@ -53,7 +55,7 @@ class SPSG_Admin {
         add_action('wp_ajax_spsg_get_export_formats', array($this, 'ajax_get_export_formats'));
         add_action('wp_ajax_spsg_clear_change_history', array($this, 'ajax_clear_change_history'));
     }
-    
+
     /**
      * Check if Select2 is enabled in SPAT settings
      * 
@@ -62,14 +64,16 @@ class SPSG_Admin {
      * 
      * @return bool True if Select2 should be used
      */
-    private function is_select2_enabled() {
+    private function is_select2_enabled()
+    {
         return get_option('spat_use_select2', '0') === '1';
     }
-    
+
     /**
      * Add user-facing admin menu (separate from SPAT)
      */
-    public function add_admin_menu() {
+    public function add_admin_menu()
+    {
         // Add main menu page for schedule generation
         add_menu_page(
             __('Schedule Generator', 'sportspress-schedule-generator'),
@@ -80,7 +84,7 @@ class SPSG_Admin {
             'dashicons-calendar-alt',
             30
         );
-        
+
         // Add submenu under SportsPress if available
         if (class_exists('SportsPress')) {
             add_submenu_page(
@@ -93,44 +97,48 @@ class SPSG_Admin {
             );
         }
     }
-    
+
     /**
      * Redirect SportsPress submenu to main page
      */
-    public function redirect_to_main_page() {
+    public function redirect_to_main_page()
+    {
         wp_safe_redirect(admin_url('admin.php?page=spsg-schedule-generator'));
         wp_die();
     }
-    
+
     /**
      * Add tab to SPAT admin interface
      */
-    public function add_spat_tab() {
+    public function add_spat_tab()
+    {
         echo '<a href="#schedule-generator" class="nav-tab">' . __('Schedule Generator', 'sportspress-schedule-generator') . '</a>';
-    }    
+    }
 
     /**
      * Add content to SPAT admin interface
      */
-    public function add_spat_content() {
-        ?>
+    public function add_spat_content()
+    {
+?>
         <div id="schedule-generator" class="tab-content" style="display: none;">
             <form action="options.php" method="post">
                 <input type="hidden" name="current_tab" value="schedule-generator">
                 <?php
-                settings_fields('spsg_backend_settings');
-                do_settings_sections('spsg_backend_settings');
-                submit_button(__('Save Backend Settings', 'sportspress-schedule-generator'));
-                ?>
+        settings_fields('spsg_backend_settings');
+        do_settings_sections('spsg_backend_settings');
+        submit_button(__('Save Backend Settings', 'sportspress-schedule-generator'));
+?>
             </form>
         </div>
         <?php
     }
-    
+
     /**
      * Register settings with SPAT
      */
-    public function register_spat_settings() {
+    public function register_spat_settings()
+    {
         // Backend settings section
         add_settings_section(
             'spsg_backend_section',
@@ -138,13 +146,13 @@ class SPSG_Admin {
             array($this, 'backend_section_callback'),
             'spsg_backend_settings'
         );
-        
+
         // Register backend settings
         register_setting('spsg_backend_settings', 'spsg_max_generation_time');
         register_setting('spsg_backend_settings', 'spsg_enable_debug_logging');
         register_setting('spsg_backend_settings', 'spsg_default_timezone');
         register_setting('spsg_backend_settings', 'spsg_enable_change_tracking');
-        
+
         // Add backend setting fields
         add_settings_field(
             'spsg_max_generation_time',
@@ -153,7 +161,7 @@ class SPSG_Admin {
             'spsg_backend_settings',
             'spsg_backend_section'
         );
-        
+
         add_settings_field(
             'spsg_enable_debug_logging',
             __('Enable Debug Logging', 'sportspress-schedule-generator'),
@@ -161,7 +169,7 @@ class SPSG_Admin {
             'spsg_backend_settings',
             'spsg_backend_section'
         );
-        
+
         add_settings_field(
             'spsg_default_timezone',
             __('Default Timezone', 'sportspress-schedule-generator'),
@@ -169,7 +177,7 @@ class SPSG_Admin {
             'spsg_backend_settings',
             'spsg_backend_section'
         );
-        
+
         add_settings_field(
             'spsg_enable_change_tracking',
             __('Enable Change Tracking', 'sportspress-schedule-generator'),
@@ -178,46 +186,51 @@ class SPSG_Admin {
             'spsg_backend_section'
         );
     }
-    
+
     /**
      * Backend section description
      */
-    public function backend_section_callback() {
+    public function backend_section_callback()
+    {
         echo '<p>' . __('Configure backend settings for the Schedule Generator. These settings affect system behavior and are not visible to end users.', 'sportspress-schedule-generator') . '</p>';
-        
+
         // Show Select2 status
         if ($this->is_select2_enabled()) {
             echo '<p class="description" style="color: #00a32a;">✓ ' . __('Enhanced dropdowns (Select2) are enabled via SPAT settings.', 'sportspress-schedule-generator') . '</p>';
-        } else {
+        }
+        else {
             echo '<p class="description">' . __('Note: Enhanced dropdowns (Select2) can be enabled in the SPAT General settings.', 'sportspress-schedule-generator') . '</p>';
         }
     }
-    
+
     /**
      * Max generation time setting
      */
-    public function max_generation_time_callback() {
+    public function max_generation_time_callback()
+    {
         $value = get_option('spsg_max_generation_time', 300);
         echo '<input type="number" name="spsg_max_generation_time" value="' . esc_attr($value) . '" min="60" max="3600" />';
         echo '<p class="description">' . __('Maximum time allowed for schedule generation before timeout (60-3600 seconds).', 'sportspress-schedule-generator') . '</p>';
     }
-    
+
     /**
      * Debug logging setting
      */
-    public function debug_logging_callback() {
+    public function debug_logging_callback()
+    {
         $enabled = get_option('spsg_enable_debug_logging', '0');
         echo '<input type="checkbox" name="spsg_enable_debug_logging" value="1" ' . checked($enabled, '1', false) . ' />';
         echo '<p class="description">' . __('Enable detailed debug logging for schedule generation process.', 'sportspress-schedule-generator') . '</p>';
     }
-    
+
     /**
      * Default timezone setting
      */
-    public function default_timezone_callback() {
+    public function default_timezone_callback()
+    {
         $selected = get_option('spsg_default_timezone', wp_timezone_string());
         $timezones = timezone_identifiers_list();
-        
+
         echo '<select name="spsg_default_timezone">';
         foreach ($timezones as $timezone) {
             echo '<option value="' . esc_attr($timezone) . '" ' . selected($selected, $timezone, false) . '>' . esc_html($timezone) . '</option>';
@@ -225,27 +238,29 @@ class SPSG_Admin {
         echo '</select>';
         echo '<p class="description">' . __('Default timezone for new schedule configurations.', 'sportspress-schedule-generator') . '</p>';
     }
-    
+
     /**
      * Change tracking setting
      */
-    public function change_tracking_callback() {
+    public function change_tracking_callback()
+    {
         $enabled = get_option('spsg_enable_change_tracking', '1');
         echo '<input type="checkbox" name="spsg_enable_change_tracking" value="1" ' . checked($enabled, '1', false) . ' />';
         echo '<p class="description">' . __('Track configuration changes with user attribution and timestamps. Stores last 10 changes per configuration.', 'sportspress-schedule-generator') . '</p>';
     }
-    
+
     /**
      * Main schedule generator page
      */
-    public function schedule_generator_page() {
+    public function schedule_generator_page()
+    {
         // Handle form submissions
         if (isset($_POST['spsg_action']) && wp_verify_nonce($_POST['spsg_nonce'], 'spsg_admin_action')) {
             $this->handle_form_submission();
         }
-        
+
         $current_config = $this->config_manager->get_current();
-        ?>
+?>
         <div class="wrap">
             <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
             
@@ -285,19 +300,20 @@ class SPSG_Admin {
         </div>
         <?php
     }
-    
+
     /**
      * Enqueue admin scripts and styles
      */
-    public function enqueue_admin_scripts($hook) {
+    public function enqueue_admin_scripts($hook)
+    {
         // Only load on our pages
-        if (strpos($hook, 'spsg-schedule-generator') === false && 
-            (!isset($_GET['page']) || $_GET['page'] !== 'sportspress-admin-tools')) {
+        if (strpos($hook, 'spsg-schedule-generator') === false &&
+        (!isset($_GET['page']) || $_GET['page'] !== 'sportspress-admin-tools')) {
             return;
         }
-        
+
         wp_enqueue_script('jquery');
-        
+
         // Enqueue our custom scripts and styles
         wp_enqueue_script(
             'spsg-schedule-generator',
@@ -306,14 +322,14 @@ class SPSG_Admin {
             '1.0.0',
             true
         );
-        
+
         wp_enqueue_style(
             'spsg-admin',
             plugins_url('assets/css/admin.css', dirname(__FILE__)),
             array(),
             '1.0.0'
         );
-        
+
         // Localize script with nonces and AJAX URL
         wp_localize_script('spsg-schedule-generator', 'spsgData', array(
             'ajaxurl' => admin_url('admin-ajax.php'),
@@ -338,13 +354,13 @@ class SPSG_Admin {
                 'clear_change_history' => wp_create_nonce('spsg_clear_change_history')
             )
         ));
-        
+
         // Respect SPAT Select2 setting for consistent UI behavior
         if ($this->is_select2_enabled()) {
             wp_enqueue_script('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js', array('jquery'), '4.1.0', true);
             wp_enqueue_style('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css', array(), '4.1.0');
         }
-        
+
         // Add JavaScript for tabbed interface
         wp_add_inline_script('jquery', '
             jQuery(document).ready(function($) {
@@ -1820,7 +1836,7 @@ class SPSG_Admin {
                 });
             });
         ');
-        
+
         // Add CSS styles
         wp_add_inline_style('wp-admin', '
             .spsg-nav-tabs {
@@ -1866,53 +1882,57 @@ class SPSG_Admin {
             }
         ');
     }
-    
+
     /**
      * Handle form submission
      */
-    private function handle_form_submission() {
+    private function handle_form_submission()
+    {
         $action = sanitize_text_field($_POST['spsg_action']);
-        
+
         switch ($action) {
             case 'save_config':
                 $config_data = $this->sanitize_form_data($_POST);
                 $result = $this->config_manager->save($config_data);
-                
+
                 if (is_wp_error($result)) {
                     add_settings_error('spsg_messages', 'spsg_error', $result->get_error_message(), 'error');
-                } else {
+                }
+                else {
                     add_settings_error('spsg_messages', 'spsg_success', __('Configuration saved successfully', 'sportspress-schedule-generator'), 'updated');
                 }
                 break;
         }
-        
+
         settings_errors('spsg_messages');
     }
-    
+
     /**
      * Sanitize form data
      */
-    private function sanitize_form_data($data) {
+    private function sanitize_form_data($data)
+    {
         return $this->config_manager->sanitize($data);
     }
-    
+
     /**
      * Render basic configuration tab
      */
-    private function render_basic_config_tab($config) {
-        ?>
+    private function render_basic_config_tab($config)
+    {
+?>
         <div class="spsg-config-management">
             <h4><?php _e('Configuration Management', 'sportspress-schedule-generator'); ?></h4>
             <div class="spsg-config-selector">
                 <select id="spsg-config-selector" class="regular-text">
                     <option value=""><?php _e('Current Configuration', 'sportspress-schedule-generator'); ?></option>
                     <?php
-                    // Get all saved configurations
-                    $saved_configs = get_option('spsg_saved_configurations', array());
-                    foreach ($saved_configs as $config_id => $config_info) {
-                        echo '<option value="' . esc_attr($config_id) . '">' . esc_html($config_info['name']) . ' (' . esc_html($config_info['modified']) . ')</option>';
-                    }
-                    ?>
+        // Get all saved configurations
+        $saved_configs = get_option('spsg_saved_configurations', array());
+        foreach ($saved_configs as $config_id => $config_info) {
+            echo '<option value="' . esc_attr($config_id) . '">' . esc_html($config_info['name']) . ' (' . esc_html($config_info['modified']) . ')</option>';
+        }
+?>
                 </select>
                 <button type="button" class="button" id="spsg-load-config"><?php _e('Load', 'sportspress-schedule-generator'); ?></button>
                 <button type="button" class="button" id="spsg-new-config"><?php _e('New', 'sportspress-schedule-generator'); ?></button>
@@ -1935,7 +1955,8 @@ class SPSG_Admin {
                     <div id="spsg-change-history-content"></div>
                 </div>
             </div>
-            <?php endif; ?>
+            <?php
+        endif; ?>
         </div>
         
         <!-- Import Preview Modal -->
@@ -2032,12 +2053,12 @@ class SPSG_Admin {
                 <td>
                     <select name="timezone">
                         <?php
-                        $timezones = timezone_identifiers_list();
-                        $selected_tz = $config->timezone ?: wp_timezone_string();
-                        foreach ($timezones as $timezone) {
-                            echo '<option value="' . esc_attr($timezone) . '" ' . selected($selected_tz, $timezone, false) . '>' . esc_html($timezone) . '</option>';
-                        }
-                        ?>
+        $timezones = timezone_identifiers_list();
+        $selected_tz = $config->timezone ?: wp_timezone_string();
+        foreach ($timezones as $timezone) {
+            echo '<option value="' . esc_attr($timezone) . '" ' . selected($selected_tz, $timezone, false) . '>' . esc_html($timezone) . '</option>';
+        }
+?>
                     </select>
                 </td>
             </tr>
@@ -2051,11 +2072,11 @@ class SPSG_Admin {
                     <select id="spsg-preset-selector" class="regular-text">
                         <option value=""><?php _e('Select a preset template...', 'sportspress-schedule-generator'); ?></option>
                         <?php
-                        $presets = $this->config_manager->list_presets();
-                        foreach ($presets as $preset_id => $preset_info) {
-                            echo '<option value="' . esc_attr($preset_id) . '">' . esc_html($preset_info['name']) . '</option>';
-                        }
-                        ?>
+        $presets = $this->config_manager->list_presets();
+        foreach ($presets as $preset_id => $preset_info) {
+            echo '<option value="' . esc_attr($preset_id) . '">' . esc_html($preset_info['name']) . '</option>';
+        }
+?>
                     </select>
                     <button type="button" class="button" id="spsg-load-preset"><?php _e('Load Preset', 'sportspress-schedule-generator'); ?></button>
                     <p class="description"><?php _e('Load a preset template with recommended settings for common league types. You can customize values after loading.', 'sportspress-schedule-generator'); ?></p>
@@ -2096,14 +2117,15 @@ class SPSG_Admin {
         </p>
         <?php
     }
-    
+
     /**
      * Render divisions and teams tab
      */
-    private function render_divisions_teams_tab($config) {
+    private function render_divisions_teams_tab($config)
+    {
         // Check if SportsPress is available
-        $sp_available = SPSG_SportsPress_Integration::is_sportspress_active();
-        ?>
+        $sp_available = SPSGSportsPressIntegration::is_sportspress_active();
+?>
         <div class="spsg-divisions-section">
             <?php if ($sp_available): ?>
             <div class="spsg-sportspress-import">
@@ -2115,11 +2137,11 @@ class SPSG_Admin {
                             <select id="spsg-import-league" class="regular-text">
                                 <option value=""><?php _e('Select a league...', 'sportspress-schedule-generator'); ?></option>
                                 <?php
-                                $leagues = SPSG_SportsPress_Integration::get_leagues();
-                                foreach ($leagues as $league) {
-                                    echo '<option value="' . esc_attr($league->id) . '">' . esc_html($league->name) . '</option>';
-                                }
-                                ?>
+            $leagues = SPSGSportsPressIntegration::get_leagues();
+            foreach ($leagues as $league) {
+                echo '<option value="' . esc_attr($league->id) . '">' . esc_html($league->name) . '</option>';
+            }
+?>
                             </select>
                             <button type="button" class="button" id="spsg-import-league-btn"><?php _e('Import League Structure', 'sportspress-schedule-generator'); ?></button>
                             <p class="description">
@@ -2132,19 +2154,21 @@ class SPSG_Admin {
                 </table>
             </div>
             <hr>
-            <?php endif; ?>
+            <?php
+        endif; ?>
             
             <h3><?php _e('Divisions', 'sportspress-schedule-generator'); ?></h3>
             <div id="spsg-divisions-container">
                 <?php
-                if (!empty($config->divisions)) {
-                    foreach ($config->divisions as $index => $division) {
-                        $this->render_division_row($division, $index);
-                    }
-                } else {
-                    $this->render_division_row(array(), 0);
-                }
-                ?>
+        if (!empty($config->divisions)) {
+            foreach ($config->divisions as $index => $division) {
+                $this->render_division_row($division, $index);
+            }
+        }
+        else {
+            $this->render_division_row(array(), 0);
+        }
+?>
             </div>
             <button type="button" class="button" id="spsg-add-division"><?php _e('Add Division', 'sportspress-schedule-generator'); ?></button>
         </div>
@@ -2159,59 +2183,60 @@ class SPSG_Admin {
                     <td>
                         <div id="spsg-home-away-preferences">
                             <?php
-                            $home_away_prefs = $config->home_away_preferences ?? array();
-                            $all_teams = array();
-                            
-                            // Collect all teams from divisions
-                            if (!empty($config->divisions)) {
-                                foreach ($config->divisions as $division) {
-                                    if (!empty($division['teams'])) {
-                                        foreach ($division['teams'] as $team) {
-                                            $all_teams[] = $team;
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            if (empty($all_teams)) {
-                                echo '<p class="description">' . __('Add teams to divisions first to configure home venue preferences.', 'sportspress-schedule-generator') . '</p>';
-                            } else {
-                                echo '<table class="widefat striped">';
-                                echo '<thead><tr>';
-                                echo '<th>' . __('Team', 'sportspress-schedule-generator') . '</th>';
-                                echo '<th>' . __('Preferred Home Venue', 'sportspress-schedule-generator') . '</th>';
-                                echo '</tr></thead>';
-                                echo '<tbody>';
-                                
-                                foreach ($all_teams as $team) {
-                                    $team_pref = $home_away_prefs[$team] ?? '';
-                                    echo '<tr>';
-                                    echo '<td><strong>' . esc_html($team) . '</strong></td>';
-                                    echo '<td>';
-                                    echo '<select name="home_away_preferences[' . esc_attr($team) . ']" class="regular-text">';
-                                    echo '<option value="">' . __('No preference', 'sportspress-schedule-generator') . '</option>';
-                                    
-                                    // List all venues
-                                    if (!empty($config->venues)) {
-                                        foreach ($config->venues as $venue) {
-                                            $venue_id = $venue['id'] ?? '';
-                                            $venue_name = $venue['name'] ?? __('Unnamed Venue', 'sportspress-schedule-generator');
-                                            echo '<option value="' . esc_attr($venue_id) . '" ' . selected($team_pref, $venue_id, false) . '>' . esc_html($venue_name) . '</option>';
-                                        }
-                                    }
-                                    
-                                    echo '</select>';
-                                    echo '</td>';
-                                    echo '</tr>';
-                                }
-                                
-                                echo '</tbody></table>';
-                                
-                                if (empty($config->venues)) {
-                                    echo '<p class="description" style="margin-top: 10px;">' . __('Note: Add venues in the "Venues & Times" tab to assign home venue preferences.', 'sportspress-schedule-generator') . '</p>';
-                                }
-                            }
-                            ?>
+        $home_away_prefs = $config->home_away_preferences ?? array();
+        $all_teams = array();
+
+        // Collect all teams from divisions
+        if (!empty($config->divisions)) {
+            foreach ($config->divisions as $division) {
+                if (!empty($division['teams'])) {
+                    foreach ($division['teams'] as $team) {
+                        $all_teams[] = $team;
+                    }
+                }
+            }
+        }
+
+        if (empty($all_teams)) {
+            echo '<p class="description">' . __('Add teams to divisions first to configure home venue preferences.', 'sportspress-schedule-generator') . '</p>';
+        }
+        else {
+            echo '<table class="widefat striped">';
+            echo '<thead><tr>';
+            echo '<th>' . __('Team', 'sportspress-schedule-generator') . '</th>';
+            echo '<th>' . __('Preferred Home Venue', 'sportspress-schedule-generator') . '</th>';
+            echo '</tr></thead>';
+            echo '<tbody>';
+
+            foreach ($all_teams as $team) {
+                $team_pref = $home_away_prefs[$team] ?? '';
+                echo '<tr>';
+                echo '<td><strong>' . esc_html($team) . '</strong></td>';
+                echo '<td>';
+                echo '<select name="home_away_preferences[' . esc_attr($team) . ']" class="regular-text">';
+                echo '<option value="">' . __('No preference', 'sportspress-schedule-generator') . '</option>';
+
+                // List all venues
+                if (!empty($config->venues)) {
+                    foreach ($config->venues as $venue) {
+                        $venue_id = $venue['id'] ?? '';
+                        $venue_name = $venue['name'] ?? __('Unnamed Venue', 'sportspress-schedule-generator');
+                        echo '<option value="' . esc_attr($venue_id) . '" ' . selected($team_pref, $venue_id, false) . '>' . esc_html($venue_name) . '</option>';
+                    }
+                }
+
+                echo '</select>';
+                echo '</td>';
+                echo '</tr>';
+            }
+
+            echo '</tbody></table>';
+
+            if (empty($config->venues)) {
+                echo '<p class="description" style="margin-top: 10px;">' . __('Note: Add venues in the "Venues & Times" tab to assign home venue preferences.', 'sportspress-schedule-generator') . '</p>';
+            }
+        }
+?>
                         </div>
                     </td>
                 </tr>
@@ -2228,56 +2253,57 @@ class SPSG_Admin {
                     <td>
                         <div id="spsg-inter-division-games">
                             <?php
-                            $inter_division_games = $config->inter_division_games ?? array();
-                            $divisions = $config->divisions ?? array();
-                            
-                            if (count($divisions) < 2) {
-                                echo '<p class="description">' . __('Add at least 2 divisions to configure inter-division games.', 'sportspress-schedule-generator') . '</p>';
-                            } else {
-                                echo '<table class="widefat striped">';
-                                echo '<thead><tr>';
-                                echo '<th>' . __('Division Pair', 'sportspress-schedule-generator') . '</th>';
-                                echo '<th>' . __('Games Per Team', 'sportspress-schedule-generator') . '</th>';
-                                echo '</tr></thead>';
-                                echo '<tbody>';
-                                
-                                // Generate all division pairs
-                                for ($i = 0; $i < count($divisions); $i++) {
-                                    for ($j = $i + 1; $j < count($divisions); $j++) {
-                                        $div1 = $divisions[$i];
-                                        $div2 = $divisions[$j];
-                                        $div1_name = $div1['name'] ?? sprintf(__('Division %d', 'sportspress-schedule-generator'), $i + 1);
-                                        $div2_name = $div2['name'] ?? sprintf(__('Division %d', 'sportspress-schedule-generator'), $j + 1);
-                                        
-                                        // Create pair key (consistent ordering)
-                                        $div1_id = $div1['id'] ?? 'div_' . $i;
-                                        $div2_id = $div2['id'] ?? 'div_' . $j;
-                                        $pair_key = $div1_id . '_' . $div2_id;
-                                        
-                                        $games_count = $inter_division_games[$pair_key] ?? 0;
-                                        
-                                        echo '<tr>';
-                                        echo '<td><strong>' . esc_html($div1_name) . '</strong> vs <strong>' . esc_html($div2_name) . '</strong></td>';
-                                        echo '<td>';
-                                        echo '<input type="number" name="inter_division_games[' . esc_attr($pair_key) . ']" value="' . esc_attr($games_count) . '" min="0" max="10" class="small-text" /> ';
-                                        echo '<span class="description">' . __('games per team', 'sportspress-schedule-generator') . '</span>';
-                                        echo '</td>';
-                                        echo '</tr>';
-                                    }
-                                }
-                                
-                                echo '</tbody></table>';
-                                
-                                echo '<p class="description" style="margin-top: 10px;">';
-                                echo __('Specify how many games each team should play against teams from other divisions. Set to 0 to disable inter-division play for a division pair.', 'sportspress-schedule-generator');
-                                echo '</p>';
-                                
-                                echo '<div id="spsg-inter-division-warning" style="display: none; margin-top: 10px; padding: 10px; background: #fcf3cf; border-left: 4px solid #f39c12;">';
-                                echo '<strong>' . __('Warning:', 'sportspress-schedule-generator') . '</strong> ';
-                                echo '<span id="spsg-inter-division-warning-text"></span>';
-                                echo '</div>';
-                            }
-                            ?>
+        $inter_division_games = $config->inter_division_games ?? array();
+        $divisions = $config->divisions ?? array();
+
+        if (count($divisions) < 2) {
+            echo '<p class="description">' . __('Add at least 2 divisions to configure inter-division games.', 'sportspress-schedule-generator') . '</p>';
+        }
+        else {
+            echo '<table class="widefat striped">';
+            echo '<thead><tr>';
+            echo '<th>' . __('Division Pair', 'sportspress-schedule-generator') . '</th>';
+            echo '<th>' . __('Games Per Team', 'sportspress-schedule-generator') . '</th>';
+            echo '</tr></thead>';
+            echo '<tbody>';
+
+            // Generate all division pairs
+            for ($i = 0; $i < count($divisions); $i++) {
+                for ($j = $i + 1; $j < count($divisions); $j++) {
+                    $div1 = $divisions[$i];
+                    $div2 = $divisions[$j];
+                    $div1_name = $div1['name'] ?? sprintf(__('Division %d', 'sportspress-schedule-generator'), $i + 1);
+                    $div2_name = $div2['name'] ?? sprintf(__('Division %d', 'sportspress-schedule-generator'), $j + 1);
+
+                    // Create pair key (consistent ordering)
+                    $div1_id = $div1['id'] ?? 'div_' . $i;
+                    $div2_id = $div2['id'] ?? 'div_' . $j;
+                    $pair_key = $div1_id . '_' . $div2_id;
+
+                    $games_count = $inter_division_games[$pair_key] ?? 0;
+
+                    echo '<tr>';
+                    echo '<td><strong>' . esc_html($div1_name) . '</strong> vs <strong>' . esc_html($div2_name) . '</strong></td>';
+                    echo '<td>';
+                    echo '<input type="number" name="inter_division_games[' . esc_attr($pair_key) . ']" value="' . esc_attr($games_count) . '" min="0" max="10" class="small-text" /> ';
+                    echo '<span class="description">' . __('games per team', 'sportspress-schedule-generator') . '</span>';
+                    echo '</td>';
+                    echo '</tr>';
+                }
+            }
+
+            echo '</tbody></table>';
+
+            echo '<p class="description" style="margin-top: 10px;">';
+            echo __('Specify how many games each team should play against teams from other divisions. Set to 0 to disable inter-division play for a division pair.', 'sportspress-schedule-generator');
+            echo '</p>';
+
+            echo '<div id="spsg-inter-division-warning" style="display: none; margin-top: 10px; padding: 10px; background: #fcf3cf; border-left: 4px solid #f39c12;">';
+            echo '<strong>' . __('Warning:', 'sportspress-schedule-generator') . '</strong> ';
+            echo '<span id="spsg-inter-division-warning-text"></span>';
+            echo '</div>';
+        }
+?>
                         </div>
                     </td>
                 </tr>
@@ -2325,15 +2351,16 @@ class SPSG_Admin {
         </p>
         <?php
     }
-    
+
     /**
      * Render division row
      */
-    private function render_division_row($division, $index) {
-        $sp_available = SPSG_SportsPress_Integration::is_sportspress_active();
+    private function render_division_row($division, $index)
+    {
+        $sp_available = SPSGSportsPressIntegration::is_sportspress_active();
         $teams = is_array($division['teams'] ?? '') ? $division['teams'] : explode("\n", trim($division['teams'] ?? ''));
         $teams = array_filter($teams); // Remove empty entries
-        ?>
+?>
         <div class="spsg-division-row" data-index="<?php echo esc_attr($index); ?>">
             <table class="form-table">
                 <tr>
@@ -2350,18 +2377,19 @@ class SPSG_Admin {
                         <select class="spsg-sp-division-selector regular-text" data-division-index="<?php echo esc_attr($index); ?>">
                             <option value=""><?php _e('Select a SportsPress division...', 'sportspress-schedule-generator'); ?></option>
                             <?php
-                            $sp_leagues = SPSG_SportsPress_Integration::get_leagues();
-                            foreach ($sp_leagues as $league) {
-                                echo '<option value="' . esc_attr($league->id) . '">' . esc_html($league->name) . '</option>';
-                            }
-                            ?>
+            $sp_leagues = SPSGSportsPressIntegration::get_leagues();
+            foreach ($sp_leagues as $league) {
+                echo '<option value="' . esc_attr($league->id) . '">' . esc_html($league->name) . '</option>';
+            }
+?>
                         </select>
                         <button type="button" class="button spsg-load-sp-teams" data-division-index="<?php echo esc_attr($index); ?>"><?php _e('Load Teams', 'sportspress-schedule-generator'); ?></button>
                         <span class="spinner" style="float: none; margin: 0 10px;"></span>
                         <p class="description"><?php _e('Load teams from a single SportsPress league/division into this division block.', 'sportspress-schedule-generator'); ?></p>
                     </td>
                 </tr>
-                <?php endif; ?>
+                <?php
+        endif; ?>
                 <tr>
                     <th scope="row"><?php _e('Teams', 'sportspress-schedule-generator'); ?></th>
                     <td>
@@ -2376,10 +2404,13 @@ class SPSG_Admin {
                                         </label>
                                         <button type="button" class="button-link spsg-remove-team" style="color: #b32d2e;"><?php _e('Remove', 'sportspress-schedule-generator'); ?></button>
                                     </div>
-                                    <?php endforeach; ?>
-                                <?php else: ?>
+                                    <?php
+            endforeach; ?>
+                                <?php
+        else: ?>
                                     <p class="description"><?php _e('No teams added yet. Load from SportsPress or add manually below.', 'sportspress-schedule-generator'); ?></p>
-                                <?php endif; ?>
+                                <?php
+        endif; ?>
                             </div>
                             <div class="spsg-team-actions">
                                 <button type="button" class="button spsg-select-all-teams" data-division-index="<?php echo esc_attr($index); ?>"><?php _e('Select All', 'sportspress-schedule-generator'); ?></button>
@@ -2396,13 +2427,14 @@ class SPSG_Admin {
         </div>
         <?php
     }
-    
+
     /**
      * Render venues and times tab
      */
-    private function render_venues_times_tab($config) {
-        $sp_available = SPSG_SportsPress_Integration::is_sportspress_active();
-        ?>
+    private function render_venues_times_tab($config)
+    {
+        $sp_available = SPSGSportsPressIntegration::is_sportspress_active();
+?>
         <div class="spsg-venues-section">
             <h3><?php _e('Playing Days & Time Slots', 'sportspress-schedule-generator'); ?></h3>
             <table class="form-table">
@@ -2410,13 +2442,13 @@ class SPSG_Admin {
                     <th scope="row"><?php _e('Playing Days', 'sportspress-schedule-generator'); ?></th>
                     <td>
                         <?php
-                        $days = array('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday');
-                        $selected_days = $config->playing_days ?: array();
-                        foreach ($days as $day) {
-                            $checked = in_array($day, $selected_days) ? 'checked' : '';
-                            echo '<label><input type="checkbox" name="playing_days[]" value="' . esc_attr($day) . '" ' . $checked . '> ' . esc_html(ucfirst($day)) . '</label><br>';
-                        }
-                        ?>
+        $days = array('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday');
+        $selected_days = $config->playing_days ?: array();
+        foreach ($days as $day) {
+            $checked = in_array($day, $selected_days) ? 'checked' : '';
+            echo '<label><input type="checkbox" name="playing_days[]" value="' . esc_attr($day) . '" ' . $checked . '> ' . esc_html(ucfirst($day)) . '</label><br>';
+        }
+?>
                     </td>
                 </tr>
             </table>
@@ -2424,16 +2456,16 @@ class SPSG_Admin {
             <h4><?php _e('Time Slots by Day', 'sportspress-schedule-generator'); ?></h4>
             <div id="spsg-time-slots-container">
                 <?php
-                foreach ($days as $day) {
-                    $slots = $config->time_slots[$day] ?? array();
-                    ?>
+        foreach ($days as $day) {
+            $slots = $config->time_slots[$day] ?? array();
+?>
                     <div class="spsg-day-time-slots" data-day="<?php echo esc_attr($day); ?>">
                         <h5><?php echo esc_html(ucfirst($day)); ?></h5>
                         <textarea name="time_slots[<?php echo esc_attr($day); ?>]" rows="3" class="regular-text" placeholder="<?php _e('Enter time slots, one per line (e.g., 19:00)', 'sportspress-schedule-generator'); ?>"><?php echo esc_textarea(implode("\n", $slots)); ?></textarea>
                     </div>
                     <?php
-                }
-                ?>
+        }
+?>
             </div>
         </div>
         
@@ -2481,19 +2513,21 @@ class SPSG_Admin {
                 <p class="description"><?php _e('Choose which venues to import from SportsPress', 'sportspress-schedule-generator'); ?></p>
             </div>
             <hr>
-            <?php endif; ?>
+            <?php
+        endif; ?>
             
             <h3><?php _e('Venues', 'sportspress-schedule-generator'); ?></h3>
             <div id="spsg-venues-container">
                 <?php
-                if (!empty($config->venues)) {
-                    foreach ($config->venues as $index => $venue) {
-                        $this->render_venue_row($venue, $index);
-                    }
-                } else {
-                    $this->render_venue_row(array(), 0);
-                }
-                ?>
+        if (!empty($config->venues)) {
+            foreach ($config->venues as $index => $venue) {
+                $this->render_venue_row($venue, $index);
+            }
+        }
+        else {
+            $this->render_venue_row(array(), 0);
+        }
+?>
             </div>
             <button type="button" class="button" id="spsg-add-venue"><?php _e('Add Venue', 'sportspress-schedule-generator'); ?></button>
         </div>
@@ -2503,14 +2537,15 @@ class SPSG_Admin {
         </p>
         <?php
     }
-    
+
     /**
      * Render venue row
      */
-    private function render_venue_row($venue, $index) {
+    private function render_venue_row($venue, $index)
+    {
         $venue_id = $venue['id'] ?? 'venue_' . $index;
         $days = array('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday');
-        ?>
+?>
         <div class="spsg-venue-row" data-index="<?php echo esc_attr($index); ?>">
             <table class="form-table">
                 <tr>
@@ -2525,9 +2560,9 @@ class SPSG_Admin {
                     <th scope="row"><?php _e('Available Days & Times', 'sportspress-schedule-generator'); ?></th>
                     <td>
                         <div class="spsg-venue-timeslots">
-                            <?php foreach ($days as $day): 
-                                $venue_timeslots = $venue['timeslots'][$day] ?? array();
-                            ?>
+                            <?php foreach ($days as $day):
+            $venue_timeslots = $venue['timeslots'][$day] ?? array();
+?>
                             <div class="spsg-venue-day-timeslots">
                                 <label>
                                     <input type="checkbox" class="spsg-venue-day-toggle" data-day="<?php echo esc_attr($day); ?>" <?php checked(!empty($venue_timeslots)); ?> />
@@ -2537,7 +2572,8 @@ class SPSG_Admin {
                                     <textarea name="venue_timeslots[<?php echo esc_attr($venue_id); ?>][<?php echo esc_attr($day); ?>]" rows="2" class="regular-text" placeholder="<?php _e('Enter times (e.g., 19:00, 20:00)', 'sportspress-schedule-generator'); ?>"><?php echo esc_textarea(is_array($venue_timeslots) ? implode("\n", $venue_timeslots) : ''); ?></textarea>
                                 </div>
                             </div>
-                            <?php endforeach; ?>
+                            <?php
+        endforeach; ?>
                         </div>
                         <p class="description"><?php _e('Select which days and times this venue is available. Leave unchecked if venue is available all configured times.', 'sportspress-schedule-generator'); ?></p>
                     </td>
@@ -2545,10 +2581,10 @@ class SPSG_Admin {
                 <tr>
                     <th scope="row"><?php _e('Venue Blackout Dates', 'sportspress-schedule-generator'); ?></th>
                     <td>
-                        <textarea name="venue_blackout_dates[<?php echo esc_attr($venue_id); ?>]" rows="3" class="large-text" placeholder="<?php _e('Enter dates when this venue is unavailable (e.g., 2024-01-15, 2024-02-20)', 'sportspress-schedule-generator'); ?>"><?php 
-                            $venue_blackouts = $venue['blackout_dates'] ?? array();
-                            echo esc_textarea(is_array($venue_blackouts) ? implode("\n", $venue_blackouts) : $venue_blackouts);
-                        ?></textarea>
+                        <textarea name="venue_blackout_dates[<?php echo esc_attr($venue_id); ?>]" rows="3" class="large-text" placeholder="<?php _e('Enter dates when this venue is unavailable (e.g., 2024-01-15, 2024-02-20)', 'sportspress-schedule-generator'); ?>"><?php
+        $venue_blackouts = $venue['blackout_dates'] ?? array();
+        echo esc_textarea(is_array($venue_blackouts) ? implode("\n", $venue_blackouts) : $venue_blackouts);
+?></textarea>
                         <p class="description"><?php _e('Specific dates when this venue is unavailable. Enter one date per line in YYYY-MM-DD format. This is useful when a venue is temporarily closed or unavailable on specific days.', 'sportspress-schedule-generator'); ?></p>
                     </td>
                 </tr>
@@ -2556,12 +2592,13 @@ class SPSG_Admin {
         </div>
         <?php
     }
-    
+
     /**
      * Render constraints tab
      */
-    private function render_constraints_tab($config) {
-        ?>
+    private function render_constraints_tab($config)
+    {
+?>
         <div class="spsg-constraints-section">
             <h3><?php _e('Distribution Rules', 'sportspress-schedule-generator'); ?></h3>
             <table class="form-table">
@@ -2589,14 +2626,14 @@ class SPSG_Admin {
                     <td>
                         <div id="spsg-day-weights-container">
                             <?php
-                            $days = array('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday');
-                            $selected_days = $config->playing_days ?: array();
-                            $day_ratios = $config->distribution_rules['day_ratios'] ?? array();
-                            
-                            foreach ($days as $day) {
-                                if (in_array($day, $selected_days)) {
-                                    $weight = isset($day_ratios[$day]) ? round($day_ratios[$day] * 100) : round((1.0 / count($selected_days)) * 100);
-                                    ?>
+        $days = array('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday');
+        $selected_days = $config->playing_days ?: array();
+        $day_ratios = $config->distribution_rules['day_ratios'] ?? array();
+
+        foreach ($days as $day) {
+            if (in_array($day, $selected_days)) {
+                $weight = isset($day_ratios[$day]) ? round($day_ratios[$day] * 100) : round((1.0 / count($selected_days)) * 100);
+?>
                                     <div class="spsg-day-weight-row" style="margin-bottom: 10px;">
                                         <label style="display: inline-block; width: 120px; font-weight: 600;">
                                             <?php echo esc_html(ucfirst($day)); ?>:
@@ -2612,9 +2649,9 @@ class SPSG_Admin {
                                         <span class="spsg-day-weight-percentage"><?php echo esc_html($weight); ?>%</span>
                                     </div>
                                     <?php
-                                }
-                            }
-                            ?>
+            }
+        }
+?>
                         </div>
                         <p class="description">
                             <?php _e('Example: Set Friday to 75 and Sunday to 25 for a 3:1 ratio (75% of games on Friday, 25% on Sunday).', 'sportspress-schedule-generator'); ?>
@@ -2646,15 +2683,16 @@ class SPSG_Admin {
             
             <div id="spsg-team-restrictions-container">
                 <?php
-                $overlap_restrictions = $config->team_restrictions['overlap_avoidance'] ?? array();
-                if (!empty($overlap_restrictions)) {
-                    foreach ($overlap_restrictions as $index => $restriction) {
-                        $this->render_team_restriction_row($restriction, $index, $config);
-                    }
-                } else {
-                    $this->render_team_restriction_row(array(), 0, $config);
-                }
-                ?>
+        $overlap_restrictions = $config->team_restrictions['overlap_avoidance'] ?? array();
+        if (!empty($overlap_restrictions)) {
+            foreach ($overlap_restrictions as $index => $restriction) {
+                $this->render_team_restriction_row($restriction, $index, $config);
+            }
+        }
+        else {
+            $this->render_team_restriction_row(array(), 0, $config);
+        }
+?>
             </div>
             <button type="button" class="button" id="spsg-add-team-restriction"><?php _e('Add Team Restriction', 'sportspress-schedule-generator'); ?></button>
             
@@ -2674,14 +2712,15 @@ class SPSG_Admin {
         </p>
         <?php
     }
-    
+
     /**
      * Render team restriction row
      */
-    private function render_team_restriction_row($restriction, $index, $config) {
+    private function render_team_restriction_row($restriction, $index, $config)
+    {
         $teams = $restriction['teams'] ?? array();
         $buffer_minutes = $restriction['buffer_minutes'] ?? 0;
-        
+
         // Get all teams from divisions for selection
         $all_teams = array();
         if (!empty($config->divisions)) {
@@ -2696,7 +2735,7 @@ class SPSG_Admin {
             }
         }
         sort($all_teams);
-        ?>
+?>
         <div class="spsg-team-restriction-row" data-index="<?php echo esc_attr($index); ?>" style="background: #f9f9f9; padding: 15px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 4px;">
             <table class="form-table" style="margin: 0;">
                 <tr>
@@ -2709,12 +2748,15 @@ class SPSG_Admin {
                                         <option value="<?php echo esc_attr($team); ?>" <?php selected(in_array($team, $teams)); ?>>
                                             <?php echo esc_html($team); ?>
                                         </option>
-                                    <?php endforeach; ?>
+                                    <?php
+            endforeach; ?>
                                 </select>
                                 <p class="description"><?php _e('Select 2 or more teams that cannot play at the same time. Hold Ctrl/Cmd to select multiple teams.', 'sportspress-schedule-generator'); ?></p>
-                            <?php else: ?>
+                            <?php
+        else: ?>
                                 <p class="description" style="color: #d63638;"><?php _e('Please add teams to divisions first before configuring team restrictions.', 'sportspress-schedule-generator'); ?></p>
-                            <?php endif; ?>
+                            <?php
+        endif; ?>
                         </div>
                     </td>
                 </tr>
@@ -2745,17 +2787,18 @@ class SPSG_Admin {
         </div>
         <?php
     }
-    
+
     /**
      * Render generate tab
      */
-    private function render_generate_tab($config) {
+    private function render_generate_tab($config)
+    {
         // Check if there's a generated schedule in transient
         $schedule_id = get_transient('spsg_last_schedule_id_' . get_current_user_id());
         $schedule = $schedule_id ? get_transient('spsg_schedule_' . $schedule_id) : null;
         $stats = $schedule_id ? get_transient('spsg_schedule_stats_' . $schedule_id) : null;
-        
-        ?>
+
+?>
         <div class="spsg-generate-section">
             <h3><?php _e('Generate Schedule', 'sportspress-schedule-generator'); ?></h3>
             <p><?php _e('Review your configuration and generate the league schedule.', 'sportspress-schedule-generator'); ?></p>
@@ -2763,10 +2806,10 @@ class SPSG_Admin {
             <div class="spsg-config-summary">
                 <h4><?php _e('Configuration Summary', 'sportspress-schedule-generator'); ?></h4>
                 <ul>
-                    <li><?php printf(__('Season: %s to %s', 'sportspress-schedule-generator'), 
-                        $config->season_start ? $config->season_start->format('Y-m-d') : __('Not set', 'sportspress-schedule-generator'),
-                        $config->season_end ? $config->season_end->format('Y-m-d') : __('Not set', 'sportspress-schedule-generator')
-                    ); ?></li>
+                    <li><?php printf(__('Season: %s to %s', 'sportspress-schedule-generator'),
+            $config->season_start ? $config->season_start->format('Y-m-d') : __('Not set', 'sportspress-schedule-generator'),
+            $config->season_end ? $config->season_end->format('Y-m-d') : __('Not set', 'sportspress-schedule-generator')
+        ); ?></li>
                     <li><?php printf(__('Games per team: %d', 'sportspress-schedule-generator'), $config->games_per_team); ?></li>
                     <li><?php printf(__('Divisions: %d', 'sportspress-schedule-generator'), count($config->divisions ?: array())); ?></li>
                     <li><?php printf(__('Venues: %d', 'sportspress-schedule-generator'), count($config->venues ?: array())); ?></li>
@@ -2823,9 +2866,11 @@ class SPSG_Admin {
             
             <?php if ($schedule && !empty($schedule)): ?>
                 <?php $this->render_schedule_preview($schedule, $stats, $schedule_id); ?>
-            <?php else: ?>
+            <?php
+        else: ?>
                 <div id="spsg-schedule-preview-container"></div>
-            <?php endif; ?>
+            <?php
+        endif; ?>
             
             <div id="spsg-export-container"></div>
         </div>
@@ -2833,17 +2878,18 @@ class SPSG_Admin {
         <?php
         // Render import dialog modal
         $this->render_import_dialog();
-        ?>
+?>
         <?php
     }
-    
+
     /**
      * Render import dialog modal
      * 
      * Displays a modal dialog for configuring SportsPress event import options
      */
-    private function render_import_dialog() {
-        ?>
+    private function render_import_dialog()
+    {
+?>
         <div id="spsg-import-dialog" class="spsg-modal" style="display: none;" role="dialog" aria-labelledby="spsg-import-dialog-title" aria-describedby="spsg-import-dialog-desc">
             <div class="spsg-modal-overlay" aria-hidden="true"></div>
             <div class="spsg-modal-content">
@@ -2987,7 +3033,7 @@ class SPSG_Admin {
         </div>
         <?php
     }
-    
+
     /**
      * Render schedule preview
      * 
@@ -2995,16 +3041,17 @@ class SPSG_Admin {
      * @param array $stats Schedule statistics
      * @param string $schedule_id Schedule ID for export/import
      */
-    private function render_schedule_preview($schedule, $stats, $schedule_id) {
+    private function render_schedule_preview($schedule, $stats, $schedule_id)
+    {
         if (empty($schedule)) {
             return;
         }
-        
+
         // Collect unique divisions, teams, and venues for filters
         $divisions = array();
         $teams = array();
         $venues = array();
-        
+
         foreach ($schedule as $game) {
             if (!empty($game['division']['name']) && !in_array($game['division']['name'], $divisions)) {
                 $divisions[] = $game['division']['name'];
@@ -3019,12 +3066,12 @@ class SPSG_Admin {
                 $venues[] = $game['venue']['name'];
             }
         }
-        
+
         sort($divisions);
         sort($teams);
         sort($venues);
-        
-        ?>
+
+?>
         <div class="spsg-schedule-preview" id="spsg-schedule-preview-container">
             <div class="spsg-preview-header">
                 <h2><?php _e('Generated Schedule Preview', 'sportspress-schedule-generator'); ?></h2>
@@ -3092,17 +3139,18 @@ class SPSG_Admin {
                 <div class="spsg-stat">
                     <span class="spsg-stat-label"><?php _e('Games Per Team', 'sportspress-schedule-generator'); ?></span>
                     <span class="spsg-stat-value">
-                        <?php 
-                        if (isset($stats['games_per_team'])) {
-                            printf('%d - %d (avg: %.1f)', 
-                                $stats['games_per_team']['min'],
-                                $stats['games_per_team']['max'],
-                                $stats['games_per_team']['avg']
-                            );
-                        } else {
-                            echo '-';
-                        }
-                        ?>
+                        <?php
+            if (isset($stats['games_per_team'])) {
+                printf('%d - %d (avg: %.1f)',
+                    $stats['games_per_team']['min'],
+                    $stats['games_per_team']['max'],
+                    $stats['games_per_team']['avg']
+                );
+            }
+            else {
+                echo '-';
+            }
+?>
                     </span>
                 </div>
                 <div class="spsg-stat">
@@ -3137,11 +3185,13 @@ class SPSG_Admin {
                                     <td><?php echo esc_html($venue_data['name'] ?? $venue_id); ?></td>
                                     <td><?php echo esc_html($venue_data['games'] ?? 0); ?></td>
                                 </tr>
-                                <?php endforeach; ?>
+                                <?php
+                endforeach; ?>
                             </tbody>
                         </table>
                     </div>
-                    <?php endif; ?>
+                    <?php
+            endif; ?>
                     
                     <!-- Home/Away Balance -->
                     <?php if (!empty($stats['home_away_balance'])): ?>
@@ -3157,13 +3207,13 @@ class SPSG_Admin {
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach ($stats['home_away_balance'] as $team_id => $balance): 
-                                    $team_name = $balance['team_name'] ?? $team_id;
-                                    $home = $balance['home'] ?? 0;
-                                    $away = $balance['away'] ?? 0;
-                                    $diff = abs($home - $away);
-                                    $balance_class = $diff > 2 ? 'spsg-imbalance-warning' : '';
-                                ?>
+                                <?php foreach ($stats['home_away_balance'] as $team_id => $balance):
+                    $team_name = $balance['team_name'] ?? $team_id;
+                    $home = $balance['home'] ?? 0;
+                    $away = $balance['away'] ?? 0;
+                    $diff = abs($home - $away);
+                    $balance_class = $diff > 2 ? 'spsg-imbalance-warning' : '';
+?>
                                 <tr class="<?php echo esc_attr($balance_class); ?>">
                                     <td><?php echo esc_html($team_name); ?></td>
                                     <td><?php echo esc_html($home); ?></td>
@@ -3171,18 +3221,23 @@ class SPSG_Admin {
                                     <td>
                                         <?php if ($diff === 0): ?>
                                             <span class="spsg-balance-good">✓ <?php _e('Balanced', 'sportspress-schedule-generator'); ?></span>
-                                        <?php elseif ($diff <= 2): ?>
+                                        <?php
+                    elseif ($diff <= 2): ?>
                                             <span class="spsg-balance-ok">± <?php echo esc_html($diff); ?></span>
-                                        <?php else: ?>
+                                        <?php
+                    else: ?>
                                             <span class="spsg-balance-warning">⚠ ± <?php echo esc_html($diff); ?></span>
-                                        <?php endif; ?>
+                                        <?php
+                    endif; ?>
                                     </td>
                                 </tr>
-                                <?php endforeach; ?>
+                                <?php
+                endforeach; ?>
                             </tbody>
                         </table>
                     </div>
-                    <?php endif; ?>
+                    <?php
+            endif; ?>
                     
                     <!-- Time Slot Distribution -->
                     <?php if (!empty($stats['time_slot_distribution'])): ?>
@@ -3201,11 +3256,13 @@ class SPSG_Admin {
                                     <td><?php echo esc_html($timeslot); ?></td>
                                     <td><?php echo esc_html($count); ?></td>
                                 </tr>
-                                <?php endforeach; ?>
+                                <?php
+                endforeach; ?>
                             </tbody>
                         </table>
                     </div>
-                    <?php endif; ?>
+                    <?php
+            endif; ?>
                     
                     <!-- Day Distribution -->
                     <?php if (!empty($stats['day_distribution'])): ?>
@@ -3224,11 +3281,13 @@ class SPSG_Admin {
                                     <td><?php echo esc_html($day); ?></td>
                                     <td><?php echo esc_html($count); ?></td>
                                 </tr>
-                                <?php endforeach; ?>
+                                <?php
+                endforeach; ?>
                             </tbody>
                         </table>
                     </div>
-                    <?php endif; ?>
+                    <?php
+            endif; ?>
                 </div>
                 
                 <!-- Imbalances and Issues -->
@@ -3241,12 +3300,15 @@ class SPSG_Admin {
                             <span class="dashicons dashicons-warning"></span>
                             <?php echo esc_html($issue['message']); ?>
                         </li>
-                        <?php endforeach; ?>
+                        <?php
+                endforeach; ?>
                     </ul>
                 </div>
-                <?php endif; ?>
+                <?php
+            endif; ?>
             </div>
-            <?php endif; ?>
+            <?php
+        endif; ?>
             
             <!-- Filters -->
             <div class="spsg-preview-filters">
@@ -3254,21 +3316,24 @@ class SPSG_Admin {
                     <option value=""><?php _e('All Divisions', 'sportspress-schedule-generator'); ?></option>
                     <?php foreach ($divisions as $division): ?>
                         <option value="<?php echo esc_attr($division); ?>"><?php echo esc_html($division); ?></option>
-                    <?php endforeach; ?>
+                    <?php
+        endforeach; ?>
                 </select>
                 
                 <select id="spsg-filter-team" class="spsg-filter">
                     <option value=""><?php _e('All Teams', 'sportspress-schedule-generator'); ?></option>
                     <?php foreach ($teams as $team): ?>
                         <option value="<?php echo esc_attr($team); ?>"><?php echo esc_html($team); ?></option>
-                    <?php endforeach; ?>
+                    <?php
+        endforeach; ?>
                 </select>
                 
                 <select id="spsg-filter-venue" class="spsg-filter">
                     <option value=""><?php _e('All Venues', 'sportspress-schedule-generator'); ?></option>
                     <?php foreach ($venues as $venue): ?>
                         <option value="<?php echo esc_attr($venue); ?>"><?php echo esc_html($venue); ?></option>
-                    <?php endforeach; ?>
+                    <?php
+        endforeach; ?>
                 </select>
                 
                 <input type="date" id="spsg-filter-date-from" class="spsg-filter" placeholder="<?php esc_attr_e('From Date', 'sportspress-schedule-generator'); ?>" />
@@ -3290,10 +3355,10 @@ class SPSG_Admin {
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($schedule as $index => $game): 
-                        $is_inter_division = !empty($game['is_inter_division']);
-                        $row_class = $is_inter_division ? 'spsg-inter-division-game' : '';
-                    ?>
+                    <?php foreach ($schedule as $index => $game):
+            $is_inter_division = !empty($game['is_inter_division']);
+            $row_class = $is_inter_division ? 'spsg-inter-division-game' : '';
+?>
                         <tr class="<?php echo esc_attr($row_class); ?>" 
                             data-division="<?php echo esc_attr($game['division']['name'] ?? ''); ?>"
                             data-home-team="<?php echo esc_attr($game['home_team']['name'] ?? ''); ?>"
@@ -3310,10 +3375,12 @@ class SPSG_Admin {
                                 <?php echo esc_html($game['division']['name'] ?? ''); ?>
                                 <?php if ($is_inter_division): ?>
                                     <span class="spsg-inter-division-badge"><?php _e('Inter-Division', 'sportspress-schedule-generator'); ?></span>
-                                <?php endif; ?>
+                                <?php
+            endif; ?>
                             </td>
                         </tr>
-                    <?php endforeach; ?>
+                    <?php
+        endforeach; ?>
                 </tbody>
             </table>
             
@@ -3321,134 +3388,143 @@ class SPSG_Admin {
         </div>
         <?php
     }
-    
+
     /**
      * AJAX handler for saving configuration
      */
-    public function ajax_save_config() {
+    public function ajax_save_config()
+    {
         check_ajax_referer('spsg_admin_action', 'spsg_nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
         }
-        
+
         $config_data = $this->sanitize_form_data($_POST);
         $result = $this->config_manager->save($config_data);
-        
+
         if (is_wp_error($result)) {
             wp_send_json_error($result->get_error_message());
-        } else {
+        }
+        else {
             wp_send_json_success(array(
                 'message' => __('Configuration saved successfully! Your changes have been preserved.', 'sportspress-schedule-generator')
             ));
         }
     }
-    
+
     /**
      * AJAX handler for loading configuration
      */
-    public function ajax_load_config() {
+    public function ajax_load_config()
+    {
         check_ajax_referer('spsg_admin_action', 'nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
         }
-        
+
         $config_id = sanitize_text_field($_POST['config_id'] ?? '');
         $config = $this->config_manager->load($config_id);
-        
+
         if ($config && is_object($config) && method_exists($config, 'to_array')) {
             wp_send_json_success($config->to_array());
-        } elseif (is_array($config)) {
+        }
+        elseif (is_array($config)) {
             wp_send_json_success($config);
-        } else {
+        }
+        else {
             wp_send_json_error(__('Configuration not found', 'sportspress-schedule-generator'));
         }
     }
-    
+
     /**
      * AJAX handler for validating configuration
      */
-    public function ajax_validate_config() {
+    public function ajax_validate_config()
+    {
         check_ajax_referer('spsg_admin_action', 'spsg_nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
         }
-        
+
         $config_data = $this->sanitize_form_data($_POST);
         $validation = $this->config_manager->validate($config_data);
-        
+
         if (is_wp_error($validation)) {
             // Get all error messages
             $errors = array();
             foreach ($validation->get_error_codes() as $code) {
                 $errors[$code] = $validation->get_error_message($code);
             }
-            
+
             wp_send_json_error(array(
                 'errors' => $errors,
                 'message' => __('Configuration validation failed', 'sportspress-schedule-generator')
             ));
-        } else {
+        }
+        else {
             wp_send_json_success(array(
                 'message' => __('Configuration is valid', 'sportspress-schedule-generator')
             ));
         }
     }
-    
+
     /**
      * AJAX handler for importing SportsPress league
      */
-    public function ajax_import_league() {
+    public function ajax_import_league()
+    {
         check_ajax_referer('spsg_import_league', 'nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
         }
-        
+
         $league_id = intval($_POST['league_id']);
         if (!$league_id) {
             wp_send_json_error(__('Invalid league ID', 'sportspress-schedule-generator'));
         }
-        
-        $structure = SPSG_SportsPress_Integration::get_league_structure($league_id);
-        
+
+        $structure = SPSGSportsPressIntegration::get_league_structure($league_id);
+
         if (empty($structure['league'])) {
             wp_send_json_error(__('League not found', 'sportspress-schedule-generator'));
         }
-        
+
         wp_send_json_success($structure);
     }
-    
+
     /**
      * AJAX handler for saving imported league data
      */
-    public function ajax_save_imported_league() {
+    public function ajax_save_imported_league()
+    {
         check_ajax_referer('spsg_save_imported_league', 'nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
         }
-        
+
         $config_id = isset($_POST['config_id']) ? sanitize_text_field($_POST['config_id']) : '';
         $imported_data = isset($_POST['imported_data']) ? json_decode(stripslashes($_POST['imported_data']), true) : array();
-        
+
         if (empty($imported_data) || empty($imported_data['divisions'])) {
             wp_send_json_error(__('No data to import', 'sportspress-schedule-generator'));
         }
-        
+
         // Load existing config or get current form data
         $config_data = array();
         if ($config_id) {
             $existing_config = $this->config_manager->load($config_id);
             if ($existing_config) {
-                $config_data = is_object($existing_config) && method_exists($existing_config, 'to_array') 
-                    ? $existing_config->to_array() 
-                    : (array) $existing_config;
+                $config_data = is_object($existing_config) && method_exists($existing_config, 'to_array')
+                    ? $existing_config->to_array()
+                    : (array)$existing_config;
             }
         }
-        
+
         // Set config ID and name if not set
         if (!isset($config_data['id'])) {
             $config_data['id'] = $config_id ?: uniqid('config_');
@@ -3456,7 +3532,7 @@ class SPSG_Admin {
         if (!isset($config_data['name']) || empty($config_data['name'])) {
             $config_data['name'] = $imported_data['league']->name . ' - ' . __('Imported', 'sportspress-schedule-generator');
         }
-        
+
         // Convert imported divisions to config format
         $divisions = array();
         foreach ($imported_data['divisions'] as $division) {
@@ -3466,25 +3542,26 @@ class SPSG_Admin {
                     $teams[] = is_object($team) ? $team->name : (is_array($team) ? $team['name'] : $team);
                 }
             }
-            
+
             $divisions[] = array(
                 'name' => is_object($division) ? $division->name : $division['name'],
                 'teams' => $teams,
                 'id' => 'div_' . sanitize_title(is_object($division) ? $division->name : $division['name'])
             );
         }
-        
+
         $config_data['divisions'] = $divisions;
-        
+
         // Save the configuration using config manager
         $result = $this->config_manager->save($config_data);
-        
+
         if (is_wp_error($result)) {
             wp_send_json_error($result->get_error_message());
-        } else {
+        }
+        else {
             // Get the saved config ID
             $saved_config_id = isset($config_data['id']) ? $config_data['id'] : $config_id;
-            
+
             // Redirect to the configuration page
             $redirect_url = admin_url('admin.php?page=spsg-schedule-generator&config_id=' . $saved_config_id . '&imported=1');
             wp_send_json_success(array(
@@ -3494,99 +3571,103 @@ class SPSG_Admin {
             ));
         }
     }
-    
+
     /**
      * AJAX handler for getting available SportsPress venues (for selection dialog)
      */
-    public function ajax_get_available_venues() {
+    public function ajax_get_available_venues()
+    {
         check_ajax_referer('spsg_get_available_venues', 'nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
         }
-        
-        $venues = SPSG_SportsPress_Integration::get_venues();
-        
+
+        $venues = SPSGSportsPressIntegration::get_venues();
+
         wp_send_json_success(array(
             'venues' => $venues,
             'count' => count($venues)
         ));
     }
-    
+
     /**
      * AJAX handler for importing SportsPress venues (legacy - kept for compatibility)
      */
-    public function ajax_import_venues() {
+    public function ajax_import_venues()
+    {
         check_ajax_referer('spsg_import_venues', 'nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
         }
-        
-        $venues = SPSG_SportsPress_Integration::get_venues();
-        
+
+        $venues = SPSGSportsPressIntegration::get_venues();
+
         wp_send_json_success(array('venues' => $venues));
     }
-    
+
     /**
      * AJAX handler for deleting configuration
      */
-    public function ajax_delete_config() {
+    public function ajax_delete_config()
+    {
         check_ajax_referer('spsg_delete_config', 'nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
         }
-        
+
         $config_id = sanitize_text_field($_POST['config_id'] ?? '');
         if (empty($config_id)) {
             wp_send_json_error(__('No configuration ID provided', 'sportspress-schedule-generator'));
         }
-        
+
         $saved_configs = get_option('spsg_saved_configurations', array());
-        
+
         if (!isset($saved_configs[$config_id])) {
             wp_send_json_error(__('Configuration not found', 'sportspress-schedule-generator'));
         }
-        
+
         unset($saved_configs[$config_id]);
         update_option('spsg_saved_configurations', $saved_configs);
-        
+
         wp_send_json_success(__('Configuration deleted successfully', 'sportspress-schedule-generator'));
     }
-    
+
     /**
      * AJAX handler for cloning configuration
      */
-    public function ajax_clone_config() {
+    public function ajax_clone_config()
+    {
         check_ajax_referer('spsg_clone_config', 'nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
         }
-        
+
         $config_id = sanitize_text_field($_POST['config_id'] ?? '');
         $new_name = sanitize_text_field($_POST['new_name'] ?? '');
-        
+
         if (empty($config_id)) {
             wp_send_json_error(__('No configuration ID provided', 'sportspress-schedule-generator'));
         }
-        
+
         if (empty($new_name)) {
             wp_send_json_error(__('No name provided for cloned configuration', 'sportspress-schedule-generator'));
         }
-        
+
         $result = $this->config_manager->clone_configuration($config_id, $new_name);
-        
+
         if (is_wp_error($result)) {
             wp_send_json_error($result->get_error_message());
         }
-        
+
         // The clone_configuration method returns true on success, not the new config ID
         // We need to get the newly created config ID
         $all_configs = $this->config_manager->get_all_configurations();
         $new_config_id = null;
-        
+
         // Find the most recently created config with the matching name
         foreach ($all_configs as $id => $config_info) {
             if ($config_info['name'] === $new_name) {
@@ -3594,133 +3675,137 @@ class SPSG_Admin {
                 break;
             }
         }
-        
+
         wp_send_json_success(array(
             'message' => __('Configuration cloned successfully', 'sportspress-schedule-generator'),
             'new_config_id' => $new_config_id
         ));
     }
-    
+
     /**
      * AJAX handler for previewing configuration import
      * 
      * Accepts JSON configuration data and returns preview information
      * including name, dates, counts, and compatibility warnings.
      */
-    public function ajax_preview_import() {
+    public function ajax_preview_import()
+    {
         check_ajax_referer('spsg_preview_import', 'nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
         }
-        
+
         // Get JSON data from POST
         $json_data = wp_unslash($_POST['config_data'] ?? '');
-        
+
         if (empty($json_data)) {
             wp_send_json_error(__('No configuration data provided', 'sportspress-schedule-generator'));
         }
-        
+
         // Call the configuration manager's preview_import method
         $preview = $this->config_manager->preview_import($json_data);
-        
+
         // Check if preview returned an error
         if (is_wp_error($preview)) {
             wp_send_json_error($preview->get_error_message());
         }
-        
+
         // Return preview data
         wp_send_json_success($preview);
     }
-    
+
     /**
      * AJAX handler for loading teams from SportsPress division
      */
-    public function ajax_load_sp_teams() {
+    public function ajax_load_sp_teams()
+    {
         check_ajax_referer('spsg_load_sp_teams', 'nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
         }
-        
+
         $division_id = intval($_POST['division_id'] ?? 0);
         if (!$division_id) {
             wp_send_json_error(__('Invalid division ID', 'sportspress-schedule-generator'));
         }
-        
+
         // Get teams from SportsPress
-        $teams = SPSG_SportsPress_Integration::get_teams_by_league($division_id);
-        
+        $teams = SPSGSportsPressIntegration::get_teams_by_league($division_id);
+
         if (empty($teams)) {
             wp_send_json_error(__('No teams found in this division', 'sportspress-schedule-generator'));
         }
-        
+
         wp_send_json_success(array(
             'teams' => $teams,
             'count' => count($teams)
         ));
     }
-    
+
     /**
      * AJAX handler for loading preset configuration
      */
-    public function ajax_load_preset() {
+    public function ajax_load_preset()
+    {
         check_ajax_referer('spsg_load_preset', 'nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
         }
-        
+
         $preset_name = sanitize_text_field($_POST['preset_name'] ?? '');
         if (empty($preset_name)) {
             wp_send_json_error(__('Invalid preset name', 'sportspress-schedule-generator'));
         }
-        
+
         // Load preset
         $preset = $this->config_manager->get_preset($preset_name);
-        
+
         if (is_wp_error($preset)) {
             wp_send_json_error($preset->get_error_message());
         }
-        
+
         // Get preset metadata
         $presets = $this->config_manager->list_presets();
         $preset_info = $presets[$preset_name] ?? array();
-        
+
         wp_send_json_success(array(
             'preset' => $preset,
             'name' => $preset_info['name'] ?? '',
             'description' => $preset_info['description'] ?? ''
         ));
     }
-    
+
     /**
      * AJAX handler for getting change history
      */
-    public function ajax_get_change_history() {
+    public function ajax_get_change_history()
+    {
         check_ajax_referer('spsg_get_change_history', 'nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
         }
-        
+
         $config_id = sanitize_text_field($_POST['config_id'] ?? '');
         if (empty($config_id)) {
             wp_send_json_error(__('Invalid configuration ID', 'sportspress-schedule-generator'));
         }
-        
+
         $limit = intval($_POST['limit'] ?? 10);
-        
+
         // Get change history
         $history = $this->config_manager->get_change_history($config_id, $limit);
-        
+
         if (empty($history)) {
             wp_send_json_success(array(
                 'history' => array(),
                 'message' => __('No changes recorded yet', 'sportspress-schedule-generator')
             ));
         }
-        
+
         // Format history for display
         $formatted_history = array();
         foreach ($history as $change) {
@@ -3732,39 +3817,40 @@ class SPSG_Admin {
                 'new_value_display' => $change['new_value'] ?? ''
             );
         }
-        
+
         wp_send_json_success(array(
             'history' => $formatted_history,
             'count' => count($formatted_history)
         ));
     }
-    
+
     /**
      * AJAX handler for getting generation progress
      */
-    public function ajax_get_generation_progress() {
+    public function ajax_get_generation_progress()
+    {
         check_ajax_referer('spsg_get_generation_progress', 'nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
         }
-        
+
         $user_id = get_current_user_id();
         $progress_key = 'spsg_generation_progress_' . $user_id;
         $progress = get_transient($progress_key);
-        
+
         if (!$progress) {
             wp_send_json_error(array(
                 'message' => __('No generation in progress', 'sportspress-schedule-generator'),
                 'status' => 'not_found'
             ));
         }
-        
+
         // Calculate percentage
         $total_games = $progress['total_games'] ?? 0;
         $games_scheduled = $progress['games_scheduled'] ?? 0;
         $percentage = $total_games > 0 ? round(($games_scheduled / $total_games) * 100) : 0;
-        
+
         // Format phase text
         $phase_text = '';
         switch ($progress['phase'] ?? 'initializing') {
@@ -3783,27 +3869,30 @@ class SPSG_Admin {
             default:
                 $phase_text = __('Initializing', 'sportspress-schedule-generator');
         }
-        
+
         // Calculate estimated time remaining
         $elapsed_time = $progress['elapsed_time'] ?? 0;
         $estimated_remaining = '';
         if ($percentage > 0 && $percentage < 100) {
             $total_estimated = ($elapsed_time / $percentage) * 100;
             $remaining_seconds = max(0, $total_estimated - $elapsed_time);
-            
+
             if ($remaining_seconds < 60) {
                 $estimated_remaining = sprintf(__('%d seconds', 'sportspress-schedule-generator'), round($remaining_seconds));
-            } else {
+            }
+            else {
                 $minutes = floor($remaining_seconds / 60);
                 $seconds = round($remaining_seconds % 60);
                 $estimated_remaining = sprintf(__('%d min %d sec', 'sportspress-schedule-generator'), $minutes, $seconds);
             }
-        } elseif ($percentage >= 100) {
+        }
+        elseif ($percentage >= 100) {
             $estimated_remaining = __('Complete', 'sportspress-schedule-generator');
-        } else {
+        }
+        else {
             $estimated_remaining = __('Calculating...', 'sportspress-schedule-generator');
         }
-        
+
         wp_send_json_success(array(
             'percentage' => $percentage,
             'phase' => $progress['phase'] ?? 'initializing',
@@ -3814,59 +3903,61 @@ class SPSG_Admin {
             'status' => $progress['status'] ?? 'in_progress'
         ));
     }
-    
+
     /**
      * AJAX handler for canceling generation
      */
-    public function ajax_cancel_generation() {
+    public function ajax_cancel_generation()
+    {
         check_ajax_referer('spsg_cancel_generation', 'nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
         }
-        
+
         $user_id = get_current_user_id();
         $cancel_key = 'spsg_cancel_generation_' . $user_id;
         $progress_key = 'spsg_generation_progress_' . $user_id;
-        
+
         // Set cancellation flag
         set_transient($cancel_key, true, 300); // 5 minutes
-        
+
         // Update progress status
         $progress = get_transient($progress_key);
         if ($progress) {
             $progress['status'] = 'cancelled';
             set_transient($progress_key, $progress, 300);
         }
-        
+
         wp_send_json_success(array(
             'message' => __('Cancellation requested. Generation will stop shortly.', 'sportspress-schedule-generator')
         ));
     }
-    
+
     /**
      * AJAX handler for getting import dialog data
      * 
      * Returns leagues and seasons from SportsPress for the import dialog
      */
-    public function ajax_get_import_dialog_data() {
+    public function ajax_get_import_dialog_data()
+    {
         check_ajax_referer('spsg_get_import_dialog_data', 'nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
         }
-        
+
         // Check if SportsPress is available
-        if (!SPSG_SportsPress_Integration::is_sportspress_active()) {
+        if (!SPSGSportsPressIntegration::is_sportspress_active()) {
             wp_send_json_error(__('SportsPress is not active', 'sportspress-schedule-generator'));
         }
-        
+
         // Get leagues from SportsPress
-        $leagues = SPSG_SportsPress_Integration::get_leagues();
-        
+        $leagues = SPSGSportsPressIntegration::get_leagues();
+
         // Get seasons from SportsPress
-        $seasons = SPSG_SportsPress_Integration::get_seasons();
-        
+        $seasons = SPSGSportsPressIntegration::get_seasons();
+
         // Format leagues for response
         $formatted_leagues = array();
         if (!empty($leagues)) {
@@ -3877,7 +3968,7 @@ class SPSG_Admin {
                 );
             }
         }
-        
+
         // Format seasons for response
         $formatted_seasons = array();
         if (!empty($seasons)) {
@@ -3888,36 +3979,37 @@ class SPSG_Admin {
                 );
             }
         }
-        
+
         wp_send_json_success(array(
             'leagues' => $formatted_leagues,
             'seasons' => $formatted_seasons
         ));
     }
-    
+
     /**
      * AJAX handler for getting import progress
      * 
      * Returns the current progress of an ongoing import operation
      */
-    public function ajax_get_import_progress() {
+    public function ajax_get_import_progress()
+    {
         check_ajax_referer('spsg_get_import_progress', 'nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
         }
-        
+
         $user_id = get_current_user_id();
         $progress_key = 'spsg_import_progress_' . $user_id;
         $progress = get_transient($progress_key);
-        
+
         if (!$progress) {
             wp_send_json_error(array(
                 'message' => __('No import in progress', 'sportspress-schedule-generator'),
                 'status' => 'not_found'
             ));
         }
-        
+
         // Return progress data
         wp_send_json_success(array(
             'current' => $progress['current'] ?? 0,
@@ -3926,47 +4018,48 @@ class SPSG_Admin {
             'message' => $progress['message'] ?? ''
         ));
     }
-    
+
     /**
      * AJAX handler for uploading and parsing venue CSV
      */
-    public function ajax_upload_venue_csv() {
+    public function ajax_upload_venue_csv()
+    {
         check_ajax_referer('spsg_upload_venue_csv', 'nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
         }
-        
+
         if (!isset($_FILES['csv_file'])) {
             wp_send_json_error(__('No file uploaded', 'sportspress-schedule-generator'));
         }
-        
+
         $file = $_FILES['csv_file'];
-        
+
         // Validate file type
         $file_ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
         if ($file_ext !== 'csv') {
             wp_send_json_error(__('Please upload a CSV file', 'sportspress-schedule-generator'));
         }
-        
+
         // Parse CSV
         require_once plugin_dir_path(__FILE__) . 'class-venue-schedule-importer.php';
         $schedules = SPSG_Venue_Schedule_Importer::parse_csv($file['tmp_name']);
-        
+
         if (is_wp_error($schedules)) {
             wp_send_json_error($schedules->get_error_message());
         }
-        
+
         // Get unique venue names
         $csv_venues = SPSG_Venue_Schedule_Importer::get_unique_venues($schedules);
-        
+
         // Get existing venues from configuration
         $config = $this->config_manager->get_current();
         $existing_venues = $config->venues ?? array();
-        
+
         // Also get venues from SportsPress if available
-        if (class_exists('SPSG_SportsPress_Integration')) {
-            $sp_venues = SPSG_SportsPress_Integration::get_venues();
+        if (class_exists('SPSGSportsPressIntegration')) {
+            $sp_venues = SPSGSportsPressIntegration::get_venues();
             foreach ($sp_venues as $sp_venue) {
                 $existing_venues[] = array(
                     'id' => $sp_venue->id,
@@ -3974,105 +4067,107 @@ class SPSG_Admin {
                 );
             }
         }
-        
+
         // Get venue mapping suggestions
         $venue_mapping = SPSG_Venue_Schedule_Importer::suggest_venue_mapping($csv_venues, $existing_venues);
-        
+
         wp_send_json_success(array(
             'schedules' => $schedules,
             'venue_mapping' => $venue_mapping,
             'existing_venues' => $existing_venues
         ));
     }
-    
+
     /**
      * AJAX handler for importing venue schedule
      */
-    public function ajax_import_venue_schedule() {
+    public function ajax_import_venue_schedule()
+    {
         check_ajax_referer('spsg_import_venue_schedule', 'nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
         }
-        
+
         $schedules = $_POST['schedules'] ?? array();
         $venue_mapping = $_POST['venue_mapping'] ?? array();
         $new_venues = $_POST['new_venues'] ?? array();
-        
+
         if (empty($schedules)) {
             wp_send_json_error(__('No schedule data provided', 'sportspress-schedule-generator'));
         }
-        
+
         // Load current configuration
         $config = $this->config_manager->get_current();
         $config_data = $config->to_array();
-        
+
         // Create new venues if needed
         $venue_id_map = $venue_mapping;
         foreach ($new_venues as $venue_name) {
             // Generate a unique ID for the new venue
             $venue_id = 'venue_' . sanitize_title($venue_name) . '_' . time();
-            
+
             // Add to venues array
             $config_data['venues'][] = array(
                 'id' => $venue_id,
                 'name' => $venue_name
             );
-            
+
             $venue_id_map[$venue_name] = $venue_id;
         }
-        
+
         // Convert schedules to venue availability format
         require_once plugin_dir_path(__FILE__) . 'class-venue-schedule-importer.php';
         $venue_availability = SPSG_Venue_Schedule_Importer::convert_to_availability($schedules, $venue_id_map);
-        
+
         // Merge with existing venue_date_availability
         if (!isset($config_data['venue_date_availability'])) {
             $config_data['venue_date_availability'] = array();
         }
-        
+
         foreach ($venue_availability as $venue_id => $date_ranges) {
             if (!isset($config_data['venue_date_availability'][$venue_id])) {
                 $config_data['venue_date_availability'][$venue_id] = array();
             }
-            
+
             // Append new date ranges
             $config_data['venue_date_availability'][$venue_id] = array_merge(
                 $config_data['venue_date_availability'][$venue_id],
                 $date_ranges
             );
         }
-        
+
         // Save configuration
         $result = $this->config_manager->save($config_data);
-        
+
         if (is_wp_error($result)) {
             wp_send_json_error($result->get_error_message());
         }
-        
+
         $message = sprintf(
             __('Imported %d venue schedules. Created %d new venues.', 'sportspress-schedule-generator'),
             count($schedules),
             count($new_venues)
         );
-        
+
         wp_send_json_success(array(
             'message' => $message,
             'schedules_imported' => count($schedules),
             'venues_created' => count($new_venues)
         ));
     }
-    
+
     /**
      * AJAX handler for getting available export formats
      */
-    public function ajax_get_export_formats() {
+    public function ajax_get_export_formats()
+    {
         check_ajax_referer('spsg_get_export_formats', 'nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
         }
-        
+
         $formats = array(
             'csv' => array(
                 'available' => true,
@@ -4080,7 +4175,7 @@ class SPSG_Admin {
                 'description' => __('Comma-separated values format', 'sportspress-schedule-generator')
             )
         );
-        
+
         // Check for PhpSpreadsheet class existence
         if (class_exists('PhpOffice\\PhpSpreadsheet\\Spreadsheet')) {
             $formats['xlsx'] = array(
@@ -4088,7 +4183,8 @@ class SPSG_Admin {
                 'label' => __('XLSX', 'sportspress-schedule-generator'),
                 'description' => __('Microsoft Excel format', 'sportspress-schedule-generator')
             );
-        } else {
+        }
+        else {
             $formats['xlsx'] = array(
                 'available' => false,
                 'label' => __('XLSX', 'sportspress-schedule-generator'),
@@ -4096,27 +4192,28 @@ class SPSG_Admin {
                 'reason' => __('PhpSpreadsheet library not installed', 'sportspress-schedule-generator')
             );
         }
-        
+
         wp_send_json_success($formats);
     }
-    
+
     /**
      * AJAX handler for clearing change history
      */
-    public function ajax_clear_change_history() {
+    public function ajax_clear_change_history()
+    {
         check_ajax_referer('spsg_clear_change_history', 'nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
         }
-        
+
         // Call configuration manager to clear change history
         $result = $this->config_manager->clear_change_history();
-        
+
         if (is_wp_error($result)) {
             wp_send_json_error($result->get_error_message());
         }
-        
+
         wp_send_json_success(array(
             'message' => __('Change history cleared successfully', 'sportspress-schedule-generator')
         ));

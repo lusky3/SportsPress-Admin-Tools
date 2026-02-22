@@ -15,8 +15,9 @@ if (!defined('ABSPATH')) {
 /**
  * Calculate schedule statistics and detect imbalances
  */
-class SPSG_Statistics_Calculator {
-    
+class SPSG_Statistics_Calculator
+{
+
     /**
      * Calculate comprehensive statistics for a schedule
      * 
@@ -24,11 +25,12 @@ class SPSG_Statistics_Calculator {
      * @param object $config Configuration object
      * @return array Statistics array
      */
-    public function calculate($schedule, $config = null) {
+    public function calculate($schedule, $config = null)
+    {
         if (empty($schedule)) {
             return $this->get_empty_stats();
         }
-        
+
         $stats = array(
             'total_games' => count($schedule),
             'games_per_team' => $this->calculate_games_per_team($schedule),
@@ -39,36 +41,37 @@ class SPSG_Statistics_Calculator {
             'divisions' => $this->calculate_division_stats($schedule),
             'inter_division_games' => $this->count_inter_division_games($schedule)
         );
-        
+
         // Add imbalance detection
         $stats['imbalances'] = $this->detect_imbalances($stats, $config);
-        
+
         return $stats;
     }
-    
+
     /**
      * Calculate games per team
      * 
      * @param array $schedule Array of SPSG_Game objects
      * @return array Min, max, avg, and per-team counts
      */
-    private function calculate_games_per_team($schedule) {
+    private function calculate_games_per_team($schedule)
+    {
         $team_counts = array();
-        
+
         foreach ($schedule as $game) {
             $home_id = $game->home_team->id;
             $away_id = $game->away_team->id;
-            
+
             $team_counts[$home_id] = isset($team_counts[$home_id]) ? $team_counts[$home_id] + 1 : 1;
             $team_counts[$away_id] = isset($team_counts[$away_id]) ? $team_counts[$away_id] + 1 : 1;
         }
-        
+
         if (empty($team_counts)) {
             return array('min' => 0, 'max' => 0, 'avg' => 0, 'per_team' => array());
         }
-        
+
         $counts = array_values($team_counts);
-        
+
         return array(
             'min' => min($counts),
             'max' => max($counts),
@@ -76,20 +79,21 @@ class SPSG_Statistics_Calculator {
             'per_team' => $team_counts
         );
     }
-    
+
     /**
      * Calculate home/away balance per team
      * 
      * @param array $schedule Array of SPSG_Game objects
      * @return array Home/away counts per team
      */
-    private function calculate_home_away_balance($schedule) {
+    private function calculate_home_away_balance($schedule)
+    {
         $balance = array();
-        
+
         foreach ($schedule as $game) {
             $home_id = $game->home_team->id;
             $away_id = $game->away_team->id;
-            
+
             if (!isset($balance[$home_id])) {
                 $balance[$home_id] = array(
                     'team_name' => $game->home_team->name,
@@ -97,7 +101,7 @@ class SPSG_Statistics_Calculator {
                     'away' => 0
                 );
             }
-            
+
             if (!isset($balance[$away_id])) {
                 $balance[$away_id] = array(
                     'team_name' => $game->away_team->name,
@@ -105,89 +109,93 @@ class SPSG_Statistics_Calculator {
                     'away' => 0
                 );
             }
-            
+
             $balance[$home_id]['home']++;
             $balance[$away_id]['away']++;
         }
-        
+
         return $balance;
     }
-    
+
     /**
      * Calculate venue utilization
      * 
      * @param array $schedule Array of SPSG_Game objects
      * @return array Games per venue
      */
-    private function calculate_venue_utilization($schedule) {
+    private function calculate_venue_utilization($schedule)
+    {
         $utilization = array();
-        
+
         foreach ($schedule as $game) {
             $venue_id = $game->venue->id;
             $venue_name = $game->venue->name;
-            
+
             if (!isset($utilization[$venue_id])) {
                 $utilization[$venue_id] = array(
                     'name' => $venue_name,
                     'games' => 0
                 );
             }
-            
+
             $utilization[$venue_id]['games']++;
         }
-        
+
         return $utilization;
     }
-    
+
     /**
      * Calculate time slot distribution
      * 
      * @param array $schedule Array of SPSG_Game objects
      * @return array Games per time slot
      */
-    private function calculate_time_slot_distribution($schedule) {
+    private function calculate_time_slot_distribution($schedule)
+    {
         $distribution = array();
-        
+
         foreach ($schedule as $game) {
             $slot = $game->time_slot;
             $distribution[$slot] = isset($distribution[$slot]) ? $distribution[$slot] + 1 : 1;
         }
-        
+
         return $distribution;
     }
-    
+
     /**
      * Calculate day distribution
      * 
      * @param array $schedule Array of SPSG_Game objects
      * @return array Games per day of week
      */
-    private function calculate_day_distribution($schedule) {
+    private function calculate_day_distribution($schedule)
+    {
         $distribution = array();
-        
+
         foreach ($schedule as $game) {
             $date = new DateTime($game->date);
             $day = $date->format('l'); // Full day name (Monday, Tuesday, etc.)
-            
+
             $distribution[$day] = isset($distribution[$day]) ? $distribution[$day] + 1 : 1;
         }
-        
+
         return $distribution;
     }
-    
+
     /**
      * Calculate division statistics
      * 
      * @param array $schedule Array of SPSG_Game objects
      * @return array Stats per division
      */
-    private function calculate_division_stats($schedule) {
+    private function calculate_division_stats($schedule)
+    {
         $divisions = array();
-        
+
         foreach ($schedule as $game) {
             $div_id = $game->division->id;
             $div_name = $game->division->name;
-            
+
             if (!isset($divisions[$div_id])) {
                 $divisions[$div_id] = array(
                     'id' => $div_id,
@@ -196,32 +204,33 @@ class SPSG_Statistics_Calculator {
                     'teams' => array()
                 );
             }
-            
+
             $divisions[$div_id]['games']++;
-            
+
             // Track unique teams in division
             $divisions[$div_id]['teams'][$game->home_team->id] = $game->home_team->name;
             $divisions[$div_id]['teams'][$game->away_team->id] = $game->away_team->name;
         }
-        
+
         // Convert teams array to count
         foreach ($divisions as &$division) {
             $division['team_count'] = count($division['teams']);
             unset($division['teams']); // Remove team details, just keep count
         }
-        
+
         return $divisions;
     }
-    
+
     /**
      * Count inter-division games
      * 
      * @param array $schedule Array of SPSG_Game objects
      * @return int Count of inter-division games
      */
-    private function count_inter_division_games($schedule) {
+    private function count_inter_division_games($schedule)
+    {
         $count = 0;
-        
+
         foreach ($schedule as $game) {
             // Check if teams are from different divisions
             if (isset($game->home_team->division_id) && isset($game->away_team->division_id)) {
@@ -230,10 +239,10 @@ class SPSG_Statistics_Calculator {
                 }
             }
         }
-        
+
         return $count;
     }
-    
+
     /**
      * Detect imbalances in the schedule
      * 
@@ -241,20 +250,21 @@ class SPSG_Statistics_Calculator {
      * @param object $config Configuration object (optional)
      * @return array Array of imbalance issues with severity
      */
-    private function detect_imbalances($stats, $config = null) {
+    private function detect_imbalances($stats, $config = null)
+    {
         $issues = array();
-        
+
         // Detect games per team variance (flag if > 1 game difference)
         if ($stats['games_per_team']['max'] - $stats['games_per_team']['min'] > 1) {
             $issues[] = array(
                 'type' => 'games_per_team_variance',
                 'severity' => 'warning',
                 'message' => sprintf(
-                    __('Games per team variance detected: min=%d, max=%d (difference: %d)', 'sportspress-schedule-generator'),
-                    $stats['games_per_team']['min'],
-                    $stats['games_per_team']['max'],
-                    $stats['games_per_team']['max'] - $stats['games_per_team']['min']
-                ),
+                __('Games per team variance detected: min=%d, max=%d (difference: %d)', 'sportspress-schedule-generator'),
+                $stats['games_per_team']['min'],
+                $stats['games_per_team']['max'],
+                $stats['games_per_team']['max'] - $stats['games_per_team']['min']
+            ),
                 'details' => array(
                     'min' => $stats['games_per_team']['min'],
                     'max' => $stats['games_per_team']['max'],
@@ -262,22 +272,22 @@ class SPSG_Statistics_Calculator {
                 )
             );
         }
-        
+
         // Detect home/away imbalance (flag if difference > 2)
         foreach ($stats['home_away_balance'] as $team_id => $balance) {
             $difference = abs($balance['home'] - $balance['away']);
-            
+
             if ($difference > 2) {
                 $issues[] = array(
                     'type' => 'home_away_imbalance',
                     'severity' => 'warning',
                     'message' => sprintf(
-                        __('Home/away imbalance for %s: home=%d, away=%d (difference: %d)', 'sportspress-schedule-generator'),
-                        $balance['team_name'],
-                        $balance['home'],
-                        $balance['away'],
-                        $difference
-                    ),
+                    __('Home/away imbalance for %s: home=%d, away=%d (difference: %d)', 'sportspress-schedule-generator'),
+                    $balance['team_name'],
+                    $balance['home'],
+                    $balance['away'],
+                    $difference
+                ),
                     'details' => array(
                         'team_id' => $team_id,
                         'team_name' => $balance['team_name'],
@@ -288,27 +298,27 @@ class SPSG_Statistics_Calculator {
                 );
             }
         }
-        
+
         // Detect venue over/under utilization (flag if > 20% variance from average)
         if (!empty($stats['venue_utilization'])) {
             $venue_counts = array_column($stats['venue_utilization'], 'games');
             $avg_utilization = array_sum($venue_counts) / count($venue_counts);
             $threshold = $avg_utilization * 0.20; // 20% variance threshold
-            
+
             foreach ($stats['venue_utilization'] as $venue_id => $venue_data) {
                 $variance = abs($venue_data['games'] - $avg_utilization);
                 $variance_percent = ($variance / $avg_utilization) * 100;
-                
+
                 if ($variance > $threshold) {
                     $issues[] = array(
                         'type' => 'venue_utilization_imbalance',
                         'severity' => 'info',
                         'message' => sprintf(
-                            __('Venue utilization imbalance for %s: %d games (%.1f%% variance from average)', 'sportspress-schedule-generator'),
-                            $venue_data['name'],
-                            $venue_data['games'],
-                            $variance_percent
-                        ),
+                        __('Venue utilization imbalance for %s: %d games (%.1f%% variance from average)', 'sportspress-schedule-generator'),
+                        $venue_data['name'],
+                        $venue_data['games'],
+                        $variance_percent
+                    ),
                         'details' => array(
                             'venue_id' => $venue_id,
                             'venue_name' => $venue_data['name'],
@@ -320,16 +330,17 @@ class SPSG_Statistics_Calculator {
                 }
             }
         }
-        
+
         return $issues;
     }
-    
+
     /**
      * Get empty statistics structure
      * 
      * @return array Empty stats array
      */
-    private function get_empty_stats() {
+    private function get_empty_stats()
+    {
         return array(
             'total_games' => 0,
             'games_per_team' => array('min' => 0, 'max' => 0, 'avg' => 0, 'per_team' => array()),
@@ -342,32 +353,33 @@ class SPSG_Statistics_Calculator {
             'imbalances' => array()
         );
     }
-    
+
     /**
      * Format statistics for display
      * 
      * @param array $stats Statistics array
      * @return string Formatted HTML output
      */
-    public function format_for_display($stats) {
+    public function format_for_display($stats)
+    {
         if (empty($stats) || $stats['total_games'] === 0) {
             return '<p>' . __('No statistics available.', 'sportspress-schedule-generator') . '</p>';
         }
-        
+
         $output = '<div class="spsg-statistics">';
-        
+
         // Summary stats
         $output .= '<h3>' . __('Summary', 'sportspress-schedule-generator') . '</h3>';
         $output .= '<ul>';
         $output .= '<li>' . sprintf(__('Total Games: %d', 'sportspress-schedule-generator'), $stats['total_games']) . '</li>';
-        $output .= '<li>' . sprintf(__('Games per Team: min=%d, max=%d, avg=%.2f', 'sportspress-schedule-generator'), 
+        $output .= '<li>' . sprintf(__('Games per Team: min=%d, max=%d, avg=%.2f', 'sportspress-schedule-generator'),
             $stats['games_per_team']['min'],
             $stats['games_per_team']['max'],
             $stats['games_per_team']['avg']
         ) . '</li>';
         $output .= '<li>' . sprintf(__('Inter-Division Games: %d', 'sportspress-schedule-generator'), $stats['inter_division_games']) . '</li>';
         $output .= '</ul>';
-        
+
         // Imbalances
         if (!empty($stats['imbalances'])) {
             $output .= '<h3>' . __('Detected Imbalances', 'sportspress-schedule-generator') . '</h3>';
@@ -378,9 +390,9 @@ class SPSG_Statistics_Calculator {
             }
             $output .= '</ul>';
         }
-        
+
         $output .= '</div>';
-        
+
         return $output;
     }
 }

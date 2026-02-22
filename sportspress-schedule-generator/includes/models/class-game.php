@@ -13,8 +13,9 @@ if (!defined('ABSPATH')) {
 /**
  * Game data model
  */
-class SPSG_Game {
-    
+class SPSG_Game
+{
+
     public $id;
     public $date;
     public $time_slot;
@@ -25,34 +26,37 @@ class SPSG_Game {
     public $is_makeup = false;
     public $original_date;
     public $week_number;
-    
+
     /**
      * Constructor
      */
-    public function __construct($data = array()) {
+    public function __construct($data = array())
+    {
         foreach ($data as $key => $value) {
             if (property_exists($this, $key)) {
                 $this->$key = $value;
             }
         }
-        
+
         if ($this->date && !$this->week_number) {
             $this->week_number = $this->calculate_week_number();
         }
     }
-    
+
     /**
      * Calculate week number from date
      */
-    private function calculate_week_number() {
+    private function calculate_week_number()
+    {
         $date = new DateTime($this->date);
-        return (int) $date->format('W');
+        return (int)$date->format('W');
     }
-    
+
     /**
      * Get game as array
      */
-    public function to_array() {
+    public function to_array()
+    {
         return array(
             'id' => $this->id,
             'date' => $this->date,
