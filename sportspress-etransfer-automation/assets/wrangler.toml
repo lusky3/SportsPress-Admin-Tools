@@ -13,7 +13,7 @@ compatibility_date = "2024-01-01"
 # No additional configuration needed in wrangler.toml for email routing
 
 # Environment variables (set these in Cloudflare dashboard or via wrangler)
-# WEBHOOK_URL = "https://yoursite.com/wp-json/spat/v1/etransfer-webhook"
+# WEBHOOK_URL = "https://yoursite.com/wp-json/spet/v1/etransfer-webhook"
 # WEBHOOK_SECRET = "your-webhook-secret-from-plugin"
 # FORWARD_EMAIL = "admin@yoursite.com" (optional)
 # CUSTOM_HEADERS = '{"X-Custom-Header":"value","Authorization":"Bearer token"}' (optional)
@@ -24,7 +24,7 @@ compatibility_date = "2024-01-01"
 # wrangler secret put FORWARD_EMAIL
 
 [vars]
-WEBHOOK_URL = "https://yoursite.com/wp-json/spat/v1/etransfer-webhook"
+WEBHOOK_URL = "https://yoursite.com/wp-json/spet/v1/etransfer-webhook"
 CUSTOM_HEADERS = '{"X-Custom-Header":"value"}'
 # DEBUG = "true"  # Uncomment to enable debug mode with full headers and HTML content
 
