@@ -10,15 +10,18 @@ if (!defined('ABSPATH')) {
     wp_die();
 }
 
-class SPAT_Admin {
+class SPAT_Admin
+{
 
-    public function __construct() {
+    public function __construct()
+    {
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('admin_init', array($this, 'init_settings'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
     }
 
-    public function add_admin_menu() {
+    public function add_admin_menu()
+    {
         add_options_page(
             __('SportsPress Admin Tools', 'sportspress-admin-tools'),
             __('SportsPress Admin Tools', 'sportspress-admin-tools'),
@@ -40,18 +43,21 @@ class SPAT_Admin {
         }
     }
 
-    public function redirect_to_settings() {
+    public function redirect_to_settings()
+    {
         wp_safe_redirect(admin_url('options-general.php?page=sportspress-admin-tools'));
         wp_die();
     }
 
-    private function check_permissions() {
+    private function check_permissions()
+    {
         if (!current_user_can('manage_options')) {
             wp_die(__('You do not have sufficient permissions to access this page.', 'sportspress-admin-tools'));
         }
     }
-    
-    public function enqueue_admin_scripts($hook) {
+
+    public function enqueue_admin_scripts($hook)
+    {
         // Only load on our specific settings page
         if ($hook !== 'settings_page_sportspress-admin-tools') {
             return;
@@ -66,8 +72,9 @@ class SPAT_Admin {
 
         // Enqueue Select2 if enabled
         if (get_option('spat_use_select2', '0')) {
-            wp_enqueue_script('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js', array('jquery'), '4.1.0', true);
-            wp_enqueue_style('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css', array(), '4.1.0');
+            $plugin_url = plugin_dir_url(dirname(dirname(__FILE__)));
+            wp_enqueue_script('select2', $plugin_url . 'assets/lib/select2/select2.min.js', array('jquery'), '4.1.0', true);
+            wp_enqueue_style('select2', $plugin_url . 'assets/lib/select2/select2.min.css', array(), '4.1.0');
         }
 
         wp_add_inline_script('jquery', '
@@ -147,40 +154,41 @@ class SPAT_Admin {
         ');
     }
 
-    public function init_settings() {
+    public function init_settings()
+    {
         // General settings
         register_setting('spat_general_settings', 'spat_enabled_modules');
         register_setting('spat_general_settings', 'spat_remove_data_on_uninstall');
         register_setting('spat_general_settings', 'spat_use_select2');
         register_setting('spat_general_settings', 'spat_debug_show_sensitive');
         register_setting('spat_general_settings', 'spat_debug_verbose_logging');
-        
+
         // Child plugin settings will be registered by their respective admin classes
-        
+
         add_settings_section(
             'spat_modules_section',
             __('Modules', 'sportspress-admin-tools'),
             array($this, 'modules_section_callback'),
             'spat_general_settings'
         );
-        
+
         add_settings_section(
             'spat_settings_section',
             __('Settings', 'sportspress-admin-tools'),
             array($this, 'settings_section_callback'),
             'spat_general_settings'
         );
-        
+
         add_settings_section(
             'spat_debug_section',
             __('Debug', 'sportspress-admin-tools'),
             array($this, 'debug_section_callback'),
             'spat_general_settings'
         );
-        
+
         // Dynamically add registered modules
         $this->add_registered_module_fields();
-        
+
         // Child Plugins section
         add_settings_section(
             'spat_child_plugins_section',
@@ -188,7 +196,7 @@ class SPAT_Admin {
             array($this, 'child_plugins_section_callback'),
             'spat_general_settings'
         );
-        
+
         add_settings_field(
             'child_plugins_status',
             __('Registered Child Plugins', 'sportspress-admin-tools'),
@@ -196,7 +204,7 @@ class SPAT_Admin {
             'spat_general_settings',
             'spat_child_plugins_section'
         );
-        
+
         add_settings_field(
             'spat_remove_data_on_uninstall',
             __('Remove Data on Uninstall', 'sportspress-admin-tools'),
@@ -204,7 +212,7 @@ class SPAT_Admin {
             'spat_general_settings',
             'spat_settings_section'
         );
-        
+
         add_settings_field(
             'spat_use_select2',
             __('Enhanced Dropdowns (Select2)', 'sportspress-admin-tools'),
@@ -212,7 +220,7 @@ class SPAT_Admin {
             'spat_general_settings',
             'spat_settings_section'
         );
-        
+
         add_settings_field(
             'spat_debug_show_sensitive',
             __('Show Sensitive Information in Debug Logs', 'sportspress-admin-tools'),
@@ -220,7 +228,7 @@ class SPAT_Admin {
             'spat_general_settings',
             'spat_debug_section'
         );
-        
+
         add_settings_field(
             'spat_debug_verbose_logging',
             __('Verbose Debug Logging', 'sportspress-admin-tools'),
@@ -228,26 +236,29 @@ class SPAT_Admin {
             'spat_general_settings',
             'spat_debug_section'
         );
-        
+
         // Allow child plugins to register their own settings
         do_action('spat_admin_init_settings');
     }
-    
-    public function modules_section_callback() {
+
+    public function modules_section_callback()
+    {
         echo '<p>' . __('Enable or disable plugin modules:', 'sportspress-admin-tools') . '</p>';
     }
-    
-    public function settings_section_callback() {
+
+    public function settings_section_callback()
+    {
         echo '<p>' . __('Configure global plugin settings:', 'sportspress-admin-tools') . '</p>';
     }
-    
-    private function add_registered_module_fields() {
+
+    private function add_registered_module_fields()
+    {
         if (!class_exists('SPAT_Plugin_Manager')) {
             return;
         }
-        
+
         $registered_plugins = SPAT_Plugin_Manager::get_registered_plugins();
-        
+
         foreach ($registered_plugins as $module_id => $plugin_data) {
             add_settings_field(
                 $module_id,
@@ -259,64 +270,72 @@ class SPAT_Admin {
             );
         }
     }
-    
-    public function module_checkbox_callback($args) {
+
+    public function module_checkbox_callback($args)
+    {
         $enabled_modules = get_option('spat_enabled_modules', array());
         $checked = in_array($args['module'], $enabled_modules) ? 'checked' : '';
         $plugin_data = $args['plugin_data'];
-        
+
         echo '<input type="checkbox" name="spat_enabled_modules[]" value="' . esc_attr($args['module']) . '" ' . $checked . '>';
-        
+
         if (!empty($plugin_data['description'])) {
             echo '<p class="description">' . esc_html($plugin_data['description']) . '</p>';
         }
     }
 
-    public function remove_data_setting_callback() {
+    public function remove_data_setting_callback()
+    {
         $enabled = get_option('spat_remove_data_on_uninstall', '0');
         echo '<input type="checkbox" name="spat_remove_data_on_uninstall" value="1" ' . checked($enabled, '1', false) . '>';
         echo '<p class="description">' . __('Remove all plugin data (settings, logs, database tables) when the plugin is uninstalled. Leave unchecked to preserve data.', 'sportspress-admin-tools') . '</p>';
     }
-    
-    public function select2_setting_callback() {
+
+    public function select2_setting_callback()
+    {
         $enabled = get_option('spat_use_select2', '0');
         echo '<input type="checkbox" name="spat_use_select2" value="1" ' . checked($enabled, '1', false) . '>';
         echo '<p class="description">' . __('Use enhanced Select2 dropdowns with search functionality throughout the plugin. Requires page refresh to take effect.', 'sportspress-admin-tools') . '</p>';
     }
-    
-    public function debug_section_callback() {
+
+    public function debug_section_callback()
+    {
         echo '<p>' . __('Configure debug logging options:', 'sportspress-admin-tools') . '</p>';
     }
-    
-    public function debug_sensitive_callback() {
+
+    public function debug_sensitive_callback()
+    {
         $enabled = get_option('spat_debug_show_sensitive', '0');
         echo '<input type="checkbox" name="spat_debug_show_sensitive" value="1" ' . checked($enabled, '1', false) . '>';
         echo '<p class="description">' . __('Include sensitive information like webhook secrets in debug logs. Disable for production.', 'sportspress-admin-tools') . '</p>';
     }
-    
-    public function debug_verbose_callback() {
+
+    public function debug_verbose_callback()
+    {
         $enabled = get_option('spat_debug_verbose_logging', '0');
         echo '<input type="checkbox" name="spat_debug_verbose_logging" value="1" ' . checked($enabled, '1', false) . '>';
         echo '<p class="description">' . __('Enable verbose debug logging with full headers and email content. Disable for cleaner logs.', 'sportspress-admin-tools') . '</p>';
     }
-    
-    public function child_plugins_section_callback() {
+
+    public function child_plugins_section_callback()
+    {
         echo '<p>' . __('Status of registered child plugins:', 'sportspress-admin-tools') . '</p>';
     }
-    
-    public function child_plugins_status_callback() {
+
+    public function child_plugins_status_callback()
+    {
         if (!class_exists('SPAT_Plugin_Manager')) {
             echo '<p>' . __('Plugin Manager not available.', 'sportspress-admin-tools') . '</p>';
             return;
         }
-        
+
         $registered_plugins = SPAT_Plugin_Manager::get_registered_plugins();
-        
+
         if (empty($registered_plugins)) {
             echo '<p><em>' . __('No child plugins registered.', 'sportspress-admin-tools') . '</em></p>';
             return;
         }
-        
+
         // Group modules by plugin file to show actual plugins, not individual modules
         $child_plugins = array();
         foreach ($registered_plugins as $plugin_id => $plugin_data) {
@@ -331,7 +350,7 @@ class SPAT_Admin {
             }
             $child_plugins[$plugin_file]['modules'][] = $plugin_data['name'];
         }
-        
+
         echo '<table class="wp-list-table widefat fixed striped">';
         echo '<thead><tr>';
         echo '<th>' . __('Child Plugin', 'sportspress-admin-tools') . '</th>';
@@ -339,11 +358,11 @@ class SPAT_Admin {
         echo '<th>' . __('Modules', 'sportspress-admin-tools') . '</th>';
         echo '<th>' . __('Status', 'sportspress-admin-tools') . '</th>';
         echo '</tr></thead><tbody>';
-        
+
         foreach ($child_plugins as $plugin_data) {
             $is_active = is_plugin_active(plugin_basename($plugin_data['file']));
             $status = $is_active ? '<span style="color: #00a32a;">✓ Active</span>' : '<span style="color: #d63638;">○ Inactive</span>';
-            
+
             echo '<tr>';
             echo '<td><strong>' . esc_html($plugin_data['name']) . '</strong></td>';
             echo '<td>' . esc_html($plugin_data['version']) . '</td>';
@@ -351,77 +370,78 @@ class SPAT_Admin {
             echo '<td>' . $status . '</td>';
             echo '</tr>';
         }
-        
+
         echo '</tbody></table>';
         echo '<p class="description">' . __('Child plugins provide modules that can be enabled/disabled in the Modules section above.', 'sportspress-admin-tools') . '</p>';
     }
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
 
-    
-    public function settings_page() {
+
+
+
+
+
+
+
+
+    public function settings_page()
+    {
         $this->check_permissions();
-        
+
         // Handle tab persistence after form submission
         if (isset($_POST['current_tab']) && isset($_GET['settings-updated'])) {
             $tab = sanitize_text_field($_POST['current_tab']);
             wp_redirect(admin_url('options-general.php?page=sportspress-admin-tools&settings-updated=true&tab=' . $tab));
             exit;
         }
-        
+
         if (isset($_GET['settings-updated'])) {
             add_settings_error('spat_messages', 'spat_message', __('Settings Saved', 'sportspress-admin-tools'), 'updated');
         }
-        
+
         settings_errors('spat_messages');
-        ?>
+?>
         <div class="wrap">
             <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
             
             <?php
-            // Allow child plugins to add their own tabs and content
-            do_action('spat_admin_page_before_tabs');
-            ?>
+        // Allow child plugins to add their own tabs and content
+        do_action('spat_admin_page_before_tabs');
+?>
             
             <nav class="nav-tab-wrapper">
                 <a href="#general" class="nav-tab"><?php _e('General', 'sportspress-admin-tools'); ?></a>
                 <?php
-                // Allow child plugins to add their own tabs
-                do_action('spat_admin_page_tabs');
-                ?>
+        // Allow child plugins to add their own tabs
+        do_action('spat_admin_page_tabs');
+?>
             </nav>
             
             <div id="general" class="tab-content">
                 <form action="options.php" method="post">
                     <input type="hidden" name="current_tab" value="general">
                     <?php
-                    settings_fields('spat_general_settings');
-                    do_settings_sections('spat_general_settings');
-                    submit_button(__('Save Settings', 'sportspress-admin-tools'));
-                    ?>
+        settings_fields('spat_general_settings');
+        do_settings_sections('spat_general_settings');
+        submit_button(__('Save Settings', 'sportspress-admin-tools'));
+?>
                 </form>
             </div>
             
             <?php
-            // Allow child plugins to add their own tab content
-            do_action('spat_admin_page_content');
-            ?>
+        // Allow child plugins to add their own tab content
+        do_action('spat_admin_page_content');
+?>
             
             <?php
-            // Allow child plugins to add content after tabs
-            do_action('spat_admin_page_after_tabs');
-            ?>
+        // Allow child plugins to add content after tabs
+        do_action('spat_admin_page_after_tabs');
+?>
         </div>
         <?php
     }
