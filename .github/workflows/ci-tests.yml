@@ -19,6 +19,8 @@ jobs:
       - name: Run Tests
         working-directory: sportspress-schedule-generator/tests/docker
         run: |
+          # Convert line endings to LF to ensure execution on linux
+          sed -i 's/\r$//' run-tests.sh
           chmod +x run-tests.sh
           # Increase timeout for the CI environment
           sed -i 's/sleep 45/sleep 60/' run-tests.sh
