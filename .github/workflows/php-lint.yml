@@ -1,0 +1,31 @@
+name: PHP Lint & Standards
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: mbstring, xml, ctype, iconv
+          tools: phpcs
+
+      - name: Install WordPress Coding Standards
+        run: |
+          composer global require "wp-coding-standards/wpcs"
+          phpcs --config-set installed_paths $(composer global config home)/vendor/wp-coding-standards/wpcs
+
+      - name: Run PHPCS
+        run: |
+          # Only check our plugin directories, exclude vendor and assets
+          phpcs -p -n -s --standard=WordPress --extensions=php --ignore=*/vendor/*,*/assets/*,*/tests/* .

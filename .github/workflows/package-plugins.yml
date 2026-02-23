@@ -1,0 +1,33 @@
+name: Package & Release Plugins
+
+on:
+  push:
+    tags:
+      - "v*" # Push events to matching v*, i.e. v1.0, v20.15.10
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Create Zips
+        run: |
+          mkdir -p dist
+          for dir in sportspress-*; do
+            if [ -d "$dir" ]; then
+              echo "Packaging $dir..."
+              zip -r "dist/${dir}.zip" "$dir" -x "*/tests/*" "*/.git*" "*/composer.*" "*/node_modules/*" "*/assets/README*"
+            fi
+          done
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
