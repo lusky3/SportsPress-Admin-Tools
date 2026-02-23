@@ -18,12 +18,14 @@ This guide provides step-by-step instructions for implementing the missing UI co
 **File**: `includes/class-admin.php`
 
 Add to constructor:
+
 ```php
 add_action('wp_ajax_spsg_get_import_dialog_data', array($this, 'ajax_get_import_dialog_data'));
 add_action('wp_ajax_spsg_get_import_progress', array($this, 'ajax_get_import_progress'));
 ```
 
 Add methods at end of class:
+
 ```php
 public function ajax_get_import_dialog_data() {
     check_ajax_referer('spsg_get_import_dialog_data', 'nonce');
@@ -70,6 +72,7 @@ public function ajax_get_import_progress() {
 **File**: `includes/class-admin.php`
 
 In `enqueue_admin_scripts()` method, add to nonces array:
+
 ```php
 'get_import_dialog_data' => wp_create_nonce('spsg_get_import_dialog_data'),
 'get_import_progress' => wp_create_nonce('spsg_get_import_progress'),
@@ -80,6 +83,7 @@ In `enqueue_admin_scripts()` method, add to nonces array:
 **File**: `includes/class-admin.php`
 
 Add new method to render modal in generate tab:
+
 ```php
 private function render_import_dialog() {
     ?>
@@ -91,6 +95,7 @@ private function render_import_dialog() {
 ```
 
 Call it in `render_generate_tab()`:
+
 ```php
 $this->render_import_dialog();
 ```
@@ -108,6 +113,7 @@ Copy modal styles from IMPORT-DIALOG-SPEC.md
 Add ImportDialog object (see IMPORT-DIALOG-SPEC.md)
 
 Update existing import button handler:
+
 ```javascript
 $('#spsg-import-to-sp').on('click', function() {
     var scheduleId = $('#spsg-current-schedule-id').val();
@@ -176,6 +182,7 @@ public function ajax_clone_config() {
 **File**: `includes/class-admin.php`
 
 In `render_basic_config_tab()`, add button:
+
 ```php
 <button type="button" class="button" id="spsg-clone-config">
     <?php _e('Clone Configuration', 'spsg'); ?>
@@ -235,6 +242,7 @@ $('#spsg-clone-config').on('click', function() {
 **File**: `includes/class-admin.php`
 
 In `render_generate_tab()`, add filter section:
+
 ```php
 <div class="spsg-export-filters" style="display: none;">
     <h4><?php _e('Export Filters', 'spsg'); ?></h4>
@@ -260,6 +268,7 @@ In `render_generate_tab()`, add filter section:
 **File**: `assets/js/schedule-generator.js`
 
 Update `exportSchedule()` method:
+
 ```javascript
 exportSchedule: function(format) {
     var self = this;
@@ -300,6 +309,7 @@ exportSchedule: function(format) {
 ### Step 3: Populate Filters (30 min)
 
 Add method to populate division dropdown from schedule data:
+
 ```javascript
 populateExportFilters: function(schedule) {
     var divisions = {};
@@ -335,6 +345,7 @@ populateExportFilters: function(schedule) {
 ## Testing Strategy
 
 ### Unit Tests
+
 ```bash
 # Run PHP unit tests
 cd sportspress-schedule-generator/tests
@@ -344,6 +355,7 @@ php run-tests.php
 ### Manual Testing Checklist
 
 **Import Dialog**:
+
 - [ ] Opens correctly
 - [ ] All options work
 - [ ] Progress updates
@@ -351,22 +363,26 @@ php run-tests.php
 - [ ] Errors handled
 
 **Configuration Cloning**:
+
 - [ ] Clones successfully
 - [ ] All data copied
 - [ ] New name applied
 
 **Export Filtering**:
+
 - [ ] Filters populate
 - [ ] Filtering works
 - [ ] Export includes only filtered games
 
 ### Browser Testing
+
 - [ ] Chrome (latest)
 - [ ] Firefox (latest)
 - [ ] Safari (latest)
 - [ ] Edge (latest)
 
 ### Mobile Testing
+
 - [ ] iOS Safari
 - [ ] Android Chrome
 - [ ] Responsive layout
@@ -390,16 +406,19 @@ php run-tests.php
 ## Troubleshooting
 
 ### Modal doesn't open
+
 - Check JavaScript console for errors
 - Verify nonces are registered
 - Check AJAX handler is hooked
 
 ### Progress not updating
+
 - Verify transient is being set
 - Check polling interval
 - Verify AJAX endpoint returns data
 
 ### Export filters not working
+
 - Check filter values are passed to AJAX
 - Verify backend receives filters
 - Check export manager applies filters
@@ -409,6 +428,7 @@ php run-tests.php
 ## Support
 
 For questions or issues:
+
 1. Check documentation in `/docs` folder
 2. Review existing code comments
 3. Check WordPress error logs
@@ -419,6 +439,7 @@ For questions or issues:
 ## Next Steps
 
 After completing Sprint 1-3:
+
 1. Gather user feedback
 2. Prioritize remaining features
 3. Plan Sprint 4 (optional features)

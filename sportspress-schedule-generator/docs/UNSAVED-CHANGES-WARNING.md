@@ -7,17 +7,21 @@ The Schedule Generator now includes an unsaved changes warning system that preve
 ## How It Works
 
 ### Detection
+
 - Monitors all form inputs (text fields, selects, textareas, checkboxes, radio buttons)
 - Compares current form state against the initial state when the page loaded
 - Tracks changes in real-time using jQuery event listeners
 
 ### Warning Trigger
+
 When a user tries to navigate away from the page (by clicking a link, closing the tab, or using browser back button) and there are unsaved changes, the browser displays a standard confirmation dialog:
 
 > "You have unsaved changes. Are you sure you want to leave?"
 
 ### Reset Conditions
+
 The warning flag is reset (no warning shown) when:
+
 1. **Form is submitted** - User clicks "Save Configuration"
 2. **Configuration is saved successfully** - AJAX save completes successfully
 3. **Page is reloaded** - Fresh page load resets the tracking
@@ -25,6 +29,7 @@ The warning flag is reset (no warning shown) when:
 ## Implementation Details
 
 ### JavaScript Code Location
+
 File: `sportspress-schedule-generator/includes/class-admin.php`
 
 The code is added via `wp_add_inline_script()` in the `enqueue_admin_scripts()` method.
@@ -32,6 +37,7 @@ The code is added via `wp_add_inline_script()` in the `enqueue_admin_scripts()` 
 ### Key Components
 
 #### 1. Change Tracking
+
 ```javascript
 var formChanged = false;
 var initialFormData = $("#spsg-config-form").serialize();
@@ -43,6 +49,7 @@ $("#spsg-config-form").on("change input", "input, select, textarea", function() 
 ```
 
 #### 2. Browser Navigation Warning
+
 ```javascript
 $(window).on("beforeunload", function(e) {
     if (formChanged) {
@@ -54,6 +61,7 @@ $(window).on("beforeunload", function(e) {
 ```
 
 #### 3. Reset on Form Submit
+
 ```javascript
 $("#spsg-config-form").on("submit", function() {
     formChanged = false;
@@ -61,6 +69,7 @@ $("#spsg-config-form").on("submit", function() {
 ```
 
 #### 4. Reset on AJAX Save Success
+
 ```javascript
 $(document).on("spsg-config-saved", function() {
     formChanged = false;
@@ -69,6 +78,7 @@ $(document).on("spsg-config-saved", function() {
 ```
 
 The custom event `spsg-config-saved` is triggered in the AJAX save success handler:
+
 ```javascript
 if (saveResponse.success) {
     $(document).trigger("spsg-config-saved");
@@ -79,12 +89,14 @@ if (saveResponse.success) {
 ## User Experience
 
 ### Scenario 1: User Makes Changes and Tries to Leave
+
 1. User modifies any form field (e.g., changes division name)
 2. User clicks browser back button or tries to close tab
 3. Browser shows confirmation dialog
 4. User can choose to stay or leave
 
 ### Scenario 2: User Saves Changes
+
 1. User modifies form fields
 2. User clicks "Save Configuration"
 3. Configuration is saved successfully
@@ -92,6 +104,7 @@ if (saveResponse.success) {
 5. User can now navigate away without warning
 
 ### Scenario 3: User Makes Changes, Saves, Then Makes More Changes
+
 1. User modifies form fields
 2. User saves configuration (flag reset)
 3. User makes additional changes
@@ -100,6 +113,7 @@ if (saveResponse.success) {
 ## Browser Compatibility
 
 The `beforeunload` event is supported by all modern browsers:
+
 - Chrome/Edge: Shows generic message (browser-controlled text)
 - Firefox: Shows generic message (browser-controlled text)
 - Safari: Shows generic message (browser-controlled text)
@@ -117,18 +131,21 @@ The `beforeunload` event is supported by all modern browsers:
 ## Testing Recommendations
 
 ### Test Case 1: Basic Warning
+
 1. Load configuration page
 2. Change any form field
 3. Try to navigate away (back button, close tab, click link)
 4. Verify warning appears
 
 ### Test Case 2: No Warning When No Changes
+
 1. Load configuration page
 2. Don't change anything
 3. Try to navigate away
 4. Verify no warning appears
 
 ### Test Case 3: Warning Reset After Save
+
 1. Load configuration page
 2. Change form field
 3. Click "Save Configuration"
@@ -137,6 +154,7 @@ The `beforeunload` event is supported by all modern browsers:
 6. Verify no warning appears
 
 ### Test Case 4: Warning After Save and New Changes
+
 1. Load configuration page
 2. Change form field
 3. Save configuration
@@ -145,7 +163,9 @@ The `beforeunload` event is supported by all modern browsers:
 6. Verify warning appears
 
 ### Test Case 5: All Input Types
+
 Test with different input types:
+
 - Text inputs (division names, venue names)
 - Select dropdowns (Load from SportsPress)
 - Textareas (team lists, blackout dates)
@@ -174,6 +194,7 @@ Certain actions intentionally bypass the unsaved changes warning because they ha
 4. **Delete Configuration** - Resets flag after user confirms deletion
 
 ### Implementation
+
 ```javascript
 // Reset flag before navigation
 formChanged = false;
@@ -181,26 +202,31 @@ window.location.href = targetUrl;
 ```
 
 This prevents double warnings where the user sees both:
+
 1. Custom confirmation dialog (e.g., "Create a new configuration? Any unsaved changes will be lost.")
 2. Browser's beforeunload warning (e.g., "Changes you made may not be saved.")
 
 ## Troubleshooting
 
 ### Issue: Double Warning on Navigation
+
 **Symptom:** User sees two confirmation dialogs when clicking "New" or "Load"
 
 **Solution:** Ensure `formChanged = false;` is called before `window.location` navigation in all intentional navigation actions.
 
 ### Issue: Warning Not Appearing
+
 **Symptom:** No warning shown when user has made changes
 
 **Solution:** Check that:
+
 1. Form has `id="spsg-config-form"`
 2. jQuery is loaded
 3. No JavaScript errors in console
 4. Form fields are being monitored (input, select, textarea)
 
 ### Issue: Warning After Save
+
 **Symptom:** Warning still appears after successful save
 
 **Solution:** Ensure the `spsg-config-saved` event is triggered in the AJAX success handler.

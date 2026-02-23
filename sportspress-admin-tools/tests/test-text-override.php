@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Test file for SportsPress text overrides
  * This file can be temporarily included to test the text override functionality
@@ -12,7 +13,7 @@
 require_once('../../../wp-config.php');
 
 // Include our text helper
-require_once('includes/class-text-helper.php');
+require_once(dirname(__FILE__) . '/../includes/class-text-helper.php');
 
 echo "<h1>SportsPress Text Override Test</h1>";
 
@@ -26,15 +27,21 @@ echo "<p>Season (default): " . SPAT_Text_Helper::get_text('Season') . "</p>";
 echo "<p>Event (default): " . SPAT_Text_Helper::get_text('Event') . "</p>";
 
 // Test if SportsPress is available
-if (function_exists('SP') && SP()) {
-    echo "<h2>SportsPress Available</h2>";
-    echo "<p>SportsPress is loaded and available.</p>";
-    
-    if (!empty(SP()->text)) {
-        echo "<p>Text overrides found: " . count(SP()->text) . " entries</p>";
-        echo "<pre>" . print_r(SP()->text, true) . "</pre>";
+if (function_exists('SP')) {
+    $sp = call_user_func('SP');
+    if ($sp) {
+        echo "<h2>SportsPress Available</h2>";
+        echo "<p>SportsPress is loaded and available.</p>";
+
+        if (!empty($sp->text)) {
+            echo "<p>Text overrides found: " . count($sp->text) . " entries</p>";
+            echo "<pre>" . print_r($sp->text, true) . "</pre>";
+        } else {
+            echo "<p>No text overrides configured.</p>";
+        }
     } else {
-        echo "<p>No text overrides configured.</p>";
+        echo "<h2>SportsPress Not Available</h2>";
+        echo "<p>SportsPress instance is null.</p>";
     }
 } else {
     echo "<h2>SportsPress Not Available</h2>";

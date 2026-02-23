@@ -1,16 +1,19 @@
 # SportsPress Admin Tools
 
-Parent plugin framework for SportsPress administrative tools with modular child plugin architecture.
+Parent plugin framework for SportsPress administrative tools with modular child
+plugin architecture.
 
 ## Architecture
 
 ### Parent Plugin: SportsPress Admin Tools
+
 - **Framework**: Provides shared components, settings interface, and plugin management
 - **Settings Page**: Centralized control for all modules and child plugins
 - **Shared Resources**: Database management, text helpers, admin interface components
 - **Plugin Manager**: Handles registration and activation of child plugins
 
 ### Child Plugins (Separate Installations)
+
 1. **SportsPress Player Registration (Child Plugin)**
 2. **SportsPress e-Transfer Automation (Child Plugin)**
 3. **SportsPress Player Tools (Child Plugin)**
@@ -19,6 +22,7 @@ Parent plugin framework for SportsPress administrative tools with modular child 
 ## Features
 
 ### Player Registration Module (Child Plugin)
+
 - **Automatic Player Creation**: Creates SportsPress player records from WooCommerce registration orders
 - **User Account Linking**: Links WordPress user accounts to player records
 - **Season Management**: Automatically assigns players to seasons based on product categories
@@ -27,6 +31,7 @@ Parent plugin framework for SportsPress administrative tools with modular child 
 - **Comprehensive Logging**: Tracks all registration activities
 
 ### e-Transfer Automation Module (Child Plugin)
+
 - **Webhook Processing**: Automatically processes Interac e-Transfer notifications
 - **Multiple Providers**: Supports Generic, deliverhook.com, and Cloudflare Email Routing
 - **Smart Order Matching**: Three-tier matching strategy (Order Number → Email → Name)
@@ -36,24 +41,32 @@ Parent plugin framework for SportsPress administrative tools with modular child 
 - **Security**: HMAC SHA256 signature verification
 
 ### Player Tools Module (Child Plugin)
+
 - **Email Metadata**: Add email fields to player records for administrative use
-- **Squad Number Editing**: Allow players to update their jersey numbers via WooCommerce account
-- **Captain Role Selection**: Designate team captains with "C" indicator on frontend
-- **Statistics Enabler**: Automatically enable frontend statistics display for players
+- **Squad Number Editing**: Allow players to update their jersey numbers via
+  WooCommerce account
+- **Captain Role Selection**: Designate team captains with "C" indicator on
+  frontend
+- **Statistics Enabler**: Automatically enable frontend statistics display for
+  players
 
 ### Events Manager Module (Child Plugin)
+
 - **Calendar Management**: Auto-create calendars for new teams
 - **Event Import**: Bulk import events from XLSX files
-- **League Table Generator**: Generate league tables for teams organized by divisions and seasons
+- **League Table Generator**: Generate league tables for teams organized by
+  divisions and seasons
 
 ## Installation
 
 ### Parent Plugin (Required)
+
 1. Download SportsPress Admin Tools
 2. Upload to `/wp-content/plugins/sportspress-admin-tools/`
 3. Activate through WordPress admin
 
 ### Child Plugins (Optional)
+
 1. Download desired child plugins
 2. Upload each to `/wp-content/plugins/[plugin-name]/`
 3. Activate child plugins through WordPress admin
@@ -62,10 +75,12 @@ Parent plugin framework for SportsPress administrative tools with modular child 
 ## Requirements
 
 ### Parent Plugin
+
 - WordPress 5.0+
 - No additional dependencies (handles module-specific dependencies)
 
 ### Child Plugin Dependencies
+
 - **Player Registration**: WooCommerce + SportsPress
 - **e-Transfer Automation**: WooCommerce
 - **Player Tools**: WooCommerce + SportsPress
@@ -74,17 +89,20 @@ Parent plugin framework for SportsPress administrative tools with modular child 
 ## Configuration
 
 ### Parent Plugin Setup
+
 1. Go to Settings → SportsPress Admin Tools
 2. Enable desired modules in the General tab
 3. Configure module-specific settings in respective tabs
 4. View registered child plugins status
 
 ### Child Plugin Registration
+
 - Child plugins automatically register with parent when activated
 - Functionality loads only when parent module is enabled
 - All settings managed through parent plugin interface
 
 ### Module Configuration
+
 - **Player Registration**: Configure in Player Registration tab
 - **e-Transfer Automation**: Configure in e-Transfer tab  
 - **Player Tools**: Configure in Player Modifications tab
@@ -93,6 +111,7 @@ Parent plugin framework for SportsPress administrative tools with modular child 
 ## Usage
 
 ### Parent-Child Plugin Workflow
+
 1. Install and activate parent plugin (SportsPress Admin Tools)
 2. Install desired child plugins
 3. Enable modules in parent plugin settings
@@ -100,12 +119,14 @@ Parent plugin framework for SportsPress administrative tools with modular child 
 5. Configure all settings through parent plugin interface
 
 ### Module Workflows
+
 - **Player Registration**: Automatic player creation from WooCommerce orders
 - **e-Transfer Automation**: Webhook-based payment processing
 - **Player Tools**: Enhanced player management features
 - **Events Manager**: Calendar and event management tools
 
 ### Child Plugin Development
+
 ```php
 // Register with parent plugin
 SPAT_Plugin_Manager::register_plugin('my_module', array(
@@ -120,6 +141,7 @@ SPAT_Plugin_Manager::register_plugin('my_module', array(
 ## Support
 
 For issues or questions:
+
 1. Check parent plugin is installed and activated
 2. Verify child plugins are registered (visible in parent settings)
 3. Check WordPress debug log for error messages
@@ -129,3 +151,7 @@ For issues or questions:
 ## License
 
 GPL v2 or later
+
+## AI Usage Disclaimer
+
+Portions of this codebase were generated with the assistance of Large Language Models (LLMs). All AI-generated code has been reviewed and tested to ensure quality and correctness.

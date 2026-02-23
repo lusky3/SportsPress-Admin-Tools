@@ -15,6 +15,7 @@ The test setup uses Docker Compose to orchestrate three containers:
 3. **Test Runner Container** - Executes test scripts
 
 The WordPress container uses the pre-built image:
+
 ```
 ghcr.io/lusky3/sportspress-sandbox/sportspress-test-env:latest
 ```
@@ -48,6 +49,7 @@ ghcr.io/lusky3/sportspress-sandbox/sportspress-test-env:latest
 ### 1. Validation Tests (`test-validation-docker.php`)
 
 Tests the configuration validation system:
+
 - Valid configuration acceptance
 - Required field validation
 - Date range validation
@@ -57,6 +59,7 @@ Tests the configuration validation system:
 - Match length validation
 
 **Run with:**
+
 ```bash
 ./run-tests.sh validation
 ```
@@ -64,6 +67,7 @@ Tests the configuration validation system:
 ### 2. Configuration Lifecycle Tests (`test-configuration-lifecycle-docker.php`)
 
 Tests CRUD operations on configurations:
+
 - Save new configuration
 - Load existing configuration
 - Update configuration
@@ -74,6 +78,7 @@ Tests CRUD operations on configurations:
 - Delete configuration
 
 **Run with:**
+
 ```bash
 ./run-tests.sh configuration-lifecycle
 ```
@@ -81,6 +86,7 @@ Tests CRUD operations on configurations:
 ### 3. AJAX Handler Tests (`test-ajax-handlers-docker.php`)
 
 Tests AJAX endpoints:
+
 - Preview import with valid data
 - Preview import with invalid JSON
 - Preview import with missing data
@@ -88,6 +94,7 @@ Tests AJAX endpoints:
 - List configurations for import dialog
 
 **Run with:**
+
 ```bash
 ./run-tests.sh ajax-handlers
 ```
@@ -115,6 +122,7 @@ docker-compose exec test-runner php /test-scripts/test-validation-docker.php
 ### Bootstrap (`scripts/bootstrap-docker.php`)
 
 The bootstrap file:
+
 1. Loads WordPress from `/var/www/html/wp-load.php`
 2. Verifies the plugin is loaded
 3. Sets up an admin user for testing
@@ -123,6 +131,7 @@ The bootstrap file:
 ### Test Files (`scripts/test-*-docker.php`)
 
 Each test file:
+
 1. Includes the bootstrap
 2. Defines test cases
 3. Runs tests with a simple test runner
@@ -160,6 +169,7 @@ services:
 ## Environment Variables
 
 WordPress container:
+
 ```
 WORDPRESS_DB_HOST=db
 WORDPRESS_DB_USER=wordpress
@@ -174,11 +184,13 @@ WORDPRESS_DEBUG_LOG=1
 ### WordPress not starting
 
 Check container logs:
+
 ```bash
 docker-compose logs wordpress
 ```
 
 Verify database is healthy:
+
 ```bash
 docker-compose ps
 ```
@@ -186,11 +198,13 @@ docker-compose ps
 ### Plugin not loading
 
 Verify plugin is mounted correctly:
+
 ```bash
 docker-compose exec wordpress ls -la /var/www/html/wp-content/plugins/
 ```
 
 Manually activate:
+
 ```bash
 docker-compose exec wordpress wp plugin activate sportspress-schedule-generator
 ```
@@ -198,11 +212,13 @@ docker-compose exec wordpress wp plugin activate sportspress-schedule-generator
 ### Tests failing
 
 Run tests with verbose output:
+
 ```bash
 docker-compose exec test-runner php /test-scripts/test-validation-docker.php
 ```
 
 Check WordPress debug log:
+
 ```bash
 docker-compose exec wordpress tail -f /var/www/html/wp-content/debug.log
 ```
@@ -210,6 +226,7 @@ docker-compose exec wordpress tail -f /var/www/html/wp-content/debug.log
 ### Port 8080 already in use
 
 Edit `docker-compose.yml` and change the port mapping:
+
 ```yaml
 ports:
   - "8081:80"  # Use 8081 instead
@@ -218,6 +235,7 @@ ports:
 ### Permission issues
 
 Ensure the plugin directory is readable:
+
 ```bash
 chmod -R 755 ../../
 ```
@@ -238,6 +256,7 @@ chmod -R 755 ../../
 ## When to Use Docker Tests
 
 Use Docker tests when:
+
 - Testing WordPress integration
 - Testing AJAX handlers
 - Testing database operations
@@ -246,6 +265,7 @@ Use Docker tests when:
 - Validating before release
 
 Use simple tests when:
+
 - Testing pure logic
 - Testing validation rules
 - Rapid development iteration
@@ -277,6 +297,7 @@ jobs:
 ## Adding New Tests
 
 1. Create test file in `scripts/`:
+
 ```php
 <?php
 require_once __DIR__ . '/bootstrap-docker.php';
@@ -286,16 +307,18 @@ echo "=== My New Tests ===\n\n";
 // Your test code here
 ```
 
-2. Add test runner function to `run-tests.sh`:
+1. Add test runner function to `run-tests.sh`:
+
 ```bash
 run_test "my-new-test" || failed=$((failed + 1))
 ```
 
-3. Update this README with test description
+1. Update this README with test description
 
 ## Performance
 
 Typical execution times:
+
 - Environment setup: ~15-20 seconds
 - Validation tests: ~2-3 seconds
 - Lifecycle tests: ~3-5 seconds
@@ -307,6 +330,7 @@ Typical execution times:
 ## Cleanup
 
 Remove all Docker resources:
+
 ```bash
 ./run-tests.sh --teardown
 
@@ -318,6 +342,7 @@ docker rmi mysql:8.0
 ## Support
 
 For issues with:
+
 - **Docker setup**: Check Docker documentation
 - **WordPress container**: Check container logs
 - **Test failures**: Review test output and WordPress debug log
@@ -326,6 +351,7 @@ For issues with:
 ## Future Enhancements
 
 Planned improvements:
+
 - [ ] Parallel test execution
 - [ ] Test coverage reporting
 - [ ] Performance benchmarking

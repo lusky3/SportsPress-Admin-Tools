@@ -5,6 +5,7 @@ The change tracking system provides a complete audit trail for configuration mod
 ## Overview
 
 Every time a configuration is saved, the system automatically:
+
 - Compares the new configuration with the previous version
 - Records all changes with timestamps
 - Attributes changes to specific users
@@ -25,6 +26,7 @@ Every time a configuration is saved, the system automatically:
 The system tracks changes to 17 configuration fields:
 
 ### Basic Fields
+
 - Configuration Name
 - Season Start Date
 - Season End Date
@@ -32,6 +34,7 @@ The system tracks changes to 17 configuration fields:
 - Match Length
 
 ### Schedule Fields
+
 - Playing Days
 - Time Slots
 - Divisions
@@ -39,12 +42,14 @@ The system tracks changes to 17 configuration fields:
 - Venue Timeslots
 
 ### Constraint Fields
+
 - Blackout Dates
 - Distribution Rules
 - Team Restrictions
 - Division Grouping
 
 ### Phase 2 Fields
+
 - Matchup Style
 - Home/Away Preferences
 - Inter-Division Games
@@ -122,6 +127,7 @@ $enabled = get_option('spsg_enable_change_tracking', true);
 The system intelligently formats different data types for display:
 
 ### Simple Values
+
 ```php
 // Strings
 'old_value' => 'Spring 2024'
@@ -137,6 +143,7 @@ The system intelligently formats different data types for display:
 ```
 
 ### Arrays
+
 ```php
 // Playing Days
 'old_value' => 'friday, sunday'
@@ -160,6 +167,7 @@ The system intelligently formats different data types for display:
 ```
 
 ### Complex Data
+
 ```php
 // Home/Away Preferences
 'old_value' => '2 teams with home venue preferences'
@@ -319,17 +327,21 @@ function spsg_recent_changes_widget() {
 ## Storage Details
 
 ### Database Location
+
 - **Option Name:** `spsg_configuration_changes`
 - **Type:** WordPress option (serialized array)
 - **Structure:** Nested array keyed by configuration ID
 
 ### Storage Limits
+
 - **Per Configuration:** 10 most recent changes
 - **Total Storage:** Unlimited configurations
 - **Automatic Cleanup:** Oldest changes removed when limit exceeded
 
 ### Storage Size
+
 Approximate storage per change entry:
+
 - Simple change: ~200 bytes
 - Complex change: ~500 bytes
 - 10 changes per config: ~2-5 KB
@@ -338,6 +350,7 @@ Approximate storage per change entry:
 ## Performance Considerations
 
 ### Impact on Save Operations
+
 - **Minimal:** Change tracking adds ~10-20ms to save operations
 - **Comparison:** Uses PHP's serialize() for efficient comparison
 - **Storage:** Single database write per save
@@ -345,17 +358,20 @@ Approximate storage per change entry:
 ### Optimization Tips
 
 1. **Disable if Not Needed:**
+
 ```php
 update_option('spsg_enable_change_tracking', false);
 ```
 
-2. **Limit History Retrieval:**
+1. **Limit History Retrieval:**
+
 ```php
 // Only get what you need
 $history = $config_manager->get_change_history($config_id, 3);
 ```
 
-3. **Periodic Cleanup:**
+1. **Periodic Cleanup:**
+
 ```php
 // Clear old configurations' history
 $old_configs = array('config_old_1', 'config_old_2');
@@ -367,18 +383,21 @@ foreach ($old_configs as $config_id) {
 ## Security Considerations
 
 ### User Attribution
+
 - Uses WordPress user system
 - Respects user permissions
 - Only logged-in users can make changes
 - System changes attributed to user ID 0
 
 ### Data Privacy
+
 - Change history stored in WordPress database
 - Subject to WordPress security measures
 - Can be cleared by administrators
 - Not exposed to non-admin users
 
 ### Access Control
+
 ```php
 // Only administrators can view change history
 if (current_user_can('manage_options')) {
@@ -392,6 +411,7 @@ if (current_user_can('manage_options')) {
 ### Changes Not Being Tracked
 
 **Check if tracking is enabled:**
+
 ```php
 $enabled = get_option('spsg_enable_change_tracking', true);
 if (!$enabled) {
@@ -402,6 +422,7 @@ if (!$enabled) {
 ### History Not Showing
 
 **Verify configuration ID:**
+
 ```php
 $history = $config_manager->get_change_history($config_id);
 if (empty($history)) {
@@ -412,6 +433,7 @@ if (empty($history)) {
 ### Old Changes Disappeared
 
 **Expected behavior:** Only last 10 changes are kept
+
 ```php
 // This is by design to prevent database bloat
 // Older changes are automatically removed
@@ -420,6 +442,7 @@ if (empty($history)) {
 ### User Name Shows "Unknown User"
 
 **Possible causes:**
+
 - User account was deleted
 - Change made by system (user_id = 0)
 - Database inconsistency
@@ -435,9 +458,11 @@ if (!$user) {
 ## Best Practices
 
 ### 1. Keep Tracking Enabled
+
 Unless you have a specific reason to disable it, keep change tracking enabled for accountability.
 
 ### 2. Review Changes Before Major Updates
+
 ```php
 // Before making major changes, review history
 $history = $config_manager->get_change_history($config_id);
@@ -445,13 +470,17 @@ $history = $config_manager->get_change_history($config_id);
 ```
 
 ### 3. Document Major Changes
+
 Add notes to configuration name when making significant changes:
+
 ```php
 $config['name'] = 'Spring 2024 (Updated 2024-01-20 - Extended season)';
 ```
 
 ### 4. Regular Audits
+
 Periodically review change history for all configurations:
+
 ```php
 $configs = $config_manager->get_all_configurations();
 foreach ($configs as $config_id => $config_info) {
@@ -461,6 +490,7 @@ foreach ($configs as $config_id => $config_info) {
 ```
 
 ### 5. Clear History for Archived Configurations
+
 ```php
 // When archiving old configurations
 $config_manager->clear_change_history($old_config_id);
@@ -469,23 +499,28 @@ $config_manager->clear_change_history($old_config_id);
 ## API Reference
 
 ### get_change_history($config_id, $limit = 10)
+
 Retrieves change history for a configuration.
 
 **Parameters:**
+
 - `$config_id` (string) - Configuration identifier
 - `$limit` (int) - Maximum number of changes to return (default: 10)
 
 **Returns:** Array of change entries with user information
 
 ### clear_change_history($config_id)
+
 Clears all change history for a configuration.
 
 **Parameters:**
+
 - `$config_id` (string) - Configuration identifier
 
 **Returns:** Boolean success status
 
 ### track_changes($config_id, $old_config, $new_config)
+
 Internal method that compares and tracks changes.
 
 **Note:** Called automatically by `save()` method

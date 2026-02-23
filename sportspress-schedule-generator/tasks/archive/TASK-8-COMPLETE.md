@@ -22,14 +22,17 @@ Enhanced the SPSG_Export_Manager and exporters to support filtering and improved
 **File:** `includes/exporters/class-csv-exporter.php`
 
 **New Columns Added:**
+
 - `Home/Away` - Shows matchup with (H) and (A) designations
 - `Inter-Division` - Yes/No flag for inter-division games
 
 **Helper Methods Added:**
+
 - `is_inter_division_game()` - Detects inter-division games
 - `get_home_away_designation()` - Formats home/away display
 
 **CSV Output Format:**
+
 ```
 Date,Start Time,End Time,Duration (min),Home Team,Away Team,Venue,Division,Home/Away,Inter-Division,Week,Is Makeup,Original Date
 2024-03-01,19:00,20:00,60,Team A1,Team A2,Arena 1,Division A,"Team A1 (H) vs Team A2 (A)",No,,No,
@@ -40,11 +43,13 @@ Date,Start Time,End Time,Duration (min),Home Team,Away Team,Venue,Division,Home/
 **File:** `includes/exporters/class-xlsx-exporter.php`
 
 **New Columns Added:**
+
 - `Home/Away` - Shows matchup with (H) and (A) designations
 - `Inter-Division` - Yes/No flag for inter-division games
 - `Week` - Week number column
 
 **Formatting Improvements:**
+
 - Increased header font size to 12pt
 - Added center alignment for date, time, and flag columns
 - Set minimum column widths for better readability
@@ -58,6 +63,7 @@ Date,Start Time,End Time,Duration (min),Home Team,Away Team,Venue,Division,Home/
   - Flags: 8-12 characters
 
 **Helper Methods Added:**
+
 - `is_inter_division_game()` - Detects inter-division games
 - `get_home_away_designation()` - Formats home/away display
 
@@ -66,6 +72,7 @@ Date,Start Time,End Time,Duration (min),Home Team,Away Team,Venue,Division,Home/
 **File:** `includes/class-schedule-generator.php`
 
 Enhanced `ajax_export_schedule()` to:
+
 - Accept optional filter parameters:
   - `division` - Filter by division ID
   - `date_from` - Filter by start date
@@ -88,10 +95,12 @@ Created comprehensive test suite to verify:
 7. ✅ **Empty Results** - Returns WP_Error when no games match
 
 **Test Files:**
+
 - `tests/test-export-filtering-standalone.php` - Full test suite
 - `tests/verify-csv-format.php` - CSV format verification
 
 **Test Results:**
+
 ```
 ✓ All export filtering tests passed!
 ```
@@ -99,10 +108,12 @@ Created comprehensive test suite to verify:
 ## Requirements Validated
 
 ### Requirement 14.1: CSV Export ✅
+
 - CSV format supported with all game details
 - New columns added: Division, Inter-Division, Home/Away
 
 ### Requirement 14.2: XLSX Export with Formatting ✅
+
 - XLSX format with improved styling
 - Color-coded by division
 - Bold highlighting for special games
@@ -110,6 +121,7 @@ Created comprehensive test suite to verify:
 - Optimized column widths
 
 ### Requirement 14.3: Complete Game Details ✅
+
 - Date, time, teams, venue, division
 - Home/away designations
 - Inter-division flag
@@ -117,6 +129,7 @@ Created comprehensive test suite to verify:
 - Week number
 
 ### Requirement 14.4: Filtering Support ✅
+
 - Filter by division
 - Filter by date range (from/to)
 - Combined filters
@@ -178,12 +191,14 @@ jQuery.ajax({
 ## Benefits
 
 ### For Users
+
 - **Better Organization** - Filter exports by division or date range
 - **More Information** - See home/away designations and inter-division games at a glance
 - **Improved Readability** - XLSX exports with better formatting and frozen headers
 - **Flexible Exports** - Export full schedule or filtered subsets
 
 ### For Developers
+
 - **Clean Architecture** - Filtering logic centralized in Export Manager
 - **Reusable Code** - Helper methods for inter-division detection
 - **Extensible** - Easy to add more filters or columns

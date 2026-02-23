@@ -7,6 +7,7 @@
 ## What Was Implemented
 
 ### 1. Home Venue Preferences Section
+
 **Location:** `render_divisions_teams_tab()` method (lines 1313-1377)
 
 The home/away preferences section displays a table where administrators can assign preferred home venues for each team:
@@ -29,6 +30,7 @@ The home/away preferences section displays a table where administrators can assi
 ```
 
 **Features:**
+
 - Displays all teams from all divisions
 - Dropdown selector for each team to choose their preferred home venue
 - "No preference" option available
@@ -36,6 +38,7 @@ The home/away preferences section displays a table where administrators can assi
 - Automatically populated from configuration data
 
 ### 2. Home/Away Balance Toggle
+
 **Location:** `render_constraints_tab()` method (lines 1773-1777)
 
 The home/away balance toggle is in the Constraints tab under Distribution Rules:
@@ -51,17 +54,20 @@ The home/away balance toggle is in the Constraints tab under Distribution Rules:
 ```
 
 **Features:**
+
 - Checkbox to enable/disable home/away balancing
 - Enabled by default
 - Clear description of functionality
 - Integrated with distribution rules
 
 ### 3. Dynamic Form Handling
+
 **Location:** Inline JavaScript in `enqueue_admin_scripts()` method (lines 919-1010)
 
 Added JavaScript function `updateHomeAwayPreferences()` that:
 
 **Functionality:**
+
 - Automatically updates the home/away preferences table when teams are added/removed
 - Updates venue options when venues are added/removed
 - Preserves existing preferences when the table is rebuilt
@@ -74,6 +80,7 @@ Added JavaScript function `updateHomeAwayPreferences()` that:
   - Venue additions/removals
 
 **Event Handlers:**
+
 ```javascript
 // Update when teams change
 $(document).on("change", "input[name*='[teams]']", updateHomeAwayPreferences);
@@ -92,6 +99,7 @@ setTimeout(updateHomeAwayPreferences, 500);
 ```
 
 ### 4. Backend Support
+
 **Already Implemented in Phase 2:**
 
 - `home_away_preferences` property in `SPSG_Schedule_Configuration`
@@ -131,11 +139,13 @@ setTimeout(updateHomeAwayPreferences, 500);
 ### Automated Testing
 
 The home/away sanitization is tested in:
+
 - `tests/test-home-away-sanitization.php` (8 test cases, all passing)
 
 ## Requirements Validation
 
 ### Requirement 14.1 ✅
+
 **THE Configuration_Manager SHALL store home/away balancing preferences as boolean flags**
 
 - Implemented in `distribution_rules['home_away_balance']`
@@ -143,6 +153,7 @@ The home/away sanitization is tested in:
 - Saved with configuration
 
 ### Requirement 14.2 ✅
+
 **THE Configuration_Manager SHALL store preferred home venue assignments for each team**
 
 - Implemented in `home_away_preferences` property
@@ -150,6 +161,7 @@ The home/away sanitization is tested in:
 - Dynamically updated when teams/venues change
 
 ### Requirement 14.3 ✅
+
 **THE Configuration_Manager SHALL validate that preferred home venues exist in the venue configuration**
 
 - Validation implemented in `SPSG_Schedule_Configuration::validate()`
@@ -157,6 +169,7 @@ The home/away sanitization is tested in:
 - "No preference" option available
 
 ### Requirement 14.4 ✅
+
 **WHEN home/away configuration is retrieved, THE Configuration_Manager SHALL return preferences and venue assignments**
 
 - Both `home_away_preferences` and `distribution_rules['home_away_balance']` are returned
@@ -177,6 +190,7 @@ The home/away sanitization is tested in:
 ### With Schedule Generation
 
 The home/away preferences will be used by the schedule generation engine to:
+
 - Assign teams to their preferred home venues when possible
 - Balance home and away games according to the toggle setting
 - Respect venue availability constraints

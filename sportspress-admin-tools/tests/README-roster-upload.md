@@ -7,15 +7,18 @@ The Roster Upload feature allows administrators to bulk import player rosters fr
 ## File Format
 
 ### Required Columns
+
 - `name` or `player_name` - Player's full name (required)
 
 ### Optional Columns
+
 - `email` or `email_address` - Player's email for matching existing records
 - `number` or `jersey_number` - Player's jersey/squad number
 - `position` - Player's position
 - `notes` - Additional notes about the player
 
 ### Supported File Types
+
 - CSV (.csv)
 - Excel (.xlsx)
 
@@ -40,20 +43,24 @@ The system uses a priority-based matching strategy:
 ## Features
 
 ### Conflict Detection
+
 - Identifies players already on other team rosters for the same season
 - Provides clear conflict resolution options
 
 ### Data Validation
+
 - Validates file format and required columns
 - Provides detailed preview before processing
 - Shows match status for each player
 
 ### Player List Management
+
 - Automatically creates player lists if they don't exist
 - Updates existing lists with new players
 - Maintains proper team and season associations
 
 ### Player Record Updates
+
 - Updates jersey numbers, email addresses, and team assignments
 - Maintains proper SportsPress data relationships
 - Enables statistics display for imported players
@@ -86,6 +93,7 @@ Mike Johnson,mike.johnson@example.com,7,Goalie,Backup goalie
 ## Integration
 
 The feature integrates seamlessly with:
+
 - SportsPress player management
 - Team and season taxonomies
 - Player statistics system

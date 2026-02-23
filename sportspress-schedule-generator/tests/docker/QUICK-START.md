@@ -8,6 +8,7 @@ cd sportspress-schedule-generator/tests/docker
 ```
 
 That's it! The script will:
+
 1. Start WordPress container (with built-in MariaDB)
 2. Wait ~45 seconds for initialization
 3. Run all test suites
@@ -48,25 +49,32 @@ docker-compose exec test-runner php /test-scripts/test-validation-docker.php
 ## Troubleshooting
 
 ### "Docker is not running"
+
 Start Docker Desktop or Docker daemon
 
 ### "docker-compose: command not found"
+
 The script uses Docker Compose v2 (`docker compose`). If you have v1, install v2 or create an alias:
+
 ```bash
 alias docker-compose='docker compose'
 ```
 
 ### "Port 8080 already in use"
+
 Edit `docker-compose.yml` and change `8080:80` to `8081:80`
 
 ### Tests fail
+
 Check logs:
+
 ```bash
 docker compose logs wordpress
 docker compose logs db
 ```
 
 ### Clean slate
+
 ```bash
 ./run-tests.sh --teardown
 docker system prune -f
@@ -86,11 +94,13 @@ docker system prune -f
 ## When to Use Which?
 
 **Use Simple Tests** for:
+
 - Quick validation during development
 - Testing pure logic
 - CI/CD (faster)
 
 **Use Docker Tests** for:
+
 - Integration testing
 - Pre-release validation
 - Debugging real issues

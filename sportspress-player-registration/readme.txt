@@ -45,3 +45,7 @@ SportsPress Player Registration automatically creates SportsPress player records
 * Automatic player creation from WooCommerce orders
 * User account linking and role assignment
 * Activity logging system
+
+== AI Usage Disclaimer ==
+
+Portions of this codebase were generated with the assistance of Large Language Models (LLMs). All AI-generated code has been reviewed and tested to ensure quality and correctness.

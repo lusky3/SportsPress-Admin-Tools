@@ -7,6 +7,7 @@ These scripts are for manual testing and verification, not automated testing.
 ## Purpose
 
 Manual verification scripts are used for:
+
 - Interactive debugging and testing
 - Verifying WordPress integration
 - Testing AJAX endpoints manually
@@ -20,6 +21,7 @@ These are **not** part of the automated test suite run by `run-tests.php`.
 ## Usage
 
 ### Prerequisites
+
 - Running WordPress installation
 - Plugin activated
 - Command line access
@@ -40,12 +42,14 @@ php tests/manual/verify-nonce-registration.php
 ### AJAX and Integration
 
 **verify-ajax-handlers.php**
+
 - Tests AJAX endpoint responses
 - Verifies nonce handling
 - Checks response formats
 - Use when: Debugging AJAX issues
 
 **verify-nonce-registration.php**
+
 - Verifies nonce registration in admin
 - Checks nonce availability in JavaScript
 - Use when: Debugging security issues
@@ -53,6 +57,7 @@ php tests/manual/verify-nonce-registration.php
 ### Data Format Verification
 
 **verify-csv-format.php**
+
 - Verifies CSV export format
 - Checks column headers
 - Validates data structure
@@ -61,23 +66,27 @@ php tests/manual/verify-nonce-registration.php
 ### Feature Verification
 
 **verify-inter-division-implementation.php**
+
 - Tests inter-division game configuration
 - Verifies matchup generation
 - Checks constraint handling
 - Use when: Testing inter-division features
 
 **verify-inter-division-ui.php**
+
 - Tests inter-division UI components
 - Verifies form inputs
 - Checks JavaScript interactions
 - Use when: Testing UI for inter-division games
 
 **verify-inter-division-ui-simple.php**
+
 - Simplified version of inter-division UI tests
 - Quick smoke test for UI
 - Use when: Quick verification needed
 
 **verify-inter-division-validation.php**
+
 - Tests validation rules for inter-division games
 - Checks error messages
 - Verifies constraint enforcement
@@ -87,7 +96,8 @@ php tests/manual/verify-nonce-registration.php
 
 ## When to Use Manual Tests
 
-### Use Manual Tests When:
+### Use Manual Tests When
+
 ✅ Debugging specific issues  
 ✅ Testing WordPress integration  
 ✅ Verifying UI interactions  
@@ -95,7 +105,8 @@ php tests/manual/verify-nonce-registration.php
 ✅ Validating export formats  
 ✅ Interactive testing needed  
 
-### Use Automated Tests When:
+### Use Automated Tests When
+
 ✅ Running CI/CD pipelines  
 ✅ Regression testing  
 ✅ Unit testing classes  
@@ -107,6 +118,7 @@ php tests/manual/verify-nonce-registration.php
 ## Adding New Manual Tests
 
 ### Naming Convention
+
 - Prefix with `verify-`
 - Use descriptive names
 - Example: `verify-schedule-generation.php`
@@ -150,16 +162,19 @@ echo "\nVerification complete.\n";
 ## Troubleshooting
 
 ### "WordPress not found" Error
+
 - Ensure you're running from a WordPress installation
 - Check the path to wp-load.php
 - Verify WordPress is properly installed
 
 ### "Class not found" Error
+
 - Ensure plugin is activated
 - Check autoloader is loaded
 - Verify class files exist
 
 ### "Permission denied" Error
+
 - Check file permissions
 - Ensure you have execute permissions
 - Run with appropriate user privileges
@@ -169,12 +184,14 @@ echo "\nVerification complete.\n";
 ## Maintenance
 
 ### Regular Review
+
 - Review scripts quarterly
 - Remove obsolete scripts
 - Update for new features
 - Document changes
 
 ### When to Archive
+
 - Feature no longer exists
 - Script no longer useful
 - Replaced by automated test

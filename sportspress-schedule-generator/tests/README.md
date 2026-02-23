@@ -5,7 +5,9 @@ This directory contains unit and integration tests for the Schedule Generator pl
 ## Test File Organization
 
 ### Docker Tests (tests/docker/) ⭐ NEW
+
 Full WordPress environment tests using Docker containers:
+
 - `docker/` - Complete WordPress + MySQL test environment
 - Uses `ghcr.io/lusky3/sportspress-sandbox/sportspress-test-env:latest`
 - Real WordPress integration testing
@@ -13,7 +15,9 @@ Full WordPress environment tests using Docker containers:
 - **Recommended for integration testing and pre-release validation**
 
 ### Automated Tests (tests/ root)
+
 Standard test files that use proper WordPress test environment via `bootstrap.php`:
+
 - `test-*.php` - Automated tests run by test suite
 - Use WordPress test library
 - Suitable for CI/CD
@@ -21,19 +25,24 @@ Standard test files that use proper WordPress test environment via `bootstrap.ph
 - **Recommended for rapid development and CI/CD**
 
 ### Manual Verification Scripts (tests/manual/)
+
 Manual testing and debugging tools:
+
 - `verify-*.php` - Interactive verification scripts
 - Require running WordPress installation
 - Not part of automated test suite
 - See `manual/README.md` for usage
 
 ### Test Reports (tests/reports/)
+
 Historical test verification reports:
+
 - Markdown files documenting test results
 - Archived for reference
 - See `reports/README.md` for details
 
 ### Test Subdirectories
+
 - `docker/` - Docker-based WordPress environment tests
 - `unit/` - Unit tests for individual classes
 - `integration/` - Integration tests for component interactions
@@ -41,6 +50,7 @@ Historical test verification reports:
 ## Available Test Files
 
 ### Core Tests
+
 - `test-configuration-lifecycle.php` - Configuration CRUD operations
 - `test-validation.php` - Validation system
 - `test-export-filtering.php` - Export filtering functionality
@@ -48,6 +58,7 @@ Historical test verification reports:
 - `test-nonce-registration.php` - Nonce security
 
 ### Feature Tests
+
 - `test-home-away-sanitization.php` - Home/away preferences
 - `test-inter-division-sanitization.php` - Inter-division games
 - `test-matchup-style-sanitization.php` - Matchup style validation
@@ -57,13 +68,16 @@ Historical test verification reports:
 - `test-statistics-calculator.php` - Schedule statistics
 
 ### Integration Tests
+
 - `test-manual-scenarios.php` - End-to-end scenarios
 - `test-sportspress-importer.php` - SportsPress integration
 
 ## Test Coverage
 
 ### Unit Tests (test-validation.php)
+
 Tests the enhanced validation system:
+
 - Required field validation
 - Date range validation
 - Resource capacity validation
@@ -75,7 +89,9 @@ Tests the enhanced validation system:
 - Error message structure
 
 ### Integration Tests (test-configuration-lifecycle.php)
+
 Tests the complete configuration lifecycle:
+
 - Save and load operations
 - Configuration modification
 - Configuration deletion

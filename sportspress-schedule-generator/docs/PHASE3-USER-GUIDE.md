@@ -29,6 +29,7 @@ The SportsPress Schedule Generator is a powerful tool for creating balanced, fai
 ### Who Should Use This Plugin
 
 This plugin is designed for:
+
 - League administrators managing recreational sports leagues
 - Sports coordinators scheduling games across multiple venues
 - Anyone needing to create fair, balanced schedules quickly
@@ -57,9 +58,11 @@ Before using the Schedule Generator, ensure you have:
 ### Accessing the Schedule Generator
 
 Once enabled, access the generator through:
+
 - **WordPress Admin → Schedule Generator**
 
 You'll see tabs for:
+
 - **Generate**: Main schedule generation interface
 - **Configuration**: Manage schedule settings
 - **Presets**: Quick-start templates
@@ -84,6 +87,7 @@ You'll see tabs for:
 3. Repeat for all divisions in your league
 
 **Example:**
+
 ```
 Division A
   - Team 1
@@ -118,6 +122,7 @@ Division B
    - Match length in minutes (e.g., 60)
 
 **Example:**
+
 ```
 Monday:
   - 18:00 - 19:00 (60 min)
@@ -149,6 +154,7 @@ If you want teams from different divisions to play each other:
    - Which divisions play each other
 
 **Example:**
+
 ```
 Division A vs Division B: 2 games per team
 Division A vs Division C: 1 game per team
@@ -187,6 +193,7 @@ Add restrictions for specific teams:
 4. Add reason (optional)
 
 **Use Cases**:
+
 - Teams sharing players (overlap avoidance)
 - Teams with shared coaching staff (back-to-back avoidance)
 - Facility conflicts
@@ -213,6 +220,7 @@ Before generating, the system validates your configuration:
    - ❌ Red: Errors (must fix before generating)
 
 **Common Validation Issues**:
+
 - Not enough time slots for all games
 - Season too short for number of games
 - No venues configured
@@ -233,6 +241,7 @@ Before generating, the system validates your configuration:
 ### Generation Time
 
 Typical generation times:
+
 - Small league (2-4 divisions, 4-6 teams each): 10-30 seconds
 - Medium league (4-6 divisions, 6-8 teams each): 30-90 seconds
 - Large league (6+ divisions, 8+ teams each): 1-3 minutes
@@ -242,6 +251,7 @@ Typical generation times:
 ### Canceling Generation
 
 If generation is taking too long:
+
 1. Click **Cancel Generation** button
 2. System will stop and clean up partial results
 3. Review configuration and try again with adjusted settings
@@ -249,6 +259,7 @@ If generation is taking too long:
 ### Generation Success
 
 When generation completes successfully:
+
 1. Progress bar reaches 100%
 2. Schedule preview appears automatically
 3. Statistics panel shows schedule details
@@ -257,6 +268,7 @@ When generation completes successfully:
 ### Generation Failure
 
 If generation fails:
+
 1. Error message explains the issue
 2. Suggestions for fixing the problem
 3. Common fixes:
@@ -281,7 +293,7 @@ After generation, the statistics panel shows key metrics:
 - **Minimum**: Fewest games any team has
 - **Maximum**: Most games any team has
 - **Average**: Mean games per team
-- **Status**: 
+- **Status**:
   - ✅ Green: All teams have equal games
   - ⚠️ Yellow: Difference of 1 game (acceptable)
   - ❌ Red: Difference of 2+ games (imbalanced)
@@ -291,6 +303,7 @@ After generation, the statistics panel shows key metrics:
 ### Home/Away Balance
 
 Shows home vs away designations for each team:
+
 - **Balanced**: Home count ≈ Away count (difference ≤ 1)
 - **Imbalanced**: Difference > 1 (highlighted in yellow/red)
 
@@ -310,6 +323,7 @@ Shows home vs away designations for each team:
 ### Time Slot Distribution
 
 Shows how games are distributed across time slots:
+
 - Count per time slot (e.g., 18:00, 19:00, 20:00)
 - Percentage of total games
 - Visual bar chart
@@ -319,6 +333,7 @@ Shows how games are distributed across time slots:
 ### Day Distribution
 
 Shows games per day of week:
+
 - Count per day (e.g., Monday, Wednesday, Friday)
 - Percentage of total games
 
@@ -333,11 +348,13 @@ Shows games per day of week:
 ### Warnings and Issues
 
 The statistics panel highlights any issues:
+
 - **Critical**: Must be addressed (red)
 - **Warning**: Should review (yellow)
 - **Info**: For awareness (blue)
 
 **Common Issues**:
+
 - Games per team variance > 1
 - Home/away imbalance > 2
 - Venue over/under utilization
@@ -348,6 +365,7 @@ The statistics panel highlights any issues:
 ### Pre-Import Checklist
 
 Before importing, ensure:
+
 1. ✅ Schedule statistics look correct
 2. ✅ All teams exist in SportsPress
 3. ✅ All venues exist in SportsPress
@@ -428,15 +446,19 @@ After import, verify in SportsPress:
 Common import errors and solutions:
 
 **"Team not found"**
+
 - Solution: Create team in SportsPress first, or fix team name spelling
 
 **"Venue not found"**
+
 - Solution: Create venue in SportsPress first, or fix venue name spelling
 
 **"Permission denied"**
+
 - Solution: Ensure you have `manage_options` capability
 
 **"Database error"**
+
 - Solution: Check WordPress debug log, contact support
 
 ## Exporting Schedules
@@ -476,6 +498,7 @@ Export only specific games:
 3. Only filtered games are exported
 
 **Use Cases**:
+
 - Export schedule for single division
 - Export games for specific team
 - Export games at specific venue
@@ -497,11 +520,13 @@ Exported files include:
 ### Opening Exports
 
 **CSV Files**:
+
 - Open with Excel, Google Sheets, Numbers, etc.
 - May need to specify delimiter (comma)
 - Text encoding: UTF-8
 
 **XLSX Files**:
+
 - Open directly with Excel, Google Sheets, Numbers
 - Formatting preserved
 - Ready to print or share
@@ -515,13 +540,15 @@ Exported files include:
 **Problem**: Configuration requires more games than available time slots.
 
 **Solutions**:
+
 1. Add more time slots per day
 2. Add more playing days
 3. Extend season date range
 4. Reduce games per team
 5. Remove or adjust blackout dates
 
-**Example**: 
+**Example**:
+
 - Need: 120 games
 - Available: 3 venues × 3 time slots × 10 weeks = 90 slots
 - Solution: Add 1 more time slot per day (120 slots)
@@ -531,6 +558,7 @@ Exported files include:
 **Problem**: Not enough weeks to fit all games.
 
 **Solutions**:
+
 1. Extend season end date
 2. Add more time slots per week
 3. Reduce games per team
@@ -541,6 +569,7 @@ Exported files include:
 **Problem**: Generation exceeded maximum time limit.
 
 **Solutions**:
+
 1. Increase max generation time in SPAT settings
 2. Simplify configuration:
    - Reduce number of divisions
@@ -554,6 +583,7 @@ Exported files include:
 **Problem**: Constraints are too restrictive.
 
 **Solutions**:
+
 1. Review team restrictions - remove if possible
 2. Reduce blackout dates
 3. Disable strict distribution rules
@@ -567,6 +597,7 @@ Exported files include:
 **Problem**: Team name doesn't match any SportsPress team.
 
 **Solutions**:
+
 1. Create missing team in SportsPress
 2. Check team name spelling in configuration
 3. Ensure team names match exactly (case-insensitive)
@@ -576,6 +607,7 @@ Exported files include:
 **Problem**: Venue name doesn't match any SportsPress venue.
 
 **Solutions**:
+
 1. Create missing venue in SportsPress
 2. Check venue name spelling in configuration
 3. Ensure venue names match exactly
@@ -585,6 +617,7 @@ Exported files include:
 **Problem**: User lacks required permissions.
 
 **Solutions**:
+
 1. Ensure you're logged in as administrator
 2. Check user has `manage_options` capability
 3. Contact site administrator
@@ -594,6 +627,7 @@ Exported files include:
 **Problem**: Partial import failure.
 
 **Solutions**:
+
 1. Review error messages in import summary
 2. Check WordPress debug log for details
 3. Verify SportsPress is functioning correctly
@@ -607,6 +641,7 @@ Exported files include:
 **Problem**: Configuration has errors preventing generation.
 
 **Solutions**:
+
 1. Review validation messages carefully
 2. Fix each error listed
 3. Common fixes:
@@ -620,6 +655,7 @@ Exported files include:
 **Problem**: Configuration save failed.
 
 **Solutions**:
+
 1. Check browser console for JavaScript errors
 2. Verify WordPress AJAX is working
 3. Check file permissions on server
@@ -633,6 +669,7 @@ Exported files include:
 **Problem**: Generation takes longer than expected.
 
 **Solutions**:
+
 1. Reduce complexity:
    - Fewer divisions
    - Fewer teams per division
@@ -648,6 +685,7 @@ Exported files include:
 **Problem**: UI freezes during generation.
 
 **Solutions**:
+
 1. This is normal for large leagues
 2. Wait for generation to complete
 3. Progress updates every few seconds
@@ -661,6 +699,7 @@ Exported files include:
 **Problem**: Some teams have more games than others.
 
 **Solutions**:
+
 1. Check statistics panel for details
 2. If difference is 1 game: This is acceptable for odd team counts
 3. If difference is 2+ games: Regenerate schedule
@@ -672,6 +711,7 @@ Exported files include:
 **Problem**: Some teams have more home or away games.
 
 **Solutions**:
+
 1. Enable "Home/Away Balance" in distribution rules
 2. Regenerate schedule
 3. For double round-robin, balance is automatic
@@ -682,6 +722,7 @@ Exported files include:
 **Problem**: Too many games at same time slot.
 
 **Solutions**:
+
 1. Enable "Time Slot Distribution" rule
 2. Add more time slot variety
 3. Regenerate schedule

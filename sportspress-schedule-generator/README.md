@@ -90,7 +90,7 @@ A comprehensive child plugin for SportsPress Admin Tools that automates the crea
 
 ### Example 1: Simple Two-Division League
 
-```
+```text
 Configuration:
 - 2 divisions (A and B)
 - 4 teams per division
@@ -109,7 +109,7 @@ Result:
 
 ### Example 2: Complex Multi-Division League
 
-```
+```text
 Configuration:
 - 4 divisions (A, B, C, D)
 - 6 teams per division
@@ -131,6 +131,7 @@ Result:
 ## Documentation
 
 ### Quick Links
+
 - **[Documentation Index](docs/INDEX.md)** - Complete guide to all documentation
 - **[User Guide](docs/PHASE3-USER-GUIDE.md)** - Comprehensive usage instructions
 - **[Configuration Properties](docs/CONFIGURATION-PROPERTIES.md)** - Complete property reference
@@ -142,7 +143,7 @@ Result:
 
 ### Core Components
 
-```
+```text
 SPSG_Schedule_Generator (Main Plugin)
 ├── SPSG_Configuration_Manager (Configuration CRUD)
 ├── SPSG_Schedule_Engine (Generation Orchestration)
@@ -196,11 +197,13 @@ Constraints are evaluated in priority order:
 ## Development Status
 
 ### ✅ Phase 1: Foundation (Complete)
+
 - Plugin structure and SPAT integration
 - Database schema and autoloader
 - Basic admin interface
 
 ### ✅ Phase 2: Configuration System (Complete)
+
 - Configuration manager with CRUD operations
 - Configuration validation and sanitization
 - Change tracking system
@@ -215,6 +218,7 @@ Constraints are evaluated in priority order:
 - Admin UI with configuration tabs
 
 ### ✅ Phase 3: Schedule Generation Engine (Complete)
+
 - Enhanced matchup generation (single/double round-robin, custom, inter-division)
 - Improved slot allocation with backtracking
 - Full constraint integration (blackout, distribution, team restrictions)
@@ -226,6 +230,7 @@ Constraints are evaluated in priority order:
 - Comprehensive testing and documentation
 
 ### 🎯 Future Enhancements (Phase 4+)
+
 - Schedule editing UI (modify individual games)
 - Advanced optimization algorithms (simulated annealing, genetic algorithms)
 - Multi-venue capacity constraints
@@ -240,6 +245,7 @@ Constraints are evaluated in priority order:
 The plugin includes comprehensive test coverage:
 
 ### Unit Tests
+
 - Configuration validation and sanitization
 - Matchup generation algorithms
 - Slot allocation logic
@@ -248,12 +254,14 @@ The plugin includes comprehensive test coverage:
 - Export formatting
 
 ### Integration Tests
+
 - End-to-end schedule generation
 - SportsPress import functionality
 - Export with filtering
 - Constraint interactions
 
 ### Manual Test Scenarios
+
 - Small league (2 divisions, 4 teams each, 12 games/team)
 - Medium league (4 divisions, 6 teams each, 14 games/team)
 - Large league (6 divisions, 8 teams each, 16 games/team)
@@ -282,12 +290,12 @@ php tests/test-statistics-calculator.php
 
 Typical generation times on standard WordPress hosting:
 
-| League Size | Teams | Games | Time |
-|------------|-------|-------|------|
-| Small | 8 | 56 | 10-15s |
-| Medium | 24 | 168 | 30-60s |
-| Large | 48 | 336 | 60-120s |
-| Extra Large | 80+ | 500+ | 2-5min |
+| League Size | Teams | Games | Time    |
+|-------------|-------|-------|---------|
+| Small       | 8     | 56    | 10-15s  |
+| Medium      | 24    | 168   | 30-60s  |
+| Large       | 48    | 336   | 60-120s |
+| Extra Large | 80+   | 500+  | 2-5min  |
 
 ### Optimization Tips
 
@@ -308,22 +316,26 @@ Typical generation times on standard WordPress hosting:
 
 ### Common Issues
 
-**"Not enough time slots for all games"**
+#### "Not enough time slots for all games"
+
 - Add more time slots per day
 - Add more playing days
 - Extend season date range
 - Reduce games per team
 
-**"Generation timeout"**
+#### "Generation timeout"
+
 - Increase max generation time in SPAT settings
 - Simplify configuration (fewer constraints)
 - Add more time slots/venues
 
-**"Team not found in SportsPress"**
+#### "Team not found in SportsPress"
+
 - Create missing teams in SportsPress
 - Ensure team names match exactly (case-insensitive)
 
-**"Allocation failed"**
+#### "Allocation failed"
+
 - Review and reduce team restrictions
 - Add more time slots or venues
 - Check for conflicting constraints
