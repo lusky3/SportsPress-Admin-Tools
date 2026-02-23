@@ -23,6 +23,7 @@
 ## Common Commands
 
 ### Testing (Player Merge)
+
 ```bash
 # Run complete test suite in Docker
 ./run-tests.sh
@@ -41,6 +42,7 @@ npm run teardown
 ```
 
 ### Plugin Development
+
 ```bash
 # No build process - direct PHP development
 # Changes take effect immediately after file save

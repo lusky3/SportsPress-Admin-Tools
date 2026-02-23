@@ -13,10 +13,12 @@ The schedule generation engine now includes comprehensive progress tracking, can
 Retrieves the current generation progress.
 
 **Returns:** `array|false`
+
 - Returns progress data array if generation is in progress
 - Returns `false` if no generation is in progress
 
 **Progress Data Structure:**
+
 ```php
 array(
     'phase' => string,              // Current phase: 'starting', 'validation', 'matchups', 'allocation', 'complete'
@@ -31,6 +33,7 @@ array(
 ```
 
 **Example:**
+
 ```php
 $engine = new SPSG_Schedule_Engine();
 $progress = $engine->get_progress();
@@ -53,12 +56,14 @@ Cancels an in-progress generation.
 **Returns:** `void`
 
 **Example:**
+
 ```php
 $engine = new SPSG_Schedule_Engine();
 $engine->cancel_generation();
 ```
 
 **Notes:**
+
 - Sets the cancellation flag in the progress transient
 - The generation will stop at the next cancellation check point
 - Partial results will be saved before returning
@@ -68,13 +73,16 @@ $engine->cancel_generation();
 Generates a complete schedule with progress tracking.
 
 **Parameters:**
+
 - `$config` (SPSG_Schedule_Configuration): Schedule configuration
 
 **Returns:** `array|WP_Error`
+
 - On success: `array('schedule' => array, 'stats' => array)`
 - On failure: `WP_Error` with error code and data
 
 **Error Codes:**
+
 - `configuration_error`: Configuration validation failed
 - `generation_cancelled`: User cancelled generation
 - `generation_timeout`: Generation exceeded time limit
@@ -82,6 +90,7 @@ Generates a complete schedule with progress tracking.
 - `infeasible_config`: Configuration is not feasible
 
 **Example:**
+
 ```php
 $engine = new SPSG_Schedule_Engine();
 $result = $engine->generate_schedule($config);

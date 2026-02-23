@@ -5,6 +5,7 @@ This directory contains verification and summary documents from testing phases.
 ## Contents
 
 ### Verification Reports
+
 - **HOME-AWAY-SANITIZATION-VERIFICATION.md** - Home/away preference sanitization tests
 - **HOME-AWAY-UI-VERIFICATION.md** - Home/away UI component tests
 - **INTER-DIVISION-COMPLETE-VERIFICATION.md** - Inter-division feature completion
@@ -14,6 +15,7 @@ This directory contains verification and summary documents from testing phases.
 - **PREVIEW-UI-VERIFICATION.md** - Schedule preview UI tests
 
 ### Implementation Summaries
+
 - **TASK-1-IMPLEMENTATION-SUMMARY.md** - Task 1 implementation details
 - **TASK-2-NONCE-REGISTRATION-SUMMARY.md** - Nonce registration implementation
 - **TASK-6-IMPORT-BUTTON-VERIFICATION.md** - Import button enhancement verification

@@ -7,6 +7,7 @@ Tooltips and help text have been implemented throughout the Schedule Generator U
 ## Implementation Details
 
 ### CSS Styles
+
 - Added comprehensive tooltip styles in `assets/css/admin.css`
 - Tooltips are positioned above elements by default
 - Support for left, right positioning variants
@@ -14,6 +15,7 @@ Tooltips and help text have been implemented throughout the Schedule Generator U
 - Accessible with keyboard focus indicators
 
 ### JavaScript Module
+
 - Created `Tooltips` module in `assets/js/schedule-generator.js`
 - Automatically initializes all tooltips on page load
 - Adds ARIA attributes for screen reader compatibility
@@ -40,6 +42,7 @@ Tooltips and help text have been implemented throughout the Schedule Generator U
 ## Usage
 
 ### HTML Structure
+
 ```html
 <span class="spsg-tooltip">
     <span class="spsg-tooltip-icon" tabindex="0">?</span>
@@ -50,6 +53,7 @@ Tooltips and help text have been implemented throughout the Schedule Generator U
 ```
 
 ### Positioning Variants
+
 - Default (top): `<span class="spsg-tooltip">`
 - Right: `<span class="spsg-tooltip spsg-tooltip-right">`
 - Left: `<span class="spsg-tooltip spsg-tooltip-left">`
@@ -59,6 +63,7 @@ Tooltips and help text have been implemented throughout the Schedule Generator U
 The following areas already have comprehensive help text:
 
 ### Import Dialog
+
 - Conflict resolution options with detailed descriptions
 - Event status selection with guidance
 - League and season selection explanations
@@ -66,18 +71,21 @@ The following areas already have comprehensive help text:
 - All options have `aria-describedby` attributes
 
 ### Export Filters
+
 - Division filter with description
 - Date range filters with explanations
 - Filtered game count display
 - All filters have description paragraphs
 
 ### Configuration Options
+
 - Preset selector with detailed description
 - Playing days with explanations
 - Time slots with format guidance
 - All major configuration fields have help text
 
 ### Statistics Panel
+
 - Summary statistics with labels
 - Detailed tables with clear headers
 - Color-coded balance indicators
@@ -86,6 +94,7 @@ The following areas already have comprehensive help text:
 ## Testing
 
 ### Manual Testing Checklist
+
 - [x] Tooltips display on hover
 - [x] Tooltips display on keyboard focus
 - [x] Tooltips close with Escape key
@@ -95,6 +104,7 @@ The following areas already have comprehensive help text:
 - [x] Responsive on all screen sizes
 
 ### Browser Compatibility
+
 - Chrome (latest)
 - Firefox (latest)
 - Safari (latest)

@@ -5,6 +5,7 @@ The preset system provides quick-start templates for common league configuration
 ## Overview
 
 Presets are predefined configuration templates that include smart defaults for:
+
 - Games per team
 - Match length
 - Playing days and time slots
@@ -16,12 +17,14 @@ Presets are predefined configuration templates that include smart defaults for:
 ### 1. Youth League
 
 **Best For:**
+
 - Youth sports leagues (ages 6-17)
 - Weekend-only schedules
 - Shorter match durations
 - Family-friendly timing
 
 **Configuration:**
+
 ```php
 array(
     'games_per_team' => 14,
@@ -45,6 +48,7 @@ array(
 ```
 
 **Characteristics:**
+
 - 14 games per team (double round-robin for 8-team divisions)
 - 45-minute matches
 - Weekend games only
@@ -57,12 +61,14 @@ array(
 ### 2. Adult League
 
 **Best For:**
+
 - Adult recreational leagues
 - Weekday evening schedules
 - Standard match durations
 - After-work timing
 
 **Configuration:**
+
 ```php
 array(
     'games_per_team' => 12,
@@ -87,6 +93,7 @@ array(
 ```
 
 **Characteristics:**
+
 - 12 games per team (single round-robin for 12-team divisions)
 - 60-minute matches
 - Weekday evenings only
@@ -99,12 +106,14 @@ array(
 ### 3. Tournament
 
 **Best For:**
+
 - Weekend tournaments
 - Intensive schedules
 - Fewer total games
 - Compact timeframes
 
 **Configuration:**
+
 ```php
 array(
     'games_per_team' => 4,
@@ -128,6 +137,7 @@ array(
 ```
 
 **Characteristics:**
+
 - 4 games per team (pool play + playoffs)
 - 60-minute matches
 - Weekend only
@@ -227,28 +237,32 @@ $config_manager->save($config);
 
 ## Preset Selection Guide
 
-### Choose Youth League If:
+### Choose Youth League If
+
 - ✓ Players are under 18
 - ✓ Games are on weekends
 - ✓ Matches are 45-60 minutes
 - ✓ You want balanced home/away
 - ✓ Season is 12+ weeks
 
-### Choose Adult League If:
+### Choose Adult League If
+
 - ✓ Players are adults
 - ✓ Games are weekday evenings
 - ✓ Matches are 60-90 minutes
 - ✓ You want single round-robin
 - ✓ Season is 10-14 weeks
 
-### Choose Tournament If:
+### Choose Tournament If
+
 - ✓ Event is 1-2 weekends
 - ✓ You need 3-5 games per team
 - ✓ You want flexible scheduling
 - ✓ Pool play + playoffs format
 - ✓ Quick turnaround needed
 
-### Start from Scratch If:
+### Start from Scratch If
+
 - ✗ None of the presets fit
 - ✗ You have unique requirements
 - ✗ You need complete control
@@ -312,10 +326,13 @@ if (is_wp_error($validation)) {
 ## Best Practices
 
 ### 1. Start with a Preset
+
 Always start with the closest preset rather than building from scratch. It's easier to modify than to create.
 
 ### 2. Validate After Customization
+
 Presets are valid by default, but your modifications might create issues:
+
 ```php
 $config = $config_manager->get_preset('youth_league');
 $config['games_per_team'] = 30;  // Too many!
@@ -323,13 +340,17 @@ $config['games_per_team'] = 30;  // Too many!
 ```
 
 ### 3. Document Your Changes
+
 If you heavily modify a preset, update the configuration name to reflect it:
+
 ```php
 $config['name'] = 'Youth League (Modified - 16 games)';
 ```
 
 ### 4. Test with Small Data First
+
 Before applying to your full league:
+
 1. Load preset
 2. Add 1-2 test divisions
 3. Generate schedule
@@ -337,7 +358,9 @@ Before applying to your full league:
 5. Then add full data
 
 ### 5. Save Custom Presets
+
 If you create a configuration you'll reuse:
+
 1. Save it with a descriptive name
 2. Export to JSON
 3. Import for future seasons
@@ -346,9 +369,11 @@ If you create a configuration you'll reuse:
 ## Troubleshooting
 
 ### "Insufficient time slots" Error
+
 **Problem:** Preset doesn't have enough slots for your league size
 
 **Solution:**
+
 ```php
 $config = $config_manager->get_preset('youth_league');
 // Add more time slots
@@ -358,9 +383,11 @@ $config['time_slots']['sunday'][] = '16:00';
 ```
 
 ### "Matchup style incompatible" Error
+
 **Problem:** Games per team doesn't match division size
 
 **Solution:**
+
 ```php
 // For 10-team division with double round-robin:
 $config['games_per_team'] = 18;  // (10-1) × 2
@@ -370,12 +397,15 @@ $config['matchup_style'] = 'custom';
 ```
 
 ### Preset Not Suitable
+
 **Problem:** None of the presets fit your needs
 
 **Solution:**
+
 1. Choose the closest preset
 2. Modify extensively
 3. Or start from scratch using defaults:
+
 ```php
 $config = $config_manager->get_defaults();
 ```
@@ -383,9 +413,11 @@ $config = $config_manager->get_defaults();
 ## API Reference
 
 ### list_presets()
+
 Returns metadata for all available presets.
 
 **Returns:** Array of preset information
+
 ```php
 array(
     'preset_id' => array(
@@ -397,28 +429,34 @@ array(
 ```
 
 ### get_preset($preset_name)
+
 Loads a complete preset configuration.
 
 **Parameters:**
+
 - `$preset_name` (string) - Preset identifier
 
 **Returns:** Array of configuration data or WP_Error
 
 **Example:**
+
 ```php
 $config = $config_manager->get_preset('youth_league');
 ```
 
 ### apply_preset($preset_name, $base_config)
+
 Merges preset with existing configuration.
 
 **Parameters:**
+
 - `$preset_name` (string) - Preset identifier
 - `$base_config` (array) - Base configuration to merge with
 
 **Returns:** Merged configuration array or WP_Error
 
 **Example:**
+
 ```php
 $merged = $config_manager->apply_preset('adult_league', $my_config);
 ```

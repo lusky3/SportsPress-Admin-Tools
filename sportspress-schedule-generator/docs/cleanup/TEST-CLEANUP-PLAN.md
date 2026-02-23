@@ -24,9 +24,11 @@ After reviewing the test files, I've identified the following patterns:
 These tests have hardcoded paths to a specific local WordPress installation and won't work in other environments:
 
 **Files to DELETE:**
+
 - `test-matchup-style-sanitization-simple.php` - Hardcoded `/home/cody/arl-local/wp-load.php`
 
-**Reason:** 
+**Reason:**
+
 - Contains hardcoded local path that won't work on other systems
 - Duplicate of `test-matchup-style-sanitization.php` which uses proper bootstrap
 - Not portable or suitable for CI/CD
@@ -36,6 +38,7 @@ These tests have hardcoded paths to a specific local WordPress installation and 
 These tests attempt to load WordPress dynamically but may be redundant:
 
 **Files to REVIEW:**
+
 - `test-ajax-handlers-simple.php` - Uses relative path to wp-load.php
 - `test-manual-scenarios.php` - Checks for ABSPATH, loads wp-load.php
 - `test-manual-scenarios-standalone.php` - Likely similar to above
@@ -43,6 +46,7 @@ These tests attempt to load WordPress dynamically but may be redundant:
 - `test-matchup-sanitization-standalone.php` - Standalone version
 
 **Action Needed:**
+
 - Compare with non-standalone versions
 - Determine if they test different scenarios
 - If identical: DELETE standalone versions
@@ -53,12 +57,14 @@ These tests attempt to load WordPress dynamically but may be redundant:
 These have "-simple" suffix and may be simplified versions:
 
 **Files to REVIEW:**
+
 - `test-progress-simple.php` vs `test-progress-tracking.php`
 - `test-slot-allocator-simple.php` vs `test-slot-allocator.php`
 - `test-statistics-simple.php` vs `test-statistics-calculator.php`
 - `test-simple.php` - Generic simple test
 
 **Action Needed:**
+
 - Compare test coverage
 - If simple versions are subsets: DELETE
 - If they test different aspects: Keep and document
@@ -68,6 +74,7 @@ These have "-simple" suffix and may be simplified versions:
 These are manual verification scripts, not automated tests:
 
 **Files to MOVE to `tests/manual/`:**
+
 - `verify-ajax-handlers.php`
 - `verify-csv-format.php`
 - `verify-inter-division-implementation.php`
@@ -77,6 +84,7 @@ These are manual verification scripts, not automated tests:
 - `verify-nonce-registration.php`
 
 **Reason:**
+
 - Named "verify-*" not "test-*"
 - Not part of automated test suite
 - Useful for manual testing/debugging
@@ -89,6 +97,7 @@ These are manual verification scripts, not automated tests:
 ### Phase 1: Immediate Cleanup (10 minutes)
 
 #### 1. Delete Environment-Specific Test
+
 ```bash
 rm tests/test-matchup-style-sanitization-simple.php
 ```
@@ -96,6 +105,7 @@ rm tests/test-matchup-style-sanitization-simple.php
 **Justification:** Hardcoded local path, duplicate functionality
 
 #### 2. Move Verify Scripts to Manual Directory
+
 ```bash
 mkdir -p tests/manual
 mv tests/verify-*.php tests/manual/
@@ -108,16 +118,19 @@ mv tests/verify-*.php tests/manual/
 #### 3. Compare Standalone Test Pairs
 
 For each pair, determine:
+
 - Do they test the same functionality?
 - Does standalone version add unique value?
 - Is standalone version portable?
 
 **Pairs to compare:**
+
 1. `test-export-filtering.php` vs `test-export-filtering-standalone.php`
 2. `test-manual-scenarios.php` vs `test-manual-scenarios-standalone.php`
 3. `test-matchup-sanitization-standalone.php` vs standard version (if exists)
 
 **Decision criteria:**
+
 - If identical: DELETE standalone
 - If standalone tests edge cases: KEEP and document
 - If standalone is for manual testing: MOVE to tests/manual/
@@ -125,16 +138,19 @@ For each pair, determine:
 #### 4. Compare Simple Test Pairs
 
 For each pair, determine:
+
 - Is simple version a subset of full version?
 - Does simple version test different scenarios?
 - Is simple version faster for quick checks?
 
 **Pairs to compare:**
+
 1. `test-progress-simple.php` vs `test-progress-tracking.php`
 2. `test-slot-allocator-simple.php` vs `test-slot-allocator.php`
 3. `test-statistics-simple.php` vs `test-statistics-calculator.php`
 
 **Decision criteria:**
+
 - If subset: DELETE simple version
 - If different focus: KEEP and document purpose
 - If for quick smoke tests: KEEP and document
@@ -143,7 +159,8 @@ For each pair, determine:
 
 **File:** `test-simple.php`
 
-**Action:** 
+**Action:**
+
 - Determine what it tests
 - If generic smoke test: Rename to `test-smoke.php` and document
 - If redundant: DELETE
@@ -203,6 +220,7 @@ php verify-csv-format.php
 - Verifying export formats manually
 - Testing UI interactions
 - Checking WordPress integration
+
 ```
 
 ---

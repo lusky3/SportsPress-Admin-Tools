@@ -1,14 +1,17 @@
 # Roster Upload Implementation Plan
 
 ## Overview
+
 Add CSV/XLSX roster upload functionality to sp_list pages for bulk player list management with team assignments, season handling, and conflict resolution.
 
 ## File Location
+
 Add to Player Modifications module (`modules/class-player-modifications.php`) since it already handles player metadata and email functionality.
 
 ## User Interface
 
 ### Upload Form (on sp_list edit page)
+
 ```php
 // Add meta box to sp_list edit page
 add_action('add_meta_boxes', 'add_roster_upload_meta_box');
@@ -22,9 +25,11 @@ add_action('add_meta_boxes', 'add_roster_upload_meta_box');
 ```
 
 ### Naming Configuration
+
 Reuse Events Management naming logic:
+
 - Include team name (checkbox)
-- Include season (checkbox) 
+- Include season (checkbox)
 - Include league/division (checkbox)
 - Prefix text field
 - Suffix text field
@@ -34,16 +39,20 @@ Reuse Events Management naming logic:
 ## File Format
 
 ### Required Columns
+
 - `name` or `player_name` (required)
 - `email` (optional but recommended for matching)
 - `number` or `jersey_number` (optional)
 
 ### Optional Columns
+
 - `position`
 - `notes`
 
 ### Column Mapping
+
 Use flexible header detection like Events Management:
+
 - Name: name, player_name, full_name
 - Email: email, email_address, player_email
 - Number: number, jersey_number, squad_number
@@ -51,6 +60,7 @@ Use flexible header detection like Events Management:
 ## Processing Workflow
 
 ### 1. File Upload & Validation
+
 ```php
 // Validate file type (.csv, .xlsx)
 // Parse file contents
@@ -59,6 +69,7 @@ Use flexible header detection like Events Management:
 ```
 
 ### 2. Player Matching Strategy (Priority Order)
+
 ```php
 function match_player($row_data, $target_team, $target_season) {
     // 1. Email match (highest priority)
@@ -87,6 +98,7 @@ function match_player($row_data, $target_team, $target_season) {
 ```
 
 ### 3. Conflict Detection
+
 ```php
 function detect_conflicts($player_id, $target_team, $target_season) {
     // Check if player is already on another team's list for same season
@@ -109,7 +121,9 @@ function detect_conflicts($player_id, $target_team, $target_season) {
 ```
 
 ### 4. Preview Interface
+
 Display table showing:
+
 - Row data (name, email, number)
 - Match status (found/create/conflict)
 - Conflict details if any
@@ -118,6 +132,7 @@ Display table showing:
 ### 5. Processing Actions
 
 #### sp_list Management
+
 ```php
 function create_or_update_player_list($team_id, $season_id, $naming_config) {
     // Check if list exists for team+season
@@ -151,6 +166,7 @@ function create_or_update_player_list($team_id, $season_id, $naming_config) {
 ```
 
 #### Player Record Updates
+
 ```php
 function update_player_record($player_id, $team_id, $season_id, $league_id, $jersey_number = null) {
     // Update current team
@@ -190,6 +206,7 @@ function update_player_record($player_id, $team_id, $season_id, $league_id, $jer
 ## Conflict Resolution Interface
 
 ### Manual Review Screen
+
 ```php
 // Show conflicts in expandable sections
 foreach ($conflicts as $conflict) {
@@ -206,6 +223,7 @@ foreach ($conflicts as $conflict) {
 ## Database Operations
 
 ### Helper Functions Needed
+
 ```php
 function find_player_by_email($email)
 function find_player_by_number_and_team($number, $team_id)  
@@ -218,6 +236,7 @@ function update_player_leagues_meta($player_id, $league_id, $season_id, $team_id
 ```
 
 ## Security & Validation
+
 - Capability check: `manage_options` or `edit_sp_lists`
 - Nonce verification for all forms
 - File type validation (.csv, .xlsx only)
@@ -225,6 +244,7 @@ function update_player_leagues_meta($player_id, $league_id, $season_id, $team_id
 - Validate team and season exist
 
 ## Error Handling
+
 - Invalid file format
 - Missing required columns  
 - Player creation failures
@@ -232,12 +252,14 @@ function update_player_leagues_meta($player_id, $league_id, $season_id, $team_id
 - Provide detailed error messages with row numbers
 
 ## Integration Points
+
 - Reuse Events Management naming configuration
 - Leverage Player Registration matching logic
 - Use existing SPAT_Database logging patterns
 - Follow Player Stats Enabler bulk operation patterns
 
 ## Testing Scenarios
+
 1. Upload new roster for new team/season
 2. Update existing roster with jersey numbers
 3. Handle player conflicts (same player, different teams)
@@ -246,6 +268,7 @@ function update_player_leagues_meta($player_id, $league_id, $season_id, $team_id
 6. Large roster files (performance testing)
 
 ## Future Enhancements
+
 - Multi-team upload (team column in CSV)
 - Jersey number-only update mode
 - Export current roster to CSV

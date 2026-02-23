@@ -1,11 +1,13 @@
 # Venue CSV Import Feature - Implementation Plan
 
 ## Overview
+
 Allow importing week-by-week venue availability from CSV files to handle dynamic venue schedules where venues and time slots change weekly.
 
 ## Current Status
 
 ### ✅ Completed
+
 - Created `SPSG_Venue_Schedule_Importer` class with CSV parsing
 - Added `venue_date_availability` property to configuration
 - Added sanitization for date-specific venue availability
@@ -16,21 +18,25 @@ Allow importing week-by-week venue availability from CSV files to handle dynamic
 - Updated slot generation to use date-specific venue availability
 
 ### 🔄 In Progress
+
 - CSV upload interface (UI partially complete)
 - Full venue mapping workflow testing
 
 ## Remaining Implementation Tasks
 
 ### 1. Admin UI - CSV Upload Interface
+
 **Location**: `class-admin.php` - Venues & Times tab
 
 **Components Needed**:
+
 - File upload button for CSV
 - CSV format help text/example
 - Preview table showing parsed data
 - Venue mapping interface
 
 **UI Flow**:
+
 1. User clicks "Import Venue Schedule (CSV)"
 2. File upload dialog appears
 3. After upload, show preview of parsed data
@@ -38,9 +44,11 @@ Allow importing week-by-week venue availability from CSV files to handle dynamic
 5. Confirm and import
 
 ### 2. Venue Mapping Dialog
+
 **Purpose**: Match CSV venue names to existing venues or create new ones
 
 **Features**:
+
 - List all unique venue names from CSV
 - For each venue:
   - Show suggested match (if confidence > 70%)
@@ -50,23 +58,29 @@ Allow importing week-by-week venue availability from CSV files to handle dynamic
 - Bulk actions: "Accept All Suggestions", "Create All New"
 
 ### 3. AJAX Handlers
+
 **New endpoints needed**:
+
 - `spsg_upload_venue_csv` - Handle file upload and parsing
 - `spsg_preview_venue_schedule` - Return parsed data for preview
 - `spsg_import_venue_schedule` - Process venue mapping and save
 
 ### 4. Update Slot Generation Logic
+
 **Files to modify**:
+
 - `class-slot-allocator.php`
 - `class-schedule-engine.php`
 
 **Changes**:
+
 - Check `venue_date_availability` first before `venue_timeslots`
 - For each date, determine which venues are available
 - Use date-specific time slots if available
 - Fall back to global `venue_timeslots` if no date-specific data
 
 **Logic**:
+
 ```php
 function get_available_venues_for_date($date, $config) {
     $available = array();
@@ -103,6 +117,7 @@ function get_available_venues_for_date($date, $config) {
 ### 5. CSV Format Documentation
 
 **Expected Format**:
+
 ```csv
 Week Start Date,Venue Name,Time Slots
 2024-01-01,Arena A,18:00-23:00
@@ -114,11 +129,13 @@ Week Start Date,Venue Name,Time Slots
 ```
 
 **Supported Time Slot Formats**:
+
 - Range: `18:00-23:00` (generates hourly slots: 18:00, 19:00, 20:00, 21:00, 22:00)
 - List: `18:00, 19:00, 20:00` (explicit slots)
 - Single: `18:00` (single slot)
 
 **Notes**:
+
 - Week Start Date must be in YYYY-MM-DD format
 - Week automatically extends 6 days (7-day week)
 - Venue names are matched case-insensitively
@@ -193,12 +210,14 @@ After upload:
 
 ## Files to Create/Modify
 
-### New Files:
+### New Files
+
 - ✅ `includes/class-venue-schedule-importer.php`
 - `docs/VENUE-CSV-IMPORT-PLAN.md` (this file)
 - `docs/VENUE-CSV-FORMAT.md` (user documentation)
 
-### Modified Files:
+### Modified Files
+
 - ✅ `includes/class-schedule-configuration.php`
 - `includes/class-admin.php` (add UI)
 - `includes/class-slot-allocator.php` (update logic)
@@ -207,12 +226,14 @@ After upload:
 - `assets/css/admin.css` (style new UI)
 
 ## Estimated Complexity
+
 - **Backend Logic**: Medium (mostly done)
 - **UI Implementation**: High (complex mapping interface)
 - **Testing**: High (many edge cases)
 - **Total Effort**: 8-12 hours
 
 ## Next Steps
+
 1. Implement basic file upload UI
 2. Add AJAX handlers for CSV processing
 3. Create venue mapping interface

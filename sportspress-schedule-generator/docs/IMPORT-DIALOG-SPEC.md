@@ -1,9 +1,11 @@
 # Import Options Dialog - Technical Specification
 
 ## Overview
+
 Detailed specification for implementing the SportsPress import options dialog, the highest priority missing UI component.
 
 ## Current State
+
 - Simple confirm() dialog with no options
 - No conflict resolution choice
 - No event status selection
@@ -11,6 +13,7 @@ Detailed specification for implementing the SportsPress import options dialog, t
 - No progress feedback during import
 
 ## Target State
+
 - Modal dialog with comprehensive import options
 - Real-time progress tracking
 - Detailed results summary
@@ -143,7 +146,6 @@ Detailed specification for implementing the SportsPress import options dialog, t
 
 ### New AJAX Handler
 
-
 ```php
 // In class-admin.php
 
@@ -196,7 +198,6 @@ public function ajax_get_import_progress() {
 
 ### Modified Import Handler
 
-
 ```php
 // In class-schedule-generator.php - already exists, just needs to be called with options
 
@@ -247,7 +248,6 @@ public function ajax_import_to_sportspress() {
 ## Frontend Implementation
 
 ### JavaScript Module
-
 
 ```javascript
 // In schedule-generator.js
@@ -443,7 +443,6 @@ $('#spsg-import-to-sp').on('click', function() {
 ```
 
 ## CSS Styling
-
 
 ```css
 /* Modal overlay */

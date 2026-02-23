@@ -165,6 +165,7 @@ The following tests should be performed manually:
 ### Dependencies
 
 This implementation depends on:
+
 - Task 1: AJAX handlers (spsg_get_import_dialog_data, spsg_get_import_progress)
 - Task 2: Nonces registered in spsgData
 - Task 3: HTML structure rendered server-side

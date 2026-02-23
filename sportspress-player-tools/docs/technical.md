@@ -17,6 +17,7 @@ SPAT_Plugin_Manager::register_plugin('player_modifications', array(
 ```
 
 **Benefits:**
+
 - Conditional loading based on parent module status
 - Shared resources (database, text helper, admin interface)
 - Centralized settings management
@@ -45,10 +46,12 @@ sportspress-player-tools/
 **Post Type:** `sp_list`
 
 **Taxonomies:**
+
 - `sp_team` - Team assignment (single term)
 - `sp_season` - Season assignment (parent + children)
 
 **Meta Fields:**
+
 - `sp_player` - Player IDs (multiple entries, one per player)
 - `sp_columns` - Display columns array
 - `sp_format` - Display format ('list', 'calendar', 'blocks')
@@ -56,6 +59,7 @@ sportspress-player-tools/
 - `sp_order` - Sort direction ('ASC', 'DESC')
 
 **Example:**
+
 ```php
 // List meta structure
 array(
@@ -83,6 +87,7 @@ sp_list => 111518
 ```
 
 When a new list is created for a team:
+
 1. Previous `sp_list` value is deleted
 2. New list ID is set
 3. Old list remains but is detached
@@ -90,6 +95,7 @@ When a new list is created for a team:
 ### Player Statistics
 
 **Meta Fields:**
+
 - `sp_columns` - Enabled statistic columns
 - `sp_assignments` - League-season-team assignments (string format)
 - `sp_statistics` - Nested array of stat values
@@ -108,6 +114,7 @@ spat_captain => 103396
 ```
 
 **Frontend Display:**
+
 - Filter: `sportspress_list_player_name`
 - Adds `<span class="spat-captain-indicator">C</span>` after captain's name
 - Customizable via `spat_captain_indicator_text` filter
@@ -158,6 +165,7 @@ $name = preg_replace('/\s*\(\d+\)\s*$/', '', $name);
 ```
 
 Examples:
+
 - `(C) Christian Meyer (68)` → `Christian Meyer`
 - `Richard Doweck (4)` → `Richard Doweck`
 
@@ -183,6 +191,7 @@ Uses PHP's `similar_text()` for string similarity comparison.
 ### Create vs Update
 
 **Create Mode:**
+
 ```php
 $list_id = wp_insert_post(array(
     'post_type' => 'sp_list',
@@ -192,6 +201,7 @@ $list_id = wp_insert_post(array(
 ```
 
 **Update Mode:**
+
 ```php
 // Find existing list
 $existing = get_posts(array(
@@ -262,32 +272,39 @@ $statistics = get_posts(array(
 ### Actions
 
 **admin_menu**
+
 - Adds Tools → Upload Player Lists page
 - Hook: `add_management_page()`
 
 **admin_enqueue_scripts**
+
 - Loads Select2 on tools page and sp_list edit page
 - Conditional based on `spat_use_select2` option
 
 **admin_post_spt_upload_list_csv**
+
 - Handles CSV file upload
 - Stores data in options table
 
 **admin_post_spt_process_list_batch**
+
 - Processes batch list creation/update
 - Redirects to sp_list page with success notice
 
 **all_admin_notices**
+
 - Injects "Upload Player Lists" button on sp_list page
 - Uses JavaScript to add button after page title
 
 **sportspress_list_player_name**
+
 - Adds captain indicator to player names
 - Filter applied in `class-player-modifications.php`
 
 ### Filters
 
 **spat_captain_indicator_text**
+
 - Customize captain indicator text
 - Default: "C"
 - Example: `add_filter('spat_captain_indicator_text', function() { return '★'; });`
@@ -448,21 +465,25 @@ Check logs at `/wp-content/debug.log`
 ### Common Issues
 
 **CSV not parsing:**
+
 - Check file encoding (UTF-8)
 - Verify column headers (case-insensitive)
 - Look for empty rows
 
 **Players not matching:**
+
 - Review fuzzy matching scores
 - Check for special characters
 - Verify player records exist
 
 **Update not finding list:**
+
 - Confirm team taxonomy is set
 - Confirm season taxonomy is set
 - Check both must match exactly
 
 **Statistics not displaying:**
+
 - Verify `sp_leagues` has actual team IDs (not -1)
 - Check `sp_columns` includes stat keys
 - Ensure `sp_assignments` are created
@@ -470,6 +491,7 @@ Check logs at `/wp-content/debug.log`
 ## Version History
 
 ### 1.0.0
+
 - Initial release
 - Batch list creator with CSV upload
 - Player statistics enabler

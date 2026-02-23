@@ -7,11 +7,13 @@ The sanitization for home/away preferences was already implemented in Phase 2 an
 ## Implementation Details
 
 ### Location
+
 - **File**: `includes/class-schedule-configuration.php`
 - **Method**: `sanitize_home_away_preferences()` (line 635)
 - **Called from**: `sanitize()` method (line 525)
 
 ### Implementation
+
 ```php
 private function sanitize_home_away_preferences($preferences) {
     $sanitized = array();
@@ -56,6 +58,7 @@ All 8 tests passed successfully:
 ✓ Test 8: Integration with full configuration works
 
 ### Test File
+
 - **Location**: `tests/test-home-away-sanitization.php`
 - **Run command**: `php tests/test-home-away-sanitization.php`
 

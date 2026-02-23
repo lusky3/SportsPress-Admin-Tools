@@ -11,6 +11,7 @@
 This audit identified **unused code and files** in the sportspress-schedule-generator plugin that can be safely removed or archived. The findings are categorized by severity and impact.
 
 ### Key Findings
+
 - **3 non-existent model classes** referenced in autoloader
 - **1 empty documentation file**
 - **2 outdated planning documents** (superseded by implementation)
@@ -19,6 +20,7 @@ This audit identified **unused code and files** in the sportspress-schedule-gene
 - **Multiple verification markdown files** in tests directory
 
 ### Recommendations
+
 - Remove references to non-existent model classes
 - Archive or remove completed task documents
 - Consolidate redundant test files
@@ -41,17 +43,20 @@ This audit identified **unused code and files** in the sportspress-schedule-gene
 ```
 
 **Evidence:**
+
 - File search confirms these files don't exist in `includes/models/` directory
 - Only `class-game.php` exists in the models directory
 - No code instantiates these classes (`new SPSG_Team`, etc.)
 - No imports or requires for these files
 
-**Impact:** 
+**Impact:**
+
 - Low runtime impact (autoloader only loads on demand)
 - Creates confusion for developers
 - May cause issues if someone tries to use these classes
 
-**Recommendation:** 
+**Recommendation:**
+
 - **Remove** these three lines from the autoloader class map
 - If these classes are planned for future use, add TODO comment instead
 
@@ -66,12 +71,14 @@ This audit identified **unused code and files** in the sportspress-schedule-gene
 **Issue:** File exists but is completely empty (0 bytes)
 
 **Evidence:**
+
 - File listed in directory structure
 - `readFile` returned: "currently empty or otherwise does not exist on disk"
 
 **Impact:** Minimal - just clutter
 
-**Recommendation:** 
+**Recommendation:**
+
 - **Delete** the empty file
 - If content is planned, create with TODO header
 
@@ -82,12 +89,14 @@ This audit identified **unused code and files** in the sportspress-schedule-gene
 ### 3.1 Implementation Planning Documents (MEDIUM PRIORITY)
 
 **Files:**
+
 - `docs/MISSING-UI-IMPLEMENTATION-PLAN.md` (500+ lines)
 - `docs/QUICK-START-IMPLEMENTATION.md` (400+ lines)
 
 **Issue:** These are detailed planning documents for features that have been implemented
 
 **Evidence:**
+
 - Documents describe "missing UI components" to be implemented
 - Tasks describe import dialog, configuration cloning, export filtering
 - Current code in `includes/class-admin.php` shows these features exist:
@@ -98,12 +107,14 @@ This audit identified **unused code and files** in the sportspress-schedule-gene
 - Documents dated for "Sprint 1, 2, 3" implementation phases
 - Phase 2 marked as "COMPLETE" in task files
 
-**Impact:** 
+**Impact:**
+
 - Can confuse developers about what's implemented vs planned
 - Takes up space and creates maintenance burden
 - May lead to duplicate work
 
 **Recommendation:**
+
 - **Archive** to `docs/archive/` or `docs/historical/` folder
 - Add note at top: "HISTORICAL - Features described here have been implemented"
 - Keep for reference but clearly mark as outdated
@@ -116,6 +127,7 @@ This audit identified **unused code and files** in the sportspress-schedule-gene
 ### 4.1 Phase 2 Task Documents (LOW PRIORITY)
 
 **Files in `tasks/` directory:**
+
 - `PHASE2-COMPLETE.md`
 - `PHASE2-FINAL-STATUS.md`
 - `PHASE2-PROGRESS.md`
@@ -126,16 +138,19 @@ This audit identified **unused code and files** in the sportspress-schedule-gene
 **Issue:** Multiple documents tracking Phase 2 completion with overlapping information
 
 **Evidence:**
+
 - All documents describe Phase 2 as "complete"
 - Significant content overlap between files
 - PHASE2-COMPLETE.md is comprehensive (500+ lines)
 - Other files add minimal unique value
 
-**Impact:** 
+**Impact:**
+
 - Redundancy and maintenance burden
 - Confusion about which document is authoritative
 
 **Recommendation:**
+
 - **Consolidate** into single `PHASE2-COMPLETE.md` file
 - Delete redundant files: PROGRESS, SUMMARY, FINAL-STATUS
 - Keep README if it has unique setup/context info
@@ -144,6 +159,7 @@ This audit identified **unused code and files** in the sportspress-schedule-gene
 ### 4.2 Individual Task Completion Documents
 
 **Files in `tasks/` directory:**
+
 - `TASK-1-COMPLETE.md`
 - `TASK-2-COMPLETE.md`
 - `TASK-3-COMPLETE.md`
@@ -158,15 +174,18 @@ This audit identified **unused code and files** in the sportspress-schedule-gene
 **Issue:** 10 individual task completion documents (historical records)
 
 **Evidence:**
+
 - All marked as "COMPLETE"
 - Describe implementation details for finished features
 - Useful for historical reference but not active development
 
-**Impact:** 
+**Impact:**
+
 - Clutter in tasks directory
 - Not actively referenced by code
 
 **Recommendation:**
+
 - **Archive** to `tasks/archive/` or `docs/historical/tasks/`
 - Keep if they provide valuable implementation notes
 - Delete if git commit history is sufficient
@@ -179,17 +198,20 @@ This audit identified **unused code and files** in the sportspress-schedule-gene
 **Issue:** 1,000+ line document describing tasks for features that appear to be implemented
 
 **Evidence:**
+
 - Describes 26 tasks across 3 sprints
 - All tasks marked as "⬜ Not Started"
 - Features described (import dialog, cloning, export filters) exist in current code
 - Contradicts PHASE2-COMPLETE.md which says features are done
 
 **Impact:**
+
 - Major confusion about project status
 - May lead to duplicate work
 - Unclear if this is outdated or represents future work
 
 **Recommendation:**
+
 - **Urgent:** Determine if tasks are actually complete
 - If complete: Archive with "HISTORICAL" marker
 - If incomplete: Update status checkboxes to reflect reality
@@ -202,6 +224,7 @@ This audit identified **unused code and files** in the sportspress-schedule-gene
 ### 5.1 Verification Markdown Files (LOW PRIORITY)
 
 **Files in `tests/` directory:**
+
 - `HOME-AWAY-SANITIZATION-VERIFICATION.md`
 - `HOME-AWAY-UI-VERIFICATION.md`
 - `INTER-DIVISION-COMPLETE-VERIFICATION.md`
@@ -216,15 +239,18 @@ This audit identified **unused code and files** in the sportspress-schedule-gene
 **Issue:** 10 verification/summary documents in tests directory
 
 **Evidence:**
+
 - These are test reports, not test code
 - Document verification of completed features
 - Useful for historical record but not for running tests
 
 **Impact:**
+
 - Clutter in tests directory
 - May confuse developers looking for actual test files
 
 **Recommendation:**
+
 - **Move** to `tests/reports/` or `docs/test-reports/` subdirectory
 - Keep for compliance/audit purposes
 - Consider consolidating into single TEST-VERIFICATION-REPORT.md
@@ -237,6 +263,7 @@ This audit identified **unused code and files** in the sportspress-schedule-gene
 ### 6.1 Duplicate Test Files (REVIEW NEEDED)
 
 **Patterns observed:**
+
 - `test-matchup-style-sanitization.php` vs `test-matchup-style-sanitization-simple.php`
 - `test-slot-allocator.php` vs `test-slot-allocator-simple.php`
 - `test-statistics-calculator.php` vs `test-statistics-simple.php`
@@ -247,16 +274,19 @@ This audit identified **unused code and files** in the sportspress-schedule-gene
 **Issue:** Multiple test files with similar names, possibly testing same functionality
 
 **Evidence:**
+
 - Naming pattern suggests "simple" or "standalone" versions
 - May indicate refactoring or different test approaches
 - Without reading each file, unclear if both are needed
 
 **Impact:**
+
 - Potential test redundancy
 - Maintenance burden (updating tests in multiple places)
 - Longer test suite execution time
 
 **Recommendation:**
+
 - **Review** each pair to determine if both are needed
 - If "simple" versions are subsets: Delete and keep comprehensive version
 - If "standalone" versions are for isolated testing: Keep but document purpose
@@ -266,6 +296,7 @@ This audit identified **unused code and files** in the sportspress-schedule-gene
 ### 6.2 Verification PHP Scripts
 
 **Files:**
+
 - `verify-ajax-handlers.php`
 - `verify-csv-format.php`
 - `verify-inter-division-implementation.php`
@@ -277,15 +308,18 @@ This audit identified **unused code and files** in the sportspress-schedule-gene
 **Issue:** 7 verification scripts (not standard PHPUnit tests)
 
 **Evidence:**
+
 - Named "verify-*" instead of "test-*"
 - May be one-off verification scripts
 - Unclear if they're part of regular test suite
 
 **Impact:**
+
 - May not run with standard test runner
 - Unclear maintenance status
 
 **Recommendation:**
+
 - **Review** to determine if still needed
 - If one-time verification: Delete or move to `tests/manual/`
 - If ongoing: Rename to `test-*` pattern and integrate with test suite
@@ -298,21 +332,25 @@ This audit identified **unused code and files** in the sportspress-schedule-gene
 ### 7.1 Potentially Outdated Docs
 
 **Files in `docs/` directory:**
+
 - `IMPORT-DIALOG-SPEC.md` - May be superseded by implementation
 - `PROGRESS-TRACKING-API.md` - May be outdated if API changed
 
 **Issue:** Unclear if these specs match current implementation
 
 **Evidence:**
+
 - Specs typically written before implementation
 - Implementation may have diverged from spec
 - No clear "last updated" dates
 
 **Impact:**
+
 - May mislead developers if outdated
 - Maintenance burden if not kept in sync
 
 **Recommendation:**
+
 - **Review** each spec against current code
 - Add "Last Verified: [date]" header to each doc
 - Update or mark as "HISTORICAL SPEC" if outdated
@@ -339,24 +377,24 @@ This audit identified **unused code and files** in the sportspress-schedule-gene
 
 ### Phase 2: Medium Priority ✅ COMPLETE
 
-4. **✅ Archive Planning Docs** (10 minutes) - DONE
+1. **✅ Archive Planning Docs** (10 minutes) - DONE
    - Created `docs/archive/` directory
    - Moved: `MISSING-UI-IMPLEMENTATION-PLAN.md`, `QUICK-START-IMPLEMENTATION.md`
    - Added README explaining archived status
 
-5. **✅ Consolidate Phase 2 Docs** (20 minutes) - DONE
+2. **✅ Consolidate Phase 2 Docs** (20 minutes) - DONE
    - Consolidated all phase docs into `docs/DEVELOPMENT-HISTORY.md`
    - Moved all PHASE2-*.md files to `tasks/archive/`
    - Created comprehensive development timeline
 
-6. **✅ Organize Test Reports** (15 minutes) - DONE
+3. **✅ Organize Test Reports** (15 minutes) - DONE
    - Created `tests/reports/` directory
    - Moved all verification .md files there
    - Created `tests/reports/README.md` explaining purpose
 
 ### Phase 3: Test File Cleanup ✅ COMPLETE
 
-7. **✅ Review Test Files** (2 hours) - COMPLETE
+1. **✅ Review Test Files** (2 hours) - COMPLETE
    - ✅ Created `TEST-CLEANUP-PLAN.md` with detailed analysis
    - ✅ Moved 7 verify-*.php scripts to `tests/manual/`
    - ✅ Created `tests/manual/README.md`
@@ -366,12 +404,12 @@ This audit identified **unused code and files** in the sportspress-schedule-gene
    - ✅ Deleted 8 redundant test files (5 simple + 3 standalone)
    - ✅ Updated `tests/README.md` with test file organization
 
-8. **✅ Archive Task Completion Docs** (15 minutes) - DONE
+2. **✅ Archive Task Completion Docs** (15 minutes) - DONE
    - Created `tasks/archive/` directory
    - Moved all TASK-*-COMPLETE.md files
    - Consolidated into `docs/DEVELOPMENT-HISTORY.md`
 
-9. **✅ Verify Documentation** (1 hour) - DONE
+3. **✅ Verify Documentation** (1 hour) - DONE
    - Created `docs/INDEX.md` for navigation
    - Created `docs/DEVELOPMENT-HISTORY.md` consolidating all phases
    - Updated README.md with new structure
@@ -379,7 +417,7 @@ This audit identified **unused code and files** in the sportspress-schedule-gene
 
 ### Phase 4: Optional (Future)
 
-10. **Create Documentation Index** (30 minutes)
+1. **Create Documentation Index** (30 minutes)
     - Create `docs/INDEX.md`
     - Categorize all documentation
     - Mark active vs historical
@@ -390,16 +428,19 @@ This audit identified **unused code and files** in the sportspress-schedule-gene
 ## Estimated Space Savings
 
 ### Files to Delete
+
 - 1 empty file: 0 KB
 - 3 autoloader lines: negligible
 
 ### Files to Archive (not delete)
+
 - Planning docs: ~50 KB
 - Task completion docs: ~100 KB
 - Test reports: ~75 KB
 - **Total:** ~225 KB (minimal but reduces clutter)
 
 ### Potential Test File Reduction
+
 - If 6 redundant test files removed: ~30-60 KB
 - More importantly: Reduced test execution time
 
@@ -408,15 +449,18 @@ This audit identified **unused code and files** in the sportspress-schedule-gene
 ## Risk Assessment
 
 ### Low Risk Actions
+
 - Removing non-existent class references (no runtime impact)
 - Deleting empty files (no impact)
 - Archiving completed task docs (historical only)
 
 ### Medium Risk Actions
+
 - Deleting test files (must verify no unique coverage)
 - Updating documentation (must ensure accuracy)
 
 ### High Risk Actions
+
 - None identified (all recommendations are safe)
 
 ---
@@ -457,6 +501,7 @@ Most other findings are **organizational improvements** that will reduce clutter
 **Total Estimated Cleanup Time:** 3-4 hours across all phases
 
 **Primary Benefits:**
+
 - Clearer project status
 - Reduced developer confusion
 - Better organized documentation
@@ -469,6 +514,7 @@ Most other findings are **organizational improvements** that will reduce clutter
 ## Appendix: File Inventory
 
 ### Active Code Files (Keep)
+
 - Main plugin file: `sportspress-schedule-generator.php`
 - Core classes: 15 files in `includes/`
 - Constraint classes: 4 files in `includes/constraints/`
@@ -479,6 +525,7 @@ Most other findings are **organizational improvements** that will reduce clutter
 - Tests: PHP test files (review for redundancy)
 
 ### Active Documentation (Keep)
+
 - `README.md` - Main documentation
 - `docs/CONFIGURATION-PROPERTIES.md` - Active reference
 - `docs/PRESET-SYSTEM.md` - Active reference
@@ -486,11 +533,13 @@ Most other findings are **organizational improvements** that will reduce clutter
 - `docs/PHASE3-USER-GUIDE.md` - Active guide
 
 ### Historical Documentation (Archive)
+
 - Planning documents (2 files)
 - Task completion documents (16 files)
 - Test verification reports (10 files)
 
 ### Files to Delete
+
 - Empty documentation file (1 file)
 - Non-existent class references (3 lines of code)
 

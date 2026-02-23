@@ -7,6 +7,7 @@ Successfully implemented the enhanced matchup generation system for the SportsPr
 ## Completed Subtasks
 
 ### 1.1 Create SPSG_Matchup_Generator class ✓
+
 - Created `includes/class-matchup-generator.php`
 - Implemented `generate()` method to orchestrate matchup generation
 - Implemented `round_robin()` algorithm for single and double round-robin
@@ -16,6 +17,7 @@ Successfully implemented the enhanced matchup generation system for the SportsPr
 - **Requirements met: 1.1, 1.2, 1.3**
 
 ### 1.2 Implement inter-division matchup generation ✓
+
 - Created `generate_inter_division_matchups()` method
 - Balances games across teams in each division
 - Respects configured game counts per division pair from config
@@ -23,6 +25,7 @@ Successfully implemented the enhanced matchup generation system for the SportsPr
 - **Requirements met: 2.1, 2.2, 2.3**
 
 ### 1.3 Implement home/away assignment ✓
+
 - Created `assign_home_away()` method with three strategies:
   - Random assignment (when balance disabled)
   - Double round-robin with home/away swap
@@ -35,6 +38,7 @@ Successfully implemented the enhanced matchup generation system for the SportsPr
 - **Note: Home/away are designations only, all games at neutral venues**
 
 ### 1.4 Integrate matchup generator into schedule engine ✓
+
 - Updated `SPSG_Schedule_Engine::generate_matchups()` to use new generator
 - Replaced simple round-robin with full matchup generator
 - Added matchup validation (total matchups equal games_per_team)
@@ -79,6 +83,7 @@ Successfully implemented the enhanced matchup generation system for the SportsPr
 ### Data Structures
 
 Matchup objects contain:
+
 ```php
 array(
     'team_a' => array/object,      // First team
@@ -93,6 +98,7 @@ array(
 ### Testing
 
 Created comprehensive test suite (`tests/test-matchup-generator.php`) covering:
+
 - Single round-robin generation (4 teams, 6 matchups)
 - Double round-robin generation (4 teams, 12 matchups)
 - Custom matchup generation (4 teams, 8 games each)
@@ -123,6 +129,7 @@ Created comprehensive test suite (`tests/test-matchup-generator.php`) covering:
 ## Integration Points
 
 The matchup generator integrates with:
+
 - **SPSG_Schedule_Configuration**: Reads matchup_style, games_per_team, inter_division_games, distribution_rules
 - **SPSG_Schedule_Engine**: Called during schedule generation to create matchups
 - **Constraint System**: Generated matchups are validated by constraints during slot allocation
@@ -130,6 +137,7 @@ The matchup generator integrates with:
 ## Next Steps
 
 Task 1 is complete. The next task (Task 2: Improved Slot Allocation) will:
+
 - Create SPSG_Slot_Allocator class
 - Implement backtracking algorithm
 - Add slot scoring and validation

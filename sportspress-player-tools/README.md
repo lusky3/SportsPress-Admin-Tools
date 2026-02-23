@@ -1,6 +1,7 @@
 # SportsPress Player Tools
 
-Advanced player management tools for SportsPress. Requires SportsPress Admin Tools parent plugin.
+Advanced player management tools for SportsPress. Requires
+SportsPress Admin Tools parent plugin.
 
 ## Features
 
@@ -96,16 +97,19 @@ Petes,Ryan Kuzyk
 ```
 
 Names are automatically cleaned:
+
 - `(C) Christian Meyer (68)` → `Christian Meyer`
 - `Richard Doweck (4)` → `Richard Doweck`
 
 ## List Name Templates
 
 Use placeholders:
+
 - `{team}` → Team name
 - `{season}` → Season name
 
 Examples:
+
 - `{team} Roster` → "Kings Roster"
 - `{team} {season}` → "Kings W2025-26"
 
