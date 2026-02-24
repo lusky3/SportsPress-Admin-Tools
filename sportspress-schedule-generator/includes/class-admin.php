@@ -3055,29 +3055,10 @@ class SPSG_Admin
             return;
         }
 
-        // Collect unique divisions, teams, and venues for filters
-        $divisions = array();
-        $teams = array();
-        $venues = array();
-
-        foreach ($schedule as $game) {
-            if (!empty($game['division']['name']) && !in_array($game['division']['name'], $divisions)) {
-                $divisions[] = $game['division']['name'];
-            }
-            if (!empty($game['home_team']['name']) && !in_array($game['home_team']['name'], $teams)) {
-                $teams[] = $game['home_team']['name'];
-            }
-            if (!empty($game['away_team']['name']) && !in_array($game['away_team']['name'], $teams)) {
-                $teams[] = $game['away_team']['name'];
-            }
-            if (!empty($game['venue']['name']) && !in_array($game['venue']['name'], $venues)) {
-                $venues[] = $game['venue']['name'];
-            }
-        }
-
-        sort($divisions);
-        sort($teams);
-        sort($venues);
+        $filter_data = $this->collect_schedule_filter_data($schedule);
+        $divisions = $filter_data['divisions'];
+        $teams = $filter_data['teams'];
+        $venues = $filter_data['venues'];
 
 ?>
         <div class="spsg-schedule-preview" id="spsg-schedule-preview-container">
@@ -3137,186 +3118,7 @@ class SPSG_Admin
                 </div>
             </div>
             
-            <!-- Statistics Panel -->
-            <?php if ($stats): ?>
-            <div class="spsg-stats-panel">
-                <div class="spsg-stat">
-                    <span class="spsg-stat-label"><?php _e('Total Games', 'sportspress-schedule-generator'); ?></span>
-                    <span class="spsg-stat-value"><?php echo esc_html($stats['total_games'] ?? count($schedule)); ?></span>
-                </div>
-                <div class="spsg-stat">
-                    <span class="spsg-stat-label"><?php _e('Games Per Team', 'sportspress-schedule-generator'); ?></span>
-                    <span class="spsg-stat-value">
-                        <?php
-            if (isset($stats['games_per_team'])) {
-                printf('%d - %d (avg: %.1f)',
-                    $stats['games_per_team']['min'],
-                    $stats['games_per_team']['max'],
-                    $stats['games_per_team']['avg']
-                );
-            }
-            else {
-                echo '-';
-            }
-?>
-                    </span>
-                </div>
-                <div class="spsg-stat">
-                    <span class="spsg-stat-label"><?php _e('Venues Used', 'sportspress-schedule-generator'); ?></span>
-                    <span class="spsg-stat-value"><?php echo esc_html(count($venues)); ?></span>
-                </div>
-                <div class="spsg-stat">
-                    <span class="spsg-stat-label"><?php _e('Generation Time', 'sportspress-schedule-generator'); ?></span>
-                    <span class="spsg-stat-value"><?php echo esc_html(number_format($stats['generation_time'] ?? 0, 2)); ?>s</span>
-                </div>
-            </div>
-            
-            <!-- Detailed Statistics -->
-            <div class="spsg-detailed-stats">
-                <h3><?php _e('Detailed Statistics', 'sportspress-schedule-generator'); ?></h3>
-                
-                <div class="spsg-stats-grid">
-                    <!-- Venue Utilization -->
-                    <?php if (!empty($stats['venue_utilization'])): ?>
-                    <div class="spsg-stat-section">
-                        <h4><?php _e('Venue Utilization', 'sportspress-schedule-generator'); ?></h4>
-                        <table class="widefat">
-                            <thead>
-                                <tr>
-                                    <th><?php _e('Venue', 'sportspress-schedule-generator'); ?></th>
-                                    <th><?php _e('Games', 'sportspress-schedule-generator'); ?></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($stats['venue_utilization'] as $venue_id => $venue_data): ?>
-                                <tr>
-                                    <td><?php echo esc_html($venue_data['name'] ?? $venue_id); ?></td>
-                                    <td><?php echo esc_html($venue_data['games'] ?? 0); ?></td>
-                                </tr>
-                                <?php
-                endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                    <?php
-            endif; ?>
-                    
-                    <!-- Home/Away Balance -->
-                    <?php if (!empty($stats['home_away_balance'])): ?>
-                    <div class="spsg-stat-section">
-                        <h4><?php _e('Home/Away Balance', 'sportspress-schedule-generator'); ?></h4>
-                        <table class="widefat">
-                            <thead>
-                                <tr>
-                                    <th><?php _e('Team', 'sportspress-schedule-generator'); ?></th>
-                                    <th><?php _e('Home', 'sportspress-schedule-generator'); ?></th>
-                                    <th><?php _e('Away', 'sportspress-schedule-generator'); ?></th>
-                                    <th><?php _e('Balance', 'sportspress-schedule-generator'); ?></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($stats['home_away_balance'] as $team_id => $balance):
-                    $team_name = $balance['team_name'] ?? $team_id;
-                    $home = $balance['home'] ?? 0;
-                    $away = $balance['away'] ?? 0;
-                    $diff = abs($home - $away);
-                    $balance_class = $diff > 2 ? 'spsg-imbalance-warning' : '';
-?>
-                                <tr class="<?php echo esc_attr($balance_class); ?>">
-                                    <td><?php echo esc_html($team_name); ?></td>
-                                    <td><?php echo esc_html($home); ?></td>
-                                    <td><?php echo esc_html($away); ?></td>
-                                    <td>
-                                        <?php if ($diff === 0): ?>
-                                            <span class="spsg-balance-good">✓ <?php _e('Balanced', 'sportspress-schedule-generator'); ?></span>
-                                        <?php
-                    elseif ($diff <= 2): ?>
-                                            <span class="spsg-balance-ok">± <?php echo esc_html($diff); ?></span>
-                                        <?php
-                    else: ?>
-                                            <span class="spsg-balance-warning">⚠ ± <?php echo esc_html($diff); ?></span>
-                                        <?php
-                    endif; ?>
-                                    </td>
-                                </tr>
-                                <?php
-                endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                    <?php
-            endif; ?>
-                    
-                    <!-- Time Slot Distribution -->
-                    <?php if (!empty($stats['time_slot_distribution'])): ?>
-                    <div class="spsg-stat-section">
-                        <h4><?php _e('Time Slot Distribution', 'sportspress-schedule-generator'); ?></h4>
-                        <table class="widefat">
-                            <thead>
-                                <tr>
-                                    <th><?php _e('Time Slot', 'sportspress-schedule-generator'); ?></th>
-                                    <th><?php _e('Games', 'sportspress-schedule-generator'); ?></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($stats['time_slot_distribution'] as $timeslot => $count): ?>
-                                <tr>
-                                    <td><?php echo esc_html($timeslot); ?></td>
-                                    <td><?php echo esc_html($count); ?></td>
-                                </tr>
-                                <?php
-                endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                    <?php
-            endif; ?>
-                    
-                    <!-- Day Distribution -->
-                    <?php if (!empty($stats['day_distribution'])): ?>
-                    <div class="spsg-stat-section">
-                        <h4><?php _e('Day Distribution', 'sportspress-schedule-generator'); ?></h4>
-                        <table class="widefat">
-                            <thead>
-                                <tr>
-                                    <th><?php _e('Day', 'sportspress-schedule-generator'); ?></th>
-                                    <th><?php _e('Games', 'sportspress-schedule-generator'); ?></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($stats['day_distribution'] as $day => $count): ?>
-                                <tr>
-                                    <td><?php echo esc_html($day); ?></td>
-                                    <td><?php echo esc_html($count); ?></td>
-                                </tr>
-                                <?php
-                endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                    <?php
-            endif; ?>
-                </div>
-                
-                <!-- Imbalances and Issues -->
-                <?php if (!empty($stats['imbalances'])): ?>
-                <div class="spsg-issues-panel">
-                    <h4><?php _e('Issues & Imbalances', 'sportspress-schedule-generator'); ?></h4>
-                    <ul class="spsg-issues-list">
-                        <?php foreach ($stats['imbalances'] as $issue): ?>
-                        <li class="spsg-issue-<?php echo esc_attr($issue['severity'] ?? 'info'); ?>">
-                            <span class="dashicons dashicons-warning"></span>
-                            <?php echo esc_html($issue['message']); ?>
-                        </li>
-                        <?php
-                endforeach; ?>
-                    </ul>
-                </div>
-                <?php
-            endif; ?>
-            </div>
-            <?php
-        endif; ?>
+            <?php $this->render_preview_stats($stats, $schedule, $venues); ?>
             
             <!-- Filters -->
             <div class="spsg-preview-filters">
@@ -3394,6 +3196,207 @@ class SPSG_Admin
             
             <input type="hidden" id="spsg-current-schedule-id" value="<?php echo esc_attr($schedule_id); ?>" />
         </div>
+        <?php
+    }
+
+    /**
+     * Collect unique divisions, teams, and venues from schedule for filter dropdowns
+     */
+    private function collect_schedule_filter_data($schedule)
+    {
+        $divisions = array();
+        $teams = array();
+        $venues = array();
+
+        foreach ($schedule as $game) {
+            if (!empty($game['division']['name']) && !in_array($game['division']['name'], $divisions)) {
+                $divisions[] = $game['division']['name'];
+            }
+            if (!empty($game['home_team']['name']) && !in_array($game['home_team']['name'], $teams)) {
+                $teams[] = $game['home_team']['name'];
+            }
+            if (!empty($game['away_team']['name']) && !in_array($game['away_team']['name'], $teams)) {
+                $teams[] = $game['away_team']['name'];
+            }
+            if (!empty($game['venue']['name']) && !in_array($game['venue']['name'], $venues)) {
+                $venues[] = $game['venue']['name'];
+            }
+        }
+
+        sort($divisions);
+        sort($teams);
+        sort($venues);
+
+        return array('divisions' => $divisions, 'teams' => $teams, 'venues' => $venues);
+    }
+
+    /**
+     * Render the statistics panels (summary + detailed) for schedule preview
+     */
+    private function render_preview_stats($stats, $schedule, $venues)
+    {
+        if (!$stats) {
+            return;
+        }
+        ?>
+            <!-- Statistics Panel -->
+            <div class="spsg-stats-panel">
+                <div class="spsg-stat">
+                    <span class="spsg-stat-label"><?php _e('Total Games', 'sportspress-schedule-generator'); ?></span>
+                    <span class="spsg-stat-value"><?php echo esc_html($stats['total_games'] ?? count($schedule)); ?></span>
+                </div>
+                <div class="spsg-stat">
+                    <span class="spsg-stat-label"><?php _e('Games Per Team', 'sportspress-schedule-generator'); ?></span>
+                    <span class="spsg-stat-value">
+                        <?php
+                        if (isset($stats['games_per_team'])) {
+                            printf('%d - %d (avg: %.1f)',
+                                $stats['games_per_team']['min'],
+                                $stats['games_per_team']['max'],
+                                $stats['games_per_team']['avg']
+                            );
+                        } else {
+                            echo '-';
+                        }
+                        ?>
+                    </span>
+                </div>
+                <div class="spsg-stat">
+                    <span class="spsg-stat-label"><?php _e('Venues Used', 'sportspress-schedule-generator'); ?></span>
+                    <span class="spsg-stat-value"><?php echo esc_html(count($venues)); ?></span>
+                </div>
+                <div class="spsg-stat">
+                    <span class="spsg-stat-label"><?php _e('Generation Time', 'sportspress-schedule-generator'); ?></span>
+                    <span class="spsg-stat-value"><?php echo esc_html(number_format($stats['generation_time'] ?? 0, 2)); ?>s</span>
+                </div>
+            </div>
+            
+            <!-- Detailed Statistics -->
+            <div class="spsg-detailed-stats">
+                <h3><?php _e('Detailed Statistics', 'sportspress-schedule-generator'); ?></h3>
+                
+                <div class="spsg-stats-grid">
+                    <?php
+                    $this->render_stats_simple_table('venue_utilization', $stats, __('Venue Utilization', 'sportspress-schedule-generator'), __('Venue', 'sportspress-schedule-generator'), __('Games', 'sportspress-schedule-generator'));
+                    $this->render_home_away_balance_table($stats);
+                    $this->render_stats_distribution_table('time_slot_distribution', $stats, __('Time Slot Distribution', 'sportspress-schedule-generator'), __('Time Slot', 'sportspress-schedule-generator'));
+                    $this->render_stats_distribution_table('day_distribution', $stats, __('Day Distribution', 'sportspress-schedule-generator'), __('Day', 'sportspress-schedule-generator'));
+                    ?>
+                </div>
+                
+                <?php $this->render_imbalances_panel($stats); ?>
+            </div>
+        <?php
+    }
+
+    /**
+     * Render a simple two-column stats table (venue utilization style)
+     */
+    private function render_stats_simple_table($stat_key, $stats, $title, $col1_label, $col2_label)
+    {
+        if (empty($stats[$stat_key])) {
+            return;
+        }
+        ?>
+                    <div class="spsg-stat-section">
+                        <h4><?php echo esc_html($title); ?></h4>
+                        <table class="widefat">
+                            <thead>
+                                <tr>
+                                    <th><?php echo esc_html($col1_label); ?></th>
+                                    <th><?php echo esc_html($col2_label); ?></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($stats[$stat_key] as $key => $data): ?>
+                                <tr>
+                                    <td><?php echo esc_html(is_array($data) ? ($data['name'] ?? $key) : $key); ?></td>
+                                    <td><?php echo esc_html(is_array($data) ? ($data['games'] ?? 0) : $data); ?></td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+        <?php
+    }
+
+    /**
+     * Render a distribution stats table (time slot, day)
+     */
+    private function render_stats_distribution_table($stat_key, $stats, $title, $col1_label)
+    {
+        $this->render_stats_simple_table($stat_key, $stats, $title, $col1_label, __('Games', 'sportspress-schedule-generator'));
+    }
+
+    /**
+     * Render the home/away balance table
+     */
+    private function render_home_away_balance_table($stats)
+    {
+        if (empty($stats['home_away_balance'])) {
+            return;
+        }
+        ?>
+                    <div class="spsg-stat-section">
+                        <h4><?php _e('Home/Away Balance', 'sportspress-schedule-generator'); ?></h4>
+                        <table class="widefat">
+                            <thead>
+                                <tr>
+                                    <th><?php _e('Team', 'sportspress-schedule-generator'); ?></th>
+                                    <th><?php _e('Home', 'sportspress-schedule-generator'); ?></th>
+                                    <th><?php _e('Away', 'sportspress-schedule-generator'); ?></th>
+                                    <th><?php _e('Balance', 'sportspress-schedule-generator'); ?></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($stats['home_away_balance'] as $team_id => $balance):
+                                    $team_name = $balance['team_name'] ?? $team_id;
+                                    $home = $balance['home'] ?? 0;
+                                    $away = $balance['away'] ?? 0;
+                                    $diff = abs($home - $away);
+                                    $balance_class = $diff > 2 ? 'spsg-imbalance-warning' : '';
+                                ?>
+                                <tr class="<?php echo esc_attr($balance_class); ?>">
+                                    <td><?php echo esc_html($team_name); ?></td>
+                                    <td><?php echo esc_html($home); ?></td>
+                                    <td><?php echo esc_html($away); ?></td>
+                                    <td>
+                                        <?php if ($diff === 0): ?>
+                                            <span class="spsg-balance-good">✓ <?php _e('Balanced', 'sportspress-schedule-generator'); ?></span>
+                                        <?php elseif ($diff <= 2): ?>
+                                            <span class="spsg-balance-ok">± <?php echo esc_html($diff); ?></span>
+                                        <?php else: ?>
+                                            <span class="spsg-balance-warning">⚠ ± <?php echo esc_html($diff); ?></span>
+                                        <?php endif; ?>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+        <?php
+    }
+
+    /**
+     * Render the imbalances/issues panel
+     */
+    private function render_imbalances_panel($stats)
+    {
+        if (empty($stats['imbalances'])) {
+            return;
+        }
+        ?>
+                <div class="spsg-issues-panel">
+                    <h4><?php _e('Issues & Imbalances', 'sportspress-schedule-generator'); ?></h4>
+                    <ul class="spsg-issues-list">
+                        <?php foreach ($stats['imbalances'] as $issue): ?>
+                        <li class="spsg-issue-<?php echo esc_attr($issue['severity'] ?? 'info'); ?>">
+                            <span class="dashicons dashicons-warning"></span>
+                            <?php echo esc_html($issue['message']); ?>
+                        </li>
+                        <?php endforeach; ?>
+                    </ul>
+                </div>
         <?php
     }
 
@@ -3522,68 +3525,88 @@ class SPSG_Admin
             wp_send_json_error(__('No data to import', 'sportspress-schedule-generator'));
         }
 
-        // Load existing config or get current form data
-        $config_data = array();
-        if ($config_id) {
-            $existing_config = $this->config_manager->load($config_id);
-            if ($existing_config) {
-                $config_data = is_object($existing_config) && method_exists($existing_config, 'to_array')
-                    ? $existing_config->to_array()
-                    : (array)$existing_config;
-            }
-        }
-
-        // Set config ID and name if not set
-        if (!isset($config_data['id'])) {
-            $config_data['id'] = $config_id ?: uniqid('config_');
-        }
-        if (!isset($config_data['name']) || empty($config_data['name'])) {
-            $config_data['name'] = $imported_data['league']->name . ' - ' . __('Imported', 'sportspress-schedule-generator');
-        }
-
-        // Convert imported divisions to config format
-        $divisions = array();
-        foreach ($imported_data['divisions'] as $division) {
-            $teams = array();
-            if (!empty($division['teams'])) {
-                foreach ($division['teams'] as $team) {
-                    if (is_object($team)) {
-                        $teams[] = $team->name;
-                    } elseif (is_array($team)) {
-                        $teams[] = $team['name'];
-                    } else {
-                        $teams[] = $team;
-                    }
-                }
-            }
-
-            $divisions[] = array(
-                'name' => is_object($division) ? $division->name : $division['name'],
-                'teams' => $teams,
-                'id' => 'div_' . sanitize_title(is_object($division) ? $division->name : $division['name'])
-            );
-        }
-
+        $config_data = $this->load_or_create_config_data($config_id, $imported_data);
+        $divisions = $this->convert_imported_divisions($imported_data['divisions']);
         $config_data['divisions'] = $divisions;
 
-        // Save the configuration using config manager
         $result = $this->config_manager->save($config_data);
 
         if (is_wp_error($result)) {
             wp_send_json_error($result->get_error_message());
         }
-        else {
-            // Get the saved config ID
-            $saved_config_id = isset($config_data['id']) ? $config_data['id'] : $config_id;
 
-            // Redirect to the configuration page
-            $redirect_url = admin_url('admin.php?page=spsg-schedule-generator&config_id=' . $saved_config_id . '&imported=1');
-            wp_send_json_success(array(
-                'message' => sprintf(__('League imported successfully! %d division(s) added.', 'sportspress-schedule-generator'), count($divisions)),
-                'config_id' => $saved_config_id,
-                'redirect_url' => $redirect_url
-            ));
+        $saved_config_id = $config_data['id'] ?? $config_id;
+        $redirect_url = admin_url('admin.php?page=spsg-schedule-generator&config_id=' . $saved_config_id . '&imported=1');
+        wp_send_json_success(array(
+            'message' => sprintf(__('League imported successfully! %d division(s) added.', 'sportspress-schedule-generator'), count($divisions)),
+            'config_id' => $saved_config_id,
+            'redirect_url' => $redirect_url
+        ));
+    }
+
+    /**
+     * Load existing config data or create a new config shell for import
+     */
+    private function load_or_create_config_data($config_id, $imported_data)
+    {
+        $config_data = array();
+
+        if ($config_id) {
+            $existing_config = $this->config_manager->load($config_id);
+            if ($existing_config) {
+                $config_data = is_object($existing_config) && method_exists($existing_config, 'to_array')
+                    ? $existing_config->to_array()
+                    : (array) $existing_config;
+            }
         }
+
+        if (!isset($config_data['id'])) {
+            $config_data['id'] = $config_id ?: uniqid('config_');
+        }
+        if (empty($config_data['name'])) {
+            $config_data['name'] = $imported_data['league']->name . ' - ' . __('Imported', 'sportspress-schedule-generator');
+        }
+
+        return $config_data;
+    }
+
+    /**
+     * Convert imported division data to config format
+     */
+    private function convert_imported_divisions($imported_divisions)
+    {
+        $divisions = array();
+
+        foreach ($imported_divisions as $division) {
+            $div_name = is_object($division) ? $division->name : $division['name'];
+            $teams = $this->extract_team_names($division['teams'] ?? array());
+
+            $divisions[] = array(
+                'name' => $div_name,
+                'teams' => $teams,
+                'id' => 'div_' . sanitize_title($div_name)
+            );
+        }
+
+        return $divisions;
+    }
+
+    /**
+     * Extract team names from mixed format team data
+     */
+    private function extract_team_names($teams_data)
+    {
+        $names = array();
+        foreach ($teams_data as $team) {
+            if (is_object($team)) {
+                $names[] = $team->name;
+            } elseif (is_array($team)) {
+                $names[] = $team['name'];
+            } else {
+                $names[] = $team;
+            }
+        }
+        return $names;
     }
 
     /**
