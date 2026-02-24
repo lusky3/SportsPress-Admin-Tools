@@ -317,7 +317,7 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint
                 return $this->validate_day_restrictions($game, $restriction);
         }
 
-        $this->log(sprintf('Unknown custom restriction type: %s', $type), 'warning');
+        $this->log(sprintf('Unknown custom restriction type: %s', $type));
         return true;
     }
 

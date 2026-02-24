@@ -890,7 +890,7 @@
                         
                         // Populate leagues
                         if (data.leagues && data.leagues.length > 0) {
-                            var $leagueSelect = $('#spsg-import-league');
+                            var $leagueSelect = $('#spsg-import-dialog-league');
                             $leagueSelect.empty().append('<option value="">No league</option>');
                             data.leagues.forEach(function(league) {
                                 $leagueSelect.append('<option value="' + league.id + '">' + league.name + '</option>');
@@ -976,7 +976,7 @@
                 schedule_id: this.scheduleId,
                 conflict_resolution: $('input[name="conflict_resolution"]:checked').val(),
                 event_status: $('#spsg-event-status').val(),
-                league_id: $('#spsg-import-league').val(),
+                league_id: $('#spsg-import-dialog-league').val(),
                 season_id: $('#spsg-import-season').val(),
                 dry_run: $('#spsg-dry-run').is(':checked') ? '1' : '0'
             };
@@ -1187,7 +1187,7 @@
             // Reset form
             $('input[name="conflict_resolution"][value="skip"]').prop('checked', true);
             $('#spsg-event-status').val('publish');
-            $('#spsg-import-league').val('');
+            $('#spsg-import-dialog-league').val('');
             $('#spsg-import-season').val('');
             $('#spsg-dry-run').prop('checked', false);
             

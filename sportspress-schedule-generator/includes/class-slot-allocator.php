@@ -398,10 +398,8 @@ class SPSG_Slot_Allocator
             $venue_id = is_object($venue) ? $venue->id : $venue['id'];
 
             // Check venue-specific blackout dates first
-            if (!empty($config->venue_blackout_dates[$venue_id])) {
-                if (in_array($date, $config->venue_blackout_dates[$venue_id])) {
-                    continue; // Skip this venue for this date
-                }
+            if (!empty($config->venue_blackout_dates[$venue_id]) && in_array($date, $config->venue_blackout_dates[$venue_id])) {
+                continue; // Skip this venue for this date
             }
 
             $time_slots = null;
@@ -588,12 +586,12 @@ class SPSG_Slot_Allocator
      * Log message
      * 
      * @param string $message Message to log
-     * @param string $level Log level
      */
-    private function log($message, $level = 'info')
+    private function log($message)
     {
         if (get_option('spsg_enable_debug_logging', '0') === '1') {
             error_log(sprintf('[SPSG Slot Allocator] %s', $message));
         }
     }
+
 }

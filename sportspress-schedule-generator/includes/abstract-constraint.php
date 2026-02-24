@@ -87,7 +87,7 @@ abstract class SPSG_Abstract_Constraint implements SPSG_Constraint_Interface
     /**
      * Log constraint activity (if debug enabled)
      */
-    protected function log($message, $level = 'info')
+    protected function log($message)
     {
         if (get_option('spsg_enable_debug_logging', '0') === '1') {
             error_log(sprintf('[SPSG Constraint %s] %s', $this->get_name(), $message));

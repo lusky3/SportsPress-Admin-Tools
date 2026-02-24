@@ -17,6 +17,11 @@ class SPSG_Schedule_Configuration
 {
 
     /**
+     * Date format regex pattern (YYYY-MM-DD)
+     */
+    const DATE_REGEX = '/^\d{4}-\d{2}-\d{2}$/';
+
+    /**
      * Season start date
      * @var DateTime
      */
@@ -724,7 +729,7 @@ class SPSG_Schedule_Configuration
             foreach ((array)$dates as $date) {
                 $date = sanitize_text_field($date);
                 // Validate date format (YYYY-MM-DD)
-                if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+                if (preg_match(self::DATE_REGEX, $date)) {
                     $valid_dates[] = $date;
                 }
             }
@@ -752,8 +757,8 @@ class SPSG_Schedule_Configuration
                 $time_slots = array_map('sanitize_text_field', (array)($range['time_slots'] ?? array()));
 
                 // Validate dates
-                if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $start_date) &&
-                preg_match('/^\d{4}-\d{2}-\d{2}$/', $end_date) &&
+                if (preg_match(self::DATE_REGEX, $start_date) &&
+                preg_match(self::DATE_REGEX, $end_date) &&
                 !empty($time_slots)) {
                     $sanitized[$venue_id][] = array(
                         'start_date' => $start_date,
