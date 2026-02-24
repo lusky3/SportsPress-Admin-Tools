@@ -1,7 +1,7 @@
 <?php
 /**
  * Events Management Class
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -173,10 +173,10 @@ class SPEM_Events_Management {
         // Simple CSV parsing as fallback
         $events = array();
         
-        if (($handle = fopen($file_path, 'r')) !== FALSE) {
-            $header = fgetcsv($handle);
+        if (($handle = fopen($file_path, 'r')) !== false) {
+            fgetcsv($handle); // Skip header row
             
-            while (($data = fgetcsv($handle)) !== FALSE) {
+            while (($data = fgetcsv($handle)) !== false) {
                 if (count($data) >= 3) {
                     $events[] = array(
                         'date' => sanitize_text_field($data[0]),

@@ -2,7 +2,9 @@
 /**
  * Events Import Preview Template
  */
-if (!defined('ABSPATH')) exit;
+if (!defined('ABSPATH')) {
+    exit;
+}
 ?>
 
 <h2><?php _e('Import Preview', 'sportspress-admin-tools'); ?></h2>
@@ -90,7 +92,7 @@ if (!defined('ABSPATH')) exit;
                 <td>
                     <select name="import_season" required style="width: 200px;">
                         <option value=""><?php _e('Select season...', 'sportspress-admin-tools'); ?></option>
-                        <?php 
+                        <?php
                         $seasons = get_terms(array('taxonomy' => 'sp_season', 'hide_empty' => false));
                         foreach ($seasons as $season): ?>
                             <option value="<?php echo $season->term_id; ?>"><?php echo esc_html($season->name); ?></option>

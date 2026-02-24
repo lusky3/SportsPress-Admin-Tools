@@ -1,7 +1,7 @@
 <?php
 /**
  * League Table Generator Class
- * 
+ *
  * @author Cody (lusky3)
  */
 

@@ -2,7 +2,9 @@
 /**
  * Events Management Admin Interface Template
  */
-if (!defined('ABSPATH')) exit;
+if (!defined('ABSPATH')) {
+    exit;
+}
 ?>
 
 <h2><?php _e('Calendar Management', 'sportspress-admin-tools'); ?></h2>
@@ -20,7 +22,7 @@ if (!defined('ABSPATH')) exit;
 <div class="card">
     <h3><?php _e('Auto-Create Calendars', 'sportspress-admin-tools'); ?></h3>
     <p><?php _e('Calendars are automatically created when new teams are added based on the settings above.', 'sportspress-admin-tools'); ?></p>
-    <?php 
+    <?php
     $auto_create_enabled = get_option('spat_events_auto_calendar_creation', '1');
     $status_color = $auto_create_enabled ? '#00a32a' : '#d63638';
     $status_text = $auto_create_enabled ? __('Enabled', 'sportspress-admin-tools') : __('Disabled', 'sportspress-admin-tools');
