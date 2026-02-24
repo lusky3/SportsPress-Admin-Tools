@@ -102,7 +102,7 @@ class SPET_ETransfer_Automation
         }
 
         // Extract reference number
-        if (preg_match('/Reference Number:\s*\n\s*([A-Z0-9]+)/i', $text, $matches)) {
+        if (preg_match('/Reference Number:\s*\n\s*([A-Z\d]+)/i', $text, $matches)) {
             $reference_number = $matches[1];
         }
         else {
@@ -110,7 +110,7 @@ class SPET_ETransfer_Automation
         }
 
         // Extract amount
-        if (preg_match('/Amount:\s*\n\s*\$([0-9,]+\.?[0-9]*)/i', $text, $matches)) {
+        if (preg_match('/Amount:\s*\n\s*\$([\d,]+\.?\d*)/', $text, $matches)) {
             $amount = floatval(str_replace(',', '', $matches[1]));
         }
         else {

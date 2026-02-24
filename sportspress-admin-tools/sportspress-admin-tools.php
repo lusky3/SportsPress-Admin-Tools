@@ -92,5 +92,5 @@ if (!class_exists('SportsPressAdminTools')) {
     }
 
     // Initialize plugin
-    new SportsPressAdminTools();
+    $GLOBALS['sportspress_admin_tools'] = new SportsPressAdminTools();
 }
