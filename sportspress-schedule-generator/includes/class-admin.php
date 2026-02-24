@@ -1,7 +1,7 @@
 <?php
 /**
  * Admin Interface Class
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -23,6 +23,10 @@ class SPSG_Admin
     const LABEL_IMPORT_LEAGUE = 'Import League Structure';
     const LABEL_IMPORT_SCHEDULE = 'Import Schedule';
     const MSG_NO_CHANGES = 'No changes recorded yet';
+    const LABEL_SCHEDULE_GENERATOR = 'Schedule Generator';
+    const LABEL_GENERATE_SCHEDULE = 'Generate Schedule';
+    const LABEL_GAMES_PER_TEAM = 'Games Per Team';
+    const LABEL_SAVE_CONFIGURATION = 'Save Configuration';
 
     /**
      * Configuration manager instance
@@ -66,10 +70,10 @@ class SPSG_Admin
 
     /**
      * Check if Select2 is enabled in SPAT settings
-     * 
+     *
      * Respects the global SPAT setting for Select2 usage to ensure
      * consistent UI behavior across the parent and child plugins.
-     * 
+     *
      * @return bool True if Select2 should be used
      */
     private function is_select2_enabled()
@@ -84,8 +88,8 @@ class SPSG_Admin
     {
         // Add main menu page for schedule generation
         add_menu_page(
-            __('Schedule Generator', 'sportspress-schedule-generator'),
-            __('Schedule Generator', 'sportspress-schedule-generator'),
+            __(self::LABEL_SCHEDULE_GENERATOR, 'sportspress-schedule-generator'),
+            __(self::LABEL_SCHEDULE_GENERATOR, 'sportspress-schedule-generator'),
             'manage_options',
             'spsg-schedule-generator',
             array($this, 'schedule_generator_page'),
@@ -97,8 +101,8 @@ class SPSG_Admin
         if (class_exists('SportsPress')) {
             add_submenu_page(
                 'sportspress',
-                __('Schedule Generator', 'sportspress-schedule-generator'),
-                __('Schedule Generator', 'sportspress-schedule-generator'),
+                __(self::LABEL_SCHEDULE_GENERATOR, 'sportspress-schedule-generator'),
+                __(self::LABEL_SCHEDULE_GENERATOR, 'sportspress-schedule-generator'),
                 'manage_options',
                 'spsg-schedule-generator-sp',
                 array($this, 'redirect_to_main_page')
@@ -120,7 +124,7 @@ class SPSG_Admin
      */
     public function add_spat_tab()
     {
-        echo '<a href="#schedule-generator" class="nav-tab">' . __('Schedule Generator', 'sportspress-schedule-generator') . '</a>';
+        echo '<a href="#schedule-generator" class="nav-tab">' . __(self::LABEL_SCHEDULE_GENERATOR, 'sportspress-schedule-generator') . '</a>';
     }
 
     /**
@@ -271,36 +275,36 @@ class SPSG_Admin
 ?>
         <div class="wrap">
             <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
-            
+
             <nav class="nav-tab-wrapper spsg-nav-tabs">
                 <a href="#basic-config" class="nav-tab nav-tab-active"><?php _e('Basic Configuration', 'sportspress-schedule-generator'); ?></a>
                 <a href="#divisions-teams" class="nav-tab"><?php _e('Divisions & Teams', 'sportspress-schedule-generator'); ?></a>
                 <a href="#venues-times" class="nav-tab"><?php _e('Venues & Times', 'sportspress-schedule-generator'); ?></a>
                 <a href="#constraints" class="nav-tab"><?php _e('Constraints', 'sportspress-schedule-generator'); ?></a>
-                <a href="#generate" class="nav-tab"><?php _e('Generate Schedule', 'sportspress-schedule-generator'); ?></a>
+                <a href="#generate" class="nav-tab"><?php _e(self::LABEL_GENERATE_SCHEDULE, 'sportspress-schedule-generator'); ?></a>
             </nav>
-            
+
             <form method="post" id="spsg-config-form">
                 <?php wp_nonce_field('spsg_admin_action', 'spsg_nonce'); ?>
                 <input type="hidden" name="spsg_action" value="save_config">
                 <input type="hidden" name="current_tab" value="basic-config">
-                
+
                 <div id="basic-config" class="spsg-tab-content">
                     <?php $this->render_basic_config_tab($current_config); ?>
                 </div>
-                
+
                 <div id="divisions-teams" class="spsg-tab-content" style="display: none;">
                     <?php $this->render_divisions_teams_tab($current_config); ?>
                 </div>
-                
+
                 <div id="venues-times" class="spsg-tab-content" style="display: none;">
                     <?php $this->render_venues_times_tab($current_config); ?>
                 </div>
-                
+
                 <div id="constraints" class="spsg-tab-content" style="display: none;">
                     <?php $this->render_constraints_tab($current_config); ?>
                 </div>
-                
+
                 <div id="generate" class="spsg-tab-content" style="display: none;">
                     <?php $this->render_generate_tab($current_config); ?>
                 </div>
@@ -375,13 +379,13 @@ class SPSG_Admin
                 // Track unsaved changes
                 var formChanged = false;
                 var initialFormData = $("#spsg-config-form").serialize();
-                
+
                 // Monitor form changes
                 $("#spsg-config-form").on("change input", "input, select, textarea", function() {
                     var currentFormData = $("#spsg-config-form").serialize();
                     formChanged = (currentFormData !== initialFormData);
                 });
-                
+
                 // Warn before leaving page with unsaved changes
                 $(window).on("beforeunload", function(e) {
                     if (formChanged) {
@@ -390,18 +394,18 @@ class SPSG_Admin
                         return message;
                     }
                 });
-                
+
                 // Reset flag when form is submitted
                 $("#spsg-config-form").on("submit", function() {
                     formChanged = false;
                 });
-                
+
                 // Reset flag when configuration is saved via AJAX
                 $(document).on("spsg-config-saved", function() {
                     formChanged = false;
                     initialFormData = $("#spsg-config-form").serialize();
                 });
-                
+
                 // Initialize Select2 if enabled in SPAT settings
                 // This respects the global SPAT setting for consistent UI behavior
                 if (typeof $.fn.select2 !== "undefined") {
@@ -411,7 +415,7 @@ class SPSG_Admin
                         allowClear: true
                     });
                 }
-                
+
                 // SportsPress league import
                 $("#spsg-import-league-btn").click(function() {
                     var leagueId = $("#spsg-import-league").val();
@@ -419,11 +423,11 @@ class SPSG_Admin
                         alert("Please select a league to import");
                         return;
                     }
-                    
+
                     // Show loading indicator
                     var $button = $(this);
                     $button.prop("disabled", true).text("Importing...");
-                    
+
                     $.ajax({
                         url: ajaxurl,
                         type: "POST",
@@ -448,7 +452,7 @@ class SPSG_Admin
                                         if (saveResponse.success) {
                                             // Reset unsaved changes flag before navigation
                                             formChanged = false;
-                                            
+
                                             alert(saveResponse.data.message);
                                             window.location.href = saveResponse.data.redirect_url;
                                         } else {
@@ -472,7 +476,7 @@ class SPSG_Admin
                         }
                     });
                 });
-                
+
                 // SportsPress venues import - show selection dialog
                 $("#spsg-import-venues-btn").click(function() {
                     $.ajax({
@@ -485,19 +489,19 @@ class SPSG_Admin
                         success: function(response) {
                             if (response.success) {
                                 var venues = response.data.venues;
-                                
+
                                 if (venues.length === 0) {
                                     alert("No venues found in SportsPress");
                                     return;
                                 }
-                                
+
                                 // Create selection dialog
                                 var dialogHtml = \'<div id="spsg-venue-selection-dialog" style="display:none;">\';
                                 dialogHtml += \'<div style="background: #fff; padding: 20px; max-width: 500px; margin: 50px auto; border: 1px solid #ccc; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">\';
                                 dialogHtml += \'<h2>' . esc_js(__('Select Venues to Import', 'sportspress-schedule-generator')) . '</h2>\';
                                 dialogHtml += \'<p class="description">' . esc_js(__('Choose which venues you want to add to your schedule configuration:', 'sportspress-schedule-generator')) . '</p>\';
                                 dialogHtml += \'<div style="max-height: 300px; overflow-y: auto; margin: 15px 0; padding: 10px; border: 1px solid #ddd;">\';
-                                
+
                                 $.each(venues, function(index, venue) {
                                     dialogHtml += \'<label style="display: block; padding: 8px; border-bottom: 1px solid #eee;">\';
                                     dialogHtml += \'<input type="checkbox" class="spsg-venue-select" value="\' + index + \'" checked /> \';
@@ -507,67 +511,67 @@ class SPSG_Admin
                                     }
                                     dialogHtml += \'</label>\';
                                 });
-                                
+
                                 dialogHtml += \'</div>\';
                                 dialogHtml += \'<p><label><input type="checkbox" id="spsg-select-all-venues" checked /> ' . esc_js(__('Select All', 'sportspress-schedule-generator')) . '</label></p>\';
                                 dialogHtml += \'<div style="text-align: right; margin-top: 15px;">\';
                                 dialogHtml += \'<button type="button" class="button" id="spsg-cancel-venue-import">' . esc_js(__('Cancel', 'sportspress-schedule-generator')) . '</button> \';
                                 dialogHtml += \'<button type="button" class="button button-primary" id="spsg-confirm-venue-import">' . esc_js(__('Import Selected', 'sportspress-schedule-generator')) . '</button>\';
                                 dialogHtml += \'</div></div></div>\';
-                                
+
                                 // Add dialog to page
                                 if ($("#spsg-venue-selection-dialog").length) {
                                     $("#spsg-venue-selection-dialog").remove();
                                 }
                                 $("body").append(dialogHtml);
                                 $("#spsg-venue-selection-dialog").fadeIn();
-                                
+
                                 // Store venues data for later use
                                 $("#spsg-venue-selection-dialog").data("venues", venues);
-                                
+
                                 // Select all toggle
                                 $("#spsg-select-all-venues").on("change", function() {
                                     $(".spsg-venue-select").prop("checked", $(this).is(":checked"));
                                 });
-                                
+
                                 // Cancel button
                                 $("#spsg-cancel-venue-import").click(function() {
                                     $("#spsg-venue-selection-dialog").fadeOut(function() {
                                         $(this).remove();
                                     });
                                 });
-                                
+
                                 // Confirm import
                                 $("#spsg-confirm-venue-import").click(function() {
                                     var selectedVenues = [];
                                     var allVenues = $("#spsg-venue-selection-dialog").data("venues");
-                                    
+
                                     $(".spsg-venue-select:checked").each(function() {
                                         var index = parseInt($(this).val());
                                         selectedVenues.push(allVenues[index]);
                                     });
-                                    
+
                                     if (selectedVenues.length === 0) {
                                         alert("Please select at least one venue");
                                         return;
                                     }
-                                    
+
                                     // Close dialog
                                     $("#spsg-venue-selection-dialog").fadeOut(function() {
                                         $(this).remove();
                                     });
-                                    
+
                                     // Add selected venues to form
                                     var currentIndex = $("#spsg-venues-container .spsg-venue-row").length;
                                     var days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
-                                    
+
                                     $.each(selectedVenues, function(i, venue) {
                                         var index = currentIndex + i;
                                         var venueId = venue.id || "venue_" + index;
-                                        
+
                                         var html = \'<div class="spsg-venue-row" data-index="\' + index + \'">\';
                                         html += \'<table class="form-table">\';
-                                        
+
                                         // Venue name row
                                         html += \'<tr><th scope="row">' . esc_js(__('Venue Name', 'sportspress-schedule-generator')) . '</th>\';
                                         html += \'<td>\';
@@ -575,11 +579,11 @@ class SPSG_Admin
                                         html += \'<input type="hidden" name="venues[\' + index + \'][id]" value="\' + venueId + \'" />\';
                                         html += \'<button type="button" class="button spsg-remove-venue">' . esc_js(__('Remove', 'sportspress-schedule-generator')) . '</button>\';
                                         html += \'</td></tr>\';
-                                        
+
                                         // Available days & times row
                                         html += \'<tr><th scope="row">' . esc_js(__('Available Days & Times', 'sportspress-schedule-generator')) . '</th>\';
                                         html += \'<td><div class="spsg-venue-timeslots">\';
-                                        
+
                                         $.each(days, function(j, day) {
                                             html += \'<div class="spsg-venue-day-timeslots">\';
                                             html += \'<label>\';
@@ -590,23 +594,23 @@ class SPSG_Admin
                                             html += \'<textarea name="venue_timeslots[\' + venueId + \'][\' + day + \']" rows="2" class="regular-text" placeholder="' . esc_js(__('Enter times (e.g., 19:00, 20:00)', 'sportspress-schedule-generator')) . '"></textarea>\';
                                             html += \'</div></div>\';
                                         });
-                                        
+
                                         html += \'</div>\';
                                         html += \'<p class="description">' . esc_js(__('Select which days and times this venue is available. Leave unchecked if venue is available all configured times.', 'sportspress-schedule-generator')) . '</p>\';
                                         html += \'</td></tr>\';
-                                        
+
                                         // Venue blackout dates row
                                         html += \'<tr><th scope="row">' . esc_js(__('Venue Blackout Dates', 'sportspress-schedule-generator')) . '</th>\';
                                         html += \'<td>\';
                                         html += \'<textarea name="venue_blackout_dates[\' + venueId + \']" rows="3" class="large-text" placeholder="' . esc_js(__('Enter dates when this venue is unavailable (e.g., 2024-01-15, 2024-02-20)', 'sportspress-schedule-generator')) . '"></textarea>\';
                                         html += \'<p class="description">' . esc_js(__('Specific dates when this venue is unavailable. Enter one date per line in YYYY-MM-DD format.', 'sportspress-schedule-generator')) . '</p>\';
                                         html += \'</td></tr>\';
-                                        
+
                                         html += \'</table></div>\';
-                                        
+
                                         $("#spsg-venues-container").append(html);
                                     });
-                                    
+
                                     alert(selectedVenues.length + " venue(s) imported successfully!");
                                 });
                             } else {
@@ -618,12 +622,12 @@ class SPSG_Admin
                         }
                     });
                 });
-                
+
                 // CSV venue schedule upload
                 $("#spsg-upload-venue-csv-btn").click(function() {
                     $("#spsg-venue-csv-file").click();
                 });
-                
+
                 $("#spsg-venue-csv-file").change(function() {
                     var file = this.files[0];
                     if (file) {
@@ -631,22 +635,22 @@ class SPSG_Admin
                         $("#spsg-preview-venue-csv-btn").show();
                     }
                 });
-                
+
                 $("#spsg-preview-venue-csv-btn").click(function() {
                     var fileInput = document.getElementById("spsg-venue-csv-file");
                     if (!fileInput.files.length) {
                         alert("Please select a CSV file first");
                         return;
                     }
-                    
+
                     var formData = new FormData();
                     formData.append("action", "spsg_upload_venue_csv");
                     formData.append("nonce", spsgData.nonces.upload_venue_csv);
                     formData.append("csv_file", fileInput.files[0]);
-                    
+
                     var $btn = $(this);
                     $btn.prop("disabled", true).text("Processing...");
-                    
+
                     $.ajax({
                         url: ajaxurl,
                         type: "POST",
@@ -668,47 +672,47 @@ class SPSG_Admin
                         }
                     });
                 });
-                
+
                 function showVenueSchedulePreview(data) {
                     var schedules = data.schedules;
                     var suggestions = data.venue_mapping;
                     var existingVenues = data.existing_venues;
-                    
+
                     // Create modal dialog
                     var html = \'<div id="spsg-venue-schedule-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 100000; overflow-y: auto;">\';
                     html += \'<div style="max-width: 900px; margin: 50px auto; background: #fff; border-radius: 4px; box-shadow: 0 2px 10px rgba(0,0,0,0.3);">\';
-                    
+
                     // Header
                     html += \'<div style="padding: 20px; border-bottom: 1px solid #ddd; background: #f9f9f9;">\';
                     html += \'<h2 style="margin: 0;">' . esc_js(__('Import Venue Schedule', 'sportspress-schedule-generator')) . '</h2>\';
                     html += \'<button type="button" class="button" id="spsg-close-venue-modal" style="float: right; margin-top: -30px;">×</button>\';
                     html += \'</div>\';
-                    
+
                     // Body
                     html += \'<div style="padding: 20px; max-height: 60vh; overflow-y: auto;">\';
-                    
+
                     // Preview section
                     html += \'<h3>' . esc_js(__('Schedule Preview', 'sportspress-schedule-generator')) . '</h3>\';
                     html += \'<p>' . esc_js(__('Found', 'sportspress-schedule-generator')) . ' \' + schedules.length + \' ' . esc_js(__('venue schedules', 'sportspress-schedule-generator')) . '</p>\';
                     html += \'<table class="wp-list-table widefat fixed striped" style="margin-bottom: 20px;">\';
                     html += \'<thead><tr><th>' . esc_js(__('Week Start', 'sportspress-schedule-generator')) . '</th><th>' . esc_js(__('Venue', 'sportspress-schedule-generator')) . '</th><th>' . esc_js(__('Time Slots', 'sportspress-schedule-generator')) . '</th></tr></thead><tbody>\';
-                    
+
                     $.each(schedules.slice(0, 10), function(i, schedule) {
                         html += \'<tr><td>\' + schedule.week_start + \'</td><td>\' + schedule.venue_name + \'</td><td>\' + schedule.time_slots.join(\', \') + \'</td></tr>\';
                     });
-                    
+
                     if (schedules.length > 10) {
                         html += \'<tr><td colspan="3" style="text-align: center; font-style: italic;">... and \' + (schedules.length - 10) + \' more</td></tr>\';
                     }
-                    
+
                     html += \'</tbody></table>\';
-                    
+
                     // Venue mapping section
                     html += \'<h3>' . esc_js(__('Map Venue Names', 'sportspress-schedule-generator')) . '</h3>\';
                     html += \'<p class="description">' . esc_js(__('Match CSV venue names to existing venues or create new ones', 'sportspress-schedule-generator')) . '</p>\';
                     html += \'<table class="wp-list-table widefat fixed striped">\';
                     html += \'<thead><tr><th>' . esc_js(__('CSV Name', 'sportspress-schedule-generator')) . '</th><th>' . esc_js(__('Action', 'sportspress-schedule-generator')) . '</th><th>' . esc_js(__('Map To', 'sportspress-schedule-generator')) . '</th></tr></thead><tbody>\';
-                    
+
                     $.each(suggestions, function(csvName, suggestion) {
                         html += \'<tr>\';
                         html += \'<td><strong>\' + csvName + \'</strong></td>\';
@@ -717,57 +721,57 @@ class SPSG_Admin
                         html += \'<option value="create" \' + (suggestion.action === \'create\' ? \'selected\' : \'\') + \'>' . esc_js(__('Create new venue', 'sportspress-schedule-generator')) . '</option>\';
                         html += \'</select></td>\';
                         html += \'<td><select class="spsg-venue-mapping" data-csv-name="\' + csvName + \'" \' + (suggestion.action === \'create\' ? \'disabled\' : \'\') + \'>\';
-                        
+
                         if (suggestion.suggested_match) {
                             var matchId = suggestion.suggested_match.id;
                             var matchName = suggestion.suggested_match.name;
                             html += \'<option value="\' + matchId + \'" selected>\' + matchName + \' (suggested)</option>\';
                         }
-                        
+
                         $.each(existingVenues, function(i, venue) {
                             if (!suggestion.suggested_match || venue.id !== suggestion.suggested_match.id) {
                                 html += \'<option value="\' + venue.id + \'">\' + venue.name + \'</option>\';
                             }
                         });
-                        
+
                         html += \'</select></td>\';
                         html += \'</tr>\';
                     });
-                    
+
                     html += \'</tbody></table>\';
                     html += \'</div>\';
-                    
+
                     // Footer
                     html += \'<div style="padding: 15px 20px; border-top: 1px solid #ddd; text-align: right; background: #f9f9f9;">\';
                     html += \'<button type="button" class="button" id="spsg-cancel-venue-import">' . esc_js(__('Cancel', 'sportspress-schedule-generator')) . '</button> \';
                     html += \'<button type="button" class="button button-primary" id="spsg-confirm-venue-import">' . esc_js(__(self::LABEL_IMPORT_SCHEDULE, 'sportspress-schedule-generator')) . '</button>\';
                     html += \'</div>\';
-                    
+
                     html += \'</div></div>\';
-                    
+
                     $("body").append(html);
-                    
+
                     // Handle action change
                     $(document).on("change", ".spsg-venue-action", function() {
                         var action = $(this).val();
                         var $mapping = $(this).closest("tr").find(".spsg-venue-mapping");
                         $mapping.prop("disabled", action === "create");
                     });
-                    
+
                     // Close modal
                     $("#spsg-close-venue-modal, #spsg-cancel-venue-import").click(function() {
                         $("#spsg-venue-schedule-modal").remove();
                     });
-                    
+
                     // Confirm import
                     $("#spsg-confirm-venue-import").click(function() {
                         var venueMapping = {};
                         var newVenues = [];
-                        
+
                         $(".spsg-venue-action").each(function() {
                             var csvName = $(this).data("csv-name");
                             var action = $(this).val();
-                            
+
                             if (action === "map") {
                                 var venueId = $(this).closest("tr").find(".spsg-venue-mapping").val();
                                 venueMapping[csvName] = venueId;
@@ -775,10 +779,10 @@ class SPSG_Admin
                                 newVenues.push(csvName);
                             }
                         });
-                        
+
                         var $btn = $(this);
                         $btn.prop("disabled", true).text("' . esc_js(__('Importing...', 'sportspress-schedule-generator')) . '");
-                        
+
                         $.ajax({
                             url: ajaxurl,
                             type: "POST",
@@ -806,38 +810,38 @@ class SPSG_Admin
                         });
                     });
                 }
-                
+
                 // Tab switching
                 $(".spsg-nav-tabs .nav-tab").click(function(e) {
                     e.preventDefault();
-                    
+
                     var targetTab = $(this).attr("href").substring(1);
-                    
+
                     // Update tab appearance
                     $(".spsg-nav-tabs .nav-tab").removeClass("nav-tab-active");
                     $(this).addClass("nav-tab-active");
-                    
+
                     // Show/hide content
                     $(".spsg-tab-content").hide();
                     $("#" + targetTab).show();
-                    
+
                     // Update hidden field
                     $("input[name=current_tab]").val(targetTab);
                 });
-                
+
                 // Add/remove division functionality
                 $("#spsg-add-division").click(function() {
                     var container = $("#spsg-divisions-container");
                     var index = container.children().length;
                     var template = $(".spsg-division-row:first").clone();
-                    
+
                     // Clear all input, textarea, and select fields
                     template.find("input, textarea").each(function() {
                         var $field = $(this);
                         var name = $field.attr("name");
                         if (name) {
                             $field.attr("name", name.replace(/\[\d+\]/, "[" + index + "]"));
-                            
+
                             // Clear based on field type
                             if ($field.is(":checkbox") || $field.is(":radio")) {
                                 $field.prop("checked", false);
@@ -846,51 +850,51 @@ class SPSG_Admin
                             }
                         }
                     });
-                    
+
                     // Handle select dropdowns separately to ensure proper clearing
                     template.find("select").each(function() {
                         var $select = $(this);
                         var name = $select.attr("name");
-                        
+
                         // Check if Select2 is active before cloning
                         var isSelect2 = typeof $.fn.select2 !== "undefined" && $select.hasClass("select2-hidden-accessible");
-                        
+
                         // If Select2 is active, destroy it before cloning operations
                         if (isSelect2) {
                             $select.select2("destroy");
                         }
-                        
+
                         // Update name attribute
                         if (name) {
                             $select.attr("name", name.replace(/\[\d+\]/, "[" + index + "]"));
                         }
-                        
+
                         // Clear the selected value completely
                         $select.val("");
                         $select.prop("selectedIndex", 0);
-                        
+
                         // Remove any data attributes that might store previous values
                         $select.removeAttr("data-selected");
                         $select.removeData("selected");
-                        
+
                         // Force the first option to be selected (usually the placeholder)
                         var $firstOption = $select.find("option:first");
                         if ($firstOption.length) {
                             $firstOption.prop("selected", true);
                         }
                     });
-                    
+
                     // Clear team list completely
                     template.find(".spsg-team-list").empty();
-                    
+
                     // Add placeholder text for empty team list
                     template.find(".spsg-team-list").html(\'<p class="description">' . esc_js(__('No teams added yet. Load from SportsPress or add manually below.', 'sportspress-schedule-generator')) . '</p>\');
-                    
+
                     // Update data-division-index attributes for SportsPress integration
                     template.find("[data-division-index]").each(function() {
                         $(this).attr("data-division-index", index);
                     });
-                    
+
                     // Update IDs that reference the division index
                     template.find("[id]").each(function() {
                         var $elem = $(this);
@@ -900,10 +904,10 @@ class SPSG_Admin
                             $elem.attr("id", newId);
                         }
                     });
-                    
+
                     template.attr("data-index", index);
                     container.append(template);
-                    
+
                     // Reinitialize Select2 on the new template after it\'s been appended to DOM
                     if (typeof $.fn.select2 !== "undefined") {
                         template.find("select").select2({
@@ -913,19 +917,19 @@ class SPSG_Admin
                         });
                     }
                 });
-                
+
                 $(document).on("click", ".spsg-remove-division", function() {
                     if ($(".spsg-division-row").length > 1) {
                         $(this).closest(".spsg-division-row").remove();
                     }
                 });
-                
+
                 // Add/remove venue functionality
                 $("#spsg-add-venue").click(function() {
                     var container = $("#spsg-venues-container");
                     var index = container.children().length;
                     var template = $(".spsg-venue-row:first").clone();
-                    
+
                     template.find("input").each(function() {
                         var name = $(this).attr("name");
                         if (name) {
@@ -933,17 +937,17 @@ class SPSG_Admin
                             $(this).val("");
                         }
                     });
-                    
+
                     template.attr("data-index", index);
                     container.append(template);
                 });
-                
+
                 $(document).on("click", ".spsg-remove-venue", function() {
                     if ($(".spsg-venue-row").length > 1) {
                         $(this).closest(".spsg-venue-row").remove();
                     }
                 });
-                
+
                 // Venue day toggle
                 $(document).on("change", ".spsg-venue-day-toggle", function() {
                     var $times = $(this).closest(".spsg-venue-day-timeslots").find(".spsg-venue-day-times");
@@ -954,7 +958,7 @@ class SPSG_Admin
                         $times.find("textarea").val("");
                     }
                 });
-                
+
                 // Load teams from SportsPress division
                 $(document).on("click", ".spsg-load-sp-teams", function() {
                     var $button = $(this);
@@ -962,15 +966,15 @@ class SPSG_Admin
                     var $selector = $(".spsg-sp-division-selector[data-division-index=" + divisionIndex + "]");
                     var spDivisionId = $selector.val();
                     var $spinner = $button.siblings(".spinner");
-                    
+
                     if (!spDivisionId) {
                         alert("Please select a SportsPress division first");
                         return;
                     }
-                    
+
                     $button.prop("disabled", true);
                     $spinner.addClass("is-active");
-                    
+
                     $.ajax({
                         url: ajaxurl,
                         type: "POST",
@@ -983,10 +987,10 @@ class SPSG_Admin
                             if (response.success) {
                                 var teams = response.data.teams;
                                 var $teamList = $("#spsg-team-list-" + divisionIndex);
-                                
+
                                 // Clear existing teams
                                 $teamList.empty();
-                                
+
                                 // Add loaded teams
                                 $.each(teams, function(index, team) {
                                     var teamName = team.name || team;
@@ -999,7 +1003,7 @@ class SPSG_Admin
                                         \'</div>\';
                                     $teamList.append(teamHtml);
                                 });
-                                
+
                                 alert("Loaded " + response.data.count + " teams successfully!");
                             } else {
                                 alert("Error: " + response.data);
@@ -1014,21 +1018,21 @@ class SPSG_Admin
                         }
                     });
                 });
-                
+
                 // Add manual team
                 $(document).on("click", ".spsg-add-manual-team", function() {
                     var $button = $(this);
                     var divisionIndex = $button.data("division-index");
                     var $input = $(".spsg-manual-team-name[data-division-index=" + divisionIndex + "]");
                     var teamName = $input.val().trim();
-                    
+
                     if (!teamName) {
                         alert("Please enter a team name");
                         return;
                     }
-                    
+
                     var $teamList = $("#spsg-team-list-" + divisionIndex);
-                    
+
                     // Check for duplicates
                     var exists = false;
                     $teamList.find("input[type=checkbox]").each(function() {
@@ -1037,15 +1041,15 @@ class SPSG_Admin
                             return false;
                         }
                     });
-                    
+
                     if (exists) {
                         alert("This team already exists in the division");
                         return;
                     }
-                    
+
                     // Remove "no teams" message if present
                     $teamList.find("p.description").remove();
-                    
+
                     // Add team
                     var teamHtml = \'<div class="spsg-team-item">\' +
                         \'<label>\' +
@@ -1054,30 +1058,30 @@ class SPSG_Admin
                         \'</label>\' +
                         \'<button type="button" class="button-link spsg-remove-team" style="color: #b32d2e;">Remove</button>\' +
                         \'</div>\';
-                    
+
                     $teamList.append(teamHtml);
                     $input.val(""); // Clear input
                 });
-                
+
                 // Remove team
                 $(document).on("click", ".spsg-remove-team", function() {
                     if (confirm("Remove this team?")) {
                         $(this).closest(".spsg-team-item").remove();
                     }
                 });
-                
+
                 // Select all teams
                 $(document).on("click", ".spsg-select-all-teams", function() {
                     var divisionIndex = $(this).data("division-index");
                     $("#spsg-team-list-" + divisionIndex + " input[type=checkbox]").prop("checked", true);
                 });
-                
+
                 // Deselect all teams
                 $(document).on("click", ".spsg-deselect-all-teams", function() {
                     var divisionIndex = $(this).data("division-index");
                     $("#spsg-team-list-" + divisionIndex + " input[type=checkbox]").prop("checked", false);
                 });
-                
+
                 // Initialize Select2 on SportsPress division selectors
                 if (typeof $.fn.select2 !== "undefined") {
                     $(".spsg-sp-division-selector").select2({
@@ -1086,7 +1090,7 @@ class SPSG_Admin
                         allowClear: true
                     });
                 }
-                
+
                 // Generic teams toggle
                 $("#spsg-generic-teams-enabled").on("change", function() {
                     if ($(this).is(":checked")) {
@@ -1096,32 +1100,32 @@ class SPSG_Admin
                         $("#spsg-generic-teams-config, #spsg-generic-teams-naming").slideUp();
                     }
                 }).trigger("change");
-                
+
                 // Calculate generic teams needed
                 function calculateGenericTeams() {
                     var targetPerDivision = parseInt($("#spsg-generic-teams-per-division").val()) || 8;
                     var divisions = $(".spsg-division-row").length;
                     var totalGenericNeeded = 0;
                     var divisionDetails = [];
-                    
+
                     $(".spsg-division-row").each(function(index) {
                         var $division = $(this);
                         var divisionName = $division.find("input[name*=\\"[name]\\"]").val() || "Division " + (index + 1);
                         var currentTeams = $division.find("input[name*=\\"[teams]\\"]").filter(":checked").length;
                         var needed = Math.max(0, targetPerDivision - currentTeams);
-                        
+
                         // Ensure even number
                         if ((currentTeams + needed) % 2 !== 0) {
                             needed++;
                         }
-                        
+
                         totalGenericNeeded += needed;
-                        
+
                         if (needed > 0) {
                             divisionDetails.push(divisionName + ": " + needed + " generic teams needed");
                         }
                     });
-                    
+
                     var summary = "";
                     if (totalGenericNeeded === 0) {
                         summary = \'<span style="color: #00a32a;">✓ All divisions have enough teams. No generic teams needed.</span>\';
@@ -1133,17 +1137,17 @@ class SPSG_Admin
                         });
                         summary += "</ul>";
                     }
-                    
+
                     $("#spsg-generic-teams-summary").html(summary);
                 }
-                
+
                 // Recalculate when teams change or target changes
                 $("#spsg-generic-teams-per-division").on("change", calculateGenericTeams);
                 $(document).on("change", "input[name*=\\"[teams]\\"]", calculateGenericTeams);
                 $(document).on("click", ".spsg-add-manual-team, .spsg-remove-team, .spsg-load-sp-teams", function() {
                     setTimeout(calculateGenericTeams, 100);
                 });
-                
+
                 // Configuration management
                 $("#spsg-load-config").click(function() {
                     var configId = $("#spsg-config-selector").val();
@@ -1151,14 +1155,14 @@ class SPSG_Admin
                         alert("Please select a configuration to load");
                         return;
                     }
-                    
+
                     if (confirm("Load this configuration? Any unsaved changes will be lost.")) {
                         // Reset unsaved changes flag before navigation to prevent double warning
                         formChanged = false;
                         window.location.href = "?page=spsg-schedule-generator&config_id=" + configId;
                     }
                 });
-                
+
                 $("#spsg-new-config").click(function() {
                     if (confirm("Create a new configuration? Any unsaved changes will be lost.")) {
                         // Reset unsaved changes flag before navigation to prevent double warning
@@ -1166,7 +1170,7 @@ class SPSG_Admin
                         window.location.href = "?page=spsg-schedule-generator";
                     }
                 });
-                
+
                 $("#spsg-save-as-new").click(function() {
                     var name = prompt("Enter a name for the new configuration:");
                     if (name) {
@@ -1175,14 +1179,14 @@ class SPSG_Admin
                         $("#spsg-config-form").submit();
                     }
                 });
-                
+
                 $("#spsg-delete-config").click(function() {
                     var configId = $("#spsg-config-selector").val();
                     if (!configId) {
                         alert("Please select a configuration to delete");
                         return;
                     }
-                    
+
                     if (confirm("Are you sure you want to delete this configuration? This cannot be undone.")) {
                         $.ajax({
                             url: ajaxurl,
@@ -1196,7 +1200,7 @@ class SPSG_Admin
                                 if (response.success) {
                                     // Reset unsaved changes flag before navigation to prevent double warning
                                     formChanged = false;
-                                    
+
                                     alert("Configuration deleted successfully");
                                     window.location.reload();
                                 } else {
@@ -1206,40 +1210,40 @@ class SPSG_Admin
                         });
                     }
                 });
-                
+
                 $("#spsg-export-config").click(function() {
                     var configName = $("#spsg-config-name").val() || "schedule-config";
                     var configData = $("#spsg-config-form").serializeArray();
                     var configObj = {};
-                    
+
                     $.each(configData, function(i, field) {
                         configObj[field.name] = field.value;
                     });
-                    
+
                     var dataStr = JSON.stringify(configObj, null, 2);
                     var dataUri = "data:application/json;charset=utf-8," + encodeURIComponent(dataStr);
-                    
+
                     var exportFileDefaultName = configName + ".json";
-                    
+
                     var linkElement = document.createElement("a");
                     linkElement.setAttribute("href", dataUri);
                     linkElement.setAttribute("download", exportFileDefaultName);
                     linkElement.click();
                 });
-                
+
                 $("#spsg-import-config").click(function() {
                     $("#spsg-import-config-file").click();
                 });
-                
+
                 $("#spsg-import-config-file").change(function(e) {
                     var file = e.target.files[0];
                     if (!file) return;
-                    
+
                     var reader = new FileReader();
                     reader.onload = function(e) {
                         try {
                             var configData = JSON.parse(e.target.result);
-                            
+
                             // Populate form with imported data
                             $.each(configData, function(key, value) {
                                 var input = $(\'[name="\' + key + \'"]\');
@@ -1251,7 +1255,7 @@ class SPSG_Admin
                                     }
                                 }
                             });
-                            
+
                             alert("Configuration imported successfully. Please review and save.");
                         } catch (err) {
                             alert("Error parsing configuration file: " + err.message);
@@ -1259,7 +1263,7 @@ class SPSG_Admin
                     };
                     reader.readAsText(file);
                 });
-                
+
                 // Preset loading
                 $("#spsg-preset-selector").change(function() {
                     var presetId = $(this).val();
@@ -1274,18 +1278,18 @@ class SPSG_Admin
                         $("#spsg-preset-description").slideUp();
                     }
                 });
-                
+
                 $("#spsg-load-preset").click(function() {
                     var presetId = $("#spsg-preset-selector").val();
                     if (!presetId) {
                         alert("' . esc_js(__('Please select a preset', 'sportspress-schedule-generator')) . '");
                         return;
                     }
-                    
+
                     if (!confirm("' . esc_js(__('Load this preset? Current unsaved changes will be overwritten.', 'sportspress-schedule-generator')) . '")) {
                         return;
                     }
-                    
+
                     $.ajax({
                         url: ajaxurl,
                         type: "POST",
@@ -1297,12 +1301,12 @@ class SPSG_Admin
                         success: function(response) {
                             if (response.success) {
                                 var preset = response.data.preset;
-                                
+
                                 // Populate form fields
                                 $("input[name=games_per_team]").val(preset.games_per_team || "");
                                 $("input[name=match_length]").val(preset.match_length || 60);
                                 $("select[name=matchup_style]").val(preset.matchup_style || "double_round_robin").trigger("change");
-                                
+
                                 // Playing days
                                 $("input[name=\'playing_days[]\']").prop("checked", false);
                                 if (preset.playing_days) {
@@ -1310,7 +1314,7 @@ class SPSG_Admin
                                         $("input[name=\'playing_days[]\'][value=\'" + day + "\']").prop("checked", true);
                                     });
                                 }
-                                
+
                                 // Time slots
                                 if (preset.time_slots) {
                                     $.each(preset.time_slots, function(day, slots) {
@@ -1320,7 +1324,7 @@ class SPSG_Admin
                                         }
                                     });
                                 }
-                                
+
                                 alert("' . esc_js(__('Preset loaded successfully! Please add your divisions, teams, and venues.', 'sportspress-schedule-generator')) . '");
                             } else {
                                 alert("' . esc_js(__('Error:', 'sportspress-schedule-generator')) . ' " + response.data);
@@ -1328,25 +1332,25 @@ class SPSG_Admin
                         }
                     });
                 });
-                
+
                 // Matchup style validation
                 $("#spsg-matchup-style").change(function() {
                     validateMatchupStyle();
                 });
-                
+
                 $("input[name=games_per_team]").on("input", function() {
                     validateMatchupStyle();
                 });
-                
+
                 function validateMatchupStyle() {
                     var matchupStyle = $("#spsg-matchup-style").val();
                     var gamesPerTeam = parseInt($("input[name=games_per_team]").val()) || 0;
                     var warning = $("#spsg-matchup-warning");
                     var warningText = $("#spsg-matchup-warning-text");
-                    
+
                     // Count teams in divisions (simplified - would need actual division data)
                     var teamCount = 8; // Default assumption
-                    
+
                     if (matchupStyle === "single_round_robin") {
                         var required = teamCount - 1;
                         if (gamesPerTeam < required) {
@@ -1367,30 +1371,30 @@ class SPSG_Admin
                         warning.slideUp();
                     }
                 }
-                
+
                 // Initial validation
                 validateMatchupStyle();
-                
+
                 // Inter-division games validation
                 $("input[name^=\'inter_division_games\']").on("input", function() {
                     validateInterDivisionGames();
                 });
-                
+
                 $("input[name=games_per_team]").on("input", function() {
                     validateInterDivisionGames();
                 });
-                
+
                 function validateInterDivisionGames() {
                     var gamesPerTeam = parseInt($("input[name=games_per_team]").val()) || 0;
                     var totalInterDivisionGames = 0;
                     var warning = $("#spsg-inter-division-warning");
                     var warningText = $("#spsg-inter-division-warning-text");
-                    
+
                     // Sum all inter-division games
                     $("input[name^=\'inter_division_games\']").each(function() {
                         totalInterDivisionGames += parseInt($(this).val()) || 0;
                     });
-                    
+
                     if (totalInterDivisionGames > gamesPerTeam) {
                         warningText.text("' . esc_js(__('Total inter-division games', 'sportspress-schedule-generator')) . ' (" + totalInterDivisionGames + ") ' . esc_js(__('exceeds games per team', 'sportspress-schedule-generator')) . ' (" + gamesPerTeam + "). ' . esc_js(__('Teams will not have enough games for intra-division play.', 'sportspress-schedule-generator')) . '");
                         warning.slideDown();
@@ -1401,15 +1405,15 @@ class SPSG_Admin
                         warning.slideUp();
                     }
                 }
-                
+
                 // Initial inter-division validation
                 validateInterDivisionGames();
-                
+
                 // Dynamic home/away preferences update
                 function updateHomeAwayPreferences() {
                     var $container = $("#spsg-home-away-preferences");
                     var teams = [];
-                    
+
                     // Collect all teams from divisions
                     $(".spsg-division-row").each(function() {
                         $(this).find("input[name*=\'[teams]\']:checked").each(function() {
@@ -1419,7 +1423,7 @@ class SPSG_Admin
                             }
                         });
                     });
-                    
+
                     // Collect all venues
                     var venues = [];
                     $(".spsg-venue-row").each(function() {
@@ -1429,12 +1433,12 @@ class SPSG_Admin
                             venues.push({id: venueId, name: venueName});
                         }
                     });
-                    
+
                     if (teams.length === 0) {
                         $container.html(\'<p class="description">\' + "' . esc_js(__('Add teams to divisions first to configure home venue preferences.', 'sportspress-schedule-generator')) . '" + \'</p>\');
                         return;
                     }
-                    
+
                     // Build table
                     var html = \'<table class="widefat striped">\';
                     html += \'<thead><tr>\';
@@ -1442,77 +1446,77 @@ class SPSG_Admin
                     html += \'<th>\' + "' . esc_js(__('Preferred Home Venue', 'sportspress-schedule-generator')) . '" + \'</th>\';
                     html += \'</tr></thead>\';
                     html += \'<tbody>\';
-                    
+
                     $.each(teams, function(i, team) {
                         // Get existing preference if any
                         var existingPref = $("select[name=\'home_away_preferences[" + team + "]\']").val() || "";
-                        
+
                         html += \'<tr>\';
                         html += \'<td><strong>\' + team + \'</strong></td>\';
                         html += \'<td>\';
                         html += \'<select name="home_away_preferences[\' + team + \']" class="regular-text">\';
                         html += \'<option value="">\' + "' . esc_js(__('No preference', 'sportspress-schedule-generator')) . '" + \'</option>\';
-                        
+
                         $.each(venues, function(j, venue) {
                             var selected = (existingPref === venue.id) ? \' selected\' : \'\';
                             html += \'<option value="\' + venue.id + \'"\' + selected + \'>\' + venue.name + \'</option>\';
                         });
-                        
+
                         html += \'</select>\';
                         html += \'</td>\';
                         html += \'</tr>\';
                     });
-                    
+
                     html += \'</tbody></table>\';
-                    
+
                     if (venues.length === 0) {
                         html += \'<p class="description" style="margin-top: 10px;">\' + "' . esc_js(__('Note: Add venues in the "Venues & Times" tab to assign home venue preferences.', 'sportspress-schedule-generator')) . '" + \'</p>\';
                     }
-                    
+
                     $container.html(html);
                 }
-                
+
                 // Update home/away preferences when teams or venues change
                 $(document).on("change", "input[name*=\'[teams]\']", function() {
                     setTimeout(updateHomeAwayPreferences, 100);
                 });
-                
+
                 $(document).on("click", ".spsg-add-manual-team, .spsg-remove-team, .spsg-load-sp-teams", function() {
                     setTimeout(updateHomeAwayPreferences, 200);
                 });
-                
+
                 $(document).on("input", "input[name*=\'venues\'][name*=\'[name]\'], input[name*=\'venues\'][name*=\'[id]\']", function() {
                     setTimeout(updateHomeAwayPreferences, 100);
                 });
-                
+
                 $(document).on("click", ".spsg-add-venue, .spsg-remove-venue", function() {
                     setTimeout(updateHomeAwayPreferences, 200);
                 });
-                
+
                 // Initial update on page load
                 setTimeout(updateHomeAwayPreferences, 500);
-                
+
                 // Change history display
                 $("#spsg-view-change-history").click(function() {
                     var $button = $(this);
                     var configId = $button.data("config-id");
                     var $display = $("#spsg-change-history-display");
                     var $content = $("#spsg-change-history-content");
-                    
+
                     if (!configId) {
                         alert("' . esc_js(__('Please save the configuration first to view change history', 'sportspress-schedule-generator')) . '");
                         return;
                     }
-                    
+
                     // Toggle display
                     if ($display.is(":visible")) {
                         $display.slideUp();
                         $button.text("' . esc_js(__('View Recent Changes', 'sportspress-schedule-generator')) . '");
                         return;
                     }
-                    
+
                     $button.prop("disabled", true).text("' . esc_js(__('Loading...', 'sportspress-schedule-generator')) . '");
-                    
+
                     $.ajax({
                         url: ajaxurl,
                         type: "POST",
@@ -1525,7 +1529,7 @@ class SPSG_Admin
                         success: function(response) {
                             if (response.success) {
                                 var history = response.data.history;
-                                
+
                                 if (history.length === 0) {
                                     $content.html(\'<p class="description">\' + (response.data.message || "' . esc_js(__(self::MSG_NO_CHANGES, 'sportspress-schedule-generator')) . '") + \'</p>\');
                                     $("#spsg-clear-change-history").hide();
@@ -1538,29 +1542,29 @@ class SPSG_Admin
                                     html += \'<th>\' + "' . esc_js(__('Field', 'sportspress-schedule-generator')) . '" + \'</th>\';
                                     html += \'<th>\' + "' . esc_js(__('Change', 'sportspress-schedule-generator')) . '" + \'</th>\';
                                     html += \'</tr></thead><tbody>\';
-                                    
+
                                     $.each(history, function(i, change) {
                                         html += \'<tr>\';
                                         html += \'<td>\' + change.timestamp + \'</td>\';
                                         html += \'<td>\' + (change.user_name || "' . esc_js(__('Unknown', 'sportspress-schedule-generator')) . '") + \'</td>\';
                                         html += \'<td><code>\' + change.field + \'</code></td>\';
                                         html += \'<td>\';
-                                        
+
                                         if (change.old_value_display && change.new_value_display) {
                                             html += \'<span style="color: #b32d2e; text-decoration: line-through;">\' + change.old_value_display + \'</span> → \';
                                             html += \'<span style="color: #00a32a; font-weight: bold;">\' + change.new_value_display + \'</span>\';
                                         } else {
                                             html += "' . esc_js(__('Modified', 'sportspress-schedule-generator')) . '";
                                         }
-                                        
+
                                         html += \'</td>\';
                                         html += \'</tr>\';
                                     });
-                                    
+
                                     html += \'</tbody></table>\';
                                     $content.html(html);
                                 }
-                                
+
                                 $display.slideDown();
                                 $button.text("' . esc_js(__('Hide Changes', 'sportspress-schedule-generator')) . '");
                             } else {
@@ -1575,18 +1579,18 @@ class SPSG_Admin
                         }
                     });
                 });
-                
+
                 // Clear change history
                 $("#spsg-clear-change-history").click(function() {
                     var $button = $(this);
-                    
+
                     // Add confirmation dialog before clearing
                     if (!confirm("' . esc_js(__('Are you sure you want to clear all change history? This action cannot be undone.', 'sportspress-schedule-generator')) . '")) {
                         return;
                     }
-                    
+
                     $button.prop("disabled", true).text("' . esc_js(__('Clearing...', 'sportspress-schedule-generator')) . '");
-                    
+
                     $.ajax({
                         url: ajaxurl,
                         type: "POST",
@@ -1598,10 +1602,10 @@ class SPSG_Admin
                             if (response.success) {
                                 // Show success message
                                 alert(response.data.message || "' . esc_js(__('Change history cleared successfully', 'sportspress-schedule-generator')) . '");
-                                
+
                                 // Refresh history display (will show empty)
                                 $("#spsg-change-history-content").html(\'<p class="description">\' + "' . esc_js(__(self::MSG_NO_CHANGES, 'sportspress-schedule-generator')) . '" + \'</p>\');
-                                
+
                                 // Hide clear button
                                 $button.hide();
                             } else {
@@ -1616,7 +1620,7 @@ class SPSG_Admin
                         }
                     });
                 });
-                
+
                 // Day weights - Calculate total and update display
                 function updateDayWeightsTotal() {
                     var total = 0;
@@ -1625,50 +1629,50 @@ class SPSG_Admin
                         total += value;
                         $(this).siblings(".spsg-day-weight-percentage").text(value + "%");
                     });
-                    
+
                     $("#spsg-day-weights-total").text(total.toFixed(0));
-                    
+
                     if (Math.abs(total - 100) > 0.5) {
                         $("#spsg-day-weights-warning").show();
                     } else {
                         $("#spsg-day-weights-warning").hide();
                     }
                 }
-                
+
                 // Day weights - Update on input
                 $(document).on("input", ".spsg-day-weight-input", function() {
                     updateDayWeightsTotal();
                 });
-                
+
                 // Day weights - Normalize to 100%
                 $("#spsg-normalize-day-weights").click(function() {
                     var inputs = $(".spsg-day-weight-input");
                     var total = 0;
-                    
+
                     inputs.each(function() {
                         total += parseFloat($(this).val()) || 0;
                     });
-                    
+
                     if (total === 0) {
                         alert("' . esc_js(__('Please enter at least one non-zero weight', 'sportspress-schedule-generator')) . '");
                         return;
                     }
-                    
+
                     inputs.each(function() {
                         var currentValue = parseFloat($(this).val()) || 0;
                         var normalized = Math.round((currentValue / total) * 100);
                         $(this).val(normalized);
                     });
-                    
+
                     updateDayWeightsTotal();
                 });
-                
+
                 // Day weights - Reset to equal distribution
                 $("#spsg-reset-day-weights").click(function() {
                     var inputs = $(".spsg-day-weight-input");
                     var count = inputs.length;
                     var equalWeight = Math.round(100 / count);
-                    
+
                     inputs.each(function(index) {
                         // Adjust last one to ensure total is exactly 100
                         if (index === count - 1) {
@@ -1678,19 +1682,19 @@ class SPSG_Admin
                             $(this).val(equalWeight);
                         }
                     });
-                    
+
                     updateDayWeightsTotal();
                 });
-                
+
                 // Initialize day weights total on page load
                 updateDayWeightsTotal();
-                
+
                 // Team restrictions - Add restriction
                 $("#spsg-add-team-restriction").click(function() {
                     var container = $("#spsg-team-restrictions-container");
                     var index = container.children().length;
                     var template = $(".spsg-team-restriction-row:first").clone();
-                    
+
                     // Update indices in the cloned template
                     template.find("select, input").each(function() {
                         var name = $(this).attr("name");
@@ -1698,13 +1702,13 @@ class SPSG_Admin
                             $(this).attr("name", name.replace(/\[\d+\]/, "[" + index + "]"));
                         }
                     });
-                    
+
                     // Clear selections
                     template.find("select option").prop("selected", false);
                     template.attr("data-index", index);
-                    
+
                     container.append(template);
-                    
+
                     // Reinitialize Select2 if enabled
                     if (typeof $.fn.select2 !== "undefined") {
                         template.find(".spsg-team-restriction-select").select2({
@@ -1714,7 +1718,7 @@ class SPSG_Admin
                         });
                     }
                 });
-                
+
                 // Team restrictions - Remove restriction
                 $(document).on("click", ".spsg-remove-team-restriction", function() {
                     if ($(".spsg-team-restriction-row").length > 1) {
@@ -1725,7 +1729,7 @@ class SPSG_Admin
                         alert("' . esc_js(__('At least one restriction row must remain. Clear the teams instead if not needed.', 'sportspress-schedule-generator')) . '");
                     }
                 });
-                
+
                 // Initialize Select2 on team restriction selects if enabled
                 if (typeof $.fn.select2 !== "undefined") {
                     $(".spsg-team-restriction-select").select2({
@@ -1734,25 +1738,25 @@ class SPSG_Admin
                         allowClear: true
                     });
                 }
-                
+
                 // AJAX form validation and submission
                 $("#spsg-config-form").submit(function(e) {
                     e.preventDefault();
-                    
+
                     // Clear previous errors
                     $(".spsg-validation-error").remove();
                     $("#spsg-validation-summary").remove();
-                    
+
                     var $form = $(this);
                     var $submitBtn = $form.find("input[type=submit]");
                     var originalBtnText = $submitBtn.val();
-                    
+
                     // Disable submit button
                     $submitBtn.prop("disabled", true).val("' . esc_js(__('Validating...', 'sportspress-schedule-generator')) . '");
-                    
+
                     // Serialize form data
                     var formData = $form.serialize();
-                    
+
                     // First, validate the configuration
                     $.ajax({
                         url: ajaxurl,
@@ -1762,7 +1766,7 @@ class SPSG_Admin
                             if (response.success) {
                                 // Validation passed, now save
                                 $submitBtn.val("' . esc_js(__('Saving...', 'sportspress-schedule-generator')) . '");
-                                
+
                                 $.ajax({
                                     url: ajaxurl,
                                     type: "POST",
@@ -1771,14 +1775,14 @@ class SPSG_Admin
                                         if (saveResponse.success) {
                                             // Trigger custom event to reset unsaved changes flag
                                             $(document).trigger("spsg-config-saved");
-                                            
+
                                             // Show success message
                                             var successMsg = \'<div id="spsg-validation-summary" class="notice notice-success is-dismissible" style="margin: 20px 0;"><p><strong>' . esc_js(__('Success!', 'sportspress-schedule-generator')) . '</strong> \' + saveResponse.data.message + \'</p></div>\';
                                             $form.before(successMsg);
-                                            
+
                                             // Scroll to top to show message
                                             $("html, body").animate({ scrollTop: 0 }, 300);
-                                            
+
                                             // Auto-dismiss after 5 seconds
                                             setTimeout(function() {
                                                 $("#spsg-validation-summary").fadeOut(function() {
@@ -1805,16 +1809,16 @@ class SPSG_Admin
                                 // Validation failed - show errors
                                 var errors = response.data.errors || {};
                                 var errorCount = Object.keys(errors).length;
-                                
+
                                 // Show summary at top
                                 var summaryHtml = \'<div id="spsg-validation-summary" class="notice notice-error" style="margin: 20px 0;">\';
                                 summaryHtml += \'<p><strong>' . esc_js(__('Configuration Validation Failed', 'sportspress-schedule-generator')) . '</strong></p>\';
                                 summaryHtml += \'<p>' . esc_js(__('Please fix the following errors:', 'sportspress-schedule-generator')) . '</p>\';
                                 summaryHtml += \'<ul style="list-style: disc; margin-left: 20px;">\';
-                                
+
                                 $.each(errors, function(field, message) {
                                     summaryHtml += \'<li>\' + message + \'</li>\';
-                                    
+
                                     // Add inline error near the field
                                     var $field = $(\'[name="\' + field + \'"]\');
                                     if ($field.length) {
@@ -1822,13 +1826,13 @@ class SPSG_Admin
                                         $field.after(\'<p class="spsg-validation-error" style="color: #d63638; margin-top: 5px;"><strong>⚠</strong> \' + message + \'</p>\');
                                     }
                                 });
-                                
+
                                 summaryHtml += \'</ul></div>\';
                                 $form.before(summaryHtml);
-                                
+
                                 // Scroll to top to show errors
                                 $("html, body").animate({ scrollTop: 0 }, 300);
-                                
+
                                 $submitBtn.prop("disabled", false).val(originalBtnText);
                             }
                         },
@@ -1839,7 +1843,7 @@ class SPSG_Admin
                             $submitBtn.prop("disabled", false).val(originalBtnText);
                         }
                     });
-                    
+
                     return false;
                 });
             });
@@ -1898,18 +1902,15 @@ class SPSG_Admin
     {
         $action = sanitize_text_field($_POST['spsg_action']);
 
-        switch ($action) {
-            case 'save_config':
-                $config_data = $this->sanitize_form_data($_POST);
-                $result = $this->config_manager->save($config_data);
+        if ($action === 'save_config') {
+            $config_data = $this->sanitize_form_data($_POST);
+            $result = $this->config_manager->save($config_data);
 
-                if (is_wp_error($result)) {
-                    add_settings_error('spsg_messages', 'spsg_error', $result->get_error_message(), 'error');
-                }
-                else {
-                    add_settings_error('spsg_messages', 'spsg_success', __('Configuration saved successfully', 'sportspress-schedule-generator'), 'updated');
-                }
-                break;
+            if (is_wp_error($result)) {
+                add_settings_error('spsg_messages', 'spsg_error', $result->get_error_message(), 'error');
+            } else {
+                add_settings_error('spsg_messages', 'spsg_success', __('Configuration saved successfully', 'sportspress-schedule-generator'), 'updated');
+            }
         }
 
         settings_errors('spsg_messages');
@@ -1953,7 +1954,7 @@ class SPSG_Admin
                 <button type="button" class="button" id="spsg-import-config"><?php _e('Import Configuration', 'sportspress-schedule-generator'); ?></button>
                 <input type="file" id="spsg-import-config-file" accept=".json" style="display: none;" />
             </div>
-            
+
             <?php if (get_option('spsg_enable_change_tracking', '1') === '1' && !empty($config->id)): ?>
             <div class="spsg-change-history" style="margin-top: 20px;">
                 <h4><?php _e('Change History', 'sportspress-schedule-generator'); ?></h4>
@@ -1966,7 +1967,7 @@ class SPSG_Admin
             <?php
         endif; ?>
         </div>
-        
+
         <!-- Import Preview Modal -->
         <div id="spsg-import-preview-modal" class="spsg-modal" style="display: none;">
             <div class="spsg-modal-overlay"></div>
@@ -1975,7 +1976,7 @@ class SPSG_Admin
                     <h2><?php _e('Configuration Import Preview', 'sportspress-schedule-generator'); ?></h2>
                     <button type="button" class="spsg-modal-close" aria-label="<?php esc_attr_e('Close', 'sportspress-schedule-generator'); ?>">&times;</button>
                 </div>
-                
+
                 <div class="spsg-modal-body">
                     <div class="spsg-preview-summary">
                         <h3><?php _e('Configuration Details', 'sportspress-schedule-generator'); ?></h3>
@@ -2008,20 +2009,20 @@ class SPSG_Admin
                             </tbody>
                         </table>
                     </div>
-                    
+
                     <div id="spsg-preview-warnings" class="spsg-preview-warnings" style="display: none;">
                         <h3><?php _e('Compatibility Warnings', 'sportspress-schedule-generator'); ?></h3>
                         <ul id="spsg-warning-list"></ul>
                     </div>
                 </div>
-                
+
                 <div class="spsg-modal-footer">
                     <button type="button" class="button button-primary" id="spsg-apply-import"><?php _e('Apply Import', 'sportspress-schedule-generator'); ?></button>
                     <button type="button" class="button" id="spsg-cancel-import-preview"><?php _e('Cancel', 'sportspress-schedule-generator'); ?></button>
                 </div>
             </div>
         </div>
-        
+
         <table class="form-table">
             <tr>
                 <th scope="row"><?php _e('Configuration Name', 'sportspress-schedule-generator'); ?></th>
@@ -2043,7 +2044,7 @@ class SPSG_Admin
                 </td>
             </tr>
             <tr>
-                <th scope="row"><?php _e('Games Per Team', 'sportspress-schedule-generator'); ?></th>
+                <th scope="row"><?php _e(self::LABEL_GAMES_PER_TEAM, 'sportspress-schedule-generator'); ?></th>
                 <td>
                     <input type="number" name="games_per_team" value="<?php echo esc_attr($config->games_per_team); ?>" min="1" max="50" required />
                     <p class="description"><?php _e('Total number of games each team should play during the season', 'sportspress-schedule-generator'); ?></p>
@@ -2071,7 +2072,7 @@ class SPSG_Admin
                 </td>
             </tr>
         </table>
-        
+
         <h3><?php _e('Quick Start', 'sportspress-schedule-generator'); ?></h3>
         <table class="form-table">
             <tr>
@@ -2095,7 +2096,7 @@ class SPSG_Admin
                 </td>
             </tr>
         </table>
-        
+
         <h3><?php _e('Schedule Settings', 'sportspress-schedule-generator'); ?></h3>
         <table class="form-table">
             <tr>
@@ -2119,9 +2120,9 @@ class SPSG_Admin
                 </td>
             </tr>
         </table>
-        
+
         <p class="submit">
-            <input type="submit" name="submit" class="button-primary" value="<?php _e('Save Configuration', 'sportspress-schedule-generator'); ?>" />
+            <input type="submit" name="submit" class="button-primary" value="<?php _e(self::LABEL_SAVE_CONFIGURATION, 'sportspress-schedule-generator'); ?>" />
         </p>
         <?php
     }
@@ -2164,7 +2165,7 @@ class SPSG_Admin
             <hr>
             <?php
         endif; ?>
-            
+
             <h3><?php _e('Divisions', 'sportspress-schedule-generator'); ?></h3>
             <div id="spsg-divisions-container">
                 <?php
@@ -2180,148 +2181,43 @@ class SPSG_Admin
             </div>
             <button type="button" class="button" id="spsg-add-division"><?php _e('Add Division', 'sportspress-schedule-generator'); ?></button>
         </div>
-        
+
         <div class="spsg-home-away-section">
             <h3><?php _e('Home/Away Preferences', 'sportspress-schedule-generator'); ?></h3>
             <p class="description"><?php _e('Assign preferred home venues for teams. This helps balance home and away games across the season.', 'sportspress-schedule-generator'); ?></p>
-            
+
             <table class="form-table">
                 <tr>
                     <th scope="row"><?php _e('Configure Home Venues', 'sportspress-schedule-generator'); ?></th>
                     <td>
                         <div id="spsg-home-away-preferences">
-                            <?php
-        $home_away_prefs = $config->home_away_preferences ?? array();
-        $all_teams = array();
-
-        // Collect all teams from divisions
-        if (!empty($config->divisions)) {
-            foreach ($config->divisions as $division) {
-                if (!empty($division['teams'])) {
-                    foreach ($division['teams'] as $team) {
-                        $all_teams[] = $team;
-                    }
-                }
-            }
-        }
-
-        if (empty($all_teams)) {
-            echo '<p class="description">' . __('Add teams to divisions first to configure home venue preferences.', 'sportspress-schedule-generator') . '</p>';
-        }
-        else {
-            echo '<table class="widefat striped">';
-            echo '<thead><tr>';
-            echo '<th>' . __('Team', 'sportspress-schedule-generator') . '</th>';
-            echo '<th>' . __('Preferred Home Venue', 'sportspress-schedule-generator') . '</th>';
-            echo '</tr></thead>';
-            echo '<tbody>';
-
-            foreach ($all_teams as $team) {
-                $team_pref = $home_away_prefs[$team] ?? '';
-                echo '<tr>';
-                echo '<td><strong>' . esc_html($team) . '</strong></td>';
-                echo '<td>';
-                echo '<select name="home_away_preferences[' . esc_attr($team) . ']" class="regular-text">';
-                echo '<option value="">' . __('No preference', 'sportspress-schedule-generator') . '</option>';
-
-                // List all venues
-                if (!empty($config->venues)) {
-                    foreach ($config->venues as $venue) {
-                        $venue_id = $venue['id'] ?? '';
-                        $venue_name = $venue['name'] ?? __('Unnamed Venue', 'sportspress-schedule-generator');
-                        echo '<option value="' . esc_attr($venue_id) . '" ' . selected($team_pref, $venue_id, false) . '>' . esc_html($venue_name) . '</option>';
-                    }
-                }
-
-                echo '</select>';
-                echo '</td>';
-                echo '</tr>';
-            }
-
-            echo '</tbody></table>';
-
-            if (empty($config->venues)) {
-                echo '<p class="description" style="margin-top: 10px;">' . __('Note: Add venues in the "Venues & Times" tab to assign home venue preferences.', 'sportspress-schedule-generator') . '</p>';
-            }
-        }
-?>
+                            <?php $this->render_home_away_preferences($config); ?>
                         </div>
                     </td>
                 </tr>
             </table>
         </div>
-        
+
         <div class="spsg-inter-division-section">
             <h3><?php _e('Inter-Division Games', 'sportspress-schedule-generator'); ?></h3>
             <p class="description"><?php _e('Configure cross-division play by specifying how many games teams from different divisions should play against each other.', 'sportspress-schedule-generator'); ?></p>
-            
+
             <table class="form-table">
                 <tr>
                     <th scope="row"><?php _e('Configure Inter-Division Games', 'sportspress-schedule-generator'); ?></th>
                     <td>
                         <div id="spsg-inter-division-games">
-                            <?php
-        $inter_division_games = $config->inter_division_games ?? array();
-        $divisions = $config->divisions ?? array();
-
-        if (count($divisions) < 2) {
-            echo '<p class="description">' . __('Add at least 2 divisions to configure inter-division games.', 'sportspress-schedule-generator') . '</p>';
-        }
-        else {
-            echo '<table class="widefat striped">';
-            echo '<thead><tr>';
-            echo '<th>' . __('Division Pair', 'sportspress-schedule-generator') . '</th>';
-            echo '<th>' . __('Games Per Team', 'sportspress-schedule-generator') . '</th>';
-            echo '</tr></thead>';
-            echo '<tbody>';
-
-            // Generate all division pairs
-            for ($i = 0; $i < count($divisions); $i++) {
-                for ($j = $i + 1; $j < count($divisions); $j++) {
-                    $div1 = $divisions[$i];
-                    $div2 = $divisions[$j];
-                    $div1_name = $div1['name'] ?? sprintf(__('Division %d', 'sportspress-schedule-generator'), $i + 1);
-                    $div2_name = $div2['name'] ?? sprintf(__('Division %d', 'sportspress-schedule-generator'), $j + 1);
-
-                    // Create pair key (consistent ordering)
-                    $div1_id = $div1['id'] ?? 'div_' . $i;
-                    $div2_id = $div2['id'] ?? 'div_' . $j;
-                    $pair_key = $div1_id . '_' . $div2_id;
-
-                    $games_count = $inter_division_games[$pair_key] ?? 0;
-
-                    echo '<tr>';
-                    echo '<td><strong>' . esc_html($div1_name) . '</strong> vs <strong>' . esc_html($div2_name) . '</strong></td>';
-                    echo '<td>';
-                    echo '<input type="number" name="inter_division_games[' . esc_attr($pair_key) . ']" value="' . esc_attr($games_count) . '" min="0" max="10" class="small-text" /> ';
-                    echo '<span class="description">' . __('games per team', 'sportspress-schedule-generator') . '</span>';
-                    echo '</td>';
-                    echo '</tr>';
-                }
-            }
-
-            echo '</tbody></table>';
-
-            echo '<p class="description" style="margin-top: 10px;">';
-            echo __('Specify how many games each team should play against teams from other divisions. Set to 0 to disable inter-division play for a division pair.', 'sportspress-schedule-generator');
-            echo '</p>';
-
-            echo '<div id="spsg-inter-division-warning" style="display: none; margin-top: 10px; padding: 10px; background: #fcf3cf; border-left: 4px solid #f39c12;">';
-            echo '<strong>' . __('Warning:', 'sportspress-schedule-generator') . '</strong> ';
-            echo '<span id="spsg-inter-division-warning-text"></span>';
-            echo '</div>';
-        }
-?>
+                            <?php $this->render_inter_division_games($config); ?>
                         </div>
                     </td>
                 </tr>
             </table>
         </div>
-        
+
         <div class="spsg-generic-teams-section">
             <h4><?php _e('Generic Team Filler', 'sportspress-schedule-generator'); ?></h4>
             <p class="description"><?php _e('Automatically add generic placeholder teams to ensure even team counts in all divisions (required for round-robin scheduling).', 'sportspress-schedule-generator'); ?></p>
-            
+
             <table class="form-table">
                 <tr>
                     <th scope="row"><?php _e('Enable Generic Teams', 'sportspress-schedule-generator'); ?></th>
@@ -2337,7 +2233,7 @@ class SPSG_Admin
                     <td>
                         <input type="number" name="generic_teams_per_division" id="spsg-generic-teams-per-division" value="<?php echo esc_attr($config->generic_teams['per_division'] ?? 8); ?>" min="2" max="20" step="2" class="small-text" />
                         <p class="description"><?php _e('Target number of teams per division (must be even for round-robin). Generic teams will be added to reach this number.', 'sportspress-schedule-generator'); ?></p>
-                        
+
                         <div class="spsg-generic-teams-calculation" id="spsg-generic-teams-calculation">
                             <strong><?php _e('Calculation:', 'sportspress-schedule-generator'); ?></strong>
                             <p id="spsg-generic-teams-summary"></p>
@@ -2353,11 +2249,135 @@ class SPSG_Admin
                 </tr>
             </table>
         </div>
-        
+
         <p class="submit">
-            <input type="submit" name="submit" class="button-primary" value="<?php _e('Save Configuration', 'sportspress-schedule-generator'); ?>" />
+            <input type="submit" name="submit" class="button-primary" value="<?php _e(self::LABEL_SAVE_CONFIGURATION, 'sportspress-schedule-generator'); ?>" />
         </p>
         <?php
+    }
+
+    /**
+     * Render home/away venue preferences table
+     */
+    private function render_home_away_preferences($config)
+    {
+        $home_away_prefs = $config->home_away_preferences ?? array();
+        $all_teams = $this->collect_all_teams($config);
+
+        if (empty($all_teams)) {
+            echo '<p class="description">' . __('Add teams to divisions first to configure home venue preferences.', 'sportspress-schedule-generator') . '</p>';
+            return;
+        }
+
+        echo '<table class="widefat striped">';
+        echo '<thead><tr>';
+        echo '<th>' . __('Team', 'sportspress-schedule-generator') . '</th>';
+        echo '<th>' . __('Preferred Home Venue', 'sportspress-schedule-generator') . '</th>';
+        echo '</tr></thead>';
+        echo '<tbody>';
+
+        foreach ($all_teams as $team) {
+            $team_pref = $home_away_prefs[$team] ?? '';
+            echo '<tr>';
+            echo '<td><strong>' . esc_html($team) . '</strong></td>';
+            echo '<td>';
+            echo '<select name="home_away_preferences[' . esc_attr($team) . ']" class="regular-text">';
+            echo '<option value="">' . __('No preference', 'sportspress-schedule-generator') . '</option>';
+
+            if (!empty($config->venues)) {
+                foreach ($config->venues as $venue) {
+                    $venue_id = $venue['id'] ?? '';
+                    $venue_name = $venue['name'] ?? __('Unnamed Venue', 'sportspress-schedule-generator');
+                    echo '<option value="' . esc_attr($venue_id) . '" ' . selected($team_pref, $venue_id, false) . '>' . esc_html($venue_name) . '</option>';
+                }
+            }
+
+            echo '</select>';
+            echo '</td>';
+            echo '</tr>';
+        }
+
+        echo '</tbody></table>';
+
+        if (empty($config->venues)) {
+            echo '<p class="description" style="margin-top: 10px;">' . __('Note: Add venues in the "Venues & Times" tab to assign home venue preferences.', 'sportspress-schedule-generator') . '</p>';
+        }
+    }
+
+    /**
+     * Render inter-division games configuration table
+     */
+    private function render_inter_division_games($config)
+    {
+        $inter_division_games = $config->inter_division_games ?? array();
+        $divisions = $config->divisions ?? array();
+
+        if (count($divisions) < 2) {
+            echo '<p class="description">' . __('Add at least 2 divisions to configure inter-division games.', 'sportspress-schedule-generator') . '</p>';
+            return;
+        }
+
+        echo '<table class="widefat striped">';
+        echo '<thead><tr>';
+        echo '<th>' . __('Division Pair', 'sportspress-schedule-generator') . '</th>';
+        echo '<th>' . __(self::LABEL_GAMES_PER_TEAM, 'sportspress-schedule-generator') . '</th>';
+        echo '</tr></thead>';
+        echo '<tbody>';
+
+        for ($i = 0; $i < count($divisions); $i++) {
+            for ($j = $i + 1; $j < count($divisions); $j++) {
+                $div1 = $divisions[$i];
+                $div2 = $divisions[$j];
+                $div1_name = $div1['name'] ?? sprintf(__('Division %d', 'sportspress-schedule-generator'), $i + 1);
+                $div2_name = $div2['name'] ?? sprintf(__('Division %d', 'sportspress-schedule-generator'), $j + 1);
+
+                $div1_id = $div1['id'] ?? 'div_' . $i;
+                $div2_id = $div2['id'] ?? 'div_' . $j;
+                $pair_key = $div1_id . '_' . $div2_id;
+
+                $games_count = $inter_division_games[$pair_key] ?? 0;
+
+                echo '<tr>';
+                echo '<td><strong>' . esc_html($div1_name) . '</strong> vs <strong>' . esc_html($div2_name) . '</strong></td>';
+                echo '<td>';
+                echo '<input type="number" name="inter_division_games[' . esc_attr($pair_key) . ']" value="' . esc_attr($games_count) . '" min="0" max="10" class="small-text" /> ';
+                echo '<span class="description">' . __('games per team', 'sportspress-schedule-generator') . '</span>';
+                echo '</td>';
+                echo '</tr>';
+            }
+        }
+
+        echo '</tbody></table>';
+
+        echo '<p class="description" style="margin-top: 10px;">';
+        echo __('Specify how many games each team should play against teams from other divisions. Set to 0 to disable inter-division play for a division pair.', 'sportspress-schedule-generator');
+        echo '</p>';
+
+        echo '<div id="spsg-inter-division-warning" style="display: none; margin-top: 10px; padding: 10px; background: #fcf3cf; border-left: 4px solid #f39c12;">';
+        echo '<strong>' . __('Warning:', 'sportspress-schedule-generator') . '</strong> ';
+        echo '<span id="spsg-inter-division-warning-text"></span>';
+        echo '</div>';
+    }
+
+    /**
+     * Collect all team names from config divisions
+     *
+     * @param object $config Configuration object
+     * @return array List of team names
+     */
+    private function collect_all_teams($config)
+    {
+        $all_teams = array();
+        if (!empty($config->divisions)) {
+            foreach ($config->divisions as $division) {
+                if (!empty($division['teams'])) {
+                    foreach ($division['teams'] as $team) {
+                        $all_teams[] = $team;
+                    }
+                }
+            }
+        }
+        return $all_teams;
     }
 
     /**
@@ -2460,7 +2480,7 @@ class SPSG_Admin
                     </td>
                 </tr>
             </table>
-            
+
             <h4><?php _e('Time Slots by Day', 'sportspress-schedule-generator'); ?></h4>
             <div id="spsg-time-slots-container">
                 <?php
@@ -2476,19 +2496,19 @@ class SPSG_Admin
 ?>
             </div>
         </div>
-        
+
         <div class="spsg-venues-section">
             <div class="spsg-csv-import">
                 <h3><?php _e('Import Venue Schedule from CSV', 'sportspress-schedule-generator'); ?></h3>
                 <p class="description"><?php _e('Upload a CSV file with week-by-week venue availability. This is useful when venues and time slots change weekly.', 'sportspress-schedule-generator'); ?></p>
-                
+
                 <div class="spsg-csv-upload-section">
                     <input type="file" id="spsg-venue-csv-file" accept=".csv" style="display: none;" />
                     <button type="button" class="button" id="spsg-upload-venue-csv-btn"><?php _e('Choose CSV File', 'sportspress-schedule-generator'); ?></button>
                     <span id="spsg-csv-filename" style="margin-left: 10px; color: #666;"></span>
                     <button type="button" class="button button-primary" id="spsg-preview-venue-csv-btn" style="display: none;"><?php _e('Preview & Import', 'sportspress-schedule-generator'); ?></button>
                 </div>
-                
+
                 <div class="spsg-csv-format-help" style="margin-top: 10px;">
                     <details>
                         <summary style="cursor: pointer; color: #2271b1;"><?php _e('CSV Format Help', 'sportspress-schedule-generator'); ?></summary>
@@ -2513,7 +2533,7 @@ class SPSG_Admin
                 </div>
             </div>
             <hr>
-            
+
             <?php if ($sp_available): ?>
             <div class="spsg-sportspress-import">
                 <h3><?php _e('Import Venues from SportsPress', 'sportspress-schedule-generator'); ?></h3>
@@ -2523,7 +2543,7 @@ class SPSG_Admin
             <hr>
             <?php
         endif; ?>
-            
+
             <h3><?php _e('Venues', 'sportspress-schedule-generator'); ?></h3>
             <div id="spsg-venues-container">
                 <?php
@@ -2539,9 +2559,9 @@ class SPSG_Admin
             </div>
             <button type="button" class="button" id="spsg-add-venue"><?php _e('Add Venue', 'sportspress-schedule-generator'); ?></button>
         </div>
-        
+
         <p class="submit">
-            <input type="submit" name="submit" class="button-primary" value="<?php _e('Save Configuration', 'sportspress-schedule-generator'); ?>" />
+            <input type="submit" name="submit" class="button-primary" value="<?php _e(self::LABEL_SAVE_CONFIGURATION, 'sportspress-schedule-generator'); ?>" />
         </p>
         <?php
     }
@@ -2625,7 +2645,7 @@ class SPSG_Admin
                     </td>
                 </tr>
             </table>
-            
+
             <h3><?php _e('Day Weighting / Priority', 'sportspress-schedule-generator'); ?></h3>
             <p class="description"><?php _e('Set the relative weight for each playing day to control how many games are scheduled. Higher weights mean more games on that day. Teams will still get balanced distribution across all days.', 'sportspress-schedule-generator'); ?></p>
             <table class="form-table">
@@ -2643,14 +2663,15 @@ class SPSG_Admin
                 $weight = isset($day_ratios[$day]) ? round($day_ratios[$day] * 100) : round((1.0 / count($selected_days)) * 100);
 ?>
                                     <div class="spsg-day-weight-row" style="margin-bottom: 10px;">
-                                        <label style="display: inline-block; width: 120px; font-weight: 600;">
+                                        <label for="spsg-day-weight-<?php echo esc_attr($day); ?>" style="display: inline-block; width: 120px; font-weight: 600;">
                                             <?php echo esc_html(ucfirst($day)); ?>:
                                         </label>
-                                        <input type="number" 
-                                               name="distribution_rules[day_weights][<?php echo esc_attr($day); ?>]" 
-                                               value="<?php echo esc_attr($weight); ?>" 
-                                               min="1" 
-                                               max="100" 
+                                        <input type="number"
+                                               id="spsg-day-weight-<?php echo esc_attr($day); ?>"
+                                               name="distribution_rules[day_weights][<?php echo esc_attr($day); ?>]"
+                                               value="<?php echo esc_attr($weight); ?>"
+                                               min="1"
+                                               max="100"
                                                step="1"
                                                class="small-text spsg-day-weight-input"
                                                data-day="<?php echo esc_attr($day); ?>" />
@@ -2674,7 +2695,7 @@ class SPSG_Admin
                     </td>
                 </tr>
             </table>
-            
+
             <h3><?php _e('Division Grouping', 'sportspress-schedule-generator'); ?></h3>
             <table class="form-table">
                 <tr>
@@ -2685,10 +2706,10 @@ class SPSG_Admin
                     </td>
                 </tr>
             </table>
-            
+
             <h3><?php _e('Team Restrictions', 'sportspress-schedule-generator'); ?></h3>
             <p class="description"><?php _e('Configure restrictions for teams that cannot play at the same time (e.g., teams sharing players or facilities).', 'sportspress-schedule-generator'); ?></p>
-            
+
             <div id="spsg-team-restrictions-container">
                 <?php
         $overlap_restrictions = $config->team_restrictions['overlap_avoidance'] ?? array();
@@ -2703,7 +2724,7 @@ class SPSG_Admin
 ?>
             </div>
             <button type="button" class="button" id="spsg-add-team-restriction"><?php _e('Add Team Restriction', 'sportspress-schedule-generator'); ?></button>
-            
+
             <h3><?php _e('Blackout Dates', 'sportspress-schedule-generator'); ?></h3>
             <table class="form-table">
                 <tr>
@@ -2714,9 +2735,9 @@ class SPSG_Admin
                 </tr>
             </table>
         </div>
-        
+
         <p class="submit">
-            <input type="submit" name="submit" class="button-primary" value="<?php _e('Save Configuration', 'sportspress-schedule-generator'); ?>" />
+            <input type="submit" name="submit" class="button-primary" value="<?php _e(self::LABEL_SAVE_CONFIGURATION, 'sportspress-schedule-generator'); ?>" />
         </p>
         <?php
     }
@@ -2729,19 +2750,7 @@ class SPSG_Admin
         $teams = $restriction['teams'] ?? array();
         $buffer_minutes = $restriction['buffer_minutes'] ?? 0;
 
-        // Get all teams from divisions for selection
-        $all_teams = array();
-        if (!empty($config->divisions)) {
-            foreach ($config->divisions as $division) {
-                if (!empty($division['teams'])) {
-                    foreach ($division['teams'] as $team) {
-                        if (!in_array($team, $all_teams)) {
-                            $all_teams[] = $team;
-                        }
-                    }
-                }
-            }
-        }
+        $all_teams = array_unique($this->collect_all_teams($config));
         sort($all_teams);
 ?>
         <div class="spsg-team-restriction-row" data-index="<?php echo esc_attr($index); ?>" style="background: #f9f9f9; padding: 15px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 4px;">
@@ -2771,17 +2780,17 @@ class SPSG_Admin
                 <tr>
                     <th scope="row"><?php _e('Buffer Time (minutes)', 'sportspress-schedule-generator'); ?></th>
                     <td>
-                        <input type="number" 
-                               name="team_restrictions[overlap_avoidance][<?php echo esc_attr($index); ?>][buffer_minutes]" 
-                               value="<?php echo esc_attr($buffer_minutes); ?>" 
-                               min="0" 
-                               max="240" 
+                        <input type="number"
+                               name="team_restrictions[overlap_avoidance][<?php echo esc_attr($index); ?>][buffer_minutes]"
+                               value="<?php echo esc_attr($buffer_minutes); ?>"
+                               min="0"
+                               max="240"
                                step="15"
                                class="small-text" />
                         <p class="description">
                             <?php _e('Minimum time gap required between these teams\' games. Set to 0 to allow back-to-back games.', 'sportspress-schedule-generator'); ?>
                             <br>
-                            <strong><?php _e('Example:', 'sportspress-schedule-generator'); ?></strong> 
+                            <strong><?php _e('Example:', 'sportspress-schedule-generator'); ?></strong>
                             <?php _e('With 30 minutes buffer and 60-minute games: If Team A plays at 8:00 PM, Team B can only play before 6:30 PM or after 9:30 PM.', 'sportspress-schedule-generator'); ?>
                         </p>
                     </td>
@@ -2808,9 +2817,9 @@ class SPSG_Admin
 
 ?>
         <div class="spsg-generate-section">
-            <h3><?php _e('Generate Schedule', 'sportspress-schedule-generator'); ?></h3>
+            <h3><?php _e(self::LABEL_GENERATE_SCHEDULE, 'sportspress-schedule-generator'); ?></h3>
             <p><?php _e('Review your configuration and generate the league schedule.', 'sportspress-schedule-generator'); ?></p>
-            
+
             <div class="spsg-config-summary">
                 <h4><?php _e('Configuration Summary', 'sportspress-schedule-generator'); ?></h4>
                 <ul>
@@ -2824,31 +2833,31 @@ class SPSG_Admin
                     <li><?php printf(__('Playing days: %s', 'sportspress-schedule-generator'), implode(', ', $config->playing_days ?: array())); ?></li>
                 </ul>
             </div>
-            
+
             <div class="spsg-generate-actions">
                 <button type="button" class="button-primary button-large" id="spsg-generate-schedule">
-                    <?php _e('Generate Schedule', 'sportspress-schedule-generator'); ?>
+                    <?php _e(self::LABEL_GENERATE_SCHEDULE, 'sportspress-schedule-generator'); ?>
                 </button>
                 <button type="button" class="button" id="spsg-validate-config">
                     <?php _e('Validate Configuration', 'sportspress-schedule-generator'); ?>
                 </button>
                 <p class="description"><?php _e('Click "Validate Configuration" to check if your settings are correct before generating.', 'sportspress-schedule-generator'); ?></p>
             </div>
-            
+
             <div id="spsg-messages"></div>
-            
+
             <!-- Progress Indicator -->
             <div id="spsg-progress-container" style="display: none;">
                 <div class="spsg-progress-wrapper">
                     <h4><?php _e('Generation Progress', 'sportspress-schedule-generator'); ?></h4>
-                    
+
                     <div class="spsg-progress-bar-container">
                         <div class="spsg-progress-bar">
                             <div class="spsg-progress-bar-fill" style="width: 0%;"></div>
                         </div>
                         <div class="spsg-progress-percentage">0%</div>
                     </div>
-                    
+
                     <div class="spsg-progress-details">
                         <div class="spsg-progress-phase">
                             <strong><?php _e('Current Phase:', 'sportspress-schedule-generator'); ?></strong>
@@ -2863,7 +2872,7 @@ class SPSG_Admin
                             <span id="spsg-progress-time-text"><?php _e('Calculating...', 'sportspress-schedule-generator'); ?></span>
                         </div>
                     </div>
-                    
+
                     <div class="spsg-progress-actions">
                         <button type="button" class="button" id="spsg-cancel-generation">
                             <?php _e('Cancel Generation', 'sportspress-schedule-generator'); ?>
@@ -2871,7 +2880,7 @@ class SPSG_Admin
                     </div>
                 </div>
             </div>
-            
+
             <?php if ($schedule && !empty($schedule)): ?>
                 <?php $this->render_schedule_preview($schedule, $stats, $schedule_id); ?>
             <?php
@@ -2879,10 +2888,10 @@ class SPSG_Admin
                 <div id="spsg-schedule-preview-placeholder"></div>
             <?php
         endif; ?>
-            
+
             <div id="spsg-export-container"></div>
         </div>
-        
+
         <?php
         // Render import dialog modal
         $this->render_import_dialog();
@@ -2892,32 +2901,32 @@ class SPSG_Admin
 
     /**
      * Render import dialog modal
-     * 
+     *
      * Displays a modal dialog for configuring SportsPress event import options
      */
     private function render_import_dialog()
     {
 ?>
-        <div id="spsg-import-dialog" class="spsg-modal" style="display: none;" role="dialog" aria-labelledby="spsg-import-dialog-title" aria-describedby="spsg-import-dialog-desc">
+        <dialog id="spsg-import-dialog" class="spsg-modal" aria-labelledby="spsg-import-dialog-title" aria-describedby="spsg-import-dialog-desc">
             <div class="spsg-modal-overlay" aria-hidden="true"></div>
             <div class="spsg-modal-content">
                 <div class="spsg-modal-header">
                     <h2 id="spsg-import-dialog-title"><?php _e('Import to SportsPress', 'sportspress-schedule-generator'); ?></h2>
                     <button type="button" class="spsg-modal-close" aria-label="<?php esc_attr_e('Close dialog', 'sportspress-schedule-generator'); ?>">&times;</button>
                 </div>
-                
+
                 <div class="spsg-modal-body">
                     <p id="spsg-import-dialog-desc" class="description">
                         <?php _e('Configure how events should be imported into SportsPress. You can preview the import before creating events.', 'sportspress-schedule-generator'); ?>
                     </p>
-                    
+
                     <!-- Import Options Form -->
                     <div class="spsg-import-options">
                         <h3><?php _e('Import Options', 'sportspress-schedule-generator'); ?></h3>
-                        
+
                         <!-- Conflict Resolution -->
                         <div class="spsg-form-group">
-                            <label id="spsg-conflict-resolution-label"><?php _e('Conflict Resolution', 'sportspress-schedule-generator'); ?></label>
+                            <span id="spsg-conflict-resolution-label" class="spsg-group-label"><?php _e('Conflict Resolution', 'sportspress-schedule-generator'); ?></span>
                             <div role="radiogroup" aria-labelledby="spsg-conflict-resolution-label">
                                 <label>
                                     <input type="radio" name="conflict_resolution" value="skip" checked aria-describedby="spsg-conflict-skip-desc" />
@@ -2933,7 +2942,7 @@ class SPSG_Admin
                                 <?php _e('How to handle events that already exist with the same date/time/teams. Skip will leave existing events unchanged, while overwrite will update them with new data.', 'sportspress-schedule-generator'); ?>
                             </p>
                         </div>
-                        
+
                         <!-- Event Status -->
                         <div class="spsg-form-group">
                             <label for="spsg-event-status"><?php _e('Event Status', 'sportspress-schedule-generator'); ?></label>
@@ -2947,7 +2956,7 @@ class SPSG_Admin
                                 <?php _e('Status for created events. Use "Draft" to review events before publishing.', 'sportspress-schedule-generator'); ?>
                             </p>
                         </div>
-                        
+
                         <!-- League Selection -->
                         <div class="spsg-form-group">
                             <label for="spsg-import-dialog-league"><?php _e('League (Optional)', 'sportspress-schedule-generator'); ?></label>
@@ -2959,7 +2968,7 @@ class SPSG_Admin
                                 <?php _e('Assign events to a SportsPress league', 'sportspress-schedule-generator'); ?>
                             </p>
                         </div>
-                        
+
                         <!-- Season Selection -->
                         <div class="spsg-form-group">
                             <label for="spsg-import-season"><?php _e('Season (Optional)', 'sportspress-schedule-generator'); ?></label>
@@ -2971,7 +2980,7 @@ class SPSG_Admin
                                 <?php _e('Assign events to a SportsPress season', 'sportspress-schedule-generator'); ?>
                             </p>
                         </div>
-                        
+
                         <!-- Dry Run -->
                         <div class="spsg-form-group">
                             <label>
@@ -2983,26 +2992,26 @@ class SPSG_Admin
                             </p>
                         </div>
                     </div>
-                    
+
                     <!-- Progress Section (hidden by default) -->
-                    <div id="spsg-import-progress" class="spsg-import-progress" style="display: none;" role="status" aria-live="polite">
+                    <output id="spsg-import-progress" class="spsg-import-progress" style="display: none;" aria-live="polite">
                         <h3><?php _e('Import Progress', 'sportspress-schedule-generator'); ?></h3>
-                        <div class="spsg-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                        <progress class="spsg-progress-bar" max="100" value="0" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                             <div class="spsg-progress-bar-fill" style="width: 0%;"></div>
-                        </div>
+                        </progress>
                         <p class="spsg-progress-text">
-                            <?php _e('Importing game', 'sportspress-schedule-generator'); ?> 
-                            <span id="spsg-import-current">0</span> 
-                            <?php _e('of', 'sportspress-schedule-generator'); ?> 
+                            <?php _e('Importing game', 'sportspress-schedule-generator'); ?>
+                            <span id="spsg-import-current">0</span>
+                            <?php _e('of', 'sportspress-schedule-generator'); ?>
                             <span id="spsg-import-total">0</span>
                         </p>
                         <button type="button" class="button" id="spsg-cancel-import">
                             <?php _e('Cancel Import', 'sportspress-schedule-generator'); ?>
                         </button>
-                    </div>
-                    
+                    </output>
+
                     <!-- Results Section (hidden by default) -->
-                    <div id="spsg-import-results" class="spsg-import-results" style="display: none;" role="status" aria-live="polite">
+                    <output id="spsg-import-results" class="spsg-import-results" style="display: none;" aria-live="polite">
                         <h3><?php _e('Import Results', 'sportspress-schedule-generator'); ?></h3>
                         <div class="spsg-results-summary">
                             <div class="spsg-result-stat spsg-result-success">
@@ -3024,11 +3033,11 @@ class SPSG_Admin
                         </div>
                         <div id="spsg-import-errors" class="spsg-import-errors" style="display: none;">
                             <h4><?php _e('Errors:', 'sportspress-schedule-generator'); ?></h4>
-                            <ul id="spsg-error-list" role="list"></ul>
+                            <ul id="spsg-error-list"></ul>
                         </div>
-                    </div>
+                    </output>
                 </div>
-                
+
                 <div class="spsg-modal-footer">
                     <button type="button" class="button button-primary" id="spsg-start-import">
                         <?php _e('Start Import', 'sportspress-schedule-generator'); ?>
@@ -3038,13 +3047,13 @@ class SPSG_Admin
                     </button>
                 </div>
             </div>
-        </div>
+        </dialog>
         <?php
     }
 
     /**
      * Render schedule preview
-     * 
+     *
      * @param array $schedule Generated schedule games
      * @param array $stats Schedule statistics
      * @param string $schedule_id Schedule ID for export/import
@@ -3079,14 +3088,14 @@ class SPSG_Admin
                     </button>
                 </div>
             </div>
-            
+
             <!-- Export Filters -->
             <div class="spsg-export-filters" style="display: none;">
                 <div class="spsg-filter-header">
                     <h3><?php _e('Export Options', 'sportspress-schedule-generator'); ?></h3>
                     <button type="button" class="button spsg-toggle-filters"><?php _e('Collapse', 'sportspress-schedule-generator'); ?></button>
                 </div>
-                
+
                 <div class="spsg-filter-content">
                     <div class="spsg-filter-row">
                         <label for="spsg-export-division"><?php _e('Division:', 'sportspress-schedule-generator'); ?></label>
@@ -3096,30 +3105,30 @@ class SPSG_Admin
                         </select>
                         <p class="description"><?php _e('Filter by division', 'sportspress-schedule-generator'); ?></p>
                     </div>
-                    
+
                     <div class="spsg-filter-row">
                         <label for="spsg-export-date-from"><?php _e('From Date:', 'sportspress-schedule-generator'); ?></label>
                         <input type="date" id="spsg-export-date-from" class="regular-text">
                         <p class="description"><?php _e('Start date for export range', 'sportspress-schedule-generator'); ?></p>
                     </div>
-                    
+
                     <div class="spsg-filter-row">
                         <label for="spsg-export-date-to"><?php _e('To Date:', 'sportspress-schedule-generator'); ?></label>
                         <input type="date" id="spsg-export-date-to" class="regular-text">
                         <p class="description"><?php _e('End date for export range', 'sportspress-schedule-generator'); ?></p>
                     </div>
-                    
+
                     <div class="spsg-filter-summary">
                         <p>
-                            <?php _e('Filtered games:', 'sportspress-schedule-generator'); ?> 
+                            <?php _e('Filtered games:', 'sportspress-schedule-generator'); ?>
                             <strong id="spsg-filtered-count">0</strong>
                         </p>
                     </div>
                 </div>
             </div>
-            
+
             <?php $this->render_preview_stats($stats, $schedule, $venues); ?>
-            
+
             <!-- Filters -->
             <div class="spsg-preview-filters">
                 <select id="spsg-filter-division" class="spsg-filter">
@@ -3129,7 +3138,7 @@ class SPSG_Admin
                     <?php
         endforeach; ?>
                 </select>
-                
+
                 <select id="spsg-filter-team" class="spsg-filter">
                     <option value=""><?php _e('All Teams', 'sportspress-schedule-generator'); ?></option>
                     <?php foreach ($teams as $team): ?>
@@ -3137,7 +3146,7 @@ class SPSG_Admin
                     <?php
         endforeach; ?>
                 </select>
-                
+
                 <select id="spsg-filter-venue" class="spsg-filter">
                     <option value=""><?php _e('All Venues', 'sportspress-schedule-generator'); ?></option>
                     <?php foreach ($venues as $venue): ?>
@@ -3145,13 +3154,13 @@ class SPSG_Admin
                     <?php
         endforeach; ?>
                 </select>
-                
+
                 <input type="date" id="spsg-filter-date-from" class="spsg-filter" placeholder="<?php esc_attr_e('From Date', 'sportspress-schedule-generator'); ?>" />
                 <input type="date" id="spsg-filter-date-to" class="spsg-filter" placeholder="<?php esc_attr_e('To Date', 'sportspress-schedule-generator'); ?>" />
-                
+
                 <button type="button" class="button" id="spsg-clear-filters"><?php _e('Clear Filters', 'sportspress-schedule-generator'); ?></button>
             </div>
-            
+
             <!-- Schedule Table -->
             <table class="widefat striped spsg-schedule-table" id="spsg-schedule-table">
                 <thead>
@@ -3169,7 +3178,7 @@ class SPSG_Admin
             $is_inter_division = !empty($game['is_inter_division']);
             $row_class = $is_inter_division ? 'spsg-inter-division-game' : '';
 ?>
-                        <tr class="<?php echo esc_attr($row_class); ?>" 
+                        <tr class="<?php echo esc_attr($row_class); ?>"
                             data-division="<?php echo esc_attr($game['division']['name'] ?? ''); ?>"
                             data-home-team="<?php echo esc_attr($game['home_team']['name'] ?? ''); ?>"
                             data-away-team="<?php echo esc_attr($game['away_team']['name'] ?? ''); ?>"
@@ -3193,7 +3202,7 @@ class SPSG_Admin
         endforeach; ?>
                 </tbody>
             </table>
-            
+
             <input type="hidden" id="spsg-current-schedule-id" value="<?php echo esc_attr($schedule_id); ?>" />
         </div>
         <?php
@@ -3246,7 +3255,7 @@ class SPSG_Admin
                     <span class="spsg-stat-value"><?php echo esc_html($stats['total_games'] ?? count($schedule)); ?></span>
                 </div>
                 <div class="spsg-stat">
-                    <span class="spsg-stat-label"><?php _e('Games Per Team', 'sportspress-schedule-generator'); ?></span>
+                    <span class="spsg-stat-label"><?php _e(self::LABEL_GAMES_PER_TEAM, 'sportspress-schedule-generator'); ?></span>
                     <span class="spsg-stat-value">
                         <?php
                         if (isset($stats['games_per_team'])) {
@@ -3270,11 +3279,11 @@ class SPSG_Admin
                     <span class="spsg-stat-value"><?php echo esc_html(number_format($stats['generation_time'] ?? 0, 2)); ?>s</span>
                 </div>
             </div>
-            
+
             <!-- Detailed Statistics -->
             <div class="spsg-detailed-stats">
                 <h3><?php _e('Detailed Statistics', 'sportspress-schedule-generator'); ?></h3>
-                
+
                 <div class="spsg-stats-grid">
                     <?php
                     $this->render_stats_simple_table('venue_utilization', $stats, __('Venue Utilization', 'sportspress-schedule-generator'), __('Venue', 'sportspress-schedule-generator'), __('Games', 'sportspress-schedule-generator'));
@@ -3283,7 +3292,7 @@ class SPSG_Admin
                     $this->render_stats_distribution_table('day_distribution', $stats, __('Day Distribution', 'sportspress-schedule-generator'), __('Day', 'sportspress-schedule-generator'));
                     ?>
                 </div>
-                
+
                 <?php $this->render_imbalances_panel($stats); ?>
             </div>
         <?php
@@ -3721,7 +3730,7 @@ class SPSG_Admin
 
     /**
      * AJAX handler for previewing configuration import
-     * 
+     *
      * Accepts JSON configuration data and returns preview information
      * including name, dates, counts, and compatibility warnings.
      */
@@ -3973,7 +3982,7 @@ class SPSG_Admin
 
     /**
      * AJAX handler for getting import dialog data
-     * 
+     *
      * Returns leagues and seasons from SportsPress for the import dialog
      */
     public function ajax_get_import_dialog_data()
@@ -4025,7 +4034,7 @@ class SPSG_Admin
 
     /**
      * AJAX handler for getting import progress
-     * 
+     *
      * Returns the current progress of an ongoing import operation
      */
     public function ajax_get_import_progress()
