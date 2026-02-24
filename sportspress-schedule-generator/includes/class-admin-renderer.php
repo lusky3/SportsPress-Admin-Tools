@@ -1299,3 +1299,107 @@ class SPSG_Admin_Renderer
             </div>
         <?php
     }
+
+    /**
+     * Render a simple two-column stats table
+     */
+    private function render_stats_simple_table($stat_key, $stats, $title, $col1_label, $col2_label)
+    {
+        if (empty($stats[$stat_key])) {
+            return;
+        }
+?>
+                    <div class="spsg-stat-section">
+                        <h4><?php echo esc_html($title); ?></h4>
+                        <table class="widefat">
+                            <thead>
+                                <tr>
+                                    <th><?php echo esc_html($col1_label); ?></th>
+                                    <th><?php echo esc_html($col2_label); ?></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($stats[$stat_key] as $key => $data): ?>
+                                <tr>
+                                    <td><?php echo esc_html(is_array($data) ? ($data['name'] ?? $key) : $key); ?></td>
+                                    <td><?php echo esc_html(is_array($data) ? ($data['games'] ?? 0) : $data); ?></td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+        <?php
+    }
+
+    /**
+     * Render the home/away balance table
+     */
+    private function render_home_away_balance_table($stats)
+    {
+        if (empty($stats['home_away_balance'])) {
+            return;
+        }
+?>
+                    <div class="spsg-stat-section">
+                        <h4><?php _e('Home/Away Balance', 'sportspress-schedule-generator'); ?></h4>
+                        <table class="widefat">
+                            <thead>
+                                <tr>
+                                    <th><?php _e('Team', 'sportspress-schedule-generator'); ?></th>
+                                    <th><?php _e('Home', 'sportspress-schedule-generator'); ?></th>
+                                    <th><?php _e('Away', 'sportspress-schedule-generator'); ?></th>
+                                    <th><?php _e('Balance', 'sportspress-schedule-generator'); ?></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($stats['home_away_balance'] as $team_id => $balance):
+                                    $team_name = $balance['team_name'] ?? $team_id;
+                                    $home = $balance['home'] ?? 0;
+                                    $away = $balance['away'] ?? 0;
+                                    $diff = abs($home - $away);
+                                    $balance_class = $diff > 2 ? 'spsg-imbalance-warning' : '';
+                                ?>
+                                <tr class="<?php echo esc_attr($balance_class); ?>">
+                                    <td><?php echo esc_html($team_name); ?></td>
+                                    <td><?php echo esc_html($home); ?></td>
+                                    <td><?php echo esc_html($away); ?></td>
+                                    <td>
+                                        <?php if ($diff === 0): ?>
+                                            <span class="spsg-balance-good">✓ <?php _e('Balanced', 'sportspress-schedule-generator'); ?></span>
+                                        <?php elseif ($diff <= 2): ?>
+                                            <span class="spsg-balance-ok">± <?php echo esc_html($diff); ?></span>
+                                        <?php else: ?>
+                                            <span class="spsg-balance-warning">⚠ ± <?php echo esc_html($diff); ?></span>
+                                        <?php endif; ?>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+        <?php
+    }
+
+    /**
+     * Render the imbalances/issues panel
+     */
+    private function render_imbalances_panel($stats)
+    {
+        if (empty($stats['imbalances'])) {
+            return;
+        }
+        ?>
+                <div class="spsg-issues-panel">
+                    <h4><?php _e('Issues & Imbalances', 'sportspress-schedule-generator'); ?></h4>
+                    <ul class="spsg-issues-list">
+                        <?php foreach ($stats['imbalances'] as $issue): ?>
+                        <li class="spsg-issue-<?php echo esc_attr($issue['severity'] ?? 'info'); ?>">
+                            <span class="dashicons dashicons-warning"></span>
+                            <?php echo esc_html($issue['message']); ?>
+                        </li>
+                        <?php endforeach; ?>
+                    </ul>
+                </div>
+        <?php
+    }
+}
