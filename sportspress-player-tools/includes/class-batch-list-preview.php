@@ -1,7 +1,7 @@
 <?php
 /**
  * Batch List Preview Page
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -29,17 +29,6 @@ class SPT_Batch_List_Preview {
         }
     }
     
-    public function add_preview_page() {
-        add_submenu_page(
-            null,
-            __('Batch List Preview', 'sportspress-player-tools'),
-            __('Batch List Preview', 'sportspress-player-tools'),
-            'edit_sp_lists',
-            'spt_batch_list_preview',
-            array($this, 'preview_page')
-        );
-    }
-    
     public function preview_page() {
         $data = get_transient('spt_batch_list_data');
         if (!$data) {
@@ -65,26 +54,7 @@ class SPT_Batch_List_Preview {
                 <input type="hidden" name="action" value="spt_process_list_batch">
                 <?php wp_nonce_field('spt_batch_process', 'spt_batch_process_nonce'); ?>
                 
-                <h2><?php _e('List Settings', 'sportspress-player-tools'); ?></h2>
-                <table class="form-table">
-                    <tr>
-                        <th><?php _e('List Name Template', 'sportspress-player-tools'); ?></th>
-                        <td>
-                            <input type="text" name="list_name" value="{team} Roster" class="regular-text">
-                            <p class="description"><?php _e('Use {team} as placeholder for team name', 'sportspress-player-tools'); ?></p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th><?php _e('Enable Columns', 'sportspress-player-tools'); ?></th>
-                        <td>
-                            <label><input type="checkbox" name="settings[]" value="number"> <?php _e('Squad Number', 'sportspress-player-tools'); ?></label><br>
-                            <label><input type="checkbox" name="settings[]" value="team"> <?php _e('Team', 'sportspress-player-tools'); ?></label><br>
-                            <label><input type="checkbox" name="settings[]" value="position"> <?php _e('Position', 'sportspress-player-tools'); ?></label><br>
-                            <label><input type="checkbox" name="settings[]" value="birthday"> <?php _e('Date of Birth', 'sportspress-player-tools'); ?></label><br>
-                            <label><input type="checkbox" name="settings[]" value="age"> <?php _e('Age', 'sportspress-player-tools'); ?></label><br>
-                        </td>
-                    </tr>
-                </table>
+                <?php $this->render_settings_table(); ?>
                 
                 <h2><?php _e('Preview & Confirm', 'sportspress-player-tools'); ?></h2>
                 <p><?php printf(__('Showing %d-%d of %d items', 'sportspress-player-tools'), $offset + 1, min($offset + $per_page, $total_items), $total_items); ?></p>
@@ -96,72 +66,13 @@ class SPT_Batch_List_Preview {
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($paged_data as $idx => $row): 
-                            $match_result = $this->find_closest_team($row['team'], $teams);
-                            $matched_team = $match_result['id'];
-                            $team_ambiguous = $match_result['ambiguous'];
-                            
-                            $player_match_result = $this->find_closest_player($row['name'], $players);
-                            $matched_player = $player_match_result['id'];
-                            $player_ambiguous = $player_match_result['ambiguous'];
-                            
-                        ?>
-                        <tr <?php if ($team_ambiguous || $player_ambiguous) echo 'style="background-color: #fff3cd;"'; ?>>
-                            <td>
-                                <select name="team[<?php echo $idx; ?>]" <?php echo $use_select2 ? 'class="spt-select2-team" style="width: 100%;"' : ''; ?> required>
-                                    <?php if ($use_select2): ?>
-                                        <?php if ($matched_team): 
-                                            $team = get_post($matched_team);
-                                        ?>
-                                            <option value="<?php echo $matched_team; ?>" selected><?php echo esc_html($team->post_title); ?></option>
-                                        <?php endif; ?>
-                                    <?php else: ?>
-                                        <?php foreach ($teams as $team): ?>
-                                            <option value="<?php echo $team->ID; ?>" <?php selected($matched_team, $team->ID); ?>>
-                                                <?php echo esc_html($team->post_title); ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    <?php endif; ?>
-                                </select>
-                            </td>
-                            <td>
-                                <select name="player[<?php echo $idx; ?>]" <?php echo $use_select2 ? 'class="spt-select2-player" style="width: 100%;"' : ''; ?> required>
-                                    <?php if ($use_select2): ?>
-                                        <?php if ($matched_player): 
-                                            $player = get_post($matched_player);
-                                        ?>
-                                            <option value="<?php echo $matched_player; ?>" selected><?php echo esc_html($player->post_title); ?></option>
-                                        <?php endif; ?>
-                                    <?php else: ?>
-                                        <?php foreach ($players as $player): ?>
-                                            <option value="<?php echo $player->ID; ?>" <?php selected($matched_player, $player->ID); ?>>
-                                                <?php echo esc_html($player->post_title); ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    <?php endif; ?>
-                                </select>
-                            </td>
-                        </tr>
+                        <?php foreach ($paged_data as $idx => $row): ?>
+                        <?php $this->render_preview_row($idx, $row, $teams, $players, $use_select2); ?>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
                 
-                <?php if ($total_pages > 1): ?>
-                <div class="tablenav">
-                    <div class="tablenav-pages">
-                        <?php
-                        echo paginate_links(array(
-                            'base' => add_query_arg('paged', '%#%'),
-                            'format' => '',
-                            'prev_text' => __('&laquo;'),
-                            'next_text' => __('&raquo;'),
-                            'total' => $total_pages,
-                            'current' => $current_page
-                        ));
-                        ?>
-                    </div>
-                </div>
-                <?php endif; ?>
+                <?php $this->render_pagination($total_pages, $current_page); ?>
                 
                 <p class="submit">
                     <input type="submit" class="button button-primary" value="<?php _e('Create Player Lists', 'sportspress-player-tools'); ?>">
@@ -171,6 +82,102 @@ class SPT_Batch_List_Preview {
         </div>
         
         <?php if ($use_select2): ?>
+        <?php $this->render_select2_scripts(); ?>
+        <?php endif; ?>
+        <?php
+    }
+    
+    private function render_settings_table() {
+        ?>
+        <h2><?php _e('List Settings', 'sportspress-player-tools'); ?></h2>
+        <table class="form-table">
+            <tr>
+                <th><?php _e('List Name Template', 'sportspress-player-tools'); ?></th>
+                <td>
+                    <input type="text" name="list_name" value="{team} Roster" class="regular-text">
+                    <p class="description"><?php _e('Use {team} as placeholder for team name', 'sportspress-player-tools'); ?></p>
+                </td>
+            </tr>
+            <tr>
+                <th><?php _e('Enable Columns', 'sportspress-player-tools'); ?></th>
+                <td>
+                    <label><input type="checkbox" name="settings[]" value="number"> <?php _e('Squad Number', 'sportspress-player-tools'); ?></label><br>
+                    <label><input type="checkbox" name="settings[]" value="team"> <?php _e('Team', 'sportspress-player-tools'); ?></label><br>
+                    <label><input type="checkbox" name="settings[]" value="position"> <?php _e('Position', 'sportspress-player-tools'); ?></label><br>
+                    <label><input type="checkbox" name="settings[]" value="birthday"> <?php _e('Date of Birth', 'sportspress-player-tools'); ?></label><br>
+                    <label><input type="checkbox" name="settings[]" value="age"> <?php _e('Age', 'sportspress-player-tools'); ?></label><br>
+                </td>
+            </tr>
+        </table>
+        <?php
+    }
+    
+    private function render_preview_row($idx, $row, $teams, $players, $use_select2) {
+        $match_result = $this->find_closest_team($row['team'], $teams);
+        $matched_team = $match_result['id'];
+        $team_ambiguous = $match_result['ambiguous'];
+        
+        $player_match_result = $this->find_closest_player($row['name'], $players);
+        $matched_player = $player_match_result['id'];
+        $player_ambiguous = $player_match_result['ambiguous'];
+        
+        ?>
+        <tr <?php if ($team_ambiguous || $player_ambiguous) { echo 'style="background-color: #fff3cd;"'; } ?>>
+            <td>
+                <?php $this->render_select_field('team', $idx, $matched_team, $teams, $use_select2, 'spt-select2-team'); ?>
+            </td>
+            <td>
+                <?php $this->render_select_field('player', $idx, $matched_player, $players, $use_select2, 'spt-select2-player'); ?>
+            </td>
+        </tr>
+        <?php
+    }
+    
+    private function render_select_field($type, $idx, $matched_id, $items, $use_select2, $select2_class) {
+        $class_attr = $use_select2 ? 'class="' . esc_attr($select2_class) . '" style="width: 100%;"' : '';
+        ?>
+        <select name="<?php echo esc_attr($type); ?>[<?php echo $idx; ?>]" <?php echo $class_attr; ?> required>
+            <?php if ($use_select2): ?>
+                <?php if ($matched_id):
+                    $post = get_post($matched_id);
+                ?>
+                    <option value="<?php echo $matched_id; ?>" selected><?php echo esc_html($post->post_title); ?></option>
+                <?php endif; ?>
+            <?php else: ?>
+                <?php foreach ($items as $item): ?>
+                    <option value="<?php echo $item->ID; ?>" <?php selected($matched_id, $item->ID); ?>>
+                        <?php echo esc_html($item->post_title); ?>
+                    </option>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </select>
+        <?php
+    }
+    
+    private function render_pagination($total_pages, $current_page) {
+        if ($total_pages <= 1) {
+            return;
+        }
+        ?>
+        <div class="tablenav">
+            <div class="tablenav-pages">
+                <?php
+                echo paginate_links(array(
+                    'base' => add_query_arg('paged', '%#%'),
+                    'format' => '',
+                    'prev_text' => __('&laquo;'),
+                    'next_text' => __('&raquo;'),
+                    'total' => $total_pages,
+                    'current' => $current_page
+                ));
+                ?>
+            </div>
+        </div>
+        <?php
+    }
+    
+    private function render_select2_scripts() {
+        ?>
         <style>
         tr[style*="background-color: #fff3cd"] td { border-left: 3px solid #ff9800; }
         </style>
@@ -248,7 +255,6 @@ class SPT_Batch_List_Preview {
             }
         });
         </script>
-        <?php endif; ?>
         <?php
     }
     

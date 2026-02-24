@@ -1,10 +1,10 @@
 <?php
 /**
  * Integration Tests for Configuration Lifecycle
- * 
+ *
  * Tests the complete lifecycle of configurations including save, load,
  * export, import, change tracking, and presets.
- * 
+ *
  * @author Cody (lusky3)
  */
 

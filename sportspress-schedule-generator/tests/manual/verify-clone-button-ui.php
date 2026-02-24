@@ -1,7 +1,7 @@
 <?php
 /**
  * Manual Verification Script for Clone Configuration UI Button
- * 
+ *
  * This script verifies the implementation of the Clone Configuration button
  * in the admin interface.
  */

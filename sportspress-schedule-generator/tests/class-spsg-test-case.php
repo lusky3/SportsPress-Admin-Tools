@@ -1,7 +1,7 @@
 <?php
 /**
  * Base Test Case for Lightweight SPSG Tests
- * 
+ *
  * Provides basic assertion methods and test runner functionality
  * for tests that don't require the full WP_UnitTestCase.
  */

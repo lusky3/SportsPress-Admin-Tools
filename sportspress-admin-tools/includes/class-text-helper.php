@@ -1,7 +1,7 @@
 <?php
 /**
  * Text Helper for SportsPress text overrides
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -14,7 +14,7 @@ class SPAT_Text_Helper {
     
     /**
      * Get text with SportsPress override support
-     * 
+     *
      * @param string $text The original text to potentially override
      * @param string $domain Text domain (default: 'sportspress-admin-tools')
      * @return string The overridden text or original text
@@ -31,7 +31,7 @@ class SPAT_Text_Helper {
     
     /**
      * Echo text with SportsPress override support
-     * 
+     *
      * @param string $text The original text to potentially override
      * @param string $domain Text domain (default: 'sportspress-admin-tools')
      */

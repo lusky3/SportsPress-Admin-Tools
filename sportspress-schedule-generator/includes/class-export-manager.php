@@ -1,7 +1,7 @@
 <?php
 /**
  * Export Manager
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -31,7 +31,7 @@ class SPSG_Export_Manager
 
     /**
      * Export schedule in specified format
-     * 
+     *
      * @param array $schedule Array of game objects
      * @param mixed $config Configuration object or array
      * @param string $format Export format (csv, xlsx)
@@ -57,7 +57,7 @@ class SPSG_Export_Manager
 
     /**
      * Apply filters to schedule
-     * 
+     *
      * @param array $schedule Array of game objects
      * @param array $filters Filters to apply
      * @return array Filtered schedule

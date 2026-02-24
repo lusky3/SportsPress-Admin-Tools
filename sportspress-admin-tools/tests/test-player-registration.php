@@ -1,7 +1,7 @@
 <?php
 /**
  * Test script for Player Registration module
- * 
+ *
  * @author Cody (lusky3)
  */
 

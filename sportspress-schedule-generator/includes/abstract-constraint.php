@@ -56,6 +56,16 @@ abstract class SPSG_Abstract_Constraint implements SPSG_Constraint_Interface
     }
 
     /**
+     * Set constraint priority
+     *
+     * @param int $priority Priority value
+     */
+    public function set_priority($priority)
+    {
+        $this->priority = (int) $priority;
+    }
+
+    /**
      * Get constraint type
      */
     public function get_type()

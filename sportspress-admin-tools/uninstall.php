@@ -1,7 +1,7 @@
 <?php
 /**
  * Uninstall script for SportsPress Admin Tools
- * 
+ *
  * @author Cody (lusky3)
  */
 

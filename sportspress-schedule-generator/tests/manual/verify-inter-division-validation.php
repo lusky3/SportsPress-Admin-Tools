@@ -1,7 +1,7 @@
 <?php
 /**
  * Verification script for inter-division games validation
- * 
+ *
  * This script verifies that the validation logic for inter-division games
  * is working correctly.
  */

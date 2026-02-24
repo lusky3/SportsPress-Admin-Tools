@@ -1,9 +1,9 @@
 <?php
 /**
  * Docker-based AJAX Handler Tests
- * 
+ *
  * Tests AJAX endpoints in real WordPress environment.
- * 
+ *
  * @author Kiro AI Assistant
  */
 

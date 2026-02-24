@@ -1,7 +1,7 @@
 <?php
 /**
  * Admin functionality
- * 
+ *
  * @author Cody (lusky3)
  */
 

@@ -1,10 +1,10 @@
 <?php
 /**
  * Unit Tests for Configuration Validation
- * 
+ *
  * Tests the enhanced validation system including resource capacity,
  * matchup style compatibility, and error message formatting.
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -43,7 +43,7 @@ class SPSG_Validation_Test extends WP_UnitTestCase {
                 array(
                     'id' => 'div_1',
                     'name' => 'Division A',
-                    'teams' => array('Team 1', 'Team 2', 'Team 3', 'Team 4', 
+                    'teams' => array('Team 1', 'Team 2', 'Team 3', 'Team 4',
                                    'Team 5', 'Team 6', 'Team 7', 'Team 8')
                 )
             ),

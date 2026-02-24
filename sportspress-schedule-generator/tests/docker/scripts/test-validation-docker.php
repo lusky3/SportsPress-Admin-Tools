@@ -1,9 +1,9 @@
 <?php
 /**
  * Docker-based Validation Tests
- * 
+ *
  * Tests configuration validation in a real WordPress environment.
- * 
+ *
  * @author Kiro AI Assistant
  */
 

@@ -1,9 +1,9 @@
 <?php
 /**
  * Test for Matchup Style Sanitization
- * 
+ *
  * Verifies that the matchup_style field is properly sanitized
- * 
+ *
  * @author Cody (lusky3)
  */
 

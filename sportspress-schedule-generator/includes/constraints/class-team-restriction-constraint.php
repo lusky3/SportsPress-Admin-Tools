@@ -229,7 +229,7 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint
 
     /**
      * Find games that violate buffer time restrictions
-     * 
+     *
      * @param object $game The game being validated
      * @param array $schedule Existing scheduled games
      * @param array $restricted_teams Teams that need buffer time

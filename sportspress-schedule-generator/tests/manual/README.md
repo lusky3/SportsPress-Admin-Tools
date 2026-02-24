@@ -129,9 +129,9 @@ php tests/manual/verify-nonce-registration.php
 <?php
 /**
  * Manual Verification: [Feature Name]
- * 
+ *
  * Description of what this script verifies
- * 
+ *
  * @author Your Name
  */
 

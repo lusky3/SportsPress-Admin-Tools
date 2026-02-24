@@ -3,7 +3,7 @@
 /**
  * Test file for SportsPress text overrides
  * This file can be temporarily included to test the text override functionality
- * 
+ *
  * @author Cody (lusky3)
  */
 

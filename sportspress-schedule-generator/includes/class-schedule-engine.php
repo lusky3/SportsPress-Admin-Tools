@@ -1,7 +1,7 @@
 <?php
 /**
  * Schedule Generation Engine
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -193,7 +193,7 @@ class SPSG_Schedule_Engine
 
     /**
      * Validate generated matchups
-     * 
+     *
      * @param array $matchups Array of matchups
      * @param SPSG_Schedule_Configuration $config Configuration
      * @return bool|WP_Error True if valid, WP_Error otherwise
@@ -257,7 +257,7 @@ class SPSG_Schedule_Engine
 
     /**
      * Validate inter-division game totals
-     * 
+     *
      * @param array $matchups Array of matchups
      * @param SPSG_Schedule_Configuration $config Configuration
      * @return bool|WP_Error True if valid, WP_Error otherwise
@@ -318,7 +318,7 @@ class SPSG_Schedule_Engine
 
     /**
      * Get team name by ID
-     * 
+     *
      * @param string $team_id Team ID
      * @param SPSG_Schedule_Configuration $config Configuration
      * @return string Team name
@@ -338,7 +338,7 @@ class SPSG_Schedule_Engine
 
     /**
      * Get team's division ID
-     * 
+     *
      * @param array|object $team Team data
      * @param SPSG_Schedule_Configuration $config Configuration
      * @return string|null Division ID or null
@@ -462,7 +462,7 @@ class SPSG_Schedule_Engine
 
     /**
      * Check if generation has timed out
-     * 
+     *
      * @return bool True if timed out
      */
     public function is_timeout()
@@ -477,7 +477,7 @@ class SPSG_Schedule_Engine
 
     /**
      * Create timeout error with progress info
-     * 
+     *
      * @return WP_Error Timeout error
      */
     private function create_timeout_error()
@@ -540,7 +540,7 @@ class SPSG_Schedule_Engine
 
     /**
      * Update progress tracking
-     * 
+     *
      * @param string $phase Current phase (matchups/allocation/validation/complete)
      * @param int $percentage Percentage complete (0-100)
      * @param string $message Status message
@@ -574,7 +574,7 @@ class SPSG_Schedule_Engine
     /**
      * Update progress during allocation
      * Called by slot allocator every N games
-     * 
+     *
      * @param int $games_scheduled Number of games scheduled so far
      */
     public function update_allocation_progress($games_scheduled)
@@ -596,7 +596,7 @@ class SPSG_Schedule_Engine
 
     /**
      * Check if generation has been cancelled
-     * 
+     *
      * @return bool True if cancelled
      */
     public function is_cancelled()
@@ -638,7 +638,7 @@ class SPSG_Schedule_Engine
     /**
      * Get current progress
      * Called externally via AJAX handler
-     * 
+     *
      * @return array|false Progress data or false if not found
      */
     public function get_progress()
@@ -648,7 +648,7 @@ class SPSG_Schedule_Engine
 
     /**
      * Create configuration error with suggestions
-     * 
+     *
      * @param array $issues Array of configuration issues
      * @return WP_Error Configuration error with suggestions
      */

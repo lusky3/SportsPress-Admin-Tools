@@ -1,7 +1,7 @@
 <?php
 /**
  * Standalone test for home/away preferences sanitization
- * 
+ *
  * This test verifies that the sanitize_home_away_preferences method
  * properly sanitizes team-to-venue mappings.
  */

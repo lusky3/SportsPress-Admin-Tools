@@ -1,9 +1,9 @@
 <?php
 /**
  * Venue Schedule Importer
- * 
+ *
  * Handles CSV import of week-by-week venue availability
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -19,13 +19,13 @@ class SPSG_Venue_Schedule_Importer {
     
     /**
      * Parse CSV file and extract venue schedules
-     * 
+     *
      * Expected CSV format:
      * Week Start Date, Venue Name, Time Slots
      * 2024-01-01, Arena A, 18:00-23:00
      * 2024-01-01, Arena B, 18:45-22:45
      * 2024-01-08, Arena A, 18:00-23:00
-     * 
+     *
      * @param string $file_path Path to CSV file
      * @return array|WP_Error Parsed schedule data or error
      */
@@ -103,12 +103,12 @@ class SPSG_Venue_Schedule_Importer {
     
     /**
      * Parse time slots from string
-     * 
+     *
      * Supports formats:
      * - Range: "18:00-23:00" (generates hourly slots)
      * - List: "18:00, 19:00, 20:00"
      * - Single: "18:00"
-     * 
+     *
      * @param string $time_slots_str Time slots string
      * @return array Array of time slots
      */
@@ -145,7 +145,7 @@ class SPSG_Venue_Schedule_Importer {
     
     /**
      * Get unique venue names from parsed schedules
-     * 
+     *
      * @param array $schedules Parsed schedule data
      * @return array Unique venue names
      */
@@ -159,7 +159,7 @@ class SPSG_Venue_Schedule_Importer {
     
     /**
      * Match CSV venue names to existing venues
-     * 
+     *
      * @param array $csv_venues Venue names from CSV
      * @param array $existing_venues Existing venue objects
      * @return array Mapping suggestions
@@ -196,7 +196,7 @@ class SPSG_Venue_Schedule_Importer {
     
     /**
      * Calculate string similarity score
-     * 
+     *
      * @param string $str1 First string
      * @param string $str2 Second string
      * @return float Similarity score (0-1)
@@ -223,7 +223,7 @@ class SPSG_Venue_Schedule_Importer {
     
     /**
      * Convert parsed schedules to venue availability format
-     * 
+     *
      * @param array $schedules Parsed schedule data
      * @param array $venue_mapping Venue name mapping (csv_name => venue_id)
      * @return array Venue availability data

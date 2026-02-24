@@ -1,7 +1,7 @@
 <?php
 /**
  * Simple Inter-Division Games UI Verification
- * 
+ *
  * This script verifies that the inter-division games UI is properly implemented
  * by checking the source code directly.
  */

@@ -1,9 +1,9 @@
 <?php
 /**
  * Matchup Generator
- * 
+ *
  * Generates team matchups based on configuration (round-robin, custom, inter-division)
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -20,7 +20,7 @@ class SPSG_Matchup_Generator
 
     /**
      * Generate all matchups for configuration
-     * 
+     *
      * @param SPSG_Schedule_Configuration $config Configuration object
      * @return array Array of matchup objects
      */
@@ -60,7 +60,7 @@ class SPSG_Matchup_Generator
 
     /**
      * Generate matchups for single division
-     * 
+     *
      * @param array $division Division data
      * @param string $style Matchup style (single_round_robin, double_round_robin, custom)
      * @param int $games_per_team Total games per team
@@ -106,9 +106,9 @@ class SPSG_Matchup_Generator
 
     /**
      * Round-robin algorithm
-     * 
+     *
      * Generates matchups where each team plays every other team
-     * 
+     *
      * @param array $teams Array of team data
      * @param int $rounds Number of rounds (1 for single, 2 for double)
      * @return array Array of matchup arrays
@@ -146,9 +146,9 @@ class SPSG_Matchup_Generator
 
     /**
      * Custom matchup generation
-     * 
+     *
      * Generates matchups to meet a specific games_per_team target
-     * 
+     *
      * @param array $teams Array of team data
      * @param int $games_per_team Target games per team
      * @return array Array of matchup arrays
@@ -263,7 +263,7 @@ class SPSG_Matchup_Generator
 
     /**
      * Count matchups between two teams
-     * 
+     *
      * @param array $matchups Array of existing matchups
      * @param string $team_a_id First team ID
      * @param string $team_b_id Second team ID
@@ -288,7 +288,7 @@ class SPSG_Matchup_Generator
 
     /**
      * Generate inter-division matchups
-     * 
+     *
      * @param array $divisions Array of division data
      * @param array $inter_division_config Inter-division games configuration
      * @return array Array of matchup objects
@@ -336,7 +336,7 @@ class SPSG_Matchup_Generator
 
     /**
      * Generate matchups between two divisions
-     * 
+     *
      * @param array $div_a First division
      * @param array $div_b Second division
      * @param int $total_games Total games between divisions
@@ -398,7 +398,7 @@ class SPSG_Matchup_Generator
 
     /**
      * Find team with fewest games
-     * 
+     *
      * @param array $teams Array of teams
      * @param array $team_games Games count per team
      * @return array|null Team data or null
@@ -423,11 +423,11 @@ class SPSG_Matchup_Generator
 
     /**
      * Assign home/away designations to matchups
-     * 
+     *
      * Note: In recreational leagues, "home" and "away" are designations for which team
      * is listed first/second in the matchup, not actual venue assignments. All games
      * are played at neutral venues.
-     * 
+     *
      * @param array $matchups Array of matchup arrays
      * @param bool $balance_enabled Whether to balance home/away
      * @param string $matchup_style Matchup style
@@ -451,7 +451,7 @@ class SPSG_Matchup_Generator
 
     /**
      * Assign home/away randomly
-     * 
+     *
      * @param array $matchups Array of matchups
      * @return array Matchups with home/away assigned
      */
@@ -473,7 +473,7 @@ class SPSG_Matchup_Generator
 
     /**
      * Assign home/away for double round-robin (ensure swap)
-     * 
+     *
      * @param array $matchups Array of matchups
      * @return array Matchups with home/away assigned
      */
@@ -543,7 +543,7 @@ class SPSG_Matchup_Generator
 
     /**
      * Assign home/away with balanced counts
-     * 
+     *
      * @param array $matchups Array of matchups
      * @return array Matchups with home/away assigned
      */

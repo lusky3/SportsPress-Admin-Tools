@@ -1,9 +1,9 @@
 <?php
 /**
  * SportsPress Importer Class
- * 
+ *
  * Handles importing generated schedules into SportsPress events
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -33,7 +33,7 @@ class SPSG_Sports_Press_Importer
 
     /**
      * Import schedule to SportsPress
-     * 
+     *
      * @param array $schedule Array of game objects
      * @param array $options Import options
      * @return array Import results with counts and errors
@@ -209,7 +209,7 @@ class SPSG_Sports_Press_Importer
 
     /**
      * Create new SportsPress event from game
-     * 
+     *
      * @param object $game Game object
      * @param array $options Import options
      * @return int|WP_Error Event ID or error
@@ -266,7 +266,7 @@ class SPSG_Sports_Press_Importer
 
     /**
      * Update existing SportsPress event
-     * 
+     *
      * @param int $event_id Event ID to update
      * @param object $game Game object
      * @param array $options Import options
@@ -313,7 +313,7 @@ class SPSG_Sports_Press_Importer
 
     /**
      * Map team names to SportsPress team IDs
-     * 
+     *
      * @param object $game Game object
      * @return array|WP_Error Array with home_team_id and away_team_id or error
      */
@@ -372,7 +372,7 @@ class SPSG_Sports_Press_Importer
 
     /**
      * Map venue name to SportsPress venue ID
-     * 
+     *
      * @param object $game Game object
      * @return array|WP_Error Array with venue_id or error
      */
@@ -414,7 +414,7 @@ class SPSG_Sports_Press_Importer
 
     /**
      * Find team by name
-     * 
+     *
      * @param string $name Team name
      * @return object|null Team object or null if not found
      */
@@ -435,7 +435,7 @@ class SPSG_Sports_Press_Importer
 
     /**
      * Find venue by name
-     * 
+     *
      * @param string $name Venue name
      * @return object|null Venue object or null if not found
      */
@@ -456,7 +456,7 @@ class SPSG_Sports_Press_Importer
 
     /**
      * Check for conflicts with existing events
-     * 
+     *
      * @param array $schedule Array of game objects
      * @return array Array of conflicts indexed by game index
      */
@@ -478,7 +478,7 @@ class SPSG_Sports_Press_Importer
 
     /**
      * Log import action
-     * 
+     *
      * @param string $action Action type (import, skip, overwrite, failed_create, failed_update)
      * @param object $game Game object
      * @param int|null $event_id Event ID if applicable
@@ -512,7 +512,7 @@ class SPSG_Sports_Press_Importer
 
     /**
      * Log import summary
-     * 
+     *
      * @param array $results Import results
      */
     private function log_import_summary($results)

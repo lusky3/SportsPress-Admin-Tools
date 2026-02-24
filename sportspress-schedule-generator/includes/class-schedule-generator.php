@@ -1,7 +1,7 @@
 <?php
 /**
  * Main Schedule Generator Class
- * 
+ *
  * @author Cody (lusky3)
  */
 

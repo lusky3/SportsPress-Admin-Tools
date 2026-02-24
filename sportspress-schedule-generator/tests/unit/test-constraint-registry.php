@@ -1,7 +1,7 @@
 <?php
 /**
  * Unit Tests for Constraint Registry
- * 
+ *
  * @author Cody (lusky3)
  */
 

@@ -1,7 +1,7 @@
 <?php
 /**
  * Constraint Manager Class
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -125,13 +125,13 @@ class SPSG_Constraint_Manager
 
     /**
      * Check if configuration is feasible
-     * 
+     *
      * Enhanced feasibility checking with detailed validation:
      * - Total games needed from configuration
      * - Available slots (dates × times × venues - blackouts)
      * - Enough venues for parallel games
      * - Date range sufficient for all games
-     * 
+     *
      * @param SPSG_Schedule_Configuration $config Configuration
      * @return bool|array True if feasible, array of issues otherwise
      */
@@ -194,7 +194,7 @@ class SPSG_Constraint_Manager
 
     /**
      * Validate basic configuration properties
-     * 
+     *
      * @param SPSG_Schedule_Configuration $config Configuration
      * @return array Array of issues found
      */
@@ -223,7 +223,7 @@ class SPSG_Constraint_Manager
 
     /**
      * Calculate total games needed from configuration
-     * 
+     *
      * @param SPSG_Schedule_Configuration $config Configuration
      * @return int Total games needed
      */
@@ -241,7 +241,7 @@ class SPSG_Constraint_Manager
 
     /**
      * Count available slots (dates × times × venues - blackouts)
-     * 
+     *
      * @param SPSG_Schedule_Configuration $config Configuration
      * @return int Number of available slots
      */
@@ -298,7 +298,7 @@ class SPSG_Constraint_Manager
 
     /**
      * Check if enough venues exist for parallel games
-     * 
+     *
      * @param SPSG_Schedule_Configuration $config Configuration
      * @param int $total_games Total games needed
      * @return bool|array True if sufficient, array of issues otherwise
@@ -418,7 +418,7 @@ class SPSG_Constraint_Manager
 
     /**
      * Check if date range is sufficient for all games
-     * 
+     *
      * @param SPSG_Schedule_Configuration $config Configuration
      * @param int $total_games Total games needed
      * @return bool|array True if sufficient, array of issues otherwise
@@ -467,7 +467,7 @@ class SPSG_Constraint_Manager
 
     /**
      * Check for excessive blackout dates
-     * 
+     *
      * @param SPSG_Schedule_Configuration $config Configuration
      * @return bool|array True if acceptable, array of issues otherwise
      */

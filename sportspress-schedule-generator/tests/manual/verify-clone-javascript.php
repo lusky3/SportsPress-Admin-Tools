@@ -1,9 +1,9 @@
 <?php
 /**
  * Manual verification script for Clone Configuration JavaScript implementation
- * 
+ *
  * This script verifies that the JavaScript implementation for Task 10 is correct.
- * 
+ *
  * Usage: php verify-clone-javascript.php
  */
 

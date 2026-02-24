@@ -1,7 +1,7 @@
 <?php
 /**
  * SportsPress Integration Helper
- * 
+ *
  * @author Cody (lusky3)
  */
 

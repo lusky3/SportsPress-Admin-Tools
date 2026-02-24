@@ -1,7 +1,7 @@
 <?php
 /**
  * Verification Script for Import Dialog AJAX Handlers
- * 
+ *
  * This script verifies that the AJAX handlers are properly implemented
  * by checking the code structure without requiring WordPress.
  */

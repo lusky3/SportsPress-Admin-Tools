@@ -1,7 +1,7 @@
 <?php
 /**
  * Standalone test for inter-division games sanitization
- * 
+ *
  * This test verifies that the sanitize_inter_division_games method
  * properly sanitizes division pair to game count mappings.
  */

@@ -1,10 +1,10 @@
 <?php
 /**
  * Docker Test Bootstrap
- * 
+ *
  * Bootstrap file for tests running in Docker WordPress environment.
  * This loads WordPress and the plugin in a real WordPress installation.
- * 
+ *
  * @author Kiro AI Assistant
  */
 

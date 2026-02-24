@@ -1,3 +1,51 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Environment
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE / Editor
+.idea/
+.vscode/
+.kiro/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.buildpath
+.kiro
+.claude
+.codex
+.cursor
+
+# Archives & builds
 *.log
 *.zip
 *.tar.gz
+*.phar
+
+# Docker
+docker-compose.override.yml
+
+# WordPress
+wp-config.php
+wp-content/uploads/
+wp-content/upgrade/
+wp-content/cache/
+wp-content/debug.log
+
+# Testing
+coverage/
+.phpunit.result.cache
+phpunit.xml
+
+# Misc
+.amazonq/

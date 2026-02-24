@@ -1,13 +1,13 @@
 <?php
 /**
  * Manual Verification: Import Preview Modal HTML
- * 
+ *
  * This script verifies that the import preview modal HTML structure
  * is properly rendered in the basic configuration tab.
- * 
+ *
  * Task: 12. Create Import Preview Modal HTML
  * Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6
- * 
+ *
  * @author Kiro AI Assistant
  * @date 2024-11-25
  */

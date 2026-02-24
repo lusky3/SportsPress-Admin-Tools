@@ -1,7 +1,7 @@
 <?php
 /**
  * Unit Tests for Game Model
- * 
+ *
  * @author Cody (lusky3)
  */
 

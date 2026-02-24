@@ -1,10 +1,10 @@
 <?php
 /**
  * Verification: Import Dialog Nonces Registration
- * 
+ *
  * This script verifies that the import dialog nonces are properly registered
  * in the class-admin.php file by parsing the source code.
- * 
+ *
  * Requirements: 1.1, 2.1
  */
 

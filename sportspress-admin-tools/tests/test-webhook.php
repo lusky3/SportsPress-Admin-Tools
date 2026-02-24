@@ -2,7 +2,7 @@
 /**
  * e-Transfer Webhook Tester - Supports all 3 webhook methods
  * Usage: php test-webhook.php --url <webhook_url> --secret <webhook_secret> [--method <generic|deliverhook|cloudflare>]
- * 
+ *
  * @author Cody (lusky3)
  */
 

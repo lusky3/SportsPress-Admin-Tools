@@ -1,7 +1,7 @@
 <?php
 /**
  * Database Management Class
- * 
+ *
  * @author Cody (lusky3)
  */
 
