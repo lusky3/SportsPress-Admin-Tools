@@ -80,33 +80,20 @@ class SPET_Database
         ));
     }
 
-    public static function get_unmatched_webhooks()
-    {
-        global $wpdb;
-
-        $table_name = $wpdb->prefix . 'spet_etransfer_logs';
-
-        return $wpdb->get_results("
-            SELECT * FROM $table_name 
-            WHERE order_id IS NULL 
-            AND result LIKE '%No matching order%' 
-            AND result != 'Hidden from management'
-            ORDER BY timestamp DESC
-        ");
-    }
-
     public static function count_pending_webhooks()
     {
         global $wpdb;
 
         $table_name = $wpdb->prefix . 'spet_etransfer_logs';
 
-        return $wpdb->get_var("
-            SELECT COUNT(*) FROM $table_name 
+        return $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $table_name 
             WHERE order_id IS NULL 
-            AND result LIKE '%No matching order%' 
-            AND result != 'Hidden from management'
-        ");
+            AND result LIKE %s 
+            AND result != %s",
+            '%No matching order%',
+            'Hidden from management'
+        ));
     }
 
     public static function hide_etransfer_log($log_id)

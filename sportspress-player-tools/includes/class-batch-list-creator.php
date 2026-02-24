@@ -12,19 +12,15 @@ if (!defined('ABSPATH')) {
 class SPT_Batch_List_Creator {
     
     public function __construct() {
-        error_log('SPT_Batch_List_Creator: Constructor called');
         add_action('admin_menu', array($this, 'add_tools_page'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_scripts'));
         add_action('all_admin_notices', array($this, 'add_upload_button'));
         add_action('admin_post_spt_upload_list_csv', array($this, 'handle_upload'));
         add_action('admin_post_spt_process_list_batch', array($this, 'process_batch'));
-        add_action('admin_post_nopriv_spt_process_list_batch', array($this, 'process_batch'));
         add_action('admin_notices', array($this, 'success_notice'));
         add_action('wp_ajax_spt_search_teams', array($this, 'ajax_search_teams'));
         add_action('wp_ajax_spt_search_players', array($this, 'ajax_search_players'));
         add_action('admin_init', array($this, 'cleanup_old_temp_data'));
-        error_log('SPT_Batch_List_Creator: All hooks registered');
-        error_log('SPT_Batch_List_Creator: admin_post_spt_process_list_batch exists: ' . (has_action('admin_post_spt_process_list_batch') ? 'YES' : 'NO'));
     }
     
     public function add_tools_page() {
@@ -160,16 +156,27 @@ class SPT_Batch_List_Creator {
             wp_die(__('File upload failed', 'sportspress-player-tools'));
         }
         
+        // Validate file type
+        $file_ext = strtolower(pathinfo($_FILES['csv_file']['name'], PATHINFO_EXTENSION));
+        if ($file_ext !== 'csv') {
+            wp_die(__('Please upload a CSV file', 'sportspress-player-tools'));
+        }
+        
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mime_type = finfo_file($finfo, $_FILES['csv_file']['tmp_name']);
+        finfo_close($finfo);
+        
+        $allowed_mimes = array('text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel');
+        if (!in_array($mime_type, $allowed_mimes)) {
+            wp_die(__('Invalid file type. Please upload a CSV file.', 'sportspress-player-tools'));
+        }
+        
         $file = $_FILES['csv_file']['tmp_name'];
         $rows = array_map('str_getcsv', file($file));
         $header = array_map('strtolower', array_map('trim', array_shift($rows)));
         
-        error_log('CSV Headers: ' . print_r($header, true));
-        
         $team_col = array_search('team', $header);
         $name_col = array_search('name', $header);
-        
-        error_log('Team col: ' . $team_col . ', Name col: ' . $name_col);
         
         if ($team_col === false || $name_col === false) {
             wp_die(__('CSV must have Team and Name columns', 'sportspress-player-tools'));
@@ -180,12 +187,10 @@ class SPT_Batch_List_Creator {
         foreach ($rows as $row) {
             $row_num++;
             if (!isset($row[$team_col]) || !isset($row[$name_col])) {
-                error_log("Row $row_num: Missing columns");
                 continue;
             }
             
             if (empty(trim($row[$team_col])) || empty(trim($row[$name_col]))) {
-                error_log("Row $row_num: Empty team or name - Team: '" . (isset($row[$team_col]) ? $row[$team_col] : 'N/A') . "', Name: '" . (isset($row[$name_col]) ? $row[$name_col] : 'N/A') . "'");
                 continue;
             }
             
@@ -206,9 +211,6 @@ class SPT_Batch_List_Creator {
             );
         }
         
-        error_log('Parsed data count: ' . count($data));
-        error_log('Data: ' . print_r($data, true));
-        
         if (empty($data)) {
             wp_die(__('No valid data found in CSV. Please check the file format.', 'sportspress-player-tools'));
         }
@@ -221,20 +223,7 @@ class SPT_Batch_List_Creator {
         // Clean old data
         $wpdb->delete($table, array('user_id' => $user_id, 'data_type' => 'batch_list'));
         
-        // Test insert with small data first
-        $test_result = $wpdb->query($wpdb->prepare(
-            "INSERT INTO $table (user_id, data_type, data_value, created_at) VALUES (%d, %s, %s, %s)",
-            $user_id,
-            'test',
-            'test_value',
-            current_time('mysql')
-        ));
-        error_log('SPAT: Test insert result: ' . ($test_result === false ? 'FAILED - ' . $wpdb->last_error : 'SUCCESS'));
-        $wpdb->delete($table, array('user_id' => $user_id, 'data_type' => 'test'));
-        
-        // Try JSON encoding instead of serialize
         $json_data = wp_json_encode($data);
-        error_log('SPAT: Data size - ' . strlen($json_data) . ' bytes, entries: ' . count($data));
         
         $result = $wpdb->query($wpdb->prepare(
             "INSERT INTO $table (user_id, data_type, data_value, created_at) VALUES (%d, %s, %s, %s)",
@@ -245,32 +234,18 @@ class SPT_Batch_List_Creator {
         ));
         
         if ($result === false) {
-            error_log('SPAT: Failed to insert data - ' . $wpdb->last_error);
-            error_log('SPAT: Last query: ' . $wpdb->last_query);
-        } else {
-            error_log('SPAT: Data stored, rows affected: ' . $result);
+            error_log('SPAT: Failed to insert batch list data - ' . $wpdb->last_error);
         }
         wp_redirect(admin_url('tools.php?page=spt_upload_lists&preview=1'));
         exit;
     }
     
     public function process_batch() {
-        error_log('SPT: process_batch called - action: ' . ($_POST['action'] ?? 'none'));
-        error_log('SPT: User logged in: ' . (is_user_logged_in() ? 'yes' : 'no'));
-        error_log('SPT: Current user can manage_options: ' . (current_user_can('manage_options') ? 'yes' : 'no'));
-        
         if (!current_user_can('manage_options')) {
-            error_log('SPT: Permission check failed');
             wp_die(__('Permission denied', 'sportspress-player-tools'));
         }
-        error_log('SPT: Permission check passed');
         
-        error_log('SPT: Checking nonce');
         check_admin_referer('spt_batch_process');
-        error_log('SPT: Nonce valid');
-        
-        error_log('SPT: process_batch started');
-        error_log('SPT: POST data - ' . print_r($_POST, true));
         
         // Collect team_ and player_ fields
         $teams = array();
@@ -284,9 +259,6 @@ class SPT_Batch_List_Creator {
                 $players[$idx] = intval($value);
             }
         }
-        
-        error_log('SPT: Teams count: ' . count($teams));
-        error_log('SPT: Players count: ' . count($players));
         
         if (empty($teams) || empty($players)) {
             wp_die(__('No team or player data received', 'sportspress-player-tools'));
@@ -319,8 +291,6 @@ class SPT_Batch_List_Creator {
         $season_term = get_term($season_id, 'sp_season');
         $season_name = $season_term ? $season_term->name : '';
         
-        error_log('SPT: Team players grouped: ' . print_r($team_players, true));
-        
         // Clean up temp data
         global $wpdb;
         $table = $wpdb->prefix . 'spat_temp_data';
@@ -328,7 +298,6 @@ class SPT_Batch_List_Creator {
         
         // Process lists
         foreach ($team_players as $team_id => $player_ids) {
-            error_log('SPT: Processing team ' . $team_id . ' with ' . count($player_ids) . ' players');
             $team_name = get_the_title($team_id);
             $title = str_replace(array('{team}', '{season}'), array($team_name, $season_name), $list_name);
             
@@ -366,7 +335,6 @@ class SPT_Batch_List_Creator {
             }
             
             if ($list_id) {
-                error_log('SPT: Created/updated list ' . $list_id);
                 wp_set_object_terms($list_id, array($team_id), 'sp_team');
                 wp_set_object_terms($list_id, $season_ids, 'sp_season');
                 
@@ -387,9 +355,6 @@ class SPT_Batch_List_Creator {
             }
         }
         
-        error_log('SPT: process_batch completed');
-        
-        error_log('SPT: Redirecting to success page');
         wp_redirect(admin_url('edit.php?post_type=sp_list&spt_batch_created=1'));
         exit;
     }
@@ -405,7 +370,6 @@ class SPT_Batch_List_Creator {
         ));
         
         $data = $result ? json_decode($result, true) : false;
-        error_log('Preview - Retrieved data count: ' . (is_array($data) ? count($data) : 'not array'));
         if (!$data) {
             echo '<div class="wrap"><p>' . __('No data found. Please upload a CSV file.', 'sportspress-player-tools') . '</p></div>';
             return;
@@ -696,6 +660,10 @@ class SPT_Batch_List_Creator {
     public function ajax_search_teams() {
         check_ajax_referer('spt_search', 'nonce');
         
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Insufficient permissions', 'sportspress-player-tools'));
+        }
+        
         $search = isset($_GET['q']) ? sanitize_text_field($_GET['q']) : '';
         $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
         $selected = isset($_GET['selected']) ? intval($_GET['selected']) : 0;
@@ -728,6 +696,10 @@ class SPT_Batch_List_Creator {
     
     public function ajax_search_players() {
         check_ajax_referer('spt_search', 'nonce');
+        
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Insufficient permissions', 'sportspress-player-tools'));
+        }
         
         $search = isset($_GET['q']) ? sanitize_text_field($_GET['q']) : '';
         $page = isset($_GET['page']) ? intval($_GET['page']) : 1;

@@ -1,0 +1,6 @@
+{
+    "sonarlint.connectedMode.project": {
+        "connectionId": "lusk-personal",
+        "projectKey": "lusky3_SportsPress-Admin-Tools"
+    }
+}

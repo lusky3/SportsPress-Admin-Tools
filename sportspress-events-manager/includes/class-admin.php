@@ -39,6 +39,7 @@ class SPEM_Admin {
     
     public function admin_page_content() {
         if (isset($_POST['save_settings'])) {
+            check_admin_referer('spem_admin_actions', 'spem_admin_nonce');
             update_option('spem_auto_calendar_creation', isset($_POST['spem_auto_calendar_creation']) ? '1' : '0');
             update_option('spem_calendar_type', sanitize_text_field($_POST['spem_calendar_type']));
             update_option('spem_naming_prefix', sanitize_text_field($_POST['spem_naming_prefix']));
@@ -50,6 +51,7 @@ class SPEM_Admin {
         }
         
         if (isset($_POST['reset_calendars'])) {
+            check_admin_referer('spem_admin_actions', 'spem_admin_nonce');
             $events_manager = new SPEM_Events_Management();
             $updated = $events_manager->reset_calendars_to_current_season();
             if (!empty($updated)) {
@@ -64,6 +66,7 @@ class SPEM_Admin {
         }
         
         if (isset($_POST['create_missing_calendars'])) {
+            check_admin_referer('spem_admin_actions', 'spem_admin_nonce');
             $events_manager = new SPEM_Events_Management();
             $created = $events_manager->create_missing_calendars();
             echo '<div class="notice notice-success"><p>' . sprintf(__('Created %d calendars for teams without existing calendars.', 'sportspress-events-manager'), $created) . '</p></div>';
@@ -152,11 +155,13 @@ class SPEM_Admin {
             <h2><?php _e('Tools', 'sportspress-events-manager'); ?></h2>
             
             <form method="post" onsubmit="return confirm('<?php esc_attr_e('Reset all calendars to current season?', 'sportspress-events-manager'); ?>')">
+                <?php wp_nonce_field('spem_admin_actions', 'spem_admin_nonce'); ?>
                 <p><?php _e('Reset all existing calendars to use the current season.', 'sportspress-events-manager'); ?></p>
                 <?php submit_button(__('Reset Calendars to Current Season', 'sportspress-events-manager'), 'secondary', 'reset_calendars'); ?>
             </form>
             
             <form method="post" onsubmit="return confirm('<?php esc_attr_e('Create calendars for teams that do not have one?', 'sportspress-events-manager'); ?>')">
+                <?php wp_nonce_field('spem_admin_actions', 'spem_admin_nonce'); ?>
                 <p><?php _e('Create calendars for teams that do not have existing calendars.', 'sportspress-events-manager'); ?></p>
                 <?php submit_button(__('Create Missing Calendars', 'sportspress-events-manager'), 'secondary', 'create_missing_calendars'); ?>
             </form>
@@ -168,17 +173,19 @@ class SPEM_Admin {
     
     private function display_import_form() {
         if (isset($_POST['import_events']) && isset($_FILES['event_file'])) {
+            check_admin_referer('spem_admin_actions', 'spem_admin_nonce');
             $events_manager = new SPEM_Events_Management();
             $result = $events_manager->import_events_from_file($_FILES['event_file']);
             
             if (is_wp_error($result)) {
-                echo '<div class="notice notice-error"><p>' . $result->get_error_message() . '</p></div>';
+                echo '<div class="notice notice-error"><p>' . esc_html($result->get_error_message()) . '</p></div>';
             } else {
-                echo '<div class="notice notice-success"><p>' . sprintf(__('Successfully imported %d events.', 'sportspress-events-manager'), $result) . '</p></div>';
+                echo '<div class="notice notice-success"><p>' . sprintf(__('Successfully imported %d events.', 'sportspress-events-manager'), intval($result)) . '</p></div>';
             }
         }
         
         echo '<form method="post" enctype="multipart/form-data">';
+        wp_nonce_field('spem_admin_actions', 'spem_admin_nonce');
         echo '<table class="form-table">';
         echo '<tr>';
         echo '<th scope="row">' . __('XLSX File', 'sportspress-events-manager') . '</th>';
