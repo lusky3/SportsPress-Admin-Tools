@@ -1,7 +1,7 @@
 <?php
 /**
  * Admin Interface Class
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -150,7 +150,7 @@ class SPT_Admin {
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($data as $idx => $row): 
+                    <?php foreach ($data as $idx => $row):
                         $matched_team = $this->find_closest($row['team'], $teams);
                         $matched_player = $this->find_closest($row['name'], $players);
                     ?>
