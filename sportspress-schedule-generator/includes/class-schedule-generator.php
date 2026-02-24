@@ -295,57 +295,25 @@ class SPSG_Schedule_Generator
             return;
         }
 
-        // Get configuration data from request or use current configuration
-        $config_data = isset($_POST['config_data']) ? $_POST['config_data'] : null;
-
         try {
-            // Load configuration - either from provided data or current saved config
-            if ($config_data && !empty($config_data)) {
-                // Create temporary configuration object from provided data
-                $config = new SPSG_Schedule_Configuration();
-
-                // Populate configuration with provided data
-                foreach ($config_data as $key => $value) {
-                    if (property_exists($config, $key)) {
-                        $config->$key = $value;
-                    }
-                }
-            }
-            else {
-                // Use current saved configuration
-                $config = $this->config_manager->get_current();
-
-                if (!$config) {
-                    wp_send_json_error(array(
-                        'message' => __('No configuration found to validate', 'sportspress-schedule-generator'),
-                        'errors' => array(__('Please configure the schedule first', 'sportspress-schedule-generator'))
-                    ));
-                    return;
-                }
+            $config = $this->load_config_for_validation();
+            if (is_null($config)) {
+                return; // Response already sent
             }
 
-            // Validate configuration
             $validation = $config->validate();
-
             if (is_wp_error($validation)) {
-                // Validation failed - return detailed errors
-                $errors = $validation->get_error_messages();
-                $error_data = $validation->get_error_data();
-
                 wp_send_json_error(array(
                     'message' => __('Configuration validation failed', 'sportspress-schedule-generator'),
-                    'errors' => $errors,
-                    'field_errors' => $error_data ?? array(),
+                    'errors' => $validation->get_error_messages(),
+                    'field_errors' => $validation->get_error_data() ?? array(),
                     'is_valid' => false
                 ));
                 return;
             }
 
-            // Check feasibility with constraints
             $feasibility = $this->constraint_manager->check_feasibility($config);
-
             if ($feasibility !== true) {
-                // Configuration is valid but not feasible
                 wp_send_json_success(array(
                     'message' => __('Configuration is valid but may not be feasible', 'sportspress-schedule-generator'),
                     'is_valid' => true,
@@ -356,7 +324,6 @@ class SPSG_Schedule_Generator
                 return;
             }
 
-            // Configuration is valid and feasible
             wp_send_json_success(array(
                 'message' => __('Configuration is valid and feasible', 'sportspress-schedule-generator'),
                 'is_valid' => true,
@@ -365,14 +332,44 @@ class SPSG_Schedule_Generator
                 'warnings' => array()
             ));
 
-        }
-        catch (Exception $e) {
+        } catch (Exception $e) {
             error_log('[SPSG] Validation error: ' . $e->getMessage());
             wp_send_json_error(array(
                 'message' => __('Validation failed due to an error', 'sportspress-schedule-generator'),
                 'errors' => array($e->getMessage())
             ));
         }
+    }
+
+    /**
+     * Load configuration for validation from POST data or saved config
+     *
+     * @return SPSG_Schedule_Configuration|null Config object, or null if error response was sent
+     */
+    private function load_config_for_validation()
+    {
+        $config_data = isset($_POST['config_data']) ? $_POST['config_data'] : null;
+
+        if ($config_data && !empty($config_data)) {
+            $config = new SPSG_Schedule_Configuration();
+            foreach ($config_data as $key => $value) {
+                if (property_exists($config, $key)) {
+                    $config->$key = $value;
+                }
+            }
+            return $config;
+        }
+
+        $config = $this->config_manager->get_current();
+        if (!$config) {
+            wp_send_json_error(array(
+                'message' => __('No configuration found to validate', 'sportspress-schedule-generator'),
+                'errors' => array(__('Please configure the schedule first', 'sportspress-schedule-generator'))
+            ));
+            return null;
+        }
+
+        return $config;
     }
 
     /**

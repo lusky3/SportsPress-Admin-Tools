@@ -200,23 +200,7 @@ class SPSG_Schedule_Engine
      */
     private function validate_matchups($matchups, $config)
     {
-        // Count games per team
-        $team_games = array();
-
-        foreach ($matchups as $matchup) {
-            $home_id = is_array($matchup['home_team']) ? $matchup['home_team']['id'] : $matchup['home_team']->id;
-            $away_id = is_array($matchup['away_team']) ? $matchup['away_team']['id'] : $matchup['away_team']->id;
-
-            if (!isset($team_games[$home_id])) {
-                $team_games[$home_id] = 0;
-            }
-            if (!isset($team_games[$away_id])) {
-                $team_games[$away_id] = 0;
-            }
-
-            $team_games[$home_id]++;
-            $team_games[$away_id]++;
-        }
+        $team_games = $this->count_team_games($matchups);
 
         // Validate each team has correct number of games
         $expected_games = $config->games_per_team;
@@ -239,10 +223,10 @@ class SPSG_Schedule_Engine
                 'matchup_validation_failed',
                 __('Matchup validation failed. Game counts do not match configuration.', 'sportspress-schedule-generator'),
                 array('errors' => $errors)
-                );
+            );
         }
 
-        // Validate inter-division + intra-division totals if inter-division games configured
+        // Validate inter-division totals if configured
         if (!empty($config->inter_division_games)) {
             $validation = $this->validate_inter_division_totals($matchups, $config);
             if (is_wp_error($validation)) {
@@ -254,6 +238,24 @@ class SPSG_Schedule_Engine
     }
 
     /**
+     * Count games per team from matchups
+     */
+    private function count_team_games($matchups)
+    {
+        $team_games = array();
+
+        foreach ($matchups as $matchup) {
+            $home_id = is_array($matchup['home_team']) ? $matchup['home_team']['id'] : $matchup['home_team']->id;
+            $away_id = is_array($matchup['away_team']) ? $matchup['away_team']['id'] : $matchup['away_team']->id;
+
+            $team_games[$home_id] = ($team_games[$home_id] ?? 0) + 1;
+            $team_games[$away_id] = ($team_games[$away_id] ?? 0) + 1;
+        }
+
+        return $team_games;
+    }
+
+    /**
      * Validate inter-division game totals
      * 
      * @param array $matchups Array of matchups
@@ -262,27 +264,7 @@ class SPSG_Schedule_Engine
      */
     private function validate_inter_division_totals($matchups, $config)
     {
-        // Count inter-division games per division pair
-        $inter_division_counts = array();
-
-        foreach ($matchups as $matchup) {
-            if (!isset($matchup['is_inter_division']) || !$matchup['is_inter_division']) {
-                continue;
-            }
-
-            // Get division IDs
-            $home_div = $this->get_team_division($matchup['home_team'], $config);
-            $away_div = $this->get_team_division($matchup['away_team'], $config);
-
-            if ($home_div && $away_div && $home_div !== $away_div) {
-                $pair_key = $home_div < $away_div ? "{$home_div}:{$away_div}" : "{$away_div}:{$home_div}";
-
-                if (!isset($inter_division_counts[$pair_key])) {
-                    $inter_division_counts[$pair_key] = 0;
-                }
-                $inter_division_counts[$pair_key]++;
-            }
-        }
+        $inter_division_counts = $this->count_inter_division_games($matchups, $config);
 
         // Validate counts match configuration
         $errors = array();
@@ -304,10 +286,34 @@ class SPSG_Schedule_Engine
                 'inter_division_validation_failed',
                 __('Inter-division game validation failed.', 'sportspress-schedule-generator'),
                 array('errors' => $errors)
-                );
+            );
         }
 
         return true;
+    }
+
+    /**
+     * Count inter-division games per division pair
+     */
+    private function count_inter_division_games($matchups, $config)
+    {
+        $counts = array();
+
+        foreach ($matchups as $matchup) {
+            if (empty($matchup['is_inter_division'])) {
+                continue;
+            }
+
+            $home_div = $this->get_team_division($matchup['home_team'], $config);
+            $away_div = $this->get_team_division($matchup['away_team'], $config);
+
+            if ($home_div && $away_div && $home_div !== $away_div) {
+                $pair_key = $home_div < $away_div ? "{$home_div}:{$away_div}" : "{$away_div}:{$home_div}";
+                $counts[$pair_key] = ($counts[$pair_key] ?? 0) + 1;
+            }
+        }
+
+        return $counts;
     }
 
     /**
