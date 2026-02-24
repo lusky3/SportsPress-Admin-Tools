@@ -24,9 +24,9 @@ export default {
       await sendWebhook(emailData, env, message);
     } catch (error) {
       console.error('Email processing error:', {
-        message: String(error.message || error).replace(/[\r\n]/g, ' '),
+        message: String(error.message || error).replaceAll(/[\r\n]/g, ' '),
         name: error.name,
-        stack: error.stack?.replace(/[\r\n]/g, ' | ')
+        stack: error.stack?.replaceAll(/[\r\n]/g, ' | ')
       });
       message.setReject('Processing error');
     }
@@ -70,7 +70,7 @@ async function buildEmailData(message, env) {
     debugMode: !!env.DEBUG,
     headerCount: Object.keys(allHeaders).length,
     rawContentLength: rawContent.length,
-    emailBodyPreview: emailBody.substring(0, 300).replace(/[\r\n]/g, ' | ')
+    emailBodyPreview: emailBody.substring(0, 300).replaceAll(/[\r\n]/g, ' | ')
   });
   
   const emailData = {
@@ -93,20 +93,25 @@ async function buildEmailData(message, env) {
     emailData.html = emailBody;
     emailData.debug_headers = allHeaders;
   } else {
-    // Include authentication headers in non-debug mode for security verification
-    const authData = {};
-    for (const [key, value] of Object.entries(allHeaders)) {
-      const lowerKey = key.toLowerCase();
-      if (authHeaders.includes(lowerKey)) {
-        authData[key] = value;
-      }
-    }
-    if (Object.keys(authData).length > 0) {
-      emailData.auth_headers = authData;
-    }
+    appendAuthHeaders(emailData, allHeaders, authHeaders);
   }
   
   return emailData;
+}
+
+/**
+ * Append authentication headers to email data for security verification
+ */
+function appendAuthHeaders(emailData, allHeaders, authHeaders) {
+  const authData = {};
+  for (const [key, value] of Object.entries(allHeaders)) {
+    if (authHeaders.includes(key.toLowerCase())) {
+      authData[key] = value;
+    }
+  }
+  if (Object.keys(authData).length > 0) {
+    emailData.auth_headers = authData;
+  }
 }
 
 async function sendWebhook(emailData, env, message) {
@@ -163,9 +168,9 @@ async function handleWebhookResponse(response, message, env) {
   } else {
     try {
       const responseText = await response.text();
-      console.error('Webhook failed:', response.status, encodeURIComponent(responseText.replace(/[\r\n]/g, ' ').substring(0, 200)));
+      console.error('Webhook failed:', response.status, encodeURIComponent(responseText.replaceAll(/[\r\n]/g, ' ').substring(0, 200)));
     } catch (textError) {
-      console.error('Webhook failed:', response.status, 'Unable to read response');
+      console.error('Webhook failed:', response.status, 'Unable to read response:', textError.message);
     }
     message.setReject('Webhook processing failed');
   }
@@ -229,7 +234,7 @@ function isFromSafeDomain(fromAddress, env) {
   }
   
   // Allow forwarded emails from MXRoute (common email forwarding service)
-  if (fromAddress && fromAddress.includes('mxroute.com')) {
+  if (fromAddress?.includes('mxroute.com')) {
     return true;
   }
   
@@ -260,7 +265,7 @@ function extractEmailBody(rawContent) {
   // Fallback to HTML content and strip tags
   const htmlMatch = rawContent.match(/Content-Type: text\/html[\s\S]*?\n\n([\s\S]*?)(?=\n--)/i);
   if (htmlMatch) {
-    return htmlMatch[1].replace(/<[^>]*>/g, '').replace(/&[^;]+;/g, ' ').trim();
+    return htmlMatch[1].replaceAll(/<[^>]*>/g, '').replaceAll(/&[^;]+;/g, ' ').trim();
   }
   
   // Last resort: return raw content

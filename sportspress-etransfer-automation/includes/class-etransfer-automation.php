@@ -1,7 +1,7 @@
 <?php
 /**
  * e-Transfer Automation Core Class
- * 
+ *
  * @author Cody (lusky3)
  */
 
