@@ -201,29 +201,59 @@ class SPSG_Schedule_Configuration
     /**
      * Validate configuration
      */
-    public function validate()
-    {
-        $errors = array();
+    
+        public function validate()
+        {
+            $errors = array();
 
-        // Validate dates
-        if (!$this->season_start) {
-            $errors['season_start'] = __('Season start date is required. Please select a valid start date.', 'sportspress-schedule-generator');
+            $this->validate_dates($errors);
+            $this->validate_blackout_dates_range($errors);
+            $this->validate_basic_fields($errors);
+            $this->validate_divisions($errors);
+            $this->validate_venue_timeslots($errors);
+            $this->validate_matchup_style_config($errors);
+            $this->validate_home_away_preferences($errors);
+            $this->validate_inter_division_games($errors);
+            $this->validate_capacity($errors);
+
+            if (empty($errors)) {
+                return true;
+            }
+
+            return new WP_Error('validation_failed', __('Configuration validation failed', 'sportspress-schedule-generator'), array('errors' => $errors));
         }
 
-        if (!$this->season_end) {
-            $errors['season_end'] = __('Season end date is required. Please select a valid end date.', 'sportspress-schedule-generator');
+        /**
+         * Validate season start/end dates
+         */
+        private function validate_dates(&$errors)
+        {
+            if (!$this->season_start) {
+                $errors['season_start'] = __('Season start date is required. Please select a valid start date.', 'sportspress-schedule-generator');
+            }
+
+            if (!$this->season_end) {
+                $errors['season_end'] = __('Season end date is required. Please select a valid end date.', 'sportspress-schedule-generator');
+            }
+
+            if ($this->season_start && $this->season_end && $this->season_start >= $this->season_end) {
+                $errors['season_dates'] = sprintf(
+                    __('Season end date (%s) must be after start date (%s). Please adjust your dates.', 'sportspress-schedule-generator'),
+                    $this->season_end->format('Y-m-d'),
+                    $this->season_start->format('Y-m-d')
+                );
+            }
         }
 
-        if ($this->season_start && $this->season_end && $this->season_start >= $this->season_end) {
-            $errors['season_dates'] = sprintf(
-                __('Season end date (%s) must be after start date (%s). Please adjust your dates.', 'sportspress-schedule-generator'),
-                $this->season_end->format('Y-m-d'),
-                $this->season_start->format('Y-m-d')
-            );
-        }
+        /**
+         * Validate blackout dates fall within season range
+         */
+        private function validate_blackout_dates_range(&$errors)
+        {
+            if (!$this->season_start || !$this->season_end || empty($this->blackout_dates)) {
+                return;
+            }
 
-        // Validate blackout dates are within season range
-        if ($this->season_start && $this->season_end && !empty($this->blackout_dates)) {
             foreach ($this->blackout_dates as $blackout) {
                 try {
                     $blackout_date = new DateTime($blackout);
@@ -235,8 +265,7 @@ class SPSG_Schedule_Configuration
                             $this->season_end->format('Y-m-d')
                         );
                     }
-                }
-                catch (Exception $e) {
+                } catch (Exception $e) {
                     $errors['blackout_dates'] = sprintf(
                         __('Invalid blackout date format: %s. Please use YYYY-MM-DD format.', 'sportspress-schedule-generator'),
                         $blackout
@@ -245,27 +274,45 @@ class SPSG_Schedule_Configuration
             }
         }
 
-        // Validate games per team
-        if ($this->games_per_team <= 0) {
-            $errors['games_per_team'] = __('Games per team must be a positive number. Please enter a value greater than 0.', 'sportspress-schedule-generator');
+        /**
+         * Validate basic required fields (games_per_team, playing_days, time_slots, venues, match_length)
+         */
+        private function validate_basic_fields(&$errors)
+        {
+            if ($this->games_per_team <= 0) {
+                $errors['games_per_team'] = __('Games per team must be a positive number. Please enter a value greater than 0.', 'sportspress-schedule-generator');
+            }
+
+            if (empty($this->playing_days)) {
+                $errors['playing_days'] = __('At least one playing day must be selected. Please choose which days games can be scheduled.', 'sportspress-schedule-generator');
+            }
+
+            if (empty($this->time_slots)) {
+                $errors['time_slots'] = __('At least one time slot must be configured. Please add time slots for your playing days.', 'sportspress-schedule-generator');
+            }
+
+            if (empty($this->venues)) {
+                $errors['venues'] = __('At least one venue must be configured. Please add venues where games can be played.', 'sportspress-schedule-generator');
+            }
+
+            if ($this->match_length < 15 || $this->match_length > 240) {
+                $errors['match_length'] = sprintf(
+                    __('Match length must be between 15 and 240 minutes. Current value: %d minutes.', 'sportspress-schedule-generator'),
+                    $this->match_length
+                );
+            }
         }
 
-        // Validate playing days
-        if (empty($this->playing_days)) {
-            $errors['playing_days'] = __('At least one playing day must be selected. Please choose which days games can be scheduled.', 'sportspress-schedule-generator');
-        }
+        /**
+         * Validate divisions have enough teams
+         */
+        private function validate_divisions(&$errors)
+        {
+            if (empty($this->divisions)) {
+                $errors['divisions'] = __('At least one division must be configured. Please add divisions and teams.', 'sportspress-schedule-generator');
+                return;
+            }
 
-        // Validate time slots
-        if (empty($this->time_slots)) {
-            $errors['time_slots'] = __('At least one time slot must be configured. Please add time slots for your playing days.', 'sportspress-schedule-generator');
-        }
-
-        // Validate divisions
-        if (empty($this->divisions)) {
-            $errors['divisions'] = __('At least one division must be configured. Please add divisions and teams.', 'sportspress-schedule-generator');
-        }
-        else {
-            // Validate each division has teams
             foreach ($this->divisions as $division) {
                 if (empty($division['teams']) || count($division['teams']) < 2) {
                     $errors['divisions'] = sprintf(
@@ -277,21 +324,15 @@ class SPSG_Schedule_Configuration
             }
         }
 
-        // Validate venues
-        if (empty($this->venues)) {
-            $errors['venues'] = __('At least one venue must be configured. Please add venues where games can be played.', 'sportspress-schedule-generator');
-        }
+        /**
+         * Validate venue-specific timeslots are not empty
+         */
+        private function validate_venue_timeslots(&$errors)
+        {
+            if (empty($this->venue_timeslots)) {
+                return;
+            }
 
-        // Validate match length
-        if ($this->match_length < 15 || $this->match_length > 240) {
-            $errors['match_length'] = sprintf(
-                __('Match length must be between 15 and 240 minutes. Current value: %d minutes.', 'sportspress-schedule-generator'),
-                $this->match_length
-            );
-        }
-
-        // Validate venue timeslots if configured
-        if (!empty($this->venue_timeslots)) {
             foreach ($this->venue_timeslots as $venue_id => $timeslots) {
                 if (empty($timeslots)) {
                     $venue_name = $this->get_venue_name($venue_id);
@@ -303,8 +344,15 @@ class SPSG_Schedule_Configuration
             }
         }
 
-        // Validate matchup style
-        if (!empty($this->matchup_style)) {
+        /**
+         * Validate matchup style and compatibility with division sizes
+         */
+        private function validate_matchup_style_config(&$errors)
+        {
+            if (empty($this->matchup_style)) {
+                return;
+            }
+
             $valid_styles = array('single_round_robin', 'double_round_robin', 'custom');
             if (!in_array($this->matchup_style, $valid_styles)) {
                 $errors['matchup_style'] = sprintf(
@@ -314,7 +362,6 @@ class SPSG_Schedule_Configuration
                 );
             }
 
-            // Validate matchup style compatibility with division sizes
             if (!empty($this->divisions) && in_array($this->matchup_style, array('single_round_robin', 'double_round_robin'))) {
                 $matchup_validation = $this->validate_matchup_style_compatibility();
                 if (is_wp_error($matchup_validation)) {
@@ -323,10 +370,16 @@ class SPSG_Schedule_Configuration
             }
         }
 
-        // Validate home/away preferences
-        if (!empty($this->home_away_preferences)) {
+        /**
+         * Validate home/away venue preferences reference existing venues
+         */
+        private function validate_home_away_preferences(&$errors)
+        {
+            if (empty($this->home_away_preferences)) {
+                return;
+            }
+
             foreach ($this->home_away_preferences as $team_id => $venue_id) {
-                // Check if venue exists
                 $venue_exists = false;
                 foreach ($this->venues as $venue) {
                     if ($venue['id'] === $venue_id) {
@@ -346,14 +399,20 @@ class SPSG_Schedule_Configuration
             }
         }
 
-        // Validate inter-division games
-        if (!empty($this->inter_division_games)) {
-            $total_inter_division = 0;
-            foreach ($this->inter_division_games as $division_pair => $game_count) {
-                $total_inter_division += (int)$game_count;
+        /**
+         * Validate inter-division game counts don't exceed games per team
+         */
+        private function validate_inter_division_games(&$errors)
+        {
+            if (empty($this->inter_division_games)) {
+                return;
             }
 
-            // Check if inter-division games are compatible with total games per team
+            $total_inter_division = 0;
+            foreach ($this->inter_division_games as $game_count) {
+                $total_inter_division += (int) $game_count;
+            }
+
             if ($total_inter_division > $this->games_per_team) {
                 $errors['inter_division_games'] = sprintf(
                     __('Total inter-division games (%d) exceeds games per team (%d). Please reduce inter-division games or increase total games.', 'sportspress-schedule-generator'),
@@ -363,20 +422,22 @@ class SPSG_Schedule_Configuration
             }
         }
 
-        // Validate resource capacity (time slots vs games needed)
-        if (!empty($this->divisions) && !empty($this->time_slots) && $this->season_start && $this->season_end) {
+        /**
+         * Validate resource capacity (time slots vs games needed)
+         */
+        private function validate_capacity(&$errors)
+        {
+            if (empty($this->divisions) || empty($this->time_slots) || !$this->season_start || !$this->season_end) {
+                return;
+            }
+
             $capacity_validation = $this->validate_resource_capacity();
             if (is_wp_error($capacity_validation)) {
                 $errors['resource_capacity'] = $capacity_validation->get_error_message();
             }
         }
 
-        if (empty($errors)) {
-            return true;
-        }
 
-        return new WP_Error('validation_failed', __('Configuration validation failed', 'sportspress-schedule-generator'), array('errors' => $errors));
-    }
 
     /**
      * Validate matchup style compatibility with division sizes

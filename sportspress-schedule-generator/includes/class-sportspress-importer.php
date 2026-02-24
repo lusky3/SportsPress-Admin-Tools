@@ -118,75 +118,7 @@ class SPSG_Sports_Press_Importer
             );
             set_transient($progress_key, $progress, 300); // 5 minutes
 
-            // Check if this game has a conflict
-            if (isset($conflicts[$index])) {
-                $results['skipped']++;
-                $results['errors'][] = sprintf(
-                    __('Game %d skipped: Conflict with existing event ID %d', 'sportspress-schedule-generator'),
-                    $index + 1,
-                    $conflicts[$index]
-                );
-
-                // Log the skip
-                $this->log_import_action('skip', $game, $conflicts[$index]);
-                continue;
-            }
-
-            // Dry run - just count what would be imported
-            if ($options['dry_run']) {
-                $results['imported']++;
-                continue;
-            }
-
-            // Check if we should overwrite existing event
-            $existing_event_id = SPSGSportsPressIntegration::find_existing_event($game);
-
-            if ($existing_event_id && $options['conflict_resolution'] === 'overwrite') {
-                // Update existing event
-                $event_id = $this->update_event($existing_event_id, $game, $options);
-
-                if (is_wp_error($event_id)) {
-                    $results['failed']++;
-                    $results['errors'][] = sprintf(
-                        __('Game %d failed to update: %s', 'sportspress-schedule-generator'),
-                        $index + 1,
-                        $event_id->get_error_message()
-                    );
-
-                    // Log the failure
-                    $this->log_import_action('failed_update', $game, $existing_event_id, $event_id->get_error_message());
-                }
-                else {
-                    $results['overwritten']++;
-                    $results['event_ids'][] = $event_id;
-
-                    // Log the overwrite
-                    $this->log_import_action('overwrite', $game, $event_id);
-                }
-            }
-            else {
-                // Create new event
-                $event_id = $this->create_event($game, $options);
-
-                if (is_wp_error($event_id)) {
-                    $results['failed']++;
-                    $results['errors'][] = sprintf(
-                        __('Game %d failed to import: %s', 'sportspress-schedule-generator'),
-                        $index + 1,
-                        $event_id->get_error_message()
-                    );
-
-                    // Log the failure
-                    $this->log_import_action('failed_create', $game, null, $event_id->get_error_message());
-                }
-                else {
-                    $results['imported']++;
-                    $results['event_ids'][] = $event_id;
-
-                    // Log the import
-                    $this->log_import_action('import', $game, $event_id);
-                }
-            }
+            $this->import_single_game($index, $game, $options, $conflicts, $results);
         }
 
         // Store final results in transient
@@ -202,6 +134,80 @@ class SPSG_Sports_Press_Importer
     }
 
     /**
+     * Process a single game import (skip, overwrite, or create)
+     */
+    private function import_single_game($index, $game, $options, $conflicts, &$results)
+    {
+        if (isset($conflicts[$index])) {
+            $results['skipped']++;
+            $results['errors'][] = sprintf(
+                __('Game %d skipped: Conflict with existing event ID %d', 'sportspress-schedule-generator'),
+                $index + 1,
+                $conflicts[$index]
+            );
+            $this->log_import_action('skip', $game, $conflicts[$index]);
+            return;
+        }
+
+        if ($options['dry_run']) {
+            $results['imported']++;
+            return;
+        }
+
+        $existing_event_id = SPSGSportsPressIntegration::find_existing_event($game);
+
+        if ($existing_event_id && $options['conflict_resolution'] === 'overwrite') {
+            $this->overwrite_existing_event($index, $game, $existing_event_id, $options, $results);
+        } else {
+            $this->create_new_event($index, $game, $options, $results);
+        }
+    }
+
+    /**
+     * Overwrite an existing event during import
+     */
+    private function overwrite_existing_event($index, $game, $existing_event_id, $options, &$results)
+    {
+        $event_id = $this->update_event($existing_event_id, $game, $options);
+
+        if (is_wp_error($event_id)) {
+            $results['failed']++;
+            $results['errors'][] = sprintf(
+                __('Game %d failed to update: %s', 'sportspress-schedule-generator'),
+                $index + 1,
+                $event_id->get_error_message()
+            );
+            $this->log_import_action('failed_update', $game, $existing_event_id, $event_id->get_error_message());
+        } else {
+            $results['overwritten']++;
+            $results['event_ids'][] = $event_id;
+            $this->log_import_action('overwrite', $game, $event_id);
+        }
+    }
+
+    /**
+     * Create a new event during import
+     */
+    private function create_new_event($index, $game, $options, &$results)
+    {
+        $event_id = $this->create_event($game, $options);
+
+        if (is_wp_error($event_id)) {
+            $results['failed']++;
+            $results['errors'][] = sprintf(
+                __('Game %d failed to import: %s', 'sportspress-schedule-generator'),
+                $index + 1,
+                $event_id->get_error_message()
+            );
+            $this->log_import_action('failed_create', $game, null, $event_id->get_error_message());
+        } else {
+            $results['imported']++;
+            $results['event_ids'][] = $event_id;
+            $this->log_import_action('import', $game, $event_id);
+        }
+    }
+
+    /**
      * Create new SportsPress event from game
      * 
      * @param object $game Game object
@@ -210,51 +216,49 @@ class SPSG_Sports_Press_Importer
      */
     private function create_event($game, $options)
     {
-        $event_id = null;
-
         // Map team names to SportsPress team IDs
         $team_mapping = $this->map_teams($game);
         if (is_wp_error($team_mapping)) {
-            $event_id = $team_mapping;
+            return $team_mapping;
         }
-        else {
-            // Map venue name to SportsPress venue ID
-            $venue_mapping = $this->map_venue($game);
-            if (is_wp_error($venue_mapping)) {
-                $event_id = $venue_mapping;
+
+        // Map venue name to SportsPress venue ID
+        $venue_mapping = $this->map_venue($game);
+        if (is_wp_error($venue_mapping)) {
+            return $venue_mapping;
+        }
+
+        // Update game object with mapped IDs
+        $game->home_team->id = $team_mapping['home_team_id'];
+        $game->away_team->id = $team_mapping['away_team_id'];
+        $game->venue->id = $venue_mapping['venue_id'];
+
+        // Set division ID if provided in options
+        if (isset($options['league_id'])) {
+            if (!isset($game->division)) {
+                $game->division = new stdClass();
             }
-            else {
-                // Update game object with mapped IDs
-                $game->home_team->id = $team_mapping['home_team_id'];
-                $game->away_team->id = $team_mapping['away_team_id'];
-                $game->venue->id = $venue_mapping['venue_id'];
+            $game->division->id = $options['league_id'];
+        }
 
-                // Set division ID if provided in options
-                if (isset($options['league_id'])) {
-                    if (!isset($game->division)) {
-                        $game->division = new stdClass();
-                    }
-                    $game->division->id = $options['league_id'];
-                }
+        // Create event using existing integration helper
+        $event_id = SPSGSportsPressIntegration::create_event_from_game($game);
 
-                // Create event using existing integration helper
-                $event_id = SPSGSportsPressIntegration::create_event_from_game($game);
+        if (is_wp_error($event_id)) {
+            return $event_id;
+        }
 
-                if (!is_wp_error($event_id)) {
-                    // Set season if provided
-                    if (isset($options['season_id'])) {
-                        wp_set_object_terms($event_id, (int)$options['season_id'], 'sp_season');
-                    }
+        // Set season if provided
+        if (isset($options['season_id'])) {
+            wp_set_object_terms($event_id, (int) $options['season_id'], 'sp_season');
+        }
 
-                    // Set event status
-                    if ($options['event_status'] !== 'publish') {
-                        wp_update_post(array(
-                            'ID' => $event_id,
-                            'post_status' => $options['event_status']
-                        ));
-                    }
-                }
-            }
+        // Set event status
+        if ($options['event_status'] !== 'publish') {
+            wp_update_post(array(
+                'ID' => $event_id,
+                'post_status' => $options['event_status']
+            ));
         }
 
         return $event_id;
