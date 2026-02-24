@@ -477,3 +477,352 @@ class SPSG_Admin_Ajax
             'description' => $preset_info['description'] ?? ''
         ));
     }
+
+    /**
+     * AJAX handler for getting change history
+     */
+    public function ajax_get_change_history()
+    {
+        check_ajax_referer('spsg_get_change_history', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
+        }
+
+        $config_id = sanitize_text_field($_POST['config_id'] ?? '');
+        if (empty($config_id)) {
+            wp_send_json_error(__('Invalid configuration ID', 'sportspress-schedule-generator'));
+        }
+
+        $limit = intval($_POST['limit'] ?? 10);
+        $history = $this->config_manager->get_change_history($config_id, $limit);
+
+        if (empty($history)) {
+            wp_send_json_success(array(
+                'history' => array(),
+                'message' => __(self::MSG_NO_CHANGES, 'sportspress-schedule-generator')
+            ));
+        }
+
+        $formatted_history = array();
+        foreach ($history as $change) {
+            $formatted_history[] = array(
+                'timestamp' => $change['timestamp'],
+                'user_name' => $change['user_name'],
+                'field' => $change['field_label'] ?? $change['field'],
+                'old_value_display' => $change['old_value'] ?? '',
+                'new_value_display' => $change['new_value'] ?? ''
+            );
+        }
+
+        wp_send_json_success(array(
+            'history' => $formatted_history,
+            'count' => count($formatted_history)
+        ));
+    }
+
+    /**
+     * AJAX handler for getting generation progress
+     */
+    public function ajax_get_generation_progress()
+    {
+        check_ajax_referer('spsg_get_generation_progress', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
+        }
+
+        $user_id = get_current_user_id();
+        $progress_key = 'spsg_generation_progress_' . $user_id;
+        $progress = get_transient($progress_key);
+
+        if (!$progress) {
+            wp_send_json_error(array(
+                'message' => __('No generation in progress', 'sportspress-schedule-generator'),
+                'status' => 'not_found'
+            ));
+        }
+
+        $total_games = $progress['total_games'] ?? 0;
+        $games_scheduled = $progress['games_scheduled'] ?? 0;
+        $percentage = $total_games > 0 ? round(($games_scheduled / $total_games) * 100) : 0;
+
+        $phase_text = $this->get_phase_text($progress['phase'] ?? 'initializing');
+        $estimated_remaining = $this->get_estimated_remaining($percentage, $progress['elapsed_time'] ?? 0);
+
+        wp_send_json_success(array(
+            'percentage' => $percentage,
+            'phase' => $progress['phase'] ?? 'initializing',
+            'phase_text' => $phase_text,
+            'games_scheduled' => $games_scheduled,
+            'total_games' => $total_games,
+            'estimated_remaining' => $estimated_remaining,
+            'status' => $progress['status'] ?? 'in_progress'
+        ));
+    }
+
+    /**
+     * Get human-readable phase text
+     */
+    private function get_phase_text($phase)
+    {
+        switch ($phase) {
+            case 'matchups':
+                return __('Generating matchups', 'sportspress-schedule-generator');
+            case 'allocation':
+                return __('Allocating slots', 'sportspress-schedule-generator');
+            case 'validation':
+                return __('Validating schedule', 'sportspress-schedule-generator');
+            case 'complete':
+                return __('Complete', 'sportspress-schedule-generator');
+            default:
+                return __('Initializing', 'sportspress-schedule-generator');
+        }
+    }
+
+    /**
+     * Get estimated time remaining string
+     */
+    private function get_estimated_remaining($percentage, $elapsed_time)
+    {
+        if ($percentage > 0 && $percentage < 100) {
+            $total_estimated = ($elapsed_time / $percentage) * 100;
+            $remaining_seconds = max(0, $total_estimated - $elapsed_time);
+
+            if ($remaining_seconds < 60) {
+                return sprintf(__('%d seconds', 'sportspress-schedule-generator'), round($remaining_seconds));
+            }
+
+            $minutes = floor($remaining_seconds / 60);
+            $seconds = round($remaining_seconds % 60);
+            return sprintf(__('%d min %d sec', 'sportspress-schedule-generator'), $minutes, $seconds);
+        }
+        elseif ($percentage >= 100) {
+            return __('Complete', 'sportspress-schedule-generator');
+        }
+
+        return __('Calculating...', 'sportspress-schedule-generator');
+    }
+
+    /**
+     * AJAX handler for canceling generation
+     */
+    public function ajax_cancel_generation()
+    {
+        check_ajax_referer('spsg_cancel_generation', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
+        }
+
+        $user_id = get_current_user_id();
+        $cancel_key = 'spsg_cancel_generation_' . $user_id;
+        $progress_key = 'spsg_generation_progress_' . $user_id;
+
+        set_transient($cancel_key, true, 300);
+
+        $progress = get_transient($progress_key);
+        if ($progress) {
+            $progress['status'] = 'cancelled';
+            set_transient($progress_key, $progress, 300);
+        }
+
+        wp_send_json_success(array(
+            'message' => __('Cancellation requested. Generation will stop shortly.', 'sportspress-schedule-generator')
+        ));
+    }
+
+    /**
+     * AJAX handler for getting import dialog data
+     */
+    public function ajax_get_import_dialog_data()
+    {
+        check_ajax_referer('spsg_get_import_dialog_data', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
+        }
+
+        if (!SPSGSportsPressIntegration::is_sportspress_active()) {
+            wp_send_json_error(__('SportsPress is not active', 'sportspress-schedule-generator'));
+        }
+
+        $leagues = SPSGSportsPressIntegration::get_leagues();
+        $seasons = SPSGSportsPressIntegration::get_seasons();
+
+        $formatted_leagues = array();
+        if (!empty($leagues)) {
+            foreach ($leagues as $league) {
+                $formatted_leagues[] = array(
+                    'id' => $league->id,
+                    'name' => $league->name
+                );
+            }
+        }
+
+        $formatted_seasons = array();
+        if (!empty($seasons)) {
+            foreach ($seasons as $season) {
+                $formatted_seasons[] = array(
+                    'id' => $season->id,
+                    'name' => $season->name
+                );
+            }
+        }
+
+        wp_send_json_success(array(
+            'leagues' => $formatted_leagues,
+            'seasons' => $formatted_seasons
+        ));
+    }
+
+    /**
+     * AJAX handler for getting import progress
+     */
+    public function ajax_get_import_progress()
+    {
+        check_ajax_referer('spsg_get_import_progress', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
+        }
+
+        $user_id = get_current_user_id();
+        $progress_key = 'spsg_import_progress_' . $user_id;
+        $progress = get_transient($progress_key);
+
+        if (!$progress) {
+            wp_send_json_error(array(
+                'message' => __('No import in progress', 'sportspress-schedule-generator'),
+                'status' => 'not_found'
+            ));
+        }
+
+        wp_send_json_success(array(
+            'current' => $progress['current'] ?? 0,
+            'total' => $progress['total'] ?? 0,
+            'status' => $progress['status'] ?? 'in_progress',
+            'message' => $progress['message'] ?? ''
+        ));
+    }
+
+    /**
+     * AJAX handler for uploading and parsing venue CSV
+     */
+    public function ajax_upload_venue_csv()
+    {
+        check_ajax_referer('spsg_upload_venue_csv', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
+        }
+
+        if (!isset($_FILES['csv_file'])) {
+            wp_send_json_error(__('No file uploaded', 'sportspress-schedule-generator'));
+        }
+
+        $file = $_FILES['csv_file'];
+
+        $file_ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if ($file_ext !== 'csv') {
+            wp_send_json_error(__('Please upload a CSV file', 'sportspress-schedule-generator'));
+        }
+
+        require_once plugin_dir_path(__FILE__) . 'class-venue-schedule-importer.php';
+        $schedules = SPSG_Venue_Schedule_Importer::parse_csv($file['tmp_name']);
+
+        if (is_wp_error($schedules)) {
+            wp_send_json_error($schedules->get_error_message());
+        }
+
+        $csv_venues = SPSG_Venue_Schedule_Importer::get_unique_venues($schedules);
+
+        $config = $this->config_manager->get_current();
+        $existing_venues = $config->venues ?? array();
+
+        if (class_exists('SPSGSportsPressIntegration')) {
+            $sp_venues = SPSGSportsPressIntegration::get_venues();
+            foreach ($sp_venues as $sp_venue) {
+                $existing_venues[] = array(
+                    'id' => $sp_venue->id,
+                    'name' => $sp_venue->name
+                );
+            }
+        }
+
+        $venue_mapping = SPSG_Venue_Schedule_Importer::suggest_venue_mapping($csv_venues, $existing_venues);
+
+        wp_send_json_success(array(
+            'schedules' => $schedules,
+            'venue_mapping' => $venue_mapping,
+            'existing_venues' => $existing_venues
+        ));
+    }
+
+    /**
+     * AJAX handler for importing venue schedule
+     */
+    public function ajax_import_venue_schedule()
+    {
+        check_ajax_referer('spsg_import_venue_schedule', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
+        }
+
+        $schedules = $_POST['schedules'] ?? array();
+        $venue_mapping = $_POST['venue_mapping'] ?? array();
+        $new_venues = $_POST['new_venues'] ?? array();
+
+        if (empty($schedules)) {
+            wp_send_json_error(__('No schedule data provided', 'sportspress-schedule-generator'));
+        }
+
+        $config = $this->config_manager->get_current();
+        $config_data = $config->to_array();
+
+        $venue_id_map = $venue_mapping;
+        foreach ($new_venues as $venue_name) {
+            $venue_id = 'venue_' . sanitize_title($venue_name) . '_' . time();
+            $config_data['venues'][] = array(
+                'id' => $venue_id,
+                'name' => $venue_name
+            );
+            $venue_id_map[$venue_name] = $venue_id;
+        }
+
+        require_once plugin_dir_path(__FILE__) . 'class-venue-schedule-importer.php';
+        $venue_availability = SPSG_Venue_Schedule_Importer::convert_to_availability($schedules, $venue_id_map);
+
+        if (!isset($config_data['venue_date_availability'])) {
+            $config_data['venue_date_availability'] = array();
+        }
+
+        foreach ($venue_availability as $venue_id => $date_ranges) {
+            if (!isset($config_data['venue_date_availability'][$venue_id])) {
+                $config_data['venue_date_availability'][$venue_id] = array();
+            }
+            $config_data['venue_date_availability'][$venue_id] = array_merge(
+                $config_data['venue_date_availability'][$venue_id],
+                $date_ranges
+            );
+        }
+
+        $result = $this->config_manager->save($config_data);
+
+        if (is_wp_error($result)) {
+            wp_send_json_error($result->get_error_message());
+        }
+
+        $message = sprintf(
+            __('Imported %d venue schedules. Created %d new venues.', 'sportspress-schedule-generator'),
+            count($schedules),
+            count($new_venues)
+        );
+
+        wp_send_json_success(array(
+            'message' => $message,
+            'schedules_imported' => count($schedules),
+            'venues_created' => count($new_venues)
+        ));
+    }
