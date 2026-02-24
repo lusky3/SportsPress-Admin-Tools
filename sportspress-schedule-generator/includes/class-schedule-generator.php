@@ -88,7 +88,7 @@ class SPSG_Schedule_Generator
         check_ajax_referer('spsg_generate_schedule', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
             return;
         }
 
@@ -212,7 +212,7 @@ class SPSG_Schedule_Generator
         check_ajax_referer('spsg_export_schedule', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
             return;
         }
 
@@ -294,7 +294,7 @@ class SPSG_Schedule_Generator
         check_ajax_referer('spsg_validate_config', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
             return;
         }
 
@@ -383,7 +383,7 @@ class SPSG_Schedule_Generator
         check_ajax_referer('spsg_import_to_sportspress', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
             return;
         }
 
