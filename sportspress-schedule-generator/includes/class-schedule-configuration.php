@@ -149,26 +149,38 @@ class SPSG_Schedule_Configuration
      */
     public function load_from_array($data)
     {
+        $defaults = array(
+            'games_per_team' => 0,
+            'match_length' => 60,
+            'matchup_style' => 'double_round_robin',
+            'timezone' => wp_timezone_string(),
+        );
+
+        $array_fields = array(
+            'playing_days', 'time_slots', 'divisions', 'venues',
+            'blackout_dates', 'distribution_rules', 'team_restrictions',
+            'division_grouping', 'venue_timeslots', 'venue_blackout_dates',
+            'venue_date_availability', 'home_away_preferences', 'inter_division_games',
+        );
+
+        // Load date fields
         $this->season_start = isset($data['season_start']) ? new DateTime($data['season_start']) : null;
         $this->season_end = isset($data['season_end']) ? new DateTime($data['season_end']) : null;
-        $this->games_per_team = isset($data['games_per_team']) ? (int)$data['games_per_team'] : 0;
-        $this->playing_days = isset($data['playing_days']) ? (array)$data['playing_days'] : array();
-        $this->time_slots = isset($data['time_slots']) ? (array)$data['time_slots'] : array();
-        $this->divisions = isset($data['divisions']) ? (array)$data['divisions'] : array();
-        $this->venues = isset($data['venues']) ? (array)$data['venues'] : array();
-        $this->blackout_dates = isset($data['blackout_dates']) ? (array)$data['blackout_dates'] : array();
-        $this->distribution_rules = isset($data['distribution_rules']) ? (array)$data['distribution_rules'] : array();
-        $this->team_restrictions = isset($data['team_restrictions']) ? (array)$data['team_restrictions'] : array();
-        $this->division_grouping = isset($data['division_grouping']) ? (array)$data['division_grouping'] : array();
-        $this->timezone = isset($data['timezone']) ? $data['timezone'] : wp_timezone_string();
-        $this->venue_timeslots = isset($data['venue_timeslots']) ? (array)$data['venue_timeslots'] : array();
-        $this->venue_blackout_dates = isset($data['venue_blackout_dates']) ? (array)$data['venue_blackout_dates'] : array();
-        $this->venue_date_availability = isset($data['venue_date_availability']) ? (array)$data['venue_date_availability'] : array();
-        $this->match_length = isset($data['match_length']) ? (int)$data['match_length'] : 60;
-        $this->matchup_style = isset($data['matchup_style']) ? $data['matchup_style'] : 'double_round_robin';
-        $this->home_away_preferences = isset($data['home_away_preferences']) ? (array)$data['home_away_preferences'] : array();
-        $this->inter_division_games = isset($data['inter_division_games']) ? (array)$data['inter_division_games'] : array();
+
+        // Load integer fields
+        $this->games_per_team = (int)($data['games_per_team'] ?? $defaults['games_per_team']);
+        $this->match_length = (int)($data['match_length'] ?? $defaults['match_length']);
+
+        // Load string fields with defaults
+        $this->matchup_style = $data['matchup_style'] ?? $defaults['matchup_style'];
+        $this->timezone = $data['timezone'] ?? $defaults['timezone'];
+
+        // Load array fields
+        foreach ($array_fields as $field) {
+            $this->$field = isset($data[$field]) ? (array)$data[$field] : array();
+        }
     }
+
 
     /**
      * Convert to array for storage
@@ -493,84 +505,103 @@ class SPSG_Schedule_Configuration
      */
     private function validate_resource_capacity()
     {
-        // Calculate total teams across all divisions
-        $total_teams = 0;
-        foreach ($this->divisions as $division) {
-            $total_teams += count($division['teams'] ?? array());
-        }
+        $total_teams = $this->count_total_teams();
 
         if ($total_teams === 0) {
             return true; // Already validated in main validation
         }
 
-        // Calculate total games needed
-        // Each game involves 2 teams, so total games = (total_teams * games_per_team) / 2
         $total_games_needed = ($total_teams * $this->games_per_team) / 2;
-
-        // Calculate available time slots per week
-        $slots_per_week = 0;
-        foreach ($this->playing_days as $day) {
-            if (isset($this->time_slots[$day])) {
-                $slots_per_week += count($this->time_slots[$day]);
-            }
-        }
+        $slots_per_week = $this->count_weekly_slots();
 
         if ($slots_per_week === 0) {
             return new WP_Error(
                 'insufficient_timeslots',
                 __('No time slots configured for the selected playing days. Please add time slots.', 'sportspress-schedule-generator')
-                );
+            );
         }
 
-        // Calculate number of weeks in season
-        $season_days = $this->season_start->diff($this->season_end)->days;
-        $season_weeks = ceil($season_days / 7);
-
-        // Subtract blackout dates (approximate - each blackout removes slots for that day)
-        $blackout_slots_lost = 0;
-        if (!empty($this->blackout_dates)) {
-            foreach ($this->blackout_dates as $blackout) {
-                try {
-                    $blackout_date = new DateTime($blackout);
-                    $day_name = strtolower($blackout_date->format('l'));
-                    if (in_array($day_name, $this->playing_days) && isset($this->time_slots[$day_name])) {
-                        $blackout_slots_lost += count($this->time_slots[$day_name]);
-                    }
-                }
-                catch (Exception $e) {
-                // Skip invalid dates
-                }
-            }
-        }
-
-        // Calculate total available slots
+        $season_weeks = ceil($this->season_start->diff($this->season_end)->days / 7);
+        $blackout_slots_lost = $this->count_blackout_slots_lost();
         $total_slots_available = ($slots_per_week * $season_weeks) - $blackout_slots_lost;
 
-        // Add buffer for scheduling constraints (20% overhead recommended)
+        return $this->check_capacity_thresholds($total_games_needed, $total_slots_available);
+    }
+
+    /**
+     * Count total teams across all divisions
+     */
+    private function count_total_teams()
+    {
+        $total = 0;
+        foreach ($this->divisions as $division) {
+            $total += count($division['teams'] ?? array());
+        }
+        return $total;
+    }
+
+    /**
+     * Count available time slots per week
+     */
+    private function count_weekly_slots()
+    {
+        $slots = 0;
+        foreach ($this->playing_days as $day) {
+            if (isset($this->time_slots[$day])) {
+                $slots += count($this->time_slots[$day]);
+            }
+        }
+        return $slots;
+    }
+
+    /**
+     * Count slots lost due to blackout dates
+     */
+    private function count_blackout_slots_lost()
+    {
+        $lost = 0;
+        foreach ($this->blackout_dates as $blackout) {
+            try {
+                $blackout_date = new DateTime($blackout);
+                $day_name = strtolower($blackout_date->format('l'));
+                if (in_array($day_name, $this->playing_days) && isset($this->time_slots[$day_name])) {
+                    $lost += count($this->time_slots[$day_name]);
+                }
+            } catch (Exception $e) {
+                // Skip invalid dates
+            }
+        }
+        return $lost;
+    }
+
+    /**
+     * Check capacity thresholds and return appropriate error/success
+     */
+    private function check_capacity_thresholds($total_games_needed, $total_slots_available)
+    {
         $effective_capacity = $total_slots_available * 0.8;
 
         if ($total_games_needed > $effective_capacity) {
             return new WP_Error(
                 'insufficient_capacity',
                 sprintf(
-                __('Insufficient time slots: Need %d games but only %d effective slots available (%.0f slots with 20%% buffer for constraints). Suggestions: Add more time slots, extend season, reduce games per team, or remove blackout dates.', 'sportspress-schedule-generator'),
-                $total_games_needed,
-                floor($effective_capacity),
-                $total_slots_available
-            )
-                );
+                    __('Insufficient time slots: Need %d games but only %d effective slots available (%.0f slots with 20%% buffer for constraints). Suggestions: Add more time slots, extend season, reduce games per team, or remove blackout dates.', 'sportspress-schedule-generator'),
+                    $total_games_needed,
+                    floor($effective_capacity),
+                    $total_slots_available
+                )
+            );
         }
 
-        // Warning if capacity is tight (less than 30% buffer)
         if ($total_games_needed > ($total_slots_available * 0.7)) {
             return new WP_Error(
                 'tight_capacity',
                 sprintf(
-                __('Warning: Schedule capacity is tight. Need %d games with only %d slots available. Consider adding more time slots or extending the season for better scheduling flexibility.', 'sportspress-schedule-generator'),
-                $total_games_needed,
-                $total_slots_available
-            )
-                );
+                    __('Warning: Schedule capacity is tight. Need %d games with only %d slots available. Consider adding more time slots or extending the season for better scheduling flexibility.', 'sportspress-schedule-generator'),
+                    $total_games_needed,
+                    $total_slots_available
+                )
+            );
         }
 
         return true;
