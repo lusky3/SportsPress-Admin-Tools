@@ -16,6 +16,9 @@ if (!defined('ABSPATH')) {
 class SPSG_Schedule_Generator
 {
 
+    /** @var string Error message for insufficient permissions */
+    const INSUFFICIENT_PERMISSIONS = 'Insufficient permissions';
+
     /**
      * Configuration manager instance
      */
@@ -131,7 +134,7 @@ class SPSG_Schedule_Generator
 
         // Calculate statistics using the statistics calculator
         $stats_calculator = new SPSG_Statistics_Calculator();
-        $stats = $stats_calculator->calculate($result['schedule'], $config);
+        $stats = $stats_calculator->calculate($result['schedule']);
 
         // Add generation time to stats
         if (isset($result['generation_time'])) {

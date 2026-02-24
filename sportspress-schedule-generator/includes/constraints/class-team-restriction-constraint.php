@@ -1,7 +1,7 @@
 <?php
 /**
  * Team Restriction Constraint
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -315,10 +315,11 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint
 
             case 'day_restrictions':
                 return $this->validate_day_restrictions($game, $restriction);
-        }
 
-        $this->log(sprintf('Unknown custom restriction type: %s', $type));
-        return true;
+            default:
+                $this->log(sprintf('Unknown custom restriction type: %s', $type));
+                return true;
+        }
     }
 
     /**

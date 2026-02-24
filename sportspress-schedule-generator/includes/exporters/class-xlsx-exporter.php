@@ -1,9 +1,9 @@
 <?php
 /**
  * XLSX Exporter Class
- * 
+ *
  * Exports schedules to Excel format with formatting and color-coding
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -20,7 +20,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface
 
     /**
      * Export schedule to XLSX format
-     * 
+     *
      * @param array $schedule Array of game objects
      * @param mixed $config Configuration object or array
      * @return array|WP_Error Export result with file path and URL
@@ -221,7 +221,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface
 
     /**
      * Get division colors for formatting
-     * 
+     *
      * @return array Array of color codes
      */
     private function get_division_colors()
@@ -242,7 +242,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface
 
     /**
      * Get supported format
-     * 
+     *
      * @return string Format identifier
      */
     public function get_format()
@@ -253,7 +253,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface
 
     /**
      * Get format name
-     * 
+     *
      * @return string Human-readable format name
      */
     public function get_format_name()
@@ -263,7 +263,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface
 
     /**
      * Get file extension
-     * 
+     *
      * @return string File extension
      */
     public function get_extension()
@@ -273,7 +273,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface
 
     /**
      * Get MIME type
-     * 
+     *
      * @return string MIME type
      */
     public function get_mime_type()
@@ -283,7 +283,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface
 
     /**
      * Check if exporter supports formatting
-     * 
+     *
      * @return bool True if formatting is supported
      */
     public function supports_formatting()
@@ -293,7 +293,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface
 
     /**
      * Check if a game is inter-division
-     * 
+     *
      * @param object $game Game object
      * @return bool True if inter-division
      */
@@ -313,7 +313,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface
 
     /**
      * Get home/away designation for display
-     * 
+     *
      * @param object $game Game object
      * @return string Home/Away designation
      */

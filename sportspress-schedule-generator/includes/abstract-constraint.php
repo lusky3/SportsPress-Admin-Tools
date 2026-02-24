@@ -1,7 +1,7 @@
 <?php
 /**
  * Abstract Base Constraint Class
- * 
+ *
  * @author Cody (lusky3)
  */
 

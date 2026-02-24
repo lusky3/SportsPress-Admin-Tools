@@ -1,7 +1,7 @@
 <?php
 /**
  * Autoloader for Schedule Generator Classes
- * 
+ *
  * @author Cody (lusky3)
  */
 

@@ -1,7 +1,7 @@
 <?php
 /**
  * Division Grouping Constraint
- * 
+ *
  * @author Cody (lusky3)
  */
 

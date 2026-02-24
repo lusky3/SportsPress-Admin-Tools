@@ -1,7 +1,7 @@
 <?php
 /**
  * Distribution Constraint
- * 
+ *
  * @author Cody (lusky3)
  */
 
