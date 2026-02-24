@@ -826,3 +826,64 @@ class SPSG_Admin_Ajax
             'venues_created' => count($new_venues)
         ));
     }
+
+    /**
+     * AJAX handler for getting available export formats
+     */
+    public function ajax_get_export_formats()
+    {
+        check_ajax_referer('spsg_get_export_formats', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
+        }
+
+        $formats = array(
+            'csv' => array(
+                'available' => true,
+                'label' => __('CSV', 'sportspress-schedule-generator'),
+                'description' => __('Comma-separated values format', 'sportspress-schedule-generator')
+            )
+        );
+
+        if (class_exists('PhpOffice\\PhpSpreadsheet\\Spreadsheet')) {
+            $formats['xlsx'] = array(
+                'available' => true,
+                'label' => __('XLSX', 'sportspress-schedule-generator'),
+                'description' => __('Microsoft Excel format', 'sportspress-schedule-generator')
+            );
+        }
+        else {
+            $formats['xlsx'] = array(
+                'available' => false,
+                'label' => __('XLSX', 'sportspress-schedule-generator'),
+                'description' => __('Microsoft Excel format (requires PhpSpreadsheet library)', 'sportspress-schedule-generator'),
+                'reason' => __('PhpSpreadsheet library not installed', 'sportspress-schedule-generator')
+            );
+        }
+
+        wp_send_json_success($formats);
+    }
+
+    /**
+     * AJAX handler for clearing change history
+     */
+    public function ajax_clear_change_history()
+    {
+        check_ajax_referer('spsg_clear_change_history', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
+        }
+
+        $result = $this->config_manager->clear_change_history();
+
+        if (is_wp_error($result)) {
+            wp_send_json_error($result->get_error_message());
+        }
+
+        wp_send_json_success(array(
+            'message' => __('Change history cleared successfully', 'sportspress-schedule-generator')
+        ));
+    }
+}
