@@ -1,7 +1,7 @@
 <?php
 /**
  * Name Matching Helper Class
- * 
+ *
  * @author Cody (lusky3)
  */
 

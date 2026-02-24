@@ -1,7 +1,7 @@
 <?php
 /**
  * e-Transfer Admin Page
- * 
+ *
  * @author Cody (lusky3)
  */
 
