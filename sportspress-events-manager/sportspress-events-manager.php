@@ -22,6 +22,21 @@ define('SPEM_VERSION', '1.0.0');
 
 class SportsPress_Events_Manager {
     
+    /**
+     * @var SPEM_Events_Management|null Events management module instance
+     */
+    private $events_management;
+
+    /**
+     * @var SPEM_League_Table_Generator|null League table generator module instance
+     */
+    private $league_table_generator;
+
+    /**
+     * @var SPEM_Admin|null Admin interface instance
+     */
+    private $admin;
+
     public function __construct() {
         register_activation_hook(__FILE__, array($this, 'check_activation_requirements'));
         add_action('plugins_loaded', array($this, 'init'));
@@ -44,7 +59,7 @@ class SportsPress_Events_Manager {
             'name' => 'Events Management',
             'description' => 'Calendar management and event import',
             'parent_module' => 'events_management',
-            'version' => '1.0.0',
+            'version' => SPEM_VERSION,
             'file' => __FILE__
         ));
         
@@ -52,7 +67,7 @@ class SportsPress_Events_Manager {
             'name' => 'League Table Generator',
             'description' => 'Generate league tables for teams',
             'parent_module' => 'league_table_generator',
-            'version' => '1.0.0',
+            'version' => SPEM_VERSION,
             'file' => __FILE__
         ));
         
@@ -65,17 +80,17 @@ class SportsPress_Events_Manager {
         
         if (in_array('events_management', $enabled_modules)) {
             require_once SPEM_PLUGIN_PATH . 'includes/class-events-management.php';
-            new SPEM_Events_Management();
+            $this->events_management = new SPEM_Events_Management();
         }
         
         if (in_array('league_table_generator', $enabled_modules)) {
             require_once SPEM_PLUGIN_PATH . 'includes/class-league-table-generator.php';
-            new SPEM_League_Table_Generator();
+            $this->league_table_generator = new SPEM_League_Table_Generator();
         }
         
         if (is_admin() && (in_array('events_management', $enabled_modules) || in_array('league_table_generator', $enabled_modules))) {
             require_once SPEM_PLUGIN_PATH . 'includes/class-admin.php';
-            new SPEM_Admin();
+            $this->admin = new SPEM_Admin();
         }
     }
     
@@ -94,4 +109,4 @@ class SportsPress_Events_Manager {
     }
 }
 
-new SportsPress_Events_Manager();
+$GLOBALS['sportspress_events_manager'] = new SportsPress_Events_Manager();
