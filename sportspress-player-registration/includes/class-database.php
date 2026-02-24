@@ -1,7 +1,7 @@
 <?php
 /**
  * Database Management Class
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -33,7 +33,7 @@ class SPR_Database {
             KEY player_id (player_id)
         ) $charset_collate;";
         
-        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         dbDelta($sql);
         
         // Player role logs table

@@ -22,6 +22,12 @@ define('SPR_VERSION', '1.0.0');
 
 class SportsPress_Player_Registration {
     
+    /** @var SPR_Player_Registration|null */
+    private $registration;
+    
+    /** @var SPR_Admin|null */
+    private $admin;
+    
     public function __construct() {
         register_activation_hook(__FILE__, array($this, 'check_activation_requirements'));
         add_action('plugins_loaded', array($this, 'init'));
@@ -44,7 +50,7 @@ class SportsPress_Player_Registration {
             'name' => 'Player Registration',
             'description' => 'Automatically creates player records from WooCommerce orders',
             'parent_module' => 'player_registration',
-            'version' => '1.0.0',
+            'version' => SPR_VERSION,
             'file' => __FILE__
         ));
         
@@ -60,10 +66,10 @@ class SportsPress_Player_Registration {
         require_once SPR_PLUGIN_PATH . 'includes/class-player-registration.php';
         require_once SPR_PLUGIN_PATH . 'includes/class-admin.php';
         
-        new SPR_Player_Registration();
+        $this->registration = new SPR_Player_Registration();
         
         if (is_admin()) {
-            new SPR_Admin();
+            $this->admin = new SPR_Admin();
         }
     }
     
@@ -84,4 +90,4 @@ class SportsPress_Player_Registration {
 
 }
 
-new SportsPress_Player_Registration();
+$GLOBALS['sportspress_player_registration'] = new SportsPress_Player_Registration();

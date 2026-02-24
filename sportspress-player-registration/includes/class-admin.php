@@ -1,7 +1,7 @@
 <?php
 /**
  * Admin Interface Class
- * 
+ *
  * @author Cody (lusky3)
  */
 

@@ -1,7 +1,7 @@
 <?php
 /**
  * Player Registration Core Class
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -17,21 +17,29 @@ class SPR_Player_Registration {
     
     public function process_completed_order($order_id) {
         $order = wc_get_order($order_id);
-        if (!$order) return;
+        if (!$order) {
+            return;
+        }
         
         $registration_items = $this->get_registration_items($order);
-        if (empty($registration_items)) return;
+        if (empty($registration_items)) {
+            return;
+        }
         
         $raw_name = trim($order->get_billing_first_name() . ' ' . $order->get_billing_last_name());
         $customer_name = $this->validate_and_clean_name($raw_name);
-        if (!$customer_name) return;
+        if (!$customer_name) {
+            return;
+        }
         
         $customer_email = strtolower($order->get_billing_email());
         $user_id = $order->get_user_id();
         
         foreach ($registration_items as $item) {
             $season = $this->extract_season_from_product($item['product_id']);
-            if (!$season) continue;
+            if (!$season) {
+                continue;
+            }
             
             $result = $this->find_or_create_player($customer_name, $season, $item['position'], $customer_email, $user_id);
             
@@ -52,7 +60,9 @@ class SPR_Player_Registration {
         
         foreach ($order->get_items() as $item) {
             $product = $item->get_product();
-            if (!$product) continue;
+            if (!$product) {
+                continue;
+            }
             
             $categories = wp_get_post_terms($product->get_id(), 'product_cat');
             $is_registration = false;
@@ -64,7 +74,9 @@ class SPR_Player_Registration {
                 }
             }
             
-            if (!$is_registration) continue;
+            if (!$is_registration) {
+                continue;
+            }
             
             $tags = wp_get_post_terms($product->get_id(), 'product_tag');
             $position = 'player';
@@ -106,62 +118,16 @@ class SPR_Player_Registration {
         $action = '';
         
         if (get_option('spr_auto_update', '1') === '1') {
-            $email_meta_enabled = get_option('spt_email_meta', '1') === '1';
-            
-            // Search by name
-            $players = get_posts(array(
-                'post_type' => 'sp_player',
-                'post_status' => 'publish',
-                'title' => $customer_name,
-                'posts_per_page' => -1
-            ));
-            
-            if (count($players) === 1) {
-                $player_id = $players[0]->ID;
-                $action = 'player_found_by_name';
-                
-                // Update email if enabled and provided
-                if ($email_meta_enabled && !empty($customer_email)) {
-                    update_post_meta($player_id, 'spt_email', $customer_email);
-                }
-            } elseif (count($players) > 1 && $email_meta_enabled && !empty($customer_email)) {
-                // Multiple players with same name - match by email
-                foreach ($players as $player) {
-                    $player_email = get_post_meta($player->ID, 'spt_email', true);
-                    if (strtolower($player_email) === strtolower($customer_email)) {
-                        $player_id = $player->ID;
-                        $action = 'player_found_by_name_and_email';
-                        break;
-                    }
-                }
-                
-                if (!$player_id) {
-                    $action = 'multiple_players_found_name_match_requires_email';
-                }
-            } elseif (count($players) > 1) {
-                $action = 'multiple_players_found_name_match_requires_email';
-            }
+            $match = $this->find_existing_player($customer_name, $customer_email);
+            $player_id = $match['player_id'];
+            $action = $match['action'];
         }
         
         // Create new player
         if (!$player_id && get_option('spr_auto_create', '1') === '1') {
-            $player_data = array(
-                'post_type' => 'sp_player',
-                'post_title' => $customer_name,
-                'post_status' => 'publish'
-            );
-            
-            if ($user_id > 0) {
-                $player_data['post_author'] = $user_id;
-            }
-            
-            $player_id = wp_insert_post($player_data);
-            
-            if ($player_id && get_option('spt_email_meta', '1') === '1' && !empty($customer_email)) {
-                update_post_meta($player_id, 'spt_email', $customer_email);
-            }
-            
-            $action = 'player_created';
+            $result = $this->create_new_player($customer_name, $customer_email, $user_id);
+            $player_id = $result['player_id'];
+            $action = $result['action'];
         }
         
         if ($player_id && get_option('spr_auto_season', '1') === '1') {
@@ -169,6 +135,68 @@ class SPR_Player_Registration {
         }
         
         return array('player_id' => $player_id, 'action' => $action);
+    }
+    
+    private function find_existing_player($customer_name, $customer_email) {
+        $email_meta_enabled = get_option('spt_email_meta', '1') === '1';
+        
+        $players = get_posts(array(
+            'post_type' => 'sp_player',
+            'post_status' => 'publish',
+            'title' => $customer_name,
+            'posts_per_page' => -1
+        ));
+        
+        if (count($players) === 1) {
+            $player_id = $players[0]->ID;
+            
+            if ($email_meta_enabled && !empty($customer_email)) {
+                update_post_meta($player_id, 'spt_email', $customer_email);
+            }
+            
+            return array('player_id' => $player_id, 'action' => 'player_found_by_name');
+        }
+        
+        if (count($players) > 1 && $email_meta_enabled && !empty($customer_email)) {
+            return $this->match_player_by_email($players, $customer_email);
+        }
+        
+        if (count($players) > 1) {
+            return array('player_id' => null, 'action' => 'multiple_players_found_name_match_requires_email');
+        }
+        
+        return array('player_id' => null, 'action' => '');
+    }
+    
+    private function match_player_by_email($players, $customer_email) {
+        foreach ($players as $player) {
+            $player_email = get_post_meta($player->ID, 'spt_email', true);
+            if (strtolower($player_email) === strtolower($customer_email)) {
+                return array('player_id' => $player->ID, 'action' => 'player_found_by_name_and_email');
+            }
+        }
+        
+        return array('player_id' => null, 'action' => 'multiple_players_found_name_match_requires_email');
+    }
+    
+    private function create_new_player($customer_name, $customer_email, $user_id) {
+        $player_data = array(
+            'post_type' => 'sp_player',
+            'post_title' => $customer_name,
+            'post_status' => 'publish'
+        );
+        
+        if ($user_id > 0) {
+            $player_data['post_author'] = $user_id;
+        }
+        
+        $player_id = wp_insert_post($player_data);
+        
+        if ($player_id && get_option('spt_email_meta', '1') === '1' && !empty($customer_email)) {
+            update_post_meta($player_id, 'spt_email', $customer_email);
+        }
+        
+        return array('player_id' => $player_id, 'action' => 'player_created');
     }
     
     private function add_season_to_player($player_id, $season) {
@@ -189,7 +217,9 @@ class SPR_Player_Registration {
         $user = get_user_by('id', $user_id);
         $role = get_option('spr_player_role', 'sp_player');
         
-        if (!$user || in_array($role, $user->roles)) return;
+        if (!$user || in_array($role, $user->roles)) {
+            return;
+        }
         
         $user->add_role($role);
         SPR_Database::log_role_assignment($user_id, $user->display_name, 'role_assigned');
