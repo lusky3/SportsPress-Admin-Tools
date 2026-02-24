@@ -165,97 +165,100 @@ class SPSG_Matchup_Generator
         // Track games per team
         $team_games = array();
         foreach ($teams as $team) {
-            $team_id = is_array($team) ? $team['id'] : $team->id;
-            $team_games[$team_id] = 0;
+            $team_games[$this->get_team_id($team)] = 0;
         }
 
-        // Calculate total matchups needed
-        // Each matchup involves 2 teams, so total matchups = (team_count * games_per_team) / 2
         $total_matchups_needed = ($team_count * $games_per_team) / 2;
-
-        // Calculate max matchups between any two teams
-        // For custom, allow more matchups between same teams if needed
         $max_matchups_per_pair = max(2, ceil($games_per_team / ($team_count - 1)));
 
-        // Generate matchups until we reach the target
         $attempts = 0;
-        $max_attempts = $total_matchups_needed * 20; // Safety limit
+        $max_attempts = $total_matchups_needed * 20;
 
         while (count($matchups) < $total_matchups_needed && $attempts < $max_attempts) {
-            // Find two teams that need more games
-            $team_a = null;
-            $team_b = null;
+            $sorted_teams = $this->sort_teams_by_games($teams, $team_games);
+            $pair = $this->find_best_pair($sorted_teams, $team_games, $matchups, $games_per_team, $max_matchups_per_pair);
 
-            // Sort teams by games played (ascending)
-            $sorted_teams = $teams;
-            usort($sorted_teams, function ($a, $b) use ($team_games) {
-                $id_a = is_array($a) ? $a['id'] : $a->id;
-                $id_b = is_array($b) ? $b['id'] : $b->id;
-                return $team_games[$id_a] - $team_games[$id_b];
-            });
-
-            // Pick the two teams with fewest games that haven't played too many times
-            for ($i = 0; $i < count($sorted_teams) && !$team_a; $i++) {
-                for ($j = $i + 1; $j < count($sorted_teams) && !$team_b; $j++) {
-                    $id_a = is_array($sorted_teams[$i]) ? $sorted_teams[$i]['id'] : $sorted_teams[$i]->id;
-                    $id_b = is_array($sorted_teams[$j]) ? $sorted_teams[$j]['id'] : $sorted_teams[$j]->id;
-
-                    // Check if both teams need more games
-                    if ($team_games[$id_a] < $games_per_team && $team_games[$id_b] < $games_per_team) {
-                        // Count how many times these teams have already played
-                        $matchup_count = $this->count_matchups_between($matchups, $id_a, $id_b);
-
-                        // Allow up to max_matchups_per_pair matchups between same teams
-                        if ($matchup_count < $max_matchups_per_pair) {
-                            $team_a = $sorted_teams[$i];
-                            $team_b = $sorted_teams[$j];
-                        }
-                    }
-                }
+            if (!$pair) {
+                $pair = $this->find_any_available_pair($sorted_teams, $team_games, $games_per_team);
             }
 
-            if ($team_a && $team_b) {
+            if ($pair) {
                 $matchups[] = array(
-                    'team_a' => $team_a,
-                    'team_b' => $team_b,
+                    'team_a' => $pair['team_a'],
+                    'team_b' => $pair['team_b'],
                     'home_team' => null,
                     'away_team' => null
                 );
 
-                $id_a = is_array($team_a) ? $team_a['id'] : $team_a->id;
-                $id_b = is_array($team_b) ? $team_b['id'] : $team_b->id;
-                $team_games[$id_a]++;
-                $team_games[$id_b]++;
-            }
-            else {
-                // If we can't find a valid pair, we may have reached a limit
-                // Try to find any pair that needs games, even if they've played before
-                $found = false;
-                for ($i = 0; $i < count($sorted_teams) && !$found; $i++) {
-                    for ($j = $i + 1; $j < count($sorted_teams) && !$found; $j++) {
-                        $id_a = is_array($sorted_teams[$i]) ? $sorted_teams[$i]['id'] : $sorted_teams[$i]->id;
-                        $id_b = is_array($sorted_teams[$j]) ? $sorted_teams[$j]['id'] : $sorted_teams[$j]->id;
-
-                        if ($team_games[$id_a] < $games_per_team && $team_games[$id_b] < $games_per_team) {
-                            $matchups[] = array(
-                                'team_a' => $sorted_teams[$i],
-                                'team_b' => $sorted_teams[$j],
-                                'home_team' => null,
-                                'away_team' => null
-                            );
-
-                            $team_games[$id_a]++;
-                            $team_games[$id_b]++;
-                            $found = true;
-                        }
-                    }
-                }
+                $team_games[$this->get_team_id($pair['team_a'])]++;
+                $team_games[$this->get_team_id($pair['team_b'])]++;
             }
 
             $attempts++;
         }
 
         return $matchups;
+    }
+
+    /**
+     * Get team ID from team object or array
+     */
+    private function get_team_id($team)
+    {
+        return is_array($team) ? $team['id'] : $team->id;
+    }
+
+    /**
+     * Sort teams by games played (ascending)
+     */
+    private function sort_teams_by_games($teams, $team_games)
+    {
+        $sorted = $teams;
+        usort($sorted, function ($a, $b) use ($team_games) {
+            return $team_games[$this->get_team_id($a)] - $team_games[$this->get_team_id($b)];
+        });
+        return $sorted;
+    }
+
+    /**
+     * Find best pair of teams respecting matchup limits
+     */
+    private function find_best_pair($sorted_teams, $team_games, $matchups, $games_per_team, $max_matchups_per_pair)
+    {
+        for ($i = 0; $i < count($sorted_teams); $i++) {
+            for ($j = $i + 1; $j < count($sorted_teams); $j++) {
+                $id_a = $this->get_team_id($sorted_teams[$i]);
+                $id_b = $this->get_team_id($sorted_teams[$j]);
+
+                if ($team_games[$id_a] >= $games_per_team || $team_games[$id_b] >= $games_per_team) {
+                    continue;
+                }
+
+                $matchup_count = $this->count_matchups_between($matchups, $id_a, $id_b);
+                if ($matchup_count < $max_matchups_per_pair) {
+                    return array('team_a' => $sorted_teams[$i], 'team_b' => $sorted_teams[$j]);
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Find any available pair that needs games (ignoring matchup limits)
+     */
+    private function find_any_available_pair($sorted_teams, $team_games, $games_per_team)
+    {
+        for ($i = 0; $i < count($sorted_teams); $i++) {
+            for ($j = $i + 1; $j < count($sorted_teams); $j++) {
+                $id_a = $this->get_team_id($sorted_teams[$i]);
+                $id_b = $this->get_team_id($sorted_teams[$j]);
+
+                if ($team_games[$id_a] < $games_per_team && $team_games[$id_b] < $games_per_team) {
+                    return array('team_a' => $sorted_teams[$i], 'team_b' => $sorted_teams[$j]);
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -271,8 +274,8 @@ class SPSG_Matchup_Generator
         $count = 0;
 
         foreach ($matchups as $matchup) {
-            $id_a = is_array($matchup['team_a']) ? $matchup['team_a']['id'] : $matchup['team_a']->id;
-            $id_b = is_array($matchup['team_b']) ? $matchup['team_b']['id'] : $matchup['team_b']->id;
+            $id_a = $this->get_team_id($matchup['team_a']);
+            $id_b = $this->get_team_id($matchup['team_b']);
 
             if (($id_a === $team_a_id && $id_b === $team_b_id) ||
             ($id_a === $team_b_id && $id_b === $team_a_id)) {
@@ -361,11 +364,11 @@ class SPSG_Matchup_Generator
         // Track games per team to ensure fair distribution
         $team_games = array();
         foreach ($teams_a as $team) {
-            $team_id = is_array($team) ? $team['id'] : $team->id;
+            $team_id = $this->get_team_id($team);
             $team_games[$team_id] = 0;
         }
         foreach ($teams_b as $team) {
-            $team_id = is_array($team) ? $team['id'] : $team->id;
+            $team_id = $this->get_team_id($team);
             $team_games[$team_id] = 0;
         }
 
@@ -389,8 +392,8 @@ class SPSG_Matchup_Generator
                     'is_inter_division' => true
                 );
 
-                $id_a = is_array($team_a) ? $team_a['id'] : $team_a->id;
-                $id_b = is_array($team_b) ? $team_b['id'] : $team_b->id;
+                $id_a = $this->get_team_id($team_a);
+                $id_b = $this->get_team_id($team_b);
                 $team_games[$id_a]++;
                 $team_games[$id_b]++;
                 $games_generated++;
@@ -415,7 +418,7 @@ class SPSG_Matchup_Generator
         $selected_team = null;
 
         foreach ($teams as $team) {
-            $team_id = is_array($team) ? $team['id'] : $team->id;
+            $team_id = $this->get_team_id($team);
             $games = $team_games[$team_id] ?? 0;
 
             if ($games < $min_games) {
@@ -489,8 +492,8 @@ class SPSG_Matchup_Generator
         $matchup_pairs = array();
 
         foreach ($matchups as $matchup) {
-            $id_a = is_array($matchup['team_a']) ? $matchup['team_a']['id'] : $matchup['team_a']->id;
-            $id_b = is_array($matchup['team_b']) ? $matchup['team_b']['id'] : $matchup['team_b']->id;
+            $id_a = $this->get_team_id($matchup['team_a']);
+            $id_b = $this->get_team_id($matchup['team_b']);
 
             // Create consistent key for pair
             $pair_key = $id_a < $id_b ? "{$id_a}:{$id_b}" : "{$id_b}:{$id_a}";
@@ -550,8 +553,8 @@ class SPSG_Matchup_Generator
 
         // Initialize counts
         foreach ($matchups as $matchup) {
-            $id_a = is_array($matchup['team_a']) ? $matchup['team_a']['id'] : $matchup['team_a']->id;
-            $id_b = is_array($matchup['team_b']) ? $matchup['team_b']['id'] : $matchup['team_b']->id;
+            $id_a = $this->get_team_id($matchup['team_a']);
+            $id_b = $this->get_team_id($matchup['team_b']);
 
             if (!isset($home_counts[$id_a])) {
                 $home_counts[$id_a] = 0;
@@ -565,8 +568,8 @@ class SPSG_Matchup_Generator
 
         // Assign home/away trying to balance counts
         foreach ($matchups as &$matchup) {
-            $id_a = is_array($matchup['team_a']) ? $matchup['team_a']['id'] : $matchup['team_a']->id;
-            $id_b = is_array($matchup['team_b']) ? $matchup['team_b']['id'] : $matchup['team_b']->id;
+            $id_a = $this->get_team_id($matchup['team_a']);
+            $id_b = $this->get_team_id($matchup['team_b']);
 
             // Calculate balance scores
             $score_a_home = $home_counts[$id_a] - $away_counts[$id_a];
