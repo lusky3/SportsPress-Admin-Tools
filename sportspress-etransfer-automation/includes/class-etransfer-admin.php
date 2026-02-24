@@ -139,7 +139,7 @@ class SPET_ETransfer_Admin
         echo '<th>' . __('Match to Order', 'sportspress-admin-tools') . '</th>';
         echo '</tr></thead><tbody>';
 
-        foreach ($logs as $index => $log) {
+        foreach ($logs as $log) {
             if (!$log->order_id && strpos($log->result, 'No matching order') !== false && $log->result !== 'Hidden from management') {
                 echo '<tr>';
                 echo '<td>' . esc_html($log->timestamp) . '</td>';
