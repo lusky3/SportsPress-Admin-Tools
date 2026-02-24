@@ -297,50 +297,41 @@ class SPSG_Matchup_Generator
     {
         $matchups = array();
 
-        // Parse inter-division configuration
-        // Format: 'division_a_id:division_b_id' => game_count
         foreach ($inter_division_config as $division_pair => $game_count) {
             if ($game_count <= 0) {
                 continue;
             }
 
-            // Parse division pair
             $parts = explode(':', $division_pair);
             if (count($parts) !== 2) {
                 continue;
             }
 
-            $div_a_id = $parts[0];
-            $div_b_id = $parts[1];
-
-            // Find divisions
-            $div_a = null;
-            $div_b = null;
-
-            foreach ($divisions as $division) {
-                if ($division['id'] === $div_a_id) {
-                    $div_a = $division;
-                }
-                if ($division['id'] === $div_b_id) {
-                    $div_b = $division;
-                }
-            }
+            $div_a = $this->find_division_by_id($divisions, $parts[0]);
+            $div_b = $this->find_division_by_id($divisions, $parts[1]);
 
             if (!$div_a || !$div_b) {
                 continue;
             }
 
-            // Generate matchups between these divisions
-            $pair_matchups = $this->generate_inter_division_pair_matchups(
-                $div_a,
-                $div_b,
-                $game_count
-            );
-
+            $pair_matchups = $this->generate_inter_division_pair_matchups($div_a, $div_b, $game_count);
             $matchups = array_merge($matchups, $pair_matchups);
         }
 
         return $matchups;
+    }
+
+    /**
+     * Find a division by its ID
+     */
+    private function find_division_by_id($divisions, $division_id)
+    {
+        foreach ($divisions as $division) {
+            if ($division['id'] === $division_id) {
+                return $division;
+            }
+        }
+        return null;
     }
 
     /**
@@ -495,7 +486,6 @@ class SPSG_Matchup_Generator
             $id_a = $this->get_team_id($matchup['team_a']);
             $id_b = $this->get_team_id($matchup['team_b']);
 
-            // Create consistent key for pair
             $pair_key = $id_a < $id_b ? "{$id_a}:{$id_b}" : "{$id_b}:{$id_a}";
 
             if (!isset($matchup_pairs[$pair_key])) {
@@ -509,34 +499,46 @@ class SPSG_Matchup_Generator
         $result = array();
         foreach ($matchup_pairs as $pair) {
             if (count($pair) === 2) {
-                // First matchup: team_a is home
-                $pair[0]['home_team'] = $pair[0]['team_a'];
-                $pair[0]['away_team'] = $pair[0]['team_b'];
-
-                // Second matchup: team_b is home (swap)
-                $pair[1]['home_team'] = $pair[1]['team_b'];
-                $pair[1]['away_team'] = $pair[1]['team_a'];
-
-                $result[] = $pair[0];
-                $result[] = $pair[1];
-            }
-            else {
-                // Single matchup or odd count - assign randomly
+                $result[] = $this->assign_pair_home_away($pair[0]);
+                $result[] = $this->assign_pair_home_away($pair[1], true);
+            } else {
                 foreach ($pair as $matchup) {
-                    if (rand(0, 1) === 0) {
-                        $matchup['home_team'] = $matchup['team_a'];
-                        $matchup['away_team'] = $matchup['team_b'];
-                    }
-                    else {
-                        $matchup['home_team'] = $matchup['team_b'];
-                        $matchup['away_team'] = $matchup['team_a'];
-                    }
-                    $result[] = $matchup;
+                    $result[] = $this->assign_random_home_away($matchup);
                 }
             }
         }
 
         return $result;
+    }
+
+    /**
+     * Assign home/away for a paired matchup (first game or swapped)
+     */
+    private function assign_pair_home_away($matchup, $swap = false)
+    {
+        if ($swap) {
+            $matchup['home_team'] = $matchup['team_b'];
+            $matchup['away_team'] = $matchup['team_a'];
+        } else {
+            $matchup['home_team'] = $matchup['team_a'];
+            $matchup['away_team'] = $matchup['team_b'];
+        }
+        return $matchup;
+    }
+
+    /**
+     * Randomly assign home/away for a single matchup
+     */
+    private function assign_random_home_away($matchup)
+    {
+        if (rand(0, 1) === 0) {
+            $matchup['home_team'] = $matchup['team_a'];
+            $matchup['away_team'] = $matchup['team_b'];
+        } else {
+            $matchup['home_team'] = $matchup['team_b'];
+            $matchup['away_team'] = $matchup['team_a'];
+        }
+        return $matchup;
     }
 
     /**

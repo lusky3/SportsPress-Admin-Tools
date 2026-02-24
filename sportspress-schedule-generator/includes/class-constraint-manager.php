@@ -379,6 +379,44 @@ class SPSG_Constraint_Manager
     }
 
     /**
+     * Resolve season start/end as DateTime objects (handles both string and DateTime inputs)
+     */
+    private function resolve_season_dates($config)
+    {
+        $start = $config->season_start instanceof DateTime
+            ? clone $config->season_start
+            : new DateTime($config->season_start);
+
+        $end = $config->season_end instanceof DateTime
+            ? clone $config->season_end
+            : new DateTime($config->season_end);
+
+        return array($start, $end);
+    }
+
+    /**
+     * Count playing days in a date range, optionally excluding blackout dates
+     */
+    private function count_playing_days_in_range($start, $end, $playing_days, $blackout_dates = array())
+    {
+        $count = 0;
+        $current_date = clone $start;
+
+        while ($current_date <= $end) {
+            $day_name = strtolower($current_date->format('l'));
+            $date_str = $current_date->format('Y-m-d');
+
+            if (in_array($day_name, $playing_days) && !in_array($date_str, $blackout_dates)) {
+                $count++;
+            }
+
+            $current_date->add(new DateInterval('P1D'));
+        }
+
+        return $count;
+    }
+
+    /**
      * Check if date range is sufficient for all games
      * 
      * @param SPSG_Schedule_Configuration $config Configuration
@@ -389,30 +427,14 @@ class SPSG_Constraint_Manager
     {
         $issues = array();
 
-        // Handle both string and DateTime objects
-        if ($config->season_start instanceof DateTime) {
-            $season_start = clone $config->season_start;
-        }
-        else {
-            $season_start = new DateTime($config->season_start);
-        }
+        list($season_start, $season_end) = $this->resolve_season_dates($config);
 
-        if ($config->season_end instanceof DateTime) {
-            $season_end = clone $config->season_end;
-        }
-        else {
-            $season_end = new DateTime($config->season_end);
-        }
-
-        // Check if season dates are valid
         if ($season_start >= $season_end) {
             $issues[] = __('Season end date must be after season start date.', 'sportspress-schedule-generator');
             return $issues;
         }
 
-        $season_days = $this->count_season_days($config);
-
-        // Calculate minimum days needed
+        // Calculate average time slots per playing day
         $avg_time_slots = 0;
         foreach ($config->playing_days as $day) {
             if (isset($config->time_slots[$day])) {
@@ -428,22 +450,8 @@ class SPSG_Constraint_Manager
 
         if ($games_per_playing_day > 0) {
             $min_playing_days_needed = ceil($total_games / $games_per_playing_day);
-
-            // Count actual playing days in season
-            $actual_playing_days = 0;
-            $current_date = clone $season_start;
             $blackout_dates = $config->blackout_dates ?? array();
-
-            while ($current_date <= $season_end) {
-                $date_str = $current_date->format('Y-m-d');
-                $day_name = strtolower($current_date->format('l'));
-
-                if (in_array($day_name, $config->playing_days) && !in_array($date_str, $blackout_dates)) {
-                    $actual_playing_days++;
-                }
-
-                $current_date->add(new DateInterval('P1D'));
-            }
+            $actual_playing_days = $this->count_playing_days_in_range($season_start, $season_end, $config->playing_days, $blackout_dates);
 
             if ($min_playing_days_needed > $actual_playing_days) {
                 $issues[] = sprintf(
@@ -465,40 +473,15 @@ class SPSG_Constraint_Manager
      */
     private function check_blackout_dates($config)
     {
-        $issues = array();
-
         $blackout_dates = $config->blackout_dates ?? array();
 
         if (empty($blackout_dates)) {
             return true;
         }
 
-        // Count total playing days
-        // Handle both string and DateTime objects
-        if ($config->season_start instanceof DateTime) {
-            $season_start = clone $config->season_start;
-        }
-        else {
-            $season_start = new DateTime($config->season_start);
-        }
+        list($season_start, $season_end) = $this->resolve_season_dates($config);
 
-        if ($config->season_end instanceof DateTime) {
-            $season_end = clone $config->season_end;
-        }
-        else {
-            $season_end = new DateTime($config->season_end);
-        }
-
-        $current_date = clone $season_start;
-        $total_playing_days = 0;
-
-        while ($current_date <= $season_end) {
-            $day_name = strtolower($current_date->format('l'));
-            if (in_array($day_name, $config->playing_days)) {
-                $total_playing_days++;
-            }
-            $current_date->add(new DateInterval('P1D'));
-        }
+        $total_playing_days = $this->count_playing_days_in_range($season_start, $season_end, $config->playing_days);
 
         // Count blackout playing days
         $blackout_playing_days = 0;
@@ -509,27 +492,25 @@ class SPSG_Constraint_Manager
                 if (in_array($day_name, $config->playing_days)) {
                     $blackout_playing_days++;
                 }
-            }
-            catch (Exception $e) {
-            // Skip invalid dates
+            } catch (Exception $e) {
+                // Skip invalid dates
             }
         }
 
-        // Warn if more than 30% of playing days are blacked out
         if ($total_playing_days > 0) {
             $blackout_percentage = ($blackout_playing_days / $total_playing_days) * 100;
 
             if ($blackout_percentage > 30) {
-                $issues[] = sprintf(
+                return array(sprintf(
                     __('Warning: %.1f%% of playing days are blacked out (%d of %d days). This may make scheduling difficult.', 'sportspress-schedule-generator'),
                     $blackout_percentage,
                     $blackout_playing_days,
                     $total_playing_days
-                );
+                ));
             }
         }
 
-        return empty($issues) ? true : $issues;
+        return true;
     }
 
     /**

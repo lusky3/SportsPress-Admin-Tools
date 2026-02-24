@@ -395,36 +395,15 @@ class SPSG_Slot_Allocator
         $available = array();
 
         foreach ($config->venues as $venue) {
-            $venue_id = is_object($venue) ? $venue->id : $venue['id'];
+            $venue_id = $this->extract_id($venue);
 
             // Check venue-specific blackout dates first
             if (!empty($config->venue_blackout_dates[$venue_id]) && in_array($date, $config->venue_blackout_dates[$venue_id])) {
-                continue; // Skip this venue for this date
+                continue;
             }
 
-            $time_slots = null;
+            $time_slots = $this->resolve_venue_time_slots($venue_id, $date, $day_name, $config);
 
-            // Priority 1: Check date-specific availability
-            if (!empty($config->venue_date_availability[$venue_id])) {
-                foreach ($config->venue_date_availability[$venue_id] as $range) {
-                    if ($date >= $range['start_date'] && $date <= $range['end_date']) {
-                        $time_slots = $range['time_slots'];
-                        break;
-                    }
-                }
-            }
-
-            // Priority 2: Check venue-specific timeslots for this day
-            if ($time_slots === null && !empty($config->venue_timeslots[$venue_id][$day_name])) {
-                $time_slots = $config->venue_timeslots[$venue_id][$day_name];
-            }
-
-            // Priority 3: Fall back to global time slots for this day
-            if ($time_slots === null && !empty($config->time_slots[$day_name])) {
-                $time_slots = $config->time_slots[$day_name];
-            }
-
-            // If we have time slots, add this venue to available list
             if (!empty($time_slots)) {
                 $available[] = array(
                     'venue' => $venue,
@@ -434,6 +413,33 @@ class SPSG_Slot_Allocator
         }
 
         return $available;
+    }
+
+    /**
+     * Resolve time slots for a venue on a given date with priority fallback
+     */
+    private function resolve_venue_time_slots($venue_id, $date, $day_name, $config)
+    {
+        // Priority 1: Date-specific availability
+        if (!empty($config->venue_date_availability[$venue_id])) {
+            foreach ($config->venue_date_availability[$venue_id] as $range) {
+                if ($date >= $range['start_date'] && $date <= $range['end_date']) {
+                    return $range['time_slots'];
+                }
+            }
+        }
+
+        // Priority 2: Venue-specific timeslots for this day
+        if (!empty($config->venue_timeslots[$venue_id][$day_name])) {
+            return $config->venue_timeslots[$venue_id][$day_name];
+        }
+
+        // Priority 3: Global time slots for this day
+        if (!empty($config->time_slots[$day_name])) {
+            return $config->time_slots[$day_name];
+        }
+
+        return null;
     }
 
 
@@ -484,7 +490,7 @@ class SPSG_Slot_Allocator
      */
     private function get_slot_key($slot)
     {
-        $venue_id = is_object($slot->venue) ? $slot->venue->id : $slot->venue['id'];
+        $venue_id = $this->extract_id($slot->venue);
         return $slot->date . '|' . $slot->time_slot . '|' . $venue_id;
     }
 
@@ -508,35 +514,25 @@ class SPSG_Slot_Allocator
         $match_length = $config->match_length ?? 60;
         $buffer_time = 15; // 15 minute buffer between games
 
-        $venue_id_slot = is_object($slot->venue) ? $slot->venue->id : $slot->venue['id'];
-        $home_team_id = is_object($matchup->home_team) ? $matchup->home_team->id : $matchup->home_team['id'];
-        $away_team_id = is_object($matchup->away_team) ? $matchup->away_team->id : $matchup->away_team['id'];
+        $venue_id_slot = $this->extract_id($slot->venue);
+        $home_team_id = $this->extract_id($matchup->home_team);
+        $away_team_id = $this->extract_id($matchup->away_team);
 
         foreach ($schedule as $existing_game) {
-            $venue_id_existing = is_object($existing_game->venue) ? $existing_game->venue->id : $existing_game->venue['id'];
+            if ($existing_game->date !== $slot->date) {
+                continue;
+            }
 
-            // Check venue/time conflict with match length consideration
-            if ($existing_game->date === $slot->date && $venue_id_existing === $venue_id_slot) {
-                if ($this->times_overlap($existing_game->time_slot, $slot->time_slot, $match_length, $buffer_time)) {
-                    return false;
-                }
+            // Check venue/time conflict
+            if ($this->extract_id($existing_game->venue) === $venue_id_slot
+                && $this->times_overlap($existing_game->time_slot, $slot->time_slot, $match_length, $buffer_time)) {
+                return false;
             }
 
             // Check team conflicts (teams can't play multiple games at same time)
-            if ($existing_game->date === $slot->date) {
-                $existing_home_id = is_object($existing_game->home_team) ? $existing_game->home_team->id : $existing_game->home_team['id'];
-                $existing_away_id = is_object($existing_game->away_team) ? $existing_game->away_team->id : $existing_game->away_team['id'];
-
-                if ($existing_home_id === $home_team_id ||
-                $existing_away_id === $home_team_id ||
-                $existing_home_id === $away_team_id ||
-                $existing_away_id === $away_team_id) {
-
-                    // Check if times overlap
-                    if ($this->times_overlap($existing_game->time_slot, $slot->time_slot, $match_length, 0)) {
-                        return false;
-                    }
-                }
+            if ($this->has_team_conflict($existing_game, $home_team_id, $away_team_id)
+                && $this->times_overlap($existing_game->time_slot, $slot->time_slot, $match_length, 0)) {
+                return false;
             }
         }
 
@@ -545,6 +541,28 @@ class SPSG_Slot_Allocator
         $validation = $this->constraint_manager->validate_game($game, $schedule, $config);
 
         return $validation === true;
+    }
+
+    /**
+     * Extract ID from an object or array
+     */
+    private function extract_id($entity)
+    {
+        return is_object($entity) ? $entity->id : $entity['id'];
+    }
+
+    /**
+     * Check if an existing game involves either of the given team IDs
+     */
+    private function has_team_conflict($existing_game, $home_team_id, $away_team_id)
+    {
+        $existing_home_id = $this->extract_id($existing_game->home_team);
+        $existing_away_id = $this->extract_id($existing_game->away_team);
+
+        return $existing_home_id === $home_team_id
+            || $existing_away_id === $home_team_id
+            || $existing_home_id === $away_team_id
+            || $existing_away_id === $away_team_id;
     }
 
     /**
