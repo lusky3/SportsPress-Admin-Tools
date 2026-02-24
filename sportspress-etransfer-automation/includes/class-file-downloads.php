@@ -86,7 +86,13 @@ class SPETFileDownloads
             wp_die(__('Unable to read file.', 'sportspress-admin-tools'));
         }
 
-        // Replace placeholders with actual values
+        // Replace placeholders with actual values from plugin settings.
+        // Security note: The webhook secret is intentionally injected into downloadable
+        // configuration files (wrangler.toml, README). This is safe because:
+        // 1. Downloads require authentication (is_user_logged_in)
+        // 2. Downloads require admin capability (manage_options)
+        // 3. Downloads are protected by nonce verification
+        // 4. The secret is only used for HMAC webhook signature verification
         $webhook_url = rest_url('spet/v1/etransfer-webhook');
         $webhook_secret = get_option('spet_webhook_secret', '');
 

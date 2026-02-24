@@ -173,7 +173,7 @@ class SPET_ETransfer_Admin
                 // Add hide button
                 echo '<form method="post" style="display:inline;margin-left:10px;" onsubmit="return confirm(\'' . esc_js(__('Hide this entry from the management page? It will still be visible in the settings page logs.', 'sportspress-admin-tools')) . '\')">';
                 wp_nonce_field('hide_etransfer_log');
-                echo '<input type="hidden" name="log_id" value="' . $log->id . '">';
+                echo '<input type="hidden" name="log_id" value="' . esc_attr($log->id) . '">';
                 echo '<input type="submit" name="hide_log" value="' . __('Hide', 'sportspress-admin-tools') . '" class="button button-secondary">';
                 echo '</form>';
 
@@ -217,7 +217,7 @@ class SPET_ETransfer_Admin
             echo '<td>$' . number_format($log->amount, 2) . '</td>';
             echo '<td>' . esc_html($log->reference_number ?: 'N/A') . '</td>';
             echo '<td>' . esc_html($log->match_criteria ?: 'N/A') . '</td>';
-            echo '<td>' . ($log->order_id ? '<a href="' . admin_url('post.php?post=' . $log->order_id . '&action=edit') . '">#' . $log->order_id . '</a>' : 'N/A') . '</td>';
+            echo '<td>' . ($log->order_id ? '<a href="' . esc_url(admin_url('post.php?post=' . intval($log->order_id) . '&action=edit')) . '">#' . esc_html($log->order_id) . '</a>' : 'N/A') . '</td>';
             echo '<td><span class="' . $status_class . '">' . esc_html($log->result) . '</span></td>';
             echo '</tr>';
         }
