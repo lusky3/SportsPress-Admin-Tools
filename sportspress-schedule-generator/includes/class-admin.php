@@ -424,3 +424,123 @@ class SPSG_Admin
         ');
     }
 
+    /**
+     * Get i18n strings for the admin UI JavaScript.
+     *
+     * @return array Associative array of translatable strings.
+     */
+    private function get_admin_ui_i18n_strings()
+    {
+        return array(
+            'unsavedChanges' => __('You have unsaved changes. Are you sure you want to leave?', 'sportspress-schedule-generator'),
+            'importLeague' => __(self::LABEL_IMPORT_LEAGUE, 'sportspress-schedule-generator'),
+            'selectVenuesToImport' => __('Select Venues to Import', 'sportspress-schedule-generator'),
+            'chooseVenues' => __('Choose which venues you want to add to your schedule configuration:', 'sportspress-schedule-generator'),
+            'selectAll' => __('Select All', 'sportspress-schedule-generator'),
+            'cancel' => __('Cancel', 'sportspress-schedule-generator'),
+            'importSelected' => __('Import Selected', 'sportspress-schedule-generator'),
+            'venueName' => __('Venue Name', 'sportspress-schedule-generator'),
+            'remove' => __('Remove', 'sportspress-schedule-generator'),
+            'availableDaysTimes' => __('Available Days & Times', 'sportspress-schedule-generator'),
+            'enterTimes' => __('Enter times (e.g., 19:00, 20:00)', 'sportspress-schedule-generator'),
+            'venueAvailabilityDesc' => __('Select which days and times this venue is available. Leave unchecked if venue is available all configured times.', 'sportspress-schedule-generator'),
+            'venueBlackoutDates' => __('Venue Blackout Dates', 'sportspress-schedule-generator'),
+            'blackoutDatesPlaceholder' => __('Enter dates when this venue is unavailable (e.g., 2024-01-15, 2024-02-20)', 'sportspress-schedule-generator'),
+            'blackoutDatesDesc' => __('Specific dates when this venue is unavailable. Enter one date per line in YYYY-MM-DD format.', 'sportspress-schedule-generator'),
+            'previewAndImport' => __('Preview & Import', 'sportspress-schedule-generator'),
+            'importVenueSchedule' => __('Import Venue Schedule', 'sportspress-schedule-generator'),
+            'schedulePreview' => __('Schedule Preview', 'sportspress-schedule-generator'),
+            'found' => __('Found', 'sportspress-schedule-generator'),
+            'venueSchedules' => __('venue schedules', 'sportspress-schedule-generator'),
+            'weekStart' => __('Week Start', 'sportspress-schedule-generator'),
+            'venue' => __('Venue', 'sportspress-schedule-generator'),
+            'timeSlots' => __('Time Slots', 'sportspress-schedule-generator'),
+            'mapVenueNames' => __('Map Venue Names', 'sportspress-schedule-generator'),
+            'matchCsvVenues' => __('Match CSV venue names to existing venues or create new ones', 'sportspress-schedule-generator'),
+            'csvName' => __('CSV Name', 'sportspress-schedule-generator'),
+            'action' => __('Action', 'sportspress-schedule-generator'),
+            'mapTo' => __('Map To', 'sportspress-schedule-generator'),
+            'mapToExisting' => __('Map to existing', 'sportspress-schedule-generator'),
+            'createNewVenue' => __('Create new venue', 'sportspress-schedule-generator'),
+            'importSchedule' => __(self::LABEL_IMPORT_SCHEDULE, 'sportspress-schedule-generator'),
+            'importing' => __('Importing...', 'sportspress-schedule-generator'),
+            'venueScheduleImported' => __('Venue schedule imported successfully!', 'sportspress-schedule-generator'),
+            'failedToImportSchedule' => __('Failed to import schedule. Please try again.', 'sportspress-schedule-generator'),
+            'noTeamsYet' => __('No teams added yet. Load from SportsPress or add manually below.', 'sportspress-schedule-generator'),
+            'pleaseSelectPreset' => __('Please select a preset', 'sportspress-schedule-generator'),
+            'loadPresetConfirm' => __('Load this preset? Current unsaved changes will be overwritten.', 'sportspress-schedule-generator'),
+            'presetLoaded' => __('Preset loaded successfully! Please add your divisions, teams, and venues.', 'sportspress-schedule-generator'),
+            'error' => __('Error:', 'sportspress-schedule-generator'),
+            'singleRoundRobinWith' => __('Single round-robin with', 'sportspress-schedule-generator'),
+            'doubleRoundRobinWith' => __('Double round-robin with', 'sportspress-schedule-generator'),
+            'teamsRequiresAtLeast' => __('teams requires at least', 'sportspress-schedule-generator'),
+            'gamesPerTeamYouHave' => __('games per team. You have', 'sportspress-schedule-generator'),
+            'totalInterDivisionGames' => __('Total inter-division games', 'sportspress-schedule-generator'),
+            'exceedsGamesPerTeam' => __('exceeds games per team', 'sportspress-schedule-generator'),
+            'notEnoughIntraDivision' => __('Teams will not have enough games for intra-division play.', 'sportspress-schedule-generator'),
+            'allGamesInterDivision' => __('All games are inter-division. Teams will not play within their own division.', 'sportspress-schedule-generator'),
+            'addTeamsFirst' => __('Add teams to divisions first to configure home venue preferences.', 'sportspress-schedule-generator'),
+            'team' => __('Team', 'sportspress-schedule-generator'),
+            'preferredHomeVenue' => __('Preferred Home Venue', 'sportspress-schedule-generator'),
+            'noPreference' => __('No preference', 'sportspress-schedule-generator'),
+            'addVenuesNote' => __('Note: Add venues in the "Venues & Times" tab to assign home venue preferences.', 'sportspress-schedule-generator'),
+            'saveConfigFirst' => __('Please save the configuration first to view change history', 'sportspress-schedule-generator'),
+            'viewRecentChanges' => __('View Recent Changes', 'sportspress-schedule-generator'),
+            'loading' => __('Loading...', 'sportspress-schedule-generator'),
+            'noChanges' => __(self::MSG_NO_CHANGES, 'sportspress-schedule-generator'),
+            'dateTime' => __('Date/Time', 'sportspress-schedule-generator'),
+            'user' => __('User', 'sportspress-schedule-generator'),
+            'field' => __('Field', 'sportspress-schedule-generator'),
+            'change' => __('Change', 'sportspress-schedule-generator'),
+            'unknown' => __('Unknown', 'sportspress-schedule-generator'),
+            'modified' => __('Modified', 'sportspress-schedule-generator'),
+            'hideChanges' => __('Hide Changes', 'sportspress-schedule-generator'),
+            'failedToLoadHistory' => __('Failed to load change history', 'sportspress-schedule-generator'),
+            'clearHistoryConfirm' => __('Are you sure you want to clear all change history? This action cannot be undone.', 'sportspress-schedule-generator'),
+            'clearing' => __('Clearing...', 'sportspress-schedule-generator'),
+            'historyCleared' => __('Change history cleared successfully', 'sportspress-schedule-generator'),
+            'failedToClearHistory' => __('Failed to clear change history', 'sportspress-schedule-generator'),
+            'clearHistory' => __('Clear History', 'sportspress-schedule-generator'),
+            'enterNonZeroWeight' => __('Please enter at least one non-zero weight', 'sportspress-schedule-generator'),
+            'selectTeams' => __('Select teams...', 'sportspress-schedule-generator'),
+            'removeRestriction' => __('Remove this team restriction?', 'sportspress-schedule-generator'),
+            'atLeastOneRestriction' => __('At least one restriction row must remain. Clear the teams instead if not needed.', 'sportspress-schedule-generator'),
+            'validating' => __('Validating...', 'sportspress-schedule-generator'),
+            'saving' => __('Saving...', 'sportspress-schedule-generator'),
+            'success' => __('Success!', 'sportspress-schedule-generator'),
+            'failedToSave' => __('Failed to save configuration. Please try again.', 'sportspress-schedule-generator'),
+            'validationFailed' => __('Configuration Validation Failed', 'sportspress-schedule-generator'),
+            'fixErrors' => __('Please fix the following errors:', 'sportspress-schedule-generator'),
+            'failedToValidate' => __('Failed to validate configuration. Please try again.', 'sportspress-schedule-generator'),
+        );
+    }
+
+    /**
+     * Handle form submission
+     */
+    private function handle_form_submission()
+    {
+        $action = sanitize_text_field($_POST['spsg_action']);
+
+        if ($action === 'save_config') {
+            $config_data = $this->sanitize_form_data($_POST);
+            $result = $this->config_manager->save($config_data);
+
+            if (is_wp_error($result)) {
+                add_settings_error('spsg_messages', 'spsg_error', $result->get_error_message(), 'error');
+            } else {
+                add_settings_error('spsg_messages', 'spsg_success', __('Configuration saved successfully', 'sportspress-schedule-generator'), 'updated');
+            }
+        }
+
+        settings_errors('spsg_messages');
+    }
+
+    /**
+     * Sanitize form data
+     */
+    private function sanitize_form_data($data)
+    {
+        return $this->config_manager->sanitize($data);
+    }
+}
