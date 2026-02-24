@@ -179,11 +179,11 @@ class SPEM_Events_Management {
             while (($data = fgetcsv($handle)) !== FALSE) {
                 if (count($data) >= 3) {
                     $events[] = array(
-                        'date' => $data[0],
-                        'home_team' => $data[1],
-                        'away_team' => $data[2],
-                        'time' => isset($data[3]) ? $data[3] : '',
-                        'venue' => isset($data[4]) ? $data[4] : ''
+                        'date' => sanitize_text_field($data[0]),
+                        'home_team' => sanitize_text_field($data[1]),
+                        'away_team' => sanitize_text_field($data[2]),
+                        'time' => isset($data[3]) ? sanitize_text_field($data[3]) : '',
+                        'venue' => isset($data[4]) ? sanitize_text_field($data[4]) : ''
                     );
                 }
             }
