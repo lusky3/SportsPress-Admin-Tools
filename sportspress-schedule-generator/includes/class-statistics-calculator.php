@@ -22,10 +22,9 @@ class SPSG_Statistics_Calculator
      * Calculate comprehensive statistics for a schedule
      * 
      * @param array $schedule Array of SPSG_Game objects
-     * @param object $config Configuration object
      * @return array Statistics array
      */
-    public function calculate($schedule, $config = null)
+    public function calculate($schedule)
     {
         if (empty($schedule)) {
             return $this->get_empty_stats();
@@ -233,10 +232,9 @@ class SPSG_Statistics_Calculator
 
         foreach ($schedule as $game) {
             // Check if teams are from different divisions
-            if (isset($game->home_team->division_id) && isset($game->away_team->division_id)) {
-                if ($game->home_team->division_id !== $game->away_team->division_id) {
-                    $count++;
-                }
+            if (isset($game->home_team->division_id) && isset($game->away_team->division_id)
+                && $game->home_team->division_id !== $game->away_team->division_id) {
+                $count++;
             }
         }
 

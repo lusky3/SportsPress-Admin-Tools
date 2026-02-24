@@ -1,7 +1,7 @@
 <?php
 /**
  * Blackout Date Constraint
- * 
+ *
  * @author Cody (lusky3)
  */
 

@@ -1,7 +1,7 @@
 <?php
 /**
  * Configuration Manager
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -295,7 +295,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface
 
     /**
      * Check import compatibility
-     * 
+     *
      * @param array $data Import data
      * @return bool|WP_Error True if compatible, WP_Error otherwise
      */
@@ -344,7 +344,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface
 
     /**
      * Migrate configuration between versions
-     * 
+     *
      * @param array $config Configuration data
      * @param string $from_version Source version
      * @return array Migrated configuration
@@ -376,7 +376,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface
 
     /**
      * Get import preview without saving
-     * 
+     *
      * @param string $json_data JSON configuration data
      * @return array|WP_Error Preview data or error
      */
@@ -471,7 +471,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface
 
     /**
      * Track configuration changes
-     * 
+     *
      * @param string $config_id Configuration ID
      * @param array $old_config Old configuration data
      * @param array $new_config New configuration data
@@ -518,7 +518,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface
 
     /**
      * Track a single configuration change
-     * 
+     *
      * @param string $config_id Configuration ID
      * @param string $field Field name
      * @param string $field_label Human-readable field label
@@ -555,7 +555,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface
 
     /**
      * Format value for display in change history
-     * 
+     *
      * @param string $field Field name
      * @param mixed $value Value to format
      * @return string Formatted value
@@ -625,7 +625,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface
 
     /**
      * Get change history for a configuration
-     * 
+     *
      * @param string $config_id Configuration ID
      * @param int $limit Maximum number of changes to return
      * @return array Array of changes
@@ -654,7 +654,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface
 
     /**
      * Clear change history for a configuration
-     * 
+     *
      * @param string $config_id Configuration ID
      * @return bool Success
      */
@@ -672,7 +672,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface
 
     /**
      * Get available configuration presets
-     * 
+     *
      * @return array Array of preset metadata
      */
     public function list_presets()
@@ -698,7 +698,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface
 
     /**
      * Get preset configuration
-     * 
+     *
      * @param string $preset_name Preset identifier
      * @return array|WP_Error Preset configuration or error
      */
@@ -715,7 +715,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface
 
     /**
      * Apply preset to existing configuration
-     * 
+     *
      * @param string $preset_name Preset identifier
      * @param array $base_config Optional base configuration to merge with
      * @return array Merged configuration
@@ -734,7 +734,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface
 
     /**
      * Define preset configurations
-     * 
+     *
      * @return array Array of preset definitions
      */
     private function get_preset_definitions()

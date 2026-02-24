@@ -1,7 +1,7 @@
 <?php
 /**
  * CSV Exporter
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -118,7 +118,7 @@ class SPSG_CSV_Exporter implements SPSG_Exporter_Interface
 
     /**
      * Check if a game is inter-division
-     * 
+     *
      * @param object $game Game object
      * @return bool True if inter-division
      */
@@ -138,7 +138,7 @@ class SPSG_CSV_Exporter implements SPSG_Exporter_Interface
 
     /**
      * Get home/away designation for display
-     * 
+     *
      * @param object $game Game object
      * @return string Home/Away designation
      */

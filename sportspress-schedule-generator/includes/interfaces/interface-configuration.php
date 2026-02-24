@@ -1,7 +1,7 @@
 <?php
 /**
  * Configuration Interface
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -18,7 +18,7 @@ interface SPSG_Configuration_Interface
 
     /**
      * Validate configuration data
-     * 
+     *
      * @param array $config Configuration array
      * @return bool|WP_Error True if valid, WP_Error with details if invalid
      */
@@ -26,7 +26,7 @@ interface SPSG_Configuration_Interface
 
     /**
      * Sanitize configuration data
-     * 
+     *
      * @param array $config Raw configuration data
      * @return array Sanitized configuration data
      */
@@ -34,14 +34,14 @@ interface SPSG_Configuration_Interface
 
     /**
      * Get default configuration values
-     * 
+     *
      * @return array Default configuration
      */
     public function get_defaults();
 
     /**
      * Save configuration to database
-     * 
+     *
      * @param array $config Configuration to save
      * @return bool Success status
      */
@@ -49,7 +49,7 @@ interface SPSG_Configuration_Interface
 
     /**
      * Load configuration from database
-     * 
+     *
      * @return array Current configuration
      */
     public function load();
