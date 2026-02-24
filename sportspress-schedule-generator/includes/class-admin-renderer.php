@@ -230,3 +230,250 @@ class SPSG_Admin_Renderer
         </div>
 <?php
     }
+
+    /**
+     * Render divisions and teams tab
+     */
+    public function render_divisions_teams_tab($config)
+    {
+        $sp_available = SPSGSportsPressIntegration::is_sportspress_active();
+?>
+        <div class="spsg-divisions-section">
+            <?php if ($sp_available): ?>
+            <div class="spsg-sportspress-import">
+                <h3><?php _e('Import from SportsPress', 'sportspress-schedule-generator'); ?></h3>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row"><?php _e('Import League', 'sportspress-schedule-generator'); ?></th>
+                        <td>
+                            <select id="spsg-import-league" class="regular-text">
+                                <option value=""><?php _e('Select a league...', 'sportspress-schedule-generator'); ?></option>
+                                <?php
+            $leagues = SPSGSportsPressIntegration::get_leagues();
+            foreach ($leagues as $league) {
+                echo '<option value="' . esc_attr($league->id) . '">' . esc_html($league->name) . '</option>';
+            }
+?>
+                            </select>
+                            <button type="button" class="button" id="spsg-import-league-btn"><?php _e(self::LABEL_IMPORT_LEAGUE, 'sportspress-schedule-generator'); ?></button>
+                            <p class="description">
+                                <?php _e('Import teams and divisions from a SportsPress league. This will create multiple division blocks with all teams from the league\'s child divisions.', 'sportspress-schedule-generator'); ?>
+                                <br>
+                                <strong><?php _e('Tip:', 'sportspress-schedule-generator'); ?></strong> <?php _e('Use "Import League" to import an entire league structure at once, or use "Load from SportsPress" within individual divisions below to load teams one division at a time.', 'sportspress-schedule-generator'); ?>
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            <hr>
+            <?php endif; ?>
+
+            <h3><?php _e('Divisions', 'sportspress-schedule-generator'); ?></h3>
+            <div id="spsg-divisions-container">
+                <?php
+        if (!empty($config->divisions)) {
+            foreach ($config->divisions as $index => $division) {
+                $this->render_division_row($division, $index);
+            }
+        }
+        else {
+            $this->render_division_row(array(), 0);
+        }
+?>
+            </div>
+            <button type="button" class="button" id="spsg-add-division"><?php _e('Add Division', 'sportspress-schedule-generator'); ?></button>
+        </div>
+
+        <div class="spsg-home-away-section">
+            <h3><?php _e('Home/Away Preferences', 'sportspress-schedule-generator'); ?></h3>
+            <p class="description"><?php _e('Assign preferred home venues for teams. This helps balance home and away games across the season.', 'sportspress-schedule-generator'); ?></p>
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><?php _e('Configure Home Venues', 'sportspress-schedule-generator'); ?></th>
+                    <td>
+                        <div id="spsg-home-away-preferences">
+                            <?php $this->render_home_away_preferences($config); ?>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="spsg-inter-division-section">
+            <h3><?php _e('Inter-Division Games', 'sportspress-schedule-generator'); ?></h3>
+            <p class="description"><?php _e('Configure cross-division play by specifying how many games teams from different divisions should play against each other.', 'sportspress-schedule-generator'); ?></p>
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><?php _e('Configure Inter-Division Games', 'sportspress-schedule-generator'); ?></th>
+                    <td>
+                        <div id="spsg-inter-division-games">
+                            <?php $this->render_inter_division_games($config); ?>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="spsg-generic-teams-section">
+            <h4><?php _e('Generic Team Filler', 'sportspress-schedule-generator'); ?></h4>
+            <p class="description"><?php _e('Automatically add generic placeholder teams to ensure even team counts in all divisions (required for round-robin scheduling).', 'sportspress-schedule-generator'); ?></p>
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><?php _e('Enable Generic Teams', 'sportspress-schedule-generator'); ?></th>
+                    <td>
+                        <label>
+                            <input type="checkbox" name="generic_teams_enabled" id="spsg-generic-teams-enabled" value="1" <?php checked($config->generic_teams['enabled'] ?? false); ?> />
+                            <?php _e('Fill empty slots with generic teams', 'sportspress-schedule-generator'); ?>
+                        </label>
+                    </td>
+                </tr>
+                <tr id="spsg-generic-teams-config" style="display: none;">
+                    <th scope="row"><?php _e('Teams Per Division', 'sportspress-schedule-generator'); ?></th>
+                    <td>
+                        <input type="number" name="generic_teams_per_division" id="spsg-generic-teams-per-division" value="<?php echo esc_attr($config->generic_teams['per_division'] ?? 8); ?>" min="2" max="20" step="2" class="small-text" />
+                        <p class="description"><?php _e('Target number of teams per division (must be even for round-robin). Generic teams will be added to reach this number.', 'sportspress-schedule-generator'); ?></p>
+                        <div class="spsg-generic-teams-calculation" id="spsg-generic-teams-calculation">
+                            <strong><?php _e('Calculation:', 'sportspress-schedule-generator'); ?></strong>
+                            <p id="spsg-generic-teams-summary"></p>
+                        </div>
+                    </td>
+                </tr>
+                <tr id="spsg-generic-teams-naming" style="display: none;">
+                    <th scope="row"><?php _e('Team Naming', 'sportspress-schedule-generator'); ?></th>
+                    <td>
+                        <input type="text" name="generic_team_prefix" id="spsg-generic-team-prefix" value="<?php echo esc_attr($config->generic_teams['prefix'] ?? 'Team'); ?>" class="regular-text" />
+                        <p class="description"><?php _e('Prefix for generic team names (e.g., "Team" creates "Team 1", "Team 2", etc.)', 'sportspress-schedule-generator'); ?></p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <p class="submit">
+            <input type="submit" name="submit" class="button-primary" value="<?php _e(self::LABEL_SAVE_CONFIGURATION, 'sportspress-schedule-generator'); ?>" />
+        </p>
+        <?php
+    }
+
+    /**
+     * Render home/away venue preferences table
+     */
+    private function render_home_away_preferences($config)
+    {
+        $home_away_prefs = $config->home_away_preferences ?? array();
+        $all_teams = $this->collect_all_teams($config);
+
+        if (empty($all_teams)) {
+            echo '<p class="description">' . __('Add teams to divisions first to configure home venue preferences.', 'sportspress-schedule-generator') . '</p>';
+            return;
+        }
+
+        echo '<table class="widefat striped">';
+        echo '<thead><tr>';
+        echo '<th>' . __('Team', 'sportspress-schedule-generator') . '</th>';
+        echo '<th>' . __('Preferred Home Venue', 'sportspress-schedule-generator') . '</th>';
+        echo '</tr></thead>';
+        echo '<tbody>';
+
+        foreach ($all_teams as $team) {
+            $team_pref = $home_away_prefs[$team] ?? '';
+            echo '<tr>';
+            echo '<td><strong>' . esc_html($team) . '</strong></td>';
+            echo '<td>';
+            echo '<select name="home_away_preferences[' . esc_attr($team) . ']" class="regular-text">';
+            echo '<option value="">' . __('No preference', 'sportspress-schedule-generator') . '</option>';
+
+            if (!empty($config->venues)) {
+                foreach ($config->venues as $venue) {
+                    $venue_id = $venue['id'] ?? '';
+                    $venue_name = $venue['name'] ?? __('Unnamed Venue', 'sportspress-schedule-generator');
+                    echo '<option value="' . esc_attr($venue_id) . '" ' . selected($team_pref, $venue_id, false) . '>' . esc_html($venue_name) . '</option>';
+                }
+            }
+
+            echo '</select>';
+            echo '</td>';
+            echo '</tr>';
+        }
+
+        echo '</tbody></table>';
+
+        if (empty($config->venues)) {
+            echo '<p class="description" style="margin-top: 10px;">' . __('Note: Add venues in the "Venues & Times" tab to assign home venue preferences.', 'sportspress-schedule-generator') . '</p>';
+        }
+    }
+
+    /**
+     * Render inter-division games configuration table
+     */
+    private function render_inter_division_games($config)
+    {
+        $inter_division_games = $config->inter_division_games ?? array();
+        $divisions = $config->divisions ?? array();
+
+        if (count($divisions) < 2) {
+            echo '<p class="description">' . __('Add at least 2 divisions to configure inter-division games.', 'sportspress-schedule-generator') . '</p>';
+            return;
+        }
+
+        echo '<table class="widefat striped">';
+        echo '<thead><tr>';
+        echo '<th>' . __('Division Pair', 'sportspress-schedule-generator') . '</th>';
+        echo '<th>' . __(self::LABEL_GAMES_PER_TEAM, 'sportspress-schedule-generator') . '</th>';
+        echo '</tr></thead>';
+        echo '<tbody>';
+
+        for ($i = 0; $i < count($divisions); $i++) {
+            for ($j = $i + 1; $j < count($divisions); $j++) {
+                $div1 = $divisions[$i];
+                $div2 = $divisions[$j];
+                $div1_name = $div1['name'] ?? sprintf(__('Division %d', 'sportspress-schedule-generator'), $i + 1);
+                $div2_name = $div2['name'] ?? sprintf(__('Division %d', 'sportspress-schedule-generator'), $j + 1);
+
+                $div1_id = $div1['id'] ?? 'div_' . $i;
+                $div2_id = $div2['id'] ?? 'div_' . $j;
+                $pair_key = $div1_id . '_' . $div2_id;
+
+                $games_count = $inter_division_games[$pair_key] ?? 0;
+
+                echo '<tr>';
+                echo '<td><strong>' . esc_html($div1_name) . '</strong> vs <strong>' . esc_html($div2_name) . '</strong></td>';
+                echo '<td>';
+                echo '<input type="number" name="inter_division_games[' . esc_attr($pair_key) . ']" value="' . esc_attr($games_count) . '" min="0" max="10" class="small-text" /> ';
+                echo '<span class="description">' . __('games per team', 'sportspress-schedule-generator') . '</span>';
+                echo '</td>';
+                echo '</tr>';
+            }
+        }
+
+        echo '</tbody></table>';
+
+        echo '<p class="description" style="margin-top: 10px;">';
+        echo __('Specify how many games each team should play against teams from other divisions. Set to 0 to disable inter-division play for a division pair.', 'sportspress-schedule-generator');
+        echo '</p>';
+
+        echo '<div id="spsg-inter-division-warning" style="display: none; margin-top: 10px; padding: 10px; background: #fcf3cf; border-left: 4px solid #f39c12;">';
+        echo '<strong>' . __('Warning:', 'sportspress-schedule-generator') . '</strong> ';
+        echo '<span id="spsg-inter-division-warning-text"></span>';
+        echo '</div>';
+    }
+
+    /**
+     * Collect all team names from config divisions
+     *
+     * @param object $config Configuration object
+     * @return array List of team names
+     */
+    public function collect_all_teams($config)
+    {
+        $all_teams = array();
+        if (!empty($config->divisions)) {
+            foreach ($config->divisions as $division) {
+                if (!empty($division['teams'])) {
+                    foreach ($division['teams'] as $team) {
+                        $all_teams[] = $team;
+                    }
+                }
+            }
+        }
+        return $all_teams;
+    }
