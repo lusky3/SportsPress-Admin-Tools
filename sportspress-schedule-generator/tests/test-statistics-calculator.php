@@ -1,7 +1,7 @@
 <?php
 /**
  * Test Statistics Calculator
- * 
+ *
  * Simple test to verify the statistics calculator works correctly
  */
 

@@ -1,9 +1,9 @@
 <?php
 /**
  * Docker-based Configuration Lifecycle Tests
- * 
+ *
  * Tests save, load, update, delete operations in real WordPress environment.
- * 
+ *
  * @author Kiro AI Assistant
  */
 

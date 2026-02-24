@@ -62,6 +62,8 @@ class SPSG_Autoloader
             // Configuration classes
             'SPSG_Configuration_Manager' => $base_path . 'class-configuration-manager.php',
             'SPSG_Schedule_Configuration' => $base_path . 'class-schedule-configuration.php',
+            'SPSG_Configuration_Validator' => $base_path . 'class-configuration-validator.php',
+            'SPSG_Configuration_Sanitizer' => $base_path . 'class-configuration-sanitizer.php',
 
             // Engine classes
             'SPSG_Schedule_Engine' => $base_path . 'class-schedule-engine.php',

@@ -1,9 +1,9 @@
 <?php
 /**
  * Test SportsPress Importer
- * 
+ *
  * Simple verification test for the importer class
- * 
+ *
  * @author Cody (lusky3)
  */
 

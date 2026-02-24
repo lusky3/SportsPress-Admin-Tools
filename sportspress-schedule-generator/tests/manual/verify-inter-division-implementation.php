@@ -1,7 +1,7 @@
 <?php
 /**
  * Verification script for inter-division games sanitization implementation
- * 
+ *
  * This script demonstrates that the sanitize_inter_division_games method
  * is properly implemented and integrated into the configuration system.
  */

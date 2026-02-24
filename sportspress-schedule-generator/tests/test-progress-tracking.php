@@ -1,7 +1,7 @@
 <?php
 /**
  * Test Progress Tracking and Cancellation
- * 
+ *
  * Simple test to verify progress tracking and cancellation functionality
  */
 

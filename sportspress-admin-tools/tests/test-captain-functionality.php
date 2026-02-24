@@ -1,7 +1,7 @@
 <?php
 /**
  * Test Captain Functionality
- * 
+ *
  * @author Cody (lusky3)
  */
 

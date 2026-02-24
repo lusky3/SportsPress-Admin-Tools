@@ -1,7 +1,7 @@
 <?php
 /**
  * Test Clone Configuration AJAX Handler
- * 
+ *
  * Tests the ajax_clone_config AJAX handler
  */
 

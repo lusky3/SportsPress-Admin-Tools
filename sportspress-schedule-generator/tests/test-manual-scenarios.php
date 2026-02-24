@@ -1,12 +1,12 @@
 <?php
 /**
  * Manual Testing Scenarios for Phase 3
- * 
+ *
  * This file contains comprehensive test scenarios for manual testing
  * of the schedule generation system.
- * 
+ *
  * Run: php tests/test-manual-scenarios.php
- * 
+ *
  * @author Cody (lusky3)
  */
 

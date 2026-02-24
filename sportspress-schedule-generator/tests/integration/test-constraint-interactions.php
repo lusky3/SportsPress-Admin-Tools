@@ -1,7 +1,7 @@
 <?php
 /**
  * Integration Tests for Constraint Interactions
- * 
+ *
  * @author Cody (lusky3)
  */
 

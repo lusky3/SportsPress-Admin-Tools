@@ -271,7 +271,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface
         }
 
         // Apply version migrations if needed
-        $migrated_config = $this->migrate_configuration($data['configuration'], $data['version'] ?? '1.0.0');
+        $migrated_config = $this->migrate_configuration($data['configuration']);
 
         // Remove ID to create new configuration
         unset($migrated_config['id']);
@@ -316,27 +316,22 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface
             return SPSG_Error_Handler::create_error(
                 'version_incompatible',
                 sprintf(
-                __('This configuration was exported from a newer version (%s) and may not be compatible with your current version (%s). Please update the plugin before importing.', 'sportspress-schedule-generator'),
-                $import_version,
-                $current_version
-            ),
-                array(
-                'import_version' => $import_version,
-                'current_version' => $current_version
-            )
-            );
-        }
-
-        // Warn about older versions but allow import
-        if ($import_major < $current_major) {
-            // Log warning but continue
-            if (get_option('spsg_enable_debug_logging', false)) {
-                error_log(sprintf(
-                    'SPSG: Importing configuration from older version %s to %s',
+                    __('This configuration was exported from a newer version (%s) and may not be compatible with your current version (%s). Please update the plugin before importing.', 'sportspress-schedule-generator'),
                     $import_version,
                     $current_version
-                ));
-            }
+                ),
+                array(
+                    'import_version' => $import_version,
+                    'current_version' => $current_version
+                )
+            );
+        } elseif ($import_major < $current_major && get_option('spsg_enable_debug_logging', false)) {
+            // Warn about older versions but allow import
+            error_log(sprintf(
+                'SPSG: Importing configuration from older version %s to %s',
+                $import_version,
+                $current_version
+            ));
         }
 
         return true;
@@ -346,15 +341,10 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface
      * Migrate configuration between versions
      *
      * @param array $config Configuration data
-     * @param string $from_version Source version
      * @return array Migrated configuration
      */
-    private function migrate_configuration($config, $from_version)
+    private function migrate_configuration($config)
     {
-        $from_parts = explode('.', $from_version);
-        $from_major = (int)($from_parts[0] ?? 1);
-        $from_minor = (int)($from_parts[1] ?? 0);
-
         // Add default values for new Phase 2 properties if missing
         if (!isset($config['matchup_style'])) {
             $config['matchup_style'] = 'double_round_robin';
@@ -368,8 +358,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface
             $config['inter_division_games'] = array();
         }
 
-        // Future migrations can be added here
-        // Example: if ($from_major === 1 && $from_minor < 1) { ... }
+        // Future migrations can be added here based on $from_version
 
         return $config;
     }

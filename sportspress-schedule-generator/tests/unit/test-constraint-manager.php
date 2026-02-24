@@ -1,7 +1,7 @@
 <?php
 /**
  * Unit Tests for Constraint Manager
- * 
+ *
  * @author Cody (lusky3)
  */
 

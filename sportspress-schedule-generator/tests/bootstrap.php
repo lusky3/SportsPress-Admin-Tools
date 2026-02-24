@@ -1,9 +1,9 @@
 <?php
 /**
  * PHPUnit Bootstrap File
- * 
+ *
  * Sets up the WordPress test environment for running unit tests.
- * 
+ *
  * @author Cody (lusky3)
  */
 

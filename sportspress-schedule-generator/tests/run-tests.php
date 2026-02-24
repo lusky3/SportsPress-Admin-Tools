@@ -1,7 +1,7 @@
 <?php
 /**
  * Test Runner for SportsPress Schedule Generator
- * 
+ *
  * @author Cody (lusky3)
  */
 

@@ -1,7 +1,7 @@
 <?php
 /**
  * Manual Verification Script for Clone Configuration AJAX Handler
- * 
+ *
  * This script verifies the implementation logic of the ajax_clone_config method
  * without requiring a full WordPress test environment.
  */

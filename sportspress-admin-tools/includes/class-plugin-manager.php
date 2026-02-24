@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Manager for Child Plugins
- * 
+ *
  * @author Cody (lusky3)
  */
 

@@ -1,7 +1,7 @@
 <?php
 /**
  * Debug Player Registration - Add to functions.php temporarily
- * 
+ *
  * @author Cody (lusky3)
  */
 

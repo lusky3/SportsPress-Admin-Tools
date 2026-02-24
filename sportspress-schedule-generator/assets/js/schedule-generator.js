@@ -1,6 +1,6 @@
 /**
  * Schedule Generator JavaScript
- * 
+ *
  * @author Cody (lusky3)
  */
 

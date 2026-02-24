@@ -1,7 +1,7 @@
 <?php
 /**
  * Integration Tests for Schedule Generation
- * 
+ *
  * @author Cody (lusky3)
  */
 

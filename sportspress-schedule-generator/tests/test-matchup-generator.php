@@ -1,9 +1,9 @@
 <?php
 /**
  * Test Matchup Generator
- * 
+ *
  * Simple standalone test for the matchup generator
- * 
+ *
  * @author Cody (lusky3)
  */
 

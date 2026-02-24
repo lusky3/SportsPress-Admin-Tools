@@ -1,10 +1,10 @@
 /**
  * Cloudflare Worker for e-Transfer Email Processing
- * 
+ *
  * This worker receives emails via Cloudflare Email Routing,
  * processes Interac e-Transfer notifications, and forwards
  * them as webhooks to SportsPress Admin Tools.
- * 
+ *
  * @author Cody (lusky3)
  */
 

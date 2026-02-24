@@ -1,10 +1,10 @@
 <?php
 /**
  * Test: Verify Import Dialog Nonces Registration
- * 
+ *
  * This test verifies that the import dialog nonces are properly registered
  * and available in the JavaScript context.
- * 
+ *
  * Requirements: 1.1, 2.1
  */
 

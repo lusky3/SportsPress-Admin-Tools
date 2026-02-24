@@ -1,7 +1,7 @@
 <?php
 /**
  * Enable Player Registration module and set up database
- * 
+ *
  * @author Cody (lusky3)
  */
 

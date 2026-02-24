@@ -1,7 +1,7 @@
 <?php
 /**
  * Constraint Registry Class
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -90,13 +90,8 @@ class SPSG_Constraint_Registry
                 $instance = new $class_name();
 
                 // Apply priority override if set
-                if (self::$constraint_classes[$class_name]['priority_override'] !== null) {
-                    $reflection = new ReflectionClass($instance);
-                    if ($reflection->hasProperty('priority')) {
-                        $property = $reflection->getProperty('priority');
-                        $property->setAccessible(true);
-                        $property->setValue($instance, self::$constraint_classes[$class_name]['priority_override']);
-                    }
+                if (self::$constraint_classes[$class_name]['priority_override'] !== null && method_exists($instance, 'set_priority')) {
+                    $instance->set_priority(self::$constraint_classes[$class_name]['priority_override']);
                 }
 
                 self::$constraint_instances[$class_name] = $instance;

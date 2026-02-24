@@ -1,10 +1,10 @@
 <?php
 /**
  * Error Handler Class
- * 
+ *
  * Provides structured error handling and user-friendly error messages
  * for the Schedule Generator plugin.
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -21,7 +21,7 @@ class SPSG_Error_Handler
 
     /**
      * Format validation errors for display
-     * 
+     *
      * @param WP_Error $error WordPress error object
      * @return string Formatted HTML error message
      */
@@ -58,7 +58,7 @@ class SPSG_Error_Handler
 
     /**
      * Format validation errors for AJAX response
-     * 
+     *
      * @param WP_Error $error WordPress error object
      * @return array Structured error data for JSON response
      */
@@ -95,7 +95,7 @@ class SPSG_Error_Handler
 
     /**
      * Get user-friendly field label
-     * 
+     *
      * @param string $field Field name
      * @return string Human-readable label
      */
@@ -125,7 +125,7 @@ class SPSG_Error_Handler
 
     /**
      * Get error type/severity
-     * 
+     *
      * @param string $field Field name
      * @return string Error type (error, warning, info)
      */
@@ -143,7 +143,7 @@ class SPSG_Error_Handler
 
     /**
      * Display admin notice for errors
-     * 
+     *
      * @param WP_Error $error WordPress error object
      * @param string $type Notice type (error, warning, success, info)
      */
@@ -160,7 +160,7 @@ class SPSG_Error_Handler
 
     /**
      * Get error suggestions based on error type
-     * 
+     *
      * @param string $error_code Error code
      * @return array Array of suggestions
      */
@@ -196,7 +196,7 @@ class SPSG_Error_Handler
 
     /**
      * Create a user-friendly error message with context
-     * 
+     *
      * @param string $error_code Error code
      * @param string $message Error message
      * @param array $context Additional context data
@@ -217,7 +217,7 @@ class SPSG_Error_Handler
 
     /**
      * Log error for debugging
-     * 
+     *
      * @param WP_Error $error WordPress error object
      * @param array $context Additional context
      */
@@ -257,7 +257,7 @@ class SPSG_Error_Handler
 
     /**
      * Get recent errors from log
-     * 
+     *
      * @param int $limit Number of errors to retrieve
      * @return array Array of error log entries
      */
@@ -269,7 +269,7 @@ class SPSG_Error_Handler
 
     /**
      * Clear error log
-     * 
+     *
      * @return bool Success
      */
     public static function clear_error_log()
@@ -279,7 +279,7 @@ class SPSG_Error_Handler
 
     /**
      * Check if error is a warning (non-critical)
-     * 
+     *
      * @param WP_Error $error WordPress error object
      * @return bool True if warning
      */
@@ -295,7 +295,7 @@ class SPSG_Error_Handler
 
     /**
      * Format error for email notification
-     * 
+     *
      * @param WP_Error $error WordPress error object
      * @param array $context Additional context
      * @return string Formatted email body

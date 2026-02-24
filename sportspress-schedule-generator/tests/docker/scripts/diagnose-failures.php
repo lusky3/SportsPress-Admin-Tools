@@ -1,7 +1,7 @@
 <?php
 /**
  * Diagnose Test Failures
- * 
+ *
  * Investigates each failing test to determine if it's a test issue or code issue.
  */
 

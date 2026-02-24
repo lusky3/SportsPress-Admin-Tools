@@ -1,10 +1,10 @@
 <?php
 /**
  * Slot Allocator Class
- * 
+ *
  * Assigns matchups to specific dates, times, and venues using
  * greedy allocation with backtracking fallback.
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -44,7 +44,7 @@ class SPSG_Slot_Allocator
 
     /**
      * Allocate all matchups to slots
-     * 
+     *
      * @param array $matchups Array of matchup objects
      * @param SPSG_Schedule_Configuration $config Configuration
      * @param callable|null $progress_callback Callback for progress updates
@@ -98,7 +98,7 @@ class SPSG_Slot_Allocator
 
     /**
      * Generate all available time slots
-     * 
+     *
      * @param SPSG_Schedule_Configuration $config Configuration
      * @return array Array of slot objects
      */
@@ -168,7 +168,7 @@ class SPSG_Slot_Allocator
 
     /**
      * Greedy allocation algorithm
-     * 
+     *
      * @param array $matchups Array of matchup objects
      * @param SPSG_Schedule_Configuration $config Configuration
      * @param callable|null $progress_callback Callback for progress updates
@@ -227,7 +227,7 @@ class SPSG_Slot_Allocator
 
     /**
      * Backtracking allocation algorithm
-     * 
+     *
      * @param array $matchups Array of matchup objects
      * @param SPSG_Schedule_Configuration $config Configuration
      * @param callable|null $progress_callback Callback for progress updates
@@ -247,7 +247,7 @@ class SPSG_Slot_Allocator
 
     /**
      * Recursive backtracking helper
-     * 
+     *
      * @param array $matchups All matchups
      * @param int $index Current matchup index
      * @param array &$schedule Current schedule (by reference)
@@ -322,7 +322,7 @@ class SPSG_Slot_Allocator
 
     /**
      * Find best available slot for matchup
-     * 
+     *
      * @param object $matchup Matchup object
      * @param array $used_slots Already used slots
      * @param array $schedule Current schedule
@@ -361,10 +361,10 @@ class SPSG_Slot_Allocator
 
     /**
      * Calculate slot cost using constraint manager
-     * 
+     *
      * Uses soft/optimization constraints to calculate a violation cost.
      * Lower costs are better (0 is perfect).
-     * 
+     *
      * @param object $matchup Matchup object
      * @param object $slot Slot object
      * @param array $schedule Current schedule
@@ -382,9 +382,9 @@ class SPSG_Slot_Allocator
 
     /**
      * Get available venues for a specific date with their time slots
-     * 
+     *
      * Checks date-specific availability first, then falls back to global timeslots
-     * 
+     *
      * @param string $date Date in YYYY-MM-DD format
      * @param string $day_name Day name (lowercase)
      * @param SPSG_Schedule_Configuration $config Configuration
@@ -446,7 +446,7 @@ class SPSG_Slot_Allocator
 
     /**
      * Create game object from matchup and slot
-     * 
+     *
      * @param object $matchup Matchup object
      * @param object $slot Slot object
      * @param SPSG_Schedule_Configuration $config Configuration
@@ -484,7 +484,7 @@ class SPSG_Slot_Allocator
 
     /**
      * Get unique key for a slot
-     * 
+     *
      * @param object $slot Slot object
      * @return string Unique key
      */
@@ -496,13 +496,13 @@ class SPSG_Slot_Allocator
 
     /**
      * Check if slot is valid for matchup
-     * 
+     *
      * Validates:
      * - Venue availability for day/time
      * - No time slot conflicts (same venue, overlapping times)
      * - No team conflicts (team can't play two games at once)
      * - Constraint manager validation
-     * 
+     *
      * @param object $matchup Matchup object
      * @param object $slot Slot object
      * @param array $schedule Current schedule
@@ -567,7 +567,7 @@ class SPSG_Slot_Allocator
 
     /**
      * Check if two time slots overlap considering match length and buffer
-     * 
+     *
      * @param string|int $time1 First time slot (string "HH:MM" or minutes since midnight)
      * @param string|int $time2 Second time slot (string "HH:MM" or minutes since midnight)
      * @param int $match_length Match length in minutes
@@ -590,7 +590,7 @@ class SPSG_Slot_Allocator
 
     /**
      * Convert time string to minutes since midnight
-     * 
+     *
      * @param string $time Time string (HH:MM)
      * @return int Minutes
      */
@@ -602,7 +602,7 @@ class SPSG_Slot_Allocator
 
     /**
      * Log message
-     * 
+     *
      * @param string $message Message to log
      */
     private function log($message)

@@ -1,7 +1,7 @@
 <?php
 /**
  * Test Import Dialog AJAX Handlers
- * 
+ *
  * Tests the new AJAX handlers for the import dialog:
  * - ajax_get_import_dialog_data
  * - ajax_get_import_progress

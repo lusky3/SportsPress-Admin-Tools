@@ -1,10 +1,10 @@
 <?php
 /**
  * Manual Verification Script for Import Preview AJAX Handler
- * 
+ *
  * This script verifies that the ajax_preview_import method is properly
  * implemented in the SPSG_Admin class.
- * 
+ *
  * Usage: Run this from the WordPress root or adjust the path to wp-load.php
  */
 

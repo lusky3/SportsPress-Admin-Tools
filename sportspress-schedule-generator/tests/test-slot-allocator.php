@@ -1,7 +1,7 @@
 <?php
 /**
  * Test Slot Allocator
- * 
+ *
  * Basic tests for the SPSG_Slot_Allocator class
  */
 

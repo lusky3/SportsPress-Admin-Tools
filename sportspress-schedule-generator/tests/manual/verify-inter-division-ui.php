@@ -1,7 +1,7 @@
 <?php
 /**
  * Verify Inter-Division Games UI Implementation
- * 
+ *
  * This script verifies that the inter-division games UI is properly implemented
  * in the admin interface.
  */

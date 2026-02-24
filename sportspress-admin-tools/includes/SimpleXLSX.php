@@ -2,7 +2,7 @@
 /**
  * XLSX parser for PHP
  * Reads actual XLSX files using ZIP extraction
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -42,86 +42,90 @@ class SimpleXLSX
         }
 
         $zip = new ZipArchive();
-        if ($zip->open($file_path) !== TRUE) {
+        if ($zip->open($file_path) !== true) {
             return false;
         }
 
-        // Read shared strings
-        $shared_strings = array();
-        $strings_xml = $zip->getFromName('xl/sharedStrings.xml');
-        if ($strings_xml) {
-            $strings_doc = new DOMDocument();
-
-            // Prevent XXE attacks
-            $libxml_loader = libxml_disable_entity_loader(true);
-            $strings_doc->loadXML($strings_xml);
-            libxml_disable_entity_loader($libxml_loader);
-
-            $string_nodes = $strings_doc->getElementsByTagName('t');
-            foreach ($string_nodes as $node) {
-                $shared_strings[] = $node->nodeValue;
-            }
-        }
-
-        // Read worksheet
+        $shared_strings = $this->extractSharedStrings($zip);
         $sheet_xml = $zip->getFromName('xl/worksheets/sheet1.xml');
-        if (!$sheet_xml) {
-            $zip->close();
-            return false;
-        }
-
         $zip->close();
 
-        // Parse worksheet XML
-        $doc = new DOMDocument();
+        if (!$sheet_xml) {
+            return false;
+        }
 
-        // Prevent XXE attacks
-        $libxml_loader = libxml_disable_entity_loader(true);
-        $doc->loadXML($sheet_xml);
-        libxml_disable_entity_loader($libxml_loader);
-
-        $rows = $doc->getElementsByTagName('row');
+        $doc = $this->loadXmlSafe($sheet_xml);
         $this->data = array();
 
-        foreach ($rows as $row) {
-            $row_data = array();
-            $cells = $row->getElementsByTagName('c');
-            $col_index = 0;
-
-            foreach ($cells as $cell) {
-                $cell_ref = $cell->getAttribute('r');
-                $col_letter = preg_replace('/\d+/', '', $cell_ref);
-                $target_col = $this->columnIndexFromString($col_letter);
-
-                // Fill empty columns
-                while ($col_index < $target_col) {
-                    $row_data[] = '';
-                    $col_index++;
-                }
-
-                $value = '';
-                $type = $cell->getAttribute('t');
-                $value_node = $cell->getElementsByTagName('v')->item(0);
-
-                if ($value_node) {
-                    if ($type === 's') {
-                        // Shared string
-                        $index = (int)$value_node->nodeValue;
-                        $value = isset($shared_strings[$index]) ? $shared_strings[$index] : '';
-                    }
-                    else {
-                        $value = $value_node->nodeValue;
-                    }
-                }
-
-                $row_data[] = $value;
-                $col_index++;
-            }
-
-            $this->data[] = $row_data;
+        foreach ($doc->getElementsByTagName('row') as $row) {
+            $this->data[] = $this->parseRow($row, $shared_strings);
         }
 
         return !empty($this->data);
+    }
+
+    private function extractSharedStrings($zip)
+    {
+        $shared_strings = array();
+        $strings_xml = $zip->getFromName('xl/sharedStrings.xml');
+
+        if (!$strings_xml) {
+            return $shared_strings;
+        }
+
+        $doc = $this->loadXmlSafe($strings_xml);
+        foreach ($doc->getElementsByTagName('t') as $node) {
+            $shared_strings[] = $node->nodeValue;
+        }
+
+        return $shared_strings;
+    }
+
+    private function loadXmlSafe($xml_string)
+    {
+        $doc = new DOMDocument();
+        $libxml_loader = libxml_disable_entity_loader(true);
+        $doc->loadXML($xml_string);
+        libxml_disable_entity_loader($libxml_loader);
+        return $doc;
+    }
+
+    private function parseRow($row, $shared_strings)
+    {
+        $row_data = array();
+        $col_index = 0;
+
+        foreach ($row->getElementsByTagName('c') as $cell) {
+            $col_letter = preg_replace('/\d+/', '', $cell->getAttribute('r'));
+            $target_col = $this->columnIndexFromString($col_letter);
+
+            // Fill empty columns
+            while ($col_index < $target_col) {
+                $row_data[] = '';
+                $col_index++;
+            }
+
+            $row_data[] = $this->getCellValue($cell, $shared_strings);
+            $col_index++;
+        }
+
+        return $row_data;
+    }
+
+    private function getCellValue($cell, $shared_strings)
+    {
+        $value_node = $cell->getElementsByTagName('v')->item(0);
+
+        if (!$value_node) {
+            return '';
+        }
+
+        if ($cell->getAttribute('t') === 's') {
+            $index = (int)$value_node->nodeValue;
+            return isset($shared_strings[$index]) ? $shared_strings[$index] : '';
+        }
+
+        return $value_node->nodeValue;
     }
 
     private function columnIndexFromString($column)

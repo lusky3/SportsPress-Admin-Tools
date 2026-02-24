@@ -1,9 +1,9 @@
 <?php
 /**
  * Statistics Calculator
- * 
+ *
  * Calculates comprehensive statistics for generated schedules
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -20,7 +20,7 @@ class SPSG_Statistics_Calculator
 
     /**
      * Calculate comprehensive statistics for a schedule
-     * 
+     *
      * @param array $schedule Array of SPSG_Game objects
      * @return array Statistics array
      */
@@ -49,7 +49,7 @@ class SPSG_Statistics_Calculator
 
     /**
      * Calculate games per team
-     * 
+     *
      * @param array $schedule Array of SPSG_Game objects
      * @return array Min, max, avg, and per-team counts
      */
@@ -81,7 +81,7 @@ class SPSG_Statistics_Calculator
 
     /**
      * Calculate home/away balance per team
-     * 
+     *
      * @param array $schedule Array of SPSG_Game objects
      * @return array Home/away counts per team
      */
@@ -118,7 +118,7 @@ class SPSG_Statistics_Calculator
 
     /**
      * Calculate venue utilization
-     * 
+     *
      * @param array $schedule Array of SPSG_Game objects
      * @return array Games per venue
      */
@@ -145,7 +145,7 @@ class SPSG_Statistics_Calculator
 
     /**
      * Calculate time slot distribution
-     * 
+     *
      * @param array $schedule Array of SPSG_Game objects
      * @return array Games per time slot
      */
@@ -163,7 +163,7 @@ class SPSG_Statistics_Calculator
 
     /**
      * Calculate day distribution
-     * 
+     *
      * @param array $schedule Array of SPSG_Game objects
      * @return array Games per day of week
      */
@@ -183,7 +183,7 @@ class SPSG_Statistics_Calculator
 
     /**
      * Calculate division statistics
-     * 
+     *
      * @param array $schedule Array of SPSG_Game objects
      * @return array Stats per division
      */
@@ -222,7 +222,7 @@ class SPSG_Statistics_Calculator
 
     /**
      * Count inter-division games
-     * 
+     *
      * @param array $schedule Array of SPSG_Game objects
      * @return int Count of inter-division games
      */
@@ -243,7 +243,7 @@ class SPSG_Statistics_Calculator
 
     /**
      * Detect imbalances in the schedule
-     * 
+     *
      * @param array $stats Calculated statistics
      * @return array Array of imbalance issues with severity
      */
@@ -333,7 +333,7 @@ class SPSG_Statistics_Calculator
 
     /**
      * Get empty statistics structure
-     * 
+     *
      * @return array Empty stats array
      */
     private function get_empty_stats()
@@ -353,7 +353,7 @@ class SPSG_Statistics_Calculator
 
     /**
      * Format statistics for display
-     * 
+     *
      * @param array $stats Statistics array
      * @return string Formatted HTML output
      */

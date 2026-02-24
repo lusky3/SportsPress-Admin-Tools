@@ -1,7 +1,7 @@
 /**
  * e-Transfer Webhook Tester - Supports all 3 webhook methods
  * Usage: node test-webhook.js --url <webhook_url> --secret <webhook_secret> [--method <generic|deliverhook|cloudflare>] [--verbose]
- * 
+ *
  * @author Cody (lusky3)
  */
 

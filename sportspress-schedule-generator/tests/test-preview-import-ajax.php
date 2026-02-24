@@ -1,7 +1,7 @@
 <?php
 /**
  * Test for Import Preview AJAX Handler
- * 
+ *
  * This test verifies that the ajax_preview_import method works correctly
  * and handles various scenarios including valid JSON, invalid JSON, and
  * compatibility warnings.
