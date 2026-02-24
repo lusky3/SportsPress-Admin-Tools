@@ -21,8 +21,24 @@ error_log('SPT: Plugin file loaded - REQUEST_URI: ' . ($_SERVER['REQUEST_URI'] ?
 define('SPT_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('SPT_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('SPT_VERSION', '1.0.0');
+define('SPT_BATCH_LIST_CREATOR_FILE', 'includes/class-batch-list-creator.php');
 
 class SportsPress_Player_Tools {
+    
+    /** @var SPT_Player_Modifications|null */
+    private $player_modifications;
+    
+    /** @var SPT_Player_Profile_Picture|null */
+    private $player_profile_picture;
+    
+    /** @var SPT_Player_Stats_Enabler|null */
+    private $player_stats_enabler;
+    
+    /** @var SPT_Batch_List_Creator|null */
+    private $batch_list_creator;
+    
+    /** @var SPT_Admin|null */
+    private $admin;
     
     public function __construct() {
         register_activation_hook(__FILE__, array($this, 'check_activation_requirements'));
@@ -49,7 +65,7 @@ class SportsPress_Player_Tools {
             'name' => 'Player Modifications',
             'description' => 'Email meta, captain selection, squad number editing',
             'parent_module' => 'player_modifications',
-            'version' => '1.0.0',
+            'version' => SPT_VERSION,
             'file' => __FILE__
         ));
         
@@ -57,7 +73,7 @@ class SportsPress_Player_Tools {
             'name' => 'Player Stats Enabler',
             'description' => 'Automatically enable frontend statistics display',
             'parent_module' => 'player_stats_enabler',
-            'version' => '1.0.0',
+            'version' => SPT_VERSION,
             'file' => __FILE__
         ));
         
@@ -65,7 +81,7 @@ class SportsPress_Player_Tools {
             'name' => 'Batch List Creator',
             'description' => 'Batch create player lists from CSV upload',
             'parent_module' => 'batch_list_creator',
-            'version' => '1.0.0',
+            'version' => SPT_VERSION,
             'file' => __FILE__
         ));
         
@@ -73,7 +89,7 @@ class SportsPress_Player_Tools {
             'name' => 'Player Profile Picture Upload',
             'description' => 'Allow players to upload profile pictures on My Account page',
             'parent_module' => 'player_modifications',
-            'version' => '1.0.0',
+            'version' => SPT_VERSION,
             'file' => __FILE__
         ));
         
@@ -84,49 +100,51 @@ class SportsPress_Player_Tools {
     private function load_enabled_modules() {
         $enabled_modules = get_option('spat_enabled_modules', array());
         
-        if (get_option('spat_debug_verbose_logging', '0') === '1') {
-            error_log('SPT: Enabled modules: ' . print_r($enabled_modules, true));
-            error_log('SPT: WooCommerce exists: ' . (class_exists('WooCommerce') ? 'yes' : 'no'));
-        }
+        $this->debug_log('Enabled modules: ' . print_r($enabled_modules, true));
+        $this->debug_log('WooCommerce exists: ' . (class_exists('WooCommerce') ? 'yes' : 'no'));
         
         if (in_array('player_modifications', $enabled_modules)) {
-            require_once SPT_PLUGIN_PATH . 'includes/class-player-modifications.php';
-            new SPT_Player_Modifications();
-            
-            // Load profile picture upload if enabled
-            $has_profile_pic = in_array('player_profile_picture', $enabled_modules);
-            $has_woo = class_exists('WooCommerce');
-            
-            if (get_option('spat_debug_verbose_logging', '0') === '1') {
-                error_log('SPT: player_profile_picture in modules: ' . ($has_profile_pic ? 'yes' : 'no'));
-                error_log('SPT: WooCommerce exists: ' . ($has_woo ? 'yes' : 'no'));
-            }
-            
-            if ($has_profile_pic && $has_woo) {
-                if (get_option('spat_debug_verbose_logging', '0') === '1') {
-                    error_log('SPT: Loading player profile picture class from: ' . SPT_PLUGIN_PATH . 'includes/class-player-profile-picture.php');
-                }
-                require_once SPT_PLUGIN_PATH . 'includes/class-player-profile-picture.php';
-                new SPT_Player_Profile_Picture();
-            }
+            $this->load_player_modifications($enabled_modules);
         }
         
         if (in_array('player_stats_enabler', $enabled_modules)) {
             require_once SPT_PLUGIN_PATH . 'includes/class-player-stats-enabler.php';
-            new SPT_Player_Stats_Enabler();
+            $this->player_stats_enabler = new SPT_Player_Stats_Enabler();
         }
         
         // Always load batch list creator
         error_log('SPT: About to load batch list creator');
-        require_once SPT_PLUGIN_PATH . 'includes/class-batch-list-creator.php';
-        error_log('SPT: Class file loaded, creating instance');
-        $batch_creator = new SPT_Batch_List_Creator();
+        require_once SPT_PLUGIN_PATH . SPT_BATCH_LIST_CREATOR_FILE;
+        $this->batch_list_creator = new SPT_Batch_List_Creator();
         error_log('SPT: Batch list creator instance created');
         error_log('SPT: Checking if action exists: ' . (has_action('admin_post_spt_process_list_batch') ? 'YES' : 'NO'));
         
         if (is_admin() && (in_array('player_modifications', $enabled_modules) || in_array('player_stats_enabler', $enabled_modules) || in_array('batch_list_creator', $enabled_modules))) {
             require_once SPT_PLUGIN_PATH . 'includes/class-admin.php';
-            new SPT_Admin();
+            $this->admin = new SPT_Admin();
+        }
+    }
+    
+    private function load_player_modifications($enabled_modules) {
+        require_once SPT_PLUGIN_PATH . 'includes/class-player-modifications.php';
+        $this->player_modifications = new SPT_Player_Modifications();
+        
+        $has_profile_pic = in_array('player_profile_picture', $enabled_modules);
+        $has_woo = class_exists('WooCommerce');
+        
+        $this->debug_log('player_profile_picture in modules: ' . ($has_profile_pic ? 'yes' : 'no'));
+        $this->debug_log('WooCommerce exists: ' . ($has_woo ? 'yes' : 'no'));
+        
+        if ($has_profile_pic && $has_woo) {
+            $this->debug_log('Loading player profile picture class from: ' . SPT_PLUGIN_PATH . 'includes/class-player-profile-picture.php');
+            require_once SPT_PLUGIN_PATH . 'includes/class-player-profile-picture.php';
+            $this->player_profile_picture = new SPT_Player_Profile_Picture();
+        }
+    }
+    
+    private function debug_log($message) {
+        if (get_option('spat_debug_verbose_logging', '0') === '1') {
+            error_log('SPT: ' . $message);
         }
     }
     
@@ -145,12 +163,12 @@ class SportsPress_Player_Tools {
     }
 }
 
-new SportsPress_Player_Tools();
+$GLOBALS['sportspress_player_tools'] = new SportsPress_Player_Tools();
 
 // Register admin_post hooks immediately at plugin load
 add_action('admin_post_spt_process_list_batch', function() {
     try {
-        require_once SPT_PLUGIN_PATH . 'includes/class-batch-list-creator.php';
+        require_once SPT_PLUGIN_PATH . SPT_BATCH_LIST_CREATOR_FILE;
         $creator = new SPT_Batch_List_Creator();
         $creator->process_batch();
     } catch (Exception $e) {
@@ -160,7 +178,7 @@ add_action('admin_post_spt_process_list_batch', function() {
 
 add_action('admin_post_spt_upload_list_csv', function() {
     error_log('SPT: admin_post_spt_upload_list_csv FIRED!');
-    require_once SPT_PLUGIN_PATH . 'includes/class-batch-list-creator.php';
+    require_once SPT_PLUGIN_PATH . SPT_BATCH_LIST_CREATOR_FILE;
     $creator = new SPT_Batch_List_Creator();
     $creator->handle_upload();
 });

@@ -1,7 +1,7 @@
 <?php
 /**
  * Player Stats Enabler Class
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -47,23 +47,30 @@ class SPT_Player_Stats_Enabler {
         $stats_columns = array('0', 'g', 'a', 'pim', '0', 'p', 'gp');
         update_post_meta($post_id, 'sp_columns', $stats_columns);
         
-        // Create assignments and statistics
+        $result = $this->build_assignments_and_statistics($leagues_data, $current_team);
+        
+        // Update meta fields
+        update_post_meta($post_id, 'sp_leagues', $result['leagues_data']);
+        delete_post_meta($post_id, 'sp_assignments');
+        foreach ($result['assignments'] as $assignment) {
+            add_post_meta($post_id, 'sp_assignments', $assignment);
+        }
+        update_post_meta($post_id, 'sp_statistics', $result['statistics']);
+    }
+    
+    private function build_assignments_and_statistics($leagues_data, $current_team) {
         $assignments = array();
         $statistics = array();
         
         foreach ($leagues_data as $league_id => $seasons) {
             foreach ($seasons as $season_id => $team_id) {
-                // Update team ID if it's -1
                 if ($team_id == -1) {
                     $leagues_data[$league_id][$season_id] = $current_team;
                     $team_id = $current_team;
                 }
                 
-                // Create assignment
-                $assignment = $league_id . '_' . $season_id . '_' . $team_id;
-                $assignments[] = $assignment;
+                $assignments[] = $league_id . '_' . $season_id . '_' . $team_id;
                 
-                // Create empty statistics structure
                 if (!isset($statistics[$league_id])) {
                     $statistics[$league_id] = array();
                 }
@@ -74,13 +81,11 @@ class SPT_Player_Stats_Enabler {
             }
         }
         
-        // Update meta fields
-        update_post_meta($post_id, 'sp_leagues', $leagues_data);
-        delete_post_meta($post_id, 'sp_assignments');
-        foreach ($assignments as $assignment) {
-            add_post_meta($post_id, 'sp_assignments', $assignment);
-        }
-        update_post_meta($post_id, 'sp_statistics', $statistics);
+        return array(
+            'leagues_data' => $leagues_data,
+            'assignments' => $assignments,
+            'statistics' => $statistics
+        );
     }
     
     public function bulk_enable_stats() {

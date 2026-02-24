@@ -1,7 +1,7 @@
 <?php
 /**
  * Player Profile Picture Upload
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -123,9 +123,9 @@ class SPT_Player_Profile_Picture {
         
         $player_id = $player_posts[0];
         
-        require_once(ABSPATH . 'wp-admin/includes/image.php');
-        require_once(ABSPATH . 'wp-admin/includes/file.php');
-        require_once(ABSPATH . 'wp-admin/includes/media.php');
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/media.php';
         
         $attachment_id = media_handle_upload('profile_picture', $player_id);
         

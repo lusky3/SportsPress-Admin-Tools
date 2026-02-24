@@ -1,7 +1,7 @@
 <?php
 /**
  * Player Modifications Class
- * 
+ *
  * @author Cody (lusky3)
  */
 
