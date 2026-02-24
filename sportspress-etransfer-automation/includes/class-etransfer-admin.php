@@ -12,6 +12,8 @@ if (!defined('ABSPATH')) {
 
 class SPET_ETransfer_Admin
 {
+    /** @var string Menu title text domain key */
+    const MENU_TITLE = 'e-Transfer Webhooks';
 
     public function __construct()
     {
@@ -30,7 +32,7 @@ class SPET_ETransfer_Admin
 
         add_submenu_page(
             'woocommerce',
-            __('e-Transfer Webhooks', 'sportspress-admin-tools'),
+            __(self::MENU_TITLE, 'sportspress-admin-tools'),
             $this->get_menu_title(),
             'manage_woocommerce',
             'etransfer-webhooks',
@@ -40,7 +42,7 @@ class SPET_ETransfer_Admin
 
     private function get_menu_title()
     {
-        $menu_title = __('e-Transfer Webhooks', 'sportspress-admin-tools');
+        $menu_title = __(self::MENU_TITLE, 'sportspress-admin-tools');
         $pending_count = SPET_Database::count_pending_webhooks();
 
         if ($pending_count > 0) {
@@ -62,7 +64,7 @@ class SPET_ETransfer_Admin
 
         foreach ($submenu['woocommerce'] as $key => $item) {
             if ($item[2] === 'etransfer-webhooks') {
-                $menu_title = __('e-Transfer Webhooks', 'sportspress-admin-tools');
+                $menu_title = __(self::MENU_TITLE, 'sportspress-admin-tools');
                 if ($pending_count > 0) {
                     $menu_title .= ' <span class="awaiting-mod"><span class="pending-count">' . $pending_count . '</span></span>';
                 }
@@ -75,29 +77,27 @@ class SPET_ETransfer_Admin
     public function admin_page()
     {
         // Handle manual match submission
-        if (isset($_POST['manual_match']) && isset($_POST['log_index']) && isset($_POST['order_id'])) {
-            if (wp_verify_nonce($_POST['_wpnonce'], 'manual_match_etransfer')) {
-                $log_id = intval($_POST['log_index']);
-                $order_id = intval($_POST['order_id']);
-                if ($this->process_manual_match($log_id, $order_id)) {
-                    echo '<div class="notice notice-success"><p>' . __('Manual match processed successfully!', 'sportspress-admin-tools') . '</p></div>';
-                }
-                else {
-                    echo '<div class="notice notice-error"><p>' . __('Failed to process manual match.', 'sportspress-admin-tools') . '</p></div>';
-                }
+        if (isset($_POST['manual_match']) && isset($_POST['log_index']) && isset($_POST['order_id'])
+            && wp_verify_nonce($_POST['_wpnonce'], 'manual_match_etransfer')) {
+            $log_id = intval($_POST['log_index']);
+            $order_id = intval($_POST['order_id']);
+            if ($this->process_manual_match($log_id, $order_id)) {
+                echo '<div class="notice notice-success"><p>' . __('Manual match processed successfully!', 'sportspress-admin-tools') . '</p></div>';
+            }
+            else {
+                echo '<div class="notice notice-error"><p>' . __('Failed to process manual match.', 'sportspress-admin-tools') . '</p></div>';
             }
         }
 
         // Handle hide submission
-        if (isset($_POST['hide_log']) && isset($_POST['log_id'])) {
-            if (wp_verify_nonce($_POST['_wpnonce'], 'hide_etransfer_log')) {
-                $hide_log_id = intval($_POST['log_id']);
-                if (SPET_Database::hide_etransfer_log($hide_log_id)) {
-                    echo '<div class="notice notice-success"><p>' . __('Log entry hidden from management page!', 'sportspress-admin-tools') . '</p></div>';
-                }
-                else {
-                    echo '<div class="notice notice-error"><p>' . __('Failed to hide log entry.', 'sportspress-admin-tools') . '</p></div>';
-                }
+        if (isset($_POST['hide_log']) && isset($_POST['log_id'])
+            && wp_verify_nonce($_POST['_wpnonce'], 'hide_etransfer_log')) {
+            $hide_log_id = intval($_POST['log_id']);
+            if (SPET_Database::hide_etransfer_log($hide_log_id)) {
+                echo '<div class="notice notice-success"><p>' . __('Log entry hidden from management page!', 'sportspress-admin-tools') . '</p></div>';
+            }
+            else {
+                echo '<div class="notice notice-error"><p>' . __('Failed to hide log entry.', 'sportspress-admin-tools') . '</p></div>';
             }
         }
 
@@ -121,9 +121,9 @@ class SPET_ETransfer_Admin
             echo '<p>' . __('Error retrieving webhook logs.', 'sportspress-admin-tools') . '</p>';
             return;
         }
-        $unmatched = array_filter($logs, function ($log, $index) {
+        $unmatched = array_filter($logs, function ($log) {
             return !$log->order_id && strpos($log->result, 'No matching order') !== false;
-        }, ARRAY_FILTER_USE_BOTH);
+        });
 
         if (empty($unmatched)) {
             echo '<p>' . __('No unmatched webhooks found.', 'sportspress-admin-tools') . '</p>';
