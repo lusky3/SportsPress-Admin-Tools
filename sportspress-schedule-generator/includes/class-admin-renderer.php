@@ -887,3 +887,202 @@ class SPSG_Admin_Renderer
         </div>
         <?php
     }
+
+    /**
+     * Render generate tab
+     */
+    public function render_generate_tab($config)
+    {
+        $schedule_id = get_transient('spsg_last_schedule_id_' . get_current_user_id());
+        $schedule = $schedule_id ? get_transient('spsg_schedule_' . $schedule_id) : null;
+        $stats = $schedule_id ? get_transient('spsg_schedule_stats_' . $schedule_id) : null;
+
+?>
+        <div class="spsg-generate-section">
+            <h3><?php _e('Generate Schedule', 'sportspress-schedule-generator'); ?></h3>
+            <p><?php _e('Review your configuration and generate the league schedule.', 'sportspress-schedule-generator'); ?></p>
+
+            <div class="spsg-config-summary">
+                <h4><?php _e('Configuration Summary', 'sportspress-schedule-generator'); ?></h4>
+                <ul>
+                    <li><?php printf(__('Season: %s to %s', 'sportspress-schedule-generator'),
+            $config->season_start ? $config->season_start->format('Y-m-d') : __('Not set', 'sportspress-schedule-generator'),
+            $config->season_end ? $config->season_end->format('Y-m-d') : __('Not set', 'sportspress-schedule-generator')
+        ); ?></li>
+                    <li><?php printf(__('Games per team: %d', 'sportspress-schedule-generator'), $config->games_per_team); ?></li>
+                    <li><?php printf(__('Divisions: %d', 'sportspress-schedule-generator'), count($config->divisions ?: array())); ?></li>
+                    <li><?php printf(__('Venues: %d', 'sportspress-schedule-generator'), count($config->venues ?: array())); ?></li>
+                    <li><?php printf(__('Playing days: %s', 'sportspress-schedule-generator'), implode(', ', $config->playing_days ?: array())); ?></li>
+                </ul>
+            </div>
+
+            <div class="spsg-generate-actions">
+                <button type="button" class="button-primary button-large" id="spsg-generate-schedule">
+                    <?php _e('Generate Schedule', 'sportspress-schedule-generator'); ?>
+                </button>
+                <button type="button" class="button" id="spsg-validate-config">
+                    <?php _e('Validate Configuration', 'sportspress-schedule-generator'); ?>
+                </button>
+                <p class="description"><?php _e('Click "Validate Configuration" to check if your settings are correct before generating.', 'sportspress-schedule-generator'); ?></p>
+            </div>
+
+            <div id="spsg-messages"></div>
+
+            <?php $this->render_progress_indicator(); ?>
+
+            <?php if ($schedule && !empty($schedule)): ?>
+                <?php $this->render_schedule_preview($schedule, $stats, $schedule_id); ?>
+            <?php else: ?>
+                <div id="spsg-schedule-preview-placeholder"></div>
+            <?php endif; ?>
+
+            <div id="spsg-export-container"></div>
+        </div>
+
+        <?php $this->render_import_dialog(); ?>
+        <?php
+    }
+
+    /**
+     * Render progress indicator section
+     */
+    private function render_progress_indicator()
+    {
+?>
+            <div id="spsg-progress-container" style="display: none;">
+                <div class="spsg-progress-wrapper">
+                    <h4><?php _e('Generation Progress', 'sportspress-schedule-generator'); ?></h4>
+                    <div class="spsg-progress-bar-container">
+                        <div class="spsg-progress-bar">
+                            <div class="spsg-progress-bar-fill" style="width: 0%;"></div>
+                        </div>
+                        <div class="spsg-progress-percentage">0%</div>
+                    </div>
+                    <div class="spsg-progress-details">
+                        <div class="spsg-progress-phase">
+                            <strong><?php _e('Current Phase:', 'sportspress-schedule-generator'); ?></strong>
+                            <span id="spsg-progress-phase-text"><?php _e('Initializing...', 'sportspress-schedule-generator'); ?></span>
+                        </div>
+                        <div class="spsg-progress-games">
+                            <strong><?php _e('Games Scheduled:', 'sportspress-schedule-generator'); ?></strong>
+                            <span id="spsg-progress-games-text">0 / 0</span>
+                        </div>
+                        <div class="spsg-progress-time">
+                            <strong><?php _e('Estimated Time Remaining:', 'sportspress-schedule-generator'); ?></strong>
+                            <span id="spsg-progress-time-text"><?php _e('Calculating...', 'sportspress-schedule-generator'); ?></span>
+                        </div>
+                    </div>
+                    <div class="spsg-progress-actions">
+                        <button type="button" class="button" id="spsg-cancel-generation">
+                            <?php _e('Cancel Generation', 'sportspress-schedule-generator'); ?>
+                        </button>
+                    </div>
+                </div>
+            </div>
+<?php
+    }
+
+    /**
+     * Render import dialog modal
+     */
+    public function render_import_dialog()
+    {
+?>
+        <dialog id="spsg-import-dialog" class="spsg-modal" aria-labelledby="spsg-import-dialog-title" aria-describedby="spsg-import-dialog-desc">
+            <div class="spsg-modal-overlay" aria-hidden="true"></div>
+            <div class="spsg-modal-content">
+                <div class="spsg-modal-header">
+                    <h2 id="spsg-import-dialog-title"><?php _e('Import to SportsPress', 'sportspress-schedule-generator'); ?></h2>
+                    <button type="button" class="spsg-modal-close" aria-label="<?php esc_attr_e('Close dialog', 'sportspress-schedule-generator'); ?>">&times;</button>
+                </div>
+                <div class="spsg-modal-body">
+                    <p id="spsg-import-dialog-desc" class="description">
+                        <?php _e('Configure how events should be imported into SportsPress. You can preview the import before creating events.', 'sportspress-schedule-generator'); ?>
+                    </p>
+                    <div class="spsg-import-options">
+                        <h3><?php _e('Import Options', 'sportspress-schedule-generator'); ?></h3>
+                        <div class="spsg-form-group">
+                            <span id="spsg-conflict-resolution-label" class="spsg-group-label"><?php _e('Conflict Resolution', 'sportspress-schedule-generator'); ?></span>
+                            <div role="radiogroup" aria-labelledby="spsg-conflict-resolution-label">
+                                <label><input type="radio" name="conflict_resolution" value="skip" checked aria-describedby="spsg-conflict-skip-desc" /> <?php _e('Skip existing events', 'sportspress-schedule-generator'); ?></label><br>
+                                <label><input type="radio" name="conflict_resolution" value="overwrite" aria-describedby="spsg-conflict-overwrite-desc" /> <?php _e('Overwrite existing events', 'sportspress-schedule-generator'); ?></label>
+                            </div>
+                            <p class="description" id="spsg-conflict-skip-desc"><?php _e('How to handle events that already exist with the same date/time/teams. Skip will leave existing events unchanged, while overwrite will update them with new data.', 'sportspress-schedule-generator'); ?></p>
+                        </div>
+                        <div class="spsg-form-group">
+                            <label for="spsg-event-status"><?php _e('Event Status', 'sportspress-schedule-generator'); ?></label>
+                            <select id="spsg-event-status" name="event_status" aria-describedby="spsg-event-status-desc">
+                                <option value="publish"><?php _e('Publish', 'sportspress-schedule-generator'); ?></option>
+                                <option value="draft"><?php _e('Draft', 'sportspress-schedule-generator'); ?></option>
+                                <option value="pending"><?php _e('Pending Review', 'sportspress-schedule-generator'); ?></option>
+                                <option value="future"><?php _e('Future', 'sportspress-schedule-generator'); ?></option>
+                            </select>
+                            <p class="description" id="spsg-event-status-desc"><?php _e('Status for created events. Use "Draft" to review events before publishing.', 'sportspress-schedule-generator'); ?></p>
+                        </div>
+                        <div class="spsg-form-group">
+                            <label for="spsg-import-dialog-league"><?php _e('League (Optional)', 'sportspress-schedule-generator'); ?></label>
+                            <select id="spsg-import-dialog-league" name="league_id" aria-describedby="spsg-import-dialog-league-desc">
+                                <option value=""><?php _e('No league', 'sportspress-schedule-generator'); ?></option>
+                            </select>
+                            <p class="description" id="spsg-import-dialog-league-desc"><?php _e('Assign events to a SportsPress league', 'sportspress-schedule-generator'); ?></p>
+                        </div>
+                        <div class="spsg-form-group">
+                            <label for="spsg-import-season"><?php _e('Season (Optional)', 'sportspress-schedule-generator'); ?></label>
+                            <select id="spsg-import-season" name="season_id" aria-describedby="spsg-import-season-desc">
+                                <option value=""><?php _e('No season', 'sportspress-schedule-generator'); ?></option>
+                            </select>
+                            <p class="description" id="spsg-import-season-desc"><?php _e('Assign events to a SportsPress season', 'sportspress-schedule-generator'); ?></p>
+                        </div>
+                        <div class="spsg-form-group">
+                            <label><input type="checkbox" name="dry_run" id="spsg-dry-run" aria-describedby="spsg-dry-run-desc" /> <?php _e('Preview import without creating events', 'sportspress-schedule-generator'); ?></label>
+                            <p class="description" id="spsg-dry-run-desc"><?php _e('Test the import process without actually creating events. Use this to verify settings before committing.', 'sportspress-schedule-generator'); ?></p>
+                        </div>
+                    </div>
+
+                    <output id="spsg-import-progress" class="spsg-import-progress" style="display: none;" aria-live="polite">
+                        <h3><?php _e('Import Progress', 'sportspress-schedule-generator'); ?></h3>
+                        <progress class="spsg-progress-bar" max="100" value="0" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                            <div class="spsg-progress-bar-fill" style="width: 0%;"></div>
+                        </progress>
+                        <p class="spsg-progress-text">
+                            <?php _e('Importing game', 'sportspress-schedule-generator'); ?>
+                            <span id="spsg-import-current">0</span>
+                            <?php _e('of', 'sportspress-schedule-generator'); ?>
+                            <span id="spsg-import-total">0</span>
+                        </p>
+                        <button type="button" class="button" id="spsg-cancel-import"><?php _e('Cancel Import', 'sportspress-schedule-generator'); ?></button>
+                    </output>
+                    <output id="spsg-import-results" class="spsg-import-results" style="display: none;" aria-live="polite">
+                        <h3><?php _e('Import Results', 'sportspress-schedule-generator'); ?></h3>
+                        <div class="spsg-results-summary">
+                            <div class="spsg-result-stat spsg-result-success">
+                                <span class="spsg-result-label"><?php _e('Imported:', 'sportspress-schedule-generator'); ?></span>
+                                <span class="spsg-result-value" id="spsg-imported-count" aria-label="<?php esc_attr_e('Number of events imported', 'sportspress-schedule-generator'); ?>">0</span>
+                            </div>
+                            <div class="spsg-result-stat spsg-result-warning">
+                                <span class="spsg-result-label"><?php _e('Overwritten:', 'sportspress-schedule-generator'); ?></span>
+                                <span class="spsg-result-value" id="spsg-overwritten-count" aria-label="<?php esc_attr_e('Number of events overwritten', 'sportspress-schedule-generator'); ?>">0</span>
+                            </div>
+                            <div class="spsg-result-stat spsg-result-info">
+                                <span class="spsg-result-label"><?php _e('Skipped:', 'sportspress-schedule-generator'); ?></span>
+                                <span class="spsg-result-value" id="spsg-skipped-count" aria-label="<?php esc_attr_e('Number of events skipped', 'sportspress-schedule-generator'); ?>">0</span>
+                            </div>
+                            <div class="spsg-result-stat spsg-result-error">
+                                <span class="spsg-result-label"><?php _e('Failed:', 'sportspress-schedule-generator'); ?></span>
+                                <span class="spsg-result-value" id="spsg-failed-count" aria-label="<?php esc_attr_e('Number of events failed', 'sportspress-schedule-generator'); ?>">0</span>
+                            </div>
+                        </div>
+                        <div id="spsg-import-errors" class="spsg-import-errors" style="display: none;">
+                            <h4><?php _e('Errors:', 'sportspress-schedule-generator'); ?></h4>
+                            <ul id="spsg-error-list"></ul>
+                        </div>
+                    </output>
+                </div>
+                <div class="spsg-modal-footer">
+                    <button type="button" class="button button-primary" id="spsg-start-import"><?php _e('Start Import', 'sportspress-schedule-generator'); ?></button>
+                    <button type="button" class="button" id="spsg-close-import-dialog"><?php _e('Cancel', 'sportspress-schedule-generator'); ?></button>
+                </div>
+            </div>
+        </dialog>
+        <?php
+    }
