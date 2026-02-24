@@ -144,7 +144,7 @@ class SPET_ETransfer_Automation
         );
     }
 
-    private function find_matching_order($payment_data)
+    private function find_matching_order(&$payment_data)
     {
         // Strategy 1: Email match
         if (!empty($payment_data['customer_email'])) {
