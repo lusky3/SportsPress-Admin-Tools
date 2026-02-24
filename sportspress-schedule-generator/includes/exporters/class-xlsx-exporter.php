@@ -229,8 +229,9 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface
      */
     public function get_format()
     {
-        return 'xlsx';
+        return 'XLSX';
     }
+
 
     /**
      * Get format name

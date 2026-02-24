@@ -497,12 +497,13 @@ class SPSG_Schedule_Engine
     /**
      * Log message
      */
-    private function log($message, $level = 'info')
+    private function log($message)
     {
         if (get_option('spsg_enable_debug_logging', '0') === '1') {
             error_log(sprintf('[SPSG Engine] %s', $message));
         }
     }
+
 
     /**
      * Get generation statistics

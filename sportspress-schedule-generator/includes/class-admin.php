@@ -17,6 +17,14 @@ class SPSG_Admin
 {
 
     /**
+     * Duplicated string constants
+     */
+    const MSG_INSUFFICIENT_PERMISSIONS = 'Insufficient permissions';
+    const LABEL_IMPORT_LEAGUE = 'Import League Structure';
+    const LABEL_IMPORT_SCHEDULE = 'Import Schedule';
+    const MSG_NO_CHANGES = 'No changes recorded yet';
+
+    /**
      * Configuration manager instance
      */
     private $config_manager;
@@ -445,22 +453,22 @@ class SPSG_Admin
                                             window.location.href = saveResponse.data.redirect_url;
                                         } else {
                                             alert("Error saving: " + saveResponse.data);
-                                            $button.prop("disabled", false).text("' . esc_js(__('Import League Structure', 'sportspress-schedule-generator')) . '");
+                                            $button.prop("disabled", false).text("' . esc_js(__(self::LABEL_IMPORT_LEAGUE, 'sportspress-schedule-generator')) . '");
                                         }
                                     },
                                     error: function() {
                                         alert("Failed to save imported data. Please try again.");
-                                        $button.prop("disabled", false).text("' . esc_js(__('Import League Structure', 'sportspress-schedule-generator')) . '");
+                                        $button.prop("disabled", false).text("' . esc_js(__(self::LABEL_IMPORT_LEAGUE, 'sportspress-schedule-generator')) . '");
                                     }
                                 });
                             } else {
                                 alert("Error: " + response.data);
-                                $button.prop("disabled", false).text("' . esc_js(__('Import League Structure', 'sportspress-schedule-generator')) . '");
+                                $button.prop("disabled", false).text("' . esc_js(__(self::LABEL_IMPORT_LEAGUE, 'sportspress-schedule-generator')) . '");
                             }
                         },
                         error: function() {
                             alert("Failed to import league. Please try again.");
-                            $button.prop("disabled", false).text("' . esc_js(__('Import League Structure', 'sportspress-schedule-generator')) . '");
+                            $button.prop("disabled", false).text("' . esc_js(__(self::LABEL_IMPORT_LEAGUE, 'sportspress-schedule-generator')) . '");
                         }
                     });
                 });
@@ -732,7 +740,7 @@ class SPSG_Admin
                     // Footer
                     html += \'<div style="padding: 15px 20px; border-top: 1px solid #ddd; text-align: right; background: #f9f9f9;">\';
                     html += \'<button type="button" class="button" id="spsg-cancel-venue-import">' . esc_js(__('Cancel', 'sportspress-schedule-generator')) . '</button> \';
-                    html += \'<button type="button" class="button button-primary" id="spsg-confirm-venue-import">' . esc_js(__('Import Schedule', 'sportspress-schedule-generator')) . '</button>\';
+                    html += \'<button type="button" class="button button-primary" id="spsg-confirm-venue-import">' . esc_js(__(self::LABEL_IMPORT_SCHEDULE, 'sportspress-schedule-generator')) . '</button>\';
                     html += \'</div>\';
                     
                     html += \'</div></div>\';
@@ -788,12 +796,12 @@ class SPSG_Admin
                                     location.reload(); // Reload to show updated data
                                 } else {
                                     alert("Error: " + response.data);
-                                    $btn.prop("disabled", false).text("' . esc_js(__('Import Schedule', 'sportspress-schedule-generator')) . '");
+                                    $btn.prop("disabled", false).text("' . esc_js(__(self::LABEL_IMPORT_SCHEDULE, 'sportspress-schedule-generator')) . '");
                                 }
                             },
                             error: function() {
                                 alert("' . esc_js(__('Failed to import schedule. Please try again.', 'sportspress-schedule-generator')) . '");
-                                $btn.prop("disabled", false).text("' . esc_js(__('Import Schedule', 'sportspress-schedule-generator')) . '");
+                                $btn.prop("disabled", false).text("' . esc_js(__(self::LABEL_IMPORT_SCHEDULE, 'sportspress-schedule-generator')) . '");
                             }
                         });
                     });
@@ -1519,7 +1527,7 @@ class SPSG_Admin
                                 var history = response.data.history;
                                 
                                 if (history.length === 0) {
-                                    $content.html(\'<p class="description">\' + (response.data.message || "' . esc_js(__('No changes recorded yet', 'sportspress-schedule-generator')) . '") + \'</p>\');
+                                    $content.html(\'<p class="description">\' + (response.data.message || "' . esc_js(__(self::MSG_NO_CHANGES, 'sportspress-schedule-generator')) . '") + \'</p>\');
                                     $("#spsg-clear-change-history").hide();
                                 } else {
                                     // Show clear button when history exists
@@ -1592,7 +1600,7 @@ class SPSG_Admin
                                 alert(response.data.message || "' . esc_js(__('Change history cleared successfully', 'sportspress-schedule-generator')) . '");
                                 
                                 // Refresh history display (will show empty)
-                                $("#spsg-change-history-content").html(\'<p class="description">\' + "' . esc_js(__('No changes recorded yet', 'sportspress-schedule-generator')) . '" + \'</p>\');
+                                $("#spsg-change-history-content").html(\'<p class="description">\' + "' . esc_js(__(self::MSG_NO_CHANGES, 'sportspress-schedule-generator')) . '" + \'</p>\');
                                 
                                 // Hide clear button
                                 $button.hide();
@@ -2143,7 +2151,7 @@ class SPSG_Admin
             }
 ?>
                             </select>
-                            <button type="button" class="button" id="spsg-import-league-btn"><?php _e('Import League Structure', 'sportspress-schedule-generator'); ?></button>
+                            <button type="button" class="button" id="spsg-import-league-btn"><?php _e(self::LABEL_IMPORT_LEAGUE, 'sportspress-schedule-generator'); ?></button>
                             <p class="description">
                                 <?php _e('Import teams and divisions from a SportsPress league. This will create multiple division blocks with all teams from the league\'s child divisions.', 'sportspress-schedule-generator'); ?>
                                 <br>
@@ -2868,7 +2876,7 @@ class SPSG_Admin
                 <?php $this->render_schedule_preview($schedule, $stats, $schedule_id); ?>
             <?php
         else: ?>
-                <div id="spsg-schedule-preview-container"></div>
+                <div id="spsg-schedule-preview-placeholder"></div>
             <?php
         endif; ?>
             
@@ -2942,12 +2950,12 @@ class SPSG_Admin
                         
                         <!-- League Selection -->
                         <div class="spsg-form-group">
-                            <label for="spsg-import-league"><?php _e('League (Optional)', 'sportspress-schedule-generator'); ?></label>
-                            <select id="spsg-import-league" name="league_id" aria-describedby="spsg-import-league-desc">
+                            <label for="spsg-import-dialog-league"><?php _e('League (Optional)', 'sportspress-schedule-generator'); ?></label>
+                            <select id="spsg-import-dialog-league" name="league_id" aria-describedby="spsg-import-dialog-league-desc">
                                 <option value=""><?php _e('No league', 'sportspress-schedule-generator'); ?></option>
                                 <!-- Populated via AJAX -->
                             </select>
-                            <p class="description" id="spsg-import-league-desc">
+                            <p class="description" id="spsg-import-dialog-league-desc">
                                 <?php _e('Assign events to a SportsPress league', 'sportspress-schedule-generator'); ?>
                             </p>
                         </div>
@@ -3355,7 +3363,7 @@ class SPSG_Admin
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($schedule as $index => $game):
+                    <?php foreach ($schedule as $game):
             $is_inter_division = !empty($game['is_inter_division']);
             $row_class = $is_inter_division ? 'spsg-inter-division-game' : '';
 ?>
@@ -3397,7 +3405,7 @@ class SPSG_Admin
         check_ajax_referer('spsg_admin_action', 'spsg_nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
         $config_data = $this->sanitize_form_data($_POST);
@@ -3421,7 +3429,7 @@ class SPSG_Admin
         check_ajax_referer('spsg_admin_action', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
         $config_id = sanitize_text_field($_POST['config_id'] ?? '');
@@ -3446,7 +3454,7 @@ class SPSG_Admin
         check_ajax_referer('spsg_admin_action', 'spsg_nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
         $config_data = $this->sanitize_form_data($_POST);
@@ -3479,7 +3487,7 @@ class SPSG_Admin
         check_ajax_referer('spsg_import_league', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
         $league_id = intval($_POST['league_id']);
@@ -3504,7 +3512,7 @@ class SPSG_Admin
         check_ajax_referer('spsg_save_imported_league', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
         $config_id = isset($_POST['config_id']) ? sanitize_text_field($_POST['config_id']) : '';
@@ -3539,7 +3547,13 @@ class SPSG_Admin
             $teams = array();
             if (!empty($division['teams'])) {
                 foreach ($division['teams'] as $team) {
-                    $teams[] = is_object($team) ? $team->name : (is_array($team) ? $team['name'] : $team);
+                    if (is_object($team)) {
+                        $teams[] = $team->name;
+                    } elseif (is_array($team)) {
+                        $teams[] = $team['name'];
+                    } else {
+                        $teams[] = $team;
+                    }
                 }
             }
 
@@ -3580,7 +3594,7 @@ class SPSG_Admin
         check_ajax_referer('spsg_get_available_venues', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
         $venues = SPSGSportsPressIntegration::get_venues();
@@ -3599,7 +3613,7 @@ class SPSG_Admin
         check_ajax_referer('spsg_import_venues', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
         $venues = SPSGSportsPressIntegration::get_venues();
@@ -3615,7 +3629,7 @@ class SPSG_Admin
         check_ajax_referer('spsg_delete_config', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
         $config_id = sanitize_text_field($_POST['config_id'] ?? '');
@@ -3643,7 +3657,7 @@ class SPSG_Admin
         check_ajax_referer('spsg_clone_config', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
         $config_id = sanitize_text_field($_POST['config_id'] ?? '');
@@ -3693,7 +3707,7 @@ class SPSG_Admin
         check_ajax_referer('spsg_preview_import', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
         // Get JSON data from POST
@@ -3723,7 +3737,7 @@ class SPSG_Admin
         check_ajax_referer('spsg_load_sp_teams', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
         $division_id = intval($_POST['division_id'] ?? 0);
@@ -3752,7 +3766,7 @@ class SPSG_Admin
         check_ajax_referer('spsg_load_preset', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
         $preset_name = sanitize_text_field($_POST['preset_name'] ?? '');
@@ -3786,7 +3800,7 @@ class SPSG_Admin
         check_ajax_referer('spsg_get_change_history', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
         $config_id = sanitize_text_field($_POST['config_id'] ?? '');
@@ -3802,7 +3816,7 @@ class SPSG_Admin
         if (empty($history)) {
             wp_send_json_success(array(
                 'history' => array(),
-                'message' => __('No changes recorded yet', 'sportspress-schedule-generator')
+                'message' => __(self::MSG_NO_CHANGES, 'sportspress-schedule-generator')
             ));
         }
 
@@ -3832,7 +3846,7 @@ class SPSG_Admin
         check_ajax_referer('spsg_get_generation_progress', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
         $user_id = get_current_user_id();
@@ -3912,7 +3926,7 @@ class SPSG_Admin
         check_ajax_referer('spsg_cancel_generation', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
         $user_id = get_current_user_id();
@@ -3944,7 +3958,7 @@ class SPSG_Admin
         check_ajax_referer('spsg_get_import_dialog_data', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
         // Check if SportsPress is available
@@ -3996,7 +4010,7 @@ class SPSG_Admin
         check_ajax_referer('spsg_get_import_progress', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
         $user_id = get_current_user_id();
@@ -4027,7 +4041,7 @@ class SPSG_Admin
         check_ajax_referer('spsg_upload_venue_csv', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
         if (!isset($_FILES['csv_file'])) {
@@ -4086,7 +4100,7 @@ class SPSG_Admin
         check_ajax_referer('spsg_import_venue_schedule', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
         $schedules = $_POST['schedules'] ?? array();
@@ -4165,7 +4179,7 @@ class SPSG_Admin
         check_ajax_referer('spsg_get_export_formats', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
         $formats = array(
@@ -4204,7 +4218,7 @@ class SPSG_Admin
         check_ajax_referer('spsg_clear_change_history', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Insufficient permissions', 'sportspress-schedule-generator'));
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
         // Call configuration manager to clear change history

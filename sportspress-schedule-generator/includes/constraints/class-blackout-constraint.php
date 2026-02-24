@@ -50,7 +50,7 @@ class SPSG_Blackout_Constraint extends SPSG_Abstract_Constraint
                 $this->log(sprintf('Game blocked by blackout date: %s', $blackout->format('Y-m-d')));
 
                 // Track this as a missed game for makeup scheduling
-                $this->track_missed_game($game, $blackout, $config);
+                $this->track_missed_game($game, $blackout);
 
                 return new WP_Error('blackout_date', sprintf(
                     __('Cannot schedule game on blackout date: %s', 'sportspress-schedule-generator'),
@@ -65,9 +65,8 @@ class SPSG_Blackout_Constraint extends SPSG_Abstract_Constraint
     /**
      * Track missed game for makeup scheduling
      */
-    private function track_missed_game($game, $blackout_date, $config)
+    private function track_missed_game($game, $blackout_date)
     {
-        $day_of_week = $blackout_date->format('w'); // 0 = Sunday, 1 = Monday, etc.
         $day_name = $blackout_date->format('l');
 
         $makeup_key = sprintf('%s_%s_%s',
@@ -130,7 +129,7 @@ class SPSG_Blackout_Constraint extends SPSG_Abstract_Constraint
                 ));
             }
             else {
-                $this->log(sprintf('Could not find makeup date for %s', $makeup_key), 'warning');
+                $this->log(sprintf('Could not find makeup date for %s', $makeup_key));
             }
         }
 
@@ -157,7 +156,7 @@ class SPSG_Blackout_Constraint extends SPSG_Abstract_Constraint
                 // Find the next alternative day
                 $makeup_date = $this->find_next_alternative_day($current_date, $alternative_days, $config);
 
-                if ($makeup_date && $this->is_date_available($makeup_date, $makeup_game, $schedule, $config)) {
+                if ($makeup_date && $this->is_date_available($makeup_date, $makeup_game, $schedule)) {
                     return $makeup_date;
                 }
             }
@@ -219,7 +218,7 @@ class SPSG_Blackout_Constraint extends SPSG_Abstract_Constraint
     /**
      * Check if date/time is available for scheduling
      */
-    private function is_date_available($date, $makeup_game, $schedule, $config)
+    private function is_date_available($date, $makeup_game, $schedule)
     {
         $date_string = $date->format('Y-m-d');
         $time_slot = $makeup_game['time_slot'];
@@ -260,7 +259,7 @@ class SPSG_Blackout_Constraint extends SPSG_Abstract_Constraint
 
             if (in_array($day_name, $alternative_days) &&
             !$this->is_blackout_date($current_date, $config) &&
-            $this->is_date_available($current_date, $makeup_game, $schedule, $config)) {
+            $this->is_date_available($current_date, $makeup_game, $schedule)) {
                 return $current_date;
             }
 

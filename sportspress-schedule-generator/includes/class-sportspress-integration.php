@@ -341,7 +341,7 @@ class SPSG_Sports_Press_Integration
     /**
      * Create SportsPress event from game
      */
-    public static function create_event_from_game($game, $config)
+    public static function create_event_from_game($game)
     {
         if (!self::is_sportspress_active()) {
             return new WP_Error('sportspress_inactive', __('SportsPress is not active', 'sportspress-schedule-generator'));

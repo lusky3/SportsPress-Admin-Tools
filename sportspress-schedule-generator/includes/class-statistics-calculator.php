@@ -43,7 +43,7 @@ class SPSG_Statistics_Calculator
         );
 
         // Add imbalance detection
-        $stats['imbalances'] = $this->detect_imbalances($stats, $config);
+        $stats['imbalances'] = $this->detect_imbalances($stats);
 
         return $stats;
     }
@@ -247,10 +247,9 @@ class SPSG_Statistics_Calculator
      * Detect imbalances in the schedule
      * 
      * @param array $stats Calculated statistics
-     * @param object $config Configuration object (optional)
      * @return array Array of imbalance issues with severity
      */
-    private function detect_imbalances($stats, $config = null)
+    private function detect_imbalances($stats)
     {
         $issues = array();
 

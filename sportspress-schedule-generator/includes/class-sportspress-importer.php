@@ -238,7 +238,7 @@ class SPSG_Sports_Press_Importer
                 }
 
                 // Create event using existing integration helper
-                $event_id = SPSGSportsPressIntegration::create_event_from_game($game, null);
+                $event_id = SPSGSportsPressIntegration::create_event_from_game($game);
 
                 if (!is_wp_error($event_id)) {
                     // Set season if provided
