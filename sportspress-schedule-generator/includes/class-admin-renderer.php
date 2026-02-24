@@ -477,3 +477,236 @@ class SPSG_Admin_Renderer
         }
         return $all_teams;
     }
+
+    /**
+     * Render division row
+     */
+    public function render_division_row($division, $index)
+    {
+        $sp_available = SPSGSportsPressIntegration::is_sportspress_active();
+        $teams = is_array($division['teams'] ?? '') ? $division['teams'] : explode("\n", trim($division['teams'] ?? ''));
+        $teams = array_filter($teams);
+?>
+        <div class="spsg-division-row" data-index="<?php echo esc_attr($index); ?>">
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><?php _e('Division Name', 'sportspress-schedule-generator'); ?></th>
+                    <td>
+                        <input type="text" name="divisions[<?php echo esc_attr($index); ?>][name]" value="<?php echo esc_attr($division['name'] ?? ''); ?>" class="regular-text" required />
+                        <button type="button" class="button spsg-remove-division"><?php _e('Remove', 'sportspress-schedule-generator'); ?></button>
+                    </td>
+                </tr>
+                <?php if ($sp_available): ?>
+                <tr>
+                    <th scope="row"><?php _e('Load from SportsPress', 'sportspress-schedule-generator'); ?></th>
+                    <td>
+                        <select class="spsg-sp-division-selector regular-text" data-division-index="<?php echo esc_attr($index); ?>">
+                            <option value=""><?php _e('Select a SportsPress division...', 'sportspress-schedule-generator'); ?></option>
+                            <?php
+            $sp_leagues = SPSGSportsPressIntegration::get_leagues();
+            foreach ($sp_leagues as $league) {
+                echo '<option value="' . esc_attr($league->id) . '">' . esc_html($league->name) . '</option>';
+            }
+?>
+                        </select>
+                        <button type="button" class="button spsg-load-sp-teams" data-division-index="<?php echo esc_attr($index); ?>"><?php _e('Load Teams', 'sportspress-schedule-generator'); ?></button>
+                        <span class="spinner" style="float: none; margin: 0 10px;"></span>
+                        <p class="description"><?php _e('Load teams from a single SportsPress league/division into this division block.', 'sportspress-schedule-generator'); ?></p>
+                    </td>
+                </tr>
+                <?php endif; ?>
+                <tr>
+                    <th scope="row"><?php _e('Teams', 'sportspress-schedule-generator'); ?></th>
+                    <td>
+                        <div class="spsg-team-selection" id="spsg-team-selection-<?php echo esc_attr($index); ?>">
+                            <div class="spsg-team-list" id="spsg-team-list-<?php echo esc_attr($index); ?>">
+                                <?php if (!empty($teams)): ?>
+                                    <?php foreach ($teams as $team): ?>
+                                    <div class="spsg-team-item">
+                                        <label>
+                                            <input type="checkbox" name="divisions[<?php echo esc_attr($index); ?>][teams][]" value="<?php echo esc_attr($team); ?>" checked />
+                                            <?php echo esc_html($team); ?>
+                                        </label>
+                                        <button type="button" class="button-link spsg-remove-team" style="color: #b32d2e;"><?php _e('Remove', 'sportspress-schedule-generator'); ?></button>
+                                    </div>
+                                    <?php endforeach; ?>
+                                <?php else: ?>
+                                    <p class="description"><?php _e('No teams added yet. Load from SportsPress or add manually below.', 'sportspress-schedule-generator'); ?></p>
+                                <?php endif; ?>
+                            </div>
+                            <div class="spsg-team-actions">
+                                <button type="button" class="button spsg-select-all-teams" data-division-index="<?php echo esc_attr($index); ?>"><?php _e('Select All', 'sportspress-schedule-generator'); ?></button>
+                                <button type="button" class="button spsg-deselect-all-teams" data-division-index="<?php echo esc_attr($index); ?>"><?php _e('Deselect All', 'sportspress-schedule-generator'); ?></button>
+                            </div>
+                        </div>
+                        <div class="spsg-manual-team-entry" style="margin-top: 15px;">
+                            <input type="text" class="regular-text spsg-manual-team-name" placeholder="<?php _e('Enter team name', 'sportspress-schedule-generator'); ?>" data-division-index="<?php echo esc_attr($index); ?>" />
+                            <button type="button" class="button spsg-add-manual-team" data-division-index="<?php echo esc_attr($index); ?>"><?php _e('Add Manual Team', 'sportspress-schedule-generator'); ?></button>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+        </div>
+        <?php
+    }
+
+    /**
+     * Render venues and times tab
+     */
+    public function render_venues_times_tab($config)
+    {
+        $sp_available = SPSGSportsPressIntegration::is_sportspress_active();
+?>
+        <div class="spsg-venues-section">
+            <h3><?php _e('Playing Days & Time Slots', 'sportspress-schedule-generator'); ?></h3>
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><?php _e('Playing Days', 'sportspress-schedule-generator'); ?></th>
+                    <td>
+                        <?php
+        $days = array('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday');
+        $selected_days = $config->playing_days ?: array();
+        foreach ($days as $day) {
+            $checked = in_array($day, $selected_days) ? 'checked' : '';
+            echo '<label><input type="checkbox" name="playing_days[]" value="' . esc_attr($day) . '" ' . $checked . '> ' . esc_html(ucfirst($day)) . '</label><br>';
+        }
+?>
+                    </td>
+                </tr>
+            </table>
+
+            <h4><?php _e('Time Slots by Day', 'sportspress-schedule-generator'); ?></h4>
+            <div id="spsg-time-slots-container">
+                <?php
+        foreach ($days as $day) {
+            $slots = $config->time_slots[$day] ?? array();
+?>
+                    <div class="spsg-day-time-slots" data-day="<?php echo esc_attr($day); ?>">
+                        <h5><?php echo esc_html(ucfirst($day)); ?></h5>
+                        <textarea name="time_slots[<?php echo esc_attr($day); ?>]" rows="3" class="regular-text" placeholder="<?php _e('Enter time slots, one per line (e.g., 19:00)', 'sportspress-schedule-generator'); ?>"><?php echo esc_textarea(implode("\n", $slots)); ?></textarea>
+                    </div>
+                    <?php
+        }
+?>
+            </div>
+        </div>
+
+        <div class="spsg-venues-section">
+            <div class="spsg-csv-import">
+                <h3><?php _e('Import Venue Schedule from CSV', 'sportspress-schedule-generator'); ?></h3>
+                <p class="description"><?php _e('Upload a CSV file with week-by-week venue availability. This is useful when venues and time slots change weekly.', 'sportspress-schedule-generator'); ?></p>
+                <div class="spsg-csv-upload-section">
+                    <input type="file" id="spsg-venue-csv-file" accept=".csv" style="display: none;" />
+                    <button type="button" class="button" id="spsg-upload-venue-csv-btn"><?php _e('Choose CSV File', 'sportspress-schedule-generator'); ?></button>
+                    <span id="spsg-csv-filename" style="margin-left: 10px; color: #666;"></span>
+                    <button type="button" class="button button-primary" id="spsg-preview-venue-csv-btn" style="display: none;"><?php _e('Preview & Import', 'sportspress-schedule-generator'); ?></button>
+                </div>
+                <div class="spsg-csv-format-help" style="margin-top: 10px;">
+                    <details>
+                        <summary style="cursor: pointer; color: #2271b1;"><?php _e('CSV Format Help', 'sportspress-schedule-generator'); ?></summary>
+                        <div style="margin-top: 10px; padding: 10px; background: #f9f9f9; border-left: 4px solid #2271b1;">
+                            <p><strong><?php _e('Required columns:', 'sportspress-schedule-generator'); ?></strong> Week Start Date, Venue Name, Time Slots</p>
+                            <p><strong><?php _e('Example:', 'sportspress-schedule-generator'); ?></strong></p>
+                            <pre style="background: #fff; padding: 10px; overflow-x: auto;">Week Start Date,Venue Name,Time Slots
+2024-01-01,Arena A,18:00-23:00
+2024-01-01,Arena B,18:45-22:45
+2024-01-08,Arena A,6:00-12:00
+2024-01-08,Arena D,14:30, 16:00, 17:30
+2024-01-15,Arena C,9:00</pre>
+                            <p><strong><?php _e('Time Slot Formats:', 'sportspress-schedule-generator'); ?></strong></p>
+                            <ul>
+                                <li><?php _e('Range: 18:00-23:00 (generates hourly slots from start to end)', 'sportspress-schedule-generator'); ?></li>
+                                <li><?php _e('List: 18:00, 19:00, 20:00 (comma-separated specific times)', 'sportspress-schedule-generator'); ?></li>
+                                <li><?php _e('Single: 18:00 (one time slot)', 'sportspress-schedule-generator'); ?></li>
+                                <li><?php _e('Any time from 0:00 to 23:59 is supported', 'sportspress-schedule-generator'); ?></li>
+                            </ul>
+                        </div>
+                    </details>
+                </div>
+            </div>
+            <hr>
+
+            <?php if ($sp_available): ?>
+            <div class="spsg-sportspress-import">
+                <h3><?php _e('Import Venues from SportsPress', 'sportspress-schedule-generator'); ?></h3>
+                <button type="button" class="button" id="spsg-import-venues-btn"><?php _e('Select Venues to Import', 'sportspress-schedule-generator'); ?></button>
+                <p class="description"><?php _e('Choose which venues to import from SportsPress', 'sportspress-schedule-generator'); ?></p>
+            </div>
+            <hr>
+            <?php endif; ?>
+
+            <h3><?php _e('Venues', 'sportspress-schedule-generator'); ?></h3>
+            <div id="spsg-venues-container">
+                <?php
+        if (!empty($config->venues)) {
+            foreach ($config->venues as $index => $venue) {
+                $this->render_venue_row($venue, $index);
+            }
+        }
+        else {
+            $this->render_venue_row(array(), 0);
+        }
+?>
+            </div>
+            <button type="button" class="button" id="spsg-add-venue"><?php _e('Add Venue', 'sportspress-schedule-generator'); ?></button>
+        </div>
+
+        <p class="submit">
+            <input type="submit" name="submit" class="button-primary" value="<?php _e(self::LABEL_SAVE_CONFIGURATION, 'sportspress-schedule-generator'); ?>" />
+        </p>
+        <?php
+    }
+
+    /**
+     * Render venue row
+     */
+    public function render_venue_row($venue, $index)
+    {
+        $venue_id = $venue['id'] ?? 'venue_' . $index;
+        $days = array('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday');
+?>
+        <div class="spsg-venue-row" data-index="<?php echo esc_attr($index); ?>">
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><?php _e('Venue Name', 'sportspress-schedule-generator'); ?></th>
+                    <td>
+                        <input type="text" name="venues[<?php echo esc_attr($index); ?>][name]" value="<?php echo esc_attr($venue['name'] ?? ''); ?>" class="regular-text" required />
+                        <input type="hidden" name="venues[<?php echo esc_attr($index); ?>][id]" value="<?php echo esc_attr($venue_id); ?>" />
+                        <button type="button" class="button spsg-remove-venue"><?php _e('Remove', 'sportspress-schedule-generator'); ?></button>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php _e('Available Days & Times', 'sportspress-schedule-generator'); ?></th>
+                    <td>
+                        <div class="spsg-venue-timeslots">
+                            <?php foreach ($days as $day):
+            $venue_timeslots = $venue['timeslots'][$day] ?? array();
+?>
+                            <div class="spsg-venue-day-timeslots">
+                                <label>
+                                    <input type="checkbox" class="spsg-venue-day-toggle" data-day="<?php echo esc_attr($day); ?>" <?php checked(!empty($venue_timeslots)); ?> />
+                                    <strong><?php echo esc_html(ucfirst($day)); ?></strong>
+                                </label>
+                                <div class="spsg-venue-day-times" style="<?php echo empty($venue_timeslots) ? 'display:none;' : ''; ?>">
+                                    <textarea name="venue_timeslots[<?php echo esc_attr($venue_id); ?>][<?php echo esc_attr($day); ?>]" rows="2" class="regular-text" placeholder="<?php _e('Enter times (e.g., 19:00, 20:00)', 'sportspress-schedule-generator'); ?>"><?php echo esc_textarea(is_array($venue_timeslots) ? implode("\n", $venue_timeslots) : ''); ?></textarea>
+                                </div>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <p class="description"><?php _e('Select which days and times this venue is available. Leave unchecked if venue is available all configured times.', 'sportspress-schedule-generator'); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php _e('Venue Blackout Dates', 'sportspress-schedule-generator'); ?></th>
+                    <td>
+                        <textarea name="venue_blackout_dates[<?php echo esc_attr($venue_id); ?>]" rows="3" class="large-text" placeholder="<?php _e('Enter dates when this venue is unavailable (e.g., 2024-01-15, 2024-02-20)', 'sportspress-schedule-generator'); ?>"><?php
+        $venue_blackouts = $venue['blackout_dates'] ?? array();
+        echo esc_textarea(is_array($venue_blackouts) ? implode("\n", $venue_blackouts) : $venue_blackouts);
+?></textarea>
+                        <p class="description"><?php _e('Specific dates when this venue is unavailable. Enter one date per line in YYYY-MM-DD format. This is useful when a venue is temporarily closed or unavailable on specific days.', 'sportspress-schedule-generator'); ?></p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+        <?php
+    }
