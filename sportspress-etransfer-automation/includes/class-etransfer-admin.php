@@ -77,7 +77,9 @@ class SPET_ETransfer_Admin
         // Handle manual match submission
         if (isset($_POST['manual_match']) && isset($_POST['log_index']) && isset($_POST['order_id'])) {
             if (wp_verify_nonce($_POST['_wpnonce'], 'manual_match_etransfer')) {
-                if ($this->process_manual_match($_POST['log_index'], $_POST['order_id'])) {
+                $log_id = intval($_POST['log_index']);
+                $order_id = intval($_POST['order_id']);
+                if ($this->process_manual_match($log_id, $order_id)) {
                     echo '<div class="notice notice-success"><p>' . __('Manual match processed successfully!', 'sportspress-admin-tools') . '</p></div>';
                 }
                 else {
@@ -89,7 +91,8 @@ class SPET_ETransfer_Admin
         // Handle hide submission
         if (isset($_POST['hide_log']) && isset($_POST['log_id'])) {
             if (wp_verify_nonce($_POST['_wpnonce'], 'hide_etransfer_log')) {
-                if (SPET_Database::hide_etransfer_log($_POST['log_id'])) {
+                $hide_log_id = intval($_POST['log_id']);
+                if (SPET_Database::hide_etransfer_log($hide_log_id)) {
                     echo '<div class="notice notice-success"><p>' . __('Log entry hidden from management page!', 'sportspress-admin-tools') . '</p></div>';
                 }
                 else {
@@ -99,31 +102,28 @@ class SPET_ETransfer_Admin
         }
 
 ?>
-<div class="wrap">
-    <h1>
-        <?php _e('e-Transfer Webhook Management', 'sportspress-admin-tools'); ?>
-    </h1>
-
-    <h2>
-        <?php _e('Unmatched Webhooks', 'sportspress-admin-tools'); ?>
-    </h2>
-    <?php $this->display_unmatched_webhooks(); ?>
-
-    <h2>
-        <?php _e('All Webhook Activity', 'sportspress-admin-tools'); ?>
-    </h2>
-    <?php $this->display_all_webhooks(); ?>
-</div>
-<?php
+        <div class="wrap">
+            <h1><?php _e('e-Transfer Webhook Management', 'sportspress-admin-tools'); ?></h1>
+            
+            <h2><?php _e('Unmatched Webhooks', 'sportspress-admin-tools'); ?></h2>
+            <?php $this->display_unmatched_webhooks(); ?>
+            
+            <h2><?php _e('All Webhook Activity', 'sportspress-admin-tools'); ?></h2>
+            <?php $this->display_all_webhooks(); ?>
+        </div>
+        <?php
     }
 
     private function display_unmatched_webhooks()
     {
-        $unmatched = SPET_Database::get_unmatched_webhooks();
-        if ($unmatched === false) {
-            echo '<p>' . __('Error retrieving unmatched webhooks.', 'sportspress-admin-tools') . '</p>';
+        $logs = SPET_Database::get_etransfer_logs();
+        if ($logs === false) {
+            echo '<p>' . __('Error retrieving webhook logs.', 'sportspress-admin-tools') . '</p>';
             return;
         }
+        $unmatched = array_filter($logs, function ($log, $index) {
+            return !$log->order_id && strpos($log->result, 'No matching order') !== false;
+        }, ARRAY_FILTER_USE_BOTH);
 
         if (empty($unmatched)) {
             echo '<p>' . __('No unmatched webhooks found.', 'sportspress-admin-tools') . '</p>';
@@ -139,45 +139,47 @@ class SPET_ETransfer_Admin
         echo '<th>' . __('Match to Order', 'sportspress-admin-tools') . '</th>';
         echo '</tr></thead><tbody>';
 
-        foreach ($unmatched as $log) {
-            echo '<tr>';
-            echo '<td>' . esc_html($log->timestamp) . '</td>';
-            echo '<td>' . esc_html($log->from_name) . '<br><small>' . esc_html($log->from_email) . '</small></td>';
-            echo '<td>$' . number_format($log->amount, 2) . '</td>';
-            echo '<td>' . esc_html($log->reference_number ?: 'N/A') . '</td>';
-            echo '<td>';
+        foreach ($logs as $index => $log) {
+            if (!$log->order_id && strpos($log->result, 'No matching order') !== false && $log->result !== 'Hidden from management') {
+                echo '<tr>';
+                echo '<td>' . esc_html($log->timestamp) . '</td>';
+                echo '<td>' . esc_html($log->from_name) . '<br><small>' . esc_html($log->from_email) . '</small></td>';
+                echo '<td>$' . number_format($log->amount, 2) . '</td>';
+                echo '<td>' . esc_html($log->reference_number ?: 'N/A') . '</td>';
+                echo '<td>';
 
-            echo '<form method="post" style="display:inline;">';
-            wp_nonce_field('manual_match_etransfer');
-            echo '<input type="hidden" name="log_index" value="' . $log->id . '">';
-            echo '<select name="order_id" required style="margin-right:5px;">';
-            echo '<option value="">' . __('Select Order', 'sportspress-admin-tools') . '</option>';
+                echo '<form method="post" style="display:inline;">';
+                wp_nonce_field('manual_match_etransfer');
+                echo '<input type="hidden" name="log_index" value="' . esc_attr($log->id) . '">';
+                echo '<select name="order_id" required style="margin-right:5px;">';
+                echo '<option value="">' . __('Select Order', 'sportspress-admin-tools') . '</option>';
 
-            // Get on-hold orders
-            $orders = wc_get_orders(array(
-                'status' => 'on-hold',
-                'limit' => 50,
-                'orderby' => 'date',
-                'order' => 'DESC'
-            ));
+                // Get on-hold orders
+                $orders = wc_get_orders(array(
+                    'status' => 'on-hold',
+                    'limit' => 50,
+                    'orderby' => 'date',
+                    'order' => 'DESC'
+                ));
 
-            foreach ($orders as $order) {
-                echo '<option value="' . $order->get_id() . '">#' . $order->get_id() . ' - ' . esc_html($order->get_billing_first_name() . ' ' . $order->get_billing_last_name()) . ' ($' . $order->get_total() . ')</option>';
+                foreach ($orders as $order) {
+                    echo '<option value="' . esc_attr($order->get_id()) . '">#' . esc_html($order->get_id()) . ' - ' . esc_html($order->get_billing_first_name() . ' ' . $order->get_billing_last_name()) . ' ($' . esc_html($order->get_total()) . ')</option>';
+                }
+
+                echo '</select>';
+                echo '<input type="submit" name="manual_match" value="' . __('Match & Complete', 'sportspress-admin-tools') . '" class="button button-primary">';
+                echo '</form>';
+
+                // Add hide button
+                echo '<form method="post" style="display:inline;margin-left:10px;" onsubmit="return confirm(\'' . esc_js(__('Hide this entry from the management page? It will still be visible in the settings page logs.', 'sportspress-admin-tools')) . '\')">';
+                wp_nonce_field('hide_etransfer_log');
+                echo '<input type="hidden" name="log_id" value="' . $log->id . '">';
+                echo '<input type="submit" name="hide_log" value="' . __('Hide', 'sportspress-admin-tools') . '" class="button button-secondary">';
+                echo '</form>';
+
+                echo '</td>';
+                echo '</tr>';
             }
-
-            echo '</select>';
-            echo '<input type="submit" name="manual_match" value="' . __('Match & Complete', 'sportspress-admin-tools') . '" class="button button-primary">';
-            echo '</form>';
-
-            // Add hide button
-            echo '<form method="post" style="display:inline;margin-left:10px;" onsubmit="return confirm(\'' . esc_js(__('Hide this entry from the management page? It will still be visible in the settings page logs.', 'sportspress-admin-tools')) . '\')">';
-            wp_nonce_field('hide_etransfer_log');
-            echo '<input type="hidden" name="log_id" value="' . $log->id . '">';
-            echo '<input type="submit" name="hide_log" value="' . __('Hide', 'sportspress-admin-tools') . '" class="button button-secondary">';
-            echo '</form>';
-
-            echo '</td>';
-            echo '</tr>';
         }
 
         echo '</tbody></table>';

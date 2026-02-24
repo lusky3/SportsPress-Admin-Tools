@@ -44,7 +44,6 @@ class SPET_ETransfer_Automation
         // Extract payment data
         $payment_data = $this->extract_payment_data($data);
         if (!$payment_data) {
-            error_log('SPET Webhook: Could not extract payment data from payload. Text was: ' . (isset($data['text']) ? substr($data['text'], 0, 500) . '...' : 'MISSING'));
             return new WP_Error('invalid_payment_data', 'Could not extract payment data', array('status' => 400));
         }
 
@@ -103,8 +102,7 @@ class SPET_ETransfer_Automation
         }
 
         // Extract reference number
-        // Improved regex to handle both next-line and same-line values, and handle different line endings
-        if (preg_match('/Reference Number:[\s\r\n]*([A-Z0-9]+)/i', $text, $matches)) {
+        if (preg_match('/Reference Number:\s*\n\s*([A-Z0-9]+)/i', $text, $matches)) {
             $reference_number = $matches[1];
         }
         else {
@@ -112,8 +110,7 @@ class SPET_ETransfer_Automation
         }
 
         // Extract amount
-        // Improved regex to handle both next-line and same-line values
-        if (preg_match('/Amount:[\s\r\n]*\$([0-9,]+\.?[0-9]*)/i', $text, $matches)) {
+        if (preg_match('/Amount:\s*\n\s*\$([0-9,]+\.?[0-9]*)/i', $text, $matches)) {
             $amount = floatval(str_replace(',', '', $matches[1]));
         }
         else {
@@ -121,8 +118,7 @@ class SPET_ETransfer_Automation
         }
 
         // Extract sender name
-        // Improved regex to handle both next-line and same-line values
-        if (preg_match('/Sent From:[\s\r\n]*(.+)/i', $text, $matches)) {
+        if (preg_match('/Sent From:\s*\n\s*(.+)/i', $text, $matches)) {
             $sender_name = trim($matches[1]);
         }
         else {
@@ -132,8 +128,8 @@ class SPET_ETransfer_Automation
         // Extract customer email from Reply-To
         $customer_email = '';
         if (isset($data['reply_to'])) {
-            if (is_array($data['reply_to'])) {
-                $customer_email = $data['reply_to']['address'] ?? '';
+            if (is_array($data['reply_to']) && isset($data['reply_to']['address'])) {
+                $customer_email = $data['reply_to']['address'];
             }
             else {
                 $customer_email = $data['reply_to'];
