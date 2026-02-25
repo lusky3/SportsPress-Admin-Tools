@@ -47,12 +47,16 @@
         initialFormData = $('#spsg-config-form').serialize();
     });
 
-    // Initialize Select2 if enabled in SPAT settings
-    if (typeof $.fn.select2 !== 'undefined') {
-        $('select').select2({
-            width: '100%',
-            placeholder: 'Select an option',
-            allowClear: true
+    // Initialize Slim Select if enabled in SPAT settings
+    if (typeof SlimSelect !== 'undefined') {
+        $('select').each(function() {
+            new SlimSelect({
+                select: this,
+                settings: {
+                    allowDeselect: true,
+                    placeholderText: 'Select an option'
+                }
+            });
         });
     }
 
@@ -480,9 +484,9 @@
             var $select = $(this);
             var name = $select.attr('name');
 
-            var isSelect2 = typeof $.fn.select2 !== 'undefined' && $select.hasClass('select2-hidden-accessible');
-            if (isSelect2) {
-                $select.select2('destroy');
+            var hasSlimSelect = typeof SlimSelect !== 'undefined' && $select[0].slim;
+            if (hasSlimSelect) {
+                $select[0].slim.destroy();
             }
 
             if (name) {
@@ -519,11 +523,15 @@
         template.attr('data-index', index);
         container.append(template);
 
-        if (typeof $.fn.select2 !== 'undefined') {
-            template.find('select').select2({
-                width: '100%',
-                placeholder: 'Select an option',
-                allowClear: true
+        if (typeof SlimSelect !== 'undefined') {
+            template.find('select').each(function() {
+                new SlimSelect({
+                    select: this,
+                    settings: {
+                        allowDeselect: true,
+                        placeholderText: 'Select an option'
+                    }
+                });
             });
         }
     });
@@ -686,12 +694,16 @@
         $('#spsg-team-list-' + divisionIndex + ' input[type=checkbox]').prop('checked', false);
     });
 
-    // Initialize Select2 on SportsPress division selectors
-    if (typeof $.fn.select2 !== 'undefined') {
-        $('.spsg-sp-division-selector').select2({
-            width: '300px',
-            placeholder: 'Select a SportsPress division',
-            allowClear: true
+    // Initialize Slim Select on SportsPress division selectors
+    if (typeof SlimSelect !== 'undefined') {
+        $('.spsg-sp-division-selector').each(function() {
+            new SlimSelect({
+                select: this,
+                settings: {
+                    allowDeselect: true,
+                    placeholderText: 'Select a SportsPress division'
+                }
+            });
         });
     }
 
@@ -1273,11 +1285,15 @@
 
         container.append(template);
 
-        if (typeof $.fn.select2 !== 'undefined') {
-            template.find('.spsg-team-restriction-select').select2({
-                width: '100%',
-                placeholder: i18n.selectTeams,
-                allowClear: true
+        if (typeof SlimSelect !== 'undefined') {
+            template.find('.spsg-team-restriction-select').each(function() {
+                new SlimSelect({
+                    select: this,
+                    settings: {
+                        allowDeselect: true,
+                        placeholderText: i18n.selectTeams
+                    }
+                });
             });
         }
     });

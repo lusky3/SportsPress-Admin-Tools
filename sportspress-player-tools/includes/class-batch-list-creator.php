@@ -577,7 +577,9 @@ class SPT_Batch_List_Creator {
             <script>
             jQuery(document).ready(function($) {
                 <?php if (get_option('spat_use_select2', '0') === '1'): ?>
-                $('.spt-team-select, .spt-player-select').select2({width: '100%'});
+                document.querySelectorAll('.spt-team-select, .spt-player-select').forEach(function(el) {
+                    new SlimSelect({ select: el });
+                });
                 <?php endif; ?>
                 
                 $('#test-submit').on('click', function(e) {
