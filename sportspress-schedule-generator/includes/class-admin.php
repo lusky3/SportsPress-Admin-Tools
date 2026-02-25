@@ -73,6 +73,7 @@ class SPSG_Admin
      */
     private function is_select2_enabled()
     {
+        // Option key kept for backward compatibility; now powers Slim Select
         return get_option('spat_use_select2', '0') === '1';
     }
 
@@ -351,8 +352,8 @@ class SPSG_Admin
             )
         ));
 
-        // Select2 is enqueued by the parent plugin (SPAT) when enabled in its settings.
-        // No CDN fallback needed — SPAT bundles Select2 locally at assets/lib/select2/.
+        // Slim Select is enqueued by the parent plugin (SPAT) when enabled in its settings.
+        // No CDN fallback needed — SPAT bundles Slim Select locally at assets/lib/slimselect/.
 
         wp_enqueue_script(
             'spsg-admin-ui',
