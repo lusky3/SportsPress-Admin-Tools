@@ -101,6 +101,20 @@ class SPET_ETransfer_Admin
             }
         }
 
+        // Handle purge old logs
+        if (isset($_POST['purge_old_logs'])
+            && wp_verify_nonce($_POST['_wpnonce'], 'spet_purge_old_logs')) {
+            if (!current_user_can('manage_woocommerce')) {
+                wp_die(__('You do not have permission to perform this action.', 'sportspress-admin-tools'));
+            }
+            $deleted = SPET_Database::cleanup_old_logs(90);
+            if ($deleted !== false) {
+                echo '<div class="notice notice-success"><p>' . sprintf(__('Purged %d log entries older than 90 days.', 'sportspress-admin-tools'), intval($deleted)) . '</p></div>';
+            } else {
+                echo '<div class="notice notice-error"><p>' . __('Failed to purge old logs.', 'sportspress-admin-tools') . '</p></div>';
+            }
+        }
+
 ?>
         <div class="wrap">
             <h1><?php _e('e-Transfer Webhook Management', 'sportspress-admin-tools'); ?></h1>
@@ -110,6 +124,13 @@ class SPET_ETransfer_Admin
             
             <h2><?php _e('All Webhook Activity', 'sportspress-admin-tools'); ?></h2>
             <?php $this->display_all_webhooks(); ?>
+            
+            <h2><?php _e('Log Maintenance', 'sportspress-admin-tools'); ?></h2>
+            <p><?php _e('Logs older than 90 days are automatically cleaned up daily. You can also purge them manually.', 'sportspress-admin-tools'); ?></p>
+            <form method="post" style="display:inline;" onsubmit="return confirm('<?php echo esc_js(__('Delete all log entries older than 90 days?', 'sportspress-admin-tools')); ?>')">
+                <?php wp_nonce_field('spet_purge_old_logs'); ?>
+                <input type="submit" name="purge_old_logs" value="<?php esc_attr_e('Purge Logs Older Than 90 Days', 'sportspress-admin-tools'); ?>" class="button button-secondary" />
+            </form>
         </div>
         <?php
     }
