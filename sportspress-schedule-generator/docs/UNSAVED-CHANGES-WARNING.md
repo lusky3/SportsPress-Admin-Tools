@@ -241,5 +241,5 @@ This prevents double warnings where the user sees both:
 - The warning only applies to the Schedule Generator configuration page
 - The warning does not prevent form submission (intentional - user wants to save)
 - The serialized form data comparison is efficient and works with all form field types
-- Select2 changes are properly detected through the underlying select element
+- Slim Select changes are properly detected through the underlying select element
 - Actions with their own confirmation dialogs bypass the beforeunload warning to prevent double prompts
