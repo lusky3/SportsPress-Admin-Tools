@@ -33,9 +33,8 @@ class SPET_Admin
 
     public function register_settings()
     {
-        register_setting('spet_settings', 'spet_webhook_secret');
-        register_setting('spet_settings', 'spet_service_provider');
-        register_setting('spet_settings', 'spet_equivalent_names');
+        // Settings are saved via direct update_option in admin_page_content POST handler
+        // register_setting is not needed since we don't use the Settings API options.php flow
     }
 
     public function admin_page_content()
@@ -140,9 +139,9 @@ class SPET_Admin
             echo '<tr>';
             echo '<td>' . esc_html($log->timestamp) . '</td>';
             echo '<td>' . esc_html($log->from_name ?: $log->from_email) . '</td>';
-            echo '<td>$' . number_format($log->amount, 2) . '</td>';
+            echo '<td>' . esc_html('$' . number_format($log->amount, 2)) . '</td>';
             echo '<td>' . esc_html($log->reference_number ?: 'N/A') . '</td>';
-            echo '<td>' . ($log->order_id ? '<a href="' . admin_url('post.php?post=' . $log->order_id . '&action=edit') . '">#' . $log->order_id . '</a>' : 'N/A') . '</td>';
+            echo '<td>' . ($log->order_id ? '<a href="' . esc_url(admin_url('post.php?post=' . intval($log->order_id) . '&action=edit')) . '">#' . esc_html($log->order_id) . '</a>' : 'N/A') . '</td>';
             echo '<td>' . esc_html($log->result) . '</td>';
             echo '</tr>';
         }
