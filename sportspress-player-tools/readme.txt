@@ -47,7 +47,7 @@ Yes. The batch list creator supports both "Create new" and "Update existing" mod
 * Security: Add nonce verification to settings form
 * Fix: Settings form now posts correctly instead of to options.php
 * Fix: Batch list creator respects module enable/disable setting
-* Fix: Use parent plugin bundled Select2 instead of CDN
+* Fix: Use parent plugin bundled Slim Select instead of CDN
 * Add: Captain indicator text filter (spt_captain_indicator_text)
 * Add: uninstall.php for proper cleanup
 * Remove: Dead code (class-batch-list-preview.php)

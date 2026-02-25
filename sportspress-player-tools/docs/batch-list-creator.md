@@ -101,7 +101,7 @@ Configure which metadata to show on the frontend:
 - **Matched Team/Player**: Dropdowns with fuzzy-matched selections
 - System uses similarity matching to pre-select closest matches
 - Review and adjust matches as needed
-- Select2 enabled for searchable dropdowns (if enabled in SPAT settings)
+- Slim Select enabled for searchable dropdowns (if enabled in SPAT settings)
 
 ### Step 3: Create Lists
 
@@ -189,7 +189,7 @@ Created lists include:
 ### Wrong Matches
 
 - Review preview page carefully
-- Use Select2 search to find correct matches
+- Use Slim Select search to find correct matches
 - Adjust selections before creating lists
 
 ### Update Not Finding List
