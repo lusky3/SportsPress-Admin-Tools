@@ -21,3 +21,6 @@ $wpdb->query("DROP TABLE IF EXISTS $table_name");
 delete_option('spet_webhook_secret');
 delete_option('spet_service_provider');
 delete_option('spet_equivalent_names');
+
+// Clear scheduled cron events
+wp_clear_scheduled_hook('spet_cleanup_old_logs');
