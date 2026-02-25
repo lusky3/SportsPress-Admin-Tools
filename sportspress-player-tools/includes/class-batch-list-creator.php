@@ -60,22 +60,22 @@ class SPT_Batch_List_Creator {
     public function enqueue_scripts($hook) {
         $screen = get_current_screen();
         
-        // Use parent plugin's bundled Select2
-        $select2_js = plugins_url('sportspress-admin-tools/assets/lib/select2/select2.min.js');
-        $select2_css = plugins_url('sportspress-admin-tools/assets/lib/select2/select2.min.css');
+        // Use parent plugin's bundled Slim Select
+        $slimselect_js = plugins_url('sportspress-admin-tools/assets/lib/slimselect/slimselect.min.js');
+        $slimselect_css = plugins_url('sportspress-admin-tools/assets/lib/slimselect/slimselect.min.css');
         
         // Load on sp_list edit page
         if ($hook === 'edit.php' && $screen && $screen->post_type === 'sp_list') {
             if (get_option('spat_use_select2', '0') === '1') {
-                wp_enqueue_script('select2', $select2_js, array('jquery'), '4.1.0', true);
-                wp_enqueue_style('select2', $select2_css, array(), '4.1.0');
+                wp_enqueue_script('slimselect', $slimselect_js, array(), '3.4.3', true);
+                wp_enqueue_style('slimselect', $slimselect_css, array(), '3.4.3');
             }
         }
         
         // Load on tools page
         if ($hook === 'tools_page_spt_upload_lists') {
-            wp_enqueue_script('select2', $select2_js, array('jquery'), '4.1.0', true);
-            wp_enqueue_style('select2', $select2_css, array(), '4.1.0');
+            wp_enqueue_script('slimselect', $slimselect_js, array(), '3.4.3', true);
+            wp_enqueue_style('slimselect', $slimselect_css, array(), '3.4.3');
         }
     }
     

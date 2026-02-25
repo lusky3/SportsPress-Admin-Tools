@@ -70,11 +70,11 @@ class SPAT_Admin
 
         wp_enqueue_script('jquery');
 
-        // Enqueue Select2 if enabled
+        // Enqueue Slim Select if enabled
         if (get_option('spat_use_select2', '0')) {
             $plugin_url = plugin_dir_url(dirname(dirname(__FILE__)));
-            wp_enqueue_script('select2', $plugin_url . 'assets/lib/select2/select2.min.js', array('jquery'), '4.1.0', true);
-            wp_enqueue_style('select2', $plugin_url . 'assets/lib/select2/select2.min.css', array(), '4.1.0');
+            wp_enqueue_script('slimselect', $plugin_url . 'assets/lib/slimselect/slimselect.min.js', array(), '3.4.3', true);
+            wp_enqueue_style('slimselect', $plugin_url . 'assets/lib/slimselect/slimselect.min.css', array(), '3.4.3');
         }
 
         wp_add_inline_script('jquery', '
@@ -215,7 +215,7 @@ class SPAT_Admin
 
         add_settings_field(
             'spat_use_select2',
-            __('Enhanced Dropdowns (Select2)', 'sportspress-admin-tools'),
+            __('Enhanced Dropdowns (Slim Select)', 'sportspress-admin-tools'),
             array($this, 'select2_setting_callback'),
             'spat_general_settings',
             'spat_settings_section'
@@ -295,7 +295,7 @@ class SPAT_Admin
     {
         $enabled = get_option('spat_use_select2', '0');
         echo '<input type="checkbox" name="spat_use_select2" value="1" ' . checked($enabled, '1', false) . '>';
-        echo '<p class="description">' . __('Use enhanced Select2 dropdowns with search functionality throughout the plugin. Requires page refresh to take effect.', 'sportspress-admin-tools') . '</p>';
+        echo '<p class="description">' . __('Use enhanced Slim Select dropdowns with search functionality throughout the plugin. Requires page refresh to take effect.', 'sportspress-admin-tools') . '</p>';
     }
 
     public function debug_section_callback()
