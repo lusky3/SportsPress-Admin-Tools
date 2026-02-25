@@ -41,6 +41,8 @@ class SportsPress_Player_Registration {
     }
     
     public function init() {
+        load_plugin_textdomain('sportspress-player-registration', false, dirname(plugin_basename(__FILE__)) . '/languages');
+        
         if (!$this->check_parent_plugin()) {
             return;
         }
@@ -62,6 +64,12 @@ class SportsPress_Player_Registration {
     }
     
     private function load_functionality() {
+        // Verify WooCommerce is available (required for order processing)
+        if (!class_exists('WooCommerce')) {
+            add_action('admin_notices', array($this, 'woocommerce_missing_notice'));
+            return;
+        }
+        
         require_once SPR_PLUGIN_PATH . 'includes/class-database.php';
         require_once SPR_PLUGIN_PATH . 'includes/class-player-registration.php';
         require_once SPR_PLUGIN_PATH . 'includes/class-admin.php';
@@ -84,6 +92,12 @@ class SportsPress_Player_Registration {
     public function parent_plugin_missing_notice() {
         echo '<div class="notice notice-error"><p>';
         echo __('SportsPress Player Registration requires SportsPress Admin Tools to be installed and activated.', 'sportspress-player-registration');
+        echo '</p></div>';
+    }
+    
+    public function woocommerce_missing_notice() {
+        echo '<div class="notice notice-error"><p>';
+        echo __('SportsPress Player Registration requires WooCommerce to be installed and activated.', 'sportspress-player-registration');
         echo '</p></div>';
     }
     
