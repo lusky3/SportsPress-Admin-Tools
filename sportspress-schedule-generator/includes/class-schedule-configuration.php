@@ -166,9 +166,17 @@ class SPSG_Schedule_Configuration
             'venue_date_availability', 'home_away_preferences', 'inter_division_games',
         );
 
-        // Load date fields
-        $this->season_start = isset($data['season_start']) ? new DateTime($data['season_start']) : null;
-        $this->season_end = isset($data['season_end']) ? new DateTime($data['season_end']) : null;
+        // Load date fields with error handling
+        try {
+            $this->season_start = isset($data['season_start']) && $data['season_start'] !== '' ? new DateTime($data['season_start']) : null;
+        } catch (Exception $e) {
+            $this->season_start = null;
+        }
+        try {
+            $this->season_end = isset($data['season_end']) && $data['season_end'] !== '' ? new DateTime($data['season_end']) : null;
+        } catch (Exception $e) {
+            $this->season_end = null;
+        }
 
         // Load integer fields
         $this->games_per_team = (int)($data['games_per_team'] ?? $defaults['games_per_team']);

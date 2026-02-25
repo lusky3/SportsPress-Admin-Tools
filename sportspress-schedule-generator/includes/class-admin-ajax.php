@@ -48,7 +48,7 @@ class SPSG_Admin_Ajax
     {
         add_action('wp_ajax_spsg_save_config', array($this, 'ajax_save_config'));
         add_action('wp_ajax_spsg_load_config', array($this, 'ajax_load_config'));
-        add_action('wp_ajax_spsg_validate_config', array($this, 'ajax_validate_config'));
+        // Note: spsg_validate_config is registered in SPSG_Schedule_Generator (includes feasibility checking)
         add_action('wp_ajax_spsg_import_league', array($this, 'ajax_import_league'));
         add_action('wp_ajax_spsg_save_imported_league', array($this, 'ajax_save_imported_league'));
         add_action('wp_ajax_spsg_import_venues', array($this, 'ajax_import_venues'));
@@ -127,38 +127,6 @@ class SPSG_Admin_Ajax
     }
 
     /**
-     * AJAX handler for validating configuration
-     */
-    public function ajax_validate_config()
-    {
-        check_ajax_referer('spsg_admin_action', 'spsg_nonce');
-
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
-        }
-
-        $config_data = $this->sanitize_form_data($_POST);
-        $validation = $this->config_manager->validate($config_data);
-
-        if (is_wp_error($validation)) {
-            $errors = array();
-            foreach ($validation->get_error_codes() as $code) {
-                $errors[$code] = $validation->get_error_message($code);
-            }
-
-            wp_send_json_error(array(
-                'errors' => $errors,
-                'message' => __('Configuration validation failed', 'sportspress-schedule-generator')
-            ));
-        }
-        else {
-            wp_send_json_success(array(
-                'message' => __('Configuration is valid', 'sportspress-schedule-generator')
-            ));
-        }
-    }
-
-    /**
      * AJAX handler for importing SportsPress league
      */
     public function ajax_import_league()
@@ -174,7 +142,7 @@ class SPSG_Admin_Ajax
             wp_send_json_error(__('Invalid league ID', 'sportspress-schedule-generator'));
         }
 
-        $structure = SPSGSportsPressIntegration::get_league_structure($league_id);
+        $structure = SPSG_Sports_Press_Integration::get_league_structure($league_id);
 
         if (empty($structure['league'])) {
             wp_send_json_error(__('League not found', 'sportspress-schedule-generator'));
@@ -296,7 +264,7 @@ class SPSG_Admin_Ajax
             wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
-        $venues = SPSGSportsPressIntegration::get_venues();
+        $venues = SPSG_Sports_Press_Integration::get_venues();
 
         wp_send_json_success(array(
             'venues' => $venues,
@@ -315,7 +283,7 @@ class SPSG_Admin_Ajax
             wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
-        $venues = SPSGSportsPressIntegration::get_venues();
+        $venues = SPSG_Sports_Press_Integration::get_venues();
 
         wp_send_json_success(array('venues' => $venues));
     }
@@ -434,7 +402,7 @@ class SPSG_Admin_Ajax
             wp_send_json_error(__('Invalid division ID', 'sportspress-schedule-generator'));
         }
 
-        $teams = SPSGSportsPressIntegration::get_teams_by_league($division_id);
+        $teams = SPSG_Sports_Press_Integration::get_teams_by_league($division_id);
 
         if (empty($teams)) {
             wp_send_json_error(__('No teams found in this division', 'sportspress-schedule-generator'));
@@ -643,12 +611,12 @@ class SPSG_Admin_Ajax
             wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
-        if (!SPSGSportsPressIntegration::is_sportspress_active()) {
+        if (!SPSG_Sports_Press_Integration::is_sportspress_active()) {
             wp_send_json_error(__('SportsPress is not active', 'sportspress-schedule-generator'));
         }
 
-        $leagues = SPSGSportsPressIntegration::get_leagues();
-        $seasons = SPSGSportsPressIntegration::get_seasons();
+        $leagues = SPSG_Sports_Press_Integration::get_leagues();
+        $seasons = SPSG_Sports_Press_Integration::get_seasons();
 
         $formatted_leagues = array();
         if (!empty($leagues)) {
@@ -740,8 +708,8 @@ class SPSG_Admin_Ajax
         $config = $this->config_manager->get_current();
         $existing_venues = $config->venues ?? array();
 
-        if (class_exists('SPSGSportsPressIntegration')) {
-            $sp_venues = SPSGSportsPressIntegration::get_venues();
+        if (class_exists('SPSG_Sports_Press_Integration')) {
+            $sp_venues = SPSG_Sports_Press_Integration::get_venues();
             foreach ($sp_venues as $sp_venue) {
                 $existing_venues[] = array(
                     'id' => $sp_venue->id,

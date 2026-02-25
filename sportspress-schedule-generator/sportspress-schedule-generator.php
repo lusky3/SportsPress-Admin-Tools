@@ -26,6 +26,7 @@ class SportsPress_Schedule_Generator
     public function __construct()
     {
         register_activation_hook(__FILE__, array($this, 'check_activation_requirements'));
+        register_deactivation_hook(__FILE__, array($this, 'deactivate'));
         add_action('plugins_loaded', array($this, 'init'));
     }
 
@@ -34,6 +35,45 @@ class SportsPress_Schedule_Generator
         if (!class_exists('SPAT_Plugin_Manager')) {
             deactivate_plugins(plugin_basename(__FILE__));
             wp_die(__('SportsPress Schedule Generator requires SportsPress Admin Tools to be installed and activated first.', 'sportspress-schedule-generator'));
+        }
+    }
+
+    /**
+     * Plugin deactivation - clean up scheduled events
+     */
+    public function deactivate()
+    {
+        wp_clear_scheduled_hook('spsg_cleanup_export_files');
+    }
+
+    /**
+     * Clean up old export files (older than 24 hours)
+     */
+    public function cleanup_export_files()
+    {
+        $upload_dir = wp_upload_dir();
+        $export_dirs = array(
+            $upload_dir['basedir'] . '/spsg-exports',
+            $upload_dir['path'],
+        );
+
+        $max_age = DAY_IN_SECONDS;
+
+        foreach ($export_dirs as $dir) {
+            if (!is_dir($dir)) {
+                continue;
+            }
+
+            $files = glob($dir . '/schedule_*') + glob($dir . '/schedule-*');
+            if (!$files) {
+                continue;
+            }
+
+            foreach ($files as $file) {
+                if (is_file($file) && (time() - filemtime($file)) > $max_age) {
+                    wp_delete_file($file);
+                }
+            }
         }
     }
 
@@ -79,6 +119,12 @@ class SportsPress_Schedule_Generator
             // Load main functionality
             require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-generator.php';
             new SPSG_Schedule_Generator();
+
+            // Schedule export file cleanup
+            if (!wp_next_scheduled('spsg_cleanup_export_files')) {
+                wp_schedule_event(time(), 'daily', 'spsg_cleanup_export_files');
+            }
+            add_action('spsg_cleanup_export_files', array($this, 'cleanup_export_files'));
 
             // Load admin interface if in admin
             if (is_admin()) {

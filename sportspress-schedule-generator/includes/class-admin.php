@@ -351,10 +351,8 @@ class SPSG_Admin
             )
         ));
 
-        if ($this->is_select2_enabled()) {
-            wp_enqueue_script('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js', array('jquery'), '4.1.0', true);
-            wp_enqueue_style('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css', array(), '4.1.0');
-        }
+        // Select2 is enqueued by the parent plugin (SPAT) when enabled in its settings.
+        // No CDN fallback needed — SPAT bundles Select2 locally at assets/lib/select2/.
 
         wp_enqueue_script(
             'spsg-admin-ui',

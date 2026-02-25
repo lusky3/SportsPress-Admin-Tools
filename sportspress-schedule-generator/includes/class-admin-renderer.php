@@ -236,7 +236,7 @@ class SPSG_Admin_Renderer
      */
     public function render_divisions_teams_tab($config)
     {
-        $sp_available = SPSGSportsPressIntegration::is_sportspress_active();
+        $sp_available = SPSG_Sports_Press_Integration::is_sportspress_active();
 ?>
         <div class="spsg-divisions-section">
             <?php if ($sp_available): ?>
@@ -249,7 +249,7 @@ class SPSG_Admin_Renderer
                             <select id="spsg-import-league" class="regular-text">
                                 <option value=""><?php _e('Select a league...', 'sportspress-schedule-generator'); ?></option>
                                 <?php
-            $leagues = SPSGSportsPressIntegration::get_leagues();
+            $leagues = SPSG_Sports_Press_Integration::get_leagues();
             foreach ($leagues as $league) {
                 echo '<option value="' . esc_attr($league->id) . '">' . esc_html($league->name) . '</option>';
             }
@@ -483,7 +483,7 @@ class SPSG_Admin_Renderer
      */
     public function render_division_row($division, $index)
     {
-        $sp_available = SPSGSportsPressIntegration::is_sportspress_active();
+        $sp_available = SPSG_Sports_Press_Integration::is_sportspress_active();
         $teams = is_array($division['teams'] ?? '') ? $division['teams'] : explode("\n", trim($division['teams'] ?? ''));
         $teams = array_filter($teams);
 ?>
@@ -503,7 +503,7 @@ class SPSG_Admin_Renderer
                         <select class="spsg-sp-division-selector regular-text" data-division-index="<?php echo esc_attr($index); ?>">
                             <option value=""><?php _e('Select a SportsPress division...', 'sportspress-schedule-generator'); ?></option>
                             <?php
-            $sp_leagues = SPSGSportsPressIntegration::get_leagues();
+            $sp_leagues = SPSG_Sports_Press_Integration::get_leagues();
             foreach ($sp_leagues as $league) {
                 echo '<option value="' . esc_attr($league->id) . '">' . esc_html($league->name) . '</option>';
             }
@@ -555,7 +555,7 @@ class SPSG_Admin_Renderer
      */
     public function render_venues_times_tab($config)
     {
-        $sp_available = SPSGSportsPressIntegration::is_sportspress_active();
+        $sp_available = SPSG_Sports_Press_Integration::is_sportspress_active();
 ?>
         <div class="spsg-venues-section">
             <h3><?php _e('Playing Days & Time Slots', 'sportspress-schedule-generator'); ?></h3>
