@@ -3,20 +3,26 @@ name: Security Scanning
 on:
   push:
     branches: [main]
+    paths:
+      - '**/*.php'
+      - '**/*.js'
   pull_request:
     branches: [main]
+    paths:
+      - '**/*.php'
+      - '**/*.js'
   schedule:
-    - cron: "0 0 * * 0" # Run weekly on Sundays
+    - cron: "0 0 * * 0" # Run weekly on Sundays (full scan regardless of paths)
 
 jobs:
   snyk-code:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Run Snyk Code (SAST) to check for vulnerabilities
-        uses: snyk/actions@master
+        uses: snyk/actions@v1.0.0
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
