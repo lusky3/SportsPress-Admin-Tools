@@ -10,96 +10,104 @@ if (!defined('ABSPATH')) {
 }
 
 class SPEM_League_Table_Generator {
-    
+
     public function __construct() {
         add_action('wp_ajax_generate_league_table', array($this, 'ajax_generate_league_table'));
         add_action('admin_footer', array($this, 'add_league_table_modal'));
     }
-    
+
     public function ajax_generate_league_table() {
-        if (!wp_verify_nonce($_POST['nonce'], 'generate_league_table')) {
-            wp_die('Security check failed');
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'generate_league_table')) {
+            wp_send_json_error(__('Security check failed.', 'sportspress-events-manager'));
         }
-        
+
         if (!current_user_can('manage_options')) {
-            wp_die('Insufficient permissions');
+            wp_send_json_error(__('Insufficient permissions.', 'sportspress-events-manager'));
         }
-        
-        $league_id = intval($_POST['league_id']);
-        $season_id = intval($_POST['season_id']);
-        $table_name = sanitize_text_field($_POST['table_name']);
-        
+
+        $league_id  = isset($_POST['league_id']) ? intval($_POST['league_id']) : 0;
+        $season_id  = isset($_POST['season_id']) ? intval($_POST['season_id']) : 0;
+        $table_name = isset($_POST['table_name']) ? sanitize_text_field($_POST['table_name']) : '';
+
         if (!$league_id || !$season_id || !$table_name) {
-            wp_die('Missing required parameters');
+            wp_send_json_error(__('Missing required parameters.', 'sportspress-events-manager'));
         }
-        
+
         $table_id = $this->create_league_table($league_id, $season_id, $table_name);
-        
+
         if ($table_id) {
             wp_send_json_success(array(
-                'message' => __('League table created successfully!', 'sportspress-events-manager'),
-                'edit_url' => admin_url('post.php?post=' . $table_id . '&action=edit')
+                'message'  => __('League table created successfully!', 'sportspress-events-manager'),
+                'edit_url' => admin_url('post.php?post=' . intval($table_id) . '&action=edit')
             ));
         } else {
             wp_send_json_error(__('Failed to create league table.', 'sportspress-events-manager'));
         }
     }
-    
+
     private function create_league_table($league_id, $season_id, $table_name) {
-        // Create league table post
         $table_id = wp_insert_post(array(
-            'post_type' => 'sp_table',
-            'post_title' => $table_name,
+            'post_type'   => 'sp_table',
+            'post_title'  => $table_name,
             'post_status' => 'publish'
         ));
-        
-        if (!$table_id) {
+
+        if (!$table_id || is_wp_error($table_id)) {
             return false;
         }
-        
-        // Set league and season
+
         wp_set_object_terms($table_id, array($league_id), 'sp_league');
         wp_set_object_terms($table_id, array($season_id), 'sp_season');
-        
-        // Get teams in this league/season
+
         $teams = get_posts(array(
-            'post_type' => 'sp_team',
+            'post_type'      => 'sp_team',
             'posts_per_page' => -1,
-            'tax_query' => array(
+            'tax_query'      => array(
                 'relation' => 'AND',
                 array(
                     'taxonomy' => 'sp_league',
-                    'field' => 'term_id',
-                    'terms' => $league_id
+                    'field'    => 'term_id',
+                    'terms'    => $league_id
                 ),
                 array(
                     'taxonomy' => 'sp_season',
-                    'field' => 'term_id',
-                    'terms' => $season_id
+                    'field'    => 'term_id',
+                    'terms'    => $season_id
                 )
             )
         ));
-        
+
         if (!empty($teams)) {
             $team_ids = wp_list_pluck($teams, 'ID');
             update_post_meta($table_id, 'sp_team', $team_ids);
         }
-        
-        // Set default columns
+
         $columns = array('pos', 'name', 'p', 'w', 'd', 'l', 'f', 'a', 'gd', 'pts');
         update_post_meta($table_id, 'sp_columns', $columns);
-        
+
         return $table_id;
     }
-    
+
+    /**
+     * Output the league table generation modal on the admin tools settings page.
+     */
     public function add_league_table_modal() {
         $screen = get_current_screen();
-        if (!$screen || $screen->base !== 'settings_page_sportspress-events-manager') {
+        if (!$screen || $screen->base !== 'settings_page_sportspress-admin-tools') {
             return;
         }
-        
+
         $leagues = get_terms(array('taxonomy' => 'sp_league', 'hide_empty' => false));
         $seasons = get_terms(array('taxonomy' => 'sp_season', 'hide_empty' => false));
+
+        if (is_wp_error($leagues)) {
+            $leagues = array();
+        }
+        if (is_wp_error($seasons)) {
+            $seasons = array();
+        }
+
+        $nonce = wp_create_nonce('generate_league_table');
         ?>
         <div id="league-table-modal" style="display:none;">
             <div style="background:white; padding:20px; border-radius:5px; max-width:500px; margin:50px auto;">
@@ -112,7 +120,7 @@ class SPEM_League_Table_Generator {
                                 <select id="league_select" name="league_id" required>
                                     <option value=""><?php _e('Select League', 'sportspress-events-manager'); ?></option>
                                     <?php foreach ($leagues as $league): ?>
-                                        <option value="<?php echo $league->term_id; ?>"><?php echo esc_html($league->name); ?></option>
+                                        <option value="<?php echo esc_attr($league->term_id); ?>"><?php echo esc_html($league->name); ?></option>
                                     <?php endforeach; ?>
                                 </select>
                             </td>
@@ -123,7 +131,7 @@ class SPEM_League_Table_Generator {
                                 <select id="season_select" name="season_id" required>
                                     <option value=""><?php _e('Select Season', 'sportspress-events-manager'); ?></option>
                                     <?php foreach ($seasons as $season): ?>
-                                        <option value="<?php echo $season->term_id; ?>"><?php echo esc_html($season->name); ?></option>
+                                        <option value="<?php echo esc_attr($season->term_id); ?>"><?php echo esc_html($season->name); ?></option>
                                     <?php endforeach; ?>
                                 </select>
                             </td>
@@ -133,6 +141,7 @@ class SPEM_League_Table_Generator {
                             <td><input type="text" id="table_name" name="table_name" class="regular-text" required /></td>
                         </tr>
                     </table>
+                    <input type="hidden" id="spem_league_table_nonce" value="<?php echo esc_attr($nonce); ?>" />
                     <p>
                         <button type="submit" class="button button-primary"><?php _e('Generate Table', 'sportspress-events-manager'); ?></button>
                         <button type="button" class="button" onclick="closeLeagueTableModal()"><?php _e('Cancel', 'sportspress-events-manager'); ?></button>
@@ -140,26 +149,26 @@ class SPEM_League_Table_Generator {
                 </form>
             </div>
         </div>
-        
+
         <script>
         function openLeagueTableModal() {
             document.getElementById('league-table-modal').style.display = 'block';
         }
-        
+
         function closeLeagueTableModal() {
             document.getElementById('league-table-modal').style.display = 'none';
         }
-        
+
         jQuery(document).ready(function($) {
             $('#league-table-form').on('submit', function(e) {
                 e.preventDefault();
-                
+
                 $.post(ajaxurl, {
                     action: 'generate_league_table',
                     league_id: $('#league_select').val(),
                     season_id: $('#season_select').val(),
                     table_name: $('#table_name').val(),
-                    nonce: '<?php echo wp_create_nonce('generate_league_table'); ?>'
+                    nonce: $('#spem_league_table_nonce').val()
                 }, function(response) {
                     if (response.success) {
                         alert(response.data.message);
