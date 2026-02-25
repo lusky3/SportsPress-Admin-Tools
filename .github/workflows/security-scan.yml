@@ -9,16 +9,17 @@ on:
     - cron: "0 0 * * 0" # Run weekly on Sundays
 
 jobs:
-  snyk:
+  snyk-code:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Run Snyk to check for vulnerabilities
-        uses: snyk/actions/php@master
+      - name: Run Snyk Code (SAST) to check for vulnerabilities
+        uses: snyk/actions@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
-          args: --severity-threshold=high --all-projects
+          command: code test
+          args: --severity-threshold=high
         continue-on-error: true
