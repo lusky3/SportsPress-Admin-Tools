@@ -3,15 +3,19 @@ name: PHP Lint & Standards
 on:
   push:
     branches: [main]
+    paths:
+      - '**/*.php'
   pull_request:
     branches: [main]
+    paths:
+      - '**/*.php'
 
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
