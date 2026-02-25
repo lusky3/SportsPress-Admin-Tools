@@ -53,7 +53,10 @@ class SportsPress_Events_Manager {
         if (!$this->check_parent_plugin()) {
             return;
         }
-        
+
+        // Load text domain for translations
+        load_plugin_textdomain('sportspress-events-manager', false, dirname(plugin_basename(__FILE__)) . '/languages');
+
         // Register multiple modules with parent plugin
         SPAT_Plugin_Manager::register_plugin('events_management', array(
             'name' => 'Events Management',
