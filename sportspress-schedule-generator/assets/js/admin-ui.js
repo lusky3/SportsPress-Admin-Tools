@@ -1308,11 +1308,15 @@
         }
     });
 
-    if (typeof $.fn.select2 !== 'undefined') {
-        $('.spsg-team-restriction-select').select2({
-            width: '100%',
-            placeholder: i18n.selectTeams,
-            allowClear: true
+    if (typeof SlimSelect !== 'undefined') {
+        $('.spsg-team-restriction-select').each(function() {
+            new SlimSelect({
+                select: this,
+                settings: {
+                    allowDeselect: true,
+                    placeholderText: i18n.selectTeams
+                }
+            });
         });
     }
 

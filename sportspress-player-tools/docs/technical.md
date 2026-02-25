@@ -147,7 +147,7 @@ Used by Player Registration module for automatic user-player linking.
 2. **Preview** (`show_preview`)
    - Retrieves data from option
    - Performs fuzzy matching for teams and players
-   - Displays 4-column table with Select2 dropdowns
+   - Displays 4-column table with Slim Select dropdowns
    - Collects configuration (name template, season, display options, action)
 
 3. **Processing** (`process_batch`)
@@ -281,7 +281,7 @@ $statistics = get_posts(array(
 
 **admin_enqueue_scripts**
 
-- Loads Select2 on tools page and sp_list edit page
+- Loads Slim Select on tools page and sp_list edit page
 - Conditional based on `spat_use_select2` option
 
 **admin_post_spt_upload_list_csv**
@@ -391,17 +391,19 @@ if ($_FILES['csv_file']['error'] !== UPLOAD_ERR_OK) {
 - Transients can fail across redirects
 - Clean up options after processing
 
-### Select2 Integration
+### Slim Select Integration
 
 ```php
 // Conditional loading
 if (get_option('spat_use_select2', '0') === '1') {
-    wp_enqueue_script('select2', '...', array('jquery'), '4.1.0', true);
-    wp_enqueue_style('select2', '...', array(), '4.1.0');
+    wp_enqueue_script('slimselect', '...', array(), '3.4.3', true);
+    wp_enqueue_style('slimselect', '...', array(), '3.4.3');
 }
 
 // Initialize on specific selects
-jQuery('select[name^="team["], select[name^="player["]').select2({width: '100%'});
+document.querySelectorAll('select[name^="team["], select[name^="player["]').forEach(function(el) {
+    new SlimSelect({ select: el });
+});
 ```
 
 ### Column Width Fix
@@ -411,7 +413,7 @@ jQuery('select[name^="team["], select[name^="player["]').select2({width: '100%'}
 .wp-list-table select { width: 100%; max-width: 100%; }
 ```
 
-Prevents Select2 from causing uneven column widths.
+Prevents Slim Select from causing uneven column widths.
 
 ## Extending
 
