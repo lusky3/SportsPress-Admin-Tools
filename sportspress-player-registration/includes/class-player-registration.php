@@ -140,12 +140,20 @@ class SPR_Player_Registration {
     private function find_existing_player($customer_name, $customer_email) {
         $email_meta_enabled = get_option('spt_email_meta', '1') === '1';
         
-        $players = get_posts(array(
-            'post_type' => 'sp_player',
-            'post_status' => 'publish',
-            'title' => $customer_name,
-            'posts_per_page' => -1
+        // Use exact title match via wpdb since WP_Query 'title' param is unreliable
+        global $wpdb;
+        $player_ids = $wpdb->get_col($wpdb->prepare(
+            "SELECT ID FROM {$wpdb->posts} WHERE post_type = 'sp_player' AND post_status = 'publish' AND post_title = %s",
+            $customer_name
         ));
+        
+        $players = array();
+        foreach ($player_ids as $pid) {
+            $post = get_post($pid);
+            if ($post) {
+                $players[] = $post;
+            }
+        }
         
         if (count($players) === 1) {
             $player_id = $players[0]->ID;
@@ -190,7 +198,12 @@ class SPR_Player_Registration {
             $player_data['post_author'] = $user_id;
         }
         
-        $player_id = wp_insert_post($player_data);
+        $player_id = wp_insert_post($player_data, true);
+        
+        if (is_wp_error($player_id)) {
+            error_log('SPR: Failed to create player - ' . $player_id->get_error_message());
+            return array('player_id' => null, 'action' => 'player_creation_failed');
+        }
         
         if ($player_id && get_option('spt_email_meta', '1') === '1' && !empty($customer_email)) {
             update_post_meta($player_id, 'spt_email', $customer_email);
@@ -232,10 +245,11 @@ class SPR_Player_Registration {
     private function validate_and_clean_name($name) {
         $name = trim(preg_replace('/\s+/', ' ', $name));
         
-        if (!preg_match('/^[a-zA-Z\s\-\']+$/', $name) || strlen($name) < 2 || strlen($name) > 50) {
+        // Allow letters (including accented/unicode), spaces, hyphens, apostrophes, periods
+        if (!preg_match('/^[\p{L}\s\-\'.]+$/u', $name) || mb_strlen($name) < 2 || mb_strlen($name) > 100) {
             return false;
         }
         
-        return ucwords(strtolower($name));
+        return $name;
     }
 }

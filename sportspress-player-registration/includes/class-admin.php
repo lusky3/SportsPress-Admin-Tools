@@ -28,21 +28,25 @@ class SPR_Admin {
     }
     
     public function register_settings() {
-        register_setting('spr_settings', 'spr_auto_create');
-        register_setting('spr_settings', 'spr_auto_update');
-        register_setting('spr_settings', 'spr_auto_role');
-        register_setting('spr_settings', 'spr_player_role');
-        register_setting('spr_settings', 'spr_auto_season');
+        $checkbox_args = array(
+            'sanitize_callback' => array($this, 'sanitize_checkbox'),
+        );
+        register_setting('spr_settings', 'spr_auto_create', $checkbox_args);
+        register_setting('spr_settings', 'spr_auto_update', $checkbox_args);
+        register_setting('spr_settings', 'spr_auto_role', $checkbox_args);
+        register_setting('spr_settings', 'spr_player_role', array(
+            'sanitize_callback' => 'sanitize_text_field',
+        ));
+        register_setting('spr_settings', 'spr_auto_season', $checkbox_args);
+    }
+    
+    public function sanitize_checkbox($value) {
+        return $value === '1' ? '1' : '0';
     }
     
     public function admin_page_content() {
-        if (isset($_POST['save_settings'])) {
-            update_option('spr_auto_create', isset($_POST['spr_auto_create']) ? '1' : '0');
-            update_option('spr_auto_update', isset($_POST['spr_auto_update']) ? '1' : '0');
-            update_option('spr_auto_role', isset($_POST['spr_auto_role']) ? '1' : '0');
-            update_option('spr_player_role', sanitize_text_field($_POST['spr_player_role']));
-            update_option('spr_auto_season', isset($_POST['spr_auto_season']) ? '1' : '0');
-            echo '<div class="notice notice-success"><p>' . __('Settings saved.', 'sportspress-player-registration') . '</p></div>';
+        if (!current_user_can('manage_options')) {
+            return;
         }
         
         $auto_create = get_option('spr_auto_create', '1');
@@ -153,11 +157,11 @@ class SPR_Admin {
             
             echo '<tr>';
             echo '<td>' . esc_html($log->timestamp) . '</td>';
-            echo '<td><a href="' . admin_url('post.php?post=' . $log->order_id . '&action=edit') . '">#' . $log->order_id . '</a></td>';
+            echo '<td><a href="' . esc_url(admin_url('post.php?post=' . intval($log->order_id) . '&action=edit')) . '">#' . intval($log->order_id) . '</a></td>';
             echo '<td>' . esc_html($log->customer_name) . '</td>';
             echo '<td>';
             if ($log->player_id) {
-                echo '<a href="' . admin_url('post.php?post=' . $log->player_id . '&action=edit') . '">' . get_the_title($log->player_id) . '</a>';
+                echo '<a href="' . esc_url(admin_url('post.php?post=' . intval($log->player_id) . '&action=edit')) . '">' . esc_html(get_the_title($log->player_id)) . '</a>';
             } else {
                 echo '—';
             }
@@ -197,7 +201,7 @@ class SPR_Admin {
             echo '<td>' . esc_html($log->timestamp) . '</td>';
             echo '<td>';
             if ($log->user_id) {
-                echo '<a href="' . admin_url('user-edit.php?user_id=' . $log->user_id) . '">' . esc_html($log->user_name) . '</a>';
+                echo '<a href="' . esc_url(admin_url('user-edit.php?user_id=' . intval($log->user_id))) . '">' . esc_html($log->user_name) . '</a>';
             } else {
                 echo esc_html($log->user_name);
             }
