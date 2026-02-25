@@ -43,8 +43,11 @@ if (!defined('SPSG_PLUGIN_URL')) {
     define('SPSG_PLUGIN_URL', '/wp-content/plugins/sportspress-schedule-generator/');
 }
 
-// Load required classes
+// Load and initialize autoloader
 require_once $plugin_path . '/includes/class-autoloader.php';
+SPSG_Autoloader::init();
+
+// Load required classes
 require_once $plugin_path . '/includes/interfaces/interface-configuration.php';
 require_once $plugin_path . '/includes/class-schedule-configuration.php';
 require_once $plugin_path . '/includes/class-configuration-manager.php';
