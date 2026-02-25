@@ -78,12 +78,12 @@ class SPT_Player_Modifications {
         $players = get_post_meta($post->ID, 'sp_player', false);
         
         echo '<select name="spt_captain" class="widefat">';
-        echo '<option value="">' . __('Select Captain', 'sportspress-player-tools') . '</option>';
+        echo '<option value="">' . esc_html__('Select Captain', 'sportspress-player-tools') . '</option>';
         
         foreach ($players as $player_id) {
             if ($player_id) {
                 $player_name = get_the_title($player_id);
-                echo '<option value="' . $player_id . '" ' . selected($captain_id, $player_id, false) . '>' . esc_html($player_name) . '</option>';
+                echo '<option value="' . esc_attr($player_id) . '" ' . selected($captain_id, $player_id, false) . '>' . esc_html($player_name) . '</option>';
             }
         }
         
@@ -117,7 +117,8 @@ class SPT_Player_Modifications {
         $captain_id = get_post_meta($list_id, 'spt_captain', true);
         
         if ($captain_id && $captain_id == $player_id) {
-            $name .= ' <span class="spt-captain-indicator" title="' . __('Captain', 'sportspress-player-tools') . '">C</span>';
+            $indicator_text = apply_filters('spt_captain_indicator_text', 'C');
+            $name .= ' <span class="spt-captain-indicator" title="' . esc_attr__('Captain', 'sportspress-player-tools') . '">' . esc_html($indicator_text) . '</span>';
             
             // Add CSS if not already added
             static $css_added = false;

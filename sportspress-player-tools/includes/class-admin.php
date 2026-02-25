@@ -35,18 +35,12 @@ class SPT_Admin {
     }
     
     public function admin_page_content() {
-        // Show preview if data exists
-        if (isset($_GET['preview']) && $_GET['preview'] == '1') {
-            $this->show_preview();
-            return;
-        }
-        
-        if (isset($_POST['save_settings'])) {
+        if (isset($_POST['save_settings']) && check_admin_referer('spt_settings_save', 'spt_settings_nonce')) {
             update_option('spt_email_meta', isset($_POST['spt_email_meta']) ? '1' : '0');
             update_option('spt_captain_role', isset($_POST['spt_captain_role']) ? '1' : '0');
             update_option('spt_stats_enabler', isset($_POST['spt_stats_enabler']) ? '1' : '0');
             update_option('spt_batch_list_creator', isset($_POST['spt_batch_list_creator']) ? '1' : '0');
-            echo '<div class="notice notice-success"><p>' . __('Settings saved.', 'sportspress-player-tools') . '</p></div>';
+            echo '<div class="notice notice-success"><p>' . esc_html__('Settings saved.', 'sportspress-player-tools') . '</p></div>';
         }
         
         $email_meta = get_option('spt_email_meta', '1');
@@ -54,9 +48,9 @@ class SPT_Admin {
         $stats_enabler = get_option('spt_stats_enabler', '1');
         $batch_list = get_option('spt_batch_list_creator', '1');
         ?>
-            <form action="options.php" method="post">
+            <form method="post">
+                <?php wp_nonce_field('spt_settings_save', 'spt_settings_nonce'); ?>
                 <input type="hidden" name="current_tab" value="player-tools">
-                <?php settings_fields('spt_settings'); ?>
                 
                 <table class="form-table">
                     <tr>
@@ -102,7 +96,7 @@ class SPT_Admin {
             
             <hr>
             <h2><?php _e('Upload Player Lists', 'sportspress-player-tools'); ?></h2>
-            <form method="post" action="<?php echo admin_url('admin-post.php'); ?>" enctype="multipart/form-data">
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data">
                 <input type="hidden" name="action" value="spt_upload_list_csv">
                 <?php wp_nonce_field('spt_batch_list_upload', 'spt_batch_list_nonce'); ?>
                 <table class="form-table">
@@ -117,81 +111,5 @@ class SPT_Admin {
                 <?php submit_button(__('Upload & Preview', 'sportspress-player-tools')); ?>
             </form>
         <?php
-    }
-    
-    private function show_preview() {
-        $data = get_transient('spt_batch_list_data');
-        if (!$data) {
-            echo '<p>' . __('No data found.', 'sportspress-player-tools') . '</p>';
-            return;
-        }
-        
-        $teams = get_posts(array('post_type' => 'sp_team', 'posts_per_page' => -1, 'orderby' => 'title', 'order' => 'ASC'));
-        $players = get_posts(array('post_type' => 'sp_player', 'posts_per_page' => -1, 'orderby' => 'title', 'order' => 'ASC'));
-        
-        ?>
-        <h2><?php _e('Preview & Confirm', 'sportspress-player-tools'); ?></h2>
-        <form method="post" action="<?php echo admin_url('admin-post.php'); ?>">
-            <input type="hidden" name="action" value="spt_process_list_batch">
-            <?php wp_nonce_field('spt_batch_process', 'spt_batch_process_nonce'); ?>
-            
-            <table class="form-table">
-                <tr>
-                    <th><?php _e('List Name', 'sportspress-player-tools'); ?></th>
-                    <td><input type="text" name="list_name" value="{team} Roster" class="regular-text"></td>
-                </tr>
-            </table>
-            
-            <table class="wp-list-table widefat striped">
-                <thead>
-                    <tr>
-                        <th><?php _e('Team', 'sportspress-player-tools'); ?></th>
-                        <th><?php _e('Player', 'sportspress-player-tools'); ?></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($data as $idx => $row):
-                        $matched_team = $this->find_closest($row['team'], $teams);
-                        $matched_player = $this->find_closest($row['name'], $players);
-                    ?>
-                    <tr>
-                        <td>
-                            <select name="team[<?php echo $idx; ?>]" required>
-                                <?php foreach ($teams as $team): ?>
-                                    <option value="<?php echo $team->ID; ?>" <?php selected($matched_team, $team->ID); ?>>
-                                        <?php echo esc_html($team->post_title); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </td>
-                        <td>
-                            <select name="player[<?php echo $idx; ?>]" required>
-                                <?php foreach ($players as $player): ?>
-                                    <option value="<?php echo $player->ID; ?>" <?php selected($matched_player, $player->ID); ?>>
-                                        <?php echo esc_html($player->post_title); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-            <?php submit_button(__('Create Lists', 'sportspress-player-tools')); ?>
-        </form>
-        <?php
-    }
-    
-    private function find_closest($name, $posts) {
-        $best = null;
-        $best_score = 0;
-        foreach ($posts as $post) {
-            $score = similar_text(strtolower($name), strtolower($post->post_title));
-            if ($score > $best_score) {
-                $best_score = $score;
-                $best = $post->ID;
-            }
-        }
-        return $best;
     }
 }
