@@ -354,6 +354,8 @@ class SPSG_Schedule_Generator
         $config_data = isset($_POST['config_data']) ? $_POST['config_data'] : null;
 
         if ($config_data && !empty($config_data)) {
+            $sanitizer = new SPSG_Configuration_Sanitizer();
+            $config_data = $sanitizer->sanitize($config_data);
             $config = new SPSG_Schedule_Configuration();
             foreach ($config_data as $key => $value) {
                 if (property_exists($config, $key)) {

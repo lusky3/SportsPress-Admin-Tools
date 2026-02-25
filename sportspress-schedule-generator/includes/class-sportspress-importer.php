@@ -41,7 +41,7 @@ class SPSG_Sports_Press_Importer
     public function import($schedule, $options = array())
     {
         // Validate SportsPress is active
-        if (!SPSGSportsPressIntegration::is_sportspress_active()) {
+        if (!SPSG_Sports_Press_Integration::is_sportspress_active()) {
             return new WP_Error(
                 'sportspress_inactive',
                 __('SportsPress is not active. Please install and activate SportsPress.', 'sportspress-schedule-generator')
@@ -86,7 +86,7 @@ class SPSG_Sports_Press_Importer
         }
 
         if (!empty($game_ids)) {
-            SPSGSportsPressIntegration::preload_events_by_game_ids($game_ids);
+            SPSG_Sports_Press_Integration::preload_events_by_game_ids($game_ids);
         }
 
         // Check for conflicts if not overwriting
@@ -154,7 +154,7 @@ class SPSG_Sports_Press_Importer
             return;
         }
 
-        $existing_event_id = SPSGSportsPressIntegration::find_existing_event($game);
+        $existing_event_id = SPSG_Sports_Press_Integration::find_existing_event($game);
 
         if ($existing_event_id && $options['conflict_resolution'] === 'overwrite') {
             $this->overwrite_existing_event($index, $game, $existing_event_id, $options, $results);
@@ -242,7 +242,7 @@ class SPSG_Sports_Press_Importer
         }
 
         // Create event using existing integration helper
-        $event_id = SPSGSportsPressIntegration::create_event_from_game($game);
+        $event_id = SPSG_Sports_Press_Integration::create_event_from_game($game);
 
         if (is_wp_error($event_id)) {
             return $event_id;
@@ -294,7 +294,7 @@ class SPSG_Sports_Press_Importer
                 $game->venue->id = $venue_mapping['venue_id'];
 
                 // Update event using existing integration helper
-                $update_result = SPSGSportsPressIntegration::update_event($event_id, $game);
+                $update_result = SPSG_Sports_Press_Integration::update_event($event_id, $game);
 
                 if (is_wp_error($update_result)) {
                     $result = $update_result;
@@ -420,7 +420,7 @@ class SPSG_Sports_Press_Importer
      */
     private function find_team_by_name($name)
     {
-        $teams = SPSGSportsPressIntegration::get_teams();
+        $teams = SPSG_Sports_Press_Integration::get_teams();
         $found_team = null;
 
         foreach ($teams as $team) {
@@ -441,7 +441,7 @@ class SPSG_Sports_Press_Importer
      */
     private function find_venue_by_name($name)
     {
-        $venues = SPSGSportsPressIntegration::get_venues();
+        $venues = SPSG_Sports_Press_Integration::get_venues();
         $found_venue = null;
 
         foreach ($venues as $venue) {
@@ -466,7 +466,7 @@ class SPSG_Sports_Press_Importer
 
         foreach ($schedule as $index => $game) {
             // Check if event already exists for this game
-            $existing_event_id = SPSGSportsPressIntegration::find_existing_event($game);
+            $existing_event_id = SPSG_Sports_Press_Integration::find_existing_event($game);
 
             if ($existing_event_id) {
                 $conflicts[$index] = $existing_event_id;

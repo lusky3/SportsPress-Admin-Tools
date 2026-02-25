@@ -88,6 +88,9 @@ class SPSG_Autoloader
             'SPSG_CSV_Exporter' => $base_path . 'exporters/class-csv-exporter.php',
             'SPSG_XLSX_Exporter' => $base_path . 'exporters/class-xlsx-exporter.php',
 
+            // Venue schedule importer
+            'SPSG_Venue_Schedule_Importer' => $base_path . 'class-venue-schedule-importer.php',
+
             // Data models
             'SPSG_Game' => $base_path . 'models/class-game.php',
             // Note: Team, Venue, and Division models not yet implemented

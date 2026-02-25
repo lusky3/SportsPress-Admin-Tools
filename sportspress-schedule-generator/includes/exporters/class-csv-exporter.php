@@ -22,7 +22,7 @@ class SPSG_CSV_Exporter implements SPSG_Exporter_Interface
     public function export($schedule, $config)
     {
         $upload_dir = wp_upload_dir();
-        $filename = 'schedule_' . date('Y-m-d_H-i-s') . '.csv';
+        $filename = 'schedule_' . wp_date('Y-m-d_H-i-s') . '.csv';
         $filepath = $upload_dir['path'] . '/' . $filename;
 
         $file = fopen($filepath, 'w');

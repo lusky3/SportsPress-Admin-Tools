@@ -200,7 +200,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface
      */
     private function save_spreadsheet($spreadsheet)
     {
-        $filename = 'schedule-' . date('Y-m-d-His') . '.xlsx';
+        $filename = 'schedule-' . wp_date('Y-m-d-His') . '.xlsx';
         $upload_dir = wp_upload_dir();
         $file_path = $upload_dir['basedir'] . '/spsg-exports/' . $filename;
 
