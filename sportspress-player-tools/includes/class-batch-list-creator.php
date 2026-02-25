@@ -1,7 +1,7 @@
 <?php
 /**
  * Batch Player List Creator
- * 
+ *
  * @author Cody (lusky3)
  */
 
@@ -39,10 +39,12 @@ class SPT_Batch_List_Creator {
             return;
         }
         
+        $url = esc_url(admin_url('tools.php?page=spt_upload_lists'));
+        $label = esc_html__('Upload Player Lists', 'sportspress-player-tools');
         ?>
         <script>
         jQuery(document).ready(function($) {
-            var link = '<a href="<?php echo admin_url('tools.php?page=spt_upload_lists'); ?>" class="page-title-action"><?php _e('Upload Player Lists', 'sportspress-player-tools'); ?></a>';
+            var link = '<a href="<?php echo $url; ?>" class="page-title-action"><?php echo $label; ?></a>';
             $('.wrap .page-title-action').first().after(link);
         });
         </script>
@@ -51,25 +53,29 @@ class SPT_Batch_List_Creator {
     
     public function success_notice() {
         if (isset($_GET['spt_batch_created']) && $_GET['spt_batch_created'] == '1') {
-            echo '<div class="notice notice-success is-dismissible"><p>' . __('Player lists created successfully.', 'sportspress-player-tools') . '</p></div>';
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Player lists created successfully.', 'sportspress-player-tools') . '</p></div>';
         }
     }
     
     public function enqueue_scripts($hook) {
         $screen = get_current_screen();
         
+        // Use parent plugin's bundled Select2
+        $select2_js = plugins_url('sportspress-admin-tools/assets/lib/select2/select2.min.js');
+        $select2_css = plugins_url('sportspress-admin-tools/assets/lib/select2/select2.min.css');
+        
         // Load on sp_list edit page
         if ($hook === 'edit.php' && $screen && $screen->post_type === 'sp_list') {
             if (get_option('spat_use_select2', '0') === '1') {
-                wp_enqueue_script('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js', array('jquery'), '4.1.0', true);
-                wp_enqueue_style('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css', array(), '4.1.0');
+                wp_enqueue_script('select2', $select2_js, array('jquery'), '4.1.0', true);
+                wp_enqueue_style('select2', $select2_css, array(), '4.1.0');
             }
         }
         
         // Load on tools page
         if ($hook === 'tools_page_spt_upload_lists') {
-            wp_enqueue_script('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js', array('jquery'), '4.1.0', true);
-            wp_enqueue_style('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css', array(), '4.1.0');
+            wp_enqueue_script('select2', $select2_js, array('jquery'), '4.1.0', true);
+            wp_enqueue_style('select2', $select2_css, array(), '4.1.0');
         }
     }
     
@@ -85,7 +91,7 @@ class SPT_Batch_List_Creator {
         <div class="wrap">
             <h1><?php _e('Upload Player Lists', 'sportspress-player-tools'); ?></h1>
             
-            <form method="post" action="<?php echo admin_url('admin-post.php'); ?>" enctype="multipart/form-data" id="spt-upload-form">
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data" id="spt-upload-form">
                 <input type="hidden" name="action" value="spt_upload_list_csv">
                 <?php wp_nonce_field('spt_batch_list_upload', 'spt_batch_list_nonce'); ?>
                 
@@ -98,8 +104,8 @@ class SPT_Batch_List_Creator {
                 </div>
                 
                 <p class="submit">
-                    <input type="submit" class="button button-primary" value="<?php _e('Upload & Preview', 'sportspress-player-tools'); ?>" id="submit-btn" disabled>
-                    <a href="<?php echo admin_url('edit.php?post_type=sp_list'); ?>" class="button"><?php _e('Cancel', 'sportspress-player-tools'); ?></a>
+                    <input type="submit" class="button button-primary" value="<?php esc_attr_e('Upload & Preview', 'sportspress-player-tools'); ?>" id="submit-btn" disabled>
+                    <a href="<?php echo esc_url(admin_url('edit.php?post_type=sp_list')); ?>" class="button"><?php _e('Cancel', 'sportspress-player-tools'); ?></a>
                 </p>
             </form>
         </div>
@@ -233,8 +239,8 @@ class SPT_Batch_List_Creator {
             current_time('mysql')
         ));
         
-        if ($result === false) {
-            error_log('SPAT: Failed to insert batch list data - ' . $wpdb->last_error);
+        if ($result === false && get_option('spat_debug_verbose_logging', '0') === '1') {
+            error_log('SPT: Failed to insert batch list data - ' . $wpdb->last_error);
         }
         wp_redirect(admin_url('tools.php?page=spt_upload_lists&preview=1'));
         exit;
@@ -266,13 +272,18 @@ class SPT_Batch_List_Creator {
         
         $list_name = sanitize_text_field($_POST['list_name']);
         $season_id = intval($_POST['season']);
-        $columns = isset($_POST['columns']) ? $_POST['columns'] : array('number', 'position');
-        $action = isset($_POST['list_action']) ? $_POST['list_action'] : 'create';
+        $columns = isset($_POST['columns']) ? array_map('sanitize_text_field', $_POST['columns']) : array('number', 'position');
+        $action = isset($_POST['list_action']) ? sanitize_text_field($_POST['list_action']) : 'create';
+        
+        // Validate action value
+        if (!in_array($action, array('create', 'update'), true)) {
+            $action = 'create';
+        }
         
         // Get season and children
         $season_ids = array($season_id);
         $child_seasons = get_terms(array('taxonomy' => 'sp_season', 'parent' => $season_id, 'hide_empty' => false));
-        if (!empty($child_seasons)) {
+        if (!empty($child_seasons) && !is_wp_error($child_seasons)) {
             foreach ($child_seasons as $child) {
                 $season_ids[] = $child->term_id;
             }
@@ -284,12 +295,14 @@ class SPT_Batch_List_Creator {
             if (!isset($team_players[$team_id])) {
                 $team_players[$team_id] = array();
             }
-            $team_players[$team_id][] = $players[$idx];
+            if (isset($players[$idx])) {
+                $team_players[$team_id][] = $players[$idx];
+            }
         }
         
         // Get season name
         $season_term = get_term($season_id, 'sp_season');
-        $season_name = $season_term ? $season_term->name : '';
+        $season_name = ($season_term && !is_wp_error($season_term)) ? $season_term->name : '';
         
         // Clean up temp data
         global $wpdb;
@@ -334,7 +347,7 @@ class SPT_Batch_List_Creator {
                 ));
             }
             
-            if ($list_id) {
+            if ($list_id && !is_wp_error($list_id)) {
                 wp_set_object_terms($list_id, array($team_id), 'sp_team');
                 wp_set_object_terms($list_id, $season_ids, 'sp_season');
                 
@@ -350,8 +363,6 @@ class SPT_Batch_List_Creator {
                 // Attach to team and remove any existing list
                 delete_post_meta($team_id, 'sp_list');
                 update_post_meta($team_id, 'sp_list', $list_id);
-            } else {
-                error_log('SPT: Failed to create list for team ' . $team_id);
             }
         }
         
@@ -371,7 +382,7 @@ class SPT_Batch_List_Creator {
         
         $data = $result ? json_decode($result, true) : false;
         if (!$data) {
-            echo '<div class="wrap"><p>' . __('No data found. Please upload a CSV file.', 'sportspress-player-tools') . '</p></div>';
+            echo '<div class="wrap"><p>' . esc_html__('No data found. Please upload a CSV file.', 'sportspress-player-tools') . '</p></div>';
             return;
         }
         
@@ -401,9 +412,9 @@ class SPT_Batch_List_Creator {
             <h1><?php _e('Preview & Confirm Player Lists', 'sportspress-player-tools'); ?></h1>
             <p><?php printf(__('Showing %d-%d of %d entries', 'sportspress-player-tools'), $offset + 1, min($offset + $per_page, $total_items), $total_items); ?></p>
             
-            <form method="post" action="<?php echo admin_url('admin-post.php'); ?>" id="batch-form">
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" id="batch-form">
                 <input type="hidden" name="action" value="spt_process_list_batch">
-                <input type="hidden" name="_wpnonce" value="<?php echo wp_create_nonce('spt_batch_process'); ?>">
+                <input type="hidden" name="_wpnonce" value="<?php echo esc_attr(wp_create_nonce('spt_batch_process')); ?>">
                 
 
                 
@@ -423,11 +434,11 @@ class SPT_Batch_List_Creator {
                             $seasons = get_terms(array('taxonomy' => 'sp_season', 'parent' => 0, 'hide_empty' => false));
                             ?>
                             <select name="season" required>
-                                <?php foreach ($seasons as $season): ?>
-                                    <option value="<?php echo $season->term_id; ?>" <?php selected($default_season, $season->term_id); ?>>
+                                <?php if (!is_wp_error($seasons)): foreach ($seasons as $season): ?>
+                                    <option value="<?php echo esc_attr($season->term_id); ?>" <?php selected($default_season, $season->term_id); ?>>
                                         <?php echo esc_html($season->name); ?>
                                     </option>
-                                <?php endforeach; ?>
+                                <?php endforeach; endif; ?>
                             </select>
                         </td>
                     </tr>
@@ -502,7 +513,7 @@ class SPT_Batch_List_Creator {
                     <tbody>
                         <?php 
                         $global_idx = $offset;
-                        foreach ($data_page as $idx => $row): 
+                        foreach ($data_page as $row): 
                             $team_ambiguous = false;
                             $player_ambiguous = false;
                             $matched_team = $this->find_closest($row['team'], $team_objects, $team_ambiguous);
@@ -512,9 +523,9 @@ class SPT_Batch_List_Creator {
                         <tr>
                             <td><?php echo esc_html($row['team']); ?></td>
                             <td style="<?php echo $team_ambiguous ? 'background-color: #fff3cd; border-left: 3px solid #ff9800;' : ''; ?>">
-                                <select name="team_<?php echo $global_idx; ?>" class="spt-team-select" style="width: 100%;" required>
+                                <select name="team_<?php echo esc_attr($global_idx); ?>" class="spt-team-select" style="width: 100%;" required>
                                     <?php foreach ($team_objects as $team): ?>
-                                        <option value="<?php echo $team->ID; ?>" <?php selected($matched_team, $team->ID); ?>>
+                                        <option value="<?php echo esc_attr($team->ID); ?>" <?php selected($matched_team, $team->ID); ?>>
                                             <?php echo esc_html($team->post_title); ?>
                                         </option>
                                     <?php endforeach; ?>
@@ -522,9 +533,9 @@ class SPT_Batch_List_Creator {
                             </td>
                             <td><?php echo esc_html($row['name']); ?></td>
                             <td style="<?php echo $player_ambiguous ? 'background-color: #fff3cd; border-left: 3px solid #ff9800;' : ''; ?>">
-                                <select name="player_<?php echo $global_idx; ?>" class="spt-player-select" style="width: 100%;" required>
+                                <select name="player_<?php echo esc_attr($global_idx); ?>" class="spt-player-select" style="width: 100%;" required>
                                     <?php foreach ($player_objects as $player): ?>
-                                        <option value="<?php echo $player->ID; ?>" <?php selected($matched_player, $player->ID); ?>>
+                                        <option value="<?php echo esc_attr($player->ID); ?>" <?php selected($matched_player, $player->ID); ?>>
                                             <?php echo esc_html($player->post_title); ?>
                                         </option>
                                     <?php endforeach; ?>
@@ -543,13 +554,13 @@ class SPT_Batch_List_Creator {
                         <span class="displaying-num"><?php printf(__('%s items', 'sportspress-player-tools'), number_format_i18n($total_items)); ?></span>
                         <span class="pagination-links">
                             <?php if ($current_page > 1): ?>
-                                <a class="prev-page button" href="#" data-page="<?php echo $current_page - 1; ?>">&laquo;</a>
+                                <a class="prev-page button" href="#" data-page="<?php echo esc_attr($current_page - 1); ?>">&laquo;</a>
                             <?php endif; ?>
                             <span class="paging-input">
-                                <span class="tablenav-paging-text"><?php echo $current_page; ?> of <?php echo $total_pages; ?></span>
+                                <span class="tablenav-paging-text"><?php echo esc_html($current_page); ?> of <?php echo esc_html($total_pages); ?></span>
                             </span>
                             <?php if ($current_page < $total_pages): ?>
-                                <a class="next-page button" href="#" data-page="<?php echo $current_page + 1; ?>">&raquo;</a>
+                                <a class="next-page button" href="#" data-page="<?php echo esc_attr($current_page + 1); ?>">&raquo;</a>
                             <?php endif; ?>
                         </span>
                     </div>
@@ -560,7 +571,7 @@ class SPT_Batch_List_Creator {
                 <p class="submit">
                     <button type="button" class="button button-primary" id="test-submit"><?php _e('Create Player Lists', 'sportspress-player-tools'); ?></button>
                     <span id="status"></span>
-                    <a href="<?php echo admin_url('edit.php?post_type=sp_list'); ?>" class="button"><?php _e('Cancel', 'sportspress-player-tools'); ?></a>
+                    <a href="<?php echo esc_url(admin_url('edit.php?post_type=sp_list')); ?>" class="button"><?php _e('Cancel', 'sportspress-player-tools'); ?></a>
                 </p>
             </form>
             <script>
@@ -666,7 +677,6 @@ class SPT_Batch_List_Creator {
         
         $search = isset($_GET['q']) ? sanitize_text_field($_GET['q']) : '';
         $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
-        $selected = isset($_GET['selected']) ? intval($_GET['selected']) : 0;
         $per_page = 50;
         
         $args = array(
@@ -703,7 +713,6 @@ class SPT_Batch_List_Creator {
         
         $search = isset($_GET['q']) ? sanitize_text_field($_GET['q']) : '';
         $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
-        $selected = isset($_GET['selected']) ? intval($_GET['selected']) : 0;
         $per_page = 50;
         
         $args = array(

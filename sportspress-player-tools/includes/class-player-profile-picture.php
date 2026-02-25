@@ -123,6 +123,14 @@ class SPT_Player_Profile_Picture {
         
         $player_id = $player_posts[0];
         
+        // Validate file size (max 2MB)
+        $max_size = 2 * 1024 * 1024;
+        if ($_FILES['profile_picture']['size'] > $max_size) {
+            wc_add_notice(__('File is too large. Maximum size is 2MB.', 'sportspress-player-tools'), 'error');
+            wp_redirect(wc_get_account_endpoint_url('profile-picture'));
+            exit;
+        }
+        
         require_once ABSPATH . 'wp-admin/includes/image.php';
         require_once ABSPATH . 'wp-admin/includes/file.php';
         require_once ABSPATH . 'wp-admin/includes/media.php';

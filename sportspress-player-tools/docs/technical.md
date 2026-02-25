@@ -31,12 +31,15 @@ sportspress-player-tools/
 │   ├── class-admin.php                 # Admin interface integration
 │   ├── class-batch-list-creator.php    # CSV upload and list creation
 │   ├── class-player-modifications.php  # Player data tools
+│   ├── class-player-profile-picture.php # Profile picture upload
 │   └── class-player-stats-enabler.php  # Statistics configuration
 ├── docs/
 │   ├── batch-list-creator.md           # User documentation
 │   ├── technical.md                    # This file
 │   └── sample-roster.csv               # Example CSV
-└── sportspress-player-tools.php        # Main plugin file
+├── sportspress-player-tools.php        # Main plugin file
+├── uninstall.php                       # Cleanup on uninstall
+└── readme.txt                          # WordPress.org format
 ```
 
 ## Data Structures
@@ -105,28 +108,28 @@ When a new list is created for a team:
 
 ### Captain Selection
 
-**List Meta:** `spat_captain`
+**List Meta:** `spt_captain`
 
 Stores player ID of designated captain:
 
 ```php
-spat_captain => 103396
+spt_captain => 103396
 ```
 
 **Frontend Display:**
 
 - Filter: `sportspress_list_player_name`
-- Adds `<span class="spat-captain-indicator">C</span>` after captain's name
-- Customizable via `spat_captain_indicator_text` filter
+- Adds `<span class="spt-captain-indicator">C</span>` after captain's name
+- Customizable via `spt_captain_indicator_text` filter
 
 ### Player Email
 
-**Player Meta:** `spat_email`
+**Player Meta:** `spt_email`
 
 Stores player email address:
 
 ```php
-spat_email => 'player@example.com'
+spt_email => '[email]'
 ```
 
 Used by Player Registration module for automatic user-player linking.
@@ -307,7 +310,7 @@ $statistics = get_posts(array(
 
 - Customize captain indicator text
 - Default: "C"
-- Example: `add_filter('spat_captain_indicator_text', function() { return '★'; });`
+- Example: `add_filter('spt_captain_indicator_text', function() { return '★'; });`
 
 ## Database Operations
 
@@ -443,7 +446,7 @@ add_filter('spt_clean_player_name', function($name) {
 Change captain display:
 
 ```php
-add_filter('spat_captain_indicator_text', function($text) {
+add_filter('spt_captain_indicator_text', function($text) {
     return '★'; // Use star instead of C
 });
 ```
