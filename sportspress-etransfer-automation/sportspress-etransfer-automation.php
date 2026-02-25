@@ -26,7 +26,9 @@ class SportsPress_ETransfer_Automation
     public function __construct()
     {
         register_activation_hook(__FILE__, array($this, 'check_activation_requirements'));
+        register_deactivation_hook(__FILE__, array($this, 'deactivate'));
         add_action('plugins_loaded', array($this, 'init'));
+        add_action('spet_cleanup_old_logs', array($this, 'run_log_cleanup'));
     }
 
     public function check_activation_requirements()
@@ -38,6 +40,22 @@ class SportsPress_ETransfer_Automation
 
         require_once SPET_PLUGIN_PATH . 'includes/class-database.php';
         SPET_Database::create_tables();
+
+        // Schedule daily log cleanup
+        if (!wp_next_scheduled('spet_cleanup_old_logs')) {
+            wp_schedule_event(time(), 'daily', 'spet_cleanup_old_logs');
+        }
+    }
+
+    public function deactivate()
+    {
+        wp_clear_scheduled_hook('spet_cleanup_old_logs');
+    }
+
+    public function run_log_cleanup()
+    {
+        require_once SPET_PLUGIN_PATH . 'includes/class-database.php';
+        SPET_Database::cleanup_old_logs(90);
     }
 
     public function init()
