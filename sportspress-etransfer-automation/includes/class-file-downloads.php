@@ -10,15 +10,15 @@ if (!defined('ABSPATH')) {
     wp_die();
 }
 
-class SPETFileDownloads
+class SPET_File_Downloads
 {
 
     public function __construct()
     {
-        add_action('init', array($this, 'handleDownloadRequest'));
+        add_action('init', array($this, 'handle_download_request'));
     }
 
-    public function handleDownloadRequest()
+    public function handle_download_request()
     {
         if (!isset($_GET['spat_download']) || !isset($_GET['file'])) {
             return;
@@ -51,7 +51,7 @@ class SPETFileDownloads
         $filename = $file_map[$file_key];
 
         // Generate dynamic content
-        $content = $this->getFileContent($filename);
+        $content = $this->get_file_content($filename);
 
         // Set headers for download
         header('Content-Type: application/octet-stream');
@@ -63,7 +63,7 @@ class SPETFileDownloads
         wp_die();
     }
 
-    private function getFileContent($file)
+    private function get_file_content($file)
     {
         $assets_dir = plugin_dir_path(dirname(__FILE__)) . 'assets/';
         $file_path = $assets_dir . $file;
@@ -127,7 +127,7 @@ class SPETFileDownloads
         return $content;
     }
 
-    public static function getDownloadUrl($file_key)
+    public static function get_download_url($file_key)
     {
         // Build the URL with the key
         return add_query_arg(array(
