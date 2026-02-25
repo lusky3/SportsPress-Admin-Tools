@@ -36,6 +36,11 @@ class SPET_ETransfer_Automation
             return new WP_Error('invalid_signature', 'Invalid webhook signature', array('status' => 401));
         }
 
+        // Check WooCommerce is available
+        if (!function_exists('wc_get_orders')) {
+            return new WP_Error('woocommerce_missing', 'WooCommerce is not active', array('status' => 503));
+        }
+
         $data = json_decode($body, true);
         if (!$data) {
             return new WP_Error('invalid_json', 'Invalid JSON payload', array('status' => 400));
@@ -47,8 +52,49 @@ class SPET_ETransfer_Automation
             return new WP_Error('invalid_payment_data', 'Could not extract payment data', array('status' => 400));
         }
 
+        // Check for duplicate reference number
+        if (SPET_Database::reference_number_exists($payment_data['reference_number'])) {
+            SPET_Database::log_etransfer_activity(array(
+                'from_email' => $payment_data['customer_email'],
+                'from_name' => $payment_data['sender_name'],
+                'amount' => $payment_data['amount'],
+                'reference_number' => $payment_data['reference_number'],
+                'match_criteria' => '',
+                'order_id' => null,
+                'result' => 'Duplicate webhook - reference number already processed',
+                'webhook_data' => $data,
+                'payment_data' => $payment_data
+            ));
+            return rest_ensure_response(array('status' => 'duplicate', 'message' => 'Reference number already processed'));
+        }
+
         // Find matching order
         $order_id = $this->find_matching_order($payment_data);
+
+        // Validate amount if order was matched
+        $amount_mismatch = false;
+        if ($order_id) {
+            $order = wc_get_order($order_id);
+            if ($order) {
+                $order_total = floatval($order->get_total());
+                $payment_amount = floatval($payment_data['amount']);
+                if (abs($order_total - $payment_amount) > 0.01) {
+                    $amount_mismatch = true;
+                    $payment_data['match_criteria'] = ($payment_data['match_criteria'] ?? '') .
+                        sprintf(' | Amount mismatch: paid $%.2f, order $%.2f', $payment_amount, $order_total);
+                }
+            }
+        }
+
+        // Determine result message
+        if (!$order_id) {
+            $result = 'No matching order found';
+        } elseif ($amount_mismatch) {
+            $result = sprintf('Amount mismatch - paid $%.2f, order $%.2f - pending manual review',
+                $payment_data['amount'], floatval(wc_get_order($order_id)->get_total()));
+        } else {
+            $result = 'Order updated successfully';
+        }
 
         // Log activity
         SPET_Database::log_etransfer_activity(array(
@@ -57,15 +103,19 @@ class SPET_ETransfer_Automation
             'amount' => $payment_data['amount'],
             'reference_number' => $payment_data['reference_number'],
             'match_criteria' => $payment_data['match_criteria'] ?? '',
-            'order_id' => $order_id,
-            'result' => $order_id ? 'Order updated successfully' : 'No matching order found',
+            'order_id' => $amount_mismatch ? null : $order_id,
+            'result' => $result,
             'webhook_data' => $data,
             'payment_data' => $payment_data
         ));
 
-        if ($order_id) {
+        if ($order_id && !$amount_mismatch) {
             $this->process_payment($order_id, $payment_data);
             return rest_ensure_response(array('status' => 'success', 'order_id' => $order_id));
+        }
+
+        if ($amount_mismatch) {
+            return rest_ensure_response(array('status' => 'amount_mismatch', 'message' => $result, 'order_id' => $order_id));
         }
 
         return rest_ensure_response(array('status' => 'no_match', 'message' => 'No matching order found'));

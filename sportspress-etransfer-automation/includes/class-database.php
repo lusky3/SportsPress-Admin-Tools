@@ -89,10 +89,38 @@ class SPET_Database
         return $wpdb->get_var($wpdb->prepare(
             "SELECT COUNT(*) FROM $table_name 
             WHERE order_id IS NULL 
-            AND result LIKE %s 
+            AND (result LIKE %s OR result LIKE %s)
             AND result != %s",
             '%No matching order%',
+            '%Amount mismatch%',
             'Hidden from management'
+        ));
+    }
+
+    public static function reference_number_exists($reference_number)
+    {
+        global $wpdb;
+
+        $table_name = $wpdb->prefix . 'spet_etransfer_logs';
+
+        $count = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $table_name WHERE reference_number = %s AND result NOT LIKE %s",
+            sanitize_text_field($reference_number),
+            '%Duplicate webhook%'
+        ));
+
+        return intval($count) > 0;
+    }
+
+    public static function cleanup_old_logs($days = 90)
+    {
+        global $wpdb;
+
+        $table_name = $wpdb->prefix . 'spet_etransfer_logs';
+
+        return $wpdb->query($wpdb->prepare(
+            "DELETE FROM $table_name WHERE timestamp < DATE_SUB(NOW(), INTERVAL %d DAY)",
+            intval($days)
         ));
     }
 

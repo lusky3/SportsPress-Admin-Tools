@@ -122,7 +122,9 @@ class SPET_ETransfer_Admin
             return;
         }
         $unmatched = array_filter($logs, function ($log) {
-            return !$log->order_id && strpos($log->result, 'No matching order') !== false;
+            return !$log->order_id
+                && (strpos($log->result, 'No matching order') !== false || strpos($log->result, 'Amount mismatch') !== false)
+                && $log->result !== 'Hidden from management';
         });
 
         if (empty($unmatched)) {
@@ -136,16 +138,17 @@ class SPET_ETransfer_Admin
         echo '<th>' . __('From', 'sportspress-admin-tools') . '</th>';
         echo '<th>' . __('Amount', 'sportspress-admin-tools') . '</th>';
         echo '<th>' . __('Reference', 'sportspress-admin-tools') . '</th>';
+        echo '<th>' . __('Result', 'sportspress-admin-tools') . '</th>';
         echo '<th>' . __('Match to Order', 'sportspress-admin-tools') . '</th>';
         echo '</tr></thead><tbody>';
 
-        foreach ($logs as $log) {
-            if (!$log->order_id && strpos($log->result, 'No matching order') !== false && $log->result !== 'Hidden from management') {
+        foreach ($unmatched as $log) {
                 echo '<tr>';
                 echo '<td>' . esc_html($log->timestamp) . '</td>';
                 echo '<td>' . esc_html($log->from_name) . '<br><small>' . esc_html($log->from_email) . '</small></td>';
-                echo '<td>$' . number_format($log->amount, 2) . '</td>';
+                echo '<td>' . esc_html('$' . number_format($log->amount, 2)) . '</td>';
                 echo '<td>' . esc_html($log->reference_number ?: 'N/A') . '</td>';
+                echo '<td>' . esc_html($log->result) . '</td>';
                 echo '<td>';
 
                 echo '<form method="post" style="display:inline;">';
@@ -179,7 +182,6 @@ class SPET_ETransfer_Admin
 
                 echo '</td>';
                 echo '</tr>';
-            }
         }
 
         echo '</tbody></table>';
@@ -214,7 +216,7 @@ class SPET_ETransfer_Admin
             echo '<tr>';
             echo '<td>' . esc_html($log->timestamp) . '</td>';
             echo '<td>' . esc_html($log->from_name) . '<br><small>' . esc_html($log->from_email) . '</small></td>';
-            echo '<td>$' . number_format($log->amount, 2) . '</td>';
+            echo '<td>' . esc_html('$' . number_format($log->amount, 2)) . '</td>';
             echo '<td>' . esc_html($log->reference_number ?: 'N/A') . '</td>';
             echo '<td>' . esc_html($log->match_criteria ?: 'N/A') . '</td>';
             echo '<td>' . ($log->order_id ? '<a href="' . esc_url(admin_url('post.php?post=' . intval($log->order_id) . '&action=edit')) . '">#' . esc_html($log->order_id) . '</a>' : 'N/A') . '</td>';
