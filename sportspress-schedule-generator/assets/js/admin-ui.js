@@ -1413,4 +1413,309 @@
         return false;
     });
 
+    // =============================================
+    // Placeholder Teams Management
+    // =============================================
+    var PlaceholderTeams = {
+        realTeams: [],
+        placeholders: [],
+
+        init: function() {
+            var self = this;
+
+            // Only initialize if the tab exists
+            if (!$('#spsg-placeholder-teams-table').length) {
+                return;
+            }
+
+            // Load on tab switch
+            $(document).on('click', 'a[href="#placeholder-teams"]', function() {
+                self.loadPlaceholderTeams();
+            });
+
+            // Refresh button
+            $('#spsg-refresh-placeholders').on('click', function() {
+                self.loadPlaceholderTeams();
+            });
+
+            // Replace all button
+            $('#spsg-replace-all-placeholders').on('click', function() {
+                self.replaceAllSelected();
+            });
+
+            // Individual replace buttons
+            $(document).on('click', '.spsg-replace-single', function() {
+                var $row = $(this).closest('tr');
+                var placeholderId = $row.data('placeholder-id');
+                var replacementId = $row.find('.spsg-replacement-select').val();
+                self.replaceSingle(placeholderId, replacementId, $row);
+            });
+
+            // Auto-load if we're already on the placeholder tab
+            if (window.location.hash === '#placeholder-teams') {
+                self.loadPlaceholderTeams();
+            }
+        },
+
+        loadPlaceholderTeams: function() {
+            var self = this;
+
+            $('#spsg-placeholder-teams-loading').show();
+            $('#spsg-placeholder-teams-table-wrapper, #spsg-no-placeholders').hide();
+
+            // Load both placeholder teams and real teams in parallel
+            $.when(
+                $.ajax({
+                    url: ajaxurl,
+                    type: 'POST',
+                    data: {
+                        action: 'spsg_get_placeholder_teams',
+                        nonce: spsgData.nonces.get_placeholder_teams
+                    }
+                }),
+                $.ajax({
+                    url: ajaxurl,
+                    type: 'POST',
+                    data: {
+                        action: 'spsg_get_real_teams',
+                        nonce: spsgData.nonces.get_real_teams
+                    }
+                })
+            ).done(function(placeholderResp, realTeamsResp) {
+                $('#spsg-placeholder-teams-loading').hide();
+
+                var pData = placeholderResp[0];
+                var rData = realTeamsResp[0];
+
+                if (pData.success && rData.success) {
+                    self.placeholders = pData.data.placeholders || [];
+                    self.realTeams = rData.data.teams || [];
+
+                    if (self.placeholders.length === 0) {
+                        $('#spsg-no-placeholders').show();
+                    } else {
+                        self.renderTable();
+                        $('#spsg-placeholder-teams-table-wrapper').show();
+                    }
+                } else {
+                    $('#spsg-no-placeholders').show();
+                }
+            }).fail(function() {
+                $('#spsg-placeholder-teams-loading').hide();
+                $('#spsg-no-placeholders').show();
+            });
+        },
+
+        renderTable: function() {
+            var self = this;
+            var $tbody = $('#spsg-placeholder-teams-body');
+            $tbody.empty();
+
+            $.each(self.placeholders, function(i, placeholder) {
+                var $row = $('<tr></tr>').attr('data-placeholder-id', placeholder.id);
+
+                // Placeholder name
+                $row.append('<td><strong>' + self.escHtml(placeholder.name) + '</strong> <small>(ID: ' + placeholder.id + ')</small></td>');
+
+                // Division
+                $row.append('<td>' + self.escHtml(placeholder.division || '—') + '</td>');
+
+                // Replacement dropdown
+                var $select = $('<select class="spsg-replacement-select regular-text"></select>');
+                $select.append('<option value="">' + '— Select a team —' + '</option>');
+                $.each(self.realTeams, function(j, team) {
+                    $select.append(
+                        $('<option></option>').val(team.id).text(team.name)
+                    );
+                });
+                var $selectTd = $('<td></td>').append($select);
+                $row.append($selectTd);
+
+                // Actions
+                var $actions = $('<td></td>');
+                $actions.append(
+                    '<button type="button" class="button spsg-replace-single">Replace</button>'
+                );
+                $row.append($actions);
+
+                $tbody.append($row);
+            });
+
+            // Initialize Slim Select if available
+            if (typeof SlimSelect !== 'undefined') {
+                $tbody.find('.spsg-replacement-select').each(function() {
+                    new SlimSelect({
+                        select: this,
+                        settings: {
+                            allowDeselect: true,
+                            placeholderText: '— Select a team —'
+                        }
+                    });
+                });
+            }
+        },
+
+        replaceSingle: function(placeholderId, replacementId, $row) {
+            var self = this;
+
+            if (!replacementId) {
+                alert('Please select a replacement team.');
+                return;
+            }
+
+            if (!confirm('Replace this placeholder team? All events will be updated.')) {
+                return;
+            }
+
+            var $btn = $row.find('.spsg-replace-single');
+            $btn.prop('disabled', true).text('Replacing...');
+
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'spsg_replace_placeholder_team',
+                    nonce: spsgData.nonces.replace_placeholder_team,
+                    placeholder_id: placeholderId,
+                    replacement_id: replacementId,
+                    delete_placeholder: '1'
+                },
+                success: function(response) {
+                    if (response.success) {
+                        $row.css('background-color', '#d5f4e6').fadeOut(800, function() {
+                            $(this).remove();
+                            self.showResult('success', response.data.message);
+
+                            // If no more rows, show empty message
+                            if ($('#spsg-placeholder-teams-body tr').length === 0) {
+                                $('#spsg-placeholder-teams-table-wrapper').hide();
+                                $('#spsg-no-placeholders').show();
+                            }
+                        });
+                    } else {
+                        var msg = response.data.message || response.data || 'Replacement failed.';
+                        self.showResult('error', msg);
+                        $btn.prop('disabled', false).text('Replace');
+                    }
+                },
+                error: function() {
+                    self.showResult('error', 'Request failed. Please try again.');
+                    $btn.prop('disabled', false).text('Replace');
+                }
+            });
+        },
+
+        replaceAllSelected: function() {
+            var self = this;
+            var replacements = [];
+
+            $('#spsg-placeholder-teams-body tr').each(function() {
+                var $row = $(this);
+                var placeholderId = $row.data('placeholder-id');
+                var replacementId = $row.find('.spsg-replacement-select').val();
+
+                if (replacementId) {
+                    replacements.push({
+                        placeholder_id: placeholderId,
+                        replacement_id: replacementId,
+                        $row: $row
+                    });
+                }
+            });
+
+            if (replacements.length === 0) {
+                alert('Please select replacement teams for at least one placeholder.');
+                return;
+            }
+
+            // Check for duplicate replacement targets
+            var targetIds = replacements.map(function(r) { return r.replacement_id; });
+            var uniqueTargets = targetIds.filter(function(v, i, a) { return a.indexOf(v) === i; });
+            if (uniqueTargets.length !== targetIds.length) {
+                if (!confirm('Warning: You have selected the same replacement team for multiple placeholders. Continue?')) {
+                    return;
+                }
+            }
+
+            if (!confirm('Replace ' + replacements.length + ' placeholder team(s)? All associated events will be updated.')) {
+                return;
+            }
+
+            var $btn = $('#spsg-replace-all-placeholders');
+            $btn.prop('disabled', true).text('Replacing...');
+
+            // Process sequentially to avoid race conditions
+            var index = 0;
+            var results = { success: 0, failed: 0 };
+
+            function processNext() {
+                if (index >= replacements.length) {
+                    $btn.prop('disabled', false).text('Replace All Selected');
+                    self.showResult('success',
+                        'Completed: ' + results.success + ' replaced, ' + results.failed + ' failed.'
+                    );
+
+                    // Refresh the list
+                    setTimeout(function() {
+                        self.loadPlaceholderTeams();
+                    }, 1000);
+                    return;
+                }
+
+                var item = replacements[index];
+                index++;
+
+                $.ajax({
+                    url: ajaxurl,
+                    type: 'POST',
+                    data: {
+                        action: 'spsg_replace_placeholder_team',
+                        nonce: spsgData.nonces.replace_placeholder_team,
+                        placeholder_id: item.placeholder_id,
+                        replacement_id: item.replacement_id,
+                        delete_placeholder: '1'
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            results.success++;
+                            item.$row.css('background-color', '#d5f4e6');
+                        } else {
+                            results.failed++;
+                            item.$row.css('background-color', '#f8d7da');
+                        }
+                        processNext();
+                    },
+                    error: function() {
+                        results.failed++;
+                        item.$row.css('background-color', '#f8d7da');
+                        processNext();
+                    }
+                });
+            }
+
+            processNext();
+        },
+
+        showResult: function(type, message) {
+            var $container = $('#spsg-replacement-results');
+            var $content = $('#spsg-replacement-results-content');
+            var cssClass = type === 'success' ? 'notice-success' : 'notice-error';
+
+            $content.html('<div class="notice ' + cssClass + ' inline"><p>' + this.escHtml(message) + '</p></div>');
+            $container.show();
+
+            // Auto-hide after 8 seconds
+            setTimeout(function() {
+                $container.fadeOut();
+            }, 8000);
+        },
+
+        escHtml: function(str) {
+            if (!str) return '';
+            return $('<div/>').text(str).html();
+        }
+    };
+
+    PlaceholderTeams.init();
+
 })(jQuery);
