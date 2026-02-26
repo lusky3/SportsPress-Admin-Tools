@@ -91,6 +91,9 @@ class SPSG_Autoloader
             // Venue schedule importer
             'SPSG_Venue_Schedule_Importer' => $base_path . 'class-venue-schedule-importer.php',
 
+            // Placeholder team management
+            'SPSG_Placeholder_Team_Manager' => $base_path . 'class-placeholder-team-manager.php',
+
             // Data models
             'SPSG_Game' => $base_path . 'models/class-game.php',
             // Note: Team, Venue, and Division models not yet implemented
