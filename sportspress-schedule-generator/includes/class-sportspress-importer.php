@@ -24,6 +24,18 @@ class SPSG_Sports_Press_Importer
     private $sp_integration;
 
     /**
+     * Whether to auto-create placeholder teams during import
+     * @var bool
+     */
+    private $create_placeholder_teams = false;
+
+    /**
+     * Config ID for tracking placeholder team origin
+     * @var string
+     */
+    private $import_config_id = '';
+
+    /**
      * Constructor
      */
     public function __construct()
@@ -59,6 +71,10 @@ class SPSG_Sports_Press_Importer
             'config_id' => '',
         );
         $options = wp_parse_args($options, $defaults);
+
+        // Store placeholder creation settings for use in map_teams
+        $this->create_placeholder_teams = !empty($options['create_placeholder_teams']);
+        $this->import_config_id = $options['config_id'] ?? '';
 
         // Validate schedule
         if (empty($schedule) || !is_array($schedule)) {
@@ -343,6 +359,34 @@ class SPSG_Sports_Press_Importer
             $home_team = $this->find_team_by_name($home_team_name);
             $away_team = $this->find_team_by_name($away_team_name);
 
+            // Auto-create placeholder teams if enabled and team not found
+            if (!$home_team && $this->should_create_placeholder()) {
+                $division_name = isset($game->division->name) ? $game->division->name : '';
+                $team_id = SPSG_Placeholder_Team_Manager::create_placeholder_team(
+                    $home_team_name,
+                    $this->import_config_id,
+                    $division_name
+                );
+                if (!is_wp_error($team_id)) {
+                    $home_team = (object) array('id' => $team_id, 'name' => $home_team_name);
+                    // Clear cached teams so subsequent lookups find the new team
+                    SPSG_Sports_Press_Integration::clear_teams_cache();
+                }
+            }
+
+            if (!$away_team && $this->should_create_placeholder()) {
+                $division_name = isset($game->division->name) ? $game->division->name : '';
+                $team_id = SPSG_Placeholder_Team_Manager::create_placeholder_team(
+                    $away_team_name,
+                    $this->import_config_id,
+                    $division_name
+                );
+                if (!is_wp_error($team_id)) {
+                    $away_team = (object) array('id' => $team_id, 'name' => $away_team_name);
+                    SPSG_Sports_Press_Integration::clear_teams_cache();
+                }
+            }
+
             if (!$home_team) {
                 $result = new WP_Error(
                     'team_not_found',
@@ -370,6 +414,16 @@ class SPSG_Sports_Press_Importer
         }
 
         return $result;
+    }
+
+    /**
+     * Check if placeholder team creation is enabled for this import
+     *
+     * @return bool
+     */
+    private function should_create_placeholder()
+    {
+        return $this->create_placeholder_teams;
     }
 
     /**
