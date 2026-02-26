@@ -978,7 +978,9 @@
                 event_status: $('#spsg-event-status').val(),
                 league_id: $('#spsg-import-dialog-league').val(),
                 season_id: $('#spsg-import-season').val(),
-                dry_run: $('#spsg-dry-run').is(':checked') ? '1' : '0'
+                dry_run: $('#spsg-dry-run').is(':checked') ? '1' : '0',
+                create_placeholder_teams: $('#spsg-create-placeholder-teams').is(':checked') ? '1' : '0',
+                config_id: $('#spsg-config-selector').val() || ''
             };
             
             this.importInProgress = true;
