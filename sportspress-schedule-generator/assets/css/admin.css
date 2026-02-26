@@ -1444,3 +1444,30 @@ body.spsg-modal-open {
     outline: 2px solid #2271b1;
     outline-offset: 2px;
 }
+
+/* Placeholder Teams Tab */
+.spsg-placeholder-teams-section {
+    max-width: 900px;
+}
+
+#spsg-placeholder-teams-table .spsg-replacement-select {
+    min-width: 250px;
+}
+
+#spsg-placeholder-teams-table td {
+    vertical-align: middle;
+}
+
+#spsg-placeholder-teams-table .spsg-replace-single {
+    white-space: nowrap;
+}
+
+.spsg-placeholder-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+#spsg-replacement-results .notice {
+    margin: 0;
+}
