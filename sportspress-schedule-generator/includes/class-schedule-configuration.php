@@ -140,6 +140,12 @@ class SPSG_Schedule_Configuration
     public $inter_division_games;
 
     /**
+     * Generic/placeholder teams configuration
+     * @var array
+     */
+    public $generic_teams;
+
+    /**
      * Constructor
      */
     public function __construct($data = array())
@@ -164,6 +170,7 @@ class SPSG_Schedule_Configuration
             'blackout_dates', 'distribution_rules', 'team_restrictions',
             'division_grouping', 'venue_timeslots', 'venue_blackout_dates',
             'venue_date_availability', 'home_away_preferences', 'inter_division_games',
+            'generic_teams',
         );
 
         // Load date fields with error handling
@@ -216,7 +223,8 @@ class SPSG_Schedule_Configuration
             'match_length' => $this->match_length,
             'matchup_style' => $this->matchup_style,
             'home_away_preferences' => $this->home_away_preferences,
-            'inter_division_games' => $this->inter_division_games
+            'inter_division_games' => $this->inter_division_games,
+            'generic_teams' => $this->generic_teams,
         );
     }
 
