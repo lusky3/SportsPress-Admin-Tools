@@ -22,6 +22,18 @@ class SPSG_Sports_Press_Integration
     private static $cache = array();
 
     /**
+     * Clear the teams cache (used after creating placeholder teams)
+     */
+    public static function clear_teams_cache()
+    {
+        foreach (array_keys(self::$cache) as $key) {
+            if (strpos($key, 'teams') === 0) {
+                unset(self::$cache[$key]);
+            }
+        }
+    }
+
+    /**
      * Check if SportsPress is active
      */
     public static function is_sportspress_active()

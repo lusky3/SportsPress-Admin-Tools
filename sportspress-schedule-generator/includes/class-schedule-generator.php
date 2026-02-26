@@ -411,7 +411,9 @@ class SPSG_Schedule_Generator
             'event_status' => sanitize_text_field($_POST['event_status'] ?? 'publish'),
             'dry_run' => filter_var($_POST['dry_run'] ?? false, FILTER_VALIDATE_BOOLEAN),
             'league_id' => isset($_POST['league_id']) ? absint($_POST['league_id']) : null,
-            'season_id' => isset($_POST['season_id']) ? absint($_POST['season_id']) : null
+            'season_id' => isset($_POST['season_id']) ? absint($_POST['season_id']) : null,
+            'create_placeholder_teams' => filter_var($_POST['create_placeholder_teams'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            'config_id' => sanitize_text_field($_POST['config_id'] ?? ''),
         );
 
         // Validate conflict resolution option
