@@ -67,6 +67,9 @@ class SPSG_Admin_Ajax
         add_action('wp_ajax_spsg_preview_import', array($this, 'ajax_preview_import'));
         add_action('wp_ajax_spsg_get_export_formats', array($this, 'ajax_get_export_formats'));
         add_action('wp_ajax_spsg_clear_change_history', array($this, 'ajax_clear_change_history'));
+        add_action('wp_ajax_spsg_get_placeholder_teams', array($this, 'ajax_get_placeholder_teams'));
+        add_action('wp_ajax_spsg_get_real_teams', array($this, 'ajax_get_real_teams'));
+        add_action('wp_ajax_spsg_replace_placeholder_team', array($this, 'ajax_replace_placeholder_team'));
     }
 
     /**
