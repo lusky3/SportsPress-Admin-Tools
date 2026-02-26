@@ -270,6 +270,7 @@ class SPSG_Admin
                 <a href="#venues-times" class="nav-tab"><?php _e('Venues & Times', 'sportspress-schedule-generator'); ?></a>
                 <a href="#constraints" class="nav-tab"><?php _e('Constraints', 'sportspress-schedule-generator'); ?></a>
                 <a href="#generate" class="nav-tab"><?php _e(self::LABEL_GENERATE_SCHEDULE, 'sportspress-schedule-generator'); ?></a>
+                <a href="#placeholder-teams" class="nav-tab"><?php _e('Placeholder Teams', 'sportspress-schedule-generator'); ?></a>
             </nav>
 
             <form method="post" id="spsg-config-form">
@@ -295,6 +296,10 @@ class SPSG_Admin
 
                 <div id="generate" class="spsg-tab-content" style="display: none;">
                     <?php $this->renderer->render_generate_tab($current_config); ?>
+                </div>
+
+                <div id="placeholder-teams" class="spsg-tab-content" style="display: none;">
+                    <?php $this->renderer->render_placeholder_teams_tab(); ?>
                 </div>
             </form>
         </div>
@@ -348,7 +353,10 @@ class SPSG_Admin
                 'clone_config' => wp_create_nonce('spsg_clone_config'),
                 'preview_import' => wp_create_nonce('spsg_preview_import'),
                 'get_export_formats' => wp_create_nonce('spsg_get_export_formats'),
-                'clear_change_history' => wp_create_nonce('spsg_clear_change_history')
+                'clear_change_history' => wp_create_nonce('spsg_clear_change_history'),
+                'get_placeholder_teams' => wp_create_nonce('spsg_get_placeholder_teams'),
+                'get_real_teams' => wp_create_nonce('spsg_get_real_teams'),
+                'replace_placeholder_team' => wp_create_nonce('spsg_replace_placeholder_team'),
             )
         ));
 

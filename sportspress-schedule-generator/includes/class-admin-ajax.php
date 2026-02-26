@@ -857,4 +857,86 @@ class SPSG_Admin_Ajax
             'message' => __('Change history cleared successfully', 'sportspress-schedule-generator')
         ));
     }
+
+    /**
+     * AJAX handler for getting placeholder teams
+     */
+    public function ajax_get_placeholder_teams()
+    {
+        check_ajax_referer('spsg_get_placeholder_teams', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
+        }
+
+        $config_id = sanitize_text_field($_POST['config_id'] ?? '');
+        $placeholders = SPSG_Placeholder_Team_Manager::get_placeholder_teams($config_id);
+
+        wp_send_json_success(array(
+            'placeholders' => $placeholders,
+            'count' => count($placeholders),
+        ));
+    }
+
+    /**
+     * AJAX handler for getting real (non-placeholder) teams
+     */
+    public function ajax_get_real_teams()
+    {
+        check_ajax_referer('spsg_get_real_teams', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
+        }
+
+        $teams = SPSG_Placeholder_Team_Manager::get_real_teams();
+
+        wp_send_json_success(array(
+            'teams' => $teams,
+        ));
+    }
+
+    /**
+     * AJAX handler for replacing a placeholder team with a real team
+     */
+    public function ajax_replace_placeholder_team()
+    {
+        check_ajax_referer('spsg_replace_placeholder_team', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
+        }
+
+        $placeholder_id = absint($_POST['placeholder_id'] ?? 0);
+        $replacement_id = absint($_POST['replacement_id'] ?? 0);
+        $delete_placeholder = filter_var($_POST['delete_placeholder'] ?? true, FILTER_VALIDATE_BOOLEAN);
+
+        if (!$placeholder_id || !$replacement_id) {
+            wp_send_json_error(__('Both placeholder and replacement team IDs are required.', 'sportspress-schedule-generator'));
+            return;
+        }
+
+        if ($placeholder_id === $replacement_id) {
+            wp_send_json_error(__('Placeholder and replacement teams must be different.', 'sportspress-schedule-generator'));
+            return;
+        }
+
+        $results = SPSG_Placeholder_Team_Manager::replace_team($placeholder_id, $replacement_id, $delete_placeholder);
+
+        if (!empty($results['errors'])) {
+            wp_send_json_error(array(
+                'message' => __('Some replacements failed.', 'sportspress-schedule-generator'),
+                'results' => $results,
+            ));
+            return;
+        }
+
+        wp_send_json_success(array(
+            'message' => sprintf(
+                __('Successfully replaced placeholder team in %d events.', 'sportspress-schedule-generator'),
+                $results['events_updated']
+            ),
+            'results' => $results,
+        ));
+    }
 }
