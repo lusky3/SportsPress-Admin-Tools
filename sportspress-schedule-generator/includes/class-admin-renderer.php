@@ -1037,6 +1037,10 @@ class SPSG_Admin_Renderer
                             <label><input type="checkbox" name="dry_run" id="spsg-dry-run" aria-describedby="spsg-dry-run-desc" /> <?php _e('Preview import without creating events', 'sportspress-schedule-generator'); ?></label>
                             <p class="description" id="spsg-dry-run-desc"><?php _e('Test the import process without actually creating events. Use this to verify settings before committing.', 'sportspress-schedule-generator'); ?></p>
                         </div>
+                        <div class="spsg-form-group">
+                            <label><input type="checkbox" name="create_placeholder_teams" id="spsg-create-placeholder-teams" checked aria-describedby="spsg-placeholder-desc" /> <?php _e('Auto-create placeholder teams in SportsPress', 'sportspress-schedule-generator'); ?></label>
+                            <p class="description" id="spsg-placeholder-desc"><?php _e('When enabled, teams not found in SportsPress will be created as placeholder team posts. You can replace them with real teams later from the "Placeholder Teams" tab.', 'sportspress-schedule-generator'); ?></p>
+                        </div>
                     </div>
 
                     <output id="spsg-import-progress" class="spsg-import-progress" style="display: none;" aria-live="polite">
@@ -1401,5 +1405,68 @@ class SPSG_Admin_Renderer
                     </ul>
                 </div>
         <?php
+    }
+
+    /**
+     * Render the Placeholder Teams management tab
+     */
+    public function render_placeholder_teams_tab()
+    {
+        $sp_available = SPSG_Sports_Press_Integration::is_sportspress_active();
+?>
+        <div class="spsg-placeholder-teams-section">
+            <h3><?php _e('Replace Placeholder Teams', 'sportspress-schedule-generator'); ?></h3>
+            <p class="description">
+                <?php _e('After generating and importing a schedule with placeholder teams, use this tool to replace them with real teams. All events referencing the placeholder will be updated automatically.', 'sportspress-schedule-generator'); ?>
+            </p>
+
+            <?php if (!$sp_available): ?>
+                <div class="notice notice-warning inline">
+                    <p><?php _e('SportsPress must be active to manage placeholder teams.', 'sportspress-schedule-generator'); ?></p>
+                </div>
+                <?php return; ?>
+            <?php endif; ?>
+
+            <div id="spsg-placeholder-teams-loading" style="display: none;">
+                <span class="spinner is-active" style="float: none;"></span>
+                <?php _e('Loading placeholder teams...', 'sportspress-schedule-generator'); ?>
+            </div>
+
+            <div id="spsg-no-placeholders" style="display: none;">
+                <div class="notice notice-info inline">
+                    <p><?php _e('No placeholder teams found. Generate and import a schedule with "Generic Team Filler" enabled to create placeholder teams.', 'sportspress-schedule-generator'); ?></p>
+                </div>
+            </div>
+
+            <div id="spsg-placeholder-teams-table-wrapper" style="display: none;">
+                <table class="widefat striped" id="spsg-placeholder-teams-table">
+                    <thead>
+                        <tr>
+                            <th><?php _e('Placeholder Team', 'sportspress-schedule-generator'); ?></th>
+                            <th><?php _e('Division', 'sportspress-schedule-generator'); ?></th>
+                            <th><?php _e('Replace With', 'sportspress-schedule-generator'); ?></th>
+                            <th><?php _e('Actions', 'sportspress-schedule-generator'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody id="spsg-placeholder-teams-body">
+                    </tbody>
+                </table>
+
+                <div class="spsg-placeholder-actions" style="margin-top: 15px;">
+                    <button type="button" class="button button-primary" id="spsg-replace-all-placeholders">
+                        <?php _e('Replace All Selected', 'sportspress-schedule-generator'); ?>
+                    </button>
+                    <button type="button" class="button" id="spsg-refresh-placeholders">
+                        <?php _e('Refresh List', 'sportspress-schedule-generator'); ?>
+                    </button>
+                </div>
+            </div>
+
+            <div id="spsg-replacement-results" style="display: none; margin-top: 15px;">
+                <h4><?php _e('Replacement Results', 'sportspress-schedule-generator'); ?></h4>
+                <div id="spsg-replacement-results-content"></div>
+            </div>
+        </div>
+<?php
     }
 }
