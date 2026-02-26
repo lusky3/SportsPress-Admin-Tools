@@ -54,7 +54,9 @@ class SPSG_Sports_Press_Importer
             'event_status' => 'publish',
             'dry_run' => false,
             'league_id' => null,
-            'season_id' => null
+            'season_id' => null,
+            'create_placeholder_teams' => false,
+            'config_id' => '',
         );
         $options = wp_parse_args($options, $defaults);
 

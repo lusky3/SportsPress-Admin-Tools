@@ -171,6 +171,18 @@ class SPSG_Schedule_Engine
     {
         $this->log('Generating matchups');
 
+        // Inject placeholder teams if generic teams are enabled
+        if (!empty($config->generic_teams['enabled'])) {
+            $injection_info = SPSG_Placeholder_Team_Manager::inject_into_config($config);
+            if (!empty($injection_info)) {
+                $total_added = 0;
+                foreach ($injection_info as $info) {
+                    $total_added += count($info['placeholders']);
+                }
+                $this->log(sprintf('Injected %d placeholder teams across %d divisions', $total_added, count($injection_info)));
+            }
+        }
+
         // Use matchup generator
         $matchups = $this->matchup_generator->generate($config);
 
