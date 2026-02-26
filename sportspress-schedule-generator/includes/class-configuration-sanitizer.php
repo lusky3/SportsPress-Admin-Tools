@@ -74,6 +74,9 @@ class SPSG_Configuration_Sanitizer
         $sanitized['home_away_preferences'] = $this->sanitize_home_away_preferences($data['home_away_preferences'] ?? array());
         $sanitized['inter_division_games'] = $this->sanitize_inter_division_games($data['inter_division_games'] ?? array());
 
+        // Sanitize generic teams configuration
+        $sanitized['generic_teams'] = $this->sanitize_generic_teams($data);
+
         return $sanitized;
     }
 
@@ -308,5 +311,33 @@ class SPSG_Configuration_Sanitizer
             }
         }
         return $sanitized;
+    }
+
+    /**
+     * Sanitize generic teams configuration
+     *
+     * Handles both nested array format and flat form field format.
+     *
+     * @param array $data Raw form data
+     * @return array Sanitized generic teams config
+     */
+    private function sanitize_generic_teams($data)
+    {
+        // Support nested array format (from saved config)
+        if (isset($data['generic_teams']) && is_array($data['generic_teams'])) {
+            $gt = $data['generic_teams'];
+            return array(
+                'enabled'       => (bool)($gt['enabled'] ?? false),
+                'per_division'  => max(2, min(20, absint($gt['per_division'] ?? 8))),
+                'prefix'        => sanitize_text_field($gt['prefix'] ?? 'Team'),
+            );
+        }
+
+        // Support flat form field format (from POST)
+        return array(
+            'enabled'       => !empty($data['generic_teams_enabled']),
+            'per_division'  => max(2, min(20, absint($data['generic_teams_per_division'] ?? 8))),
+            'prefix'        => sanitize_text_field($data['generic_team_prefix'] ?? 'Team'),
+        );
     }
 }
