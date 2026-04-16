@@ -5,310 +5,334 @@
  * @author Cody (lusky3)
  */
 
-if (!defined('ABSPATH')) {
-    exit;
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
 }
 
-class SPET_ETransfer_Automation
-{
+class SPET_ETransfer_Automation {
 
-    public function __construct()
-    {
-        add_action('rest_api_init', array($this, 'register_webhook_endpoint'));
-    }
 
-    public function register_webhook_endpoint()
-    {
-        register_rest_route('spet/v1', '/etransfer-webhook', array(
-            'methods' => 'POST',
-            'callback' => array($this, 'handle_webhook'),
-            'permission_callback' => '__return_true'
-        ));
-    }
+	public function __construct() {
+		add_action( 'rest_api_init', array( $this, 'register_webhook_endpoint' ) );
+	}
 
-    public function handle_webhook($request)
-    {
-        // Rate limiting (IP-based, 30 requests/minute)
-        $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
-        // Only trust X-Forwarded-For if REMOTE_ADDR is a known proxy (localhost/private range)
-        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
-            $forwarded = $request->get_header('x-forwarded-for');
-            if ($forwarded) {
-                $ip = trim(explode(',', $forwarded)[0]);
-            }
-        }
-        $rate_key = 'spet_rate_' . md5($ip);
-        $rate_count = (int) get_transient($rate_key);
-        if ($rate_count >= 30) {
-            return new WP_Error('rate_limited', 'Too many requests', array('status' => 429));
-        }
-        set_transient($rate_key, $rate_count + 1, 60);
+	public function register_webhook_endpoint() {
+		register_rest_route(
+			'spet/v1',
+			'/etransfer-webhook',
+			array(
+				'methods' => 'POST',
+				'callback' => array( $this, 'handle_webhook' ),
+				'permission_callback' => '__return_true',
+			)
+		);
+	}
 
-        $body = $request->get_body();
-        $headers = $request->get_headers();
+	public function handle_webhook( $request ) {
+		// Rate limiting (IP-based, 30 requests/minute)
+		$ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+		// Only trust X-Forwarded-For if REMOTE_ADDR is a known proxy (localhost/private range)
+		if ( filter_var( $ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE ) === false ) {
+			$forwarded = $request->get_header( 'x-forwarded-for' );
+			if ( $forwarded ) {
+				$ip = trim( explode( ',', $forwarded )[0] );
+			}
+		}
+		$rate_key = 'spet_rate_' . md5( $ip );
+		$rate_count = (int) get_transient( $rate_key );
+		if ( $rate_count >= 30 ) {
+			return new WP_Error( 'rate_limited', 'Too many requests', array( 'status' => 429 ) );
+		}
+		set_transient( $rate_key, $rate_count + 1, 60 );
 
-        // Verify signature
-        if (!$this->verify_signature($body, $headers)) {
-            return new WP_Error('invalid_signature', 'Invalid webhook signature', array('status' => 401));
-        }
+		$body = $request->get_body();
+		$headers = $request->get_headers();
 
-        // Replay protection (timestamp validation)
-        $timestamp = null;
-        if (isset($headers['x_timestamp'][0])) {
-            $timestamp = $headers['x_timestamp'][0];
-        } elseif (isset($headers['x-timestamp'][0])) {
-            $timestamp = $headers['x-timestamp'][0];
-        } else {
-            $data_peek = json_decode($body, true);
-            if (isset($data_peek['timestamp'])) {
-                $timestamp = $data_peek['timestamp'];
-            }
-        }
+		// Verify signature
+		if ( ! $this->verify_signature( $body, $headers ) ) {
+			return new WP_Error( 'invalid_signature', 'Invalid webhook signature', array( 'status' => 401 ) );
+		}
 
-        if ($timestamp !== null) {
-            $ts_epoch = strtotime($timestamp);
-            if ($ts_epoch === false || abs(time() - $ts_epoch) > 300) {
-                return new WP_Error('request_expired', 'Request timestamp is too old or invalid', array('status' => 403));
-            }
-        } else {
-            error_log('SPET Webhook: No timestamp present in request from ' . $ip . ' - replay protection inactive');
-        }
+		// Replay protection (timestamp validation)
+		$timestamp = null;
+		if ( isset( $headers['x_timestamp'][0] ) ) {
+			$timestamp = $headers['x_timestamp'][0];
+		} elseif ( isset( $headers['x-timestamp'][0] ) ) {
+			$timestamp = $headers['x-timestamp'][0];
+		} else {
+			$data_peek = json_decode( $body, true );
+			if ( isset( $data_peek['timestamp'] ) ) {
+				$timestamp = $data_peek['timestamp'];
+			}
+		}
 
-        // Check WooCommerce is available
-        if (!function_exists('wc_get_orders')) {
-            return new WP_Error('woocommerce_missing', 'WooCommerce is not active', array('status' => 503));
-        }
+		if ( $timestamp !== null ) {
+			$ts_epoch = strtotime( $timestamp );
+			if ( $ts_epoch === false || abs( time() - $ts_epoch ) > 300 ) {
+				return new WP_Error( 'request_expired', 'Request timestamp is too old or invalid', array( 'status' => 403 ) );
+			}
+		} else {
+			error_log( 'SPET Webhook: No timestamp present in request from ' . $ip . ' - replay protection inactive' );
+		}
 
-        $data = json_decode($body, true);
-        if (!$data) {
-            return new WP_Error('invalid_json', 'Invalid JSON payload', array('status' => 400));
-        }
+		// Check WooCommerce is available
+		if ( ! function_exists( 'wc_get_orders' ) ) {
+			return new WP_Error( 'woocommerce_missing', 'WooCommerce is not active', array( 'status' => 503 ) );
+		}
 
-        // Extract payment data
-        $payment_data = $this->extract_payment_data($data);
-        if (!$payment_data) {
-            return new WP_Error('invalid_payment_data', 'Could not extract payment data', array('status' => 400));
-        }
+		$data = json_decode( $body, true );
+		if ( ! $data ) {
+			return new WP_Error( 'invalid_json', 'Invalid JSON payload', array( 'status' => 400 ) );
+		}
 
-        // Check for duplicate reference number
-        if (SPET_Database::reference_number_exists($payment_data['reference_number'])) {
-            SPET_Database::log_etransfer_activity(array(
-                'from_email' => $payment_data['customer_email'],
-                'from_name' => $payment_data['sender_name'],
-                'amount' => $payment_data['amount'],
-                'reference_number' => $payment_data['reference_number'],
-                'match_criteria' => '',
-                'order_id' => null,
-                'result' => 'Duplicate webhook - reference number already processed',
-                'webhook_data' => $data,
-                'payment_data' => $payment_data
-            ));
-            return rest_ensure_response(array('status' => 'duplicate', 'message' => 'Reference number already processed'));
-        }
+		// Extract payment data
+		$payment_data = $this->extract_payment_data( $data );
+		if ( ! $payment_data ) {
+			return new WP_Error( 'invalid_payment_data', 'Could not extract payment data', array( 'status' => 400 ) );
+		}
 
-        // Find matching order
-        $order_id = $this->find_matching_order($payment_data);
+		// Check for duplicate reference number
+		if ( SPET_Database::reference_number_exists( $payment_data['reference_number'] ) ) {
+			SPET_Database::log_etransfer_activity(
+				array(
+					'from_email' => $payment_data['customer_email'],
+					'from_name' => $payment_data['sender_name'],
+					'amount' => $payment_data['amount'],
+					'reference_number' => $payment_data['reference_number'],
+					'match_criteria' => '',
+					'order_id' => null,
+					'result' => 'Duplicate webhook - reference number already processed',
+					'webhook_data' => $data,
+					'payment_data' => $payment_data,
+				)
+			);
+			return rest_ensure_response(
+				array(
+					'status' => 'duplicate',
+					'message' => 'Reference number already processed',
+				)
+			);
+		}
 
-        // Validate amount if order was matched
-        $amount_mismatch = false;
-        if ($order_id) {
-            $order = wc_get_order($order_id);
-            if ($order) {
-                $order_total = floatval($order->get_total());
-                $payment_amount = floatval($payment_data['amount']);
-                if (abs($order_total - $payment_amount) > 0.01) {
-                    $amount_mismatch = true;
-                    $payment_data['match_criteria'] = ($payment_data['match_criteria'] ?? '') .
-                        sprintf(' | Amount mismatch: paid $%.2f, order $%.2f', $payment_amount, $order_total);
-                }
-            }
-        }
+		// Find matching order
+		$order_id = $this->find_matching_order( $payment_data );
 
-        // Determine result message
-        if (!$order_id) {
-            $result = 'No matching order found';
-        } elseif ($amount_mismatch) {
-            $result = sprintf('Amount mismatch - paid $%.2f, order $%.2f - pending manual review',
-                $payment_data['amount'], floatval(wc_get_order($order_id)->get_total()));
-        } else {
-            $result = 'Order updated successfully';
-        }
+		// Validate amount if order was matched
+		$amount_mismatch = false;
+		if ( $order_id ) {
+			$order = wc_get_order( $order_id );
+			if ( $order ) {
+				$order_total = floatval( $order->get_total() );
+				$payment_amount = floatval( $payment_data['amount'] );
+				if ( abs( $order_total - $payment_amount ) > 0.01 ) {
+					$amount_mismatch = true;
+					$payment_data['match_criteria'] = ( $payment_data['match_criteria'] ?? '' ) .
+						sprintf( ' | Amount mismatch: paid $%.2f, order $%.2f', $payment_amount, $order_total );
+				}
+			}
+		}
 
-        // Log activity
-        SPET_Database::log_etransfer_activity(array(
-            'from_email' => $payment_data['customer_email'],
-            'from_name' => $payment_data['sender_name'],
-            'amount' => $payment_data['amount'],
-            'reference_number' => $payment_data['reference_number'],
-            'match_criteria' => $payment_data['match_criteria'] ?? '',
-            'order_id' => $amount_mismatch ? null : $order_id,
-            'result' => $result,
-            'webhook_data' => $data,
-            'payment_data' => $payment_data
-        ));
+		// Determine result message
+		if ( ! $order_id ) {
+			$result = 'No matching order found';
+		} elseif ( $amount_mismatch ) {
+			$result = sprintf(
+				'Amount mismatch - paid $%.2f, order $%.2f - pending manual review',
+				$payment_data['amount'],
+				floatval( wc_get_order( $order_id )->get_total() )
+			);
+		} else {
+			$result = 'Order updated successfully';
+		}
 
-        if ($order_id && !$amount_mismatch) {
-            $this->process_payment($order_id, $payment_data);
+		// Log activity
+		SPET_Database::log_etransfer_activity(
+			array(
+				'from_email' => $payment_data['customer_email'],
+				'from_name' => $payment_data['sender_name'],
+				'amount' => $payment_data['amount'],
+				'reference_number' => $payment_data['reference_number'],
+				'match_criteria' => $payment_data['match_criteria'] ?? '',
+				'order_id' => $amount_mismatch ? null : $order_id,
+				'result' => $result,
+				'webhook_data' => $data,
+				'payment_data' => $payment_data,
+			)
+		);
 
-            // Fire notification for matched payment
-            do_action('spat_payment_matched', $payment_data['sender_name'], $payment_data['amount'], $order_id);
+		if ( $order_id && ! $amount_mismatch ) {
+			$this->process_payment( $order_id, $payment_data );
 
-            return rest_ensure_response(array('status' => 'success', 'order_id' => $order_id));
-        }
+			// Fire notification for matched payment
+			do_action( 'spat_payment_matched', $payment_data['sender_name'], $payment_data['amount'], $order_id );
 
-        if ($amount_mismatch) {
-            // Fire unmatched notification for amount mismatch (requires manual review)
-            do_action('spat_payment_unmatched', $payment_data['sender_name'], $payment_data['amount'], $payment_data['reference_number']);
+			return rest_ensure_response(
+				array(
+					'status' => 'success',
+					'order_id' => $order_id,
+				)
+			);
+		}
 
-            return rest_ensure_response(array('status' => 'amount_mismatch', 'message' => $result, 'order_id' => $order_id));
-        }
+		if ( $amount_mismatch ) {
+			// Fire unmatched notification for amount mismatch (requires manual review)
+			do_action( 'spat_payment_unmatched', $payment_data['sender_name'], $payment_data['amount'], $payment_data['reference_number'] );
 
-        // Fire notification for unmatched payment
-        do_action('spat_payment_unmatched', $payment_data['sender_name'], $payment_data['amount'], $payment_data['reference_number']);
+			return rest_ensure_response(
+				array(
+					'status' => 'amount_mismatch',
+					'message' => $result,
+					'order_id' => $order_id,
+				)
+			);
+		}
 
-        return rest_ensure_response(array('status' => 'no_match', 'message' => 'No matching order found'));
-    }
+		// Fire notification for unmatched payment
+		do_action( 'spat_payment_unmatched', $payment_data['sender_name'], $payment_data['amount'], $payment_data['reference_number'] );
 
-    private function verify_signature($body, $headers)
-    {
-        $signature = '';
-        if (isset($headers['x_signature'][0])) {
-            $signature = $headers['x_signature'][0];
-        }
-        elseif (isset($headers['x-signature'][0])) {
-            $signature = $headers['x-signature'][0];
-        }
+		return rest_ensure_response(
+			array(
+				'status' => 'no_match',
+				'message' => 'No matching order found',
+			)
+		);
+	}
 
-        if (empty($signature)) {
-            return false;
-        }
+	private function verify_signature( $body, $headers ) {
+		$signature = '';
+		if ( isset( $headers['x_signature'][0] ) ) {
+			$signature = $headers['x_signature'][0];
+		} elseif ( isset( $headers['x-signature'][0] ) ) {
+			$signature = $headers['x-signature'][0];
+		}
 
-        $secret = get_option('spet_webhook_secret', '');
-        if (empty($secret)) {
-            return false;
-        }
+		if ( empty( $signature ) ) {
+			return false;
+		}
 
-        // New format: timestamp + body (when X-Timestamp header is present)
-        $timestamp = $headers['x_timestamp'][0] ?? ($headers['x-timestamp'][0] ?? null);
-        if ($timestamp !== null) {
-            $expected = hash_hmac('sha256', $timestamp . $body, $secret);
-            return hash_equals($expected, $signature);
-        }
+		$secret = get_option( 'spet_webhook_secret', '' );
+		if ( empty( $secret ) ) {
+			return false;
+		}
 
-        // Legacy format: body only
-        $expected = hash_hmac('sha256', $body, $secret);
-        return hash_equals($expected, $signature);
-    }
+		// New format: timestamp + body (when X-Timestamp header is present)
+		$timestamp = $headers['x_timestamp'][0] ?? ( $headers['x-timestamp'][0] ?? null );
+		if ( $timestamp !== null ) {
+			$expected = hash_hmac( 'sha256', $timestamp . $body, $secret );
+			return hash_equals( $expected, $signature );
+		}
 
-    private function extract_payment_data($data)
-    {
-        $text = isset($data['text']) ? $data['text'] : '';
-        if (empty($text)) {
-            return false;
-        }
+		// Legacy format: body only
+		$expected = hash_hmac( 'sha256', $body, $secret );
+		return hash_equals( $expected, $signature );
+	}
 
-        // Extract reference number
-        if (preg_match('/Reference Number:\s*\n\s*([A-Z\d]+)/i', $text, $matches)) {
-            $reference_number = $matches[1];
-        }
-        else {
-            return false;
-        }
+	private function extract_payment_data( $data ) {
+		$text = isset( $data['text'] ) ? $data['text'] : '';
+		if ( empty( $text ) ) {
+			return false;
+		}
 
-        // Extract amount
-        if (preg_match('/Amount:\s*\n\s*\$([\d,]+\.?\d*)/', $text, $matches)) {
-            $amount = floatval(str_replace(',', '', $matches[1]));
-        }
-        else {
-            return false;
-        }
+		// Extract reference number
+		if ( preg_match( '/Reference Number:\s*\n\s*([A-Z\d]+)/i', $text, $matches ) ) {
+			$reference_number = $matches[1];
+		} else {
+			return false;
+		}
 
-        // Extract sender name
-        if (preg_match('/Sent From:\s*\n\s*(.+)/i', $text, $matches)) {
-            $sender_name = trim($matches[1]);
-        }
-        else {
-            $sender_name = '';
-        }
+		// Extract amount
+		if ( preg_match( '/Amount:\s*\n\s*\$([\d,]+\.?\d*)/', $text, $matches ) ) {
+			$amount = floatval( str_replace( ',', '', $matches[1] ) );
+		} else {
+			return false;
+		}
 
-        // Extract customer email from Reply-To
-        $customer_email = '';
-        if (isset($data['reply_to'])) {
-            if (is_array($data['reply_to']) && isset($data['reply_to']['address'])) {
-                $customer_email = $data['reply_to']['address'];
-            }
-            else {
-                $customer_email = $data['reply_to'];
-            }
-        }
+		// Extract sender name
+		if ( preg_match( '/Sent From:\s*\n\s*(.+)/i', $text, $matches ) ) {
+			$sender_name = trim( $matches[1] );
+		} else {
+			$sender_name = '';
+		}
 
-        return array(
-            'reference_number' => $reference_number,
-            'amount' => $amount,
-            'sender_name' => $sender_name,
-            'customer_email' => $customer_email
-        );
-    }
+		// Extract customer email from Reply-To
+		$customer_email = '';
+		if ( isset( $data['reply_to'] ) ) {
+			if ( is_array( $data['reply_to'] ) && isset( $data['reply_to']['address'] ) ) {
+				$customer_email = $data['reply_to']['address'];
+			} else {
+				$customer_email = $data['reply_to'];
+			}
+		}
 
-    private function find_matching_order(&$payment_data)
-    {
-        // Strategy 1: Email match
-        if (!empty($payment_data['customer_email'])) {
-            $orders = wc_get_orders(array(
-                'billing_email' => $payment_data['customer_email'],
-                'status' => 'on-hold',
-                'limit' => 1,
-                'orderby' => 'date',
-                'order' => 'DESC'
-            ));
+		return array(
+			'reference_number' => $reference_number,
+			'amount' => $amount,
+			'sender_name' => $sender_name,
+			'customer_email' => $customer_email,
+		);
+	}
 
-            if (!empty($orders)) {
-                $payment_data['match_criteria'] = 'Reply-To Email (' . $payment_data['customer_email'] . ')';
-                return $orders[0]->get_id();
-            }
-        }
+	private function find_matching_order( &$payment_data ) {
+		// Strategy 1: Email match
+		if ( ! empty( $payment_data['customer_email'] ) ) {
+			$orders = wc_get_orders(
+				array(
+					'billing_email' => $payment_data['customer_email'],
+					'status' => 'on-hold',
+					'limit' => 1,
+					'orderby' => 'date',
+					'order' => 'DESC',
+				)
+			);
 
-        // Strategy 2: Name match (exact or similar names)
-        if (!empty($payment_data['sender_name'])) {
-            $orders = wc_get_orders(array(
-                'status' => 'on-hold',
-                'limit' => 50,
-                'orderby' => 'date',
-                'order' => 'DESC'
-            ));
+			if ( ! empty( $orders ) ) {
+				$payment_data['match_criteria'] = 'Reply-To Email (' . $payment_data['customer_email'] . ')';
+				return $orders[0]->get_id();
+			}
+		}
 
-            foreach ($orders as $order) {
-                $billing_name = $order->get_billing_first_name() . ' ' . $order->get_billing_last_name();
-                if (SPET_Name_Matcher::names_match($billing_name, $payment_data['sender_name'])) {
-                    $payment_data['match_criteria'] = 'Customer Name (' . $payment_data['sender_name'] . ')';
-                    return $order->get_id();
-                }
-            }
-        }
+		// Strategy 2: Name match (exact or similar names)
+		if ( ! empty( $payment_data['sender_name'] ) ) {
+			$orders = wc_get_orders(
+				array(
+					'status' => 'on-hold',
+					'limit' => 50,
+					'orderby' => 'date',
+					'order' => 'DESC',
+				)
+			);
 
-        return null;
-    }
+			foreach ( $orders as $order ) {
+				$billing_name = $order->get_billing_first_name() . ' ' . $order->get_billing_last_name();
+				if ( SPET_Name_Matcher::names_match( $billing_name, $payment_data['sender_name'] ) ) {
+					$payment_data['match_criteria'] = 'Customer Name (' . $payment_data['sender_name'] . ')';
+					return $order->get_id();
+				}
+			}
+		}
 
-    private function process_payment($order_id, $payment_data)
-    {
-        $order = wc_get_order($order_id);
-        if (!$order) {
-            return false;
-        }
+		return null;
+	}
 
-        // Set transaction ID
-        if (!empty($payment_data['reference_number'])) {
-            $order->set_transaction_id($payment_data['reference_number']);
-        }
+	private function process_payment( $order_id, $payment_data ) {
+		$order = wc_get_order( $order_id );
+		if ( ! $order ) {
+			return false;
+		}
 
-        // Add order note
-        $order->add_order_note('e-Transfer payment received and processed automatically.');
+		// Set transaction ID
+		if ( ! empty( $payment_data['reference_number'] ) ) {
+			$order->set_transaction_id( $payment_data['reference_number'] );
+		}
 
-        // Update status
-        $order->update_status('completed', 'Payment confirmed via e-Transfer automation.');
+		// Add order note
+		$order->add_order_note( 'e-Transfer payment received and processed automatically.' );
 
-        $order->save();
+		// Update status
+		$order->update_status( 'completed', 'Payment confirmed via e-Transfer automation.' );
 
-        return true;
-    }
+		$order->save();
+
+		return true;
+	}
 }

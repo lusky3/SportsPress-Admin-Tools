@@ -5,22 +5,21 @@
  * @author Cody (lusky3)
  */
 
-if (!defined('ABSPATH')) {
-    exit;
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
 }
 
-class SPET_Database
-{
+class SPET_Database {
 
-    public static function create_tables()
-    {
-        global $wpdb;
 
-        $table_name = $wpdb->prefix . 'spet_etransfer_logs';
+	public static function create_tables() {
+		global $wpdb;
 
-        $charset_collate = $wpdb->get_charset_collate();
+		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
 
-        $sql = "CREATE TABLE $table_name (
+		$charset_collate = $wpdb->get_charset_collate();
+
+		$sql = "CREATE TABLE $table_name (
             id mediumint(9) NOT NULL AUTO_INCREMENT,
             timestamp datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
             from_email varchar(255) NOT NULL,
@@ -37,108 +36,122 @@ class SPET_Database
             KEY timestamp (timestamp)
         ) $charset_collate;";
 
-        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
-        dbDelta($sql);
-    }
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta( $sql );
+	}
 
-    public static function log_etransfer_activity($data)
-    {
-        global $wpdb;
+	public static function log_etransfer_activity( $data ) {
+		global $wpdb;
 
-        $table_name = $wpdb->prefix . 'spet_etransfer_logs';
+		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
 
-        $result = $wpdb->insert($table_name, array(
-            'from_email' => sanitize_email($data['from_email']),
-            'from_name' => sanitize_text_field($data['from_name']),
-            'amount' => floatval($data['amount']),
-            'reference_number' => sanitize_text_field($data['reference_number']),
-            'match_criteria' => sanitize_text_field($data['match_criteria']),
-            'order_id' => $data['order_id'] ? intval($data['order_id']) : null,
-            'result' => sanitize_text_field($data['result']),
-            'webhook_data' => maybe_serialize($data['webhook_data']),
-            'payment_data' => maybe_serialize($data['payment_data'])
-        ), array(
-            '%s', '%s', '%f', '%s', '%s', '%d', '%s', '%s', '%s'
-        ));
+		$result = $wpdb->insert(
+			$table_name,
+			array(
+				'from_email' => sanitize_email( $data['from_email'] ),
+				'from_name' => sanitize_text_field( $data['from_name'] ),
+				'amount' => floatval( $data['amount'] ),
+				'reference_number' => sanitize_text_field( $data['reference_number'] ),
+				'match_criteria' => sanitize_text_field( $data['match_criteria'] ),
+				'order_id' => $data['order_id'] ? intval( $data['order_id'] ) : null,
+				'result' => sanitize_text_field( $data['result'] ),
+				'webhook_data' => maybe_serialize( $data['webhook_data'] ),
+				'payment_data' => maybe_serialize( $data['payment_data'] ),
+			),
+			array(
+				'%s',
+				'%s',
+				'%f',
+				'%s',
+				'%s',
+				'%d',
+				'%s',
+				'%s',
+				'%s',
+			)
+		);
 
-        if ($result === false) {
-            error_log('SPET Database: Failed to log e-Transfer activity - ' . $wpdb->last_error);
-        }
+		if ( $result === false ) {
+			error_log( 'SPET Database: Failed to log e-Transfer activity - ' . $wpdb->last_error );
+		}
 
-        return $result;
-    }
+		return $result;
+	}
 
-    public static function get_etransfer_logs($limit = 50, $summary = false)
-    {
-        global $wpdb;
+	public static function get_etransfer_logs( $limit = 50, $summary = false ) {
+		global $wpdb;
 
-        $table_name = $wpdb->prefix . 'spet_etransfer_logs';
-        $columns = $summary
-            ? 'id, timestamp, from_name, from_email, amount, reference_number, match_criteria, order_id, result'
-            : '*';
+		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
+		$columns = $summary
+			? 'id, timestamp, from_name, from_email, amount, reference_number, match_criteria, order_id, result'
+			: '*';
 
-        return $wpdb->get_results($wpdb->prepare(
-            "SELECT $columns FROM $table_name ORDER BY timestamp DESC LIMIT %d",
-            $limit
-        ));
-    }
+		return $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT $columns FROM $table_name ORDER BY timestamp DESC LIMIT %d",
+				$limit
+			)
+		);
+	}
 
-    public static function count_pending_webhooks()
-    {
-        global $wpdb;
+	public static function count_pending_webhooks() {
+		global $wpdb;
 
-        $table_name = $wpdb->prefix . 'spet_etransfer_logs';
+		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
 
-        return $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM $table_name 
+		return $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM $table_name 
             WHERE order_id IS NULL 
             AND (result LIKE %s OR result LIKE %s)
             AND result != %s",
-            '%No matching order%',
-            '%Amount mismatch%',
-            'Hidden from management'
-        ));
-    }
+				'%No matching order%',
+				'%Amount mismatch%',
+				'Hidden from management'
+			)
+		);
+	}
 
-    public static function reference_number_exists($reference_number)
-    {
-        global $wpdb;
+	public static function reference_number_exists( $reference_number ) {
+		global $wpdb;
 
-        $table_name = $wpdb->prefix . 'spet_etransfer_logs';
+		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
 
-        $count = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM $table_name WHERE reference_number = %s AND result NOT LIKE %s",
-            sanitize_text_field($reference_number),
-            '%Duplicate webhook%'
-        ));
+		$count = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM $table_name WHERE reference_number = %s AND result NOT LIKE %s",
+				sanitize_text_field( $reference_number ),
+				'%Duplicate webhook%'
+			)
+		);
 
-        return intval($count) > 0;
-    }
+		return intval( $count ) > 0;
+	}
 
-    public static function cleanup_old_logs($days = 90)
-    {
-        global $wpdb;
+	public static function cleanup_old_logs( $days = 90 ) {
+		global $wpdb;
 
-        $table_name = $wpdb->prefix . 'spet_etransfer_logs';
+		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
 
-        return $wpdb->query($wpdb->prepare(
-            "DELETE FROM $table_name WHERE timestamp < DATE_SUB(NOW(), INTERVAL %d DAY)",
-            intval($days)
-        ));
-    }
+		return $wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM $table_name WHERE timestamp < DATE_SUB(NOW(), INTERVAL %d DAY)",
+				intval( $days )
+			)
+		);
+	}
 
-    public static function hide_etransfer_log($log_id)
-    {
-        global $wpdb;
+	public static function hide_etransfer_log( $log_id ) {
+		global $wpdb;
 
-        $table_name = $wpdb->prefix . 'spet_etransfer_logs';
+		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
 
-        return $wpdb->update(
-            $table_name,
-            array('result' => 'Hidden from management'),
-            array('id' => intval($log_id)),
-            array('%s'),
-            array('%d')
-        );
-    }
+		return $wpdb->update(
+			$table_name,
+			array( 'result' => 'Hidden from management' ),
+			array( 'id' => intval( $log_id ) ),
+			array( '%s' ),
+			array( '%d' )
+		);
+	}
 }

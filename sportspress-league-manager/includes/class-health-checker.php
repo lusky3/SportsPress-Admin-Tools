@@ -31,7 +31,12 @@ class SPLM_Health_Checker {
 		}
 
 		// Check leagues.
-		$leagues = get_terms( array( 'taxonomy' => 'sp_league', 'hide_empty' => false ) );
+		$leagues = get_terms(
+			array(
+				'taxonomy' => 'sp_league',
+				'hide_empty' => false,
+			)
+		);
 		if ( empty( $leagues ) || is_wp_error( $leagues ) ) {
 			$issues[] = array(
 				'severity' => 'error',
@@ -41,7 +46,12 @@ class SPLM_Health_Checker {
 		}
 
 		// Check seasons.
-		$seasons = get_terms( array( 'taxonomy' => 'sp_season', 'hide_empty' => false ) );
+		$seasons = get_terms(
+			array(
+				'taxonomy' => 'sp_season',
+				'hide_empty' => false,
+			)
+		);
 		if ( empty( $seasons ) || is_wp_error( $seasons ) ) {
 			$issues[] = array(
 				'severity' => 'error',
@@ -51,7 +61,12 @@ class SPLM_Health_Checker {
 		}
 
 		// Check teams.
-		$teams = get_posts( array( 'post_type' => 'sp_team', 'posts_per_page' => 1 ) );
+		$teams = get_posts(
+			array(
+				'post_type' => 'sp_team',
+				'posts_per_page' => 1,
+			)
+		);
 		if ( empty( $teams ) ) {
 			$issues[] = array(
 				'severity' => 'warning',
@@ -62,14 +77,18 @@ class SPLM_Health_Checker {
 
 		// Check teams have league assignments.
 		if ( ! empty( $teams ) && ! is_wp_error( $leagues ) && ! empty( $leagues ) ) {
-			$unassigned = get_posts( array(
-				'post_type'      => 'sp_team',
-				'posts_per_page' => 1,
-				'tax_query'      => array( array(
-					'taxonomy' => 'sp_league',
-					'operator' => 'NOT EXISTS',
-				) ),
-			) );
+			$unassigned = get_posts(
+				array(
+					'post_type'      => 'sp_team',
+					'posts_per_page' => 1,
+					'tax_query'      => array(
+						array(
+							'taxonomy' => 'sp_league',
+							'operator' => 'NOT EXISTS',
+						),
+					),
+				)
+			);
 			if ( ! empty( $unassigned ) ) {
 				$issues[] = array(
 					'severity' => 'warning',
@@ -81,14 +100,18 @@ class SPLM_Health_Checker {
 
 		// Check teams have season assignments.
 		if ( ! empty( $teams ) && ! is_wp_error( $seasons ) && ! empty( $seasons ) ) {
-			$unassigned = get_posts( array(
-				'post_type'      => 'sp_team',
-				'posts_per_page' => 1,
-				'tax_query'      => array( array(
-					'taxonomy' => 'sp_season',
-					'operator' => 'NOT EXISTS',
-				) ),
-			) );
+			$unassigned = get_posts(
+				array(
+					'post_type'      => 'sp_team',
+					'posts_per_page' => 1,
+					'tax_query'      => array(
+						array(
+							'taxonomy' => 'sp_season',
+							'operator' => 'NOT EXISTS',
+						),
+					),
+				)
+			);
 			if ( ! empty( $unassigned ) ) {
 				$issues[] = array(
 					'severity' => 'warning',

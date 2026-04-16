@@ -6,208 +6,206 @@
  */
 
 // Prevent direct access
-if (!defined('ABSPATH')) {
-    wp_die();
+if ( ! defined( 'ABSPATH' ) ) {
+	wp_die();
 }
 
 /**
  * Registry for constraint plugins with discovery and validation
  */
-class SPSG_Constraint_Registry
-{
+class SPSG_Constraint_Registry {
 
-    /**
-     * Registered constraint classes
-     */
-    private static $constraint_classes = array();
 
-    /**
-     * Constraint instances cache
-     */
-    private static $constraint_instances = array();
+	/**
+	 * Registered constraint classes
+	 */
+	private static $constraint_classes = array();
 
-    /**
-     * Register a constraint class
-     */
-    public static function register($class_name, $args = array())
-    {
-        if (!class_exists($class_name)) {
-            return new WP_Error('class_not_found', sprintf(__('Constraint class %s not found', 'sportspress-schedule-generator'), $class_name));
-        }
+	/**
+	 * Constraint instances cache
+	 */
+	private static $constraint_instances = array();
 
-        // Validate that class implements interface
-        $reflection = new ReflectionClass($class_name);
-        if (!$reflection->implementsInterface('SPSG_Constraint_Interface')) {
-            return new WP_Error('invalid_interface', sprintf(__('Class %s must implement SPSG_Constraint_Interface', 'sportspress-schedule-generator'), $class_name));
-        }
+	/**
+	 * Register a constraint class
+	 */
+	public static function register( $class_name, $args = array() ) {
+		if ( ! class_exists( $class_name ) ) {
+			return new WP_Error( 'class_not_found', sprintf( __( 'Constraint class %s not found', 'sportspress-schedule-generator' ), $class_name ) );
+		}
 
-        $defaults = array(
-            'enabled' => true,
-            'priority_override' => null,
-            'description' => '',
-            'category' => 'general'
-        );
+		// Validate that class implements interface
+		$reflection = new ReflectionClass( $class_name );
+		if ( ! $reflection->implementsInterface( 'SPSG_Constraint_Interface' ) ) {
+			return new WP_Error( 'invalid_interface', sprintf( __( 'Class %s must implement SPSG_Constraint_Interface', 'sportspress-schedule-generator' ), $class_name ) );
+		}
 
-        $args = wp_parse_args($args, $defaults);
+		$defaults = array(
+			'enabled' => true,
+			'priority_override' => null,
+			'description' => '',
+			'category' => 'general',
+		);
 
-        self::$constraint_classes[$class_name] = $args;
+		$args = wp_parse_args( $args, $defaults );
 
-        return true;
-    }
+		self::$constraint_classes[ $class_name ] = $args;
 
-    /**
-     * Unregister a constraint class
-     */
-    public static function unregister($class_name)
-    {
-        unset(self::$constraint_classes[$class_name]);
-        unset(self::$constraint_instances[$class_name]);
-    }
+		return true;
+	}
 
-    /**
-     * Get all registered constraint classes
-     */
-    public static function get_registered_classes()
-    {
-        return self::$constraint_classes;
-    }
+	/**
+	 * Unregister a constraint class
+	 */
+	public static function unregister( $class_name ) {
+		unset( self::$constraint_classes[ $class_name ] );
+		unset( self::$constraint_instances[ $class_name ] );
+	}
 
-    /**
-     * Get constraint instance (with caching)
-     */
-    public static function get_instance($class_name)
-    {
-        if (!isset(self::$constraint_instances[$class_name])) {
-            if (!isset(self::$constraint_classes[$class_name])) {
-                return new WP_Error('not_registered', sprintf(__('Constraint class %s not registered', 'sportspress-schedule-generator'), $class_name));
-            }
+	/**
+	 * Get all registered constraint classes
+	 */
+	public static function get_registered_classes() {
+		return self::$constraint_classes;
+	}
 
-            if (!self::$constraint_classes[$class_name]['enabled']) {
-                return new WP_Error('disabled', sprintf(__('Constraint class %s is disabled', 'sportspress-schedule-generator'), $class_name));
-            }
+	/**
+	 * Get constraint instance (with caching)
+	 */
+	public static function get_instance( $class_name ) {
+		if ( ! isset( self::$constraint_instances[ $class_name ] ) ) {
+			if ( ! isset( self::$constraint_classes[ $class_name ] ) ) {
+				return new WP_Error( 'not_registered', sprintf( __( 'Constraint class %s not registered', 'sportspress-schedule-generator' ), $class_name ) );
+			}
 
-            try {
-                $instance = new $class_name();
+			if ( ! self::$constraint_classes[ $class_name ]['enabled'] ) {
+				return new WP_Error( 'disabled', sprintf( __( 'Constraint class %s is disabled', 'sportspress-schedule-generator' ), $class_name ) );
+			}
 
-                // Apply priority override if set
-                if (self::$constraint_classes[$class_name]['priority_override'] !== null && method_exists($instance, 'set_priority')) {
-                    $instance->set_priority(self::$constraint_classes[$class_name]['priority_override']);
-                }
+			try {
+				$instance = new $class_name();
 
-                self::$constraint_instances[$class_name] = $instance;
-            }
-            catch (Exception $e) {
-                return new WP_Error('instantiation_failed', sprintf(__('Failed to create instance of %s: %s', 'sportspress-schedule-generator'), $class_name, $e->getMessage()));
-            }
-        }
+				// Apply priority override if set
+				if ( self::$constraint_classes[ $class_name ]['priority_override'] !== null && method_exists( $instance, 'set_priority' ) ) {
+					$instance->set_priority( self::$constraint_classes[ $class_name ]['priority_override'] );
+				}
 
-        return self::$constraint_instances[$class_name];
-    }
+				self::$constraint_instances[ $class_name ] = $instance;
+			} catch ( Exception $e ) {
+				return new WP_Error( 'instantiation_failed', sprintf( __( 'Failed to create instance of %1$s: %2$s', 'sportspress-schedule-generator' ), $class_name, $e->getMessage() ) );
+			}
+		}
 
-    /**
-     * Get all enabled constraint instances
-     */
-    public static function get_enabled_instances()
-    {
-        $instances = array();
+		return self::$constraint_instances[ $class_name ];
+	}
 
-        foreach (self::$constraint_classes as $class_name => $args) {
-            if ($args['enabled']) {
-                $instance = self::get_instance($class_name);
-                if (!is_wp_error($instance)) {
-                    $instances[] = $instance;
-                }
-            }
-        }
+	/**
+	 * Get all enabled constraint instances
+	 */
+	public static function get_enabled_instances() {
+		$instances = array();
 
-        return $instances;
-    }
+		foreach ( self::$constraint_classes as $class_name => $args ) {
+			if ( $args['enabled'] ) {
+				$instance = self::get_instance( $class_name );
+				if ( ! is_wp_error( $instance ) ) {
+					$instances[] = $instance;
+				}
+			}
+		}
 
-    /**
-     * Auto-discover constraint classes in directory
-     */
-    public static function discover_constraints($directory)
-    {
-        if (!is_dir($directory)) {
-            return new WP_Error('directory_not_found', sprintf(__('Constraint directory %s not found', 'sportspress-schedule-generator'), $directory));
-        }
+		return $instances;
+	}
 
-        $discovered = array();
-        $files = glob($directory . '/class-*-constraint.php');
+	/**
+	 * Auto-discover constraint classes in directory
+	 */
+	public static function discover_constraints( $directory ) {
+		if ( ! is_dir( $directory ) ) {
+			return new WP_Error( 'directory_not_found', sprintf( __( 'Constraint directory %s not found', 'sportspress-schedule-generator' ), $directory ) );
+		}
 
-        foreach ($files as $file) {
-            $class_name = self::extract_class_name_from_file($file);
-            if ($class_name && !isset(self::$constraint_classes[$class_name])) {
-                require_once $file;
+		$discovered = array();
+		$files = glob( $directory . '/class-*-constraint.php' );
 
-                if (class_exists($class_name)) {
-                    $result = self::register($class_name, array(
-                        'discovered' => true,
-                        'file' => $file
-                    ));
+		foreach ( $files as $file ) {
+			$class_name = self::extract_class_name_from_file( $file );
+			if ( $class_name && ! isset( self::$constraint_classes[ $class_name ] ) ) {
+				require_once $file;
 
-                    if (!is_wp_error($result)) {
-                        $discovered[] = $class_name;
-                    }
-                }
-            }
-        }
+				if ( class_exists( $class_name ) ) {
+					$result = self::register(
+						$class_name,
+						array(
+							'discovered' => true,
+							'file' => $file,
+						)
+					);
 
-        return $discovered;
-    }
+					if ( ! is_wp_error( $result ) ) {
+						$discovered[] = $class_name;
+					}
+				}
+			}
+		}
 
-    /**
-     * Extract class name from file path
-     */
-    private static function extract_class_name_from_file($file)
-    {
-        $filename = basename($file, '.php');
+		return $discovered;
+	}
 
-        // Convert class-name-constraint to SPSG_Name_Constraint
-        $parts = explode('-', $filename);
-        if (count($parts) >= 3 && $parts[0] === 'class' && end($parts) === 'constraint') {
-            array_shift($parts); // Remove 'class'
-            
-            // Map common constraint names to their class names
-            // If the filename follows standard wordpress naming (class-something-constraint.php)
-            // we convert it to SPSG_Something_Constraint
-            
-            $class_parts = array_map('ucfirst', $parts);
-            return 'SPSG_' . implode('_', $class_parts);
-        }
+	/**
+	 * Extract class name from file path
+	 */
+	private static function extract_class_name_from_file( $file ) {
+		$filename = basename( $file, '.php' );
 
-        return null;
-    }
+		// Convert class-name-constraint to SPSG_Name_Constraint
+		$parts = explode( '-', $filename );
+		if ( count( $parts ) >= 3 && $parts[0] === 'class' && end( $parts ) === 'constraint' ) {
+			array_shift( $parts ); // Remove 'class'
 
-    /**
-     * Get constraint statistics
-     */
-    public static function get_stats()
-    {
-        $total = count(self::$constraint_classes);
-        $enabled = count(array_filter(self::$constraint_classes, function ($args) {
-            return $args['enabled'];
-        }));
+			// Map common constraint names to their class names
+			// If the filename follows standard wordpress naming (class-something-constraint.php)
+			// we convert it to SPSG_Something_Constraint
 
-        $categories = array();
-        foreach (self::$constraint_classes as $args) {
-            $category = $args['category'];
-            $categories[$category] = isset($categories[$category]) ? $categories[$category] + 1 : 1;
-        }
+			$class_parts = array_map( 'ucfirst', $parts );
+			return 'SPSG_' . implode( '_', $class_parts );
+		}
 
-        return array(
-            'total' => $total,
-            'enabled' => $enabled,
-            'disabled' => $total - $enabled,
-            'categories' => $categories
-        );
-    }
+		return null;
+	}
 
-    /**
-     * Clear all cached instances
-     */
-    public static function clear_cache()
-    {
-        self::$constraint_instances = array();
-    }
+	/**
+	 * Get constraint statistics
+	 */
+	public static function get_stats() {
+		$total = count( self::$constraint_classes );
+		$enabled = count(
+			array_filter(
+				self::$constraint_classes,
+				function ( $args ) {
+					return $args['enabled'];
+				}
+			)
+		);
+
+		$categories = array();
+		foreach ( self::$constraint_classes as $args ) {
+			$category = $args['category'];
+			$categories[ $category ] = isset( $categories[ $category ] ) ? $categories[ $category ] + 1 : 1;
+		}
+
+		return array(
+			'total' => $total,
+			'enabled' => $enabled,
+			'disabled' => $total - $enabled,
+			'categories' => $categories,
+		);
+	}
+
+	/**
+	 * Clear all cached instances
+	 */
+	public static function clear_cache() {
+		self::$constraint_instances = array();
+	}
 }

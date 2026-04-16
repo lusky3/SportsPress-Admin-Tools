@@ -6,153 +6,146 @@
  */
 
 // Prevent direct access
-if (!defined('ABSPATH')) {
-    wp_die();
+if ( ! defined( 'ABSPATH' ) ) {
+	wp_die();
 }
 
 /**
  * CSV export functionality
  */
-class SPSG_CSV_Exporter implements SPSG_Exporter_Interface
-{
+class SPSG_CSV_Exporter implements SPSG_Exporter_Interface {
 
-    /**
-     * Export schedule to CSV
-     */
-    public function export($schedule, $config)
-    {
-        $upload_dir = wp_upload_dir();
-        $export_dir = $upload_dir['basedir'] . '/spsg-exports';
-        $filename = 'schedule_' . wp_date('Y-m-d_H-i-s') . '.csv';
 
-        if (!file_exists($export_dir)) {
-            wp_mkdir_p($export_dir);
-        }
+	/**
+	 * Export schedule to CSV
+	 */
+	public function export( $schedule, $config ) {
+		$upload_dir = wp_upload_dir();
+		$export_dir = $upload_dir['basedir'] . '/spsg-exports';
+		$filename = 'schedule_' . wp_date( 'Y-m-d_H-i-s' ) . '.csv';
 
-        $filepath = $export_dir . '/' . $filename;
+		if ( ! file_exists( $export_dir ) ) {
+			wp_mkdir_p( $export_dir );
+		}
 
-        $file = fopen($filepath, 'w');
-        if (!$file) {
-            return new WP_Error('file_creation_failed', __('Could not create CSV file', 'sportspress-schedule-generator'));
-        }
+		$filepath = $export_dir . '/' . $filename;
 
-        // Write header
-        $headers = array(
-            'Date',
-            'Start Time',
-            'End Time',
-            'Duration (min)',
-            'Home Team',
-            'Away Team',
-            'Venue',
-            'Division',
-            'Home/Away',
-            'Inter-Division',
-            'Week',
-            'Is Makeup',
-            'Original Date'
-        );
-        fputcsv($file, $headers);
+		$file = fopen( $filepath, 'w' );
+		if ( ! $file ) {
+			return new WP_Error( 'file_creation_failed', __( 'Could not create CSV file', 'sportspress-schedule-generator' ) );
+		}
 
-        // Write data
-        foreach ($schedule as $game) {
-            // Determine if game is inter-division
-            $is_inter_division = $this->is_inter_division_game($game);
+		// Write header
+		$headers = array(
+			'Date',
+			'Start Time',
+			'End Time',
+			'Duration (min)',
+			'Home Team',
+			'Away Team',
+			'Venue',
+			'Division',
+			'Home/Away',
+			'Inter-Division',
+			'Week',
+			'Is Makeup',
+			'Original Date',
+		);
+		fputcsv( $file, $headers );
 
-            // Determine home/away designation
-            $home_away = $this->get_home_away_designation($game);
+		// Write data
+		foreach ( $schedule as $game ) {
+			// Determine if game is inter-division
+			$is_inter_division = $this->is_inter_division_game( $game );
 
-            $row = array(
-                $game->date,
-                $game->time_slot,
-                $game->end_time ?? '',
-                $game->match_length ?? 60,
-                $game->home_team->name ?? $game->home_team->id,
-                $game->away_team->name ?? $game->away_team->id,
-                $game->venue->name ?? $game->venue->id,
-                $game->division->name ?? $game->division->id,
-                $home_away,
-                $is_inter_division ? 'Yes' : 'No',
-                $game->week_number ?? '',
-                ($game->is_makeup ?? false) ? 'Yes' : 'No',
-                $game->original_date ?? ''
-            );
-            fputcsv($file, $row);
-        }
+			// Determine home/away designation
+			$home_away = $this->get_home_away_designation( $game );
 
-        fclose($file);
+			$row = array(
+				$game->date,
+				$game->time_slot,
+				$game->end_time ?? '',
+				$game->match_length ?? 60,
+				$game->home_team->name ?? $game->home_team->id,
+				$game->away_team->name ?? $game->away_team->id,
+				$game->venue->name ?? $game->venue->id,
+				$game->division->name ?? $game->division->id,
+				$home_away,
+				$is_inter_division ? 'Yes' : 'No',
+				$game->week_number ?? '',
+				( $game->is_makeup ?? false ) ? 'Yes' : 'No',
+				$game->original_date ?? '',
+			);
+			fputcsv( $file, $row );
+		}
 
-        return array(
-            'path' => $filepath,
-            'url' => $upload_dir['baseurl'] . '/spsg-exports/' . $filename,
-            'filename' => $filename,
-            'format' => 'csv'
-        );
-    }
+		fclose( $file );
 
-    /**
-     * Get format name
-     */
-    public function get_format()
-    {
-        return 'CSV';
-    }
+		return array(
+			'path' => $filepath,
+			'url' => $upload_dir['baseurl'] . '/spsg-exports/' . $filename,
+			'filename' => $filename,
+			'format' => 'csv',
+		);
+	}
 
-    /**
-     * Get file extension
-     */
-    public function get_extension()
-    {
-        return 'csv';
-    }
+	/**
+	 * Get format name
+	 */
+	public function get_format() {
+		return 'CSV';
+	}
 
-    /**
-     * Get MIME type
-     */
-    public function get_mime_type()
-    {
-        return 'text/csv';
-    }
+	/**
+	 * Get file extension
+	 */
+	public function get_extension() {
+		return 'csv';
+	}
 
-    /**
-     * Check if format supports styling
-     */
-    public function supports_formatting()
-    {
-        return false;
-    }
+	/**
+	 * Get MIME type
+	 */
+	public function get_mime_type() {
+		return 'text/csv';
+	}
 
-    /**
-     * Check if a game is inter-division
-     *
-     * @param object $game Game object
-     * @return bool True if inter-division
-     */
-    private function is_inter_division_game($game)
-    {
-        // Check if both teams have division IDs
-        if (!isset($game->home_team->division_id) || !isset($game->away_team->division_id)) {
-            // Fallback: check if game has is_inter_division property
-            if (isset($game->is_inter_division)) {
-                return $game->is_inter_division;
-            }
-            return false;
-        }
+	/**
+	 * Check if format supports styling
+	 */
+	public function supports_formatting() {
+		return false;
+	}
 
-        return $game->home_team->division_id !== $game->away_team->division_id;
-    }
+	/**
+	 * Check if a game is inter-division
+	 *
+	 * @param object $game Game object
+	 * @return bool True if inter-division
+	 */
+	private function is_inter_division_game( $game ) {
+		// Check if both teams have division IDs
+		if ( ! isset( $game->home_team->division_id ) || ! isset( $game->away_team->division_id ) ) {
+			// Fallback: check if game has is_inter_division property
+			if ( isset( $game->is_inter_division ) ) {
+				return $game->is_inter_division;
+			}
+			return false;
+		}
 
-    /**
-     * Get home/away designation for display
-     *
-     * @param object $game Game object
-     * @return string Home/Away designation
-     */
-    private function get_home_away_designation($game)
-    {
-        $home_name = $game->home_team->name ?? $game->home_team->id ?? 'Unknown';
-        $away_name = $game->away_team->name ?? $game->away_team->id ?? 'Unknown';
+		return $game->home_team->division_id !== $game->away_team->division_id;
+	}
 
-        return sprintf('%s (H) vs %s (A)', $home_name, $away_name);
-    }
+	/**
+	 * Get home/away designation for display
+	 *
+	 * @param object $game Game object
+	 * @return string Home/Away designation
+	 */
+	private function get_home_away_designation( $game ) {
+		$home_name = $game->home_team->name ?? $game->home_team->id ?? 'Unknown';
+		$away_name = $game->away_team->name ?? $game->away_team->id ?? 'Unknown';
+
+		return sprintf( '%s (H) vs %s (A)', $home_name, $away_name );
+	}
 }

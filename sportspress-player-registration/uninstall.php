@@ -8,14 +8,14 @@
  * @author Cody (lusky3)
  */
 
-if (!defined('WP_UNINSTALL_PLUGIN')) {
-    exit;
+if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
+	exit;
 }
 
 // Remove plugin options
-delete_option('spr_auto_create');
-delete_option('spr_auto_update');
-delete_option('spr_auto_role');
-delete_option('spr_player_role');
-delete_option('spr_auto_season');
-delete_option('spr_db_version');
+delete_option( 'spr_auto_create' );
+delete_option( 'spr_auto_update' );
+delete_option( 'spr_auto_role' );
+delete_option( 'spr_player_role' );
+delete_option( 'spr_auto_season' );
+delete_option( 'spr_db_version' );
