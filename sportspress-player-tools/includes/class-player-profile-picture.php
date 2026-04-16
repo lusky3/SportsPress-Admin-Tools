@@ -11,6 +11,8 @@ if (!defined('ABSPATH')) {
 
 class SPT_Player_Profile_Picture {
     
+    private $player_posts_cache = array();
+    
     public function __construct() {
         add_action('init', array($this, 'add_endpoint'));
         add_filter('woocommerce_account_menu_items', array($this, 'add_menu_item'));
@@ -39,12 +41,16 @@ class SPT_Player_Profile_Picture {
     }
     
     private function get_user_player_posts($user_id) {
-        return get_posts(array(
+        if (isset($this->player_posts_cache[$user_id])) {
+            return $this->player_posts_cache[$user_id];
+        }
+        $this->player_posts_cache[$user_id] = get_posts(array(
             'post_type' => 'sp_player',
             'author' => $user_id,
             'posts_per_page' => -1,
             'fields' => 'ids'
         ));
+        return $this->player_posts_cache[$user_id];
     }
     
     public function add_menu_item($items) {

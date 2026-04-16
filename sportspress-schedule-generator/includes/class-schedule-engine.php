@@ -96,7 +96,7 @@ class SPSG_Schedule_Engine
         $this->init_progress_tracking();
 
         // Get max generation time from config or use default
-        $this->max_generation_time = get_option('spsg_max_generation_time', 300);
+        $this->max_generation_time = (int) get_option('spsg_max_generation_time', 300);
 
         // Check for cancellation before starting
         if ($this->is_cancelled()) {

@@ -20,6 +20,21 @@ class SPEM_Events_Management {
      */
     private static $hook_registered = false;
 
+    /** @var array Instance-level cache for teams keyed by name. */
+    private $team_cache = array();
+
+    /** @var array Instance-level cache for venues keyed by name. */
+    private $venue_cache = array();
+
+    /** @var array Instance-level cache for leagues keyed by name. */
+    private $league_cache = array();
+
+    /** @var array|null Cached performance keys. */
+    private $cached_performance_keys = null;
+
+    /** @var array|null Cached result keys. */
+    private $cached_result_keys = null;
+
     public function __construct() {
         if (!self::$hook_registered && get_option('spem_auto_calendar_creation', '1') === '1') {
             add_action('sp_after_team_save', array($this, 'auto_create_calendar'));
@@ -147,6 +162,27 @@ class SPEM_Events_Management {
             'posts_per_page' => -1
         ));
 
+        if (empty($calendars)) {
+            return array();
+        }
+
+        // Batch-prime post meta caches for all calendars
+        $calendar_ids = wp_list_pluck($calendars, 'ID');
+        update_meta_cache('post', $calendar_ids);
+
+        // Collect all referenced team IDs and prime their term caches
+        $all_team_ids = array();
+        foreach ($calendars as $calendar) {
+            $team_ids = get_post_meta($calendar->ID, 'sp_team', true);
+            if (!empty($team_ids)) {
+                $team_id = is_array($team_ids) ? $team_ids[0] : $team_ids;
+                $all_team_ids[] = (int) $team_id;
+            }
+        }
+        if (!empty($all_team_ids)) {
+            _prime_post_caches($all_team_ids, false, true); // prime term caches
+        }
+
         $updated = array();
         foreach ($calendars as $calendar) {
             $team_ids = get_post_meta($calendar->ID, 'sp_team', true);
@@ -184,21 +220,33 @@ class SPEM_Events_Management {
             'posts_per_page' => -1
         ));
 
+        // Batch-fetch all calendars that have sp_team meta to build a lookup set
+        $calendars_with_teams = get_posts(array(
+            'post_type'      => 'sp_calendar',
+            'post_status'    => 'any',
+            'posts_per_page' => -1,
+            'meta_key'       => 'sp_team',
+            'fields'         => 'ids',
+        ));
+
+        $teams_with_calendars = array();
+        if (!empty($calendars_with_teams)) {
+            update_meta_cache('post', $calendars_with_teams);
+            foreach ($calendars_with_teams as $cal_id) {
+                $team_meta = get_post_meta($cal_id, 'sp_team', true);
+                if (is_array($team_meta)) {
+                    foreach ($team_meta as $tid) {
+                        $teams_with_calendars[(int) $tid] = true;
+                    }
+                } elseif ($team_meta) {
+                    $teams_with_calendars[(int) $team_meta] = true;
+                }
+            }
+        }
+
         $created = 0;
         foreach ($teams as $team) {
-            $existing = get_posts(array(
-                'post_type'  => 'sp_calendar',
-                'meta_query' => array(
-                    array(
-                        'key'     => 'sp_team',
-                        'value'   => $team->ID,
-                        'compare' => 'LIKE'
-                    )
-                ),
-                'posts_per_page' => 1
-            ));
-
-            if (empty($existing)) {
+            if (!isset($teams_with_calendars[$team->ID])) {
                 $this->auto_create_calendar($team->ID);
                 $created++;
             }
@@ -511,6 +559,10 @@ class SPEM_Events_Management {
      * @return array Performance keys (e.g., ['g', 'a', 'pim'] for hockey).
      */
     private function get_performance_keys() {
+        if ($this->cached_performance_keys !== null) {
+            return $this->cached_performance_keys;
+        }
+
         $performances = get_posts(array(
             'post_type'      => 'sp_performance',
             'posts_per_page' => -1,
@@ -518,7 +570,8 @@ class SPEM_Events_Management {
         ));
 
         if (empty($performances)) {
-            return array('goals');
+            $this->cached_performance_keys = array('goals');
+            return $this->cached_performance_keys;
         }
 
         $keys = array();
@@ -526,7 +579,8 @@ class SPEM_Events_Management {
             $keys[] = $perf->post_name;
         }
 
-        return $keys;
+        $this->cached_performance_keys = $keys;
+        return $this->cached_performance_keys;
     }
 
     /**
@@ -535,6 +589,10 @@ class SPEM_Events_Management {
      * @return array Result keys (e.g., ['goals'] or ['goalsfor', 'goalsagainst']).
      */
     private function get_result_keys() {
+        if ($this->cached_result_keys !== null) {
+            return $this->cached_result_keys;
+        }
+
         $results = get_posts(array(
             'post_type'      => 'sp_result',
             'posts_per_page' => -1,
@@ -542,7 +600,8 @@ class SPEM_Events_Management {
         ));
 
         if (empty($results)) {
-            return array('goals');
+            $this->cached_result_keys = array('goals');
+            return $this->cached_result_keys;
         }
 
         $keys = array();
@@ -550,7 +609,8 @@ class SPEM_Events_Management {
             $keys[] = $result->post_name;
         }
 
-        return $keys;
+        $this->cached_result_keys = $keys;
+        return $this->cached_result_keys;
     }
 
     /**
@@ -561,6 +621,10 @@ class SPEM_Events_Management {
      * @return int|false Team post ID or false on failure.
      */
     private function find_or_create_team($team_name) {
+        if (isset($this->team_cache[$team_name])) {
+            return $this->team_cache[$team_name];
+        }
+
         $query = new WP_Query(array(
             'post_type'      => 'sp_team',
             'title'          => $team_name,
@@ -570,14 +634,21 @@ class SPEM_Events_Management {
         ));
 
         if ($query->have_posts()) {
+            $this->team_cache[$team_name] = $query->posts[0];
             return $query->posts[0];
         }
 
-        return wp_insert_post(array(
+        $id = wp_insert_post(array(
             'post_type'   => 'sp_team',
             'post_title'  => $team_name,
             'post_status' => 'publish'
         ));
+
+        if ($id) {
+            $this->team_cache[$team_name] = $id;
+        }
+
+        return $id;
     }
 
     /**
@@ -587,15 +658,21 @@ class SPEM_Events_Management {
      * @return array|null Array with term_id or null on failure.
      */
     private function find_or_create_venue($venue_name) {
+        if (isset($this->venue_cache[$venue_name])) {
+            return $this->venue_cache[$venue_name];
+        }
+
         $venue_term = get_term_by('name', $venue_name, 'sp_venue');
 
         if ($venue_term) {
-            return array('term_id' => $venue_term->term_id);
+            $this->venue_cache[$venue_name] = array('term_id' => $venue_term->term_id);
+            return $this->venue_cache[$venue_name];
         }
 
         $result = wp_insert_term($venue_name, 'sp_venue');
         if (!is_wp_error($result)) {
-            return array('term_id' => $result['term_id']);
+            $this->venue_cache[$venue_name] = array('term_id' => $result['term_id']);
+            return $this->venue_cache[$venue_name];
         }
 
         return null;
@@ -608,15 +685,21 @@ class SPEM_Events_Management {
      * @return array|null Array with term_id or null on failure.
      */
     private function find_or_create_league($league_name) {
+        if (isset($this->league_cache[$league_name])) {
+            return $this->league_cache[$league_name];
+        }
+
         $league_term = get_term_by('name', $league_name, 'sp_league');
 
         if ($league_term) {
-            return array('term_id' => $league_term->term_id);
+            $this->league_cache[$league_name] = array('term_id' => $league_term->term_id);
+            return $this->league_cache[$league_name];
         }
 
         $result = wp_insert_term($league_name, 'sp_league');
         if (!is_wp_error($result)) {
-            return array('term_id' => $result['term_id']);
+            $this->league_cache[$league_name] = array('term_id' => $result['term_id']);
+            return $this->league_cache[$league_name];
         }
 
         return null;

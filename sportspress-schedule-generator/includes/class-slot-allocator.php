@@ -181,18 +181,22 @@ class SPSG_Slot_Allocator
         $schedule = array();
         $used_slots = array();
         $games_scheduled = 0;
+        $check_counter = 0;
 
         foreach ($matchups as $matchup) {
-            // Check for cancellation every game
-            if ($cancellation_callback && call_user_func($cancellation_callback)) {
-                $this->log('Allocation cancelled by user');
-                return $schedule; // Return partial schedule
-            }
+            $check_counter++;
 
-            // Check for timeout every game
-            if ($timeout_callback && call_user_func($timeout_callback)) {
-                $this->log('Allocation timed out');
-                return $schedule; // Return partial schedule
+            // Check for cancellation/timeout every 25 matchups
+            if ($check_counter % 25 === 0) {
+                if ($cancellation_callback && call_user_func($cancellation_callback)) {
+                    $this->log('Allocation cancelled by user');
+                    return $schedule; // Return partial schedule
+                }
+
+                if ($timeout_callback && call_user_func($timeout_callback)) {
+                    $this->log('Allocation timed out');
+                    return $schedule; // Return partial schedule
+                }
             }
 
             $best_slot = $this->find_best_slot($matchup, $used_slots, $schedule, $config);
@@ -342,13 +346,16 @@ class SPSG_Slot_Allocator
                 continue;
             }
 
+            // Create game once and reuse for both validation and cost calculation
+            $game = $this->create_game($matchup, $slot, $config);
+
             // Check if slot is valid
-            if (!$this->is_slot_valid($matchup, $slot, $schedule, $config)) {
+            if (!$this->is_slot_valid($matchup, $slot, $schedule, $config, $game)) {
                 continue;
             }
 
             // Calculate slot cost (lower is better)
-            $cost = $this->calculate_slot_cost($matchup, $slot, $schedule, $config);
+            $cost = $this->calculate_slot_cost($matchup, $slot, $schedule, $config, $game);
 
             if ($cost < $min_cost) {
                 $min_cost = $cost;
@@ -371,10 +378,12 @@ class SPSG_Slot_Allocator
      * @param SPSG_Schedule_Configuration $config Configuration
      * @return float Cost (lower is better)
      */
-    public function calculate_slot_cost($matchup, $slot, $schedule, $config)
+    public function calculate_slot_cost($matchup, $slot, $schedule, $config, $game = null)
     {
-        // Create a temporary game object for validation
-        $game = $this->create_game($matchup, $slot, $config);
+        // Reuse pre-created game or create one
+        if (!$game) {
+            $game = $this->create_game($matchup, $slot, $config);
+        }
         
         // Calculate total violation cost from all constraints
         return $this->constraint_manager->calculate_violation_cost($game, $schedule, $config);
@@ -509,7 +518,7 @@ class SPSG_Slot_Allocator
      * @param SPSG_Schedule_Configuration $config Configuration
      * @return bool True if valid
      */
-    public function is_slot_valid($matchup, $slot, $schedule, $config)
+    public function is_slot_valid($matchup, $slot, $schedule, $config, $game = null)
     {
         $match_length = $config->match_length ?? 60;
         $buffer_time = 15; // 15 minute buffer between games
@@ -536,8 +545,10 @@ class SPSG_Slot_Allocator
             }
         }
 
-        // Validate with constraint manager
-        $game = $this->create_game($matchup, $slot, $config);
+        // Validate with constraint manager - reuse pre-created game or create one
+        if (!$game) {
+            $game = $this->create_game($matchup, $slot, $config);
+        }
         $validation = $this->constraint_manager->validate_game($game, $schedule, $config);
 
         return $validation === true;
