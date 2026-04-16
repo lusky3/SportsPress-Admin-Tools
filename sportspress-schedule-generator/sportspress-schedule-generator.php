@@ -146,7 +146,7 @@ class SportsPress_Schedule_Generator
     public function parent_plugin_missing_notice()
     {
         echo '<div class="notice notice-error"><p>';
-        echo __('SportsPress Schedule Generator requires SportsPress Admin Tools to be installed and activated.', 'sportspress-schedule-generator');
+        echo esc_html__('SportsPress Schedule Generator requires SportsPress Admin Tools to be installed and activated.', 'sportspress-schedule-generator');
         echo '</p></div>';
     }
 

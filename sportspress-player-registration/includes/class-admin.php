@@ -61,34 +61,37 @@ class SPR_Admin {
                 
                 <table class="form-table">
                     <tr>
-                        <th scope="row"><?php _e('Automatic Player Creation', 'sportspress-player-registration'); ?></th>
+                        <th scope="row"><?php esc_html_e('Automatic Player Creation', 'sportspress-player-registration'); ?></th>
                         <td>
                             <label>
+                                <input type="hidden" name="spr_auto_create" value="0" />
                                 <input type="checkbox" name="spr_auto_create" value="1" <?php checked($auto_create, '1'); ?> />
-                                <?php _e('Automatically create player records from registration orders', 'sportspress-player-registration'); ?>
+                                <?php esc_html_e('Automatically create player records from registration orders', 'sportspress-player-registration'); ?>
                             </label>
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row"><?php _e('Update Player Records', 'sportspress-player-registration'); ?></th>
+                        <th scope="row"><?php esc_html_e('Update Player Records', 'sportspress-player-registration'); ?></th>
                         <td>
                             <label>
+                                <input type="hidden" name="spr_auto_update" value="0" />
                                 <input type="checkbox" name="spr_auto_update" value="1" <?php checked($auto_update, '1'); ?> />
-                                <?php _e('Find and update existing player records by name/email', 'sportspress-player-registration'); ?>
+                                <?php esc_html_e('Find and update existing player records by name/email', 'sportspress-player-registration'); ?>
                             </label>
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row"><?php _e('Automatic Role Assignment', 'sportspress-player-registration'); ?></th>
+                        <th scope="row"><?php esc_html_e('Automatic Role Assignment', 'sportspress-player-registration'); ?></th>
                         <td>
                             <label>
+                                <input type="hidden" name="spr_auto_role" value="0" />
                                 <input type="checkbox" name="spr_auto_role" value="1" <?php checked($auto_role, '1'); ?> />
-                                <?php _e('Automatically assign player role to registered users', 'sportspress-player-registration'); ?>
+                                <?php esc_html_e('Automatically assign player role to registered users', 'sportspress-player-registration'); ?>
                             </label>
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row"><?php _e('Player Role', 'sportspress-player-registration'); ?></th>
+                        <th scope="row"><?php esc_html_e('Player Role', 'sportspress-player-registration'); ?></th>
                         <td>
                             <select name="spr_player_role">
                                 <?php
@@ -98,15 +101,16 @@ class SPR_Admin {
                                 }
                                 ?>
                             </select>
-                            <p class="description"><?php _e('Select the role to assign to registered users', 'sportspress-player-registration'); ?></p>
+                            <p class="description"><?php esc_html_e('Select the role to assign to registered users', 'sportspress-player-registration'); ?></p>
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row"><?php _e('Automatic Season Assignment', 'sportspress-player-registration'); ?></th>
+                        <th scope="row"><?php esc_html_e('Automatic Season Assignment', 'sportspress-player-registration'); ?></th>
                         <td>
                             <label>
+                                <input type="hidden" name="spr_auto_season" value="0" />
                                 <input type="checkbox" name="spr_auto_season" value="1" <?php checked($auto_season, '1'); ?> />
-                                <?php _e('Automatically assign season taxonomy to player records', 'sportspress-player-registration'); ?>
+                                <?php esc_html_e('Automatically assign season taxonomy to player records', 'sportspress-player-registration'); ?>
                             </label>
                         </td>
                     </tr>
@@ -115,30 +119,30 @@ class SPR_Admin {
                 <?php submit_button(__('Save Settings', 'sportspress-player-registration'), 'primary', 'save_settings'); ?>
             </form>
             
-            <h2><?php _e('Registration Activity Log', 'sportspress-player-registration'); ?></h2>
+            <h2><?php esc_html_e('Registration Activity Log', 'sportspress-player-registration'); ?></h2>
             <?php $this->display_registration_logs(); ?>
             
-            <h2><?php _e('Role Assignment Log', 'sportspress-player-registration'); ?></h2>
+            <h2><?php esc_html_e('Role Assignment Log', 'sportspress-player-registration'); ?></h2>
             <?php $this->display_role_logs(); ?>
         <?php
     }
     
     private function display_registration_logs() {
-        $logs = SPAT_Database::get_registration_logs(50);
+        $logs = SPR_Database::get_registration_logs(50);
         
         if (empty($logs)) {
-            echo '<p>' . __('No registration activity yet.', 'sportspress-player-registration') . '</p>';
+            echo '<p>' . esc_html__('No registration activity yet.', 'sportspress-player-registration') . '</p>';
             return;
         }
         
         echo '<table class="wp-list-table widefat fixed striped">';
         echo '<thead><tr>';
-        echo '<th>' . __('Timestamp', 'sportspress-player-registration') . '</th>';
-        echo '<th>' . __('Order', 'sportspress-player-registration') . '</th>';
-        echo '<th>' . __('Customer', 'sportspress-player-registration') . '</th>';
-        echo '<th>' . __('Player', 'sportspress-player-registration') . '</th>';
-        echo '<th>' . __('Season', 'sportspress-player-registration') . '</th>';
-        echo '<th>' . __('Action', 'sportspress-player-registration') . '</th>';
+        echo '<th>' . esc_html__('Timestamp', 'sportspress-player-registration') . '</th>';
+        echo '<th>' . esc_html__('Order', 'sportspress-player-registration') . '</th>';
+        echo '<th>' . esc_html__('Customer', 'sportspress-player-registration') . '</th>';
+        echo '<th>' . esc_html__('Player', 'sportspress-player-registration') . '</th>';
+        echo '<th>' . esc_html__('Season', 'sportspress-player-registration') . '</th>';
+        echo '<th>' . esc_html__('Action', 'sportspress-player-registration') . '</th>';
         echo '</tr></thead><tbody>';
         
         foreach ($logs as $log) {
@@ -175,18 +179,18 @@ class SPR_Admin {
     }
     
     private function display_role_logs() {
-        $logs = SPAT_Database::get_role_logs(50);
+        $logs = SPR_Database::get_role_logs(50);
         
         if (empty($logs)) {
-            echo '<p>' . __('No role assignment activity yet.', 'sportspress-player-registration') . '</p>';
+            echo '<p>' . esc_html__('No role assignment activity yet.', 'sportspress-player-registration') . '</p>';
             return;
         }
         
         echo '<table class="wp-list-table widefat fixed striped">';
         echo '<thead><tr>';
-        echo '<th>' . __('Timestamp', 'sportspress-player-registration') . '</th>';
-        echo '<th>' . __('User', 'sportspress-player-registration') . '</th>';
-        echo '<th>' . __('Action', 'sportspress-player-registration') . '</th>';
+        echo '<th>' . esc_html__('Timestamp', 'sportspress-player-registration') . '</th>';
+        echo '<th>' . esc_html__('User', 'sportspress-player-registration') . '</th>';
+        echo '<th>' . esc_html__('Action', 'sportspress-player-registration') . '</th>';
         echo '</tr></thead><tbody>';
         
         foreach ($logs as $log) {

@@ -167,11 +167,16 @@ class SPAT_Database {
             return;
         }
         
+        $all_succeeded = true;
         foreach ($logs as $log) {
-            $wpdb->insert($table_name, $mapper($log));
+            if ($wpdb->insert($table_name, $mapper($log)) === false) {
+                $all_succeeded = false;
+            }
         }
         
-        delete_option($option_name);
+        if ($all_succeeded) {
+            delete_option($option_name);
+        }
     }
     
     public static function get_etransfer_logs($limit = 50, $offset = 0) {
@@ -206,13 +211,13 @@ class SPAT_Database {
         $table_name = $wpdb->prefix . 'spat_etransfer_logs';
         
         $insert_result = $wpdb->insert($table_name, array(
-            'from_email' => $webhook_data['from']['address'] ?? '',
-            'from_name' => $webhook_data['from']['name'] ?? '',
-            'amount' => $payment_data['amount'] ?? 0,
-            'reference_number' => $payment_data['reference_number'] ?? '',
-            'match_criteria' => $payment_data['match_criteria'] ?? '',
+            'from_email' => sanitize_email($webhook_data['from']['address'] ?? ''),
+            'from_name' => sanitize_text_field($webhook_data['from']['name'] ?? ''),
+            'amount' => floatval($payment_data['amount'] ?? 0),
+            'reference_number' => sanitize_text_field($payment_data['reference_number'] ?? ''),
+            'match_criteria' => sanitize_text_field($payment_data['match_criteria'] ?? ''),
             'order_id' => $order_id,
-            'result' => $result,
+            'result' => sanitize_text_field($result),
             'webhook_data' => maybe_serialize($webhook_data),
             'payment_data' => maybe_serialize($payment_data)
         ));
@@ -236,7 +241,7 @@ class SPAT_Database {
         ), array(
             '%d', // order_id
             '%s', // customer_name
-            $player_id ? '%d' : null, // player_id
+            '%s', // player_id
             '%s', // season
             '%s', // position
             '%s'  // action
@@ -256,7 +261,7 @@ class SPAT_Database {
             'user_name' => sanitize_text_field($user_name),
             'action' => sanitize_text_field($action)
         ), array(
-            $user_id ? '%d' : null, // user_id
+            '%s', // user_id
             '%s', // user_name
             '%s'  // action
         ));

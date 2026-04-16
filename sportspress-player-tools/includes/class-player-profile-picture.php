@@ -11,6 +11,8 @@ if (!defined('ABSPATH')) {
 
 class SPT_Player_Profile_Picture {
     
+    private $player_posts_cache = array();
+    
     public function __construct() {
         add_action('init', array($this, 'add_endpoint'));
         add_filter('woocommerce_account_menu_items', array($this, 'add_menu_item'));
@@ -39,16 +41,20 @@ class SPT_Player_Profile_Picture {
     }
     
     private function get_user_player_posts($user_id) {
-        return get_posts(array(
+        if (isset($this->player_posts_cache[$user_id])) {
+            return $this->player_posts_cache[$user_id];
+        }
+        $this->player_posts_cache[$user_id] = get_posts(array(
             'post_type' => 'sp_player',
             'author' => $user_id,
             'posts_per_page' => -1,
             'fields' => 'ids'
         ));
+        return $this->player_posts_cache[$user_id];
     }
     
     public function add_menu_item($items) {
-        if (!current_user_can('sp_player')) {
+        if (empty($this->get_user_player_posts(get_current_user_id()))) {
             return $items;
         }
         
@@ -57,7 +63,7 @@ class SPT_Player_Profile_Picture {
     }
     
     public function display_upload_form() {
-        if (!current_user_can('sp_player')) {
+        if (empty($this->get_user_player_posts(get_current_user_id()))) {
             return;
         }
         
@@ -67,14 +73,14 @@ class SPT_Player_Profile_Picture {
         
         ?>
         <div class="woocommerce-MyAccount-content">
-            <h3><?php _e('Profile Picture', 'sportspress-player-tools'); ?></h3>
+            <h3><?php esc_html_e('Profile Picture', 'sportspress-player-tools'); ?></h3>
             
             <?php if ($player_count !== 1): ?>
                 <div class="woocommerce-message woocommerce-message--info">
                     <?php if ($player_count === 0): ?>
-                        <p><?php _e('You do not have a player profile associated with your account. Please contact the site administrator.', 'sportspress-player-tools'); ?></p>
+                        <p><?php esc_html_e('You do not have a player profile associated with your account. Please contact the site administrator.', 'sportspress-player-tools'); ?></p>
                     <?php else: ?>
-                        <p><?php _e('You have multiple player profiles associated with your account. Please contact the site administrator.', 'sportspress-player-tools'); ?></p>
+                        <p><?php esc_html_e('You have multiple player profiles associated with your account. Please contact the site administrator.', 'sportspress-player-tools'); ?></p>
                     <?php endif; ?>
                 </div>
             <?php else: 
@@ -93,7 +99,7 @@ class SPT_Player_Profile_Picture {
                         <input type="file" name="profile_picture" accept="image/*" required>
                     </p>
                     <p>
-                        <button type="submit" name="upload_picture" class="button"><?php _e('Upload Picture', 'sportspress-player-tools'); ?></button>
+                        <button type="submit" name="upload_picture" class="button"><?php esc_html_e('Upload Picture', 'sportspress-player-tools'); ?></button>
                     </p>
                 </form>
             <?php endif; ?>
@@ -110,7 +116,7 @@ class SPT_Player_Profile_Picture {
             return;
         }
         
-        if (!current_user_can('sp_player')) {
+        if (empty($this->get_user_player_posts(get_current_user_id()))) {
             return;
         }
         
@@ -127,7 +133,7 @@ class SPT_Player_Profile_Picture {
         $max_size = 2 * 1024 * 1024;
         if ($_FILES['profile_picture']['size'] > $max_size) {
             wc_add_notice(__('File is too large. Maximum size is 2MB.', 'sportspress-player-tools'), 'error');
-            wp_redirect(wc_get_account_endpoint_url('profile-picture'));
+            wp_safe_redirect(wc_get_account_endpoint_url('profile-picture'));
             exit;
         }
         
@@ -138,8 +144,19 @@ class SPT_Player_Profile_Picture {
         $attachment_id = media_handle_upload('profile_picture', $player_id);
         
         if (!is_wp_error($attachment_id)) {
+            $allowed_image_types = array('jpg', 'jpeg', 'png', 'gif', 'webp');
+            $attached_file = get_attached_file($attachment_id);
+            $filetype = wp_check_filetype(basename($attached_file));
+
+            if (empty($filetype['ext']) || !in_array(strtolower($filetype['ext']), $allowed_image_types, true)) {
+                wp_delete_attachment($attachment_id, true);
+                wc_add_notice(__('Invalid file type. Only JPG, PNG, GIF, and WebP images are allowed.', 'sportspress-player-tools'), 'error');
+                wp_safe_redirect(wc_get_account_endpoint_url('profile-picture'));
+                exit;
+            }
+
             set_post_thumbnail($player_id, $attachment_id);
-            wp_redirect(wc_get_account_endpoint_url('profile-picture'));
+            wp_safe_redirect(wc_get_account_endpoint_url('profile-picture'));
             exit;
         }
     }

@@ -19,6 +19,11 @@ class SPSG_Matchup_Generator
 {
 
     /**
+     * Hash map for O(1) matchup count lookups between team pairs
+     */
+    private $matchup_counts = array();
+
+    /**
      * Generate all matchups for configuration
      *
      * @param SPSG_Schedule_Configuration $config Configuration object
@@ -27,6 +32,7 @@ class SPSG_Matchup_Generator
     public function generate($config)
     {
         $matchups = array();
+        $this->matchup_counts = array();
 
         // Generate intra-division matchups
         foreach ($config->divisions as $division) {
@@ -190,8 +196,11 @@ class SPSG_Matchup_Generator
                     'away_team' => null
                 );
 
-                $team_games[$this->get_team_id($pair['team_a'])]++;
-                $team_games[$this->get_team_id($pair['team_b'])]++;
+                $id_a = $this->get_team_id($pair['team_a']);
+                $id_b = $this->get_team_id($pair['team_b']);
+                $team_games[$id_a]++;
+                $team_games[$id_b]++;
+                $this->increment_matchup_count($id_a, $id_b);
             }
 
             $attempts++;
@@ -262,28 +271,34 @@ class SPSG_Matchup_Generator
     }
 
     /**
-     * Count matchups between two teams
+     * Count matchups between two teams using hash map for O(1) lookup
      *
-     * @param array $matchups Array of existing matchups
+     * @param array $matchups Array of existing matchups (unused, kept for signature compat)
      * @param string $team_a_id First team ID
      * @param string $team_b_id Second team ID
      * @return int Count of matchups
      */
     private function count_matchups_between($matchups, $team_a_id, $team_b_id)
     {
-        $count = 0;
+        $key = $this->get_pair_key($team_a_id, $team_b_id);
+        return $this->matchup_counts[$key] ?? 0;
+    }
 
-        foreach ($matchups as $matchup) {
-            $id_a = $this->get_team_id($matchup['team_a']);
-            $id_b = $this->get_team_id($matchup['team_b']);
+    /**
+     * Get canonical pair key for two team IDs
+     */
+    private function get_pair_key($id_a, $id_b)
+    {
+        return $id_a < $id_b ? "{$id_a}:{$id_b}" : "{$id_b}:{$id_a}";
+    }
 
-            if (($id_a === $team_a_id && $id_b === $team_b_id) ||
-            ($id_a === $team_b_id && $id_b === $team_a_id)) {
-                $count++;
-            }
-        }
-
-        return $count;
+    /**
+     * Increment matchup count for a team pair
+     */
+    private function increment_matchup_count($id_a, $id_b)
+    {
+        $key = $this->get_pair_key($id_a, $id_b);
+        $this->matchup_counts[$key] = ($this->matchup_counts[$key] ?? 0) + 1;
     }
 
     /**
@@ -458,7 +473,7 @@ class SPSG_Matchup_Generator
     private function assign_home_away_random($matchups)
     {
         foreach ($matchups as &$matchup) {
-            if (rand(0, 1) === 0) {
+            if (wp_rand(0, 1) === 0) {
                 $matchup['home_team'] = $matchup['team_a'];
                 $matchup['away_team'] = $matchup['team_b'];
             }
@@ -531,7 +546,7 @@ class SPSG_Matchup_Generator
      */
     private function assign_random_home_away($matchup)
     {
-        if (rand(0, 1) === 0) {
+        if (wp_rand(0, 1) === 0) {
             $matchup['home_team'] = $matchup['team_a'];
             $matchup['away_team'] = $matchup['team_b'];
         } else {
@@ -592,7 +607,7 @@ class SPSG_Matchup_Generator
             }
             else {
                 // Equal balance - random assignment
-                if (rand(0, 1) === 0) {
+                if (wp_rand(0, 1) === 0) {
                     $matchup['home_team'] = $matchup['team_a'];
                     $matchup['away_team'] = $matchup['team_b'];
                     $home_counts[$id_a]++;

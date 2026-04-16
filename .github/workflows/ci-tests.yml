@@ -4,14 +4,25 @@ on:
   push:
     branches: [main]
     paths:
-      - 'sportspress-schedule-generator/**'
+      - '**/*.php'
   pull_request:
     branches: [main]
     paths:
-      - 'sportspress-schedule-generator/**'
+      - '**/*.php'
 
 jobs:
-  test:
+  php-tests:
+    runs-on: ubuntu-latest
+    container:
+      image: php:8.2-cli
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Run Standalone PHP Tests
+        run: php sportspress-schedule-generator/tests/run-tests.php
+
+  docker-integration-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code

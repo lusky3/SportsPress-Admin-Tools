@@ -18,6 +18,11 @@
     var nonces = spsgAdminData.nonces;
     var presets = spsgAdminData.presets;
 
+    function escHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+    }
+
     // Track unsaved changes
     var formChanged = false;
     var initialFormData = $('#spsg-config-form').serialize();
@@ -124,7 +129,7 @@
             type: 'POST',
             data: {
                 action: 'spsg_get_available_venues',
-                nonce: nonces.get_available_venues
+                nonce: spsgData.nonces.get_available_venues
             },
             success: function(response) {
                 if (response.success) {
@@ -145,9 +150,9 @@
                     $.each(venues, function(index, venue) {
                         dialogHtml += '<label style="display: block; padding: 8px; border-bottom: 1px solid #eee;">';
                         dialogHtml += '<input type="checkbox" class="spsg-venue-select" value="' + index + '" checked /> ';
-                        dialogHtml += '<strong>' + venue.name + '</strong>';
+                        dialogHtml += '<strong>' + escHtml(venue.name) + '</strong>';
                         if (venue.address) {
-                            dialogHtml += ' <span style="color: #666; font-size: 0.9em;">(' + venue.address + ')</span>';
+                            dialogHtml += ' <span style="color: #666; font-size: 0.9em;">(' + escHtml(venue.address) + ')</span>';
                         }
                         dialogHtml += '</label>';
                     });
@@ -223,7 +228,7 @@
 
             html += '<tr><th scope="row">' + i18n.venueName + '</th>';
             html += '<td>';
-            html += '<input type="text" name="venues[' + index + '][name]" value="' + venue.name + '" class="regular-text" required />';
+            html += '<input type="text" name="venues[' + index + '][name]" value="' + escHtml(venue.name) + '" class="regular-text" required />';
             html += '<input type="hidden" name="venues[' + index + '][id]" value="' + venueId + '" />';
             html += '<button type="button" class="button spsg-remove-venue">' + i18n.remove + '</button>';
             html += '</td></tr>';
@@ -335,7 +340,7 @@
         html += '<thead><tr><th>' + i18n.weekStart + '</th><th>' + i18n.venue + '</th><th>' + i18n.timeSlots + '</th></tr></thead><tbody>';
 
         $.each(schedules.slice(0, 10), function(i, schedule) {
-            html += '<tr><td>' + schedule.week_start + '</td><td>' + schedule.venue_name + '</td><td>' + schedule.time_slots.join(', ') + '</td></tr>';
+            html += '<tr><td>' + escHtml(schedule.week_start) + '</td><td>' + escHtml(schedule.venue_name) + '</td><td>' + escHtml(schedule.time_slots.join(', ')) + '</td></tr>';
         });
 
         if (schedules.length > 10) {
@@ -352,22 +357,22 @@
 
         $.each(suggestions, function(csvName, suggestion) {
             html += '<tr>';
-            html += '<td><strong>' + csvName + '</strong></td>';
-            html += '<td><select class="spsg-venue-action" data-csv-name="' + csvName + '">';
+            html += '<td><strong>' + escHtml(csvName) + '</strong></td>';
+            html += '<td><select class="spsg-venue-action" data-csv-name="' + escHtml(csvName) + '">';
             html += '<option value="map" ' + (suggestion.action === 'map' ? 'selected' : '') + '>' + i18n.mapToExisting + '</option>';
             html += '<option value="create" ' + (suggestion.action === 'create' ? 'selected' : '') + '>' + i18n.createNewVenue + '</option>';
             html += '</select></td>';
-            html += '<td><select class="spsg-venue-mapping" data-csv-name="' + csvName + '" ' + (suggestion.action === 'create' ? 'disabled' : '') + '>';
+            html += '<td><select class="spsg-venue-mapping" data-csv-name="' + escHtml(csvName) + '" ' + (suggestion.action === 'create' ? 'disabled' : '') + '>';
 
             if (suggestion.suggested_match) {
                 var matchId = suggestion.suggested_match.id;
                 var matchName = suggestion.suggested_match.name;
-                html += '<option value="' + matchId + '" selected>' + matchName + ' (suggested)</option>';
+                html += '<option value="' + escHtml(matchId) + '" selected>' + escHtml(matchName) + ' (suggested)</option>';
             }
 
             $.each(existingVenues, function(i, venue) {
                 if (!suggestion.suggested_match || venue.id !== suggestion.suggested_match.id) {
-                    html += '<option value="' + venue.id + '">' + venue.name + '</option>';
+                    html += '<option value="' + escHtml(venue.id) + '">' + escHtml(venue.name) + '</option>';
                 }
             });
 
@@ -598,7 +603,7 @@
             type: 'POST',
             data: {
                 action: 'spsg_load_sp_teams',
-                nonce: nonces.load_sp_teams,
+                nonce: spsgData.nonces.load_sp_teams,
                 division_id: spDivisionId
             },
             success: function(response) {
@@ -612,8 +617,8 @@
                         var teamName = team.name || team;
                         var teamHtml = '<div class="spsg-team-item">' +
                             '<label>' +
-                            '<input type="checkbox" name="divisions[' + divisionIndex + '][teams][]" value="' + teamName + '" checked /> ' +
-                            teamName +
+                            '<input type="checkbox" name="divisions[' + divisionIndex + '][teams][]" value="' + escHtml(teamName) + '" checked /> ' +
+                            escHtml(teamName) +
                             '</label>' +
                             '<button type="button" class="button-link spsg-remove-team" style="color: #b32d2e;">Remove</button>' +
                             '</div>';
@@ -666,8 +671,8 @@
 
         var teamHtml = '<div class="spsg-team-item">' +
             '<label>' +
-            '<input type="checkbox" name="divisions[' + divisionIndex + '][teams][]" value="' + teamName + '" checked /> ' +
-            teamName +
+            '<input type="checkbox" name="divisions[' + divisionIndex + '][teams][]" value="' + escHtml(teamName) + '" checked /> ' +
+            escHtml(teamName) +
             '</label>' +
             '<button type="button" class="button-link spsg-remove-team" style="color: #b32d2e;">Remove</button>' +
             '</div>';
@@ -901,7 +906,7 @@
             data: {
                 action: 'spsg_load_preset',
                 preset_name: presetId,
-                nonce: nonces.load_preset
+                nonce: spsgData.nonces.load_preset
             },
             success: function(response) {
                 if (response.success) {
@@ -1045,14 +1050,14 @@
             var existingPref = $("select[name='home_away_preferences[" + team + "]']").val() || '';
 
             html += '<tr>';
-            html += '<td><strong>' + team + '</strong></td>';
+            html += '<td><strong>' + escHtml(team) + '</strong></td>';
             html += '<td>';
-            html += '<select name="home_away_preferences[' + team + ']" class="regular-text">';
+            html += '<select name="home_away_preferences[' + escHtml(team) + ']" class="regular-text">';
             html += '<option value="">' + i18n.noPreference + '</option>';
 
             $.each(venues, function(j, venue) {
                 var selected = (existingPref === venue.id) ? ' selected' : '';
-                html += '<option value="' + venue.id + '"' + selected + '>' + venue.name + '</option>';
+                html += '<option value="' + escHtml(venue.id) + '"' + selected + '>' + escHtml(venue.name) + '</option>';
             });
 
             html += '</select>';
@@ -1114,7 +1119,7 @@
                 action: 'spsg_get_change_history',
                 config_id: configId,
                 limit: 10,
-                nonce: nonces.get_change_history
+                nonce: spsgData.nonces.get_change_history
             },
             success: function(response) {
                 if (response.success) {
@@ -1184,7 +1189,7 @@
             type: 'POST',
             data: {
                 action: 'spsg_clear_change_history',
-                nonce: nonces.clear_change_history
+                nonce: spsgData.nonces.clear_change_history
             },
             success: function(response) {
                 if (response.success) {

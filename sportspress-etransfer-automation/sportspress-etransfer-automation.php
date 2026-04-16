@@ -89,12 +89,12 @@ class SportsPress_ETransfer_Automation
         require_once SPET_PLUGIN_PATH . 'includes/class-etransfer-admin.php';
         require_once SPET_PLUGIN_PATH . 'includes/class-file-downloads.php';
 
-        $this->etransfer_automation = new SPET_ETransfer_Automation();
-        $this->file_downloads = new SPET_File_Downloads();
+        new SPET_ETransfer_Automation();
+        new SPET_File_Downloads();
 
         if (is_admin()) {
-            $this->admin = new SPET_Admin();
-            $this->etransfer_admin = new SPET_ETransfer_Admin();
+            new SPET_Admin();
+            new SPET_ETransfer_Admin();
         }
     }
 
@@ -110,7 +110,7 @@ class SportsPress_ETransfer_Automation
     public function parent_plugin_missing_notice()
     {
         echo '<div class="notice notice-error"><p>';
-        echo __('SportsPress e-Transfer Automation requires SportsPress Admin Tools to be installed and activated.', 'sportspress-etransfer-automation');
+        echo esc_html__('SportsPress e-Transfer Automation requires SportsPress Admin Tools to be installed and activated.', 'sportspress-etransfer-automation');
         echo '</p></div>';
     }
 

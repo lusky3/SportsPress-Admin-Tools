@@ -27,7 +27,6 @@ if (!class_exists('SportsPressAdminTools')) {
         {
             add_action('plugins_loaded', array($this, 'init'));
             register_activation_hook(__FILE__, array($this, 'activate'));
-            register_deactivation_hook(__FILE__, array($this, 'deactivate'));
         }
 
         public function init()
@@ -44,25 +43,12 @@ if (!class_exists('SportsPressAdminTools')) {
             if (is_admin()) {
                 $this->init_admin();
             }
-
-            // Initialize modules
-            $this->init_modules();
         }
 
         private function init_admin()
         {
             require_once SPAT_PLUGIN_PATH . 'includes/class-admin.php';
             new SPAT_Admin();
-
-        // e-Transfer admin functionality moved to child plugin
-        }
-
-        private function init_modules()
-        {
-        // File downloads moved to child plugins
-
-        // All module functionality is now handled by child plugins
-        // Child plugins register with the parent and handle their own initialization
         }
 
 
@@ -85,10 +71,6 @@ if (!class_exists('SportsPressAdminTools')) {
             }
         }
 
-        public function deactivate()
-        {
-        // Cleanup if needed
-        }
     }
 
     // Initialize plugin

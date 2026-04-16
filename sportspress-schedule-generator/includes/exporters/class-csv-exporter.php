@@ -22,8 +22,14 @@ class SPSG_CSV_Exporter implements SPSG_Exporter_Interface
     public function export($schedule, $config)
     {
         $upload_dir = wp_upload_dir();
+        $export_dir = $upload_dir['basedir'] . '/spsg-exports';
         $filename = 'schedule_' . wp_date('Y-m-d_H-i-s') . '.csv';
-        $filepath = $upload_dir['path'] . '/' . $filename;
+
+        if (!file_exists($export_dir)) {
+            wp_mkdir_p($export_dir);
+        }
+
+        $filepath = $export_dir . '/' . $filename;
 
         $file = fopen($filepath, 'w');
         if (!$file) {
@@ -68,7 +74,7 @@ class SPSG_CSV_Exporter implements SPSG_Exporter_Interface
                 $home_away,
                 $is_inter_division ? 'Yes' : 'No',
                 $game->week_number ?? '',
-                $game->is_makeup ? 'Yes' : 'No',
+                ($game->is_makeup ?? false) ? 'Yes' : 'No',
                 $game->original_date ?? ''
             );
             fputcsv($file, $row);
@@ -78,7 +84,7 @@ class SPSG_CSV_Exporter implements SPSG_Exporter_Interface
 
         return array(
             'path' => $filepath,
-            'url' => $upload_dir['url'] . '/' . $filename,
+            'url' => $upload_dir['baseurl'] . '/spsg-exports/' . $filename,
             'filename' => $filename,
             'format' => 'csv'
         );

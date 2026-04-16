@@ -99,7 +99,8 @@ class SPSG_Admin_Ajax
         }
         else {
             wp_send_json_success(array(
-                'message' => __('Configuration saved successfully! Your changes have been preserved.', 'sportspress-schedule-generator')
+                'message' => __('Configuration saved successfully! Your changes have been preserved.', 'sportspress-schedule-generator'),
+                'config_id' => $result
             ));
         }
     }
@@ -225,7 +226,7 @@ class SPSG_Admin_Ajax
         $divisions = array();
 
         foreach ($imported_divisions as $division) {
-            $div_name = is_object($division) ? $division->name : $division['name'];
+            $div_name = sanitize_text_field(is_object($division) ? $division->name : $division['name']);
             $teams = $this->extract_team_names($division['teams'] ?? array());
 
             $divisions[] = array(
@@ -246,11 +247,11 @@ class SPSG_Admin_Ajax
         $names = array();
         foreach ($teams_data as $team) {
             if (is_object($team)) {
-                $names[] = $team->name;
+                $names[] = sanitize_text_field($team->name);
             } elseif (is_array($team)) {
-                $names[] = $team['name'];
+                $names[] = sanitize_text_field($team['name']);
             } else {
-                $names[] = $team;
+                $names[] = sanitize_text_field($team);
             }
         }
         return $names;
@@ -307,14 +308,11 @@ class SPSG_Admin_Ajax
             wp_send_json_error(__('No configuration ID provided', 'sportspress-schedule-generator'));
         }
 
-        $saved_configs = get_option('spsg_saved_configurations', array());
+        $result = $this->config_manager->delete($config_id);
 
-        if (!isset($saved_configs[$config_id])) {
-            wp_send_json_error(__('Configuration not found', 'sportspress-schedule-generator'));
+        if (is_wp_error($result)) {
+            wp_send_json_error($result->get_error_message());
         }
-
-        unset($saved_configs[$config_id]);
-        update_option('spsg_saved_configurations', $saved_configs);
 
         wp_send_json_success(__('Configuration deleted successfully', 'sportspress-schedule-generator'));
     }
@@ -594,6 +592,7 @@ class SPSG_Admin_Ajax
 
         $progress = get_transient($progress_key);
         if ($progress) {
+            $progress['cancelled'] = true;
             $progress['status'] = 'cancelled';
             set_transient($progress_key, $progress, 300);
         }
@@ -699,6 +698,11 @@ class SPSG_Admin_Ajax
             wp_send_json_error(__('Please upload a CSV file', 'sportspress-schedule-generator'));
         }
 
+        $filetype = wp_check_filetype($file['name'], array('csv' => 'text/csv'));
+        if (!$filetype['type']) {
+            wp_send_json_error(__('Invalid file type', 'sportspress-schedule-generator'));
+        }
+
         require_once plugin_dir_path(__FILE__) . 'class-venue-schedule-importer.php';
         $schedules = SPSG_Venue_Schedule_Importer::parse_csv($file['tmp_name']);
 
@@ -741,9 +745,9 @@ class SPSG_Admin_Ajax
             wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
-        $schedules = $_POST['schedules'] ?? array();
-        $venue_mapping = $_POST['venue_mapping'] ?? array();
-        $new_venues = $_POST['new_venues'] ?? array();
+        $schedules = map_deep(wp_unslash($_POST['schedules'] ?? array()), 'sanitize_text_field');
+        $venue_mapping = array_map('sanitize_text_field', $_POST['venue_mapping'] ?? array());
+        $new_venues = array_map('sanitize_text_field', $_POST['new_venues'] ?? array());
 
         if (empty($schedules)) {
             wp_send_json_error(__('No schedule data provided', 'sportspress-schedule-generator'));
@@ -847,7 +851,12 @@ class SPSG_Admin_Ajax
             wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
-        $result = $this->config_manager->clear_change_history();
+        $config_id = sanitize_text_field($_POST['config_id'] ?? '');
+        if (empty($config_id)) {
+            wp_send_json_error(__('No configuration ID provided', 'sportspress-schedule-generator'));
+        }
+
+        $result = $this->config_manager->clear_change_history($config_id);
 
         if (is_wp_error($result)) {
             wp_send_json_error($result->get_error_message());

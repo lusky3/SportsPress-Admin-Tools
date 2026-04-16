@@ -63,15 +63,16 @@ async function buildEmailData(message, env) {
     }
   }
   
-  console.log('Email Debug Info:', {
-    from: message.from,
-    to: message.to,
-    originalFrom: originalFrom,
-    debugMode: !!env.DEBUG,
-    headerCount: Object.keys(allHeaders).length,
-    rawContentLength: rawContent.length,
-    emailBodyPreview: emailBody.substring(0, 300).replaceAll(/[\r\n]/g, ' | ')
-  });
+  if (env.DEBUG) {
+    console.log('Email Debug Info:', {
+      from: message.from,
+      to: message.to,
+      originalFrom: originalFrom,
+      headerCount: Object.keys(allHeaders).length,
+      rawContentLength: rawContent.length,
+      emailBodyPreview: emailBody.substring(0, 300).replaceAll(/[\r\n]/g, ' | ')
+    });
+  }
   
   const emailData = {
     from: {
@@ -128,8 +129,9 @@ async function sendWebhook(emailData, env, message) {
     return;
   }
 
+  emailData.timestamp = new Date().toISOString();
   const payload = JSON.stringify(emailData);
-  const headers = await buildHeaders(payload, env.WEBHOOK_SECRET, env.CUSTOM_HEADERS);
+  const headers = await buildHeaders(payload, env.WEBHOOK_SECRET, env.CUSTOM_HEADERS, emailData.timestamp);
   
   const response = await fetch(env.WEBHOOK_URL, {
     method: 'POST',
@@ -141,10 +143,11 @@ async function sendWebhook(emailData, env, message) {
   await handleWebhookResponse(response, message, env);
 }
 
-async function buildHeaders(payload, secret, customHeaders) {
+async function buildHeaders(payload, secret, customHeaders, timestamp) {
   const headers = {
     'Content-Type': 'application/json',
-    'X-Signature': await createHmacSignature(payload, secret),
+    'X-Signature': await createHmacSignature(timestamp + payload, secret),
+    'X-Timestamp': timestamp,
     'User-Agent': 'Cloudflare-Worker-Email-Processor/1.0'
   };
 
@@ -234,7 +237,8 @@ function isFromSafeDomain(fromAddress, env) {
   }
   
   // Allow forwarded emails from MXRoute (common email forwarding service)
-  if (fromAddress?.includes('mxroute.com')) {
+  const domain = fromAddress?.split('@')[1];
+  if (domain && (domain === 'mxroute.com' || domain.endsWith('.mxroute.com'))) {
     return true;
   }
   
@@ -259,17 +263,43 @@ function extractEmailBody(rawContent) {
   // Look for plain text content first
   const textMatch = rawContent.match(/Content-Type: text\/plain[\s\S]*?\n\n([\s\S]*?)(?=\n--)/i);
   if (textMatch) {
-    return textMatch[1].trim();
+    const headers = rawContent.match(/Content-Type: text\/plain[\s\S]*?\n\n/i)?.[0] || '';
+    return decodeBody(textMatch[1].trim(), headers);
   }
   
   // Fallback to HTML content and strip tags
   const htmlMatch = rawContent.match(/Content-Type: text\/html[\s\S]*?\n\n([\s\S]*?)(?=\n--)/i);
   if (htmlMatch) {
-    return htmlMatch[1].replaceAll(/<[^>]*>/g, '').replaceAll(/&[^;]+;/g, ' ').trim();
+    const headers = rawContent.match(/Content-Type: text\/html[\s\S]*?\n\n/i)?.[0] || '';
+    const decoded = decodeBody(htmlMatch[1].trim(), headers);
+    return decoded.replaceAll(/<[^>]*>/g, '').replaceAll(/&[^;]+;/g, ' ').trim();
   }
   
   // Last resort: return raw content
   return rawContent;
+}
+
+/**
+ * Decode email body based on Content-Transfer-Encoding
+ */
+function decodeBody(body, headers) {
+  const encodingMatch = headers.match(/Content-Transfer-Encoding:\s*(\S+)/i);
+  if (!encodingMatch) return body;
+  
+  const encoding = encodingMatch[1].toLowerCase();
+  if (encoding === 'base64') {
+    try {
+      return atob(body.replace(/\s/g, ''));
+    } catch (e) {
+      return body;
+    }
+  }
+  if (encoding === 'quoted-printable') {
+    return body
+      .replace(/=\r?\n/g, '')
+      .replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+  }
+  return body;
 }
 
 /**
