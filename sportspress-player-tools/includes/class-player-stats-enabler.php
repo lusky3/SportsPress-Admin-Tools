@@ -43,8 +43,8 @@ class SPT_Player_Stats_Enabler {
             return;
         }
         
-        // Enable basic stats columns
-        $stats_columns = array('0', 'g', 'a', 'pim', '0', 'p', 'gp');
+        // Enable stats columns discovered from SportsPress configuration
+        $stats_columns = $this->get_sport_columns();
         update_post_meta($post_id, 'sp_columns', $stats_columns);
         
         $result = $this->build_assignments_and_statistics($leagues_data, $current_team);
@@ -75,9 +75,7 @@ class SPT_Player_Stats_Enabler {
                     $statistics[$league_id] = array();
                 }
                 
-                $statistics[$league_id][$season_id] = array(
-                    'g' => '', 'a' => '', 'pim' => '', 'p' => '', 'gp' => ''
-                );
+                $statistics[$league_id][$season_id] = $this->get_empty_statistics();
             }
         }
         
@@ -129,5 +127,58 @@ class SPT_Player_Stats_Enabler {
         } while (count($players) === $batch_size);
         
         return $processed;
+    }
+    
+    /**
+     * Discover active stat column slugs from SportsPress.
+     *
+     * @return array Slugs for sp_columns meta (performance + statistic).
+     */
+    private function get_sport_columns() {
+        $slugs = $this->get_visible_post_slugs('sp_performance');
+        $slugs = array_merge($slugs, $this->get_visible_post_slugs('sp_statistic'));
+        return $slugs;
+    }
+    
+    /**
+     * Build an empty statistics array keyed by discovered performance + statistic slugs.
+     *
+     * @return array slug => '' for every active stat.
+     */
+    private function get_empty_statistics() {
+        $columns = $this->get_sport_columns();
+        return array_fill_keys($columns, '');
+    }
+    
+    /**
+     * Get slugs for visible posts of a given SportsPress variable type.
+     *
+     * Uses sp_get_var_labels() when available, falls back to direct post query.
+     *
+     * @param string $post_type 'sp_performance' or 'sp_statistic'.
+     * @return array Numeric array of post_name slugs.
+     */
+    private function get_visible_post_slugs($post_type) {
+        if (function_exists('sp_get_var_labels')) {
+            $labels = sp_get_var_labels($post_type);
+            return is_array($labels) ? array_keys($labels) : array();
+        }
+        
+        $posts = get_posts(array(
+            'post_type'      => $post_type,
+            'posts_per_page' => -1,
+            'post_status'    => 'publish',
+            'meta_query'     => array(
+                array(
+                    'key'     => 'sp_visible',
+                    'value'   => '1',
+                    'compare' => '=',
+                ),
+            ),
+            'orderby'        => 'menu_order',
+            'order'          => 'ASC',
+        ));
+        
+        return wp_list_pluck($posts, 'post_name');
     }
 }
