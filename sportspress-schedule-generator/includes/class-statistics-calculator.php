@@ -360,13 +360,13 @@ class SPSG_Statistics_Calculator
     public function format_for_display($stats)
     {
         if (empty($stats) || $stats['total_games'] === 0) {
-            return '<p>' . __('No statistics available.', 'sportspress-schedule-generator') . '</p>';
+            return '<p>' . esc_html__('No statistics available.', 'sportspress-schedule-generator') . '</p>';
         }
 
         $output = '<div class="spsg-statistics">';
 
         // Summary stats
-        $output .= '<h3>' . __('Summary', 'sportspress-schedule-generator') . '</h3>';
+        $output .= '<h3>' . esc_html__('Summary', 'sportspress-schedule-generator') . '</h3>';
         $output .= '<ul>';
         $output .= '<li>' . sprintf(__('Total Games: %d', 'sportspress-schedule-generator'), $stats['total_games']) . '</li>';
         $output .= '<li>' . sprintf(__('Games per Team: min=%d, max=%d, avg=%.2f', 'sportspress-schedule-generator'),
@@ -379,7 +379,7 @@ class SPSG_Statistics_Calculator
 
         // Imbalances
         if (!empty($stats['imbalances'])) {
-            $output .= '<h3>' . __('Detected Imbalances', 'sportspress-schedule-generator') . '</h3>';
+            $output .= '<h3>' . esc_html__('Detected Imbalances', 'sportspress-schedule-generator') . '</h3>';
             $output .= '<ul class="spsg-imbalances">';
             foreach ($stats['imbalances'] as $issue) {
                 $class = 'spsg-imbalance-' . $issue['severity'];

@@ -35,16 +35,16 @@ class SPSG_Admin
     const LABEL_IMPORT_SCHEDULE = 'Import Schedule';
 
     /**
-     * Configuration manager instance
+     * Configuration manager instance (lazy-initialized)
      *
-     * @var SPSG_Configuration_Manager
+     * @var SPSG_Configuration_Manager|null
      */
     private $config_manager;
 
     /**
-     * Renderer instance
+     * Renderer instance (lazy-initialized)
      *
-     * @var SPSG_Admin_Renderer
+     * @var SPSG_Admin_Renderer|null
      */
     private $renderer;
 
@@ -53,17 +53,40 @@ class SPSG_Admin
      */
     public function __construct()
     {
-        $this->config_manager = new SPSG_Configuration_Manager();
-        $this->renderer = new SPSG_Admin_Renderer($this->config_manager);
-
-        // Instantiate AJAX handler (registers its own hooks)
-        new SPSG_Admin_Ajax($this->config_manager);
+        // AJAX handler must register wp_ajax hooks early (they fire on admin-ajax.php)
+        new SPSG_Admin_Ajax($this->get_config_manager());
 
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('spat_admin_page_tabs', array($this, 'add_spat_tab'));
         add_action('spat_admin_page_content', array($this, 'add_spat_content'));
         add_action('spat_admin_init_settings', array($this, 'register_spat_settings'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
+    }
+
+    /**
+     * Get configuration manager (lazy-initialized)
+     *
+     * @return SPSG_Configuration_Manager
+     */
+    private function get_config_manager()
+    {
+        if ($this->config_manager === null) {
+            $this->config_manager = new SPSG_Configuration_Manager();
+        }
+        return $this->config_manager;
+    }
+
+    /**
+     * Get renderer (lazy-initialized)
+     *
+     * @return SPSG_Admin_Renderer
+     */
+    private function get_renderer()
+    {
+        if ($this->renderer === null) {
+            $this->renderer = new SPSG_Admin_Renderer($this->get_config_manager());
+        }
+        return $this->renderer;
     }
 
     /**
@@ -118,7 +141,7 @@ class SPSG_Admin
      */
     public function add_spat_tab()
     {
-        echo '<a href="#schedule-generator" class="nav-tab">' . __(self::LABEL_SCHEDULE_GENERATOR, 'sportspress-schedule-generator') . '</a>';
+        echo '<a href="#schedule-generator" class="nav-tab">' . esc_html(__(self::LABEL_SCHEDULE_GENERATOR, 'sportspress-schedule-generator')) . '</a>';
     }
 
     /**
@@ -195,12 +218,12 @@ class SPSG_Admin
      */
     public function backend_section_callback()
     {
-        echo '<p>' . __('Configure backend settings for the Schedule Generator. These settings affect system behavior and are not visible to end users.', 'sportspress-schedule-generator') . '</p>';
+        echo '<p>' . esc_html__('Configure backend settings for the Schedule Generator. These settings affect system behavior and are not visible to end users.', 'sportspress-schedule-generator') . '</p>';
 
         if ($this->is_select2_enabled()) {
-            echo '<p class="description" style="color: #00a32a;">✓ ' . __('Enhanced dropdowns (Slim Select) are enabled via SPAT settings.', 'sportspress-schedule-generator') . '</p>';
+            echo '<p class="description" style="color: #00a32a;">✓ ' . esc_html__('Enhanced dropdowns (Slim Select) are enabled via SPAT settings.', 'sportspress-schedule-generator') . '</p>';
         } else {
-            echo '<p class="description">' . __('Note: Enhanced dropdowns (Slim Select) can be enabled in the SPAT General settings.', 'sportspress-schedule-generator') . '</p>';
+            echo '<p class="description">' . esc_html__('Note: Enhanced dropdowns (Slim Select) can be enabled in the SPAT General settings.', 'sportspress-schedule-generator') . '</p>';
         }
     }
 
@@ -211,7 +234,7 @@ class SPSG_Admin
     {
         $value = get_option('spsg_max_generation_time', 300);
         echo '<input type="number" name="spsg_max_generation_time" value="' . esc_attr($value) . '" min="60" max="3600" />';
-        echo '<p class="description">' . __('Maximum time allowed for schedule generation before timeout (60-3600 seconds).', 'sportspress-schedule-generator') . '</p>';
+        echo '<p class="description">' . esc_html__('Maximum time allowed for schedule generation before timeout (60-3600 seconds).', 'sportspress-schedule-generator') . '</p>';
     }
 
     /**
@@ -221,7 +244,7 @@ class SPSG_Admin
     {
         $enabled = get_option('spsg_enable_debug_logging', '0');
         echo '<input type="checkbox" name="spsg_enable_debug_logging" value="1" ' . checked($enabled, '1', false) . ' />';
-        echo '<p class="description">' . __('Enable detailed debug logging for schedule generation process.', 'sportspress-schedule-generator') . '</p>';
+        echo '<p class="description">' . esc_html__('Enable detailed debug logging for schedule generation process.', 'sportspress-schedule-generator') . '</p>';
     }
 
     /**
@@ -237,7 +260,7 @@ class SPSG_Admin
             echo '<option value="' . esc_attr($timezone) . '" ' . selected($selected, $timezone, false) . '>' . esc_html($timezone) . '</option>';
         }
         echo '</select>';
-        echo '<p class="description">' . __('Default timezone for new schedule configurations.', 'sportspress-schedule-generator') . '</p>';
+        echo '<p class="description">' . esc_html__('Default timezone for new schedule configurations.', 'sportspress-schedule-generator') . '</p>';
     }
 
     /**
@@ -247,7 +270,7 @@ class SPSG_Admin
     {
         $enabled = get_option('spsg_enable_change_tracking', '1');
         echo '<input type="checkbox" name="spsg_enable_change_tracking" value="1" ' . checked($enabled, '1', false) . ' />';
-        echo '<p class="description">' . __('Track configuration changes with user attribution and timestamps. Stores last 10 changes per configuration.', 'sportspress-schedule-generator') . '</p>';
+        echo '<p class="description">' . esc_html__('Track configuration changes with user attribution and timestamps. Stores last 10 changes per configuration.', 'sportspress-schedule-generator') . '</p>';
     }
 
     /**
@@ -256,21 +279,24 @@ class SPSG_Admin
     public function schedule_generator_page()
     {
         if (isset($_POST['spsg_action']) && wp_verify_nonce($_POST['spsg_nonce'], 'spsg_admin_action')) {
+            if (!current_user_can('manage_options')) {
+                wp_die(__('You do not have permission to perform this action.', 'sportspress-schedule-generator'));
+            }
             $this->handle_form_submission();
         }
 
-        $current_config = $this->config_manager->get_current();
+        $current_config = $this->get_config_manager()->get_current();
 ?>
         <div class="wrap">
             <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
 
             <nav class="nav-tab-wrapper spsg-nav-tabs">
-                <a href="#basic-config" class="nav-tab nav-tab-active"><?php _e('Basic Configuration', 'sportspress-schedule-generator'); ?></a>
-                <a href="#divisions-teams" class="nav-tab"><?php _e('Divisions & Teams', 'sportspress-schedule-generator'); ?></a>
-                <a href="#venues-times" class="nav-tab"><?php _e('Venues & Times', 'sportspress-schedule-generator'); ?></a>
-                <a href="#constraints" class="nav-tab"><?php _e('Constraints', 'sportspress-schedule-generator'); ?></a>
-                <a href="#generate" class="nav-tab"><?php _e(self::LABEL_GENERATE_SCHEDULE, 'sportspress-schedule-generator'); ?></a>
-                <a href="#placeholder-teams" class="nav-tab"><?php _e('Placeholder Teams', 'sportspress-schedule-generator'); ?></a>
+                <a href="#basic-config" class="nav-tab nav-tab-active"><?php esc_html_e('Basic Configuration', 'sportspress-schedule-generator'); ?></a>
+                <a href="#divisions-teams" class="nav-tab"><?php esc_html_e('Divisions & Teams', 'sportspress-schedule-generator'); ?></a>
+                <a href="#venues-times" class="nav-tab"><?php esc_html_e('Venues & Times', 'sportspress-schedule-generator'); ?></a>
+                <a href="#constraints" class="nav-tab"><?php esc_html_e('Constraints', 'sportspress-schedule-generator'); ?></a>
+                <a href="#generate" class="nav-tab"><?php esc_html_e(self::LABEL_GENERATE_SCHEDULE, 'sportspress-schedule-generator'); ?></a>
+                <a href="#placeholder-teams" class="nav-tab"><?php esc_html_e('Placeholder Teams', 'sportspress-schedule-generator'); ?></a>
             </nav>
 
             <form method="post" id="spsg-config-form">
@@ -279,27 +305,27 @@ class SPSG_Admin
                 <input type="hidden" name="current_tab" value="basic-config">
 
                 <div id="basic-config" class="spsg-tab-content">
-                    <?php $this->renderer->render_basic_config_tab($current_config); ?>
+                    <?php $this->get_renderer()->render_basic_config_tab($current_config); ?>
                 </div>
 
                 <div id="divisions-teams" class="spsg-tab-content" style="display: none;">
-                    <?php $this->renderer->render_divisions_teams_tab($current_config); ?>
+                    <?php $this->get_renderer()->render_divisions_teams_tab($current_config); ?>
                 </div>
 
                 <div id="venues-times" class="spsg-tab-content" style="display: none;">
-                    <?php $this->renderer->render_venues_times_tab($current_config); ?>
+                    <?php $this->get_renderer()->render_venues_times_tab($current_config); ?>
                 </div>
 
                 <div id="constraints" class="spsg-tab-content" style="display: none;">
-                    <?php $this->renderer->render_constraints_tab($current_config); ?>
+                    <?php $this->get_renderer()->render_constraints_tab($current_config); ?>
                 </div>
 
                 <div id="generate" class="spsg-tab-content" style="display: none;">
-                    <?php $this->renderer->render_generate_tab($current_config); ?>
+                    <?php $this->get_renderer()->render_generate_tab($current_config); ?>
                 </div>
 
                 <div id="placeholder-teams" class="spsg-tab-content" style="display: none;">
-                    <?php $this->renderer->render_placeholder_teams_tab(); ?>
+                    <?php $this->get_renderer()->render_placeholder_teams_tab(); ?>
                 </div>
             </form>
         </div>
@@ -312,7 +338,7 @@ class SPSG_Admin
     public function enqueue_admin_scripts($hook)
     {
         if (strpos($hook, 'spsg-schedule-generator') === false &&
-        (!isset($_GET['page']) || $_GET['page'] !== 'sportspress-admin-tools')) {
+        (!isset($_GET['page']) || sanitize_text_field($_GET['page']) !== 'sportspress-admin-tools')) {
             return;
         }
 
@@ -375,14 +401,9 @@ class SPSG_Admin
             'nonces' => array(
                 'import_league' => wp_create_nonce('spsg_import_league'),
                 'save_imported_league' => wp_create_nonce('spsg_save_imported_league'),
-                'get_available_venues' => wp_create_nonce('spsg_get_available_venues'),
-                'load_sp_teams' => wp_create_nonce('spsg_load_sp_teams'),
-                'load_preset' => wp_create_nonce('spsg_load_preset'),
                 'delete_config' => wp_create_nonce('spsg_delete_config'),
-                'get_change_history' => wp_create_nonce('spsg_get_change_history'),
-                'clear_change_history' => wp_create_nonce('spsg_clear_change_history'),
             ),
-            'presets' => $this->config_manager->list_presets(),
+            'presets' => $this->get_config_manager()->list_presets(),
             'i18n' => $this->get_admin_ui_i18n_strings(),
         ));
 
@@ -531,7 +552,7 @@ class SPSG_Admin
 
         if ($action === 'save_config') {
             $config_data = $this->sanitize_form_data($_POST);
-            $result = $this->config_manager->save($config_data);
+            $result = $this->get_config_manager()->save($config_data);
 
             if (is_wp_error($result)) {
                 add_settings_error('spsg_messages', 'spsg_error', $result->get_error_message(), 'error');
@@ -548,6 +569,6 @@ class SPSG_Admin
      */
     private function sanitize_form_data($data)
     {
-        return $this->config_manager->sanitize($data);
+        return $this->get_config_manager()->sanitize($data);
     }
 }

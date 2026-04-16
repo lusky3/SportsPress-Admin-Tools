@@ -16,7 +16,7 @@ if (get_option('spat_remove_data_on_uninstall', '0') === '1') {
 
     // Remove custom tables
     $tables = array(
-        'spet_etransfer_logs',
+        'spat_etransfer_logs',
         'spat_registration_logs',
         'spat_role_logs',
         'spat_temp_data'
@@ -24,7 +24,7 @@ if (get_option('spat_remove_data_on_uninstall', '0') === '1') {
 
     foreach ($tables as $table) {
         $table_name = $wpdb->prefix . $table;
-        $result = $wpdb->query($wpdb->prepare("DROP TABLE IF EXISTS `%s`", $table_name));
+        $result = $wpdb->query("DROP TABLE IF EXISTS `{$table_name}`");
         if ($result === false) {
             error_log('SPAT Uninstall: Failed to drop table ' . $table_name . ' - ' . $wpdb->last_error);
         }

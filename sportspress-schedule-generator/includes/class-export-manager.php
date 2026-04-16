@@ -30,6 +30,29 @@ class SPSG_Export_Manager
     }
 
     /**
+     * Protect the export directory from direct access and directory listing.
+     */
+    private function protect_export_directory()
+    {
+        $upload_dir = wp_upload_dir();
+        $export_dir = $upload_dir['basedir'] . '/spsg-exports';
+
+        if (!file_exists($export_dir)) {
+            wp_mkdir_p($export_dir);
+        }
+
+        $index_file = $export_dir . '/index.php';
+        if (!file_exists($index_file)) {
+            file_put_contents($index_file, '<?php // Silence is golden.');
+        }
+
+        $htaccess_file = $export_dir . '/.htaccess';
+        if (!file_exists($htaccess_file)) {
+            file_put_contents($htaccess_file, 'deny from all');
+        }
+    }
+
+    /**
      * Export schedule in specified format
      *
      * @param array $schedule Array of game objects
@@ -43,6 +66,9 @@ class SPSG_Export_Manager
         if (!isset($this->exporters[$format])) {
             return new WP_Error('invalid_format', sprintf(__('Export format not supported: %s', 'sportspress-schedule-generator'), $format));
         }
+
+        // Ensure export directory is protected before any export
+        $this->protect_export_directory();
 
         // Apply filters to schedule
         $filtered_schedule = $this->apply_filters($schedule, $filters);

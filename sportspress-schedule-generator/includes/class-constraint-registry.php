@@ -180,54 +180,6 @@ class SPSG_Constraint_Registry
     }
 
     /**
-     * Validate all registered constraints
-     */
-    public static function validate_all()
-    {
-        $validation_results = array();
-
-        foreach (self::$constraint_classes as $class_name => $args) {
-            $validation_results[] = self::validate_single_constraint($class_name, $args);
-        }
-
-        return $validation_results;
-    }
-
-    /**
-     * Validate a single constraint class
-     */
-    private static function validate_single_constraint($class_name, $args)
-    {
-        $result = array(
-            'class' => $class_name,
-            'enabled' => $args['enabled'],
-            'valid' => false,
-            'errors' => array()
-        );
-
-        try {
-            $instance = self::get_instance($class_name);
-            if (is_wp_error($instance)) {
-                $result['errors'][] = $instance->get_error_message();
-                return $result;
-            }
-
-            $required_methods = array('get_name', 'get_type', 'get_priority');
-            foreach ($required_methods as $method) {
-                if (!method_exists($instance, $method)) {
-                    $result['errors'][] = sprintf(__('Missing required method: %s', 'sportspress-schedule-generator'), $method);
-                }
-            }
-
-            $result['valid'] = empty($result['errors']);
-        } catch (Exception $e) {
-            $result['errors'][] = $e->getMessage();
-        }
-
-        return $result;
-    }
-
-    /**
      * Get constraint statistics
      */
     public static function get_stats()

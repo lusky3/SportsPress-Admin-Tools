@@ -75,7 +75,7 @@ class SPT_Player_Stats_Enabler {
                     $statistics[$league_id] = array();
                 }
                 
-                $statistics[$league_id][0] = array(
+                $statistics[$league_id][$season_id] = array(
                     'g' => '', 'a' => '', 'pim' => '', 'p' => '', 'gp' => ''
                 );
             }
@@ -88,30 +88,45 @@ class SPT_Player_Stats_Enabler {
         );
     }
     
+    /**
+     * Bulk-enable statistics for all published players that lack sp_columns.
+     *
+     * Available for external/CLI use — not called internally.
+     *
+     * @return int Number of players processed.
+     */
     public function bulk_enable_stats() {
-        $players = get_posts(array(
-            'post_type' => 'sp_player',
-            'post_status' => 'publish',
-            'posts_per_page' => -1,
-            'meta_query' => array(
-                'relation' => 'OR',
-                array(
-                    'key' => 'sp_columns',
-                    'compare' => 'NOT EXISTS'
-                ),
-                array(
-                    'key' => 'sp_columns',
-                    'value' => '',
-                    'compare' => '='
-                )
-            )
-        ));
-        
         $processed = 0;
-        foreach ($players as $player) {
-            $this->auto_enable_stats($player->ID);
-            $processed++;
-        }
+        $offset = 0;
+        $batch_size = 100;
+        
+        do {
+            $players = get_posts(array(
+                'post_type' => 'sp_player',
+                'post_status' => 'publish',
+                'posts_per_page' => $batch_size,
+                'offset' => $offset,
+                'meta_query' => array(
+                    'relation' => 'OR',
+                    array(
+                        'key' => 'sp_columns',
+                        'compare' => 'NOT EXISTS'
+                    ),
+                    array(
+                        'key' => 'sp_columns',
+                        'value' => '',
+                        'compare' => '='
+                    )
+                )
+            ));
+            
+            foreach ($players as $player) {
+                $this->auto_enable_stats($player->ID);
+                $processed++;
+            }
+            
+            $offset += $batch_size;
+        } while (count($players) === $batch_size);
         
         return $processed;
     }

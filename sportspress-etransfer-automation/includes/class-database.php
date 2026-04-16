@@ -27,7 +27,7 @@ class SPET_Database
             from_name varchar(255) DEFAULT '' NOT NULL,
             amount decimal(10,2) NOT NULL,
             reference_number varchar(100) DEFAULT '' NOT NULL,
-            match_criteria varchar(100) DEFAULT '' NOT NULL,
+            match_criteria varchar(255) DEFAULT '' NOT NULL,
             order_id bigint(20) DEFAULT NULL,
             result text NOT NULL,
             webhook_data longtext DEFAULT '' NOT NULL,
@@ -58,7 +58,7 @@ class SPET_Database
             'webhook_data' => maybe_serialize($data['webhook_data']),
             'payment_data' => maybe_serialize($data['payment_data'])
         ), array(
-            '%s', '%s', '%f', '%s', '%s', $data['order_id'] ? '%d' : null, '%s', '%s', '%s'
+            '%s', '%s', '%f', '%s', '%s', '%d', '%s', '%s', '%s'
         ));
 
         if ($result === false) {
@@ -68,14 +68,17 @@ class SPET_Database
         return $result;
     }
 
-    public static function get_etransfer_logs($limit = 50)
+    public static function get_etransfer_logs($limit = 50, $summary = false)
     {
         global $wpdb;
 
         $table_name = $wpdb->prefix . 'spet_etransfer_logs';
+        $columns = $summary
+            ? 'id, timestamp, from_name, from_email, amount, reference_number, match_criteria, order_id, result'
+            : '*';
 
         return $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM $table_name ORDER BY timestamp DESC LIMIT %d",
+            "SELECT $columns FROM $table_name ORDER BY timestamp DESC LIMIT %d",
             $limit
         ));
     }

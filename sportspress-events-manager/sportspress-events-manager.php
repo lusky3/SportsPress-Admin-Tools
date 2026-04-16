@@ -16,26 +16,10 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('SPEM_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('SPEM_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('SPEM_VERSION', '1.0.0');
 
 class SportsPress_Events_Manager {
-    
-    /**
-     * @var SPEM_Events_Management|null Events management module instance
-     */
-    private $events_management;
-
-    /**
-     * @var SPEM_League_Table_Generator|null League table generator module instance
-     */
-    private $league_table_generator;
-
-    /**
-     * @var SPEM_Admin|null Admin interface instance
-     */
-    private $admin;
 
     public function __construct() {
         register_activation_hook(__FILE__, array($this, 'check_activation_requirements'));
@@ -83,17 +67,17 @@ class SportsPress_Events_Manager {
         
         if (in_array('events_management', $enabled_modules)) {
             require_once SPEM_PLUGIN_PATH . 'includes/class-events-management.php';
-            $this->events_management = new SPEM_Events_Management();
+            new SPEM_Events_Management();
         }
         
         if (in_array('league_table_generator', $enabled_modules)) {
             require_once SPEM_PLUGIN_PATH . 'includes/class-league-table-generator.php';
-            $this->league_table_generator = new SPEM_League_Table_Generator();
+            new SPEM_League_Table_Generator();
         }
         
         if (is_admin() && (in_array('events_management', $enabled_modules) || in_array('league_table_generator', $enabled_modules))) {
             require_once SPEM_PLUGIN_PATH . 'includes/class-admin.php';
-            $this->admin = new SPEM_Admin();
+            new SPEM_Admin();
         }
     }
     
@@ -107,7 +91,7 @@ class SportsPress_Events_Manager {
     
     public function parent_plugin_missing_notice() {
         echo '<div class="notice notice-error"><p>';
-        echo __('SportsPress Events Manager requires SportsPress Admin Tools to be installed and activated.', 'sportspress-events-manager');
+        echo esc_html__('SportsPress Events Manager requires SportsPress Admin Tools to be installed and activated.', 'sportspress-events-manager');
         echo '</p></div>';
     }
 }

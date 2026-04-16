@@ -11,6 +11,11 @@
         scheduleId: null,
         generationInProgress: false,
         progressPollInterval: null,
+
+        escHtml: function(str) {
+            if (!str) return '';
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+        },
         
         init: function() {
             this.bindEvents();
@@ -282,16 +287,6 @@
                     self.showMessage('error', 'Export failed');
                 }
             });
-        },
-        
-        displaySchedulePreview: function(schedule, stats) {
-            // The preview is now rendered server-side in PHP
-            // This function is kept for backward compatibility
-            // Just show the container if it was hidden
-            $('#spsg-schedule-preview-container').show();
-            
-            // Initialize filtering and sorting
-            this.initializePreviewFeatures();
         },
         
         initializePreviewFeatures: function() {
@@ -653,31 +648,6 @@
             ImportDialog.init(scheduleId);
         },
         
-        showExportOptions: function() {
-            var html = '<div class="spsg-export-options">';
-            html += '<h4>Export Schedule</h4>';
-            html += '<button type="button" class="button" id="spsg-export-csv">Export as CSV</button> ';
-            html += '<button type="button" class="button" id="spsg-export-xlsx">Export as XLSX</button>';
-            html += '</div>';
-            
-            $('#spsg-export-container').html(html).show();
-            
-            // Rebind export buttons
-            $('#spsg-export-csv').on('click', function() { SPSG.exportSchedule('csv'); });
-            $('#spsg-export-xlsx').on('click', function() { SPSG.exportSchedule('xlsx'); });
-        },
-        
-        showProgressBar: function() {
-            var html = '<div class="spsg-progress-bar">';
-            html += '<div class="spsg-progress-bar-inner"></div>';
-            html += '</div>';
-            $('#spsg-progress-container').html(html).show();
-        },
-        
-        hideProgressBar: function() {
-            $('#spsg-progress-container').hide().empty();
-        },
-        
         /**
          * Show progress indicator (Task 7.1)
          */
@@ -823,9 +793,10 @@
         
         showMessage: function(type, message) {
             var className = 'notice notice-' + type;
-            var html = '<div class="' + className + ' is-dismissible"><p>' + message + '</p></div>';
+            var $msg = $('<div class="' + className + ' is-dismissible"><p></p></div>');
+            $msg.find('p').text(message);
             
-            $('#spsg-messages').html(html);
+            $('#spsg-messages').html($msg);
             
             // Auto-dismiss after 5 seconds for success messages
             if (type === 'success') {
@@ -845,7 +816,6 @@
     var ImportDialog = {
         scheduleId: null,
         importInProgress: false,
-        progressPollInterval: null,
         
         /**
          * Initialize the import dialog
@@ -893,7 +863,7 @@
                             var $leagueSelect = $('#spsg-import-dialog-league');
                             $leagueSelect.empty().append('<option value="">No league</option>');
                             data.leagues.forEach(function(league) {
-                                $leagueSelect.append('<option value="' + league.id + '">' + league.name + '</option>');
+                                $leagueSelect.append($('<option></option>').val(league.id).text(league.name));
                             });
                         }
                         
@@ -1133,15 +1103,6 @@
             // Show success message in main UI
             var message = results.message || 'Import completed successfully!';
             SPSG.showMessage('success', message);
-        },
-        
-        /**
-         * Cancel import
-         */
-        cancelImport: function() {
-            this.stopProgressPolling();
-            this.importInProgress = false;
-            this.hide();
         },
         
         /**

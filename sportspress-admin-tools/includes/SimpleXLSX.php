@@ -1,4 +1,5 @@
 <?php
+if (!defined('ABSPATH')) { exit; }
 /**
  * XLSX parser for PHP
  * Reads actual XLSX files using ZIP extraction
@@ -84,9 +85,13 @@ class SimpleXLSX
     private function loadXmlSafe($xml_string)
     {
         $doc = new DOMDocument();
-        $libxml_loader = libxml_disable_entity_loader(true);
+        if (PHP_VERSION_ID < 80000) {
+            $libxml_loader = libxml_disable_entity_loader(true);
+        }
         $doc->loadXML($xml_string);
-        libxml_disable_entity_loader($libxml_loader);
+        if (PHP_VERSION_ID < 80000) {
+            libxml_disable_entity_loader($libxml_loader);
+        }
         return $doc;
     }
 

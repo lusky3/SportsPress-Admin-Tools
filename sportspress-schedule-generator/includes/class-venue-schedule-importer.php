@@ -33,8 +33,22 @@ class SPSG_Venue_Schedule_Importer {
         if (!file_exists($file_path)) {
             return new WP_Error('file_not_found', __('CSV file not found', 'sportspress-schedule-generator'));
         }
-        
-        $handle = fopen($file_path, 'r');
+
+        $real_path = realpath($file_path);
+        $upload_dir = wp_upload_dir();
+        $allowed_dirs = array($upload_dir['basedir'], sys_get_temp_dir());
+        $path_valid = false;
+        foreach ($allowed_dirs as $dir) {
+            if (strpos($real_path, realpath($dir) . DIRECTORY_SEPARATOR) === 0) {
+                $path_valid = true;
+                break;
+            }
+        }
+        if (!$path_valid) {
+            return new WP_Error('invalid_path', __('File path is outside allowed directories.', 'sportspress-schedule-generator'));
+        }
+
+        $handle = fopen($real_path, 'r');
         if ($handle === false) {
             return new WP_Error('file_read_error', __('Could not read CSV file', 'sportspress-schedule-generator'));
         }

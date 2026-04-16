@@ -14,16 +14,6 @@ if (!defined('ABSPATH')) {
 
 class SPR_Database {
 
-    /**
-     * Create tables - delegates to parent SPAT_Database.
-     * The parent plugin already manages the registration and role log tables.
-     */
-    public static function create_tables() {
-        if (class_exists('SPAT_Database')) {
-            SPAT_Database::create_tables();
-        }
-    }
-
     public static function get_registration_logs($limit = 100) {
         if (class_exists('SPAT_Database')) {
             return SPAT_Database::get_registration_logs($limit);
