@@ -11,6 +11,11 @@
         scheduleId: null,
         generationInProgress: false,
         progressPollInterval: null,
+
+        escHtml: function(str) {
+            if (!str) return '';
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+        },
         
         init: function() {
             this.bindEvents();
@@ -823,9 +828,10 @@
         
         showMessage: function(type, message) {
             var className = 'notice notice-' + type;
-            var html = '<div class="' + className + ' is-dismissible"><p>' + message + '</p></div>';
+            var $msg = $('<div class="' + className + ' is-dismissible"><p></p></div>');
+            $msg.find('p').text(message);
             
-            $('#spsg-messages').html(html);
+            $('#spsg-messages').html($msg);
             
             // Auto-dismiss after 5 seconds for success messages
             if (type === 'success') {
@@ -893,7 +899,7 @@
                             var $leagueSelect = $('#spsg-import-dialog-league');
                             $leagueSelect.empty().append('<option value="">No league</option>');
                             data.leagues.forEach(function(league) {
-                                $leagueSelect.append('<option value="' + league.id + '">' + league.name + '</option>');
+                                $leagueSelect.append($('<option></option>').val(league.id).text(league.name));
                             });
                         }
                         

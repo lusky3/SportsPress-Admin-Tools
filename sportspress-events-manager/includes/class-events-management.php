@@ -255,7 +255,18 @@ class SPEM_Events_Management {
      * @return array|WP_Error Array of event data or error.
      */
     private function parse_file($file_path, $original_name = '') {
+        $allowed_extensions = array('xlsx', 'csv');
         $extension = strtolower(pathinfo($original_name, PATHINFO_EXTENSION));
+
+        if (!in_array($extension, $allowed_extensions, true)) {
+            return new WP_Error('invalid_file_type', __('Invalid file type. Only XLSX and CSV files are allowed.', 'sportspress-events-manager'));
+        }
+
+        $filetype = wp_check_filetype($original_name);
+        if (empty($filetype['type'])) {
+            return new WP_Error('invalid_mime_type', __('File has an unrecognized MIME type.', 'sportspress-events-manager'));
+        }
+
         $rows = array();
 
         if ($extension === 'xlsx') {
@@ -276,8 +287,7 @@ class SPEM_Events_Management {
             }
 
             $rows = $xlsx->rows();
-        } else {
-            // CSV fallback
+        } elseif ($extension === 'csv') {
             $handle = fopen($file_path, 'r');
             if (!$handle) {
                 return new WP_Error('file_error', __('Could not open uploaded file.', 'sportspress-events-manager'));

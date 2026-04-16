@@ -256,6 +256,9 @@ class SPSG_Admin
     public function schedule_generator_page()
     {
         if (isset($_POST['spsg_action']) && wp_verify_nonce($_POST['spsg_nonce'], 'spsg_admin_action')) {
+            if (!current_user_can('manage_options')) {
+                wp_die(__('You do not have permission to perform this action.', 'sportspress-schedule-generator'));
+            }
             $this->handle_form_submission();
         }
 

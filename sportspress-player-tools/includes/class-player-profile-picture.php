@@ -138,6 +138,17 @@ class SPT_Player_Profile_Picture {
         $attachment_id = media_handle_upload('profile_picture', $player_id);
         
         if (!is_wp_error($attachment_id)) {
+            $allowed_image_types = array('jpg', 'jpeg', 'png', 'gif', 'webp');
+            $attached_file = get_attached_file($attachment_id);
+            $filetype = wp_check_filetype(basename($attached_file));
+
+            if (empty($filetype['ext']) || !in_array(strtolower($filetype['ext']), $allowed_image_types, true)) {
+                wp_delete_attachment($attachment_id, true);
+                wc_add_notice(__('Invalid file type. Only JPG, PNG, GIF, and WebP images are allowed.', 'sportspress-player-tools'), 'error');
+                wp_redirect(wc_get_account_endpoint_url('profile-picture'));
+                exit;
+            }
+
             set_post_thumbnail($player_id, $attachment_id);
             wp_redirect(wc_get_account_endpoint_url('profile-picture'));
             exit;

@@ -79,6 +79,9 @@ class SPET_ETransfer_Admin
         // Handle manual match submission
         if (isset($_POST['manual_match']) && isset($_POST['log_index']) && isset($_POST['order_id'])
             && wp_verify_nonce($_POST['_wpnonce'], 'manual_match_etransfer')) {
+            if (!current_user_can('manage_woocommerce')) {
+                wp_die(__('You do not have permission to perform this action.', 'sportspress-admin-tools'));
+            }
             $log_id = intval($_POST['log_index']);
             $order_id = intval($_POST['order_id']);
             if ($this->process_manual_match($log_id, $order_id)) {
@@ -92,6 +95,9 @@ class SPET_ETransfer_Admin
         // Handle hide submission
         if (isset($_POST['hide_log']) && isset($_POST['log_id'])
             && wp_verify_nonce($_POST['_wpnonce'], 'hide_etransfer_log')) {
+            if (!current_user_can('manage_woocommerce')) {
+                wp_die(__('You do not have permission to perform this action.', 'sportspress-admin-tools'));
+            }
             $hide_log_id = intval($_POST['log_id']);
             if (SPET_Database::hide_etransfer_log($hide_log_id)) {
                 echo '<div class="notice notice-success"><p>' . __('Log entry hidden from management page!', 'sportspress-admin-tools') . '</p></div>';
