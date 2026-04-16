@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Plugin Name: SportsPress Admin Tools
  * Description: Administrative tools for SportsPress
