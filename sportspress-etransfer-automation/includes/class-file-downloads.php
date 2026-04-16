@@ -60,7 +60,7 @@ class SPET_File_Downloads
 
         // Output content
         echo $content;
-        wp_die();
+        exit;
     }
 
     private function get_file_content($file)

@@ -206,13 +206,13 @@ class SPAT_Database {
         $table_name = $wpdb->prefix . 'spat_etransfer_logs';
         
         $insert_result = $wpdb->insert($table_name, array(
-            'from_email' => $webhook_data['from']['address'] ?? '',
-            'from_name' => $webhook_data['from']['name'] ?? '',
-            'amount' => $payment_data['amount'] ?? 0,
-            'reference_number' => $payment_data['reference_number'] ?? '',
-            'match_criteria' => $payment_data['match_criteria'] ?? '',
+            'from_email' => sanitize_email($webhook_data['from']['address'] ?? ''),
+            'from_name' => sanitize_text_field($webhook_data['from']['name'] ?? ''),
+            'amount' => floatval($payment_data['amount'] ?? 0),
+            'reference_number' => sanitize_text_field($payment_data['reference_number'] ?? ''),
+            'match_criteria' => sanitize_text_field($payment_data['match_criteria'] ?? ''),
             'order_id' => $order_id,
-            'result' => $result,
+            'result' => sanitize_text_field($result),
             'webhook_data' => maybe_serialize($webhook_data),
             'payment_data' => maybe_serialize($payment_data)
         ));
