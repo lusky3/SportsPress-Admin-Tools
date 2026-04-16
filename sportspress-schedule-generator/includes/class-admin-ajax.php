@@ -225,7 +225,7 @@ class SPSG_Admin_Ajax
         $divisions = array();
 
         foreach ($imported_divisions as $division) {
-            $div_name = is_object($division) ? $division->name : $division['name'];
+            $div_name = sanitize_text_field(is_object($division) ? $division->name : $division['name']);
             $teams = $this->extract_team_names($division['teams'] ?? array());
 
             $divisions[] = array(
@@ -246,11 +246,11 @@ class SPSG_Admin_Ajax
         $names = array();
         foreach ($teams_data as $team) {
             if (is_object($team)) {
-                $names[] = $team->name;
+                $names[] = sanitize_text_field($team->name);
             } elseif (is_array($team)) {
-                $names[] = $team['name'];
+                $names[] = sanitize_text_field($team['name']);
             } else {
-                $names[] = $team;
+                $names[] = sanitize_text_field($team);
             }
         }
         return $names;
@@ -699,6 +699,11 @@ class SPSG_Admin_Ajax
             wp_send_json_error(__('Please upload a CSV file', 'sportspress-schedule-generator'));
         }
 
+        $filetype = wp_check_filetype($file['name'], array('csv' => 'text/csv'));
+        if (!$filetype['type']) {
+            wp_send_json_error(__('Invalid file type', 'sportspress-schedule-generator'));
+        }
+
         require_once plugin_dir_path(__FILE__) . 'class-venue-schedule-importer.php';
         $schedules = SPSG_Venue_Schedule_Importer::parse_csv($file['tmp_name']);
 
@@ -742,8 +747,8 @@ class SPSG_Admin_Ajax
         }
 
         $schedules = $_POST['schedules'] ?? array();
-        $venue_mapping = $_POST['venue_mapping'] ?? array();
-        $new_venues = $_POST['new_venues'] ?? array();
+        $venue_mapping = array_map('sanitize_text_field', $_POST['venue_mapping'] ?? array());
+        $new_venues = array_map('sanitize_text_field', $_POST['new_venues'] ?? array());
 
         if (empty($schedules)) {
             wp_send_json_error(__('No schedule data provided', 'sportspress-schedule-generator'));

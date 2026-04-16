@@ -157,11 +157,31 @@ class SPAT_Admin
     public function init_settings()
     {
         // General settings
-        register_setting('spat_general_settings', 'spat_enabled_modules');
-        register_setting('spat_general_settings', 'spat_remove_data_on_uninstall');
-        register_setting('spat_general_settings', 'spat_use_select2');
-        register_setting('spat_general_settings', 'spat_debug_show_sensitive');
-        register_setting('spat_general_settings', 'spat_debug_verbose_logging');
+        register_setting('spat_general_settings', 'spat_enabled_modules', array(
+            'sanitize_callback' => function ($value) {
+                return is_array($value) ? array_map('sanitize_text_field', $value) : array();
+            },
+        ));
+        register_setting('spat_general_settings', 'spat_remove_data_on_uninstall', array(
+            'sanitize_callback' => function ($value) {
+                return $value === '1' ? '1' : '0';
+            },
+        ));
+        register_setting('spat_general_settings', 'spat_use_select2', array(
+            'sanitize_callback' => function ($value) {
+                return $value === '1' ? '1' : '0';
+            },
+        ));
+        register_setting('spat_general_settings', 'spat_debug_show_sensitive', array(
+            'sanitize_callback' => function ($value) {
+                return $value === '1' ? '1' : '0';
+            },
+        ));
+        register_setting('spat_general_settings', 'spat_debug_verbose_logging', array(
+            'sanitize_callback' => function ($value) {
+                return $value === '1' ? '1' : '0';
+            },
+        ));
 
         // Child plugin settings will be registered by their respective admin classes
 

@@ -63,15 +63,16 @@ async function buildEmailData(message, env) {
     }
   }
   
-  console.log('Email Debug Info:', {
-    from: message.from,
-    to: message.to,
-    originalFrom: originalFrom,
-    debugMode: !!env.DEBUG,
-    headerCount: Object.keys(allHeaders).length,
-    rawContentLength: rawContent.length,
-    emailBodyPreview: emailBody.substring(0, 300).replaceAll(/[\r\n]/g, ' | ')
-  });
+  if (env.DEBUG) {
+    console.log('Email Debug Info:', {
+      from: message.from,
+      to: message.to,
+      originalFrom: originalFrom,
+      headerCount: Object.keys(allHeaders).length,
+      rawContentLength: rawContent.length,
+      emailBodyPreview: emailBody.substring(0, 300).replaceAll(/[\r\n]/g, ' | ')
+    });
+  }
   
   const emailData = {
     from: {
@@ -234,7 +235,8 @@ function isFromSafeDomain(fromAddress, env) {
   }
   
   // Allow forwarded emails from MXRoute (common email forwarding service)
-  if (fromAddress?.includes('mxroute.com')) {
+  const domain = fromAddress?.split('@')[1];
+  if (domain && (domain === 'mxroute.com' || domain.endsWith('.mxroute.com'))) {
     return true;
   }
   
