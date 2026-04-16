@@ -48,6 +48,8 @@ class SPLM_Admin_Renderer {
         $user_id    = get_current_user_id();
         $leagues    = SPLM_SportsPress_Data::get_leagues();
         $seasons    = SPLM_SportsPress_Data::get_seasons();
+        if ( is_wp_error( $leagues ) ) { $leagues = array(); }
+        if ( is_wp_error( $seasons ) ) { $seasons = array(); }
         $league_id  = $this->get_user_filter( 'league' );
         $season_id  = $this->get_user_filter( 'season' );
 
@@ -59,13 +61,8 @@ class SPLM_Admin_Renderer {
         $teams       = SPLM_SportsPress_Data::get_teams( $filters );
         $team_count  = count( $teams );
 
-        $player_args = array(
-            'post_type'      => 'sp_player',
-            'posts_per_page' => -1,
-            'fields'         => 'ids',
-            'post_status'    => 'publish',
-        );
-        $player_count = count( get_posts( $player_args ) );
+        $count_obj    = wp_count_posts( 'sp_player' );
+        $player_count = $count_obj->publish;
 
         $event_args = array(
             'post_type'      => 'sp_event',
@@ -88,7 +85,7 @@ class SPLM_Admin_Renderer {
         <div class="wrap splm-wrap">
             <h1 class="splm-page-title">
                 <?php esc_html_e( 'League Manager Dashboard', 'sportspress-league-manager' ); ?>
-                <span class="splm-tooltip" data-tip="<?php esc_attr_e( 'Overview of your league data. Use the filters to narrow by league and season.', 'sportspress-league-manager' ); ?>">?</span>
+                <span class="splm-tooltip" tabindex="0" data-tip="<?php esc_attr_e( 'Overview of your league data. Use the filters to narrow by league and season.', 'sportspress-league-manager' ); ?>" aria-label="<?php esc_attr_e( 'Overview of your league data. Use the filters to narrow by league and season.', 'sportspress-league-manager' ); ?>">?</span>
             </h1>
 
             <?php if ( ! $wizard_done ) : ?>
@@ -107,7 +104,7 @@ class SPLM_Admin_Renderer {
             <div class="splm-filters">
                 <label for="splm-filter-league">
                     <?php esc_html_e( 'League', 'sportspress-league-manager' ); ?>
-                    <span class="splm-tooltip" data-tip="<?php esc_attr_e( 'Select the league to filter all dashboard data.', 'sportspress-league-manager' ); ?>">?</span>
+                    <span class="splm-tooltip" tabindex="0" data-tip="<?php esc_attr_e( 'Select the league to filter all dashboard data.', 'sportspress-league-manager' ); ?>" aria-label="<?php esc_attr_e( 'Select the league to filter all dashboard data.', 'sportspress-league-manager' ); ?>">?</span>
                 </label>
                 <select id="splm-filter-league" class="splm-select">
                     <option value=""><?php esc_html_e( 'All Leagues', 'sportspress-league-manager' ); ?></option>
@@ -120,7 +117,7 @@ class SPLM_Admin_Renderer {
 
                 <label for="splm-filter-season">
                     <?php esc_html_e( 'Season', 'sportspress-league-manager' ); ?>
-                    <span class="splm-tooltip" data-tip="<?php esc_attr_e( 'Select the season to filter all dashboard data.', 'sportspress-league-manager' ); ?>">?</span>
+                    <span class="splm-tooltip" tabindex="0" data-tip="<?php esc_attr_e( 'Select the season to filter all dashboard data.', 'sportspress-league-manager' ); ?>" aria-label="<?php esc_attr_e( 'Select the season to filter all dashboard data.', 'sportspress-league-manager' ); ?>">?</span>
                 </label>
                 <select id="splm-filter-season" class="splm-select">
                     <option value=""><?php esc_html_e( 'All Seasons', 'sportspress-league-manager' ); ?></option>
@@ -138,7 +135,7 @@ class SPLM_Admin_Renderer {
             <div class="splm-card-grid">
 
                 <!-- Teams Card -->
-                <div class="splm-card">
+                <div class="splm-card" id="splm-teams-wrap">
                     <h3 class="splm-card-title">
                         <span class="dashicons dashicons-groups"></span>
                         <?php esc_html_e( 'Teams', 'sportspress-league-manager' ); ?>
@@ -167,7 +164,7 @@ class SPLM_Admin_Renderer {
                     <h3 class="splm-card-title">
                         <span class="dashicons dashicons-calendar-alt"></span>
                         <?php esc_html_e( 'Upcoming Games', 'sportspress-league-manager' ); ?>
-                        <span class="splm-tooltip" data-tip="<?php esc_attr_e( 'Next 5 scheduled events matching your filters.', 'sportspress-league-manager' ); ?>">?</span>
+                        <span class="splm-tooltip" tabindex="0" data-tip="<?php esc_attr_e( 'Next 5 scheduled events matching your filters.', 'sportspress-league-manager' ); ?>" aria-label="<?php esc_attr_e( 'Next 5 scheduled events matching your filters.', 'sportspress-league-manager' ); ?>">?</span>
                     </h3>
                     <?php if ( ! empty( $upcoming ) ) : ?>
                         <ul class="splm-upcoming-list">
@@ -190,7 +187,7 @@ class SPLM_Admin_Renderer {
                     <h3 class="splm-card-title">
                         <span class="dashicons dashicons-heart"></span>
                         <?php esc_html_e( 'Health Status', 'sportspress-league-manager' ); ?>
-                        <span class="splm-tooltip" data-tip="<?php esc_attr_e( 'Validates your SportsPress configuration and surfaces issues.', 'sportspress-league-manager' ); ?>">?</span>
+                        <span class="splm-tooltip" tabindex="0" data-tip="<?php esc_attr_e( 'Validates your SportsPress configuration and surfaces issues.', 'sportspress-league-manager' ); ?>" aria-label="<?php esc_attr_e( 'Validates your SportsPress configuration and surfaces issues.', 'sportspress-league-manager' ); ?>">?</span>
                     </h3>
                     <div class="splm-health-results" id="splm-health-results">
                         <p class="splm-card-empty"><?php esc_html_e( 'Click below to run a health check.', 'sportspress-league-manager' ); ?></p>
@@ -215,7 +212,7 @@ class SPLM_Admin_Renderer {
             <h3 class="splm-card-title">
                 <span class="dashicons dashicons-money-alt"></span>
                 <?php esc_html_e( 'Fee Summary', 'sportspress-league-manager' ); ?>
-                <span class="splm-tooltip" data-tip="<?php esc_attr_e( 'Overview of player fee payment status from WooCommerce orders.', 'sportspress-league-manager' ); ?>">?</span>
+                <span class="splm-tooltip" tabindex="0" data-tip="<?php esc_attr_e( 'Overview of player fee payment status from WooCommerce orders.', 'sportspress-league-manager' ); ?>" aria-label="<?php esc_attr_e( 'Overview of player fee payment status from WooCommerce orders.', 'sportspress-league-manager' ); ?>">?</span>
             </h3>
             <div class="splm-fee-summary" id="splm-fee-summary">
                 <div class="splm-fee-stat">
@@ -252,14 +249,14 @@ class SPLM_Admin_Renderer {
         <div class="wrap splm-wrap">
             <h1 class="splm-page-title">
                 <?php esc_html_e( 'Teams & Rosters', 'sportspress-league-manager' ); ?>
-                <span class="splm-tooltip" data-tip="<?php esc_attr_e( 'View team rosters and upload roster changes via CSV.', 'sportspress-league-manager' ); ?>">?</span>
+                <span class="splm-tooltip" tabindex="0" data-tip="<?php esc_attr_e( 'View team rosters and upload roster changes via CSV.', 'sportspress-league-manager' ); ?>" aria-label="<?php esc_attr_e( 'View team rosters and upload roster changes via CSV.', 'sportspress-league-manager' ); ?>">?</span>
             </h1>
 
             <!-- Team Selector -->
             <div class="splm-section">
                 <label for="splm-team-selector">
                     <?php esc_html_e( 'Select Team', 'sportspress-league-manager' ); ?>
-                    <span class="splm-tooltip" data-tip="<?php esc_attr_e( 'Choose a team to view its current roster.', 'sportspress-league-manager' ); ?>">?</span>
+                    <span class="splm-tooltip" tabindex="0" data-tip="<?php esc_attr_e( 'Choose a team to view its current roster.', 'sportspress-league-manager' ); ?>" aria-label="<?php esc_attr_e( 'Choose a team to view its current roster.', 'sportspress-league-manager' ); ?>">?</span>
                 </label>
                 <select id="splm-team-selector" class="splm-select">
                     <option value=""><?php esc_html_e( '— Select a team —', 'sportspress-league-manager' ); ?></option>
@@ -277,10 +274,10 @@ class SPLM_Admin_Renderer {
                 <table class="widefat striped splm-table" id="splm-roster-table">
                     <thead>
                         <tr>
-                            <th><?php esc_html_e( 'Player Name', 'sportspress-league-manager' ); ?></th>
-                            <th><?php esc_html_e( 'Number', 'sportspress-league-manager' ); ?></th>
-                            <th><?php esc_html_e( 'Position', 'sportspress-league-manager' ); ?></th>
-                            <th><?php esc_html_e( 'Email', 'sportspress-league-manager' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Player Name', 'sportspress-league-manager' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Number', 'sportspress-league-manager' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Position', 'sportspress-league-manager' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Email', 'sportspress-league-manager' ); ?></th>
                         </tr>
                     </thead>
                     <tbody id="splm-roster-body">
@@ -295,7 +292,7 @@ class SPLM_Admin_Renderer {
             <div class="splm-section" id="splm-upload-section">
                 <h2 class="splm-section-title">
                     <?php esc_html_e( 'Upload Roster CSV', 'sportspress-league-manager' ); ?>
-                    <span class="splm-tooltip" data-tip="<?php esc_attr_e( 'Upload a CSV file to add or update players on the selected team.', 'sportspress-league-manager' ); ?>">?</span>
+                    <span class="splm-tooltip" tabindex="0" data-tip="<?php esc_attr_e( 'Upload a CSV file to add or update players on the selected team.', 'sportspress-league-manager' ); ?>" aria-label="<?php esc_attr_e( 'Upload a CSV file to add or update players on the selected team.', 'sportspress-league-manager' ); ?>">?</span>
                 </h2>
 
                 <div class="splm-help-text">
@@ -331,11 +328,11 @@ Jane Smith,7,Midfielder,jane@example.com</pre>
                     <table class="widefat striped splm-table" id="splm-preview-table">
                         <thead>
                             <tr>
-                                <th><?php esc_html_e( 'Player Name', 'sportspress-league-manager' ); ?></th>
-                                <th><?php esc_html_e( 'Number', 'sportspress-league-manager' ); ?></th>
-                                <th><?php esc_html_e( 'Position', 'sportspress-league-manager' ); ?></th>
-                                <th><?php esc_html_e( 'Email', 'sportspress-league-manager' ); ?></th>
-                                <th><?php esc_html_e( 'Status', 'sportspress-league-manager' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Player Name', 'sportspress-league-manager' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Number', 'sportspress-league-manager' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Position', 'sportspress-league-manager' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Email', 'sportspress-league-manager' ); ?></th>
+                                <th scope="col"><?php esc_html_e( 'Status', 'sportspress-league-manager' ); ?></th>
                             </tr>
                         </thead>
                         <tbody id="splm-preview-body"></tbody>
@@ -364,7 +361,7 @@ Jane Smith,7,Midfielder,jane@example.com</pre>
         <div class="wrap splm-wrap">
             <h1 class="splm-page-title">
                 <?php esc_html_e( 'Fee Status', 'sportspress-league-manager' ); ?>
-                <span class="splm-tooltip" data-tip="<?php esc_attr_e( 'Look up player and team fee payment status linked to WooCommerce orders.', 'sportspress-league-manager' ); ?>">?</span>
+                <span class="splm-tooltip" tabindex="0" data-tip="<?php esc_attr_e( 'Look up player and team fee payment status linked to WooCommerce orders.', 'sportspress-league-manager' ); ?>" aria-label="<?php esc_attr_e( 'Look up player and team fee payment status linked to WooCommerce orders.', 'sportspress-league-manager' ); ?>">?</span>
             </h1>
 
             <!-- Help Text -->
@@ -395,19 +392,19 @@ Jane Smith,7,Midfielder,jane@example.com</pre>
             </div>
 
             <!-- Fee Table -->
-            <div class="splm-section">
+            <div class="splm-section" id="splm-fees-wrap">
                 <table class="widefat striped splm-table" id="splm-fee-table">
                     <thead>
                         <tr>
-                            <th><?php esc_html_e( 'Player Name', 'sportspress-league-manager' ); ?></th>
-                            <th><?php esc_html_e( 'Team', 'sportspress-league-manager' ); ?></th>
-                            <th><?php esc_html_e( 'Product', 'sportspress-league-manager' ); ?></th>
-                            <th><?php esc_html_e( 'Amount', 'sportspress-league-manager' ); ?></th>
-                            <th>
+                            <th scope="col"><?php esc_html_e( 'Player Name', 'sportspress-league-manager' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Team', 'sportspress-league-manager' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Product', 'sportspress-league-manager' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Amount', 'sportspress-league-manager' ); ?></th>
+                            <th scope="col">
                                 <?php esc_html_e( 'Status', 'sportspress-league-manager' ); ?>
-                                <span class="splm-tooltip" data-tip="<?php esc_attr_e( 'Payment status based on the linked WooCommerce order.', 'sportspress-league-manager' ); ?>">?</span>
+                                <span class="splm-tooltip" tabindex="0" data-tip="<?php esc_attr_e( 'Payment status based on the linked WooCommerce order.', 'sportspress-league-manager' ); ?>" aria-label="<?php esc_attr_e( 'Payment status based on the linked WooCommerce order.', 'sportspress-league-manager' ); ?>">?</span>
                             </th>
-                            <th><?php esc_html_e( 'Order Date', 'sportspress-league-manager' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Order Date', 'sportspress-league-manager' ); ?></th>
                         </tr>
                     </thead>
                     <tbody id="splm-fee-body">
@@ -423,29 +420,4 @@ Jane Smith,7,Midfielder,jane@example.com</pre>
         <?php
     }
 
-    // =========================================================================
-    // Shared Helpers
-    // =========================================================================
-
-    /**
-     * Render a severity badge for health check issues.
-     *
-     * @param string $severity One of: critical, error, warning, success.
-     * @param string $message  The issue message.
-     */
-    public static function render_health_badge( string $severity, string $message ) {
-        $class_map = array(
-            'critical' => 'splm-badge-danger',
-            'error'    => 'splm-badge-danger',
-            'warning'  => 'splm-badge-warning',
-            'success'  => 'splm-badge-success',
-        );
-        $badge_class = $class_map[ $severity ] ?? 'splm-badge-muted';
-        ?>
-        <div class="splm-health-issue splm-health-<?php echo esc_attr( $severity ); ?>">
-            <span class="splm-badge <?php echo esc_attr( $badge_class ); ?>"><?php echo esc_html( ucfirst( $severity ) ); ?></span>
-            <span class="splm-health-message"><?php echo esc_html( $message ); ?></span>
-        </div>
-        <?php
-    }
 }

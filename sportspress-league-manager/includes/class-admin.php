@@ -44,6 +44,9 @@ class SPLM_Admin {
         add_action('spat_admin_page_tabs', array($this, 'add_spat_tab'));
         add_action('spat_admin_page_content', array($this, 'add_spat_content'));
         add_action('spat_admin_init_settings', array($this, 'register_spat_settings'));
+        add_action('load-toplevel_page_splm-dashboard', array($this, 'add_help_tabs'));
+        add_action('load-league-manager_page_splm-rosters', array($this, 'add_help_tabs'));
+        add_action('load-league-manager_page_splm-fees', array($this, 'add_help_tabs'));
     }
 
     /**
@@ -53,7 +56,7 @@ class SPLM_Admin {
      */
     private function get_renderer() {
         if ($this->renderer === null) {
-            $this->renderer = new SPLM_Admin_Renderer();
+            $this->renderer = new SPLM_Admin_Renderer($this->enabled_modules);
         }
         return $this->renderer;
     }
@@ -309,5 +312,25 @@ class SPLM_Admin {
      */
     public function sanitize_checkbox($value) {
         return $value ? '1' : '0';
+    }
+
+    /**
+     * Add contextual help tabs for the current SPLM page.
+     */
+    public function add_help_tabs() {
+        $screen = get_current_screen();
+        if ( ! $screen ) {
+            return;
+        }
+        // Map screen IDs to page slugs
+        $map = array(
+            'toplevel_page_splm-dashboard'      => 'splm-dashboard',
+            'league-manager_page_splm-rosters'  => 'splm-rosters',
+            'league-manager_page_splm-fees'     => 'splm-fees',
+        );
+        $page_slug = $map[ $screen->id ] ?? '';
+        if ( $page_slug ) {
+            SPLM_Help_Provider::add_help_tabs( $page_slug );
+        }
     }
 }

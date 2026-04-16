@@ -38,9 +38,6 @@ sportspress-league-manager/
 │   │   └── league-manager.css              # Custom admin UI styles
 │   └── js/
 │       └── league-manager.js               # Frontend interactions, AJAX, wizards
-│
-└── tests/
-    └── test-capabilities.php               # Capability assignment tests
 ```
 
 ---
@@ -348,12 +345,6 @@ class SPLM_SportsPress_Data {
 
     /** Get seasons (sp_season taxonomy terms) */
     public static function get_seasons(): array { /* get_terms('sp_season') */ }
-
-    /** Get events for a team in a season */
-    public static function get_events(array $filters = []): array { /* sp_event query */ }
-
-    /** Get league tables (sp_table posts) */
-    public static function get_standings(int $league_id, int $season_id): array { /* sp_table query */ }
 }
 ```
 
@@ -416,8 +407,6 @@ class SPLM_Admin_Ajax {
             'splm_upload_roster',
             'splm_lookup_fees',
             'splm_health_check',
-            'splm_get_schedule',
-            'splm_get_standings',
             'splm_save_user_prefs',
         );
         foreach ($actions as $action) {

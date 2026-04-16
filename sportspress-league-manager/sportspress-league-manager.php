@@ -74,8 +74,11 @@ class SportsPress_League_Manager {
 			'file'          => __FILE__,
 		) );
 
-		// Install capabilities.
-		SPLM_Capabilities::install_capabilities();
+		// Install capabilities only when version changes.
+		if ( get_option( 'splm_caps_version' ) !== SPLM_VERSION ) {
+			SPLM_Capabilities::install_capabilities();
+			update_option( 'splm_caps_version', SPLM_VERSION );
+		}
 
 		$this->load_enabled_modules();
 	}

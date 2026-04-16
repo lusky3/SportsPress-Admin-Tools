@@ -745,7 +745,7 @@ class SPSG_Admin_Ajax
             wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
-        $schedules = $_POST['schedules'] ?? array();
+        $schedules = map_deep(wp_unslash($_POST['schedules'] ?? array()), 'sanitize_text_field');
         $venue_mapping = array_map('sanitize_text_field', $_POST['venue_mapping'] ?? array());
         $new_venues = array_map('sanitize_text_field', $_POST['new_venues'] ?? array());
 

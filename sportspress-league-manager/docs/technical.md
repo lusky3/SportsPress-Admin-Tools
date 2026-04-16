@@ -124,8 +124,6 @@ Key classes: `splm-wrap`, `splm-dashboard`, `splm-card`, `splm-card__title`, `sp
 | Hook | Type | When |
 |------|------|------|
 | `splm_after_roster_upload` | action | After CSV roster is processed |
-| `splm_health_check_issues` | filter | Modify health check results |
-| `splm_dashboard_cards` | filter | Add/remove dashboard cards |
 
 ## Modification Guide
 

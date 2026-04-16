@@ -29,11 +29,13 @@ class SPET_ETransfer_Automation
     public function handle_webhook($request)
     {
         // Rate limiting (IP-based, 30 requests/minute)
-        $ip = $request->get_header('x-forwarded-for');
-        if ($ip) {
-            $ip = trim(explode(',', $ip)[0]);
-        } else {
-            $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+        $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+        // Only trust X-Forwarded-For if REMOTE_ADDR is a known proxy (localhost/private range)
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+            $forwarded = $request->get_header('x-forwarded-for');
+            if ($forwarded) {
+                $ip = trim(explode(',', $forwarded)[0]);
+            }
         }
         $rate_key = 'spet_rate_' . md5($ip);
         $rate_count = (int) get_transient($rate_key);

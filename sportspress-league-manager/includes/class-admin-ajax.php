@@ -26,6 +26,7 @@ class SPLM_Admin_Ajax {
             'splm_lookup_fees',
             'splm_health_check',
             'splm_save_user_prefs',
+            'splm_dismiss_wizard',
         );
         foreach ($actions as $action) {
             add_action('wp_ajax_' . $action, array($this, $action));
@@ -40,7 +41,7 @@ class SPLM_Admin_Ajax {
      * @param string $nonce_action Nonce action name
      */
     private function verify_request(string $nonce_action = 'splm_ajax_nonce'): void {
-        if (!check_ajax_referer($nonce_action, 'nonce', false)) {
+        if (!check_ajax_referer($nonce_action, '_ajax_nonce', false)) {
             wp_send_json_error(array('message' => 'Invalid nonce.'), 403);
         }
         if (!current_user_can('manage_league')) {
@@ -121,8 +122,14 @@ class SPLM_Admin_Ajax {
             wp_send_json_error(array('message' => 'Only CSV files are accepted.'), 400);
         }
 
+        $filetype = wp_check_filetype($file['name']);
+        if (empty($filetype['type']) || !in_array($filetype['type'], array('text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel'), true)) {
+            wp_send_json_error(array('message' => 'Invalid file MIME type.'), 400);
+        }
+
         $handle = fopen($file['tmp_name'], 'r');
         if (!$handle) {
+            SPLM_Error_Handler::log('Failed to read uploaded roster file', array('team_id' => $team_id, 'file' => $file['name']));
             wp_send_json_error(array('message' => 'Unable to read uploaded file.'), 500);
         }
 
@@ -138,6 +145,7 @@ class SPLM_Admin_Ajax {
         $name_col = array_search('name', $header, true);
         if ($name_col === false) {
             fclose($handle);
+            SPLM_Error_Handler::log('CSV upload missing required "name" column', array('team_id' => $team_id, 'header' => $header));
             wp_send_json_error(array('message' => 'CSV must contain a "name" column.'), 400);
         }
 
@@ -150,13 +158,17 @@ class SPLM_Admin_Ajax {
                 continue;
             }
 
-            // Check for existing player by title
+            // Check for existing player by title scoped to team
             $existing = get_posts(array(
                 'post_type'      => 'sp_player',
                 'title'          => $player_name,
                 'posts_per_page' => 1,
                 'post_status'    => 'publish',
                 'fields'         => 'ids',
+                'meta_query'     => array( array(
+                    'key'   => 'sp_current_team',
+                    'value' => $team_id,
+                ) ),
             ));
 
             if (!empty($existing)) {
@@ -215,6 +227,7 @@ class SPLM_Admin_Ajax {
 
         $fee_source = get_option('splm_fee_source', 'none');
         if ($fee_source === 'none') {
+            SPLM_Error_Handler::log('Fee lookup attempted but fee tracking not configured');
             wp_send_json_error(array('message' => 'Fee tracking is not configured.'), 400);
         }
 
@@ -297,5 +310,14 @@ class SPLM_Admin_Ajax {
         }
 
         wp_send_json_success(array('message' => 'Preferences saved.'));
+    }
+
+    /**
+     * Dismiss the first-run wizard for the current user
+     */
+    public function splm_dismiss_wizard() {
+        $this->verify_request();
+        update_user_meta(get_current_user_id(), 'splm_wizard_completed', '1');
+        wp_send_json_success(array('message' => 'Wizard dismissed.'));
     }
 }
