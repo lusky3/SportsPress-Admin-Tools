@@ -17,12 +17,6 @@ if (!defined('ABSPATH')) {
  */
 class SPSG_Sports_Press_Importer
 {
-
-    /**
-     * SportsPress integration helper
-     */
-    private $sp_integration;
-
     /**
      * Whether to auto-create placeholder teams during import
      * @var bool
@@ -46,14 +40,6 @@ class SPSG_Sports_Press_Importer
      * @var array|null
      */
     private $venue_name_map = null;
-
-    /**
-     * Constructor
-     */
-    public function __construct()
-    {
-        $this->sp_integration = new SPSG_Sports_Press_Integration();
-    }
 
     /**
      * Import schedule to SportsPress

@@ -690,25 +690,6 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface
     }
 
     /**
-     * Apply preset to existing configuration
-     *
-     * @param string $preset_name Preset identifier
-     * @param array $base_config Optional base configuration to merge with
-     * @return array Merged configuration
-     */
-    public function apply_preset($preset_name, $base_config = array())
-    {
-        $preset = $this->get_preset($preset_name);
-
-        if (is_wp_error($preset)) {
-            return $preset;
-        }
-
-        // Merge preset with base config (preset values take precedence)
-        return array_merge($base_config, $preset);
-    }
-
-    /**
      * Define preset configurations
      *
      * @return array Array of preset definitions

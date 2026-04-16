@@ -281,9 +281,6 @@ class SPET_ETransfer_Admin
             return false;
         }
 
-        if (!$log) {
-            return false;
-        }
         $order = wc_get_order($order_id);
 
         if (!$order || $order->get_status() !== 'on-hold') {

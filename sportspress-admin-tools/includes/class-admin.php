@@ -49,13 +49,6 @@ class SPAT_Admin
         wp_die();
     }
 
-    private function check_permissions()
-    {
-        if (!current_user_can('manage_options')) {
-            wp_die(__('You do not have sufficient permissions to access this page.', 'sportspress-admin-tools'));
-        }
-    }
-
     public function enqueue_admin_scripts($hook)
     {
         // Only load on our specific settings page
@@ -395,24 +388,8 @@ class SPAT_Admin
         echo '<p class="description">' . esc_html__('Child plugins provide modules that can be enabled/disabled in the Modules section above.', 'sportspress-admin-tools') . '</p>';
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     public function settings_page()
     {
-        $this->check_permissions();
-
         // Handle tab persistence after form submission
         if (isset($_POST['current_tab']) && isset($_GET['settings-updated'])) {
             $tab = sanitize_text_field($_POST['current_tab']);

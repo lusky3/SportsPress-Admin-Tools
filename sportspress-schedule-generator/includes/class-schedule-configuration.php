@@ -20,11 +20,6 @@ class SPSG_Schedule_Configuration
 {
 
     /**
-     * Date format regex pattern (YYYY-MM-DD)
-     */
-    const DATE_REGEX = '/^\d{4}-\d{2}-\d{2}$/';
-
-    /**
      * Season start date
      * @var DateTime
      */

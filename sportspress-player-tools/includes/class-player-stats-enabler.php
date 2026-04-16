@@ -88,6 +88,13 @@ class SPT_Player_Stats_Enabler {
         );
     }
     
+    /**
+     * Bulk-enable statistics for all published players that lack sp_columns.
+     *
+     * Available for external/CLI use — not called internally.
+     *
+     * @return int Number of players processed.
+     */
     public function bulk_enable_stats() {
         $processed = 0;
         $offset = 0;

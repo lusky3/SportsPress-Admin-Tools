@@ -17,11 +17,6 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint
 {
 
     /**
-     * Team distribution tracking
-     */
-    private $team_distributions = array();
-
-    /**
      * Initialize constraint
      */
     protected function init()
@@ -293,13 +288,5 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint
         }
 
         return array_keys($teams);
-    }
-
-    /**
-     * Reset distribution tracking
-     */
-    public function reset_tracking()
-    {
-        $this->team_distributions = array();
     }
 }

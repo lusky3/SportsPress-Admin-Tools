@@ -25,7 +25,6 @@ class SPSG_Admin_Renderer
     const LABEL_SAVE_CONFIGURATION = 'Save Configuration';
     const LABEL_GAMES_PER_TEAM = 'Games Per Team';
     const LABEL_IMPORT_LEAGUE = 'Import League Structure';
-    const LABEL_IMPORT_SCHEDULE = 'Import Schedule';
 
     /**
      * Configuration manager instance
