@@ -474,7 +474,7 @@ class SPT_Batch_List_Creator {
                             <div style="margin-bottom: 10px;">
                                 <strong><?php esc_html_e('Performance:', 'sportspress-player-tools'); ?></strong><br>
                                 <?php foreach ($performances as $perf): ?>
-                                    <label style="display: inline-block; margin-right: 15px;"><input type="checkbox" name="columns[]" value="<?php echo esc_attr($perf->post_name); ?>" <?php checked(in_array($perf->post_name, array('g', 'a', 'pim'))); ?>> <?php echo esc_html($perf->post_title); ?></label>
+                                    <label style="display: inline-block; margin-right: 15px;"><input type="checkbox" name="columns[]" value="<?php echo esc_attr($perf->post_name); ?>" <?php checked(get_post_meta($perf->ID, 'sp_visible', true) == 1); ?>> <?php echo esc_html($perf->post_title); ?></label>
                                 <?php endforeach; ?>
                             </div>
                             <?php endif; ?>
@@ -486,7 +486,7 @@ class SPT_Batch_List_Creator {
                             <div style="margin-bottom: 10px;">
                                 <strong><?php esc_html_e('Statistics:', 'sportspress-player-tools'); ?></strong><br>
                                 <?php foreach ($statistics as $stat): ?>
-                                    <label style="display: inline-block; margin-right: 15px;"><input type="checkbox" name="columns[]" value="<?php echo esc_attr($stat->post_name); ?>" <?php checked(in_array($stat->post_name, array('p', 'gp'))); ?>> <?php echo esc_html($stat->post_title); ?></label>
+                                    <label style="display: inline-block; margin-right: 15px;"><input type="checkbox" name="columns[]" value="<?php echo esc_attr($stat->post_name); ?>" <?php checked(get_post_meta($stat->ID, 'sp_visible', true) == 1); ?>> <?php echo esc_html($stat->post_title); ?></label>
                                 <?php endforeach; ?>
                             </div>
                             <?php endif; ?>

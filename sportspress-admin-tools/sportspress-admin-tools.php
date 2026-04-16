@@ -39,6 +39,14 @@ if (!class_exists('SportsPressAdminTools')) {
             // Load text domain
             load_plugin_textdomain('sportspress-admin-tools', false, dirname(plugin_basename(__FILE__)) . '/languages');
 
+            // Initialize notifications (works on both admin and front-end for webhook-triggered events)
+            require_once SPAT_PLUGIN_PATH . 'includes/class-notifications.php';
+            new SPAT_Notifications();
+
+            // GDPR privacy exporters and erasers — loaded unconditionally
+            require_once SPAT_PLUGIN_PATH . 'includes/class-privacy.php';
+            new SPAT_Privacy();
+
             // Initialize admin
             if (is_admin()) {
                 $this->init_admin();
@@ -48,7 +56,9 @@ if (!class_exists('SportsPressAdminTools')) {
         private function init_admin()
         {
             require_once SPAT_PLUGIN_PATH . 'includes/class-admin.php';
+            require_once SPAT_PLUGIN_PATH . 'includes/class-health-dashboard.php';
             new SPAT_Admin();
+            new SPAT_Health_Dashboard();
         }
 
 

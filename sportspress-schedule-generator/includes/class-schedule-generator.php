@@ -148,6 +148,9 @@ class SPSG_Schedule_Generator
         set_transient('spsg_schedule_stats_' . $schedule_id, $stats, HOUR_IN_SECONDS);
         set_transient('spsg_last_schedule_id_' . $user_id, $schedule_id, HOUR_IN_SECONDS);
 
+        // Fire notification for schedule generation
+        do_action('spat_schedule_generated', $schedule_id, $stats);
+
         wp_send_json_success(array(
             'message' => __('Schedule generated successfully', 'sportspress-schedule-generator'),
             'schedule_id' => $schedule_id,

@@ -149,12 +149,22 @@ class SPET_ETransfer_Automation
 
         if ($order_id && !$amount_mismatch) {
             $this->process_payment($order_id, $payment_data);
+
+            // Fire notification for matched payment
+            do_action('spat_payment_matched', $payment_data['sender_name'], $payment_data['amount'], $order_id);
+
             return rest_ensure_response(array('status' => 'success', 'order_id' => $order_id));
         }
 
         if ($amount_mismatch) {
+            // Fire unmatched notification for amount mismatch (requires manual review)
+            do_action('spat_payment_unmatched', $payment_data['sender_name'], $payment_data['amount'], $payment_data['reference_number']);
+
             return rest_ensure_response(array('status' => 'amount_mismatch', 'message' => $result, 'order_id' => $order_id));
         }
+
+        // Fire notification for unmatched payment
+        do_action('spat_payment_unmatched', $payment_data['sender_name'], $payment_data['amount'], $payment_data['reference_number']);
 
         return rest_ensure_response(array('status' => 'no_match', 'message' => 'No matching order found'));
     }

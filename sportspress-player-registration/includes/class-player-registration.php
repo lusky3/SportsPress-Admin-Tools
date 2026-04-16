@@ -139,6 +139,13 @@ class SPR_Player_Registration {
             $result = $this->create_new_player($customer_name, $customer_email, $user_id);
             $player_id = $result['player_id'];
             $action = $result['action'];
+
+            // Fire notification for newly created player
+            if ($player_id && $action === 'player_created') {
+                $team_names = wp_get_object_terms($player_id, 'sp_team', array('fields' => 'names'));
+                $team = !empty($team_names) ? implode(', ', $team_names) : '';
+                do_action('spat_player_registered', $customer_name, $team, $season);
+            }
         }
         
         if ($player_id && get_option('spr_auto_season', '1') === '1') {

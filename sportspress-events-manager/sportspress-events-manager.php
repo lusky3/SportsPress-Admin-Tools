@@ -58,6 +58,14 @@ class SportsPress_Events_Manager {
             'file' => __FILE__
         ));
         
+        SPAT_Plugin_Manager::register_plugin('season_rollover', array(
+            'name' => 'Season Rollover',
+            'description' => 'Guided workflow for transitioning between seasons',
+            'parent_module' => 'season_rollover',
+            'version' => SPEM_VERSION,
+            'file' => __FILE__
+        ));
+        
         // Load functionality based on enabled modules
         $this->load_enabled_modules();
     }
@@ -75,7 +83,12 @@ class SportsPress_Events_Manager {
             new SPEM_League_Table_Generator();
         }
         
-        if (is_admin() && (in_array('events_management', $enabled_modules) || in_array('league_table_generator', $enabled_modules))) {
+        if (in_array('season_rollover', $enabled_modules)) {
+            require_once SPEM_PLUGIN_PATH . 'includes/class-season-rollover.php';
+            new SPEM_Season_Rollover();
+        }
+        
+        if (is_admin() && (in_array('events_management', $enabled_modules) || in_array('league_table_generator', $enabled_modules) || in_array('season_rollover', $enabled_modules))) {
             require_once SPEM_PLUGIN_PATH . 'includes/class-admin.php';
             new SPEM_Admin();
         }
