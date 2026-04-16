@@ -49,3 +49,4 @@ phpunit.xml
 
 # Misc
 .amazonq/
+AUDIT-REPORT.md
