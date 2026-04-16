@@ -362,14 +362,14 @@ class SPSG_Admin_Renderer
         $all_teams = $this->collect_all_teams($config);
 
         if (empty($all_teams)) {
-            echo '<p class="description">' . __('Add teams to divisions first to configure home venue preferences.', 'sportspress-schedule-generator') . '</p>';
+            echo '<p class="description">' . esc_html__('Add teams to divisions first to configure home venue preferences.', 'sportspress-schedule-generator') . '</p>';
             return;
         }
 
         echo '<table class="widefat striped">';
         echo '<thead><tr>';
-        echo '<th>' . __('Team', 'sportspress-schedule-generator') . '</th>';
-        echo '<th>' . __('Preferred Home Venue', 'sportspress-schedule-generator') . '</th>';
+        echo '<th>' . esc_html__('Team', 'sportspress-schedule-generator') . '</th>';
+        echo '<th>' . esc_html__('Preferred Home Venue', 'sportspress-schedule-generator') . '</th>';
         echo '</tr></thead>';
         echo '<tbody>';
 
@@ -379,7 +379,7 @@ class SPSG_Admin_Renderer
             echo '<td><strong>' . esc_html($team) . '</strong></td>';
             echo '<td>';
             echo '<select name="home_away_preferences[' . esc_attr($team) . ']" class="regular-text">';
-            echo '<option value="">' . __('No preference', 'sportspress-schedule-generator') . '</option>';
+            echo '<option value="">' . esc_html__('No preference', 'sportspress-schedule-generator') . '</option>';
 
             if (!empty($config->venues)) {
                 foreach ($config->venues as $venue) {
@@ -397,7 +397,7 @@ class SPSG_Admin_Renderer
         echo '</tbody></table>';
 
         if (empty($config->venues)) {
-            echo '<p class="description" style="margin-top: 10px;">' . __('Note: Add venues in the "Venues & Times" tab to assign home venue preferences.', 'sportspress-schedule-generator') . '</p>';
+            echo '<p class="description" style="margin-top: 10px;">' . esc_html__('Note: Add venues in the "Venues & Times" tab to assign home venue preferences.', 'sportspress-schedule-generator') . '</p>';
         }
     }
 
@@ -410,14 +410,14 @@ class SPSG_Admin_Renderer
         $divisions = $config->divisions ?? array();
 
         if (count($divisions) < 2) {
-            echo '<p class="description">' . __('Add at least 2 divisions to configure inter-division games.', 'sportspress-schedule-generator') . '</p>';
+            echo '<p class="description">' . esc_html__('Add at least 2 divisions to configure inter-division games.', 'sportspress-schedule-generator') . '</p>';
             return;
         }
 
         echo '<table class="widefat striped">';
         echo '<thead><tr>';
-        echo '<th>' . __('Division Pair', 'sportspress-schedule-generator') . '</th>';
-        echo '<th>' . __(self::LABEL_GAMES_PER_TEAM, 'sportspress-schedule-generator') . '</th>';
+        echo '<th>' . esc_html__('Division Pair', 'sportspress-schedule-generator') . '</th>';
+        echo '<th>' . esc_html__(self::LABEL_GAMES_PER_TEAM, 'sportspress-schedule-generator') . '</th>';
         echo '</tr></thead>';
         echo '<tbody>';
 
@@ -438,7 +438,7 @@ class SPSG_Admin_Renderer
                 echo '<td><strong>' . esc_html($div1_name) . '</strong> vs <strong>' . esc_html($div2_name) . '</strong></td>';
                 echo '<td>';
                 echo '<input type="number" name="inter_division_games[' . esc_attr($pair_key) . ']" value="' . esc_attr($games_count) . '" min="0" max="10" class="small-text" /> ';
-                echo '<span class="description">' . __('games per team', 'sportspress-schedule-generator') . '</span>';
+                echo '<span class="description">' . esc_html__('games per team', 'sportspress-schedule-generator') . '</span>';
                 echo '</td>';
                 echo '</tr>';
             }
@@ -447,11 +447,11 @@ class SPSG_Admin_Renderer
         echo '</tbody></table>';
 
         echo '<p class="description" style="margin-top: 10px;">';
-        echo __('Specify how many games each team should play against teams from other divisions. Set to 0 to disable inter-division play for a division pair.', 'sportspress-schedule-generator');
+        echo esc_html__('Specify how many games each team should play against teams from other divisions. Set to 0 to disable inter-division play for a division pair.', 'sportspress-schedule-generator');
         echo '</p>';
 
         echo '<div id="spsg-inter-division-warning" style="display: none; margin-top: 10px; padding: 10px; background: #fcf3cf; border-left: 4px solid #f39c12;">';
-        echo '<strong>' . __('Warning:', 'sportspress-schedule-generator') . '</strong> ';
+        echo '<strong>' . esc_html__('Warning:', 'sportspress-schedule-generator') . '</strong> ';
         echo '<span id="spsg-inter-division-warning-text"></span>';
         echo '</div>';
     }

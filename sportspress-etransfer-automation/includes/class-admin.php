@@ -47,7 +47,7 @@ class SPET_Admin
             update_option('spet_equivalent_names', $equivalent_names);
 
             SPET_Name_Matcher::clear_cache();
-            echo '<div class="notice notice-success"><p>' . __('Settings saved.', 'sportspress-etransfer-automation') . '</p></div>';
+            echo '<div class="notice notice-success"><p>' . esc_html__('Settings saved.', 'sportspress-etransfer-automation') . '</p></div>';
         }
 
         $webhook_secret = get_option('spet_webhook_secret', wp_generate_password(32, false));
@@ -68,34 +68,34 @@ class SPET_Admin
                 
                 <table class="form-table">
                     <tr>
-                        <th scope="row"><?php _e('Webhook URL', 'sportspress-etransfer-automation'); ?></th>
+                        <th scope="row"><?php esc_html_e('Webhook URL', 'sportspress-etransfer-automation'); ?></th>
                         <td>
                             <input type="text" value="<?php echo esc_attr(rest_url('spet/v1/etransfer-webhook')); ?>" readonly class="regular-text" />
-                            <p class="description"><?php _e('Use this URL in your email forwarding service.', 'sportspress-etransfer-automation'); ?></p>
+                            <p class="description"><?php esc_html_e('Use this URL in your email forwarding service.', 'sportspress-etransfer-automation'); ?></p>
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row"><?php _e('Service Provider', 'sportspress-etransfer-automation'); ?></th>
+                        <th scope="row"><?php esc_html_e('Service Provider', 'sportspress-etransfer-automation'); ?></th>
                         <td>
-                            <label><input type="radio" name="spet_service_provider" value="generic" <?php checked($service_provider, 'generic'); ?> /> <?php _e('Generic', 'sportspress-etransfer-automation'); ?></label><br>
-                            <label><input type="radio" name="spet_service_provider" value="deliverhook" <?php checked($service_provider, 'deliverhook'); ?> /> <?php _e('deliverhook.com', 'sportspress-etransfer-automation'); ?></label><br>
-                            <label><input type="radio" name="spet_service_provider" value="cloudflare" <?php checked($service_provider, 'cloudflare'); ?> /> <?php _e('Cloudflare Email Routing', 'sportspress-etransfer-automation'); ?></label>
+                            <label><input type="radio" name="spet_service_provider" value="generic" <?php checked($service_provider, 'generic'); ?> /> <?php esc_html_e('Generic', 'sportspress-etransfer-automation'); ?></label><br>
+                            <label><input type="radio" name="spet_service_provider" value="deliverhook" <?php checked($service_provider, 'deliverhook'); ?> /> <?php esc_html_e('deliverhook.com', 'sportspress-etransfer-automation'); ?></label><br>
+                            <label><input type="radio" name="spet_service_provider" value="cloudflare" <?php checked($service_provider, 'cloudflare'); ?> /> <?php esc_html_e('Cloudflare Email Routing', 'sportspress-etransfer-automation'); ?></label>
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row"><?php _e('Webhook Secret', 'sportspress-etransfer-automation'); ?></th>
+                        <th scope="row"><?php esc_html_e('Webhook Secret', 'sportspress-etransfer-automation'); ?></th>
                         <td>
                             <input type="text" name="spet_webhook_secret" value="<?php echo esc_attr($webhook_secret); ?>" class="regular-text" />
-                            <p class="description"><?php _e('HMAC SHA256 signing secret for webhook security.', 'sportspress-etransfer-automation'); ?></p>
+                            <p class="description"><?php esc_html_e('HMAC SHA256 signing secret for webhook security.', 'sportspress-etransfer-automation'); ?></p>
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row"><?php _e('Equivalent Names', 'sportspress-etransfer-automation'); ?></th>
+                        <th scope="row"><?php esc_html_e('Equivalent Names', 'sportspress-etransfer-automation'); ?></th>
                         <td>
                             <textarea name="spet_equivalent_names" rows="10" class="large-text code"><?php echo esc_textarea($equivalent_names); ?></textarea>
                             <p class="description">
-                                <?php _e('List equivalent names for matching, one per line. Format: FullName|Nickname (e.g., Nicholas|Nick)', 'sportspress-etransfer-automation'); ?><br>
-                                <?php _e('Only letters, spaces, hyphens, and apostrophes are allowed. Lines starting with # are ignored.', 'sportspress-etransfer-automation'); ?>
+                                <?php esc_html_e('List equivalent names for matching, one per line. Format: FullName|Nickname (e.g., Nicholas|Nick)', 'sportspress-etransfer-automation'); ?><br>
+                                <?php esc_html_e('Only letters, spaces, hyphens, and apostrophes are allowed. Lines starting with # are ignored.', 'sportspress-etransfer-automation'); ?>
                             </p>
                         </td>
                     </tr>
@@ -104,7 +104,7 @@ class SPET_Admin
                 <?php submit_button(__('Save Settings', 'sportspress-etransfer-automation'), 'primary', 'save_settings'); ?>
             </form>
             
-            <h2><?php _e('Webhook Activity Log', 'sportspress-etransfer-automation'); ?></h2>
+            <h2><?php esc_html_e('Webhook Activity Log', 'sportspress-etransfer-automation'); ?></h2>
             <?php $this->display_webhook_logs(); ?>
         <?php
     }
@@ -114,18 +114,18 @@ class SPET_Admin
         $logs = SPET_Database::get_etransfer_logs(50);
 
         if (empty($logs)) {
-            echo '<p>' . __('No webhook activity yet.', 'sportspress-etransfer-automation') . '</p>';
+            echo '<p>' . esc_html__('No webhook activity yet.', 'sportspress-etransfer-automation') . '</p>';
             return;
         }
 
         echo '<table class="wp-list-table widefat fixed striped">';
         echo '<thead><tr>';
-        echo '<th>' . __('Timestamp', 'sportspress-etransfer-automation') . '</th>';
-        echo '<th>' . __('From', 'sportspress-etransfer-automation') . '</th>';
-        echo '<th>' . __('Amount', 'sportspress-etransfer-automation') . '</th>';
-        echo '<th>' . __('Reference', 'sportspress-etransfer-automation') . '</th>';
-        echo '<th>' . __('Order', 'sportspress-etransfer-automation') . '</th>';
-        echo '<th>' . __('Result', 'sportspress-etransfer-automation') . '</th>';
+        echo '<th>' . esc_html__('Timestamp', 'sportspress-etransfer-automation') . '</th>';
+        echo '<th>' . esc_html__('From', 'sportspress-etransfer-automation') . '</th>';
+        echo '<th>' . esc_html__('Amount', 'sportspress-etransfer-automation') . '</th>';
+        echo '<th>' . esc_html__('Reference', 'sportspress-etransfer-automation') . '</th>';
+        echo '<th>' . esc_html__('Order', 'sportspress-etransfer-automation') . '</th>';
+        echo '<th>' . esc_html__('Result', 'sportspress-etransfer-automation') . '</th>';
         echo '</tr></thead><tbody>';
 
         foreach ($logs as $log) {

@@ -39,8 +39,8 @@ class SPSG_Error_Handler
         }
 
         $html = '<div class="notice notice-error spsg-validation-errors">';
-        $html .= '<h3>' . __('Configuration Validation Failed', 'sportspress-schedule-generator') . '</h3>';
-        $html .= '<p>' . __('Please fix the following issues:', 'sportspress-schedule-generator') . '</p>';
+        $html .= '<h3>' . esc_html__('Configuration Validation Failed', 'sportspress-schedule-generator') . '</h3>';
+        $html .= '<p>' . esc_html__('Please fix the following issues:', 'sportspress-schedule-generator') . '</p>';
         $html .= '<ul class="spsg-error-list">';
 
         foreach ($errors as $field => $message) {

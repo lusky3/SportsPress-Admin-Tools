@@ -47,64 +47,64 @@ class SPEM_Admin {
 
             <table class="form-table">
                 <tr>
-                    <th scope="row"><?php _e('Auto-Create Calendars', 'sportspress-events-manager'); ?></th>
+                    <th scope="row"><?php esc_html_e('Auto-Create Calendars', 'sportspress-events-manager'); ?></th>
                     <td>
                         <label>
                             <input type="checkbox" name="spem_auto_calendar_creation" value="1" <?php checked($auto_calendar, '1'); ?> />
-                            <?php _e('Automatically create calendars when new teams are added', 'sportspress-events-manager'); ?>
+                            <?php esc_html_e('Automatically create calendars when new teams are added', 'sportspress-events-manager'); ?>
                         </label>
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row"><?php _e('Calendar Type', 'sportspress-events-manager'); ?></th>
+                    <th scope="row"><?php esc_html_e('Calendar Type', 'sportspress-events-manager'); ?></th>
                     <td>
                         <select name="spem_calendar_type">
-                            <option value="calendar" <?php selected($calendar_type, 'calendar'); ?>><?php _e('Calendar', 'sportspress-events-manager'); ?></option>
-                            <option value="list" <?php selected($calendar_type, 'list'); ?>><?php _e('List', 'sportspress-events-manager'); ?></option>
-                            <option value="blocks" <?php selected($calendar_type, 'blocks'); ?>><?php _e('Blocks', 'sportspress-events-manager'); ?></option>
+                            <option value="calendar" <?php selected($calendar_type, 'calendar'); ?>><?php esc_html_e('Calendar', 'sportspress-events-manager'); ?></option>
+                            <option value="list" <?php selected($calendar_type, 'list'); ?>><?php esc_html_e('List', 'sportspress-events-manager'); ?></option>
+                            <option value="blocks" <?php selected($calendar_type, 'blocks'); ?>><?php esc_html_e('Blocks', 'sportspress-events-manager'); ?></option>
                         </select>
                     </td>
                 </tr>
             </table>
 
-            <h3><?php _e('Calendar Naming', 'sportspress-events-manager'); ?></h3>
+            <h3><?php esc_html_e('Calendar Naming', 'sportspress-events-manager'); ?></h3>
             <table class="form-table">
                 <tr>
-                    <th scope="row"><?php _e('Prefix', 'sportspress-events-manager'); ?></th>
+                    <th scope="row"><?php esc_html_e('Prefix', 'sportspress-events-manager'); ?></th>
                     <td>
                         <input type="text" name="spem_naming_prefix" value="<?php echo esc_attr($naming_prefix); ?>" class="regular-text" />
-                        <p class="description"><?php _e('Text to add before team name', 'sportspress-events-manager'); ?></p>
+                        <p class="description"><?php esc_html_e('Text to add before team name', 'sportspress-events-manager'); ?></p>
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row"><?php _e('Suffix', 'sportspress-events-manager'); ?></th>
+                    <th scope="row"><?php esc_html_e('Suffix', 'sportspress-events-manager'); ?></th>
                     <td>
                         <input type="text" name="spem_naming_suffix" value="<?php echo esc_attr($naming_suffix); ?>" class="regular-text" />
-                        <p class="description"><?php _e('Text to add after team name', 'sportspress-events-manager'); ?></p>
+                        <p class="description"><?php esc_html_e('Text to add after team name', 'sportspress-events-manager'); ?></p>
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row"><?php _e('Separator', 'sportspress-events-manager'); ?></th>
+                    <th scope="row"><?php esc_html_e('Separator', 'sportspress-events-manager'); ?></th>
                     <td>
                         <input type="text" name="spem_naming_separator" value="<?php echo esc_attr($naming_separator); ?>" class="regular-text" />
-                        <p class="description"><?php _e('Character to separate name parts (e.g., | or -)', 'sportspress-events-manager'); ?></p>
+                        <p class="description"><?php esc_html_e('Character to separate name parts (e.g., | or -)', 'sportspress-events-manager'); ?></p>
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row"><?php _e('Include Team Name', 'sportspress-events-manager'); ?></th>
+                    <th scope="row"><?php esc_html_e('Include Team Name', 'sportspress-events-manager'); ?></th>
                     <td>
                         <label>
                             <input type="checkbox" name="spem_include_team_name" value="1" <?php checked($include_team, '1'); ?> />
-                            <?php _e('Include team name in calendar title', 'sportspress-events-manager'); ?>
+                            <?php esc_html_e('Include team name in calendar title', 'sportspress-events-manager'); ?>
                         </label>
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row"><?php _e('Include Division', 'sportspress-events-manager'); ?></th>
+                    <th scope="row"><?php esc_html_e('Include Division', 'sportspress-events-manager'); ?></th>
                     <td>
                         <label>
                             <input type="checkbox" name="spem_include_division" value="1" <?php checked($include_division, '1'); ?> />
-                            <?php _e('Include division/league name in calendar title', 'sportspress-events-manager'); ?>
+                            <?php esc_html_e('Include division/league name in calendar title', 'sportspress-events-manager'); ?>
                         </label>
                     </td>
                 </tr>
@@ -113,21 +113,21 @@ class SPEM_Admin {
             <?php submit_button(__('Save Settings', 'sportspress-events-manager'), 'primary', 'save_settings'); ?>
         </form>
 
-        <h2><?php _e('Tools', 'sportspress-events-manager'); ?></h2>
+        <h2><?php esc_html_e('Tools', 'sportspress-events-manager'); ?></h2>
 
         <form method="post" onsubmit="return confirm('<?php echo esc_js(__('Reset all calendars to current season?', 'sportspress-events-manager')); ?>')">
             <?php wp_nonce_field('spem_admin_actions', 'spem_admin_nonce'); ?>
-            <p><?php _e('Reset all existing calendars to use the current season.', 'sportspress-events-manager'); ?></p>
+            <p><?php esc_html_e('Reset all existing calendars to use the current season.', 'sportspress-events-manager'); ?></p>
             <?php submit_button(__('Reset Calendars to Current Season', 'sportspress-events-manager'), 'secondary', 'reset_calendars'); ?>
         </form>
 
         <form method="post" onsubmit="return confirm('<?php echo esc_js(__('Create calendars for teams that do not have one?', 'sportspress-events-manager')); ?>')">
             <?php wp_nonce_field('spem_admin_actions', 'spem_admin_nonce'); ?>
-            <p><?php _e('Create calendars for teams that do not have existing calendars.', 'sportspress-events-manager'); ?></p>
+            <p><?php esc_html_e('Create calendars for teams that do not have existing calendars.', 'sportspress-events-manager'); ?></p>
             <?php submit_button(__('Create Missing Calendars', 'sportspress-events-manager'), 'secondary', 'create_missing_calendars'); ?>
         </form>
 
-        <h3><?php _e('Event Import', 'sportspress-events-manager'); ?></h3>
+        <h3><?php esc_html_e('Event Import', 'sportspress-events-manager'); ?></h3>
         <?php $this->display_import_form(); ?>
         <?php
     }
