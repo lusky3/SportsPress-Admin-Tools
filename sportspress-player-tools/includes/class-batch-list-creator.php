@@ -92,23 +92,23 @@ class SPT_Batch_List_Creator {
         }
         ?>
         <div class="wrap">
-            <h1><?php _e('Upload Player Lists', 'sportspress-player-tools'); ?></h1>
+            <h1><?php esc_html_e('Upload Player Lists', 'sportspress-player-tools'); ?></h1>
             
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data" id="spt-upload-form">
                 <input type="hidden" name="action" value="spt_upload_list_csv">
                 <?php wp_nonce_field('spt_batch_list_upload', 'spt_batch_list_nonce'); ?>
                 
                 <div id="spt-drop-zone" style="border: 2px dashed #ccc; padding: 40px; text-align: center; margin: 20px 0; background: #fafafa;">
-                    <p style="font-size: 16px; margin-bottom: 10px;"><?php _e('Drag and drop CSV file here', 'sportspress-player-tools'); ?></p>
-                    <p style="margin-bottom: 20px;"><?php _e('or', 'sportspress-player-tools'); ?></p>
+                    <p style="font-size: 16px; margin-bottom: 10px;"><?php esc_html_e('Drag and drop CSV file here', 'sportspress-player-tools'); ?></p>
+                    <p style="margin-bottom: 20px;"><?php esc_html_e('or', 'sportspress-player-tools'); ?></p>
                     <input type="file" name="csv_file" id="csv_file" accept=".csv" required style="display:none;">
-                    <button type="button" class="button button-primary" onclick="document.getElementById('csv_file').click();"><?php _e('Select CSV File', 'sportspress-player-tools'); ?></button>
+                    <button type="button" class="button button-primary" onclick="document.getElementById('csv_file').click();"><?php esc_html_e('Select CSV File', 'sportspress-player-tools'); ?></button>
                     <p id="file-name" style="margin-top: 15px; font-weight: bold;"></p>
                 </div>
                 
                 <p class="submit">
                     <input type="submit" class="button button-primary" value="<?php esc_attr_e('Upload & Preview', 'sportspress-player-tools'); ?>" id="submit-btn" disabled>
-                    <a href="<?php echo esc_url(admin_url('edit.php?post_type=sp_list')); ?>" class="button"><?php _e('Cancel', 'sportspress-player-tools'); ?></a>
+                    <a href="<?php echo esc_url(admin_url('edit.php?post_type=sp_list')); ?>" class="button"><?php esc_html_e('Cancel', 'sportspress-player-tools'); ?></a>
                 </p>
             </form>
         </div>
@@ -245,7 +245,7 @@ class SPT_Batch_List_Creator {
         if ($result === false && get_option('spat_debug_verbose_logging', '0') === '1') {
             error_log('SPT: Failed to insert batch list data - ' . $wpdb->last_error);
         }
-        wp_redirect(admin_url('tools.php?page=spt_upload_lists&preview=1'));
+        wp_safe_redirect(admin_url('tools.php?page=spt_upload_lists&preview=1'));
         exit;
     }
     
@@ -369,7 +369,7 @@ class SPT_Batch_List_Creator {
             }
         }
         
-        wp_redirect(admin_url('edit.php?post_type=sp_list&spt_batch_created=1'));
+        wp_safe_redirect(admin_url('edit.php?post_type=sp_list&spt_batch_created=1'));
         exit;
     }
     
@@ -402,7 +402,7 @@ class SPT_Batch_List_Creator {
         
         ?>
         <div class="wrap">
-            <h1><?php _e('Preview & Confirm Player Lists', 'sportspress-player-tools'); ?></h1>
+            <h1><?php esc_html_e('Preview & Confirm Player Lists', 'sportspress-player-tools'); ?></h1>
             <p><?php printf(__('Showing %d-%d of %d entries', 'sportspress-player-tools'), $offset + 1, min($offset + $per_page, $total_items), $total_items); ?></p>
             
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" id="batch-form">
@@ -413,14 +413,14 @@ class SPT_Batch_List_Creator {
                 
                 <table class="form-table">
                     <tr>
-                        <th><?php _e('List Name Template', 'sportspress-player-tools'); ?></th>
+                        <th><?php esc_html_e('List Name Template', 'sportspress-player-tools'); ?></th>
                         <td>
                             <input type="text" name="list_name" value="{team} Roster" class="regular-text">
-                            <p class="description"><?php _e('Use {team} for team name, {season} for season name', 'sportspress-player-tools'); ?></p>
+                            <p class="description"><?php esc_html_e('Use {team} for team name, {season} for season name', 'sportspress-player-tools'); ?></p>
                         </td>
                     </tr>
                     <tr>
-                        <th><?php _e('Season', 'sportspress-player-tools'); ?></th>
+                        <th><?php esc_html_e('Season', 'sportspress-player-tools'); ?></th>
                         <td>
                             <?php 
                             $default_season = get_option('sportspress_season');
@@ -436,23 +436,23 @@ class SPT_Batch_List_Creator {
                         </td>
                     </tr>
                     <tr>
-                        <th><?php _e('Action', 'sportspress-player-tools'); ?></th>
+                        <th><?php esc_html_e('Action', 'sportspress-player-tools'); ?></th>
                         <td>
-                            <label><input type="radio" name="list_action" value="create" checked> <?php _e('Create new player lists', 'sportspress-player-tools'); ?></label><br>
-                            <label><input type="radio" name="list_action" value="update"> <?php _e('Update existing player lists (replace players)', 'sportspress-player-tools'); ?></label>
-                            <p class="description"><?php _e('Update will find existing lists with matching team and season, then replace their players.', 'sportspress-player-tools'); ?></p>
+                            <label><input type="radio" name="list_action" value="create" checked> <?php esc_html_e('Create new player lists', 'sportspress-player-tools'); ?></label><br>
+                            <label><input type="radio" name="list_action" value="update"> <?php esc_html_e('Update existing player lists (replace players)', 'sportspress-player-tools'); ?></label>
+                            <p class="description"><?php esc_html_e('Update will find existing lists with matching team and season, then replace their players.', 'sportspress-player-tools'); ?></p>
                         </td>
                     </tr>
                     <tr>
-                        <th><?php _e('Display Options', 'sportspress-player-tools'); ?></th>
+                        <th><?php esc_html_e('Display Options', 'sportspress-player-tools'); ?></th>
                         <td>
                             <div style="margin-bottom: 10px;">
-                                <strong><?php _e('Basic:', 'sportspress-player-tools'); ?></strong><br>
-                                <label style="display: inline-block; margin-right: 15px;"><input type="checkbox" name="columns[]" value="number" checked> <?php _e('Squad Number', 'sportspress-player-tools'); ?></label>
-                                <label style="display: inline-block; margin-right: 15px;"><input type="checkbox" name="columns[]" value="team"> <?php _e('Team', 'sportspress-player-tools'); ?></label>
-                                <label style="display: inline-block; margin-right: 15px;"><input type="checkbox" name="columns[]" value="position" checked> <?php _e('Position', 'sportspress-player-tools'); ?></label>
-                                <label style="display: inline-block; margin-right: 15px;"><input type="checkbox" name="columns[]" value="birthday"> <?php _e('Date of Birth', 'sportspress-player-tools'); ?></label>
-                                <label style="display: inline-block; margin-right: 15px;"><input type="checkbox" name="columns[]" value="age"> <?php _e('Age', 'sportspress-player-tools'); ?></label>
+                                <strong><?php esc_html_e('Basic:', 'sportspress-player-tools'); ?></strong><br>
+                                <label style="display: inline-block; margin-right: 15px;"><input type="checkbox" name="columns[]" value="number" checked> <?php esc_html_e('Squad Number', 'sportspress-player-tools'); ?></label>
+                                <label style="display: inline-block; margin-right: 15px;"><input type="checkbox" name="columns[]" value="team"> <?php esc_html_e('Team', 'sportspress-player-tools'); ?></label>
+                                <label style="display: inline-block; margin-right: 15px;"><input type="checkbox" name="columns[]" value="position" checked> <?php esc_html_e('Position', 'sportspress-player-tools'); ?></label>
+                                <label style="display: inline-block; margin-right: 15px;"><input type="checkbox" name="columns[]" value="birthday"> <?php esc_html_e('Date of Birth', 'sportspress-player-tools'); ?></label>
+                                <label style="display: inline-block; margin-right: 15px;"><input type="checkbox" name="columns[]" value="age"> <?php esc_html_e('Age', 'sportspress-player-tools'); ?></label>
                             </div>
                             
                             <?php
@@ -460,7 +460,7 @@ class SPT_Batch_List_Creator {
                             if (!empty($metrics)):
                             ?>
                             <div style="margin-bottom: 10px;">
-                                <strong><?php _e('Metrics:', 'sportspress-player-tools'); ?></strong><br>
+                                <strong><?php esc_html_e('Metrics:', 'sportspress-player-tools'); ?></strong><br>
                                 <?php foreach ($metrics as $metric): ?>
                                     <label style="display: inline-block; margin-right: 15px;"><input type="checkbox" name="columns[]" value="<?php echo esc_attr($metric->post_name); ?>"> <?php echo esc_html($metric->post_title); ?></label>
                                 <?php endforeach; ?>
@@ -472,7 +472,7 @@ class SPT_Batch_List_Creator {
                             if (!empty($performances)):
                             ?>
                             <div style="margin-bottom: 10px;">
-                                <strong><?php _e('Performance:', 'sportspress-player-tools'); ?></strong><br>
+                                <strong><?php esc_html_e('Performance:', 'sportspress-player-tools'); ?></strong><br>
                                 <?php foreach ($performances as $perf): ?>
                                     <label style="display: inline-block; margin-right: 15px;"><input type="checkbox" name="columns[]" value="<?php echo esc_attr($perf->post_name); ?>" <?php checked(in_array($perf->post_name, array('g', 'a', 'pim'))); ?>> <?php echo esc_html($perf->post_title); ?></label>
                                 <?php endforeach; ?>
@@ -484,7 +484,7 @@ class SPT_Batch_List_Creator {
                             if (!empty($statistics)):
                             ?>
                             <div style="margin-bottom: 10px;">
-                                <strong><?php _e('Statistics:', 'sportspress-player-tools'); ?></strong><br>
+                                <strong><?php esc_html_e('Statistics:', 'sportspress-player-tools'); ?></strong><br>
                                 <?php foreach ($statistics as $stat): ?>
                                     <label style="display: inline-block; margin-right: 15px;"><input type="checkbox" name="columns[]" value="<?php echo esc_attr($stat->post_name); ?>" <?php checked(in_array($stat->post_name, array('p', 'gp'))); ?>> <?php echo esc_html($stat->post_title); ?></label>
                                 <?php endforeach; ?>
@@ -497,10 +497,10 @@ class SPT_Batch_List_Creator {
                 <table class="wp-list-table widefat striped">
                     <thead>
                         <tr>
-                            <th><?php _e('CSV Team', 'sportspress-player-tools'); ?></th>
-                            <th><?php _e('Matched Team', 'sportspress-player-tools'); ?></th>
-                            <th><?php _e('CSV Player', 'sportspress-player-tools'); ?></th>
-                            <th><?php _e('Matched Player', 'sportspress-player-tools'); ?></th>
+                            <th><?php esc_html_e('CSV Team', 'sportspress-player-tools'); ?></th>
+                            <th><?php esc_html_e('Matched Team', 'sportspress-player-tools'); ?></th>
+                            <th><?php esc_html_e('CSV Player', 'sportspress-player-tools'); ?></th>
+                            <th><?php esc_html_e('Matched Player', 'sportspress-player-tools'); ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -562,9 +562,9 @@ class SPT_Batch_List_Creator {
                 <?php endif; ?>
                 
                 <p class="submit">
-                    <button type="button" class="button button-primary" id="test-submit"><?php _e('Create Player Lists', 'sportspress-player-tools'); ?></button>
+                    <button type="button" class="button button-primary" id="test-submit"><?php esc_html_e('Create Player Lists', 'sportspress-player-tools'); ?></button>
                     <span id="status"></span>
-                    <a href="<?php echo esc_url(admin_url('edit.php?post_type=sp_list')); ?>" class="button"><?php _e('Cancel', 'sportspress-player-tools'); ?></a>
+                    <a href="<?php echo esc_url(admin_url('edit.php?post_type=sp_list')); ?>" class="button"><?php esc_html_e('Cancel', 'sportspress-player-tools'); ?></a>
                 </p>
             </form>
             <script>

@@ -46,38 +46,38 @@ class SPT_Admin {
                 
                 <table class="form-table">
                     <tr>
-                        <th scope="row"><?php _e('Email Meta Box', 'sportspress-player-tools'); ?></th>
+                        <th scope="row"><?php esc_html_e('Email Meta Box', 'sportspress-player-tools'); ?></th>
                         <td>
                             <label>
                                 <input type="checkbox" name="spt_email_meta" value="1" <?php checked($email_meta, '1'); ?> />
-                                <?php _e('Add email meta box to player edit pages', 'sportspress-player-tools'); ?>
+                                <?php esc_html_e('Add email meta box to player edit pages', 'sportspress-player-tools'); ?>
                             </label>
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row"><?php _e('Captain Role Selection', 'sportspress-player-tools'); ?></th>
+                        <th scope="row"><?php esc_html_e('Captain Role Selection', 'sportspress-player-tools'); ?></th>
                         <td>
                             <label>
                                 <input type="checkbox" name="spt_captain_role" value="1" <?php checked($captain_role, '1'); ?> />
-                                <?php _e('Add captain selection to player lists with "C" display on frontend', 'sportspress-player-tools'); ?>
+                                <?php esc_html_e('Add captain selection to player lists with "C" display on frontend', 'sportspress-player-tools'); ?>
                             </label>
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row"><?php _e('Statistics Enabler', 'sportspress-player-tools'); ?></th>
+                        <th scope="row"><?php esc_html_e('Statistics Enabler', 'sportspress-player-tools'); ?></th>
                         <td>
                             <label>
                                 <input type="checkbox" name="spt_stats_enabler" value="1" <?php checked($stats_enabler, '1'); ?> />
-                                <?php _e('Automatically enable frontend statistics display for players', 'sportspress-player-tools'); ?>
+                                <?php esc_html_e('Automatically enable frontend statistics display for players', 'sportspress-player-tools'); ?>
                             </label>
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row"><?php _e('Batch List Creator', 'sportspress-player-tools'); ?></th>
+                        <th scope="row"><?php esc_html_e('Batch List Creator', 'sportspress-player-tools'); ?></th>
                         <td>
                             <label>
                                 <input type="checkbox" name="spt_batch_list_creator" value="1" <?php checked($batch_list, '1'); ?> />
-                                <?php _e('Enable CSV upload for batch player list creation', 'sportspress-player-tools'); ?>
+                                <?php esc_html_e('Enable CSV upload for batch player list creation', 'sportspress-player-tools'); ?>
                             </label>
                         </td>
                     </tr>
@@ -87,16 +87,16 @@ class SPT_Admin {
             </form>
             
             <hr>
-            <h2><?php _e('Upload Player Lists', 'sportspress-player-tools'); ?></h2>
+            <h2><?php esc_html_e('Upload Player Lists', 'sportspress-player-tools'); ?></h2>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data">
                 <input type="hidden" name="action" value="spt_upload_list_csv">
                 <?php wp_nonce_field('spt_batch_list_upload', 'spt_batch_list_nonce'); ?>
                 <table class="form-table">
                     <tr>
-                        <th><?php _e('CSV File', 'sportspress-player-tools'); ?></th>
+                        <th><?php esc_html_e('CSV File', 'sportspress-player-tools'); ?></th>
                         <td>
                             <input type="file" name="csv_file" accept=".csv" required>
-                            <p class="description"><?php _e('CSV must have Team and Name columns', 'sportspress-player-tools'); ?></p>
+                            <p class="description"><?php esc_html_e('CSV must have Team and Name columns', 'sportspress-player-tools'); ?></p>
                         </td>
                     </tr>
                 </table>
