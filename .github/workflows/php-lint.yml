@@ -31,9 +31,10 @@ jobs:
           # PHPCS standards are usually located in ~/.composer/vendor/wp-coding-standards/wpcs
           phpcs -i
 
+      - name: PHP Syntax Lint
+        run: |
+          find . -name '*.php' -not -path '*/vendor/*' -not -path '*/node_modules/*' -exec php -l {} \;
+
       - name: Run PHPCS
         run: |
-          # Use -n to hide warnings, or -s to show sniff names
-          # Setting continue-on-error: true so we get the results without blocking the build if there are just minor style issues
-          phpcs -p -s --standard=WordPress --extensions=php --ignore=*/vendor/*,*/assets/*,*/tests/* .
-        continue-on-error: true
+          phpcs -p -s --warning-severity=0 --standard=WordPress --extensions=php --ignore=*/vendor/*,*/assets/*,*/tests/* .

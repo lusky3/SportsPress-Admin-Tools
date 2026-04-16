@@ -28,12 +28,48 @@ class SPET_ETransfer_Automation
 
     public function handle_webhook($request)
     {
+        // Rate limiting (IP-based, 30 requests/minute)
+        $ip = $request->get_header('x-forwarded-for');
+        if ($ip) {
+            $ip = trim(explode(',', $ip)[0]);
+        } else {
+            $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+        }
+        $rate_key = 'spet_rate_' . md5($ip);
+        $rate_count = (int) get_transient($rate_key);
+        if ($rate_count >= 30) {
+            return new WP_Error('rate_limited', 'Too many requests', array('status' => 429));
+        }
+        set_transient($rate_key, $rate_count + 1, 60);
+
         $body = $request->get_body();
         $headers = $request->get_headers();
 
         // Verify signature
         if (!$this->verify_signature($body, $headers)) {
             return new WP_Error('invalid_signature', 'Invalid webhook signature', array('status' => 401));
+        }
+
+        // Replay protection (timestamp validation)
+        $timestamp = null;
+        if (isset($headers['x_timestamp'][0])) {
+            $timestamp = $headers['x_timestamp'][0];
+        } elseif (isset($headers['x-timestamp'][0])) {
+            $timestamp = $headers['x-timestamp'][0];
+        } else {
+            $data_peek = json_decode($body, true);
+            if (isset($data_peek['timestamp'])) {
+                $timestamp = $data_peek['timestamp'];
+            }
+        }
+
+        if ($timestamp !== null) {
+            $ts_epoch = strtotime($timestamp);
+            if ($ts_epoch === false || abs(time() - $ts_epoch) > 300) {
+                return new WP_Error('request_expired', 'Request timestamp is too old or invalid', array('status' => 403));
+            }
+        } else {
+            error_log('SPET Webhook: No timestamp present in request from ' . $ip . ' - replay protection inactive');
         }
 
         // Check WooCommerce is available
@@ -140,6 +176,14 @@ class SPET_ETransfer_Automation
             return false;
         }
 
+        // New format: timestamp + body (when X-Timestamp header is present)
+        $timestamp = $headers['x_timestamp'][0] ?? ($headers['x-timestamp'][0] ?? null);
+        if ($timestamp !== null) {
+            $expected = hash_hmac('sha256', $timestamp . $body, $secret);
+            return hash_equals($expected, $signature);
+        }
+
+        // Legacy format: body only
         $expected = hash_hmac('sha256', $body, $secret);
         return hash_equals($expected, $signature);
     }
