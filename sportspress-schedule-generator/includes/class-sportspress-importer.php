@@ -36,6 +36,18 @@ class SPSG_Sports_Press_Importer
     private $import_config_id = '';
 
     /**
+     * Cached team name -> object lookup map
+     * @var array|null
+     */
+    private $team_name_map = null;
+
+    /**
+     * Cached venue name -> object lookup map
+     * @var array|null
+     */
+    private $venue_name_map = null;
+
+    /**
      * Constructor
      */
     public function __construct()
@@ -125,16 +137,20 @@ class SPSG_Sports_Press_Importer
         foreach ($schedule as $index => $game) {
             // Update progress
             $processed++;
-            $progress = array(
-                'total' => $total_games,
-                'processed' => $processed,
-                'imported' => $results['imported'],
-                'skipped' => $results['skipped'],
-                'failed' => $results['failed'],
-                'overwritten' => $results['overwritten'],
-                'percentage' => round(($processed / $total_games) * 100)
-            );
-            set_transient($progress_key, $progress, 300); // 5 minutes
+
+            // Batch progress transient updates: only write every 25 games or on last game
+            if ($processed % 25 === 0 || $processed === $total_games) {
+                $progress = array(
+                    'total' => $total_games,
+                    'processed' => $processed,
+                    'imported' => $results['imported'],
+                    'skipped' => $results['skipped'],
+                    'failed' => $results['failed'],
+                    'overwritten' => $results['overwritten'],
+                    'percentage' => round(($processed / $total_games) * 100)
+                );
+                set_transient($progress_key, $progress, 300); // 5 minutes
+            }
 
             $this->import_single_game($index, $game, $options, $conflicts, $results);
         }
@@ -371,6 +387,7 @@ class SPSG_Sports_Press_Importer
                     $home_team = (object) array('id' => $team_id, 'name' => $home_team_name);
                     // Clear cached teams so subsequent lookups find the new team
                     SPSG_Sports_Press_Integration::clear_teams_cache();
+                    $this->team_name_map = null;
                 }
             }
 
@@ -384,6 +401,7 @@ class SPSG_Sports_Press_Importer
                 if (!is_wp_error($team_id)) {
                     $away_team = (object) array('id' => $team_id, 'name' => $away_team_name);
                     SPSG_Sports_Press_Integration::clear_teams_cache();
+                    $this->team_name_map = null;
                 }
             }
 
@@ -476,17 +494,15 @@ class SPSG_Sports_Press_Importer
      */
     private function find_team_by_name($name)
     {
-        $teams = SPSG_Sports_Press_Integration::get_teams();
-        $found_team = null;
-
-        foreach ($teams as $team) {
-            if (strcasecmp($team->name, $name) === 0) {
-                $found_team = $team;
-                break;
+        if ($this->team_name_map === null) {
+            $this->team_name_map = array();
+            $teams = SPSG_Sports_Press_Integration::get_teams();
+            foreach ($teams as $team) {
+                $this->team_name_map[strtolower($team->name)] = $team;
             }
         }
 
-        return $found_team;
+        return $this->team_name_map[strtolower($name)] ?? null;
     }
 
     /**
@@ -497,17 +513,15 @@ class SPSG_Sports_Press_Importer
      */
     private function find_venue_by_name($name)
     {
-        $venues = SPSG_Sports_Press_Integration::get_venues();
-        $found_venue = null;
-
-        foreach ($venues as $venue) {
-            if (strcasecmp($venue->name, $name) === 0) {
-                $found_venue = $venue;
-                break;
+        if ($this->venue_name_map === null) {
+            $this->venue_name_map = array();
+            $venues = SPSG_Sports_Press_Integration::get_venues();
+            foreach ($venues as $venue) {
+                $this->venue_name_map[strtolower($venue->name)] = $venue;
             }
         }
 
-        return $found_venue;
+        return $this->venue_name_map[strtolower($name)] ?? null;
     }
 
     /**

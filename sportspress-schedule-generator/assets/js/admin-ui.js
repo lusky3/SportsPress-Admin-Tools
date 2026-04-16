@@ -129,7 +129,7 @@
             type: 'POST',
             data: {
                 action: 'spsg_get_available_venues',
-                nonce: nonces.get_available_venues
+                nonce: spsgData.nonces.get_available_venues
             },
             success: function(response) {
                 if (response.success) {
@@ -603,7 +603,7 @@
             type: 'POST',
             data: {
                 action: 'spsg_load_sp_teams',
-                nonce: nonces.load_sp_teams,
+                nonce: spsgData.nonces.load_sp_teams,
                 division_id: spDivisionId
             },
             success: function(response) {
@@ -906,7 +906,7 @@
             data: {
                 action: 'spsg_load_preset',
                 preset_name: presetId,
-                nonce: nonces.load_preset
+                nonce: spsgData.nonces.load_preset
             },
             success: function(response) {
                 if (response.success) {
@@ -1119,7 +1119,7 @@
                 action: 'spsg_get_change_history',
                 config_id: configId,
                 limit: 10,
-                nonce: nonces.get_change_history
+                nonce: spsgData.nonces.get_change_history
             },
             success: function(response) {
                 if (response.success) {
@@ -1189,7 +1189,7 @@
             type: 'POST',
             data: {
                 action: 'spsg_clear_change_history',
-                nonce: nonces.clear_change_history
+                nonce: spsgData.nonces.clear_change_history
             },
             success: function(response) {
                 if (response.success) {

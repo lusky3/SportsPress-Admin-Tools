@@ -68,14 +68,17 @@ class SPET_Database
         return $result;
     }
 
-    public static function get_etransfer_logs($limit = 50)
+    public static function get_etransfer_logs($limit = 50, $summary = false)
     {
         global $wpdb;
 
         $table_name = $wpdb->prefix . 'spet_etransfer_logs';
+        $columns = $summary
+            ? 'id, timestamp, from_name, from_email, amount, reference_number, match_criteria, order_id, result'
+            : '*';
 
         return $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM $table_name ORDER BY timestamp DESC LIMIT %d",
+            "SELECT $columns FROM $table_name ORDER BY timestamp DESC LIMIT %d",
             $limit
         ));
     }

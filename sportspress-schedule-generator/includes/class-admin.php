@@ -35,16 +35,16 @@ class SPSG_Admin
     const LABEL_IMPORT_SCHEDULE = 'Import Schedule';
 
     /**
-     * Configuration manager instance
+     * Configuration manager instance (lazy-initialized)
      *
-     * @var SPSG_Configuration_Manager
+     * @var SPSG_Configuration_Manager|null
      */
     private $config_manager;
 
     /**
-     * Renderer instance
+     * Renderer instance (lazy-initialized)
      *
-     * @var SPSG_Admin_Renderer
+     * @var SPSG_Admin_Renderer|null
      */
     private $renderer;
 
@@ -53,17 +53,40 @@ class SPSG_Admin
      */
     public function __construct()
     {
-        $this->config_manager = new SPSG_Configuration_Manager();
-        $this->renderer = new SPSG_Admin_Renderer($this->config_manager);
-
-        // Instantiate AJAX handler (registers its own hooks)
-        new SPSG_Admin_Ajax($this->config_manager);
+        // AJAX handler must register wp_ajax hooks early (they fire on admin-ajax.php)
+        new SPSG_Admin_Ajax($this->get_config_manager());
 
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('spat_admin_page_tabs', array($this, 'add_spat_tab'));
         add_action('spat_admin_page_content', array($this, 'add_spat_content'));
         add_action('spat_admin_init_settings', array($this, 'register_spat_settings'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
+    }
+
+    /**
+     * Get configuration manager (lazy-initialized)
+     *
+     * @return SPSG_Configuration_Manager
+     */
+    private function get_config_manager()
+    {
+        if ($this->config_manager === null) {
+            $this->config_manager = new SPSG_Configuration_Manager();
+        }
+        return $this->config_manager;
+    }
+
+    /**
+     * Get renderer (lazy-initialized)
+     *
+     * @return SPSG_Admin_Renderer
+     */
+    private function get_renderer()
+    {
+        if ($this->renderer === null) {
+            $this->renderer = new SPSG_Admin_Renderer($this->get_config_manager());
+        }
+        return $this->renderer;
     }
 
     /**
@@ -262,7 +285,7 @@ class SPSG_Admin
             $this->handle_form_submission();
         }
 
-        $current_config = $this->config_manager->get_current();
+        $current_config = $this->get_config_manager()->get_current();
 ?>
         <div class="wrap">
             <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
@@ -282,27 +305,27 @@ class SPSG_Admin
                 <input type="hidden" name="current_tab" value="basic-config">
 
                 <div id="basic-config" class="spsg-tab-content">
-                    <?php $this->renderer->render_basic_config_tab($current_config); ?>
+                    <?php $this->get_renderer()->render_basic_config_tab($current_config); ?>
                 </div>
 
                 <div id="divisions-teams" class="spsg-tab-content" style="display: none;">
-                    <?php $this->renderer->render_divisions_teams_tab($current_config); ?>
+                    <?php $this->get_renderer()->render_divisions_teams_tab($current_config); ?>
                 </div>
 
                 <div id="venues-times" class="spsg-tab-content" style="display: none;">
-                    <?php $this->renderer->render_venues_times_tab($current_config); ?>
+                    <?php $this->get_renderer()->render_venues_times_tab($current_config); ?>
                 </div>
 
                 <div id="constraints" class="spsg-tab-content" style="display: none;">
-                    <?php $this->renderer->render_constraints_tab($current_config); ?>
+                    <?php $this->get_renderer()->render_constraints_tab($current_config); ?>
                 </div>
 
                 <div id="generate" class="spsg-tab-content" style="display: none;">
-                    <?php $this->renderer->render_generate_tab($current_config); ?>
+                    <?php $this->get_renderer()->render_generate_tab($current_config); ?>
                 </div>
 
                 <div id="placeholder-teams" class="spsg-tab-content" style="display: none;">
-                    <?php $this->renderer->render_placeholder_teams_tab(); ?>
+                    <?php $this->get_renderer()->render_placeholder_teams_tab(); ?>
                 </div>
             </form>
         </div>
@@ -378,14 +401,9 @@ class SPSG_Admin
             'nonces' => array(
                 'import_league' => wp_create_nonce('spsg_import_league'),
                 'save_imported_league' => wp_create_nonce('spsg_save_imported_league'),
-                'get_available_venues' => wp_create_nonce('spsg_get_available_venues'),
-                'load_sp_teams' => wp_create_nonce('spsg_load_sp_teams'),
-                'load_preset' => wp_create_nonce('spsg_load_preset'),
                 'delete_config' => wp_create_nonce('spsg_delete_config'),
-                'get_change_history' => wp_create_nonce('spsg_get_change_history'),
-                'clear_change_history' => wp_create_nonce('spsg_clear_change_history'),
             ),
-            'presets' => $this->config_manager->list_presets(),
+            'presets' => $this->get_config_manager()->list_presets(),
             'i18n' => $this->get_admin_ui_i18n_strings(),
         ));
 
@@ -534,7 +552,7 @@ class SPSG_Admin
 
         if ($action === 'save_config') {
             $config_data = $this->sanitize_form_data($_POST);
-            $result = $this->config_manager->save($config_data);
+            $result = $this->get_config_manager()->save($config_data);
 
             if (is_wp_error($result)) {
                 add_settings_error('spsg_messages', 'spsg_error', $result->get_error_message(), 'error');
@@ -551,6 +569,6 @@ class SPSG_Admin
      */
     private function sanitize_form_data($data)
     {
-        return $this->config_manager->sanitize($data);
+        return $this->get_config_manager()->sanitize($data);
     }
 }

@@ -15,6 +15,9 @@ class SPET_ETransfer_Admin
     /** @var string Menu title text domain key */
     const MENU_TITLE = 'e-Transfer Webhooks';
 
+    /** @var int|null Cached pending webhook count for this request */
+    private $pending_count = null;
+
     public function __construct()
     {
         add_action('admin_menu', array($this, 'add_woocommerce_menu'), 99);
@@ -40,10 +43,18 @@ class SPET_ETransfer_Admin
         );
     }
 
+    private function get_pending_count()
+    {
+        if ($this->pending_count === null) {
+            $this->pending_count = SPET_Database::count_pending_webhooks();
+        }
+        return $this->pending_count;
+    }
+
     private function get_menu_title()
     {
         $menu_title = __(self::MENU_TITLE, 'sportspress-admin-tools');
-        $pending_count = SPET_Database::count_pending_webhooks();
+        $pending_count = $this->get_pending_count();
 
         if ($pending_count > 0) {
             $menu_title .= ' <span class="awaiting-mod"><span class="pending-count">' . $pending_count . '</span></span>';
@@ -60,7 +71,7 @@ class SPET_ETransfer_Admin
             return;
         }
 
-        $pending_count = SPET_Database::count_pending_webhooks();
+        $pending_count = $this->get_pending_count();
 
         foreach ($submenu['woocommerce'] as $key => $item) {
             if ($item[2] === 'etransfer-webhooks') {
@@ -126,10 +137,13 @@ class SPET_ETransfer_Admin
             <h1><?php _e('e-Transfer Webhook Management', 'sportspress-admin-tools'); ?></h1>
             
             <h2><?php _e('Unmatched Webhooks', 'sportspress-admin-tools'); ?></h2>
-            <?php $this->display_unmatched_webhooks(); ?>
+            <?php
+            $logs = SPET_Database::get_etransfer_logs(50, true);
+            $this->display_unmatched_webhooks($logs);
+            ?>
             
             <h2><?php _e('All Webhook Activity', 'sportspress-admin-tools'); ?></h2>
-            <?php $this->display_all_webhooks(); ?>
+            <?php $this->display_all_webhooks($logs); ?>
             
             <h2><?php _e('Log Maintenance', 'sportspress-admin-tools'); ?></h2>
             <p><?php _e('Logs older than 90 days are automatically cleaned up daily. You can also purge them manually.', 'sportspress-admin-tools'); ?></p>
@@ -141,9 +155,8 @@ class SPET_ETransfer_Admin
         <?php
     }
 
-    private function display_unmatched_webhooks()
+    private function display_unmatched_webhooks($logs)
     {
-        $logs = SPET_Database::get_etransfer_logs();
         if ($logs === false) {
             echo '<p>' . __('Error retrieving webhook logs.', 'sportspress-admin-tools') . '</p>';
             return;
@@ -158,6 +171,14 @@ class SPET_ETransfer_Admin
             echo '<p>' . __('No unmatched webhooks found.', 'sportspress-admin-tools') . '</p>';
             return;
         }
+
+        // Fetch on-hold orders once for all unmatched rows
+        $orders = wc_get_orders(array(
+            'status' => 'on-hold',
+            'limit' => 50,
+            'orderby' => 'date',
+            'order' => 'DESC'
+        ));
 
         echo '<table class="wp-list-table widefat fixed striped">';
         echo '<thead><tr>';
@@ -184,14 +205,6 @@ class SPET_ETransfer_Admin
                 echo '<select name="order_id" required style="margin-right:5px;">';
                 echo '<option value="">' . __('Select Order', 'sportspress-admin-tools') . '</option>';
 
-                // Get on-hold orders
-                $orders = wc_get_orders(array(
-                    'status' => 'on-hold',
-                    'limit' => 50,
-                    'orderby' => 'date',
-                    'order' => 'DESC'
-                ));
-
                 foreach ($orders as $order) {
                     echo '<option value="' . esc_attr($order->get_id()) . '">#' . esc_html($order->get_id()) . ' - ' . esc_html($order->get_billing_first_name() . ' ' . $order->get_billing_last_name()) . ' ($' . esc_html($order->get_total()) . ')</option>';
                 }
@@ -214,9 +227,8 @@ class SPET_ETransfer_Admin
         echo '</tbody></table>';
     }
 
-    private function display_all_webhooks()
+    private function display_all_webhooks($logs)
     {
-        $logs = SPET_Database::get_etransfer_logs();
         if ($logs === false) {
             echo '<p>' . __('Error retrieving webhook logs.', 'sportspress-admin-tools') . '</p>';
             return;

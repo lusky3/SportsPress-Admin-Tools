@@ -20,7 +20,10 @@ class SPT_Batch_List_Creator {
         add_action('admin_notices', array($this, 'success_notice'));
         add_action('wp_ajax_spt_search_teams', array($this, 'ajax_search_teams'));
         add_action('wp_ajax_spt_search_players', array($this, 'ajax_search_players'));
-        add_action('admin_init', array($this, 'cleanup_old_temp_data'));
+        add_action('spt_cleanup_old_temp_data', array($this, 'cleanup_old_temp_data'));
+        if (!wp_next_scheduled('spt_cleanup_old_temp_data')) {
+            wp_schedule_event(time(), 'daily', 'spt_cleanup_old_temp_data');
+        }
     }
     
     public function add_tools_page() {
@@ -394,18 +397,8 @@ class SPT_Batch_List_Creator {
         $offset = ($current_page - 1) * $per_page;
         $data_page = array_slice($data, $offset, $per_page, false);
         
-        $teams = get_posts(array('post_type' => 'sp_team', 'posts_per_page' => -1, 'orderby' => 'title', 'order' => 'ASC', 'fields' => 'ids'));
-        $players = get_posts(array('post_type' => 'sp_player', 'posts_per_page' => -1, 'orderby' => 'title', 'order' => 'ASC', 'fields' => 'ids'));
-        
-        // Convert IDs to objects for find_closest
-        $team_objects = array();
-        foreach ($teams as $team_id) {
-            $team_objects[] = (object)array('ID' => $team_id, 'post_title' => get_the_title($team_id));
-        }
-        $player_objects = array();
-        foreach ($players as $player_id) {
-            $player_objects[] = (object)array('ID' => $player_id, 'post_title' => get_the_title($player_id));
-        }
+        $team_objects = get_posts(array('post_type' => 'sp_team', 'posts_per_page' => -1, 'orderby' => 'title', 'order' => 'ASC'));
+        $player_objects = get_posts(array('post_type' => 'sp_player', 'posts_per_page' => -1, 'orderby' => 'title', 'order' => 'ASC'));
         
         ?>
         <div class="wrap">
@@ -631,8 +624,8 @@ class SPT_Batch_List_Creator {
     private function find_closest($name, $posts, &$is_ambiguous = false) {
         $name_lower = strtolower(trim($name));
         $best = null;
-        $best_score = -1;
-        $second_best_score = -1;
+        $best_dist = PHP_INT_MAX;
+        $second_best_dist = PHP_INT_MAX;
         
         foreach ($posts as $post) {
             $title = trim($post->post_title);
@@ -647,25 +640,25 @@ class SPT_Batch_List_Creator {
                 return $post->ID;
             }
             
-            // Calculate similarity percentage using cleaned title
-            similar_text($name_lower, $title_clean_lower, $percent);
+            // Calculate distance using levenshtein (O(N²) vs O(N³) for similar_text)
+            $dist = levenshtein($name_lower, $title_clean_lower);
             
             // Bonus for containing the search term
             if (strpos($title_clean_lower, $name_lower) !== false) {
-                $percent += 10;
+                $dist = max(0, $dist - 10);
             }
             
-            if ($percent > $best_score) {
-                $second_best_score = $best_score;
-                $best_score = $percent;
+            if ($dist < $best_dist) {
+                $second_best_dist = $best_dist;
+                $best_dist = $dist;
                 $best = $post->ID;
-            } elseif ($percent > $second_best_score) {
-                $second_best_score = $percent;
+            } elseif ($dist < $second_best_dist) {
+                $second_best_dist = $dist;
             }
         }
         
         // Mark as ambiguous if second best is close to best
-        $is_ambiguous = ($second_best_score > 0 && ($best_score - $second_best_score) < 15);
+        $is_ambiguous = ($second_best_dist < PHP_INT_MAX && ($second_best_dist - $best_dist) < 3);
         
         return $best;
     }

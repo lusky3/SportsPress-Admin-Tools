@@ -31,15 +31,17 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface
      */
     public function __construct()
     {
-        add_action('init', array($this, 'init'));
     }
 
     /**
-     * Initialize
+     * Get current configuration (lazy-loaded on first access)
      */
-    public function init()
+    public function get_current()
     {
-        $this->current_config = $this->load();
+        if ($this->current_config === null) {
+            $this->current_config = $this->load();
+        }
+        return $this->current_config;
     }
 
     /**
@@ -421,14 +423,6 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface
     }
 
     /**
-     * Get current configuration
-     */
-    public function get_current()
-    {
-        return $this->current_config;
-    }
-
-    /**
      * Set current configuration
      */
     public function set_current($config_id)
@@ -493,48 +487,41 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface
             'inter_division_games' => __('Inter-Division Games', 'sportspress-schedule-generator')
         );
 
-        // Compare and track changes
+        // Collect all changes first, then batch write
+        $new_changes = array();
         foreach ($fields_to_track as $field => $field_label) {
             $old_value = $old_config[$field] ?? null;
             $new_value = $new_config[$field] ?? null;
 
             // Use serialize for complex comparisons
             if (serialize($old_value) !== serialize($new_value)) {
-                $this->track_change($config_id, $field, $field_label, $old_value, $new_value);
+                $old_display = $this->format_value_for_display($field, $old_value);
+                $new_display = $this->format_value_for_display($field, $new_value);
+
+                $new_changes[] = array(
+                    'timestamp' => current_time('mysql'),
+                    'user_id' => get_current_user_id(),
+                    'field' => $field,
+                    'field_label' => $field_label,
+                    'old_value' => $old_display,
+                    'new_value' => $new_display
+                );
             }
         }
-    }
 
-    /**
-     * Track a single configuration change
-     *
-     * @param string $config_id Configuration ID
-     * @param string $field Field name
-     * @param string $field_label Human-readable field label
-     * @param mixed $old_value Old value
-     * @param mixed $new_value New value
-     */
-    private function track_change($config_id, $field, $field_label, $old_value, $new_value)
-    {
+        if (empty($new_changes)) {
+            return;
+        }
+
+        // Single DB read + write instead of one per changed field
         $changes = get_option('spsg_configuration_changes', array());
 
         if (!isset($changes[$config_id])) {
             $changes[$config_id] = array();
         }
 
-        // Format values for display
-        $old_display = $this->format_value_for_display($field, $old_value);
-        $new_display = $this->format_value_for_display($field, $new_value);
-
-        // Add new change to the beginning of the array
-        array_unshift($changes[$config_id], array(
-            'timestamp' => current_time('mysql'),
-            'user_id' => get_current_user_id(),
-            'field' => $field,
-            'field_label' => $field_label,
-            'old_value' => $old_display,
-            'new_value' => $new_display
-        ));
+        // Prepend all new changes
+        $changes[$config_id] = array_merge($new_changes, $changes[$config_id]);
 
         // Keep only last 10 changes per configuration
         $changes[$config_id] = array_slice($changes[$config_id], 0, 10);
