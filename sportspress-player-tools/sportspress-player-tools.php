@@ -46,7 +46,7 @@ class SportsPress_Player_Tools {
     public function check_activation_requirements() {
         if (!class_exists('SPAT_Plugin_Manager')) {
             deactivate_plugins(plugin_basename(__FILE__));
-            wp_die(__('SportsPress Player Tools requires SportsPress Admin Tools to be installed and activated first.', 'sportspress-player-tools'));
+            wp_die('SportsPress Player Tools requires SportsPress Admin Tools to be installed and activated first.');
         }
     }
     

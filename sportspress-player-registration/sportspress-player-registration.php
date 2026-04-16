@@ -36,7 +36,7 @@ class SportsPress_Player_Registration {
     public function check_activation_requirements() {
         if (!class_exists('SPAT_Plugin_Manager')) {
             deactivate_plugins(plugin_basename(__FILE__));
-            wp_die(__('SportsPress Player Registration requires SportsPress Admin Tools to be installed and activated first.', 'sportspress-player-registration'));
+            wp_die('SportsPress Player Registration requires SportsPress Admin Tools to be installed and activated first.');
         }
     }
     

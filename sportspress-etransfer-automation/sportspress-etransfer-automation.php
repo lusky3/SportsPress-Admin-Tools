@@ -35,11 +35,20 @@ class SportsPress_ETransfer_Automation
     {
         if (!class_exists('SPAT_Plugin_Manager')) {
             deactivate_plugins(plugin_basename(__FILE__));
-            wp_die(__('SportsPress e-Transfer Automation requires SportsPress Admin Tools to be installed and activated first.', 'sportspress-etransfer-automation'));
+            wp_die('SportsPress e-Transfer Automation requires SportsPress Admin Tools to be installed and activated first.');
         }
 
         require_once SPET_PLUGIN_PATH . 'includes/class-database.php';
         SPET_Database::create_tables();
+
+        // Set default equivalent names if not already set
+        if (empty(get_option('spet_equivalent_names'))) {
+            require_once SPET_PLUGIN_PATH . 'includes/class-admin.php';
+            $admin = new SPET_Admin();
+            // Use reflection or just set a sensible default inline
+            $defaults = "Nicholas|Nick\nRobert|Rob|Bob|Bobby\nWilliam|Will|Bill|Billy\nJames|Jim|Jimmy\nMichael|Mike\nDavid|Dave\nJoseph|Joe\nThomas|Tom|Tommy\nChristopher|Chris\nMatthew|Matt\nAnthony|Tony\nDaniel|Dan|Danny\nSteven|Steve|Stephen\nAndrew|Andy|Drew\nJoshua|Josh\nKenneth|Ken\nTimothy|Tim\nJonathan|Jon\nAlexander|Alex\nBenjamin|Ben\nSamuel|Sam\nPatrick|Pat\nCharles|Charlie|Chuck\nElizabeth|Liz|Beth|Betty\nJennifer|Jen|Jenny\nJessica|Jess\nSusan|Sue\nMargaret|Maggie|Meg\nKatherine|Kate|Kathy|Katie\nRebecca|Becky|Becca\nPatricia|Tricia\nChristine|Christie\nSamantha|Sammy\nKimberly|Kim\nVictoria|Vicky|Tori\nAlexandra|Alexa";
+            update_option('spet_equivalent_names', $defaults);
+        }
 
         // Schedule daily log cleanup
         if (!wp_next_scheduled('spet_cleanup_old_logs')) {
