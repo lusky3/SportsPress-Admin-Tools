@@ -24,6 +24,7 @@
 		<exclude name="WordPress.PHP.YodaConditions.NotYoda"/>
 		<exclude name="WordPress.WP.I18n.MissingTranslatorsComment"/>
 		<exclude name="WordPress.WP.I18n.NonSingularStringLiteralText"/>
+		<exclude name="WordPress.WP.I18n.NonSingularStringLiteralDomain"/>
 		<exclude name="Universal.Operators.DisallowShortTernary.Found"/>
 		<exclude name="Universal.ControlStructures.DisallowLonelyIf.Found"/>
 		<exclude name="Squiz.PHP.DisallowSizeFunctionsInLoops.Found"/>
