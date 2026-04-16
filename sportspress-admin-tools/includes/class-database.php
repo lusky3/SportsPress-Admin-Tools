@@ -167,11 +167,16 @@ class SPAT_Database {
             return;
         }
         
+        $all_succeeded = true;
         foreach ($logs as $log) {
-            $wpdb->insert($table_name, $mapper($log));
+            if ($wpdb->insert($table_name, $mapper($log)) === false) {
+                $all_succeeded = false;
+            }
         }
         
-        delete_option($option_name);
+        if ($all_succeeded) {
+            delete_option($option_name);
+        }
     }
     
     public static function get_etransfer_logs($limit = 50, $offset = 0) {
@@ -236,7 +241,7 @@ class SPAT_Database {
         ), array(
             '%d', // order_id
             '%s', // customer_name
-            $player_id ? '%d' : null, // player_id
+            '%s', // player_id
             '%s', // season
             '%s', // position
             '%s'  // action
@@ -256,7 +261,7 @@ class SPAT_Database {
             'user_name' => sanitize_text_field($user_name),
             'action' => sanitize_text_field($action)
         ), array(
-            $user_id ? '%d' : null, // user_id
+            '%s', // user_id
             '%s', // user_name
             '%s'  // action
         ));

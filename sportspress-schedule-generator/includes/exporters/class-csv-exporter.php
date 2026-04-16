@@ -74,7 +74,7 @@ class SPSG_CSV_Exporter implements SPSG_Exporter_Interface
                 $home_away,
                 $is_inter_division ? 'Yes' : 'No',
                 $game->week_number ?? '',
-                $game->is_makeup ? 'Yes' : 'No',
+                ($game->is_makeup ?? false) ? 'Yes' : 'No',
                 $game->original_date ?? ''
             );
             fputcsv($file, $row);

@@ -75,7 +75,7 @@ class SPT_Player_Stats_Enabler {
                     $statistics[$league_id] = array();
                 }
                 
-                $statistics[$league_id][0] = array(
+                $statistics[$league_id][$season_id] = array(
                     'g' => '', 'a' => '', 'pim' => '', 'p' => '', 'gp' => ''
                 );
             }

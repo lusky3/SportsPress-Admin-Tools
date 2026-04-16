@@ -65,7 +65,7 @@ class SPAT_Admin
 
         // Enqueue Slim Select if enabled
         if (get_option('spat_use_select2', '0')) {
-            $plugin_url = plugin_dir_url(dirname(dirname(__FILE__)));
+            $plugin_url = SPAT_PLUGIN_URL;
             wp_enqueue_script('slimselect', $plugin_url . 'assets/lib/slimselect/slimselect.min.js', array(), '3.4.3', true);
             wp_enqueue_style('slimselect', $plugin_url . 'assets/lib/slimselect/slimselect.min.css', array(), '3.4.3');
         }

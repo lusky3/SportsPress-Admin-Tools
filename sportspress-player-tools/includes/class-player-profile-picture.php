@@ -54,7 +54,7 @@ class SPT_Player_Profile_Picture {
     }
     
     public function add_menu_item($items) {
-        if (!current_user_can('sp_player')) {
+        if (empty($this->get_user_player_posts(get_current_user_id()))) {
             return $items;
         }
         
@@ -63,7 +63,7 @@ class SPT_Player_Profile_Picture {
     }
     
     public function display_upload_form() {
-        if (!current_user_can('sp_player')) {
+        if (empty($this->get_user_player_posts(get_current_user_id()))) {
             return;
         }
         
@@ -116,7 +116,7 @@ class SPT_Player_Profile_Picture {
             return;
         }
         
-        if (!current_user_can('sp_player')) {
+        if (empty($this->get_user_player_posts(get_current_user_id()))) {
             return;
         }
         

@@ -12,6 +12,11 @@ define('ABSPATH', dirname(__FILE__) . '/');
 define('SPSG_PLUGIN_PATH', dirname(__FILE__) . '/../');
 
 // Mock WordPress functions
+if (!function_exists('wp_rand')) {
+    function wp_rand($min = 0, $max = 0) {
+        return $max ? rand($min, $max) : rand();
+    }
+}
 if (!function_exists('wp_timezone_string')) {
     function wp_timezone_string() {
         return 'America/New_York';

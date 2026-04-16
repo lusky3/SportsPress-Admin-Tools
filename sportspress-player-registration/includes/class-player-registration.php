@@ -21,6 +21,10 @@ class SPR_Player_Registration {
             return;
         }
         
+        if ($order->get_meta('_spr_processed')) {
+            return;
+        }
+        
         $registration_items = $this->get_registration_items($order);
         if (empty($registration_items)) {
             return;
@@ -53,6 +57,9 @@ class SPR_Player_Registration {
                 SPR_Database::log_registration_activity($order_id, $customer_name, $result['player_id'], $season, $item['position'], $result['action']);
             }
         }
+        
+        $order->update_meta_data('_spr_processed', '1');
+        $order->save();
     }
     
     private function get_registration_items($order) {
@@ -64,7 +71,9 @@ class SPR_Player_Registration {
                 continue;
             }
             
-            $categories = wp_get_post_terms($product->get_id(), 'product_cat');
+            $lookup_id = $product->get_type() === 'variation' ? $product->get_parent_id() : $product->get_id();
+            
+            $categories = wp_get_post_terms($lookup_id, 'product_cat');
             $is_registration = false;
             
             foreach ($categories as $category) {
@@ -78,7 +87,7 @@ class SPR_Player_Registration {
                 continue;
             }
             
-            $tags = wp_get_post_terms($product->get_id(), 'product_tag');
+            $tags = wp_get_post_terms($lookup_id, 'product_tag');
             $position = 'player';
             
             foreach ($tags as $tag) {
@@ -99,7 +108,7 @@ class SPR_Player_Registration {
     
     private function extract_season_from_product($product_id) {
         $product_title = get_the_title($product_id);
-        if (preg_match('/([WS]\d{4}(?:-\d{2})?)/', $product_title, $matches)) {
+        if (preg_match('/\b([WS]\d{4}(?:-\d{2})?)\b/', $product_title, $matches)) {
             return $matches[1];
         }
         
@@ -117,10 +126,12 @@ class SPR_Player_Registration {
         $player_id = null;
         $action = '';
         
-        if (get_option('spr_auto_update', '1') === '1') {
-            $match = $this->find_existing_player($customer_name, $customer_email);
-            $player_id = $match['player_id'];
-            $action = $match['action'];
+        $match = $this->find_existing_player($customer_name, $customer_email);
+        $player_id = $match['player_id'];
+        $action = $match['action'];
+        
+        if ($player_id && get_option('spr_auto_update', '1') !== '1') {
+            return array('player_id' => $player_id, 'action' => $action);
         }
         
         // Create new player

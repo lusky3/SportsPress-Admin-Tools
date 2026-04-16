@@ -21,6 +21,7 @@ class SPT_Player_Modifications {
             add_action('add_meta_boxes', array($this, 'add_captain_meta_box'));
             add_action('save_post', array($this, 'save_captain_meta'));
             add_filter('sportspress_list_player_name', array($this, 'add_captain_indicator'), 10, 3);
+            add_action('wp_head', array($this, 'add_captain_css'));
         }
     }
     
@@ -120,12 +121,6 @@ class SPT_Player_Modifications {
             $indicator_text = apply_filters('spt_captain_indicator_text', 'C');
             $name .= ' <span class="spt-captain-indicator" title="' . esc_attr__('Captain', 'sportspress-player-tools') . '">' . esc_html($indicator_text) . '</span>';
             
-            // Add CSS if not already added
-            static $css_added = false;
-            if (!$css_added) {
-                add_action('wp_head', array($this, 'add_captain_css'));
-                $css_added = true;
-            }
         }
         
         return $name;

@@ -97,8 +97,8 @@ class SPEM_Events_Management {
             'meta_query' => array(
                 array(
                     'key'     => 'sp_team',
-                    'value'   => $team_id,
-                    'compare' => 'LIKE'
+                    'value'   => serialize(array($team_id)),
+                    'compare' => '='
                 )
             ),
             'posts_per_page' => 1
@@ -377,7 +377,11 @@ class SPEM_Events_Management {
 
         // Require at minimum date, home, away
         if ($col_map['date'] === false || $col_map['home_team'] === false || $col_map['away_team'] === false) {
-            return array();
+            $missing = array();
+            if ($col_map['date'] === false) $missing[] = 'date';
+            if ($col_map['home_team'] === false) $missing[] = 'home team';
+            if ($col_map['away_team'] === false) $missing[] = 'away team';
+            return new WP_Error('missing_columns', sprintf(__('Missing required columns: %s', 'sportspress-events-manager'), implode(', ', $missing)));
         }
 
         $events = array();
@@ -463,13 +467,13 @@ class SPEM_Events_Management {
         if ($timestamp === false) {
             return false;
         }
-        $date = wp_date('Y-m-d', $timestamp);
+        $date = date('Y-m-d', $timestamp);
 
         $time = '19:00';
         if (!empty($event_data['time'])) {
             $time_ts = strtotime($event_data['time']);
             if ($time_ts !== false) {
-                $time = wp_date('H:i', $time_ts);
+                $time = date('H:i', $time_ts);
             }
         }
 

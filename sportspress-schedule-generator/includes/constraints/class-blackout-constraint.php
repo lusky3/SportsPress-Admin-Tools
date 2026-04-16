@@ -67,7 +67,7 @@ class SPSG_Blackout_Constraint extends SPSG_Abstract_Constraint
      */
     private function track_missed_game($game, $blackout_date)
     {
-        $day_name = $blackout_date->format('l');
+        $day_name = strtolower($blackout_date->format('l'));
 
         $makeup_key = sprintf('%s_%s_%s',
             $game->home_team->id,
@@ -142,8 +142,8 @@ class SPSG_Blackout_Constraint extends SPSG_Abstract_Constraint
     private function find_makeup_date($makeup_game, $schedule, $config)
     {
         $original_day = $makeup_game['original_day'];
-        $season_start = new DateTime($config->season_start);
-        $season_end = new DateTime($config->season_end);
+        $season_start = $config->season_start instanceof DateTime ? clone $config->season_start : new DateTime($config->season_start);
+        $season_end = $config->season_end instanceof DateTime ? clone $config->season_end : new DateTime($config->season_end);
 
         // Get alternative days from configuration
         $alternative_days = $this->get_alternative_days($original_day, $config->playing_days);
@@ -152,7 +152,7 @@ class SPSG_Blackout_Constraint extends SPSG_Abstract_Constraint
         $current_date = clone $season_start;
         while ($current_date <= $season_end) {
             // Check if this date is a blackout and matches original day
-            if ($current_date->format('l') === $original_day && $this->is_blackout_date($current_date, $config)) {
+            if (strtolower($current_date->format('l')) === $original_day && $this->is_blackout_date($current_date, $config)) {
                 // Find the next alternative day
                 $makeup_date = $this->find_next_alternative_day($current_date, $alternative_days, $config);
 
@@ -205,7 +205,7 @@ class SPSG_Blackout_Constraint extends SPSG_Abstract_Constraint
 
         for ($i = 1; $i <= $max_search_days; $i++) {
             $current_date->add(new DateInterval('P1D'));
-            $day_name = $current_date->format('l');
+            $day_name = strtolower($current_date->format('l'));
 
             if (in_array($day_name, $alternative_days) && !$this->is_blackout_date($current_date, $config)) {
                 return $current_date;
@@ -250,12 +250,12 @@ class SPSG_Blackout_Constraint extends SPSG_Abstract_Constraint
      */
     private function find_any_available_date($makeup_game, $schedule, $config, $alternative_days)
     {
-        $season_start = new DateTime($config->season_start);
-        $season_end = new DateTime($config->season_end);
+        $season_start = $config->season_start instanceof DateTime ? clone $config->season_start : new DateTime($config->season_start);
+        $season_end = $config->season_end instanceof DateTime ? clone $config->season_end : new DateTime($config->season_end);
         $current_date = clone $season_start;
 
         while ($current_date <= $season_end) {
-            $day_name = $current_date->format('l');
+            $day_name = strtolower($current_date->format('l'));
 
             if (in_array($day_name, $alternative_days) &&
             !$this->is_blackout_date($current_date, $config) &&
