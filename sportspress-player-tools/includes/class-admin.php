@@ -12,7 +12,6 @@ if (!defined('ABSPATH')) {
 class SPT_Admin {
     
     public function __construct() {
-        add_action('spat_admin_init_settings', array($this, 'register_settings'));
         add_action('spat_admin_page_tabs', array($this, 'add_admin_tab'));
         add_action('spat_admin_page_content', array($this, 'add_admin_content'));
     }
@@ -25,13 +24,6 @@ class SPT_Admin {
         echo '<div id="player-tools" class="tab-content" style="display:none;">';
         $this->admin_page_content();
         echo '</div>';
-    }
-    
-    public function register_settings() {
-        register_setting('spt_settings', 'spt_email_meta');
-        register_setting('spt_settings', 'spt_captain_role');
-        register_setting('spt_settings', 'spt_stats_enabler');
-        register_setting('spt_settings', 'spt_batch_list_creator');
     }
     
     public function admin_page_content() {

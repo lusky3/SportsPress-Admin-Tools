@@ -14,7 +14,6 @@ class SPET_Admin
 
     public function __construct()
     {
-        add_action('spat_admin_init_settings', array($this, 'register_settings'));
         add_action('spat_admin_page_tabs', array($this, 'add_admin_tab'));
         add_action('spat_admin_page_content', array($this, 'add_admin_content'));
     }
@@ -29,12 +28,6 @@ class SPET_Admin
         echo '<div id="etransfer" class="tab-content" style="display:none;">';
         $this->admin_page_content();
         echo '</div>';
-    }
-
-    public function register_settings()
-    {
-        // Settings are saved via direct update_option in admin_page_content POST handler
-        // register_setting is not needed since we don't use the Settings API options.php flow
     }
 
     public function admin_page_content()

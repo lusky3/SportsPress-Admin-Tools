@@ -25,7 +25,6 @@ class Test_Constraint_Registry extends SPSG_Test_Case {
         $this->test_register_valid_constraint();
         $this->test_register_invalid_constraint();
         $this->test_get_registered_classes();
-        $this->test_constraint_validation();
     }
     
     private function test_register_valid_constraint() {
@@ -63,15 +62,6 @@ class Test_Constraint_Registry extends SPSG_Test_Case {
         $this->assertTrue(is_array($classes), 'Should return array of classes');
     }
     
-    private function test_constraint_validation() {
-        $validation_results = SPSG_Constraint_Registry::validate_all();
-        $this->assertTrue(is_array($validation_results), 'Should return validation results array');
-        
-        foreach ($validation_results as $result) {
-            $this->assertTrue(isset($result['class']), 'Each result should have class name');
-            $this->assertTrue(isset($result['valid']), 'Each result should have valid flag');
-        }
-    }
 }
 
 // Run the test

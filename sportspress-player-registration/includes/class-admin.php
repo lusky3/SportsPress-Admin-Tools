@@ -124,7 +124,7 @@ class SPR_Admin {
     }
     
     private function display_registration_logs() {
-        $logs = SPAT_Database::get_registration_logs(50);
+        $logs = SPR_Database::get_registration_logs(50);
         
         if (empty($logs)) {
             echo '<p>' . __('No registration activity yet.', 'sportspress-player-registration') . '</p>';
@@ -175,7 +175,7 @@ class SPR_Admin {
     }
     
     private function display_role_logs() {
-        $logs = SPAT_Database::get_role_logs(50);
+        $logs = SPR_Database::get_role_logs(50);
         
         if (empty($logs)) {
             echo '<p>' . __('No role assignment activity yet.', 'sportspress-player-registration') . '</p>';

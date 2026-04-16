@@ -289,16 +289,6 @@
             });
         },
         
-        displaySchedulePreview: function(schedule, stats) {
-            // The preview is now rendered server-side in PHP
-            // This function is kept for backward compatibility
-            // Just show the container if it was hidden
-            $('#spsg-schedule-preview-container').show();
-            
-            // Initialize filtering and sorting
-            this.initializePreviewFeatures();
-        },
-        
         initializePreviewFeatures: function() {
             var self = this;
             
@@ -658,31 +648,6 @@
             ImportDialog.init(scheduleId);
         },
         
-        showExportOptions: function() {
-            var html = '<div class="spsg-export-options">';
-            html += '<h4>Export Schedule</h4>';
-            html += '<button type="button" class="button" id="spsg-export-csv">Export as CSV</button> ';
-            html += '<button type="button" class="button" id="spsg-export-xlsx">Export as XLSX</button>';
-            html += '</div>';
-            
-            $('#spsg-export-container').html(html).show();
-            
-            // Rebind export buttons
-            $('#spsg-export-csv').on('click', function() { SPSG.exportSchedule('csv'); });
-            $('#spsg-export-xlsx').on('click', function() { SPSG.exportSchedule('xlsx'); });
-        },
-        
-        showProgressBar: function() {
-            var html = '<div class="spsg-progress-bar">';
-            html += '<div class="spsg-progress-bar-inner"></div>';
-            html += '</div>';
-            $('#spsg-progress-container').html(html).show();
-        },
-        
-        hideProgressBar: function() {
-            $('#spsg-progress-container').hide().empty();
-        },
-        
         /**
          * Show progress indicator (Task 7.1)
          */
@@ -851,7 +816,6 @@
     var ImportDialog = {
         scheduleId: null,
         importInProgress: false,
-        progressPollInterval: null,
         
         /**
          * Initialize the import dialog
@@ -1139,15 +1103,6 @@
             // Show success message in main UI
             var message = results.message || 'Import completed successfully!';
             SPSG.showMessage('success', message);
-        },
-        
-        /**
-         * Cancel import
-         */
-        cancelImport: function() {
-            this.stopProgressPolling();
-            this.importInProgress = false;
-            this.hide();
         },
         
         /**

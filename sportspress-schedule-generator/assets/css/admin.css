@@ -87,10 +87,6 @@
     margin-top: 15px;
 }
 
-.spsg-makeup-game {
-    background-color: #fff3cd !important;
-}
-
 /* Preview Header */
 .spsg-preview-header {
     display: flex;
@@ -219,104 +215,11 @@
     border-radius: 3px;
 }
 
-/* Detailed Statistics */
-.spsg-detailed-stats {
-    margin-top: 30px;
-    padding: 20px;
-    background: #fff;
-    border: 1px solid #ccd0d4;
-    border-radius: 4px;
-}
-
-.spsg-detailed-stats h3 {
-    margin-top: 0;
-    margin-bottom: 20px;
-    padding-bottom: 10px;
-    border-bottom: 2px solid #ccd0d4;
-}
-
-.spsg-stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 20px;
-    margin-bottom: 20px;
-}
-
-.spsg-stat-section {
-    padding: 15px;
-    background: #f9f9f9;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-}
-
-.spsg-stat-section h4 {
-    margin-top: 0;
-    margin-bottom: 15px;
-    color: #1d2327;
-}
-
-.spsg-stat-section table {
-    margin: 0;
-    font-size: 0.9em;
-}
-
-.spsg-stat-section table th {
-    background: #f0f0f1;
-    font-weight: 600;
-}
-
 /* Balance indicators */
-.spsg-balance-good {
-    color: #00a32a;
-    font-weight: 600;
-}
-
-.spsg-balance-ok {
-    color: #dba617;
-}
-
-.spsg-balance-warning {
-    color: #d63638;
-    font-weight: 600;
-}
-
 .spsg-imbalance-warning {
     background-color: #fcf3cf !important;
 }
 
-/* Issues Panel */
-.spsg-issues-panel {
-    padding: 15px;
-    background: #fcf3cf;
-    border: 1px solid #f39c12;
-    border-radius: 4px;
-    margin-top: 20px;
-}
-
-.spsg-issues-panel h4 {
-    margin-top: 0;
-    margin-bottom: 10px;
-    color: #1d2327;
-}
-
-.spsg-issues-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-}
-
-.spsg-issues-list li {
-    padding: 8px 10px;
-    margin-bottom: 5px;
-    background: #fff;
-    border-left: 4px solid #f39c12;
-    border-radius: 3px;
-}
-
-.spsg-issues-list li .dashicons {
-    color: #f39c12;
-    margin-right: 5px;
-}
 
 .spsg-issue-error {
     border-left-color: #d63638;
@@ -324,52 +227,6 @@
 
 .spsg-issue-error .dashicons {
     color: #d63638;
-}
-
-.spsg-issue-warning {
-    border-left-color: #f39c12;
-}
-
-.spsg-issue-info {
-    border-left-color: #2271b1;
-}
-
-.spsg-issue-info .dashicons {
-    color: #2271b1;
-}
-
-/* Statistics */
-.spsg-stats {
-    background: #f0f0f1;
-    padding: 15px;
-    border-radius: 4px;
-    margin-bottom: 20px;
-}
-
-.spsg-stats h4 {
-    margin-top: 0;
-}
-
-.spsg-stats ul {
-    margin: 10px 0 0 20px;
-    list-style: disc;
-}
-
-/* Export Options */
-.spsg-export-options {
-    margin-top: 20px;
-    padding: 15px;
-    background: #f0f0f1;
-    border-radius: 4px;
-    text-align: center;
-}
-
-.spsg-export-options h4 {
-    margin-top: 0;
-}
-
-.spsg-export-options .button {
-    margin: 0 5px;
 }
 
 /* Progress Bar */
@@ -380,25 +237,6 @@
     border-radius: 4px;
     overflow: hidden;
     margin: 20px 0;
-}
-
-.spsg-progress-bar-inner {
-    height: 100%;
-    background: #2271b1;
-    width: 0;
-    animation: spsg-progress 2s ease-in-out infinite;
-}
-
-@keyframes spsg-progress {
-    0% {
-        width: 0;
-    }
-    50% {
-        width: 100%;
-    }
-    100% {
-        width: 0;
-    }
 }
 
 /* Progress Indicator (Task 7.1) */
@@ -1301,12 +1139,6 @@ body.spsg-modal-open {
     display: flex;
     align-items: center;
     gap: 10px;
-}
-
-.spsg-issue-critical {
-    background: #f8d7da;
-    border-color: #b32d2e;
-    color: #721c24;
 }
 
 .spsg-issue-warning {
