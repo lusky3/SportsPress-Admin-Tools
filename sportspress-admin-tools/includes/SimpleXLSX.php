@@ -1,5 +1,6 @@
 <?php
-if (!defined('ABSPATH')) { exit; }
+if ( ! defined( 'ABSPATH' ) ) {
+	exit; }
 /**
  * XLSX parser for PHP
  * Reads actual XLSX files using ZIP extraction
@@ -7,160 +8,150 @@ if (!defined('ABSPATH')) { exit; }
  * @author Cody (lusky3)
  */
 
-class SimpleXLSX
-{
-    private $data = array();
+class SimpleXLSX {
 
-    public static function parse($file_path)
-    {
-        if (!file_exists($file_path)) {
-            return false;
-        }
+	private $data = array();
 
-        $instance = new self();
-        return $instance->parseFile($file_path) ? $instance : false;
-    }
+	public static function parse( $file_path ) {
+		if ( ! file_exists( $file_path ) ) {
+			return false;
+		}
 
-    private function parseFile($file_path)
-    {
-        $extension = pathinfo($file_path, PATHINFO_EXTENSION);
+		$instance = new self();
+		return $instance->parseFile( $file_path ) ? $instance : false;
+	}
 
-        if (strtolower($extension) === 'csv') {
-            return $this->parseCSV($file_path);
-        }
+	private function parseFile( $file_path ) {
+		$extension = pathinfo( $file_path, PATHINFO_EXTENSION );
 
-        if (strtolower($extension) === 'xlsx') {
-            return $this->parseXLSX($file_path);
-        }
+		if ( strtolower( $extension ) === 'csv' ) {
+			return $this->parseCSV( $file_path );
+		}
 
-        return false;
-    }
+		if ( strtolower( $extension ) === 'xlsx' ) {
+			return $this->parseXLSX( $file_path );
+		}
 
-    private function parseXLSX($file_path)
-    {
-        if (!class_exists('ZipArchive')) {
-            return false;
-        }
+		return false;
+	}
 
-        $zip = new ZipArchive();
-        if ($zip->open($file_path) !== true) {
-            return false;
-        }
+	private function parseXLSX( $file_path ) {
+		if ( ! class_exists( 'ZipArchive' ) ) {
+			return false;
+		}
 
-        $shared_strings = $this->extractSharedStrings($zip);
-        $sheet_xml = $zip->getFromName('xl/worksheets/sheet1.xml');
-        $zip->close();
+		$zip = new ZipArchive();
+		if ( $zip->open( $file_path ) !== true ) {
+			return false;
+		}
 
-        if (!$sheet_xml) {
-            return false;
-        }
+		$shared_strings = $this->extractSharedStrings( $zip );
+		$sheet_xml = $zip->getFromName( 'xl/worksheets/sheet1.xml' );
+		$zip->close();
 
-        $doc = $this->loadXmlSafe($sheet_xml);
-        $this->data = array();
+		if ( ! $sheet_xml ) {
+			return false;
+		}
 
-        foreach ($doc->getElementsByTagName('row') as $row) {
-            $this->data[] = $this->parseRow($row, $shared_strings);
-        }
+		$doc = $this->loadXmlSafe( $sheet_xml );
+		$this->data = array();
 
-        return !empty($this->data);
-    }
+		foreach ( $doc->getElementsByTagName( 'row' ) as $row ) {
+			$this->data[] = $this->parseRow( $row, $shared_strings );
+		}
 
-    private function extractSharedStrings($zip)
-    {
-        $shared_strings = array();
-        $strings_xml = $zip->getFromName('xl/sharedStrings.xml');
+		return ! empty( $this->data );
+	}
 
-        if (!$strings_xml) {
-            return $shared_strings;
-        }
+	private function extractSharedStrings( $zip ) {
+		$shared_strings = array();
+		$strings_xml = $zip->getFromName( 'xl/sharedStrings.xml' );
 
-        $doc = $this->loadXmlSafe($strings_xml);
-        foreach ($doc->getElementsByTagName('t') as $node) {
-            $shared_strings[] = $node->nodeValue;
-        }
+		if ( ! $strings_xml ) {
+			return $shared_strings;
+		}
 
-        return $shared_strings;
-    }
+		$doc = $this->loadXmlSafe( $strings_xml );
+		foreach ( $doc->getElementsByTagName( 't' ) as $node ) {
+			$shared_strings[] = $node->nodeValue;
+		}
 
-    private function loadXmlSafe($xml_string)
-    {
-        $doc = new DOMDocument();
-        if (PHP_VERSION_ID < 80000) {
-            $libxml_loader = libxml_disable_entity_loader(true);
-        }
-        $doc->loadXML($xml_string);
-        if (PHP_VERSION_ID < 80000) {
-            libxml_disable_entity_loader($libxml_loader);
-        }
-        return $doc;
-    }
+		return $shared_strings;
+	}
 
-    private function parseRow($row, $shared_strings)
-    {
-        $row_data = array();
-        $col_index = 0;
+	private function loadXmlSafe( $xml_string ) {
+		$doc = new DOMDocument();
+		if ( PHP_VERSION_ID < 80000 ) {
+			$libxml_loader = libxml_disable_entity_loader( true );
+		}
+		$doc->loadXML( $xml_string );
+		if ( PHP_VERSION_ID < 80000 ) {
+			libxml_disable_entity_loader( $libxml_loader );
+		}
+		return $doc;
+	}
 
-        foreach ($row->getElementsByTagName('c') as $cell) {
-            $col_letter = preg_replace('/\d+/', '', $cell->getAttribute('r'));
-            $target_col = $this->columnIndexFromString($col_letter);
+	private function parseRow( $row, $shared_strings ) {
+		$row_data = array();
+		$col_index = 0;
 
-            // Fill empty columns
-            while ($col_index < $target_col) {
-                $row_data[] = '';
-                $col_index++;
-            }
+		foreach ( $row->getElementsByTagName( 'c' ) as $cell ) {
+			$col_letter = preg_replace( '/\d+/', '', $cell->getAttribute( 'r' ) );
+			$target_col = $this->columnIndexFromString( $col_letter );
 
-            $row_data[] = $this->getCellValue($cell, $shared_strings);
-            $col_index++;
-        }
+			// Fill empty columns
+			while ( $col_index < $target_col ) {
+				$row_data[] = '';
+				$col_index++;
+			}
 
-        return $row_data;
-    }
+			$row_data[] = $this->getCellValue( $cell, $shared_strings );
+			$col_index++;
+		}
 
-    private function getCellValue($cell, $shared_strings)
-    {
-        $value_node = $cell->getElementsByTagName('v')->item(0);
+		return $row_data;
+	}
 
-        if (!$value_node) {
-            return '';
-        }
+	private function getCellValue( $cell, $shared_strings ) {
+		$value_node = $cell->getElementsByTagName( 'v' )->item( 0 );
 
-        if ($cell->getAttribute('t') === 's') {
-            $index = (int)$value_node->nodeValue;
-            return isset($shared_strings[$index]) ? $shared_strings[$index] : '';
-        }
+		if ( ! $value_node ) {
+			return '';
+		}
 
-        return $value_node->nodeValue;
-    }
+		if ( $cell->getAttribute( 't' ) === 's' ) {
+			$index = (int) $value_node->nodeValue;
+			return isset( $shared_strings[ $index ] ) ? $shared_strings[ $index ] : '';
+		}
 
-    private function columnIndexFromString($column)
-    {
-        $index = 0;
-        $length = strlen($column);
-        for ($i = 0; $i < $length; $i++) {
-            $index = $index * 26 + (ord($column[$i]) - ord('A') + 1);
-        }
-        return $index - 1;
-    }
+		return $value_node->nodeValue;
+	}
 
-    private function parseCSV($file_path)
-    {
-        $handle = fopen($file_path, 'r');
-        if (!$handle) {
-            return false;
-        }
+	private function columnIndexFromString( $column ) {
+		$index = 0;
+		$length = strlen( $column );
+		for ( $i = 0; $i < $length; $i++ ) {
+			$index = $index * 26 + ( ord( $column[ $i ] ) - ord( 'A' ) + 1 );
+		}
+		return $index - 1;
+	}
 
-        $this->data = array();
-        while (($row = fgetcsv($handle)) !== false) {
-            $this->data[] = $row;
-        }
+	private function parseCSV( $file_path ) {
+		$handle = fopen( $file_path, 'r' );
+		if ( ! $handle ) {
+			return false;
+		}
 
-        fclose($handle);
-        return !empty($this->data);
-    }
+		$this->data = array();
+		while ( ( $row = fgetcsv( $handle ) ) !== false ) {
+			$this->data[] = $row;
+		}
 
-    public function rows()
-    {
-        return $this->data;
-    }
+		fclose( $handle );
+		return ! empty( $this->data );
+	}
+
+	public function rows() {
+		return $this->data;
+	}
 }

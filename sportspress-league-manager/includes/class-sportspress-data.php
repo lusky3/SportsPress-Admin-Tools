@@ -66,15 +66,19 @@ class SPLM_SportsPress_Data {
 	 * @return WP_Post[]
 	 */
 	public static function get_players_for_team( int $team_id ): array {
-		return get_posts( array(
-			'post_type'      => 'sp_player',
-			'posts_per_page' => -1,
-			'post_status'    => 'publish',
-			'meta_query'     => array( array(
-				'key'   => 'sp_current_team',
-				'value' => $team_id,
-			) ),
-		) );
+		return get_posts(
+			array(
+				'post_type'      => 'sp_player',
+				'posts_per_page' => -1,
+				'post_status'    => 'publish',
+				'meta_query'     => array(
+					array(
+						'key'   => 'sp_current_team',
+						'value' => $team_id,
+					),
+				),
+			)
+		);
 	}
 
 	/**
@@ -83,10 +87,12 @@ class SPLM_SportsPress_Data {
 	 * @return WP_Term[]|WP_Error
 	 */
 	public static function get_leagues() {
-		return get_terms( array(
-			'taxonomy'   => 'sp_league',
-			'hide_empty' => false,
-		) );
+		return get_terms(
+			array(
+				'taxonomy'   => 'sp_league',
+				'hide_empty' => false,
+			)
+		);
 	}
 
 	/**
@@ -95,10 +101,11 @@ class SPLM_SportsPress_Data {
 	 * @return WP_Term[]|WP_Error
 	 */
 	public static function get_seasons() {
-		return get_terms( array(
-			'taxonomy'   => 'sp_season',
-			'hide_empty' => false,
-		) );
+		return get_terms(
+			array(
+				'taxonomy'   => 'sp_season',
+				'hide_empty' => false,
+			)
+		);
 	}
-
 }

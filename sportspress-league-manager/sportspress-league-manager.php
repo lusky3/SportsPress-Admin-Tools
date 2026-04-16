@@ -50,29 +50,38 @@ class SportsPress_League_Manager {
 		SPLM_Autoloader::init();
 
 		// Register modules with parent.
-		SPAT_Plugin_Manager::register_plugin( 'league_manager_dashboard', array(
-			'name'          => 'League Manager Dashboard',
-			'description'   => 'Dashboard overview for league managers',
-			'parent_module' => 'league_manager_dashboard',
-			'version'       => SPLM_VERSION,
-			'file'          => __FILE__,
-		) );
+		SPAT_Plugin_Manager::register_plugin(
+			'league_manager_dashboard',
+			array(
+				'name'          => 'League Manager Dashboard',
+				'description'   => 'Dashboard overview for league managers',
+				'parent_module' => 'league_manager_dashboard',
+				'version'       => SPLM_VERSION,
+				'file'          => __FILE__,
+			)
+		);
 
-		SPAT_Plugin_Manager::register_plugin( 'league_roster_management', array(
-			'name'          => 'Roster Management',
-			'description'   => 'Team roster viewing and CSV upload',
-			'parent_module' => 'league_roster_management',
-			'version'       => SPLM_VERSION,
-			'file'          => __FILE__,
-		) );
+		SPAT_Plugin_Manager::register_plugin(
+			'league_roster_management',
+			array(
+				'name'          => 'Roster Management',
+				'description'   => 'Team roster viewing and CSV upload',
+				'parent_module' => 'league_roster_management',
+				'version'       => SPLM_VERSION,
+				'file'          => __FILE__,
+			)
+		);
 
-		SPAT_Plugin_Manager::register_plugin( 'league_fee_tracking', array(
-			'name'          => 'Fee Tracking',
-			'description'   => 'Player/team fee status lookup',
-			'parent_module' => 'league_fee_tracking',
-			'version'       => SPLM_VERSION,
-			'file'          => __FILE__,
-		) );
+		SPAT_Plugin_Manager::register_plugin(
+			'league_fee_tracking',
+			array(
+				'name'          => 'Fee Tracking',
+				'description'   => 'Player/team fee status lookup',
+				'parent_module' => 'league_fee_tracking',
+				'version'       => SPLM_VERSION,
+				'file'          => __FILE__,
+			)
+		);
 
 		// Install capabilities only when version changes.
 		if ( get_option( 'splm_caps_version' ) !== SPLM_VERSION ) {

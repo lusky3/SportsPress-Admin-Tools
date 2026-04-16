@@ -66,11 +66,13 @@ class SPAT_Privacy {
 		$player_ids = array();
 
 		// Players with spt_email meta matching the email.
-		$by_email = $wpdb->get_col( $wpdb->prepare(
-			"SELECT DISTINCT post_id FROM {$wpdb->postmeta}
+		$by_email = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT DISTINCT post_id FROM {$wpdb->postmeta}
 			 WHERE meta_key = 'spt_email' AND meta_value = %s",
-			$email_address
-		) );
+				$email_address
+			)
+		);
 
 		if ( $by_email ) {
 			$player_ids = array_merge( $player_ids, array_map( 'intval', $by_email ) );
@@ -79,11 +81,13 @@ class SPAT_Privacy {
 		// Players linked via sp_user meta to a WP user with this email.
 		$user = get_user_by( 'email', $email_address );
 		if ( $user ) {
-			$by_user = $wpdb->get_col( $wpdb->prepare(
-				"SELECT DISTINCT post_id FROM {$wpdb->postmeta}
+			$by_user = $wpdb->get_col(
+				$wpdb->prepare(
+					"SELECT DISTINCT post_id FROM {$wpdb->postmeta}
 				 WHERE meta_key = 'sp_user' AND meta_value = %s",
-				$user->ID
-			) );
+					$user->ID
+				)
+			);
 
 			if ( $by_user ) {
 				$player_ids = array_merge( $player_ids, array_map( 'intval', $by_user ) );
@@ -241,10 +245,12 @@ class SPAT_Privacy {
 
 		$placeholders = implode( ', ', array_fill( 0, count( $player_ids ), '%d' ) );
 		// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
-		$rows = $wpdb->get_results( $wpdb->prepare(
-			"SELECT * FROM {$table} WHERE player_id IN ({$placeholders})",
-			$player_ids
-		) );
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT * FROM {$table} WHERE player_id IN ({$placeholders})",
+				$player_ids
+			)
+		);
 
 		foreach ( $rows as $row ) {
 			$items[] = array(
@@ -295,10 +301,12 @@ class SPAT_Privacy {
 		}
 
 		$items = array();
-		$rows  = $wpdb->get_results( $wpdb->prepare(
-			"SELECT * FROM {$table} WHERE from_email = %s",
-			$email_address
-		) );
+		$rows  = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT * FROM {$table} WHERE from_email = %s",
+				$email_address
+			)
+		);
 
 		foreach ( $rows as $row ) {
 			$items[] = array(
@@ -359,11 +367,13 @@ class SPAT_Privacy {
 			return array();
 		}
 
-		$orders = wc_get_orders( array(
-			'customer_id' => $user->ID,
-			'limit'       => -1,
-			'return'      => 'ids',
-		) );
+		$orders = wc_get_orders(
+			array(
+				'customer_id' => $user->ID,
+				'limit'       => -1,
+				'return'      => 'ids',
+			)
+		);
 
 		if ( empty( $orders ) ) {
 			return array();
@@ -413,11 +423,13 @@ class SPAT_Privacy {
 				continue;
 			}
 
-			wp_update_post( array(
-				'ID'         => $player_id,
-				'post_title' => __( 'Anonymous Player', 'sportspress-admin-tools' ),
-				'post_name'  => 'anonymous-player-' . $player_id,
-			) );
+			wp_update_post(
+				array(
+					'ID'         => $player_id,
+					'post_title' => __( 'Anonymous Player', 'sportspress-admin-tools' ),
+					'post_name'  => 'anonymous-player-' . $player_id,
+				)
+			);
 
 			delete_post_meta( $player_id, 'spt_email' );
 			delete_post_meta( $player_id, 'sp_user' );
@@ -460,17 +472,21 @@ class SPAT_Privacy {
 
 		$placeholders = implode( ', ', array_fill( 0, count( $player_ids ), '%d' ) );
 		// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
-		$count = (int) $wpdb->get_var( $wpdb->prepare(
-			"SELECT COUNT(*) FROM {$table} WHERE player_id IN ({$placeholders})",
-			$player_ids
-		) );
+		$count = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$table} WHERE player_id IN ({$placeholders})",
+				$player_ids
+			)
+		);
 
 		if ( $count > 0 ) {
 			// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
-			$wpdb->query( $wpdb->prepare(
-				"DELETE FROM {$table} WHERE player_id IN ({$placeholders})",
-				$player_ids
-			) );
+			$wpdb->query(
+				$wpdb->prepare(
+					"DELETE FROM {$table} WHERE player_id IN ({$placeholders})",
+					$player_ids
+				)
+			);
 			$messages[] = sprintf(
 				/* translators: %d: number of registration log entries deleted */
 				__( 'Deleted %d registration log entries.', 'sportspress-admin-tools' ),
@@ -496,10 +512,12 @@ class SPAT_Privacy {
 			return 0;
 		}
 
-		$count = (int) $wpdb->get_var( $wpdb->prepare(
-			"SELECT COUNT(*) FROM {$table} WHERE from_email = %s",
-			$email_address
-		) );
+		$count = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$table} WHERE from_email = %s",
+				$email_address
+			)
+		);
 
 		if ( $count > 0 ) {
 			$wpdb->update(

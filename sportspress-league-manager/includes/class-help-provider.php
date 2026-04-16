@@ -26,11 +26,13 @@ class SPLM_Help_Provider {
 
 		$tabs = self::get_tabs_for_page( $page_slug );
 		foreach ( $tabs as $tab ) {
-			$screen->add_help_tab( array(
-				'id'      => sanitize_key( $tab['id'] ),
-				'title'   => esc_html( $tab['title'] ),
-				'content' => wp_kses_post( $tab['content'] ),
-			) );
+			$screen->add_help_tab(
+				array(
+					'id'      => sanitize_key( $tab['id'] ),
+					'title'   => esc_html( $tab['title'] ),
+					'content' => wp_kses_post( $tab['content'] ),
+				)
+			);
 		}
 	}
 

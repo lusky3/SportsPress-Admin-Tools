@@ -6,98 +6,95 @@
  */
 
 // Prevent direct access
-if (!defined('ABSPATH')) {
-    wp_die();
+if ( ! defined( 'ABSPATH' ) ) {
+	wp_die();
 }
 
 /**
  * Simple autoloader for SPSG classes
  */
-class SPSG_Autoloader
-{
+class SPSG_Autoloader {
 
-    /**
-     * Class map for autoloading
-     */
-    private static $class_map = array();
 
-    /**
-     * Initialize autoloader
-     */
-    public static function init()
-    {
-        spl_autoload_register(array(__CLASS__, 'autoload'));
-        self::build_class_map();
-    }
+	/**
+	 * Class map for autoloading
+	 */
+	private static $class_map = array();
 
-    /**
-     * Autoload function
-     */
-    public static function autoload($class_name)
-    {
-        // Only handle SPSG classes
-        if (strpos($class_name, 'SPSG') !== 0) {
-            return;
-        }
+	/**
+	 * Initialize autoloader
+	 */
+	public static function init() {
+		spl_autoload_register( array( __CLASS__, 'autoload' ) );
+		self::build_class_map();
+	}
 
-        if (isset(self::$class_map[$class_name])) {
-            require_once self::$class_map[$class_name];
-        }
-    }
+	/**
+	 * Autoload function
+	 */
+	public static function autoload( $class_name ) {
+		// Only handle SPSG classes
+		if ( strpos( $class_name, 'SPSG' ) !== 0 ) {
+			return;
+		}
 
-    /**
-     * Build class map for known classes
-     */
-    private static function build_class_map()
-    {
-        $base_path = SPSG_PLUGIN_PATH . 'includes/';
+		if ( isset( self::$class_map[ $class_name ] ) ) {
+			require_once self::$class_map[ $class_name ];
+		}
+	}
 
-        self::$class_map = array(
-            // Core classes
-            'SPSG_Schedule_Generator' => $base_path . 'class-schedule-generator.php',
-            'SPSG_Admin' => $base_path . 'class-admin.php',
-            'SPSG_Admin_Ajax' => $base_path . 'class-admin-ajax.php',
-            'SPSG_Admin_Renderer' => $base_path . 'class-admin-renderer.php',
-            'SPSG_Sports_Press_Integration' => $base_path . 'class-sportspress-integration.php',
-            'SPSG_Sports_Press_Importer' => $base_path . 'class-sportspress-importer.php',
+	/**
+	 * Build class map for known classes
+	 */
+	private static function build_class_map() {
+		$base_path = SPSG_PLUGIN_PATH . 'includes/';
 
-            // Configuration classes
-            'SPSG_Configuration_Manager' => $base_path . 'class-configuration-manager.php',
-            'SPSG_Schedule_Configuration' => $base_path . 'class-schedule-configuration.php',
-            'SPSG_Configuration_Validator' => $base_path . 'class-configuration-validator.php',
-            'SPSG_Configuration_Sanitizer' => $base_path . 'class-configuration-sanitizer.php',
+		self::$class_map = array(
+			// Core classes
+			'SPSG_Schedule_Generator' => $base_path . 'class-schedule-generator.php',
+			'SPSG_Admin' => $base_path . 'class-admin.php',
+			'SPSG_Admin_Ajax' => $base_path . 'class-admin-ajax.php',
+			'SPSG_Admin_Renderer' => $base_path . 'class-admin-renderer.php',
+			'SPSG_Sports_Press_Integration' => $base_path . 'class-sportspress-integration.php',
+			'SPSG_Sports_Press_Importer' => $base_path . 'class-sportspress-importer.php',
 
-            // Engine classes
-            'SPSG_Schedule_Engine' => $base_path . 'class-schedule-engine.php',
-            'SPSG_Matchup_Generator' => $base_path . 'class-matchup-generator.php',
-            'SPSG_Slot_Allocator' => $base_path . 'class-slot-allocator.php',
-            'SPSG_Constraint_Manager' => $base_path . 'class-constraint-manager.php',
-            'SPSG_Constraint_Registry' => $base_path . 'class-constraint-registry.php',
-            'SPSG_Abstract_Constraint' => $base_path . 'abstract-constraint.php',
-            'SPSG_Error_Handler' => $base_path . 'class-error-handler.php',
-            'SPSG_Statistics_Calculator' => $base_path . 'class-statistics-calculator.php',
+			// Configuration classes
+			'SPSG_Configuration_Manager' => $base_path . 'class-configuration-manager.php',
+			'SPSG_Schedule_Configuration' => $base_path . 'class-schedule-configuration.php',
+			'SPSG_Configuration_Validator' => $base_path . 'class-configuration-validator.php',
+			'SPSG_Configuration_Sanitizer' => $base_path . 'class-configuration-sanitizer.php',
 
-            // Constraint classes
-            'SPSG_Blackout_Constraint' => $base_path . 'constraints/class-blackout-constraint.php',
-            'SPSG_Distribution_Constraint' => $base_path . 'constraints/class-distribution-constraint.php',
-            'SPSG_Team_Restriction_Constraint' => $base_path . 'constraints/class-team-restriction-constraint.php',
-            'SPSG_Division_Grouping_Constraint' => $base_path . 'constraints/class-division-grouping-constraint.php',
+			// Engine classes
+			'SPSG_Schedule_Engine' => $base_path . 'class-schedule-engine.php',
+			'SPSG_Matchup_Generator' => $base_path . 'class-matchup-generator.php',
+			'SPSG_Slot_Allocator' => $base_path . 'class-slot-allocator.php',
+			'SPSG_Constraint_Manager' => $base_path . 'class-constraint-manager.php',
+			'SPSG_Constraint_Registry' => $base_path . 'class-constraint-registry.php',
+			'SPSG_Abstract_Constraint' => $base_path . 'abstract-constraint.php',
+			'SPSG_Error_Handler' => $base_path . 'class-error-handler.php',
+			'SPSG_Statistics_Calculator' => $base_path . 'class-statistics-calculator.php',
 
-            // Export classes
-            'SPSG_Export_Manager' => $base_path . 'class-export-manager.php',
-            'SPSG_CSV_Exporter' => $base_path . 'exporters/class-csv-exporter.php',
-            'SPSG_XLSX_Exporter' => $base_path . 'exporters/class-xlsx-exporter.php',
+			// Constraint classes
+			'SPSG_Blackout_Constraint' => $base_path . 'constraints/class-blackout-constraint.php',
+			'SPSG_Distribution_Constraint' => $base_path . 'constraints/class-distribution-constraint.php',
+			'SPSG_Team_Restriction_Constraint' => $base_path . 'constraints/class-team-restriction-constraint.php',
+			'SPSG_Division_Grouping_Constraint' => $base_path . 'constraints/class-division-grouping-constraint.php',
 
-            // Venue schedule importer
-            'SPSG_Venue_Schedule_Importer' => $base_path . 'class-venue-schedule-importer.php',
+			// Export classes
+			'SPSG_Export_Manager' => $base_path . 'class-export-manager.php',
+			'SPSG_CSV_Exporter' => $base_path . 'exporters/class-csv-exporter.php',
+			'SPSG_XLSX_Exporter' => $base_path . 'exporters/class-xlsx-exporter.php',
 
-            // Placeholder team management
-            'SPSG_Placeholder_Team_Manager' => $base_path . 'class-placeholder-team-manager.php',
+			// Venue schedule importer
+			'SPSG_Venue_Schedule_Importer' => $base_path . 'class-venue-schedule-importer.php',
 
-            // Data models
-            'SPSG_Game' => $base_path . 'models/class-game.php',
-            // Note: Team, Venue, and Division models not yet implemented
-            // Data is currently handled as arrays in configuration
-        );
-    }
+			// Placeholder team management
+			'SPSG_Placeholder_Team_Manager' => $base_path . 'class-placeholder-team-manager.php',
+
+			// Data models
+			'SPSG_Game' => $base_path . 'models/class-game.php',
+			// Note: Team, Venue, and Division models not yet implemented
+			// Data is currently handled as arrays in configuration
+		);
+	}
 }
