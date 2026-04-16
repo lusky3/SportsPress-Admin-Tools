@@ -291,12 +291,12 @@ class SPSG_Admin
             <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
 
             <nav class="nav-tab-wrapper spsg-nav-tabs">
-                <a href="#basic-config" class="nav-tab nav-tab-active"><?php _e('Basic Configuration', 'sportspress-schedule-generator'); ?></a>
-                <a href="#divisions-teams" class="nav-tab"><?php _e('Divisions & Teams', 'sportspress-schedule-generator'); ?></a>
-                <a href="#venues-times" class="nav-tab"><?php _e('Venues & Times', 'sportspress-schedule-generator'); ?></a>
-                <a href="#constraints" class="nav-tab"><?php _e('Constraints', 'sportspress-schedule-generator'); ?></a>
-                <a href="#generate" class="nav-tab"><?php _e(self::LABEL_GENERATE_SCHEDULE, 'sportspress-schedule-generator'); ?></a>
-                <a href="#placeholder-teams" class="nav-tab"><?php _e('Placeholder Teams', 'sportspress-schedule-generator'); ?></a>
+                <a href="#basic-config" class="nav-tab nav-tab-active"><?php esc_html_e('Basic Configuration', 'sportspress-schedule-generator'); ?></a>
+                <a href="#divisions-teams" class="nav-tab"><?php esc_html_e('Divisions & Teams', 'sportspress-schedule-generator'); ?></a>
+                <a href="#venues-times" class="nav-tab"><?php esc_html_e('Venues & Times', 'sportspress-schedule-generator'); ?></a>
+                <a href="#constraints" class="nav-tab"><?php esc_html_e('Constraints', 'sportspress-schedule-generator'); ?></a>
+                <a href="#generate" class="nav-tab"><?php esc_html_e(self::LABEL_GENERATE_SCHEDULE, 'sportspress-schedule-generator'); ?></a>
+                <a href="#placeholder-teams" class="nav-tab"><?php esc_html_e('Placeholder Teams', 'sportspress-schedule-generator'); ?></a>
             </nav>
 
             <form method="post" id="spsg-config-form">

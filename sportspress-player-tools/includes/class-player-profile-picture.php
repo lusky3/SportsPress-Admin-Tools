@@ -133,7 +133,7 @@ class SPT_Player_Profile_Picture {
         $max_size = 2 * 1024 * 1024;
         if ($_FILES['profile_picture']['size'] > $max_size) {
             wc_add_notice(__('File is too large. Maximum size is 2MB.', 'sportspress-player-tools'), 'error');
-            wp_redirect(wc_get_account_endpoint_url('profile-picture'));
+            wp_safe_redirect(wc_get_account_endpoint_url('profile-picture'));
             exit;
         }
         
@@ -151,12 +151,12 @@ class SPT_Player_Profile_Picture {
             if (empty($filetype['ext']) || !in_array(strtolower($filetype['ext']), $allowed_image_types, true)) {
                 wp_delete_attachment($attachment_id, true);
                 wc_add_notice(__('Invalid file type. Only JPG, PNG, GIF, and WebP images are allowed.', 'sportspress-player-tools'), 'error');
-                wp_redirect(wc_get_account_endpoint_url('profile-picture'));
+                wp_safe_redirect(wc_get_account_endpoint_url('profile-picture'));
                 exit;
             }
 
             set_post_thumbnail($player_id, $attachment_id);
-            wp_redirect(wc_get_account_endpoint_url('profile-picture'));
+            wp_safe_redirect(wc_get_account_endpoint_url('profile-picture'));
             exit;
         }
     }
