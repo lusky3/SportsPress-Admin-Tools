@@ -28,4 +28,3 @@ jobs:
         with:
           command: code test
           args: --severity-threshold=high
-        continue-on-error: true

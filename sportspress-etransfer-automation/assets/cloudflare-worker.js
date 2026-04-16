@@ -129,8 +129,9 @@ async function sendWebhook(emailData, env, message) {
     return;
   }
 
+  emailData.timestamp = new Date().toISOString();
   const payload = JSON.stringify(emailData);
-  const headers = await buildHeaders(payload, env.WEBHOOK_SECRET, env.CUSTOM_HEADERS);
+  const headers = await buildHeaders(payload, env.WEBHOOK_SECRET, env.CUSTOM_HEADERS, emailData.timestamp);
   
   const response = await fetch(env.WEBHOOK_URL, {
     method: 'POST',
@@ -142,10 +143,11 @@ async function sendWebhook(emailData, env, message) {
   await handleWebhookResponse(response, message, env);
 }
 
-async function buildHeaders(payload, secret, customHeaders) {
+async function buildHeaders(payload, secret, customHeaders, timestamp) {
   const headers = {
     'Content-Type': 'application/json',
-    'X-Signature': await createHmacSignature(payload, secret),
+    'X-Signature': await createHmacSignature(timestamp + payload, secret),
+    'X-Timestamp': timestamp,
     'User-Agent': 'Cloudflare-Worker-Email-Processor/1.0'
   };
 
