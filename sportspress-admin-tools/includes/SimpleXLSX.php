@@ -1,4 +1,5 @@
 <?php
+if (!defined('ABSPATH')) { exit; }
 /**
  * XLSX parser for PHP
  * Reads actual XLSX files using ZIP extraction

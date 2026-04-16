@@ -107,7 +107,7 @@ class SportsPress_Events_Manager {
     
     public function parent_plugin_missing_notice() {
         echo '<div class="notice notice-error"><p>';
-        echo __('SportsPress Events Manager requires SportsPress Admin Tools to be installed and activated.', 'sportspress-events-manager');
+        echo esc_html__('SportsPress Events Manager requires SportsPress Admin Tools to be installed and activated.', 'sportspress-events-manager');
         echo '</p></div>';
     }
 }

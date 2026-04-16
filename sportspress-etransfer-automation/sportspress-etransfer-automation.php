@@ -110,7 +110,7 @@ class SportsPress_ETransfer_Automation
     public function parent_plugin_missing_notice()
     {
         echo '<div class="notice notice-error"><p>';
-        echo __('SportsPress e-Transfer Automation requires SportsPress Admin Tools to be installed and activated.', 'sportspress-etransfer-automation');
+        echo esc_html__('SportsPress e-Transfer Automation requires SportsPress Admin Tools to be installed and activated.', 'sportspress-etransfer-automation');
         echo '</p></div>';
     }
 

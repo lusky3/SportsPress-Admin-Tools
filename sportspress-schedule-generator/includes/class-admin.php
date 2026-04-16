@@ -118,7 +118,7 @@ class SPSG_Admin
      */
     public function add_spat_tab()
     {
-        echo '<a href="#schedule-generator" class="nav-tab">' . __(self::LABEL_SCHEDULE_GENERATOR, 'sportspress-schedule-generator') . '</a>';
+        echo '<a href="#schedule-generator" class="nav-tab">' . esc_html(__(self::LABEL_SCHEDULE_GENERATOR, 'sportspress-schedule-generator')) . '</a>';
     }
 
     /**
@@ -195,12 +195,12 @@ class SPSG_Admin
      */
     public function backend_section_callback()
     {
-        echo '<p>' . __('Configure backend settings for the Schedule Generator. These settings affect system behavior and are not visible to end users.', 'sportspress-schedule-generator') . '</p>';
+        echo '<p>' . esc_html__('Configure backend settings for the Schedule Generator. These settings affect system behavior and are not visible to end users.', 'sportspress-schedule-generator') . '</p>';
 
         if ($this->is_select2_enabled()) {
-            echo '<p class="description" style="color: #00a32a;">✓ ' . __('Enhanced dropdowns (Slim Select) are enabled via SPAT settings.', 'sportspress-schedule-generator') . '</p>';
+            echo '<p class="description" style="color: #00a32a;">✓ ' . esc_html__('Enhanced dropdowns (Slim Select) are enabled via SPAT settings.', 'sportspress-schedule-generator') . '</p>';
         } else {
-            echo '<p class="description">' . __('Note: Enhanced dropdowns (Slim Select) can be enabled in the SPAT General settings.', 'sportspress-schedule-generator') . '</p>';
+            echo '<p class="description">' . esc_html__('Note: Enhanced dropdowns (Slim Select) can be enabled in the SPAT General settings.', 'sportspress-schedule-generator') . '</p>';
         }
     }
 
@@ -211,7 +211,7 @@ class SPSG_Admin
     {
         $value = get_option('spsg_max_generation_time', 300);
         echo '<input type="number" name="spsg_max_generation_time" value="' . esc_attr($value) . '" min="60" max="3600" />';
-        echo '<p class="description">' . __('Maximum time allowed for schedule generation before timeout (60-3600 seconds).', 'sportspress-schedule-generator') . '</p>';
+        echo '<p class="description">' . esc_html__('Maximum time allowed for schedule generation before timeout (60-3600 seconds).', 'sportspress-schedule-generator') . '</p>';
     }
 
     /**
@@ -221,7 +221,7 @@ class SPSG_Admin
     {
         $enabled = get_option('spsg_enable_debug_logging', '0');
         echo '<input type="checkbox" name="spsg_enable_debug_logging" value="1" ' . checked($enabled, '1', false) . ' />';
-        echo '<p class="description">' . __('Enable detailed debug logging for schedule generation process.', 'sportspress-schedule-generator') . '</p>';
+        echo '<p class="description">' . esc_html__('Enable detailed debug logging for schedule generation process.', 'sportspress-schedule-generator') . '</p>';
     }
 
     /**
@@ -237,7 +237,7 @@ class SPSG_Admin
             echo '<option value="' . esc_attr($timezone) . '" ' . selected($selected, $timezone, false) . '>' . esc_html($timezone) . '</option>';
         }
         echo '</select>';
-        echo '<p class="description">' . __('Default timezone for new schedule configurations.', 'sportspress-schedule-generator') . '</p>';
+        echo '<p class="description">' . esc_html__('Default timezone for new schedule configurations.', 'sportspress-schedule-generator') . '</p>';
     }
 
     /**
@@ -247,7 +247,7 @@ class SPSG_Admin
     {
         $enabled = get_option('spsg_enable_change_tracking', '1');
         echo '<input type="checkbox" name="spsg_enable_change_tracking" value="1" ' . checked($enabled, '1', false) . ' />';
-        echo '<p class="description">' . __('Track configuration changes with user attribution and timestamps. Stores last 10 changes per configuration.', 'sportspress-schedule-generator') . '</p>';
+        echo '<p class="description">' . esc_html__('Track configuration changes with user attribution and timestamps. Stores last 10 changes per configuration.', 'sportspress-schedule-generator') . '</p>';
     }
 
     /**
@@ -315,7 +315,7 @@ class SPSG_Admin
     public function enqueue_admin_scripts($hook)
     {
         if (strpos($hook, 'spsg-schedule-generator') === false &&
-        (!isset($_GET['page']) || $_GET['page'] !== 'sportspress-admin-tools')) {
+        (!isset($_GET['page']) || sanitize_text_field($_GET['page']) !== 'sportspress-admin-tools')) {
             return;
         }
 

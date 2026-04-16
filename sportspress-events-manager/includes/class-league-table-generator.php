@@ -111,14 +111,14 @@ class SPEM_League_Table_Generator {
         ?>
         <div id="league-table-modal" style="display:none;">
             <div style="background:white; padding:20px; border-radius:5px; max-width:500px; margin:50px auto;">
-                <h3><?php _e('Generate League Table', 'sportspress-events-manager'); ?></h3>
+                <h3><?php esc_html_e('Generate League Table', 'sportspress-events-manager'); ?></h3>
                 <form id="league-table-form">
                     <table class="form-table">
                         <tr>
-                            <th><label for="league_select"><?php _e('League', 'sportspress-events-manager'); ?></label></th>
+                            <th><label for="league_select"><?php esc_html_e('League', 'sportspress-events-manager'); ?></label></th>
                             <td>
                                 <select id="league_select" name="league_id" required>
-                                    <option value=""><?php _e('Select League', 'sportspress-events-manager'); ?></option>
+                                    <option value=""><?php esc_html_e('Select League', 'sportspress-events-manager'); ?></option>
                                     <?php foreach ($leagues as $league): ?>
                                         <option value="<?php echo esc_attr($league->term_id); ?>"><?php echo esc_html($league->name); ?></option>
                                     <?php endforeach; ?>
@@ -126,10 +126,10 @@ class SPEM_League_Table_Generator {
                             </td>
                         </tr>
                         <tr>
-                            <th><label for="season_select"><?php _e('Season', 'sportspress-events-manager'); ?></label></th>
+                            <th><label for="season_select"><?php esc_html_e('Season', 'sportspress-events-manager'); ?></label></th>
                             <td>
                                 <select id="season_select" name="season_id" required>
-                                    <option value=""><?php _e('Select Season', 'sportspress-events-manager'); ?></option>
+                                    <option value=""><?php esc_html_e('Select Season', 'sportspress-events-manager'); ?></option>
                                     <?php foreach ($seasons as $season): ?>
                                         <option value="<?php echo esc_attr($season->term_id); ?>"><?php echo esc_html($season->name); ?></option>
                                     <?php endforeach; ?>
@@ -137,14 +137,14 @@ class SPEM_League_Table_Generator {
                             </td>
                         </tr>
                         <tr>
-                            <th><label for="table_name"><?php _e('Table Name', 'sportspress-events-manager'); ?></label></th>
+                            <th><label for="table_name"><?php esc_html_e('Table Name', 'sportspress-events-manager'); ?></label></th>
                             <td><input type="text" id="table_name" name="table_name" class="regular-text" required /></td>
                         </tr>
                     </table>
                     <input type="hidden" id="spem_league_table_nonce" value="<?php echo esc_attr($nonce); ?>" />
                     <p>
-                        <button type="submit" class="button button-primary"><?php _e('Generate Table', 'sportspress-events-manager'); ?></button>
-                        <button type="button" class="button" onclick="closeLeagueTableModal()"><?php _e('Cancel', 'sportspress-events-manager'); ?></button>
+                        <button type="submit" class="button button-primary"><?php esc_html_e('Generate Table', 'sportspress-events-manager'); ?></button>
+                        <button type="button" class="button" onclick="closeLeagueTableModal()"><?php esc_html_e('Cancel', 'sportspress-events-manager'); ?></button>
                     </p>
                 </form>
             </div>

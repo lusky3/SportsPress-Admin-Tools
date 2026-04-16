@@ -76,7 +76,7 @@ class SPSG_Schedule_Generator
     public function show_initialization_error()
     {
         echo '<div class="notice notice-error"><p>';
-        echo __('Schedule Generator failed to initialize. Please check error logs.', 'sportspress-schedule-generator');
+        echo esc_html__('Schedule Generator failed to initialize. Please check error logs.', 'sportspress-schedule-generator');
         echo '</p></div>';
     }
 

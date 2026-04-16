@@ -64,7 +64,7 @@ class SPAT_Admin
         }
 
         // Double check we're on the right page
-        if (!isset($_GET['page']) || $_GET['page'] !== 'sportspress-admin-tools') {
+        if (!isset($_GET['page']) || sanitize_text_field($_GET['page']) !== 'sportspress-admin-tools') {
             return;
         }
 
@@ -263,12 +263,12 @@ class SPAT_Admin
 
     public function modules_section_callback()
     {
-        echo '<p>' . __('Enable or disable plugin modules:', 'sportspress-admin-tools') . '</p>';
+        echo '<p>' . esc_html__('Enable or disable plugin modules:', 'sportspress-admin-tools') . '</p>';
     }
 
     public function settings_section_callback()
     {
-        echo '<p>' . __('Configure global plugin settings:', 'sportspress-admin-tools') . '</p>';
+        echo '<p>' . esc_html__('Configure global plugin settings:', 'sportspress-admin-tools') . '</p>';
     }
 
     private function add_registered_module_fields()
@@ -294,7 +294,7 @@ class SPAT_Admin
     public function module_checkbox_callback($args)
     {
         $enabled_modules = get_option('spat_enabled_modules', array());
-        $checked = in_array($args['module'], $enabled_modules) ? 'checked' : '';
+        $checked = in_array($args['module'], $enabled_modules, true) ? 'checked' : '';
         $plugin_data = $args['plugin_data'];
 
         echo '<input type="checkbox" name="spat_enabled_modules[]" value="' . esc_attr($args['module']) . '" ' . $checked . '>';
@@ -308,51 +308,51 @@ class SPAT_Admin
     {
         $enabled = get_option('spat_remove_data_on_uninstall', '0');
         echo '<input type="checkbox" name="spat_remove_data_on_uninstall" value="1" ' . checked($enabled, '1', false) . '>';
-        echo '<p class="description">' . __('Remove all plugin data (settings, logs, database tables) when the plugin is uninstalled. Leave unchecked to preserve data.', 'sportspress-admin-tools') . '</p>';
+        echo '<p class="description">' . esc_html__('Remove all plugin data (settings, logs, database tables) when the plugin is uninstalled. Leave unchecked to preserve data.', 'sportspress-admin-tools') . '</p>';
     }
 
     public function select2_setting_callback()
     {
         $enabled = get_option('spat_use_select2', '0');
         echo '<input type="checkbox" name="spat_use_select2" value="1" ' . checked($enabled, '1', false) . '>';
-        echo '<p class="description">' . __('Use enhanced Slim Select dropdowns with search functionality throughout the plugin. Requires page refresh to take effect.', 'sportspress-admin-tools') . '</p>';
+        echo '<p class="description">' . esc_html__('Use enhanced Slim Select dropdowns with search functionality throughout the plugin. Requires page refresh to take effect.', 'sportspress-admin-tools') . '</p>';
     }
 
     public function debug_section_callback()
     {
-        echo '<p>' . __('Configure debug logging options:', 'sportspress-admin-tools') . '</p>';
+        echo '<p>' . esc_html__('Configure debug logging options:', 'sportspress-admin-tools') . '</p>';
     }
 
     public function debug_sensitive_callback()
     {
         $enabled = get_option('spat_debug_show_sensitive', '0');
         echo '<input type="checkbox" name="spat_debug_show_sensitive" value="1" ' . checked($enabled, '1', false) . '>';
-        echo '<p class="description">' . __('Include sensitive information like webhook secrets in debug logs. Disable for production.', 'sportspress-admin-tools') . '</p>';
+        echo '<p class="description">' . esc_html__('Include sensitive information like webhook secrets in debug logs. Disable for production.', 'sportspress-admin-tools') . '</p>';
     }
 
     public function debug_verbose_callback()
     {
         $enabled = get_option('spat_debug_verbose_logging', '0');
         echo '<input type="checkbox" name="spat_debug_verbose_logging" value="1" ' . checked($enabled, '1', false) . '>';
-        echo '<p class="description">' . __('Enable verbose debug logging with full headers and email content. Disable for cleaner logs.', 'sportspress-admin-tools') . '</p>';
+        echo '<p class="description">' . esc_html__('Enable verbose debug logging with full headers and email content. Disable for cleaner logs.', 'sportspress-admin-tools') . '</p>';
     }
 
     public function child_plugins_section_callback()
     {
-        echo '<p>' . __('Status of registered child plugins:', 'sportspress-admin-tools') . '</p>';
+        echo '<p>' . esc_html__('Status of registered child plugins:', 'sportspress-admin-tools') . '</p>';
     }
 
     public function child_plugins_status_callback()
     {
         if (!class_exists('SPAT_Plugin_Manager')) {
-            echo '<p>' . __('Plugin Manager not available.', 'sportspress-admin-tools') . '</p>';
+            echo '<p>' . esc_html__('Plugin Manager not available.', 'sportspress-admin-tools') . '</p>';
             return;
         }
 
         $registered_plugins = SPAT_Plugin_Manager::get_registered_plugins();
 
         if (empty($registered_plugins)) {
-            echo '<p><em>' . __('No child plugins registered.', 'sportspress-admin-tools') . '</em></p>';
+            echo '<p><em>' . esc_html__('No child plugins registered.', 'sportspress-admin-tools') . '</em></p>';
             return;
         }
 
@@ -392,7 +392,7 @@ class SPAT_Admin
         }
 
         echo '</tbody></table>';
-        echo '<p class="description">' . __('Child plugins provide modules that can be enabled/disabled in the Modules section above.', 'sportspress-admin-tools') . '</p>';
+        echo '<p class="description">' . esc_html__('Child plugins provide modules that can be enabled/disabled in the Modules section above.', 'sportspress-admin-tools') . '</p>';
     }
 
 
@@ -416,7 +416,7 @@ class SPAT_Admin
         // Handle tab persistence after form submission
         if (isset($_POST['current_tab']) && isset($_GET['settings-updated'])) {
             $tab = sanitize_text_field($_POST['current_tab']);
-            wp_redirect(admin_url('options-general.php?page=sportspress-admin-tools&settings-updated=true&tab=' . $tab));
+            wp_safe_redirect(admin_url('options-general.php?page=sportspress-admin-tools&settings-updated=true&tab=' . $tab));
             exit;
         }
 
