@@ -366,10 +366,10 @@ class SPAT_Admin
 
         echo '<table class="wp-list-table widefat fixed striped">';
         echo '<thead><tr>';
-        echo '<th>' . __('Child Plugin', 'sportspress-admin-tools') . '</th>';
-        echo '<th>' . __('Version', 'sportspress-admin-tools') . '</th>';
-        echo '<th>' . __('Modules', 'sportspress-admin-tools') . '</th>';
-        echo '<th>' . __('Status', 'sportspress-admin-tools') . '</th>';
+        echo '<th>' . esc_html__('Child Plugin', 'sportspress-admin-tools') . '</th>';
+        echo '<th>' . esc_html__('Version', 'sportspress-admin-tools') . '</th>';
+        echo '<th>' . esc_html__('Modules', 'sportspress-admin-tools') . '</th>';
+        echo '<th>' . esc_html__('Status', 'sportspress-admin-tools') . '</th>';
         echo '</tr></thead><tbody>';
 
         foreach ($child_plugins as $plugin_data) {
@@ -412,7 +412,7 @@ class SPAT_Admin
 ?>
             
             <nav class="nav-tab-wrapper">
-                <a href="#general" class="nav-tab"><?php _e('General', 'sportspress-admin-tools'); ?></a>
+                <a href="#general" class="nav-tab"><?php esc_html_e('General', 'sportspress-admin-tools'); ?></a>
                 <?php
         // Allow child plugins to add their own tabs
         do_action('spat_admin_page_tabs');

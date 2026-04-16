@@ -127,18 +127,18 @@ class SPR_Admin {
         $logs = SPR_Database::get_registration_logs(50);
         
         if (empty($logs)) {
-            echo '<p>' . __('No registration activity yet.', 'sportspress-player-registration') . '</p>';
+            echo '<p>' . esc_html__('No registration activity yet.', 'sportspress-player-registration') . '</p>';
             return;
         }
         
         echo '<table class="wp-list-table widefat fixed striped">';
         echo '<thead><tr>';
-        echo '<th>' . __('Timestamp', 'sportspress-player-registration') . '</th>';
-        echo '<th>' . __('Order', 'sportspress-player-registration') . '</th>';
-        echo '<th>' . __('Customer', 'sportspress-player-registration') . '</th>';
-        echo '<th>' . __('Player', 'sportspress-player-registration') . '</th>';
-        echo '<th>' . __('Season', 'sportspress-player-registration') . '</th>';
-        echo '<th>' . __('Action', 'sportspress-player-registration') . '</th>';
+        echo '<th>' . esc_html__('Timestamp', 'sportspress-player-registration') . '</th>';
+        echo '<th>' . esc_html__('Order', 'sportspress-player-registration') . '</th>';
+        echo '<th>' . esc_html__('Customer', 'sportspress-player-registration') . '</th>';
+        echo '<th>' . esc_html__('Player', 'sportspress-player-registration') . '</th>';
+        echo '<th>' . esc_html__('Season', 'sportspress-player-registration') . '</th>';
+        echo '<th>' . esc_html__('Action', 'sportspress-player-registration') . '</th>';
         echo '</tr></thead><tbody>';
         
         foreach ($logs as $log) {
@@ -178,15 +178,15 @@ class SPR_Admin {
         $logs = SPR_Database::get_role_logs(50);
         
         if (empty($logs)) {
-            echo '<p>' . __('No role assignment activity yet.', 'sportspress-player-registration') . '</p>';
+            echo '<p>' . esc_html__('No role assignment activity yet.', 'sportspress-player-registration') . '</p>';
             return;
         }
         
         echo '<table class="wp-list-table widefat fixed striped">';
         echo '<thead><tr>';
-        echo '<th>' . __('Timestamp', 'sportspress-player-registration') . '</th>';
-        echo '<th>' . __('User', 'sportspress-player-registration') . '</th>';
-        echo '<th>' . __('Action', 'sportspress-player-registration') . '</th>';
+        echo '<th>' . esc_html__('Timestamp', 'sportspress-player-registration') . '</th>';
+        echo '<th>' . esc_html__('User', 'sportspress-player-registration') . '</th>';
+        echo '<th>' . esc_html__('Action', 'sportspress-player-registration') . '</th>';
         echo '</tr></thead><tbody>';
         
         foreach ($logs as $log) {
