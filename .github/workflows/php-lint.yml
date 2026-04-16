@@ -28,7 +28,6 @@ jobs:
         run: |
           composer global config allow-plugins.dealerdirect/phpcodesniffer-composer-installer true
           composer global require "wp-coding-standards/wpcs"
-          # PHPCS standards are usually located in ~/.composer/vendor/wp-coding-standards/wpcs
           phpcs -i
 
       - name: PHP Syntax Lint
@@ -36,5 +35,4 @@ jobs:
           find . -name '*.php' -not -path '*/vendor/*' -not -path '*/node_modules/*' -exec php -l {} \;
 
       - name: Run PHPCS
-        run: |
-          phpcs -p -s --warning-severity=0 --standard=WordPress --extensions=php --ignore=*/vendor/*,*/assets/*,*/tests/* .
+        run: phpcs
