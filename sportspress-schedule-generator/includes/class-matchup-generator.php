@@ -458,7 +458,7 @@ class SPSG_Matchup_Generator
     private function assign_home_away_random($matchups)
     {
         foreach ($matchups as &$matchup) {
-            if (rand(0, 1) === 0) {
+            if (wp_rand(0, 1) === 0) {
                 $matchup['home_team'] = $matchup['team_a'];
                 $matchup['away_team'] = $matchup['team_b'];
             }
@@ -531,7 +531,7 @@ class SPSG_Matchup_Generator
      */
     private function assign_random_home_away($matchup)
     {
-        if (rand(0, 1) === 0) {
+        if (wp_rand(0, 1) === 0) {
             $matchup['home_team'] = $matchup['team_a'];
             $matchup['away_team'] = $matchup['team_b'];
         } else {
@@ -592,7 +592,7 @@ class SPSG_Matchup_Generator
             }
             else {
                 // Equal balance - random assignment
-                if (rand(0, 1) === 0) {
+                if (wp_rand(0, 1) === 0) {
                     $matchup['home_team'] = $matchup['team_a'];
                     $matchup['away_team'] = $matchup['team_b'];
                     $home_counts[$id_a]++;

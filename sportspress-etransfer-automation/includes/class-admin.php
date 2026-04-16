@@ -46,11 +46,11 @@ class SPET_Admin
                 wp_die(__('You do not have permission to access this page.', 'sportspress-etransfer-automation'));
             }
 
-            update_option('spet_webhook_secret', sanitize_text_field($_POST['spet_webhook_secret']));
-            update_option('spet_service_provider', sanitize_text_field($_POST['spet_service_provider']));
+            update_option('spet_webhook_secret', sanitize_text_field(wp_unslash($_POST['spet_webhook_secret'])));
+            update_option('spet_service_provider', sanitize_text_field(wp_unslash($_POST['spet_service_provider'])));
 
             // Validate and sanitize equivalent names
-            $equivalent_names = $this->validate_equivalent_names($_POST['spet_equivalent_names']);
+            $equivalent_names = $this->validate_equivalent_names(wp_unslash($_POST['spet_equivalent_names']));
             update_option('spet_equivalent_names', $equivalent_names);
 
             SPET_Name_Matcher::clear_cache();

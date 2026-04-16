@@ -33,7 +33,11 @@ if (get_option('spat_remove_data_on_uninstall', '0') === '1') {
     // Clean up transients for all users
     global $wpdb;
     $wpdb->query(
-        "DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_spsg_%' OR option_name LIKE '_transient_timeout_spsg_%'"
+        $wpdb->prepare(
+            "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+            $wpdb->esc_like('_transient_spsg_') . '%',
+            $wpdb->esc_like('_transient_timeout_spsg_') . '%'
+        )
     );
 
     // Clean up exported files
@@ -44,7 +48,7 @@ if (get_option('spat_remove_data_on_uninstall', '0') === '1') {
         if ($files) {
             foreach ($files as $file) {
                 if (is_file($file)) {
-                    unlink($file);
+                    wp_delete_file($file);
                 }
             }
         }

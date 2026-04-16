@@ -52,7 +52,7 @@ class SPT_Batch_List_Creator {
     }
     
     public function success_notice() {
-        if (isset($_GET['spt_batch_created']) && $_GET['spt_batch_created'] == '1') {
+        if (isset($_GET['spt_batch_created']) && sanitize_text_field(wp_unslash($_GET['spt_batch_created'])) == '1') {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Player lists created successfully.', 'sportspress-player-tools') . '</p></div>';
         }
     }

@@ -20,7 +20,7 @@ class SPEM_Admin {
     }
 
     public function add_admin_tab() {
-        echo '<a href="#events-manager" class="nav-tab">Events Manager</a>';
+        echo '<a href="#events-manager" class="nav-tab">' . esc_html('Events Manager') . '</a>';
     }
 
     public function add_admin_content() {

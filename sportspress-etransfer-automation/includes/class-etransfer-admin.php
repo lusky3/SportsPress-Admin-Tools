@@ -25,7 +25,7 @@ class SPET_ETransfer_Admin
     {
         if (!class_exists('WooCommerce')) {
             add_action('admin_notices', function () {
-                echo '<div class="notice notice-error"><p>' . __('e-Transfer Webhooks requires WooCommerce to be active.', 'sportspress-admin-tools') . '</p></div>';
+                echo '<div class="notice notice-error"><p>' . esc_html__('e-Transfer Webhooks requires WooCommerce to be active.', 'sportspress-admin-tools') . '</p></div>';
             });
             return;
         }

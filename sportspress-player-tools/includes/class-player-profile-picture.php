@@ -67,14 +67,14 @@ class SPT_Player_Profile_Picture {
         
         ?>
         <div class="woocommerce-MyAccount-content">
-            <h3><?php _e('Profile Picture', 'sportspress-player-tools'); ?></h3>
+            <h3><?php esc_html_e('Profile Picture', 'sportspress-player-tools'); ?></h3>
             
             <?php if ($player_count !== 1): ?>
                 <div class="woocommerce-message woocommerce-message--info">
                     <?php if ($player_count === 0): ?>
-                        <p><?php _e('You do not have a player profile associated with your account. Please contact the site administrator.', 'sportspress-player-tools'); ?></p>
+                        <p><?php esc_html_e('You do not have a player profile associated with your account. Please contact the site administrator.', 'sportspress-player-tools'); ?></p>
                     <?php else: ?>
-                        <p><?php _e('You have multiple player profiles associated with your account. Please contact the site administrator.', 'sportspress-player-tools'); ?></p>
+                        <p><?php esc_html_e('You have multiple player profiles associated with your account. Please contact the site administrator.', 'sportspress-player-tools'); ?></p>
                     <?php endif; ?>
                 </div>
             <?php else: 
@@ -93,7 +93,7 @@ class SPT_Player_Profile_Picture {
                         <input type="file" name="profile_picture" accept="image/*" required>
                     </p>
                     <p>
-                        <button type="submit" name="upload_picture" class="button"><?php _e('Upload Picture', 'sportspress-player-tools'); ?></button>
+                        <button type="submit" name="upload_picture" class="button"><?php esc_html_e('Upload Picture', 'sportspress-player-tools'); ?></button>
                     </p>
                 </form>
             <?php endif; ?>

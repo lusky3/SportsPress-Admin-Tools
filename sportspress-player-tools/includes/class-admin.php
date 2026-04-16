@@ -18,7 +18,7 @@ class SPT_Admin {
     }
     
     public function add_admin_tab() {
-        echo '<a href="#player-tools" class="nav-tab">Player Tools</a>';
+        echo '<a href="#player-tools" class="nav-tab">' . esc_html('Player Tools') . '</a>';
     }
     
     public function add_admin_content() {
