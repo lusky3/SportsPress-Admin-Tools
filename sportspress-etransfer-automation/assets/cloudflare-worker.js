@@ -261,17 +261,43 @@ function extractEmailBody(rawContent) {
   // Look for plain text content first
   const textMatch = rawContent.match(/Content-Type: text\/plain[\s\S]*?\n\n([\s\S]*?)(?=\n--)/i);
   if (textMatch) {
-    return textMatch[1].trim();
+    const headers = rawContent.match(/Content-Type: text\/plain[\s\S]*?\n\n/i)?.[0] || '';
+    return decodeBody(textMatch[1].trim(), headers);
   }
   
   // Fallback to HTML content and strip tags
   const htmlMatch = rawContent.match(/Content-Type: text\/html[\s\S]*?\n\n([\s\S]*?)(?=\n--)/i);
   if (htmlMatch) {
-    return htmlMatch[1].replaceAll(/<[^>]*>/g, '').replaceAll(/&[^;]+;/g, ' ').trim();
+    const headers = rawContent.match(/Content-Type: text\/html[\s\S]*?\n\n/i)?.[0] || '';
+    const decoded = decodeBody(htmlMatch[1].trim(), headers);
+    return decoded.replaceAll(/<[^>]*>/g, '').replaceAll(/&[^;]+;/g, ' ').trim();
   }
   
   // Last resort: return raw content
   return rawContent;
+}
+
+/**
+ * Decode email body based on Content-Transfer-Encoding
+ */
+function decodeBody(body, headers) {
+  const encodingMatch = headers.match(/Content-Transfer-Encoding:\s*(\S+)/i);
+  if (!encodingMatch) return body;
+  
+  const encoding = encodingMatch[1].toLowerCase();
+  if (encoding === 'base64') {
+    try {
+      return atob(body.replace(/\s/g, ''));
+    } catch (e) {
+      return body;
+    }
+  }
+  if (encoding === 'quoted-printable') {
+    return body
+      .replace(/=\r?\n/g, '')
+      .replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+  }
+  return body;
 }
 
 /**

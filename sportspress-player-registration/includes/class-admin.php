@@ -64,6 +64,7 @@ class SPR_Admin {
                         <th scope="row"><?php esc_html_e('Automatic Player Creation', 'sportspress-player-registration'); ?></th>
                         <td>
                             <label>
+                                <input type="hidden" name="spr_auto_create" value="0" />
                                 <input type="checkbox" name="spr_auto_create" value="1" <?php checked($auto_create, '1'); ?> />
                                 <?php esc_html_e('Automatically create player records from registration orders', 'sportspress-player-registration'); ?>
                             </label>
@@ -73,6 +74,7 @@ class SPR_Admin {
                         <th scope="row"><?php esc_html_e('Update Player Records', 'sportspress-player-registration'); ?></th>
                         <td>
                             <label>
+                                <input type="hidden" name="spr_auto_update" value="0" />
                                 <input type="checkbox" name="spr_auto_update" value="1" <?php checked($auto_update, '1'); ?> />
                                 <?php esc_html_e('Find and update existing player records by name/email', 'sportspress-player-registration'); ?>
                             </label>
@@ -82,6 +84,7 @@ class SPR_Admin {
                         <th scope="row"><?php esc_html_e('Automatic Role Assignment', 'sportspress-player-registration'); ?></th>
                         <td>
                             <label>
+                                <input type="hidden" name="spr_auto_role" value="0" />
                                 <input type="checkbox" name="spr_auto_role" value="1" <?php checked($auto_role, '1'); ?> />
                                 <?php esc_html_e('Automatically assign player role to registered users', 'sportspress-player-registration'); ?>
                             </label>
@@ -105,6 +108,7 @@ class SPR_Admin {
                         <th scope="row"><?php esc_html_e('Automatic Season Assignment', 'sportspress-player-registration'); ?></th>
                         <td>
                             <label>
+                                <input type="hidden" name="spr_auto_season" value="0" />
                                 <input type="checkbox" name="spr_auto_season" value="1" <?php checked($auto_season, '1'); ?> />
                                 <?php esc_html_e('Automatically assign season taxonomy to player records', 'sportspress-player-registration'); ?>
                             </label>

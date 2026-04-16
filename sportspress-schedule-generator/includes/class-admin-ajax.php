@@ -99,7 +99,8 @@ class SPSG_Admin_Ajax
         }
         else {
             wp_send_json_success(array(
-                'message' => __('Configuration saved successfully! Your changes have been preserved.', 'sportspress-schedule-generator')
+                'message' => __('Configuration saved successfully! Your changes have been preserved.', 'sportspress-schedule-generator'),
+                'config_id' => $result
             ));
         }
     }
@@ -307,14 +308,11 @@ class SPSG_Admin_Ajax
             wp_send_json_error(__('No configuration ID provided', 'sportspress-schedule-generator'));
         }
 
-        $saved_configs = get_option('spsg_saved_configurations', array());
+        $result = $this->config_manager->delete($config_id);
 
-        if (!isset($saved_configs[$config_id])) {
-            wp_send_json_error(__('Configuration not found', 'sportspress-schedule-generator'));
+        if (is_wp_error($result)) {
+            wp_send_json_error($result->get_error_message());
         }
-
-        unset($saved_configs[$config_id]);
-        update_option('spsg_saved_configurations', $saved_configs);
 
         wp_send_json_success(__('Configuration deleted successfully', 'sportspress-schedule-generator'));
     }
@@ -594,6 +592,7 @@ class SPSG_Admin_Ajax
 
         $progress = get_transient($progress_key);
         if ($progress) {
+            $progress['cancelled'] = true;
             $progress['status'] = 'cancelled';
             set_transient($progress_key, $progress, 300);
         }
@@ -852,7 +851,12 @@ class SPSG_Admin_Ajax
             wp_send_json_error(__(self::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator'));
         }
 
-        $result = $this->config_manager->clear_change_history();
+        $config_id = sanitize_text_field($_POST['config_id'] ?? '');
+        if (empty($config_id)) {
+            wp_send_json_error(__('No configuration ID provided', 'sportspress-schedule-generator'));
+        }
+
+        $result = $this->config_manager->clear_change_history($config_id);
 
         if (is_wp_error($result)) {
             wp_send_json_error($result->get_error_message());

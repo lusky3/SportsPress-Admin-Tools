@@ -16,6 +16,9 @@ if (get_option('spat_remove_data_on_uninstall', '0') !== '1') {
     return;
 }
 
+// Clear scheduled cron events
+wp_clear_scheduled_hook('spt_cleanup_old_temp_data');
+
 // Remove plugin options
 delete_option('spt_email_meta');
 delete_option('spt_captain_role');

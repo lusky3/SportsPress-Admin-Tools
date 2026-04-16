@@ -36,19 +36,29 @@ class SPET_Name_Matcher {
         $equivalent_groups = self::get_equivalent_names();
         
         // Normalize names for comparison
-        $name1_parts = self::normalize_name($name1);
-        $name2_parts = self::normalize_name($name2);
+        $name1_parts = array_values(self::normalize_name($name1));
+        $name2_parts = array_values(self::normalize_name($name2));
         
-        // Check each part of the names
-        foreach ($name1_parts as $part1) {
-            foreach ($name2_parts as $part2) {
-                if (self::parts_are_equivalent($part1, $part2, $equivalent_groups)) {
-                    return true;
-                }
-            }
+        // Both names must have at least one part
+        if (empty($name1_parts) || empty($name2_parts)) {
+            return false;
         }
         
-        return false;
+        // Compare first parts (first names)
+        $first1 = $name1_parts[0];
+        $first2 = $name2_parts[0];
+        if (!self::parts_are_equivalent($first1, $first2, $equivalent_groups)) {
+            return false;
+        }
+        
+        // Compare last parts (last names) - must match exactly or be equivalent
+        $last1 = end($name1_parts);
+        $last2 = end($name2_parts);
+        if (!self::parts_are_equivalent($last1, $last2, $equivalent_groups)) {
+            return false;
+        }
+        
+        return true;
     }
     
     /**

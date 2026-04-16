@@ -216,7 +216,7 @@ class SPET_ETransfer_Automation
         if (!empty($payment_data['sender_name'])) {
             $orders = wc_get_orders(array(
                 'status' => 'on-hold',
-                'limit' => 10,
+                'limit' => 50,
                 'orderby' => 'date',
                 'order' => 'DESC'
             ));
