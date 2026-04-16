@@ -1,0 +1,44 @@
+version: '3.8'
+services:
+  db:
+    image: mariadb:10.11
+    environment:
+      MYSQL_ROOT_PASSWORD: testpass
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wp
+      MYSQL_PASSWORD: wp
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  wordpress:
+    image: wordpress:6.4-php8.2-apache
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wp
+      WORDPRESS_DB_PASSWORD: wp
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DEBUG: 1
+    volumes:
+      - ./sportspress-admin-tools:/var/www/html/wp-content/plugins/sportspress-admin-tools
+      - ./sportspress-schedule-generator:/var/www/html/wp-content/plugins/sportspress-schedule-generator
+      - ./sportspress-events-manager:/var/www/html/wp-content/plugins/sportspress-events-manager
+      - ./sportspress-player-registration:/var/www/html/wp-content/plugins/sportspress-player-registration
+      - ./sportspress-player-tools:/var/www/html/wp-content/plugins/sportspress-player-tools
+      - ./sportspress-etransfer-automation:/var/www/html/wp-content/plugins/sportspress-etransfer-automation
+      - ./sportspress-league-manager:/var/www/html/wp-content/plugins/sportspress-league-manager
+      - ./tests/integration:/var/www/html/wp-content/plugins/integration-tests
+    ports:
+      - "8080:80"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 10s
+      timeout: 5s
+      retries: 12

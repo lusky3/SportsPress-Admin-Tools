@@ -29,7 +29,7 @@ class SportsPress_Events_Manager {
     public function check_activation_requirements() {
         if (!class_exists('SPAT_Plugin_Manager')) {
             deactivate_plugins(plugin_basename(__FILE__));
-            wp_die(__('SportsPress Events Manager requires SportsPress Admin Tools to be installed and activated first.', 'sportspress-events-manager'));
+            wp_die('SportsPress Events Manager requires SportsPress Admin Tools to be installed and activated first.');
         }
     }
     

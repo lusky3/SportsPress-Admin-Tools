@@ -34,7 +34,7 @@ class SportsPress_Schedule_Generator
     {
         if (!class_exists('SPAT_Plugin_Manager')) {
             deactivate_plugins(plugin_basename(__FILE__));
-            wp_die(__('SportsPress Schedule Generator requires SportsPress Admin Tools to be installed and activated first.', 'sportspress-schedule-generator'));
+            wp_die('SportsPress Schedule Generator requires SportsPress Admin Tools to be installed and activated first.');
         }
     }
 
