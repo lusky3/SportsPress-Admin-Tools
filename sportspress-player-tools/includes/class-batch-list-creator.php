@@ -157,7 +157,7 @@ class SPT_Batch_List_Creator {
     }
     
     public function handle_upload() {
-        if (!current_user_can('manage_options') || !isset($_POST['spt_batch_list_nonce']) || !wp_verify_nonce($_POST['spt_batch_list_nonce'], 'spt_batch_list_upload')) {
+        if (!current_user_can('manage_options') || !isset($_POST['spt_batch_list_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['spt_batch_list_nonce'])), 'spt_batch_list_upload')) {
             wp_die(__('Invalid request', 'sportspress-player-tools'));
         }
         
@@ -273,10 +273,10 @@ class SPT_Batch_List_Creator {
             wp_die(__('No team or player data received', 'sportspress-player-tools'));
         }
         
-        $list_name = sanitize_text_field($_POST['list_name']);
+        $list_name = sanitize_text_field(wp_unslash($_POST['list_name']));
         $season_id = intval($_POST['season']);
-        $columns = isset($_POST['columns']) ? array_map('sanitize_text_field', $_POST['columns']) : array('number', 'position');
-        $action = isset($_POST['list_action']) ? sanitize_text_field($_POST['list_action']) : 'create';
+        $columns = isset($_POST['columns']) ? array_map('sanitize_text_field', wp_unslash($_POST['columns'])) : array('number', 'position');
+        $action = isset($_POST['list_action']) ? sanitize_text_field(wp_unslash($_POST['list_action'])) : 'create';
         
         // Validate action value
         if (!in_array($action, array('create', 'update'), true)) {
@@ -403,7 +403,7 @@ class SPT_Batch_List_Creator {
         ?>
         <div class="wrap">
             <h1><?php esc_html_e('Preview & Confirm Player Lists', 'sportspress-player-tools'); ?></h1>
-            <p><?php printf(__('Showing %d-%d of %d entries', 'sportspress-player-tools'), $offset + 1, min($offset + $per_page, $total_items), $total_items); ?></p>
+            <p><?php printf(esc_html__('Showing %d-%d of %d entries', 'sportspress-player-tools'), $offset + 1, min($offset + $per_page, $total_items), $total_items); ?></p>
             
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" id="batch-form">
                 <input type="hidden" name="action" value="spt_process_list_batch">
@@ -544,7 +544,7 @@ class SPT_Batch_List_Creator {
                 <?php if ($total_pages > 1): ?>
                 <div class="tablenav">
                     <div class="tablenav-pages">
-                        <span class="displaying-num"><?php printf(__('%s items', 'sportspress-player-tools'), number_format_i18n($total_items)); ?></span>
+                        <span class="displaying-num"><?php printf(esc_html__('%s items', 'sportspress-player-tools'), number_format_i18n($total_items)); ?></span>
                         <span class="pagination-links">
                             <?php if ($current_page > 1): ?>
                                 <a class="prev-page button" href="#" data-page="<?php echo esc_attr($current_page - 1); ?>">&laquo;</a>
@@ -670,7 +670,7 @@ class SPT_Batch_List_Creator {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-player-tools'));
         }
         
-        $search = isset($_GET['q']) ? sanitize_text_field($_GET['q']) : '';
+        $search = isset($_GET['q']) ? sanitize_text_field(wp_unslash($_GET['q'])) : '';
         $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
         $per_page = 50;
         
@@ -706,7 +706,7 @@ class SPT_Batch_List_Creator {
             wp_send_json_error(__('Insufficient permissions', 'sportspress-player-tools'));
         }
         
-        $search = isset($_GET['q']) ? sanitize_text_field($_GET['q']) : '';
+        $search = isset($_GET['q']) ? sanitize_text_field(wp_unslash($_GET['q'])) : '';
         $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
         $per_page = 50;
         

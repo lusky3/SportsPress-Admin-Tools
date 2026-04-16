@@ -31,6 +31,7 @@ run_test "$SCRIPT_DIR/sportspress-etransfer-automation/tests/test-etransfer-auto
 run_test "$SCRIPT_DIR/sportspress-player-registration/tests/test-registration-logic.php"
 run_test "$SCRIPT_DIR/sportspress-player-tools/tests/test-batch-list-creator.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-matchup-generator.php"
+run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-league-manager.php"
 
 echo "════════════════════════════════════════"
 echo "  ALL TESTS SUMMARY"

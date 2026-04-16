@@ -42,7 +42,7 @@
     function onFilterChange() {
       var filters = { league: $league.val(), season: $season.val() };
       // Persist preference
-      splmAjax('splm_save_filters', filters, $('<span>')); // silent
+      splmAjax('splm_save_user_prefs', filters, $('<span>')); // silent
       // Reload visible data sections
       loadTeams();
       loadFees();
@@ -66,7 +66,7 @@
         $wrap.html('<div class="splm-error">' + esc(res.data) + '</div>');
         return;
       }
-      renderTeamsTable($wrap, res.data);
+      renderTeamsTable($wrap, res.data.teams);
     });
   }
 
@@ -83,7 +83,7 @@
     var $body = $table.find('tbody');
     $.each(teams, function (_, t) {
       var $row = $('<tr>');
-      $row.append($('<td>').text(t.name));
+      $row.append($('<td>').text(t.title));
       $row.append($('<td>').text(t.players));
       $row.append($('<td>').html('<span class="splm-badge splm-badge--' + esc(t.badge) + '">' + esc(t.status) + '</span>'));
       $body.append($row);
@@ -96,8 +96,8 @@
      --------------------------------------------------------------- */
   function initCsvUpload() {
     var $zone = $('#splm-csv-dropzone');
-    var $input = $('#splm-csv-input');
-    var $preview = $('#splm-csv-preview');
+    var $input = $('#splm-csv-file');
+    var $preview = $('#splm-roster-preview');
     if (!$zone.length) return;
 
     // Click to browse
@@ -150,7 +150,8 @@
           var fd = new FormData();
           fd.append('action', 'splm_upload_roster');
           fd.append('_ajax_nonce', splmData.nonce);
-          fd.append('csv', file);
+          fd.append('roster_file', file);
+          fd.append('team_id', $('#splm-team-selector').val());
           fd.append('league', $('#splm-filter-league').val());
           fd.append('season', $('#splm-filter-season').val());
 
@@ -184,7 +185,7 @@
   function loadFees() {
     var $wrap = $('#splm-fees-wrap');
     if (!$wrap.length) return;
-    splmAjax('splm_get_fees', {
+    splmAjax('splm_lookup_fees', {
       league: $('#splm-filter-league').val(),
       season: $('#splm-filter-season').val()
     }, $wrap).done(function (res) {
@@ -232,7 +233,7 @@
      5. Health check
      --------------------------------------------------------------- */
   function initHealthCheck() {
-    var $btn = $('#splm-health-run');
+    var $btn = $('#splm-run-health-check');
     var $wrap = $('#splm-health-results');
     if (!$btn.length) return;
 
@@ -243,13 +244,15 @@
           return;
         }
         var $list = $('<ul class="splm-health-list">');
-        $.each(res.data, function (_, item) {
+        $.each(res.data.issues, function (_, item) {
           var severity = item.severity || 'ok'; // ok | warning | critical
           var icon = severity === 'ok' ? '✓' : severity === 'warning' ? '!' : '✕';
           var $li = $('<li class="splm-health-item">');
           $li.append('<span class="splm-health-icon splm-health-icon--' + esc(severity) + '">' + icon + '</span>');
-          $li.append($('<span class="splm-health-label">').text(item.label));
-          $li.append($('<span class="splm-health-detail">').text(item.detail || ''));
+          $li.append($('<span class="splm-health-label">').text(item.message));
+          if (item.action) {
+            $li.append($('<span class="splm-health-detail">').text(item.action));
+          }
           $list.append($li);
         });
         $wrap.empty().append($list);
@@ -269,30 +272,11 @@
      7. First-run wizard
      --------------------------------------------------------------- */
   function initWizard() {
-    var $overlay = $('#splm-wizard-overlay');
-    if (!$overlay.length) return;
+    var $wizard = $('#splm-first-run-wizard');
+    if (!$wizard.length) return;
 
-    var $steps = $overlay.find('.splm-wizard__step');
-    var current = 0;
-
-    function showStep(i) {
-      $steps.removeClass('is-active').eq(i).addClass('is-active');
-      $overlay.find('.splm-wizard__dot').removeClass('is-active').eq(i).addClass('is-active');
-      current = i;
-    }
-
-    showStep(0);
-
-    $overlay.on('click', '.splm-wizard-next', function () {
-      if (current < $steps.length - 1) showStep(current + 1);
-    });
-
-    $overlay.on('click', '.splm-wizard-prev', function () {
-      if (current > 0) showStep(current - 1);
-    });
-
-    $overlay.on('click', '.splm-wizard-dismiss', function () {
-      $overlay.fadeOut(200);
+    $wizard.on('click', '#splm-dismiss-wizard', function () {
+      $wizard.fadeOut(200);
       splmAjax('splm_dismiss_wizard', {}, $('<span>')); // silent
     });
   }
