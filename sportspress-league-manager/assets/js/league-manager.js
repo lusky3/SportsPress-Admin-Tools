@@ -56,7 +56,7 @@
      2. Teams / roster loading
      --------------------------------------------------------------- */
   function loadTeams() {
-    var $wrap = $('#splm-teams-wrap');
+    var $wrap = $('#splm-teams-data');
     if (!$wrap.length) return;
     splmAjax('splm_get_teams', {
       league: $('#splm-filter-league').val(),
@@ -66,6 +66,7 @@
         $wrap.html('<div class="splm-error">' + esc(res.data) + '</div>');
         return;
       }
+      $('#splm-teams-count').text(res.data.teams.length);
       renderTeamsTable($wrap, res.data.teams);
     });
   }

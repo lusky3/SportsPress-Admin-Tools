@@ -403,6 +403,12 @@
   font-style: italic;
 }
 
+.splm-card-scroll {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+
 .splm-select { min-width: 180px; }
 
 .splm-section { margin-bottom: 24px; }
