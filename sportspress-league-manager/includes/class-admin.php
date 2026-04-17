@@ -214,7 +214,7 @@ class SPLM_Admin {
 
 		add_settings_field(
 			'splm_default_season',
-			__( 'Default Season', 'sportspress-league-manager' ),
+			__( 'Season Override', 'sportspress-league-manager' ),
 			array( $this, 'render_default_season_field' ),
 			'splm_backend_settings',
 			'splm_backend_section'
@@ -257,6 +257,14 @@ class SPLM_Admin {
 	 */
 	public function render_default_season_field() {
 		$selected = get_option( 'splm_default_season', 0 );
+		$sp_season_id = get_option( 'sportspress_season', 0 );
+		$sp_season_label = '';
+		if ( $sp_season_id ) {
+			$sp_term = get_term( $sp_season_id, 'sp_season' );
+			if ( $sp_term && ! is_wp_error( $sp_term ) ) {
+				$sp_season_label = $sp_term->name;
+			}
+		}
 		$seasons = get_terms(
 			array(
 				'taxonomy'   => 'sp_season',
@@ -265,7 +273,12 @@ class SPLM_Admin {
 		);
 
 		echo '<select name="splm_default_season" id="splm_default_season">';
-		echo '<option value="0">' . esc_html__( '— Select —', 'sportspress-league-manager' ) . '</option>';
+		$default_label = __( 'Use SportsPress current season', 'sportspress-league-manager' );
+		if ( $sp_season_label ) {
+			/* translators: %s: current SportsPress season name */
+			$default_label = sprintf( __( 'Use SportsPress current season (%s)', 'sportspress-league-manager' ), $sp_season_label );
+		}
+		echo '<option value="0">' . esc_html( $default_label ) . '</option>';
 		if ( ! is_wp_error( $seasons ) ) {
 			foreach ( $seasons as $season ) {
 				echo '<option value="' . esc_attr( $season->term_id ) . '" ' . selected( $selected, $season->term_id, false ) . '>';
@@ -274,7 +287,7 @@ class SPLM_Admin {
 			}
 		}
 		echo '</select>';
-		echo '<p class="description">' . esc_html__( 'The season selected by default when league managers open the dashboard.', 'sportspress-league-manager' ) . '</p>';
+		echo '<p class="description">' . esc_html__( 'Optionally override the SportsPress current season for the League Manager dashboard. Leave as default to follow the SportsPress setting.', 'sportspress-league-manager' ) . '</p>';
 	}
 
 	/**

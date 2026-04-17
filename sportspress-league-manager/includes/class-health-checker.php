@@ -123,11 +123,12 @@ class SPLM_Health_Checker {
 
 		// Check current/default season is set.
 		$default_season = get_option( 'splm_default_season', '' );
-		if ( empty( $default_season ) && ! is_wp_error( $seasons ) && ! empty( $seasons ) ) {
+		$sp_season      = get_option( 'sportspress_season', '' );
+		if ( empty( $default_season ) && empty( $sp_season ) && ! is_wp_error( $seasons ) && ! empty( $seasons ) ) {
 			$issues[] = array(
 				'severity' => 'info',
-				'message'  => __( 'No default season is set.', 'sportspress-league-manager' ),
-				'action'   => __( 'Set a default season in Settings → SportsPress Admin Tools → League Manager.', 'sportspress-league-manager' ),
+				'message'  => __( 'No current season is set in SportsPress or League Manager.', 'sportspress-league-manager' ),
+				'action'   => __( 'Set a current season in SportsPress → Settings, or override it in Settings → SportsPress Admin Tools → League Manager.', 'sportspress-league-manager' ),
 			);
 		}
 
