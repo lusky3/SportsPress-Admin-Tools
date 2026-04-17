@@ -18,7 +18,7 @@ class SPEM_Season_Rollover {
 	public function __construct() {
 		add_action( 'wp_ajax_spem_season_rollover_preview', array( $this, 'ajax_preview' ) );
 		add_action( 'wp_ajax_spem_season_rollover_execute', array( $this, 'ajax_execute' ) );
-		add_action( 'spat_admin_page_content', array( $this, 'render_ui' ) );
+		add_action( 'spem_admin_tab_content', array( $this, 'render_ui' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_scripts' ) );
 	}
 
