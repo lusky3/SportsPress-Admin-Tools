@@ -131,6 +131,16 @@ class SPLM_Health_Checker {
 			);
 		}
 
+		// Check WooCommerce when fee tracking depends on it.
+		$fee_source = get_option( 'splm_fee_source', 'none' );
+		if ( $fee_source === 'woocommerce' && ! class_exists( 'WooCommerce' ) ) {
+			$issues[] = array(
+				'severity' => 'error',
+				'message'  => __( 'Fee tracking is set to WooCommerce, but WooCommerce is not active.', 'sportspress-league-manager' ),
+				'action'   => __( 'Install and activate WooCommerce, or change the fee source in Settings → SportsPress Admin Tools → League Manager.', 'sportspress-league-manager' ),
+			);
+		}
+
 		if ( empty( $issues ) ) {
 			$issues[] = array(
 				'severity' => 'success',

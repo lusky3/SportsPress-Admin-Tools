@@ -144,8 +144,9 @@ class SPLM_Admin_Renderer {
 						<span class="dashicons dashicons-groups"></span>
 						<?php esc_html_e( 'Teams', 'sportspress-league-manager' ); ?>
 					</h3>
-					<div class="splm-card-value"><?php echo esc_html( $team_count ); ?></div>
+					<div class="splm-card-value" id="splm-teams-count"><?php echo esc_html( $team_count ); ?></div>
 					<p class="splm-card-desc"><?php esc_html_e( 'Teams in selected league', 'sportspress-league-manager' ); ?></p>
+					<div class="splm-card-scroll" id="splm-teams-data"></div>
 					<?php if ( $this->is_module_enabled( 'league_roster_management' ) ) : ?>
 						<a href="<?php echo esc_url( admin_url( 'admin.php?page=splm-rosters' ) ); ?>" class="splm-card-link">
 							<?php esc_html_e( 'Manage Rosters →', 'sportspress-league-manager' ); ?>
@@ -365,12 +366,23 @@ Jane Smith,7,Midfielder,jane@example.com</pre>
 	 * Render the Fee Status page.
 	 */
 	public function render_fees() {
+		$fee_source = get_option( 'splm_fee_source', 'none' );
 		?>
 		<div class="wrap splm-wrap">
 			<h1 class="splm-page-title">
 				<?php esc_html_e( 'Fee Status', 'sportspress-league-manager' ); ?>
 				<span class="splm-tooltip" tabindex="0" data-tip="<?php esc_attr_e( 'Look up player and team fee payment status linked to WooCommerce orders.', 'sportspress-league-manager' ); ?>" aria-label="<?php esc_attr_e( 'Look up player and team fee payment status linked to WooCommerce orders.', 'sportspress-league-manager' ); ?>">?</span>
 			</h1>
+
+			<?php if ( $fee_source === 'woocommerce' && ! class_exists( 'WooCommerce' ) ) : ?>
+			<div class="notice notice-error">
+				<p><?php esc_html_e( 'Fee tracking is configured to use WooCommerce, but WooCommerce is not active. Fee data will be unavailable until WooCommerce is installed and activated.', 'sportspress-league-manager' ); ?></p>
+			</div>
+			<?php elseif ( $fee_source === 'none' ) : ?>
+			<div class="notice notice-warning">
+				<p><?php esc_html_e( 'Fee tracking is not configured. Ask an administrator to set a fee source in Settings → SportsPress Admin Tools → League Manager.', 'sportspress-league-manager' ); ?></p>
+			</div>
+			<?php endif; ?>
 
 			<!-- Help Text -->
 			<div class="splm-help-text">
