@@ -263,53 +263,84 @@ class SPLM_Admin_Ajax {
 
 		$team_id   = absint( $_POST['team_id'] ?? 0 );
 		$season_id = absint( $_POST['season_id'] ?? 0 );
+		$league_id = absint( $_POST['league'] ?? 0 );
 
-		$players = $team_id
-			? SPLM_SportsPress_Data::get_players_for_team( $team_id )
-			: array();
+		if ( ! $team_id && $league_id ) {
+			$teams = get_posts(
+				array(
+					'post_type'      => 'sp_team',
+					'post_status'    => 'publish',
+					'posts_per_page' => -1,
+					'tax_query'      => array(
+						array(
+							'taxonomy' => 'sp_league',
+							'field'    => 'term_id',
+							'terms'    => $league_id,
+						),
+					),
+				)
+			);
+		} elseif ( $team_id ) {
+			$teams = array( get_post( $team_id ) );
+			$teams = array_filter( $teams );
+		} else {
+			$teams = array();
+		}
+
+		if ( ! $season_id ) {
+			$season_id = absint( $_POST['season'] ?? 0 );
+		}
 
 		$results = array();
 
-		if ( $fee_source === 'woocommerce' && class_exists( 'WooCommerce' ) ) {
-			foreach ( $players as $player ) {
-				$email = get_post_meta( $player->ID, 'sp_email', true );
-				if ( empty( $email ) ) {
-					$results[] = array(
-						'player_id'   => $player->ID,
-						'player_name' => $player->post_title,
-						'status'      => 'unknown',
-						'amount'      => 0,
-					);
-					continue;
-				}
+		foreach ( $teams as $team ) {
+			$players = SPLM_SportsPress_Data::get_players_for_team( $team->ID );
 
-				$orders = wc_get_orders(
-					array(
+			if ( $fee_source === 'woocommerce' && class_exists( 'WooCommerce' ) ) {
+				foreach ( $players as $player ) {
+					$email = get_post_meta( $player->ID, 'sp_email', true );
+					if ( empty( $email ) ) {
+						$results[] = array(
+							'player_id'   => $player->ID,
+							'player_name' => $player->post_title,
+							'team'        => $team->post_title,
+							'status'      => 'unknown',
+							'amount'      => 0,
+						);
+						continue;
+					}
+
+					$order_args = array(
 						'billing_email' => sanitize_email( $email ),
 						'status'        => array( 'wc-completed', 'wc-processing' ),
 						'limit'         => 1,
-						'meta_key'      => '_splm_season_id',
-						'meta_value'    => $season_id ?: '',
-					)
-				);
+					);
+					if ( $season_id ) {
+						$order_args['meta_key']   = '_splm_season_id';
+						$order_args['meta_value'] = $season_id;
+					}
+					$orders = wc_get_orders( $order_args );
 
-				$results[] = array(
-					'player_id'   => $player->ID,
-					'player_name' => $player->post_title,
-					'status'      => ! empty( $orders ) ? 'paid' : 'unpaid',
-					'amount'      => ! empty( $orders ) ? $orders[0]->get_total() : 0,
-				);
-			}
-		} elseif ( $fee_source === 'manual' ) {
-			foreach ( $players as $player ) {
-				$status = get_post_meta( $player->ID, 'splm_fee_status', true );
-				$amount = get_post_meta( $player->ID, 'splm_fee_amount', true );
-				$results[] = array(
-					'player_id'   => $player->ID,
-					'player_name' => $player->post_title,
-					'status'      => $status ?: 'unpaid',
-					'amount'      => floatval( $amount ),
-				);
+					$results[] = array(
+						'player_id'   => $player->ID,
+						'player_name' => $player->post_title,
+						'team'        => $team->post_title,
+						'status'      => ! empty( $orders ) ? 'paid' : 'unpaid',
+						'amount'      => ! empty( $orders ) ? $orders[0]->get_total() : 0,
+					);
+				}
+			} elseif ( $fee_source === 'manual' ) {
+				foreach ( $players as $player ) {
+					$status = get_post_meta( $player->ID, 'splm_fee_status', true );
+					$amount = get_post_meta( $player->ID, 'splm_fee_amount', true );
+					$results[] = array(
+						'player_id'   => $player->ID,
+						'player_name' => $player->post_title,
+						'team'        => $team->post_title,
+						'status'      => $status ?: 'unpaid',
+						'amount'      => floatval( $amount ),
+					);
+				}
 			}
 		}
 
