@@ -18,6 +18,8 @@ plugin architecture.
 2. **SportsPress e-Transfer Automation (Child Plugin)**
 3. **SportsPress Player Tools (Child Plugin)**
 4. **SportsPress Events Manager (Child Plugin)**
+5. **SportsPress Schedule Generator (Child Plugin)**
+6. **SportsPress League Manager (Child Plugin)**
 
 ## Features
 

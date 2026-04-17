@@ -22,6 +22,7 @@ The project follows a **Parent-Child Plugin Architecture**:
 - **[Player Tools](./sportspress-player-tools)**: Enhanced player metadata, squad number editing, and captaincy management.
 - **[Events Manager](./sportspress-events-manager)**: Bulk import events from XLSX and auto-generate calendars/league tables.
 - **[Schedule Generator](./sportspress-schedule-generator)**: Advanced tools for generating complex league schedules.
+- **[League Manager](./sportspress-league-manager)**: Task-oriented admin interface for league managers — dashboard, roster uploads, fee tracking, and health checks.
 
 ## 🚀 Getting Started
 
@@ -90,9 +91,9 @@ make test-down        # Tear down the environment
 | Port | Service |
 |------|---------|
 | 8082 | WordPress |
-| 3000 | Playwright MCP (for agent-driven browser tests) |
-| 8025 | MailHog (email capture UI) |
-| 8080 | Adminer (database UI) |
+| 3002 | Playwright MCP (for agent-driven browser tests) |
+| 8025 | Mailpit (email capture UI) |
+| 8088 | Adminer (database UI) |
 
 ## 🤝 Contributing
 

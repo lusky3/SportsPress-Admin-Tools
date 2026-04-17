@@ -2,7 +2,7 @@
 Contributors: Cody (lusky3)
 Tags: sportspress, automation, sports
 Requires at least: 5.0
-Tested up to: 6.4
+Tested up to: 6.9
 Stable tag: 1.0.0
 License: GPL v2 or later
 
