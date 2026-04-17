@@ -194,7 +194,7 @@
         $wrap.html('<div class="splm-error">' + esc(res.data) + '</div>');
         return;
       }
-      renderFeesTable($wrap, res.data);
+      renderFeesTable($wrap, res.data.fees || []);
     });
   }
 
@@ -203,8 +203,10 @@
       $wrap.html('<p>' + esc(splmData.i18n.noFees || 'No fees found.') + '</p>');
       return;
     }
+    var badgeMap = { paid: 'success', unpaid: 'danger', unknown: 'warning' };
     var $search = $('<input type="search" class="regular-text" placeholder="' + esc(splmData.i18n.searchFees || 'Search fees…') + '">');
     var $table = $('<table class="splm-table"><thead><tr>' +
+      '<th>' + esc(splmData.i18n.player || 'Player') + '</th>' +
       '<th>' + esc(splmData.i18n.team || 'Team') + '</th>' +
       '<th>' + esc(splmData.i18n.amount || 'Amount') + '</th>' +
       '<th>' + esc(splmData.i18n.status || 'Status') + '</th>' +
@@ -214,10 +216,12 @@
     function render(list) {
       $body.empty();
       $.each(list, function (_, f) {
+        var badge = badgeMap[f.status] || 'warning';
         var $row = $('<tr>');
+        $row.append($('<td>').text(f.player_name));
         $row.append($('<td>').text(f.team));
         $row.append($('<td>').text(f.amount));
-        $row.append($('<td>').html('<span class="splm-badge splm-badge--' + esc(f.badge) + '">' + esc(f.status) + '</span>'));
+        $row.append($('<td>').html('<span class="splm-badge splm-badge--' + esc(badge) + '">' + esc(f.status) + '</span>'));
         $body.append($row);
       });
     }
@@ -225,7 +229,9 @@
     render(fees);
     $search.on('input', function () {
       var q = $(this).val().toLowerCase();
-      render(q ? fees.filter(function (f) { return f.team.toLowerCase().indexOf(q) !== -1; }) : fees);
+      render(q ? fees.filter(function (f) {
+        return (f.player_name + ' ' + f.team).toLowerCase().indexOf(q) !== -1;
+      }) : fees);
     });
     $wrap.empty().append($search).append($table);
   }
