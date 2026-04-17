@@ -41,10 +41,19 @@ This section guides you through submitting an enhancement suggestion, including 
 
 1. Fork the repository.
 2. Clone your fork locally.
-3. Install dependencies (if any).
-4. Create a new branch for your changes: `git checkout -b my-feature-branch`.
-5. Make your changes and commit them with descriptive messages.
-6. Push to your fork and submit a pull request.
+3. Clone the [sportspress-sandbox](https://github.com/lusky3/sportspress-sandbox) as a sibling directory for testing:
+   ```bash
+   git clone https://github.com/lusky3/sportspress-sandbox.git
+   ```
+4. Start the test environment:
+   ```bash
+   make test-up        # Start Docker environment
+   make test-all       # Run all tests (smoke + unit + integration)
+   make test-down      # Tear down when done
+   ```
+5. Create a new branch for your changes: `git checkout -b my-feature-branch`.
+6. Make your changes and commit them with descriptive messages.
+7. Push to your fork and submit a pull request.
 
 ## AI Usage Policy
 

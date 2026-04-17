@@ -1,6 +1,25 @@
 # Changelog
 
-## [Unreleased] - 2026-04-16
+## [1.1.0-rc3] - 2026-04-17
+
+### Changed
+- **[all plugins]** Apply WordPress coding standards across all plugin source files (phpcs/phpcbf pass).
+- **[ci]** Use `phpcs.xml` config and standalone test runner in CI workflows.
+- **[ci]** Add `phpcs.xml` to PHP lint workflow trigger paths.
+- **[ci]** Exclude `NonSingularStringLiteralDomain` sniff in `phpcs.xml`.
+- **[ci]** Remove blank line before file comment to pass linting.
+
+### Added
+- **[testing]** Add Makefile for test orchestration via sportspress-sandbox.
+- **[testing]** Add smoke, integration, and agent test scripts.
+- **[docs]** Document local testing setup, commands, and services in README.
+- **[docs]** Add missing README.md for etransfer-automation, events-manager, and player-registration plugins.
+- **[docs]** Add missing readme.txt for etransfer-automation, events-manager, and league-manager plugins.
+- **[docs]** Update all readme.txt files to Tested up to: 6.9.
+- **[docs]** Update SECURITY.md supported versions for 1.1.x.
+- **[docs]** Update CONTRIBUTING.md with sandbox development setup.
+
+## [1.1.0-rc2] - 2026-04-16
 
 ### Security — HIGH
 - **[admin-tools]** Fix broken table DROP in `uninstall.php` — `$wpdb->prepare()` with `%s` wraps table names in quotes, producing invalid SQL. Tables were never actually dropped on uninstall. Switched to safe direct interpolation from static allowlist.
