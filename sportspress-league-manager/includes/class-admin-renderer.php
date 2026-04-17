@@ -82,6 +82,13 @@ class SPLM_Admin_Renderer {
 				'terms'    => $filters['league_id'],
 			);
 		}
+		if ( ! empty( $filters['season_id'] ) ) {
+			$event_args['tax_query'][] = array(
+				'taxonomy' => 'sp_season',
+				'field'    => 'term_id',
+				'terms'    => $filters['season_id'],
+			);
+		}
 		$upcoming = get_posts( $event_args );
 
 		$wizard_done = get_user_meta( $user_id, 'splm_wizard_completed', true );
@@ -160,7 +167,7 @@ class SPLM_Admin_Renderer {
 						<span class="dashicons dashicons-id"></span>
 						<?php esc_html_e( 'Players', 'sportspress-league-manager' ); ?>
 					</h3>
-					<div class="splm-card-value"><?php echo esc_html( $player_count ); ?></div>
+					<div class="splm-card-value" id="splm-player-count"><?php echo esc_html( $player_count ); ?></div>
 					<p class="splm-card-desc"><?php esc_html_e( 'Total registered players', 'sportspress-league-manager' ); ?></p>
 				</div>
 

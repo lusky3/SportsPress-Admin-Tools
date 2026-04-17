@@ -66,9 +66,21 @@ class SPLM_Admin_Ajax {
 		$teams = SPLM_SportsPress_Data::get_teams( $filters );
 		$data = array_map(
 			function ( $team ) {
+				$players = SPLM_SportsPress_Data::get_players_for_team( $team->ID );
+				$count   = count( $players );
+				if ( $count === 0 ) {
+					$status = 'empty';
+					$badge  = 'danger';
+				} else {
+					$status = 'active';
+					$badge  = 'success';
+				}
 				return array(
-					'id'    => $team->ID,
-					'title' => $team->post_title,
+					'id'      => $team->ID,
+					'title'   => $team->post_title,
+					'players' => $count,
+					'status'  => $status,
+					'badge'   => $badge,
 				);
 			},
 			$teams
@@ -263,7 +275,7 @@ class SPLM_Admin_Ajax {
 
 		$team_id   = absint( $_POST['team_id'] ?? 0 );
 		$season_id = absint( $_POST['season_id'] ?? 0 );
-		$league_id = absint( $_POST['league'] ?? 0 );
+		$league_id = absint( $_POST['league_id'] ?? 0 );
 
 		if ( ! $team_id && $league_id ) {
 			$teams = get_posts(
@@ -285,10 +297,6 @@ class SPLM_Admin_Ajax {
 			$teams = array_filter( $teams );
 		} else {
 			$teams = array();
-		}
-
-		if ( ! $season_id ) {
-			$season_id = absint( $_POST['season'] ?? 0 );
 		}
 
 		$results = array();

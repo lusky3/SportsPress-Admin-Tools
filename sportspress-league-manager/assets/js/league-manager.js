@@ -40,16 +40,18 @@
     if (!$league.length) return;
 
     function onFilterChange() {
-      var filters = { league: $league.val(), season: $season.val() };
+      var filters = { league_id: $league.val(), season_id: $season.val() };
       // Persist preference
       splmAjax('splm_save_user_prefs', filters, $('<span>')); // silent
       // Reload visible data sections
       loadTeams();
       loadFees();
+      loadFeeSummary();
     }
 
     $league.on('change', onFilterChange);
     $season.on('change', onFilterChange);
+    $('#splm-apply-filters').on('click', onFilterChange);
   }
 
   /* ---------------------------------------------------------------
@@ -59,14 +61,17 @@
     var $wrap = $('#splm-teams-data');
     if (!$wrap.length) return;
     splmAjax('splm_get_teams', {
-      league: $('#splm-filter-league').val(),
-      season: $('#splm-filter-season').val()
+      league_id: $('#splm-filter-league').val(),
+      season_id: $('#splm-filter-season').val()
     }, $wrap).done(function (res) {
       if (!res.success) {
         $wrap.html('<div class="splm-error">' + esc(res.data) + '</div>');
         return;
       }
       $('#splm-teams-count').text(res.data.teams.length);
+      var totalPlayers = 0;
+      $.each(res.data.teams, function (_, t) { totalPlayers += (t.players || 0); });
+      $('#splm-player-count').text(totalPlayers);
       renderTeamsTable($wrap, res.data.teams);
     });
   }
@@ -153,8 +158,8 @@
           fd.append('_ajax_nonce', splmData.nonce);
           fd.append('roster_file', file);
           fd.append('team_id', $('#splm-team-selector').val());
-          fd.append('league', $('#splm-filter-league').val());
-          fd.append('season', $('#splm-filter-season').val());
+          fd.append('league_id', $('#splm-filter-league').val());
+          fd.append('season_id', $('#splm-filter-season').val());
 
           var $btn = $(this).prop('disabled', true).text(splmData.i18n.uploading || 'Uploading…');
           $.ajax({
@@ -187,14 +192,41 @@
     var $wrap = $('#splm-fees-wrap');
     if (!$wrap.length) return;
     splmAjax('splm_lookup_fees', {
-      league: $('#splm-filter-league').val(),
-      season: $('#splm-filter-season').val()
+      league_id: $('#splm-filter-league').val(),
+      season_id: $('#splm-filter-season').val()
     }, $wrap).done(function (res) {
       if (!res.success) {
         $wrap.html('<div class="splm-error">' + esc(res.data) + '</div>');
         return;
       }
       renderFeesTable($wrap, res.data.fees || []);
+    });
+  }
+
+  /** Update the fee summary card on the dashboard. */
+  function loadFeeSummary() {
+    var $summary = $('#splm-fee-summary');
+    if (!$summary.length) return;
+    $.ajax({
+      url: splmData.ajaxUrl,
+      method: 'POST',
+      dataType: 'json',
+      data: {
+        action: 'splm_lookup_fees',
+        _ajax_nonce: splmData.nonce,
+        league_id: $('#splm-filter-league').val(),
+        season_id: $('#splm-filter-season').val()
+      }
+    }).done(function (res) {
+      if (!res.success || !res.data.fees) return;
+      var paid = 0, unpaid = 0;
+      $.each(res.data.fees, function (_, f) {
+        if (f.status === 'paid') paid++;
+        else unpaid++;
+      });
+      $('#splm-fees-paid').text(paid);
+      $('#splm-fees-unpaid').text(unpaid);
+      $('#splm-fees-total').text(res.data.fees.length);
     });
   }
 
@@ -300,6 +332,7 @@
     // Initial data load
     loadTeams();
     loadFees();
+    loadFeeSummary();
   });
 
 })(jQuery);
