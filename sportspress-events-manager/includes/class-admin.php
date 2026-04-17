@@ -26,6 +26,7 @@ class SPEM_Admin {
 	public function add_admin_content() {
 		echo '<div id="events-manager" class="tab-content" style="display:none;">';
 		$this->admin_page_content();
+		do_action( 'spem_admin_tab_content' );
 		echo '</div>';
 	}
 
