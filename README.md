@@ -46,6 +46,54 @@ This repository uses GitHub Actions for CI/CD, including:
 - SportsPress 2.0+
 - WooCommerce (required for registration and e-transfer modules)
 
+### Local Testing
+
+The project uses [sportspress-sandbox](https://github.com/lusky3/sportspress-sandbox) for a complete WordPress + SportsPress test environment. Clone it as a sibling directory:
+
+```bash
+cd ..
+git clone https://github.com/lusky3/sportspress-sandbox.git
+cd SportsPress-Admin-Tools
+```
+
+#### Quick Start
+
+```bash
+make test-up          # Start the Docker environment
+make test-all         # Run all tests (smoke + unit + integration)
+make test-down        # Tear down the environment
+```
+
+#### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `make test-up` | Start sportspress-sandbox Docker environment |
+| `make test-down` | Stop and remove containers and volumes |
+| `make test-all` | Run smoke, unit, and integration tests |
+| `make test-smoke` | API health checks and environment verification |
+| `make test-unit` | Standalone PHP unit tests (no Docker needed) |
+| `make test-integration` | WordPress integration tests via WP-CLI |
+| `make test-reset` | Reset database to baseline between test runs |
+| `make test-status` | Show container health and status |
+| `make test-logs` | Tail the WordPress debug log |
+
+#### Test Architecture
+
+- **Unit tests** (`run-all-tests.sh`): Standalone PHP tests with mocked WordPress functions. Run anywhere with PHP 8.2+.
+- **Integration tests** (`tests/integration/`): Execute inside WordPress via `wp eval-file`. Test plugin activation, database tables, hook registration, and cross-plugin interactions.
+- **Smoke tests** (`tests/api-smoke-test.sh`): Verify the REST API, SportsPress data, and plugin activation status.
+- **Agent test suites** (`sportspress-sandbox/tests/suites/`): Markdown-based test cases for LLM agents to execute via Playwright MCP.
+
+#### Services (when running)
+
+| Port | Service |
+|------|---------|
+| 8082 | WordPress |
+| 3000 | Playwright MCP (for agent-driven browser tests) |
+| 8025 | MailHog (email capture UI) |
+| 8080 | Adminer (database UI) |
+
 ## 🤝 Contributing
 
 We welcome contributions! Please see our [Contributing Guidelines](.github/CONTRIBUTING.md) for details on how to get started.
