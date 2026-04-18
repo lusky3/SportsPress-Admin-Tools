@@ -54,7 +54,11 @@ class SPSG_Configuration_Sanitizer {
 
 		// Sanitize arrays
 		$sanitized['playing_days'] = array_map( 'sanitize_text_field', (array) ( $data['playing_days'] ?? array() ) );
-		$sanitized['blackout_dates'] = array_map( 'sanitize_text_field', (array) ( $data['blackout_dates'] ?? array() ) );
+		$blackout_dates = $data['blackout_dates'] ?? array();
+		if ( is_string( $blackout_dates ) ) {
+			$blackout_dates = preg_split( '/[\r\n]+/', $blackout_dates, -1, PREG_SPLIT_NO_EMPTY );
+		}
+		$sanitized['blackout_dates'] = array_map( 'sanitize_text_field', (array) $blackout_dates );
 
 		// Sanitize complex arrays
 		$sanitized['time_slots'] = $this->sanitize_time_slots( $data['time_slots'] ?? array() );
@@ -86,6 +90,9 @@ class SPSG_Configuration_Sanitizer {
 		$sanitized = array();
 		foreach ( (array) $time_slots as $day => $slots ) {
 			$day = sanitize_text_field( $day );
+			if ( is_string( $slots ) ) {
+				$slots = preg_split( '/[\r\n]+/', $slots, -1, PREG_SPLIT_NO_EMPTY );
+			}
 			$sanitized[ $day ] = array_map( 'sanitize_text_field', (array) $slots );
 		}
 		return $sanitized;
@@ -197,6 +204,9 @@ class SPSG_Configuration_Sanitizer {
 
 			foreach ( (array) $timeslots as $day => $slots ) {
 				$day = sanitize_text_field( $day );
+				if ( is_string( $slots ) ) {
+					$slots = preg_split( '/[\r\n]+/', $slots, -1, PREG_SPLIT_NO_EMPTY );
+				}
 				$sanitized[ $venue_id ][ $day ] = array_map( 'sanitize_text_field', (array) $slots );
 			}
 		}

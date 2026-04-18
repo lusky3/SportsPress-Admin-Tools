@@ -1272,6 +1272,38 @@
 
     updateDayWeightsTotal();
 
+    // Update day weights when playing days change
+    $(document).on('change', "input[name='playing_days[]']", function() {
+        var $container = $('#spsg-day-weights-container');
+        var existingWeights = {};
+        $('.spsg-day-weight-input').each(function() {
+            existingWeights[$(this).data('day')] = parseFloat($(this).val()) || 0;
+        });
+
+        var selectedDays = [];
+        $("input[name='playing_days[]']:checked").each(function() {
+            selectedDays.push($(this).val());
+        });
+
+        $container.empty();
+        if (selectedDays.length === 0) return;
+
+        var equalWeight = Math.round(100 / selectedDays.length);
+        $.each(selectedDays, function(i, day) {
+            var weight = existingWeights[day] || equalWeight;
+            var html = '<div class="spsg-day-weight-row" style="margin-bottom: 10px;">' +
+                '<label for="spsg-day-weight-' + day + '" style="display: inline-block; width: 120px; font-weight: 600;">' +
+                day.charAt(0).toUpperCase() + day.slice(1) + ':</label>' +
+                '<input type="number" id="spsg-day-weight-' + day + '"' +
+                ' name="distribution_rules[day_weights][' + day + ']"' +
+                ' value="' + weight + '" min="1" max="100" step="1"' +
+                ' class="small-text spsg-day-weight-input" data-day="' + day + '" />' +
+                '<span class="spsg-day-weight-percentage">' + weight + '%</span></div>';
+            $container.append(html);
+        });
+        updateDayWeightsTotal();
+    });
+
     // Team restrictions - Add restriction
     $('#spsg-add-team-restriction').click(function() {
         var container = $('#spsg-team-restrictions-container');
