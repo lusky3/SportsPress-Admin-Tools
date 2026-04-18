@@ -367,14 +367,9 @@ class SPSG_Schedule_Generator {
 		// Use nested config_data if provided, otherwise use top-level POST data (form submission)
 		$config_data = isset( $_POST['config_data'] ) ? $_POST['config_data'] : $_POST;
 
-		$sanitizer = new SPSG_Configuration_Sanitizer();
+		$sanitizer   = new SPSG_Configuration_Sanitizer();
 		$config_data = $sanitizer->sanitize( $config_data );
-		$config = new SPSG_Schedule_Configuration();
-		foreach ( $config_data as $key => $value ) {
-			if ( property_exists( $config, $key ) ) {
-				$config->$key = $value;
-			}
-		}
+		$config      = new SPSG_Schedule_Configuration( $config_data );
 		return $config;
 	}
 
