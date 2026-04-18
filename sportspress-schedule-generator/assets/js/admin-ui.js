@@ -741,7 +741,7 @@
             totalGenericNeeded += needed;
 
             if (needed > 0) {
-                divisionDetails.push(divisionName + ': ' + needed + ' generic teams needed');
+                divisionDetails.push(escHtml(divisionName) + ': ' + needed + ' generic teams needed');
             }
         });
 
@@ -1139,16 +1139,16 @@
 
                         $.each(history, function(i, change) {
                             html += '<tr>';
-                            html += '<td>' + change.timestamp + '</td>';
-                            html += '<td>' + (change.user_name || i18n.unknown) + '</td>';
-                            html += '<td><code>' + change.field + '</code></td>';
+                            html += '<td>' + escHtml(change.timestamp) + '</td>';
+                            html += '<td>' + escHtml(change.user_name || i18n.unknown) + '</td>';
+                            html += '<td><code>' + escHtml(change.field) + '</code></td>';
                             html += '<td>';
 
                             if (change.old_value_display && change.new_value_display) {
-                                html += '<span style="color: #b32d2e; text-decoration: line-through;">' + change.old_value_display + '</span> \u2192 ';
-                                html += '<span style="color: #00a32a; font-weight: bold;">' + change.new_value_display + '</span>';
+                                html += '<span style="color: #b32d2e; text-decoration: line-through;">' + escHtml(change.old_value_display) + '</span> \u2192 ';
+                                html += '<span style="color: #00a32a; font-weight: bold;">' + escHtml(change.new_value_display) + '</span>';
                             } else {
-                                html += i18n.modified;
+                                html += escHtml(i18n.modified);
                             }
 
                             html += '</td>';
@@ -1356,7 +1356,7 @@
                             if (saveResponse.success) {
                                 $(document).trigger('spsg-config-saved');
 
-                                var successMsg = '<div id="spsg-validation-summary" class="notice notice-success is-dismissible" style="margin: 20px 0;"><p><strong>' + i18n.success + '</strong> ' + saveResponse.data.message + '</p></div>';
+                                var successMsg = '<div id="spsg-validation-summary" class="notice notice-success is-dismissible" style="margin: 20px 0;"><p><strong>' + escHtml(i18n.success) + '</strong> ' + escHtml(saveResponse.data.message) + '</p></div>';
                                 $form.before(successMsg);
 
                                 $('html, body').animate({ scrollTop: 0 }, 300);
@@ -1367,7 +1367,7 @@
                                     });
                                 }, 5000);
                             } else {
-                                var errorMsg = '<div id="spsg-validation-summary" class="notice notice-error" style="margin: 20px 0;"><p><strong>' + i18n.error + '</strong> ' + saveResponse.data + '</p></div>';
+                                var errorMsg = '<div id="spsg-validation-summary" class="notice notice-error" style="margin: 20px 0;"><p><strong>' + escHtml(i18n.error) + '</strong> ' + escHtml(saveResponse.data) + '</p></div>';
                                 $form.before(errorMsg);
                                 $('html, body').animate({ scrollTop: 0 }, 300);
                             }
@@ -1390,12 +1390,12 @@
                     summaryHtml += '<ul style="list-style: disc; margin-left: 20px;">';
 
                     $.each(errors, function(field, message) {
-                        summaryHtml += '<li>' + message + '</li>';
+                        summaryHtml += '<li>' + escHtml(message) + '</li>';
 
                         var $field = $('[name="' + field + '"]');
                         if ($field.length) {
                             $field.css('border-color', '#d63638');
-                            $field.after('<p class="spsg-validation-error" style="color: #d63638; margin-top: 5px;"><strong>\u26a0</strong> ' + message + '</p>');
+                            $field.after('<p class="spsg-validation-error" style="color: #d63638; margin-top: 5px;"><strong>\u26a0</strong> ' + escHtml(message) + '</p>');
                         }
                     });
 

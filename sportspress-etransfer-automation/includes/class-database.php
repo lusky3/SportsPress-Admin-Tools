@@ -45,31 +45,25 @@ class SPET_Database {
 
 		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
 
-		$result = $wpdb->insert(
-			$table_name,
-			array(
-				'from_email' => sanitize_email( $data['from_email'] ),
-				'from_name' => sanitize_text_field( $data['from_name'] ),
-				'amount' => floatval( $data['amount'] ),
-				'reference_number' => sanitize_text_field( $data['reference_number'] ),
-				'match_criteria' => sanitize_text_field( $data['match_criteria'] ),
-				'order_id' => $data['order_id'] ? intval( $data['order_id'] ) : null,
-				'result' => sanitize_text_field( $data['result'] ),
-				'webhook_data' => maybe_serialize( $data['webhook_data'] ),
-				'payment_data' => maybe_serialize( $data['payment_data'] ),
-			),
-			array(
-				'%s',
-				'%s',
-				'%f',
-				'%s',
-				'%s',
-				'%d',
-				'%s',
-				'%s',
-				'%s',
-			)
+		$insert_data = array(
+			'from_email' => sanitize_email( $data['from_email'] ),
+			'from_name' => sanitize_text_field( $data['from_name'] ),
+			'amount' => floatval( $data['amount'] ),
+			'reference_number' => sanitize_text_field( $data['reference_number'] ),
+			'match_criteria' => sanitize_text_field( $data['match_criteria'] ),
+			'result' => sanitize_text_field( $data['result'] ),
+			'webhook_data' => maybe_serialize( $data['webhook_data'] ),
+			'payment_data' => maybe_serialize( $data['payment_data'] ),
 		);
+
+		$format = array( '%s', '%s', '%f', '%s', '%s', '%s', '%s', '%s' );
+
+		if ( ! empty( $data['order_id'] ) ) {
+			$insert_data['order_id'] = intval( $data['order_id'] );
+			$format[] = '%d';
+		}
+
+		$result = $wpdb->insert( $table_name, $insert_data, $format );
 
 		if ( $result === false ) {
 			error_log( 'SPET Database: Failed to log e-Transfer activity - ' . $wpdb->last_error );
