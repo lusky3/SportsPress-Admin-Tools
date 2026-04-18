@@ -29,6 +29,11 @@ class SPT_Player_Skill_Level {
 		// Phase 2: Bulk calculate via admin-post.
 		add_action( 'admin_post_spt_bulk_calculate_skill', array( $this, 'handle_bulk_calculate' ) );
 
+		// Phase 4: CSV export + bulk edit.
+		add_action( 'admin_post_spt_export_skill_csv', array( $this, 'handle_export_csv' ) );
+		add_filter( 'bulk_actions-edit-sp_player', array( $this, 'register_bulk_actions' ) );
+		add_filter( 'handle_bulk_actions-edit-sp_player', array( $this, 'handle_bulk_action' ), 10, 3 );
+
 		// Show bulk calculate result notice.
 		add_action( 'admin_notices', array( $this, 'show_calc_notice' ) );
 	}
@@ -37,25 +42,38 @@ class SPT_Player_Skill_Level {
 	 * Display the bulk calculation result as a top-level admin notice.
 	 */
 	public function show_calc_notice() {
-		if ( empty( $_GET['spt_calc_done'] ) ) {
-			return;
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only display trigger.
+		if ( ! empty( $_GET['spt_calc_done'] ) ) {
+			$result = get_transient( 'spt_skill_calc_result' );
+			if ( $result ) {
+				delete_transient( 'spt_skill_calc_result' );
+				$msg = sprintf(
+					/* translators: %1$d: updated, %2$d: manual skipped, %3$d: low GP skipped */
+					esc_html__( 'Skill calculation complete: %1$d players updated, %2$d manual overrides skipped, %3$d below minimum games.', 'sportspress-player-tools' ),
+					intval( $result['updated'] ),
+					intval( $result['skipped_manual'] ),
+					intval( $result['skipped_low_gp'] )
+				);
+				if ( 0 === intval( $result['updated'] ) && intval( $result['skipped_low_gp'] ) > 0 ) {
+					$msg .= ' ' . esc_html__( 'Try lowering the Minimum Games threshold or selecting a season with more game data.', 'sportspress-player-tools' );
+				}
+				echo '<div class="notice notice-success is-dismissible"><p>' . $msg . '</p></div>';
+			}
 		}
-		$result = get_transient( 'spt_skill_calc_result' );
-		if ( ! $result ) {
-			return;
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only display trigger, value sanitized with absint().
+		if ( ! empty( $_GET['spt_bulk_updated'] ) ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$count = absint( $_GET['spt_bulk_updated'] );
+			printf(
+				'<div class="notice notice-success is-dismissible"><p>%s</p></div>',
+				sprintf(
+					/* translators: %d: number of players */
+					esc_html__( 'Skill level updated for %d player(s).', 'sportspress-player-tools' ),
+					$count
+				)
+			);
 		}
-		delete_transient( 'spt_skill_calc_result' );
-		$msg = sprintf(
-			/* translators: %1$d: updated, %2$d: manual skipped, %3$d: low GP skipped */
-			esc_html__( 'Skill calculation complete: %1$d players updated, %2$d manual overrides skipped, %3$d below minimum games.', 'sportspress-player-tools' ),
-			intval( $result['updated'] ),
-			intval( $result['skipped_manual'] ),
-			intval( $result['skipped_low_gp'] )
-		);
-		if ( 0 === intval( $result['updated'] ) && intval( $result['skipped_low_gp'] ) > 0 ) {
-			$msg .= ' ' . esc_html__( 'Try lowering the Minimum Games threshold or selecting a season with more game data.', 'sportspress-player-tools' );
-		}
-		echo '<div class="notice notice-success is-dismissible"><p>' . $msg . '</p></div>';
 	}
 
 	// ------------------------------------------------------------------
@@ -118,6 +136,29 @@ class SPT_Player_Skill_Level {
 			</p>
 		<?php endif; ?>
 		<?php
+		// Phase 4: Show skill history.
+		$history = get_post_meta( $post->ID, 'spt_skill_history', true );
+		if ( is_array( $history ) && ! empty( $history ) ) :
+			$recent = array_slice( array_reverse( $history ), 0, 5 );
+			?>
+			<hr>
+			<p><strong><?php esc_html_e( 'History', 'sportspress-player-tools' ); ?></strong></p>
+			<ul style="margin:0;font-size:12px;">
+				<?php foreach ( $recent as $entry ) : ?>
+					<li>
+						<?php
+						echo esc_html(
+							date_i18n( 'M j', strtotime( $entry['date'] ) )
+							. ' — ' . $entry['level']
+							. ' (' . $entry['source'] . ')'
+							. ( ! empty( $entry['season'] ) ? ' [' . $entry['season'] . ']' : '' )
+						);
+						?>
+					</li>
+				<?php endforeach; ?>
+			</ul>
+		<?php endif; ?>
+		<?php
 	}
 
 	public function save_meta( $post_id ) {
@@ -151,6 +192,7 @@ class SPT_Player_Skill_Level {
 		update_post_meta( $post_id, 'spt_skill_level', $level );
 		update_post_meta( $post_id, 'spt_skill_source', 'manual' );
 		update_post_meta( $post_id, 'spt_skill_updated', current_time( 'c' ) );
+		self::record_history( $post_id, $level, 'manual' );
 	}
 
 	// ------------------------------------------------------------------
@@ -270,11 +312,21 @@ class SPT_Player_Skill_Level {
 			if ( $is_goalie ) {
 				$gaa = floatval( $player_stats['gaatwo'] ?? 0 );
 				// Negative so lower GAA = higher score (0 GAA → score 0, best rank).
-				$scores[ $pid ] = -$gaa;
+				$raw_score = -$gaa;
 			} else {
-				$p              = intval( $player_stats['p'] ?? 0 );
-				$scores[ $pid ] = $p / $gp;
+				$p         = intval( $player_stats['p'] ?? 0 );
+				$raw_score = $p / $gp;
 			}
+
+			/**
+			 * Filter the raw score used for skill level ranking.
+			 *
+			 * @param float $raw_score   Calculated raw score.
+			 * @param int   $pid         Player post ID.
+			 * @param array $player_stats Stat values for this player.
+			 * @param bool  $is_goalie   Whether the player is a goalie.
+			 */
+			$scores[ $pid ] = apply_filters( 'spt_skill_calculate_raw_score', $raw_score, $pid, $player_stats, $is_goalie );
 		}
 
 		// Rank and map to 1-10.
@@ -298,6 +350,7 @@ class SPT_Player_Skill_Level {
 			update_post_meta( $pid, 'spt_skill_level', $skill );
 			update_post_meta( $pid, 'spt_skill_source', 'auto' );
 			update_post_meta( $pid, 'spt_skill_updated', current_time( 'c' ) );
+			self::record_history( $pid, $skill, 'auto', $season_id );
 			++$updated;
 		}
 
@@ -388,6 +441,156 @@ class SPT_Player_Skill_Level {
 	}
 
 	// ------------------------------------------------------------------
+	// ------------------------------------------------------------------
+	// Phase 4: Skill history
+	// ------------------------------------------------------------------
+
+	/**
+	 * Record a skill level change in the player's history.
+	 *
+	 * @param int    $player_id Player post ID.
+	 * @param int    $level     New skill level.
+	 * @param string $source    'manual' or 'auto'.
+	 * @param int    $season_id Optional season term ID.
+	 */
+	private static function record_history( $player_id, $level, $source, $season_id = 0 ) {
+		$history = get_post_meta( $player_id, 'spt_skill_history', true );
+		if ( ! is_array( $history ) ) {
+			$history = array();
+		}
+
+		$entry = array(
+			'level'  => $level,
+			'source' => $source,
+			'date'   => current_time( 'c' ),
+		);
+		if ( $season_id ) {
+			$term = get_term( $season_id, 'sp_season' );
+			$entry['season'] = $term && ! is_wp_error( $term ) ? $term->name : '';
+		}
+
+		$history[] = $entry;
+
+		// Keep last 50 entries to avoid unbounded growth.
+		if ( count( $history ) > 50 ) {
+			$history = array_slice( $history, -50 );
+		}
+
+		update_post_meta( $player_id, 'spt_skill_history', $history );
+	}
+
+	// ------------------------------------------------------------------
+	// Phase 4: CSV export
+	// ------------------------------------------------------------------
+
+	/**
+	 * Handle CSV export of player skill data.
+	 */
+	public function handle_export_csv() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Unauthorized', 'sportspress-player-tools' ) );
+		}
+		check_admin_referer( 'spt_export_skill_csv' );
+
+		$players = get_posts(
+			array(
+				'post_type'      => 'sp_player',
+				'posts_per_page' => -1,
+				'post_status'    => 'publish',
+				'meta_key'       => 'spt_skill_level',
+				'orderby'        => 'meta_value_num',
+				'order'          => 'DESC',
+			)
+		);
+
+		header( 'Content-Type: text/csv; charset=utf-8' );
+		header( 'Content-Disposition: attachment; filename=player-skill-levels-' . gmdate( 'Y-m-d' ) . '.csv' );
+
+		$out = fopen( 'php://output', 'w' );
+		fputcsv( $out, array( 'Player ID', 'Player Name', 'Skill Level', 'Source', 'Last Updated', 'Teams', 'Leagues' ) );
+
+		foreach ( $players as $player ) {
+			$level   = get_post_meta( $player->ID, 'spt_skill_level', true );
+			$source  = get_post_meta( $player->ID, 'spt_skill_source', true );
+			$updated = get_post_meta( $player->ID, 'spt_skill_updated', true );
+
+			$teams   = wp_get_post_terms( $player->ID, 'sp_team', array( 'fields' => 'names' ) );
+			$leagues = wp_get_post_terms( $player->ID, 'sp_league', array( 'fields' => 'names' ) );
+
+			fputcsv(
+				$out,
+				array(
+					$player->ID,
+					$player->post_title,
+					$level,
+					$source,
+					$updated ? date_i18n( 'Y-m-d', strtotime( $updated ) ) : '',
+					is_array( $teams ) ? implode( ', ', $teams ) : '',
+					is_array( $leagues ) ? implode( ', ', $leagues ) : '',
+				)
+			);
+		}
+
+		fclose( $out );
+		exit;
+	}
+
+	// ------------------------------------------------------------------
+	// Phase 4: Bulk edit from player list
+	// ------------------------------------------------------------------
+
+	/**
+	 * Register bulk actions on the player list table.
+	 *
+	 * @param array $actions Existing bulk actions.
+	 * @return array
+	 */
+	public function register_bulk_actions( $actions ) {
+		for ( $i = 1; $i <= 10; $i++ ) {
+			/* translators: %d: skill level number */
+			$actions[ 'spt_set_skill_' . $i ] = sprintf( __( 'Set Skill → %d', 'sportspress-player-tools' ), $i );
+		}
+		$actions['spt_clear_skill'] = __( 'Clear Skill Level', 'sportspress-player-tools' );
+		return $actions;
+	}
+
+	/**
+	 * Handle bulk skill level actions.
+	 *
+	 * @param string $redirect_url Redirect URL.
+	 * @param string $action       The action being taken.
+	 * @param array  $post_ids     Selected post IDs.
+	 * @return string
+	 */
+	public function handle_bulk_action( $redirect_url, $action, $post_ids ) {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return $redirect_url;
+		}
+
+		if ( 'spt_clear_skill' === $action ) {
+			foreach ( $post_ids as $pid ) {
+				delete_post_meta( $pid, 'spt_skill_level' );
+				delete_post_meta( $pid, 'spt_skill_source' );
+				delete_post_meta( $pid, 'spt_skill_updated' );
+			}
+			return add_query_arg( 'spt_bulk_updated', count( $post_ids ), $redirect_url );
+		}
+
+		if ( preg_match( '/^spt_set_skill_(\d+)$/', $action, $m ) ) {
+			$level = min( 10, max( 1, absint( $m[1] ) ) );
+			foreach ( $post_ids as $pid ) {
+				update_post_meta( $pid, 'spt_skill_level', $level );
+				update_post_meta( $pid, 'spt_skill_source', 'manual' );
+				update_post_meta( $pid, 'spt_skill_updated', current_time( 'c' ) );
+				self::record_history( $pid, $level, 'manual' );
+			}
+			return add_query_arg( 'spt_bulk_updated', count( $post_ids ), $redirect_url );
+		}
+
+		return $redirect_url;
+	}
+
+	// ------------------------------------------------------------------
 	// Phase 2: Settings UI (called from SPT_Admin)
 	// ------------------------------------------------------------------
 
@@ -396,25 +599,7 @@ class SPT_Player_Skill_Level {
 	 */
 	public static function render_settings() {
 		$min_games = get_option( 'spt_skill_min_games', '3' );
-		?>
-		<hr>
-		<h2><?php esc_html_e( 'Skill Level Tracking', 'sportspress-player-tools' ); ?></h2>
-			'taxonomy'   => 'sp_league',
-			'hide_empty' => false,
-			'orderby'    => 'name',
-		) );
 
-		$seasons = get_terms( array(
-			'taxonomy'   => 'sp_season',
-			'hide_empty' => false,
-			'orderby'    => 'term_id',
-			'order'      => 'DESC',
-		) );
-		?>
-		<hr>
-		<h2><?php esc_html_e( 'Skill Level Tracking', 'sportspress-player-tools' ); ?></h2>
-
-		<?php
 		$leagues = get_terms(
 			array(
 				'taxonomy'   => 'sp_league',
@@ -432,6 +617,8 @@ class SPT_Player_Skill_Level {
 			)
 		);
 		?>
+		<hr>
+		<h2><?php esc_html_e( 'Skill Level Tracking', 'sportspress-player-tools' ); ?></h2>
 
 		<h3><?php esc_html_e( 'Bulk Calculate', 'sportspress-player-tools' ); ?></h3>
 		<p class="description"><?php esc_html_e( 'Calculate skill levels from Points Per Game (skaters) and GAA (goalies). Players with manual ratings will be skipped.', 'sportspress-player-tools' ); ?></p>
@@ -471,6 +658,84 @@ class SPT_Player_Skill_Level {
 			</table>
 			<?php submit_button( __( 'Calculate Skill Levels', 'sportspress-player-tools' ), 'secondary', 'spt_calc_submit' ); ?>
 		</form>
+
+		<hr>
+		<h3><?php esc_html_e( 'Export', 'sportspress-player-tools' ); ?></h3>
+		<p class="description"><?php esc_html_e( 'Download a CSV of all players with skill levels.', 'sportspress-player-tools' ); ?></p>
+		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+			<input type="hidden" name="action" value="spt_export_skill_csv">
+			<?php wp_nonce_field( 'spt_export_skill_csv' ); ?>
+			<?php submit_button( __( 'Export CSV', 'sportspress-player-tools' ), 'secondary', 'spt_export_submit' ); ?>
+		</form>
+
+		<hr>
+		<h3><?php esc_html_e( 'Skill Distribution', 'sportspress-player-tools' ); ?></h3>
+		<p class="description"><?php esc_html_e( 'Number of rated players at each skill level, grouped by league.', 'sportspress-player-tools' ); ?></p>
+		<?php self::render_distribution( $leagues ); ?>
+		<?php
+	}
+
+	/**
+	 * Render the skill distribution table.
+	 *
+	 * @param array $leagues WP_Term objects for sp_league.
+	 */
+	private static function render_distribution( $leagues ) {
+		global $wpdb;
+
+		// Get all players with a skill level, grouped by league.
+		$rows = $wpdb->get_results(
+			"SELECT t.name AS league_name, pm.meta_value AS skill
+			 FROM {$wpdb->postmeta} pm
+			 JOIN {$wpdb->posts} p ON p.ID = pm.post_id AND p.post_type = 'sp_player' AND p.post_status = 'publish'
+			 LEFT JOIN {$wpdb->term_relationships} tr ON tr.object_id = p.ID
+			 LEFT JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'sp_league'
+			 LEFT JOIN {$wpdb->terms} t ON t.term_id = tt.term_id
+			 WHERE pm.meta_key = 'spt_skill_level'"
+		);
+
+		if ( empty( $rows ) ) {
+			echo '<p>' . esc_html__( 'No players have been rated yet. Run a bulk calculation first.', 'sportspress-player-tools' ) . '</p>';
+			return;
+		}
+
+		// Build distribution: league_name => [ 1 => count, 2 => count, ... 10 => count ].
+		$dist = array();
+		foreach ( $rows as $row ) {
+			$league = $row->league_name ?: __( '(No League)', 'sportspress-player-tools' );
+			$skill  = absint( $row->skill );
+			if ( $skill < 1 || $skill > 10 ) {
+				continue;
+			}
+			if ( ! isset( $dist[ $league ] ) ) {
+				$dist[ $league ] = array_fill( 1, 10, 0 );
+			}
+			++$dist[ $league ][ $skill ];
+		}
+		ksort( $dist );
+		?>
+		<table class="widefat striped" style="max-width:700px;">
+			<thead>
+				<tr>
+					<th><?php esc_html_e( 'League', 'sportspress-player-tools' ); ?></th>
+					<?php for ( $i = 1; $i <= 10; $i++ ) : ?>
+						<th style="text-align:center;"><?php echo esc_html( $i ); ?></th>
+					<?php endfor; ?>
+					<th style="text-align:center;"><?php esc_html_e( 'Total', 'sportspress-player-tools' ); ?></th>
+				</tr>
+			</thead>
+			<tbody>
+				<?php foreach ( $dist as $league_name => $counts ) : ?>
+					<tr>
+						<td><?php echo esc_html( $league_name ); ?></td>
+						<?php for ( $i = 1; $i <= 10; $i++ ) : ?>
+							<td style="text-align:center;"><?php echo esc_html( $counts[ $i ] ); ?></td>
+						<?php endfor; ?>
+						<td style="text-align:center;font-weight:bold;"><?php echo esc_html( array_sum( $counts ) ); ?></td>
+					</tr>
+				<?php endforeach; ?>
+			</tbody>
+		</table>
 		<?php
 	}
 }
