@@ -208,14 +208,16 @@ class SPT_Player_Skill_Level {
 
 		set_transient( 'spt_skill_calc_result', $result, 60 );
 
-		wp_safe_redirect( add_query_arg(
-			array(
-				'page'           => 'sportspress-admin-tools',
-				'tab'            => 'player-tools',
-				'spt_calc_done'  => '1',
-			),
-			admin_url( 'options-general.php' )
-		) );
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'           => 'sportspress-admin-tools',
+					'tab'            => 'player-tools',
+					'spt_calc_done'  => '1',
+				),
+				admin_url( 'options-general.php' )
+			)
+		);
 		exit;
 	}
 
@@ -413,18 +415,22 @@ class SPT_Player_Skill_Level {
 		<h2><?php esc_html_e( 'Skill Level Tracking', 'sportspress-player-tools' ); ?></h2>
 
 		<?php
-		$leagues = get_terms( array(
-			'taxonomy'   => 'sp_league',
-			'hide_empty' => false,
-			'orderby'    => 'name',
-		) );
+		$leagues = get_terms(
+			array(
+				'taxonomy'   => 'sp_league',
+				'hide_empty' => false,
+				'orderby'    => 'name',
+			)
+		);
 
-		$seasons = get_terms( array(
-			'taxonomy'   => 'sp_season',
-			'hide_empty' => false,
-			'orderby'    => 'term_id',
-			'order'      => 'DESC',
-		) );
+		$seasons = get_terms(
+			array(
+				'taxonomy'   => 'sp_season',
+				'hide_empty' => false,
+				'orderby'    => 'term_id',
+				'order'      => 'DESC',
+			)
+		);
 		?>
 
 		<h3><?php esc_html_e( 'Bulk Calculate', 'sportspress-player-tools' ); ?></h3>
