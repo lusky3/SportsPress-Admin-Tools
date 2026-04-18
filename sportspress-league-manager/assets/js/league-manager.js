@@ -349,8 +349,16 @@
         }
         var html = '';
         $.each(res.data.players, function (_, p) {
-          var skill = p.skill !== null ? esc(String(p.skill)) : '—';
-          html += '<tr><td>' + esc(p.title) + '</td><td></td><td></td><td></td><td>' + skill + '</td></tr>';
+          var skillOpts = '<option value="">—</option>';
+          for (var i = 1; i <= 10; i++) {
+            var sel = (p.skill === i) ? ' selected' : '';
+            skillOpts += '<option value="' + i + '"' + sel + '>' + i + '</option>';
+          }
+          html += '<tr>'
+            + '<td><a href="post.php?post=' + p.id + '&action=edit">' + esc(p.title) + '</a></td>'
+            + '<td></td><td></td><td></td>'
+            + '<td><select class="splm-skill-select" data-player-id="' + p.id + '">' + skillOpts + '</select></td>'
+            + '</tr>';
         });
         $body.html(html);
       });
@@ -367,6 +375,31 @@
     initCsvUpload();
     initRosterSelector();
     initHealthCheck();
+
+    // Inline skill level editing on roster page.
+    $('#splm-roster-body').on('change', '.splm-skill-select', function () {
+      var $sel = $(this);
+      var playerId = $sel.data('player-id');
+      var val = $sel.val();
+      $sel.css('opacity', '0.5');
+      $.ajax({
+        url: splmData.ajaxUrl,
+        method: 'POST',
+        dataType: 'json',
+        data: {
+          action: 'splm_update_player_skill',
+          _ajax_nonce: splmData.nonce,
+          player_id: playerId,
+          skill_level: val
+        }
+      }).done(function () {
+        $sel.css('opacity', '1').addClass('splm-saved');
+        setTimeout(function () { $sel.removeClass('splm-saved'); }, 1000);
+      }).fail(function () {
+        $sel.css('opacity', '1');
+        alert('Failed to save skill level.');
+      });
+    });
     // Initial data load
     loadTeams();
     loadFees();
