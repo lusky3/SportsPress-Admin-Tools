@@ -33,6 +33,16 @@ $wpdb->delete( $wpdb->postmeta, array( 'meta_key' => 'spt_email' ) );
 // Remove captain meta from lists
 $wpdb->delete( $wpdb->postmeta, array( 'meta_key' => 'spt_captain' ) );
 
+// Remove skill level meta
+$wpdb->delete( $wpdb->postmeta, array( 'meta_key' => 'spt_skill_level' ) );
+$wpdb->delete( $wpdb->postmeta, array( 'meta_key' => 'spt_skill_source' ) );
+$wpdb->delete( $wpdb->postmeta, array( 'meta_key' => 'spt_skill_updated' ) );
+
+// Remove skill level options
+delete_option( 'spt_skill_level_enabled' );
+delete_option( 'spt_skill_min_games' );
+delete_option( 'spt_skill_formula' );
+
 // Clean up temp data
 $table = $wpdb->prefix . 'spat_temp_data';
 $wpdb->query(

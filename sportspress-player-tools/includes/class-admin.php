@@ -32,6 +32,10 @@ class SPT_Admin {
 			update_option( 'spt_captain_role', isset( $_POST['spt_captain_role'] ) ? '1' : '0' );
 			update_option( 'spt_stats_enabler', isset( $_POST['spt_stats_enabler'] ) ? '1' : '0' );
 			update_option( 'spt_batch_list_creator', isset( $_POST['spt_batch_list_creator'] ) ? '1' : '0' );
+			update_option( 'spt_skill_level_enabled', isset( $_POST['spt_skill_level_enabled'] ) ? '1' : '0' );
+			if ( isset( $_POST['spt_skill_min_games'] ) ) {
+				update_option( 'spt_skill_min_games', max( 1, absint( $_POST['spt_skill_min_games'] ) ) );
+			}
 			echo '<div class="notice notice-success"><p>' . esc_html__( 'Settings saved.', 'sportspress-player-tools' ) . '</p></div>';
 		}
 
@@ -39,6 +43,7 @@ class SPT_Admin {
 		$captain_role = get_option( 'spt_captain_role', '1' );
 		$stats_enabler = get_option( 'spt_stats_enabler', '1' );
 		$batch_list = get_option( 'spt_batch_list_creator', '1' );
+		$skill_enabled = get_option( 'spt_skill_level_enabled', '0' );
 		?>
 			<form method="post">
 				<?php wp_nonce_field( 'spt_settings_save', 'spt_settings_nonce' ); ?>
@@ -81,6 +86,15 @@ class SPT_Admin {
 							</label>
 						</td>
 					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Skill Level Tracking', 'sportspress-player-tools' ); ?></th>
+						<td>
+							<label>
+								<input type="checkbox" name="spt_skill_level_enabled" value="1" <?php checked( $skill_enabled, '1' ); ?> />
+								<?php esc_html_e( 'Enable admin-only skill ratings with auto-calculation from stats', 'sportspress-player-tools' ); ?>
+							</label>
+						</td>
+					</tr>
 				</table>
 				
 				<?php submit_button( __( 'Save Settings', 'sportspress-player-tools' ), 'primary', 'save_settings' ); ?>
@@ -102,6 +116,12 @@ class SPT_Admin {
 				</table>
 				<?php submit_button( __( 'Upload & Preview', 'sportspress-player-tools' ) ); ?>
 			</form>
+
+			<?php
+			if ( class_exists( 'SPT_Player_Skill_Level' ) && get_option( 'spt_skill_level_enabled', '0' ) === '1' ) {
+				SPT_Player_Skill_Level::render_settings();
+			}
+			?>
 		<?php
 	}
 }

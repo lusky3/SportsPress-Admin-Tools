@@ -103,9 +103,11 @@ class SPLM_Admin_Ajax {
 		$players = SPLM_SportsPress_Data::get_players_for_team( $team_id );
 		$data = array_map(
 			function ( $player ) {
+				$skill = get_post_meta( $player->ID, 'spt_skill_level', true );
 				return array(
 					'id'    => $player->ID,
 					'title' => $player->post_title,
+					'skill' => $skill !== '' ? absint( $skill ) : null,
 				);
 			},
 			$players
