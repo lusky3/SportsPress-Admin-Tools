@@ -1,0 +1,8 @@
+/* Dynamic Standings */
+.arl-standings-wrap { max-width: 100%; }
+.arl-standings-filters { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; padding: 12px 16px; background: #f5f5f5; border-radius: 4px; }
+.arl-standings-filters label { font-weight: 600; margin-right: 4px; }
+.arl-standings-filters select { padding: 6px 10px; border: 1px solid #ccc; border-radius: 3px; font-size: 14px; }
+.arl-standings-content { transition: opacity 0.2s; }
+.arl-standings-empty { color: #666; font-style: italic; padding: 20px 0; }
+.arl-standings-tables .sp-league-table { margin-bottom: 24px; }

@@ -303,6 +303,9 @@ jQuery(document).ready(function($) {
 			$events_archived = $this->archive_old_events( $league_id, $season_term_id );
 		}
 
+		// 6. Update the default season for the dynamic standings shortcode.
+		update_option( 'spem_current_season_id', $season_term_id );
+
 		wp_send_json_success(
 			array(
 				'season_name'       => $season_name,

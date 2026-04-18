@@ -75,6 +75,17 @@ class SportsPress_Events_Manager {
 			)
 		);
 
+		SPAT_Plugin_Manager::register_plugin(
+			'dynamic_standings',
+			array(
+				'name'          => 'Dynamic Standings',
+				'description'   => '[arl_standings] shortcode with season/type filtering',
+				'parent_module' => 'dynamic_standings',
+				'version'       => SPEM_VERSION,
+				'file'          => __FILE__,
+			)
+		);
+
 		// Load functionality based on enabled modules
 		$this->load_enabled_modules();
 	}
@@ -97,7 +108,12 @@ class SportsPress_Events_Manager {
 			new SPEM_Season_Rollover();
 		}
 
-		if ( is_admin() && ( in_array( 'events_management', $enabled_modules ) || in_array( 'league_table_generator', $enabled_modules ) || in_array( 'season_rollover', $enabled_modules ) ) ) {
+		if ( in_array( 'dynamic_standings', $enabled_modules ) ) {
+			require_once SPEM_PLUGIN_PATH . 'includes/class-dynamic-standings.php';
+			new SPEM_Dynamic_Standings();
+		}
+
+		if ( is_admin() && ( in_array( 'events_management', $enabled_modules ) || in_array( 'league_table_generator', $enabled_modules ) || in_array( 'season_rollover', $enabled_modules ) || in_array( 'dynamic_standings', $enabled_modules ) ) ) {
 			require_once SPEM_PLUGIN_PATH . 'includes/class-admin.php';
 			new SPEM_Admin();
 		}
