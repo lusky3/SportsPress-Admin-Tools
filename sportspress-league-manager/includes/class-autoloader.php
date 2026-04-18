@@ -40,6 +40,8 @@ class SPLM_Autoloader {
 			'SPLM_Error_Handler'     => $base . 'class-error-handler.php',
 			'SPLM_Health_Checker'    => $base . 'class-health-checker.php',
 			'SPLM_Help_Provider'     => $base . 'class-help-provider.php',
+			'SPLM_Player_Notes'      => $base . 'class-player-notes.php',
+			'SPLM_Player_Notes_Database' => $base . 'class-player-notes-database.php',
 		);
 	}
 }

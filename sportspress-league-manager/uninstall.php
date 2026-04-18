@@ -43,6 +43,9 @@ $wpdb->query(
 
 // Remove manage_league capability from all roles.
 global $wp_roles;
+
+// Drop player notes table.
+$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}splm_player_notes" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 if ( ! isset( $wp_roles ) ) {
 	$wp_roles = new WP_Roles();
 }

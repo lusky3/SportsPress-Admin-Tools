@@ -1,0 +1,32 @@
+/* Player Notes */
+.splm-notes-list { max-height: 400px; overflow-y: auto; margin-bottom: 12px; }
+.splm-note { border-bottom: 1px solid #e0e0e0; padding: 8px 0; }
+.splm-note:last-child { border-bottom: none; }
+.splm-note-header { font-size: 12px; color: #666; margin-bottom: 4px; }
+.splm-note-cat { background: #e0e0e0; padding: 1px 6px; border-radius: 3px; font-size: 11px; }
+.splm-note-date { color: #999; }
+.splm-note-actions { float: right; }
+.splm-note-actions a { margin-left: 8px; font-size: 12px; text-decoration: none; }
+.splm-note-actions .splm-note-delete { color: #a00; }
+.splm-note-body { white-space: pre-wrap; word-wrap: break-word; }
+.splm-notes-form { border-top: 1px solid #e0e0e0; padding-top: 10px; }
+.splm-notes-form textarea { margin-bottom: 6px; }
+.splm-notes-form-row { display: flex; gap: 8px; align-items: center; }
+.splm-notes-form-row input[type="text"] { flex: 1; max-width: 200px; }
+.splm-notes-empty, .splm-notes-loading { color: #999; font-style: italic; }
+
+/* Frontend notes panel */
+.splm-frontend-notes { background: #fff3cd; border: 1px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px; }
+.splm-frontend-notes h4 { margin: 0 0 10px; color: #856404; }
+
+/* Dashboard recent notes */
+.splm-recent-note { padding: 6px 0; border-bottom: 1px solid #eee; font-size: 13px; }
+.splm-recent-note:last-child { border-bottom: none; }
+.splm-recent-note-meta { color: #999; font-size: 11px; }
+
+/* Roster notes badge */
+.splm-notes-badge { background: #2271b1; color: #fff; padding: 2px 7px; border-radius: 10px; font-size: 11px; cursor: pointer; }
+.splm-notes-badge:hover { background: #135e96; }
+.splm-notes-badge.empty { background: #ddd; color: #666; }
+.splm-roster-notes-panel { background: #f9f9f9; padding: 10px; border-top: 1px solid #e0e0e0; }
+.splm-roster-notes-panel textarea { width: 100%; margin: 6px 0; }
