@@ -207,6 +207,19 @@ class SPLM_Admin_Renderer {
 					<button type="button" class="button" id="splm-run-health-check"><?php esc_html_e( 'Run Health Check', 'sportspress-league-manager' ); ?></button>
 				</div>
 
+			<?php if ( $this->is_module_enabled( 'league_player_notes' ) ) : ?>
+				<!-- Recent Player Notes Card -->
+				<div class="splm-card" id="splm-recent-notes-card">
+					<h3 class="splm-card-title">
+						<span class="dashicons dashicons-edit"></span>
+						<?php esc_html_e( 'Recent Player Notes', 'sportspress-league-manager' ); ?>
+					</h3>
+					<div id="splm-recent-notes-list">
+						<p class="splm-card-empty"><?php esc_html_e( 'Loading…', 'sportspress-league-manager' ); ?></p>
+					</div>
+				</div>
+			<?php endif; ?>
+
 			</div><!-- .splm-card-grid -->
 		</div><!-- .wrap -->
 		<?php
@@ -291,11 +304,12 @@ class SPLM_Admin_Renderer {
 							<th scope="col"><?php esc_html_e( 'Position', 'sportspress-league-manager' ); ?></th>
 							<th scope="col"><?php esc_html_e( 'Email', 'sportspress-league-manager' ); ?></th>
 							<th scope="col"><?php esc_html_e( 'Skill', 'sportspress-league-manager' ); ?></th>
+							<th scope="col"><?php esc_html_e( 'Notes', 'sportspress-league-manager' ); ?></th>
 						</tr>
 					</thead>
 					<tbody id="splm-roster-body">
 						<tr class="splm-loading-row">
-							<td colspan="5"><?php esc_html_e( 'Select a team to load its roster.', 'sportspress-league-manager' ); ?></td>
+							<td colspan="6"><?php esc_html_e( 'Select a team to load its roster.', 'sportspress-league-manager' ); ?></td>
 						</tr>
 					</tbody>
 				</table>

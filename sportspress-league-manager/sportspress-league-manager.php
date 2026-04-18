@@ -83,6 +83,17 @@ class SportsPress_League_Manager {
 			)
 		);
 
+		SPAT_Plugin_Manager::register_plugin(
+			'league_player_notes',
+			array(
+				'name'          => 'Player Notes',
+				'description'   => 'Admin-only timestamped notes on player records',
+				'parent_module' => 'league_player_notes',
+				'version'       => SPLM_VERSION,
+				'file'          => __FILE__,
+			)
+		);
+
 		// Install capabilities only when version changes.
 		if ( get_option( 'splm_caps_version' ) !== SPLM_VERSION ) {
 			SPLM_Capabilities::install_capabilities();
@@ -96,7 +107,7 @@ class SportsPress_League_Manager {
 		$enabled = get_option( 'spat_enabled_modules', array() );
 		$any_enabled = array_intersect(
 			$enabled,
-			array( 'league_manager_dashboard', 'league_roster_management', 'league_fee_tracking' )
+			array( 'league_manager_dashboard', 'league_roster_management', 'league_fee_tracking', 'league_player_notes' )
 		);
 
 		if ( empty( $any_enabled ) ) {
@@ -105,6 +116,11 @@ class SportsPress_League_Manager {
 
 		if ( is_admin() ) {
 			new SPLM_Admin( $any_enabled );
+		}
+
+		// Player notes needs to load on frontend too (for player profile display).
+		if ( in_array( 'league_player_notes', $enabled, true ) ) {
+			new SPLM_Player_Notes();
 		}
 	}
 

@@ -28,6 +28,11 @@ class SPLM_Admin_Ajax {
 			'splm_save_user_prefs',
 			'splm_dismiss_wizard',
 			'splm_update_player_skill',
+			'splm_get_player_notes',
+			'splm_add_player_note',
+			'splm_update_player_note',
+			'splm_delete_player_note',
+			'splm_get_recent_notes',
 		);
 		foreach ( $actions as $action ) {
 			add_action( 'wp_ajax_' . $action, array( $this, $action ) );
@@ -105,10 +110,14 @@ class SPLM_Admin_Ajax {
 		$data = array_map(
 			function ( $player ) {
 				$skill = get_post_meta( $player->ID, 'spt_skill_level', true );
+				$notes_count = class_exists( 'SPLM_Player_Notes_Database' )
+					? SPLM_Player_Notes_Database::count_for_player( $player->ID )
+					: 0;
 				return array(
-					'id'    => $player->ID,
-					'title' => $player->post_title,
-					'skill' => $skill !== '' ? absint( $skill ) : null,
+					'id'          => $player->ID,
+					'title'       => $player->post_title,
+					'skill'       => $skill !== '' ? absint( $skill ) : null,
+					'notes_count' => $notes_count,
 				);
 			},
 			$players
@@ -420,5 +429,154 @@ class SPLM_Admin_Ajax {
 		$this->verify_request();
 		update_user_meta( get_current_user_id(), 'splm_wizard_completed', '1' );
 		wp_send_json_success( array( 'message' => 'Wizard dismissed.' ) );
+	}
+
+	// ------------------------------------------------------------------
+	// Player Notes AJAX handlers
+	// ------------------------------------------------------------------
+
+	public function splm_get_player_notes() {
+		$this->verify_request();
+
+		$player_id = absint( $_POST['player_id'] ?? 0 );
+		if ( ! $player_id || 'sp_player' !== get_post_type( $player_id ) ) {
+			wp_send_json_error( array( 'message' => 'Invalid player.' ), 400 );
+		}
+
+		$notes = SPLM_Player_Notes_Database::get_notes( $player_id );
+		$data  = array();
+		$uid   = get_current_user_id();
+		$now   = time();
+
+		foreach ( $notes as $n ) {
+			$created  = strtotime( $n->created_at . ' +0000' );
+			$can_edit = ( (int) $n->author_id === $uid ) && ( $now - $created < 86400 );
+
+			$data[] = array(
+				'id'          => (int) $n->id,
+				'player_id'   => (int) $n->player_id,
+				'author_id'   => (int) $n->author_id,
+				'author_name' => $n->author_name ?: __( 'Unknown', 'sportspress-league-manager' ),
+				'category'    => $n->category,
+				'note'        => $n->note,
+				'created_at'  => $n->created_at,
+				'updated_at'  => $n->updated_at,
+				'can_edit'    => $can_edit,
+			);
+		}
+
+		wp_send_json_success( array( 'notes' => $data, 'total' => count( $data ) ) );
+	}
+
+	public function splm_add_player_note() {
+		$this->verify_request();
+
+		$player_id = absint( $_POST['player_id'] ?? 0 );
+		if ( ! $player_id || 'sp_player' !== get_post_type( $player_id ) ) {
+			wp_send_json_error( array( 'message' => 'Invalid player.' ), 400 );
+		}
+
+		$note = sanitize_textarea_field( wp_unslash( $_POST['note'] ?? '' ) );
+		if ( empty( $note ) ) {
+			wp_send_json_error( array( 'message' => 'Note cannot be empty.' ), 400 );
+		}
+		$note = mb_substr( $note, 0, 1000 );
+
+		$category = sanitize_text_field( wp_unslash( $_POST['category'] ?? 'general' ) );
+		$category = mb_substr( $category, 0, 50 );
+
+		$id = SPLM_Player_Notes_Database::insert(
+			$player_id,
+			get_current_user_id(),
+			$note,
+			$category
+		);
+
+		if ( ! $id ) {
+			wp_send_json_error( array( 'message' => 'Failed to save note.' ), 500 );
+		}
+
+		$saved = SPLM_Player_Notes_Database::get_note( $id );
+		$user  = wp_get_current_user();
+
+		wp_send_json_success(
+			array(
+				'note' => array(
+					'id'          => (int) $saved->id,
+					'player_id'   => (int) $saved->player_id,
+					'author_id'   => (int) $saved->author_id,
+					'author_name' => $user->display_name,
+					'category'    => $saved->category,
+					'note'        => $saved->note,
+					'created_at'  => $saved->created_at,
+					'updated_at'  => $saved->updated_at,
+					'can_edit'    => true,
+				),
+			)
+		);
+	}
+
+	public function splm_update_player_note() {
+		$this->verify_request();
+
+		$note_id = absint( $_POST['note_id'] ?? 0 );
+		$row     = SPLM_Player_Notes_Database::get_note( $note_id );
+		if ( ! $row ) {
+			wp_send_json_error( array( 'message' => 'Note not found.' ), 404 );
+		}
+
+		// Author-only, within 24 hours.
+		if ( (int) $row->author_id !== get_current_user_id() ) {
+			wp_send_json_error( array( 'message' => 'Only the author can edit.' ), 403 );
+		}
+		if ( time() - strtotime( $row->created_at . ' +0000' ) > 86400 ) {
+			wp_send_json_error( array( 'message' => 'Edit window expired (24h).' ), 403 );
+		}
+
+		$note = sanitize_textarea_field( wp_unslash( $_POST['note'] ?? '' ) );
+		if ( empty( $note ) ) {
+			wp_send_json_error( array( 'message' => 'Note cannot be empty.' ), 400 );
+		}
+		$note = mb_substr( $note, 0, 1000 );
+
+		SPLM_Player_Notes_Database::update( $note_id, $note );
+		wp_send_json_success( array( 'message' => 'Note updated.' ) );
+	}
+
+	public function splm_delete_player_note() {
+		$this->verify_request();
+
+		$note_id = absint( $_POST['note_id'] ?? 0 );
+		$row     = SPLM_Player_Notes_Database::get_note( $note_id );
+		if ( ! $row ) {
+			wp_send_json_error( array( 'message' => 'Note not found.' ), 404 );
+		}
+
+		SPLM_Player_Notes_Database::soft_delete( $note_id );
+		wp_send_json_success( array( 'message' => 'Note deleted.' ) );
+	}
+
+	public function splm_get_recent_notes() {
+		$this->verify_request();
+
+		$limit = absint( $_POST['limit'] ?? 10 );
+		$limit = min( $limit, 50 );
+
+		$notes = SPLM_Player_Notes_Database::get_recent( $limit );
+		$data  = array();
+
+		foreach ( $notes as $n ) {
+			$data[] = array(
+				'id'          => (int) $n->id,
+				'player_id'   => (int) $n->player_id,
+				'player_name' => $n->player_name ?: __( 'Unknown', 'sportspress-league-manager' ),
+				'author_name' => $n->author_name ?: __( 'Unknown', 'sportspress-league-manager' ),
+				'category'    => $n->category,
+				'note'        => mb_substr( $n->note, 0, 100 ),
+				'created_at'  => $n->created_at,
+			);
+		}
+
+		wp_send_json_success( array( 'notes' => $data ) );
 	}
 }

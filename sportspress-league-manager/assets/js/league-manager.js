@@ -337,14 +337,14 @@
         return;
       }
       $section.show();
-      $body.html('<tr><td colspan="5">' + esc(splmData.i18n.loading || 'Loading…') + '</td></tr>');
+      $body.html('<tr><td colspan="6">' + esc(splmData.i18n.loading || 'Loading…') + '</td></tr>');
       splmAjax('splm_get_roster', { team_id: teamId }, $('<span>')).done(function (res) {
         if (!res.success) {
-          $body.html('<tr><td colspan="5">' + esc(res.data.message || res.data) + '</td></tr>');
+          $body.html('<tr><td colspan="6">' + esc(res.data.message || res.data) + '</td></tr>');
           return;
         }
         if (!res.data.players.length) {
-          $body.html('<tr><td colspan="5">' + esc(splmData.i18n.noPlayers || 'No players found.') + '</td></tr>');
+          $body.html('<tr><td colspan="6">' + esc(splmData.i18n.noPlayers || 'No players found.') + '</td></tr>');
           return;
         }
         var html = '';
@@ -354,14 +354,45 @@
             var sel = (p.skill === i) ? ' selected' : '';
             skillOpts += '<option value="' + i + '"' + sel + '>' + i + '</option>';
           }
+          var notesBadge = p.notes_count
+            ? '<span class="splm-notes-badge" data-player-id="' + p.id + '" data-player-name="' + esc(p.title) + '">' + p.notes_count + '</span>'
+            : '<span class="splm-notes-badge empty" data-player-id="' + p.id + '" data-player-name="' + esc(p.title) + '">0</span>';
           html += '<tr>'
             + '<td><a href="post.php?post=' + p.id + '&action=edit">' + esc(p.title) + '</a></td>'
             + '<td></td><td></td><td></td>'
             + '<td><select class="splm-skill-select" data-player-id="' + p.id + '">' + skillOpts + '</select></td>'
+            + '<td>' + notesBadge + '</td>'
             + '</tr>';
         });
         $body.html(html);
       });
+    });
+  }
+
+  /* ---------------------------------------------------------------
+     Recent Notes (dashboard)
+     --------------------------------------------------------------- */
+  function loadRecentNotes() {
+    var $list = $('#splm-recent-notes-list');
+    if (!$list.length) return;
+
+    splmAjax('splm_get_recent_notes', { limit: 10 }, $('<span>')).done(function (res) {
+      if (!res.success || !res.data.notes.length) {
+        $list.html('<p class="splm-card-empty">No notes yet.</p>');
+        return;
+      }
+      var html = '';
+      $.each(res.data.notes, function (_, n) {
+        html += '<div class="splm-recent-note">';
+        html += '<strong><a href="post.php?post=' + n.player_id + '&action=edit">' + esc(n.player_name) + '</a></strong> ';
+        html += esc(n.note);
+        html += '<div class="splm-recent-note-meta">' + esc(n.author_name) + ' — ' + esc(n.created_at);
+        if (n.category && n.category !== 'general') {
+          html += ' <span class="splm-note-cat">' + esc(n.category) + '</span>';
+        }
+        html += '</div></div>';
+      });
+      $list.html(html);
     });
   }
 
@@ -403,6 +434,7 @@
     // Initial data load
     loadTeams();
     loadFees();
+    loadRecentNotes();
     loadFeeSummary();
   });
 
