@@ -1,0 +1,11 @@
+# Snyk (https://snyk.io) policy file
+version: v1.25.0
+exclude:
+  code:
+    - sportspress-events-manager/assets/js/dynamic-standings.js:
+        - "DOM-based Cross-site Scripting (XSS)":
+            reason: >
+              False positive. The .html() call receives server-generated HTML from
+              a nonce-protected WordPress AJAX endpoint (spem_get_standings) that
+              returns do_shortcode() output. The HTML is not user-controlled.
+            expires: 2027-04-18T00:00:00.000Z
