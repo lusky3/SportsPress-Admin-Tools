@@ -282,6 +282,12 @@ class SPEM_Events_Management {
 			return new WP_Error( 'upload_error', __( 'File upload failed.', 'sportspress-events-manager' ) );
 		}
 
+		// Limit file size to 5MB
+		$max_size = 5 * 1024 * 1024;
+		if ( $file['size'] > $max_size ) {
+			return new WP_Error( 'file_too_large', __( 'File exceeds the 5MB size limit.', 'sportspress-events-manager' ) );
+		}
+
 		$file_path = $file['tmp_name'];
 		$original_name = isset( $file['name'] ) ? $file['name'] : '';
 		$events_data = $this->parse_file( $file_path, $original_name );

@@ -65,7 +65,7 @@
       season_id: $('#splm-filter-season').val()
     }, $wrap).done(function (res) {
       if (!res.success) {
-        $wrap.html('<div class="splm-error">' + esc(res.data) + '</div>');
+        $wrap.html('<div class="splm-error">' + esc(res.data.message || res.data) + '</div>');
         return;
       }
       $('#splm-teams-count').text(res.data.teams.length);
@@ -171,10 +171,11 @@
             dataType: 'json'
           }).done(function (res) {
             if (res.success) {
-              $preview.html('<div class="splm-badge splm-badge--success">' + esc(res.data) + '</div>');
+              var msg = (res.data.created || 0) + ' created, ' + (res.data.updated || 0) + ' updated';
+              $preview.html('<div class="splm-badge splm-badge--success">' + esc(msg) + '</div>');
               loadTeams();
             } else {
-              $preview.html('<div class="splm-error">' + esc(res.data) + '</div>');
+              $preview.html('<div class="splm-error">' + esc(res.data.message || res.data) + '</div>');
             }
           }).fail(function () {
             $preview.html('<div class="splm-error">' + esc(splmData.i18n.error || 'Upload failed.') + '</div>');
@@ -196,7 +197,7 @@
       season_id: $('#splm-filter-season').val()
     }, $wrap).done(function (res) {
       if (!res.success) {
-        $wrap.html('<div class="splm-error">' + esc(res.data) + '</div>');
+        $wrap.html('<div class="splm-error">' + esc(res.data.message || res.data) + '</div>');
         return;
       }
       renderFeesTable($wrap, res.data.fees || []);
@@ -279,7 +280,7 @@
     $btn.on('click', function () {
       splmAjax('splm_health_check', {}, $wrap).done(function (res) {
         if (!res.success) {
-          $wrap.html('<div class="splm-error">' + esc(res.data) + '</div>');
+          $wrap.html('<div class="splm-error">' + esc(res.data.message || res.data) + '</div>');
           return;
         }
         var $list = $('<ul class="splm-health-list">');
@@ -321,6 +322,40 @@
   }
 
   /* ---------------------------------------------------------------
+     8. Roster team selector
+     --------------------------------------------------------------- */
+  function initRosterSelector() {
+    var $selector = $('#splm-team-selector');
+    if (!$selector.length) return;
+
+    $selector.on('change', function () {
+      var teamId = $(this).val();
+      var $section = $('#splm-roster-section');
+      var $body = $('#splm-roster-body');
+      if (!teamId) {
+        $section.hide();
+        return;
+      }
+      $section.show();
+      splmAjax('splm_get_roster', { team_id: teamId }, $body).done(function (res) {
+        if (!res.success) {
+          $body.html('<tr><td colspan="4">' + esc(res.data.message || res.data) + '</td></tr>');
+          return;
+        }
+        if (!res.data.players.length) {
+          $body.html('<tr><td colspan="4">' + esc(splmData.i18n.noPlayers || 'No players found.') + '</td></tr>');
+          return;
+        }
+        var html = '';
+        $.each(res.data.players, function (_, p) {
+          html += '<tr><td>' + esc(p.title) + '</td><td></td><td></td><td></td></tr>';
+        });
+        $body.html(html);
+      });
+    });
+  }
+
+  /* ---------------------------------------------------------------
      Init on DOM ready
      --------------------------------------------------------------- */
   $(function () {
@@ -328,6 +363,7 @@
     initTooltips();
     initWizard();
     initCsvUpload();
+    initRosterSelector();
     initHealthCheck();
     // Initial data load
     loadTeams();

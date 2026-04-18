@@ -397,8 +397,7 @@ class SPT_Batch_List_Creator {
 				update_post_meta( $list_id, 'sp_orderby', 'number' );
 				update_post_meta( $list_id, 'sp_order', 'ASC' );
 
-				// Attach to team and remove any existing list
-				delete_post_meta( $team_id, 'sp_list' );
+				// Attach list to team (preserves other list associations)
 				update_post_meta( $team_id, 'sp_list', $list_id );
 			}
 		}
