@@ -307,7 +307,13 @@ class SPSG_Schedule_Generator {
 		try {
 			$config = $this->load_config_for_validation();
 			if ( is_null( $config ) ) {
-				return; // Response already sent
+				wp_send_json_error(
+					array(
+						'message' => __( 'No saved configuration found. Please save your configuration first.', 'sportspress-schedule-generator' ),
+						'errors'  => array( __( 'Save the configuration before validating.', 'sportspress-schedule-generator' ) ),
+					)
+				);
+				return;
 			}
 
 			$validation = $config->validate();
@@ -364,12 +370,21 @@ class SPSG_Schedule_Generator {
 	 * @return SPSG_Schedule_Configuration|null Config object, or null if error response was sent
 	 */
 	private function load_config_for_validation() {
-		// Use nested config_data if provided, otherwise use top-level POST data (form submission)
-		$config_data = isset( $_POST['config_data'] ) ? $_POST['config_data'] : $_POST;
+		// When called from the form submit handler, POST contains form fields.
+		// When called from the standalone Validate button, POST only has action + nonce.
+		$has_form_data = ! empty( $_POST['season_start'] ) || ! empty( $_POST['name'] );
 
-		$sanitizer   = new SPSG_Configuration_Sanitizer();
-		$config_data = $sanitizer->sanitize( $config_data );
-		$config      = new SPSG_Schedule_Configuration( $config_data );
+		if ( $has_form_data ) {
+			$sanitizer   = new SPSG_Configuration_Sanitizer();
+			$config_data = $sanitizer->sanitize( $_POST );
+			return new SPSG_Schedule_Configuration( $config_data );
+		}
+
+		// Standalone validate: load saved config from DB.
+		$config = $this->config_manager->get_current();
+		if ( ! $config || ! $config->season_start ) {
+			return null;
+		}
 		return $config;
 	}
 
