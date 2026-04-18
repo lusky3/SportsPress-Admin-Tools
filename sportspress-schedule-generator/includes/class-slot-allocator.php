@@ -35,6 +35,11 @@ class SPSG_Slot_Allocator {
 	private $available_slots = array();
 
 	/**
+	 * Reference to the flat schedule array (shared with greedy_allocate).
+	 */
+	private $current_flat_schedule = array();
+
+	/**
 	 * Constructor
 	 */
 	public function __construct( $constraint_manager = null ) {
@@ -179,6 +184,9 @@ class SPSG_Slot_Allocator {
 
 		// Optimization: indexed schedule for O(1) lookups by date.
 		$schedule_by_date = array();
+
+		// Share the flat schedule with find_best_slot for cost calculation.
+		$this->current_flat_schedule = &$schedule;
 
 		foreach ( $matchups as $matchup ) {
 			$check_counter++;
@@ -336,8 +344,8 @@ class SPSG_Slot_Allocator {
 				continue;
 			}
 
-			// Calculate slot cost (lower is better)
-			$cost = $this->calculate_slot_cost( $matchup, $slot, $schedule_by_date, $config, $game );
+			// Calculate slot cost using the flat schedule reference.
+			$cost = $this->constraint_manager->calculate_violation_cost( $game, $this->current_flat_schedule, $config );
 
 			if ( $cost < $min_cost ) {
 				$min_cost = $cost;
@@ -345,7 +353,6 @@ class SPSG_Slot_Allocator {
 			}
 
 			// Cap: stop after evaluating enough valid slots.
-			// For a rec league, the first few valid low-cost slots are good enough.
 			++$evaluated;
 			if ( $evaluated >= $max_evaluate ) {
 				break;
@@ -367,25 +374,6 @@ class SPSG_Slot_Allocator {
 	 * @param SPSG_Schedule_Configuration $config Configuration
 	 * @return float Cost (lower is better)
 	 */
-	public function calculate_slot_cost( $matchup, $slot, $schedule_by_date, $config, $game = null ) {
-		// Reuse pre-created game or create one
-		if ( ! $game ) {
-			$game = $this->create_game( $matchup, $slot, $config );
-		}
-
-		// Flatten the date-indexed schedule for constraint evaluation.
-		// Constraints need the full schedule for distribution calculations.
-		$flat = array();
-		foreach ( $schedule_by_date as $games ) {
-			foreach ( $games as $g ) {
-				$flat[] = $g;
-			}
-		}
-
-		// Calculate total violation cost from all constraints
-		return $this->constraint_manager->calculate_violation_cost( $game, $flat, $config );
-	}
-
 	/**
 	 * Get available venues for a specific date with their time slots
 	 *
