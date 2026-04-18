@@ -364,31 +364,17 @@ class SPSG_Schedule_Generator {
 	 * @return SPSG_Schedule_Configuration|null Config object, or null if error response was sent
 	 */
 	private function load_config_for_validation() {
-		$config_data = isset( $_POST['config_data'] ) ? $_POST['config_data'] : null;
+		// Use nested config_data if provided, otherwise use top-level POST data (form submission)
+		$config_data = isset( $_POST['config_data'] ) ? $_POST['config_data'] : $_POST;
 
-		if ( $config_data && ! empty( $config_data ) ) {
-			$sanitizer = new SPSG_Configuration_Sanitizer();
-			$config_data = $sanitizer->sanitize( $config_data );
-			$config = new SPSG_Schedule_Configuration();
-			foreach ( $config_data as $key => $value ) {
-				if ( property_exists( $config, $key ) ) {
-					$config->$key = $value;
-				}
+		$sanitizer = new SPSG_Configuration_Sanitizer();
+		$config_data = $sanitizer->sanitize( $config_data );
+		$config = new SPSG_Schedule_Configuration();
+		foreach ( $config_data as $key => $value ) {
+			if ( property_exists( $config, $key ) ) {
+				$config->$key = $value;
 			}
-			return $config;
 		}
-
-		$config = $this->config_manager->get_current();
-		if ( ! $config ) {
-			wp_send_json_error(
-				array(
-					'message' => __( 'No configuration found to validate', 'sportspress-schedule-generator' ),
-					'errors' => array( __( 'Please configure the schedule first', 'sportspress-schedule-generator' ) ),
-				)
-			);
-			return null;
-		}
-
 		return $config;
 	}
 
