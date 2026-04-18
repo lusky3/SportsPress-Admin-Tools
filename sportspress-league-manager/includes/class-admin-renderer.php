@@ -290,11 +290,12 @@ class SPLM_Admin_Renderer {
 							<th scope="col"><?php esc_html_e( 'Number', 'sportspress-league-manager' ); ?></th>
 							<th scope="col"><?php esc_html_e( 'Position', 'sportspress-league-manager' ); ?></th>
 							<th scope="col"><?php esc_html_e( 'Email', 'sportspress-league-manager' ); ?></th>
+							<th scope="col"><?php esc_html_e( 'Skill', 'sportspress-league-manager' ); ?></th>
 						</tr>
 					</thead>
 					<tbody id="splm-roster-body">
 						<tr class="splm-loading-row">
-							<td colspan="4"><?php esc_html_e( 'Select a team to load its roster.', 'sportspress-league-manager' ); ?></td>
+							<td colspan="5"><?php esc_html_e( 'Select a team to load its roster.', 'sportspress-league-manager' ); ?></td>
 						</tr>
 					</tbody>
 				</table>

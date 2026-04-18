@@ -35,6 +35,9 @@ class SportsPress_Player_Tools {
 	/** @var SPT_Batch_List_Creator|null */
 	private $batch_list_creator;
 
+	/** @var SPT_Player_Skill_Level|null */
+	private $player_skill_level;
+
 	/** @var SPT_Admin|null */
 	private $admin;
 
@@ -100,6 +103,17 @@ class SportsPress_Player_Tools {
 			)
 		);
 
+		SPAT_Plugin_Manager::register_plugin(
+			'player_skill_level',
+			array(
+				'name'          => 'Player Skill Level',
+				'description'   => 'Admin-only skill ratings (1-10) with auto-calculation from stats',
+				'parent_module' => 'player_skill_level',
+				'version'       => SPT_VERSION,
+				'file'          => __FILE__,
+			)
+		);
+
 		// Load functionality based on enabled modules
 		$this->load_enabled_modules();
 	}
@@ -123,7 +137,12 @@ class SportsPress_Player_Tools {
 			$this->batch_list_creator = new SPT_Batch_List_Creator();
 		}
 
-		if ( is_admin() && ( in_array( 'player_modifications', $enabled_modules ) || in_array( 'player_stats_enabler', $enabled_modules ) || in_array( 'batch_list_creator', $enabled_modules ) ) ) {
+		if ( in_array( 'player_skill_level', $enabled_modules ) ) {
+			require_once SPT_PLUGIN_PATH . 'includes/class-player-skill-level.php';
+			$this->player_skill_level = new SPT_Player_Skill_Level();
+		}
+
+		if ( is_admin() && ( in_array( 'player_modifications', $enabled_modules ) || in_array( 'player_stats_enabler', $enabled_modules ) || in_array( 'batch_list_creator', $enabled_modules ) || in_array( 'player_skill_level', $enabled_modules ) ) ) {
 			require_once SPT_PLUGIN_PATH . 'includes/class-admin.php';
 			$this->admin = new SPT_Admin();
 		}

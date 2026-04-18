@@ -337,18 +337,20 @@
         return;
       }
       $section.show();
-      splmAjax('splm_get_roster', { team_id: teamId }, $body).done(function (res) {
+      $body.html('<tr><td colspan="5">' + esc(splmData.i18n.loading || 'Loading…') + '</td></tr>');
+      splmAjax('splm_get_roster', { team_id: teamId }, $('<span>')).done(function (res) {
         if (!res.success) {
-          $body.html('<tr><td colspan="4">' + esc(res.data.message || res.data) + '</td></tr>');
+          $body.html('<tr><td colspan="5">' + esc(res.data.message || res.data) + '</td></tr>');
           return;
         }
         if (!res.data.players.length) {
-          $body.html('<tr><td colspan="4">' + esc(splmData.i18n.noPlayers || 'No players found.') + '</td></tr>');
+          $body.html('<tr><td colspan="5">' + esc(splmData.i18n.noPlayers || 'No players found.') + '</td></tr>');
           return;
         }
         var html = '';
         $.each(res.data.players, function (_, p) {
-          html += '<tr><td>' + esc(p.title) + '</td><td></td><td></td><td></td></tr>';
+          var skill = p.skill !== null ? esc(String(p.skill)) : '—';
+          html += '<tr><td>' + esc(p.title) + '</td><td></td><td></td><td></td><td>' + skill + '</td></tr>';
         });
         $body.html(html);
       });
