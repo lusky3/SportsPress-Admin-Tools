@@ -465,7 +465,12 @@ class SPLM_Admin_Ajax {
 			);
 		}
 
-		wp_send_json_success( array( 'notes' => $data, 'total' => count( $data ) ) );
+		wp_send_json_success(
+			array(
+				'notes' => $data,
+				'total' => count( $data ),
+			)
+		);
 	}
 
 	public function splm_add_player_note() {
