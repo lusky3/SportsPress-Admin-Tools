@@ -70,8 +70,7 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 	 * Calculate cost for day distribution imbalance
 	 */
 	private function calculate_day_distribution_cost( $game, $schedule, $config ) {
-		$game_date = new DateTime( $game->date );
-		$game_day = strtolower( $game_date->format( 'l' ) );
+		$game_day = isset( $game->day ) ? $game->day : strtolower( gmdate( 'l', strtotime( $game->date ) ) );
 
 		// Get current distribution for both teams
 		$home_team_distribution = $this->get_team_day_distribution( $this->get_team_id( $game->home_team ), $schedule );
@@ -119,10 +118,8 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 		$distribution = array();
 
 		foreach ( $schedule as $existing_game ) {
-			if ( $existing_game->home_team->id === $team_id || $existing_game->away_team->id === $team_id ) {
-				$game_date = new DateTime( $existing_game->date );
-				$day = strtolower( $game_date->format( 'l' ) );
-
+			if ( $this->get_team_id( $existing_game->home_team ) === $team_id || $this->get_team_id( $existing_game->away_team ) === $team_id ) {
+				$day = isset( $existing_game->day ) ? $existing_game->day : strtolower( gmdate( 'l', strtotime( $existing_game->date ) ) );
 				$distribution[ $day ] = isset( $distribution[ $day ] ) ? $distribution[ $day ] + 1 : 1;
 			}
 		}
