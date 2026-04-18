@@ -30,7 +30,7 @@ class SPEM_Dynamic_Standings {
 			return;
 		}
 
-		$plugin_url = plugins_url( '', dirname( __FILE__ ) ) . '/';
+		$plugin_url = plugins_url( '', __DIR__ . '/..' ) . '/';
 
 		wp_enqueue_script(
 			'spem-dynamic-standings',
