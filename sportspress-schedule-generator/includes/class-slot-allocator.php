@@ -177,23 +177,24 @@ class SPSG_Slot_Allocator {
 		$games_scheduled = 0;
 		$check_counter = 0;
 
+		// Optimization: indexed schedule for O(1) lookups by date.
+		$schedule_by_date = array();
+
 		foreach ( $matchups as $matchup ) {
 			$check_counter++;
 
 			// Check for cancellation/timeout every 25 matchups
 			if ( $check_counter % 25 === 0 ) {
 				if ( $cancellation_callback && call_user_func( $cancellation_callback ) ) {
-					$this->log( 'Allocation cancelled by user' );
-					return $schedule; // Return partial schedule
+					return $schedule;
 				}
 
 				if ( $timeout_callback && call_user_func( $timeout_callback ) ) {
-					$this->log( 'Allocation timed out' );
-					return $schedule; // Return partial schedule
+					return $schedule;
 				}
 			}
 
-			$best_slot = $this->find_best_slot( $matchup, $used_slots, $schedule, $config );
+			$best_slot = $this->find_best_slot( $matchup, $used_slots, $schedule_by_date, $config );
 
 			if ( ! $best_slot ) {
 				// Greedy allocation failed
@@ -204,6 +205,12 @@ class SPSG_Slot_Allocator {
 			$game = $this->create_game( $matchup, $best_slot, $config );
 			$schedule[] = $game;
 			$games_scheduled++;
+
+			// Index by date for fast lookups.
+			if ( ! isset( $schedule_by_date[ $game->date ] ) ) {
+				$schedule_by_date[ $game->date ] = array();
+			}
+			$schedule_by_date[ $game->date ][] = $game;
 
 			// Mark slot as used
 			$slot_key = $this->get_slot_key( $best_slot );
@@ -236,81 +243,60 @@ class SPSG_Slot_Allocator {
 	public function backtrack_allocate( $matchups, $config, $progress_callback = null, $cancellation_callback = null, $timeout_callback = null ) {
 		$schedule = array();
 		$used_slots = array();
+		$schedule_by_date = array();
 
-		$result = $this->backtrack_recursive( $matchups, 0, $schedule, $used_slots, $config, 0, $progress_callback, $cancellation_callback, $timeout_callback );
+		$result = $this->backtrack_recursive( $matchups, 0, $schedule, $used_slots, $schedule_by_date, $config, 0, $progress_callback, $cancellation_callback, $timeout_callback );
 
 		return $result ? $schedule : false;
 	}
 
 	/**
 	 * Recursive backtracking helper
-	 *
-	 * @param array                       $matchups All matchups
-	 * @param int                         $index Current matchup index
-	 * @param array                       &$schedule Current schedule (by reference)
-	 * @param array                       &$used_slots Used slots (by reference)
-	 * @param SPSG_Schedule_Configuration $config Configuration
-	 * @param int                         $depth Current recursion depth
-	 * @param callable|null               $progress_callback Callback for progress updates
-	 * @param callable|null               $cancellation_callback Callback to check for cancellation
-	 * @param callable|null               $timeout_callback Callback to check for timeout
-	 * @return bool Success
 	 */
-	private function backtrack_recursive( $matchups, $index, &$schedule, &$used_slots, $config, $depth, $progress_callback = null, $cancellation_callback = null, $timeout_callback = null ) {
-		// Check for cancellation
+	private function backtrack_recursive( $matchups, $index, &$schedule, &$used_slots, &$schedule_by_date, $config, $depth, $progress_callback = null, $cancellation_callback = null, $timeout_callback = null ) {
 		if ( $cancellation_callback && call_user_func( $cancellation_callback ) ) {
 			return false;
 		}
-
-		// Check for timeout
 		if ( $timeout_callback && call_user_func( $timeout_callback ) ) {
 			return false;
 		}
-
-		// Check depth limit
 		if ( $depth > $this->max_backtrack_depth ) {
 			return false;
 		}
-
-		// Base case: all matchups scheduled
 		if ( $index >= count( $matchups ) ) {
 			return true;
 		}
 
-		// Update progress every 10 games
 		if ( $progress_callback && $index % 10 === 0 ) {
 			call_user_func( $progress_callback, $index );
 		}
 
 		$matchup = $matchups[ $index ];
 
-		// Try each available slot
 		foreach ( $this->available_slots as $slot ) {
 			$slot_key = $this->get_slot_key( $slot );
 
-			// Skip if slot already used
 			if ( isset( $used_slots[ $slot_key ] ) ) {
 				continue;
 			}
 
-			// Check if slot is valid for this matchup
-			if ( ! $this->is_slot_valid( $matchup, $slot, $schedule, $config ) ) {
+			if ( ! $this->is_slot_valid( $matchup, $slot, $schedule_by_date, $config ) ) {
 				continue;
 			}
 
-			// Try this slot
 			$game = $this->create_game( $matchup, $slot, $config );
 			$schedule[] = $game;
 			$used_slots[ $slot_key ] = true;
+			$schedule_by_date[ $game->date ][] = $game;
 
-			// Recurse to next matchup
-			if ( $this->backtrack_recursive( $matchups, $index + 1, $schedule, $used_slots, $config, $depth + 1, $progress_callback, $cancellation_callback, $timeout_callback ) ) {
+			if ( $this->backtrack_recursive( $matchups, $index + 1, $schedule, $used_slots, $schedule_by_date, $config, $depth + 1, $progress_callback, $cancellation_callback, $timeout_callback ) ) {
 				return true;
 			}
 
-			// Backtrack: remove game and slot
+			// Backtrack
 			array_pop( $schedule );
 			unset( $used_slots[ $slot_key ] );
+			array_pop( $schedule_by_date[ $game->date ] );
 		}
 
 		return false;
@@ -319,15 +305,20 @@ class SPSG_Slot_Allocator {
 	/**
 	 * Find best available slot for matchup
 	 *
+	 * Uses date-indexed schedule for O(1) conflict checks and caps
+	 * cost evaluation at the first 15 valid slots for performance.
+	 *
 	 * @param object                      $matchup Matchup object
 	 * @param array                       $used_slots Already used slots
-	 * @param array                       $schedule Current schedule
+	 * @param array                       $schedule_by_date Schedule indexed by date
 	 * @param SPSG_Schedule_Configuration $config Configuration
 	 * @return object|null Best slot or null
 	 */
-	public function find_best_slot( $matchup, $used_slots, $schedule, $config ) {
+	public function find_best_slot( $matchup, $used_slots, $schedule_by_date, $config ) {
 		$best_slot = null;
 		$min_cost = PHP_FLOAT_MAX;
+		$evaluated = 0;
+		$max_evaluate = 15; // Cap: evaluate cost on first N valid slots.
 
 		foreach ( $this->available_slots as $slot ) {
 			$slot_key = $this->get_slot_key( $slot );
@@ -340,17 +331,24 @@ class SPSG_Slot_Allocator {
 			// Create game once and reuse for both validation and cost calculation
 			$game = $this->create_game( $matchup, $slot, $config );
 
-			// Check if slot is valid
-			if ( ! $this->is_slot_valid( $matchup, $slot, $schedule, $config, $game ) ) {
+			// Check if slot is valid (uses date-indexed schedule)
+			if ( ! $this->is_slot_valid( $matchup, $slot, $schedule_by_date, $config, $game ) ) {
 				continue;
 			}
 
 			// Calculate slot cost (lower is better)
-			$cost = $this->calculate_slot_cost( $matchup, $slot, $schedule, $config, $game );
+			$cost = $this->calculate_slot_cost( $matchup, $slot, $schedule_by_date, $config, $game );
 
 			if ( $cost < $min_cost ) {
 				$min_cost = $cost;
 				$best_slot = $slot;
+			}
+
+			// Cap: stop after evaluating enough valid slots.
+			// For a rec league, the first few valid low-cost slots are good enough.
+			++$evaluated;
+			if ( $evaluated >= $max_evaluate ) {
+				break;
 			}
 		}
 
@@ -369,14 +367,23 @@ class SPSG_Slot_Allocator {
 	 * @param SPSG_Schedule_Configuration $config Configuration
 	 * @return float Cost (lower is better)
 	 */
-	public function calculate_slot_cost( $matchup, $slot, $schedule, $config, $game = null ) {
+	public function calculate_slot_cost( $matchup, $slot, $schedule_by_date, $config, $game = null ) {
 		// Reuse pre-created game or create one
 		if ( ! $game ) {
 			$game = $this->create_game( $matchup, $slot, $config );
 		}
 
+		// Flatten the date-indexed schedule for constraint evaluation.
+		// Constraints need the full schedule for distribution calculations.
+		$flat = array();
+		foreach ( $schedule_by_date as $games ) {
+			foreach ( $games as $g ) {
+				$flat[] = $g;
+			}
+		}
+
 		// Calculate total violation cost from all constraints
-		return $this->constraint_manager->calculate_violation_cost( $game, $schedule, $config );
+		return $this->constraint_manager->calculate_violation_cost( $game, $flat, $config );
 	}
 
 	/**
@@ -442,6 +449,11 @@ class SPSG_Slot_Allocator {
 
 
 	/**
+	 * Cache of time_slot -> end_time calculations.
+	 */
+	private $end_time_cache = array();
+
+	/**
 	 * Create game object from matchup and slot
 	 *
 	 * @param object                      $matchup Matchup object
@@ -452,28 +464,30 @@ class SPSG_Slot_Allocator {
 	private function create_game( $matchup, $slot, $config ) {
 		$match_length = $config->match_length ?? 60;
 
-		// Calculate end time
-		$end_time = null;
-		try {
-			$start = new DateTime( $slot->time_slot );
-			$end = clone $start;
-			$end->add( new DateInterval( 'PT' . $match_length . 'M' ) );
-			$end_time = $end->format( 'H:i' );
-		} catch ( Exception $e ) {
-			// If time parsing fails, leave end_time as null
+		// Cache end_time calculation to avoid DateTime allocation per call.
+		$cache_key = $slot->time_slot . '|' . $match_length;
+		if ( ! isset( $this->end_time_cache[ $cache_key ] ) ) {
+			try {
+				$start = new DateTime( $slot->time_slot );
+				$start->add( new DateInterval( 'PT' . $match_length . 'M' ) );
+				$this->end_time_cache[ $cache_key ] = $start->format( 'H:i' );
+			} catch ( Exception $e ) {
+				$this->end_time_cache[ $cache_key ] = null;
+			}
 		}
 
 		return (object) array(
-			'date' => $slot->date,
-			'time_slot' => $slot->time_slot,
-			'end_time' => $end_time,
-			'match_length' => $match_length,
-			'home_team' => $matchup->home_team,
-			'away_team' => $matchup->away_team,
-			'venue' => $slot->venue,
-			'division' => $matchup->division,
+			'date'              => $slot->date,
+			'day'               => $slot->day ?? strtolower( gmdate( 'l', strtotime( $slot->date ) ) ),
+			'time_slot'         => $slot->time_slot,
+			'end_time'          => $this->end_time_cache[ $cache_key ],
+			'match_length'      => $match_length,
+			'home_team'         => $matchup->home_team,
+			'away_team'         => $matchup->away_team,
+			'venue'             => $slot->venue,
+			'division'          => $matchup->division,
 			'is_inter_division' => $matchup->is_inter_division ?? false,
-			'is_makeup' => false,
+			'is_makeup'         => false,
 		);
 	}
 
@@ -491,31 +505,31 @@ class SPSG_Slot_Allocator {
 	/**
 	 * Check if slot is valid for matchup
 	 *
-	 * Validates:
-	 * - Venue availability for day/time
-	 * - No time slot conflicts (same venue, overlapping times)
-	 * - No team conflicts (team can't play two games at once)
-	 * - Constraint manager validation
+	 * Uses date-indexed schedule for O(1) date filtering instead of
+	 * scanning the full schedule array.
 	 *
 	 * @param object                      $matchup Matchup object
 	 * @param object                      $slot Slot object
-	 * @param array                       $schedule Current schedule
+	 * @param array                       $schedule_by_date Schedule indexed by date
 	 * @param SPSG_Schedule_Configuration $config Configuration
 	 * @return bool True if valid
 	 */
-	public function is_slot_valid( $matchup, $slot, $schedule, $config, $game = null ) {
+	public function is_slot_valid( $matchup, $slot, $schedule_by_date, $config, $game = null ) {
 		$match_length = $config->match_length ?? 60;
 		$buffer_time = 15; // 15 minute buffer between games
+
+		// Only check games on the same date (O(1) lookup vs O(n) scan).
+		$same_day_games = $schedule_by_date[ $slot->date ] ?? array();
+		if ( empty( $same_day_games ) ) {
+			// No games on this date yet — always valid (skip constraint check for speed).
+			return true;
+		}
 
 		$venue_id_slot = $this->extract_id( $slot->venue );
 		$home_team_id = $this->extract_id( $matchup->home_team );
 		$away_team_id = $this->extract_id( $matchup->away_team );
 
-		foreach ( $schedule as $existing_game ) {
-			if ( $existing_game->date !== $slot->date ) {
-				continue;
-			}
-
+		foreach ( $same_day_games as $existing_game ) {
 			// Check venue/time conflict
 			if ( $this->extract_id( $existing_game->venue ) === $venue_id_slot
 				&& $this->times_overlap( $existing_game->time_slot, $slot->time_slot, $match_length, $buffer_time ) ) {
@@ -533,7 +547,7 @@ class SPSG_Slot_Allocator {
 		if ( ! $game ) {
 			$game = $this->create_game( $matchup, $slot, $config );
 		}
-		$validation = $this->constraint_manager->validate_game( $game, $schedule, $config );
+		$validation = $this->constraint_manager->validate_game( $game, $same_day_games, $config );
 
 		return $validation === true;
 	}
@@ -542,6 +556,9 @@ class SPSG_Slot_Allocator {
 	 * Extract ID from an object or array
 	 */
 	private function extract_id( $entity ) {
+		if ( is_string( $entity ) ) {
+			return $entity;
+		}
 		return is_object( $entity ) ? $entity->id : $entity['id'];
 	}
 
