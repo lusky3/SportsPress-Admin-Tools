@@ -518,3 +518,7 @@
   margin: 8px 0 16px 20px;
   font-size: 13px;
 }
+
+/* Inline skill level dropdown */
+.splm-skill-select { width: 55px; padding: 2px; }
+.splm-skill-select.splm-saved { outline: 2px solid #46b450; outline-offset: -2px; }

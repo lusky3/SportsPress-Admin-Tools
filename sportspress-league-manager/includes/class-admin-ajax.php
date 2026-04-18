@@ -27,6 +27,7 @@ class SPLM_Admin_Ajax {
 			'splm_health_check',
 			'splm_save_user_prefs',
 			'splm_dismiss_wizard',
+			'splm_update_player_skill',
 		);
 		foreach ( $actions as $action ) {
 			add_action( 'wp_ajax_' . $action, array( $this, $action ) );
@@ -114,6 +115,33 @@ class SPLM_Admin_Ajax {
 		);
 
 		wp_send_json_success( array( 'players' => $data ) );
+	}
+
+	/**
+	 * Update a player's skill level inline from the roster view.
+	 */
+	public function splm_update_player_skill() {
+		$this->verify_request();
+
+		$player_id = absint( $_POST['player_id'] ?? 0 );
+		if ( ! $player_id || 'sp_player' !== get_post_type( $player_id ) ) {
+			wp_send_json_error( array( 'message' => 'Invalid player.' ), 400 );
+		}
+
+		$raw = $_POST['skill_level'] ?? '';
+		if ( '' === $raw ) {
+			delete_post_meta( $player_id, 'spt_skill_level' );
+			delete_post_meta( $player_id, 'spt_skill_source' );
+			delete_post_meta( $player_id, 'spt_skill_updated' );
+			wp_send_json_success( array( 'skill' => null ) );
+		}
+
+		$level = min( 10, max( 1, absint( $raw ) ) );
+		update_post_meta( $player_id, 'spt_skill_level', $level );
+		update_post_meta( $player_id, 'spt_skill_source', 'manual' );
+		update_post_meta( $player_id, 'spt_skill_updated', current_time( 'c' ) );
+
+		wp_send_json_success( array( 'skill' => $level ) );
 	}
 
 	/**
