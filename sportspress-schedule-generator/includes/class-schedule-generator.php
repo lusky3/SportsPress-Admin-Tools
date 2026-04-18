@@ -86,6 +86,10 @@ class SPSG_Schedule_Generator {
 			return;
 		}
 
+		// Extend execution time for schedule generation.
+		$max_time = absint( get_option( 'spsg_max_generation_time', 300 ) );
+		set_time_limit( $max_time );
+
 		// Load current configuration
 		$config = $this->config_manager->get_current();
 
