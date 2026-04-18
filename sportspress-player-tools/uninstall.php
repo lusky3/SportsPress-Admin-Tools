@@ -37,6 +37,7 @@ $wpdb->delete( $wpdb->postmeta, array( 'meta_key' => 'spt_captain' ) );
 $wpdb->delete( $wpdb->postmeta, array( 'meta_key' => 'spt_skill_level' ) );
 $wpdb->delete( $wpdb->postmeta, array( 'meta_key' => 'spt_skill_source' ) );
 $wpdb->delete( $wpdb->postmeta, array( 'meta_key' => 'spt_skill_updated' ) );
+$wpdb->delete( $wpdb->postmeta, array( 'meta_key' => 'spt_skill_history' ) );
 
 // Remove skill level options
 delete_option( 'spt_skill_level_enabled' );
