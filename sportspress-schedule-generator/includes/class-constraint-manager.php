@@ -310,8 +310,12 @@ class SPSG_Constraint_Manager {
 		// Calculate if we need more venues based on season length
 		$playing_days_count = 0;
 
-		$current_date = new DateTime( $config->season_start );
-		$season_end = new DateTime( $config->season_end );
+		$current_date = $config->season_start instanceof DateTime
+			? clone $config->season_start
+			: new DateTime( $config->season_start );
+		$season_end = $config->season_end instanceof DateTime
+			? clone $config->season_end
+			: new DateTime( $config->season_end );
 
 		while ( $current_date <= $season_end ) {
 			$day_name = strtolower( $current_date->format( 'l' ) );
