@@ -23,7 +23,7 @@ class SPLM_Player_Notes {
 
 		// Frontend: notes panel on player single pages (admin only).
 		if ( ! is_admin() && ! defined( 'WP_CLI' ) ) {
-			add_action( 'sportspress_after_player_template', array( $this, 'render_frontend_notes' ), 20 );
+			add_filter( 'the_content', array( $this, 'append_frontend_notes' ) );
 			add_action( 'wp_enqueue_scripts', array( $this, 'maybe_enqueue_frontend' ) );
 		}
 	}
@@ -151,12 +151,19 @@ class SPLM_Player_Notes {
 		);
 	}
 
-	public function render_frontend_notes( $post ) {
-		if ( ! current_user_can( 'manage_options' ) ) {
-			return;
+	/**
+	 * Append notes panel to player post content (frontend, admin-only).
+	 *
+	 * @param string $content Post content.
+	 * @return string
+	 */
+	public function append_frontend_notes( $content ) {
+		if ( ! is_singular( 'sp_player' ) || ! current_user_can( 'manage_options' ) ) {
+			return $content;
 		}
 
-		$player_id = is_object( $post ) ? $post->ID : get_the_ID();
+		$player_id = get_the_ID();
+		ob_start();
 		?>
 		<div class="splm-frontend-notes" id="splm-notes-app" data-player-id="<?php echo esc_attr( $player_id ); ?>">
 			<h4><?php esc_html_e( 'Admin Notes', 'sportspress-league-manager' ); ?></h4>
@@ -172,5 +179,6 @@ class SPLM_Player_Notes {
 			</div>
 		</div>
 		<?php
+		return $content . ob_get_clean();
 	}
 }
