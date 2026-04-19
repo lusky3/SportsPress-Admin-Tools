@@ -69,9 +69,9 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 		}
 
 		// Normalise every game to an array so both object and array data work.
-		$rows             = array();
-		$division_map     = array(); // division_name => color_index
-		$color_index      = 0;
+		$rows         = array();
+		$division_map = array(); // division_name => color_index
+		$color_index  = 0;
 
 		foreach ( $schedule as $game ) {
 			$g = $this->normalise_game( $game );
@@ -79,7 +79,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 			$div_name = $g['division_name'];
 			if ( $div_name !== '' && ! isset( $division_map[ $div_name ] ) ) {
 				$division_map[ $div_name ] = $color_index % count( self::DIVISION_COLORS );
-				$color_index++;
+				++$color_index;
 			}
 
 			$rows[] = $g;
@@ -106,20 +106,20 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 
 	/*
 	 * Data helpers
- */
+	*/
 
 	/**
 	 * Normalise a game (object or array) into a flat associative array.
 	 */
 	private function normalise_game( $game ) {
-		$g = (array) $game;
-		$g['division']  = isset( $g['division'] )  ? (array) $g['division']  : array();
+		$g              = (array) $game;
+		$g['division']  = isset( $g['division'] ) ? (array) $g['division'] : array();
 		$g['home_team'] = isset( $g['home_team'] ) ? (array) $g['home_team'] : array();
 		$g['away_team'] = isset( $g['away_team'] ) ? (array) $g['away_team'] : array();
-		$g['venue']     = isset( $g['venue'] )     ? (array) $g['venue']     : array();
+		$g['venue']     = isset( $g['venue'] ) ? (array) $g['venue'] : array();
 
-		$home = $g['home_team']['name'] ?? $g['home_team']['id'] ?? '';
-		$away = $g['away_team']['name'] ?? $g['away_team']['id'] ?? '';
+		$home     = $g['home_team']['name'] ?? $g['home_team']['id'] ?? '';
+		$away     = $g['away_team']['name'] ?? $g['away_team']['id'] ?? '';
 		$is_inter = ! empty( $g['is_inter_division'] );
 
 		return array(
@@ -140,7 +140,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 
 	/*
 	 * XLSX generation (ZipArchive + raw XML)
- */
+	*/
 
 	/**
 	 * Build the XLSX file on disk.
@@ -148,11 +148,12 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 	 * @param string $filepath      Absolute path for the output file.
 	 * @param array  $rows          Normalised game rows.
 	 * @param array  $division_map  Division name → colour index.
+	 * @throws \RuntimeException If ZIP file cannot be created.
 	 */
 	private function write_xlsx_detailed( $filepath, $rows, $division_map ) {
 		$zip = new \ZipArchive();
 		if ( $zip->open( $filepath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE ) !== true ) {
-			throw new \RuntimeException( 'Cannot create ZIP file: ' . $filepath );
+			throw new \RuntimeException( 'Cannot create ZIP file: ' . esc_html( $filepath ) );
 		}
 
 		// Build the fills array: 0 = none, 1 = gray125 (defaults), 2 = header, 3+ = divisions.
@@ -168,16 +169,25 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 		$idx          = 0;
 		foreach ( $division_map as $div_name => $ci ) {
 			$div_fill_ids[ $div_name ] = 3 + $idx; // 0,1 built-in + 2 header = first custom at 3
-			$idx++;
+			++$idx;
 		}
 
-		$shared  = array();  // shared strings table
-		$ss_idx  = array();  // string → index
+		$shared = array();  // shared strings table
+		$ss_idx = array();  // string → index
 
 		$headers = array(
-			'Date', 'Start Time', 'End Time', 'Duration (min)',
-			'Home Team', 'Away Team', 'Venue', 'Division',
-			'Home/Away', 'Inter-Division', 'Makeup', 'Week',
+			'Date',
+			'Start Time',
+			'End Time',
+			'Duration (min)',
+			'Home Team',
+			'Away Team',
+			'Venue',
+			'Division',
+			'Home/Away',
+			'Inter-Division',
+			'Makeup',
+			'Week',
 		);
 
 		// Pre-populate shared strings with headers.
@@ -202,11 +212,11 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 		// XF 2 = centred (for date/time cols on division rows),
 		// XF 3+ = one per division fill (left-aligned),
 		// after that = centred variants for each division.
-		$xf_header  = 1;
-		$xf_center  = 2; // default centred (no fill)
-		$xf_div     = array(); // div_name => left-aligned xf
-		$xf_div_c   = array(); // div_name => centred xf
-		$next_xf    = 3;
+		$xf_header = 1;
+		$xf_center = 2; // default centred (no fill)
+		$xf_div    = array(); // div_name => left-aligned xf
+		$xf_div_c  = array(); // div_name => centred xf
+		$next_xf   = 3;
 		foreach ( $division_map as $div_name => $ci ) {
 			$xf_div[ $div_name ]   = $next_xf++;
 			$xf_div_c[ $div_name ] = $next_xf++;
@@ -248,10 +258,15 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 	 *
 	 * Columns B-F: Venue | Time | Division | Home Team | Away Team
 	 * Games grouped by date with a merged header row per date.
- */
+	*/
 
 	/**
 	 * Build a compact-style XLSX file.
+	 *
+	 * @param string $filepath     Absolute path for the output file.
+	 * @param array  $rows         Normalised game rows.
+	 * @param array  $division_map Division name → colour index.
+	 * @throws \RuntimeException If ZIP file cannot be created.
 	 */
 	private function write_xlsx_compact( $filepath, $rows, $division_map ) {
 		// Group rows by date, preserving order.
@@ -286,7 +301,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 		// Pre-populate shared strings.
 		$week_num = 0;
 		foreach ( $by_date as $date => $games ) {
-			$week_num++;
+			++$week_num;
 			$add_ss( $this->compact_date_label( $date, $week_num ) );
 			foreach ( $games as $g ) {
 				$add_ss( $g['venue'] );
@@ -301,7 +316,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 		// Build the ZIP.
 		$zip = new \ZipArchive();
 		if ( $zip->open( $filepath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE ) !== true ) {
-			throw new \RuntimeException( 'Cannot create ZIP file: ' . $filepath );
+			throw new \RuntimeException( 'Cannot create ZIP file: ' . esc_html( $filepath ) );
 		}
 
 		// Custom fills: 0 = date-header (dark blue), then one per division.
@@ -311,7 +326,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 		foreach ( $division_map as $div_name => $ci ) {
 			$fills[]                = self::DIVISION_COLORS[ $ci ];
 			$div_fills[ $div_name ] = 3 + $idx;
-			$idx++;
+			++$idx;
 		}
 		$div_count = count( $division_map );
 
@@ -336,7 +351,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 		$week_num    = 0;
 
 		foreach ( $by_date as $date => $games ) {
-			$week_num++;
+			++$week_num;
 			$label = $this->compact_date_label( $date, $week_num );
 
 			// Date header row — merged B:F.
@@ -344,35 +359,68 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 			$sheet_rows[]  = array(
 				'row'   => $r,
 				'cells' => array(
-					array( 'ref' => 'B' . $r, 'type' => 's', 'val' => $ss_idx[ $label ], 'xf' => $xf_date_header ),
+					array(
+						'ref'  => 'B' . $r,
+						'type' => 's',
+						'val'  => $ss_idx[ $label ],
+						'xf'   => $xf_date_header,
+					),
 				),
 			);
-			$r++;
+			++$r;
 
 			// Game rows.
 			foreach ( $games as $g ) {
-				$div  = $g['division_name'];
-				$xfL  = $xf_div[ $div ]  ?? 0;
-				$xfC  = $xf_div_c[ $div ] ?? 2;
+				$div = $g['division_name'];
+				$xf_l = $xf_div[ $div ] ?? 0;
+				$xf_c = $xf_div_c[ $div ] ?? 2;
 
 				$cells = array();
 				// B = Venue
-				$cells[] = array( 'ref' => 'B' . $r, 'type' => 's', 'val' => $ss_idx[ $g['venue'] ] ?? '', 'xf' => $xfL );
+				$cells[] = array(
+					'ref'  => 'B' . $r,
+					'type' => 's',
+					'val'  => $ss_idx[ $g['venue'] ] ?? '',
+					'xf'   => $xf_l,
+				);
 				// C = Time
-				$cells[] = array( 'ref' => 'C' . $r, 'type' => 's', 'val' => $ss_idx[ $g['time_slot'] ] ?? '', 'xf' => $xfC );
+				$cells[] = array(
+					'ref'  => 'C' . $r,
+					'type' => 's',
+					'val'  => $ss_idx[ $g['time_slot'] ] ?? '',
+					'xf'   => $xf_c,
+				);
 				// D = Division
-				$cells[] = array( 'ref' => 'D' . $r, 'type' => 's', 'val' => $ss_idx[ $g['division_name'] ] ?? '', 'xf' => $xfC );
+				$cells[] = array(
+					'ref'  => 'D' . $r,
+					'type' => 's',
+					'val'  => $ss_idx[ $g['division_name'] ] ?? '',
+					'xf'   => $xf_c,
+				);
 				// E = Home
-				$cells[] = array( 'ref' => 'E' . $r, 'type' => 's', 'val' => $ss_idx[ $g['home'] ] ?? '', 'xf' => $xfL );
+				$cells[] = array(
+					'ref'  => 'E' . $r,
+					'type' => 's',
+					'val'  => $ss_idx[ $g['home'] ] ?? '',
+					'xf'   => $xf_l,
+				);
 				// F = Away
-				$cells[] = array( 'ref' => 'F' . $r, 'type' => 's', 'val' => $ss_idx[ $g['away'] ] ?? '', 'xf' => $xfL );
+				$cells[] = array(
+					'ref'  => 'F' . $r,
+					'type' => 's',
+					'val'  => $ss_idx[ $g['away'] ] ?? '',
+					'xf'   => $xf_l,
+				);
 
-				$sheet_rows[] = array( 'row' => $r, 'cells' => $cells );
-				$r++;
+				$sheet_rows[] = array(
+					'row'   => $r,
+					'cells' => $cells,
+				);
+				++$r;
 			}
 
 			// Blank separator row between dates.
-			$r++;
+			++$r;
 		}
 
 		$last_row = $r - 1;
@@ -475,7 +523,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 
 	/*
 	 * XML builders
- */
+	*/
 
 	private function xml_content_types() {
 		return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -631,7 +679,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 		// Column widths.
 		$xml .= '<cols>';
 		for ( $i = 0; $i < $col_count; $i++ ) {
-			$min = $i + 1;
+			$min  = $i + 1;
 			$xml .= '<col min="' . $min . '" max="' . $min . '" width="' . $widths[ $i ] . '" customWidth="1"/>';
 		}
 		$xml .= '</cols>';
@@ -641,7 +689,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 		// Header row.
 		$xml .= '<row r="1" ht="25" customHeight="1">';
 		for ( $c = 0; $c < $col_count; $c++ ) {
-			$ref = $col_letters[ $c ] . '1';
+			$ref  = $col_letters[ $c ] . '1';
 			$xml .= '<c r="' . $ref . '" t="s" s="' . $xf_header . '"><v>' . $ss_idx[ $headers[ $c ] ] . '</v></c>';
 		}
 		$xml .= '</row>';
@@ -650,8 +698,8 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 		$r = 2;
 		foreach ( $rows as $row_data ) {
 			$div_name = $row_data['division_name'];
-			$xf_left = isset( $xf_div[ $div_name ] ) ? $xf_div[ $div_name ] : 0;
-			$xf_cent = isset( $xf_div_c[ $div_name ] ) ? $xf_div_c[ $div_name ] : $xf_center;
+			$xf_left  = isset( $xf_div[ $div_name ] ) ? $xf_div[ $div_name ] : 0;
+			$xf_cent  = isset( $xf_div_c[ $div_name ] ) ? $xf_div_c[ $div_name ] : $xf_center;
 
 			$values = $this->row_values( $row_data );
 
@@ -673,7 +721,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 				}
 			}
 			$xml .= '</row>';
-			$r++;
+			++$r;
 		}
 
 		$xml .= '</sheetData>';
@@ -694,7 +742,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 
 	/*
 	 * Interface methods
- */
+	*/
 
 	public function get_format() {
 		return 'XLSX';
