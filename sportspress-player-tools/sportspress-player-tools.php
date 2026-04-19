@@ -145,6 +145,9 @@ class SportsPress_Player_Tools {
 		if ( is_admin() && ( in_array( 'player_modifications', $enabled_modules ) || in_array( 'player_stats_enabler', $enabled_modules ) || in_array( 'batch_list_creator', $enabled_modules ) || in_array( 'player_skill_level', $enabled_modules ) ) ) {
 			require_once SPT_PLUGIN_PATH . 'includes/class-admin.php';
 			$this->admin = new SPT_Admin();
+
+			require_once SPT_PLUGIN_PATH . 'includes/class-email-sync.php';
+			new SPT_Email_Sync();
 		}
 	}
 
