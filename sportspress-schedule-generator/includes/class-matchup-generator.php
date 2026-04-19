@@ -80,12 +80,18 @@ class SPSG_Matchup_Generator {
 		}
 
 		// Normalize string teams to objects with id and name properties
-		$teams = array_map( function ( $team ) {
-			if ( is_string( $team ) ) {
-				return (object) array( 'id' => $team, 'name' => $team );
-			}
-			return $team;
-		}, $teams );
+		$teams = array_map(
+			function ( $team ) {
+				if ( is_string( $team ) ) {
+					  return (object) array(
+						  'id' => $team,
+						  'name' => $team,
+					  );
+				}
+				return $team;
+			},
+			$teams
+		);
 
 		switch ( $style ) {
 			case 'single_round_robin':

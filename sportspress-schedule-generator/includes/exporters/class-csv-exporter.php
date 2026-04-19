@@ -57,10 +57,10 @@ class SPSG_CSV_Exporter implements SPSG_Exporter_Interface {
 		foreach ( $schedule as $game ) {
 			// Normalise to arrays to handle stdClass from transients.
 			$g = (array) $game;
-			$g['division']  = isset( $g['division'] )  ? (array) $g['division']  : array();
+			$g['division']  = isset( $g['division'] ) ? (array) $g['division'] : array();
 			$g['home_team'] = isset( $g['home_team'] ) ? (array) $g['home_team'] : array();
 			$g['away_team'] = isset( $g['away_team'] ) ? (array) $g['away_team'] : array();
-			$g['venue']     = isset( $g['venue'] )     ? (array) $g['venue']     : array();
+			$g['venue']     = isset( $g['venue'] ) ? (array) $g['venue'] : array();
 
 			$is_inter_division = ! empty( $g['is_inter_division'] );
 			$home_name = $g['home_team']['name'] ?? $g['home_team']['id'] ?? 'Unknown';
