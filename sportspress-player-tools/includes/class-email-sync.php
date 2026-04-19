@@ -24,7 +24,7 @@ class SPT_Email_Sync {
 
 	/*
 	 * Rendering
- */
+	*/
 
 	/**
 	 * Render the sync section inside the Player Tools tab.
@@ -81,7 +81,7 @@ class SPT_Email_Sync {
 	private function render_preview() {
 		$matches = $this->find_matches();
 
-		$matched = array_filter(
+		$matched   = array_filter(
 			$matches,
 			function ( $m ) {
 				return ! empty( $m['emails'] );
@@ -121,7 +121,7 @@ class SPT_Email_Sync {
 							. '</option>';
 					}
 					$email_field .= '</select>';
-					$source_text = esc_html__( 'Multiple sources', 'sportspress-player-tools' );
+					$source_text  = esc_html__( 'Multiple sources', 'sportspress-player-tools' );
 				} else {
 					$email_field = '<input type="hidden" name="email[' . esc_attr( $player_id ) . ']" value="' . esc_attr( $best['email'] ) . '">'
 						. esc_html( $best['email'] );
@@ -158,11 +158,11 @@ class SPT_Email_Sync {
 			echo '</tr></thead><tbody>';
 
 			foreach ( $unmatched as $m ) {
-				$teams = wp_get_object_terms(
-				$m['player_id'],
-				'sp_team',
-				array( 'fields' => 'names' )
-			);
+				$teams     = wp_get_object_terms(
+					$m['player_id'],
+					'sp_team',
+					array( 'fields' => 'names' )
+				);
 				$teams_str = is_array( $teams ) ? implode( ', ', $teams ) : '';
 				echo '<tr>';
 				echo '<td>' . esc_html( get_the_title( $m['player_id'] ) ) . '</td>';
@@ -188,7 +188,7 @@ class SPT_Email_Sync {
 
 	/*
 	 * Matching logic
- */
+	*/
 
 	/**
 	 * Find email matches for all players missing spt_email.
@@ -220,7 +220,10 @@ class SPT_Email_Sync {
 			// SPR match first (highest confidence).
 			if ( isset( $spr_emails[ $pid ] ) ) {
 				foreach ( $spr_emails[ $pid ] as $email ) {
-					$emails[] = array( 'email' => $email, 'source' => __( 'Registration order', 'sportspress-player-tools' ) );
+					$emails[] = array(
+						'email'  => $email,
+						'source' => __( 'Registration order', 'sportspress-player-tools' ),
+					);
 				}
 			}
 
@@ -354,7 +357,7 @@ class SPT_Email_Sync {
 
 	/*
 	 * Actions
- */
+	*/
 
 	/**
 	 * Handle the "Apply Selected" form submission.
@@ -376,15 +379,15 @@ class SPT_Email_Sync {
 			$email = sanitize_email( $emails[ $pid ] );
 			if ( $email ) {
 				update_post_meta( $pid, 'spt_email', $email );
-				$updated++;
+				++$updated;
 			}
 		}
 
 		wp_safe_redirect(
 			add_query_arg(
 				array(
-					'page'         => 'sportspress-admin-tools',
-					'spt_synced'   => $updated,
+					'page'       => 'sportspress-admin-tools',
+					'spt_synced' => $updated,
 				),
 				admin_url( 'options-general.php' )
 			)
@@ -415,12 +418,15 @@ class SPT_Email_Sync {
 				'sp_team',
 				array( 'fields' => 'names' )
 			);
-			fputcsv( $out, array(
-				$player->ID,
-				$player->post_title,
-				is_array( $teams ) ? implode( ', ', $teams ) : '',
-				'',
-			) );
+			fputcsv(
+				$out,
+				array(
+					$player->ID,
+					$player->post_title,
+					is_array( $teams ) ? implode( ', ', $teams ) : '',
+					'',
+				)
+			);
 		}
 
 		fclose( $out );
@@ -429,7 +435,7 @@ class SPT_Email_Sync {
 
 	/*
 	 * Queries
- */
+	*/
 
 	/**
 	 * Get all sp_player posts that are missing spt_email.
