@@ -24,7 +24,6 @@ Complete guide to all documentation for the SportsPress Schedule Generator plugi
 ### Development
 
 - **[DEVELOPMENT-HISTORY.md](DEVELOPMENT-HISTORY.md)** - Complete development history, phases, and completed features
-- **[cleanup/](cleanup/)** - Cleanup documentation and audit reports (November 2025)
 
 ### Architecture
 
@@ -51,17 +50,9 @@ Complete guide to all documentation for the SportsPress Schedule Generator plugi
 
 ## 📦 Archived Documentation
 
-### Historical Planning Documents
-
-- **[archive/](archive/)** - Archived planning and implementation documents
-  - MISSING-UI-IMPLEMENTATION-PLAN.md (features now implemented)
-  - QUICK-START-IMPLEMENTATION.md (work completed)
-
 ### Completed Task Documents
 
-- **[../tasks/archive/](../tasks/archive/)** - Completed task tracking documents
-  - Phase 2 completion documents
-  - Individual task completion reports
+- **[../tests/reports/](../tests/reports/)** - Test verification and summary reports
 
 ### Test Reports
 
@@ -96,7 +87,6 @@ Complete guide to all documentation for the SportsPress Schedule Generator plugi
 ### Development
 
 - [Development History](DEVELOPMENT-HISTORY.md) - Complete development timeline
-- [Cleanup Documentation](cleanup/) - Code audit and cleanup reports
 
 ---
 
@@ -119,8 +109,7 @@ Complete guide to all documentation for the SportsPress Schedule Generator plugi
 
 1. Read [DEVELOPMENT-HISTORY.md](DEVELOPMENT-HISTORY.md) for context
 2. Review [README.md](../README.md) architecture section
-3. Check [../UNUSED-CODE-AUDIT.md](../UNUSED-CODE-AUDIT.md) for cleanup tasks
-4. Explore [../tests/README.md](../tests/README.md) for testing
+3. Explore [../tests/README.md](../tests/README.md) for testing
 
 ### For Contributors
 
@@ -143,8 +132,6 @@ Complete guide to all documentation for the SportsPress Schedule Generator plugi
 
 ### Archived Documentation
 
-- **Planning Docs:** 2 files (archived)
-- **Task Docs:** 17 files (archived)
 - **Test Reports:** 10 files (archived)
 - **Total Archived:** ~3,000 lines
 
@@ -214,7 +201,7 @@ Complete guide to all documentation for the SportsPress Schedule Generator plugi
 4. **Troubleshooting:** See PHASE3-USER-GUIDE.md
 5. **Development:** See DEVELOPMENT-HISTORY.md
 6. **Testing:** See tests/README.md
-7. **History:** See DEVELOPMENT-HISTORY.md or archive/
+7. **History:** See DEVELOPMENT-HISTORY.md
 
 ### Common Questions
 

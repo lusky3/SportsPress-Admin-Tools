@@ -38,6 +38,28 @@ Designate team captains on player lists with visual indicators.
 
 **Access:** Edit any Player List → Captain Selection meta box
 
+### Sync Player Emails
+
+Bulk-populate missing player email addresses from WooCommerce registration orders and linked user accounts.
+
+- Scan to find players missing emails
+- Automatic matching via registration log (order billing email) and post author (WP user email)
+- Preview matches before applying
+- Export unmatched players as CSV for manual entry
+
+**Access:** Settings → SportsPress Admin Tools → Player Tools → Sync Player Emails
+
+### Player Skill Level
+
+Admin-only skill ratings (1–10) for players with manual input and auto-calculation from SportsPress statistics.
+
+- Skill level meta box on player edit screen
+- Sortable admin column on player list
+- Bulk calculate skill levels from player statistics
+- Separate formulas for skaters and goalies
+
+**Access:** Edit any Player → Skill Level meta box
+
 ### Email Meta Box
 
 Add email addresses to player records for communication and user linking.

@@ -18,6 +18,7 @@ SportsPress Events Manager adds event and season management tools to SportsPress
 * **Bulk Event Import** - Upload XLSX or CSV files to create SportsPress events. Flexible column matching, auto-creates missing teams/venues/leagues.
 * **League Table Generator** - Create league tables with teams pre-populated from league and season filters via an AJAX modal.
 * **Season Rollover Wizard** - Guided workflow to transition teams between seasons. Creates new season, assigns teams, optionally creates calendars and rosters, archives old events.
+* **Dynamic Standings** - Frontend shortcode (`[arl_standings]`) with AJAX-powered season and type filtering for league tables.
 * **Calendar Tools** - Bulk create missing calendars and reset all calendars to the current season.
 
 == Installation ==
