@@ -79,6 +79,14 @@ class SPSG_Matchup_Generator {
 			return $matchups;
 		}
 
+		// Normalize string teams to objects with id and name properties
+		$teams = array_map( function ( $team ) {
+			if ( is_string( $team ) ) {
+				return (object) array( 'id' => $team, 'name' => $team );
+			}
+			return $team;
+		}, $teams );
+
 		switch ( $style ) {
 			case 'single_round_robin':
 				$matchups = $this->round_robin( $teams, 1 );
@@ -101,7 +109,7 @@ class SPSG_Matchup_Generator {
 
 		// Add division info to each matchup
 		foreach ( $matchups as &$matchup ) {
-			$matchup['division'] = $division;
+			$matchup['division'] = is_array( $division ) ? (object) $division : $division;
 			$matchup['is_inter_division'] = false;
 		}
 
@@ -209,6 +217,9 @@ class SPSG_Matchup_Generator {
 	 * Get team ID from team object or array
 	 */
 	private function get_team_id( $team ) {
+		if ( is_string( $team ) ) {
+			return $team;
+		}
 		return is_array( $team ) ? $team['id'] : $team->id;
 	}
 
