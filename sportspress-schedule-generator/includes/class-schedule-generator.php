@@ -224,6 +224,7 @@ class SPSG_Schedule_Generator {
 
 		$schedule_id = sanitize_text_field( $_POST['schedule_id'] ?? '' );
 		$format = sanitize_text_field( $_POST['format'] ?? 'csv' );
+		$xlsx_style = sanitize_text_field( $_POST['xlsx_style'] ?? 'compact' );
 
 		if ( empty( $schedule_id ) ) {
 			wp_send_json_error( __( 'No schedule ID provided', 'sportspress-schedule-generator' ) );
@@ -265,7 +266,7 @@ class SPSG_Schedule_Generator {
 			$config = $this->config_manager->get_current();
 
 			// Export schedule using Export Manager with filters
-			$result = $this->export_manager->export( $schedule, $config, $format, $filters );
+			$result = $this->export_manager->export( $schedule, $config, $format, $filters, $xlsx_style );
 
 			if ( is_wp_error( $result ) ) {
 				wp_send_json_error(

@@ -57,9 +57,10 @@ class SPSG_Export_Manager {
 	 * @param mixed  $config Configuration object or array
 	 * @param string $format Export format (csv, xlsx)
 	 * @param array  $filters Optional filters (division, date_from, date_to)
+	 * @param string $xlsx_style XLSX style: 'compact' or 'detailed'
 	 * @return array|WP_Error Export result with file path and URL
 	 */
-	public function export( $schedule, $config, $format = 'csv', $filters = array() ) {
+	public function export( $schedule, $config, $format = 'csv', $filters = array(), $xlsx_style = 'compact' ) {
 		if ( ! isset( $this->exporters[ $format ] ) ) {
 			return new WP_Error( 'invalid_format', sprintf( __( 'Export format not supported: %s', 'sportspress-schedule-generator' ), $format ) );
 		}
@@ -75,7 +76,7 @@ class SPSG_Export_Manager {
 		}
 
 		$exporter = $this->exporters[ $format ];
-		return $exporter->export( $filtered_schedule, $config );
+		return $exporter->export( $filtered_schedule, $config, $xlsx_style );
 	}
 
 	/**

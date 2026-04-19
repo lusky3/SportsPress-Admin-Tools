@@ -20,9 +20,10 @@ interface SPSG_Exporter_Interface {
 	 *
 	 * @param array $schedule Array of SPSG_Game objects
 	 * @param mixed $config Schedule configuration (can be null)
+	 * @param string $style Export style variant (e.g. 'compact', 'detailed')
 	 * @return array|WP_Error Array with path, url, filename, format on success, WP_Error on failure
 	 */
-	public function export( $schedule, $config );
+	public function export( $schedule, $config, $style = '' );
 
 	/**
 	 * Get export format name

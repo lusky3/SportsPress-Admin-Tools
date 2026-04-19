@@ -1099,6 +1099,10 @@ class SPSG_Admin_Renderer {
 				<h2><?php esc_html_e( 'Generated Schedule Preview', 'sportspress-schedule-generator' ); ?></h2>
 				<div class="spsg-preview-actions">
 					<button type="button" class="button" id="spsg-export-csv"><?php esc_html_e( 'Export CSV', 'sportspress-schedule-generator' ); ?></button>
+					<select id="spsg-xlsx-style" class="regular-text" style="vertical-align: middle;">
+						<option value="compact"><?php esc_html_e( 'Compact (Game Sheet)', 'sportspress-schedule-generator' ); ?></option>
+						<option value="detailed"><?php esc_html_e( 'Detailed (All Columns)', 'sportspress-schedule-generator' ); ?></option>
+					</select>
 					<button type="button" class="button" id="spsg-export-xlsx"><?php esc_html_e( 'Export XLSX', 'sportspress-schedule-generator' ); ?></button>
 					<button type="button" class="button button-primary" id="spsg-import-to-sp"><?php esc_html_e( 'Import to SportsPress', 'sportspress-schedule-generator' ); ?></button>
 					<button type="button" class="button" id="spsg-generate-new"><?php esc_html_e( 'Generate New Schedule', 'sportspress-schedule-generator' ); ?></button>
