@@ -104,9 +104,9 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 		);
 	}
 
-	/* ------------------------------------------------------------------
+	/*
 	 * Data helpers
-	 * ----------------------------------------------------------------*/
+ */
 
 	/**
 	 * Normalise a game (object or array) into a flat associative array.
@@ -138,9 +138,9 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 		);
 	}
 
-	/* ------------------------------------------------------------------
+	/*
 	 * XLSX generation (ZipArchive + raw XML)
-	 * ----------------------------------------------------------------*/
+ */
 
 	/**
 	 * Build the XLSX file on disk.
@@ -243,12 +243,12 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 		$zip->close();
 	}
 
-	/* ------------------------------------------------------------------
+	/*
 	 * Compact style — game-sheet layout matching the league's format.
 	 *
 	 * Columns B-F: Venue | Time | Division | Home Team | Away Team
 	 * Games grouped by date with a merged header row per date.
-	 * ----------------------------------------------------------------*/
+ */
 
 	/**
 	 * Build a compact-style XLSX file.
@@ -473,9 +473,9 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 		);
 	}
 
-	/* ------------------------------------------------------------------
+	/*
 	 * XML builders
-	 * ----------------------------------------------------------------*/
+ */
 
 	private function xml_content_types() {
 		return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -612,7 +612,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 	 * Build the worksheet XML.
 	 */
 	private function xml_sheet( $headers, $rows, $ss_idx, $xf_header, $xf_center, $xf_div, $xf_div_c ) {
-		$col_letters = array( 'A','B','C','D','E','F','G','H','I','J','K','L' );
+		$col_letters = array( 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L' );
 		$col_count   = count( $col_letters );
 		$row_count   = 1 + count( $rows );
 
@@ -650,8 +650,8 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 		$r = 2;
 		foreach ( $rows as $row_data ) {
 			$div_name = $row_data['division_name'];
-			$xf_left  = isset( $xf_div[ $div_name ] )   ? $xf_div[ $div_name ]   : 0;
-			$xf_cent  = isset( $xf_div_c[ $div_name ] ) ? $xf_div_c[ $div_name ] : $xf_center;
+			$xf_left = isset( $xf_div[ $div_name ] ) ? $xf_div[ $div_name ] : 0;
+			$xf_cent = isset( $xf_div_c[ $div_name ] ) ? $xf_div_c[ $div_name ] : $xf_center;
 
 			$values = $this->row_values( $row_data );
 
@@ -692,9 +692,9 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 		return htmlspecialchars( (string) $str, ENT_XML1 | ENT_QUOTES, 'UTF-8' );
 	}
 
-	/* ------------------------------------------------------------------
+	/*
 	 * Interface methods
-	 * ----------------------------------------------------------------*/
+ */
 
 	public function get_format() {
 		return 'XLSX';
