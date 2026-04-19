@@ -18,8 +18,8 @@ interface SPSG_Exporter_Interface {
 	/**
 	 * Export schedule to specific format
 	 *
-	 * @param array $schedule Array of SPSG_Game objects
-	 * @param mixed $config Schedule configuration (can be null)
+	 * @param array  $schedule Array of SPSG_Game objects
+	 * @param mixed  $config Schedule configuration (can be null)
 	 * @param string $style Export style variant (e.g. 'compact', 'detailed')
 	 * @return array|WP_Error Array with path, url, filename, format on success, WP_Error on failure
 	 */
