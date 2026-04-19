@@ -1177,6 +1177,11 @@ class SPSG_Admin_Renderer {
 				<tbody>
 					<?php
 					foreach ( $schedule as $game ) :
+						$game = (array) $game;
+						$game['division'] = isset( $game['division'] ) ? (array) $game['division'] : array();
+						$game['home_team'] = isset( $game['home_team'] ) ? (array) $game['home_team'] : array();
+						$game['away_team'] = isset( $game['away_team'] ) ? (array) $game['away_team'] : array();
+						$game['venue'] = isset( $game['venue'] ) ? (array) $game['venue'] : array();
 						$is_inter_division = ! empty( $game['is_inter_division'] );
 						$row_class = $is_inter_division ? 'spsg-inter-division-game' : '';
 						?>
@@ -1216,6 +1221,11 @@ class SPSG_Admin_Renderer {
 		$venues = array();
 
 		foreach ( $schedule as $game ) {
+			$game = (array) $game;
+			$game['division'] = isset( $game['division'] ) ? (array) $game['division'] : array();
+			$game['home_team'] = isset( $game['home_team'] ) ? (array) $game['home_team'] : array();
+			$game['away_team'] = isset( $game['away_team'] ) ? (array) $game['away_team'] : array();
+			$game['venue'] = isset( $game['venue'] ) ? (array) $game['venue'] : array();
 			if ( ! empty( $game['division']['name'] ) && ! in_array( $game['division']['name'], $divisions ) ) {
 				$divisions[] = $game['division']['name'];
 			}
