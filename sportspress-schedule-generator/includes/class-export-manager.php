@@ -95,11 +95,12 @@ class SPSG_Export_Manager {
 		// Filter by division
 		if ( ! empty( $filters['division'] ) ) {
 			$division_id = $filters['division'];
-			$filtered = array_filter(
+			$filtered    = array_filter(
 				$filtered,
 				function ( $game ) use ( $division_id ) {
-					$game_division_id = is_object( $game->division ) ? $game->division->id : $game->division;
-					return $game_division_id === $division_id;
+					$g   = (array) $game;
+					$div = isset( $g['division'] ) ? (array) $g['division'] : array();
+					return ( $div['id'] ?? $div['name'] ?? '' ) === $division_id;
 				}
 			);
 		}
@@ -107,10 +108,11 @@ class SPSG_Export_Manager {
 		// Filter by date range
 		if ( ! empty( $filters['date_from'] ) ) {
 			$date_from = $filters['date_from'];
-			$filtered = array_filter(
+			$filtered  = array_filter(
 				$filtered,
 				function ( $game ) use ( $date_from ) {
-					return $game->date >= $date_from;
+					$g = (array) $game;
+					return ( $g['date'] ?? '' ) >= $date_from;
 				}
 			);
 		}
@@ -120,7 +122,8 @@ class SPSG_Export_Manager {
 			$filtered = array_filter(
 				$filtered,
 				function ( $game ) use ( $date_to ) {
-					return $game->date <= $date_to;
+					$g = (array) $game;
+					return ( $g['date'] ?? '' ) <= $date_to;
 				}
 			);
 		}
@@ -151,14 +154,10 @@ class SPSG_Export_Manager {
 	 * Load available exporters
 	 */
 	private function load_exporters() {
-		// Load CSV exporter
 		require_once SPSG_PLUGIN_PATH . 'includes/exporters/class-csv-exporter.php';
 		$this->exporters['csv'] = new SPSG_CSV_Exporter();
 
-		// Load XLSX exporter if available
-		if ( class_exists( 'PhpOffice\PhpSpreadsheet\Spreadsheet' ) ) {
-			require_once SPSG_PLUGIN_PATH . 'includes/exporters/class-xlsx-exporter.php';
-			$this->exporters['xlsx'] = new SPSG_XLSX_Exporter();
-		}
+		require_once SPSG_PLUGIN_PATH . 'includes/exporters/class-xlsx-exporter.php';
+		$this->exporters['xlsx'] = new SPSG_XLSX_Exporter();
 	}
 }
