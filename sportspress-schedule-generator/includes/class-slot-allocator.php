@@ -35,11 +35,6 @@ class SPSG_Slot_Allocator {
 	private $available_slots = array();
 
 	/**
-	 * Reference to the flat schedule array (shared with greedy_allocate).
-	 */
-	private $current_flat_schedule = array();
-
-	/**
 	 * Constructor
 	 */
 	public function __construct( $constraint_manager = null ) {
@@ -185,9 +180,6 @@ class SPSG_Slot_Allocator {
 		// Optimization: indexed schedule for O(1) lookups by date.
 		$schedule_by_date = array();
 
-		// Share the flat schedule with find_best_slot for cost calculation.
-		$this->current_flat_schedule = &$schedule;
-
 		foreach ( $matchups as $matchup ) {
 			$check_counter++;
 
@@ -323,43 +315,21 @@ class SPSG_Slot_Allocator {
 	 * @return object|null Best slot or null
 	 */
 	public function find_best_slot( $matchup, $used_slots, $schedule_by_date, $config ) {
-		$best_slot = null;
-		$min_cost = PHP_FLOAT_MAX;
-		$evaluated = 0;
-		$max_evaluate = 15; // Cap: evaluate cost on first N valid slots.
-
 		foreach ( $this->available_slots as $slot ) {
 			$slot_key = $this->get_slot_key( $slot );
 
-			// Skip if slot already used
 			if ( isset( $used_slots[ $slot_key ] ) ) {
 				continue;
 			}
 
-			// Create game once and reuse for both validation and cost calculation
-			$game = $this->create_game( $matchup, $slot, $config );
-
-			// Check if slot is valid (uses date-indexed schedule)
-			if ( ! $this->is_slot_valid( $matchup, $slot, $schedule_by_date, $config, $game ) ) {
+			if ( ! $this->is_slot_valid( $matchup, $slot, $schedule_by_date, $config ) ) {
 				continue;
 			}
 
-			// Calculate slot cost using the flat schedule reference.
-			$cost = $this->constraint_manager->calculate_violation_cost( $game, $this->current_flat_schedule, $config );
-
-			if ( $cost < $min_cost ) {
-				$min_cost = $cost;
-				$best_slot = $slot;
-			}
-
-			// Cap: stop after evaluating enough valid slots.
-			++$evaluated;
-			if ( $evaluated >= $max_evaluate ) {
-				break;
-			}
+			return $slot; // First valid slot — hard constraints enforced, no cost evaluation needed.
 		}
 
-		return $best_slot;
+		return null;
 	}
 
 	/**
