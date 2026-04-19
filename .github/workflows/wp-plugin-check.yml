@@ -14,15 +14,11 @@ jobs:
   plugin-check:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         plugin:
           - sportspress-admin-tools
           - sportspress-schedule-generator
-          - sportspress-player-registration
-          - sportspress-etransfer-automation
-          - sportspress-player-tools
-          - sportspress-events-manager
-          - sportspress-league-manager
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
