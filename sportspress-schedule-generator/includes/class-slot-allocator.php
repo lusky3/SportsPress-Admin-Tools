@@ -517,7 +517,10 @@ class SPSG_Slot_Allocator {
 		if ( is_string( $entity ) ) {
 			return $entity;
 		}
-		return is_object( $entity ) ? $entity->id : $entity['id'];
+		if ( is_object( $entity ) ) {
+			return $entity->id ?? $entity->name ?? '';
+		}
+		return $entity['id'] ?? $entity['name'] ?? '';
 	}
 
 	/**
