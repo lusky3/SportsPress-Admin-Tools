@@ -22,9 +22,9 @@ class SPT_Email_Sync {
 		add_action( 'admin_post_spt_export_unmatched_csv', array( $this, 'handle_csv_export' ) );
 	}
 
-	/* ------------------------------------------------------------------
+	/*
 	 * Rendering
-	 * ----------------------------------------------------------------*/
+ */
 
 	/**
 	 * Render the sync section inside the Player Tools tab.
@@ -81,8 +81,18 @@ class SPT_Email_Sync {
 	private function render_preview() {
 		$matches = $this->find_matches();
 
-		$matched   = array_filter( $matches, function ( $m ) { return ! empty( $m['emails'] ); } );
-		$unmatched = array_filter( $matches, function ( $m ) { return empty( $m['emails'] ); } );
+		$matched = array_filter(
+			$matches,
+			function ( $m ) {
+				return ! empty( $m['emails'] );
+			}
+		);
+		$unmatched = array_filter(
+			$matches,
+			function ( $m ) {
+				return empty( $m['emails'] );
+			}
+		);
 
 		// --- Matched players table ---
 		if ( ! empty( $matched ) ) {
@@ -148,7 +158,11 @@ class SPT_Email_Sync {
 			echo '</tr></thead><tbody>';
 
 			foreach ( $unmatched as $m ) {
-				$teams = wp_get_object_terms( $m['player_id'], 'sp_team', array( 'fields' => 'names' ) );
+				$teams = wp_get_object_terms(
+				$m['player_id'],
+				'sp_team',
+				array( 'fields' => 'names' )
+			);
 				$teams_str = is_array( $teams ) ? implode( ', ', $teams ) : '';
 				echo '<tr>';
 				echo '<td>' . esc_html( get_the_title( $m['player_id'] ) ) . '</td>';
@@ -172,9 +186,9 @@ class SPT_Email_Sync {
 		}
 	}
 
-	/* ------------------------------------------------------------------
+	/*
 	 * Matching logic
-	 * ----------------------------------------------------------------*/
+ */
 
 	/**
 	 * Find email matches for all players missing spt_email.
@@ -338,9 +352,9 @@ class SPT_Email_Sync {
 		return $results;
 	}
 
-	/* ------------------------------------------------------------------
+	/*
 	 * Actions
-	 * ----------------------------------------------------------------*/
+ */
 
 	/**
 	 * Handle the "Apply Selected" form submission.
@@ -396,7 +410,11 @@ class SPT_Email_Sync {
 		fputcsv( $out, array( 'Player ID', 'Player Name', 'Teams', 'Email (fill in)' ) );
 
 		foreach ( $players as $player ) {
-			$teams = wp_get_object_terms( $player->ID, 'sp_team', array( 'fields' => 'names' ) );
+			$teams = wp_get_object_terms(
+				$player->ID,
+				'sp_team',
+				array( 'fields' => 'names' )
+			);
 			fputcsv( $out, array(
 				$player->ID,
 				$player->post_title,
@@ -409,9 +427,9 @@ class SPT_Email_Sync {
 		exit;
 	}
 
-	/* ------------------------------------------------------------------
+	/*
 	 * Queries
-	 * ----------------------------------------------------------------*/
+ */
 
 	/**
 	 * Get all sp_player posts that are missing spt_email.
@@ -419,16 +437,25 @@ class SPT_Email_Sync {
 	 * @return array Array of WP_Post objects.
 	 */
 	private function get_players_missing_email() {
-		return get_posts( array(
-			'post_type'      => 'sp_player',
-			'post_status'    => 'publish',
-			'posts_per_page' => -1,
-			'meta_query'     => array(
-				'relation' => 'OR',
-				array( 'key' => 'spt_email', 'compare' => 'NOT EXISTS' ),
-				array( 'key' => 'spt_email', 'value' => '', 'compare' => '=' ),
-			),
-		) );
+		return get_posts(
+			array(
+				'post_type'      => 'sp_player',
+				'post_status'    => 'publish',
+				'posts_per_page' => -1,
+				'meta_query'     => array(
+					'relation' => 'OR',
+					array(
+						'key'     => 'spt_email',
+						'compare' => 'NOT EXISTS',
+					),
+					array(
+						'key'     => 'spt_email',
+						'value'   => '',
+						'compare' => '=',
+					),
+				),
+			)
+		);
 	}
 
 	private function count_players_missing_email() {
