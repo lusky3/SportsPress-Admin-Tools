@@ -120,7 +120,23 @@
                             self.showMessage('error', data.message + '<br>' + data.errors.join('<br>'));
                         }
                     } else {
-                        self.showMessage('error', response.data);
+                        var errData = response.data;
+                        var msg = errData.message || 'Configuration validation failed';
+                        if (errData.errors && errData.errors.length) {
+                            var unique = errData.errors.filter(function(e) { return e !== msg; });
+                            if (unique.length) {
+                                msg += '<br>' + unique.join('<br>');
+                            }
+                        }
+                        if (errData.field_errors && errData.field_errors.errors) {
+                            var details = errData.field_errors.errors;
+                            for (var key in details) {
+                                if (details.hasOwnProperty(key)) {
+                                    msg += '<br>' + details[key];
+                                }
+                            }
+                        }
+                        self.showMessage('error', msg);
                     }
                 },
                 error: function() {
@@ -795,9 +811,9 @@
         showMessage: function(type, message) {
             var className = 'notice notice-' + type;
             var $msg = $('<div class="' + className + ' is-dismissible"><p></p></div>');
-            $msg.find('p').text(message);
+            $msg.find('p').html(message);
             
-            $('#spsg-messages').html($msg);
+            $('#spsg-messages').html($msg).show();
             
             // Auto-dismiss after 5 seconds for success messages
             if (type === 'success') {
