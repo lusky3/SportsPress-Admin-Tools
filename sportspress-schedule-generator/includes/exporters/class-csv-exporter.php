@@ -19,7 +19,7 @@ class SPSG_CSV_Exporter implements SPSG_Exporter_Interface {
 	/**
 	 * Export schedule to CSV
 	 */
-	public function export( $schedule, $config ) {
+	public function export( $schedule, $config, $style = '' ) {
 		$upload_dir = wp_upload_dir();
 		$export_dir = $upload_dir['basedir'] . '/spsg-exports';
 		$filename = 'schedule_' . wp_date( 'Y-m-d_H-i-s' ) . '.csv';

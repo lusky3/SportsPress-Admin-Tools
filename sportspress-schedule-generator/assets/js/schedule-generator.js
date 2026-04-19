@@ -269,6 +269,7 @@
                     nonce: spsgData.nonces.export_schedule,
                     schedule_id: this.scheduleId,
                     format: format,
+                    xlsx_style: $('#spsg-xlsx-style').val() || 'compact',
                     filters: filters
                 },
                 beforeSend: function() {

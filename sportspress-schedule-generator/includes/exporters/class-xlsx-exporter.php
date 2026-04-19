@@ -51,7 +51,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 	 * @param mixed $config   Configuration object or array (unused but required by interface).
 	 * @return array|WP_Error Export result with file path and URL.
 	 */
-	public function export( $schedule, $config = null ) {
+	public function export( $schedule, $config = null, $style = 'compact' ) {
 		if ( ! class_exists( 'ZipArchive' ) ) {
 			return new WP_Error(
 				'missing_zip',
@@ -86,7 +86,11 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 		}
 
 		try {
-			$this->write_xlsx( $filepath, $rows, $division_map );
+			if ( 'detailed' === $style ) {
+				$this->write_xlsx_detailed( $filepath, $rows, $division_map );
+			} else {
+				$this->write_xlsx_compact( $filepath, $rows, $division_map );
+			}
 		} catch ( \Exception $e ) {
 			error_log( '[SPSG] XLSX export error: ' . $e->getMessage() );
 			return new WP_Error( 'export_failed', __( 'Failed to export schedule to XLSX format.', 'sportspress-schedule-generator' ) );
@@ -145,7 +149,7 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 	 * @param array  $rows          Normalised game rows.
 	 * @param array  $division_map  Division name → colour index.
 	 */
-	private function write_xlsx( $filepath, $rows, $division_map ) {
+	private function write_xlsx_detailed( $filepath, $rows, $division_map ) {
 		$zip = new \ZipArchive();
 		if ( $zip->open( $filepath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE ) !== true ) {
 			throw new \RuntimeException( 'Cannot create ZIP file: ' . $filepath );
@@ -237,6 +241,216 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 		$zip->addFromString( 'xl/worksheets/sheet1.xml', $sheet_xml );
 
 		$zip->close();
+	}
+
+	/* ------------------------------------------------------------------
+	 * Compact style — game-sheet layout matching the league's format.
+	 *
+	 * Columns B-F: Venue | Time | Division | Home Team | Away Team
+	 * Games grouped by date with a merged header row per date.
+	 * ----------------------------------------------------------------*/
+
+	/**
+	 * Build a compact-style XLSX file.
+	 */
+	private function write_xlsx_compact( $filepath, $rows, $division_map ) {
+		// Group rows by date, preserving order.
+		$by_date = array();
+		foreach ( $rows as $r ) {
+			$by_date[ $r['date'] ][] = $r;
+		}
+
+		// Sort each date group by venue then time.
+		foreach ( $by_date as &$games ) {
+			usort(
+				$games,
+				function ( $a, $b ) {
+					$v = strcmp( $a['venue'], $b['venue'] );
+					return $v !== 0 ? $v : strcmp( $a['time_slot'], $b['time_slot'] );
+				}
+			);
+		}
+		unset( $games );
+
+		// Collect shared strings.
+		$shared = array();
+		$ss_idx = array();
+		$add_ss = function ( $s ) use ( &$shared, &$ss_idx ) {
+			$s = (string) $s;
+			if ( $s !== '' && ! isset( $ss_idx[ $s ] ) ) {
+				$ss_idx[ $s ] = count( $shared );
+				$shared[]     = $s;
+			}
+		};
+
+		// Pre-populate shared strings.
+		$week_num = 0;
+		foreach ( $by_date as $date => $games ) {
+			$week_num++;
+			$add_ss( $this->compact_date_label( $date, $week_num ) );
+			foreach ( $games as $g ) {
+				$add_ss( $g['venue'] );
+				$add_ss( $g['division_name'] );
+				$add_ss( $g['home'] );
+				$add_ss( $g['away'] );
+				// Time stored as string in shared strings for simplicity.
+				$add_ss( $g['time_slot'] );
+			}
+		}
+
+		// Build the ZIP.
+		$zip = new \ZipArchive();
+		if ( $zip->open( $filepath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE ) !== true ) {
+			throw new \RuntimeException( 'Cannot create ZIP file: ' . $filepath );
+		}
+
+		// Custom fills: 0 = date-header (dark blue), then one per division.
+		$fills     = array( self::HEADER_BG );
+		$div_fills = array(); // div_name => fill index (offset +2 for built-ins, +1 for header)
+		$idx       = 0;
+		foreach ( $division_map as $div_name => $ci ) {
+			$fills[]                = self::DIVISION_COLORS[ $ci ];
+			$div_fills[ $div_name ] = 3 + $idx;
+			$idx++;
+		}
+		$div_count = count( $division_map );
+
+		// XF indices: 0=default, 1=date-header, 2=div-left, 3=div-left+1 …
+		// For compact we need: date-header (bold white centred on blue),
+		// and per-division: normal + centred variants.
+		// XF 0 = default (border), XF 1 = date header, XF 2 = centred no-fill
+		// XF 3,4 = div0 left/centre … etc.
+		$xf_date_header = 1;
+		$xf_div         = array();
+		$xf_div_c       = array();
+		$next_xf        = 3;
+		foreach ( $division_map as $div_name => $ci ) {
+			$xf_div[ $div_name ]   = $next_xf++;
+			$xf_div_c[ $div_name ] = $next_xf++;
+		}
+
+		// Build sheet rows.
+		$sheet_rows  = array(); // Each entry: array of cell arrays.
+		$merge_cells = array();
+		$r           = 2; // Start at row 2 (col A is margin).
+		$week_num    = 0;
+
+		foreach ( $by_date as $date => $games ) {
+			$week_num++;
+			$label = $this->compact_date_label( $date, $week_num );
+
+			// Date header row — merged B:F.
+			$merge_cells[] = 'B' . $r . ':F' . $r;
+			$sheet_rows[]  = array(
+				'row'   => $r,
+				'cells' => array(
+					array( 'ref' => 'B' . $r, 'type' => 's', 'val' => $ss_idx[ $label ], 'xf' => $xf_date_header ),
+				),
+			);
+			$r++;
+
+			// Game rows.
+			foreach ( $games as $g ) {
+				$div  = $g['division_name'];
+				$xfL  = $xf_div[ $div ]  ?? 0;
+				$xfC  = $xf_div_c[ $div ] ?? 2;
+
+				$cells = array();
+				// B = Venue
+				$cells[] = array( 'ref' => 'B' . $r, 'type' => 's', 'val' => $ss_idx[ $g['venue'] ] ?? '', 'xf' => $xfL );
+				// C = Time
+				$cells[] = array( 'ref' => 'C' . $r, 'type' => 's', 'val' => $ss_idx[ $g['time_slot'] ] ?? '', 'xf' => $xfC );
+				// D = Division
+				$cells[] = array( 'ref' => 'D' . $r, 'type' => 's', 'val' => $ss_idx[ $g['division_name'] ] ?? '', 'xf' => $xfC );
+				// E = Home
+				$cells[] = array( 'ref' => 'E' . $r, 'type' => 's', 'val' => $ss_idx[ $g['home'] ] ?? '', 'xf' => $xfL );
+				// F = Away
+				$cells[] = array( 'ref' => 'F' . $r, 'type' => 's', 'val' => $ss_idx[ $g['away'] ] ?? '', 'xf' => $xfL );
+
+				$sheet_rows[] = array( 'row' => $r, 'cells' => $cells );
+				$r++;
+			}
+
+			// Blank separator row between dates.
+			$r++;
+		}
+
+		$last_row = $r - 1;
+
+		// Assemble XML parts.
+		$zip->addFromString( '[Content_Types].xml', $this->xml_content_types() );
+		$zip->addFromString( '_rels/.rels', $this->xml_rels() );
+		$zip->addFromString( 'xl/_rels/workbook.xml.rels', $this->xml_workbook_rels() );
+		$zip->addFromString( 'xl/workbook.xml', $this->xml_workbook() );
+		$zip->addFromString( 'xl/styles.xml', $this->xml_styles( $fills, $div_count ) );
+		$zip->addFromString( 'xl/sharedStrings.xml', $this->xml_shared_strings( $shared ) );
+		$zip->addFromString( 'xl/worksheets/sheet1.xml', $this->xml_compact_sheet( $sheet_rows, $merge_cells, $last_row ) );
+
+		$zip->close();
+	}
+
+	/**
+	 * Format a date string into a human-friendly label for the compact header.
+	 */
+	private function compact_date_label( $date, $week_num ) {
+		$ts = strtotime( $date );
+		if ( ! $ts ) {
+			return $date;
+		}
+		return 'Week ' . $week_num . ' - ' . wp_date( 'l F j, Y', $ts );
+	}
+
+	/**
+	 * Build the worksheet XML for the compact layout.
+	 */
+	private function xml_compact_sheet( $sheet_rows, $merge_cells, $last_row ) {
+		$col_widths = array(
+			2 => 18, // B = Venue
+			3 => 10, // C = Time
+			4 => 12, // D = Division
+			5 => 20, // E = Home
+			6 => 20, // F = Away
+		);
+
+		$xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+			. '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+			. ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">';
+
+		$xml .= '<sheetViews><sheetView workbookViewId="0"/></sheetViews>';
+
+		$xml .= '<cols>';
+		$xml .= '<col min="1" max="1" width="2" customWidth="1"/>'; // A margin
+		foreach ( $col_widths as $num => $w ) {
+			$xml .= '<col min="' . $num . '" max="' . $num . '" width="' . $w . '" customWidth="1"/>';
+		}
+		$xml .= '</cols>';
+
+		$xml .= '<sheetData>';
+		foreach ( $sheet_rows as $sr ) {
+			$xml .= '<row r="' . $sr['row'] . '" ht="20" customHeight="1">';
+			foreach ( $sr['cells'] as $c ) {
+				if ( $c['val'] === '' ) {
+					$xml .= '<c r="' . $c['ref'] . '" s="' . $c['xf'] . '"/>';
+				} elseif ( $c['type'] === 's' ) {
+					$xml .= '<c r="' . $c['ref'] . '" t="s" s="' . $c['xf'] . '"><v>' . $c['val'] . '</v></c>';
+				} else {
+					$xml .= '<c r="' . $c['ref'] . '" s="' . $c['xf'] . '"><v>' . $this->xml_escape( $c['val'] ) . '</v></c>';
+				}
+			}
+			$xml .= '</row>';
+		}
+		$xml .= '</sheetData>';
+
+		if ( ! empty( $merge_cells ) ) {
+			$xml .= '<mergeCells count="' . count( $merge_cells ) . '">';
+			foreach ( $merge_cells as $ref ) {
+				$xml .= '<mergeCell ref="' . $ref . '"/>';
+			}
+			$xml .= '</mergeCells>';
+		}
+
+		$xml .= '</worksheet>';
+		return $xml;
 	}
 
 	/**
