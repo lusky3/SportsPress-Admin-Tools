@@ -32,6 +32,14 @@ New league managers get a 3-step onboarding wizard: select your league, verify t
 ### 💡 Contextual Help
 Every page element has inline help tooltips. WordPress help tabs provide page-level guidance. No separate documentation page needed — help is where you need it.
 
+### 📝 Player Notes
+Add private notes to player records visible only to admins and league managers.
+
+- Meta box on player edit screen for adding timestamped notes
+- AJAX-powered add/delete without page reload
+- Frontend notes panel on player single pages (admin only)
+- Stored in a dedicated database table for performance
+
 ## Requirements
 
 - WordPress 5.0+
@@ -112,10 +120,14 @@ sportspress-league-manager/
 │   ├── class-error-handler.php       # User-facing error formatting
 │   ├── class-health-checker.php      # SportsPress config validation
 │   ├── class-help-provider.php       # Contextual help content
+│   ├── class-player-notes-database.php # Player notes DB operations
+│   ├── class-player-notes.php        # Player notes meta box & AJAX
 │   └── class-sportspress-data.php    # Read-only SP data facade
 └── assets/
     ├── css/league-manager.css        # Admin UI styles
-    └── js/league-manager.js          # Frontend interactions
+    ├── css/player-notes.css          # Player notes styles
+    ├── js/league-manager.js          # Frontend interactions
+    └── js/player-notes.js            # Player notes AJAX
 ```
 
 ## License

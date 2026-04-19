@@ -17,6 +17,8 @@ SportsPress Player Tools adds enhanced player management features to SportsPress
 * **Batch Player List Creator** - Upload CSV files to create or update player lists for multiple teams at once with smart name matching.
 * **Player Statistics Enabler** - Bulk enable statistics display for players, automatically configuring data structures.
 * **Captain Role Selection** - Designate team captains with a visual "C" indicator on the frontend.
+* **Sync Player Emails** - Bulk-populate missing player emails from WooCommerce registration orders and linked user accounts with preview and CSV export.
+* **Player Skill Level** - Admin-only skill ratings (1-10) with manual input and auto-calculation from SportsPress statistics.
 * **Email Meta Box** - Add email addresses to player records for communication and user linking.
 * **Player Profile Picture** - Allow players to upload profile pictures via WooCommerce My Account (requires WooCommerce).
 
@@ -48,6 +50,8 @@ Yes. The batch list creator supports both "Create new" and "Update existing" mod
 * Fix: Settings form now posts correctly instead of to options.php
 * Fix: Batch list creator respects module enable/disable setting
 * Fix: Use parent plugin bundled Slim Select instead of CDN
+* Add: Sync Player Emails bulk tool (populate missing emails from WooCommerce orders and user accounts)
+* Add: Player Skill Level tracking (1-10 ratings with auto-calculation from statistics)
 * Add: Captain indicator text filter (spt_captain_indicator_text)
 * Add: uninstall.php for proper cleanup
 * Remove: Dead code (class-batch-list-preview.php)

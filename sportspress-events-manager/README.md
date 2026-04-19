@@ -55,6 +55,16 @@ Guided workflow for transitioning teams from one season to the next.
 
 **Access:** Settings → SportsPress Admin Tools → Events Manager → Season Rollover
 
+### Dynamic Standings
+
+Frontend shortcode (`[arl_standings]`) that dynamically renders league tables with AJAX-powered filtering.
+
+- Filter by season and type (regular/playoffs)
+- AJAX-powered updates without page reload
+- Enqueues assets only on pages using the shortcode
+
+**Access:** Add `[arl_standings]` shortcode to any page or post
+
 ## Installation
 
 1. Install and activate SportsPress Admin Tools (parent plugin)

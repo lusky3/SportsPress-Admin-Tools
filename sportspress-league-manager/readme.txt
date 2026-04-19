@@ -20,6 +20,7 @@ SportsPress League Manager surfaces common league management tasks in a single, 
 * **Health Check** - Diagnoses common SportsPress issues: missing league/season assignments, inactive plugins, missing default season.
 * **First-Run Wizard** - 3-step onboarding: select league, verify teams, run health check. Dismissible and re-accessible.
 * **Contextual Help** - Inline tooltips on every page element and WordPress help tabs for page-level guidance.
+* **Player Notes** - Add private, timestamped notes to player records. Meta box on player edit screen, AJAX-powered, and frontend display for admins.
 
 Uses a custom `manage_league` capability — does NOT require `manage_options`. Administrators get the capability automatically.
 

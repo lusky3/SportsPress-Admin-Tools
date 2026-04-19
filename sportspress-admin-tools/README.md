@@ -45,12 +45,18 @@ plugin architecture.
 ### Player Tools Module (Child Plugin)
 
 - **Email Metadata**: Add email fields to player records for administrative use
+- **Sync Player Emails**: Bulk-populate missing player emails from WooCommerce
+  orders and linked user accounts
 - **Squad Number Editing**: Allow players to update their jersey numbers via
   WooCommerce account
 - **Captain Role Selection**: Designate team captains with "C" indicator on
   frontend
 - **Statistics Enabler**: Automatically enable frontend statistics display for
   players
+- **Player Skill Level**: Admin-only skill ratings (1–10) with manual input and
+  auto-calculation from SportsPress statistics
+- **Batch Player List Creator**: Upload CSV files to create or update player
+  lists for multiple teams at once
 
 ### Events Manager Module (Child Plugin)
 
@@ -58,6 +64,26 @@ plugin architecture.
 - **Event Import**: Bulk import events from XLSX files
 - **League Table Generator**: Generate league tables for teams organized by
   divisions and seasons
+- **Season Rollover**: Guided workflow for transitioning teams between seasons
+- **Dynamic Standings**: Frontend shortcode with AJAX-powered league table
+  filtering by season and type
+
+### Schedule Generator Module (Child Plugin)
+
+- **Multi-Division Scheduling**: Automated round-robin schedule generation with
+  inter-division games
+- **Venue Management**: Multiple venues with CSV schedule import and blackout dates
+- **Constraint System**: Hard and soft constraints with feasibility pre-checking
+- **Export**: CSV and styled XLSX (compact/detailed styles)
+- **SportsPress Import**: Direct import of generated schedules into SportsPress events
+
+### League Manager Module (Child Plugin)
+
+- **Dashboard**: At-a-glance league overview with health check
+- **Roster Manager**: CSV upload with preview for team rosters
+- **Fee Tracker**: WooCommerce integration for registration payment tracking
+- **Player Notes**: Private timestamped notes on player records
+- **Custom Capability**: `manage_league` role for non-admin league managers
 
 ## Installation
 

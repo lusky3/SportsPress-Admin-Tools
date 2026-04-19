@@ -30,13 +30,16 @@ sportspress-player-tools/
 ├── includes/
 │   ├── class-admin.php                 # Admin interface integration
 │   ├── class-batch-list-creator.php    # CSV upload and list creation
+│   ├── class-email-sync.php            # Bulk email population tool
 │   ├── class-player-modifications.php  # Player data tools
 │   ├── class-player-profile-picture.php # Profile picture upload
+│   ├── class-player-skill-level.php    # Skill level tracking (1-10)
 │   └── class-player-stats-enabler.php  # Statistics configuration
 ├── docs/
 │   ├── batch-list-creator.md           # User documentation
+│   ├── sdd-player-skill-level.md       # Skill level design doc
 │   ├── technical.md                    # This file
-│   └── sample-roster.csv               # Example CSV
+│   └── sample-roster.csv              # Example CSV
 ├── sportspress-player-tools.php        # Main plugin file
 ├── uninstall.php                       # Cleanup on uninstall
 └── readme.txt                          # WordPress.org format
@@ -494,6 +497,15 @@ Check logs at `/wp-content/debug.log`
 - Ensure `sp_assignments` are created
 
 ## Version History
+
+### 1.0.1
+
+- Security: Sanitize columns array, output escaping, file size validation, nonce verification
+- Add: Sync Player Emails bulk tool
+- Add: Player Skill Level tracking (1-10 ratings with auto-calculation)
+- Add: Captain indicator text filter
+- Fix: Settings form, batch list creator module toggle, bundled Slim Select
+- Remove: Dead code, debug logging, duplicate hooks
 
 ### 1.0.0
 
