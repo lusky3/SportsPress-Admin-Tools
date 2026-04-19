@@ -1,0 +1,35 @@
+name: WordPress Plugin Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.php'
+  pull_request:
+    branches: [main]
+    paths:
+      - '**/*.php'
+
+jobs:
+  plugin-check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        plugin:
+          - sportspress-admin-tools
+          - sportspress-schedule-generator
+          - sportspress-player-registration
+          - sportspress-etransfer-automation
+          - sportspress-player-tools
+          - sportspress-events-manager
+          - sportspress-league-manager
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Run Plugin Check
+        uses: wordpress/plugin-check-action@v1.1.5
+        with:
+          build-dir: ${{ matrix.plugin }}
+          ignore-warnings: 'true'
+          exclude-directories: tests,docs
