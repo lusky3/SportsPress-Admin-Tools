@@ -210,12 +210,18 @@ class SPSG_Schedule_Engine {
 	private function validate_matchups( $matchups, $config ) {
 		$team_games = $this->count_team_games( $matchups );
 
-		// Validate each team has correct number of games
+		// For custom matchup style, accept any count up to games_per_team.
+		// For round-robin styles, require exact match.
 		$expected_games = $config->games_per_team;
+		$is_custom = ( $config->matchup_style === 'custom' );
 		$errors = array();
 
 		foreach ( $team_games as $team_id => $game_count ) {
-			if ( $game_count !== $expected_games ) {
+			$mismatch = $is_custom
+				? ( $game_count > $expected_games )
+				: ( $game_count !== $expected_games );
+
+			if ( $mismatch ) {
 				$team_name = $this->get_team_name( $team_id, $config );
 				$errors[] = sprintf(
 					__( 'Team "%1$s" has %2$d games but expected %3$d', 'sportspress-schedule-generator' ),
@@ -252,8 +258,8 @@ class SPSG_Schedule_Engine {
 		$team_games = array();
 
 		foreach ( $matchups as $matchup ) {
-			$home_id = is_array( $matchup['home_team'] ) ? $matchup['home_team']['id'] : $matchup['home_team']->id;
-			$away_id = is_array( $matchup['away_team'] ) ? $matchup['away_team']['id'] : $matchup['away_team']->id;
+			$home_id = $this->extract_team_id( $matchup['home_team'] );
+			$away_id = $this->extract_team_id( $matchup['away_team'] );
 
 			$team_games[ $home_id ] = ( $team_games[ $home_id ] ?? 0 ) + 1;
 			$team_games[ $away_id ] = ( $team_games[ $away_id ] ?? 0 ) + 1;
@@ -322,6 +328,19 @@ class SPSG_Schedule_Engine {
 	}
 
 	/**
+	 * Extract team ID from various team data formats
+	 *
+	 * @param string|array|object $team Team data (string name, array with 'id', or object with ->id)
+	 * @return string Team identifier
+	 */
+	private function extract_team_id( $team ) {
+		if ( is_string( $team ) ) {
+			return $team;
+		}
+		return is_array( $team ) ? $team['id'] : $team->id;
+	}
+
+	/**
 	 * Get team name by ID
 	 *
 	 * @param string                      $team_id Team ID
@@ -331,9 +350,9 @@ class SPSG_Schedule_Engine {
 	private function get_team_name( $team_id, $config ) {
 		foreach ( $config->divisions as $division ) {
 			foreach ( $division['teams'] as $team ) {
-				$id = is_array( $team ) ? $team['id'] : $team->id;
+				$id = $this->extract_team_id( $team );
 				if ( $id === $team_id ) {
-					return is_array( $team ) ? $team['name'] : $team->name;
+					return is_string( $team ) ? $team : ( is_array( $team ) ? $team['name'] : $team->name );
 				}
 			}
 		}
@@ -348,11 +367,11 @@ class SPSG_Schedule_Engine {
 	 * @return string|null Division ID or null
 	 */
 	private function get_team_division( $team, $config ) {
-		$team_id = is_array( $team ) ? $team['id'] : $team->id;
+		$team_id = $this->extract_team_id( $team );
 
 		foreach ( $config->divisions as $division ) {
 			foreach ( $division['teams'] as $div_team ) {
-				$id = is_array( $div_team ) ? $div_team['id'] : $div_team->id;
+				$id = $this->extract_team_id( $div_team );
 				if ( $id === $team_id ) {
 					return $division['id'];
 				}
