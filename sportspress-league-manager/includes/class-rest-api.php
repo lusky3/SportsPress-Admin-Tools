@@ -661,56 +661,57 @@ class SPLM_REST_API {
 	 * GET /health — league data integrity checks.
 	 */
 	public function get_health( $request ) {
-		// Teams without players.
+		global $wpdb;
+
+		$issues = array(
+			'teams_without_players'  => array(),
+			'players_without_email'  => array(),
+			'events_without_venue'   => array(),
+			'events_without_results' => array(),
+		);
+
+		// Teams without players (use direct SQL for efficiency).
 		$teams = get_posts( array(
 			'post_type'      => 'sp_team',
-			'posts_per_page' => -1,
+			'posts_per_page' => 50,
 			'post_status'    => 'publish',
+			'fields'         => 'ids',
 		) );
 
-		$teams_without_players = array();
-		foreach ( $teams as $team ) {
-			$players = get_posts( array(
-				'post_type'      => 'sp_player',
-				'posts_per_page' => 1,
-				'meta_query'     => array(
-					array(
-						'key'   => 'sp_team',
-						'value' => $team->ID,
-					),
-				),
+		foreach ( $teams as $team_id ) {
+			$count = $wpdb->get_var( $wpdb->prepare(
+				"SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key = 'sp_team' AND meta_value = %d",
+				$team_id
 			) );
-			if ( empty( $players ) ) {
-				$teams_without_players[] = array(
-					'id'   => $team->ID,
-					'name' => $team->post_title,
+			if ( 0 === (int) $count ) {
+				$issues['teams_without_players'][] = array(
+					'id'   => $team_id,
+					'name' => get_the_title( $team_id ),
 				);
 			}
 		}
 
-		// Players without email.
-		$all_players = get_posts( array(
-			'post_type'      => 'sp_player',
-			'posts_per_page' => -1,
-			'post_status'    => 'publish',
-		) );
-
-		$players_without_email = array();
-		foreach ( $all_players as $player ) {
-			$email = get_post_meta( $player->ID, 'spt_email', true );
-			if ( empty( $email ) ) {
-				$players_without_email[] = array(
-					'id'   => $player->ID,
-					'name' => $player->post_title,
-				);
-			}
+		// Players without email (limit to 20 results for performance).
+		$players_no_email = $wpdb->get_results(
+			"SELECT p.ID, p.post_title FROM {$wpdb->posts} p
+			 LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = 'spt_email'
+			 WHERE p.post_type = 'sp_player' AND p.post_status = 'publish'
+			 AND (pm.meta_value IS NULL OR pm.meta_value = '')
+			 LIMIT 20"
+		);
+		foreach ( $players_no_email as $row ) {
+			$issues['players_without_email'][] = array(
+				'id'   => (int) $row->ID,
+				'name' => $row->post_title,
+			);
 		}
 
-		// Events without venue.
+		// Events without venue (limit to 20).
 		$events_no_venue = get_posts( array(
 			'post_type'      => 'sp_event',
-			'posts_per_page' => -1,
+			'posts_per_page' => 20,
 			'post_status'    => array( 'publish', 'future' ),
+			'fields'         => 'ids',
 			'tax_query'      => array(
 				array(
 					'taxonomy' => 'sp_venue',
@@ -718,46 +719,40 @@ class SPLM_REST_API {
 				),
 			),
 		) );
-
-		$events_without_venue = array();
-		foreach ( $events_no_venue as $event ) {
-			$events_without_venue[] = array(
-				'id'   => $event->ID,
-				'title' => $event->post_title,
+		foreach ( $events_no_venue as $event_id ) {
+			$issues['events_without_venue'][] = array(
+				'id'    => $event_id,
+				'title' => get_the_title( $event_id ),
 			);
 		}
 
-		// Past events without results.
-		$past_events = get_posts( array(
+		// Past events without results (limit to recent 50 events, check for missing results).
+		$recent_past = get_posts( array(
 			'post_type'      => 'sp_event',
-			'posts_per_page' => -1,
+			'posts_per_page' => 50,
 			'post_status'    => 'publish',
+			'fields'         => 'ids',
 			'date_query'     => array(
 				array( 'before' => 'now' ),
 			),
+			'orderby'        => 'date',
+			'order'          => 'DESC',
 		) );
-
-		$events_without_results = array();
-		foreach ( $past_events as $event ) {
-			$results = get_post_meta( $event->ID, 'sp_results', true );
+		foreach ( $recent_past as $event_id ) {
+			$results = get_post_meta( $event_id, 'sp_results', true );
 			if ( empty( $results ) ) {
-				$events_without_results[] = array(
-					'id'   => $event->ID,
-					'title' => $event->post_title,
-					'date' => get_the_date( 'Y-m-d', $event ),
+				$issues['events_without_results'][] = array(
+					'id'    => $event_id,
+					'title' => get_the_title( $event_id ),
+					'date'  => get_the_date( 'Y-m-d', $event_id ),
 				);
+			}
+			if ( count( $issues['events_without_results'] ) >= 20 ) {
+				break;
 			}
 		}
 
-		return new WP_REST_Response(
-			array(
-				'teams_without_players'  => $teams_without_players,
-				'players_without_email'  => $players_without_email,
-				'events_without_venue'   => $events_without_venue,
-				'events_without_results' => $events_without_results,
-			),
-			200
-		);
+		return new WP_REST_Response( $issues, 200 );
 	}
 
 	/**
