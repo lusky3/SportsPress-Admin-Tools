@@ -50,7 +50,7 @@ class SPLM_Admin_Ajax {
 		if ( ! check_ajax_referer( $nonce_action, '_ajax_nonce', false ) ) {
 			wp_send_json_error( array( 'message' => 'Invalid nonce.' ), 403 );
 		}
-		if ( ! current_user_can( 'manage_league' ) ) {
+		if ( ! current_user_can( 'manage_sportspress' ) ) {
 			wp_send_json_error( array( 'message' => 'Insufficient permissions.' ), 403 );
 		}
 	}

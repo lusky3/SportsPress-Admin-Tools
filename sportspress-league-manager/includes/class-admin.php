@@ -68,7 +68,7 @@ class SPLM_Admin {
 		add_menu_page(
 			__( 'League Manager', 'sportspress-league-manager' ),
 			__( 'League Manager', 'sportspress-league-manager' ),
-			'manage_league',
+			'manage_sportspress',
 			'splm-dashboard',
 			array( $this->get_renderer(), 'render_dashboard' ),
 			'dashicons-groups',
@@ -80,7 +80,7 @@ class SPLM_Admin {
 				'splm-dashboard',
 				__( 'Teams & Rosters', 'sportspress-league-manager' ),
 				__( 'Teams & Rosters', 'sportspress-league-manager' ),
-				'manage_league',
+				'manage_sportspress',
 				'splm-rosters',
 				array( $this->get_renderer(), 'render_rosters' )
 			);
@@ -91,7 +91,7 @@ class SPLM_Admin {
 				'splm-dashboard',
 				__( 'Fee Status', 'sportspress-league-manager' ),
 				__( 'Fee Status', 'sportspress-league-manager' ),
-				'manage_league',
+				'manage_sportspress',
 				'splm-fees',
 				array( $this->get_renderer(), 'render_fees' )
 			);

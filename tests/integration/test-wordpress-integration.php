@@ -113,7 +113,7 @@ echo "\n--- League Manager Capabilities ---\n";
 if (class_exists('SPLM_Capabilities')) {
     $admin_role = get_role('administrator');
     test_assert($admin_role !== null, 'Administrator role exists');
-    test_assert($admin_role->has_cap('manage_league'), 'Administrator has manage_league capability');
+    test_assert($admin_role->has_cap('manage_sportspress'), 'Administrator has manage_sportspress capability');
 } else {
     test_assert(false, 'SPLM_Capabilities class not loaded');
 }

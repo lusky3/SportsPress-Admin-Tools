@@ -91,7 +91,7 @@ class SPLM_Error_Handler {
 				__( 'Ask an admin to create at least one league in SportsPress.', 'sportspress-league-manager' ),
 			),
 			'permission_denied'    => array(
-				__( 'You need the manage_league capability. Contact your administrator.', 'sportspress-league-manager' ),
+				__( 'You need the manage_sportspress capability. Contact your administrator.', 'sportspress-league-manager' ),
 			),
 			'upload_failed'        => array(
 				__( 'Check that the file is a valid CSV and within the size limit.', 'sportspress-league-manager' ),
