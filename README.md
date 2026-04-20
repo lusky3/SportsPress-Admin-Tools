@@ -38,10 +38,10 @@ To use these tools, you must install the **SportsPress Admin Tools** parent plug
 |-----------|------|-----------|---------|
 | `manage_options` | Administrator | All | Settings, schedule generation, exports, email sync, config |
 | `manage_woocommerce` | Shop Manager+ | e-Transfer Automation | Payment matching and file downloads |
-| `manage_league` | Custom (Admin by default) | League Manager | Roster uploads, player notes, dashboard tasks |
+| `manage_sportspress` | SP League Manager+ | League Manager | Roster uploads, player notes, dashboard tasks |
 | `edit_post` | Editor+ (contextual) | Player Tools | Editing player email and skill level on individual posts |
 
-The `manage_league` capability is granted to Administrators on plugin activation. It can be assigned to additional users to delegate league management without full admin access.
+The `manage_sportspress` capability is provided by SportsPress core and granted to the SP League Manager role and Administrators automatically.
 
 ## 🛠️ Development
 

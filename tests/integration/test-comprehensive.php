@@ -62,16 +62,16 @@ t(count($saved) === count($expected), 'All modules saved (' . count($saved) . ')
 echo "\n--- Capabilities ---\n";
 $admin = get_role('administrator');
 t($admin !== null, 'Administrator role exists');
-t($admin->has_cap('manage_league'), 'Admin has manage_league');
+t($admin->has_cap('manage_sportspress'), 'Admin has manage_sportspress');
 
 $uid = wp_create_user('testmgr_' . time(), 'testpass', 'mgr' . time() . '@test.com');
 if (!is_wp_error($uid)) {
     $u = new WP_User($uid);
     $u->set_role('editor');
-    t(!$u->has_cap('manage_league'), 'Editor lacks manage_league by default');
+    t(!$u->has_cap('manage_sportspress'), 'Editor lacks manage_sportspress by default');
     SPLM_Capabilities::grant_to_user($uid);
     $u = new WP_User($uid);
-    t($u->has_cap('manage_league'), 'Editor has manage_league after grant');
+    t($u->has_cap('manage_sportspress'), 'Editor has manage_sportspress after grant');
     wp_delete_user($uid);
 }
 

@@ -32,7 +32,6 @@ class SPLM_Autoloader {
 		$base = SPLM_PLUGIN_PATH . 'includes/';
 
 		self::$class_map = array(
-			'SPLM_Capabilities'      => $base . 'class-capabilities.php',
 			'SPLM_Admin'             => $base . 'class-admin.php',
 			'SPLM_Admin_Ajax'        => $base . 'class-admin-ajax.php',
 			'SPLM_Admin_Renderer'    => $base . 'class-admin-renderer.php',

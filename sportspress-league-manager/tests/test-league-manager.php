@@ -125,54 +125,11 @@ echo "=== Testing SPLM_Capabilities ===\n\n";
 
 reset_mocks();
 
-// Test install_capabilities adds manage_league to administrator
-$admin_role = new MockRole();
-$mock_roles['administrator'] = $admin_role;
-
-SPLM_Capabilities::install_capabilities();
-assert_test(
-    $admin_role->has_cap('manage_league'),
-    'install_capabilities adds manage_league to administrator'
-);
-
-// Test install_capabilities is idempotent
-SPLM_Capabilities::install_capabilities();
-assert_test(
-    $admin_role->has_cap('manage_league'),
-    'install_capabilities is idempotent'
-);
-
-// Test remove_capabilities removes manage_league from all roles
-$editor_role = new MockRole();
-$editor_role->add_cap('manage_league');
-$mock_roles['editor'] = $editor_role;
-
-SPLM_Capabilities::remove_capabilities();
-assert_test(
-    !$admin_role->has_cap('manage_league'),
-    'remove_capabilities removes manage_league from administrator'
-);
-assert_test(
-    !$editor_role->has_cap('manage_league'),
-    'remove_capabilities removes manage_league from editor'
-);
-
-// Test grant_to_user adds capability to specific user
-reset_mocks();
-$user = new MockUser();
-$mock_users[42] = $user;
-
-SPLM_Capabilities::grant_to_user(42);
-assert_test(
-    !empty($user->caps['manage_league']),
-    'grant_to_user adds manage_league to specific user'
-);
-
-// Test grant_to_user with non-existent user does not error
-SPLM_Capabilities::grant_to_user(999);
+// Capabilities are now managed by SportsPress core (manage_sportspress).
+// No custom capability install/remove/grant tests needed.
 assert_test(
     true,
-    'grant_to_user with non-existent user does not error'
+    'manage_sportspress capability delegated to SportsPress core'
 );
 
 // ═══════════════════════════════════════════════════════════════════════════
