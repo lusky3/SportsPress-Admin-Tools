@@ -410,3 +410,39 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: #1e293b; }
 }
 .splm-more-menu__item:hover { background: #f1f5f9; }
 .splm-more-menu__item--active { color: #2563eb; font-weight: 500; }
+
+.splm-inline-edit {
+	border: 1px solid #007cba;
+	border-radius: 3px;
+	padding: 2px 4px;
+	font-size: inherit;
+	width: auto;
+	max-width: 120px;
+}
+
+.splm-btn--danger {
+	color: #cc1818;
+	border-color: #cc1818;
+}
+
+.splm-btn--danger:hover {
+	background: #cc1818;
+	color: #fff;
+}
+
+/* Player Stats Entry */
+.splm-player-stats { margin-top: 1rem; }
+.splm-player-stats__team { margin-bottom: 1.5rem; }
+.splm-player-stats__team h4 { margin-bottom: 0.5rem; font-size: 0.9rem; color: #374151; }
+.splm-player-stats__table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.splm-player-stats__table th,
+.splm-player-stats__table td { padding: 0.25rem 0.4rem; border: 1px solid #e5e7eb; text-align: center; }
+.splm-player-stats__table th { background: #f9fafb; font-weight: 600; font-size: 0.75rem; }
+.splm-player-stats__table td:first-child { text-align: left; white-space: nowrap; }
+.splm-player-stats__input { width: 3em; padding: 0.2rem; text-align: center; border: 1px solid #d1d5db; border-radius: 3px; font-size: 0.85rem; }
+.splm-player-stats__input:focus { outline: none; border-color: #3b82f6; }
+.splm-player-stats__toggle { margin: 0.75rem 0; cursor: pointer; }
+.splm-player-stats__toggle summary { color: #3b82f6; font-weight: 500; cursor: pointer; }
+.splm-muted { color: #6b7280; font-size: 0.85rem; }
+.splm-btn--secondary { background: #6b7280; color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; margin-top: 0.5rem; }
+.splm-btn--secondary:hover { background: #4b5563; }
