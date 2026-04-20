@@ -15,10 +15,19 @@ const MOBILE_VISIBLE = 5;
 export default function Layout( { currentPage, onNavigate, onSeasonChange, season, children } ) {
 	const config = window.splmDashboard || {};
 	const seasons = config.seasons || [];
+	const caps = config.capabilities || {};
 	const [ moreOpen, setMoreOpen ] = useState( false );
 
-	const mobileItems = NAV_ITEMS.slice( 0, MOBILE_VISIBLE );
-	const moreItems = NAV_ITEMS.slice( MOBILE_VISIBLE );
+	const capMap = {
+		scores: caps.canEnterScores,
+		rosters: caps.canManageRosters,
+		payments: caps.canViewPayments,
+		health: caps.canViewHealth,
+	};
+	const visibleItems = NAV_ITEMS.filter( ( item ) => capMap[ item.id ] === undefined || capMap[ item.id ] );
+
+	const mobileItems = visibleItems.slice( 0, MOBILE_VISIBLE );
+	const moreItems = visibleItems.slice( MOBILE_VISIBLE );
 
 	return (
 		<div className="splm-app">
