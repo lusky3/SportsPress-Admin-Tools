@@ -264,13 +264,14 @@ class SPT_Email_Sync {
 		$placeholders = implode( ',', array_fill( 0, count( $player_ids ), '%d' ) );
 
 		// Join registration logs to order meta to get billing email.
-		// WooCommerce stores billing email in postmeta (_billing_email) for legacy orders
-		// and in wc_orders table for HPOS orders. Check both.
+		// WooCommerce may use HPOS (wc_orders table) or legacy postmeta.
+		// Check the active storage method, not just table existence.
 		$results = array();
+		$use_hpos = class_exists( 'Automattic\WooCommerce\Utilities\OrderUtil' )
+			&& \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
 
-		// Try HPOS table first.
 		$hpos_table = $wpdb->prefix . 'wc_orders';
-		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $hpos_table ) ) === $hpos_table ) {
+		if ( $use_hpos && $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $hpos_table ) ) === $hpos_table ) {
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$rows = $wpdb->get_results(
 				$wpdb->prepare(

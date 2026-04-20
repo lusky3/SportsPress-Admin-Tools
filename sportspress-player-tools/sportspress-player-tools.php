@@ -183,7 +183,7 @@ class SportsPress_Player_Tools {
 
 	public function parent_plugin_missing_notice() {
 		echo '<div class="notice notice-error"><p>';
-		echo esc_html__( 'SportsPress Player Tools requires SportsPress Admin Tools to be installed and activated.', 'sportspress-player-tools' );
+		echo 'SportsPress Player Tools requires SportsPress Admin Tools to be installed and activated.';
 		echo '</p></div>';
 	}
 }

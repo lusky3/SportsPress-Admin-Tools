@@ -28,7 +28,7 @@ class SPET_Admin {
 	}
 
 	public function admin_page_content() {
-		if ( isset( $_POST['save_settings'] ) ) {
+		if ( isset( $_POST['save_settings'], $_POST['spet_webhook_secret'] ) ) {
 			check_admin_referer( 'spet_save_settings' );
 
 			if ( ! current_user_can( 'manage_woocommerce' ) ) {

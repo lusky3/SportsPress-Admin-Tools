@@ -14,16 +14,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPR_Database {
 
-	public static function get_registration_logs( $limit = 100 ) {
+	public static function get_registration_logs( $limit = 100, $offset = 0 ) {
 		if ( class_exists( 'SPAT_Database' ) ) {
-			return SPAT_Database::get_registration_logs( $limit );
+			return SPAT_Database::get_registration_logs( $limit, $offset );
 		}
 		return array();
 	}
 
-	public static function get_role_logs( $limit = 100 ) {
+	public static function get_role_logs( $limit = 100, $offset = 0 ) {
 		if ( class_exists( 'SPAT_Database' ) ) {
-			return SPAT_Database::get_role_logs( $limit );
+			return SPAT_Database::get_role_logs( $limit, $offset );
 		}
 		return array();
 	}
