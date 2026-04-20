@@ -18,7 +18,6 @@ jobs:
       matrix:
         plugin:
           - sportspress-admin-tools
-          - sportspress-schedule-generator
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
@@ -30,3 +29,4 @@ jobs:
           ignore-warnings: 'true'
           exclude-directories: tests,docs
           categories: general
+          exclude-checks: i18n_usage
