@@ -101,6 +101,7 @@ class SPLM_REST_API {
 				'permission_callback' => array( $this, 'check_read_permission' ),
 				'args'                => array(
 					'table_id' => array( 'type' => 'integer' ),
+					'season'   => array( 'type' => 'integer' ),
 				),
 			)
 		);
@@ -446,43 +447,62 @@ class SPLM_REST_API {
 	 */
 	public function get_standings( $request ) {
 		$table_id = $request->get_param( 'table_id' );
+		$season   = $request->get_param( 'season' );
 
-		if ( ! $table_id ) {
-			// Find the first league table.
-			$tables = get_posts( array(
+		if ( $table_id ) {
+			$table_ids = array( (int) $table_id );
+		} else {
+			$args = array(
 				'post_type'      => 'sp_table',
-				'posts_per_page' => 1,
+				'posts_per_page' => -1,
 				'post_status'    => 'publish',
-			) );
-			if ( empty( $tables ) ) {
-				return new WP_REST_Response( array(), 200 );
-			}
-			$table_id = $tables[0]->ID;
-		}
-
-		// Use SportsPress table data.
-		$table = new SP_League_Table( $table_id );
-		$data  = $table->data();
-
-		$standings = array();
-		if ( is_array( $data ) ) {
-			foreach ( $data as $team_id => $row ) {
-				if ( ! is_numeric( $team_id ) ) {
-					continue;
-				}
-				$standings[] = array(
-					'team_id' => (int) $team_id,
-					'team'    => get_the_title( $team_id ),
-					'p'       => isset( $row['p'] ) ? (int) $row['p'] : 0,
-					'w'       => isset( $row['w'] ) ? (int) $row['w'] : 0,
-					'l'       => isset( $row['l'] ) ? (int) $row['l'] : 0,
-					'd'       => isset( $row['d'] ) ? (int) $row['d'] : 0,
-					'pts'     => isset( $row['pts'] ) ? (int) $row['pts'] : 0,
+				'fields'         => 'ids',
+			);
+			if ( $season ) {
+				$args['tax_query'] = array(
+					array(
+						'taxonomy' => 'sp_season',
+						'terms'    => absint( $season ),
+					),
 				);
 			}
+			$table_ids = get_posts( $args );
+			if ( empty( $table_ids ) ) {
+				return new WP_REST_Response( array(), 200 );
+			}
 		}
 
-		return new WP_REST_Response( $standings, 200 );
+		$response = array();
+		foreach ( $table_ids as $tid ) {
+			$table = new SP_League_Table( $tid );
+			$data  = $table->data();
+
+			$standings = array();
+			if ( is_array( $data ) ) {
+				foreach ( $data as $team_id => $row ) {
+					if ( ! is_numeric( $team_id ) ) {
+						continue;
+					}
+					$standings[] = array(
+						'team_id' => (int) $team_id,
+						'team'    => get_the_title( $team_id ),
+						'p'       => isset( $row['p'] ) ? (int) $row['p'] : 0,
+						'w'       => isset( $row['w'] ) ? (int) $row['w'] : 0,
+						'l'       => isset( $row['l'] ) ? (int) $row['l'] : 0,
+						'd'       => isset( $row['d'] ) ? (int) $row['d'] : 0,
+						'pts'     => isset( $row['pts'] ) ? (int) $row['pts'] : 0,
+					);
+				}
+			}
+
+			$response[] = array(
+				'table_id'   => (int) $tid,
+				'table_name' => get_the_title( $tid ),
+				'standings'  => $standings,
+			);
+		}
+
+		return new WP_REST_Response( $response, 200 );
 	}
 
 	/**

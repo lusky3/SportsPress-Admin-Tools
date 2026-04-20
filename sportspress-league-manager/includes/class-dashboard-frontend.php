@@ -80,9 +80,13 @@ class SPLM_Dashboard_Frontend {
 			'taxonomy'   => 'sp_season',
 			'orderby'    => 'term_id',
 			'order'      => 'DESC',
-			'number'     => 1,
+			'number'     => 10,
 			'hide_empty' => false,
 		) );
+		// Filter out playoff seasons and take the first one
+		$current_season = array_values( array_filter( $current_season ?: array(), function( $term ) {
+			return stripos( $term->name, 'playoff' ) === false;
+		} ) );
 
 		$all_seasons = get_terms( array(
 			'taxonomy'   => 'sp_season',
@@ -102,7 +106,7 @@ class SPLM_Dashboard_Frontend {
 			'nonce'         => wp_create_nonce( 'wp_rest' ),
 			'apiBase'       => rest_url( 'splm/v1/' ),
 			'leagueName'    => get_bloginfo( 'name' ),
-			'currentSeason' => ! empty( $current_season ) ? $current_season[0]->name : '',
+			'currentSeason' => ! empty( $current_season ) ? $current_season[0]->term_id : '',
 			'logoutUrl'     => wp_logout_url( home_url() ),
 			'userId'        => get_current_user_id(),
 			'seasons'       => $seasons,

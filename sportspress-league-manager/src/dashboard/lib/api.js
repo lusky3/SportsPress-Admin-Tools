@@ -31,9 +31,12 @@ export function cancelGame( gameId, { reason, notify = true } ) {
 	} );
 }
 
-export function fetchStandings( tableId ) {
-	const params = tableId ? `?table_id=${ tableId }` : '';
-	return apiFetch( { path: `/splm/v1/standings${ params }` } );
+export function fetchStandings( tableId, season ) {
+	const params = [];
+	if ( tableId ) params.push( 'table_id=' + tableId );
+	if ( season ) params.push( 'season=' + season );
+	const query = params.length ? '?' + params.join( '&' ) : '';
+	return apiFetch( { path: `/splm/v1/standings${ query }` } );
 }
 
 export function fetchTeams() {
@@ -64,8 +67,9 @@ export function addNote( playerId, content ) {
 	} );
 }
 
-export function fetchPayments() {
-	return apiFetch( { path: '/splm/v1/payments' } );
+export function fetchPayments( season ) {
+	const params = season ? '?season=' + season : '';
+	return apiFetch( { path: '/splm/v1/payments' + params } );
 }
 
 export function fetchHealth() {
