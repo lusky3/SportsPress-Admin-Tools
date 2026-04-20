@@ -1,16 +1,16 @@
 import { useState, useEffect } from '@wordpress/element';
 import { fetchPayments } from '../lib/api';
 
-export default function Payments() {
+export default function Payments( { season } ) {
 	const [ payments, setPayments ] = useState( [] );
 	const [ loading, setLoading ] = useState( true );
 
 	useEffect( () => {
-		fetchPayments().then( ( data ) => {
+		fetchPayments( season ).then( ( data ) => {
 			setPayments( data );
 			setLoading( false );
 		} ).catch( () => setLoading( false ) );
-	}, [] );
+	}, [ season ] );
 
 	if ( loading ) {
 		return <div className="splm-loading">Loading payments...</div>;

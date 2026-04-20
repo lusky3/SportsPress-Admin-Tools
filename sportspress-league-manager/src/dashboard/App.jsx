@@ -21,7 +21,7 @@ const PAGES = {
 
 export default function App() {
 	const [ page, setPage ] = useState( 'dashboard' );
-	const [ season, setSeason ] = useState( '' );
+	const [ season, setSeason ] = useState( window.splmDashboard?.currentSeason || '' );
 	const PageComponent = PAGES[ page ] || Dashboard;
 
 	return (

@@ -1,16 +1,16 @@
 import { useState, useEffect } from '@wordpress/element';
 import { fetchGames } from '../lib/api';
 
-export default function Dashboard( { onNavigate } ) {
+export default function Dashboard( { onNavigate, season } ) {
 	const [ games, setGames ] = useState( [] );
 	const [ loading, setLoading ] = useState( true );
 
 	useEffect( () => {
-		fetchGames().then( ( data ) => {
+		fetchGames( season ? { season } : {} ).then( ( data ) => {
 			setGames( data );
 			setLoading( false );
 		} ).catch( () => setLoading( false ) );
-	}, [] );
+	}, [ season ] );
 
 	const today = new Date().toISOString().split( 'T' )[ 0 ];
 	const upcoming = games.filter( ( g ) => g.date >= today && ! g.cancelled ).slice( 0, 5 );

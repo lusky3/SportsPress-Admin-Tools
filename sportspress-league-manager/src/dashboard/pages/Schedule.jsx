@@ -1,20 +1,20 @@
 import { useState, useEffect } from '@wordpress/element';
 import { fetchGames, rescheduleGame, cancelGame } from '../lib/api';
 
-export default function Schedule() {
+export default function Schedule( { season } ) {
 	const [ games, setGames ] = useState( [] );
 	const [ loading, setLoading ] = useState( true );
 	const [ modal, setModal ] = useState( null );
 
 	const loadGames = () => {
 		setLoading( true );
-		fetchGames().then( ( data ) => {
+		fetchGames( season ? { season } : {} ).then( ( data ) => {
 			setGames( data );
 			setLoading( false );
 		} );
 	};
 
-	useEffect( loadGames, [] );
+	useEffect( loadGames, [ season ] );
 
 	const handleReschedule = async ( e ) => {
 		e.preventDefault();

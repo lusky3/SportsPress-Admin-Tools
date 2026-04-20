@@ -1,7 +1,7 @@
 import { useState, useEffect } from '@wordpress/element';
 import { fetchGames, updateScore } from '../lib/api';
 
-export default function ScoreEntry() {
+export default function ScoreEntry( { season } ) {
 	const [ games, setGames ] = useState( [] );
 	const [ loading, setLoading ] = useState( true );
 	const [ current, setCurrent ] = useState( 0 );
@@ -11,13 +11,13 @@ export default function ScoreEntry() {
 	const [ saved, setSaved ] = useState( false );
 
 	useEffect( () => {
-		fetchGames().then( ( data ) => {
+		fetchGames( season ? { season } : {} ).then( ( data ) => {
 			const today = new Date().toISOString().split( 'T' )[ 0 ];
 			const needScores = data.filter( ( g ) => g.date <= today && g.home_score === null && ! g.cancelled );
 			setGames( needScores );
 			setLoading( false );
 		} );
-	}, [] );
+	}, [ season ] );
 
 	const game = games[ current ];
 
