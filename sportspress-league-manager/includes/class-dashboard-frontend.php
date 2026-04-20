@@ -62,7 +62,7 @@ class SPLM_Dashboard_Frontend {
 
 		wp_enqueue_script(
 			'splm-dashboard',
-			plugins_url( 'build/index.js', dirname( __FILE__ ) . '/../' ),
+			SPLM_PLUGIN_URL . 'build/index.js',
 			$assets['dependencies'],
 			$assets['version'],
 			true
@@ -70,7 +70,7 @@ class SPLM_Dashboard_Frontend {
 
 		wp_enqueue_style(
 			'splm-dashboard',
-			plugins_url( 'build/index.css', dirname( __FILE__ ) . '/../' ),
+			SPLM_PLUGIN_URL . 'build/index.css',
 			array(),
 			$assets['version']
 		);
