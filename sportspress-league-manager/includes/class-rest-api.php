@@ -104,6 +104,125 @@ class SPLM_REST_API {
 				),
 			)
 		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/teams',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_teams' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/rosters',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_rosters' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+				'args'                => array(
+					'team' => array(
+						'type'     => 'integer',
+						'required' => true,
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/rosters/move',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'move_player' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+				'args'                => array(
+					'player_id' => array(
+						'type'     => 'integer',
+						'required' => true,
+					),
+					'from_team' => array(
+						'type'     => 'integer',
+						'required' => true,
+					),
+					'to_team'   => array(
+						'type'     => 'integer',
+						'required' => true,
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/notes',
+			array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => array( $this, 'get_notes' ),
+					'permission_callback' => array( $this, 'check_permission' ),
+					'args'                => array(
+						'player' => array(
+							'type'     => 'integer',
+							'required' => true,
+						),
+					),
+				),
+				array(
+					'methods'             => 'POST',
+					'callback'            => array( $this, 'add_note' ),
+					'permission_callback' => array( $this, 'check_permission' ),
+					'args'                => array(
+						'player_id' => array(
+							'type'     => 'integer',
+							'required' => true,
+						),
+						'content'   => array(
+							'type'     => 'string',
+							'required' => true,
+						),
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/payments',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_payments' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+				'args'                => array(
+					'season' => array(
+						'type'     => 'integer',
+						'required' => true,
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/health',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_health' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/seasons',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_seasons' ),
+				'permission_callback' => array( $this, 'check_permission' ),
+			)
+		);
 	}
 
 	public function check_permission() {
@@ -344,6 +463,324 @@ class SPLM_REST_API {
 		}
 
 		return new WP_REST_Response( $standings, 200 );
+	}
+
+	/**
+	 * GET /teams — list all teams with player count.
+	 */
+	public function get_teams( $request ) {
+		$teams = get_posts( array(
+			'post_type'      => 'sp_team',
+			'posts_per_page' => -1,
+			'post_status'    => 'publish',
+			'orderby'        => 'title',
+			'order'          => 'ASC',
+		) );
+
+		$data = array();
+		foreach ( $teams as $team ) {
+			$players = get_posts( array(
+				'post_type'      => 'sp_player',
+				'posts_per_page' => -1,
+				'meta_query'     => array(
+					array(
+						'key'   => 'sp_team',
+						'value' => $team->ID,
+					),
+				),
+			) );
+
+			$data[] = array(
+				'id'           => $team->ID,
+				'name'         => $team->post_title,
+				'player_count' => count( $players ),
+			);
+		}
+
+		return new WP_REST_Response( $data, 200 );
+	}
+
+	/**
+	 * GET /rosters — players on a team with contact info.
+	 */
+	public function get_rosters( $request ) {
+		$team_id = absint( $request->get_param( 'team' ) );
+
+		$players = get_posts( array(
+			'post_type'      => 'sp_player',
+			'posts_per_page' => -1,
+			'meta_query'     => array(
+				array(
+					'key'   => 'sp_team',
+					'value' => $team_id,
+				),
+			),
+		) );
+
+		$data = array();
+		foreach ( $players as $player ) {
+			$data[] = array(
+				'id'     => $player->ID,
+				'name'   => $player->post_title,
+				'email'  => get_post_meta( $player->ID, 'spt_email', true ),
+				'number' => get_post_meta( $player->ID, 'sp_number', true ),
+			);
+		}
+
+		return new WP_REST_Response( $data, 200 );
+	}
+
+	/**
+	 * POST /rosters/move — move player between teams.
+	 */
+	public function move_player( $request ) {
+		$player_id = absint( $request->get_param( 'player_id' ) );
+		$from_team = absint( $request->get_param( 'from_team' ) );
+		$to_team   = absint( $request->get_param( 'to_team' ) );
+
+		$player = get_post( $player_id );
+		if ( ! $player || 'sp_player' !== $player->post_type ) {
+			return new WP_Error( 'not_found', 'Player not found.', array( 'status' => 404 ) );
+		}
+
+		// Remove from old team and add to new team.
+		delete_post_meta( $player_id, 'sp_team', $from_team );
+		add_post_meta( $player_id, 'sp_team', $to_team );
+
+		return new WP_REST_Response(
+			array(
+				'success'   => true,
+				'player_id' => $player_id,
+				'from_team' => $from_team,
+				'to_team'   => $to_team,
+			),
+			200
+		);
+	}
+
+	/**
+	 * GET /notes — player notes.
+	 */
+	public function get_notes( $request ) {
+		global $wpdb;
+
+		$player_id = absint( $request->get_param( 'player' ) );
+		$table     = $wpdb->prefix . 'splm_player_notes';
+
+		$notes = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT id, player_id, author_id, content, created_at FROM {$table} WHERE player_id = %d ORDER BY created_at DESC",
+				$player_id
+			)
+		);
+
+		return new WP_REST_Response( $notes, 200 );
+	}
+
+	/**
+	 * POST /notes — add a player note.
+	 */
+	public function add_note( $request ) {
+		global $wpdb;
+
+		$player_id = absint( $request->get_param( 'player_id' ) );
+		$content   = sanitize_textarea_field( $request->get_param( 'content' ) );
+		$table     = $wpdb->prefix . 'splm_player_notes';
+
+		$wpdb->insert(
+			$table,
+			array(
+				'player_id' => $player_id,
+				'author_id' => get_current_user_id(),
+				'content'   => $content,
+				'created_at' => current_time( 'mysql' ),
+			),
+			array( '%d', '%d', '%s', '%s' )
+		);
+
+		return new WP_REST_Response(
+			array(
+				'success' => true,
+				'id'      => $wpdb->insert_id,
+			),
+			201
+		);
+	}
+
+	/**
+	 * GET /payments — fee status per player from WooCommerce orders.
+	 */
+	public function get_payments( $request ) {
+		$season_id = absint( $request->get_param( 'season' ) );
+
+		$players = get_posts( array(
+			'post_type'      => 'sp_player',
+			'posts_per_page' => -1,
+			'tax_query'      => array(
+				array(
+					'taxonomy' => 'sp_season',
+					'terms'    => $season_id,
+				),
+			),
+		) );
+
+		$data = array();
+		foreach ( $players as $player ) {
+			$orders = get_posts( array(
+				'post_type'      => 'shop_order',
+				'posts_per_page' => -1,
+				'post_status'    => array_keys( wc_get_order_statuses() ),
+				'meta_query'     => array(
+					array(
+						'key'   => '_spr_processed',
+						'value' => $player->ID,
+					),
+				),
+			) );
+
+			$status = 'unpaid';
+			foreach ( $orders as $order_post ) {
+				$order = wc_get_order( $order_post->ID );
+				if ( $order && $order->is_paid() ) {
+					$status = 'paid';
+					break;
+				}
+			}
+
+			$data[] = array(
+				'player_id' => $player->ID,
+				'player'    => $player->post_title,
+				'status'    => $status,
+			);
+		}
+
+		return new WP_REST_Response( $data, 200 );
+	}
+
+	/**
+	 * GET /health — league data integrity checks.
+	 */
+	public function get_health( $request ) {
+		// Teams without players.
+		$teams = get_posts( array(
+			'post_type'      => 'sp_team',
+			'posts_per_page' => -1,
+			'post_status'    => 'publish',
+		) );
+
+		$teams_without_players = array();
+		foreach ( $teams as $team ) {
+			$players = get_posts( array(
+				'post_type'      => 'sp_player',
+				'posts_per_page' => 1,
+				'meta_query'     => array(
+					array(
+						'key'   => 'sp_team',
+						'value' => $team->ID,
+					),
+				),
+			) );
+			if ( empty( $players ) ) {
+				$teams_without_players[] = array(
+					'id'   => $team->ID,
+					'name' => $team->post_title,
+				);
+			}
+		}
+
+		// Players without email.
+		$all_players = get_posts( array(
+			'post_type'      => 'sp_player',
+			'posts_per_page' => -1,
+			'post_status'    => 'publish',
+		) );
+
+		$players_without_email = array();
+		foreach ( $all_players as $player ) {
+			$email = get_post_meta( $player->ID, 'spt_email', true );
+			if ( empty( $email ) ) {
+				$players_without_email[] = array(
+					'id'   => $player->ID,
+					'name' => $player->post_title,
+				);
+			}
+		}
+
+		// Events without venue.
+		$events_no_venue = get_posts( array(
+			'post_type'      => 'sp_event',
+			'posts_per_page' => -1,
+			'post_status'    => array( 'publish', 'future' ),
+			'tax_query'      => array(
+				array(
+					'taxonomy' => 'sp_venue',
+					'operator' => 'NOT EXISTS',
+				),
+			),
+		) );
+
+		$events_without_venue = array();
+		foreach ( $events_no_venue as $event ) {
+			$events_without_venue[] = array(
+				'id'   => $event->ID,
+				'title' => $event->post_title,
+			);
+		}
+
+		// Past events without results.
+		$past_events = get_posts( array(
+			'post_type'      => 'sp_event',
+			'posts_per_page' => -1,
+			'post_status'    => 'publish',
+			'date_query'     => array(
+				array( 'before' => 'now' ),
+			),
+		) );
+
+		$events_without_results = array();
+		foreach ( $past_events as $event ) {
+			$results = get_post_meta( $event->ID, 'sp_results', true );
+			if ( empty( $results ) ) {
+				$events_without_results[] = array(
+					'id'   => $event->ID,
+					'title' => $event->post_title,
+					'date' => get_the_date( 'Y-m-d', $event ),
+				);
+			}
+		}
+
+		return new WP_REST_Response(
+			array(
+				'teams_without_players'  => $teams_without_players,
+				'players_without_email'  => $players_without_email,
+				'events_without_venue'   => $events_without_venue,
+				'events_without_results' => $events_without_results,
+			),
+			200
+		);
+	}
+
+	/**
+	 * GET /seasons — list all sp_season taxonomy terms.
+	 */
+	public function get_seasons( $request ) {
+		$terms = get_terms( array(
+			'taxonomy'   => 'sp_season',
+			'hide_empty' => false,
+		) );
+
+		$data = array();
+		if ( ! is_wp_error( $terms ) ) {
+			foreach ( $terms as $term ) {
+				$data[] = array(
+					'id'   => $term->term_id,
+					'name' => $term->name,
+					'slug' => $term->slug,
+				);
+			}
+		}
+
+		return new WP_REST_Response( $data, 200 );
 	}
 
 	/**
