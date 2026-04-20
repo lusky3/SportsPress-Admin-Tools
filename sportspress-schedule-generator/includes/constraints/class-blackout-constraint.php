@@ -25,7 +25,7 @@ class SPSG_Blackout_Constraint extends SPSG_Abstract_Constraint {
 	 * Initialize constraint
 	 */
 	protected function init() {
-		$this->name = __( 'Blackout Date Constraint', 'sportspress-schedule-generator' );
+		$this->name = 'Blackout Date Constraint';
 		$this->priority = 100; // High priority - hard constraint
 		$this->type = 'hard';
 	}

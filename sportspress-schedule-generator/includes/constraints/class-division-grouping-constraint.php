@@ -20,7 +20,7 @@ class SPSG_Division_Grouping_Constraint extends SPSG_Abstract_Constraint {
 	 * Initialize constraint
 	 */
 	protected function init() {
-		$this->name = __( 'Division Grouping Constraint', 'sportspress-schedule-generator' );
+		$this->name = 'Division Grouping Constraint';
 		$this->priority = 30; // Lower priority - optimization constraint
 		$this->type = 'optimization';
 	}

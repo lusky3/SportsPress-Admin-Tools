@@ -20,7 +20,7 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint {
 	 * Initialize constraint
 	 */
 	protected function init() {
-		$this->name = __( 'Team Restriction Constraint', 'sportspress-schedule-generator' );
+		$this->name = 'Team Restriction Constraint';
 		$this->priority = 80; // High priority - hard constraint
 		$this->type = 'hard';
 	}

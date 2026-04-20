@@ -20,7 +20,7 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 	 * Initialize constraint
 	 */
 	protected function init() {
-		$this->name = __( 'Distribution Constraint', 'sportspress-schedule-generator' );
+		$this->name = 'Distribution Constraint';
 		$this->priority = 50; // Medium priority - soft constraint
 		$this->type = 'soft';
 	}
