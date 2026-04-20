@@ -132,7 +132,14 @@ class SPR_Admin {
 	}
 
 	private function display_registration_logs() {
-		$logs = SPR_Database::get_registration_logs( 50 );
+		$per_page = 50;
+		$page     = max( 1, absint( $_GET['reg_page'] ?? 1 ) );
+		$offset   = ( $page - 1 ) * $per_page;
+		$logs     = SPR_Database::get_registration_logs( $per_page + 1, $offset );
+		$has_next = count( $logs ) > $per_page;
+		if ( $has_next ) {
+			array_pop( $logs );
+		}
 
 		if ( empty( $logs ) ) {
 			echo '<p>' . esc_html__( 'No registration activity yet.', 'sportspress-player-registration' ) . '</p>';
@@ -180,10 +187,31 @@ class SPR_Admin {
 		}
 
 		echo '</tbody></table>';
+		$this->render_pagination( $page, $has_next, 'reg_page' );
+	}
+
+	private function render_pagination( $page, $has_next, $param ) {
+		$base = remove_query_arg( $param );
+		echo '<div class="tablenav bottom"><div class="tablenav-pages">';
+		if ( $page > 1 ) {
+			echo '<a class="button" href="' . esc_url( add_query_arg( $param, $page - 1, $base ) ) . '">&laquo; ' . esc_html__( 'Previous', 'sportspress-player-registration' ) . '</a> ';
+		}
+		echo '<span class="paging-input">' . esc_html__( 'Page', 'sportspress-player-registration' ) . ' ' . esc_html( $page ) . '</span> ';
+		if ( $has_next ) {
+			echo '<a class="button" href="' . esc_url( add_query_arg( $param, $page + 1, $base ) ) . '">' . esc_html__( 'Next', 'sportspress-player-registration' ) . ' &raquo;</a>';
+		}
+		echo '</div></div>';
 	}
 
 	private function display_role_logs() {
-		$logs = SPR_Database::get_role_logs( 50 );
+		$per_page = 50;
+		$page     = max( 1, absint( $_GET['role_page'] ?? 1 ) );
+		$offset   = ( $page - 1 ) * $per_page;
+		$logs     = SPR_Database::get_role_logs( $per_page + 1, $offset );
+		$has_next = count( $logs ) > $per_page;
+		if ( $has_next ) {
+			array_pop( $logs );
+		}
 
 		if ( empty( $logs ) ) {
 			echo '<p>' . esc_html__( 'No role assignment activity yet.', 'sportspress-player-registration' ) . '</p>';
@@ -219,5 +247,6 @@ class SPR_Admin {
 		}
 
 		echo '</tbody></table>';
+		$this->render_pagination( $page, $has_next, 'role_page' );
 	}
 }

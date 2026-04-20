@@ -513,6 +513,36 @@ class SPEM_Events_Management {
 		}
 
 		$event_title = $event_data['home_team'] . ' vs ' . $event_data['away_team'];
+
+		// Check for duplicate event (same date, home team, away team).
+		$existing = get_posts(
+			array(
+				'post_type'   => 'sp_event',
+				'post_status' => array( 'publish', 'future' ),
+				'date_query'  => array(
+					array(
+						'year'  => gmdate( 'Y', strtotime( $date ) ),
+						'month' => gmdate( 'n', strtotime( $date ) ),
+						'day'   => gmdate( 'j', strtotime( $date ) ),
+					),
+				),
+				'meta_query'  => array(
+					array(
+						'key'   => 'sp_team',
+						'value' => $home_team_id,
+					),
+				),
+				'fields'      => 'ids',
+			)
+		);
+
+		foreach ( $existing as $existing_id ) {
+			$teams = get_post_meta( $existing_id, 'sp_team', false );
+			if ( in_array( $away_team_id, array_map( 'intval', $teams ), true ) ) {
+				return $existing_id; // Duplicate — return existing event ID.
+			}
+		}
+
 		$event_id = wp_insert_post(
 			array(
 				'post_type'   => 'sp_event',

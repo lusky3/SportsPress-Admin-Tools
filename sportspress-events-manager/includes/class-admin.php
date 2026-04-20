@@ -143,7 +143,8 @@ class SPEM_Admin {
 
 		check_admin_referer( 'spem_admin_actions', 'spem_admin_nonce' );
 
-		if ( isset( $_POST['save_settings'] ) ) {
+		if ( isset( $_POST['save_settings'], $_POST['spem_admin_nonce'] ) ) {
+			check_admin_referer( 'spem_admin_actions', 'spem_admin_nonce' );
 			update_option( 'spem_auto_calendar_creation', isset( $_POST['spem_auto_calendar_creation'] ) ? '1' : '0' );
 			update_option( 'spem_calendar_type', sanitize_text_field( $_POST['spem_calendar_type'] ) );
 			update_option( 'spem_naming_prefix', sanitize_text_field( $_POST['spem_naming_prefix'] ) );
