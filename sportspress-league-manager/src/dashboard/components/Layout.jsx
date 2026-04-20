@@ -55,7 +55,7 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 
 			<div className="splm-layout">
 				<nav className="splm-sidebar">
-					{ NAV_ITEMS.map( ( item ) => (
+					{ visibleItems.map( ( item ) => (
 						<button
 							key={ item.id }
 							className={ `splm-nav-item ${ currentPage === item.id ? 'splm-nav-item--active' : '' }` }
