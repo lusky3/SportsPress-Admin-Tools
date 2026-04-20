@@ -17,7 +17,7 @@ if ( ! is_user_logged_in() ) {
 	wp_redirect( wp_login_url( get_permalink() ) );
 	exit;
 }
-if ( ! current_user_can( 'read_sp_event' ) ) {
+if ( ! current_user_can( 'manage_sportspress' ) && ! current_user_can( 'edit_others_sp_events' ) && ! current_user_can( 'edit_sp_events' ) ) {
 	wp_redirect( home_url() );
 	exit;
 }
