@@ -114,6 +114,10 @@ class SportsPress_League_Manager {
 		if ( in_array( 'league_player_notes', $enabled, true ) ) {
 			new SPLM_Player_Notes();
 		}
+
+		// REST API and Dashboard Frontend load regardless of admin context.
+		new SPLM_REST_API();
+		new SPLM_Dashboard_Frontend();
 	}
 
 	private function check_parent_plugin() {

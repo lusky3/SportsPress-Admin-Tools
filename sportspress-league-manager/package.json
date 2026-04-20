@@ -1,0 +1,12 @@
+{
+  "name": "sportspress-league-manager",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "wp-scripts build src/dashboard/index.js --output-path=build",
+    "start": "wp-scripts start src/dashboard/index.js --output-path=build"
+  },
+  "devDependencies": {
+    "@wordpress/scripts": "^32.0.0"
+  }
+}
