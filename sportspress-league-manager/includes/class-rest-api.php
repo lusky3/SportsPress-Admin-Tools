@@ -158,6 +158,51 @@ class SPLM_REST_API {
 
 		register_rest_route(
 			self::NAMESPACE,
+			'/rosters/update-player',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'update_player' ),
+				'permission_callback' => array( $this, 'check_roster_permission' ),
+				'args'                => array(
+					'player_id' => array(
+						'type'     => 'integer',
+						'required' => true,
+					),
+					'field'     => array(
+						'type'     => 'string',
+						'required' => true,
+						'enum'     => array( 'number', 'email' ),
+					),
+					'value'     => array(
+						'type'     => 'string',
+						'required' => true,
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/rosters/remove-player',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'remove_player' ),
+				'permission_callback' => array( $this, 'check_roster_permission' ),
+				'args'                => array(
+					'player_id' => array(
+						'type'     => 'integer',
+						'required' => true,
+					),
+					'team_id'   => array(
+						'type'     => 'integer',
+						'required' => true,
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
 			'/notes',
 			array(
 				array(
@@ -368,6 +413,132 @@ class SPLM_REST_API {
 			),
 			200
 		);
+	}
+
+	/**
+	 * GET /games/{id}/players — players and performance data for a game.
+	 */
+	public function get_game_players( $request ) {
+		$event_id = (int) $request->get_param( 'id' );
+		$event    = get_post( $event_id );
+		if ( ! $event || 'sp_event' !== $event->post_type ) {
+			return new WP_Error( 'not_found', 'Game not found.', array( 'status' => 404 ) );
+		}
+
+		$team_ids = get_post_meta( $event_id, 'sp_team', false );
+		$existing = get_post_meta( $event_id, 'sp_players', true );
+		if ( ! is_array( $existing ) ) {
+			$existing = array();
+		}
+
+		// Get visible number-format performance columns.
+		$perf_posts = get_posts( array(
+			'post_type'      => 'sp_performance',
+			'posts_per_page' => -1,
+			'post_status'    => 'publish',
+			'meta_query'     => array(
+				array(
+					'key'     => 'sp_visible',
+					'value'   => '1',
+					'compare' => '=',
+				),
+			),
+		) );
+		$performances = array();
+		foreach ( $perf_posts as $p ) {
+			$format = get_post_meta( $p->ID, 'sp_format', true );
+			if ( 'number' === $format || '' === $format ) {
+				$performances[] = array(
+					'slug'  => $p->post_name,
+					'label' => $p->post_title,
+				);
+			}
+		}
+
+		$teams = array();
+		foreach ( $team_ids as $team_id ) {
+			$team_id = (int) $team_id;
+			$players = get_posts( array(
+				'post_type'      => 'sp_player',
+				'posts_per_page' => -1,
+				'meta_query'     => array(
+					array(
+						'key'   => 'sp_current_team',
+						'value' => $team_id,
+					),
+				),
+				'orderby'        => 'title',
+				'order'          => 'ASC',
+			) );
+
+			$player_data = array();
+			foreach ( $players as $player ) {
+				$stats = array();
+				if ( isset( $existing[ $team_id ][ $player->ID ] ) ) {
+					foreach ( $performances as $perf ) {
+						$stats[ $perf['slug'] ] = isset( $existing[ $team_id ][ $player->ID ][ $perf['slug'] ] )
+							? $existing[ $team_id ][ $player->ID ][ $perf['slug'] ]
+							: 0;
+					}
+				}
+				$player_data[] = array(
+					'id'     => $player->ID,
+					'name'   => $player->post_title,
+					'number' => get_post_meta( $player->ID, 'sp_number', true ),
+					'stats'  => $stats,
+				);
+			}
+
+			$teams[] = array(
+				'id'      => $team_id,
+				'name'    => get_the_title( $team_id ),
+				'players' => $player_data,
+			);
+		}
+
+		return new WP_REST_Response( array(
+			'performances' => $performances,
+			'teams'        => $teams,
+		), 200 );
+	}
+
+	/**
+	 * POST /games/{id}/players — save player performance stats.
+	 */
+	public function save_game_players( $request ) {
+		$event_id = (int) $request->get_param( 'id' );
+		$stats    = $request->get_param( 'stats' );
+
+		$event = get_post( $event_id );
+		if ( ! $event || 'sp_event' !== $event->post_type ) {
+			return new WP_Error( 'not_found', 'Game not found.', array( 'status' => 404 ) );
+		}
+
+		$existing = get_post_meta( $event_id, 'sp_players', true );
+		if ( ! is_array( $existing ) ) {
+			$existing = array();
+		}
+
+		// Merge new stats with existing data, preserving status/sub/number/position.
+		foreach ( $stats as $team_id => $players ) {
+			$team_id = (int) $team_id;
+			if ( ! isset( $existing[ $team_id ] ) ) {
+				$existing[ $team_id ] = array();
+			}
+			foreach ( $players as $player_id => $perf_data ) {
+				$player_id = (int) $player_id;
+				if ( ! isset( $existing[ $team_id ][ $player_id ] ) ) {
+					$existing[ $team_id ][ $player_id ] = array();
+				}
+				foreach ( $perf_data as $slug => $value ) {
+					$existing[ $team_id ][ $player_id ][ sanitize_key( $slug ) ] = (int) $value;
+				}
+			}
+		}
+
+		update_post_meta( $event_id, 'sp_players', $existing );
+
+		return new WP_REST_Response( array( 'success' => true ), 200 );
 	}
 
 	/**
@@ -596,6 +767,50 @@ class SPLM_REST_API {
 			),
 			200
 		);
+	}
+
+	/**
+	 * POST /rosters/update-player — update a player field.
+	 */
+	public function update_player( $request ) {
+		$player_id = absint( $request->get_param( 'player_id' ) );
+		$field     = sanitize_text_field( $request->get_param( 'field' ) );
+		$value     = $request->get_param( 'value' );
+
+		$player = get_post( $player_id );
+		if ( ! $player || 'sp_player' !== $player->post_type ) {
+			return new WP_Error( 'not_found', 'Player not found.', array( 'status' => 404 ) );
+		}
+
+		if ( 'number' === $field ) {
+			update_post_meta( $player_id, 'sp_number', sanitize_text_field( $value ) );
+		} elseif ( 'email' === $field ) {
+			update_post_meta( $player_id, 'spt_email', sanitize_email( $value ) );
+		}
+
+		return new WP_REST_Response( array( 'success' => true ), 200 );
+	}
+
+	/**
+	 * POST /rosters/remove-player — remove player from team for current season.
+	 */
+	public function remove_player( $request ) {
+		$player_id = absint( $request->get_param( 'player_id' ) );
+		$team_id   = absint( $request->get_param( 'team_id' ) );
+
+		$player = get_post( $player_id );
+		if ( ! $player || 'sp_player' !== $player->post_type ) {
+			return new WP_Error( 'not_found', 'Player not found.', array( 'status' => 404 ) );
+		}
+
+		// Get current season term.
+		$seasons = wp_get_object_terms( $player_id, 'sp_season', array( 'fields' => 'ids' ) );
+		if ( ! is_wp_error( $seasons ) && ! empty( $seasons ) ) {
+			// Remove the most recent (current) season.
+			wp_remove_object_terms( $player_id, $seasons[0], 'sp_season' );
+		}
+
+		return new WP_REST_Response( array( 'success' => true ), 200 );
 	}
 
 	/**

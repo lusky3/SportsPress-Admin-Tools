@@ -1,5 +1,5 @@
 import { useState, useEffect } from '@wordpress/element';
-import { fetchTeams, fetchRoster, fetchNotes, addNote, movePlayer } from '../lib/api';
+import { fetchTeams, fetchRoster, fetchNotes, addNote, movePlayer, updatePlayer, removePlayer } from '../lib/api';
 
 function NotesPanel( { player, teams, onClose } ) {
 	const [ notes, setNotes ] = useState( [] );
@@ -85,6 +85,32 @@ function MoveModal( { player, teams, currentTeam, onClose, onMoved } ) {
 	);
 }
 
+function EditableCell( { value, field, playerId, onSaved } ) {
+	const [ editing, setEditing ] = useState( false );
+	const [ val, setVal ] = useState( value );
+
+	const save = () => {
+		setEditing( false );
+		if ( val !== value ) {
+			updatePlayer( playerId, field, val ).then( () => onSaved( field, val ) );
+		}
+	};
+
+	if ( editing ) {
+		return (
+			<input
+				className="splm-inline-edit"
+				value={ val }
+				onChange={ ( e ) => setVal( e.target.value ) }
+				onBlur={ save }
+				onKeyDown={ ( e ) => { if ( e.key === 'Enter' ) save(); } }
+				autoFocus
+			/>
+		);
+	}
+	return <span onClick={ () => setEditing( true ) } style={ { cursor: 'pointer' } }>{ value || '—' }</span>;
+}
+
 export default function Rosters() {
 	const [ teams, setTeams ] = useState( [] );
 	const [ selectedTeam, setSelectedTeam ] = useState( '' );
@@ -136,15 +162,28 @@ export default function Rosters() {
 				<div className="splm-roster-list">
 					{ roster.map( ( player ) => (
 						<div key={ player.id } className="splm-roster-list__item">
-							<span className="splm-roster-list__number">#{ player.number }</span>
+							<span className="splm-roster-list__number">
+								#<EditableCell value={ player.number } field="number" playerId={ player.id } onSaved={ ( f, v ) => {
+									setRoster( ( r ) => r.map( ( p ) => p.id === player.id ? { ...p, [ f ]: v } : p ) );
+								} } />
+							</span>
 							<div className="splm-roster-list__info">
 								<span className="splm-roster-list__name">{ player.name }</span>
-								<span className="splm-roster-list__email">{ player.email }</span>
+								<span className="splm-roster-list__email">
+									<EditableCell value={ player.email } field="email" playerId={ player.id } onSaved={ ( f, v ) => {
+										setRoster( ( r ) => r.map( ( p ) => p.id === player.id ? { ...p, [ f ]: v } : p ) );
+									} } />
+								</span>
 							</div>
 							{ ( window.splmDashboard?.capabilities?.canManageRosters !== false ) && (
 							<div className="splm-roster-list__actions">
 								<button className="splm-btn splm-btn--small" onClick={ () => setNotesPlayer( player ) }>Notes</button>
 								<button className="splm-btn splm-btn--small" onClick={ () => setMovePlayerData( player ) }>Move</button>
+								<button className="splm-btn splm-btn--small splm-btn--danger" onClick={ () => {
+									if ( window.confirm( `Remove ${ player.name } from this roster?` ) ) {
+										removePlayer( player.id, selectedTeam ).then( reload );
+									}
+								} }>✕</button>
 							</div>
 						) }
 						</div>

@@ -55,6 +55,22 @@ export function movePlayer( playerId, fromTeam, toTeam ) {
 	} );
 }
 
+export function updatePlayer( playerId, field, value ) {
+	return apiFetch( {
+		path: '/splm/v1/rosters/update-player',
+		method: 'POST',
+		data: { player_id: playerId, field, value },
+	} );
+}
+
+export function removePlayer( playerId, teamId ) {
+	return apiFetch( {
+		path: '/splm/v1/rosters/remove-player',
+		method: 'POST',
+		data: { player_id: playerId, team_id: teamId },
+	} );
+}
+
 export function fetchNotes( playerId ) {
 	return apiFetch( { path: `/splm/v1/notes?player=${ playerId }` } );
 }
@@ -78,4 +94,16 @@ export function fetchHealth() {
 
 export function fetchSeasons() {
 	return apiFetch( { path: '/splm/v1/seasons' } );
+}
+
+export function fetchGamePlayers( gameId ) {
+	return apiFetch( { path: `/splm/v1/games/${ gameId }/players` } );
+}
+
+export function saveGamePlayers( gameId, stats ) {
+	return apiFetch( {
+		path: `/splm/v1/games/${ gameId }/players`,
+		method: 'POST',
+		data: { stats },
+	} );
 }

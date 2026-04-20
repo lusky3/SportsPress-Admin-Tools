@@ -1,5 +1,111 @@
 import { useState, useEffect } from '@wordpress/element';
-import { fetchGames, updateScore } from '../lib/api';
+import { fetchGames, updateScore, fetchGamePlayers, saveGamePlayers } from '../lib/api';
+
+function PlayerStats( { gameId, onDone } ) {
+	const [ data, setData ] = useState( null );
+	const [ stats, setStats ] = useState( {} );
+	const [ saving, setSaving ] = useState( false );
+
+	useEffect( () => {
+		fetchGamePlayers( gameId ).then( ( res ) => {
+			setData( res );
+			// Initialize stats from existing data.
+			const init = {};
+			res.teams.forEach( ( team ) => {
+				init[ team.id ] = {};
+				team.players.forEach( ( p ) => {
+					init[ team.id ][ p.id ] = {};
+					res.performances.forEach( ( perf ) => {
+						init[ team.id ][ p.id ][ perf.slug ] = p.stats[ perf.slug ] || 0;
+					} );
+				} );
+			} );
+			setStats( init );
+		} );
+	}, [ gameId ] );
+
+	if ( ! data ) {
+		return <div className="splm-loading">Loading players...</div>;
+	}
+
+	if ( data.performances.length === 0 || data.teams.every( ( t ) => t.players.length === 0 ) ) {
+		return <p className="splm-muted">No players or performance types configured.</p>;
+	}
+
+	const updateStat = ( teamId, playerId, slug, value ) => {
+		setStats( ( prev ) => ( {
+			...prev,
+			[ teamId ]: {
+				...prev[ teamId ],
+				[ playerId ]: {
+					...prev[ teamId ][ playerId ],
+					[ slug ]: Math.max( 0, parseInt( value, 10 ) || 0 ),
+				},
+			},
+		} ) );
+	};
+
+	const handleSave = async () => {
+		setSaving( true );
+		await saveGamePlayers( gameId, stats );
+		setSaving( false );
+		onDone();
+	};
+
+	return (
+		<div className="splm-player-stats">
+			{ data.teams.map( ( team ) => (
+				<div key={ team.id } className="splm-player-stats__team">
+					<h4>{ team.name }</h4>
+					{ team.players.length === 0 ? (
+						<p className="splm-muted">No players</p>
+					) : (
+						<table className="splm-player-stats__table">
+							<thead>
+								<tr>
+									<th>Player</th>
+									{ data.performances.map( ( perf ) => (
+										<th key={ perf.slug }>{ perf.label }</th>
+									) ) }
+								</tr>
+							</thead>
+							<tbody>
+								{ team.players.map( ( player ) => (
+									<tr key={ player.id }>
+										<td>
+											{ player.number ? `#${ player.number } ` : '' }
+											{ player.name }
+										</td>
+										{ data.performances.map( ( perf ) => (
+											<td key={ perf.slug }>
+												<input
+													type="number"
+													min="0"
+													className="splm-player-stats__input"
+													value={ stats[ team.id ]?.[ player.id ]?.[ perf.slug ] ?? 0 }
+													onChange={ ( e ) =>
+														updateStat( team.id, player.id, perf.slug, e.target.value )
+													}
+												/>
+											</td>
+										) ) }
+									</tr>
+								) ) }
+							</tbody>
+						</table>
+					) }
+				</div>
+			) ) }
+			<button
+				className="splm-btn splm-btn--primary"
+				onClick={ handleSave }
+				disabled={ saving }
+			>
+				{ saving ? 'Saving...' : 'Save Stats' }
+			</button>
+		</div>
+	);
+}
 
 export default function ScoreEntry( { season } ) {
 	const [ games, setGames ] = useState( [] );
@@ -9,6 +115,8 @@ export default function ScoreEntry( { season } ) {
 	const [ awayScore, setAwayScore ] = useState( 0 );
 	const [ saving, setSaving ] = useState( false );
 	const [ saved, setSaved ] = useState( false );
+	const [ showStats, setShowStats ] = useState( false );
+	const [ scoreSubmitted, setScoreSubmitted ] = useState( false );
 
 	useEffect( () => {
 		fetchGames( season ? { season } : {} ).then( ( data ) => {
@@ -21,22 +129,26 @@ export default function ScoreEntry( { season } ) {
 
 	const game = games[ current ];
 
+	const advanceToNext = () => {
+		setSaved( false );
+		setScoreSubmitted( false );
+		setShowStats( false );
+		setHomeScore( 0 );
+		setAwayScore( 0 );
+		if ( current < games.length - 1 ) {
+			setCurrent( current + 1 );
+		} else {
+			setGames( [] );
+		}
+	};
+
 	const handleSubmit = async () => {
 		if ( ! game ) return;
 		setSaving( true );
 		await updateScore( game.id, homeScore, awayScore );
 		setSaving( false );
 		setSaved( true );
-		setTimeout( () => {
-			setSaved( false );
-			setHomeScore( 0 );
-			setAwayScore( 0 );
-			if ( current < games.length - 1 ) {
-				setCurrent( current + 1 );
-			} else {
-				setGames( [] );
-			}
-		}, 1500 );
+		setScoreSubmitted( true );
 	};
 
 	if ( loading ) {
@@ -61,8 +173,25 @@ export default function ScoreEntry( { season } ) {
 				Game { current + 1 } of { games.length }
 			</p>
 
-			{ saved ? (
-				<div className="splm-score-entry__saved">✅ Score saved!</div>
+			{ saved && ! showStats ? (
+				<div className="splm-score-entry__saved">
+					<p>✅ Score saved!</p>
+					<details className="splm-player-stats__toggle" onToggle={ ( e ) => {
+						if ( e.target.open ) setShowStats( true );
+					} }>
+						<summary>Enter Player Stats</summary>
+					</details>
+					{ ! showStats && (
+						<button className="splm-btn splm-btn--secondary" onClick={ advanceToNext }>
+							Skip → Next Game
+						</button>
+					) }
+				</div>
+			) : showStats && scoreSubmitted ? (
+				<div>
+					<div className="splm-score-entry__saved">✅ Score saved!</div>
+					<PlayerStats gameId={ game.id } onDone={ advanceToNext } />
+				</div>
 			) : (
 				<div className="splm-score-entry__card">
 					<div className="splm-score-entry__date">
