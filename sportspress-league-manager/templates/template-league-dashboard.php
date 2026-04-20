@@ -12,9 +12,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-// Require authentication + manage_sportspress capability.
-if ( ! is_user_logged_in() || ! current_user_can( 'manage_sportspress' ) ) {
+// Require authentication + any SportsPress role (minimum: read_sp_event).
+if ( ! is_user_logged_in() ) {
 	wp_redirect( wp_login_url( get_permalink() ) );
+	exit;
+}
+if ( ! current_user_can( 'read_sp_event' ) ) {
+	wp_redirect( home_url() );
 	exit;
 }
 ?>

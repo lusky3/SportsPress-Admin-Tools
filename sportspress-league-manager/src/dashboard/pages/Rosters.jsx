@@ -141,10 +141,12 @@ export default function Rosters() {
 								<span className="splm-roster-list__name">{ player.name }</span>
 								<span className="splm-roster-list__email">{ player.email }</span>
 							</div>
+							{ ( window.splmDashboard?.capabilities?.canManageRosters !== false ) && (
 							<div className="splm-roster-list__actions">
 								<button className="splm-btn splm-btn--small" onClick={ () => setNotesPlayer( player ) }>Notes</button>
 								<button className="splm-btn splm-btn--small" onClick={ () => setMovePlayerData( player ) }>Move</button>
 							</div>
+						) }
 						</div>
 					) ) }
 				</div>

@@ -106,6 +106,13 @@ class SPLM_Dashboard_Frontend {
 			'logoutUrl'     => wp_logout_url( home_url() ),
 			'userId'        => get_current_user_id(),
 			'seasons'       => $seasons,
+			'capabilities'  => array(
+				'canManageSchedule' => current_user_can( 'manage_sportspress' ),
+				'canEnterScores'    => current_user_can( 'edit_others_sp_events' ),
+				'canManageRosters'  => current_user_can( 'edit_others_sp_players' ),
+				'canViewPayments'   => current_user_can( 'edit_others_sp_players' ) || current_user_can( 'manage_sportspress' ),
+				'canViewHealth'     => current_user_can( 'manage_sportspress' ),
+			),
 		) );
 	}
 }

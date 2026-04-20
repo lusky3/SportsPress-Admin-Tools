@@ -24,7 +24,7 @@ class SPLM_REST_API {
 			array(
 				'methods'             => 'GET',
 				'callback'            => array( $this, 'get_games' ),
-				'permission_callback' => array( $this, 'check_permission' ),
+				'permission_callback' => array( $this, 'check_read_permission' ),
 				'args'                => array(
 					'season' => array( 'type' => 'integer' ),
 					'league' => array( 'type' => 'integer' ),
@@ -38,7 +38,7 @@ class SPLM_REST_API {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'update_score' ),
-				'permission_callback' => array( $this, 'check_permission' ),
+				'permission_callback' => array( $this, 'check_score_permission' ),
 				'args'                => array(
 					'home_score' => array(
 						'type'     => 'integer',
@@ -58,7 +58,7 @@ class SPLM_REST_API {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'reschedule_game' ),
-				'permission_callback' => array( $this, 'check_permission' ),
+				'permission_callback' => array( $this, 'check_manage_permission' ),
 				'args'                => array(
 					'date'   => array(
 						'type'     => 'string',
@@ -81,7 +81,7 @@ class SPLM_REST_API {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'cancel_game' ),
-				'permission_callback' => array( $this, 'check_permission' ),
+				'permission_callback' => array( $this, 'check_manage_permission' ),
 				'args'                => array(
 					'reason' => array( 'type' => 'string' ),
 					'notify' => array(
@@ -98,7 +98,7 @@ class SPLM_REST_API {
 			array(
 				'methods'             => 'GET',
 				'callback'            => array( $this, 'get_standings' ),
-				'permission_callback' => array( $this, 'check_permission' ),
+				'permission_callback' => array( $this, 'check_read_permission' ),
 				'args'                => array(
 					'table_id' => array( 'type' => 'integer' ),
 				),
@@ -111,7 +111,7 @@ class SPLM_REST_API {
 			array(
 				'methods'             => 'GET',
 				'callback'            => array( $this, 'get_teams' ),
-				'permission_callback' => array( $this, 'check_permission' ),
+				'permission_callback' => array( $this, 'check_read_permission' ),
 			)
 		);
 
@@ -121,7 +121,7 @@ class SPLM_REST_API {
 			array(
 				'methods'             => 'GET',
 				'callback'            => array( $this, 'get_rosters' ),
-				'permission_callback' => array( $this, 'check_permission' ),
+				'permission_callback' => array( $this, 'check_read_permission' ),
 				'args'                => array(
 					'team' => array(
 						'type'     => 'integer',
@@ -137,7 +137,7 @@ class SPLM_REST_API {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'move_player' ),
-				'permission_callback' => array( $this, 'check_permission' ),
+				'permission_callback' => array( $this, 'check_roster_permission' ),
 				'args'                => array(
 					'player_id' => array(
 						'type'     => 'integer',
@@ -162,7 +162,7 @@ class SPLM_REST_API {
 				array(
 					'methods'             => 'GET',
 					'callback'            => array( $this, 'get_notes' ),
-					'permission_callback' => array( $this, 'check_permission' ),
+					'permission_callback' => array( $this, 'check_roster_permission' ),
 					'args'                => array(
 						'player' => array(
 							'type'     => 'integer',
@@ -173,7 +173,7 @@ class SPLM_REST_API {
 				array(
 					'methods'             => 'POST',
 					'callback'            => array( $this, 'add_note' ),
-					'permission_callback' => array( $this, 'check_permission' ),
+					'permission_callback' => array( $this, 'check_roster_permission' ),
 					'args'                => array(
 						'player_id' => array(
 							'type'     => 'integer',
@@ -194,7 +194,7 @@ class SPLM_REST_API {
 			array(
 				'methods'             => 'GET',
 				'callback'            => array( $this, 'get_payments' ),
-				'permission_callback' => array( $this, 'check_permission' ),
+				'permission_callback' => array( $this, 'check_payments_permission' ),
 				'args'                => array(
 					'season' => array(
 						'type'     => 'integer',
@@ -210,7 +210,7 @@ class SPLM_REST_API {
 			array(
 				'methods'             => 'GET',
 				'callback'            => array( $this, 'get_health' ),
-				'permission_callback' => array( $this, 'check_permission' ),
+				'permission_callback' => array( $this, 'check_manage_permission' ),
 			)
 		);
 
@@ -220,13 +220,33 @@ class SPLM_REST_API {
 			array(
 				'methods'             => 'GET',
 				'callback'            => array( $this, 'get_seasons' ),
-				'permission_callback' => array( $this, 'check_permission' ),
+				'permission_callback' => array( $this, 'check_read_permission' ),
 			)
 		);
 	}
 
-	public function check_permission() {
+	public function check_read_permission() {
+		return current_user_can( 'manage_sportspress' )
+			|| current_user_can( 'edit_others_sp_events' )
+			|| current_user_can( 'edit_others_sp_players' )
+			|| current_user_can( 'read_sp_event' );
+	}
+
+	public function check_manage_permission() {
 		return current_user_can( 'manage_sportspress' );
+	}
+
+	public function check_score_permission() {
+		return current_user_can( 'edit_others_sp_events' );
+	}
+
+	public function check_roster_permission() {
+		return current_user_can( 'edit_others_sp_players' );
+	}
+
+	public function check_payments_permission() {
+		return current_user_can( 'edit_others_sp_players' )
+			|| current_user_can( 'manage_sportspress' );
 	}
 
 	/**

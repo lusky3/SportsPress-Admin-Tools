@@ -73,7 +73,7 @@ export default function Schedule() {
 								) }
 								{ g.cancelled && <span className="splm-game-card__badge">Cancelled</span> }
 							</div>
-							{ ! g.cancelled && (
+							{ ! g.cancelled && ( window.splmDashboard?.capabilities?.canManageSchedule !== false ) && (
 								<div className="splm-game-card__actions">
 									<button
 										className="splm-btn splm-btn--small"
