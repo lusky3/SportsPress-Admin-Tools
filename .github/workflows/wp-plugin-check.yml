@@ -29,3 +29,4 @@ jobs:
           build-dir: ${{ matrix.plugin }}
           ignore-warnings: 'true'
           exclude-directories: tests,docs
+          categories: general

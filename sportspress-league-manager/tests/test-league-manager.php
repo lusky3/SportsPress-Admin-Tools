@@ -115,7 +115,6 @@ function reset_mocks() {
 
 // ── Load classes under test ─────────────────────────────────────────────────
 
-require_once dirname(__FILE__) . '/../includes/class-capabilities.php';
 require_once dirname(__FILE__) . '/../includes/class-error-handler.php';
 require_once dirname(__FILE__) . '/../includes/class-help-provider.php';
 
