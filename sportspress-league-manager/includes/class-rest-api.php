@@ -229,7 +229,7 @@ class SPLM_REST_API {
 		return current_user_can( 'manage_sportspress' )
 			|| current_user_can( 'edit_others_sp_events' )
 			|| current_user_can( 'edit_others_sp_players' )
-			|| current_user_can( 'read_sp_event' );
+			|| current_user_can( 'edit_sp_events' );
 	}
 
 	public function check_manage_permission() {
