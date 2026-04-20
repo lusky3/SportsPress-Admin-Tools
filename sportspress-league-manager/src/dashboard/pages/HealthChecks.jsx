@@ -9,7 +9,20 @@ export default function HealthChecks() {
 
 	useEffect( () => {
 		fetchHealth().then( ( data ) => {
-			setAlerts( data );
+			const items = [];
+			if ( data.events_without_results?.length ) {
+				items.push( { type: 'error', message: 'Past games missing scores', count: data.events_without_results.length } );
+			}
+			if ( data.players_without_email?.length ) {
+				items.push( { type: 'warning', message: 'Players without email address', count: data.players_without_email.length } );
+			}
+			if ( data.events_without_venue?.length ) {
+				items.push( { type: 'warning', message: 'Games without venue assigned', count: data.events_without_venue.length } );
+			}
+			if ( data.teams_without_players?.length ) {
+				items.push( { type: 'info', message: 'Teams with no players', count: data.teams_without_players.length } );
+			}
+			setAlerts( items );
 			setLoading( false );
 		} ).catch( () => setLoading( false ) );
 	}, [] );
