@@ -32,6 +32,17 @@ To use these tools, you must install the **SportsPress Admin Tools** parent plug
 2. Install and activate any desired child plugins from this repository.
 3. Navigate to `Settings > SportsPress Admin Tools` in your WordPress dashboard to enable and configure modules.
 
+## 🔒 Permissions
+
+| Capability | Role | Plugin(s) | Purpose |
+|-----------|------|-----------|---------|
+| `manage_options` | Administrator | All | Settings, schedule generation, exports, email sync, config |
+| `manage_woocommerce` | Shop Manager+ | e-Transfer Automation | Payment matching and file downloads |
+| `manage_league` | Custom (Admin by default) | League Manager | Roster uploads, player notes, dashboard tasks |
+| `edit_post` | Editor+ (contextual) | Player Tools | Editing player email and skill level on individual posts |
+
+The `manage_league` capability is granted to Administrators on plugin activation. It can be assigned to additional users to delegate league management without full admin access.
+
 ## 🛠️ Development
 
 This repository uses GitHub Actions for CI/CD, including:
