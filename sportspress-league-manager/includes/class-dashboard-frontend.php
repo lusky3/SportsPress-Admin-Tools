@@ -84,6 +84,20 @@ class SPLM_Dashboard_Frontend {
 			'hide_empty' => false,
 		) );
 
+		$all_seasons = get_terms( array(
+			'taxonomy'   => 'sp_season',
+			'orderby'    => 'term_id',
+			'order'      => 'DESC',
+			'hide_empty' => false,
+		) );
+
+		$seasons = array_map( function ( $term ) {
+			return array(
+				'id'   => $term->term_id,
+				'name' => $term->name,
+			);
+		}, ! empty( $all_seasons ) && ! is_wp_error( $all_seasons ) ? $all_seasons : array() );
+
 		wp_localize_script( 'splm-dashboard', 'splmDashboard', array(
 			'nonce'         => wp_create_nonce( 'wp_rest' ),
 			'apiBase'       => rest_url( 'splm/v1/' ),
@@ -91,6 +105,7 @@ class SPLM_Dashboard_Frontend {
 			'currentSeason' => ! empty( $current_season ) ? $current_season[0]->name : '',
 			'logoutUrl'     => wp_logout_url( home_url() ),
 			'userId'        => get_current_user_id(),
+			'seasons'       => $seasons,
 		) );
 	}
 }

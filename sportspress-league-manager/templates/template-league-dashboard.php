@@ -24,6 +24,8 @@ if ( ! is_user_logged_in() || ! current_user_can( 'manage_sportspress' ) ) {
 	<meta charset="<?php bloginfo( 'charset' ); ?>">
 	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 	<title><?php echo esc_html( get_bloginfo( 'name' ) ); ?> — League Dashboard</title>
+	<link rel="manifest" href="<?php echo esc_url( SPLM_PLUGIN_URL . 'assets/manifest.json' ); ?>">
+	<meta name="theme-color" content="#2563eb">
 	<?php wp_head(); ?>
 </head>
 <body class="splm-dashboard-body">
