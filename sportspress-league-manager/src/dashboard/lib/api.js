@@ -47,6 +47,22 @@ export function fetchRoster( teamId ) {
 	return apiFetch( { path: `/splm/v1/rosters?team=${ teamId }` } );
 }
 
+export function fetchRosterDetails( teamId, seasonId ) {
+	return apiFetch( { path: `/splm/v1/rosters/details?team=${ teamId }&season=${ seasonId }` } );
+}
+
+export function setCaptain( playerId, teamId, isCaptain ) {
+	return apiFetch( { path: '/splm/v1/rosters/set-captain', method: 'POST', data: { player_id: playerId, team_id: teamId, is_captain: isCaptain } } );
+}
+
+export function updatePlayerMetadata( playerId, field, value ) {
+	return apiFetch( { path: '/splm/v1/rosters/update-metadata', method: 'POST', data: { player_id: playerId, field, value } } );
+}
+
+export function importRoster( teamId, seasonId, players ) {
+	return apiFetch( { path: '/splm/v1/rosters/import', method: 'POST', data: { team_id: teamId, season_id: seasonId, players } } );
+}
+
 export function movePlayer( playerId, fromTeam, toTeam ) {
 	return apiFetch( {
 		path: '/splm/v1/rosters/move',
@@ -106,4 +122,16 @@ export function saveGamePlayers( gameId, stats ) {
 		method: 'POST',
 		data: { stats },
 	} );
+}
+
+export function fetchScheduleConfig() {
+	return apiFetch( { path: '/splm/v1/schedule/config' } );
+}
+
+export function generateSchedule( config ) {
+	return apiFetch( { path: '/splm/v1/schedule/generate', method: 'POST', data: config } );
+}
+
+export function publishSchedule( games, seasonId, leagueId ) {
+	return apiFetch( { path: '/splm/v1/schedule/publish', method: 'POST', data: { games, season_id: seasonId, league_id: leagueId } } );
 }
