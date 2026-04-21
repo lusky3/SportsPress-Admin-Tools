@@ -89,6 +89,108 @@ class SPPT_REST_API {
 
 		register_rest_route(
 			self::NAMESPACE,
+			'/rosters/set-captain',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'set_captain' ),
+				'permission_callback' => array( $this, 'check_roster_permission' ),
+				'args'                => array(
+					'player_id'  => array(
+						'type'     => 'integer',
+						'required' => true,
+					),
+					'team_id'    => array(
+						'type'     => 'integer',
+						'required' => true,
+					),
+					'is_captain' => array(
+						'type'     => 'boolean',
+						'required' => true,
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/rosters/update-metadata',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'update_metadata' ),
+				'permission_callback' => array( $this, 'check_roster_permission' ),
+				'args'                => array(
+					'player_id' => array(
+						'type'     => 'integer',
+						'required' => true,
+					),
+					'field'     => array(
+						'type'     => 'string',
+						'required' => true,
+						'enum'     => array( 'skill_level', 'position' ),
+					),
+					'value'     => array(
+						'type'     => 'string',
+						'required' => true,
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/rosters/import',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'import_roster' ),
+				'permission_callback' => array( $this, 'check_roster_permission' ),
+				'args'                => array(
+					'team_id'   => array(
+						'type'     => 'integer',
+						'required' => true,
+					),
+					'season_id' => array(
+						'type'     => 'integer',
+						'required' => true,
+					),
+					'players'   => array(
+						'type'     => 'array',
+						'required' => true,
+						'items'    => array(
+							'type'       => 'object',
+							'properties' => array(
+								'name'     => array( 'type' => 'string' ),
+								'number'   => array( 'type' => 'string' ),
+								'email'    => array( 'type' => 'string' ),
+								'position' => array( 'type' => 'string' ),
+							),
+						),
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/rosters/details',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_roster_details' ),
+				'permission_callback' => array( $this, 'check_roster_permission' ),
+				'args'                => array(
+					'team'   => array(
+						'type'     => 'integer',
+						'required' => true,
+					),
+					'season' => array(
+						'type'     => 'integer',
+						'required' => true,
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
 			'/notes',
 			array(
 				array(
@@ -244,5 +346,146 @@ class SPPT_REST_API {
 			),
 			201
 		);
+	}
+
+	/**
+	 * POST /rosters/set-captain — set or unset a player as team captain.
+	 */
+	public function set_captain( $request ) {
+		$player_id  = absint( $request->get_param( 'player_id' ) );
+		$team_id    = absint( $request->get_param( 'team_id' ) );
+		$is_captain = (bool) $request->get_param( 'is_captain' );
+
+		if ( $is_captain ) {
+			update_post_meta( $player_id, 'sp_captain', $team_id );
+		} else {
+			delete_post_meta( $player_id, 'sp_captain' );
+		}
+
+		return new WP_REST_Response( array( 'success' => true ), 200 );
+	}
+
+	/**
+	 * POST /rosters/update-metadata — update player skill level or position.
+	 */
+	public function update_metadata( $request ) {
+		$player_id = absint( $request->get_param( 'player_id' ) );
+		$field     = $request->get_param( 'field' );
+		$value     = $request->get_param( 'value' );
+
+		if ( 'skill_level' === $field ) {
+			update_post_meta( $player_id, 'spt_skill_level', sanitize_text_field( $value ) );
+		} elseif ( 'position' === $field ) {
+			wp_set_object_terms( $player_id, intval( $value ), 'sp_position' );
+		}
+
+		return new WP_REST_Response( array( 'success' => true ), 200 );
+	}
+
+	/**
+	 * POST /rosters/import — bulk import players to a team roster.
+	 */
+	public function import_roster( $request ) {
+		$team_id   = absint( $request->get_param( 'team_id' ) );
+		$season_id = absint( $request->get_param( 'season_id' ) );
+		$players   = $request->get_param( 'players' );
+		$imported  = array();
+
+		foreach ( $players as $player_data ) {
+			$post_id = wp_insert_post( array(
+				'post_type'   => 'sp_player',
+				'post_title'  => sanitize_text_field( $player_data['name'] ),
+				'post_status' => 'publish',
+			) );
+
+			if ( is_wp_error( $post_id ) ) {
+				continue;
+			}
+
+			if ( ! empty( $player_data['number'] ) ) {
+				update_post_meta( $post_id, 'sp_number', sanitize_text_field( $player_data['number'] ) );
+			}
+			if ( ! empty( $player_data['email'] ) ) {
+				update_post_meta( $post_id, 'spt_email', sanitize_email( $player_data['email'] ) );
+			}
+			update_post_meta( $post_id, 'sp_current_team', $team_id );
+			wp_set_object_terms( $post_id, $season_id, 'sp_season' );
+
+			if ( ! empty( $player_data['position'] ) ) {
+				wp_set_object_terms( $post_id, sanitize_text_field( $player_data['position'] ), 'sp_position' );
+			}
+
+			$imported[] = array(
+				'id'   => $post_id,
+				'name' => $player_data['name'],
+			);
+		}
+
+		return new WP_REST_Response( array(
+			'success'  => true,
+			'imported' => count( $imported ),
+			'players'  => $imported,
+		), 200 );
+	}
+
+	/**
+	 * GET /rosters/details — enriched roster data for a team/season.
+	 */
+	public function get_roster_details( $request ) {
+		$team_id   = absint( $request->get_param( 'team' ) );
+		$season_id = absint( $request->get_param( 'season' ) );
+
+		$player_ids = get_posts( array(
+			'post_type'      => 'sp_player',
+			'posts_per_page' => -1,
+			'fields'         => 'ids',
+			'meta_query'     => array(
+				array(
+					'key'   => 'sp_current_team',
+					'value' => $team_id,
+				),
+			),
+			'tax_query'      => array(
+				array(
+					'taxonomy' => 'sp_season',
+					'terms'    => $season_id,
+				),
+			),
+		) );
+
+		$results = array();
+		foreach ( $player_ids as $player_id ) {
+			$positions = wp_get_object_terms( $player_id, 'sp_position', array( 'fields' => 'names' ) );
+
+			$registered = false;
+			$orders = get_posts( array(
+				'post_type'      => 'shop_order',
+				'posts_per_page' => 1,
+				'post_status'    => array( 'wc-completed', 'wc-processing' ),
+				'meta_query'     => array(
+					array(
+						'key'   => '_spr_processed',
+						'value' => $player_id,
+					),
+				),
+				'fields'         => 'ids',
+			) );
+			if ( ! empty( $orders ) ) {
+				$registered = true;
+			}
+
+			$results[] = array(
+				'id'          => $player_id,
+				'name'        => get_the_title( $player_id ),
+				'number'      => get_post_meta( $player_id, 'sp_number', true ),
+				'email'       => get_post_meta( $player_id, 'spt_email', true ),
+				'skill_level' => get_post_meta( $player_id, 'spt_skill_level', true ),
+				'is_captain'  => ( (int) get_post_meta( $player_id, 'sp_captain', true ) === $team_id ),
+				'position'    => ( ! is_wp_error( $positions ) && ! empty( $positions ) ) ? $positions[0] : '',
+				'registered'  => $registered,
+			);
+		}
+
+		return new WP_REST_Response( $results, 200 );
 	}
 }
