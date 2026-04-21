@@ -358,10 +358,14 @@ class SPLM_REST_API {
 
 		$data = array();
 		foreach ( $players as $player ) {
+			$email = get_post_meta( $player->ID, 'spt_email', true );
+			if ( '' === $email ) {
+				$email = get_post_meta( $player->ID, 'spat_email', true );
+			}
 			$data[] = array(
 				'id'     => $player->ID,
 				'name'   => $player->post_title,
-				'email'  => get_post_meta( $player->ID, 'spt_email', true ),
+				'email'  => $email,
 				'number' => get_post_meta( $player->ID, 'sp_number', true ),
 			);
 		}
@@ -530,9 +534,11 @@ class SPLM_REST_API {
 		// Players without email (limit to 20 results for performance).
 		$players_no_email = $wpdb->get_results(
 			"SELECT p.ID, p.post_title FROM {$wpdb->posts} p
-			 LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = 'spt_email'
+			 LEFT JOIN {$wpdb->postmeta} pm1 ON p.ID = pm1.post_id AND pm1.meta_key = 'spt_email'
+			 LEFT JOIN {$wpdb->postmeta} pm2 ON p.ID = pm2.post_id AND pm2.meta_key = 'spat_email'
 			 WHERE p.post_type = 'sp_player' AND p.post_status = 'publish'
-			 AND (pm.meta_value IS NULL OR pm.meta_value = '')
+			 AND (pm1.meta_value IS NULL OR pm1.meta_value = '')
+			 AND (pm2.meta_value IS NULL OR pm2.meta_value = '')
 			 LIMIT 20"
 		);
 		foreach ( $players_no_email as $row ) {

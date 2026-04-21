@@ -359,7 +359,9 @@
             : '<span class="splm-notes-badge empty" data-player-id="' + p.id + '" data-player-name="' + esc(p.title) + '">0</span>';
           html += '<tr>'
             + '<td><a href="post.php?post=' + p.id + '&action=edit">' + esc(p.title) + '</a></td>'
-            + '<td></td><td></td><td></td>'
+            + '<td>' + esc(p.number || '') + '</td>'
+            + '<td>' + esc(p.position || '') + '</td>'
+            + '<td>' + esc(p.email || '') + '</td>'
             + '<td><select class="splm-skill-select" data-player-id="' + p.id + '">' + skillOpts + '</select></td>'
             + '<td>' + notesBadge + '</td>'
             + '</tr>';

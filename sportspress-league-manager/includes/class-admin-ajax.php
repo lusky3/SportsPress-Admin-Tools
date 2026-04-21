@@ -113,9 +113,17 @@ class SPLM_Admin_Ajax {
 				$notes_count = class_exists( 'SPLM_Player_Notes_Database' )
 					? SPLM_Player_Notes_Database::count_for_player( $player->ID )
 					: 0;
+				$email = get_post_meta( $player->ID, 'spt_email', true );
+				if ( '' === $email ) {
+					$email = get_post_meta( $player->ID, 'spat_email', true );
+				}
+				$positions = wp_get_object_terms( $player->ID, 'sp_position', array( 'fields' => 'names' ) );
 				return array(
 					'id'          => $player->ID,
 					'title'       => $player->post_title,
+					'number'      => get_post_meta( $player->ID, 'sp_number', true ),
+					'position'    => ( ! is_wp_error( $positions ) && ! empty( $positions ) ) ? $positions[0] : '',
+					'email'       => $email,
 					'skill'       => $skill !== '' ? absint( $skill ) : null,
 					'notes_count' => $notes_count,
 				);
