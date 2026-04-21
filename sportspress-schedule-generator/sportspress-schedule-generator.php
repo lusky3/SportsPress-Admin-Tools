@@ -117,6 +117,10 @@ class SportsPress_Schedule_Generator {
 			require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-generator.php';
 			new SPSG_Schedule_Generator();
 
+			// Load REST API
+			require_once SPSG_PLUGIN_PATH . 'includes/class-rest-api.php';
+			new SPSG_REST_API();
+
 			// Schedule export file cleanup
 			if ( ! wp_next_scheduled( 'spsg_cleanup_export_files' ) ) {
 				wp_schedule_event( time(), 'daily', 'spsg_cleanup_export_files' );
