@@ -18,7 +18,7 @@ export default function Payments( { season } ) {
 
 	const paid = payments.filter( ( p ) => p.status === 'paid' );
 	const unpaid = payments.filter( ( p ) => p.status === 'unpaid' );
-	const partial = payments.filter( ( p ) => p.status === 'partial' );
+	const pending = payments.filter( ( p ) => p.status === 'pending' );
 
 	return (
 		<div className="splm-payments">
@@ -34,8 +34,8 @@ export default function Payments( { season } ) {
 					<span className="splm-summary-stats__label">Unpaid</span>
 				</div>
 				<div className="splm-summary-stats__item splm-summary-stats__item--yellow">
-					<span className="splm-summary-stats__value">{ partial.length }</span>
-					<span className="splm-summary-stats__label">Partial</span>
+					<span className="splm-summary-stats__value">{ pending.length }</span>
+					<span className="splm-summary-stats__label">Pending</span>
 				</div>
 			</div>
 
@@ -54,7 +54,7 @@ export default function Payments( { season } ) {
 						</thead>
 						<tbody>
 							{ payments.map( ( p ) => (
-								<tr key={ p.id } className={ `splm-payment-table__row--${ p.status }` }>
+								<tr key={ p.player_id } className={ `splm-payment-table__row--${ p.status }` }>
 									<td>{ p.player }</td>
 									<td>{ p.team }</td>
 									<td><span className={ `splm-payment-table__status splm-payment-table__status--${ p.status }` }>{ p.status }</span></td>
