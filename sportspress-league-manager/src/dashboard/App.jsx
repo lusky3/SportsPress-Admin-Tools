@@ -7,6 +7,7 @@ import Standings from './pages/Standings';
 import Rosters from './pages/Rosters';
 import Payments from './pages/Payments';
 import HealthChecks from './pages/HealthChecks';
+import ScheduleGenerator from './pages/ScheduleGenerator';
 import './styles.css';
 
 const PAGES = {
@@ -17,6 +18,7 @@ const PAGES = {
 	rosters: Rosters,
 	payments: Payments,
 	health: HealthChecks,
+	'schedule-gen': ScheduleGenerator,
 };
 
 export default function App() {

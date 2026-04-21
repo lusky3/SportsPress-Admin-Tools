@@ -8,6 +8,7 @@ const NAV_ITEMS = [
 	{ id: 'rosters', label: 'Rosters', icon: '👥' },
 	{ id: 'payments', label: 'Payments', icon: '💰' },
 	{ id: 'health', label: 'Health', icon: '🔍' },
+	{ id: 'schedule-gen', label: 'Generate', icon: '📅' },
 ];
 
 const MOBILE_VISIBLE = 5;
@@ -23,6 +24,7 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 		rosters: caps.canManageRosters,
 		payments: caps.canViewPayments,
 		health: caps.canViewHealth,
+		'schedule-gen': caps.canManageSchedule,
 	};
 	const visibleItems = NAV_ITEMS.filter( ( item ) => capMap[ item.id ] === undefined || capMap[ item.id ] );
 

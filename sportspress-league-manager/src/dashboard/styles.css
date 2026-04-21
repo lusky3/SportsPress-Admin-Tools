@@ -446,3 +446,25 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: #1e293b; }
 .splm-muted { color: #6b7280; font-size: 0.85rem; }
 .splm-btn--secondary { background: #6b7280; color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; margin-top: 0.5rem; }
 .splm-btn--secondary:hover { background: #4b5563; }
+
+/* Schedule Wizard */
+.splm-wizard { max-width: 700px; }
+.splm-wizard__step { margin-top: 1rem; }
+.splm-checkbox-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.25rem 1rem; }
+@media (min-width: 768px) { .splm-checkbox-grid { grid-template-columns: repeat(3, 1fr); } }
+.splm-wizard__actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+
+/* Captain badge */
+.splm-captain-badge { cursor: pointer; opacity: 0.3; font-size: 1.1rem; }
+.splm-captain-badge--active { opacity: 1; color: #ca8a04; }
+
+/* Registration badge */
+.splm-reg-badge { font-size: 0.9rem; }
+
+/* CSV upload */
+.splm-csv-upload { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
+.splm-csv-upload .splm-table-wrapper { width: 100%; margin: 0.5rem 0; }
+
+/* Rosters toolbar */
+.splm-rosters__toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-start; margin-bottom: 1rem; }
+.splm-rosters__toolbar .splm-select { margin-bottom: 0; }
