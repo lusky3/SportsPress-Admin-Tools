@@ -117,15 +117,27 @@ export default function ScoreEntry( { season } ) {
 	const [ saved, setSaved ] = useState( false );
 	const [ showStats, setShowStats ] = useState( false );
 	const [ scoreSubmitted, setScoreSubmitted ] = useState( false );
+	const [ showingAll, setShowingAll ] = useState( false );
 
-	useEffect( () => {
-		fetchGames( season ? { season } : {} ).then( ( data ) => {
+	const loadGames = ( params ) => {
+		setLoading( true );
+		fetchGames( params ).then( ( data ) => {
 			const today = new Date().toISOString().split( 'T' )[ 0 ];
 			const needScores = data.filter( ( g ) => g.date <= today && g.home_score === null && ! g.cancelled );
 			setGames( needScores );
+			setCurrent( 0 );
 			setLoading( false );
 		} );
+	};
+
+	useEffect( () => {
+		loadGames( season ? { season } : {} );
 	}, [ season ] );
+
+	const loadAllUnscored = () => {
+		setShowingAll( true );
+		loadGames( {} );
+	};
 
 	const game = games[ current ];
 
@@ -160,7 +172,16 @@ export default function ScoreEntry( { season } ) {
 			<div className="splm-score-entry">
 				<h2>Score Entry</h2>
 				<div className="splm-empty-state">
-					<p>✅ All games have scores entered!</p>
+					{ showingAll ? (
+						<p>✅ All past games have scores entered!</p>
+					) : (
+						<>
+							<p>No games need scores for this season yet.</p>
+							<button className="splm-btn" onClick={ loadAllUnscored }>
+								Show all unscored games
+							</button>
+						</>
+					) }
 				</div>
 			</div>
 		);
