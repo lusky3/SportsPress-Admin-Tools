@@ -435,23 +435,28 @@ class SPPT_REST_API {
 		$team_id   = absint( $request->get_param( 'team' ) );
 		$season_id = absint( $request->get_param( 'season' ) );
 
-		$player_ids = get_posts( array(
+		$args = array(
 			'post_type'      => 'sp_player',
 			'posts_per_page' => -1,
 			'fields'         => 'ids',
 			'meta_query'     => array(
 				array(
-					'key'   => 'sp_current_team',
+					'key'   => 'sp_team',
 					'value' => $team_id,
 				),
 			),
-			'tax_query'      => array(
+		);
+
+		if ( $season_id ) {
+			$args['tax_query'] = array(
 				array(
 					'taxonomy' => 'sp_season',
 					'terms'    => $season_id,
 				),
-			),
-		) );
+			);
+		}
+
+		$player_ids = get_posts( $args );
 
 		$results = array();
 		foreach ( $player_ids as $player_id ) {
