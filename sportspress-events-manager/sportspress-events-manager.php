@@ -86,6 +86,10 @@ class SportsPress_Events_Manager {
 			)
 		);
 
+		// Load REST API endpoints (always available when plugin is active).
+		require_once SPEM_PLUGIN_PATH . 'includes/class-rest-api.php';
+		new SPEM_REST_API();
+
 		// Load functionality based on enabled modules
 		$this->load_enabled_modules();
 	}

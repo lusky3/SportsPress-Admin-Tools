@@ -38,6 +38,9 @@ class SportsPress_Player_Tools {
 	/** @var SPT_Player_Skill_Level|null */
 	private $player_skill_level;
 
+	/** @var SPPT_REST_API|null */
+	private $rest_api;
+
 	/** @var SPT_Admin|null */
 	private $admin;
 
@@ -122,6 +125,10 @@ class SportsPress_Player_Tools {
 		$enabled_modules = get_option( 'spat_enabled_modules', array() );
 
 		$this->debug_log( 'Enabled modules: ' . print_r( $enabled_modules, true ) );
+
+		// Always load REST API for roster/player write endpoints.
+		require_once SPT_PLUGIN_PATH . 'includes/class-rest-api.php';
+		$this->rest_api = new SPPT_REST_API();
 
 		if ( in_array( 'player_modifications', $enabled_modules ) ) {
 			$this->load_player_modifications( $enabled_modules );
