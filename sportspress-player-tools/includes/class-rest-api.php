@@ -183,7 +183,6 @@ class SPPT_REST_API {
 					),
 					'season' => array(
 						'type'     => 'integer',
-						'required' => true,
 					),
 				),
 			)
@@ -433,9 +432,8 @@ class SPPT_REST_API {
 	 */
 	public function get_roster_details( $request ) {
 		$team_id   = absint( $request->get_param( 'team' ) );
-		$season_id = absint( $request->get_param( 'season' ) );
 
-		$args = array(
+		$player_ids = get_posts( array(
 			'post_type'      => 'sp_player',
 			'posts_per_page' => -1,
 			'fields'         => 'ids',
@@ -445,18 +443,7 @@ class SPPT_REST_API {
 					'value' => $team_id,
 				),
 			),
-		);
-
-		if ( $season_id ) {
-			$args['tax_query'] = array(
-				array(
-					'taxonomy' => 'sp_season',
-					'terms'    => $season_id,
-				),
-			);
-		}
-
-		$player_ids = get_posts( $args );
+		) );
 
 		$results = array();
 		foreach ( $player_ids as $player_id ) {
