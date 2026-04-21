@@ -470,7 +470,7 @@ class SPPT_REST_API {
 				'id'          => $player_id,
 				'name'        => get_the_title( $player_id ),
 				'number'      => get_post_meta( $player_id, 'sp_number', true ),
-				'email'       => get_post_meta( $player_id, 'spt_email', true ),
+				'email'       => ( ( $e = get_post_meta( $player_id, 'spt_email', true ) ) !== '' ) ? $e : get_post_meta( $player_id, 'spat_email', true ),
 				'skill_level' => get_post_meta( $player_id, 'spt_skill_level', true ),
 				'is_captain'  => ( (int) get_post_meta( $player_id, 'sp_captain', true ) === $team_id ),
 				'position'    => ( ! is_wp_error( $positions ) && ! empty( $positions ) ) ? $positions[0] : '',
