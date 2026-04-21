@@ -373,11 +373,16 @@ class SPLM_REST_API {
 	 * GET /payments — fee status per player from WooCommerce orders.
 	 */
 	public function get_payments( $request ) {
+		global $wpdb;
+
 		$season_id = absint( $request->get_param( 'season' ) );
 
-		$players = get_posts( array(
-			'post_type'      => 'sp_player',
+		// Get active teams from this season's events.
+		$events = get_posts( array(
+			'post_type'      => 'sp_event',
 			'posts_per_page' => -1,
+			'post_status'    => array( 'publish', 'future' ),
+			'fields'         => 'ids',
 			'tax_query'      => array(
 				array(
 					'taxonomy' => 'sp_season',
@@ -386,35 +391,104 @@ class SPLM_REST_API {
 			),
 		) );
 
+		$team_ids = array();
+		foreach ( $events as $eid ) {
+			foreach ( get_post_meta( $eid, 'sp_team', false ) as $tid ) {
+				$team_ids[ (int) $tid ] = true;
+			}
+		}
+
+		if ( empty( $team_ids ) ) {
+			return new WP_REST_Response( array(), 200 );
+		}
+
+		// Get all players on those teams.
+		$meta_query = array( 'relation' => 'OR' );
+		foreach ( array_keys( $team_ids ) as $tid ) {
+			$meta_query[] = array( 'key' => 'sp_team', 'value' => $tid );
+		}
+		$players = get_posts( array(
+			'post_type'      => 'sp_player',
+			'posts_per_page' => -1,
+			'meta_query'     => $meta_query,
+		) );
+
+		// Build a lookup from the registration logs table.
+		$log_table = $wpdb->prefix . 'spat_registration_logs';
+		$table_exists = $wpdb->get_var( "SHOW TABLES LIKE '{$log_table}'" );
+		$reg_map = array(); // player_id => order_id
+		if ( $table_exists ) {
+			$logs = $wpdb->get_results( "SELECT player_id, order_id FROM {$log_table} WHERE player_id > 0 AND order_id > 0" );
+			foreach ( $logs as $log ) {
+				$reg_map[ (int) $log->player_id ] = (int) $log->order_id;
+			}
+		}
+
 		$data = array();
+		$seen = array();
 		foreach ( $players as $player ) {
-			$orders = get_posts( array(
-				'post_type'      => 'shop_order',
-				'posts_per_page' => -1,
-				'post_status'    => array_keys( wc_get_order_statuses() ),
-				'meta_query'     => array(
-					array(
-						'key'   => '_spr_processed',
-						'value' => $player->ID,
-					),
-				),
-			) );
+			if ( isset( $seen[ $player->ID ] ) ) {
+				continue;
+			}
+			$seen[ $player->ID ] = true;
 
 			$status = 'unpaid';
-			foreach ( $orders as $order_post ) {
-				$order = wc_get_order( $order_post->ID );
-				if ( $order && $order->is_paid() ) {
-					$status = 'paid';
+			$amount = '';
+			$team_name = '';
+
+			// Get team name.
+			$p_teams = get_post_meta( $player->ID, 'sp_team', false );
+			foreach ( $p_teams as $pt ) {
+				if ( isset( $team_ids[ (int) $pt ] ) ) {
+					$team_name = get_the_title( (int) $pt );
 					break;
+				}
+			}
+
+			// Check registration log first.
+			if ( isset( $reg_map[ $player->ID ] ) ) {
+				$order = wc_get_order( $reg_map[ $player->ID ] );
+				if ( $order ) {
+					$amount = $order->get_total();
+					$status = $order->is_paid() ? 'paid' : 'pending';
+				}
+			}
+
+			// Fall back to name matching on WooCommerce orders.
+			if ( 'unpaid' === $status ) {
+				$parts = explode( ' ', $player->post_title, 2 );
+				$first = $parts[0];
+				$last  = isset( $parts[1] ) ? $parts[1] : '';
+				if ( $first && $last ) {
+					$orders = wc_get_orders( array(
+						'limit'              => 1,
+						'billing_first_name' => $first,
+						'billing_last_name'  => $last,
+						'orderby'            => 'date',
+						'order'              => 'DESC',
+					) );
+					if ( ! empty( $orders ) ) {
+						$order  = $orders[0];
+						$amount = $order->get_total();
+						$status = $order->is_paid() ? 'paid' : 'pending';
+					}
 				}
 			}
 
 			$data[] = array(
 				'player_id' => $player->ID,
 				'player'    => $player->post_title,
+				'team'      => $team_name,
 				'status'    => $status,
+				'amount'    => $amount,
 			);
 		}
+
+		// Sort by team, then name.
+		usort( $data, function ( $a, $b ) {
+			$t = strcmp( $a['team'], $b['team'] );
+			return $t !== 0 ? $t : strcmp( $a['player'], $b['player'] );
+		} );
 
 		return new WP_REST_Response( $data, 200 );
 	}
