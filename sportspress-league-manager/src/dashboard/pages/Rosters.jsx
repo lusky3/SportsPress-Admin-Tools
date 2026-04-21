@@ -206,7 +206,7 @@ export default function Rosters( { season } ) {
 	const [ movePlayerData, setMovePlayerData ] = useState( null );
 
 	useEffect( () => {
-		fetchTeams().then( setTeams );
+		fetchTeams( season ).then( setTeams );
 	}, [] );
 
 	useEffect( () => {

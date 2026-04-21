@@ -53,6 +53,9 @@ class SPLM_REST_API {
 				'methods'             => 'GET',
 				'callback'            => array( $this, 'get_teams' ),
 				'permission_callback' => array( $this, 'check_read_permission' ),
+				'args'                => array(
+					'season' => array( 'type' => 'integer' ),
+				),
 			)
 		);
 
@@ -265,31 +268,71 @@ class SPLM_REST_API {
 	 * GET /teams — list all teams with player count.
 	 */
 	public function get_teams( $request ) {
-		$teams = get_posts( array(
-			'post_type'      => 'sp_team',
-			'posts_per_page' => -1,
-			'post_status'    => 'publish',
-			'orderby'        => 'title',
-			'order'          => 'ASC',
-		) );
+		$season = $request->get_param( 'season' );
+
+		// If season provided, only return teams that appear in that season's events.
+		if ( $season ) {
+			$events = get_posts( array(
+				'post_type'      => 'sp_event',
+				'posts_per_page' => -1,
+				'post_status'    => array( 'publish', 'future' ),
+				'fields'         => 'ids',
+				'tax_query'      => array(
+					array(
+						'taxonomy' => 'sp_season',
+						'terms'    => absint( $season ),
+					),
+				),
+			) );
+
+			$team_ids = array();
+			foreach ( $events as $event_id ) {
+				$t = get_post_meta( $event_id, 'sp_team', false );
+				foreach ( $t as $tid ) {
+					$team_ids[ (int) $tid ] = true;
+				}
+			}
+
+			if ( empty( $team_ids ) ) {
+				return new WP_REST_Response( array(), 200 );
+			}
+
+			$teams = get_posts( array(
+				'post_type'      => 'sp_team',
+				'posts_per_page' => -1,
+				'post_status'    => 'publish',
+				'post__in'       => array_keys( $team_ids ),
+				'orderby'        => 'title',
+				'order'          => 'ASC',
+			) );
+		} else {
+			$teams = get_posts( array(
+				'post_type'      => 'sp_team',
+				'posts_per_page' => -1,
+				'post_status'    => 'publish',
+				'orderby'        => 'title',
+				'order'          => 'ASC',
+			) );
+		}
 
 		$data = array();
 		foreach ( $teams as $team ) {
-			$players = get_posts( array(
+			$player_count = count( get_posts( array(
 				'post_type'      => 'sp_player',
 				'posts_per_page' => -1,
+				'fields'         => 'ids',
 				'meta_query'     => array(
 					array(
 						'key'   => 'sp_team',
 						'value' => $team->ID,
 					),
 				),
-			) );
+			) ) );
 
 			$data[] = array(
 				'id'           => $team->ID,
 				'name'         => $team->post_title,
-				'player_count' => count( $players ),
+				'player_count' => $player_count,
 			);
 		}
 

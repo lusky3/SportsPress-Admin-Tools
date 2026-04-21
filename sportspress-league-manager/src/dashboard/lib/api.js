@@ -39,8 +39,9 @@ export function fetchStandings( tableId, season ) {
 	return apiFetch( { path: `/splm/v1/standings${ query }` } );
 }
 
-export function fetchTeams() {
-	return apiFetch( { path: '/splm/v1/teams' } );
+export function fetchTeams( season ) {
+	const params = season ? '?season=' + season : '';
+	return apiFetch( { path: '/splm/v1/teams' + params } );
 }
 
 export function fetchRoster( teamId ) {
