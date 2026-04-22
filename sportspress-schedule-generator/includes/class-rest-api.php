@@ -93,6 +93,22 @@ class SPSG_REST_API {
 		return new SPSG_Configuration_Manager();
 	}
 
+	// Save config bypassing validation (for partial/draft saves from the wizard)
+	private function save_draft( $data ) {
+		$sanitizer = new SPSG_Configuration_Sanitizer();
+		$sanitized = $sanitizer->sanitize( $data );
+		$configs = get_option( SPSG_Configuration_Manager::OPTION_NAME, array() );
+		$is_new = ! isset( $sanitized['id'] );
+		if ( $is_new ) {
+			$sanitized['id'] = uniqid( 'config_' );
+			$sanitized['created'] = current_time( 'mysql' );
+		}
+		$sanitized['modified'] = current_time( 'mysql' );
+		$configs[ $sanitized['id'] ] = $sanitized;
+		update_option( SPSG_Configuration_Manager::OPTION_NAME, $configs, 'no' );
+		return $sanitized['id'];
+	}
+
 	// Normalize divisions: convert team objects [{id,name}] to name strings for the engine
 	private function normalize_divisions( $data ) {
 		if ( empty( $data['divisions'] ) ) return $data;
@@ -105,6 +121,32 @@ class SPSG_REST_API {
 			return $div;
 		}, $data['divisions'] );
 		return $data;
+	}
+
+	// Normalize venues: convert term IDs [123, 456] to venue objects [{id, name, ...}]
+	private function normalize_venues( $data ) {
+		if ( empty( $data['venues'] ) ) return $data;
+		$data['venues'] = array_map( function( $v ) {
+			if ( is_array( $v ) ) return $v; // already an object
+			$term = get_term( (int) $v, 'sp_venue' );
+			if ( $term && ! is_wp_error( $term ) ) {
+				return array( 'id' => $term->term_id, 'name' => $term->name, 'capacity' => 0, 'available_days' => array() );
+			}
+			return array( 'id' => (int) $v, 'name' => '', 'capacity' => 0, 'available_days' => array() );
+		}, $data['venues'] );
+		return $data;
+	}
+
+	// Normalize blackout_dates: convert string to array
+	private function normalize_blackout_dates( $data ) {
+		if ( isset( $data['blackout_dates'] ) && is_string( $data['blackout_dates'] ) ) {
+			$data['blackout_dates'] = array_filter( array_map( 'trim', explode( "\n", $data['blackout_dates'] ) ) );
+		}
+		return $data;
+	}
+
+	private function normalize( $data ) {
+		return $this->normalize_blackout_dates( $this->normalize_venues( $this->normalize_divisions( $data ) ) );
 	}
 
 	// --- spsg/v1: Config CRUD ---
@@ -146,14 +188,14 @@ class SPSG_REST_API {
 	}
 
 	public function spsg_create_config( $request ) {
-		$r = $this->cm()->save( $this->normalize_divisions( $request->get_json_params() ) );
+		$r = $this->save_draft( $this->normalize( $request->get_json_params() ) );
 		return is_wp_error( $r ) ? $r : rest_ensure_response( array( 'id' => $r ) );
 	}
 
 	public function spsg_update_config( $request ) {
-		$body = $this->normalize_divisions( $request->get_json_params() );
+		$body = $this->normalize( $request->get_json_params() );
 		$body['id'] = $request['id'];
-		$r = $this->cm()->save( $body );
+		$r = $this->save_draft( $body );
 		return is_wp_error( $r ) ? $r : rest_ensure_response( array( 'id' => $r ) );
 	}
 
