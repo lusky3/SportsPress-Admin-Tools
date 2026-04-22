@@ -67,10 +67,11 @@ class SPLM_REST_API {
 				'callback'            => array( $this, 'get_rosters' ),
 				'permission_callback' => array( $this, 'check_read_permission' ),
 				'args'                => array(
-					'team' => array(
+					'team'   => array(
 						'type'     => 'integer',
 						'required' => true,
 					),
+					'season' => array( 'type' => 'integer' ),
 				),
 			)
 		);
@@ -343,18 +344,10 @@ class SPLM_REST_API {
 	 * GET /rosters — players on a team with contact info.
 	 */
 	public function get_rosters( $request ) {
-		$team_id = absint( $request->get_param( 'team' ) );
+		$team_id   = absint( $request->get_param( 'team' ) );
+		$season_id = absint( $request->get_param( 'season' ) );
 
-		$players = get_posts( array(
-			'post_type'      => 'sp_player',
-			'posts_per_page' => -1,
-			'meta_query'     => array(
-				array(
-					'key'   => 'sp_team',
-					'value' => $team_id,
-				),
-			),
-		) );
+		$players = $this->get_players_for_team_season( $team_id, $season_id );
 
 		$data = array();
 		foreach ( $players as $player ) {
@@ -371,6 +364,51 @@ class SPLM_REST_API {
 		}
 
 		return new WP_REST_Response( $data, 200 );
+	}
+
+	/**
+	 * Get players assigned to a team for a specific season via sp_leagues meta.
+	 *
+	 * SportsPress stores league/season/team assignments in sp_leagues:
+	 *   array( league_id => array( season_id => team_id ) )
+	 *
+	 * Falls back to sp_current_team if no season is specified.
+	 */
+	private function get_players_for_team_season( $team_id, $season_id = 0 ) {
+		if ( ! $season_id ) {
+			return get_posts( array(
+				'post_type'      => 'sp_player',
+				'posts_per_page' => -1,
+				'meta_query'     => array(
+					array( 'key' => 'sp_current_team', 'value' => $team_id ),
+				),
+			) );
+		}
+
+		// Get players tagged with this season, then filter by sp_leagues.
+		$candidates = get_posts( array(
+			'post_type'      => 'sp_player',
+			'posts_per_page' => -1,
+			'tax_query'      => array(
+				array( 'taxonomy' => 'sp_season', 'terms' => $season_id ),
+			),
+		) );
+
+		$matched = array();
+		foreach ( $candidates as $player ) {
+			$leagues = get_post_meta( $player->ID, 'sp_leagues', true );
+			if ( ! is_array( $leagues ) ) {
+				continue;
+			}
+			foreach ( $leagues as $seasons ) {
+				if ( is_array( $seasons ) && isset( $seasons[ $season_id ] ) && (int) $seasons[ $season_id ] === $team_id ) {
+					$matched[] = $player;
+					break;
+				}
+			}
+		}
+
+		return $matched;
 	}
 
 	/**
@@ -406,21 +444,22 @@ class SPLM_REST_API {
 			return new WP_REST_Response( array(), 200 );
 		}
 
-		// Get all players on those teams.
-		$meta_query = array( 'relation' => 'OR' );
+		// Get players assigned to these teams for this season via sp_leagues.
+		$players_by_team = array(); // player_id => team_id
 		foreach ( array_keys( $team_ids ) as $tid ) {
-			$meta_query[] = array( 'key' => 'sp_team', 'value' => $tid );
+			foreach ( $this->get_players_for_team_season( $tid, $season_id ) as $p ) {
+				$players_by_team[ $p->ID ] = array( 'player' => $p, 'team_id' => $tid );
+			}
 		}
-		$players = get_posts( array(
-			'post_type'      => 'sp_player',
-			'posts_per_page' => -1,
-			'meta_query'     => $meta_query,
-		) );
+
+		if ( empty( $players_by_team ) ) {
+			return new WP_REST_Response( array(), 200 );
+		}
 
 		// Build a lookup from the registration logs table.
-		$log_table = $wpdb->prefix . 'spat_registration_logs';
+		$log_table    = $wpdb->prefix . 'spat_registration_logs';
 		$table_exists = $wpdb->get_var( "SHOW TABLES LIKE '{$log_table}'" );
-		$reg_map = array(); // player_id => order_id
+		$reg_map      = array();
 		if ( $table_exists ) {
 			$logs = $wpdb->get_results( "SELECT player_id, order_id FROM {$log_table} WHERE player_id > 0 AND order_id > 0" );
 			foreach ( $logs as $log ) {
@@ -429,29 +468,15 @@ class SPLM_REST_API {
 		}
 
 		$data = array();
-		$seen = array();
-		foreach ( $players as $player ) {
-			if ( isset( $seen[ $player->ID ] ) ) {
-				continue;
-			}
-			$seen[ $player->ID ] = true;
-
-			$status = 'unpaid';
-			$amount = '';
-			$team_name = '';
-
-			// Get team name.
-			$p_teams = get_post_meta( $player->ID, 'sp_team', false );
-			foreach ( $p_teams as $pt ) {
-				if ( isset( $team_ids[ (int) $pt ] ) ) {
-					$team_name = get_the_title( (int) $pt );
-					break;
-				}
-			}
+		foreach ( $players_by_team as $pid => $info ) {
+			$player    = $info['player'];
+			$team_name = get_the_title( $info['team_id'] );
+			$status    = 'unpaid';
+			$amount    = '';
 
 			// Check registration log first.
-			if ( isset( $reg_map[ $player->ID ] ) ) {
-				$order = wc_get_order( $reg_map[ $player->ID ] );
+			if ( isset( $reg_map[ $pid ] ) ) {
+				$order = wc_get_order( $reg_map[ $pid ] );
 				if ( $order ) {
 					$amount = $order->get_total();
 					$status = $order->is_paid() ? 'paid' : 'pending';
@@ -480,7 +505,7 @@ class SPLM_REST_API {
 			}
 
 			$data[] = array(
-				'player_id' => $player->ID,
+				'player_id' => $pid,
 				'player'    => $player->post_title,
 				'team'      => $team_name,
 				'status'    => $status,
@@ -488,7 +513,6 @@ class SPLM_REST_API {
 			);
 		}
 
-		// Sort by team, then name.
 		usort( $data, function ( $a, $b ) {
 			$t = strcmp( $a['team'], $b['team'] );
 			return $t !== 0 ? $t : strcmp( $a['player'], $b['player'] );

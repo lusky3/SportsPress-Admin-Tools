@@ -432,18 +432,41 @@ class SPPT_REST_API {
 	 */
 	public function get_roster_details( $request ) {
 		$team_id   = absint( $request->get_param( 'team' ) );
+		$season_id = absint( $request->get_param( 'season' ) );
 
-		$player_ids = get_posts( array(
-			'post_type'      => 'sp_player',
-			'posts_per_page' => -1,
-			'fields'         => 'ids',
-			'meta_query'     => array(
-				array(
-					'key'   => 'sp_team',
-					'value' => $team_id,
+		if ( $season_id ) {
+			// Use sp_leagues meta for season-correct roster.
+			$candidates = get_posts( array(
+				'post_type'      => 'sp_player',
+				'posts_per_page' => -1,
+				'tax_query'      => array(
+					array( 'taxonomy' => 'sp_season', 'terms' => $season_id ),
 				),
-			),
-		) );
+			) );
+			$players = array();
+			foreach ( $candidates as $p ) {
+				$leagues = get_post_meta( $p->ID, 'sp_leagues', true );
+				if ( ! is_array( $leagues ) ) {
+					continue;
+				}
+				foreach ( $leagues as $seasons ) {
+					if ( is_array( $seasons ) && isset( $seasons[ $season_id ] ) && (int) $seasons[ $season_id ] === $team_id ) {
+						$players[] = $p;
+						break;
+					}
+				}
+			}
+			$player_ids = wp_list_pluck( $players, 'ID' );
+		} else {
+			$player_ids = get_posts( array(
+				'post_type'      => 'sp_player',
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'meta_query'     => array(
+					array( 'key' => 'sp_current_team', 'value' => $team_id ),
+				),
+			) );
+		}
 
 		$results = array();
 		foreach ( $player_ids as $player_id ) {
