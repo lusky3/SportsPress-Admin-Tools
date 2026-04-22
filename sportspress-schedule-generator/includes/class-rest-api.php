@@ -311,7 +311,24 @@ class SPSG_REST_API {
 		if ( is_wp_error( $result ) ) return $result;
 		$sid = uniqid( 'sched_' );
 		set_transient( 'spsg_schedule_' . $sid, $result['schedule'], DAY_IN_SECONDS );
-		return rest_ensure_response( array( 'schedule_id' => $sid, 'status' => 'complete', 'game_count' => count( $result['schedule'] ) ) );
+		// Format games for the React UI
+		$games = array_map( function( $g ) {
+			$g = (array) $g;
+			return array(
+				'date'  => $g['date'] ?? '',
+				'time'  => $g['time'] ?? '',
+				'home'  => is_array( $g['home_team'] ?? null ) ? ( $g['home_team']['name'] ?? '' ) : ( $g['home_team'] ?? '' ),
+				'away'  => is_array( $g['away_team'] ?? null ) ? ( $g['away_team']['name'] ?? '' ) : ( $g['away_team'] ?? '' ),
+				'venue' => is_array( $g['venue'] ?? null ) ? ( $g['venue']['name'] ?? '' ) : ( $g['venue'] ?? '' ),
+			);
+		}, $result['schedule'] );
+		return rest_ensure_response( array(
+			'schedule_id' => $sid,
+			'status'      => 'complete',
+			'game_count'  => count( $result['schedule'] ),
+			'games'       => $games,
+			'stats'       => $result['stats'] ?? array(),
+		) );
 	}
 
 	public function spsg_generate_progress() {
