@@ -8,7 +8,7 @@ const blank = () => ({name:'',start_date:'',end_date:'',playing_days:['friday','
 let _tbd = 0;
 const mkId = (p) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
 
-function Tbd({name}) { return name.startsWith('TBD') ? <><span className="splm-badge splm-badge--warning">TBD</span> {name}</> : name; }
+function Tbd({name}) { if (!name) return null; return name.startsWith('TBD') ? <><span className="splm-badge splm-badge--warning">TBD</span> {name}</> : name; }
 
 function Cap({cfg}) {
 	const tt = cfg.divisions.reduce((s,d) => s+d.teams.length, 0), need = Math.ceil(tt*cfg.games_per_team/2);
@@ -73,8 +73,8 @@ export default function ScheduleGenerator() {
 		try {
 			const id = await save();
 			const result = await spsg.generate(id||configId);
-			// Generation is synchronous — result contains schedule_id and game_count
-			setSchedule({ id: result.schedule_id, games: Array(result.game_count).fill(null).map((_,i) => ({ index: i })), game_count: result.game_count });
+			// Generation is synchronous — result contains schedule_id, game_count, and games
+			setSchedule({ id: result.schedule_id, games: result.games || [], stats: result.stats || {} });
 			setGenerating(false); setStep(4);
 		} catch(e) { setError(e?.message||'Failed to generate'); setGenerating(false); }
 	};
