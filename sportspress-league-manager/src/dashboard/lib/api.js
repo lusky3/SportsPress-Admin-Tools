@@ -145,3 +145,26 @@ export function rolloverPreview(fromSeason, toSeason) {
 export function rolloverExecute(fromSeason, toSeason, playerIds) {
   return apiFetch({ path: '/splm/v1/season/rollover-execute', method: 'POST', data: { from_season: fromSeason, to_season: toSeason, player_ids: playerIds } });
 }
+
+// spsg/v1 — Schedule Generator
+export const spsg = {
+	listConfigs: () => apiFetch( { path: '/spsg/v1/configs' } ),
+	getConfig: ( id ) => apiFetch( { path: `/spsg/v1/configs/${ id }` } ),
+	createConfig: ( data ) => apiFetch( { path: '/spsg/v1/configs', method: 'POST', data } ),
+	updateConfig: ( id, data ) => apiFetch( { path: `/spsg/v1/configs/${ id }`, method: 'PUT', data } ),
+	deleteConfig: ( id ) => apiFetch( { path: `/spsg/v1/configs/${ id }`, method: 'DELETE' } ),
+	cloneConfig: ( id, name ) => apiFetch( { path: `/spsg/v1/configs/${ id }/clone`, method: 'POST', data: { name } } ),
+	validateConfig: ( id ) => apiFetch( { path: `/spsg/v1/configs/${ id }/validate`, method: 'POST' } ),
+	getLeagues: () => apiFetch( { path: '/spsg/v1/sportspress/leagues' } ),
+	getVenues: () => apiFetch( { path: '/spsg/v1/sportspress/venues' } ),
+	getSeasons: () => apiFetch( { path: '/spsg/v1/sportspress/seasons' } ),
+	generate: ( configId ) => apiFetch( { path: '/spsg/v1/generate', method: 'POST', data: { config_id: configId } } ),
+	progress: () => apiFetch( { path: '/spsg/v1/generate/progress' } ),
+	cancel: () => apiFetch( { path: '/spsg/v1/generate/cancel', method: 'POST' } ),
+	publish: ( scheduleId, seasonId, leagueId, offset = 0, limit = 50 ) =>
+		apiFetch( { path: '/spsg/v1/publish', method: 'POST', data: { schedule_id: scheduleId, season_id: seasonId, league_id: leagueId, offset, limit } } ),
+	getPlaceholders: ( configId ) => apiFetch( { path: `/spsg/v1/configs/${ configId }/placeholders` } ),
+	replacePlaceholder: ( id, replacementId, del = false ) =>
+		apiFetch( { path: `/spsg/v1/placeholders/${ id }/replace`, method: 'POST', data: { replacement_id: replacementId, delete: del } } ),
+};
+export { spsg as scheduleApi };
