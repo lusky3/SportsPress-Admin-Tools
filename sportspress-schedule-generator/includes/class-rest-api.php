@@ -314,12 +314,15 @@ class SPSG_REST_API {
 		// Format games for the React UI
 		$games = array_map( function( $g ) {
 			$g = (array) $g;
+			$home = $g['home_team'] ?? null;
+			$away = $g['away_team'] ?? null;
+			$venue = $g['venue'] ?? null;
 			return array(
 				'date'  => $g['date'] ?? '',
-				'time'  => $g['time'] ?? '',
-				'home'  => is_array( $g['home_team'] ?? null ) ? ( $g['home_team']['name'] ?? '' ) : ( $g['home_team'] ?? '' ),
-				'away'  => is_array( $g['away_team'] ?? null ) ? ( $g['away_team']['name'] ?? '' ) : ( $g['away_team'] ?? '' ),
-				'venue' => is_array( $g['venue'] ?? null ) ? ( $g['venue']['name'] ?? '' ) : ( $g['venue'] ?? '' ),
+				'time'  => $g['time_slot'] ?? $g['time'] ?? '',
+				'home'  => is_object( $home ) ? ( $home->name ?? '' ) : ( is_array( $home ) ? ( $home['name'] ?? '' ) : (string) $home ),
+				'away'  => is_object( $away ) ? ( $away->name ?? '' ) : ( is_array( $away ) ? ( $away['name'] ?? '' ) : (string) $away ),
+				'venue' => is_object( $venue ) ? ( $venue->name ?? '' ) : ( is_array( $venue ) ? ( $venue['name'] ?? '' ) : (string) $venue ),
 			);
 		}, $result['schedule'] );
 		return rest_ensure_response( array(
