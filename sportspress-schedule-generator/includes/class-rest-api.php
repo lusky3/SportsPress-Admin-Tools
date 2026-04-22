@@ -93,6 +93,20 @@ class SPSG_REST_API {
 		return new SPSG_Configuration_Manager();
 	}
 
+	// Normalize divisions: convert team objects [{id,name}] to name strings for the engine
+	private function normalize_divisions( $data ) {
+		if ( empty( $data['divisions'] ) ) return $data;
+		$data['divisions'] = array_map( function( $div ) {
+			if ( ! empty( $div['teams'] ) ) {
+				$div['teams'] = array_map( function( $t ) {
+					return is_array( $t ) ? ( $t['name'] ?? '' ) : ( is_string( $t ) ? $t : '' );
+				}, $div['teams'] );
+			}
+			return $div;
+		}, $data['divisions'] );
+		return $data;
+	}
+
 	// --- spsg/v1: Config CRUD ---
 
 	public function spsg_list_configs() {
@@ -117,16 +131,27 @@ class SPSG_REST_API {
 		$data = $c->to_array();
 		$data['id'] = $request['id'];
 		$data['name'] = $configs[ $request['id'] ]['name'] ?? '';
+		// Re-hydrate team strings as {id, name} objects for the React UI
+		if ( ! empty( $data['divisions'] ) ) {
+			$data['divisions'] = array_map( function( $div ) {
+				if ( ! empty( $div['teams'] ) ) {
+					$div['teams'] = array_map( function( $t, $i ) {
+						return is_string( $t ) ? array( 'id' => 'team_' . $i, 'name' => $t, 'is_tbd' => false ) : $t;
+					}, $div['teams'], array_keys( $div['teams'] ) );
+				}
+				return $div;
+			}, $data['divisions'] );
+		}
 		return rest_ensure_response( $data );
 	}
 
 	public function spsg_create_config( $request ) {
-		$r = $this->cm()->save( $request->get_json_params() );
+		$r = $this->cm()->save( $this->normalize_divisions( $request->get_json_params() ) );
 		return is_wp_error( $r ) ? $r : rest_ensure_response( array( 'id' => $r ) );
 	}
 
 	public function spsg_update_config( $request ) {
-		$body = $request->get_json_params();
+		$body = $this->normalize_divisions( $request->get_json_params() );
 		$body['id'] = $request['id'];
 		$r = $this->cm()->save( $body );
 		return is_wp_error( $r ) ? $r : rest_ensure_response( array( 'id' => $r ) );
