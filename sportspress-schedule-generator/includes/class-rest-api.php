@@ -1,74 +1,273 @@
 <?php
-/**
- * REST API for Schedule Generator
- *
- * @author Cody (lusky3)
- */
-
-if ( ! defined( 'ABSPATH' ) ) {
-	exit;
-}
+if ( ! defined( 'ABSPATH' ) ) exit;
 
 class SPSG_REST_API {
 
 	private $namespace = 'splm/v1';
+	private $ns2 = 'spsg/v1';
 
 	public function __construct() {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
+		add_action( 'init', function() {
+			global $wpdb;
+			$row = $wpdb->get_row( $wpdb->prepare(
+				"SELECT autoload FROM $wpdb->options WHERE option_name = %s", 'spsg_configurations'
+			) );
+			if ( $row && $row->autoload !== 'no' ) {
+				$val = get_option( 'spsg_configurations' );
+				delete_option( 'spsg_configurations' );
+				add_option( 'spsg_configurations', $val, '', 'no' );
+			}
+		}, 1 );
 	}
 
 	public function register_routes() {
-		register_rest_route( $this->namespace, '/schedule/config', array(
-			'methods'             => 'GET',
-			'callback'            => array( $this, 'get_config' ),
-			'permission_callback' => array( $this, 'check_manage_permission' ),
-		) );
+		$perm = array( 'permission_callback' => array( $this, 'check_manage_permission' ) );
 
-		register_rest_route( $this->namespace, '/schedule/generate', array(
-			'methods'             => 'POST',
-			'callback'            => array( $this, 'generate_schedule' ),
-			'permission_callback' => array( $this, 'check_manage_permission' ),
-			'args'                => $this->get_generate_args(),
-		) );
+		// Legacy splm/v1
+		register_rest_route( $this->namespace, '/schedule/config', array_merge( $perm, array(
+			'methods' => 'GET', 'callback' => array( $this, 'get_config' ),
+		) ) );
+		register_rest_route( $this->namespace, '/schedule/generate', array_merge( $perm, array(
+			'methods' => 'POST', 'callback' => array( $this, 'generate_schedule' ), 'args' => $this->get_generate_args(),
+		) ) );
+		register_rest_route( $this->namespace, '/schedule/publish', array_merge( $perm, array(
+			'methods' => 'POST', 'callback' => array( $this, 'publish_schedule' ), 'args' => $this->get_publish_args(),
+		) ) );
 
-		register_rest_route( $this->namespace, '/schedule/publish', array(
-			'methods'             => 'POST',
-			'callback'            => array( $this, 'publish_schedule' ),
-			'permission_callback' => array( $this, 'check_manage_permission' ),
-			'args'                => $this->get_publish_args(),
+		$ns = $this->ns2;
+		// Config CRUD
+		register_rest_route( $ns, '/configs', array(
+			array_merge( $perm, array( 'methods' => 'GET', 'callback' => array( $this, 'spsg_list_configs' ) ) ),
+			array_merge( $perm, array( 'methods' => 'POST', 'callback' => array( $this, 'spsg_create_config' ) ) ),
 		) );
+		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)', array(
+			array_merge( $perm, array( 'methods' => 'GET', 'callback' => array( $this, 'spsg_get_config' ) ) ),
+			array_merge( $perm, array( 'methods' => 'PUT', 'callback' => array( $this, 'spsg_update_config' ) ) ),
+			array_merge( $perm, array( 'methods' => 'DELETE', 'callback' => array( $this, 'spsg_delete_config' ) ) ),
+		) );
+		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/clone', array_merge( $perm, array(
+			'methods' => 'POST', 'callback' => array( $this, 'spsg_clone_config' ),
+		) ) );
+		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/validate', array_merge( $perm, array(
+			'methods' => 'POST', 'callback' => array( $this, 'spsg_validate_config' ),
+		) ) );
+		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/placeholders', array_merge( $perm, array(
+			'methods' => 'GET', 'callback' => array( $this, 'spsg_get_placeholders' ),
+		) ) );
+		// Placeholder replace
+		register_rest_route( $ns, '/placeholders/(?P<id>\d+)/replace', array_merge( $perm, array(
+			'methods' => 'POST', 'callback' => array( $this, 'spsg_replace_placeholder' ),
+		) ) );
+		// SportsPress reference data
+		register_rest_route( $ns, '/sportspress/leagues', array_merge( $perm, array(
+			'methods' => 'GET', 'callback' => array( $this, 'spsg_get_leagues' ),
+		) ) );
+		register_rest_route( $ns, '/sportspress/venues', array_merge( $perm, array(
+			'methods' => 'GET', 'callback' => array( $this, 'spsg_get_venues' ),
+		) ) );
+		register_rest_route( $ns, '/sportspress/seasons', array_merge( $perm, array(
+			'methods' => 'GET', 'callback' => array( $this, 'spsg_get_seasons' ),
+		) ) );
+		// Generate
+		register_rest_route( $ns, '/generate', array_merge( $perm, array(
+			'methods' => 'POST', 'callback' => array( $this, 'spsg_generate' ),
+		) ) );
+		register_rest_route( $ns, '/generate/progress', array_merge( $perm, array(
+			'methods' => 'GET', 'callback' => array( $this, 'spsg_generate_progress' ),
+		) ) );
+		register_rest_route( $ns, '/generate/cancel', array_merge( $perm, array(
+			'methods' => 'POST', 'callback' => array( $this, 'spsg_generate_cancel' ),
+		) ) );
+		// Publish
+		register_rest_route( $ns, '/publish', array_merge( $perm, array(
+			'methods' => 'POST', 'callback' => array( $this, 'spsg_publish' ),
+		) ) );
 	}
 
 	public function check_manage_permission() {
 		return current_user_can( 'manage_sportspress' );
 	}
 
-	public function get_config() {
-		$teams = get_posts( array(
-			'post_type'      => 'sp_team',
-			'post_status'    => 'publish',
-			'posts_per_page' => -1,
-			'orderby'        => 'title',
-			'order'          => 'ASC',
-		) );
+	private function cm() {
+		return new SPSG_Configuration_Manager();
+	}
 
+	// --- spsg/v1: Config CRUD ---
+
+	public function spsg_list_configs() {
+		$all = $this->cm()->get_all_configurations();
+		$raw = get_option( 'spsg_configurations', array() );
+		$out = array();
+		foreach ( $all as $id => $meta ) {
+			$divs = $raw[ $id ]['divisions'] ?? array();
+			$tc = 0;
+			foreach ( $divs as $d ) { $tc += count( $d['teams'] ?? array() ); }
+			$out[] = array( 'id' => $id, 'name' => $meta['name'], 'updated_at' => $meta['modified'], 'division_count' => count( $divs ), 'team_count' => $tc );
+		}
+		return rest_ensure_response( $out );
+	}
+
+	public function spsg_get_config( $request ) {
+		$configs = get_option( 'spsg_configurations', array() );
+		if ( ! isset( $configs[ $request['id'] ] ) ) {
+			return new WP_Error( 'not_found', 'Config not found.', array( 'status' => 404 ) );
+		}
+		$c = $this->cm()->load( $request['id'] );
+		$data = $c->to_array();
+		$data['id'] = $request['id'];
+		$data['name'] = $configs[ $request['id'] ]['name'] ?? '';
+		return rest_ensure_response( $data );
+	}
+
+	public function spsg_create_config( $request ) {
+		$r = $this->cm()->save( $request->get_json_params() );
+		return is_wp_error( $r ) ? $r : rest_ensure_response( array( 'id' => $r ) );
+	}
+
+	public function spsg_update_config( $request ) {
+		$body = $request->get_json_params();
+		$body['id'] = $request['id'];
+		$r = $this->cm()->save( $body );
+		return is_wp_error( $r ) ? $r : rest_ensure_response( array( 'id' => $r ) );
+	}
+
+	public function spsg_delete_config( $request ) {
+		$r = $this->cm()->delete( $request['id'] );
+		if ( $r === false ) return new WP_Error( 'not_found', 'Config not found.', array( 'status' => 404 ) );
+		return rest_ensure_response( array( 'deleted' => true ) );
+	}
+
+	public function spsg_clone_config( $request ) {
+		$r = $this->cm()->clone_configuration( $request['id'], $request->get_param( 'name' ) );
+		return is_wp_error( $r ) ? $r : rest_ensure_response( array( 'id' => $r ) );
+	}
+
+	public function spsg_validate_config( $request ) {
+		$config = $this->cm()->load( $request['id'] );
+		if ( is_wp_error( $config ) ) return $config;
+
+		$feasibility = ( new SPSG_Constraint_Manager() )->check_feasibility( $config );
+		$needed = 0;
+		foreach ( $config->divisions as $div ) {
+			$t = is_object( $div ) ? $div->teams : ( $div['teams'] ?? array() );
+			$needed += count( $t );
+		}
+		$needed = (int) ( $needed * $config->games_per_team / 2 );
+		$available = $this->count_slots( $config );
+		$valid = ( $feasibility === true );
+		return rest_ensure_response( array(
+			'valid' => $valid, 'errors' => $valid ? array() : (array) $feasibility, 'warnings' => array(),
+			'capacity' => array( 'needed' => $needed, 'available' => $available, 'utilization_pct' => $available > 0 ? round( $needed / $available * 100 ) : 0 ),
+		) );
+	}
+
+	private function count_slots( $config ) {
+		$start = $config->season_start instanceof DateTime ? clone $config->season_start : new DateTime( $config->season_start );
+		$end = $config->season_end instanceof DateTime ? clone $config->season_end : new DateTime( $config->season_end );
+		$blackouts = $config->blackout_dates ?? array();
+		$slots = 0;
+		$cur = clone $start;
+		while ( $cur <= $end ) {
+			$day = strtolower( $cur->format( 'l' ) );
+			if ( in_array( $day, $config->playing_days ) && ! in_array( $cur->format( 'Y-m-d' ), $blackouts ) ) {
+				$slots += count( $config->time_slots[ $day ] ?? array() ) * count( $config->venues );
+			}
+			$cur->add( new DateInterval( 'P1D' ) );
+		}
+		return $slots;
+	}
+
+	// --- Placeholders ---
+
+	public function spsg_get_placeholders( $request ) {
+		return rest_ensure_response( SPSG_Placeholder_Team_Manager::get_placeholder_teams( $request['id'] ) );
+	}
+
+	public function spsg_replace_placeholder( $request ) {
+		return rest_ensure_response( SPSG_Placeholder_Team_Manager::replace_team(
+			(int) $request['id'], (int) $request->get_param( 'replacement_id' ), (bool) $request->get_param( 'delete' )
+		) );
+	}
+
+	// --- SportsPress reference data ---
+
+	public function spsg_get_leagues() {
+		$leagues = get_terms( array( 'taxonomy' => 'sp_league', 'hide_empty' => false ) );
+		if ( is_wp_error( $leagues ) ) return $leagues;
+		$out = array();
+		foreach ( $leagues as $lg ) {
+			$posts = get_posts( array( 'post_type' => 'sp_team', 'posts_per_page' => -1, 'post_status' => 'publish',
+				'tax_query' => array( array( 'taxonomy' => 'sp_league', 'terms' => $lg->term_id ) ), 'orderby' => 'title', 'order' => 'ASC' ) );
+			$teams = array();
+			foreach ( $posts as $p ) {
+				if ( stripos( $p->post_title, '(Retired)' ) !== false ) continue;
+				$teams[] = array( 'id' => $p->ID, 'name' => $p->post_title );
+			}
+			$out[] = array( 'id' => $lg->term_id, 'name' => $lg->name, 'teams' => $teams );
+		}
+		return rest_ensure_response( $out );
+	}
+
+	public function spsg_get_venues() {
+		$v = get_terms( array( 'taxonomy' => 'sp_venue', 'hide_empty' => false ) );
+		return is_wp_error( $v ) ? $v : rest_ensure_response( array_map( fn( $t ) => array( 'id' => $t->term_id, 'name' => $t->name ), $v ) );
+	}
+
+	public function spsg_get_seasons() {
+		$s = get_terms( array( 'taxonomy' => 'sp_season', 'hide_empty' => false ) );
+		return is_wp_error( $s ) ? $s : rest_ensure_response( array_map( fn( $t ) => array( 'id' => $t->term_id, 'name' => $t->name ), $s ) );
+	}
+
+	// --- Generate ---
+
+	public function spsg_generate( $request ) {
+		$config = $this->cm()->load( $request->get_param( 'config_id' ) );
+		if ( is_wp_error( $config ) ) return $config;
+		$result = ( new SPSG_Schedule_Engine() )->generate_schedule( $config );
+		if ( is_wp_error( $result ) ) return $result;
+		$sid = uniqid( 'sched_' );
+		set_transient( 'spsg_schedule_' . $sid, $result['schedule'], DAY_IN_SECONDS );
+		return rest_ensure_response( array( 'schedule_id' => $sid, 'status' => 'complete', 'game_count' => count( $result['schedule'] ) ) );
+	}
+
+	public function spsg_generate_progress() {
+		$p = get_transient( 'spsg_generation_progress_' . get_current_user_id() );
+		return rest_ensure_response( $p ?: array( 'status' => 'idle' ) );
+	}
+
+	public function spsg_generate_cancel() {
+		set_transient( 'spsg_cancel_generation_' . get_current_user_id(), true, 300 );
+		return rest_ensure_response( array( 'cancelled' => true ) );
+	}
+
+	// --- Publish ---
+
+	public function spsg_publish( $request ) {
+		$schedule = get_transient( 'spsg_schedule_' . $request->get_param( 'schedule_id' ) );
+		if ( ! $schedule ) return new WP_Error( 'schedule_not_found', 'Schedule not found or expired.', array( 'status' => 404 ) );
+		$offset = (int) ( $request->get_param( 'offset' ) ?? 0 );
+		$limit  = (int) ( $request->get_param( 'limit' ) ?? 50 );
+		$result = ( new SPSG_Sports_Press_Importer() )->import( array_slice( $schedule, $offset, $limit ), array(
+			'season_id' => (int) $request->get_param( 'season_id' ), 'league_id' => (int) $request->get_param( 'league_id' ),
+			'event_status' => 'publish', 'conflict_resolution' => 'skip',
+		) );
+		if ( is_wp_error( $result ) ) return $result;
+		return rest_ensure_response( array( 'imported' => $result['imported'] ?? 0, 'total' => count( $schedule ), 'offset' => $offset, 'limit' => $limit, 'remaining' => max( 0, count( $schedule ) - $offset - $limit ) ) );
+	}
+
+	// ========== Legacy splm/v1 (unchanged) ==========
+
+	public function get_config() {
+		$teams   = get_posts( array( 'post_type' => 'sp_team', 'post_status' => 'publish', 'posts_per_page' => -1, 'orderby' => 'title', 'order' => 'ASC' ) );
 		$venues  = get_terms( array( 'taxonomy' => 'sp_venue', 'hide_empty' => false ) );
 		$seasons = get_terms( array( 'taxonomy' => 'sp_season', 'hide_empty' => false ) );
 		$leagues = get_terms( array( 'taxonomy' => 'sp_league', 'hide_empty' => false ) );
-
 		return rest_ensure_response( array(
-			'teams'   => array_map( function( $t ) {
-				return array( 'id' => $t->ID, 'name' => $t->post_title );
-			}, $teams ),
-			'venues'  => array_map( function( $t ) {
-				return array( 'id' => $t->term_id, 'name' => $t->name );
-			}, is_array( $venues ) ? $venues : array() ),
-			'seasons' => array_map( function( $t ) {
-				return array( 'id' => $t->term_id, 'name' => $t->name );
-			}, is_array( $seasons ) ? $seasons : array() ),
-			'leagues' => array_map( function( $t ) {
-				return array( 'id' => $t->term_id, 'name' => $t->name );
-			}, is_array( $leagues ) ? $leagues : array() ),
+			'teams'   => array_map( function( $t ) { return array( 'id' => $t->ID, 'name' => $t->post_title ); }, $teams ),
+			'venues'  => array_map( function( $t ) { return array( 'id' => $t->term_id, 'name' => $t->name ); }, is_array( $venues ) ? $venues : array() ),
+			'seasons' => array_map( function( $t ) { return array( 'id' => $t->term_id, 'name' => $t->name ); }, is_array( $seasons ) ? $seasons : array() ),
+			'leagues' => array_map( function( $t ) { return array( 'id' => $t->term_id, 'name' => $t->name ); }, is_array( $leagues ) ? $leagues : array() ),
 		) );
 	}
 
@@ -81,136 +280,82 @@ class SPSG_REST_API {
 		$time_slots     = $request->get_param( 'time_slots' ) ?: array( '18:00', '19:00', '20:00', '21:00' );
 		$blackout_dates = $request->get_param( 'blackout_dates' ) ?: array();
 
-		// Load team names
 		$teams = array();
 		foreach ( $team_ids as $id ) {
 			$post = get_post( $id );
-			if ( $post ) {
-				$teams[] = array( 'id' => $id, 'name' => $post->post_title );
-			}
+			if ( $post ) $teams[] = array( 'id' => $id, 'name' => $post->post_title );
 		}
+		if ( count( $teams ) < 2 ) return new \WP_Error( 'insufficient_teams', 'At least 2 valid teams required.', array( 'status' => 400 ) );
 
-		if ( count( $teams ) < 2 ) {
-			return new \WP_Error( 'insufficient_teams', 'At least 2 valid teams required.', array( 'status' => 400 ) );
-		}
-
-		// Load venues
 		$venues = array();
 		foreach ( $venue_ids as $vid ) {
 			$term = get_term( $vid, 'sp_venue' );
-			if ( $term && ! is_wp_error( $term ) ) {
-				$venues[] = array( 'id' => $term->term_id, 'name' => $term->name );
-			}
+			if ( $term && ! is_wp_error( $term ) ) $venues[] = array( 'id' => $term->term_id, 'name' => $term->name );
 		}
 
-		// Generate all matchups (round-robin, repeated to fill games_per_team)
 		$matchups = array();
-		$team_count = count( $teams );
-		for ( $i = 0; $i < $team_count; $i++ ) {
-			for ( $j = $i + 1; $j < $team_count; $j++ ) {
+		$tc = count( $teams );
+		for ( $i = 0; $i < $tc; $i++ ) {
+			for ( $j = $i + 1; $j < $tc; $j++ ) {
 				$matchups[] = array( $teams[ $i ], $teams[ $j ] );
-				$matchups[] = array( $teams[ $j ], $teams[ $i ] ); // reverse home/away
+				$matchups[] = array( $teams[ $j ], $teams[ $i ] );
 			}
 		}
-
-		// Repeat matchups to reach games_per_team per team
-		$target_total = (int) ( $team_count * $games_per_team / 2 );
-		$full_matchups = array();
-		while ( count( $full_matchups ) < $target_total ) {
+		$target = (int) ( $tc * $games_per_team / 2 );
+		$full = array();
+		while ( count( $full ) < $target ) {
 			foreach ( $matchups as $m ) {
-				$full_matchups[] = $m;
-				if ( count( $full_matchups ) >= $target_total ) {
-					break;
-				}
+				$full[] = $m;
+				if ( count( $full ) >= $target ) break;
 			}
 		}
 
-		// Build available dates
-		$available_dates = array();
-		$current = new \DateTime( $start_date );
-		$end     = new \DateTime( $end_date );
-		while ( $current <= $end ) {
-			$ds = $current->format( 'Y-m-d' );
-			if ( ! in_array( $ds, $blackout_dates, true ) ) {
-				$available_dates[] = $ds;
-			}
-			$current->modify( '+1 day' );
+		$dates = array();
+		$cur = new \DateTime( $start_date );
+		$end = new \DateTime( $end_date );
+		while ( $cur <= $end ) {
+			$ds = $cur->format( 'Y-m-d' );
+			if ( ! in_array( $ds, $blackout_dates, true ) ) $dates[] = $ds;
+			$cur->modify( '+1 day' );
 		}
+		if ( empty( $dates ) ) return new \WP_Error( 'no_dates', 'No available dates after excluding blackout dates.', array( 'status' => 400 ) );
 
-		if ( empty( $available_dates ) ) {
-			return new \WP_Error( 'no_dates', 'No available dates after excluding blackout dates.', array( 'status' => 400 ) );
-		}
-
-		// Distribute games across dates/time_slots/venues
-		$games      = array();
-		$date_idx   = 0;
-		$slot_idx   = 0;
-		$venue_idx  = 0;
-		$date_count = count( $available_dates );
-		$slot_count = count( $time_slots );
-		$venue_count = count( $venues );
-
-		foreach ( $full_matchups as $matchup ) {
-			$game = array(
-				'date'      => $available_dates[ $date_idx % $date_count ],
-				'time'      => $time_slots[ $slot_idx % $slot_count ],
-				'home_team' => $matchup[0],
-				'away_team' => $matchup[1],
-				'venue'     => $venue_count > 0 ? $venues[ $venue_idx % $venue_count ] : null,
+		$games = array();
+		$di = 0; $si = 0; $vi = 0;
+		$dc = count( $dates ); $sc = count( $time_slots ); $vc = count( $venues );
+		foreach ( $full as $mu ) {
+			$games[] = array(
+				'date' => $dates[ $di % $dc ], 'time' => $time_slots[ $si % $sc ],
+				'home_team' => $mu[0], 'away_team' => $mu[1],
+				'venue' => $vc > 0 ? $venues[ $vi % $vc ] : null,
 			);
-			$games[] = $game;
-
-			$slot_idx++;
-			if ( $slot_idx % $slot_count === 0 ) {
-				$date_idx++;
-			}
-			$venue_idx++;
+			$si++;
+			if ( $si % $sc === 0 ) $di++;
+			$vi++;
 		}
-
-		return rest_ensure_response( array(
-			'games'       => $games,
-			'total_games' => count( $games ),
-		) );
+		return rest_ensure_response( array( 'games' => $games, 'total_games' => count( $games ) ) );
 	}
 
 	public function publish_schedule( $request ) {
-		$games     = $request->get_param( 'games' );
+		$games = $request->get_param( 'games' );
 		$season_id = $request->get_param( 'season_id' );
 		$league_id = $request->get_param( 'league_id' );
-		$created   = 0;
-
+		$created = 0;
 		foreach ( $games as $game ) {
-			$home = $game['home_team'];
-			$away = $game['away_team'];
-
+			$home = $game['home_team']; $away = $game['away_team'];
 			$post_id = wp_insert_post( array(
-				'post_title'  => $home['name'] . ' vs ' . $away['name'],
-				'post_status' => 'future',
-				'post_date'   => $game['date'] . ' ' . $game['time'] . ':00',
-				'post_type'   => 'sp_event',
+				'post_title' => $home['name'] . ' vs ' . $away['name'], 'post_status' => 'future',
+				'post_date' => $game['date'] . ' ' . $game['time'] . ':00', 'post_type' => 'sp_event',
 			) );
-
-			if ( is_wp_error( $post_id ) ) {
-				continue;
-			}
-
+			if ( is_wp_error( $post_id ) ) continue;
 			add_post_meta( $post_id, 'sp_team', (int) $home['id'] );
 			add_post_meta( $post_id, 'sp_team', (int) $away['id'] );
-
 			wp_set_object_terms( $post_id, (int) $season_id, 'sp_season' );
 			wp_set_object_terms( $post_id, (int) $league_id, 'sp_league' );
-
-			if ( ! empty( $game['venue']['id'] ) ) {
-				wp_set_object_terms( $post_id, (int) $game['venue']['id'], 'sp_venue' );
-			}
-
+			if ( ! empty( $game['venue']['id'] ) ) wp_set_object_terms( $post_id, (int) $game['venue']['id'], 'sp_venue' );
 			$created++;
 		}
-
-		return rest_ensure_response( array(
-			'success' => true,
-			'created' => $created,
-		) );
+		return rest_ensure_response( array( 'success' => true, 'created' => $created ) );
 	}
 
 	private function get_generate_args() {
