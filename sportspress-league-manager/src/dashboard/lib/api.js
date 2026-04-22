@@ -137,3 +137,11 @@ export function generateSchedule( config ) {
 export function publishSchedule( games, seasonId, leagueId ) {
 	return apiFetch( { path: '/splm/v1/schedule/publish', method: 'POST', data: { games, season_id: seasonId, league_id: leagueId } } );
 }
+
+export function rolloverPreview(fromSeason, toSeason) {
+  return apiFetch({ path: '/splm/v1/season/rollover-preview', method: 'POST', data: { from_season: fromSeason, to_season: toSeason } });
+}
+
+export function rolloverExecute(fromSeason, toSeason, playerIds) {
+  return apiFetch({ path: '/splm/v1/season/rollover-execute', method: 'POST', data: { from_season: fromSeason, to_season: toSeason, player_ids: playerIds } });
+}

@@ -100,6 +100,51 @@ class SPEM_REST_API {
 				),
 			)
 		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/season/rollover-preview',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'rollover_preview' ),
+				'permission_callback' => array( $this, 'check_manage_permission' ),
+				'args'                => array(
+					'from_season' => array(
+						'type'     => 'integer',
+						'required' => true,
+					),
+					'to_season'   => array(
+						'type'     => 'integer',
+						'required' => true,
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/season/rollover-execute',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'rollover_execute' ),
+				'permission_callback' => array( $this, 'check_manage_permission' ),
+				'args'                => array(
+					'from_season' => array(
+						'type'     => 'integer',
+						'required' => true,
+					),
+					'to_season'   => array(
+						'type'     => 'integer',
+						'required' => true,
+					),
+					'player_ids'  => array(
+						'type'     => 'array',
+						'required' => true,
+						'items'    => array( 'type' => 'integer' ),
+					),
+				),
+			)
+		);
 	}
 
 	public function check_score_permission() {
@@ -353,6 +398,107 @@ class SPEM_REST_API {
 		update_post_meta( $event_id, 'sp_players', $existing );
 
 		return new WP_REST_Response( array( 'success' => true ), 200 );
+	}
+
+	/**
+	 * POST /season/rollover-preview — preview players not returning for new season.
+	 */
+	public function rollover_preview( $request ) {
+		$from_season = (int) $request->get_param( 'from_season' );
+		$to_season   = (int) $request->get_param( 'to_season' );
+
+		$players = get_posts( array(
+			'post_type'      => 'sp_player',
+			'posts_per_page' => -1,
+			'meta_query'     => array(
+				array(
+					'key'     => 'sp_current_team',
+					'compare' => 'EXISTS',
+				),
+			),
+		) );
+
+		$returning_count = 0;
+		$not_returning   = array(); // team_id => [ 'team' => name, 'players' => [] ]
+
+		foreach ( $players as $player ) {
+			$leagues = get_post_meta( $player->ID, 'sp_leagues', true );
+			if ( ! is_array( $leagues ) ) {
+				$leagues = array();
+			}
+
+			$has_to = false;
+			$has_from = false;
+			foreach ( $leagues as $league_id => $seasons ) {
+				if ( is_array( $seasons ) ) {
+					if ( isset( $seasons[ $to_season ] ) ) {
+						$has_to = true;
+					}
+					if ( isset( $seasons[ $from_season ] ) ) {
+						$has_from = true;
+					}
+				}
+			}
+
+			if ( $has_to ) {
+				$returning_count++;
+			} elseif ( $has_from ) {
+				$team_ids = get_post_meta( $player->ID, 'sp_current_team', false );
+				foreach ( $team_ids as $team_id ) {
+					$team_id = (int) $team_id;
+					if ( ! isset( $not_returning[ $team_id ] ) ) {
+						$not_returning[ $team_id ] = array(
+							'team'    => get_the_title( $team_id ),
+							'team_id' => $team_id,
+							'players' => array(),
+						);
+					}
+					$not_returning[ $team_id ]['players'][] = array(
+						'id'   => $player->ID,
+						'name' => $player->post_title,
+					);
+				}
+			}
+		}
+
+		$grouped = array_values( $not_returning );
+		$total   = 0;
+		foreach ( $grouped as $group ) {
+			$total += count( $group['players'] );
+		}
+
+		return new WP_REST_Response( array(
+			'returning_count'    => $returning_count,
+			'not_returning'      => $grouped,
+			'total_not_returning' => $total,
+		), 200 );
+	}
+
+	/**
+	 * POST /season/rollover-execute — move players to past team and remove old season.
+	 */
+	public function rollover_execute( $request ) {
+		$from_season = (int) $request->get_param( 'from_season' );
+		$player_ids  = $request->get_param( 'player_ids' );
+		$processed   = 0;
+
+		foreach ( $player_ids as $player_id ) {
+			$player_id = (int) $player_id;
+			$team_ids  = get_post_meta( $player_id, 'sp_current_team', false );
+
+			foreach ( $team_ids as $team_id ) {
+				add_post_meta( $player_id, 'sp_past_team', (int) $team_id );
+			}
+
+			delete_post_meta( $player_id, 'sp_current_team' );
+			wp_remove_object_terms( $player_id, $from_season, 'sp_season' );
+			$processed++;
+		}
+
+		return new WP_REST_Response( array(
+			'success'   => true,
+			'processed' => $processed,
+		), 200 );
 	}
 
 	/**

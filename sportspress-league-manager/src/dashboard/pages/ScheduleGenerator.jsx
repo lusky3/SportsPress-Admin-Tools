@@ -1,5 +1,5 @@
 import { useState, useEffect } from '@wordpress/element';
-import { fetchScheduleConfig, generateSchedule, publishSchedule } from '../lib/api';
+import { fetchScheduleConfig, generateSchedule, publishSchedule, rolloverPreview, rolloverExecute } from '../lib/api';
 
 export default function ScheduleGenerator() {
 	const [ step, setStep ] = useState( 1 );
@@ -18,6 +18,15 @@ export default function ScheduleGenerator() {
 	} );
 	const [ games, setGames ] = useState( [] );
 	const [ publishedCount, setPublishedCount ] = useState( 0 );
+
+	// Rollover state
+	const [ rolloverFrom, setRolloverFrom ] = useState( '' );
+	const [ rolloverTo, setRolloverTo ] = useState( '' );
+	const [ rolloverPreviewData, setRolloverPreviewData ] = useState( null );
+	const [ rolloverSelected, setRolloverSelected ] = useState( {} );
+	const [ rolloverLoading, setRolloverLoading ] = useState( false );
+	const [ rolloverMsg, setRolloverMsg ] = useState( '' );
+	const [ rolloverError, setRolloverError ] = useState( '' );
 
 	useEffect( () => {
 		fetchScheduleConfig()
@@ -61,11 +70,49 @@ export default function ScheduleGenerator() {
 		setForm( ( prev ) => ( { ...prev, teams: [], venues: [], blackout_dates: '' } ) );
 	};
 
+	const handleRolloverPreview = () => {
+		setRolloverError( '' );
+		setRolloverMsg( '' );
+		setRolloverLoading( true );
+		rolloverPreview( rolloverFrom, rolloverTo )
+			.then( ( data ) => {
+				setRolloverPreviewData( data );
+				const sel = {};
+				( data.not_returning || [] ).forEach( ( p ) => { sel[ p.id ] = true; } );
+				setRolloverSelected( sel );
+			} )
+			.catch( () => setRolloverError( 'Failed to load preview' ) )
+			.finally( () => setRolloverLoading( false ) );
+	};
+
+	const handleRolloverExecute = () => {
+		const ids = Object.keys( rolloverSelected ).filter( ( k ) => rolloverSelected[ k ] ).map( Number );
+		if ( ! ids.length ) return;
+		setRolloverError( '' );
+		setRolloverLoading( true );
+		rolloverExecute( rolloverFrom, rolloverTo, ids )
+			.then( ( data ) => {
+				setRolloverMsg( `✅ ${ data.count || ids.length } player(s) moved to past teams.` );
+				setRolloverPreviewData( null );
+			} )
+			.catch( () => setRolloverError( 'Failed to execute rollover' ) )
+			.finally( () => setRolloverLoading( false ) );
+	};
+
+	const toggleTeamPlayers = ( teamPlayers, checked ) => {
+		setRolloverSelected( ( prev ) => {
+			const next = { ...prev };
+			teamPlayers.forEach( ( p ) => { next[ p.id ] = checked; } );
+			return next;
+		} );
+	};
+
 	if ( loading && ! config ) {
 		return <div className="splm-loading">Loading…</div>;
 	}
 
 	return (
+		<>
 		<div className="splm-wizard">
 			<h2>Schedule Generator</h2>
 			{ error && <div className="splm-alert splm-alert--warning">{ error }</div> }
@@ -181,5 +228,72 @@ export default function ScheduleGenerator() {
 				</div>
 			) }
 		</div>
+
+		{ config && (
+			<div className="splm-wizard" style={ { marginTop: '2rem' } }>
+				<h2>Season Rollover</h2>
+				<p className="splm-muted" style={ { marginBottom: '1rem' } }>Move players who didn't register for the new season from current team to past teams.</p>
+
+				{ rolloverError && <div className="splm-alert splm-alert--warning">{ rolloverError }</div> }
+				{ rolloverMsg && <div className="splm-card"><p>{ rolloverMsg }</p></div> }
+
+				<div className="splm-card">
+					<h3>Select Seasons</h3>
+					<label>From Season</label>
+					<select className="splm-select" value={ rolloverFrom } onChange={ ( e ) => setRolloverFrom( e.target.value ) }>
+						<option value="">Select Season</option>
+						{ ( config.seasons || [] ).map( ( s ) => <option key={ s.id } value={ s.id }>{ s.name }</option> ) }
+					</select>
+					<label>To Season</label>
+					<select className="splm-select" value={ rolloverTo } onChange={ ( e ) => setRolloverTo( e.target.value ) }>
+						<option value="">Select Season</option>
+						{ ( config.seasons || [] ).map( ( s ) => <option key={ s.id } value={ s.id }>{ s.name }</option> ) }
+					</select>
+					<button className="splm-btn splm-btn--primary" onClick={ handleRolloverPreview } disabled={ rolloverLoading || ! rolloverFrom || ! rolloverTo }>
+						{ rolloverLoading ? 'Loading…' : 'Preview' }
+					</button>
+				</div>
+
+				{ rolloverPreviewData && (
+					<div className="splm-card">
+						<h3>Preview Results</h3>
+						<p style={ { marginBottom: '0.75rem' } }>
+							<strong>{ rolloverPreviewData.returning_count || 0 }</strong> returning · <strong>{ ( rolloverPreviewData.not_returning || [] ).length }</strong> not returning
+						</p>
+						{ Object.entries(
+							( rolloverPreviewData.not_returning || [] ).reduce( ( acc, p ) => {
+								const team = p.team_name || 'Unknown';
+								( acc[ team ] = acc[ team ] || [] ).push( p );
+								return acc;
+							}, {} )
+						).map( ( [ teamName, players ] ) => {
+							const allChecked = players.every( ( p ) => rolloverSelected[ p.id ] );
+							return (
+								<div key={ teamName } style={ { marginBottom: '0.75rem' } }>
+									<label className="splm-checkbox" style={ { fontWeight: 600, marginBottom: '0.25rem' } }>
+										<input type="checkbox" checked={ allChecked } onChange={ ( e ) => toggleTeamPlayers( players, e.target.checked ) } />
+										{ teamName }
+									</label>
+									<div style={ { paddingLeft: '1.5rem' } }>
+										{ players.map( ( p ) => (
+											<label key={ p.id } className="splm-checkbox">
+												<input type="checkbox" checked={ !! rolloverSelected[ p.id ] } onChange={ ( e ) => setRolloverSelected( ( prev ) => ( { ...prev, [ p.id ]: e.target.checked } ) ) } />
+												{ p.name }
+											</label>
+										) ) }
+									</div>
+								</div>
+							);
+						} ) }
+						<div style={ { marginTop: '1rem' } }>
+							<button className="splm-btn splm-btn--danger" onClick={ handleRolloverExecute } disabled={ rolloverLoading || ! Object.values( rolloverSelected ).some( Boolean ) }>
+								{ rolloverLoading ? 'Processing…' : 'Move Selected to Past Teams' }
+							</button>
+						</div>
+					</div>
+				) }
+			</div>
+		) }
+		</>
 	);
 }
