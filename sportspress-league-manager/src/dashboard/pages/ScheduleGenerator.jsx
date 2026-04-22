@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from '@wordpress/element';
 import { spsg } from '../lib/api';
-import { fetchScheduleConfig, rolloverPreview, rolloverExecute } from '../lib/api';
+import { rolloverPreview, rolloverExecute } from '../lib/api';
 
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
 const DL = {monday:'Mon',tuesday:'Tue',wednesday:'Wed',thursday:'Thu',friday:'Fri',saturday:'Sat',sunday:'Sun'};
@@ -47,7 +47,7 @@ export default function ScheduleGenerator() {
 	const [rMsg,setRMsg]=useState(''),[rErr,setRErr]=useState('');
 
 	const loadConfigs = useCallback(() => { setLoading(true); spsg.listConfigs().then(setConfigs).catch(()=>setError('Failed to load configs')).finally(()=>setLoading(false)); }, []);
-	useEffect(() => { loadConfigs(); fetchScheduleConfig().then(setRc).catch(()=>{}); }, []);
+	useEffect(() => { loadConfigs(); spsg.getSeasons().then(s => setRc({ seasons: s })).catch(()=>{}); }, []);
 
 	const up = patch => setCfg(p => ({...p,...patch}));
 	const togDay = day => up({playing_days: cfg.playing_days.includes(day) ? cfg.playing_days.filter(d=>d!==day) : [...cfg.playing_days,day]});
