@@ -44,8 +44,9 @@ export function fetchTeams( season ) {
 	return apiFetch( { path: '/splm/v1/teams' + params } );
 }
 
-export function fetchRoster( teamId ) {
-	return apiFetch( { path: `/splm/v1/rosters?team=${ teamId }` } );
+export function fetchRoster( teamId, season ) {
+	const params = season ? `&season=${ season }` : '';
+	return apiFetch( { path: `/splm/v1/rosters?team=${ teamId }${ params }` } );
 }
 
 export function fetchRosterDetails( teamId, seasonId ) {
