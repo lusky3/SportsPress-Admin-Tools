@@ -146,6 +146,13 @@ class SPSG_REST_API {
 	}
 
 	private function normalize( $data ) {
+		// Map React form field names to engine field names
+		if ( isset( $data['start_date'] ) && ! isset( $data['season_start'] ) ) {
+			$data['season_start'] = $data['start_date'];
+		}
+		if ( isset( $data['end_date'] ) && ! isset( $data['season_end'] ) ) {
+			$data['season_end'] = $data['end_date'];
+		}
 		return $this->normalize_blackout_dates( $this->normalize_venues( $this->normalize_divisions( $data ) ) );
 	}
 
@@ -173,6 +180,9 @@ class SPSG_REST_API {
 		$data = $c->to_array();
 		$data['id'] = $request['id'];
 		$data['name'] = $configs[ $request['id'] ]['name'] ?? '';
+		// Map engine field names to React form field names
+		$data['start_date'] = $data['season_start'] ?? '';
+		$data['end_date'] = $data['season_end'] ?? '';
 		// Re-hydrate team strings as {id, name} objects for the React UI
 		if ( ! empty( $data['divisions'] ) ) {
 			$data['divisions'] = array_map( function( $div ) {
@@ -183,6 +193,12 @@ class SPSG_REST_API {
 				}
 				return $div;
 			}, $data['divisions'] );
+		}
+		// Re-hydrate venue objects as term IDs for the React UI
+		if ( ! empty( $data['venues'] ) ) {
+			$data['venues'] = array_map( function( $v ) {
+				return is_array( $v ) ? ( $v['id'] ?? 0 ) : $v;
+			}, $data['venues'] );
 		}
 		return rest_ensure_response( $data );
 	}
