@@ -2,7 +2,8 @@ import apiFetch from '@wordpress/api-fetch';
 
 export function fetchGames( params = {} ) {
 	const query = new URLSearchParams( params ).toString();
-	return apiFetch( { path: `/splm/v1/games${ query ? '?' + query : '' }` } );
+	return apiFetch( { path: `/splm/v1/games${ query ? '?' + query : '' }` } )
+		.then( ( data ) => Array.isArray( data ) ? data : ( data?.games || [] ) );
 }
 
 export function updateScore( gameId, homeScore, awayScore ) {
