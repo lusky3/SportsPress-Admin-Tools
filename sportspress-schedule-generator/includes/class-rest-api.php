@@ -236,8 +236,15 @@ class SPSG_REST_API {
 	}
 
 	public function spsg_clone_config( $request ) {
-		$r = $this->cm()->clone_configuration( $request['id'], $request->get_param( 'name' ) );
-		return is_wp_error( $r ) ? $r : rest_ensure_response( array( 'id' => $r ) );
+		$configs = get_option( 'spsg_configurations', array() );
+		if ( ! isset( $configs[ $request['id'] ] ) ) {
+			return new WP_Error( 'not_found', 'Config not found.', array( 'status' => 404 ) );
+		}
+		$config = $configs[ $request['id'] ];
+		unset( $config['id'], $config['created'], $config['modified'] );
+		$config['name'] = $request->get_param( 'name' ) ?: ( ( $config['name'] ?? 'Unnamed' ) . ' (Copy)' );
+		$new_id = $this->save_draft( $config );
+		return rest_ensure_response( array( 'id' => $new_id ) );
 	}
 
 	public function spsg_validate_config( $request ) {
