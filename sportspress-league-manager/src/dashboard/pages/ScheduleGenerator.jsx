@@ -11,7 +11,7 @@ const blank = () => ({
 	playing_days:['friday','sunday'], games_per_team:10,
 	match_length:60, matchup_style:'double_round_robin',
 	divisions:[], venues:[], time_slots:{},
-	blackout_dates:'', venue_blackout_dates:{},
+	blackout_dates:'', venue_blackout_dates:{}, venue_timeslots:{},
 	generic_teams:{enabled:false,per_division:0,prefix:'Team'},
 	advanced:{b2b_pairs:[],overlap_pairs:[],inter_division:{},venue_prefs:{}},
 });
@@ -35,7 +35,10 @@ function Cap({cfg}) {
 	for (let d = new Date(s); d <= e; d.setDate(d.getDate()+1)) {
 		const day = DAYS[(d.getDay()+6)%7];
 		if (cfg.playing_days.includes(day)) {
-			avail += (cfg.time_slots[day]||[]).length * cfg.venues.length;
+			const ds = d.toISOString().split('T')[0];
+			// Gap #13: subtract venues blacked out on this date
+			const openVenues = cfg.venues.filter(vid => !(cfg.venue_blackout_dates[vid]||[]).includes(ds)).length;
+			avail += (cfg.time_slots[day]||[]).length * openVenues;
 		}
 	}
 	const pct = avail ? Math.round(need/avail*100) : 999;
@@ -95,6 +98,7 @@ export default function ScheduleGenerator() {
 	const [spV,setSpV] = useState([]);
 	const [spS,setSpS] = useState([]);
 	const [importLg,setImportLg] = useState('');
+	const [cfgSearch,setCfgSearch] = useState(''); // Gap #5: search filter
 	const [validation,setValidation] = useState(null);
 	const [generating,setGenerating] = useState(false);
 	const [schedule,setSchedule] = useState(null);
@@ -194,7 +198,10 @@ export default function ScheduleGenerator() {
 			}
 			setValidation(val);
 			const result = await spsg.generate(id||configId);
-			setSchedule({ id: result.schedule_id, games: result.games||[], stats: computeStats(result.games) });
+			const sched = { id: result.schedule_id, games: result.games||[], stats: computeStats(result.games) };
+			// Gap #3: persist to sessionStorage so user can return after navigating away
+			try { sessionStorage.setItem(`spsg_sched_${id||configId}`, JSON.stringify(sched)); } catch {}
+			setSchedule(sched);
 			setGenerating(false); setStep(4);
 		} catch(e) { setError(e?.message||'Failed to generate'); setGenerating(false); }
 	};
@@ -279,14 +286,25 @@ export default function ScheduleGenerator() {
 						{!loading&&!configs.length&&<p className="splm-muted">No saved configs yet.</p>}
 						{configs.length>0&&(
 							<div className="splm-table-wrapper">
+								{/* Gap #5: search filter */}
+								<input className="splm-select" placeholder="Search…" value={cfgSearch} onChange={e=>setCfgSearch(e.target.value)} style={{marginBottom:'0.5rem'}}/>
 								<table className="splm-table">
 									<thead><tr><th>Name</th><th>Updated</th><th>Divisions</th><th>Teams</th><th></th></tr></thead>
-									<tbody>{configs.map(c=>(
+									<tbody>{configs.filter(c=>!cfgSearch||c.name.toLowerCase().includes(cfgSearch.toLowerCase())).map(c=>(
 										<tr key={c.id}>
-											<td>{c.name}</td><td>{fmtDate(c.updated_at)}</td><td>{c.division_count}</td><td>{c.team_count}</td>
+											{/* Gap #4: inline rename */}
+											<td><input defaultValue={c.name} style={{border:'none',background:'transparent',width:'100%',padding:0}}
+												onBlur={async e=>{ if(e.target.value!==c.name){await spsg.updateConfig(c.id,{name:e.target.value});loadConfigs();} }}
+												onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}}/></td>
+											<td>{fmtDate(c.updated_at)}</td><td>{c.division_count}</td><td>{c.team_count}</td>
 											<td style={f}>
-												<button className="splm-btn" onClick={()=>spsg.getConfig(c.id).then(d=>{setCfg(d);setConfigId(c.id);setStep(1);})}>Load</button>
-												{/* Fix #1/#12: delete config */}
+												<button className="splm-btn" onClick={()=>{
+													const saved = (() => { try { return JSON.parse(sessionStorage.getItem(`spsg_sched_${c.id}`)||'null'); } catch { return null; } })();
+													spsg.getConfig(c.id).then(d=>{setCfg(d);setConfigId(c.id);
+														// Gap #3: resume if saved schedule exists
+														if (saved) { setSchedule(saved); setStep(4); } else { setStep(1); }
+													});
+												}}>{(() => { try { return sessionStorage.getItem(`spsg_sched_${c.id}`) ? 'Resume' : 'Load'; } catch { return 'Load'; } })()}</button>
 												<button className="splm-btn splm-btn--danger" onClick={()=>{ if(window.confirm(`Delete "${c.name}"?`)) spsg.deleteConfig(c.id).then(loadConfigs); }}>✕</button>
 												<button className="splm-btn" title="Export JSON" onClick={async()=>{
 													const data = await spsg.getConfig(c.id);
@@ -352,10 +370,10 @@ export default function ScheduleGenerator() {
 							<button className="splm-btn" onClick={addDiv}>Add Division</button>
 							<button className="splm-btn" onClick={doImport}>{spL.length?'Import Selected':'Import from SportsPress'}</button>
 							{spL.length>0&&<>
-								<select className="splm-select" value={importLg} onChange={e=>setImportLg(e.target.value)}><option value="">Pick a league…</option>{spL.map(l=><option key={l.id} value={l.id}>{l.name} ({l.teams?.length||0})</option>)}</select>
+								<select className="splm-select" value={importLg} onChange={e=>setImportLg(e.target.value)}><option value="">Pick a league…</option>{spL.filter(l=>l.name.toUpperCase()!=='ALL').map(l=><option key={l.id} value={l.id}>{l.name} ({l.teams?.length||0})</option>)}</select>
 								{/* Gap #13: import all leagues as separate divisions */}
 								<button className="splm-btn" title="Import each league as a separate division" onClick={()=>{
-									const newDivs = spL.filter(l => l.teams?.length && !cfg.divisions.some(d=>d.name===l.name))
+									const newDivs = spL.filter(l => l.teams?.length && l.name.toUpperCase()!=='ALL' && !cfg.divisions.some(d=>d.name===l.name))
 										.map(l => ({id:mkId('div'),name:l.name,teams:l.teams.map(t=>({id:mkId('team'),name:t.name,is_tbd:false}))}));
 									if (newDivs.length) up({divisions:[...cfg.divisions,...newDivs]});
 								}}>Import All</button>
@@ -380,6 +398,18 @@ export default function ScheduleGenerator() {
 									<div key={t.id} style={{...f,alignItems:'center',marginBottom:'0.25rem',paddingLeft:'1rem'}}>
 										{t.is_tbd&&<span className="splm-badge splm-badge--warning">TBD</span>}
 										<input className="splm-select" value={t.name} onChange={e=>upTeam(div.id,t.id,e.target.value)} style={{flex:1}}/>
+										{/* Gap #6: move team to another division */}
+										{cfg.divisions.length>1&&(
+											<select className="splm-select" style={{width:90}} value="" onChange={e=>{
+												if(!e.target.value) return;
+												rmTeam(div.id,t.id);
+												const tgt=cfg.divisions.find(d=>d.id===e.target.value);
+												if(tgt) upDiv(e.target.value,{teams:[...tgt.teams,t]});
+											}}>
+												<option value="">Move…</option>
+												{cfg.divisions.filter(d=>d.id!==div.id).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+											</select>
+										)}
 										<button className="splm-btn splm-btn--danger" onClick={()=>rmTeam(div.id,t.id)} style={{padding:'0.2rem 0.5rem'}}>✕</button>
 									</div>
 								))}
@@ -452,6 +482,45 @@ export default function ScheduleGenerator() {
 							</div>
 						</details>
 					)}
+					{/* Gap #1: per-venue time slot overrides */}
+					{cfg.venues.length>0&&cfg.playing_days.length>0&&(
+						<details className="splm-card" style={{marginTop:'0.75rem'}}>
+							<summary style={{cursor:'pointer',fontWeight:600}}>Per-Venue Time Slot Overrides</summary>
+							<p className="splm-muted" style={{marginTop:'0.5rem',marginBottom:'0.75rem'}}>Override global time slots for specific venues. Leave empty to use global slots.</p>
+							{spV.filter(v=>cfg.venues.includes(v.id)).map(v=>(
+								<div key={v.id} style={{marginBottom:'0.75rem'}}>
+									<label style={{fontWeight:600}}>{v.name}</label>
+									{cfg.playing_days.map(day=>(
+										<div key={day} style={{marginLeft:'1rem',marginTop:'0.25rem'}}>
+											<strong style={{fontSize:'0.85em'}}>{DL[day]||day}</strong>
+											<div style={{display:'flex',flexWrap:'wrap',gap:'0.25rem',marginTop:'0.15rem'}}>
+												{((cfg.venue_timeslots[v.id]||{})[day]||[]).map((t,i)=>(
+													<span key={i} style={{display:'inline-flex',gap:'0.25rem',alignItems:'center'}}>
+														<input type="time" className="splm-select" value={t} onChange={e=>{
+															const vt={...cfg.venue_timeslots};
+															vt[v.id]={...(vt[v.id]||{}),[day]:[...((vt[v.id]||{})[day]||[])]};
+															vt[v.id][day][i]=e.target.value;
+															up({venue_timeslots:vt});
+														}}/>
+														<button className="splm-btn splm-btn--danger" style={{padding:'0.1rem 0.4rem'}} onClick={()=>{
+															const vt={...cfg.venue_timeslots};
+															vt[v.id]={...(vt[v.id]||{}),[day]:((vt[v.id]||{})[day]||[]).filter((_,j)=>j!==i)};
+															up({venue_timeslots:vt});
+														}}>✕</button>
+													</span>
+												))}
+												<button className="splm-btn" onClick={()=>{
+													const vt={...cfg.venue_timeslots};
+													vt[v.id]={...(vt[v.id]||{}),[day]:[...((vt[v.id]||{})[day]||[]),'19:00']};
+													up({venue_timeslots:vt});
+												}}>+ Time</button>
+											</div>
+										</div>
+									))}
+								</div>
+							))}
+						</details>
+					)}
 					<Cap cfg={cfg}/>
 					<div className="splm-wizard__actions">
 						<button className="splm-btn" onClick={()=>go(1)}>← Back</button>
@@ -491,6 +560,8 @@ export default function ScheduleGenerator() {
 							<textarea className="splm-textarea" rows="2" placeholder="e.g. Team A,Team B:30"
 								value={(cfg.advanced.overlap_pairs||[]).map(p=>p.teams.join(',')+(p.buffer_minutes?':'+p.buffer_minutes:'')).join('\n')}
 								onChange={e=>up({advanced:{...cfg.advanced,overlap_pairs:e.target.value.split('\n').filter(Boolean).map(l=>{const[teams,buf]=l.split(':');return{teams:teams.split(',').map(s=>s.trim()),buffer_minutes:buf?parseInt(buf,10):0};})}})}/>
+							{/* Gap #10: warn on unknown team names */}
+							{(()=>{const names=new Set(cfg.divisions.flatMap(d=>d.teams.map(t=>t.name)));const unk=[...(cfg.advanced.b2b_pairs||[]),...(cfg.advanced.overlap_pairs||[]).map(p=>p.teams||[])].flat().filter(n=>n&&!names.has(n));return unk.length?<p style={{color:'#d63638',fontSize:'0.85em',marginTop:'0.25rem'}}>⚠️ Unknown teams: {[...new Set(unk)].join(', ')}</p>:null;})()}
 							<label style={{marginTop:'0.5rem',display:'block'}}>Inter-division games</label>
 							{cfg.divisions.length>1&&cfg.divisions.map((d1,i)=>cfg.divisions.slice(i+1).map(d2=>(
 								<div key={`${d1.id}-${d2.id}`} style={{display:'flex',gap:'0.5rem',alignItems:'center',marginBottom:'0.25rem'}}>
@@ -559,6 +630,13 @@ export default function ScheduleGenerator() {
 								</tbody>
 							</table>
 						</div>
+						{/* Gap #2: CSV export */}
+						<button className="splm-btn" style={{marginTop:'0.5rem'}} onClick={()=>{
+							const rows=[['Date','Time','Home','Away','Venue','Division']];
+							(schedule.games||[]).filter(x=>!divF||x.division===divF).forEach(g=>rows.push([g.date,g.time,g.home,g.away,g.venue,g.division]));
+							const csv=rows.map(r=>r.map(c=>`"${(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+							const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='schedule.csv';a.click();
+						}}>Export CSV</button>
 					</div>
 					{/* Fix #3: per-team stats computed from games */}
 					{schedule.stats&&Object.keys(schedule.stats).length>0&&(
@@ -579,12 +657,12 @@ export default function ScheduleGenerator() {
 						<div style={{display:'grid',gridTemplateColumns:'1fr 1fr auto',gap:'0.75rem',alignItems:'end'}}>
 							<div><label>Season</label><SLLoad items={spS} onLoad={()=>spsg.getSeasons().then(setSpS)} value={pubSeason} onChange={setPubSeason}/></div>
 							<div><label>League</label><SLLoad items={spL} onLoad={()=>spsg.getLeagues().then(setSpL)} value={pubLeague} onChange={setPubLeague}/></div>
-							<button className="splm-btn splm-btn--primary" onClick={doPub} disabled={publishing||!pubSeason||!pubLeague}>{publishing?'Publishing…':'Publish'}</button>
+							<button className="splm-btn splm-btn--primary" onClick={()=>{ if(window.confirm(`Publish ${schedule.games?.length||0} events to SportsPress? This cannot be undone.`)) doPub(); }} disabled={publishing||!pubSeason||!pubLeague}>{publishing?'Publishing…':'Publish'}</button>
 						</div>
 						{pubProg&&(
 							<div style={{marginTop:'0.5rem'}}>
 								{pubProg.done
-									? <p style={{color:'#00a32a'}}>✅ Published {pubProg.imported} of {pubProg.total} events!</p>
+									? <p style={{color:'#00a32a'}}>✅ Published {pubProg.imported} of {pubProg.total} events! View them on the <strong>Schedule</strong> page.</p>
 									: <div style={{height:8,background:'#ddd',borderRadius:4}}><div style={{width:`${pubProg.total?Math.round(pubProg.imported/pubProg.total*100):0}%`,height:'100%',background:'#2271b1',borderRadius:4,transition:'width 0.3s'}}/></div>
 								}
 							</div>
@@ -610,7 +688,7 @@ export default function ScheduleGenerator() {
 						{/* Fix #14: offer both "back to settings" and "back to launchpad" */}
 						<button className="splm-btn" onClick={()=>go(0)}>← All Configs</button>
 						<button className="splm-btn" onClick={()=>go(1)}>← Edit Settings</button>
-						<button className="splm-btn" onClick={()=>{setSchedule(null);setStep(3);}}>Regenerate</button>
+						<button className="splm-btn" onClick={()=>{setSchedule(null);setValidation(null);setStep(3);}}>Regenerate</button>
 					</div>
 				</div>
 			)}
