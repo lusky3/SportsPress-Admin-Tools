@@ -98,6 +98,10 @@ class SPSG_REST_API {
 			$sanitized['created'] = current_time( 'mysql' );
 		}
 		$sanitized['modified'] = current_time( 'mysql' );
+		// Track changes for updates (so history panel shows dashboard edits)
+		if ( ! $is_new && isset( $configs[ $sanitized['id'] ] ) ) {
+			$this->cm()->track_changes( $sanitized['id'], $configs[ $sanitized['id'] ], $sanitized );
+		}
 		$configs[ $sanitized['id'] ] = $sanitized;
 		update_option( SPSG_Configuration_Manager::OPTION_NAME, $configs, 'no' );
 		return $sanitized['id'];
