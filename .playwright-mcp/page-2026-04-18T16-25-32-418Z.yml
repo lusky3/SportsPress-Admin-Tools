@@ -1,0 +1,2656 @@
+- generic [ref=e2]:
+  - navigation "Main menu":
+    - link "Skip to main content" [ref=e3] [cursor=pointer]:
+      - /url: "#wpbody-content"
+    - link "Skip to toolbar" [ref=e4] [cursor=pointer]:
+      - /url: "#wp-toolbar"
+    - list [ref=e7]:
+      - listitem [ref=e8]:
+        - link "Dashboard" [ref=e9] [cursor=pointer]:
+          - /url: index.php
+          - generic [ref=e10]: 
+          - generic [ref=e11]: Dashboard
+        - list [ref=e12]:
+          - listitem [ref=e13]:
+            - link "Home" [ref=e14] [cursor=pointer]:
+              - /url: index.php
+          - listitem [ref=e15]:
+            - link "Updates 2" [ref=e16] [cursor=pointer]:
+              - /url: update-core.php
+              - text: Updates
+              - generic [ref=e17]: "2"
+      - listitem [ref=e18]
+      - listitem [ref=e20]:
+        - link "Posts" [ref=e21] [cursor=pointer]:
+          - /url: edit.php
+          - generic [ref=e22]: 
+          - generic [ref=e23]: Posts
+        - list [ref=e24]:
+          - listitem [ref=e25]:
+            - link "All Posts" [ref=e26] [cursor=pointer]:
+              - /url: edit.php
+          - listitem [ref=e27]:
+            - link "Add Post" [ref=e28] [cursor=pointer]:
+              - /url: post-new.php
+          - listitem [ref=e29]:
+            - link "Categories" [ref=e30] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=category
+          - listitem [ref=e31]:
+            - link "Tags" [ref=e32] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=post_tag
+      - listitem [ref=e33]:
+        - link "Media" [ref=e34] [cursor=pointer]:
+          - /url: upload.php
+          - generic [ref=e35]: 
+          - generic [ref=e36]: Media
+        - list [ref=e37]:
+          - listitem [ref=e38]:
+            - link "Library" [ref=e39] [cursor=pointer]:
+              - /url: upload.php
+          - listitem [ref=e40]:
+            - link "Add Media File" [ref=e41] [cursor=pointer]:
+              - /url: media-new.php
+      - listitem [ref=e42]:
+        - link "Pages" [ref=e43] [cursor=pointer]:
+          - /url: edit.php?post_type=page
+          - generic [ref=e44]: 
+          - generic [ref=e45]: Pages
+        - list [ref=e46]:
+          - listitem [ref=e47]:
+            - link "All Pages" [ref=e48] [cursor=pointer]:
+              - /url: edit.php?post_type=page
+          - listitem [ref=e49]:
+            - link "Add Page" [ref=e50] [cursor=pointer]:
+              - /url: post-new.php?post_type=page
+      - listitem [ref=e51]:
+        - link "Comments" [ref=e52] [cursor=pointer]:
+          - /url: edit-comments.php
+          - generic [ref=e53]: 
+          - generic [ref=e54]: Comments
+      - listitem [ref=e55]:
+        - link "Schedule Generator" [ref=e56] [cursor=pointer]:
+          - /url: admin.php?page=spsg-schedule-generator
+          - generic [ref=e57]: 
+          - generic [ref=e58]: Schedule Generator
+      - listitem [ref=e59]:
+        - link "League Manager" [ref=e60] [cursor=pointer]:
+          - /url: admin.php?page=splm-dashboard
+          - generic [ref=e61]: 
+          - generic [ref=e62]: League Manager
+        - list [ref=e63]:
+          - listitem [ref=e64]:
+            - link "League Manager" [ref=e65] [cursor=pointer]:
+              - /url: admin.php?page=splm-dashboard
+          - listitem [ref=e66]:
+            - link "Teams & Rosters" [ref=e67] [cursor=pointer]:
+              - /url: admin.php?page=splm-rosters
+          - listitem [ref=e68]:
+            - link "Fee Status" [ref=e69] [cursor=pointer]:
+              - /url: admin.php?page=splm-fees
+      - listitem [ref=e70]
+      - listitem [ref=e72]:
+        - link "SportsPress" [ref=e73] [cursor=pointer]:
+          - /url: admin.php?page=sportspress
+          - generic [ref=e74]: 
+          - generic [ref=e75]: SportsPress
+        - list [ref=e76]:
+          - listitem [ref=e77]:
+            - link "Settings" [ref=e78] [cursor=pointer]:
+              - /url: admin.php?page=sportspress
+          - listitem [ref=e79]:
+            - link "Configure" [ref=e80] [cursor=pointer]:
+              - /url: admin.php?page=sportspress-config
+          - listitem [ref=e81]:
+            - link "Tutorials" [ref=e82] [cursor=pointer]:
+              - /url: admin.php?page=sportspress-tutorials
+          - listitem [ref=e83]:
+            - link "Admin Tools" [ref=e84] [cursor=pointer]:
+              - /url: admin.php?page=sportspress-admin-tools-shortcut
+          - listitem [ref=e85]:
+            - link "Schedule Generator" [ref=e86] [cursor=pointer]:
+              - /url: admin.php?page=spsg-schedule-generator-sp
+          - listitem [ref=e87]:
+            - link "Overview" [ref=e88] [cursor=pointer]:
+              - /url: admin.php?page=sportspress-overview
+          - listitem [ref=e89]:
+            - link "Leagues" [ref=e90] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=sp_league
+          - listitem [ref=e91]:
+            - link "Seasons" [ref=e92] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=sp_season
+      - listitem [ref=e93]:
+        - link "Games" [ref=e94] [cursor=pointer]:
+          - /url: edit.php?post_type=sp_event
+          - generic [ref=e95]: 
+          - generic [ref=e96]: Games
+        - list [ref=e97]:
+          - listitem [ref=e98]:
+            - link "Games" [ref=e99] [cursor=pointer]:
+              - /url: edit.php?post_type=sp_event
+          - listitem [ref=e100]:
+            - link "Add New Game" [ref=e101] [cursor=pointer]:
+              - /url: post-new.php?post_type=sp_event
+          - listitem [ref=e102]:
+            - link "Arenas" [ref=e103] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=sp_venue&post_type=sp_event
+          - listitem [ref=e104]:
+            - link "Calendars" [ref=e105] [cursor=pointer]:
+              - /url: edit.php?post_type=sp_calendar
+      - listitem [ref=e106]:
+        - link "Teams" [ref=e107] [cursor=pointer]:
+          - /url: edit.php?post_type=sp_team
+          - generic [ref=e108]: 
+          - generic [ref=e109]: Teams
+        - list [ref=e110]:
+          - listitem [ref=e111]:
+            - link "Teams" [ref=e112] [cursor=pointer]:
+              - /url: edit.php?post_type=sp_team
+          - listitem [ref=e113]:
+            - link "Add New Team" [ref=e114] [cursor=pointer]:
+              - /url: post-new.php?post_type=sp_team
+          - listitem [ref=e115]:
+            - link "League Tables" [ref=e116] [cursor=pointer]:
+              - /url: edit.php?post_type=sp_table
+      - listitem [ref=e117]:
+        - link "Players" [ref=e118] [cursor=pointer]:
+          - /url: edit.php?post_type=sp_player
+          - generic [ref=e119]: 
+          - generic [ref=e120]: Players
+        - list [ref=e121]:
+          - listitem [ref=e122]:
+            - link "Players" [ref=e123] [cursor=pointer]:
+              - /url: edit.php?post_type=sp_player
+          - listitem [ref=e124]:
+            - link "Add New Player" [ref=e125] [cursor=pointer]:
+              - /url: post-new.php?post_type=sp_player
+          - listitem [ref=e126]:
+            - link "Positions" [ref=e127] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=sp_position&post_type=sp_player
+          - listitem [ref=e128]:
+            - link "Player Lists" [ref=e129] [cursor=pointer]:
+              - /url: edit.php?post_type=sp_list
+      - listitem [ref=e130]:
+        - link "Staff" [ref=e131] [cursor=pointer]:
+          - /url: edit.php?post_type=sp_staff
+          - generic [ref=e132]: 
+          - generic [ref=e133]: Staff
+        - list [ref=e134]:
+          - listitem [ref=e135]:
+            - link "Staff" [ref=e136] [cursor=pointer]:
+              - /url: edit.php?post_type=sp_staff
+          - listitem [ref=e137]:
+            - link "Add New Staff" [ref=e138] [cursor=pointer]:
+              - /url: post-new.php?post_type=sp_staff
+          - listitem [ref=e139]:
+            - link "Jobs" [ref=e140] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=sp_role&post_type=sp_staff
+      - listitem [ref=e141]
+      - listitem [ref=e143]:
+        - link "WooCommerce" [ref=e144] [cursor=pointer]:
+          - /url: admin.php?page=wc-admin
+          - generic [ref=e146]: WooCommerce
+        - list [ref=e147]:
+          - listitem [ref=e148]:
+            - link "Home" [ref=e149] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin
+          - listitem [ref=e150]:
+            - link "Orders 48" [ref=e151] [cursor=pointer]:
+              - /url: edit.php?post_type=shop_order
+              - text: Orders
+              - generic [ref=e152]: "48"
+          - listitem [ref=e153]:
+            - link "Customers" [ref=e154] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/customers
+          - listitem [ref=e155]:
+            - link "Coupons" [ref=e156] [cursor=pointer]:
+              - /url: admin.php?page=coupons-moved
+          - listitem [ref=e157]:
+            - link "Reports" [ref=e158] [cursor=pointer]:
+              - /url: admin.php?page=wc-reports
+          - listitem [ref=e159]:
+            - link "Settings" [ref=e160] [cursor=pointer]:
+              - /url: admin.php?page=wc-settings
+          - listitem [ref=e161]:
+            - link "Status" [ref=e162] [cursor=pointer]:
+              - /url: admin.php?page=wc-status
+          - listitem [ref=e163]:
+            - link "Extensions" [ref=e164] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/extensions
+          - listitem [ref=e165]:
+            - link "e-Transfer Webhooks 4" [ref=e166] [cursor=pointer]:
+              - /url: admin.php?page=etransfer-webhooks
+              - text: e-Transfer Webhooks
+              - generic [ref=e167]: "4"
+      - listitem [ref=e168]:
+        - link "Products" [ref=e169] [cursor=pointer]:
+          - /url: edit.php?post_type=product
+          - generic [ref=e170]: 
+          - generic [ref=e171]: Products
+        - list [ref=e172]:
+          - listitem [ref=e173]:
+            - link "All Products" [ref=e174] [cursor=pointer]:
+              - /url: edit.php?post_type=product
+          - listitem [ref=e175]:
+            - link "Add new product" [ref=e176] [cursor=pointer]:
+              - /url: post-new.php?post_type=product
+          - listitem [ref=e177]:
+            - link "Brands" [ref=e178] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=product_brand&post_type=product
+          - listitem [ref=e179]:
+            - link "Categories" [ref=e180] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=product_cat&post_type=product
+          - listitem [ref=e181]:
+            - link "Tags" [ref=e182] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=product_tag&post_type=product
+          - listitem [ref=e183]:
+            - link "Attributes" [ref=e184] [cursor=pointer]:
+              - /url: edit.php?post_type=product&page=product_attributes
+          - listitem [ref=e185]:
+            - link "Reviews" [ref=e186] [cursor=pointer]:
+              - /url: edit.php?post_type=product&page=product-reviews
+      - listitem [ref=e187]:
+        - link "Payments" [ref=e188] [cursor=pointer]:
+          - /url: admin.php?page=wc-settings&tab=checkout&from=PAYMENTS_MENU_ITEM
+          - generic [ref=e190]: Payments
+      - listitem [ref=e191]:
+        - link "Analytics" [ref=e192] [cursor=pointer]:
+          - /url: admin.php?page=wc-admin&path=/analytics/overview
+          - generic [ref=e193]: 
+          - generic [ref=e194]: Analytics
+        - list [ref=e195]:
+          - listitem [ref=e196]:
+            - link "Overview" [ref=e197] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/analytics/overview
+          - listitem [ref=e198]:
+            - link "Products" [ref=e199] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/analytics/products
+          - listitem [ref=e200]:
+            - link "Revenue" [ref=e201] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/analytics/revenue
+          - listitem [ref=e202]:
+            - link "Orders" [ref=e203] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/analytics/orders
+          - listitem [ref=e204]:
+            - link "Variations" [ref=e205] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/analytics/variations
+          - listitem [ref=e206]:
+            - link "Categories" [ref=e207] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/analytics/categories
+          - listitem [ref=e208]:
+            - link "Coupons" [ref=e209] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/analytics/coupons
+          - listitem [ref=e210]:
+            - link "Taxes" [ref=e211] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/analytics/taxes
+          - listitem [ref=e212]:
+            - link "Downloads" [ref=e213] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/analytics/downloads
+          - listitem [ref=e214]:
+            - link "Stock" [ref=e215] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/analytics/stock
+          - listitem [ref=e216]:
+            - link "Settings" [ref=e217] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/analytics/settings
+      - listitem [ref=e218]:
+        - link "Marketing" [ref=e219] [cursor=pointer]:
+          - /url: admin.php?page=wc-admin&path=/marketing
+          - generic [ref=e220]: 
+          - generic [ref=e221]: Marketing
+        - list [ref=e222]:
+          - listitem [ref=e223]:
+            - link "Overview" [ref=e224] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/marketing
+          - listitem [ref=e225]:
+            - link "Coupons" [ref=e226] [cursor=pointer]:
+              - /url: edit.php?post_type=shop_coupon
+      - listitem [ref=e227]
+      - listitem [ref=e229]:
+        - link "Appearance" [ref=e230] [cursor=pointer]:
+          - /url: themes.php
+          - generic [ref=e231]: 
+          - generic [ref=e232]: Appearance
+        - list [ref=e233]:
+          - listitem [ref=e234]:
+            - link "Themes" [ref=e235] [cursor=pointer]:
+              - /url: themes.php
+          - listitem [ref=e236]:
+            - link "Patterns" [ref=e237] [cursor=pointer]:
+              - /url: site-editor.php?p=/pattern
+          - listitem [ref=e238]:
+            - link "Customize" [ref=e239] [cursor=pointer]:
+              - /url: customize.php?return=%2Fwp-admin%2Fedit.php%3Fpost_type%3Dsp_player
+          - listitem [ref=e240]:
+            - link "Widgets" [ref=e241] [cursor=pointer]:
+              - /url: widgets.php
+          - listitem [ref=e242]:
+            - link "Menus" [ref=e243] [cursor=pointer]:
+              - /url: nav-menus.php
+          - listitem [ref=e244]:
+            - link "Header" [ref=e245] [cursor=pointer]:
+              - /url: customize.php?return=%2Fwp-admin%2Fedit.php%3Fpost_type%3Dsp_player&autofocus%5Bcontrol%5D=header_image
+          - listitem [ref=e246]:
+            - link "Background" [ref=e247] [cursor=pointer]:
+              - /url: customize.php?return=%2Fwp-admin%2Fedit.php%3Fpost_type%3Dsp_player&autofocus%5Bcontrol%5D=background_image
+          - listitem [ref=e248]:
+            - link "Theme Info" [ref=e249] [cursor=pointer]:
+              - /url: themes.php?page=rookie
+          - listitem
+          - listitem
+          - listitem [ref=e250]:
+            - link "Theme File Editor" [ref=e251] [cursor=pointer]:
+              - /url: theme-editor.php
+      - listitem [ref=e252]:
+        - link "Plugins 1" [ref=e253] [cursor=pointer]:
+          - /url: plugins.php
+          - generic [ref=e254]: 
+          - generic [ref=e255]:
+            - text: Plugins
+            - generic [ref=e256]: "1"
+        - list [ref=e257]:
+          - listitem [ref=e258]:
+            - link "Installed Plugins" [ref=e259] [cursor=pointer]:
+              - /url: plugins.php
+          - listitem [ref=e260]:
+            - link "Add Plugin" [ref=e261] [cursor=pointer]:
+              - /url: plugin-install.php
+          - listitem [ref=e262]:
+            - link "Plugin File Editor" [ref=e263] [cursor=pointer]:
+              - /url: plugin-editor.php
+      - listitem [ref=e264]:
+        - link "Users" [ref=e265] [cursor=pointer]:
+          - /url: users.php
+          - generic [ref=e266]: 
+          - generic [ref=e267]: Users
+        - list [ref=e268]:
+          - listitem [ref=e269]:
+            - link "All Users" [ref=e270] [cursor=pointer]:
+              - /url: users.php
+          - listitem [ref=e271]:
+            - link "Add User" [ref=e272] [cursor=pointer]:
+              - /url: user-new.php
+          - listitem [ref=e273]:
+            - link "Profile" [ref=e274] [cursor=pointer]:
+              - /url: profile.php
+      - listitem [ref=e275]:
+        - link "Tools" [ref=e276] [cursor=pointer]:
+          - /url: tools.php
+          - generic [ref=e277]: 
+          - generic [ref=e278]: Tools
+        - list [ref=e279]:
+          - listitem [ref=e280]:
+            - link "Available Tools" [ref=e281] [cursor=pointer]:
+              - /url: tools.php
+          - listitem [ref=e282]:
+            - link "Import" [ref=e283] [cursor=pointer]:
+              - /url: import.php
+          - listitem [ref=e284]:
+            - link "Export" [ref=e285] [cursor=pointer]:
+              - /url: export.php
+          - listitem [ref=e286]:
+            - link "Site Health 2" [ref=e287] [cursor=pointer]:
+              - /url: site-health.php
+              - text: Site Health
+              - generic [ref=e288]: "2"
+          - listitem [ref=e289]:
+            - link "Export Personal Data" [ref=e290] [cursor=pointer]:
+              - /url: export-personal-data.php
+          - listitem [ref=e291]:
+            - link "Erase Personal Data" [ref=e292] [cursor=pointer]:
+              - /url: erase-personal-data.php
+          - listitem [ref=e293]:
+            - link "Scheduled Actions" [ref=e294] [cursor=pointer]:
+              - /url: tools.php?page=action-scheduler
+          - listitem [ref=e295]:
+            - link "Upload Player Lists" [ref=e296] [cursor=pointer]:
+              - /url: tools.php?page=spt_upload_lists
+      - listitem [ref=e297]:
+        - link "Settings" [ref=e298] [cursor=pointer]:
+          - /url: options-general.php
+          - generic [ref=e299]: 
+          - generic [ref=e300]: Settings
+        - list [ref=e301]:
+          - listitem [ref=e302]:
+            - link "General" [ref=e303] [cursor=pointer]:
+              - /url: options-general.php
+          - listitem [ref=e304]:
+            - link "Writing" [ref=e305] [cursor=pointer]:
+              - /url: options-writing.php
+          - listitem [ref=e306]:
+            - link "Reading" [ref=e307] [cursor=pointer]:
+              - /url: options-reading.php
+          - listitem [ref=e308]:
+            - link "Discussion" [ref=e309] [cursor=pointer]:
+              - /url: options-discussion.php
+          - listitem [ref=e310]:
+            - link "Media" [ref=e311] [cursor=pointer]:
+              - /url: options-media.php
+          - listitem [ref=e312]:
+            - link "Permalinks" [ref=e313] [cursor=pointer]:
+              - /url: options-permalink.php
+          - listitem [ref=e314]:
+            - link "Privacy" [ref=e315] [cursor=pointer]:
+              - /url: options-privacy.php
+          - listitem [ref=e316]:
+            - link "SportsPress Admin Tools" [ref=e317] [cursor=pointer]:
+              - /url: options-general.php?page=sportspress-admin-tools
+      - listitem [ref=e318]:
+        - link "Royal MCP" [ref=e319] [cursor=pointer]:
+          - /url: admin.php?page=royal-mcp
+          - generic [ref=e320]: 
+          - generic [ref=e321]: Royal MCP
+        - list [ref=e322]:
+          - listitem [ref=e323]:
+            - link "Settings" [ref=e324] [cursor=pointer]:
+              - /url: admin.php?page=royal-mcp
+          - listitem [ref=e325]:
+            - link "Activity Log" [ref=e326] [cursor=pointer]:
+              - /url: admin.php?page=royal-mcp-logs
+      - listitem [ref=e327]:
+        - button "Collapse Main menu" [expanded] [ref=e328] [cursor=pointer]:
+          - generic [ref=e330]: Collapse Menu
+  - generic [ref=e331]:
+    - generic [ref=e332]:
+      - navigation "Toolbar":
+        - menu:
+          - group [ref=e333]:
+            - menuitem "About WordPress" [ref=e334] [cursor=pointer]:
+              - generic [ref=e336]: About WordPress
+          - group [ref=e337]:
+            - menuitem "ARL - Adult Recreational League" [ref=e338] [cursor=pointer]
+          - group [ref=e339]:
+            - menuitem "2 updates available" [ref=e340] [cursor=pointer]:
+              - generic [ref=e342]: "2"
+              - generic [ref=e343]: 2 updates available
+          - group [ref=e344]:
+            - menuitem "0 Comments in moderation" [ref=e345] [cursor=pointer]:
+              - generic [ref=e347]: "0"
+              - generic [ref=e348]: 0 Comments in moderation
+          - group [ref=e349]:
+            - menuitem "New" [ref=e350] [cursor=pointer]:
+              - generic [ref=e352]: New
+        - menu [ref=e353]:
+          - group [ref=e354]:
+            - menuitem "Howdy, Cody Lusk" [ref=e355] [cursor=pointer]
+    - main [ref=e356]:
+      - generic [ref=e357]:
+        - button "Screen Options" [ref=e360] [cursor=pointer]
+        - generic [ref=e361]:
+          - heading "Players" [level=1] [ref=e362]
+          - link "Add New Player" [ref=e363] [cursor=pointer]:
+            - /url: http://tikal.lusk.ee:8080/wp-admin/post-new.php?post_type=sp_player
+          - link "Import" [ref=e364] [cursor=pointer]:
+            - /url: http://tikal.lusk.ee:8080/wp-admin/admin.php?import=sp_player_csv
+          - paragraph [ref=e366]:
+            - strong [ref=e367]: "Action Scheduler:"
+            - text: "7"
+            - link "past-due actions" [ref=e368] [cursor=pointer]:
+              - /url: http://tikal.lusk.ee:8080/wp-admin/tools.php?page=action-scheduler&status=past-due&order=asc
+            - text: found; something may be wrong.
+            - link "Read documentation »" [ref=e369] [cursor=pointer]:
+              - /url: https://actionscheduler.org/faq/#my-site-has-past-due-actions-what-can-i-do
+          - heading "Filter posts list" [level=2] [ref=e370]
+          - list [ref=e371]:
+            - listitem [ref=e372]:
+              - link "All (2,100)" [ref=e373] [cursor=pointer]:
+                - /url: edit.php?post_type=sp_player&all_posts=1
+              - text: "|"
+            - listitem [ref=e374]:
+              - link "Mine (296)" [ref=e375] [cursor=pointer]:
+                - /url: edit.php?post_type=sp_player&author=9
+              - text: "|"
+            - listitem [ref=e376]:
+              - link "Published (2,095)" [ref=e377] [cursor=pointer]:
+                - /url: edit.php?post_status=publish&post_type=sp_player
+              - text: "|"
+            - listitem [ref=e378]:
+              - link "Drafts (4)" [ref=e379] [cursor=pointer]:
+                - /url: edit.php?post_status=draft&post_type=sp_player
+              - text: "|"
+            - listitem [ref=e380]:
+              - link "Private (1)" [ref=e381] [cursor=pointer]:
+                - /url: edit.php?post_status=private&post_type=sp_player
+          - generic [ref=e382]:
+            - paragraph [ref=e383]:
+              - generic [ref=e384]: "Search:"
+              - searchbox "Search:" [ref=e385]
+              - button "Search" [ref=e386] [cursor=pointer]
+            - generic [ref=e387]:
+              - generic [ref=e388]:
+                - generic [ref=e389]: Select bulk action
+                - combobox "Select bulk action" [ref=e390] [cursor=pointer]:
+                  - option "Bulk Actions" [selected]
+                  - option "Edit"
+                  - option "Move to Trash"
+                - button "Apply" [ref=e391] [cursor=pointer]
+              - generic [ref=e392]:
+                - generic [ref=e393]: Filter by date
+                - combobox "Filter by date" [ref=e394] [cursor=pointer]:
+                  - option "All dates" [selected]
+                  - option "April 2026"
+                  - option "January 2026"
+                  - option "December 2025"
+                  - option "November 2025"
+                  - option "October 2025"
+                  - option "September 2025"
+                  - option "August 2025"
+                  - option "July 2025"
+                  - option "June 2025"
+                  - option "May 2025"
+                  - option "January 2025"
+                  - option "December 2024"
+                  - option "November 2024"
+                  - option "October 2024"
+                  - option "June 2024"
+                  - option "April 2024"
+                  - option "December 2023"
+                  - option "November 2023"
+                  - option "October 2023"
+                  - option "September 2023"
+                  - option "June 2023"
+                  - option "May 2023"
+                  - option "April 2023"
+                  - option "March 2023"
+                  - option "December 2022"
+                  - option "November 2022"
+                  - option "October 2022"
+                  - option "June 2022"
+                  - option "May 2022"
+                  - option "February 2022"
+                  - option "January 2022"
+                  - option "November 2021"
+                  - option "November 2020"
+                  - option "October 2020"
+                  - option "November 2019"
+                  - option "October 2019"
+                  - option "September 2019"
+                  - option "July 2019"
+                  - option "June 2019"
+                  - option "May 2019"
+                  - option "April 2019"
+                  - option "March 2019"
+                  - option "December 2018"
+                  - option "October 2018"
+                  - option "September 2018"
+                  - option "July 2018"
+                  - option "June 2018"
+                  - option "May 2018"
+                  - option "April 2018"
+                  - option "December 2017"
+                  - option "November 2017"
+                  - option "October 2017"
+                  - option "September 2017"
+                  - option "June 2017"
+                  - option "May 2017"
+                  - option "April 2017"
+                  - option "December 2016"
+                  - option "November 2016"
+                  - option "October 2016"
+                  - option "September 2016"
+                  - option "July 2016"
+                  - option "May 2016"
+                  - option "April 2016"
+                  - option "March 2016"
+                  - option "January 2016"
+                  - option "October 2001"
+                  - option "September 2001"
+                  - option "July 2001"
+                  - option "May 2001"
+                  - option "April 2001"
+                  - option "March 2001"
+                  - option "February 1999"
+                  - option "October 1998"
+                  - option "June 1998"
+                  - option "November 1996"
+                  - option "October 1996"
+                  - option "March 1995"
+                  - option "January 1995"
+                  - option "June 1994"
+                  - option "October 1992"
+                  - option "September 1992"
+                  - option "May 1989"
+                  - option "February 1988"
+                  - option "June 1986"
+                  - option "September 1985"
+                  - option "November 1983"
+                  - option "September 1982"
+                  - option "May 1981"
+                  - option "April 1981"
+                  - option "October 1979"
+                  - option "July 1979"
+                  - option "March 1979"
+                  - option "June 1978"
+                  - option "March 1977"
+                  - option "October 1976"
+                  - option "May 1976"
+                  - option "November 1975"
+                  - option "July 1975"
+                  - option "January 1974"
+                  - option "October 1973"
+                  - option "December 1972"
+                  - option "March 1970"
+                  - option "July 1968"
+                  - option "January 1968"
+                  - option "December 1966"
+                  - option "November 1964"
+                  - option "March 1964"
+                  - option "May 1959"
+                  - option "July 1957"
+                - combobox [ref=e395] [cursor=pointer]:
+                  - option "Show all positions" [selected]
+                  - option "Goalie"
+                  - option "Skater"
+                - combobox [ref=e396] [cursor=pointer]:
+                  - option "Show all teams" [selected]
+                  - option "(Retired) Arcturus (Stars) (W2015-16)"
+                  - option "(Retired) Baranowski Plumbing (Eh Team) (W2015-16)"
+                  - option "(Retired) BMG School (Bruins) (W2015-16)"
+                  - option "(Retired) Bruins (BMG School) (S2016, W2016-17)"
+                  - option "(Retired) Hollis Wealth (Blue Chips) (W2015-16)"
+                  - option "(Retired) Ice Bears (W2015-16)"
+                  - option "(Retired) Medieval Times (Knights) (W2015-16)"
+                  - option "(Retired) Mr Handyman (Hammers) (W2015-16)"
+                  - option "(Retired) Uclear Digital (Force) (W2015-16)"
+                  - option "(Retired) Woodchester Nissan (Rogues) (W2015-16)"
+                  - option "Ace Of Spades (Stag Co.)"
+                  - option "Aces"
+                  - option "Arcturus Stars"
+                  - option "Avalanche"
+                  - option "B-Town Bulldogs"
+                  - option "B-Town Bulldogs (TeamSmulders.com)"
+                  - option "Bandits (Top Shelf)"
+                  - option "Beasts"
+                  - option "Benders"
+                  - option "Black Bulls"
+                  - option "Black Bulls (OG)"
+                  - option "Blue Chips (Hollis Wealth)"
+                  - option "Blue Liners"
+                  - option "Blueliners"
+                  - option "Boomers"
+                  - option "Bruins"
+                  - option "Burlington Bulldogs"
+                  - option "Burlington Iceotopes"
+                  - option "Burloak Sports (Nordiques)"
+                  - option "Canadiens (Tread Well)"
+                  - option "Canucks"
+                  - option "Chaos"
+                  - option "Cherry Pickers"
+                  - option "Citric Acid"
+                  - option "Coyotes"
+                  - option "Crush"
+                  - option "Devils"
+                  - option "Diggers (Anderson Construction)"
+                  - option "Dirty Caesars"
+                  - option "Ducks"
+                  - option "Dynamo"
+                  - option "Eagles"
+                  - option "Eh Team"
+                  - option "Extremes (Harrison Interiors)"
+                  - option "Falcons (BMG School/PDL)"
+                  - option "Flyers"
+                  - option "Force (Uclear Digital)"
+                  - option "Gang Green"
+                  - option "Goal Getters"
+                  - option "Grape Crush"
+                  - option "Great Whites"
+                  - option "Green Hornets"
+                  - option "Green Lanterns"
+                  - option "Green Machine"
+                  - option "Green Wave"
+                  - option "Hammers"
+                  - option "Hammers (Mr Handyman)"
+                  - option "Hot Mustard"
+                  - option "Hurricanes"
+                  - option "Ice Bears"
+                  - option "Ice Devils"
+                  - option "Ice Dogs"
+                  - option "Iceholes (Hollis Wealth)"
+                  - option "Iguanas"
+                  - option "Jagrbombers"
+                  - option "Jets"
+                  - option "Kings"
+                  - option "Kings (Jeff Robson)"
+                  - option "Knights of Ni"
+                  - option "Kraken Beers"
+                  - option "Kraken Tails"
+                  - option "Land Sharks"
+                  - option "Leafs"
+                  - option "Leaks (Baranowski Plumbing)"
+                  - option "Lightning"
+                  - option "Lumberjacks"
+                  - option "Mammoth"
+                  - option "Marlies"
+                  - option "Marvels (Conacher Athletics)"
+                  - option "Mighty Pucks"
+                  - option "Mixers"
+                  - option "Oilers"
+                  - option "Orange Crush"
+                  - option "Outlaws (Pace Law Firm)"
+                  - option "Panthers"
+                  - option "Penguins"
+                  - option "Penguins (Adkins Financial)"
+                  - option "Petes"
+                  - option "Predators"
+                  - option "Puck Dynasty"
+                  - option "Pylons"
+                  - option "Rangers"
+                  - option "Ravens"
+                  - option "Rebars (Dan's Welding)"
+                  - option "Red Army"
+                  - option "Red Bulls"
+                  - option "Red Devils"
+                  - option "Red Wings"
+                  - option "Renegades"
+                  - option "Replacements"
+                  - option "Rhinos"
+                  - option "Rogues (Woodchester Nissan)"
+                  - option "Royals"
+                  - option "Scorpions"
+                  - option "Screeners (Fresh Image)"
+                  - option "Sharks (Kenesky)"
+                  - option "Shoot The Puck (Imperial Logistics)"
+                  - option "Shooters"
+                  - option "Smashing Pumpkins"
+                  - option "Spartans (Lusk.Tech)"
+                  - option "St. Pats"
+                  - option "Stars (Jeff Robson)"
+                  - option "Sting"
+                  - option "Stonecutters"
+                  - option "Storm"
+                  - option "Stormtroopers (PROforma Prime)"
+                  - option "Tailgaters"
+                  - option "TBD"
+                  - option "TEAD"
+                  - option "Team Canada"
+                  - option "The Chiefs"
+                  - option "Thunder"
+                  - option "Tigers"
+                  - option "Titans"
+                  - option "Tournament Teams"
+                  - option "Tournament Team Black"
+                  - option "Tournament Team Blue"
+                  - option "Tournament Team Green"
+                  - option "Tournament Team Red"
+                  - option "Winter Classic Bruins"
+                  - option "Winter Classic Habs"
+                  - option "Winter Classic Leafs (H)"
+                  - option "Winter Classic Red Wings"
+                  - option "Train Wreck"
+                  - option "TrebleMakers (Musik 7 Studios)"
+                  - option "Tsunami (Wave Hockey)"
+                  - option "Whalers"
+                  - option "White Lightning"
+                  - option "White Walkers"
+                  - option "Wild"
+                  - option "Willow Salon (Leafs)"
+                  - option "Wolf Pack"
+                  - option "Ye Olde Squires (Raiders)"
+                  - option "Zambronies"
+                - combobox [ref=e397] [cursor=pointer]:
+                  - option "Show all leagues" [selected]
+                  - option "ALL"
+                  - option "Division 1"
+                  - option "- Div 1A"
+                  - option "Division 2"
+                  - option "- Div 2A"
+                  - option "- Div 2B"
+                  - option "Division 3"
+                  - option "- Div 3A"
+                  - option "- Div 3B"
+                  - option "Division 4"
+                  - option "- Div 4A"
+                  - option "- Div 4B"
+                  - option "- Div 4C"
+                  - option "Division 5"
+                  - option "- Div 5A"
+                  - option "- Div 5B"
+                  - option "Division 6"
+                  - option "Division 7"
+                  - option "Group A"
+                  - option "Group B"
+                  - option "Group C"
+                  - option "Group D"
+                  - option "Group E"
+                  - option "Group F"
+                  - option "Group G"
+                  - option "Open Division"
+                  - option "Tournaments"
+                - combobox [ref=e398] [cursor=pointer]:
+                  - option "Show all seasons" [selected]
+                  - option "S2016"
+                  - option "- S2016 Playoffs"
+                  - option "S2017"
+                  - option "- S2017 Playoffs"
+                  - option "S2018"
+                  - option "- S2018 Playoffs"
+                  - option "S2019"
+                  - option "- S2019 Playoffs"
+                  - option "S2022"
+                  - option "- S2022 Playoffs"
+                  - option "S2023"
+                  - option "- S2023 Playoffs"
+                  - option "S2024"
+                  - option "- S2024 Playoffs"
+                  - option "S2025"
+                  - option "- S2025 Playoffs"
+                  - option "S2026"
+                  - option "- S2026 Playoffs"
+                  - option "W2015-16"
+                  - option "- W2015-16 Playoffs"
+                  - option "W2016-17"
+                  - option "- W2016-17 Playoffs"
+                  - option "W2017-18"
+                  - option "- W2017-18 Playoffs"
+                  - option "W2018-19"
+                  - option "- W2018-19 Playoffs"
+                  - option "W2019-20"
+                  - option "- W2019-20 Playoffs"
+                  - option "W2020-21"
+                  - option "- W2020-21 Playoffs"
+                  - option "W2021-22"
+                  - option "- W2021-22 Playoffs"
+                  - option "W2022-23"
+                  - option "- W2022-23 Playoffs"
+                  - option "W2023-24"
+                  - option "- W2023-24 Playoffs"
+                  - option "W2024-25"
+                  - option "- W2024-25 Playoffs"
+                  - option "W2025-26"
+                  - option "- W2025-26 Playoffs"
+                - button "Filter" [ref=e399] [cursor=pointer]
+              - heading "Posts list navigation" [level=2] [ref=e400]
+              - generic [ref=e401]:
+                - text: 2,100 items
+                - generic [ref=e402]:
+                  - generic [ref=e403]: «
+                  - generic [ref=e404]: ‹
+                  - generic [ref=e405]:
+                    - generic [ref=e406]: Current Page
+                    - textbox "Current Page" [ref=e407]: "1"
+                    - generic [ref=e408]: of 42
+                  - link "Next page" [ref=e409] [cursor=pointer]:
+                    - /url: http://tikal.lusk.ee:8080/wp-admin/edit.php?post_type=sp_player&paged=2
+                    - generic [ref=e410]: Next page
+                    - text: ›
+                  - link "Last page" [ref=e411] [cursor=pointer]:
+                    - /url: http://tikal.lusk.ee:8080/wp-admin/edit.php?post_type=sp_player&paged=42
+                    - generic [ref=e412]: Last page
+                    - text: »
+            - heading "Posts list" [level=2] [ref=e413]
+            - table [ref=e414]:
+              - rowgroup [ref=e415]:
+                - row "Select All  Name Sort ascending. Positions Teams Leagues Seasons Skill Sort ascending." [ref=e416]:
+                  - cell "Select All" [ref=e417]:
+                    - checkbox "Select All" [ref=e418] [cursor=pointer]
+                    - generic [ref=e420]: Select All
+                  - columnheader "" [ref=e421]:
+                    - generic [ref=e422]: 
+                  - columnheader "Name Sort ascending." [ref=e423]:
+                    - link "Name Sort ascending." [ref=e424] [cursor=pointer]:
+                      - /url: http://tikal.lusk.ee:8080/wp-admin/edit.php?post_type=sp_player&orderby=title&order=asc
+                      - generic [ref=e425]: Name
+                      - generic [ref=e429]: Sort ascending.
+                  - columnheader "Positions" [ref=e430]
+                  - columnheader "Teams" [ref=e431]
+                  - columnheader "Leagues" [ref=e432]
+                  - columnheader "Seasons" [ref=e433]
+                  - columnheader "Skill Sort ascending." [ref=e434]:
+                    - link "Skill Sort ascending." [ref=e435] [cursor=pointer]:
+                      - /url: http://tikal.lusk.ee:8080/wp-admin/edit.php?post_type=sp_player&orderby=spt_skill_level&order=asc
+                      - generic [ref=e436]: Skill
+                      - generic [ref=e440]: Sort ascending.
+              - rowgroup [ref=e441]:
+                - row "Select Taylor Cooper “Taylor Cooper” (Edit) Edit “Taylor Cooper” | Quick edit “Taylor Cooper” inline | Move “Taylor Cooper” to the Trash | View “Taylor Cooper” Skater Team Canada  Division 3 S2026, S2026 Playoffs 8" [ref=e442]:
+                  - rowheader "Select Taylor Cooper" [ref=e443]:
+                    - checkbox "Select Taylor Cooper" [ref=e444] [cursor=pointer]
+                    - generic [ref=e446]: Select Taylor Cooper
+                  - cell [ref=e447]
+                  - cell "“Taylor Cooper” (Edit) Edit “Taylor Cooper” | Quick edit “Taylor Cooper” inline | Move “Taylor Cooper” to the Trash | View “Taylor Cooper”" [ref=e448]:
+                    - strong [ref=e449]:
+                      - link "“Taylor Cooper” (Edit)" [ref=e450] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116217&action=edit
+                        - text: Taylor Cooper
+                    - generic [ref=e451]:
+                      - generic [ref=e452]:
+                        - link "Edit “Taylor Cooper”" [ref=e453] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116217&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e454]:
+                        - button "Quick edit “Taylor Cooper” inline" [ref=e455] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e456]:
+                        - link "Move “Taylor Cooper” to the Trash" [ref=e457] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116217&action=trash&_wpnonce=7fef82d4df
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Taylor Cooper”" [ref=e459] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/taylor-cooper
+                        - text: View
+                  - cell "Skater" [ref=e460]
+                  - cell "Team Canada " [ref=e461]:
+                    - text: Team Canada
+                    - generic "Current Team" [ref=e462]: 
+                  - cell "Division 3" [ref=e463]
+                  - cell "S2026, S2026 Playoffs" [ref=e464]
+                  - cell "8" [ref=e465]
+                - row "Select Tanner Farwell “Tanner Farwell” (Edit) Edit “Tanner Farwell” | Quick edit “Tanner Farwell” inline | Move “Tanner Farwell” to the Trash | View “Tanner Farwell” Skater Team Canada  Division 3 S2026, S2026 Playoffs —" [ref=e466]:
+                  - rowheader "Select Tanner Farwell" [ref=e467]:
+                    - checkbox "Select Tanner Farwell" [ref=e468] [cursor=pointer]
+                    - generic [ref=e470]: Select Tanner Farwell
+                  - cell [ref=e471]
+                  - cell "“Tanner Farwell” (Edit) Edit “Tanner Farwell” | Quick edit “Tanner Farwell” inline | Move “Tanner Farwell” to the Trash | View “Tanner Farwell”" [ref=e472]:
+                    - strong [ref=e473]:
+                      - link "“Tanner Farwell” (Edit)" [ref=e474] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116216&action=edit
+                        - text: Tanner Farwell
+                    - generic [ref=e475]:
+                      - generic [ref=e476]:
+                        - link "Edit “Tanner Farwell”" [ref=e477] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116216&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e478]:
+                        - button "Quick edit “Tanner Farwell” inline" [ref=e479] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e480]:
+                        - link "Move “Tanner Farwell” to the Trash" [ref=e481] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116216&action=trash&_wpnonce=1e92de2789
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Tanner Farwell”" [ref=e483] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/tanner-farwell
+                        - text: View
+                  - cell "Skater" [ref=e484]
+                  - cell "Team Canada " [ref=e485]:
+                    - text: Team Canada
+                    - generic "Current Team" [ref=e486]: 
+                  - cell "Division 3" [ref=e487]
+                  - cell "S2026, S2026 Playoffs" [ref=e488]
+                  - cell "—" [ref=e489]
+                - row "Select Trevor Thwaites “Trevor Thwaites” (Edit) Edit “Trevor Thwaites” | Quick edit “Trevor Thwaites” inline | Move “Trevor Thwaites” to the Trash | View “Trevor Thwaites” Skater Knights of Ni  Division 3 S2026, S2026 Playoffs —" [ref=e490]:
+                  - rowheader "Select Trevor Thwaites" [ref=e491]:
+                    - checkbox "Select Trevor Thwaites" [ref=e492] [cursor=pointer]
+                    - generic [ref=e494]: Select Trevor Thwaites
+                  - cell [ref=e495]
+                  - cell "“Trevor Thwaites” (Edit) Edit “Trevor Thwaites” | Quick edit “Trevor Thwaites” inline | Move “Trevor Thwaites” to the Trash | View “Trevor Thwaites”" [ref=e496]:
+                    - strong [ref=e497]:
+                      - link "“Trevor Thwaites” (Edit)" [ref=e498] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116209&action=edit
+                        - text: Trevor Thwaites
+                    - generic [ref=e499]:
+                      - generic [ref=e500]:
+                        - link "Edit “Trevor Thwaites”" [ref=e501] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116209&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e502]:
+                        - button "Quick edit “Trevor Thwaites” inline" [ref=e503] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e504]:
+                        - link "Move “Trevor Thwaites” to the Trash" [ref=e505] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116209&action=trash&_wpnonce=dd4677b83d
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Trevor Thwaites”" [ref=e507] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/trevor-thwaites
+                        - text: View
+                  - cell "Skater" [ref=e508]
+                  - cell "Knights of Ni " [ref=e509]:
+                    - text: Knights of Ni
+                    - generic "Current Team" [ref=e510]: 
+                  - cell "Division 3" [ref=e511]
+                  - cell "S2026, S2026 Playoffs" [ref=e512]
+                  - cell "—" [ref=e513]
+                - row "Select Josh Newbury “Josh Newbury” (Edit) Edit “Josh Newbury” | Quick edit “Josh Newbury” inline | Move “Josh Newbury” to the Trash | View “Josh Newbury” Skater Jagrbombers  Division 3 S2026, S2026 Playoffs —" [ref=e514]:
+                  - rowheader "Select Josh Newbury" [ref=e515]:
+                    - checkbox "Select Josh Newbury" [ref=e516] [cursor=pointer]
+                    - generic [ref=e518]: Select Josh Newbury
+                  - cell [ref=e519]
+                  - cell "“Josh Newbury” (Edit) Edit “Josh Newbury” | Quick edit “Josh Newbury” inline | Move “Josh Newbury” to the Trash | View “Josh Newbury”" [ref=e520]:
+                    - strong [ref=e521]:
+                      - link "“Josh Newbury” (Edit)" [ref=e522] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116207&action=edit
+                        - text: Josh Newbury
+                    - generic [ref=e523]:
+                      - generic [ref=e524]:
+                        - link "Edit “Josh Newbury”" [ref=e525] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116207&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e526]:
+                        - button "Quick edit “Josh Newbury” inline" [ref=e527] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e528]:
+                        - link "Move “Josh Newbury” to the Trash" [ref=e529] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116207&action=trash&_wpnonce=82738a0461
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Josh Newbury”" [ref=e531] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/josh-newbury
+                        - text: View
+                  - cell "Skater" [ref=e532]
+                  - cell "Jagrbombers " [ref=e533]:
+                    - text: Jagrbombers
+                    - generic "Current Team" [ref=e534]: 
+                  - cell "Division 3" [ref=e535]
+                  - cell "S2026, S2026 Playoffs" [ref=e536]
+                  - cell "—" [ref=e537]
+                - row "Select Jennifer Mcgovern “Jennifer Mcgovern” (Edit) Edit “Jennifer Mcgovern” | Quick edit “Jennifer Mcgovern” inline | Move “Jennifer Mcgovern” to the Trash | View “Jennifer Mcgovern” Skater Oilers  Division 4 S2026, S2026 Playoffs —" [ref=e538]:
+                  - rowheader "Select Jennifer Mcgovern" [ref=e539]:
+                    - checkbox "Select Jennifer Mcgovern" [ref=e540] [cursor=pointer]
+                    - generic [ref=e542]: Select Jennifer Mcgovern
+                  - cell [ref=e543]
+                  - cell "“Jennifer Mcgovern” (Edit) Edit “Jennifer Mcgovern” | Quick edit “Jennifer Mcgovern” inline | Move “Jennifer Mcgovern” to the Trash | View “Jennifer Mcgovern”" [ref=e544]:
+                    - strong [ref=e545]:
+                      - link "“Jennifer Mcgovern” (Edit)" [ref=e546] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116192&action=edit
+                        - text: Jennifer Mcgovern
+                    - generic [ref=e547]:
+                      - generic [ref=e548]:
+                        - link "Edit “Jennifer Mcgovern”" [ref=e549] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116192&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e550]:
+                        - button "Quick edit “Jennifer Mcgovern” inline" [ref=e551] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e552]:
+                        - link "Move “Jennifer Mcgovern” to the Trash" [ref=e553] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116192&action=trash&_wpnonce=4dd48cdb3a
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Jennifer Mcgovern”" [ref=e555] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/jennifer-mcgovern
+                        - text: View
+                  - cell "Skater" [ref=e556]
+                  - cell "Oilers " [ref=e557]:
+                    - text: Oilers
+                    - generic "Current Team" [ref=e558]: 
+                  - cell "Division 4" [ref=e559]
+                  - cell "S2026, S2026 Playoffs" [ref=e560]
+                  - cell "—" [ref=e561]
+                - row "Select Rodney Stamler “Rodney Stamler” (Edit) Edit “Rodney Stamler” | Quick edit “Rodney Stamler” inline | Move “Rodney Stamler” to the Trash | View “Rodney Stamler” Skater Lumberjacks  Division 4 S2026, S2026 Playoffs —" [ref=e562]:
+                  - rowheader "Select Rodney Stamler" [ref=e563]:
+                    - checkbox "Select Rodney Stamler" [ref=e564] [cursor=pointer]
+                    - generic [ref=e566]: Select Rodney Stamler
+                  - cell [ref=e567]
+                  - cell "“Rodney Stamler” (Edit) Edit “Rodney Stamler” | Quick edit “Rodney Stamler” inline | Move “Rodney Stamler” to the Trash | View “Rodney Stamler”" [ref=e568]:
+                    - strong [ref=e569]:
+                      - link "“Rodney Stamler” (Edit)" [ref=e570] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116186&action=edit
+                        - text: Rodney Stamler
+                    - generic [ref=e571]:
+                      - generic [ref=e572]:
+                        - link "Edit “Rodney Stamler”" [ref=e573] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116186&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e574]:
+                        - button "Quick edit “Rodney Stamler” inline" [ref=e575] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e576]:
+                        - link "Move “Rodney Stamler” to the Trash" [ref=e577] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116186&action=trash&_wpnonce=9f6bd149c8
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Rodney Stamler”" [ref=e579] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/rodney-stamler
+                        - text: View
+                  - cell "Skater" [ref=e580]
+                  - cell "Lumberjacks " [ref=e581]:
+                    - text: Lumberjacks
+                    - generic "Current Team" [ref=e582]: 
+                  - cell "Division 4" [ref=e583]
+                  - cell "S2026, S2026 Playoffs" [ref=e584]
+                  - cell "—" [ref=e585]
+                - row "Select David Leadbetter “David Leadbetter” (Edit) Edit “David Leadbetter” | Quick edit “David Leadbetter” inline | Move “David Leadbetter” to the Trash | View “David Leadbetter” Skater Lumberjacks  Division 4 S2026, S2026 Playoffs —" [ref=e586]:
+                  - rowheader "Select David Leadbetter" [ref=e587]:
+                    - checkbox "Select David Leadbetter" [ref=e588] [cursor=pointer]
+                    - generic [ref=e590]: Select David Leadbetter
+                  - cell [ref=e591]
+                  - cell "“David Leadbetter” (Edit) Edit “David Leadbetter” | Quick edit “David Leadbetter” inline | Move “David Leadbetter” to the Trash | View “David Leadbetter”" [ref=e592]:
+                    - strong [ref=e593]:
+                      - link "“David Leadbetter” (Edit)" [ref=e594] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116183&action=edit
+                        - text: David Leadbetter
+                    - generic [ref=e595]:
+                      - generic [ref=e596]:
+                        - link "Edit “David Leadbetter”" [ref=e597] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116183&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e598]:
+                        - button "Quick edit “David Leadbetter” inline" [ref=e599] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e600]:
+                        - link "Move “David Leadbetter” to the Trash" [ref=e601] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116183&action=trash&_wpnonce=ba57101753
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “David Leadbetter”" [ref=e603] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/david-leadbetter
+                        - text: View
+                  - cell "Skater" [ref=e604]
+                  - cell "Lumberjacks " [ref=e605]:
+                    - text: Lumberjacks
+                    - generic "Current Team" [ref=e606]: 
+                  - cell "Division 4" [ref=e607]
+                  - cell "S2026, S2026 Playoffs" [ref=e608]
+                  - cell "—" [ref=e609]
+                - row "Select Vernon Arboleda “Vernon Arboleda” (Edit) Edit “Vernon Arboleda” | Quick edit “Vernon Arboleda” inline | Move “Vernon Arboleda” to the Trash | View “Vernon Arboleda” Skater Canadiens (Tread Well)  Division 4 S2026, S2026 Playoffs —" [ref=e610]:
+                  - rowheader "Select Vernon Arboleda" [ref=e611]:
+                    - checkbox "Select Vernon Arboleda" [ref=e612] [cursor=pointer]
+                    - generic [ref=e614]: Select Vernon Arboleda
+                  - cell [ref=e615]
+                  - cell "“Vernon Arboleda” (Edit) Edit “Vernon Arboleda” | Quick edit “Vernon Arboleda” inline | Move “Vernon Arboleda” to the Trash | View “Vernon Arboleda”" [ref=e616]:
+                    - strong [ref=e617]:
+                      - link "“Vernon Arboleda” (Edit)" [ref=e618] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116182&action=edit
+                        - text: Vernon Arboleda
+                    - generic [ref=e619]:
+                      - generic [ref=e620]:
+                        - link "Edit “Vernon Arboleda”" [ref=e621] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116182&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e622]:
+                        - button "Quick edit “Vernon Arboleda” inline" [ref=e623] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e624]:
+                        - link "Move “Vernon Arboleda” to the Trash" [ref=e625] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116182&action=trash&_wpnonce=eee9993c4e
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Vernon Arboleda”" [ref=e627] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/vernon-arboleda
+                        - text: View
+                  - cell "Skater" [ref=e628]
+                  - cell "Canadiens (Tread Well) " [ref=e629]:
+                    - text: Canadiens (Tread Well)
+                    - generic "Current Team" [ref=e630]: 
+                  - cell "Division 4" [ref=e631]
+                  - cell "S2026, S2026 Playoffs" [ref=e632]
+                  - cell "—" [ref=e633]
+                - row "Select Michael Howard “Michael Howard” (Edit) Edit “Michael Howard” | Quick edit “Michael Howard” inline | Move “Michael Howard” to the Trash | View “Michael Howard” Skater Canadiens (Tread Well)  Division 4 S2026, S2026 Playoffs —" [ref=e634]:
+                  - rowheader "Select Michael Howard" [ref=e635]:
+                    - checkbox "Select Michael Howard" [ref=e636] [cursor=pointer]
+                    - generic [ref=e638]: Select Michael Howard
+                  - cell [ref=e639]
+                  - cell "“Michael Howard” (Edit) Edit “Michael Howard” | Quick edit “Michael Howard” inline | Move “Michael Howard” to the Trash | View “Michael Howard”" [ref=e640]:
+                    - strong [ref=e641]:
+                      - link "“Michael Howard” (Edit)" [ref=e642] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116181&action=edit
+                        - text: Michael Howard
+                    - generic [ref=e643]:
+                      - generic [ref=e644]:
+                        - link "Edit “Michael Howard”" [ref=e645] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116181&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e646]:
+                        - button "Quick edit “Michael Howard” inline" [ref=e647] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e648]:
+                        - link "Move “Michael Howard” to the Trash" [ref=e649] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116181&action=trash&_wpnonce=fb89211fee
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Michael Howard”" [ref=e651] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/michael-howard
+                        - text: View
+                  - cell "Skater" [ref=e652]
+                  - cell "Canadiens (Tread Well) " [ref=e653]:
+                    - text: Canadiens (Tread Well)
+                    - generic "Current Team" [ref=e654]: 
+                  - cell "Division 4" [ref=e655]
+                  - cell "S2026, S2026 Playoffs" [ref=e656]
+                  - cell "—" [ref=e657]
+                - row "Select Doug Ross “Doug Ross” (Edit) Edit “Doug Ross” | Quick edit “Doug Ross” inline | Move “Doug Ross” to the Trash | View “Doug Ross” Skater Canadiens (Tread Well)  Division 4 S2026, S2026 Playoffs —" [ref=e658]:
+                  - rowheader "Select Doug Ross" [ref=e659]:
+                    - checkbox "Select Doug Ross" [ref=e660] [cursor=pointer]
+                    - generic [ref=e662]: Select Doug Ross
+                  - cell [ref=e663]
+                  - cell "“Doug Ross” (Edit) Edit “Doug Ross” | Quick edit “Doug Ross” inline | Move “Doug Ross” to the Trash | View “Doug Ross”" [ref=e664]:
+                    - strong [ref=e665]:
+                      - link "“Doug Ross” (Edit)" [ref=e666] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116180&action=edit
+                        - text: Doug Ross
+                    - generic [ref=e667]:
+                      - generic [ref=e668]:
+                        - link "Edit “Doug Ross”" [ref=e669] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116180&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e670]:
+                        - button "Quick edit “Doug Ross” inline" [ref=e671] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e672]:
+                        - link "Move “Doug Ross” to the Trash" [ref=e673] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116180&action=trash&_wpnonce=c5300d112a
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Doug Ross”" [ref=e675] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/doug-ross
+                        - text: View
+                  - cell "Skater" [ref=e676]
+                  - cell "Canadiens (Tread Well) " [ref=e677]:
+                    - text: Canadiens (Tread Well)
+                    - generic "Current Team" [ref=e678]: 
+                  - cell "Division 4" [ref=e679]
+                  - cell "S2026, S2026 Playoffs" [ref=e680]
+                  - cell "—" [ref=e681]
+                - row "Select Michael Jones “Michael Jones” (Edit) Edit “Michael Jones” | Quick edit “Michael Jones” inline | Move “Michael Jones” to the Trash | View “Michael Jones” Skater Whalers  Division 4 S2026, S2026 Playoffs —" [ref=e682]:
+                  - rowheader "Select Michael Jones" [ref=e683]:
+                    - checkbox "Select Michael Jones" [ref=e684] [cursor=pointer]
+                    - generic [ref=e686]: Select Michael Jones
+                  - cell [ref=e687]
+                  - cell "“Michael Jones” (Edit) Edit “Michael Jones” | Quick edit “Michael Jones” inline | Move “Michael Jones” to the Trash | View “Michael Jones”" [ref=e688]:
+                    - strong [ref=e689]:
+                      - link "“Michael Jones” (Edit)" [ref=e690] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116178&action=edit
+                        - text: Michael Jones
+                    - generic [ref=e691]:
+                      - generic [ref=e692]:
+                        - link "Edit “Michael Jones”" [ref=e693] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116178&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e694]:
+                        - button "Quick edit “Michael Jones” inline" [ref=e695] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e696]:
+                        - link "Move “Michael Jones” to the Trash" [ref=e697] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116178&action=trash&_wpnonce=9b91a7d1f3
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Michael Jones”" [ref=e699] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/michael-jones
+                        - text: View
+                  - cell "Skater" [ref=e700]
+                  - cell "Whalers " [ref=e701]:
+                    - text: Whalers
+                    - generic "Current Team" [ref=e702]: 
+                  - cell "Division 4" [ref=e703]
+                  - cell "S2026, S2026 Playoffs" [ref=e704]
+                  - cell "—" [ref=e705]
+                - row "Select Errol Hilado “Errol Hilado” (Edit) Edit “Errol Hilado” | Quick edit “Errol Hilado” inline | Move “Errol Hilado” to the Trash | View “Errol Hilado” Skater Whalers  Division 4 S2026, S2026 Playoffs —" [ref=e706]:
+                  - rowheader "Select Errol Hilado" [ref=e707]:
+                    - checkbox "Select Errol Hilado" [ref=e708] [cursor=pointer]
+                    - generic [ref=e710]: Select Errol Hilado
+                  - cell [ref=e711]
+                  - cell "“Errol Hilado” (Edit) Edit “Errol Hilado” | Quick edit “Errol Hilado” inline | Move “Errol Hilado” to the Trash | View “Errol Hilado”" [ref=e712]:
+                    - strong [ref=e713]:
+                      - link "“Errol Hilado” (Edit)" [ref=e714] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116177&action=edit
+                        - text: Errol Hilado
+                    - generic [ref=e715]:
+                      - generic [ref=e716]:
+                        - link "Edit “Errol Hilado”" [ref=e717] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116177&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e718]:
+                        - button "Quick edit “Errol Hilado” inline" [ref=e719] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e720]:
+                        - link "Move “Errol Hilado” to the Trash" [ref=e721] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116177&action=trash&_wpnonce=189a34b7ed
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Errol Hilado”" [ref=e723] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/errol-hilado
+                        - text: View
+                  - cell "Skater" [ref=e724]
+                  - cell "Whalers " [ref=e725]:
+                    - text: Whalers
+                    - generic "Current Team" [ref=e726]: 
+                  - cell "Division 4" [ref=e727]
+                  - cell "S2026, S2026 Playoffs" [ref=e728]
+                  - cell "—" [ref=e729]
+                - row "Select Brian Woods “Brian Woods” (Edit) Edit “Brian Woods” | Quick edit “Brian Woods” inline | Move “Brian Woods” to the Trash | View “Brian Woods” Skater Whalers  Division 4 S2026, S2026 Playoffs —" [ref=e730]:
+                  - rowheader "Select Brian Woods" [ref=e731]:
+                    - checkbox "Select Brian Woods" [ref=e732] [cursor=pointer]
+                    - generic [ref=e734]: Select Brian Woods
+                  - cell [ref=e735]
+                  - cell "“Brian Woods” (Edit) Edit “Brian Woods” | Quick edit “Brian Woods” inline | Move “Brian Woods” to the Trash | View “Brian Woods”" [ref=e736]:
+                    - strong [ref=e737]:
+                      - link "“Brian Woods” (Edit)" [ref=e738] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116176&action=edit
+                        - text: Brian Woods
+                    - generic [ref=e739]:
+                      - generic [ref=e740]:
+                        - link "Edit “Brian Woods”" [ref=e741] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116176&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e742]:
+                        - button "Quick edit “Brian Woods” inline" [ref=e743] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e744]:
+                        - link "Move “Brian Woods” to the Trash" [ref=e745] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116176&action=trash&_wpnonce=aaa71b76d3
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Brian Woods”" [ref=e747] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/brian-woods
+                        - text: View
+                  - cell "Skater" [ref=e748]
+                  - cell "Whalers " [ref=e749]:
+                    - text: Whalers
+                    - generic "Current Team" [ref=e750]: 
+                  - cell "Division 4" [ref=e751]
+                  - cell "S2026, S2026 Playoffs" [ref=e752]
+                  - cell "—" [ref=e753]
+                - row "Select Ryan Waters “Ryan Waters” (Edit) Edit “Ryan Waters” | Quick edit “Ryan Waters” inline | Move “Ryan Waters” to the Trash | View “Ryan Waters” Skater TrebleMakers (Musik 7 Studios)  Division 5 S2026, S2026 Playoffs —" [ref=e754]:
+                  - rowheader "Select Ryan Waters" [ref=e755]:
+                    - checkbox "Select Ryan Waters" [ref=e756] [cursor=pointer]
+                    - generic [ref=e758]: Select Ryan Waters
+                  - cell [ref=e759]
+                  - cell "“Ryan Waters” (Edit) Edit “Ryan Waters” | Quick edit “Ryan Waters” inline | Move “Ryan Waters” to the Trash | View “Ryan Waters”" [ref=e760]:
+                    - strong [ref=e761]:
+                      - link "“Ryan Waters” (Edit)" [ref=e762] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116173&action=edit
+                        - text: Ryan Waters
+                    - generic [ref=e763]:
+                      - generic [ref=e764]:
+                        - link "Edit “Ryan Waters”" [ref=e765] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116173&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e766]:
+                        - button "Quick edit “Ryan Waters” inline" [ref=e767] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e768]:
+                        - link "Move “Ryan Waters” to the Trash" [ref=e769] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116173&action=trash&_wpnonce=f358134fe2
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Ryan Waters”" [ref=e771] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/ryan-waters
+                        - text: View
+                  - cell "Skater" [ref=e772]
+                  - cell "TrebleMakers (Musik 7 Studios) " [ref=e773]:
+                    - text: TrebleMakers (Musik 7 Studios)
+                    - generic "Current Team" [ref=e774]: 
+                  - cell "Division 5" [ref=e775]
+                  - cell "S2026, S2026 Playoffs" [ref=e776]
+                  - cell "—" [ref=e777]
+                - row "Select Ryan Gowland “Ryan Gowland” (Edit) Edit “Ryan Gowland” | Quick edit “Ryan Gowland” inline | Move “Ryan Gowland” to the Trash | View “Ryan Gowland” Skater Royals  Division 5 S2026, S2026 Playoffs —" [ref=e778]:
+                  - rowheader "Select Ryan Gowland" [ref=e779]:
+                    - checkbox "Select Ryan Gowland" [ref=e780] [cursor=pointer]
+                    - generic [ref=e782]: Select Ryan Gowland
+                  - cell [ref=e783]
+                  - cell "“Ryan Gowland” (Edit) Edit “Ryan Gowland” | Quick edit “Ryan Gowland” inline | Move “Ryan Gowland” to the Trash | View “Ryan Gowland”" [ref=e784]:
+                    - strong [ref=e785]:
+                      - link "“Ryan Gowland” (Edit)" [ref=e786] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116172&action=edit
+                        - text: Ryan Gowland
+                    - generic [ref=e787]:
+                      - generic [ref=e788]:
+                        - link "Edit “Ryan Gowland”" [ref=e789] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116172&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e790]:
+                        - button "Quick edit “Ryan Gowland” inline" [ref=e791] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e792]:
+                        - link "Move “Ryan Gowland” to the Trash" [ref=e793] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116172&action=trash&_wpnonce=922ef16917
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Ryan Gowland”" [ref=e795] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/ryan-gowland
+                        - text: View
+                  - cell "Skater" [ref=e796]
+                  - cell "Royals " [ref=e797]:
+                    - text: Royals
+                    - generic "Current Team" [ref=e798]: 
+                  - cell "Division 5" [ref=e799]
+                  - cell "S2026, S2026 Playoffs" [ref=e800]
+                  - cell "—" [ref=e801]
+                - row "Select Patrick Hillis “Patrick Hillis” (Edit) Edit “Patrick Hillis” | Quick edit “Patrick Hillis” inline | Move “Patrick Hillis” to the Trash | View “Patrick Hillis” Skater Train Wreck  Division 5 S2026, S2026 Playoffs —" [ref=e802]:
+                  - rowheader "Select Patrick Hillis" [ref=e803]:
+                    - checkbox "Select Patrick Hillis" [ref=e804] [cursor=pointer]
+                    - generic [ref=e806]: Select Patrick Hillis
+                  - cell [ref=e807]
+                  - cell "“Patrick Hillis” (Edit) Edit “Patrick Hillis” | Quick edit “Patrick Hillis” inline | Move “Patrick Hillis” to the Trash | View “Patrick Hillis”" [ref=e808]:
+                    - strong [ref=e809]:
+                      - link "“Patrick Hillis” (Edit)" [ref=e810] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116171&action=edit
+                        - text: Patrick Hillis
+                    - generic [ref=e811]:
+                      - generic [ref=e812]:
+                        - link "Edit “Patrick Hillis”" [ref=e813] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116171&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e814]:
+                        - button "Quick edit “Patrick Hillis” inline" [ref=e815] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e816]:
+                        - link "Move “Patrick Hillis” to the Trash" [ref=e817] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116171&action=trash&_wpnonce=a8377278dd
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Patrick Hillis”" [ref=e819] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/patrick-hillis
+                        - text: View
+                  - cell "Skater" [ref=e820]
+                  - cell "Train Wreck " [ref=e821]:
+                    - text: Train Wreck
+                    - generic "Current Team" [ref=e822]: 
+                  - cell "Division 5" [ref=e823]
+                  - cell "S2026, S2026 Playoffs" [ref=e824]
+                  - cell "—" [ref=e825]
+                - row "Select Kent Burgess “Kent Burgess” (Edit) Edit “Kent Burgess” | Quick edit “Kent Burgess” inline | Move “Kent Burgess” to the Trash | View “Kent Burgess” Skater Royals  Division 5 S2026, S2026 Playoffs —" [ref=e826]:
+                  - rowheader "Select Kent Burgess" [ref=e827]:
+                    - checkbox "Select Kent Burgess" [ref=e828] [cursor=pointer]
+                    - generic [ref=e830]: Select Kent Burgess
+                  - cell [ref=e831]
+                  - cell "“Kent Burgess” (Edit) Edit “Kent Burgess” | Quick edit “Kent Burgess” inline | Move “Kent Burgess” to the Trash | View “Kent Burgess”" [ref=e832]:
+                    - strong [ref=e833]:
+                      - link "“Kent Burgess” (Edit)" [ref=e834] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116168&action=edit
+                        - text: Kent Burgess
+                    - generic [ref=e835]:
+                      - generic [ref=e836]:
+                        - link "Edit “Kent Burgess”" [ref=e837] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116168&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e838]:
+                        - button "Quick edit “Kent Burgess” inline" [ref=e839] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e840]:
+                        - link "Move “Kent Burgess” to the Trash" [ref=e841] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116168&action=trash&_wpnonce=6aa457c1e8
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Kent Burgess”" [ref=e843] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/kent-burgess
+                        - text: View
+                  - cell "Skater" [ref=e844]
+                  - cell "Royals " [ref=e845]:
+                    - text: Royals
+                    - generic "Current Team" [ref=e846]: 
+                  - cell "Division 5" [ref=e847]
+                  - cell "S2026, S2026 Playoffs" [ref=e848]
+                  - cell "—" [ref=e849]
+                - row "Select Jessie Petriv “Jessie Petriv” (Edit) Edit “Jessie Petriv” | Quick edit “Jessie Petriv” inline | Move “Jessie Petriv” to the Trash | View “Jessie Petriv” Skater Royals  Division 5 S2026, S2026 Playoffs —" [ref=e850]:
+                  - rowheader "Select Jessie Petriv" [ref=e851]:
+                    - checkbox "Select Jessie Petriv" [ref=e852] [cursor=pointer]
+                    - generic [ref=e854]: Select Jessie Petriv
+                  - cell [ref=e855]
+                  - cell "“Jessie Petriv” (Edit) Edit “Jessie Petriv” | Quick edit “Jessie Petriv” inline | Move “Jessie Petriv” to the Trash | View “Jessie Petriv”" [ref=e856]:
+                    - strong [ref=e857]:
+                      - link "“Jessie Petriv” (Edit)" [ref=e858] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116166&action=edit
+                        - text: Jessie Petriv
+                    - generic [ref=e859]:
+                      - generic [ref=e860]:
+                        - link "Edit “Jessie Petriv”" [ref=e861] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116166&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e862]:
+                        - button "Quick edit “Jessie Petriv” inline" [ref=e863] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e864]:
+                        - link "Move “Jessie Petriv” to the Trash" [ref=e865] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116166&action=trash&_wpnonce=b24b13900c
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Jessie Petriv”" [ref=e867] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/jessie-petriv
+                        - text: View
+                  - cell "Skater" [ref=e868]
+                  - cell "Royals " [ref=e869]:
+                    - text: Royals
+                    - generic "Current Team" [ref=e870]: 
+                  - cell "Division 5" [ref=e871]
+                  - cell "S2026, S2026 Playoffs" [ref=e872]
+                  - cell "—" [ref=e873]
+                - row "Select Jay Tuck “Jay Tuck” (Edit) Edit “Jay Tuck” | Quick edit “Jay Tuck” inline | Move “Jay Tuck” to the Trash | View “Jay Tuck” Skater Spartans (Lusk.Tech)  Division 5 S2026, S2026 Playoffs —" [ref=e874]:
+                  - rowheader "Select Jay Tuck" [ref=e875]:
+                    - checkbox "Select Jay Tuck" [ref=e876] [cursor=pointer]
+                    - generic [ref=e878]: Select Jay Tuck
+                  - cell [ref=e879]
+                  - cell "“Jay Tuck” (Edit) Edit “Jay Tuck” | Quick edit “Jay Tuck” inline | Move “Jay Tuck” to the Trash | View “Jay Tuck”" [ref=e880]:
+                    - strong [ref=e881]:
+                      - link "“Jay Tuck” (Edit)" [ref=e882] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116165&action=edit
+                        - text: Jay Tuck
+                    - generic [ref=e883]:
+                      - generic [ref=e884]:
+                        - link "Edit “Jay Tuck”" [ref=e885] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116165&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e886]:
+                        - button "Quick edit “Jay Tuck” inline" [ref=e887] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e888]:
+                        - link "Move “Jay Tuck” to the Trash" [ref=e889] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116165&action=trash&_wpnonce=23599ad70e
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Jay Tuck”" [ref=e891] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/jay-tuck
+                        - text: View
+                  - cell "Skater" [ref=e892]
+                  - cell "Spartans (Lusk.Tech) " [ref=e893]:
+                    - text: Spartans (Lusk.Tech)
+                    - generic "Current Team" [ref=e894]: 
+                  - cell "Division 5" [ref=e895]
+                  - cell "S2026, S2026 Playoffs" [ref=e896]
+                  - cell "—" [ref=e897]
+                - row "Select Elizabeth Von Zuben “Elizabeth Von Zuben” (Edit) Edit “Elizabeth Von Zuben” | Quick edit “Elizabeth Von Zuben” inline | Move “Elizabeth Von Zuben” to the Trash | View “Elizabeth Von Zuben” Skater TrebleMakers (Musik 7 Studios)  Division 5 S2026, S2026 Playoffs —" [ref=e898]:
+                  - rowheader "Select Elizabeth Von Zuben" [ref=e899]:
+                    - checkbox "Select Elizabeth Von Zuben" [ref=e900] [cursor=pointer]
+                    - generic [ref=e902]: Select Elizabeth Von Zuben
+                  - cell [ref=e903]
+                  - cell "“Elizabeth Von Zuben” (Edit) Edit “Elizabeth Von Zuben” | Quick edit “Elizabeth Von Zuben” inline | Move “Elizabeth Von Zuben” to the Trash | View “Elizabeth Von Zuben”" [ref=e904]:
+                    - strong [ref=e905]:
+                      - link "“Elizabeth Von Zuben” (Edit)" [ref=e906] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116164&action=edit
+                        - text: Elizabeth Von Zuben
+                    - generic [ref=e907]:
+                      - generic [ref=e908]:
+                        - link "Edit “Elizabeth Von Zuben”" [ref=e909] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116164&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e910]:
+                        - button "Quick edit “Elizabeth Von Zuben” inline" [ref=e911] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e912]:
+                        - link "Move “Elizabeth Von Zuben” to the Trash" [ref=e913] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116164&action=trash&_wpnonce=b92410937b
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Elizabeth Von Zuben”" [ref=e915] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/elizabeth-von-zuben
+                        - text: View
+                  - cell "Skater" [ref=e916]
+                  - cell "TrebleMakers (Musik 7 Studios) " [ref=e917]:
+                    - text: TrebleMakers (Musik 7 Studios)
+                    - generic "Current Team" [ref=e918]: 
+                  - cell "Division 5" [ref=e919]
+                  - cell "S2026, S2026 Playoffs" [ref=e920]
+                  - cell "—" [ref=e921]
+                - row "Select Cory Prince “Cory Prince” (Edit) Edit “Cory Prince” | Quick edit “Cory Prince” inline | Move “Cory Prince” to the Trash | View “Cory Prince” Skater Royals  Division 5 S2026, S2026 Playoffs —" [ref=e922]:
+                  - rowheader "Select Cory Prince" [ref=e923]:
+                    - checkbox "Select Cory Prince" [ref=e924] [cursor=pointer]
+                    - generic [ref=e926]: Select Cory Prince
+                  - cell [ref=e927]
+                  - cell "“Cory Prince” (Edit) Edit “Cory Prince” | Quick edit “Cory Prince” inline | Move “Cory Prince” to the Trash | View “Cory Prince”" [ref=e928]:
+                    - strong [ref=e929]:
+                      - link "“Cory Prince” (Edit)" [ref=e930] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116163&action=edit
+                        - text: Cory Prince
+                    - generic [ref=e931]:
+                      - generic [ref=e932]:
+                        - link "Edit “Cory Prince”" [ref=e933] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116163&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e934]:
+                        - button "Quick edit “Cory Prince” inline" [ref=e935] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e936]:
+                        - link "Move “Cory Prince” to the Trash" [ref=e937] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116163&action=trash&_wpnonce=0c26b388ac
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Cory Prince”" [ref=e939] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/cory-prince
+                        - text: View
+                  - cell "Skater" [ref=e940]
+                  - cell "Royals " [ref=e941]:
+                    - text: Royals
+                    - generic "Current Team" [ref=e942]: 
+                  - cell "Division 5" [ref=e943]
+                  - cell "S2026, S2026 Playoffs" [ref=e944]
+                  - cell "—" [ref=e945]
+                - row "Select Agneta Luse “Agneta Luse” (Edit) Edit “Agneta Luse” | Quick edit “Agneta Luse” inline | Move “Agneta Luse” to the Trash | View “Agneta Luse” Skater TrebleMakers (Musik 7 Studios)  Division 5 S2026, S2026 Playoffs —" [ref=e946]:
+                  - rowheader "Select Agneta Luse" [ref=e947]:
+                    - checkbox "Select Agneta Luse" [ref=e948] [cursor=pointer]
+                    - generic [ref=e950]: Select Agneta Luse
+                  - cell [ref=e951]
+                  - cell "“Agneta Luse” (Edit) Edit “Agneta Luse” | Quick edit “Agneta Luse” inline | Move “Agneta Luse” to the Trash | View “Agneta Luse”" [ref=e952]:
+                    - strong [ref=e953]:
+                      - link "“Agneta Luse” (Edit)" [ref=e954] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116162&action=edit
+                        - text: Agneta Luse
+                    - generic [ref=e955]:
+                      - generic [ref=e956]:
+                        - link "Edit “Agneta Luse”" [ref=e957] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116162&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e958]:
+                        - button "Quick edit “Agneta Luse” inline" [ref=e959] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e960]:
+                        - link "Move “Agneta Luse” to the Trash" [ref=e961] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=116162&action=trash&_wpnonce=45e16fedcd
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Agneta Luse”" [ref=e963] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/agneta-luse
+                        - text: View
+                  - cell "Skater" [ref=e964]
+                  - cell "TrebleMakers (Musik 7 Studios) " [ref=e965]:
+                    - text: TrebleMakers (Musik 7 Studios)
+                    - generic "Current Team" [ref=e966]: 
+                  - cell "Division 5" [ref=e967]
+                  - cell "S2026, S2026 Playoffs" [ref=e968]
+                  - cell "—" [ref=e969]
+                - row "Select Andrew Chislett 20 “Andrew Chislett” (Edit) Edit “Andrew Chislett” | Quick edit “Andrew Chislett” inline | Move “Andrew Chislett” to the Trash | View “Andrew Chislett” Skater Pylons  Division 5 W2025-26, W2025-26 Playoffs —" [ref=e970]:
+                  - rowheader "Select Andrew Chislett" [ref=e971]:
+                    - checkbox "Select Andrew Chislett" [ref=e972] [cursor=pointer]
+                    - generic [ref=e974]: Select Andrew Chislett
+                  - cell "20" [ref=e975]
+                  - cell "“Andrew Chislett” (Edit) Edit “Andrew Chislett” | Quick edit “Andrew Chislett” inline | Move “Andrew Chislett” to the Trash | View “Andrew Chislett”" [ref=e976]:
+                    - strong [ref=e977]:
+                      - link "“Andrew Chislett” (Edit)" [ref=e978] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115664&action=edit
+                        - text: Andrew Chislett
+                    - generic [ref=e979]:
+                      - generic [ref=e980]:
+                        - link "Edit “Andrew Chislett”" [ref=e981] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115664&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e982]:
+                        - button "Quick edit “Andrew Chislett” inline" [ref=e983] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e984]:
+                        - link "Move “Andrew Chislett” to the Trash" [ref=e985] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115664&action=trash&_wpnonce=c4f7509e08
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Andrew Chislett”" [ref=e987] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/andrew-chislett
+                        - text: View
+                  - cell "Skater" [ref=e988]
+                  - cell "Pylons " [ref=e989]:
+                    - text: Pylons
+                    - generic "Current Team" [ref=e990]: 
+                  - cell "Division 5" [ref=e991]
+                  - cell "W2025-26, W2025-26 Playoffs" [ref=e992]
+                  - cell "—" [ref=e993]
+                - row "Select Blake Pereira “Blake Pereira” (Edit) Edit “Blake Pereira” | Quick edit “Blake Pereira” inline | Move “Blake Pereira” to the Trash | View “Blake Pereira” Skater Ravens  Division 5 W2025-26, W2025-26 Playoffs —" [ref=e994]:
+                  - rowheader "Select Blake Pereira" [ref=e995]:
+                    - checkbox "Select Blake Pereira" [ref=e996] [cursor=pointer]
+                    - generic [ref=e998]: Select Blake Pereira
+                  - cell [ref=e999]
+                  - cell "“Blake Pereira” (Edit) Edit “Blake Pereira” | Quick edit “Blake Pereira” inline | Move “Blake Pereira” to the Trash | View “Blake Pereira”" [ref=e1000]:
+                    - strong [ref=e1001]:
+                      - link "“Blake Pereira” (Edit)" [ref=e1002] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115663&action=edit
+                        - text: Blake Pereira
+                    - generic [ref=e1003]:
+                      - generic [ref=e1004]:
+                        - link "Edit “Blake Pereira”" [ref=e1005] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115663&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1006]:
+                        - button "Quick edit “Blake Pereira” inline" [ref=e1007] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1008]:
+                        - link "Move “Blake Pereira” to the Trash" [ref=e1009] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115663&action=trash&_wpnonce=3dfec52b48
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Blake Pereira”" [ref=e1011] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/blake-pereira
+                        - text: View
+                  - cell "Skater" [ref=e1012]
+                  - cell "Ravens " [ref=e1013]:
+                    - text: Ravens
+                    - generic "Current Team" [ref=e1014]: 
+                  - cell "Division 5" [ref=e1015]
+                  - cell "W2025-26, W2025-26 Playoffs" [ref=e1016]
+                  - cell "—" [ref=e1017]
+                - row "Select Kyle Boudreau 90 “Kyle Boudreau” (Edit) Edit “Kyle Boudreau” | Quick edit “Kyle Boudreau” inline | Move “Kyle Boudreau” to the Trash | View “Kyle Boudreau” Skater Ravens  Division 5 W2025-26, W2025-26 Playoffs —" [ref=e1018]:
+                  - rowheader "Select Kyle Boudreau" [ref=e1019]:
+                    - checkbox "Select Kyle Boudreau" [ref=e1020] [cursor=pointer]
+                    - generic [ref=e1022]: Select Kyle Boudreau
+                  - cell "90" [ref=e1023]
+                  - cell "“Kyle Boudreau” (Edit) Edit “Kyle Boudreau” | Quick edit “Kyle Boudreau” inline | Move “Kyle Boudreau” to the Trash | View “Kyle Boudreau”" [ref=e1024]:
+                    - strong [ref=e1025]:
+                      - link "“Kyle Boudreau” (Edit)" [ref=e1026] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115662&action=edit
+                        - text: Kyle Boudreau
+                    - generic [ref=e1027]:
+                      - generic [ref=e1028]:
+                        - link "Edit “Kyle Boudreau”" [ref=e1029] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115662&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1030]:
+                        - button "Quick edit “Kyle Boudreau” inline" [ref=e1031] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1032]:
+                        - link "Move “Kyle Boudreau” to the Trash" [ref=e1033] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115662&action=trash&_wpnonce=7e4ae674bc
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Kyle Boudreau”" [ref=e1035] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/kyle-boudreau
+                        - text: View
+                  - cell "Skater" [ref=e1036]
+                  - cell "Ravens " [ref=e1037]:
+                    - text: Ravens
+                    - generic "Current Team" [ref=e1038]: 
+                  - cell "Division 5" [ref=e1039]
+                  - cell "W2025-26, W2025-26 Playoffs" [ref=e1040]
+                  - cell "—" [ref=e1041]
+                - row "Select Doug Mathew “Doug Mathew” (Edit) Edit “Doug Mathew” | Quick edit “Doug Mathew” inline | Move “Doug Mathew” to the Trash | View “Doug Mathew” Skater Ravens  Division 5 — —" [ref=e1042]:
+                  - rowheader "Select Doug Mathew" [ref=e1043]:
+                    - checkbox "Select Doug Mathew" [ref=e1044] [cursor=pointer]
+                    - generic [ref=e1046]: Select Doug Mathew
+                  - cell [ref=e1047]
+                  - cell "“Doug Mathew” (Edit) Edit “Doug Mathew” | Quick edit “Doug Mathew” inline | Move “Doug Mathew” to the Trash | View “Doug Mathew”" [ref=e1048]:
+                    - strong [ref=e1049]:
+                      - link "“Doug Mathew” (Edit)" [ref=e1050] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115661&action=edit
+                        - text: Doug Mathew
+                    - generic [ref=e1051]:
+                      - generic [ref=e1052]:
+                        - link "Edit “Doug Mathew”" [ref=e1053] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115661&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1054]:
+                        - button "Quick edit “Doug Mathew” inline" [ref=e1055] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1056]:
+                        - link "Move “Doug Mathew” to the Trash" [ref=e1057] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115661&action=trash&_wpnonce=372802954d
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Doug Mathew”" [ref=e1059] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/doug-mathew-2
+                        - text: View
+                  - cell "Skater" [ref=e1060]
+                  - cell "Ravens " [ref=e1061]:
+                    - text: Ravens
+                    - generic "Current Team" [ref=e1062]: 
+                  - cell "Division 5" [ref=e1063]
+                  - cell "—" [ref=e1064]
+                  - cell "—" [ref=e1065]
+                - row "Select Jacqueline Perron 6 “Jacqueline Perron” (Edit) Edit “Jacqueline Perron” | Quick edit “Jacqueline Perron” inline | Move “Jacqueline Perron” to the Trash | View “Jacqueline Perron” Skater Spartans (Lusk.Tech)  Ravens Division 5 S2026, S2026 Playoffs, W2025-26, W2025-26 Playoffs —" [ref=e1066]:
+                  - rowheader "Select Jacqueline Perron" [ref=e1067]:
+                    - checkbox "Select Jacqueline Perron" [ref=e1068] [cursor=pointer]
+                    - generic [ref=e1070]: Select Jacqueline Perron
+                  - cell "6" [ref=e1071]
+                  - cell "“Jacqueline Perron” (Edit) Edit “Jacqueline Perron” | Quick edit “Jacqueline Perron” inline | Move “Jacqueline Perron” to the Trash | View “Jacqueline Perron”" [ref=e1072]:
+                    - strong [ref=e1073]:
+                      - link "“Jacqueline Perron” (Edit)" [ref=e1074] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115660&action=edit
+                        - text: Jacqueline Perron
+                    - generic [ref=e1075]:
+                      - generic [ref=e1076]:
+                        - link "Edit “Jacqueline Perron”" [ref=e1077] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115660&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1078]:
+                        - button "Quick edit “Jacqueline Perron” inline" [ref=e1079] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1080]:
+                        - link "Move “Jacqueline Perron” to the Trash" [ref=e1081] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115660&action=trash&_wpnonce=67d334f072
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Jacqueline Perron”" [ref=e1083] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/jacqueline-perron
+                        - text: View
+                  - cell "Skater" [ref=e1084]
+                  - cell "Spartans (Lusk.Tech)  Ravens" [ref=e1085]:
+                    - text: Spartans (Lusk.Tech)
+                    - generic "Current Team" [ref=e1086]: 
+                    - text: Ravens
+                  - cell "Division 5" [ref=e1087]
+                  - cell "S2026, S2026 Playoffs, W2025-26, W2025-26 Playoffs" [ref=e1088]
+                  - cell "—" [ref=e1089]
+                - row "Select Andy Giang 26 “Andy Giang” (Edit) Edit “Andy Giang” | Quick edit “Andy Giang” inline | Move “Andy Giang” to the Trash | View “Andy Giang” Skater Oilers  Division 4 W2025-26, W2025-26 Playoffs —" [ref=e1090]:
+                  - rowheader "Select Andy Giang" [ref=e1091]:
+                    - checkbox "Select Andy Giang" [ref=e1092] [cursor=pointer]
+                    - generic [ref=e1094]: Select Andy Giang
+                  - cell "26" [ref=e1095]
+                  - cell "“Andy Giang” (Edit) Edit “Andy Giang” | Quick edit “Andy Giang” inline | Move “Andy Giang” to the Trash | View “Andy Giang”" [ref=e1096]:
+                    - strong [ref=e1097]:
+                      - link "“Andy Giang” (Edit)" [ref=e1098] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115566&action=edit
+                        - text: Andy Giang
+                    - generic [ref=e1099]:
+                      - generic [ref=e1100]:
+                        - link "Edit “Andy Giang”" [ref=e1101] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115566&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1102]:
+                        - button "Quick edit “Andy Giang” inline" [ref=e1103] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1104]:
+                        - link "Move “Andy Giang” to the Trash" [ref=e1105] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115566&action=trash&_wpnonce=82f55ef3ef
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Andy Giang”" [ref=e1107] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/andy-giang
+                        - text: View
+                  - cell "Skater" [ref=e1108]
+                  - cell "Oilers " [ref=e1109]:
+                    - text: Oilers
+                    - generic "Current Team" [ref=e1110]: 
+                  - cell "Division 4" [ref=e1111]
+                  - cell "W2025-26, W2025-26 Playoffs" [ref=e1112]
+                  - cell "—" [ref=e1113]
+                - row "Select Maddy Reader 33 “Maddy Reader” (Edit) Edit “Maddy Reader” | Quick edit “Maddy Reader” inline | Move “Maddy Reader” to the Trash | View “Maddy Reader” Skater Knights of Ni  Division 4 W2025-26, W2025-26 Playoffs —" [ref=e1114]:
+                  - rowheader "Select Maddy Reader" [ref=e1115]:
+                    - checkbox "Select Maddy Reader" [ref=e1116] [cursor=pointer]
+                    - generic [ref=e1118]: Select Maddy Reader
+                  - cell "33" [ref=e1119]
+                  - cell "“Maddy Reader” (Edit) Edit “Maddy Reader” | Quick edit “Maddy Reader” inline | Move “Maddy Reader” to the Trash | View “Maddy Reader”" [ref=e1120]:
+                    - strong [ref=e1121]:
+                      - link "“Maddy Reader” (Edit)" [ref=e1122] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115563&action=edit
+                        - text: Maddy Reader
+                    - generic [ref=e1123]:
+                      - generic [ref=e1124]:
+                        - link "Edit “Maddy Reader”" [ref=e1125] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115563&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1126]:
+                        - button "Quick edit “Maddy Reader” inline" [ref=e1127] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1128]:
+                        - link "Move “Maddy Reader” to the Trash" [ref=e1129] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115563&action=trash&_wpnonce=661693cc37
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Maddy Reader”" [ref=e1131] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/maddy-reader
+                        - text: View
+                  - cell "Skater" [ref=e1132]
+                  - cell "Knights of Ni " [ref=e1133]:
+                    - text: Knights of Ni
+                    - generic "Current Team" [ref=e1134]: 
+                  - cell "Division 4" [ref=e1135]
+                  - cell "W2025-26, W2025-26 Playoffs" [ref=e1136]
+                  - cell "—" [ref=e1137]
+                - row "Select Justin Dalmaso 94 “Justin Dalmaso” (Edit) Edit “Justin Dalmaso” | Quick edit “Justin Dalmaso” inline | Move “Justin Dalmaso” to the Trash | View “Justin Dalmaso” Skater Rangers  Division 3 W2025-26, W2025-26 Playoffs —" [ref=e1138]:
+                  - rowheader "Select Justin Dalmaso" [ref=e1139]:
+                    - checkbox "Select Justin Dalmaso" [ref=e1140] [cursor=pointer]
+                    - generic [ref=e1142]: Select Justin Dalmaso
+                  - cell "94" [ref=e1143]
+                  - cell "“Justin Dalmaso” (Edit) Edit “Justin Dalmaso” | Quick edit “Justin Dalmaso” inline | Move “Justin Dalmaso” to the Trash | View “Justin Dalmaso”" [ref=e1144]:
+                    - strong [ref=e1145]:
+                      - link "“Justin Dalmaso” (Edit)" [ref=e1146] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115561&action=edit
+                        - text: Justin Dalmaso
+                    - generic [ref=e1147]:
+                      - generic [ref=e1148]:
+                        - link "Edit “Justin Dalmaso”" [ref=e1149] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115561&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1150]:
+                        - button "Quick edit “Justin Dalmaso” inline" [ref=e1151] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1152]:
+                        - link "Move “Justin Dalmaso” to the Trash" [ref=e1153] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115561&action=trash&_wpnonce=730c89db74
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Justin Dalmaso”" [ref=e1155] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/justin-dalmaso
+                        - text: View
+                  - cell "Skater" [ref=e1156]
+                  - cell "Rangers " [ref=e1157]:
+                    - text: Rangers
+                    - generic "Current Team" [ref=e1158]: 
+                  - cell "Division 3" [ref=e1159]
+                  - cell "W2025-26, W2025-26 Playoffs" [ref=e1160]
+                  - cell "—" [ref=e1161]
+                - row "Select Mike Stolls 12 “Mike Stolls” (Edit) Edit “Mike Stolls” | Quick edit “Mike Stolls” inline | Move “Mike Stolls” to the Trash | View “Mike Stolls” Skater Mammoth  Division 3 S2026, S2026 Playoffs, W2025-26, W2025-26 Playoffs —" [ref=e1162]:
+                  - rowheader "Select Mike Stolls" [ref=e1163]:
+                    - checkbox "Select Mike Stolls" [ref=e1164] [cursor=pointer]
+                    - generic [ref=e1166]: Select Mike Stolls
+                  - cell "12" [ref=e1167]
+                  - cell "“Mike Stolls” (Edit) Edit “Mike Stolls” | Quick edit “Mike Stolls” inline | Move “Mike Stolls” to the Trash | View “Mike Stolls”" [ref=e1168]:
+                    - strong [ref=e1169]:
+                      - link "“Mike Stolls” (Edit)" [ref=e1170] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115558&action=edit
+                        - text: Mike Stolls
+                    - generic [ref=e1171]:
+                      - generic [ref=e1172]:
+                        - link "Edit “Mike Stolls”" [ref=e1173] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115558&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1174]:
+                        - button "Quick edit “Mike Stolls” inline" [ref=e1175] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1176]:
+                        - link "Move “Mike Stolls” to the Trash" [ref=e1177] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115558&action=trash&_wpnonce=e053ba0707
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Mike Stolls”" [ref=e1179] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/mike-stolls
+                        - text: View
+                  - cell "Skater" [ref=e1180]
+                  - cell "Mammoth " [ref=e1181]:
+                    - text: Mammoth
+                    - generic "Current Team" [ref=e1182]: 
+                  - cell "Division 3" [ref=e1183]
+                  - cell "S2026, S2026 Playoffs, W2025-26, W2025-26 Playoffs" [ref=e1184]
+                  - cell "—" [ref=e1185]
+                - row "Select Bree Shelestynsky Green 9 “Bree Shelestynsky Green” (Edit) Edit “Bree Shelestynsky Green” | Quick edit “Bree Shelestynsky Green” inline | Move “Bree Shelestynsky Green” to the Trash | View “Bree Shelestynsky Green” Skater Mammoth  Division 3 S2026, S2026 Playoffs, W2025-26, W2025-26 Playoffs —" [ref=e1186]:
+                  - rowheader "Select Bree Shelestynsky Green" [ref=e1187]:
+                    - checkbox "Select Bree Shelestynsky Green" [ref=e1188] [cursor=pointer]
+                    - generic [ref=e1190]: Select Bree Shelestynsky Green
+                  - cell "9" [ref=e1191]
+                  - cell "“Bree Shelestynsky Green” (Edit) Edit “Bree Shelestynsky Green” | Quick edit “Bree Shelestynsky Green” inline | Move “Bree Shelestynsky Green” to the Trash | View “Bree Shelestynsky Green”" [ref=e1192]:
+                    - strong [ref=e1193]:
+                      - link "“Bree Shelestynsky Green” (Edit)" [ref=e1194] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115556&action=edit
+                        - text: Bree Shelestynsky Green
+                    - generic [ref=e1195]:
+                      - generic [ref=e1196]:
+                        - link "Edit “Bree Shelestynsky Green”" [ref=e1197] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115556&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1198]:
+                        - button "Quick edit “Bree Shelestynsky Green” inline" [ref=e1199] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1200]:
+                        - link "Move “Bree Shelestynsky Green” to the Trash" [ref=e1201] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115556&action=trash&_wpnonce=8226710a20
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Bree Shelestynsky Green”" [ref=e1203] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/bree-shelestynsky-green
+                        - text: View
+                  - cell "Skater" [ref=e1204]
+                  - cell "Mammoth " [ref=e1205]:
+                    - text: Mammoth
+                    - generic "Current Team" [ref=e1206]: 
+                  - cell "Division 3" [ref=e1207]
+                  - cell "S2026, S2026 Playoffs, W2025-26, W2025-26 Playoffs" [ref=e1208]
+                  - cell "—" [ref=e1209]
+                - row "Select Maya Gonsalves 6 “Maya Gonsalves” (Edit) Edit “Maya Gonsalves” | Quick edit “Maya Gonsalves” inline | Move “Maya Gonsalves” to the Trash | View “Maya Gonsalves” Skater Mammoth  Division 3 W2025-26, W2025-26 Playoffs —" [ref=e1210]:
+                  - rowheader "Select Maya Gonsalves" [ref=e1211]:
+                    - checkbox "Select Maya Gonsalves" [ref=e1212] [cursor=pointer]
+                    - generic [ref=e1214]: Select Maya Gonsalves
+                  - cell "6" [ref=e1215]
+                  - cell "“Maya Gonsalves” (Edit) Edit “Maya Gonsalves” | Quick edit “Maya Gonsalves” inline | Move “Maya Gonsalves” to the Trash | View “Maya Gonsalves”" [ref=e1216]:
+                    - strong [ref=e1217]:
+                      - link "“Maya Gonsalves” (Edit)" [ref=e1218] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115555&action=edit
+                        - text: Maya Gonsalves
+                    - generic [ref=e1219]:
+                      - generic [ref=e1220]:
+                        - link "Edit “Maya Gonsalves”" [ref=e1221] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115555&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1222]:
+                        - button "Quick edit “Maya Gonsalves” inline" [ref=e1223] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1224]:
+                        - link "Move “Maya Gonsalves” to the Trash" [ref=e1225] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115555&action=trash&_wpnonce=6b3c7990bc
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Maya Gonsalves”" [ref=e1227] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/maya-gonsalves
+                        - text: View
+                  - cell "Skater" [ref=e1228]
+                  - cell "Mammoth " [ref=e1229]:
+                    - text: Mammoth
+                    - generic "Current Team" [ref=e1230]: 
+                  - cell "Division 3" [ref=e1231]
+                  - cell "W2025-26, W2025-26 Playoffs" [ref=e1232]
+                  - cell "—" [ref=e1233]
+                - row "Select Jordan Bruder 15 “Jordan Bruder” (Edit) Edit “Jordan Bruder” | Quick edit “Jordan Bruder” inline | Move “Jordan Bruder” to the Trash | View “Jordan Bruder” Skater Ducks  Division 2 W2025-26, W2025-26 Playoffs —" [ref=e1234]:
+                  - rowheader "Select Jordan Bruder" [ref=e1235]:
+                    - checkbox "Select Jordan Bruder" [ref=e1236] [cursor=pointer]
+                    - generic [ref=e1238]: Select Jordan Bruder
+                  - cell "15" [ref=e1239]
+                  - cell "“Jordan Bruder” (Edit) Edit “Jordan Bruder” | Quick edit “Jordan Bruder” inline | Move “Jordan Bruder” to the Trash | View “Jordan Bruder”" [ref=e1240]:
+                    - strong [ref=e1241]:
+                      - link "“Jordan Bruder” (Edit)" [ref=e1242] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115547&action=edit
+                        - text: Jordan Bruder
+                    - generic [ref=e1243]:
+                      - generic [ref=e1244]:
+                        - link "Edit “Jordan Bruder”" [ref=e1245] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115547&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1246]:
+                        - button "Quick edit “Jordan Bruder” inline" [ref=e1247] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1248]:
+                        - link "Move “Jordan Bruder” to the Trash" [ref=e1249] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115547&action=trash&_wpnonce=e8bcb0a067
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Jordan Bruder”" [ref=e1251] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/jordan-bruder
+                        - text: View
+                  - cell "Skater" [ref=e1252]
+                  - cell "Ducks " [ref=e1253]:
+                    - text: Ducks
+                    - generic "Current Team" [ref=e1254]: 
+                  - cell "Division 2" [ref=e1255]
+                  - cell "W2025-26, W2025-26 Playoffs" [ref=e1256]
+                  - cell "—" [ref=e1257]
+                - row "Select Dale Jung 10 “Dale Jung” (Edit) Edit “Dale Jung” | Quick edit “Dale Jung” inline | Move “Dale Jung” to the Trash | View “Dale Jung” Skater TrebleMakers (Musik 7 Studios)  Division 5 W2025-26, W2025-26 Playoffs —" [ref=e1258]:
+                  - rowheader "Select Dale Jung" [ref=e1259]:
+                    - checkbox "Select Dale Jung" [ref=e1260] [cursor=pointer]
+                    - generic [ref=e1262]: Select Dale Jung
+                  - cell "10" [ref=e1263]
+                  - cell "“Dale Jung” (Edit) Edit “Dale Jung” | Quick edit “Dale Jung” inline | Move “Dale Jung” to the Trash | View “Dale Jung”" [ref=e1264]:
+                    - strong [ref=e1265]:
+                      - link "“Dale Jung” (Edit)" [ref=e1266] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115546&action=edit
+                        - text: Dale Jung
+                    - generic [ref=e1267]:
+                      - generic [ref=e1268]:
+                        - link "Edit “Dale Jung”" [ref=e1269] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115546&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1270]:
+                        - button "Quick edit “Dale Jung” inline" [ref=e1271] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1272]:
+                        - link "Move “Dale Jung” to the Trash" [ref=e1273] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115546&action=trash&_wpnonce=acf717d67a
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Dale Jung”" [ref=e1275] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/dale-jung
+                        - text: View
+                  - cell "Skater" [ref=e1276]
+                  - cell "TrebleMakers (Musik 7 Studios) " [ref=e1277]:
+                    - text: TrebleMakers (Musik 7 Studios)
+                    - generic "Current Team" [ref=e1278]: 
+                  - cell "Division 5" [ref=e1279]
+                  - cell "W2025-26, W2025-26 Playoffs" [ref=e1280]
+                  - cell "—" [ref=e1281]
+                - row "Select Nick Marino (G) “Nick Marino (G)” (Edit) Edit “Nick Marino (G)” | Quick edit “Nick Marino (G)” inline | Move “Nick Marino (G)” to the Trash | View “Nick Marino (G)” Goalie Lumberjacks  Division 4 W2025-26, W2025-26 Playoffs —" [ref=e1282]:
+                  - rowheader "Select Nick Marino (G)" [ref=e1283]:
+                    - checkbox "Select Nick Marino (G)" [ref=e1284] [cursor=pointer]
+                    - generic [ref=e1286]: Select Nick Marino (G)
+                  - cell [ref=e1287]
+                  - cell "“Nick Marino (G)” (Edit) Edit “Nick Marino (G)” | Quick edit “Nick Marino (G)” inline | Move “Nick Marino (G)” to the Trash | View “Nick Marino (G)”" [ref=e1288]:
+                    - strong [ref=e1289]:
+                      - link "“Nick Marino (G)” (Edit)" [ref=e1290] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115527&action=edit
+                        - text: Nick Marino (G)
+                    - generic [ref=e1291]:
+                      - generic [ref=e1292]:
+                        - link "Edit “Nick Marino (G)”" [ref=e1293] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115527&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1294]:
+                        - button "Quick edit “Nick Marino (G)” inline" [ref=e1295] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1296]:
+                        - link "Move “Nick Marino (G)” to the Trash" [ref=e1297] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115527&action=trash&_wpnonce=27ef7b2238
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Nick Marino (G)”" [ref=e1299] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/nick-marino-g
+                        - text: View
+                  - cell "Goalie" [ref=e1300]
+                  - cell "Lumberjacks " [ref=e1301]:
+                    - text: Lumberjacks
+                    - generic "Current Team" [ref=e1302]: 
+                  - cell "Division 4" [ref=e1303]
+                  - cell "W2025-26, W2025-26 Playoffs" [ref=e1304]
+                  - cell "—" [ref=e1305]
+                - row "Select Tracy Mccullough 5 “Tracy Mccullough” (Edit) Edit “Tracy Mccullough” | Quick edit “Tracy Mccullough” inline | Move “Tracy Mccullough” to the Trash | View “Tracy Mccullough” Skater Whalers  Division 4, Division 5 S2026, S2026 Playoffs, W2025-26, W2025-26 Playoffs —" [ref=e1306]:
+                  - rowheader "Select Tracy Mccullough" [ref=e1307]:
+                    - checkbox "Select Tracy Mccullough" [ref=e1308] [cursor=pointer]
+                    - generic [ref=e1310]: Select Tracy Mccullough
+                  - cell "5" [ref=e1311]
+                  - cell "“Tracy Mccullough” (Edit) Edit “Tracy Mccullough” | Quick edit “Tracy Mccullough” inline | Move “Tracy Mccullough” to the Trash | View “Tracy Mccullough”" [ref=e1312]:
+                    - strong [ref=e1313]:
+                      - link "“Tracy Mccullough” (Edit)" [ref=e1314] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115193&action=edit
+                        - text: Tracy Mccullough
+                    - generic [ref=e1315]:
+                      - generic [ref=e1316]:
+                        - link "Edit “Tracy Mccullough”" [ref=e1317] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115193&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1318]:
+                        - button "Quick edit “Tracy Mccullough” inline" [ref=e1319] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1320]:
+                        - link "Move “Tracy Mccullough” to the Trash" [ref=e1321] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115193&action=trash&_wpnonce=3265bb9342
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Tracy Mccullough”" [ref=e1323] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/tracy-mccullough
+                        - text: View
+                  - cell "Skater" [ref=e1324]
+                  - cell "Whalers " [ref=e1325]:
+                    - text: Whalers
+                    - generic "Current Team" [ref=e1326]: 
+                  - cell "Division 4, Division 5" [ref=e1327]
+                  - cell "S2026, S2026 Playoffs, W2025-26, W2025-26 Playoffs" [ref=e1328]
+                  - cell "—" [ref=e1329]
+                - row "Select Daniel Chin 3 “Daniel Chin” (Edit) Edit “Daniel Chin” | Quick edit “Daniel Chin” inline | Move “Daniel Chin” to the Trash | View “Daniel Chin” Skater TrebleMakers (Musik 7 Studios)  Division 5 W2025-26, W2025-26 Playoffs —" [ref=e1330]:
+                  - rowheader "Select Daniel Chin" [ref=e1331]:
+                    - checkbox "Select Daniel Chin" [ref=e1332] [cursor=pointer]
+                    - generic [ref=e1334]: Select Daniel Chin
+                  - cell "3" [ref=e1335]
+                  - cell "“Daniel Chin” (Edit) Edit “Daniel Chin” | Quick edit “Daniel Chin” inline | Move “Daniel Chin” to the Trash | View “Daniel Chin”" [ref=e1336]:
+                    - strong [ref=e1337]:
+                      - link "“Daniel Chin” (Edit)" [ref=e1338] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115178&action=edit
+                        - text: Daniel Chin
+                    - generic [ref=e1339]:
+                      - generic [ref=e1340]:
+                        - link "Edit “Daniel Chin”" [ref=e1341] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115178&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1342]:
+                        - button "Quick edit “Daniel Chin” inline" [ref=e1343] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1344]:
+                        - link "Move “Daniel Chin” to the Trash" [ref=e1345] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115178&action=trash&_wpnonce=d1c093c3be
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Daniel Chin”" [ref=e1347] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/daniel-chin
+                        - text: View
+                  - cell "Skater" [ref=e1348]
+                  - cell "TrebleMakers (Musik 7 Studios) " [ref=e1349]:
+                    - text: TrebleMakers (Musik 7 Studios)
+                    - generic "Current Team" [ref=e1350]: 
+                  - cell "Division 5" [ref=e1351]
+                  - cell "W2025-26, W2025-26 Playoffs" [ref=e1352]
+                  - cell "—" [ref=e1353]
+                - row "Select Jason Gauci 16 “Jason Gauci” (Edit) Edit “Jason Gauci” | Quick edit “Jason Gauci” inline | Move “Jason Gauci” to the Trash | View “Jason Gauci” Skater Whalers  Division 5 W2025-26, W2025-26 Playoffs —" [ref=e1354]:
+                  - rowheader "Select Jason Gauci" [ref=e1355]:
+                    - checkbox "Select Jason Gauci" [ref=e1356] [cursor=pointer]
+                    - generic [ref=e1358]: Select Jason Gauci
+                  - cell "16" [ref=e1359]
+                  - cell "“Jason Gauci” (Edit) Edit “Jason Gauci” | Quick edit “Jason Gauci” inline | Move “Jason Gauci” to the Trash | View “Jason Gauci”" [ref=e1360]:
+                    - strong [ref=e1361]:
+                      - link "“Jason Gauci” (Edit)" [ref=e1362] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115176&action=edit
+                        - text: Jason Gauci
+                    - generic [ref=e1363]:
+                      - generic [ref=e1364]:
+                        - link "Edit “Jason Gauci”" [ref=e1365] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115176&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1366]:
+                        - button "Quick edit “Jason Gauci” inline" [ref=e1367] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1368]:
+                        - link "Move “Jason Gauci” to the Trash" [ref=e1369] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115176&action=trash&_wpnonce=589803299c
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Jason Gauci”" [ref=e1371] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/jason-gauci
+                        - text: View
+                  - cell "Skater" [ref=e1372]
+                  - cell "Whalers " [ref=e1373]:
+                    - text: Whalers
+                    - generic "Current Team" [ref=e1374]: 
+                  - cell "Division 5" [ref=e1375]
+                  - cell "W2025-26, W2025-26 Playoffs" [ref=e1376]
+                  - cell "—" [ref=e1377]
+                - row "Select Andrew Vanin “Andrew Vanin” (Edit) Edit “Andrew Vanin” | Quick edit “Andrew Vanin” inline | Move “Andrew Vanin” to the Trash | View “Andrew Vanin” Goalie Rangers  Division 3 W2025-26, W2025-26 Playoffs —" [ref=e1378]:
+                  - rowheader "Select Andrew Vanin" [ref=e1379]:
+                    - checkbox "Select Andrew Vanin" [ref=e1380] [cursor=pointer]
+                    - generic [ref=e1382]: Select Andrew Vanin
+                  - cell [ref=e1383]
+                  - cell "“Andrew Vanin” (Edit) Edit “Andrew Vanin” | Quick edit “Andrew Vanin” inline | Move “Andrew Vanin” to the Trash | View “Andrew Vanin”" [ref=e1384]:
+                    - strong [ref=e1385]:
+                      - link "“Andrew Vanin” (Edit)" [ref=e1386] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115146&action=edit
+                        - text: Andrew Vanin
+                    - generic [ref=e1387]:
+                      - generic [ref=e1388]:
+                        - link "Edit “Andrew Vanin”" [ref=e1389] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115146&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1390]:
+                        - button "Quick edit “Andrew Vanin” inline" [ref=e1391] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1392]:
+                        - link "Move “Andrew Vanin” to the Trash" [ref=e1393] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115146&action=trash&_wpnonce=ae547542f8
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Andrew Vanin”" [ref=e1395] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/andrew-vanin
+                        - text: View
+                  - cell "Goalie" [ref=e1396]
+                  - cell "Rangers " [ref=e1397]:
+                    - text: Rangers
+                    - generic "Current Team" [ref=e1398]: 
+                  - cell "Division 3" [ref=e1399]
+                  - cell "W2025-26, W2025-26 Playoffs" [ref=e1400]
+                  - cell "—" [ref=e1401]
+                - row "Select Charlene Nicholson G1 “Charlene Nicholson” (Edit) Edit “Charlene Nicholson” | Quick edit “Charlene Nicholson” inline | Move “Charlene Nicholson” to the Trash | View “Charlene Nicholson” Skater, Goalie Team Canada  Land Sharks Division 3, Division 4 S2026, S2026 Playoffs, W2025-26, W2025-26 Playoffs —" [ref=e1402]:
+                  - rowheader "Select Charlene Nicholson" [ref=e1403]:
+                    - checkbox "Select Charlene Nicholson" [ref=e1404] [cursor=pointer]
+                    - generic [ref=e1406]: Select Charlene Nicholson
+                  - cell "G1" [ref=e1407]
+                  - cell "“Charlene Nicholson” (Edit) Edit “Charlene Nicholson” | Quick edit “Charlene Nicholson” inline | Move “Charlene Nicholson” to the Trash | View “Charlene Nicholson”" [ref=e1408]:
+                    - strong [ref=e1409]:
+                      - link "“Charlene Nicholson” (Edit)" [ref=e1410] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115084&action=edit
+                        - text: Charlene Nicholson
+                    - generic [ref=e1411]:
+                      - generic [ref=e1412]:
+                        - link "Edit “Charlene Nicholson”" [ref=e1413] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115084&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1414]:
+                        - button "Quick edit “Charlene Nicholson” inline" [ref=e1415] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1416]:
+                        - link "Move “Charlene Nicholson” to the Trash" [ref=e1417] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115084&action=trash&_wpnonce=d2a684954a
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Charlene Nicholson”" [ref=e1419] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/charlene-nicholson
+                        - text: View
+                  - cell "Skater, Goalie" [ref=e1420]
+                  - cell "Team Canada  Land Sharks" [ref=e1421]:
+                    - text: Team Canada
+                    - generic "Current Team" [ref=e1422]: 
+                    - text: Land Sharks
+                  - cell "Division 3, Division 4" [ref=e1423]
+                  - cell "S2026, S2026 Playoffs, W2025-26, W2025-26 Playoffs" [ref=e1424]
+                  - cell "—" [ref=e1425]
+                - row "Select Cameron Nunnaro 71 “Cameron Nunnaro” (Edit) Edit “Cameron Nunnaro” | Quick edit “Cameron Nunnaro” inline | Move “Cameron Nunnaro” to the Trash | View “Cameron Nunnaro” Skater B-Town Bulldogs (TeamSmulders.com)  Division 2 W2025-26, W2025-26 Playoffs —" [ref=e1426]:
+                  - rowheader "Select Cameron Nunnaro" [ref=e1427]:
+                    - checkbox "Select Cameron Nunnaro" [ref=e1428] [cursor=pointer]
+                    - generic [ref=e1430]: Select Cameron Nunnaro
+                  - cell "71" [ref=e1431]
+                  - cell "“Cameron Nunnaro” (Edit) Edit “Cameron Nunnaro” | Quick edit “Cameron Nunnaro” inline | Move “Cameron Nunnaro” to the Trash | View “Cameron Nunnaro”" [ref=e1432]:
+                    - strong [ref=e1433]:
+                      - link "“Cameron Nunnaro” (Edit)" [ref=e1434] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115070&action=edit
+                        - text: Cameron Nunnaro
+                    - generic [ref=e1435]:
+                      - generic [ref=e1436]:
+                        - link "Edit “Cameron Nunnaro”" [ref=e1437] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115070&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1438]:
+                        - button "Quick edit “Cameron Nunnaro” inline" [ref=e1439] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1440]:
+                        - link "Move “Cameron Nunnaro” to the Trash" [ref=e1441] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115070&action=trash&_wpnonce=4c13138350
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Cameron Nunnaro”" [ref=e1443] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/cameron-nunnaro
+                        - text: View
+                  - cell "Skater" [ref=e1444]
+                  - cell "B-Town Bulldogs (TeamSmulders.com) " [ref=e1445]:
+                    - text: B-Town Bulldogs (TeamSmulders.com)
+                    - generic "Current Team" [ref=e1446]: 
+                  - cell "Division 2" [ref=e1447]
+                  - cell "W2025-26, W2025-26 Playoffs" [ref=e1448]
+                  - cell "—" [ref=e1449]
+                - row "Select Megan Elliott 6 “Megan Elliott” (Edit) Edit “Megan Elliott” | Quick edit “Megan Elliott” inline | Move “Megan Elliott” to the Trash | View “Megan Elliott” Skater Land Sharks  Division 4 W2025-26, W2025-26 Playoffs —" [ref=e1450]:
+                  - rowheader "Select Megan Elliott" [ref=e1451]:
+                    - checkbox "Select Megan Elliott" [ref=e1452] [cursor=pointer]
+                    - generic [ref=e1454]: Select Megan Elliott
+                  - cell "6" [ref=e1455]
+                  - cell "“Megan Elliott” (Edit) Edit “Megan Elliott” | Quick edit “Megan Elliott” inline | Move “Megan Elliott” to the Trash | View “Megan Elliott”" [ref=e1456]:
+                    - strong [ref=e1457]:
+                      - link "“Megan Elliott” (Edit)" [ref=e1458] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115062&action=edit
+                        - text: Megan Elliott
+                    - generic [ref=e1459]:
+                      - generic [ref=e1460]:
+                        - link "Edit “Megan Elliott”" [ref=e1461] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115062&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1462]:
+                        - button "Quick edit “Megan Elliott” inline" [ref=e1463] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1464]:
+                        - link "Move “Megan Elliott” to the Trash" [ref=e1465] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115062&action=trash&_wpnonce=1f7e72c5b8
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Megan Elliott”" [ref=e1467] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/megan-elliott
+                        - text: View
+                  - cell "Skater" [ref=e1468]
+                  - cell "Land Sharks " [ref=e1469]:
+                    - text: Land Sharks
+                    - generic "Current Team" [ref=e1470]: 
+                  - cell "Division 4" [ref=e1471]
+                  - cell "W2025-26, W2025-26 Playoffs" [ref=e1472]
+                  - cell "—" [ref=e1473]
+                - row "Select Kailey Soeting 35 “Kailey Soeting” (Edit) Edit “Kailey Soeting” | Quick edit “Kailey Soeting” inline | Move “Kailey Soeting” to the Trash | View “Kailey Soeting” Skater Arcturus Stars  Division 2, Division 3, Group C W2025-26, W2025-26 Playoffs —" [ref=e1474]:
+                  - rowheader "Select Kailey Soeting" [ref=e1475]:
+                    - checkbox "Select Kailey Soeting" [ref=e1476] [cursor=pointer]
+                    - generic [ref=e1478]: Select Kailey Soeting
+                  - cell "35" [ref=e1479]
+                  - cell "“Kailey Soeting” (Edit) Edit “Kailey Soeting” | Quick edit “Kailey Soeting” inline | Move “Kailey Soeting” to the Trash | View “Kailey Soeting”" [ref=e1480]:
+                    - strong [ref=e1481]:
+                      - link "“Kailey Soeting” (Edit)" [ref=e1482] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115054&action=edit
+                        - text: Kailey Soeting
+                    - generic [ref=e1483]:
+                      - generic [ref=e1484]:
+                        - link "Edit “Kailey Soeting”" [ref=e1485] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115054&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1486]:
+                        - button "Quick edit “Kailey Soeting” inline" [ref=e1487] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1488]:
+                        - link "Move “Kailey Soeting” to the Trash" [ref=e1489] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115054&action=trash&_wpnonce=404ec990b0
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Kailey Soeting”" [ref=e1491] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/kailey-soeting
+                        - text: View
+                  - cell "Skater" [ref=e1492]
+                  - cell "Arcturus Stars " [ref=e1493]:
+                    - text: Arcturus Stars
+                    - generic "Current Team" [ref=e1494]: 
+                  - cell "Division 2, Division 3, Group C" [ref=e1495]
+                  - cell "W2025-26, W2025-26 Playoffs" [ref=e1496]
+                  - cell "—" [ref=e1497]
+                - row "Select Dwayne Parker 70 “Dwayne Parker” (Edit) Edit “Dwayne Parker” | Quick edit “Dwayne Parker” inline | Move “Dwayne Parker” to the Trash | View “Dwayne Parker” Skater Pylons  Division 5 W2025-26, W2025-26 Playoffs —" [ref=e1498]:
+                  - rowheader "Select Dwayne Parker" [ref=e1499]:
+                    - checkbox "Select Dwayne Parker" [ref=e1500] [cursor=pointer]
+                    - generic [ref=e1502]: Select Dwayne Parker
+                  - cell "70" [ref=e1503]
+                  - cell "“Dwayne Parker” (Edit) Edit “Dwayne Parker” | Quick edit “Dwayne Parker” inline | Move “Dwayne Parker” to the Trash | View “Dwayne Parker”" [ref=e1504]:
+                    - strong [ref=e1505]:
+                      - link "“Dwayne Parker” (Edit)" [ref=e1506] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115052&action=edit
+                        - text: Dwayne Parker
+                    - generic [ref=e1507]:
+                      - generic [ref=e1508]:
+                        - link "Edit “Dwayne Parker”" [ref=e1509] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115052&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1510]:
+                        - button "Quick edit “Dwayne Parker” inline" [ref=e1511] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1512]:
+                        - link "Move “Dwayne Parker” to the Trash" [ref=e1513] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115052&action=trash&_wpnonce=c682d30c47
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Dwayne Parker”" [ref=e1515] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/dwayne-parker
+                        - text: View
+                  - cell "Skater" [ref=e1516]
+                  - cell "Pylons " [ref=e1517]:
+                    - text: Pylons
+                    - generic "Current Team" [ref=e1518]: 
+                  - cell "Division 5" [ref=e1519]
+                  - cell "W2025-26, W2025-26 Playoffs" [ref=e1520]
+                  - cell "—" [ref=e1521]
+                - row "Select Blair Peto 36 “Blair Peto” (Edit) Edit “Blair Peto” | Quick edit “Blair Peto” inline | Move “Blair Peto” to the Trash | View “Blair Peto” Skater Petes  Division 1 W2025-26, W2025-26 Playoffs —" [ref=e1522]:
+                  - rowheader "Select Blair Peto" [ref=e1523]:
+                    - checkbox "Select Blair Peto" [ref=e1524] [cursor=pointer]
+                    - generic [ref=e1526]: Select Blair Peto
+                  - cell "36" [ref=e1527]
+                  - cell "“Blair Peto” (Edit) Edit “Blair Peto” | Quick edit “Blair Peto” inline | Move “Blair Peto” to the Trash | View “Blair Peto”" [ref=e1528]:
+                    - strong [ref=e1529]:
+                      - link "“Blair Peto” (Edit)" [ref=e1530] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115050&action=edit
+                        - text: Blair Peto
+                    - generic [ref=e1531]:
+                      - generic [ref=e1532]:
+                        - link "Edit “Blair Peto”" [ref=e1533] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115050&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1534]:
+                        - button "Quick edit “Blair Peto” inline" [ref=e1535] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1536]:
+                        - link "Move “Blair Peto” to the Trash" [ref=e1537] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115050&action=trash&_wpnonce=90c3f240e7
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Blair Peto”" [ref=e1539] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/blair-peto
+                        - text: View
+                  - cell "Skater" [ref=e1540]
+                  - cell "Petes " [ref=e1541]:
+                    - text: Petes
+                    - generic "Current Team" [ref=e1542]: 
+                  - cell "Division 1" [ref=e1543]
+                  - cell "W2025-26, W2025-26 Playoffs" [ref=e1544]
+                  - cell "—" [ref=e1545]
+                - row "Select Neja Rajapakse 7 “Neja Rajapakse” (Edit) Edit “Neja Rajapakse” | Quick edit “Neja Rajapakse” inline | Move “Neja Rajapakse” to the Trash | View “Neja Rajapakse” Skater Royals  Div 5A, Div 5B, Division 5 S2026, S2026 Playoffs, W2025-26, W2025-26 Playoffs —" [ref=e1546]:
+                  - rowheader "Select Neja Rajapakse" [ref=e1547]:
+                    - checkbox "Select Neja Rajapakse" [ref=e1548] [cursor=pointer]
+                    - generic [ref=e1550]: Select Neja Rajapakse
+                  - cell "7" [ref=e1551]
+                  - cell "“Neja Rajapakse” (Edit) Edit “Neja Rajapakse” | Quick edit “Neja Rajapakse” inline | Move “Neja Rajapakse” to the Trash | View “Neja Rajapakse”" [ref=e1552]:
+                    - strong [ref=e1553]:
+                      - link "“Neja Rajapakse” (Edit)" [ref=e1554] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115044&action=edit
+                        - text: Neja Rajapakse
+                    - generic [ref=e1555]:
+                      - generic [ref=e1556]:
+                        - link "Edit “Neja Rajapakse”" [ref=e1557] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115044&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1558]:
+                        - button "Quick edit “Neja Rajapakse” inline" [ref=e1559] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1560]:
+                        - link "Move “Neja Rajapakse” to the Trash" [ref=e1561] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115044&action=trash&_wpnonce=63d248b97a
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Neja Rajapakse”" [ref=e1563] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/neja-rajapakse
+                        - text: View
+                  - cell "Skater" [ref=e1564]
+                  - cell "Royals " [ref=e1565]:
+                    - text: Royals
+                    - generic "Current Team" [ref=e1566]: 
+                  - cell "Div 5A, Div 5B, Division 5" [ref=e1567]
+                  - cell "S2026, S2026 Playoffs, W2025-26, W2025-26 Playoffs" [ref=e1568]
+                  - cell "—" [ref=e1569]
+                - row "Select Ali Wardrop 12 “Ali Wardrop” (Edit) Edit “Ali Wardrop” | Quick edit “Ali Wardrop” inline | Move “Ali Wardrop” to the Trash | View “Ali Wardrop” Skater Spartans (Lusk.Tech)  Pylons Div 5A, Div 5B, Division 5 S2026, S2026 Playoffs, W2025-26, W2025-26 Playoffs —" [ref=e1570]:
+                  - rowheader "Select Ali Wardrop" [ref=e1571]:
+                    - checkbox "Select Ali Wardrop" [ref=e1572] [cursor=pointer]
+                    - generic [ref=e1574]: Select Ali Wardrop
+                  - cell "12" [ref=e1575]
+                  - cell "“Ali Wardrop” (Edit) Edit “Ali Wardrop” | Quick edit “Ali Wardrop” inline | Move “Ali Wardrop” to the Trash | View “Ali Wardrop”" [ref=e1576]:
+                    - strong [ref=e1577]:
+                      - link "“Ali Wardrop” (Edit)" [ref=e1578] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115041&action=edit
+                        - text: Ali Wardrop
+                    - generic [ref=e1579]:
+                      - generic [ref=e1580]:
+                        - link "Edit “Ali Wardrop”" [ref=e1581] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115041&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1582]:
+                        - button "Quick edit “Ali Wardrop” inline" [ref=e1583] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1584]:
+                        - link "Move “Ali Wardrop” to the Trash" [ref=e1585] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115041&action=trash&_wpnonce=5209c07173
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Ali Wardrop”" [ref=e1587] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/ali-wardrop
+                        - text: View
+                  - cell "Skater" [ref=e1588]
+                  - cell "Spartans (Lusk.Tech)  Pylons" [ref=e1589]:
+                    - text: Spartans (Lusk.Tech)
+                    - generic "Current Team" [ref=e1590]: 
+                    - text: Pylons
+                  - cell "Div 5A, Div 5B, Division 5" [ref=e1591]
+                  - cell "S2026, S2026 Playoffs, W2025-26, W2025-26 Playoffs" [ref=e1592]
+                  - cell "—" [ref=e1593]
+                - row "Select Christopher Daley 11 “Christopher Daley” (Edit) Edit “Christopher Daley” | Quick edit “Christopher Daley” inline | Move “Christopher Daley” to the Trash | View “Christopher Daley” Skater Arcturus Stars  Division 3, Group C W2025-26, W2025-26 Playoffs —" [ref=e1594]:
+                  - rowheader "Select Christopher Daley" [ref=e1595]:
+                    - checkbox "Select Christopher Daley" [ref=e1596] [cursor=pointer]
+                    - generic [ref=e1598]: Select Christopher Daley
+                  - cell "11" [ref=e1599]
+                  - cell "“Christopher Daley” (Edit) Edit “Christopher Daley” | Quick edit “Christopher Daley” inline | Move “Christopher Daley” to the Trash | View “Christopher Daley”" [ref=e1600]:
+                    - strong [ref=e1601]:
+                      - link "“Christopher Daley” (Edit)" [ref=e1602] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115036&action=edit
+                        - text: Christopher Daley
+                    - generic [ref=e1603]:
+                      - generic [ref=e1604]:
+                        - link "Edit “Christopher Daley”" [ref=e1605] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115036&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1606]:
+                        - button "Quick edit “Christopher Daley” inline" [ref=e1607] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1608]:
+                        - link "Move “Christopher Daley” to the Trash" [ref=e1609] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115036&action=trash&_wpnonce=9083644bff
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Christopher Daley”" [ref=e1611] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/christopher-daley
+                        - text: View
+                  - cell "Skater" [ref=e1612]
+                  - cell "Arcturus Stars " [ref=e1613]:
+                    - text: Arcturus Stars
+                    - generic "Current Team" [ref=e1614]: 
+                  - cell "Division 3, Group C" [ref=e1615]
+                  - cell "W2025-26, W2025-26 Playoffs" [ref=e1616]
+                  - cell "—" [ref=e1617]
+                - row "Select Austin Dumoulin “Austin Dumoulin” (Edit) Edit “Austin Dumoulin” | Quick edit “Austin Dumoulin” inline | Move “Austin Dumoulin” to the Trash | View “Austin Dumoulin” Goalie Hammers  Division 2 W2025-26, W2025-26 Playoffs —" [ref=e1618]:
+                  - rowheader "Select Austin Dumoulin" [ref=e1619]:
+                    - checkbox "Select Austin Dumoulin" [ref=e1620] [cursor=pointer]
+                    - generic [ref=e1622]: Select Austin Dumoulin
+                  - cell [ref=e1623]
+                  - cell "“Austin Dumoulin” (Edit) Edit “Austin Dumoulin” | Quick edit “Austin Dumoulin” inline | Move “Austin Dumoulin” to the Trash | View “Austin Dumoulin”" [ref=e1624]:
+                    - strong [ref=e1625]:
+                      - link "“Austin Dumoulin” (Edit)" [ref=e1626] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115002&action=edit
+                        - text: Austin Dumoulin
+                    - generic [ref=e1627]:
+                      - generic [ref=e1628]:
+                        - link "Edit “Austin Dumoulin”" [ref=e1629] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115002&action=edit
+                          - text: Edit
+                        - text: "|"
+                      - generic [ref=e1630]:
+                        - button "Quick edit “Austin Dumoulin” inline" [ref=e1631] [cursor=pointer]: Quick Edit
+                        - text: "|"
+                      - generic [ref=e1632]:
+                        - link "Move “Austin Dumoulin” to the Trash" [ref=e1633] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=115002&action=trash&_wpnonce=a483ece175
+                          - text: Move to Trash
+                        - text: "|"
+                      - link "View “Austin Dumoulin”" [ref=e1635] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/austin-dumoulin
+                        - text: View
+                  - cell "Goalie" [ref=e1636]
+                  - cell "Hammers " [ref=e1637]:
+                    - text: Hammers
+                    - generic "Current Team" [ref=e1638]: 
+                  - cell "Division 2" [ref=e1639]
+                  - cell "W2025-26, W2025-26 Playoffs" [ref=e1640]
+                  - cell "—" [ref=e1641]
+              - rowgroup [ref=e1642]:
+                - row "Select All  Name Sort ascending. Positions Teams Leagues Seasons Skill Sort ascending." [ref=e1643]:
+                  - cell "Select All" [ref=e1644]:
+                    - checkbox "Select All" [ref=e1645] [cursor=pointer]
+                    - generic [ref=e1647]: Select All
+                  - columnheader "" [ref=e1648]:
+                    - generic [ref=e1649]: 
+                  - columnheader "Name Sort ascending." [ref=e1650]:
+                    - link "Name Sort ascending." [ref=e1651] [cursor=pointer]:
+                      - /url: http://tikal.lusk.ee:8080/wp-admin/edit.php?post_type=sp_player&orderby=title&order=asc
+                      - generic [ref=e1652]: Name
+                      - generic [ref=e1656]: Sort ascending.
+                  - columnheader "Positions" [ref=e1657]
+                  - columnheader "Teams" [ref=e1658]
+                  - columnheader "Leagues" [ref=e1659]
+                  - columnheader "Seasons" [ref=e1660]
+                  - columnheader "Skill Sort ascending." [ref=e1661]:
+                    - link "Skill Sort ascending." [ref=e1662] [cursor=pointer]:
+                      - /url: http://tikal.lusk.ee:8080/wp-admin/edit.php?post_type=sp_player&orderby=spt_skill_level&order=asc
+                      - generic [ref=e1663]: Skill
+                      - generic [ref=e1667]: Sort ascending.
+            - generic [ref=e1668]:
+              - generic [ref=e1669]:
+                - generic [ref=e1670]: Select bulk action
+                - combobox "Select bulk action" [ref=e1671] [cursor=pointer]:
+                  - option "Bulk Actions" [selected]
+                  - option "Edit"
+                  - option "Move to Trash"
+                - button "Apply" [ref=e1672] [cursor=pointer]
+              - generic [ref=e1673]:
+                - text: 2,100 items
+                - generic [ref=e1674]:
+                  - generic [ref=e1675]: «
+                  - generic [ref=e1676]: ‹
+                  - generic [ref=e1677]: Current Page
+                  - generic [ref=e1679]: 1 of 42
+                  - link "Next page" [ref=e1680] [cursor=pointer]:
+                    - /url: http://tikal.lusk.ee:8080/wp-admin/edit.php?post_type=sp_player&paged=2
+                    - generic [ref=e1681]: Next page
+                    - text: ›
+                  - link "Last page" [ref=e1682] [cursor=pointer]:
+                    - /url: http://tikal.lusk.ee:8080/wp-admin/edit.php?post_type=sp_player&paged=42
+                    - generic [ref=e1683]: Last page
+                    - text: »
+  - contentinfo [ref=e1684]:
+    - paragraph [ref=e1685]:
+      - generic [ref=e1687]:
+        - text: Thank you for creating with
+        - link "WordPress" [ref=e1688] [cursor=pointer]:
+          - /url: https://en-ca.wordpress.org/
+        - text: .
+    - paragraph [ref=e1689]: Version 6.9.4

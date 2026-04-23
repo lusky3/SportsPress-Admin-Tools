@@ -74,6 +74,10 @@ class SPSG_Venue_Schedule_Importer {
 			// Parse data row
 			$data = array_combine( $headers, $row );
 
+			if ( $data === false ) {
+				continue; // Skip rows with wrong column count
+			}
+
 			if ( ! isset( $data['Week Start Date'] ) || ! isset( $data['Venue Name'] ) || ! isset( $data['Time Slots'] ) ) {
 				continue;
 			}
@@ -137,6 +141,10 @@ class SPSG_Venue_Schedule_Importer {
 			// Generate hourly slots between start and end
 			$current = strtotime( $start_time );
 			$end = strtotime( $end_time );
+
+			if ( $end <= $current ) {
+				$end = strtotime( '+1 day', $end ); // Handle overnight
+			}
 
 			while ( $current < $end ) {
 				$slots[] = date( 'H:i', $current );
@@ -216,6 +224,10 @@ class SPSG_Venue_Schedule_Importer {
 	 * @return float Similarity score (0-1)
 	 */
 	private static function calculate_similarity( $str1, $str2 ) {
+		if ( strlen( $str1 ) > 255 || strlen( $str2 ) > 255 ) {
+			return 0.0;
+		}
+
 		$str1 = strtolower( trim( $str1 ) );
 		$str2 = strtolower( trim( $str2 ) );
 

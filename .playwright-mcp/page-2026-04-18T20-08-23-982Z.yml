@@ -1,0 +1,173 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - navigation "Toolbar":
+      - menu:
+        - group [ref=e3]:
+          - menuitem "About WordPress" [ref=e4] [cursor=pointer]:
+            - generic [ref=e6]: About WordPress
+        - group [ref=e7]:
+          - menuitem "ARL - Adult Recreational League" [ref=e8] [cursor=pointer]
+        - group [ref=e9]:
+          - menuitem " SportsPress" [ref=e10] [cursor=pointer]
+        - group [ref=e11]:
+          - menuitem "Customize" [ref=e12] [cursor=pointer]
+        - group [ref=e13]:
+          - menuitem "2 updates available" [ref=e14] [cursor=pointer]:
+            - generic [ref=e16]: "2"
+            - generic [ref=e17]: 2 updates available
+        - group [ref=e18]:
+          - menuitem "0 Comments in moderation" [ref=e19] [cursor=pointer]:
+            - generic [ref=e21]: "0"
+            - generic [ref=e22]: 0 Comments in moderation
+        - group [ref=e23]:
+          - menuitem "New" [ref=e24] [cursor=pointer]:
+            - generic [ref=e26]: New
+        - group [ref=e27]:
+          - menuitem "Edit Page" [ref=e28] [cursor=pointer]
+      - menu [ref=e29]:
+        - group [ref=e30]:
+          - menuitem "Howdy, Cody Lusk" [ref=e31] [cursor=pointer]
+        - group [ref=e32]:
+          - menuitem "Search" [ref=e33]:
+            - generic [ref=e34]:
+              - textbox "Search" [ref=e35] [cursor=pointer]
+              - generic [ref=e36]: Search
+  - generic [ref=e37]:
+    - link "Skip to content" [ref=e38] [cursor=pointer]:
+      - /url: "#content"
+    - banner [ref=e39]:
+      - generic [ref=e42]:
+        - generic [ref=e44]:
+          - link "ARL – Adult Recreational League" [ref=e45] [cursor=pointer]:
+            - /url: http://tikal.lusk.ee:8080/
+            - img "ARL – Adult Recreational League" [ref=e46]
+          - generic [ref=e47]:
+            - heading "ARL – Adult Recreational League" [level=1] [ref=e48]:
+              - link "ARL – Adult Recreational League" [ref=e49] [cursor=pointer]:
+                - /url: http://tikal.lusk.ee:8080/
+            - heading "Adult Co-Ed Hockey located in Burlington, On" [level=2] [ref=e50]
+        - navigation [ref=e51]:
+          - text: 
+          - generic:
+            - list:
+              - listitem [ref=e52]:
+                - link "Home" [ref=e53] [cursor=pointer]:
+                  - /url: http://tikal.lusk.ee:8080/
+              - listitem [ref=e54]:
+                - link "News" [ref=e55] [cursor=pointer]:
+                  - /url: http://tikal.lusk.ee:8080/news
+              - listitem [ref=e56]:
+                - link "League Info" [ref=e57] [cursor=pointer]:
+                  - /url: "#"
+              - listitem [ref=e58]:
+                - link "Rosters / Stats" [ref=e59] [cursor=pointer]:
+                  - /url: http://tikal.lusk.ee:8080/rosters-and-stats
+              - listitem [ref=e60]:
+                - link "Schedule" [ref=e61] [cursor=pointer]:
+                  - /url: http://tikal.lusk.ee:8080/schedule
+              - listitem [ref=e62]:
+                - link "Sponsors" [ref=e63] [cursor=pointer]:
+                  - /url: http://tikal.lusk.ee:8080/sponsors
+              - listitem [ref=e64]:
+                - link "Standings" [ref=e65] [cursor=pointer]:
+                  - /url: http://tikal.lusk.ee:8080/standings
+              - listitem [ref=e66]:
+                - link "Register to Play" [ref=e67] [cursor=pointer]:
+                  - /url: http://tikal.lusk.ee:8080/register
+              - listitem [ref=e68]:
+                - link "My ARL Account" [ref=e69] [cursor=pointer]:
+                  - /url: https://tikal.lusk.ee:8080/account
+              - listitem [ref=e70]:
+                - link "Log Out" [ref=e71] [cursor=pointer]:
+                  - /url: "#loginpress-logout#"
+          - search [ref=e72]:
+            - generic:
+              - generic [ref=e73]: "Search for:"
+              - searchbox "Search for:" [ref=e74]
+            - button "" [ref=e75] [cursor=pointer]
+    - main [ref=e78]:
+      - article [ref=e79]:
+        - generic [ref=e80]:
+          - paragraph [ref=e81]: "[event_scoreboard id=”97395″ number=”20″]"
+          - paragraph [ref=e83]:
+            - text: "[su_row]"
+            - text: "[su_column size=”1/2″]"
+            - text: "[su_animate type=”fadeInLeft” delay=”1″ duration=”1.5″]"
+            - text: "[su_box title=”Welcome to the ARL Website” box_color=”#032867″ title_color=”#fff”]"
+          - paragraph [ref=e84]:
+            - text: Welcome to the home of the ARL – Adult Recreational League
+            - emphasis [ref=e85]: (formerly Adult Rookie League)
+            - text: .
+          - paragraph [ref=e86]: We are a social Co-Ed beginner and rookie hockey league serving Burlington, Hamilton, Milton, Oakville, and the surrounding area.
+          - paragraph [ref=e87]: Perfect for first time players or long time veterans looking for a fun, non-competitive environment. Enjoy your stay and be sure to sign up!
+          - paragraph [ref=e88]:
+            - text: "[/su_box]"
+            - text: "[/su_animate]"
+            - text: "[/su_column]"
+            - text: "[su_column size=”1/2″]"
+            - text: "[su_animate type=”fadeInRight” delay=”1″ duration=”1.5″]"
+            - text: "[su_box title=”The Next Puck Drop” box_color=”#032867″ title_color=”#fff”]"
+          - generic [ref=e91]:
+            - heading "Hammer An image of a cartoon duck with beard, sunglasses, and hockey sticks above 'Puck Dynasty' text logo. Hammers vs Puck Dynasty" [level=3] [ref=e92]:
+              - link "Hammer" [ref=e93] [cursor=pointer]:
+                - /url: http://tikal.lusk.ee:8080/team/the-hammers
+                - img "Hammer" [ref=e94]
+              - link "An image of a cartoon duck with beard, sunglasses, and hockey sticks above 'Puck Dynasty' text logo." [ref=e95] [cursor=pointer]:
+                - /url: http://tikal.lusk.ee:8080/team/puck-dynasty
+                - img "An image of a cartoon duck with beard, sunglasses, and hockey sticks above 'Puck Dynasty' text logo." [ref=e96]
+              - link "Hammers vs Puck Dynasty" [ref=e97] [cursor=pointer]:
+                - /url: http://tikal.lusk.ee:8080/event/hammers-vs-puck-dynasty
+            - paragraph:
+              - time:
+                - generic [ref=e98]:
+                  - text: "06"
+                  - generic [ref=e99]: days
+                - generic [ref=e100]:
+                  - text: "01"
+                  - generic [ref=e101]: hrs
+                - generic [ref=e102]:
+                  - text: "52"
+                  - generic [ref=e103]: mins
+                - generic [ref=e104]:
+                  - text: "23"
+                  - generic [ref=e105]: secs
+          - text: "[/su_box]"
+          - text: "[/su_animate]"
+          - text: "[/su_column]"
+          - text: "[/su_row]"
+          - paragraph
+          - paragraph [ref=e106]:
+            - text: "[su_row]"
+            - text: "[su_animate type=”fadeInDown” delay=”1″ duration=”1.5″]"
+            - text: "[su_box title=”Latest News” box_color=”#032867″ title_color=”#fff”][su_posts template=”templates/single-post.php” posts_per_page=”1″ order=”desc” ignore_sticky_posts=”yes”]"
+          - paragraph [ref=e107]:
+            - text: Visit the
+            - link "News Page" [ref=e108] [cursor=pointer]:
+              - /url: /news
+            - text: for all the latest in the ARL!
+          - paragraph [ref=e109]:
+            - text: "[/su_box]"
+            - text: "[/su_animate]"
+            - text: "[/su_row]"
+          - paragraph [ref=e110]:
+            - text: "[su_row]"
+            - text: "[su_image_carousel source=”media: 101479,101478,101477,101476,101475,101474,101473,101472,101480,101481,7596,7597″ limit=”5″ slides_style=”photo” crop=”none” columns=”3″ crop=”16:9″ align=”center” max_width=”100%” arrows=”no” link=”lightbox” speed=”slow” image_size=”full” random=”yes”]"
+            - text: "[/su_row]"
+    - contentinfo [ref=e111]:
+      - generic:
+        - generic:
+          - generic:
+            - complementary:
+              - generic [ref=e113]:
+                - complementary [ref=e114]:
+                  - figure [ref=e116]:
+                    - link "Flag of Ukraine" [ref=e117] [cursor=pointer]:
+                      - /url: https://arl.link/helpukraine
+                      - img "Flag of Ukraine" [ref=e118]
+                - complementary [ref=e119]:
+                  - paragraph [ref=e120]:
+                    - strong [ref=e121]:
+                      - link "WE STAND WITH UKRAINE" [ref=e122] [cursor=pointer]:
+                        - /url: https://arl.link/helpukraine
+  - generic [ref=e125]: © 2026 ARL - Adult Recreational League
+  - status [ref=e126]

@@ -22,7 +22,7 @@ function NotesPanel( { player, onClose } ) {
 	};
 
 	return (
-		<div className="splm-notes-panel">
+		<div className="splm-notes-panel" role="dialog" aria-modal="true" aria-label={ `Notes for ${ player.name }` } onKeyDown={ ( e ) => { if ( e.key === 'Escape' ) onClose(); } }>
 			<div className="splm-notes-panel__overlay" onClick={ onClose }></div>
 			<div className="splm-notes-panel__content">
 				<div className="splm-notes-panel__header">
@@ -66,7 +66,7 @@ function MoveModal( { player, teams, currentTeam, onClose, onMoved } ) {
 	};
 
 	return (
-		<div className="splm-modal-overlay" onClick={ onClose }>
+		<div className="splm-modal-overlay" onClick={ onClose } role="dialog" aria-modal="true" aria-label={ `Move ${ player.name }` } onKeyDown={ ( e ) => { if ( e.key === 'Escape' ) onClose(); } }>
 			<div className="splm-modal" onClick={ ( e ) => e.stopPropagation() }>
 				<h3>Move { player.name }</h3>
 				<label>Move to team:</label>
@@ -108,7 +108,7 @@ function EditableCell( { value, field, playerId, onSaved } ) {
 			/>
 		);
 	}
-	return <span onClick={ () => setEditing( true ) } style={ { cursor: 'pointer' } }>{ value || '—' }</span>;
+	return <span tabIndex={0} onClick={ () => setEditing( true ) } onKeyDown={ ( e ) => { if ( e.key === 'Enter' || e.key === ' ' ) e.currentTarget.click(); } } style={ { cursor: 'pointer' } }>{ value || '—' }</span>;
 }
 
 function SkillCell( { value, playerId, onSaved } ) {
@@ -138,7 +138,7 @@ function SkillCell( { value, playerId, onSaved } ) {
 			</select>
 		);
 	}
-	return <span onClick={ () => setEditing( true ) } style={ { cursor: 'pointer' } }>{ value || '—' }</span>;
+	return <span tabIndex={0} onClick={ () => setEditing( true ) } onKeyDown={ ( e ) => { if ( e.key === 'Enter' || e.key === ' ' ) e.currentTarget.click(); } } style={ { cursor: 'pointer' } }>{ value || '—' }</span>;
 }
 
 function CSVUpload( { teamId, seasonId, onImported } ) {
@@ -207,7 +207,7 @@ export default function Rosters( { season } ) {
 
 	useEffect( () => {
 		fetchTeams( season ).then( setTeams );
-	}, [] );
+	}, [ season ] );
 
 	useEffect( () => {
 		if ( ! selectedTeam ) return;
@@ -298,6 +298,10 @@ export default function Rosters( { season } ) {
 										<span
 											className={ `splm-captain-badge${ player.is_captain ? ' splm-captain-badge--active' : '' }` }
 											onClick={ () => toggleCaptain( player ) }
+											tabIndex={0}
+											role="button"
+											aria-label={ player.is_captain ? 'Remove captain' : 'Make captain' }
+											onKeyDown={ ( e ) => { if ( e.key === 'Enter' || e.key === ' ' ) e.currentTarget.click(); } }
 										>
 											ⓒ
 										</span>

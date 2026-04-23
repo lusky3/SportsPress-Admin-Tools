@@ -1,0 +1,37 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e64]:
+    - link "Skip to toolbar" [ref=e65] [cursor=pointer]:
+      - /url: "#wp-toolbar"
+    - navigation "Toolbar":
+      - menu:
+        - group [ref=e66]:
+          - menuitem "About WordPress" [ref=e67] [cursor=pointer]:
+            - generic [ref=e69]: About WordPress
+        - group [ref=e70]:
+          - menuitem "ARL - Adult Recreational League" [ref=e71] [cursor=pointer]
+        - group [ref=e72]:
+          - menuitem " SportsPress" [ref=e73] [cursor=pointer]
+        - group [ref=e74]:
+          - menuitem "Customize" [ref=e75] [cursor=pointer]
+        - group [ref=e76]:
+          - menuitem "1 update available" [ref=e77] [cursor=pointer]:
+            - generic [ref=e79]: "1"
+            - generic [ref=e80]: 1 update available
+        - group [ref=e81]:
+          - menuitem "0 Comments in moderation" [ref=e82] [cursor=pointer]:
+            - generic [ref=e84]: "0"
+            - generic [ref=e85]: 0 Comments in moderation
+        - group [ref=e86]:
+          - menuitem "New" [ref=e87] [cursor=pointer]:
+            - generic [ref=e89]: New
+        - group [ref=e90]:
+          - menuitem "Edit Page" [ref=e91] [cursor=pointer]
+      - menu [ref=e92]:
+        - group [ref=e93]:
+          - menuitem "Howdy, Cody Lusk" [ref=e94] [cursor=pointer]
+        - group [ref=e95]:
+          - menuitem "Search" [ref=e96]:
+            - generic [ref=e97]:
+              - textbox "Search" [ref=e98] [cursor=pointer]
+              - generic [ref=e99]: Search
+  - status [ref=e100]

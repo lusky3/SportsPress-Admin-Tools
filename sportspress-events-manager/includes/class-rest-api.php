@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPEM_REST_API {
 
-	const NAMESPACE = 'splm/v1';
+	const REST_NAMESPACE = 'splm/v1'; // Shared with events-manager and player-tools — paths must not overlap
 
 	public function __construct() {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
@@ -19,7 +19,7 @@ class SPEM_REST_API {
 
 	public function register_routes() {
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/games/(?P<id>\d+)/score',
 			array(
 				'methods'             => 'POST',
@@ -39,7 +39,7 @@ class SPEM_REST_API {
 		);
 
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/games/(?P<id>\d+)/reschedule',
 			array(
 				'methods'             => 'POST',
@@ -62,7 +62,7 @@ class SPEM_REST_API {
 		);
 
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/games/(?P<id>\d+)/cancel',
 			array(
 				'methods'             => 'POST',
@@ -79,7 +79,7 @@ class SPEM_REST_API {
 		);
 
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/games/(?P<id>\d+)/players',
 			array(
 				array(
@@ -102,7 +102,7 @@ class SPEM_REST_API {
 		);
 
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/season/rollover-preview',
 			array(
 				'methods'             => 'POST',
@@ -122,7 +122,7 @@ class SPEM_REST_API {
 		);
 
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/season/rollover-execute',
 			array(
 				'methods'             => 'POST',
@@ -479,6 +479,7 @@ class SPEM_REST_API {
 	 */
 	public function rollover_execute( $request ) {
 		$from_season = (int) $request->get_param( 'from_season' );
+		$to_season   = (int) $request->get_param( 'to_season' );
 		$player_ids  = $request->get_param( 'player_ids' );
 		$processed   = 0;
 
@@ -492,6 +493,7 @@ class SPEM_REST_API {
 
 			delete_post_meta( $player_id, 'sp_current_team' );
 			wp_remove_object_terms( $player_id, $from_season, 'sp_season' );
+			wp_set_object_terms( $player_id, (int) $to_season, 'sp_season', true );
 			$processed++;
 		}
 
@@ -515,10 +517,10 @@ class SPEM_REST_API {
 			$players = get_posts( array(
 				'post_type'      => 'sp_player',
 				'posts_per_page' => -1,
-				'tax_query'      => array(
+				'meta_query'     => array(
 					array(
-						'taxonomy' => 'sp_team',
-						'terms'    => (int) $team_id,
+						'key'   => 'sp_current_team',
+						'value' => (int) $team_id,
 					),
 				),
 			) );
@@ -561,7 +563,9 @@ class SPEM_REST_API {
 		}
 
 		$unique_emails = array_unique( $emails );
-		wp_mail( $unique_emails, $subject, $body );
+		foreach ( $unique_emails as $email ) {
+			wp_mail( $email, $subject, $body );
+		}
 
 		update_post_meta( $event_id, '_splm_notified', current_time( 'mysql' ) );
 	}

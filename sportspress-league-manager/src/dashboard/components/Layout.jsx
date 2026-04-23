@@ -49,14 +49,14 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 						</select>
 					) }
 					{ ! seasons.length && <span className="splm-header__season">{ config.currentSeason || '' }</span> }
-					<a href={ config.logoutUrl || '/wp-login.php?action=logout' } className="splm-header__logout">
+					{ config.logoutUrl && <a href={ config.logoutUrl } className="splm-header__logout">
 						Log out
-					</a>
+					</a> }
 				</div>
 			</header>
 
 			<div className="splm-layout">
-				<nav className="splm-sidebar">
+				<nav className="splm-sidebar" aria-label="Main navigation">
 					{ visibleItems.map( ( item ) => (
 						<button
 							key={ item.id }
@@ -74,7 +74,7 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 				</main>
 			</div>
 
-			<nav className="splm-mobile-nav">
+			<nav className="splm-mobile-nav" aria-label="Mobile navigation">
 				{ mobileItems.map( ( item ) => (
 					<button
 						key={ item.id }

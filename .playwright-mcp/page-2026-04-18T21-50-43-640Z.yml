@@ -1,0 +1,535 @@
+- generic [ref=e2]:
+  - navigation "Main menu":
+    - link "Skip to main content" [ref=e3] [cursor=pointer]:
+      - /url: "#wpbody-content"
+    - link "Skip to toolbar" [ref=e4] [cursor=pointer]:
+      - /url: "#wp-toolbar"
+    - list [ref=e7]:
+      - listitem [ref=e8]:
+        - link "Dashboard" [ref=e9] [cursor=pointer]:
+          - /url: index.php
+          - generic [ref=e10]: 
+          - generic [ref=e11]: Dashboard
+        - list [ref=e12]:
+          - listitem [ref=e13]:
+            - link "Home" [ref=e14] [cursor=pointer]:
+              - /url: index.php
+          - listitem [ref=e15]:
+            - link "Updates 2" [ref=e16] [cursor=pointer]:
+              - /url: update-core.php
+              - text: Updates
+              - generic [ref=e17]: "2"
+      - listitem [ref=e18]
+      - listitem [ref=e20]:
+        - link "Posts" [ref=e21] [cursor=pointer]:
+          - /url: edit.php
+          - generic [ref=e22]: 
+          - generic [ref=e23]: Posts
+        - list [ref=e24]:
+          - listitem [ref=e25]:
+            - link "All Posts" [ref=e26] [cursor=pointer]:
+              - /url: edit.php
+          - listitem [ref=e27]:
+            - link "Add Post" [ref=e28] [cursor=pointer]:
+              - /url: post-new.php
+          - listitem [ref=e29]:
+            - link "Categories" [ref=e30] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=category
+          - listitem [ref=e31]:
+            - link "Tags" [ref=e32] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=post_tag
+      - listitem [ref=e33]:
+        - link "Media" [ref=e34] [cursor=pointer]:
+          - /url: upload.php
+          - generic [ref=e35]: 
+          - generic [ref=e36]: Media
+        - list [ref=e37]:
+          - listitem [ref=e38]:
+            - link "Library" [ref=e39] [cursor=pointer]:
+              - /url: upload.php
+          - listitem [ref=e40]:
+            - link "Add Media File" [ref=e41] [cursor=pointer]:
+              - /url: media-new.php
+      - listitem [ref=e42]:
+        - link "Pages" [ref=e43] [cursor=pointer]:
+          - /url: edit.php?post_type=page
+          - generic [ref=e44]: 
+          - generic [ref=e45]: Pages
+        - list [ref=e46]:
+          - listitem [ref=e47]:
+            - link "All Pages" [ref=e48] [cursor=pointer]:
+              - /url: edit.php?post_type=page
+          - listitem [ref=e49]:
+            - link "Add Page" [ref=e50] [cursor=pointer]:
+              - /url: post-new.php?post_type=page
+      - listitem [ref=e51]:
+        - link "Comments" [ref=e52] [cursor=pointer]:
+          - /url: edit-comments.php
+          - generic [ref=e53]: 
+          - generic [ref=e54]: Comments
+      - listitem [ref=e55]:
+        - link "Schedule Generator" [ref=e56] [cursor=pointer]:
+          - /url: admin.php?page=spsg-schedule-generator
+          - generic [ref=e57]: 
+          - generic [ref=e58]: Schedule Generator
+      - listitem [ref=e59]:
+        - link "League Manager" [ref=e60] [cursor=pointer]:
+          - /url: admin.php?page=splm-dashboard
+          - generic [ref=e61]: 
+          - generic [ref=e62]: League Manager
+        - list [ref=e63]:
+          - listitem [ref=e64]:
+            - link "League Manager" [ref=e65] [cursor=pointer]:
+              - /url: admin.php?page=splm-dashboard
+          - listitem [ref=e66]:
+            - link "Teams & Rosters" [ref=e67] [cursor=pointer]:
+              - /url: admin.php?page=splm-rosters
+          - listitem [ref=e68]:
+            - link "Fee Status" [ref=e69] [cursor=pointer]:
+              - /url: admin.php?page=splm-fees
+      - listitem [ref=e70]
+      - listitem [ref=e72]:
+        - link "SportsPress" [ref=e73] [cursor=pointer]:
+          - /url: admin.php?page=sportspress
+          - generic [ref=e74]: 
+          - generic [ref=e75]: SportsPress
+        - list [ref=e76]:
+          - listitem [ref=e77]:
+            - link "Settings" [ref=e78] [cursor=pointer]:
+              - /url: admin.php?page=sportspress
+          - listitem [ref=e79]:
+            - link "Configure" [ref=e80] [cursor=pointer]:
+              - /url: admin.php?page=sportspress-config
+          - listitem [ref=e81]:
+            - link "Tutorials" [ref=e82] [cursor=pointer]:
+              - /url: admin.php?page=sportspress-tutorials
+          - listitem [ref=e83]:
+            - link "Admin Tools" [ref=e84] [cursor=pointer]:
+              - /url: admin.php?page=sportspress-admin-tools-shortcut
+          - listitem [ref=e85]:
+            - link "Schedule Generator" [ref=e86] [cursor=pointer]:
+              - /url: admin.php?page=spsg-schedule-generator-sp
+          - listitem [ref=e87]:
+            - link "Overview" [ref=e88] [cursor=pointer]:
+              - /url: admin.php?page=sportspress-overview
+          - listitem [ref=e89]:
+            - link "Leagues" [ref=e90] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=sp_league
+          - listitem [ref=e91]:
+            - link "Seasons" [ref=e92] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=sp_season
+      - listitem [ref=e93]:
+        - link "Games" [ref=e94] [cursor=pointer]:
+          - /url: edit.php?post_type=sp_event
+          - generic [ref=e95]: 
+          - generic [ref=e96]: Games
+        - list [ref=e97]:
+          - listitem [ref=e98]:
+            - link "Games" [ref=e99] [cursor=pointer]:
+              - /url: edit.php?post_type=sp_event
+          - listitem [ref=e100]:
+            - link "Add New Game" [ref=e101] [cursor=pointer]:
+              - /url: post-new.php?post_type=sp_event
+          - listitem [ref=e102]:
+            - link "Arenas" [ref=e103] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=sp_venue&post_type=sp_event
+          - listitem [ref=e104]:
+            - link "Calendars" [ref=e105] [cursor=pointer]:
+              - /url: edit.php?post_type=sp_calendar
+      - listitem [ref=e106]:
+        - link "Teams" [ref=e107] [cursor=pointer]:
+          - /url: edit.php?post_type=sp_team
+          - generic [ref=e108]: 
+          - generic [ref=e109]: Teams
+        - list [ref=e110]:
+          - listitem [ref=e111]:
+            - link "Teams" [ref=e112] [cursor=pointer]:
+              - /url: edit.php?post_type=sp_team
+          - listitem [ref=e113]:
+            - link "Add New Team" [ref=e114] [cursor=pointer]:
+              - /url: post-new.php?post_type=sp_team
+          - listitem [ref=e115]:
+            - link "League Tables" [ref=e116] [cursor=pointer]:
+              - /url: edit.php?post_type=sp_table
+      - listitem [ref=e117]:
+        - link "Players" [ref=e118] [cursor=pointer]:
+          - /url: edit.php?post_type=sp_player
+          - generic [ref=e119]: 
+          - generic [ref=e120]: Players
+        - list [ref=e121]:
+          - listitem [ref=e122]:
+            - link "Players" [ref=e123] [cursor=pointer]:
+              - /url: edit.php?post_type=sp_player
+          - listitem [ref=e124]:
+            - link "Add New Player" [ref=e125] [cursor=pointer]:
+              - /url: post-new.php?post_type=sp_player
+          - listitem [ref=e126]:
+            - link "Positions" [ref=e127] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=sp_position&post_type=sp_player
+          - listitem [ref=e128]:
+            - link "Player Lists" [ref=e129] [cursor=pointer]:
+              - /url: edit.php?post_type=sp_list
+      - listitem [ref=e130]:
+        - link "Staff" [ref=e131] [cursor=pointer]:
+          - /url: edit.php?post_type=sp_staff
+          - generic [ref=e132]: 
+          - generic [ref=e133]: Staff
+        - list [ref=e134]:
+          - listitem [ref=e135]:
+            - link "Staff" [ref=e136] [cursor=pointer]:
+              - /url: edit.php?post_type=sp_staff
+          - listitem [ref=e137]:
+            - link "Add New Staff" [ref=e138] [cursor=pointer]:
+              - /url: post-new.php?post_type=sp_staff
+          - listitem [ref=e139]:
+            - link "Jobs" [ref=e140] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=sp_role&post_type=sp_staff
+      - listitem [ref=e141]
+      - listitem [ref=e143]:
+        - link "WooCommerce" [ref=e144] [cursor=pointer]:
+          - /url: admin.php?page=wc-admin
+          - generic [ref=e146]: WooCommerce
+        - list [ref=e147]:
+          - listitem [ref=e148]:
+            - link "Home" [ref=e149] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin
+          - listitem [ref=e150]:
+            - link "Orders 48" [ref=e151] [cursor=pointer]:
+              - /url: edit.php?post_type=shop_order
+              - text: Orders
+              - generic [ref=e152]: "48"
+          - listitem [ref=e153]:
+            - link "Customers" [ref=e154] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/customers
+          - listitem [ref=e155]:
+            - link "Coupons" [ref=e156] [cursor=pointer]:
+              - /url: admin.php?page=coupons-moved
+          - listitem [ref=e157]:
+            - link "Reports" [ref=e158] [cursor=pointer]:
+              - /url: admin.php?page=wc-reports
+          - listitem [ref=e159]:
+            - link "Settings" [ref=e160] [cursor=pointer]:
+              - /url: admin.php?page=wc-settings
+          - listitem [ref=e161]:
+            - link "Status" [ref=e162] [cursor=pointer]:
+              - /url: admin.php?page=wc-status
+          - listitem [ref=e163]:
+            - link "Extensions" [ref=e164] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/extensions
+          - listitem [ref=e165]:
+            - link "e-Transfer Webhooks 4" [ref=e166] [cursor=pointer]:
+              - /url: admin.php?page=etransfer-webhooks
+              - text: e-Transfer Webhooks
+              - generic [ref=e167]: "4"
+      - listitem [ref=e168]:
+        - link "Products" [ref=e169] [cursor=pointer]:
+          - /url: edit.php?post_type=product
+          - generic [ref=e170]: 
+          - generic [ref=e171]: Products
+        - list [ref=e172]:
+          - listitem [ref=e173]:
+            - link "All Products" [ref=e174] [cursor=pointer]:
+              - /url: edit.php?post_type=product
+          - listitem [ref=e175]:
+            - link "Add new product" [ref=e176] [cursor=pointer]:
+              - /url: post-new.php?post_type=product
+          - listitem [ref=e177]:
+            - link "Brands" [ref=e178] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=product_brand&post_type=product
+          - listitem [ref=e179]:
+            - link "Categories" [ref=e180] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=product_cat&post_type=product
+          - listitem [ref=e181]:
+            - link "Tags" [ref=e182] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=product_tag&post_type=product
+          - listitem [ref=e183]:
+            - link "Attributes" [ref=e184] [cursor=pointer]:
+              - /url: edit.php?post_type=product&page=product_attributes
+          - listitem [ref=e185]:
+            - link "Reviews" [ref=e186] [cursor=pointer]:
+              - /url: edit.php?post_type=product&page=product-reviews
+      - listitem [ref=e187]:
+        - link "Payments" [ref=e188] [cursor=pointer]:
+          - /url: admin.php?page=wc-settings&tab=checkout&from=PAYMENTS_MENU_ITEM
+          - generic [ref=e190]: Payments
+      - listitem [ref=e191]:
+        - link "Analytics" [ref=e192] [cursor=pointer]:
+          - /url: admin.php?page=wc-admin&path=/analytics/overview
+          - generic [ref=e193]: 
+          - generic [ref=e194]: Analytics
+        - list [ref=e195]:
+          - listitem [ref=e196]:
+            - link "Overview" [ref=e197] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/analytics/overview
+          - listitem [ref=e198]:
+            - link "Products" [ref=e199] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/analytics/products
+          - listitem [ref=e200]:
+            - link "Revenue" [ref=e201] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/analytics/revenue
+          - listitem [ref=e202]:
+            - link "Orders" [ref=e203] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/analytics/orders
+          - listitem [ref=e204]:
+            - link "Variations" [ref=e205] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/analytics/variations
+          - listitem [ref=e206]:
+            - link "Categories" [ref=e207] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/analytics/categories
+          - listitem [ref=e208]:
+            - link "Coupons" [ref=e209] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/analytics/coupons
+          - listitem [ref=e210]:
+            - link "Taxes" [ref=e211] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/analytics/taxes
+          - listitem [ref=e212]:
+            - link "Downloads" [ref=e213] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/analytics/downloads
+          - listitem [ref=e214]:
+            - link "Stock" [ref=e215] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/analytics/stock
+          - listitem [ref=e216]:
+            - link "Settings" [ref=e217] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/analytics/settings
+      - listitem [ref=e218]:
+        - link "Marketing" [ref=e219] [cursor=pointer]:
+          - /url: admin.php?page=wc-admin&path=/marketing
+          - generic [ref=e220]: 
+          - generic [ref=e221]: Marketing
+        - list [ref=e222]:
+          - listitem [ref=e223]:
+            - link "Overview" [ref=e224] [cursor=pointer]:
+              - /url: admin.php?page=wc-admin&path=/marketing
+          - listitem [ref=e225]:
+            - link "Coupons" [ref=e226] [cursor=pointer]:
+              - /url: edit.php?post_type=shop_coupon
+      - listitem [ref=e227]
+      - listitem [ref=e229]:
+        - link "Appearance" [ref=e230] [cursor=pointer]:
+          - /url: themes.php
+          - generic [ref=e231]: 
+          - generic [ref=e232]: Appearance
+        - list [ref=e233]:
+          - listitem [ref=e234]:
+            - link "Themes" [ref=e235] [cursor=pointer]:
+              - /url: themes.php
+          - listitem [ref=e236]:
+            - link "Patterns" [ref=e237] [cursor=pointer]:
+              - /url: site-editor.php?p=/pattern
+          - listitem [ref=e238]:
+            - link "Customize" [ref=e239] [cursor=pointer]:
+              - /url: customize.php?return=%2Fwp-admin%2Fadmin.php%3Fpage%3Dspsg-schedule-generator
+          - listitem [ref=e240]:
+            - link "Widgets" [ref=e241] [cursor=pointer]:
+              - /url: widgets.php
+          - listitem [ref=e242]:
+            - link "Menus" [ref=e243] [cursor=pointer]:
+              - /url: nav-menus.php
+          - listitem [ref=e244]:
+            - link "Header" [ref=e245] [cursor=pointer]:
+              - /url: customize.php?return=%2Fwp-admin%2Fadmin.php%3Fpage%3Dspsg-schedule-generator&autofocus%5Bcontrol%5D=header_image
+          - listitem [ref=e246]:
+            - link "Background" [ref=e247] [cursor=pointer]:
+              - /url: customize.php?return=%2Fwp-admin%2Fadmin.php%3Fpage%3Dspsg-schedule-generator&autofocus%5Bcontrol%5D=background_image
+          - listitem [ref=e248]:
+            - link "Theme Info" [ref=e249] [cursor=pointer]:
+              - /url: themes.php?page=rookie
+          - listitem
+          - listitem
+          - listitem [ref=e250]:
+            - link "Theme File Editor" [ref=e251] [cursor=pointer]:
+              - /url: theme-editor.php
+      - listitem [ref=e252]:
+        - link "Plugins 1" [ref=e253] [cursor=pointer]:
+          - /url: plugins.php
+          - generic [ref=e254]: 
+          - generic [ref=e255]:
+            - text: Plugins
+            - generic [ref=e256]: "1"
+        - list [ref=e257]:
+          - listitem [ref=e258]:
+            - link "Installed Plugins" [ref=e259] [cursor=pointer]:
+              - /url: plugins.php
+          - listitem [ref=e260]:
+            - link "Add Plugin" [ref=e261] [cursor=pointer]:
+              - /url: plugin-install.php
+          - listitem [ref=e262]:
+            - link "Plugin File Editor" [ref=e263] [cursor=pointer]:
+              - /url: plugin-editor.php
+      - listitem [ref=e264]:
+        - link "Users" [ref=e265] [cursor=pointer]:
+          - /url: users.php
+          - generic [ref=e266]: 
+          - generic [ref=e267]: Users
+        - list [ref=e268]:
+          - listitem [ref=e269]:
+            - link "All Users" [ref=e270] [cursor=pointer]:
+              - /url: users.php
+          - listitem [ref=e271]:
+            - link "Add User" [ref=e272] [cursor=pointer]:
+              - /url: user-new.php
+          - listitem [ref=e273]:
+            - link "Profile" [ref=e274] [cursor=pointer]:
+              - /url: profile.php
+      - listitem [ref=e275]:
+        - link "Tools" [ref=e276] [cursor=pointer]:
+          - /url: tools.php
+          - generic [ref=e277]: 
+          - generic [ref=e278]: Tools
+        - list [ref=e279]:
+          - listitem [ref=e280]:
+            - link "Available Tools" [ref=e281] [cursor=pointer]:
+              - /url: tools.php
+          - listitem [ref=e282]:
+            - link "Import" [ref=e283] [cursor=pointer]:
+              - /url: import.php
+          - listitem [ref=e284]:
+            - link "Export" [ref=e285] [cursor=pointer]:
+              - /url: export.php
+          - listitem [ref=e286]:
+            - link "Site Health 2" [ref=e287] [cursor=pointer]:
+              - /url: site-health.php
+              - text: Site Health
+              - generic [ref=e288]: "2"
+          - listitem [ref=e289]:
+            - link "Export Personal Data" [ref=e290] [cursor=pointer]:
+              - /url: export-personal-data.php
+          - listitem [ref=e291]:
+            - link "Erase Personal Data" [ref=e292] [cursor=pointer]:
+              - /url: erase-personal-data.php
+          - listitem [ref=e293]:
+            - link "Scheduled Actions" [ref=e294] [cursor=pointer]:
+              - /url: tools.php?page=action-scheduler
+          - listitem [ref=e295]:
+            - link "Upload Player Lists" [ref=e296] [cursor=pointer]:
+              - /url: tools.php?page=spt_upload_lists
+      - listitem [ref=e297]:
+        - link "Settings" [ref=e298] [cursor=pointer]:
+          - /url: options-general.php
+          - generic [ref=e299]: 
+          - generic [ref=e300]: Settings
+        - list [ref=e301]:
+          - listitem [ref=e302]:
+            - link "General" [ref=e303] [cursor=pointer]:
+              - /url: options-general.php
+          - listitem [ref=e304]:
+            - link "Writing" [ref=e305] [cursor=pointer]:
+              - /url: options-writing.php
+          - listitem [ref=e306]:
+            - link "Reading" [ref=e307] [cursor=pointer]:
+              - /url: options-reading.php
+          - listitem [ref=e308]:
+            - link "Discussion" [ref=e309] [cursor=pointer]:
+              - /url: options-discussion.php
+          - listitem [ref=e310]:
+            - link "Media" [ref=e311] [cursor=pointer]:
+              - /url: options-media.php
+          - listitem [ref=e312]:
+            - link "Permalinks" [ref=e313] [cursor=pointer]:
+              - /url: options-permalink.php
+          - listitem [ref=e314]:
+            - link "Privacy" [ref=e315] [cursor=pointer]:
+              - /url: options-privacy.php
+          - listitem [ref=e316]:
+            - link "SportsPress Admin Tools" [ref=e317] [cursor=pointer]:
+              - /url: options-general.php?page=sportspress-admin-tools
+      - listitem [ref=e318]:
+        - link "Royal MCP" [ref=e319] [cursor=pointer]:
+          - /url: admin.php?page=royal-mcp
+          - generic [ref=e320]: 
+          - generic [ref=e321]: Royal MCP
+        - list [ref=e322]:
+          - listitem [ref=e323]:
+            - link "Settings" [ref=e324] [cursor=pointer]:
+              - /url: admin.php?page=royal-mcp
+          - listitem [ref=e325]:
+            - link "Activity Log" [ref=e326] [cursor=pointer]:
+              - /url: admin.php?page=royal-mcp-logs
+      - listitem [ref=e327]:
+        - button "Collapse Main menu" [expanded] [ref=e328] [cursor=pointer]:
+          - generic [ref=e330]: Collapse Menu
+  - generic [ref=e331]:
+    - generic [ref=e332]:
+      - navigation "Toolbar":
+        - menu:
+          - group [ref=e333]:
+            - menuitem "About WordPress" [ref=e334] [cursor=pointer]:
+              - generic [ref=e336]: About WordPress
+          - group [ref=e337]:
+            - menuitem "ARL - Adult Recreational League" [ref=e338] [cursor=pointer]
+          - group [ref=e339]:
+            - menuitem "2 updates available" [ref=e340] [cursor=pointer]:
+              - generic [ref=e342]: "2"
+              - generic [ref=e343]: 2 updates available
+          - group [ref=e344]:
+            - menuitem "0 Comments in moderation" [ref=e345] [cursor=pointer]:
+              - generic [ref=e347]: "0"
+              - generic [ref=e348]: 0 Comments in moderation
+          - group [ref=e349]:
+            - menuitem "New" [ref=e350] [cursor=pointer]:
+              - generic [ref=e352]: New
+        - menu [ref=e353]:
+          - group [ref=e354]:
+            - menuitem "Howdy, Cody Lusk" [ref=e355] [cursor=pointer]
+    - main [ref=e356]:
+      - generic [ref=e358]:
+        - heading "Schedule Generator" [level=1] [ref=e359]
+        - paragraph [ref=e361]:
+          - strong [ref=e362]: "Action Scheduler:"
+          - text: "8"
+          - link "past-due actions" [ref=e363] [cursor=pointer]:
+            - /url: http://tikal.lusk.ee:8080/wp-admin/tools.php?page=action-scheduler&status=past-due&order=asc
+          - text: found; something may be wrong.
+          - link "Read documentation »" [ref=e364] [cursor=pointer]:
+            - /url: https://actionscheduler.org/faq/#my-site-has-past-due-actions-what-can-i-do
+        - navigation [ref=e365]:
+          - link "Basic Configuration" [ref=e366] [cursor=pointer]:
+            - /url: "#basic-config"
+          - link "Divisions & Teams" [ref=e367] [cursor=pointer]:
+            - /url: "#divisions-teams"
+          - link "Venues & Times" [ref=e368] [cursor=pointer]:
+            - /url: "#venues-times"
+          - link "Constraints" [ref=e369] [cursor=pointer]:
+            - /url: "#constraints"
+          - link "Generate Schedule" [ref=e370] [cursor=pointer]:
+            - /url: "#generate"
+          - link "Placeholder Teams" [ref=e371] [cursor=pointer]:
+            - /url: "#placeholder-teams"
+        - generic [ref=e448]:
+          - heading "Generate Schedule" [level=3] [ref=e449]
+          - paragraph [ref=e450]: Review your configuration and generate the league schedule.
+          - generic [ref=e451]:
+            - heading "Configuration Summary" [level=4] [ref=e452]
+            - list [ref=e453]:
+              - listitem [ref=e454]: "Season: 2026-05-04 to 2026-07-13"
+              - listitem [ref=e455]: "Games per team: 10"
+              - listitem [ref=e456]: "Divisions: 1"
+              - listitem [ref=e457]: "Venues: 2"
+              - listitem [ref=e458]: "Playing days: monday, wednesday, friday"
+          - generic [ref=e459]:
+            - button "Generating..." [disabled] [ref=e460]
+            - button "Validate Configuration" [ref=e461] [cursor=pointer]
+            - paragraph [ref=e462]: Click "Validate Configuration" to check if your settings are correct before generating.
+          - paragraph [ref=e465]: Generating schedule... This may take a few moments.
+          - generic [ref=e467]:
+            - heading "Generation Progress" [level=4] [ref=e468]
+            - generic [ref=e471]: 0%
+            - generic [ref=e472]:
+              - generic [ref=e473]:
+                - strong [ref=e474]: "Current Phase:"
+                - generic [ref=e475]: Allocating slots
+              - generic [ref=e476]:
+                - strong [ref=e477]: "Games Scheduled:"
+                - generic [ref=e478]: 0 / 30
+              - generic [ref=e479]:
+                - strong [ref=e480]: "Estimated Time Remaining:"
+                - generic [ref=e481]: Calculating...
+            - button "Cancel Generation" [ref=e483] [cursor=pointer]
+  - contentinfo [ref=e439]:
+    - paragraph [ref=e440]:
+      - generic [ref=e442]:
+        - text: Thank you for creating with
+        - link "WordPress" [ref=e443] [cursor=pointer]:
+          - /url: https://en-ca.wordpress.org/
+        - text: .
+    - paragraph [ref=e444]: Version 6.9.4

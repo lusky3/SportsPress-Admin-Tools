@@ -1,0 +1,416 @@
+- generic [ref=e2]:
+  - navigation "Main menu":
+    - link "Skip to main content" [ref=e3] [cursor=pointer]:
+      - /url: "#wpbody-content"
+    - link "Skip to toolbar" [ref=e4] [cursor=pointer]:
+      - /url: "#wp-toolbar"
+    - list [ref=e7]:
+      - listitem [ref=e8]:
+        - link "Dashboard" [ref=e9] [cursor=pointer]:
+          - /url: index.php
+          - generic [ref=e10]: 
+          - generic [ref=e11]: Dashboard
+      - listitem [ref=e12]
+      - listitem [ref=e14]:
+        - link "Posts" [ref=e15] [cursor=pointer]:
+          - /url: edit.php
+          - generic [ref=e16]: 
+          - generic [ref=e17]: Posts
+        - list [ref=e18]:
+          - listitem [ref=e19]:
+            - link "All Posts" [ref=e20] [cursor=pointer]:
+              - /url: edit.php
+          - listitem [ref=e21]:
+            - link "Add Post" [ref=e22] [cursor=pointer]:
+              - /url: post-new.php
+          - listitem [ref=e23]:
+            - link "Categories" [ref=e24] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=category
+          - listitem [ref=e25]:
+            - link "Tags" [ref=e26] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=post_tag
+      - listitem [ref=e27]:
+        - link "Media" [ref=e28] [cursor=pointer]:
+          - /url: upload.php
+          - generic [ref=e29]: 
+          - generic [ref=e30]: Media
+        - list [ref=e31]:
+          - listitem [ref=e32]:
+            - link "Library" [ref=e33] [cursor=pointer]:
+              - /url: upload.php
+          - listitem [ref=e34]:
+            - link "Add Media File" [ref=e35] [cursor=pointer]:
+              - /url: media-new.php
+      - listitem [ref=e36]:
+        - link "Pages" [ref=e37] [cursor=pointer]:
+          - /url: edit.php?post_type=page
+          - generic [ref=e38]: 
+          - generic [ref=e39]: Pages
+        - list [ref=e40]:
+          - listitem [ref=e41]:
+            - link "All Pages" [ref=e42] [cursor=pointer]:
+              - /url: edit.php?post_type=page
+          - listitem [ref=e43]:
+            - link "Add Page" [ref=e44] [cursor=pointer]:
+              - /url: post-new.php?post_type=page
+      - listitem [ref=e45]:
+        - link "Comments" [ref=e46] [cursor=pointer]:
+          - /url: edit-comments.php
+          - generic [ref=e47]: 
+          - generic [ref=e48]: Comments
+      - listitem [ref=e49]:
+        - link "Products" [ref=e50] [cursor=pointer]:
+          - /url: admin.php?page=product-reviews
+          - generic [ref=e51]: 
+          - generic [ref=e52]: Products
+        - list [ref=e53]:
+          - listitem [ref=e54]:
+            - link "Reviews" [ref=e55] [cursor=pointer]:
+              - /url: edit.php?post_type=product&page=product-reviews
+      - listitem [ref=e56]:
+        - link "League Manager" [ref=e57] [cursor=pointer]:
+          - /url: admin.php?page=splm-dashboard
+          - generic [ref=e58]: 
+          - generic [ref=e59]: League Manager
+      - listitem [ref=e60]
+      - listitem [ref=e62]:
+        - link "SportsPress" [ref=e63] [cursor=pointer]:
+          - /url: admin.php?page=sportspress
+          - generic [ref=e64]: 
+          - generic [ref=e65]: SportsPress
+        - list [ref=e66]:
+          - listitem [ref=e67]:
+            - link "Settings" [ref=e68] [cursor=pointer]:
+              - /url: admin.php?page=sportspress
+          - listitem [ref=e69]:
+            - link "Configure" [ref=e70] [cursor=pointer]:
+              - /url: admin.php?page=sportspress-config
+          - listitem [ref=e71]:
+            - link "Tutorials" [ref=e72] [cursor=pointer]:
+              - /url: admin.php?page=sportspress-tutorials
+          - listitem [ref=e73]:
+            - link "Overview" [ref=e74] [cursor=pointer]:
+              - /url: admin.php?page=sportspress-overview
+          - listitem [ref=e75]:
+            - link "Leagues" [ref=e76] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=sp_league
+          - listitem [ref=e77]:
+            - link "Seasons" [ref=e78] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=sp_season
+      - listitem [ref=e79]:
+        - link "Games" [ref=e80] [cursor=pointer]:
+          - /url: edit.php?post_type=sp_event
+          - generic [ref=e81]: 
+          - generic [ref=e82]: Games
+        - list [ref=e83]:
+          - listitem [ref=e84]:
+            - link "Games" [ref=e85] [cursor=pointer]:
+              - /url: edit.php?post_type=sp_event
+          - listitem [ref=e86]:
+            - link "Add New Game" [ref=e87] [cursor=pointer]:
+              - /url: post-new.php?post_type=sp_event
+          - listitem [ref=e88]:
+            - link "Arenas" [ref=e89] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=sp_venue&post_type=sp_event
+          - listitem [ref=e90]:
+            - link "Calendars" [ref=e91] [cursor=pointer]:
+              - /url: edit.php?post_type=sp_calendar
+      - listitem [ref=e92]:
+        - link "Teams" [ref=e93] [cursor=pointer]:
+          - /url: edit.php?post_type=sp_team
+          - generic [ref=e94]: 
+          - generic [ref=e95]: Teams
+        - list [ref=e96]:
+          - listitem [ref=e97]:
+            - link "Teams" [ref=e98] [cursor=pointer]:
+              - /url: edit.php?post_type=sp_team
+          - listitem [ref=e99]:
+            - link "Add New Team" [ref=e100] [cursor=pointer]:
+              - /url: post-new.php?post_type=sp_team
+          - listitem [ref=e101]:
+            - link "League Tables" [ref=e102] [cursor=pointer]:
+              - /url: edit.php?post_type=sp_table
+      - listitem [ref=e103]:
+        - link "Players" [ref=e104] [cursor=pointer]:
+          - /url: edit.php?post_type=sp_player
+          - generic [ref=e105]: 
+          - generic [ref=e106]: Players
+        - list [ref=e107]:
+          - listitem [ref=e108]:
+            - link "Players" [ref=e109] [cursor=pointer]:
+              - /url: edit.php?post_type=sp_player
+          - listitem [ref=e110]:
+            - link "Add New Player" [ref=e111] [cursor=pointer]:
+              - /url: post-new.php?post_type=sp_player
+          - listitem [ref=e112]:
+            - link "Positions" [ref=e113] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=sp_position&post_type=sp_player
+          - listitem [ref=e114]:
+            - link "Player Lists" [ref=e115] [cursor=pointer]:
+              - /url: edit.php?post_type=sp_list
+          - listitem [ref=e116]:
+            - link "Player Merge" [ref=e117] [cursor=pointer]:
+              - /url: edit.php?post_type=sp_player&page=sp-player-merge
+      - listitem [ref=e118]:
+        - link "Staff" [ref=e119] [cursor=pointer]:
+          - /url: edit.php?post_type=sp_staff
+          - generic [ref=e120]: 
+          - generic [ref=e121]: Staff
+        - list [ref=e122]:
+          - listitem [ref=e123]:
+            - link "Staff" [ref=e124] [cursor=pointer]:
+              - /url: edit.php?post_type=sp_staff
+          - listitem [ref=e125]:
+            - link "Add New Staff" [ref=e126] [cursor=pointer]:
+              - /url: post-new.php?post_type=sp_staff
+          - listitem [ref=e127]:
+            - link "Jobs" [ref=e128] [cursor=pointer]:
+              - /url: edit-tags.php?taxonomy=sp_role&post_type=sp_staff
+      - listitem [ref=e129]
+      - listitem [ref=e131]:
+        - link "Users" [ref=e132] [cursor=pointer]:
+          - /url: users.php
+          - generic [ref=e133]: 
+          - generic [ref=e134]: Users
+        - list [ref=e135]:
+          - listitem [ref=e136]:
+            - link "All Users" [ref=e137] [cursor=pointer]:
+              - /url: users.php
+          - listitem [ref=e138]:
+            - link "Profile" [ref=e139] [cursor=pointer]:
+              - /url: profile.php
+      - listitem [ref=e140]:
+        - link "Tools" [ref=e141] [cursor=pointer]:
+          - /url: tools.php
+          - generic [ref=e142]: 
+          - generic [ref=e143]: Tools
+        - list [ref=e144]:
+          - listitem [ref=e145]:
+            - link "Available Tools" [ref=e146] [cursor=pointer]:
+              - /url: tools.php
+          - listitem [ref=e147]:
+            - link "Import" [ref=e148] [cursor=pointer]:
+              - /url: import.php
+          - listitem [ref=e149]:
+            - link "Export" [ref=e150] [cursor=pointer]:
+              - /url: export.php
+      - listitem [ref=e151]:
+        - button "Collapse Main menu" [expanded] [ref=e152] [cursor=pointer]:
+          - generic [ref=e154]: Collapse Menu
+  - generic [ref=e155]:
+    - generic [ref=e156]:
+      - navigation "Toolbar":
+        - menu:
+          - group [ref=e157]:
+            - menuitem "About WordPress" [ref=e158] [cursor=pointer]:
+              - generic [ref=e160]: About WordPress
+          - group [ref=e161]:
+            - menuitem "ARL - Adult Recreational League" [ref=e162] [cursor=pointer]
+          - group [ref=e163]:
+            - menuitem "0 Comments in moderation" [ref=e164] [cursor=pointer]:
+              - generic [ref=e166]: "0"
+              - generic [ref=e167]: 0 Comments in moderation
+          - group [ref=e168]:
+            - menuitem "New" [ref=e169] [cursor=pointer]:
+              - generic [ref=e171]: New
+        - menu [ref=e172]:
+          - group [ref=e173]:
+            - menuitem "Howdy, testleaguemgr" [ref=e174] [cursor=pointer]
+    - main [ref=e175]:
+      - generic [ref=e176]:
+        - generic [ref=e177]:
+          - button "Screen Options" [ref=e179] [cursor=pointer]
+          - button "Help" [ref=e181] [cursor=pointer]
+        - generic [ref=e182]:
+          - heading "Dashboard" [level=1] [ref=e183]
+          - generic [ref=e185]:
+            - generic [ref=e187]:
+              - generic [ref=e188]:
+                - generic [ref=e189]:
+                  - heading "At a Glance" [level=2] [ref=e190]
+                  - generic [ref=e191]:
+                    - button "Move up" [disabled] [ref=e192]:
+                      - generic [ref=e193]: Move up
+                    - button "Move down" [ref=e195] [cursor=pointer]:
+                      - generic [ref=e196]: Move down
+                    - 'button "Toggle panel: At a Glance" [expanded] [ref=e198] [cursor=pointer]':
+                      - generic [ref=e199]: "Toggle panel: At a Glance"
+                - generic [ref=e202]:
+                  - list [ref=e203]:
+                    - listitem [ref=e204]:
+                      - link "119 Posts" [ref=e205] [cursor=pointer]:
+                        - /url: edit.php?post_type=post
+                    - listitem [ref=e206]:
+                      - link "109 Pages" [ref=e207] [cursor=pointer]:
+                        - /url: edit.php?post_type=page
+                    - listitem [ref=e208]:
+                      - link " 5,865 Games" [ref=e209] [cursor=pointer]:
+                        - /url: edit.php?post_type=sp_event
+                    - listitem [ref=e210]:
+                      - link " 144 Teams" [ref=e211] [cursor=pointer]:
+                        - /url: edit.php?post_type=sp_team
+                    - listitem [ref=e212]:
+                      - link " 2,094 Players" [ref=e213] [cursor=pointer]:
+                        - /url: edit.php?post_type=sp_player
+                    - listitem [ref=e214]:
+                      - link " 6 Staff" [ref=e215] [cursor=pointer]:
+                        - /url: edit.php?post_type=sp_staff
+                  - paragraph [ref=e216]: WordPress 6.9.4 running Rookie theme.
+              - generic [ref=e217]:
+                - generic [ref=e218]:
+                  - heading "Activity" [level=2] [ref=e219]
+                  - generic [ref=e220]:
+                    - button "Move up" [ref=e221] [cursor=pointer]:
+                      - generic [ref=e222]: Move up
+                    - button "Move down" [ref=e224] [cursor=pointer]:
+                      - generic [ref=e225]: Move down
+                    - 'button "Toggle panel: Activity" [expanded] [ref=e227] [cursor=pointer]':
+                      - generic [ref=e228]: "Toggle panel: Activity"
+                - generic [ref=e232]:
+                  - heading "Recently Published" [level=3] [ref=e233]
+                  - list [ref=e234]:
+                    - listitem [ref=e235]:
+                      - generic [ref=e236]: Mar 23rd, 6:00 pm
+                      - link "Edit “Championship Night for Winter 2025-2026”" [ref=e237] [cursor=pointer]:
+                        - /url: https://tikal.lusk.ee:8443/wp-admin/post.php?post=116030&action=edit
+                        - text: Championship Night for Winter 2025-2026
+                    - listitem [ref=e238]:
+                      - generic [ref=e239]: Mar 9th, 10:41 pm
+                      - link "Edit “Registration Open for Summer 2026”" [ref=e240] [cursor=pointer]:
+                        - /url: https://tikal.lusk.ee:8443/wp-admin/post.php?post=115899&action=edit
+                        - text: Registration Open for Summer 2026
+                    - listitem [ref=e241]:
+                      - generic [ref=e242]: Feb 12th, 9:00 am
+                      - link "Edit “Player Appreciation Night – Winter 2026”" [ref=e243] [cursor=pointer]:
+                        - /url: https://tikal.lusk.ee:8443/wp-admin/post.php?post=115677&action=edit
+                        - text: Player Appreciation Night – Winter 2026
+                    - listitem [ref=e244]:
+                      - generic [ref=e245]: Jan 24th, 5:29 pm
+                      - 'link "Edit “Postponement Notice: Jan 25, 2026”" [ref=e246] [cursor=pointer]':
+                        - /url: https://tikal.lusk.ee:8443/wp-admin/post.php?post=115666&action=edit
+                        - text: "Postponement Notice: Jan 25, 2026"
+                    - listitem [ref=e247]:
+                      - generic [ref=e248]: Oct 31st 2025, 5:59 pm
+                      - link "Edit “Schedule for October 31, 2025”" [ref=e249] [cursor=pointer]:
+                        - /url: https://tikal.lusk.ee:8443/wp-admin/post.php?post=115180&action=edit
+                        - text: Schedule for October 31, 2025
+              - generic [ref=e250]:
+                - generic [ref=e251]:
+                  - heading "SportsPress" [level=2] [ref=e252]
+                  - generic [ref=e253]:
+                    - button "Move up" [ref=e254] [cursor=pointer]:
+                      - generic [ref=e255]: Move up
+                    - button "Move down" [ref=e257] [cursor=pointer]:
+                      - generic [ref=e258]: Move down
+                    - 'button "Toggle panel: SportsPress" [expanded] [ref=e260] [cursor=pointer]':
+                      - generic [ref=e261]: "Toggle panel: SportsPress"
+                - list [ref=e264]:
+                  - listitem [ref=e265]:
+                    - link " 1 days 23:04:02 until next event (Hammers vs Puck Dynasty)" [ref=e266] [cursor=pointer]:
+                      - /url: https://tikal.lusk.ee:8443/wp-admin/post.php?post=116197&action=edit
+                      - text: 
+                      - strong [ref=e267]: 1 days 23:04:02
+                      - text: until next event (Hammers vs Puck Dynasty)
+                  - listitem [ref=e268]:
+                    - link " 11 events scheduled" [ref=e269] [cursor=pointer]:
+                      - /url: https://tikal.lusk.ee:8443/wp-admin/edit.php?post_type=sp_event&post_status=futuresavvas
+                      - text: 
+                      - strong [ref=e270]: 11 events
+                      - text: scheduled
+                  - listitem [ref=e271]:
+                    - link " 5865 events published" [ref=e272] [cursor=pointer]:
+                      - /url: https://tikal.lusk.ee:8443/wp-admin/edit.php?post_type=sp_event&post_status=publish
+                      - text: 
+                      - strong [ref=e273]: 5865 events
+                      - text: published
+            - generic [ref=e275]:
+              - generic [ref=e276]:
+                - generic [ref=e277]:
+                  - heading "Quick Draft" [level=2] [ref=e278]:
+                    - generic [ref=e279]: Quick Draft
+                  - generic [ref=e280]:
+                    - button "Move up" [ref=e281] [cursor=pointer]:
+                      - generic [ref=e282]: Move up
+                    - button "Move down" [ref=e284] [cursor=pointer]:
+                      - generic [ref=e285]: Move down
+                    - 'button "Toggle panel: Quick Draft" [expanded] [ref=e287] [cursor=pointer]':
+                      - generic [ref=e288]:
+                        - text: "Toggle panel:"
+                        - generic [ref=e289]: Quick Draft
+                - generic [ref=e292]:
+                  - generic [ref=e293]:
+                    - generic [ref=e294]: Title
+                    - textbox "Title" [ref=e295]
+                  - generic [ref=e296]:
+                    - generic [ref=e297]: Content
+                    - textbox "Content" [ref=e298]:
+                      - /placeholder: What’s on your mind?
+                  - paragraph [ref=e299]:
+                    - button "Save Draft" [ref=e300] [cursor=pointer]
+              - generic [ref=e301]:
+                - generic [ref=e302]:
+                  - heading "WordPress Events and News" [level=2] [ref=e303]
+                  - generic [ref=e304]:
+                    - button "Move up" [ref=e305] [cursor=pointer]:
+                      - generic [ref=e306]: Move up
+                    - button "Move down" [ref=e308] [cursor=pointer]:
+                      - generic [ref=e309]: Move down
+                    - 'button "Toggle panel: WordPress Events and News" [expanded] [ref=e311] [cursor=pointer]':
+                      - generic [ref=e312]: "Toggle panel: WordPress Events and News"
+                - generic [ref=e314]:
+                  - generic [ref=e315]:
+                    - paragraph [ref=e317]:
+                      - text: Attend an upcoming event near you.
+                      - button "Select location" [ref=e318] [cursor=pointer]:
+                        - generic [ref=e319]: 
+                        - text: Select location
+                    - list [ref=e320]:
+                      - listitem [ref=e321]:
+                        - text: There are no events scheduled near you at the moment. Would you like to
+                        - link "organize a WordPress event" [ref=e322] [cursor=pointer]:
+                          - /url: https://make.wordpress.org/community/handbook/meetup-organizer/welcome/
+                        - text: "?"
+                  - generic [ref=e323]:
+                    - list [ref=e325]:
+                      - listitem [ref=e326]:
+                        - link "The final countdown to WordCamp Canada 2025" [ref=e327] [cursor=pointer]:
+                          - /url: https://en-ca.wordpress.org/2025/09/17/the-final-countdown-to-wordcamp-canada-2025/
+                      - listitem [ref=e328]:
+                        - 'link "Speakers confirmed for WordCamp Canada #WCEH" [ref=e329] [cursor=pointer]':
+                          - /url: https://en-ca.wordpress.org/2025/08/03/speakers-confirmed-for-wordcamp-canada/
+                    - list [ref=e331]:
+                      - listitem [ref=e332]:
+                        - 'link "WPTavern: #213 – Malcolm Peralty on Managed WordPress Hosting and AI Innovation at Pressable" [ref=e333] [cursor=pointer]':
+                          - /url: https://wptavern.com/podcast/213-malcolm-peralty-on-managed-wordpress-hosting-and-ai-innovation-at-pressable
+                      - listitem [ref=e334]:
+                        - 'link "HeroPress: 😊 From a Small Village to WordCamp Asia: My WordPress Journey 🌍✨" [ref=e335] [cursor=pointer]':
+                          - /url: https://heropress.com/essays/from-a-small-village-to-wordcamp-asia-my-wordpress-journey/#utm_source=rss&utm_medium=rss&utm_campaign=from-a-small-village-to-wordcamp-asia-my-wordpress-journey
+                      - listitem [ref=e336]:
+                        - 'link "Open Channels FM: Scaling WooCommerce Operations with Automation" [ref=e337] [cursor=pointer]':
+                          - /url: https://openchannels.fm/scaling-woocommerce-operations-with-automation/
+                  - paragraph [ref=e338]:
+                    - link "Meetups (opens in a new tab)" [ref=e339] [cursor=pointer]:
+                      - /url: https://make.wordpress.org/community/meetups-landing-page
+                      - text: Meetups
+                      - generic [ref=e340]: (opens in a new tab)
+                      - generic [ref=e341]: 
+                    - text: "|"
+                    - link "WordCamps (opens in a new tab)" [ref=e342] [cursor=pointer]:
+                      - /url: https://central.wordcamp.org/schedule/
+                      - text: WordCamps
+                      - generic [ref=e343]: (opens in a new tab)
+                      - generic [ref=e344]: 
+                    - text: "|"
+                    - link "News (opens in a new tab)" [ref=e345] [cursor=pointer]:
+                      - /url: https://wordpress.org/news/
+                      - text: News
+                      - generic [ref=e346]: (opens in a new tab)
+                      - generic [ref=e347]: 
+  - contentinfo [ref=e348]:
+    - paragraph [ref=e349]:
+      - generic [ref=e350]:
+        - text: Thank you for creating with
+        - link "WordPress" [ref=e351] [cursor=pointer]:
+          - /url: https://en-ca.wordpress.org/
+        - text: .
+    - paragraph [ref=e352]: Version 6.9.4

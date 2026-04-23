@@ -1,7 +1,5 @@
 import apiFetch from '@wordpress/api-fetch';
 
-const config = window.splmDashboard || {};
-
 export function fetchGames( params = {} ) {
 	const query = new URLSearchParams( params ).toString();
 	return apiFetch( { path: `/splm/v1/games${ query ? '?' + query : '' }` } );
@@ -42,11 +40,6 @@ export function fetchStandings( tableId, season ) {
 export function fetchTeams( season ) {
 	const params = season ? '?season=' + season : '';
 	return apiFetch( { path: '/splm/v1/teams' + params } );
-}
-
-export function fetchRoster( teamId, season ) {
-	const params = season ? `&season=${ season }` : '';
-	return apiFetch( { path: `/splm/v1/rosters?team=${ teamId }${ params }` } );
 }
 
 export function fetchRosterDetails( teamId, seasonId ) {
@@ -110,10 +103,6 @@ export function fetchHealth() {
 	return apiFetch( { path: '/splm/v1/health' } );
 }
 
-export function fetchSeasons() {
-	return apiFetch( { path: '/splm/v1/seasons' } );
-}
-
 export function fetchGamePlayers( gameId ) {
 	return apiFetch( { path: `/splm/v1/games/${ gameId }/players` } );
 }
@@ -124,18 +113,6 @@ export function saveGamePlayers( gameId, stats ) {
 		method: 'POST',
 		data: { stats },
 	} );
-}
-
-export function fetchScheduleConfig() {
-	return apiFetch( { path: '/splm/v1/schedule/config' } );
-}
-
-export function generateSchedule( config ) {
-	return apiFetch( { path: '/splm/v1/schedule/generate', method: 'POST', data: config } );
-}
-
-export function publishSchedule( games, seasonId, leagueId ) {
-	return apiFetch( { path: '/splm/v1/schedule/publish', method: 'POST', data: { games, season_id: seasonId, league_id: leagueId } } );
 }
 
 export function rolloverPreview(fromSeason, toSeason) {
@@ -161,8 +138,6 @@ export const spsg = {
 	generate: ( configId ) => apiFetch( { path: '/spsg/v1/generate', method: 'POST', data: { config_id: configId } } ),
 	progress: () => apiFetch( { path: '/spsg/v1/generate/progress' } ),
 	cancel: () => apiFetch( { path: '/spsg/v1/generate/cancel', method: 'POST' } ),
-	publish: ( scheduleId, seasonId, leagueId, offset = 0, limit = 50 ) =>
-		apiFetch( { path: '/spsg/v1/publish', method: 'POST', data: { schedule_id: scheduleId, season_id: seasonId, league_id: leagueId, offset, limit } } ),
 	getPlaceholders: ( configId ) => apiFetch( { path: `/spsg/v1/configs/${ configId }/placeholders` } ),
 	replacePlaceholder: ( id, replacementId, del = false ) =>
 		apiFetch( { path: `/spsg/v1/placeholders/${ id }/replace`, method: 'POST', data: { replacement_id: replacementId, delete: del } } ),
@@ -178,4 +153,3 @@ export const spsg = {
 	parseVenueCsv: ( formData ) => apiFetch( { path: '/spsg/v1/venue-csv/parse', method: 'POST', body: formData } ),
 	applyVenueCsv: ( schedules, venueMapping, configId ) => apiFetch( { path: '/spsg/v1/venue-csv/apply', method: 'POST', data: { schedules, venue_mapping: venueMapping, config_id: configId } } ),
 };
-export { spsg as scheduleApi };

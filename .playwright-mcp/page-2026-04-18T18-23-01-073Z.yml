@@ -1,0 +1,2770 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - navigation "Main menu":
+      - link "Skip to main content" [ref=e3] [cursor=pointer]:
+        - /url: "#wpbody-content"
+      - link "Skip to toolbar" [ref=e4] [cursor=pointer]:
+        - /url: "#wp-toolbar"
+      - list [ref=e7]:
+        - listitem [ref=e8]:
+          - link "Dashboard" [ref=e9] [cursor=pointer]:
+            - /url: index.php
+            - generic [ref=e10]: 
+            - generic [ref=e11]: Dashboard
+          - list [ref=e12]:
+            - listitem [ref=e13]:
+              - link "Home" [ref=e14] [cursor=pointer]:
+                - /url: index.php
+            - listitem [ref=e15]:
+              - link "Updates 2" [ref=e16] [cursor=pointer]:
+                - /url: update-core.php
+                - text: Updates
+                - generic [ref=e17]: "2"
+        - listitem [ref=e18]
+        - listitem [ref=e20]:
+          - link "Posts" [ref=e21] [cursor=pointer]:
+            - /url: edit.php
+            - generic [ref=e22]: 
+            - generic [ref=e23]: Posts
+          - list [ref=e24]:
+            - listitem [ref=e25]:
+              - link "All Posts" [ref=e26] [cursor=pointer]:
+                - /url: edit.php
+            - listitem [ref=e27]:
+              - link "Add Post" [ref=e28] [cursor=pointer]:
+                - /url: post-new.php
+            - listitem [ref=e29]:
+              - link "Categories" [ref=e30] [cursor=pointer]:
+                - /url: edit-tags.php?taxonomy=category
+            - listitem [ref=e31]:
+              - link "Tags" [ref=e32] [cursor=pointer]:
+                - /url: edit-tags.php?taxonomy=post_tag
+        - listitem [ref=e33]:
+          - link "Media" [ref=e34] [cursor=pointer]:
+            - /url: upload.php
+            - generic [ref=e35]: 
+            - generic [ref=e36]: Media
+          - list [ref=e37]:
+            - listitem [ref=e38]:
+              - link "Library" [ref=e39] [cursor=pointer]:
+                - /url: upload.php
+            - listitem [ref=e40]:
+              - link "Add Media File" [ref=e41] [cursor=pointer]:
+                - /url: media-new.php
+        - listitem [ref=e42]:
+          - link "Pages" [ref=e43] [cursor=pointer]:
+            - /url: edit.php?post_type=page
+            - generic [ref=e44]: 
+            - generic [ref=e45]: Pages
+          - list [ref=e46]:
+            - listitem [ref=e47]:
+              - link "All Pages" [ref=e48] [cursor=pointer]:
+                - /url: edit.php?post_type=page
+            - listitem [ref=e49]:
+              - link "Add Page" [ref=e50] [cursor=pointer]:
+                - /url: post-new.php?post_type=page
+        - listitem [ref=e51]:
+          - link "Comments" [ref=e52] [cursor=pointer]:
+            - /url: edit-comments.php
+            - generic [ref=e53]: 
+            - generic [ref=e54]: Comments
+        - listitem [ref=e55]:
+          - link "Schedule Generator" [ref=e56] [cursor=pointer]:
+            - /url: admin.php?page=spsg-schedule-generator
+            - generic [ref=e57]: 
+            - generic [ref=e58]: Schedule Generator
+        - listitem [ref=e59]:
+          - link "League Manager" [ref=e60] [cursor=pointer]:
+            - /url: admin.php?page=splm-dashboard
+            - generic [ref=e61]: 
+            - generic [ref=e62]: League Manager
+          - list [ref=e63]:
+            - listitem [ref=e64]:
+              - link "League Manager" [ref=e65] [cursor=pointer]:
+                - /url: admin.php?page=splm-dashboard
+            - listitem [ref=e66]:
+              - link "Teams & Rosters" [ref=e67] [cursor=pointer]:
+                - /url: admin.php?page=splm-rosters
+            - listitem [ref=e68]:
+              - link "Fee Status" [ref=e69] [cursor=pointer]:
+                - /url: admin.php?page=splm-fees
+        - listitem [ref=e70]
+        - listitem [ref=e72]:
+          - link "SportsPress" [ref=e73] [cursor=pointer]:
+            - /url: admin.php?page=sportspress
+            - generic [ref=e74]: 
+            - generic [ref=e75]: SportsPress
+          - list [ref=e76]:
+            - listitem [ref=e77]:
+              - link "Settings" [ref=e78] [cursor=pointer]:
+                - /url: admin.php?page=sportspress
+            - listitem [ref=e79]:
+              - link "Configure" [ref=e80] [cursor=pointer]:
+                - /url: admin.php?page=sportspress-config
+            - listitem [ref=e81]:
+              - link "Tutorials" [ref=e82] [cursor=pointer]:
+                - /url: admin.php?page=sportspress-tutorials
+            - listitem [ref=e83]:
+              - link "Admin Tools" [ref=e84] [cursor=pointer]:
+                - /url: admin.php?page=sportspress-admin-tools-shortcut
+            - listitem [ref=e85]:
+              - link "Schedule Generator" [ref=e86] [cursor=pointer]:
+                - /url: admin.php?page=spsg-schedule-generator-sp
+            - listitem [ref=e87]:
+              - link "Overview" [ref=e88] [cursor=pointer]:
+                - /url: admin.php?page=sportspress-overview
+            - listitem [ref=e89]:
+              - link "Leagues" [ref=e90] [cursor=pointer]:
+                - /url: edit-tags.php?taxonomy=sp_league
+            - listitem [ref=e91]:
+              - link "Seasons" [ref=e92] [cursor=pointer]:
+                - /url: edit-tags.php?taxonomy=sp_season
+        - listitem [ref=e93]:
+          - link "Games" [ref=e94] [cursor=pointer]:
+            - /url: edit.php?post_type=sp_event
+            - generic [ref=e95]: 
+            - generic [ref=e96]: Games
+          - list [ref=e97]:
+            - listitem [ref=e98]:
+              - link "Games" [ref=e99] [cursor=pointer]:
+                - /url: edit.php?post_type=sp_event
+            - listitem [ref=e100]:
+              - link "Add New Game" [ref=e101] [cursor=pointer]:
+                - /url: post-new.php?post_type=sp_event
+            - listitem [ref=e102]:
+              - link "Arenas" [ref=e103] [cursor=pointer]:
+                - /url: edit-tags.php?taxonomy=sp_venue&post_type=sp_event
+            - listitem [ref=e104]:
+              - link "Calendars" [ref=e105] [cursor=pointer]:
+                - /url: edit.php?post_type=sp_calendar
+        - listitem [ref=e106]:
+          - link "Teams" [ref=e107] [cursor=pointer]:
+            - /url: edit.php?post_type=sp_team
+            - generic [ref=e108]: 
+            - generic [ref=e109]: Teams
+          - list [ref=e110]:
+            - listitem [ref=e111]:
+              - link "Teams" [ref=e112] [cursor=pointer]:
+                - /url: edit.php?post_type=sp_team
+            - listitem [ref=e113]:
+              - link "Add New Team" [ref=e114] [cursor=pointer]:
+                - /url: post-new.php?post_type=sp_team
+            - listitem [ref=e115]:
+              - link "League Tables" [ref=e116] [cursor=pointer]:
+                - /url: edit.php?post_type=sp_table
+        - listitem [ref=e117]:
+          - link "Players" [ref=e118] [cursor=pointer]:
+            - /url: edit.php?post_type=sp_player
+            - generic [ref=e119]: 
+            - generic [ref=e120]: Players
+          - list [ref=e121]:
+            - listitem [ref=e122]:
+              - link "Players" [ref=e123] [cursor=pointer]:
+                - /url: edit.php?post_type=sp_player
+            - listitem [ref=e124]:
+              - link "Add New Player" [ref=e125] [cursor=pointer]:
+                - /url: post-new.php?post_type=sp_player
+            - listitem [ref=e126]:
+              - link "Positions" [ref=e127] [cursor=pointer]:
+                - /url: edit-tags.php?taxonomy=sp_position&post_type=sp_player
+            - listitem [ref=e128]:
+              - link "Player Lists" [ref=e129] [cursor=pointer]:
+                - /url: edit.php?post_type=sp_list
+        - listitem [ref=e130]:
+          - link "Staff" [ref=e131] [cursor=pointer]:
+            - /url: edit.php?post_type=sp_staff
+            - generic [ref=e132]: 
+            - generic [ref=e133]: Staff
+          - list [ref=e134]:
+            - listitem [ref=e135]:
+              - link "Staff" [ref=e136] [cursor=pointer]:
+                - /url: edit.php?post_type=sp_staff
+            - listitem [ref=e137]:
+              - link "Add New Staff" [ref=e138] [cursor=pointer]:
+                - /url: post-new.php?post_type=sp_staff
+            - listitem [ref=e139]:
+              - link "Jobs" [ref=e140] [cursor=pointer]:
+                - /url: edit-tags.php?taxonomy=sp_role&post_type=sp_staff
+        - listitem [ref=e141]
+        - listitem [ref=e143]:
+          - link "WooCommerce" [ref=e144] [cursor=pointer]:
+            - /url: admin.php?page=wc-admin
+            - generic [ref=e146]: WooCommerce
+          - list [ref=e147]:
+            - listitem [ref=e148]:
+              - link "Home" [ref=e149] [cursor=pointer]:
+                - /url: admin.php?page=wc-admin
+            - listitem [ref=e150]:
+              - link "Orders 48" [ref=e151] [cursor=pointer]:
+                - /url: edit.php?post_type=shop_order
+                - text: Orders
+                - generic [ref=e152]: "48"
+            - listitem [ref=e153]:
+              - link "Customers" [ref=e154] [cursor=pointer]:
+                - /url: admin.php?page=wc-admin&path=/customers
+            - listitem [ref=e155]:
+              - link "Coupons" [ref=e156] [cursor=pointer]:
+                - /url: admin.php?page=coupons-moved
+            - listitem [ref=e157]:
+              - link "Reports" [ref=e158] [cursor=pointer]:
+                - /url: admin.php?page=wc-reports
+            - listitem [ref=e159]:
+              - link "Settings" [ref=e160] [cursor=pointer]:
+                - /url: admin.php?page=wc-settings
+            - listitem [ref=e161]:
+              - link "Status" [ref=e162] [cursor=pointer]:
+                - /url: admin.php?page=wc-status
+            - listitem [ref=e163]:
+              - link "Extensions" [ref=e164] [cursor=pointer]:
+                - /url: admin.php?page=wc-admin&path=/extensions
+            - listitem [ref=e165]:
+              - link "e-Transfer Webhooks 4" [ref=e166] [cursor=pointer]:
+                - /url: admin.php?page=etransfer-webhooks
+                - text: e-Transfer Webhooks
+                - generic [ref=e167]: "4"
+        - listitem [ref=e168]:
+          - link "Products" [ref=e169] [cursor=pointer]:
+            - /url: edit.php?post_type=product
+            - generic [ref=e170]: 
+            - generic [ref=e171]: Products
+          - list [ref=e172]:
+            - listitem [ref=e173]:
+              - link "All Products" [ref=e174] [cursor=pointer]:
+                - /url: edit.php?post_type=product
+            - listitem [ref=e175]:
+              - link "Add new product" [ref=e176] [cursor=pointer]:
+                - /url: post-new.php?post_type=product
+            - listitem [ref=e177]:
+              - link "Brands" [ref=e178] [cursor=pointer]:
+                - /url: edit-tags.php?taxonomy=product_brand&post_type=product
+            - listitem [ref=e179]:
+              - link "Categories" [ref=e180] [cursor=pointer]:
+                - /url: edit-tags.php?taxonomy=product_cat&post_type=product
+            - listitem [ref=e181]:
+              - link "Tags" [ref=e182] [cursor=pointer]:
+                - /url: edit-tags.php?taxonomy=product_tag&post_type=product
+            - listitem [ref=e183]:
+              - link "Attributes" [ref=e184] [cursor=pointer]:
+                - /url: edit.php?post_type=product&page=product_attributes
+            - listitem [ref=e185]:
+              - link "Reviews" [ref=e186] [cursor=pointer]:
+                - /url: edit.php?post_type=product&page=product-reviews
+        - listitem [ref=e187]:
+          - link "Payments" [ref=e188] [cursor=pointer]:
+            - /url: admin.php?page=wc-settings&tab=checkout&from=PAYMENTS_MENU_ITEM
+            - generic [ref=e190]: Payments
+        - listitem [ref=e191]:
+          - link "Analytics" [ref=e192] [cursor=pointer]:
+            - /url: admin.php?page=wc-admin&path=/analytics/overview
+            - generic [ref=e193]: 
+            - generic [ref=e194]: Analytics
+          - list [ref=e195]:
+            - listitem [ref=e196]:
+              - link "Overview" [ref=e197] [cursor=pointer]:
+                - /url: admin.php?page=wc-admin&path=/analytics/overview
+            - listitem [ref=e198]:
+              - link "Products" [ref=e199] [cursor=pointer]:
+                - /url: admin.php?page=wc-admin&path=/analytics/products
+            - listitem [ref=e200]:
+              - link "Revenue" [ref=e201] [cursor=pointer]:
+                - /url: admin.php?page=wc-admin&path=/analytics/revenue
+            - listitem [ref=e202]:
+              - link "Orders" [ref=e203] [cursor=pointer]:
+                - /url: admin.php?page=wc-admin&path=/analytics/orders
+            - listitem [ref=e204]:
+              - link "Variations" [ref=e205] [cursor=pointer]:
+                - /url: admin.php?page=wc-admin&path=/analytics/variations
+            - listitem [ref=e206]:
+              - link "Categories" [ref=e207] [cursor=pointer]:
+                - /url: admin.php?page=wc-admin&path=/analytics/categories
+            - listitem [ref=e208]:
+              - link "Coupons" [ref=e209] [cursor=pointer]:
+                - /url: admin.php?page=wc-admin&path=/analytics/coupons
+            - listitem [ref=e210]:
+              - link "Taxes" [ref=e211] [cursor=pointer]:
+                - /url: admin.php?page=wc-admin&path=/analytics/taxes
+            - listitem [ref=e212]:
+              - link "Downloads" [ref=e213] [cursor=pointer]:
+                - /url: admin.php?page=wc-admin&path=/analytics/downloads
+            - listitem [ref=e214]:
+              - link "Stock" [ref=e215] [cursor=pointer]:
+                - /url: admin.php?page=wc-admin&path=/analytics/stock
+            - listitem [ref=e216]:
+              - link "Settings" [ref=e217] [cursor=pointer]:
+                - /url: admin.php?page=wc-admin&path=/analytics/settings
+        - listitem [ref=e218]:
+          - link "Marketing" [ref=e219] [cursor=pointer]:
+            - /url: admin.php?page=wc-admin&path=/marketing
+            - generic [ref=e220]: 
+            - generic [ref=e221]: Marketing
+          - list [ref=e222]:
+            - listitem [ref=e223]:
+              - link "Overview" [ref=e224] [cursor=pointer]:
+                - /url: admin.php?page=wc-admin&path=/marketing
+            - listitem [ref=e225]:
+              - link "Coupons" [ref=e226] [cursor=pointer]:
+                - /url: edit.php?post_type=shop_coupon
+        - listitem [ref=e227]
+        - listitem [ref=e229]:
+          - link "Appearance" [ref=e230] [cursor=pointer]:
+            - /url: themes.php
+            - generic [ref=e231]: 
+            - generic [ref=e232]: Appearance
+          - list [ref=e233]:
+            - listitem [ref=e234]:
+              - link "Themes" [ref=e235] [cursor=pointer]:
+                - /url: themes.php
+            - listitem [ref=e236]:
+              - link "Patterns" [ref=e237] [cursor=pointer]:
+                - /url: site-editor.php?p=/pattern
+            - listitem [ref=e238]:
+              - link "Customize" [ref=e239] [cursor=pointer]:
+                - /url: customize.php?return=%2Fwp-admin%2Fpost.php%3Fpost%3D683%26action%3Dedit
+            - listitem [ref=e240]:
+              - link "Widgets" [ref=e241] [cursor=pointer]:
+                - /url: widgets.php
+            - listitem [ref=e242]:
+              - link "Menus" [ref=e243] [cursor=pointer]:
+                - /url: nav-menus.php
+            - listitem [ref=e244]:
+              - link "Header" [ref=e245] [cursor=pointer]:
+                - /url: customize.php?return=%2Fwp-admin%2Fpost.php%3Fpost%3D683%26action%3Dedit&autofocus%5Bcontrol%5D=header_image
+            - listitem [ref=e246]:
+              - link "Background" [ref=e247] [cursor=pointer]:
+                - /url: customize.php?return=%2Fwp-admin%2Fpost.php%3Fpost%3D683%26action%3Dedit&autofocus%5Bcontrol%5D=background_image
+            - listitem [ref=e248]:
+              - link "Theme Info" [ref=e249] [cursor=pointer]:
+                - /url: themes.php?page=rookie
+            - listitem
+            - listitem
+            - listitem [ref=e250]:
+              - link "Theme File Editor" [ref=e251] [cursor=pointer]:
+                - /url: theme-editor.php
+        - listitem [ref=e252]:
+          - link "Plugins 1" [ref=e253] [cursor=pointer]:
+            - /url: plugins.php
+            - generic [ref=e254]: 
+            - generic [ref=e255]:
+              - text: Plugins
+              - generic [ref=e256]: "1"
+          - list [ref=e257]:
+            - listitem [ref=e258]:
+              - link "Installed Plugins" [ref=e259] [cursor=pointer]:
+                - /url: plugins.php
+            - listitem [ref=e260]:
+              - link "Add Plugin" [ref=e261] [cursor=pointer]:
+                - /url: plugin-install.php
+            - listitem [ref=e262]:
+              - link "Plugin File Editor" [ref=e263] [cursor=pointer]:
+                - /url: plugin-editor.php
+        - listitem [ref=e264]:
+          - link "Users" [ref=e265] [cursor=pointer]:
+            - /url: users.php
+            - generic [ref=e266]: 
+            - generic [ref=e267]: Users
+          - list [ref=e268]:
+            - listitem [ref=e269]:
+              - link "All Users" [ref=e270] [cursor=pointer]:
+                - /url: users.php
+            - listitem [ref=e271]:
+              - link "Add User" [ref=e272] [cursor=pointer]:
+                - /url: user-new.php
+            - listitem [ref=e273]:
+              - link "Profile" [ref=e274] [cursor=pointer]:
+                - /url: profile.php
+        - listitem [ref=e275]:
+          - link "Tools" [ref=e276] [cursor=pointer]:
+            - /url: tools.php
+            - generic [ref=e277]: 
+            - generic [ref=e278]: Tools
+          - list [ref=e279]:
+            - listitem [ref=e280]:
+              - link "Available Tools" [ref=e281] [cursor=pointer]:
+                - /url: tools.php
+            - listitem [ref=e282]:
+              - link "Import" [ref=e283] [cursor=pointer]:
+                - /url: import.php
+            - listitem [ref=e284]:
+              - link "Export" [ref=e285] [cursor=pointer]:
+                - /url: export.php
+            - listitem [ref=e286]:
+              - link "Site Health 2" [ref=e287] [cursor=pointer]:
+                - /url: site-health.php
+                - text: Site Health
+                - generic [ref=e288]: "2"
+            - listitem [ref=e289]:
+              - link "Export Personal Data" [ref=e290] [cursor=pointer]:
+                - /url: export-personal-data.php
+            - listitem [ref=e291]:
+              - link "Erase Personal Data" [ref=e292] [cursor=pointer]:
+                - /url: erase-personal-data.php
+            - listitem [ref=e293]:
+              - link "Scheduled Actions" [ref=e294] [cursor=pointer]:
+                - /url: tools.php?page=action-scheduler
+            - listitem [ref=e295]:
+              - link "Upload Player Lists" [ref=e296] [cursor=pointer]:
+                - /url: tools.php?page=spt_upload_lists
+        - listitem [ref=e297]:
+          - link "Settings" [ref=e298] [cursor=pointer]:
+            - /url: options-general.php
+            - generic [ref=e299]: 
+            - generic [ref=e300]: Settings
+          - list [ref=e301]:
+            - listitem [ref=e302]:
+              - link "General" [ref=e303] [cursor=pointer]:
+                - /url: options-general.php
+            - listitem [ref=e304]:
+              - link "Writing" [ref=e305] [cursor=pointer]:
+                - /url: options-writing.php
+            - listitem [ref=e306]:
+              - link "Reading" [ref=e307] [cursor=pointer]:
+                - /url: options-reading.php
+            - listitem [ref=e308]:
+              - link "Discussion" [ref=e309] [cursor=pointer]:
+                - /url: options-discussion.php
+            - listitem [ref=e310]:
+              - link "Media" [ref=e311] [cursor=pointer]:
+                - /url: options-media.php
+            - listitem [ref=e312]:
+              - link "Permalinks" [ref=e313] [cursor=pointer]:
+                - /url: options-permalink.php
+            - listitem [ref=e314]:
+              - link "Privacy" [ref=e315] [cursor=pointer]:
+                - /url: options-privacy.php
+            - listitem [ref=e316]:
+              - link "SportsPress Admin Tools" [ref=e317] [cursor=pointer]:
+                - /url: options-general.php?page=sportspress-admin-tools
+        - listitem [ref=e318]:
+          - link "Royal MCP" [ref=e319] [cursor=pointer]:
+            - /url: admin.php?page=royal-mcp
+            - generic [ref=e320]: 
+            - generic [ref=e321]: Royal MCP
+          - list [ref=e322]:
+            - listitem [ref=e323]:
+              - link "Settings" [ref=e324] [cursor=pointer]:
+                - /url: admin.php?page=royal-mcp
+            - listitem [ref=e325]:
+              - link "Activity Log" [ref=e326] [cursor=pointer]:
+                - /url: admin.php?page=royal-mcp-logs
+        - listitem [ref=e327]:
+          - button "Collapse Main menu" [expanded] [ref=e328] [cursor=pointer]:
+            - generic [ref=e330]: Collapse Menu
+    - generic [ref=e331]:
+      - generic [ref=e332]:
+        - navigation "Toolbar":
+          - menu:
+            - group [ref=e333]:
+              - menuitem "About WordPress" [ref=e334] [cursor=pointer]:
+                - generic [ref=e336]: About WordPress
+            - group [ref=e337]:
+              - menuitem "ARL - Adult Recreational League" [ref=e338] [cursor=pointer]
+            - group [ref=e339]:
+              - menuitem "2 updates available" [ref=e340] [cursor=pointer]:
+                - generic [ref=e342]: "2"
+                - generic [ref=e343]: 2 updates available
+            - group [ref=e344]:
+              - menuitem "0 Comments in moderation" [ref=e345] [cursor=pointer]:
+                - generic [ref=e347]: "0"
+                - generic [ref=e348]: 0 Comments in moderation
+            - group [ref=e349]:
+              - menuitem "New" [ref=e350] [cursor=pointer]:
+                - generic [ref=e352]: New
+            - group [ref=e353]:
+              - menuitem "View Player" [ref=e354] [cursor=pointer]
+          - menu [ref=e355]:
+            - group [ref=e356]:
+              - menuitem "Howdy, Cody Lusk" [ref=e357] [cursor=pointer]
+      - main [ref=e358]:
+        - generic [ref=e359]:
+          - button "Screen Options" [ref=e362] [cursor=pointer]
+          - generic [ref=e363]:
+            - heading "Edit Player" [level=1] [ref=e364]
+            - link "Add New Player" [ref=e365] [cursor=pointer]:
+              - /url: http://tikal.lusk.ee:8080/wp-admin/post-new.php?post_type=sp_player
+            - paragraph [ref=e367]:
+              - strong [ref=e368]: "Action Scheduler:"
+              - text: "7"
+              - link "past-due actions" [ref=e369] [cursor=pointer]:
+                - /url: http://tikal.lusk.ee:8080/wp-admin/tools.php?page=action-scheduler&status=past-due&order=asc
+              - text: found; something may be wrong.
+              - link "Read documentation »" [ref=e370] [cursor=pointer]:
+                - /url: https://actionscheduler.org/faq/#my-site-has-past-due-actions-what-can-i-do
+            - generic [ref=e372]:
+              - generic:
+                - generic [ref=e373]:
+                  - generic [ref=e374]:
+                    - generic [ref=e375]:
+                      - generic: Name
+                      - textbox "Name" [ref=e376]: Chris Deidun
+                      - link "Skip to Editor" [ref=e377] [cursor=pointer]:
+                        - /url: "#content"
+                    - generic [ref=e379]:
+                      - strong [ref=e380]: "Permalink:"
+                      - link "http://tikal.lusk.ee:8080/player/chris-deidun" [ref=e382] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/player/chris-deidun
+                      - text: ‎
+                      - button "Edit permalink" [ref=e384] [cursor=pointer]: Edit
+                  - generic [ref=e385]:
+                    - generic [ref=e386]:
+                      - generic [ref=e387]:
+                        - button "Add Media" [ref=e389] [cursor=pointer]: Add Media
+                        - generic [ref=e391]:
+                          - button "Visual" [pressed] [ref=e392] [cursor=pointer]
+                          - button "Code" [ref=e393] [cursor=pointer]
+                      - application [ref=e395]:
+                        - generic [ref=e396]:
+                          - group [ref=e399]:
+                            - toolbar [ref=e401]:
+                              - group [ref=e403]:
+                                - generic [ref=e404]:
+                                  - button "Paragraph" [ref=e405] [cursor=pointer]:
+                                    - button "Paragraph" [ref=e406]:
+                                      - generic [ref=e407]: Paragraph
+                                  - button "Bold (Ctrl+B)" [ref=e409] [cursor=pointer]:
+                                    - button [ref=e410]
+                                  - button "Italic (Ctrl+I)" [ref=e412] [cursor=pointer]:
+                                    - button [ref=e413]
+                                  - button "Bulleted list (Shift+Alt+U)" [ref=e415] [cursor=pointer]:
+                                    - button [ref=e416]
+                                  - button "Numbered list (Shift+Alt+O)" [ref=e418] [cursor=pointer]:
+                                    - button [ref=e419]
+                                  - button "Blockquote (Shift+Alt+Q)" [ref=e421] [cursor=pointer]:
+                                    - button [ref=e422]
+                                  - button "Align left (Shift+Alt+L)" [ref=e424] [cursor=pointer]:
+                                    - button [ref=e425]
+                                  - button "Align centre (Shift+Alt+C)" [ref=e427] [cursor=pointer]:
+                                    - button [ref=e428]
+                                  - button "Align right (Shift+Alt+R)" [ref=e430] [cursor=pointer]:
+                                    - button [ref=e431]
+                                  - button "Insert/edit link (Ctrl+K)" [ref=e433] [cursor=pointer]:
+                                    - button [ref=e434]
+                                  - button "Insert Read More tag (Shift+Alt+T)" [ref=e436] [cursor=pointer]:
+                                    - button [ref=e437]
+                                  - button "Toolbar Toggle (Shift+Alt+Z)" [ref=e439] [cursor=pointer]:
+                                    - button [ref=e440]
+                                  - button "Distraction-free writing mode (Shift+Alt+W)" [ref=e442] [cursor=pointer]:
+                                    - button [ref=e443]
+                                  - button "SportsPress Shortcodes" [ref=e445] [cursor=pointer]:
+                                    - button "" [ref=e446]:
+                                      - generic [ref=e447]: 
+                          - group [ref=e449]:
+                            - iframe [ref=e450]:
+                              - paragraph [ref=f4e2]
+                          - group [ref=e451]
+                    - text: "Word count: 0 Last edited by Cody Lusk on 15 November 2021 at 4:45 pm"
+                - generic [ref=e456]:
+                  - generic [ref=e457]:
+                    - generic [ref=e458]:
+                      - heading "Shortcodes" [level=2] [ref=e459]
+                      - generic [ref=e460]:
+                        - button "Move up" [disabled] [ref=e461]:
+                          - generic [ref=e462]: Move up
+                        - button "Move down" [ref=e464] [cursor=pointer]:
+                          - generic [ref=e465]: Move down
+                        - 'button "Toggle panel: Shortcodes" [expanded] [ref=e467] [cursor=pointer]':
+                          - generic [ref=e468]: "Toggle panel: Shortcodes"
+                    - generic [ref=e470]:
+                      - paragraph [ref=e471]: Copy this code and paste it into your post, page or text widget content.
+                      - paragraph [ref=e472]:
+                        - strong [ref=e473]: Details
+                      - paragraph [ref=e474]:
+                        - textbox [ref=e475]: "[player_details 683]"
+                      - paragraph [ref=e476]:
+                        - strong [ref=e477]: Statistics
+                      - paragraph [ref=e478]:
+                        - textbox [ref=e479]: "[player_statistics 683]"
+                  - generic [ref=e480]:
+                    - generic [ref=e481]:
+                      - heading "Publish" [level=2] [ref=e482]
+                      - generic [ref=e483]:
+                        - button "Move up" [ref=e484] [cursor=pointer]:
+                          - generic [ref=e485]: Move up
+                        - button "Move down" [ref=e487] [cursor=pointer]:
+                          - generic [ref=e488]: Move down
+                        - 'button "Toggle panel: Publish" [expanded] [ref=e490] [cursor=pointer]':
+                          - generic [ref=e491]: "Toggle panel: Publish"
+                    - generic [ref=e494]:
+                      - generic [ref=e495]:
+                        - link "Preview Changes (opens in a new tab)" [ref=e497] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/player/chris-deidun?preview=true
+                          - text: Preview Changes
+                          - generic [ref=e498]: (opens in a new tab)
+                        - generic [ref=e499]:
+                          - generic [ref=e500]:
+                            - text: "Status: Published"
+                            - button "Edit status" [ref=e501] [cursor=pointer]:
+                              - text: Edit
+                              - generic [ref=e502]: Edit status
+                          - generic [ref=e503]:
+                            - text: "Visibility: Public"
+                            - button "Edit visibility" [ref=e504] [cursor=pointer]:
+                              - text: Edit
+                              - generic [ref=e505]: Edit visibility
+                          - generic [ref=e506]:
+                            - generic [ref=e507]: " Published on: Jan 13, 2016 at 13:54"
+                            - button "Edit date and time" [ref=e508] [cursor=pointer]:
+                              - text: Edit
+                              - generic [ref=e509]: Edit date and time
+                      - generic [ref=e510]:
+                        - link "Move to Trash" [ref=e512] [cursor=pointer]:
+                          - /url: http://tikal.lusk.ee:8080/wp-admin/post.php?post=683&action=trash&_wpnonce=bcc8fdf2c6
+                        - button "Update" [ref=e514] [cursor=pointer]
+                  - generic [ref=e515]:
+                    - generic [ref=e516]:
+                      - heading "Details" [level=2] [ref=e517]
+                      - generic [ref=e518]:
+                        - button "Move up" [ref=e519] [cursor=pointer]:
+                          - generic [ref=e520]: Move up
+                        - button "Move down" [ref=e522] [cursor=pointer]:
+                          - generic [ref=e523]: Move down
+                        - 'button "Toggle panel: Details" [expanded] [ref=e525] [cursor=pointer]':
+                          - generic [ref=e526]: "Toggle panel: Details"
+                    - generic [ref=e528]:
+                      - paragraph [ref=e529]:
+                        - strong [ref=e530]: Squad Number
+                      - paragraph [ref=e531]:
+                        - textbox [ref=e532]: "33"
+                      - paragraph [ref=e533]:
+                        - strong [ref=e534]: Nationality
+                      - paragraph [ref=e535]:
+                        - generic [ref=e536]:
+                          - list [ref=e537]:
+                            - listitem [ref=e538]:
+                              - textbox [ref=e539]: Select Nationality
+                          - generic [ref=e540]:
+                            - list
+                      - paragraph [ref=e541]:
+                        - strong [ref=e542]: Positions
+                      - paragraph [ref=e543]:
+                        - generic [ref=e544]:
+                          - list [ref=e545]:
+                            - listitem [ref=e546]: Skater
+                            - listitem [ref=e548]:
+                              - textbox [ref=e549]
+                          - generic [ref=e550]:
+                            - list
+                      - paragraph [ref=e551]:
+                        - strong [ref=e552]: Current Teams
+                      - paragraph [ref=e553]:
+                        - generic [ref=e554]:
+                          - list [ref=e555]:
+                            - listitem [ref=e556]: Replacements
+                            - listitem [ref=e558]:
+                              - textbox [ref=e559]
+                          - generic [ref=e560]:
+                            - list
+                      - paragraph [ref=e561]:
+                        - strong [ref=e562]: Past Teams
+                      - paragraph [ref=e563]:
+                        - generic [ref=e564]:
+                          - list [ref=e565]:
+                            - listitem [ref=e566]: Kings (Jeff Robson)
+                            - listitem [ref=e568]: Penguins (Adkins Financial)
+                            - listitem [ref=e570]:
+                              - textbox [ref=e571]
+                          - generic [ref=e572]:
+                            - list
+                      - paragraph [ref=e573]:
+                        - strong [ref=e574]: Leagues
+                      - paragraph [ref=e575]:
+                        - generic [ref=e576]:
+                          - list [ref=e577]:
+                            - listitem [ref=e578]: Division 1
+                            - listitem [ref=e580]: Division 2
+                            - listitem [ref=e582]:
+                              - textbox [ref=e583]
+                          - generic [ref=e584]:
+                            - list
+                      - paragraph [ref=e585]:
+                        - strong [ref=e586]: Seasons
+                      - paragraph [ref=e587]:
+                        - generic [ref=e588]:
+                          - list [ref=e589]:
+                            - listitem [ref=e590]: S2016
+                            - listitem [ref=e592]: "- S2016 Playoffs"
+                            - listitem [ref=e594]: S2017
+                            - listitem [ref=e596]: "- S2017 Playoffs"
+                            - listitem [ref=e598]: S2018
+                            - listitem [ref=e600]: "- S2018 Playoffs"
+                            - listitem [ref=e602]: W2015-16
+                            - listitem [ref=e604]: "- W2015-16 Playoffs"
+                            - listitem [ref=e606]: W2016-17
+                            - listitem [ref=e608]: "- W2016-17 Playoffs"
+                            - listitem [ref=e610]: W2017-18
+                            - listitem [ref=e612]: "- W2017-18 Playoffs"
+                            - listitem [ref=e614]:
+                              - textbox [ref=e615]
+                          - generic [ref=e616]:
+                            - list
+                  - generic [ref=e617]:
+                    - generic [ref=e618]:
+                      - heading "Columns" [level=2] [ref=e619]
+                      - generic [ref=e620]:
+                        - button "Move up" [ref=e621] [cursor=pointer]:
+                          - generic [ref=e622]: Move up
+                        - button "Move down" [ref=e624] [cursor=pointer]:
+                          - generic [ref=e625]: Move down
+                        - 'button "Toggle panel: Columns" [expanded] [ref=e627] [cursor=pointer]':
+                          - generic [ref=e628]: "Toggle panel: Columns"
+                    - generic [ref=e631]:
+                      - list [ref=e632]:
+                        - listitem [ref=e633]:
+                          - link "Performance" [ref=e634] [cursor=pointer]:
+                            - /url: "#sp_performance-all"
+                        - listitem [ref=e635]:
+                          - link "Statistics" [ref=e636] [cursor=pointer]:
+                            - /url: "#sp_statistic-all"
+                      - list [ref=e638]:
+                        - listitem [ref=e639]:
+                          - generic [ref=e640]:
+                            - checkbox "Select All" [ref=e641] [cursor=pointer]
+                            - strong [ref=e642]: Select All
+                        - listitem [ref=e643]:
+                          - generic [ref=e644]:
+                            - checkbox "G" [checked] [ref=e645] [cursor=pointer]
+                            - text: G
+                        - listitem [ref=e646]:
+                          - generic [ref=e647]:
+                            - checkbox "A" [checked] [ref=e648] [cursor=pointer]
+                            - text: A
+                        - listitem [ref=e649]:
+                          - generic [ref=e650]:
+                            - checkbox "PIM" [checked] [ref=e651] [cursor=pointer]
+                            - text: PIM
+                        - listitem [ref=e652]:
+                          - generic [ref=e653]:
+                            - checkbox "GA" [ref=e654] [cursor=pointer]
+                            - text: GA
+                  - generic [ref=e655]:
+                    - generic [ref=e656]:
+                      - heading "Photo" [level=2] [ref=e657]
+                      - generic [ref=e658]:
+                        - button "Move up" [ref=e659] [cursor=pointer]:
+                          - generic [ref=e660]: Move up
+                        - button "Move down" [ref=e662] [cursor=pointer]:
+                          - generic [ref=e663]: Move down
+                        - 'button "Toggle panel: Photo" [expanded] [ref=e665] [cursor=pointer]':
+                          - generic [ref=e666]: "Toggle panel: Photo"
+                    - paragraph [ref=e669]:
+                      - link "Select Photo" [ref=e670] [cursor=pointer]:
+                        - /url: http://tikal.lusk.ee:8080/wp-admin/media-upload.php?post_id=683&type=image&TB_iframe=1
+                  - generic [ref=e671]:
+                    - generic [ref=e672]:
+                      - heading "Metrics" [level=2] [ref=e673]
+                      - generic [ref=e674]:
+                        - button "Move up" [ref=e675] [cursor=pointer]:
+                          - generic [ref=e676]: Move up
+                        - button "Move down" [ref=e678] [cursor=pointer]:
+                          - generic [ref=e679]: Move down
+                        - 'button "Toggle panel: Metrics" [expanded] [ref=e681] [cursor=pointer]':
+                          - generic [ref=e682]: "Toggle panel: Metrics"
+                    - generic [ref=e684]:
+                      - paragraph [ref=e685]:
+                        - strong [ref=e686]: Height
+                      - paragraph [ref=e687]:
+                        - textbox [ref=e688]
+                      - paragraph [ref=e689]:
+                        - strong [ref=e690]: Weight
+                      - paragraph [ref=e691]:
+                        - textbox [ref=e692]
+                  - generic [ref=e693]:
+                    - generic [ref=e694]:
+                      - heading "Skill Level" [level=2] [ref=e695]
+                      - generic [ref=e696]:
+                        - button "Move up" [ref=e697] [cursor=pointer]:
+                          - generic [ref=e698]: Move up
+                        - button "Move down" [ref=e700] [cursor=pointer]:
+                          - generic [ref=e701]: Move down
+                        - 'button "Toggle panel: Skill Level" [expanded] [ref=e703] [cursor=pointer]':
+                          - generic [ref=e704]: "Toggle panel: Skill Level"
+                    - paragraph [ref=e707]:
+                      - text: "Rating (1–10):"
+                      - spinbutton "Rating (1–10):" [ref=e708]
+                      - text: / 10
+                - generic [ref=e709]:
+                  - generic [ref=e710]:
+                    - generic [ref=e711]:
+                      - generic [ref=e712]:
+                        - heading "Statistics" [level=2] [ref=e713]
+                        - generic [ref=e714]:
+                          - button "Move up" [ref=e715] [cursor=pointer]:
+                            - generic [ref=e716]: Move up
+                          - button "Move down" [ref=e718] [cursor=pointer]:
+                            - generic [ref=e719]: Move down
+                          - 'button "Toggle panel: Statistics" [expanded] [ref=e721] [cursor=pointer]':
+                            - generic [ref=e722]: "Toggle panel: Statistics"
+                      - generic [ref=e724]:
+                        - paragraph [ref=e725]:
+                          - strong [ref=e726]: Division 1
+                        - table [ref=e728]:
+                          - rowgroup [ref=e729]:
+                            - row "Season Team G A PIM P GP" [ref=e730]:
+                              - columnheader "Season" [ref=e731]
+                              - columnheader "Team" [ref=e732]
+                              - columnheader "G" [ref=e733]
+                              - columnheader "A" [ref=e734]
+                              - columnheader "PIM" [ref=e735]
+                              - columnheader "P" [ref=e736]
+                              - columnheader "GP" [ref=e737]
+                          - rowgroup [ref=e738]:
+                            - row "Total" [ref=e739]:
+                              - cell "Total" [ref=e740]:
+                                - strong [ref=e742]: Total
+                              - cell [ref=e743]
+                              - cell [ref=e744]:
+                                - textbox "22" [ref=e745]
+                              - cell [ref=e746]:
+                                - textbox "44" [ref=e747]
+                              - cell [ref=e748]:
+                                - textbox "12" [ref=e749]
+                              - cell [ref=e750]:
+                                - textbox "66" [ref=e751]
+                              - cell [ref=e752]:
+                                - textbox "119" [ref=e753]
+                          - rowgroup [ref=e754]:
+                            - row "W2015-16 — None —" [ref=e755]:
+                              - cell "W2015-16" [ref=e756]
+                              - cell "— None —" [ref=e757]:
+                                - combobox [ref=e758] [cursor=pointer]:
+                                  - option "— None —" [selected]
+                                  - option "Kings (Jeff Robson)"
+                                  - option "Penguins (Adkins Financial)"
+                              - cell [ref=e759]:
+                                - textbox "0" [ref=e760]
+                              - cell [ref=e761]:
+                                - textbox "0" [ref=e762]
+                              - cell [ref=e763]:
+                                - textbox "0" [ref=e764]
+                              - cell [ref=e765]:
+                                - textbox "0" [ref=e766]
+                              - cell [ref=e767]:
+                                - textbox "0" [ref=e768]
+                            - row "W2015-16 Playoffs — None —" [ref=e769]:
+                              - cell "W2015-16 Playoffs" [ref=e770]
+                              - cell "— None —" [ref=e771]:
+                                - combobox [ref=e772] [cursor=pointer]:
+                                  - option "— None —" [selected]
+                                  - option "Kings (Jeff Robson)"
+                                  - option "Penguins (Adkins Financial)"
+                              - cell [ref=e773]:
+                                - textbox "0" [ref=e774]
+                              - cell [ref=e775]:
+                                - textbox "0" [ref=e776]
+                              - cell [ref=e777]:
+                                - textbox "0" [ref=e778]
+                              - cell [ref=e779]:
+                                - textbox "0" [ref=e780]
+                              - cell [ref=e781]:
+                                - textbox "0" [ref=e782]
+                            - row "S2016 Kings (Jeff Robson) 2 7 2 9 16" [ref=e783]:
+                              - cell "S2016" [ref=e784]
+                              - cell "Kings (Jeff Robson)" [ref=e785]:
+                                - combobox [ref=e786] [cursor=pointer]:
+                                  - option "— None —"
+                                  - option "Kings (Jeff Robson)" [selected]
+                              - cell "2" [ref=e787]:
+                                - textbox "0" [ref=e788]: "2"
+                              - cell "7" [ref=e789]:
+                                - textbox "0" [ref=e790]: "7"
+                              - cell "2" [ref=e791]:
+                                - textbox "0" [ref=e792]: "2"
+                              - cell "9" [ref=e793]:
+                                - textbox "0" [ref=e794]: "9"
+                              - cell "16" [ref=e795]:
+                                - textbox "0" [ref=e796]: "16"
+                            - row "S2016 Playoffs Kings (Jeff Robson) 1 1 2 3" [ref=e797]:
+                              - cell "S2016 Playoffs" [ref=e798]
+                              - cell "Kings (Jeff Robson)" [ref=e799]:
+                                - combobox [ref=e800] [cursor=pointer]:
+                                  - option "— None —"
+                                  - option "Kings (Jeff Robson)" [selected]
+                              - cell "1" [ref=e801]:
+                                - textbox "0" [ref=e802]: "1"
+                              - cell "1" [ref=e803]:
+                                - textbox "0" [ref=e804]: "1"
+                              - cell [ref=e805]:
+                                - textbox "0" [ref=e806]
+                              - cell "2" [ref=e807]:
+                                - textbox "0" [ref=e808]: "2"
+                              - cell "3" [ref=e809]:
+                                - textbox "0" [ref=e810]: "3"
+                            - row "W2016-17 Replacements" [ref=e811]:
+                              - cell "W2016-17" [ref=e812]
+                              - cell "Replacements" [ref=e813]:
+                                - combobox [ref=e814] [cursor=pointer]:
+                                  - option "— None —"
+                                  - option "Penguins (Adkins Financial)"
+                                  - option "Replacements" [selected]
+                              - cell [ref=e815]:
+                                - textbox "3" [ref=e816]
+                              - cell [ref=e817]:
+                                - textbox "10" [ref=e818]
+                              - cell [ref=e819]:
+                                - textbox "2" [ref=e820]
+                              - cell [ref=e821]:
+                                - textbox "13" [ref=e822]
+                              - cell [ref=e823]:
+                                - textbox "26" [ref=e824]
+                            - row "W2016-17 Playoffs Replacements" [ref=e825]:
+                              - cell "W2016-17 Playoffs" [ref=e826]
+                              - cell "Replacements" [ref=e827]:
+                                - combobox [ref=e828] [cursor=pointer]:
+                                  - option "— None —"
+                                  - option "Penguins (Adkins Financial)"
+                                  - option "Replacements" [selected]
+                              - cell [ref=e829]:
+                                - textbox "0" [ref=e830]
+                              - cell [ref=e831]:
+                                - textbox "1" [ref=e832]
+                              - cell [ref=e833]:
+                                - textbox "0" [ref=e834]
+                              - cell [ref=e835]:
+                                - textbox "1" [ref=e836]
+                              - cell [ref=e837]:
+                                - textbox "3" [ref=e838]
+                            - row "S2017 Replacements" [ref=e839]:
+                              - cell "S2017" [ref=e840]
+                              - cell "Replacements" [ref=e841]:
+                                - combobox [ref=e842] [cursor=pointer]:
+                                  - option "— None —"
+                                  - option "Replacements" [selected]
+                              - cell [ref=e843]:
+                                - textbox "4" [ref=e844]
+                              - cell [ref=e845]:
+                                - textbox "11" [ref=e846]
+                              - cell [ref=e847]:
+                                - textbox "2" [ref=e848]
+                              - cell [ref=e849]:
+                                - textbox "15" [ref=e850]
+                              - cell [ref=e851]:
+                                - textbox "18" [ref=e852]
+                            - row "S2017 Playoffs Replacements" [ref=e853]:
+                              - cell "S2017 Playoffs" [ref=e854]
+                              - cell "Replacements" [ref=e855]:
+                                - combobox [ref=e856] [cursor=pointer]:
+                                  - option "— None —"
+                                  - option "Replacements" [selected]
+                              - cell [ref=e857]:
+                                - textbox "1" [ref=e858]
+                              - cell [ref=e859]:
+                                - textbox "1" [ref=e860]
+                              - cell [ref=e861]:
+                                - textbox "2" [ref=e862]
+                              - cell [ref=e863]:
+                                - textbox "2" [ref=e864]
+                              - cell [ref=e865]:
+                                - textbox "4" [ref=e866]
+                            - row "W2017-18 Replacements" [ref=e867]:
+                              - cell "W2017-18" [ref=e868]
+                              - cell "Replacements" [ref=e869]:
+                                - combobox [ref=e870] [cursor=pointer]:
+                                  - option "— None —"
+                                  - option "Penguins (Adkins Financial)"
+                                  - option "Replacements" [selected]
+                              - cell [ref=e871]:
+                                - textbox "7" [ref=e872]
+                              - cell [ref=e873]:
+                                - textbox "8" [ref=e874]
+                              - cell [ref=e875]:
+                                - textbox "4" [ref=e876]
+                              - cell [ref=e877]:
+                                - textbox "15" [ref=e878]
+                              - cell [ref=e879]:
+                                - textbox "25" [ref=e880]
+                            - row "W2017-18 Playoffs Replacements" [ref=e881]:
+                              - cell "W2017-18 Playoffs" [ref=e882]
+                              - cell "Replacements" [ref=e883]:
+                                - combobox [ref=e884] [cursor=pointer]:
+                                  - option "— None —"
+                                  - option "Penguins (Adkins Financial)"
+                                  - option "Replacements" [selected]
+                              - cell [ref=e885]:
+                                - textbox "1" [ref=e886]
+                              - cell [ref=e887]:
+                                - textbox "0" [ref=e888]
+                              - cell [ref=e889]:
+                                - textbox "0" [ref=e890]
+                              - cell [ref=e891]:
+                                - textbox "1" [ref=e892]
+                              - cell [ref=e893]:
+                                - textbox "2" [ref=e894]
+                            - row "S2018 Replacements" [ref=e895]:
+                              - cell "S2018" [ref=e896]
+                              - cell "Replacements" [ref=e897]:
+                                - combobox [ref=e898] [cursor=pointer]:
+                                  - option "— None —"
+                                  - option "Replacements" [selected]
+                              - cell [ref=e899]:
+                                - textbox "3" [ref=e900]
+                              - cell [ref=e901]:
+                                - textbox "4" [ref=e902]
+                              - cell [ref=e903]:
+                                - textbox "0" [ref=e904]
+                              - cell [ref=e905]:
+                                - textbox "7" [ref=e906]
+                              - cell [ref=e907]:
+                                - textbox "18" [ref=e908]
+                            - row "S2018 Playoffs Replacements" [ref=e909]:
+                              - cell "S2018 Playoffs" [ref=e910]
+                              - cell "Replacements" [ref=e911]:
+                                - combobox [ref=e912] [cursor=pointer]:
+                                  - option "— None —"
+                                  - option "Replacements" [selected]
+                              - cell [ref=e913]:
+                                - textbox "0" [ref=e914]
+                              - cell [ref=e915]:
+                                - textbox "1" [ref=e916]
+                              - cell [ref=e917]:
+                                - textbox "0" [ref=e918]
+                              - cell [ref=e919]:
+                                - textbox "1" [ref=e920]
+                              - cell [ref=e921]:
+                                - textbox "4" [ref=e922]
+                        - paragraph [ref=e923]:
+                          - strong [ref=e924]: Division 2
+                        - table [ref=e926]:
+                          - rowgroup [ref=e927]:
+                            - row "Season Team G A PIM P GP" [ref=e928]:
+                              - columnheader "Season" [ref=e929]
+                              - columnheader "Team" [ref=e930]
+                              - columnheader "G" [ref=e931]
+                              - columnheader "A" [ref=e932]
+                              - columnheader "PIM" [ref=e933]
+                              - columnheader "P" [ref=e934]
+                              - columnheader "GP" [ref=e935]
+                          - rowgroup [ref=e936]:
+                            - row "Total" [ref=e937]:
+                              - cell "Total" [ref=e938]:
+                                - strong [ref=e940]: Total
+                              - cell [ref=e941]
+                              - cell [ref=e942]:
+                                - textbox "0" [ref=e943]
+                              - cell [ref=e944]:
+                                - textbox "0" [ref=e945]
+                              - cell [ref=e946]:
+                                - textbox "0" [ref=e947]
+                              - cell [ref=e948]:
+                                - textbox "0" [ref=e949]
+                              - cell [ref=e950]:
+                                - textbox "5" [ref=e951]
+                          - rowgroup [ref=e952]:
+                            - row "W2015-16 Penguins (Adkins Financial)" [ref=e953]:
+                              - cell "W2015-16" [ref=e954]
+                              - cell "Penguins (Adkins Financial)" [ref=e955]:
+                                - combobox [ref=e956] [cursor=pointer]:
+                                  - option "— None —"
+                                  - option "Penguins (Adkins Financial)" [selected]
+                              - cell [ref=e957]:
+                                - textbox "0" [ref=e958]
+                              - cell [ref=e959]:
+                                - textbox "0" [ref=e960]
+                              - cell [ref=e961]:
+                                - textbox "0" [ref=e962]
+                              - cell [ref=e963]:
+                                - textbox "0" [ref=e964]
+                              - cell [ref=e965]:
+                                - textbox "3" [ref=e966]
+                            - row "W2015-16 Playoffs Penguins (Adkins Financial)" [ref=e967]:
+                              - cell "W2015-16 Playoffs" [ref=e968]
+                              - cell "Penguins (Adkins Financial)" [ref=e969]:
+                                - combobox [ref=e970] [cursor=pointer]:
+                                  - option "— None —"
+                                  - option "Penguins (Adkins Financial)" [selected]
+                              - cell [ref=e971]:
+                                - textbox "0" [ref=e972]
+                              - cell [ref=e973]:
+                                - textbox "0" [ref=e974]
+                              - cell [ref=e975]:
+                                - textbox "0" [ref=e976]
+                              - cell [ref=e977]:
+                                - textbox "0" [ref=e978]
+                              - cell [ref=e979]:
+                                - textbox "2" [ref=e980]
+                            - row "S2016 — None —" [ref=e981]:
+                              - cell "S2016" [ref=e982]
+                              - cell "— None —" [ref=e983]
+                              - cell [ref=e984]:
+                                - textbox "0" [ref=e985]
+                              - cell [ref=e986]:
+                                - textbox "0" [ref=e987]
+                              - cell [ref=e988]:
+                                - textbox "0" [ref=e989]
+                              - cell [ref=e990]:
+                                - textbox "0" [ref=e991]
+                              - cell [ref=e992]:
+                                - textbox "0" [ref=e993]
+                            - row "S2016 Playoffs — None —" [ref=e994]:
+                              - cell "S2016 Playoffs" [ref=e995]
+                              - cell "— None —" [ref=e996]
+                              - cell [ref=e997]:
+                                - textbox "0" [ref=e998]
+                              - cell [ref=e999]:
+                                - textbox "0" [ref=e1000]
+                              - cell [ref=e1001]:
+                                - textbox "0" [ref=e1002]
+                              - cell [ref=e1003]:
+                                - textbox "0" [ref=e1004]
+                              - cell [ref=e1005]:
+                                - textbox "0" [ref=e1006]
+                            - row "W2016-17 — None —" [ref=e1007]:
+                              - cell "W2016-17" [ref=e1008]
+                              - cell "— None —" [ref=e1009]:
+                                - combobox [ref=e1010] [cursor=pointer]:
+                                  - option "— None —" [selected]
+                                  - option "Penguins (Adkins Financial)"
+                                  - option "Replacements"
+                              - cell [ref=e1011]:
+                                - textbox "0" [ref=e1012]
+                              - cell [ref=e1013]:
+                                - textbox "0" [ref=e1014]
+                              - cell [ref=e1015]:
+                                - textbox "0" [ref=e1016]
+                              - cell [ref=e1017]:
+                                - textbox "0" [ref=e1018]
+                              - cell [ref=e1019]:
+                                - textbox "0" [ref=e1020]
+                            - row "W2016-17 Playoffs — None —" [ref=e1021]:
+                              - cell "W2016-17 Playoffs" [ref=e1022]
+                              - cell "— None —" [ref=e1023]:
+                                - combobox [ref=e1024] [cursor=pointer]:
+                                  - option "— None —" [selected]
+                                  - option "Penguins (Adkins Financial)"
+                                  - option "Replacements"
+                              - cell [ref=e1025]:
+                                - textbox "0" [ref=e1026]
+                              - cell [ref=e1027]:
+                                - textbox "0" [ref=e1028]
+                              - cell [ref=e1029]:
+                                - textbox "0" [ref=e1030]
+                              - cell [ref=e1031]:
+                                - textbox "0" [ref=e1032]
+                              - cell [ref=e1033]:
+                                - textbox "0" [ref=e1034]
+                            - row "S2017 — None —" [ref=e1035]:
+                              - cell "S2017" [ref=e1036]
+                              - cell "— None —" [ref=e1037]:
+                                - combobox [ref=e1038] [cursor=pointer]:
+                                  - option "— None —" [selected]
+                                  - option "Replacements"
+                              - cell [ref=e1039]:
+                                - textbox "0" [ref=e1040]
+                              - cell [ref=e1041]:
+                                - textbox "0" [ref=e1042]
+                              - cell [ref=e1043]:
+                                - textbox "0" [ref=e1044]
+                              - cell [ref=e1045]:
+                                - textbox "0" [ref=e1046]
+                              - cell [ref=e1047]:
+                                - textbox "0" [ref=e1048]
+                            - row "S2017 Playoffs — None —" [ref=e1049]:
+                              - cell "S2017 Playoffs" [ref=e1050]
+                              - cell "— None —" [ref=e1051]:
+                                - combobox [ref=e1052] [cursor=pointer]:
+                                  - option "— None —" [selected]
+                                  - option "Replacements"
+                              - cell [ref=e1053]:
+                                - textbox "0" [ref=e1054]
+                              - cell [ref=e1055]:
+                                - textbox "0" [ref=e1056]
+                              - cell [ref=e1057]:
+                                - textbox "0" [ref=e1058]
+                              - cell [ref=e1059]:
+                                - textbox "0" [ref=e1060]
+                              - cell [ref=e1061]:
+                                - textbox "0" [ref=e1062]
+                            - row "W2017-18 — None —" [ref=e1063]:
+                              - cell "W2017-18" [ref=e1064]
+                              - cell "— None —" [ref=e1065]:
+                                - combobox [ref=e1066] [cursor=pointer]:
+                                  - option "— None —" [selected]
+                                  - option "Penguins (Adkins Financial)"
+                                  - option "Replacements"
+                              - cell [ref=e1067]:
+                                - textbox "0" [ref=e1068]
+                              - cell [ref=e1069]:
+                                - textbox "0" [ref=e1070]
+                              - cell [ref=e1071]:
+                                - textbox "0" [ref=e1072]
+                              - cell [ref=e1073]:
+                                - textbox "0" [ref=e1074]
+                              - cell [ref=e1075]:
+                                - textbox "0" [ref=e1076]
+                            - row "W2017-18 Playoffs — None —" [ref=e1077]:
+                              - cell "W2017-18 Playoffs" [ref=e1078]
+                              - cell "— None —" [ref=e1079]:
+                                - combobox [ref=e1080] [cursor=pointer]:
+                                  - option "— None —" [selected]
+                                  - option "Penguins (Adkins Financial)"
+                                  - option "Replacements"
+                              - cell [ref=e1081]:
+                                - textbox "0" [ref=e1082]
+                              - cell [ref=e1083]:
+                                - textbox "0" [ref=e1084]
+                              - cell [ref=e1085]:
+                                - textbox "0" [ref=e1086]
+                              - cell [ref=e1087]:
+                                - textbox "0" [ref=e1088]
+                              - cell [ref=e1089]:
+                                - textbox "0" [ref=e1090]
+                            - row "S2018 — None —" [ref=e1091]:
+                              - cell "S2018" [ref=e1092]
+                              - cell "— None —" [ref=e1093]:
+                                - combobox [ref=e1094] [cursor=pointer]:
+                                  - option "— None —" [selected]
+                                  - option "Replacements"
+                              - cell [ref=e1095]:
+                                - textbox "0" [ref=e1096]
+                              - cell [ref=e1097]:
+                                - textbox "0" [ref=e1098]
+                              - cell [ref=e1099]:
+                                - textbox "0" [ref=e1100]
+                              - cell [ref=e1101]:
+                                - textbox "0" [ref=e1102]
+                              - cell [ref=e1103]:
+                                - textbox "0" [ref=e1104]
+                            - row "S2018 Playoffs — None —" [ref=e1105]:
+                              - cell "S2018 Playoffs" [ref=e1106]
+                              - cell "— None —" [ref=e1107]:
+                                - combobox [ref=e1108] [cursor=pointer]:
+                                  - option "— None —" [selected]
+                                  - option "Replacements"
+                              - cell [ref=e1109]:
+                                - textbox "0" [ref=e1110]
+                              - cell [ref=e1111]:
+                                - textbox "0" [ref=e1112]
+                              - cell [ref=e1113]:
+                                - textbox "0" [ref=e1114]
+                              - cell [ref=e1115]:
+                                - textbox "0" [ref=e1116]
+                              - cell [ref=e1117]:
+                                - textbox "0" [ref=e1118]
+                        - paragraph [ref=e1119]:
+                          - strong [ref=e1120]: Career Total
+                        - table [ref=e1122]:
+                          - rowgroup [ref=e1123]:
+                            - row "Season G A PIM P GP" [ref=e1124]:
+                              - columnheader "Season" [ref=e1125]
+                              - columnheader "G" [ref=e1126]
+                              - columnheader "A" [ref=e1127]
+                              - columnheader "PIM" [ref=e1128]
+                              - columnheader "P" [ref=e1129]
+                              - columnheader "GP" [ref=e1130]
+                          - rowgroup [ref=e1131]:
+                            - row "Total" [ref=e1132]:
+                              - cell "Total" [ref=e1133]:
+                                - strong [ref=e1135]: Total
+                              - cell [ref=e1136]:
+                                - textbox "19" [ref=e1137]
+                              - cell [ref=e1138]:
+                                - textbox "36" [ref=e1139]
+                              - cell [ref=e1140]:
+                                - textbox "10" [ref=e1141]
+                              - cell [ref=e1142]:
+                                - textbox "55" [ref=e1143]
+                              - cell [ref=e1144]:
+                                - textbox "107" [ref=e1145]
+                          - rowgroup [ref=e1146]:
+                            - row "W2015-16" [ref=e1147]:
+                              - cell "W2015-16" [ref=e1148]:
+                                - generic [ref=e1149]:
+                                  - checkbox "W2015-16" [ref=e1150] [cursor=pointer]
+                                  - text: W2015-16
+                              - cell [ref=e1151]:
+                                - textbox "0" [ref=e1152]
+                              - cell [ref=e1153]:
+                                - textbox "0" [ref=e1154]
+                              - cell [ref=e1155]:
+                                - textbox "0" [ref=e1156]
+                              - cell [ref=e1157]:
+                                - textbox "0" [ref=e1158]
+                              - cell [ref=e1159]:
+                                - textbox "3" [ref=e1160]
+                            - row "W2015-16 Playoffs" [ref=e1161]:
+                              - cell "W2015-16 Playoffs" [ref=e1162]:
+                                - generic [ref=e1163]:
+                                  - checkbox "W2015-16 Playoffs" [ref=e1164] [cursor=pointer]
+                                  - text: W2015-16 Playoffs
+                              - cell [ref=e1165]:
+                                - textbox "0" [ref=e1166]
+                              - cell [ref=e1167]:
+                                - textbox "0" [ref=e1168]
+                              - cell [ref=e1169]:
+                                - textbox "0" [ref=e1170]
+                              - cell [ref=e1171]:
+                                - textbox "0" [ref=e1172]
+                              - cell [ref=e1173]:
+                                - textbox "2" [ref=e1174]
+                            - row "S2016" [ref=e1175]:
+                              - cell "S2016" [ref=e1176]:
+                                - generic [ref=e1177]:
+                                  - checkbox "S2016" [ref=e1178] [cursor=pointer]
+                                  - text: S2016
+                              - cell [ref=e1179]:
+                                - textbox "0" [ref=e1180]
+                              - cell [ref=e1181]:
+                                - textbox "0" [ref=e1182]
+                              - cell [ref=e1183]:
+                                - textbox "0" [ref=e1184]
+                              - cell [ref=e1185]:
+                                - textbox "0" [ref=e1186]
+                              - cell [ref=e1187]:
+                                - textbox "0" [ref=e1188]
+                            - row "S2016 Playoffs" [ref=e1189]:
+                              - cell "S2016 Playoffs" [ref=e1190]:
+                                - generic [ref=e1191]:
+                                  - checkbox "S2016 Playoffs" [ref=e1192] [cursor=pointer]
+                                  - text: S2016 Playoffs
+                              - cell [ref=e1193]:
+                                - textbox "0" [ref=e1194]
+                              - cell [ref=e1195]:
+                                - textbox "0" [ref=e1196]
+                              - cell [ref=e1197]:
+                                - textbox "0" [ref=e1198]
+                              - cell [ref=e1199]:
+                                - textbox "0" [ref=e1200]
+                              - cell [ref=e1201]:
+                                - textbox "0" [ref=e1202]
+                            - row "W2016-17" [ref=e1203]:
+                              - cell "W2016-17" [ref=e1204]:
+                                - generic [ref=e1205]:
+                                  - checkbox "W2016-17" [ref=e1206] [cursor=pointer]
+                                  - text: W2016-17
+                              - cell [ref=e1207]:
+                                - textbox "3" [ref=e1208]
+                              - cell [ref=e1209]:
+                                - textbox "10" [ref=e1210]
+                              - cell [ref=e1211]:
+                                - textbox "2" [ref=e1212]
+                              - cell [ref=e1213]:
+                                - textbox "13" [ref=e1214]
+                              - cell [ref=e1215]:
+                                - textbox "27" [ref=e1216]
+                            - row "W2016-17 Playoffs" [ref=e1217]:
+                              - cell "W2016-17 Playoffs" [ref=e1218]:
+                                - generic [ref=e1219]:
+                                  - checkbox "W2016-17 Playoffs" [ref=e1220] [cursor=pointer]
+                                  - text: W2016-17 Playoffs
+                              - cell [ref=e1221]:
+                                - textbox "0" [ref=e1222]
+                              - cell [ref=e1223]:
+                                - textbox "1" [ref=e1224]
+                              - cell [ref=e1225]:
+                                - textbox "0" [ref=e1226]
+                              - cell [ref=e1227]:
+                                - textbox "1" [ref=e1228]
+                              - cell [ref=e1229]:
+                                - textbox "4" [ref=e1230]
+                            - row "S2017" [ref=e1231]:
+                              - cell "S2017" [ref=e1232]:
+                                - generic [ref=e1233]:
+                                  - checkbox "S2017" [ref=e1234] [cursor=pointer]
+                                  - text: S2017
+                              - cell [ref=e1235]:
+                                - textbox "4" [ref=e1236]
+                              - cell [ref=e1237]:
+                                - textbox "11" [ref=e1238]
+                              - cell [ref=e1239]:
+                                - textbox "2" [ref=e1240]
+                              - cell [ref=e1241]:
+                                - textbox "15" [ref=e1242]
+                              - cell [ref=e1243]:
+                                - textbox "18" [ref=e1244]
+                            - row "S2017 Playoffs" [ref=e1245]:
+                              - cell "S2017 Playoffs" [ref=e1246]:
+                                - generic [ref=e1247]:
+                                  - checkbox "S2017 Playoffs" [ref=e1248] [cursor=pointer]
+                                  - text: S2017 Playoffs
+                              - cell [ref=e1249]:
+                                - textbox "1" [ref=e1250]
+                              - cell [ref=e1251]:
+                                - textbox "1" [ref=e1252]
+                              - cell [ref=e1253]:
+                                - textbox "2" [ref=e1254]
+                              - cell [ref=e1255]:
+                                - textbox "2" [ref=e1256]
+                              - cell [ref=e1257]:
+                                - textbox "4" [ref=e1258]
+                            - row "W2017-18" [ref=e1259]:
+                              - cell "W2017-18" [ref=e1260]:
+                                - generic [ref=e1261]:
+                                  - checkbox "W2017-18" [ref=e1262] [cursor=pointer]
+                                  - text: W2017-18
+                              - cell [ref=e1263]:
+                                - textbox "7" [ref=e1264]
+                              - cell [ref=e1265]:
+                                - textbox "8" [ref=e1266]
+                              - cell [ref=e1267]:
+                                - textbox "4" [ref=e1268]
+                              - cell [ref=e1269]:
+                                - textbox "15" [ref=e1270]
+                              - cell [ref=e1271]:
+                                - textbox "25" [ref=e1272]
+                            - row "W2017-18 Playoffs" [ref=e1273]:
+                              - cell "W2017-18 Playoffs" [ref=e1274]:
+                                - generic [ref=e1275]:
+                                  - checkbox "W2017-18 Playoffs" [ref=e1276] [cursor=pointer]
+                                  - text: W2017-18 Playoffs
+                              - cell [ref=e1277]:
+                                - textbox "1" [ref=e1278]
+                              - cell [ref=e1279]:
+                                - textbox "0" [ref=e1280]
+                              - cell [ref=e1281]:
+                                - textbox "0" [ref=e1282]
+                              - cell [ref=e1283]:
+                                - textbox "1" [ref=e1284]
+                              - cell [ref=e1285]:
+                                - textbox "2" [ref=e1286]
+                            - row "S2018" [ref=e1287]:
+                              - cell "S2018" [ref=e1288]:
+                                - generic [ref=e1289]:
+                                  - checkbox "S2018" [ref=e1290] [cursor=pointer]
+                                  - text: S2018
+                              - cell [ref=e1291]:
+                                - textbox "3" [ref=e1292]
+                              - cell [ref=e1293]:
+                                - textbox "4" [ref=e1294]
+                              - cell [ref=e1295]:
+                                - textbox "0" [ref=e1296]
+                              - cell [ref=e1297]:
+                                - textbox "7" [ref=e1298]
+                              - cell [ref=e1299]:
+                                - textbox "18" [ref=e1300]
+                            - row "S2018 Playoffs" [ref=e1301]:
+                              - cell "S2018 Playoffs" [ref=e1302]:
+                                - generic [ref=e1303]:
+                                  - checkbox "S2018 Playoffs" [ref=e1304] [cursor=pointer]
+                                  - text: S2018 Playoffs
+                              - cell [ref=e1305]:
+                                - textbox "0" [ref=e1306]
+                              - cell [ref=e1307]:
+                                - textbox "1" [ref=e1308]
+                              - cell [ref=e1309]:
+                                - textbox "0" [ref=e1310]
+                              - cell [ref=e1311]:
+                                - textbox "1" [ref=e1312]
+                              - cell [ref=e1313]:
+                                - textbox "4" [ref=e1314]
+                    - generic [ref=e1315]:
+                      - generic [ref=e1316]:
+                        - heading "User" [level=2] [ref=e1317]
+                        - generic [ref=e1318]:
+                          - button "Move up" [ref=e1319] [cursor=pointer]:
+                            - generic [ref=e1320]: Move up
+                          - button "Move down" [ref=e1322] [cursor=pointer]:
+                            - generic [ref=e1323]: Move down
+                          - 'button "Toggle panel: User" [expanded] [ref=e1325] [cursor=pointer]':
+                            - generic [ref=e1326]: "Toggle panel: User"
+                      - generic [ref=e1328]:
+                        - generic [ref=e1329]: User
+                        - combobox "User" [ref=e1330] [cursor=pointer]:
+                          - option "aaron cooper (aacoop@gmail.com)"
+                          - option "Aaron Weir (aaronweir@cogeco.ca)"
+                          - option "Aaron Weir (weirtech@gmail.com)"
+                          - option "abdallah teshoo (teshoo600@gmail.com)"
+                          - option "abrunato (abrunato)"
+                          - option "Adam Beck (adambeck1990)"
+                          - option "Adam Crawford (Adamc4077)"
+                          - option "Adam Day (adamday5@hotmail.com)"
+                          - option "Adam Day (Adamay5@hotmail.com)"
+                          - option "Adam Gallant (adamga)"
+                          - option "Adam Haynes (ahaynes)"
+                          - option "Adam Hughes (hughesa)"
+                          - option "Adam Isaacs (adamisaacs)"
+                          - option "Adam Isaacs (adimedcanada)"
+                          - option "Adam MARSHALL (adammarshall3597@gmail.com)"
+                          - option "Adam McKerlie (silent1mezzo)"
+                          - option "Adam Neale (Aneale)"
+                          - option "Adam Nunnaro (anunnaro@gmail.com)"
+                          - option "Adam Scott (adam_scott21@hotmail.com)"
+                          - option "adoesborgh (adoesborgh)"
+                          - option "Adrian Hill (usher11)"
+                          - option "Aedan Smith (Smitty2977)"
+                          - option "Agathor21 (Agathor21)"
+                          - option "Aileen Rocchi (a_rocchi)"
+                          - option "Aimee Gillis (missaimee)"
+                          - option "Alan Choi (alanbchoi@yahoo.ca)"
+                          - option "Alan Choi (alanbchoi@gmail.com)"
+                          - option "Alan Cluderay (alcluderay13@hotmail.com)"
+                          - option "Alan Cluderay (cluderayalan@gmail.com)"
+                          - option "Alan Payne (paynea@hdsb.ca)"
+                          - option "Alan Watson (fugazi7@rogers.com)"
+                          - option "Aldo (Aldo)"
+                          - option "Alessandro Folino (Afolino92)"
+                          - option "Alex Bisson (bissonalex)"
+                          - option "Alex Coombs (Alex@northernsprucemedia.com)"
+                          - option "Alex Dabic (dabic.aleksa@gmail.com)"
+                          - option "Alex Gloin (AlexRo)"
+                          - option "Alex Harrold (Alex Harrold)"
+                          - option "Alex Hin (alexhin)"
+                          - option "Alex Kerr (alexkerr11@hotmail.com)"
+                          - option "Alex Mallo (alexmallo91@gmail.com)"
+                          - option "Alex Pass (alex.pass)"
+                          - option "Alex Smith (alex.smith10sh@gmail.com)"
+                          - option "Alex Watson (awatson)"
+                          - option "Alexander Endler (AlexE)"
+                          - option "Alexander Jimmy Ngamino (azzuriiqc)"
+                          - option "Alexis Goodwin (alexisgoodwin)"
+                          - option "Alexth (Alexth)"
+                          - option "Alfonso Cieri (Alfonso Cieri)"
+                          - option "Ali Valiji (ali.valiji)"
+                          - option "Alicia Mell (alicia@imell.ca)"
+                          - option "Allan Couto (allan_couto@hotmail.com)"
+                          - option "Allan Harding (aharding)"
+                          - option "Allan Lusk (allanlusk)"
+                          - option "allan.capel (allan.capel)"
+                          - option "ALLISTER LIU (ALLISTERLIU83@YAHOO.CA)"
+                          - option "Alymer (Alymer)"
+                          - option "Amanda Boudreau (amandaboudreau14@hotmail.com)"
+                          - option "Amanda Lynam (alynam1819@hotmail.com)"
+                          - option "Amanda Rorke-Daigle (lenandamanda@gmail.com)"
+                          - option "Amanda Seymour (abseymour12@hotmail.ca)"
+                          - option "Ambrose Choy (Achoy)"
+                          - option "amunawar (amunawar)"
+                          - option "Andre (Andre)"
+                          - option "Andre Vasilisin (andrevasy@hotmail.com)"
+                          - option "Andreabru (Andreabru)"
+                          - option "Andres Montiel Cordero (dremontiel@hotmail.com)"
+                          - option "Andrew Booker (abooker)"
+                          - option "Andrew Dupuis (Andrewdupuis87)"
+                          - option "Andrew Losier (losieran)"
+                          - option "Andrew Mancini (Mancini84)"
+                          - option "Andrew McLean (a.mclean@ottobock.com)"
+                          - option "Andrew Ridgewell (Ridgewell)"
+                          - option "Andrew Slomka (Andrew_slomka@hotmail.com)"
+                          - option "Andrew Tudball (Tuds12)"
+                          - option "Andrew Walker (walkverille)"
+                          - option "andrewpittam (andrewpittam)"
+                          - option "Andy Bridgelal (abridgel)"
+                          - option "Andy Burnett (andyb777@cogeco.ca)"
+                          - option "Angela Spehar (angela.spehar)"
+                          - option "Angrypenguin14 (Angrypenguin14)"
+                          - option "Ann Heeney (annfihe@gmail.com)"
+                          - option "Anna Pocrnick (AnnaPoc)"
+                          - option "Anthony (Anthony)"
+                          - option "Anthony Chimenti (TonyChimenti)"
+                          - option "Anthony Dellavedova (adellavedova)"
+                          - option "Anthony Lachance (HybridHero)"
+                          - option "Anthony Venneri (AVenneri)"
+                          - option "ariemoldvan (ariemoldvan)"
+                          - option "arl_webapp arl_webapp (arl_webapp)"
+                          - option "armesy211 (armesy211)"
+                          - option "Art1 (Art1)"
+                          - option "Ash Haynes (ajhaynes)"
+                          - option "Ashleigh Harding (Ashharding)"
+                          - option "Ashley Casey (jarrettj14_@hotmail.com)"
+                          - option "Ashley Geldhof (Ashley Geldhof)"
+                          - option "AshleyL86 (AshleyL86)"
+                          - option "Ashton Roberts (jroberts)"
+                          - option "asoutar (asoutar)"
+                          - option "Avicente96 (Avicente96)"
+                          - option "Azim (zimmy31)"
+                          - option "barandaniel (barandaniel)"
+                          - option "Barry Peters (barry.n.peters@gmail.com)"
+                          - option "Becky Pope (BeckyChrisPope)"
+                          - option "Becky66 (Becky66)"
+                          - option "Belal Ahmad (Belal)"
+                          - option "Ben MacMillan (81benmac@gmail.com)"
+                          - option "Bernard Jessome (Juggernott)"
+                          - option "Berny Lirette (Berny)"
+                          - option "Beth Draper (Bethobrien28@yahoo.com)"
+                          - option "bhobbes (bhobbes)"
+                          - option "Biggied7 (Biggied7)"
+                          - option "Bill Jeffries (bill.jeffries61@gmail.com)"
+                          - option "Bill Watson (bwatson425@gmail.com)"
+                          - option "Billy Eves (Beves33)"
+                          - option "Bjorn Balvers (Bjorn.Balvers)"
+                          - option "blaine lamothe (mindmelt)"
+                          - option "Blair Cleveland (Blair Cleveland)"
+                          - option "BLittle4 (BLittle4)"
+                          - option "Bob Mackie (bmackie_1978)"
+                          - option "bob93moir (bob93moir)"
+                          - option "Bobbie McMeekin (bobbiemcmeekin)"
+                          - option "Brad Armstrong (Barmstro)"
+                          - option "Brad B (brad.jessome@gmail.com)"
+                          - option "Brad Fitzpatrick (brad.fitzpatrick@2rirobotics.com)"
+                          - option "Brad Gardiner (NoobyDahGreat)"
+                          - option "Brad Harrison (bradzoomy)"
+                          - option "Brad Lehigh (strang3r)"
+                          - option "Brad Lestition (blestition@gmail.com)"
+                          - option "Brad Lestition (Bradlestition)"
+                          - option "Brad McFarlane (bradmcfo@gmail.com)"
+                          - option "Brad Thompson (brc.thompson@gmail.com)"
+                          - option "BradJ (BradJ)"
+                          - option "Bradley Couch (Brad_Couch)"
+                          - option "bradpark (bradpark)"
+                          - option "Brandon Hume (BrandonHume)"
+                          - option "Brenda Quance (brendaquance)"
+                          - option "Brendan Porter (brendanp)"
+                          - option "Brendan Porter (BrendanAM)"
+                          - option "Brent Fraser (brentafraser@hotmail.com)"
+                          - option "Brett Ford (BoredFord)"
+                          - option "Brett Taylor (brett-taylor07@hotmail.com)"
+                          - option "Bretttonin (Bretttonin)"
+                          - option "Brian (Brian)"
+                          - option "Brian Carman (brianfcarman@gmail.com)"
+                          - option "Brian Dwyer (brian.dwyer000@sympatico.ca)"
+                          - option "Brian Gauthier (Nativeland)"
+                          - option "Brian Hamil (potzie)"
+                          - option "Brian Hayes (GlasgowFC)"
+                          - option "Brian Heans (bfheans)"
+                          - option "Brian Hogben (Brian Hogben)"
+                          - option "Brian Jessome (bjessome)"
+                          - option "Brittani Roberts (BrittaniRoberts)"
+                          - option "Brittany Little (BrittLitt12)"
+                          - option "Brody Wignall (brodywignall@gmail.com)"
+                          - option "Brooke Costa (Brookecosta_15@hotmail.com)"
+                          - option "Brooke McDonough (brookemcd98)"
+                          - option "brownw2 (brownw2)"
+                          - option "Bruce Cunha (Brucecunha)"
+                          - option "Bruce Fraser (Brfraser52)"
+                          - option "Bruce Fraser (bruce.fraser@lafargeholcim.com)"
+                          - option "Bruce Halladay (brucehalladay@gmail.com)"
+                          - option "Bruce Johnson (Bruce)"
+                          - option "Bruce Lisk (blisk)"
+                          - option "bruinfan (bruinfan)"
+                          - option "Bryan (Ravenworks)"
+                          - option "Bryan Cresencia (cresenbj@hotmail.com)"
+                          - option "Bryan Gough (bryangough@hotmail.com)"
+                          - option "Bryanna Elliott (Haka19)"
+                          - option "bryansimmons27@gmail.com (bryansimmons27@gmail.com)"
+                          - option "C W (Walterc1991)"
+                          - option "Caitlyn Campbell (Caitcampbell12)"
+                          - option "calirate (calirate)"
+                          - option "Calvin Snow (Calvin Snow)"
+                          - option "Cameron Ferguson (cferguson)"
+                          - option "Cameron Matthews (cameronmatthews)"
+                          - option "Cameron Mckay (Cam.mckay17)"
+                          - option "Cammykinnis (Cammykinnis)"
+                          - option "candicejohnson (candicejohnson)"
+                          - option "Cara Doherty (Caradoherty)"
+                          - option "Carl Clements (carl@clemnet.info)"
+                          - option "Carl Clements (typo101@clemnet.info)"
+                          - option "Carl Stevenson (Carl)"
+                          - option "Carm Spadafora (carmen@brownlowcas.com)"
+                          - option "Carmen Spadafora (Spada4a06@hotmail.com)"
+                          - option "Carol Aiken (Aiken)"
+                          - option "Carol Nakagawa (CNakagawa)"
+                          - option "Carolyn Podmore (cpodmore)"
+                          - option "Carson Shold (cshold)"
+                          - option "Celeste Rosenthalsky (ojus@thepacbook.com)"
+                          - option "Chad Goencz (cgoencz)"
+                          - option "chadbelrose (chadbelrose)"
+                          - option "Chandra Guilday (Chandraleigh2012@gmail.com)"
+                          - option "changer (changer)"
+                          - option "Chantal Racine (CRacine78)"
+                          - option "Charles Muller (charlesjohnmuller@gmail.com)"
+                          - option "Charlie Browes (charliebrowess@gmail.com)"
+                          - option "charlie charlie (geogatedproject52@gmail.com)"
+                          - option "Chase Archer (Chase Archer)"
+                          - option "Chase Nanavati (Chase82)"
+                          - option "chc.meyer (chc.meyer)"
+                          - option "Cheaplaffs (Cheaplaffs)"
+                          - option "Chloe Shen (zfnerbisud_1559031025@tfbnw.net)"
+                          - option "Chris Carvalho (Fatphil)"
+                          - option "Chris Chartier (chartz85@gmail.com)"
+                          - option "Chris Deidun (chris.deidun)"
+                          - option "Chris Illes (cilles0220@gmail.com)"
+                          - option "Chris Lambeck (chris_lambeck@yahoo.com)"
+                          - option "Chris Lee (clee8@cogeco.ca)"
+                          - option "Chris Ralph (Ralphy74)"
+                          - option "Chris Shilton (chrisshilton@hotmail.com)"
+                          - option "Chris Tyghe (ctyghe)"
+                          - option "Christian Meyer (christian)"
+                          - option "Christie Culotta (Christie Ann)"
+                          - option "Christopher Berger (Iceberg89)"
+                          - option "Christopher Clemes (medicclem)"
+                          - option "christopher.rosser (christopher.rosser)"
+                          - option "Cindy Stratford (Whatefer)"
+                          - option "Claire Newman (clairemnewman1)"
+                          - option "Clayton Mackney (Claytonmackney)"
+                          - option "Clayton MacLean (CMAC88)"
+                          - option "Clement Nocos (c.nocos)"
+                          - option "Cody Lusk (codylusk1)"
+                          - option "Cody Lusk (Adam West)"
+                          - option "Cody Lusk (codylusk)"
+                          - option "Cody Lusk (Cody)"
+                          - option "Cody Weeks (Go1dking)"
+                          - option "Cola Ly (hotboy)"
+                          - option "Colin Metham (colinmetham@yahoo.ca)"
+                          - option "colin.hegarty33 (colin.hegarty33)"
+                          - option "Colten Gowan (CGowan)"
+                          - option "Connor Prevost (connorprevost)"
+                          - option "Conrad Johnson (cw_j82)"
+                          - option "copacrew (copacrew)"
+                          - option "Corey DeCou (decou@hotmail.ca)"
+                          - option "Couchwp (Couchwp)"
+                          - option "Courtenay Fleet (courtenayfleet10@hotmail.com)"
+                          - option "Craig (Mutt8247)"
+                          - option "Craig Amos (camos1982@gmail.com)"
+                          - option "Craig Dimarco (Craigd)"
+                          - option "Craig Gallello (inglewoodjack)"
+                          - option "Craig McElroy (craig.mcelroy@cibc.ca)"
+                          - option "Craig Phillips (zork)"
+                          - option "CurtisR (CurtisR)"
+                          - option "cynthia Ahearn (Cynthiaahearn)"
+                          - option "Cynthia Jones (Steven Smith)"
+                          - option "Dahottestboy (Dahottestboy)"
+                          - option "Dale Smith (dalecsmith)"
+                          - option "Damen Hibbard (Damen40)"
+                          - option "Damon Joo (DamonJoo)"
+                          - option "Dan Antonelli (DTrain1978)"
+                          - option "Dan Arneaud (riversummer@hotmail.com)"
+                          - option "Dan Arneaud (nad8)"
+                          - option "Dan Duncan (dan.duncan14@icloud.com)"
+                          - option "Dan Forsyth (dan@danno.ca)"
+                          - option "Dan Frankiw (danfrankiw)"
+                          - option "Dan Hillman (danhillman)"
+                          - option "Dan Lee (lee.dan@gmail.com)"
+                          - option "Dan McEvoy (dmcevoy@gmail.com)"
+                          - option "Dan Rutherford (drutherf@hwdsb.on.ca)"
+                          - option "Dan Wey (dinemite82@hotmail.com)"
+                          - option "Dan Zervos (Dan Zervos)"
+                          - option "dan.evans (dan.evans)"
+                          - option "Dana Ball (danaball)"
+                          - option "Dana Cornelisse (danacornelisse)"
+                          - option "Dana McHenry (danamch)"
+                          - option "Dana Wilson (rwilson1221@cogeco.ca)"
+                          - option "Daniel Ball (danielball)"
+                          - option "daniel biszak (Daniel.biszak@gmail.com)"
+                          - option "Daniel Hutchinson (dhutchinson)"
+                          - option "Daniel Pass (Danielpass)"
+                          - option "Daniel Trussell (dan.trussell)"
+                          - option "Daniel Wagner (thecyto)"
+                          - option "Danielle Losier (Doesier)"
+                          - option "Danika Bernard (dbernard)"
+                          - option "Danny Bertrand (DanBert)"
+                          - option "Danny Boutcher (Itachi6969)"
+                          - option "Danny Kegel (kegel@doitonlan.gg)"
+                          - option "Danstelmach (Danstelmach)"
+                          - option "Dar Holmes (ironbox13@yahoo.ca)"
+                          - option "Darcy Williams (drwill78@gmail.com)"
+                          - option "Daren Nickel (Daren)"
+                          - option "Darren Chapman (DarrenC)"
+                          - option "Darren Green (greendar@gmail.com)"
+                          - option "Darren MacKenzie (DMAC)"
+                          - option "Darrick Houghton (darrickh@htmsensors.com)"
+                          - option "Darryl Sukkel (dsukkel92)"
+                          - option "Darryl Sukkel (dsukkel)"
+                          - option "Darryl Sukkel (dsukkel29)"
+                          - option "Daryl (dledwon)"
+                          - option "Dave Buffett (macbuff57@yahoo.com)"
+                          - option "Dave Dulong (Dmdulong)"
+                          - option "dave dupont (dave dupont)"
+                          - option "Dave Magee (dave.e.magee@gmail.com)"
+                          - option "Dave Majpruz (Dmajpruz)"
+                          - option "Dave Musarai (dupontdave@hotmail.ca)"
+                          - option "Dave Skura (dskura)"
+                          - option "Dave Tyrrell (davetyrrell71@gmail.com)"
+                          - option "Dave Washburn (icebyrg)"
+                          - option "Dave Wooldridge (wooly)"
+                          - option "david (david)"
+                          - option "David Allan (dwa50)"
+                          - option "David Bird (DavidBird)"
+                          - option "david coyle (david.coyle@rogers.com)"
+                          - option "David D'Angela (davidx22)"
+                          - option "David DiPaolo (dipaod)"
+                          - option "David Fischhoff (Bigtune)"
+                          - option "David Freitas (davidjfreitas@icloud.com)"
+                          - option "David Gregotski (gregotski@hotmail.com)"
+                          - option "David Griffith (dagr11)"
+                          - option "David Helm (dhelm)"
+                          - option "David Hill (davidhill1@rogers.com)"
+                          - option "David Hunter (dave.hunt3r@gmail.com)"
+                          - option "david lai (Dlai7)"
+                          - option "David Lee (davidrlee@rogers.com)"
+                          - option "David Massaro (davidmassaro93@gmail.com)"
+                          - option "David McIntosh (daviejones)"
+                          - option "David Munn (Munnzy)"
+                          - option "David Owen (dtowen)"
+                          - option "David Rust (rust_dave@yahoo.com)"
+                          - option "DAVID SEMERAK (dsemerak)"
+                          - option "David Shewchuk (dshewchuk)"
+                          - option "david strike (dstrike@daemarinc.com)"
+                          - option "David strike (David strike)"
+                          - option "David White (d19white@hotmail.com)"
+                          - option "Dayna Schols (dschols)"
+                          - option "ddykstra75 (ddykstra75)"
+                          - option "Dean (dsday329)"
+                          - option "Debbie Hallett (hallettdeb.dh@gmail.com)"
+                          - option "Dee (Dee)"
+                          - option "Delaneyk (Delaneyk)"
+                          - option "Demetrio LaBella (Deme11)"
+                          - option "Denise Zawislak (denise.zawislak@gmail.com)"
+                          - option "DeniseZ (DeniseZ)"
+                          - option "Dennis Arnold (Dennisarnold68)"
+                          - option "Dennis Munro (Dmunro)"
+                          - option "depeixot (depeixot)"
+                          - option "Derek (Derek10)"
+                          - option "Derek Carpenter (derekroypeter@gmail.com)"
+                          - option "DEREK CRUICKSHANK (derekcruickshank@outlook.com)"
+                          - option "derek findlay (findld)"
+                          - option "Derek Flach (Derek.Flach)"
+                          - option "Derek Grubb (DerekG)"
+                          - option "Derek Lachance (dereklachance@gmail.com)"
+                          - option "Derek MacDonald (duke.mac@sympatico.ca)"
+                          - option "Derek Savage (Savage42)"
+                          - option "Derren Matthews (derren.matthews@cambrian.com)"
+                          - option "Derrick McElheron (dwm_dm@yahoo.com)"
+                          - option "Devon Jones (Devo)"
+                          - option "Diana Knez (Dianaknez11)"
+                          - option "Diana Knez (Dianaknez)"
+                          - option "dinardlb (dinardlb)"
+                          - option "DJ (DJ Reinbrecht)"
+                          - option "dkross (dkross)"
+                          - option "dloveland (dloveland)"
+                          - option "dmalcolmson (dmalcolmson)"
+                          - option "dmartins (dmartins)"
+                          - option "Don Blakely (donblakely)"
+                          - option "Don Michaluk (dmichaluk2121@outlook.com)"
+                          - option "Don Pente (dpente)"
+                          - option "Donny Spehar (Changetable)"
+                          - option "Doug Drochner (dougdrochner@gmail.com)"
+                          - option "Doug Gillespie (Dgillespie@hydropoolhottubs.com)"
+                          - option "Doug Smith (Doug Smith)"
+                          - option "Douglas Carson (dscarson)"
+                          - option "Douglas Coope (dcoope)"
+                          - option "Dowell86 (Dowell86)"
+                          - option "Drake Bowie (Drakebowie)"
+                          - option "draksler (draksler)"
+                          - option "Droid1231 (Droid1231)"
+                          - option "Dskeoch@cogeco.ca (Dskeoch@cogeco.ca)"
+                          - option "Duane Schutten (duaneschutten@gmail.com)"
+                          - option "Durham Sims (durham.sims@gmail.com)"
+                          - option "Dustin Woloschuk (Dustin W)"
+                          - option "Dwayne Stanshall (dstanshall)"
+                          - option "Dylan Russell (1russelldyl)"
+                          - option "EAP X1 (eapexpert12@gmail.com)"
+                          - option "Ed Lupia (lupiae)"
+                          - option "Eddie Evans (ehe720)"
+                          - option "Eddie Palozzi (Playhockeyhard)"
+                          - option "Eddy Lupia (lupiae@sympatico.ca)"
+                          - option "Edgar Zaldivar (edgarzaldivar@yahoo.com)"
+                          - option "Edward Shen (Edfrometown)"
+                          - option "Elisa Bousada (Ebousada)"
+                          - option "Ellen Kosempel (Ellen)"
+                          - option "Ellison Tyghe (ellisonloo@hotmail.com)"
+                          - option "elopez1008 (elopez1008)"
+                          - option "Elsa Boyden (boyden.elsa0@gmail.com)"
+                          - option "Emily Giang (emilyisawesome)"
+                          - option "Emma Lee (geogatedproject408@gmail.com)"
+                          - option "Enzo Florio (eflorio)"
+                          - option "epesic (epesic)"
+                          - option "eric bentzen (ericb@petmas.ca)"
+                          - option "Eric Gales (ericgales@msn.com)"
+                          - option "Eric Gaydos (egaydos)"
+                          - option "Eric Stevens (ericstevens1988@hotmail.com)"
+                          - option "Eric Zawislak (ericzawislak)"
+                          - option "Erica Verbeek (ericaverbeek)"
+                          - option "Erik Doyle (Goalie123)"
+                          - option "Erin Hughes (HughesE)"
+                          - option "Erin Moore (Erinmoore26)"
+                          - option "Erin Spurrell (espurrell)"
+                          - option "External Support (support)"
+                          - option "Fab M (oizerbaf@hotmail.com)"
+                          - option "Fabrizio Musarai (polkaroo16)"
+                          - option "Fabrizio Musarai (ashlay16@hotmail.com)"
+                          - option "Farrowk (Farrowk)"
+                          - option "Felix Lam (flxlm)"
+                          - option "Fernando De Almeida (falmeida151@hotmail.com)"
+                          - option "follithegoalie (follithegoalie)"
+                          - option "Francis (francis8972)"
+                          - option "Francis Bennett (FrancisBennett)"
+                          - option "Francis Spadafora (Spadafora89)"
+                          - option "Frank (Frank)"
+                          - option "Frank Ferraro (ferrafr)"
+                          - option "Frank Lourenco (chico1984)"
+                          - option "Frank Lourenco (Chico_1984)"
+                          - option "Frank Zolli (frank.zolli@toyota.com)"
+                          - option "FrankKiriakopoulos (FrankKiriakopoulos)"
+                          - option "Franklin Medina (fmedina)"
+                          - option "Fred Zawislak (Fred Zawislak)"
+                          - option "Frederick Speckeen (fred.speckeen@gmail.com)"
+                          - option "futnuh (futnuh)"
+                          - option "Garry Crowe (Garry Crowe)"
+                          - option "GarryCunningham (GarryCunningham)"
+                          - option "GarySchneider (GarySchneider)"
+                          - option "gcmajor@gmail.com (gcmajor@gmail.com)"
+                          - option "geddesj (geddesj)"
+                          - option "Geoff Kistruck (kistrugm@gmail.com)"
+                          - option "Geoff Marchioli (GeoffM26)"
+                          - option "Geoff Pilgrim (geoff.pilgrim@rbc.com)"
+                          - option "Geoff Redwood (gredwood@jankelley.com)"
+                          - option "George Humphries (georgehumphries@hotmail.com)"
+                          - option "George Kolena (GKolena)"
+                          - option "Gergely Mucsi (greg.mucsi@gmail.com)"
+                          - option "Giannou Bill (giannou)"
+                          - option "Gilles Labbe (Gilles Labbe)"
+                          - option "Gino Rosati (grosati@stresscrete.com)"
+                          - option "Giovanni DiFazio (Gdifazio)"
+                          - option "Giovanni Stea (giovannistea)"
+                          - option "Giovanni Szostak (Stak)"
+                          - option "Giovanni Szostak (Giovanni)"
+                          - option "Gita Rosemary (gummi912110@gmail.com)"
+                          - option "Gita Varghese (gitavarghese)"
+                          - option "Glen (GGodovitz)"
+                          - option "Glen . (liquidmirror@gmail.com)"
+                          - option "glenn brown (gbrown69)"
+                          - option "Glenn Ryan (laurieryan03@gmail.com)"
+                          - option "gmanpool13 (gmanpool13)"
+                          - option "gmccharles0313@gmail.com (gmccharles0313@gmail.com)"
+                          - option "gnr11 (gnr11)"
+                          - option "Gord Forsyth (gordforsyth@gmail.com)"
+                          - option "Gord Matthews (Gord Matthews)"
+                          - option "Gordon Comstock (GordComstock)"
+                          - option "Gordon Janikowski (Gjanikowski)"
+                          - option "Gordon Powell (gpowell1@cogeco.ca)"
+                          - option "Grace (grace.atkins93)"
+                          - option "Grant Bellamy (gbellamy@bell.net)"
+                          - option "Grant Boyden (gboyden)"
+                          - option "Greg McColl (gmccoll)"
+                          - option "Greg Pass (passgm)"
+                          - option "Greg Rollins (GRollins)"
+                          - option "Greg Wignall (gwignall4@gmail.com)"
+                          - option "Greg Williams (gggwilliams@hotmail.com)"
+                          - option "Gregory Dewar (gpdewar@hotmail.com)"
+                          - option "Gregory Dewar (gpdewar1)"
+                          - option "gullone1@hotmail.com (gullone1@hotmail.com)"
+                          - option "GuyLavallee (GuyLavallee)"
+                          - option "Gwen Arseneault (Gwen.Arseneault@ncr.com)"
+                          - option "Gwen Calder (Gwen)"
+                          - option "Habsfan3111 (Habsfan3111)"
+                          - option "Haig Seferian (haig@seferiandesign.com)"
+                          - option "Harjeev Brar (Harjeev.brar)"
+                          - option "Harper Forbes (harperforbes@hotmail.com)"
+                          - option "Harpreet Bhathal (HBhathal)"
+                          - option "Harry Clapham (harry.clapham@icloud.com)"
+                          - option "hassanvaliji25 (hassanvaliji25)"
+                          - option "Hayden Hallett (goldskull19@gmail.com)"
+                          - option "Heather Sekine (h3ather)"
+                          - option "Heidi Adams (Fourcrazykids@live.ca)"
+                          - option "Heidi Hildner-McGunnigle (hhildner)"
+                          - option "Hemmi (Hemmi)"
+                          - option "Henry Kelpin (hkelpin)"
+                          - option "henryki (henryki)"
+                          - option "Hillsan (Hillsan)"
+                          - option "hkychick (hkychick)"
+                          - option "Hollie Patrick (Hollie)"
+                          - option "hollyeinboden (hollyeinboden)"
+                          - option "Hooks1141 (Hooks1141)"
+                          - option "Hurricane (Hurricane)"
+                          - option "Iain MAITLAND (i_maitland@hotmail.com)"
+                          - option "Iain Russell (killer)"
+                          - option "Ian Feweks (Ian)"
+                          - option "Ian Fewkes (ArlIan16)"
+                          - option "Ian MacInnis (ianmacinnis28@hotmail.com)"
+                          - option "Ian McDaniel (ian.mcdaniel4303@gmail.com)"
+                          - option "Ian McLain (ian.mclain@gmail.com)"
+                          - option "Imperial Logistics (Imperial Logistics)"
+                          - option "Ingrid Galsworthy (igalsworthy@cogeco.ca)"
+                          - option "Irish4Life88 (Irish4Life88)"
+                          - option "j_m_middleton (j_m_middleton)"
+                          - option "J.J. Fitzpatrick (cocothehouseboy@gmail.com)"
+                          - option "Jack Devlin (JD17)"
+                          - option "JACK MCCLURE (jackmcclure)"
+                          - option "Jackie LaRocca (Jaclynmaureenlarocca@gmail.com)"
+                          - option "Jackie Tupholme (Jackiechap)"
+                          - option "Jacob Lieberman (jacob.lieberman)"
+                          - option "Jacob Smith (Jsmith2347)"
+                          - option "Jacqueline Hunter (jacbel)"
+                          - option "Jacques Gauthier (jgauthier@carpedia.com)"
+                          - option "Jakub Kowalski (kubak2000@hotmail.com)"
+                          - option "jamatuzi (jamatuzi)"
+                          - option "James Andrews (jstanleyandrews@yahoo.ca)"
+                          - option "James Armstrong (James2301)"
+                          - option "James Benford (jamesbenford)"
+                          - option "James D'Arcy Porter (JamesDS)"
+                          - option "James Douketis (jdouket@mcmaster.ca)"
+                          - option "James Fellows (jafellows)"
+                          - option "James Hayhoe (jameshayhoe)"
+                          - option "James Menzies (jamesmenzies62@gmail.com)"
+                          - option "James Stainton (staintonj)"
+                          - option "James Tracy (CaptainAlfie)"
+                          - option "James Tucciarone (james.tucciarone@gmail.com)"
+                          - option "James Wheeler (Wheeler)"
+                          - option "jamesl99 (jamesl99)"
+                          - option "Jameson Cheung (jamesonch)"
+                          - option "jamey.schein (jamey.schein)"
+                          - option "Jamie Graham (Jaimey.g)"
+                          - option "Jamie Tomlinson (wowzersbud@gmail.com)"
+                          - option "Jane Currie (SeeJaneRun)"
+                          - option "Janet Warren (janetwarren@sympatico.ca)"
+                          - option "Janine (Janine Senour)"
+                          - option "Jasmine Pereira (jazzypereira)"
+                          - option "Jason Bainbridge (JJBain)"
+                          - option "jason Buttenham (Jbuttenham82)"
+                          - option "Jason Freitas (Jasonfreit@gmail.com)"
+                          - option "Jason Galletti (jason.galletti@gmail.com)"
+                          - option "Jason Glover (Jglover17)"
+                          - option "Jason Howroyd (jjhowroyd)"
+                          - option "Jason Hynes (polkaroo16@hotmail.com)"
+                          - option "Jason Jamieson (Jigs35)"
+                          - option "Jason Stajan (jasonstajan)"
+                          - option "Jason Trombetta (JasonT1979)"
+                          - option "jason wu (wuzzer)"
+                          - option "jasonbola (jasonbola)"
+                          - option "Javier Barreiro (Bororin)"
+                          - option "Jay Carr (JayC)"
+                          - option "Jay Ross (Jay Ross)"
+                          - option "Jaypreet Dhaliwal (jaypreetdhaliwal101@gmail.com)"
+                          - option "jbcreet (jbcreet)"
+                          - option "jdesilva (jdesilva)"
+                          - option "jdrouill (jdrouill)"
+                          - option "Jean Willis (jeanwillis92@gmail.com)"
+                          - option "Jeeva Braich (Jeevabraich)"
+                          - option "Jeff (topgoat29@hotmail.com)"
+                          - option "Jeff Boersema (jboersema@hotmail.com)"
+                          - option "Jeff Clarke (phlyerz2003@yahoo.com)"
+                          - option "Jeff Fleet (jeff-fleet@hotmail.com)"
+                          - option "Jeff Greig (jgreig)"
+                          - option "Jeff Haine (hainer36)"
+                          - option "Jeff Hooker (Jeffhooks)"
+                          - option "Jeff Hubbs (jhubstr@gmail.com)"
+                          - option "Jeff Knott (jeffknott1)"
+                          - option "Jeff Kondo (jkondo2@hotmail.com)"
+                          - option "Jeff Kondo (jkondo2)"
+                          - option "Jeff Kruger (AnkleBiter77)"
+                          - option "Jeff Meneghini (jeff@bdi-canada.com)"
+                          - option "Jeff Owen (jdo.spike@gmail.com)"
+                          - option "Jeff Reed (Jeffreed)"
+                          - option "Jeff Seeley (JASeeley)"
+                          - option "Jeff Williams (Jwilliams5931)"
+                          - option "jeffjarrett (jeffjarrett)"
+                          - option "Jen Carroll (jcarrollredx@gmail.com)"
+                          - option "Jenna Webb (j_webb11)"
+                          - option "Jennifer Andrews (Skatengolf)"
+                          - option "Jennifer Auld (Jenauld)"
+                          - option "Jennifer Carroll (fit.girl@outlook.com)"
+                          - option "Jennifer Hart (JenHart)"
+                          - option "Jennifer Jurisevic (jennjurisevic)"
+                          - option "Jennifer Novak (jen121731@gmail.com)"
+                          - option "Jennifer O'Connor (joconnor)"
+                          - option "jennysetterfield (jennysetterfield)"
+                          - option "Jeremy Cloet (jpcloet)"
+                          - option "Jeremy Ducedre (Ducedre_jeremy)"
+                          - option "Jeremy Simpson (Jersimpson)"
+                          - option "Jesse Castro (jeca91)"
+                          - option "jesseheller16 (jesseheller16)"
+                          - option "Jessica Couch (couchjs)"
+                          - option "Jessica Johnson (jessicajohnson500@hotmail.com)"
+                          - option "Jessica Russell (jsrussell17@gmail.com)"
+                          - option "jesusmunozig (jesusmunozig)"
+                          - option "jgenesiee (jgenesiee)"
+                          - option "Jill Brady (jill.brady@teaminc.com)"
+                          - option "Jim Sleno (Jim)"
+                          - option "Jim Sleno (JimSleno)"
+                          - option "Jimmie Lee (jimmie.lee.ff@gmail.com)"
+                          - option "Jingyu Zuo (William)"
+                          - option "Jjesty (Jjesty)"
+                          - option "jlasabur (jlasabur)"
+                          - option "jmkelly86 (jmkelly86)"
+                          - option "jmoore (jmoore)"
+                          - option "Joe Capote (Joecap427)"
+                          - option "Joe DaCosta (joedacosta)"
+                          - option "Joe Goodwin (Joeyg1993)"
+                          - option "Joe Lesko (jflesko)"
+                          - option "Joe Santelli (jpsan73@gmail.com)"
+                          - option "Joe Wong (joe74wong)"
+                          - option "Joel Bartolini (JAB1221)"
+                          - option "Joey Cooney (joe.cooney@icloud.com)"
+                          - option "Joey So (sojcy)"
+                          - option "John (Kearney)"
+                          - option "John Birnie (Jdbirnie@gmail.com)"
+                          - option "John Britenbaugh (jbr10ba)"
+                          - option "John Brown (Jpnworb@me.com)"
+                          - option "John Connolly (johnconnolly)"
+                          - option "John Dobko (John Dobko)"
+                          - option "John Elash (jelash12@gmail.com)"
+                          - option "John Grace (johnegrace@gmail.com)"
+                          - option "John Hill (Johnhill@deloitte.ca)"
+                          - option "John Laugesen (laugesenjd@gmail.com)"
+                          - option "John McGaughey (jfmcgaughey)"
+                          - option "John Myers (Mysman)"
+                          - option "John Niedzielski (john.niedzielski.1982@gmail.com)"
+                          - option "John O'Toole (jotoole@uwo.ca)"
+                          - option "JOHN PEITSIS (papalion)"
+                          - option "John Pequegnat (Jpequegnat1996)"
+                          - option "John Sauls (geogatedproject298@gmail.com)"
+                          - option "John Truong (Grenamier)"
+                          - option "John Vanoosterhout (jvanoost1@gmail.com)"
+                          - option "Johnharmen (Johnharmen)"
+                          - option "johnwalker (johnwalker)"
+                          - option "Johny Bobba (geogatedproject290@gmail.com)"
+                          - option "Jonathan Jackson (jonjackson76)"
+                          - option "Jordan Alexander (jordan.ethan@outlook.com)"
+                          - option "Jordan Shedletzky (jshed2)"
+                          - option "Jordantonka@live.com (Jordantonka@live.com)"
+                          - option "Jose Medeiros (JGAM)"
+                          - option "Joseph Capote (Joecap91)"
+                          - option "Josh Zidanic (jzidanic)"
+                          - option "Joshua Pattynama (jpattynama)"
+                          - option "JSP15 (JSP15)"
+                          - option "Jstanleyandrews (Jstanleyandrews)"
+                          - option "Julia Myers (Jmyers)"
+                          - option "juliafowlie (juliafowlie)"
+                          - option "Julie Hamilton (jul_poir@hotmail.com)"
+                          - option "Julie Martin (Blackcatmeow)"
+                          - option "Justin Gaspini (jgaspini)"
+                          - option "Justin Hay (mjustin.hay)"
+                          - option "Justin Long (Justin)"
+                          - option "jwfoster (jwfoster)"
+                          - option "k8e11 (k8e11)"
+                          - option "kahmsteve (kahmsteve)"
+                          - option "Kalissa Baran (kalissabaran@gmail.com)"
+                          - option "Karl Rebane (karlrebane@hotmail.com)"
+                          - option "Karlp (Karlp)"
+                          - option "Karma Call (karmac)"
+                          - option "Katherine James (Muddyduck)"
+                          - option "Kathryn Stirling (kathryn.stirling8@gmail.com)"
+                          - option "Kathy Wignall (kwignall55@gmail.com)"
+                          - option "Katie Eberhardt (katie1387)"
+                          - option "Katie Sweiger (kt.swig)"
+                          - option "Katie Wands (KT)"
+                          - option "KDalts26 (KDalts26)"
+                          - option "Keagan27 (Keagan27)"
+                          - option "Keith Travers (ktravers)"
+                          - option "Kelli (peters.kelli@gmail.com)"
+                          - option "Kelli (kaquino13)"
+                          - option "Kendra Robinson (kjrobinson33@gmail.com)"
+                          - option "Kenneth Murray (knnth.murray@gmail.com)"
+                          - option "Kerig Ahearn (KerigA)"
+                          - option "Kerri Walsh (Kerri_32@hotmail.com)"
+                          - option "kevin (dimsum444)"
+                          - option "Kevin Adam (kadam1969)"
+                          - option "Kevin Aubertin (kevin.aubertin@gmail.com)"
+                          - option "Kevin Brown (kfbsp@yahoo.com)"
+                          - option "Kevin Carr (Kevin Carr)"
+                          - option "Kevin Collins (Sk8er)"
+                          - option "Kevin da Silva (dasilva.kevin)"
+                          - option "Kevin Dam (Dim)"
+                          - option "Kevin Fox (kroc_13)"
+                          - option "Kevin Mallon (kevichar@yahoo.ca)"
+                          - option "kevin mcgowan (mcgowan)"
+                          - option "Kevin Monteiro (Kevmon)"
+                          - option "Kevin Nelson (Kevin99)"
+                          - option "Kevin Scott (kscott99rlc)"
+                          - option "Kevin Silva (silva.kevin01@gmail.com)"
+                          - option "Kevin Williams (Willy50)"
+                          - option "Kevin Yan (wholewheatyan@gmail.com)"
+                          - option "KevinHall (KevinHall)"
+                          - option "Kha83 (Kha83)"
+                          - option "kidleno (kidleno)"
+                          - option "Kikas Vince (ncblue3@hotmail.com)"
+                          - option "Kim Dagg (sk821@sourcecable.net)"
+                          - option "Kim LeBlanc (kleblanc660@gmail.com)"
+                          - option "Kim Rolfe (KimRolfe)"
+                          - option "King D'Souza (uclearforce)"
+                          - option "Kirby Moniz (kirbymoniz@gmail.com)"
+                          - option "Kirk C (coopstaco@gmail.com)"
+                          - option "Kirk Cooper (Cooperk@bell.net)"
+                          - option "KLymer (KLymer)"
+                          - option "Korey Reid (KoreyReid)"
+                          - option "Kory Mikalski (kmikalski)"
+                          - option "kosemp (kosemp)"
+                          - option "Kris Elliott (Kriselliott33)"
+                          - option "krishanleafs (krishanleafs)"
+                          - option "kristacthatsme (kristacthatsme)"
+                          - option "Kristine Willett (kristinepwillett@gmail.com)"
+                          - option "Kristopher Piersiak (kpiersiak)"
+                          - option "Kristy O'Connor (kristyoconnor2@gmail.com)"
+                          - option "kristymcgrath (kristymcgrath)"
+                          - option "kurtis noble (Knoble)"
+                          - option "kwakabayashi (kwakabayashi)"
+                          - option "Kyle Lee (kyle7545@gmail.com)"
+                          - option "Kyle Murray (murray84)"
+                          - option "Kyle Smith (kyle.smith019@gmail.com)"
+                          - option "Kyle Todd (kmtodd4)"
+                          - option "Kyle Vogt (Kyle_vogt@hotmail.com)"
+                          - option "Lamper157 (Lamper157)"
+                          - option "Lance Edwards (lanceloriedwards@gmail.com)"
+                          - option "Larry Hallett (larold108@gmail.com)"
+                          - option "Laura Jaschke (laurajaschke@gmail.com)"
+                          - option "Laura Lindsay (lauralindsay)"
+                          - option "laura_pav@hotmail.com (laura_pav@hotmail.com)"
+                          - option "Leanne DiCecco (lsedor@cogeco.ca)"
+                          - option "Lee Jane Huffman (dogtorin@me.com)"
+                          - option "Leeroy (Leeroy)"
+                          - option "Leigh Scott (Leigh Scott)"
+                          - option "Leonardoromero (Leonardoromero)"
+                          - option "Lesley (Youngle84)"
+                          - option "Leslie Quinsay (lquinsay)"
+                          - option "Leticia Goddard (lgoddard@hwdsb.on.ca)"
+                          - option "lhigenell (lhigenell)"
+                          - option "liam fraser (liamfraser)"
+                          - option "Lianne DiPaolo (ldipaolo)"
+                          - option "limdin (limdin)"
+                          - option "Lisa Duncan (Lisa.duncan16@icloud.com)"
+                          - option "LisaBaliva (LisaBaliva)"
+                          - option "Loc (ldn)"
+                          - option "Logan Ernst (lernst3)"
+                          - option "lschmidt (lschmidt)"
+                          - option "Lucas (lbarichello)"
+                          - option "Lucas Bluhm (Lbluhm84)"
+                          - option "Lucas Campbell (Baldbastard72)"
+                          - option "lucaselijah (lucaselijah)"
+                          - option "Luis Monterrubio (mehdiv79@gmail.com)"
+                          - option "Luke Pasquale (Luke.pasquale@gmail.com)"
+                          - option "lukezwierzynski (lukezwierzynski)"
+                          - option "Lyn Godovitz (LGodovitz)"
+                          - option "Lynn MacFarlane (Burlynn)"
+                          - option "Mackenzie Merritt (m.merritt3@hotmail.com)"
+                          - option "Maddi Rhind (maddi-rhind@hotmail.com)"
+                          - option "mangonation1 (mangonation1)"
+                          - option "Manny Ki (manny.ki@gmail.com)"
+                          - option "Manu Maganti (mmaganti)"
+                          - option "Manu83 (Manu83)"
+                          - option "Marc Adams (marcadams)"
+                          - option "Marc Avaria (mavaria96@gmail.com)"
+                          - option "Marc Meuris (Marcmeuris)"
+                          - option "Marcus Lee (Marcuslee)"
+                          - option "Marcusnese (Marcusnese)"
+                          - option "Mario Clementinho (Mario Clementinho)"
+                          - option "marion.rabeau@burlington.ca (marion.rabeau@burlington.ca)"
+                          - option "Mark Byers (Mark@leadboxhq.com)"
+                          - option "Mark DeSimone (md_550@hotmail.com)"
+                          - option "Mark DeSimone (MarkDesimone77)"
+                          - option "Mark Edwards (markedwards1970@gmail.com)"
+                          - option "Mark Gallagher (gallagher)"
+                          - option "Mark Gregory (mark.a.gregory@hotmail.co.uk)"
+                          - option "Mark Heffernan (markb.he27@gmail.com)"
+                          - option "Mark Jesse (MJesse)"
+                          - option "Mark Jones (mgmcconstruction@gmail.com)"
+                          - option "Mark Kindree (markkindree@hotmail.com)"
+                          - option "Mark Lang (Mark.lang@colliers.com)"
+                          - option "Mark Levitt (mark.levitt@bell.net)"
+                          - option "Mark Lucas (mr.mlucas@gmail.com)"
+                          - option "Mark Moschini (iknowmark)"
+                          - option "Mark Norman (marknorman83@hotmail.com)"
+                          - option "Mark Penelton (Mpenelton)"
+                          - option "Mark Roininen (MarkHamiltonHockey)"
+                          - option "Mark Switzer (mark)"
+                          - option "Mark Walmsley (Walmer)"
+                          - option "markjadams (markjadams)"
+                          - option "MARLYN KATERENCHUK (marlyn4homes@gmail.com)"
+                          - option "Martin Lessard (mlessard)"
+                          - option "Marty Lehto (Mlehto)"
+                          - option "mascolam (mascolam)"
+                          - option "Mathew Bonneville (mathewbonneville@gmail.com)"
+                          - option "Matt Aquino (mattaquino71@gmail.com)"
+                          - option "Matt Foster (rmfb-2@cogeco.ca)"
+                          - option "Matt Otsuka (mattotsuka)"
+                          - option "Matt Palmer (Mpalmer79)"
+                          - option "Matt Pratt (mpratt88)"
+                          - option "Matt Rankin (rankin.matt@gmail.com)"
+                          - option "Matt Williams (ordanearcana@gmail.com)"
+                          - option "matt-little95 (matt-little95)"
+                          - option "Matthew (GOLEAFSGO2017)"
+                          - option "Matthew Attard (M.Attard)"
+                          - option "Matthew Carter (carter2carter)"
+                          - option "Matthew Donohoe (mdonohoe@bell.net)"
+                          - option "Matthew H (matthewhardie95@gmail.com)"
+                          - option "Matthew Jibb (mjibb)"
+                          - option "Matthew Lee Wuk Len (mleewuklen)"
+                          - option "Matthew Mascola (mascolamd@gmail.com)"
+                          - option "Matthew Walker (Airbeast)"
+                          - option "matthewczer (matthewczer)"
+                          - option "Maureen McLaughlin (Maureen McLaughlin)"
+                          - option "Mauricio Haliska (moehudson@gmail.com)"
+                          - option "Mauris Winata (Maurissius)"
+                          - option "Mauro Gaeta (maurogaeta@hotmail.com)"
+                          - option "maz2305 (maz2305)"
+                          - option "McDowell (McDowell)"
+                          - option "Mdotmorrison (Mdotmorrison)"
+                          - option "Mdunn (Mdunn)"
+                          - option "Meghan Yzerman (meghanunderwater)"
+                          - option "Melissa Rathier (mrathier)"
+                          - option "Mera Roche-Couture (meramail@mac.com)"
+                          - option "Meredith Allen (meredithallen)"
+                          - option "merle (merle)"
+                          - option "mgaasenbeekhelm (mgaasenbeekhelm)"
+                          - option "mgdunn68 (mgdunn68)"
+                          - option "mharriga (mharriga)"
+                          - option "Michael (mmackan)"
+                          - option "Michael Beairsto (Mike Beairsto)"
+                          - option "Michael Campagnaro (Michael.s.campagnaro)"
+                          - option "Michael Denisko (MichaelJ)"
+                          - option "Michael Durrant (Michael)"
+                          - option "Michael Durrant (michael@rookiehockey.ca)"
+                          - option "michael fox (mjfox444@gmail.com)"
+                          - option "Michael Hover (hover43)"
+                          - option "Michael Krunic (krunic@coastuw.com)"
+                          - option "Michael Long (mclong1)"
+                          - option "Michael McMenemy (Michael McMenemy)"
+                          - option "Michael Mercier (mercieme@mcmaster.ca)"
+                          - option "Michael Michaud (jazzpatico)"
+                          - option "Michael Milford (coachmike2008)"
+                          - option "Michael Nagatakiya (mnagatak)"
+                          - option "Michael Olney (molney)"
+                          - option "michael rejdych (mikerejdych)"
+                          - option "Michael Rhind (Mrhind)"
+                          - option "MICHAEL RIPLEY (mike.ripley001@gmail.com)"
+                          - option "Michael Stamp (mikestamp77@hotmail.com)"
+                          - option "Michael Stuart (mikeisnever@gmail.com)"
+                          - option "Michael Um (michael_um9@hotmail.com)"
+                          - option "michael wadden (mj_wadden@hotmail.com)"
+                          - option "Michael Widerman (Widerman)"
+                          - option "michael willard (willard123@hotmail.com)"
+                          - option "Michael Wilson (mikey24)"
+                          - option "Michal Shahar (michockey)"
+                          - option "michelciers (michelciers)"
+                          - option "Michele dawson (Michele31)"
+                          - option "Michelle Fraser (mcarriga)"
+                          - option "Michelle Garretson (MicGar)"
+                          - option "Michelle Stanford (ml.stanford@yahoo.com)"
+                          - option "Michelle Turan (michelleturan@icloud.com)"
+                          - option "Michelle Turan (behaviourcoach@gmail.com)"
+                          - option "Mike (Petrunas13)"
+                          - option "Mike Bakker (mbakker)"
+                          - option "Mike Bernard (freshjive5)"
+                          - option "Mike Bolt (Bolter)"
+                          - option "Mike Brown (Mbrown)"
+                          - option "Mike Di Giulio (mikealyemmamaddy@gmail.com)"
+                          - option "Mike Dobson (Dobbz34)"
+                          - option "Mike Dunkey (Mdunkey)"
+                          - option "Mike Frizzo (m_frizzo@hotmail.com)"
+                          - option "Mike Grummett (Grummy1)"
+                          - option "Mike haystead (mikehaystead)"
+                          - option "Mike McBrien (mike.mcbrien@gmail.com)"
+                          - option "Mike Nicholl (Mikenicholl)"
+                          - option "Mike Schincariol (MikeSchincariol)"
+                          - option "MIKE SCOTT (FrankTheTank)"
+                          - option "Mike Stelmach (mike)"
+                          - option "Mike Stelmach (smhd@cogeco.ca)"
+                          - option "Mike Stelmach (smhd6264@gmail.com)"
+                          - option "Mike Winton (wintonmike@msn.com)"
+                          - option "Mike Wong (mickeyw)"
+                          - option "MikePettit (MikePettit)"
+                          - option "mikerowell (mikerowell)"
+                          - option "Milo (Milolattanzi)"
+                          - option "Mina McCluskey (BarneyBarney1)"
+                          - option "Mistybuckley16@gmail.com (Mistybuckley16@gmail.com)"
+                          - option "Mitchell Penas (Mitchell_cakes@rogers.com)"
+                          - option "MJ (soccerlemon)"
+                          - option "MJ (mjcassibo)"
+                          - option "Mking31 (Mking31)"
+                          - option "moeheff1728 (moeheff1728)"
+                          - option "MonaKiriakopoulos (MonaKiriakopoulos)"
+                          - option "Monty Dhaliwal (mdhaliwal)"
+                          - option "moorew (moorew)"
+                          - option "Morley Howell (mhowell)"
+                          - option "Mr.Brown83 (Mr.Brown83)"
+                          - option "MSmith9 (MSmith9)"
+                          - option "Myles Anderson (Myles.77)"
+                          - option "Myles Pereira (pereira.myles@gmail.com)"
+                          - option "Natalie Gorjup (Nataliegorjup)"
+                          - option "Natasha Black (natblack26@gmail.com)"
+                          - option "Nathan Bigec (nathanbigec)"
+                          - option "Nathan Conn (NathanConn)"
+                          - option "Nathaniel Stajov (natey_bomb)"
+                          - option "nedelkd (nedelkd)"
+                          - option "Neil MacNeil (namacneil@gmail.com)"
+                          - option "Neil Poutanen (neilpoutanen)"
+                          - option "nelson lourenco (nelsonlourenco78@gmail.com)"
+                          - option "Nic Truong (tetraninja)"
+                          - option "Nicholas Cornell (ncornell)"
+                          - option "Nicholas Frape (nickfrape78@gmail.com)"
+                          - option "nichols1 (nichols1)"
+                          - option "Nick Black (nickblack)"
+                          - option "Nick de Baseggio (ndebaseg)"
+                          - option "Nick Kalman (stereodt@gmail.com)"
+                          - option "Nick Kalman (stereodt)"
+                          - option "Nick Vuckovic (nvuckovic@cogeco.ca)"
+                          - option "Nicole Leitch (nicole_leitch_nhl@hotmail.com)"
+                          - option "Nicole Ransome (Ransoni)"
+                          - option "Nik Papaioannou (nvpapa@hotmail.com)"
+                          - option "nikcerps (nikcerps)"
+                          - option "Nino (Ninomags)"
+                          - option "Nino Magliaro (NinoMags79)"
+                          - option "njanssen99 (njanssen99)"
+                          - option "nkhangura (nkhangura)"
+                          - option "Nolan Coyle (nolancoyle)"
+                          - option "nonickname (nonickname)"
+                          - option "nprystie (nprystie)"
+                          - option "nwesleypembleton (nwesleypembleton)"
+                          - option "Oliver H (ohemailis@gmail.com)"
+                          - option "Olivia Walker-Edwards (OliviaWE)"
+                          - option "Orest Donczak (orestdonczak)"
+                          - option "orysiafoster (orysiafoster)"
+                          - option "Oscar Cordero-Graf (Desmodus)"
+                          - option "Owen Nicholson (OwenNicholson)"
+                          - option "p_silk (p_silk)"
+                          - option "P.J. Saberton (pjsaberton)"
+                          - option "Pamela Cooney (pamgroulx@live.ca)"
+                          - option "Paolo Sabatino (p.sabatino9@outlook.com)"
+                          - option "Patricia Doherty-Baranowski (Pat)"
+                          - option "Patrick Couture (Musik7)"
+                          - option "Patrick Kerigan (pkerigan)"
+                          - option "Patrick Rathwell (patrick.rathwell@gmail.com)"
+                          - option "Patrick Richardson (Pjsdaman)"
+                          - option "Patrick Stubbs (pgwstubbs)"
+                          - option "Patte Beltrame (Patte)"
+                          - option "Patti Rhind (Prhind)"
+                          - option "Paul Babic (Paul Babic)"
+                          - option "Paul Bozzo (PaulBozzo19)"
+                          - option "Paul Bozzo (PaulBozzo)"
+                          - option "Paul Kainth (Paul.kainth2009@gmail.com)"
+                          - option "Paul MacPherson (paultmacpherson@gmail.com)"
+                          - option "Paul McKerracher (pmckerracher@gmail.com)"
+                          - option "Paul Nicholson (paulnicholsonathome@gmail.com)"
+                          - option "Paul Selby (Paul James)"
+                          - option "Paul Yu (statict)"
+                          - option "Paula Bertrand (Ron.bertrand@sympatico.ca)"
+                          - option "pbabic (pbabic)"
+                          - option "pcorry (pcorry)"
+                          - option "pdowney (pdowney)"
+                          - option "pdriegen (pdriegen)"
+                          - option "pereiracraig82 (pereiracraig82)"
+                          - option "Pete Marino (knackerpete)"
+                          - option "Pete mlekuz (petemlekuz@gmail.com)"
+                          - option "Peter Kondo (kondop)"
+                          - option "Peter Oberholzer (Poberhozler11)"
+                          - option "Peter Pawlowski (piotrusca@yahoo.ca)"
+                          - option "Peter Vavasour (Petervav)"
+                          - option "Peterdameski (Peterdameski)"
+                          - option "Phil van Staden (Philvanstaden)"
+                          - option "Phil.jeffries (Phil.jeffries)"
+                          - option "Philip Cervoni (Phil.cervoni@gmail.com)"
+                          - option "Phillip kalloo (Phillip.kalloo@gmail.com)"
+                          - option "Pierre Jean Gallant (Pierrejean.gallant@gmail.com)"
+                          - option "porterjck (porterjck)"
+                          - option "Puneet Khanna (pkhanna@medicalpharmacies.com)"
+                          - option "Pvincett (Pvincett)"
+                          - option "Rachel Smith (smith24rachel@gmail.com)"
+                          - option "Raman Gupta (rocketraman)"
+                          - option "Ray Pataracchia (drray@nmrc.ca)"
+                          - option "ray poliziani (larky368)"
+                          - option "rbatt (rbatt)"
+                          - option "Rdigiovanni (Rdigiovanni)"
+                          - option "Rebecca Leggett (rebecca.morelli@gmail.com)"
+                          - option "Rebecca Stewart (ihavenoidea)"
+                          - option "Renato Paniccia (renato.paniccia@rbc.com)"
+                          - option "Renato Paniccia (renatopaniccia)"
+                          - option "Renato Ponte (import_ryder)"
+                          - option "RetroBlader (RetroBlader)"
+                          - option "Rhys Gula (RhysGula)"
+                          - option "Rich (Mrhim)"
+                          - option "Richard Douglass-Chin (iggypop@live.ca)"
+                          - option "Richard Doweck (rdoweck)"
+                          - option "richard head (richard head)"
+                          - option "Richard Marco (rmarco15@hotmail.com)"
+                          - option "Richard Noble (noble3401@hotmail.com)"
+                          - option "RichDC (RichDC)"
+                          - option "Richelle Rogers (Rogersrichelle8@gmail.com)"
+                          - option "rick barreto (rbarreto@sympatico.ca)"
+                          - option "Rick Watkinson (rick.watkinson@gmail.com)"
+                          - option "rick.naylor (rick.naylor)"
+                          - option "Ricky Grewal (rickygrewal416@gmail.com)"
+                          - option "rjmabalay (rjmabalay)"
+                          - option "rkassies@cogeco.ca (rkassies@cogeco.ca)"
+                          - option "Rmarco15 (Rmarco15)"
+                          - option "Rmcalpin (Rmcalpin)"
+                          - option "rmfoster (rmfoster)"
+                          - option "Rob (RobWatts)"
+                          - option "rob (robefoster)"
+                          - option "Rob Lamberti (lamberti@cogeco.ca)"
+                          - option "Rob Lee (Boreel75)"
+                          - option "rob love (rwlove@gmail.com)"
+                          - option "Rob Marini (rlm4444)"
+                          - option "Rob McCallum (Rob McCallum)"
+                          - option "Rob McCarthy (Jennandrobmc@rogers.com)"
+                          - option "Rob McDowell (Robbymcd12@hotmail.com)"
+                          - option "Rob Rankin (Rob Rankin)"
+                          - option "Rob Rankin (RobRankin22)"
+                          - option "Rob Skeoch (skeoch@sympatico.ca)"
+                          - option "Robb Taylor (robb.mgm@gmail.com)"
+                          - option "Robb Taylor (robb.taylor@bell.net)"
+                          - option "Robert Beaudry (rbeaudry)"
+                          - option "Robert Carmichael (rob_carmichael@rogers.com)"
+                          - option "Robert Dziuryn (Dziuryn)"
+                          - option "Robert Hatje (Hatje)"
+                          - option "Robert Hill (rhill50@hotmail.com)"
+                          - option "Robert Johnson (Linda.robert@live.ca)"
+                          - option "Robert Kubar (ticats2004@hotmail.com)"
+                          - option "Robert MacLeod (Rmacleod)"
+                          - option "Robert McLaren (Robbamac)"
+                          - option "Robert Mowat (rmowat2@gmail.com)"
+                          - option "Robert Pereira (robper)"
+                          - option "Robert Rabey (RRabey)"
+                          - option "Robert Ridgway (ridgway)"
+                          - option "robsoje (robsoje)"
+                          - option "Robyn Duwyn (rduwyn)"
+                          - option "Rod (rodfreitas1984@gmail.com)"
+                          - option "Rod Freitas (rod@patternlock.com)"
+                          - option "Rod Gerster (RodGerster)"
+                          - option "Rod Lauzon (rlauzon79@hotmail.ca)"
+                          - option "Rod MacDonald (darthflinstone@yahoo.ca)"
+                          - option "Roland Fuchser (Fuchserroland@hotmail.com)"
+                          - option "Roland L'Ecuyer (roland21)"
+                          - option "Rolando Mabalay (Rmabalay)"
+                          - option "rollin king (rollinking7@gmail.com)"
+                          - option "Roman Nowickyj (romanallison)"
+                          - option "Ron Bertrand (Yoga_runner9@hotmail.com)"
+                          - option "Ron Breen (RBreen)"
+                          - option "Ron Johnston (ron.johnston19@gmail.com)"
+                          - option "Ron Wardrop (rwardrop@cogeco.ca)"
+                          - option "Roy Butler (r.butler@techtopcanada.com)"
+                          - option "Roy Butler (royskabutler@gmail.com)"
+                          - option "Roy Ko (Albertko83)"
+                          - option "Roy Mills (Millzy)"
+                          - option "rpryznyk (rpryznyk)"
+                          - option "rsmpat (rsmpat)"
+                          - option "rstarr (rstarr)"
+                          - option "runham (runham)"
+                          - option "Russ Mergelas (russmergelas@gmail.com)"
+                          - option "rwilkins (rwilkins)"
+                          - option "Ryan (ryan.vk@gmail.com)"
+                          - option "Ryan Baker (r_baker@usa.net)"
+                          - option "Ryan Boyd (Chefscoob305)"
+                          - option "ryan brown (Ryan456)"
+                          - option "Ryan Flint (ryflint@gmail.com)"
+                          - option "Ryan Gamache (rgamache)"
+                          - option "Ryan Hayward (Ryan Hayward)"
+                          - option "Ryan Kuzyk (kuzymandu19)"
+                          - option "Ryan Mattatall (Rymatt)"
+                          - option "Ryan Monteath (Rmonteath)"
+                          - option "Ryan Nisbet (Ryan@print3burl.com)"
+                          - option "Ryan Prosser (prosserr@uoguelph.ca)"
+                          - option "Ryan Schilling (Ryan.Schilling91)"
+                          - option "Ryan Scully (scully.ryan@yahoo.ca)"
+                          - option "Ryan Taylor (ryan-taylor89@hotmail.com)"
+                          - option "Ryan Taylor (ryan-taylor10@hotmail.com)"
+                          - option "Ryan Williamson (ryankw1602@gmail.com)"
+                          - option "Ryoshi Sugaye (rsugaye)"
+                          - option "Ryu Jin (geogatedproject399@gmail.com)"
+                          - option "Sabrina (SMcDowell)"
+                          - option "sabrinakelly (sabrinakelly)"
+                          - option "Salvatore Ritacco (ritacco@sympatico.ca)"
+                          - option "Samantha Mathieu (sammymathieu8@gmail.com)"
+                          - option "Sameh Ahmed (kingoory@gmail.com)"
+                          - option "Samuel L'Ecuyer (samARL99)"
+                          - option "samuelmenard (samuelmenard)"
+                          - option "Sandra Oliveira (sandraoliveira)"
+                          - option "Sandro Cervoni (Sportsdad_4@hotmail.com)"
+                          - option "Sasha (soros)"
+                          - option "sbirnie (sbirnie)"
+                          - option "Scott Alexander (scott-alexander@hotmail.com)"
+                          - option "Scott Bellamy (ScottB)"
+                          - option "Scott Black (scottblack.ca@gmail.com)"
+                          - option "Scott Buist (howdyscotty@gmail.com)"
+                          - option "Scott Carmichael (scottcarmichael)"
+                          - option "Scott Chadbolt (schadbolt)"
+                          - option "Scott Cressman (Scott Cressman)"
+                          - option "Scott Foster (Scottysellshouses)"
+                          - option "Scott Gillespie (sgillesp18@gmail.com)"
+                          - option "Scott Hendry (bosco1969)"
+                          - option "Scott Jarrett (scottjarrett7@gmail.com)"
+                          - option "Scott Johansen (sjohansen@cogeco.ca)"
+                          - option "Scott Maynard (skmaynard)"
+                          - option "Scott Newstead (ScottN)"
+                          - option "Scott Williamson (Williamsons)"
+                          - option "Sean Anderson (saander08)"
+                          - option "Sean Currington (scurrington)"
+                          - option "Sean Duncan (Seanduncan)"
+                          - option "Sean Jones (SeanJones34)"
+                          - option "Sean Kavanagh (Sean)"
+                          - option "Sean Lafleur (sean_lafleur@hotmail.com)"
+                          - option "Sean Mac (thespartan@gmail.com)"
+                          - option "Sean McCafferty (seanmcca)"
+                          - option "Sean McHugh (Sean123)"
+                          - option "Sean O'Grady (ogradyse)"
+                          - option "SeeJaneRun65 (SeeJaneRun65)"
+                          - option "Seper Ekhtiari (ekhtiari)"
+                          - option "sgillesp18 (sgillesp18)"
+                          - option "SH (suolon)"
+                          - option "Shad Fataar (shadley.fataar@gmail.com)"
+                          - option "Shaila Mehta (Shaila Mehta)"
+                          - option "Shane Silver (shane.silver@bell.net)"
+                          - option "Shanewilson600 (Shanewilson600)"
+                          - option "Shannon (singlis18@hotmail.com)"
+                          - option "Shannon Baines (shannon.baines@sympatico.ca)"
+                          - option "shannon costello (smaclean38)"
+                          - option "Shannon Sullivan (shannonforhomes@gmail.com)"
+                          - option "Shaun Gilbert (zoo_york12@hotmail.com)"
+                          - option "Shaungilbert (Shaungilbert)"
+                          - option "Shawn (Shawn)"
+                          - option "SHAWN ALLEN (Allen)"
+                          - option "Shawn Burant (shawn.burant@gmail.com)"
+                          - option "Shawn Grant (sgrant@martinsprocket.com)"
+                          - option "Shawn Kelly (shawnkelly1994@hotmail.com)"
+                          - option "Shawn Morris (esmorris@cogeco.ca)"
+                          - option "Shawn Rowell (srowell)"
+                          - option "Shawn46 (Shawn46)"
+                          - option "Shayleen Welch (Fastpitchaddict)"
+                          - option "Sheldono (Sheldono)"
+                          - option "Shelley Ramsay (sheyr88@gmail.com)"
+                          - option "Shep (Shep)"
+                          - option "Sheri Noel (HockeyGirl)"
+                          - option "sia ali (sir3xd@gmail.com)"
+                          - option "Simon Leard (simonleard@hotmail.ca)"
+                          - option "sjenner88 (sjenner88)"
+                          - option "sktessier (sktessier)"
+                          - option "smitchell13 (smitchell13)"
+                          - option "smitty3891 (smitty3891)"
+                          - option "Smnthschmidt (Smnthschmidt)"
+                          - option "Something123 (Something123)"
+                          - option "Spencer Booth (Boothx)"
+                          - option "Sportingfc (Sportingfc)"
+                          - option "sritchie14 (sritchie14)"
+                          - option "sstarr99 (sstarr99)"
+                          - option "staceym (staceym)"
+                          - option "Stefanie Pipka (stef0785)"
+                          - option "Stephane Verreault (sverreault)"
+                          - option "Stephani Rankin (Skr13)"
+                          - option "Stephanie Renna (rennagade31)"
+                          - option "Stephen (Sbrimer44)"
+                          - option "Stephen Nelson (Stephen.james.nelson@gmail.com)"
+                          - option "Steve (Stephen Doherty)"
+                          - option "Steve (dimanns)"
+                          - option "Steve Brown (stevejbrown1983)"
+                          - option "Steve Faveri (faveri)"
+                          - option "Steve Fellion (Sfellion)"
+                          - option "Steve Forrest (arl@ksyg.ca)"
+                          - option "Steve Hall (shall)"
+                          - option "Steve Huk (stevehuk@hotmail.com)"
+                          - option "Steve Jaschke (sjaschke13)"
+                          - option "STEVE LONG (stevelong624@gmail.com)"
+                          - option "Steve Long (Longer14)"
+                          - option "Steve Maragos (Steve M)"
+                          - option "Steve Pietrzyk (sjpie@icloud.com)"
+                          - option "Steve Sage (Steve Sage)"
+                          - option "SteveCreek3 (SteveCreek3)"
+                          - option "Steven (schermel)"
+                          - option "Steven Chomik (Steve)"
+                          - option "Steven Gaudet (thegame_hhh77@hotmail.com)"
+                          - option "Steven Johnson (stevenjohnson13@gmail.com)"
+                          - option "Steven Ludwik (stevenludwik)"
+                          - option "SteveSmith (SteveSmith)"
+                          - option "StickMan (StickMan)"
+                          - option "Stu Ross (StuRoss)"
+                          - option "Stuart Gallandt (Buddy 1234)"
+                          - option "Stuart Mitchell (stuart.mitchell)"
+                          - option "Subby (Subby)"
+                          - option "SUE TIMMERMAN (siouxtodd)"
+                          - option "Susan Campbell (runninggal30)"
+                          - option "Tammy Michener (Tlmichener@yahoo.ca)"
+                          - option "Tania Burton (Tburton)"
+                          - option "Tania Mungo (taniamungo)"
+                          - option "Tara Cameron (Taracameron14)"
+                          - option "Taylorhe (Taylorhe)"
+                          - option "tdallow (tdallow)"
+                          - option "Ted Lindsay (tedlindsay66@yahoo.com)"
+                          - option "Ted Lindsay (TLindsay)"
+                          - option "Ted Lindsay (Ted)"
+                          - option "Teresa Szalay (tszalay4)"
+                          - option "Terry Anstey (TerryA)"
+                          - option "Terry Lee (terrylee19@gmail.com)"
+                          - option "Teshoo Abood (teshooabood@gmail.com)"
+                          - option "Test User (TestUser)"
+                          - option "TestyMcTest (TestyMcTest)"
+                          - option "TestyMcTestTest1 (TestyMcTestTest1)"
+                          - option "TGibsonn4 . (tessagibsonn@gmail.com)"
+                          - option "thepatrone (thepatrone)"
+                          - option "Thomas Cayer (TommyGun13)"
+                          - option "Tiana Holland (qxsaczefzr_1540975832@tfbnw.net)"
+                          - option "Tim Alford (alford.a.tim@gmail.com)"
+                          - option "Tim Girard (tim.girard@gmail.com)"
+                          - option "Tim Griffin (timhomeoffice@gmail.com)"
+                          - option "Tim Stephenson (tbskitchens@gmail.com)"
+                          - option "Tim Tanner (timmyt78@hotmail.com)"
+                          - option "Tim Wilson (tjwilson9293@gmail.com)"
+                          - option "Tina Black-Fox (tblack-fox@hotmail.com)"
+                          - option "Titan X (tedesignit@gmail.com)"
+                          - option "tklawsuc (tklawsuc)"
+                          - option "TlaHay (TlaHay)"
+                          - option "Tmnt_mikeyt (Tmnt_mikeyt)"
+                          - option "Tobias Smulders SR. (TobySmulders)"
+                          - option "Todd Corneilse (Todd Corneilse)"
+                          - option "Todd Timmerman (Todtim)"
+                          - option "Tom (Tomwhite14@hotmail.com)"
+                          - option "Tom Reader (treaderbjj)"
+                          - option "Tommy Bisbicos (tbisbicos)"
+                          - option "Tony (Antonio Piazza)"
+                          - option "Tony Cam (temptc@hotmail.com)"
+                          - option "Tony Ferko (tferko01@gmail.com)"
+                          - option "Tony Lourenco (tlourenc)"
+                          - option "tps (tps)"
+                          - option "Tracey Tierney (Traceytierney529@gmail.com)"
+                          - option "Tracey Urbasik (Tracey Urbasik)"
+                          - option "Travis Mather (trmat)"
+                          - option "Travis Wood (traviswood)"
+                          - option "Trevor D'Angelo (trevordan6)"
+                          - option "Trevor Shea (Rcoshea)"
+                          - option "TrevorWylie (TrevorWylie)"
+                          - option "Troy (Troy)"
+                          - option "Troy Evans (titan2x)"
+                          - option "Trsmulders (Trsmulders)"
+                          - option "Trumble (Trumble)"
+                          - option "tsklierenko (tsklierenko)"
+                          - option "Tushar Sharma (tusharee@hotmail.com)"
+                          - option "Tyler Bell (Tbells73)"
+                          - option "Tyler Sandilands (tjs95029)"
+                          - option "Valerio Michelazzi (VMichelazzi)"
+                          - option "Vanessa McElroy (mcelroyvl@gmail.com)"
+                          - option "Veronica Starr (veronica02starr@hotmail.com)"
+                          - option "Ves Sobot (Vessob)"
+                          - option "Vicki MacNaught (vmacnaught)"
+                          - option "Vicky Papaioannou (vicky.papaioannou@sickkids.ca)"
+                          - option "Victor Aguiar (vaguiar)"
+                          - option "Victor Kolodziejski (victorkolo)"
+                          - option "Vince To (lonea)"
+                          - option "Vyan Nguyen (vyanguyen)"
+                          - option "Wade Noble (Waden14)"
+                          - option "Wade Osborne (wade.osborne@me.com)"
+                          - option "Warren Lovely (Wrnl)"
+                          - option "Warren Mascarenhas (warrenmascarenhas@hotmail.com)"
+                          - option "Wendy Burant (wendyraike@yahoo.ca)"
+                          - option "Wendy Lei (wendy.lei)"
+                          - option "Wikki (Wikki)"
+                          - option "William Smith (Smitty)"
+                          - option "William Zuo (williamzuo)"
+                          - option "Williest87 (Williest87)"
+                          - option "yermax (yermax)"
+                          - option "Yvonne Ki (yvonneb.ki@gmail.com)"
+                          - option "Zach Smith (ZachSmith)"
+                          - option "Zachary Tremere (Ztrem)"
+                          - option "Ziyu Wang (ziyucwang@gmail.com)"
+                          - option "zoecarmichael (zoecarmichael)"
+                          - option "zosborne (zosborne)"
+                          - option "Admin (Administrator)" [selected]
+                    - generic [ref=e1331]:
+                      - generic [ref=e1332]:
+                        - heading "Player Notes" [level=2] [ref=e1333]
+                        - generic [ref=e1334]:
+                          - button "Move up" [ref=e1335] [cursor=pointer]:
+                            - generic [ref=e1336]: Move up
+                          - button "Move down" [ref=e1338] [cursor=pointer]:
+                            - generic [ref=e1339]: Move down
+                          - 'button "Toggle panel: Player Notes" [expanded] [ref=e1341] [cursor=pointer]':
+                            - generic [ref=e1342]: "Toggle panel: Player Notes"
+                      - generic [ref=e1345]:
+                        - generic [ref=e1347]:
+                          - generic [ref=e1348]:
+                            - strong [ref=e1349]: Unknown
+                            - text: 2026-04-18 18:22:53
+                            - link "Delete" [ref=e1351] [cursor=pointer]:
+                              - /url: "#"
+                          - generic [ref=e1352]: Test note from CLI
+                        - generic [ref=e1353]:
+                          - textbox "Add a note…" [ref=e1354]
+                          - generic [ref=e1355]:
+                            - textbox "Category (optional)" [ref=e1356]
+                            - button "Add Note" [ref=e1357] [cursor=pointer]
+                  - generic [ref=e1360]:
+                    - heading "Excerpt" [level=2] [ref=e1361]
+                    - generic [ref=e1362]:
+                      - button "Move up" [ref=e1363] [cursor=pointer]:
+                        - generic [ref=e1364]: Move up
+                      - button "Move down" [disabled] [ref=e1366]:
+                        - generic [ref=e1367]: Move down
+                      - 'button "Toggle panel: Excerpt" [ref=e1369] [cursor=pointer]':
+                        - generic [ref=e1370]: "Toggle panel: Excerpt"
+    - contentinfo [ref=e1372]:
+      - paragraph [ref=e1373]:
+        - generic [ref=e1375]:
+          - text: Thank you for creating with
+          - link "WordPress" [ref=e1376] [cursor=pointer]:
+            - /url: https://en-ca.wordpress.org/
+          - text: .
+      - paragraph [ref=e1377]: Version 6.9.4
+  - text:          
+  - status [ref=e1380]
+  - text:  

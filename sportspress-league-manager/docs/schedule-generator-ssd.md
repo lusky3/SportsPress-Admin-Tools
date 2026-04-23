@@ -2,7 +2,7 @@
 
 **Project:** SportsPress Admin Tools — League Manager Dashboard
 **Date:** 2026-04-22
-**Status:** Draft
+**Status:** Complete (all phases implemented as of 2026-04-23)
 **Author:** Kiro + Cody (lusky3)
 
 ---
@@ -34,6 +34,8 @@ Volunteer rec hockey league admin managing a 5-division, 22-team league. Not a d
 3. **No reimplementation** of engine logic — the REST layer translates HTTP ↔ method calls
 4. **The dashboard calls `spsg/v1` endpoints** via `@wordpress/api-fetch`
 5. **Old `splm/v1/schedule/*` endpoints remain** until the new wizard is complete, then are deprecated
+
+> **Note (2026-04-23):** The old `splm/v1/schedule/*` endpoints have been removed. All schedule generation now uses `spsg/v1` endpoints.
 
 ### 2.2 Existing Backend Components
 
@@ -349,12 +351,21 @@ Presented as "TBD Teams" — teams that haven't been confirmed yet.
 
 ### Phase 3: Advanced Features (Low Risk, Polish)
 
+> **Status (2026-04-23): Implemented.**
+
 **Scope:**
-- Placeholder team management in dashboard
-- Config import/export (JSON)
-- Schedule export (CSV/XLSX)
-- Change history viewer
-- Venue CSV upload
+- Placeholder team management in dashboard ✅
+- Config import/export (JSON) ✅
+- Schedule export (CSV/XLSX) ✅
+- Change history viewer ✅
+- Venue CSV upload ✅
+- Preset templates ✅
+- Per-division SP team loading ✅
+- Detailed statistics (home/away balance, venue utilization, imbalances) ✅
+- Preview filters (team, venue, date range) ✅
+- Publish options (conflict resolution, event status, dry run) ✅
+- Batch placeholder replacement ✅
+- Day weight distribution settings in SPAT admin ✅
 
 ### Deprecation
 

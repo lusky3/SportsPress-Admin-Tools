@@ -1,0 +1,145 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - heading "ARL - Adult Recreational League" [level=1] [ref=e5]
+      - generic [ref=e6]:
+        - combobox [ref=e7]:
+          - option "All Seasons"
+          - option "S2026 Playoffs"
+          - option "S2026" [selected]
+          - option "W2025-26 Playoffs"
+          - option "W2025-26"
+          - option "S2025 Playoffs"
+          - option "S2025"
+          - option "W2024-25 Playoffs"
+          - option "W2024-25"
+          - option "S2024 Playoffs"
+          - option "S2024"
+          - option "W2023-24 Playoffs"
+          - option "W2023-24"
+          - option "S2023 Playoffs"
+          - option "S2023"
+          - option "W2022-23 Playoffs"
+          - option "W2022-23"
+          - option "S2022 Playoffs"
+          - option "S2022"
+          - option "W2021-22 Playoffs"
+          - option "W2021-22"
+          - option "W2020-21 Playoffs"
+          - option "W2020-21"
+          - option "W2019-20 Playoffs"
+          - option "W2019-20"
+          - option "S2019 Playoffs"
+          - option "S2019"
+          - option "W2018-19 Playoffs"
+          - option "W2018-19"
+          - option "S2018 Playoffs"
+          - option "S2018"
+          - option "W2017-18 Playoffs"
+          - option "W2017-18"
+          - option "S2017 Playoffs"
+          - option "S2017"
+          - option "W2016-17 Playoffs"
+          - option "W2016-17"
+          - option "S2016 Playoffs"
+          - option "S2016"
+          - option "W2015-16 Playoffs"
+          - option "W2015-16"
+        - link "Log out" [ref=e8] [cursor=pointer]:
+          - /url: https://tikal.lusk.ee:8443/wp-login.php?action=logout&redirect_to=https%3A%2F%2Ftikal.lusk.ee%3A8443&_wpnonce=a92ed584b3
+    - generic [ref=e9]:
+      - navigation [ref=e10]:
+        - button "📊 Dashboard" [ref=e11] [cursor=pointer]:
+          - generic [ref=e12]: 📊
+          - generic [ref=e13]: Dashboard
+        - button "📅 Schedule" [ref=e14] [cursor=pointer]:
+          - generic [ref=e15]: 📅
+          - generic [ref=e16]: Schedule
+        - button "🏒 Scores" [ref=e17] [cursor=pointer]:
+          - generic [ref=e18]: 🏒
+          - generic [ref=e19]: Scores
+        - button "🏆 Standings" [ref=e20] [cursor=pointer]:
+          - generic [ref=e21]: 🏆
+          - generic [ref=e22]: Standings
+        - button "👥 Rosters" [ref=e23] [cursor=pointer]:
+          - generic [ref=e24]: 👥
+          - generic [ref=e25]: Rosters
+        - button "💰 Payments" [ref=e26] [cursor=pointer]:
+          - generic [ref=e27]: 💰
+          - generic [ref=e28]: Payments
+        - button "🔍 Health" [ref=e29] [cursor=pointer]:
+          - generic [ref=e30]: 🔍
+          - generic [ref=e31]: Health
+        - button "📅 Generate" [ref=e32] [cursor=pointer]:
+          - generic [ref=e33]: 📅
+          - generic [ref=e34]: Generate
+      - main [ref=e35]:
+        - generic [ref=e36]:
+          - heading "Dashboard" [level=2] [ref=e37]
+          - generic [ref=e38]:
+            - generic [ref=e39]:
+              - heading "Upcoming Games" [level=3] [ref=e40]
+              - list [ref=e41]:
+                - listitem [ref=e42]:
+                  - generic [ref=e43]: 2026-04-24 18:00
+                  - generic [ref=e44]: Hammers vs Puck Dynasty
+                  - generic [ref=e45]: Black
+                - listitem [ref=e46]:
+                  - generic [ref=e47]: 2026-04-24 18:30
+                  - generic [ref=e48]: Train Wreck vs TrebleMakers (Musik 7 Studios)
+                  - generic [ref=e49]: Red
+                - listitem [ref=e50]:
+                  - generic [ref=e51]: 2026-04-24 19:00
+                  - generic [ref=e52]: Kings vs Replacements
+                  - generic [ref=e53]: Black
+                - listitem [ref=e54]:
+                  - generic [ref=e55]: 2026-04-24 19:30
+                  - generic [ref=e56]: Royals vs Spartans (Lusk.Tech)
+                  - generic [ref=e57]: Red
+                - listitem [ref=e58]:
+                  - generic [ref=e59]: 2026-04-24 20:00
+                  - generic [ref=e60]: Black Bulls vs Lightning
+                  - generic [ref=e61]: Black
+            - generic [ref=e62]:
+              - heading "Recent Scores" [level=3] [ref=e63]
+              - list [ref=e64]:
+                - listitem [ref=e65]:
+                  - generic [ref=e66]: 2026-04-24
+                  - generic [ref=e67]: Royals 0 - 0 Spartans (Lusk.Tech)
+                - listitem [ref=e68]:
+                  - generic [ref=e69]: 2026-04-24
+                  - generic [ref=e70]: Kings 0 - 0 Replacements
+          - generic [ref=e71]:
+            - button "Enter Scores" [ref=e72] [cursor=pointer]
+            - button "View Schedule" [ref=e73] [cursor=pointer]
+            - button "Standings" [ref=e74] [cursor=pointer]
+  - generic [ref=e75]:
+    - link "Skip to toolbar" [ref=e76] [cursor=pointer]:
+      - /url: "#wp-toolbar"
+    - navigation "Toolbar":
+      - menu:
+        - group [ref=e77]:
+          - menuitem "About WordPress" [ref=e78] [cursor=pointer]:
+            - generic [ref=e80]: About WordPress
+        - group [ref=e81]:
+          - menuitem "ARL - Adult Recreational League" [ref=e82] [cursor=pointer]
+        - group [ref=e83]:
+          - menuitem " SportsPress" [ref=e84] [cursor=pointer]
+        - group [ref=e85]:
+          - menuitem "0 Comments in moderation" [ref=e86] [cursor=pointer]:
+            - generic [ref=e88]: "0"
+            - generic [ref=e89]: 0 Comments in moderation
+        - group [ref=e90]:
+          - menuitem "New" [ref=e91] [cursor=pointer]:
+            - generic [ref=e93]: New
+        - group [ref=e94]:
+          - menuitem "Edit Page" [ref=e95] [cursor=pointer]
+      - menu [ref=e96]:
+        - group [ref=e97]:
+          - menuitem "Howdy, testleaguemgr" [ref=e98] [cursor=pointer]
+        - group [ref=e99]:
+          - menuitem "Search" [ref=e100]:
+            - generic [ref=e101]:
+              - textbox "Search" [ref=e102] [cursor=pointer]
+              - generic [ref=e103]: Search
+  - status [ref=e104]

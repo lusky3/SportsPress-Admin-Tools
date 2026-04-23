@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from '@wordpress/element';
+import { useState, useEffect, useCallback, useRef, Fragment } from '@wordpress/element';
 import { spsg } from '../lib/api';
 import { rolloverPreview, rolloverExecute } from '../lib/api';
 
@@ -148,7 +148,7 @@ export default function ScheduleGenerator() {
 	}, []);
 
 	const up = patch => {
-		setCfg(p => ({...p,...patch}));
+		setCfg(p => typeof patch === 'function' ? patch(p) : ({...p,...patch}));
 		// #7: clear stale validation whenever config changes
 		setValidation(null);
 	};
@@ -177,7 +177,8 @@ export default function ScheduleGenerator() {
 	// Fix #14: import shows dropdown immediately on first click
 	const doImport = async () => {
 		if (!spL.length) {
-			const leagues = await spsg.getLeagues();
+			const leagues = await spsg.getLeagues().catch(e => { setError('Failed to load leagues: ' + (e?.message||'unknown error')); return null; });
+			if (!leagues) return;
 			setSpL(leagues);
 			return; // user picks from dropdown next click
 		}
@@ -229,7 +230,9 @@ export default function ScheduleGenerator() {
 		if (!schedule?.id||!pubSeason||!pubLeague) return;
 		setPublishing(true); setPubProg({imported:0,total:schedule.games?.length||0}); let off=0, totalImported=0;
 		try {
+			let maxIter = 1000;
 			while (true) {
+				if (--maxIter <= 0) { setError('Publish loop exceeded maximum iterations'); break; }
 				const r = await spsg.publish(schedule.id,pubSeason,pubLeague,off,50,pubOpts);
 				totalImported += r.imported||0;
 				off += 50;
@@ -328,8 +331,8 @@ export default function ScheduleGenerator() {
 										if(cfgSort==='teams') return (b.team_count||0)-(a.team_count||0);
 										return 0; // default: server order (newest first)
 									}).map(c=>(
-										<>
-										<tr key={c.id}>
+										<Fragment key={c.id}>
+										<tr>
 											{/* Gap #4: inline rename */}
 											<td><input defaultValue={c.name} style={{border:'none',background:'transparent',width:'100%',padding:0}}
 												onBlur={async e=>{ if(e.target.value!==c.name){await spsg.updateConfig(c.id,{name:e.target.value});loadConfigs();} }}
@@ -351,7 +354,7 @@ export default function ScheduleGenerator() {
 												<button className="splm-btn" title="Export JSON" onClick={async()=>{
 													const data = await spsg.getConfig(c.id);
 													const blob = new Blob([JSON.stringify({configuration:data},null,2)],{type:'application/json'});
-													const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`${c.name||'config'}.json`; a.click();
+													const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`${c.name||'config'}.json`; a.click(); URL.revokeObjectURL(a.href);
 												}}>↓</button>
 												{/* Gap #11: change history */}
 												<button className="splm-btn" title="Change history" onClick={async()=>{
@@ -363,7 +366,7 @@ export default function ScheduleGenerator() {
 										</tr>
 										{/* Inline history panel */}
 										{historyId===c.id&&(
-											<tr key={`${c.id}-history`}>
+											<tr>
 												<td colSpan={5} style={{background:'#f6f7f7',padding:'0.75rem'}}>
 													{!historyData.length
 														? <p className="splm-muted">No change history recorded.</p>
@@ -389,7 +392,7 @@ export default function ScheduleGenerator() {
 												</td>
 											</tr>
 										)}
-										</>
+										</Fragment>
 									))}
 									))}</tbody>
 								</table>
@@ -532,9 +535,21 @@ export default function ScheduleGenerator() {
 										{cfg.divisions.length>1&&(
 											<select className="splm-select" style={{width:90}} value="" onChange={e=>{
 												if(!e.target.value) return;
-												rmTeam(div.id,t.id);
-												const tgt=cfg.divisions.find(d=>d.id===e.target.value);
-												if(tgt) upDiv(e.target.value,{teams:[...tgt.teams,t]});
+												const targetDivId = e.target.value;
+												up(prev => {
+													const srcDiv = prev.divisions.find(d=>d.id===div.id);
+													const tgtDiv = prev.divisions.find(d=>d.id===targetDivId);
+													if (!srcDiv || !tgtDiv) return prev;
+													return {
+														...prev,
+														divisions: prev.divisions.map(d => {
+															if (d.id === div.id) return {...d, teams: d.teams.filter(tm=>tm.id!==t.id)};
+															if (d.id === targetDivId) return {...d, teams: [...d.teams, t]};
+															return d;
+														})
+													};
+												});
+												e.target.value='';
 											}}>
 												<option value="">Move…</option>
 												{cfg.divisions.filter(d=>d.id!==div.id).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
@@ -860,7 +875,7 @@ export default function ScheduleGenerator() {
 								(schedule.games||[]).forEach(g=>rows.push([g.date,g.time,g.home,g.away,g.venue,g.division]));
 								const csv=rows.map(r=>r.map(c=>`"${(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
 								const fname=`${(cfg.name||'schedule').replace(/[^a-z0-9]/gi,'_')}_${new Date().toISOString().split('T')[0]}.csv`;
-								const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=fname;a.click();
+								const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=fname;a.click();URL.revokeObjectURL(a.href);
 							}}>Export CSV</button>
 							{/* #9: XLSX style selector */}
 							<select className="splm-select" style={{width:120}} value={xlsxStyle} onChange={e=>setXlsxStyle(e.target.value)}>

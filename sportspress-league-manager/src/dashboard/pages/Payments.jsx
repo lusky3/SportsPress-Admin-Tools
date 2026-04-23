@@ -58,7 +58,7 @@ export default function Payments( { season } ) {
 									<td>{ p.player }</td>
 									<td>{ p.team }</td>
 									<td><span className={ `splm-payment-table__status splm-payment-table__status--${ p.status }` }>{ p.status }</span></td>
-									<td>${ p.amount }</td>
+									<td>{ window.splmDashboard?.currencySymbol || '$' }{ p.amount }</td>
 								</tr>
 							) ) }
 						</tbody>

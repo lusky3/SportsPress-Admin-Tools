@@ -1,0 +1,140 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - heading "ARL - Adult Recreational League" [level=1] [ref=e5]
+      - generic [ref=e6]:
+        - combobox [ref=e7]:
+          - option "All Seasons" [selected]
+          - option "S2026 Playoffs"
+          - option "S2026"
+          - option "W2025-26 Playoffs"
+          - option "W2025-26"
+          - option "S2025 Playoffs"
+          - option "S2025"
+          - option "W2024-25 Playoffs"
+          - option "W2024-25"
+          - option "S2024 Playoffs"
+          - option "S2024"
+          - option "W2023-24 Playoffs"
+          - option "W2023-24"
+          - option "S2023 Playoffs"
+          - option "S2023"
+          - option "W2022-23 Playoffs"
+          - option "W2022-23"
+          - option "S2022 Playoffs"
+          - option "S2022"
+          - option "W2021-22 Playoffs"
+          - option "W2021-22"
+          - option "W2020-21 Playoffs"
+          - option "W2020-21"
+          - option "W2019-20 Playoffs"
+          - option "W2019-20"
+          - option "S2019 Playoffs"
+          - option "S2019"
+          - option "W2018-19 Playoffs"
+          - option "W2018-19"
+          - option "S2018 Playoffs"
+          - option "S2018"
+          - option "W2017-18 Playoffs"
+          - option "W2017-18"
+          - option "S2017 Playoffs"
+          - option "S2017"
+          - option "W2016-17 Playoffs"
+          - option "W2016-17"
+          - option "S2016 Playoffs"
+          - option "S2016"
+          - option "W2015-16 Playoffs"
+          - option "W2015-16"
+        - link "Log out" [ref=e8] [cursor=pointer]:
+          - /url: https://tikal.lusk.ee:8443/wp-login.php?action=logout&redirect_to=https%3A%2F%2Ftikal.lusk.ee%3A8443&_wpnonce=07a08cd4a1
+    - generic [ref=e9]:
+      - navigation [ref=e10]:
+        - button "📊 Dashboard" [active] [ref=e11] [cursor=pointer]:
+          - img "📊" [ref=e101]
+          - generic [ref=e13]: Dashboard
+        - button "📅 Schedule" [ref=e14] [cursor=pointer]:
+          - img "📅" [ref=e102]
+          - generic [ref=e16]: Schedule
+        - button "🏒 Scores" [ref=e17] [cursor=pointer]:
+          - img "🏒" [ref=e103]
+          - generic [ref=e19]: Scores
+        - button "🏆 Standings" [ref=e20] [cursor=pointer]:
+          - img "🏆" [ref=e104]
+          - generic [ref=e22]: Standings
+        - button "👥 Rosters" [ref=e23] [cursor=pointer]:
+          - img "👥" [ref=e105]
+          - generic [ref=e25]: Rosters
+        - button "💰 Payments" [ref=e26] [cursor=pointer]:
+          - img "💰" [ref=e106]
+          - generic [ref=e28]: Payments
+        - button "🔍 Health" [ref=e29] [cursor=pointer]:
+          - img "🔍" [ref=e107]
+          - generic [ref=e31]: Health
+      - main [ref=e32]:
+        - generic [ref=e114]:
+          - heading "Dashboard" [level=2] [ref=e115]
+          - generic [ref=e116]:
+            - strong [ref=e117]: 36 games need scores.
+            - button "Enter Scores →" [ref=e118] [cursor=pointer]
+          - generic [ref=e119]:
+            - generic [ref=e120]:
+              - heading "Upcoming Games" [level=3] [ref=e121]
+              - paragraph [ref=e122]: No upcoming games.
+            - generic [ref=e123]:
+              - heading "Recent Scores" [level=3] [ref=e124]
+              - list [ref=e125]:
+                - listitem [ref=e126]:
+                  - generic [ref=e127]: 2016-02-28
+                  - generic [ref=e128]: Storm 3 - 2 (Retired) Woodchester Nissan (Rogues) (W2015-16)
+                - listitem [ref=e129]:
+                  - generic [ref=e130]: 2016-02-26
+                  - generic [ref=e131]: Falcons (BMG School/PDL) 2 - 4 Marvels (Conacher Athletics)
+                - listitem [ref=e132]:
+                  - generic [ref=e133]: 2016-02-26
+                  - generic [ref=e134]: Pylons 2 - 0 Rebars (Dan&#8217;s Welding)
+                - listitem [ref=e135]:
+                  - generic [ref=e136]: 2016-02-26
+                  - generic [ref=e137]: Dirty Caesars 4 - 3 Kings (Jeff Robson)
+                - listitem [ref=e138]:
+                  - generic [ref=e139]: 2016-02-26
+                  - generic [ref=e140]: (Retired) Medieval Times (Knights) (W2015-16) 1 - 3 Sharks (Kenesky)
+          - generic [ref=e141]:
+            - button "Enter Scores" [ref=e142] [cursor=pointer]
+            - button "View Schedule" [ref=e143] [cursor=pointer]
+            - button "Standings" [ref=e144] [cursor=pointer]
+  - generic [ref=e64]:
+    - link "Skip to toolbar" [ref=e65] [cursor=pointer]:
+      - /url: "#wp-toolbar"
+    - navigation "Toolbar":
+      - menu:
+        - group [ref=e66]:
+          - menuitem "About WordPress" [ref=e67] [cursor=pointer]:
+            - generic [ref=e69]: About WordPress
+        - group [ref=e70]:
+          - menuitem "ARL - Adult Recreational League" [ref=e71] [cursor=pointer]
+        - group [ref=e72]:
+          - menuitem " SportsPress" [ref=e73] [cursor=pointer]
+        - group [ref=e74]:
+          - menuitem "Customize" [ref=e75] [cursor=pointer]
+        - group [ref=e76]:
+          - menuitem "1 update available" [ref=e77] [cursor=pointer]:
+            - generic [ref=e79]: "1"
+            - generic [ref=e80]: 1 update available
+        - group [ref=e81]:
+          - menuitem "0 Comments in moderation" [ref=e82] [cursor=pointer]:
+            - generic [ref=e84]: "0"
+            - generic [ref=e85]: 0 Comments in moderation
+        - group [ref=e86]:
+          - menuitem "New" [ref=e87] [cursor=pointer]:
+            - generic [ref=e89]: New
+        - group [ref=e90]:
+          - menuitem "Edit Page" [ref=e91] [cursor=pointer]
+      - menu [ref=e92]:
+        - group [ref=e93]:
+          - menuitem "Howdy, Cody Lusk" [ref=e94] [cursor=pointer]
+        - group [ref=e95]:
+          - menuitem "Search" [ref=e96]:
+            - generic [ref=e97]:
+              - textbox "Search" [ref=e98] [cursor=pointer]
+              - generic [ref=e99]: Search
+  - status [ref=e100]
