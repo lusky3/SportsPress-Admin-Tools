@@ -148,6 +148,7 @@ export default function ScheduleGenerator() {
 			try { await save(); } catch { setError('Failed to save'); return; }
 		}
 		setError('');
+		if (t === 0) loadConfigs(); // refresh list when returning to launchpad
 		setStep(t);
 	};
 
