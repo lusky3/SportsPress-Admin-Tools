@@ -340,7 +340,17 @@ class SPSG_REST_API {
 		$csv_venues = SPSG_Venue_Schedule_Importer::get_unique_venues( $schedules );
 		$sp_venues  = get_terms( array( 'taxonomy' => 'sp_venue', 'hide_empty' => false ) );
 		$sp_venue_list = is_array( $sp_venues ) ? array_map( fn( $t ) => array( 'id' => $t->term_id, 'name' => $t->name ), $sp_venues ) : array();
-		$suggestions = SPSG_Venue_Schedule_Importer::suggest_venue_mapping( $csv_venues, $sp_venue_list );
+		$raw_suggestions = SPSG_Venue_Schedule_Importer::suggest_venue_mapping( $csv_venues, $sp_venue_list );
+		// Normalize to flat array with match_id for the React UI
+		$suggestions = array_map( function( $s ) {
+			return array(
+				'csv_venue' => $s['csv_name'],
+				'match_id'  => isset( $s['suggested_match']['id'] ) ? $s['suggested_match']['id'] : null,
+				'match_name'=> isset( $s['suggested_match']['name'] ) ? $s['suggested_match']['name'] : null,
+				'confidence'=> $s['confidence'],
+				'action'    => $s['action'],
+			);
+		}, array_values( $raw_suggestions ) );
 		return rest_ensure_response( array(
 			'schedules'   => $schedules,
 			'csv_venues'  => $csv_venues,
