@@ -140,6 +140,33 @@ class SPSG_REST_API {
 		if ( isset( $data['end_date'] ) && ! isset( $data['season_end'] ) ) {
 			$data['season_end'] = $data['end_date'];
 		}
+		// Gap #4: map advanced.b2b_pairs → team_restrictions.back_to_back_avoid
+		// Gap #5: map advanced.inter_division → inter_division_games
+		// Gap #6: map advanced.venue_prefs → home_away_preferences
+		if ( ! empty( $data['advanced'] ) ) {
+			$adv = $data['advanced'];
+			if ( ! empty( $adv['b2b_pairs'] ) ) {
+				$data['team_restrictions']['back_to_back_avoid'] = array_map(
+					fn( $pair ) => array( 'teams' => array_values( (array) $pair ) ),
+					$adv['b2b_pairs']
+				);
+			}
+			if ( ! empty( $adv['overlap_pairs'] ) ) {
+				$data['team_restrictions']['overlap_avoid'] = array_map(
+					fn( $pair ) => array( 'teams' => array_values( (array) ( $pair['teams'] ?? $pair ) ), 'buffer_minutes' => (int) ( $pair['buffer_minutes'] ?? 0 ) ),
+					$adv['overlap_pairs']
+				);
+			}
+			if ( ! empty( $adv['inter_division'] ) ) {
+				$data['inter_division_games'] = $adv['inter_division'];
+			}
+			if ( ! empty( $adv['venue_prefs'] ) ) {
+				$data['home_away_preferences'] = array_map(
+					fn( $team_id, $venue_id ) => array( 'team_id' => $team_id, 'venue_id' => (int) $venue_id ),
+					array_keys( $adv['venue_prefs'] ), array_values( $adv['venue_prefs'] )
+				);
+			}
+		}
 		return $this->normalize_blackout_dates( $this->normalize_venues( $this->normalize_divisions( $data ) ) );
 	}
 

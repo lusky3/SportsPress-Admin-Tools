@@ -13,7 +13,7 @@ const blank = () => ({
 	divisions:[], venues:[], time_slots:{},
 	blackout_dates:'', venue_blackout_dates:{},
 	generic_teams:{enabled:false,per_division:0,prefix:'Team'},
-	advanced:{b2b_pairs:[],inter_division:{},venue_prefs:{}},
+	advanced:{b2b_pairs:[],overlap_pairs:[],inter_division:{},venue_prefs:{}},
 });
 let _tbd = 0;
 const mkId = p => `${p}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
@@ -155,6 +155,11 @@ export default function ScheduleGenerator() {
 		}
 		const lg = spL.find(l => String(l.id)===importLg);
 		if (!lg?.teams) return;
+		// Fix #10: skip if division with same name already exists
+		if (cfg.divisions.some(d => d.name === lg.name)) {
+			setError(`Division "${lg.name}" already imported`);
+			return;
+		}
 		up({divisions:[...cfg.divisions,{id:mkId('div'),name:lg.name,teams:lg.teams.map(t=>({id:mkId('team'),name:t.name,is_tbd:false}))}]});
 		setImportLg('');
 	};
@@ -212,7 +217,7 @@ export default function ScheduleGenerator() {
 		setPlaceholders(p=>p.filter(x=>x.id!==placeholderId));
 	};
 
-	// Config import
+	// Fix #2: import config with feedback + navigate to edit
 	const doImportConfig = async (e) => {
 		const file = e.target.files?.[0]; if (!file) return;
 		const text = await file.text();
@@ -220,11 +225,18 @@ export default function ScheduleGenerator() {
 			const data = JSON.parse(text);
 			const cfg_data = data.configuration || data;
 			const r = await spsg.createConfig({...cfg_data, name: (cfg_data.name||'Imported')+' (Imported)'});
+			// Load the imported config immediately for editing
+			const loaded = await spsg.getConfig(r.id);
+			setCfg(loaded); setConfigId(r.id);
 			loadConfigs();
 			setError('');
+			setStep(1);
 		} catch { setError('Invalid config file'); }
 		e.target.value = '';
 	};
+
+	// Fix #11: format MySQL datetime to readable string
+	const fmtDate = s => { if (!s) return ''; try { return new Date(s.replace(' ','T')).toLocaleDateString(); } catch { return s; } };
 
 	const rSeasons = rc?.seasons||[];
 	const f = {display:'flex',gap:'0.5rem'};
@@ -256,7 +268,7 @@ export default function ScheduleGenerator() {
 									<thead><tr><th>Name</th><th>Updated</th><th>Divisions</th><th>Teams</th><th></th></tr></thead>
 									<tbody>{configs.map(c=>(
 										<tr key={c.id}>
-											<td>{c.name}</td><td>{c.updated_at}</td><td>{c.division_count}</td><td>{c.team_count}</td>
+											<td>{c.name}</td><td>{fmtDate(c.updated_at)}</td><td>{c.division_count}</td><td>{c.team_count}</td>
 											<td style={f}>
 												<button className="splm-btn" onClick={()=>spsg.getConfig(c.id).then(d=>{setCfg(d);setConfigId(c.id);setStep(1);})}>Load</button>
 												{/* Fix #1/#12: delete config */}
@@ -275,9 +287,14 @@ export default function ScheduleGenerator() {
 					</div>
 					<div className="splm-wizard__actions">
 						{configs.length>0&&(
-							<button className="splm-btn splm-btn--primary" onClick={()=>{
+							<button className="splm-btn splm-btn--primary" onClick={async()=>{
 								const c=configs[0];
-								spsg.cloneConfig(c.id,`${c.name} (copy)`).then(d=>{setCfg(d);setConfigId(d.id);setStep(1);}).catch(()=>setError('Clone failed'));
+								try {
+									// Fix #1/#9: clone returns {id}, must load full config separately
+									const cloned = await spsg.cloneConfig(c.id,`${c.name} (copy)`);
+									const full = await spsg.getConfig(cloned.id);
+									setCfg(full); setConfigId(cloned.id); setStep(1);
+								} catch { setError('Clone failed'); }
 							}}>Start from {configs[0]?.name}</button>
 						)}
 						<button className="splm-btn" onClick={()=>{setCfg(blank());setConfigId(null);setStep(1);}}>Start Fresh</button>
@@ -351,7 +368,8 @@ export default function ScheduleGenerator() {
 						))}
 					</div>
 					<div className="splm-wizard__actions">
-						<button className="splm-btn" onClick={()=>setStep(0)}>Back</button>
+						{/* Fix #19: use go(0) so changes are saved before going back */}
+						<button className="splm-btn" onClick={()=>go(0)}>Back</button>
 						<button className="splm-btn splm-btn--primary" onClick={()=>go(2)}>Next: Rinks &amp; Times →</button>
 					</div>
 				</div>
@@ -434,6 +452,11 @@ export default function ScheduleGenerator() {
 							<textarea className="splm-textarea" rows="2"
 								value={(cfg.advanced.b2b_pairs||[]).map(p=>p.join(',')).join('\n')}
 								onChange={e=>up({advanced:{...cfg.advanced,b2b_pairs:e.target.value.split('\n').filter(Boolean).map(l=>l.split(',').map(s=>s.trim()))}})}/>
+							{/* Fix #20: overlap avoidance */}
+							<label style={{marginTop:'0.5rem',display:'block'}}>Overlap avoidance pairs (comma-separated per line, optional buffer minutes after colon)</label>
+							<textarea className="splm-textarea" rows="2" placeholder="e.g. Team A,Team B:30"
+								value={(cfg.advanced.overlap_pairs||[]).map(p=>p.teams.join(',')+(p.buffer_minutes?':'+p.buffer_minutes:'')).join('\n')}
+								onChange={e=>up({advanced:{...cfg.advanced,overlap_pairs:e.target.value.split('\n').filter(Boolean).map(l=>{const[teams,buf]=l.split(':');return{teams:teams.split(',').map(s=>s.trim()),buffer_minutes:buf?parseInt(buf,10):0};})}})}/>
 							<label style={{marginTop:'0.5rem',display:'block'}}>Inter-division games</label>
 							{cfg.divisions.length>1&&cfg.divisions.map((d1,i)=>cfg.divisions.slice(i+1).map(d2=>(
 								<div key={`${d1.id}-${d2.id}`} style={{display:'flex',gap:'0.5rem',alignItems:'center',marginBottom:'0.25rem'}}>
@@ -550,7 +573,9 @@ export default function ScheduleGenerator() {
 						</div>
 					)}
 					<div className="splm-wizard__actions">
-						<button className="splm-btn" onClick={()=>go(1)}>← Back to Settings</button>
+						{/* Fix #14: offer both "back to settings" and "back to launchpad" */}
+						<button className="splm-btn" onClick={()=>go(0)}>← All Configs</button>
+						<button className="splm-btn" onClick={()=>go(1)}>← Edit Settings</button>
 						<button className="splm-btn" onClick={()=>{setSchedule(null);setValidation(null);setStep(3);}}>Regenerate</button>
 					</div>
 				</div>
