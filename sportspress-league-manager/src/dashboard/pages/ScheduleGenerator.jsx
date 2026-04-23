@@ -293,6 +293,7 @@ export default function ScheduleGenerator() {
 								<table className="splm-table">
 									<thead><tr><th>Name</th><th>Updated</th><th>Divisions</th><th>Teams</th><th></th></tr></thead>
 									<tbody>{configs.filter(c=>!cfgSearch||c.name.toLowerCase().includes(cfgSearch.toLowerCase())).map(c=>(
+										<>
 										<tr key={c.id}>
 											{/* Gap #4: inline rename */}
 											<td><input defaultValue={c.name} style={{border:'none',background:'transparent',width:'100%',padding:0}}
@@ -342,6 +343,8 @@ export default function ScheduleGenerator() {
 												</td>
 											</tr>
 										)}
+										</>
+									))}
 									))}</tbody>
 								</table>
 							</div>
