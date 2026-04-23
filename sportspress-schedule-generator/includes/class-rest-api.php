@@ -49,6 +49,20 @@ class SPSG_REST_API {
 		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/history', array_merge( $perm, array(
 			'methods' => 'GET', 'callback' => array( $this, 'spsg_get_history' ),
 		) ) );
+		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/history/clear', array_merge( $perm, array(
+			'methods' => 'DELETE', 'callback' => array( $this, 'spsg_clear_history' ),
+		) ) );
+		// Presets
+		register_rest_route( $ns, '/presets', array_merge( $perm, array(
+			'methods' => 'GET', 'callback' => array( $this, 'spsg_list_presets' ),
+		) ) );
+		register_rest_route( $ns, '/presets/(?P<name>[\w_-]+)', array_merge( $perm, array(
+			'methods' => 'GET', 'callback' => array( $this, 'spsg_get_preset' ),
+		) ) );
+		// Per-division team loading
+		register_rest_route( $ns, '/sportspress/leagues/(?P<id>\d+)/teams', array_merge( $perm, array(
+			'methods' => 'GET', 'callback' => array( $this, 'spsg_get_league_teams' ),
+		) ) );
 		// SportsPress reference data
 		register_rest_route( $ns, '/sportspress/leagues', array_merge( $perm, array(
 			'methods' => 'GET', 'callback' => array( $this, 'spsg_get_leagues' ),
@@ -299,8 +313,9 @@ class SPSG_REST_API {
 		$schedule = get_transient( 'spsg_schedule_' . $request->get_param( 'schedule_id' ) );
 		if ( ! $schedule ) return new WP_Error( 'schedule_not_found', 'Schedule not found or expired.', array( 'status' => 404 ) );
 		$config = $this->cm()->load( $request->get_param( 'config_id' ) );
+		$style  = in_array( $request->get_param( 'style' ), array( 'compact', 'detailed' ), true ) ? $request->get_param( 'style' ) : 'detailed';
 		$em = new SPSG_Export_Manager();
-		$result = $em->export( $schedule, $config, 'xlsx', array(), 'detailed' );
+		$result = $em->export( $schedule, $config, 'xlsx', array(), $style );
 		if ( is_wp_error( $result ) ) return $result;
 		return rest_ensure_response( array( 'url' => $result['url'] ) );
 	}
@@ -309,6 +324,33 @@ class SPSG_REST_API {
 		$changes = get_option( 'spsg_configuration_changes', array() );
 		$entries = $changes[ $request['id'] ] ?? array();
 		return rest_ensure_response( array_reverse( $entries ) );
+	}
+
+	public function spsg_clear_history( $request ) {
+		$changes = get_option( 'spsg_configuration_changes', array() );
+		unset( $changes[ $request['id'] ] );
+		update_option( 'spsg_configuration_changes', $changes );
+		return rest_ensure_response( array( 'cleared' => true ) );
+	}
+
+	public function spsg_list_presets() {
+		return rest_ensure_response( $this->cm()->list_presets() );
+	}
+
+	public function spsg_get_preset( $request ) {
+		$preset = $this->cm()->get_preset( $request['name'] );
+		return is_wp_error( $preset ) ? $preset : rest_ensure_response( $preset );
+	}
+
+	public function spsg_get_league_teams( $request ) {
+		$posts = get_posts( array( 'post_type' => 'sp_team', 'posts_per_page' => -1, 'post_status' => 'publish',
+			'tax_query' => array( array( 'taxonomy' => 'sp_league', 'terms' => (int) $request['id'] ) ), 'orderby' => 'title', 'order' => 'ASC' ) );
+		$teams = array();
+		foreach ( $posts as $p ) {
+			if ( stripos( $p->post_title, '(Retired)' ) !== false ) continue;
+			$teams[] = array( 'id' => $p->ID, 'name' => $p->post_title );
+		}
+		return rest_ensure_response( $teams );
 	}
 
 	// --- Placeholders ---
@@ -382,12 +424,15 @@ class SPSG_REST_API {
 				'division'    => $name( $div ),
 			);
 		}, $result['schedule'] );
+		// Rich statistics via SPSG_Statistics_Calculator
+		$rich_stats = ( new SPSG_Statistics_Calculator() )->calculate( $result['schedule'] );
 		return rest_ensure_response( array(
 			'schedule_id' => $sid,
 			'status'      => 'complete',
 			'game_count'  => count( $result['schedule'] ),
 			'games'       => $games,
 			'stats'       => $result['stats'] ?? array(),
+			'rich_stats'  => $rich_stats,
 		) );
 	}
 
@@ -408,11 +453,23 @@ class SPSG_REST_API {
 		if ( ! $schedule ) return new WP_Error( 'schedule_not_found', 'Schedule not found or expired.', array( 'status' => 404 ) );
 		$offset = (int) ( $request->get_param( 'offset' ) ?? 0 );
 		$limit  = (int) ( $request->get_param( 'limit' ) ?? 50 );
+		$cr     = in_array( $request->get_param( 'conflict_resolution' ), array( 'skip', 'overwrite' ), true ) ? $request->get_param( 'conflict_resolution' ) : 'skip';
+		$status = in_array( $request->get_param( 'event_status' ), array( 'publish', 'draft', 'pending', 'future' ), true ) ? $request->get_param( 'event_status' ) : 'publish';
+		$dry    = (bool) $request->get_param( 'dry_run' );
 		$result = ( new SPSG_Sports_Press_Importer() )->import( array_slice( $schedule, $offset, $limit ), array(
 			'season_id' => (int) $request->get_param( 'season_id' ), 'league_id' => (int) $request->get_param( 'league_id' ),
-			'event_status' => 'publish', 'conflict_resolution' => 'skip',
+			'event_status' => $status, 'conflict_resolution' => $cr, 'dry_run' => $dry,
 		) );
 		if ( is_wp_error( $result ) ) return $result;
-		return rest_ensure_response( array( 'imported' => $result['imported'] ?? 0, 'total' => count( $schedule ), 'offset' => $offset, 'limit' => $limit, 'remaining' => max( 0, count( $schedule ) - $offset - $limit ) ) );
+		return rest_ensure_response( array(
+			'imported'   => $result['imported'] ?? 0,
+			'skipped'    => $result['skipped'] ?? 0,
+			'overwritten'=> $result['overwritten'] ?? 0,
+			'dry_run'    => $dry,
+			'total'      => count( $schedule ),
+			'offset'     => $offset,
+			'limit'      => $limit,
+			'remaining'  => max( 0, count( $schedule ) - $offset - $limit ),
+		) );
 	}
 }
