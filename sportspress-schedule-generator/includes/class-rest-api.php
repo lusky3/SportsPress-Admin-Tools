@@ -46,6 +46,9 @@ class SPSG_REST_API {
 		register_rest_route( $ns, '/placeholders/(?P<id>\d+)/replace', array_merge( $perm, array(
 			'methods' => 'POST', 'callback' => array( $this, 'spsg_replace_placeholder' ),
 		) ) );
+		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/history', array_merge( $perm, array(
+			'methods' => 'GET', 'callback' => array( $this, 'spsg_get_history' ),
+		) ) );
 		// SportsPress reference data
 		register_rest_route( $ns, '/sportspress/leagues', array_merge( $perm, array(
 			'methods' => 'GET', 'callback' => array( $this, 'spsg_get_leagues' ),
@@ -282,6 +285,12 @@ class SPSG_REST_API {
 			$cur->add( new DateInterval( 'P1D' ) );
 		}
 		return $slots;
+	}
+
+	public function spsg_get_history( $request ) {
+		$changes = get_option( 'spsg_configuration_changes', array() );
+		$entries = $changes[ $request['id'] ] ?? array();
+		return rest_ensure_response( array_reverse( $entries ) );
 	}
 
 	// --- Placeholders ---

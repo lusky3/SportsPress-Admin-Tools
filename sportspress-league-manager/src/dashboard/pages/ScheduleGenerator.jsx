@@ -99,6 +99,8 @@ export default function ScheduleGenerator() {
 	const [spS,setSpS] = useState([]);
 	const [importLg,setImportLg] = useState('');
 	const [cfgSearch,setCfgSearch] = useState(''); // Gap #5: search filter
+	const [historyId,setHistoryId] = useState(null); // Gap #11: change history
+	const [historyData,setHistoryData] = useState([]);
 	const [validation,setValidation] = useState(null);
 	const [generating,setGenerating] = useState(false);
 	const [schedule,setSchedule] = useState(null);
@@ -311,8 +313,35 @@ export default function ScheduleGenerator() {
 													const blob = new Blob([JSON.stringify({configuration:data},null,2)],{type:'application/json'});
 													const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`${c.name||'config'}.json`; a.click();
 												}}>↓</button>
+												{/* Gap #11: change history */}
+												<button className="splm-btn" title="Change history" onClick={async()=>{
+													if (historyId===c.id) { setHistoryId(null); return; }
+													const h = await spsg.getHistory(c.id).catch(()=>[]);
+													setHistoryData(h); setHistoryId(c.id);
+												}}>⏱</button>
 											</td>
 										</tr>
+										{/* Inline history panel */}
+										{historyId===c.id&&(
+											<tr key={`${c.id}-history`}>
+												<td colSpan={5} style={{background:'#f6f7f7',padding:'0.75rem'}}>
+													{!historyData.length
+														? <p className="splm-muted">No change history recorded.</p>
+														: <table className="splm-table" style={{fontSize:'0.85em'}}>
+															<thead><tr><th>When</th><th>Field</th><th>From</th><th>To</th></tr></thead>
+															<tbody>{historyData.map((e,i)=>(
+																<tr key={i}>
+																	<td>{fmtDate(e.timestamp)}</td>
+																	<td>{e.field_label||e.field}</td>
+																	<td style={{color:'#d63638',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.old_value}</td>
+																	<td style={{color:'#00a32a',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.new_value}</td>
+																</tr>
+															))}</tbody>
+														</table>
+													}
+												</td>
+											</tr>
+										)}
 									))}</tbody>
 								</table>
 							</div>
