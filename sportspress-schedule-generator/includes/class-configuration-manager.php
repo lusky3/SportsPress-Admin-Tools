@@ -454,13 +454,13 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 	}
 
 	/**
-	 * Track configuration changes
+	 * Track configuration changes (public so REST save_draft can call it)
 	 *
 	 * @param string $config_id Configuration ID
 	 * @param array  $old_config Old configuration data
 	 * @param array  $new_config New configuration data
 	 */
-	private function track_changes( $config_id, $old_config, $new_config ) {
+	public function track_changes( $config_id, $old_config, $new_config ) {
 		// Check if change tracking is enabled
 		if ( ! get_option( 'spsg_enable_change_tracking', true ) ) {
 			return;
