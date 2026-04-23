@@ -132,6 +132,9 @@ export default function ScheduleGenerator() {
 	const up = patch => setCfg(p => ({...p,...patch}));
 	const togDay = day => up({playing_days: cfg.playing_days.includes(day) ? cfg.playing_days.filter(d=>d!==day) : [...cfg.playing_days,day]});
 
+	// Gap #1/#2/#16: only save if config has meaningful content
+	const hasContent = () => cfg.name.trim() || cfg.divisions.some(d => d.teams.length > 0);
+
 	const save = async () => {
 		if (configId) { await spsg.updateConfig(configId,cfg); return configId; }
 		const r = await spsg.createConfig(cfg);
@@ -139,9 +142,11 @@ export default function ScheduleGenerator() {
 		return r.id;
 	};
 
-	// Fix #16: save on ALL step transitions from step>=1 (not just forward)
+	// Save on step transitions, but skip if config is empty and unsaved, or same step (#17)
 	const go = async t => {
-		if (step >= 1) { try { await save(); } catch { setError('Failed to save'); return; } }
+		if (t !== step && step >= 1 && (configId || hasContent())) {
+			try { await save(); } catch { setError('Failed to save'); return; }
+		}
 		setError('');
 		setStep(t);
 	};
@@ -178,6 +183,15 @@ export default function ScheduleGenerator() {
 		setGenerating(true); setError('');
 		try {
 			const id = await save();
+			// Gap #5/#6: auto-validate before generating
+			const val = await spsg.validateConfig(id||configId);
+			if (val.errors?.length) {
+				setValidation(val);
+				setGenerating(false);
+				setError('Fix validation errors before generating.');
+				return;
+			}
+			setValidation(val);
 			const result = await spsg.generate(id||configId);
 			setSchedule({ id: result.schedule_id, games: result.games||[], stats: computeStats(result.games) });
 			setGenerating(false); setStep(4);
@@ -336,7 +350,15 @@ export default function ScheduleGenerator() {
 						<div style={{...f,marginBottom:'0.75rem',flexWrap:'wrap'}}>
 							<button className="splm-btn" onClick={addDiv}>Add Division</button>
 							<button className="splm-btn" onClick={doImport}>{spL.length?'Import Selected':'Import from SportsPress'}</button>
-							{spL.length>0&&<select className="splm-select" value={importLg} onChange={e=>setImportLg(e.target.value)}><option value="">Pick a league…</option>{spL.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select>}
+							{spL.length>0&&<>
+								<select className="splm-select" value={importLg} onChange={e=>setImportLg(e.target.value)}><option value="">Pick a league…</option>{spL.map(l=><option key={l.id} value={l.id}>{l.name} ({l.teams?.length||0})</option>)}</select>
+								{/* Gap #13: import all leagues as separate divisions */}
+								<button className="splm-btn" title="Import each league as a separate division" onClick={()=>{
+									const newDivs = spL.filter(l => l.teams?.length && !cfg.divisions.some(d=>d.name===l.name))
+										.map(l => ({id:mkId('div'),name:l.name,teams:l.teams.map(t=>({id:mkId('team'),name:t.name,is_tbd:false}))}));
+									if (newDivs.length) up({divisions:[...cfg.divisions,...newDivs]});
+								}}>Import All</button>
+							</>}
 						</div>
 						{/* Fix #12: generic_teams auto-fill */}
 						<details style={{marginBottom:'0.75rem'}}>
@@ -384,16 +406,27 @@ export default function ScheduleGenerator() {
 					</div>
 					<div className="splm-card">
 						<h3>Time Slots per Playing Day</h3>
+						{/* Gap #4: pre-fill defaults */}
+						<button className="splm-btn" style={{marginBottom:'0.5rem'}} onClick={()=>{
+							const sl = {};
+							cfg.playing_days.forEach(d => {
+								sl[d] = d==='saturday'||d==='sunday' ? ['14:00','15:00','16:00'] : ['19:00','20:00','21:00'];
+							});
+							up({time_slots:sl});
+						}}>Use Defaults</button>
 						{cfg.playing_days.map(day=>(
 							<div key={day} style={{marginBottom:'0.75rem'}}>
 								<strong>{DL[day]||day}</strong>
+								{/* Gap #3: wrap time slots */}
+								<div style={{display:'flex',flexWrap:'wrap',gap:'0.25rem',marginTop:'0.25rem'}}>
 								{(cfg.time_slots[day]||[]).map((t,i)=>(
-									<span key={i} style={{display:'inline-flex',gap:'0.25rem',alignItems:'center',marginLeft:'0.5rem'}}>
+									<span key={i} style={{display:'inline-flex',gap:'0.25rem',alignItems:'center'}}>
 										<input type="time" className="splm-select" value={t} onChange={e=>{const sl={...cfg.time_slots};sl[day]=[...(sl[day]||[])];sl[day][i]=e.target.value;up({time_slots:sl});}}/>
 										<button className="splm-btn splm-btn--danger" style={{padding:'0.1rem 0.4rem'}} onClick={()=>{const sl={...cfg.time_slots};sl[day]=sl[day].filter((_,j)=>j!==i);up({time_slots:sl});}}>✕</button>
 									</span>
 								))}
-								<button className="splm-btn" style={{marginLeft:'0.5rem'}} onClick={()=>{const sl={...cfg.time_slots};sl[day]=[...(sl[day]||[]),'19:00'];up({time_slots:sl});}}>+ Time</button>
+								<button className="splm-btn" onClick={()=>{const sl={...cfg.time_slots};sl[day]=[...(sl[day]||[]),'19:00'];up({time_slots:sl});}}>+ Time</button>
+								</div>
 							</div>
 						))}
 						{!cfg.playing_days.length&&<p className="splm-muted">Select playing days in Step 1 first.</p>}
@@ -576,7 +609,7 @@ export default function ScheduleGenerator() {
 						{/* Fix #14: offer both "back to settings" and "back to launchpad" */}
 						<button className="splm-btn" onClick={()=>go(0)}>← All Configs</button>
 						<button className="splm-btn" onClick={()=>go(1)}>← Edit Settings</button>
-						<button className="splm-btn" onClick={()=>{setSchedule(null);setValidation(null);setStep(3);}}>Regenerate</button>
+						<button className="splm-btn" onClick={()=>{setSchedule(null);setStep(3);}}>Regenerate</button>
 					</div>
 				</div>
 			)}

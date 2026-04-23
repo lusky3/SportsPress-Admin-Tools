@@ -177,6 +177,8 @@ class SPSG_REST_API {
 		$raw = get_option( 'spsg_configurations', array() );
 		$out = array();
 		foreach ( $all as $id => $meta ) {
+			// Skip configs with no name (created by accidental back-navigation)
+			if ( empty( trim( $meta['name'] ?? '' ) ) ) continue;
 			$divs = $raw[ $id ]['divisions'] ?? array();
 			$tc = 0;
 			foreach ( $divs as $d ) { $tc += count( $d['teams'] ?? array() ); }
