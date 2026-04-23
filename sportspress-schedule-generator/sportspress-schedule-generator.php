@@ -34,6 +34,19 @@ class SportsPress_Schedule_Generator {
 			deactivate_plugins( plugin_basename( __FILE__ ) );
 			wp_die( 'SportsPress Schedule Generator requires SportsPress Admin Tools to be installed and activated first.' );
 		}
+		self::fix_configurations_autoload();
+	}
+
+	public static function fix_configurations_autoload() {
+		global $wpdb;
+		$row = $wpdb->get_row( $wpdb->prepare(
+			"SELECT autoload FROM $wpdb->options WHERE option_name = %s", 'spsg_configurations'
+		) );
+		if ( $row && $row->autoload !== 'no' ) {
+			$val = get_option( 'spsg_configurations' );
+			delete_option( 'spsg_configurations' );
+			add_option( 'spsg_configurations', $val, '', 'no' );
+		}
 	}
 
 	/**

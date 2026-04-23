@@ -5,19 +5,10 @@ class SPSG_REST_API {
 
 	private $ns = 'spsg/v1';
 
+	private $config_manager = null;
+
 	public function __construct() {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
-		add_action( 'init', function() {
-			global $wpdb;
-			$row = $wpdb->get_row( $wpdb->prepare(
-				"SELECT autoload FROM $wpdb->options WHERE option_name = %s", 'spsg_configurations'
-			) );
-			if ( $row && $row->autoload !== 'no' ) {
-				$val = get_option( 'spsg_configurations' );
-				delete_option( 'spsg_configurations' );
-				add_option( 'spsg_configurations', $val, '', 'no' );
-			}
-		}, 1 );
 	}
 
 	public function register_routes() {
@@ -109,7 +100,10 @@ class SPSG_REST_API {
 	}
 
 	private function cm() {
-		return new SPSG_Configuration_Manager();
+		if ( $this->config_manager === null ) {
+			$this->config_manager = new SPSG_Configuration_Manager();
+		}
+		return $this->config_manager;
 	}
 
 	// Save config bypassing validation (for partial/draft saves from the wizard)
@@ -208,13 +202,14 @@ class SPSG_REST_API {
 
 	// --- spsg/v1: Config CRUD ---
 
+	/** List all saved schedule configurations. */
 	public function spsg_list_configs() {
 		$all = $this->cm()->get_all_configurations();
 		$raw = get_option( 'spsg_configurations', array() );
 		$out = array();
 		foreach ( $all as $id => $meta ) {
 			// Skip configs with no name (created by accidental back-navigation)
-			if ( empty( trim( $meta['name'] ?? '' ) ) ) continue;
+			if ( empty( trim( (string) ( $meta['name'] ?? '' ) ) ) ) continue;
 			$divs = $raw[ $id ]['divisions'] ?? array();
 			$tc = 0;
 			foreach ( $divs as $d ) { $tc += count( $d['teams'] ?? array() ); }
@@ -223,6 +218,7 @@ class SPSG_REST_API {
 		return rest_ensure_response( $out );
 	}
 
+	/** Get a single configuration by ID. */
 	public function spsg_get_config( $request ) {
 		$configs = get_option( 'spsg_configurations', array() );
 		if ( ! isset( $configs[ $request['id'] ] ) ) {
@@ -255,11 +251,13 @@ class SPSG_REST_API {
 		return rest_ensure_response( $data );
 	}
 
+	/** Create a new schedule configuration. */
 	public function spsg_create_config( $request ) {
 		$r = $this->save_draft( $this->normalize( $request->get_json_params() ) );
 		return is_wp_error( $r ) ? $r : rest_ensure_response( array( 'id' => $r ) );
 	}
 
+	/** Update an existing schedule configuration. */
 	public function spsg_update_config( $request ) {
 		$body = $this->normalize( $request->get_json_params() );
 		$body['id'] = $request['id'];
@@ -267,9 +265,10 @@ class SPSG_REST_API {
 		return is_wp_error( $r ) ? $r : rest_ensure_response( array( 'id' => $r ) );
 	}
 
+	/** Delete a schedule configuration by ID. */
 	public function spsg_delete_config( $request ) {
 		$r = $this->cm()->delete( $request['id'] );
-		if ( $r === false ) return new WP_Error( 'not_found', 'Config not found.', array( 'status' => 404 ) );
+		if ( is_wp_error( $r ) ) return $r;
 		return rest_ensure_response( array( 'deleted' => true ) );
 	}
 
@@ -329,11 +328,22 @@ class SPSG_REST_API {
 		) );
 	}
 
+	/** Parse an uploaded CSV file for venue schedule data. */
 	public function spsg_venue_csv_parse( $request ) {
 		// Expects multipart/form-data with 'csv' file
 		$files = $request->get_file_params();
 		if ( empty( $files['csv']['tmp_name'] ) ) {
 			return new WP_Error( 'no_file', 'No CSV file uploaded.', array( 'status' => 400 ) );
+		}
+		$file = $files['csv'];
+		if ( $file['size'] > 1048576 ) {
+			return new WP_Error( 'file_too_large', 'CSV file must be under 1MB.', array( 'status' => 400 ) );
+		}
+		$allowed_types = array( 'text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel' );
+		$finfo = new finfo( FILEINFO_MIME_TYPE );
+		$mime = $finfo->file( $file['tmp_name'] );
+		if ( ! in_array( $mime, $allowed_types, true ) && ! str_ends_with( strtolower( $file['name'] ), '.csv' ) ) {
+			return new WP_Error( 'invalid_file_type', 'File must be a CSV.', array( 'status' => 400 ) );
 		}
 		$schedules = SPSG_Venue_Schedule_Importer::parse_csv( $files['csv']['tmp_name'] );
 		if ( is_wp_error( $schedules ) ) return $schedules;
@@ -360,12 +370,23 @@ class SPSG_REST_API {
 		) );
 	}
 
+	/** Apply parsed venue CSV data to a configuration. */
 	public function spsg_venue_csv_apply( $request ) {
-		$schedules    = $request->get_param( 'schedules' );
+		$schedules     = $request->get_param( 'schedules' );
 		$venue_mapping = $request->get_param( 'venue_mapping' ); // {csv_name: venue_id}
-		$config_id    = $request->get_param( 'config_id' );
+		$config_id     = sanitize_text_field( $request->get_param( 'config_id' ) );
 		if ( ! $schedules || ! $venue_mapping || ! $config_id ) {
 			return new WP_Error( 'missing_params', 'schedules, venue_mapping, and config_id are required.', array( 'status' => 400 ) );
+		}
+		if ( ! is_array( $venue_mapping ) ) {
+			return new WP_Error( 'invalid_mapping', 'venue_mapping must be an object.', array( 'status' => 400 ) );
+		}
+		foreach ( $venue_mapping as $csv_name => $venue_id ) {
+			$venue_id = (int) $venue_id;
+			if ( $venue_id <= 0 || ! term_exists( $venue_id, 'sp_venue' ) ) {
+				return new WP_Error( 'invalid_venue', "Invalid venue ID: $venue_id", array( 'status' => 400 ) );
+			}
+			$venue_mapping[ $csv_name ] = $venue_id;
 		}
 		$availability = SPSG_Venue_Schedule_Importer::convert_to_availability( $schedules, $venue_mapping );
 		// Merge into config's venue_date_availability
@@ -472,6 +493,7 @@ class SPSG_REST_API {
 
 	// --- Generate ---
 
+	/** Generate a schedule from a configuration. */
 	public function spsg_generate( $request ) {
 		$config = $this->cm()->load( $request->get_param( 'config_id' ) );
 		if ( is_wp_error( $config ) ) return $config;
@@ -546,6 +568,7 @@ class SPSG_REST_API {
 
 	// --- Publish ---
 
+	/** Publish a generated schedule to SportsPress events. */
 	public function spsg_publish( $request ) {
 		$schedule = get_transient( 'spsg_schedule_' . $request->get_param( 'schedule_id' ) );
 		if ( ! $schedule ) return new WP_Error( 'schedule_not_found', 'Schedule not found or expired.', array( 'status' => 404 ) );

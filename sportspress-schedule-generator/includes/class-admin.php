@@ -91,7 +91,7 @@ class SPSG_Admin {
 	 *
 	 * @return bool True if Slim Select should be used
 	 */
-	private function is_select2_enabled() {
+	private function is_slimselect_enabled() {
 		// Option key kept for backward compatibility; now powers Slim Select
 		return get_option( 'spat_use_select2', '0' ) === '1';
 	}
@@ -207,7 +207,7 @@ class SPSG_Admin {
 	public function backend_section_callback() {
 		echo '<p>' . esc_html__( 'Configure backend settings for the Schedule Generator. These settings affect system behavior and are not visible to end users.', 'sportspress-schedule-generator' ) . '</p>';
 
-		if ( $this->is_select2_enabled() ) {
+		if ( $this->is_slimselect_enabled() ) {
 			echo '<p class="description" style="color: #00a32a;">✓ ' . esc_html__( 'Enhanced dropdowns (Slim Select) are enabled via SPAT settings.', 'sportspress-schedule-generator' ) . '</p>';
 		} else {
 			echo '<p class="description">' . esc_html__( 'Note: Enhanced dropdowns (Slim Select) can be enabled in the SPAT General settings.', 'sportspress-schedule-generator' ) . '</p>';

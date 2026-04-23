@@ -156,6 +156,10 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 
 	/**
 	 * Load configuration from database
+	 *
+	 * @param string|null $config_id Optional configuration ID to load.
+	 * @return SPSG_Schedule_Configuration
+	 * @note If $config_id is provided but not found, falls back to the most recently modified config. If no configs exist, returns defaults.
 	 */
 	public function load( $config_id = null ) {
 		$configurations = get_option( self::OPTION_NAME, array() );
@@ -213,18 +217,18 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 	public function delete( $config_id ) {
 		$configurations = get_option( self::OPTION_NAME, array() );
 
-		if ( isset( $configurations[ $config_id ] ) ) {
-			unset( $configurations[ $config_id ] );
-			$result = update_option( self::OPTION_NAME, $configurations );
-
-			if ( $result ) {
-				do_action( 'spsg_configuration_deleted', $config_id );
-			}
-
-			return $result;
+		if ( ! isset( $configurations[ $config_id ] ) ) {
+			return new WP_Error( 'not_found', 'Configuration not found.' );
 		}
 
-		return false;
+		unset( $configurations[ $config_id ] );
+		$result = update_option( self::OPTION_NAME, $configurations );
+
+		if ( $result ) {
+			do_action( 'spsg_configuration_deleted', $config_id );
+		}
+
+		return $result;
 	}
 
 	/**
@@ -654,23 +658,16 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 	 * @return array Array of preset metadata
 	 */
 	public function list_presets() {
-		return array(
-			'summer_league' => array(
-				'name' => __( 'Summer League', 'sportspress-schedule-generator' ),
-				'description' => __( 'Summer season with Friday night games (60 min matches, 18 games per team, 6:00 PM - 11:00 PM)', 'sportspress-schedule-generator' ),
-				'icon' => 'dashicons-palmtree',
-			),
-			'winter_league' => array(
-				'name' => __( 'Winter League', 'sportspress-schedule-generator' ),
-				'description' => __( 'Winter season with Friday and Sunday night games (60 min matches, 24 games per team)', 'sportspress-schedule-generator' ),
-				'icon' => 'dashicons-calendar-alt',
-			),
-			'tournament' => array(
-				'name' => __( 'Tournament', 'sportspress-schedule-generator' ),
-				'description' => __( 'Weekend tournament format (60 min matches, 4 games per team)', 'sportspress-schedule-generator' ),
-				'icon' => 'dashicons-awards',
-			),
-		);
+		$defs = $this->get_preset_definitions();
+		$out = array();
+		foreach ( $defs as $key => $def ) {
+			$out[ $key ] = array(
+				'name'        => $def['name'],
+				'description' => $def['description'],
+				'icon'        => $def['icon'] ?? '',
+			);
+		}
+		return $out;
 	}
 
 	/**
@@ -699,6 +696,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 			'summer_league' => array(
 				'name' => __( 'Summer League', 'sportspress-schedule-generator' ),
 				'description' => __( 'Summer season with Friday night games', 'sportspress-schedule-generator' ),
+				'icon' => 'dashicons-palmtree',
 				'config' => array(
 					'games_per_team' => 18,
 					'match_length' => 60,
@@ -724,6 +722,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 			'winter_league' => array(
 				'name' => __( 'Winter League', 'sportspress-schedule-generator' ),
 				'description' => __( 'Winter season with Friday and Sunday night games', 'sportspress-schedule-generator' ),
+				'icon' => 'dashicons-calendar-alt',
 				'config' => array(
 					'games_per_team' => 24,
 					'match_length' => 60,
@@ -753,6 +752,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 			'tournament' => array(
 				'name' => __( 'Tournament', 'sportspress-schedule-generator' ),
 				'description' => __( 'Weekend tournament format', 'sportspress-schedule-generator' ),
+				'icon' => 'dashicons-awards',
 				'config' => array(
 					'games_per_team' => 4,
 					'match_length' => 60,

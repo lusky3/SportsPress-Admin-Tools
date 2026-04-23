@@ -23,11 +23,14 @@ const PAGES = {
 
 export default function App() {
 	const [ page, setPage ] = useState( 'dashboard' );
-	const [ season, setSeason ] = useState( window.splmDashboard?.currentSeason || '' );
+	const [ season, setSeason ] = useState( window.splmDashboard?.currentSeason ?? '' );
 	const PageComponent = PAGES[ page ] || Dashboard;
 
 	return (
 		<Layout currentPage={ page } onNavigate={ setPage } onSeasonChange={ setSeason } season={ season }>
+			<div aria-live="polite" aria-atomic="true" className="screen-reader-text">
+				{ page && `Navigated to ${ page }` }
+			</div>
 			<PageComponent onNavigate={ setPage } season={ season } />
 		</Layout>
 	);

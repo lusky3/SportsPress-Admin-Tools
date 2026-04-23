@@ -26,7 +26,7 @@ export default function Dashboard( { onNavigate, season } ) {
 			<h2>Dashboard</h2>
 
 			{ needScores.length > 0 && (
-				<div className="splm-alert splm-alert--warning">
+				<div className="splm-alert splm-alert--warning" role="alert">
 					<strong>{ needScores.length } game{ needScores.length > 1 ? 's' : '' } need scores.</strong>
 					<button className="splm-alert__action" onClick={ () => onNavigate( 'scores' ) }>
 						Enter Scores →

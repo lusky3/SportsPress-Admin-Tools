@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPPT_REST_API {
 
-	const NAMESPACE = 'splm/v1';
+	const REST_NAMESPACE = 'splm/v1'; // Shared with events-manager and player-tools — paths must not overlap
 
 	public function __construct() {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
@@ -19,7 +19,7 @@ class SPPT_REST_API {
 
 	public function register_routes() {
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/rosters/move',
 			array(
 				'methods'             => 'POST',
@@ -43,7 +43,7 @@ class SPPT_REST_API {
 		);
 
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/rosters/update-player',
 			array(
 				'methods'             => 'POST',
@@ -68,7 +68,7 @@ class SPPT_REST_API {
 		);
 
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/rosters/remove-player',
 			array(
 				'methods'             => 'POST',
@@ -88,7 +88,7 @@ class SPPT_REST_API {
 		);
 
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/rosters/set-captain',
 			array(
 				'methods'             => 'POST',
@@ -112,7 +112,7 @@ class SPPT_REST_API {
 		);
 
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/rosters/update-metadata',
 			array(
 				'methods'             => 'POST',
@@ -137,7 +137,7 @@ class SPPT_REST_API {
 		);
 
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/rosters/import',
 			array(
 				'methods'             => 'POST',
@@ -170,7 +170,7 @@ class SPPT_REST_API {
 		);
 
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/rosters/details',
 			array(
 				'methods'             => 'GET',
@@ -189,7 +189,7 @@ class SPPT_REST_API {
 		);
 
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/notes',
 			array(
 				array(
@@ -242,6 +242,8 @@ class SPPT_REST_API {
 		// Remove from old team and add to new team.
 		delete_post_meta( $player_id, 'sp_team', $from_team );
 		add_post_meta( $player_id, 'sp_team', $to_team );
+		delete_post_meta( $player_id, 'sp_current_team', $from_team );
+		add_post_meta( $player_id, 'sp_current_team', $to_team );
 
 		return new WP_REST_Response(
 			array(
@@ -288,10 +290,31 @@ class SPPT_REST_API {
 			return new WP_Error( 'not_found', 'Player not found.', array( 'status' => 404 ) );
 		}
 
-		// Get current season term.
-		$seasons = wp_get_object_terms( $player_id, 'sp_season', array( 'fields' => 'ids' ) );
+		// Remove team associations.
+		delete_post_meta( $player_id, 'sp_current_team', $team_id );
+		delete_post_meta( $player_id, 'sp_team', $team_id );
+
+		// Remove sp_leagues entry for this team.
+		$leagues = get_post_meta( $player_id, 'sp_leagues', true );
+		if ( is_array( $leagues ) ) {
+			foreach ( $leagues as $league_id => $seasons ) {
+				if ( is_array( $seasons ) ) {
+					foreach ( $seasons as $season_id => $tid ) {
+						if ( (int) $tid === $team_id ) {
+							unset( $leagues[ $league_id ][ $season_id ] );
+						}
+					}
+					if ( empty( $leagues[ $league_id ] ) ) {
+						unset( $leagues[ $league_id ] );
+					}
+				}
+			}
+			update_post_meta( $player_id, 'sp_leagues', $leagues );
+		}
+
+		// Remove the most recent (current) season.
+		$seasons = wp_get_object_terms( $player_id, 'sp_season', array( 'fields' => 'ids', 'orderby' => 'term_id', 'order' => 'DESC' ) );
 		if ( ! is_wp_error( $seasons ) && ! empty( $seasons ) ) {
-			// Remove the most recent (current) season.
 			wp_remove_object_terms( $player_id, $seasons[0], 'sp_season' );
 		}
 

@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPLM_REST_API {
 
-	const NAMESPACE = 'splm/v1';
+	const REST_NAMESPACE = 'splm/v1'; // Shared with events-manager and player-tools — paths must not overlap
 
 	public function __construct() {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
@@ -19,7 +19,7 @@ class SPLM_REST_API {
 
 	public function register_routes() {
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/games',
 			array(
 				'methods'             => 'GET',
@@ -33,7 +33,7 @@ class SPLM_REST_API {
 		);
 
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/standings',
 			array(
 				'methods'             => 'GET',
@@ -47,7 +47,7 @@ class SPLM_REST_API {
 		);
 
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/teams',
 			array(
 				'methods'             => 'GET',
@@ -60,7 +60,7 @@ class SPLM_REST_API {
 		);
 
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/rosters',
 			array(
 				'methods'             => 'GET',
@@ -77,7 +77,7 @@ class SPLM_REST_API {
 		);
 
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/payments',
 			array(
 				'methods'             => 'GET',
@@ -93,7 +93,7 @@ class SPLM_REST_API {
 		);
 
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/health',
 			array(
 				'methods'             => 'GET',
@@ -103,7 +103,7 @@ class SPLM_REST_API {
 		);
 
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/seasons',
 			array(
 				'methods'             => 'GET',
@@ -133,9 +133,13 @@ class SPLM_REST_API {
 	 * GET /games — list games for the current season.
 	 */
 	public function get_games( $request ) {
+		$per_page = min( 200, max( 1, (int) ( $request->get_param( 'per_page' ) ?? 100 ) ) );
+		$offset   = max( 0, (int) ( $request->get_param( 'offset' ) ?? 0 ) );
+
 		$args = array(
 			'post_type'      => 'sp_event',
-			'posts_per_page' => 100,
+			'posts_per_page' => $per_page,
+			'offset'         => $offset,
 			'orderby'        => 'date',
 			'order'          => 'ASC',
 			'post_status'    => array( 'publish', 'future' ),
@@ -158,7 +162,8 @@ class SPLM_REST_API {
 			$args['tax_query'] = $tax_query;
 		}
 
-		$events = get_posts( $args );
+		$query  = new WP_Query( $args );
+		$events = $query->posts;
 		$games  = array();
 
 		foreach ( $events as $event ) {
@@ -199,7 +204,10 @@ class SPLM_REST_API {
 			);
 		}
 
-		return new WP_REST_Response( $games, 200 );
+		return new WP_REST_Response( array(
+			'games' => $games,
+			'total' => $query->found_posts,
+		), 200 );
 	}
 
 	/**
@@ -317,23 +325,28 @@ class SPLM_REST_API {
 		}
 
 		$data = array();
+		// Fix #11: batch player counts in one query instead of N+1
+		$team_ids_list = wp_list_pluck( $teams, 'ID' );
+		$player_counts = array();
+		if ( ! empty( $team_ids_list ) ) {
+			global $wpdb;
+			$placeholders = implode( ',', array_fill( 0, count( $team_ids_list ), '%d' ) );
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$rows = $wpdb->get_results( $wpdb->prepare(
+				"SELECT meta_value AS team_id, COUNT(*) AS cnt FROM {$wpdb->postmeta}
+				WHERE meta_key = 'sp_team' AND meta_value IN ($placeholders)
+				GROUP BY meta_value",
+				...$team_ids_list
+			) );
+			foreach ( $rows as $row ) {
+				$player_counts[ (int) $row->team_id ] = (int) $row->cnt;
+			}
+		}
 		foreach ( $teams as $team ) {
-			$player_count = count( get_posts( array(
-				'post_type'      => 'sp_player',
-				'posts_per_page' => -1,
-				'fields'         => 'ids',
-				'meta_query'     => array(
-					array(
-						'key'   => 'sp_team',
-						'value' => $team->ID,
-					),
-				),
-			) ) );
-
 			$data[] = array(
 				'id'           => $team->ID,
 				'name'         => $team->post_title,
-				'player_count' => $player_count,
+				'player_count' => $player_counts[ $team->ID ] ?? 0,
 			);
 		}
 
@@ -458,10 +471,10 @@ class SPLM_REST_API {
 
 		// Build a lookup from the registration logs table.
 		$log_table    = $wpdb->prefix . 'spat_registration_logs';
-		$table_exists = $wpdb->get_var( "SHOW TABLES LIKE '{$log_table}'" );
+		$table_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $log_table ) );
 		$reg_map      = array();
 		if ( $table_exists ) {
-			$logs = $wpdb->get_results( "SELECT player_id, order_id FROM {$log_table} WHERE player_id > 0 AND order_id > 0" );
+			$logs = $wpdb->get_results( "SELECT player_id, order_id FROM `" . esc_sql( $log_table ) . "` WHERE player_id > 0 AND order_id > 0 LIMIT 10000" );
 			foreach ( $logs as $log ) {
 				$reg_map[ (int) $log->player_id ] = (int) $log->order_id;
 			}

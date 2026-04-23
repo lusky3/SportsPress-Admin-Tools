@@ -195,7 +195,7 @@ export default function ScoreEntry( { season } ) {
 			</p>
 
 			{ saved && ! showStats ? (
-				<div className="splm-score-entry__saved">
+				<div className="splm-score-entry__saved" role="alert">
 					<p>✅ Score saved!</p>
 					<details className="splm-player-stats__toggle" onToggle={ ( e ) => {
 						if ( e.target.open ) setShowStats( true );
@@ -210,7 +210,7 @@ export default function ScoreEntry( { season } ) {
 				</div>
 			) : showStats && scoreSubmitted ? (
 				<div>
-					<div className="splm-score-entry__saved">✅ Score saved!</div>
+					<div className="splm-score-entry__saved" role="alert">✅ Score saved!</div>
 					<PlayerStats gameId={ game.id } onDone={ advanceToNext } />
 				</div>
 			) : (
@@ -226,6 +226,7 @@ export default function ScoreEntry( { season } ) {
 								<button
 									className="splm-score-btn"
 									onClick={ () => setHomeScore( Math.max( 0, homeScore - 1 ) ) }
+									aria-label={ `Decrease ${ game.home_team?.name || 'home' } score` }
 								>
 									−
 								</button>
@@ -233,6 +234,7 @@ export default function ScoreEntry( { season } ) {
 								<button
 									className="splm-score-btn"
 									onClick={ () => setHomeScore( homeScore + 1 ) }
+									aria-label={ `Increase ${ game.home_team?.name || 'home' } score` }
 								>
 									+
 								</button>
@@ -247,6 +249,7 @@ export default function ScoreEntry( { season } ) {
 								<button
 									className="splm-score-btn"
 									onClick={ () => setAwayScore( Math.max( 0, awayScore - 1 ) ) }
+									aria-label={ `Decrease ${ game.away_team?.name || 'away' } score` }
 								>
 									−
 								</button>
@@ -254,6 +257,7 @@ export default function ScoreEntry( { season } ) {
 								<button
 									className="splm-score-btn"
 									onClick={ () => setAwayScore( awayScore + 1 ) }
+									aria-label={ `Increase ${ game.away_team?.name || 'away' } score` }
 								>
 									+
 								</button>

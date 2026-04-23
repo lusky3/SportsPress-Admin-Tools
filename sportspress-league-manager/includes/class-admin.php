@@ -15,10 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPLM_Admin {
 
-	private $enabled_modules;
-
-	public function __construct( array $enabled_modules ) {
-		$this->enabled_modules = $enabled_modules;
+	public function __construct() {
 
 		add_action( 'admin_menu', array( $this, 'add_admin_menu' ) );
 		add_action( 'spat_admin_page_tabs', array( $this, 'add_spat_tab' ) );

@@ -21,9 +21,10 @@ class SPSG_Statistics_Calculator {
 	/**
 	 * Calculate comprehensive statistics for a schedule
 	 *
-	 * @param array $schedule Array of SPSG_Game objects
+	 * @param array $schedule Array of SPSG_Game objects or associative arrays with home_team, away_team, venue, division properties
 	 * @return array Statistics array
 	 */
+	// Note: iterates the schedule multiple times for different statistics. For large schedules (1000+ games), consider a single-pass approach.
 	public function calculate( $schedule ) {
 		if ( empty( $schedule ) ) {
 			return $this->get_empty_stats();
@@ -354,6 +355,7 @@ class SPSG_Statistics_Calculator {
 	/**
 	 * Format statistics for display
 	 *
+	 * @deprecated Move HTML generation to a view layer. This method violates separation of concerns.
 	 * @param array $stats Statistics array
 	 * @return string Formatted HTML output
 	 */

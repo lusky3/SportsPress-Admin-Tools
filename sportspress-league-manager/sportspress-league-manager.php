@@ -107,7 +107,7 @@ class SportsPress_League_Manager {
 		}
 
 		if ( is_admin() ) {
-			new SPLM_Admin( $any_enabled );
+			new SPLM_Admin();
 		}
 
 		// Player notes needs to load on frontend too (for player profile display).
