@@ -294,26 +294,27 @@ class SPPT_REST_API {
 		delete_post_meta( $player_id, 'sp_current_team', $team_id );
 		delete_post_meta( $player_id, 'sp_team', $team_id );
 
-		// Remove sp_leagues entry for this team.
-		$leagues = get_post_meta( $player_id, 'sp_leagues', true );
-		if ( is_array( $leagues ) ) {
-			foreach ( $leagues as $league_id => $seasons ) {
-				if ( is_array( $seasons ) ) {
-					foreach ( $seasons as $season_id => $tid ) {
-						if ( (int) $tid === $team_id ) {
-							unset( $leagues[ $league_id ][ $season_id ] );
-						}
-					}
-					if ( empty( $leagues[ $league_id ] ) ) {
-						unset( $leagues[ $league_id ] );
-					}
+		// Get the current season to remove
+		$seasons = wp_get_object_terms( $player_id, 'sp_season', array(
+			'orderby' => 'term_id',
+			'order'   => 'DESC',
+			'fields'  => 'ids',
+		) );
+		$current_season_id = ! empty( $seasons ) ? (int) $seasons[0] : 0;
+
+		// Update sp_leagues: only remove the current season entry for this team
+		$leagues_meta = get_post_meta( $player_id, 'sp_leagues', true );
+		if ( is_array( $leagues_meta ) && $current_season_id ) {
+			foreach ( $leagues_meta as $league_id => $season_map ) {
+				if ( is_array( $season_map ) && isset( $season_map[ $current_season_id ] ) 
+				     && (int) $season_map[ $current_season_id ] === $team_id ) {
+					unset( $leagues_meta[ $league_id ][ $current_season_id ] );
 				}
 			}
-			update_post_meta( $player_id, 'sp_leagues', $leagues );
+			update_post_meta( $player_id, 'sp_leagues', $leagues_meta );
 		}
 
 		// Remove the most recent (current) season.
-		$seasons = wp_get_object_terms( $player_id, 'sp_season', array( 'fields' => 'ids', 'orderby' => 'term_id', 'order' => 'DESC' ) );
 		if ( ! is_wp_error( $seasons ) && ! empty( $seasons ) ) {
 			wp_remove_object_terms( $player_id, $seasons[0], 'sp_season' );
 		}

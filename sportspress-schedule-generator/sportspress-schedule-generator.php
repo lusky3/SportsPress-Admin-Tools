@@ -91,6 +91,12 @@ class SportsPress_Schedule_Generator {
 			return;
 		}
 
+		// One-time migration: fix autoload for existing installs
+		if ( get_option( 'spsg_autoload_fixed' ) !== '1' ) {
+			self::fix_configurations_autoload();
+			update_option( 'spsg_autoload_fixed', '1' );
+		}
+
 		// Register with parent plugin
 		SPAT_Plugin_Manager::register_plugin(
 			'league_schedule_generator',

@@ -21,7 +21,7 @@ function PlayerStats( { gameId, onDone } ) {
 				} );
 			} );
 			setStats( init );
-		} );
+		} ).catch( () => {} );
 	}, [ gameId ] );
 
 	if ( ! data ) {
@@ -127,11 +127,22 @@ export default function ScoreEntry( { season } ) {
 			setGames( needScores );
 			setCurrent( 0 );
 			setLoading( false );
-		} );
+		} ).catch( () => setLoading( false ) );
 	};
 
 	useEffect( () => {
-		loadGames( season ? { season } : {} );
+		let cancelled = false;
+		const params = season ? { season } : {};
+		setLoading( true );
+		fetchGames( params ).then( ( data ) => {
+			if ( cancelled ) return;
+			const today = new Date().toISOString().split( 'T' )[ 0 ];
+			const needScores = data.filter( ( g ) => g.date <= today && g.home_score === null && ! g.cancelled );
+			setGames( needScores );
+			setCurrent( 0 );
+			setLoading( false );
+		} ).catch( () => { if ( ! cancelled ) setLoading( false ); } );
+		return () => { cancelled = true; };
 	}, [ season ] );
 
 	const loadAllUnscored = () => {

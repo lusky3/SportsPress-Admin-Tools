@@ -217,18 +217,14 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 	public function delete( $config_id ) {
 		$configurations = get_option( self::OPTION_NAME, array() );
 
-		if ( ! isset( $configurations[ $config_id ] ) ) {
-			return new WP_Error( 'not_found', 'Configuration not found.' );
-		}
-
-		unset( $configurations[ $config_id ] );
-		$result = update_option( self::OPTION_NAME, $configurations );
-
-		if ( $result ) {
+		if ( isset( $configurations[ $config_id ] ) ) {
+			unset( $configurations[ $config_id ] );
+			update_option( self::OPTION_NAME, $configurations );
 			do_action( 'spsg_configuration_deleted', $config_id );
+			return true; // Always return true after successful delete
 		}
 
-		return $result;
+		return new WP_Error( 'not_found', __( 'Configuration not found', 'sportspress-schedule-generator' ) );
 	}
 
 	/**

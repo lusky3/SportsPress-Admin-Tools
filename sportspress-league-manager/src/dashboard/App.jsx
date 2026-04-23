@@ -1,4 +1,4 @@
-import { useState } from '@wordpress/element';
+import { useState, useEffect, useRef } from '@wordpress/element';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Schedule from './pages/Schedule';
@@ -24,12 +24,19 @@ const PAGES = {
 export default function App() {
 	const [ page, setPage ] = useState( 'dashboard' );
 	const [ season, setSeason ] = useState( window.splmDashboard?.currentSeason ?? '' );
+	const [ announcement, setAnnouncement ] = useState( '' );
+	const isFirstRender = useRef( true );
 	const PageComponent = PAGES[ page ] || Dashboard;
+
+	useEffect( () => {
+		if ( isFirstRender.current ) { isFirstRender.current = false; return; }
+		setAnnouncement( `Navigated to ${ page }` );
+	}, [ page ] );
 
 	return (
 		<Layout currentPage={ page } onNavigate={ setPage } onSeasonChange={ setSeason } season={ season }>
 			<div aria-live="polite" aria-atomic="true" className="screen-reader-text">
-				{ page && `Navigated to ${ page }` }
+				{ announcement }
 			</div>
 			<PageComponent onNavigate={ setPage } season={ season } />
 		</Layout>
