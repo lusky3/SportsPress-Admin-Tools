@@ -303,6 +303,8 @@ class SPSG_REST_API {
 		if ( is_wp_error( $leagues ) ) return $leagues;
 		$out = array();
 		foreach ( $leagues as $lg ) {
+			// Gap #14: skip aggregate leagues named "ALL"
+			if ( strtoupper( trim( $lg->name ) ) === 'ALL' ) continue;
 			$posts = get_posts( array( 'post_type' => 'sp_team', 'posts_per_page' => -1, 'post_status' => 'publish',
 				'tax_query' => array( array( 'taxonomy' => 'sp_league', 'terms' => $lg->term_id ) ), 'orderby' => 'title', 'order' => 'ASC' ) );
 			$teams = array();
