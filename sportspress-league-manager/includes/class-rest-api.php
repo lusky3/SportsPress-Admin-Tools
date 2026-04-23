@@ -26,8 +26,10 @@ class SPLM_REST_API {
 				'callback'            => array( $this, 'get_games' ),
 				'permission_callback' => array( $this, 'check_read_permission' ),
 				'args'                => array(
-					'season' => array( 'type' => 'integer' ),
-					'league' => array( 'type' => 'integer' ),
+					'season'   => array( 'type' => 'integer' ),
+					'league'   => array( 'type' => 'integer' ),
+					'per_page' => array( 'type' => 'integer', 'default' => 100, 'minimum' => 1, 'maximum' => 200 ),
+					'offset'   => array( 'type' => 'integer', 'default' => 0, 'minimum' => 0 ),
 				),
 			)
 		);
@@ -333,9 +335,11 @@ class SPLM_REST_API {
 			$placeholders = implode( ',', array_fill( 0, count( $team_ids_list ), '%d' ) );
 			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 			$rows = $wpdb->get_results( $wpdb->prepare(
-				"SELECT meta_value AS team_id, COUNT(*) AS cnt FROM {$wpdb->postmeta}
-				WHERE meta_key = 'sp_team' AND meta_value IN ($placeholders)
-				GROUP BY meta_value",
+				"SELECT pm.meta_value AS team_id, COUNT(*) AS cnt
+				FROM {$wpdb->postmeta} pm
+				INNER JOIN {$wpdb->posts} p ON pm.post_id = p.ID AND p.post_type = 'sp_player' AND p.post_status = 'publish'
+				WHERE pm.meta_key = 'sp_team' AND pm.meta_value IN ($placeholders)
+				GROUP BY pm.meta_value",
 				...$team_ids_list
 			) );
 			foreach ( $rows as $row ) {

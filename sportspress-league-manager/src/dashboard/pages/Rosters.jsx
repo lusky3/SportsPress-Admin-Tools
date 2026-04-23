@@ -108,7 +108,7 @@ function EditableCell( { value, field, playerId, onSaved } ) {
 			/>
 		);
 	}
-	return <span tabIndex={0} onClick={ () => setEditing( true ) } onKeyDown={ ( e ) => { if ( e.key === 'Enter' || e.key === ' ' ) e.currentTarget.click(); } } style={ { cursor: 'pointer' } }>{ value || '—' }</span>;
+	return <span tabIndex={0} onClick={ () => setEditing( true ) } onKeyDown={ ( e ) => { if ( e.key === 'Enter' || e.key === ' ' ) { e.preventDefault(); e.currentTarget.click(); } } } style={ { cursor: 'pointer' } }>{ value || '—' }</span>;
 }
 
 function SkillCell( { value, playerId, onSaved } ) {
@@ -138,7 +138,7 @@ function SkillCell( { value, playerId, onSaved } ) {
 			</select>
 		);
 	}
-	return <span tabIndex={0} onClick={ () => setEditing( true ) } onKeyDown={ ( e ) => { if ( e.key === 'Enter' || e.key === ' ' ) e.currentTarget.click(); } } style={ { cursor: 'pointer' } }>{ value || '—' }</span>;
+	return <span tabIndex={0} onClick={ () => setEditing( true ) } onKeyDown={ ( e ) => { if ( e.key === 'Enter' || e.key === ' ' ) { e.preventDefault(); e.currentTarget.click(); } } } style={ { cursor: 'pointer' } }>{ value || '—' }</span>;
 }
 
 function CSVUpload( { teamId, seasonId, onImported } ) {
@@ -206,16 +206,21 @@ export default function Rosters( { season } ) {
 	const [ movePlayerData, setMovePlayerData ] = useState( null );
 
 	useEffect( () => {
-		fetchTeams( season ).then( setTeams );
+		let cancelled = false;
+		fetchTeams( season )
+			.then( ( data ) => { if ( ! cancelled ) setTeams( data ); } )
+			.catch( () => {} );
+		return () => { cancelled = true; };
 	}, [ season ] );
 
 	useEffect( () => {
 		if ( ! selectedTeam ) return;
+		let cancelled = false;
 		setLoading( true );
-		fetchRosterDetails( selectedTeam, season ).then( ( data ) => {
-			setRoster( data );
-			setLoading( false );
-		} ).catch( () => setLoading( false ) );
+		fetchRosterDetails( selectedTeam, season )
+			.then( ( data ) => { if ( ! cancelled ) { setRoster( data ); setLoading( false ); } } )
+			.catch( () => { if ( ! cancelled ) setLoading( false ); } );
+		return () => { cancelled = true; };
 	}, [ selectedTeam, season ] );
 
 	const reload = () => {
@@ -301,7 +306,7 @@ export default function Rosters( { season } ) {
 											tabIndex={0}
 											role="button"
 											aria-label={ player.is_captain ? 'Remove captain' : 'Make captain' }
-											onKeyDown={ ( e ) => { if ( e.key === 'Enter' || e.key === ' ' ) e.currentTarget.click(); } }
+											onKeyDown={ ( e ) => { if ( e.key === 'Enter' || e.key === ' ' ) { e.preventDefault(); e.currentTarget.click(); } } }
 										>
 											ⓒ
 										</span>

@@ -115,12 +115,12 @@ export function saveGamePlayers( gameId, stats ) {
 	} );
 }
 
-export function rolloverPreview(fromSeason, toSeason) {
-  return apiFetch({ path: '/splm/v1/season/rollover-preview', method: 'POST', data: { from_season: fromSeason, to_season: toSeason } });
+export function rolloverPreview( fromSeason, toSeason ) {
+	return apiFetch( { path: '/splm/v1/season/rollover-preview', method: 'POST', data: { from_season: fromSeason, to_season: toSeason } } );
 }
 
-export function rolloverExecute(fromSeason, toSeason, playerIds) {
-  return apiFetch({ path: '/splm/v1/season/rollover-execute', method: 'POST', data: { from_season: fromSeason, to_season: toSeason, player_ids: playerIds } });
+export function rolloverExecute( fromSeason, toSeason, playerIds ) {
+	return apiFetch( { path: '/splm/v1/season/rollover-execute', method: 'POST', data: { from_season: fromSeason, to_season: toSeason, player_ids: playerIds } } );
 }
 
 // spsg/v1 — Schedule Generator

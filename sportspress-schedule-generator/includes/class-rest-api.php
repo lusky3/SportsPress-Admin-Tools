@@ -373,10 +373,24 @@ class SPSG_REST_API {
 	/** Apply parsed venue CSV data to a configuration. */
 	public function spsg_venue_csv_apply( $request ) {
 		$schedules     = $request->get_param( 'schedules' );
+		if ( ! is_array( $schedules ) || empty( $schedules ) ) {
+			return new WP_Error( 'invalid_schedules', 'schedules must be a non-empty array.', array( 'status' => 400 ) );
+		}
+		// Sanitize each schedule entry
+		$schedules = array_map( function( $s ) {
+			return array(
+				'week_start' => sanitize_text_field( $s['week_start'] ?? '' ),
+				'week_end'   => sanitize_text_field( $s['week_end'] ?? '' ),
+				'venue_name' => sanitize_text_field( $s['venue_name'] ?? '' ),
+				'time_slots' => array_map( 'sanitize_text_field', (array) ( $s['time_slots'] ?? array() ) ),
+				'row_number' => absint( $s['row_number'] ?? 0 ),
+			);
+		}, $schedules );
+
 		$venue_mapping = $request->get_param( 'venue_mapping' ); // {csv_name: venue_id}
 		$config_id     = sanitize_text_field( $request->get_param( 'config_id' ) );
-		if ( ! $schedules || ! $venue_mapping || ! $config_id ) {
-			return new WP_Error( 'missing_params', 'schedules, venue_mapping, and config_id are required.', array( 'status' => 400 ) );
+		if ( ! $venue_mapping || ! $config_id ) {
+			return new WP_Error( 'missing_params', 'venue_mapping and config_id are required.', array( 'status' => 400 ) );
 		}
 		if ( ! is_array( $venue_mapping ) ) {
 			return new WP_Error( 'invalid_mapping', 'venue_mapping must be an object.', array( 'status' => 400 ) );

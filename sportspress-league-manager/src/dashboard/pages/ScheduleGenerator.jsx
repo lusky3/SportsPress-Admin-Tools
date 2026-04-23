@@ -64,7 +64,10 @@ function computeStats(games) {
 }
 
 function VenueSel({venues,selected,onLoad,onChange}) {
-	useEffect(() => { if (!venues.length) onLoad(); }, []);
+	const loadedRef = useRef(false);
+	useEffect(() => {
+		if (!loadedRef.current && !venues.length) { loadedRef.current = true; onLoad(); }
+	}, [venues.length, onLoad]);
 	const tog = id => onChange(selected.includes(id) ? selected.filter(v=>v!==id) : [...selected,id]);
 	return (
 		<div>
@@ -78,7 +81,10 @@ function VenueSel({venues,selected,onLoad,onChange}) {
 }
 
 function SLLoad({items,onLoad,value,onChange}) {
-	useEffect(() => { if (!items.length) onLoad(); }, []);
+	const loadedRef = useRef(false);
+	useEffect(() => {
+		if (!loadedRef.current && !items.length) { loadedRef.current = true; onLoad(); }
+	}, [items.length, onLoad]);
 	return (
 		<select className="splm-select" value={value} onChange={e=>onChange(e.target.value)}>
 			<option value="">Select…</option>
@@ -152,7 +158,11 @@ export default function ScheduleGenerator() {
 		// #7: clear stale validation whenever config changes
 		setValidation(null);
 	};
-	const togDay = day => up({playing_days: cfg.playing_days.includes(day) ? cfg.playing_days.filter(d=>d!==day) : [...cfg.playing_days,day]});
+	const togDay = day => up(prev => ({
+		playing_days: prev.playing_days.includes(day)
+			? prev.playing_days.filter(d => d !== day)
+			: [...prev.playing_days, day]
+	}));
 
 	// Gap #1/#2/#16: only save if config has meaningful content
 	const hasContent = () => cfg.name.trim() || cfg.divisions.some(d => d.teams.length > 0);
@@ -193,9 +203,9 @@ export default function ScheduleGenerator() {
 		setImportLg('');
 	};
 
-	const addDiv = () => up({divisions:[...cfg.divisions,{id:mkId('div'),name:`Division ${cfg.divisions.length+1}`,teams:[]}]});
-	const rmDiv = id => up({divisions:cfg.divisions.filter(d=>d.id!==id)});
-	const upDiv = (id,p) => up({divisions:cfg.divisions.map(d=>d.id===id?{...d,...p}:d)});
+	const addDiv = () => up(prev => ({divisions:[...prev.divisions,{id:mkId('div'),name:`Division ${prev.divisions.length+1}`,teams:[]}]}));
+	const rmDiv = id => up(prev => ({divisions:prev.divisions.filter(d=>d.id!==id)}));
+	const upDiv = (id,p) => up(prev => ({divisions:prev.divisions.map(d=>d.id===id?{...d,...p}:d)}));
 	const addTeam = (did,tbd=false) => {
 		const nm = tbd ? `TBD ${++_tbd}` : 'New Team';
 		upDiv(did,{teams:[...(cfg.divisions.find(d=>d.id===did)?.teams||[]),{id:mkId('team'),name:nm,is_tbd:tbd}]});

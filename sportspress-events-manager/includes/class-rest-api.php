@@ -478,13 +478,24 @@ class SPEM_REST_API {
 	 * POST /season/rollover-execute — move players to past team and remove old season.
 	 */
 	public function rollover_execute( $request ) {
-		$from_season = (int) $request->get_param( 'from_season' );
-		$to_season   = (int) $request->get_param( 'to_season' );
+		$from_season = absint( $request->get_param( 'from_season' ) );
+		$to_season   = absint( $request->get_param( 'to_season' ) );
+		if ( ! $from_season || ! term_exists( $from_season, 'sp_season' ) ) {
+			return new WP_Error( 'invalid_from_season', 'Invalid from_season term ID.', array( 'status' => 400 ) );
+		}
+		if ( ! $to_season || ! term_exists( $to_season, 'sp_season' ) ) {
+			return new WP_Error( 'invalid_to_season', 'Invalid to_season term ID.', array( 'status' => 400 ) );
+		}
+
 		$player_ids  = $request->get_param( 'player_ids' );
 		$processed   = 0;
 
 		foreach ( $player_ids as $player_id ) {
-			$player_id = (int) $player_id;
+			$player_id = absint( $player_id );
+			if ( ! $player_id || get_post_type( $player_id ) !== 'sp_player' ) {
+				continue;
+			}
+
 			$team_ids  = get_post_meta( $player_id, 'sp_current_team', false );
 
 			foreach ( $team_ids as $team_id ) {
@@ -494,6 +505,21 @@ class SPEM_REST_API {
 			delete_post_meta( $player_id, 'sp_current_team' );
 			wp_remove_object_terms( $player_id, $from_season, 'sp_season' );
 			wp_set_object_terms( $player_id, (int) $to_season, 'sp_season', true );
+
+			// Update sp_leagues meta: remove old season entry, add new season entry
+			$leagues_meta = get_post_meta( $player_id, 'sp_leagues', true );
+			if ( is_array( $leagues_meta ) ) {
+				foreach ( $leagues_meta as $league_id => $seasons ) {
+					if ( is_array( $seasons ) && isset( $seasons[ $from_season ] ) ) {
+						$team_id = $seasons[ $from_season ];
+						unset( $leagues_meta[ $league_id ][ $from_season ] );
+						// Add to new season
+						$leagues_meta[ $league_id ][ $to_season ] = $team_id;
+					}
+				}
+				update_post_meta( $player_id, 'sp_leagues', $leagues_meta );
+			}
+
 			$processed++;
 		}
 
