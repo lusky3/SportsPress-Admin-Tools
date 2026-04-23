@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPPT_REST_API {
 
-	const REST_NAMESPACE = 'splm/v1'; // Shared with events-manager and player-tools — paths must not overlap
+	const REST_NAMESPACE = 'splm/v1'; // Shared with league-manager and events-manager — paths must not overlap
 
 	public function __construct() {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
@@ -382,7 +382,11 @@ class SPPT_REST_API {
 		if ( $is_captain ) {
 			update_post_meta( $player_id, 'sp_captain', $team_id );
 		} else {
-			delete_post_meta( $player_id, 'sp_captain' );
+			// Only remove captain for this specific team
+			$current_captain_team = get_post_meta( $player_id, 'sp_captain', true );
+			if ( (int) $current_captain_team === $team_id ) {
+				delete_post_meta( $player_id, 'sp_captain' );
+			}
 		}
 
 		return new WP_REST_Response( array( 'success' => true ), 200 );
@@ -393,6 +397,9 @@ class SPPT_REST_API {
 	 */
 	public function update_metadata( $request ) {
 		$player_id = absint( $request->get_param( 'player_id' ) );
+		if ( ! $player_id || get_post_type( $player_id ) !== 'sp_player' ) {
+			return new WP_Error( 'invalid_player', 'Invalid player ID.', array( 'status' => 400 ) );
+		}
 		$field     = $request->get_param( 'field' );
 		$value     = $request->get_param( 'value' );
 
@@ -412,12 +419,20 @@ class SPPT_REST_API {
 		$team_id   = absint( $request->get_param( 'team_id' ) );
 		$season_id = absint( $request->get_param( 'season_id' ) );
 		$players   = $request->get_param( 'players' );
+
+		if ( count( $players ) > 100 ) {
+			return new WP_Error( 'too_many_players', 'Maximum 100 players per import.', array( 'status' => 400 ) );
+		}
+
 		$imported  = array();
 
 		foreach ( $players as $player_data ) {
+			$name = sanitize_text_field( $player_data['name'] ?? '' );
+			if ( empty( $name ) ) continue;
+
 			$post_id = wp_insert_post( array(
 				'post_type'   => 'sp_player',
-				'post_title'  => sanitize_text_field( $player_data['name'] ),
+				'post_title'  => $name,
 				'post_status' => 'publish',
 			) );
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, Fragment } from '@wordpress/element';
+import { useState, useEffect, useCallback, useRef, useMemo, Fragment } from '@wordpress/element';
 import { spsg } from '../lib/api';
 import { rolloverPreview, rolloverExecute } from '../lib/api';
 
@@ -15,7 +15,6 @@ const blank = () => ({
 	generic_teams:{enabled:false,per_division:0,prefix:'Team'},
 	advanced:{b2b_pairs:[],overlap_pairs:[],inter_division:{},venue_prefs:{}},
 });
-let _tbd = 0;
 const mkId = p => `${p}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
 
 function Tbd({name}) {
@@ -140,6 +139,7 @@ export default function ScheduleGenerator() {
 	const [rErr,setRErr] = useState('');
 	// Import file ref
 	const importRef = useRef(null);
+	const tbdRef = useRef(0);
 
 	const loadConfigs = useCallback(() => {
 		setLoading(true);
@@ -207,7 +207,7 @@ export default function ScheduleGenerator() {
 	const rmDiv = id => up(prev => ({divisions:prev.divisions.filter(d=>d.id!==id)}));
 	const upDiv = (id,p) => up(prev => ({divisions:prev.divisions.map(d=>d.id===id?{...d,...p}:d)}));
 	const addTeam = (did,tbd=false) => {
-		const nm = tbd ? `TBD ${++_tbd}` : 'New Team';
+		const nm = tbd ? `TBD ${++tbdRef.current}` : 'New Team';
 		upDiv(did,{teams:[...(cfg.divisions.find(d=>d.id===did)?.teams||[]),{id:mkId('team'),name:nm,is_tbd:tbd}]});
 	};
 	const rmTeam = (did,tid) => { const d=cfg.divisions.find(x=>x.id===did); if(d) upDiv(did,{teams:d.teams.filter(t=>t.id!==tid)}); };
@@ -299,6 +299,20 @@ export default function ScheduleGenerator() {
 	// #9: format with time for history
 	const fmtDateTime = s => { if (!s) return ''; try { return new Date(s.replace(' ','T')).toLocaleString(); } catch { return s; } };
 
+	const divisionOptions = useMemo(() => [...new Set((schedule?.games||[]).map(x=>x.division).filter(Boolean))], [schedule?.games]);
+	const teamOptions = useMemo(() => [...new Set((schedule?.games||[]).flatMap(x=>[x.home,x.away]).filter(Boolean))].sort(), [schedule?.games]);
+	const venueOptions = useMemo(() => [...new Set((schedule?.games||[]).map(x=>x.venue).filter(Boolean))].sort(), [schedule?.games]);
+	const configsWithDrafts = useMemo(() => {
+		const set = new Set();
+		try {
+			for (let i = 0; i < sessionStorage.length; i++) {
+				const key = sessionStorage.key(i);
+				if (key?.startsWith('spsg_sched_')) set.add(key.replace('spsg_sched_', ''));
+			}
+		} catch {}
+		return set;
+	}, [schedule]);
+
 	const rSeasons = rc?.seasons||[];
 	const f = {display:'flex',gap:'0.5rem'};
 	const g2 = {display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.75rem'};
@@ -327,8 +341,8 @@ export default function ScheduleGenerator() {
 							<div className="splm-table-wrapper">
 								{/* Gap #5: search filter + sort */}
 								<div style={{display:'flex',gap:'0.5rem',marginBottom:'0.5rem'}}>
-									<input className="splm-select" placeholder="Search…" value={cfgSearch} onChange={e=>setCfgSearch(e.target.value)} style={{flex:1}}/>
-									<select className="splm-select" style={{width:130}} value={cfgSort} onChange={e=>setCfgSort(e.target.value)}>
+									<input className="splm-select" placeholder="Search…" value={cfgSearch} onChange={e=>setCfgSearch(e.target.value)} style={{flex:1}} aria-label="Search configurations"/>
+									<select className="splm-select" style={{width:130}} value={cfgSort} onChange={e=>setCfgSort(e.target.value)} aria-label="Sort configurations">
 										<option value="updated">Newest first</option>
 										<option value="name">Name A–Z</option>
 										<option value="teams">Most teams</option>
@@ -355,19 +369,19 @@ export default function ScheduleGenerator() {
 														// Gap #3: resume if saved schedule exists
 														if (saved) { setSchedule(saved); setStep(4); } else { setStep(1); }
 													});
-												}}>{(() => { try { return sessionStorage.getItem(`spsg_sched_${c.id}`) ? 'Resume' : 'Load'; } catch { return 'Load'; } })()}</button>
+												}}>{configsWithDrafts.has(c.id) ? 'Resume' : 'Load'}</button>
 												{/* #11: clear draft */}
-												{(() => { try { return sessionStorage.getItem(`spsg_sched_${c.id}`) ? (
+												{configsWithDrafts.has(c.id) && (
 													<button className="splm-btn" title="Clear saved schedule draft" onClick={e=>{e.stopPropagation();try{sessionStorage.removeItem(`spsg_sched_${c.id}`);}catch{}loadConfigs();}}>✕ Draft</button>
-												) : null; } catch { return null; } })()}
-												<button className="splm-btn splm-btn--danger" onClick={()=>{ if(window.confirm(`Delete "${c.name}"?`)) spsg.deleteConfig(c.id).then(loadConfigs); }}>✕</button>
-												<button className="splm-btn" title="Export JSON" onClick={async()=>{
+												)}
+												<button className="splm-btn splm-btn--danger" aria-label={`Delete ${c.name}`} onClick={()=>{ if(window.confirm(`Delete "${c.name}"?`)) spsg.deleteConfig(c.id).then(loadConfigs); }}>✕</button>
+												<button className="splm-btn" title="Export JSON" aria-label={`Export ${c.name} as JSON`} onClick={async()=>{
 													const data = await spsg.getConfig(c.id);
 													const blob = new Blob([JSON.stringify({configuration:data},null,2)],{type:'application/json'});
 													const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`${c.name||'config'}.json`; a.click(); URL.revokeObjectURL(a.href);
 												}}>↓</button>
 												{/* Gap #11: change history */}
-												<button className="splm-btn" title="Change history" onClick={async()=>{
+												<button className="splm-btn" title="Change history" aria-label={`View change history for ${c.name}`} onClick={async()=>{
 													if (historyId===c.id) { setHistoryId(null); return; }
 													const h = await spsg.getHistory(c.id).catch(()=>[]);
 													setHistoryData(h); setHistoryId(c.id);
@@ -843,15 +857,15 @@ export default function ScheduleGenerator() {
 						<div style={{display:'flex',gap:'0.5rem',flexWrap:'wrap',marginBottom:'0.5rem'}}>
 							<select className="splm-select" value={divF} onChange={e=>setDivF(e.target.value)}>
 								<option value="">All Divisions</option>
-								{[...new Set((schedule.games||[]).map(x=>x.division).filter(Boolean))].map(d=><option key={d} value={d}>{d}</option>)}
+								{divisionOptions.map(d=><option key={d} value={d}>{d}</option>)}
 							</select>
 							<select className="splm-select" value={previewFilters?.team||''} onChange={e=>setPreviewFilters(f=>({...f,team:e.target.value}))}>
 								<option value="">All Teams</option>
-								{[...new Set((schedule.games||[]).flatMap(x=>[x.home,x.away]).filter(Boolean))].sort().map(t=><option key={t} value={t}>{t}</option>)}
+								{teamOptions.map(t=><option key={t} value={t}>{t}</option>)}
 							</select>
 							<select className="splm-select" value={previewFilters?.venue||''} onChange={e=>setPreviewFilters(f=>({...f,venue:e.target.value}))}>
 								<option value="">All Venues</option>
-								{[...new Set((schedule.games||[]).map(x=>x.venue).filter(Boolean))].sort().map(v=><option key={v} value={v}>{v}</option>)}
+								{venueOptions.map(v=><option key={v} value={v}>{v}</option>)}
 							</select>
 							<input type="date" className="splm-select" style={{width:140}} value={previewFilters?.from||''} onChange={e=>setPreviewFilters(f=>({...f,from:e.target.value}))} title="From date"/>
 							<input type="date" className="splm-select" style={{width:140}} value={previewFilters?.to||''} onChange={e=>setPreviewFilters(f=>({...f,to:e.target.value}))} title="To date"/>

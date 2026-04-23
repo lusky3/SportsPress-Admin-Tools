@@ -1,20 +1,31 @@
-import { useState, useEffect } from '@wordpress/element';
+import { useState, useEffect, useCallback } from '@wordpress/element';
 import { fetchGames, rescheduleGame, cancelGame } from '../lib/api';
 
 export default function Schedule( { season } ) {
 	const [ games, setGames ] = useState( [] );
 	const [ loading, setLoading ] = useState( true );
 	const [ modal, setModal ] = useState( null );
+	const [ error, setError ] = useState( '' );
 
-	const loadGames = () => {
+	const loadGames = useCallback( () => {
+		let cancelled = false;
 		setLoading( true );
 		fetchGames( season ? { season } : {} ).then( ( data ) => {
+			if ( cancelled ) return;
 			setGames( data );
 			setLoading( false );
+		} ).catch( ( err ) => {
+			if ( cancelled ) return;
+			setError( err?.message || 'Failed to load games' );
+			setLoading( false );
 		} );
-	};
+		return () => { cancelled = true; };
+	}, [ season ] );
 
-	useEffect( loadGames, [ season ] );
+	useEffect( () => {
+		const cleanup = loadGames();
+		return cleanup;
+	}, [ loadGames ] );
 
 	const handleReschedule = async ( e ) => {
 		e.preventDefault();
@@ -24,16 +35,16 @@ export default function Schedule( { season } ) {
 			time: form.get( 'time' ),
 			reason: form.get( 'reason' ),
 			notify: form.get( 'notify' ) === 'on',
-		} );
+		} ).catch( ( err ) => setError( err?.message || 'Failed' ) );
 		setModal( null );
 		loadGames();
 	};
 
 	const handleCancel = async ( game ) => {
-		const reason = prompt( 'Reason for cancellation:' );
-		if ( reason === null ) return;
-		await cancelGame( game.id, { reason, notify: true } );
-		loadGames();
+		if ( window.confirm( 'Cancel this game?' ) ) {
+			await cancelGame( game.id, { reason: 'Cancelled by admin', notify: true } ).catch( ( err ) => setError( err?.message || 'Failed' ) );
+			loadGames();
+		}
 	};
 
 	if ( loading ) {
@@ -50,6 +61,8 @@ export default function Schedule( { season } ) {
 	return (
 		<div className="splm-schedule">
 			<h2>Schedule</h2>
+
+			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 
 			{ Object.entries( grouped ).map( ( [ date, dateGames ] ) => (
 				<div key={ date } className="splm-schedule__day">

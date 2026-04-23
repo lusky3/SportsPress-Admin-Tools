@@ -4,12 +4,21 @@ import { fetchPayments } from '../lib/api';
 export default function Payments( { season } ) {
 	const [ payments, setPayments ] = useState( [] );
 	const [ loading, setLoading ] = useState( true );
+	const [ error, setError ] = useState( '' );
 
 	useEffect( () => {
+		let cancelled = false;
+		setLoading( true );
 		fetchPayments( season ).then( ( data ) => {
+			if ( cancelled ) return;
 			setPayments( data );
 			setLoading( false );
-		} ).catch( () => setLoading( false ) );
+		} ).catch( ( err ) => {
+			if ( cancelled ) return;
+			setError( err?.message || 'Failed to load payments' );
+			setLoading( false );
+		} );
+		return () => { cancelled = true; };
 	}, [ season ] );
 
 	if ( loading ) {
@@ -23,6 +32,8 @@ export default function Payments( { season } ) {
 	return (
 		<div className="splm-payments">
 			<h2>Payments</h2>
+
+			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 
 			<div className="splm-summary-stats">
 				<div className="splm-summary-stats__item splm-summary-stats__item--green">
@@ -58,7 +69,7 @@ export default function Payments( { season } ) {
 									<td>{ p.player }</td>
 									<td>{ p.team }</td>
 									<td><span className={ `splm-payment-table__status splm-payment-table__status--${ p.status }` }>{ p.status }</span></td>
-									<td>{ window.splmDashboard?.currencySymbol || '$' }{ p.amount }</td>
+									<td>{ window.splmDashboard?.currencySymbol || '$' }{ parseFloat( p.amount || 0 ).toFixed( 2 ) }</td>
 								</tr>
 							) ) }
 						</tbody>

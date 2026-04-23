@@ -9,7 +9,7 @@
 
 // Prevent direct access
 if ( ! defined( 'ABSPATH' ) ) {
-	wp_die();
+	exit;
 }
 
 /**
@@ -21,7 +21,7 @@ class SPSG_Statistics_Calculator {
 	/**
 	 * Calculate comprehensive statistics for a schedule
 	 *
-	 * @param array $schedule Array of SPSG_Game objects or associative arrays with home_team, away_team, venue, division properties
+	 * @param array $schedule Array of SPSG_Game objects (must be objects, not arrays)
 	 * @return array Statistics array
 	 */
 	// Note: iterates the schedule multiple times for different statistics. For large schedules (1000+ games), consider a single-pass approach.
@@ -301,26 +301,29 @@ class SPSG_Statistics_Calculator {
 
 			foreach ( $stats['venue_utilization'] as $venue_id => $venue_data ) {
 				$variance = abs( $venue_data['games'] - $avg_utilization );
-				$variance_percent = ( $variance / $avg_utilization ) * 100;
 
-				if ( $variance > $threshold ) {
-					$issues[] = array(
-						'type' => 'venue_utilization_imbalance',
-						'severity' => 'info',
-						'message' => sprintf(
-							__( 'Venue utilization imbalance for %1$s: %2$d games (%3$.1f%% variance from average)', 'sportspress-schedule-generator' ),
-							$venue_data['name'],
-							$venue_data['games'],
-							$variance_percent
-						),
-						'details' => array(
-							'venue_id' => $venue_id,
-							'venue_name' => $venue_data['name'],
-							'games' => $venue_data['games'],
-							'average' => round( $avg_utilization, 2 ),
-							'variance_percent' => round( $variance_percent, 2 ),
-						),
-					);
+				if ( $avg_utilization > 0 ) {
+					$variance_percent = ( $variance / $avg_utilization ) * 100;
+
+					if ( $variance > $threshold ) {
+						$issues[] = array(
+							'type' => 'venue_utilization_imbalance',
+							'severity' => 'info',
+							'message' => sprintf(
+								__( 'Venue utilization imbalance for %1$s: %2$d games (%3$.1f%% variance from average)', 'sportspress-schedule-generator' ),
+								$venue_data['name'],
+								$venue_data['games'],
+								$variance_percent
+							),
+							'details' => array(
+								'venue_id' => $venue_id,
+								'venue_name' => $venue_data['name'],
+								'games' => $venue_data['games'],
+								'average' => round( $avg_utilization, 2 ),
+								'variance_percent' => round( $variance_percent, 2 ),
+							),
+						);
+					}
 				}
 			}
 		}

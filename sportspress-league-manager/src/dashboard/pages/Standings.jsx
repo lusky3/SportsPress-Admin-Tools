@@ -4,10 +4,13 @@ import { fetchStandings } from '../lib/api';
 export default function Standings( { season } ) {
 	const [ tables, setTables ] = useState( [] );
 	const [ loading, setLoading ] = useState( true );
+	const [ error, setError ] = useState( '' );
 
 	useEffect( () => {
+		let cancelled = false;
 		setLoading( true );
 		fetchStandings( null, season ).then( ( data ) => {
+			if ( cancelled ) return;
 			// Handle both old flat array and new multi-table format
 			if ( Array.isArray( data ) && data.length > 0 && data[ 0 ].standings ) {
 				setTables( data );
@@ -17,7 +20,12 @@ export default function Standings( { season } ) {
 				setTables( [] );
 			}
 			setLoading( false );
-		} ).catch( () => setLoading( false ) );
+		} ).catch( ( err ) => {
+			if ( cancelled ) return;
+			setError( err?.message || 'Failed to load standings' );
+			setLoading( false );
+		} );
+		return () => { cancelled = true; };
 	}, [ season ] );
 
 	if ( loading ) {
@@ -28,6 +36,7 @@ export default function Standings( { season } ) {
 		return (
 			<div className="splm-standings">
 				<h2>Standings</h2>
+				{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 				<p className="splm-empty">No standings data available.</p>
 			</div>
 		);
@@ -36,6 +45,7 @@ export default function Standings( { season } ) {
 	return (
 		<div className="splm-standings">
 			<h2>Standings</h2>
+			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 			{ tables.map( ( table ) => (
 				<div key={ table.table_id } className="splm-standings__division">
 					{ tables.length > 1 && <h3>{ table.table_name }</h3> }

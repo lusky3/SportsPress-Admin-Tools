@@ -4,18 +4,30 @@ import { fetchGames } from '../lib/api';
 export default function Dashboard( { onNavigate, season } ) {
 	const [ games, setGames ] = useState( [] );
 	const [ loading, setLoading ] = useState( true );
+	const [ error, setError ] = useState( '' );
 
 	useEffect( () => {
+		let cancelled = false;
+		setLoading( true );
 		fetchGames( season ? { season } : {} ).then( ( data ) => {
+			if ( cancelled ) return;
 			setGames( data );
 			setLoading( false );
-		} ).catch( () => setLoading( false ) );
+		} ).catch( ( err ) => {
+			if ( cancelled ) return;
+			setError( err?.message || 'Failed to load' );
+			setLoading( false );
+		} );
+		return () => { cancelled = true; };
 	}, [ season ] );
 
 	const today = new Date().toISOString().split( 'T' )[ 0 ];
 	const upcoming = games.filter( ( g ) => g.date >= today && ! g.cancelled ).slice( 0, 5 );
 	const needScores = games.filter( ( g ) => g.date < today && g.home_score === null && ! g.cancelled );
-	const recent = games.filter( ( g ) => g.home_score !== null ).slice( -5 ).reverse();
+	const recent = [ ...games ]
+		.filter( ( g ) => g.home_score !== null )
+		.sort( ( a, b ) => b.date.localeCompare( a.date ) )
+		.slice( 0, 5 );
 
 	if ( loading ) {
 		return <div className="splm-loading">Loading...</div>;
@@ -24,6 +36,8 @@ export default function Dashboard( { onNavigate, season } ) {
 	return (
 		<div className="splm-dashboard">
 			<h2>Dashboard</h2>
+
+			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 
 			{ needScores.length > 0 && (
 				<div className="splm-alert splm-alert--warning" role="alert">

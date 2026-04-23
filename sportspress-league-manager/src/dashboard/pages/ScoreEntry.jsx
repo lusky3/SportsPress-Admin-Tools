@@ -115,6 +115,7 @@ export default function ScoreEntry( { season } ) {
 	const [ awayScore, setAwayScore ] = useState( 0 );
 	const [ saving, setSaving ] = useState( false );
 	const [ saved, setSaved ] = useState( false );
+	const [ error, setError ] = useState( '' );
 	const [ showStats, setShowStats ] = useState( false );
 	const [ scoreSubmitted, setScoreSubmitted ] = useState( false );
 	const [ showingAll, setShowingAll ] = useState( false );
@@ -168,9 +169,15 @@ export default function ScoreEntry( { season } ) {
 	const handleSubmit = async () => {
 		if ( ! game ) return;
 		setSaving( true );
-		await updateScore( game.id, homeScore, awayScore );
-		setSaving( false );
-		setSaved( true );
+		setError( '' );
+		try {
+			await updateScore( game.id, homeScore, awayScore );
+			setSaved( true );
+			setSaving( false );
+		} catch ( err ) {
+			setError( err?.message || 'Failed to save score' );
+			setSaving( false );
+		}
 		setScoreSubmitted( true );
 	};
 
@@ -201,6 +208,7 @@ export default function ScoreEntry( { season } ) {
 	return (
 		<div className="splm-score-entry">
 			<h2>Score Entry</h2>
+			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 			<p className="splm-score-entry__progress">
 				Game { current + 1 } of { games.length }
 			</p>

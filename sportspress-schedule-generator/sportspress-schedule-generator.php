@@ -73,7 +73,10 @@ class SportsPress_Schedule_Generator {
 				continue;
 			}
 
-			$files = glob( $dir . '/schedule_*' ) + glob( $dir . '/schedule-*' );
+			$files = array_merge(
+				glob( $dir . '/schedule_*' ) ?: array(),
+				glob( $dir . '/schedule-*' ) ?: array()
+			);
 			if ( ! $files ) {
 				continue;
 			}
