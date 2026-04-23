@@ -468,3 +468,8 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: #1e293b; }
 /* Rosters toolbar */
 .splm-rosters__toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-start; margin-bottom: 1rem; }
 .splm-rosters__toolbar .splm-select { margin-bottom: 0; }
+
+@keyframes splm-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.4; }
+}

@@ -301,15 +301,20 @@ class SPSG_REST_API {
 		// Format games for the React UI
 		$games = array_map( function( $g ) {
 			$g = (array) $g;
-			$home = $g['home_team'] ?? null;
-			$away = $g['away_team'] ?? null;
+			$home  = $g['home_team'] ?? null;
+			$away  = $g['away_team'] ?? null;
 			$venue = $g['venue'] ?? null;
+			$div   = $g['division'] ?? null;
+			$name  = fn( $v ) => is_object( $v ) ? ( $v->name ?? '' ) : ( is_array( $v ) ? ( $v['name'] ?? '' ) : (string) $v );
+			$id    = fn( $v ) => is_object( $v ) ? ( $v->id ?? '' ) : ( is_array( $v ) ? ( $v['id'] ?? '' ) : '' );
 			return array(
-				'date'  => $g['date'] ?? '',
-				'time'  => $g['time_slot'] ?? $g['time'] ?? '',
-				'home'  => is_object( $home ) ? ( $home->name ?? '' ) : ( is_array( $home ) ? ( $home['name'] ?? '' ) : (string) $home ),
-				'away'  => is_object( $away ) ? ( $away->name ?? '' ) : ( is_array( $away ) ? ( $away['name'] ?? '' ) : (string) $away ),
-				'venue' => is_object( $venue ) ? ( $venue->name ?? '' ) : ( is_array( $venue ) ? ( $venue['name'] ?? '' ) : (string) $venue ),
+				'date'        => $g['date'] ?? '',
+				'time'        => $g['time_slot'] ?? $g['time'] ?? '',
+				'home'        => $name( $home ),
+				'away'        => $name( $away ),
+				'venue'       => $name( $venue ),
+				'division_id' => $id( $div ),
+				'division'    => $name( $div ),
 			);
 		}, $result['schedule'] );
 		return rest_ensure_response( array(
