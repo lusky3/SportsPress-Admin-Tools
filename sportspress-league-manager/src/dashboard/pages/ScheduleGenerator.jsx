@@ -106,6 +106,10 @@ export default function ScheduleGenerator() {
 	const [xlsxStyle,setXlsxStyle] = useState('detailed'); // #9: XLSX style
 	const [pubOpts,setPubOpts] = useState({conflict_resolution:'skip',event_status:'publish',dry_run:false}); // #10
 	const [importPreview,setImportPreview] = useState(null); // #2: import preview
+	const [distSettings,setDistSettings] = useState(null); // admin distribution settings
+	const [csvParsed,setCsvParsed] = useState(null); // venue CSV parse result
+	const [csvMapping,setCsvMapping] = useState({}); // venue CSV mapping
+	const csvRef = useRef(null);
 	const [validation,setValidation] = useState(null);
 	const [generating,setGenerating] = useState(false);
 	const [schedule,setSchedule] = useState(null);
@@ -140,6 +144,7 @@ export default function ScheduleGenerator() {
 		loadConfigs();
 		spsg.getSeasons().then(s=>setRc({seasons:s})).catch(()=>{});
 		spsg.listPresets().then(setPresets).catch(()=>{});
+		spsg.getDistributionSettings().then(setDistSettings).catch(()=>{});
 	}, []);
 
 	const up = patch => {
@@ -664,6 +669,66 @@ export default function ScheduleGenerator() {
 						</details>
 					)}
 					<Cap cfg={cfg}/>
+					{/* Distribution settings from admin */}
+					{distSettings&&(Object.values(distSettings.day_weights||{}).some(w=>w>0))&&(
+						<div className="splm-card" style={{marginTop:'0.75rem',borderLeft:'3px solid #2271b1'}}>
+							<p style={{margin:0,fontSize:'0.85em'}}>
+								<strong>Day weights from admin settings:</strong>{' '}
+								{Object.entries(distSettings.day_weights).filter(([,w])=>w>0).map(([d,w])=>`${d.charAt(0).toUpperCase()+d.slice(1,3)}: ${w}`).join(', ')}
+								{' '}— will be applied during generation.
+							</p>
+						</div>
+					)}
+					{/* Venue CSV import */}
+					<details className="splm-card" style={{marginTop:'0.75rem'}}>
+						<summary style={{cursor:'pointer',fontWeight:600}}>Import Venue Schedule from CSV</summary>
+						<div style={{marginTop:'0.75rem'}}>
+							<p className="splm-muted" style={{marginBottom:'0.5rem'}}>CSV format: <code>Week Start Date, Venue Name, Time Slots</code> (e.g. <code>2026-09-01, Appleby 1, 18:00-23:00</code>)</p>
+							<div style={{display:'flex',gap:'0.5rem',alignItems:'center',flexWrap:'wrap'}}>
+								<input ref={csvRef} type="file" accept=".csv" style={{display:'none'}} onChange={async e=>{
+									const file = e.target.files?.[0]; if (!file) return;
+									const fd = new FormData(); fd.append('csv', file);
+									try {
+										const r = await spsg.parseVenueCsv(fd);
+										setCsvParsed(r);
+										// Pre-fill mapping from suggestions
+										const m = {};
+										(r.suggestions||[]).forEach(s=>{ if(s.match_id) m[s.csv_venue]=s.match_id; });
+										setCsvMapping(m);
+									} catch(e) { setError(e?.message||'CSV parse failed'); }
+									e.target.value='';
+								}}/>
+								<button className="splm-btn" onClick={()=>csvRef.current?.click()}>Choose CSV File</button>
+								{csvParsed&&<span className="splm-muted">{csvParsed.row_count} rows parsed, {csvParsed.csv_venues?.length} venues</span>}
+							</div>
+							{csvParsed&&(
+								<div style={{marginTop:'0.75rem'}}>
+									<h5>Map CSV Venues to SportsPress Venues</h5>
+									{(csvParsed.csv_venues||[]).map(v=>(
+										<div key={v} style={{display:'flex',gap:'0.5rem',alignItems:'center',marginBottom:'0.25rem'}}>
+											<span style={{minWidth:150}}>{v}</span>
+											<select className="splm-select" value={csvMapping[v]||''} onChange={e=>setCsvMapping(m=>({...m,[v]:e.target.value}))}>
+												<option value="">Skip</option>
+												{(csvParsed.sp_venues||[]).map(sv=><option key={sv.id} value={sv.id}>{sv.name}</option>)}
+												<option value="__new__">Create new venue</option>
+											</select>
+										</div>
+									))}
+									<button className="splm-btn splm-btn--primary" style={{marginTop:'0.5rem'}} onClick={async()=>{
+										if (!configId) { setError('Save config first (click Next then Back)'); return; }
+										const mapping = {};
+										Object.entries(csvMapping).forEach(([csv,id])=>{ if(id&&id!=='__new__') mapping[csv]=parseInt(id,10); });
+										try {
+											const r = await spsg.applyVenueCsv(csvParsed.schedules, mapping, configId);
+											setCsvParsed(null); setCsvMapping({});
+											setError('');
+											alert(`✅ Applied venue schedule for ${r.applied} venue(s).`);
+										} catch(e) { setError(e?.message||'Apply failed'); }
+									}}>Apply to Config</button>
+								</div>
+							)}
+						</div>
+					</details>
 					<div className="splm-wizard__actions">
 						<button className="splm-btn" onClick={()=>go(1)}>← Back</button>
 						<button className="splm-btn splm-btn--primary" onClick={()=>go(3)}>Next: Review →</button>

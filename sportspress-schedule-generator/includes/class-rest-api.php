@@ -91,6 +91,17 @@ class SPSG_REST_API {
 		register_rest_route( $ns, '/export/xlsx', array_merge( $perm, array(
 			'methods' => 'POST', 'callback' => array( $this, 'spsg_export_xlsx' ),
 		) ) );
+		// Venue CSV import
+		register_rest_route( $ns, '/venue-csv/parse', array_merge( $perm, array(
+			'methods' => 'POST', 'callback' => array( $this, 'spsg_venue_csv_parse' ),
+		) ) );
+		register_rest_route( $ns, '/venue-csv/apply', array_merge( $perm, array(
+			'methods' => 'POST', 'callback' => array( $this, 'spsg_venue_csv_apply' ),
+		) ) );
+		// Distribution settings
+		register_rest_route( $ns, '/settings/distribution', array_merge( $perm, array(
+			'methods' => 'GET', 'callback' => array( $this, 'spsg_get_distribution_settings' ),
+		) ) );
 	}
 
 	public function check_manage_permission() {
@@ -309,6 +320,59 @@ class SPSG_REST_API {
 		return $slots;
 	}
 
+	public function spsg_get_distribution_settings() {
+		$weights = get_option( 'spsg_day_weights', array() );
+		return rest_ensure_response( array(
+			'day_weights'         => $weights,
+			'balance_time_slots'  => (bool) get_option( 'spsg_balance_time_slots', 1 ),
+			'balance_home_away'   => (bool) get_option( 'spsg_balance_home_away', 1 ),
+		) );
+	}
+
+	public function spsg_venue_csv_parse( $request ) {
+		// Expects multipart/form-data with 'csv' file
+		$files = $request->get_file_params();
+		if ( empty( $files['csv']['tmp_name'] ) ) {
+			return new WP_Error( 'no_file', 'No CSV file uploaded.', array( 'status' => 400 ) );
+		}
+		$schedules = SPSG_Venue_Schedule_Importer::parse_csv( $files['csv']['tmp_name'] );
+		if ( is_wp_error( $schedules ) ) return $schedules;
+		$csv_venues = SPSG_Venue_Schedule_Importer::get_unique_venues( $schedules );
+		$sp_venues  = get_terms( array( 'taxonomy' => 'sp_venue', 'hide_empty' => false ) );
+		$sp_venue_list = is_array( $sp_venues ) ? array_map( fn( $t ) => array( 'id' => $t->term_id, 'name' => $t->name ), $sp_venues ) : array();
+		$suggestions = SPSG_Venue_Schedule_Importer::suggest_venue_mapping( $csv_venues, $sp_venue_list );
+		return rest_ensure_response( array(
+			'schedules'   => $schedules,
+			'csv_venues'  => $csv_venues,
+			'sp_venues'   => $sp_venue_list,
+			'suggestions' => $suggestions,
+			'row_count'   => count( $schedules ),
+		) );
+	}
+
+	public function spsg_venue_csv_apply( $request ) {
+		$schedules    = $request->get_param( 'schedules' );
+		$venue_mapping = $request->get_param( 'venue_mapping' ); // {csv_name: venue_id}
+		$config_id    = $request->get_param( 'config_id' );
+		if ( ! $schedules || ! $venue_mapping || ! $config_id ) {
+			return new WP_Error( 'missing_params', 'schedules, venue_mapping, and config_id are required.', array( 'status' => 400 ) );
+		}
+		$availability = SPSG_Venue_Schedule_Importer::convert_to_availability( $schedules, $venue_mapping );
+		// Merge into config's venue_date_availability
+		$configs = get_option( SPSG_Configuration_Manager::OPTION_NAME, array() );
+		if ( ! isset( $configs[ $config_id ] ) ) {
+			return new WP_Error( 'not_found', 'Config not found.', array( 'status' => 404 ) );
+		}
+		$existing = $configs[ $config_id ]['venue_date_availability'] ?? array();
+		foreach ( $availability as $vid => $ranges ) {
+			$existing[ $vid ] = array_merge( $existing[ $vid ] ?? array(), $ranges );
+		}
+		$configs[ $config_id ]['venue_date_availability'] = $existing;
+		$configs[ $config_id ]['modified'] = current_time( 'mysql' );
+		update_option( SPSG_Configuration_Manager::OPTION_NAME, $configs, 'no' );
+		return rest_ensure_response( array( 'applied' => count( $availability ), 'venues' => array_keys( $availability ) ) );
+	}
+
 	public function spsg_export_xlsx( $request ) {
 		$schedule = get_transient( 'spsg_schedule_' . $request->get_param( 'schedule_id' ) );
 		if ( ! $schedule ) return new WP_Error( 'schedule_not_found', 'Schedule not found or expired.', array( 'status' => 404 ) );
@@ -401,6 +465,30 @@ class SPSG_REST_API {
 	public function spsg_generate( $request ) {
 		$config = $this->cm()->load( $request->get_param( 'config_id' ) );
 		if ( is_wp_error( $config ) ) return $config;
+		// Apply admin-configured distribution rules if set
+		$day_weights = get_option( 'spsg_day_weights', array() );
+		$active_weights = array_filter( $day_weights, fn( $w ) => $w > 0 );
+		if ( ! empty( $active_weights ) ) {
+			$total = array_sum( $active_weights );
+			$normalized = array_map( fn( $w ) => round( $w / $total, 4 ), $active_weights );
+			// Only apply weights for days that are in the config's playing_days
+			$day_balance = array();
+			foreach ( $config->playing_days as $day ) {
+				if ( isset( $normalized[ $day ] ) ) {
+					$day_balance[ $day ] = $normalized[ $day ];
+				}
+			}
+			if ( ! empty( $day_balance ) ) {
+				$config->distribution_rules = array_merge(
+					$config->distribution_rules ?: array(),
+					array(
+						'day_balance'       => $day_balance,
+						'time_slot_balance' => (bool) get_option( 'spsg_balance_time_slots', 1 ),
+						'home_away_balance' => (bool) get_option( 'spsg_balance_home_away', 1 ),
+					)
+				);
+			}
+		}
 		$result = ( new SPSG_Schedule_Engine() )->generate_schedule( $config );
 		if ( is_wp_error( $result ) ) return $result;
 		$sid = uniqid( 'sched_' );
