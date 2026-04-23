@@ -220,7 +220,7 @@ class SPLM_REST_API {
 		$season   = $request->get_param( 'season' );
 
 		if ( $table_id ) {
-			$table_ids = array( (int) $table_id );
+			$table_ids = array( absint( $table_id ) );
 		} else {
 			$args = array(
 				'post_type'      => 'sp_table',
@@ -244,6 +244,9 @@ class SPLM_REST_API {
 
 		$response = array();
 		foreach ( $table_ids as $tid ) {
+			if ( ! class_exists( 'SP_League_Table' ) ) {
+				return new WP_REST_Response( array(), 200 );
+			}
 			$table = new SP_League_Table( $tid );
 			$data  = $table->data();
 

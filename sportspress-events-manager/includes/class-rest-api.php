@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPEM_REST_API {
 
-	const REST_NAMESPACE = 'splm/v1'; // Shared with events-manager and player-tools — paths must not overlap
+	const REST_NAMESPACE = 'splm/v1'; // Shared with league-manager and player-tools — paths must not overlap
 
 	public function __construct() {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
@@ -159,7 +159,7 @@ class SPEM_REST_API {
 	 * POST /games/{id}/score — update game score.
 	 */
 	public function update_score( $request ) {
-		$event_id   = (int) $request->get_param( 'id' );
+		$event_id   = absint( $request->get_param( 'id' ) );
 		$home_score = (int) $request->get_param( 'home_score' );
 		$away_score = (int) $request->get_param( 'away_score' );
 
@@ -206,11 +206,19 @@ class SPEM_REST_API {
 	 * POST /games/{id}/reschedule — change game date/time.
 	 */
 	public function reschedule_game( $request ) {
-		$event_id = (int) $request->get_param( 'id' );
+		$event_id = absint( $request->get_param( 'id' ) );
 		$new_date = sanitize_text_field( $request->get_param( 'date' ) );
 		$new_time = sanitize_text_field( $request->get_param( 'time' ) ?? '19:00' );
 		$reason   = sanitize_text_field( $request->get_param( 'reason' ) ?? '' );
 		$notify   = (bool) $request->get_param( 'notify' );
+
+		if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $new_date ) ) {
+			return new WP_Error( 'invalid_date', 'Date must be YYYY-MM-DD format.', array( 'status' => 400 ) );
+		}
+
+		if ( ! preg_match( '/^\d{2}:\d{2}$/', $new_time ) ) {
+			$new_time = '19:00';
+		}
 
 		$event = get_post( $event_id );
 		if ( ! $event || 'sp_event' !== $event->post_type ) {
@@ -249,7 +257,7 @@ class SPEM_REST_API {
 	 * POST /games/{id}/cancel — cancel a game.
 	 */
 	public function cancel_game( $request ) {
-		$event_id = (int) $request->get_param( 'id' );
+		$event_id = absint( $request->get_param( 'id' ) );
 		$reason   = sanitize_text_field( $request->get_param( 'reason' ) ?? '' );
 		$notify   = (bool) $request->get_param( 'notify' );
 
@@ -278,7 +286,7 @@ class SPEM_REST_API {
 	 * GET /games/{id}/players — players and performance data for a game.
 	 */
 	public function get_game_players( $request ) {
-		$event_id = (int) $request->get_param( 'id' );
+		$event_id = absint( $request->get_param( 'id' ) );
 		$event    = get_post( $event_id );
 		if ( ! $event || 'sp_event' !== $event->post_type ) {
 			return new WP_Error( 'not_found', 'Game not found.', array( 'status' => 404 ) );
@@ -365,7 +373,7 @@ class SPEM_REST_API {
 	 * POST /games/{id}/players — save player performance stats.
 	 */
 	public function save_game_players( $request ) {
-		$event_id = (int) $request->get_param( 'id' );
+		$event_id = absint( $request->get_param( 'id' ) );
 		$stats    = $request->get_param( 'stats' );
 
 		$event = get_post( $event_id );
@@ -404,8 +412,8 @@ class SPEM_REST_API {
 	 * POST /season/rollover-preview — preview players not returning for new season.
 	 */
 	public function rollover_preview( $request ) {
-		$from_season = (int) $request->get_param( 'from_season' );
-		$to_season   = (int) $request->get_param( 'to_season' );
+		$from_season = absint( $request->get_param( 'from_season' ) );
+		$to_season   = absint( $request->get_param( 'to_season' ) );
 
 		$players = get_posts( array(
 			'post_type'      => 'sp_player',
@@ -499,7 +507,11 @@ class SPEM_REST_API {
 			$team_ids  = get_post_meta( $player_id, 'sp_current_team', false );
 
 			foreach ( $team_ids as $team_id ) {
-				add_post_meta( $player_id, 'sp_past_team', (int) $team_id );
+				// Only add if not already a past team member
+				$past_teams = get_post_meta( $player_id, 'sp_past_team', false );
+				if ( ! in_array( (int) $team_id, array_map( 'intval', $past_teams ), true ) ) {
+					add_post_meta( $player_id, 'sp_past_team', (int) $team_id );
+				}
 			}
 
 			delete_post_meta( $player_id, 'sp_current_team' );
@@ -511,10 +523,10 @@ class SPEM_REST_API {
 			if ( is_array( $leagues_meta ) ) {
 				foreach ( $leagues_meta as $league_id => $seasons ) {
 					if ( is_array( $seasons ) && isset( $seasons[ $from_season ] ) ) {
-						$team_id = $seasons[ $from_season ];
+						$league_team_id = $seasons[ $from_season ];
 						unset( $leagues_meta[ $league_id ][ $from_season ] );
 						// Add to new season
-						$leagues_meta[ $league_id ][ $to_season ] = $team_id;
+						$leagues_meta[ $league_id ][ $to_season ] = $league_team_id;
 					}
 				}
 				update_post_meta( $player_id, 'sp_leagues', $leagues_meta );

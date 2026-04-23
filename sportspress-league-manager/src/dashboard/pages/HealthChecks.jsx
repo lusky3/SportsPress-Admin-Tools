@@ -6,9 +6,12 @@ const ICONS = { error: '❌', warning: '⚠️', info: 'ℹ️' };
 export default function HealthChecks() {
 	const [ alerts, setAlerts ] = useState( [] );
 	const [ loading, setLoading ] = useState( true );
+	const [ error, setError ] = useState( '' );
 
 	useEffect( () => {
+		let cancelled = false;
 		fetchHealth().then( ( data ) => {
+			if ( cancelled ) return;
 			const items = [];
 			if ( data.events_without_results?.length ) {
 				items.push( { type: 'error', message: 'Past games missing scores', count: data.events_without_results.length } );
@@ -24,7 +27,12 @@ export default function HealthChecks() {
 			}
 			setAlerts( items );
 			setLoading( false );
-		} ).catch( () => setLoading( false ) );
+		} ).catch( ( err ) => {
+			if ( cancelled ) return;
+			setError( err?.message || 'Failed to run health checks' );
+			setLoading( false );
+		} );
+		return () => { cancelled = true; };
 	}, [] );
 
 	if ( loading ) {
@@ -53,6 +61,7 @@ export default function HealthChecks() {
 	return (
 		<div className="splm-health">
 			<h2>Health Checks</h2>
+			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 			{ alerts.length === 0 ? (
 				<p className="splm-empty">All systems healthy. ✓</p>
 			) : (

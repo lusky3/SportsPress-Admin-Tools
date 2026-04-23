@@ -537,7 +537,7 @@ class SPSG_REST_API {
 		}
 		$result = ( new SPSG_Schedule_Engine() )->generate_schedule( $config );
 		if ( is_wp_error( $result ) ) return $result;
-		$sid = uniqid( 'sched_' );
+		$sid = 'sched_' . bin2hex( random_bytes( 8 ) );
 		set_transient( 'spsg_schedule_' . $sid, $result['schedule'], DAY_IN_SECONDS );
 		// Format games for the React UI
 		$games = array_map( function( $g ) {
@@ -570,11 +570,15 @@ class SPSG_REST_API {
 		) );
 	}
 
+	// Note: generation is currently synchronous. These endpoints are stubs
+	// for future async generation support and currently return idle/cancelled.
 	public function spsg_generate_progress() {
 		$p = get_transient( 'spsg_generation_progress_' . get_current_user_id() );
 		return rest_ensure_response( $p ?: array( 'status' => 'idle' ) );
 	}
 
+	// Note: generation is currently synchronous. These endpoints are stubs
+	// for future async generation support and currently return idle/cancelled.
 	public function spsg_generate_cancel() {
 		set_transient( 'spsg_cancel_generation_' . get_current_user_id(), true, 300 );
 		return rest_ensure_response( array( 'cancelled' => true ) );
@@ -587,7 +591,7 @@ class SPSG_REST_API {
 		$schedule = get_transient( 'spsg_schedule_' . $request->get_param( 'schedule_id' ) );
 		if ( ! $schedule ) return new WP_Error( 'schedule_not_found', 'Schedule not found or expired.', array( 'status' => 404 ) );
 		$offset = (int) ( $request->get_param( 'offset' ) ?? 0 );
-		$limit  = (int) ( $request->get_param( 'limit' ) ?? 50 );
+		$limit  = min( 200, max( 1, (int) ( $request->get_param( 'limit' ) ?? 50 ) ) );
 		$cr     = in_array( $request->get_param( 'conflict_resolution' ), array( 'skip', 'overwrite' ), true ) ? $request->get_param( 'conflict_resolution' ) : 'skip';
 		$status = in_array( $request->get_param( 'event_status' ), array( 'publish', 'draft', 'pending', 'future' ), true ) ? $request->get_param( 'event_status' ) : 'publish';
 		$dry    = (bool) $request->get_param( 'dry_run' );

@@ -7,7 +7,7 @@
 
 // Prevent direct access
 if ( ! defined( 'ABSPATH' ) ) {
-	wp_die();
+	exit;
 }
 
 /**
@@ -141,7 +141,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 		// Save configuration
 		$configurations[ $sanitized['id'] ] = $sanitized;
 
-		$result = update_option( self::OPTION_NAME, $configurations );
+		$result = update_option( self::OPTION_NAME, $configurations, 'no' );
 
 		if ( $result ) {
 			$this->current_config = new SPSG_Schedule_Configuration( $sanitized );
@@ -219,7 +219,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 
 		if ( isset( $configurations[ $config_id ] ) ) {
 			unset( $configurations[ $config_id ] );
-			update_option( self::OPTION_NAME, $configurations );
+			update_option( self::OPTION_NAME, $configurations, 'no' );
 			do_action( 'spsg_configuration_deleted', $config_id );
 			return true; // Always return true after successful delete
 		}
