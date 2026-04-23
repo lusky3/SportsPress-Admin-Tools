@@ -167,6 +167,12 @@ export const spsg = {
 	replacePlaceholder: ( id, replacementId, del = false ) =>
 		apiFetch( { path: `/spsg/v1/placeholders/${ id }/replace`, method: 'POST', data: { replacement_id: replacementId, delete: del } } ),
 	getHistory: ( id ) => apiFetch( { path: `/spsg/v1/configs/${ id }/history` } ),
-	exportXlsx: ( scheduleId, configId ) => apiFetch( { path: '/spsg/v1/export/xlsx', method: 'POST', data: { schedule_id: scheduleId, config_id: configId } } ),
+	clearHistory: ( id ) => apiFetch( { path: `/spsg/v1/configs/${ id }/history/clear`, method: 'DELETE' } ),
+	listPresets: () => apiFetch( { path: '/spsg/v1/presets' } ),
+	getPreset: ( name ) => apiFetch( { path: `/spsg/v1/presets/${ name }` } ),
+	getLeagueTeams: ( leagueId ) => apiFetch( { path: `/spsg/v1/sportspress/leagues/${ leagueId }/teams` } ),
+	exportXlsx: ( scheduleId, configId, style = 'detailed' ) => apiFetch( { path: '/spsg/v1/export/xlsx', method: 'POST', data: { schedule_id: scheduleId, config_id: configId, style } } ),
+	publish: ( scheduleId, seasonId, leagueId, offset = 0, limit = 50, opts = {} ) =>
+		apiFetch( { path: '/spsg/v1/publish', method: 'POST', data: { schedule_id: scheduleId, season_id: seasonId, league_id: leagueId, offset, limit, ...opts } } ),
 };
 export { spsg as scheduleApi };
