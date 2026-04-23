@@ -167,5 +167,6 @@ export const spsg = {
 	replacePlaceholder: ( id, replacementId, del = false ) =>
 		apiFetch( { path: `/spsg/v1/placeholders/${ id }/replace`, method: 'POST', data: { replacement_id: replacementId, delete: del } } ),
 	getHistory: ( id ) => apiFetch( { path: `/spsg/v1/configs/${ id }/history` } ),
+	exportXlsx: ( scheduleId, configId ) => apiFetch( { path: '/spsg/v1/export/xlsx', method: 'POST', data: { schedule_id: scheduleId, config_id: configId } } ),
 };
 export { spsg as scheduleApi };

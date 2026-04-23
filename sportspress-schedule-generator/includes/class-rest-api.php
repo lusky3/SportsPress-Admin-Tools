@@ -73,6 +73,10 @@ class SPSG_REST_API {
 		register_rest_route( $ns, '/publish', array_merge( $perm, array(
 			'methods' => 'POST', 'callback' => array( $this, 'spsg_publish' ),
 		) ) );
+		// Export
+		register_rest_route( $ns, '/export/xlsx', array_merge( $perm, array(
+			'methods' => 'POST', 'callback' => array( $this, 'spsg_export_xlsx' ),
+		) ) );
 	}
 
 	public function check_manage_permission() {
@@ -285,6 +289,16 @@ class SPSG_REST_API {
 			$cur->add( new DateInterval( 'P1D' ) );
 		}
 		return $slots;
+	}
+
+	public function spsg_export_xlsx( $request ) {
+		$schedule = get_transient( 'spsg_schedule_' . $request->get_param( 'schedule_id' ) );
+		if ( ! $schedule ) return new WP_Error( 'schedule_not_found', 'Schedule not found or expired.', array( 'status' => 404 ) );
+		$config = $this->cm()->load( $request->get_param( 'config_id' ) );
+		$em = new SPSG_Export_Manager();
+		$result = $em->export( $schedule, $config, 'xlsx', array(), 'detailed' );
+		if ( is_wp_error( $result ) ) return $result;
+		return rest_ensure_response( array( 'url' => $result['url'] ) );
 	}
 
 	public function spsg_get_history( $request ) {

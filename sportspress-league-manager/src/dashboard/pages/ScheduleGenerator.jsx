@@ -99,6 +99,7 @@ export default function ScheduleGenerator() {
 	const [spS,setSpS] = useState([]);
 	const [importLg,setImportLg] = useState('');
 	const [cfgSearch,setCfgSearch] = useState(''); // Gap #5: search filter
+	const [cfgSort,setCfgSort] = useState('updated'); // #5: sort field
 	const [historyId,setHistoryId] = useState(null); // Gap #11: change history
 	const [historyData,setHistoryData] = useState([]);
 	const [validation,setValidation] = useState(null);
@@ -135,7 +136,11 @@ export default function ScheduleGenerator() {
 		spsg.getSeasons().then(s=>setRc({seasons:s})).catch(()=>{});
 	}, []);
 
-	const up = patch => setCfg(p => ({...p,...patch}));
+	const up = patch => {
+		setCfg(p => ({...p,...patch}));
+		// #7: clear stale validation whenever config changes
+		setValidation(null);
+	};
 	const togDay = day => up({playing_days: cfg.playing_days.includes(day) ? cfg.playing_days.filter(d=>d!==day) : [...cfg.playing_days,day]});
 
 	// Gap #1/#2/#16: only save if config has meaningful content
@@ -261,6 +266,8 @@ export default function ScheduleGenerator() {
 
 	// Fix #11: format MySQL datetime to readable string
 	const fmtDate = s => { if (!s) return ''; try { return new Date(s.replace(' ','T')).toLocaleDateString(); } catch { return s; } };
+	// #9: format with time for history
+	const fmtDateTime = s => { if (!s) return ''; try { return new Date(s.replace(' ','T')).toLocaleString(); } catch { return s; } };
 
 	const rSeasons = rc?.seasons||[];
 	const f = {display:'flex',gap:'0.5rem'};
@@ -288,11 +295,22 @@ export default function ScheduleGenerator() {
 						{!loading&&!configs.length&&<p className="splm-muted">No saved configs yet.</p>}
 						{configs.length>0&&(
 							<div className="splm-table-wrapper">
-								{/* Gap #5: search filter */}
-								<input className="splm-select" placeholder="Search…" value={cfgSearch} onChange={e=>setCfgSearch(e.target.value)} style={{marginBottom:'0.5rem'}}/>
+								{/* Gap #5: search filter + sort */}
+								<div style={{display:'flex',gap:'0.5rem',marginBottom:'0.5rem'}}>
+									<input className="splm-select" placeholder="Search…" value={cfgSearch} onChange={e=>setCfgSearch(e.target.value)} style={{flex:1}}/>
+									<select className="splm-select" style={{width:130}} value={cfgSort} onChange={e=>setCfgSort(e.target.value)}>
+										<option value="updated">Newest first</option>
+										<option value="name">Name A–Z</option>
+										<option value="teams">Most teams</option>
+									</select>
+								</div>
 								<table className="splm-table">
 									<thead><tr><th>Name</th><th>Updated</th><th>Divisions</th><th>Teams</th><th></th></tr></thead>
-									<tbody>{configs.filter(c=>!cfgSearch||c.name.toLowerCase().includes(cfgSearch.toLowerCase())).map(c=>(
+									<tbody>{[...configs.filter(c=>!cfgSearch||c.name.toLowerCase().includes(cfgSearch.toLowerCase()))].sort((a,b)=>{
+										if(cfgSort==='name') return a.name.localeCompare(b.name);
+										if(cfgSort==='teams') return (b.team_count||0)-(a.team_count||0);
+										return 0; // default: server order (newest first)
+									}).map(c=>(
 										<>
 										<tr key={c.id}>
 											{/* Gap #4: inline rename */}
@@ -308,6 +326,10 @@ export default function ScheduleGenerator() {
 														if (saved) { setSchedule(saved); setStep(4); } else { setStep(1); }
 													});
 												}}>{(() => { try { return sessionStorage.getItem(`spsg_sched_${c.id}`) ? 'Resume' : 'Load'; } catch { return 'Load'; } })()}</button>
+												{/* #11: clear draft */}
+												{(() => { try { return sessionStorage.getItem(`spsg_sched_${c.id}`) ? (
+													<button className="splm-btn" title="Clear saved schedule draft" onClick={e=>{e.stopPropagation();try{sessionStorage.removeItem(`spsg_sched_${c.id}`);}catch{}loadConfigs();}}>✕ Draft</button>
+												) : null; } catch { return null; } })()}
 												<button className="splm-btn splm-btn--danger" onClick={()=>{ if(window.confirm(`Delete "${c.name}"?`)) spsg.deleteConfig(c.id).then(loadConfigs); }}>✕</button>
 												<button className="splm-btn" title="Export JSON" onClick={async()=>{
 													const data = await spsg.getConfig(c.id);
@@ -332,7 +354,7 @@ export default function ScheduleGenerator() {
 															<thead><tr><th>When</th><th>Field</th><th>From</th><th>To</th></tr></thead>
 															<tbody>{historyData.map((e,i)=>(
 																<tr key={i}>
-																	<td>{fmtDate(e.timestamp)}</td>
+																	<td>{fmtDateTime(e.timestamp)}</td>
 																	<td>{e.field_label||e.field}</td>
 																	<td style={{color:'#d63638',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.old_value}</td>
 																	<td style={{color:'#00a32a',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.new_value}</td>
@@ -379,7 +401,20 @@ export default function ScheduleGenerator() {
 							<div style={{gridColumn:'1/-1'}}><label>Config Name</label><input className="splm-select" value={cfg.name} onChange={e=>up({name:e.target.value})}/></div>
 							<div><label>Start Date</label><input type="date" className="splm-select" value={cfg.start_date} onChange={e=>up({start_date:e.target.value})}/></div>
 							<div><label>End Date</label><input type="date" className="splm-select" value={cfg.end_date} onChange={e=>up({end_date:e.target.value})}/></div>
-							<div><label>Games per Team</label><input type="number" className="splm-select" min="1" value={cfg.games_per_team} onChange={e=>up({games_per_team:parseInt(e.target.value,10)||0})}/></div>
+							<div><label>Games per Team</label><input type="number" className="splm-select" min="1" value={cfg.games_per_team} onChange={e=>up({games_per_team:parseInt(e.target.value,10)||0})}/>
+							{/* #1: matchup feasibility hint */}
+							{(()=>{
+								const tt = cfg.divisions.reduce((s,d)=>s+d.teams.length,0);
+								if (tt < 2) return null;
+								const minGames = cfg.matchup_style==='single_round_robin' ? tt-1 : (tt-1)*2;
+								if (cfg.games_per_team > 0 && cfg.games_per_team !== minGames) {
+									return <p style={{fontSize:'0.8em',color:'#646970',marginTop:'0.2rem'}}>
+										{tt} teams × {cfg.matchup_style==='double_round_robin'?'double':'single'} RR = {minGames} games/team
+									</p>;
+								}
+								return null;
+							})()}
+						</div>
 							<div><label>Match Length (min)</label><input type="number" className="splm-select" min="1" value={cfg.match_length} onChange={e=>up({match_length:parseInt(e.target.value,10)||60})}/></div>
 							<div><label>Matchup Style</label>
 								<select className="splm-select" value={cfg.matchup_style} onChange={e=>up({matchup_style:e.target.value})}>
@@ -403,12 +438,13 @@ export default function ScheduleGenerator() {
 							<button className="splm-btn" onClick={doImport}>{spL.length?'Import Selected':'Import from SportsPress'}</button>
 							{spL.length>0&&<>
 								<select className="splm-select" value={importLg} onChange={e=>setImportLg(e.target.value)}><option value="">Pick a league…</option>{spL.filter(l=>l.name.toUpperCase()!=='ALL').map(l=><option key={l.id} value={l.id}>{l.name} ({l.teams?.length||0})</option>)}</select>
-								{/* Gap #13: import all leagues as separate divisions */}
+								{/* #2: Import All always visible once leagues loaded */}
 								<button className="splm-btn" title="Import each league as a separate division" onClick={()=>{
 									const newDivs = spL.filter(l => l.teams?.length && l.name.toUpperCase()!=='ALL' && !cfg.divisions.some(d=>d.name===l.name))
 										.map(l => ({id:mkId('div'),name:l.name,teams:l.teams.map(t=>({id:mkId('team'),name:t.name,is_tbd:false}))}));
 									if (newDivs.length) up({divisions:[...cfg.divisions,...newDivs]});
-								}}>Import All</button>
+									else setError('All leagues already imported');
+								}}>Import All Divisions</button>
 							</>}
 						</div>
 						{/* Fix #12: generic_teams auto-fill */}
@@ -424,6 +460,8 @@ export default function ScheduleGenerator() {
 							<div key={div.id} className="splm-card" style={{marginBottom:'0.75rem'}}>
 								<div style={{...f,alignItems:'center',marginBottom:'0.5rem'}}>
 									<input className="splm-select" value={div.name} onChange={e=>upDiv(div.id,{name:e.target.value})} style={{flex:1}}/>
+									{/* #6: duplicate division name warning */}
+									{cfg.divisions.filter(d=>d.id!==div.id&&d.name===div.name).length>0&&<span style={{color:'#d63638',fontSize:'0.8em',marginLeft:'0.25rem'}}>⚠️ Duplicate</span>}
 									<button className="splm-btn splm-btn--danger" onClick={()=>rmDiv(div.id)}>✕</button>
 								</div>
 								{div.teams.map(t=>(
@@ -471,6 +509,9 @@ export default function ScheduleGenerator() {
 						<h3>Time Slots per Playing Day</h3>
 						{/* Gap #4: pre-fill defaults */}
 						<button className="splm-btn" style={{marginBottom:'0.5rem'}} onClick={()=>{
+							const hasExisting = Object.values(cfg.time_slots).some(s=>s.length>0);
+							// #8: confirm before overwriting existing slots
+							if (hasExisting && !window.confirm('Replace existing time slots with defaults?')) return;
 							const sl = {};
 							cfg.playing_days.forEach(d => {
 								sl[d] = d==='saturday'||d==='sunday' ? ['14:00','15:00','16:00'] : ['19:00','20:00','21:00'];
@@ -662,13 +703,23 @@ export default function ScheduleGenerator() {
 								</tbody>
 							</table>
 						</div>
-						{/* Gap #2: CSV export */}
-						<button className="splm-btn" style={{marginTop:'0.5rem'}} onClick={()=>{
-							const rows=[['Date','Time','Home','Away','Venue','Division']];
-							(schedule.games||[]).filter(x=>!divF||x.division===divF).forEach(g=>rows.push([g.date,g.time,g.home,g.away,g.venue,g.division]));
-							const csv=rows.map(r=>r.map(c=>`"${(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
-							const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='schedule.csv';a.click();
-						}}>Export CSV</button>
+						{/* Gap #2: CSV export; #3: XLSX export */}
+						<div style={{display:'flex',gap:'0.5rem',marginTop:'0.5rem',flexWrap:'wrap'}}>
+							<button className="splm-btn" onClick={()=>{
+								const rows=[['Date','Time','Home','Away','Venue','Division']];
+								(schedule.games||[]).filter(x=>!divF||x.division===divF).forEach(g=>rows.push([g.date,g.time,g.home,g.away,g.venue,g.division]));
+								const csv=rows.map(r=>r.map(c=>`"${(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+								// #10: include config name and date in filename
+								const fname=`${(cfg.name||'schedule').replace(/[^a-z0-9]/gi,'_')}_${new Date().toISOString().split('T')[0]}.csv`;
+								const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=fname;a.click();
+							}}>Export CSV</button>
+							<button className="splm-btn" onClick={async()=>{
+								try {
+									const r = await spsg.exportXlsx(schedule.id, configId);
+									window.open(r.url, '_blank');
+								} catch(e) { setError(e?.message||'XLSX export failed'); }
+							}}>Export XLSX</button>
+						</div>
 					</div>
 					{/* Fix #3: per-team stats computed from games */}
 					{schedule.stats&&Object.keys(schedule.stats).length>0&&(
@@ -695,7 +746,7 @@ export default function ScheduleGenerator() {
 							<div style={{marginTop:'0.5rem'}}>
 								{pubProg.done
 									? <p style={{color:'#00a32a'}}>✅ Published {pubProg.imported} of {pubProg.total} events! View them on the <strong>Schedule</strong> page.</p>
-									: <div style={{height:8,background:'#ddd',borderRadius:4}}><div style={{width:`${pubProg.total?Math.round(pubProg.imported/pubProg.total*100):0}%`,height:'100%',background:'#2271b1',borderRadius:4,transition:'width 0.3s'}}/></div>
+									: <><p style={{fontSize:'0.85em',marginBottom:'0.25rem'}}>{pubProg.imported} of {pubProg.total} events published…</p><div style={{height:8,background:'#ddd',borderRadius:4}}><div style={{width:`${pubProg.total?Math.round(pubProg.imported/pubProg.total*100):0}%`,height:'100%',background:'#2271b1',borderRadius:4,transition:'width 0.3s'}}/></div></>
 								}
 							</div>
 						)}
