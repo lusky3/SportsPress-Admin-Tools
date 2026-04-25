@@ -50,4 +50,5 @@ phpunit.xml
 # Misc
 .amazonq/
 AUDIT-REPORT.md
-BRAINSTORM-REPORT.md.playwright-mcp
+BRAINSTORM-REPORT.md
+.playwright-mcp
