@@ -27,16 +27,22 @@ class SPPT_REST_API {
 				'permission_callback' => array( $this, 'check_roster_permission' ),
 				'args'                => array(
 					'player_id' => array(
-						'type'     => 'integer',
-						'required' => true,
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 					'from_team' => array(
-						'type'     => 'integer',
-						'required' => true,
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 					'to_team'   => array(
-						'type'     => 'integer',
-						'required' => true,
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 				),
 			)
@@ -51,17 +57,23 @@ class SPPT_REST_API {
 				'permission_callback' => array( $this, 'check_roster_permission' ),
 				'args'                => array(
 					'player_id' => array(
-						'type'     => 'integer',
-						'required' => true,
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 					'field'     => array(
-						'type'     => 'string',
-						'required' => true,
-						'enum'     => array( 'number', 'email' ),
+						'type'              => 'string',
+						'required'          => true,
+						'enum'              => array( 'number', 'email' ),
+						'sanitize_callback' => 'sanitize_text_field',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 					'value'     => array(
-						'type'     => 'string',
-						'required' => true,
+						'type'              => 'string',
+						'required'          => true,
+						'sanitize_callback' => 'sanitize_text_field',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 				),
 			)
@@ -76,12 +88,16 @@ class SPPT_REST_API {
 				'permission_callback' => array( $this, 'check_roster_permission' ),
 				'args'                => array(
 					'player_id' => array(
-						'type'     => 'integer',
-						'required' => true,
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 					'team_id'   => array(
-						'type'     => 'integer',
-						'required' => true,
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 				),
 			)
@@ -96,16 +112,22 @@ class SPPT_REST_API {
 				'permission_callback' => array( $this, 'check_roster_permission' ),
 				'args'                => array(
 					'player_id'  => array(
-						'type'     => 'integer',
-						'required' => true,
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 					'team_id'    => array(
-						'type'     => 'integer',
-						'required' => true,
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 					'is_captain' => array(
-						'type'     => 'boolean',
-						'required' => true,
+						'type'              => 'boolean',
+						'required'          => true,
+						'sanitize_callback' => 'rest_sanitize_boolean',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 				),
 			)
@@ -120,17 +142,23 @@ class SPPT_REST_API {
 				'permission_callback' => array( $this, 'check_roster_permission' ),
 				'args'                => array(
 					'player_id' => array(
-						'type'     => 'integer',
-						'required' => true,
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 					'field'     => array(
-						'type'     => 'string',
-						'required' => true,
-						'enum'     => array( 'skill_level', 'position' ),
+						'type'              => 'string',
+						'required'          => true,
+						'enum'              => array( 'skill_level', 'position' ),
+						'sanitize_callback' => 'sanitize_text_field',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 					'value'     => array(
-						'type'     => 'string',
-						'required' => true,
+						'type'              => 'string',
+						'required'          => true,
+						'sanitize_callback' => 'sanitize_text_field',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 				),
 			)
@@ -145,17 +173,22 @@ class SPPT_REST_API {
 				'permission_callback' => array( $this, 'check_roster_permission' ),
 				'args'                => array(
 					'team_id'   => array(
-						'type'     => 'integer',
-						'required' => true,
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 					'season_id' => array(
-						'type'     => 'integer',
-						'required' => true,
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 					'players'   => array(
-						'type'     => 'array',
-						'required' => true,
-						'items'    => array(
+						'type'              => 'array',
+						'required'          => true,
+						'validate_callback' => 'rest_validate_request_arg',
+						'items'             => array(
 							'type'       => 'object',
 							'properties' => array(
 								'name'     => array( 'type' => 'string' ),
@@ -178,11 +211,15 @@ class SPPT_REST_API {
 				'permission_callback' => array( $this, 'check_roster_permission' ),
 				'args'                => array(
 					'team'   => array(
-						'type'     => 'integer',
-						'required' => true,
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 					'season' => array(
-						'type'     => 'integer',
+						'type'              => 'integer',
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 				),
 			)
@@ -198,8 +235,10 @@ class SPPT_REST_API {
 					'permission_callback' => array( $this, 'check_roster_permission' ),
 					'args'                => array(
 						'player' => array(
-							'type'     => 'integer',
-							'required' => true,
+							'type'              => 'integer',
+							'required'          => true,
+							'sanitize_callback' => 'absint',
+							'validate_callback' => 'rest_validate_request_arg',
 						),
 					),
 				),
@@ -209,12 +248,16 @@ class SPPT_REST_API {
 					'permission_callback' => array( $this, 'check_roster_permission' ),
 					'args'                => array(
 						'player_id' => array(
-							'type'     => 'integer',
-							'required' => true,
+							'type'              => 'integer',
+							'required'          => true,
+							'sanitize_callback' => 'absint',
+							'validate_callback' => 'rest_validate_request_arg',
 						),
 						'content'   => array(
-							'type'     => 'string',
-							'required' => true,
+							'type'              => 'string',
+							'required'          => true,
+							'sanitize_callback' => 'sanitize_textarea_field',
+							'validate_callback' => 'rest_validate_request_arg',
 						),
 					),
 				),
@@ -222,7 +265,14 @@ class SPPT_REST_API {
 		);
 	}
 
-	public function check_roster_permission() {
+	/**
+	 * Fix #5: Require 'manage_options' for write operations, 'edit_others_sp_players' for reads.
+	 */
+	public function check_roster_permission( $request ) {
+		$write_methods = array( 'POST', 'PUT', 'PATCH', 'DELETE' );
+		if ( in_array( $request->get_method(), $write_methods, true ) ) {
+			return current_user_can( 'manage_options' );
+		}
 		return current_user_can( 'edit_others_sp_players' );
 	}
 
@@ -237,6 +287,18 @@ class SPPT_REST_API {
 		$player = get_post( $player_id );
 		if ( ! $player || 'sp_player' !== $player->post_type ) {
 			return new WP_Error( 'not_found', 'Player not found.', array( 'status' => 404 ) );
+		}
+
+		// Validate to_team exists and is sp_team.
+		$to_team_post = get_post( $to_team );
+		if ( ! $to_team_post || 'sp_team' !== $to_team_post->post_type ) {
+			return new WP_Error( 'invalid_team', 'Target team not found.', array( 'status' => 404 ) );
+		}
+
+		// Fix #6: Verify the player actually belongs to from_team.
+		$team_meta = get_post_meta( $player_id, 'sp_team' );
+		if ( ! in_array( $from_team, array_map( 'intval', $team_meta ), true ) ) {
+			return new WP_Error( 'invalid_team', 'Player does not belong to the specified source team.', array( 'status' => 400 ) );
 		}
 
 		// Remove from old team and add to new team.
@@ -290,6 +352,12 @@ class SPPT_REST_API {
 			return new WP_Error( 'not_found', 'Player not found.', array( 'status' => 404 ) );
 		}
 
+		// Validate team_id exists and is sp_team.
+		$team = get_post( $team_id );
+		if ( ! $team || 'sp_team' !== $team->post_type ) {
+			return new WP_Error( 'invalid_team', 'Team not found.', array( 'status' => 404 ) );
+		}
+
 		// Remove team associations.
 		delete_post_meta( $player_id, 'sp_current_team', $team_id );
 		delete_post_meta( $player_id, 'sp_team', $team_id );
@@ -338,6 +406,12 @@ class SPPT_REST_API {
 			)
 		);
 
+		foreach ( $notes as $note ) {
+			$user = get_userdata( $note->author_id );
+			$note->author = $user ? $user->display_name : __( 'Unknown', 'sportspress-player-tools' );
+			unset( $note->author_id );
+		}
+
 		return new WP_REST_Response( $notes, 200 );
 	}
 
@@ -378,6 +452,18 @@ class SPPT_REST_API {
 		$player_id  = absint( $request->get_param( 'player_id' ) );
 		$team_id    = absint( $request->get_param( 'team_id' ) );
 		$is_captain = (bool) $request->get_param( 'is_captain' );
+
+		// Fix #9: Verify player exists and is sp_player.
+		$player = get_post( $player_id );
+		if ( ! $player || 'sp_player' !== $player->post_type ) {
+			return new WP_Error( 'not_found', 'Player not found.', array( 'status' => 404 ) );
+		}
+
+		// Validate team_id exists and is sp_team.
+		$team = get_post( $team_id );
+		if ( ! $team || 'sp_team' !== $team->post_type ) {
+			return new WP_Error( 'invalid_team', 'Team not found.', array( 'status' => 404 ) );
+		}
 
 		if ( $is_captain ) {
 			update_post_meta( $player_id, 'sp_captain', $team_id );
@@ -453,9 +539,10 @@ class SPPT_REST_API {
 				wp_set_object_terms( $post_id, sanitize_text_field( $player_data['position'] ), 'sp_position' );
 			}
 
+			// Fix #7: Use sanitized $name instead of raw $player_data['name'].
 			$imported[] = array(
 				'id'   => $post_id,
-				'name' => $player_data['name'],
+				'name' => $name,
 			);
 		}
 

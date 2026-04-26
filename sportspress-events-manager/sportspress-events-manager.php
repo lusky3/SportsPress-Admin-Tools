@@ -86,9 +86,13 @@ class SportsPress_Events_Manager {
 			)
 		);
 
-		// Load REST API endpoints (always available when plugin is active).
-		require_once SPEM_PLUGIN_PATH . 'includes/class-rest-api.php';
-		new SPEM_REST_API();
+		// Load REST API endpoints only when at least one served module is enabled.
+		$enabled_modules = get_option( 'spat_enabled_modules', array() );
+		$rest_modules    = array( 'events_management', 'season_rollover' );
+		if ( array_intersect( $rest_modules, $enabled_modules ) ) {
+			require_once SPEM_PLUGIN_PATH . 'includes/class-rest-api.php';
+			new SPEM_REST_API();
+		}
 
 		// Load functionality based on enabled modules
 		$this->load_enabled_modules();
@@ -133,7 +137,7 @@ class SportsPress_Events_Manager {
 
 	public function parent_plugin_missing_notice() {
 		echo '<div class="notice notice-error"><p>';
-		echo 'SportsPress Events Manager requires SportsPress Admin Tools to be installed and activated.';
+		echo esc_html( 'SportsPress Events Manager requires SportsPress Admin Tools to be installed and activated.' );
 		echo '</p></div>';
 	}
 }

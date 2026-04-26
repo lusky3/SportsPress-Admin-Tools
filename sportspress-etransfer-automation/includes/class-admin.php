@@ -81,7 +81,7 @@ class SPET_Admin {
 					<tr>
 						<th scope="row"><?php esc_html_e( 'Webhook Secret', 'sportspress-etransfer-automation' ); ?></th>
 						<td>
-							<input type="text" name="spet_webhook_secret" value="<?php echo esc_attr( $webhook_secret ); ?>" class="regular-text" />
+							<input type="password" name="spet_webhook_secret" value="<?php echo esc_attr( $webhook_secret ); ?>" class="regular-text" />
 							<p class="description"><?php esc_html_e( 'HMAC SHA256 signing secret for webhook security.', 'sportspress-etransfer-automation' ); ?></p>
 						</td>
 					</tr>

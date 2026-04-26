@@ -105,13 +105,14 @@ assert_test($result === false, 'Missing text key returns false');
 echo "\n-- verify_signature --\n";
 
 $body = '{"test":"data"}';
-$expected_sig = hash_hmac('sha256', $body, 'test-secret-key');
+$timestamp = '2026-04-25T02:00:00Z';
+$expected_sig = hash_hmac('sha256', $timestamp . '.' . $body, 'test-secret-key');
 
-$headers_correct = array('x_signature' => array($expected_sig));
+$headers_correct = array('x_signature' => array($expected_sig), 'x_timestamp' => array($timestamp));
 $result = invoke_private($automation, 'verify_signature', array($body, $headers_correct));
-assert_test($result === true, 'Correct signature verifies');
+assert_test($result === true, 'Correct signature with timestamp verifies');
 
-$headers_wrong = array('x_signature' => array('bad-signature'));
+$headers_wrong = array('x_signature' => array('bad-signature'), 'x_timestamp' => array($timestamp));
 $result = invoke_private($automation, 'verify_signature', array($body, $headers_wrong));
 assert_test($result === false, 'Incorrect signature fails');
 
@@ -119,10 +120,15 @@ $headers_empty = array();
 $result = invoke_private($automation, 'verify_signature', array($body, $headers_empty));
 assert_test($result === false, 'Missing signature header fails');
 
-// x-signature header variant
-$headers_dash = array('x-signature' => array($expected_sig));
+// No timestamp header should fail (timestamp now required)
+$headers_no_ts = array('x_signature' => array(hash_hmac('sha256', $body, 'test-secret-key')));
+$result = invoke_private($automation, 'verify_signature', array($body, $headers_no_ts));
+assert_test($result === false, 'Missing timestamp header fails verification');
+
+// x-signature/x-timestamp header variant
+$headers_dash = array('x-signature' => array($expected_sig), 'x-timestamp' => array($timestamp));
 $result = invoke_private($automation, 'verify_signature', array($body, $headers_dash));
-assert_test($result === true, 'x-signature header variant works');
+assert_test($result === true, 'x-signature/x-timestamp header variant works');
 
 echo "\n=== Results ===\n";
 echo "Passed: $passed\n";

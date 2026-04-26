@@ -30,6 +30,9 @@ class SPSG_Export_Manager {
 
 	/**
 	 * Protect the export directory from direct access and directory listing.
+	 *
+	 * Note: On Nginx servers, add the following to your server block manually:
+	 *   location ~* /wp-content/uploads/spsg-exports/ { deny all; }
 	 */
 	private function protect_export_directory() {
 		$upload_dir = wp_upload_dir();
@@ -39,14 +42,27 @@ class SPSG_Export_Manager {
 			wp_mkdir_p( $export_dir );
 		}
 
-		$index_file = $export_dir . '/index.php';
-		if ( ! file_exists( $index_file ) ) {
-			file_put_contents( $index_file, '<?php // Silence is golden.' );
+		global $wp_filesystem;
+		if ( ! function_exists( 'WP_Filesystem' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+		}
+		WP_Filesystem();
+
+		$index_php = $export_dir . '/index.php';
+		if ( ! file_exists( $index_php ) ) {
+			$wp_filesystem->put_contents( $index_php, '<?php // Silence is golden.', FS_CHMOD_FILE );
+		}
+
+		$index_html = $export_dir . '/index.html';
+		if ( ! file_exists( $index_html ) ) {
+			$wp_filesystem->put_contents( $index_html, '', FS_CHMOD_FILE );
 		}
 
 		$htaccess_file = $export_dir . '/.htaccess';
 		if ( ! file_exists( $htaccess_file ) ) {
-			file_put_contents( $htaccess_file, 'deny from all' );
+			// Apache 2.4+ syntax with 2.2 fallback
+			$htaccess = "# Apache 2.4+\n<IfModule mod_authz_core.c>\n  Require all denied\n</IfModule>\n\n# Apache 2.2\n<IfModule !mod_authz_core.c>\n  Order deny,allow\n  Deny from all\n</IfModule>";
+			$wp_filesystem->put_contents( $htaccess_file, $htaccess, FS_CHMOD_FILE );
 		}
 	}
 

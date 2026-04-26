@@ -146,7 +146,7 @@ async function sendWebhook(emailData, env, message) {
 async function buildHeaders(payload, secret, customHeaders, timestamp) {
   const headers = {
     'Content-Type': 'application/json',
-    'X-Signature': await createHmacSignature(timestamp + payload, secret),
+    'X-Signature': await createHmacSignature(timestamp + '.' + payload, secret),
     'X-Timestamp': timestamp,
     'User-Agent': 'Cloudflare-Worker-Email-Processor/1.0'
   };
@@ -260,23 +260,80 @@ function isFromSafeDomain(fromAddress, env) {
  * Extract email body from multipart content
  */
 function extractEmailBody(rawContent) {
-  // Look for plain text content first
-  const textMatch = rawContent.match(/Content-Type: text\/plain[\s\S]*?\n\n([\s\S]*?)(?=\n--)/i);
-  if (textMatch) {
-    const headers = rawContent.match(/Content-Type: text\/plain[\s\S]*?\n\n/i)?.[0] || '';
-    return decodeBody(textMatch[1].trim(), headers);
+  // Split headers from body on first double newline
+  const crlfSplit = rawContent.indexOf('\r\n\r\n');
+  const lfSplit = rawContent.indexOf('\n\n');
+  const splitPos = crlfSplit !== -1 ? crlfSplit : lfSplit;
+  if (splitPos === -1) return rawContent;
+
+  const topHeaders = rawContent.substring(0, splitPos);
+  const body = rawContent.substring(splitPos + (crlfSplit !== -1 ? 4 : 2));
+
+  // Check if multipart
+  const boundaryMatch = topHeaders.match(/boundary="?([^\s";]+)"?/i);
+  if (boundaryMatch) {
+    const result = extractFromMultipart(body, boundaryMatch[1]);
+    if (result) return result;
   }
-  
-  // Fallback to HTML content and strip tags
-  const htmlMatch = rawContent.match(/Content-Type: text\/html[\s\S]*?\n\n([\s\S]*?)(?=\n--)/i);
-  if (htmlMatch) {
-    const headers = rawContent.match(/Content-Type: text\/html[\s\S]*?\n\n/i)?.[0] || '';
-    const decoded = decodeBody(htmlMatch[1].trim(), headers);
-    return decoded.replaceAll(/<[^>]*>/g, '').replaceAll(/&[^;]+;/g, ' ').trim();
+
+  // Not multipart - decode the single-part body
+  const ctMatch = topHeaders.match(/Content-Type:\s*text\/(plain|html)/i);
+  if (ctMatch) {
+    const decoded = decodeBody(body.trim(), topHeaders);
+    if (ctMatch[1].toLowerCase() === 'html') {
+      return decoded.replaceAll(/<[^>]*>/g, '').replaceAll(/&[^;]+;/g, ' ').trim();
+    }
+    return decoded;
   }
-  
-  // Last resort: return raw content
-  return rawContent;
+
+  // Fallback: return body as-is
+  return body.trim() || rawContent;
+}
+
+/**
+ * Extract text from a multipart MIME part, handling nested multipart
+ */
+function extractFromMultipart(body, boundary) {
+  const parts = body.split('--' + boundary);
+  let plainText = null;
+  let htmlText = null;
+
+  for (const part of parts) {
+    if (!part || part.startsWith('--')) continue;
+
+    // Split part headers from part body
+    const crlfSplit = part.indexOf('\r\n\r\n');
+    const lfSplit = part.indexOf('\n\n');
+    const pSplitPos = crlfSplit !== -1 ? crlfSplit : lfSplit;
+    if (pSplitPos === -1) continue;
+
+    const partHeaders = part.substring(0, pSplitPos);
+    const partBody = part.substring(pSplitPos + (crlfSplit !== -1 ? 4 : 2)).trim();
+
+    // Handle nested multipart (e.g. multipart/alternative inside multipart/mixed)
+    const nestedBoundary = partHeaders.match(/boundary="?([^\s";]+)"?/i);
+    if (nestedBoundary) {
+      const nested = extractFromMultipart(partBody, nestedBoundary[1]);
+      if (nested) return nested;
+      continue;
+    }
+
+    const ctMatch = partHeaders.match(/Content-Type:\s*text\/(plain|html)/i);
+    if (!ctMatch) continue;
+
+    const decoded = decodeBody(partBody, partHeaders);
+    if (ctMatch[1].toLowerCase() === 'plain') {
+      plainText = decoded;
+    } else if (!htmlText) {
+      htmlText = decoded;
+    }
+  }
+
+  if (plainText) return plainText;
+  if (htmlText) {
+    return htmlText.replaceAll(/<[^>]*>/g, '').replaceAll(/&[^;]+;/g, ' ').trim();
+  }
+  return null;
 }
 
 /**

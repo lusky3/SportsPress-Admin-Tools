@@ -31,7 +31,12 @@ class SPET_ETransfer_Automation {
 	public function handle_webhook( $request ) {
 		// Rate limiting (IP-based, 30 requests/minute)
 		$ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
-		// Only trust X-Forwarded-For if REMOTE_ADDR is a known proxy (localhost/private range)
+		// SECURITY ASSUMPTION: X-Forwarded-For is only trusted when REMOTE_ADDR is a private/reserved IP,
+		// meaning the request came through a known reverse proxy (e.g., nginx, load balancer).
+		// If the server is directly exposed to the internet without a proxy, this is safe because
+		// the condition below will not match. If behind multiple proxies, only the first
+		// (leftmost, client-supplied) IP is used — ensure your outermost proxy overwrites
+		// X-Forwarded-For rather than appending to prevent spoofing.
 		if ( filter_var( $ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE ) === false ) {
 			$forwarded = $request->get_header( 'x-forwarded-for' );
 			if ( $forwarded ) {
@@ -39,11 +44,10 @@ class SPET_ETransfer_Automation {
 			}
 		}
 		$rate_key = 'spet_rate_' . md5( $ip );
-		$rate_count = (int) get_transient( $rate_key );
-		if ( $rate_count >= 30 ) {
+		$rate_limited = $this->check_rate_limit( $rate_key );
+		if ( $rate_limited ) {
 			return new WP_Error( 'rate_limited', 'Too many requests', array( 'status' => 429 ) );
 		}
-		set_transient( $rate_key, $rate_count + 1, 60 );
 
 		$body = $request->get_body();
 		$headers = $request->get_headers();
@@ -66,18 +70,18 @@ class SPET_ETransfer_Automation {
 			}
 		}
 
-		if ( $timestamp !== null ) {
-			$ts_epoch = strtotime( $timestamp );
-			if ( $ts_epoch === false || abs( time() - $ts_epoch ) > 300 ) {
-				return new WP_Error( 'request_expired', 'Request timestamp is too old or invalid', array( 'status' => 403 ) );
-			}
-		} else {
-			error_log( 'SPET Webhook: No timestamp present in request from ' . $ip . ' - replay protection inactive' );
+		if ( $timestamp === null ) {
+			return new WP_Error( 'missing_timestamp', 'Request timestamp is required', array( 'status' => 400 ) );
+		}
+
+		$ts_epoch = strtotime( $timestamp );
+		if ( $ts_epoch === false || abs( time() - $ts_epoch ) > 300 ) {
+			return new WP_Error( 'request_expired', 'Request timestamp is too old or invalid', array( 'status' => 403 ) );
 		}
 
 		// Check WooCommerce is available
 		if ( ! function_exists( 'wc_get_orders' ) ) {
-			return new WP_Error( 'woocommerce_missing', 'WooCommerce is not active', array( 'status' => 503 ) );
+			return new WP_Error( 'woocommerce_missing', 'Service unavailable', array( 'status' => 503 ) );
 		}
 
 		$data = json_decode( $body, true );
@@ -169,7 +173,7 @@ class SPET_ETransfer_Automation {
 			return rest_ensure_response(
 				array(
 					'status' => 'success',
-					'order_id' => $order_id,
+					'message' => 'Payment processed',
 				)
 			);
 		}
@@ -181,8 +185,7 @@ class SPET_ETransfer_Automation {
 			return rest_ensure_response(
 				array(
 					'status' => 'amount_mismatch',
-					'message' => $result,
-					'order_id' => $order_id,
+					'message' => 'Payment amount does not match order total',
 				)
 			);
 		}
@@ -196,6 +199,54 @@ class SPET_ETransfer_Automation {
 				'message' => 'No matching order found',
 			)
 		);
+	}
+
+	/**
+	 * Atomic rate limit check using wp_options with INSERT ON DUPLICATE KEY UPDATE.
+	 * Returns true if rate limited, false if allowed.
+	 */
+	private function check_rate_limit( $rate_key ) {
+		global $wpdb;
+		$now = time();
+		$option_name = '_transient_' . $rate_key;
+
+		// Atomic increment or reset if window expired. Uses wp_options for portability.
+		$wpdb->query(
+			$wpdb->prepare(
+				"INSERT INTO {$wpdb->options} (option_name, option_value, autoload)
+				VALUES (%s, '1:{$now}', 'no')
+				ON DUPLICATE KEY UPDATE option_value = IF(
+					CAST(SUBSTRING_INDEX(option_value, ':', -1) AS UNSIGNED) < %d,
+					CONCAT('1:', %d),
+					CONCAT(CAST(SUBSTRING_INDEX(option_value, ':', 1) AS UNSIGNED) + 1, ':', SUBSTRING_INDEX(option_value, ':', -1))
+				)",
+				$option_name,
+				$now - 60,
+				$now
+			)
+		);
+
+		$val = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $option_name ) );
+		if ( $val ) {
+			$count = (int) explode( ':', $val )[0];
+			$limited = $count > 30;
+		} else {
+			$limited = false;
+		}
+
+		// Periodically clean up stale rate limit entries (1 in 100 chance).
+		if ( wp_rand( 1, 100 ) === 1 ) {
+			$stale_threshold = $now - 300; // 5 minutes
+			$wpdb->query(
+				$wpdb->prepare(
+					"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s AND CAST(SUBSTRING_INDEX(option_value, ':', -1) AS UNSIGNED) < %d",
+					$wpdb->esc_like( '_transient_spet_rate_' ) . '%',
+					$stale_threshold
+				)
+			);
+		}
+
+		return $limited;
 	}
 
 	private function verify_signature( $body, $headers ) {
@@ -215,15 +266,13 @@ class SPET_ETransfer_Automation {
 			return false;
 		}
 
-		// New format: timestamp + body (when X-Timestamp header is present)
+		// Always require timestamp in signature: hash_hmac('sha256', timestamp . '.' . body, secret)
 		$timestamp = $headers['x_timestamp'][0] ?? ( $headers['x-timestamp'][0] ?? null );
-		if ( $timestamp !== null ) {
-			$expected = hash_hmac( 'sha256', $timestamp . $body, $secret );
-			return hash_equals( $expected, $signature );
+		if ( $timestamp === null ) {
+			return false;
 		}
 
-		// Legacy format: body only
-		$expected = hash_hmac( 'sha256', $body, $secret );
+		$expected = hash_hmac( 'sha256', $timestamp . '.' . $body, $secret );
 		return hash_equals( $expected, $signature );
 	}
 

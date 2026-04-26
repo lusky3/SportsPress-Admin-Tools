@@ -44,6 +44,11 @@ class SPET_Name_Matcher {
 			return false;
 		}
 
+		// Warn when part counts differ by more than 1
+		if ( abs( count( $name1_parts ) - count( $name2_parts ) ) > 1 ) {
+			error_log( 'SPET Name Matcher: Part count differs by more than 1 - "' . $name1 . '" vs "' . $name2 . '"' );
+		}
+
 		// Compare first parts (first names)
 		$first1 = $name1_parts[0];
 		$first2 = $name2_parts[0];
@@ -56,6 +61,21 @@ class SPET_Name_Matcher {
 		$last2 = end( $name2_parts );
 		if ( ! self::parts_are_equivalent( $last1, $last2, $equivalent_groups ) ) {
 			return false;
+		}
+
+		// When middle names exist in both names but differ, return false
+		if ( count( $name1_parts ) > 2 && count( $name2_parts ) > 2 ) {
+			$middle1 = array_slice( $name1_parts, 1, -1 );
+			$middle2 = array_slice( $name2_parts, 1, -1 );
+			if ( count( $middle1 ) === count( $middle2 ) ) {
+				for ( $i = 0; $i < count( $middle1 ); $i++ ) {
+					if ( ! self::parts_are_equivalent( $middle1[ $i ], $middle2[ $i ], $equivalent_groups ) ) {
+						return false;
+					}
+				}
+			} else {
+				return false;
+			}
 		}
 
 		return true;

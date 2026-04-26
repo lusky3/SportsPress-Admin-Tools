@@ -107,19 +107,21 @@ class SPAT_Privacy {
 	public function export_personal_data( $email_address, $page = 1 ) {
 		$export_items = array();
 
-		if ( 1 === $page ) {
-			$export_items = array_merge(
-				$export_items,
-				$this->export_player_records( $email_address ),
-				$this->export_registration_logs( $email_address ),
-				$this->export_etransfer_logs( $email_address ),
-				$this->export_woocommerce_order_links( $email_address )
-			);
-		}
+		// Collect all items across categories
+		$all_items = array_merge(
+			$this->export_player_records( $email_address ),
+			$this->export_registration_logs( $email_address ),
+			$this->export_etransfer_logs( $email_address ),
+			$this->export_woocommerce_order_links( $email_address )
+		);
+
+		$offset = ( $page - 1 ) * self::BATCH_SIZE;
+		$export_items = array_slice( $all_items, $offset, self::BATCH_SIZE );
+		$done = $offset + self::BATCH_SIZE >= count( $all_items );
 
 		return array(
 			'data' => $export_items,
-			'done' => true,
+			'done' => $done,
 		);
 	}
 
@@ -414,40 +416,46 @@ class SPAT_Privacy {
 		$items_retained = 0;
 		$messages       = array();
 
-		// 1. Anonymize player records and remove PII meta.
+		// Collect all erasable items across categories.
+		$all_items = array();
+
 		$player_ids = $this->get_player_ids_for_email( $email_address );
-
 		foreach ( $player_ids as $player_id ) {
-			$player = get_post( $player_id );
-			if ( ! $player || 'sp_player' !== $player->post_type ) {
-				continue;
-			}
-
-			wp_update_post(
-				array(
-					'ID'         => $player_id,
-					'post_title' => __( 'Anonymous Player', 'sportspress-admin-tools' ),
-					'post_name'  => 'anonymous-player-' . $player_id,
-				)
-			);
-
-			delete_post_meta( $player_id, 'spt_email' );
-			delete_post_meta( $player_id, 'sp_user' );
-
-			$items_removed++;
+			$all_items[] = array( 'type' => 'player', 'id' => $player_id );
 		}
+		$all_items[] = array( 'type' => 'registration_logs', 'player_ids' => $player_ids );
+		$all_items[] = array( 'type' => 'etransfer_logs', 'email' => $email_address );
 
-		// 2. Delete registration logs for linked players.
-		$items_removed += $this->erase_registration_logs( $player_ids, $messages );
+		$offset = ( $page - 1 ) * self::BATCH_SIZE;
+		$batch  = array_slice( $all_items, $offset, self::BATCH_SIZE );
+		$done   = $offset + self::BATCH_SIZE >= count( $all_items );
 
-		// 3. Anonymize e-transfer logs.
-		$items_removed += $this->erase_etransfer_logs( $email_address, $messages );
+		foreach ( $batch as $item ) {
+			if ( 'player' === $item['type'] ) {
+				$player = get_post( $item['id'] );
+				if ( ! $player || 'sp_player' !== $player->post_type ) {
+					continue;
+				}
+				wp_update_post( array(
+					'ID'         => $item['id'],
+					'post_title' => __( 'Anonymous Player', 'sportspress-admin-tools' ),
+					'post_name'  => 'anonymous-player-' . $item['id'],
+				) );
+				delete_post_meta( $item['id'], 'spt_email' );
+				delete_post_meta( $item['id'], 'sp_user' );
+				$items_removed++;
+			} elseif ( 'registration_logs' === $item['type'] ) {
+				$items_removed += $this->erase_registration_logs( $item['player_ids'], $messages );
+			} elseif ( 'etransfer_logs' === $item['type'] ) {
+				$items_removed += $this->erase_etransfer_logs( $item['email'], $messages );
+			}
+		}
 
 		return array(
 			'items_removed'  => $items_removed,
 			'items_retained' => $items_retained,
 			'messages'       => $messages,
-			'done'           => true,
+			'done'           => $done,
 		);
 	}
 
@@ -520,15 +528,13 @@ class SPAT_Privacy {
 		);
 
 		if ( $count > 0 ) {
-			$wpdb->update(
-				$table,
-				array(
-					'from_name'  => __( 'Redacted', 'sportspress-admin-tools' ),
-					'from_email' => __( 'Redacted', 'sportspress-admin-tools' ),
-				),
-				array( 'from_email' => $email_address ),
-				array( '%s', '%s' ),
-				array( '%s' )
+			$wpdb->query(
+				$wpdb->prepare(
+					"UPDATE {$table} SET from_name = %s, from_email = %s, webhook_data = NULL, payment_data = NULL WHERE from_email = %s",
+					__( 'Redacted', 'sportspress-admin-tools' ),
+					__( 'Redacted', 'sportspress-admin-tools' ),
+					$email_address
+				)
 			);
 			$messages[] = sprintf(
 				/* translators: %d: number of e-transfer log entries anonymized */

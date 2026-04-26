@@ -21,7 +21,7 @@ class SPT_Player_Modifications {
 			add_action( 'add_meta_boxes', array( $this, 'add_captain_meta_box' ) );
 			add_action( 'save_post', array( $this, 'save_captain_meta' ) );
 			add_filter( 'sportspress_list_player_name', array( $this, 'add_captain_indicator' ), 10, 3 );
-			add_action( 'wp_head', array( $this, 'add_captain_css' ) );
+			add_action( 'wp_enqueue_scripts', array( $this, 'add_captain_css' ) );
 		}
 	}
 
@@ -43,7 +43,7 @@ class SPT_Player_Modifications {
 	}
 
 	public function save_email_meta( $post_id ) {
-		if ( ! isset( $_POST['spt_email_meta_nonce'] ) || ! wp_verify_nonce( $_POST['spt_email_meta_nonce'], 'spt_email_meta' ) ) {
+		if ( ! isset( $_POST['spt_email_meta_nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['spt_email_meta_nonce'] ) ), 'spt_email_meta' ) ) {
 			return;
 		}
 
@@ -92,7 +92,7 @@ class SPT_Player_Modifications {
 	}
 
 	public function save_captain_meta( $post_id ) {
-		if ( ! isset( $_POST['spt_captain_meta_nonce'] ) || ! wp_verify_nonce( $_POST['spt_captain_meta_nonce'], 'spt_captain_meta' ) ) {
+		if ( ! isset( $_POST['spt_captain_meta_nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['spt_captain_meta_nonce'] ) ), 'spt_captain_meta' ) ) {
 			return;
 		}
 
@@ -127,16 +127,8 @@ class SPT_Player_Modifications {
 	}
 
 	public function add_captain_css() {
-		echo '<style>
-        .spt-captain-indicator {
-            background: #0073aa;
-            color: white;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 0.8em;
-            font-weight: bold;
-            margin-left: 5px;
-        }
-        </style>';
+		wp_register_style( 'spt-captain', false );
+		wp_enqueue_style( 'spt-captain' );
+		wp_add_inline_style( 'spt-captain', '.spt-captain-indicator { background: #0073aa; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.8em; font-weight: bold; margin-left: 5px; }' );
 	}
 }

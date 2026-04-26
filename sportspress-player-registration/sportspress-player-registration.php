@@ -94,7 +94,7 @@ class SportsPress_Player_Registration {
 
 	public function parent_plugin_missing_notice() {
 		echo '<div class="notice notice-error"><p>';
-		echo 'SportsPress Player Registration requires SportsPress Admin Tools to be installed and activated.';
+		echo esc_html__( 'SportsPress Player Registration requires SportsPress Admin Tools to be installed and activated.', 'sportspress-player-registration' );
 		echo '</p></div>';
 	}
 

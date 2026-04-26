@@ -5,6 +5,9 @@
  * Version: 1.0.0
  * Author: Cody (lusky3)
  * Text Domain: sportspress-admin-tools
+ * Requires at least: 5.0
+ * Tested up to: 6.7
+ * Requires PHP: 7.4
  * License: GPL v2 or later
  */
 
@@ -22,15 +25,25 @@ define( 'SPAT_VERSION', '1.0.0' );
 if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 	class SportsPressAdminTools {
 
+		private static $autoload_map = array(
+			'SPAT_Text_Helper' => 'includes/class-text-helper.php',
+			'SimpleXLSX'       => 'includes/SimpleXLSX.php',
+		);
 
 		public function __construct() {
+			spl_autoload_register( array( __CLASS__, 'autoload' ) );
 			add_action( 'plugins_loaded', array( $this, 'init' ) );
 			register_activation_hook( __FILE__, array( $this, 'activate' ) );
 		}
 
+		public static function autoload( $class ) {
+			if ( isset( self::$autoload_map[ $class ] ) ) {
+				require_once SPAT_PLUGIN_PATH . self::$autoload_map[ $class ];
+			}
+		}
+
 		public function init() {
 			// Load core classes needed everywhere
-			require_once SPAT_PLUGIN_PATH . 'includes/class-text-helper.php';
 			require_once SPAT_PLUGIN_PATH . 'includes/class-database.php';
 			require_once SPAT_PLUGIN_PATH . 'includes/class-plugin-manager.php';
 

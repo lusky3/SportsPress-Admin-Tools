@@ -37,7 +37,6 @@ class SportsPress_ETransfer_Automation {
 		}
 
 		require_once SPET_PLUGIN_PATH . 'includes/class-database.php';
-		SPET_Database::create_tables();
 
 		// Set default equivalent names if not already set
 		if ( empty( get_option( 'spet_equivalent_names' ) ) ) {
@@ -114,7 +113,7 @@ class SportsPress_ETransfer_Automation {
 
 	public function parent_plugin_missing_notice() {
 		echo '<div class="notice notice-error"><p>';
-		echo 'SportsPress e-Transfer Automation requires SportsPress Admin Tools to be installed and activated.';
+		echo esc_html( 'SportsPress e-Transfer Automation requires SportsPress Admin Tools to be installed and activated.' );
 		echo '</p></div>';
 	}
 }

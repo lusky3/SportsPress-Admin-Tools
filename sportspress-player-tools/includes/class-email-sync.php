@@ -319,12 +319,31 @@ class SPT_Email_Sync {
 	private function match_via_post_author( $players ) {
 		$results = array();
 
+		// Collect unique non-zero post_author IDs.
+		$author_ids = array();
+		foreach ( $players as $player ) {
+			if ( ! empty( $player->post_author ) && (int) $player->post_author !== 0 ) {
+				$author_ids[] = (int) $player->post_author;
+			}
+		}
+		$author_ids = array_unique( $author_ids );
+		if ( empty( $author_ids ) ) {
+			return $results;
+		}
+
+		// Batch-load all users in one query.
+		$users    = get_users( array( 'include' => $author_ids ) );
+		$user_map = array();
+		foreach ( $users as $user ) {
+			$user_map[ $user->ID ] = $user;
+		}
+
 		foreach ( $players as $player ) {
 			if ( empty( $player->post_author ) || (int) $player->post_author === 0 ) {
 				continue;
 			}
 
-			$user = get_user_by( 'id', $player->post_author );
+			$user = $user_map[ (int) $player->post_author ] ?? null;
 			if ( ! $user ) {
 				continue;
 			}
@@ -370,7 +389,7 @@ class SPT_Email_Sync {
 		check_admin_referer( 'spt_apply_email_sync', 'spt_sync_nonce' );
 
 		$player_ids = array_map( 'absint', $_POST['players'] ?? array() );
-		$emails     = $_POST['email'] ?? array();
+		$emails     = array_map( 'sanitize_email', (array) ( $_POST['email'] ?? array() ) );
 		$updated    = 0;
 
 		foreach ( $player_ids as $pid ) {
@@ -394,6 +413,19 @@ class SPT_Email_Sync {
 			)
 		);
 		exit;
+	}
+
+	/**
+	 * Sanitize a value for safe CSV output by prefixing formula-triggering characters with a single quote.
+	 *
+	 * @param mixed $value Cell value.
+	 * @return mixed
+	 */
+	private static function sanitize_csv_value( $value ) {
+		if ( is_string( $value ) && isset( $value[0] ) && in_array( $value[0], array( '=', '+', '-', '@', "\t", "\r" ), true ) ) {
+			$value = "'" . $value;
+		}
+		return $value;
 	}
 
 	/**
@@ -421,11 +453,14 @@ class SPT_Email_Sync {
 			);
 			fputcsv(
 				$out,
-				array(
-					$player->ID,
-					$player->post_title,
-					is_array( $teams ) ? implode( ', ', $teams ) : '',
-					'',
+				array_map(
+					array( __CLASS__, 'sanitize_csv_value' ),
+					array(
+						$player->ID,
+						$player->post_title,
+						is_array( $teams ) ? implode( ', ', $teams ) : '',
+						'',
+					)
 				)
 			);
 		}

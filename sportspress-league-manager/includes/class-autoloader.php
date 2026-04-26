@@ -33,9 +33,6 @@ class SPLM_Autoloader {
 
 		self::$class_map = array(
 			'SPLM_Admin'                 => $base . 'class-admin.php',
-			'SPLM_SportsPress_Data'      => $base . 'class-sportspress-data.php',
-			'SPLM_Error_Handler'         => $base . 'class-error-handler.php',
-			'SPLM_Health_Checker'        => $base . 'class-health-checker.php',
 			'SPLM_Player_Notes'          => $base . 'class-player-notes.php',
 			'SPLM_Player_Notes_Database' => $base . 'class-player-notes-database.php',
 			'SPLM_REST_API'              => $base . 'class-rest-api.php',

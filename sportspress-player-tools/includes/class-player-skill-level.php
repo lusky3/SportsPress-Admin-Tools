@@ -484,6 +484,19 @@ class SPT_Player_Skill_Level {
 	// ------------------------------------------------------------------
 
 	/**
+	 * Sanitize a value for safe CSV output by prefixing formula-triggering characters with a single quote.
+	 *
+	 * @param mixed $value Cell value.
+	 * @return mixed
+	 */
+	private static function sanitize_csv_value( $value ) {
+		if ( is_string( $value ) && isset( $value[0] ) && in_array( $value[0], array( '=', '+', '-', '@', "\t", "\r" ), true ) ) {
+			$value = "'" . $value;
+		}
+		return $value;
+	}
+
+	/**
 	 * Handle CSV export of player skill data.
 	 */
 	public function handle_export_csv() {
@@ -519,14 +532,17 @@ class SPT_Player_Skill_Level {
 
 			fputcsv(
 				$out,
-				array(
-					$player->ID,
-					$player->post_title,
-					$level,
-					$source,
-					$updated ? date_i18n( 'Y-m-d', strtotime( $updated ) ) : '',
-					is_array( $teams ) ? implode( ', ', $teams ) : '',
-					is_array( $leagues ) ? implode( ', ', $leagues ) : '',
+				array_map(
+					array( __CLASS__, 'sanitize_csv_value' ),
+					array(
+						$player->ID,
+						$player->post_title,
+						$level,
+						$source,
+						$updated ? date_i18n( 'Y-m-d', strtotime( $updated ) ) : '',
+						is_array( $teams ) ? implode( ', ', $teams ) : '',
+						is_array( $leagues ) ? implode( ', ', $leagues ) : '',
+					)
 				)
 			);
 		}
@@ -685,13 +701,16 @@ class SPT_Player_Skill_Level {
 
 		// Get all players with a skill level, grouped by league.
 		$rows = $wpdb->get_results(
-			"SELECT t.name AS league_name, pm.meta_value AS skill
-			 FROM {$wpdb->postmeta} pm
-			 JOIN {$wpdb->posts} p ON p.ID = pm.post_id AND p.post_type = 'sp_player' AND p.post_status = 'publish'
-			 LEFT JOIN {$wpdb->term_relationships} tr ON tr.object_id = p.ID
-			 LEFT JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'sp_league'
-			 LEFT JOIN {$wpdb->terms} t ON t.term_id = tt.term_id
-			 WHERE pm.meta_key = 'spt_skill_level'"
+			$wpdb->prepare(
+				"SELECT t.name AS league_name, pm.meta_value AS skill
+				 FROM {$wpdb->postmeta} pm
+				 JOIN {$wpdb->posts} p ON p.ID = pm.post_id AND p.post_type = 'sp_player' AND p.post_status = 'publish'
+				 LEFT JOIN {$wpdb->term_relationships} tr ON tr.object_id = p.ID
+				 LEFT JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'sp_league'
+				 LEFT JOIN {$wpdb->terms} t ON t.term_id = tt.term_id
+				 WHERE pm.meta_key = %s",
+				'spt_skill_level'
+			)
 		);
 
 		if ( empty( $rows ) ) {

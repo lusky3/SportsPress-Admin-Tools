@@ -11,39 +11,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPET_Database {
 
-
-	public static function create_tables() {
-		global $wpdb;
-
-		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
-
-		$charset_collate = $wpdb->get_charset_collate();
-
-		$sql = "CREATE TABLE $table_name (
-            id mediumint(9) NOT NULL AUTO_INCREMENT,
-            timestamp datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
-            from_email varchar(255) NOT NULL,
-            from_name varchar(255) DEFAULT '' NOT NULL,
-            amount decimal(10,2) NOT NULL,
-            reference_number varchar(100) DEFAULT '' NOT NULL,
-            match_criteria varchar(255) DEFAULT '' NOT NULL,
-            order_id bigint(20) DEFAULT NULL,
-            result text NOT NULL,
-            webhook_data longtext DEFAULT '' NOT NULL,
-            payment_data longtext DEFAULT '' NOT NULL,
-            PRIMARY KEY (id),
-            KEY order_id (order_id),
-            KEY timestamp (timestamp)
-        ) $charset_collate;";
-
-		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-		dbDelta( $sql );
-	}
+	/**
+	 * Table is created by the core SPAT_Database class.
+	 * This child plugin uses the core's spat_etransfer_logs table.
+	 */
 
 	public static function log_etransfer_activity( $data ) {
 		global $wpdb;
 
-		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
+		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
 
 		$insert_data = array(
 			'from_email' => sanitize_email( $data['from_email'] ),
@@ -75,7 +51,7 @@ class SPET_Database {
 	public static function get_etransfer_logs( $limit = 50, $summary = false ) {
 		global $wpdb;
 
-		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
+		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
 		$columns = $summary
 			? 'id, timestamp, from_name, from_email, amount, reference_number, match_criteria, order_id, result'
 			: '*';
@@ -91,7 +67,7 @@ class SPET_Database {
 	public static function count_pending_webhooks() {
 		global $wpdb;
 
-		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
+		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
 
 		return $wpdb->get_var(
 			$wpdb->prepare(
@@ -109,7 +85,7 @@ class SPET_Database {
 	public static function reference_number_exists( $reference_number ) {
 		global $wpdb;
 
-		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
+		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
 
 		$count = $wpdb->get_var(
 			$wpdb->prepare(
@@ -125,7 +101,7 @@ class SPET_Database {
 	public static function cleanup_old_logs( $days = 90 ) {
 		global $wpdb;
 
-		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
+		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
 
 		return $wpdb->query(
 			$wpdb->prepare(
@@ -138,7 +114,7 @@ class SPET_Database {
 	public static function hide_etransfer_log( $log_id ) {
 		global $wpdb;
 
-		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
+		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
 
 		return $wpdb->update(
 			$table_name,
