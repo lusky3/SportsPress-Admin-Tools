@@ -355,46 +355,4 @@ class SPSG_Statistics_Calculator {
 		);
 	}
 
-	/**
-	 * Format statistics for display
-	 *
-	 * @deprecated Move HTML generation to a view layer. This method violates separation of concerns.
-	 * @param array $stats Statistics array
-	 * @return string Formatted HTML output
-	 */
-	public function format_for_display( $stats ) {
-		if ( empty( $stats ) || $stats['total_games'] === 0 ) {
-			return '<p>' . esc_html__( 'No statistics available.', 'sportspress-schedule-generator' ) . '</p>';
-		}
-
-		$output = '<div class="spsg-statistics">';
-
-		// Summary stats
-		$output .= '<h3>' . esc_html__( 'Summary', 'sportspress-schedule-generator' ) . '</h3>';
-		$output .= '<ul>';
-		$output .= '<li>' . sprintf( __( 'Total Games: %d', 'sportspress-schedule-generator' ), $stats['total_games'] ) . '</li>';
-		$output .= '<li>' . sprintf(
-			__( 'Games per Team: min=%1$d, max=%2$d, avg=%3$.2f', 'sportspress-schedule-generator' ),
-			$stats['games_per_team']['min'],
-			$stats['games_per_team']['max'],
-			$stats['games_per_team']['avg']
-		) . '</li>';
-		$output .= '<li>' . sprintf( __( 'Inter-Division Games: %d', 'sportspress-schedule-generator' ), $stats['inter_division_games'] ) . '</li>';
-		$output .= '</ul>';
-
-		// Imbalances
-		if ( ! empty( $stats['imbalances'] ) ) {
-			$output .= '<h3>' . esc_html__( 'Detected Imbalances', 'sportspress-schedule-generator' ) . '</h3>';
-			$output .= '<ul class="spsg-imbalances">';
-			foreach ( $stats['imbalances'] as $issue ) {
-				$class = 'spsg-imbalance-' . $issue['severity'];
-				$output .= '<li class="' . esc_attr( $class ) . '">' . esc_html( $issue['message'] ) . '</li>';
-			}
-			$output .= '</ul>';
-		}
-
-		$output .= '</div>';
-
-		return $output;
-	}
 }

@@ -27,12 +27,16 @@ class SPEM_REST_API {
 				'permission_callback' => array( $this, 'check_score_permission' ),
 				'args'                => array(
 					'home_score' => array(
-						'type'     => 'integer',
-						'required' => true,
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 					'away_score' => array(
-						'type'     => 'integer',
-						'required' => true,
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 				),
 			)
@@ -47,15 +51,31 @@ class SPEM_REST_API {
 				'permission_callback' => array( $this, 'check_manage_permission' ),
 				'args'                => array(
 					'date'   => array(
-						'type'     => 'string',
-						'required' => true,
+						'type'              => 'string',
+						'required'          => true,
+						'sanitize_callback' => 'sanitize_text_field',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
-					'time'   => array( 'type' => 'string' ),
-					'venue'  => array( 'type' => 'string' ),
-					'reason' => array( 'type' => 'string' ),
+					'time'   => array(
+						'type'              => 'string',
+						'sanitize_callback' => 'sanitize_text_field',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+					'venue'  => array(
+						'type'              => 'string',
+						'sanitize_callback' => 'sanitize_text_field',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+					'reason' => array(
+						'type'              => 'string',
+						'sanitize_callback' => 'sanitize_text_field',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
 					'notify' => array(
-						'type'    => 'boolean',
-						'default' => true,
+						'type'              => 'boolean',
+						'default'           => true,
+						'sanitize_callback' => 'rest_sanitize_boolean',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 				),
 			)
@@ -69,10 +89,16 @@ class SPEM_REST_API {
 				'callback'            => array( $this, 'cancel_game' ),
 				'permission_callback' => array( $this, 'check_manage_permission' ),
 				'args'                => array(
-					'reason' => array( 'type' => 'string' ),
+					'reason' => array(
+						'type'              => 'string',
+						'sanitize_callback' => 'sanitize_text_field',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
 					'notify' => array(
-						'type'    => 'boolean',
-						'default' => true,
+						'type'              => 'boolean',
+						'default'           => true,
+						'sanitize_callback' => 'rest_sanitize_boolean',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 				),
 			)
@@ -93,8 +119,9 @@ class SPEM_REST_API {
 					'permission_callback' => array( $this, 'check_score_permission' ),
 					'args'                => array(
 						'stats' => array(
-							'type'     => 'object',
-							'required' => true,
+							'type'              => 'object',
+							'required'          => true,
+							'validate_callback' => 'rest_validate_request_arg',
 						),
 					),
 				),
@@ -110,12 +137,16 @@ class SPEM_REST_API {
 				'permission_callback' => array( $this, 'check_manage_permission' ),
 				'args'                => array(
 					'from_season' => array(
-						'type'     => 'integer',
-						'required' => true,
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 					'to_season'   => array(
-						'type'     => 'integer',
-						'required' => true,
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 				),
 			)
@@ -130,17 +161,25 @@ class SPEM_REST_API {
 				'permission_callback' => array( $this, 'check_manage_permission' ),
 				'args'                => array(
 					'from_season' => array(
-						'type'     => 'integer',
-						'required' => true,
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 					'to_season'   => array(
-						'type'     => 'integer',
-						'required' => true,
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 					'player_ids'  => array(
-						'type'     => 'array',
-						'required' => true,
-						'items'    => array( 'type' => 'integer' ),
+						'type'              => 'array',
+						'required'          => true,
+						'items'             => array( 'type' => 'integer' ),
+						'sanitize_callback' => function ( $ids ) {
+							return array_map( 'absint', $ids );
+						},
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 				),
 			)
@@ -177,9 +216,28 @@ class SPEM_REST_API {
 		}
 
 		// Build SportsPress results format.
+		$result_key = 'goals';
+		if ( function_exists( 'sp_get_main_result_option' ) ) {
+			$main = sp_get_main_result_option();
+			if ( $main ) {
+				$result_key = $main;
+			}
+		} else {
+			$existing_results = get_post_meta( $event_id, 'sp_results', true );
+			if ( is_array( $existing_results ) ) {
+				$first_team = reset( $existing_results );
+				if ( is_array( $first_team ) ) {
+					$keys = array_keys( $first_team );
+					if ( ! empty( $keys ) ) {
+						$result_key = $keys[0];
+					}
+				}
+			}
+		}
+
 		$results = array(
-			$home_id => array( 'goals' => $home_score ),
-			$away_id => array( 'goals' => $away_score ),
+			$home_id => array( $result_key => $home_score ),
+			$away_id => array( $result_key => $away_score ),
 		);
 
 		update_post_meta( $event_id, 'sp_results', $results );
@@ -227,8 +285,8 @@ class SPEM_REST_API {
 
 		// Store original date before changing.
 		$original_date = $event->post_date;
-		update_post_meta( $event_id, '_splm_original_date', $original_date );
-		update_post_meta( $event_id, '_splm_change_reason', $reason );
+		update_post_meta( $event_id, '_spem_original_date', $original_date );
+		update_post_meta( $event_id, '_spem_change_reason', $reason );
 
 		// Update the event date.
 		wp_update_post( array(
@@ -266,8 +324,13 @@ class SPEM_REST_API {
 			return new WP_Error( 'not_found', 'Game not found.', array( 'status' => 404 ) );
 		}
 
-		update_post_meta( $event_id, '_splm_cancelled', '1' );
-		update_post_meta( $event_id, '_splm_change_reason', $reason );
+		update_post_meta( $event_id, '_spem_cancelled', '1' );
+		update_post_meta( $event_id, '_spem_change_reason', $reason );
+
+		wp_update_post( array(
+			'ID'          => $event_id,
+			'post_status' => 'draft',
+		) );
 
 		if ( $notify ) {
 			$this->notify_teams( $event_id, 'cancelled', $reason );
@@ -386,19 +449,44 @@ class SPEM_REST_API {
 			$existing = array();
 		}
 
+		// Validate team and player IDs.
+		$event_teams = array_map( 'intval', get_post_meta( $event_id, 'sp_team', false ) );
+
+		// Build allowlist of valid performance slugs from published sp_performance posts.
+		$perf_posts = get_posts( array(
+			'post_type'      => 'sp_performance',
+			'posts_per_page' => -1,
+			'post_status'    => 'publish',
+			'fields'         => 'ids',
+		) );
+		$valid_slugs = array();
+		foreach ( $perf_posts as $perf_id ) {
+			$valid_slugs[] = get_post_field( 'post_name', $perf_id );
+		}
+
 		// Merge new stats with existing data, preserving status/sub/number/position.
 		foreach ( $stats as $team_id => $players ) {
 			$team_id = (int) $team_id;
+			if ( ! in_array( $team_id, $event_teams, true ) ) {
+				continue;
+			}
 			if ( ! isset( $existing[ $team_id ] ) ) {
 				$existing[ $team_id ] = array();
 			}
 			foreach ( $players as $player_id => $perf_data ) {
 				$player_id = (int) $player_id;
+				if ( 'sp_player' !== get_post_type( $player_id ) ) {
+					continue;
+				}
 				if ( ! isset( $existing[ $team_id ][ $player_id ] ) ) {
 					$existing[ $team_id ][ $player_id ] = array();
 				}
 				foreach ( $perf_data as $slug => $value ) {
-					$existing[ $team_id ][ $player_id ][ sanitize_key( $slug ) ] = (int) $value;
+					$slug = sanitize_key( $slug );
+					if ( ! in_array( $slug, $valid_slugs, true ) ) {
+						continue; // Reject unknown performance slugs.
+					}
+					$existing[ $team_id ][ $player_id ][ $slug ] = (int) $value;
 				}
 			}
 		}
@@ -488,6 +576,9 @@ class SPEM_REST_API {
 	public function rollover_execute( $request ) {
 		$from_season = absint( $request->get_param( 'from_season' ) );
 		$to_season   = absint( $request->get_param( 'to_season' ) );
+		if ( $from_season === $to_season ) {
+			return new WP_Error( 'same_season', 'from_season and to_season must be different.', array( 'status' => 400 ) );
+		}
 		if ( ! $from_season || ! term_exists( $from_season, 'sp_season' ) ) {
 			return new WP_Error( 'invalid_from_season', 'Invalid from_season term ID.', array( 'status' => 400 ) );
 		}
@@ -514,7 +605,13 @@ class SPEM_REST_API {
 				}
 			}
 
+			// Preserve the last current team after rollover.
+			$last_team = ! empty( $team_ids ) ? (int) end( $team_ids ) : 0;
 			delete_post_meta( $player_id, 'sp_current_team' );
+			if ( $last_team ) {
+				update_post_meta( $player_id, 'sp_current_team', $last_team );
+			}
+
 			wp_remove_object_terms( $player_id, $from_season, 'sp_season' );
 			wp_set_object_terms( $player_id, (int) $to_season, 'sp_season', true );
 
@@ -605,6 +702,6 @@ class SPEM_REST_API {
 			wp_mail( $email, $subject, $body );
 		}
 
-		update_post_meta( $event_id, '_splm_notified', current_time( 'mysql' ) );
+		update_post_meta( $event_id, '_spem_notified', current_time( 'mysql' ) );
 	}
 }

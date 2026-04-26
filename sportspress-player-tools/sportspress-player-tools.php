@@ -46,7 +46,12 @@ class SportsPress_Player_Tools {
 
 	public function __construct() {
 		register_activation_hook( __FILE__, array( $this, 'check_activation_requirements' ) );
+		register_deactivation_hook( __FILE__, array( $this, 'deactivate' ) );
 		add_action( 'init', array( $this, 'init' ), 1 );
+	}
+
+	public function deactivate() {
+		wp_clear_scheduled_hook( 'spt_cleanup_old_temp_data' );
 	}
 
 	public function check_activation_requirements() {
@@ -126,9 +131,12 @@ class SportsPress_Player_Tools {
 
 		$this->debug_log( 'Enabled modules: ' . print_r( $enabled_modules, true ) );
 
-		// Always load REST API for roster/player write endpoints.
-		require_once SPT_PLUGIN_PATH . 'includes/class-rest-api.php';
-		$this->rest_api = new SPPT_REST_API();
+		// Load REST API only when at least one relevant module is enabled.
+		$rest_relevant = array( 'player_modifications', 'player_stats_enabler', 'batch_list_creator', 'player_skill_level' );
+		if ( array_intersect( $rest_relevant, $enabled_modules ) ) {
+			require_once SPT_PLUGIN_PATH . 'includes/class-rest-api.php';
+			$this->rest_api = new SPPT_REST_API();
+		}
 
 		if ( in_array( 'player_modifications', $enabled_modules ) ) {
 			$this->load_player_modifications( $enabled_modules );
@@ -190,7 +198,7 @@ class SportsPress_Player_Tools {
 
 	public function parent_plugin_missing_notice() {
 		echo '<div class="notice notice-error"><p>';
-		echo 'SportsPress Player Tools requires SportsPress Admin Tools to be installed and activated.';
+		echo esc_html__( 'SportsPress Player Tools requires SportsPress Admin Tools to be installed and activated.', 'sportspress-player-tools' );
 		echo '</p></div>';
 	}
 }

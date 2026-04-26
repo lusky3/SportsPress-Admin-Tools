@@ -281,6 +281,11 @@ class SPR_Player_Registration {
 			return;
 		}
 
+		if ( ! wp_roles()->is_role( $role ) ) {
+			error_log( 'SPR: Cannot assign non-existent role: ' . $role );
+			return;
+		}
+
 		$user->add_role( $role );
 		SPR_Database::log_role_assignment( $user_id, $user->display_name, 'role_assigned' );
 	}

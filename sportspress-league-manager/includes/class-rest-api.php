@@ -18,6 +18,7 @@ class SPLM_REST_API {
 	}
 
 	public function register_routes() {
+		$this->register_delegated_routes();
 		register_rest_route(
 			self::REST_NAMESPACE,
 			'/games',
@@ -26,10 +27,31 @@ class SPLM_REST_API {
 				'callback'            => array( $this, 'get_games' ),
 				'permission_callback' => array( $this, 'check_read_permission' ),
 				'args'                => array(
-					'season'   => array( 'type' => 'integer' ),
-					'league'   => array( 'type' => 'integer' ),
-					'per_page' => array( 'type' => 'integer', 'default' => 100, 'minimum' => 1, 'maximum' => 200 ),
-					'offset'   => array( 'type' => 'integer', 'default' => 0, 'minimum' => 0 ),
+					'season'   => array(
+						'type'              => 'integer',
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+					'league'   => array(
+						'type'              => 'integer',
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+					'per_page' => array(
+						'type'              => 'integer',
+						'default'           => 100,
+						'minimum'           => 1,
+						'maximum'           => 200,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+					'offset'   => array(
+						'type'              => 'integer',
+						'default'           => 0,
+						'minimum'           => 0,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
 				),
 			)
 		);
@@ -42,8 +64,16 @@ class SPLM_REST_API {
 				'callback'            => array( $this, 'get_standings' ),
 				'permission_callback' => array( $this, 'check_read_permission' ),
 				'args'                => array(
-					'table_id' => array( 'type' => 'integer' ),
-					'season'   => array( 'type' => 'integer' ),
+					'table_id' => array(
+						'type'              => 'integer',
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+					'season'   => array(
+						'type'              => 'integer',
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
 				),
 			)
 		);
@@ -56,7 +86,11 @@ class SPLM_REST_API {
 				'callback'            => array( $this, 'get_teams' ),
 				'permission_callback' => array( $this, 'check_read_permission' ),
 				'args'                => array(
-					'season' => array( 'type' => 'integer' ),
+					'season' => array(
+						'type'              => 'integer',
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
 				),
 			)
 		);
@@ -70,10 +104,16 @@ class SPLM_REST_API {
 				'permission_callback' => array( $this, 'check_read_permission' ),
 				'args'                => array(
 					'team'   => array(
-						'type'     => 'integer',
-						'required' => true,
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
-					'season' => array( 'type' => 'integer' ),
+					'season' => array(
+						'type'              => 'integer',
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
 				),
 			)
 		);
@@ -87,8 +127,25 @@ class SPLM_REST_API {
 				'permission_callback' => array( $this, 'check_payments_permission' ),
 				'args'                => array(
 					'season' => array(
-						'type'     => 'integer',
-						'required' => true,
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+					'per_page' => array(
+						'type'              => 'integer',
+						'default'           => 50,
+						'minimum'           => 1,
+						'maximum'           => 200,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+					'page' => array(
+						'type'              => 'integer',
+						'default'           => 1,
+						'minimum'           => 1,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 				),
 			)
@@ -369,18 +426,23 @@ class SPLM_REST_API {
 
 		$players = $this->get_players_for_team_season( $team_id, $season_id );
 
+		$can_see_email = current_user_can( 'manage_options' ) || current_user_can( 'edit_others_sp_players' );
+
 		$data = array();
 		foreach ( $players as $player ) {
-			$email = get_post_meta( $player->ID, 'spt_email', true );
-			if ( '' === $email ) {
-				$email = get_post_meta( $player->ID, 'spat_email', true );
-			}
-			$data[] = array(
+			$entry = array(
 				'id'     => $player->ID,
 				'name'   => $player->post_title,
-				'email'  => $email,
 				'number' => get_post_meta( $player->ID, 'sp_number', true ),
 			);
+			if ( $can_see_email ) {
+				$email = get_post_meta( $player->ID, 'spt_email', true );
+				if ( '' === $email ) {
+					$email = get_post_meta( $player->ID, 'spat_email', true );
+				}
+				$entry['email'] = $email;
+			}
+			$data[] = $entry;
 		}
 
 		return new WP_REST_Response( $data, 200 );
@@ -435,6 +497,10 @@ class SPLM_REST_API {
 	 * GET /payments — fee status per player from WooCommerce orders.
 	 */
 	public function get_payments( $request ) {
+		if ( ! function_exists( 'wc_get_order' ) ) {
+			return new WP_REST_Response( array(), 200 );
+		}
+
 		global $wpdb;
 
 		$season_id = absint( $request->get_param( 'season' ) );
@@ -481,7 +547,7 @@ class SPLM_REST_API {
 		$table_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $log_table ) );
 		$reg_map      = array();
 		if ( $table_exists ) {
-			$logs = $wpdb->get_results( "SELECT player_id, order_id FROM `" . esc_sql( $log_table ) . "` WHERE player_id > 0 AND order_id > 0 LIMIT 10000" );
+			$logs = $wpdb->get_results( $wpdb->prepare( "SELECT player_id, order_id FROM `" . esc_sql( $log_table ) . "` WHERE player_id > %d AND order_id > %d LIMIT 10000", 0, 0 ) );
 			foreach ( $logs as $log ) {
 				$reg_map[ (int) $log->player_id ] = (int) $log->order_id;
 			}
@@ -538,7 +604,17 @@ class SPLM_REST_API {
 			return $t !== 0 ? $t : strcmp( $a['player'], $b['player'] );
 		} );
 
-		return new WP_REST_Response( $data, 200 );
+		$per_page = min( 200, max( 1, (int) ( $request->get_param( 'per_page' ) ?? 50 ) ) );
+		$page     = max( 1, (int) ( $request->get_param( 'page' ) ?? 1 ) );
+		$total    = count( $data );
+		$offset   = ( $page - 1 ) * $per_page;
+		$paged    = array_slice( $data, $offset, $per_page );
+
+		$response = new WP_REST_Response( $paged, 200 );
+		$response->header( 'X-WP-Total', $total );
+		$response->header( 'X-WP-TotalPages', (int) ceil( $total / $per_page ) );
+
+		return $response;
 	}
 
 	/**
@@ -662,5 +738,197 @@ class SPLM_REST_API {
 		}
 
 		return new WP_REST_Response( $data, 200 );
+	}
+
+	/**
+	 * Register routes that delegate to sibling plugin REST API classes.
+	 * Only registers a route if it hasn't already been registered by the sibling plugin.
+	 */
+	private function register_delegated_routes() {
+		// --- Events Manager routes (SPEM_REST_API) ---
+		$event_routes = array(
+			'/games/(?P<id>\d+)/score'    => array( 'methods' => 'POST', 'callback' => 'update_score', 'permission' => 'check_score_permission' ),
+			'/games/(?P<id>\d+)/reschedule' => array( 'methods' => 'POST', 'callback' => 'reschedule_game', 'permission' => 'check_manage_permission' ),
+			'/games/(?P<id>\d+)/cancel'   => array( 'methods' => 'POST', 'callback' => 'cancel_game', 'permission' => 'check_manage_permission' ),
+			'/season/rollover-preview'     => array( 'methods' => 'POST', 'callback' => 'rollover_preview', 'permission' => 'check_manage_permission' ),
+			'/season/rollover-execute'     => array( 'methods' => 'POST', 'callback' => 'rollover_execute', 'permission' => 'check_manage_permission' ),
+		);
+
+		// Game players needs GET+POST (two handlers).
+		$game_players_registered = class_exists( 'SPEM_REST_API' );
+
+		if ( ! $game_players_registered ) {
+			foreach ( $event_routes as $route => $config ) {
+				register_rest_route( self::REST_NAMESPACE, $route, array(
+					'methods'             => $config['methods'],
+					'callback'            => $this->make_delegate( 'SPEM_REST_API', $config['callback'] ),
+					'permission_callback' => $this->make_delegate( 'SPEM_REST_API', $config['permission'] ),
+				) );
+			}
+
+			register_rest_route( self::REST_NAMESPACE, '/games/(?P<id>\d+)/players', array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => $this->make_delegate( 'SPEM_REST_API', 'get_game_players' ),
+					'permission_callback' => $this->make_delegate( 'SPEM_REST_API', 'check_score_permission' ),
+				),
+				array(
+					'methods'             => 'POST',
+					'callback'            => $this->make_delegate( 'SPEM_REST_API', 'save_game_players' ),
+					'permission_callback' => $this->make_delegate( 'SPEM_REST_API', 'check_score_permission' ),
+				),
+			) );
+		}
+
+		// --- Player Tools routes (SPPT_REST_API) ---
+		$roster_routes = array(
+			'/rosters/details'         => array( 'methods' => 'GET', 'callback' => 'get_roster_details', 'permission' => 'check_roster_permission' ),
+			'/rosters/set-captain'     => array( 'methods' => 'POST', 'callback' => 'set_captain', 'permission' => 'check_roster_permission' ),
+			'/rosters/update-metadata' => array( 'methods' => 'POST', 'callback' => 'update_metadata', 'permission' => 'check_roster_permission' ),
+			'/rosters/import'          => array( 'methods' => 'POST', 'callback' => 'import_roster', 'permission' => 'check_roster_permission' ),
+			'/rosters/move'            => array( 'methods' => 'POST', 'callback' => 'move_player', 'permission' => 'check_roster_permission' ),
+			'/rosters/update-player'   => array( 'methods' => 'POST', 'callback' => 'update_player', 'permission' => 'check_roster_permission' ),
+			'/rosters/remove-player'   => array( 'methods' => 'POST', 'callback' => 'remove_player', 'permission' => 'check_roster_permission' ),
+		);
+
+		$roster_registered = class_exists( 'SPPT_REST_API' );
+
+		if ( ! $roster_registered ) {
+			foreach ( $roster_routes as $route => $config ) {
+				register_rest_route( self::REST_NAMESPACE, $route, array(
+					'methods'             => $config['methods'],
+					'callback'            => $this->make_delegate( 'SPPT_REST_API', $config['callback'] ),
+					'permission_callback' => $this->make_delegate( 'SPPT_REST_API', $config['permission'] ),
+				) );
+			}
+		}
+
+		// --- Notes routes (always register from league-manager using SPLM_Player_Notes_Database) ---
+		if ( ! $roster_registered ) {
+			register_rest_route( self::REST_NAMESPACE, '/notes', array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => array( $this, 'get_notes' ),
+					'permission_callback' => array( $this, 'check_notes_permission' ),
+					'args'                => array(
+						'player' => array(
+							'type'              => 'integer',
+							'required'          => true,
+							'sanitize_callback' => 'absint',
+							'validate_callback' => 'rest_validate_request_arg',
+						),
+					),
+				),
+				array(
+					'methods'             => 'POST',
+					'callback'            => array( $this, 'add_note' ),
+					'permission_callback' => array( $this, 'check_notes_write_permission' ),
+					'args'                => array(
+						'player_id' => array(
+							'type'              => 'integer',
+							'required'          => true,
+							'sanitize_callback' => 'absint',
+							'validate_callback' => 'rest_validate_request_arg',
+						),
+						'content'   => array(
+							'type'              => 'string',
+							'required'          => true,
+							'sanitize_callback' => 'sanitize_textarea_field',
+							'validate_callback' => 'rest_validate_request_arg',
+						),
+					),
+				),
+			) );
+		}
+	}
+
+	/**
+	 * Create a closure that delegates to a sibling plugin class method.
+	 * Loads the sibling class file if needed and instantiates it.
+	 */
+	private function make_delegate( $class_name, $method ) {
+		return function ( $request = null ) use ( $class_name, $method ) {
+			$this->maybe_load_sibling_class( $class_name );
+			if ( ! class_exists( $class_name ) ) {
+				return new WP_Error( 'missing_dependency', "Required class {$class_name} is not available.", array( 'status' => 501 ) );
+			}
+			$instance = new $class_name();
+			// Remove the rest_api_init hook to prevent duplicate registration.
+			remove_action( 'rest_api_init', array( $instance, 'register_routes' ) );
+			return $instance->$method( $request );
+		};
+	}
+
+	/**
+	 * Attempt to load a sibling plugin's REST API class file.
+	 */
+	private function maybe_load_sibling_class( $class_name ) {
+		if ( class_exists( $class_name ) ) {
+			return;
+		}
+
+		$map = array(
+			'SPEM_REST_API' => dirname( SPLM_PLUGIN_PATH ) . '/sportspress-events-manager/includes/class-rest-api.php',
+			'SPPT_REST_API' => dirname( SPLM_PLUGIN_PATH ) . '/sportspress-player-tools/includes/class-rest-api.php',
+		);
+
+		if ( isset( $map[ $class_name ] ) && file_exists( $map[ $class_name ] ) ) {
+			require_once $map[ $class_name ];
+		}
+	}
+
+	/**
+	 * Permission: read notes.
+	 */
+	public function check_notes_permission() {
+		return current_user_can( 'edit_others_sp_players' ) || current_user_can( 'manage_sportspress' );
+	}
+
+	/**
+	 * Permission: write notes.
+	 */
+	public function check_notes_write_permission() {
+		return current_user_can( 'manage_options' );
+	}
+
+	/**
+	 * GET /notes — player notes via SPLM_Player_Notes_Database.
+	 */
+	public function get_notes( $request ) {
+		$player_id = absint( $request->get_param( 'player' ) );
+		$notes     = SPLM_Player_Notes_Database::get_notes( $player_id );
+
+		$data = array();
+		foreach ( $notes as $note ) {
+			$data[] = array(
+				'id'         => (int) $note->id,
+				'player_id'  => (int) $note->player_id,
+				'content'    => $note->note,
+				'author'     => $note->author_name ?? __( 'Unknown', 'sportspress-league-manager' ),
+				'created_at' => $note->created_at,
+			);
+		}
+
+		return new WP_REST_Response( $data, 200 );
+	}
+
+	/**
+	 * POST /notes — add a player note via SPLM_Player_Notes_Database.
+	 */
+	public function add_note( $request ) {
+		$player_id = absint( $request->get_param( 'player_id' ) );
+		$content   = sanitize_textarea_field( $request->get_param( 'content' ) );
+
+		if ( 'sp_player' !== get_post_type( $player_id ) ) {
+			return new WP_Error( 'invalid_player', 'Invalid player ID.', array( 'status' => 400 ) );
+		}
+
+		$note_id = SPLM_Player_Notes_Database::insert( $player_id, get_current_user_id(), $content );
+
+		if ( ! $note_id ) {
+			return new WP_Error( 'insert_failed', 'Failed to save note.', array( 'status' => 500 ) );
+		}
+
+		return new WP_REST_Response( array( 'success' => true, 'id' => $note_id ), 201 );
 	}
 }

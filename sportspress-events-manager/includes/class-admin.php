@@ -141,6 +141,10 @@ class SPEM_Admin {
 			return;
 		}
 
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
 		check_admin_referer( 'spem_admin_actions', 'spem_admin_nonce' );
 
 		if ( isset( $_POST['save_settings'], $_POST['spem_admin_nonce'] ) ) {

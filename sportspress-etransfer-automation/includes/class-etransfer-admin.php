@@ -86,7 +86,7 @@ class SPET_ETransfer_Admin {
 	public function admin_page() {
 		// Handle manual match submission
 		if ( isset( $_POST['manual_match'] ) && isset( $_POST['log_index'] ) && isset( $_POST['order_id'] )
-			&& wp_verify_nonce( $_POST['_wpnonce'], 'manual_match_etransfer' ) ) {
+			&& wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) ), 'manual_match_etransfer' ) ) {
 			if ( ! current_user_can( 'manage_woocommerce' ) ) {
 				wp_die( __( 'You do not have permission to perform this action.', 'sportspress-admin-tools' ) );
 			}
@@ -101,7 +101,7 @@ class SPET_ETransfer_Admin {
 
 		// Handle hide submission
 		if ( isset( $_POST['hide_log'] ) && isset( $_POST['log_id'] )
-			&& wp_verify_nonce( $_POST['_wpnonce'], 'hide_etransfer_log' ) ) {
+			&& wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) ), 'hide_etransfer_log' ) ) {
 			if ( ! current_user_can( 'manage_woocommerce' ) ) {
 				wp_die( __( 'You do not have permission to perform this action.', 'sportspress-admin-tools' ) );
 			}
@@ -115,7 +115,7 @@ class SPET_ETransfer_Admin {
 
 		// Handle purge old logs
 		if ( isset( $_POST['purge_old_logs'] )
-			&& wp_verify_nonce( $_POST['_wpnonce'], 'spet_purge_old_logs' ) ) {
+			&& wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) ), 'spet_purge_old_logs' ) ) {
 			if ( ! current_user_can( 'manage_woocommerce' ) ) {
 				wp_die( __( 'You do not have permission to perform this action.', 'sportspress-admin-tools' ) );
 			}
@@ -257,7 +257,7 @@ class SPET_ETransfer_Admin {
 			echo '<td>' . esc_html( $log->reference_number ?: 'N/A' ) . '</td>';
 			echo '<td>' . esc_html( $log->match_criteria ?: 'N/A' ) . '</td>';
 			echo '<td>' . ( $log->order_id ? '<a href="' . esc_url( admin_url( 'post.php?post=' . intval( $log->order_id ) . '&action=edit' ) ) . '">#' . esc_html( $log->order_id ) . '</a>' : 'N/A' ) . '</td>';
-			echo '<td><span class="' . $status_class . '">' . esc_html( $log->result ) . '</span></td>';
+			echo '<td><span class="' . esc_attr( $status_class ) . '">' . esc_html( $log->result ) . '</span></td>';
 			echo '</tr>';
 		}
 
@@ -267,7 +267,7 @@ class SPET_ETransfer_Admin {
 
 	private function process_manual_match( $log_id, $order_id ) {
 		global $wpdb;
-		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
+		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
 
 		$log = $wpdb->get_row(
 			$wpdb->prepare(
@@ -292,6 +292,19 @@ class SPET_ETransfer_Admin {
 			$order->set_transaction_id( $log->reference_number );
 		}
 
+		// Check for amount mismatch and warn
+		$order_total = floatval( $order->get_total() );
+		$log_amount = floatval( $log->amount );
+		if ( abs( $order_total - $log_amount ) > 0.01 ) {
+			$order->add_order_note(
+				sprintf(
+					__( '⚠️ Amount mismatch: e-Transfer was $%.2f but order total is $%.2f. Please verify.', 'sportspress-admin-tools' ),
+					$log_amount,
+					$order_total
+				)
+			);
+		}
+
 		// Add order note
 		$note = sprintf(
 			__( 'e-Transfer payment processed manually from webhook log. Reference: %1$s, Amount: $%2$.2f', 'sportspress-admin-tools' ),
@@ -306,7 +319,7 @@ class SPET_ETransfer_Admin {
 
 		// Update log entry
 		$result = $wpdb->update(
-			$wpdb->prefix . 'spet_etransfer_logs',
+			$wpdb->prefix . 'spat_etransfer_logs',
 			array(
 				'order_id' => intval( $order_id ),
 				'result' => 'Manually matched and processed successfully',

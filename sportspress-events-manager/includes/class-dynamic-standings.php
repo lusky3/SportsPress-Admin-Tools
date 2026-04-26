@@ -139,7 +139,13 @@ class SPEM_Dynamic_Standings {
 			wp_send_json_error( array( 'message' => 'Missing season.' ) );
 		}
 
-		$html = $this->get_standings_html( $season, $type );
+		$cache_key = 'spem_standings_' . md5( $season . '_' . $type );
+		$html      = get_transient( $cache_key );
+
+		if ( false === $html ) {
+			$html = $this->get_standings_html( $season, $type );
+			set_transient( $cache_key, $html, 5 * MINUTE_IN_SECONDS );
+		}
 
 		wp_send_json_success(
 			array(

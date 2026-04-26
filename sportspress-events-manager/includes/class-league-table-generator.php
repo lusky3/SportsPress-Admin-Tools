@@ -17,7 +17,7 @@ class SPEM_League_Table_Generator {
 	}
 
 	public function ajax_generate_league_table() {
-		if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( $_POST['nonce'], 'generate_league_table' ) ) {
+		if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['nonce'] ) ), 'generate_league_table' ) ) {
 			wp_send_json_error( __( 'Security check failed.', 'sportspress-events-manager' ) );
 		}
 

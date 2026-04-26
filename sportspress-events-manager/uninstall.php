@@ -24,6 +24,7 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 		'spem_naming_separator',
 		'spem_include_team_name',
 		'spem_include_division',
+		'spem_current_season_id',
 	);
 
 	foreach ( $options as $option ) {

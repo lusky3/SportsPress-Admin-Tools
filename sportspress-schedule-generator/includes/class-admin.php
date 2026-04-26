@@ -292,7 +292,7 @@ class SPSG_Admin {
 			if ( ! current_user_can( 'manage_options' ) ) {
 				wp_die( __( 'You do not have permission.', 'sportspress-schedule-generator' ) );
 			}
-			if ( ! wp_verify_nonce( $_POST['spsg_nonce'] ?? '', 'spsg_admin_action' ) ) {
+			if ( ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['spsg_nonce'] ?? '' ) ), 'spsg_admin_action' ) ) {
 				wp_die( __( 'Security check failed.', 'sportspress-schedule-generator' ) );
 			}
 			$this->handle_form_submission();

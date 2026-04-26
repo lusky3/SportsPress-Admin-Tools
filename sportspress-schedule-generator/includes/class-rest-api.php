@@ -14,34 +14,48 @@ class SPSG_REST_API {
 	public function register_routes() {
 		$perm = array( 'permission_callback' => array( $this, 'check_manage_permission' ) );
 		$ns = $this->ns;
+
+		$id_args = array(
+			'id' => array(
+				'sanitize_callback' => 'sanitize_text_field',
+				'validate_callback' => function( $val ) { return is_string( $val ) && strlen( $val ) > 0; },
+			),
+		);
+
 		// Config CRUD
 		register_rest_route( $ns, '/configs', array(
 			array_merge( $perm, array( 'methods' => 'GET', 'callback' => array( $this, 'spsg_list_configs' ) ) ),
 			array_merge( $perm, array( 'methods' => 'POST', 'callback' => array( $this, 'spsg_create_config' ) ) ),
 		) );
 		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)', array(
-			array_merge( $perm, array( 'methods' => 'GET', 'callback' => array( $this, 'spsg_get_config' ) ) ),
-			array_merge( $perm, array( 'methods' => 'PUT', 'callback' => array( $this, 'spsg_update_config' ) ) ),
-			array_merge( $perm, array( 'methods' => 'DELETE', 'callback' => array( $this, 'spsg_delete_config' ) ) ),
+			array_merge( $perm, array( 'methods' => 'GET', 'callback' => array( $this, 'spsg_get_config' ), 'args' => $id_args ) ),
+			array_merge( $perm, array( 'methods' => 'PUT', 'callback' => array( $this, 'spsg_update_config' ), 'args' => $id_args ) ),
+			array_merge( $perm, array( 'methods' => 'DELETE', 'callback' => array( $this, 'spsg_delete_config' ), 'args' => $id_args ) ),
 		) );
 		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/clone', array_merge( $perm, array(
-			'methods' => 'POST', 'callback' => array( $this, 'spsg_clone_config' ),
+			'methods' => 'POST', 'callback' => array( $this, 'spsg_clone_config' ), 'args' => $id_args,
 		) ) );
 		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/validate', array_merge( $perm, array(
-			'methods' => 'POST', 'callback' => array( $this, 'spsg_validate_config' ),
+			'methods' => 'POST', 'callback' => array( $this, 'spsg_validate_config' ), 'args' => $id_args,
 		) ) );
 		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/placeholders', array_merge( $perm, array(
-			'methods' => 'GET', 'callback' => array( $this, 'spsg_get_placeholders' ),
+			'methods' => 'GET', 'callback' => array( $this, 'spsg_get_placeholders' ), 'args' => $id_args,
 		) ) );
 		// Placeholder replace
 		register_rest_route( $ns, '/placeholders/(?P<id>\d+)/replace', array_merge( $perm, array(
 			'methods' => 'POST', 'callback' => array( $this, 'spsg_replace_placeholder' ),
+			'args' => array(
+				'id' => array(
+					'sanitize_callback' => 'absint',
+					'validate_callback' => function( $val ) { return is_numeric( $val ) && (int) $val > 0; },
+				),
+			),
 		) ) );
 		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/history', array_merge( $perm, array(
-			'methods' => 'GET', 'callback' => array( $this, 'spsg_get_history' ),
+			'methods' => 'GET', 'callback' => array( $this, 'spsg_get_history' ), 'args' => $id_args,
 		) ) );
 		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/history/clear', array_merge( $perm, array(
-			'methods' => 'DELETE', 'callback' => array( $this, 'spsg_clear_history' ),
+			'methods' => 'DELETE', 'callback' => array( $this, 'spsg_clear_history' ), 'args' => $id_args,
 		) ) );
 		// Presets
 		register_rest_route( $ns, '/presets', array_merge( $perm, array(
@@ -49,10 +63,22 @@ class SPSG_REST_API {
 		) ) );
 		register_rest_route( $ns, '/presets/(?P<name>[\w_-]+)', array_merge( $perm, array(
 			'methods' => 'GET', 'callback' => array( $this, 'spsg_get_preset' ),
+			'args' => array(
+				'name' => array(
+					'sanitize_callback' => 'sanitize_text_field',
+					'validate_callback' => function( $val ) { return is_string( $val ) && strlen( $val ) > 0; },
+				),
+			),
 		) ) );
 		// Per-division team loading
 		register_rest_route( $ns, '/sportspress/leagues/(?P<id>\d+)/teams', array_merge( $perm, array(
 			'methods' => 'GET', 'callback' => array( $this, 'spsg_get_league_teams' ),
+			'args' => array(
+				'id' => array(
+					'sanitize_callback' => 'absint',
+					'validate_callback' => function( $val ) { return is_numeric( $val ) && (int) $val > 0; },
+				),
+			),
 		) ) );
 		// SportsPress reference data
 		register_rest_route( $ns, '/sportspress/leagues', array_merge( $perm, array(
@@ -67,6 +93,13 @@ class SPSG_REST_API {
 		// Generate
 		register_rest_route( $ns, '/generate', array_merge( $perm, array(
 			'methods' => 'POST', 'callback' => array( $this, 'spsg_generate' ),
+			'args' => array(
+				'config_id' => array(
+					'required' => true,
+					'sanitize_callback' => 'sanitize_text_field',
+					'validate_callback' => function( $val ) { return is_string( $val ) && strlen( $val ) > 0; },
+				),
+			),
 		) ) );
 		register_rest_route( $ns, '/generate/progress', array_merge( $perm, array(
 			'methods' => 'GET', 'callback' => array( $this, 'spsg_generate_progress' ),
@@ -77,10 +110,33 @@ class SPSG_REST_API {
 		// Publish
 		register_rest_route( $ns, '/publish', array_merge( $perm, array(
 			'methods' => 'POST', 'callback' => array( $this, 'spsg_publish' ),
+			'args' => array(
+				'schedule_id' => array(
+					'required' => true,
+					'sanitize_callback' => 'sanitize_text_field',
+					'validate_callback' => function( $val ) { return is_string( $val ) && strlen( $val ) > 0; },
+				),
+			),
 		) ) );
 		// Export
 		register_rest_route( $ns, '/export/xlsx', array_merge( $perm, array(
 			'methods' => 'POST', 'callback' => array( $this, 'spsg_export_xlsx' ),
+			'args' => array(
+				'schedule_id' => array(
+					'required' => true,
+					'sanitize_callback' => 'sanitize_text_field',
+					'validate_callback' => function( $val ) { return is_string( $val ) && strlen( $val ) > 0; },
+				),
+				'config_id' => array(
+					'required' => true,
+					'sanitize_callback' => 'sanitize_text_field',
+					'validate_callback' => function( $val ) { return is_string( $val ) && strlen( $val ) > 0; },
+				),
+				'style' => array(
+					'sanitize_callback' => 'sanitize_text_field',
+					'validate_callback' => function( $val ) { return in_array( $val, array( 'compact', 'detailed' ), true ); },
+				),
+			),
 		) ) );
 		// Venue CSV import
 		register_rest_route( $ns, '/venue-csv/parse', array_merge( $perm, array(
@@ -88,6 +144,21 @@ class SPSG_REST_API {
 		) ) );
 		register_rest_route( $ns, '/venue-csv/apply', array_merge( $perm, array(
 			'methods' => 'POST', 'callback' => array( $this, 'spsg_venue_csv_apply' ),
+			'args' => array(
+				'config_id' => array(
+					'required' => true,
+					'sanitize_callback' => 'sanitize_text_field',
+					'validate_callback' => function( $val ) { return is_string( $val ) && strlen( $val ) > 0; },
+				),
+				'schedules' => array(
+					'required' => true,
+					'validate_callback' => function( $val ) { return is_array( $val ) && ! empty( $val ); },
+				),
+				'venue_mapping' => array(
+					'required' => true,
+					'validate_callback' => function( $val ) { return is_array( $val ); },
+				),
+			),
 		) ) );
 		// Distribution settings
 		register_rest_route( $ns, '/settings/distribution', array_merge( $perm, array(
@@ -96,7 +167,7 @@ class SPSG_REST_API {
 	}
 
 	public function check_manage_permission() {
-		return current_user_can( 'manage_sportspress' );
+		return current_user_can( 'manage_options' );
 	}
 
 	private function cm() {
@@ -106,14 +177,26 @@ class SPSG_REST_API {
 		return $this->config_manager;
 	}
 
-	// Save config bypassing validation (for partial/draft saves from the wizard)
+	// Intentionally bypasses full validation to allow partial/draft saves from the wizard.
+	// Only sanitization is applied; full validation happens at generate time.
 	private function save_draft( $data ) {
+		// Basic structural validation: ensure data is an array with expected top-level keys
+		if ( ! is_array( $data ) ) {
+			return new WP_Error( 'invalid_data', 'Configuration data must be an array.', array( 'status' => 400 ) );
+		}
+		$required_keys = array( 'name' );
+		foreach ( $required_keys as $key ) {
+			if ( ! isset( $data[ $key ] ) || ( is_string( $data[ $key ] ) && trim( $data[ $key ] ) === '' ) ) {
+				return new WP_Error( 'missing_field', "Missing required field: $key", array( 'status' => 400 ) );
+			}
+		}
+
 		$sanitizer = new SPSG_Configuration_Sanitizer();
 		$sanitized = $sanitizer->sanitize( $data );
 		$configs = get_option( SPSG_Configuration_Manager::OPTION_NAME, array() );
 		$is_new = ! isset( $sanitized['id'] );
 		if ( $is_new ) {
-			$sanitized['id'] = uniqid( 'config_' );
+			$sanitized['id'] = 'config_' . bin2hex( random_bytes( 8 ) );
 			$sanitized['created'] = current_time( 'mysql' );
 		}
 		$sanitized['modified'] = current_time( 'mysql' );
@@ -538,7 +621,7 @@ class SPSG_REST_API {
 		$result = ( new SPSG_Schedule_Engine() )->generate_schedule( $config );
 		if ( is_wp_error( $result ) ) return $result;
 		$sid = 'sched_' . bin2hex( random_bytes( 8 ) );
-		set_transient( 'spsg_schedule_' . $sid, $result['schedule'], DAY_IN_SECONDS );
+		set_transient( 'spsg_schedule_' . $sid, $result['schedule'], HOUR_IN_SECONDS );
 		// Format games for the React UI
 		$games = array_map( function( $g ) {
 			$g = (array) $g;

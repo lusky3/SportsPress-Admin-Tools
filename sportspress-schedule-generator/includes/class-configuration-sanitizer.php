@@ -51,6 +51,9 @@ class SPSG_Configuration_Sanitizer {
 		$sanitized['season_end'] = sanitize_text_field( $data['season_end'] ?? '' );
 		$sanitized['games_per_team'] = absint( $data['games_per_team'] ?? 0 );
 		$sanitized['timezone'] = sanitize_text_field( $data['timezone'] ?? wp_timezone_string() );
+		if ( @timezone_open( $sanitized['timezone'] ) === false ) {
+			$sanitized['timezone'] = wp_timezone_string();
+		}
 
 		// Sanitize arrays
 		$sanitized['playing_days'] = array_map( 'sanitize_text_field', (array) ( $data['playing_days'] ?? array() ) );

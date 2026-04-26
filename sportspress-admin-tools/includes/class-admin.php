@@ -60,7 +60,7 @@ class SPAT_Admin {
 		wp_enqueue_script( 'jquery' );
 
 		// Enqueue Slim Select if enabled
-		if ( get_option( 'spat_use_select2', '0' ) ) {
+		if ( get_option( 'spat_use_select2', '0' ) === '1' ) {
 			$plugin_url = SPAT_PLUGIN_URL;
 			wp_enqueue_script( 'slimselect', $plugin_url . 'assets/lib/slimselect/slimselect.min.js', array(), '3.4.3', true );
 			wp_enqueue_style( 'slimselect', $plugin_url . 'assets/lib/slimselect/slimselect.min.css', array(), '3.4.3' );
@@ -401,9 +401,11 @@ class SPAT_Admin {
 	public function settings_page() {
 		// Handle tab persistence after form submission
 		if ( isset( $_POST['current_tab'] ) && isset( $_GET['settings-updated'] ) ) {
-			$tab = sanitize_text_field( $_POST['current_tab'] );
-			wp_safe_redirect( admin_url( 'options-general.php?page=sportspress-admin-tools&settings-updated=true&tab=' . $tab ) );
-			exit;
+			if ( check_admin_referer( 'spat_tab_redirect', '_wpnonce_tab' ) ) {
+				$tab = sanitize_text_field( $_POST['current_tab'] );
+				wp_safe_redirect( admin_url( 'options-general.php?page=sportspress-admin-tools&settings-updated=true&tab=' . $tab ) );
+				exit;
+			}
 		}
 
 		if ( isset( $_GET['settings-updated'] ) ) {
@@ -432,6 +434,7 @@ class SPAT_Admin {
 				<form action="options.php" method="post">
 					<input type="hidden" name="current_tab" value="general">
 					<?php
+					wp_nonce_field( 'spat_tab_redirect', '_wpnonce_tab' );
 					settings_fields( 'spat_general_settings' );
 					do_settings_sections( 'spat_general_settings' );
 					submit_button( __( 'Save Settings', 'sportspress-admin-tools' ) );

@@ -264,9 +264,39 @@ class SPT_Batch_List_Creator {
 
 		check_admin_referer( 'spt_batch_process' );
 
-		// Collect team_ and player_ fields
-		$teams = array();
+		// Read the full CSV data from server-side storage.
+		global $wpdb;
+		$table   = $wpdb->prefix . 'spat_temp_data';
+		$user_id = get_current_user_id();
+
+		$stored = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT data_value FROM $table WHERE user_id = %d AND data_type = %s",
+				$user_id,
+				'batch_list'
+			)
+		);
+		$full_data = $stored ? json_decode( $stored, true ) : array();
+
+		if ( empty( $full_data ) ) {
+			wp_die( __( 'No stored batch data found. Please re-upload the CSV.', 'sportspress-player-tools' ) );
+		}
+
+		// Use POST only for team/player selections (overrides for the current page).
+		// For rows not present in POST, use auto-matched defaults from stored data.
+		$teams   = array();
 		$players = array();
+
+		// Build auto-matched defaults for all rows from stored CSV data.
+		$team_objects = get_posts( array( 'post_type' => 'sp_team', 'posts_per_page' => -1, 'orderby' => 'title', 'order' => 'ASC' ) );
+		$player_objects = get_posts( array( 'post_type' => 'sp_player', 'posts_per_page' => -1, 'orderby' => 'title', 'order' => 'ASC' ) );
+
+		foreach ( $full_data as $idx => $row ) {
+			$teams[ $idx ]   = $this->find_closest( $row['team'], $team_objects );
+			$players[ $idx ] = $this->find_closest( $row['name'], $player_objects );
+		}
+
+		// Override defaults with any explicit POST selections (current page).
 		foreach ( $_POST as $key => $value ) {
 			if ( strpos( $key, 'team_' ) === 0 ) {
 				$idx = str_replace( 'team_', '', $key );
@@ -598,7 +628,7 @@ endif;
 
 						<tr>
 							<td><?php echo esc_html( $row['team'] ); ?></td>
-							<td style="<?php echo $team_ambiguous ? 'background-color: #fff3cd; border-left: 3px solid #ff9800;' : ''; ?>">
+							<td style="<?php echo $team_ambiguous ? esc_attr( 'background-color: #fff3cd; border-left: 3px solid #ff9800;' ) : ''; ?>">
 								<select name="team_<?php echo esc_attr( $global_idx ); ?>" class="spt-team-select" style="width: 100%;" required>
 									<?php foreach ( $team_objects as $team ) : ?>
 										<option value="<?php echo esc_attr( $team->ID ); ?>" <?php selected( $matched_team, $team->ID ); ?>>
@@ -608,7 +638,7 @@ endif;
 								</select>
 							</td>
 							<td><?php echo esc_html( $row['name'] ); ?></td>
-							<td style="<?php echo $player_ambiguous ? 'background-color: #fff3cd; border-left: 3px solid #ff9800;' : ''; ?>">
+							<td style="<?php echo $player_ambiguous ? esc_attr( 'background-color: #fff3cd; border-left: 3px solid #ff9800;' ) : ''; ?>">
 								<select name="player_<?php echo esc_attr( $global_idx ); ?>" class="spt-player-select" style="width: 100%;" required>
 									<?php foreach ( $player_objects as $player ) : ?>
 										<option value="<?php echo esc_attr( $player->ID ); ?>" <?php selected( $matched_player, $player->ID ); ?>>

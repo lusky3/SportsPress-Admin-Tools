@@ -262,20 +262,43 @@ jQuery(document).ready(function($) {
 
 			// 3. Optionally create calendar
 			if ( $create_calendars ) {
-				$cal_title = $team->post_title . ' — ' . $season_name;
-				$cal_id = wp_insert_post(
-					array(
-						'post_type'   => 'sp_calendar',
-						'post_title'  => $cal_title,
-						'post_status' => 'publish',
-					)
-				);
-				if ( $cal_id && ! is_wp_error( $cal_id ) ) {
-					update_post_meta( $cal_id, 'sp_team', array( $team->ID ) );
-					wp_set_object_terms( $cal_id, array( $season_term_id ), 'sp_season' );
-					wp_set_object_terms( $cal_id, array( $league_id ), 'sp_league' );
-					update_post_meta( $cal_id, 'sp_format', get_option( 'spem_calendar_type', 'list' ) );
-					$calendars_created++;
+				// Idempotency: skip if calendar already exists for this team+season.
+				$existing_cal = get_posts( array(
+					'post_type'      => 'sp_calendar',
+					'post_status'    => 'any',
+					'posts_per_page' => 1,
+					'fields'         => 'ids',
+					'meta_query'     => array(
+						array(
+							'key'   => 'sp_team',
+							'value' => serialize( array( $team->ID ) ),
+						),
+					),
+					'tax_query'      => array(
+						array(
+							'taxonomy' => 'sp_season',
+							'field'    => 'term_id',
+							'terms'    => $season_term_id,
+						),
+					),
+				) );
+
+				if ( empty( $existing_cal ) ) {
+					$cal_title = $team->post_title . ' — ' . $season_name;
+					$cal_id = wp_insert_post(
+						array(
+							'post_type'   => 'sp_calendar',
+							'post_title'  => $cal_title,
+							'post_status' => 'publish',
+						)
+					);
+					if ( $cal_id && ! is_wp_error( $cal_id ) ) {
+						update_post_meta( $cal_id, 'sp_team', array( $team->ID ) );
+						wp_set_object_terms( $cal_id, array( $season_term_id ), 'sp_season' );
+						wp_set_object_terms( $cal_id, array( $league_id ), 'sp_league' );
+						update_post_meta( $cal_id, 'sp_format', get_option( 'spem_calendar_type', 'list' ) );
+						$calendars_created++;
+					}
 				}
 			}
 

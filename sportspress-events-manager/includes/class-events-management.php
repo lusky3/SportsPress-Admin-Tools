@@ -302,7 +302,8 @@ class SPEM_Events_Management {
 
 		$imported = 0;
 		foreach ( $events_data as $event_data ) {
-			if ( $this->create_event( $event_data ) ) {
+			$result = $this->create_event( $event_data );
+			if ( ! is_wp_error( $result ) && $result ) {
 				$imported++;
 			}
 		}
@@ -486,13 +487,13 @@ class SPEM_Events_Management {
 	 * Create a single SportsPress event from parsed data.
 	 *
 	 * @param array $event_data Event data with date, home_team, away_team, time, venue, league.
-	 * @return bool True on success.
+	 * @return int|WP_Error Event ID on success, WP_Error on failure.
 	 */
 	private function create_event( $event_data ) {
 		// Parse date with validation
 		$timestamp = strtotime( $event_data['date'] );
 		if ( $timestamp === false ) {
-			return false;
+			return new WP_Error( 'invalid_date', __( 'Invalid date format.', 'sportspress-events-manager' ) );
 		}
 		$date = date( 'Y-m-d', $timestamp );
 
@@ -509,7 +510,7 @@ class SPEM_Events_Management {
 		$away_team_id = $this->find_or_create_team( $event_data['away_team'] );
 
 		if ( ! $home_team_id || ! $away_team_id ) {
-			return false;
+			return new WP_Error( 'team_error', __( 'Could not find or create teams.', 'sportspress-events-manager' ) );
 		}
 
 		$event_title = $event_data['home_team'] . ' vs ' . $event_data['away_team'];
@@ -539,7 +540,7 @@ class SPEM_Events_Management {
 		foreach ( $existing as $existing_id ) {
 			$teams = get_post_meta( $existing_id, 'sp_team', false );
 			if ( in_array( $away_team_id, array_map( 'intval', $teams ), true ) ) {
-				return $existing_id; // Duplicate — return existing event ID.
+				return (int) $existing_id; // Duplicate — return existing event ID.
 			}
 		}
 
@@ -553,7 +554,7 @@ class SPEM_Events_Management {
 		);
 
 		if ( ! $event_id || is_wp_error( $event_id ) ) {
-			return false;
+			return is_wp_error( $event_id ) ? $event_id : new WP_Error( 'insert_error', __( 'Failed to create event.', 'sportspress-events-manager' ) );
 		}
 
 		// Set permalink
@@ -615,7 +616,7 @@ class SPEM_Events_Management {
 		);
 		update_post_meta( $event_id, 'sp_results', $results );
 
-		return true;
+		return (int) $event_id;
 	}
 
 	/**

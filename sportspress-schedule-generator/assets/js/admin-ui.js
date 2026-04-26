@@ -18,6 +18,9 @@
     var nonces = spsgAdminData.nonces;
     var presets = spsgAdminData.presets;
 
+    // Nonces from the schedule-generator script (spsgData is localized on that handle)
+    var sgNonces = (typeof spsgData !== 'undefined' && spsgData.nonces) ? spsgData.nonces : {};
+
     function escHtml(str) {
         if (!str) return '';
         return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
@@ -129,7 +132,7 @@
             type: 'POST',
             data: {
                 action: 'spsg_get_available_venues',
-                nonce: spsgData.nonces.get_available_venues
+                nonce: sgNonces.get_available_venues
             },
             success: function(response) {
                 if (response.success) {
@@ -285,7 +288,7 @@
 
         var formData = new FormData();
         formData.append('action', 'spsg_upload_venue_csv');
-        formData.append('nonce', spsgData.nonces.upload_venue_csv);
+        formData.append('nonce', sgNonces.upload_venue_csv);
         formData.append('csv_file', fileInput.files[0]);
 
         var $btn = $(this);
@@ -393,13 +396,14 @@
 
         $('body').append(html);
 
-        $(document).on('change', '.spsg-venue-action', function() {
+        $(document).off('change.spsgVenueModal').on('change.spsgVenueModal', '.spsg-venue-action', function() {
             var action = $(this).val();
             var $mapping = $(this).closest('tr').find('.spsg-venue-mapping');
             $mapping.prop('disabled', action === 'create');
         });
 
         $('#spsg-close-venue-modal, #spsg-cancel-venue-import').click(function() {
+            $(document).off('change.spsgVenueModal');
             $('#spsg-venue-schedule-modal').remove();
         });
 
@@ -427,7 +431,7 @@
                 type: 'POST',
                 data: {
                     action: 'spsg_import_venue_schedule',
-                    nonce: spsgData.nonces.import_venue_schedule,
+                    nonce: sgNonces.import_venue_schedule,
                     schedules: schedules,
                     venue_mapping: venueMapping,
                     new_venues: newVenues
@@ -435,6 +439,7 @@
                 success: function(response) {
                     if (response.success) {
                         alert(i18n.venueScheduleImported + '\n' + response.data.message);
+                        $(document).off('change.spsgVenueModal');
                         $('#spsg-venue-schedule-modal').remove();
                         location.reload();
                     } else {
@@ -603,7 +608,7 @@
             type: 'POST',
             data: {
                 action: 'spsg_load_sp_teams',
-                nonce: spsgData.nonces.load_sp_teams,
+                nonce: sgNonces.load_sp_teams,
                 division_id: spDivisionId
             },
             success: function(response) {
@@ -847,33 +852,7 @@
         $('#spsg-import-config-file').click();
     });
 
-    $('#spsg-import-config-file').change(function(e) {
-        var file = e.target.files[0];
-        if (!file) return;
-
-        var reader = new FileReader();
-        reader.onload = function(e) {
-            try {
-                var configData = JSON.parse(e.target.result);
-
-                $.each(configData, function(key, value) {
-                    var input = $('[name="' + key + '"]');
-                    if (input.length) {
-                        if (input.is(':checkbox')) {
-                            input.prop('checked', value == '1' || value === true);
-                        } else {
-                            input.val(value);
-                        }
-                    }
-                });
-
-                alert('Configuration imported successfully. Please review and save.');
-            } catch (err) {
-                alert('Error parsing configuration file: ' + err.message);
-            }
-        };
-        reader.readAsText(file);
-    });
+    // Import config file change is handled by ImportPreview in schedule-generator.js
 
     // Preset loading
     $('#spsg-preset-selector').change(function() {
@@ -906,7 +885,7 @@
             data: {
                 action: 'spsg_load_preset',
                 preset_name: presetId,
-                nonce: spsgData.nonces.load_preset
+                nonce: sgNonces.load_preset
             },
             success: function(response) {
                 if (response.success) {
@@ -1119,7 +1098,7 @@
                 action: 'spsg_get_change_history',
                 config_id: configId,
                 limit: 10,
-                nonce: spsgData.nonces.get_change_history
+                nonce: sgNonces.get_change_history
             },
             success: function(response) {
                 if (response.success) {
@@ -1189,7 +1168,7 @@
             type: 'POST',
             data: {
                 action: 'spsg_clear_change_history',
-                nonce: spsgData.nonces.clear_change_history
+                nonce: sgNonces.clear_change_history
             },
             success: function(response) {
                 if (response.success) {
@@ -1507,7 +1486,7 @@
                     type: 'POST',
                     data: {
                         action: 'spsg_get_placeholder_teams',
-                        nonce: spsgData.nonces.get_placeholder_teams
+                        nonce: sgNonces.get_placeholder_teams
                     }
                 }),
                 $.ajax({
@@ -1515,7 +1494,7 @@
                     type: 'POST',
                     data: {
                         action: 'spsg_get_real_teams',
-                        nonce: spsgData.nonces.get_real_teams
+                        nonce: sgNonces.get_real_teams
                     }
                 })
             ).done(function(placeholderResp, realTeamsResp) {
@@ -1612,7 +1591,7 @@
                 type: 'POST',
                 data: {
                     action: 'spsg_replace_placeholder_team',
-                    nonce: spsgData.nonces.replace_placeholder_team,
+                    nonce: sgNonces.replace_placeholder_team,
                     placeholder_id: placeholderId,
                     replacement_id: replacementId,
                     delete_placeholder: '1'
@@ -1707,7 +1686,7 @@
                     type: 'POST',
                     data: {
                         action: 'spsg_replace_placeholder_team',
-                        nonce: spsgData.nonces.replace_placeholder_team,
+                        nonce: sgNonces.replace_placeholder_team,
                         placeholder_id: item.placeholder_id,
                         replacement_id: item.replacement_id,
                         delete_placeholder: '1'

@@ -128,7 +128,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 
 		// Add timestamp and ID if new
 		if ( $is_new ) {
-			$sanitized['id'] = uniqid( 'config_' );
+			$sanitized['id'] = 'config_' . bin2hex( random_bytes( 8 ) );
 			$sanitized['created'] = current_time( 'mysql' );
 		}
 		$sanitized['modified'] = current_time( 'mysql' );
@@ -330,7 +330,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 					'current_version' => $current_version,
 				)
 			);
-		} elseif ( $import_major < $current_major && get_option( 'spsg_enable_debug_logging', false ) ) {
+		} elseif ( $import_major < $current_major && get_option( 'spsg_enable_debug_logging', '0' ) ) {
 			// Warn about older versions but allow import
 			error_log(
 				sprintf(

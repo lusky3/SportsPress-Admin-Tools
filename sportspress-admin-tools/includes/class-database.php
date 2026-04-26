@@ -27,7 +27,7 @@ class SPAT_Database {
             from_email varchar(255) DEFAULT '',
             from_name varchar(255) DEFAULT '',
             amount decimal(10,2) DEFAULT 0.00,
-            reference_number varchar(100) DEFAULT '',
+            reference_number varchar(100) DEFAULT NULL,
             match_criteria varchar(255) DEFAULT '',
             order_id bigint(20) unsigned DEFAULT NULL,
             result varchar(255) DEFAULT '',
@@ -36,7 +36,7 @@ class SPAT_Database {
             PRIMARY KEY (id),
             KEY timestamp (timestamp),
             KEY order_id (order_id),
-            KEY reference_number (reference_number)
+            UNIQUE KEY reference_number (reference_number)
         ) $charset_collate;";
 
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
@@ -248,7 +248,7 @@ class SPAT_Database {
 			array(
 				'order_id' => intval( $order_id ),
 				'customer_name' => sanitize_text_field( $customer_name ),
-				'player_id' => $player_id ? intval( $player_id ) : null,
+				'player_id' => $player_id ? intval( $player_id ) : 0,
 				'season' => sanitize_text_field( $season ),
 				'position' => sanitize_text_field( $position ),
 				'action' => sanitize_text_field( $action ),
@@ -256,7 +256,7 @@ class SPAT_Database {
 			array(
 				'%d', // order_id
 				'%s', // customer_name
-				'%s', // player_id
+				'%d', // player_id
 				'%s', // season
 				'%s', // position
 				'%s',  // action
@@ -275,12 +275,12 @@ class SPAT_Database {
 		$result = $wpdb->insert(
 			$table_name,
 			array(
-				'user_id' => $user_id ? intval( $user_id ) : null,
+				'user_id' => $user_id ? intval( $user_id ) : 0,
 				'user_name' => sanitize_text_field( $user_name ),
 				'action' => sanitize_text_field( $action ),
 			),
 			array(
-				'%s', // user_id
+				'%d', // user_id
 				'%s', // user_name
 				'%s',  // action
 			)
