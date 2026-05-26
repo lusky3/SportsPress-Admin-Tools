@@ -101,6 +101,12 @@ class SportsPress_Player_Registration {
 		if ( ! is_admin() ) {
 			return;
 		}
+		// Avoid self-deactivating during upgrades / installs / cron, where the
+		// parent plugin may be momentarily un-loaded (e.g. between unzip and
+		// activation) and a race here would orphan this plugin permanently.
+		if ( ( defined( 'WP_INSTALLING' ) && WP_INSTALLING ) || wp_doing_cron() ) {
+			return;
+		}
 		if ( ! function_exists( 'is_plugin_active' ) ) {
 			require_once ABSPATH . 'wp-admin/includes/plugin.php';
 		}

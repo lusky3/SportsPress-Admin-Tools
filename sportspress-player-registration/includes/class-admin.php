@@ -172,6 +172,8 @@ class SPPR_Admin {
 				$action_text = 'Created New Player';
 			} elseif ( $log->action === 'multiple_players_found_name_match_requires_email' ) {
 				$action_text = 'Multiple Players Found - Email Required';
+			} elseif ( $log->action === 'multiple_players_found_email_conflict' ) {
+				$action_text = 'Email Conflict - Manual Review Required';
 			}
 
 			$order_id_safe  = absint( $log->order_id );
@@ -349,8 +351,14 @@ class SPPR_Admin {
 		if ( $registration && method_exists( $registration, 'process_completed_order' ) ) {
 			$registration->process_completed_order( $order_id );
 		} else {
-			// Fallback: the bootstrap didn't expose the instance — re-fire the hook.
-			do_action( 'woocommerce_order_status_completed', $order_id );
+			// Refuse to fall back to re-firing the completed-order hook — that
+			// would notify every other listener (emails, inventory, etc.) for an
+			// admin re-run, which is explicitly not what this action is for.
+			wp_die(
+				esc_html__( 'Plugin not fully initialized; please retry.', 'sportspress-player-registration' ),
+				'',
+				array( 'response' => 503 )
+			);
 		}
 
 		$redirect = wp_get_referer();
