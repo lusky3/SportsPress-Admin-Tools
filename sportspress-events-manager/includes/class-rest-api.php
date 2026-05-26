@@ -15,6 +15,13 @@ class SPEM_REST_API {
 
 	public function __construct() {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
+
+		// Async dispatcher for game notifications — keeps wp_mail() out of
+		// the request path so reschedule/cancel POSTs return promptly even
+		// with large player rosters. Args are kept to a single event_id so
+		// back-to-back reschedules can dedup via wp_clear_scheduled_hook();
+		// the change payload is stashed on post meta.
+		add_action( 'spem_send_game_notifications', array( $this, 'cron_send_game_notifications' ), 10, 1 );
 	}
 
 	public function register_routes() {
@@ -207,6 +214,12 @@ class SPEM_REST_API {
 			return new WP_Error( 'not_found', 'Game not found.', array( 'status' => 404 ) );
 		}
 
+		// Refuse to silently republish a cancelled game. Callers must clear
+		// the cancellation flag explicitly before re-entering a score.
+		if ( '1' === get_post_meta( $event_id, '_spem_cancelled', true ) ) {
+			return new WP_Error( 'cancelled', 'Cannot score a cancelled game.', array( 'status' => 409 ) );
+		}
+
 		$teams   = get_post_meta( $event_id, 'sp_team', false );
 		$home_id = isset( $teams[0] ) ? (int) $teams[0] : 0;
 		$away_id = isset( $teams[1] ) ? (int) $teams[1] : 0;
@@ -216,31 +229,36 @@ class SPEM_REST_API {
 		}
 
 		// Build SportsPress results format.
-		$result_key = 'goals';
+		$result_key       = 'goals';
+		$existing_results = get_post_meta( $event_id, 'sp_results', true );
+		if ( ! is_array( $existing_results ) ) {
+			$existing_results = array();
+		}
+
 		if ( function_exists( 'sp_get_main_result_option' ) ) {
 			$main = sp_get_main_result_option();
 			if ( $main ) {
 				$result_key = $main;
 			}
 		} else {
-			$existing_results = get_post_meta( $event_id, 'sp_results', true );
-			if ( is_array( $existing_results ) ) {
-				$first_team = reset( $existing_results );
-				if ( is_array( $first_team ) ) {
-					$keys = array_keys( $first_team );
-					if ( ! empty( $keys ) ) {
-						$result_key = $keys[0];
-					}
+			$first_team = reset( $existing_results );
+			if ( is_array( $first_team ) ) {
+				$keys = array_keys( $first_team );
+				if ( ! empty( $keys ) ) {
+					$result_key = $keys[0];
 				}
 			}
 		}
 
-		$results = array(
-			$home_id => array( $result_key => $home_score ),
-			$away_id => array( $result_key => $away_score ),
-		);
+		// Deep-merge: preserve any other per-team result keys (outcome,
+		// shootout, etc.) that other plugins may have set.
+		$home_existing = isset( $existing_results[ $home_id ] ) && is_array( $existing_results[ $home_id ] ) ? $existing_results[ $home_id ] : array();
+		$away_existing = isset( $existing_results[ $away_id ] ) && is_array( $existing_results[ $away_id ] ) ? $existing_results[ $away_id ] : array();
 
-		update_post_meta( $event_id, 'sp_results', $results );
+		$existing_results[ $home_id ] = array_merge( $home_existing, array( $result_key => $home_score ) );
+		$existing_results[ $away_id ] = array_merge( $away_existing, array( $result_key => $away_score ) );
+
+		update_post_meta( $event_id, 'sp_results', $existing_results );
 
 		// Publish the event if it was scheduled/future.
 		if ( 'publish' !== $event->post_status ) {
@@ -294,9 +312,23 @@ class SPEM_REST_API {
 			'post_date' => $new_date . ' ' . $new_time . ':00',
 		) );
 
-		// Send notifications if requested.
+		// Send notifications if requested. wp_mail() is slow with large
+		// rosters, so queue it via cron instead of blocking the request.
 		if ( $notify ) {
-			$this->notify_teams( $event_id, 'rescheduled', $reason, $original_date );
+			// Stash the change payload on post meta so the cron worker can
+			// recover it; this lets us schedule the cron with a stable args
+			// shape ([event_id]) and dedup back-to-back reschedules cleanly.
+			update_post_meta( $event_id, '_spem_pending_notification', array(
+				'change_type'   => 'rescheduled',
+				'reason'        => $reason,
+				'original_date' => $original_date,
+			) );
+			wp_clear_scheduled_hook( 'spem_send_game_notifications', array( $event_id ) );
+			wp_schedule_single_event(
+				time(),
+				'spem_send_game_notifications',
+				array( $event_id )
+			);
 		}
 
 		return new WP_REST_Response(
@@ -333,7 +365,17 @@ class SPEM_REST_API {
 		) );
 
 		if ( $notify ) {
-			$this->notify_teams( $event_id, 'cancelled', $reason );
+			update_post_meta( $event_id, '_spem_pending_notification', array(
+				'change_type'   => 'cancelled',
+				'reason'        => $reason,
+				'original_date' => '',
+			) );
+			wp_clear_scheduled_hook( 'spem_send_game_notifications', array( $event_id ) );
+			wp_schedule_single_event(
+				time(),
+				'spem_send_game_notifications',
+				array( $event_id )
+			);
 		}
 
 		return new WP_REST_Response(
@@ -343,6 +385,18 @@ class SPEM_REST_API {
 			),
 			200
 		);
+	}
+
+	/**
+	 * Cron callback: send notifications outside the REST request path.
+	 *
+	 * @param int    $event_id      Event post ID.
+	 * @param string $change_type   'rescheduled' or 'cancelled'.
+	 * @param string $reason        Optional reason string.
+	 * @param string $original_date Original post_date when rescheduling.
+	 */
+	public function cron_send_game_notifications( $event_id, $change_type, $reason = '', $original_date = '' ) {
+		$this->notify_teams( (int) $event_id, (string) $change_type, (string) $reason, (string) $original_date );
 	}
 
 	/**
@@ -464,11 +518,38 @@ class SPEM_REST_API {
 			$valid_slugs[] = get_post_field( 'post_name', $perf_id );
 		}
 
+		// Prime the post cache for every player ID up front so the per-row
+		// get_post_type() calls below don't issue N individual queries.
+		$all_player_ids = array();
+		if ( is_array( $stats ) ) {
+			foreach ( $stats as $team_players ) {
+				if ( is_array( $team_players ) ) {
+					foreach ( array_keys( $team_players ) as $pid ) {
+						$pid = (int) $pid;
+						if ( $pid > 0 ) {
+							$all_player_ids[] = $pid;
+						}
+					}
+				}
+			}
+		}
+		if ( ! empty( $all_player_ids ) ) {
+			_prime_post_caches( array_unique( $all_player_ids ), false, false );
+		}
+
 		// Merge new stats with existing data, preserving status/sub/number/position.
 		foreach ( $stats as $team_id => $players ) {
 			$team_id = (int) $team_id;
 			if ( ! in_array( $team_id, $event_teams, true ) ) {
 				continue;
+			}
+			if ( ! is_array( $players ) ) {
+				continue;
+			}
+			// Cap players per team to avoid an unbounded payload writing
+			// thousands of rows into a single sp_players meta value.
+			if ( count( $players ) > 200 ) {
+				$players = array_slice( $players, 0, 200, true );
 			}
 			if ( ! isset( $existing[ $team_id ] ) ) {
 				$existing[ $team_id ] = array();
@@ -476,6 +557,9 @@ class SPEM_REST_API {
 			foreach ( $players as $player_id => $perf_data ) {
 				$player_id = (int) $player_id;
 				if ( 'sp_player' !== get_post_type( $player_id ) ) {
+					continue;
+				}
+				if ( ! is_array( $perf_data ) ) {
 					continue;
 				}
 				if ( ! isset( $existing[ $team_id ][ $player_id ] ) ) {
@@ -486,7 +570,8 @@ class SPEM_REST_API {
 					if ( ! in_array( $slug, $valid_slugs, true ) ) {
 						continue; // Reject unknown performance slugs.
 					}
-					$existing[ $team_id ][ $player_id ][ $slug ] = (int) $value;
+					// Clamp to [0, 9999] — stops negative values and absurd numbers.
+					$existing[ $team_id ][ $player_id ][ $slug ] = max( 0, min( 9999, (int) $value ) );
 				}
 			}
 		}
@@ -502,6 +587,18 @@ class SPEM_REST_API {
 	public function rollover_preview( $request ) {
 		$from_season = absint( $request->get_param( 'from_season' ) );
 		$to_season   = absint( $request->get_param( 'to_season' ) );
+
+		// Mirror rollover_execute's validation — preview must reject the same
+		// bad inputs so the UI doesn't silently show empty results for typos.
+		if ( $from_season === $to_season ) {
+			return new WP_Error( 'same_season', 'from_season and to_season must be different.', array( 'status' => 400 ) );
+		}
+		if ( ! $from_season || ! term_exists( $from_season, 'sp_season' ) ) {
+			return new WP_Error( 'invalid_from_season', 'Invalid from_season term ID.', array( 'status' => 400 ) );
+		}
+		if ( ! $to_season || ! term_exists( $to_season, 'sp_season' ) ) {
+			return new WP_Error( 'invalid_to_season', 'Invalid to_season term ID.', array( 'status' => 400 ) );
+		}
 
 		$players = get_posts( array(
 			'post_type'      => 'sp_player',
@@ -586,8 +683,21 @@ class SPEM_REST_API {
 			return new WP_Error( 'invalid_to_season', 'Invalid to_season term ID.', array( 'status' => 400 ) );
 		}
 
-		$player_ids  = $request->get_param( 'player_ids' );
-		$processed   = 0;
+		$player_ids = $request->get_param( 'player_ids' );
+		if ( ! is_array( $player_ids ) ) {
+			$player_ids = array();
+		}
+
+		// Cap chunk size — callers must paginate larger rollover batches.
+		if ( count( $player_ids ) > 200 ) {
+			return new WP_Error(
+				'chunk_too_large',
+				'player_ids exceeds the per-request limit of 200. Split the rollover into smaller chunks.',
+				array( 'status' => 413 )
+			);
+		}
+
+		$processed = 0;
 
 		foreach ( $player_ids as $player_id ) {
 			$player_id = absint( $player_id );
@@ -595,22 +705,21 @@ class SPEM_REST_API {
 				continue;
 			}
 
-			$team_ids  = get_post_meta( $player_id, 'sp_current_team', false );
+			$team_ids   = get_post_meta( $player_id, 'sp_current_team', false );
+			$past_teams = array_map( 'intval', get_post_meta( $player_id, 'sp_past_team', false ) );
 
 			foreach ( $team_ids as $team_id ) {
-				// Only add if not already a past team member
-				$past_teams = get_post_meta( $player_id, 'sp_past_team', false );
-				if ( ! in_array( (int) $team_id, array_map( 'intval', $past_teams ), true ) ) {
-					add_post_meta( $player_id, 'sp_past_team', (int) $team_id );
+				$team_id = (int) $team_id;
+				// Only add if not already a past team member.
+				if ( ! in_array( $team_id, $past_teams, true ) ) {
+					add_post_meta( $player_id, 'sp_past_team', $team_id );
+					$past_teams[] = $team_id;
 				}
 			}
 
-			// Preserve the last current team after rollover.
-			$last_team = ! empty( $team_ids ) ? (int) end( $team_ids ) : 0;
-			delete_post_meta( $player_id, 'sp_current_team' );
-			if ( $last_team ) {
-				update_post_meta( $player_id, 'sp_current_team', $last_team );
-			}
+			// Leave sp_current_team rows intact so multi-team players keep
+			// every existing row. The wizard's rollover flow only moves the
+			// player's current teams onto past_team; it doesn't swap them.
 
 			wp_remove_object_terms( $player_id, $from_season, 'sp_season' );
 			wp_set_object_terms( $player_id, (int) $to_season, 'sp_season', true );
@@ -661,7 +770,13 @@ class SPEM_REST_API {
 			) );
 
 			foreach ( $players as $player ) {
+				// Player-tools plugin writes to `spt_email`; player-registration
+				// writes to `spat_email`. Fall back so notifications reach
+				// players regardless of which plugin owns the contact field.
 				$email = get_post_meta( $player->ID, 'spt_email', true );
+				if ( ! $email ) {
+					$email = get_post_meta( $player->ID, 'spat_email', true );
+				}
 				if ( $email && is_email( $email ) ) {
 					$emails[] = $email;
 				}

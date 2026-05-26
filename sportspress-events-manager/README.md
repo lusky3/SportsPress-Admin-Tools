@@ -71,7 +71,7 @@ Frontend shortcode (`[arl_standings]`) that dynamically renders league tables wi
 2. Install and activate SportsPress
 3. Install and activate this plugin
 4. Go to Settings → SportsPress Admin Tools
-5. Enable desired modules: Events Management, League Table Generator, Season Rollover
+5. Enable desired modules: Events Management, League Table Generator, Season Rollover, Dynamic Standings
 6. Save settings
 
 ## Quick Start

@@ -19,6 +19,36 @@ class SPEM_Dynamic_Standings {
 		add_action( 'wp_ajax_spem_get_standings', array( $this, 'ajax_get_standings' ) );
 		add_action( 'wp_ajax_nopriv_spem_get_standings', array( $this, 'ajax_get_standings' ) );
 		add_action( 'wp_enqueue_scripts', array( $this, 'maybe_enqueue' ) );
+
+		// Invalidate the standings transient cache whenever an sp_table is
+		// saved or an sp_season term is edited. Without this, edits don't
+		// show up for up to five minutes (the transient TTL).
+		add_action( 'save_post_sp_table', array( $this, 'flush_standings_cache' ) );
+		add_action( 'edited_sp_season', array( $this, 'flush_standings_cache' ) );
+	}
+
+	/**
+	 * Flush all standings transients. Runs on sp_table save and sp_season edit.
+	 *
+	 * Uses a versioned namespace so flushing works on both DB-backed and
+	 * external-object-cache hosts. Bumping the version makes existing keys
+	 * unreachable; stale entries are evicted on their own TTL.
+	 */
+	public function flush_standings_cache() {
+		$current = (int) get_option( 'spem_standings_cache_version', 1 );
+		update_option( 'spem_standings_cache_version', $current + 1, false );
+	}
+
+	/**
+	 * Build a versioned cache key for a season+type pair.
+	 *
+	 * @param string $season Season slug.
+	 * @param string $type   'regular' or 'playoff'.
+	 * @return string
+	 */
+	private function build_cache_key( $season, $type ) {
+		$version = (int) get_option( 'spem_standings_cache_version', 1 );
+		return 'spem_standings_v' . $version . '_' . md5( $season . '|' . $type );
 	}
 
 	/**
@@ -131,15 +161,22 @@ class SPEM_Dynamic_Standings {
 	public function ajax_get_standings() {
 		check_ajax_referer( 'spem_standings_nonce', '_ajax_nonce' );
 
-		$season = sanitize_text_field( wp_unslash( $_POST['season'] ?? '' ) );
+		$season = sanitize_title( wp_unslash( $_POST['season'] ?? '' ) );
 		$type   = sanitize_text_field( wp_unslash( $_POST['type'] ?? 'regular' ) );
 		$type   = in_array( $type, array( 'regular', 'playoff' ), true ) ? $type : 'regular';
 
 		if ( ! $season ) {
-			wp_send_json_error( array( 'message' => 'Missing season.' ) );
+			wp_send_json_error( array( 'message' => __( 'Invalid request.', 'sportspress-events-manager' ) ) );
 		}
 
-		$cache_key = 'spem_standings_' . md5( $season . '_' . $type );
+		// Validate that the season slug refers to a real sp_season term BEFORE
+		// we touch the transient cache. Otherwise an attacker can pollute the
+		// cache with arbitrary keys via crafted slugs.
+		if ( false === get_term_by( 'slug', $season, 'sp_season' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Invalid request.', 'sportspress-events-manager' ) ) );
+		}
+
+		$cache_key = $this->build_cache_key( $season, $type );
 		$html      = get_transient( $cache_key );
 
 		if ( false === $html ) {

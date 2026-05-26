@@ -44,6 +44,8 @@ The ARL (Adult Recreational League) runs two seasons per year — Winter (~32-34
 
 Currently, the main Standings page (ID 111) contains hardcoded `[team_standings <id>]` shortcodes. Every season transition requires manually:
 
+> **Note:** Page IDs referenced in this document (111, 4733) are specific to the ARL production site. Your installation will have different IDs.
+
 1. Creating new `sp_table` posts
 2. Editing the Standings page to replace all shortcode IDs
 3. Creating a new archive page for the old season
