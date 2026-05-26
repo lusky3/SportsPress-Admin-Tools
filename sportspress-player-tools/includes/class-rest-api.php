@@ -167,6 +167,15 @@ class SPPT_REST_API {
 						'sanitize_callback' => 'sanitize_text_field',
 						'validate_callback' => 'rest_validate_request_arg',
 					),
+					// PT3/F8: position writes replace all sp_position terms by default
+					// (backward compatible). Set append=true to add the term instead.
+					'append'    => array(
+						'type'              => 'boolean',
+						'required'          => false,
+						'default'           => false,
+						'sanitize_callback' => 'rest_sanitize_boolean',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
 				),
 			)
 		);
@@ -528,6 +537,12 @@ class SPPT_REST_API {
 	 *
 	 * Fix #2: clamp skill_level to 1..10, stamp source/updated meta, record history.
 	 * Position accepts a slug only and must exist in sp_position.
+	 *
+	 * PT3/F8: position semantics. By default (append=false / omitted) a position
+	 * write *replaces* every sp_position term the player currently has — callers
+	 * that want to add a position to a multi-position player must pass
+	 * append=true. The replace default is preserved for backward compatibility
+	 * with existing single-position UIs.
 	 */
 	public function update_metadata( $request ) {
 		$player_id = absint( $request->get_param( 'player_id' ) );
@@ -567,7 +582,11 @@ class SPPT_REST_API {
 			if ( '' === $slug || ! term_exists( $slug, 'sp_position' ) ) {
 				return new WP_Error( 'invalid_position', 'Position term does not exist.', array( 'status' => 400 ) );
 			}
-			$result = wp_set_object_terms( $player_id, $slug, 'sp_position' );
+			// PT3/F8: $append controls replace-vs-add. Default false preserves the
+			// historical replace-all behaviour; pass true to add the term alongside
+			// any existing positions on the player.
+			$append = (bool) $request->get_param( 'append' );
+			$result = wp_set_object_terms( $player_id, $slug, 'sp_position', $append );
 			if ( is_wp_error( $result ) ) {
 				return $result;
 			}
@@ -687,23 +706,65 @@ class SPPT_REST_API {
 			$table_exists  = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $reg_log_table ) ) === $reg_log_table;
 			if ( $table_exists ) {
 				$placeholders = implode( ',', array_fill( 0, count( $player_ids ), '%d' ) );
-				// Most-recent order per player. Restrict to log rows the registration plugin
-				// flagged as linking the player to an order (links_to_order = 1). The boolean
-				// column replaces a hardcoded action allowlist so new link-producing actions
-				// flow through automatically. See SPAT_Database::log_registration_activity.
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $placeholders is built from %d.
-				$rows = $wpdb->get_results( $wpdb->prepare(
-					"SELECT player_id, MAX(order_id) AS order_id
-					 FROM {$reg_log_table}
-					 WHERE player_id IN ($placeholders)
-					   AND links_to_order = 1
-					 GROUP BY player_id",
-					$player_ids
+
+				// PT3/F1: links_to_order is added by the registration plugin's migration. A
+				// REST request can hit this code path before the admin-side migration has
+				// run (cron, fresh install, partial activation). Querying the column when
+				// it doesn't yet exist surfaces "Unknown column" errors to the dashboard,
+				// so probe SHOW COLUMNS first and fall back to the historical action
+				// allowlist until the migration lands. Transitional — remove the fallback
+				// once links_to_order is guaranteed present on all sites.
+				$has_links_column = (bool) $wpdb->get_var( $wpdb->prepare(
+					"SHOW COLUMNS FROM {$reg_log_table} LIKE %s",
+					'links_to_order'
 				) );
+
+				if ( $has_links_column ) {
+					// Most-recent order per player. Restrict to log rows the registration
+					// plugin flagged as linking the player to an order (links_to_order = 1).
+					// The boolean column replaces a hardcoded action allowlist so new
+					// link-producing actions flow through automatically. See
+					// SPAT_Database::log_registration_activity.
+					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $placeholders is built from %d.
+					$rows = $wpdb->get_results( $wpdb->prepare(
+						"SELECT player_id, MAX(order_id) AS order_id
+						 FROM {$reg_log_table}
+						 WHERE player_id IN ($placeholders)
+						   AND links_to_order = 1
+						 GROUP BY player_id",
+						$player_ids
+					) );
+				} else {
+					// Transitional fallback: pre-migration sites don't have links_to_order
+					// yet, so approximate the same set using the historical action
+					// allowlist that the column was derived from.
+					$action_placeholders = '%s,%s,%s';
+					$params              = array_merge(
+						$player_ids,
+						array( 'player_created', 'player_found_by_name', 'player_found_by_name_and_email' )
+					);
+					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- placeholders are built from %d/%s literals.
+					$rows = $wpdb->get_results( $wpdb->prepare(
+						"SELECT player_id, MAX(order_id) AS order_id
+						 FROM {$reg_log_table}
+						 WHERE player_id IN ($placeholders)
+						   AND action IN ($action_placeholders)
+						 GROUP BY player_id",
+						$params
+					) );
+				}
+
 				foreach ( (array) $rows as $row ) {
 					$processed_map[ (int) $row->player_id ] = (int) $row->order_id;
 				}
 			}
+		}
+
+		// PT3/F7: prime post + meta caches once so the per-player loop below pulls
+		// from the cache instead of issuing one query per get_post_meta() call. Term
+		// caches handle wp_get_object_terms() lookups separately.
+		if ( ! empty( $player_ids ) ) {
+			_prime_post_caches( $player_ids, false, true );
 		}
 
 		$results = array();

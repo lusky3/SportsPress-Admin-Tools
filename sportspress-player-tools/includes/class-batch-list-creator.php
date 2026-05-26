@@ -60,9 +60,41 @@ class SPT_Batch_List_Creator {
 	}
 
 	public function success_notice() {
-		if ( isset( $_GET['spt_batch_created'] ) && sanitize_text_field( wp_unslash( $_GET['spt_batch_created'] ) ) === '1' ) {
-			echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Player lists created successfully.', 'sportspress-player-tools' ) . '</p></div>';
+		if ( ! isset( $_GET['spt_batch_created'] ) || sanitize_text_field( wp_unslash( $_GET['spt_batch_created'] ) ) !== '1' ) {
+			return;
 		}
+
+		echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Player lists created successfully.', 'sportspress-player-tools' ) . '</p></div>';
+
+		// PT3/F5: pull the one-shot locked-teams transient set by process_batch() and
+		// turn it into a warning notice so admins know which rosters they need to
+		// rerun after the conflicting editor finishes.
+		$user_id = get_current_user_id();
+		if ( ! $user_id ) {
+			return;
+		}
+		$locked = get_transient( 'spt_batch_locked_teams_' . $user_id );
+		if ( empty( $locked ) || ! is_array( $locked ) ) {
+			return;
+		}
+		delete_transient( 'spt_batch_locked_teams_' . $user_id );
+
+		$count = count( $locked );
+		$names = implode( ', ', array_map( 'sanitize_text_field', $locked ) );
+		printf(
+			'<div class="notice notice-warning is-dismissible"><p>%s</p></div>',
+			esc_html( sprintf(
+				/* translators: %1$d team count, %2$s comma-separated team names */
+				_n(
+					'Skipped %1$d team that was being edited by another admin: %2$s',
+					'Skipped %1$d teams that were being edited by other admins: %2$s',
+					$count,
+					'sportspress-player-tools'
+				),
+				$count,
+				$names
+			) )
+		);
 	}
 
 	public function enqueue_scripts( $hook ) {
@@ -628,6 +660,11 @@ class SPT_Batch_List_Creator {
 			)
 		);
 
+		// PT3/F5: collect team names whose list was locked by another editor so the
+		// success notice can surface what got skipped instead of silently no-oping.
+		$locked_teams      = array();
+		$processed_count   = 0;
+
 		// Process lists
 		foreach ( $team_players as $team_id => $player_ids ) {
 			$team_name = get_the_title( $team_id );
@@ -666,6 +703,10 @@ class SPT_Batch_List_Creator {
 					}
 					$lock_user = wp_check_post_lock( $list_id );
 					if ( $lock_user ) {
+						// PT3/F5: remember the team so the post-redirect notice can warn
+						// the admin which rosters their batch left untouched. The silent
+						// error_log path stays for verbose-debug operators.
+						$locked_teams[] = $team_name;
 						if ( get_option( 'spat_debug_verbose_logging', '0' ) === '1' ) {
 							error_log( sprintf( 'SPT: skipping locked list %d (locked by user %d)', $list_id, (int) $lock_user ) );
 						}
@@ -712,15 +753,58 @@ class SPT_Batch_List_Creator {
 				// without a fourth arg replaces ALL rows, wiping every other list this
 				// team owns. Use add_post_meta with a presence check so the new list is
 				// appended only if it isn't already associated.
-				$existing_lists = get_post_meta( $team_id, 'sp_list', false );
-				$existing_lists = is_array( $existing_lists ) ? array_map( 'intval', $existing_lists ) : array();
-				if ( ! in_array( (int) $list_id, $existing_lists, true ) ) {
-					add_post_meta( $team_id, 'sp_list', $list_id, false );
+				//
+				// PT3/F6: the presence check is a classic read-modify-write — two
+				// concurrent batch runs targeting the same team would both observe
+				// "list missing", both append, and produce duplicate rows. Serialize
+				// the whole check-then-append under a per-team lock so the second
+				// caller sees the first caller's insert.
+				if ( class_exists( 'SPAT_Lock' ) ) {
+					SPAT_Lock::with(
+						'splm_team_list_' . (int) $team_id,
+						30,
+						function () use ( $team_id, $list_id ) {
+							$existing_lists = get_post_meta( $team_id, 'sp_list', false );
+							$existing_lists = is_array( $existing_lists ) ? array_map( 'intval', $existing_lists ) : array();
+							if ( ! in_array( (int) $list_id, $existing_lists, true ) ) {
+								add_post_meta( $team_id, 'sp_list', $list_id, false );
+							}
+						}
+					);
+				} else {
+					// SPAT_Lock should always be loaded with the parent plugin; fall back
+					// to the unguarded path so the feature still works if the lock helper
+					// is missing rather than dropping the meta entirely.
+					$existing_lists = get_post_meta( $team_id, 'sp_list', false );
+					$existing_lists = is_array( $existing_lists ) ? array_map( 'intval', $existing_lists ) : array();
+					if ( ! in_array( (int) $list_id, $existing_lists, true ) ) {
+						add_post_meta( $team_id, 'sp_list', $list_id, false );
+					}
 				}
+
+				$processed_count++;
 			}
 		}
 
-		wp_safe_redirect( admin_url( 'edit.php?post_type=sp_list&spt_batch_created=1' ) );
+		// PT3/F5: stash the locked-team list in a per-user transient so the redirect
+		// target can render a warning alongside the success notice. The transient is
+		// one-shot — success_notice() deletes it after rendering.
+		if ( ! empty( $locked_teams ) ) {
+			$user_id = get_current_user_id();
+			if ( $user_id ) {
+				set_transient( 'spt_batch_locked_teams_' . $user_id, $locked_teams, 5 * MINUTE_IN_SECONDS );
+			}
+		}
+
+		$redirect = add_query_arg(
+			array(
+				'post_type'          => 'sp_list',
+				'spt_batch_created'  => 1,
+				'spt_batch_skipped'  => count( $locked_teams ),
+			),
+			admin_url( 'edit.php' )
+		);
+		wp_safe_redirect( $redirect );
 		exit;
 	}
 
