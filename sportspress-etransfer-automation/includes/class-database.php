@@ -120,11 +120,15 @@ class SPET_Database {
 
 		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
 
-		// Duplicate-webhook audit rows now insert reference_number as NULL,
-		// so a plain equality check is sufficient — no result-pattern filter needed.
+		// Only count rows that actually completed (order_id IS NOT NULL).
+		// Unmatched rows (no matching order, amount mismatch) sit in pending
+		// state and SHOULD be retryable — if the customer corrects their
+		// payment and the bank re-sends the same reference, we want the
+		// webhook to be processable, not silently swallowed as a duplicate.
+		// Duplicate-webhook audit rows already insert reference_number as NULL.
 		$count = $wpdb->get_var(
 			$wpdb->prepare(
-				"SELECT COUNT(*) FROM $table_name WHERE reference_number = %s",
+				"SELECT COUNT(*) FROM $table_name WHERE reference_number = %s AND order_id IS NOT NULL",
 				sanitize_text_field( $reference_number )
 			)
 		);

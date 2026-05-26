@@ -65,17 +65,14 @@ class SPET_ETransfer_Automation {
 			return new WP_Error( 'rate_limited', 'Too many requests', array( 'status' => 429 ) );
 		}
 
-		// Replay protection (timestamp validation)
+		// Replay protection (timestamp validation). Signature verification above
+		// already required a timestamp header, so we only read the header here —
+		// the previous JSON-body fallback was unreachable for valid requests.
 		$timestamp = null;
 		if ( isset( $headers['x_timestamp'][0] ) ) {
 			$timestamp = $headers['x_timestamp'][0];
 		} elseif ( isset( $headers['x-timestamp'][0] ) ) {
 			$timestamp = $headers['x-timestamp'][0];
-		} else {
-			$data_peek = json_decode( $body, true );
-			if ( isset( $data_peek['timestamp'] ) ) {
-				$timestamp = $data_peek['timestamp'];
-			}
 		}
 
 		if ( $timestamp === null ) {
@@ -105,11 +102,13 @@ class SPET_ETransfer_Automation {
 
 		// Acquire short-lived in-process lock on the reference number to prevent
 		// a duplicate-check + insert race between concurrent webhook deliveries.
+		// TTL is 120s so a slow WooCommerce order query (large catalogs / cold
+		// caches) does not expire the lock before this request finishes.
 		$lock_key = 'spet_ref_lock_' . md5( $payment_data['reference_number'] );
 		if ( class_exists( 'SPAT_Lock' ) ) {
-			$lock_acquired = SPAT_Lock::acquire( $lock_key, 30 );
+			$lock_acquired = SPAT_Lock::acquire( $lock_key, 120 );
 		} else {
-			$lock_acquired = wp_cache_add( $lock_key, 1, 'spet_locks', 30 );
+			$lock_acquired = wp_cache_add( $lock_key, 1, 'spet_locks', 120 );
 		}
 		if ( ! $lock_acquired ) {
 			return rest_ensure_response(
@@ -175,6 +174,22 @@ class SPET_ETransfer_Automation {
 				);
 			} else {
 				$result = 'Order updated successfully';
+			}
+
+			// Recheck immediately before INSERT: in the rare case a concurrent
+			// admin manual-match completed this reference while we were doing
+			// the order lookup, treat this as a duplicate rather than racing
+			// against the UNIQUE index. Only meaningful when the row would be
+			// stored with a real (non-null) reference — duplicate audit rows
+			// store reference_number as NULL and don't hit this path.
+			if ( $order_id && ! $amount_mismatch
+				&& SPET_Database::reference_number_exists( $payment_data['reference_number'] ) ) {
+				return rest_ensure_response(
+					array(
+						'status' => 'duplicate',
+						'message' => 'Reference number already processed',
+					)
+				);
 			}
 
 			// Log activity
@@ -325,15 +340,32 @@ class SPET_ETransfer_Automation {
 		}
 
 		// Periodically clean up stale rate limit entries (1 in 100 chance).
-		// LIKE covers both per-IP counters (_transient_spet_rate_*) and the
-		// global aggregate counter (_transient_spet_rl_global).
+		// Use explicit prefixes so unrelated _transient_spet_r* options (if any
+		// are ever introduced) are not swept up. Also delete the matching
+		// _transient_timeout_* rows that WordPress would otherwise orphan.
 		if ( wp_rand( 1, 100 ) === 1 ) {
 			$stale_threshold = $now - 300; // 5 minutes
+			$rate_like = $wpdb->esc_like( '_transient_spet_rate_' ) . '%';
+			$rl_like = $wpdb->esc_like( '_transient_spet_rl_' ) . '%';
 			$wpdb->query(
 				$wpdb->prepare(
-					"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s AND CAST(SUBSTRING_INDEX(option_value, ':', -1) AS UNSIGNED) < %d",
-					$wpdb->esc_like( '_transient_spet_r' ) . '%',
+					"DELETE FROM {$wpdb->options} WHERE (option_name LIKE %s OR option_name LIKE %s) AND CAST(SUBSTRING_INDEX(option_value, ':', -1) AS UNSIGNED) < %d",
+					$rate_like,
+					$rl_like,
 					$stale_threshold
+				)
+			);
+			// Drop the corresponding timeout rows for any counters we just
+			// removed. We delete unconditionally — if the counter is gone the
+			// timeout row is dead weight anyway.
+			$timeout_rate_like = $wpdb->esc_like( '_transient_timeout_spet_rate_' ) . '%';
+			$timeout_rl_like = $wpdb->esc_like( '_transient_timeout_spet_rl_' ) . '%';
+			$wpdb->query(
+				$wpdb->prepare(
+					"DELETE FROM {$wpdb->options} WHERE (option_name LIKE %s OR option_name LIKE %s) AND CAST(option_value AS UNSIGNED) < %d",
+					$timeout_rate_like,
+					$timeout_rl_like,
+					$now
 				)
 			);
 		}
