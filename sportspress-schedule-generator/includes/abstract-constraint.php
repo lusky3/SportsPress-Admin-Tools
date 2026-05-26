@@ -80,7 +80,11 @@ abstract class SPSG_Abstract_Constraint implements SPSG_Constraint_Interface {
 	 */
 	public function get_violation_cost( $game, $schedule, $config ) {
 		if ( $this->type === 'hard' ) {
-			return PHP_FLOAT_MAX; // Hard constraints have infinite cost when violated
+			$result = $this->validate( $game, $schedule, $config );
+			if ( is_wp_error( $result ) ) {
+				return PHP_FLOAT_MAX; // Hard constraints have infinite cost when violated
+			}
+			return 0.0;
 		}
 
 		// Override in child classes for soft/optimization constraints

@@ -152,6 +152,5 @@ The dropdown shows ALL leagues (both parent and child) because:
 
 ## Related Documentation
 
-- [Configuration Guide](CONFIGURATION-GUIDE.md)
-- [SportsPress Integration](SPORTSPRESS-INTEGRATION.md)
-- [Division Management](DIVISION-MANAGEMENT.md)
+- [Configuration Properties](CONFIGURATION-PROPERTIES.md)
+- [User Guide](PHASE3-USER-GUIDE.md)

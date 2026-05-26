@@ -631,7 +631,7 @@ SPSG_Schedule_Generator
 - **Status:** Production Ready
 - **Features:** All Phase 1-3 features complete
 - **Known Issues:** None critical
-- **Next Version:** 1.1.0 (planned features TBD)
+- **Next Version:** 1.1.0-rc3 (April 2026) — security hardening, performance optimization, WordPress coding standards
 
 ---
 
@@ -659,6 +659,6 @@ SPSG_Schedule_Generator
 
 ---
 
-**Last Updated:** November 24, 2025  
+**Last Updated:** April 2026  
 **Document Version:** 1.0  
 **Status:** Current and Maintained

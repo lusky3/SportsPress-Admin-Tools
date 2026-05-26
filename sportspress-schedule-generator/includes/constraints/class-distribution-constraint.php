@@ -171,8 +171,16 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 	 * Calculate cost for team's day distribution
 	 */
 	private function calculate_team_day_cost( $game_day, $current_distribution, $target_ratios ) {
+		// Guard against missing day in $target_ratios (e.g. when distribution_rules
+		// don't include every playing day) — without this, PHP raises an undefined-index
+		// notice and the cost calculation poisons the soft-constraint sum.
+		$ratio = $target_ratios[ $game_day ] ?? 0;
+		if ( 0 === $ratio ) {
+			return 0.0;
+		}
+
 		$total_games = array_sum( $current_distribution ) + 1; // +1 for the new game
-		$target_games_for_day = $total_games * $target_ratios[ $game_day ];
+		$target_games_for_day = $total_games * $ratio;
 		$current_games_for_day = isset( $current_distribution[ $game_day ] ) ? $current_distribution[ $game_day ] + 1 : 1;
 
 		// Calculate deviation from target

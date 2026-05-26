@@ -141,11 +141,11 @@ Complete guide to all documentation for the SportsPress Schedule Generator plugi
 
 ### Last Updated
 
-- **Documentation Index:** November 25, 2025
-- **Development History:** November 25, 2025
-- **Venue CSV Import Plan:** November 25, 2025
-- **User Documentation:** June 2024
-- **Configuration Reference:** January 2024
+- **Documentation Index:** April 2026
+- **Development History:** April 2026
+- **Venue CSV Import Plan:** November 2025
+- **User Documentation:** April 2026
+- **Configuration Reference:** April 2026
 
 ### Update Schedule
 

@@ -22,6 +22,26 @@ if (!function_exists('wp_timezone_string')) {
         return 'America/New_York';
     }
 }
+if (!function_exists('__')) {
+    function __($s, $d = null) { return $s; }
+}
+if (!class_exists('WP_Error')) {
+    class WP_Error {
+        public $code;
+        public $message;
+        public $data;
+        public function __construct($code = '', $message = '', $data = null) {
+            $this->code    = $code;
+            $this->message = $message;
+            $this->data    = $data;
+        }
+        public function get_error_code() { return $this->code; }
+        public function get_error_message() { return $this->message; }
+    }
+}
+if (!function_exists('is_wp_error')) {
+    function is_wp_error($t) { return $t instanceof WP_Error; }
+}
 
 // Load required classes
 require_once SPSG_PLUGIN_PATH . 'includes/class-matchup-generator.php';
@@ -303,6 +323,144 @@ if (test_assert($balanced, "Home/away counts should be balanced (max diff of 1)"
 } else {
     $failed++;
 }
+
+echo "\n";
+
+// Test 6: Stable game IDs from SPSG_Slot_Allocator::create_game (F3)
+// Ensures _spsg_game_id meta has a value to bind events back to generated
+// games across reruns / re-imports.
+echo "Test 6: Stable game IDs\n";
+if (!function_exists('wp_die')) {
+    function wp_die($msg = '') { throw new RuntimeException((string) $msg); }
+}
+if (!function_exists('get_option')) {
+    function get_option($key, $default = false) { return $default; }
+}
+if (!class_exists('SPSG_Constraint_Manager')) {
+    class SPSG_Constraint_Manager {
+        public function validate_game($game, $schedule, $config, $full = null) { return true; }
+        public function calculate_violation_cost($game, $schedule, $config, $full = null) { return 0.0; }
+    }
+}
+require_once SPSG_PLUGIN_PATH . 'includes/class-slot-allocator.php';
+
+$allocator = new SPSG_Slot_Allocator();
+$matchup   = (object) array(
+    'home_team'         => (object) array('id' => 'team1', 'name' => 'Team A'),
+    'away_team'         => (object) array('id' => 'team2', 'name' => 'Team B'),
+    'division'          => (object) array('id' => 'div1', 'name' => 'Division 1'),
+    'is_inter_division' => false,
+);
+$slot      = (object) array(
+    'date'      => '2024-03-15',
+    'day'       => 'friday',
+    'time_slot' => '19:00',
+    'venue'     => (object) array('id' => 'venue1', 'name' => 'Venue 1'),
+);
+$config    = (object) array('match_length' => 60);
+
+// Use reflection to reach the private create_game method.
+$ref    = new ReflectionClass('SPSG_Slot_Allocator');
+$method = $ref->getMethod('create_game');
+$method->setAccessible(true);
+
+$game_a = $method->invoke($allocator, $matchup, $slot, $config);
+$game_b = $method->invoke($allocator, $matchup, $slot, $config);
+
+if (test_assert(isset($game_a->id) && $game_a->id !== '', '$game->id is populated by create_game')) { $passed++; } else { $failed++; }
+if (test_assert($game_a->id === $game_b->id, 'Game ID is stable across reruns for same inputs')) { $passed++; } else { $failed++; }
+
+// Different slot => different id.
+$slot2  = clone $slot;
+$slot2->date = '2024-03-22';
+$game_c = $method->invoke($allocator, $matchup, $slot2, $config);
+if (test_assert($game_a->id !== $game_c->id, 'Game ID changes when slot changes')) { $passed++; } else { $failed++; }
+
+echo "\n";
+
+// Test 7: Team restriction back_to_back_avoid (F2)
+// Verifies the renamed key actually fires. Without F2 the constraint silently
+// returns true because it read a key that the sanitizer never emits.
+echo "Test 7: Team restriction back_to_back_avoid fires\n";
+require_once SPSG_PLUGIN_PATH . 'includes/interfaces/interface-constraint.php';
+require_once SPSG_PLUGIN_PATH . 'includes/abstract-constraint.php';
+require_once SPSG_PLUGIN_PATH . 'includes/constraints/class-team-restriction-constraint.php';
+
+$tr_config_data = create_test_config('single_round_robin', 3)->to_array();
+$tr_config_data['team_restrictions'] = array(
+    'back_to_back_avoid' => array(
+        array('teams' => array('team1', 'team2')),
+    ),
+    'overlap_avoid' => array(),
+);
+$tr_config = new SPSG_Schedule_Configuration($tr_config_data);
+
+$constraint = new SPSG_Team_Restriction_Constraint();
+
+// Existing game at 19:00 friday between team1 vs team2
+$existing = (object) array(
+    'date'      => '2024-03-15',
+    'time_slot' => '19:00',
+    'home_team' => (object) array('id' => 'team1', 'name' => 'Team A'),
+    'away_team' => (object) array('id' => 'team2', 'name' => 'Team B'),
+    'venue'     => (object) array('id' => 'venue1'),
+);
+
+// New game in adjacent slot 20:00 should violate.
+$new_game = (object) array(
+    'date'      => '2024-03-15',
+    'time_slot' => '20:00',
+    'home_team' => (object) array('id' => 'team1', 'name' => 'Team A'),
+    'away_team' => (object) array('id' => 'team3', 'name' => 'Team C'),
+    'venue'     => (object) array('id' => 'venue1'),
+);
+
+$result = $constraint->validate($new_game, array($existing), $tr_config);
+$is_violation = is_object($result) && method_exists($result, 'get_error_code')
+    && $result->get_error_code() === 'back_to_back_violation';
+if (test_assert($is_violation, 'back_to_back_avoid produces back_to_back_violation in adjacent slot')) { $passed++; } else { $failed++; }
+
+// Non-adjacent slot should pass.
+$new_game->time_slot = '22:00';
+$result_ok = $constraint->validate($new_game, array($existing), $tr_config);
+if (test_assert($result_ok === true, 'back_to_back_avoid allows non-adjacent slots')) { $passed++; } else { $failed++; }
+
+echo "\n";
+
+// Test 8: CSV formula injection guard (F1)
+echo "Test 8: CSV formula injection guard\n";
+if (!interface_exists('SPSG_Exporter_Interface')) {
+    interface SPSG_Exporter_Interface {
+        public function export($schedule, $config, $style = '');
+        public function get_format();
+        public function get_extension();
+        public function get_mime_type();
+        public function supports_formatting();
+    }
+}
+require_once SPSG_PLUGIN_PATH . 'includes/exporters/class-csv-exporter.php';
+
+$csv_cases = array(
+    array('=HYPERLINK("x")', "'=HYPERLINK(\"x\")"),
+    array('+1+1', "'+1+1"),
+    array('-1', "'-1"),
+    array('@cmd', "'@cmd"),
+    array("\tcell", "'\tcell"),
+    array("\rcell", "'\rcell"),
+    array('Team A', 'Team A'),
+    array('', ''),
+);
+
+$csv_ok = true;
+foreach ($csv_cases as $case) {
+    list($in, $expected) = $case;
+    $out = SPSG_CSV_Exporter::csv_safe($in);
+    if ($out !== $expected) {
+        $csv_ok = false;
+        echo "  csv_safe(" . var_export($in, true) . ") => " . var_export($out, true) . " expected " . var_export($expected, true) . "\n";
+    }
+}
+if (test_assert($csv_ok, 'csv_safe prefixes formula-trigger characters with a single quote')) { $passed++; } else { $failed++; }
 
 echo "\n";
 

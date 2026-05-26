@@ -104,10 +104,56 @@ class SPSG_Blackout_Constraint extends SPSG_Abstract_Constraint {
 	}
 
 	/**
+	 * Cached set of blackout dates for O(1) lookups during makeup scheduling.
+	 *
+	 * @var array<string,bool>
+	 */
+	private $blackout_set = array();
+
+	/**
+	 * Cached schedule indices used to make is_date_available run in O(1).
+	 * Rebuilt at the start of each schedule_makeup_games() call.
+	 *
+	 * @var array
+	 */
+	private $schedule_index = array(
+		'date_time_venue' => array(),
+		'date_team'       => array(),
+	);
+
+	/**
 	 * Schedule makeup games using intelligent day-of-week logic
 	 */
 	public function schedule_makeup_games( $schedule, $config ) {
 		$scheduled_makeups = array();
+
+		// Pre-compute blackout date set for O(1) checks.
+		$this->blackout_set = array();
+		foreach ( $config->blackout_dates as $bdate ) {
+			$this->blackout_set[ $bdate ] = true;
+		}
+
+		// Pre-index the existing schedule so is_date_available() is O(1).
+		$this->schedule_index = array(
+			'date_time_venue' => array(),
+			'date_team'       => array(),
+		);
+		foreach ( $schedule as $existing_game ) {
+			$venue_id = isset( $existing_game->venue->id ) ? $existing_game->venue->id : null;
+			if ( $venue_id !== null ) {
+				$dt_key = $existing_game->date . '|' . $existing_game->time_slot . '|' . $venue_id;
+				$this->schedule_index['date_time_venue'][ $dt_key ] = true;
+			}
+
+			$home_id = isset( $existing_game->home_team->id ) ? $existing_game->home_team->id : null;
+			$away_id = isset( $existing_game->away_team->id ) ? $existing_game->away_team->id : null;
+			if ( $home_id !== null ) {
+				$this->schedule_index['date_team'][ $existing_game->date . '|' . $home_id ] = true;
+			}
+			if ( $away_id !== null ) {
+				$this->schedule_index['date_team'][ $existing_game->date . '|' . $away_id ] = true;
+			}
+		}
 
 		foreach ( $this->makeup_games as $makeup_key => $makeup_game ) {
 			$makeup_date = $this->find_makeup_date( $makeup_game, $schedule, $config );
@@ -125,6 +171,30 @@ class SPSG_Blackout_Constraint extends SPSG_Abstract_Constraint {
 				);
 
 				$scheduled_makeups[] = $new_game;
+
+				// Update the index so subsequent makeup picks see this game
+				// and don't double-book the same venue/slot or team-on-date.
+				$venue_id = isset( $new_game->venue->id )
+					? $new_game->venue->id
+					: ( is_array( $new_game->venue ) && isset( $new_game->venue['id'] ) ? $new_game->venue['id'] : null );
+				if ( $venue_id !== null ) {
+					$dt_key = $new_game->date . '|' . $new_game->time_slot . '|' . $venue_id;
+					$this->schedule_index['date_time_venue'][ $dt_key ] = true;
+				}
+
+				$home_id = isset( $new_game->home_team->id )
+					? $new_game->home_team->id
+					: ( is_array( $new_game->home_team ) && isset( $new_game->home_team['id'] ) ? $new_game->home_team['id'] : null );
+				$away_id = isset( $new_game->away_team->id )
+					? $new_game->away_team->id
+					: ( is_array( $new_game->away_team ) && isset( $new_game->away_team['id'] ) ? $new_game->away_team['id'] : null );
+				if ( $home_id !== null ) {
+					$this->schedule_index['date_team'][ $new_game->date . '|' . $home_id ] = true;
+				}
+				if ( $away_id !== null ) {
+					$this->schedule_index['date_team'][ $new_game->date . '|' . $away_id ] = true;
+				}
+
 				$this->log(
 					sprintf(
 						'Scheduled makeup game for %s on %s',
@@ -185,14 +255,30 @@ class SPSG_Blackout_Constraint extends SPSG_Abstract_Constraint {
 	}
 
 	/**
-	 * Check if date is a blackout date
+	 * Check if date is a blackout date.
+	 *
+	 * Uses the cached `$blackout_set` populated by schedule_makeup_games()
+	 * for O(1) lookups; falls back to a linear scan for direct callers that
+	 * haven't primed the cache.
 	 */
 	private function is_blackout_date( $date, $config ) {
 		$date_string = $date->format( 'Y-m-d' );
 
+		if ( ! empty( $this->blackout_set ) ) {
+			return isset( $this->blackout_set[ $date_string ] );
+		}
+
 		foreach ( $config->blackout_dates as $blackout_date ) {
-			if ( ( new DateTime( $blackout_date ) )->format( 'Y-m-d' ) === $date_string ) {
+			if ( $blackout_date === $date_string ) {
 				return true;
+			}
+			// Tolerate non-canonical formats by parsing once.
+			try {
+				if ( ( new DateTime( $blackout_date ) )->format( 'Y-m-d' ) === $date_string ) {
+					return true;
+				}
+			} catch ( Exception $e ) {
+				// Skip invalid date strings.
 			}
 		}
 
@@ -219,14 +305,35 @@ class SPSG_Blackout_Constraint extends SPSG_Abstract_Constraint {
 	}
 
 	/**
-	 * Check if date/time is available for scheduling
+	 * Check if date/time is available for scheduling.
+	 *
+	 * O(1) when the schedule indices are primed by schedule_makeup_games();
+	 * falls back to a linear scan otherwise (for direct callers / tests).
 	 */
 	private function is_date_available( $date, $makeup_game, $schedule ) {
 		$date_string = $date->format( 'Y-m-d' );
-		$time_slot = $makeup_game['time_slot'];
-		$venue = $makeup_game['venue'];
+		$time_slot   = $makeup_game['time_slot'];
+		$venue       = $makeup_game['venue'];
+		$home_id     = $makeup_game['home_team']->id ?? null;
+		$away_id     = $makeup_game['away_team']->id ?? null;
+		$venue_id    = $venue->id ?? null;
 
-		// Check if venue and time slot are available
+		// Fast path: use pre-built indices when available.
+		if ( ! empty( $this->schedule_index['date_time_venue'] ) || ! empty( $this->schedule_index['date_team'] ) ) {
+			if ( $venue_id !== null
+				&& isset( $this->schedule_index['date_time_venue'][ $date_string . '|' . $time_slot . '|' . $venue_id ] ) ) {
+				return false;
+			}
+			if ( $home_id !== null && isset( $this->schedule_index['date_team'][ $date_string . '|' . $home_id ] ) ) {
+				return false;
+			}
+			if ( $away_id !== null && isset( $this->schedule_index['date_team'][ $date_string . '|' . $away_id ] ) ) {
+				return false;
+			}
+			return true;
+		}
+
+		// Fallback: linear scan.
 		foreach ( $schedule as $existing_game ) {
 			if ( $existing_game->date === $date_string &&
 			$existing_game->time_slot === $time_slot &&

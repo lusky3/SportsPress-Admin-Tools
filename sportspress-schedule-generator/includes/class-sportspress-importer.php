@@ -107,11 +107,11 @@ class SPSG_Sports_Press_Importer {
 			SPSG_Sports_Press_Integration::preload_events_by_game_ids( $game_ids );
 		}
 
-		// Check for conflicts if not overwriting
+		// With stable game IDs (set by SPSG_Slot_Allocator::create_game) the
+		// preloaded cache above already maps game_id → event_id. The per-game
+		// check is performed inline by import_single_game(), so the legacy
+		// pre-pass that re-queried every game has been removed.
 		$conflicts = array();
-		if ( $options['conflict_resolution'] === 'skip' ) {
-			$conflicts = $this->check_conflicts( $schedule );
-		}
 
 		// Track progress for bulk import
 		$total_games = count( $schedule );
@@ -159,6 +159,9 @@ class SPSG_Sports_Press_Importer {
 	 * Process a single game import (skip, overwrite, or create)
 	 */
 	private function import_single_game( $index, $game, $options, $conflicts, &$results ) {
+		// Legacy pre-pass populated $conflicts; preserve that path for callers
+		// supplying their own map. With stable game IDs we now resolve once
+		// per game via the preloaded cache below.
 		if ( isset( $conflicts[ $index ] ) ) {
 			$results['skipped']++;
 			$results['errors'][] = sprintf(
@@ -170,12 +173,25 @@ class SPSG_Sports_Press_Importer {
 			return;
 		}
 
+		// Single lookup per game; backed by the preload cache, so this is
+		// effectively O(1) after the initial preload pass.
+		$existing_event_id = SPSG_Sports_Press_Integration::find_existing_event( $game );
+
+		if ( $existing_event_id && $options['conflict_resolution'] === 'skip' ) {
+			$results['skipped']++;
+			$results['errors'][] = sprintf(
+				__( 'Game %1$d skipped: Conflict with existing event ID %2$d', 'sportspress-schedule-generator' ),
+				$index + 1,
+				$existing_event_id
+			);
+			$this->log_import_action( 'skip', $game, $existing_event_id );
+			return;
+		}
+
 		if ( $options['dry_run'] ) {
 			$results['imported']++;
 			return;
 		}
-
-		$existing_event_id = SPSG_Sports_Press_Integration::find_existing_event( $game );
 
 		if ( $existing_event_id && $options['conflict_resolution'] === 'overwrite' ) {
 			$this->overwrite_existing_event( $index, $game, $existing_event_id, $options, $results );
@@ -501,7 +517,11 @@ class SPSG_Sports_Press_Importer {
 	}
 
 	/**
-	 * Check for conflicts with existing events
+	 * Check for conflicts with existing events.
+	 *
+	 * @deprecated Conflict checking is now performed inline by
+	 *             import_single_game(), which uses the preloaded game-id cache.
+	 *             Kept for backwards compatibility with external callers.
 	 *
 	 * @param array $schedule Array of game objects
 	 * @return array Array of conflicts indexed by game index
@@ -510,9 +530,7 @@ class SPSG_Sports_Press_Importer {
 		$conflicts = array();
 
 		foreach ( $schedule as $index => $game ) {
-			// Check if event already exists for this game
 			$existing_event_id = SPSG_Sports_Press_Integration::find_existing_event( $game );
-
 			if ( $existing_event_id ) {
 				$conflicts[ $index ] = $existing_event_id;
 			}

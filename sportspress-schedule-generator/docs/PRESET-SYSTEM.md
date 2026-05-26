@@ -464,5 +464,5 @@ $merged = $config_manager->apply_preset('adult_league', $my_config);
 ## See Also
 
 - [Configuration Properties](CONFIGURATION-PROPERTIES.md)
-- [Validation Rules](VALIDATION-RULES.md)
-- [Import/Export Guide](IMPORT-EXPORT.md)
+- [Configuration Properties](CONFIGURATION-PROPERTIES.md)
+- [User Guide](PHASE3-USER-GUIDE.md)

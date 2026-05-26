@@ -20,13 +20,6 @@ class SPSG_Admin_Renderer {
 
 
 	/**
-	 * Duplicated string constants
-	 */
-	const LABEL_SAVE_CONFIGURATION = 'Save Configuration';
-	const LABEL_GAMES_PER_TEAM = 'Games Per Team';
-	const LABEL_IMPORT_LEAGUE = 'Import League Structure';
-
-	/**
 	 * Configuration manager instance
 	 */
 	private $config_manager;
@@ -104,7 +97,7 @@ class SPSG_Admin_Renderer {
 				</td>
 			</tr>
 			<tr>
-				<th scope="row"><?php esc_html_e( self::LABEL_GAMES_PER_TEAM, 'sportspress-schedule-generator' ); ?></th>
+				<th scope="row"><?php esc_html_e( SPSG_Admin::LABEL_GAMES_PER_TEAM, 'sportspress-schedule-generator' ); ?></th>
 				<td>
 					<input type="number" name="games_per_team" value="<?php echo esc_attr( $config->games_per_team ); ?>" min="1" max="50" required />
 					<p class="description"><?php esc_html_e( 'Total number of games each team should play during the season', 'sportspress-schedule-generator' ); ?></p>
@@ -182,7 +175,7 @@ class SPSG_Admin_Renderer {
 		</table>
 
 		<p class="submit">
-			<input type="submit" name="submit" class="button-primary" value="<?php esc_html_e( self::LABEL_SAVE_CONFIGURATION, 'sportspress-schedule-generator' ); ?>" />
+			<input type="submit" name="submit" class="button-primary" value="<?php esc_html_e( SPSG_Admin::LABEL_SAVE_CONFIGURATION, 'sportspress-schedule-generator' ); ?>" />
 		</p>
 		<?php
 	}
@@ -250,7 +243,7 @@ class SPSG_Admin_Renderer {
 								}
 								?>
 							</select>
-							<button type="button" class="button" id="spsg-import-league-btn"><?php esc_html_e( self::LABEL_IMPORT_LEAGUE, 'sportspress-schedule-generator' ); ?></button>
+							<button type="button" class="button" id="spsg-import-league-btn"><?php esc_html_e( SPSG_Admin::LABEL_IMPORT_LEAGUE, 'sportspress-schedule-generator' ); ?></button>
 							<p class="description">
 								<?php esc_html_e( 'Import teams and divisions from a SportsPress league. This will create multiple division blocks with all teams from the league\'s child divisions.', 'sportspress-schedule-generator' ); ?>
 								<br>
@@ -343,7 +336,7 @@ class SPSG_Admin_Renderer {
 		</div>
 
 		<p class="submit">
-			<input type="submit" name="submit" class="button-primary" value="<?php esc_html_e( self::LABEL_SAVE_CONFIGURATION, 'sportspress-schedule-generator' ); ?>" />
+			<input type="submit" name="submit" class="button-primary" value="<?php esc_html_e( SPSG_Admin::LABEL_SAVE_CONFIGURATION, 'sportspress-schedule-generator' ); ?>" />
 		</p>
 		<?php
 	}
@@ -410,7 +403,7 @@ class SPSG_Admin_Renderer {
 		echo '<table class="widefat striped">';
 		echo '<thead><tr>';
 		echo '<th>' . esc_html__( 'Division Pair', 'sportspress-schedule-generator' ) . '</th>';
-		echo '<th>' . esc_html__( self::LABEL_GAMES_PER_TEAM, 'sportspress-schedule-generator' ) . '</th>';
+		echo '<th>' . esc_html__( SPSG_Admin::LABEL_GAMES_PER_TEAM, 'sportspress-schedule-generator' ) . '</th>';
 		echo '</tr></thead>';
 		echo '<tbody>';
 
@@ -640,7 +633,7 @@ class SPSG_Admin_Renderer {
 		</div>
 
 		<p class="submit">
-			<input type="submit" name="submit" class="button-primary" value="<?php esc_html_e( self::LABEL_SAVE_CONFIGURATION, 'sportspress-schedule-generator' ); ?>" />
+			<input type="submit" name="submit" class="button-primary" value="<?php esc_html_e( SPSG_Admin::LABEL_SAVE_CONFIGURATION, 'sportspress-schedule-generator' ); ?>" />
 		</p>
 		<?php
 	}
@@ -813,7 +806,7 @@ class SPSG_Admin_Renderer {
 		</div>
 
 		<p class="submit">
-			<input type="submit" name="submit" class="button-primary" value="<?php esc_html_e( self::LABEL_SAVE_CONFIGURATION, 'sportspress-schedule-generator' ); ?>" />
+			<input type="submit" name="submit" class="button-primary" value="<?php esc_html_e( SPSG_Admin::LABEL_SAVE_CONFIGURATION, 'sportspress-schedule-generator' ); ?>" />
 		</p>
 		<?php
 	}
@@ -1269,7 +1262,7 @@ class SPSG_Admin_Renderer {
 					<span class="spsg-stat-value"><?php echo esc_html( $stats['total_games'] ?? count( $schedule ) ); ?></span>
 				</div>
 				<div class="spsg-stat">
-					<span class="spsg-stat-label"><?php esc_html_e( self::LABEL_GAMES_PER_TEAM, 'sportspress-schedule-generator' ); ?></span>
+					<span class="spsg-stat-label"><?php esc_html_e( SPSG_Admin::LABEL_GAMES_PER_TEAM, 'sportspress-schedule-generator' ); ?></span>
 					<span class="spsg-stat-value">
 						<?php
 						if ( isset( $stats['games_per_team'] ) ) {
