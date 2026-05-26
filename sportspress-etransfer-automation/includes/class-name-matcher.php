@@ -44,11 +44,6 @@ class SPET_Name_Matcher {
 			return false;
 		}
 
-		// Warn when part counts differ by more than 1
-		if ( abs( count( $name1_parts ) - count( $name2_parts ) ) > 1 ) {
-			error_log( 'SPET Name Matcher: Part count differs by more than 1 - "' . $name1 . '" vs "' . $name2 . '"' );
-		}
-
 		// Compare first parts (first names)
 		$first1 = $name1_parts[0];
 		$first2 = $name2_parts[0];
@@ -75,6 +70,20 @@ class SPET_Name_Matcher {
 				}
 			} else {
 				return false;
+			}
+		} elseif ( count( $name1_parts ) > 2 || count( $name2_parts ) > 2 ) {
+			// Asymmetric middle-name case: one side has middles, the other does
+			// not. Fall through to first+last match (preserves historical match
+			// decisions), but instrument so operators can audit these calls.
+			if ( class_exists( 'SPAT_Logger' ) ) {
+				SPAT_Logger::warn(
+					'name_matcher',
+					'asymmetric middle names',
+					array(
+						'name1' => $name1_parts,
+						'name2' => $name2_parts,
+					)
+				);
 			}
 		}
 
@@ -143,9 +152,9 @@ class SPET_Name_Matcher {
 			// Validate and sanitize each name
 			$valid_names = array();
 			foreach ( $names as $name ) {
-				// Only allow letters, spaces, hyphens, and apostrophes
-				if ( preg_match( '/^[a-zA-Z\s\-\']+$/', $name ) && strlen( $name ) <= 50 ) {
-					$valid_names[] = strtolower( $name );
+				// Only allow letters (incl. Unicode), spaces, hyphens, and apostrophes
+				if ( preg_match( '/^[\p{L}\s\-\']+$/u', $name ) && strlen( $name ) <= 50 ) {
+					$valid_names[] = mb_strtolower( $name, 'UTF-8' );
 				}
 			}
 
