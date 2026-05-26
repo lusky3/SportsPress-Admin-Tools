@@ -3,7 +3,7 @@ Contributors: lusky3
 Tags: sportspress, woocommerce, player, registration, automation
 Requires at least: 5.0
 Tested up to: 6.9
-Requires PHP: 7.4
+Requires PHP: 8.1
 Stable tag: 1.0.0
 License: GPLv2 or later
 
@@ -29,7 +29,7 @@ SportsPress Player Registration automatically creates SportsPress player records
 
 1. Upload the plugin files to `/wp-content/plugins/sportspress-player-registration/`
 2. Activate the plugin through the 'Plugins' screen in WordPress
-3. Go to Settings → Player Registration to configure options
+3. Go to Settings → SportsPress Admin Tools and enable the Player Registration module
 
 == Configuration ==
 
