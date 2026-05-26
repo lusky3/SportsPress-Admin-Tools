@@ -52,8 +52,13 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 
 			// Run dbDelta on version bump so new indexes/columns reach existing installs
 			// without forcing operators to deactivate/reactivate the plugin.
-			if ( get_option( 'spat_db_version' ) !== '1.0.3' ) {
+			if ( get_option( 'spat_db_version' ) !== '1.0.4' ) {
 				SPAT_Database::create_tables();
+			}
+
+			// One-time backfill of the links_to_order column added in 1.0.4.
+			if ( ! get_option( 'spat_logs_backfilled_links_to_order' ) ) {
+				SPAT_Database::backfill_links_to_order_column();
 			}
 
 			// Load text domain

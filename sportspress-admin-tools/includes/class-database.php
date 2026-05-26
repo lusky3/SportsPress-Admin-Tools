@@ -53,11 +53,13 @@ class SPAT_Database {
             season varchar(50) DEFAULT '',
             position varchar(50) DEFAULT '',
             action varchar(100) DEFAULT '',
+            links_to_order tinyint(1) DEFAULT 0,
             PRIMARY KEY (id),
             KEY timestamp (timestamp),
             KEY order_id (order_id),
             KEY player_id (player_id),
-            KEY player_id_action (player_id, action)
+            KEY player_id_action (player_id, action),
+            KEY player_id_links (player_id, links_to_order)
         ) $charset_collate;";
 
 		dbDelta( $sql );
@@ -96,7 +98,35 @@ class SPAT_Database {
 
 		dbDelta( $sql );
 
-		update_option( 'spat_db_version', '1.0.3' );
+		update_option( 'spat_db_version', '1.0.4' );
+	}
+
+	/**
+	 * One-time backfill of the links_to_order column on existing rows.
+	 *
+	 * Sets links_to_order = 1 for the historical action values that represent
+	 * a successful player-to-order link, so the new boolean column can replace
+	 * the hardcoded action allowlist used by readers.
+	 */
+	public static function backfill_links_to_order_column() {
+		global $wpdb;
+
+		$table_name = $wpdb->prefix . 'spat_registration_logs';
+		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table_name ) ) !== $table_name ) {
+			return;
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is internal.
+		$wpdb->query( $wpdb->prepare(
+			"UPDATE {$table_name}
+			 SET links_to_order = 1
+			 WHERE action IN (%s, %s, %s) AND links_to_order = 0",
+			'player_created',
+			'player_found_by_name',
+			'player_found_by_name_and_email'
+		) );
+
+		update_option( 'spat_logs_backfilled_links_to_order', '1' );
 	}
 
 	public static function migrate_existing_logs() {
@@ -259,7 +289,7 @@ class SPAT_Database {
 		}
 	}
 
-	public static function log_registration_activity( $order_id, $customer_name, $player_id, $season, $position, $action = 'player_registration' ) {
+	public static function log_registration_activity( $order_id, $customer_name, $player_id, $season, $position, $action = 'player_registration', $links_to_order = false ) {
 		global $wpdb;
 		$table_name = $wpdb->prefix . 'spat_registration_logs';
 
@@ -272,6 +302,7 @@ class SPAT_Database {
 				'season' => sanitize_text_field( $season ),
 				'position' => sanitize_text_field( $position ),
 				'action' => sanitize_text_field( $action ),
+				'links_to_order' => $links_to_order ? 1 : 0,
 			),
 			array(
 				'%d', // order_id
@@ -279,7 +310,8 @@ class SPAT_Database {
 				'%d', // player_id
 				'%s', // season
 				'%s', // position
-				'%s',  // action
+				'%s', // action
+				'%d', // links_to_order
 			)
 		);
 
