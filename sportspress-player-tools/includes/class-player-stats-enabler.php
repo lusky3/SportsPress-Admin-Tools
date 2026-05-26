@@ -12,21 +12,17 @@ if ( ! defined( 'ABSPATH' ) ) {
 class SPT_Player_Stats_Enabler {
 
 	public function __construct() {
-		if ( get_option( 'spt_stats_enabler', '1' ) === '1' ) {
-			add_action( 'save_post', array( $this, 'auto_enable_stats' ), 20 );
-		}
+		// Fix #10: target the post-type-specific hook so we don't run on every save.
+		add_action( 'save_post_sp_player', array( $this, 'auto_enable_stats' ), 20 );
 	}
 
 	public function auto_enable_stats( $post_id ) {
-		if ( get_post_type( $post_id ) !== 'sp_player' ) {
-			return;
-		}
-
 		if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
 			return;
 		}
 
-		// Check if stats are already enabled
+		// Fix #10: bail out BEFORE we ever call get_sport_columns() — that helper
+		// runs several get_posts() queries and we don't want it on every save.
 		$columns = get_post_meta( $post_id, 'sp_columns', true );
 		if ( ! empty( $columns ) ) {
 			return; // Already configured

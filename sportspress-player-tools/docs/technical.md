@@ -11,7 +11,7 @@ SPAT_Plugin_Manager::register_plugin('player_modifications', array(
     'name' => 'Player Modifications',
     'description' => 'Advanced player management tools',
     'parent_module' => 'player_modifications',
-    'version' => '1.0.0',
+    'version' => '1.0.1',
     'file' => __FILE__
 ));
 ```
@@ -137,6 +137,8 @@ spt_email => '[email]'
 
 Used by Player Registration module for automatic user-player linking.
 
+> **Note:** Legacy records may use `spat_email`. The REST API falls back to `spat_email` if `spt_email` is empty.
+
 ## Batch List Creator
 
 ### Upload Process
@@ -180,11 +182,12 @@ Examples:
 ```php
 private function find_closest($name, $posts) {
     $best = null;
-    $best_score = 0;
+    $best_dist = PHP_INT_MAX;
     foreach ($posts as $post) {
-        $score = similar_text(strtolower($name), strtolower($post->post_title));
-        if ($score > $best_score) {
-            $best_score = $score;
+        // Calculate distance using levenshtein (O(N²) vs O(N³) for similar_text)
+        $dist = levenshtein(strtolower($name), strtolower($post->post_title));
+        if ($dist < $best_dist) {
+            $best_dist = $dist;
             $best = $post->ID;
         }
     }
@@ -192,7 +195,7 @@ private function find_closest($name, $posts) {
 }
 ```
 
-Uses PHP's `similar_text()` for string similarity comparison.
+Uses PHP's `levenshtein()` for string distance comparison.
 
 ### Create vs Update
 
