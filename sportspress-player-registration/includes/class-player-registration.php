@@ -95,7 +95,7 @@ class SPPR_Player_Registration {
 						}
 						$this->link_user_to_player( $user_id, $result['player_id'] );
 					}
-					SPPR_Database::log_registration_activity( $order_id, $customer_name, $result['player_id'], $season, $item['position'], $result['action'] );
+					SPPR_Database::log_registration_activity( $order_id, $customer_name, $result['player_id'], $season, $item['position'], $result['action'], true );
 				}
 			}
 
