@@ -14,6 +14,35 @@ class SPEM_League_Table_Generator {
 	public function __construct() {
 		add_action( 'wp_ajax_generate_league_table', array( $this, 'ajax_generate_league_table' ) );
 		add_action( 'admin_footer', array( $this, 'add_league_table_modal' ) );
+		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_scripts' ) );
+	}
+
+	/**
+	 * Enqueue the league-table-generator script on the SPAT settings screen.
+	 *
+	 * @param string $hook Current admin page hook suffix.
+	 */
+	public function enqueue_scripts( $hook ) {
+		if ( 'settings_page_sportspress-admin-tools' !== $hook ) {
+			return;
+		}
+
+		$plugin_url = plugins_url( '', __DIR__ . '/..' ) . '/';
+		wp_enqueue_script(
+			'spem-league-table-generator',
+			$plugin_url . 'assets/js/league-table-generator.js',
+			array( 'jquery' ),
+			SPEM_VERSION,
+			true
+		);
+		wp_localize_script(
+			'spem-league-table-generator',
+			'spemLeagueTable',
+			array(
+				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+				'nonce'   => wp_create_nonce( 'generate_league_table' ),
+			)
+		);
 	}
 
 	public function ajax_generate_league_table() {
@@ -31,6 +60,16 @@ class SPEM_League_Table_Generator {
 
 		if ( ! $league_id || ! $season_id || ! $table_name ) {
 			wp_send_json_error( __( 'Missing required parameters.', 'sportspress-events-manager' ) );
+		}
+
+		// Reject term IDs that don't actually refer to real sp_league /
+		// sp_season terms — wp_set_object_terms silently no-ops on bad input
+		// and leaves the user with a broken-but-published sp_table.
+		if ( ! term_exists( $league_id, 'sp_league' ) ) {
+			wp_send_json_error( __( 'Invalid league.', 'sportspress-events-manager' ) );
+		}
+		if ( ! term_exists( $season_id, 'sp_season' ) ) {
+			wp_send_json_error( __( 'Invalid season.', 'sportspress-events-manager' ) );
 		}
 
 		$table_id = $this->create_league_table( $league_id, $season_id, $table_name );
@@ -123,7 +162,6 @@ class SPEM_League_Table_Generator {
 			$seasons = array();
 		}
 
-		$nonce = wp_create_nonce( 'generate_league_table' );
 		?>
 		<div id="league-table-modal" style="display:none;">
 			<div style="background:white; padding:20px; border-radius:5px; max-width:500px; margin:50px auto;">
@@ -157,7 +195,6 @@ class SPEM_League_Table_Generator {
 							<td><input type="text" id="table_name" name="table_name" class="regular-text" required /></td>
 						</tr>
 					</table>
-					<input type="hidden" id="spem_league_table_nonce" value="<?php echo esc_attr( $nonce ); ?>" />
 					<p>
 						<button type="submit" class="button button-primary"><?php esc_html_e( 'Generate Table', 'sportspress-events-manager' ); ?></button>
 						<button type="button" class="button" onclick="closeLeagueTableModal()"><?php esc_html_e( 'Cancel', 'sportspress-events-manager' ); ?></button>
@@ -165,40 +202,6 @@ class SPEM_League_Table_Generator {
 				</form>
 			</div>
 		</div>
-
-		<script>
-		function openLeagueTableModal() {
-			document.getElementById('league-table-modal').style.display = 'block';
-		}
-
-		function closeLeagueTableModal() {
-			document.getElementById('league-table-modal').style.display = 'none';
-		}
-
-		jQuery(document).ready(function($) {
-			$('#league-table-form').on('submit', function(e) {
-				e.preventDefault();
-
-				$.post(ajaxurl, {
-					action: 'generate_league_table',
-					league_id: $('#league_select').val(),
-					season_id: $('#season_select').val(),
-					table_name: $('#table_name').val(),
-					nonce: $('#spem_league_table_nonce').val()
-				}, function(response) {
-					if (response.success) {
-						alert(response.data.message);
-						if (response.data.edit_url) {
-							window.open(response.data.edit_url, '_blank');
-						}
-						closeLeagueTableModal();
-					} else {
-						alert(response.data);
-					}
-				});
-			});
-		});
-		</script>
 		<?php
 	}
 }

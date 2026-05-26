@@ -7,8 +7,8 @@
  * Text Domain: sportspress-events-manager
  * License: GPL v2 or later
  * Requires at least: 5.0
- * Tested up to: 6.4
- * Requires PHP: 7.4
+ * Tested up to: 6.9
+ * Requires PHP: 8.1
  * Depends: SportsPress Admin Tools
  */
 
@@ -23,6 +23,7 @@ class SportsPress_Events_Manager {
 
 	public function __construct() {
 		register_activation_hook( __FILE__, array( $this, 'check_activation_requirements' ) );
+		register_activation_hook( __FILE__, array( $this, 'run_activation_migrations' ) );
 		add_action( 'plugins_loaded', array( $this, 'init' ) );
 	}
 
@@ -31,6 +32,17 @@ class SportsPress_Events_Manager {
 			deactivate_plugins( plugin_basename( __FILE__ ) );
 			wp_die( 'SportsPress Events Manager requires SportsPress Admin Tools to be installed and activated first.' );
 		}
+	}
+
+	/**
+	 * One-time data migrations run on plugin activation.
+	 *
+	 * - Convert legacy post_status='past' sp_event rows to the new
+	 *   `_spem_archived` meta flag (see SPEM_Season_Rollover::archive_old_events).
+	 */
+	public function run_activation_migrations() {
+		require_once SPEM_PLUGIN_PATH . 'includes/class-season-rollover.php';
+		SPEM_Season_Rollover::migrate_past_status_to_meta_flag();
 	}
 
 	public function init() {

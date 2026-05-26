@@ -147,8 +147,7 @@ class SPEM_Admin {
 
 		check_admin_referer( 'spem_admin_actions', 'spem_admin_nonce' );
 
-		if ( isset( $_POST['save_settings'], $_POST['spem_admin_nonce'] ) ) {
-			check_admin_referer( 'spem_admin_actions', 'spem_admin_nonce' );
+		if ( isset( $_POST['save_settings'] ) ) {
 			update_option( 'spem_auto_calendar_creation', isset( $_POST['spem_auto_calendar_creation'] ) ? '1' : '0' );
 			update_option( 'spem_calendar_type', sanitize_text_field( $_POST['spem_calendar_type'] ) );
 			update_option( 'spem_naming_prefix', sanitize_text_field( $_POST['spem_naming_prefix'] ) );
@@ -184,6 +183,14 @@ class SPEM_Admin {
 	 * Display the event import form and handle import submissions.
 	 */
 	private function display_import_form() {
+		// Guard the import POST handler itself — handle_post_actions runs the
+		// nonce flow for the other forms, but the import form is rendered
+		// regardless of whether settings were just saved, so the cap check
+		// needs to live here too.
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
 		if ( isset( $_POST['import_events'] ) && isset( $_FILES['event_file'] ) ) {
 			check_admin_referer( 'spem_admin_actions', 'spem_admin_nonce' );
 			$events_manager = new SPEM_Events_Management();
@@ -192,7 +199,29 @@ class SPEM_Admin {
 			if ( is_wp_error( $result ) ) {
 				echo '<div class="notice notice-error"><p>' . esc_html( $result->get_error_message() ) . '</p></div>';
 			} else {
-				echo '<div class="notice notice-success"><p>' . sprintf( esc_html__( 'Successfully imported %d events.', 'sportspress-events-manager' ), intval( $result ) ) . '</p></div>';
+				$imported = isset( $result['imported'] ) ? (int) $result['imported'] : 0;
+				$errors   = isset( $result['errors'] ) && is_array( $result['errors'] ) ? $result['errors'] : array();
+
+				echo '<div class="notice notice-success"><p>' . sprintf( esc_html__( 'Successfully imported %d events.', 'sportspress-events-manager' ), $imported ) . '</p></div>';
+
+				if ( ! empty( $errors ) ) {
+					echo '<div class="notice notice-warning"><p>' . sprintf(
+						esc_html__( '%d row(s) failed to import:', 'sportspress-events-manager' ),
+						count( $errors )
+					) . '</p><ul>';
+					foreach ( $errors as $row_index => $message ) {
+						printf(
+							'<li>%s</li>',
+							sprintf(
+								/* translators: 1: spreadsheet row number (1-based, header excluded), 2: error message */
+								esc_html__( 'Row %1$d: %2$s', 'sportspress-events-manager' ),
+								(int) $row_index + 1,
+								esc_html( $message )
+							)
+						);
+					}
+					echo '</ul></div>';
+				}
 			}
 		}
 
