@@ -185,7 +185,14 @@ class SimpleXLSX {
 		}
 
 		$this->data = array();
+		$row_count  = 0;
 		while ( ( $row = fgetcsv( $handle ) ) !== false ) {
+			$row_count++;
+			if ( $row_count > self::MAX_ROWS ) {
+				fclose( $handle );
+				$this->data = array();
+				return false;
+			}
 			$this->data[] = $row;
 		}
 

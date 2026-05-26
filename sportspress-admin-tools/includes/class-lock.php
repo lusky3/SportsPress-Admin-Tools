@@ -5,32 +5,68 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
  * Best-effort mutex for guarding read-modify-write sequences against
  * concurrent admins / cron retries / double-submitted forms.
  *
- * Uses wp_cache_add() when an external object cache is available
- * (Redis/Memcached → cross-process). Falls back to a $wpdb-backed
- * options claim when only in-memory object cache exists. Returns
- * false if another caller holds the lock.
+ * Two backends:
  *
- * Locks are advisory; release() is required to free early, but the
- * TTL bounds worst-case stuck-lock duration.
+ * 1. External object cache (Redis/Memcached) — wp_cache_add is atomic
+ *    across processes.
+ *
+ * 2. wp_options fallback — add_option is atomic at the SQL layer because
+ *    of the PRIMARY KEY on option_name: two concurrent INSERTs cannot
+ *    both succeed. The stored value carries an absolute expiry timestamp
+ *    so a stale lock (whose holder crashed) can be reclaimed via an
+ *    atomic UPDATE…WHERE option_value=<old> swap.
+ *
+ *    Earlier implementation used get_transient + set_transient — that's
+ *    a TOCTOU race; both concurrent callers can observe `false` and both
+ *    write. The add_option/UPDATE form below is the actual fix.
+ *
+ * Locks are advisory; release() should be called in a finally block.
  */
 class SPAT_Lock {
 
-	/**
-	 * Try to acquire $key for $ttl_seconds. Returns true if acquired,
-	 * false if already held.
-	 */
+	const OPTION_PREFIX = 'spat_lock_';
+
 	public static function acquire( $key, $ttl_seconds = 30 ) {
-		// When an external object cache is in use, wp_cache_add is atomic across processes.
+		$ttl = max( 1, (int) $ttl_seconds );
+
 		if ( wp_using_ext_object_cache() ) {
-			return (bool) wp_cache_add( $key, 1, 'spat_locks', (int) $ttl_seconds );
+			return (bool) wp_cache_add( $key, 1, 'spat_locks', $ttl );
 		}
 
-		// Fall back to wp_options. add_option returns false if the row exists.
-		// Use a transient with the option-backed storage path so TTL is enforced.
-		if ( false !== get_transient( 'spat_lock_' . $key ) ) {
+		global $wpdb;
+		$option = self::OPTION_PREFIX . $key;
+		$expiry = time() + $ttl;
+
+		// First try: atomic insert via add_option. Returns false if the row exists.
+		if ( add_option( $option, (string) $expiry, '', 'no' ) ) {
+			return true;
+		}
+
+		// Row exists — fetch its expiry. If the lock is still live we lose.
+		$existing = $wpdb->get_var( $wpdb->prepare(
+			"SELECT option_value FROM {$wpdb->options} WHERE option_name = %s",
+			$option
+		) );
+
+		if ( null === $existing ) {
+			// Lock was just released; try one more atomic insert.
+			return (bool) add_option( $option, (string) $expiry, '', 'no' );
+		}
+
+		if ( (int) $existing > time() ) {
 			return false;
 		}
-		return (bool) set_transient( 'spat_lock_' . $key, 1, (int) $ttl_seconds );
+
+		// Stale — try an atomic steal that succeeds only if the row is
+		// still the stale value we just observed. Two concurrent thieves
+		// will see the same $existing, but only one UPDATE returns 1 row.
+		$stolen = $wpdb->query( $wpdb->prepare(
+			"UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND option_value = %s",
+			(string) $expiry,
+			$option,
+			$existing
+		) );
+		return 1 === (int) $stolen;
 	}
 
 	public static function release( $key ) {
@@ -38,12 +74,12 @@ class SPAT_Lock {
 			wp_cache_delete( $key, 'spat_locks' );
 			return;
 		}
-		delete_transient( 'spat_lock_' . $key );
+		delete_option( self::OPTION_PREFIX . $key );
 	}
 
 	/**
-	 * Convenience: try to run $callback exclusively. Returns the callback's
-	 * return value on success, false if the lock was already held.
+	 * Run $callback exclusively. Returns the callback's return value on
+	 * success, false if the lock was already held. Always releases the lock.
 	 */
 	public static function with( $key, $ttl_seconds, callable $callback ) {
 		if ( ! self::acquire( $key, $ttl_seconds ) ) {

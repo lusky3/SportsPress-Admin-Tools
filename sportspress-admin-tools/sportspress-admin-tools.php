@@ -57,8 +57,36 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 			}
 
 			// One-time backfill of the links_to_order column added in 1.0.4.
+			// The option that flags completion is written by the backfill itself
+			// on success, but if the UPDATE returns 0 rows (no rows needed
+			// backfilling, or the column is missing) the option may never land —
+			// which would have the backfill run on every admin pageload. Gate it
+			// with a cheap SELECT that confirms there's still work to do, and
+			// wrap the actual call in a lock so two simultaneous admin loads
+			// don't race on the same UPDATE.
 			if ( ! get_option( 'spat_logs_backfilled_links_to_order' ) ) {
-				SPAT_Database::backfill_links_to_order_column();
+				global $wpdb;
+				$table = $wpdb->prefix . 'spat_registration_logs';
+				// Use prepare with SHOW COLUMNS so a missing column doesn't trip
+				// the SELECT below; if the table or column is gone, mark done.
+				$has_column = $wpdb->get_var( $wpdb->prepare(
+					"SHOW COLUMNS FROM {$table} LIKE %s",
+					'links_to_order'
+				) );
+				if ( ! $has_column ) {
+					update_option( 'spat_logs_backfilled_links_to_order', '1' );
+				} else {
+					$needs_backfill = $wpdb->get_var(
+						"SELECT 1 FROM {$table} WHERE links_to_order = 0 LIMIT 1"
+					);
+					if ( $needs_backfill ) {
+						SPAT_Lock::with( 'spat_backfill_links', 60, function () {
+							SPAT_Database::backfill_links_to_order_column();
+						} );
+					} else {
+						update_option( 'spat_logs_backfilled_links_to_order', '1' );
+					}
+				}
 			}
 
 			// Load text domain
