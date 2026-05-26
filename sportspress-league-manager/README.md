@@ -110,14 +110,26 @@ sportspress-league-manager/
 ├── sportspress-league-manager.php    # Plugin bootstrap
 ├── uninstall.php                     # Clean removal
 ├── README.md                         # This file
+├── ARCHITECTURE.md                   # Technical architecture document
 ├── docs/
-│   └── schedule-generator-ssd.md    # Schedule Generator specification
+│   ├── sdd-player-notes.md          # Player Notes design document
+│   ├── technical.md                  # Technical reference
+│   └── schedule-generator-ssd.md    # Schedule Generator integration spec
 ├── includes/
 │   ├── class-admin.php               # Menu redirect + SPAT settings tab
 │   ├── class-autoloader.php          # SPLM_ class autoloader
 │   ├── class-dashboard-frontend.php  # React SPA template registration + asset enqueue
+│   ├── class-player-notes.php        # Player notes meta box, hooks, frontend display
+│   ├── class-player-notes-database.php # Player notes DB operations
 │   ├── class-rest-api.php            # Read-only REST endpoints (splm/v1)
 │   └── class-sportspress-data.php    # SportsPress data helper
+├── assets/
+│   ├── css/
+│   │   ├── league-manager.css        # Dashboard styles
+│   │   └── player-notes.css          # Player notes styles
+│   └── js/
+│       ├── league-manager.js         # Dashboard interactions
+│       └── player-notes.js           # Player notes AJAX
 ├── src/dashboard/                    # React SPA source
 │   ├── index.js                      # Entry point
 │   ├── App.jsx                       # Root component + routing

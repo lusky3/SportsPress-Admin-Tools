@@ -1,11 +1,34 @@
 import { useState, useEffect, useCallback } from '@wordpress/element';
-import { fetchGames, rescheduleGame, cancelGame } from '../lib/api';
+import { fetchGames, rescheduleGame, cancelGame, importGamesPreview, importGames } from '../lib/api';
 
 export default function Schedule( { season } ) {
 	const [ games, setGames ] = useState( [] );
 	const [ loading, setLoading ] = useState( true );
 	const [ modal, setModal ] = useState( null );
 	const [ error, setError ] = useState( '' );
+	const [ importPreview, setImportPreview ] = useState( null );
+	const [ importing, setImporting ] = useState( false );
+
+	const handleImportFile = ( e ) => {
+		const file = e.target.files?.[ 0 ];
+		if ( ! file ) return;
+		importGamesPreview( file ).then( setImportPreview ).catch( ( err ) => setError( err?.message || 'Failed to parse file' ) );
+	};
+
+	const handleImportConfirm = async () => {
+		if ( ! importPreview?.games?.length ) return;
+		setImporting( true );
+		try {
+			const res = await importGames( importPreview.games, season || 0 );
+			setError( '' );
+			setImportPreview( null );
+			window.alert( `Imported ${ res.imported } games (${ res.skipped } skipped)` );
+			loadGames();
+		} catch ( err ) {
+			setError( err?.message || 'Import failed' );
+		}
+		setImporting( false );
+	};
 
 	const loadGames = useCallback( () => {
 		let cancelled = false;
@@ -63,6 +86,38 @@ export default function Schedule( { season } ) {
 			<h2>Schedule</h2>
 
 			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
+
+			<div className="splm-schedule__toolbar">
+				<label className="splm-btn">
+					Import Games <input type="file" accept=".csv,.xlsx" onChange={ handleImportFile } hidden />
+				</label>
+			</div>
+
+			{ importPreview && (
+				<div className="splm-card" style={ { marginBottom: '1rem' } }>
+					<h3>Import Preview — { importPreview.games.length } games</h3>
+					{ importPreview.warnings?.length > 0 && (
+						<div className="splm-alert splm-alert--warning" role="alert">
+							{ importPreview.warnings.map( ( w, i ) => <div key={ i }>{ w }</div> ) }
+						</div>
+					) }
+					<div className="splm-table-wrapper">
+						<table className="splm-table">
+							<thead><tr><th>Date</th><th>Time</th><th>Home</th><th>Away</th><th>Venue</th></tr></thead>
+							<tbody>
+								{ importPreview.games.slice( 0, 20 ).map( ( g, i ) => (
+									<tr key={ i }><td>{ g.date }</td><td>{ g.time }</td><td>{ g.home_team }</td><td>{ g.away_team }</td><td>{ g.venue }</td></tr>
+								) ) }
+								{ importPreview.games.length > 20 && <tr><td colSpan="5">...and { importPreview.games.length - 20 } more</td></tr> }
+							</tbody>
+						</table>
+					</div>
+					<button className="splm-btn splm-btn--primary" onClick={ handleImportConfirm } disabled={ importing }>
+						{ importing ? 'Importing...' : `Import ${ importPreview.games.length } Games` }
+					</button>
+					<button className="splm-btn" onClick={ () => setImportPreview( null ) } style={ { marginLeft: '0.5rem' } }>Cancel</button>
+				</div>
+			) }
 
 			{ Object.entries( grouped ).map( ( [ date, dateGames ] ) => (
 				<div key={ date } className="splm-schedule__day">
@@ -125,7 +180,7 @@ export default function Schedule( { season } ) {
 							<input type="text" name="reason" placeholder="e.g. Ice unavailable" />
 						</label>
 						<label className="splm-checkbox">
-							<input type="checkbox" name="notify" defaultChecked />
+							<input type="checkbox" name="notify" />
 							Notify affected players
 						</label>
 						<div className="splm-modal__actions">

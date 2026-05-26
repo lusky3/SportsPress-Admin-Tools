@@ -7,8 +7,8 @@
  * Text Domain: sportspress-league-manager
  * License: GPL v2 or later
  * Requires at least: 5.0
- * Tested up to: 6.4
- * Requires PHP: 7.4
+ * Tested up to: 6.9
+ * Requires PHP: 8.1
  * Depends: SportsPress Admin Tools
  */
 
@@ -130,7 +130,7 @@ class SportsPress_League_Manager {
 
 	public function parent_plugin_missing_notice() {
 		echo '<div class="notice notice-error"><p>';
-		echo 'SportsPress League Manager requires SportsPress Admin Tools to be installed and activated.';
+		echo esc_html__( 'SportsPress League Manager requires SportsPress Admin Tools to be installed and activated.', 'sportspress-league-manager' );
 		echo '</p></div>';
 	}
 }

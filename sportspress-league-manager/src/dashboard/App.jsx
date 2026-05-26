@@ -8,6 +8,9 @@ import Rosters from './pages/Rosters';
 import Payments from './pages/Payments';
 import HealthChecks from './pages/HealthChecks';
 import ScheduleGenerator from './pages/ScheduleGenerator';
+import DivisionBalance from './pages/DivisionBalance';
+import TeamComparison from './pages/TeamComparison';
+import SeasonReport from './pages/SeasonReport';
 import './styles.css';
 
 const PAGES = {
@@ -19,6 +22,9 @@ const PAGES = {
 	payments: Payments,
 	health: HealthChecks,
 	'schedule-gen': ScheduleGenerator,
+	'div-balance': DivisionBalance,
+	'team-compare': TeamComparison,
+	'season-report': SeasonReport,
 };
 
 export default function App() {

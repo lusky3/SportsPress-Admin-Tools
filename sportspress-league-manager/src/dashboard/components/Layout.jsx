@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from '@wordpress/element';
+import { searchPlayers } from '../lib/api';
 
 const NAV_ITEMS = [
 	{ id: 'dashboard', label: 'Dashboard', icon: '📊' },
@@ -7,6 +8,9 @@ const NAV_ITEMS = [
 	{ id: 'standings', label: 'Standings', icon: '🏆' },
 	{ id: 'rosters', label: 'Rosters', icon: '👥' },
 	{ id: 'payments', label: 'Payments', icon: '💰' },
+	{ id: 'div-balance', label: 'Balance', icon: '⚖️' },
+	{ id: 'team-compare', label: 'Compare', icon: '🔄' },
+	{ id: 'season-report', label: 'Report', icon: '📋' },
 	{ id: 'health', label: 'Health', icon: '🔍' },
 	{ id: 'schedule-gen', label: 'Generate', icon: '📅' },
 ];
@@ -19,17 +23,37 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 	const caps = config.capabilities || {};
 	const [ moreOpen, setMoreOpen ] = useState( false );
 	const moreRef = useRef( null );
+	const [ searchQuery, setSearchQuery ] = useState( '' );
+	const [ searchResults, setSearchResults ] = useState( [] );
+	const [ searchOpen, setSearchOpen ] = useState( false );
+	const searchRef = useRef( null );
+	const searchTimer = useRef( null );
 
 	useEffect( () => {
-		if ( ! moreOpen ) return;
+		// L1: the handler only reads refs and setters (stable), so the listener
+		// should be installed once on mount, not re-registered each time moreOpen
+		// toggles. Also clears the pending search debounce on unmount (L2).
 		const handler = ( e ) => {
-			if ( moreRef.current && ! moreRef.current.contains( e.target ) ) {
-				setMoreOpen( false );
-			}
+			if ( moreRef.current && ! moreRef.current.contains( e.target ) ) setMoreOpen( false );
+			if ( searchRef.current && ! searchRef.current.contains( e.target ) ) setSearchOpen( false );
 		};
 		document.addEventListener( 'mousedown', handler );
-		return () => document.removeEventListener( 'mousedown', handler );
-	}, [ moreOpen ] );
+		return () => {
+			document.removeEventListener( 'mousedown', handler );
+			if ( searchTimer.current ) {
+				clearTimeout( searchTimer.current );
+			}
+		};
+	}, [] );
+
+	const handleSearch = ( q ) => {
+		setSearchQuery( q );
+		clearTimeout( searchTimer.current );
+		if ( q.length < 2 ) { setSearchResults( [] ); setSearchOpen( false ); return; }
+		searchTimer.current = setTimeout( () => {
+			searchPlayers( q ).then( ( r ) => { setSearchResults( r ); setSearchOpen( true ); } ).catch( () => {} );
+		}, 300 );
+	};
 
 	const capMap = {
 		scores: caps.canEnterScores,
@@ -47,6 +71,29 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 		<div className="splm-app">
 			<header className="splm-header">
 				<h1 className="splm-header__title">{ config.leagueName || 'League Manager' }</h1>
+				<div className="splm-header__search" ref={ searchRef }>
+					<input
+						type="search"
+						className="splm-search-input"
+						placeholder="Search players..."
+						value={ searchQuery }
+						onChange={ ( e ) => handleSearch( e.target.value ) }
+						aria-label="Search players"
+					/>
+					{ searchOpen && searchResults.length > 0 && (
+						<ul className="splm-search-results" role="listbox">
+							{ searchResults.map( ( p ) => (
+								<li key={ p.id } role="option" className="splm-search-results__item">
+									<button onClick={ () => { setSearchOpen( false ); setSearchQuery( '' ); onNavigate( 'rosters' ); } }>
+										<strong>{ p.name }</strong>
+										{ p.team_name && <span> — { p.team_name }</span> }
+										{ p.number && <span> #{ p.number }</span> }
+									</button>
+								</li>
+							) ) }
+						</ul>
+					) }
+				</div>
 				<div className="splm-header__meta">
 					{ seasons.length > 0 && (
 						<select

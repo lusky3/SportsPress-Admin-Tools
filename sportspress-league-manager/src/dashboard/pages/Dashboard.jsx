@@ -1,17 +1,52 @@
 import { useState, useEffect } from '@wordpress/element';
-import { fetchGames } from '../lib/api';
+import { fetchGames, fetchActivity, saveUserPreferences } from '../lib/api';
+
+const CARDS = [ 'upcoming', 'recent', 'activity' ];
+
+// M7: allowlist the activity types we ship CSS for. Any new types must be
+// added here AND in styles.css; unknown types fall back to "other".
+const ACTIVITY_TYPES = [ 'registration', 'payment', 'role' ];
+function activityTypeClass( type ) {
+	return ACTIVITY_TYPES.includes( type ) ? type : 'other';
+}
+
+const ACTIVITY_TIMESTAMP_FORMATTER = new Intl.DateTimeFormat( undefined, {
+	year: 'numeric',
+	month: 'short',
+	day: 'numeric',
+	hour: '2-digit',
+	minute: '2-digit',
+} );
+
+function formatActivityTimestamp( raw ) {
+	if ( ! raw ) return '';
+	// MySQL timestamps come back as "YYYY-MM-DD HH:MM:SS" — Safari needs a "T".
+	const d = new Date( typeof raw === 'string' ? raw.replace( ' ', 'T' ) : raw );
+	if ( Number.isNaN( d.getTime() ) ) return String( raw );
+	return ACTIVITY_TIMESTAMP_FORMATTER.format( d );
+}
 
 export default function Dashboard( { onNavigate, season } ) {
 	const [ games, setGames ] = useState( [] );
+	const [ activity, setActivity ] = useState( [] );
 	const [ loading, setLoading ] = useState( true );
 	const [ error, setError ] = useState( '' );
+	const [ visibleCards, setVisibleCards ] = useState( () => {
+		const saved = window.splmDashboard?.dashboardLayout;
+		return ( Array.isArray( saved ) && saved.length ) ? saved : CARDS;
+	} );
+	const [ showSettings, setShowSettings ] = useState( false );
 
 	useEffect( () => {
 		let cancelled = false;
 		setLoading( true );
-		fetchGames( season ? { season } : {} ).then( ( data ) => {
+		Promise.all( [
+			fetchGames( season ? { season } : {} ),
+			fetchActivity( 10 ),
+		] ).then( ( [ gamesData, actData ] ) => {
 			if ( cancelled ) return;
-			setGames( data );
+			setGames( gamesData );
+			setActivity( actData );
 			setLoading( false );
 		} ).catch( ( err ) => {
 			if ( cancelled ) return;
@@ -20,6 +55,14 @@ export default function Dashboard( { onNavigate, season } ) {
 		} );
 		return () => { cancelled = true; };
 	}, [ season ] );
+
+	const toggleCard = ( card ) => {
+		const next = visibleCards.includes( card )
+			? visibleCards.filter( ( c ) => c !== card )
+			: [ ...visibleCards, card ];
+		setVisibleCards( next );
+		saveUserPreferences( { dashboard_layout: next } ).catch( () => {} );
+	};
 
 	const today = new Date().toISOString().split( 'T' )[ 0 ];
 	const upcoming = games.filter( ( g ) => g.date >= today && ! g.cancelled ).slice( 0, 5 );
@@ -35,7 +78,24 @@ export default function Dashboard( { onNavigate, season } ) {
 
 	return (
 		<div className="splm-dashboard">
-			<h2>Dashboard</h2>
+			<div className="splm-dashboard__header">
+				<h2>Dashboard</h2>
+				<button className="splm-btn splm-btn--small" onClick={ () => setShowSettings( ! showSettings ) } aria-label="Customize dashboard">
+					⚙️
+				</button>
+			</div>
+
+			{ showSettings && (
+				<div className="splm-card splm-dashboard__settings">
+					<h3>Visible Cards</h3>
+					{ CARDS.map( ( card ) => (
+						<label key={ card } className="splm-checkbox">
+							<input type="checkbox" checked={ visibleCards.includes( card ) } onChange={ () => toggleCard( card ) } />
+							{ card.charAt( 0 ).toUpperCase() + card.slice( 1 ) }
+						</label>
+					) ) }
+				</div>
+			) }
 
 			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 
@@ -49,8 +109,9 @@ export default function Dashboard( { onNavigate, season } ) {
 			) }
 
 			<div className="splm-grid">
-				<section className="splm-card">
-					<h3>Upcoming Games</h3>
+				{ visibleCards.includes( 'upcoming' ) && (
+					<section className="splm-card">
+						<h3>Upcoming Games</h3>
 					{ upcoming.length === 0 ? (
 						<p className="splm-empty">No upcoming games.</p>
 					) : (
@@ -67,7 +128,9 @@ export default function Dashboard( { onNavigate, season } ) {
 						</ul>
 					) }
 				</section>
+				) }
 
+				{ visibleCards.includes( 'recent' ) && (
 				<section className="splm-card">
 					<h3>Recent Scores</h3>
 					{ recent.length === 0 ? (
@@ -85,6 +148,26 @@ export default function Dashboard( { onNavigate, season } ) {
 						</ul>
 					) }
 				</section>
+				) }
+
+				{ visibleCards.includes( 'activity' ) && (
+				<section className="splm-card">
+					<h3>Recent Activity</h3>
+					{ activity.length === 0 ? (
+						<p className="splm-empty">No recent activity.</p>
+					) : (
+						<ul className="splm-game-list">
+							{ activity.map( ( a, i ) => (
+								<li key={ i } className="splm-game-list__item">
+									<span className="splm-game-list__date">{ formatActivityTimestamp( a.timestamp ) }</span>
+									<span className={ `splm-activity-badge splm-activity-badge--${ activityTypeClass( a.type ) }` }>{ a.type }</span>
+									<span>{ a.description }</span>
+								</li>
+							) ) }
+						</ul>
+					) }
+				</section>
+				) }
 			</div>
 
 			<div className="splm-quick-actions">
