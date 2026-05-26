@@ -7,3 +7,11 @@ updates:
       day: "monday"
     commit-message:
       prefix: "ci"
+
+  - package-ecosystem: "npm"
+    directory: "/sportspress-league-manager"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "deps"

@@ -5,10 +5,16 @@ on:
     branches: [main]
     paths:
       - '**/*.php'
+      - 'sportspress-league-manager/src/**'
+      - 'sportspress-league-manager/package.json'
+      - 'sportspress-league-manager/package-lock.json'
   pull_request:
     branches: [main]
     paths:
       - '**/*.php'
+      - 'sportspress-league-manager/src/**'
+      - 'sportspress-league-manager/package.json'
+      - 'sportspress-league-manager/package-lock.json'
 
 jobs:
   php-tests:
@@ -62,3 +68,21 @@ jobs:
           chmod +x run-tests.sh
           sed -i 's/sleep 45/sleep 60/' run-tests.sh
           ./run-tests.sh
+
+  league-manager-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build and verify build output
+        working-directory: sportspress-league-manager
+        run: |
+          npm ci
+          npm run build
+          git diff --exit-code build/
