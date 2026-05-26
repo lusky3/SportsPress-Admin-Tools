@@ -84,8 +84,31 @@ class SPLM_Dashboard_Frontend {
 			return;
 		}
 
+		// H3: defense in depth — enforce_template_auth runs at template_redirect
+		// for the normal /league-dashboard/ request, but wp_enqueue_scripts can
+		// fire on other surfaces (REST embed, preview, etc.). Gate the asset
+		// load with the same capability check so we never leak bundle URLs or
+		// localized data to anonymous / under-privileged callers.
+		if ( ! is_user_logged_in() || ! SPLM_Capabilities::can_read() ) {
+			return;
+		}
+
 		$asset_file = SPLM_PLUGIN_PATH . 'build/index.asset.php';
-		$assets     = file_exists( $asset_file ) ? require $asset_file : array(
+		$script_file = SPLM_PLUGIN_PATH . 'build/index.js';
+
+		// build/ is gitignored — a deploy that forgot `npm run build` would
+		// otherwise enqueue a 404'd bundle and silently render an empty
+		// <div id="splm-dashboard">. Surface a clear admin notice instead.
+		if ( ! file_exists( $script_file ) ) {
+			add_action( 'admin_notices', function() {
+				echo '<div class="notice notice-error"><p>';
+				echo esc_html__( 'SportsPress League Manager dashboard assets are missing. Run "npm run build" inside the sportspress-league-manager directory.', 'sportspress-league-manager' );
+				echo '</p></div>';
+			} );
+			return;
+		}
+
+		$assets = file_exists( $asset_file ) ? require $asset_file : array(
 			'dependencies' => array( 'wp-element', 'wp-api-fetch' ),
 			'version'      => SPLM_VERSION,
 		);
@@ -156,6 +179,10 @@ class SPLM_Dashboard_Frontend {
 			'canRescheduleGames' => class_exists( 'SPEM_Events_Management' ),
 			'hasEventsManager'   => class_exists( 'SPEM_REST_API' ),
 			'hasPlayerTools'     => class_exists( 'SPPT_REST_API' ),
+			// M8: hasNotesModule lets the React UI hide the notes panel when
+			// the optional league_player_notes module is not enabled, instead
+			// of letting the user click through to a 503.
+			'hasNotesModule'     => in_array( 'league_player_notes', (array) get_option( 'spat_enabled_modules', array() ), true ),
 		);
 
 		wp_localize_script( 'splm-dashboard', 'splmDashboard', array(

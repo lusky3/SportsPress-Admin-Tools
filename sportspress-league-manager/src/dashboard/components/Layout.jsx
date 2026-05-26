@@ -49,7 +49,10 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 	const handleSearch = ( q ) => {
 		setSearchQuery( q );
 		clearTimeout( searchTimer.current );
-		if ( q.length < 2 ) { setSearchResults( [] ); setSearchOpen( false ); return; }
+		// M5: client threshold (3) matches the server-side floor in
+		// SPLM_REST_API::search_players so we don't burn a request that
+		// the server will reject as too-short.
+		if ( q.length < 3 ) { setSearchResults( [] ); setSearchOpen( false ); return; }
 		searchTimer.current = setTimeout( () => {
 			searchPlayers( q ).then( ( r ) => { setSearchResults( r ); setSearchOpen( true ); } ).catch( () => {} );
 		}, 300 );
