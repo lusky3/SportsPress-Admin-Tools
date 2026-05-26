@@ -54,11 +54,15 @@ class SPPR_Player_Registration {
 			return;
 		}
 
-		// Persist the in-progress marker so reloads / admin re-runs see it.
-		$order->update_meta_data( '_spr_processed', 'processing' );
-		$order->save();
-
+		// Open the try IMMEDIATELY after the lock claim so the finally runs on
+		// every exit path (including throws during meta writes) and the lock is
+		// always released. The lock — not the 'processing' meta marker — is the
+		// authoritative single-flight guard, so a single save at the end suffices.
 		try {
+			// In-progress marker for reload / admin-rerun visibility; the actual
+			// concurrency guard is the SPAT_Lock acquired above.
+			$order->update_meta_data( '_spr_processed', 'processing' );
+
 			$customer_email = strtolower( sanitize_email( $order->get_billing_email() ) );
 			$user_id = $order->get_user_id();
 
@@ -96,6 +100,10 @@ class SPPR_Player_Registration {
 						$this->link_user_to_player( $user_id, $result['player_id'] );
 					}
 					SPPR_Database::log_registration_activity( $order_id, $customer_name, $result['player_id'], $season, $item['position'], $result['action'], true );
+				} elseif ( ! empty( $result['action'] ) ) {
+					// No player linked but we still want a paper trail for terminal
+					// outcomes like multiple_players_found_email_conflict.
+					SPPR_Database::log_registration_activity( $order_id, $customer_name, 0, $season, $item['position'], $result['action'] );
 				}
 			}
 
@@ -113,6 +121,14 @@ class SPPR_Player_Registration {
 				SPAT_Logger::error( 'player_registration', 'process_completed_order failed', $context );
 			}
 			throw $e;
+		} finally {
+			// Always release the lock so the next attempt (rerun / retry) is not
+			// blocked by the 300s TTL. Matches the e-Transfer webhook pattern.
+			if ( class_exists( 'SPAT_Lock' ) ) {
+				SPAT_Lock::release( $lock_key );
+			} else {
+				wp_cache_delete( $lock_key, 'spr_claims' );
+			}
 		}
 	}
 
@@ -124,12 +140,18 @@ class SPPR_Player_Registration {
 	 */
 	public function handle_order_reversed( $order_id ) {
 		$order = wc_get_order( $order_id );
-		$customer_name = '';
-		if ( $order ) {
-			$raw_name = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
-			$cleaned = $this->validate_and_clean_name( $raw_name );
-			$customer_name = $cleaned ? $cleaned : $raw_name;
+		if ( ! $order ) {
+			return;
 		}
+		// Only log a reversal for orders that actually registered a player. Orders
+		// that never matched a registration product (or never finished processing)
+		// would otherwise spam the activity log with refund/cancel noise.
+		if ( $order->get_meta( '_spr_processed' ) !== '1' ) {
+			return;
+		}
+		$raw_name = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
+		$cleaned = $this->validate_and_clean_name( $raw_name );
+		$customer_name = $cleaned ? $cleaned : $raw_name;
 		SPPR_Database::log_registration_activity( $order_id, $customer_name, 0, '', '', 'registration_reversed' );
 	}
 
@@ -203,6 +225,17 @@ class SPPR_Player_Registration {
 		$match = $this->find_existing_player( $customer_name, $customer_email );
 		$player_id = $match['player_id'];
 		$action = $match['action'];
+
+		// Email conflict is terminal: a player with the same name exists but a
+		// different stored email — likely a guest/user duplicate or two distinct
+		// people sharing a name. Do NOT auto-create a parallel record; surface
+		// the conflict for manual reconciliation instead.
+		if ( $action === 'multiple_players_found_email_conflict' ) {
+			return array(
+				'player_id' => 0,
+				'action' => 'multiple_players_found_email_conflict',
+			);
+		}
 
 		if ( $player_id && get_option( 'spr_auto_update', '1' ) !== '1' ) {
 			return array(
@@ -386,7 +419,13 @@ class SPPR_Player_Registration {
 		$user = get_user_by( 'id', $user_id );
 		$role = get_option( 'spr_player_role', 'sp_player' );
 
-		if ( ! $user || in_array( $role, $user->roles ) ) {
+		if ( ! $user ) {
+			return;
+		}
+		if ( in_array( $role, $user->roles, true ) ) {
+			// Surface "no-op" runs in the admin log so the 'role_already_exists'
+			// label is actually populated instead of being a dead value.
+			SPPR_Database::log_role_assignment( $user_id, $user->display_name, 'role_already_exists' );
 			return;
 		}
 
