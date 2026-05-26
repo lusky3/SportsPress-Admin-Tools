@@ -78,15 +78,23 @@ require admin authentication and nonce verification.
 
 1. Go to Settings → SportsPress Admin Tools → e-Transfer tab
 2. Copy the Webhook URL
-3. Set your service provider (Generic, deliverhook.com, or Cloudflare)
-4. Note the Webhook Secret for your forwarding service
-5. Save settings
+3. Note the Webhook Secret for your forwarding service
+4. Save settings
 
 ### Set Up Email Forwarding
 
 Configure your email forwarding service to POST e-Transfer notification emails
 to the webhook URL with the `X-Signature` header containing the HMAC SHA256
 signature of the request body.
+
+**Signature canonicalization:** the HMAC is computed over the *exact* raw HTTP
+request body received by WordPress (the bytes returned by
+`WP_REST_Request::get_body()`). The signing side must transmit the same byte
+sequence — no JSON re-encoding, no whitespace normalization, no trailing
+newline insertion, no character-set conversion. Mismatches between the
+forwarding service's pre-sign body and the body delivered on the wire are the
+most common cause of `invalid_signature` 401 responses; verify by capturing
+both bodies and diffing byte-for-byte.
 
 For Cloudflare Email Routing, download the pre-configured worker files from
 the e-Transfer settings tab.

@@ -29,18 +29,29 @@ class SPET_ETransfer_Automation {
 	}
 
 	public function handle_webhook( $request ) {
-		// Rate limiting (IP-based, 30 requests/minute)
-		$ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
-		// SECURITY ASSUMPTION: X-Forwarded-For is only trusted when REMOTE_ADDR is a private/reserved IP,
-		// meaning the request came through a known reverse proxy (e.g., nginx, load balancer).
-		// If the server is directly exposed to the internet without a proxy, this is safe because
-		// the condition below will not match. If behind multiple proxies, only the first
-		// (leftmost, client-supplied) IP is used — ensure your outermost proxy overwrites
-		// X-Forwarded-For rather than appending to prevent spoofing.
-		if ( filter_var( $ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE ) === false ) {
+		$body = $request->get_body();
+		$headers = $request->get_headers();
+
+		// Verify signature BEFORE incrementing rate-limit counters to prevent
+		// unauthenticated requests bloating wp_options.
+		if ( ! $this->verify_signature( $body, $headers ) ) {
+			return new WP_Error( 'invalid_signature', 'Invalid webhook signature', array( 'status' => 401 ) );
+		}
+
+		// Rate limiting (IP-based, 30 requests/minute) — only applied to
+		// requests with a valid signature.
+		$remote_addr = $_SERVER['REMOTE_ADDR'] ?? '';
+		$ip = $remote_addr ?: 'unknown';
+		// Trust X-Forwarded-For only when REMOTE_ADDR is in the admin-configured
+		// trusted-proxy allowlist (spet_trusted_proxy_ips, one IP/CIDR per line).
+		$trusted_proxies_raw = get_option( 'spet_trusted_proxy_ips', '' );
+		if ( ! empty( $remote_addr ) && ! empty( $trusted_proxies_raw ) && $this->is_trusted_proxy( $remote_addr, $trusted_proxies_raw ) ) {
 			$forwarded = $request->get_header( 'x-forwarded-for' );
 			if ( $forwarded ) {
-				$ip = trim( explode( ',', $forwarded )[0] );
+				$candidate = trim( explode( ',', $forwarded )[0] );
+				if ( filter_var( $candidate, FILTER_VALIDATE_IP ) !== false ) {
+					$ip = $candidate;
+				}
 			}
 		}
 		$rate_key = 'spet_rate_' . md5( $ip );
@@ -49,12 +60,9 @@ class SPET_ETransfer_Automation {
 			return new WP_Error( 'rate_limited', 'Too many requests', array( 'status' => 429 ) );
 		}
 
-		$body = $request->get_body();
-		$headers = $request->get_headers();
-
-		// Verify signature
-		if ( ! $this->verify_signature( $body, $headers ) ) {
-			return new WP_Error( 'invalid_signature', 'Invalid webhook signature', array( 'status' => 401 ) );
+		// Secondary global counter (~600/min) to cap aggregate verified traffic.
+		if ( $this->check_rate_limit( 'spet_rl_global', 600 ) ) {
+			return new WP_Error( 'rate_limited', 'Too many requests', array( 'status' => 429 ) );
 		}
 
 		// Replay protection (timestamp validation)
@@ -95,117 +103,199 @@ class SPET_ETransfer_Automation {
 			return new WP_Error( 'invalid_payment_data', 'Could not extract payment data', array( 'status' => 400 ) );
 		}
 
-		// Check for duplicate reference number
-		if ( SPET_Database::reference_number_exists( $payment_data['reference_number'] ) ) {
+		// Acquire short-lived in-process lock on the reference number to prevent
+		// a duplicate-check + insert race between concurrent webhook deliveries.
+		$lock_key = 'spet_ref_lock_' . md5( $payment_data['reference_number'] );
+		if ( class_exists( 'SPAT_Lock' ) ) {
+			$lock_acquired = SPAT_Lock::acquire( $lock_key, 30 );
+		} else {
+			$lock_acquired = wp_cache_add( $lock_key, 1, 'spet_locks', 30 );
+		}
+		if ( ! $lock_acquired ) {
+			return rest_ensure_response(
+				array(
+					'status' => 'duplicate',
+					'message' => 'Reference number is currently being processed',
+				)
+			);
+		}
+
+		try {
+			// Check for duplicate reference number
+			if ( SPET_Database::reference_number_exists( $payment_data['reference_number'] ) ) {
+				// Audit row records the duplicate attempt but stores reference_number as NULL
+				// so the UNIQUE index on reference_number does not silently drop the INSERT.
+				SPET_Database::log_etransfer_activity(
+					array(
+						'from_email' => $payment_data['customer_email'],
+						'from_name' => $payment_data['sender_name'],
+						'amount' => $payment_data['amount'],
+						'reference_number' => null,
+						'match_criteria' => '',
+						'order_id' => null,
+						'result' => 'Duplicate webhook - reference number already processed',
+						'webhook_data' => $data,
+						'payment_data' => $payment_data,
+					)
+				);
+				return rest_ensure_response(
+					array(
+						'status' => 'duplicate',
+						'message' => 'Reference number already processed',
+					)
+				);
+			}
+
+			// Find matching order
+			$order_id = $this->find_matching_order( $payment_data );
+
+			// Validate amount if order was matched
+			$amount_mismatch = false;
+			if ( $order_id ) {
+				$order = wc_get_order( $order_id );
+				if ( $order ) {
+					$order_total = floatval( $order->get_total() );
+					$payment_amount = floatval( $payment_data['amount'] );
+					if ( abs( $order_total - $payment_amount ) > 0.01 ) {
+						$amount_mismatch = true;
+						$payment_data['match_criteria'] = ( $payment_data['match_criteria'] ?? '' ) .
+							sprintf( ' | Amount mismatch: paid $%.2f, order $%.2f', $payment_amount, $order_total );
+					}
+				}
+			}
+
+			// Determine result message
+			if ( ! $order_id ) {
+				$result = 'No matching order found';
+			} elseif ( $amount_mismatch ) {
+				$result = sprintf(
+					'Amount mismatch - paid $%.2f, order $%.2f - pending manual review',
+					$payment_data['amount'],
+					floatval( wc_get_order( $order_id )->get_total() )
+				);
+			} else {
+				$result = 'Order updated successfully';
+			}
+
+			// Log activity
 			SPET_Database::log_etransfer_activity(
 				array(
 					'from_email' => $payment_data['customer_email'],
 					'from_name' => $payment_data['sender_name'],
 					'amount' => $payment_data['amount'],
 					'reference_number' => $payment_data['reference_number'],
-					'match_criteria' => '',
-					'order_id' => null,
-					'result' => 'Duplicate webhook - reference number already processed',
+					'match_criteria' => $payment_data['match_criteria'] ?? '',
+					'order_id' => $amount_mismatch ? null : $order_id,
+					'result' => $result,
 					'webhook_data' => $data,
 					'payment_data' => $payment_data,
 				)
 			);
-			return rest_ensure_response(
-				array(
-					'status' => 'duplicate',
-					'message' => 'Reference number already processed',
-				)
-			);
-		}
 
-		// Find matching order
-		$order_id = $this->find_matching_order( $payment_data );
+			if ( $order_id && ! $amount_mismatch ) {
+				$this->process_payment( $order_id, $payment_data );
 
-		// Validate amount if order was matched
-		$amount_mismatch = false;
-		if ( $order_id ) {
-			$order = wc_get_order( $order_id );
-			if ( $order ) {
-				$order_total = floatval( $order->get_total() );
-				$payment_amount = floatval( $payment_data['amount'] );
-				if ( abs( $order_total - $payment_amount ) > 0.01 ) {
-					$amount_mismatch = true;
-					$payment_data['match_criteria'] = ( $payment_data['match_criteria'] ?? '' ) .
-						sprintf( ' | Amount mismatch: paid $%.2f, order $%.2f', $payment_amount, $order_total );
-				}
+				// Fire notification for matched payment
+				do_action( 'spat_payment_matched', $payment_data['sender_name'], $payment_data['amount'], $order_id );
+
+				return rest_ensure_response(
+					array(
+						'status' => 'success',
+						'message' => 'Payment processed',
+					)
+				);
 			}
-		}
 
-		// Determine result message
-		if ( ! $order_id ) {
-			$result = 'No matching order found';
-		} elseif ( $amount_mismatch ) {
-			$result = sprintf(
-				'Amount mismatch - paid $%.2f, order $%.2f - pending manual review',
-				$payment_data['amount'],
-				floatval( wc_get_order( $order_id )->get_total() )
-			);
-		} else {
-			$result = 'Order updated successfully';
-		}
+			if ( $amount_mismatch ) {
+				// Fire unmatched notification for amount mismatch (requires manual review)
+				do_action( 'spat_payment_unmatched', $payment_data['sender_name'], $payment_data['amount'], $payment_data['reference_number'] );
 
-		// Log activity
-		SPET_Database::log_etransfer_activity(
-			array(
-				'from_email' => $payment_data['customer_email'],
-				'from_name' => $payment_data['sender_name'],
-				'amount' => $payment_data['amount'],
-				'reference_number' => $payment_data['reference_number'],
-				'match_criteria' => $payment_data['match_criteria'] ?? '',
-				'order_id' => $amount_mismatch ? null : $order_id,
-				'result' => $result,
-				'webhook_data' => $data,
-				'payment_data' => $payment_data,
-			)
-		);
+				return rest_ensure_response(
+					array(
+						'status' => 'amount_mismatch',
+						'message' => 'Payment amount does not match order total',
+					)
+				);
+			}
 
-		if ( $order_id && ! $amount_mismatch ) {
-			$this->process_payment( $order_id, $payment_data );
-
-			// Fire notification for matched payment
-			do_action( 'spat_payment_matched', $payment_data['sender_name'], $payment_data['amount'], $order_id );
-
-			return rest_ensure_response(
-				array(
-					'status' => 'success',
-					'message' => 'Payment processed',
-				)
-			);
-		}
-
-		if ( $amount_mismatch ) {
-			// Fire unmatched notification for amount mismatch (requires manual review)
+			// Fire notification for unmatched payment
 			do_action( 'spat_payment_unmatched', $payment_data['sender_name'], $payment_data['amount'], $payment_data['reference_number'] );
 
 			return rest_ensure_response(
 				array(
-					'status' => 'amount_mismatch',
-					'message' => 'Payment amount does not match order total',
+					'status' => 'no_match',
+					'message' => 'No matching order found',
 				)
 			);
+		} finally {
+			if ( class_exists( 'SPAT_Lock' ) ) {
+				SPAT_Lock::release( $lock_key );
+			} else {
+				wp_cache_delete( $lock_key, 'spet_locks' );
+			}
 		}
-
-		// Fire notification for unmatched payment
-		do_action( 'spat_payment_unmatched', $payment_data['sender_name'], $payment_data['amount'], $payment_data['reference_number'] );
-
-		return rest_ensure_response(
-			array(
-				'status' => 'no_match',
-				'message' => 'No matching order found',
-			)
-		);
 	}
 
 	/**
-	 * Atomic rate limit check using wp_options with INSERT ON DUPLICATE KEY UPDATE.
+	 * Check whether $remote_addr is in the trusted-proxy allowlist.
+	 * Supports plain IPs and CIDR notation (IPv4 only for CIDR).
+	 */
+	private function is_trusted_proxy( $remote_addr, $allowlist_raw ) {
+		$lines = preg_split( '/\s+/', trim( $allowlist_raw ) );
+		foreach ( $lines as $entry ) {
+			$entry = trim( $entry );
+			if ( empty( $entry ) ) {
+				continue;
+			}
+			if ( strpos( $entry, '/' ) !== false ) {
+				// CIDR match (IPv4)
+				list( $subnet, $bits ) = explode( '/', $entry, 2 );
+				$bits = (int) $bits;
+				if ( filter_var( $subnet, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 ) && filter_var( $remote_addr, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 ) && $bits >= 0 && $bits <= 32 ) {
+					$ip_long = ip2long( $remote_addr );
+					$subnet_long = ip2long( $subnet );
+					$mask = $bits === 0 ? 0 : ( ~0 << ( 32 - $bits ) ) & 0xFFFFFFFF;
+					if ( ( $ip_long & $mask ) === ( $subnet_long & $mask ) ) {
+						return true;
+					}
+				}
+			} elseif ( $entry === $remote_addr ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Rate limit check. Prefers the external object cache (Redis/Memcached) when
+	 * available to avoid wp_options writes on every verified webhook. Falls back
+	 * to an atomic wp_options-backed counter when no external cache is present.
+	 *
 	 * Returns true if rate limited, false if allowed.
 	 */
-	private function check_rate_limit( $rate_key ) {
+	private function check_rate_limit( $rate_key, $limit = 30, $window = 60 ) {
+		// Prefer in-memory object cache when an external backend is available.
+		if ( wp_using_ext_object_cache() ) {
+			$group = 'spet_rate_limit';
+			$count = wp_cache_get( $rate_key, $group );
+			if ( false === $count ) {
+				// Establish the first counter with the window TTL.
+				if ( wp_cache_add( $rate_key, 1, $group, $window ) ) {
+					return false;
+				}
+				// Lost the race — fall through to incr.
+			}
+			$new = wp_cache_incr( $rate_key, 1, $group );
+			if ( false === $new ) {
+				// incr failed (key expired between get and incr); start fresh.
+				wp_cache_add( $rate_key, 1, $group, $window );
+				return false;
+			}
+			return (int) $new > (int) $limit;
+		}
+
+		// Fallback: atomic wp_options-backed counter for hosts without an
+		// external object cache.
 		global $wpdb;
 		$now = time();
 		$option_name = '_transient_' . $rate_key;
@@ -221,7 +311,7 @@ class SPET_ETransfer_Automation {
 					CONCAT(CAST(SUBSTRING_INDEX(option_value, ':', 1) AS UNSIGNED) + 1, ':', SUBSTRING_INDEX(option_value, ':', -1))
 				)",
 				$option_name,
-				$now - 60,
+				$now - $window,
 				$now
 			)
 		);
@@ -229,18 +319,20 @@ class SPET_ETransfer_Automation {
 		$val = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $option_name ) );
 		if ( $val ) {
 			$count = (int) explode( ':', $val )[0];
-			$limited = $count > 30;
+			$limited = $count > (int) $limit;
 		} else {
 			$limited = false;
 		}
 
 		// Periodically clean up stale rate limit entries (1 in 100 chance).
+		// LIKE covers both per-IP counters (_transient_spet_rate_*) and the
+		// global aggregate counter (_transient_spet_rl_global).
 		if ( wp_rand( 1, 100 ) === 1 ) {
 			$stale_threshold = $now - 300; // 5 minutes
 			$wpdb->query(
 				$wpdb->prepare(
 					"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s AND CAST(SUBSTRING_INDEX(option_value, ':', -1) AS UNSIGNED) < %d",
-					$wpdb->esc_like( '_transient_spet_rate_' ) . '%',
+					$wpdb->esc_like( '_transient_spet_r' ) . '%',
 					$stale_threshold
 				)
 			);
@@ -283,22 +375,28 @@ class SPET_ETransfer_Automation {
 		}
 
 		// Extract reference number
-		if ( preg_match( '/Reference Number:\s*\n\s*([A-Z\d]+)/i', $text, $matches ) ) {
+		if ( preg_match( '/Reference Number:\s*\n?\s*([A-Z\d]+)/i', $text, $matches ) ) {
 			$reference_number = $matches[1];
 		} else {
 			return false;
 		}
 
 		// Extract amount
-		if ( preg_match( '/Amount:\s*\n\s*\$([\d,]+\.?\d*)/', $text, $matches ) ) {
+		if ( preg_match( '/Amount:\s*\n?\s*\$([\d,]+\.?\d*)/', $text, $matches ) ) {
 			$amount = floatval( str_replace( ',', '', $matches[1] ) );
 		} else {
 			return false;
 		}
 
-		// Extract sender name
-		if ( preg_match( '/Sent From:\s*\n\s*(.+)/i', $text, $matches ) ) {
-			$sender_name = trim( $matches[1] );
+		// Reject non-positive amounts; matching a zero-amount or negative
+		// "payment" would auto-complete orders with no real funds transferred.
+		if ( $amount <= 0 ) {
+			return false;
+		}
+
+		// Extract sender name (cap length, single line, sanitize)
+		if ( preg_match( '/Sent From:\s*\n?\s*([^\r\n]{1,80})/i', $text, $matches ) ) {
+			$sender_name = sanitize_text_field( trim( $matches[1] ) );
 		} else {
 			$sender_name = '';
 		}

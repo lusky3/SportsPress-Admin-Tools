@@ -12,7 +12,7 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 }
 
 // Check if parent plugin wants data removed
-if ( get_option( 'spat_remove_data_on_uninstall' ) ) {
+if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 
 	global $wpdb;
 

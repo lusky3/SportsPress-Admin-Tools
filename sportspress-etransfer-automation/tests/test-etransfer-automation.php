@@ -24,6 +24,11 @@ if (!function_exists('add_action')) {
 if (!function_exists('register_rest_route')) {
     function register_rest_route() {}
 }
+if (!function_exists('sanitize_text_field')) {
+    function sanitize_text_field($str) {
+        return trim(preg_replace('/[\r\n\t\0\x0B]+/', ' ', (string) $str));
+    }
+}
 
 require_once dirname(__FILE__) . '/../includes/class-etransfer-automation.php';
 

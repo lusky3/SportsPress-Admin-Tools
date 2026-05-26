@@ -21,6 +21,20 @@ class SPET_ETransfer_Admin {
 	public function __construct() {
 		add_action( 'admin_menu', array( $this, 'add_woocommerce_menu' ), 99 );
 		add_action( 'admin_head', array( $this, 'update_menu_count' ) );
+		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_styles' ) );
+	}
+
+	public function enqueue_admin_styles( $hook ) {
+		// Only enqueue on our admin page.
+		if ( strpos( (string) $hook, 'etransfer-webhooks' ) === false ) {
+			return;
+		}
+		wp_enqueue_style(
+			'spet-etransfer-admin',
+			plugin_dir_url( __DIR__ ) . 'assets/css/etransfer-admin.css',
+			array(),
+			defined( 'SPET_VERSION' ) ? SPET_VERSION : '1.0.0'
+		);
 	}
 
 	public function add_woocommerce_menu() {
@@ -92,8 +106,27 @@ class SPET_ETransfer_Admin {
 			}
 			$log_id = intval( $_POST['log_index'] );
 			$order_id = intval( $_POST['order_id'] );
-			if ( $this->process_manual_match( $log_id, $order_id ) ) {
+			$force_mismatch = isset( $_POST['force_mismatch'] ) && $_POST['force_mismatch'] === '1';
+			$result = $this->process_manual_match( $log_id, $order_id, $force_mismatch );
+			if ( $result === true ) {
 				echo '<div class="notice notice-success"><p>' . esc_html__( 'Manual match processed successfully!', 'sportspress-admin-tools' ) . '</p></div>';
+			} elseif ( is_array( $result ) && isset( $result['error'] ) && $result['error'] === 'amount_mismatch' ) {
+				// Render a confirm form requiring force=1
+				$mismatch_message = sprintf(
+					/* translators: 1: e-Transfer amount, 2: order ID, 3: order total */
+					__( 'Amount mismatch: e-Transfer was $%1$.2f but order #%2$d total is $%3$.2f. Confirm to proceed.', 'sportspress-admin-tools' ),
+					(float) $result['log_amount'],
+					(int) $order_id,
+					(float) $result['order_total']
+				);
+				echo '<div class="notice notice-warning"><p>' . esc_html( $mismatch_message ) . '</p>';
+				echo '<form method="post" style="margin-top:8px;">';
+				wp_nonce_field( 'manual_match_etransfer' );
+				echo '<input type="hidden" name="log_index" value="' . esc_attr( $log_id ) . '">';
+				echo '<input type="hidden" name="order_id" value="' . esc_attr( $order_id ) . '">';
+				echo '<input type="hidden" name="force_mismatch" value="1">';
+				echo '<input type="submit" name="manual_match" value="' . esc_attr__( 'Confirm match despite mismatch', 'sportspress-admin-tools' ) . '" class="button button-primary">';
+				echo '</form></div>';
 			} else {
 				echo '<div class="notice notice-error"><p>' . esc_html__( 'Failed to process manual match.', 'sportspress-admin-tools' ) . '</p></div>';
 			}
@@ -133,12 +166,15 @@ class SPET_ETransfer_Admin {
 			
 			<h2><?php esc_html_e( 'Unmatched Webhooks', 'sportspress-admin-tools' ); ?></h2>
 			<?php
-			$logs = SPET_Database::get_etransfer_logs( 50, true );
-			$this->display_unmatched_webhooks( $logs );
+			$unmatched_logs = SPET_Database::get_unmatched_etransfer_logs( 50 );
+			$this->display_unmatched_webhooks( $unmatched_logs );
 			?>
-			
+
 			<h2><?php esc_html_e( 'All Webhook Activity', 'sportspress-admin-tools' ); ?></h2>
-			<?php $this->display_all_webhooks( $logs ); ?>
+			<?php
+			$all_logs = SPET_Database::get_etransfer_logs( 50, true );
+			$this->display_all_webhooks( $all_logs );
+			?>
 			
 			<h2><?php esc_html_e( 'Log Maintenance', 'sportspress-admin-tools' ); ?></h2>
 			<p><?php esc_html_e( 'Logs older than 90 days are automatically cleaned up daily. You can also purge them manually.', 'sportspress-admin-tools' ); ?></p>
@@ -155,14 +191,8 @@ class SPET_ETransfer_Admin {
 			echo '<p>' . esc_html__( 'Error retrieving webhook logs.', 'sportspress-admin-tools' ) . '</p>';
 			return;
 		}
-		$unmatched = array_filter(
-			$logs,
-			function ( $log ) {
-				return ! $log->order_id
-				&& ( strpos( $log->result, 'No matching order' ) !== false || strpos( $log->result, 'Amount mismatch' ) !== false )
-				&& $log->result !== 'Hidden from management';
-			}
-		);
+
+		$unmatched = is_array( $logs ) ? $logs : array();
 
 		if ( empty( $unmatched ) ) {
 			echo '<p>' . esc_html__( 'No unmatched webhooks found.', 'sportspress-admin-tools' ) . '</p>';
@@ -262,10 +292,9 @@ class SPET_ETransfer_Admin {
 		}
 
 		echo '</tbody></table>';
-		echo '<style>.success{color:#00a32a}.error{color:#d63638}</style>';
 	}
 
-	private function process_manual_match( $log_id, $order_id ) {
+	private function process_manual_match( $log_id, $order_id, $force_mismatch = false ) {
 		global $wpdb;
 		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
 
@@ -277,7 +306,14 @@ class SPET_ETransfer_Admin {
 		);
 
 		if ( $log === null ) {
-			error_log( 'SPAT: Database error fetching log - ' . $wpdb->last_error );
+			if ( get_option( 'spat_debug_verbose_logging', '0' ) === '1' ) {
+				error_log( 'SPAT: Database error fetching log - ' . $wpdb->last_error );
+			}
+			return false;
+		}
+
+		// Refuse to re-process an already-matched log entry.
+		if ( ! empty( $log->order_id ) || ( isset( $log->result ) && strpos( $log->result, 'Manually matched' ) === 0 ) ) {
 			return false;
 		}
 
@@ -287,22 +323,30 @@ class SPET_ETransfer_Admin {
 			return false;
 		}
 
-		// Add transaction ID (reference number)
-		if ( ! empty( $log->reference_number ) ) {
-			$order->set_transaction_id( $log->reference_number );
-		}
-
-		// Check for amount mismatch and warn
+		// Check for amount mismatch — require explicit force_mismatch confirmation.
 		$order_total = floatval( $order->get_total() );
 		$log_amount = floatval( $log->amount );
 		if ( abs( $order_total - $log_amount ) > 0.01 ) {
+			if ( ! $force_mismatch ) {
+				return array(
+					'error' => 'amount_mismatch',
+					'log_amount' => $log_amount,
+					'order_total' => $order_total,
+				);
+			}
 			$order->add_order_note(
 				sprintf(
-					__( '⚠️ Amount mismatch: e-Transfer was $%.2f but order total is $%.2f. Please verify.', 'sportspress-admin-tools' ),
+					/* translators: 1: e-Transfer amount, 2: order total */
+					__( 'Amount mismatch: e-Transfer was $%1$.2f but order total is $%2$.2f. Manually confirmed by admin.', 'sportspress-admin-tools' ),
 					$log_amount,
 					$order_total
 				)
 			);
+		}
+
+		// Add transaction ID (reference number)
+		if ( ! empty( $log->reference_number ) ) {
+			$order->set_transaction_id( $log->reference_number );
 		}
 
 		// Add order note
@@ -313,27 +357,39 @@ class SPET_ETransfer_Admin {
 		);
 		$order->add_order_note( $note );
 
+		// Conditionally claim the log row before completing the order. The
+		// WHERE clause ensures only ONE concurrent admin request wins; the
+		// other gets rows_affected = 0 and bails out without flipping the
+		// order to completed twice.
+		$claimed = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE `{$wpdb->prefix}spat_etransfer_logs`
+				SET order_id = %d,
+					result = %s,
+					match_criteria = %s
+				WHERE id = %d AND (order_id IS NULL OR order_id = 0)",
+				intval( $order_id ),
+				'Manually matched and processed successfully',
+				'Manual Match',
+				intval( $log_id )
+			)
+		);
+
+		if ( $claimed === false ) {
+			if ( get_option( 'spat_debug_verbose_logging', '0' ) === '1' ) {
+				error_log( 'SPAT: Failed to update log entry - ' . $wpdb->last_error );
+			}
+			return false;
+		}
+
+		// Only flip the order status when this request actually won the claim.
+		if ( (int) $wpdb->rows_affected !== 1 ) {
+			return false;
+		}
+
 		// Update order status to completed
 		$order->update_status( 'completed', __( 'Payment confirmed via manual webhook match.', 'sportspress-admin-tools' ) );
 		$order->save();
-
-		// Update log entry
-		$result = $wpdb->update(
-			$wpdb->prefix . 'spat_etransfer_logs',
-			array(
-				'order_id' => intval( $order_id ),
-				'result' => 'Manually matched and processed successfully',
-				'match_criteria' => 'Manual Match',
-			),
-			array( 'id' => intval( $log_id ) ),
-			array( '%d', '%s', '%s' ),
-			array( '%d' )
-		);
-
-		if ( $result === false ) {
-			error_log( 'SPAT: Failed to update log entry - ' . $wpdb->last_error );
-			return false;
-		}
 
 		return true;
 	}

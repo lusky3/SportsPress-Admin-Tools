@@ -15,10 +15,22 @@ class SPET_Admin {
 	public function __construct() {
 		add_action( 'spat_admin_page_tabs', array( $this, 'add_admin_tab' ) );
 		add_action( 'spat_admin_page_content', array( $this, 'add_admin_content' ) );
+		add_action( 'wp_ajax_spet_reveal_webhook_secret', array( $this, 'ajax_reveal_webhook_secret' ) );
+	}
+
+	/**
+	 * AJAX endpoint to reveal the webhook secret. Gated on manage_options + nonce.
+	 */
+	public function ajax_reveal_webhook_secret() {
+		check_ajax_referer( 'spet_reveal_webhook_secret', 'nonce' );
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Permission denied.', 'sportspress-etransfer-automation' ) ), 403 );
+		}
+		wp_send_json_success( array( 'secret' => get_option( 'spet_webhook_secret', '' ) ) );
 	}
 
 	public function add_admin_tab() {
-		echo '<a href="#etransfer" class="nav-tab">e-Transfer</a>';
+		echo '<a href="#etransfer" class="nav-tab">' . esc_html__( 'e-Transfer', 'sportspress-etransfer-automation' ) . '</a>';
 	}
 
 	public function add_admin_content() {
@@ -35,20 +47,51 @@ class SPET_Admin {
 				wp_die( __( 'You do not have permission to access this page.', 'sportspress-etransfer-automation' ) );
 			}
 
-			update_option( 'spet_webhook_secret', sanitize_text_field( wp_unslash( $_POST['spet_webhook_secret'] ) ) );
-			update_option( 'spet_service_provider', sanitize_text_field( wp_unslash( $_POST['spet_service_provider'] ) ) );
+			$submitted_secret = sanitize_text_field( wp_unslash( $_POST['spet_webhook_secret'] ) );
+			$is_masked_secret = ( $submitted_secret !== '' && preg_match( '/^(?:\xE2\x80\xA2)+$/', $submitted_secret ) );
+			$secret_saved = false;
+
+			if ( $is_masked_secret ) {
+				// User left the masked placeholder in place; do not overwrite the stored secret.
+				$secret_saved = true;
+			} elseif ( strlen( $submitted_secret ) < 32 ) {
+				echo '<div class="notice notice-error"><p>' . esc_html__( 'Webhook secret must be at least 32 characters long.', 'sportspress-etransfer-automation' ) . '</p></div>';
+			} else {
+				update_option( 'spet_webhook_secret', $submitted_secret );
+				$secret_saved = true;
+			}
+
+			// Trusted-proxy allowlist for rate limiting
+			if ( isset( $_POST['spet_trusted_proxy_ips'] ) ) {
+				update_option( 'spet_trusted_proxy_ips', sanitize_textarea_field( wp_unslash( $_POST['spet_trusted_proxy_ips'] ) ) );
+			}
+
+			// PII retention (days)
+			if ( isset( $_POST['spet_pii_retention_days'] ) ) {
+				$pii_days = max( 1, intval( $_POST['spet_pii_retention_days'] ) );
+				update_option( 'spet_pii_retention_days', $pii_days );
+			}
 
 			// Validate and sanitize equivalent names
-			$equivalent_names = $this->validate_equivalent_names( wp_unslash( $_POST['spet_equivalent_names'] ) );
-			update_option( 'spet_equivalent_names', $equivalent_names );
+			if ( isset( $_POST['spet_equivalent_names'] ) ) {
+				$equivalent_names_input = wp_unslash( $_POST['spet_equivalent_names'] );
+				$equivalent_names = $this->validate_equivalent_names( $equivalent_names_input );
+				update_option( 'spet_equivalent_names', $equivalent_names );
+			}
 
 			SPET_Name_Matcher::clear_cache();
-			echo '<div class="notice notice-success"><p>' . esc_html__( 'Settings saved.', 'sportspress-etransfer-automation' ) . '</p></div>';
+			if ( $secret_saved ) {
+				echo '<div class="notice notice-success"><p>' . esc_html__( 'Settings saved.', 'sportspress-etransfer-automation' ) . '</p></div>';
+			}
 		}
 
 		$webhook_secret = get_option( 'spet_webhook_secret', wp_generate_password( 32, false ) );
-		$service_provider = get_option( 'spet_service_provider', 'generic' );
 		$equivalent_names = get_option( 'spet_equivalent_names', $this->get_default_equivalent_names() );
+		$trusted_proxy_ips = get_option( 'spet_trusted_proxy_ips', '' );
+		$pii_retention_days = intval( get_option( 'spet_pii_retention_days', 30 ) );
+		if ( $pii_retention_days < 1 ) {
+			$pii_retention_days = 30;
+		}
 
 		if ( empty( get_option( 'spet_webhook_secret' ) ) ) {
 			update_option( 'spet_webhook_secret', $webhook_secret );
@@ -57,6 +100,12 @@ class SPET_Admin {
 		if ( empty( get_option( 'spet_equivalent_names' ) ) ) {
 			update_option( 'spet_equivalent_names', $equivalent_names );
 		}
+
+		// Mask the secret in the rendered HTML. The raw secret is only delivered
+		// via the AJAX endpoint gated on manage_options.
+		$secret_display = empty( $webhook_secret ) ? '' : str_repeat( "\xE2\x80\xA2", 16 );
+		$can_reveal_secret = current_user_can( 'manage_options' );
+		$reveal_nonce = $can_reveal_secret ? wp_create_nonce( 'spet_reveal_webhook_secret' ) : '';
 		?>
 			<form method="post">
 				<input type="hidden" name="current_tab" value="etransfer">
@@ -71,18 +120,48 @@ class SPET_Admin {
 						</td>
 					</tr>
 					<tr>
-						<th scope="row"><?php esc_html_e( 'Service Provider', 'sportspress-etransfer-automation' ); ?></th>
+						<th scope="row"><?php esc_html_e( 'Webhook Secret', 'sportspress-etransfer-automation' ); ?></th>
 						<td>
-							<label><input type="radio" name="spet_service_provider" value="generic" <?php checked( $service_provider, 'generic' ); ?> /> <?php esc_html_e( 'Generic', 'sportspress-etransfer-automation' ); ?></label><br>
-							<label><input type="radio" name="spet_service_provider" value="deliverhook" <?php checked( $service_provider, 'deliverhook' ); ?> /> <?php esc_html_e( 'deliverhook.com', 'sportspress-etransfer-automation' ); ?></label><br>
-							<label><input type="radio" name="spet_service_provider" value="cloudflare" <?php checked( $service_provider, 'cloudflare' ); ?> /> <?php esc_html_e( 'Cloudflare Email Routing', 'sportspress-etransfer-automation' ); ?></label>
+							<input type="password" id="spet_webhook_secret" name="spet_webhook_secret" value="<?php echo esc_attr( $secret_display ); ?>" class="regular-text" autocomplete="off" />
+							<?php if ( $can_reveal_secret ) : ?>
+								<button type="button" class="button" id="spet-reveal-secret" data-nonce="<?php echo esc_attr( $reveal_nonce ); ?>"><?php esc_html_e( 'Reveal', 'sportspress-etransfer-automation' ); ?></button>
+								<script>
+								(function(){
+									var btn = document.getElementById('spet-reveal-secret');
+									if (!btn) return;
+									btn.addEventListener('click', function(){
+										var field = document.getElementById('spet_webhook_secret');
+										var data = new FormData();
+										data.append('action', 'spet_reveal_webhook_secret');
+										data.append('nonce', btn.getAttribute('data-nonce'));
+										fetch(ajaxurl, { method: 'POST', credentials: 'same-origin', body: data })
+											.then(function(r){ return r.json(); })
+											.then(function(res){
+												if (res && res.success && res.data && typeof res.data.secret === 'string') {
+													field.type = 'text';
+													field.value = res.data.secret;
+													btn.disabled = true;
+												}
+											});
+									});
+								})();
+								</script>
+							<?php endif; ?>
+							<p class="description"><?php esc_html_e( 'HMAC SHA256 signing secret for webhook security. Minimum 32 characters. Leave bullets in place to keep the existing secret.', 'sportspress-etransfer-automation' ); ?></p>
 						</td>
 					</tr>
 					<tr>
-						<th scope="row"><?php esc_html_e( 'Webhook Secret', 'sportspress-etransfer-automation' ); ?></th>
+						<th scope="row"><?php esc_html_e( 'Trusted Proxy IPs', 'sportspress-etransfer-automation' ); ?></th>
 						<td>
-							<input type="password" name="spet_webhook_secret" value="<?php echo esc_attr( $webhook_secret ); ?>" class="regular-text" />
-							<p class="description"><?php esc_html_e( 'HMAC SHA256 signing secret for webhook security.', 'sportspress-etransfer-automation' ); ?></p>
+							<textarea name="spet_trusted_proxy_ips" rows="3" class="large-text code"><?php echo esc_textarea( $trusted_proxy_ips ); ?></textarea>
+							<p class="description"><?php esc_html_e( 'One IP or CIDR per line. X-Forwarded-For is only honored when the request comes from a listed proxy. Leave blank to use REMOTE_ADDR only.', 'sportspress-etransfer-automation' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'PII Retention (days)', 'sportspress-etransfer-automation' ); ?></th>
+						<td>
+							<input type="number" name="spet_pii_retention_days" min="1" max="365" value="<?php echo esc_attr( $pii_retention_days ); ?>" class="small-text" />
+							<p class="description"><?php esc_html_e( 'Webhook payload and parsed payment data are cleared from matched rows older than this many days. Row metadata (amount, reference, order ID) is retained for the full 90-day log window.', 'sportspress-etransfer-automation' ); ?></p>
 						</td>
 					</tr>
 					<tr>
@@ -161,8 +240,8 @@ class SPET_Admin {
 
 			foreach ( $names as $name ) {
 				$name = trim( $name );
-				// Only allow letters, spaces, hyphens, apostrophes
-				if ( preg_match( '/^[a-zA-Z\s\-\']+$/', $name ) && strlen( $name ) <= 50 && strlen( $name ) > 0 ) {
+				// Only allow letters (incl. Unicode), spaces, hyphens, apostrophes
+				if ( preg_match( '/^[\p{L}\s\-\']+$/u', $name ) && strlen( $name ) <= 50 && strlen( $name ) > 0 ) {
 					$valid_names[] = $name;
 				}
 			}
