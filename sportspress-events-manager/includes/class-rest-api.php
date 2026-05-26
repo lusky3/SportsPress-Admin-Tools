@@ -21,6 +21,9 @@ class SPEM_REST_API {
 		// with large player rosters. Args are kept to a single event_id so
 		// back-to-back reschedules can dedup via wp_clear_scheduled_hook();
 		// the change payload is stashed on post meta.
+		// Single-arg shape so wp_clear_scheduled_hook can dedup back-to-back
+		// reschedules; the change payload comes from _spem_pending_notification
+		// post meta inside cron_send_game_notifications().
 		add_action( 'spem_send_game_notifications', array( $this, 'cron_send_game_notifications' ), 10, 1 );
 	}
 
@@ -216,7 +219,14 @@ class SPEM_REST_API {
 
 		// Refuse to silently republish a cancelled game. Callers must clear
 		// the cancellation flag explicitly before re-entering a score.
+		// Belt-and-suspenders: also treat a draft event with a change_reason
+		// as cancelled, since cancel_game() drafts the event AND sets the
+		// reason — this catches cases where the _spem_cancelled flag was
+		// cleared but the event was never republished.
 		if ( '1' === get_post_meta( $event_id, '_spem_cancelled', true ) ) {
+			return new WP_Error( 'cancelled', 'Cannot score a cancelled game.', array( 'status' => 409 ) );
+		}
+		if ( 'draft' === $event->post_status && get_post_meta( $event_id, '_spem_change_reason', true ) ) {
 			return new WP_Error( 'cancelled', 'Cannot score a cancelled game.', array( 'status' => 409 ) );
 		}
 
@@ -329,6 +339,10 @@ class SPEM_REST_API {
 				'spem_send_game_notifications',
 				array( $event_id )
 			);
+			// wp_schedule_single_event only fires on the next page load, which
+			// can be never on low-traffic sites. Nudge WP-Cron immediately so
+			// the notification queue actually drains.
+			spawn_cron();
 		}
 
 		return new WP_REST_Response(
@@ -376,6 +390,8 @@ class SPEM_REST_API {
 				'spem_send_game_notifications',
 				array( $event_id )
 			);
+			// Nudge WP-Cron immediately — see reschedule_game() for rationale.
+			spawn_cron();
 		}
 
 		return new WP_REST_Response(
@@ -390,13 +406,38 @@ class SPEM_REST_API {
 	/**
 	 * Cron callback: send notifications outside the REST request path.
 	 *
-	 * @param int    $event_id      Event post ID.
-	 * @param string $change_type   'rescheduled' or 'cancelled'.
-	 * @param string $reason        Optional reason string.
-	 * @param string $original_date Original post_date when rescheduling.
+	 * Scheduled with a stable single-arg shape (just $event_id) so that
+	 * `wp_clear_scheduled_hook` can dedup back-to-back reschedules. The
+	 * change payload (type, reason, original_date) is stashed on post
+	 * meta by the REST handler and recovered here.
+	 *
+	 * Earlier shape took the change payload as direct args; under the
+	 * stable-args dedup pattern those args are always empty defaults
+	 * at runtime, which caused every cancellation to render as a
+	 * "Game Rescheduled / Original date: Unknown" email.
+	 *
+	 * @param int $event_id Event post ID.
 	 */
-	public function cron_send_game_notifications( $event_id, $change_type, $reason = '', $original_date = '' ) {
-		$this->notify_teams( (int) $event_id, (string) $change_type, (string) $reason, (string) $original_date );
+	public function cron_send_game_notifications( $event_id ) {
+		$event_id = (int) $event_id;
+		if ( ! $event_id ) {
+			return;
+		}
+
+		$payload = get_post_meta( $event_id, '_spem_pending_notification', true );
+		if ( ! is_array( $payload ) ) {
+			// Nothing to send (race: another invocation already consumed it).
+			return;
+		}
+
+		$change_type   = isset( $payload['change_type'] ) ? (string) $payload['change_type'] : '';
+		$reason        = isset( $payload['reason'] ) ? (string) $payload['reason'] : '';
+		$original_date = isset( $payload['original_date'] ) ? (string) $payload['original_date'] : '';
+
+		$this->notify_teams( $event_id, $change_type, $reason, $original_date );
+
+		// Consume the payload so a duplicate cron fire doesn't re-send.
+		delete_post_meta( $event_id, '_spem_pending_notification' );
 	}
 
 	/**
@@ -613,6 +654,7 @@ class SPEM_REST_API {
 
 		$returning_count = 0;
 		$not_returning   = array(); // team_id => [ 'team' => name, 'players' => [] ]
+		$unknown_count   = 0; // Players with sp_leagues meta but no entry for either season.
 
 		foreach ( $players as $player ) {
 			$leagues = get_post_meta( $player->ID, 'sp_leagues', true );
@@ -651,6 +693,14 @@ class SPEM_REST_API {
 						'name' => $player->post_title,
 					);
 				}
+			} else {
+				// Player has a current_team assignment but their sp_leagues
+				// meta doesn't reference either season — most often a legacy
+				// data shape (player added before sp_leagues was populated)
+				// or a meta-write that lost the season key. Surface the count
+				// so operators don't silently drop these players from the
+				// rollover decision.
+				$unknown_count++;
 			}
 		}
 
@@ -661,9 +711,10 @@ class SPEM_REST_API {
 		}
 
 		return new WP_REST_Response( array(
-			'returning_count'    => $returning_count,
-			'not_returning'      => $grouped,
+			'returning_count'     => $returning_count,
+			'not_returning'       => $grouped,
 			'total_not_returning' => $total,
+			'unknown_count'       => $unknown_count,
 		), 200 );
 	}
 
@@ -675,7 +726,9 @@ class SPEM_REST_API {
 	 *   - Copies each player's `sp_current_team` rows into `sp_past_team` (append-only,
 	 *     deduped against existing past_team rows).
 	 *   - LEAVES `sp_current_team` intact so multi-team players keep every team row.
-	 *   - Replaces the player's `sp_season` taxonomy term: removes from_season, adds to_season.
+	 *   - Removes `from_season` term and appends `to_season` term on `sp_season`,
+	 *     preserving any other `sp_season` terms the player may carry. (Implementation
+	 *     uses `wp_remove_object_terms` + `wp_set_object_terms( ..., $append = true )`.)
 	 *   - Remaps `sp_leagues` postmeta: `[league_id][from_season] => team` becomes
 	 *     `[league_id][to_season] => team`.
 	 *

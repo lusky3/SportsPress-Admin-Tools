@@ -35,8 +35,27 @@ class SPEM_Dynamic_Standings {
 	 * unreachable; stale entries are evicted on their own TTL.
 	 */
 	public function flush_standings_cache() {
-		$current = (int) get_option( 'spem_standings_cache_version', 1 );
-		update_option( 'spem_standings_cache_version', $current + 1, false );
+		global $wpdb;
+
+		// Ensure the option exists before we try to atomically increment it.
+		// add_option() is a no-op if the option already exists, so this is safe
+		// to call unconditionally.
+		add_option( 'spem_standings_cache_version', 1, '', false );
+
+		// Atomic increment via direct SQL. Using get_option()+update_option()
+		// is non-atomic: two concurrent flushes can both read N and both write
+		// N+1, resulting in a single bump instead of two. The version only
+		// needs to monotonically increase, so a SQL UPDATE is sufficient.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery -- atomic increment, no caching needed.
+		$wpdb->query(
+			"UPDATE {$wpdb->options}
+			SET option_value = option_value + 1
+			WHERE option_name = 'spem_standings_cache_version'"
+		);
+
+		// Bust the options cache so subsequent get_option() calls see the new
+		// value rather than the stale cached copy.
+		wp_cache_delete( 'spem_standings_cache_version', 'options' );
 	}
 
 	/**
