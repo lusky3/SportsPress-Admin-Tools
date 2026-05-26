@@ -59,14 +59,25 @@ class SPSG_Slot_Allocator {
 
 	/**
 	 * Set true when greedy_allocate() / backtrack_allocate() exited because
-	 * of a cancellation or timeout rather than a genuine "cannot place this
-	 * matchup" failure. The caller uses this to skip the backtracking
+	 * of a user-initiated cancellation rather than a genuine "cannot place
+	 * this matchup" failure. The caller uses this to skip the backtracking
 	 * fallback (which would just hit the same cancel signal) and surface
 	 * the cancellation to the engine.
 	 *
 	 * @var bool
 	 */
 	private $was_cancelled = false;
+
+	/**
+	 * Set true when greedy_allocate() / backtrack_allocate() exited because
+	 * the engine-level timeout fired. Tracked independently from
+	 * {@see $was_cancelled} so the caller can distinguish user cancel
+	 * (409 Conflict) from runaway generation (408 Request Timeout) when
+	 * surfacing the error to the UI.
+	 *
+	 * @var bool
+	 */
+	private $was_timed_out = false;
 
 	/**
 	 * Constructor
@@ -89,6 +100,7 @@ class SPSG_Slot_Allocator {
 		$this->log( 'Starting slot allocation' );
 		$this->constraint_violations = 0;
 		$this->was_cancelled = false;
+		$this->was_timed_out = false;
 
 		// Scale backtrack depth with the size of the workload — the default
 		// of 50 is meaningless for a 200-game season. Engine-level timeout
@@ -127,14 +139,10 @@ class SPSG_Slot_Allocator {
 		// out, don't bother trying backtracking — the same signal will
 		// still be true and we'd waste another budget of work to fail.
 		if ( $this->was_cancelled ) {
-			return new WP_Error(
-				'allocation_cancelled',
-				__( 'Allocation cancelled before completion.', 'sportspress-schedule-generator' ),
-				array(
-					'total_matchups' => count( $matchups ),
-					'available_slots' => count( $this->available_slots ),
-				)
-			);
+			return $this->build_cancellation_error( count( $matchups ) );
+		}
+		if ( $this->was_timed_out ) {
+			return $this->build_timeout_error( count( $matchups ) );
 		}
 
 		$this->log( 'Greedy allocation failed, trying backtracking' );
@@ -143,14 +151,10 @@ class SPSG_Slot_Allocator {
 		$schedule = $this->backtrack_allocate( $matchups, $config, $progress_callback, $cancellation_callback, $timeout_callback );
 
 		if ( $this->was_cancelled ) {
-			return new WP_Error(
-				'allocation_cancelled',
-				__( 'Allocation cancelled before completion.', 'sportspress-schedule-generator' ),
-				array(
-					'total_matchups' => count( $matchups ),
-					'available_slots' => count( $this->available_slots ),
-				)
-			);
+			return $this->build_cancellation_error( count( $matchups ) );
+		}
+		if ( $this->was_timed_out ) {
+			return $this->build_timeout_error( count( $matchups ) );
 		}
 
 		if ( $schedule === false ) {
@@ -271,7 +275,9 @@ class SPSG_Slot_Allocator {
 				}
 
 				if ( $timeout_callback && call_user_func( $timeout_callback ) ) {
-					$this->was_cancelled = true;
+					// Distinguish timeout from user cancellation so the caller
+					// can surface the right error code / HTTP status.
+					$this->was_timed_out = true;
 					return false;
 				}
 			}
@@ -349,7 +355,7 @@ class SPSG_Slot_Allocator {
 			return false;
 		}
 		if ( $timeout_callback && call_user_func( $timeout_callback ) ) {
-			$this->was_cancelled = true;
+			$this->was_timed_out = true;
 			return false;
 		}
 		if ( $depth > $this->max_backtrack_depth ) {
@@ -701,6 +707,64 @@ class SPSG_Slot_Allocator {
 	 */
 	public function get_constraint_violations() {
 		return $this->constraint_violations;
+	}
+
+	/**
+	 * Whether the most recent allocate() run aborted because the user
+	 * cancelled generation.
+	 *
+	 * @return bool
+	 */
+	public function was_cancelled() {
+		return $this->was_cancelled;
+	}
+
+	/**
+	 * Whether the most recent allocate() run aborted because the
+	 * engine-level timeout fired.
+	 *
+	 * @return bool
+	 */
+	public function was_timed_out() {
+		return $this->was_timed_out;
+	}
+
+	/**
+	 * Build the user-cancellation WP_Error. Centralised so the greedy and
+	 * backtracking return paths cannot drift out of sync.
+	 *
+	 * @param int $total_matchups Size of the input matchup list.
+	 * @return WP_Error
+	 */
+	private function build_cancellation_error( $total_matchups ) {
+		return new WP_Error(
+			'allocation_cancelled',
+			__( 'Schedule generation cancelled by user.', 'sportspress-schedule-generator' ),
+			array(
+				'status'          => 409,
+				'total_matchups'  => $total_matchups,
+				'available_slots' => count( $this->available_slots ),
+			)
+		);
+	}
+
+	/**
+	 * Build the timeout WP_Error. Returned with HTTP 408 so REST clients
+	 * can branch on it cleanly.
+	 *
+	 * @param int $total_matchups Size of the input matchup list.
+	 * @return WP_Error
+	 */
+	private function build_timeout_error( $total_matchups ) {
+		return new WP_Error(
+			'allocation_timed_out',
+			__( 'Schedule generation timed out. Try reducing constraints or splitting into smaller runs.', 'sportspress-schedule-generator' ),
+			array(
+				'status'          => 408,
+				'total_matchups'  => $total_matchups,
+				'available_slots' => count( $this->available_slots ),
+			)
+		);
 	}
 
 	/**
