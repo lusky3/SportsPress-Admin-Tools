@@ -2,6 +2,22 @@
 /**
  * REST API endpoints for the League Manager Dashboard.
  *
+ * Status-code policy (M2):
+ *   400 — Malformed request (missing/invalid params, bad file type, bad SQL inputs).
+ *   401 — Not handled here; auth happens in permission_callback. Falls through
+ *         to WP REST's rest_cannot_view / rest_forbidden.
+ *   403 — Caller lacks the required capability (returned by permission_callback).
+ *   404 — Resource does not exist (post not found, term not found, etc.).
+ *   409 — Lock contention on a per-resource mutex; caller should retry.
+ *   413 — Upload exceeds the configured size cap.
+ *   500 — Internal failure (DB error, wp_insert_post failure not user-correctable).
+ *   501 — A required sibling plugin / class is unavailable on this install.
+ *   503 — A required module is disabled (e.g. league_player_notes), or an
+ *         optional parser dependency is missing.
+ *
+ * Endpoints that paginate use the splm_rest_list_response() helper to keep the
+ * {data, total, page, total_pages} shape consistent across the React client.
+ *
  * @package SportsPress_League_Manager
  */
 
@@ -28,10 +44,16 @@ if ( ! function_exists( 'splm_rest_list_response' ) ) {
 		$items = array_values( $items );
 		$total = ( null === $total ) ? count( $items ) : (int) $total;
 		$page  = max( 1, (int) $page );
+		// L1: total_pages aligns with X-WP-TotalPages — 0 when total is 0.
 		if ( $per_page > 0 ) {
-			$total_pages = (int) max( 1, ceil( $total / $per_page ) );
+			$total_pages = $total > 0 ? (int) ceil( $total / $per_page ) : 0;
 		} else {
-			$total_pages = 1;
+			$total_pages = $total > 0 ? 1 : 0;
+		}
+		// L2: clamp out-of-range pages back to the last real page so callers
+		// don't see {page: 99, data: []} on stale pagination state.
+		if ( $total_pages > 0 && $page > $total_pages ) {
+			$page = $total_pages;
 		}
 		return array(
 			'data'        => $items,
@@ -466,9 +488,11 @@ class SPLM_REST_API {
 			if ( is_array( $results ) ) {
 				$home_result = isset( $results[ $home_id ] ) ? $results[ $home_id ] : array();
 				$away_result = isset( $results[ $away_id ] ) ? $results[ $away_id ] : array();
-				// SportsPress stores results as array with outcome keys.
-				$home_score = isset( $home_result['goals'] ) ? (int) $home_result['goals'] : null;
-				$away_score = isset( $away_result['goals'] ) ? (int) $away_result['goals'] : null;
+				// Read the SP-configured main-result key (default 'goals') with
+				// a fall-back to the legacy 'gf' that batch writes used briefly.
+				$rkey        = function_exists( 'sp_get_main_result_option' ) ? (string) sp_get_main_result_option() : 'goals';
+				$home_score  = isset( $home_result[ $rkey ] ) ? (int) $home_result[ $rkey ] : ( isset( $home_result['gf'] ) ? (int) $home_result['gf'] : null );
+				$away_score  = isset( $away_result[ $rkey ] ) ? (int) $away_result[ $rkey ] : ( isset( $away_result['gf'] ) ? (int) $away_result['gf'] : null );
 			}
 
 			$games[] = array(
@@ -789,6 +813,12 @@ class SPLM_REST_API {
 			return $response;
 		}
 
+		// M4: clamp out-of-range page requests back to the last real page so
+		// callers don't get an empty array on stale pagination state.
+		if ( $page > $total_pages ) {
+			$page = max( 1, $total_pages );
+		}
+
 		// SQL-side sort + paginate over the materialized player_id set so we
 		// only do WC order lookups for this page's slice.
 		$player_ids   = array_keys( $players_by_team );
@@ -867,12 +897,26 @@ class SPLM_REST_API {
 				$first = $parts[0];
 				$last  = isset( $parts[1] ) ? $parts[1] : '';
 				if ( $first && $last ) {
+					// M3: billing_first_name / billing_last_name are not
+					// supported by every wc_get_orders backend (HPOS strips
+					// unknown args). Use meta_query against the canonical
+					// _billing_* meta keys instead — works on both legacy
+					// post storage and HPOS.
 					$orders = wc_get_orders( array(
-						'limit'              => 1,
-						'billing_first_name' => $first,
-						'billing_last_name'  => $last,
-						'orderby'            => 'date',
-						'order'              => 'DESC',
+						'limit'      => 1,
+						'orderby'    => 'date',
+						'order'      => 'DESC',
+						'meta_query' => array(
+							'relation' => 'AND',
+							array(
+								'key'   => '_billing_first_name',
+								'value' => $first,
+							),
+							array(
+								'key'   => '_billing_last_name',
+								'value' => $last,
+							),
+						),
 					) );
 					if ( ! empty( $orders ) ) {
 						$order  = $orders[0];
@@ -1146,6 +1190,7 @@ class SPLM_REST_API {
 		$created = 0;
 		$updated = 0;
 		$errors  = array();
+		$seen    = array();
 
 		foreach ( $teams as $team_data ) {
 			$team_id    = absint( $team_data['team_id'] ?? 0 );
@@ -1161,6 +1206,14 @@ class SPLM_REST_API {
 				$errors[] = sprintf( 'Invalid team ID %d (not an sp_team)', $team_id );
 				continue;
 			}
+
+			// M7: skip already-seen team_ids so a caller passing duplicate
+			// entries doesn't double-count create/update or stomp the meta.
+			if ( isset( $seen[ $team_id ] ) ) {
+				$errors[] = sprintf( 'Duplicate team ID %d in request — skipped', $team_id );
+				continue;
+			}
+			$seen[ $team_id ] = true;
 
 			$team_name = get_the_title( $team_id );
 			$list_name = str_replace(
@@ -1203,31 +1256,33 @@ class SPLM_REST_API {
 			if ( $season_id ) {
 				wp_set_object_terms( $list_id, $season_id, 'sp_season' );
 			}
-			// Per-list transient mutex — prevent concurrent admins (or
+			// Per-list mutex (SPAT_Lock) — prevent concurrent admins (or
 			// double-clicks) from racing the delete+insert window and
-			// corrupting the roster (H1).
+			// corrupting the roster (H1). On lock contention, record the
+			// failure in $errors[] and continue so the rest of the batch
+			// can still complete (H1 atomicity fix).
 			$lock_key = "splm_bulk_lock_$list_id";
-			if ( class_exists( 'SPAT_Lock' ) ) {
-				$acquired = SPAT_Lock::acquire( $lock_key, 30 );
-			} else {
-				$acquired = wp_cache_add( $lock_key, 1, 'splm_locks', 30 );
-			}
+			$acquired = SPAT_Lock::acquire( $lock_key, 30 );
 			if ( ! $acquired ) {
-				return new WP_Error( 'locked', 'Another save in progress', array( 'status' => 409 ) );
+				$errors[] = sprintf( 'Lock contention for team %s (list %d) — roster not updated', $team_name, $list_id );
+				continue;
 			}
 			// Clear any existing sp_player rows so re-runs don't accumulate duplicates (F13).
 			delete_post_meta( $list_id, 'sp_player' );
 			foreach ( $player_ids as $pid ) {
 				add_post_meta( $list_id, 'sp_player', $pid );
 			}
-			if ( class_exists( 'SPAT_Lock' ) ) {
-				SPAT_Lock::release( $lock_key );
-			} else {
-				wp_cache_delete( $lock_key, 'splm_locks' );
-			}
+			SPAT_Lock::release( $lock_key );
 		}
 
-		return new WP_REST_Response( array( 'created' => $created, 'updated' => $updated, 'errors' => $errors ), 200 );
+		// H1: response includes counts AND per-item errors so callers can
+		// detect partial completion.
+		return new WP_REST_Response( array(
+			'created' => $created,
+			'updated' => $updated,
+			'errors'  => $errors,
+			'partial' => ! empty( $errors ),
+		), 200 );
 	}
 
 	/**
@@ -1379,10 +1434,13 @@ class SPLM_REST_API {
 
 			$post_date = $date . ' ' . ( preg_match( '/^\d{2}:\d{2}$/', $time ) ? $time : '19:00' ) . ':00';
 
+			// M-ImportRaceWindow: insert as draft first so save_post / event
+			// hooks that read sp_team don't fire on a post with no teams.
+			// Set the team meta, then transition to publish.
 			$event_id = wp_insert_post( array(
 				'post_type'   => 'sp_event',
 				'post_title'  => $home_name . ' vs ' . $away_name,
-				'post_status' => 'publish',
+				'post_status' => 'draft',
 				'post_date'   => $post_date,
 			) );
 
@@ -1394,24 +1452,18 @@ class SPLM_REST_API {
 			// Clear any pre-existing sp_team rows (defensive — a fresh insert
 			// shouldn't have any, but this enforces the invariant against
 			// duplicate add_post_meta rows). Wrapped in a per-event mutex
-			// to mirror H1's protection on bulk_process_roster.
+			// to mirror H1's protection on bulk_process_roster. On lock
+			// failure, record the error and continue (H1 atomicity).
 			$event_lock_key = "splm_bulk_lock_$event_id";
-			if ( class_exists( 'SPAT_Lock' ) ) {
-				$event_acquired = SPAT_Lock::acquire( $event_lock_key, 30 );
-			} else {
-				$event_acquired = wp_cache_add( $event_lock_key, 1, 'splm_locks', 30 );
-			}
+			$event_acquired = SPAT_Lock::acquire( $event_lock_key, 30 );
 			if ( ! $event_acquired ) {
-				return new WP_Error( 'locked', 'Another save in progress', array( 'status' => 409 ) );
+				$errors[] = sprintf( 'Lock contention for event %d (%s vs %s) — teams not assigned', $event_id, $home_name, $away_name );
+				continue;
 			}
 			delete_post_meta( $event_id, 'sp_team' );
 			add_post_meta( $event_id, 'sp_team', $home_id );
 			add_post_meta( $event_id, 'sp_team', $away_id );
-			if ( class_exists( 'SPAT_Lock' ) ) {
-				SPAT_Lock::release( $event_lock_key );
-			} else {
-				wp_cache_delete( $event_lock_key, 'splm_locks' );
-			}
+			SPAT_Lock::release( $event_lock_key );
 
 			if ( $venue ) {
 				$venue_term = term_exists( $venue, 'sp_venue' );
@@ -1431,10 +1483,23 @@ class SPLM_REST_API {
 			// Initialize SportsPress event meta.
 			update_post_meta( $event_id, 'sp_results', array() );
 
+			// M-ImportRaceWindow: now that team meta, terms, and results are
+			// in place, transition the draft to publish so save_post-driven
+			// integrations see a fully-populated event.
+			wp_update_post( array(
+				'ID'          => $event_id,
+				'post_status' => 'publish',
+			) );
+
 			$imported++;
 		}
 
-		return new WP_REST_Response( array( 'imported' => $imported, 'skipped' => $skipped, 'errors' => $errors ), 200 );
+		return new WP_REST_Response( array(
+			'imported' => $imported,
+			'skipped'  => $skipped,
+			'errors'   => $errors,
+			'partial'  => ! empty( $errors ),
+		), 200 );
 	}
 
 	/**
@@ -1511,6 +1576,14 @@ class SPLM_REST_API {
 	 *   'rows'    => list of all rows
 	 */
 	private function fetch_id_title_index( $post_type ) {
+		// L4: per-request memoization — multiple endpoints (rosters preview,
+		// games import preview) hit this for the same post_type within a
+		// single request. The static cache lives for one PHP request only.
+		static $cache = array();
+		if ( isset( $cache[ $post_type ] ) ) {
+			return $cache[ $post_type ];
+		}
+
 		global $wpdb;
 		$rows = $wpdb->get_results( $wpdb->prepare(
 			"SELECT ID AS id, post_title AS title FROM {$wpdb->posts} WHERE post_type = %s AND post_status = 'publish'",
@@ -1524,7 +1597,8 @@ class SPLM_REST_API {
 				$by_lc[ $key ] = $r;
 			}
 		}
-		return array( 'by_lc' => $by_lc, 'rows' => (array) $rows );
+		$cache[ $post_type ] = array( 'by_lc' => $by_lc, 'rows' => (array) $rows );
+		return $cache[ $post_type ];
 	}
 
 	/**
@@ -1664,8 +1738,10 @@ class SPLM_REST_API {
 		}
 
 		if ( $table_exists( $etransfer_table ) ) {
+			// Hidden rows are flagged via result = 'Hidden from management' (see
+			// SPAT_Database::HIDDEN_STATUS); there is no is_hidden column.
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name validated against static allowlist above
-			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT timestamp, from_name, amount, result FROM `{$etransfer_table}` WHERE is_hidden = 0 ORDER BY id DESC LIMIT %d", $limit ) );
+			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT timestamp, from_name, amount, result FROM `{$etransfer_table}` WHERE result != %s ORDER BY id DESC LIMIT %d", 'Hidden from management', $limit ) );
 			foreach ( (array) $rows as $r ) {
 				$items[] = array(
 					'timestamp'   => $r->timestamp,
@@ -1676,13 +1752,16 @@ class SPLM_REST_API {
 		}
 
 		if ( $table_exists( $role_table ) ) {
+			// spat_role_logs schema (parent class-database.php): id, timestamp,
+			// user_id, user_name, action. There is no user_login or role_added
+			// column — using those silently returns no rows.
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name validated against static allowlist above
-			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT timestamp, user_login, role_added FROM `{$role_table}` ORDER BY id DESC LIMIT %d", $limit ) );
+			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT timestamp, user_name, action FROM `{$role_table}` ORDER BY id DESC LIMIT %d", $limit ) );
 			foreach ( (array) $rows as $r ) {
 				$items[] = array(
 					'timestamp'   => $r->timestamp,
 					'type'        => 'role',
-					'description' => sprintf( '%s — assigned %s', $r->user_login, $r->role_added ),
+					'description' => sprintf( '%s — %s', $r->user_name, $r->action ),
 				);
 			}
 		}
@@ -1722,7 +1801,7 @@ class SPLM_REST_API {
 			$away_int = absint( $away_score );
 
 			// Compute per-team outcome so SportsPress league-table aggregations
-			// reflect wins/losses/draws (writing '' here previously broke standings).
+			// reflect wins/losses/draws.
 			if ( $home_int > $away_int ) {
 				$home_outcome = 'win';
 				$away_outcome = 'loss';
@@ -1739,13 +1818,22 @@ class SPLM_REST_API {
 				$results = array();
 			}
 
+			// SportsPress stores per-team score under the configured main-result
+			// key (default 'goals') — NOT 'gf'/'ga' (those are league-table
+			// derived columns, not per-team result fields). Use the same key
+			// the single-score endpoint and SP's editor write to so standings
+			// and the games listing actually see batch-entered scores.
+			$result_key = function_exists( 'sp_get_main_result_option' )
+				? (string) sp_get_main_result_option()
+				: 'goals';
+
 			$results[ $teams[0] ] = array_merge(
 				$results[ $teams[0] ] ?? array(),
-				array( 'outcome' => $home_outcome, 'gf' => $home_int, 'ga' => $away_int )
+				array( 'outcome' => $home_outcome, $result_key => $home_int )
 			);
 			$results[ $teams[1] ] = array_merge(
 				$results[ $teams[1] ] ?? array(),
-				array( 'outcome' => $away_outcome, 'gf' => $away_int, 'ga' => $home_int )
+				array( 'outcome' => $away_outcome, $result_key => $away_int )
 			);
 			update_post_meta( $game_id, 'sp_results', $results );
 
@@ -1845,11 +1933,7 @@ class SPLM_REST_API {
 		// not have any) to keep the meta canonical (F13). Per-table mutex
 		// mirrors H1's protection on bulk_process_roster.
 		$table_lock_key = "splm_bulk_lock_$table_id";
-		if ( class_exists( 'SPAT_Lock' ) ) {
-			$table_acquired = SPAT_Lock::acquire( $table_lock_key, 30 );
-		} else {
-			$table_acquired = wp_cache_add( $table_lock_key, 1, 'splm_locks', 30 );
-		}
+		$table_acquired = SPAT_Lock::acquire( $table_lock_key, 30 );
 		if ( ! $table_acquired ) {
 			return new WP_Error( 'locked', 'Another save in progress', array( 'status' => 409 ) );
 		}
@@ -1857,11 +1941,7 @@ class SPLM_REST_API {
 		foreach ( $teams as $team ) {
 			add_post_meta( $table_id, 'sp_team', $team->ID );
 		}
-		if ( class_exists( 'SPAT_Lock' ) ) {
-			SPAT_Lock::release( $table_lock_key );
-		} else {
-			wp_cache_delete( $table_lock_key, 'splm_locks' );
-		}
+		SPAT_Lock::release( $table_lock_key );
 		update_post_meta( $table_id, 'sp_columns', array( 'pos', 'name', 'p', 'w', 'd', 'l', 'f', 'a', 'gd', 'pts' ) );
 
 		return new WP_REST_Response( array( 'table_id' => $table_id, 'title' => $title, 'teams' => count( $teams ) ), 200 );
@@ -1941,6 +2021,10 @@ class SPLM_REST_API {
 				$dist[ $s ]++;
 			}
 
+			// L3: signal when the SQL LIMIT 5000 was reached so the client
+			// can warn that skill stats are based on a partial sample.
+			$truncated = ( count( $player_rows ) >= 5000 );
+
 			$results[] = array(
 				'division'     => array( 'id' => $div->term_id, 'name' => $div->name ),
 				'teams'        => count( $team_ids ),
@@ -1951,6 +2035,7 @@ class SPLM_REST_API {
 				'skill_max'    => $count ? max( $skills ) : 0,
 				'skill_median' => $count ? $skills[ intdiv( $count, 2 ) ] : 0,
 				'distribution' => $dist,
+				'truncated'    => $truncated,
 			);
 		}
 
@@ -1977,11 +2062,14 @@ class SPLM_REST_API {
 		$stat_keys = apply_filters( 'splm_comparison_stat_keys', $stat_keys, $team_a_id, $team_b_id );
 
 		// Head-to-head — single query for events involving either team, then
-		// iterate once and pick the rows that contain BOTH teams.
+		// iterate once and pick the rows that contain BOTH teams. M6: cap
+		// posts_per_page to 5000 and fetch IDs only to bound memory on long
+		// histories.
 		$events = get_posts( array(
 			'post_type'      => 'sp_event',
-			'posts_per_page' => -1,
+			'posts_per_page' => 5000,
 			'post_status'    => 'publish',
+			'fields'         => 'ids',
 			'meta_query'     => array(
 				'relation' => 'OR',
 				array( 'key' => 'sp_team', 'value' => $team_a_id ),
@@ -1991,17 +2079,21 @@ class SPLM_REST_API {
 		) );
 
 		$h2h = array( 'a_wins' => 0, 'b_wins' => 0, 'draws' => 0 );
-		foreach ( $events as $event ) {
-			$teams = array_map( 'intval', get_post_meta( $event->ID, 'sp_team' ) );
+		foreach ( $events as $event_id ) {
+			$teams = array_map( 'intval', get_post_meta( $event_id, 'sp_team' ) );
 			if ( ! in_array( $team_a_id, $teams, true ) || ! in_array( $team_b_id, $teams, true ) ) {
 				continue;
 			}
-			$results = get_post_meta( $event->ID, 'sp_results', true );
+			$results = get_post_meta( $event_id, 'sp_results', true );
 			if ( ! is_array( $results ) ) {
 				continue;
 			}
-			$a_gf = (int) ( $results[ $team_a_id ]['gf'] ?? 0 );
-			$b_gf = (int) ( $results[ $team_b_id ]['gf'] ?? 0 );
+			// Read the configured SP main-result key (default 'goals') for
+			// consistency with the writer side; fall back to 'gf' for any
+			// historical rows written before the key alignment.
+			$rkey = function_exists( 'sp_get_main_result_option' ) ? (string) sp_get_main_result_option() : 'goals';
+			$a_gf = (int) ( $results[ $team_a_id ][ $rkey ] ?? $results[ $team_a_id ]['gf'] ?? 0 );
+			$b_gf = (int) ( $results[ $team_b_id ][ $rkey ] ?? $results[ $team_b_id ]['gf'] ?? 0 );
 			if ( $a_gf > $b_gf ) {
 				$h2h['a_wins']++;
 			} elseif ( $b_gf > $a_gf ) {
@@ -2286,8 +2378,6 @@ class SPLM_REST_API {
 				return new WP_Error( 'missing_dependency', "Required class {$class_name} is not available.", array( 'status' => 501 ) );
 			}
 			$instance = new $class_name();
-			// Remove the rest_api_init hook to prevent duplicate registration.
-			remove_action( 'rest_api_init', array( $instance, 'register_routes' ) );
 			return $instance->$method( $request );
 		};
 	}
