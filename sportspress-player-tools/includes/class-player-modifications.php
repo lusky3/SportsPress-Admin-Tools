@@ -26,6 +26,9 @@ class SPT_Player_Modifications {
 		add_action( 'save_post_sp_list', array( $this, 'save_captain_meta' ) );
 		add_filter( 'sportspress_list_player_name', array( $this, 'add_captain_indicator' ), 10, 3 );
 		add_action( 'wp_enqueue_scripts', array( $this, 'add_captain_css' ) );
+
+		// PT3/F3: surface invalid-email feedback after save_email_meta() rejects a write.
+		add_action( 'admin_notices', array( $this, 'maybe_render_email_invalid_notice' ) );
 	}
 
 	public function add_email_meta_box() {
@@ -59,8 +62,43 @@ class SPT_Player_Modifications {
 		}
 
 		if ( isset( $_POST['spt_email'] ) ) {
-			update_post_meta( $post_id, 'spt_email', sanitize_email( $_POST['spt_email'] ) );
+			$raw       = wp_unslash( $_POST['spt_email'] );
+			$sanitized = sanitize_email( $raw );
+
+			// PT3/F3: mirror the REST endpoint's validation. sanitize_email() happily
+			// strips characters and returns a string that is_email() rejects; without
+			// this check the meta box silently writes garbage on top of a real
+			// address. Allow explicit blanking, reject anything else that fails
+			// is_email(), and surface a one-shot admin notice via a transient so the
+			// editor knows nothing was saved.
+			if ( '' === $sanitized || is_email( $sanitized ) ) {
+				update_post_meta( $post_id, 'spt_email', $sanitized );
+			} else {
+				$user_id = get_current_user_id();
+				if ( $user_id ) {
+					set_transient( 'spt_email_invalid_' . $user_id, 1, 30 );
+				}
+			}
 		}
+	}
+
+	/**
+	 * PT3/F3: render the one-shot "invalid email skipped" notice queued by
+	 * save_email_meta(). Hooked from the constructor in admin context.
+	 */
+	public function maybe_render_email_invalid_notice() {
+		$user_id = get_current_user_id();
+		if ( ! $user_id ) {
+			return;
+		}
+		$flag = get_transient( 'spt_email_invalid_' . $user_id );
+		if ( ! $flag ) {
+			return;
+		}
+		delete_transient( 'spt_email_invalid_' . $user_id );
+		echo '<div class="notice notice-warning is-dismissible"><p>' .
+			esc_html__( 'The email address you entered for this player was invalid and was not saved.', 'sportspress-player-tools' ) .
+			'</p></div>';
 	}
 
 	public function add_captain_meta_box() {
