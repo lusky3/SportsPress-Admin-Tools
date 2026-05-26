@@ -349,6 +349,15 @@ class SPEM_Events_Management {
 		// Cross-check the browser-reported MIME against the allowed list as a
 		// belt-and-suspenders measure. Browsers send a few well-known
 		// alternatives for CSV/XLSX, so accept those too.
+		//
+		// Tradeoff note on `text/plain`: most real-world .csv uploads come back
+		// as `text/plain` from both browsers and finfo, so removing it would
+		// reject legitimate CSV imports. We accept it here, but the upstream
+		// wp_check_filetype_and_ext() call already validated the file as a
+		// CSV/XLSX by content+extension before we got here, so a `text/plain`
+		// payload that isn't actually CSV would have been rejected above.
+		// We also reject empty types outright — finfo should always return
+		// something for a real upload, and "" smells like a malformed request.
 		$allowed_reported = array(
 			'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 			'application/vnd.ms-excel',
@@ -356,9 +365,8 @@ class SPEM_Events_Management {
 			'application/csv',
 			'application/vnd.ms-excel.sheet.binary.macroenabled.12',
 			'text/plain',
-			'',
 		);
-		if ( '' !== $reported_type && ! in_array( $reported_type, $allowed_reported, true ) ) {
+		if ( '' === $reported_type || ! in_array( $reported_type, $allowed_reported, true ) ) {
 			return new WP_Error( 'invalid_file_type', __( 'Invalid file type. Only XLSX and CSV files are allowed.', 'sportspress-events-manager' ) );
 		}
 
@@ -468,42 +476,57 @@ class SPEM_Events_Management {
 	 * @param array $events_data Parsed import rows.
 	 */
 	private function build_team_name_map( $events_data ) {
+		global $wpdb;
+
 		$this->team_name_map = array();
 
-		$wanted = array();
+		// Collect the wanted normalized names AND the raw titles seen in the
+		// import. We query by raw title (cheap IN clause against the post_title
+		// index) and only normalize the few rows that come back, instead of
+		// dragging EVERY sp_team post into PHP just to normalize their titles.
+		$wanted     = array(); // normalized => true
+		$raw_titles = array(); // raw post_title strings seen in the import
 		foreach ( $events_data as $row ) {
-			if ( ! empty( $row['home_team'] ) ) {
-				$wanted[ $this->normalize_team_name( $row['home_team'] ) ] = true;
-			}
-			if ( ! empty( $row['away_team'] ) ) {
-				$wanted[ $this->normalize_team_name( $row['away_team'] ) ] = true;
+			foreach ( array( 'home_team', 'away_team' ) as $field ) {
+				if ( empty( $row[ $field ] ) ) {
+					continue;
+				}
+				$raw = wp_strip_all_tags( (string) $row[ $field ] );
+				$raw = trim( preg_replace( '/\s+/', ' ', $raw ) );
+				if ( '' === $raw ) {
+					continue;
+				}
+				$raw_titles[ $raw ] = true;
+				$wanted[ $this->normalize_team_name( $raw ) ] = true;
 			}
 		}
 
-		if ( empty( $wanted ) ) {
+		if ( empty( $raw_titles ) ) {
 			return;
 		}
 
-		$team_ids = get_posts(
-			array(
-				'post_type'      => 'sp_team',
-				'post_status'    => 'any',
-				'posts_per_page' => -1,
-				'fields'         => 'ids',
+		$titles       = array_keys( $raw_titles );
+		$placeholders = implode( ',', array_fill( 0, count( $titles ), '%s' ) );
+
+		// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- dynamic placeholder count.
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT ID, post_title FROM {$wpdb->posts}
+				WHERE post_type = 'sp_team'
+				AND post_status IN ('publish','draft','pending','private','future')
+				AND post_title IN ({$placeholders})",
+				...$titles
 			)
 		);
-		if ( empty( $team_ids ) ) {
+
+		if ( empty( $rows ) ) {
 			return;
 		}
 
-		foreach ( $team_ids as $tid ) {
-			$title = get_the_title( $tid );
-			if ( ! $title ) {
-				continue;
-			}
-			$norm = $this->normalize_team_name( $title );
+		foreach ( $rows as $r ) {
+			$norm = $this->normalize_team_name( $r->post_title );
 			if ( isset( $wanted[ $norm ] ) && ! isset( $this->team_name_map[ $norm ] ) ) {
-				$this->team_name_map[ $norm ] = (int) $tid;
+				$this->team_name_map[ $norm ] = (int) $r->ID;
 			}
 		}
 	}

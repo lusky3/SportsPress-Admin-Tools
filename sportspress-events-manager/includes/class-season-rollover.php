@@ -74,9 +74,11 @@ jQuery(document).ready(function($) {
     });
 
     // Hard cap on continuation chunks. archive_old_events processes 500 events
-    // per call, so 50 iterations covers 25,000 events — well past any realistic
-    // league size. Prevents runaway recursion on a malformed server response.
-    var MAX_ARCHIVE_CHUNKS = 50;
+    // per call, so the default of 50 iterations covers 25,000 events — well past
+    // any realistic league size. Prevents runaway recursion on a malformed server
+    // response. Override via the `spem_max_archive_chunks` filter if a site
+    // genuinely needs more.
+    var MAX_ARCHIVE_CHUNKS = " . (int) apply_filters( 'spem_max_archive_chunks', 50 ) . ";
 
     function executeRollover(params) {
         return $.post(ajaxurl, $.extend({
