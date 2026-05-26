@@ -687,17 +687,16 @@ class SPPT_REST_API {
 			$table_exists  = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $reg_log_table ) ) === $reg_log_table;
 			if ( $table_exists ) {
 				$placeholders = implode( ',', array_fill( 0, count( $player_ids ), '%d' ) );
-				// Most-recent order per player. Restrict to the action values the registration
-				// plugin actually writes when it has linked a player to an order — see
-				// sportspress-player-registration/includes/class-player-registration.php for the
-				// canonical list. A bare 'player_registration' filter (the default in
-				// SPAT_Database::log_registration_activity) would match zero rows.
+				// Most-recent order per player. Restrict to log rows the registration plugin
+				// flagged as linking the player to an order (links_to_order = 1). The boolean
+				// column replaces a hardcoded action allowlist so new link-producing actions
+				// flow through automatically. See SPAT_Database::log_registration_activity.
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $placeholders is built from %d.
 				$rows = $wpdb->get_results( $wpdb->prepare(
 					"SELECT player_id, MAX(order_id) AS order_id
 					 FROM {$reg_log_table}
 					 WHERE player_id IN ($placeholders)
-					   AND action IN ('player_created','player_found_by_name','player_found_by_name_and_email')
+					   AND links_to_order = 1
 					 GROUP BY player_id",
 					$player_ids
 				) );
