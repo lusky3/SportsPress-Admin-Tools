@@ -176,6 +176,16 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 		// notice and the cost calculation poisons the soft-constraint sum.
 		$ratio = $target_ratios[ $game_day ] ?? 0;
 		if ( 0 === $ratio ) {
+			// Surface the misconfiguration so operators can fix their
+			// distribution_rules; otherwise this silently zeros the cost for
+			// any day not listed in the ratios map.
+			if ( class_exists( 'SPAT_Logger' ) ) {
+				SPAT_Logger::warn(
+					'distribution',
+					'game day not in playing_days',
+					array( 'game_day' => $game_day )
+				);
+			}
 			return 0.0;
 		}
 

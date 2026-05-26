@@ -96,6 +96,12 @@ class SPSG_Schedule_Engine {
 		$this->current_schedule = array();
 		$this->init_stats();
 
+		// Clear per-request constraint validate() memoization to avoid carrying
+		// stale (game, constraint) results across runs.
+		if ( method_exists( 'SPSG_Abstract_Constraint', 'reset_validate_cache' ) ) {
+			SPSG_Abstract_Constraint::reset_validate_cache();
+		}
+
 		// Initialize progress tracking
 		$this->init_progress_tracking();
 
@@ -683,12 +689,21 @@ class SPSG_Schedule_Engine {
 			$progress = get_transient( $this->progress_transient_key );
 		}
 
-		if ( $progress !== false ) {
+		// If progress hasn't been initialized yet (cancel arrived before the
+		// engine wrote anything), write a minimal progress object so the cancel
+		// flag is observable by is_cancelled() once generation starts.
+		if ( $progress === false ) {
+			$progress = array(
+				'status'    => 'cancelled',
+				'cancelled' => true,
+				'message'   => __( 'Cancelling generation...', 'sportspress-schedule-generator' ),
+			);
+		} else {
 			$progress['cancelled'] = true;
-			$progress['message'] = __( 'Cancelling generation...', 'sportspress-schedule-generator' );
-			set_transient( $this->progress_transient_key, $progress, HOUR_IN_SECONDS );
-			wp_cache_set( $this->progress_transient_key, $progress, 'spsg_progress', HOUR_IN_SECONDS );
+			$progress['message']   = __( 'Cancelling generation...', 'sportspress-schedule-generator' );
 		}
+		set_transient( $this->progress_transient_key, $progress, HOUR_IN_SECONDS );
+		wp_cache_set( $this->progress_transient_key, $progress, 'spsg_progress', HOUR_IN_SECONDS );
 
 		$this->log( 'Generation cancellation requested' );
 	}

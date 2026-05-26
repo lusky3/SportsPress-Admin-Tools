@@ -229,7 +229,7 @@ class SPSG_Blackout_Constraint extends SPSG_Abstract_Constraint {
 				// Find the next alternative day
 				$makeup_date = $this->find_next_alternative_day( $current_date, $alternative_days, $config );
 
-				if ( $makeup_date && $this->is_date_available( $makeup_date, $makeup_game, $schedule ) ) {
+				if ( $makeup_date && $this->is_date_available( $makeup_date, $makeup_game, $schedule, $config ) ) {
 					return $makeup_date;
 				}
 			}
@@ -310,13 +310,24 @@ class SPSG_Blackout_Constraint extends SPSG_Abstract_Constraint {
 	 * O(1) when the schedule indices are primed by schedule_makeup_games();
 	 * falls back to a linear scan otherwise (for direct callers / tests).
 	 */
-	private function is_date_available( $date, $makeup_game, $schedule ) {
+	private function is_date_available( $date, $makeup_game, $schedule, $config = null ) {
 		$date_string = $date->format( 'Y-m-d' );
 		$time_slot   = $makeup_game['time_slot'];
 		$venue       = $makeup_game['venue'];
 		$home_id     = $makeup_game['home_team']->id ?? null;
 		$away_id     = $makeup_game['away_team']->id ?? null;
 		$venue_id    = $venue->id ?? null;
+
+		// Reject candidates where the venue does not actually offer the
+		// required time slot on this (date, day) tuple. Honours per-date and
+		// per-venue cascades so makeups respect venue-specific schedules.
+		if ( $config !== null && $venue_id !== null ) {
+			$day_name = strtolower( $date->format( 'l' ) );
+			$venue_slots = SPSG_Schedule_Helper::resolve_venue_slots( $venue_id, $date_string, $day_name, $config );
+			if ( empty( $venue_slots ) || ! in_array( $time_slot, $venue_slots, true ) ) {
+				return false;
+			}
+		}
 
 		// Fast path: use pre-built indices when available.
 		if ( ! empty( $this->schedule_index['date_time_venue'] ) || ! empty( $this->schedule_index['date_team'] ) ) {
@@ -367,7 +378,7 @@ class SPSG_Blackout_Constraint extends SPSG_Abstract_Constraint {
 
 			if ( in_array( $day_name, $alternative_days ) &&
 			! $this->is_blackout_date( $current_date, $config ) &&
-			$this->is_date_available( $current_date, $makeup_game, $schedule ) ) {
+			$this->is_date_available( $current_date, $makeup_game, $schedule, $config ) ) {
 				return $current_date;
 			}
 

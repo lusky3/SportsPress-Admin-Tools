@@ -342,6 +342,7 @@ if (!class_exists('SPSG_Constraint_Manager')) {
         public function calculate_violation_cost($game, $schedule, $config, $full = null) { return 0.0; }
     }
 }
+require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-helper.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-slot-allocator.php';
 
 $allocator = new SPSG_Slot_Allocator();

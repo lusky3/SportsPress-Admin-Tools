@@ -76,11 +76,70 @@ abstract class SPSG_Abstract_Constraint implements SPSG_Constraint_Interface {
 	}
 
 	/**
+	 * Per-request memoization for validate() results.
+	 *
+	 * Keyed by spl_object_hash( $constraint ) . '-' . $game_id, so the same
+	 * (game, constraint) pair only runs validate() once per generation pass.
+	 * This avoids a redundant second validate() inside get_violation_cost for
+	 * hard constraints, which the slot allocator just checked via is_slot_valid.
+	 *
+	 * @var array<string,true|WP_Error>
+	 */
+	protected static $validate_cache = array();
+
+	/**
+	 * Reset the per-request validate cache. Should be called by the engine at
+	 * the start of each generation attempt to avoid stale state across runs.
+	 */
+	public static function reset_validate_cache() {
+		self::$validate_cache = array();
+	}
+
+	/**
+	 * Prime the per-request validate cache with an externally computed result.
+	 *
+	 * Called by the constraint manager after running validate() so a subsequent
+	 * get_violation_cost() does not re-run validate() for the same pair.
+	 *
+	 * @param SPSG_Abstract_Constraint $constraint Constraint instance.
+	 * @param object                   $game       Game just validated.
+	 * @param true|WP_Error            $result     The validate() result.
+	 */
+	public static function prime_validate_cache( $constraint, $game, $result ) {
+		if ( ! ( $constraint instanceof self ) ) {
+			return;
+		}
+		$game_id = isset( $game->id ) ? $game->id : spl_object_hash( $game );
+		$key     = spl_object_hash( $constraint ) . '-' . $game_id;
+		self::$validate_cache[ $key ] = $result;
+	}
+
+	/**
+	 * Validate with memoization. Use this from get_violation_cost so a hard
+	 * constraint already validated by the allocator is not re-run.
+	 *
+	 * @param object $game     Game being checked.
+	 * @param array  $schedule Schedule slice.
+	 * @param object $config   Configuration.
+	 * @return true|WP_Error
+	 */
+	protected function validate_cached( $game, $schedule, $config ) {
+		$game_id = isset( $game->id ) ? $game->id : spl_object_hash( $game );
+		$key     = spl_object_hash( $this ) . '-' . $game_id;
+		if ( array_key_exists( $key, self::$validate_cache ) ) {
+			return self::$validate_cache[ $key ];
+		}
+		$result = $this->validate( $game, $schedule, $config );
+		self::$validate_cache[ $key ] = $result;
+		return $result;
+	}
+
+	/**
 	 * Default violation cost implementation
 	 */
 	public function get_violation_cost( $game, $schedule, $config ) {
 		if ( $this->type === 'hard' ) {
-			$result = $this->validate( $game, $schedule, $config );
+			$result = $this->validate_cached( $game, $schedule, $config );
 			if ( is_wp_error( $result ) ) {
 				return PHP_FLOAT_MAX; // Hard constraints have infinite cost when violated
 			}

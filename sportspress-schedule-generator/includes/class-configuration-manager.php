@@ -122,10 +122,12 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 		$user_id  = get_current_user_id();
 		$lock_key = 'spsg_config_save_lock_' . $user_id;
 		if ( $user_id ) {
+			// 60s TTL — large configs with many teams/venues can take longer
+			// than 10s to validate + persist, especially on shared hosting.
 			if ( class_exists( 'SPAT_Lock' ) ) {
-				$lock_acquired = SPAT_Lock::acquire( $lock_key, 10 );
+				$lock_acquired = SPAT_Lock::acquire( $lock_key, 60 );
 			} else {
-				$lock_acquired = wp_cache_add( $lock_key, 1, 'spsg_locks', 10 );
+				$lock_acquired = wp_cache_add( $lock_key, 1, 'spsg_locks', 60 );
 			}
 			if ( ! $lock_acquired ) {
 				return new WP_Error(

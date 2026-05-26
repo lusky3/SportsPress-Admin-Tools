@@ -732,7 +732,24 @@ class SPSG_REST_API {
 	// Note: generation is currently synchronous. These endpoints are stubs
 	// for future async generation support and currently return idle/cancelled.
 	public function spsg_generate_cancel() {
-		set_transient( 'spsg_cancel_generation_' . get_current_user_id(), true, 300 );
+		$user_id      = get_current_user_id();
+		$cancel_key   = 'spsg_cancel_generation_' . $user_id;
+		$progress_key = 'spsg_generation_progress_' . $user_id;
+
+		// Set the dedicated cancel flag in BOTH the transient and the object
+		// cache to avoid a race where the engine reads a stale cached copy and
+		// misses the cancellation request.
+		set_transient( $cancel_key, true, 300 );
+		wp_cache_set( $cancel_key, true, 'spsg_progress', HOUR_IN_SECONDS );
+
+		$progress = get_transient( $progress_key );
+		if ( $progress ) {
+			$progress['cancelled'] = true;
+			$progress['status']    = 'cancelled';
+			set_transient( $progress_key, $progress, HOUR_IN_SECONDS );
+			wp_cache_set( $progress_key, $progress, 'spsg_progress', HOUR_IN_SECONDS );
+		}
+
 		return rest_ensure_response( array( 'cancelled' => true ) );
 	}
 
