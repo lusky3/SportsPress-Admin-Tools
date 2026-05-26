@@ -2,17 +2,24 @@ SANDBOX_DIR := $(shell cd ../sportspress-sandbox 2>/dev/null && pwd)
 CONTAINER   := sportspress-test
 BASE_URL    := http://localhost:8082
 
+# Detect docker compose v2 (`docker compose`) with a fallback to legacy v1 (`docker-compose`).
+DC := $(shell if docker compose version >/dev/null 2>&1; then echo "docker compose"; \
+              elif command -v docker-compose >/dev/null 2>&1; then echo "docker-compose"; \
+              else echo ""; fi)
+
 .PHONY: test-up test-down test-all test-smoke test-unit test-integration test-reset test-status test-logs
 
 ## Start the sportspress-sandbox test environment
 test-up:
 	@if [ -z "$(SANDBOX_DIR)" ]; then echo "ERROR: ../sportspress-sandbox not found"; exit 1; fi
-	docker compose -f $(SANDBOX_DIR)/compose.yml up -d --build --wait
+	@if [ -z "$(DC)" ]; then echo "ERROR: neither 'docker compose' nor 'docker-compose' is available on PATH"; exit 1; fi
+	$(DC) -f $(SANDBOX_DIR)/compose.yml up -d --build --wait
 
 ## Stop and remove the test environment
 test-down:
 	@if [ -z "$(SANDBOX_DIR)" ]; then echo "ERROR: ../sportspress-sandbox not found"; exit 1; fi
-	docker compose -f $(SANDBOX_DIR)/compose.yml down -v
+	@if [ -z "$(DC)" ]; then echo "ERROR: neither 'docker compose' nor 'docker-compose' is available on PATH"; exit 1; fi
+	$(DC) -f $(SANDBOX_DIR)/compose.yml down -v
 
 ## Run all tests (smoke + unit + integration)
 test-all:
