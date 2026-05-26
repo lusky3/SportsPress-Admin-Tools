@@ -49,7 +49,7 @@ Rules:
 
 PHP helper: `splm_rest_list_response( array $items, ?int $total = null, int $page = 1, int $per_page = 0 )`
 in `sportspress-league-manager/includes/class-rest-api.php` builds this shape.
-Sibling plugins call it via `class_exists()`; when SPLM is not active they fall
+Sibling plugins call it via `function_exists('splm_rest_list_response')`; when SPLM is not active they fall
 back to the same shape inline.
 
 ### Aggregate / report resource

@@ -47,3 +47,6 @@ Please describe the tests that you ran to verify your changes. Provide instructi
 - [ ] External HTTP calls use `wp_remote_*` with timeouts and verify SSL.
 - [ ] New third-party dependencies are reviewed (license, maintenance, CVE history) and pinned to exact versions.
 - [ ] No PII is written to logs at INFO/DEBUG level without redaction.
+- [ ] All new REST `permission_callback` returns are NOT `__return_true` or constant `true`.
+- [ ] File path operations validate against base directory traversal.
+- [ ] External HTTP destinations are allowlisted (no SSRF to private IPs).

@@ -96,7 +96,7 @@ Source lives in `src/dashboard/` (App.jsx, pages/, components/, lib/api.js). Pag
 
 Three tiers, all driven from `tests/`:
 
-- **Unit** — `run-all-tests.sh` discovers `tests/test-*.php` files per plugin. They mock WP globals and run under any PHP 8.2+. No DB.
+- **Unit** — `run-all-tests.sh` discovers `tests/test-*.php` files per plugin. They mock WP globals and run under any PHP 8.1+. No DB.
 - **Integration** — `tests/integration/*.php` files run via `wp eval-file` inside the sandbox container. They assert plugin activation, table creation, hook registration, cross-plugin wiring.
 - **Smoke** — `tests/api-smoke-test.sh` curls the REST API and SP endpoints to confirm the stack is up.
 
