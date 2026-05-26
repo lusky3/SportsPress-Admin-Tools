@@ -1,6 +1,6 @@
 <?php
 /**
- * Standalone tests for SPR_Player_Registration
+ * Standalone tests for SPPR_Player_Registration
  *
  * Usage: php test-registration-logic.php
  */
@@ -56,9 +56,9 @@ function invoke_private($obj, $method, $args = array()) {
     return $ref->invokeArgs($obj, $args);
 }
 
-$reg = new SPR_Player_Registration();
+$reg = new SPPR_Player_Registration();
 
-echo "=== Testing SPR_Player_Registration ===\n\n";
+echo "=== Testing SPPR_Player_Registration ===\n\n";
 
 // --- validate_and_clean_name ---
 echo "-- validate_and_clean_name --\n";

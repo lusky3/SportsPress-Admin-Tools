@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class SPR_Database {
+class SPPR_Database {
 
 	public static function get_registration_logs( $limit = 100, $offset = 0 ) {
 		if ( class_exists( 'SPAT_Database' ) ) {
