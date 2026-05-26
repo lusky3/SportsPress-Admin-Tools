@@ -9,6 +9,39 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * Build the canonical list-endpoint response payload.
+ *
+ * See docs/rest-api-conventions.md. Every plugin's list endpoints (and the
+ * React client in lib/api.js) rely on this exact shape. Aggregate/report
+ * endpoints and single-resource endpoints do NOT use this helper.
+ *
+ * @param array    $items    The items in the current page.
+ * @param int|null $total    Total across all pages. Defaults to count($items).
+ * @param int      $page     1-indexed page number. Defaults to 1.
+ * @param int      $per_page Page size used to compute total_pages. 0 means
+ *                           "no pagination" (total_pages becomes 1).
+ * @return array
+ */
+if ( ! function_exists( 'splm_rest_list_response' ) ) {
+	function splm_rest_list_response( array $items, $total = null, $page = 1, $per_page = 0 ) {
+		$items = array_values( $items );
+		$total = ( null === $total ) ? count( $items ) : (int) $total;
+		$page  = max( 1, (int) $page );
+		if ( $per_page > 0 ) {
+			$total_pages = (int) max( 1, ceil( $total / $per_page ) );
+		} else {
+			$total_pages = 1;
+		}
+		return array(
+			'data'        => $items,
+			'total'       => $total,
+			'page'        => $page,
+			'total_pages' => $total_pages,
+		);
+	}
+}
+
 class SPLM_REST_API {
 
 	const REST_NAMESPACE = 'splm/v1'; // Shared with events-manager and player-tools — paths must not overlap
@@ -136,7 +169,7 @@ class SPLM_REST_API {
 						'type'              => 'integer',
 						'default'           => 50,
 						'minimum'           => 1,
-						'maximum'           => 200,
+						'maximum'           => 500,
 						'sanitize_callback' => 'absint',
 						'validate_callback' => 'rest_validate_request_arg',
 					),
@@ -170,22 +203,201 @@ class SPLM_REST_API {
 				'permission_callback' => array( $this, 'check_read_permission' ),
 			)
 		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/players/search',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'search_players' ),
+				'permission_callback' => array( $this, 'check_read_permission' ),
+				'args'                => array(
+					'q'     => array(
+						'type'              => 'string',
+						'required'          => true,
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+					'limit' => array(
+						'type'              => 'integer',
+						'default'           => 20,
+						'minimum'           => 1,
+						'maximum'           => 50,
+						'sanitize_callback' => 'absint',
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/activity',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_activity' ),
+				'permission_callback' => array( $this, 'check_read_permission' ),
+				'args'                => array(
+					'limit' => array(
+						'type'              => 'integer',
+						'default'           => 20,
+						'minimum'           => 1,
+						'maximum'           => 50,
+						'sanitize_callback' => 'absint',
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/scores/batch',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'batch_update_scores' ),
+				'permission_callback' => array( $this, 'check_manage_permission' ),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/user/preferences',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'save_user_preferences' ),
+				'permission_callback' => array( $this, 'check_read_permission' ),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/skills/calculate',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'calculate_skills' ),
+				'permission_callback' => array( $this, 'check_manage_permission' ),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/standings/generate',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'generate_standings' ),
+				'permission_callback' => array( $this, 'check_manage_permission' ),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/divisions/balance',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_division_balance' ),
+				'permission_callback' => array( $this, 'check_read_permission' ),
+				'args'                => array(
+					'season' => array(
+						'type'              => 'integer',
+						'sanitize_callback' => 'absint',
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/teams/compare',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'compare_teams' ),
+				'permission_callback' => array( $this, 'check_read_permission' ),
+				'args'                => array(
+					'team_a' => array(
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+					),
+					'team_b' => array(
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+					),
+					'season' => array(
+						'type'              => 'integer',
+						'sanitize_callback' => 'absint',
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/reports/season-summary',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_season_summary' ),
+				'permission_callback' => array( $this, 'check_read_permission' ),
+				'args'                => array(
+					'season' => array(
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/rosters/bulk-upload',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'bulk_upload_roster' ),
+				'permission_callback' => array( $this, 'check_manage_permission' ),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/rosters/bulk-process',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'bulk_process_roster' ),
+				'permission_callback' => array( $this, 'check_manage_permission' ),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/games/import-preview',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'import_games_preview' ),
+				'permission_callback' => array( $this, 'check_manage_permission' ),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/games/import',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'import_games' ),
+				'permission_callback' => array( $this, 'check_manage_permission' ),
+			)
+		);
 	}
 
 	public function check_read_permission() {
-		return current_user_can( 'manage_sportspress' )
-			|| current_user_can( 'edit_others_sp_events' )
-			|| current_user_can( 'edit_others_sp_players' )
-			|| current_user_can( 'edit_sp_events' );
+		return SPLM_Capabilities::can_read();
 	}
 
 	public function check_manage_permission() {
-		return current_user_can( 'manage_sportspress' );
+		return SPLM_Capabilities::can_manage();
 	}
 
 	public function check_payments_permission() {
 		return current_user_can( 'edit_others_sp_players' )
-			|| current_user_can( 'manage_sportspress' );
+			|| SPLM_Capabilities::can_manage();
 	}
 
 	/**
@@ -225,6 +437,22 @@ class SPLM_REST_API {
 		$events = $query->posts;
 		$games  = array();
 
+		// Fix: prime team post caches once for all referenced team IDs.
+		$team_ids_to_prime = array();
+		foreach ( $events as $event ) {
+			$tm = get_post_meta( $event->ID, 'sp_team', false );
+			if ( isset( $tm[0] ) && (int) $tm[0] ) {
+				$team_ids_to_prime[] = (int) $tm[0];
+			}
+			if ( isset( $tm[1] ) && (int) $tm[1] ) {
+				$team_ids_to_prime[] = (int) $tm[1];
+			}
+		}
+		$team_ids_to_prime = array_values( array_unique( $team_ids_to_prime ) );
+		if ( ! empty( $team_ids_to_prime ) ) {
+			_prime_post_caches( $team_ids_to_prime, false, false );
+		}
+
 		foreach ( $events as $event ) {
 			$teams   = get_post_meta( $event->ID, 'sp_team', false );
 			$results = get_post_meta( $event->ID, 'sp_results', true );
@@ -263,10 +491,11 @@ class SPLM_REST_API {
 			);
 		}
 
-		return new WP_REST_Response( array(
-			'games' => $games,
-			'total' => $query->found_posts,
-		), 200 );
+		$page = ( $per_page > 0 ) ? ( (int) floor( $offset / $per_page ) + 1 ) : 1;
+		return new WP_REST_Response(
+			splm_rest_list_response( $games, (int) $query->found_posts, $page, $per_page ),
+			200
+		);
 	}
 
 	/**
@@ -295,14 +524,14 @@ class SPLM_REST_API {
 			}
 			$table_ids = get_posts( $args );
 			if ( empty( $table_ids ) ) {
-				return new WP_REST_Response( array(), 200 );
+				return new WP_REST_Response( splm_rest_list_response( array() ), 200 );
 			}
 		}
 
 		$response = array();
 		foreach ( $table_ids as $tid ) {
 			if ( ! class_exists( 'SP_League_Table' ) ) {
-				return new WP_REST_Response( array(), 200 );
+				return new WP_REST_Response( splm_rest_list_response( array() ), 200 );
 			}
 			$table = new SP_League_Table( $tid );
 			$data  = $table->data();
@@ -332,7 +561,7 @@ class SPLM_REST_API {
 			);
 		}
 
-		return new WP_REST_Response( $response, 200 );
+		return new WP_REST_Response( splm_rest_list_response( $response ), 200 );
 	}
 
 	/**
@@ -365,7 +594,7 @@ class SPLM_REST_API {
 			}
 
 			if ( empty( $team_ids ) ) {
-				return new WP_REST_Response( array(), 200 );
+				return new WP_REST_Response( splm_rest_list_response( array() ), 200 );
 			}
 
 			$teams = get_posts( array(
@@ -398,7 +627,7 @@ class SPLM_REST_API {
 				"SELECT pm.meta_value AS team_id, COUNT(*) AS cnt
 				FROM {$wpdb->postmeta} pm
 				INNER JOIN {$wpdb->posts} p ON pm.post_id = p.ID AND p.post_type = 'sp_player' AND p.post_status = 'publish'
-				WHERE pm.meta_key = 'sp_team' AND pm.meta_value IN ($placeholders)
+				WHERE pm.meta_key = 'sp_current_team' AND pm.meta_value IN ($placeholders)
 				GROUP BY pm.meta_value",
 				...$team_ids_list
 			) );
@@ -414,7 +643,7 @@ class SPLM_REST_API {
 			);
 		}
 
-		return new WP_REST_Response( $data, 200 );
+		return new WP_REST_Response( splm_rest_list_response( $data ), 200 );
 	}
 
 	/**
@@ -445,7 +674,7 @@ class SPLM_REST_API {
 			$data[] = $entry;
 		}
 
-		return new WP_REST_Response( $data, 200 );
+		return new WP_REST_Response( splm_rest_list_response( $data ), 200 );
 	}
 
 	/**
@@ -495,15 +724,23 @@ class SPLM_REST_API {
 
 	/**
 	 * GET /payments — fee status per player from WooCommerce orders.
+	 *
+	 * F22 (audit 2026-05): pagination is now applied at the SQL layer so
+	 * WooCommerce order lookups only run for the per_page slice instead of
+	 * every player in the season. The full player ID set must still be
+	 * materialized in PHP because sp_leagues uses serialized meta — but the
+	 * expensive per-row work (wc_get_orders / wc_get_order) is now bounded.
 	 */
 	public function get_payments( $request ) {
 		if ( ! function_exists( 'wc_get_order' ) ) {
-			return new WP_REST_Response( array(), 200 );
+			return new WP_REST_Response( splm_rest_list_response( array(), 0, 1, 1 ), 200 );
 		}
 
 		global $wpdb;
 
 		$season_id = absint( $request->get_param( 'season' ) );
+		$per_page  = min( 500, max( 1, (int) ( $request->get_param( 'per_page' ) ?? 50 ) ) );
+		$page      = max( 1, (int) ( $request->get_param( 'page' ) ?? 1 ) );
 
 		// Get active teams from this season's events.
 		$events = get_posts( array(
@@ -527,40 +764,96 @@ class SPLM_REST_API {
 		}
 
 		if ( empty( $team_ids ) ) {
-			return new WP_REST_Response( array(), 200 );
+			$response = new WP_REST_Response( splm_rest_list_response( array(), 0, $page, $per_page ), 200 );
+			$response->header( 'X-WP-Total', 0 );
+			$response->header( 'X-WP-TotalPages', 0 );
+			return $response;
 		}
 
-		// Get players assigned to these teams for this season via sp_leagues.
-		$players_by_team = array(); // player_id => team_id
+		// Resolve player_id => team_id for this season (sp_leagues is serialized,
+		// so we still walk the per-team helper to honor season-specific assignments).
+		$players_by_team = array();
 		foreach ( array_keys( $team_ids ) as $tid ) {
 			foreach ( $this->get_players_for_team_season( $tid, $season_id ) as $p ) {
-				$players_by_team[ $p->ID ] = array( 'player' => $p, 'team_id' => $tid );
+				$players_by_team[ (int) $p->ID ] = (int) $tid;
 			}
 		}
 
-		if ( empty( $players_by_team ) ) {
-			return new WP_REST_Response( array(), 200 );
+		$total       = count( $players_by_team );
+		$total_pages = $per_page > 0 ? (int) ceil( $total / $per_page ) : 0;
+
+		if ( 0 === $total ) {
+			$response = new WP_REST_Response( splm_rest_list_response( array(), 0, $page, $per_page ), 200 );
+			$response->header( 'X-WP-Total', 0 );
+			$response->header( 'X-WP-TotalPages', 0 );
+			return $response;
 		}
 
-		// Build a lookup from the registration logs table.
+		// SQL-side sort + paginate over the materialized player_id set so we
+		// only do WC order lookups for this page's slice.
+		$player_ids   = array_keys( $players_by_team );
+		$placeholders = implode( ',', array_fill( 0, count( $player_ids ), '%d' ) );
+		$offset       = ( $page - 1 ) * $per_page;
+
+		// Build a CASE so MySQL can resolve team title for each player row in
+		// one pass instead of N get_the_title() lookups.
+		$team_titles = array();
+		foreach ( array_unique( array_values( $players_by_team ) ) as $tid ) {
+			$team_titles[ $tid ] = get_the_title( $tid );
+		}
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$rows = $wpdb->get_results( $wpdb->prepare(
+			"SELECT p.ID, p.post_title
+			FROM {$wpdb->posts} p
+			WHERE p.ID IN ($placeholders) AND p.post_type = 'sp_player'
+			ORDER BY p.post_title ASC
+			LIMIT %d OFFSET %d",
+			array_merge( $player_ids, array( $per_page, $offset ) )
+		) );
+
+		// Sort the page rows by (team_title, player_title) — keeps display
+		// stable across pages while staying inside the SQL-bounded slice.
+		$page_rows = array();
+		foreach ( $rows as $row ) {
+			$pid       = (int) $row->ID;
+			$tid       = $players_by_team[ $pid ] ?? 0;
+			$page_rows[] = array(
+				'player_id'   => $pid,
+				'player'      => $row->post_title,
+				'team_id'     => $tid,
+				'team'        => $team_titles[ $tid ] ?? '',
+			);
+		}
+		usort( $page_rows, function ( $a, $b ) {
+			$t = strcmp( $a['team'], $b['team'] );
+			return $t !== 0 ? $t : strcmp( $a['player'], $b['player'] );
+		} );
+
+		// Pull registration-log order ids only for this page's players.
+		$reg_map      = array();
 		$log_table    = $wpdb->prefix . 'spat_registration_logs';
 		$table_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $log_table ) );
-		$reg_map      = array();
-		if ( $table_exists ) {
-			$logs = $wpdb->get_results( $wpdb->prepare( "SELECT player_id, order_id FROM `" . esc_sql( $log_table ) . "` WHERE player_id > %d AND order_id > %d LIMIT 10000", 0, 0 ) );
+		if ( $table_exists && ! empty( $page_rows ) ) {
+			$page_ids   = wp_list_pluck( $page_rows, 'player_id' );
+			$ph_page    = implode( ',', array_fill( 0, count( $page_ids ), '%d' ) );
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$logs = $wpdb->get_results( $wpdb->prepare(
+				"SELECT player_id, order_id FROM `" . esc_sql( $log_table ) . "`
+				 WHERE order_id > 0 AND player_id IN ($ph_page)",
+				$page_ids
+			) );
 			foreach ( $logs as $log ) {
 				$reg_map[ (int) $log->player_id ] = (int) $log->order_id;
 			}
 		}
 
 		$data = array();
-		foreach ( $players_by_team as $pid => $info ) {
-			$player    = $info['player'];
-			$team_name = get_the_title( $info['team_id'] );
-			$status    = 'unpaid';
-			$amount    = '';
+		foreach ( $page_rows as $row ) {
+			$pid    = $row['player_id'];
+			$status = 'unpaid';
+			$amount = '';
 
-			// Check registration log first.
 			if ( isset( $reg_map[ $pid ] ) ) {
 				$order = wc_get_order( $reg_map[ $pid ] );
 				if ( $order ) {
@@ -569,9 +862,8 @@ class SPLM_REST_API {
 				}
 			}
 
-			// Fall back to name matching on WooCommerce orders.
 			if ( 'unpaid' === $status ) {
-				$parts = explode( ' ', $player->post_title, 2 );
+				$parts = explode( ' ', $row['player'], 2 );
 				$first = $parts[0];
 				$last  = isset( $parts[1] ) ? $parts[1] : '';
 				if ( $first && $last ) {
@@ -592,27 +884,19 @@ class SPLM_REST_API {
 
 			$data[] = array(
 				'player_id' => $pid,
-				'player'    => $player->post_title,
-				'team'      => $team_name,
+				'player'    => $row['player'],
+				'team'      => $row['team'],
 				'status'    => $status,
 				'amount'    => $amount,
 			);
 		}
 
-		usort( $data, function ( $a, $b ) {
-			$t = strcmp( $a['team'], $b['team'] );
-			return $t !== 0 ? $t : strcmp( $a['player'], $b['player'] );
-		} );
-
-		$per_page = min( 200, max( 1, (int) ( $request->get_param( 'per_page' ) ?? 50 ) ) );
-		$page     = max( 1, (int) ( $request->get_param( 'page' ) ?? 1 ) );
-		$total    = count( $data );
-		$offset   = ( $page - 1 ) * $per_page;
-		$paged    = array_slice( $data, $offset, $per_page );
-
-		$response = new WP_REST_Response( $paged, 200 );
+		$response = new WP_REST_Response(
+			splm_rest_list_response( $data, $total, $page, $per_page ),
+			200
+		);
 		$response->header( 'X-WP-Total', $total );
-		$response->header( 'X-WP-TotalPages', (int) ceil( $total / $per_page ) );
+		$response->header( 'X-WP-TotalPages', $total_pages );
 
 		return $response;
 	}
@@ -638,28 +922,47 @@ class SPLM_REST_API {
 			'fields'         => 'ids',
 		) );
 
-		foreach ( $teams as $team_id ) {
-			$count = $wpdb->get_var( $wpdb->prepare(
-				"SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key = 'sp_team' AND meta_value = %d",
-				$team_id
+		// Fix: batch player counts in one query instead of N+1.
+		if ( ! empty( $teams ) ) {
+			$placeholders = implode( ', ', array_fill( 0, count( $teams ), '%d' ) );
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$rows = $wpdb->get_results( $wpdb->prepare(
+				"SELECT pm.meta_value AS team_id, COUNT(*) AS cnt
+				FROM {$wpdb->postmeta} pm
+				INNER JOIN {$wpdb->posts} p ON pm.post_id = p.ID AND p.post_type = 'sp_player' AND p.post_status = 'publish'
+				WHERE pm.meta_key = 'sp_current_team' AND pm.meta_value IN ($placeholders)
+				GROUP BY pm.meta_value",
+				...$teams
 			) );
-			if ( 0 === (int) $count ) {
-				$issues['teams_without_players'][] = array(
-					'id'   => $team_id,
-					'name' => get_the_title( $team_id ),
-				);
+			$counts = array();
+			foreach ( $rows as $row ) {
+				$counts[ (int) $row->team_id ] = (int) $row->cnt;
+			}
+			foreach ( $teams as $team_id ) {
+				if ( 0 === ( $counts[ $team_id ] ?? 0 ) ) {
+					$issues['teams_without_players'][] = array(
+						'id'   => $team_id,
+						'name' => get_the_title( $team_id ),
+					);
+				}
 			}
 		}
 
 		// Players without email (limit to 20 results for performance).
 		$players_no_email = $wpdb->get_results(
-			"SELECT p.ID, p.post_title FROM {$wpdb->posts} p
-			 LEFT JOIN {$wpdb->postmeta} pm1 ON p.ID = pm1.post_id AND pm1.meta_key = 'spt_email'
-			 LEFT JOIN {$wpdb->postmeta} pm2 ON p.ID = pm2.post_id AND pm2.meta_key = 'spat_email'
-			 WHERE p.post_type = 'sp_player' AND p.post_status = 'publish'
-			 AND (pm1.meta_value IS NULL OR pm1.meta_value = '')
-			 AND (pm2.meta_value IS NULL OR pm2.meta_value = '')
-			 LIMIT 20"
+			$wpdb->prepare(
+				"SELECT p.ID, p.post_title FROM {$wpdb->posts} p
+				 LEFT JOIN {$wpdb->postmeta} pm1 ON p.ID = pm1.post_id AND pm1.meta_key = %s
+				 LEFT JOIN {$wpdb->postmeta} pm2 ON p.ID = pm2.post_id AND pm2.meta_key = %s
+				 WHERE p.post_type = %s AND p.post_status = %s
+				 AND (pm1.meta_value IS NULL OR pm1.meta_value = '')
+				 AND (pm2.meta_value IS NULL OR pm2.meta_value = '')
+				 LIMIT 20",
+				'spt_email',
+				'spat_email',
+				'sp_player',
+				'publish'
+			)
 		);
 		foreach ( $players_no_email as $row ) {
 			$issues['players_without_email'][] = array(
@@ -737,27 +1040,1161 @@ class SPLM_REST_API {
 			}
 		}
 
-		return new WP_REST_Response( $data, 200 );
+		return new WP_REST_Response( splm_rest_list_response( $data ), 200 );
+	}
+
+	/**
+	 * POST /rosters/bulk-upload — parse multi-team CSV, return preview with fuzzy matches.
+	 */
+	public function bulk_upload_roster( $request ) {
+		$files = $request->get_file_params();
+		if ( empty( $files['file'] ) || $files['file']['error'] !== UPLOAD_ERR_OK ) {
+			return new WP_Error( 'upload_error', 'File upload failed.', array( 'status' => 400 ) );
+		}
+
+		$ext = strtolower( pathinfo( $files['file']['name'], PATHINFO_EXTENSION ) );
+		if ( 'csv' !== $ext ) {
+			return new WP_Error( 'invalid_type', 'Only CSV files are supported.', array( 'status' => 400 ) );
+		}
+
+		$validation = $this->validate_upload( $files['file'], array( 'text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel' ) );
+		if ( is_wp_error( $validation ) ) {
+			return $validation;
+		}
+
+		$rows = array_map( 'str_getcsv', file( $files['file']['tmp_name'] ) );
+		if ( empty( $rows ) ) {
+			return new WP_Error( 'empty_file', 'CSV file is empty.', array( 'status' => 400 ) );
+		}
+		// Cap rows before any expensive fuzzy match work.
+		if ( count( $rows ) > 5001 ) {
+			$rows = array_slice( $rows, 0, 5001 );
+		}
+		$header = array_map( 'strtolower', array_map( 'trim', array_shift( $rows ) ) );
+
+		$team_col = array_search( 'team', $header, true );
+		$name_col = array_search( 'name', $header, true );
+		if ( false === $team_col || false === $name_col ) {
+			return new WP_Error( 'missing_columns', 'CSV must have Team and Name columns.', array( 'status' => 400 ) );
+		}
+
+		// Parse and clean.
+		$by_team = array();
+		foreach ( $rows as $row ) {
+			$team = isset( $row[ $team_col ] ) ? trim( $row[ $team_col ] ) : '';
+			$name = isset( $row[ $name_col ] ) ? trim( $row[ $name_col ] ) : '';
+			if ( '' === $team || '' === $name ) {
+				continue;
+			}
+			$name = preg_replace( '/^\([A-Z]\)\s*/i', '', $name );
+			$name = preg_replace( '/\s*\(\d+\)\s*$/', '', $name );
+			$name = trim( $name );
+			if ( '' === $name ) {
+				continue;
+			}
+			$by_team[ $team ][] = $name;
+		}
+
+		// Fuzzy match teams and players — fetch IDs+titles only via direct SQL.
+		$all_teams   = $this->fetch_id_title_index( 'sp_team' );
+		$all_players = $this->fetch_id_title_index( 'sp_player' );
+
+		$result = array();
+		foreach ( $by_team as $csv_team => $names ) {
+			$matched_team = $this->fuzzy_match_index( $csv_team, $all_teams );
+			$players      = array();
+			foreach ( $names as $csv_name ) {
+				$matched = $this->fuzzy_match_index( $csv_name, $all_players );
+				$players[] = array(
+					'csv_name'     => $csv_name,
+					'matched_id'   => $matched ? (int) $matched['id'] : 0,
+					'matched_name' => $matched ? $matched['title'] : '',
+					'status'       => $matched ? 'matched' : 'new',
+				);
+			}
+			$result[] = array(
+				'csv_team'     => $csv_team,
+				'matched_id'   => $matched_team ? (int) $matched_team['id'] : 0,
+				'matched_name' => $matched_team ? $matched_team['title'] : '',
+				'players'      => $players,
+			);
+		}
+
+		return new WP_REST_Response( $result, 200 );
+	}
+
+	/**
+	 * POST /rosters/bulk-process — create/update player lists from confirmed CSV data.
+	 */
+	public function bulk_process_roster( $request ) {
+		$params    = $request->get_json_params();
+		$teams     = $params['teams'] ?? array();
+		$season_id = absint( $params['season_id'] ?? 0 );
+		$action    = sanitize_text_field( $params['action'] ?? 'create' );
+		$template  = sanitize_text_field( $params['list_name_template'] ?? '{team} Roster' );
+
+		// Validate season up front (F4) — null-check get_term result.
+		$season_name = '';
+		if ( $season_id ) {
+			$season_term = get_term( $season_id, 'sp_season' );
+			if ( ! $season_term || is_wp_error( $season_term ) ) {
+				return new WP_Error( 'invalid_season', 'Invalid season ID.', array( 'status' => 400 ) );
+			}
+			$season_name = $season_term->name;
+		}
+
+		$created = 0;
+		$updated = 0;
+		$errors  = array();
+
+		foreach ( $teams as $team_data ) {
+			$team_id    = absint( $team_data['team_id'] ?? 0 );
+			$player_ids = array_map( 'absint', $team_data['player_ids'] ?? array() );
+
+			if ( ! $team_id ) {
+				$errors[] = 'Missing team_id for entry';
+				continue;
+			}
+
+			// Validate team_id refers to an sp_team post (F4).
+			if ( 'sp_team' !== get_post_type( $team_id ) ) {
+				$errors[] = sprintf( 'Invalid team ID %d (not an sp_team)', $team_id );
+				continue;
+			}
+
+			$team_name = get_the_title( $team_id );
+			$list_name = str_replace(
+				array( '{team}', '{season}' ),
+				array( $team_name, $season_name ),
+				$template
+			);
+
+			$list_id = 0;
+			if ( 'update' === $action ) {
+				$existing = get_posts( array(
+					'post_type'      => 'sp_list',
+					'posts_per_page' => 1,
+					'tax_query'      => array(
+						'relation' => 'AND',
+						array( 'taxonomy' => 'sp_team', 'terms' => $team_id ),
+						$season_id ? array( 'taxonomy' => 'sp_season', 'terms' => $season_id ) : array(),
+					),
+				) );
+				if ( ! empty( $existing ) ) {
+					$list_id = $existing[0]->ID;
+					$updated++;
+				}
+			}
+
+			if ( ! $list_id ) {
+				$list_id = wp_insert_post( array(
+					'post_type'   => 'sp_list',
+					'post_title'  => $list_name,
+					'post_status' => 'publish',
+				) );
+				if ( is_wp_error( $list_id ) ) {
+					$errors[] = sprintf( 'Failed to create list for %s', $team_name );
+					continue;
+				}
+				$created++;
+			}
+
+			wp_set_object_terms( $list_id, $team_id, 'sp_team' );
+			if ( $season_id ) {
+				wp_set_object_terms( $list_id, $season_id, 'sp_season' );
+			}
+			// Per-list transient mutex — prevent concurrent admins (or
+			// double-clicks) from racing the delete+insert window and
+			// corrupting the roster (H1).
+			$lock_key = "splm_bulk_lock_$list_id";
+			if ( class_exists( 'SPAT_Lock' ) ) {
+				$acquired = SPAT_Lock::acquire( $lock_key, 30 );
+			} else {
+				$acquired = wp_cache_add( $lock_key, 1, 'splm_locks', 30 );
+			}
+			if ( ! $acquired ) {
+				return new WP_Error( 'locked', 'Another save in progress', array( 'status' => 409 ) );
+			}
+			// Clear any existing sp_player rows so re-runs don't accumulate duplicates (F13).
+			delete_post_meta( $list_id, 'sp_player' );
+			foreach ( $player_ids as $pid ) {
+				add_post_meta( $list_id, 'sp_player', $pid );
+			}
+			if ( class_exists( 'SPAT_Lock' ) ) {
+				SPAT_Lock::release( $lock_key );
+			} else {
+				wp_cache_delete( $lock_key, 'splm_locks' );
+			}
+		}
+
+		return new WP_REST_Response( array( 'created' => $created, 'updated' => $updated, 'errors' => $errors ), 200 );
+	}
+
+	/**
+	 * POST /games/import-preview — parse XLSX/CSV file and return preview of games.
+	 */
+	public function import_games_preview( $request ) {
+		$files = $request->get_file_params();
+		if ( empty( $files['file'] ) || $files['file']['error'] !== UPLOAD_ERR_OK ) {
+			return new WP_Error( 'upload_error', 'File upload failed.', array( 'status' => 400 ) );
+		}
+
+		// Lightweight parse — does not require SPEM_Events_Management.
+		$file_path = $files['file']['tmp_name'];
+		$ext       = strtolower( pathinfo( $files['file']['name'], PATHINFO_EXTENSION ) );
+
+		if ( ! in_array( $ext, array( 'csv', 'xlsx' ), true ) ) {
+			return new WP_Error( 'invalid_type', 'Only CSV and XLSX files are supported.', array( 'status' => 400 ) );
+		}
+
+		$validation = $this->validate_upload(
+			$files['file'],
+			array(
+				'text/csv',
+				'text/plain',
+				'application/csv',
+				'application/vnd.ms-excel',
+				'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+				'application/zip', // XLSX files are reported as application/zip by some libmagic versions.
+			)
+		);
+		if ( is_wp_error( $validation ) ) {
+			return $validation;
+		}
+
+		$rows = array();
+		if ( 'xlsx' === $ext ) {
+			if ( ! class_exists( 'SimpleXLSX' ) ) {
+				$xlsx_path = defined( 'SPAT_PLUGIN_PATH' ) ? SPAT_PLUGIN_PATH . 'includes/SimpleXLSX.php' : '';
+				if ( $xlsx_path && file_exists( $xlsx_path ) ) {
+					require_once $xlsx_path;
+				} else {
+					return new WP_Error( 'missing_parser', 'SimpleXLSX parser not available.', array( 'status' => 503 ) );
+				}
+			}
+			$xlsx = SimpleXLSX::parse( $file_path );
+			if ( ! $xlsx ) {
+				return new WP_Error( 'parse_error', 'Failed to parse XLSX file.', array( 'status' => 400 ) );
+			}
+			$rows = $xlsx->rows();
+		} else {
+			$handle = fopen( $file_path, 'r' );
+			if ( $handle ) {
+				while ( ( $data = fgetcsv( $handle ) ) !== false ) {
+					$rows[] = $data;
+				}
+				fclose( $handle );
+			}
+		}
+
+		if ( count( $rows ) < 2 ) {
+			return new WP_Error( 'empty_file', 'File contains no data rows.', array( 'status' => 400 ) );
+		}
+
+		// Cap rows (header + up to 5000 data rows).
+		if ( count( $rows ) > 5001 ) {
+			$rows = array_slice( $rows, 0, 5001 );
+		}
+
+		$header = array_map( function ( $c ) { return strtolower( trim( $c ) ); }, $rows[0] );
+
+		$col_map = array(
+			'date'      => $this->find_col( $header, array( 'date', 'game date', 'event date' ) ),
+			'time'      => $this->find_col( $header, array( 'time', 'game time', 'start time' ) ),
+			'home_team' => $this->find_col( $header, array( 'home team', 'home', 'home_team' ) ),
+			'away_team' => $this->find_col( $header, array( 'away team', 'away', 'away_team', 'visitor', 'visiting team' ) ),
+			'venue'     => $this->find_col( $header, array( 'venue', 'location', 'arena', 'rink' ) ),
+			'league'    => $this->find_col( $header, array( 'league', 'division' ) ),
+		);
+
+		if ( false === $col_map['date'] || false === $col_map['home_team'] || false === $col_map['away_team'] ) {
+			return new WP_Error( 'missing_columns', 'File must have Date, Home Team, and Away Team columns.', array( 'status' => 400 ) );
+		}
+
+		$games    = array();
+		$warnings = array();
+		for ( $i = 1; $i < count( $rows ); $i++ ) {
+			$row  = $rows[ $i ];
+			$date = isset( $row[ $col_map['date'] ] ) ? trim( $row[ $col_map['date'] ] ) : '';
+			$home = isset( $row[ $col_map['home_team'] ] ) ? trim( $row[ $col_map['home_team'] ] ) : '';
+			$away = isset( $row[ $col_map['away_team'] ] ) ? trim( $row[ $col_map['away_team'] ] ) : '';
+
+			if ( '' === $date || '' === $home || '' === $away ) {
+				$warnings[] = sprintf( 'Row %d: missing required data, skipped.', $i + 1 );
+				continue;
+			}
+
+			$games[] = array(
+				'date'      => sanitize_text_field( $date ),
+				'time'      => false !== $col_map['time'] && isset( $row[ $col_map['time'] ] ) ? sanitize_text_field( trim( $row[ $col_map['time'] ] ) ) : '',
+				'home_team' => sanitize_text_field( $home ),
+				'away_team' => sanitize_text_field( $away ),
+				'venue'     => false !== $col_map['venue'] && isset( $row[ $col_map['venue'] ] ) ? sanitize_text_field( trim( $row[ $col_map['venue'] ] ) ) : '',
+				'league'    => false !== $col_map['league'] && isset( $row[ $col_map['league'] ] ) ? sanitize_text_field( trim( $row[ $col_map['league'] ] ) ) : '',
+			);
+		}
+
+		return new WP_REST_Response( array( 'games' => $games, 'warnings' => $warnings ), 200 );
+	}
+
+	/**
+	 * POST /games/import — create sp_event posts from confirmed game data.
+	 */
+	public function import_games( $request ) {
+		$params    = $request->get_json_params();
+		$games     = $params['games'] ?? array();
+		$season_id = absint( $params['season_id'] ?? 0 );
+
+		$imported = 0;
+		$skipped  = 0;
+		$errors   = array();
+
+		foreach ( $games as $game ) {
+			$date      = sanitize_text_field( $game['date'] ?? '' );
+			$time      = sanitize_text_field( $game['time'] ?? '19:00' );
+			$home_name = sanitize_text_field( $game['home_team'] ?? '' );
+			$away_name = sanitize_text_field( $game['away_team'] ?? '' );
+			$venue     = sanitize_text_field( $game['venue'] ?? '' );
+
+			if ( '' === $date || '' === $home_name || '' === $away_name ) {
+				$skipped++;
+				continue;
+			}
+
+			// Require existing teams — do NOT auto-create. Unknown teams must
+			// be resolved via the preview/match flow before import.
+			$home_id = $this->find_existing_team( $home_name );
+			$away_id = $this->find_existing_team( $away_name );
+
+			if ( ! $home_id || ! $away_id ) {
+				$errors[] = sprintf(
+					'Skipped %s vs %s on %s — unknown team(s)',
+					$home_name,
+					$away_name,
+					$date
+				);
+				$skipped++;
+				continue;
+			}
+
+			$post_date = $date . ' ' . ( preg_match( '/^\d{2}:\d{2}$/', $time ) ? $time : '19:00' ) . ':00';
+
+			$event_id = wp_insert_post( array(
+				'post_type'   => 'sp_event',
+				'post_title'  => $home_name . ' vs ' . $away_name,
+				'post_status' => 'publish',
+				'post_date'   => $post_date,
+			) );
+
+			if ( is_wp_error( $event_id ) ) {
+				$errors[] = sprintf( 'Failed to create event: %s vs %s on %s', $home_name, $away_name, $date );
+				continue;
+			}
+
+			// Clear any pre-existing sp_team rows (defensive — a fresh insert
+			// shouldn't have any, but this enforces the invariant against
+			// duplicate add_post_meta rows). Wrapped in a per-event mutex
+			// to mirror H1's protection on bulk_process_roster.
+			$event_lock_key = "splm_bulk_lock_$event_id";
+			if ( class_exists( 'SPAT_Lock' ) ) {
+				$event_acquired = SPAT_Lock::acquire( $event_lock_key, 30 );
+			} else {
+				$event_acquired = wp_cache_add( $event_lock_key, 1, 'splm_locks', 30 );
+			}
+			if ( ! $event_acquired ) {
+				return new WP_Error( 'locked', 'Another save in progress', array( 'status' => 409 ) );
+			}
+			delete_post_meta( $event_id, 'sp_team' );
+			add_post_meta( $event_id, 'sp_team', $home_id );
+			add_post_meta( $event_id, 'sp_team', $away_id );
+			if ( class_exists( 'SPAT_Lock' ) ) {
+				SPAT_Lock::release( $event_lock_key );
+			} else {
+				wp_cache_delete( $event_lock_key, 'splm_locks' );
+			}
+
+			if ( $venue ) {
+				$venue_term = term_exists( $venue, 'sp_venue' );
+				if ( ! $venue_term ) {
+					$venue_term = wp_insert_term( $venue, 'sp_venue' );
+				}
+				if ( ! is_wp_error( $venue_term ) ) {
+					$vid = is_array( $venue_term ) ? $venue_term['term_id'] : $venue_term;
+					wp_set_object_terms( $event_id, (int) $vid, 'sp_venue' );
+				}
+			}
+
+			if ( $season_id ) {
+				wp_set_object_terms( $event_id, $season_id, 'sp_season' );
+			}
+
+			// Initialize SportsPress event meta.
+			update_post_meta( $event_id, 'sp_results', array() );
+
+			$imported++;
+		}
+
+		return new WP_REST_Response( array( 'imported' => $imported, 'skipped' => $skipped, 'errors' => $errors ), 200 );
+	}
+
+	/**
+	 * Lookup an existing sp_team by exact title. Returns 0 if not found.
+	 */
+	private function find_existing_team( $name ) {
+		$existing = get_posts( array(
+			'post_type'      => 'sp_team',
+			'title'          => $name,
+			'posts_per_page' => 1,
+			'post_status'    => 'publish',
+			'fields'         => 'ids',
+		) );
+		return ! empty( $existing ) ? (int) $existing[0] : 0;
+	}
+
+	/**
+	 * Shared upload validation: size cap (from splm_roster_max_upload_kb option)
+	 * and MIME sniff via finfo. Returns true or WP_Error.
+	 *
+	 * @param array $file              Element from $request->get_file_params().
+	 * @param array $allowed_mime_types MIME types accepted.
+	 * @return true|WP_Error
+	 */
+	private function validate_upload( $file, $allowed_mime_types ) {
+		$max_kb = (int) get_option( 'splm_roster_max_upload_kb', 512 );
+		if ( $max_kb < 1 ) {
+			$max_kb = 512;
+		}
+		$max_bytes = $max_kb * 1024;
+		if ( isset( $file['size'] ) && (int) $file['size'] > $max_bytes ) {
+			return new WP_Error(
+				'file_too_large',
+				sprintf( 'File exceeds the maximum upload size of %d KB.', $max_kb ),
+				array( 'status' => 413 )
+			);
+		}
+
+		if ( function_exists( 'finfo_open' ) && isset( $file['tmp_name'] ) && file_exists( $file['tmp_name'] ) ) {
+			$finfo = finfo_open( FILEINFO_MIME_TYPE );
+			if ( $finfo ) {
+				$mime = finfo_file( $finfo, $file['tmp_name'] );
+				finfo_close( $finfo );
+				if ( $mime && ! in_array( $mime, $allowed_mime_types, true ) ) {
+					return new WP_Error(
+						'invalid_mime',
+						sprintf( 'Unsupported file type (%s).', $mime ),
+						array( 'status' => 400 )
+					);
+				}
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Find column index from a list of possible header names.
+	 */
+	private function find_col( $header, $variants ) {
+		foreach ( $variants as $v ) {
+			$idx = array_search( $v, $header, true );
+			if ( false !== $idx ) {
+				return $idx;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Fetch a lightweight ID+title index for a post type via direct SQL.
+	 * Returns array with two keys:
+	 *   'by_lc'   => map lowercase-title => row (id, title)
+	 *   'rows'    => list of all rows
+	 */
+	private function fetch_id_title_index( $post_type ) {
+		global $wpdb;
+		$rows = $wpdb->get_results( $wpdb->prepare(
+			"SELECT ID AS id, post_title AS title FROM {$wpdb->posts} WHERE post_type = %s AND post_status = 'publish'",
+			$post_type
+		), ARRAY_A );
+
+		$by_lc = array();
+		foreach ( (array) $rows as $r ) {
+			$key = strtolower( trim( (string) $r['title'] ) );
+			if ( '' !== $key && ! isset( $by_lc[ $key ] ) ) {
+				$by_lc[ $key ] = $r;
+			}
+		}
+		return array( 'by_lc' => $by_lc, 'rows' => (array) $rows );
+	}
+
+	/**
+	 * Fuzzy match a name against an index built by fetch_id_title_index().
+	 *
+	 * Order of operations:
+	 *   1. Exact lowercase-trim match against the hash map (O(1)).
+	 *   2. Levenshtein only on candidates pre-filtered by length proximity.
+	 */
+	private function fuzzy_match_index( $name, $index ) {
+		$name_lc = strtolower( trim( (string) $name ) );
+		if ( '' === $name_lc ) {
+			return null;
+		}
+
+		if ( isset( $index['by_lc'][ $name_lc ] ) ) {
+			return $index['by_lc'][ $name_lc ];
+		}
+
+		$best      = null;
+		$best_dist = PHP_INT_MAX;
+		$name_len  = strlen( $name_lc );
+		// Accept distance up to 2 OR 40% of length, whichever is larger.
+		$max_dist  = max( 2, (int) floor( $name_len * 0.4 ) );
+
+		foreach ( $index['rows'] as $r ) {
+			$title_lc = strtolower( trim( (string) $r['title'] ) );
+			if ( '' === $title_lc ) {
+				continue;
+			}
+			// Length-distance pre-filter — Levenshtein cannot be lower than
+			// the difference in string lengths, so skip obviously-far candidates.
+			if ( abs( strlen( $title_lc ) - $name_len ) > $max_dist ) {
+				continue;
+			}
+			$dist = levenshtein( $name_lc, $title_lc );
+			if ( $dist < $best_dist ) {
+				$best_dist = $dist;
+				$best      = $r;
+				if ( 0 === $dist ) {
+					break;
+				}
+			}
+		}
+
+		return ( $best && $best_dist <= $max_dist ) ? $best : null;
+	}
+
+	/**
+	 * GET /players/search — global player search by name, email, or number.
+	 */
+	public function search_players( $request ) {
+		global $wpdb;
+
+		$q     = trim( (string) $request->get_param( 'q' ) );
+		$limit = (int) $request->get_param( 'limit' );
+
+		// Require at least 3 characters to keep LIKE queries cheap and noise-free.
+		if ( mb_strlen( $q ) < 3 ) {
+			return new WP_REST_Response( splm_rest_list_response( array() ), 200 );
+		}
+
+		$q_like = $wpdb->esc_like( $q );
+
+		$by_name = get_posts( array(
+			'post_type'      => 'sp_player',
+			'posts_per_page' => $limit,
+			's'              => $q,
+			'post_status'    => 'publish',
+		) );
+
+		$by_meta = array();
+		if ( count( $by_name ) < $limit ) {
+			$by_meta = get_posts( array(
+				'post_type'      => 'sp_player',
+				'posts_per_page' => $limit - count( $by_name ),
+				'post_status'    => 'publish',
+				'post__not_in'   => wp_list_pluck( $by_name, 'ID' ),
+				'meta_query'     => array(
+					'relation' => 'OR',
+					array( 'key' => 'spt_email', 'value' => $q_like, 'compare' => 'LIKE' ),
+					array( 'key' => 'sp_number', 'value' => $q, 'compare' => '=' ),
+				),
+			) );
+		}
+
+		$results = array();
+		foreach ( array_merge( $by_name, $by_meta ) as $p ) {
+			$team_id   = get_post_meta( $p->ID, 'sp_current_team', true );
+			$results[] = array(
+				'id'        => $p->ID,
+				'name'      => $p->post_title,
+				'team_id'   => (int) $team_id,
+				'team_name' => $team_id ? get_the_title( $team_id ) : '',
+				'number'    => get_post_meta( $p->ID, 'sp_number', true ),
+			);
+		}
+
+		return new WP_REST_Response( splm_rest_list_response( $results ), 200 );
+	}
+
+	/**
+	 * GET /activity — unified activity feed from log tables.
+	 */
+	public function get_activity( $request ) {
+		global $wpdb;
+		$limit = (int) $request->get_param( 'limit' );
+		if ( $limit < 1 ) {
+			$limit = 20;
+		}
+		$items = array();
+
+		$reg_table       = $wpdb->prefix . 'spat_registration_logs';
+		$etransfer_table = $wpdb->prefix . 'spat_etransfer_logs';
+		$role_table      = $wpdb->prefix . 'spat_role_logs';
+
+		// Static allowlist — only these tables may be queried below.
+		$allowed_tables = array( $reg_table, $etransfer_table, $role_table );
+
+		$table_exists = function ( $table ) use ( $wpdb, $allowed_tables ) {
+			if ( ! in_array( $table, $allowed_tables, true ) ) {
+				return false;
+			}
+			return $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table;
+		};
+
+		if ( $table_exists( $reg_table ) ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name validated against static allowlist above
+			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT timestamp, customer_name, action, season FROM `{$reg_table}` ORDER BY id DESC LIMIT %d", $limit ) );
+			foreach ( (array) $rows as $r ) {
+				$items[] = array(
+					'timestamp'   => $r->timestamp,
+					'type'        => 'registration',
+					'description' => sprintf( '%s — %s (%s)', $r->customer_name, $r->action, $r->season ),
+				);
+			}
+		}
+
+		if ( $table_exists( $etransfer_table ) ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name validated against static allowlist above
+			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT timestamp, from_name, amount, result FROM `{$etransfer_table}` WHERE is_hidden = 0 ORDER BY id DESC LIMIT %d", $limit ) );
+			foreach ( (array) $rows as $r ) {
+				$items[] = array(
+					'timestamp'   => $r->timestamp,
+					'type'        => 'payment',
+					'description' => sprintf( '%s — $%s — %s', $r->from_name, $r->amount, $r->result ),
+				);
+			}
+		}
+
+		if ( $table_exists( $role_table ) ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name validated against static allowlist above
+			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT timestamp, user_login, role_added FROM `{$role_table}` ORDER BY id DESC LIMIT %d", $limit ) );
+			foreach ( (array) $rows as $r ) {
+				$items[] = array(
+					'timestamp'   => $r->timestamp,
+					'type'        => 'role',
+					'description' => sprintf( '%s — assigned %s', $r->user_login, $r->role_added ),
+				);
+			}
+		}
+
+		usort( $items, function ( $a, $b ) {
+			return strcmp( $b['timestamp'], $a['timestamp'] );
+		} );
+
+		return new WP_REST_Response( splm_rest_list_response( array_slice( $items, 0, $limit ) ), 200 );
+	}
+
+	/**
+	 * POST /scores/batch — update scores for multiple games at once.
+	 */
+	public function batch_update_scores( $request ) {
+		$scores  = $request->get_json_params()['scores'] ?? array();
+		$updated = 0;
+		$errors  = array();
+
+		foreach ( $scores as $entry ) {
+			$game_id    = absint( $entry['game_id'] ?? 0 );
+			$home_score = $entry['home_score'] ?? null;
+			$away_score = $entry['away_score'] ?? null;
+
+			if ( ! $game_id || get_post_type( $game_id ) !== 'sp_event' ) {
+				$errors[] = sprintf( 'Invalid game ID: %d', $game_id );
+				continue;
+			}
+
+			$teams = get_post_meta( $game_id, 'sp_team' );
+			if ( count( $teams ) < 2 ) {
+				$errors[] = sprintf( 'Game %d has fewer than 2 teams', $game_id );
+				continue;
+			}
+
+			$home_int = absint( $home_score );
+			$away_int = absint( $away_score );
+
+			// Compute per-team outcome so SportsPress league-table aggregations
+			// reflect wins/losses/draws (writing '' here previously broke standings).
+			if ( $home_int > $away_int ) {
+				$home_outcome = 'win';
+				$away_outcome = 'loss';
+			} elseif ( $home_int < $away_int ) {
+				$home_outcome = 'loss';
+				$away_outcome = 'win';
+			} else {
+				$home_outcome = 'draw';
+				$away_outcome = 'draw';
+			}
+
+			$results = get_post_meta( $game_id, 'sp_results', true );
+			if ( ! is_array( $results ) ) {
+				$results = array();
+			}
+
+			$results[ $teams[0] ] = array_merge(
+				$results[ $teams[0] ] ?? array(),
+				array( 'outcome' => $home_outcome, 'gf' => $home_int, 'ga' => $away_int )
+			);
+			$results[ $teams[1] ] = array_merge(
+				$results[ $teams[1] ] ?? array(),
+				array( 'outcome' => $away_outcome, 'gf' => $away_int, 'ga' => $home_int )
+			);
+			update_post_meta( $game_id, 'sp_results', $results );
+
+			// Fire save_post_sp_event so SportsPress recalculates standings/stats.
+			$post = get_post( $game_id );
+			if ( $post ) {
+				do_action( 'save_post_sp_event', $game_id, $post, true );
+			}
+
+			$updated++;
+		}
+
+		return new WP_REST_Response( array( 'updated' => $updated, 'errors' => $errors ), 200 );
+	}
+
+	/**
+	 * POST /user/preferences — save dashboard card visibility and filters.
+	 */
+	public function save_user_preferences( $request ) {
+		$prefs   = $request->get_json_params();
+		$user_id = get_current_user_id();
+
+		if ( isset( $prefs['dashboard_layout'] ) && is_array( $prefs['dashboard_layout'] ) ) {
+			update_user_meta( $user_id, 'splm_dashboard_layout', array_map( 'sanitize_text_field', $prefs['dashboard_layout'] ) );
+		}
+		if ( isset( $prefs['preferred_league'] ) ) {
+			update_user_meta( $user_id, 'splm_preferred_league', absint( $prefs['preferred_league'] ) );
+		}
+		if ( isset( $prefs['preferred_season'] ) ) {
+			update_user_meta( $user_id, 'splm_preferred_season', absint( $prefs['preferred_season'] ) );
+		}
+
+		return new WP_REST_Response( array( 'saved' => true ), 200 );
+	}
+
+	/**
+	 * POST /skills/calculate — bulk calculate skill levels from SportsPress stats.
+	 */
+	public function calculate_skills( $request ) {
+		$params    = $request->get_json_params();
+		$league_id = absint( $params['league_id'] ?? 0 );
+		$season_id = absint( $params['season_id'] ?? 0 );
+
+		$this->maybe_load_sibling_class( 'SPPT_Player_Skill_Level' );
+		if ( ! class_exists( 'SPPT_Player_Skill_Level' ) ) {
+			return new WP_Error( 'missing_dependency', 'Player Tools plugin with Skill Level module is required.', array( 'status' => 503 ) );
+		}
+
+		$skill  = new SPPT_Player_Skill_Level();
+		$result = $skill->calculate_for_league_season( $league_id, $season_id );
+
+		return is_wp_error( $result ) ? $result : new WP_REST_Response( $result, 200 );
+	}
+
+	/**
+	 * POST /standings/generate — create a league table for a league/season.
+	 */
+	public function generate_standings( $request ) {
+		$params    = $request->get_json_params();
+		$league_id = absint( $params['league_id'] ?? 0 );
+		$season_id = absint( $params['season_id'] ?? 0 );
+
+		if ( ! $league_id || ! $season_id ) {
+			return new WP_Error( 'missing_params', 'league_id and season_id are required.', array( 'status' => 400 ) );
+		}
+
+		$league = get_term( $league_id, 'sp_league' );
+		$season = get_term( $season_id, 'sp_season' );
+		if ( ! $league || ! $season || is_wp_error( $league ) || is_wp_error( $season ) ) {
+			return new WP_Error( 'invalid_params', 'Invalid league or season.', array( 'status' => 400 ) );
+		}
+
+		$teams = get_posts( array(
+			'post_type'      => 'sp_team',
+			'posts_per_page' => -1,
+			'tax_query'      => array(
+				'relation' => 'AND',
+				array( 'taxonomy' => 'sp_league', 'terms' => $league_id ),
+				array( 'taxonomy' => 'sp_season', 'terms' => $season_id ),
+			),
+		) );
+
+		$title    = $league->name . ' — ' . $season->name;
+		$table_id = wp_insert_post( array(
+			'post_type'   => 'sp_table',
+			'post_title'  => $title,
+			'post_status' => 'publish',
+		) );
+
+		if ( is_wp_error( $table_id ) ) {
+			return $table_id;
+		}
+
+		wp_set_object_terms( $table_id, $league_id, 'sp_league' );
+		wp_set_object_terms( $table_id, $season_id, 'sp_season' );
+		// Clear any pre-existing sp_team rows (defensive — new post should
+		// not have any) to keep the meta canonical (F13). Per-table mutex
+		// mirrors H1's protection on bulk_process_roster.
+		$table_lock_key = "splm_bulk_lock_$table_id";
+		if ( class_exists( 'SPAT_Lock' ) ) {
+			$table_acquired = SPAT_Lock::acquire( $table_lock_key, 30 );
+		} else {
+			$table_acquired = wp_cache_add( $table_lock_key, 1, 'splm_locks', 30 );
+		}
+		if ( ! $table_acquired ) {
+			return new WP_Error( 'locked', 'Another save in progress', array( 'status' => 409 ) );
+		}
+		delete_post_meta( $table_id, 'sp_team' );
+		foreach ( $teams as $team ) {
+			add_post_meta( $table_id, 'sp_team', $team->ID );
+		}
+		if ( class_exists( 'SPAT_Lock' ) ) {
+			SPAT_Lock::release( $table_lock_key );
+		} else {
+			wp_cache_delete( $table_lock_key, 'splm_locks' );
+		}
+		update_post_meta( $table_id, 'sp_columns', array( 'pos', 'name', 'p', 'w', 'd', 'l', 'f', 'a', 'gd', 'pts' ) );
+
+		return new WP_REST_Response( array( 'table_id' => $table_id, 'title' => $title, 'teams' => count( $teams ) ), 200 );
+	}
+
+	/**
+	 * GET /divisions/balance — skill distribution per division.
+	 */
+	public function get_division_balance( $request ) {
+		$season_id = absint( $request->get_param( 'season' ) );
+
+		$all_leagues = get_terms( array( 'taxonomy' => 'sp_league', 'hide_empty' => false ) );
+		if ( is_wp_error( $all_leagues ) ) {
+			return new WP_REST_Response( splm_rest_list_response( array() ), 200 );
+		}
+
+		// Use leaf divisions (those with no children).
+		$parent_ids = array();
+		foreach ( $all_leagues as $l ) {
+			if ( $l->parent ) {
+				$parent_ids[ $l->parent ] = true;
+			}
+		}
+		$divisions = array_filter( $all_leagues, function ( $l ) use ( $parent_ids ) {
+			return ! isset( $parent_ids[ $l->term_id ] );
+		} );
+
+		$results = array();
+		foreach ( $divisions as $div ) {
+			$tax_query = array( array( 'taxonomy' => 'sp_league', 'terms' => $div->term_id ) );
+			if ( $season_id ) {
+				$tax_query['relation'] = 'AND';
+				$tax_query[]           = array( 'taxonomy' => 'sp_season', 'terms' => $season_id );
+			}
+
+			$team_ids = get_posts( array(
+				'post_type'      => 'sp_team',
+				'posts_per_page' => -1,
+				'tax_query'      => $tax_query,
+				'fields'         => 'ids',
+			) );
+
+			if ( empty( $team_ids ) ) {
+				continue;
+			}
+
+			// H3: single SQL join replaces get_posts + N+1 meta lookups,
+			// bounded by LIMIT 5000 to protect against unbounded memory on
+			// large leagues.
+			global $wpdb;
+			$placeholders  = implode( ',', array_fill( 0, count( $team_ids ), '%d' ) );
+			$query_args    = array_map( 'intval', $team_ids );
+			$sql           = "SELECT p.ID, pm1.meta_value AS team_id, pm2.meta_value AS skill_level
+				FROM {$wpdb->posts} p
+				LEFT JOIN {$wpdb->postmeta} pm1 ON pm1.post_id = p.ID AND pm1.meta_key = 'sp_current_team'
+				LEFT JOIN {$wpdb->postmeta} pm2 ON pm2.post_id = p.ID AND pm2.meta_key = 'spt_skill_level'
+				WHERE p.post_type = 'sp_player' AND p.post_status = 'publish'
+				AND pm1.meta_value IN ($placeholders)
+				LIMIT 5000";
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$player_rows = $wpdb->get_results( $wpdb->prepare( $sql, $query_args ) );
+
+			$player_ids = array();
+			$skills     = array();
+			foreach ( (array) $player_rows as $row ) {
+				$player_ids[] = (int) $row->ID;
+				$sl           = (int) $row->skill_level;
+				if ( $sl > 0 ) {
+					$skills[] = $sl;
+				}
+			}
+
+			sort( $skills );
+			$count = count( $skills );
+			$dist  = array_fill( 1, 10, 0 );
+			foreach ( $skills as $s ) {
+				$dist[ $s ]++;
+			}
+
+			$results[] = array(
+				'division'     => array( 'id' => $div->term_id, 'name' => $div->name ),
+				'teams'        => count( $team_ids ),
+				'players'      => count( $player_ids ),
+				'rated'        => $count,
+				'skill_avg'    => $count ? round( array_sum( $skills ) / $count, 1 ) : 0,
+				'skill_min'    => $count ? min( $skills ) : 0,
+				'skill_max'    => $count ? max( $skills ) : 0,
+				'skill_median' => $count ? $skills[ intdiv( $count, 2 ) ] : 0,
+				'distribution' => $dist,
+			);
+		}
+
+		return new WP_REST_Response( splm_rest_list_response( $results ), 200 );
+	}
+
+	/**
+	 * GET /teams/compare — head-to-head record, roster stats, configurable performance metrics.
+	 */
+	public function compare_teams( $request ) {
+		$team_a_id = absint( $request->get_param( 'team_a' ) );
+		$team_b_id = absint( $request->get_param( 'team_b' ) );
+		$season_id = absint( $request->get_param( 'season' ) );
+
+		// H4: validate that both IDs refer to sp_team posts and are distinct.
+		if ( 'sp_team' !== get_post_type( $team_a_id ) || 'sp_team' !== get_post_type( $team_b_id ) ) {
+			return new WP_Error( 'invalid_team', 'team_a and team_b must reference sp_team posts.', array( 'status' => 400 ) );
+		}
+		if ( $team_a_id === $team_b_id ) {
+			return new WP_Error( 'same_team', 'team_a and team_b must be different teams.', array( 'status' => 400 ) );
+		}
+
+		$stat_keys = get_option( 'splm_comparison_stat_keys', array( 'pim' ) );
+		$stat_keys = apply_filters( 'splm_comparison_stat_keys', $stat_keys, $team_a_id, $team_b_id );
+
+		// Head-to-head — single query for events involving either team, then
+		// iterate once and pick the rows that contain BOTH teams.
+		$events = get_posts( array(
+			'post_type'      => 'sp_event',
+			'posts_per_page' => -1,
+			'post_status'    => 'publish',
+			'meta_query'     => array(
+				'relation' => 'OR',
+				array( 'key' => 'sp_team', 'value' => $team_a_id ),
+				array( 'key' => 'sp_team', 'value' => $team_b_id ),
+			),
+			'tax_query'      => $season_id ? array( array( 'taxonomy' => 'sp_season', 'terms' => $season_id ) ) : array(),
+		) );
+
+		$h2h = array( 'a_wins' => 0, 'b_wins' => 0, 'draws' => 0 );
+		foreach ( $events as $event ) {
+			$teams = array_map( 'intval', get_post_meta( $event->ID, 'sp_team' ) );
+			if ( ! in_array( $team_a_id, $teams, true ) || ! in_array( $team_b_id, $teams, true ) ) {
+				continue;
+			}
+			$results = get_post_meta( $event->ID, 'sp_results', true );
+			if ( ! is_array( $results ) ) {
+				continue;
+			}
+			$a_gf = (int) ( $results[ $team_a_id ]['gf'] ?? 0 );
+			$b_gf = (int) ( $results[ $team_b_id ]['gf'] ?? 0 );
+			if ( $a_gf > $b_gf ) {
+				$h2h['a_wins']++;
+			} elseif ( $b_gf > $a_gf ) {
+				$h2h['b_wins']++;
+			} else {
+				$h2h['draws']++;
+			}
+		}
+
+		$build_team = function ( $team_id ) use ( $stat_keys, $season_id ) {
+			$players   = get_posts( array(
+				'post_type'      => 'sp_player',
+				'posts_per_page' => -1,
+				'meta_query'     => array( array( 'key' => 'sp_current_team', 'value' => $team_id ) ),
+			) );
+			$skill_sum = 0;
+			$skill_cnt = 0;
+			$stats     = array_fill_keys( $stat_keys, 0 );
+
+			foreach ( $players as $p ) {
+				$sl = (int) get_post_meta( $p->ID, 'spt_skill_level', true );
+				if ( $sl > 0 ) {
+					$skill_sum += $sl;
+					$skill_cnt++;
+				}
+				$sp_stats = get_post_meta( $p->ID, 'sp_statistics', true );
+				if ( ! is_array( $sp_stats ) ) {
+					continue;
+				}
+				foreach ( $sp_stats as $league_data ) {
+					if ( ! is_array( $league_data ) ) {
+						continue;
+					}
+					foreach ( $league_data as $sid => $s ) {
+						if ( ( $season_id && (int) $sid !== $season_id ) || ! is_array( $s ) ) {
+							continue;
+						}
+						foreach ( $stat_keys as $key ) {
+							$stats[ $key ] += (int) ( $s[ $key ] ?? 0 );
+						}
+					}
+				}
+			}
+
+			return array(
+				'name'      => get_the_title( $team_id ),
+				'players'   => count( $players ),
+				'avg_skill' => $skill_cnt ? round( $skill_sum / $skill_cnt, 1 ) : 0,
+				'stats'     => $stats,
+			);
+		};
+
+		// Fix: request-lifetime cache for stat label lookups.
+		static $stat_label_cache = array();
+		$stat_labels = array();
+		foreach ( $stat_keys as $key ) {
+			$cache_key = 'sp_performance|sp_statistic|' . $key;
+			if ( ! array_key_exists( $cache_key, $stat_label_cache ) ) {
+				$posts = get_posts( array(
+					'post_type'      => array( 'sp_performance', 'sp_statistic' ),
+					'name'           => $key,
+					'posts_per_page' => 1,
+				) );
+				$stat_label_cache[ $cache_key ] = ! empty( $posts ) ? $posts[0]->post_title : strtoupper( $key );
+			}
+			$stat_labels[] = array( 'key' => $key, 'label' => $stat_label_cache[ $cache_key ] );
+		}
+
+		return new WP_REST_Response( array(
+			'head_to_head' => $h2h,
+			'team_a'       => $build_team( $team_a_id ),
+			'team_b'       => $build_team( $team_b_id ),
+			'stat_keys'    => $stat_labels,
+		), 200 );
+	}
+
+	/**
+	 * GET /reports/season-summary — standings, stat leaders, game counts.
+	 */
+	public function get_season_summary( $request ) {
+		$season_id = $request->get_param( 'season' );
+		$season    = get_term( $season_id, 'sp_season' );
+		if ( ! $season || is_wp_error( $season ) ) {
+			return new WP_Error( 'invalid_season', 'Season not found.', array( 'status' => 404 ) );
+		}
+
+		$stat_keys    = apply_filters( 'splm_report_stat_keys', get_option( 'splm_report_stat_keys', array( 'p', 'g', 'a', 'pim', 'gaa' ) ), $season_id );
+		$leader_count = (int) apply_filters( 'splm_report_leader_count', get_option( 'splm_report_leader_count', 10 ), '', $season_id );
+
+		// Standings tables.
+		$tables    = get_posts( array(
+			'post_type'      => 'sp_table',
+			'posts_per_page' => -1,
+			'tax_query'      => array( array( 'taxonomy' => 'sp_season', 'terms' => $season_id ) ),
+		) );
+		$divisions = array();
+		foreach ( $tables as $t ) {
+			// Fix: use 'all' to leverage primed term-object cache; extract name in PHP.
+			$leagues     = wp_get_object_terms( $t->ID, 'sp_league', array( 'fields' => 'all' ) );
+			$league_name = ( ! is_wp_error( $leagues ) && ! empty( $leagues ) ) ? $leagues[0]->name : $t->post_title;
+			$divisions[] = array( 'name' => $league_name, 'table_id' => $t->ID );
+		}
+
+		// Stat leaders.
+		$player_ids = get_posts( array(
+			'post_type'      => 'sp_player',
+			'posts_per_page' => -1,
+			'tax_query'      => array( array( 'taxonomy' => 'sp_season', 'terms' => $season_id ) ),
+			'fields'         => 'ids',
+		) );
+
+		$leaders = array_fill_keys( $stat_keys, array() );
+		foreach ( $player_ids as $pid ) {
+			$sp_stats = get_post_meta( $pid, 'sp_statistics', true );
+			if ( ! is_array( $sp_stats ) ) {
+				continue;
+			}
+			$totals = array_fill_keys( $stat_keys, 0 );
+			foreach ( $sp_stats as $league_data ) {
+				if ( ! is_array( $league_data ) ) {
+					continue;
+				}
+				foreach ( $league_data as $sid => $s ) {
+					if ( (int) $sid !== $season_id || ! is_array( $s ) ) {
+						continue;
+					}
+					foreach ( $stat_keys as $key ) {
+						$totals[ $key ] += (float) ( $s[ $key ] ?? 0 );
+					}
+				}
+			}
+			$team_id = get_post_meta( $pid, 'sp_current_team', true );
+			$name    = get_the_title( $pid );
+			$team    = $team_id ? get_the_title( $team_id ) : '';
+			foreach ( $stat_keys as $key ) {
+				if ( $totals[ $key ] > 0 ) {
+					$leaders[ $key ][] = array( 'player' => $name, 'team' => $team, 'value' => $totals[ $key ] );
+				}
+			}
+		}
+		foreach ( $leaders as &$list ) {
+			usort( $list, function ( $a, $b ) { return $b['value'] <=> $a['value']; } );
+			$list = array_slice( $list, 0, $leader_count );
+		}
+		unset( $list );
+
+		// Game counts.
+		$event_ids = get_posts( array(
+			'post_type'      => 'sp_event',
+			'posts_per_page' => -1,
+			'tax_query'      => array( array( 'taxonomy' => 'sp_season', 'terms' => $season_id ) ),
+			'fields'         => 'ids',
+		) );
+		$played    = 0;
+		$cancelled = 0;
+		foreach ( $event_ids as $eid ) {
+			if ( get_post_meta( $eid, 'sp_status', true ) === 'cancelled' ) {
+				$cancelled++;
+			} elseif ( is_array( get_post_meta( $eid, 'sp_results', true ) ) ) {
+				$played++;
+			}
+		}
+
+		return new WP_REST_Response( array(
+			'season'    => array( 'id' => $season_id, 'name' => $season->name ),
+			'divisions' => $divisions,
+			'leaders'   => $leaders,
+			'games'     => array( 'scheduled' => count( $event_ids ), 'played' => $played, 'cancelled' => $cancelled, 'remaining' => count( $event_ids ) - $played - $cancelled ),
+		), 200 );
 	}
 
 	/**
 	 * Register routes that delegate to sibling plugin REST API classes.
-	 * Only registers a route if it hasn't already been registered by the sibling plugin.
+	 *
+	 * Sibling-owned routes (events-manager, player-tools) are only delegated when
+	 * the sibling class is actually present at registration time. We do NOT
+	 * register stub routes that return 501 — the React dashboard reads the
+	 * `splmDashboard.features` localized object and hides UI when a sibling
+	 * feature is unavailable.
+	 *
+	 * Notes routes are owned by League Manager and are registered unconditionally.
 	 */
 	private function register_delegated_routes() {
-		// --- Events Manager routes (SPEM_REST_API) ---
-		$event_routes = array(
-			'/games/(?P<id>\d+)/score'    => array( 'methods' => 'POST', 'callback' => 'update_score', 'permission' => 'check_score_permission' ),
-			'/games/(?P<id>\d+)/reschedule' => array( 'methods' => 'POST', 'callback' => 'reschedule_game', 'permission' => 'check_manage_permission' ),
-			'/games/(?P<id>\d+)/cancel'   => array( 'methods' => 'POST', 'callback' => 'cancel_game', 'permission' => 'check_manage_permission' ),
-			'/season/rollover-preview'     => array( 'methods' => 'POST', 'callback' => 'rollover_preview', 'permission' => 'check_manage_permission' ),
-			'/season/rollover-execute'     => array( 'methods' => 'POST', 'callback' => 'rollover_execute', 'permission' => 'check_manage_permission' ),
-		);
+		// --- Events Manager routes (SPEM_REST_API) — only when sibling present ---
+		if ( class_exists( 'SPEM_REST_API' ) ) {
+			$event_routes = array(
+				'/games/(?P<id>\d+)/score'      => array( 'methods' => 'POST', 'callback' => 'update_score', 'permission' => 'check_score_permission' ),
+				'/games/(?P<id>\d+)/reschedule' => array( 'methods' => 'POST', 'callback' => 'reschedule_game', 'permission' => 'check_manage_permission' ),
+				'/games/(?P<id>\d+)/cancel'     => array( 'methods' => 'POST', 'callback' => 'cancel_game', 'permission' => 'check_manage_permission' ),
+				'/season/rollover-preview'      => array( 'methods' => 'POST', 'callback' => 'rollover_preview', 'permission' => 'check_manage_permission' ),
+				'/season/rollover-execute'      => array( 'methods' => 'POST', 'callback' => 'rollover_execute', 'permission' => 'check_manage_permission' ),
+			);
 
-		// Game players needs GET+POST (two handlers).
-		$game_players_registered = class_exists( 'SPEM_REST_API' );
-
-		if ( ! $game_players_registered ) {
 			foreach ( $event_routes as $route => $config ) {
 				register_rest_route( self::REST_NAMESPACE, $route, array(
 					'methods'             => $config['methods'],
@@ -780,20 +2217,18 @@ class SPLM_REST_API {
 			) );
 		}
 
-		// --- Player Tools routes (SPPT_REST_API) ---
-		$roster_routes = array(
-			'/rosters/details'         => array( 'methods' => 'GET', 'callback' => 'get_roster_details', 'permission' => 'check_roster_permission' ),
-			'/rosters/set-captain'     => array( 'methods' => 'POST', 'callback' => 'set_captain', 'permission' => 'check_roster_permission' ),
-			'/rosters/update-metadata' => array( 'methods' => 'POST', 'callback' => 'update_metadata', 'permission' => 'check_roster_permission' ),
-			'/rosters/import'          => array( 'methods' => 'POST', 'callback' => 'import_roster', 'permission' => 'check_roster_permission' ),
-			'/rosters/move'            => array( 'methods' => 'POST', 'callback' => 'move_player', 'permission' => 'check_roster_permission' ),
-			'/rosters/update-player'   => array( 'methods' => 'POST', 'callback' => 'update_player', 'permission' => 'check_roster_permission' ),
-			'/rosters/remove-player'   => array( 'methods' => 'POST', 'callback' => 'remove_player', 'permission' => 'check_roster_permission' ),
-		);
+		// --- Player Tools routes (SPPT_REST_API) — only when sibling present ---
+		if ( class_exists( 'SPPT_REST_API' ) ) {
+			$roster_routes = array(
+				'/rosters/details'         => array( 'methods' => 'GET', 'callback' => 'get_roster_details', 'permission' => 'check_roster_permission' ),
+				'/rosters/set-captain'     => array( 'methods' => 'POST', 'callback' => 'set_captain', 'permission' => 'check_roster_permission' ),
+				'/rosters/update-metadata' => array( 'methods' => 'POST', 'callback' => 'update_metadata', 'permission' => 'check_roster_permission' ),
+				'/rosters/import'          => array( 'methods' => 'POST', 'callback' => 'import_roster', 'permission' => 'check_roster_permission' ),
+				'/rosters/move'            => array( 'methods' => 'POST', 'callback' => 'move_player', 'permission' => 'check_roster_permission' ),
+				'/rosters/update-player'   => array( 'methods' => 'POST', 'callback' => 'update_player', 'permission' => 'check_roster_permission' ),
+				'/rosters/remove-player'   => array( 'methods' => 'POST', 'callback' => 'remove_player', 'permission' => 'check_roster_permission' ),
+			);
 
-		$roster_registered = class_exists( 'SPPT_REST_API' );
-
-		if ( ! $roster_registered ) {
 			foreach ( $roster_routes as $route => $config ) {
 				register_rest_route( self::REST_NAMESPACE, $route, array(
 					'methods'             => $config['methods'],
@@ -803,43 +2238,41 @@ class SPLM_REST_API {
 			}
 		}
 
-		// --- Notes routes (always register from league-manager using SPLM_Player_Notes_Database) ---
-		if ( ! $roster_registered ) {
-			register_rest_route( self::REST_NAMESPACE, '/notes', array(
-				array(
-					'methods'             => 'GET',
-					'callback'            => array( $this, 'get_notes' ),
-					'permission_callback' => array( $this, 'check_notes_permission' ),
-					'args'                => array(
-						'player' => array(
-							'type'              => 'integer',
-							'required'          => true,
-							'sanitize_callback' => 'absint',
-							'validate_callback' => 'rest_validate_request_arg',
-						),
+		// --- Notes routes (always registered — owned by SPLM, never delegated) ---
+		register_rest_route( self::REST_NAMESPACE, '/notes', array(
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_notes' ),
+				'permission_callback' => array( $this, 'check_notes_permission' ),
+				'args'                => array(
+					'player' => array(
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 				),
-				array(
-					'methods'             => 'POST',
-					'callback'            => array( $this, 'add_note' ),
-					'permission_callback' => array( $this, 'check_notes_write_permission' ),
-					'args'                => array(
-						'player_id' => array(
-							'type'              => 'integer',
-							'required'          => true,
-							'sanitize_callback' => 'absint',
-							'validate_callback' => 'rest_validate_request_arg',
-						),
-						'content'   => array(
-							'type'              => 'string',
-							'required'          => true,
-							'sanitize_callback' => 'sanitize_textarea_field',
-							'validate_callback' => 'rest_validate_request_arg',
-						),
+			),
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'add_note' ),
+				'permission_callback' => array( $this, 'check_notes_write_permission' ),
+				'args'                => array(
+					'player_id' => array(
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+					'content'   => array(
+						'type'              => 'string',
+						'required'          => true,
+						'sanitize_callback' => 'sanitize_textarea_field',
+						'validate_callback' => 'rest_validate_request_arg',
 					),
 				),
-			) );
-		}
+			),
+		) );
 	}
 
 	/**
@@ -892,9 +2325,20 @@ class SPLM_REST_API {
 	}
 
 	/**
+	 * Guard: is the league_player_notes module enabled?
+	 */
+	private function notes_module_enabled() {
+		$enabled = get_option( 'spat_enabled_modules', array() );
+		return is_array( $enabled ) && in_array( 'league_player_notes', $enabled, true );
+	}
+
+	/**
 	 * GET /notes — player notes via SPLM_Player_Notes_Database.
 	 */
 	public function get_notes( $request ) {
+		if ( ! $this->notes_module_enabled() ) {
+			return new WP_Error( 'module_disabled', 'Player notes module is not enabled.', array( 'status' => 503 ) );
+		}
 		$player_id = absint( $request->get_param( 'player' ) );
 		$notes     = SPLM_Player_Notes_Database::get_notes( $player_id );
 
@@ -909,13 +2353,16 @@ class SPLM_REST_API {
 			);
 		}
 
-		return new WP_REST_Response( $data, 200 );
+		return new WP_REST_Response( splm_rest_list_response( $data ), 200 );
 	}
 
 	/**
 	 * POST /notes — add a player note via SPLM_Player_Notes_Database.
 	 */
 	public function add_note( $request ) {
+		if ( ! $this->notes_module_enabled() ) {
+			return new WP_Error( 'module_disabled', 'Player notes module is not enabled.', array( 'status' => 503 ) );
+		}
 		$player_id = absint( $request->get_param( 'player_id' ) );
 		$content   = sanitize_textarea_field( $request->get_param( 'content' ) );
 
@@ -925,7 +2372,10 @@ class SPLM_REST_API {
 
 		$note_id = SPLM_Player_Notes_Database::insert( $player_id, get_current_user_id(), $content );
 
-		if ( ! $note_id ) {
+		// M8: SPLM_Player_Notes_Database::insert() returns false on $wpdb failure,
+		// and an integer insert_id on success. Use strict comparison so a
+		// theoretical 0 from an unusual driver doesn't get mis-flagged as failure.
+		if ( false === $note_id ) {
 			return new WP_Error( 'insert_failed', 'Failed to save note.', array( 'status' => 500 ) );
 		}
 

@@ -15,6 +15,36 @@ class SPLM_Dashboard_Frontend {
 		add_filter( 'theme_page_templates', array( $this, 'register_template' ) );
 		add_filter( 'template_include', array( $this, 'load_template' ) );
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+		// F15: enforce auth at template_redirect (priority 1) — earlier than
+		// template_include, before any output, and emit nocache_headers().
+		add_action( 'template_redirect', array( $this, 'enforce_template_auth' ), 1 );
+	}
+
+	/**
+	 * Auth + cache guard for the League Dashboard page.
+	 *
+	 * Runs early so we redirect before output and before caching plugins
+	 * can serve a stale anonymous response.
+	 */
+	public function enforce_template_auth() {
+		if ( ! is_page() ) {
+			return;
+		}
+		if ( 'template-league-dashboard.php' !== get_page_template_slug() ) {
+			return;
+		}
+
+		nocache_headers();
+
+		if ( ! is_user_logged_in() ) {
+			wp_safe_redirect( wp_login_url( get_permalink() ) );
+			exit;
+		}
+
+		if ( ! SPLM_Capabilities::can_read() ) {
+			wp_safe_redirect( home_url() );
+			exit;
+		}
 	}
 
 	/**
@@ -102,20 +132,53 @@ class SPLM_Dashboard_Frontend {
 			);
 		}, ! empty( $all_seasons ) && ! is_wp_error( $all_seasons ) ? $all_seasons : array() );
 
+		// M5: localize leagues so Standings.jsx (and similar) can populate
+		// division selectors without an extra REST round-trip.
+		$all_leagues = get_terms( array(
+			'taxonomy'   => 'sp_league',
+			'hide_empty' => false,
+		) );
+		$leagues = array_map( function ( $term ) {
+			return array(
+				'id'   => $term->term_id,
+				'name' => $term->name,
+			);
+		}, ! empty( $all_leagues ) && ! is_wp_error( $all_leagues ) ? $all_leagues : array() );
+
+		// Currency symbol (F16) — fall back to "$" when WooCommerce is absent.
+		$currency_symbol = function_exists( 'get_woocommerce_currency_symbol' )
+			? get_woocommerce_currency_symbol()
+			: '$';
+
+		// Feature probes (F6) — driven by sibling-class availability so the
+		// React UI can hide buttons rather than triggering 501 responses.
+		$features = array(
+			'canRescheduleGames' => class_exists( 'SPEM_Events_Management' ),
+			'hasEventsManager'   => class_exists( 'SPEM_REST_API' ),
+			'hasPlayerTools'     => class_exists( 'SPPT_REST_API' ),
+		);
+
 		wp_localize_script( 'splm-dashboard', 'splmDashboard', array(
-			'nonce'         => wp_create_nonce( 'wp_rest' ),
-			'apiBase'       => rest_url( 'splm/v1/' ),
-			'leagueName'    => get_bloginfo( 'name' ),
-			'currentSeason' => ! empty( $current_season ) ? $current_season[0]->term_id : '',
-			'logoutUrl'     => wp_logout_url( home_url() ),
-			'userId'        => get_current_user_id(),
-			'seasons'       => $seasons,
-			'capabilities'  => array(
-				'canManageSchedule' => current_user_can( 'manage_sportspress' ),
+			'nonce'           => wp_create_nonce( 'wp_rest' ),
+			'apiBase'         => rest_url( 'splm/v1/' ),
+			'leagueName'      => get_bloginfo( 'name' ),
+			'currentSeason'   => ! empty( $current_season ) ? $current_season[0]->term_id : '',
+			'logoutUrl'       => wp_logout_url( home_url() ),
+			'userId'          => get_current_user_id(),
+			'seasons'         => $seasons,
+			'leagues'         => $leagues,
+			'currencySymbol'  => $currency_symbol,
+			'features'        => $features,
+			// F7 — canonical capability flags routed through SPLM_Capabilities
+			// (kept alongside legacy granular flags for compatibility).
+			'capabilities'    => array(
+				'can_read'          => SPLM_Capabilities::can_read(),
+				'can_manage'        => SPLM_Capabilities::can_manage(),
+				'canManageSchedule' => SPLM_Capabilities::can_manage(),
 				'canEnterScores'    => current_user_can( 'edit_others_sp_events' ),
 				'canManageRosters'  => current_user_can( 'edit_others_sp_players' ),
-				'canViewPayments'   => current_user_can( 'edit_others_sp_players' ) || current_user_can( 'manage_sportspress' ),
-				'canViewHealth'     => current_user_can( 'manage_sportspress' ),
+				'canViewPayments'   => current_user_can( 'edit_others_sp_players' ) || SPLM_Capabilities::can_manage(),
+				'canViewHealth'     => SPLM_Capabilities::can_manage(),
 			),
 		) );
 	}

@@ -12,15 +12,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-// Require authentication + any SportsPress role (minimum: read_sp_event).
+// Primary auth enforcement runs at template_redirect (see
+// SPLM_Dashboard_Frontend::enforce_template_auth). This block is a
+// belt-and-suspenders guard for any code path that bypasses that hook.
 if ( ! is_user_logged_in() ) {
-	wp_redirect( wp_login_url( get_permalink() ) );
+	wp_safe_redirect( wp_login_url( get_permalink() ) );
 	exit;
 }
-if ( ! current_user_can( 'manage_sportspress' ) && ! current_user_can( 'edit_others_sp_events' ) && ! current_user_can( 'edit_sp_events' ) ) {
-	wp_redirect( home_url() );
+if ( ! class_exists( 'SPLM_Capabilities' ) || ! SPLM_Capabilities::can_read() ) {
+	wp_safe_redirect( home_url() );
 	exit;
 }
+nocache_headers();
 ?>
 <!DOCTYPE html>
 <html <?php language_attributes(); ?>>

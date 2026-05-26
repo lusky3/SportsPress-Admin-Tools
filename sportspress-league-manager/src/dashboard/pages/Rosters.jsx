@@ -1,23 +1,30 @@
 import { useState, useEffect } from '@wordpress/element';
-import { fetchTeams, fetchRosterDetails, fetchNotes, addNote, movePlayer, updatePlayer, updatePlayerMetadata, setCaptain, removePlayer, importRoster } from '../lib/api';
+import { fetchTeams, fetchRosterDetails, fetchNotes, addNote, movePlayer, updatePlayer, updatePlayerMetadata, setCaptain, removePlayer, importRoster, calculateSkills, bulkUploadRoster, bulkProcessRoster } from '../lib/api';
 
 function NotesPanel( { player, onClose } ) {
 	const [ notes, setNotes ] = useState( [] );
 	const [ content, setContent ] = useState( '' );
 	const [ loading, setLoading ] = useState( true );
 
-	useEffect( () => {
-		fetchNotes( player.id ).then( ( data ) => {
+	const refresh = () => {
+		return fetchNotes( player.id ).then( ( data ) => {
 			setNotes( data );
 			setLoading( false );
 		} ).catch( () => setLoading( false ) );
+	};
+
+	useEffect( () => {
+		refresh();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [ player.id ] );
 
 	const handleSubmit = () => {
 		if ( ! content.trim() ) return;
-		addNote( player.id, content ).then( ( note ) => {
-			setNotes( [ ...notes, note ] );
+		// F19: refetch instead of merging the POST response, whose shape
+		// differs from the GET response (id/success vs full note record).
+		addNote( player.id, content ).then( () => {
 			setContent( '' );
+			refresh();
 		} );
 	};
 
@@ -34,8 +41,8 @@ function NotesPanel( { player, onClose } ) {
 				) : (
 					<div className="splm-notes-panel__list">
 						{ notes.map( ( n, i ) => (
-							<div key={ i } className="splm-notes-panel__note">
-								<span className="splm-notes-panel__date">{ n.date }</span>
+							<div key={ n.id ?? i } className="splm-notes-panel__note">
+								<span className="splm-notes-panel__date">{ n.created_at }</span>
 								<p>{ n.content }</p>
 							</div>
 						) ) }
@@ -91,8 +98,12 @@ function EditableCell( { value, field, playerId, onSaved } ) {
 
 	const save = () => {
 		setEditing( false );
-		if ( val !== value ) {
-			updatePlayer( playerId, field, val ).then( () => onSaved( field, val ) );
+		// F19: trim before equality so leading/trailing whitespace doesn't
+		// trigger spurious updates.
+		const trimmed = typeof val === 'string' ? val.trim() : val;
+		const originalTrimmed = typeof value === 'string' ? value.trim() : value;
+		if ( trimmed !== originalTrimmed ) {
+			updatePlayer( playerId, field, trimmed ).then( () => onSaved( field, trimmed ) );
 		}
 	};
 
@@ -255,6 +266,18 @@ export default function Rosters( { season } ) {
 					) ) }
 				</select>
 				{ selectedTeam && <CSVUpload teamId={ selectedTeam } seasonId={ season } onImported={ reload } /> }
+				<button className="splm-btn" onClick={ () => {
+					calculateSkills( 0, season || 0 ).then( ( r ) => {
+						// M6: skipped_manual may be absent if Player Tools is older;
+						// fall back to 0 rather than rendering "undefined manual skipped".
+						const updated = r?.updated ?? 0;
+						const skipped = r?.skipped_manual ?? 0;
+						window.alert( `Updated ${ updated } players (${ skipped } manual skipped)` );
+						if ( selectedTeam ) reload();
+					} ).catch( ( err ) => window.alert( err?.message || 'Failed' ) );
+				} }>
+					Calculate Skills
+				</button>
 			</div>
 
 			{ loading && <div className="splm-loading">Loading roster...</div> }

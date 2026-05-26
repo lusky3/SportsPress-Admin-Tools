@@ -3,7 +3,7 @@ Contributors: lusky3
 Tags: sportspress, league, manager, roster, fees
 Requires at least: 5.0
 Tested up to: 6.9
-Requires PHP: 7.4
+Requires PHP: 8.1
 Stable tag: 1.0.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -57,3 +57,7 @@ CSV files with columns: name (required), number (optional), position (optional),
 * First-run wizard for new league managers
 * Contextual help tooltips and WordPress help tabs
 * Custom manage_league capability
+
+== AI Usage Disclaimer ==
+
+Portions of this codebase were generated with the assistance of Large Language Models (LLMs). All AI-generated code has been reviewed and tested to ensure quality and correctness.

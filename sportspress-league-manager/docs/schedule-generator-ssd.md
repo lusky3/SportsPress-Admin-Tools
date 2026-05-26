@@ -409,7 +409,9 @@ After Phase 2 is complete and tested:
 
 ## 8. Open Questions
 
-1. Should the "Advanced Options" in Step 3 include the "Custom" matchup style, or should it be removed entirely? (UX agent recommends removing it; architect says keep it hidden.)
-2. Should auto-save use localStorage (client-side, survives page refresh) or a server-side draft config? (UX agent recommends server-side for cross-device continuity.)
-3. Should the capacity calculator account for venue-specific time slots, or just use global slots? (Architect recommends venue-specific for accuracy.)
-4. Should we support concurrent generation (multiple users generating at the same time)? (Low priority for a rec hockey league, but the transient-based progress tracking doesn't support it.)
+> **All resolved as of 2026-04-23.**
+
+1. ~~Should the "Advanced Options" in Step 3 include the "Custom" matchup style?~~ **Resolved:** Kept hidden in Advanced Options.
+2. ~~Should auto-save use localStorage or server-side draft config?~~ **Resolved:** Server-side for cross-device continuity.
+3. ~~Should the capacity calculator account for venue-specific time slots?~~ **Resolved:** Yes, venue-specific for accuracy.
+4. ~~Should we support concurrent generation?~~ **Resolved:** Not needed for rec hockey; transient-based progress tracking is per-user.

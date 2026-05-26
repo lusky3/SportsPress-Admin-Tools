@@ -1,5 +1,96 @@
 import { useState, useEffect } from '@wordpress/element';
-import { fetchGames, updateScore, fetchGamePlayers, saveGamePlayers } from '../lib/api';
+import { fetchGames, updateScore, fetchGamePlayers, saveGamePlayers, batchUpdateScores } from '../lib/api';
+
+function GameNight( { season } ) {
+	const [ date, setDate ] = useState( new Date().toISOString().split( 'T' )[ 0 ] );
+	const [ games, setGames ] = useState( [] );
+	const [ scores, setScores ] = useState( {} );
+	const [ saving, setSaving ] = useState( false );
+	const [ result, setResult ] = useState( null );
+
+	useEffect( () => {
+		fetchGames( season ? { season } : {} ).then( ( data ) => {
+			const dayGames = data.filter( ( g ) => g.date === date && ! g.cancelled );
+			setGames( dayGames );
+			const init = {};
+			dayGames.forEach( ( g ) => { init[ g.id ] = { home: g.home_score ?? 0, away: g.away_score ?? 0 }; } );
+			setScores( init );
+		} ).catch( () => {} );
+	}, [ date, season ] );
+
+	const handleSaveAll = async () => {
+		setSaving( true );
+		const batch = games
+			.filter( ( g ) => g.home_score === null )
+			.map( ( g ) => ( { game_id: g.id, home_score: scores[ g.id ]?.home ?? 0, away_score: scores[ g.id ]?.away ?? 0 } ) );
+		if ( batch.length === 0 ) { setSaving( false ); return; }
+		try {
+			const res = await batchUpdateScores( batch );
+			setResult( res );
+		} catch ( err ) {
+			setResult( { errors: [ err?.message || 'Failed' ] } );
+		}
+		setSaving( false );
+	};
+
+	const updateField = ( id, field, val ) => {
+		setScores( ( prev ) => ( { ...prev, [ id ]: { ...prev[ id ], [ field ]: Math.max( 0, parseInt( val ) || 0 ) } } ) );
+	};
+
+	const unscored = games.filter( ( g ) => g.home_score === null );
+
+	return (
+		<div>
+			<label>Date: <input type="date" value={ date } onChange={ ( e ) => { setDate( e.target.value ); setResult( null ); } } /></label>
+			{ games.length === 0 ? (
+				<p className="splm-empty">No games on this date.</p>
+			) : (
+				<>
+					<div className="splm-table-wrapper">
+						<table className="splm-table">
+							<thead><tr><th>Time</th><th>Home</th><th></th><th>Away</th><th></th><th>Venue</th></tr></thead>
+							<tbody>
+								{ games.map( ( g ) => (
+									<tr key={ g.id } className={ g.home_score !== null ? 'splm-row--muted' : '' }>
+										<td>{ g.time }</td>
+										<td>{ g.home_team.name }</td>
+										<td>
+											<input type="number" min="0" className="splm-score-input" value={ scores[ g.id ]?.home ?? 0 }
+												onChange={ ( e ) => updateField( g.id, 'home', e.target.value ) }
+												disabled={ g.home_score !== null }
+												aria-label={ `${ g.home_team.name } score` }
+											/>
+											{ ' - ' }
+											<input type="number" min="0" className="splm-score-input" value={ scores[ g.id ]?.away ?? 0 }
+												onChange={ ( e ) => updateField( g.id, 'away', e.target.value ) }
+												disabled={ g.home_score !== null }
+												aria-label={ `${ g.away_team.name } score` }
+											/>
+										</td>
+										<td>{ g.away_team.name }</td>
+										<td>{ g.home_score !== null ? `${ g.home_score }-${ g.away_score }` : '' }</td>
+										<td>{ g.venue }</td>
+									</tr>
+								) ) }
+							</tbody>
+						</table>
+					</div>
+					{ unscored.length > 0 && (
+						<button className="splm-btn splm-btn--primary" onClick={ handleSaveAll } disabled={ saving }>
+							{ saving ? 'Saving...' : `Save All (${ unscored.length } games)` }
+						</button>
+					) }
+					{ result && (
+						<div className={ `splm-alert splm-alert--${ result.errors?.length ? 'warning' : 'success' }` } role="alert">
+							{ result.updated ? `✅ ${ result.updated } scores saved.` : '' }
+							{ result.errors?.map( ( e, i ) => <div key={ i }>{ e }</div> ) }
+						</div>
+					) }
+				</>
+			) }
+		</div>
+	);
+}
 
 function PlayerStats( { gameId, onDone } ) {
 	const [ data, setData ] = useState( null );
@@ -119,6 +210,7 @@ export default function ScoreEntry( { season } ) {
 	const [ showStats, setShowStats ] = useState( false );
 	const [ scoreSubmitted, setScoreSubmitted ] = useState( false );
 	const [ showingAll, setShowingAll ] = useState( false );
+	const [ mode, setMode ] = useState( 'single' );
 
 	const loadGames = ( params ) => {
 		setLoading( true );
@@ -208,6 +300,18 @@ export default function ScoreEntry( { season } ) {
 	return (
 		<div className="splm-score-entry">
 			<h2>Score Entry</h2>
+			<div className="splm-score-entry__mode-toggle">
+				<button className={ `splm-btn ${ mode === 'single' ? 'splm-btn--primary' : '' }` } onClick={ () => setMode( 'single' ) }>
+					One at a time
+				</button>
+				<button className={ `splm-btn ${ mode === 'batch' ? 'splm-btn--primary' : '' }` } onClick={ () => setMode( 'batch' ) }>
+					Game Night
+				</button>
+			</div>
+			{ mode === 'batch' ? (
+				<GameNight season={ season } />
+			) : (
+			<>
 			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 			<p className="splm-score-entry__progress">
 				Game { current + 1 } of { games.length }
@@ -292,6 +396,8 @@ export default function ScoreEntry( { season } ) {
 						{ saving ? 'Saving...' : 'Submit Score' }
 					</button>
 				</div>
+			) }
+			</>
 			) }
 		</div>
 	);
