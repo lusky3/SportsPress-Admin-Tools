@@ -135,7 +135,12 @@ class SPAT_Admin {
                 // Check for active tab from URL param, hash, or default
                 var urlParams = new URLSearchParams(window.location.search);
                 var activeTab = urlParams.get("tab") || window.location.hash.substring(1) || "general";
-                
+
+                // Reject anything that is not a safe slug before using as a selector.
+                if (!/^[a-z0-9_-]+$/i.test(activeTab)) {
+                    activeTab = "general";
+                }
+
                 if ($("a[href=\"#" + activeTab + "\"]").length) {
                     $("a[href=\"#" + activeTab + "\"]").click();
                 } else {
@@ -383,14 +388,15 @@ class SPAT_Admin {
 		echo '</tr></thead><tbody>';
 
 		foreach ( $child_plugins as $plugin_data ) {
-			$is_active = is_plugin_active( plugin_basename( $plugin_data['file'] ) );
-			$status = $is_active ? '<span style="color: #00a32a;">✓ Active</span>' : '<span style="color: #d63638;">○ Inactive</span>';
+			$is_active   = is_plugin_active( plugin_basename( $plugin_data['file'] ) );
+			$status_text = $is_active ? esc_html__( '✓ Active', 'sportspress-admin-tools' ) : esc_html__( '○ Inactive', 'sportspress-admin-tools' );
+			$status_attr = $is_active ? 'color: #00a32a;' : 'color: #d63638;';
 
 			echo '<tr>';
 			echo '<td><strong>' . esc_html( $plugin_data['name'] ) . '</strong></td>';
 			echo '<td>' . esc_html( $plugin_data['version'] ) . '</td>';
 			echo '<td>' . esc_html( implode( ', ', $plugin_data['modules'] ) ) . '</td>';
-			echo '<td>' . $status . '</td>';
+			echo '<td><span style="' . esc_attr( $status_attr ) . '">' . $status_text . '</span></td>';
 			echo '</tr>';
 		}
 
@@ -402,9 +408,12 @@ class SPAT_Admin {
 		// Handle tab persistence after form submission
 		if ( isset( $_POST['current_tab'] ) && isset( $_GET['settings-updated'] ) ) {
 			if ( check_admin_referer( 'spat_tab_redirect', '_wpnonce_tab' ) ) {
-				$tab = sanitize_text_field( $_POST['current_tab'] );
-				wp_safe_redirect( admin_url( 'options-general.php?page=sportspress-admin-tools&settings-updated=true&tab=' . $tab ) );
-				exit;
+				$tab        = sanitize_text_field( wp_unslash( $_POST['current_tab'] ) );
+				$valid_slug = (bool) preg_match( '/^[a-z0-9_-]{1,64}$/', $tab );
+				if ( $valid_slug ) {
+					wp_safe_redirect( admin_url( 'options-general.php?page=sportspress-admin-tools&settings-updated=true&tab=' . rawurlencode( $tab ) ) );
+					exit;
+				}
 			}
 		}
 

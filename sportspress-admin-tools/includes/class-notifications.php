@@ -146,8 +146,8 @@ class SPAT_Notifications {
 			sprintf(
 				'<p>' . __( 'An e-transfer payment has been matched to an order.', 'sportspress-admin-tools' ) . '</p>'
 				. '<table>%s</table>',
-				$this->row( __( 'Player', 'sportspress-admin-tools' ), esc_html( $player_name ) )
-				. $this->row( __( 'Amount', 'sportspress-admin-tools' ), '$' . esc_html( number_format( (float) $amount, 2 ) ) )
+				$this->row( __( 'Player', 'sportspress-admin-tools' ), $player_name )
+				. $this->row( __( 'Amount', 'sportspress-admin-tools' ), '$' . number_format( (float) $amount, 2 ) )
 				. $this->row( __( 'Order ID', 'sportspress-admin-tools' ), '#' . intval( $order_id ) )
 			)
 		);
@@ -178,9 +178,9 @@ class SPAT_Notifications {
 			sprintf(
 				'<p>' . __( 'An e-transfer webhook was received but no matching order was found.', 'sportspress-admin-tools' ) . '</p>'
 				. '<table>%s</table>',
-				$this->row( __( 'Sender', 'sportspress-admin-tools' ), esc_html( $sender_name ) )
-				. $this->row( __( 'Amount', 'sportspress-admin-tools' ), '$' . esc_html( number_format( (float) $amount, 2 ) ) )
-				. $this->row( __( 'Reference', 'sportspress-admin-tools' ), esc_html( $reference_number ) )
+				$this->row( __( 'Sender', 'sportspress-admin-tools' ), $sender_name )
+				. $this->row( __( 'Amount', 'sportspress-admin-tools' ), '$' . number_format( (float) $amount, 2 ) )
+				. $this->row( __( 'Reference', 'sportspress-admin-tools' ), $reference_number )
 			)
 		);
 
@@ -210,9 +210,9 @@ class SPAT_Notifications {
 			sprintf(
 				'<p>' . __( 'A new player has been created via registration.', 'sportspress-admin-tools' ) . '</p>'
 				. '<table>%s</table>',
-				$this->row( __( 'Player', 'sportspress-admin-tools' ), esc_html( $player_name ) )
-				. $this->row( __( 'Team', 'sportspress-admin-tools' ), esc_html( $team ?: '—' ) )
-				. $this->row( __( 'Season', 'sportspress-admin-tools' ), esc_html( $season ?: '—' ) )
+				$this->row( __( 'Player', 'sportspress-admin-tools' ), $player_name )
+				. $this->row( __( 'Team', 'sportspress-admin-tools' ), $team ?: '—' )
+				. $this->row( __( 'Season', 'sportspress-admin-tools' ), $season ?: '—' )
 			)
 		);
 
@@ -248,8 +248,8 @@ class SPAT_Notifications {
 				'<p>' . __( 'A new schedule has been generated.', 'sportspress-admin-tools' ) . '</p>'
 				. '<table>%s</table>',
 				$this->row( __( 'Games', 'sportspress-admin-tools' ), intval( $game_count ) )
-				. ( $date_range ? $this->row( __( 'Date Range', 'sportspress-admin-tools' ), esc_html( $date_range ) ) : '' )
-				. $this->row( __( 'Schedule ID', 'sportspress-admin-tools' ), esc_html( $schedule_id ) )
+				. ( $date_range ? $this->row( __( 'Date Range', 'sportspress-admin-tools' ), $date_range ) : '' )
+				. $this->row( __( 'Schedule ID', 'sportspress-admin-tools' ), $schedule_id )
 			)
 		);
 
@@ -275,8 +275,8 @@ class SPAT_Notifications {
 	}
 
 	private function row( $label, $value ) {
-		return '<tr><td style="padding:6px 12px;font-weight:bold;color:#333;">' . $label . '</td>'
-			 . '<td style="padding:6px 12px;color:#555;">' . $value . '</td></tr>';
+		return '<tr><td style="padding:6px 12px;font-weight:bold;color:#333;">' . esc_html( $label ) . '</td>'
+			 . '<td style="padding:6px 12px;color:#555;">' . esc_html( $value ) . '</td></tr>';
 	}
 
 	private function build_email( $title, $content ) {

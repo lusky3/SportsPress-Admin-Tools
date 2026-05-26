@@ -1,5 +1,7 @@
 # Roster Upload Feature
 
+> **Note:** This documentation is duplicated at `tests/README-roster-upload.md` (top-level). The Roster Upload feature is part of the **Player Tools** plugin (`sportspress-player-tools`), specifically the Batch List Creator module. This copy is kept here alongside the webhook test scripts for convenience.
+
 ## Overview
 
 The Roster Upload feature allows administrators to bulk import player rosters from CSV or XLSX files directly into SportsPress player lists. This feature is part of the Player Modifications module.

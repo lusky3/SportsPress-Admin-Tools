@@ -59,8 +59,8 @@ add_action('init', function() {
                 
                 // Load the module
                 // Module moved to child plugin: sportspress-player-registration
-                if (class_exists('SPR_Player_Registration')) {
-                    $player_reg = new SPR_Player_Registration();
+                if (class_exists('SPPR_Player_Registration')) {
+                    $player_reg = new SPPR_Player_Registration();
                     $player_reg->process_completed_order($order->get_id());
                     
                     wp_redirect(admin_url('?test_complete=1'));
