@@ -63,7 +63,12 @@ class SPSG_Schedule_Helper {
 		if ( ! empty( $config->venue_date_availability[ $venue_id ] ) ) {
 			foreach ( $config->venue_date_availability[ $venue_id ] as $range ) {
 				if ( $date >= $range['start_date'] && $date <= $range['end_date'] ) {
-					return $range['time_slots'];
+					// Guard against malformed range rows missing time_slots; when
+					// empty, fall through to the next cascade level rather than
+					// returning a partial/undefined value.
+					if ( isset( $range['time_slots'] ) && ! empty( $range['time_slots'] ) ) {
+						return $range['time_slots'];
+					}
 				}
 			}
 		}

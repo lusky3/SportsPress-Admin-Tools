@@ -100,6 +100,11 @@ class SPSG_Constraint_Manager {
 
 			$result = $constraint->validate( $game, $schedule_for_constraint, $config );
 
+			// Populate the abstract constraint's per-request memoization so a
+			// follow-up get_violation_cost() for the same (game, constraint)
+			// does not re-execute validate().
+			SPSG_Abstract_Constraint::prime_validate_cache( $constraint, $game, $result );
+
 			if ( is_wp_error( $result ) ) {
 				$violations[] = array(
 					'constraint' => $constraint->get_name(),
@@ -438,9 +443,12 @@ class SPSG_Constraint_Manager {
 		}
 
 		// Derive games per playing day from the cascade-aware total slot
-		// count so venue-specific time slot overrides are reflected.
+		// count so venue-specific time slot overrides are reflected. The day
+		// count must use the same cascade so feasibility math is consistent
+		// with the slot count (a "playing day" only counts when at least one
+		// venue actually offers slots).
 		$blackout_dates      = $config->blackout_dates ?? array();
-		$actual_playing_days = $this->count_playing_days_in_range( $season_start, $season_end, $config->playing_days, $blackout_dates );
+		$actual_playing_days = SPSG_Schedule_Helper::count_usable_playing_days( $season_start, $season_end, $config, $blackout_dates );
 
 		if ( $actual_playing_days > 0 ) {
 			$total_available_slots = SPSG_Schedule_Helper::count_available_slots( $config );

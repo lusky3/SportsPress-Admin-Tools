@@ -195,13 +195,15 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint {
 		$game_date = $game->date;
 		$game_time_slot = $game->time_slot;
 
-		// Get time slots for the game day
+		// Get time slots for the game day. Use cascade-aware resolution so the
+		// adjacency check honors per-venue / per-date overrides.
 		$game_day = strtolower( ( new DateTime( $game_date ) )->format( 'l' ) );
-		if ( ! isset( $config->time_slots[ $game_day ] ) ) {
+		$venue_id = isset( $game->venue_id ) ? $game->venue_id : ( isset( $game->venue ) ? SPSG_Schedule_Helper::extract_id( $game->venue ) : 0 );
+		$day_time_slots = SPSG_Schedule_Helper::resolve_venue_slots( $venue_id, $game_date, $game_day, $config );
+		if ( empty( $day_time_slots ) ) {
 			return $violations;
 		}
 
-		$day_time_slots = $config->time_slots[ $game_day ];
 		$current_slot_index = array_search( $game_time_slot, $day_time_slots );
 
 		if ( $current_slot_index === false ) {

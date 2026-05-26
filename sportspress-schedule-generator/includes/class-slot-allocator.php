@@ -558,9 +558,13 @@ class SPSG_Slot_Allocator {
 
 		// Stable game ID: deterministic across reruns so that preload and
 		// conflict-skip paths can match generated games to existing events.
-		$home_id = $this->extract_id( $matchup->home_team );
-		$away_id = $this->extract_id( $matchup->away_team );
-		$game_id = md5( $home_id . '|' . $away_id . '|' . $slot->date . '|' . $slot->time_slot );
+		// Includes venue so two games with the same teams/date/time at
+		// different venues don't collide on the same id (legal in multi-venue
+		// scheduling where conflict resolution treats them as distinct).
+		$home_id  = $this->extract_id( $matchup->home_team );
+		$away_id  = $this->extract_id( $matchup->away_team );
+		$venue_id = $this->extract_id( $slot->venue );
+		$game_id  = md5( $home_id . '|' . $away_id . '|' . $slot->date . '|' . $slot->time_slot . '|' . $venue_id );
 
 		return (object) array(
 			'id'                => $game_id,
