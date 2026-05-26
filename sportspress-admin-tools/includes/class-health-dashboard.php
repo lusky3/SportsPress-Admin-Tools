@@ -153,6 +153,15 @@ class SPAT_Health_Dashboard {
 			'spt_cleanup_old_temp_data' => 'Player Tools Temp Data Cleanup',
 		);
 
+		/**
+		 * Filter the list of cron hooks displayed on the health dashboard.
+		 *
+		 * Child plugins can contribute their own hook => label entries.
+		 *
+		 * @param array $crons Hook name => display label map.
+		 */
+		$crons = apply_filters( 'spat_health_dashboard_crons', $crons );
+
 		foreach ( $crons as $hook => $label ) {
 			$next = wp_next_scheduled( $hook );
 			if ( $next ) {
@@ -234,6 +243,7 @@ class SPAT_Health_Dashboard {
 		$table = $wpdb->prefix . 'spat_etransfer_logs';
 		$table_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table;
 		if ( $table_exists ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is the internal prefix + literal table name, not user input.
 			$last = $wpdb->get_var( "SELECT MAX(timestamp) FROM `{$table}`" );
 			$this->row_html( 'Last Webhook Received', $last ? esc_html( wp_date( 'Y-m-d H:i:s', strtotime( $last ) ) ) : $this->status( 'warn', 'Never' ) );
 			$this->debug( 'Last webhook: ' . ( $last ?: 'never' ) );
@@ -296,7 +306,11 @@ class SPAT_Health_Dashboard {
 		echo '<tr><th>' . esc_html( $label ) . '</th><td>' . esc_html( $value ) . '</td></tr>';
 	}
 
-	private function row_html( $label, $value ) {
-		echo '<tr><th>' . esc_html( $label ) . '</th><td>' . $value . '</td></tr>';
+	/**
+	 * Render a row whose value is already a trusted, pre-escaped HTML fragment.
+	 * Callers MUST escape user-influenced input before calling — this helper does not.
+	 */
+	private function row_html( $label, $trusted_html_value ) {
+		echo '<tr><th>' . esc_html( $label ) . '</th><td>' . $trusted_html_value . '</td></tr>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 	}
 }

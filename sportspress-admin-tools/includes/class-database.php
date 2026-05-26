@@ -56,7 +56,8 @@ class SPAT_Database {
             PRIMARY KEY (id),
             KEY timestamp (timestamp),
             KEY order_id (order_id),
-            KEY player_id (player_id)
+            KEY player_id (player_id),
+            KEY player_id_action (player_id, action)
         ) $charset_collate;";
 
 		dbDelta( $sql );
@@ -76,7 +77,9 @@ class SPAT_Database {
 
 		dbDelta( $sql );
 
-		// Temporary data table for large datasets
+		// Temporary data table for large datasets.
+		// PT2/F5: UNIQUE KEY user_data (user_id, data_type) lets the batch list
+		// creator use REPLACE INTO atomically instead of DELETE + INSERT.
 		$table_name = $wpdb->prefix . 'spat_temp_data';
 		$sql = "CREATE TABLE $table_name (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
@@ -85,6 +88,7 @@ class SPAT_Database {
             data_value longtext NOT NULL,
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
+            UNIQUE KEY user_data (user_id, data_type),
             KEY user_id (user_id),
             KEY data_type (data_type),
             KEY created_at (created_at)
@@ -92,7 +96,7 @@ class SPAT_Database {
 
 		dbDelta( $sql );
 
-		update_option( 'spat_db_version', '1.0.1' );
+		update_option( 'spat_db_version', '1.0.3' );
 	}
 
 	public static function migrate_existing_logs() {
@@ -162,21 +166,37 @@ class SPAT_Database {
 	private static function migrate_option_to_table( $option_name, $table_name, $mapper ) {
 		global $wpdb;
 
-		$logs = get_option( $option_name, array() );
-		if ( empty( $logs ) ) {
+		// Don't drop the source option if the target table is missing — leave it for a retry.
+		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table_name ) ) !== $table_name ) {
 			return;
 		}
 
-		$all_succeeded = true;
+		$logs = get_option( $option_name, array() );
+		if ( empty( $logs ) ) {
+			delete_option( $option_name );
+			return;
+		}
+
 		foreach ( $logs as $log ) {
-			if ( $wpdb->insert( $table_name, $mapper( $log ) ) === false ) {
-				$all_succeeded = false;
+			$data = $mapper( $log );
+			if ( empty( $data ) ) {
+				continue;
+			}
+			$columns      = array_keys( $data );
+			$placeholders = implode( ', ', array_fill( 0, count( $data ), '%s' ) );
+			$sql          = $wpdb->prepare(
+				// table + column names are internal; values use placeholders.
+				// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+				"INSERT IGNORE INTO `{$table_name}` (`" . implode( '`, `', $columns ) . "`) VALUES ({$placeholders})",
+				array_values( $data )
+			);
+			if ( false === $wpdb->query( $sql ) && class_exists( 'SPAT_Logger' ) ) {
+				SPAT_Logger::error( 'database', 'migrate_option_to_table insert failed', array( 'table' => $table_name, 'last_error' => $wpdb->last_error ) );
 			}
 		}
 
-		if ( $all_succeeded ) {
-			delete_option( $option_name );
-		}
+		// INSERT IGNORE makes the loop idempotent; always remove the source option.
+		delete_option( $option_name );
 	}
 
 	public static function get_etransfer_logs( $limit = 50, $offset = 0 ) {
@@ -234,8 +254,8 @@ class SPAT_Database {
 			)
 		);
 
-		if ( $insert_result === false ) {
-			error_log( 'SPAT Database: Failed to log e-Transfer activity - ' . $wpdb->last_error );
+		if ( $insert_result === false && class_exists( 'SPAT_Logger' ) ) {
+			SPAT_Logger::error( 'database', 'log_etransfer_activity insert failed', array( 'last_error' => $wpdb->last_error ) );
 		}
 	}
 
@@ -263,8 +283,8 @@ class SPAT_Database {
 			)
 		);
 
-		if ( $result === false ) {
-			error_log( 'SPAT Database: Failed to log registration activity - ' . $wpdb->last_error );
+		if ( $result === false && class_exists( 'SPAT_Logger' ) ) {
+			SPAT_Logger::error( 'database', 'log_registration_activity insert failed', array( 'last_error' => $wpdb->last_error ) );
 		}
 	}
 
@@ -287,7 +307,9 @@ class SPAT_Database {
 		);
 
 		if ( $result === false ) {
-			error_log( 'SPAT Database: Failed to log role assignment - ' . $wpdb->last_error );
+			if ( class_exists( 'SPAT_Logger' ) ) {
+				SPAT_Logger::error( 'database', 'log_role_assignment insert failed', array( 'last_error' => $wpdb->last_error ) );
+			}
 			return false;
 		}
 		return true;

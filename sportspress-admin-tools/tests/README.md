@@ -46,13 +46,13 @@ Format used by Cloudflare Email Routing with Worker processing.
 
 ```bash
 # Test generic webhook (default)
-./test-webhook.sh --url "https://example.com/wp-json/spat/v1/etransfer-webhook" --secret "your-secret-here"
+./test-webhook.sh --url "https://example.com/wp-json/spet/v1/etransfer-webhook" --secret "your-secret-here"
 
 # Test deliverhook format
-python3 test-webhook.py --url "https://example.com/wp-json/spat/v1/etransfer-webhook" --secret "your-secret-here" --method deliverhook
+python3 test-webhook.py --url "https://example.com/wp-json/spet/v1/etransfer-webhook" --secret "your-secret-here" --method deliverhook
 
 # Test Cloudflare format with verbose output
-php test-webhook.php --url "https://example.com/wp-json/spat/v1/etransfer-webhook" --secret "your-secret-here" --method cloudflare --verbose
+php test-webhook.php --url "https://example.com/wp-json/spet/v1/etransfer-webhook" --secret "your-secret-here" --method cloudflare --verbose
 ```
 
 ## Test Data

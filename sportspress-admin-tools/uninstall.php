@@ -23,9 +23,9 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 	);
 
 	foreach ( $tables as $table ) {
-		$table_name = $wpdb->prefix . $table;
-		$result = $wpdb->query( "DROP TABLE IF EXISTS `{$table_name}`" );
-		if ( $result === false ) {
+		$table_name = $wpdb->prefix . esc_sql( $table );
+		$result     = $wpdb->query( "DROP TABLE IF EXISTS `{$table_name}`" );
+		if ( $result === false && '1' === get_option( 'spat_debug_verbose_logging', '0' ) ) {
 			error_log( 'SPAT Uninstall: Failed to drop table ' . $table_name . ' - ' . $wpdb->last_error );
 		}
 	}
@@ -44,10 +44,12 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 		'spat_logs_migrated',
 	);
 
-	// Remove options with error handling
+	// Remove options. delete_option returns false when the row was already absent — not an error worth logging.
+	$verbose = '1' === get_option( 'spat_debug_verbose_logging', '0' );
 	foreach ( $options as $option ) {
-		if ( ! delete_option( $option ) ) {
-			error_log( 'SPAT Uninstall: Failed to delete option ' . $option );
+		$deleted = delete_option( $option );
+		if ( ! $deleted && $verbose ) {
+			error_log( 'SPAT Uninstall: option not present or could not be deleted: ' . $option );
 		}
 	}
 }

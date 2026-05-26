@@ -6,8 +6,8 @@
  * Author: Cody (lusky3)
  * Text Domain: sportspress-admin-tools
  * Requires at least: 5.0
- * Tested up to: 6.7
- * Requires PHP: 7.4
+ * Tested up to: 6.9
+ * Requires PHP: 8.1
  * License: GPL v2 or later
  */
 
@@ -26,8 +26,11 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 	class SportsPressAdminTools {
 
 		private static $autoload_map = array(
-			'SPAT_Text_Helper' => 'includes/class-text-helper.php',
-			'SimpleXLSX'       => 'includes/SimpleXLSX.php',
+			'SPAT_Text_Helper'       => 'includes/class-text-helper.php',
+			'SPAT_Logger'            => 'includes/class-logger.php',
+			'SPAT_Lock'              => 'includes/class-lock.php',
+			'SPAT_Upload_Validator'  => 'includes/class-upload-validator.php',
+			'SimpleXLSX'             => 'includes/SimpleXLSX.php',
 		);
 
 		public function __construct() {
@@ -46,6 +49,12 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 			// Load core classes needed everywhere
 			require_once SPAT_PLUGIN_PATH . 'includes/class-database.php';
 			require_once SPAT_PLUGIN_PATH . 'includes/class-plugin-manager.php';
+
+			// Run dbDelta on version bump so new indexes/columns reach existing installs
+			// without forcing operators to deactivate/reactivate the plugin.
+			if ( get_option( 'spat_db_version' ) !== '1.0.3' ) {
+				SPAT_Database::create_tables();
+			}
 
 			// Load text domain
 			load_plugin_textdomain( 'sportspress-admin-tools', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
@@ -73,8 +82,6 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 
 
 
-		// Notice methods removed - child plugins handle their own dependency checks
-
 		public function activate() {
 			// Set default options
 			add_option( 'spat_enabled_modules', array() );
@@ -88,6 +95,9 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 			if ( ! get_option( 'spat_logs_migrated' ) ) {
 				SPAT_Database::migrate_existing_logs();
 			}
+
+			// Note: child plugins should not depend on a parent-fired activation signal;
+			// they perform their own setup on their own activation hook.
 		}
 	}
 
