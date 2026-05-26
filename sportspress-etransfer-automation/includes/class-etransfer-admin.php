@@ -324,16 +324,52 @@ class SPET_ETransfer_Admin {
 		}
 
 		// Check for amount mismatch — require explicit force_mismatch confirmation.
+		// We compute the mismatch state here so we can gate the WHERE-claim, but
+		// defer any order side-effects (notes, transaction id, status flip) until
+		// AFTER the claim wins. Otherwise concurrent admin submissions can leak
+		// duplicate notes onto the order even when only one wins the claim.
 		$order_total = floatval( $order->get_total() );
 		$log_amount = floatval( $log->amount );
-		if ( abs( $order_total - $log_amount ) > 0.01 ) {
-			if ( ! $force_mismatch ) {
-				return array(
-					'error' => 'amount_mismatch',
-					'log_amount' => $log_amount,
-					'order_total' => $order_total,
-				);
+		$has_mismatch = abs( $order_total - $log_amount ) > 0.01;
+		if ( $has_mismatch && ! $force_mismatch ) {
+			return array(
+				'error' => 'amount_mismatch',
+				'log_amount' => $log_amount,
+				'order_total' => $order_total,
+			);
+		}
+
+		// Conditionally claim the log row BEFORE touching the order. The WHERE
+		// clause ensures only ONE concurrent admin request wins; the other gets
+		// rows_affected = 0 and bails out without ever touching the order.
+		$claimed = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE `{$wpdb->prefix}spat_etransfer_logs`
+				SET order_id = %d,
+					result = %s,
+					match_criteria = %s
+				WHERE id = %d AND (order_id IS NULL OR order_id = 0)",
+				intval( $order_id ),
+				'Manually matched and processed successfully',
+				'Manual Match',
+				intval( $log_id )
+			)
+		);
+
+		if ( $claimed === false ) {
+			if ( get_option( 'spat_debug_verbose_logging', '0' ) === '1' ) {
+				error_log( 'SPAT: Failed to update log entry - ' . $wpdb->last_error );
 			}
+			return false;
+		}
+
+		// Only touch the order when this request actually won the claim.
+		if ( (int) $wpdb->rows_affected !== 1 ) {
+			return false;
+		}
+
+		// Mismatch note (only the winner records this).
+		if ( $has_mismatch ) {
 			$order->add_order_note(
 				sprintf(
 					/* translators: 1: e-Transfer amount, 2: order total */
@@ -356,36 +392,6 @@ class SPET_ETransfer_Admin {
 			$log->amount ?: 0
 		);
 		$order->add_order_note( $note );
-
-		// Conditionally claim the log row before completing the order. The
-		// WHERE clause ensures only ONE concurrent admin request wins; the
-		// other gets rows_affected = 0 and bails out without flipping the
-		// order to completed twice.
-		$claimed = $wpdb->query(
-			$wpdb->prepare(
-				"UPDATE `{$wpdb->prefix}spat_etransfer_logs`
-				SET order_id = %d,
-					result = %s,
-					match_criteria = %s
-				WHERE id = %d AND (order_id IS NULL OR order_id = 0)",
-				intval( $order_id ),
-				'Manually matched and processed successfully',
-				'Manual Match',
-				intval( $log_id )
-			)
-		);
-
-		if ( $claimed === false ) {
-			if ( get_option( 'spat_debug_verbose_logging', '0' ) === '1' ) {
-				error_log( 'SPAT: Failed to update log entry - ' . $wpdb->last_error );
-			}
-			return false;
-		}
-
-		// Only flip the order status when this request actually won the claim.
-		if ( (int) $wpdb->rows_affected !== 1 ) {
-			return false;
-		}
 
 		// Update order status to completed
 		$order->update_status( 'completed', __( 'Payment confirmed via manual webhook match.', 'sportspress-admin-tools' ) );

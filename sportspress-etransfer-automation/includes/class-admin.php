@@ -19,12 +19,22 @@ class SPET_Admin {
 	}
 
 	/**
-	 * AJAX endpoint to reveal the webhook secret. Gated on manage_options + nonce.
+	 * AJAX endpoint to reveal the webhook secret. Gated on manage_options + nonce
+	 * AND throttled per-user via SPAT_Lock to at most one reveal per 60 seconds,
+	 * so a stolen long-lived nonce can't be replayed in a tight loop.
 	 */
 	public function ajax_reveal_webhook_secret() {
 		check_ajax_referer( 'spet_reveal_webhook_secret', 'nonce' );
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( array( 'message' => __( 'Permission denied.', 'sportspress-etransfer-automation' ) ), 403 );
+		}
+		if ( class_exists( 'SPAT_Lock' ) ) {
+			$throttle_key = 'spet_reveal_secret_' . get_current_user_id();
+			if ( ! SPAT_Lock::acquire( $throttle_key, 60 ) ) {
+				wp_send_json_error( array( 'message' => __( 'Please wait before revealing again.', 'sportspress-etransfer-automation' ) ), 429 );
+			}
+			// Note: we intentionally do NOT release the lock — it expires after
+			// 60s, which is the throttle window.
 		}
 		wp_send_json_success( array( 'secret' => get_option( 'spet_webhook_secret', '' ) ) );
 	}
@@ -161,7 +171,7 @@ class SPET_Admin {
 						<th scope="row"><?php esc_html_e( 'PII Retention (days)', 'sportspress-etransfer-automation' ); ?></th>
 						<td>
 							<input type="number" name="spet_pii_retention_days" min="1" max="365" value="<?php echo esc_attr( $pii_retention_days ); ?>" class="small-text" />
-							<p class="description"><?php esc_html_e( 'Webhook payload and parsed payment data are cleared from matched rows older than this many days. Row metadata (amount, reference, order ID) is retained for the full 90-day log window.', 'sportspress-etransfer-automation' ); ?></p>
+							<p class="description"><?php esc_html_e( 'Webhook payload and parsed payment data are cleared from rows older than this many days. Row metadata (amount, reference, order ID) is retained for the full 90-day log window.', 'sportspress-etransfer-automation' ); ?></p>
 						</td>
 					</tr>
 					<tr>
