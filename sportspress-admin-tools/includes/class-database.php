@@ -83,6 +83,16 @@ class SPAT_Database {
 		// PT2/F5: UNIQUE KEY user_data (user_id, data_type) lets the batch list
 		// creator use REPLACE INTO atomically instead of DELETE + INSERT.
 		$table_name = $wpdb->prefix . 'spat_temp_data';
+
+		// Pre-dedupe on existing installs so the UNIQUE KEY add succeeds.
+		// MySQL silently fails ALTER TABLE … ADD UNIQUE KEY when duplicates
+		// exist, and dbDelta swallows that error — without this step we'd
+		// stamp spat_db_version = '1.0.4' but the index would be missing.
+		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table_name ) ) === $table_name ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table_name is internal.
+			$wpdb->query( "DELETE t1 FROM `{$table_name}` t1 INNER JOIN `{$table_name}` t2 ON t1.user_id = t2.user_id AND t1.data_type = t2.data_type AND t1.id < t2.id" );
+		}
+
 		$sql = "CREATE TABLE $table_name (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             user_id bigint(20) unsigned NOT NULL,
@@ -98,7 +108,60 @@ class SPAT_Database {
 
 		dbDelta( $sql );
 
-		update_option( 'spat_db_version', '1.0.4' );
+		// Verify the schema actually came up to spec before bumping the version
+		// marker. dbDelta silently swallows ALTER TABLE failures (e.g. UNIQUE KEY
+		// add against pre-existing duplicates), and without this check we would
+		// leave installs in a state where spat_db_version = '1.0.4' but the new
+		// column / index is missing — readers then fail with 'Unknown column'.
+		if ( self::schema_matches_current_version() ) {
+			update_option( 'spat_db_version', '1.0.4' );
+		} elseif ( class_exists( 'SPAT_Logger' ) ) {
+			SPAT_Logger::error( 'database', 'dbDelta did not produce the expected schema; spat_db_version left unset for retry.' );
+		}
+	}
+
+	/**
+	 * Verify the post-dbDelta schema matches what 1.0.4 declares. Returns true
+	 * only when all expected columns and indexes exist; used to gate the
+	 * version marker so a half-applied migration retries on the next page load.
+	 */
+	private static function schema_matches_current_version() {
+		global $wpdb;
+
+		$expectations = array(
+			$wpdb->prefix . 'spat_registration_logs' => array(
+				'columns' => array( 'links_to_order' ),
+				'indexes' => array( 'player_id_links' ),
+			),
+			$wpdb->prefix . 'spat_temp_data' => array(
+				'columns' => array(),
+				'indexes' => array( 'user_data' ),
+			),
+		);
+
+		foreach ( $expectations as $table => $expected ) {
+			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
+				return false;
+			}
+
+			foreach ( $expected['columns'] as $column ) {
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table validated above.
+				$found = $wpdb->get_var( $wpdb->prepare( "SHOW COLUMNS FROM `{$table}` LIKE %s", $column ) );
+				if ( ! $found ) {
+					return false;
+				}
+			}
+
+			foreach ( $expected['indexes'] as $index ) {
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table validated above.
+				$rows = $wpdb->get_results( $wpdb->prepare( "SHOW INDEX FROM `{$table}` WHERE Key_name = %s", $index ) );
+				if ( empty( $rows ) ) {
+					return false;
+				}
+			}
+		}
+
+		return true;
 	}
 
 	/**
@@ -117,13 +180,16 @@ class SPAT_Database {
 		}
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is internal.
+		// 'player_found_by_email' is a legacy action value retained defensively in
+		// case older installs persisted it before the name+email rename.
 		$wpdb->query( $wpdb->prepare(
 			"UPDATE {$table_name}
 			 SET links_to_order = 1
-			 WHERE action IN (%s, %s, %s) AND links_to_order = 0",
+			 WHERE action IN (%s, %s, %s, %s) AND links_to_order = 0",
 			'player_created',
 			'player_found_by_name',
-			'player_found_by_name_and_email'
+			'player_found_by_name_and_email',
+			'player_found_by_email'
 		) );
 
 		update_option( 'spat_logs_backfilled_links_to_order', '1' );

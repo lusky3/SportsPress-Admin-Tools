@@ -105,19 +105,41 @@ class SPAT_Privacy {
 	 * @return array
 	 */
 	public function export_personal_data( $email_address, $page = 1 ) {
-		$export_items = array();
+		// Building the full $all_items list re-runs every export_* query.
+		// Cache the assembled list across pagination calls so the costly
+		// queries only run once per request. Mirrors the eraser pattern.
+		$transient_key = 'spat_privacy_export_' . md5( $email_address );
 
-		// Collect all items across categories
-		$all_items = array_merge(
-			$this->export_player_records( $email_address ),
-			$this->export_registration_logs( $email_address ),
-			$this->export_etransfer_logs( $email_address ),
-			$this->export_woocommerce_order_links( $email_address )
-		);
+		if ( 1 === (int) $page ) {
+			$all_items = array_merge(
+				$this->export_player_records( $email_address ),
+				$this->export_registration_logs( $email_address ),
+				$this->export_etransfer_logs( $email_address ),
+				$this->export_woocommerce_order_links( $email_address )
+			);
+			set_transient( $transient_key, $all_items, HOUR_IN_SECONDS );
+		} else {
+			$all_items = get_transient( $transient_key );
+			if ( false === $all_items ) {
+				// Transient expired — recompute. Exporters don't mutate data,
+				// so re-running the queries is safe (just slower).
+				$all_items = array_merge(
+					$this->export_player_records( $email_address ),
+					$this->export_registration_logs( $email_address ),
+					$this->export_etransfer_logs( $email_address ),
+					$this->export_woocommerce_order_links( $email_address )
+				);
+				set_transient( $transient_key, $all_items, HOUR_IN_SECONDS );
+			}
+		}
 
-		$offset = ( $page - 1 ) * self::BATCH_SIZE;
+		$offset       = ( $page - 1 ) * self::BATCH_SIZE;
 		$export_items = array_slice( $all_items, $offset, self::BATCH_SIZE );
-		$done = $offset + self::BATCH_SIZE >= count( $all_items );
+		$done         = $offset + self::BATCH_SIZE >= count( $all_items );
+
+		if ( $done ) {
+			delete_transient( $transient_key );
+		}
 
 		return array(
 			'data' => $export_items,
@@ -426,8 +448,19 @@ class SPAT_Privacy {
 		} else {
 			$player_ids = get_transient( $transient_key );
 			if ( false === $player_ids ) {
-				$player_ids = $this->get_player_ids_for_email( $email_address );
-				set_transient( $transient_key, $player_ids, HOUR_IN_SECONDS );
+				// Transient expired (slow WP-Cron, paused queue, etc.). We MUST NOT
+				// re-query here: the page-1 sweep already anonymized spt_email /
+				// sp_user meta and the e-transfer logs, so a fresh query would
+				// return an empty/incorrect player set and falsely report success.
+				// Tell the eraser to stop cleanly; page 1 already did the bulk work.
+				return array(
+					'items_removed'  => 0,
+					'items_retained' => 0,
+					'messages'       => array(
+						__( 'Erasure session cache expired before pagination finished. The initial sweep already anonymized records linked to this email; re-run the eraser if any newly-created records remain.', 'sportspress-admin-tools' ),
+					),
+					'done'           => true,
+				);
 			}
 		}
 

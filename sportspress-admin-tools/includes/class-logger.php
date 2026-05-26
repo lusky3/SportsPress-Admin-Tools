@@ -39,12 +39,26 @@ class SPAT_Logger {
 	}
 
 	private static function write( $level, $tag, $message, $context ) {
-		$payload = sprintf( 'SPAT[%s] %s: %s', $level, $tag, $message );
+		$payload   = sprintf( 'SPAT[%s] %s: %s', $level, $tag, $message );
+		$verbose   = self::is_verbose();
 		// Only emit the structured context when the operator has opted into
 		// verbose logging — $context frequently carries identifying information.
-		if ( ! empty( $context ) && self::is_verbose() ) {
+		if ( ! empty( $context ) && $verbose ) {
 			$payload .= ' ' . wp_json_encode( $context );
 		}
+
+		// Rate-limit identical payloads to one per minute so a tight loop hitting
+		// the same error path (e.g. a webhook retry storm) can't flood the PHP
+		// error log. wp_cache_add returns false if the key already exists, which
+		// is the atomic check we want. Skip throttling when verbose is on so
+		// operators actively debugging see every event.
+		if ( ! $verbose && function_exists( 'wp_cache_add' ) ) {
+			$throttle_key = 'spat_log_throttle_' . md5( $payload );
+			if ( ! wp_cache_add( $throttle_key, 1, 'spat_throttle', 60 ) ) {
+				return;
+			}
+		}
+
 		// Direct error_log() is intentional. The gate above governs PII; level
 		// governs whether to log at all.
 		error_log( $payload );

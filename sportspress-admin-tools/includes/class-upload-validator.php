@@ -8,7 +8,12 @@ class SPAT_Upload_Validator {
 	const DEFAULT_MAX_BYTES = 5242880;
 	const DEFAULT_MAX_ROWS  = 5000;
 
-	const MIME_CSV  = array( 'text/csv', 'application/csv', 'application/vnd.ms-excel' );
+	// CSV files are plain text — finfo on Linux almost always reports text/plain
+	// for them, so excluding it here rejects every legitimate CSV upload. The
+	// real defense against disguised payloads is the extension allowlist plus
+	// the row/byte limits enforced downstream; finfo MIME alone is too coarse
+	// to be the gate.
+	const MIME_CSV  = array( 'text/csv', 'application/csv', 'application/vnd.ms-excel', 'text/plain' );
 	const MIME_XLSX = array( 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/zip' );
 
 	public static function validate( $file, $args = array() ) {
