@@ -39,7 +39,7 @@
                 type: 'POST',
                 data: {
                     action: 'spsg_get_export_formats',
-                    nonce: spsgData.nonces.get_export_formats
+                    spsg_nonce: spsgData.nonces.get_export_formats
                 },
                 success: function(response) {
                     if (response.success) {
@@ -787,7 +787,7 @@
                 type: 'POST',
                 data: {
                     action: 'spsg_cancel_generation',
-                    nonce: spsgData.nonces.cancel_generation
+                    spsg_nonce: spsgData.nonces.cancel_generation
                 },
                 beforeSend: function() {
                     $('#spsg-cancel-generation').prop('disabled', true).text('Cancelling...');

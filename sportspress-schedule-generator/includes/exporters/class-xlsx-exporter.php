@@ -196,11 +196,15 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 			$shared[]     = $h;
 		}
 
-		// Pre-populate shared strings with cell values.
+		// Pre-populate shared strings with non-numeric cell values. Numeric
+		// values are emitted as raw `<v>` and don't belong in the SST.
 		foreach ( $rows as $r ) {
 			foreach ( $this->row_values( $r ) as $v ) {
 				$v = (string) $v;
-				if ( $v !== '' && ! isset( $ss_idx[ $v ] ) ) {
+				if ( $v === '' || is_numeric( $v ) ) {
+					continue;
+				}
+				if ( ! isset( $ss_idx[ $v ] ) ) {
 					$ss_idx[ $v ] = count( $shared );
 					$shared[]     = $v;
 				}
@@ -694,6 +698,13 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 		}
 		$xml .= '</row>';
 
+		// Columns that should be emitted as true numbers regardless of
+		// content. All others are treated as strings even when their value
+		// happens to be all-digits, e.g. a team named "1990" would otherwise
+		// be silently stripped of its leading zeros / coerced to a float.
+		// Column order matches row_values(): match_length=3, week_number=11.
+		$numeric_columns = array( 3 => true, 11 => true );
+
 		// Data rows.
 		$r = 2;
 		foreach ( $rows as $row_data ) {
@@ -713,11 +724,18 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 
 				if ( $val === '' ) {
 					$xml .= '<c r="' . $ref . '" s="' . $style . '"/>';
+				} elseif ( isset( $numeric_columns[ $c ] ) && is_numeric( $val ) ) {
+					// Known-numeric column: emit raw float so Excel treats it as numeric.
+					$xml .= '<c r="' . $ref . '" s="' . $style . '"><v>' . ( $val + 0 ) . '</v></c>';
 				} elseif ( isset( $ss_idx[ $val ] ) ) {
 					$xml .= '<c r="' . $ref . '" t="s" s="' . $style . '"><v>' . $ss_idx[ $val ] . '</v></c>';
 				} else {
-					// Numeric value.
-					$xml .= '<c r="' . $ref . '" s="' . $style . '"><v>' . $this->xml_escape( $val ) . '</v></c>';
+					// Value wasn't pre-populated in the shared strings table.
+					// Emit as an inline string so Excel renders it correctly
+					// instead of attempting to interpret arbitrary text as XML.
+					// Numeric-looking values in string columns (e.g. team name "1990")
+					// are preserved verbatim instead of being coerced to numbers.
+					$xml .= '<c r="' . $ref . '" t="inlineStr" s="' . $style . '"><is><t>' . $this->xml_escape( $val ) . '</t></is></c>';
 				}
 			}
 			$xml .= '</row>';

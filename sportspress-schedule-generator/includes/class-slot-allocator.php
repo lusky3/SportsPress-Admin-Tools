@@ -25,14 +25,48 @@ class SPSG_Slot_Allocator {
 	private $constraint_manager;
 
 	/**
-	 * Maximum backtracking depth
+	 * Maximum backtracking depth.
+	 *
+	 * Initialised conservatively but raised in {@see allocate()} to be
+	 * proportional to the number of matchups so the recursion can actually
+	 * reach the end of large schedules. Timeout / cancellation transients
+	 * checked by the engine remain the primary safety net.
 	 */
-	private $max_backtrack_depth = 10;
+	private $max_backtrack_depth = 50;
 
 	/**
 	 * Available slots cache
 	 */
 	private $available_slots = array();
+
+	/**
+	 * Available slots indexed by date (date string => slot[]). Built once per
+	 * allocation run to make {@see find_best_slot()} run in O(matchups * slots/day)
+	 * rather than O(matchups * total_slots).
+	 */
+	private $slots_by_date = array();
+
+	/**
+	 * Sorted list of dates that have at least one available slot. Walked
+	 * chronologically so games land at the earliest available date.
+	 */
+	private $sorted_slot_dates = array();
+
+	/**
+	 * Count of games with soft constraint violations
+	 */
+	private $constraint_violations = 0;
+
+	/**
+	 * Set true when greedy_allocate() / backtrack_allocate() exited because
+	 * of a cancellation or timeout rather than a genuine "cannot place this
+	 * matchup" failure. The caller uses this to skip the backtracking
+	 * fallback (which would just hit the same cancel signal) and surface
+	 * the cancellation to the engine.
+	 *
+	 * @var bool
+	 */
+	private $was_cancelled = false;
 
 	/**
 	 * Constructor
@@ -53,9 +87,24 @@ class SPSG_Slot_Allocator {
 	 */
 	public function allocate( $matchups, $config, $progress_callback = null, $cancellation_callback = null, $timeout_callback = null ) {
 		$this->log( 'Starting slot allocation' );
+		$this->constraint_violations = 0;
+		$this->was_cancelled = false;
+
+		// Scale backtrack depth with the size of the workload — the default
+		// of 50 is meaningless for a 200-game season. Engine-level timeout
+		// and cancellation transients still bound total runtime.
+		$this->max_backtrack_depth = max( 50, count( $matchups ) * 5 );
 
 		// Generate available slots
 		$this->available_slots = $this->generate_available_slots( $config );
+
+		// Build a date → slots index for fast chronological lookups.
+		$this->slots_by_date = array();
+		foreach ( $this->available_slots as $slot ) {
+			$this->slots_by_date[ $slot->date ][] = $slot;
+		}
+		$this->sorted_slot_dates = array_keys( $this->slots_by_date );
+		sort( $this->sorted_slot_dates );
 
 		if ( empty( $this->available_slots ) ) {
 			return new WP_Error(
@@ -74,10 +123,35 @@ class SPSG_Slot_Allocator {
 			return $schedule;
 		}
 
+		// If greedy exited because the user cancelled or the engine timed
+		// out, don't bother trying backtracking — the same signal will
+		// still be true and we'd waste another budget of work to fail.
+		if ( $this->was_cancelled ) {
+			return new WP_Error(
+				'allocation_cancelled',
+				__( 'Allocation cancelled before completion.', 'sportspress-schedule-generator' ),
+				array(
+					'total_matchups' => count( $matchups ),
+					'available_slots' => count( $this->available_slots ),
+				)
+			);
+		}
+
 		$this->log( 'Greedy allocation failed, trying backtracking' );
 
 		// Greedy failed, try backtracking (slower but more thorough)
 		$schedule = $this->backtrack_allocate( $matchups, $config, $progress_callback, $cancellation_callback, $timeout_callback );
+
+		if ( $this->was_cancelled ) {
+			return new WP_Error(
+				'allocation_cancelled',
+				__( 'Allocation cancelled before completion.', 'sportspress-schedule-generator' ),
+				array(
+					'total_matchups' => count( $matchups ),
+					'available_slots' => count( $this->available_slots ),
+				)
+			);
+		}
 
 		if ( $schedule === false ) {
 			return new WP_Error(
@@ -103,17 +177,20 @@ class SPSG_Slot_Allocator {
 	public function generate_available_slots( $config ) {
 		$slots = array();
 
+		// Resolve timezone from config
+		$tz = ! empty( $config->timezone ) ? new DateTimeZone( $config->timezone ) : wp_timezone();
+
 		// Handle both string and DateTime objects
 		if ( $config->season_start instanceof DateTime ) {
 			$season_start = clone $config->season_start;
 		} else {
-			$season_start = new DateTime( $config->season_start );
+			$season_start = new DateTime( $config->season_start, $tz );
 		}
 
 		if ( $config->season_end instanceof DateTime ) {
 			$season_end = clone $config->season_end;
 		} else {
-			$season_end = new DateTime( $config->season_end );
+			$season_end = new DateTime( $config->season_end, $tz );
 		}
 
 		$current_date = clone $season_start;
@@ -186,11 +263,16 @@ class SPSG_Slot_Allocator {
 			// Check for cancellation/timeout every 25 matchups
 			if ( $check_counter % 25 === 0 ) {
 				if ( $cancellation_callback && call_user_func( $cancellation_callback ) ) {
-					return $schedule;
+					// Returning a partial schedule here used to fool the caller
+					// into treating cancellation as success. Mark it as a
+					// cancellation and return false so backtracking is skipped.
+					$this->was_cancelled = true;
+					return false;
 				}
 
 				if ( $timeout_callback && call_user_func( $timeout_callback ) ) {
-					return $schedule;
+					$this->was_cancelled = true;
+					return false;
 				}
 			}
 
@@ -205,6 +287,14 @@ class SPSG_Slot_Allocator {
 			$game = $this->create_game( $matchup, $best_slot, $config );
 			$schedule[] = $game;
 			$games_scheduled++;
+
+			// Track soft constraint violations. Pass the full date-indexed schedule
+			// so cross-day soft constraints (distribution) see the entire run.
+			$same_day_games = $schedule_by_date[ $game->date ] ?? array();
+			$cost = $this->constraint_manager->calculate_violation_cost( $game, $same_day_games, $config, $schedule_by_date );
+			if ( $cost > 0 ) {
+				$this->constraint_violations++;
+			}
 
 			// Index by date for fast lookups.
 			if ( ! isset( $schedule_by_date[ $game->date ] ) ) {
@@ -255,9 +345,11 @@ class SPSG_Slot_Allocator {
 	 */
 	private function backtrack_recursive( $matchups, $index, &$schedule, &$used_slots, &$schedule_by_date, $config, $depth, $progress_callback = null, $cancellation_callback = null, $timeout_callback = null ) {
 		if ( $cancellation_callback && call_user_func( $cancellation_callback ) ) {
+			$this->was_cancelled = true;
 			return false;
 		}
 		if ( $timeout_callback && call_user_func( $timeout_callback ) ) {
+			$this->was_cancelled = true;
 			return false;
 		}
 		if ( $depth > $this->max_backtrack_depth ) {
@@ -315,21 +407,61 @@ class SPSG_Slot_Allocator {
 	 * @return object|null Best slot or null
 	 */
 	public function find_best_slot( $matchup, $used_slots, $schedule_by_date, $config ) {
-		foreach ( $this->available_slots as $slot ) {
-			$slot_key = $this->get_slot_key( $slot );
+		$best_slot          = null;
+		$candidates_checked = 0;
+		$max_candidates     = 15;
 
-			if ( isset( $used_slots[ $slot_key ] ) ) {
-				continue;
-			}
-
-			if ( ! $this->is_slot_valid( $matchup, $slot, $schedule_by_date, $config ) ) {
-				continue;
-			}
-
-			return $slot; // First valid slot — hard constraints enforced, no cost evaluation needed.
+		// Resolve home team's preferred venue (if configured)
+		$preferred_venue_id = null;
+		if ( ! empty( $config->home_away_preferences ) ) {
+			$home_id            = $this->extract_id( $matchup->home_team );
+			$preferred_venue_id = $config->home_away_preferences[ $home_id ] ?? null;
 		}
 
-		return null;
+		// Walk dates in chronological order; for each date scan only its
+		// own slots. This turns the inner loop from O(total_slots) into
+		// O(slots_per_day) which is dramatically smaller for typical seasons.
+		$dates = ! empty( $this->sorted_slot_dates ) ? $this->sorted_slot_dates : array_keys( $this->slots_by_date );
+
+		foreach ( $dates as $date ) {
+			$day_slots = $this->slots_by_date[ $date ] ?? array();
+
+			foreach ( $day_slots as $slot ) {
+				$slot_key = $this->get_slot_key( $slot );
+
+				if ( isset( $used_slots[ $slot_key ] ) ) {
+					continue;
+				}
+
+				if ( ! $this->is_slot_valid( $matchup, $slot, $schedule_by_date, $config ) ) {
+					continue;
+				}
+
+				// No preference configured — return first valid slot.
+				if ( ! $preferred_venue_id ) {
+					return $slot;
+				}
+
+				$slot_venue_id = $this->extract_id( $slot->venue );
+
+				// Preferred venue found — return immediately.
+				if ( $slot_venue_id === $preferred_venue_id ) {
+					return $slot;
+				}
+
+				// Keep first valid slot as fallback.
+				if ( ! $best_slot ) {
+					$best_slot = $slot;
+				}
+
+				$candidates_checked++;
+				if ( $candidates_checked >= $max_candidates ) {
+					return $best_slot;
+				}
+			}
+		}
+
+		return $best_slot;
 	}
 
 	/**
@@ -379,29 +511,13 @@ class SPSG_Slot_Allocator {
 	}
 
 	/**
-	 * Resolve time slots for a venue on a given date with priority fallback
+	 * Resolve time slots for a venue on a given date with priority fallback.
+	 *
+	 * Delegates to SPSG_Schedule_Helper so feasibility pre-checks and the
+	 * live allocator share a single cascade implementation.
 	 */
 	private function resolve_venue_time_slots( $venue_id, $date, $day_name, $config ) {
-		// Priority 1: Date-specific availability
-		if ( ! empty( $config->venue_date_availability[ $venue_id ] ) ) {
-			foreach ( $config->venue_date_availability[ $venue_id ] as $range ) {
-				if ( $date >= $range['start_date'] && $date <= $range['end_date'] ) {
-					return $range['time_slots'];
-				}
-			}
-		}
-
-		// Priority 2: Venue-specific timeslots for this day
-		if ( ! empty( $config->venue_timeslots[ $venue_id ][ $day_name ] ) ) {
-			return $config->venue_timeslots[ $venue_id ][ $day_name ];
-		}
-
-		// Priority 3: Global time slots for this day
-		if ( ! empty( $config->time_slots[ $day_name ] ) ) {
-			return $config->time_slots[ $day_name ];
-		}
-
-		return null;
+		return SPSG_Schedule_Helper::resolve_venue_slots( $venue_id, $date, $day_name, $config );
 	}
 
 
@@ -434,7 +550,14 @@ class SPSG_Slot_Allocator {
 			}
 		}
 
+		// Stable game ID: deterministic across reruns so that preload and
+		// conflict-skip paths can match generated games to existing events.
+		$home_id = $this->extract_id( $matchup->home_team );
+		$away_id = $this->extract_id( $matchup->away_team );
+		$game_id = md5( $home_id . '|' . $away_id . '|' . $slot->date . '|' . $slot->time_slot );
+
 		return (object) array(
+			'id'                => $game_id,
 			'date'              => $slot->date,
 			'day'               => $slot->day ?? strtolower( gmdate( 'l', strtotime( $slot->date ) ) ),
 			'time_slot'         => $slot->time_slot,
@@ -501,11 +624,13 @@ class SPSG_Slot_Allocator {
 			}
 		}
 
-		// Validate with constraint manager - reuse pre-created game or create one
+		// Validate with constraint manager - reuse pre-created game or create one.
+		// Forward the full date-indexed schedule so cross-day soft constraints
+		// (distribution) score the whole run, not just same-day games.
 		if ( ! $game ) {
 			$game = $this->create_game( $matchup, $slot, $config );
 		}
-		$validation = $this->constraint_manager->validate_game( $game, $same_day_games, $config );
+		$validation = $this->constraint_manager->validate_game( $game, $same_day_games, $config, $schedule_by_date );
 
 		return $validation === true;
 	}
@@ -567,6 +692,15 @@ class SPSG_Slot_Allocator {
 	private function time_to_minutes( $time ) {
 		$parts = explode( ':', $time );
 		return intval( $parts[0] ) * 60 + intval( $parts[1] );
+	}
+
+	/**
+	 * Get the number of games with soft constraint violations
+	 *
+	 * @return int
+	 */
+	public function get_constraint_violations() {
+		return $this->constraint_violations;
 	}
 
 	/**

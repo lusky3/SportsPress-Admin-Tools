@@ -422,6 +422,103 @@ class SPSG_Placeholder_Team_Manager {
 	}
 
 	/**
+	 * Maximum placeholder teams to delete per request before deferring the
+	 * remainder to a scheduled WP-Cron event. Keeps user-facing actions
+	 * (config delete) responsive when a config has hundreds of placeholders.
+	 */
+	const CLEANUP_BATCH_SIZE = 25;
+
+	/**
+	 * Delete all placeholder teams associated with a config ID.
+	 *
+	 * Processes up to {@see self::CLEANUP_BATCH_SIZE} teams synchronously and,
+	 * if more remain, schedules a single follow-up event to continue. Inside
+	 * the loop cache invalidation is suspended to avoid thrashing object
+	 * caches when bulk-deleting many posts.
+	 *
+	 * @param string $config_id Configuration ID
+	 * @return int Number of teams deleted in this invocation.
+	 */
+	public static function cleanup_for_config( $config_id ) {
+		$teams = self::get_placeholder_teams( $config_id );
+		if ( empty( $teams ) ) {
+			return 0;
+		}
+
+		$batch     = array_slice( $teams, 0, self::CLEANUP_BATCH_SIZE );
+		$remaining = count( $teams ) - count( $batch );
+		$deleted   = 0;
+		$failures  = 0;
+
+		// Hard ceiling on per-config delete attempts to prevent unbounded
+		// cron recursion when wp_delete_post consistently fails (e.g. a
+		// custom post-type filter is vetoing deletion).
+		$iteration_key = 'spsg_placeholder_cleanup_iter_' . $config_id;
+		$iteration     = (int) get_transient( $iteration_key );
+		if ( $iteration >= 200 ) {
+			// Give up — leave orphaned placeholders for a human to inspect.
+			delete_transient( $iteration_key );
+			error_log(
+				sprintf(
+					'[SPSG] Placeholder cleanup for config %s aborted after %d iterations.',
+					$config_id,
+					$iteration
+				)
+			);
+			return 0;
+		}
+
+		// Suspend cache invalidation during the bulk delete to avoid repeated
+		// invalidation cycles. Restored regardless of how the loop exits.
+		$prev = function_exists( 'wp_suspend_cache_invalidation' )
+			? wp_suspend_cache_invalidation( true )
+			: false;
+
+		try {
+			foreach ( $batch as $team ) {
+				$result = wp_delete_post( $team['id'], true );
+				if ( $result === false || $result === null ) {
+					$failures++;
+					continue;
+				}
+				$deleted++;
+			}
+		} finally {
+			if ( function_exists( 'wp_suspend_cache_invalidation' ) ) {
+				wp_suspend_cache_invalidation( $prev );
+			}
+		}
+
+		// Bail out of the recursion entirely if the whole batch failed to
+		// delete — rescheduling would re-fetch the same posts forever.
+		if ( $deleted === 0 && $failures > 0 ) {
+			delete_transient( $iteration_key );
+			error_log(
+				sprintf(
+					'[SPSG] Placeholder cleanup for config %s: batch of %d failed entirely; aborting.',
+					$config_id,
+					$failures
+				)
+			);
+			return 0;
+		}
+
+		// Defer the rest to a single-shot scheduled event.
+		if ( $remaining > 0 && function_exists( 'wp_schedule_single_event' ) ) {
+			set_transient( $iteration_key, $iteration + 1, HOUR_IN_SECONDS );
+			wp_schedule_single_event(
+				time() + 60,
+				'spsg_cleanup_placeholders_continue',
+				array( $config_id )
+			);
+		} else {
+			delete_transient( $iteration_key );
+		}
+
+		return $deleted;
+	}
+
+	/**
 	 * Get non-placeholder teams for replacement dropdown
 	 *
 	 * @return array Array of team objects with id and name

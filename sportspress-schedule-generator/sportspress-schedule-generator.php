@@ -7,8 +7,8 @@
  * Text Domain: sportspress-schedule-generator
  * License: GPL v2 or later
  * Requires at least: 5.0
- * Tested up to: 6.4
- * Requires PHP: 7.4
+ * Tested up to: 6.9
+ * Requires PHP: 8.1
  * Depends: SportsPress Admin Tools
  */
 
@@ -54,6 +54,18 @@ class SportsPress_Schedule_Generator {
 	 */
 	public function deactivate() {
 		wp_clear_scheduled_hook( 'spsg_cleanup_export_files' );
+		wp_clear_scheduled_hook( 'spsg_cleanup_placeholders_continue' );
+	}
+
+	/**
+	 * WP-Cron callback that continues a batched placeholder cleanup.
+	 *
+	 * @param string $config_id Configuration ID whose placeholders are being deleted.
+	 */
+	public static function cleanup_placeholders_continue( $config_id ) {
+		if ( class_exists( 'SPSG_Placeholder_Team_Manager' ) ) {
+			SPSG_Placeholder_Team_Manager::cleanup_for_config( $config_id );
+		}
 	}
 
 	/**
@@ -61,30 +73,29 @@ class SportsPress_Schedule_Generator {
 	 */
 	public function cleanup_export_files() {
 		$upload_dir = wp_upload_dir();
-		$export_dirs = array(
-			$upload_dir['basedir'] . '/spsg-exports',
-			$upload_dir['path'],
-		);
+
+		// Only scan the plugin's own export directory. Older versions also
+		// scanned `$upload_dir['path']` (the current-month uploads folder),
+		// which risked deleting unrelated user attachments that happened to
+		// start with our prefix during URL collisions.
+		$dir = $upload_dir['basedir'] . '/spsg-exports';
+		if ( ! is_dir( $dir ) ) {
+			return;
+		}
 
 		$max_age = DAY_IN_SECONDS;
 
-		foreach ( $export_dirs as $dir ) {
-			if ( ! is_dir( $dir ) ) {
-				continue;
-			}
+		$files = array_merge(
+			glob( $dir . '/schedule_*' ) ?: array(),
+			glob( $dir . '/schedule-*' ) ?: array()
+		);
+		if ( ! $files ) {
+			return;
+		}
 
-			$files = array_merge(
-				glob( $dir . '/schedule_*' ) ?: array(),
-				glob( $dir . '/schedule-*' ) ?: array()
-			);
-			if ( ! $files ) {
-				continue;
-			}
-
-			foreach ( $files as $file ) {
-				if ( is_file( $file ) && ( time() - filemtime( $file ) ) > $max_age ) {
-					wp_delete_file( $file );
-				}
+		foreach ( $files as $file ) {
+			if ( is_file( $file ) && ( time() - filemtime( $file ) ) > $max_age ) {
+				wp_delete_file( $file );
 			}
 		}
 	}
@@ -148,6 +159,9 @@ class SportsPress_Schedule_Generator {
 				wp_schedule_event( time(), 'daily', 'spsg_cleanup_export_files' );
 			}
 			add_action( 'spsg_cleanup_export_files', array( $this, 'cleanup_export_files' ) );
+
+			// Continuation handler for batched placeholder cleanup.
+			add_action( 'spsg_cleanup_placeholders_continue', array( __CLASS__, 'cleanup_placeholders_continue' ) );
 
 			// Load admin interface if in admin
 			if ( is_admin() ) {

@@ -1,6 +1,31 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
+/**
+ * Build the canonical list-endpoint response payload.
+ *
+ * See docs/rest-api-conventions.md. Mirrors splm_rest_list_response() but
+ * lives in its own plugin so SPSG can ship independent of SPLM.
+ */
+if ( ! function_exists( 'spsg_rest_list_response' ) ) {
+	function spsg_rest_list_response( array $items, $total = null, $page = 1, $per_page = 0 ) {
+		$items = array_values( $items );
+		$total = ( null === $total ) ? count( $items ) : (int) $total;
+		$page  = max( 1, (int) $page );
+		if ( $per_page > 0 ) {
+			$total_pages = (int) max( 1, ceil( $total / $per_page ) );
+		} else {
+			$total_pages = 1;
+		}
+		return array(
+			'data'        => $items,
+			'total'       => $total,
+			'page'        => $page,
+			'total_pages' => $total_pages,
+		);
+	}
+}
+
 class SPSG_REST_API {
 
 	private $ns = 'spsg/v1';
@@ -298,7 +323,7 @@ class SPSG_REST_API {
 			foreach ( $divs as $d ) { $tc += count( $d['teams'] ?? array() ); }
 			$out[] = array( 'id' => $id, 'name' => $meta['name'], 'updated_at' => $meta['modified'], 'division_count' => count( $divs ), 'team_count' => $tc );
 		}
-		return rest_ensure_response( $out );
+		return rest_ensure_response( spsg_rest_list_response( $out ) );
 	}
 
 	/** Get a single configuration by ID. */
@@ -515,7 +540,7 @@ class SPSG_REST_API {
 	public function spsg_get_history( $request ) {
 		$changes = get_option( 'spsg_configuration_changes', array() );
 		$entries = $changes[ $request['id'] ] ?? array();
-		return rest_ensure_response( array_reverse( $entries ) );
+		return rest_ensure_response( spsg_rest_list_response( array_reverse( $entries ) ) );
 	}
 
 	public function spsg_clear_history( $request ) {
@@ -526,7 +551,8 @@ class SPSG_REST_API {
 	}
 
 	public function spsg_list_presets() {
-		return rest_ensure_response( $this->cm()->list_presets() );
+		$presets = $this->cm()->list_presets();
+		return rest_ensure_response( spsg_rest_list_response( is_array( $presets ) ? $presets : array() ) );
 	}
 
 	public function spsg_get_preset( $request ) {
@@ -542,13 +568,14 @@ class SPSG_REST_API {
 			if ( stripos( $p->post_title, '(Retired)' ) !== false ) continue;
 			$teams[] = array( 'id' => $p->ID, 'name' => $p->post_title );
 		}
-		return rest_ensure_response( $teams );
+		return rest_ensure_response( spsg_rest_list_response( $teams ) );
 	}
 
 	// --- Placeholders ---
 
 	public function spsg_get_placeholders( $request ) {
-		return rest_ensure_response( SPSG_Placeholder_Team_Manager::get_placeholder_teams( $request['id'] ) );
+		$placeholders = SPSG_Placeholder_Team_Manager::get_placeholder_teams( $request['id'] );
+		return rest_ensure_response( spsg_rest_list_response( is_array( $placeholders ) ? $placeholders : array() ) );
 	}
 
 	public function spsg_replace_placeholder( $request ) {
@@ -562,30 +589,72 @@ class SPSG_REST_API {
 	public function spsg_get_leagues() {
 		$leagues = get_terms( array( 'taxonomy' => 'sp_league', 'hide_empty' => false ) );
 		if ( is_wp_error( $leagues ) ) return $leagues;
+
+		// Perf: fetch every team once, bucket by league in PHP. Avoids N+1
+		// get_posts() calls (one per league) on sites with many leagues.
+		$all_teams = get_posts( array(
+			'post_type'      => 'sp_team',
+			'post_status'    => 'publish',
+			'posts_per_page' => -1,
+			'orderby'        => 'title',
+			'order'          => 'ASC',
+		) );
+
+		$team_ids        = array();
+		$teams_by_id     = array();
+		foreach ( $all_teams as $p ) {
+			$team_ids[]               = $p->ID;
+			$teams_by_id[ $p->ID ]    = $p;
+		}
+
+		// Prime the term cache so the wp_get_object_terms() calls below are
+		// served from cache rather than hitting the DB once per team.
+		if ( ! empty( $team_ids ) ) {
+			update_object_term_cache( $team_ids, 'sp_team' );
+		}
+
+		$teams_by_league = array();
+		foreach ( $team_ids as $team_id ) {
+			$term_ids = wp_get_object_terms( $team_id, 'sp_league', array( 'fields' => 'ids' ) );
+			if ( is_wp_error( $term_ids ) ) continue;
+			foreach ( $term_ids as $league_id ) {
+				$teams_by_league[ $league_id ][] = $team_id;
+			}
+		}
+
 		$out = array();
 		foreach ( $leagues as $lg ) {
 			// Gap #14: skip aggregate leagues named "ALL"
 			if ( strtoupper( trim( $lg->name ) ) === 'ALL' ) continue;
-			$posts = get_posts( array( 'post_type' => 'sp_team', 'posts_per_page' => -1, 'post_status' => 'publish',
-				'tax_query' => array( array( 'taxonomy' => 'sp_league', 'terms' => $lg->term_id ) ), 'orderby' => 'title', 'order' => 'ASC' ) );
+			$league_team_ids = isset( $teams_by_league[ $lg->term_id ] ) ? $teams_by_league[ $lg->term_id ] : array();
 			$teams = array();
-			foreach ( $posts as $p ) {
+			foreach ( $league_team_ids as $team_id ) {
+				if ( ! isset( $teams_by_id[ $team_id ] ) ) continue;
+				$p = $teams_by_id[ $team_id ];
 				if ( stripos( $p->post_title, '(Retired)' ) !== false ) continue;
 				$teams[] = array( 'id' => $p->ID, 'name' => $p->post_title );
 			}
 			$out[] = array( 'id' => $lg->term_id, 'name' => $lg->name, 'teams' => $teams );
 		}
-		return rest_ensure_response( $out );
+		return rest_ensure_response( spsg_rest_list_response( $out ) );
 	}
 
 	public function spsg_get_venues() {
 		$v = get_terms( array( 'taxonomy' => 'sp_venue', 'hide_empty' => false ) );
-		return is_wp_error( $v ) ? $v : rest_ensure_response( array_map( fn( $t ) => array( 'id' => $t->term_id, 'name' => $t->name ), $v ) );
+		if ( is_wp_error( $v ) ) {
+			return $v;
+		}
+		$items = array_map( fn( $t ) => array( 'id' => $t->term_id, 'name' => $t->name ), $v );
+		return rest_ensure_response( spsg_rest_list_response( $items ) );
 	}
 
 	public function spsg_get_seasons() {
 		$s = get_terms( array( 'taxonomy' => 'sp_season', 'hide_empty' => false ) );
-		return is_wp_error( $s ) ? $s : rest_ensure_response( array_map( fn( $t ) => array( 'id' => $t->term_id, 'name' => $t->name ), $s ) );
+		if ( is_wp_error( $s ) ) {
+			return $s;
+		}
+		$items = array_map( fn( $t ) => array( 'id' => $t->term_id, 'name' => $t->name ), $s );
+		return rest_ensure_response( spsg_rest_list_response( $items ) );
 	}
 
 	// --- Generate ---
