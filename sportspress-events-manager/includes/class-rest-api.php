@@ -668,7 +668,24 @@ class SPEM_REST_API {
 	}
 
 	/**
-	 * POST /season/rollover-execute — move players to past team and remove old season.
+	 * POST /season/rollover-execute — roll selected players forward into a new season
+	 * on the same team(s) they currently have.
+	 *
+	 * Contract (documented to head off future "should this swap teams?" questions):
+	 *   - Copies each player's `sp_current_team` rows into `sp_past_team` (append-only,
+	 *     deduped against existing past_team rows).
+	 *   - LEAVES `sp_current_team` intact so multi-team players keep every team row.
+	 *   - Replaces the player's `sp_season` taxonomy term: removes from_season, adds to_season.
+	 *   - Remaps `sp_leagues` postmeta: `[league_id][from_season] => team` becomes
+	 *     `[league_id][to_season] => team`.
+	 *
+	 * What this endpoint is NOT for:
+	 *   - Moving a player between teams (use SPPT_REST_API::move_player at /splm/v1/rosters/move).
+	 *   - Removing a player from a team (use SPPT_REST_API::remove_player).
+	 *   - Creating new-season scaffolding like calendars or empty rosters (handled by
+	 *     the admin wizard at `wp_ajax_spem_season_rollover_execute`, NOT here).
+	 *
+	 * Caps `player_ids` at 200 per call; callers must paginate.
 	 */
 	public function rollover_execute( $request ) {
 		$from_season = absint( $request->get_param( 'from_season' ) );
