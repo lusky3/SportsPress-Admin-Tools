@@ -28,12 +28,38 @@ class SPT_Email_Sync {
 
 	/**
 	 * Render the sync section inside the Player Tools tab.
+	 *
+	 * Fix #8: gate on manage_options before nonce checks — the scan/preview is
+	 * admin-only.
 	 */
 	public function render_section() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
 		// Show success notice if we just applied.
 		if ( isset( $_GET['spt_synced'] ) ) {
-			$count = absint( $_GET['spt_synced'] );
-			echo '<div class="notice notice-success"><p>' . sprintf( esc_html__( 'Updated %d player email(s).', 'sportspress-player-tools' ), $count ) . '</p></div>';
+			$count   = absint( $_GET['spt_synced'] );
+			$skipped = isset( $_GET['spt_skipped'] ) ? absint( $_GET['spt_skipped'] ) : 0;
+			echo '<div class="notice notice-success"><p>';
+			echo esc_html(
+				sprintf(
+					/* translators: %d: number of players */
+					__( 'Updated %d player email(s).', 'sportspress-player-tools' ),
+					$count
+				)
+			);
+			if ( $skipped ) {
+				echo ' ';
+				echo esc_html(
+					sprintf(
+						/* translators: %d: number of skipped rows */
+						__( 'Skipped %d row(s) due to invalid email.', 'sportspress-player-tools' ),
+						$skipped
+					)
+				);
+			}
+			echo '</p></div>';
 		}
 
 		echo '<hr><h2>' . esc_html__( 'Sync Player Emails', 'sportspress-player-tools' ) . '</h2>';
@@ -391,23 +417,29 @@ class SPT_Email_Sync {
 		$player_ids = array_map( 'absint', $_POST['players'] ?? array() );
 		$emails     = array_map( 'sanitize_email', (array) ( $_POST['email'] ?? array() ) );
 		$updated    = 0;
+		$skipped    = 0;
 
 		foreach ( $player_ids as $pid ) {
 			if ( ! isset( $emails[ $pid ] ) ) {
+				++$skipped;
 				continue;
 			}
-			$email = sanitize_email( $emails[ $pid ] );
-			if ( $email ) {
+			// Fix #15: emails already sanitized by the array_map above.
+			$email = $emails[ $pid ];
+			if ( $email && is_email( $email ) ) {
 				update_post_meta( $pid, 'spt_email', $email );
 				++$updated;
+			} else {
+				++$skipped;
 			}
 		}
 
 		wp_safe_redirect(
 			add_query_arg(
 				array(
-					'page'       => 'sportspress-admin-tools',
-					'spt_synced' => $updated,
+					'page'        => 'sportspress-admin-tools',
+					'spt_synced'  => $updated,
+					'spt_skipped' => $skipped,
 				),
 				admin_url( 'options-general.php' )
 			)
@@ -501,7 +533,30 @@ class SPT_Email_Sync {
 	}
 
 	private function count_players_missing_email() {
-		return count( $this->get_players_missing_email() );
+		// Perf: avoid loading every WP_Post just to count them. Use found_posts
+		// with fields=ids and posts_per_page=1.
+		$q = new WP_Query( array(
+			'post_type'              => 'sp_player',
+			'post_status'            => 'publish',
+			'meta_query'             => array(
+				'relation' => 'OR',
+				array(
+					'key'     => 'spt_email',
+					'compare' => 'NOT EXISTS',
+				),
+				array(
+					'key'     => 'spt_email',
+					'value'   => '',
+					'compare' => '=',
+				),
+			),
+			'fields'                 => 'ids',
+			'posts_per_page'         => 1,
+			'no_found_rows'          => false,
+			'update_post_term_cache' => false,
+			'update_post_meta_cache' => false,
+		) );
+		return (int) $q->found_posts;
 	}
 
 	private function count_all_players() {

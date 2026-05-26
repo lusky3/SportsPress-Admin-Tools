@@ -99,6 +99,13 @@ class SPPT_REST_API {
 						'sanitize_callback' => 'absint',
 						'validate_callback' => 'rest_validate_request_arg',
 					),
+					'season'    => array(
+						'type'              => 'integer',
+						'required'          => false,
+						'default'           => 0,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
 				),
 			)
 		);
@@ -225,44 +232,13 @@ class SPPT_REST_API {
 			)
 		);
 
-		register_rest_route(
-			self::REST_NAMESPACE,
-			'/notes',
-			array(
-				array(
-					'methods'             => 'GET',
-					'callback'            => array( $this, 'get_notes' ),
-					'permission_callback' => array( $this, 'check_roster_permission' ),
-					'args'                => array(
-						'player' => array(
-							'type'              => 'integer',
-							'required'          => true,
-							'sanitize_callback' => 'absint',
-							'validate_callback' => 'rest_validate_request_arg',
-						),
-					),
-				),
-				array(
-					'methods'             => 'POST',
-					'callback'            => array( $this, 'add_note' ),
-					'permission_callback' => array( $this, 'check_roster_permission' ),
-					'args'                => array(
-						'player_id' => array(
-							'type'              => 'integer',
-							'required'          => true,
-							'sanitize_callback' => 'absint',
-							'validate_callback' => 'rest_validate_request_arg',
-						),
-						'content'   => array(
-							'type'              => 'string',
-							'required'          => true,
-							'sanitize_callback' => 'sanitize_textarea_field',
-							'validate_callback' => 'rest_validate_request_arg',
-						),
-					),
-				),
-			)
-		);
+		// CP-D: /notes routes are owned exclusively by sportspress-league-manager
+		// (SPLM_REST_API). Both plugins previously registered the same route on the
+		// same namespace, and `register_rest_route` lets the last writer win —
+		// behaviour silently flipped based on plugin load order, and SPLM's
+		// module-enabled gate was bypassable. Routes here have been removed.
+		// SPPT keeps `get_notes`/`add_note` as private helpers in case
+		// sibling plugins need to call them directly, but they no longer expose REST.
 	}
 
 	/**
@@ -307,6 +283,9 @@ class SPPT_REST_API {
 		delete_post_meta( $player_id, 'sp_current_team', $from_team );
 		add_post_meta( $player_id, 'sp_current_team', $to_team );
 
+		// Auto-create transfer note for history tracking.
+		$this->log_transfer_note( $player_id, $from_team, $to_team );
+
 		return new WP_REST_Response(
 			array(
 				'success'   => true,
@@ -334,7 +313,15 @@ class SPPT_REST_API {
 		if ( 'number' === $field ) {
 			update_post_meta( $player_id, 'sp_number', sanitize_text_field( $value ) );
 		} elseif ( 'email' === $field ) {
-			update_post_meta( $player_id, 'spt_email', sanitize_email( $value ) );
+			// PT2/F12: sanitize_email() strips invalid characters but happily returns an
+			// empty (or otherwise non-RFC) string; without is_email() the caller can
+			// silently overwrite a real address with garbage. Allow an explicit empty
+			// value to clear the field, but reject anything that isn't a valid email.
+			$sanitized = sanitize_email( $value );
+			if ( '' !== $sanitized && ! is_email( $sanitized ) ) {
+				return new WP_Error( 'invalid_email', 'Invalid email address.', array( 'status' => 400 ) );
+			}
+			update_post_meta( $player_id, 'spt_email', $sanitized );
 		}
 
 		return new WP_REST_Response( array( 'success' => true ), 200 );
@@ -346,6 +333,7 @@ class SPPT_REST_API {
 	public function remove_player( $request ) {
 		$player_id = absint( $request->get_param( 'player_id' ) );
 		$team_id   = absint( $request->get_param( 'team_id' ) );
+		$season_id = (int) $request->get_param( 'season' );
 
 		$player = get_post( $player_id );
 		if ( ! $player || 'sp_player' !== $player->post_type ) {
@@ -362,29 +350,42 @@ class SPPT_REST_API {
 		delete_post_meta( $player_id, 'sp_current_team', $team_id );
 		delete_post_meta( $player_id, 'sp_team', $team_id );
 
-		// Get the current season to remove
-		$seasons = wp_get_object_terms( $player_id, 'sp_season', array(
-			'orderby' => 'term_id',
-			'order'   => 'DESC',
-			'fields'  => 'ids',
-		) );
-		$current_season_id = ! empty( $seasons ) ? (int) $seasons[0] : 0;
+		// PT2/F4: prefer the explicit season parameter; fall back to the configured
+		// default season; finally fall back to the most recently assigned season term.
+		$target_season_id = 0;
+		if ( $season_id > 0 ) {
+			$target_season_id = $season_id;
+		} else {
+			$default_season = (int) get_option( 'sportspress_season' );
+			if ( $default_season > 0 ) {
+				$target_season_id = $default_season;
+			} else {
+				$seasons = wp_get_object_terms( $player_id, 'sp_season', array(
+					'orderby' => 'term_id',
+					'order'   => 'DESC',
+					'fields'  => 'ids',
+				) );
+				if ( ! is_wp_error( $seasons ) && ! empty( $seasons ) ) {
+					$target_season_id = (int) $seasons[0];
+				}
+			}
+		}
 
-		// Update sp_leagues: only remove the current season entry for this team
+		// Update sp_leagues: only remove the targeted season entry for this team.
 		$leagues_meta = get_post_meta( $player_id, 'sp_leagues', true );
-		if ( is_array( $leagues_meta ) && $current_season_id ) {
+		if ( is_array( $leagues_meta ) && $target_season_id ) {
 			foreach ( $leagues_meta as $league_id => $season_map ) {
-				if ( is_array( $season_map ) && isset( $season_map[ $current_season_id ] ) 
-				     && (int) $season_map[ $current_season_id ] === $team_id ) {
-					unset( $leagues_meta[ $league_id ][ $current_season_id ] );
+				if ( is_array( $season_map ) && isset( $season_map[ $target_season_id ] )
+				     && (int) $season_map[ $target_season_id ] === $team_id ) {
+					unset( $leagues_meta[ $league_id ][ $target_season_id ] );
 				}
 			}
 			update_post_meta( $player_id, 'sp_leagues', $leagues_meta );
 		}
 
-		// Remove the most recent (current) season.
-		if ( ! is_wp_error( $seasons ) && ! empty( $seasons ) ) {
-			wp_remove_object_terms( $player_id, $seasons[0], 'sp_season' );
+		// Remove the targeted season term from the player.
+		if ( $target_season_id ) {
+			wp_remove_object_terms( $player_id, $target_season_id, 'sp_season' );
 		}
 
 		return new WP_REST_Response( array( 'success' => true ), 200 );
@@ -392,16 +393,27 @@ class SPPT_REST_API {
 
 	/**
 	 * GET /notes — player notes.
+	 *
+	 * Fix #4: 404 when player_id is not an sp_player.
+	 * Fix #5: schema column is `note` (per SPLM_Player_Notes_Database), not `content`.
 	 */
 	public function get_notes( $request ) {
 		global $wpdb;
 
 		$player_id = absint( $request->get_param( 'player' ) );
-		$table     = $wpdb->prefix . 'splm_player_notes';
+		if ( ! $player_id || get_post_type( $player_id ) !== 'sp_player' ) {
+			return new WP_Error( 'not_found', 'Player not found.', array( 'status' => 404 ) );
+		}
+
+		$table = $wpdb->prefix . 'splm_player_notes';
+
+		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
+			return new WP_REST_Response( array(), 200 );
+		}
 
 		$notes = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT id, player_id, author_id, content, created_at FROM {$table} WHERE player_id = %d ORDER BY created_at DESC",
+				"SELECT id, player_id, author_id, note AS content, category, created_at FROM {$table} WHERE player_id = %d AND is_deleted = 0 ORDER BY created_at DESC",
 				$player_id
 			)
 		);
@@ -417,24 +429,43 @@ class SPPT_REST_API {
 
 	/**
 	 * POST /notes — add a player note.
+	 *
+	 * Fix #4: 404 when player_id is not an sp_player.
+	 * Fix #5: write to the canonical `note` column.
 	 */
 	public function add_note( $request ) {
 		global $wpdb;
 
 		$player_id = absint( $request->get_param( 'player_id' ) );
-		$content   = sanitize_textarea_field( $request->get_param( 'content' ) );
-		$table     = $wpdb->prefix . 'splm_player_notes';
+		if ( ! $player_id || get_post_type( $player_id ) !== 'sp_player' ) {
+			return new WP_Error( 'not_found', 'Player not found.', array( 'status' => 404 ) );
+		}
 
-		$wpdb->insert(
+		$content = sanitize_textarea_field( $request->get_param( 'content' ) );
+		$table   = $wpdb->prefix . 'splm_player_notes';
+
+		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
+			return new WP_Error( 'table_missing', 'Player notes table does not exist. Activate the League Manager plugin.', array( 'status' => 503 ) );
+		}
+
+		$inserted = $wpdb->insert(
 			$table,
 			array(
-				'player_id' => $player_id,
-				'author_id' => get_current_user_id(),
-				'content'   => $content,
+				'player_id'  => $player_id,
+				'author_id'  => get_current_user_id(),
+				'note'       => $content,
+				'category'   => 'general',
 				'created_at' => current_time( 'mysql' ),
 			),
-			array( '%d', '%d', '%s', '%s' )
+			array( '%d', '%d', '%s', '%s', '%s' )
 		);
+
+		if ( false === $inserted ) {
+			if ( get_option( 'spat_debug_verbose_logging', '0' ) === '1' ) {
+				error_log( 'SPT add_note: insert failed - ' . $wpdb->last_error );
+			}
+			return new WP_Error( 'db_error', 'Failed to save note.', array( 'status' => 500 ) );
+		}
 
 		return new WP_REST_Response(
 			array(
@@ -447,6 +478,10 @@ class SPPT_REST_API {
 
 	/**
 	 * POST /rosters/set-captain — set or unset a player as team captain.
+	 *
+	 * Fix #6: Canonical captain storage is `spt_captain` on the active sp_list for
+	 * the team (matching SPT_Player_Modifications::save_captain_meta). Write there
+	 * so the REST endpoint and the legacy meta box agree.
 	 */
 	public function set_captain( $request ) {
 		$player_id  = absint( $request->get_param( 'player_id' ) );
@@ -465,37 +500,81 @@ class SPPT_REST_API {
 			return new WP_Error( 'invalid_team', 'Team not found.', array( 'status' => 404 ) );
 		}
 
+		$list_id = (int) get_post_meta( $team_id, 'sp_list', true );
+		if ( ! $list_id || get_post_type( $list_id ) !== 'sp_list' ) {
+			return new WP_Error( 'no_list', 'No active player list found for this team.', array( 'status' => 404 ) );
+		}
+
 		if ( $is_captain ) {
-			update_post_meta( $player_id, 'sp_captain', $team_id );
+			update_post_meta( $list_id, 'spt_captain', $player_id );
 		} else {
-			// Only remove captain for this specific team
-			$current_captain_team = get_post_meta( $player_id, 'sp_captain', true );
-			if ( (int) $current_captain_team === $team_id ) {
-				delete_post_meta( $player_id, 'sp_captain' );
+			$current = (int) get_post_meta( $list_id, 'spt_captain', true );
+			if ( $current === $player_id ) {
+				delete_post_meta( $list_id, 'spt_captain' );
 			}
 		}
 
-		return new WP_REST_Response( array( 'success' => true ), 200 );
+		return new WP_REST_Response(
+			array(
+				'success' => true,
+				'list_id' => $list_id,
+			),
+			200
+		);
 	}
 
 	/**
 	 * POST /rosters/update-metadata — update player skill level or position.
+	 *
+	 * Fix #2: clamp skill_level to 1..10, stamp source/updated meta, record history.
+	 * Position accepts a slug only and must exist in sp_position.
 	 */
 	public function update_metadata( $request ) {
 		$player_id = absint( $request->get_param( 'player_id' ) );
 		if ( ! $player_id || get_post_type( $player_id ) !== 'sp_player' ) {
 			return new WP_Error( 'invalid_player', 'Invalid player ID.', array( 'status' => 400 ) );
 		}
-		$field     = $request->get_param( 'field' );
-		$value     = $request->get_param( 'value' );
+		$field = $request->get_param( 'field' );
+		$value = $request->get_param( 'value' );
 
 		if ( 'skill_level' === $field ) {
-			update_post_meta( $player_id, 'spt_skill_level', sanitize_text_field( $value ) );
-		} elseif ( 'position' === $field ) {
-			wp_set_object_terms( $player_id, intval( $value ), 'sp_position' );
+			$clamped = min( 10, max( 1, absint( $value ) ) );
+			update_post_meta( $player_id, 'spt_skill_level', $clamped );
+			update_post_meta( $player_id, 'spt_skill_source', 'manual' );
+			update_post_meta( $player_id, 'spt_skill_updated', current_time( 'mysql' ) );
+
+			// Record history if the optional skill module is loaded.
+			if ( class_exists( 'SPT_Player_Skill_Level' ) ) {
+				$ref = new ReflectionClass( 'SPT_Player_Skill_Level' );
+				if ( $ref->hasMethod( 'record_history' ) ) {
+					$method = $ref->getMethod( 'record_history' );
+					$method->setAccessible( true );
+					$method->invokeArgs( null, array( $player_id, $clamped, 'manual', 0 ) );
+				}
+			}
+
+			return new WP_REST_Response(
+				array(
+					'success' => true,
+					'value'   => $clamped,
+				),
+				200
+			);
 		}
 
-		return new WP_REST_Response( array( 'success' => true ), 200 );
+		if ( 'position' === $field ) {
+			$slug = sanitize_title( $value );
+			if ( '' === $slug || ! term_exists( $slug, 'sp_position' ) ) {
+				return new WP_Error( 'invalid_position', 'Position term does not exist.', array( 'status' => 400 ) );
+			}
+			$result = wp_set_object_terms( $player_id, $slug, 'sp_position' );
+			if ( is_wp_error( $result ) ) {
+				return $result;
+			}
+			return new WP_REST_Response( array( 'success' => true ), 200 );
+		}
+
+		return new WP_Error( 'invalid_field', 'Unknown field.', array( 'status' => 400 ) );
 	}
 
 	/**
@@ -594,26 +673,45 @@ class SPPT_REST_API {
 			) );
 		}
 
+		// Fix #6: captain lives on the team's sp_list post under spt_captain.
+		$active_list_id = (int) get_post_meta( $team_id, 'sp_list', true );
+		$captain_id     = $active_list_id ? (int) get_post_meta( $active_list_id, 'spt_captain', true ) : 0;
+
+		// Pre-fetch registration linkage for the whole roster in one query.
+		// `_spr_processed` is order-status metadata ('1' | 'processing' | 'failed'), not a
+		// player_id — so the canonical player→order mapping lives in spat_registration_logs.
+		$processed_map = array();
+		if ( ! empty( $player_ids ) ) {
+			global $wpdb;
+			$reg_log_table = $wpdb->prefix . 'spat_registration_logs';
+			$table_exists  = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $reg_log_table ) ) === $reg_log_table;
+			if ( $table_exists ) {
+				$placeholders = implode( ',', array_fill( 0, count( $player_ids ), '%d' ) );
+				// Most-recent order per player. Restrict to the action values the registration
+				// plugin actually writes when it has linked a player to an order — see
+				// sportspress-player-registration/includes/class-player-registration.php for the
+				// canonical list. A bare 'player_registration' filter (the default in
+				// SPAT_Database::log_registration_activity) would match zero rows.
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $placeholders is built from %d.
+				$rows = $wpdb->get_results( $wpdb->prepare(
+					"SELECT player_id, MAX(order_id) AS order_id
+					 FROM {$reg_log_table}
+					 WHERE player_id IN ($placeholders)
+					   AND action IN ('player_created','player_found_by_name','player_found_by_name_and_email')
+					 GROUP BY player_id",
+					$player_ids
+				) );
+				foreach ( (array) $rows as $row ) {
+					$processed_map[ (int) $row->player_id ] = (int) $row->order_id;
+				}
+			}
+		}
+
 		$results = array();
 		foreach ( $player_ids as $player_id ) {
 			$positions = wp_get_object_terms( $player_id, 'sp_position', array( 'fields' => 'names' ) );
 
-			$registered = false;
-			$orders = get_posts( array(
-				'post_type'      => 'shop_order',
-				'posts_per_page' => 1,
-				'post_status'    => array( 'wc-completed', 'wc-processing' ),
-				'meta_query'     => array(
-					array(
-						'key'   => '_spr_processed',
-						'value' => $player_id,
-					),
-				),
-				'fields'         => 'ids',
-			) );
-			if ( ! empty( $orders ) ) {
-				$registered = true;
-			}
+			$registered = isset( $processed_map[ (int) $player_id ] );
 
 			$results[] = array(
 				'id'          => $player_id,
@@ -621,12 +719,59 @@ class SPPT_REST_API {
 				'number'      => get_post_meta( $player_id, 'sp_number', true ),
 				'email'       => ( ( $e = get_post_meta( $player_id, 'spt_email', true ) ) !== '' ) ? $e : get_post_meta( $player_id, 'spat_email', true ),
 				'skill_level' => get_post_meta( $player_id, 'spt_skill_level', true ),
-				'is_captain'  => ( (int) get_post_meta( $player_id, 'sp_captain', true ) === $team_id ),
+				'is_captain'  => ( $captain_id && (int) $player_id === $captain_id ),
 				'position'    => ( ! is_wp_error( $positions ) && ! empty( $positions ) ) ? $positions[0] : '',
 				'registered'  => $registered,
 			);
 		}
 
-		return new WP_REST_Response( $results, 200 );
+		// Fall back to a local wrapper when SPLM is not loaded (e.g. SPPT activated standalone).
+		// See docs/rest-api-conventions.md for the canonical shape.
+		if ( function_exists( 'splm_rest_list_response' ) ) {
+			return new WP_REST_Response( splm_rest_list_response( $results ), 200 );
+		}
+		return new WP_REST_Response(
+			array(
+				'data'        => array_values( $results ),
+				'total'       => count( $results ),
+				'page'        => 1,
+				'total_pages' => 1,
+			),
+			200
+		);
+	}
+
+	/**
+	 * Log a transfer note to the player notes table when a player moves teams.
+	 *
+	 * Fix #5: column is `note` (matches SPLM_Player_Notes_Database schema). Check
+	 * the insert return value and log on failure when verbose logging is on.
+	 */
+	private function log_transfer_note( $player_id, $from_team, $to_team ) {
+		global $wpdb;
+		$table = $wpdb->prefix . 'splm_player_notes';
+		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
+			return;
+		}
+
+		$from_name = get_the_title( $from_team );
+		$to_name   = get_the_title( $to_team );
+		$note      = sprintf( '[transfer] Moved from %s to %s', $from_name, $to_name );
+
+		$inserted = $wpdb->insert(
+			$table,
+			array(
+				'player_id'  => $player_id,
+				'author_id'  => get_current_user_id(),
+				'category'   => 'transfer',
+				'note'       => $note,
+				'created_at' => current_time( 'mysql' ),
+			),
+			array( '%d', '%d', '%s', '%s', '%s' )
+		);
+
+		if ( false === $inserted && get_option( 'spat_debug_verbose_logging', '0' ) === '1' ) {
+			error_log( 'SPT log_transfer_note: insert failed - ' . $wpdb->last_error );
+		}
 	}
 }

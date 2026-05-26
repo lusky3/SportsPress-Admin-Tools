@@ -66,16 +66,27 @@ Add email addresses to player records for communication and user linking.
 
 - Email field on player edit page
 - Used by Player Registration module for automatic linking
-- Stored as `spat_email` meta field
+- Stored as `spt_email` meta field
 
 **Access:** Edit any Player → Email meta box
+
+### Player Profile Picture
+
+Allow players to upload profile pictures via WooCommerce My Account.
+
+- Custom "Profile Picture" tab in WooCommerce My Account
+- Image upload with type validation (jpg, png, gif, webp)
+- Uploaded image set as player post thumbnail
+- Requires WooCommerce
+
+**Access:** WooCommerce My Account → Profile Picture
 
 ## Installation
 
 1. Install and activate SportsPress Admin Tools (parent plugin)
 2. Install and activate this plugin
 3. Go to Settings → SportsPress Admin Tools
-4. Enable "Player Modifications" module
+4. Enable desired modules: Player Modifications, Stats Enabler, Batch List Creator, Player Profile Picture, Player Skill Level
 5. Save settings
 
 ## Quick Start

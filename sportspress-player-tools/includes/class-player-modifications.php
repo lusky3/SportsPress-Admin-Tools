@@ -12,17 +12,20 @@ if ( ! defined( 'ABSPATH' ) ) {
 class SPT_Player_Modifications {
 
 	public function __construct() {
-		if ( get_option( 'spt_email_meta', '1' ) === '1' ) {
-			add_action( 'add_meta_boxes', array( $this, 'add_email_meta_box' ) );
-			add_action( 'save_post', array( $this, 'save_email_meta' ) );
-		}
+		// Fix #16: the local spt_email_meta / spt_captain_role gates are gone — if
+		// this class is instantiated, the player_modifications module is enabled in
+		// spat_enabled_modules and both features run.
+		add_action( 'add_meta_boxes', array( $this, 'add_email_meta_box' ) );
+		// PT2/F13: use the post-type-specific save_post_* hook so this handler only
+		// fires for sp_player saves; the generic save_post hook runs for every post
+		// type and forces a needless meta check on unrelated posts.
+		add_action( 'save_post_sp_player', array( $this, 'save_email_meta' ) );
 
-		if ( get_option( 'spt_captain_role', '1' ) === '1' ) {
-			add_action( 'add_meta_boxes', array( $this, 'add_captain_meta_box' ) );
-			add_action( 'save_post', array( $this, 'save_captain_meta' ) );
-			add_filter( 'sportspress_list_player_name', array( $this, 'add_captain_indicator' ), 10, 3 );
-			add_action( 'wp_enqueue_scripts', array( $this, 'add_captain_css' ) );
-		}
+		add_action( 'add_meta_boxes', array( $this, 'add_captain_meta_box' ) );
+		// PT2/F13: same fix for the captain meta box, which only applies to sp_list.
+		add_action( 'save_post_sp_list', array( $this, 'save_captain_meta' ) );
+		add_filter( 'sportspress_list_player_name', array( $this, 'add_captain_indicator' ), 10, 3 );
+		add_action( 'wp_enqueue_scripts', array( $this, 'add_captain_css' ) );
 	}
 
 	public function add_email_meta_box() {
@@ -117,7 +120,7 @@ class SPT_Player_Modifications {
 	public function add_captain_indicator( $name, $player_id, $list_id ) {
 		$captain_id = get_post_meta( $list_id, 'spt_captain', true );
 
-		if ( $captain_id && $captain_id == $player_id ) {
+		if ( $captain_id && (int) $captain_id === (int) $player_id ) {
 			$indicator_text = apply_filters( 'spt_captain_indicator_text', 'C' );
 			$name .= ' <span class="spt-captain-indicator" title="' . esc_attr__( 'Captain', 'sportspress-player-tools' ) . '">' . esc_html( $indicator_text ) . '</span>';
 

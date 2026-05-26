@@ -7,8 +7,8 @@
  * Text Domain: sportspress-player-tools
  * License: GPL v2 or later
  * Requires at least: 5.0
- * Tested up to: 6.4
- * Requires PHP: 7.4
+ * Tested up to: 6.9
+ * Requires PHP: 8.1
  * Depends: SportsPress Admin Tools
  */
 
@@ -46,12 +46,14 @@ class SportsPress_Player_Tools {
 
 	public function __construct() {
 		register_activation_hook( __FILE__, array( $this, 'check_activation_requirements' ) );
+		register_activation_hook( __FILE__, array( $this, 'activate' ) );
 		register_deactivation_hook( __FILE__, array( $this, 'deactivate' ) );
 		add_action( 'init', array( $this, 'init' ), 1 );
 	}
 
 	public function deactivate() {
 		wp_clear_scheduled_hook( 'spt_cleanup_old_temp_data' );
+		flush_rewrite_rules();
 	}
 
 	public function check_activation_requirements() {
@@ -59,6 +61,15 @@ class SportsPress_Player_Tools {
 			deactivate_plugins( plugin_basename( __FILE__ ) );
 			wp_die( 'SportsPress Player Tools requires SportsPress Admin Tools to be installed and activated first.' );
 		}
+	}
+
+	/**
+	 * Fix #13: rewrite endpoint registration + flush belongs in activation,
+	 * not on every `init`.
+	 */
+	public function activate() {
+		require_once SPT_PLUGIN_PATH . 'includes/class-player-profile-picture.php';
+		SPT_Player_Profile_Picture::activate();
 	}
 
 	public function init() {
@@ -71,7 +82,7 @@ class SportsPress_Player_Tools {
 			'player_modifications',
 			array(
 				'name' => 'Player Modifications',
-				'description' => 'Email meta, captain selection, squad number editing',
+				'description' => 'Email meta and captain selection',
 				'parent_module' => 'player_modifications',
 				'version' => SPT_VERSION,
 				'file' => __FILE__,
