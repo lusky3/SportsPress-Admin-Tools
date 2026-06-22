@@ -20,7 +20,7 @@ jobs:
           - sportspress-admin-tools
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Run Plugin Check
         uses: wordpress/plugin-check-action@v1.1.5

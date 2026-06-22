@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Run Snyk Code (SAST) to check for vulnerabilities
         uses: snyk/actions@v1.0.0
