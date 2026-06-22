@@ -23,7 +23,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run Plugin Check
-        uses: wordpress/plugin-check-action@v1.1.5
+        uses: wordpress/plugin-check-action@v1.1.7
         with:
           build-dir: ${{ matrix.plugin }}
           ignore-warnings: 'true'
