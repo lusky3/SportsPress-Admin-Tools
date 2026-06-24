@@ -246,8 +246,9 @@ class SPPT_REST_API {
 		// same namespace, and `register_rest_route` lets the last writer win —
 		// behaviour silently flipped based on plugin load order, and SPLM's
 		// module-enabled gate was bypassable. Routes here have been removed.
-		// SPPT keeps `get_notes`/`add_note` as private helpers in case
-		// sibling plugins need to call them directly, but they no longer expose REST.
+		// PT-2: the orphaned get_notes()/add_note() handlers that remained after the
+		// routes were unregistered have also been removed — they were never registered
+		// and never called by any sibling plugin.
 	}
 
 	/**
@@ -320,7 +321,14 @@ class SPPT_REST_API {
 		}
 
 		if ( 'number' === $field ) {
-			update_post_meta( $player_id, 'sp_number', sanitize_text_field( $value ) );
+			// PT-3: bound the squad number. SportsPress squad numbers are short
+			// numeric strings; reject anything non-numeric or longer than 4 digits
+			// so a caller can't stuff arbitrary text/length into sp_number.
+			$number = sanitize_text_field( $value );
+			if ( '' !== $number && ! preg_match( '/^[0-9]{1,4}$/', $number ) ) {
+				return new WP_Error( 'invalid_number', 'Number must be 1 to 4 digits.', array( 'status' => 400 ) );
+			}
+			update_post_meta( $player_id, 'sp_number', $number );
 		} elseif ( 'email' === $field ) {
 			// PT2/F12: sanitize_email() strips invalid characters but happily returns an
 			// empty (or otherwise non-RFC) string; without is_email() the caller can
@@ -398,91 +406,6 @@ class SPPT_REST_API {
 		}
 
 		return new WP_REST_Response( array( 'success' => true ), 200 );
-	}
-
-	/**
-	 * GET /notes — player notes.
-	 *
-	 * Fix #4: 404 when player_id is not an sp_player.
-	 * Fix #5: schema column is `note` (per SPLM_Player_Notes_Database), not `content`.
-	 */
-	public function get_notes( $request ) {
-		global $wpdb;
-
-		$player_id = absint( $request->get_param( 'player' ) );
-		if ( ! $player_id || get_post_type( $player_id ) !== 'sp_player' ) {
-			return new WP_Error( 'not_found', 'Player not found.', array( 'status' => 404 ) );
-		}
-
-		$table = $wpdb->prefix . 'splm_player_notes';
-
-		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
-			return new WP_REST_Response( array(), 200 );
-		}
-
-		$notes = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT id, player_id, author_id, note AS content, category, created_at FROM {$table} WHERE player_id = %d AND is_deleted = 0 ORDER BY created_at DESC",
-				$player_id
-			)
-		);
-
-		foreach ( $notes as $note ) {
-			$user = get_userdata( $note->author_id );
-			$note->author = $user ? $user->display_name : __( 'Unknown', 'sportspress-player-tools' );
-			unset( $note->author_id );
-		}
-
-		return new WP_REST_Response( $notes, 200 );
-	}
-
-	/**
-	 * POST /notes — add a player note.
-	 *
-	 * Fix #4: 404 when player_id is not an sp_player.
-	 * Fix #5: write to the canonical `note` column.
-	 */
-	public function add_note( $request ) {
-		global $wpdb;
-
-		$player_id = absint( $request->get_param( 'player_id' ) );
-		if ( ! $player_id || get_post_type( $player_id ) !== 'sp_player' ) {
-			return new WP_Error( 'not_found', 'Player not found.', array( 'status' => 404 ) );
-		}
-
-		$content = sanitize_textarea_field( $request->get_param( 'content' ) );
-		$table   = $wpdb->prefix . 'splm_player_notes';
-
-		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
-			return new WP_Error( 'table_missing', 'Player notes table does not exist. Activate the League Manager plugin.', array( 'status' => 503 ) );
-		}
-
-		$inserted = $wpdb->insert(
-			$table,
-			array(
-				'player_id'  => $player_id,
-				'author_id'  => get_current_user_id(),
-				'note'       => $content,
-				'category'   => 'general',
-				'created_at' => current_time( 'mysql' ),
-			),
-			array( '%d', '%d', '%s', '%s', '%s' )
-		);
-
-		if ( false === $inserted ) {
-			if ( get_option( 'spat_debug_verbose_logging', '0' ) === '1' ) {
-				error_log( 'SPT add_note: insert failed - ' . $wpdb->last_error );
-			}
-			return new WP_Error( 'db_error', 'Failed to save note.', array( 'status' => 500 ) );
-		}
-
-		return new WP_REST_Response(
-			array(
-				'success' => true,
-				'id'      => $wpdb->insert_id,
-			),
-			201
-		);
 	}
 
 	/**
@@ -610,28 +533,80 @@ class SPPT_REST_API {
 
 		$imported  = array();
 
+		// PT3/F-import: derive the league IDs from the target team's sp_league terms
+		// so we can write sp_leagues meta in the same shape get_roster_details() reads
+		// (array(league_id => array(season_id => team_id))). Without this, imported
+		// players carry sp_current_team + the sp_season term but no sp_leagues entry
+		// and are therefore invisible in the season-scoped roster view.
+		$team_league_ids = wp_get_object_terms( $team_id, 'sp_league', array( 'fields' => 'ids' ) );
+		if ( is_wp_error( $team_league_ids ) ) {
+			$team_league_ids = array();
+		}
+
 		foreach ( $players as $player_data ) {
 			$name = sanitize_text_field( $player_data['name'] ?? '' );
 			if ( empty( $name ) ) continue;
 
-			$post_id = wp_insert_post( array(
-				'post_type'   => 'sp_player',
-				'post_title'  => $name,
-				'post_status' => 'publish',
+			// PT3/F-import: de-dupe — re-running an import previously created a brand
+			// new sp_player for every row. Look up an existing player by exact title
+			// (case-insensitive, exact match) and update it instead of duplicating.
+			$existing = get_posts( array(
+				'post_type'              => 'sp_player',
+				'post_status'            => 'any',
+				'title'                  => $name,
+				'posts_per_page'         => 1,
+				'fields'                 => 'ids',
+				'no_found_rows'          => true,
+				'update_post_meta_cache' => false,
+				'update_post_term_cache' => false,
 			) );
 
-			if ( is_wp_error( $post_id ) ) {
-				continue;
+			if ( ! empty( $existing ) ) {
+				$post_id = (int) $existing[0];
+			} else {
+				$post_id = wp_insert_post( array(
+					'post_type'   => 'sp_player',
+					'post_title'  => $name,
+					'post_status' => 'publish',
+				) );
+
+				if ( is_wp_error( $post_id ) ) {
+					continue;
+				}
 			}
 
 			if ( ! empty( $player_data['number'] ) ) {
 				update_post_meta( $post_id, 'sp_number', sanitize_text_field( $player_data['number'] ) );
 			}
 			if ( ! empty( $player_data['email'] ) ) {
-				update_post_meta( $post_id, 'spt_email', sanitize_email( $player_data['email'] ) );
+				// PT3/F-import: mirror update_player()/the meta box — sanitize_email()
+				// strips characters and can return a non-RFC string, so reject anything
+				// that fails is_email() rather than storing garbage. Skip the email
+				// field for this row; the rest of the row still imports.
+				$sanitized_email = sanitize_email( $player_data['email'] );
+				if ( '' !== $sanitized_email && is_email( $sanitized_email ) ) {
+					update_post_meta( $post_id, 'spt_email', $sanitized_email );
+				}
 			}
 			update_post_meta( $post_id, 'sp_current_team', $team_id );
 			wp_set_object_terms( $post_id, $season_id, 'sp_season' );
+
+			// PT3/F-import: write sp_leagues so season-scoped roster reads see the
+			// player. Merge into any existing meta to avoid clobbering other
+			// league/season assignments on a re-import.
+			if ( ! empty( $team_league_ids ) ) {
+				$leagues_meta = get_post_meta( $post_id, 'sp_leagues', true );
+				if ( ! is_array( $leagues_meta ) ) {
+					$leagues_meta = array();
+				}
+				foreach ( $team_league_ids as $league_id ) {
+					if ( ! isset( $leagues_meta[ $league_id ] ) || ! is_array( $leagues_meta[ $league_id ] ) ) {
+						$leagues_meta[ $league_id ] = array();
+					}
+					$leagues_meta[ $league_id ][ $season_id ] = $team_id;
+				}
+				update_post_meta( $post_id, 'sp_leagues', $leagues_meta );
+			}
 
 			if ( ! empty( $player_data['position'] ) ) {
 				wp_set_object_terms( $post_id, sanitize_text_field( $player_data['position'] ), 'sp_position' );
@@ -660,31 +635,40 @@ class SPPT_REST_API {
 
 		if ( $season_id ) {
 			// Use sp_leagues meta for season-correct roster.
-			$candidates = get_posts( array(
+			// PT-7: cap at 5000 rows and fetch IDs only to bound memory on large
+			// seasons. The sp_leagues structure (league => season => team) can't be
+			// expressed as a meta_query, so candidates are still filtered in PHP —
+			// but we prime the meta cache for the whole candidate set in one query
+			// first so the per-player get_post_meta() below hits cache.
+			$candidate_ids = get_posts( array(
 				'post_type'      => 'sp_player',
-				'posts_per_page' => -1,
+				'posts_per_page' => 5000,
+				'fields'         => 'ids',
 				'tax_query'      => array(
 					array( 'taxonomy' => 'sp_season', 'terms' => $season_id ),
 				),
 			) );
-			$players = array();
-			foreach ( $candidates as $p ) {
-				$leagues = get_post_meta( $p->ID, 'sp_leagues', true );
+			if ( ! empty( $candidate_ids ) ) {
+				update_meta_cache( 'post', $candidate_ids );
+			}
+			$player_ids = array();
+			foreach ( $candidate_ids as $candidate_id ) {
+				$leagues = get_post_meta( $candidate_id, 'sp_leagues', true );
 				if ( ! is_array( $leagues ) ) {
 					continue;
 				}
 				foreach ( $leagues as $seasons ) {
 					if ( is_array( $seasons ) && isset( $seasons[ $season_id ] ) && (int) $seasons[ $season_id ] === $team_id ) {
-						$players[] = $p;
+						$player_ids[] = $candidate_id;
 						break;
 					}
 				}
 			}
-			$player_ids = wp_list_pluck( $players, 'ID' );
 		} else {
+			// PT-7: cap at 5000 rows to bound memory on teams with very large rosters.
 			$player_ids = get_posts( array(
 				'post_type'      => 'sp_player',
-				'posts_per_page' => -1,
+				'posts_per_page' => 5000,
 				'fields'         => 'ids',
 				'meta_query'     => array(
 					array( 'key' => 'sp_current_team', 'value' => $team_id ),
@@ -777,7 +761,10 @@ class SPPT_REST_API {
 				'id'          => $player_id,
 				'name'        => get_the_title( $player_id ),
 				'number'      => get_post_meta( $player_id, 'sp_number', true ),
-				'email'       => ( ( $e = get_post_meta( $player_id, 'spt_email', true ) ) !== '' ) ? $e : get_post_meta( $player_id, 'spat_email', true ),
+				// PT-5: spt_email is the canonical key. The legacy spat_email fallback
+				// was dropped — that key is never written anywhere in the codebase
+				// (orphan), so the fallback only ever returned ''.
+				'email'       => get_post_meta( $player_id, 'spt_email', true ),
 				'skill_level' => get_post_meta( $player_id, 'spt_skill_level', true ),
 				'is_captain'  => ( $captain_id && (int) $player_id === $captain_id ),
 				'position'    => ( ! is_wp_error( $positions ) && ! empty( $positions ) ) ? $positions[0] : '',

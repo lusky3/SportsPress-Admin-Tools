@@ -65,7 +65,7 @@ class SPT_Email_Sync {
 		echo '<hr><h2>' . esc_html__( 'Sync Player Emails', 'sportspress-player-tools' ) . '</h2>';
 		echo '<p class="description">' . esc_html__( 'Populate missing player emails from WooCommerce registration orders and linked user accounts.', 'sportspress-player-tools' ) . '</p>';
 
-		if ( isset( $_GET['spt_sync_scan'] ) && wp_verify_nonce( $_GET['_wpnonce'] ?? '', 'spt_email_scan' ) ) {
+		if ( isset( $_GET['spt_sync_scan'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ?? '' ) ), 'spt_email_scan' ) ) {
 			$this->render_preview();
 		} else {
 			$this->render_scan_button();
@@ -167,9 +167,11 @@ class SPT_Email_Sync {
 				. esc_html__( 'Apply Selected', 'sportspress-player-tools' ) . '</button></p>';
 			echo '</form>';
 
-			// Check-all JS.
+			// Check-all JS. Capture the toggle's state first; using `.bind(this)`
+			// on the forEach callback rebinds `this` to each checkbox, so every box
+			// would just be set to its own current state (a no-op).
 			echo '<script>document.getElementById("spt-check-all").addEventListener("change",function(){';
-			echo 'document.querySelectorAll(\'input[name="players[]"]\').forEach(function(c){c.checked=this.checked}.bind(this));';
+			echo 'var on=this.checked;document.querySelectorAll(\'input[name="players[]"]\').forEach(function(c){c.checked=on;});';
 			echo '});</script>';
 		}
 
@@ -511,11 +513,14 @@ class SPT_Email_Sync {
 	 * @return array Array of WP_Post objects.
 	 */
 	private function get_players_missing_email() {
+		// PT-7: cap at 5000 rows to bound memory/timeout on large installs,
+		// mirroring the LIMIT-5000 pattern used in league-manager. Sites with more
+		// than 5000 unsynced players sync in batches across repeated scans.
 		return get_posts(
 			array(
 				'post_type'      => 'sp_player',
 				'post_status'    => 'publish',
-				'posts_per_page' => -1,
+				'posts_per_page' => 5000,
 				'meta_query'     => array(
 					'relation' => 'OR',
 					array(

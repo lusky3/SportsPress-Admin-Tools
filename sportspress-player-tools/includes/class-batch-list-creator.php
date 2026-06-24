@@ -100,9 +100,17 @@ class SPT_Batch_List_Creator {
 	public function enqueue_scripts( $hook ) {
 		$screen = get_current_screen();
 
-		// Use parent plugin's bundled Slim Select
-		$slimselect_js = plugins_url( 'sportspress-admin-tools/assets/lib/slimselect/slimselect.min.js' );
-		$slimselect_css = plugins_url( 'sportspress-admin-tools/assets/lib/slimselect/slimselect.min.css' );
+		// Use parent plugin's bundled Slim Select.
+		// PT-6: derive the asset base from the parent plugin's own URL constant
+		// instead of hardcoding the sibling slug into plugins_url(). The latter
+		// breaks if the parent is installed under a non-default directory name.
+		if ( defined( 'SPAT_PLUGIN_URL' ) ) {
+			$slimselect_base = trailingslashit( SPAT_PLUGIN_URL ) . 'assets/lib/slimselect/';
+		} else {
+			$slimselect_base = plugins_url( 'sportspress-admin-tools/assets/lib/slimselect/' );
+		}
+		$slimselect_js  = $slimselect_base . 'slimselect.min.js';
+		$slimselect_css = $slimselect_base . 'slimselect.min.css';
 
 		// Load on sp_list edit page
 		if ( $hook === 'edit.php' && $screen && $screen->post_type === 'sp_list' ) {
@@ -122,8 +130,9 @@ class SPT_Batch_List_Creator {
 
 
 	public function tools_page() {
-		// Show preview if data exists
-		if ( isset( $_GET['preview'] ) && sanitize_text_field( $_GET['preview'] ) === '1' ) {
+		// Show preview if data exists.
+		// PT-10: read-only toggle — absint is the cleaner sanitizer for a 0/1 flag.
+		if ( isset( $_GET['preview'] ) && absint( wp_unslash( $_GET['preview'] ) ) === 1 ) {
 			$this->show_preview();
 			return;
 		}
@@ -313,9 +322,11 @@ class SPT_Batch_List_Creator {
 
 		$json_data = wp_json_encode( $payload );
 
+		// PT-8: use the $table local consistently instead of re-interpolating
+		// $wpdb->prefix inline (the local was otherwise dead here).
 		$result = $wpdb->query(
 			$wpdb->prepare(
-				"REPLACE INTO {$wpdb->prefix}spat_temp_data (user_id, data_type, data_value, created_at) VALUES (%d, %s, %s, %s)",
+				"REPLACE INTO {$table} (user_id, data_type, data_value, created_at) VALUES (%d, %s, %s, %s)",
 				$user_id,
 				'batch_list',
 				$json_data,
@@ -339,10 +350,12 @@ class SPT_Batch_List_Creator {
 		if ( $cache !== null ) {
 			return $cache;
 		}
+		// PT-7: cap at 5000 rows to bound memory on very large installs (matches
+		// MAX_ROWS and the LIMIT-5000 pattern used elsewhere in the codebase).
 		$cache = get_posts(
 			array(
 				'post_type'      => 'sp_team',
-				'posts_per_page' => -1,
+				'posts_per_page' => self::MAX_ROWS,
 				'orderby'        => 'title',
 				'order'          => 'ASC',
 			)
@@ -358,10 +371,12 @@ class SPT_Batch_List_Creator {
 		if ( $cache !== null ) {
 			return $cache;
 		}
+		// PT-7: cap at 5000 rows to bound memory on very large installs (matches
+		// MAX_ROWS and the LIMIT-5000 pattern used elsewhere in the codebase).
 		$cache = get_posts(
 			array(
 				'post_type'      => 'sp_player',
-				'posts_per_page' => -1,
+				'posts_per_page' => self::MAX_ROWS,
 				'orderby'        => 'title',
 				'order'          => 'ASC',
 			)
@@ -438,10 +453,12 @@ class SPT_Batch_List_Creator {
 	 * along with any per-row team/player overrides selected on that page.
 	 */
 	public function mark_page_reviewed() {
+		// PT-4: verify the nonce before the capability check (defense in depth /
+		// consistent ordering with the rest of the codebase).
+		check_ajax_referer( 'spt_batch_process', '_wpnonce' );
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( array( 'message' => __( 'Permission denied', 'sportspress-player-tools' ) ), 403 );
 		}
-		check_ajax_referer( 'spt_batch_process', '_wpnonce' );
 
 		$page = isset( $_POST['page'] ) ? max( 1, absint( $_POST['page'] ) ) : 0;
 		if ( ! $page ) {
@@ -760,17 +777,38 @@ class SPT_Batch_List_Creator {
 				// the whole check-then-append under a per-team lock so the second
 				// caller sees the first caller's insert.
 				if ( class_exists( 'SPAT_Lock' ) ) {
-					SPAT_Lock::with(
-						'splm_team_list_' . (int) $team_id,
-						30,
-						function () use ( $team_id, $list_id ) {
-							$existing_lists = get_post_meta( $team_id, 'sp_list', false );
-							$existing_lists = is_array( $existing_lists ) ? array_map( 'intval', $existing_lists ) : array();
-							if ( ! in_array( (int) $list_id, $existing_lists, true ) ) {
-								add_post_meta( $team_id, 'sp_list', $list_id, false );
-							}
+					// The linker is the ONLY place the list is associated to the
+					// team. SPAT_Lock::with() returns false (callback NOT run) when
+					// a concurrent batch run holds the per-team lock — so ignoring
+					// the return silently orphans this list (created, but never
+					// linked, so it never appears in the team's roster). Return an
+					// explicit sentinel from the callback, retry briefly, and if the
+					// lock stays contended surface the team in the skipped notice.
+					$linker = function () use ( $team_id, $list_id ) {
+						$existing_lists = get_post_meta( $team_id, 'sp_list', false );
+						$existing_lists = is_array( $existing_lists ) ? array_map( 'intval', $existing_lists ) : array();
+						if ( ! in_array( (int) $list_id, $existing_lists, true ) ) {
+							add_post_meta( $team_id, 'sp_list', $list_id, false );
 						}
-					);
+						return true;
+					};
+
+					// Key prefix is sppt_ (this is the player-tools plugin); any
+					// other plugin mutating this team's sp_list meta must use the
+					// identical key to share the mutex.
+					$lock_key = 'sppt_team_list_' . (int) $team_id;
+					$linked   = false;
+					for ( $attempt = 0; $attempt < 3; $attempt++ ) {
+						if ( true === SPAT_Lock::with( $lock_key, 30, $linker ) ) {
+							$linked = true;
+							break;
+						}
+						usleep( 100000 ); // 100ms backoff before retrying a contended lock.
+					}
+					if ( ! $linked ) {
+						$team_obj       = get_post( $team_id );
+						$locked_teams[] = ( $team_obj && $team_obj->post_title ) ? $team_obj->post_title : ( 'Team #' . (int) $team_id );
+					}
 				} else {
 					// SPAT_Lock should always be loaded with the parent plugin; fall back
 					// to the unguarded path so the feature still works if the lock helper
@@ -1145,8 +1183,57 @@ endif;
 		<?php
 	}
 
+	/**
+	 * PT-9: build a normalized-title => post ID index for O(1) exact-match
+	 * short-circuit. Both the raw lowercased title and the bracket-stripped
+	 * lowercased title are indexed, matching the two exact-match checks in
+	 * find_closest(). Memoized per $posts identity so repeated find_closest()
+	 * calls across CSV rows reuse one index instead of rebuilding it.
+	 *
+	 * @param array $posts Array of WP_Post objects.
+	 * @return array Map of normalized title => post ID.
+	 */
+	private function build_exact_index( $posts ) {
+		static $cache = array();
+		// Memoize per object set. The cached team/player object sets are stable for
+		// the request; key on a hash of their post IDs so the team and player sets
+		// never collide even when they happen to be the same size.
+		$ids       = array();
+		foreach ( $posts as $post ) {
+			$ids[] = (int) $post->ID;
+		}
+		$cache_key = md5( implode( ',', $ids ) );
+		if ( isset( $cache[ $cache_key ] ) ) {
+			return $cache[ $cache_key ];
+		}
+		$index = array();
+		foreach ( $posts as $post ) {
+			$title             = trim( $post->post_title );
+			$title_lower       = strtolower( $title );
+			$title_clean       = preg_replace( '/\s*\([^)]+\)\s*/', ' ', $title );
+			$title_clean_lower = strtolower( trim( $title_clean ) );
+			// First writer wins so behaviour matches the original loop, which
+			// returned the first post whose title matched.
+			if ( '' !== $title_lower && ! isset( $index[ $title_lower ] ) ) {
+				$index[ $title_lower ] = $post->ID;
+			}
+			if ( '' !== $title_clean_lower && ! isset( $index[ $title_clean_lower ] ) ) {
+				$index[ $title_clean_lower ] = $post->ID;
+			}
+		}
+		$cache[ $cache_key ] = $index;
+		return $index;
+	}
+
 	private function find_closest( $name, $posts, &$is_ambiguous = false ) {
 		$name_lower = strtolower( trim( $name ) );
+
+		// PT-9: O(1) exact-match short-circuit before the O(N) levenshtein scan.
+		$exact_index = $this->build_exact_index( $posts );
+		if ( isset( $exact_index[ $name_lower ] ) ) {
+			return $exact_index[ $name_lower ];
+		}
+
 		$best = null;
 		$best_dist = PHP_INT_MAX;
 		$second_best_dist = PHP_INT_MAX;
@@ -1159,7 +1246,8 @@ endif;
 			$title_clean = preg_replace( '/\s*\([^)]+\)\s*/', ' ', $title );
 			$title_clean_lower = strtolower( trim( $title_clean ) );
 
-			// Exact match gets highest priority
+			// Exact match gets highest priority (kept as a safety net; the index
+			// above already covers this case).
 			if ( $name_lower === $title_lower || $name_lower === $title_clean_lower ) {
 				return $post->ID;
 			}
