@@ -596,7 +596,10 @@ class SPEM_Events_Management {
 				return new WP_Error( 'file_error', __( 'Could not open uploaded file.', 'sportspress-events-manager' ) );
 			}
 
-			while ( ( $data = fgetcsv( $handle ) ) !== false ) {
+			// Pass explicit separator/enclosure/escape — PHP 8.4 deprecates
+			// relying on the default escape argument. Empty escape disables
+			// backslash escaping, which also avoids surprising cell mangling.
+			while ( ( $data = fgetcsv( $handle, 0, ',', '"', '' ) ) !== false ) {
 				$rows[] = $data;
 			}
 			fclose( $handle );
@@ -679,8 +682,8 @@ class SPEM_Events_Management {
 
 			$event = array(
 				'date'      => $date_val,
-				'home_team' => $this->clean_team_name( $home_val ),
-				'away_team' => $this->clean_team_name( $away_val ),
+				'home_team' => $this->neutralize_formula( $this->clean_team_name( $home_val ) ),
+				'away_team' => $this->neutralize_formula( $this->clean_team_name( $away_val ) ),
 				'time'      => '',
 				'venue'     => '',
 				'league'    => '',
@@ -690,10 +693,10 @@ class SPEM_Events_Management {
 				$event['time'] = sanitize_text_field( $row[ $col_map['time'] ] );
 			}
 			if ( $col_map['venue'] !== false && isset( $row[ $col_map['venue'] ] ) ) {
-				$event['venue'] = sanitize_text_field( $row[ $col_map['venue'] ] );
+				$event['venue'] = $this->neutralize_formula( sanitize_text_field( $row[ $col_map['venue'] ] ) );
 			}
 			if ( $col_map['league'] !== false && isset( $row[ $col_map['league'] ] ) ) {
-				$event['league'] = sanitize_text_field( $row[ $col_map['league'] ] );
+				$event['league'] = $this->neutralize_formula( sanitize_text_field( $row[ $col_map['league'] ] ) );
 			}
 
 			$events[] = $event;
@@ -731,6 +734,33 @@ class SPEM_Events_Management {
 		// Collapse whitespace
 		$name = preg_replace( '/\s+/', ' ', trim( $name ) );
 		return $name;
+	}
+
+	/**
+	 * Neutralize CSV/spreadsheet formula injection in an imported cell value.
+	 *
+	 * Imported team/venue/league names are persisted as post titles and term
+	 * names. If such a value is later re-exported to CSV/XLSX and opened in a
+	 * spreadsheet, a leading =, +, -, @ (or a leading tab/CR that some apps
+	 * strip before parsing) makes the cell execute as a formula. We defang the
+	 * value at import time by prefixing a single quote, the standard mitigation
+	 * recommended by OWASP. Also strips leading control chars (tab/CR/LF) that
+	 * are used to smuggle a formula trigger past naive filters.
+	 *
+	 * @param string $value Raw imported cell value (already sanitized).
+	 * @return string Neutralized value safe to persist.
+	 */
+	private function neutralize_formula( $value ) {
+		$value = (string) $value;
+		// Drop leading whitespace/control characters used to hide the trigger.
+		$value = preg_replace( '/^[\t\r\n ]+/', '', $value );
+		if ( '' === $value ) {
+			return $value;
+		}
+		if ( in_array( $value[0], array( '=', '+', '-', '@' ), true ) ) {
+			$value = "'" . $value;
+		}
+		return $value;
 	}
 
 	/**
@@ -816,11 +846,12 @@ class SPEM_Events_Management {
 			return is_wp_error( $event_id ) ? $event_id : new WP_Error( 'insert_error', __( 'Failed to create event.', 'sportspress-events-manager' ) );
 		}
 
-		// Set permalink
+		// Set permalink to the numeric event ID (intentional: SP events get an
+		// ID-based slug). Cast to string so post_name is the expected type.
 		wp_update_post(
 			array(
 				'ID'        => $event_id,
-				'post_name' => $event_id,
+				'post_name' => (string) $event_id,
 			)
 		);
 

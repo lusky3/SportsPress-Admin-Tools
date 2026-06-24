@@ -167,7 +167,15 @@ class SPEM_Dynamic_Standings {
 			</div>
 
 			<div class="arl-standings-content" id="arl-standings-content">
-				<?php echo $initial_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- contains do_shortcode output ?>
+				<?php
+				// Trust boundary: $initial_html is the rendered output of
+				// SportsPress's own [standings]/table shortcode via do_shortcode().
+				// SportsPress is responsible for escaping its own markup; the input
+				// is built from server-side term/season IDs (not request data), so
+				// this is trusted HTML and must NOT be re-escaped (esc_html would
+				// mangle the table). Do not echo arbitrary/user HTML through here.
+				echo $initial_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- trusted SportsPress shortcode output, see note above
+				?>
 			</div>
 		</div>
 		<?php

@@ -28,6 +28,26 @@ class SPEM_REST_API {
 	}
 
 	public function register_routes() {
+		$enabled_modules = (array) get_option( 'spat_enabled_modules', array() );
+		$games_enabled   = in_array( 'events_management', $enabled_modules, true );
+		$rollover_enabled = in_array( 'season_rollover', $enabled_modules, true );
+
+		if ( $games_enabled ) {
+			$this->register_game_routes();
+		}
+		if ( $rollover_enabled ) {
+			$this->register_rollover_routes();
+		}
+	}
+
+	/**
+	 * Register the /games/* routes (Events Management module).
+	 *
+	 * Split out from register_routes() so the game endpoints only exist when
+	 * the events_management module is enabled — previously every /games/* route
+	 * registered whenever EITHER events_management OR season_rollover was on.
+	 */
+	private function register_game_routes() {
 		register_rest_route(
 			self::REST_NAMESPACE,
 			'/games/(?P<id>\d+)/score',
@@ -40,13 +60,13 @@ class SPEM_REST_API {
 						'type'              => 'integer',
 						'required'          => true,
 						'sanitize_callback' => 'absint',
-						'validate_callback' => 'rest_validate_request_arg',
+						'validate_callback' => array( $this, 'validate_score_arg' ),
 					),
 					'away_score' => array(
 						'type'              => 'integer',
 						'required'          => true,
 						'sanitize_callback' => 'absint',
-						'validate_callback' => 'rest_validate_request_arg',
+						'validate_callback' => array( $this, 'validate_score_arg' ),
 					),
 				),
 			)
@@ -138,6 +158,15 @@ class SPEM_REST_API {
 			)
 		);
 
+	}
+
+	/**
+	 * Register the /season/* routes (Season Rollover module).
+	 *
+	 * Split out from register_routes() so the rollover endpoints only exist
+	 * when the season_rollover module is enabled.
+	 */
+	private function register_rollover_routes() {
 		register_rest_route(
 			self::REST_NAMESPACE,
 			'/season/rollover-preview',
@@ -202,6 +231,26 @@ class SPEM_REST_API {
 
 	public function check_manage_permission() {
 		return current_user_can( 'manage_sportspress' );
+	}
+
+	/**
+	 * Validate a score argument.
+	 *
+	 * Runs before sanitize_callback, so we reject non-numeric input ("abc")
+	 * and negatives here rather than letting absint silently coerce them to 0.
+	 *
+	 * @param mixed $value The raw request value.
+	 * @return true|WP_Error True when valid, WP_Error otherwise.
+	 */
+	public function validate_score_arg( $value ) {
+		if ( ! is_numeric( $value ) || (int) $value < 0 ) {
+			return new WP_Error(
+				'invalid_score',
+				'Score must be a non-negative integer.',
+				array( 'status' => 400 )
+			);
+		}
+		return true;
 	}
 
 	/**
@@ -292,18 +341,26 @@ class SPEM_REST_API {
 	 * POST /games/{id}/reschedule — change game date/time.
 	 */
 	public function reschedule_game( $request ) {
-		$event_id = absint( $request->get_param( 'id' ) );
-		$new_date = sanitize_text_field( $request->get_param( 'date' ) );
-		$new_time = sanitize_text_field( $request->get_param( 'time' ) ?? '19:00' );
-		$reason   = sanitize_text_field( $request->get_param( 'reason' ) ?? '' );
-		$notify   = (bool) $request->get_param( 'notify' );
+		$event_id  = absint( $request->get_param( 'id' ) );
+		$new_date  = sanitize_text_field( $request->get_param( 'date' ) );
+		$time_raw  = $request->get_param( 'time' );
+		$reason    = sanitize_text_field( $request->get_param( 'reason' ) ?? '' );
+		$notify    = (bool) $request->get_param( 'notify' );
 
 		if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $new_date ) ) {
 			return new WP_Error( 'invalid_date', 'Date must be YYYY-MM-DD format.', array( 'status' => 400 ) );
 		}
 
-		if ( ! preg_match( '/^\d{2}:\d{2}$/', $new_time ) ) {
+		// `time` is optional. When omitted (or empty) default to 19:00, but a
+		// provided value that isn't valid HH:MM is a client error — reject it
+		// instead of silently masking the typo behind the default time.
+		if ( null === $time_raw || '' === $time_raw ) {
 			$new_time = '19:00';
+		} else {
+			$new_time = sanitize_text_field( $time_raw );
+			if ( ! preg_match( '/^([01]\d|2[0-3]):[0-5]\d$/', $new_time ) ) {
+				return new WP_Error( 'invalid_time', 'Time must be HH:MM (24-hour) format.', array( 'status' => 400 ) );
+			}
 		}
 
 		$event = get_post( $event_id );
@@ -316,11 +373,21 @@ class SPEM_REST_API {
 		update_post_meta( $event_id, '_spem_original_date', $original_date );
 		update_post_meta( $event_id, '_spem_change_reason', $reason );
 
-		// Update the event date.
-		wp_update_post( array(
+		// Rescheduling reinstates a previously cancelled game. cancel_game()
+		// sets _spem_cancelled='1' and draft status; without clearing them here
+		// the game stays cancelled + unpublished forever (update_score() rejects
+		// it with 409). Reinstate it so the new date is live and scoreable.
+		$post_update = array(
 			'ID'        => $event_id,
 			'post_date' => $new_date . ' ' . $new_time . ':00',
-		) );
+		);
+		if ( '1' === get_post_meta( $event_id, '_spem_cancelled', true ) ) {
+			delete_post_meta( $event_id, '_spem_cancelled' );
+			$post_update['post_status'] = 'publish';
+		}
+
+		// Update the event date (and status if reinstating).
+		wp_update_post( $post_update );
 
 		// Send notifications if requested. wp_mail() is slow with large
 		// rosters, so queue it via cron instead of blocking the request.
@@ -456,10 +523,12 @@ class SPEM_REST_API {
 			$existing = array();
 		}
 
-		// Get visible number-format performance columns.
+		// Get visible number-format performance columns. Capped — a sane install
+		// has well under a hundred performance variables; the cap just stops an
+		// unbounded query if the sp_performance table is ever polluted.
 		$perf_posts = get_posts( array(
 			'post_type'      => 'sp_performance',
-			'posts_per_page' => -1,
+			'posts_per_page' => 200,
 			'post_status'    => 'publish',
 			'meta_query'     => array(
 				array(
@@ -483,9 +552,15 @@ class SPEM_REST_API {
 		$teams = array();
 		foreach ( $team_ids as $team_id ) {
 			$team_id = (int) $team_id;
-			$players = get_posts( array(
+			// Fetch IDs only and cap the roster — a team roster is bounded, but a
+			// mis-linked sp_current_team could match many rows. Prime the post and
+			// meta caches in one pass so the per-player title/sp_number reads below
+			// don't issue N individual queries.
+			$player_ids = get_posts( array(
 				'post_type'      => 'sp_player',
-				'posts_per_page' => -1,
+				'posts_per_page' => 500,
+				'fields'         => 'ids',
+				'no_found_rows'  => true,
 				'meta_query'     => array(
 					array(
 						'key'   => 'sp_current_team',
@@ -496,20 +571,25 @@ class SPEM_REST_API {
 				'order'          => 'ASC',
 			) );
 
+			if ( ! empty( $player_ids ) ) {
+				_prime_post_caches( $player_ids, false, true );
+			}
+
 			$player_data = array();
-			foreach ( $players as $player ) {
-				$stats = array();
-				if ( isset( $existing[ $team_id ][ $player->ID ] ) ) {
+			foreach ( $player_ids as $player_id ) {
+				$player_id = (int) $player_id;
+				$stats     = array();
+				if ( isset( $existing[ $team_id ][ $player_id ] ) ) {
 					foreach ( $performances as $perf ) {
-						$stats[ $perf['slug'] ] = isset( $existing[ $team_id ][ $player->ID ][ $perf['slug'] ] )
-							? $existing[ $team_id ][ $player->ID ][ $perf['slug'] ]
+						$stats[ $perf['slug'] ] = isset( $existing[ $team_id ][ $player_id ][ $perf['slug'] ] )
+							? $existing[ $team_id ][ $player_id ][ $perf['slug'] ]
 							: 0;
 					}
 				}
 				$player_data[] = array(
-					'id'     => $player->ID,
-					'name'   => $player->post_title,
-					'number' => get_post_meta( $player->ID, 'sp_number', true ),
+					'id'     => $player_id,
+					'name'   => get_the_title( $player_id ),
+					'number' => get_post_meta( $player_id, 'sp_number', true ),
 					'stats'  => $stats,
 				);
 			}
@@ -604,7 +684,20 @@ class SPEM_REST_API {
 					continue;
 				}
 				if ( ! isset( $existing[ $team_id ][ $player_id ] ) ) {
-					$existing[ $team_id ][ $player_id ] = array();
+					// Seed the SportsPress-required roster keys for a player that
+					// isn't yet present in this event's sp_players meta. SP core
+					// represents each roster row as { number, position, status,
+					// sub, <perf slugs...> }; writing only perf values would leave
+					// a malformed row that breaks the event editor lineup table.
+					// `status` defaults to 'lineup' (a starter) and `sub` to 0,
+					// matching SportsPress's own new-player defaults; number is
+					// primed from the player's sp_number meta when available.
+					$existing[ $team_id ][ $player_id ] = array(
+						'number'   => (string) get_post_meta( $player_id, 'sp_number', true ),
+						'position' => '',
+						'status'   => 'lineup',
+						'sub'      => 0,
+					);
 				}
 				foreach ( $perf_data as $slug => $value ) {
 					$slug = sanitize_key( $slug );
@@ -828,9 +921,14 @@ class SPEM_REST_API {
 
 		$emails = array();
 		foreach ( $teams as $team_id ) {
-			$players = get_posts( array(
+			// Resolve players in one query per team. A team roster is bounded,
+			// but a mis-linked sp_current_team could match many rows, so cap it
+			// and fetch IDs only — then read the contact meta directly.
+			$player_ids = get_posts( array(
 				'post_type'      => 'sp_player',
-				'posts_per_page' => -1,
+				'posts_per_page' => 500,
+				'fields'         => 'ids',
+				'no_found_rows'  => true,
 				'meta_query'     => array(
 					array(
 						'key'   => 'sp_current_team',
@@ -839,13 +937,13 @@ class SPEM_REST_API {
 				),
 			) );
 
-			foreach ( $players as $player ) {
+			foreach ( $player_ids as $player_id ) {
 				// Player-tools plugin writes to `spt_email`; player-registration
 				// writes to `spat_email`. Fall back so notifications reach
 				// players regardless of which plugin owns the contact field.
-				$email = get_post_meta( $player->ID, 'spt_email', true );
+				$email = get_post_meta( $player_id, 'spt_email', true );
 				if ( ! $email ) {
-					$email = get_post_meta( $player->ID, 'spat_email', true );
+					$email = get_post_meta( $player_id, 'spat_email', true );
 				}
 				if ( $email && is_email( $email ) ) {
 					$emails[] = $email;
