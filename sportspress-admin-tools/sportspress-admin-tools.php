@@ -2,14 +2,17 @@
 /**
  * Plugin Name: SportsPress Admin Tools
  * Description: Administrative tools for SportsPress
- * Version: 1.0.0
+ * Version: 1.0.4
  * Author: Cody (lusky3)
  * Text Domain: sportspress-admin-tools
  * Requires at least: 5.0
- * Tested up to: 6.9
+ * Tested up to: 6.8
  * Requires PHP: 8.1
- * License: GPL v2 or later
+ * License: GPLv2 or later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  */
+
+declare(strict_types=1);
 
 // Prevent direct access
 if ( ! defined( 'ABSPATH' ) ) {
@@ -19,13 +22,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 // Define plugin constants
 define( 'SPAT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPAT_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPAT_VERSION', '1.0.0' );
+define( 'SPAT_VERSION', '1.0.4' );
+
+// Schema version the bundled migrations target. Kept in lockstep with
+// SPAT_VERSION so the plugin header tracks DB iterations; SPAT_Database reads
+// this constant instead of hardcoding the target in two places (AT-5).
+define( 'SPAT_DB_VERSION', SPAT_VERSION );
 
 // Main plugin class
 if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 	class SportsPressAdminTools {
 
-		private static $autoload_map = array(
+		private static array $autoload_map = array(
 			'SPAT_Text_Helper'       => 'includes/class-text-helper.php',
 			'SPAT_Logger'            => 'includes/class-logger.php',
 			'SPAT_Lock'              => 'includes/class-lock.php',
@@ -39,20 +47,26 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 			register_activation_hook( __FILE__, array( $this, 'activate' ) );
 		}
 
-		public static function autoload( $class ) {
+		public static function autoload( $class ): void {
 			if ( isset( self::$autoload_map[ $class ] ) ) {
 				require_once SPAT_PLUGIN_PATH . self::$autoload_map[ $class ];
 			}
 		}
 
-		public function init() {
+		public function init(): void {
 			// Load core classes needed everywhere
 			require_once SPAT_PLUGIN_PATH . 'includes/class-database.php';
 			require_once SPAT_PLUGIN_PATH . 'includes/class-plugin-manager.php';
 
 			// Run dbDelta on version bump so new indexes/columns reach existing installs
 			// without forcing operators to deactivate/reactivate the plugin.
-			if ( get_option( 'spat_db_version' ) !== '1.0.4' ) {
+			// create_tables() only stamps spat_db_version once the schema verifies,
+			// so on an install that can't reach spec (e.g. a DB user without ALTER)
+			// this would otherwise re-run four dbDelta calls + a dedupe DELETE on
+			// EVERY admin request. Throttle the retry to once every 5 minutes.
+			if ( get_option( 'spat_db_version' ) !== SPAT_DB_VERSION
+				&& false === get_transient( 'spat_db_migrate_attempted' ) ) {
+				set_transient( 'spat_db_migrate_attempted', 1, 5 * MINUTE_IN_SECONDS );
 				SPAT_Database::create_tables();
 			}
 
@@ -106,7 +120,7 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 			}
 		}
 
-		private function init_admin() {
+		private function init_admin(): void {
 			require_once SPAT_PLUGIN_PATH . 'includes/class-admin.php';
 			require_once SPAT_PLUGIN_PATH . 'includes/class-health-dashboard.php';
 			new SPAT_Admin();
@@ -115,7 +129,7 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 
 
 
-		public function activate() {
+		public function activate(): void {
 			// Set default options
 			add_option( 'spat_enabled_modules', array() );
 			add_option( 'spat_remove_data_on_uninstall', '0' );

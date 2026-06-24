@@ -10,15 +10,22 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
  * 1. External object cache (Redis/Memcached) — wp_cache_add is atomic
  *    across processes.
  *
- * 2. wp_options fallback — add_option is atomic at the SQL layer because
- *    of the PRIMARY KEY on option_name: two concurrent INSERTs cannot
- *    both succeed. The stored value carries an absolute expiry timestamp
- *    so a stale lock (whose holder crashed) can be reclaimed via an
- *    atomic UPDATE…WHERE option_value=<old> swap.
+ * 2. wp_options fallback — a *plain* INSERT relying on the UNIQUE KEY on
+ *    option_name is atomic at the SQL layer: of two concurrent INSERTs
+ *    for the same key, exactly one succeeds and the other fails with a
+ *    duplicate-key error. The stored value carries an absolute expiry
+ *    timestamp so a stale lock (whose holder crashed) can be reclaimed
+ *    via an atomic UPDATE…WHERE option_value=<old> swap.
  *
- *    Earlier implementation used get_transient + set_transient — that's
- *    a TOCTOU race; both concurrent callers can observe `false` and both
- *    write. The add_option/UPDATE form below is the actual fix.
+ *    Do NOT use add_option() here. Two earlier attempts were both broken:
+ *      - get_transient + set_transient: classic TOCTOU; both callers read
+ *        `false` and both write.
+ *      - add_option(): its existence pre-check (notoptions/alloptions/
+ *        SELECT) is non-atomic, and on WP 6.4+ the underlying write is
+ *        `INSERT … ON DUPLICATE KEY UPDATE`, which *overwrites* a held
+ *        lock and returns success instead of failing on the duplicate
+ *        key. Two concurrent callers therefore both "acquire". The plain
+ *        guarded INSERT below is the actual fix.
  *
  * Locks are advisory; release() should be called in a finally block.
  */
@@ -37,8 +44,12 @@ class SPAT_Lock {
 		$option = self::OPTION_PREFIX . $key;
 		$expiry = time() + $ttl;
 
-		// First try: atomic insert via add_option. Returns false if the row exists.
-		if ( add_option( $option, (string) $expiry, '', 'no' ) ) {
+		// First try: atomic claim. A plain INSERT is rejected by the UNIQUE
+		// KEY on option_name when the row already exists, so of two concurrent
+		// callers only one gets affected_rows === 1. (Unlike add_option(),
+		// which would overwrite via ON DUPLICATE KEY UPDATE and report success
+		// to both.)
+		if ( 1 === self::insert_lock_row( $option, $expiry ) ) {
 			return true;
 		}
 
@@ -49,8 +60,9 @@ class SPAT_Lock {
 		) );
 
 		if ( null === $existing ) {
-			// Lock was just released; try one more atomic insert.
-			return (bool) add_option( $option, (string) $expiry, '', 'no' );
+			// Lock was just released between our INSERT and SELECT; retry the
+			// atomic insert once.
+			return 1 === self::insert_lock_row( $option, $expiry );
 		}
 
 		if ( (int) $existing > time() ) {
@@ -67,6 +79,28 @@ class SPAT_Lock {
 			$existing
 		) );
 		return 1 === (int) $stolen;
+	}
+
+	/**
+	 * Plain guarded INSERT of a lock row. Returns the number of affected rows:
+	 * 1 when the row was newly created (lock claimed), 0 when the UNIQUE KEY on
+	 * option_name rejected it (already held) or the write otherwise failed.
+	 *
+	 * Errors are suppressed because a duplicate-key failure is the expected,
+	 * non-exceptional "lock already held" outcome — not something to log.
+	 */
+	private static function insert_lock_row( $option, $expiry ) {
+		global $wpdb;
+
+		$suppress = $wpdb->suppress_errors();
+		$inserted = $wpdb->query( $wpdb->prepare(
+			"INSERT INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no')",
+			$option,
+			(string) $expiry
+		) );
+		$wpdb->suppress_errors( $suppress );
+
+		return (int) $inserted;
 	}
 
 	public static function release( $key ) {

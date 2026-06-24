@@ -449,15 +449,17 @@ class SPAT_Privacy {
 			$player_ids = get_transient( $transient_key );
 			if ( false === $player_ids ) {
 				// Transient expired (slow WP-Cron, paused queue, etc.). We MUST NOT
-				// re-query here: the page-1 sweep already anonymized spt_email /
-				// sp_user meta and the e-transfer logs, so a fresh query would
-				// return an empty/incorrect player set and falsely report success.
-				// Tell the eraser to stop cleanly; page 1 already did the bulk work.
+				// re-query here: earlier pages already anonymized spt_email /
+				// sp_user meta for the players they processed, so a fresh query
+				// would return an empty/incorrect player set and falsely report
+				// success. Tell the eraser to stop cleanly; re-running the eraser
+				// will rebuild the list and finish any remaining work (including
+				// the deferred log sweeps, which run on the final page).
 				return array(
 					'items_removed'  => 0,
 					'items_retained' => 0,
 					'messages'       => array(
-						__( 'Erasure session cache expired before pagination finished. The initial sweep already anonymized records linked to this email; re-run the eraser if any newly-created records remain.', 'sportspress-admin-tools' ),
+						__( 'Erasure session cache expired before pagination finished. Records processed so far have already been anonymized; re-run the eraser to finish any remaining records and log entries.', 'sportspress-admin-tools' ),
 					),
 					'done'           => true,
 				);
@@ -494,13 +496,18 @@ class SPAT_Privacy {
 			$items_removed++;
 		}
 
-		// Bulk log sweeps run once, on page 1.
-		if ( 1 === (int) $page ) {
+		$done = ( $offset + self::BATCH_SIZE ) >= count( $player_ids );
+
+		// Bulk log sweeps run once, on the FINAL page, over the cached full
+		// player-id list. Deferring to $done keeps each page's items_removed
+		// scoped to the work that page actually performed (its <=BATCH_SIZE
+		// player anonymizations), so the per-page totals reported to the WP
+		// eraser sum to the true number of removed items instead of
+		// front-loading the entire log-deletion count onto page 1.
+		if ( $done ) {
 			$items_removed += $this->erase_registration_logs( $player_ids, $messages );
 			$items_removed += $this->erase_etransfer_logs( $email_address, $messages );
 		}
-
-		$done = ( $offset + self::BATCH_SIZE ) >= count( $player_ids );
 
 		if ( $done ) {
 			delete_transient( $transient_key );

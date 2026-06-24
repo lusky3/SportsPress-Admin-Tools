@@ -190,7 +190,6 @@ class SPAT_Health_Dashboard {
 			$wpdb->prefix . 'spat_registration_logs',
 			$wpdb->prefix . 'spat_role_logs',
 			$wpdb->prefix . 'spat_temp_data',
-			$wpdb->prefix . 'spet_etransfer_logs',
 		);
 
 		// Use cached SHOW TABLE STATUS for performance

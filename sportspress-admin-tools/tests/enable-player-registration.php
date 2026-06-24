@@ -2,12 +2,27 @@
 /**
  * Enable Player Registration module and set up database
  *
+ * DEV-ONLY SCRIPT — never shipped. Excluded from the distributed build via
+ * .distignore. This file self-bootstraps WordPress below, so the ABSPATH guard
+ * cannot fully neutralize direct web access on a dev box; the .distignore
+ * exclusion is the real safeguard. Run only from CLI in a trusted environment.
+ *
  * @author Cody (lusky3)
  */
+
+// Defense-in-depth: bail if invoked in a context where WordPress is already
+// loaded but ABSPATH is intentionally undefined (e.g. behind a front controller).
+if ( defined( 'SPAT_BLOCK_DEV_SCRIPTS' ) ) {
+	exit;
+}
 
 // Load WordPress
 require_once('../../../wp-config.php');
 require_once('../../../wp-load.php');
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
 
 // Load required classes
 require_once('includes/class-database.php');
@@ -39,7 +54,7 @@ echo "✓ Database tables created/verified\n";
 // Test database connection
 global $wpdb;
 $table_name = $wpdb->prefix . 'spat_registration_logs';
-$result = $wpdb->get_var("SHOW TABLES LIKE '$table_name'");
+$result = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table_name ) );
 if ($result === $table_name) {
     echo "✓ Registration logs table exists\n";
 } else {
@@ -47,7 +62,7 @@ if ($result === $table_name) {
 }
 
 $table_name = $wpdb->prefix . 'spat_role_logs';
-$result = $wpdb->get_var("SHOW TABLES LIKE '$table_name'");
+$result = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table_name ) );
 if ($result === $table_name) {
     echo "✓ Role logs table exists\n";
 } else {

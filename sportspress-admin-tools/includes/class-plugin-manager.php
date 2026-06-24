@@ -5,15 +5,20 @@
  * @author Cody (lusky3)
  */
 
+declare(strict_types=1);
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
 class SPAT_Plugin_Manager {
 
-	private static $registered_plugins = array();
+	/**
+	 * @var array<string, array<string, mixed>>
+	 */
+	private static array $registered_plugins = array();
 
-	public static function register_plugin( $plugin_id, $plugin_data ) {
+	public static function register_plugin( $plugin_id, $plugin_data ): bool {
 		$defaults = array(
 			'name'          => '',
 			'description'   => '',
@@ -49,20 +54,26 @@ class SPAT_Plugin_Manager {
 		return true;
 	}
 
-	public static function is_module_enabled( $module_id ) {
+	public static function is_module_enabled( $module_id ): bool {
 		$enabled_modules = (array) get_option( 'spat_enabled_modules', array() );
 		return in_array( (string) $module_id, $enabled_modules, true );
 	}
 
-	public static function get_registered_plugins() {
+	/**
+	 * @return array<string, array<string, mixed>>
+	 */
+	public static function get_registered_plugins(): array {
 		return self::$registered_plugins;
 	}
 
-	public static function is_plugin_active( $plugin_id ) {
+	public static function is_plugin_active( $plugin_id ): bool {
 		return isset( self::$registered_plugins[ $plugin_id ] );
 	}
 
-	public static function get_plugin_data( $plugin_id ) {
+	/**
+	 * @return array<string, mixed>|null
+	 */
+	public static function get_plugin_data( $plugin_id ): ?array {
 		return isset( self::$registered_plugins[ $plugin_id ] ) ? self::$registered_plugins[ $plugin_id ] : null;
 	}
 }

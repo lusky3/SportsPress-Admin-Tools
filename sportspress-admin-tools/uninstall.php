@@ -30,7 +30,10 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 		}
 	}
 
-	// Remove all plugin options
+	// Read the verbose flag before we delete it below.
+	$verbose = '1' === get_option( 'spat_debug_verbose_logging', '0' );
+
+	// Remove all plugin options the framework writes.
 	$options = array(
 		'spat_enabled_modules',
 		'spat_etransfer_webhook_secret',
@@ -42,14 +45,37 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 		'spat_remove_data_on_uninstall',
 		'spat_db_version',
 		'spat_logs_migrated',
+		// Settings/UI + debug flags.
+		'spat_use_select2',
+		'spat_debug_show_sensitive',
+		'spat_debug_verbose_logging',
+		'spat_logs_backfilled_links_to_order',
+		// Notification settings.
+		'spat_notifications_enabled',
+		'spat_notification_email',
+		'spat_notify_payment_matched',
+		'spat_notify_payment_unmatched',
+		'spat_notify_player_registered',
+		'spat_notify_schedule_generated',
 	);
 
 	// Remove options. delete_option returns false when the row was already absent — not an error worth logging.
-	$verbose = '1' === get_option( 'spat_debug_verbose_logging', '0' );
 	foreach ( $options as $option ) {
 		$deleted = delete_option( $option );
 		if ( ! $deleted && $verbose ) {
 			error_log( 'SPAT Uninstall: option not present or could not be deleted: ' . $option );
 		}
 	}
+
+	// Sweep any stale advisory-lock rows (autoload='no') left by interrupted
+	// SPAT_Lock holders, plus the health-dashboard status cache transient.
+	// Literal prefix (SPAT_Lock::OPTION_PREFIX) — the class isn't autoloaded
+	// during uninstall, so don't reference the constant here.
+	$wpdb->query(
+		$wpdb->prepare(
+			"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s",
+			$wpdb->esc_like( 'spat_lock_' ) . '%'
+		)
+	);
+	delete_transient( 'spat_table_status' );
 }
