@@ -187,6 +187,16 @@ class SportsPress_League_Manager {
 
 ### Custom Capability: `manage_league`
 
+> **Implementation note (reconciliation):** The `manage_league` custom capability
+> described in this section was *planned* but is **not** implemented in the shipped
+> code. There is no `CAP` const, no activation grant, and no `grant_to_user()`. The
+> **live gate is `manage_sportspress`**: `SPLM_Capabilities::can_manage()` checks
+> `manage_sportspress`, and `can_read()` additionally allows
+> `edit_others_sp_events` / `edit_others_sp_players` / `edit_sp_events`. The code
+> sample below is aspirational design, retained for context — treat
+> `manage_sportspress` as the actual capability wherever this document says
+> `manage_league`.
+
 This is the single gate for all League Manager pages. It does NOT require `manage_options`.
 
 ```php

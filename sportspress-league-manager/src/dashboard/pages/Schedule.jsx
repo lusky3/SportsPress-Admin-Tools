@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from '@wordpress/element';
 import { fetchGames, rescheduleGame, cancelGame, importGamesPreview, importGames } from '../lib/api';
+import Toast from '../components/Toast';
 
 export default function Schedule( { season } ) {
 	const [ games, setGames ] = useState( [] );
@@ -8,6 +9,7 @@ export default function Schedule( { season } ) {
 	const [ error, setError ] = useState( '' );
 	const [ importPreview, setImportPreview ] = useState( null );
 	const [ importing, setImporting ] = useState( false );
+	const [ toast, setToast ] = useState( '' ); // UI-13: in-app success feedback
 
 	const handleImportFile = ( e ) => {
 		const file = e.target.files?.[ 0 ];
@@ -22,7 +24,7 @@ export default function Schedule( { season } ) {
 			const res = await importGames( importPreview.games, season || 0 );
 			setError( '' );
 			setImportPreview( null );
-			window.alert( `Imported ${ res.imported } games (${ res.skipped } skipped)` );
+			setToast( `Imported ${ res.imported } games (${ res.skipped } skipped)` );
 			loadGames();
 		} catch ( err ) {
 			setError( err?.message || 'Import failed' );
@@ -84,6 +86,8 @@ export default function Schedule( { season } ) {
 	return (
 		<div className="splm-schedule">
 			<h2>Schedule</h2>
+
+			<Toast message={ toast } onDismiss={ () => setToast( '' ) } />
 
 			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 

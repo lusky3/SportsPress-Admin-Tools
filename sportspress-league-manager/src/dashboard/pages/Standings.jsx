@@ -46,7 +46,9 @@ export default function Standings( { season } ) {
 		try {
 			await generateStandings( genLeague, season );
 			setGenModal( false );
-			loadStandings();
+			// UI-16: pass a fresh guard ref so loadStandings's cancel check has a
+			// defined object (it dereferences cancelledRef.cancelled).
+			loadStandings( { cancelled: false } );
 		} catch ( err ) {
 			setError( err?.message || 'Failed to generate' );
 		}

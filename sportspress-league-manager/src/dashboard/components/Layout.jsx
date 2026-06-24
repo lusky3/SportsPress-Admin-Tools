@@ -1,18 +1,22 @@
 import { useState, useRef, useEffect } from '@wordpress/element';
 import { searchPlayers } from '../lib/api';
+import Icon from './icons';
 
+// UX-3/UI-8: structural icons are now SVG keys (see components/icons.js).
+// Schedule (calendar) and Generate (sparkle) have DISTINCT glyphs — they
+// previously both rendered 📅.
 const NAV_ITEMS = [
-	{ id: 'dashboard', label: 'Dashboard', icon: '📊' },
-	{ id: 'schedule', label: 'Schedule', icon: '📅' },
-	{ id: 'scores', label: 'Scores', icon: '🏒' },
-	{ id: 'standings', label: 'Standings', icon: '🏆' },
-	{ id: 'rosters', label: 'Rosters', icon: '👥' },
-	{ id: 'payments', label: 'Payments', icon: '💰' },
-	{ id: 'div-balance', label: 'Balance', icon: '⚖️' },
-	{ id: 'team-compare', label: 'Compare', icon: '🔄' },
-	{ id: 'season-report', label: 'Report', icon: '📋' },
-	{ id: 'health', label: 'Health', icon: '🔍' },
-	{ id: 'schedule-gen', label: 'Generate', icon: '📅' },
+	{ id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
+	{ id: 'schedule', label: 'Schedule', icon: 'schedule' },
+	{ id: 'scores', label: 'Scores', icon: 'scores' },
+	{ id: 'standings', label: 'Standings', icon: 'standings' },
+	{ id: 'rosters', label: 'Rosters', icon: 'rosters' },
+	{ id: 'payments', label: 'Payments', icon: 'payments' },
+	{ id: 'div-balance', label: 'Balance', icon: 'div-balance' },
+	{ id: 'team-compare', label: 'Compare', icon: 'team-compare' },
+	{ id: 'season-report', label: 'Report', icon: 'season-report' },
+	{ id: 'health', label: 'Health', icon: 'health' },
+	{ id: 'schedule-gen', label: 'Generate', icon: 'schedule-gen' },
 ];
 
 const MOBILE_VISIBLE = 5;
@@ -75,6 +79,13 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 			<header className="splm-header">
 				<h1 className="splm-header__title">{ config.leagueName || 'League Manager' }</h1>
 				<div className="splm-header__search" ref={ searchRef }>
+					{ /* UX-12: chose the LOWER-RISK option — a plain focusable
+					     <button> list. The previous markup declared
+					     role=listbox/option but had no aria-activedescendant /
+					     arrow-key handling (a broken combobox). Each result is now
+					     a real button (tab + Enter/Space work natively); the
+					     listbox/option roles are removed so AT no longer expects
+					     combobox keyboard semantics that weren't implemented. */ }
 					<input
 						type="search"
 						className="splm-search-input"
@@ -84,10 +95,10 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 						aria-label="Search players"
 					/>
 					{ searchOpen && searchResults.length > 0 && (
-						<ul className="splm-search-results" role="listbox">
+						<ul className="splm-search-results">
 							{ searchResults.map( ( p ) => (
-								<li key={ p.id } role="option" className="splm-search-results__item">
-									<button onClick={ () => { setSearchOpen( false ); setSearchQuery( '' ); onNavigate( 'rosters' ); } }>
+								<li key={ p.id } className="splm-search-results__item">
+									<button type="button" onClick={ () => { setSearchOpen( false ); setSearchQuery( '' ); onNavigate( 'rosters' ); } }>
 										<strong>{ p.name }</strong>
 										{ p.team_name && <span> — { p.team_name }</span> }
 										{ p.number && <span> #{ p.number }</span> }
@@ -126,7 +137,7 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 							onClick={ () => onNavigate( item.id ) }
 							aria-current={ currentPage === item.id ? 'page' : undefined }
 						>
-							<span className="splm-nav-item__icon" aria-hidden="true">{ item.icon }</span>
+							<span className="splm-nav-item__icon"><Icon name={ item.icon } /></span>
 							<span className="splm-nav-item__label">{ item.label }</span>
 						</button>
 					) ) }
@@ -145,7 +156,7 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 						onClick={ () => onNavigate( item.id ) }
 						aria-current={ currentPage === item.id ? 'page' : undefined }
 					>
-						<span className="splm-mobile-nav__icon" aria-hidden="true">{ item.icon }</span>
+						<span className="splm-mobile-nav__icon"><Icon name={ item.icon } /></span>
 						<span className="splm-mobile-nav__label">{ item.label }</span>
 					</button>
 				) ) }
@@ -157,7 +168,7 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 							aria-expanded={ moreOpen }
 							aria-haspopup="true"
 						>
-							<span className="splm-mobile-nav__icon" aria-hidden="true">⋯</span>
+							<span className="splm-mobile-nav__icon"><Icon name="more" /></span>
 							<span className="splm-mobile-nav__label">More</span>
 						</button>
 						{ moreOpen && (
@@ -169,7 +180,7 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 										onClick={ () => { onNavigate( item.id ); setMoreOpen( false ); } }
 										aria-current={ currentPage === item.id ? 'page' : undefined }
 									>
-										<span aria-hidden="true">{ item.icon }</span>
+										<span className="splm-icon-wrap"><Icon name={ item.icon } /></span>
 										<span>{ item.label }</span>
 									</button>
 								) ) }

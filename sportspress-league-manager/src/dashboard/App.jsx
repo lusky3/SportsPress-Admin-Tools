@@ -27,12 +27,43 @@ const PAGES = {
 	'season-report': SeasonReport,
 };
 
+// UX-11: derive the initial page from the URL hash so deep links / refresh land
+// on the right screen. Falls back to 'dashboard' for unknown hashes.
+function pageFromHash() {
+	const hash = ( window.location.hash || '' ).replace( /^#\/?/, '' );
+	return PAGES[ hash ] ? hash : 'dashboard';
+}
+
 export default function App() {
-	const [ page, setPage ] = useState( 'dashboard' );
+	const [ page, setPage ] = useState( pageFromHash );
 	const [ season, setSeason ] = useState( window.splmDashboard?.currentSeason ?? '' );
 	const [ announcement, setAnnouncement ] = useState( '' );
 	const isFirstRender = useRef( true );
 	const PageComponent = PAGES[ page ] || Dashboard;
+
+	// UX-11: write page → URL hash so Back/refresh/sharing work, and react to
+	// popstate (Back/Forward) by reading the hash back into state.
+	const navigate = ( next ) => {
+		setPage( next );
+		const target = `#/${ next }`;
+		if ( window.location.hash !== target ) {
+			window.location.hash = target;
+		}
+	};
+
+	useEffect( () => {
+		const onPop = () => setPage( pageFromHash() );
+		window.addEventListener( 'popstate', onPop );
+		window.addEventListener( 'hashchange', onPop );
+		// Normalise the hash on first mount (e.g. bare '#').
+		if ( ! window.location.hash ) {
+			window.history.replaceState( null, '', `#/${ pageFromHash() }` );
+		}
+		return () => {
+			window.removeEventListener( 'popstate', onPop );
+			window.removeEventListener( 'hashchange', onPop );
+		};
+	}, [] );
 
 	useEffect( () => {
 		if ( isFirstRender.current ) { isFirstRender.current = false; return; }
@@ -40,11 +71,11 @@ export default function App() {
 	}, [ page ] );
 
 	return (
-		<Layout currentPage={ page } onNavigate={ setPage } onSeasonChange={ setSeason } season={ season }>
+		<Layout currentPage={ page } onNavigate={ navigate } onSeasonChange={ setSeason } season={ season }>
 			<div aria-live="polite" aria-atomic="true" className="screen-reader-text">
 				{ announcement }
 			</div>
-			<PageComponent onNavigate={ setPage } season={ season } />
+			<PageComponent onNavigate={ navigate } season={ season } />
 		</Layout>
 	);
 }

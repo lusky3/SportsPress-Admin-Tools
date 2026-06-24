@@ -1,5 +1,48 @@
-import { useState, useEffect } from '@wordpress/element';
+import { useState, useEffect, useRef, memo } from '@wordpress/element';
 import { fetchTeams, fetchRosterDetails, fetchNotes, addNote, movePlayer, updatePlayer, updatePlayerMetadata, setCaptain, removePlayer, importRoster, calculateSkills, bulkUploadRoster, bulkProcessRoster } from '../lib/api';
+import Toast from '../components/Toast';
+import Icon from '../components/icons';
+
+// UX-9: focus trap + focus move-in / restore-on-close for modal dialogs.
+// Returns a ref to attach to the dialog container.
+function useFocusTrap( onClose ) {
+	const ref = useRef( null );
+	useEffect( () => {
+		const node = ref.current;
+		if ( ! node ) return undefined;
+		const previouslyFocused = document.activeElement;
+		const selector = 'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
+		const focusables = () => Array.from( node.querySelectorAll( selector ) ).filter( ( el ) => el.offsetParent !== null || el === document.activeElement );
+		// Move focus into the dialog.
+		const first = focusables()[ 0 ];
+		( first || node ).focus();
+
+		const onKeyDown = ( e ) => {
+			if ( e.key === 'Escape' ) { onClose(); return; }
+			if ( e.key !== 'Tab' ) return;
+			const els = focusables();
+			if ( ! els.length ) { e.preventDefault(); return; }
+			const firstEl = els[ 0 ];
+			const lastEl = els[ els.length - 1 ];
+			if ( e.shiftKey && document.activeElement === firstEl ) {
+				e.preventDefault();
+				lastEl.focus();
+			} else if ( ! e.shiftKey && document.activeElement === lastEl ) {
+				e.preventDefault();
+				firstEl.focus();
+			}
+		};
+		node.addEventListener( 'keydown', onKeyDown );
+		return () => {
+			node.removeEventListener( 'keydown', onKeyDown );
+			// Restore focus to the trigger.
+			if ( previouslyFocused && typeof previouslyFocused.focus === 'function' ) {
+				previouslyFocused.focus();
+			}
+		};
+	}, [ onClose ] );
+	return ref;
+}
 
 function NotesPanel( { player, onClose } ) {
 	const [ notes, setNotes ] = useState( [] );
@@ -28,13 +71,16 @@ function NotesPanel( { player, onClose } ) {
 		} );
 	};
 
+	// UX-9: trap Tab inside the panel, move focus in on open, restore on close.
+	const trapRef = useFocusTrap( onClose );
+
 	return (
-		<div className="splm-notes-panel" role="dialog" aria-modal="true" aria-label={ `Notes for ${ player.name }` } onKeyDown={ ( e ) => { if ( e.key === 'Escape' ) onClose(); } }>
+		<div className="splm-notes-panel" role="dialog" aria-modal="true" aria-label={ `Notes for ${ player.name }` } ref={ trapRef } tabIndex={ -1 }>
 			<div className="splm-notes-panel__overlay" onClick={ onClose }></div>
 			<div className="splm-notes-panel__content">
 				<div className="splm-notes-panel__header">
 					<h3>Notes — { player.name }</h3>
-					<button className="splm-btn splm-btn--small" onClick={ onClose }>✕</button>
+					<button className="splm-btn splm-btn--small" onClick={ onClose } aria-label="Close notes">✕</button>
 				</div>
 				{ loading ? (
 					<div className="splm-loading">Loading...</div>
@@ -72,12 +118,16 @@ function MoveModal( { player, teams, currentTeam, onClose, onMoved } ) {
 		} );
 	};
 
+	// UX-9: focus trap for the Move dialog.
+	const trapRef = useFocusTrap( onClose );
+
 	return (
-		<div className="splm-modal-overlay" onClick={ onClose } role="dialog" aria-modal="true" aria-label={ `Move ${ player.name }` } onKeyDown={ ( e ) => { if ( e.key === 'Escape' ) onClose(); } }>
+		<div className="splm-modal-overlay" onClick={ onClose } role="dialog" aria-modal="true" aria-label={ `Move ${ player.name }` } ref={ trapRef } tabIndex={ -1 }>
 			<div className="splm-modal" onClick={ ( e ) => e.stopPropagation() }>
 				<h3>Move { player.name }</h3>
-				<label>Move to team:</label>
-				<select className="splm-select" value={ toTeam } onChange={ ( e ) => setToTeam( e.target.value ) }>
+				{ /* UX-5: associate label with the select via id/htmlFor. */ }
+				<label htmlFor="splm-move-team-select">Move to team:</label>
+				<select id="splm-move-team-select" className="splm-select" value={ toTeam } onChange={ ( e ) => setToTeam( e.target.value ) } aria-label={ `Move ${ player.name } to team` }>
 					<option value="">Select team...</option>
 					{ teams.filter( ( t ) => t.id !== currentTeam ).map( ( t ) => (
 						<option key={ t.id } value={ t.id }>{ t.name }</option>
@@ -92,7 +142,9 @@ function MoveModal( { player, teams, currentTeam, onClose, onMoved } ) {
 	);
 }
 
-function EditableCell( { value, field, playerId, onSaved } ) {
+// UI-11: memoized so editing one cell doesn't re-render every other cell.
+// Keyed by player id + field at the call site.
+const EditableCell = memo( function EditableCell( { value, field, fieldLabel, playerId, onSaved } ) {
 	const [ editing, setEditing ] = useState( false );
 	const [ val, setVal ] = useState( value );
 
@@ -115,14 +167,27 @@ function EditableCell( { value, field, playerId, onSaved } ) {
 				onChange={ ( e ) => setVal( e.target.value ) }
 				onBlur={ save }
 				onKeyDown={ ( e ) => { if ( e.key === 'Enter' ) save(); } }
+				aria-label={ `Edit ${ fieldLabel || field }` }
 				autoFocus
 			/>
 		);
 	}
-	return <span tabIndex={0} onClick={ () => setEditing( true ) } onKeyDown={ ( e ) => { if ( e.key === 'Enter' || e.key === ' ' ) { e.preventDefault(); e.currentTarget.click(); } } } style={ { cursor: 'pointer' } }>{ value || '—' }</span>;
-}
+	// UX-8: real <button> with a visible pencil edit affordance + aria-label,
+	// instead of a role-less focusable span.
+	return (
+		<button
+			type="button"
+			className="splm-editable"
+			onClick={ () => setEditing( true ) }
+			aria-label={ `Edit ${ fieldLabel || field }${ value ? `: ${ value }` : '' }` }
+		>
+			<span className="splm-editable__value">{ value || '—' }</span>
+			<Icon name="pencil" size={ 12 } />
+		</button>
+	);
+} );
 
-function SkillCell( { value, playerId, onSaved } ) {
+const SkillCell = memo( function SkillCell( { value, playerId, onSaved } ) {
 	const [ editing, setEditing ] = useState( false );
 	const [ val, setVal ] = useState( value || '' );
 
@@ -140,6 +205,7 @@ function SkillCell( { value, playerId, onSaved } ) {
 				value={ val }
 				onChange={ ( e ) => { setVal( e.target.value ); save( e.target.value ); } }
 				onBlur={ () => save( val ) }
+				aria-label="Edit skill level"
 				autoFocus
 			>
 				<option value="">—</option>
@@ -149,8 +215,18 @@ function SkillCell( { value, playerId, onSaved } ) {
 			</select>
 		);
 	}
-	return <span tabIndex={0} onClick={ () => setEditing( true ) } onKeyDown={ ( e ) => { if ( e.key === 'Enter' || e.key === ' ' ) { e.preventDefault(); e.currentTarget.click(); } } } style={ { cursor: 'pointer' } }>{ value || '—' }</span>;
-}
+	return (
+		<button
+			type="button"
+			className="splm-editable"
+			onClick={ () => setEditing( true ) }
+			aria-label={ `Edit skill level${ value ? `: ${ value }` : '' }` }
+		>
+			<span className="splm-editable__value">{ value || '—' }</span>
+			<Icon name="pencil" size={ 12 } />
+		</button>
+	);
+} );
 
 function CSVUpload( { teamId, seasonId, onImported } ) {
 	const [ show, setShow ] = useState( false );
@@ -215,6 +291,7 @@ export default function Rosters( { season } ) {
 	const [ loading, setLoading ] = useState( false );
 	const [ notesPlayer, setNotesPlayer ] = useState( null );
 	const [ movePlayerData, setMovePlayerData ] = useState( null );
+	const [ toast, setToast ] = useState( null ); // UI-13: { message, type }
 
 	useEffect( () => {
 		let cancelled = false;
@@ -254,8 +331,12 @@ export default function Rosters( { season } ) {
 	return (
 		<div className="splm-rosters">
 			<h2>Rosters</h2>
+			<Toast message={ toast?.message } type={ toast?.type } onDismiss={ () => setToast( null ) } />
 			<div className="splm-rosters__toolbar">
+				{ /* UX-5: label the team selector. */ }
+				<label htmlFor="splm-roster-team" className="screen-reader-text">Select team</label>
 				<select
+					id="splm-roster-team"
 					className="splm-select"
 					value={ selectedTeam }
 					onChange={ ( e ) => setSelectedTeam( e.target.value ) }
@@ -272,9 +353,9 @@ export default function Rosters( { season } ) {
 						// fall back to 0 rather than rendering "undefined manual skipped".
 						const updated = r?.updated ?? 0;
 						const skipped = r?.skipped_manual ?? 0;
-						window.alert( `Updated ${ updated } players (${ skipped } manual skipped)` );
+						setToast( { message: `Updated ${ updated } players (${ skipped } manual skipped)`, type: 'success' } );
 						if ( selectedTeam ) reload();
-					} ).catch( ( err ) => window.alert( err?.message || 'Failed' ) );
+					} ).catch( ( err ) => setToast( { message: err?.message || 'Failed', type: 'error' } ) );
 				} }>
 					Calculate Skills
 				</button>
@@ -305,21 +386,22 @@ export default function Rosters( { season } ) {
 							{ roster.map( ( player ) => (
 								<tr key={ player.id }>
 									<td>
-										<EditableCell value={ player.number } field="number" playerId={ player.id } onSaved={ ( f, v ) => updateRosterPlayer( player.id, f, v ) } />
+										<EditableCell key={ `${ player.id }-number` } value={ player.number } field="number" fieldLabel={ `number for ${ player.name }` } playerId={ player.id } onSaved={ ( f, v ) => updateRosterPlayer( player.id, f, v ) } />
 									</td>
 									<td className="splm-table__team">{ player.name }</td>
 									<td>
-										<EditableCell value={ player.position } field="position" playerId={ player.id } onSaved={ ( f, v ) => updateRosterPlayer( player.id, f, v ) } />
+										<EditableCell key={ `${ player.id }-position` } value={ player.position } field="position" fieldLabel={ `position for ${ player.name }` } playerId={ player.id } onSaved={ ( f, v ) => updateRosterPlayer( player.id, f, v ) } />
 									</td>
 									<td>
-										<SkillCell value={ player.skill_level } playerId={ player.id } onSaved={ ( f, v ) => updateRosterPlayer( player.id, f, v ) } />
+										<SkillCell key={ `${ player.id }-skill` } value={ player.skill_level } playerId={ player.id } onSaved={ ( f, v ) => updateRosterPlayer( player.id, f, v ) } />
 									</td>
 									<td>
-										<EditableCell value={ player.email } field="email" playerId={ player.id } onSaved={ ( f, v ) => updateRosterPlayer( player.id, f, v ) } />
+										<EditableCell key={ `${ player.id }-email` } value={ player.email } field="email" fieldLabel={ `email for ${ player.name }` } playerId={ player.id } onSaved={ ( f, v ) => updateRosterPlayer( player.id, f, v ) } />
 									</td>
 									<td>
+										{ /* UI-6: text + color cue, not emoji-color alone. */ }
 										<span className={ `splm-reg-badge splm-reg-badge--${ player.registered ? 'yes' : 'no' }` }>
-											{ player.registered ? '✅' : '❌' }
+											{ player.registered ? 'Yes' : 'No' }
 										</span>
 									</td>
 									<td>
