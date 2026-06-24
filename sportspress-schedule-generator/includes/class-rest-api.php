@@ -28,6 +28,14 @@ if ( ! function_exists( 'spsg_rest_list_response' ) ) {
 
 class SPSG_REST_API {
 
+	/**
+	 * Upper bound for sp_team queries. SG-7: replaces posts_per_page => -1 in the
+	 * league/team reference endpoints so a pathological dataset cannot trigger an
+	 * unbounded query. Far exceeds any realistic SportsPress team count, so the
+	 * returned data is unchanged in practice.
+	 */
+	const MAX_TEAMS_QUERY = 5000;
+
 	private $ns = 'spsg/v1';
 
 	private $config_manager = null;
@@ -135,11 +143,47 @@ class SPSG_REST_API {
 		// Publish
 		register_rest_route( $ns, '/publish', array_merge( $perm, array(
 			'methods' => 'POST', 'callback' => array( $this, 'spsg_publish' ),
+			// SG-3: the handler reads season_id/league_id/offset/limit/
+			// conflict_resolution/event_status/dry_run directly. Declare them here
+			// with sanitize/validate callbacks so the route matches the
+			// declarative pattern used elsewhere instead of relying solely on
+			// inline casts in the handler.
 			'args' => array(
 				'schedule_id' => array(
 					'required' => true,
 					'sanitize_callback' => 'sanitize_text_field',
 					'validate_callback' => function( $val ) { return is_string( $val ) && strlen( $val ) > 0; },
+				),
+				'season_id' => array(
+					'default' => 0,
+					'sanitize_callback' => 'absint',
+				),
+				'league_id' => array(
+					'default' => 0,
+					'sanitize_callback' => 'absint',
+				),
+				'offset' => array(
+					'default' => 0,
+					'sanitize_callback' => 'absint',
+				),
+				'limit' => array(
+					'default' => 50,
+					'sanitize_callback' => 'absint',
+					'validate_callback' => function( $val ) { return is_numeric( $val ) && (int) $val >= 0; },
+				),
+				'conflict_resolution' => array(
+					'default' => 'skip',
+					'sanitize_callback' => 'sanitize_text_field',
+					'validate_callback' => function( $val ) { return in_array( $val, array( 'skip', 'overwrite' ), true ); },
+				),
+				'event_status' => array(
+					'default' => 'publish',
+					'sanitize_callback' => 'sanitize_text_field',
+					'validate_callback' => function( $val ) { return in_array( $val, array( 'publish', 'draft', 'pending', 'future' ), true ); },
+				),
+				'dry_run' => array(
+					'default' => false,
+					'sanitize_callback' => 'rest_sanitize_boolean',
 				),
 			),
 		) ) );
@@ -412,19 +456,10 @@ class SPSG_REST_API {
 	}
 
 	private function count_slots( $config ) {
-		$start = $config->season_start instanceof DateTime ? clone $config->season_start : new DateTime( $config->season_start );
-		$end = $config->season_end instanceof DateTime ? clone $config->season_end : new DateTime( $config->season_end );
-		$blackouts = $config->blackout_dates ?? array();
-		$slots = 0;
-		$cur = clone $start;
-		while ( $cur <= $end ) {
-			$day = strtolower( $cur->format( 'l' ) );
-			if ( in_array( $day, $config->playing_days ) && ! in_array( $cur->format( 'Y-m-d' ), $blackouts ) ) {
-				$slots += count( $config->time_slots[ $day ] ?? array() ) * count( $config->venues );
-			}
-			$cur->add( new DateInterval( 'P1D' ) );
-		}
-		return $slots;
+		// Delegate to the cascade-aware counter used by the generator so the
+		// /validate capacity (venue_timeslots / per-date / venue blackout
+		// overrides) agrees with what generation actually produces.
+		return SPSG_Schedule_Helper::count_available_slots( $config );
 	}
 
 	public function spsg_get_distribution_settings() {
@@ -444,6 +479,14 @@ class SPSG_REST_API {
 			return new WP_Error( 'no_file', 'No CSV file uploaded.', array( 'status' => 400 ) );
 		}
 		$file = $files['csv'];
+
+		// Ensure the tmp file actually came in via HTTP POST — defends against
+		// crafted paths that would otherwise let an attacker read arbitrary
+		// server files via parse_csv(). Mirrors the AJAX upload guard.
+		if ( empty( $file['tmp_name'] ) || ! is_uploaded_file( $file['tmp_name'] ) ) {
+			return new WP_Error( 'invalid_upload', 'Invalid upload.', array( 'status' => 400 ) );
+		}
+
 		if ( $file['size'] > 1048576 ) {
 			return new WP_Error( 'file_too_large', 'CSV file must be under 1MB.', array( 'status' => 400 ) );
 		}
@@ -530,6 +573,10 @@ class SPSG_REST_API {
 		$schedule = get_transient( 'spsg_schedule_' . $request->get_param( 'schedule_id' ) );
 		if ( ! $schedule ) return new WP_Error( 'schedule_not_found', 'Schedule not found or expired.', array( 'status' => 404 ) );
 		$config = $this->cm()->load( $request->get_param( 'config_id' ) );
+		// SG-2: bail on a failed config load before handing it to the exporter
+		// (mirrors the guard in spsg_generate()); otherwise a WP_Error flows into
+		// export() as if it were a valid configuration.
+		if ( is_wp_error( $config ) ) return $config;
 		$style  = in_array( $request->get_param( 'style' ), array( 'compact', 'detailed' ), true ) ? $request->get_param( 'style' ) : 'detailed';
 		$em = new SPSG_Export_Manager();
 		$result = $em->export( $schedule, $config, 'xlsx', array(), $style );
@@ -561,7 +608,10 @@ class SPSG_REST_API {
 	}
 
 	public function spsg_get_league_teams( $request ) {
-		$posts = get_posts( array( 'post_type' => 'sp_team', 'posts_per_page' => -1, 'post_status' => 'publish',
+		// SG-7: cap the query instead of posts_per_page => -1. A single league's
+		// team roster is far below this bound in practice, so output is unchanged
+		// while the worst case is no longer unbounded.
+		$posts = get_posts( array( 'post_type' => 'sp_team', 'posts_per_page' => self::MAX_TEAMS_QUERY, 'post_status' => 'publish',
 			'tax_query' => array( array( 'taxonomy' => 'sp_league', 'terms' => (int) $request['id'] ) ), 'orderby' => 'title', 'order' => 'ASC' ) );
 		$teams = array();
 		foreach ( $posts as $p ) {
@@ -595,7 +645,11 @@ class SPSG_REST_API {
 		$all_teams = get_posts( array(
 			'post_type'      => 'sp_team',
 			'post_status'    => 'publish',
-			'posts_per_page' => -1,
+			// SG-7: cap the bulk team fetch rather than -1. The 5000-row bound
+			// comfortably exceeds any real SportsPress install's team count, so
+			// the leagues-with-teams output is unchanged while avoiding an
+			// unbounded query on a pathological dataset.
+			'posts_per_page' => self::MAX_TEAMS_QUERY,
 			'orderby'        => 'title',
 			'order'          => 'ASC',
 		) );
@@ -659,7 +713,18 @@ class SPSG_REST_API {
 
 	// --- Generate ---
 
-	/** Generate a schedule from a configuration. */
+	/**
+	 * Generate a schedule from a configuration.
+	 *
+	 * SG-4: This endpoint runs the generation engine SYNCHRONOUSLY and blocks
+	 * until the schedule is complete (or fails). It does not spawn a background
+	 * job and does not honour the /generate/cancel flag — the request cannot be
+	 * cancelled once it is in flight. The /generate/progress and /generate/cancel
+	 * routes exist for a future async path and the AJAX generation flow (which
+	 * does write the progress/cancel transients); they are inert with respect to
+	 * this REST /generate call. The response always carries `status => complete`
+	 * on success so callers know the result is final, not a poll handle.
+	 */
 	public function spsg_generate( $request ) {
 		$config = $this->cm()->load( $request->get_param( 'config_id' ) );
 		if ( is_wp_error( $config ) ) return $config;
@@ -722,15 +787,33 @@ class SPSG_REST_API {
 		) );
 	}
 
-	// Note: generation is currently synchronous. These endpoints are stubs
-	// for future async generation support and currently return idle/cancelled.
+	/**
+	 * Report generation progress.
+	 *
+	 * SG-4: REST /generate is synchronous and never writes the user-scoped
+	 * progress transient this reads, so for REST-driven generation there is
+	 * never any in-flight progress to report — it returns `idle`. This route is
+	 * meaningful only for the AJAX generation flow (which does write progress)
+	 * and any future async REST path. `async => false` flags that the REST
+	 * /generate path is not pollable.
+	 */
 	public function spsg_generate_progress() {
 		$p = get_transient( 'spsg_generation_progress_' . get_current_user_id() );
-		return rest_ensure_response( $p ?: array( 'status' => 'idle' ) );
+		if ( $p ) {
+			return rest_ensure_response( $p );
+		}
+		return rest_ensure_response( array( 'status' => 'idle', 'async' => false ) );
 	}
 
-	// Note: generation is currently synchronous. These endpoints are stubs
-	// for future async generation support and currently return idle/cancelled.
+	/**
+	 * Request cancellation of an in-flight generation.
+	 *
+	 * SG-4: This sets the cancel flag honoured by the AJAX generation flow and
+	 * any future async REST path. It does NOT cancel a REST /generate call,
+	 * which runs synchronously to completion within a single request and never
+	 * checks this flag. The response includes `applies_to_rest_generate => false`
+	 * so clients do not assume an in-flight REST generation was aborted.
+	 */
 	public function spsg_generate_cancel() {
 		$user_id      = get_current_user_id();
 		$cancel_key   = 'spsg_cancel_generation_' . $user_id;
@@ -750,7 +833,7 @@ class SPSG_REST_API {
 			wp_cache_set( $progress_key, $progress, 'spsg_progress', HOUR_IN_SECONDS );
 		}
 
-		return rest_ensure_response( array( 'cancelled' => true ) );
+		return rest_ensure_response( array( 'cancelled' => true, 'applies_to_rest_generate' => false ) );
 	}
 
 	// --- Publish ---

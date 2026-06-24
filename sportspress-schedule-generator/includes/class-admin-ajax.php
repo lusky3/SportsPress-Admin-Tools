@@ -504,10 +504,30 @@ class SPSG_Admin_Ajax {
 
 		$total_games = $progress['total_games'] ?? 0;
 		$games_scheduled = $progress['games_scheduled'] ?? 0;
-		$percentage = $total_games > 0 ? round( ( $games_scheduled / $total_games ) * 100 ) : 0;
+
+		// Prefer the engine-provided percentage. games_scheduled is 0 during the
+		// matchup/validation phases, so recomputing from it would pin the bar at
+		// 0%. The engine writes 'percentage' for every phase.
+		$percentage = isset( $progress['percentage'] ) ? round( (float) $progress['percentage'] ) : 0;
+
+		// Derive status from the engine's array: the cancel handler sets
+		// 'cancelled' (and 'status'); completion is the 'complete' phase or 100%.
+		if ( ! empty( $progress['cancelled'] ) || ( isset( $progress['status'] ) && 'cancelled' === $progress['status'] ) ) {
+			$status = 'cancelled';
+		} elseif ( $percentage >= 100 || 'complete' === ( $progress['phase'] ?? '' ) ) {
+			$status = 'complete';
+		} else {
+			$status = 'in_progress';
+		}
 
 		$phase_text = $this->get_phase_text( $progress['phase'] ?? 'initializing' );
-		$estimated_remaining = $this->get_estimated_remaining( $percentage, $progress['elapsed_time'] ?? 0 );
+
+		// The engine writes 'estimated_time_remaining' (seconds) directly; use it
+		// rather than recomputing from a non-existent 'elapsed_time' field.
+		$estimated_remaining = $this->format_estimated_remaining(
+			$percentage,
+			$progress['estimated_time_remaining'] ?? null
+		);
 
 		wp_send_json_success(
 			array(
@@ -517,7 +537,7 @@ class SPSG_Admin_Ajax {
 				'games_scheduled' => $games_scheduled,
 				'total_games' => $total_games,
 				'estimated_remaining' => $estimated_remaining,
-				'status' => $progress['status'] ?? 'in_progress',
+				'status' => $status,
 			)
 		);
 	}
@@ -541,25 +561,34 @@ class SPSG_Admin_Ajax {
 	}
 
 	/**
-	 * Get estimated time remaining string
+	 * Format the estimated-time-remaining string.
+	 *
+	 * The engine computes the remaining seconds in update_progress() and stores
+	 * them as 'estimated_time_remaining'. This formatter consumes that value
+	 * directly rather than re-deriving it from elapsed time (which the engine
+	 * does not expose).
+	 *
+	 * @param int        $percentage         Engine-provided percentage (0-100).
+	 * @param float|null $remaining_seconds  Engine-provided seconds remaining.
 	 */
-	private function get_estimated_remaining( $percentage, $elapsed_time ) {
-		if ( $percentage > 0 && $percentage < 100 ) {
-			$total_estimated = ( $elapsed_time / $percentage ) * 100;
-			$remaining_seconds = max( 0, $total_estimated - $elapsed_time );
-
-			if ( $remaining_seconds < 60 ) {
-				return sprintf( __( '%d seconds', 'sportspress-schedule-generator' ), round( $remaining_seconds ) );
-			}
-
-			$minutes = floor( $remaining_seconds / 60 );
-			$seconds = round( $remaining_seconds % 60 );
-			return sprintf( __( '%1$d min %2$d sec', 'sportspress-schedule-generator' ), $minutes, $seconds );
-		} elseif ( $percentage >= 100 ) {
+	private function format_estimated_remaining( $percentage, $remaining_seconds ) {
+		if ( $percentage >= 100 ) {
 			return __( 'Complete', 'sportspress-schedule-generator' );
 		}
 
-		return __( 'Calculating...', 'sportspress-schedule-generator' );
+		if ( null === $remaining_seconds ) {
+			return __( 'Calculating...', 'sportspress-schedule-generator' );
+		}
+
+		$remaining_seconds = max( 0, (float) $remaining_seconds );
+
+		if ( $remaining_seconds < 60 ) {
+			return sprintf( __( '%d seconds', 'sportspress-schedule-generator' ), round( $remaining_seconds ) );
+		}
+
+		$minutes = floor( $remaining_seconds / 60 );
+		$seconds = round( fmod( $remaining_seconds, 60 ) );
+		return sprintf( __( '%1$d min %2$d sec', 'sportspress-schedule-generator' ), $minutes, $seconds );
 	}
 
 	/**
