@@ -82,6 +82,15 @@ class SPET_Admin {
 				update_option( 'spet_pii_retention_days', $pii_days );
 			}
 
+			// DKIM enforcement mode for forwarded Interac emails.
+			if ( isset( $_POST['spet_dkim_enforcement'] ) ) {
+				$dkim_mode = sanitize_text_field( wp_unslash( $_POST['spet_dkim_enforcement'] ) );
+				if ( ! in_array( $dkim_mode, array( 'log', 'reject' ), true ) ) {
+					$dkim_mode = 'log';
+				}
+				update_option( 'spet_dkim_enforcement', $dkim_mode );
+			}
+
 			// Validate and sanitize equivalent names
 			if ( isset( $_POST['spet_equivalent_names'] ) ) {
 				$equivalent_names_input = wp_unslash( $_POST['spet_equivalent_names'] );
@@ -98,6 +107,10 @@ class SPET_Admin {
 		$webhook_secret = get_option( 'spet_webhook_secret', wp_generate_password( 32, false ) );
 		$equivalent_names = get_option( 'spet_equivalent_names', $this->get_default_equivalent_names() );
 		$trusted_proxy_ips = get_option( 'spet_trusted_proxy_ips', '' );
+		$dkim_enforcement = get_option( 'spet_dkim_enforcement', 'log' );
+		if ( ! in_array( $dkim_enforcement, array( 'log', 'reject' ), true ) ) {
+			$dkim_enforcement = 'log';
+		}
 		$pii_retention_days = intval( get_option( 'spet_pii_retention_days', 30 ) );
 		if ( $pii_retention_days < 1 ) {
 			$pii_retention_days = 30;
@@ -168,6 +181,16 @@ class SPET_Admin {
 						</td>
 					</tr>
 					<tr>
+						<th scope="row"><?php esc_html_e( 'DKIM Enforcement', 'sportspress-etransfer-automation' ); ?></th>
+						<td>
+							<select name="spet_dkim_enforcement">
+								<option value="log" <?php selected( $dkim_enforcement, 'log' ); ?>><?php esc_html_e( 'Log only (allow) — recommended while validating', 'sportspress-etransfer-automation' ); ?></option>
+								<option value="reject" <?php selected( $dkim_enforcement, 'reject' ); ?>><?php esc_html_e( 'Reject webhooks that fail DKIM', 'sportspress-etransfer-automation' ); ?></option>
+							</select>
+							<p class="description"><?php esc_html_e( 'The Cloudflare Worker forwards the original DKIM/SPF/ARC authentication headers. In "Log only" mode a missing or failing Interac DKIM result is logged (when verbose logging is on) but the payment is still processed. Switch to "Reject" only after confirming your email forwarder preserves the original Interac DKIM result, or legitimate payments may be rejected.', 'sportspress-etransfer-automation' ); ?></p>
+						</td>
+					</tr>
+					<tr>
 						<th scope="row"><?php esc_html_e( 'PII Retention (days)', 'sportspress-etransfer-automation' ); ?></th>
 						<td>
 							<input type="number" name="spet_pii_retention_days" min="1" max="365" value="<?php echo esc_attr( $pii_retention_days ); ?>" class="small-text" />
@@ -218,7 +241,14 @@ class SPET_Admin {
 			echo '<td>' . esc_html( $log->from_name ?: $log->from_email ) . '</td>';
 			echo '<td>' . esc_html( '$' . number_format( $log->amount, 2 ) ) . '</td>';
 			echo '<td>' . esc_html( $log->reference_number ?: 'N/A' ) . '</td>';
-			echo '<td>' . ( $log->order_id ? '<a href="' . esc_url( admin_url( 'post.php?post=' . intval( $log->order_id ) . '&action=edit' ) ) . '">#' . esc_html( $log->order_id ) . '</a>' : 'N/A' ) . '</td>';
+			$order_link = 'N/A';
+			if ( $log->order_id ) {
+				$order_edit_url = class_exists( 'SPET_ETransfer_Admin' )
+					? SPET_ETransfer_Admin::get_order_edit_url( intval( $log->order_id ) )
+					: admin_url( 'post.php?post=' . intval( $log->order_id ) . '&action=edit' );
+				$order_link = '<a href="' . esc_url( $order_edit_url ) . '">#' . esc_html( $log->order_id ) . '</a>';
+			}
+			echo '<td>' . $order_link . '</td>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- URL escaped via esc_url, ID via esc_html above.
 			echo '<td>' . esc_html( $log->result ) . '</td>';
 			echo '</tr>';
 		}
