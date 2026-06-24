@@ -1,5 +1,6 @@
-import { useState, useEffect } from '@wordpress/element';
+import { useState, useEffect, useMemo } from '@wordpress/element';
 import { fetchGames, fetchActivity, saveUserPreferences } from '../lib/api';
+import Icon from '../components/icons';
 
 const CARDS = [ 'upcoming', 'recent', 'activity' ];
 
@@ -64,13 +65,19 @@ export default function Dashboard( { onNavigate, season } ) {
 		saveUserPreferences( { dashboard_layout: next } ).catch( () => {} );
 	};
 
-	const today = new Date().toISOString().split( 'T' )[ 0 ];
-	const upcoming = games.filter( ( g ) => g.date >= today && ! g.cancelled ).slice( 0, 5 );
-	const needScores = games.filter( ( g ) => g.date < today && g.home_score === null && ! g.cancelled );
-	const recent = [ ...games ]
-		.filter( ( g ) => g.home_score !== null )
-		.sort( ( a, b ) => b.date.localeCompare( a.date ) )
-		.slice( 0, 5 );
+	// UI-10: derive these only when `games` changes, not on every unrelated
+	// render (settings toggle, etc.).
+	const { upcoming, needScores, recent } = useMemo( () => {
+		const today = new Date().toISOString().split( 'T' )[ 0 ];
+		return {
+			upcoming: games.filter( ( g ) => g.date >= today && ! g.cancelled ).slice( 0, 5 ),
+			needScores: games.filter( ( g ) => g.date < today && g.home_score === null && ! g.cancelled ),
+			recent: [ ...games ]
+				.filter( ( g ) => g.home_score !== null )
+				.sort( ( a, b ) => b.date.localeCompare( a.date ) )
+				.slice( 0, 5 ),
+		};
+	}, [ games ] );
 
 	if ( loading ) {
 		return <div className="splm-loading">Loading...</div>;
@@ -80,13 +87,19 @@ export default function Dashboard( { onNavigate, season } ) {
 		<div className="splm-dashboard">
 			<div className="splm-dashboard__header">
 				<h2>Dashboard</h2>
-				<button className="splm-btn splm-btn--small" onClick={ () => setShowSettings( ! showSettings ) } aria-label="Customize dashboard">
-					⚙️
+				<button
+					className="splm-btn splm-btn--small"
+					onClick={ () => setShowSettings( ! showSettings ) }
+					aria-label="Customize dashboard"
+					aria-expanded={ showSettings }
+					aria-controls="splm-dashboard-settings"
+				>
+					<Icon name="gear" size={ 16 } />
 				</button>
 			</div>
 
 			{ showSettings && (
-				<div className="splm-card splm-dashboard__settings">
+				<div className="splm-card splm-dashboard__settings" id="splm-dashboard-settings">
 					<h3>Visible Cards</h3>
 					{ CARDS.map( ( card ) => (
 						<label key={ card } className="splm-checkbox">

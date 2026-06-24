@@ -7,7 +7,7 @@
 - **Plugin:** sportspress-league-manager
 - **Type:** Child plugin of sportspress-admin-tools
 - **Prefix:** SPLM_ (classes), splm_ (options, meta, hooks, CSS, JS)
-- **Capability:** manage_league (custom, not manage_options)
+- **Capability:** manage_sportspress (the live gate; not manage_options). `SPLM_Capabilities::can_manage()` checks `manage_sportspress`; `can_read()` also allows `edit_others_sp_events` / `edit_others_sp_players` / `edit_sp_events`. A custom `manage_league` cap was planned but is NOT implemented.
 - **Text Domain:** sportspress-league-manager
 - **Branch:** feature/league-manager-plugin
 
@@ -35,7 +35,7 @@ Admin-only settings registered in SPAT settings tab via hooks:
 |-------|------|---------------|
 | `SportsPress_League_Manager` | sportspress-league-manager.php | Bootstrap, SPAT registration, module loading |
 | `SPLM_Autoloader` | class-autoloader.php | PSR-0 style autoloader for SPLM_ classes |
-| `SPLM_Capabilities` | class-capabilities.php | manage_league capability CRUD |
+| `SPLM_Capabilities` | class-capabilities.php | manage_sportspress capability checks (can_read / can_manage) |
 | `SPLM_Admin` | class-admin.php | Menu pages, script enqueue, SPAT settings tab |
 | `SPLM_Admin_Ajax` | class-admin-ajax.php | 6 AJAX handlers with nonce+cap verification |
 | `SPLM_Admin_Renderer` | class-admin-renderer.php | HTML rendering for dashboard, rosters, fees |
@@ -66,7 +66,7 @@ SportsPress filters event team dropdowns by `sp_league` AND `sp_season` taxonomy
 
 ## AJAX Endpoints
 
-All require `manage_league` capability + `splm_ajax_nonce` nonce.
+All require the `manage_sportspress` capability + `splm_ajax_nonce` nonce.
 
 | Action | POST Params | Returns |
 |--------|-------------|---------|
@@ -111,13 +111,13 @@ Key classes: `splm-wrap`, `splm-dashboard`, `splm-card`, `splm-card__title`, `sp
 
 ## Security Model
 
-1. All pages: `current_user_can('manage_league')`
-2. All AJAX: `check_ajax_referer('splm_ajax_nonce')` + `current_user_can('manage_league')`
+1. All pages: `current_user_can('manage_sportspress')` (via `SPLM_Capabilities::can_read()` / `can_manage()`)
+2. All AJAX: `check_ajax_referer('splm_ajax_nonce')` + `current_user_can('manage_sportspress')`
 3. File uploads: extension check (.csv only), size limit from option, `wp_check_filetype()`
 4. Output: all escaped (`esc_html`, `esc_attr`, `esc_url`)
 5. Input: all sanitized (`sanitize_text_field`, `absint`, `sanitize_email`)
 6. Admin settings: require `manage_options` (SPAT tab)
-7. Capability: added to administrator on activation, removed on deactivation, cleaned on uninstall
+7. Capability: gate is the SportsPress-core `manage_sportspress` cap — the plugin neither registers nor grants a custom capability (a custom `manage_league` cap was planned but not implemented)
 
 ## Extension Points
 

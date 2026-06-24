@@ -511,7 +511,11 @@ class SPLM_REST_API {
 				'home_score' => $home_score,
 				'away_score' => $away_score,
 				'status'     => $event->post_status,
-				'cancelled'  => (bool) get_post_meta( $event->ID, '_splm_cancelled', true ),
+				// Cancellation is owned by events-manager's cancel_game (which the
+				// dashboard's /games/{id}/cancel route delegates to); it writes
+				// _spem_cancelled. The previously-read _splm_cancelled is never
+				// written by anything, so this column was always false.
+				'cancelled'  => '1' === get_post_meta( $event->ID, '_spem_cancelled', true ),
 			);
 		}
 
@@ -709,6 +713,74 @@ class SPLM_REST_API {
 	 *
 	 * Falls back to sp_current_team if no season is specified.
 	 */
+	/**
+	 * Resolve player_id => team_id for an entire set of teams in one pass.
+	 *
+	 * The season-candidate query depends only on the season, not the team, so
+	 * running it once and grouping in PHP is O(players) instead of the
+	 * O(teams × players) the per-team helper incurred when called in a loop.
+	 *
+	 * @param array $team_ids Associative set of team IDs (team_id => truthy).
+	 * @param int   $season_id Season term ID, or 0 for current-team fallback.
+	 * @return array Map of player_id => team_id (only teams present in $team_ids).
+	 */
+	private function resolve_players_by_team_for_season( array $team_ids, $season_id = 0 ) {
+		$players_by_team = array();
+		if ( empty( $team_ids ) ) {
+			return $players_by_team;
+		}
+
+		if ( ! $season_id ) {
+			// No season: group by sp_current_team using a single IN query.
+			$player_ids = get_posts( array(
+				'post_type'      => 'sp_player',
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'no_found_rows'  => true,
+				'meta_query'     => array(
+					array( 'key' => 'sp_current_team', 'value' => array_keys( $team_ids ), 'compare' => 'IN' ),
+				),
+			) );
+			foreach ( $player_ids as $pid ) {
+				$tid = (int) get_post_meta( $pid, 'sp_current_team', true );
+				if ( isset( $team_ids[ $tid ] ) ) {
+					$players_by_team[ (int) $pid ] = $tid;
+				}
+			}
+			return $players_by_team;
+		}
+
+		// Season-scoped: fetch every season player ONCE, then group by team via
+		// the serialized sp_leagues meta (which the per-team helper re-queried).
+		$candidates = get_posts( array(
+			'post_type'      => 'sp_player',
+			'posts_per_page' => -1,
+			'fields'         => 'ids',
+			'no_found_rows'  => true,
+			'tax_query'      => array(
+				array( 'taxonomy' => 'sp_season', 'terms' => $season_id ),
+			),
+		) );
+
+		foreach ( $candidates as $pid ) {
+			$leagues = get_post_meta( $pid, 'sp_leagues', true );
+			if ( ! is_array( $leagues ) ) {
+				continue;
+			}
+			foreach ( $leagues as $seasons ) {
+				if ( is_array( $seasons ) && isset( $seasons[ $season_id ] ) ) {
+					$tid = (int) $seasons[ $season_id ];
+					if ( isset( $team_ids[ $tid ] ) ) {
+						$players_by_team[ (int) $pid ] = $tid;
+						break;
+					}
+				}
+			}
+		}
+
+		return $players_by_team;
+	}
+
 	private function get_players_for_team_season( $team_id, $season_id = 0 ) {
 		if ( ! $season_id ) {
 			return get_posts( array(
@@ -794,14 +866,10 @@ class SPLM_REST_API {
 			return $response;
 		}
 
-		// Resolve player_id => team_id for this season (sp_leagues is serialized,
-		// so we still walk the per-team helper to honor season-specific assignments).
-		$players_by_team = array();
-		foreach ( array_keys( $team_ids ) as $tid ) {
-			foreach ( $this->get_players_for_team_season( $tid, $season_id ) as $p ) {
-				$players_by_team[ (int) $p->ID ] = (int) $tid;
-			}
-		}
+		// Resolve player_id => team_id for this season in a single pass. The
+		// season-candidate query is team-independent, so this is O(players),
+		// not the O(teams × players) the per-team loop used to incur per page.
+		$players_by_team = $this->resolve_players_by_team_for_season( $team_ids, $season_id );
 
 		$total       = count( $players_by_team );
 		$total_pages = $per_page > 0 ? (int) ceil( $total / $per_page ) : 0;
@@ -1106,7 +1174,11 @@ class SPLM_REST_API {
 			return $validation;
 		}
 
-		$rows = array_map( 'str_getcsv', file( $files['file']['tmp_name'] ) );
+		// FILE_SKIP_EMPTY_LINES|FILE_IGNORE_NEW_LINES drops trailing-newline and
+		// blank rows so they don't consume the 5001 cap (a file with exactly
+		// 5000 data rows + trailing newline would otherwise lose its last row).
+		$lines = file( $files['file']['tmp_name'], FILE_SKIP_EMPTY_LINES | FILE_IGNORE_NEW_LINES );
+		$rows  = is_array( $lines ) ? array_map( 'str_getcsv', $lines ) : array();
 		if ( empty( $rows ) ) {
 			return new WP_Error( 'empty_file', 'CSV file is empty.', array( 'status' => 400 ) );
 		}
@@ -1224,14 +1296,20 @@ class SPLM_REST_API {
 
 			$list_id = 0;
 			if ( 'update' === $action ) {
+				// Build tax_query so the season clause is only added when a
+				// season is set — never push an empty array() element, which
+				// WP_Tax_Query mishandles and would match the wrong list.
+				$tax_query = array(
+					'relation' => 'AND',
+					array( 'taxonomy' => 'sp_team', 'terms' => $team_id ),
+				);
+				if ( $season_id ) {
+					$tax_query[] = array( 'taxonomy' => 'sp_season', 'terms' => $season_id );
+				}
 				$existing = get_posts( array(
 					'post_type'      => 'sp_list',
 					'posts_per_page' => 1,
-					'tax_query'      => array(
-						'relation' => 'AND',
-						array( 'taxonomy' => 'sp_team', 'terms' => $team_id ),
-						$season_id ? array( 'taxonomy' => 'sp_season', 'terms' => $season_id ) : array(),
-					),
+					'tax_query'      => $tax_query,
 				) );
 				if ( ! empty( $existing ) ) {
 					$list_id = $existing[0]->ID;
@@ -1661,8 +1739,6 @@ class SPLM_REST_API {
 			return new WP_REST_Response( splm_rest_list_response( array() ), 200 );
 		}
 
-		$q_like = $wpdb->esc_like( $q );
-
 		$by_name = get_posts( array(
 			'post_type'      => 'sp_player',
 			'posts_per_page' => $limit,
@@ -1679,7 +1755,10 @@ class SPLM_REST_API {
 				'post__not_in'   => wp_list_pluck( $by_name, 'ID' ),
 				'meta_query'     => array(
 					'relation' => 'OR',
-					array( 'key' => 'spt_email', 'value' => $q_like, 'compare' => 'LIKE' ),
+					// Pass raw $q — WP_Meta_Query escapes and %-wraps LIKE values
+					// itself; pre-escaping here double-escapes _ and % so emails
+					// containing them would never match.
+					array( 'key' => 'spt_email', 'value' => $q, 'compare' => 'LIKE' ),
 					array( 'key' => 'sp_number', 'value' => $q, 'compare' => '=' ),
 				),
 			) );
@@ -1718,6 +1797,12 @@ class SPLM_REST_API {
 		// Static allowlist — only these tables may be queried below.
 		$allowed_tables = array( $reg_table, $etransfer_table, $role_table );
 
+		// Payment payer names/amounts and role-assignment audit entries are
+		// sensitive — only surface them to users with the stricter manage
+		// capability (same gate as the /payments endpoint). Score-keepers with
+		// only edit_sp_events get the registration feed but not these branches.
+		$can_see_sensitive = $this->check_payments_permission();
+
 		$table_exists = function ( $table ) use ( $wpdb, $allowed_tables ) {
 			if ( ! in_array( $table, $allowed_tables, true ) ) {
 				return false;
@@ -1737,7 +1822,7 @@ class SPLM_REST_API {
 			}
 		}
 
-		if ( $table_exists( $etransfer_table ) ) {
+		if ( $can_see_sensitive && $table_exists( $etransfer_table ) ) {
 			// Hidden rows are flagged via result = 'Hidden from management' (see
 			// SPAT_Database::HIDDEN_STATUS); there is no is_hidden column.
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name validated against static allowlist above
@@ -1751,7 +1836,7 @@ class SPLM_REST_API {
 			}
 		}
 
-		if ( $table_exists( $role_table ) ) {
+		if ( $can_see_sensitive && $table_exists( $role_table ) ) {
 			// spat_role_logs schema (parent class-database.php): id, timestamp,
 			// user_id, user_name, action. There is no user_login or role_added
 			// column — using those silently returns no rows.
@@ -1777,7 +1862,11 @@ class SPLM_REST_API {
 	 * POST /scores/batch — update scores for multiple games at once.
 	 */
 	public function batch_update_scores( $request ) {
-		$scores  = $request->get_json_params()['scores'] ?? array();
+		$params = $request->get_json_params();
+		if ( ! is_array( $params ) ) {
+			return new WP_Error( 'invalid_payload', 'Request body must be a JSON object.', array( 'status' => 400 ) );
+		}
+		$scores = ( isset( $params['scores'] ) && is_array( $params['scores'] ) ) ? $params['scores'] : array();
 		$updated = 0;
 		$errors  = array();
 
@@ -1853,7 +1942,10 @@ class SPLM_REST_API {
 	 * POST /user/preferences — save dashboard card visibility and filters.
 	 */
 	public function save_user_preferences( $request ) {
-		$prefs   = $request->get_json_params();
+		$prefs = $request->get_json_params();
+		if ( ! is_array( $prefs ) ) {
+			return new WP_Error( 'invalid_payload', 'Request body must be a JSON object.', array( 'status' => 400 ) );
+		}
 		$user_id = get_current_user_id();
 
 		if ( isset( $prefs['dashboard_layout'] ) && is_array( $prefs['dashboard_layout'] ) ) {
@@ -1873,7 +1965,10 @@ class SPLM_REST_API {
 	 * POST /skills/calculate — bulk calculate skill levels from SportsPress stats.
 	 */
 	public function calculate_skills( $request ) {
-		$params    = $request->get_json_params();
+		$params = $request->get_json_params();
+		if ( ! is_array( $params ) ) {
+			return new WP_Error( 'invalid_payload', 'Request body must be a JSON object.', array( 'status' => 400 ) );
+		}
 		$league_id = absint( $params['league_id'] ?? 0 );
 		$season_id = absint( $params['season_id'] ?? 0 );
 
@@ -1892,7 +1987,10 @@ class SPLM_REST_API {
 	 * POST /standings/generate — create a league table for a league/season.
 	 */
 	public function generate_standings( $request ) {
-		$params    = $request->get_json_params();
+		$params = $request->get_json_params();
+		if ( ! is_array( $params ) ) {
+			return new WP_Error( 'invalid_payload', 'Request body must be a JSON object.', array( 'status' => 400 ) );
+		}
 		$league_id = absint( $params['league_id'] ?? 0 );
 		$season_id = absint( $params['season_id'] ?? 0 );
 
@@ -2104,22 +2202,30 @@ class SPLM_REST_API {
 		}
 
 		$build_team = function ( $team_id ) use ( $stat_keys, $season_id ) {
-			$players   = get_posts( array(
+			// M6/N+1: cap at 5000 rows and fetch IDs only, then prime the meta
+			// cache in one query so the per-player get_post_meta calls below
+			// don't each hit the DB (matches the bounded pattern used by
+			// compare_teams head-to-head and the skill-distribution endpoint).
+			$player_ids = get_posts( array(
 				'post_type'      => 'sp_player',
-				'posts_per_page' => -1,
+				'posts_per_page' => 5000,
+				'fields'         => 'ids',
 				'meta_query'     => array( array( 'key' => 'sp_current_team', 'value' => $team_id ) ),
 			) );
+			if ( ! empty( $player_ids ) ) {
+				update_meta_cache( 'post', $player_ids );
+			}
 			$skill_sum = 0;
 			$skill_cnt = 0;
 			$stats     = array_fill_keys( $stat_keys, 0 );
 
-			foreach ( $players as $p ) {
-				$sl = (int) get_post_meta( $p->ID, 'spt_skill_level', true );
+			foreach ( $player_ids as $pid ) {
+				$sl = (int) get_post_meta( $pid, 'spt_skill_level', true );
 				if ( $sl > 0 ) {
 					$skill_sum += $sl;
 					$skill_cnt++;
 				}
-				$sp_stats = get_post_meta( $p->ID, 'sp_statistics', true );
+				$sp_stats = get_post_meta( $pid, 'sp_statistics', true );
 				if ( ! is_array( $sp_stats ) ) {
 					continue;
 				}
@@ -2140,7 +2246,7 @@ class SPLM_REST_API {
 
 			return array(
 				'name'      => get_the_title( $team_id ),
-				'players'   => count( $players ),
+				'players'   => count( $player_ids ),
 				'avg_skill' => $skill_cnt ? round( $skill_sum / $skill_cnt, 1 ) : 0,
 				'stats'     => $stats,
 			);
@@ -2183,10 +2289,12 @@ class SPLM_REST_API {
 		$stat_keys    = apply_filters( 'splm_report_stat_keys', get_option( 'splm_report_stat_keys', array( 'p', 'g', 'a', 'pim', 'gaa' ) ), $season_id );
 		$leader_count = (int) apply_filters( 'splm_report_leader_count', get_option( 'splm_report_leader_count', 10 ), '', $season_id );
 
-		// Standings tables.
+		// Standings tables. Bounded to 5000 rows to protect against unbounded
+		// memory/timeout on very large seasons (matches the cap pattern used
+		// elsewhere in this file).
 		$tables    = get_posts( array(
 			'post_type'      => 'sp_table',
-			'posts_per_page' => -1,
+			'posts_per_page' => 5000,
 			'tax_query'      => array( array( 'taxonomy' => 'sp_season', 'terms' => $season_id ) ),
 		) );
 		$divisions = array();
@@ -2197,13 +2305,18 @@ class SPLM_REST_API {
 			$divisions[] = array( 'name' => $league_name, 'table_id' => $t->ID );
 		}
 
-		// Stat leaders.
+		// Stat leaders. Cap at 5000 and prime the meta cache in one query so
+		// the per-player get_post_meta loop below doesn't run unbounded N+1
+		// queries (matches the bounded + bulk-prime pattern in compare_teams).
 		$player_ids = get_posts( array(
 			'post_type'      => 'sp_player',
-			'posts_per_page' => -1,
+			'posts_per_page' => 5000,
 			'tax_query'      => array( array( 'taxonomy' => 'sp_season', 'terms' => $season_id ) ),
 			'fields'         => 'ids',
 		) );
+		if ( ! empty( $player_ids ) ) {
+			update_meta_cache( 'post', $player_ids );
+		}
 
 		$leaders = array_fill_keys( $stat_keys, array() );
 		foreach ( $player_ids as $pid ) {
@@ -2240,19 +2353,31 @@ class SPLM_REST_API {
 		}
 		unset( $list );
 
-		// Game counts.
+		// Game counts. Cap at 5000 and prime the meta cache in one query so the
+		// per-event get_post_meta loop below avoids N+1 queries.
 		$event_ids = get_posts( array(
 			'post_type'      => 'sp_event',
-			'posts_per_page' => -1,
+			'posts_per_page' => 5000,
 			'tax_query'      => array( array( 'taxonomy' => 'sp_season', 'terms' => $season_id ) ),
 			'fields'         => 'ids',
 		) );
+		if ( ! empty( $event_ids ) ) {
+			update_meta_cache( 'post', $event_ids );
+		}
 		$played    = 0;
 		$cancelled = 0;
 		foreach ( $event_ids as $eid ) {
-			if ( get_post_meta( $eid, 'sp_status', true ) === 'cancelled' ) {
+			// _spem_cancelled is the real cancellation flag (events-manager);
+			// the previous read of 'sp_status' === 'cancelled' was never set.
+			if ( '1' === get_post_meta( $eid, '_spem_cancelled', true ) ) {
 				$cancelled++;
-			} elseif ( is_array( get_post_meta( $eid, 'sp_results', true ) ) ) {
+				continue;
+			}
+			// A non-empty sp_results array isn't enough: import_games seeds
+			// sp_results to an empty array, which still satisfies is_array().
+			// Count as played only when an actual score value is present.
+			$results = get_post_meta( $eid, 'sp_results', true );
+			if ( is_array( $results ) && self::results_have_score( $results ) ) {
 				$played++;
 			}
 		}
@@ -2263,6 +2388,28 @@ class SPLM_REST_API {
 			'leaders'   => $leaders,
 			'games'     => array( 'scheduled' => count( $event_ids ), 'played' => $played, 'cancelled' => $cancelled, 'remaining' => count( $event_ids ) - $played - $cancelled ),
 		), 200 );
+	}
+
+	/**
+	 * Whether an sp_results meta value carries an actual recorded score.
+	 *
+	 * sp_results is array( team_id => array( result_key => value ) ). An empty
+	 * array (seeded by import_games) or rows with only blank values mean the
+	 * game has no score yet, so it must not be counted as "played".
+	 *
+	 * @param array $results Decoded sp_results meta.
+	 * @return bool
+	 */
+	private static function results_have_score( $results ) {
+		foreach ( $results as $team_result ) {
+			$values = is_array( $team_result ) ? $team_result : array( $team_result );
+			foreach ( $values as $value ) {
+				if ( '' !== $value && null !== $value && false !== $value ) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -2409,9 +2556,15 @@ class SPLM_REST_API {
 
 	/**
 	 * Permission: write notes.
+	 *
+	 * Mirror the manage-level gate (manage_sportspress) used by the rest of
+	 * the dashboard so a manager who can READ notes can also ADD them. The
+	 * read gate (check_notes_permission) allows manage_sportspress /
+	 * edit_others_sp_players; previously requiring manage_options meant a
+	 * SportsPress manager saw the control but got a 403 on submit.
 	 */
 	public function check_notes_write_permission() {
-		return current_user_can( 'manage_options' );
+		return SPLM_Capabilities::can_manage();
 	}
 
 	/**

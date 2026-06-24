@@ -1,10 +1,39 @@
 /* League Manager Dashboard — Mobile-first styles */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* UI-14: consolidated color palette. Single source of truth so inline styles
+   and classes stop diverging (#2271b1 vs #2563eb, #d63638 vs #dc2626). */
+:root {
+	--splm-primary: #2563eb;
+	--splm-primary-dark: #1d4ed8;
+	--splm-danger: #dc2626;
+	--splm-danger-dark: #b91c1c;
+	--splm-success: #16a34a;
+	--splm-warning: #ca8a04;
+	--splm-warn-amber: #dba617;
+	--splm-text: #1e293b;
+	--splm-muted: #64748b;
+	--splm-border: #cbd5e1;
+	--splm-border-light: #e2e8f0;
+	--splm-focus: #2563eb;
+}
+
 .splm-dashboard-body {
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 	background: #f0f2f5;
-	min-height: 100vh;
+	/* UI-2/UX-21: dvh (not vh) and let content define height; flex column below
+	   so the footer/nav size themselves instead of a magic-number calc(). */
+	min-height: 100dvh;
+	display: flex;
+	flex-direction: column;
+}
+
+/* UX-1/UX-2: single global keyboard focus ring covering nav items, buttons,
+   inputs, score buttons and role=button spans. Never pair outline:none with a
+   low-contrast border. */
+:focus-visible {
+	outline: 2px solid var(--splm-focus);
+	outline-offset: 2px;
 }
 
 /* Header */
@@ -22,10 +51,16 @@
 .splm-header__title { font-size: 1.1rem; font-weight: 600; }
 .splm-header__meta { display: flex; gap: 1rem; align-items: center; font-size: 0.85rem; }
 .splm-header__season { opacity: 0.7; }
-.splm-header__logout { color: #94a3b8; text-decoration: none; }
+/* UX-13: logout link lightened to meet contrast on the dark #1e293b header. */
+.splm-header__logout { color: #cbd5e1; text-decoration: none; }
+.splm-header__logout:hover { color: #fff; text-decoration: underline; }
 
 /* Layout */
-.splm-layout { display: flex; min-height: calc(100vh - 56px - 60px); }
+/* UI-2/UI-3/UX-21: drop the magic-number full-viewport min-height. flex:1 lets
+   .splm-layout fill the column the body provides, so short pages no longer
+   leave a full-screen white void below the content. */
+.splm-app { display: flex; flex-direction: column; flex: 1; }
+.splm-layout { display: flex; flex: 1; }
 .splm-sidebar { display: none; }
 .splm-content { flex: 1; padding: 1rem; max-width: 900px; margin: 0 auto; width: 100%; }
 
@@ -46,7 +81,11 @@
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	padding: 0.5rem;
+	justify-content: center;
+	/* UI-9: ≥44px touch target (6 cells of min-width 60px = 360px fits). */
+	min-height: 56px;
+	min-width: 0;
+	padding: 0.5rem 0.25rem;
 	border: none;
 	background: none;
 	cursor: pointer;
@@ -67,7 +106,6 @@
 		border-right: 1px solid #e2e8f0;
 		padding: 1rem 0;
 	}
-	.splm-layout { min-height: calc(100vh - 56px); }
 	.splm-content { padding: 2rem; }
 }
 
@@ -86,6 +124,19 @@
 }
 .splm-nav-item:hover { background: #f1f5f9; }
 .splm-nav-item--active { background: #eff6ff; color: #2563eb; font-weight: 500; }
+
+/* UX-3/UI-8: SVG structural icons size/color via currentColor. */
+.splm-nav-item__icon,
+.splm-mobile-nav__icon,
+.splm-more-menu__item .splm-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+.splm-nav-item__icon .splm-icon { width: 18px; height: 18px; }
+.splm-mobile-nav__icon .splm-icon { width: 22px; height: 22px; }
+.splm-more-menu__item .splm-icon { width: 18px; height: 18px; }
+.splm-icon { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* Cards */
 .splm-card {
@@ -111,12 +162,16 @@
 }
 .splm-game-list__date { color: #64748b; min-width: 100px; }
 .splm-game-list__teams { font-weight: 500; }
-.splm-game-list__venue { color: #94a3b8; }
+/* UX-13: was #94a3b8 (~2.3:1 on white) → #64748b for WCAG AA. */
+.splm-game-list__venue { color: #64748b; }
 
 /* Buttons */
 .splm-btn {
 	padding: 0.5rem 1rem;
-	border: 1px solid #e2e8f0;
+	/* UI-1: explicit text color + visible border so secondary (white) buttons
+	   are legible and not white-on-white. */
+	color: var(--splm-text);
+	border: 1px solid var(--splm-border);
 	border-radius: 6px;
 	background: #fff;
 	cursor: pointer;
@@ -124,9 +179,10 @@
 	font-weight: 500;
 }
 .splm-btn:hover { background: #f8fafc; }
-.splm-btn--primary { background: #2563eb; color: #fff; border-color: #2563eb; }
-.splm-btn--primary:hover { background: #1d4ed8; }
-.splm-btn--danger { color: #dc2626; border-color: #fecaca; }
+.splm-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.splm-btn--primary { background: var(--splm-primary); color: #fff; border-color: var(--splm-primary); }
+.splm-btn--primary:hover { background: var(--splm-primary-dark); }
+.splm-btn--danger { color: var(--splm-danger); border-color: #fecaca; }
 .splm-btn--danger:hover { background: #fef2f2; }
 .splm-btn--small { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
 .splm-btn--large { width: 100%; padding: 1rem; font-size: 1.1rem; margin-top: 1.5rem; }
@@ -145,7 +201,23 @@
 	font-size: 0.85rem;
 }
 .splm-alert--warning { background: #fef3c7; border: 1px solid #f59e0b; }
+/* UI-7: success alert variant. */
+.splm-alert--success { background: #dcfce7; border: 1px solid var(--splm-success); color: #14532d; }
+/* UI-14: error alert variant (replaces inline #fcf0f0/#d63638). */
+.splm-alert--error { background: #fcf0f0; border: 1px solid var(--splm-danger); color: #7f1d1d; }
 .splm-alert__action { background: none; border: none; color: #2563eb; cursor: pointer; font-weight: 500; }
+
+/* UI-4: generic badge pill (mirrors .splm-game-card__badge). */
+.splm-badge {
+	display: inline-block;
+	padding: 0.15rem 0.5rem;
+	border-radius: 4px;
+	font-size: 0.75rem;
+	font-weight: 600;
+	background: #e2e8f0;
+	color: #334155;
+}
+.splm-badge--warning { background: #fef3c7; color: #854d0e; }
 
 /* Schedule */
 .splm-schedule__date { font-size: 0.9rem; color: #475569; margin: 1.5rem 0 0.5rem; padding-bottom: 0.25rem; border-bottom: 1px solid #e2e8f0; }
@@ -163,7 +235,7 @@
 .splm-game-card__info { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; font-size: 0.85rem; }
 .splm-game-card__time { color: #64748b; font-weight: 500; }
 .splm-game-card__matchup { font-weight: 600; }
-.splm-game-card__venue { color: #94a3b8; }
+.splm-game-card__venue { color: #64748b; } /* UX-13 */
 .splm-game-card__score { background: #f0fdf4; padding: 0.15rem 0.5rem; border-radius: 4px; font-weight: 600; color: #166534; }
 .splm-game-card__badge { background: #fee2e2; color: #991b1b; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; }
 .splm-game-card__actions { display: flex; gap: 0.25rem; }
@@ -219,7 +291,8 @@
 	justify-content: center;
 }
 .splm-score-btn:active { background: #f1f5f9; }
-.splm-score-entry__saved { font-size: 1.5rem; padding: 3rem; }
+.splm-score-entry__saved { padding: 2rem 1rem; }
+.splm-score-entry__after-save { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-top: 1rem; }
 
 /* Standings table */
 .splm-table-wrapper { overflow-x: auto; }
@@ -232,7 +305,7 @@
 
 /* Utilities */
 .splm-loading { text-align: center; padding: 3rem; color: #64748b; }
-.splm-empty { color: #94a3b8; font-style: italic; }
+.splm-empty { color: #64748b; font-style: italic; } /* UX-13: was #94a3b8 */
 .splm-empty-state { padding: 3rem; text-align: center; font-size: 1.2rem; }
 h2 { font-size: 1.3rem; margin-bottom: 1rem; color: #1e293b; }
 
@@ -422,13 +495,34 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: #1e293b; }
 	max-width: 120px;
 }
 
+/* UX-8: editable cell trigger — a real button with a visible pencil affordance
+   that surfaces on hover/focus. */
+.splm-editable {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	border: none;
+	background: none;
+	padding: 2px 4px;
+	border-radius: 3px;
+	cursor: pointer;
+	font: inherit;
+	color: inherit;
+	text-align: left;
+}
+.splm-editable:hover { background: #f1f5f9; }
+.splm-editable .splm-icon { opacity: 0; color: var(--splm-muted); transition: opacity 0.12s; }
+.splm-editable:hover .splm-icon,
+.splm-editable:focus-visible .splm-icon { opacity: 1; }
+
+/* UI-14: keep the filled-on-hover danger affordance but use the shared token. */
 .splm-btn--danger {
-	color: #cc1818;
-	border-color: #cc1818;
+	color: var(--splm-danger);
+	border-color: var(--splm-danger);
 }
 
 .splm-btn--danger:hover {
-	background: #cc1818;
+	background: var(--splm-danger);
 	color: #fff;
 }
 
@@ -442,7 +536,9 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: #1e293b; }
 .splm-player-stats__table th { background: #f9fafb; font-weight: 600; font-size: 0.75rem; }
 .splm-player-stats__table td:first-child { text-align: left; white-space: nowrap; }
 .splm-player-stats__input { width: 3em; padding: 0.2rem; text-align: center; border: 1px solid #d1d5db; border-radius: 3px; font-size: 0.85rem; }
-.splm-player-stats__input:focus { outline: none; border-color: #3b82f6; }
+/* UX-2: keep the border accent but rely on the global :focus-visible ring for
+   the keyboard cue instead of stripping the outline entirely. */
+.splm-player-stats__input:focus { border-color: #3b82f6; }
 .splm-player-stats__toggle { margin: 0.75rem 0; cursor: pointer; }
 .splm-player-stats__toggle summary { color: #3b82f6; font-weight: 500; cursor: pointer; }
 .splm-muted { color: #6b7280; font-size: 0.85rem; }
@@ -452,7 +548,9 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: #1e293b; }
 /* Schedule Wizard */
 .splm-wizard { max-width: 700px; }
 .splm-wizard__step { margin-top: 1rem; }
-.splm-checkbox-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.25rem 1rem; }
+/* UI-15: even row rhythm even when team names wrap to two lines. */
+.splm-checkbox-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.25rem 1rem; grid-auto-rows: minmax(2rem, auto); align-items: start; }
+.splm-checkbox-grid .splm-checkbox { margin-top: 0; align-items: flex-start; }
 @media (min-width: 768px) { .splm-checkbox-grid { grid-template-columns: repeat(3, 1fr); } }
 .splm-wizard__actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
 
@@ -461,7 +559,16 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: #1e293b; }
 .splm-captain-badge--active { opacity: 1; color: #ca8a04; }
 
 /* Registration badge */
-.splm-reg-badge { font-size: 0.9rem; }
+/* UI-6: registered yes/no get a text/color cue, not emoji-color alone. */
+.splm-reg-badge {
+	display: inline-block;
+	padding: 0.1rem 0.45rem;
+	border-radius: 4px;
+	font-size: 0.75rem;
+	font-weight: 600;
+}
+.splm-reg-badge--yes { background: #dcfce7; color: #166534; }
+.splm-reg-badge--no { background: #fee2e2; color: #991b1b; }
 
 /* CSV upload */
 .splm-csv-upload { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
@@ -475,6 +582,71 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: #1e293b; }
 	0%, 100% { opacity: 1; }
 	50% { opacity: 0.4; }
 }
+
+/* Respect reduced-motion (frontend-design / a11y): no infinite pulse. */
+@media (prefers-reduced-motion: reduce) {
+	*, *::before, *::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
+}
+
+/* UI-13: in-app toast (replaces window.alert for success feedback). */
+.splm-toast {
+	position: fixed;
+	left: 50%;
+	bottom: 5rem;
+	transform: translateX(-50%);
+	z-index: 2000;
+	max-width: 90vw;
+	padding: 0.75rem 1.25rem;
+	border-radius: 8px;
+	box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+	font-size: 0.9rem;
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	background: #dcfce7;
+	border: 1px solid var(--splm-success);
+	color: #14532d;
+}
+.splm-toast--error { background: #fcf0f0; border-color: var(--splm-danger); color: #7f1d1d; }
+.splm-toast__close { background: none; border: none; cursor: pointer; font-size: 1rem; color: inherit; line-height: 1; }
+@media (min-width: 768px) { .splm-toast { bottom: 1.5rem; } }
+
+/* UX-4: wizard step indicator (real <ol>). */
+.splm-stepper { list-style: none; display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; padding: 0; }
+.splm-stepper__item { flex: 1; min-width: 140px; }
+.splm-stepper__btn {
+	width: 100%;
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.5rem 0.75rem;
+	border: 1px solid var(--splm-border);
+	border-radius: 6px;
+	background: #fff;
+	color: var(--splm-text);
+	cursor: pointer;
+	font-size: 0.85rem;
+	font-weight: 500;
+	text-align: left;
+}
+.splm-stepper__btn:hover:not(:disabled) { background: #f8fafc; }
+.splm-stepper__btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.splm-stepper__item--current .splm-stepper__btn { border-color: var(--splm-primary); background: #eff6ff; color: var(--splm-primary); }
+.splm-stepper__num {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px; height: 22px;
+	border-radius: 50%;
+	background: var(--splm-border-light);
+	font-size: 0.75rem;
+	flex-shrink: 0;
+}
+.splm-stepper__item--current .splm-stepper__num { background: var(--splm-primary); color: #fff; }
 
 /* Screen reader only text (standard WP pattern) */
 .screen-reader-text {
@@ -516,7 +688,7 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: #1e293b; }
 .splm-skill-dist { margin-top: 12px; }
 .splm-skill-dist__bar { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
 .splm-skill-dist__label { width: 20px; text-align: right; font-size: 12px; font-weight: 600; }
-.splm-skill-dist__fill { height: 16px; background: #2271b1; border-radius: 2px; min-width: 2px; transition: width 0.3s; }
+.splm-skill-dist__fill { height: 16px; background: var(--splm-primary); border-radius: 2px; min-width: 2px; transition: width 0.3s; } /* UI-14 */
 .splm-skill-dist__count { font-size: 12px; color: #646970; }
 
 .splm-team-compare__selectors { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }

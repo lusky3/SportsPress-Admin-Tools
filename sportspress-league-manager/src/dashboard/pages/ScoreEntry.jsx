@@ -1,4 +1,4 @@
-import { useState, useEffect } from '@wordpress/element';
+import { useState, useEffect, useCallback, useRef } from '@wordpress/element';
 import { fetchGames, updateScore, fetchGamePlayers, saveGamePlayers, batchUpdateScores } from '../lib/api';
 
 function GameNight( { season } ) {
@@ -211,32 +211,33 @@ export default function ScoreEntry( { season } ) {
 	const [ scoreSubmitted, setScoreSubmitted ] = useState( false );
 	const [ showingAll, setShowingAll ] = useState( false );
 	const [ mode, setMode ] = useState( 'single' );
+	// UX-10: incrementing key forces the role=status node to remount each save
+	// so screen readers re-announce "Score saved!" on the 2nd, 3rd… game.
+	const [ saveAnnounceKey, setSaveAnnounceKey ] = useState( 0 );
 
-	const loadGames = ( params ) => {
+	// UI-5: single cancel-guarded loader shared by the mount effect AND the
+	// "show all" button, so we never setState after unmount and don't duplicate
+	// the filter logic. liveRef tracks the latest in-flight request.
+	const liveRef = useRef( 0 );
+
+	const loadGames = useCallback( ( params ) => {
+		const token = ++liveRef.current;
 		setLoading( true );
 		fetchGames( params ).then( ( data ) => {
+			if ( token !== liveRef.current ) return; // stale / unmounted
 			const today = new Date().toISOString().split( 'T' )[ 0 ];
 			const needScores = data.filter( ( g ) => g.date <= today && g.home_score === null && ! g.cancelled );
 			setGames( needScores );
 			setCurrent( 0 );
 			setLoading( false );
-		} ).catch( () => setLoading( false ) );
-	};
+		} ).catch( () => { if ( token === liveRef.current ) setLoading( false ); } );
+	}, [] );
 
 	useEffect( () => {
-		let cancelled = false;
-		const params = season ? { season } : {};
-		setLoading( true );
-		fetchGames( params ).then( ( data ) => {
-			if ( cancelled ) return;
-			const today = new Date().toISOString().split( 'T' )[ 0 ];
-			const needScores = data.filter( ( g ) => g.date <= today && g.home_score === null && ! g.cancelled );
-			setGames( needScores );
-			setCurrent( 0 );
-			setLoading( false );
-		} ).catch( () => { if ( ! cancelled ) setLoading( false ); } );
-		return () => { cancelled = true; };
-	}, [ season ] );
+		loadGames( season ? { season } : {} );
+		// Invalidate any in-flight request on unmount / season change.
+		return () => { liveRef.current++; };
+	}, [ season, loadGames ] );
 
 	const loadAllUnscored = () => {
 		setShowingAll( true );
@@ -265,6 +266,7 @@ export default function ScoreEntry( { season } ) {
 		try {
 			await updateScore( game.id, homeScore, awayScore );
 			setSaved( true );
+			setSaveAnnounceKey( ( k ) => k + 1 ); // UX-10: re-announce each save
 			setSaving( false );
 		} catch ( err ) {
 			setError( err?.message || 'Failed to save score' );
@@ -318,22 +320,24 @@ export default function ScoreEntry( { season } ) {
 			</p>
 
 			{ saved && ! showStats ? (
-				<div className="splm-score-entry__saved" role="alert">
-					<p>✅ Score saved!</p>
-					<details className="splm-player-stats__toggle" onToggle={ ( e ) => {
-						if ( e.target.open ) setShowStats( true );
-					} }>
-						<summary>Enter Player Stats</summary>
-					</details>
-					{ ! showStats && (
+				<div className="splm-score-entry__saved">
+					<div className="splm-alert splm-alert--success" role="status" key={ saveAnnounceKey }>
+						Score saved!
+					</div>
+					{ /* UX-10: explicit toggle button instead of an empty
+					     summary-only <details> whose purpose was unclear. */ }
+					<div className="splm-score-entry__after-save">
+						<button className="splm-btn splm-btn--primary" onClick={ () => setShowStats( true ) }>
+							Enter Player Stats
+						</button>
 						<button className="splm-btn splm-btn--secondary" onClick={ advanceToNext }>
 							Skip → Next Game
 						</button>
-					) }
+					</div>
 				</div>
 			) : showStats && scoreSubmitted ? (
 				<div>
-					<div className="splm-score-entry__saved" role="alert">✅ Score saved!</div>
+					<div className="splm-alert splm-alert--success" role="status" key={ saveAnnounceKey }>Score saved!</div>
 					<PlayerStats gameId={ game.id } onDone={ advanceToNext } />
 				</div>
 			) : (

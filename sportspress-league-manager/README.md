@@ -98,7 +98,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full technical architecture docum
 
 **Key design decisions:**
 - `SPLM_` class prefix, `splm_` option/meta prefix
-- `manage_league` capability (not `manage_options`)
+- `manage_sportspress` capability gate (not `manage_options`)
 - Read-only SportsPress data access via `SPLM_SportsPress_Data` facade
 - Parent plugin controls module enable/disable and admin-only settings
 - All output escaped, all input sanitized, all AJAX handlers verify nonce + capability

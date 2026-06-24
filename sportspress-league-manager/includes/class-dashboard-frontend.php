@@ -96,7 +96,8 @@ class SPLM_Dashboard_Frontend {
 		$asset_file = SPLM_PLUGIN_PATH . 'build/index.asset.php';
 		$script_file = SPLM_PLUGIN_PATH . 'build/index.js';
 
-		// build/ is gitignored — a deploy that forgot `npm run build` would
+		// build/ is committed to the repo, but a checkout or deploy that is
+		// missing it (e.g. a fresh source tree before `npm run build`) would
 		// otherwise enqueue a 404'd bundle and silently render an empty
 		// <div id="splm-dashboard">. Surface a clear admin notice instead.
 		if ( ! file_exists( $script_file ) ) {

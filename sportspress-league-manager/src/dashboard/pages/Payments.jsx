@@ -109,7 +109,7 @@ export default function Payments( { season } ) {
 					<div className="splm-pager" style={ { display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '1rem' } }>
 						<button
 							type="button"
-							className="button"
+							className="splm-btn"
 							onClick={ () => setPage( ( p ) => Math.max( 1, p - 1 ) ) }
 							disabled={ page <= 1 }
 						>
@@ -121,7 +121,7 @@ export default function Payments( { season } ) {
 						</span>
 						<button
 							type="button"
-							className="button"
+							className="splm-btn"
 							onClick={ () => setPage( ( p ) => ( totalPages ? Math.min( totalPages, p + 1 ) : p + 1 ) ) }
 							disabled={ totalPages ? page >= totalPages : payments.length < PER_PAGE }
 						>

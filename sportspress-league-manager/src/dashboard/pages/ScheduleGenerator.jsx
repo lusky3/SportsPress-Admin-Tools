@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Fragment } from '@wordpress/element';
 import { spsg } from '../lib/api';
 import { rolloverPreview, rolloverExecute } from '../lib/api';
+import Toast from '../components/Toast';
+
+const WIZARD_STEPS = [ 'Teams & Season', 'Rinks & Times', 'Review & Generate' ];
 
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
 const DL = {monday:'Mon',tuesday:'Tue',wednesday:'Wed',thursday:'Thu',friday:'Fri',saturday:'Sat',sunday:'Sun'};
@@ -41,7 +44,7 @@ function Cap({cfg}) {
 		}
 	}
 	const pct = avail ? Math.round(need/avail*100) : 999;
-	const col = pct>95||need>avail ? '#d63638' : pct>80 ? '#dba617' : '#00a32a';
+	const col = pct>95||need>avail ? 'var(--splm-danger)' : pct>80 ? 'var(--splm-warn-amber)' : 'var(--splm-success)';
 	return (
 		<div className="splm-card" style={{marginTop:'1rem'}}>
 			<strong>Capacity:</strong> {need} needed / {avail} available ({pct}%)
@@ -140,6 +143,9 @@ export default function ScheduleGenerator() {
 	// Import file ref
 	const importRef = useRef(null);
 	const tbdRef = useRef(0);
+	const [toast,setToast] = useState(null); // UX-7/in-app feedback {message,type}
+	const [presetOpen,setPresetOpen] = useState(false); // UX-6
+	const presetRef = useRef(null);
 
 	const loadConfigs = useCallback(() => {
 		setLoading(true);
@@ -152,6 +158,16 @@ export default function ScheduleGenerator() {
 		spsg.listPresets().then(setPresets).catch(()=>{});
 		spsg.getDistributionSettings().then(setDistSettings).catch(()=>{});
 	}, []);
+
+	// UX-6: dismiss the preset menu on outside click / Escape.
+	useEffect(() => {
+		if (!presetOpen) return undefined;
+		const onDown = (e) => { if (presetRef.current && !presetRef.current.contains(e.target)) setPresetOpen(false); };
+		const onKey = (e) => { if (e.key === 'Escape') setPresetOpen(false); };
+		document.addEventListener('mousedown', onDown);
+		document.addEventListener('keydown', onKey);
+		return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+	}, [presetOpen]);
 
 	const up = patch => {
 		setCfg(p => typeof patch === 'function' ? patch(p) : ({...p,...patch}));
@@ -167,6 +183,21 @@ export default function ScheduleGenerator() {
 	// Gap #1/#2/#16: only save if config has meaningful content
 	const hasContent = () => cfg.name.trim() || cfg.divisions.some(d => d.teams.length > 0);
 
+	// UX-4: per-step completion. Forward navigation is gated on the prior step
+	// being valid so a user can't reach Generate with an unconfigured wizard.
+	const stepComplete = (n) => {
+		if (n === 1) return !!cfg.start_date && !!cfg.end_date && cfg.divisions.some(d => d.teams.length >= 2);
+		if (n === 2) return cfg.venues.length > 0 && cfg.playing_days.some(d => (cfg.time_slots[d]||[]).length > 0);
+		return true;
+	};
+	// A step is reachable if it's the current/earlier step, or every step before
+	// it is complete.
+	const canReach = (target) => {
+		if (target <= step) return true;
+		for (let s = 1; s < target; s++) { if (!stepComplete(s)) return false; }
+		return true;
+	};
+
 	const save = async () => {
 		if (configId) { await spsg.updateConfig(configId,cfg); return configId; }
 		const r = await spsg.createConfig(cfg);
@@ -176,6 +207,11 @@ export default function ScheduleGenerator() {
 
 	// Save on step transitions, but skip if config is empty and unsaved, or same step (#17)
 	const go = async t => {
+		// UX-4: block forward navigation past an incomplete prior step.
+		if (t > step && !canReach(t)) {
+			setError('Complete the current step before continuing.');
+			return;
+		}
 		if (t !== step && step >= 1 && (configId || hasContent())) {
 			try { await save(); } catch { setError('Failed to save'); return; }
 		}
@@ -302,6 +338,15 @@ export default function ScheduleGenerator() {
 	const divisionOptions = useMemo(() => [...new Set((schedule?.games||[]).map(x=>x.division).filter(Boolean))], [schedule?.games]);
 	const teamOptions = useMemo(() => [...new Set((schedule?.games||[]).flatMap(x=>[x.home,x.away]).filter(Boolean))].sort(), [schedule?.games]);
 	const venueOptions = useMemo(() => [...new Set((schedule?.games||[]).map(x=>x.venue).filter(Boolean))].sort(), [schedule?.games]);
+	// UI-12: filter + sort the config list once per relevant input, not on every
+	// render (search keystrokes, history toggles, etc.).
+	const filteredConfigs = useMemo(() => {
+		return [...configs.filter(c=>!cfgSearch||c.name.toLowerCase().includes(cfgSearch.toLowerCase()))].sort((a,b)=>{
+			if(cfgSort==='name') return a.name.localeCompare(b.name);
+			if(cfgSort==='teams') return (b.team_count||0)-(a.team_count||0);
+			return 0; // default: server order (newest first)
+		});
+	}, [configs, cfgSearch, cfgSort]);
 	const configsWithDrafts = useMemo(() => {
 		const set = new Set();
 		try {
@@ -321,13 +366,32 @@ export default function ScheduleGenerator() {
 		<>
 		<div className="splm-wizard">
 			<h2>Schedule Generator</h2>
-			{error && <div className="splm-alert splm-alert--warning">{error}</div>}
+			<Toast message={toast?.message} type={toast?.type} onDismiss={()=>setToast(null)}/>
+			{error && <div className="splm-alert splm-alert--warning" role="alert">{error}</div>}
 			{step>0&&step<4&&(
-				<div style={{...f,marginBottom:'1rem'}}>
-					{['Teams & Season','Rinks & Times','Review & Generate'].map((l,i)=>(
-						<button key={i} className={`splm-btn${step===i+1?' splm-btn--primary':''}`} onClick={()=>go(i+1)}>{i+1}. {l}</button>
-					))}
-				</div>
+				<>
+				<p className="screen-reader-text" aria-live="polite">Step {step} of {WIZARD_STEPS.length}: {WIZARD_STEPS[step-1]}</p>
+				<ol className="splm-stepper">
+					{WIZARD_STEPS.map((l,i)=>{
+						const n=i+1;
+						const reachable=canReach(n);
+						return (
+							<li key={i} className={`splm-stepper__item${step===n?' splm-stepper__item--current':''}`} aria-current={step===n?'step':undefined}>
+								<button
+									type="button"
+									className="splm-stepper__btn"
+									onClick={()=>go(n)}
+									disabled={!reachable}
+									aria-label={`Step ${n} of ${WIZARD_STEPS.length}: ${l}`}
+								>
+									<span className="splm-stepper__num" aria-hidden="true">{n}</span>
+									<span>{l}</span>
+								</button>
+							</li>
+						);
+					})}
+				</ol>
+				</>
 			)}
 
 			{/* ── STEP 0: LAUNCHPAD ── */}
@@ -350,15 +414,11 @@ export default function ScheduleGenerator() {
 								</div>
 								<table className="splm-table">
 									<thead><tr><th>Name</th><th>Updated</th><th>Divisions</th><th>Teams</th><th></th></tr></thead>
-									<tbody>{[...configs.filter(c=>!cfgSearch||c.name.toLowerCase().includes(cfgSearch.toLowerCase()))].sort((a,b)=>{
-										if(cfgSort==='name') return a.name.localeCompare(b.name);
-										if(cfgSort==='teams') return (b.team_count||0)-(a.team_count||0);
-										return 0; // default: server order (newest first)
-									}).map(c=>(
+									<tbody>{filteredConfigs.map(c=>(
 										<Fragment key={c.id}>
 										<tr>
 											{/* Gap #4: inline rename */}
-											<td><input defaultValue={c.name} style={{border:'none',background:'transparent',width:'100%',padding:0}}
+											<td><input defaultValue={c.name} aria-label={`Rename configuration ${c.name}`} style={{border:'none',background:'transparent',width:'100%',padding:0}}
 												onBlur={async e=>{ if(e.target.value!==c.name){await spsg.updateConfig(c.id,{name:e.target.value});loadConfigs();} }}
 												onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}}/></td>
 											<td>{fmtDate(c.updated_at)}</td><td>{c.division_count}</td><td>{c.team_count}</td>
@@ -400,8 +460,8 @@ export default function ScheduleGenerator() {
 																<tr key={i}>
 																	<td>{fmtDateTime(e.timestamp)}</td>
 																	<td>{e.field_label||e.field}</td>
-																	<td style={{color:'#d63638',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.old_value}</td>
-																	<td style={{color:'#00a32a',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.new_value}</td>
+																	<td style={{color:'var(--splm-danger)',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.old_value}</td>
+																	<td style={{color:'var(--splm-success)',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.new_value}</td>
 																</tr>
 															))}</tbody>
 														</table>
@@ -417,7 +477,6 @@ export default function ScheduleGenerator() {
 											</tr>
 										)}
 										</Fragment>
-									))}
 									))}</tbody>
 								</table>
 							</div>
@@ -436,22 +495,26 @@ export default function ScheduleGenerator() {
 							}}>Start from {configs[0]?.name}</button>
 						)}
 						<button className="splm-btn" onClick={()=>{setCfg(blank());setConfigId(null);setStep(1);}}>Start Fresh</button>
-						{/* #1: Preset quick-start */}
+						{/* #1: Preset quick-start. UX-6: real button menu, keyboard
+						    activatable, dismiss on outside-click / Escape. */}
 						{presets&&Object.keys(presets).length>0&&(
-							<details style={{display:'inline-block'}}>
-								<summary className="splm-btn" style={{cursor:'pointer',listStyle:'none'}}>Use Preset ▾</summary>
-								<div style={{position:'absolute',background:'#fff',border:'1px solid #ddd',borderRadius:4,padding:'0.5rem',zIndex:10,minWidth:220,boxShadow:'0 2px 8px rgba(0,0,0,0.1)'}}>
-									{Object.entries(presets).map(([key,p])=>(
-										<div key={key} style={{padding:'0.4rem 0.5rem',cursor:'pointer',borderRadius:3}} onClick={async()=>{
-											const preset = await spsg.getPreset(key).catch(()=>null);
-											if (preset) { setCfg({...blank(),...preset,name:p.name}); setConfigId(null); setStep(1); }
-										}}>
-											<strong style={{display:'block'}}>{p.name}</strong>
-											<span style={{fontSize:'0.8em',color:'#646970'}}>{p.description}</span>
-										</div>
-									))}
-								</div>
-							</details>
+							<div style={{display:'inline-block',position:'relative'}} ref={presetRef}>
+								<button type="button" className="splm-btn" aria-haspopup="menu" aria-expanded={presetOpen} onClick={()=>setPresetOpen(o=>!o)}>Use Preset ▾</button>
+								{presetOpen&&(
+									<div role="menu" style={{position:'absolute',background:'#fff',border:'1px solid var(--splm-border)',borderRadius:4,padding:'0.5rem',zIndex:10,minWidth:220,boxShadow:'0 2px 8px rgba(0,0,0,0.1)'}}>
+										{Object.entries(presets).map(([key,p])=>(
+											<button key={key} type="button" role="menuitem" className="splm-more-menu__item" style={{flexDirection:'column',alignItems:'flex-start'}} onClick={async()=>{
+												setPresetOpen(false);
+												const preset = await spsg.getPreset(key).catch(()=>null);
+												if (preset) { setCfg({...blank(),...preset,name:p.name}); setConfigId(null); setStep(1); }
+											}}>
+												<strong style={{display:'block'}}>{p.name}</strong>
+												<span style={{fontSize:'0.8em',color:'var(--splm-muted)'}}>{p.description}</span>
+											</button>
+										))}
+									</div>
+								)}
+							</div>
 						)}
 						{/* Fix #7: import config */}
 						<button className="splm-btn" onClick={()=>importRef.current?.click()}>Import JSON</button>
@@ -459,7 +522,7 @@ export default function ScheduleGenerator() {
 					</div>
 					{/* #2: Import preview modal */}
 					{importPreview&&(
-						<div className="splm-card" style={{marginTop:'0.75rem',borderLeft:'3px solid #2271b1'}}>
+						<div className="splm-card" style={{marginTop:'0.75rem',borderLeft:'3px solid var(--splm-primary)'}}>
 							<h4>Import Preview</h4>
 							<table className="splm-table" style={{fontSize:'0.85em',marginBottom:'0.75rem'}}>
 								<tbody>
@@ -485,26 +548,26 @@ export default function ScheduleGenerator() {
 					<div className="splm-card">
 						<h3>Who &amp; When</h3>
 						<div style={g2}>
-							<div style={{gridColumn:'1/-1'}}><label>Config Name</label><input className="splm-select" value={cfg.name} onChange={e=>up({name:e.target.value})}/></div>
-							<div><label>Start Date</label><input type="date" className="splm-select" value={cfg.start_date} onChange={e=>up({start_date:e.target.value})}/></div>
-							<div><label>End Date</label><input type="date" className="splm-select" value={cfg.end_date} onChange={e=>up({end_date:e.target.value})}/></div>
-							<div><label>Games per Team</label><input type="number" className="splm-select" min="1" value={cfg.games_per_team} onChange={e=>up({games_per_team:parseInt(e.target.value,10)||0})}/>
+							<div style={{gridColumn:'1/-1'}}><label htmlFor="spsg-name">Config Name</label><input id="spsg-name" className="splm-select" value={cfg.name} onChange={e=>up({name:e.target.value})}/></div>
+							<div><label htmlFor="spsg-start">Start Date</label><input id="spsg-start" type="date" className="splm-select" value={cfg.start_date} onChange={e=>up({start_date:e.target.value})}/></div>
+							<div><label htmlFor="spsg-end">End Date</label><input id="spsg-end" type="date" className="splm-select" value={cfg.end_date} onChange={e=>up({end_date:e.target.value})}/></div>
+							<div><label htmlFor="spsg-gpt">Games per Team</label><input id="spsg-gpt" type="number" className="splm-select" min="1" value={cfg.games_per_team} onChange={e=>up({games_per_team:parseInt(e.target.value,10)||0})}/>
 							{/* #1: matchup feasibility hint */}
 							{(()=>{
 								const tt = cfg.divisions.reduce((s,d)=>s+d.teams.length,0);
 								if (tt < 2) return null;
 								const minGames = cfg.matchup_style==='single_round_robin' ? tt-1 : (tt-1)*2;
 								if (cfg.games_per_team > 0 && cfg.games_per_team !== minGames) {
-									return <p style={{fontSize:'0.8em',color:'#646970',marginTop:'0.2rem'}}>
+									return <p style={{fontSize:'0.8em',color:'var(--splm-muted)',marginTop:'0.2rem'}}>
 										{tt} teams × {cfg.matchup_style==='double_round_robin'?'double':'single'} RR = {minGames} games/team
 									</p>;
 								}
 								return null;
 							})()}
 						</div>
-							<div><label>Match Length (min)</label><input type="number" className="splm-select" min="1" value={cfg.match_length} onChange={e=>up({match_length:parseInt(e.target.value,10)||60})}/></div>
-							<div><label>Matchup Style</label>
-								<select className="splm-select" value={cfg.matchup_style} onChange={e=>up({matchup_style:e.target.value})}>
+							<div><label htmlFor="spsg-mlen">Match Length (min)</label><input id="spsg-mlen" type="number" className="splm-select" min="1" value={cfg.match_length} onChange={e=>up({match_length:parseInt(e.target.value,10)||60})}/></div>
+							<div><label htmlFor="spsg-style">Matchup Style</label>
+								<select id="spsg-style" className="splm-select" value={cfg.matchup_style} onChange={e=>up({matchup_style:e.target.value})}>
 									<option value="single_round_robin">Single Round Robin</option>
 									<option value="double_round_robin">Double Round Robin</option>
 								</select>
@@ -536,7 +599,7 @@ export default function ScheduleGenerator() {
 						</div>
 						{/* Fix #12: generic_teams auto-fill */}
 						<details style={{marginBottom:'0.75rem'}}>
-							<summary style={{cursor:'pointer',color:'#646970'}}>TBD Team Auto-fill</summary>
+							<summary style={{cursor:'pointer',color:'var(--splm-muted)'}}>TBD Team Auto-fill</summary>
 							<div style={{...f,alignItems:'center',marginTop:'0.5rem',flexWrap:'wrap',gap:'0.5rem'}}>
 								<label className="splm-checkbox"><input type="checkbox" checked={cfg.generic_teams.enabled} onChange={e=>up({generic_teams:{...cfg.generic_teams,enabled:e.target.checked}})}/> Enable</label>
 								<label>Teams per division: <input type="number" className="splm-select" min="0" style={{width:70}} value={cfg.generic_teams.per_division} onChange={e=>up({generic_teams:{...cfg.generic_teams,per_division:parseInt(e.target.value,10)||0}})}/></label>
@@ -546,18 +609,19 @@ export default function ScheduleGenerator() {
 						{cfg.divisions.map(div=>(
 							<div key={div.id} className="splm-card" style={{marginBottom:'0.75rem'}}>
 								<div style={{...f,alignItems:'center',marginBottom:'0.5rem'}}>
-									<input className="splm-select" value={div.name} onChange={e=>upDiv(div.id,{name:e.target.value})} style={{flex:1}}/>
+									<input className="splm-select" value={div.name} onChange={e=>upDiv(div.id,{name:e.target.value})} style={{flex:1}} aria-label={`Division name (${div.name})`}/>
 									{/* #6: duplicate division name warning */}
-									{cfg.divisions.filter(d=>d.id!==div.id&&d.name===div.name).length>0&&<span style={{color:'#d63638',fontSize:'0.8em',marginLeft:'0.25rem'}}>⚠️ Duplicate</span>}
-									<button className="splm-btn splm-btn--danger" onClick={()=>rmDiv(div.id)}>✕</button>
+									{cfg.divisions.filter(d=>d.id!==div.id&&d.name===div.name).length>0&&<span style={{color:'var(--splm-danger)',fontSize:'0.8em',marginLeft:'0.25rem'}}>⚠️ Duplicate</span>}
+									{/* UX-20: aria-label + confirm before deleting a populated division. */}
+									<button className="splm-btn splm-btn--danger" aria-label={`Remove division ${div.name}`} onClick={()=>{ if(!div.teams.length||window.confirm(`Remove division "${div.name}" and its ${div.teams.length} team(s)?`)) rmDiv(div.id); }}>✕</button>
 								</div>
 								{div.teams.map(t=>(
 									<div key={t.id} style={{...f,alignItems:'center',marginBottom:'0.25rem',paddingLeft:'1rem'}}>
 										{t.is_tbd&&<span className="splm-badge splm-badge--warning">TBD</span>}
-										<input className="splm-select" value={t.name} onChange={e=>upTeam(div.id,t.id,e.target.value)} style={{flex:1}}/>
+										<input className="splm-select" value={t.name} onChange={e=>upTeam(div.id,t.id,e.target.value)} style={{flex:1}} aria-label={`Team name (${t.name})`}/>
 										{/* Gap #6: move team to another division */}
 										{cfg.divisions.length>1&&(
-											<select className="splm-select" style={{width:90}} value="" onChange={e=>{
+											<select className="splm-select" style={{width:90}} value="" aria-label={`Move ${t.name} to another division`} onChange={e=>{
 												if(!e.target.value) return;
 												const targetDivId = e.target.value;
 												up(prev => {
@@ -579,7 +643,7 @@ export default function ScheduleGenerator() {
 												{cfg.divisions.filter(d=>d.id!==div.id).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
 											</select>
 										)}
-										<button className="splm-btn splm-btn--danger" onClick={()=>rmTeam(div.id,t.id)} style={{padding:'0.2rem 0.5rem'}}>✕</button>
+										<button className="splm-btn splm-btn--danger" aria-label={`Remove ${t.name}`} onClick={()=>rmTeam(div.id,t.id)} style={{padding:'0.2rem 0.5rem'}}>✕</button>
 									</div>
 								))}
 								<div style={{...f,marginTop:'0.5rem',paddingLeft:'1rem'}}>
@@ -710,7 +774,7 @@ export default function ScheduleGenerator() {
 					<Cap cfg={cfg}/>
 					{/* Distribution settings from admin */}
 					{distSettings&&(Object.values(distSettings.day_weights||{}).some(w=>w>0))&&(
-						<div className="splm-card" style={{marginTop:'0.75rem',borderLeft:'3px solid #2271b1'}}>
+						<div className="splm-card" style={{marginTop:'0.75rem',borderLeft:'3px solid var(--splm-primary)'}}>
 							<p style={{margin:0,fontSize:'0.85em'}}>
 								<strong>Day weights from admin settings:</strong>{' '}
 								{Object.entries(distSettings.day_weights).filter(([,w])=>w>0).map(([d,w])=>`${d.charAt(0).toUpperCase()+d.slice(1,3)}: ${w}`).join(', ')}
@@ -755,13 +819,15 @@ export default function ScheduleGenerator() {
 									))}
 									<button className="splm-btn splm-btn--primary" style={{marginTop:'0.5rem'}} onClick={async()=>{
 										if (!configId) { setError('Save config first (click Next then Back)'); return; }
+										// UX-7: confirm this config-mutating action; in-app toast on success.
+										if (!window.confirm('Apply the imported venue schedule to this configuration? This overwrites matching venue time slots.')) return;
 										const mapping = {};
 										Object.entries(csvMapping).forEach(([csv,id])=>{ if(id&&id!=='__new__') mapping[csv]=parseInt(id,10); });
 										try {
 											const r = await spsg.applyVenueCsv(csvParsed.schedules, mapping, configId);
 											setCsvParsed(null); setCsvMapping({});
 											setError('');
-											alert(`✅ Applied venue schedule for ${r.applied} venue(s).`);
+											setToast({message:`Applied venue schedule for ${r.applied} venue(s).`,type:'success'});
 										} catch(e) { setError(e?.message||'Apply failed'); }
 									}}>Apply to Config</button>
 								</div>
@@ -789,9 +855,9 @@ export default function ScheduleGenerator() {
 							catch { setValidation({errors:['Validation failed']}); }
 						}}>Validate Config</button>
 						{validation&&<div style={{marginTop:'0.5rem'}}>
-							{(validation.errors||[]).map((e,i)=><div key={i} className="splm-alert splm-alert--warning" style={{background:'#fcf0f0',borderColor:'#d63638',marginBottom:'0.25rem'}}>❌ {e}</div>)}
+							{(validation.errors||[]).map((e,i)=><div key={i} className="splm-alert splm-alert--error" style={{marginBottom:'0.25rem'}}>❌ {e}</div>)}
 							{(validation.warnings||[]).map((w,i)=><div key={i} className="splm-alert splm-alert--warning" style={{marginBottom:'0.25rem'}}>⚠️ {w}</div>)}
-							{!validation.errors?.length&&!validation.warnings?.length&&<p style={{color:'#00a32a'}}>✅ Config looks good!</p>}
+							{!validation.errors?.length&&!validation.warnings?.length&&<p style={{color:'var(--splm-success)'}}>✅ Config looks good!</p>}
 						</div>}
 					</div>
 					<details className="splm-card" style={{marginTop:'0.75rem'}}>
@@ -807,7 +873,7 @@ export default function ScheduleGenerator() {
 								value={(cfg.advanced.overlap_pairs||[]).map(p=>p.teams.join(',')+(p.buffer_minutes?':'+p.buffer_minutes:'')).join('\n')}
 								onChange={e=>up({advanced:{...cfg.advanced,overlap_pairs:e.target.value.split('\n').filter(Boolean).map(l=>{const[teams,buf]=l.split(':');return{teams:teams.split(',').map(s=>s.trim()),buffer_minutes:buf?parseInt(buf,10):0};})}})}/>
 							{/* Gap #10: warn on unknown team names */}
-							{(()=>{const names=new Set(cfg.divisions.flatMap(d=>d.teams.map(t=>t.name)));const unk=[...(cfg.advanced.b2b_pairs||[]),...(cfg.advanced.overlap_pairs||[]).map(p=>p.teams||[])].flat().filter(n=>n&&!names.has(n));return unk.length?<p style={{color:'#d63638',fontSize:'0.85em',marginTop:'0.25rem'}}>⚠️ Unknown teams: {[...new Set(unk)].join(', ')}</p>:null;})()}
+							{(()=>{const names=new Set(cfg.divisions.flatMap(d=>d.teams.map(t=>t.name)));const unk=[...(cfg.advanced.b2b_pairs||[]),...(cfg.advanced.overlap_pairs||[]).map(p=>p.teams||[])].flat().filter(n=>n&&!names.has(n));return unk.length?<p style={{color:'var(--splm-danger)',fontSize:'0.85em',marginTop:'0.25rem'}}>⚠️ Unknown teams: {[...new Set(unk)].join(', ')}</p>:null;})()}
 							<label style={{marginTop:'0.5rem',display:'block'}}>Inter-division games</label>
 							{cfg.divisions.length>1&&cfg.divisions.map((d1,i)=>cfg.divisions.slice(i+1).map(d2=>(
 								<div key={`${d1.id}-${d2.id}`} style={{display:'flex',gap:'0.5rem',alignItems:'center',marginBottom:'0.25rem'}}>
@@ -830,12 +896,12 @@ export default function ScheduleGenerator() {
 							))}
 						</div>
 					</details>
-					{/* Fix #11: no cancel button, just spinner */}
+					{/* Fix #11: no cancel button, just spinner. UX-18: announce status. */}
 					{generating&&(
-						<div className="splm-card" style={{marginTop:'0.75rem'}}>
+						<div className="splm-card" style={{marginTop:'0.75rem'}} role="status" aria-live="polite" aria-busy="true">
 							<strong>Generating schedule…</strong>
 							<div style={{height:8,background:'#ddd',borderRadius:4,marginTop:6}}>
-								<div style={{width:'100%',height:'100%',background:'#2271b1',borderRadius:4,animation:'splm-pulse 1.5s ease-in-out infinite'}}/>
+								<div style={{width:'100%',height:'100%',background:'var(--splm-primary)',borderRadius:4,animation:'splm-pulse 1.5s ease-in-out infinite'}}/>
 							</div>
 						</div>
 					)}
@@ -926,7 +992,7 @@ export default function ScheduleGenerator() {
 											<thead><tr><th>Team</th><th>Home</th><th>Away</th><th>Balance</th></tr></thead>
 											<tbody>{Object.values(schedule.rich_stats.home_away_balance).map((t,i)=>{
 												const diff = t.home - t.away;
-												const bal = diff===0 ? <span style={{color:'#00a32a'}}>✓</span> : <span style={{color:Math.abs(diff)>2?'#d63638':'#dba617'}}>{diff>0?'+':''}{diff}</span>;
+												const bal = diff===0 ? <span style={{color:'var(--splm-success)'}}>✓</span> : <span style={{color:Math.abs(diff)>2?'var(--splm-danger)':'var(--splm-warn-amber)'}}>{diff>0?'+':''}{diff}</span>;
 												return <tr key={i}><td>{t.team_name}</td><td>{t.home}</td><td>{t.away}</td><td>{bal}</td></tr>;
 											})}</tbody>
 										</table>
@@ -980,7 +1046,7 @@ export default function ScheduleGenerator() {
 							<button className="splm-btn splm-btn--primary" onClick={()=>{ if(pubOpts.dry_run||window.confirm(`Publish ${schedule.games?.length||0} events to SportsPress?`)) doPub(); }} disabled={publishing||!pubSeason||!pubLeague}>{publishing?'Publishing…':pubOpts.dry_run?'Dry Run':'Publish'}</button>
 						</div>
 						<details style={{marginTop:'0.5rem'}}>
-							<summary style={{cursor:'pointer',color:'#646970',fontSize:'0.85em'}}>Import Options</summary>
+							<summary style={{cursor:'pointer',color:'var(--splm-muted)',fontSize:'0.85em'}}>Import Options</summary>
 							<div style={{display:'flex',gap:'1rem',flexWrap:'wrap',marginTop:'0.5rem',fontSize:'0.85em'}}>
 								<label>Conflict: <select className="splm-select" style={{width:120}} value={pubOpts.conflict_resolution} onChange={e=>setPubOpts(o=>({...o,conflict_resolution:e.target.value}))}>
 									<option value="skip">Skip existing</option>
@@ -998,8 +1064,8 @@ export default function ScheduleGenerator() {
 						{pubProg&&(
 							<div style={{marginTop:'0.5rem'}}>
 								{pubProg.done
-									? <p style={{color:'#00a32a'}}>✅ {pubProg.dry_run?'Dry run: would publish':'Published'} {pubProg.imported} of {pubProg.total} events{pubProg.skipped?` (${pubProg.skipped} skipped)`:''}{!pubProg.dry_run?' — view on the Schedule page.':''}</p>
-									: <><p style={{fontSize:'0.85em',marginBottom:'0.25rem'}}>{pubProg.imported} of {pubProg.total} events {pubOpts.dry_run?'checked':'published'}…</p><div style={{height:8,background:'#ddd',borderRadius:4}}><div style={{width:`${pubProg.total?Math.round(pubProg.imported/pubProg.total*100):0}%`,height:'100%',background:'#2271b1',borderRadius:4,transition:'width 0.3s'}}/></div></>
+									? <p style={{color:'var(--splm-success)'}}>✅ {pubProg.dry_run?'Dry run: would publish':'Published'} {pubProg.imported} of {pubProg.total} events{pubProg.skipped?` (${pubProg.skipped} skipped)`:''}{!pubProg.dry_run?' — view on the Schedule page.':''}</p>
+									: <><p style={{fontSize:'0.85em',marginBottom:'0.25rem'}}>{pubProg.imported} of {pubProg.total} events {pubOpts.dry_run?'checked':'published'}…</p><div style={{height:8,background:'#ddd',borderRadius:4}}><div style={{width:`${pubProg.total?Math.round(pubProg.imported/pubProg.total*100):0}%`,height:'100%',background:'var(--splm-primary)',borderRadius:4,transition:'width 0.3s'}}/></div></>
 								}
 							</div>
 						)}
@@ -1007,7 +1073,7 @@ export default function ScheduleGenerator() {
 
 					{/* #12: TBD replacement with batch support */}
 					{placeholders.length>0&&(
-						<div className="splm-card" style={{marginTop:'0.75rem',borderLeft:'3px solid #dba617'}}>
+						<div className="splm-card" style={{marginTop:'0.75rem',borderLeft:'3px solid var(--splm-warn-amber)'}}>
 							<h4>⚠️ {placeholders.length} TBD Team{placeholders.length>1?'s':''} Need Assignment</h4>
 							{placeholders.map(ph=>(
 								<div key={ph.id} style={{display:'flex',gap:'0.5rem',alignItems:'center',marginBottom:'0.5rem'}}>
