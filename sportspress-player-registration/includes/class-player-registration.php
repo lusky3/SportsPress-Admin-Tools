@@ -17,15 +17,34 @@ class SPPR_Player_Registration {
 		add_action( 'woocommerce_order_status_cancelled', array( $this, 'handle_order_reversed' ) );
 	}
 
+	/**
+	 * Whether to store/compare the player email meta (spt_email) during registration.
+	 *
+	 * CROSS-PLUGIN DEPENDENCY: the email meta key (spt_email) and its enable flag
+	 * originate from the sibling "Player Tools" (SPPT_) plugin. To avoid silently
+	 * changing behavior on existing installs — where this gate read
+	 * get_option('spt_email_meta', '1') — we now read an own-namespaced option
+	 * 'spr_email_meta' but DEFAULT it to the current effective value of
+	 * 'spt_email_meta' (itself defaulting to '1'). This preserves the prior
+	 * behavior exactly: when Player Tools is present its setting still applies as
+	 * the default, and when absent the gate stays enabled ('1') as before.
+	 *
+	 * @return bool True when email metadata should be written/compared.
+	 */
+	private function email_meta_enabled() {
+		$default = get_option( 'spt_email_meta', '1' );
+		return get_option( 'spr_email_meta', $default ) === '1';
+	}
+
 	public function process_completed_order( $order_id ) {
 		$order = wc_get_order( $order_id );
 		if ( ! $order ) {
 			return;
 		}
 
-		// Skip if already done or actively being processed; 'failed' falls through to retry.
+		// Skip if already done; 'failed' (and any *_conflict terminal state) falls through to retry.
 		$existing = $order->get_meta( '_spr_processed' );
-		if ( in_array( $existing, array( '1', 'processing' ), true ) ) {
+		if ( $existing === '1' ) {
 			return;
 		}
 
@@ -42,8 +61,10 @@ class SPPR_Player_Registration {
 		}
 
 		// Atomic claim: SPAT_Lock::acquire() returns false if the key is already held,
-		// so only one worker (within a process / across processes with an external object
-		// cache) wins the claim. External object cache is required for full cross-process safety.
+		// so only one worker wins the claim. SPAT_Lock is cross-process safe via an
+		// atomic DB INSERT (it does not depend on an external object cache). The
+		// wp_cache_add() branch below is only the in-request fallback used when the
+		// SPAT_Lock class is unavailable.
 		$lock_key = 'spr_processing_' . $order_id;
 		if ( class_exists( 'SPAT_Lock' ) ) {
 			$claimed = SPAT_Lock::acquire( $lock_key, 300 );
@@ -56,15 +77,17 @@ class SPPR_Player_Registration {
 
 		// Open the try IMMEDIATELY after the lock claim so the finally runs on
 		// every exit path (including throws during meta writes) and the lock is
-		// always released. The lock — not the 'processing' meta marker — is the
-		// authoritative single-flight guard, so a single save at the end suffices.
+		// always released. The SPAT_Lock acquired above — not any meta marker — is
+		// the authoritative single-flight guard, so a single save at the end suffices.
 		try {
-			// In-progress marker for reload / admin-rerun visibility; the actual
-			// concurrency guard is the SPAT_Lock acquired above.
-			$order->update_meta_data( '_spr_processed', 'processing' );
-
 			$customer_email = strtolower( sanitize_email( $order->get_billing_email() ) );
 			$user_id = $order->get_user_id();
+
+			// Track resolved player(s) so the user role/link runs ONCE after the loop
+			// rather than once per item, and so we know whether any item hit a terminal
+			// *_conflict / requires_email state (which must NOT be marked processed).
+			$resolved_player_id = 0;
+			$had_conflict = false;
 
 			foreach ( $registration_items as $item ) {
 				$season = $this->extract_season_from_product( $item['product_id'] );
@@ -93,22 +116,36 @@ class SPPR_Player_Registration {
 				$result = $this->find_or_create_player( $customer_name, $season, $item['position'], $customer_email, $user_id );
 
 				if ( $result['player_id'] ) {
-					if ( $user_id > 0 ) {
-						if ( get_option( 'spr_auto_role', '1' ) === '1' ) {
-							$this->assign_player_role( $user_id );
-						}
-						$this->link_user_to_player( $user_id, $result['player_id'] );
-					}
+					$resolved_player_id = $result['player_id'];
 					SPPR_Database::log_registration_activity( $order_id, $customer_name, $result['player_id'], $season, $item['position'], $result['action'], true );
 				} elseif ( ! empty( $result['action'] ) ) {
 					// No player linked but we still want a paper trail for terminal
 					// outcomes like multiple_players_found_email_conflict.
+					if ( $result['action'] === 'multiple_players_found_email_conflict'
+						|| $result['action'] === 'multiple_players_found_name_match_requires_email' ) {
+						$had_conflict = true;
+					}
 					SPPR_Database::log_registration_activity( $order_id, $customer_name, 0, $season, $item['position'], $result['action'] );
 				}
 			}
 
-			$order->update_meta_data( '_spr_processed', '1' );
-			$order->save();
+			// Run role assignment / user link ONCE for the order using the resolved
+			// player_id, avoiding duplicate 'role_already_exists' rows and repeated
+			// sp_user meta writes for multi-item orders.
+			if ( $resolved_player_id && $user_id > 0 ) {
+				if ( get_option( 'spr_auto_role', '1' ) === '1' ) {
+					$this->assign_player_role( $user_id );
+				}
+				$this->link_user_to_player( $user_id, $resolved_player_id );
+			}
+
+			// Do NOT mark a terminal *_conflict / requires_email order as processed:
+			// a paying customer would be left silently unregistered with no resolution
+			// on re-run. Leaving the marker unset lets a corrected re-run resolve it.
+			if ( ! $had_conflict ) {
+				$order->update_meta_data( '_spr_processed', '1' );
+				$order->save();
+			}
 		} catch ( \Throwable $e ) {
 			// Surface failure for retry visibility — admin re-run action can clear flag.
 			$order->update_meta_data( '_spr_processed', 'failed' );
@@ -151,7 +188,9 @@ class SPPR_Player_Registration {
 		}
 		$raw_name = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
 		$cleaned = $this->validate_and_clean_name( $raw_name );
-		$customer_name = $cleaned ? $cleaned : $raw_name;
+		// PR-7: never log the raw, unvalidated billing name. Use the validated name
+		// when it passes, otherwise a neutral placeholder rather than arbitrary input.
+		$customer_name = $cleaned ? $cleaned : '(unverified name)';
 		SPPR_Database::log_registration_activity( $order_id, $customer_name, 0, '', '', 'registration_reversed' );
 	}
 
@@ -238,6 +277,14 @@ class SPPR_Player_Registration {
 		}
 
 		if ( $player_id && get_option( 'spr_auto_update', '1' ) !== '1' ) {
+			// BEHAVIOR CHANGE (PR-6): season assignment is independent of auto-update.
+			// Previously this early return skipped add_season_to_player() for existing
+			// players whenever auto-update was off, even if auto-season was on. Now an
+			// existing player still gets the season term when spr_auto_season is on.
+			// wp_set_object_terms() with append=true is idempotent, so re-runs are safe.
+			if ( get_option( 'spr_auto_season', '1' ) === '1' ) {
+				$this->add_season_to_player( $player_id, $season );
+			}
 			return array(
 				'player_id' => $player_id,
 				'action' => $action,
@@ -245,7 +292,7 @@ class SPPR_Player_Registration {
 		}
 
 		// Auto-update is on (or we are about to create) — safe to persist email metadata.
-		if ( $player_id && get_option( 'spt_email_meta', '1' ) === '1' && ! empty( $customer_email ) ) {
+		if ( $player_id && $this->email_meta_enabled() && ! empty( $customer_email ) ) {
 			update_post_meta( $player_id, 'spt_email', strtolower( sanitize_email( $customer_email ) ) );
 		}
 
@@ -274,7 +321,7 @@ class SPPR_Player_Registration {
 	}
 
 	private function find_existing_player( $customer_name, $customer_email ) {
-		$email_meta_enabled = get_option( 'spt_email_meta', '1' ) === '1';
+		$email_meta_enabled = $this->email_meta_enabled();
 
 		// Use exact title match via wpdb since WP_Query 'title' param is unreliable
 		global $wpdb;
@@ -375,7 +422,7 @@ class SPPR_Player_Registration {
 			);
 		}
 
-		if ( $player_id && get_option( 'spt_email_meta', '1' ) === '1' && ! empty( $customer_email ) ) {
+		if ( $player_id && $this->email_meta_enabled() && ! empty( $customer_email ) ) {
 			update_post_meta( $player_id, 'spt_email', strtolower( sanitize_email( $customer_email ) ) );
 		}
 

@@ -46,14 +46,46 @@ class SPPR_Admin {
 			'spr_settings',
 			'spr_player_role',
 			array(
-				'sanitize_callback' => 'sanitize_text_field',
+				'sanitize_callback' => array( $this, 'sanitize_player_role' ),
 			)
 		);
 		register_setting( 'spr_settings', 'spr_auto_season', $checkbox_args );
+		register_setting(
+			'spr_settings',
+			'spr_registration_keyword',
+			array(
+				'sanitize_callback' => array( $this, 'sanitize_keyword' ),
+			)
+		);
+	}
+
+	/**
+	 * Sanitize the registration product-category keyword. Falls back to the
+	 * default 'registration' when the submitted value is empty after trimming.
+	 *
+	 * @param string $value Submitted keyword.
+	 * @return string Non-empty keyword.
+	 */
+	public function sanitize_keyword( $value ) {
+		$value = sanitize_text_field( $value );
+		return '' === trim( $value ) ? 'registration' : $value;
 	}
 
 	public function sanitize_checkbox( $value ) {
 		return $value === '1' ? '1' : '0';
+	}
+
+	/**
+	 * Sanitize the chosen player role. Falls back to 'sp_player' when the submitted
+	 * value is not a registered WordPress role.
+	 *
+	 * @param string $value Submitted role slug.
+	 * @return string Valid role slug, or 'sp_player' as the safe default.
+	 */
+	public function sanitize_player_role( $value ) {
+		$value = sanitize_text_field( $value );
+		$roles = wp_roles()->get_names();
+		return isset( $roles[ $value ] ) ? $value : 'sp_player';
 	}
 
 	public function admin_page_content() {
@@ -62,6 +94,7 @@ class SPPR_Admin {
 		$auto_role = get_option( 'spr_auto_role', '1' );
 		$player_role = get_option( 'spr_player_role', 'sp_player' );
 		$auto_season = get_option( 'spr_auto_season', '1' );
+		$registration_keyword = get_option( 'spr_registration_keyword', 'registration' );
 		?>
 			<form action="options.php" method="post">
 				<input type="hidden" name="current_tab" value="player-registration">
@@ -122,6 +155,13 @@ class SPPR_Admin {
 							</label>
 						</td>
 					</tr>
+						<tr>
+							<th scope="row"><?php esc_html_e( 'Registration Category Keyword', 'sportspress-player-registration' ); ?></th>
+							<td>
+								<input type="text" name="spr_registration_keyword" value="<?php echo esc_attr( $registration_keyword ); ?>" class="regular-text" />
+								<p class="description"><?php esc_html_e( 'Product categories whose name contains this keyword (case-insensitive) are treated as registration products. Default: registration', 'sportspress-player-registration' ); ?></p>
+							</td>
+						</tr>
 				</table>
 
 				<?php submit_button( __( 'Save Settings', 'sportspress-player-registration' ), 'primary', 'save_settings' ); ?>
@@ -162,9 +202,7 @@ class SPPR_Admin {
 
 		foreach ( $logs as $log ) {
 			$action_text = $log->action;
-			if ( $log->action === 'player_found_by_email' ) {
-				$action_text = 'Found by Email';
-			} elseif ( $log->action === 'player_found_by_name' ) {
+			if ( $log->action === 'player_found_by_name' ) {
 				$action_text = 'Found by Name';
 			} elseif ( $log->action === 'player_found_by_name_and_email' ) {
 				$action_text = 'Found by Name and Email';
@@ -178,7 +216,7 @@ class SPPR_Admin {
 
 			$order_id_safe  = absint( $log->order_id );
 			$player_id_safe = absint( $log->player_id );
-			$order_link     = esc_url( admin_url( 'post.php?post=' . $order_id_safe . '&action=edit' ) );
+			$order_link     = $this->get_order_edit_url( $order_id_safe );
 
 			echo '<tr>';
 			echo '<td>' . esc_html( $log->timestamp ) . '</td>';
@@ -279,6 +317,42 @@ class SPPR_Admin {
 	}
 
 	/**
+	 * Build an HPOS-aware edit URL for an order by ID.
+	 *
+	 * Under WooCommerce High-Performance Order Storage the orders list lives at
+	 * admin.php?page=wc-orders rather than the legacy post.php?post=ID screen.
+	 * Prefer the order object's own get_edit_order_url() when the order can be
+	 * loaded; fall back to a best-effort HPOS/legacy URL otherwise.
+	 *
+	 * @param int $order_id Order ID.
+	 * @return string Edit-order admin URL.
+	 */
+	private function get_order_edit_url( $order_id ) {
+		if ( function_exists( 'wc_get_order' ) ) {
+			$order = wc_get_order( $order_id );
+			if ( $order && method_exists( $order, 'get_edit_order_url' ) ) {
+				return $order->get_edit_order_url();
+			}
+		}
+		if ( $this->orders_use_hpos() ) {
+			return admin_url( 'admin.php?page=wc-orders&action=edit&id=' . absint( $order_id ) );
+		}
+		return admin_url( 'post.php?post=' . absint( $order_id ) . '&action=edit' );
+	}
+
+	/**
+	 * Whether WooCommerce HPOS (custom order tables) is the active order store.
+	 *
+	 * @return bool
+	 */
+	private function orders_use_hpos() {
+		if ( class_exists( \Automattic\WooCommerce\Utilities\OrderUtil::class ) ) {
+			return \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
+		}
+		return false;
+	}
+
+	/**
 	 * Add a "Re-run player registration" row action for completed orders.
 	 *
 	 * @param array    $actions Existing actions.
@@ -363,7 +437,10 @@ class SPPR_Admin {
 
 		$redirect = wp_get_referer();
 		if ( ! $redirect ) {
-			$redirect = admin_url( 'edit.php?post_type=shop_order' );
+			// HPOS-aware orders list fallback when there is no referer.
+			$redirect = $this->orders_use_hpos()
+				? admin_url( 'admin.php?page=wc-orders' )
+				: admin_url( 'edit.php?post_type=shop_order' );
 		}
 		wp_safe_redirect( $redirect );
 		exit;

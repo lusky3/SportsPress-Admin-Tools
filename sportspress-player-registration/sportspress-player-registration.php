@@ -6,6 +6,7 @@
  * Author: Cody (lusky3)
  * Text Domain: sportspress-player-registration
  * License: GPL v2 or later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Requires at least: 5.0
  * Tested up to: 6.9
  * Requires PHP: 8.1
@@ -31,12 +32,24 @@ class SportsPress_Player_Registration {
 	public function __construct() {
 		register_activation_hook( __FILE__, array( $this, 'check_activation_requirements' ) );
 		add_action( 'plugins_loaded', array( $this, 'init' ) );
+		// Declare WooCommerce HPOS (custom order tables) compatibility. Must run on
+		// before_woocommerce_init before WC checks plugin compatibility flags.
+		add_action( 'before_woocommerce_init', array( $this, 'declare_hpos_compatibility' ) );
+	}
+
+	/**
+	 * Declare compatibility with WooCommerce High-Performance Order Storage (HPOS).
+	 */
+	public function declare_hpos_compatibility() {
+		if ( class_exists( \Automattic\WooCommerce\Utilities\FeaturesUtil::class ) ) {
+			\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );
+		}
 	}
 
 	public function check_activation_requirements() {
 		if ( ! class_exists( 'SPAT_Plugin_Manager' ) ) {
 			deactivate_plugins( plugin_basename( __FILE__ ) );
-			wp_die( 'SportsPress Player Registration requires SportsPress Admin Tools to be installed and activated first.' );
+			wp_die( esc_html__( 'SportsPress Player Registration requires SportsPress Admin Tools to be installed and activated first.', 'sportspress-player-registration' ) );
 		}
 	}
 
