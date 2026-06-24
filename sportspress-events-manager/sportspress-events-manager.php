@@ -7,7 +7,7 @@
  * Text Domain: sportspress-events-manager
  * License: GPL v2 or later
  * Requires at least: 5.0
- * Tested up to: 6.9
+ * Tested up to: 6.8
  * Requires PHP: 8.1
  * Depends: SportsPress Admin Tools
  */
