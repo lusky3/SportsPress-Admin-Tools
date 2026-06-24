@@ -149,26 +149,28 @@ class SportsPress_Player_Tools {
 			$this->rest_api = new SPPT_REST_API();
 		}
 
-		if ( in_array( 'player_modifications', $enabled_modules ) ) {
+		// PT-11: pass strict=true to in_array() to match class-admin.php:64 and
+		// avoid loose-comparison surprises.
+		if ( in_array( 'player_modifications', $enabled_modules, true ) ) {
 			$this->load_player_modifications( $enabled_modules );
 		}
 
-		if ( in_array( 'player_stats_enabler', $enabled_modules ) ) {
+		if ( in_array( 'player_stats_enabler', $enabled_modules, true ) ) {
 			require_once SPT_PLUGIN_PATH . 'includes/class-player-stats-enabler.php';
 			$this->player_stats_enabler = new SPT_Player_Stats_Enabler();
 		}
 
-		if ( in_array( 'batch_list_creator', $enabled_modules ) ) {
+		if ( in_array( 'batch_list_creator', $enabled_modules, true ) ) {
 			require_once SPT_PLUGIN_PATH . SPT_BATCH_LIST_CREATOR_FILE;
 			$this->batch_list_creator = new SPT_Batch_List_Creator();
 		}
 
-		if ( in_array( 'player_skill_level', $enabled_modules ) ) {
+		if ( in_array( 'player_skill_level', $enabled_modules, true ) ) {
 			require_once SPT_PLUGIN_PATH . 'includes/class-player-skill-level.php';
 			$this->player_skill_level = new SPT_Player_Skill_Level();
 		}
 
-		if ( is_admin() && ( in_array( 'player_modifications', $enabled_modules ) || in_array( 'player_stats_enabler', $enabled_modules ) || in_array( 'batch_list_creator', $enabled_modules ) || in_array( 'player_skill_level', $enabled_modules ) ) ) {
+		if ( is_admin() && ( in_array( 'player_modifications', $enabled_modules, true ) || in_array( 'player_stats_enabler', $enabled_modules, true ) || in_array( 'batch_list_creator', $enabled_modules, true ) || in_array( 'player_skill_level', $enabled_modules, true ) ) ) {
 			require_once SPT_PLUGIN_PATH . 'includes/class-admin.php';
 			$this->admin = new SPT_Admin();
 
@@ -181,7 +183,7 @@ class SportsPress_Player_Tools {
 		require_once SPT_PLUGIN_PATH . 'includes/class-player-modifications.php';
 		$this->player_modifications = new SPT_Player_Modifications();
 
-		$has_profile_pic = in_array( 'player_profile_picture', $enabled_modules );
+		$has_profile_pic = in_array( 'player_profile_picture', $enabled_modules, true ); // PT-11: strict.
 		$has_woo = class_exists( 'WooCommerce' );
 
 		$this->debug_log( 'player_profile_picture in modules: ' . ( $has_profile_pic ? 'yes' : 'no' ) );
