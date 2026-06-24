@@ -102,9 +102,11 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 
 		$cost = 0.0;
 
-		// Prevent clustering of early or late games
-		$slot_cost_home = $this->calculate_time_slot_clustering_cost( $game->time_slot, $home_team_slots, $config, $game->date );
-		$slot_cost_away = $this->calculate_time_slot_clustering_cost( $game->time_slot, $away_team_slots, $config, $game->date );
+		// Prevent clustering of early or late games. Pass the venue so the
+		// available-slot count is resolved cascade-aware.
+		$venue_id = isset( $game->venue_id ) ? $game->venue_id : ( isset( $game->venue ) ? SPSG_Schedule_Helper::extract_id( $game->venue ) : 0 );
+		$slot_cost_home = $this->calculate_time_slot_clustering_cost( $game->time_slot, $home_team_slots, $config, $game->date, $venue_id );
+		$slot_cost_away = $this->calculate_time_slot_clustering_cost( $game->time_slot, $away_team_slots, $config, $game->date, $venue_id );
 
 		$cost += $slot_cost_home + $slot_cost_away;
 
@@ -203,14 +205,16 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 	/**
 	 * Calculate cost for time slot clustering
 	 */
-	private function calculate_time_slot_clustering_cost( $time_slot, $current_slots, $config, $date ) {
+	private function calculate_time_slot_clustering_cost( $time_slot, $current_slots, $config, $date, $venue_id = 0 ) {
 		$total_slots = array_sum( $current_slots ) + 1; // +1 for new game
 		$current_for_slot = isset( $current_slots[ $time_slot ] ) ? $current_slots[ $time_slot ] + 1 : 1;
 
-		// Get all available time slots for the day
+		// Get all available time slots for the day, resolved cascade-aware so
+		// per-venue / per-date overrides are honored.
 		$game_date = new DateTime( $date );
 		$day = strtolower( $game_date->format( 'l' ) );
-		$available_slots = isset( $config->time_slots[ $day ] ) ? count( $config->time_slots[ $day ] ) : 1;
+		$day_time_slots = SPSG_Schedule_Helper::resolve_venue_slots( $venue_id, $date, $day, $config );
+		$available_slots = ! empty( $day_time_slots ) ? count( $day_time_slots ) : 1;
 
 		$ideal_per_slot = $total_slots / $available_slots;
 		$deviation = abs( $current_for_slot - $ideal_per_slot );

@@ -78,10 +78,21 @@ abstract class SPSG_Abstract_Constraint implements SPSG_Constraint_Interface {
 	/**
 	 * Per-request memoization for validate() results.
 	 *
-	 * Keyed by spl_object_hash( $constraint ) . '-' . $game_id, so the same
-	 * (game, constraint) pair only runs validate() once per generation pass.
-	 * This avoids a redundant second validate() inside get_violation_cost for
-	 * hard constraints, which the slot allocator just checked via is_slot_valid.
+	 * Keyed by spl_object_hash( $constraint ) . '-' . $game_id . '-' . $schedule_hash,
+	 * so a cached result is only reused when the same (game, constraint) pair is
+	 * evaluated against the *same* schedule slice. This avoids a redundant second
+	 * validate() inside get_violation_cost for hard constraints, which the slot
+	 * allocator just checked via is_slot_valid.
+	 *
+	 * SG-1: the schedule-slice component is essential for correctness under
+	 * backtracking. A game id is md5(home|away|date|time|venue), so the same
+	 * matchup re-placed at the same slot after an array_pop carries the *same*
+	 * id, but the surrounding schedule has changed. Without hashing the schedule
+	 * slice into the key, a stale validate() result from an earlier, smaller (or
+	 * different) schedule could be reused and let a hard-constraint-violating game
+	 * pass. Hashing the slice makes any state change yield a distinct key, so the
+	 * greedy fast-path still hits the cache (identical state → identical key) while
+	 * backtracking can never reuse a result computed against a different state.
 	 *
 	 * @var array<string,true|WP_Error>
 	 */
@@ -96,27 +107,73 @@ abstract class SPSG_Abstract_Constraint implements SPSG_Constraint_Interface {
 	}
 
 	/**
+	 * Build the memoization key for a (constraint, game, schedule-slice) tuple.
+	 *
+	 * The schedule slice is fingerprinted so a cached result is never reused
+	 * against a different schedule state (see SG-1 note on $validate_cache).
+	 * Only the fields that a constraint's validate() can observe — the game
+	 * identity of each scheduled game, its date/time/venue — feed the hash, so
+	 * the fingerprint is stable across reruns with identical inputs.
+	 *
+	 * @param SPSG_Abstract_Constraint $constraint Constraint instance.
+	 * @param object                   $game       Game being validated.
+	 * @param array                    $schedule   Schedule slice passed to validate().
+	 * @return string Cache key.
+	 */
+	private static function build_cache_key( $constraint, $game, $schedule ) {
+		$game_id = isset( $game->id ) ? $game->id : spl_object_hash( $game );
+		return spl_object_hash( $constraint ) . '-' . $game_id . '-' . self::hash_schedule_slice( $schedule );
+	}
+
+	/**
+	 * Produce a stable fingerprint of the schedule slice handed to validate().
+	 *
+	 * @param mixed $schedule Array of game objects (flat or date-indexed) or any
+	 *                        other value a caller might pass.
+	 * @return string Fingerprint (empty schedule → '0').
+	 */
+	private static function hash_schedule_slice( $schedule ) {
+		if ( empty( $schedule ) || ! is_array( $schedule ) ) {
+			return '0';
+		}
+		$parts = array();
+		foreach ( $schedule as $g ) {
+			if ( is_object( $g ) ) {
+				$gid = isset( $g->id ) ? $g->id : spl_object_hash( $g );
+				$parts[] = $gid;
+			} elseif ( is_array( $g ) ) {
+				// Date-indexed bucket ('YYYY-MM-DD' => game[]); descend one level.
+				$parts[] = self::hash_schedule_slice( $g );
+			}
+		}
+		// Order matters for the slice the constraint sees; do not sort.
+		return md5( implode( '|', $parts ) );
+	}
+
+	/**
 	 * Prime the per-request validate cache with an externally computed result.
 	 *
 	 * Called by the constraint manager after running validate() so a subsequent
-	 * get_violation_cost() does not re-run validate() for the same pair.
+	 * get_violation_cost() does not re-run validate() for the same pair *against
+	 * the same schedule slice*.
 	 *
 	 * @param SPSG_Abstract_Constraint $constraint Constraint instance.
 	 * @param object                   $game       Game just validated.
 	 * @param true|WP_Error            $result     The validate() result.
+	 * @param array                    $schedule   Schedule slice validate() saw.
 	 */
-	public static function prime_validate_cache( $constraint, $game, $result ) {
+	public static function prime_validate_cache( $constraint, $game, $result, $schedule = array() ) {
 		if ( ! ( $constraint instanceof self ) ) {
 			return;
 		}
-		$game_id = isset( $game->id ) ? $game->id : spl_object_hash( $game );
-		$key     = spl_object_hash( $constraint ) . '-' . $game_id;
+		$key = self::build_cache_key( $constraint, $game, $schedule );
 		self::$validate_cache[ $key ] = $result;
 	}
 
 	/**
 	 * Validate with memoization. Use this from get_violation_cost so a hard
-	 * constraint already validated by the allocator is not re-run.
+	 * constraint already validated by the allocator is not re-run — but only
+	 * when the schedule slice is identical to the one already validated.
 	 *
 	 * @param object $game     Game being checked.
 	 * @param array  $schedule Schedule slice.
@@ -124,8 +181,7 @@ abstract class SPSG_Abstract_Constraint implements SPSG_Constraint_Interface {
 	 * @return true|WP_Error
 	 */
 	protected function validate_cached( $game, $schedule, $config ) {
-		$game_id = isset( $game->id ) ? $game->id : spl_object_hash( $game );
-		$key     = spl_object_hash( $this ) . '-' . $game_id;
+		$key = self::build_cache_key( $this, $game, $schedule );
 		if ( array_key_exists( $key, self::$validate_cache ) ) {
 			return self::$validate_cache[ $key ];
 		}

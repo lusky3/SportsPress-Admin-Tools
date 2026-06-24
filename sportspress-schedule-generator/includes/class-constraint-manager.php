@@ -102,8 +102,10 @@ class SPSG_Constraint_Manager {
 
 			// Populate the abstract constraint's per-request memoization so a
 			// follow-up get_violation_cost() for the same (game, constraint)
-			// does not re-execute validate().
-			SPSG_Abstract_Constraint::prime_validate_cache( $constraint, $game, $result );
+			// against the SAME schedule slice does not re-execute validate().
+			// The slice is keyed into the cache (SG-1) so a result is never
+			// reused against a different schedule state during backtracking.
+			SPSG_Abstract_Constraint::prime_validate_cache( $constraint, $game, $result, $schedule_for_constraint );
 
 			if ( is_wp_error( $result ) ) {
 				$violations[] = array(

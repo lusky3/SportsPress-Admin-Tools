@@ -96,6 +96,11 @@ class SPSG_Schedule_Engine {
 		$this->current_schedule = array();
 		$this->init_stats();
 
+		// Clear any stale cancellation flag from a previous run so it can't
+		// abort this fresh generation before it starts.
+		delete_transient( $this->cancel_transient_key );
+		wp_cache_delete( $this->cancel_transient_key, 'spsg_progress' );
+
 		// Clear per-request constraint validate() memoization to avoid carrying
 		// stale (game, constraint) results across runs.
 		if ( method_exists( 'SPSG_Abstract_Constraint', 'reset_validate_cache' ) ) {
@@ -593,7 +598,7 @@ class SPSG_Schedule_Engine {
 	 * @param int    $percentage Percentage complete (0-100)
 	 * @param string $message Status message
 	 */
-	private function update_progress( $phase, $percentage, $message = '' ) {
+	private function update_progress( $phase, $percentage, $message = '', $games_scheduled_override = null ) {
 		// Read from object cache first; fall back to transient on cold start.
 		$progress = wp_cache_get( $this->progress_transient_key, 'spsg_progress' );
 		if ( false === $progress ) {
@@ -610,7 +615,13 @@ class SPSG_Schedule_Engine {
 		$progress['phase'] = $phase;
 		$progress['percentage'] = $percentage;
 		$progress['message'] = $message;
-		$progress['games_scheduled'] = count( $this->current_schedule );
+		// SG-5: $this->current_schedule is only assigned at the END of allocation,
+		// so counting it mid-run always reported 0. During allocation the live
+		// count is passed through from update_allocation_progress(); fall back to
+		// the assigned schedule count for the other phases.
+		$progress['games_scheduled'] = ( null !== $games_scheduled_override )
+			? (int) $games_scheduled_override
+			: count( $this->current_schedule );
 		$progress['total_games'] = $this->total_matchups;
 
 		// Calculate estimated time remaining
@@ -654,7 +665,9 @@ class SPSG_Schedule_Engine {
 				$this->total_matchups
 			);
 
-			$this->update_progress( 'allocation', $total_percentage, $message );
+			// SG-5: forward the live count so progress reflects games placed so
+			// far instead of the always-zero $this->current_schedule mid-run.
+			$this->update_progress( 'allocation', $total_percentage, $message, $games_scheduled );
 		}
 	}
 
@@ -664,7 +677,15 @@ class SPSG_Schedule_Engine {
 	 * @return bool True if cancelled
 	 */
 	public function is_cancelled() {
-		// Check object cache first (hot path), fall back to transient.
+		// Check the dedicated cancel flag first — this is what the REST and
+		// AJAX cancel handlers actually write. Object cache (hot path) then
+		// transient fallback, mirroring how the handlers set both.
+		if ( wp_cache_get( $this->cancel_transient_key, 'spsg_progress' ) || get_transient( $this->cancel_transient_key ) ) {
+			return true;
+		}
+
+		// Also honor a cancellation flag embedded in the progress object
+		// (set when a cancel arrived after progress was already initialized).
 		$progress = wp_cache_get( $this->progress_transient_key, 'spsg_progress' );
 		if ( false === $progress ) {
 			$progress = get_transient( $this->progress_transient_key );
@@ -714,6 +735,8 @@ class SPSG_Schedule_Engine {
 	private function clear_progress() {
 		delete_transient( $this->progress_transient_key );
 		wp_cache_delete( $this->progress_transient_key, 'spsg_progress' );
+		delete_transient( $this->cancel_transient_key );
+		wp_cache_delete( $this->cancel_transient_key, 'spsg_progress' );
 	}
 
 	/**

@@ -82,7 +82,7 @@ class SPSG_Division_Grouping_Constraint extends SPSG_Abstract_Constraint {
 
 		// Get venue utilization for the date
 		$venue_games = $this->get_games_by_date_and_venue( $game_date, $game_venue, $schedule );
-		$venue_capacity = $this->get_venue_time_slot_capacity( $game_date, $config );
+		$venue_capacity = $this->get_venue_time_slot_capacity( $game_date, $config, $game_venue );
 
 		$utilization_rate = count( $venue_games ) / max( $venue_capacity, 1 );
 
@@ -158,12 +158,15 @@ class SPSG_Division_Grouping_Constraint extends SPSG_Abstract_Constraint {
 			$slots[] = $game->time_slot;
 		}
 
-		// Get the day from first game to get proper slot ordering
+		// Get the day from first game to get proper slot ordering. Resolve the
+		// slot list cascade-aware so per-venue / per-date overrides are honored.
 		if ( ! empty( $games ) ) {
-			$game_day = strtolower( ( new DateTime( $games[0]->date ) )->format( 'l' ) );
-			if ( isset( $config->time_slots[ $game_day ] ) ) {
+			$game_date = $games[0]->date;
+			$game_day  = strtolower( ( new DateTime( $game_date ) )->format( 'l' ) );
+			$venue_id  = isset( $games[0]->venue_id ) ? $games[0]->venue_id : ( isset( $games[0]->venue ) ? SPSG_Schedule_Helper::extract_id( $games[0]->venue ) : 0 );
+			$ordered_slots = SPSG_Schedule_Helper::resolve_venue_slots( $venue_id, $game_date, $game_day, $config );
+			if ( ! empty( $ordered_slots ) ) {
 				// Use config ordering
-				$ordered_slots = $config->time_slots[ $game_day ];
 				$slots = array_intersect( $ordered_slots, array_unique( $slots ) );
 			}
 		}
@@ -279,11 +282,15 @@ class SPSG_Division_Grouping_Constraint extends SPSG_Abstract_Constraint {
 	/**
 	 * Get venue time slot capacity for a date
 	 */
-	private function get_venue_time_slot_capacity( $date, $config ) {
+	private function get_venue_time_slot_capacity( $date, $config, $venue_id = 0 ) {
 		$game_day = strtolower( ( new DateTime( $date ) )->format( 'l' ) );
 
-		if ( isset( $config->time_slots[ $game_day ] ) ) {
-			return count( $config->time_slots[ $game_day ] );
+		// Resolve cascade-aware so per-venue / per-date slot overrides are
+		// reflected in the capacity used for venue-utilization scoring.
+		$day_time_slots = SPSG_Schedule_Helper::resolve_venue_slots( $venue_id, $date, $game_day, $config );
+
+		if ( ! empty( $day_time_slots ) ) {
+			return count( $day_time_slots );
 		}
 
 		return 1; // Default capacity
@@ -336,8 +343,9 @@ class SPSG_Division_Grouping_Constraint extends SPSG_Abstract_Constraint {
 			$games,
 			function ( $a, $b ) use ( $config ) {
 				$game_day = strtolower( ( new DateTime( $a->date ) )->format( 'l' ) );
-				if ( isset( $config->time_slots[ $game_day ] ) ) {
-					$slots = $config->time_slots[ $game_day ];
+				$venue_id = isset( $a->venue_id ) ? $a->venue_id : ( isset( $a->venue ) ? SPSG_Schedule_Helper::extract_id( $a->venue ) : 0 );
+				$slots    = SPSG_Schedule_Helper::resolve_venue_slots( $venue_id, $a->date, $game_day, $config );
+				if ( ! empty( $slots ) ) {
 					$a_index = array_search( $a->time_slot, $slots );
 					$b_index = array_search( $b->time_slot, $slots );
 					return $a_index - $b_index;

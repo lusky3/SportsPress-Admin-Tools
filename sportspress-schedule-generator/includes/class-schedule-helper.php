@@ -58,7 +58,56 @@ class SPSG_Schedule_Helper {
 	 * @param object     $config   Schedule configuration.
 	 * @return array|null Time slots for this venue+date+day combo, or null if none.
 	 */
+	/**
+	 * Per-request memoization for resolve_venue_slots().
+	 *
+	 * SG-6: resolve_venue_slots() is a pure function of
+	 * (venue_id, date, day_name, $config) — it only reads config arrays and has
+	 * no side effects. It is called O(n log n) times inside the division-grouping
+	 * usort comparator and per-game cost calcs, recomputing the same cascade
+	 * repeatedly. Memoizing returns the byte-identical array for identical inputs.
+	 * Keyed on the config object identity so a different config object never
+	 * reads another's slots, and so the cache is naturally scoped per pass.
+	 *
+	 * @var array<string,array|null>
+	 */
+	private static $venue_slots_cache = array();
+
+	/**
+	 * Reset the resolve_venue_slots() memo. Call between generation passes that
+	 * mutate the same config object in place (none do today, but this keeps the
+	 * cache safe if that ever changes).
+	 */
+	public static function reset_venue_slots_cache() {
+		self::$venue_slots_cache = array();
+	}
+
 	public static function resolve_venue_slots( $venue_id, $date, $day_name, $config ) {
+		// SG-6: memoize on (config identity, venue, date, day). Output is the
+		// exact array the cascade below would return, so schedule output is
+		// byte-identical with or without the cache.
+		$config_key = is_object( $config ) ? spl_object_id( $config ) : 'arr';
+		$cache_key  = $config_key . '|' . $venue_id . '|' . $date . '|' . $day_name;
+		if ( array_key_exists( $cache_key, self::$venue_slots_cache ) ) {
+			return self::$venue_slots_cache[ $cache_key ];
+		}
+
+		$resolved = self::resolve_venue_slots_uncached( $venue_id, $date, $day_name, $config );
+		self::$venue_slots_cache[ $cache_key ] = $resolved;
+		return $resolved;
+	}
+
+	/**
+	 * Uncached cascade resolution. Extracted so {@see resolve_venue_slots()} can
+	 * memoize without changing the resolution logic.
+	 *
+	 * @param int|string $venue_id Venue identifier.
+	 * @param string     $date     Date in YYYY-MM-DD format.
+	 * @param string     $day_name Lowercase day name.
+	 * @param object     $config   Schedule configuration.
+	 * @return array|null Resolved slots or null.
+	 */
+	private static function resolve_venue_slots_uncached( $venue_id, $date, $day_name, $config ) {
 		// Priority 1: Date-specific availability
 		if ( ! empty( $config->venue_date_availability[ $venue_id ] ) ) {
 			foreach ( $config->venue_date_availability[ $venue_id ] as $range ) {
