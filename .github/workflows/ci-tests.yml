@@ -33,28 +33,12 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run Standalone PHP Tests
-        run: |
-          failed=0
-          for test in \
-            sportspress-etransfer-automation/tests/test-name-matcher.php \
-            sportspress-etransfer-automation/tests/test-etransfer-automation.php \
-            sportspress-player-registration/tests/test-registration-logic.php \
-            sportspress-player-tools/tests/test-batch-list-creator.php \
-            sportspress-schedule-generator/tests/test-matchup-generator.php \
-            sportspress-league-manager/tests/test-league-manager.php; do
-            echo "--- Running $(basename $test) ---"
-            output=$(php "$test" 2>&1)
-            echo "$output"
-            if echo "$output" | grep -q "Failed: [1-9]"; then
-              failed=1
-            fi
-            echo ""
-          done
-          if [ "$failed" -eq 1 ]; then
-            echo "::error::One or more test suites failed"
-            exit 1
-          fi
-          echo "All test suites passed"
+        # Delegate to run-all-tests.sh — the single source of truth for the unit
+        # suite. It checks each suite's process exit code (not a grep for a
+        # "Failed: N" string, which a fatal error / crash never prints) and runs
+        # the full list, including test-exporters.php and test-constraints.php
+        # that the previous inline list silently omitted.
+        run: bash run-all-tests.sh
 
   docker-integration-test:
     runs-on: ubuntu-latest

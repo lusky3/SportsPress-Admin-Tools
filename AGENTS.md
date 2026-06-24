@@ -14,7 +14,7 @@ A monorepo of seven independent WordPress plugins targeting SportsPress. One is 
 | `sportspress-player-registration/` | `SPPR_` | WooCommerce order → SportsPress player record |
 | `sportspress-player-tools/` | `SPPT_` | Player metadata (email, captain, squad #), batch list CSV |
 | `sportspress-schedule-generator/` | `SPSG_` | Round-robin scheduling with constraints, XLSX/CSV export |
-| `sportspress-league-manager/` | `SPLM_` | React/`@wordpress/scripts` admin SPA gated by `manage_league` cap |
+| `sportspress-league-manager/` | `SPLM_` | React/`@wordpress/scripts` admin SPA gated by `manage_sportspress` (see Capability Model) |
 
 Each plugin has its own `readme.txt`, `uninstall.php`, and `tests/` directory.
 
@@ -35,7 +35,7 @@ When adding a new child module, follow the bootstrap pattern in `sportspress-sch
 |------------|---------|-------|
 | `manage_options` | All admin/settings pages | Default WP admin gate |
 | `manage_woocommerce` | e-Transfer Automation | Payment matching |
-| `manage_league` | League Manager | Custom cap added to `administrator` on activation; `SPLM_Capabilities::grant_to_user()` for non-admins. Removed on deactivation. |
+| `manage_sportspress` (League Manager gate) | League Manager | The live gate. `SPLM_Capabilities::can_manage()` checks `manage_sportspress`; `can_read()` also allows `edit_others_sp_events`/`edit_others_sp_players`/`edit_sp_events`. A custom `manage_league` cap was planned (see ARCHITECTURE.md) but is **not** implemented — there is no CAP const, activation grant, or `grant_to_user()`. |
 | `manage_sportspress` | SportsPress core | Provided by SP, not us |
 
 Every AJAX/REST handler must call both `check_ajax_referer()` and `current_user_can()` before doing work. See `phpcs.xml` — the WordPress security sniffs are excluded due to false-positive noise, so capability/nonce checks are enforced by review and `AUDIT-REPORT.md`, not by phpcs.
