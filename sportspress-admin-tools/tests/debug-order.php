@@ -1,5 +1,20 @@
 <?php
+/**
+ * DEV-ONLY SCRIPT — never shipped. Excluded from the distributed build via
+ * .distignore. This file self-bootstraps WordPress below, so the ABSPATH guard
+ * cannot fully neutralize direct web access on a dev box; the .distignore
+ * exclusion is the real safeguard. Run only from CLI in a trusted environment.
+ */
+
+if ( defined( 'SPAT_BLOCK_DEV_SCRIPTS' ) ) {
+	exit;
+}
+
 require_once('../../../wp-load.php');
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
 
 $order_id = 113060;
 $order = wc_get_order($order_id);

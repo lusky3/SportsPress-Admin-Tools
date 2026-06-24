@@ -114,7 +114,7 @@ class SPAT_Database {
 		// leave installs in a state where spat_db_version = '1.0.4' but the new
 		// column / index is missing — readers then fail with 'Unknown column'.
 		if ( self::schema_matches_current_version() ) {
-			update_option( 'spat_db_version', '1.0.4' );
+			update_option( 'spat_db_version', defined( 'SPAT_DB_VERSION' ) ? SPAT_DB_VERSION : '1.0.4' );
 		} elseif ( class_exists( 'SPAT_Logger' ) ) {
 			SPAT_Logger::error( 'database', 'dbDelta did not produce the expected schema; spat_db_version left unset for retry.' );
 		}
@@ -298,9 +298,10 @@ class SPAT_Database {
 	public static function get_etransfer_logs( $limit = 50, $offset = 0 ) {
 		global $wpdb;
 		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is internal; values use placeholders.
 		return $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT * FROM $table_name ORDER BY timestamp DESC LIMIT %d OFFSET %d",
+				"SELECT * FROM `{$table_name}` ORDER BY timestamp DESC LIMIT %d OFFSET %d",
 				$limit,
 				$offset
 			)
@@ -310,9 +311,10 @@ class SPAT_Database {
 	public static function get_registration_logs( $limit = 100, $offset = 0 ) {
 		global $wpdb;
 		$table_name = $wpdb->prefix . 'spat_registration_logs';
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is internal; values use placeholders.
 		return $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT * FROM $table_name ORDER BY timestamp DESC LIMIT %d OFFSET %d",
+				"SELECT * FROM `{$table_name}` ORDER BY timestamp DESC LIMIT %d OFFSET %d",
 				$limit,
 				$offset
 			)
@@ -322,9 +324,10 @@ class SPAT_Database {
 	public static function get_role_logs( $limit = 100, $offset = 0 ) {
 		global $wpdb;
 		$table_name = $wpdb->prefix . 'spat_role_logs';
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is internal; values use placeholders.
 		return $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT * FROM $table_name ORDER BY timestamp DESC LIMIT %d OFFSET %d",
+				"SELECT * FROM `{$table_name}` ORDER BY timestamp DESC LIMIT %d OFFSET %d",
 				$limit,
 				$offset
 			)

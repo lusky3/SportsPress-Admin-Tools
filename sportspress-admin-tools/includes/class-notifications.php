@@ -95,7 +95,10 @@ class SPAT_Notifications {
 	}
 
 	private function render_toggle( $option, $description ) {
-		$enabled = get_option( $option, '1' );
+		// Per-event notifications are opt-in (default off) so enabling the master
+		// toggle alone never silently fires categories the operator didn't choose.
+		// Must match the default used in is_enabled().
+		$enabled = get_option( $option, '0' );
 		echo '<input type="checkbox" name="' . esc_attr( $option ) . '" value="1" ' . checked( $enabled, '1', false ) . '>';
 		echo '<p class="description">' . esc_html( $description ) . '</p>';
 	}
@@ -259,8 +262,10 @@ class SPAT_Notifications {
 	// --- Helpers ---
 
 	private function is_enabled( $option ) {
+		// Per-event default off — must match render_toggle() so an unsaved
+		// per-event setting is treated as "not opted in", not "on".
 		return get_option( 'spat_notifications_enabled', '0' ) === '1'
-			&& get_option( $option, '1' ) === '1';
+			&& get_option( $option, '0' ) === '1';
 	}
 
 	private function get_recipient() {

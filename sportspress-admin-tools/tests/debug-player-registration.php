@@ -2,8 +2,17 @@
 /**
  * Debug Player Registration - Add to functions.php temporarily
  *
+ * DEV-ONLY SCRIPT — never shipped. Excluded from the distributed build via
+ * .distignore. Intended to be pasted into a theme's functions.php while
+ * debugging; it registers admin-only hooks and must not live in production.
+ *
  * @author Cody (lusky3)
  */
+
+// Defense-in-depth: refuse to run if loaded outside WordPress.
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
 
 // Add this to your theme's functions.php file temporarily to debug
 
@@ -30,8 +39,8 @@ add_action('admin_notices', function() {
     $reg_table = $wpdb->prefix . 'spat_registration_logs';
     $role_table = $wpdb->prefix . 'spat_role_logs';
     
-    $reg_exists = $wpdb->get_var("SHOW TABLES LIKE '$reg_table'") === $reg_table;
-    $role_exists = $wpdb->get_var("SHOW TABLES LIKE '$role_table'") === $role_table;
+    $reg_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $reg_table ) ) === $reg_table;
+    $role_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $role_table ) ) === $role_table;
     
     echo '<p>Registration table: ' . ($reg_exists ? 'Exists' : 'Missing') . '</p>';
     echo '<p>Role table: ' . ($role_exists ? 'Exists' : 'Missing') . '</p>';

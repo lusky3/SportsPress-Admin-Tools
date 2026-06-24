@@ -1,11 +1,12 @@
 === SportsPress Admin Tools ===
-Contributors: Cody (lusky3)
+Contributors: lusky3
 Tags: sportspress, automation, sports
 Requires at least: 5.0
-Tested up to: 6.9
+Tested up to: 6.8
 Requires PHP: 8.1
-Stable tag: 1.0.0
-License: GPL v2 or later
+Stable tag: 1.0.4
+License: GPLv2 or later
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
 Extended tools for SportsPress
 
@@ -30,6 +31,10 @@ Each child plugin registers with this parent and loads only when its module is e
 2. Activate the plugin through the 'Plugins' screen in WordPress
 
 == Changelog ==
+
+= 1.0.4 =
+* Database schema updates: links_to_order column and supporting indexes on registration logs, unique key on temp data.
+* Hardened settings UI accessibility (ARIA tab roles, labelled module toggles, visible unsaved-changes indicator).
 
 = 1.0.0 =
 * Initial release
