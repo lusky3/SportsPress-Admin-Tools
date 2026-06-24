@@ -45,11 +45,15 @@ This Cloudflare Worker processes Interac e-Transfer notification emails and forw
    wrangler secret put FORWARD_EMAIL
    # Enter: admin@yoursite.com (optional - for email forwarding)
    
-   # Optional: Allow custom sender domains
+   # Allowed sender domains. REQUIRED if you FORWARD Interac emails through
+   # your own mail provider (the only built-in trusted sender is the direct
+   # address notify@payments.interac.ca). Add your forwarder's envelope
+   # domain here. Comma-separated; a leading-dot entry (".example.com") also
+   # matches subdomains.
    wrangler secret put SAFE_DOMAINS
-   # Enter: domain.com,myservice.email,processor.org
+   # Enter: mail.yourforwarder.com,.yourforwarder.com
    
-   # Optional: Disable Interac domain check
+   # Optional: Disable Interac domain check (debugging only)
    wrangler secret put DISABLE_INTERAC_CHECK
    # Enter: true
    ```
@@ -117,12 +121,25 @@ This Cloudflare Worker processes Interac e-Transfer notification emails and forw
 - Format: `domain.com,myservice.email,processor.org` (comma-separated)
 - Spaces around commas are automatically trimmed
 - Only the domain part is checked (e.g., `user@domain.com` matches `domain.com`)
-- Set `DISABLE_INTERAC_CHECK=true` to bypass default Interac domain requirement
+- A leading-dot entry (e.g. `.example.com`) also matches any subdomain of it
+- There is NO implicitly trusted forwarding provider. If you forward Interac
+  mail through a third party (including shared-hosting forwarders), you MUST
+  add that provider's envelope domain to `SAFE_DOMAINS` — scope it to your own
+  forwarder, not to a whole shared host
+- Set `DISABLE_INTERAC_CHECK=true` to bypass the sender check (debugging only)
 
 ## Security Notes
 
-- By default, only processes emails from `notify@payments.interac.ca`
-- Use `SAFE_DOMAINS` to allow additional trusted sender domains
+- By default, only the direct address `notify@payments.interac.ca` is trusted
+- Use `SAFE_DOMAINS` to authorize the specific domain of your own forwarder.
+  Avoid allowlisting a broad shared-hosting domain: any other customer of that
+  host could otherwise deliver a forged Interac notification that the Worker
+  would sign and forward
+- The WordPress side additionally verifies the original Interac DKIM result
+  from the forwarded authentication headers. By default this is log-only
+  (non-breaking); set the "DKIM Enforcement" option to "Reject" in the plugin
+  settings once you have confirmed your forwarder preserves the Interac DKIM
+  signature
 - Set `DISABLE_INTERAC_CHECK` to bypass domain restrictions (use with caution)
 - All webhook requests are signed with HMAC SHA256
 - Environment variables are encrypted in Cloudflare

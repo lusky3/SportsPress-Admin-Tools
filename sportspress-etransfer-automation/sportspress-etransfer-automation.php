@@ -5,11 +5,12 @@
  * Version: 1.0.0
  * Author: Cody (lusky3)
  * Text Domain: sportspress-etransfer-automation
- * License: GPL v2 or later
+ * License: GPLv2 or later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Requires at least: 5.0
- * Tested up to: 6.9
+ * Tested up to: 6.7
  * Requires PHP: 8.1
- * Depends: SportsPress Admin Tools
+ * Requires Plugins: sportspress-admin-tools
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -28,6 +29,20 @@ class SportsPress_ETransfer_Automation {
 		register_deactivation_hook( __FILE__, array( $this, 'deactivate' ) );
 		add_action( 'plugins_loaded', array( $this, 'init' ) );
 		add_action( 'spet_cleanup_old_logs', array( $this, 'run_log_cleanup' ) );
+		add_action( 'before_woocommerce_init', array( $this, 'declare_woocommerce_compatibility' ) );
+	}
+
+	/**
+	 * Declare WooCommerce High-Performance Order Storage (HPOS / custom order
+	 * tables) compatibility. This plugin reads orders exclusively through the
+	 * HPOS-safe CRUD layer (wc_get_orders / wc_get_order / WC_Order methods) and
+	 * never queries the legacy posts table directly, so it is compatible with
+	 * both storage backends.
+	 */
+	public function declare_woocommerce_compatibility() {
+		if ( class_exists( '\Automattic\WooCommerce\Utilities\FeaturesUtil' ) ) {
+			\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );
+		}
 	}
 
 	public function check_activation_requirements() {
@@ -60,6 +75,15 @@ class SportsPress_ETransfer_Automation {
 	public function run_log_cleanup() {
 		require_once SPET_PLUGIN_PATH . 'includes/class-database.php';
 		SPET_Database::cleanup_old_logs( 90 );
+
+		// Piggyback deterministic cleanup of stale wp_options rate-limit rows on
+		// the same daily cron, replacing the old 1-in-100 in-request sweep (which
+		// is retained only as a fallback). No-op when an external object cache is
+		// active. Loaded only when the module is enabled.
+		if ( class_exists( 'SPET_ETransfer_Automation' ) ) {
+			$automation = new SPET_ETransfer_Automation();
+			$automation->cleanup_stale_rate_limits();
+		}
 	}
 
 	public function init() {

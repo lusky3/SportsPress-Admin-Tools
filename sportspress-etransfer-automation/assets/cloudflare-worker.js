@@ -11,15 +11,24 @@
 export default {
   async email(message, env, ctx) {
     try {
-      // Build email data first to check original sender
-      const emailData = await buildEmailData(message, env);
-      
-      // Check if original sender is from safe domain
-      if (!isFromSafeDomain(message.from, env) && !isFromSafeDomain(emailData.from.address, env)) {
-        console.log('Rejected email from unsafe domain:', message.from, 'Original:', emailData.from.address);
+      // Authorize ONLY on the envelope sender (message.from). Cloudflare Email
+      // Routing sets this from the verified SMTP envelope and it is covered by
+      // SPF/DKIM — unlike the body "From:" line, which is free text an attacker
+      // can forge. A forwarded Interac notification arrives with the forwarder
+      // as the envelope sender (e.g. *.mxroute.com), so legitimate forwarding
+      // still passes; operators add their forwarder to SAFE_DOMAINS rather than
+      // relying on the body. Do NOT OR-in the body-parsed address here: doing so
+      // lets anyone who can deliver mail to this address forge a
+      // "From: notify@payments.interac.ca" body and have it signed + forwarded
+      // to WordPress, where it can auto-complete a WooCommerce order.
+      if (!isFromSafeDomain(message.from, env)) {
+        console.log('Rejected email from unsafe envelope domain:', message.from);
         message.setReject('Not from a safe sender domain');
         return;
       }
+
+      // Build email data after the envelope has been authorized.
+      const emailData = await buildEmailData(message, env);
       
       await sendWebhook(emailData, env, message);
     } catch (error) {
@@ -101,7 +110,12 @@ async function buildEmailData(message, env) {
 }
 
 /**
- * Append authentication headers to email data for security verification
+ * Append the original email authentication headers (DKIM-Signature,
+ * Authentication-Results, ARC-*, Received-SPF) to the webhook payload under
+ * emailData.auth_headers. The WordPress side reads these and verifies that the
+ * Interac sender domain produced a passing DKIM result (see
+ * SPET_ETransfer_Automation::verify_email_authentication). Enforcement is
+ * controlled server-side by the spet_dkim_enforcement option (log vs reject).
  */
 function appendAuthHeaders(emailData, allHeaders, authHeaders) {
   const authData = {};
@@ -153,7 +167,10 @@ async function buildHeaders(payload, secret, customHeaders, timestamp) {
 
   if (customHeaders) {
     try {
-      Object.assign(headers, JSON.parse(customHeaders));
+      // customHeaders is env.CUSTOM_HEADERS — operator-set Worker config (trusted,
+      // deploy-time), merged into an outbound request header object, never a
+      // user-facing response. Not attacker-controlled mass assignment.
+      Object.assign(headers, JSON.parse(customHeaders)); // nosemgrep
     } catch (e) {
       console.error('Invalid CUSTOM_HEADERS JSON:', e.message, 'Value:', customHeaders);
     }
@@ -223,36 +240,59 @@ function parseEmailName(header) {
 }
 
 /**
- * Check if email is from a safe sender domain
+ * Check if email is from a safe (authorized) sender domain.
+ *
+ * The allowlist is intentionally OPERATOR-CONFIGURABLE: there is no implicitly
+ * trusted shared-hosting forwarder. The only built-in trusted sender is the
+ * direct Interac notification address. To accept FORWARDED Interac mail (the
+ * common case), the operator must add their own forwarder's envelope domain to
+ * the SAFE_DOMAINS environment variable (comma-separated). A leading-dot entry
+ * (e.g. ".example.com") also matches subdomains of that domain.
+ *
+ * Rationale: a previous build implicitly trusted any *.mxroute.com sender. On a
+ * shared host that means ANY customer of that provider could deliver a forged
+ * Interac body that the Worker would then sign and forward. Trust must instead
+ * be scoped to the operator's specific forwarder.
  */
 function isFromSafeDomain(fromAddress, env) {
-  // If DISABLE_INTERAC_CHECK is set, skip the default check
+  // If DISABLE_INTERAC_CHECK is set, skip the default check (debugging flag).
   if (env.DISABLE_INTERAC_CHECK) {
     return true;
   }
-  
-  // Check default Interac domain
+
+  // Built-in: the direct Interac notification address.
   if (fromAddress === 'notify@payments.interac.ca') {
     return true;
   }
-  
-  // Allow forwarded emails from MXRoute (common email forwarding service)
-  const domain = fromAddress?.split('@')[1];
-  if (domain && (domain === 'mxroute.com' || domain.endsWith('.mxroute.com'))) {
-    return true;
+
+  const emailDomain = fromAddress?.split('@')[1];
+  if (!emailDomain) {
+    return false;
   }
-  
-  // Check custom safe domains if configured
+
+  // Operator-configured allowlist. Each entry is either an exact domain
+  // ("mail.example.com") or a leading-dot wildcard (".example.com") that also
+  // matches any subdomain. Operators populate this with their own forwarder.
   if (env.SAFE_DOMAINS) {
     const safeDomains = env.SAFE_DOMAINS
       .split(',')
-      .map(domain => domain.trim())
-      .filter(domain => domain.length > 0);
-    
-    const emailDomain = fromAddress.split('@')[1];
-    return safeDomains.includes(emailDomain);
+      .map(d => d.trim().toLowerCase())
+      .filter(d => d.length > 0);
+
+    const domain = emailDomain.toLowerCase();
+    for (const entry of safeDomains) {
+      if (entry.startsWith('.')) {
+        // ".example.com" matches example.com and any subdomain of it.
+        const base = entry.slice(1);
+        if (domain === base || domain.endsWith('.' + base)) {
+          return true;
+        }
+      } else if (domain === entry) {
+        return true;
+      }
+    }
   }
-  
+
   return false;
 }
 

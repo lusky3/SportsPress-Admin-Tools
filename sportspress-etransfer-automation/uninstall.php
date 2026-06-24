@@ -22,8 +22,10 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 
 	// Remove plugin options
 	delete_option( 'spet_webhook_secret' );
-	delete_option( 'spet_service_provider' );
 	delete_option( 'spet_equivalent_names' );
+	delete_option( 'spet_trusted_proxy_ips' );
+	delete_option( 'spet_pii_retention_days' );
+	delete_option( 'spet_dkim_enforcement' );
 
 	// Clear scheduled cron events
 	wp_clear_scheduled_hook( 'spet_cleanup_old_logs' );

@@ -121,11 +121,24 @@ class SPET_Database {
 		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
 
 		// Only count rows that actually completed (order_id IS NOT NULL).
-		// Unmatched rows (no matching order, amount mismatch) sit in pending
-		// state and SHOULD be retryable — if the customer corrects their
-		// payment and the bank re-sends the same reference, we want the
-		// webhook to be processable, not silently swallowed as a duplicate.
-		// Duplicate-webhook audit rows already insert reference_number as NULL.
+		// Unmatched rows (no matching order, amount mismatch, name match pending
+		// manual review) sit in a pending state and SHOULD be retryable — if the
+		// customer corrects their payment and the bank re-sends the same
+		// reference, we want the webhook to be processable, not silently swallowed
+		// as a duplicate. Duplicate-webhook audit rows already insert
+		// reference_number as NULL.
+		//
+		// Replay semantics (intentional): this gate prevents a reference that has
+		// ALREADY completed an order from completing a second one. It does NOT, by
+		// itself, prevent a not-yet-completed reference from being submitted more
+		// than once. That sequential-replay surface is bounded by two other
+		// controls in handle_webhook(): (1) the HMAC signature is timestamp-bound
+		// and the request is rejected once the timestamp is older than 300s, so an
+		// attacker cannot indefinitely resubmit a captured payload; and (2) a
+		// short-lived per-reference lock (SPAT_Lock) serialises concurrent
+		// deliveries of the same reference. Within the 300s window a re-delivered
+		// pending reference is therefore allowed deliberately (legitimate retry),
+		// and the first delivery that completes an order claims the reference here.
 		$count = $wpdb->get_var(
 			$wpdb->prepare(
 				"SELECT COUNT(*) FROM $table_name WHERE reference_number = %s AND order_id IS NOT NULL",
