@@ -1,8 +1,0 @@
-- generic [ref=e2]:
-  - text: You are attempting to log out of ARL - Adult Recreational League
-  - paragraph
-  - paragraph [ref=e3]:
-    - text: Do you really want to
-    - link "log out" [ref=e4] [cursor=pointer]:
-      - /url: https://tikal.lusk.ee:8443/wp-login.php?action=logout&_wpnonce=0abea1328f
-    - text: "?"
