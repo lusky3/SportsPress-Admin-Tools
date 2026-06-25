@@ -136,6 +136,13 @@ export function rolloverExecute( fromSeason, toSeason, playerIds ) {
 	return apiFetch( { path: '/splm/v1/season/rollover-execute', method: 'POST', data: { from_season: fromSeason, to_season: toSeason, player_ids: playerIds } } );
 }
 
+export function createSeason( seasonName, leagueId, { createCalendars = false, createRosters = false, teamIds = [], newTeams = [] } = {} ) {
+	const data = { season_name: seasonName, league_id: leagueId, create_calendars: createCalendars, create_rosters: createRosters };
+	if ( teamIds.length ) data.team_ids = teamIds;
+	if ( newTeams.length ) data.new_teams = newTeams;
+	return apiFetch( { path: '/splm/v1/season/create', method: 'POST', data } );
+}
+
 // spsg/v1 — Schedule Generator. List endpoints unwrap .data; single-resource
 // and write endpoints return their response as-is.
 export const spsg = {

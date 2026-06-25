@@ -11,6 +11,7 @@ import ScheduleGenerator from './pages/ScheduleGenerator';
 import DivisionBalance from './pages/DivisionBalance';
 import TeamComparison from './pages/TeamComparison';
 import SeasonReport from './pages/SeasonReport';
+import SeasonSetup from './pages/SeasonSetup';
 import './styles.css';
 
 const PAGES = {
@@ -25,6 +26,7 @@ const PAGES = {
 	'div-balance': DivisionBalance,
 	'team-compare': TeamComparison,
 	'season-report': SeasonReport,
+	'season-setup': SeasonSetup,
 };
 
 // UX-11: derive the initial page from the URL hash so deep links / refresh land

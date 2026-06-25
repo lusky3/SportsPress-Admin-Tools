@@ -184,6 +184,7 @@ class SPLM_Dashboard_Frontend {
 			// the optional league_player_notes module is not enabled, instead
 			// of letting the user click through to a 503.
 			'hasNotesModule'     => in_array( 'league_player_notes', (array) get_option( 'spat_enabled_modules', array() ), true ),
+			'hasSeasonSetup'     => true,
 		);
 
 		wp_localize_script( 'splm-dashboard', 'splmDashboard', array(
