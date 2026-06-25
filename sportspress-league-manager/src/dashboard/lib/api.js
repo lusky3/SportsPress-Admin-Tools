@@ -49,6 +49,10 @@ export function fetchTeams( season ) {
 	return apiFetch( { path: '/splm/v1/teams' + params } ).then( unwrapList );
 }
 
+export function fetchTeamsWithDivisions() {
+	return apiFetch( { path: '/splm/v1/teams/with-divisions' } ).then( ( res ) => res.teams || [] );
+}
+
 export function fetchRosterDetails( teamId, seasonId ) {
 	return apiFetch( { path: `/splm/v1/rosters/details?team=${ teamId }&season=${ seasonId }` } ).then( unwrapList );
 }
@@ -136,10 +140,11 @@ export function rolloverExecute( fromSeason, toSeason, playerIds ) {
 	return apiFetch( { path: '/splm/v1/season/rollover-execute', method: 'POST', data: { from_season: fromSeason, to_season: toSeason, player_ids: playerIds } } );
 }
 
-export function createSeason( seasonName, leagueId, { createCalendars = false, createRosters = false, teamIds = [], newTeams = [] } = {} ) {
+export function createSeason( seasonName, leagueId, { createCalendars = false, createRosters = false, teamIds = [], newTeams = [], divisionAssignments = {} } = {} ) {
 	const data = { season_name: seasonName, league_id: leagueId, create_calendars: createCalendars, create_rosters: createRosters };
 	if ( teamIds.length ) data.team_ids = teamIds;
 	if ( newTeams.length ) data.new_teams = newTeams;
+	if ( Object.keys( divisionAssignments ).length ) data.division_assignments = divisionAssignments;
 	return apiFetch( { path: '/splm/v1/season/create', method: 'POST', data } );
 }
 
