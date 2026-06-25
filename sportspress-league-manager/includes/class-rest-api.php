@@ -407,6 +407,26 @@ class SPLM_REST_API {
 				'permission_callback' => array( $this, 'check_manage_permission' ),
 			)
 		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/season/create',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'create_season' ),
+				'permission_callback' => array( $this, 'check_manage_permission' ),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/season/preview',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'preview_season' ),
+				'permission_callback' => array( $this, 'check_manage_permission' ),
+			)
+		);
 	}
 
 	public function check_read_permission() {
@@ -2043,6 +2063,253 @@ class SPLM_REST_API {
 		update_post_meta( $table_id, 'sp_columns', array( 'pos', 'name', 'p', 'w', 'd', 'l', 'f', 'a', 'gd', 'pts' ) );
 
 		return new WP_REST_Response( array( 'table_id' => $table_id, 'title' => $title, 'teams' => count( $teams ) ), 200 );
+	}
+
+	/**
+	 * POST /season/preview — dry-run: returns what create_season would do without writing.
+	 */
+	public function preview_season( $request ) {
+		$params           = $request->get_json_params();
+		$season_name      = isset( $params['season_name'] ) ? trim( sanitize_text_field( $params['season_name'] ) ) : '';
+		$league_id        = absint( $params['league_id'] ?? 0 );
+		$create_calendars = ! empty( $params['create_calendars'] );
+		$create_rosters   = ! empty( $params['create_rosters'] );
+		$team_ids_filter  = isset( $params['team_ids'] ) && is_array( $params['team_ids'] ) ? array_map( 'absint', $params['team_ids'] ) : array();
+		$new_team_names   = isset( $params['new_teams'] ) && is_array( $params['new_teams'] ) ? array_map( 'sanitize_text_field', $params['new_teams'] ) : array();
+
+		if ( ! $season_name || ! $league_id ) {
+			return new WP_Error( 'missing_params', 'season_name and league_id are required.', array( 'status' => 400 ) );
+		}
+		if ( ! preg_match( '/^[A-Za-z]?\d{4}(-\d{2,4})?$/', $season_name ) ) {
+			return new WP_Error( 'invalid_season_name', 'Invalid season name format.', array( 'status' => 400 ) );
+		}
+
+		$league = get_term( $league_id, 'sp_league' );
+		if ( ! $league || is_wp_error( $league ) ) {
+			return new WP_Error( 'invalid_league', 'Invalid league_id.', array( 'status' => 400 ) );
+		}
+
+		// Get teams in league.
+		$teams = get_posts( array(
+			'post_type'      => 'sp_team',
+			'posts_per_page' => -1,
+			'post_status'    => 'publish',
+			'tax_query'      => array( array( 'taxonomy' => 'sp_league', 'terms' => $league_id ) ),
+		) );
+
+		if ( ! empty( $team_ids_filter ) ) {
+			$teams = array_filter( $teams, function ( $t ) use ( $team_ids_filter ) {
+				return in_array( $t->ID, $team_ids_filter, true );
+			} );
+		}
+
+		$teams_list = array_merge(
+			array_map( function ( $t ) { return $t->post_title; }, $teams ),
+			$new_team_names
+		);
+
+		$season_exists = (bool) get_term_by( 'name', $season_name, 'sp_season' );
+
+		// Count calendars to update vs create.
+		$calendars_to_update = 0;
+		$calendars_to_create = 0;
+		if ( $create_calendars ) {
+			foreach ( $teams as $team ) {
+				$cals = get_posts( array(
+					'post_type'      => 'sp_calendar',
+					'post_status'    => 'publish',
+					'posts_per_page' => 1,
+					'fields'         => 'ids',
+					'meta_query'     => array( array( 'key' => 'sp_team', 'value' => sprintf( 'i:%d;', (int) $team->ID ), 'compare' => 'LIKE' ) ),
+				) );
+				if ( ! empty( $cals ) ) {
+					$calendars_to_update++;
+				} else {
+					$calendars_to_create++;
+				}
+			}
+			// New teams always need new calendars.
+			$calendars_to_create += count( $new_team_names );
+		}
+
+		$rosters_to_create = $create_rosters ? count( $teams ) + count( $new_team_names ) : 0;
+
+		return new WP_REST_Response( array(
+			'season_exists'       => $season_exists,
+			'new_teams'           => $new_team_names,
+			'teams_to_update'     => count( $teams ) + count( $new_team_names ),
+			'teams_list'          => $teams_list,
+			'calendars_to_update' => $calendars_to_update,
+			'calendars_to_create' => $calendars_to_create,
+			'rosters_to_create'   => $rosters_to_create,
+		), 200 );
+	}
+
+	/**
+	 * POST /season/create — create a new season and optionally calendars/rosters.
+	 */
+	public function create_season( $request ) {
+		$params = $request->get_json_params();
+		if ( ! is_array( $params ) ) {
+			return new WP_Error( 'invalid_payload', 'Request body must be a JSON object.', array( 'status' => 400 ) );
+		}
+
+		$season_name      = isset( $params['season_name'] ) ? trim( sanitize_text_field( $params['season_name'] ) ) : '';
+		$league_id        = absint( $params['league_id'] ?? 0 );
+		$create_calendars = ! empty( $params['create_calendars'] );
+		$create_rosters   = ! empty( $params['create_rosters'] );
+		$team_ids_filter  = isset( $params['team_ids'] ) && is_array( $params['team_ids'] ) ? array_map( 'absint', $params['team_ids'] ) : array();
+		$new_team_names   = isset( $params['new_teams'] ) && is_array( $params['new_teams'] ) ? array_map( 'sanitize_text_field', $params['new_teams'] ) : array();
+
+		if ( ! $season_name || ! $league_id ) {
+			return new WP_Error( 'missing_params', 'season_name and league_id are required.', array( 'status' => 400 ) );
+		}
+
+		if ( ! preg_match( '/^[A-Za-z]?\d{4}(-\d{2,4})?$/', $season_name ) ) {
+			return new WP_Error( 'invalid_season_name', 'Season name must match format: W2025, S2025-26, or 2025.', array( 'status' => 400 ) );
+		}
+
+		$league = get_term( $league_id, 'sp_league' );
+		if ( ! $league || is_wp_error( $league ) ) {
+			return new WP_Error( 'invalid_league', 'Invalid league_id.', array( 'status' => 400 ) );
+		}
+
+		$teams = get_posts( array(
+			'post_type'      => 'sp_team',
+			'posts_per_page' => -1,
+			'post_status'    => 'publish',
+			'tax_query'      => array(
+				array(
+					'taxonomy' => 'sp_league',
+					'terms'    => $league_id,
+				),
+			),
+		) );
+
+		if ( empty( $teams ) ) {
+			return new WP_Error( 'no_teams', 'No teams found in the selected league.', array( 'status' => 400 ) );
+		}
+
+		// If specific team_ids were provided, filter to only those.
+		if ( ! empty( $team_ids_filter ) ) {
+			$teams = array_filter( $teams, function ( $team ) use ( $team_ids_filter ) {
+				return in_array( $team->ID, $team_ids_filter, true );
+			} );
+			if ( empty( $teams ) ) {
+				return new WP_Error( 'no_teams', 'None of the selected teams are in this league.', array( 'status' => 400 ) );
+			}
+		}
+
+		// Create or reuse season term.
+		$existing = get_term_by( 'name', $season_name, 'sp_season' );
+		if ( $existing ) {
+			$season_term_id = $existing->term_id;
+		} else {
+			$result = wp_insert_term( $season_name, 'sp_season' );
+			if ( is_wp_error( $result ) ) {
+				return $result;
+			}
+			$season_term_id = $result['term_id'];
+		}
+
+		$teams_updated      = 0;
+		$calendars_updated  = 0;
+		$calendars_created  = 0;
+		$rosters_created    = 0;
+		$new_teams_created  = 0;
+
+		// Create new teams if requested.
+		foreach ( $new_team_names as $name ) {
+			$name = trim( $name );
+			if ( ! $name ) continue;
+			$team_id = wp_insert_post( array(
+				'post_type'   => 'sp_team',
+				'post_title'  => $name,
+				'post_status' => 'publish',
+			) );
+			if ( $team_id && ! is_wp_error( $team_id ) ) {
+				wp_set_object_terms( $team_id, array( $league_id ), 'sp_league' );
+				$teams[] = get_post( $team_id );
+				$new_teams_created++;
+			}
+		}
+
+		// Build the season term IDs list: the new season + any child seasons
+		// (e.g. "W2025-26 Playoffs" as a child of "W2025-26").
+		$season_term_ids = array( $season_term_id );
+		$child_seasons = get_terms( array(
+			'taxonomy'   => 'sp_season',
+			'parent'     => $season_term_id,
+			'hide_empty' => false,
+		) );
+		if ( ! empty( $child_seasons ) && ! is_wp_error( $child_seasons ) ) {
+			$season_term_ids = array_merge( $season_term_ids, wp_list_pluck( $child_seasons, 'term_id' ) );
+		}
+
+		foreach ( $teams as $team ) {
+			wp_set_object_terms( $team->ID, $season_term_id, 'sp_season', true );
+			$teams_updated++;
+
+			if ( $create_calendars ) {
+				// Find any existing calendar for this team (regardless of season).
+				$team_cals = get_posts( array(
+					'post_type'      => 'sp_calendar',
+					'post_status'    => 'publish',
+					'posts_per_page' => 1,
+					'fields'         => 'ids',
+					'meta_query'     => array(
+						array(
+							'key'     => 'sp_team',
+							'value'   => sprintf( 'i:%d;', (int) $team->ID ),
+							'compare' => 'LIKE',
+						),
+					),
+				) );
+
+				if ( ! empty( $team_cals ) ) {
+					// Re-tag existing calendar to the new season (+ children).
+					wp_set_object_terms( $team_cals[0], array_map( 'intval', $season_term_ids ), 'sp_season' );
+					$calendars_updated++;
+				} else {
+					// Create calendar only for teams that don't have one.
+					$cal_id = wp_insert_post( array(
+						'post_type'   => 'sp_calendar',
+						'post_title'  => $team->post_title . ' | ARL',
+						'post_status' => 'publish',
+					) );
+					if ( $cal_id && ! is_wp_error( $cal_id ) ) {
+						update_post_meta( $cal_id, 'sp_team', array( $team->ID ) );
+						wp_set_object_terms( $cal_id, array_map( 'intval', $season_term_ids ), 'sp_season' );
+						wp_set_object_terms( $cal_id, array( $league_id ), 'sp_league' );
+						$calendars_created++;
+					}
+				}
+			}
+
+			if ( $create_rosters ) {
+				$list_id = wp_insert_post( array(
+					'post_type'   => 'sp_list',
+					'post_title'  => $team->post_title . ' — ' . $season_name . ' Roster',
+					'post_status' => 'publish',
+				) );
+				if ( $list_id && ! is_wp_error( $list_id ) ) {
+					update_post_meta( $list_id, 'sp_team', $team->ID );
+					wp_set_object_terms( $list_id, array( $season_term_id ), 'sp_season' );
+					wp_set_object_terms( $list_id, array( $league_id ), 'sp_league' );
+					$rosters_created++;
+				}
+			}
+		}
+
+		return new WP_REST_Response( array(
+			'season_id'          => $season_term_id,
+			'season_name'        => $season_name,
+			'teams_updated'      => $teams_updated,
+			'calendars_updated'  => $calendars_updated,
+			'calendars_created'  => $calendars_created,
+			'rosters_created'    => $rosters_created,
+			'new_teams_created'  => $new_teams_created,
+		), 201 );
 	}
 
 	/**

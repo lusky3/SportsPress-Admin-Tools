@@ -878,28 +878,14 @@ class SPEM_REST_API {
 					add_post_meta( $player_id, 'sp_past_team', $team_id );
 					$past_teams[] = $team_id;
 				}
+				// Remove from current teams so Player Lists filtered to
+				// "Current Players" no longer show this player on this team.
+				delete_post_meta( $player_id, 'sp_current_team', $team_id );
 			}
 
-			// Leave sp_current_team rows intact so multi-team players keep
-			// every existing row. The wizard's rollover flow only moves the
-			// player's current teams onto past_team; it doesn't swap them.
-
-			wp_remove_object_terms( $player_id, $from_season, 'sp_season' );
-			wp_set_object_terms( $player_id, (int) $to_season, 'sp_season', true );
-
-			// Update sp_leagues meta: remove old season entry, add new season entry
-			$leagues_meta = get_post_meta( $player_id, 'sp_leagues', true );
-			if ( is_array( $leagues_meta ) ) {
-				foreach ( $leagues_meta as $league_id => $seasons ) {
-					if ( is_array( $seasons ) && isset( $seasons[ $from_season ] ) ) {
-						$league_team_id = $seasons[ $from_season ];
-						unset( $leagues_meta[ $league_id ][ $from_season ] );
-						// Add to new season
-						$leagues_meta[ $league_id ][ $to_season ] = $league_team_id;
-					}
-				}
-				update_post_meta( $player_id, 'sp_leagues', $leagues_meta );
-			}
+			// Keep sp_season taxonomy and sp_leagues meta intact for
+			// historical records — non-returning players retain their
+			// old season assignments as-is.
 
 			$processed++;
 		}
