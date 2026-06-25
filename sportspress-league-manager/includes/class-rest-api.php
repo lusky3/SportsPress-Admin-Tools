@@ -327,6 +327,16 @@ class SPLM_REST_API {
 
 		register_rest_route(
 			self::REST_NAMESPACE,
+			'/teams/with-divisions',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_teams_with_divisions' ),
+				'permission_callback' => array( $this, 'check_manage_permission' ),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
 			'/teams/compare',
 			array(
 				'methods'             => 'GET',
@@ -692,6 +702,61 @@ class SPLM_REST_API {
 		}
 
 		return new WP_REST_Response( splm_rest_list_response( $data ), 200 );
+	}
+
+	/**
+	 * GET /teams/with-divisions — all teams with their current leaf-level division.
+	 */
+	public function get_teams_with_divisions( $request ) {
+		$teams = get_posts( array(
+			'post_type'      => 'sp_team',
+			'posts_per_page' => -1,
+			'post_status'    => 'publish',
+			'orderby'        => 'title',
+			'order'          => 'ASC',
+		) );
+
+		// Build a set of parent term IDs to identify leaf terms.
+		$all_leagues = get_terms( array( 'taxonomy' => 'sp_league', 'hide_empty' => false ) );
+		$parent_ids = array();
+		if ( ! is_wp_error( $all_leagues ) ) {
+			foreach ( $all_leagues as $l ) {
+				if ( $l->parent ) {
+					$parent_ids[ $l->parent ] = true;
+				}
+			}
+		}
+
+		$data = array();
+		foreach ( $teams as $team ) {
+			$terms = wp_get_object_terms( $team->ID, 'sp_league' );
+			$division_id   = null;
+			$division_name = null;
+
+			if ( ! is_wp_error( $terms ) && ! empty( $terms ) ) {
+				// Filter to leaf-level terms (no children).
+				$leaves = array_filter( $terms, function ( $t ) use ( $parent_ids ) {
+					return ! isset( $parent_ids[ $t->term_id ] );
+				} );
+				if ( ! empty( $leaves ) ) {
+					// Pick highest term_id (most recent assignment).
+					usort( $leaves, function ( $a, $b ) {
+						return $b->term_id - $a->term_id;
+					} );
+					$division_id   = $leaves[0]->term_id;
+					$division_name = $leaves[0]->name;
+				}
+			}
+
+			$data[] = array(
+				'id'            => $team->ID,
+				'name'          => $team->post_title,
+				'division_id'   => $division_id,
+				'division_name' => $division_name,
+			);
+		}
+
+		return new WP_REST_Response( array( 'teams' => $data ), 200 );
 	}
 
 	/**
@@ -2160,6 +2225,7 @@ class SPLM_REST_API {
 		$create_rosters   = ! empty( $params['create_rosters'] );
 		$team_ids_filter  = isset( $params['team_ids'] ) && is_array( $params['team_ids'] ) ? array_map( 'absint', $params['team_ids'] ) : array();
 		$new_team_names   = isset( $params['new_teams'] ) && is_array( $params['new_teams'] ) ? array_map( 'sanitize_text_field', $params['new_teams'] ) : array();
+		$division_assignments = isset( $params['division_assignments'] ) && is_array( $params['division_assignments'] ) ? $params['division_assignments'] : array();
 
 		if ( ! $season_name || ! $league_id ) {
 			return new WP_Error( 'missing_params', 'season_name and league_id are required.', array( 'status' => 400 ) );
@@ -2175,7 +2241,6 @@ class SPLM_REST_API {
 		}
 
 		$teams = get_posts( array(
-			'post_type'      => 'sp_team',
 			'posts_per_page' => -1,
 			'post_status'    => 'publish',
 			'tax_query'      => array(
@@ -2298,6 +2363,15 @@ class SPLM_REST_API {
 					wp_set_object_terms( $list_id, array( $league_id ), 'sp_league' );
 					$rosters_created++;
 				}
+			}
+		}
+
+		// Apply division assignments (append, don't replace).
+		foreach ( $division_assignments as $team_id_str => $div_id ) {
+			$team_id = absint( $team_id_str );
+			$div_id  = intval( $div_id );
+			if ( $team_id && $div_id ) {
+				wp_set_object_terms( $team_id, $div_id, 'sp_league', true );
 			}
 		}
 

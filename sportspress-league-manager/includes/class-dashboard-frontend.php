@@ -164,8 +164,9 @@ class SPLM_Dashboard_Frontend {
 		) );
 		$leagues = array_map( function ( $term ) {
 			return array(
-				'id'   => $term->term_id,
-				'name' => $term->name,
+				'id'     => $term->term_id,
+				'name'   => $term->name,
+				'parent' => $term->parent,
 			);
 		}, ! empty( $all_leagues ) && ! is_wp_error( $all_leagues ) ? $all_leagues : array() );
 
