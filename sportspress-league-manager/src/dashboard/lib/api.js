@@ -50,7 +50,7 @@ export function fetchTeams( season ) {
 }
 
 export function fetchTeamsWithDivisions() {
-	return apiFetch( { path: '/splm/v1/teams/with-divisions' } ).then( ( res ) => res.teams || [] );
+	return apiFetch( { path: '/splm/v1/teams/with-divisions' } ).then( ( res ) => Array.isArray( res?.teams ) ? res.teams : [] );
 }
 
 export function fetchRosterDetails( teamId, seasonId ) {
@@ -140,10 +140,15 @@ export function rolloverExecute( fromSeason, toSeason, playerIds ) {
 	return apiFetch( { path: '/splm/v1/season/rollover-execute', method: 'POST', data: { from_season: fromSeason, to_season: toSeason, player_ids: playerIds } } );
 }
 
-export function createSeason( seasonName, leagueId, { createCalendars = false, createRosters = false, createPlayoffs = false, teamIds = [], newTeams = [], divisionAssignments = {} } = {} ) {
+export function createSeason( seasonName, leagueId, { createCalendars = false, createRosters = false, createPlayoffs = false, teamIds = [], newTeams = [], newTeamDivisions = [], divisionAssignments = {} } = {} ) {
 	const data = { season_name: seasonName, league_id: leagueId, create_calendars: createCalendars, create_rosters: createRosters, create_playoffs: createPlayoffs };
 	if ( teamIds.length ) data.team_ids = teamIds;
-	if ( newTeams.length ) data.new_teams = newTeams;
+	if ( newTeams.length ) {
+		data.new_teams = newTeams;
+		// new_team_divisions is index-aligned with new_teams: the sp_league term id
+		// each new team should be assigned to. Coerced to integers.
+		data.new_team_divisions = newTeamDivisions.map( ( id ) => Number( id ) );
+	}
 	if ( Object.keys( divisionAssignments ).length ) data.division_assignments = divisionAssignments;
 	return apiFetch( { path: '/splm/v1/season/create', method: 'POST', data } );
 }

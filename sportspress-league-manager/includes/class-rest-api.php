@@ -708,9 +708,11 @@ class SPLM_REST_API {
 	 * GET /teams/with-divisions — all teams with their current leaf-level division.
 	 */
 	public function get_teams_with_divisions( $request ) {
+		// Cap at 5000 (matches the bounded query pattern used elsewhere in this
+		// file) to protect against unbounded memory if the team CPT grows large.
 		$teams = get_posts( array(
 			'post_type'      => 'sp_team',
-			'posts_per_page' => -1,
+			'posts_per_page' => 5000,
 			'post_status'    => 'publish',
 			'orderby'        => 'title',
 			'order'          => 'ASC',
@@ -725,6 +727,13 @@ class SPLM_REST_API {
 					$parent_ids[ $l->parent ] = true;
 				}
 			}
+		}
+
+		// N+1: prime the sp_league term-relationship cache for every team in one
+		// query so the per-team wp_get_object_terms() below reads from cache.
+		$team_ids = wp_list_pluck( $teams, 'ID' );
+		if ( ! empty( $team_ids ) ) {
+			update_object_term_cache( $team_ids, 'sp_team' );
 		}
 
 		$data = array();
@@ -2131,6 +2140,46 @@ class SPLM_REST_API {
 	}
 
 	/**
+	 * Build a map of team_id => first sp_calendar post ID, by pre-fetching all
+	 * calendars' sp_team meta in one bounded pass.
+	 *
+	 * Replaces the per-team serialized-LIKE meta_query (unindexed, N+1) used by the
+	 * Season Setup endpoints. Bounded at 5000 calendars to match the file's other
+	 * hardened queries. The first calendar wins for a team (matches the prior
+	 * posts_per_page => 1 behaviour).
+	 *
+	 * @return array<int,int> Keyed by team ID, value is the calendar post ID.
+	 */
+	private function map_team_calendar_ids() {
+		$calendar_ids = get_posts( array(
+			'post_type'      => 'sp_calendar',
+			'post_status'    => 'publish',
+			'posts_per_page' => 5000,
+			'fields'         => 'ids',
+		) );
+		if ( empty( $calendar_ids ) ) {
+			return array();
+		}
+		// Prime the meta cache so the per-calendar get_post_meta below is cached.
+		update_meta_cache( 'post', $calendar_ids );
+
+		$map = array();
+		foreach ( $calendar_ids as $cal_id ) {
+			$cal_teams = get_post_meta( $cal_id, 'sp_team', true );
+			if ( ! is_array( $cal_teams ) ) {
+				continue;
+			}
+			foreach ( $cal_teams as $cal_team_id ) {
+				$cal_team_id = (int) $cal_team_id;
+				if ( ! isset( $map[ $cal_team_id ] ) ) {
+					$map[ $cal_team_id ] = (int) $cal_id;
+				}
+			}
+		}
+		return $map;
+	}
+
+	/**
 	 * POST /season/preview — dry-run: returns what create_season would do without writing.
 	 */
 	public function preview_season( $request ) {
@@ -2154,10 +2203,11 @@ class SPLM_REST_API {
 			return new WP_Error( 'invalid_league', 'Invalid league_id.', array( 'status' => 400 ) );
 		}
 
-		// Get teams in league.
+		// Get teams in league. Cap at 5000 (matches the bounded query pattern
+		// used elsewhere in this file) to bound memory on large leagues.
 		$teams = get_posts( array(
 			'post_type'      => 'sp_team',
-			'posts_per_page' => -1,
+			'posts_per_page' => 5000,
 			'post_status'    => 'publish',
 			'tax_query'      => array( array( 'taxonomy' => 'sp_league', 'terms' => $league_id ) ),
 		) );
@@ -2179,15 +2229,12 @@ class SPLM_REST_API {
 		$calendars_to_update = 0;
 		$calendars_to_create = 0;
 		if ( $create_calendars ) {
+			// N+1: instead of one serialized-LIKE meta_query per team, pre-fetch
+			// every calendar's sp_team meta once and build a team_id => has-calendar
+			// map in PHP.
+			$teams_with_calendar = $this->map_team_calendar_ids();
 			foreach ( $teams as $team ) {
-				$cals = get_posts( array(
-					'post_type'      => 'sp_calendar',
-					'post_status'    => 'publish',
-					'posts_per_page' => 1,
-					'fields'         => 'ids',
-					'meta_query'     => array( array( 'key' => 'sp_team', 'value' => sprintf( 'i:%d;', (int) $team->ID ), 'compare' => 'LIKE' ) ),
-				) );
-				if ( ! empty( $cals ) ) {
+				if ( isset( $teams_with_calendar[ (int) $team->ID ] ) ) {
 					$calendars_to_update++;
 				} else {
 					$calendars_to_create++;
@@ -2227,6 +2274,10 @@ class SPLM_REST_API {
 		$team_ids_filter  = isset( $params['team_ids'] ) && is_array( $params['team_ids'] ) ? array_map( 'absint', $params['team_ids'] ) : array();
 		$new_team_names   = isset( $params['new_teams'] ) && is_array( $params['new_teams'] ) ? array_map( 'sanitize_text_field', $params['new_teams'] ) : array();
 		$division_assignments = isset( $params['division_assignments'] ) && is_array( $params['division_assignments'] ) ? $params['division_assignments'] : array();
+		// Target divisions for new teams: array of sp_league term IDs, parallel
+		// (same index order) to $new_team_names. Absent/short entries skip the
+		// division assignment for the corresponding new team.
+		$new_team_divisions = isset( $params['new_team_divisions'] ) && is_array( $params['new_team_divisions'] ) ? array_map( 'absint', $params['new_team_divisions'] ) : array();
 
 		if ( ! $season_name || ! $league_id ) {
 			return new WP_Error( 'missing_params', 'season_name and league_id are required.', array( 'status' => 400 ) );
@@ -2241,8 +2292,12 @@ class SPLM_REST_API {
 			return new WP_Error( 'invalid_league', 'Invalid league_id.', array( 'status' => 400 ) );
 		}
 
+		// F1: must constrain to sp_team — without post_type, get_posts() defaults
+		// to 'post' and returns zero teams (endpoint always 400'd "no_teams").
+		// Cap at 5000 to match the file's other hardened queries.
 		$teams = get_posts( array(
-			'posts_per_page' => -1,
+			'post_type'      => 'sp_team',
+			'posts_per_page' => 5000,
 			'post_status'    => 'publish',
 			'tax_query'      => array(
 				array(
@@ -2299,8 +2354,20 @@ class SPLM_REST_API {
 		$rosters_created    = 0;
 		$new_teams_created  = 0;
 
-		// Create new teams if requested.
-		foreach ( $new_team_names as $name ) {
+		// F6: serialize the per-team create/write block under a per-league+season
+		// mutex (mirrors create_table's SPAT_Lock) so two concurrent calls for the
+		// same season can't both create duplicate teams/calendars/rosters/tables.
+		$season_lock_key = "splm_season_create_{$league_id}_{$season_term_id}";
+		$season_acquired = SPAT_Lock::acquire( $season_lock_key, 60 );
+		if ( ! $season_acquired ) {
+			return new WP_Error( 'locked', 'Another season setup is in progress for this league/season.', array( 'status' => 409 ) );
+		}
+
+		// Create new teams if requested. The whole season-build block below is
+		// best-effort and non-atomic (multiple wp_insert_post / term / meta
+		// writes that WordPress cannot wrap in a single transaction); the
+		// SPAT_Lock mutex around it only prevents concurrent double-creation.
+		foreach ( $new_team_names as $index => $name ) {
 			$name = trim( $name );
 			if ( ! $name ) continue;
 			$team_id = wp_insert_post( array(
@@ -2310,6 +2377,12 @@ class SPLM_REST_API {
 			) );
 			if ( $team_id && ! is_wp_error( $team_id ) ) {
 				wp_set_object_terms( $team_id, array( $league_id ), 'sp_league' );
+				// F5: assign the new team to its target division (sp_league child
+				// term), appended so the parent-league term above is preserved.
+				$division_id = absint( $new_team_divisions[ $index ] ?? 0 );
+				if ( $division_id ) {
+					wp_set_object_terms( $team_id, array( $division_id ), 'sp_league', true );
+				}
 				$teams[] = get_post( $team_id );
 				$new_teams_created++;
 			}
@@ -2327,29 +2400,21 @@ class SPLM_REST_API {
 			$season_term_ids = array_merge( $season_term_ids, wp_list_pluck( $child_seasons, 'term_id' ) );
 		}
 
+		// F8: pre-fetch team => calendar-id map once (single bounded query, parsed
+		// in PHP) instead of a per-team serialized-LIKE meta_query inside the loop.
+		$team_calendar_map = $create_calendars ? $this->map_team_calendar_ids() : array();
+
 		foreach ( $teams as $team ) {
 			wp_set_object_terms( $team->ID, $season_term_id, 'sp_season', true );
 			$teams_updated++;
 
 			if ( $create_calendars ) {
 				// Find any existing calendar for this team (regardless of season).
-				$team_cals = get_posts( array(
-					'post_type'      => 'sp_calendar',
-					'post_status'    => 'publish',
-					'posts_per_page' => 1,
-					'fields'         => 'ids',
-					'meta_query'     => array(
-						array(
-							'key'     => 'sp_team',
-							'value'   => sprintf( 'i:%d;', (int) $team->ID ),
-							'compare' => 'LIKE',
-						),
-					),
-				) );
+				$existing_cal_id = $team_calendar_map[ (int) $team->ID ] ?? 0;
 
-				if ( ! empty( $team_cals ) ) {
+				if ( $existing_cal_id ) {
 					// Re-tag existing calendar to the new season (+ children).
-					wp_set_object_terms( $team_cals[0], array_map( 'intval', $season_term_ids ), 'sp_season' );
+					wp_set_object_terms( $existing_cal_id, array_map( 'intval', $season_term_ids ), 'sp_season' );
 					$calendars_updated++;
 				} else {
 					// Create calendar only for teams that don't have one.
@@ -2374,7 +2439,17 @@ class SPLM_REST_API {
 					'post_status' => 'publish',
 				) );
 				if ( $list_id && ! is_wp_error( $list_id ) ) {
-					update_post_meta( $list_id, 'sp_team', $team->ID );
+					// F2: SportsPress links a roster (sp_list) to a team via the
+					// sp_team TAXONOMY on the list plus an sp_list meta row on the
+					// team (matches SPPT_Batch_List_Creator's convention). The old
+					// update_post_meta($list_id,'sp_team',...) wrote the wrong shape.
+					wp_set_object_terms( $list_id, array( $team->ID ), 'sp_team' );
+					// sp_list is multi-value meta on the team; append (deduped) so we
+					// don't clobber any other roster the team already owns.
+					$existing_lists = array_map( 'intval', (array) get_post_meta( $team->ID, 'sp_list', false ) );
+					if ( ! in_array( (int) $list_id, $existing_lists, true ) ) {
+						add_post_meta( $team->ID, 'sp_list', $list_id, false );
+					}
 					wp_set_object_terms( $list_id, array( $season_term_id ), 'sp_season' );
 					wp_set_object_terms( $list_id, array( $league_id ), 'sp_league' );
 					$rosters_created++;
@@ -2418,10 +2493,29 @@ class SPLM_REST_API {
 				if ( $table_id && ! is_wp_error( $table_id ) ) {
 					wp_set_object_terms( $table_id, array( $season_term_id ), 'sp_season' );
 					wp_set_object_terms( $table_id, array( $div_id ), 'sp_league' );
+					// F3: populate per-team sp_team meta + sp_columns exactly as the
+					// create_table endpoint does, otherwise the table renders empty.
+					$div_teams = get_posts( array(
+						'post_type'      => 'sp_team',
+						'posts_per_page' => 5000,
+						'fields'         => 'ids',
+						'tax_query'      => array(
+							'relation' => 'AND',
+							array( 'taxonomy' => 'sp_league', 'field' => 'term_id', 'terms' => $div_id ),
+							array( 'taxonomy' => 'sp_season', 'field' => 'term_id', 'terms' => $season_term_id ),
+						),
+					) );
+					foreach ( $div_teams as $div_team_id ) {
+						add_post_meta( $table_id, 'sp_team', $div_team_id );
+					}
+					update_post_meta( $table_id, 'sp_columns', array( 'pos', 'name', 'p', 'w', 'd', 'l', 'f', 'a', 'gd', 'pts' ) );
 					$tables_created++;
 				}
 			}
 		}
+
+		// F6: release the per-league+season mutex now the writes are complete.
+		SPAT_Lock::release( $season_lock_key );
 
 		// Update current season options (SportsPress core + SPEM).
 		update_option( 'sportspress_season', $season_term_id );
