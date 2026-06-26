@@ -2352,6 +2352,7 @@ class SPLM_REST_API {
 		$calendars_updated  = 0;
 		$calendars_created  = 0;
 		$rosters_created    = 0;
+		$rosters_skipped    = 0;
 		$new_teams_created  = 0;
 
 		// F6: serialize the per-team create/write block under a per-league+season
@@ -2433,26 +2434,39 @@ class SPLM_REST_API {
 			}
 
 			if ( $create_rosters ) {
-				$list_id = wp_insert_post( array(
-					'post_type'   => 'sp_list',
-					'post_title'  => $team->post_title . ' — ' . $season_name . ' Roster',
-					'post_status' => 'publish',
+				// Idempotency: skip if a roster already exists for this team +
+				// season so a re-run of create_season does not duplicate lists
+				// (mirrors the calendar/table existing-checks).
+				$existing_roster = get_posts( array(
+					'post_type'      => 'sp_list',
+					'post_status'    => 'any',
+					'posts_per_page' => 1,
+					'fields'         => 'ids',
+					'meta_key'       => 'sp_team',
+					'meta_value'     => $team->ID,
+					'tax_query'      => array(
+						array( 'taxonomy' => 'sp_season', 'terms' => $season_term_id ),
+					),
 				) );
-				if ( $list_id && ! is_wp_error( $list_id ) ) {
-					// F2: SportsPress links a roster (sp_list) to a team via the
-					// sp_team TAXONOMY on the list plus an sp_list meta row on the
-					// team (matches SPPT_Batch_List_Creator's convention). The old
-					// update_post_meta($list_id,'sp_team',...) wrote the wrong shape.
-					wp_set_object_terms( $list_id, array( $team->ID ), 'sp_team' );
-					// sp_list is multi-value meta on the team; append (deduped) so we
-					// don't clobber any other roster the team already owns.
-					$existing_lists = array_map( 'intval', (array) get_post_meta( $team->ID, 'sp_list', false ) );
-					if ( ! in_array( (int) $list_id, $existing_lists, true ) ) {
-						add_post_meta( $team->ID, 'sp_list', $list_id, false );
+
+				if ( ! empty( $existing_roster ) ) {
+					$rosters_skipped++;
+				} else {
+					$list_id = wp_insert_post( array(
+						'post_type'   => 'sp_list',
+						'post_title'  => $team->post_title . ' — ' . $season_name . ' Roster',
+						'post_status' => 'publish',
+					) );
+					if ( $list_id && ! is_wp_error( $list_id ) ) {
+						// SportsPress reads a roster's team from the post-meta
+						// 'sp_team' (a single team ID) — see SP_Player_List
+						// (class-sp-player-list.php:56). sp_team is a POST TYPE,
+						// not a taxonomy, so wp_set_object_terms() would no-op.
+						update_post_meta( $list_id, 'sp_team', $team->ID );
+						wp_set_object_terms( $list_id, array( $season_term_id ), 'sp_season' );
+						wp_set_object_terms( $list_id, array( $league_id ), 'sp_league' );
+						$rosters_created++;
 					}
-					wp_set_object_terms( $list_id, array( $season_term_id ), 'sp_season' );
-					wp_set_object_terms( $list_id, array( $league_id ), 'sp_league' );
-					$rosters_created++;
 				}
 			}
 		}
@@ -2532,6 +2546,7 @@ class SPLM_REST_API {
 			'calendars_updated'  => $calendars_updated,
 			'calendars_created'  => $calendars_created,
 			'rosters_created'    => $rosters_created,
+			'rosters_skipped'    => $rosters_skipped,
 			'tables_created'     => $tables_created,
 			'new_teams_created'  => $new_teams_created,
 		), 201 );
