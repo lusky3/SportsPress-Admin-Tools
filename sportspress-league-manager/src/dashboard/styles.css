@@ -207,6 +207,33 @@
 .splm-alert--error { background: #fcf0f0; border: 1px solid var(--splm-danger); color: #7f1d1d; }
 .splm-alert__action { background: none; border: none; color: #2563eb; cursor: pointer; font-weight: 500; }
 
+/* Graceful degradation: dependency-unavailable notices. Reuses .splm-alert
+   colours; align the dismiss button to the top for multi-line content. */
+.splm-dep-notice { align-items: flex-start; }
+.splm-dep-notice__list { margin: 0.35rem 0 0; padding-left: 1.1rem; }
+.splm-dep-notice__list li { margin-bottom: 0.2rem; }
+.splm-dep-notice__dismiss {
+	flex: 0 0 auto;
+	min-width: 24px;
+	min-height: 24px;
+	line-height: 1;
+	color: #92400e;
+	font-size: 0.9rem;
+}
+/* Blocking SP-core case: centre the standalone notice in the empty shell. */
+.splm-app--blocked { padding: 2rem; }
+.splm-dep-notice--blocking { max-width: 640px; margin: 0 auto; }
+/* Rosters inline note when Player Tools is off. */
+.splm-rosters__dep-note {
+	margin: 0.5rem 0 1rem;
+	padding: 0.5rem 0.75rem;
+	background: #fef3c7;
+	border: 1px solid #f59e0b;
+	border-radius: 6px;
+	font-size: 0.85rem;
+	color: #92400e;
+}
+
 /* UI-4: generic badge pill (mirrors .splm-game-card__badge). */
 .splm-badge {
 	display: inline-block;

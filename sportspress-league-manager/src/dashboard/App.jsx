@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from '@wordpress/element';
 import Layout from './components/Layout';
+import DependencyNotice from './components/DependencyNotice';
 import Dashboard from './pages/Dashboard';
 import Schedule from './pages/Schedule';
 import ScoreEntry from './pages/ScoreEntry';
@@ -43,6 +44,19 @@ export default function App() {
 	const isFirstRender = useRef( true );
 	const PageComponent = PAGES[ page ] || Dashboard;
 
+	// Graceful degradation: SportsPress core is a hard dependency. When it is
+	// inactive the dashboard cannot function, so render the blocking notice
+	// INSTEAD of the normal UI (no Layout, no pages that would 404 against
+	// absent endpoints).
+	const sportsPressActive = window.splmDashboard?.dependencies?.sportspress !== false;
+	if ( ! sportsPressActive ) {
+		return (
+			<div className="splm-app splm-app--blocked">
+				<DependencyNotice />
+			</div>
+		);
+	}
+
 	// UX-11: write page → URL hash so Back/refresh/sharing work, and react to
 	// popstate (Back/Forward) by reading the hash back into state.
 	const navigate = ( next ) => {
@@ -77,6 +91,7 @@ export default function App() {
 			<div aria-live="polite" aria-atomic="true" className="screen-reader-text">
 				{ announcement }
 			</div>
+			<DependencyNotice />
 			<PageComponent onNavigate={ navigate } season={ season } />
 		</Layout>
 	);

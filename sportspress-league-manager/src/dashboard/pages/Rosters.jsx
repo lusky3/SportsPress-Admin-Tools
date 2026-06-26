@@ -292,6 +292,10 @@ export default function Rosters( { season } ) {
 	const [ notesPlayer, setNotesPlayer ] = useState( null );
 	const [ movePlayerData, setMovePlayerData ] = useState( null );
 	const [ toast, setToast ] = useState( null ); // UI-13: { message, type }
+	// Graceful degradation: skill-level editing and Calculate Skills route
+	// through SPPT_REST_API (Player Tools). When that module is off the routes
+	// are not registered, so surface an inline note instead of a control that 404s.
+	const playerToolsAvailable = window.splmDashboard?.dependencies?.player_tools !== false;
 
 	useEffect( () => {
 		let cancelled = false;
@@ -347,19 +351,29 @@ export default function Rosters( { season } ) {
 					) ) }
 				</select>
 				{ selectedTeam && <CSVUpload teamId={ selectedTeam } seasonId={ season } onImported={ reload } /> }
-				<button className="splm-btn" onClick={ () => {
-					calculateSkills( 0, season || 0 ).then( ( r ) => {
-						// M6: skipped_manual may be absent if Player Tools is older;
-						// fall back to 0 rather than rendering "undefined manual skipped".
-						const updated = r?.updated ?? 0;
-						const skipped = r?.skipped_manual ?? 0;
-						setToast( { message: `Updated ${ updated } players (${ skipped } manual skipped)`, type: 'success' } );
-						if ( selectedTeam ) reload();
-					} ).catch( ( err ) => setToast( { message: err?.message || 'Failed', type: 'error' } ) );
-				} }>
-					Calculate Skills
-				</button>
+				{ playerToolsAvailable && (
+					<button className="splm-btn" onClick={ () => {
+						calculateSkills( 0, season || 0 ).then( ( r ) => {
+							// M6: skipped_manual may be absent if Player Tools is older;
+							// fall back to 0 rather than rendering "undefined manual skipped".
+							const updated = r?.updated ?? 0;
+							const skipped = r?.skipped_manual ?? 0;
+							setToast( { message: `Updated ${ updated } players (${ skipped } manual skipped)`, type: 'success' } );
+							if ( selectedTeam ) reload();
+						} ).catch( ( err ) => setToast( { message: err?.message || 'Failed', type: 'error' } ) );
+					} }>
+						Calculate Skills
+					</button>
+				) }
 			</div>
+
+			{ ! playerToolsAvailable && (
+				<p className="splm-rosters__dep-note" role="note">
+					Skill-level editing and bulk skill calculation are unavailable — the
+					Player Tools module is not enabled. Enable it under Settings →
+					SportsPress Admin Tools.
+				</p>
+			) }
 
 			{ loading && <div className="splm-loading">Loading roster...</div> }
 
@@ -393,7 +407,11 @@ export default function Rosters( { season } ) {
 										<EditableCell key={ `${ player.id }-position` } value={ player.position } field="position" fieldLabel={ `position for ${ player.name }` } playerId={ player.id } onSaved={ ( f, v ) => updateRosterPlayer( player.id, f, v ) } />
 									</td>
 									<td>
-										<SkillCell key={ `${ player.id }-skill` } value={ player.skill_level } playerId={ player.id } onSaved={ ( f, v ) => updateRosterPlayer( player.id, f, v ) } />
+										{ playerToolsAvailable ? (
+											<SkillCell key={ `${ player.id }-skill` } value={ player.skill_level } playerId={ player.id } onSaved={ ( f, v ) => updateRosterPlayer( player.id, f, v ) } />
+										) : (
+											<span className="splm-editable__value">{ player.skill_level || '—' }</span>
+										) }
 									</td>
 									<td>
 										<EditableCell key={ `${ player.id }-email` } value={ player.email } field="email" fieldLabel={ `email for ${ player.name }` } playerId={ player.id } onSaved={ ( f, v ) => updateRosterPlayer( player.id, f, v ) } />
