@@ -210,6 +210,18 @@ class SPLM_Dashboard_Frontend {
 				'canViewPayments'   => current_user_can( 'edit_others_sp_players' ) || SPLM_Capabilities::can_manage(),
 				'canViewHealth'     => SPLM_Capabilities::can_manage(),
 			),
+			// Graceful degradation: these flags MUST mirror the exact class_exists
+			// guards in SPLM_REST_API::register_delegated_routes() (and the spsg/v1
+			// namespace the SPA calls directly) so the React view matches which
+			// endpoints actually exist. The SPA hides/disables features and shows
+			// an explain-notice for any module that is unavailable here.
+			'dependencies'    => array(
+				'sportspress'        => class_exists( 'SportsPress' ),
+				'woocommerce'        => class_exists( 'WooCommerce' ),
+				'events_manager'     => class_exists( 'SPEM_REST_API' ),
+				'player_tools'       => class_exists( 'SPPT_REST_API' ),
+				'schedule_generator' => class_exists( 'SPSG_REST_API' ),
+			),
 		) );
 	}
 }

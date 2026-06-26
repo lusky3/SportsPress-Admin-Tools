@@ -26,6 +26,11 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 	const config = window.splmDashboard || {};
 	const seasons = config.seasons || [];
 	const caps = config.capabilities || {};
+	// Graceful degradation: feature availability mirrors the PHP class_exists
+	// guards. A missing key is treated as available (fail open) so a future
+	// build that drops a flag doesn't silently hide a working feature.
+	const deps = config.dependencies || {};
+	const depPresent = ( key ) => deps[ key ] !== false;
 	const [ moreOpen, setMoreOpen ] = useState( false );
 	const moreRef = useRef( null );
 	const [ searchQuery, setSearchQuery ] = useState( '' );
@@ -63,12 +68,15 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 		}, 300 );
 	};
 
+	// A feature is shown only when BOTH its capability AND its backing
+	// dependency are present. Items without a dependency (rosters, health,
+	// season-setup, and the core SPLM/SP pages) stay gated on capability alone.
 	const capMap = {
-		scores: caps.canEnterScores,
+		scores: caps.canEnterScores && depPresent( 'events_manager' ),
 		rosters: caps.canManageRosters,
-		payments: caps.canViewPayments,
+		payments: caps.canViewPayments && depPresent( 'woocommerce' ),
 		health: caps.canViewHealth,
-		'schedule-gen': caps.canManageSchedule,
+		'schedule-gen': caps.canManageSchedule && depPresent( 'schedule_generator' ),
 		'season-setup': caps.canManageSchedule,
 	};
 	const visibleItems = NAV_ITEMS.filter( ( item ) => capMap[ item.id ] === undefined || capMap[ item.id ] );
