@@ -2223,6 +2223,7 @@ class SPLM_REST_API {
 		$league_id        = absint( $params['league_id'] ?? 0 );
 		$create_calendars = ! empty( $params['create_calendars'] );
 		$create_rosters   = ! empty( $params['create_rosters'] );
+		$create_playoffs  = ! empty( $params['create_playoffs'] );
 		$team_ids_filter  = isset( $params['team_ids'] ) && is_array( $params['team_ids'] ) ? array_map( 'absint', $params['team_ids'] ) : array();
 		$new_team_names   = isset( $params['new_teams'] ) && is_array( $params['new_teams'] ) ? array_map( 'sanitize_text_field', $params['new_teams'] ) : array();
 		$division_assignments = isset( $params['division_assignments'] ) && is_array( $params['division_assignments'] ) ? $params['division_assignments'] : array();
@@ -2275,6 +2276,21 @@ class SPLM_REST_API {
 				return $result;
 			}
 			$season_term_id = $result['term_id'];
+		}
+
+		// Create Playoffs sub-season if requested.
+		$playoffs_term_id = 0;
+		if ( $create_playoffs ) {
+			$playoffs_name = $season_name . ' Playoffs';
+			$existing_playoffs = get_term_by( 'name', $playoffs_name, 'sp_season' );
+			if ( $existing_playoffs ) {
+				$playoffs_term_id = $existing_playoffs->term_id;
+			} else {
+				$pf_result = wp_insert_term( $playoffs_name, 'sp_season', array( 'parent' => $season_term_id ) );
+				if ( ! is_wp_error( $pf_result ) ) {
+					$playoffs_term_id = $pf_result['term_id'];
+				}
+			}
 		}
 
 		$teams_updated      = 0;
@@ -2375,15 +2391,87 @@ class SPLM_REST_API {
 			}
 		}
 
+		// Create standings tables for each active division.
+		$tables_created = 0;
+		$active_divisions = array_unique( array_values( array_filter( array_map( 'intval', $division_assignments ) ) ) );
+		foreach ( $active_divisions as $div_id ) {
+			// Check if a table already exists for this division + season.
+			$existing_table = get_posts( array(
+				'post_type'      => 'sp_table',
+				'post_status'    => 'publish',
+				'posts_per_page' => 1,
+				'fields'         => 'ids',
+				'tax_query'      => array(
+					'relation' => 'AND',
+					array( 'taxonomy' => 'sp_season', 'field' => 'term_id', 'terms' => $season_term_id ),
+					array( 'taxonomy' => 'sp_league', 'field' => 'term_id', 'terms' => $div_id ),
+				),
+			) );
+			if ( empty( $existing_table ) ) {
+				$div_term = get_term( $div_id, 'sp_league' );
+				$table_title = ( $div_term && ! is_wp_error( $div_term ) ? $div_term->name : 'Division' ) . ' — ' . $season_name;
+				$table_id = wp_insert_post( array(
+					'post_type'   => 'sp_table',
+					'post_title'  => $table_title,
+					'post_status' => 'publish',
+				) );
+				if ( $table_id && ! is_wp_error( $table_id ) ) {
+					wp_set_object_terms( $table_id, array( $season_term_id ), 'sp_season' );
+					wp_set_object_terms( $table_id, array( $div_id ), 'sp_league' );
+					$tables_created++;
+				}
+			}
+		}
+
+		// Update current season options (SportsPress core + SPEM).
+		update_option( 'sportspress_season', $season_term_id );
+		update_option( 'spem_current_season_id', $season_term_id );
+
+		// Log activity for audit trail.
+		$this->log_season_setup_activity( $season_name, $teams_updated, $new_teams_created, $calendars_updated, $calendars_created, $rosters_created, $tables_created, $playoffs_term_id > 0 );
+
 		return new WP_REST_Response( array(
 			'season_id'          => $season_term_id,
 			'season_name'        => $season_name,
+			'playoffs_created'   => $playoffs_term_id > 0,
 			'teams_updated'      => $teams_updated,
 			'calendars_updated'  => $calendars_updated,
 			'calendars_created'  => $calendars_created,
 			'rosters_created'    => $rosters_created,
+			'tables_created'     => $tables_created,
 			'new_teams_created'  => $new_teams_created,
 		), 201 );
+	}
+
+	/**
+	 * Log season setup activity to the activity feed.
+	 */
+	private function log_season_setup_activity( $season_name, $teams, $new_teams, $cal_updated, $cal_created, $rosters, $tables, $playoffs ) {
+		global $wpdb;
+		$table = $wpdb->prefix . 'spat_registration_logs';
+		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
+			return;
+		}
+		$parts = array();
+		$parts[] = $teams . ' teams assigned';
+		if ( $new_teams ) $parts[] = $new_teams . ' new teams';
+		if ( $cal_updated ) $parts[] = $cal_updated . ' calendars retagged';
+		if ( $cal_created ) $parts[] = $cal_created . ' calendars created';
+		if ( $rosters ) $parts[] = $rosters . ' rosters';
+		if ( $tables ) $parts[] = $tables . ' standings tables';
+		if ( $playoffs ) $parts[] = 'playoffs sub-season';
+
+		$user = wp_get_current_user();
+		$wpdb->insert( $table, array(
+			'order_id'      => 0,
+			'customer_name' => $user->display_name,
+			'player_id'     => 0,
+			'season'        => $season_name,
+			'position'      => '',
+			'action'        => 'season_setup',
+			'links_to_order' => 0,
+			'timestamp'     => current_time( 'mysql' ),
+		) );
 	}
 
 	/**
