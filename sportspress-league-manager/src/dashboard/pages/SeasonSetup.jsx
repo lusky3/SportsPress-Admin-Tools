@@ -157,6 +157,7 @@ export default function SeasonSetup() {
 	const [ leagueId, setLeagueId ] = useState( '' );
 	const [ createCalendars, setCreateCalendars ] = useState( true );
 	const [ createRosters, setCreateRosters ] = useState( false );
+	const [ createPlayoffs, setCreatePlayoffs ] = useState( true );
 	const [ nameError, setNameError ] = useState( '' );
 	const [ error, setError ] = useState( '' );
 	const [ selectedDivisions, setSelectedDivisions ] = useState( {} );
@@ -318,6 +319,7 @@ export default function SeasonSetup() {
 		createSeason( seasonName, leagueId, {
 			createCalendars,
 			createRosters,
+			createPlayoffs,
 			teamIds,
 			newTeams: newTeamNames,
 			divisionAssignments,
@@ -399,7 +401,7 @@ export default function SeasonSetup() {
 							</div>
 						</div>
 
-						<div style={ { marginTop: '0.75rem', display: 'flex', gap: '1.5rem' } }>
+						<div style={ { marginTop: '0.75rem', display: 'flex', gap: '1.5rem', flexWrap: 'wrap' } }>
 							<label className="splm-checkbox">
 								<input type="checkbox" checked={ createCalendars } onChange={ ( e ) => setCreateCalendars( e.target.checked ) } />
 								Update team calendars to new season
@@ -407,6 +409,10 @@ export default function SeasonSetup() {
 							<label className="splm-checkbox">
 								<input type="checkbox" checked={ createRosters } onChange={ ( e ) => setCreateRosters( e.target.checked ) } />
 								Create empty roster lists
+							</label>
+							<label className="splm-checkbox">
+								<input type="checkbox" checked={ createPlayoffs } onChange={ ( e ) => setCreatePlayoffs( e.target.checked ) } />
+								Create Playoffs sub-season
 							</label>
 						</div>
 						<button className="splm-btn splm-btn--primary" style={ { marginTop: '1rem' } } disabled={ teamsLoading || ! canProceedStep1 } onClick={ goToStep2 }>
@@ -449,6 +455,9 @@ export default function SeasonSetup() {
 								<tr><td><strong>Not playing</strong></td><td>{ reviewSummary.notPlaying } team(s)</td></tr>
 								{ createCalendars && <tr><td><strong>Calendars</strong></td><td>Will be updated to new season</td></tr> }
 								{ createRosters && <tr><td><strong>Rosters</strong></td><td>Empty roster lists will be created</td></tr> }
+								{ createPlayoffs && <tr><td><strong>Playoffs</strong></td><td>{ seasonName } Playoffs sub-season will be created</td></tr> }
+								<tr><td><strong>Standings</strong></td><td>League tables created for each active division</td></tr>
+								<tr><td><strong>Current season</strong></td><td>Site default season will be set to { seasonName }</td></tr>
 							</tbody>
 						</table>
 						<div style={ { marginTop: '1rem', display: 'flex', gap: '0.75rem' } }>
@@ -467,8 +476,9 @@ export default function SeasonSetup() {
 					{ result && (
 						<div className="splm-card" style={ { marginBottom: '1rem' } }>
 							<p><strong>✅ Season "{ result.season_name }" created.</strong></p>
-							<p>{ result.teams_updated } team(s) updated · { result.calendars_updated || 0 } calendar(s) retagged · { result.calendars_created } new calendar(s) · { result.rosters_created } roster(s)</p>
+							<p>{ result.teams_updated } team(s) updated · { result.calendars_updated || 0 } calendar(s) retagged · { result.calendars_created } new calendar(s) · { result.rosters_created } roster(s) · { result.tables_created || 0 } standings table(s)</p>
 							{ result.new_teams_created > 0 && <p>{ result.new_teams_created } new team(s) created</p> }
+							{ result.playoffs_created && <p>Playoffs sub-season created</p> }
 							<button className="splm-btn" onClick={ resetAll }>← Create Another</button>
 						</div>
 					) }

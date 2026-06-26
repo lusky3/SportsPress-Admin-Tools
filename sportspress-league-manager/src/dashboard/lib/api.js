@@ -140,8 +140,8 @@ export function rolloverExecute( fromSeason, toSeason, playerIds ) {
 	return apiFetch( { path: '/splm/v1/season/rollover-execute', method: 'POST', data: { from_season: fromSeason, to_season: toSeason, player_ids: playerIds } } );
 }
 
-export function createSeason( seasonName, leagueId, { createCalendars = false, createRosters = false, teamIds = [], newTeams = [], divisionAssignments = {} } = {} ) {
-	const data = { season_name: seasonName, league_id: leagueId, create_calendars: createCalendars, create_rosters: createRosters };
+export function createSeason( seasonName, leagueId, { createCalendars = false, createRosters = false, createPlayoffs = false, teamIds = [], newTeams = [], divisionAssignments = {} } = {} ) {
+	const data = { season_name: seasonName, league_id: leagueId, create_calendars: createCalendars, create_rosters: createRosters, create_playoffs: createPlayoffs };
 	if ( teamIds.length ) data.team_ids = teamIds;
 	if ( newTeams.length ) data.new_teams = newTeams;
 	if ( Object.keys( divisionAssignments ).length ) data.division_assignments = divisionAssignments;
