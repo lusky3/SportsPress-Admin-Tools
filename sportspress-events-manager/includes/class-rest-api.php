@@ -818,12 +818,12 @@ class SPEM_REST_API {
 	 * Contract (documented to head off future "should this swap teams?" questions):
 	 *   - Copies each player's `sp_current_team` rows into `sp_past_team` (append-only,
 	 *     deduped against existing past_team rows).
-	 *   - LEAVES `sp_current_team` intact so multi-team players keep every team row.
-	 *   - Removes `from_season` term and appends `to_season` term on `sp_season`,
-	 *     preserving any other `sp_season` terms the player may carry. (Implementation
-	 *     uses `wp_remove_object_terms` + `wp_set_object_terms( ..., $append = true )`.)
-	 *   - Remaps `sp_leagues` postmeta: `[league_id][from_season] => team` becomes
-	 *     `[league_id][to_season] => team`.
+	 *   - Deletes those `sp_current_team` rows so the player drops off the team's
+	 *     "Current Players" lists once rolled forward.
+	 *   - INTENTIONALLY leaves `sp_season` taxonomy terms and `sp_leagues` postmeta
+	 *     untouched: non-returning players keep their historical season/league
+	 *     assignments exactly as-is. (from_season/to_season are validated for the
+	 *     request but are not used to mutate per-player season terms or meta here.)
 	 *
 	 * What this endpoint is NOT for:
 	 *   - Moving a player between teams (use SPPT_REST_API::move_player at /splm/v1/rosters/move).
