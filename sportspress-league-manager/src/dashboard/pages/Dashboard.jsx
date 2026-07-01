@@ -37,6 +37,9 @@ export default function Dashboard( { onNavigate, season } ) {
 		return ( Array.isArray( saved ) && saved.length ) ? saved : CARDS;
 	} );
 	const [ showSettings, setShowSettings ] = useState( false );
+	// Score entry is delegated to the Events Manager module; when it's
+	// unavailable the Scores page is hidden, so don't surface score prompts.
+	const scoresAvailable = window.splmDashboard?.dependencies?.events_manager !== false;
 
 	useEffect( () => {
 		let cancelled = false;
@@ -112,7 +115,7 @@ export default function Dashboard( { onNavigate, season } ) {
 
 			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 
-			{ needScores.length > 0 && (
+			{ scoresAvailable && needScores.length > 0 && (
 				<div className="splm-alert splm-alert--warning" role="alert">
 					<strong>{ needScores.length } game{ needScores.length > 1 ? 's' : '' } need scores.</strong>
 					<button className="splm-alert__action" onClick={ () => onNavigate( 'scores' ) }>
@@ -184,9 +187,11 @@ export default function Dashboard( { onNavigate, season } ) {
 			</div>
 
 			<div className="splm-quick-actions">
-				<button className="splm-btn splm-btn--primary" onClick={ () => onNavigate( 'scores' ) }>
-					Enter Scores
-				</button>
+				{ scoresAvailable && (
+					<button className="splm-btn splm-btn--primary" onClick={ () => onNavigate( 'scores' ) }>
+						Enter Scores
+					</button>
+				) }
 				<button className="splm-btn" onClick={ () => onNavigate( 'schedule' ) }>
 					View Schedule
 				</button>
