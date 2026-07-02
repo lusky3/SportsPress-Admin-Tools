@@ -8,6 +8,16 @@
  * @author Cody (lusky3)
  */
 
+/**
+ * Interpret a Worker environment variable as a boolean. Env vars are always
+ * strings, so only the literal string "true" (case-insensitive, trimmed) is
+ * treated as enabled. This prevents "false"/"0"/"no" — all of which are truthy
+ * strings in JavaScript — from silently enabling a flag (M2).
+ */
+function isEnvTrue(value) {
+  return typeof value === 'string' && value.trim().toLowerCase() === 'true';
+}
+
 export default {
   async email(message, env, ctx) {
     try {
@@ -51,14 +61,33 @@ async function buildEmailData(message, env) {
   // Parse original sender from email body or headers
   const originalFrom = parseOriginalSender(rawContent, message.headers);
   
-  // Build headers object - include authentication headers even in non-debug mode
+  const debug = isEnvTrue(env.DEBUG);
+
+  // Authentication headers forwarded to WordPress for DKIM verification.
+  //
+  // SECURITY (H1): the ARC-* family (ARC-Seal, ARC-Message-Signature,
+  // ARC-Authentication-Results) is deliberately STRIPPED and never forwarded —
+  // not even as debug data. ARC is designed to carry authentication results
+  // verbatim across forwarding hops, so a sender who can deliver mail through an
+  // allowlisted forwarder can embed a forged
+  // "ARC-Authentication-Results: ...; dkim=pass header.d=interac.ca" that would
+  // survive forwarding intact and masquerade as a trusted result. Only the
+  // Authentication-Results header is forwarded; the WordPress side trusts a
+  // dkim=pass ONLY inside the A-R instance whose leading authserv-id EXACTLY
+  // matches the operator-pinned spet_dkim_authserv_id. Operators' forwarders
+  // MUST strip any inbound A-R bearing their own authserv-id before stamping
+  // their own (RFC 8601 §5), or the pin is spoofable.
+  const strippedAuthHeaders = ['arc-seal', 'arc-message-signature', 'arc-authentication-results'];
   const allHeaders = {};
-  const authHeaders = ['dkim-signature', 'authentication-results', 'arc-seal', 'arc-message-signature', 'arc-authentication-results', 'received-spf'];
-  
+  const authHeaders = ['dkim-signature', 'authentication-results', 'received-spf'];
+
   for (const [key, value] of message.headers) {
     const lowerKey = key.toLowerCase();
-    // Always include authentication headers
-    if (authHeaders.includes(lowerKey) || env.DEBUG) {
+    if (strippedAuthHeaders.includes(lowerKey)) {
+      continue; // Never forward attacker-forgeable ARC headers.
+    }
+    // Always include authentication headers; include everything else only in debug.
+    if (authHeaders.includes(lowerKey) || debug) {
       allHeaders[key] = value;
     }
   }
@@ -72,7 +101,7 @@ async function buildEmailData(message, env) {
     }
   }
   
-  if (env.DEBUG) {
+  if (debug) {
     console.log('Email Debug Info:', {
       from: message.from,
       to: message.to,
@@ -98,24 +127,28 @@ async function buildEmailData(message, env) {
     text: emailBody
   };
   
-  // Only include additional data in debug mode
-  if (env.DEBUG) {
+  // Always forward the trusted authentication headers so DKIM verification can
+  // run regardless of DEBUG mode (M3). In debug mode, add extra diagnostic data
+  // additively rather than in place of the auth headers.
+  appendAuthHeaders(emailData, allHeaders, authHeaders);
+  if (debug) {
     emailData.html = emailBody;
     emailData.debug_headers = allHeaders;
-  } else {
-    appendAuthHeaders(emailData, allHeaders, authHeaders);
   }
-  
+
   return emailData;
 }
 
 /**
  * Append the original email authentication headers (DKIM-Signature,
- * Authentication-Results, ARC-*, Received-SPF) to the webhook payload under
- * emailData.auth_headers. The WordPress side reads these and verifies that the
- * Interac sender domain produced a passing DKIM result (see
- * SPET_ETransfer_Automation::verify_email_authentication). Enforcement is
- * controlled server-side by the spet_dkim_enforcement option (log vs reject).
+ * Authentication-Results, Received-SPF) to the webhook payload under
+ * emailData.auth_headers. ARC-* headers are intentionally NOT forwarded (see
+ * the strippedAuthHeaders note in buildEmailData). The WordPress side reads
+ * these and verifies that the Interac sender domain produced a passing DKIM
+ * result inside an A-R instance whose authserv-id matches the operator-pinned
+ * value (see SPET_ETransfer_Automation::verify_email_authentication).
+ * Enforcement is controlled server-side by the spet_dkim_enforcement option
+ * (log vs reject).
  */
 function appendAuthHeaders(emailData, allHeaders, authHeaders) {
   const authData = {};
@@ -256,7 +289,9 @@ function parseEmailName(header) {
  */
 function isFromSafeDomain(fromAddress, env) {
   // If DISABLE_INTERAC_CHECK is set, skip the default check (debugging flag).
-  if (env.DISABLE_INTERAC_CHECK) {
+  // Compared explicitly against the literal "true" so that setting it to
+  // "false"/"0" does NOT accidentally enable the bypass (M2).
+  if (isEnvTrue(env.DISABLE_INTERAC_CHECK)) {
     return true;
   }
 

@@ -1,0 +1,37 @@
+# Files and directories excluded from the distributed plugin build.
+# Mirrors the WordPress.org SVN "dotorg" exclusion model: anything listed
+# here is stripped before packaging so it never ships to production.
+#
+# CRITICAL: tests/ holds dev-only fixtures and the standalone unit-test suite.
+# Some scripts self-bootstrap WordPress and must NEVER be web-reachable on a
+# production install. Excluding the directory here is the real fix; any
+# ABSPATH/CLI guards in those scripts are belt-and-suspenders.
+
+# Dev tooling / VCS
+/.git
+/.github
+.gitignore
+.gitattributes
+.distignore
+.editorconfig
+.amazonq
+
+# Tests, fixtures, and debug scripts (never shipped)
+/tests
+
+# Build / dependency tooling
+/node_modules
+composer.json
+composer.lock
+package.json
+package-lock.json
+phpcs.xml
+phpunit.xml
+phpunit.xml.dist
+
+# Docs and Worker deploy tooling that don't belong in the distributed package
+/docs
+assets/README.md
+assets/README-cloudflare.md
+assets/wrangler.toml
+AGENTS.md
