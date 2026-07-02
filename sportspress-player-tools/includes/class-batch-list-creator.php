@@ -23,8 +23,6 @@ class SPT_Batch_List_Creator {
 		add_action( 'admin_post_spt_process_list_batch', array( $this, 'process_batch' ) );
 		add_action( 'admin_post_spt_mark_page_reviewed', array( $this, 'mark_page_reviewed' ) );
 		add_action( 'admin_notices', array( $this, 'success_notice' ) );
-		add_action( 'wp_ajax_spt_search_teams', array( $this, 'ajax_search_teams' ) );
-		add_action( 'wp_ajax_spt_search_players', array( $this, 'ajax_search_players' ) );
 		add_action( 'spt_cleanup_old_temp_data', array( $this, 'cleanup_old_temp_data' ) );
 		if ( ! wp_next_scheduled( 'spt_cleanup_old_temp_data' ) ) {
 			wp_schedule_event( time(), 'daily', 'spt_cleanup_old_temp_data' );
@@ -1273,88 +1271,6 @@ endif;
 		$is_ambiguous = ( $second_best_dist < PHP_INT_MAX && ( $second_best_dist - $best_dist ) < 3 );
 
 		return $best;
-	}
-
-	public function ajax_search_teams() {
-		check_ajax_referer( 'spt_search', 'nonce' );
-
-		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_send_json_error( __( 'Insufficient permissions', 'sportspress-player-tools' ) );
-		}
-
-		$search = isset( $_GET['q'] ) ? sanitize_text_field( wp_unslash( $_GET['q'] ) ) : '';
-		$page = isset( $_GET['page'] ) ? intval( $_GET['page'] ) : 1;
-		$per_page = 50;
-
-		$args = array(
-			'post_type' => 'sp_team',
-			'posts_per_page' => $per_page,
-			'paged' => $page,
-			'orderby' => 'title',
-			'order' => 'ASC',
-		);
-
-		if ( ! empty( $search ) ) {
-			$args['s'] = $search;
-		}
-
-		$teams = get_posts( $args );
-
-		$results = array();
-		foreach ( $teams as $team ) {
-			$results[] = array(
-				'id' => $team->ID,
-				'text' => $team->post_title,
-			);
-		}
-
-		wp_send_json(
-			array(
-				'results' => $results,
-				'more' => count( $results ) === $per_page,
-			)
-		);
-	}
-
-	public function ajax_search_players() {
-		check_ajax_referer( 'spt_search', 'nonce' );
-
-		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_send_json_error( __( 'Insufficient permissions', 'sportspress-player-tools' ) );
-		}
-
-		$search = isset( $_GET['q'] ) ? sanitize_text_field( wp_unslash( $_GET['q'] ) ) : '';
-		$page = isset( $_GET['page'] ) ? intval( $_GET['page'] ) : 1;
-		$per_page = 50;
-
-		$args = array(
-			'post_type' => 'sp_player',
-			'posts_per_page' => $per_page,
-			'paged' => $page,
-			'orderby' => 'title',
-			'order' => 'ASC',
-		);
-
-		if ( ! empty( $search ) ) {
-			$args['s'] = $search;
-		}
-
-		$players = get_posts( $args );
-
-		$results = array();
-		foreach ( $players as $player ) {
-			$results[] = array(
-				'id' => $player->ID,
-				'text' => $player->post_title,
-			);
-		}
-
-		wp_send_json(
-			array(
-				'results' => $results,
-				'more' => count( $results ) === $per_page,
-			)
-		);
 	}
 
 	public function cleanup_old_temp_data() {

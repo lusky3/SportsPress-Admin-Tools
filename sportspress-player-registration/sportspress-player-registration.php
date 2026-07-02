@@ -61,6 +61,16 @@ class SportsPress_Player_Registration {
 			return;
 		}
 
+		// H7: enforce the parent-child contract version floor. class_exists() alone
+		// passes against an older parent that predates the SPAT_* helper classes this
+		// child depends on. Require a declared contract version and degrade with an
+		// admin notice otherwise. Do NOT self-deactivate here — the parent is present,
+		// just outdated, so orphaning the child would be wrong.
+		if ( ! defined( 'SPAT_CONTRACT_VERSION' ) || version_compare( SPAT_CONTRACT_VERSION, '1.0.0', '<' ) ) {
+			add_action( 'admin_notices', array( $this, 'parent_version_notice' ) );
+			return;
+		}
+
 		// Register with parent plugin
 		SPAT_Plugin_Manager::register_plugin(
 			'player_registration',
@@ -131,6 +141,12 @@ class SportsPress_Player_Registration {
 	public function parent_plugin_missing_notice() {
 		echo '<div class="notice notice-error"><p>';
 		echo esc_html__( 'SportsPress Player Registration requires SportsPress Admin Tools to be installed and activated.', 'sportspress-player-registration' );
+		echo '</p></div>';
+	}
+
+	public function parent_version_notice() {
+		echo '<div class="notice notice-error"><p>';
+		echo esc_html__( 'SportsPress Player Registration requires a newer version of SportsPress Admin Tools. Please update the parent plugin.', 'sportspress-player-registration' );
 		echo '</p></div>';
 	}
 

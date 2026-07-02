@@ -77,6 +77,23 @@ class SportsPress_Player_Tools {
 			return;
 		}
 
+		// H7: enforce the parent-child contract version floor. class_exists() alone
+		// passes against an older parent that predates the SPAT_* helper classes this
+		// child calls; the first such call would fatal. Require a declared contract
+		// version and degrade with an admin notice otherwise.
+		if ( ! defined( 'SPAT_CONTRACT_VERSION' ) || version_compare( SPAT_CONTRACT_VERSION, '1.0.0', '<' ) ) {
+			add_action( 'admin_notices', array( $this, 'parent_version_notice' ) );
+			return;
+		}
+
+		// Hard dependency: SportsPress core provides the sp_player/sp_team/sp_position
+		// post types and taxonomies this plugin operates on. Bail with a notice when
+		// it is unavailable rather than manipulating post types that do not exist.
+		if ( ! class_exists( 'SportsPress' ) ) {
+			add_action( 'admin_notices', array( $this, 'sportspress_missing_notice' ) );
+			return;
+		}
+
 		// Register multiple modules with parent plugin
 		SPAT_Plugin_Manager::register_plugin(
 			'player_modifications',
@@ -212,6 +229,18 @@ class SportsPress_Player_Tools {
 	public function parent_plugin_missing_notice() {
 		echo '<div class="notice notice-error"><p>';
 		echo esc_html__( 'SportsPress Player Tools requires SportsPress Admin Tools to be installed and activated.', 'sportspress-player-tools' );
+		echo '</p></div>';
+	}
+
+	public function parent_version_notice() {
+		echo '<div class="notice notice-error"><p>';
+		echo esc_html__( 'SportsPress Player Tools requires a newer version of SportsPress Admin Tools. Please update the parent plugin.', 'sportspress-player-tools' );
+		echo '</p></div>';
+	}
+
+	public function sportspress_missing_notice() {
+		echo '<div class="notice notice-error"><p>';
+		echo esc_html__( 'SportsPress Player Tools requires the SportsPress plugin to be installed and activated.', 'sportspress-player-tools' );
 		echo '</p></div>';
 	}
 }
