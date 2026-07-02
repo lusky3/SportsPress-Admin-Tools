@@ -14,6 +14,15 @@ on:
   schedule:
     - cron: "0 0 * * 0" # Run weekly on Sundays (full scan regardless of paths)
 
+# Least-privilege default token: this workflow only needs to read the repo.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   snyk-code:
     runs-on: ubuntu-latest
