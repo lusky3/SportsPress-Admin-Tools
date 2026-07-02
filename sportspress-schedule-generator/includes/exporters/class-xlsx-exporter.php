@@ -61,7 +61,11 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 
 		$upload_dir = wp_upload_dir();
 		$export_dir = $upload_dir['basedir'] . '/spsg-exports';
-		$filename   = 'schedule-' . wp_date( 'Y-m-d-His' ) . '.xlsx';
+		// High-entropy suffix so the public uploads URL is not guessable by
+		// enumerating the second-precision timestamp (defence in depth on Nginx,
+		// where the .htaccess/index.php protection does not apply). The
+		// `schedule-*` prefix is preserved so cleanup_export_files() still matches.
+		$filename   = 'schedule-' . wp_date( 'Y-m-d-His' ) . '-' . bin2hex( random_bytes( 8 ) ) . '.xlsx';
 		$filepath   = $export_dir . '/' . $filename;
 
 		if ( ! file_exists( $export_dir ) ) {

@@ -107,6 +107,14 @@ class SPSG_Schedule_Engine {
 			SPSG_Abstract_Constraint::reset_validate_cache();
 		}
 
+		// SG-6: clear the resolve_venue_slots() memo too. It is keyed on
+		// spl_object_id( $config ), which PHP may recycle for a freed object, so
+		// a fresh run with a new config object could otherwise collide with a
+		// stale entry from a prior run.
+		if ( method_exists( 'SPSG_Schedule_Helper', 'reset_venue_slots_cache' ) ) {
+			SPSG_Schedule_Helper::reset_venue_slots_cache();
+		}
+
 		// Initialize progress tracking
 		$this->init_progress_tracking();
 

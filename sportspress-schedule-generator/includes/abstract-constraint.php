@@ -166,6 +166,20 @@ abstract class SPSG_Abstract_Constraint implements SPSG_Constraint_Interface {
 		if ( ! ( $constraint instanceof self ) ) {
 			return;
 		}
+		// SG-1 performance: the memo is only ever *read* by the default
+		// get_violation_cost() below, which calls validate_cached() solely for
+		// hard constraints. Soft/optimization constraints override
+		// get_violation_cost() and never touch the cache, so priming them just
+		// burns an O(n) hash_schedule_slice() on an entry that is never read.
+		// The only constraint handed the full flattened schedule is the soft
+		// Distribution constraint, so this is exactly where the O(n^2) came from.
+		// Skipping non-hard constraints removes that cost without changing any
+		// observable result — hard constraints (small same-day slices) still
+		// memoize, and the SG-1 slice-hash key still guarantees correctness under
+		// backtracking.
+		if ( 'hard' !== $constraint->get_type() ) {
+			return;
+		}
 		$key = self::build_cache_key( $constraint, $game, $schedule );
 		self::$validate_cache[ $key ] = $result;
 	}
