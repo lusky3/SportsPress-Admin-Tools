@@ -576,7 +576,14 @@ class SPPT_REST_API {
 			}
 
 			if ( ! empty( $player_data['number'] ) ) {
-				update_post_meta( $post_id, 'sp_number', sanitize_text_field( $player_data['number'] ) );
+				// PT-3 (import): mirror update_player() — bound the squad number to
+				// 1-4 digits so an import row can't stuff arbitrary text/length into
+				// sp_number. Skip only this field on a bad value; the rest of the row
+				// still imports.
+				$number = sanitize_text_field( $player_data['number'] );
+				if ( preg_match( '/^[0-9]{1,4}$/', $number ) ) {
+					update_post_meta( $post_id, 'sp_number', $number );
+				}
 			}
 			if ( ! empty( $player_data['email'] ) ) {
 				// PT3/F-import: mirror update_player()/the meta box — sanitize_email()
@@ -609,7 +616,14 @@ class SPPT_REST_API {
 			}
 
 			if ( ! empty( $player_data['position'] ) ) {
-				wp_set_object_terms( $post_id, sanitize_text_field( $player_data['position'] ), 'sp_position' );
+				// PT-3 (import): mirror update_metadata() — a position is a slug that
+				// must already exist in sp_position. Require term_exists() so an import
+				// can't silently create arbitrary sp_position terms. Skip only this
+				// field when the term is unknown.
+				$position_slug = sanitize_text_field( $player_data['position'] );
+				if ( term_exists( $position_slug, 'sp_position' ) ) {
+					wp_set_object_terms( $post_id, $position_slug, 'sp_position' );
+				}
 			}
 
 			// Fix #7: Use sanitized $name instead of raw $player_data['name'].
@@ -751,25 +765,36 @@ class SPPT_REST_API {
 			_prime_post_caches( $player_ids, false, true );
 		}
 
+		// M7: spt_email is guardian/player PII. The read tier for this endpoint is
+		// edit_others_sp_players (team managers/score-keepers), which is lower than
+		// the manage_options write gate. Only expose the email field to full admins
+		// so the read tier cannot enumerate contact details. Computed once.
+		$can_view_email = current_user_can( 'manage_options' );
+
 		$results = array();
 		foreach ( $player_ids as $player_id ) {
 			$positions = wp_get_object_terms( $player_id, 'sp_position', array( 'fields' => 'names' ) );
 
 			$registered = isset( $processed_map[ (int) $player_id ] );
 
-			$results[] = array(
+			$player = array(
 				'id'          => $player_id,
 				'name'        => get_the_title( $player_id ),
 				'number'      => get_post_meta( $player_id, 'sp_number', true ),
-				// PT-5: spt_email is the canonical key. The legacy spat_email fallback
-				// was dropped — that key is never written anywhere in the codebase
-				// (orphan), so the fallback only ever returned ''.
-				'email'       => get_post_meta( $player_id, 'spt_email', true ),
 				'skill_level' => get_post_meta( $player_id, 'spt_skill_level', true ),
 				'is_captain'  => ( $captain_id && (int) $player_id === $captain_id ),
 				'position'    => ( ! is_wp_error( $positions ) && ! empty( $positions ) ) ? $positions[0] : '',
 				'registered'  => $registered,
 			);
+
+			if ( $can_view_email ) {
+				// PT-5: spt_email is the canonical key. The legacy spat_email fallback
+				// was dropped — that key is never written anywhere in the codebase
+				// (orphan), so the fallback only ever returned ''.
+				$player['email'] = get_post_meta( $player_id, 'spt_email', true );
+			}
+
+			$results[] = $player;
 		}
 
 		// Fall back to a local wrapper when SPLM is not loaded (e.g. SPPT activated standalone).
