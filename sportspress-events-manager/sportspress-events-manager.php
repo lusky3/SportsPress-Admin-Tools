@@ -7,9 +7,9 @@
  * Text Domain: sportspress-events-manager
  * License: GPL v2 or later
  * Requires at least: 5.0
- * Tested up to: 6.4
- * Requires PHP: 7.4
- * Depends: SportsPress Admin Tools
+ * Tested up to: 6.8
+ * Requires PHP: 8.1
+ * Requires Plugins: sportspress-admin-tools
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -21,8 +21,12 @@ define( 'SPEM_VERSION', '1.0.0' );
 
 class SportsPress_Events_Manager {
 
+	/** Minimum SPAT_CONTRACT_VERSION this child requires from the parent. */
+	const REQUIRED_CONTRACT_VERSION = '1.0.0';
+
 	public function __construct() {
 		register_activation_hook( __FILE__, array( $this, 'check_activation_requirements' ) );
+		register_activation_hook( __FILE__, array( $this, 'run_activation_migrations' ) );
 		add_action( 'plugins_loaded', array( $this, 'init' ) );
 	}
 
@@ -31,6 +35,17 @@ class SportsPress_Events_Manager {
 			deactivate_plugins( plugin_basename( __FILE__ ) );
 			wp_die( 'SportsPress Events Manager requires SportsPress Admin Tools to be installed and activated first.' );
 		}
+	}
+
+	/**
+	 * One-time data migrations run on plugin activation.
+	 *
+	 * - Convert legacy post_status='past' sp_event rows to the new
+	 *   `_spem_archived` meta flag (see SPEM_Season_Rollover::archive_old_events).
+	 */
+	public function run_activation_migrations() {
+		require_once SPEM_PLUGIN_PATH . 'includes/class-season-rollover.php';
+		SPEM_Season_Rollover::migrate_past_status_to_meta_flag();
 	}
 
 	public function init() {
@@ -86,6 +101,14 @@ class SportsPress_Events_Manager {
 			)
 		);
 
+		// Load REST API endpoints only when at least one served module is enabled.
+		$enabled_modules = get_option( 'spat_enabled_modules', array() );
+		$rest_modules    = array( 'events_management', 'season_rollover' );
+		if ( array_intersect( $rest_modules, $enabled_modules ) ) {
+			require_once SPEM_PLUGIN_PATH . 'includes/class-rest-api.php';
+			new SPEM_REST_API();
+		}
+
 		// Load functionality based on enabled modules
 		$this->load_enabled_modules();
 	}
@@ -124,12 +147,47 @@ class SportsPress_Events_Manager {
 			add_action( 'admin_notices', array( $this, 'parent_plugin_missing_notice' ) );
 			return false;
 		}
+
+		// Parent is present but must satisfy the shared contract version. An
+		// older parent that predates SPAT_Lock / SPAT_Database etc. still passes
+		// the class_exists() gate above, then fatals on the first call to a
+		// missing helper — so fail fast with an admin notice instead (H7).
+		if ( ! defined( 'SPAT_CONTRACT_VERSION' ) || version_compare( SPAT_CONTRACT_VERSION, self::REQUIRED_CONTRACT_VERSION, '<' ) ) {
+			add_action( 'admin_notices', array( $this, 'parent_contract_outdated_notice' ) );
+			return false;
+		}
+
+		// SportsPress core is a hard dependency — the entire plugin operates on
+		// sp_event / sp_team / sp_list post types and SP taxonomies.
+		if ( ! class_exists( 'SportsPress' ) ) {
+			add_action( 'admin_notices', array( $this, 'sportspress_missing_notice' ) );
+			return false;
+		}
+
 		return true;
 	}
 
 	public function parent_plugin_missing_notice() {
 		echo '<div class="notice notice-error"><p>';
-		echo 'SportsPress Events Manager requires SportsPress Admin Tools to be installed and activated.';
+		echo esc_html( 'SportsPress Events Manager requires SportsPress Admin Tools to be installed and activated.' );
+		echo '</p></div>';
+	}
+
+	public function parent_contract_outdated_notice() {
+		echo '<div class="notice notice-error"><p>';
+		echo esc_html(
+			sprintf(
+				/* translators: %s: required parent contract version */
+				'SportsPress Events Manager requires SportsPress Admin Tools contract version %s or newer. Please update the parent plugin.',
+				self::REQUIRED_CONTRACT_VERSION
+			)
+		);
+		echo '</p></div>';
+	}
+
+	public function sportspress_missing_notice() {
+		echo '<div class="notice notice-error"><p>';
+		echo esc_html( 'SportsPress Events Manager requires the SportsPress plugin to be installed and activated.' );
 		echo '</p></div>';
 	}
 }

@@ -86,6 +86,8 @@ Generates a complete schedule with progress tracking.
 - `configuration_error`: Configuration validation failed
 - `generation_cancelled`: User cancelled generation
 - `generation_timeout`: Generation exceeded time limit
+- `allocation_cancelled`: Slot allocator aborted because the user cancelled (HTTP 409)
+- `allocation_timed_out`: Slot allocator aborted because the engine timeout fired (HTTP 408)
 - `allocation_failed`: Could not allocate all games
 - `infeasible_config`: Configuration is not feasible
 

@@ -39,7 +39,7 @@
                 type: 'POST',
                 data: {
                     action: 'spsg_get_export_formats',
-                    nonce: spsgData.nonces.get_export_formats
+                    spsg_nonce: spsgData.nonces.get_export_formats
                 },
                 success: function(response) {
                     if (response.success) {
@@ -787,7 +787,7 @@
                 type: 'POST',
                 data: {
                     action: 'spsg_cancel_generation',
-                    nonce: spsgData.nonces.cancel_generation
+                    spsg_nonce: spsgData.nonces.cancel_generation
                 },
                 beforeSend: function() {
                     $('#spsg-cancel-generation').prop('disabled', true).text('Cancelling...');
@@ -810,10 +810,15 @@
         
         showMessage: function(type, message) {
             var className = 'notice notice-' + type;
-            var $msg = $('<div class="' + className + ' is-dismissible"><p></p></div>');
-            $msg.find('p').html(message);
+            var $msg = $('<div class="' + className + ' is-dismissible"></div>');
+            // Split on <br> or <br/> to support multi-line server messages safely
+            var parts = String(message).split(/<br\s*\/?>/i);
+            for (var i = 0; i < parts.length; i++) {
+                if (i > 0) $msg.append('<br>');
+                $msg.append($('<p></p>').text(parts[i]));
+            }
             
-            $('#spsg-messages').html($msg).show();
+            $('#spsg-messages').empty().append($msg).show();
             
             // Auto-dismiss after 5 seconds for success messages
             if (type === 'success') {

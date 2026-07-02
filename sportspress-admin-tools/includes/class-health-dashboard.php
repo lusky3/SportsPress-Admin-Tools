@@ -6,7 +6,7 @@
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
-	wp_die();
+	exit;
 }
 
 class SPAT_Health_Dashboard {
@@ -70,16 +70,16 @@ class SPAT_Health_Dashboard {
 		echo '<table class="spat-status-table">';
 
 		$active = class_exists( 'SportsPress' );
-		$this->row( 'SportsPress Active', $active ? $this->status( 'ok', 'Active' ) : $this->status( 'err', 'Not Active' ) );
+		$this->row_html( 'SportsPress Active', $active ? $this->status( 'ok', 'Active' ) : $this->status( 'err', 'Not Active' ) );
 		$this->debug( 'SportsPress: ' . ( $active ? 'Active' : 'Not Active' ) );
 
 		if ( $active ) {
 			$version = defined( 'SP_VERSION' ) ? SP_VERSION : __( 'Unknown', 'sportspress-admin-tools' );
-			$this->row( 'Version', esc_html( $version ) );
+			$this->row( 'Version', $version );
 			$this->debug( 'SP Version: ' . $version );
 
 			$sport = get_option( 'sportspress_sport', '' );
-			$this->row( 'Sport', $sport ? esc_html( ucfirst( $sport ) ) : $this->status( 'warn', 'Not configured' ) );
+			$this->row_html( 'Sport', $sport ? esc_html( ucfirst( $sport ) ) : $this->status( 'warn', 'Not configured' ) );
 			$this->debug( 'Sport: ' . ( $sport ?: 'Not configured' ) );
 		}
 
@@ -153,6 +153,15 @@ class SPAT_Health_Dashboard {
 			'spt_cleanup_old_temp_data' => 'Player Tools Temp Data Cleanup',
 		);
 
+		/**
+		 * Filter the list of cron hooks displayed on the health dashboard.
+		 *
+		 * Child plugins can contribute their own hook => label entries.
+		 *
+		 * @param array $crons Hook name => display label map.
+		 */
+		$crons = apply_filters( 'spat_health_dashboard_crons', $crons );
+
 		foreach ( $crons as $hook => $label ) {
 			$next = wp_next_scheduled( $hook );
 			if ( $next ) {
@@ -181,13 +190,26 @@ class SPAT_Health_Dashboard {
 			$wpdb->prefix . 'spat_registration_logs',
 			$wpdb->prefix . 'spat_role_logs',
 			$wpdb->prefix . 'spat_temp_data',
-			$wpdb->prefix . 'spet_etransfer_logs',
 		);
 
+		// Use cached SHOW TABLE STATUS for performance
+		$table_status = get_transient( 'spat_table_status' );
+		if ( false === $table_status ) {
+			$table_status = array();
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+			$results = $wpdb->get_results( 'SHOW TABLE STATUS', ARRAY_A );
+			if ( $results ) {
+				foreach ( $results as $row ) {
+					$table_status[ $row['Name'] ] = $row['Rows'];
+				}
+			}
+			set_transient( 'spat_table_status', $table_status, 5 * MINUTE_IN_SECONDS );
+		}
+
 		foreach ( $tables as $table ) {
-			$exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table;
-			$rows = $exists ? $wpdb->get_var( "SELECT COUNT(*) FROM `{$table}`" ) : '—';
-			$short = str_replace( $wpdb->prefix, '', $table );
+			$exists = isset( $table_status[ $table ] );
+			$rows   = $exists ? $table_status[ $table ] : '—';
+			$short  = str_replace( $wpdb->prefix, '', $table );
 
 			echo '<tr>';
 			echo '<td>' . esc_html( $short ) . '</td>';
@@ -208,20 +230,21 @@ class SPAT_Health_Dashboard {
 		echo '<table class="spat-status-table">';
 
 		$endpoint = rest_url( 'spet/v1/etransfer-webhook' );
-		$this->row( 'Endpoint', '<code>' . esc_html( $endpoint ) . '</code>' );
+		$this->row_html( 'Endpoint', '<code>' . esc_html( $endpoint ) . '</code>' );
 		$this->debug( 'Webhook endpoint: ' . $endpoint );
 
 		$secret = get_option( 'spet_webhook_secret', '' );
 		$has_secret = ! empty( $secret );
-		$this->row( 'Secret Configured', $has_secret ? $this->status( 'ok', 'Yes' ) : $this->status( 'err', 'No' ) );
+		$this->row_html( 'Secret Configured', $has_secret ? $this->status( 'ok', 'Yes' ) : $this->status( 'err', 'No' ) );
 		$this->debug( 'Webhook secret: ' . ( $has_secret ? 'configured' : 'MISSING' ) );
 
 		// Last webhook received — check most recent log entry
 		$table = $wpdb->prefix . 'spat_etransfer_logs';
 		$table_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table;
 		if ( $table_exists ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is the internal prefix + literal table name, not user input.
 			$last = $wpdb->get_var( "SELECT MAX(timestamp) FROM `{$table}`" );
-			$this->row( 'Last Webhook Received', $last ? esc_html( wp_date( 'Y-m-d H:i:s', strtotime( $last ) ) ) : $this->status( 'warn', 'Never' ) );
+			$this->row_html( 'Last Webhook Received', $last ? esc_html( wp_date( 'Y-m-d H:i:s', strtotime( $last ) ) ) : $this->status( 'warn', 'Never' ) );
 			$this->debug( 'Last webhook: ' . ( $last ?: 'never' ) );
 		}
 
@@ -279,6 +302,14 @@ class SPAT_Health_Dashboard {
 	}
 
 	private function row( $label, $value ) {
-		echo '<tr><th>' . esc_html( $label ) . '</th><td>' . $value . '</td></tr>';
+		echo '<tr><th>' . esc_html( $label ) . '</th><td>' . esc_html( $value ) . '</td></tr>';
+	}
+
+	/**
+	 * Render a row whose value is already a trusted, pre-escaped HTML fragment.
+	 * Callers MUST escape user-influenced input before calling — this helper does not.
+	 */
+	private function row_html( $label, $trusted_html_value ) {
+		echo '<tr><th>' . esc_html( $label ) . '</th><td>' . $trusted_html_value . '</td></tr>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 	}
 }

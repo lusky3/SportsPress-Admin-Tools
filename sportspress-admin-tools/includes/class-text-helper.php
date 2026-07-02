@@ -7,7 +7,7 @@
 
 // Prevent direct access
 if ( ! defined( 'ABSPATH' ) ) {
-	wp_die();
+	exit;
 }
 
 class SPAT_Text_Helper {
@@ -25,8 +25,14 @@ class SPAT_Text_Helper {
 			return SP()->text[ $text ];
 		}
 
-		// Return translated text with fallback to original
-		return __( $text, $domain );
+		// No SportsPress override — return the original string unchanged.
+		// We deliberately do NOT wrap $text in __() here: $text is a runtime
+		// variable, so __( $text, $domain ) is not extractable by i18n tooling
+		// and would be a no-op passthrough. Translation of these UI strings is
+		// handled at their literal call sites; SportsPress label overrides are
+		// the dynamic layer this helper exists to apply. The $domain parameter
+		// is retained for call-site compatibility but is intentionally unused. (AT-6)
+		return $text;
 	}
 
 	/**

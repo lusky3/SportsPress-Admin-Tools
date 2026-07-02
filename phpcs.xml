@@ -20,6 +20,11 @@
 		<exclude name="WordPress.Files.FileName.InvalidClassFileName"/>
 		<exclude name="WordPress.Files.FileName.NotHyphenatedLowercase"/>
 
+		<!-- REST files intentionally co-locate a function_exists()-guarded helper
+		     beside their class so each plugin ships independently. -->
+		<exclude name="PSR1.Files.SideEffects.FoundWithSymbols"/>
+		<exclude name="Universal.Files.SeparateFunctionsFromOO.Mixed"/>
+
 		<!-- Style preferences - pre-existing, not security-relevant -->
 		<exclude name="WordPress.PHP.YodaConditions.NotYoda"/>
 		<exclude name="WordPress.WP.I18n.MissingTranslatorsComment"/>
@@ -66,4 +71,6 @@
 	<exclude-pattern>*/assets/*</exclude-pattern>
 	<exclude-pattern>*/tests/*</exclude-pattern>
 	<exclude-pattern>*/node_modules/*</exclude-pattern>
+	<!-- Generated React bundle: verified by the CI build-drift gate, not hand-formatted. -->
+	<exclude-pattern>*/build/*</exclude-pattern>
 </ruleset>

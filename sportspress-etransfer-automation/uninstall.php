@@ -11,16 +11,22 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 	exit;
 }
 
-global $wpdb;
+// Check if parent plugin wants data removed
+if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 
-// Remove custom database table
-$table_name = $wpdb->prefix . 'spet_etransfer_logs';
-$wpdb->query( "DROP TABLE IF EXISTS $table_name" );
+	global $wpdb;
 
-// Remove plugin options
-delete_option( 'spet_webhook_secret' );
-delete_option( 'spet_service_provider' );
-delete_option( 'spet_equivalent_names' );
+	// Remove custom database table
+	$table_name = $wpdb->prefix . 'spat_etransfer_logs';
+	$wpdb->query( "DROP TABLE IF EXISTS $table_name" );
 
-// Clear scheduled cron events
-wp_clear_scheduled_hook( 'spet_cleanup_old_logs' );
+	// Remove plugin options
+	delete_option( 'spet_webhook_secret' );
+	delete_option( 'spet_equivalent_names' );
+	delete_option( 'spet_trusted_proxy_ips' );
+	delete_option( 'spet_pii_retention_days' );
+	delete_option( 'spet_dkim_enforcement' );
+
+	// Clear scheduled cron events
+	wp_clear_scheduled_hook( 'spet_cleanup_old_logs' );
+}

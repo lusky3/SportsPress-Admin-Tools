@@ -11,52 +11,33 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPET_Database {
 
-
-	public static function create_tables() {
-		global $wpdb;
-
-		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
-
-		$charset_collate = $wpdb->get_charset_collate();
-
-		$sql = "CREATE TABLE $table_name (
-            id mediumint(9) NOT NULL AUTO_INCREMENT,
-            timestamp datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
-            from_email varchar(255) NOT NULL,
-            from_name varchar(255) DEFAULT '' NOT NULL,
-            amount decimal(10,2) NOT NULL,
-            reference_number varchar(100) DEFAULT '' NOT NULL,
-            match_criteria varchar(255) DEFAULT '' NOT NULL,
-            order_id bigint(20) DEFAULT NULL,
-            result text NOT NULL,
-            webhook_data longtext DEFAULT '' NOT NULL,
-            payment_data longtext DEFAULT '' NOT NULL,
-            PRIMARY KEY (id),
-            KEY order_id (order_id),
-            KEY timestamp (timestamp)
-        ) $charset_collate;";
-
-		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-		dbDelta( $sql );
-	}
-
+	/**
+	 * Table is created by the core SPAT_Database class.
+	 * This child plugin uses the core's spat_etransfer_logs table.
+	 */
 	public static function log_etransfer_activity( $data ) {
 		global $wpdb;
 
-		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
+		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
 
 		$insert_data = array(
 			'from_email' => sanitize_email( $data['from_email'] ),
 			'from_name' => sanitize_text_field( $data['from_name'] ),
 			'amount' => floatval( $data['amount'] ),
-			'reference_number' => sanitize_text_field( $data['reference_number'] ),
 			'match_criteria' => sanitize_text_field( $data['match_criteria'] ),
 			'result' => sanitize_text_field( $data['result'] ),
 			'webhook_data' => maybe_serialize( $data['webhook_data'] ),
 			'payment_data' => maybe_serialize( $data['payment_data'] ),
 		);
 
-		$format = array( '%s', '%s', '%f', '%s', '%s', '%s', '%s', '%s' );
+		$format = array( '%s', '%s', '%f', '%s', '%s', '%s', '%s' );
+
+		// reference_number is NULLable in the schema; preserve null explicitly so
+		// the UNIQUE index does not collide on duplicate-webhook audit rows.
+		if ( array_key_exists( 'reference_number', $data ) && $data['reference_number'] !== null ) {
+			$insert_data['reference_number'] = sanitize_text_field( $data['reference_number'] );
+			$format[] = '%s';
+		}
 
 		if ( ! empty( $data['order_id'] ) ) {
 			$insert_data['order_id'] = intval( $data['order_id'] );
@@ -66,7 +47,9 @@ class SPET_Database {
 		$result = $wpdb->insert( $table_name, $insert_data, $format );
 
 		if ( $result === false ) {
-			error_log( 'SPET Database: Failed to log e-Transfer activity - ' . $wpdb->last_error );
+			if ( get_option( 'spat_debug_verbose_logging', '0' ) === '1' ) {
+				error_log( 'SPET Database: Failed to log e-Transfer activity - ' . $wpdb->last_error );
+			}
 		}
 
 		return $result;
@@ -75,7 +58,7 @@ class SPET_Database {
 	public static function get_etransfer_logs( $limit = 50, $summary = false ) {
 		global $wpdb;
 
-		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
+		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
 		$columns = $summary
 			? 'id, timestamp, from_name, from_email, amount, reference_number, match_criteria, order_id, result'
 			: '*';
@@ -88,10 +71,35 @@ class SPET_Database {
 		);
 	}
 
+	/**
+	 * Fetch unmatched webhook logs (no order_id, not hidden, and result indicates no match or amount mismatch).
+	 */
+	public static function get_unmatched_etransfer_logs( $limit = 50 ) {
+		global $wpdb;
+
+		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
+
+		return $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT id, timestamp, from_name, from_email, amount, reference_number, match_criteria, order_id, result
+				FROM $table_name
+				WHERE order_id IS NULL
+				AND result NOT LIKE %s
+				AND (result LIKE %s OR result LIKE %s)
+				ORDER BY timestamp DESC
+				LIMIT %d",
+				'Hidden%',
+				'%No matching order%',
+				'%Amount mismatch%',
+				intval( $limit )
+			)
+		);
+	}
+
 	public static function count_pending_webhooks() {
 		global $wpdb;
 
-		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
+		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
 
 		return $wpdb->get_var(
 			$wpdb->prepare(
@@ -109,13 +117,31 @@ class SPET_Database {
 	public static function reference_number_exists( $reference_number ) {
 		global $wpdb;
 
-		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
+		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
 
+		// Only count rows that actually completed (order_id IS NOT NULL).
+		// Unmatched rows (no matching order, amount mismatch, name match pending
+		// manual review) sit in a pending state and SHOULD be retryable — if the
+		// customer corrects their payment and the bank re-sends the same
+		// reference, we want the webhook to be processable, not silently swallowed
+		// as a duplicate. Duplicate-webhook audit rows already insert
+		// reference_number as NULL.
+		//
+		// Replay semantics (intentional): this gate prevents a reference that has
+		// ALREADY completed an order from completing a second one. It does NOT, by
+		// itself, prevent a not-yet-completed reference from being submitted more
+		// than once. That sequential-replay surface is bounded by two other
+		// controls in handle_webhook(): (1) the HMAC signature is timestamp-bound
+		// and the request is rejected once the timestamp is older than 300s, so an
+		// attacker cannot indefinitely resubmit a captured payload; and (2) a
+		// short-lived per-reference lock (SPAT_Lock) serialises concurrent
+		// deliveries of the same reference. Within the 300s window a re-delivered
+		// pending reference is therefore allowed deliberately (legitimate retry),
+		// and the first delivery that completes an order claims the reference here.
 		$count = $wpdb->get_var(
 			$wpdb->prepare(
-				"SELECT COUNT(*) FROM $table_name WHERE reference_number = %s AND result NOT LIKE %s",
-				sanitize_text_field( $reference_number ),
-				'%Duplicate webhook%'
+				"SELECT COUNT(*) FROM $table_name WHERE reference_number = %s AND order_id IS NOT NULL",
+				sanitize_text_field( $reference_number )
 			)
 		);
 
@@ -125,7 +151,27 @@ class SPET_Database {
 	public static function cleanup_old_logs( $days = 90 ) {
 		global $wpdb;
 
-		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
+		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
+
+		// First, clear serialized PII columns on matched rows older than
+		// the configured retention window (default 30 days), while keeping
+		// the row's metadata for audit history.
+		$pii_days = intval( get_option( 'spet_pii_retention_days', 30 ) );
+		if ( $pii_days < 1 ) {
+			$pii_days = 30;
+		}
+		// Clear PII on all rows older than the retention window, regardless of
+		// whether they were matched to an order. Unmatched rows previously kept
+		// their PII indefinitely, breaching the retention policy.
+		$wpdb->query(
+			$wpdb->prepare(
+				"UPDATE $table_name
+				SET webhook_data = '', payment_data = ''
+				WHERE (webhook_data != '' OR payment_data != '')
+				AND timestamp < DATE_SUB(NOW(), INTERVAL %d DAY)",
+				$pii_days
+			)
+		);
 
 		return $wpdb->query(
 			$wpdb->prepare(
@@ -138,7 +184,7 @@ class SPET_Database {
 	public static function hide_etransfer_log( $log_id ) {
 		global $wpdb;
 
-		$table_name = $wpdb->prefix . 'spet_etransfer_logs';
+		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
 
 		return $wpdb->update(
 			$table_name,

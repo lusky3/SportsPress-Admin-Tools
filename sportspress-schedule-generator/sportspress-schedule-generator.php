@@ -7,8 +7,8 @@
  * Text Domain: sportspress-schedule-generator
  * License: GPL v2 or later
  * Requires at least: 5.0
- * Tested up to: 6.4
- * Requires PHP: 7.4
+ * Tested up to: 6.9
+ * Requires PHP: 8.1
  * Depends: SportsPress Admin Tools
  */
 
@@ -34,6 +34,22 @@ class SportsPress_Schedule_Generator {
 			deactivate_plugins( plugin_basename( __FILE__ ) );
 			wp_die( 'SportsPress Schedule Generator requires SportsPress Admin Tools to be installed and activated first.' );
 		}
+		self::fix_configurations_autoload();
+	}
+
+	public static function fix_configurations_autoload() {
+		global $wpdb;
+		$row = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT autoload FROM $wpdb->options WHERE option_name = %s",
+				'spsg_configurations'
+			)
+		);
+		if ( $row && $row->autoload !== 'no' ) {
+			$val = get_option( 'spsg_configurations' );
+			delete_option( 'spsg_configurations' );
+			add_option( 'spsg_configurations', $val, '', 'no' );
+		}
 	}
 
 	/**
@@ -41,6 +57,18 @@ class SportsPress_Schedule_Generator {
 	 */
 	public function deactivate() {
 		wp_clear_scheduled_hook( 'spsg_cleanup_export_files' );
+		wp_clear_scheduled_hook( 'spsg_cleanup_placeholders_continue' );
+	}
+
+	/**
+	 * WP-Cron callback that continues a batched placeholder cleanup.
+	 *
+	 * @param string $config_id Configuration ID whose placeholders are being deleted.
+	 */
+	public static function cleanup_placeholders_continue( $config_id ) {
+		if ( class_exists( 'SPSG_Placeholder_Team_Manager' ) ) {
+			SPSG_Placeholder_Team_Manager::cleanup_for_config( $config_id );
+		}
 	}
 
 	/**
@@ -48,27 +76,29 @@ class SportsPress_Schedule_Generator {
 	 */
 	public function cleanup_export_files() {
 		$upload_dir = wp_upload_dir();
-		$export_dirs = array(
-			$upload_dir['basedir'] . '/spsg-exports',
-			$upload_dir['path'],
-		);
+
+		// Only scan the plugin's own export directory. Older versions also
+		// scanned `$upload_dir['path']` (the current-month uploads folder),
+		// which risked deleting unrelated user attachments that happened to
+		// start with our prefix during URL collisions.
+		$dir = $upload_dir['basedir'] . '/spsg-exports';
+		if ( ! is_dir( $dir ) ) {
+			return;
+		}
 
 		$max_age = DAY_IN_SECONDS;
 
-		foreach ( $export_dirs as $dir ) {
-			if ( ! is_dir( $dir ) ) {
-				continue;
-			}
+		$files = array_merge(
+			glob( $dir . '/schedule_*' ) ?: array(),
+			glob( $dir . '/schedule-*' ) ?: array()
+		);
+		if ( ! $files ) {
+			return;
+		}
 
-			$files = glob( $dir . '/schedule_*' ) + glob( $dir . '/schedule-*' );
-			if ( ! $files ) {
-				continue;
-			}
-
-			foreach ( $files as $file ) {
-				if ( is_file( $file ) && ( time() - filemtime( $file ) ) > $max_age ) {
-					wp_delete_file( $file );
-				}
+		foreach ( $files as $file ) {
+			if ( is_file( $file ) && ( time() - filemtime( $file ) ) > $max_age ) {
+				wp_delete_file( $file );
 			}
 		}
 	}
@@ -76,6 +106,12 @@ class SportsPress_Schedule_Generator {
 	public function init() {
 		if ( ! $this->check_parent_plugin() ) {
 			return;
+		}
+
+		// One-time migration: fix autoload for existing installs
+		if ( get_option( 'spsg_autoload_fixed' ) !== '1' ) {
+			self::fix_configurations_autoload();
+			update_option( 'spsg_autoload_fixed', '1' );
 		}
 
 		// Register with parent plugin
@@ -117,11 +153,18 @@ class SportsPress_Schedule_Generator {
 			require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-generator.php';
 			new SPSG_Schedule_Generator();
 
+			// Load REST API
+			require_once SPSG_PLUGIN_PATH . 'includes/class-rest-api.php';
+			new SPSG_REST_API();
+
 			// Schedule export file cleanup
 			if ( ! wp_next_scheduled( 'spsg_cleanup_export_files' ) ) {
 				wp_schedule_event( time(), 'daily', 'spsg_cleanup_export_files' );
 			}
 			add_action( 'spsg_cleanup_export_files', array( $this, 'cleanup_export_files' ) );
+
+			// Continuation handler for batched placeholder cleanup.
+			add_action( 'spsg_cleanup_placeholders_continue', array( __CLASS__, 'cleanup_placeholders_continue' ) );
 
 			// Load admin interface if in admin
 			if ( is_admin() ) {
@@ -136,12 +179,42 @@ class SportsPress_Schedule_Generator {
 			add_action( 'admin_notices', array( $this, 'parent_plugin_missing_notice' ) );
 			return false;
 		}
+
+		// Parent-child contract floor. The parent exposes SPAT_CONTRACT_VERSION;
+		// this child relies on shared helper classes (SPAT_Lock, SPAT_Database,
+		// etc.) that only exist from contract 1.0.0 onward. An older parent still
+		// passes the class_exists() gate above but would fatal on first use, so
+		// degrade with an admin notice instead of loading.
+		if ( ! defined( 'SPAT_CONTRACT_VERSION' ) || version_compare( SPAT_CONTRACT_VERSION, '1.0.0', '<' ) ) {
+			add_action( 'admin_notices', array( $this, 'parent_contract_outdated_notice' ) );
+			return false;
+		}
+
+		// SportsPress itself is a hard dependency (this plugin reads sp_* post
+		// types, taxonomies, and settings). Bail with a notice when it is absent.
+		if ( ! class_exists( 'SportsPress' ) ) {
+			add_action( 'admin_notices', array( $this, 'sportspress_missing_notice' ) );
+			return false;
+		}
+
 		return true;
 	}
 
 	public function parent_plugin_missing_notice() {
 		echo '<div class="notice notice-error"><p>';
-		echo 'SportsPress Schedule Generator requires SportsPress Admin Tools to be installed and activated.';
+		echo esc_html( 'SportsPress Schedule Generator requires SportsPress Admin Tools to be installed and activated.' );
+		echo '</p></div>';
+	}
+
+	public function parent_contract_outdated_notice() {
+		echo '<div class="notice notice-error"><p>';
+		echo esc_html( 'SportsPress Schedule Generator requires a newer version of SportsPress Admin Tools. Please update the parent plugin.' );
+		echo '</p></div>';
+	}
+
+	public function sportspress_missing_notice() {
+		echo '<div class="notice notice-error"><p>';
+		echo esc_html( 'SportsPress Schedule Generator requires the SportsPress plugin to be installed and activated.' );
 		echo '</p></div>';
 	}
 

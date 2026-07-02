@@ -36,6 +36,37 @@ class SPT_Player_Skill_Level {
 
 		// Show bulk calculate result notice.
 		add_action( 'admin_notices', array( $this, 'show_calc_notice' ) );
+
+		// Fix #14: invalidate distribution cache whenever skill_level meta changes.
+		add_action( 'updated_post_meta', array( __CLASS__, 'maybe_flush_distribution_cache' ), 10, 4 );
+		add_action( 'added_post_meta', array( __CLASS__, 'maybe_flush_distribution_cache' ), 10, 4 );
+		add_action( 'deleted_post_meta', array( __CLASS__, 'maybe_flush_distribution_cache' ), 10, 4 );
+	}
+
+	/** Per-request guard so we only flush the distribution transient once. */
+	private static $flush_pending = false;
+
+	/**
+	 * Fix #14: drop the distribution transient whenever spt_skill_level meta changes.
+	 *
+	 * Core has no per-key dynamic action for {added,updated,deleted}_post_meta,
+	 * so this fires on every meta write site-wide. Keep the key compare as the
+	 * very first statement and short-circuit re-entry within the same request.
+	 *
+	 * @param int    $meta_id    Meta ID (unused).
+	 * @param int    $object_id  Post ID (unused).
+	 * @param string $meta_key   Meta key.
+	 * @param mixed  $meta_value Meta value (unused).
+	 */
+	public static function maybe_flush_distribution_cache( $meta_id, $object_id, $meta_key, $meta_value ) {
+		if ( 'spt_skill_level' !== $meta_key ) {
+			return;
+		}
+		if ( self::$flush_pending ) {
+			return;
+		}
+		self::$flush_pending = true;
+		delete_transient( 'spt_skill_distribution' );
 	}
 
 	/**
@@ -484,6 +515,19 @@ class SPT_Player_Skill_Level {
 	// ------------------------------------------------------------------
 
 	/**
+	 * Sanitize a value for safe CSV output by prefixing formula-triggering characters with a single quote.
+	 *
+	 * @param mixed $value Cell value.
+	 * @return mixed
+	 */
+	private static function sanitize_csv_value( $value ) {
+		if ( is_string( $value ) && isset( $value[0] ) && in_array( $value[0], array( '=', '+', '-', '@', "\t", "\r" ), true ) ) {
+			$value = "'" . $value;
+		}
+		return $value;
+	}
+
+	/**
 	 * Handle CSV export of player skill data.
 	 */
 	public function handle_export_csv() {
@@ -519,14 +563,17 @@ class SPT_Player_Skill_Level {
 
 			fputcsv(
 				$out,
-				array(
-					$player->ID,
-					$player->post_title,
-					$level,
-					$source,
-					$updated ? date_i18n( 'Y-m-d', strtotime( $updated ) ) : '',
-					is_array( $teams ) ? implode( ', ', $teams ) : '',
-					is_array( $leagues ) ? implode( ', ', $leagues ) : '',
+				array_map(
+					array( __CLASS__, 'sanitize_csv_value' ),
+					array(
+						$player->ID,
+						$player->post_title,
+						$level,
+						$source,
+						$updated ? date_i18n( 'Y-m-d', strtotime( $updated ) ) : '',
+						is_array( $teams ) ? implode( ', ', $teams ) : '',
+						is_array( $leagues ) ? implode( ', ', $leagues ) : '',
+					)
 				)
 			);
 		}
@@ -683,36 +730,48 @@ class SPT_Player_Skill_Level {
 	private static function render_distribution( $leagues ) {
 		global $wpdb;
 
-		// Get all players with a skill level, grouped by league.
-		$rows = $wpdb->get_results(
-			"SELECT t.name AS league_name, pm.meta_value AS skill
-			 FROM {$wpdb->postmeta} pm
-			 JOIN {$wpdb->posts} p ON p.ID = pm.post_id AND p.post_type = 'sp_player' AND p.post_status = 'publish'
-			 LEFT JOIN {$wpdb->term_relationships} tr ON tr.object_id = p.ID
-			 LEFT JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'sp_league'
-			 LEFT JOIN {$wpdb->terms} t ON t.term_id = tt.term_id
-			 WHERE pm.meta_key = 'spt_skill_level'"
-		);
+		// Fix #14: cache the bucketed result for 5 minutes; bucket in SQL so we
+		// don't ship every (player, skill) row over the wire on large sites.
+		$dist = get_transient( 'spt_skill_distribution' );
+		if ( false === $dist ) {
+			$rows = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT COALESCE(t.name, '') AS league_name,
+					        CAST(pm.meta_value AS UNSIGNED) AS skill,
+					        COUNT(*) AS cnt
+					 FROM {$wpdb->postmeta} pm
+					 JOIN {$wpdb->posts} p ON p.ID = pm.post_id AND p.post_type = 'sp_player' AND p.post_status = 'publish'
+					 LEFT JOIN {$wpdb->term_relationships} tr ON tr.object_id = p.ID
+					 LEFT JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'sp_league'
+					 LEFT JOIN {$wpdb->terms} t ON t.term_id = tt.term_id
+					 WHERE pm.meta_key = %s
+					   AND pm.meta_value REGEXP '^[0-9]+$'
+					 GROUP BY t.name, CAST(pm.meta_value AS UNSIGNED)",
+					'spt_skill_level'
+				)
+			);
 
-		if ( empty( $rows ) ) {
+			$dist = array();
+			foreach ( (array) $rows as $row ) {
+				$league = $row->league_name !== '' ? $row->league_name : __( '(No League)', 'sportspress-player-tools' );
+				$skill  = (int) $row->skill;
+				if ( $skill < 1 || $skill > 10 ) {
+					continue;
+				}
+				if ( ! isset( $dist[ $league ] ) ) {
+					$dist[ $league ] = array_fill( 1, 10, 0 );
+				}
+				$dist[ $league ][ $skill ] += (int) $row->cnt;
+			}
+			ksort( $dist );
+
+			set_transient( 'spt_skill_distribution', $dist, 5 * MINUTE_IN_SECONDS );
+		}
+
+		if ( empty( $dist ) ) {
 			echo '<p>' . esc_html__( 'No players have been rated yet. Run a bulk calculation first.', 'sportspress-player-tools' ) . '</p>';
 			return;
 		}
-
-		// Build distribution: league_name => [ 1 => count, 2 => count, ... 10 => count ].
-		$dist = array();
-		foreach ( $rows as $row ) {
-			$league = $row->league_name ?: __( '(No League)', 'sportspress-player-tools' );
-			$skill  = absint( $row->skill );
-			if ( $skill < 1 || $skill > 10 ) {
-				continue;
-			}
-			if ( ! isset( $dist[ $league ] ) ) {
-				$dist[ $league ] = array_fill( 1, 10, 0 );
-			}
-			++$dist[ $league ][ $skill ];
-		}
-		ksort( $dist );
 		?>
 		<table class="widefat striped" style="max-width:700px;">
 			<thead>

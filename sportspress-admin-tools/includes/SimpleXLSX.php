@@ -10,10 +10,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SimpleXLSX {
 
+	const MAX_FILE_BYTES         = 52428800;
+	const MAX_UNCOMPRESSED_BYTES = 104857600;
+	const MAX_SHARED_STRINGS     = 200000;
+	const MAX_ROWS               = 5000;
+
 	private $data = array();
 
 	public static function parse( $file_path ) {
 		if ( ! file_exists( $file_path ) ) {
+			return false;
+		}
+		if ( filesize( $file_path ) > self::MAX_FILE_BYTES ) {
 			return false;
 		}
 
@@ -22,17 +30,22 @@ class SimpleXLSX {
 	}
 
 	private function parseFile( $file_path ) {
-		$extension = pathinfo( $file_path, PATHINFO_EXTENSION );
-
-		if ( strtolower( $extension ) === 'csv' ) {
-			return $this->parseCSV( $file_path );
+		// Dispatch on content, not the storage path: callers pass extensionless
+		// upload tmp names (/tmp/phpXXXX), so keying on the file extension would
+		// never match either branch. XLSX files are ZIP containers whose magic
+		// bytes are "PK\x03\x04"; anything else is treated as CSV.
+		$handle = fopen( $file_path, 'rb' );
+		if ( ! $handle ) {
+			return false;
 		}
+		$magic = fread( $handle, 4 );
+		fclose( $handle );
 
-		if ( strtolower( $extension ) === 'xlsx' ) {
+		if ( "PK\x03\x04" === $magic ) {
 			return $this->parseXLSX( $file_path );
 		}
 
-		return false;
+		return $this->parseCSV( $file_path );
 	}
 
 	private function parseXLSX( $file_path ) {
@@ -45,8 +58,20 @@ class SimpleXLSX {
 			return false;
 		}
 
+		$sheet_stat = $zip->statName( 'xl/worksheets/sheet1.xml' );
+		if ( ! $sheet_stat || ! isset( $sheet_stat['size'] ) || $sheet_stat['size'] > self::MAX_UNCOMPRESSED_BYTES ) {
+			$zip->close();
+			return false;
+		}
+
+		$strings_stat = $zip->statName( 'xl/sharedStrings.xml' );
+		if ( $strings_stat && isset( $strings_stat['size'] ) && $strings_stat['size'] > self::MAX_UNCOMPRESSED_BYTES ) {
+			$zip->close();
+			return false;
+		}
+
 		$shared_strings = $this->extractSharedStrings( $zip );
-		$sheet_xml = $zip->getFromName( 'xl/worksheets/sheet1.xml' );
+		$sheet_xml      = $zip->getFromName( 'xl/worksheets/sheet1.xml' );
 		$zip->close();
 
 		if ( ! $sheet_xml ) {
@@ -54,9 +79,17 @@ class SimpleXLSX {
 		}
 
 		$doc = $this->loadXmlSafe( $sheet_xml );
+		if ( ! $doc ) {
+			return false;
+		}
 		$this->data = array();
 
-		foreach ( $doc->getElementsByTagName( 'row' ) as $row ) {
+		$rows = $doc->getElementsByTagName( 'row' );
+		if ( $rows->length > self::MAX_ROWS ) {
+			return false;
+		}
+
+		foreach ( $rows as $row ) {
 			$this->data[] = $this->parseRow( $row, $shared_strings );
 		}
 
@@ -65,14 +98,21 @@ class SimpleXLSX {
 
 	private function extractSharedStrings( $zip ) {
 		$shared_strings = array();
-		$strings_xml = $zip->getFromName( 'xl/sharedStrings.xml' );
+		$strings_xml    = $zip->getFromName( 'xl/sharedStrings.xml' );
 
 		if ( ! $strings_xml ) {
 			return $shared_strings;
 		}
 
 		$doc = $this->loadXmlSafe( $strings_xml );
-		foreach ( $doc->getElementsByTagName( 't' ) as $node ) {
+		if ( ! $doc ) {
+			return $shared_strings;
+		}
+		$nodes = $doc->getElementsByTagName( 't' );
+		if ( $nodes->length > self::MAX_SHARED_STRINGS ) {
+			return array();
+		}
+		foreach ( $nodes as $node ) {
 			$shared_strings[] = $node->nodeValue;
 		}
 
@@ -84,20 +124,27 @@ class SimpleXLSX {
 		if ( PHP_VERSION_ID < 80000 ) {
 			$libxml_loader = libxml_disable_entity_loader( true );
 		}
-		$doc->loadXML( $xml_string );
+		$previous_internal_errors = libxml_use_internal_errors( true );
+		$loaded                   = $doc->loadXML( $xml_string, LIBXML_NONET );
+		libxml_clear_errors();
+		libxml_use_internal_errors( $previous_internal_errors );
 		if ( PHP_VERSION_ID < 80000 ) {
 			libxml_disable_entity_loader( $libxml_loader );
 		}
-		return $doc;
+		return $loaded ? $doc : null;
 	}
 
 	private function parseRow( $row, $shared_strings ) {
-		$row_data = array();
+		$row_data  = array();
 		$col_index = 0;
 
 		foreach ( $row->getElementsByTagName( 'c' ) as $cell ) {
 			$col_letter = preg_replace( '/\d+/', '', $cell->getAttribute( 'r' ) );
 			$target_col = $this->columnIndexFromString( $col_letter );
+
+			if ( $target_col > 256 ) {
+				return array();
+			}
 
 			// Fill empty columns
 			while ( $col_index < $target_col ) {
@@ -128,7 +175,7 @@ class SimpleXLSX {
 	}
 
 	private function columnIndexFromString( $column ) {
-		$index = 0;
+		$index  = 0;
 		$length = strlen( $column );
 		for ( $i = 0; $i < $length; $i++ ) {
 			$index = $index * 26 + ( ord( $column[ $i ] ) - ord( 'A' ) + 1 );
@@ -143,7 +190,17 @@ class SimpleXLSX {
 		}
 
 		$this->data = array();
-		while ( ( $row = fgetcsv( $handle ) ) !== false ) {
+		$row_count  = 0;
+		// Pass every argument explicitly. PHP 8.4 deprecates relying on the
+		// default $escape ("\\"); an empty escape also yields RFC-4180 CSV
+		// semantics (doubled quotes, no backslash escaping).
+		while ( ( $row = fgetcsv( $handle, null, ',', '"', '' ) ) !== false ) {
+			$row_count++;
+			if ( $row_count > self::MAX_ROWS ) {
+				fclose( $handle );
+				$this->data = array();
+				return false;
+			}
 			$this->data[] = $row;
 		}
 

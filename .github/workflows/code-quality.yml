@@ -14,6 +14,16 @@ on:
       - '**/*.js'
       - 'sonar-project.properties'
 
+# Least-privilege default token: the scan only reads the repo (and GITHUB_TOKEN
+# for PR metadata, which needs no more than read).
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   sonarcloud:
     name: SonarCloud

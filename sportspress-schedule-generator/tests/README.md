@@ -119,6 +119,8 @@ See `docker/QUICK-START.md` for details.
 
 ### Simple Tests
 
+> **Note:** The monorepo also provides `run-all-tests.sh` at the project root for running standalone PHP unit tests across all plugins without PHPUnit. The PHPUnit setup below is specific to the schedule generator's own test suite.
+
 ```bash
 # From plugin root
 phpunit tests/

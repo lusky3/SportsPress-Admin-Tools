@@ -6,7 +6,7 @@ Add CSV/XLSX roster upload functionality to sp_list pages for bulk player list m
 
 ## File Location
 
-Add to Player Modifications module (`modules/class-player-modifications.php`) since it already handles player metadata and email functionality.
+Add to Player Modifications module (`includes/class-player-modifications.php`) since it already handles player metadata and email functionality.
 
 ## User Interface
 

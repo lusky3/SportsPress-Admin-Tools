@@ -3,7 +3,7 @@ Contributors: lusky3
 Tags: sportspress, league, manager, roster, fees
 Requires at least: 5.0
 Tested up to: 6.9
-Requires PHP: 7.4
+Requires PHP: 8.1
 Stable tag: 1.0.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -22,7 +22,7 @@ SportsPress League Manager surfaces common league management tasks in a single, 
 * **Contextual Help** - Inline tooltips on every page element and WordPress help tabs for page-level guidance.
 * **Player Notes** - Add private, timestamped notes to player records. Meta box on player edit screen, AJAX-powered, and frontend display for admins.
 
-Uses a custom `manage_league` capability — does NOT require `manage_options`. Administrators get the capability automatically.
+Gated by the `manage_sportspress` capability — does NOT require `manage_options`. Any SportsPress manager (and administrators, who have `manage_sportspress`) can use it.
 
 == Installation ==
 
@@ -36,7 +36,7 @@ Uses a custom `manage_league` capability — does NOT require `manage_options`. 
 
 = How do I give league managers access without full admin? =
 
-Install a role editor plugin (e.g., User Role Editor) and add the `manage_league` capability to the desired user or role.
+Grant the user (or their role) the `manage_sportspress` capability — for example via a role editor plugin such as User Role Editor, or by assigning a SportsPress manager-level role. No `manage_options` access is required.
 
 = Does the fee tracker require WooCommerce? =
 
@@ -44,7 +44,7 @@ WooCommerce is optional. Without it, fee tracking can be configured for manual e
 
 = What CSV format is required for roster uploads? =
 
-CSV files with columns: name (required), number (optional), position (optional), email (optional).
+CSV files with `Team` and `Name` columns (both required). Each row maps a player Name to a Team; rows missing either value are skipped.
 
 == Changelog ==
 
@@ -56,4 +56,8 @@ CSV files with columns: name (required), number (optional), position (optional),
 * Health check for common SportsPress configuration issues
 * First-run wizard for new league managers
 * Contextual help tooltips and WordPress help tabs
-* Custom manage_league capability
+* Gated by the manage_sportspress capability (no manage_options required)
+
+== AI Usage Disclaimer ==
+
+Portions of this codebase were generated with the assistance of Large Language Models (LLMs). All AI-generated code has been reviewed and tested to ensure quality and correctness.

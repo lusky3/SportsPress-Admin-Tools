@@ -60,6 +60,11 @@ class SPSG_Schedule_Engine {
 	private $progress_transient_key;
 
 	/**
+	 * Cancellation transient key (dedicated flag, separate from progress).
+	 */
+	private $cancel_transient_key;
+
+	/**
 	 * Total matchups to schedule
 	 */
 	private $total_matchups = 0;
@@ -76,6 +81,7 @@ class SPSG_Schedule_Engine {
 		// Set progress transient key based on current user
 		$user_id = get_current_user_id();
 		$this->progress_transient_key = 'spsg_generation_progress_' . $user_id;
+		$this->cancel_transient_key   = 'spsg_cancel_generation_' . $user_id;
 	}
 
 	/**
@@ -89,6 +95,25 @@ class SPSG_Schedule_Engine {
 		// Reset state
 		$this->current_schedule = array();
 		$this->init_stats();
+
+		// Clear any stale cancellation flag from a previous run so it can't
+		// abort this fresh generation before it starts.
+		delete_transient( $this->cancel_transient_key );
+		wp_cache_delete( $this->cancel_transient_key, 'spsg_progress' );
+
+		// Clear per-request constraint validate() memoization to avoid carrying
+		// stale (game, constraint) results across runs.
+		if ( method_exists( 'SPSG_Abstract_Constraint', 'reset_validate_cache' ) ) {
+			SPSG_Abstract_Constraint::reset_validate_cache();
+		}
+
+		// SG-6: clear the resolve_venue_slots() memo too. It is keyed on
+		// spl_object_id( $config ), which PHP may recycle for a freed object, so
+		// a fresh run with a new config object could otherwise collide with a
+		// stale entry from a prior run.
+		if ( method_exists( 'SPSG_Schedule_Helper', 'reset_venue_slots_cache' ) ) {
+			SPSG_Schedule_Helper::reset_venue_slots_cache();
+		}
 
 		// Initialize progress tracking
 		$this->init_progress_tracking();
@@ -215,6 +240,7 @@ class SPSG_Schedule_Engine {
 		$expected_games = $config->games_per_team;
 		$is_custom = ( $config->matchup_style === 'custom' );
 		$errors = array();
+		$warnings = array();
 
 		foreach ( $team_games as $team_id => $game_count ) {
 			$mismatch = $is_custom
@@ -229,6 +255,22 @@ class SPSG_Schedule_Engine {
 					$game_count,
 					$expected_games
 				);
+				continue;
+			}
+
+			// Custom style: under-count is permitted but worth surfacing so a
+			// silent under-allocation doesn't go unnoticed in the UI/logs.
+			if ( $is_custom && $game_count < $expected_games ) {
+				$team_name = $this->get_team_name( $team_id, $config );
+				$warning   = sprintf(
+					/* translators: 1: team name, 2: actual count, 3: expected count */
+					__( 'Team "%1$s" has %2$d games, fewer than configured %3$d (custom matchup undercount).', 'sportspress-schedule-generator' ),
+					$team_name,
+					$game_count,
+					$expected_games
+				);
+				$warnings[] = $warning;
+				$this->log( $warning );
 			}
 		}
 
@@ -236,7 +278,10 @@ class SPSG_Schedule_Engine {
 			return new WP_Error(
 				'matchup_validation_failed',
 				__( 'Matchup validation failed. Game counts do not match configuration.', 'sportspress-schedule-generator' ),
-				array( 'errors' => $errors )
+				array(
+					'errors'   => $errors,
+					'warnings' => $warnings,
+				)
 			);
 		}
 
@@ -436,6 +481,7 @@ class SPSG_Schedule_Engine {
 		// Set current schedule
 		$this->current_schedule = $schedule;
 		$this->stats['games_scheduled'] = count( $schedule );
+		$this->stats['constraint_violations'] = $this->slot_allocator->get_constraint_violations();
 
 		$this->log( sprintf( 'Successfully allocated %d games', count( $schedule ) ) );
 
@@ -550,6 +596,7 @@ class SPSG_Schedule_Engine {
 		);
 
 		set_transient( $this->progress_transient_key, $progress, HOUR_IN_SECONDS );
+		wp_cache_set( $this->progress_transient_key, $progress, 'spsg_progress', HOUR_IN_SECONDS );
 	}
 
 	/**
@@ -559,17 +606,30 @@ class SPSG_Schedule_Engine {
 	 * @param int    $percentage Percentage complete (0-100)
 	 * @param string $message Status message
 	 */
-	private function update_progress( $phase, $percentage, $message = '' ) {
-		$progress = get_transient( $this->progress_transient_key );
+	private function update_progress( $phase, $percentage, $message = '', $games_scheduled_override = null ) {
+		// Read from object cache first; fall back to transient on cold start.
+		$progress = wp_cache_get( $this->progress_transient_key, 'spsg_progress' );
+		if ( false === $progress ) {
+			$progress = get_transient( $this->progress_transient_key );
+		}
 
 		if ( $progress === false ) {
 			$progress = array();
 		}
 
+		$previous_phase = isset( $progress['phase'] ) ? $progress['phase'] : '';
+		$previous_percentage = isset( $progress['percentage'] ) ? (float) $progress['percentage'] : -1;
+
 		$progress['phase'] = $phase;
 		$progress['percentage'] = $percentage;
 		$progress['message'] = $message;
-		$progress['games_scheduled'] = count( $this->current_schedule );
+		// SG-5: $this->current_schedule is only assigned at the END of allocation,
+		// so counting it mid-run always reported 0. During allocation the live
+		// count is passed through from update_allocation_progress(); fall back to
+		// the assigned schedule count for the other phases.
+		$progress['games_scheduled'] = ( null !== $games_scheduled_override )
+			? (int) $games_scheduled_override
+			: count( $this->current_schedule );
 		$progress['total_games'] = $this->total_matchups;
 
 		// Calculate estimated time remaining
@@ -579,7 +639,18 @@ class SPSG_Schedule_Engine {
 			$progress['estimated_time_remaining'] = max( 0, $estimated_total - $elapsed );
 		}
 
-		set_transient( $this->progress_transient_key, $progress, HOUR_IN_SECONDS );
+		// Hot path: always update object cache so REST/AJAX pollers see fresh data.
+		wp_cache_set( $this->progress_transient_key, $progress, 'spsg_progress', HOUR_IN_SECONDS );
+
+		// Slow path: persist to transient only on phase change, completion, or
+		// when percent moves >= 5 points. Cuts wp_options writes by ~20x on
+		// large schedules where update_progress fires every 10 games.
+		$phase_changed = $previous_phase !== $phase;
+		$percent_jump  = abs( $percentage - $previous_percentage ) >= 5;
+		$terminal      = $percentage >= 100 || $percentage <= 0;
+		if ( $phase_changed || $percent_jump || $terminal ) {
+			set_transient( $this->progress_transient_key, $progress, HOUR_IN_SECONDS );
+		}
 
 		$this->log( sprintf( 'Progress: %s - %d%% - %s', $phase, $percentage, $message ) );
 	}
@@ -602,7 +673,9 @@ class SPSG_Schedule_Engine {
 				$this->total_matchups
 			);
 
-			$this->update_progress( 'allocation', $total_percentage, $message );
+			// SG-5: forward the live count so progress reflects games placed so
+			// far instead of the always-zero $this->current_schedule mid-run.
+			$this->update_progress( 'allocation', $total_percentage, $message, $games_scheduled );
 		}
 	}
 
@@ -612,7 +685,19 @@ class SPSG_Schedule_Engine {
 	 * @return bool True if cancelled
 	 */
 	public function is_cancelled() {
-		$progress = get_transient( $this->progress_transient_key );
+		// Check the dedicated cancel flag first — this is what the REST and
+		// AJAX cancel handlers actually write. Object cache (hot path) then
+		// transient fallback, mirroring how the handlers set both.
+		if ( wp_cache_get( $this->cancel_transient_key, 'spsg_progress' ) || get_transient( $this->cancel_transient_key ) ) {
+			return true;
+		}
+
+		// Also honor a cancellation flag embedded in the progress object
+		// (set when a cancel arrived after progress was already initialized).
+		$progress = wp_cache_get( $this->progress_transient_key, 'spsg_progress' );
+		if ( false === $progress ) {
+			$progress = get_transient( $this->progress_transient_key );
+		}
 
 		if ( $progress === false ) {
 			return false;
@@ -626,13 +711,28 @@ class SPSG_Schedule_Engine {
 	 * Called externally via AJAX handler
 	 */
 	public function cancel_generation() {
-		$progress = get_transient( $this->progress_transient_key );
-
-		if ( $progress !== false ) {
-			$progress['cancelled'] = true;
-			$progress['message'] = __( 'Cancelling generation...', 'sportspress-schedule-generator' );
-			set_transient( $this->progress_transient_key, $progress, HOUR_IN_SECONDS );
+		// Prefer the cached copy so we don't clobber in-flight progress that
+		// hasn't been persisted to the transient yet.
+		$progress = wp_cache_get( $this->progress_transient_key, 'spsg_progress' );
+		if ( false === $progress ) {
+			$progress = get_transient( $this->progress_transient_key );
 		}
+
+		// If progress hasn't been initialized yet (cancel arrived before the
+		// engine wrote anything), write a minimal progress object so the cancel
+		// flag is observable by is_cancelled() once generation starts.
+		if ( $progress === false ) {
+			$progress = array(
+				'status'    => 'cancelled',
+				'cancelled' => true,
+				'message'   => __( 'Cancelling generation...', 'sportspress-schedule-generator' ),
+			);
+		} else {
+			$progress['cancelled'] = true;
+			$progress['message']   = __( 'Cancelling generation...', 'sportspress-schedule-generator' );
+		}
+		set_transient( $this->progress_transient_key, $progress, HOUR_IN_SECONDS );
+		wp_cache_set( $this->progress_transient_key, $progress, 'spsg_progress', HOUR_IN_SECONDS );
 
 		$this->log( 'Generation cancellation requested' );
 	}
@@ -642,6 +742,9 @@ class SPSG_Schedule_Engine {
 	 */
 	private function clear_progress() {
 		delete_transient( $this->progress_transient_key );
+		wp_cache_delete( $this->progress_transient_key, 'spsg_progress' );
+		delete_transient( $this->cancel_transient_key );
+		wp_cache_delete( $this->cancel_transient_key, 'spsg_progress' );
 	}
 
 	/**
@@ -651,7 +754,13 @@ class SPSG_Schedule_Engine {
 	 * @return array|false Progress data or false if not found
 	 */
 	public function get_progress() {
-		return get_transient( $this->progress_transient_key );
+		// Prefer the object-cache copy (updated every tick); fall back to the
+		// transient (persisted on phase/percent changes).
+		$progress = wp_cache_get( $this->progress_transient_key, 'spsg_progress' );
+		if ( false === $progress ) {
+			$progress = get_transient( $this->progress_transient_key );
+		}
+		return $progress;
 	}
 
 	/**

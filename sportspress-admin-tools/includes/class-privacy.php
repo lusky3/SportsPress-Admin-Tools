@@ -9,7 +9,7 @@
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
-	wp_die();
+	exit;
 }
 
 class SPAT_Privacy {
@@ -105,21 +105,45 @@ class SPAT_Privacy {
 	 * @return array
 	 */
 	public function export_personal_data( $email_address, $page = 1 ) {
-		$export_items = array();
+		// Building the full $all_items list re-runs every export_* query.
+		// Cache the assembled list across pagination calls so the costly
+		// queries only run once per request. Mirrors the eraser pattern.
+		$transient_key = 'spat_privacy_export_' . md5( $email_address );
 
-		if ( 1 === $page ) {
-			$export_items = array_merge(
-				$export_items,
+		if ( 1 === (int) $page ) {
+			$all_items = array_merge(
 				$this->export_player_records( $email_address ),
 				$this->export_registration_logs( $email_address ),
 				$this->export_etransfer_logs( $email_address ),
 				$this->export_woocommerce_order_links( $email_address )
 			);
+			set_transient( $transient_key, $all_items, HOUR_IN_SECONDS );
+		} else {
+			$all_items = get_transient( $transient_key );
+			if ( false === $all_items ) {
+				// Transient expired — recompute. Exporters don't mutate data,
+				// so re-running the queries is safe (just slower).
+				$all_items = array_merge(
+					$this->export_player_records( $email_address ),
+					$this->export_registration_logs( $email_address ),
+					$this->export_etransfer_logs( $email_address ),
+					$this->export_woocommerce_order_links( $email_address )
+				);
+				set_transient( $transient_key, $all_items, HOUR_IN_SECONDS );
+			}
+		}
+
+		$offset       = ( $page - 1 ) * self::BATCH_SIZE;
+		$export_items = array_slice( $all_items, $offset, self::BATCH_SIZE );
+		$done         = $offset + self::BATCH_SIZE >= count( $all_items );
+
+		if ( $done ) {
+			delete_transient( $transient_key );
 		}
 
 		return array(
 			'data' => $export_items,
-			'done' => true,
+			'done' => $done,
 		);
 	}
 
@@ -414,40 +438,86 @@ class SPAT_Privacy {
 		$items_retained = 0;
 		$messages       = array();
 
-		// 1. Anonymize player records and remove PII meta.
-		$player_ids = $this->get_player_ids_for_email( $email_address );
+		// Per-player work is paginated; bulk DB sweeps run only on the first page.
+		// Cache the player-id list across pages so a row added/removed mid-erase
+		// doesn't shift batch boundaries.
+		$transient_key = 'spat_privacy_erase_' . md5( $email_address );
+		if ( 1 === (int) $page ) {
+			$player_ids = $this->get_player_ids_for_email( $email_address );
+			set_transient( $transient_key, $player_ids, HOUR_IN_SECONDS );
+		} else {
+			$player_ids = get_transient( $transient_key );
+			if ( false === $player_ids ) {
+				// Transient expired (slow WP-Cron, paused queue, etc.). We MUST NOT
+				// re-query here: earlier pages already anonymized spt_email /
+				// sp_user meta for the players they processed, so a fresh query
+				// would return an empty/incorrect player set and falsely report
+				// success. Tell the eraser to stop cleanly; re-running the eraser
+				// will rebuild the list and finish any remaining work (including
+				// the deferred log sweeps, which run on the final page).
+				return array(
+					'items_removed'  => 0,
+					'items_retained' => 0,
+					'messages'       => array(
+						__( 'Erasure session cache expired before pagination finished. Records processed so far have already been anonymized; re-run the eraser to finish any remaining records and log entries.', 'sportspress-admin-tools' ),
+					),
+					'done'           => true,
+				);
+			}
+		}
 
-		foreach ( $player_ids as $player_id ) {
+		$offset    = ( $page - 1 ) * self::BATCH_SIZE;
+		$batch_ids = array_slice( $player_ids, $offset, self::BATCH_SIZE );
+
+		foreach ( $batch_ids as $player_id ) {
 			$player = get_post( $player_id );
 			if ( ! $player || 'sp_player' !== $player->post_type ) {
 				continue;
 			}
-
-			wp_update_post(
+			$update_result = wp_update_post(
 				array(
 					'ID'         => $player_id,
 					'post_title' => __( 'Anonymous Player', 'sportspress-admin-tools' ),
 					'post_name'  => 'anonymous-player-' . $player_id,
-				)
+				),
+				true
 			);
-
+			if ( is_wp_error( $update_result ) || 0 === $update_result ) {
+				$items_retained++;
+				$messages[]      = sprintf(
+					/* translators: %d: player post ID */
+					__( 'Could not anonymize player %d (post update was blocked).', 'sportspress-admin-tools' ),
+					$player_id
+				);
+				continue;
+			}
 			delete_post_meta( $player_id, 'spt_email' );
 			delete_post_meta( $player_id, 'sp_user' );
-
 			$items_removed++;
 		}
 
-		// 2. Delete registration logs for linked players.
-		$items_removed += $this->erase_registration_logs( $player_ids, $messages );
+		$done = ( $offset + self::BATCH_SIZE ) >= count( $player_ids );
 
-		// 3. Anonymize e-transfer logs.
-		$items_removed += $this->erase_etransfer_logs( $email_address, $messages );
+		// Bulk log sweeps run once, on the FINAL page, over the cached full
+		// player-id list. Deferring to $done keeps each page's items_removed
+		// scoped to the work that page actually performed (its <=BATCH_SIZE
+		// player anonymizations), so the per-page totals reported to the WP
+		// eraser sum to the true number of removed items instead of
+		// front-loading the entire log-deletion count onto page 1.
+		if ( $done ) {
+			$items_removed += $this->erase_registration_logs( $player_ids, $messages );
+			$items_removed += $this->erase_etransfer_logs( $email_address, $messages );
+		}
+
+		if ( $done ) {
+			delete_transient( $transient_key );
+		}
 
 		return array(
 			'items_removed'  => $items_removed,
 			'items_retained' => $items_retained,
 			'messages'       => $messages,
-			'done'           => true,
+			'done'           => $done,
 		);
 	}
 
@@ -520,15 +590,13 @@ class SPAT_Privacy {
 		);
 
 		if ( $count > 0 ) {
-			$wpdb->update(
-				$table,
-				array(
-					'from_name'  => __( 'Redacted', 'sportspress-admin-tools' ),
-					'from_email' => __( 'Redacted', 'sportspress-admin-tools' ),
-				),
-				array( 'from_email' => $email_address ),
-				array( '%s', '%s' ),
-				array( '%s' )
+			$wpdb->query(
+				$wpdb->prepare(
+					"UPDATE {$table} SET from_name = %s, from_email = %s, webhook_data = NULL, payment_data = NULL WHERE from_email = %s",
+					__( 'Redacted', 'sportspress-admin-tools' ),
+					__( 'Redacted', 'sportspress-admin-tools' ),
+					$email_address
+				)
 			);
 			$messages[] = sprintf(
 				/* translators: %d: number of e-transfer log entries anonymized */

@@ -1,0 +1,98 @@
+import { useState, useEffect, useRef } from '@wordpress/element';
+import Layout from './components/Layout';
+import DependencyNotice from './components/DependencyNotice';
+import Dashboard from './pages/Dashboard';
+import Schedule from './pages/Schedule';
+import ScoreEntry from './pages/ScoreEntry';
+import Standings from './pages/Standings';
+import Rosters from './pages/Rosters';
+import Payments from './pages/Payments';
+import HealthChecks from './pages/HealthChecks';
+import ScheduleGenerator from './pages/ScheduleGenerator';
+import DivisionBalance from './pages/DivisionBalance';
+import TeamComparison from './pages/TeamComparison';
+import SeasonReport from './pages/SeasonReport';
+import SeasonSetup from './pages/SeasonSetup';
+import './styles.css';
+
+const PAGES = {
+	dashboard: Dashboard,
+	schedule: Schedule,
+	scores: ScoreEntry,
+	standings: Standings,
+	rosters: Rosters,
+	payments: Payments,
+	health: HealthChecks,
+	'schedule-gen': ScheduleGenerator,
+	'div-balance': DivisionBalance,
+	'team-compare': TeamComparison,
+	'season-report': SeasonReport,
+	'season-setup': SeasonSetup,
+};
+
+// UX-11: derive the initial page from the URL hash so deep links / refresh land
+// on the right screen. Falls back to 'dashboard' for unknown hashes.
+function pageFromHash() {
+	const hash = ( window.location.hash || '' ).replace( /^#\/?/, '' );
+	return PAGES[ hash ] ? hash : 'dashboard';
+}
+
+export default function App() {
+	const [ page, setPage ] = useState( pageFromHash );
+	const [ season, setSeason ] = useState( window.splmDashboard?.currentSeason ?? '' );
+	const [ announcement, setAnnouncement ] = useState( '' );
+	const isFirstRender = useRef( true );
+	const PageComponent = PAGES[ page ] || Dashboard;
+
+	// Graceful degradation: SportsPress core is a hard dependency. When it is
+	// inactive the dashboard cannot function, so render the blocking notice
+	// INSTEAD of the normal UI (no Layout, no pages that would 404 against
+	// absent endpoints).
+	const sportsPressActive = window.splmDashboard?.dependencies?.sportspress !== false;
+	if ( ! sportsPressActive ) {
+		return (
+			<div className="splm-app splm-app--blocked">
+				<DependencyNotice />
+			</div>
+		);
+	}
+
+	// UX-11: write page → URL hash so Back/refresh/sharing work, and react to
+	// popstate (Back/Forward) by reading the hash back into state.
+	const navigate = ( next ) => {
+		setPage( next );
+		const target = `#/${ next }`;
+		if ( window.location.hash !== target ) {
+			window.location.hash = target;
+		}
+	};
+
+	useEffect( () => {
+		const onPop = () => setPage( pageFromHash() );
+		window.addEventListener( 'popstate', onPop );
+		window.addEventListener( 'hashchange', onPop );
+		// Normalise the hash on first mount (e.g. bare '#').
+		if ( ! window.location.hash ) {
+			window.history.replaceState( null, '', `#/${ pageFromHash() }` );
+		}
+		return () => {
+			window.removeEventListener( 'popstate', onPop );
+			window.removeEventListener( 'hashchange', onPop );
+		};
+	}, [] );
+
+	useEffect( () => {
+		if ( isFirstRender.current ) { isFirstRender.current = false; return; }
+		setAnnouncement( `Navigated to ${ page }` );
+	}, [ page ] );
+
+	return (
+		<Layout currentPage={ page } onNavigate={ navigate } onSeasonChange={ setSeason } season={ season }>
+			<div aria-live="polite" aria-atomic="true" className="screen-reader-text">
+				{ announcement }
+			</div>
+			<DependencyNotice />
+			<PageComponent onNavigate={ navigate } season={ season } />
+		</Layout>
+	);
+}

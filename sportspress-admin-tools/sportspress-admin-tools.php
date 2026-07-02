@@ -2,37 +2,118 @@
 /**
  * Plugin Name: SportsPress Admin Tools
  * Description: Administrative tools for SportsPress
- * Version: 1.0.0
+ * Version: 1.0.4
  * Author: Cody (lusky3)
  * Text Domain: sportspress-admin-tools
- * License: GPL v2 or later
+ * Requires at least: 5.0
+ * Tested up to: 6.8
+ * Requires PHP: 8.1
+ * License: GPLv2 or later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  */
+
+declare(strict_types=1);
 
 // Prevent direct access
 if ( ! defined( 'ABSPATH' ) ) {
-	wp_die();
+	exit;
 }
 
 // Define plugin constants
 define( 'SPAT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPAT_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPAT_VERSION', '1.0.0' );
+define( 'SPAT_VERSION', '1.0.4' );
+
+// Parent side of the parent/child capability contract (H7). Children declare
+// a required floor and compare against this value so a mismatched parent that
+// still passes the class_exists() gate degrades gracefully instead of fataling
+// on the first call to a class that predates their expectations.
+define( 'SPAT_CONTRACT_VERSION', '1.0.0' );
+
+// Schema version the bundled migrations target. Kept in lockstep with
+// SPAT_VERSION so the plugin header tracks DB iterations; SPAT_Database reads
+// this constant instead of hardcoding the target in two places (AT-5).
+define( 'SPAT_DB_VERSION', SPAT_VERSION );
 
 // Main plugin class
 if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 	class SportsPressAdminTools {
 
+		private static array $autoload_map = array(
+			'SPAT_Text_Helper'       => 'includes/class-text-helper.php',
+			'SPAT_Logger'            => 'includes/class-logger.php',
+			'SPAT_Lock'              => 'includes/class-lock.php',
+			'SPAT_Upload_Validator'  => 'includes/class-upload-validator.php',
+			'SimpleXLSX'             => 'includes/SimpleXLSX.php',
+		);
 
 		public function __construct() {
+			spl_autoload_register( array( __CLASS__, 'autoload' ) );
 			add_action( 'plugins_loaded', array( $this, 'init' ) );
 			register_activation_hook( __FILE__, array( $this, 'activate' ) );
 		}
 
-		public function init() {
+		public static function autoload( $class ): void {
+			if ( isset( self::$autoload_map[ $class ] ) ) {
+				require_once SPAT_PLUGIN_PATH . self::$autoload_map[ $class ];
+			}
+		}
+
+		public function init(): void {
 			// Load core classes needed everywhere
-			require_once SPAT_PLUGIN_PATH . 'includes/class-text-helper.php';
 			require_once SPAT_PLUGIN_PATH . 'includes/class-database.php';
 			require_once SPAT_PLUGIN_PATH . 'includes/class-plugin-manager.php';
+
+			// Run dbDelta on version bump so new indexes/columns reach existing installs
+			// without forcing operators to deactivate/reactivate the plugin.
+			// create_tables() only stamps spat_db_version once the schema verifies,
+			// so on an install that can't reach spec (e.g. a DB user without ALTER)
+			// this would otherwise re-run four dbDelta calls + a dedupe DELETE on
+			// EVERY admin request. Throttle the retry to once every 5 minutes.
+			if ( get_option( 'spat_db_version' ) !== SPAT_DB_VERSION
+				&& false === get_transient( 'spat_db_migrate_attempted' ) ) {
+				set_transient( 'spat_db_migrate_attempted', 1, 5 * MINUTE_IN_SECONDS );
+				SPAT_Database::create_tables();
+			}
+
+			// One-time backfill of the links_to_order column added in 1.0.4.
+			// The option that flags completion is written by the backfill itself
+			// on success, but if the UPDATE returns 0 rows (no rows needed
+			// backfilling, or the column is missing) the option may never land —
+			// which would have the backfill run on every admin pageload. Gate it
+			// with a cheap SELECT that confirms there's still work to do, and
+			// wrap the actual call in a lock so two simultaneous admin loads
+			// don't race on the same UPDATE.
+			if ( ! get_option( 'spat_logs_backfilled_links_to_order' ) ) {
+				global $wpdb;
+				$table = $wpdb->prefix . 'spat_registration_logs';
+				// Use prepare with SHOW COLUMNS so a missing column doesn't trip
+				// the SELECT below; if the table or column is gone, mark done.
+				$has_column = $wpdb->get_var(
+					$wpdb->prepare(
+						"SHOW COLUMNS FROM {$table} LIKE %s",
+						'links_to_order'
+					)
+				);
+				if ( ! $has_column ) {
+					update_option( 'spat_logs_backfilled_links_to_order', '1' );
+				} else {
+					$needs_backfill = $wpdb->get_var(
+						"SELECT 1 FROM {$table} WHERE links_to_order = 0 LIMIT 1"
+					);
+					if ( $needs_backfill ) {
+						SPAT_Lock::with(
+							'spat_backfill_links',
+							60,
+							function () {
+								SPAT_Database::backfill_links_to_order_column();
+							}
+						);
+					} else {
+						update_option( 'spat_logs_backfilled_links_to_order', '1' );
+					}
+				}
+			}
 
 			// Load text domain
 			load_plugin_textdomain( 'sportspress-admin-tools', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
@@ -51,7 +132,7 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 			}
 		}
 
-		private function init_admin() {
+		private function init_admin(): void {
 			require_once SPAT_PLUGIN_PATH . 'includes/class-admin.php';
 			require_once SPAT_PLUGIN_PATH . 'includes/class-health-dashboard.php';
 			new SPAT_Admin();
@@ -60,9 +141,7 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 
 
 
-		// Notice methods removed - child plugins handle their own dependency checks
-
-		public function activate() {
+		public function activate(): void {
 			// Set default options
 			add_option( 'spat_enabled_modules', array() );
 			add_option( 'spat_remove_data_on_uninstall', '0' );
@@ -75,6 +154,9 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 			if ( ! get_option( 'spat_logs_migrated' ) ) {
 				SPAT_Database::migrate_existing_logs();
 			}
+
+			// Note: child plugins should not depend on a parent-fired activation signal;
+			// they perform their own setup on their own activation hook.
 		}
 	}
 

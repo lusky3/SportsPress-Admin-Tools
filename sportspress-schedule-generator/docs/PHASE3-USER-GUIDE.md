@@ -59,7 +59,7 @@ Before using the Schedule Generator, ensure you have:
 
 Once enabled, access the generator through:
 
-- **WordPress Admin → Schedule Generator**
+- **WordPress Admin → Schedule Generator** (admin.php?page=spsg-schedule-generator)
 
 You'll see tabs for:
 

@@ -67,13 +67,45 @@ class SPSG_Constraint_Manager {
 	}
 
 	/**
-	 * Validate a game against all constraints
+	 * Validate a game against all constraints.
+	 *
+	 * `$schedule` may be either:
+	 *   - an array of game objects (legacy callers), or
+	 *   - the full date-indexed schedule `[ 'YYYY-MM-DD' => game[] ]` (preferred).
+	 *
+	 * Constraints that only need same-day games (e.g. team-restrictions) can
+	 * still treat `$schedule` as a flat list — callers passing a date index
+	 * should flatten to the same-day slice before invoking this method when
+	 * appropriate. For correctness with cross-day soft constraints (distribution),
+	 * the optional `$full_schedule_by_date` argument carries the entire indexed
+	 * schedule and is forwarded to constraints that opt in.
+	 *
+	 * @param object     $game                  Game being validated.
+	 * @param array      $schedule              Same-day games (flat list).
+	 * @param object     $config                Configuration.
+	 * @param array|null $full_schedule_by_date Optional date-indexed full schedule.
+	 * @return true|array                       True if all constraints pass; otherwise list of violations.
 	 */
-	public function validate_game( $game, $schedule, $config ) {
+	public function validate_game( $game, $schedule, $config, $full_schedule_by_date = null ) {
 		$violations = array();
 
 		foreach ( $this->get_constraints() as $constraint ) {
-			$result = $constraint->validate( $game, $schedule, $config );
+			// Forward the appropriate schedule slice based on constraint name.
+			// Distribution is the only constraint that must see cross-day data
+			// to compute fair day / time-slot ratios.
+			$schedule_for_constraint = $schedule;
+			if ( $full_schedule_by_date !== null && $constraint instanceof SPSG_Distribution_Constraint ) {
+				$schedule_for_constraint = self::flatten_schedule( $full_schedule_by_date );
+			}
+
+			$result = $constraint->validate( $game, $schedule_for_constraint, $config );
+
+			// Populate the abstract constraint's per-request memoization so a
+			// follow-up get_violation_cost() for the same (game, constraint)
+			// against the SAME schedule slice does not re-execute validate().
+			// The slice is keyed into the cache (SG-1) so a result is never
+			// reused against a different schedule state during backtracking.
+			SPSG_Abstract_Constraint::prime_validate_cache( $constraint, $game, $result, $schedule_for_constraint );
 
 			if ( is_wp_error( $result ) ) {
 				$violations[] = array(
@@ -93,13 +125,25 @@ class SPSG_Constraint_Manager {
 	}
 
 	/**
-	 * Calculate total violation cost for optimization
+	 * Calculate total violation cost for optimization.
+	 *
+	 * @param object     $game                  Game being scored.
+	 * @param array      $schedule              Same-day games (flat list).
+	 * @param object     $config                Configuration.
+	 * @param array|null $full_schedule_by_date Optional date-indexed full schedule
+	 *                                          forwarded to cross-day soft constraints.
+	 * @return float                            Aggregate cost.
 	 */
-	public function calculate_violation_cost( $game, $schedule, $config ) {
+	public function calculate_violation_cost( $game, $schedule, $config, $full_schedule_by_date = null ) {
 		$total_cost = 0.0;
 
 		foreach ( $this->get_constraints() as $constraint ) {
-			$cost = $constraint->get_violation_cost( $game, $schedule, $config );
+			$schedule_for_constraint = $schedule;
+			if ( $full_schedule_by_date !== null && $constraint instanceof SPSG_Distribution_Constraint ) {
+				$schedule_for_constraint = self::flatten_schedule( $full_schedule_by_date );
+			}
+
+			$cost = $constraint->get_violation_cost( $game, $schedule_for_constraint, $config );
 			$total_cost += $cost;
 
 			// If any hard constraint is violated, return infinite cost
@@ -109,6 +153,24 @@ class SPSG_Constraint_Manager {
 		}
 
 		return $total_cost;
+	}
+
+	/**
+	 * Flatten a date-indexed schedule into a single ordered list of game objects.
+	 *
+	 * @param array $schedule_by_date `[ 'YYYY-MM-DD' => game[] ]`.
+	 * @return array                  Flat list of game objects.
+	 */
+	private static function flatten_schedule( $schedule_by_date ) {
+		$out = array();
+		foreach ( $schedule_by_date as $day_games ) {
+			if ( is_array( $day_games ) ) {
+				foreach ( $day_games as $g ) {
+					$out[] = $g;
+				}
+			}
+		}
+		return $out;
 	}
 
 	/**
@@ -237,57 +299,19 @@ class SPSG_Constraint_Manager {
 	}
 
 	/**
-	 * Count available slots (dates × times × venues - blackouts)
+	 * Count available slots across the season.
+	 *
+	 * Delegates to SPSG_Schedule_Helper which iterates (date, venue) pairs
+	 * and resolves each one through the same cascade the slot allocator
+	 * uses (venue_date_availability → venue_timeslots → global time_slots),
+	 * honouring venue-level blackouts. This fixes the prior naive
+	 * `global_slots × venue_count` estimate that ignored venue overrides.
 	 *
 	 * @param SPSG_Schedule_Configuration $config Configuration
 	 * @return int Number of available slots
 	 */
 	private function count_available_slots( $config ) {
-		$slots = 0;
-
-		// Handle both string and DateTime objects
-		if ( $config->season_start instanceof DateTime ) {
-			$season_start = clone $config->season_start;
-		} else {
-			$season_start = new DateTime( $config->season_start );
-		}
-
-		if ( $config->season_end instanceof DateTime ) {
-			$season_end = clone $config->season_end;
-		} else {
-			$season_end = new DateTime( $config->season_end );
-		}
-
-		$current_date = clone $season_start;
-
-		$blackout_dates = $config->blackout_dates ?? array();
-
-		while ( $current_date <= $season_end ) {
-			$date_str = $current_date->format( 'Y-m-d' );
-			$day_name = strtolower( $current_date->format( 'l' ) );
-
-			// Skip if not a playing day
-			if ( ! in_array( $day_name, $config->playing_days ) ) {
-				$current_date->add( new DateInterval( 'P1D' ) );
-				continue;
-			}
-
-			// Skip blackout dates
-			if ( in_array( $date_str, $blackout_dates ) ) {
-				$current_date->add( new DateInterval( 'P1D' ) );
-				continue;
-			}
-
-			// Count time slots for this day
-			$time_slots = $config->time_slots[ $day_name ] ?? array();
-
-			// Multiply by number of venues (parallel games possible)
-			$slots += count( $time_slots ) * count( $config->venues );
-
-			$current_date->add( new DateInterval( 'P1D' ) );
-		}
-
-		return $slots;
+		return SPSG_Schedule_Helper::count_available_slots( $config );
 	}
 
 	/**
@@ -330,27 +354,19 @@ class SPSG_Constraint_Manager {
 			return $issues;
 		}
 
-		// Calculate max games per day needed
-		$avg_time_slots_per_day = 0;
-		foreach ( $config->playing_days as $day ) {
-			if ( isset( $config->time_slots[ $day ] ) ) {
-				$avg_time_slots_per_day += count( $config->time_slots[ $day ] );
-			}
-		}
+		// Derive average games per playing day from the cascade-aware total
+		// slot count. This honours venue-specific timeslots and date
+		// availability overrides instead of assuming every venue offers the
+		// global time_slots list.
+		$total_available_slots = SPSG_Schedule_Helper::count_available_slots( $config );
 
-		$playing_days_config_count = count( $config->playing_days );
-		if ( $playing_days_config_count > 0 ) {
-			$avg_time_slots_per_day = $avg_time_slots_per_day / $playing_days_config_count;
-		} else {
-			$avg_time_slots_per_day = 0;
-		}
-
-		if ( $avg_time_slots_per_day <= 0 ) {
+		if ( $total_available_slots <= 0 ) {
 			$issues[] = __( 'No time slots configured for playing days.', 'sportspress-schedule-generator' );
 			return $issues;
 		}
 
-		$max_games_per_day = $venue_count * $avg_time_slots_per_day;
+		$max_games_per_day      = $total_available_slots / $playing_days_count;
+		$avg_time_slots_per_day = $max_games_per_day / $venue_count;
 
 		if ( $max_games_per_day <= 0 ) {
 			// Should be covered by venues check and time slots check, but safe guard
@@ -361,7 +377,8 @@ class SPSG_Constraint_Manager {
 		$min_days_needed = ceil( $total_games / $max_games_per_day );
 
 		if ( $min_days_needed > $playing_days_count ) {
-			$suggested_venues = ceil( $total_games / ( $playing_days_count * $avg_time_slots_per_day ) );
+			$denom = $playing_days_count * $avg_time_slots_per_day;
+			$suggested_venues = $denom > 0 ? ceil( $total_games / $denom ) : $venue_count + 1;
 			$issues[] = sprintf(
 				__( 'Not enough venues. With %1$d venue(s), need at least %2$d playing days but only %3$d available. Consider adding %4$d more venue(s).', 'sportspress-schedule-generator' ),
 				$venue_count,
@@ -427,31 +444,28 @@ class SPSG_Constraint_Manager {
 			return $issues;
 		}
 
-		// Calculate average time slots per playing day
-		$avg_time_slots = 0;
-		foreach ( $config->playing_days as $day ) {
-			if ( isset( $config->time_slots[ $day ] ) ) {
-				$avg_time_slots += count( $config->time_slots[ $day ] );
-			}
-		}
+		// Derive games per playing day from the cascade-aware total slot
+		// count so venue-specific time slot overrides are reflected. The day
+		// count must use the same cascade so feasibility math is consistent
+		// with the slot count (a "playing day" only counts when at least one
+		// venue actually offers slots).
+		$blackout_dates      = $config->blackout_dates ?? array();
+		$actual_playing_days = SPSG_Schedule_Helper::count_usable_playing_days( $season_start, $season_end, $config, $blackout_dates );
 
-		if ( count( $config->playing_days ) > 0 ) {
-			$avg_time_slots = $avg_time_slots / count( $config->playing_days );
-		}
+		if ( $actual_playing_days > 0 ) {
+			$total_available_slots = SPSG_Schedule_Helper::count_available_slots( $config );
+			$games_per_playing_day = $total_available_slots / $actual_playing_days;
 
-		$games_per_playing_day = count( $config->venues ) * $avg_time_slots;
+			if ( $games_per_playing_day > 0 ) {
+				$min_playing_days_needed = ceil( $total_games / $games_per_playing_day );
 
-		if ( $games_per_playing_day > 0 ) {
-			$min_playing_days_needed = ceil( $total_games / $games_per_playing_day );
-			$blackout_dates = $config->blackout_dates ?? array();
-			$actual_playing_days = $this->count_playing_days_in_range( $season_start, $season_end, $config->playing_days, $blackout_dates );
-
-			if ( $min_playing_days_needed > $actual_playing_days ) {
-				$issues[] = sprintf(
-					__( 'Season too short. Need at least %1$d playing days but only %2$d available. Extend the season or reduce games per team.', 'sportspress-schedule-generator' ),
-					$min_playing_days_needed,
-					$actual_playing_days
-				);
+				if ( $min_playing_days_needed > $actual_playing_days ) {
+					$issues[] = sprintf(
+						__( 'Season too short. Need at least %1$d playing days but only %2$d available. Extend the season or reduce games per team.', 'sportspress-schedule-generator' ),
+						$min_playing_days_needed,
+						$actual_playing_days
+					);
+				}
 			}
 		}
 

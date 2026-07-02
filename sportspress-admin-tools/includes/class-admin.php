@@ -7,7 +7,7 @@
 
 // Prevent direct access
 if ( ! defined( 'ABSPATH' ) ) {
-	wp_die();
+	exit;
 }
 
 class SPAT_Admin {
@@ -59,8 +59,16 @@ class SPAT_Admin {
 
 		wp_enqueue_script( 'jquery' );
 
+		// Visible unsaved-changes marker on the active tab (UX-17). Attached to
+		// the always-present core admin stylesheet so we don't ship a file just
+		// for one rule.
+		wp_add_inline_style(
+			'common',
+			'.nav-tab-wrapper .spat-unsaved-indicator{color:#d63638;font-weight:700;}'
+		);
+
 		// Enqueue Slim Select if enabled
-		if ( get_option( 'spat_use_select2', '0' ) ) {
+		if ( get_option( 'spat_use_select2', '0' ) === '1' ) {
 			$plugin_url = SPAT_PLUGIN_URL;
 			wp_enqueue_script( 'slimselect', $plugin_url . 'assets/lib/slimselect/slimselect.min.js', array(), '3.4.3', true );
 			wp_enqueue_style( 'slimselect', $plugin_url . 'assets/lib/slimselect/slimselect.min.css', array(), '3.4.3' );
@@ -72,7 +80,26 @@ class SPAT_Admin {
             jQuery(document).ready(function($) {
                 var hasUnsavedChanges = false;
                 var initialFormData = {};
-                
+
+                // Apply ARIA tab semantics to every tab/panel, including those
+                // added dynamically by child plugins (UX-15). Roving tabindex:
+                // only the active tab is in the Tab order; arrows move between tabs.
+                $(".nav-tab-wrapper .nav-tab").each(function() {
+                    var $tab = $(this);
+                    var target = ($tab.attr("href") || "").substring(1);
+                    $tab.attr("role", "tab");
+                    if (target) { $tab.attr("aria-controls", target); }
+                    $tab.attr("aria-selected", "false");
+                    $tab.attr("tabindex", "-1");
+                    // Ensure each tab carries a visible unsaved-changes marker.
+                    if (!$tab.find(".spat-unsaved-indicator").length) {
+                        $tab.append(\'<span class="spat-unsaved-indicator" aria-hidden="true" hidden> &bull;</span>\');
+                    }
+                });
+                $(".tab-content").each(function() {
+                    $(this).attr("role", "tabpanel").attr("tabindex", "0").prop("hidden", true);
+                });
+
                 // Store initial form data for each tab
                 function storeInitialData() {
                     $(".tab-content form").each(function() {
@@ -80,66 +107,128 @@ class SPAT_Admin {
                         initialFormData[tabId] = $(this).serialize();
                     });
                 }
-                
-                // Check if current tab has unsaved changes
-                function hasChangesInCurrentTab() {
-                    var currentTab = $(".nav-tab-active").attr("href").substring(1);
-                    var currentForm = $("#" + currentTab + " form");
+
+                // Check if a given tab id has unsaved changes
+                function hasChangesInTab(tabId) {
+                    var currentForm = $("#" + tabId + " form");
                     if (currentForm.length) {
-                        return initialFormData[currentTab] !== currentForm.serialize();
+                        return initialFormData[tabId] !== currentForm.serialize();
                     }
                     return false;
                 }
-                
-                // Track form changes
+
+                function hasChangesInCurrentTab() {
+                    var active = $(".nav-tab-active").attr("href");
+                    if (!active) { return false; }
+                    return hasChangesInTab(active.substring(1));
+                }
+
+                // Toggle the visible "unsaved" dot on a tab (UX-17).
+                function updateUnsavedIndicator(tabId, changed) {
+                    var $tab = $("a[aria-controls=\"" + tabId + "\"]");
+                    $tab.find(".spat-unsaved-indicator").prop("hidden", !changed);
+                    if (changed) {
+                        $tab.attr("title", "' . esc_js( __( 'Unsaved changes', 'sportspress-admin-tools' ) ) . '");
+                    } else {
+                        $tab.removeAttr("title");
+                    }
+                }
+
+                // Track form changes per tab
                 $(document).on("input change", ".tab-content form input, .tab-content form select, .tab-content form textarea", function() {
-                    hasUnsavedChanges = hasChangesInCurrentTab();
+                    var tabId = $(this).closest(".tab-content").attr("id");
+                    var changed = hasChangesInTab(tabId);
+                    hasUnsavedChanges = changed;
+                    updateUnsavedIndicator(tabId, changed);
                 });
-                
-                $(".nav-tab").click(function(e) {
+
+                function activateTab($tab, focusPanel) {
+                    var tabId = ($tab.attr("href") || "").substring(1);
+                    if (!tabId) { return; }
+
+                    $(".nav-tab").removeClass("nav-tab-active").attr("aria-selected", "false").attr("tabindex", "-1");
+                    $(".tab-content").prop("hidden", true);
+
+                    $tab.addClass("nav-tab-active").attr("aria-selected", "true").attr("tabindex", "0");
+                    $("#" + tabId).prop("hidden", false);
+
+                    $("input[name=current_tab]").val(tabId);
+                    hasUnsavedChanges = false;
+
+                    if (focusPanel) { $tab.focus(); }
+                }
+
+                $(".nav-tab").on("click", function(e) {
                     e.preventDefault();
-                    
-                    // Check for unsaved changes before switching
+
+                    // Warn before leaving a tab with unsaved changes.
                     if (hasUnsavedChanges && hasChangesInCurrentTab()) {
-                        if (!confirm("You have unsaved changes that will be lost. Do you want to continue?")) {
+                        if (!confirm("' . esc_js( __( 'You have unsaved changes that will be lost. Do you want to continue?', 'sportspress-admin-tools' ) ) . '")) {
                             return;
                         }
                     }
-                    
-                    $(".nav-tab").removeClass("nav-tab-active");
-                    $(".tab-content").hide();
-                    $(this).addClass("nav-tab-active");
-                    $($(this).attr("href")).show();
-                    
-                    // Store current tab and reset change tracking
-                    var tabId = $(this).attr("href").substring(1);
-                    $("input[name=current_tab]").val(tabId);
-                    hasUnsavedChanges = false;
+
+                    activateTab($(this), false);
                 });
-                
+
+                // Arrow-key navigation between tabs (WAI-ARIA tabs pattern, UX-15).
+                $(".nav-tab-wrapper").on("keydown", ".nav-tab", function(e) {
+                    var $tabs = $(".nav-tab-wrapper .nav-tab");
+                    var idx = $tabs.index(this);
+                    var newIdx = null;
+                    switch (e.key) {
+                        case "ArrowRight":
+                        case "ArrowDown":
+                            newIdx = (idx + 1) % $tabs.length;
+                            break;
+                        case "ArrowLeft":
+                        case "ArrowUp":
+                            newIdx = (idx - 1 + $tabs.length) % $tabs.length;
+                            break;
+                        case "Home":
+                            newIdx = 0;
+                            break;
+                        case "End":
+                            newIdx = $tabs.length - 1;
+                            break;
+                        default:
+                            return;
+                    }
+                    e.preventDefault();
+                    $tabs.eq(newIdx).trigger("click");
+                    $tabs.eq(newIdx).focus();
+                });
+
                 // Reset change tracking after form submission
                 $(".tab-content form").on("submit", function() {
                     hasUnsavedChanges = false;
+                    var tabId = $(this).closest(".tab-content").attr("id");
+                    updateUnsavedIndicator(tabId, false);
                 });
-                
+
                 // Warn on page unload if there are unsaved changes
                 $(window).on("beforeunload", function() {
                     if (hasUnsavedChanges && hasChangesInCurrentTab()) {
-                        return "You have unsaved changes that will be lost.";
+                        return "' . esc_js( __( 'You have unsaved changes that will be lost.', 'sportspress-admin-tools' ) ) . '";
                     }
                 });
-                
+
                 // Initialize
                 storeInitialData();
-                
+
                 // Check for active tab from URL param, hash, or default
                 var urlParams = new URLSearchParams(window.location.search);
                 var activeTab = urlParams.get("tab") || window.location.hash.substring(1) || "general";
-                
+
+                // Reject anything that is not a safe slug before using as a selector.
+                if (!/^[a-z0-9_-]+$/i.test(activeTab)) {
+                    activeTab = "general";
+                }
+
                 if ($("a[href=\"#" + activeTab + "\"]").length) {
-                    $("a[href=\"#" + activeTab + "\"]").click();
+                    activateTab($("a[href=\"#" + activeTab + "\"]").first(), false);
                 } else {
-                    $(".nav-tab:first").click();
+                    activateTab($(".nav-tab").first(), false);
                 }
             });
         '
@@ -304,13 +393,29 @@ class SPAT_Admin {
 
 	public function module_checkbox_callback( $args ) {
 		$enabled_modules = get_option( 'spat_enabled_modules', array() );
-		$checked = in_array( $args['module'], $enabled_modules, true ) ? 'checked' : '';
-		$plugin_data = $args['plugin_data'];
+		$is_enabled      = in_array( $args['module'], $enabled_modules, true );
+		$plugin_data     = $args['plugin_data'];
 
-		echo '<input type="checkbox" name="spat_enabled_modules[]" value="' . esc_attr( $args['module'] ) . '" ' . $checked . '>';
+		// Stable ids so the <label> and aria-describedby can reference the
+		// checkbox and its description (UX-16). Module ids are slugs but
+		// sanitize defensively for use as an HTML id attribute.
+		$field_id = 'spat-module-' . sanitize_html_class( $args['module'] );
+		$desc_id  = $field_id . '-desc';
+		$has_desc = ! empty( $plugin_data['description'] );
 
-		if ( ! empty( $plugin_data['description'] ) ) {
-			echo '<p class="description">' . esc_html( $plugin_data['description'] ) . '</p>';
+		echo '<label for="' . esc_attr( $field_id ) . '">';
+		printf(
+			'<input type="checkbox" id="%1$s" name="spat_enabled_modules[]" value="%2$s" %3$s%4$s> %5$s',
+			esc_attr( $field_id ),
+			esc_attr( $args['module'] ),
+			checked( $is_enabled, true, false ),
+			$has_desc ? ' aria-describedby="' . esc_attr( $desc_id ) . '"' : '',
+			esc_html( $plugin_data['name'] )
+		);
+		echo '</label>';
+
+		if ( $has_desc ) {
+			echo '<p class="description" id="' . esc_attr( $desc_id ) . '">' . esc_html( $plugin_data['description'] ) . '</p>';
 		}
 	}
 
@@ -383,14 +488,15 @@ class SPAT_Admin {
 		echo '</tr></thead><tbody>';
 
 		foreach ( $child_plugins as $plugin_data ) {
-			$is_active = is_plugin_active( plugin_basename( $plugin_data['file'] ) );
-			$status = $is_active ? '<span style="color: #00a32a;">✓ Active</span>' : '<span style="color: #d63638;">○ Inactive</span>';
+			$is_active   = is_plugin_active( plugin_basename( $plugin_data['file'] ) );
+			$status_text = $is_active ? esc_html__( '✓ Active', 'sportspress-admin-tools' ) : esc_html__( '○ Inactive', 'sportspress-admin-tools' );
+			$status_attr = $is_active ? 'color: #00a32a;' : 'color: #d63638;';
 
 			echo '<tr>';
 			echo '<td><strong>' . esc_html( $plugin_data['name'] ) . '</strong></td>';
 			echo '<td>' . esc_html( $plugin_data['version'] ) . '</td>';
 			echo '<td>' . esc_html( implode( ', ', $plugin_data['modules'] ) ) . '</td>';
-			echo '<td>' . $status . '</td>';
+			echo '<td><span style="' . esc_attr( $status_attr ) . '">' . $status_text . '</span></td>';
 			echo '</tr>';
 		}
 
@@ -401,9 +507,14 @@ class SPAT_Admin {
 	public function settings_page() {
 		// Handle tab persistence after form submission
 		if ( isset( $_POST['current_tab'] ) && isset( $_GET['settings-updated'] ) ) {
-			$tab = sanitize_text_field( $_POST['current_tab'] );
-			wp_safe_redirect( admin_url( 'options-general.php?page=sportspress-admin-tools&settings-updated=true&tab=' . $tab ) );
-			exit;
+			if ( check_admin_referer( 'spat_tab_redirect', '_wpnonce_tab' ) ) {
+				$tab        = sanitize_text_field( wp_unslash( $_POST['current_tab'] ) );
+				$valid_slug = (bool) preg_match( '/^[a-z0-9_-]{1,64}$/', $tab );
+				if ( $valid_slug ) {
+					wp_safe_redirect( admin_url( 'options-general.php?page=sportspress-admin-tools&settings-updated=true&tab=' . rawurlencode( $tab ) ) );
+					exit;
+				}
+			}
 		}
 
 		if ( isset( $_GET['settings-updated'] ) ) {
@@ -420,18 +531,19 @@ class SPAT_Admin {
 			do_action( 'spat_admin_page_before_tabs' );
 			?>
 			
-			<nav class="nav-tab-wrapper">
-				<a href="#general" class="nav-tab"><?php esc_html_e( 'General', 'sportspress-admin-tools' ); ?></a>
+			<nav class="nav-tab-wrapper" role="tablist" aria-label="<?php esc_attr_e( 'SportsPress Admin Tools settings sections', 'sportspress-admin-tools' ); ?>">
+				<a href="#general" id="spat-tab-general" class="nav-tab" role="tab" aria-controls="general" aria-selected="false" tabindex="-1"><?php esc_html_e( 'General', 'sportspress-admin-tools' ); ?><span class="spat-unsaved-indicator" aria-hidden="true" hidden> &bull;</span></a>
 				<?php
 				// Allow child plugins to add their own tabs
 				do_action( 'spat_admin_page_tabs' );
 				?>
 			</nav>
-			
-			<div id="general" class="tab-content">
+
+			<div id="general" class="tab-content" role="tabpanel" aria-labelledby="spat-tab-general" tabindex="0">
 				<form action="options.php" method="post">
 					<input type="hidden" name="current_tab" value="general">
 					<?php
+					wp_nonce_field( 'spat_tab_redirect', '_wpnonce_tab' );
 					settings_fields( 'spat_general_settings' );
 					do_settings_sections( 'spat_general_settings' );
 					submit_button( __( 'Save Settings', 'sportspress-admin-tools' ) );

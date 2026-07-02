@@ -13,7 +13,7 @@
 
 // Prevent direct access
 if ( ! defined( 'ABSPATH' ) ) {
-	wp_die();
+	exit;
 }
 
 /**
@@ -91,7 +91,7 @@ class SPSG_Admin {
 	 *
 	 * @return bool True if Slim Select should be used
 	 */
-	private function is_select2_enabled() {
+	private function is_slimselect_enabled() {
 		// Option key kept for backward compatibility; now powers Slim Select
 		return get_option( 'spat_use_select2', '0' ) === '1';
 	}
@@ -166,42 +166,46 @@ class SPSG_Admin {
 			'spsg_backend_settings'
 		);
 
+		add_settings_section(
+			'spsg_distribution_section',
+			__( 'Default Distribution Rules', 'sportspress-schedule-generator' ),
+			function () {
+				echo '<p>' . esc_html__( 'These defaults apply to all new schedule configurations. Individual configs can override them.', 'sportspress-schedule-generator' ) . '</p>'; },
+			'spsg_backend_settings'
+		);
+
 		register_setting( 'spsg_backend_settings', 'spsg_max_generation_time' );
 		register_setting( 'spsg_backend_settings', 'spsg_enable_debug_logging' );
 		register_setting( 'spsg_backend_settings', 'spsg_default_timezone' );
 		register_setting( 'spsg_backend_settings', 'spsg_enable_change_tracking' );
-
-		add_settings_field(
-			'spsg_max_generation_time',
-			__( 'Maximum Generation Time (seconds)', 'sportspress-schedule-generator' ),
-			array( $this, 'max_generation_time_callback' ),
+		register_setting(
 			'spsg_backend_settings',
-			'spsg_backend_section'
+			'spsg_day_weights',
+			array(
+				'sanitize_callback' => function ( $v ) {
+					if ( ! is_array( $v ) ) {
+						return array();
+					}
+					$out = array();
+					foreach ( $v as $day => $weight ) {
+						$day = sanitize_key( $day );
+						$out[ $day ] = max( 0, min( 100, (int) $weight ) );
+					}
+					return $out;
+				},
+			)
 		);
+		register_setting( 'spsg_backend_settings', 'spsg_balance_time_slots', array( 'sanitize_callback' => 'absint' ) );
+		register_setting( 'spsg_backend_settings', 'spsg_balance_home_away', array( 'sanitize_callback' => 'absint' ) );
 
-		add_settings_field(
-			'spsg_enable_debug_logging',
-			__( 'Enable Debug Logging', 'sportspress-schedule-generator' ),
-			array( $this, 'debug_logging_callback' ),
-			'spsg_backend_settings',
-			'spsg_backend_section'
-		);
+		add_settings_field( 'spsg_max_generation_time', __( 'Maximum Generation Time (seconds)', 'sportspress-schedule-generator' ), array( $this, 'max_generation_time_callback' ), 'spsg_backend_settings', 'spsg_backend_section' );
+		add_settings_field( 'spsg_enable_debug_logging', __( 'Enable Debug Logging', 'sportspress-schedule-generator' ), array( $this, 'debug_logging_callback' ), 'spsg_backend_settings', 'spsg_backend_section' );
+		add_settings_field( 'spsg_default_timezone', __( 'Default Timezone', 'sportspress-schedule-generator' ), array( $this, 'default_timezone_callback' ), 'spsg_backend_settings', 'spsg_backend_section' );
+		add_settings_field( 'spsg_enable_change_tracking', __( 'Enable Change Tracking', 'sportspress-schedule-generator' ), array( $this, 'change_tracking_callback' ), 'spsg_backend_settings', 'spsg_backend_section' );
 
-		add_settings_field(
-			'spsg_default_timezone',
-			__( 'Default Timezone', 'sportspress-schedule-generator' ),
-			array( $this, 'default_timezone_callback' ),
-			'spsg_backend_settings',
-			'spsg_backend_section'
-		);
-
-		add_settings_field(
-			'spsg_enable_change_tracking',
-			__( 'Enable Change Tracking', 'sportspress-schedule-generator' ),
-			array( $this, 'change_tracking_callback' ),
-			'spsg_backend_settings',
-			'spsg_backend_section'
-		);
+		add_settings_field( 'spsg_day_weights', __( 'Day Weight Distribution', 'sportspress-schedule-generator' ), array( $this, 'day_weights_callback' ), 'spsg_backend_settings', 'spsg_distribution_section' );
+		add_settings_field( 'spsg_balance_time_slots', __( 'Balance Time Slots', 'sportspress-schedule-generator' ), array( $this, 'balance_time_slots_callback' ), 'spsg_backend_settings', 'spsg_distribution_section' );
+		add_settings_field( 'spsg_balance_home_away', __( 'Balance Home/Away', 'sportspress-schedule-generator' ), array( $this, 'balance_home_away_callback' ), 'spsg_backend_settings', 'spsg_distribution_section' );
 	}
 
 	/**
@@ -210,7 +214,7 @@ class SPSG_Admin {
 	public function backend_section_callback() {
 		echo '<p>' . esc_html__( 'Configure backend settings for the Schedule Generator. These settings affect system behavior and are not visible to end users.', 'sportspress-schedule-generator' ) . '</p>';
 
-		if ( $this->is_select2_enabled() ) {
+		if ( $this->is_slimselect_enabled() ) {
 			echo '<p class="description" style="color: #00a32a;">✓ ' . esc_html__( 'Enhanced dropdowns (Slim Select) are enabled via SPAT settings.', 'sportspress-schedule-generator' ) . '</p>';
 		} else {
 			echo '<p class="description">' . esc_html__( 'Note: Enhanced dropdowns (Slim Select) can be enabled in the SPAT General settings.', 'sportspress-schedule-generator' ) . '</p>';
@@ -259,13 +263,44 @@ class SPSG_Admin {
 		echo '<p class="description">' . esc_html__( 'Track configuration changes with user attribution and timestamps. Stores last 10 changes per configuration.', 'sportspress-schedule-generator' ) . '</p>';
 	}
 
+	public function day_weights_callback() {
+		$days = array( 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday' );
+		$weights = get_option( 'spsg_day_weights', array() );
+		$total = array_sum( $weights );
+		echo '<table class="widefat" style="max-width:400px"><thead><tr><th>Day</th><th>Weight (0–100)</th><th>%</th></tr></thead><tbody>';
+		foreach ( $days as $day ) {
+			$w = $weights[ $day ] ?? 0;
+			$pct = $total > 0 ? round( $w / $total * 100 ) : 0;
+			echo '<tr><td>' . esc_html( ucfirst( $day ) ) . '</td>';
+			echo '<td><input type="number" name="spsg_day_weights[' . esc_attr( $day ) . ']" value="' . esc_attr( $w ) . '" min="0" max="100" style="width:70px"/></td>';
+			echo '<td>' . esc_html( $pct ) . '%</td></tr>';
+		}
+		echo '</tbody></table>';
+		echo '<p class="description">' . esc_html__( 'Set relative weights for each playing day. 0 = not used. The dashboard generator will distribute games proportionally. Leave all at 0 to use equal distribution.', 'sportspress-schedule-generator' ) . '</p>';
+	}
+
+	public function balance_time_slots_callback() {
+		$val = get_option( 'spsg_balance_time_slots', 1 );
+		echo '<input type="checkbox" name="spsg_balance_time_slots" value="1"' . checked( 1, $val, false ) . '/>';
+		echo '<p class="description">' . esc_html__( 'Distribute games evenly across available time slots.', 'sportspress-schedule-generator' ) . '</p>';
+	}
+
+	public function balance_home_away_callback() {
+		$val = get_option( 'spsg_balance_home_away', 1 );
+		echo '<input type="checkbox" name="spsg_balance_home_away" value="1"' . checked( 1, $val, false ) . '/>';
+		echo '<p class="description">' . esc_html__( 'Ensure each team plays roughly equal home and away games.', 'sportspress-schedule-generator' ) . '</p>';
+	}
+
 	/**
 	 * Main schedule generator page
 	 */
 	public function schedule_generator_page() {
-		if ( isset( $_POST['spsg_action'] ) && wp_verify_nonce( $_POST['spsg_nonce'], 'spsg_admin_action' ) ) {
+		if ( isset( $_POST['spsg_action'] ) ) {
 			if ( ! current_user_can( 'manage_options' ) ) {
-				wp_die( __( 'You do not have permission to perform this action.', 'sportspress-schedule-generator' ) );
+				wp_die( __( 'You do not have permission.', 'sportspress-schedule-generator' ) );
+			}
+			if ( ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['spsg_nonce'] ?? '' ) ), 'spsg_admin_action' ) ) {
+				wp_die( __( 'Security check failed.', 'sportspress-schedule-generator' ) );
 			}
 			$this->handle_form_submission();
 		}

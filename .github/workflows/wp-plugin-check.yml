@@ -10,6 +10,15 @@ on:
     paths:
       - '**/*.php'
 
+# Least-privilege default token: this workflow only needs to read the repo.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   plugin-check:
     runs-on: ubuntu-latest
@@ -18,12 +27,18 @@ jobs:
       matrix:
         plugin:
           - sportspress-admin-tools
+          - sportspress-etransfer-automation
+          - sportspress-events-manager
+          - sportspress-league-manager
+          - sportspress-player-registration
+          - sportspress-player-tools
+          - sportspress-schedule-generator
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
 
       - name: Run Plugin Check
-        uses: wordpress/plugin-check-action@v1.1.5
+        uses: wordpress/plugin-check-action@6f5a57e173c065a394b78688f75df543e4011902 # v1.1.5
         with:
           build-dir: ${{ matrix.plugin }}
           ignore-warnings: 'true'

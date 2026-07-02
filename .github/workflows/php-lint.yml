@@ -12,6 +12,15 @@ on:
       - '**/*.php'
       - 'phpcs.xml'
 
+# Least-privilege default token: this workflow only needs to read the repo.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -20,21 +29,31 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@7c071dfe9dc99bdf297fa79cb49ea005b9fcadbc # v2
         with:
           php-version: "8.2"
           extensions: mbstring, xml, ctype, iconv
-          tools: phpcs
 
-      - name: Install WordPress Coding Standards
+      - name: Install PHP_CodeSniffer + WordPress Coding Standards
         run: |
+          # Install phpcs via composer (not the setup-php PHAR) so WPCS registers
+          # its standards into the same vendor tree phpcs resolves from.
           composer global config allow-plugins.dealerdirect/phpcodesniffer-composer-installer true
-          composer global require "wp-coding-standards/wpcs"
+          composer global require "squizlabs/php_codesniffer" "wp-coding-standards/wpcs"
+          echo "$(composer global config home)/vendor/bin" >> "$GITHUB_PATH"
+
+      - name: Verify WordPress standard is installed
+        run: |
+          # Fail loudly if the 'WordPress' standard phpcs.xml references is missing.
           phpcs -i
+          phpcs -i | grep -q WordPress
 
       - name: PHP Syntax Lint
         run: |
-          find . -name '*.php' -not -path '*/vendor/*' -not -path '*/node_modules/*' -exec php -l {} \;
+          # xargs propagates a non-zero exit if any `php -l` fails — unlike
+          # `find -exec`, which swallows the exit code and merges parse errors green.
+          find . -name '*.php' -not -path '*/vendor/*' -not -path '*/node_modules/*' -print0 \
+            | xargs -0 -r -n1 -P4 php -l
 
       - name: Run PHPCS
         run: phpcs

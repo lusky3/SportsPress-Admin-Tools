@@ -8,18 +8,37 @@
  * @author Cody (lusky3)
  */
 
+/**
+ * Interpret a Worker environment variable as a boolean. Env vars are always
+ * strings, so only the literal string "true" (case-insensitive, trimmed) is
+ * treated as enabled. This prevents "false"/"0"/"no" — all of which are truthy
+ * strings in JavaScript — from silently enabling a flag (M2).
+ */
+function isEnvTrue(value) {
+  return typeof value === 'string' && value.trim().toLowerCase() === 'true';
+}
+
 export default {
   async email(message, env, ctx) {
     try {
-      // Build email data first to check original sender
-      const emailData = await buildEmailData(message, env);
-      
-      // Check if original sender is from safe domain
-      if (!isFromSafeDomain(message.from, env) && !isFromSafeDomain(emailData.from.address, env)) {
-        console.log('Rejected email from unsafe domain:', message.from, 'Original:', emailData.from.address);
+      // Authorize ONLY on the envelope sender (message.from). Cloudflare Email
+      // Routing sets this from the verified SMTP envelope and it is covered by
+      // SPF/DKIM — unlike the body "From:" line, which is free text an attacker
+      // can forge. A forwarded Interac notification arrives with the forwarder
+      // as the envelope sender (e.g. *.mxroute.com), so legitimate forwarding
+      // still passes; operators add their forwarder to SAFE_DOMAINS rather than
+      // relying on the body. Do NOT OR-in the body-parsed address here: doing so
+      // lets anyone who can deliver mail to this address forge a
+      // "From: notify@payments.interac.ca" body and have it signed + forwarded
+      // to WordPress, where it can auto-complete a WooCommerce order.
+      if (!isFromSafeDomain(message.from, env)) {
+        console.log('Rejected email from unsafe envelope domain:', message.from);
         message.setReject('Not from a safe sender domain');
         return;
       }
+
+      // Build email data after the envelope has been authorized.
+      const emailData = await buildEmailData(message, env);
       
       await sendWebhook(emailData, env, message);
     } catch (error) {
@@ -42,14 +61,33 @@ async function buildEmailData(message, env) {
   // Parse original sender from email body or headers
   const originalFrom = parseOriginalSender(rawContent, message.headers);
   
-  // Build headers object - include authentication headers even in non-debug mode
+  const debug = isEnvTrue(env.DEBUG);
+
+  // Authentication headers forwarded to WordPress for DKIM verification.
+  //
+  // SECURITY (H1): the ARC-* family (ARC-Seal, ARC-Message-Signature,
+  // ARC-Authentication-Results) is deliberately STRIPPED and never forwarded —
+  // not even as debug data. ARC is designed to carry authentication results
+  // verbatim across forwarding hops, so a sender who can deliver mail through an
+  // allowlisted forwarder can embed a forged
+  // "ARC-Authentication-Results: ...; dkim=pass header.d=interac.ca" that would
+  // survive forwarding intact and masquerade as a trusted result. Only the
+  // Authentication-Results header is forwarded; the WordPress side trusts a
+  // dkim=pass ONLY inside the A-R instance whose leading authserv-id EXACTLY
+  // matches the operator-pinned spet_dkim_authserv_id. Operators' forwarders
+  // MUST strip any inbound A-R bearing their own authserv-id before stamping
+  // their own (RFC 8601 §5), or the pin is spoofable.
+  const strippedAuthHeaders = ['arc-seal', 'arc-message-signature', 'arc-authentication-results'];
   const allHeaders = {};
-  const authHeaders = ['dkim-signature', 'authentication-results', 'arc-seal', 'arc-message-signature', 'arc-authentication-results', 'received-spf'];
-  
+  const authHeaders = ['dkim-signature', 'authentication-results', 'received-spf'];
+
   for (const [key, value] of message.headers) {
     const lowerKey = key.toLowerCase();
-    // Always include authentication headers
-    if (authHeaders.includes(lowerKey) || env.DEBUG) {
+    if (strippedAuthHeaders.includes(lowerKey)) {
+      continue; // Never forward attacker-forgeable ARC headers.
+    }
+    // Always include authentication headers; include everything else only in debug.
+    if (authHeaders.includes(lowerKey) || debug) {
       allHeaders[key] = value;
     }
   }
@@ -63,7 +101,7 @@ async function buildEmailData(message, env) {
     }
   }
   
-  if (env.DEBUG) {
+  if (debug) {
     console.log('Email Debug Info:', {
       from: message.from,
       to: message.to,
@@ -89,19 +127,28 @@ async function buildEmailData(message, env) {
     text: emailBody
   };
   
-  // Only include additional data in debug mode
-  if (env.DEBUG) {
+  // Always forward the trusted authentication headers so DKIM verification can
+  // run regardless of DEBUG mode (M3). In debug mode, add extra diagnostic data
+  // additively rather than in place of the auth headers.
+  appendAuthHeaders(emailData, allHeaders, authHeaders);
+  if (debug) {
     emailData.html = emailBody;
     emailData.debug_headers = allHeaders;
-  } else {
-    appendAuthHeaders(emailData, allHeaders, authHeaders);
   }
-  
+
   return emailData;
 }
 
 /**
- * Append authentication headers to email data for security verification
+ * Append the original email authentication headers (DKIM-Signature,
+ * Authentication-Results, Received-SPF) to the webhook payload under
+ * emailData.auth_headers. ARC-* headers are intentionally NOT forwarded (see
+ * the strippedAuthHeaders note in buildEmailData). The WordPress side reads
+ * these and verifies that the Interac sender domain produced a passing DKIM
+ * result inside an A-R instance whose authserv-id matches the operator-pinned
+ * value (see SPET_ETransfer_Automation::verify_email_authentication).
+ * Enforcement is controlled server-side by the spet_dkim_enforcement option
+ * (log vs reject).
  */
 function appendAuthHeaders(emailData, allHeaders, authHeaders) {
   const authData = {};
@@ -146,14 +193,17 @@ async function sendWebhook(emailData, env, message) {
 async function buildHeaders(payload, secret, customHeaders, timestamp) {
   const headers = {
     'Content-Type': 'application/json',
-    'X-Signature': await createHmacSignature(timestamp + payload, secret),
+    'X-Signature': await createHmacSignature(timestamp + '.' + payload, secret),
     'X-Timestamp': timestamp,
     'User-Agent': 'Cloudflare-Worker-Email-Processor/1.0'
   };
 
   if (customHeaders) {
     try {
-      Object.assign(headers, JSON.parse(customHeaders));
+      // customHeaders is env.CUSTOM_HEADERS — operator-set Worker config (trusted,
+      // deploy-time), merged into an outbound request header object, never a
+      // user-facing response. Not attacker-controlled mass assignment.
+      Object.assign(headers, JSON.parse(customHeaders)); // nosemgrep
     } catch (e) {
       console.error('Invalid CUSTOM_HEADERS JSON:', e.message, 'Value:', customHeaders);
     }
@@ -223,36 +273,61 @@ function parseEmailName(header) {
 }
 
 /**
- * Check if email is from a safe sender domain
+ * Check if email is from a safe (authorized) sender domain.
+ *
+ * The allowlist is intentionally OPERATOR-CONFIGURABLE: there is no implicitly
+ * trusted shared-hosting forwarder. The only built-in trusted sender is the
+ * direct Interac notification address. To accept FORWARDED Interac mail (the
+ * common case), the operator must add their own forwarder's envelope domain to
+ * the SAFE_DOMAINS environment variable (comma-separated). A leading-dot entry
+ * (e.g. ".example.com") also matches subdomains of that domain.
+ *
+ * Rationale: a previous build implicitly trusted any *.mxroute.com sender. On a
+ * shared host that means ANY customer of that provider could deliver a forged
+ * Interac body that the Worker would then sign and forward. Trust must instead
+ * be scoped to the operator's specific forwarder.
  */
 function isFromSafeDomain(fromAddress, env) {
-  // If DISABLE_INTERAC_CHECK is set, skip the default check
-  if (env.DISABLE_INTERAC_CHECK) {
+  // If DISABLE_INTERAC_CHECK is set, skip the default check (debugging flag).
+  // Compared explicitly against the literal "true" so that setting it to
+  // "false"/"0" does NOT accidentally enable the bypass (M2).
+  if (isEnvTrue(env.DISABLE_INTERAC_CHECK)) {
     return true;
   }
-  
-  // Check default Interac domain
+
+  // Built-in: the direct Interac notification address.
   if (fromAddress === 'notify@payments.interac.ca') {
     return true;
   }
-  
-  // Allow forwarded emails from MXRoute (common email forwarding service)
-  const domain = fromAddress?.split('@')[1];
-  if (domain && (domain === 'mxroute.com' || domain.endsWith('.mxroute.com'))) {
-    return true;
+
+  const emailDomain = fromAddress?.split('@')[1];
+  if (!emailDomain) {
+    return false;
   }
-  
-  // Check custom safe domains if configured
+
+  // Operator-configured allowlist. Each entry is either an exact domain
+  // ("mail.example.com") or a leading-dot wildcard (".example.com") that also
+  // matches any subdomain. Operators populate this with their own forwarder.
   if (env.SAFE_DOMAINS) {
     const safeDomains = env.SAFE_DOMAINS
       .split(',')
-      .map(domain => domain.trim())
-      .filter(domain => domain.length > 0);
-    
-    const emailDomain = fromAddress.split('@')[1];
-    return safeDomains.includes(emailDomain);
+      .map(d => d.trim().toLowerCase())
+      .filter(d => d.length > 0);
+
+    const domain = emailDomain.toLowerCase();
+    for (const entry of safeDomains) {
+      if (entry.startsWith('.')) {
+        // ".example.com" matches example.com and any subdomain of it.
+        const base = entry.slice(1);
+        if (domain === base || domain.endsWith('.' + base)) {
+          return true;
+        }
+      } else if (domain === entry) {
+        return true;
+      }
+    }
   }
-  
+
   return false;
 }
 
@@ -260,23 +335,80 @@ function isFromSafeDomain(fromAddress, env) {
  * Extract email body from multipart content
  */
 function extractEmailBody(rawContent) {
-  // Look for plain text content first
-  const textMatch = rawContent.match(/Content-Type: text\/plain[\s\S]*?\n\n([\s\S]*?)(?=\n--)/i);
-  if (textMatch) {
-    const headers = rawContent.match(/Content-Type: text\/plain[\s\S]*?\n\n/i)?.[0] || '';
-    return decodeBody(textMatch[1].trim(), headers);
+  // Split headers from body on first double newline
+  const crlfSplit = rawContent.indexOf('\r\n\r\n');
+  const lfSplit = rawContent.indexOf('\n\n');
+  const splitPos = crlfSplit !== -1 ? crlfSplit : lfSplit;
+  if (splitPos === -1) return rawContent;
+
+  const topHeaders = rawContent.substring(0, splitPos);
+  const body = rawContent.substring(splitPos + (crlfSplit !== -1 ? 4 : 2));
+
+  // Check if multipart
+  const boundaryMatch = topHeaders.match(/boundary="?([^\s";]+)"?/i);
+  if (boundaryMatch) {
+    const result = extractFromMultipart(body, boundaryMatch[1]);
+    if (result) return result;
   }
-  
-  // Fallback to HTML content and strip tags
-  const htmlMatch = rawContent.match(/Content-Type: text\/html[\s\S]*?\n\n([\s\S]*?)(?=\n--)/i);
-  if (htmlMatch) {
-    const headers = rawContent.match(/Content-Type: text\/html[\s\S]*?\n\n/i)?.[0] || '';
-    const decoded = decodeBody(htmlMatch[1].trim(), headers);
-    return decoded.replaceAll(/<[^>]*>/g, '').replaceAll(/&[^;]+;/g, ' ').trim();
+
+  // Not multipart - decode the single-part body
+  const ctMatch = topHeaders.match(/Content-Type:\s*text\/(plain|html)/i);
+  if (ctMatch) {
+    const decoded = decodeBody(body.trim(), topHeaders);
+    if (ctMatch[1].toLowerCase() === 'html') {
+      return decoded.replaceAll(/<[^>]*>/g, '').replaceAll(/&[^;]+;/g, ' ').trim();
+    }
+    return decoded;
   }
-  
-  // Last resort: return raw content
-  return rawContent;
+
+  // Fallback: return body as-is
+  return body.trim() || rawContent;
+}
+
+/**
+ * Extract text from a multipart MIME part, handling nested multipart
+ */
+function extractFromMultipart(body, boundary) {
+  const parts = body.split('--' + boundary);
+  let plainText = null;
+  let htmlText = null;
+
+  for (const part of parts) {
+    if (!part || part.startsWith('--')) continue;
+
+    // Split part headers from part body
+    const crlfSplit = part.indexOf('\r\n\r\n');
+    const lfSplit = part.indexOf('\n\n');
+    const pSplitPos = crlfSplit !== -1 ? crlfSplit : lfSplit;
+    if (pSplitPos === -1) continue;
+
+    const partHeaders = part.substring(0, pSplitPos);
+    const partBody = part.substring(pSplitPos + (crlfSplit !== -1 ? 4 : 2)).trim();
+
+    // Handle nested multipart (e.g. multipart/alternative inside multipart/mixed)
+    const nestedBoundary = partHeaders.match(/boundary="?([^\s";]+)"?/i);
+    if (nestedBoundary) {
+      const nested = extractFromMultipart(partBody, nestedBoundary[1]);
+      if (nested) return nested;
+      continue;
+    }
+
+    const ctMatch = partHeaders.match(/Content-Type:\s*text\/(plain|html)/i);
+    if (!ctMatch) continue;
+
+    const decoded = decodeBody(partBody, partHeaders);
+    if (ctMatch[1].toLowerCase() === 'plain') {
+      plainText = decoded;
+    } else if (!htmlText) {
+      htmlText = decoded;
+    }
+  }
+
+  if (plainText) return plainText;
+  if (htmlText) {
+    return htmlText.replaceAll(/<[^>]*>/g, '').replaceAll(/&[^;]+;/g, ' ').trim();
+  }
+  return null;
 }
 
 /**
