@@ -10,6 +10,15 @@ on:
     paths:
       - '**/*.php'
 
+# Least-privilege default token: this workflow only needs to read the repo.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   plugin-check:
     runs-on: ubuntu-latest

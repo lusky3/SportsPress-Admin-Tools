@@ -20,7 +20,7 @@ jobs:
           for dir in sportspress-*; do
             if [ -d "$dir" ]; then
               echo "Packaging $dir..."
-              zip -r "dist/${dir}.zip" "$dir" -x "*/tests/*" "*/.git*" "*/composer.*" "*/node_modules/*" "*/assets/README*"
+              zip -r "dist/${dir}.zip" "$dir" -x "*/tests/*" "*/.git*" "*/composer.*" "*/node_modules/*" "*/assets/README*" "*/docs/*" "*/assets/wrangler.toml"
             fi
           done
 
