@@ -157,8 +157,6 @@ class SportsPress_Player_Tools {
 	private function load_enabled_modules() {
 		$enabled_modules = get_option( 'spat_enabled_modules', array() );
 
-		$this->debug_log( 'Enabled modules: ' . print_r( $enabled_modules, true ) );
-
 		// Load REST API only when at least one relevant module is enabled.
 		$rest_relevant = array( 'player_modifications', 'player_stats_enabler', 'batch_list_creator', 'player_skill_level' );
 		if ( array_intersect( $rest_relevant, $enabled_modules ) ) {
@@ -203,20 +201,12 @@ class SportsPress_Player_Tools {
 		$has_profile_pic = in_array( 'player_profile_picture', $enabled_modules, true ); // PT-11: strict.
 		$has_woo = class_exists( 'WooCommerce' );
 
-		$this->debug_log( 'player_profile_picture in modules: ' . ( $has_profile_pic ? 'yes' : 'no' ) );
-		$this->debug_log( 'WooCommerce exists: ' . ( $has_woo ? 'yes' : 'no' ) );
-
 		if ( $has_profile_pic && $has_woo ) {
 			require_once SPT_PLUGIN_PATH . 'includes/class-player-profile-picture.php';
 			$this->player_profile_picture = new SPT_Player_Profile_Picture();
 		}
 	}
 
-	private function debug_log( $message ) {
-		if ( get_option( 'spat_debug_verbose_logging', '0' ) === '1' ) {
-			error_log( 'SPT: ' . $message );
-		}
-	}
 
 	private function check_parent_plugin() {
 		if ( ! class_exists( 'SPAT_Plugin_Manager' ) ) {
