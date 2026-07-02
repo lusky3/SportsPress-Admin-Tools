@@ -91,6 +91,15 @@ class SPET_Admin {
 				update_option( 'spet_dkim_enforcement', $dkim_mode );
 			}
 
+			// Trusted Authentication-Results authserv-id (H1). This pins the
+			// identity of the MTA/forwarder that actually verified the Interac
+			// DKIM signature; only a dkim=pass under this authserv-id is trusted.
+			// Lower-cased and trimmed; a hostname-style token.
+			if ( isset( $_POST['spet_dkim_authserv_id'] ) ) {
+				$authserv_id = strtolower( trim( sanitize_text_field( wp_unslash( $_POST['spet_dkim_authserv_id'] ) ) ) );
+				update_option( 'spet_dkim_authserv_id', $authserv_id );
+			}
+
 			// Validate and sanitize equivalent names
 			if ( isset( $_POST['spet_equivalent_names'] ) ) {
 				$equivalent_names_input = wp_unslash( $_POST['spet_equivalent_names'] );
@@ -111,6 +120,7 @@ class SPET_Admin {
 		if ( ! in_array( $dkim_enforcement, array( 'log', 'reject' ), true ) ) {
 			$dkim_enforcement = 'log';
 		}
+		$dkim_authserv_id = (string) get_option( 'spet_dkim_authserv_id', '' );
 		$pii_retention_days = intval( get_option( 'spet_pii_retention_days', 30 ) );
 		if ( $pii_retention_days < 1 ) {
 			$pii_retention_days = 30;
@@ -181,13 +191,23 @@ class SPET_Admin {
 						</td>
 					</tr>
 					<tr>
+						<th scope="row"><?php esc_html_e( 'Trusted DKIM authserv-id', 'sportspress-etransfer-automation' ); ?></th>
+						<td>
+							<input type="text" name="spet_dkim_authserv_id" value="<?php echo esc_attr( $dkim_authserv_id ); ?>" class="regular-text" autocomplete="off" placeholder="mx.yourforwarder.com" />
+							<p class="description"><?php esc_html_e( 'The authserv-id (identity) of the MTA or forwarder that actually verifies the Interac DKIM signature — it is the token at the very start of that hop\'s Authentication-Results header. A forwarded DKIM pass is only trusted when it appears under this exact authserv-id. Leave blank if you do not know it: DKIM then cannot be cryptographically trusted and enforcement stays log-only regardless of the setting below. Your forwarder must also strip any inbound Authentication-Results bearing its own authserv-id (standard MTA behaviour) for this to be spoof-resistant.', 'sportspress-etransfer-automation' ); ?></p>
+						</td>
+					</tr>
+					<tr>
 						<th scope="row"><?php esc_html_e( 'DKIM Enforcement', 'sportspress-etransfer-automation' ); ?></th>
 						<td>
 							<select name="spet_dkim_enforcement">
 								<option value="log" <?php selected( $dkim_enforcement, 'log' ); ?>><?php esc_html_e( 'Log only (allow) — recommended while validating', 'sportspress-etransfer-automation' ); ?></option>
 								<option value="reject" <?php selected( $dkim_enforcement, 'reject' ); ?>><?php esc_html_e( 'Reject webhooks that fail DKIM', 'sportspress-etransfer-automation' ); ?></option>
 							</select>
-							<p class="description"><?php esc_html_e( 'The Cloudflare Worker forwards the original DKIM/SPF/ARC authentication headers. In "Log only" mode a missing or failing Interac DKIM result is logged (when verbose logging is on) but the payment is still processed. Switch to "Reject" only after confirming your email forwarder preserves the original Interac DKIM result, or legitimate payments may be rejected.', 'sportspress-etransfer-automation' ); ?></p>
+							<?php if ( 'reject' === $dkim_enforcement && '' === trim( $dkim_authserv_id ) ) : ?>
+								<p class="description" style="color:#b32d2e;"><strong><?php esc_html_e( 'Reject is not active:', 'sportspress-etransfer-automation' ); ?></strong> <?php esc_html_e( 'no Trusted DKIM authserv-id is set, so a forwarded DKIM pass cannot be cryptographically verified. Enforcement is forced to log-only until you set the authserv-id above. Rejection is only a security guarantee once the authserv-id is configured.', 'sportspress-etransfer-automation' ); ?></p>
+							<?php endif; ?>
+							<p class="description"><?php esc_html_e( 'The Cloudflare Worker forwards the original DKIM/SPF authentication headers. In "Log only" mode a missing or failing Interac DKIM result is logged but the payment is still processed. "Reject" returns a 403 for payments whose Interac DKIM does not pass under the Trusted DKIM authserv-id above — it only enforces (and only provides a security guarantee) when that authserv-id is set. Switch to "Reject" only after configuring the authserv-id and confirming your forwarder preserves the Interac DKIM result, or legitimate payments may be rejected.', 'sportspress-etransfer-automation' ); ?></p>
 						</td>
 					</tr>
 					<tr>

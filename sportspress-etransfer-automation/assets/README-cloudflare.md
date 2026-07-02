@@ -137,9 +137,21 @@ This Cloudflare Worker processes Interac e-Transfer notification emails and forw
   would sign and forward
 - The WordPress side additionally verifies the original Interac DKIM result
   from the forwarded authentication headers. By default this is log-only
-  (non-breaking); set the "DKIM Enforcement" option to "Reject" in the plugin
-  settings once you have confirmed your forwarder preserves the Interac DKIM
-  signature
+  (non-breaking). Before enabling "Reject":
+  - Set the **Trusted DKIM authserv-id** option in the plugin settings to the
+    authserv-id of the hop that actually verifies the Interac DKIM signature
+    (the token at the start of that hop's `Authentication-Results` header). A
+    forwarded `dkim=pass header.d=interac.ca` is only trusted when it appears
+    under this exact authserv-id. Without it, DKIM cannot be cryptographically
+    trusted and enforcement stays log-only regardless of the setting.
+  - Ensure that trusted forwarder **strips any inbound `Authentication-Results`
+    bearing its own authserv-id** before stamping its own (standard RFC 8601
+    §5 MTA behaviour). Otherwise a sender who can reach your forwarder could
+    forge an A-R under your pinned authserv-id.
+  - The Worker forwards only `DKIM-Signature`, `Authentication-Results`, and
+    `Received-SPF`. `ARC-*` headers are stripped and never forwarded: ARC is
+    designed to survive forwarding verbatim and is therefore forgeable by any
+    sender who can reach an allowlisted forwarder.
 - Set `DISABLE_INTERAC_CHECK` to bypass domain restrictions (use with caution)
 - All webhook requests are signed with HMAC SHA256
 - Environment variables are encrypted in Cloudflare

@@ -105,9 +105,16 @@ class SPET_ETransfer_Automation {
 		// DKIM result is logged as a warning but does NOT reject the payment, so
 		// existing forwarding setups keep working. Operators can set
 		// spet_dkim_enforcement = 'reject' to harden this into a 403 once they
-		// have confirmed their forwarder preserves the Interac DKIM result.
+		// have configured spet_dkim_authserv_id and confirmed their forwarder
+		// preserves the Interac DKIM result.
+		//
+		// verify_email_authentication() returns true (verified pass), false
+		// (verified fail), or null (cannot verify — no trusted authserv-id
+		// pinned). Only a verified fail (false) can trigger a reject; a "cannot
+		// verify" (null) is forced to log-only regardless of enforcement mode
+		// because a dkim=pass token from an un-pinned hop is not trustworthy (H1).
 		$dkim_pass = $this->verify_email_authentication( $data );
-		if ( $dkim_pass === false && get_option( 'spet_dkim_enforcement', 'log' ) === 'reject' ) {
+		if ( false === $dkim_pass && 'reject' === get_option( 'spet_dkim_enforcement', 'log' ) ) {
 			return new WP_Error(
 				'email_auth_failed',
 				'Email authentication (DKIM) for the Interac sender domain did not pass',
@@ -511,17 +518,28 @@ class SPET_ETransfer_Automation {
 	}
 
 	/**
-	 * Verify the email-authentication results (DKIM, with SPF/ARC as context)
-	 * that the Cloudflare Worker forwards in $data['auth_headers']. The Worker
-	 * always includes the original DKIM-Signature / Authentication-Results /
-	 * ARC-* / Received-SPF headers from the forwarded message; this method reads
-	 * them server-side and checks that the Interac sender domain
-	 * (payments.interac.ca) produced a passing DKIM result.
+	 * Verify the email-authentication results (DKIM) that the Cloudflare Worker
+	 * forwards in $data['auth_headers']. The Worker forwards the original
+	 * DKIM-Signature / Authentication-Results / Received-SPF headers (ARC-* is
+	 * stripped at the Worker as unforgeable-across-forwarding cannot be assumed);
+	 * this method reads them server-side and checks that the Interac sender
+	 * domain (payments.interac.ca) produced a passing DKIM result.
+	 *
+	 * SECURITY (H1): a `dkim=pass header.d=interac.ca` token is only trusted when
+	 * it appears inside an Authentication-Results instance whose LEADING
+	 * authserv-id EXACTLY matches the operator-pinned spet_dkim_authserv_id (the
+	 * identity of the trusted MTA/forwarder that actually verified the Interac
+	 * signature). Without the pin, ANY hop — including an attacker who can deliver
+	 * mail through an allowlisted forwarder — can assert `dkim=pass`, so DKIM
+	 * cannot be cryptographically trusted.
 	 *
 	 * Returns:
-	 *   true  - DKIM affirmatively passed for the Interac domain.
-	 *   false - DKIM was present but did not pass for the Interac domain, OR no
-	 *           auth headers were forwarded at all (cannot affirm authenticity).
+	 *   true  - DKIM affirmatively passed for the Interac domain from the pinned
+	 *           authserv-id.
+	 *   false - authserv-id IS pinned but no passing Interac DKIM result from it
+	 *           was found (verified fail), OR no auth headers were forwarded.
+	 *   null  - no authserv-id is pinned; DKIM cannot be cryptographically
+	 *           trusted. The caller forces log-only in this case.
 	 *
 	 * Enforcement is decided by the caller via the spet_dkim_enforcement option
 	 * (default 'log' = log-and-allow; 'reject' = hard 403). This method never
@@ -529,6 +547,18 @@ class SPET_ETransfer_Automation {
 	 * non-pass so operators can see the signal before flipping to 'reject'.
 	 */
 	private function verify_email_authentication( $data ) {
+		$authserv_id = strtolower( trim( (string) get_option( 'spet_dkim_authserv_id', '' ) ) );
+
+		// Without a pinned authserv-id, no forwarded DKIM result is trustworthy:
+		// any hop (or an attacker who can reach an allowlisted forwarder) can add
+		// an Authentication-Results header asserting dkim=pass header.d=interac.ca.
+		// Report "cannot verify" so the caller forces log-only regardless of the
+		// enforcement mode (H1).
+		if ( '' === $authserv_id ) {
+			$this->log_dkim_warning( 'no trusted authserv-id configured (spet_dkim_authserv_id); DKIM cannot be cryptographically trusted, forcing log-only' );
+			return null;
+		}
+
 		$auth_headers = ( isset( $data['auth_headers'] ) && is_array( $data['auth_headers'] ) )
 			? $data['auth_headers']
 			: array();
@@ -548,59 +578,65 @@ class SPET_ETransfer_Automation {
 		// domain (d=) is interac.ca or a subdomain of it.
 		$interac_domain = 'interac.ca';
 
-		// 1) Prefer the Authentication-Results header (set by the receiving MTA),
-		//    which records the verified DKIM outcome and the signing domain.
-		if ( isset( $headers['authentication-results'] ) ) {
-			$ar = $headers['authentication-results'];
-			if ( $this->auth_results_dkim_pass( $ar, $interac_domain ) ) {
-				return true;
-			}
+		// Trust only the Authentication-Results header, and only the dkim=pass
+		// tokens inside the instance whose leading authserv-id matches the pin.
+		if ( isset( $headers['authentication-results'] )
+			&& $this->auth_results_dkim_pass( $headers['authentication-results'], $interac_domain, $authserv_id ) ) {
+			return true;
 		}
 
-		// 2) ARC-Authentication-Results carries the same data across forwarding
-		//    hops; check it as a fallback for forwarders that seal with ARC.
-		if ( isset( $headers['arc-authentication-results'] ) ) {
-			if ( $this->auth_results_dkim_pass( $headers['arc-authentication-results'], $interac_domain ) ) {
-				return true;
-			}
-		}
-
-		// 3) As a last resort, confirm a DKIM-Signature for the Interac domain is
-		//    at least present (d=interac.ca). This proves a signature was attached
-		//    for the right domain but NOT that it cryptographically verified, so we
-		//    still log a warning and let the caller's enforcement policy decide.
-		if ( isset( $headers['dkim-signature'] )
-			&& $this->dkim_signature_domain_matches( $headers['dkim-signature'], $interac_domain ) ) {
-			$this->log_dkim_warning( 'DKIM-Signature present for Interac domain but no verified pass in Authentication-Results' );
-			return false;
-		}
-
-		$this->log_dkim_warning( 'no passing DKIM result for the Interac domain found in forwarded auth headers' );
+		$this->log_dkim_warning( 'no passing DKIM result for the Interac domain from the pinned authserv-id (' . $authserv_id . ') found in forwarded Authentication-Results' );
 		return false;
 	}
 
 	/**
-	 * Parse an Authentication-Results (or ARC-Authentication-Results) header and
-	 * return true only when it contains a 'dkim=pass' result whose signing
-	 * domain (header.d / header.i) is the expected domain or a subdomain of it.
+	 * Parse an Authentication-Results header and return true only when it
+	 * contains a `dkim=pass` result whose signing domain (header.d / header.i) is
+	 * the expected domain (or a subdomain) AND that result appears inside an A-R
+	 * instance whose leading authserv-id EXACTLY equals $authserv_id.
+	 *
+	 * A single forwarded header value may concatenate multiple A-R instances
+	 * (the Fetch Headers API joins repeated headers with ", "). Each instance
+	 * begins with its own authserv-id, so we split on instance boundaries and
+	 * scope the dkim=pass search to only the trusted (pinned) instance — an
+	 * attacker-appended instance under a different authserv-id is ignored.
 	 */
-	private function auth_results_dkim_pass( $header_value, $expected_domain ) {
+	private function auth_results_dkim_pass( $header_value, $expected_domain, $authserv_id ) {
 		$header_value = strtolower( (string) $header_value );
-		// Find every dkim=<result> token and the d=/i= that follows it within the
-		// same method block. Authentication-Results is semicolon-delimited.
-		if ( ! preg_match_all( '/dkim=(\w+)([^;]*)/', $header_value, $matches, PREG_SET_ORDER ) ) {
+		$authserv_id  = strtolower( trim( $authserv_id ) );
+		if ( '' === $authserv_id ) {
 			return false;
 		}
-		foreach ( $matches as $m ) {
-			$result = $m[1];
-			$rest = $m[2];
-			if ( 'pass' !== $result ) {
+
+		foreach ( $this->split_auth_results_instances( $header_value ) as $instance ) {
+			$instance = trim( $instance );
+			if ( '' === $instance ) {
 				continue;
 			}
-			if ( preg_match( '/header\.[di]=([^\s;]+)/', $rest, $dm ) ) {
-				$domain = ltrim( trim( $dm[1] ), '@' );
-				if ( $this->domain_is_or_subdomain_of( $domain, $expected_domain ) ) {
-					return true;
+
+			// Leading authserv-id token: up to the first ';' or whitespace. An
+			// optional version integer may follow the authserv-id; strip it before
+			// comparing (RFC 8601: "authserv-id [ CFWS version ]").
+			if ( ! preg_match( '/^([^\s;]+)/', $instance, $idm ) ) {
+				continue;
+			}
+			if ( trim( $idm[1] ) !== $authserv_id ) {
+				continue;
+			}
+
+			// Within this trusted instance only, look for a passing Interac DKIM.
+			if ( ! preg_match_all( '/dkim=(\w+)([^;]*)/', $instance, $matches, PREG_SET_ORDER ) ) {
+				continue;
+			}
+			foreach ( $matches as $m ) {
+				if ( 'pass' !== $m[1] ) {
+					continue;
+				}
+				if ( preg_match( '/header\.[di]=([^\s;]+)/', $m[2], $dm ) ) {
+					$domain = ltrim( trim( $dm[1] ), '@' );
+					if ( $this->domain_is_or_subdomain_of( $domain, $expected_domain ) ) {
+						return true;
+					}
 				}
 			}
 		}
@@ -608,14 +644,18 @@ class SPET_ETransfer_Automation {
 	}
 
 	/**
-	 * True when a DKIM-Signature header's d= tag is the expected domain or a
-	 * subdomain of it.
+	 * Split a (possibly concatenated) Authentication-Results header value into
+	 * its individual A-R instances. Repeated headers are joined by ", "; a new
+	 * instance is recognised by a ", " that is followed by an authserv-id token
+	 * (optionally a version integer) and then a ";". This boundary never matches
+	 * inside a "header.d=" / "reason=" value, so instances stay intact.
+	 *
+	 * @param string $header_value Lower-cased header value.
+	 * @return string[] One entry per A-R instance (at least one).
 	 */
-	private function dkim_signature_domain_matches( $header_value, $expected_domain ) {
-		if ( preg_match( '/\bd=([^;\s]+)/i', (string) $header_value, $dm ) ) {
-			return $this->domain_is_or_subdomain_of( strtolower( trim( $dm[1] ) ), $expected_domain );
-		}
-		return false;
+	private function split_auth_results_instances( $header_value ) {
+		$parts = preg_split( '/,\s+(?=[^\s,;]+(?:\s+\d+)?\s*;)/', $header_value );
+		return ( false === $parts ) ? array( $header_value ) : $parts;
 	}
 
 	/**
@@ -632,13 +672,14 @@ class SPET_ETransfer_Automation {
 	}
 
 	/**
-	 * Log a DKIM verification warning, gated by spat_debug_verbose_logging per
-	 * repo convention. Never logs the email body.
+	 * Log a DKIM verification warning. Emitted UNCONDITIONALLY (M1): a failing or
+	 * unverifiable DKIM result on a payment path is operationally significant, so
+	 * it must be visible without first enabling verbose logging. The message
+	 * carries a simple pass/fail signal (the reason and the active enforcement
+	 * mode). Never logs the email body or any PII.
 	 */
 	private function log_dkim_warning( $reason ) {
-		if ( get_option( 'spat_debug_verbose_logging', '0' ) === '1' ) {
-			error_log( '[SPET] Email authentication (DKIM) warning: ' . $reason . '. Enforcement mode: ' . get_option( 'spet_dkim_enforcement', 'log' ) . '.' );
-		}
+		error_log( '[SPET] Email authentication (DKIM) result=fail/unverified: ' . $reason . '. Enforcement mode: ' . get_option( 'spet_dkim_enforcement', 'log' ) . '.' );
 	}
 
 	private function verify_signature( $body, $headers ) {

@@ -132,12 +132,44 @@ class SportsPress_ETransfer_Automation {
 			add_action( 'admin_notices', array( $this, 'parent_plugin_missing_notice' ) );
 			return false;
 		}
+
+		// H7: enforce the parent-child contract version floor. class_exists() alone
+		// passes against an older parent that predates the SPAT_* helper classes
+		// this child calls (e.g. SPAT_Lock, SPAT_Database); the first such call
+		// would fatal. Require a declared contract version and degrade with an
+		// admin notice otherwise.
+		if ( ! defined( 'SPAT_CONTRACT_VERSION' ) || version_compare( SPAT_CONTRACT_VERSION, '1.0.0', '<' ) ) {
+			add_action( 'admin_notices', array( $this, 'parent_version_notice' ) );
+			return false;
+		}
+
+		// Hard dependency: this plugin auto-completes WooCommerce orders and reads
+		// them exclusively through the WooCommerce CRUD layer. Bail with a notice
+		// when WooCommerce is unavailable rather than fataling on the first
+		// wc_get_orders()/WC_Order call.
+		if ( ! class_exists( 'WooCommerce' ) ) {
+			add_action( 'admin_notices', array( $this, 'woocommerce_missing_notice' ) );
+			return false;
+		}
+
 		return true;
 	}
 
 	public function parent_plugin_missing_notice() {
 		echo '<div class="notice notice-error"><p>';
 		echo esc_html( 'SportsPress e-Transfer Automation requires SportsPress Admin Tools to be installed and activated.' );
+		echo '</p></div>';
+	}
+
+	public function parent_version_notice() {
+		echo '<div class="notice notice-error"><p>';
+		echo esc_html( 'SportsPress e-Transfer Automation requires a newer version of SportsPress Admin Tools. Please update the parent plugin.' );
+		echo '</p></div>';
+	}
+
+	public function woocommerce_missing_notice() {
+		echo '<div class="notice notice-error"><p>';
+		echo esc_html( 'SportsPress e-Transfer Automation requires WooCommerce to be installed and activated.' );
 		echo '</p></div>';
 	}
 }
