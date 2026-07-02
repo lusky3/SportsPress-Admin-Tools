@@ -79,7 +79,12 @@ class SPEM_Dynamic_Standings {
 			return;
 		}
 
-		$plugin_url = plugins_url( '', __DIR__ . '/..' ) . '/';
+		// __DIR__ is the /includes dir; plugin_dir_url() returns the URL of its
+		// containing directory — the plugin ROOT (with trailing slash) — so the
+		// enqueued assets point at <plugin-root>/assets/… where they actually
+		// live. The old plugins_url( '', __DIR__ . '/..' ) never collapsed the
+		// "/.." segment and pointed at includes/assets/… → 404 (H4).
+		$plugin_url = plugin_dir_url( __DIR__ );
 
 		wp_enqueue_script(
 			'spem-dynamic-standings',

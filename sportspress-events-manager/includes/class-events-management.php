@@ -370,38 +370,64 @@ class SPEM_Events_Management {
 			return new WP_Error( 'invalid_file_type', __( 'Invalid file type. Only XLSX and CSV files are allowed.', 'sportspress-events-manager' ) );
 		}
 
-		$events_data = $this->parse_file( $file_path, $original_name );
-
-		if ( is_wp_error( $events_data ) ) {
-			return $events_data;
+		// Serialize the whole import behind a cross-request mutex so two
+		// concurrent uploads can't duplicate teams/events or lose-update the
+		// sp_results/sp_players meta merges (M11). Guarded by class_exists so
+		// the plugin still degrades gracefully under an older parent that
+		// predates SPAT_Lock.
+		$lock_key       = 'spem_import_events';
+		$lock_available = class_exists( 'SPAT_Lock' );
+		if ( $lock_available && ! SPAT_Lock::acquire( $lock_key, 60 ) ) {
+			return new WP_Error(
+				'import_locked',
+				__( 'Another import is already running. Please wait for it to finish and try again.', 'sportspress-events-manager' )
+			);
 		}
 
-		if ( empty( $events_data ) ) {
-			return new WP_Error( 'parse_error', __( 'No valid event data found in file.', 'sportspress-events-manager' ) );
-		}
+		try {
+			$events_data = $this->parse_file( $file_path, $original_name );
 
-		// Prefetch existing events covering the date range of the import so
-		// duplicate detection inside create_event() is O(1) instead of O(N²).
-		$this->build_existing_event_map( $events_data );
-		// Build a normalized team-name → ID map once so find_or_create_team()
-		// can short-circuit lookups without re-querying per row.
-		$this->build_team_name_map( $events_data );
+			if ( is_wp_error( $events_data ) ) {
+				return $events_data;
+			}
 
-		$imported = 0;
-		$errors   = array();
-		foreach ( $events_data as $i => $event_data ) {
-			$result = $this->create_event( $event_data );
-			if ( is_wp_error( $result ) ) {
-				$errors[ $i ] = $result->get_error_message();
-			} elseif ( $result ) {
-				$imported++;
+			if ( empty( $events_data ) ) {
+				return new WP_Error( 'parse_error', __( 'No valid event data found in file.', 'sportspress-events-manager' ) );
+			}
+
+			// Prefetch existing events covering the date range of the import so
+			// duplicate detection inside create_event() is O(1) instead of O(N²).
+			$this->build_existing_event_map( $events_data );
+			// Build a normalized team-name → ID map once so find_or_create_team()
+			// can short-circuit lookups without re-querying per row.
+			$this->build_team_name_map( $events_data );
+
+			$imported = 0;
+			$errors   = array();
+			$warnings = array();
+			foreach ( $events_data as $i => $event_data ) {
+				$row_warnings = array();
+				$result       = $this->create_event( $event_data, $row_warnings );
+				if ( is_wp_error( $result ) ) {
+					$errors[ $i ] = $result->get_error_message();
+				} elseif ( $result ) {
+					$imported++;
+				}
+				if ( ! empty( $row_warnings ) ) {
+					$warnings[ $i ] = implode( ' ', $row_warnings );
+				}
+			}
+
+			return array(
+				'imported' => $imported,
+				'errors'   => $errors,
+				'warnings' => $warnings,
+			);
+		} finally {
+			if ( $lock_available ) {
+				SPAT_Lock::release( $lock_key );
 			}
 		}
-
-		return array(
-			'imported' => $imported,
-			'errors'   => $errors,
-		);
 	}
 
 	/**
@@ -417,7 +443,12 @@ class SPEM_Events_Management {
 		foreach ( $events_data as $row ) {
 			$ts = isset( $row['date'] ) ? strtotime( $row['date'] ) : false;
 			if ( false !== $ts ) {
-				$dates[] = wp_date( 'Y-m-d', $ts );
+				// WordPress forces the PHP timezone to UTC, so strtotime() parses
+				// the wall-clock cell as a UTC instant. Format it back with
+				// gmdate() (also UTC) to keep the same wall-clock date. Using
+				// wp_date() here would re-render in the site timezone and shift
+				// the day on any non-UTC install (H3).
+				$dates[] = gmdate( 'Y-m-d', $ts );
 			}
 		}
 
@@ -457,7 +488,9 @@ class SPEM_Events_Management {
 				continue;
 			}
 			$post  = get_post( $eid );
-			$date  = $post ? wp_date( 'Y-m-d', strtotime( $post->post_date ) ) : '';
+			// gmdate() keeps the stored wall-clock date; wp_date() would shift
+			// it in the site timezone and break duplicate matching (H3).
+			$date  = $post ? gmdate( 'Y-m-d', strtotime( $post->post_date ) ) : '';
 			if ( ! $date ) {
 				continue;
 			}
@@ -767,21 +800,33 @@ class SPEM_Events_Management {
 	 * Create a single SportsPress event from parsed data.
 	 *
 	 * @param array $event_data Event data with date, home_team, away_team, time, venue, league.
+	 * @param array $warnings   Collected (by reference) non-fatal per-row warnings.
 	 * @return int|WP_Error Event ID on success, WP_Error on failure.
 	 */
-	private function create_event( $event_data ) {
-		// Parse date with validation
+	private function create_event( $event_data, &$warnings = array() ) {
+		// Parse date with validation. WordPress forces PHP's timezone to UTC,
+		// so strtotime() yields a UTC instant for the wall-clock cell; format
+		// it back with gmdate() (also UTC) so the stored date is the exact
+		// wall-clock date from the file. wp_date() would re-render in the site
+		// timezone and shift the day/time on non-UTC installs (H3).
 		$timestamp = strtotime( $event_data['date'] );
 		if ( $timestamp === false ) {
 			return new WP_Error( 'invalid_date', __( 'Invalid date format.', 'sportspress-events-manager' ) );
 		}
-		$date = wp_date( 'Y-m-d', $timestamp );
+		$date = gmdate( 'Y-m-d', $timestamp );
 
 		$time = '19:00';
 		if ( ! empty( $event_data['time'] ) ) {
 			$time_ts = strtotime( $event_data['time'] );
 			if ( $time_ts !== false ) {
-				$time = wp_date( 'H:i', $time_ts );
+				$time = gmdate( 'H:i', $time_ts );
+			} else {
+				// Surface the fallback instead of silently masking a typo.
+				$warnings[] = sprintf(
+					/* translators: %s: the unparseable time cell value from the import */
+					__( 'Could not parse time "%s"; defaulted to 19:00.', 'sportspress-events-manager' ),
+					$event_data['time']
+				);
 			}
 		}
 
@@ -1026,14 +1071,20 @@ class SPEM_Events_Management {
 			)
 		);
 
-		if ( $id ) {
+		// wp_insert_post() returns 0 on failure and a WP_Error when
+		// wp_insert_post( …, true ) is used or a hook short-circuits it. A
+		// WP_Error is truthy, so returning it unchecked would (a) get cached
+		// and written into event meta, and (b) blow up create_event()'s
+		// string concat under PHP 8. Normalize any failure to false (M8).
+		if ( $id && ! is_wp_error( $id ) ) {
 			$this->team_cache[ $team_name ] = $id;
 			if ( '' !== $norm ) {
 				$this->team_name_map[ $norm ] = $id;
 			}
+			return $id;
 		}
 
-		return $id;
+		return false;
 	}
 
 	/**

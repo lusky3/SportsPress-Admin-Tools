@@ -9,7 +9,7 @@
  * Requires at least: 5.0
  * Tested up to: 6.8
  * Requires PHP: 8.1
- * Depends: SportsPress Admin Tools
+ * Requires Plugins: sportspress-admin-tools
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -20,6 +20,9 @@ define( 'SPEM_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
 define( 'SPEM_VERSION', '1.0.0' );
 
 class SportsPress_Events_Manager {
+
+	/** Minimum SPAT_CONTRACT_VERSION this child requires from the parent. */
+	const REQUIRED_CONTRACT_VERSION = '1.0.0';
 
 	public function __construct() {
 		register_activation_hook( __FILE__, array( $this, 'check_activation_requirements' ) );
@@ -144,12 +147,47 @@ class SportsPress_Events_Manager {
 			add_action( 'admin_notices', array( $this, 'parent_plugin_missing_notice' ) );
 			return false;
 		}
+
+		// Parent is present but must satisfy the shared contract version. An
+		// older parent that predates SPAT_Lock / SPAT_Database etc. still passes
+		// the class_exists() gate above, then fatals on the first call to a
+		// missing helper — so fail fast with an admin notice instead (H7).
+		if ( ! defined( 'SPAT_CONTRACT_VERSION' ) || version_compare( SPAT_CONTRACT_VERSION, self::REQUIRED_CONTRACT_VERSION, '<' ) ) {
+			add_action( 'admin_notices', array( $this, 'parent_contract_outdated_notice' ) );
+			return false;
+		}
+
+		// SportsPress core is a hard dependency — the entire plugin operates on
+		// sp_event / sp_team / sp_list post types and SP taxonomies.
+		if ( ! class_exists( 'SportsPress' ) ) {
+			add_action( 'admin_notices', array( $this, 'sportspress_missing_notice' ) );
+			return false;
+		}
+
 		return true;
 	}
 
 	public function parent_plugin_missing_notice() {
 		echo '<div class="notice notice-error"><p>';
 		echo esc_html( 'SportsPress Events Manager requires SportsPress Admin Tools to be installed and activated.' );
+		echo '</p></div>';
+	}
+
+	public function parent_contract_outdated_notice() {
+		echo '<div class="notice notice-error"><p>';
+		echo esc_html(
+			sprintf(
+				/* translators: %s: required parent contract version */
+				'SportsPress Events Manager requires SportsPress Admin Tools contract version %s or newer. Please update the parent plugin.',
+				self::REQUIRED_CONTRACT_VERSION
+			)
+		);
+		echo '</p></div>';
+	}
+
+	public function sportspress_missing_notice() {
+		echo '<div class="notice notice-error"><p>';
+		echo esc_html( 'SportsPress Events Manager requires the SportsPress plugin to be installed and activated.' );
 		echo '</p></div>';
 	}
 }
