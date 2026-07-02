@@ -169,7 +169,8 @@ class SPSG_Admin {
 		add_settings_section(
 			'spsg_distribution_section',
 			__( 'Default Distribution Rules', 'sportspress-schedule-generator' ),
-			function() { echo '<p>' . esc_html__( 'These defaults apply to all new schedule configurations. Individual configs can override them.', 'sportspress-schedule-generator' ) . '</p>'; },
+			function () {
+				echo '<p>' . esc_html__( 'These defaults apply to all new schedule configurations. Individual configs can override them.', 'sportspress-schedule-generator' ) . '</p>'; },
 			'spsg_backend_settings'
 		);
 
@@ -177,17 +178,23 @@ class SPSG_Admin {
 		register_setting( 'spsg_backend_settings', 'spsg_enable_debug_logging' );
 		register_setting( 'spsg_backend_settings', 'spsg_default_timezone' );
 		register_setting( 'spsg_backend_settings', 'spsg_enable_change_tracking' );
-		register_setting( 'spsg_backend_settings', 'spsg_day_weights', array(
-			'sanitize_callback' => function( $v ) {
-				if ( ! is_array( $v ) ) return array();
-				$out = array();
-				foreach ( $v as $day => $weight ) {
-					$day = sanitize_key( $day );
-					$out[ $day ] = max( 0, min( 100, (int) $weight ) );
-				}
-				return $out;
-			},
-		) );
+		register_setting(
+			'spsg_backend_settings',
+			'spsg_day_weights',
+			array(
+				'sanitize_callback' => function ( $v ) {
+					if ( ! is_array( $v ) ) {
+						return array();
+					}
+					$out = array();
+					foreach ( $v as $day => $weight ) {
+						$day = sanitize_key( $day );
+						$out[ $day ] = max( 0, min( 100, (int) $weight ) );
+					}
+					return $out;
+				},
+			)
+		);
 		register_setting( 'spsg_backend_settings', 'spsg_balance_time_slots', array( 'sanitize_callback' => 'absint' ) );
 		register_setting( 'spsg_backend_settings', 'spsg_balance_home_away', array( 'sanitize_callback' => 'absint' ) );
 

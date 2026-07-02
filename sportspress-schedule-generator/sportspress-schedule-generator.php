@@ -39,9 +39,12 @@ class SportsPress_Schedule_Generator {
 
 	public static function fix_configurations_autoload() {
 		global $wpdb;
-		$row = $wpdb->get_row( $wpdb->prepare(
-			"SELECT autoload FROM $wpdb->options WHERE option_name = %s", 'spsg_configurations'
-		) );
+		$row = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT autoload FROM $wpdb->options WHERE option_name = %s",
+				'spsg_configurations'
+			)
+		);
 		if ( $row && $row->autoload !== 'no' ) {
 			$val = get_option( 'spsg_configurations' );
 			delete_option( 'spsg_configurations' );

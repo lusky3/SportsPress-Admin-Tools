@@ -377,11 +377,15 @@ class SPPT_REST_API {
 			if ( $default_season > 0 ) {
 				$target_season_id = $default_season;
 			} else {
-				$seasons = wp_get_object_terms( $player_id, 'sp_season', array(
-					'orderby' => 'term_id',
-					'order'   => 'DESC',
-					'fields'  => 'ids',
-				) );
+				$seasons = wp_get_object_terms(
+					$player_id,
+					'sp_season',
+					array(
+						'orderby' => 'term_id',
+						'order'   => 'DESC',
+						'fields'  => 'ids',
+					)
+				);
 				if ( ! is_wp_error( $seasons ) && ! empty( $seasons ) ) {
 					$target_season_id = (int) $seasons[0];
 				}
@@ -393,7 +397,7 @@ class SPPT_REST_API {
 		if ( is_array( $leagues_meta ) && $target_season_id ) {
 			foreach ( $leagues_meta as $league_id => $season_map ) {
 				if ( is_array( $season_map ) && isset( $season_map[ $target_season_id ] )
-				     && (int) $season_map[ $target_season_id ] === $team_id ) {
+					 && (int) $season_map[ $target_season_id ] === $team_id ) {
 					unset( $leagues_meta[ $league_id ][ $target_season_id ] );
 				}
 			}
@@ -545,30 +549,36 @@ class SPPT_REST_API {
 
 		foreach ( $players as $player_data ) {
 			$name = sanitize_text_field( $player_data['name'] ?? '' );
-			if ( empty( $name ) ) continue;
+			if ( empty( $name ) ) {
+				continue;
+			}
 
 			// PT3/F-import: de-dupe — re-running an import previously created a brand
 			// new sp_player for every row. Look up an existing player by exact title
 			// (case-insensitive, exact match) and update it instead of duplicating.
-			$existing = get_posts( array(
-				'post_type'              => 'sp_player',
-				'post_status'            => 'any',
-				'title'                  => $name,
-				'posts_per_page'         => 1,
-				'fields'                 => 'ids',
-				'no_found_rows'          => true,
-				'update_post_meta_cache' => false,
-				'update_post_term_cache' => false,
-			) );
+			$existing = get_posts(
+				array(
+					'post_type'              => 'sp_player',
+					'post_status'            => 'any',
+					'title'                  => $name,
+					'posts_per_page'         => 1,
+					'fields'                 => 'ids',
+					'no_found_rows'          => true,
+					'update_post_meta_cache' => false,
+					'update_post_term_cache' => false,
+				)
+			);
 
 			if ( ! empty( $existing ) ) {
 				$post_id = (int) $existing[0];
 			} else {
-				$post_id = wp_insert_post( array(
-					'post_type'   => 'sp_player',
-					'post_title'  => $name,
-					'post_status' => 'publish',
-				) );
+				$post_id = wp_insert_post(
+					array(
+						'post_type'   => 'sp_player',
+						'post_title'  => $name,
+						'post_status' => 'publish',
+					)
+				);
 
 				if ( is_wp_error( $post_id ) ) {
 					continue;
@@ -633,11 +643,14 @@ class SPPT_REST_API {
 			);
 		}
 
-		return new WP_REST_Response( array(
-			'success'  => true,
-			'imported' => count( $imported ),
-			'players'  => $imported,
-		), 200 );
+		return new WP_REST_Response(
+			array(
+				'success'  => true,
+				'imported' => count( $imported ),
+				'players'  => $imported,
+			),
+			200
+		);
 	}
 
 	/**
@@ -654,14 +667,19 @@ class SPPT_REST_API {
 			// expressed as a meta_query, so candidates are still filtered in PHP —
 			// but we prime the meta cache for the whole candidate set in one query
 			// first so the per-player get_post_meta() below hits cache.
-			$candidate_ids = get_posts( array(
-				'post_type'      => 'sp_player',
-				'posts_per_page' => 5000,
-				'fields'         => 'ids',
-				'tax_query'      => array(
-					array( 'taxonomy' => 'sp_season', 'terms' => $season_id ),
-				),
-			) );
+			$candidate_ids = get_posts(
+				array(
+					'post_type'      => 'sp_player',
+					'posts_per_page' => 5000,
+					'fields'         => 'ids',
+					'tax_query'      => array(
+						array(
+							'taxonomy' => 'sp_season',
+							'terms' => $season_id,
+						),
+					),
+				)
+			);
 			if ( ! empty( $candidate_ids ) ) {
 				update_meta_cache( 'post', $candidate_ids );
 			}
@@ -680,14 +698,19 @@ class SPPT_REST_API {
 			}
 		} else {
 			// PT-7: cap at 5000 rows to bound memory on teams with very large rosters.
-			$player_ids = get_posts( array(
-				'post_type'      => 'sp_player',
-				'posts_per_page' => 5000,
-				'fields'         => 'ids',
-				'meta_query'     => array(
-					array( 'key' => 'sp_current_team', 'value' => $team_id ),
-				),
-			) );
+			$player_ids = get_posts(
+				array(
+					'post_type'      => 'sp_player',
+					'posts_per_page' => 5000,
+					'fields'         => 'ids',
+					'meta_query'     => array(
+						array(
+							'key' => 'sp_current_team',
+							'value' => $team_id,
+						),
+					),
+				)
+			);
 		}
 
 		// Fix #6: captain lives on the team's sp_list post under spt_captain.
@@ -712,10 +735,12 @@ class SPPT_REST_API {
 				// so probe SHOW COLUMNS first and fall back to the historical action
 				// allowlist until the migration lands. Transitional — remove the fallback
 				// once links_to_order is guaranteed present on all sites.
-				$has_links_column = (bool) $wpdb->get_var( $wpdb->prepare(
-					"SHOW COLUMNS FROM {$reg_log_table} LIKE %s",
-					'links_to_order'
-				) );
+				$has_links_column = (bool) $wpdb->get_var(
+					$wpdb->prepare(
+						"SHOW COLUMNS FROM {$reg_log_table} LIKE %s",
+						'links_to_order'
+					)
+				);
 
 				if ( $has_links_column ) {
 					// Most-recent order per player. Restrict to log rows the registration
@@ -724,14 +749,16 @@ class SPPT_REST_API {
 					// link-producing actions flow through automatically. See
 					// SPAT_Database::log_registration_activity.
 					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $placeholders is built from %d.
-					$rows = $wpdb->get_results( $wpdb->prepare(
-						"SELECT player_id, MAX(order_id) AS order_id
+					$rows = $wpdb->get_results(
+						$wpdb->prepare(
+							"SELECT player_id, MAX(order_id) AS order_id
 						 FROM {$reg_log_table}
 						 WHERE player_id IN ($placeholders)
 						   AND links_to_order = 1
 						 GROUP BY player_id",
-						$player_ids
-					) );
+							$player_ids
+						)
+					);
 				} else {
 					// Transitional fallback: pre-migration sites don't have links_to_order
 					// yet, so approximate the same set using the historical action
@@ -742,14 +769,16 @@ class SPPT_REST_API {
 						array( 'player_created', 'player_found_by_name', 'player_found_by_name_and_email' )
 					);
 					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- placeholders are built from %d/%s literals.
-					$rows = $wpdb->get_results( $wpdb->prepare(
-						"SELECT player_id, MAX(order_id) AS order_id
+					$rows = $wpdb->get_results(
+						$wpdb->prepare(
+							"SELECT player_id, MAX(order_id) AS order_id
 						 FROM {$reg_log_table}
 						 WHERE player_id IN ($placeholders)
 						   AND action IN ($action_placeholders)
 						 GROUP BY player_id",
-						$params
-					) );
+							$params
+						)
+					);
 				}
 
 				foreach ( (array) $rows as $row ) {

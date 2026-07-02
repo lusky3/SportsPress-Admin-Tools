@@ -540,27 +540,29 @@ class SPT_Email_Sync {
 	private function count_players_missing_email() {
 		// Perf: avoid loading every WP_Post just to count them. Use found_posts
 		// with fields=ids and posts_per_page=1.
-		$q = new WP_Query( array(
-			'post_type'              => 'sp_player',
-			'post_status'            => 'publish',
-			'meta_query'             => array(
-				'relation' => 'OR',
-				array(
-					'key'     => 'spt_email',
-					'compare' => 'NOT EXISTS',
+		$q = new WP_Query(
+			array(
+				'post_type'              => 'sp_player',
+				'post_status'            => 'publish',
+				'meta_query'             => array(
+					'relation' => 'OR',
+					array(
+						'key'     => 'spt_email',
+						'compare' => 'NOT EXISTS',
+					),
+					array(
+						'key'     => 'spt_email',
+						'value'   => '',
+						'compare' => '=',
+					),
 				),
-				array(
-					'key'     => 'spt_email',
-					'value'   => '',
-					'compare' => '=',
-				),
-			),
-			'fields'                 => 'ids',
-			'posts_per_page'         => 1,
-			'no_found_rows'          => false,
-			'update_post_term_cache' => false,
-			'update_post_meta_cache' => false,
-		) );
+				'fields'                 => 'ids',
+				'posts_per_page'         => 1,
+				'no_found_rows'          => false,
+				'update_post_term_cache' => false,
+				'update_post_meta_cache' => false,
+			)
+		);
 		return (int) $q->found_posts;
 	}
 

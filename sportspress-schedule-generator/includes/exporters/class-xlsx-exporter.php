@@ -707,7 +707,10 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 		// happens to be all-digits, e.g. a team named "1990" would otherwise
 		// be silently stripped of its leading zeros / coerced to a float.
 		// Column order matches row_values(): match_length=3, week_number=11.
-		$numeric_columns = array( 3 => true, 11 => true );
+		$numeric_columns = array(
+			3 => true,
+			11 => true,
+		);
 
 		// Data rows.
 		$r = 2;

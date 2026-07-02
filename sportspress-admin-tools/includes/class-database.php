@@ -182,15 +182,17 @@ class SPAT_Database {
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is internal.
 		// 'player_found_by_email' is a legacy action value retained defensively in
 		// case older installs persisted it before the name+email rename.
-		$wpdb->query( $wpdb->prepare(
-			"UPDATE {$table_name}
+		$wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$table_name}
 			 SET links_to_order = 1
 			 WHERE action IN (%s, %s, %s, %s) AND links_to_order = 0",
-			'player_created',
-			'player_found_by_name',
-			'player_found_by_name_and_email',
-			'player_found_by_email'
-		) );
+				'player_created',
+				'player_found_by_name',
+				'player_found_by_name_and_email',
+				'player_found_by_email'
+			)
+		);
 
 		update_option( 'spat_logs_backfilled_links_to_order', '1' );
 	}

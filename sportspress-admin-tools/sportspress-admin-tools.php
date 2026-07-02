@@ -89,10 +89,12 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 				$table = $wpdb->prefix . 'spat_registration_logs';
 				// Use prepare with SHOW COLUMNS so a missing column doesn't trip
 				// the SELECT below; if the table or column is gone, mark done.
-				$has_column = $wpdb->get_var( $wpdb->prepare(
-					"SHOW COLUMNS FROM {$table} LIKE %s",
-					'links_to_order'
-				) );
+				$has_column = $wpdb->get_var(
+					$wpdb->prepare(
+						"SHOW COLUMNS FROM {$table} LIKE %s",
+						'links_to_order'
+					)
+				);
 				if ( ! $has_column ) {
 					update_option( 'spat_logs_backfilled_links_to_order', '1' );
 				} else {
@@ -100,9 +102,13 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 						"SELECT 1 FROM {$table} WHERE links_to_order = 0 LIMIT 1"
 					);
 					if ( $needs_backfill ) {
-						SPAT_Lock::with( 'spat_backfill_links', 60, function () {
-							SPAT_Database::backfill_links_to_order_column();
-						} );
+						SPAT_Lock::with(
+							'spat_backfill_links',
+							60,
+							function () {
+								SPAT_Database::backfill_links_to_order_column();
+							}
+						);
 					} else {
 						update_option( 'spat_logs_backfilled_links_to_order', '1' );
 					}
