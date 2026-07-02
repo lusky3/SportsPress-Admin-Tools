@@ -176,12 +176,42 @@ class SportsPress_Schedule_Generator {
 			add_action( 'admin_notices', array( $this, 'parent_plugin_missing_notice' ) );
 			return false;
 		}
+
+		// Parent-child contract floor. The parent exposes SPAT_CONTRACT_VERSION;
+		// this child relies on shared helper classes (SPAT_Lock, SPAT_Database,
+		// etc.) that only exist from contract 1.0.0 onward. An older parent still
+		// passes the class_exists() gate above but would fatal on first use, so
+		// degrade with an admin notice instead of loading.
+		if ( ! defined( 'SPAT_CONTRACT_VERSION' ) || version_compare( SPAT_CONTRACT_VERSION, '1.0.0', '<' ) ) {
+			add_action( 'admin_notices', array( $this, 'parent_contract_outdated_notice' ) );
+			return false;
+		}
+
+		// SportsPress itself is a hard dependency (this plugin reads sp_* post
+		// types, taxonomies, and settings). Bail with a notice when it is absent.
+		if ( ! class_exists( 'SportsPress' ) ) {
+			add_action( 'admin_notices', array( $this, 'sportspress_missing_notice' ) );
+			return false;
+		}
+
 		return true;
 	}
 
 	public function parent_plugin_missing_notice() {
 		echo '<div class="notice notice-error"><p>';
 		echo esc_html( 'SportsPress Schedule Generator requires SportsPress Admin Tools to be installed and activated.' );
+		echo '</p></div>';
+	}
+
+	public function parent_contract_outdated_notice() {
+		echo '<div class="notice notice-error"><p>';
+		echo esc_html( 'SportsPress Schedule Generator requires a newer version of SportsPress Admin Tools. Please update the parent plugin.' );
+		echo '</p></div>';
+	}
+
+	public function sportspress_missing_notice() {
+		echo '<div class="notice notice-error"><p>';
+		echo esc_html( 'SportsPress Schedule Generator requires the SportsPress plugin to be installed and activated.' );
 		echo '</p></div>';
 	}
 

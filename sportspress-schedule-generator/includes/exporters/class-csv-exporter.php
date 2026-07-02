@@ -49,7 +49,11 @@ class SPSG_CSV_Exporter implements SPSG_Exporter_Interface {
 	public function export( $schedule, $config, $style = '' ) {
 		$upload_dir = wp_upload_dir();
 		$export_dir = $upload_dir['basedir'] . '/spsg-exports';
-		$filename = 'schedule_' . wp_date( 'Y-m-d_H-i-s' ) . '.csv';
+		// High-entropy suffix so the public uploads URL is not guessable by
+		// enumerating the second-precision timestamp (defence in depth on Nginx,
+		// where the .htaccess/index.php protection does not apply). The
+		// `schedule_*` prefix is preserved so cleanup_export_files() still matches.
+		$filename = 'schedule_' . wp_date( 'Y-m-d_H-i-s' ) . '-' . bin2hex( random_bytes( 8 ) ) . '.csv';
 
 		if ( ! file_exists( $export_dir ) ) {
 			wp_mkdir_p( $export_dir );
