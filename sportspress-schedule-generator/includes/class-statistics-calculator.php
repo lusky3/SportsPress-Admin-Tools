@@ -354,5 +354,4 @@ class SPSG_Statistics_Calculator {
 			'imbalances' => array(),
 		);
 	}
-
 }

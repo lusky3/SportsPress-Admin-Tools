@@ -101,11 +101,14 @@ class SPLM_Dashboard_Frontend {
 		// otherwise enqueue a 404'd bundle and silently render an empty
 		// <div id="splm-dashboard">. Surface a clear admin notice instead.
 		if ( ! file_exists( $script_file ) ) {
-			add_action( 'admin_notices', function() {
-				echo '<div class="notice notice-error"><p>';
-				echo esc_html__( 'SportsPress League Manager dashboard assets are missing. Run "npm run build" inside the sportspress-league-manager directory.', 'sportspress-league-manager' );
-				echo '</p></div>';
-			} );
+			add_action(
+				'admin_notices',
+				function () {
+					echo '<div class="notice notice-error"><p>';
+					echo esc_html__( 'SportsPress League Manager dashboard assets are missing. Run "npm run build" inside the sportspress-league-manager directory.', 'sportspress-league-manager' );
+					echo '</p></div>';
+				}
+			);
 			return;
 		}
 
@@ -130,45 +133,62 @@ class SPLM_Dashboard_Frontend {
 		);
 
 		// Localize dashboard data.
-		$current_season = get_terms( array(
-			'taxonomy'   => 'sp_season',
-			'orderby'    => 'term_id',
-			'order'      => 'DESC',
-			'number'     => 10,
-			'hide_empty' => false,
-		) );
+		$current_season = get_terms(
+			array(
+				'taxonomy'   => 'sp_season',
+				'orderby'    => 'term_id',
+				'order'      => 'DESC',
+				'number'     => 10,
+				'hide_empty' => false,
+			)
+		);
 		// Filter out playoff seasons and take the first one
-		$current_season = array_values( array_filter( $current_season ?: array(), function( $term ) {
-			return stripos( $term->name, 'playoff' ) === false;
-		} ) );
+		$current_season = array_values(
+			array_filter(
+				$current_season ?: array(),
+				function ( $term ) {
+					return stripos( $term->name, 'playoff' ) === false;
+				}
+			)
+		);
 
-		$all_seasons = get_terms( array(
-			'taxonomy'   => 'sp_season',
-			'orderby'    => 'term_id',
-			'order'      => 'DESC',
-			'hide_empty' => false,
-		) );
+		$all_seasons = get_terms(
+			array(
+				'taxonomy'   => 'sp_season',
+				'orderby'    => 'term_id',
+				'order'      => 'DESC',
+				'hide_empty' => false,
+			)
+		);
 
-		$seasons = array_map( function ( $term ) {
-			return array(
-				'id'   => $term->term_id,
-				'name' => $term->name,
-			);
-		}, ! empty( $all_seasons ) && ! is_wp_error( $all_seasons ) ? $all_seasons : array() );
+		$seasons = array_map(
+			function ( $term ) {
+				return array(
+					'id'   => $term->term_id,
+					'name' => $term->name,
+				);
+			},
+			! empty( $all_seasons ) && ! is_wp_error( $all_seasons ) ? $all_seasons : array()
+		);
 
 		// M5: localize leagues so Standings.jsx (and similar) can populate
 		// division selectors without an extra REST round-trip.
-		$all_leagues = get_terms( array(
-			'taxonomy'   => 'sp_league',
-			'hide_empty' => false,
-		) );
-		$leagues = array_map( function ( $term ) {
-			return array(
-				'id'     => $term->term_id,
-				'name'   => $term->name,
-				'parent' => $term->parent,
-			);
-		}, ! empty( $all_leagues ) && ! is_wp_error( $all_leagues ) ? $all_leagues : array() );
+		$all_leagues = get_terms(
+			array(
+				'taxonomy'   => 'sp_league',
+				'hide_empty' => false,
+			)
+		);
+		$leagues = array_map(
+			function ( $term ) {
+				return array(
+					'id'     => $term->term_id,
+					'name'   => $term->name,
+					'parent' => $term->parent,
+				);
+			},
+			! empty( $all_leagues ) && ! is_wp_error( $all_leagues ) ? $all_leagues : array()
+		);
 
 		// Currency symbol (F16) — fall back to "$" when WooCommerce is absent.
 		$currency_symbol = function_exists( 'get_woocommerce_currency_symbol' )
@@ -188,40 +208,44 @@ class SPLM_Dashboard_Frontend {
 			'hasSeasonSetup'     => true,
 		);
 
-		wp_localize_script( 'splm-dashboard', 'splmDashboard', array(
-			'nonce'           => wp_create_nonce( 'wp_rest' ),
-			'apiBase'         => rest_url( 'splm/v1/' ),
-			'leagueName'      => get_bloginfo( 'name' ),
-			'currentSeason'   => ! empty( $current_season ) ? $current_season[0]->term_id : '',
-			'logoutUrl'       => wp_logout_url( home_url() ),
-			'userId'          => get_current_user_id(),
-			'seasons'         => $seasons,
-			'leagues'         => $leagues,
-			'currencySymbol'  => $currency_symbol,
-			'features'        => $features,
-			// F7 — canonical capability flags routed through SPLM_Capabilities
-			// (kept alongside legacy granular flags for compatibility).
-			'capabilities'    => array(
-				'can_read'          => SPLM_Capabilities::can_read(),
-				'can_manage'        => SPLM_Capabilities::can_manage(),
-				'canManageSchedule' => SPLM_Capabilities::can_manage(),
-				'canEnterScores'    => current_user_can( 'edit_others_sp_events' ),
-				'canManageRosters'  => current_user_can( 'edit_others_sp_players' ),
-				'canViewPayments'   => current_user_can( 'edit_others_sp_players' ) || SPLM_Capabilities::can_manage(),
-				'canViewHealth'     => SPLM_Capabilities::can_manage(),
-			),
-			// Graceful degradation: these flags MUST mirror the exact class_exists
-			// guards in SPLM_REST_API::register_delegated_routes() (and the spsg/v1
-			// namespace the SPA calls directly) so the React view matches which
-			// endpoints actually exist. The SPA hides/disables features and shows
-			// an explain-notice for any module that is unavailable here.
-			'dependencies'    => array(
-				'sportspress'        => class_exists( 'SportsPress' ),
-				'woocommerce'        => class_exists( 'WooCommerce' ),
-				'events_manager'     => class_exists( 'SPEM_REST_API' ),
-				'player_tools'       => class_exists( 'SPPT_REST_API' ),
-				'schedule_generator' => class_exists( 'SPSG_REST_API' ),
-			),
-		) );
+		wp_localize_script(
+			'splm-dashboard',
+			'splmDashboard',
+			array(
+				'nonce'           => wp_create_nonce( 'wp_rest' ),
+				'apiBase'         => rest_url( 'splm/v1/' ),
+				'leagueName'      => get_bloginfo( 'name' ),
+				'currentSeason'   => ! empty( $current_season ) ? $current_season[0]->term_id : '',
+				'logoutUrl'       => wp_logout_url( home_url() ),
+				'userId'          => get_current_user_id(),
+				'seasons'         => $seasons,
+				'leagues'         => $leagues,
+				'currencySymbol'  => $currency_symbol,
+				'features'        => $features,
+				// F7 — canonical capability flags routed through SPLM_Capabilities
+				// (kept alongside legacy granular flags for compatibility).
+				'capabilities'    => array(
+					'can_read'          => SPLM_Capabilities::can_read(),
+					'can_manage'        => SPLM_Capabilities::can_manage(),
+					'canManageSchedule' => SPLM_Capabilities::can_manage(),
+					'canEnterScores'    => current_user_can( 'edit_others_sp_events' ),
+					'canManageRosters'  => current_user_can( 'edit_others_sp_players' ),
+					'canViewPayments'   => current_user_can( 'edit_others_sp_players' ) || SPLM_Capabilities::can_manage(),
+					'canViewHealth'     => SPLM_Capabilities::can_manage(),
+				),
+				// Graceful degradation: these flags MUST mirror the exact class_exists
+				// guards in SPLM_REST_API::register_delegated_routes() (and the spsg/v1
+				// namespace the SPA calls directly) so the React view matches which
+				// endpoints actually exist. The SPA hides/disables features and shows
+				// an explain-notice for any module that is unavailable here.
+				'dependencies'    => array(
+					'sportspress'        => class_exists( 'SportsPress' ),
+					'woocommerce'        => class_exists( 'WooCommerce' ),
+					'events_manager'     => class_exists( 'SPEM_REST_API' ),
+					'player_tools'       => class_exists( 'SPPT_REST_API' ),
+					'schedule_generator' => class_exists( 'SPSG_REST_API' ),
+				),
+			)
+		);
 	}
 }

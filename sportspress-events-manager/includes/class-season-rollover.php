@@ -337,26 +337,28 @@ jQuery(document).ready(function($) {
 				// team+season. Avoid serialize() in meta_query — narrow with
 				// a LIKE on the serialized fragment, then do a PHP-side team
 				// check to defend against false positives.
-				$season_cal_ids = get_posts( array(
-					'post_type'      => 'sp_calendar',
-					'post_status'    => 'any',
-					'posts_per_page' => -1,
-					'fields'         => 'ids',
-					'tax_query'      => array(
-						array(
-							'taxonomy' => 'sp_season',
-							'field'    => 'term_id',
-							'terms'    => $season_term_id,
+				$season_cal_ids = get_posts(
+					array(
+						'post_type'      => 'sp_calendar',
+						'post_status'    => 'any',
+						'posts_per_page' => -1,
+						'fields'         => 'ids',
+						'tax_query'      => array(
+							array(
+								'taxonomy' => 'sp_season',
+								'field'    => 'term_id',
+								'terms'    => $season_term_id,
+							),
 						),
-					),
-					'meta_query'     => array(
-						array(
-							'key'     => 'sp_team',
-							'value'   => sprintf( 'i:%d;', (int) $team->ID ),
-							'compare' => 'LIKE',
+						'meta_query'     => array(
+							array(
+								'key'     => 'sp_team',
+								'value'   => sprintf( 'i:%d;', (int) $team->ID ),
+								'compare' => 'LIKE',
+							),
 						),
-					),
-				) );
+					)
+				);
 
 				$existing_cal = array();
 				if ( ! empty( $season_cal_ids ) ) {
@@ -439,7 +441,7 @@ jQuery(document).ready(function($) {
 		}
 
 		// 5. Optionally archive old season events. Capped per call — the UI
-		//    re-invokes the archive step until `archive_done` returns true.
+		// re-invokes the archive step until `archive_done` returns true.
 		$archive_done = true;
 		if ( $archive_old ) {
 			$archive_result   = $this->archive_old_events( $league_id, $season_term_id );

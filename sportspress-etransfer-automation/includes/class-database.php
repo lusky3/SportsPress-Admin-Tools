@@ -15,7 +15,6 @@ class SPET_Database {
 	 * Table is created by the core SPAT_Database class.
 	 * This child plugin uses the core's spat_etransfer_logs table.
 	 */
-
 	public static function log_etransfer_activity( $data ) {
 		global $wpdb;
 

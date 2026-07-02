@@ -81,17 +81,19 @@ class SPT_Batch_List_Creator {
 		$names = implode( ', ', array_map( 'sanitize_text_field', $locked ) );
 		printf(
 			'<div class="notice notice-warning is-dismissible"><p>%s</p></div>',
-			esc_html( sprintf(
+			esc_html(
+				sprintf(
 				/* translators: %1$d team count, %2$s comma-separated team names */
-				_n(
-					'Skipped %1$d team that was being edited by another admin: %2$s',
-					'Skipped %1$d teams that were being edited by other admins: %2$s',
+					_n(
+						'Skipped %1$d team that was being edited by another admin: %2$s',
+						'Skipped %1$d teams that were being edited by other admins: %2$s',
+						$count,
+						'sportspress-player-tools'
+					),
 					$count,
-					'sportspress-player-tools'
-				),
-				$count,
-				$names
-			) )
+					$names
+				)
+			)
 		);
 	}
 
@@ -427,7 +429,7 @@ class SPT_Batch_List_Creator {
 	/**
 	 * Persist payload changes back to the temp table.
 	 *
-	 * @param array $payload
+	 * @param array $payload Decoded payload to persist.
 	 */
 	private function save_payload( $payload ) {
 		global $wpdb;

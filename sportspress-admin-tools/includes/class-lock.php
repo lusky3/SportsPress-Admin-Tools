@@ -1,5 +1,6 @@
 <?php
-if ( ! defined( 'ABSPATH' ) ) { exit; }
+if ( ! defined( 'ABSPATH' ) ) {
+	exit; }
 
 /**
  * Best-effort mutex for guarding read-modify-write sequences against
@@ -63,10 +64,12 @@ class SPAT_Lock {
 		}
 
 		// Row exists — fetch its stored handle. If the lock is still live we lose.
-		$existing = $wpdb->get_var( $wpdb->prepare(
-			"SELECT option_value FROM {$wpdb->options} WHERE option_name = %s",
-			$option
-		) );
+		$existing = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT option_value FROM {$wpdb->options} WHERE option_name = %s",
+				$option
+			)
+		);
 
 		if ( null === $existing ) {
 			// Lock was just released between our INSERT and SELECT; retry the
@@ -83,12 +86,14 @@ class SPAT_Lock {
 		// Stale — try an atomic steal that succeeds only if the row is
 		// still the stale value we just observed. Two concurrent thieves
 		// will see the same $existing, but only one UPDATE returns 1 row.
-		$stolen = $wpdb->query( $wpdb->prepare(
-			"UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND option_value = %s",
-			$handle,
-			$option,
-			$existing
-		) );
+		$stolen = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND option_value = %s",
+				$handle,
+				$option,
+				$existing
+			)
+		);
 		return 1 === (int) $stolen ? $handle : false;
 	}
 
@@ -104,11 +109,13 @@ class SPAT_Lock {
 		global $wpdb;
 
 		$suppress = $wpdb->suppress_errors();
-		$inserted = $wpdb->query( $wpdb->prepare(
-			"INSERT INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no')",
-			$option,
-			$handle
-		) );
+		$inserted = $wpdb->query(
+			$wpdb->prepare(
+				"INSERT INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no')",
+				$option,
+				$handle
+			)
+		);
 		$wpdb->suppress_errors( $suppress );
 
 		return (int) $inserted;

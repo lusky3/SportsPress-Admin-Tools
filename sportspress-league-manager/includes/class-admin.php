@@ -113,25 +113,42 @@ class SPLM_Admin {
 		);
 
 		register_setting( 'splm_backend_settings', 'splm_default_season', array( 'sanitize_callback' => 'absint' ) );
-		register_setting( 'splm_backend_settings', 'splm_fee_source', array(
-			'sanitize_callback' => function ( $v ) {
-				return in_array( $v, array( 'woocommerce', 'manual', 'none' ), true ) ? $v : 'none';
-			},
-		) );
-		register_setting( 'splm_backend_settings', 'splm_debug_logging', array(
-			'sanitize_callback' => function ( $v ) { return $v ? '1' : '0'; },
-		) );
+		register_setting(
+			'splm_backend_settings',
+			'splm_fee_source',
+			array(
+				'sanitize_callback' => function ( $v ) {
+					return in_array( $v, array( 'woocommerce', 'manual', 'none' ), true ) ? $v : 'none';
+				},
+			)
+		);
+		register_setting(
+			'splm_backend_settings',
+			'splm_debug_logging',
+			array(
+				'sanitize_callback' => function ( $v ) {
+					return $v ? '1' : '0'; },
+			)
+		);
 		register_setting( 'splm_backend_settings', 'splm_roster_max_upload_kb', array( 'sanitize_callback' => 'absint' ) );
-		register_setting( 'splm_backend_settings', 'splm_comparison_stat_keys', array(
-			'sanitize_callback' => function ( $v ) {
-				return is_array( $v ) ? array_map( 'sanitize_text_field', $v ) : array( 'pim' );
-			},
-		) );
-		register_setting( 'splm_backend_settings', 'splm_report_stat_keys', array(
-			'sanitize_callback' => function ( $v ) {
-				return is_array( $v ) ? array_map( 'sanitize_text_field', $v ) : array( 'p', 'g', 'a', 'pim', 'gaa' );
-			},
-		) );
+		register_setting(
+			'splm_backend_settings',
+			'splm_comparison_stat_keys',
+			array(
+				'sanitize_callback' => function ( $v ) {
+					return is_array( $v ) ? array_map( 'sanitize_text_field', $v ) : array( 'pim' );
+				},
+			)
+		);
+		register_setting(
+			'splm_backend_settings',
+			'splm_report_stat_keys',
+			array(
+				'sanitize_callback' => function ( $v ) {
+					return is_array( $v ) ? array_map( 'sanitize_text_field', $v ) : array( 'p', 'g', 'a', 'pim', 'gaa' );
+				},
+			)
+		);
 		register_setting( 'splm_backend_settings', 'splm_report_leader_count', array( 'sanitize_callback' => 'absint' ) );
 
 		$this->add_field( 'splm_default_season', __( 'Season Override', 'sportspress-league-manager' ), array( $this, 'render_default_season_field' ) );
@@ -149,7 +166,12 @@ class SPLM_Admin {
 
 	public function render_default_season_field() {
 		$selected = get_option( 'splm_default_season', 0 );
-		$seasons  = get_terms( array( 'taxonomy' => 'sp_season', 'hide_empty' => false ) );
+		$seasons  = get_terms(
+			array(
+				'taxonomy' => 'sp_season',
+				'hide_empty' => false,
+			)
+		);
 		echo '<select name="splm_default_season">';
 		echo '<option value="0">' . esc_html__( 'Use SportsPress current season', 'sportspress-league-manager' ) . '</option>';
 		if ( ! is_wp_error( $seasons ) ) {
@@ -162,7 +184,11 @@ class SPLM_Admin {
 
 	public function render_fee_source_field() {
 		$current = get_option( 'splm_fee_source', 'none' );
-		foreach ( array( 'woocommerce' => 'WooCommerce', 'manual' => 'Manual', 'none' => 'None' ) as $v => $l ) {
+		foreach ( array(
+			'woocommerce' => 'WooCommerce',
+			'manual' => 'Manual',
+			'none' => 'None',
+		) as $v => $l ) {
 			echo '<label style="margin-right:15px"><input type="radio" name="splm_fee_source" value="' . esc_attr( $v ) . '" ' . checked( $current, $v, false ) . '/> ' . esc_html( $l ) . '</label>';
 		}
 	}
@@ -192,8 +218,22 @@ class SPLM_Admin {
 	}
 
 	private function render_stat_checkboxes( $name, $selected ) {
-		$perf  = get_posts( array( 'post_type' => 'sp_performance', 'posts_per_page' => -1, 'orderby' => 'menu_order', 'order' => 'ASC' ) );
-		$stats = get_posts( array( 'post_type' => 'sp_statistic', 'posts_per_page' => -1, 'orderby' => 'menu_order', 'order' => 'ASC' ) );
+		$perf  = get_posts(
+			array(
+				'post_type' => 'sp_performance',
+				'posts_per_page' => -1,
+				'orderby' => 'menu_order',
+				'order' => 'ASC',
+			)
+		);
+		$stats = get_posts(
+			array(
+				'post_type' => 'sp_statistic',
+				'posts_per_page' => -1,
+				'orderby' => 'menu_order',
+				'order' => 'ASC',
+			)
+		);
 		$all   = array_merge( $perf, $stats );
 
 		if ( empty( $all ) ) {

@@ -17,11 +17,14 @@ class SPAT_Upload_Validator {
 	const MIME_XLSX = array( 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/zip' );
 
 	public static function validate( $file, $args = array() ) {
-		$args = wp_parse_args( $args, array(
-			'allowed_extensions' => array( 'csv' ),
-			'allowed_mime_types' => self::MIME_CSV,
-			'max_bytes'          => self::DEFAULT_MAX_BYTES,
-		) );
+		$args = wp_parse_args(
+			$args,
+			array(
+				'allowed_extensions' => array( 'csv' ),
+				'allowed_mime_types' => self::MIME_CSV,
+				'max_bytes'          => self::DEFAULT_MAX_BYTES,
+			)
+		);
 
 		if ( ! is_array( $file ) || empty( $file['tmp_name'] ) ) {
 			return new WP_Error( 'spat_no_file', __( 'No file received.', 'sportspress-admin-tools' ) );

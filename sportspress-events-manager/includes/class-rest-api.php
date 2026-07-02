@@ -157,7 +157,6 @@ class SPEM_REST_API {
 				),
 			)
 		);
-
 	}
 
 	/**
@@ -321,10 +320,12 @@ class SPEM_REST_API {
 
 		// Publish the event if it was scheduled/future.
 		if ( 'publish' !== $event->post_status ) {
-			wp_update_post( array(
-				'ID'          => $event_id,
-				'post_status' => 'publish',
-			) );
+			wp_update_post(
+				array(
+					'ID'          => $event_id,
+					'post_status' => 'publish',
+				)
+			);
 		}
 
 		return new WP_REST_Response(
@@ -412,11 +413,15 @@ class SPEM_REST_API {
 			// Stash the change payload on post meta so the cron worker can
 			// recover it; this lets us schedule the cron with a stable args
 			// shape ([event_id]) and dedup back-to-back reschedules cleanly.
-			update_post_meta( $event_id, '_spem_pending_notification', array(
-				'change_type'   => 'rescheduled',
-				'reason'        => $reason,
-				'original_date' => $original_date,
-			) );
+			update_post_meta(
+				$event_id,
+				'_spem_pending_notification',
+				array(
+					'change_type'   => 'rescheduled',
+					'reason'        => $reason,
+					'original_date' => $original_date,
+				)
+			);
 			wp_clear_scheduled_hook( 'spem_send_game_notifications', array( $event_id ) );
 			wp_schedule_single_event(
 				time(),
@@ -457,17 +462,23 @@ class SPEM_REST_API {
 		update_post_meta( $event_id, '_spem_cancelled', '1' );
 		update_post_meta( $event_id, '_spem_change_reason', $reason );
 
-		wp_update_post( array(
-			'ID'          => $event_id,
-			'post_status' => 'draft',
-		) );
+		wp_update_post(
+			array(
+				'ID'          => $event_id,
+				'post_status' => 'draft',
+			)
+		);
 
 		if ( $notify ) {
-			update_post_meta( $event_id, '_spem_pending_notification', array(
-				'change_type'   => 'cancelled',
-				'reason'        => $reason,
-				'original_date' => '',
-			) );
+			update_post_meta(
+				$event_id,
+				'_spem_pending_notification',
+				array(
+					'change_type'   => 'cancelled',
+					'reason'        => $reason,
+					'original_date' => '',
+				)
+			);
 			wp_clear_scheduled_hook( 'spem_send_game_notifications', array( $event_id ) );
 			wp_schedule_single_event(
 				time(),
@@ -550,18 +561,20 @@ class SPEM_REST_API {
 		// Get visible number-format performance columns. Capped — a sane install
 		// has well under a hundred performance variables; the cap just stops an
 		// unbounded query if the sp_performance table is ever polluted.
-		$perf_posts = get_posts( array(
-			'post_type'      => 'sp_performance',
-			'posts_per_page' => 200,
-			'post_status'    => 'publish',
-			'meta_query'     => array(
-				array(
-					'key'     => 'sp_visible',
-					'value'   => '1',
-					'compare' => '=',
+		$perf_posts = get_posts(
+			array(
+				'post_type'      => 'sp_performance',
+				'posts_per_page' => 200,
+				'post_status'    => 'publish',
+				'meta_query'     => array(
+					array(
+						'key'     => 'sp_visible',
+						'value'   => '1',
+						'compare' => '=',
+					),
 				),
-			),
-		) );
+			)
+		);
 		$performances = array();
 		foreach ( $perf_posts as $p ) {
 			$format = get_post_meta( $p->ID, 'sp_format', true );
@@ -580,20 +593,22 @@ class SPEM_REST_API {
 			// mis-linked sp_current_team could match many rows. Prime the post and
 			// meta caches in one pass so the per-player title/sp_number reads below
 			// don't issue N individual queries.
-			$player_ids = get_posts( array(
-				'post_type'      => 'sp_player',
-				'posts_per_page' => 500,
-				'fields'         => 'ids',
-				'no_found_rows'  => true,
-				'meta_query'     => array(
-					array(
-						'key'   => 'sp_current_team',
-						'value' => $team_id,
+			$player_ids = get_posts(
+				array(
+					'post_type'      => 'sp_player',
+					'posts_per_page' => 500,
+					'fields'         => 'ids',
+					'no_found_rows'  => true,
+					'meta_query'     => array(
+						array(
+							'key'   => 'sp_current_team',
+							'value' => $team_id,
+						),
 					),
-				),
-				'orderby'        => 'title',
-				'order'          => 'ASC',
-			) );
+					'orderby'        => 'title',
+					'order'          => 'ASC',
+				)
+			);
 
 			if ( ! empty( $player_ids ) ) {
 				_prime_post_caches( $player_ids, false, true );
@@ -625,10 +640,13 @@ class SPEM_REST_API {
 			);
 		}
 
-		return new WP_REST_Response( array(
-			'performances' => $performances,
-			'teams'        => $teams,
-		), 200 );
+		return new WP_REST_Response(
+			array(
+				'performances' => $performances,
+				'teams'        => $teams,
+			),
+			200
+		);
 	}
 
 	/**
@@ -652,12 +670,14 @@ class SPEM_REST_API {
 		$event_teams = array_map( 'intval', get_post_meta( $event_id, 'sp_team', false ) );
 
 		// Build allowlist of valid performance slugs from published sp_performance posts.
-		$perf_posts = get_posts( array(
-			'post_type'      => 'sp_performance',
-			'posts_per_page' => -1,
-			'post_status'    => 'publish',
-			'fields'         => 'ids',
-		) );
+		$perf_posts = get_posts(
+			array(
+				'post_type'      => 'sp_performance',
+				'posts_per_page' => -1,
+				'post_status'    => 'publish',
+				'fields'         => 'ids',
+			)
+		);
 		// Prime the post cache once so the per-row get_post_field() calls read
 		// from cache instead of issuing one query per performance slug (N+1).
 		if ( ! empty( $perf_posts ) ) {
@@ -768,17 +788,19 @@ class SPEM_REST_API {
 		// league; sites with an unusually large roster base can raise it via the
 		// filter.
 		$max_players = (int) apply_filters( 'spem_rollover_preview_max_players', 5000 );
-		$players     = get_posts( array(
-			'post_type'      => 'sp_player',
-			'posts_per_page' => $max_players,
-			'no_found_rows'  => true,
-			'meta_query'     => array(
-				array(
-					'key'     => 'sp_current_team',
-					'compare' => 'EXISTS',
+		$players     = get_posts(
+			array(
+				'post_type'      => 'sp_player',
+				'posts_per_page' => $max_players,
+				'no_found_rows'  => true,
+				'meta_query'     => array(
+					array(
+						'key'     => 'sp_current_team',
+						'compare' => 'EXISTS',
+					),
 				),
-			),
-		) );
+			)
+		);
 
 		$returning_count = 0;
 		$not_returning   = array(); // team_id => [ 'team' => name, 'players' => [] ]
@@ -838,12 +860,15 @@ class SPEM_REST_API {
 			$total += count( $group['players'] );
 		}
 
-		return new WP_REST_Response( array(
-			'returning_count'     => $returning_count,
-			'not_returning'       => $grouped,
-			'total_not_returning' => $total,
-			'unknown_count'       => $unknown_count,
-		), 200 );
+		return new WP_REST_Response(
+			array(
+				'returning_count'     => $returning_count,
+				'not_returning'       => $grouped,
+				'total_not_returning' => $total,
+				'unknown_count'       => $unknown_count,
+			),
+			200
+		);
 	}
 
 	/**
@@ -925,10 +950,13 @@ class SPEM_REST_API {
 			$processed++;
 		}
 
-		return new WP_REST_Response( array(
-			'success'   => true,
-			'processed' => $processed,
-		), 200 );
+		return new WP_REST_Response(
+			array(
+				'success'   => true,
+				'processed' => $processed,
+			),
+			200
+		);
 	}
 
 	/**
@@ -945,18 +973,20 @@ class SPEM_REST_API {
 			// Resolve players in one query per team. A team roster is bounded,
 			// but a mis-linked sp_current_team could match many rows, so cap it
 			// and fetch IDs only — then read the contact meta directly.
-			$player_ids = get_posts( array(
-				'post_type'      => 'sp_player',
-				'posts_per_page' => 500,
-				'fields'         => 'ids',
-				'no_found_rows'  => true,
-				'meta_query'     => array(
-					array(
-						'key'   => 'sp_current_team',
-						'value' => (int) $team_id,
+			$player_ids = get_posts(
+				array(
+					'post_type'      => 'sp_player',
+					'posts_per_page' => 500,
+					'fields'         => 'ids',
+					'no_found_rows'  => true,
+					'meta_query'     => array(
+						array(
+							'key'   => 'sp_current_team',
+							'value' => (int) $team_id,
+						),
 					),
-				),
-			) );
+				)
+			);
 
 			foreach ( $player_ids as $player_id ) {
 				// Player-tools plugin writes to `spt_email`; player-registration
