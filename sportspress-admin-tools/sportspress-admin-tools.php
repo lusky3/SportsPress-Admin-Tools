@@ -16,13 +16,19 @@ declare(strict_types=1);
 
 // Prevent direct access
 if ( ! defined( 'ABSPATH' ) ) {
-	wp_die();
+	exit;
 }
 
 // Define plugin constants
 define( 'SPAT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPAT_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
 define( 'SPAT_VERSION', '1.0.4' );
+
+// Parent side of the parent/child capability contract (H7). Children declare
+// a required floor and compare against this value so a mismatched parent that
+// still passes the class_exists() gate degrades gracefully instead of fataling
+// on the first call to a class that predates their expectations.
+define( 'SPAT_CONTRACT_VERSION', '1.0.0' );
 
 // Schema version the bundled migrations target. Kept in lockstep with
 // SPAT_VERSION so the plugin header tracks DB iterations; SPAT_Database reads

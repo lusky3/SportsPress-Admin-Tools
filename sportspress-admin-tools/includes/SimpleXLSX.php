@@ -30,17 +30,22 @@ class SimpleXLSX {
 	}
 
 	private function parseFile( $file_path ) {
-		$extension = pathinfo( $file_path, PATHINFO_EXTENSION );
-
-		if ( strtolower( $extension ) === 'csv' ) {
-			return $this->parseCSV( $file_path );
+		// Dispatch on content, not the storage path: callers pass extensionless
+		// upload tmp names (/tmp/phpXXXX), so keying on the file extension would
+		// never match either branch. XLSX files are ZIP containers whose magic
+		// bytes are "PK\x03\x04"; anything else is treated as CSV.
+		$handle = fopen( $file_path, 'rb' );
+		if ( ! $handle ) {
+			return false;
 		}
+		$magic = fread( $handle, 4 );
+		fclose( $handle );
 
-		if ( strtolower( $extension ) === 'xlsx' ) {
+		if ( "PK\x03\x04" === $magic ) {
 			return $this->parseXLSX( $file_path );
 		}
 
-		return false;
+		return $this->parseCSV( $file_path );
 	}
 
 	private function parseXLSX( $file_path ) {
@@ -186,7 +191,10 @@ class SimpleXLSX {
 
 		$this->data = array();
 		$row_count  = 0;
-		while ( ( $row = fgetcsv( $handle ) ) !== false ) {
+		// Pass every argument explicitly. PHP 8.4 deprecates relying on the
+		// default $escape ("\\"); an empty escape also yields RFC-4180 CSV
+		// semantics (doubled quotes, no backslash escaping).
+		while ( ( $row = fgetcsv( $handle, null, ',', '"', '' ) ) !== false ) {
 			$row_count++;
 			if ( $row_count > self::MAX_ROWS ) {
 				fclose( $handle );

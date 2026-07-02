@@ -1,4 +1,4 @@
-<?php
+<?php if ( 'cli' !== PHP_SAPI ) { http_response_code(403); exit; }
 /**
  * Debug Player Registration - Add to functions.php temporarily
  *

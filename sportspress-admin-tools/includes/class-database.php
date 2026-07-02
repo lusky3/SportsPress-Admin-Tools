@@ -7,7 +7,7 @@
 
 // Prevent direct access
 if ( ! defined( 'ABSPATH' ) ) {
-	wp_die();
+	exit;
 }
 
 class SPAT_Database {
@@ -208,7 +208,11 @@ class SPAT_Database {
 					'from_email' => $log['webhook_data']['from_email'] ?? '',
 					'from_name' => $log['webhook_data']['from_name'] ?? '',
 					'amount' => $log['payment_data']['amount'] ?? 0,
-					'reference_number' => $log['payment_data']['reference_number'] ?? '',
+					// Map a missing reference to SQL NULL, not '': the target has a
+					// UNIQUE KEY on reference_number and multiple '' rows would all
+					// collide under INSERT IGNORE (all but the first silently dropped),
+					// whereas MySQL permits any number of NULLs in a UNIQUE index.
+					'reference_number' => $log['payment_data']['reference_number'] ?? null,
 					'match_criteria' => $log['match_criteria'] ?? '',
 					'order_id' => $log['order_id'],
 					'result' => $log['result'],
@@ -273,26 +277,65 @@ class SPAT_Database {
 			return;
 		}
 
+		$failures = 0;
+
 		foreach ( $logs as $log ) {
 			$data = $mapper( $log );
 			if ( empty( $data ) ) {
 				continue;
 			}
 			$columns      = array_keys( $data );
-			$placeholders = implode( ', ', array_fill( 0, count( $data ), '%s' ) );
-			$sql          = $wpdb->prepare(
-				// table + column names are internal; values use placeholders.
-				// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-				"INSERT IGNORE INTO `{$table_name}` (`" . implode( '`, `', $columns ) . "`) VALUES ({$placeholders})",
-				array_values( $data )
-			);
-			if ( false === $wpdb->query( $sql ) && class_exists( 'SPAT_Logger' ) ) {
-				SPAT_Logger::error( 'database', 'migrate_option_to_table insert failed', array( 'table' => $table_name, 'last_error' => $wpdb->last_error ) );
+			$placeholders = array();
+			$values       = array();
+			// Emit a literal NULL for null values (so a UNIQUE key doesn't collapse
+			// them) and a placeholder for everything else.
+			foreach ( $data as $value ) {
+				if ( null === $value ) {
+					$placeholders[] = 'NULL';
+				} else {
+					$placeholders[] = '%s';
+					$values[]       = $value;
+				}
+			}
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table + column names are internal; values use placeholders below.
+			$sql = "INSERT IGNORE INTO `{$table_name}` (`" . implode( '`, `', $columns ) . '`) VALUES (' . implode( ', ', $placeholders ) . ')';
+			if ( ! empty( $values ) ) {
+				// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- placeholders built above.
+				$sql = $wpdb->prepare( $sql, $values );
+			}
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared above.
+			if ( false === $wpdb->query( $sql ) ) {
+				$failures++;
+				if ( class_exists( 'SPAT_Logger' ) ) {
+					SPAT_Logger::error(
+						'database',
+						'migrate_option_to_table insert failed',
+						array(
+							'table'      => $table_name,
+							'last_error' => $wpdb->last_error,
+						)
+					);
+				}
 			}
 		}
 
-		// INSERT IGNORE makes the loop idempotent; always remove the source option.
-		delete_option( $option_name );
+		// Only drop the source option once every row landed. If any insert failed
+		// the option is left in place so a later run can retry — deleting it here
+		// would permanently lose audit history. (The migration is not otherwise
+		// idempotent: the key-less log tables would duplicate rows on re-run, so
+		// the caller gates the whole pass behind the spat_logs_migrated flag.)
+		if ( 0 === $failures ) {
+			delete_option( $option_name );
+		} elseif ( class_exists( 'SPAT_Logger' ) ) {
+			SPAT_Logger::warn(
+				'database',
+				'migrate_option_to_table left source option in place after insert failures',
+				array(
+					'option'   => $option_name,
+					'failures' => $failures,
+				)
+			);
+		}
 	}
 
 	public static function get_etransfer_logs( $limit = 50, $offset = 0 ) {
@@ -332,30 +375,6 @@ class SPAT_Database {
 				$offset
 			)
 		);
-	}
-
-	public static function log_etransfer_activity( $webhook_data, $payment_data, $result, $order_id = null ) {
-		global $wpdb;
-		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
-
-		$insert_result = $wpdb->insert(
-			$table_name,
-			array(
-				'from_email' => sanitize_email( $webhook_data['from']['address'] ?? '' ),
-				'from_name' => sanitize_text_field( $webhook_data['from']['name'] ?? '' ),
-				'amount' => floatval( $payment_data['amount'] ?? 0 ),
-				'reference_number' => sanitize_text_field( $payment_data['reference_number'] ?? '' ),
-				'match_criteria' => sanitize_text_field( $payment_data['match_criteria'] ?? '' ),
-				'order_id' => $order_id,
-				'result' => sanitize_text_field( $result ),
-				'webhook_data' => maybe_serialize( $webhook_data ),
-				'payment_data' => maybe_serialize( $payment_data ),
-			)
-		);
-
-		if ( $insert_result === false && class_exists( 'SPAT_Logger' ) ) {
-			SPAT_Logger::error( 'database', 'log_etransfer_activity insert failed', array( 'last_error' => $wpdb->last_error ) );
-		}
 	}
 
 	public static function log_registration_activity( $order_id, $customer_name, $player_id, $season, $position, $action = 'player_registration', $links_to_order = false ) {

@@ -1,4 +1,4 @@
-<?php
+<?php if ( 'cli' !== PHP_SAPI ) { http_response_code(403); exit; }
 /**
  * DEV-ONLY SCRIPT — never shipped. Excluded from the distributed build via
  * .distignore. This file self-bootstraps WordPress below, so the ABSPATH guard
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-$order_id = 113060;
+$order_id = 123456;
 $order = wc_get_order($order_id);
 
 if (!$order) {
