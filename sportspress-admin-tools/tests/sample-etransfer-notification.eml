@@ -1,9 +1,9 @@
-Return-Path: <010d01981a8f7ee9-11eae47c-f4d5-49ca-8c39-945fdd3ffa63-000000@mail.payments.interac.ca>
+Return-Path: <0000000000000000-00000000-0000-0000-0000-000000000000-000000@mail.payments.interac.ca>
 Date: Thu, 17 Jul 2025 22:44:28 +0000
 From: John Smith <notify@payments.interac.ca>
 Reply-To: John Smith <john.smith@example.com>
 To: JANE DOE <payments@example.com>
-Message-ID: <010d01981a8f7ee9-11eae47c-f4d5-49ca-8c39-945fdd3ffa63-000000@ca-central-1.amazonses.com>
+Message-ID: <0000000000000000-00000000-0000-0000-0000-000000000000-000000@ca-central-1.amazonses.com>
 Subject: Interac e-Transfer: You've received $590.00 from John Smith and it
  has been automatically deposited.
 MIME-Version: 1.0
@@ -22,10 +22,10 @@ Account ending in 1234
 Transfer Details
 
 Message:
-winter 2025 ARL-114490
+winter 2025 ARL-100000
 
 Date: July 17, 2025
-Reference Number: CADzqxQ4
+Reference Number: CADtest01
 Sent From: John Smith
 Amount: $590.00 (CAD)
 

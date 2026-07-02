@@ -1,4 +1,4 @@
-<?php
+<?php if ( 'cli' !== PHP_SAPI ) { http_response_code(403); exit; }
 /**
  * Enable Player Registration module and set up database
  *

@@ -7,7 +7,7 @@
 
 // If uninstall not called from WordPress, exit
 if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
-	wp_die();
+	exit;
 }
 
 // Check if user wants to remove data
