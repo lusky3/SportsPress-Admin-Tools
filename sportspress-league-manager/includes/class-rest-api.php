@@ -453,6 +453,37 @@ class SPLM_REST_API {
 	}
 
 	/**
+	 * Acquire a cross-request mutex, guarding against a parent too old to ship
+	 * SPAT_Lock (M12/H7). When the class is unavailable we cannot lock, so we
+	 * degrade to "acquired" (best-effort) and let the caller proceed rather
+	 * than fatal — matching the class_exists( 'SPAT_Lock' ) guards used by the
+	 * sibling plugins.
+	 *
+	 * @param string $key Lock key.
+	 * @param int    $ttl Time-to-live in seconds.
+	 * @return bool True when the lock is held (or SPAT_Lock is unavailable).
+	 */
+	private function lock_acquire( $key, $ttl ) {
+		if ( ! class_exists( 'SPAT_Lock' ) ) {
+			return true;
+		}
+		return SPAT_Lock::acquire( $key, $ttl );
+	}
+
+	/**
+	 * Release a mutex acquired via lock_acquire(). No-op when SPAT_Lock is
+	 * unavailable (M12/H7).
+	 *
+	 * @param string $key Lock key.
+	 * @return void
+	 */
+	private function lock_release( $key ) {
+		if ( class_exists( 'SPAT_Lock' ) ) {
+			SPAT_Lock::release( $key );
+		}
+	}
+
+	/**
 	 * GET /games — list games for the current season.
 	 */
 	public function get_games( $request ) {
@@ -568,7 +599,7 @@ class SPLM_REST_API {
 		} else {
 			$args = array(
 				'post_type'      => 'sp_table',
-				'posts_per_page' => -1,
+				'posts_per_page' => 5000, // Bounded (read-level endpoint); matches the cap used elsewhere in this file.
 				'post_status'    => 'publish',
 				'fields'         => 'ids',
 			);
@@ -632,7 +663,7 @@ class SPLM_REST_API {
 		if ( $season ) {
 			$events = get_posts( array(
 				'post_type'      => 'sp_event',
-				'posts_per_page' => -1,
+				'posts_per_page' => 5000, // Bounded (read-level endpoint); matches the cap used elsewhere in this file.
 				'post_status'    => array( 'publish', 'future' ),
 				'fields'         => 'ids',
 				'tax_query'      => array(
@@ -657,7 +688,7 @@ class SPLM_REST_API {
 
 			$teams = get_posts( array(
 				'post_type'      => 'sp_team',
-				'posts_per_page' => -1,
+				'posts_per_page' => 5000, // Bounded (read-level endpoint); matches the cap used elsewhere in this file.
 				'post_status'    => 'publish',
 				'post__in'       => array_keys( $team_ids ),
 				'orderby'        => 'title',
@@ -666,7 +697,7 @@ class SPLM_REST_API {
 		} else {
 			$teams = get_posts( array(
 				'post_type'      => 'sp_team',
-				'posts_per_page' => -1,
+				'posts_per_page' => 5000, // Bounded (read-level endpoint); matches the cap used elsewhere in this file.
 				'post_status'    => 'publish',
 				'orderby'        => 'title',
 				'order'          => 'ASC',
@@ -828,7 +859,7 @@ class SPLM_REST_API {
 			// No season: group by sp_current_team using a single IN query.
 			$player_ids = get_posts( array(
 				'post_type'      => 'sp_player',
-				'posts_per_page' => -1,
+				'posts_per_page' => 5000, // Bounded (read-level endpoint); matches the cap used elsewhere in this file.
 				'fields'         => 'ids',
 				'no_found_rows'  => true,
 				'meta_query'     => array(
@@ -848,7 +879,7 @@ class SPLM_REST_API {
 		// the serialized sp_leagues meta (which the per-team helper re-queried).
 		$candidates = get_posts( array(
 			'post_type'      => 'sp_player',
-			'posts_per_page' => -1,
+			'posts_per_page' => 5000, // Bounded (read-level endpoint); matches the cap used elsewhere in this file.
 			'fields'         => 'ids',
 			'no_found_rows'  => true,
 			'tax_query'      => array(
@@ -879,7 +910,7 @@ class SPLM_REST_API {
 		if ( ! $season_id ) {
 			return get_posts( array(
 				'post_type'      => 'sp_player',
-				'posts_per_page' => -1,
+				'posts_per_page' => 5000, // Bounded (read-level endpoint); matches the cap used elsewhere in this file.
 				'meta_query'     => array(
 					array( 'key' => 'sp_current_team', 'value' => $team_id ),
 				),
@@ -889,7 +920,7 @@ class SPLM_REST_API {
 		// Get players tagged with this season, then filter by sp_leagues.
 		$candidates = get_posts( array(
 			'post_type'      => 'sp_player',
-			'posts_per_page' => -1,
+			'posts_per_page' => 5000, // Bounded (read-level endpoint); matches the cap used elsewhere in this file.
 			'tax_query'      => array(
 				array( 'taxonomy' => 'sp_season', 'terms' => $season_id ),
 			),
@@ -935,7 +966,7 @@ class SPLM_REST_API {
 		// Get active teams from this season's events.
 		$events = get_posts( array(
 			'post_type'      => 'sp_event',
-			'posts_per_page' => -1,
+			'posts_per_page' => 5000, // Bounded (read-reachable endpoint); matches the cap used elsewhere in this file.
 			'post_status'    => array( 'publish', 'future' ),
 			'fields'         => 'ids',
 			'tax_query'      => array(
@@ -1434,7 +1465,7 @@ class SPLM_REST_API {
 			// failure in $errors[] and continue so the rest of the batch
 			// can still complete (H1 atomicity fix).
 			$lock_key = "splm_bulk_lock_$list_id";
-			$acquired = SPAT_Lock::acquire( $lock_key, 30 );
+			$acquired = $this->lock_acquire( $lock_key, 30 );
 			if ( ! $acquired ) {
 				$errors[] = sprintf( 'Lock contention for team %s (list %d) — roster not updated', $team_name, $list_id );
 				continue;
@@ -1442,9 +1473,16 @@ class SPLM_REST_API {
 			// Clear any existing sp_player rows so re-runs don't accumulate duplicates (F13).
 			delete_post_meta( $list_id, 'sp_player' );
 			foreach ( $player_ids as $pid ) {
+				// Validate each ID refers to a real sp_player before writing the
+				// roster meta, so a manage-gated caller cannot attach arbitrary
+				// post IDs (or non-player posts) to a roster list.
+				if ( 'sp_player' !== get_post_type( $pid ) ) {
+					$errors[] = sprintf( 'Skipped invalid player ID %d for team %s (not an sp_player)', $pid, $team_name );
+					continue;
+				}
 				add_post_meta( $list_id, 'sp_player', $pid );
 			}
-			SPAT_Lock::release( $lock_key );
+			$this->lock_release( $lock_key );
 		}
 
 		// H1: response includes counts AND per-item errors so callers can
@@ -1627,7 +1665,7 @@ class SPLM_REST_API {
 			// to mirror H1's protection on bulk_process_roster. On lock
 			// failure, record the error and continue (H1 atomicity).
 			$event_lock_key = "splm_bulk_lock_$event_id";
-			$event_acquired = SPAT_Lock::acquire( $event_lock_key, 30 );
+			$event_acquired = $this->lock_acquire( $event_lock_key, 30 );
 			if ( ! $event_acquired ) {
 				$errors[] = sprintf( 'Lock contention for event %d (%s vs %s) — teams not assigned', $event_id, $home_name, $away_name );
 				continue;
@@ -1635,7 +1673,7 @@ class SPLM_REST_API {
 			delete_post_meta( $event_id, 'sp_team' );
 			add_post_meta( $event_id, 'sp_team', $home_id );
 			add_post_meta( $event_id, 'sp_team', $away_id );
-			SPAT_Lock::release( $event_lock_key );
+			$this->lock_release( $event_lock_key );
 
 			if ( $venue ) {
 				$venue_term = term_exists( $venue, 'sp_venue' );
@@ -1908,10 +1946,17 @@ class SPLM_REST_API {
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name validated against static allowlist above
 			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT timestamp, customer_name, action, season FROM `{$reg_table}` ORDER BY id DESC LIMIT %d", $limit ) );
 			foreach ( (array) $rows as $r ) {
+				// M6: customer_name is registrant PII. Only surface it to callers
+				// with the payments capability (same gate as the payment/role
+				// branches below); score-keepers still get the action/season feed
+				// with the name redacted rather than leaking registrant identities.
+				$description = $can_see_sensitive
+					? sprintf( '%s — %s (%s)', $r->customer_name, $r->action, $r->season )
+					: sprintf( '%s (%s)', $r->action, $r->season );
 				$items[] = array(
 					'timestamp'   => $r->timestamp,
 					'type'        => 'registration',
-					'description' => sprintf( '%s — %s (%s)', $r->customer_name, $r->action, $r->season ),
+					'description' => $description,
 				);
 			}
 		}
@@ -2125,7 +2170,7 @@ class SPLM_REST_API {
 		// not have any) to keep the meta canonical (F13). Per-table mutex
 		// mirrors H1's protection on bulk_process_roster.
 		$table_lock_key = "splm_bulk_lock_$table_id";
-		$table_acquired = SPAT_Lock::acquire( $table_lock_key, 30 );
+		$table_acquired = $this->lock_acquire( $table_lock_key, 30 );
 		if ( ! $table_acquired ) {
 			return new WP_Error( 'locked', 'Another save in progress', array( 'status' => 409 ) );
 		}
@@ -2133,7 +2178,7 @@ class SPLM_REST_API {
 		foreach ( $teams as $team ) {
 			add_post_meta( $table_id, 'sp_team', $team->ID );
 		}
-		SPAT_Lock::release( $table_lock_key );
+		$this->lock_release( $table_lock_key );
 		update_post_meta( $table_id, 'sp_columns', array( 'pos', 'name', 'p', 'w', 'd', 'l', 'f', 'a', 'gd', 'pts' ) );
 
 		return new WP_REST_Response( array( 'table_id' => $table_id, 'title' => $title, 'teams' => count( $teams ) ), 200 );
@@ -2359,7 +2404,7 @@ class SPLM_REST_API {
 		// mutex (mirrors create_table's SPAT_Lock) so two concurrent calls for the
 		// same season can't both create duplicate teams/calendars/rosters/tables.
 		$season_lock_key = "splm_season_create_{$league_id}_{$season_term_id}";
-		$season_acquired = SPAT_Lock::acquire( $season_lock_key, 60 );
+		$season_acquired = $this->lock_acquire( $season_lock_key, 60 );
 		if ( ! $season_acquired ) {
 			return new WP_Error( 'locked', 'Another season setup is in progress for this league/season.', array( 'status' => 409 ) );
 		}
@@ -2380,8 +2425,10 @@ class SPLM_REST_API {
 				wp_set_object_terms( $team_id, array( $league_id ), 'sp_league' );
 				// F5: assign the new team to its target division (sp_league child
 				// term), appended so the parent-league term above is preserved.
+				// Validate the division is a real sp_league term before assigning
+				// so a caller cannot attach an arbitrary term ID.
 				$division_id = absint( $new_team_divisions[ $index ] ?? 0 );
-				if ( $division_id ) {
+				if ( $division_id && null !== get_term( $division_id, 'sp_league' ) && ! is_wp_error( get_term( $division_id, 'sp_league' ) ) ) {
 					wp_set_object_terms( $team_id, array( $division_id ), 'sp_league', true );
 				}
 				$teams[] = get_post( $team_id );
@@ -2471,13 +2518,24 @@ class SPLM_REST_API {
 			}
 		}
 
-		// Apply division assignments (append, don't replace).
+		// Apply division assignments (append, don't replace). Validate that the
+		// key is a real sp_team post and the value a real sp_league term before
+		// writing, so this manage-gated endpoint can't be used to relate
+		// arbitrary post/term IDs.
 		foreach ( $division_assignments as $team_id_str => $div_id ) {
 			$team_id = absint( $team_id_str );
 			$div_id  = intval( $div_id );
-			if ( $team_id && $div_id ) {
-				wp_set_object_terms( $team_id, $div_id, 'sp_league', true );
+			if ( ! $team_id || ! $div_id ) {
+				continue;
 			}
+			if ( 'sp_team' !== get_post_type( $team_id ) ) {
+				continue;
+			}
+			$div_term = get_term( $div_id, 'sp_league' );
+			if ( null === $div_term || is_wp_error( $div_term ) ) {
+				continue;
+			}
+			wp_set_object_terms( $team_id, $div_id, 'sp_league', true );
 		}
 
 		// Create standings tables for each active division.
@@ -2529,9 +2587,16 @@ class SPLM_REST_API {
 		}
 
 		// F6: release the per-league+season mutex now the writes are complete.
-		SPAT_Lock::release( $season_lock_key );
+		$this->lock_release( $season_lock_key );
 
-		// Update current season options (SportsPress core + SPEM).
+		// Update current season options.
+		//
+		// Single-writer contract: `sportspress_season` is a SportsPress-core
+		// global option. League Manager's Season Setup is the authoritative
+		// writer of it within this suite — no other module in the plugin family
+		// writes `sportspress_season`, so this update is safe from cross-plugin
+		// write races. (`spem_current_season_id` is the Events Manager mirror,
+		// kept in sync here for convenience.)
 		update_option( 'sportspress_season', $season_term_id );
 		update_option( 'spem_current_season_id', $season_term_id );
 
@@ -2615,7 +2680,7 @@ class SPLM_REST_API {
 
 			$team_ids = get_posts( array(
 				'post_type'      => 'sp_team',
-				'posts_per_page' => -1,
+				'posts_per_page' => 5000, // Bounded (read-level endpoint); matches the cap used elsewhere in this file.
 				'tax_query'      => $tax_query,
 				'fields'         => 'ids',
 			) );
@@ -3087,22 +3152,24 @@ class SPLM_REST_API {
 
 	/**
 	 * Permission: read notes.
+	 *
+	 * Reconciled with the sp_player meta-box / frontend panel so both surfaces
+	 * enforce the identical player-notes trust tier (manage_sportspress). See
+	 * SPLM_Capabilities::can_access_notes() for the rationale.
 	 */
 	public function check_notes_permission() {
-		return current_user_can( 'edit_others_sp_players' ) || current_user_can( 'manage_sportspress' );
+		return SPLM_Capabilities::can_access_notes();
 	}
 
 	/**
 	 * Permission: write notes.
 	 *
-	 * Mirror the manage-level gate (manage_sportspress) used by the rest of
-	 * the dashboard so a manager who can READ notes can also ADD them. The
-	 * read gate (check_notes_permission) allows manage_sportspress /
-	 * edit_others_sp_players; previously requiring manage_options meant a
-	 * SportsPress manager saw the control but got a 403 on submit.
+	 * Same single tier as reading (manage_sportspress) — see
+	 * SPLM_Capabilities::can_access_notes(). Enforced identically here and in
+	 * the meta-box AJAX handlers so a caller cannot pick a lower-capped surface.
 	 */
 	public function check_notes_write_permission() {
-		return SPLM_Capabilities::can_manage();
+		return SPLM_Capabilities::can_access_notes();
 	}
 
 	/**
