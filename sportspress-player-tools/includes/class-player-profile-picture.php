@@ -19,16 +19,15 @@ class SPT_Player_Profile_Picture {
 		add_action( 'woocommerce_account_profile-picture_endpoint', array( $this, 'display_upload_form' ) );
 		add_action( 'init', array( $this, 'handle_upload' ) );
 		add_filter( 'woocommerce_get_query_vars', array( $this, 'add_query_vars' ) );
-
-		// Flush rewrite rules if needed
-		if ( get_option( 'spt_profile_picture_flush_rewrite' ) !== '1' ) {
-			add_action( 'init', array( $this, 'flush_rewrite_rules' ), 999 );
-		}
 	}
 
-	public function flush_rewrite_rules() {
+	/**
+	 * Fix #13: register endpoint + flush during plugin activation only.
+	 * Called from the main plugin file's activation hook.
+	 */
+	public static function activate() {
+		add_rewrite_endpoint( 'profile-picture', EP_ROOT | EP_PAGES );
 		flush_rewrite_rules();
-		update_option( 'spt_profile_picture_flush_rewrite', '1' );
 	}
 
 	public function add_endpoint() {
@@ -115,7 +114,7 @@ class SPT_Player_Profile_Picture {
 			return;
 		}
 
-		if ( ! wp_verify_nonce( $_POST['spt_picture_nonce'], 'spt_upload_profile_picture' ) ) {
+		if ( ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['spt_picture_nonce'] ) ), 'spt_upload_profile_picture' ) ) {
 			return;
 		}
 
@@ -140,32 +139,33 @@ class SPT_Player_Profile_Picture {
 			exit;
 		}
 
-		require_once ABSPATH . 'wp-admin/includes/image.php';
-		require_once ABSPATH . 'wp-admin/includes/file.php';
-		require_once ABSPATH . 'wp-admin/includes/media.php';
+		// Fix #9: do not trust browser-supplied $_FILES['type']. Verify via
+		// getimagesize() (real image bytes) plus wp_check_filetype_and_ext().
+		$allowed_mime_types = array( 'image/jpeg', 'image/png', 'image/gif', 'image/webp' );
 
-		// Server-side image validation before upload
 		$image_info = getimagesize( $_FILES['profile_picture']['tmp_name'] );
-		if ( $image_info === false ) {
+		if ( $image_info === false || ! in_array( $image_info['mime'], $allowed_mime_types, true ) ) {
 			wc_add_notice( __( 'The uploaded file is not a valid image.', 'sportspress-player-tools' ), 'error' );
 			wp_safe_redirect( wc_get_account_endpoint_url( 'profile-picture' ) );
 			exit;
 		}
 
+		$filename       = isset( $_FILES['profile_picture']['name'] ) ? sanitize_file_name( $_FILES['profile_picture']['name'] ) : '';
+		$checked        = wp_check_filetype_and_ext( $_FILES['profile_picture']['tmp_name'], $filename );
+		$resolved_mime  = ! empty( $checked['type'] ) ? $checked['type'] : '';
+		if ( ! $resolved_mime || ! in_array( $resolved_mime, $allowed_mime_types, true ) ) {
+			wc_add_notice( __( 'Invalid file type. Only JPG, PNG, GIF, and WebP images are allowed.', 'sportspress-player-tools' ), 'error' );
+			wp_safe_redirect( wc_get_account_endpoint_url( 'profile-picture' ) );
+			exit;
+		}
+
+		require_once ABSPATH . 'wp-admin/includes/image.php';
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		require_once ABSPATH . 'wp-admin/includes/media.php';
+
 		$attachment_id = media_handle_upload( 'profile_picture', $player_id );
 
 		if ( ! is_wp_error( $attachment_id ) ) {
-			$allowed_image_types = array( 'jpg', 'jpeg', 'png', 'gif', 'webp' );
-			$attached_file = get_attached_file( $attachment_id );
-			$filetype = wp_check_filetype( basename( $attached_file ) );
-
-			if ( empty( $filetype['ext'] ) || ! in_array( strtolower( $filetype['ext'] ), $allowed_image_types, true ) ) {
-				wp_delete_attachment( $attachment_id, true );
-				wc_add_notice( __( 'Invalid file type. Only JPG, PNG, GIF, and WebP images are allowed.', 'sportspress-player-tools' ), 'error' );
-				wp_safe_redirect( wc_get_account_endpoint_url( 'profile-picture' ) );
-				exit;
-			}
-
 			set_post_thumbnail( $player_id, $attachment_id );
 			wp_safe_redirect( wc_get_account_endpoint_url( 'profile-picture' ) );
 			exit;

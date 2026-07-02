@@ -14,6 +14,15 @@ on:
   schedule:
     - cron: "0 0 * * 0" # Run weekly on Sundays (full scan regardless of paths)
 
+# Least-privilege default token: this workflow only needs to read the repo.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   snyk-code:
     runs-on: ubuntu-latest
@@ -21,10 +30,45 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v6
 
-      - name: Run Snyk Code (SAST) to check for vulnerabilities
-        uses: snyk/actions@v1.0.0
+      # snyk/actions is a monorepo; the root SHA is not a runnable action.
+      # snyk/actions/node@<sha> is the right shape for both SAST (code test)
+      # and SCA (test). We use a single language entry point and switch
+      # behavior via the `command` arg.
+      - name: Run Snyk Code (SAST)
+        uses: snyk/actions/node@9adf32b1121593767fc3c057af55b55db032dc04 # v1.0.0
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
           command: code test
           args: --severity-threshold=high
+
+      - name: Run Snyk SCA against the league-manager npm tree
+        uses: snyk/actions/node@9adf32b1121593767fc3c057af55b55db032dc04 # v1.0.0
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          command: test
+          args: --severity-threshold=high --file=sportspress-league-manager/package.json
+
+  npm-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # `--omit=dev` is required because @wordpress/scripts transitively
+      # depends on dev-only tools (markdownlint-cli, webpack-dev-server,
+      # copy-webpack-plugin) that ship with HIGH-severity advisories. We
+      # don't ship those to production. The advisories are tracked via
+      # dependabot's npm ecosystem entry, which will surface bumps as
+      # they're released upstream.
+      - name: Install dependencies and audit (production only)
+        working-directory: sportspress-league-manager
+        run: |
+          npm ci
+          npm audit --omit=dev --audit-level=high

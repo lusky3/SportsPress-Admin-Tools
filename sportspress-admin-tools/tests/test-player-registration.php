@@ -1,4 +1,4 @@
-<?php
+<?php if ( 'cli' !== PHP_SAPI ) { http_response_code(403); exit; }
 /**
  * Test script for Player Registration module
  *

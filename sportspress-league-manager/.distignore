@@ -1,0 +1,39 @@
+# Files and directories excluded from the distributed plugin build.
+# Mirrors the WordPress.org SVN "dotorg" exclusion model: anything listed
+# here is stripped before packaging so it never ships to production.
+#
+# IMPORTANT: build/ is the compiled React dashboard bundle and MUST ship — it
+# is intentionally NOT excluded. src/ (the un-built React sources) is excluded.
+
+# Dev tooling / VCS
+/.git
+/.github
+.gitignore
+.gitattributes
+.distignore
+.editorconfig
+.amazonq
+
+# Tests, fixtures, and debug scripts (never shipped)
+/tests
+
+# React sources (compiled output in /build ships instead)
+/src
+
+# Build / dependency tooling
+/node_modules
+composer.json
+composer.lock
+package.json
+package-lock.json
+phpcs.xml
+phpunit.xml
+phpunit.xml.dist
+
+# Docs that don't belong in the distributed package
+/docs
+AGENTS.md
+ARCHITECTURE.md
+
+# Dev-only asset readmes
+assets/README*

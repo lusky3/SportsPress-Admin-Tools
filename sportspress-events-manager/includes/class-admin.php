@@ -141,15 +141,29 @@ class SPEM_Admin {
 			return;
 		}
 
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
 		check_admin_referer( 'spem_admin_actions', 'spem_admin_nonce' );
 
-		if ( isset( $_POST['save_settings'], $_POST['spem_admin_nonce'] ) ) {
-			check_admin_referer( 'spem_admin_actions', 'spem_admin_nonce' );
+		if ( isset( $_POST['save_settings'] ) ) {
 			update_option( 'spem_auto_calendar_creation', isset( $_POST['spem_auto_calendar_creation'] ) ? '1' : '0' );
-			update_option( 'spem_calendar_type', sanitize_text_field( $_POST['spem_calendar_type'] ) );
-			update_option( 'spem_naming_prefix', sanitize_text_field( $_POST['spem_naming_prefix'] ) );
-			update_option( 'spem_naming_suffix', sanitize_text_field( $_POST['spem_naming_suffix'] ) );
-			update_option( 'spem_naming_separator', sanitize_text_field( $_POST['spem_naming_separator'] ) );
+
+			// Constrain the calendar type to the values the <select> actually
+			// offers rather than persisting whatever arrived in the POST body.
+			$calendar_type = isset( $_POST['spem_calendar_type'] )
+				? sanitize_text_field( wp_unslash( $_POST['spem_calendar_type'] ) )
+				: 'list';
+			$allowed_calendar_types = array( 'calendar', 'list', 'blocks' );
+			if ( ! in_array( $calendar_type, $allowed_calendar_types, true ) ) {
+				$calendar_type = 'list';
+			}
+			update_option( 'spem_calendar_type', $calendar_type );
+
+			update_option( 'spem_naming_prefix', isset( $_POST['spem_naming_prefix'] ) ? sanitize_text_field( wp_unslash( $_POST['spem_naming_prefix'] ) ) : '' );
+			update_option( 'spem_naming_suffix', isset( $_POST['spem_naming_suffix'] ) ? sanitize_text_field( wp_unslash( $_POST['spem_naming_suffix'] ) ) : '' );
+			update_option( 'spem_naming_separator', isset( $_POST['spem_naming_separator'] ) ? sanitize_text_field( wp_unslash( $_POST['spem_naming_separator'] ) ) : '|' );
 			update_option( 'spem_include_team_name', isset( $_POST['spem_include_team_name'] ) ? '1' : '0' );
 			update_option( 'spem_include_division', isset( $_POST['spem_include_division'] ) ? '1' : '0' );
 			echo '<div class="notice notice-success"><p>' . esc_html__( 'Settings saved.', 'sportspress-events-manager' ) . '</p></div>';
@@ -180,6 +194,14 @@ class SPEM_Admin {
 	 * Display the event import form and handle import submissions.
 	 */
 	private function display_import_form() {
+		// Guard the import POST handler itself — handle_post_actions runs the
+		// nonce flow for the other forms, but the import form is rendered
+		// regardless of whether settings were just saved, so the cap check
+		// needs to live here too.
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
 		if ( isset( $_POST['import_events'] ) && isset( $_FILES['event_file'] ) ) {
 			check_admin_referer( 'spem_admin_actions', 'spem_admin_nonce' );
 			$events_manager = new SPEM_Events_Management();
@@ -188,7 +210,49 @@ class SPEM_Admin {
 			if ( is_wp_error( $result ) ) {
 				echo '<div class="notice notice-error"><p>' . esc_html( $result->get_error_message() ) . '</p></div>';
 			} else {
-				echo '<div class="notice notice-success"><p>' . sprintf( esc_html__( 'Successfully imported %d events.', 'sportspress-events-manager' ), intval( $result ) ) . '</p></div>';
+				$imported = isset( $result['imported'] ) ? (int) $result['imported'] : 0;
+				$errors   = isset( $result['errors'] ) && is_array( $result['errors'] ) ? $result['errors'] : array();
+				$warnings = isset( $result['warnings'] ) && is_array( $result['warnings'] ) ? $result['warnings'] : array();
+
+				echo '<div class="notice notice-success"><p>' . sprintf( esc_html__( 'Successfully imported %d events.', 'sportspress-events-manager' ), $imported ) . '</p></div>';
+
+				if ( ! empty( $warnings ) ) {
+					echo '<div class="notice notice-warning"><p>' . sprintf(
+						esc_html__( '%d row(s) imported with warnings:', 'sportspress-events-manager' ),
+						count( $warnings )
+					) . '</p><ul>';
+					foreach ( $warnings as $row_index => $message ) {
+						printf(
+							'<li>%s</li>',
+							sprintf(
+								/* translators: 1: spreadsheet row number (1-based, header excluded), 2: warning message */
+								esc_html__( 'Row %1$d: %2$s', 'sportspress-events-manager' ),
+								(int) $row_index + 1,
+								esc_html( $message )
+							)
+						);
+					}
+					echo '</ul></div>';
+				}
+
+				if ( ! empty( $errors ) ) {
+					echo '<div class="notice notice-warning"><p>' . sprintf(
+						esc_html__( '%d row(s) failed to import:', 'sportspress-events-manager' ),
+						count( $errors )
+					) . '</p><ul>';
+					foreach ( $errors as $row_index => $message ) {
+						printf(
+							'<li>%s</li>',
+							sprintf(
+								/* translators: 1: spreadsheet row number (1-based, header excluded), 2: error message */
+								esc_html__( 'Row %1$d: %2$s', 'sportspress-events-manager' ),
+								(int) $row_index + 1,
+								esc_html( $message )
+							)
+						);
+					}
+					echo '</ul></div>';
+				}
 			}
 		}
 

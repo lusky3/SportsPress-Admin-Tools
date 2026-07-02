@@ -32,15 +32,12 @@ class SPLM_Autoloader {
 		$base = SPLM_PLUGIN_PATH . 'includes/';
 
 		self::$class_map = array(
-			'SPLM_Admin'             => $base . 'class-admin.php',
-			'SPLM_Admin_Ajax'        => $base . 'class-admin-ajax.php',
-			'SPLM_Admin_Renderer'    => $base . 'class-admin-renderer.php',
-			'SPLM_SportsPress_Data'  => $base . 'class-sportspress-data.php',
-			'SPLM_Error_Handler'     => $base . 'class-error-handler.php',
-			'SPLM_Health_Checker'    => $base . 'class-health-checker.php',
-			'SPLM_Help_Provider'     => $base . 'class-help-provider.php',
-			'SPLM_Player_Notes'      => $base . 'class-player-notes.php',
+			'SPLM_Admin'                 => $base . 'class-admin.php',
+			'SPLM_Capabilities'          => $base . 'class-capabilities.php',
+			'SPLM_Player_Notes'          => $base . 'class-player-notes.php',
 			'SPLM_Player_Notes_Database' => $base . 'class-player-notes-database.php',
+			'SPLM_REST_API'              => $base . 'class-rest-api.php',
+			'SPLM_Dashboard_Frontend'    => $base . 'class-dashboard-frontend.php',
 		);
 	}
 }

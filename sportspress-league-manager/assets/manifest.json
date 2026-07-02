@@ -1,0 +1,9 @@
+{
+	"name": "League Manager Dashboard",
+	"short_name": "League Mgr",
+	"start_url": "/league-dashboard/",
+	"display": "standalone",
+	"background_color": "#1e293b",
+	"theme_color": "#2563eb",
+	"icons": []
+}

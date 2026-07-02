@@ -88,7 +88,9 @@ class SPSG_Schedule_Generator {
 
 		// Extend execution time for schedule generation.
 		$max_time = absint( get_option( 'spsg_max_generation_time', 300 ) );
-		set_time_limit( $max_time );
+		if ( function_exists( 'set_time_limit' ) ) {
+			@set_time_limit( $max_time );
+		}
 
 		// Load current configuration
 		$config = $this->config_manager->get_current();
@@ -146,7 +148,7 @@ class SPSG_Schedule_Generator {
 		}
 
 		// Store generated schedule and stats in transients
-		$schedule_id = uniqid( 'schedule_' );
+		$schedule_id = 'schedule_' . bin2hex( random_bytes( 8 ) );
 		$user_id = get_current_user_id();
 		set_transient( 'spsg_schedule_' . $schedule_id, $result['schedule'], HOUR_IN_SECONDS );
 		set_transient( 'spsg_schedule_stats_' . $schedule_id, $stats, HOUR_IN_SECONDS );

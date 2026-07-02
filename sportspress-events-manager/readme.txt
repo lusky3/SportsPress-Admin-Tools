@@ -2,13 +2,13 @@
 Contributors: lusky3
 Tags: sportspress, events, calendar, import, season
 Requires at least: 5.0
-Tested up to: 6.9
-Requires PHP: 7.4
+Tested up to: 6.8
+Requires PHP: 8.1
 Stable tag: 1.0.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Calendar management, bulk event import, league table generation, and season rollover tools for SportsPress. Requires SportsPress Admin Tools parent plugin.
+Calendar management, bulk event import, dynamic standings, and season rollover tools for SportsPress. Requires SportsPress Admin Tools parent plugin.
 
 == Description ==
 
@@ -16,7 +16,7 @@ SportsPress Events Manager adds event and season management tools to SportsPress
 
 * **Auto-Create Calendars** - Automatically creates a calendar when a new team is saved, with configurable naming (prefix, suffix, separator, division).
 * **Bulk Event Import** - Upload XLSX or CSV files to create SportsPress events. Flexible column matching, auto-creates missing teams/venues/leagues.
-* **League Table Generator** - Create league tables with teams pre-populated from league and season filters via an AJAX modal.
+* **League Table Generator** *(coming soon)* - Create league tables with teams pre-populated from league and season filters. Not yet available; the module is a placeholder pending a future release.
 * **Season Rollover Wizard** - Guided workflow to transition teams between seasons. Creates new season, assigns teams, optionally creates calendars and rosters, archives old events.
 * **Dynamic Standings** - Frontend shortcode (`[arl_standings]`) with AJAX-powered season and type filtering for league tables.
 * **Calendar Tools** - Bulk create missing calendars and reset all calendars to the current season.
@@ -27,7 +27,7 @@ SportsPress Events Manager adds event and season management tools to SportsPress
 2. Upload the plugin folder to `/wp-content/plugins/`.
 3. Activate the plugin through the WordPress admin.
 4. Go to Settings → SportsPress Admin Tools.
-5. Enable desired modules: Events Management, League Table Generator, Season Rollover.
+5. Enable desired modules: Events Management, Season Rollover, Dynamic Standings.
 
 == Frequently Asked Questions ==
 
@@ -49,6 +49,7 @@ No. The rollover creates new season terms and updates team assignments. Preview 
 * Initial release
 * Auto-create calendars for new teams with configurable naming
 * Bulk XLSX/CSV event import with flexible column matching
-* League table generator with AJAX modal
 * Season rollover wizard with preview, calendar/roster creation, and event archiving
+* Dynamic standings shortcode ([arl_standings]) with season/type filtering
 * Calendar reset and missing calendar creation tools
+* League Table Generator module scaffolding (placeholder; feature not yet available)

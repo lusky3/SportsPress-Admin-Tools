@@ -217,7 +217,7 @@ class SPSG_Error_Handler {
 	 * @param array    $context Additional context
 	 */
 	public static function log_error( $error, $context = array() ) {
-		if ( ! get_option( 'spsg_enable_debug_logging', false ) ) {
+		if ( ! get_option( 'spsg_enable_debug_logging', '0' ) ) {
 			return;
 		}
 

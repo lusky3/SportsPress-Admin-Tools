@@ -20,12 +20,12 @@ jobs:
           for dir in sportspress-*; do
             if [ -d "$dir" ]; then
               echo "Packaging $dir..."
-              zip -r "dist/${dir}.zip" "$dir" -x "*/tests/*" "*/.git*" "*/composer.*" "*/node_modules/*" "*/assets/README*"
+              zip -r "dist/${dir}.zip" "$dir" -x "*/tests/*" "*/.git*" "*/composer.*" "*/node_modules/*" "*/assets/README*" "*/docs/*" "*/assets/wrangler.toml"
             fi
           done
 
       - name: Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
         with:
           files: dist/*.zip
           generate_release_notes: true

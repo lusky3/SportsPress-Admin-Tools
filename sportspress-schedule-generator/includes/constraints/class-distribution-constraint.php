@@ -102,9 +102,11 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 
 		$cost = 0.0;
 
-		// Prevent clustering of early or late games
-		$slot_cost_home = $this->calculate_time_slot_clustering_cost( $game->time_slot, $home_team_slots, $config, $game->date );
-		$slot_cost_away = $this->calculate_time_slot_clustering_cost( $game->time_slot, $away_team_slots, $config, $game->date );
+		// Prevent clustering of early or late games. Pass the venue so the
+		// available-slot count is resolved cascade-aware.
+		$venue_id = isset( $game->venue_id ) ? $game->venue_id : ( isset( $game->venue ) ? SPSG_Schedule_Helper::extract_id( $game->venue ) : 0 );
+		$slot_cost_home = $this->calculate_time_slot_clustering_cost( $game->time_slot, $home_team_slots, $config, $game->date, $venue_id );
+		$slot_cost_away = $this->calculate_time_slot_clustering_cost( $game->time_slot, $away_team_slots, $config, $game->date, $venue_id );
 
 		$cost += $slot_cost_home + $slot_cost_away;
 
@@ -171,8 +173,26 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 	 * Calculate cost for team's day distribution
 	 */
 	private function calculate_team_day_cost( $game_day, $current_distribution, $target_ratios ) {
+		// Guard against missing day in $target_ratios (e.g. when distribution_rules
+		// don't include every playing day) — without this, PHP raises an undefined-index
+		// notice and the cost calculation poisons the soft-constraint sum.
+		$ratio = $target_ratios[ $game_day ] ?? 0;
+		if ( 0 === $ratio ) {
+			// Surface the misconfiguration so operators can fix their
+			// distribution_rules; otherwise this silently zeros the cost for
+			// any day not listed in the ratios map.
+			if ( class_exists( 'SPAT_Logger' ) ) {
+				SPAT_Logger::warn(
+					'distribution',
+					'game day not in playing_days',
+					array( 'game_day' => $game_day )
+				);
+			}
+			return 0.0;
+		}
+
 		$total_games = array_sum( $current_distribution ) + 1; // +1 for the new game
-		$target_games_for_day = $total_games * $target_ratios[ $game_day ];
+		$target_games_for_day = $total_games * $ratio;
 		$current_games_for_day = isset( $current_distribution[ $game_day ] ) ? $current_distribution[ $game_day ] + 1 : 1;
 
 		// Calculate deviation from target
@@ -185,14 +205,16 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 	/**
 	 * Calculate cost for time slot clustering
 	 */
-	private function calculate_time_slot_clustering_cost( $time_slot, $current_slots, $config, $date ) {
+	private function calculate_time_slot_clustering_cost( $time_slot, $current_slots, $config, $date, $venue_id = 0 ) {
 		$total_slots = array_sum( $current_slots ) + 1; // +1 for new game
 		$current_for_slot = isset( $current_slots[ $time_slot ] ) ? $current_slots[ $time_slot ] + 1 : 1;
 
-		// Get all available time slots for the day
+		// Get all available time slots for the day, resolved cascade-aware so
+		// per-venue / per-date overrides are honored.
 		$game_date = new DateTime( $date );
 		$day = strtolower( $game_date->format( 'l' ) );
-		$available_slots = isset( $config->time_slots[ $day ] ) ? count( $config->time_slots[ $day ] ) : 1;
+		$day_time_slots = SPSG_Schedule_Helper::resolve_venue_slots( $venue_id, $date, $day, $config );
+		$available_slots = ! empty( $day_time_slots ) ? count( $day_time_slots ) : 1;
 
 		$ideal_per_slot = $total_slots / $available_slots;
 		$deviation = abs( $current_for_slot - $ideal_per_slot );

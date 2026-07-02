@@ -7,8 +7,8 @@
  * Text Domain: sportspress-player-tools
  * License: GPL v2 or later
  * Requires at least: 5.0
- * Tested up to: 6.4
- * Requires PHP: 7.4
+ * Tested up to: 6.9
+ * Requires PHP: 8.1
  * Depends: SportsPress Admin Tools
  */
 
@@ -38,12 +38,22 @@ class SportsPress_Player_Tools {
 	/** @var SPT_Player_Skill_Level|null */
 	private $player_skill_level;
 
+	/** @var SPPT_REST_API|null */
+	private $rest_api;
+
 	/** @var SPT_Admin|null */
 	private $admin;
 
 	public function __construct() {
 		register_activation_hook( __FILE__, array( $this, 'check_activation_requirements' ) );
+		register_activation_hook( __FILE__, array( $this, 'activate' ) );
+		register_deactivation_hook( __FILE__, array( $this, 'deactivate' ) );
 		add_action( 'init', array( $this, 'init' ), 1 );
+	}
+
+	public function deactivate() {
+		wp_clear_scheduled_hook( 'spt_cleanup_old_temp_data' );
+		flush_rewrite_rules();
 	}
 
 	public function check_activation_requirements() {
@@ -53,8 +63,34 @@ class SportsPress_Player_Tools {
 		}
 	}
 
+	/**
+	 * Fix #13: rewrite endpoint registration + flush belongs in activation,
+	 * not on every `init`.
+	 */
+	public function activate() {
+		require_once SPT_PLUGIN_PATH . 'includes/class-player-profile-picture.php';
+		SPT_Player_Profile_Picture::activate();
+	}
+
 	public function init() {
 		if ( ! $this->check_parent_plugin() ) {
+			return;
+		}
+
+		// H7: enforce the parent-child contract version floor. class_exists() alone
+		// passes against an older parent that predates the SPAT_* helper classes this
+		// child calls; the first such call would fatal. Require a declared contract
+		// version and degrade with an admin notice otherwise.
+		if ( ! defined( 'SPAT_CONTRACT_VERSION' ) || version_compare( SPAT_CONTRACT_VERSION, '1.0.0', '<' ) ) {
+			add_action( 'admin_notices', array( $this, 'parent_version_notice' ) );
+			return;
+		}
+
+		// Hard dependency: SportsPress core provides the sp_player/sp_team/sp_position
+		// post types and taxonomies this plugin operates on. Bail with a notice when
+		// it is unavailable rather than manipulating post types that do not exist.
+		if ( ! class_exists( 'SportsPress' ) ) {
+			add_action( 'admin_notices', array( $this, 'sportspress_missing_notice' ) );
 			return;
 		}
 
@@ -63,7 +99,7 @@ class SportsPress_Player_Tools {
 			'player_modifications',
 			array(
 				'name' => 'Player Modifications',
-				'description' => 'Email meta, captain selection, squad number editing',
+				'description' => 'Email meta and captain selection',
 				'parent_module' => 'player_modifications',
 				'version' => SPT_VERSION,
 				'file' => __FILE__,
@@ -121,28 +157,35 @@ class SportsPress_Player_Tools {
 	private function load_enabled_modules() {
 		$enabled_modules = get_option( 'spat_enabled_modules', array() );
 
-		$this->debug_log( 'Enabled modules: ' . print_r( $enabled_modules, true ) );
+		// Load REST API only when at least one relevant module is enabled.
+		$rest_relevant = array( 'player_modifications', 'player_stats_enabler', 'batch_list_creator', 'player_skill_level' );
+		if ( array_intersect( $rest_relevant, $enabled_modules ) ) {
+			require_once SPT_PLUGIN_PATH . 'includes/class-rest-api.php';
+			$this->rest_api = new SPPT_REST_API();
+		}
 
-		if ( in_array( 'player_modifications', $enabled_modules ) ) {
+		// PT-11: pass strict=true to in_array() to match class-admin.php:64 and
+		// avoid loose-comparison surprises.
+		if ( in_array( 'player_modifications', $enabled_modules, true ) ) {
 			$this->load_player_modifications( $enabled_modules );
 		}
 
-		if ( in_array( 'player_stats_enabler', $enabled_modules ) ) {
+		if ( in_array( 'player_stats_enabler', $enabled_modules, true ) ) {
 			require_once SPT_PLUGIN_PATH . 'includes/class-player-stats-enabler.php';
 			$this->player_stats_enabler = new SPT_Player_Stats_Enabler();
 		}
 
-		if ( in_array( 'batch_list_creator', $enabled_modules ) ) {
+		if ( in_array( 'batch_list_creator', $enabled_modules, true ) ) {
 			require_once SPT_PLUGIN_PATH . SPT_BATCH_LIST_CREATOR_FILE;
 			$this->batch_list_creator = new SPT_Batch_List_Creator();
 		}
 
-		if ( in_array( 'player_skill_level', $enabled_modules ) ) {
+		if ( in_array( 'player_skill_level', $enabled_modules, true ) ) {
 			require_once SPT_PLUGIN_PATH . 'includes/class-player-skill-level.php';
 			$this->player_skill_level = new SPT_Player_Skill_Level();
 		}
 
-		if ( is_admin() && ( in_array( 'player_modifications', $enabled_modules ) || in_array( 'player_stats_enabler', $enabled_modules ) || in_array( 'batch_list_creator', $enabled_modules ) || in_array( 'player_skill_level', $enabled_modules ) ) ) {
+		if ( is_admin() && ( in_array( 'player_modifications', $enabled_modules, true ) || in_array( 'player_stats_enabler', $enabled_modules, true ) || in_array( 'batch_list_creator', $enabled_modules, true ) || in_array( 'player_skill_level', $enabled_modules, true ) ) ) {
 			require_once SPT_PLUGIN_PATH . 'includes/class-admin.php';
 			$this->admin = new SPT_Admin();
 
@@ -155,11 +198,8 @@ class SportsPress_Player_Tools {
 		require_once SPT_PLUGIN_PATH . 'includes/class-player-modifications.php';
 		$this->player_modifications = new SPT_Player_Modifications();
 
-		$has_profile_pic = in_array( 'player_profile_picture', $enabled_modules );
+		$has_profile_pic = in_array( 'player_profile_picture', $enabled_modules, true ); // PT-11: strict.
 		$has_woo = class_exists( 'WooCommerce' );
-
-		$this->debug_log( 'player_profile_picture in modules: ' . ( $has_profile_pic ? 'yes' : 'no' ) );
-		$this->debug_log( 'WooCommerce exists: ' . ( $has_woo ? 'yes' : 'no' ) );
 
 		if ( $has_profile_pic && $has_woo ) {
 			require_once SPT_PLUGIN_PATH . 'includes/class-player-profile-picture.php';
@@ -167,11 +207,6 @@ class SportsPress_Player_Tools {
 		}
 	}
 
-	private function debug_log( $message ) {
-		if ( get_option( 'spat_debug_verbose_logging', '0' ) === '1' ) {
-			error_log( 'SPT: ' . $message );
-		}
-	}
 
 	private function check_parent_plugin() {
 		if ( ! class_exists( 'SPAT_Plugin_Manager' ) ) {
@@ -183,7 +218,19 @@ class SportsPress_Player_Tools {
 
 	public function parent_plugin_missing_notice() {
 		echo '<div class="notice notice-error"><p>';
-		echo 'SportsPress Player Tools requires SportsPress Admin Tools to be installed and activated.';
+		echo esc_html__( 'SportsPress Player Tools requires SportsPress Admin Tools to be installed and activated.', 'sportspress-player-tools' );
+		echo '</p></div>';
+	}
+
+	public function parent_version_notice() {
+		echo '<div class="notice notice-error"><p>';
+		echo esc_html__( 'SportsPress Player Tools requires a newer version of SportsPress Admin Tools. Please update the parent plugin.', 'sportspress-player-tools' );
+		echo '</p></div>';
+	}
+
+	public function sportspress_missing_notice() {
+		echo '<div class="notice notice-error"><p>';
+		echo esc_html__( 'SportsPress Player Tools requires the SportsPress plugin to be installed and activated.', 'sportspress-player-tools' );
 		echo '</p></div>';
 	}
 }

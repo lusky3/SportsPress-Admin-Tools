@@ -26,7 +26,9 @@ class SPEM_Season_Rollover {
 	 * Enqueue inline JS for the rollover wizard on the SPAT admin page.
 	 */
 	public function enqueue_scripts( $hook ) {
-		if ( strpos( $hook, 'spat' ) === false && strpos( $hook, 'sportspress' ) === false ) {
+		// Only load the rollover wizard JS on the SPAT settings page. Loose
+		// substring matches previously fired on unrelated SportsPress screens.
+		if ( 'settings_page_sportspress-admin-tools' !== $hook ) {
 			return;
 		}
 
@@ -71,34 +73,95 @@ jQuery(document).ready(function($) {
         });
     });
 
+    // Hard cap on continuation chunks. archive_old_events processes 500 events
+    // per call, so the default of 50 iterations covers 25,000 events — well past
+    // any realistic league size. Prevents runaway recursion on a malformed server
+    // response. Override via the `spem_max_archive_chunks` filter if a site
+    // genuinely needs more.
+    var MAX_ARCHIVE_CHUNKS = " . (int) apply_filters( 'spem_max_archive_chunks', 50 ) . ";
+
+    function executeRollover(params) {
+        return $.post(ajaxurl, $.extend({
+            action: 'spem_season_rollover_execute',
+            _ajax_nonce: $('#spem_rollover_nonce').val()
+        }, params));
+    }
+
+    // The first call does the full rollover (season/teams/calendars/rosters)
+    // plus the first archive chunk. Subsequent calls re-run the whole rollover
+    // handler, but the team/calendar/roster steps are idempotent (they check
+    // for existing records) and the archive step filters out events already
+    // stamped with _spem_archived, so only fresh events get processed.
+    function archiveLoop(baseParams, firstResponse, \$btn) {
+        var totalArchived = firstResponse.events_archived || 0;
+        var chunks = 1;
+
+        function step(prevRes) {
+            if (prevRes.archive_done !== false) {
+                finish(prevRes);
+                return;
+            }
+            if (chunks >= MAX_ARCHIVE_CHUNKS) {
+                \$result.html('<div class=\"notice notice-warning\"><p>Archive stopped after ' + totalArchived + ' events (chunk cap reached). Re-run rollover to continue archiving remaining events.</p></div>');
+                \$btn.prop('disabled', false);
+                return;
+            }
+            \$result.html('<p>Archiving events: ' + totalArchived + ' archived so far…</p>');
+            chunks++;
+            executeRollover(baseParams).done(function(response) {
+                if (!response.success) {
+                    \$result.html('<div class=\"notice notice-error\"><p>' + $('<span>').text(response.data).html() + '</p></div>');
+                    \$btn.prop('disabled', false);
+                    return;
+                }
+                totalArchived += (response.data.events_archived || 0);
+                step(response.data);
+            }).fail(function() {
+                \$result.html('<div class=\"notice notice-error\"><p>Archive request failed after ' + totalArchived + ' events archived.</p></div>');
+                \$btn.prop('disabled', false);
+            });
+        }
+
+        function finish(finalRes) {
+            var d = finalRes;
+            var html = '<div class=\"notice notice-success\"><p>Season rollover complete.</p><ul>';
+            html += '<li>Season created: ' + $('<span>').text(d.season_name).html() + '</li>';
+            html += '<li>Teams updated: ' + d.teams_updated + '</li>';
+            if (d.calendars_created > 0) html += '<li>Calendars created: ' + d.calendars_created + '</li>';
+            if (d.rosters_created > 0) html += '<li>Rosters created: ' + d.rosters_created + '</li>';
+            if (totalArchived > 0) html += '<li>Events archived: ' + totalArchived + '</li>';
+            html += '</ul></div>';
+            \$result.html(html);
+            \$btn.prop('disabled', false);
+        }
+
+        step(firstResponse);
+    }
+
     $('#spem-rollover-execute-btn').on('click', function() {
         if (!confirm('Execute season rollover? This cannot be undone.')) return;
         var \$btn = $(this);
         \$btn.prop('disabled', true);
         \$result.html('<p>Processing...</p>');
-        $.post(ajaxurl, {
-            action: 'spem_season_rollover_execute',
-            _ajax_nonce: $('#spem_rollover_nonce').val(),
+
+        var baseParams = {
             league: $('#spem-rollover-league').val(),
             season_name: $('#spem-rollover-season').val(),
             create_calendars: $('#spem-rollover-calendars').is(':checked') ? 1 : 0,
             create_rosters: $('#spem-rollover-rosters').is(':checked') ? 1 : 0,
             archive_old: $('#spem-rollover-archive').is(':checked') ? 1 : 0
-        }, function(response) {
-            \$btn.prop('disabled', false);
-            if (response.success) {
-                var d = response.data;
-                var html = '<div class=\"notice notice-success\"><p>Season rollover complete.</p><ul>';
-                html += '<li>Season created: ' + $('<span>').text(d.season_name).html() + '</li>';
-                html += '<li>Teams updated: ' + d.teams_updated + '</li>';
-                if (d.calendars_created > 0) html += '<li>Calendars created: ' + d.calendars_created + '</li>';
-                if (d.rosters_created > 0) html += '<li>Rosters created: ' + d.rosters_created + '</li>';
-                if (d.events_archived > 0) html += '<li>Events archived: ' + d.events_archived + '</li>';
-                html += '</ul></div>';
-                \$result.html(html);
-            } else {
+        };
+
+        executeRollover(baseParams).done(function(response) {
+            if (!response.success) {
                 \$result.html('<div class=\"notice notice-error\"><p>' + $('<span>').text(response.data).html() + '</p></div>');
+                \$btn.prop('disabled', false);
+                return;
             }
+            archiveLoop(baseParams, response.data, \$btn);
+        }).fail(function() {
+            \$result.html('<div class=\"notice notice-error\"><p>Rollover request failed.</p></div>');
+            \$btn.prop('disabled', false);
         });
     });
 });
@@ -185,10 +248,14 @@ jQuery(document).ready(function($) {
 		}
 
 		$league_id   = isset( $_POST['league'] ) ? absint( $_POST['league'] ) : 0;
-		$season_name = isset( $_POST['season_name'] ) ? sanitize_text_field( wp_unslash( $_POST['season_name'] ) ) : '';
+		$season_name = isset( $_POST['season_name'] ) ? trim( sanitize_text_field( wp_unslash( $_POST['season_name'] ) ) ) : '';
 
 		if ( ! $league_id || empty( $season_name ) ) {
 			wp_send_json_error( __( 'League and season name are required.', 'sportspress-events-manager' ) );
+		}
+
+		if ( ! $this->is_valid_season_name( $season_name ) ) {
+			wp_send_json_error( $this->season_name_error_message() );
 		}
 
 		$teams = $this->get_league_teams( $league_id );
@@ -223,13 +290,17 @@ jQuery(document).ready(function($) {
 		}
 
 		$league_id        = isset( $_POST['league'] ) ? absint( $_POST['league'] ) : 0;
-		$season_name      = isset( $_POST['season_name'] ) ? sanitize_text_field( wp_unslash( $_POST['season_name'] ) ) : '';
+		$season_name      = isset( $_POST['season_name'] ) ? trim( sanitize_text_field( wp_unslash( $_POST['season_name'] ) ) ) : '';
 		$create_calendars = ! empty( $_POST['create_calendars'] );
 		$create_rosters   = ! empty( $_POST['create_rosters'] );
 		$archive_old      = ! empty( $_POST['archive_old'] );
 
 		if ( ! $league_id || empty( $season_name ) ) {
 			wp_send_json_error( __( 'League and season name are required.', 'sportspress-events-manager' ) );
+		}
+
+		if ( ! $this->is_valid_season_name( $season_name ) ) {
+			wp_send_json_error( $this->season_name_error_message() );
 		}
 
 		// 1. Create new season term
@@ -262,45 +333,120 @@ jQuery(document).ready(function($) {
 
 			// 3. Optionally create calendar
 			if ( $create_calendars ) {
-				$cal_title = $team->post_title . ' — ' . $season_name;
-				$cal_id = wp_insert_post(
+				// Idempotency: skip if calendar already exists for this
+				// team+season. Avoid serialize() in meta_query — narrow with
+				// a LIKE on the serialized fragment, then do a PHP-side team
+				// check to defend against false positives.
+				$season_cal_ids = get_posts(
 					array(
-						'post_type'   => 'sp_calendar',
-						'post_title'  => $cal_title,
-						'post_status' => 'publish',
+						'post_type'      => 'sp_calendar',
+						'post_status'    => 'any',
+						'posts_per_page' => -1,
+						'fields'         => 'ids',
+						'tax_query'      => array(
+							array(
+								'taxonomy' => 'sp_season',
+								'field'    => 'term_id',
+								'terms'    => $season_term_id,
+							),
+						),
+						'meta_query'     => array(
+							array(
+								'key'     => 'sp_team',
+								'value'   => sprintf( 'i:%d;', (int) $team->ID ),
+								'compare' => 'LIKE',
+							),
+						),
 					)
 				);
-				if ( $cal_id && ! is_wp_error( $cal_id ) ) {
-					update_post_meta( $cal_id, 'sp_team', array( $team->ID ) );
-					wp_set_object_terms( $cal_id, array( $season_term_id ), 'sp_season' );
-					wp_set_object_terms( $cal_id, array( $league_id ), 'sp_league' );
-					update_post_meta( $cal_id, 'sp_format', get_option( 'spem_calendar_type', 'list' ) );
-					$calendars_created++;
+
+				$existing_cal = array();
+				if ( ! empty( $season_cal_ids ) ) {
+					update_meta_cache( 'post', $season_cal_ids );
+					foreach ( $season_cal_ids as $cal_id ) {
+						$cal_teams = (array) get_post_meta( $cal_id, 'sp_team', true );
+						if ( in_array( (int) $team->ID, array_map( 'intval', $cal_teams ), true ) ) {
+							$existing_cal[] = $cal_id;
+							break;
+						}
+					}
+				}
+
+				if ( empty( $existing_cal ) ) {
+					$cal_title = $team->post_title . ' — ' . $season_name;
+					$cal_id = wp_insert_post(
+						array(
+							'post_type'   => 'sp_calendar',
+							'post_title'  => $cal_title,
+							'post_status' => 'publish',
+						)
+					);
+					if ( $cal_id && ! is_wp_error( $cal_id ) ) {
+						update_post_meta( $cal_id, 'sp_team', array( $team->ID ) );
+						wp_set_object_terms( $cal_id, array( $season_term_id ), 'sp_season' );
+						wp_set_object_terms( $cal_id, array( $league_id ), 'sp_league' );
+						update_post_meta( $cal_id, 'sp_format', get_option( 'spem_calendar_type', 'list' ) );
+						$calendars_created++;
+					}
 				}
 			}
 
 			// 4. Optionally create empty roster (player list)
 			if ( $create_rosters ) {
-				$list_title = $team->post_title . ' — ' . $season_name . ' Roster';
-				$list_id = wp_insert_post(
+				// Idempotency: skip if a roster already exists for this
+				// team+season. The wizard re-POSTs this whole action once per
+				// 500-event archive chunk, so without this check a >500-event
+				// league would get a duplicate roster set per chunk (H5).
+				// sp_list stores sp_team as a scalar post ID (see below), so a
+				// direct meta value match is exact — no serialized LIKE needed.
+				$existing_list_ids = get_posts(
 					array(
-						'post_type'   => 'sp_list',
-						'post_title'  => $list_title,
-						'post_status' => 'publish',
+						'post_type'      => 'sp_list',
+						'post_status'    => 'any',
+						'posts_per_page' => 1,
+						'fields'         => 'ids',
+						'tax_query'      => array(
+							array(
+								'taxonomy' => 'sp_season',
+								'field'    => 'term_id',
+								'terms'    => $season_term_id,
+							),
+						),
+						'meta_query'     => array(
+							array(
+								'key'   => 'sp_team',
+								'value' => (int) $team->ID,
+							),
+						),
 					)
 				);
-				if ( $list_id && ! is_wp_error( $list_id ) ) {
-					update_post_meta( $list_id, 'sp_team', $team->ID );
-					wp_set_object_terms( $list_id, array( $season_term_id ), 'sp_season' );
-					wp_set_object_terms( $list_id, array( $league_id ), 'sp_league' );
-					$rosters_created++;
+
+				if ( empty( $existing_list_ids ) ) {
+					$list_title = $team->post_title . ' — ' . $season_name . ' Roster';
+					$list_id = wp_insert_post(
+						array(
+							'post_type'   => 'sp_list',
+							'post_title'  => $list_title,
+							'post_status' => 'publish',
+						)
+					);
+					if ( $list_id && ! is_wp_error( $list_id ) ) {
+						update_post_meta( $list_id, 'sp_team', $team->ID );
+						wp_set_object_terms( $list_id, array( $season_term_id ), 'sp_season' );
+						wp_set_object_terms( $list_id, array( $league_id ), 'sp_league' );
+						$rosters_created++;
+					}
 				}
 			}
 		}
 
-		// 5. Optionally archive old season events
+		// 5. Optionally archive old season events. Capped per call — the UI
+		// re-invokes the archive step until `archive_done` returns true.
+		$archive_done = true;
 		if ( $archive_old ) {
-			$events_archived = $this->archive_old_events( $league_id, $season_term_id );
+			$archive_result   = $this->archive_old_events( $league_id, $season_term_id );
+			$events_archived  = $archive_result['count'];
+			$archive_done     = $archive_result['done'];
 		}
 
 		// 6. Update the default season for the dynamic standings shortcode.
@@ -313,6 +459,7 @@ jQuery(document).ready(function($) {
 				'calendars_created' => $calendars_created,
 				'rosters_created'   => $rosters_created,
 				'events_archived'   => $events_archived,
+				'archive_done'      => $archive_done,
 			)
 		);
 	}
@@ -342,18 +489,28 @@ jQuery(document).ready(function($) {
 
 	/**
 	 * Archive events in a league that do NOT belong to the new season.
-	 * Sets their post status to 'past' (a SportsPress convention for completed events).
+	 *
+	 * Marks them with the `_spem_archived` meta flag rather than the
+	 * unregistered 'past' post_status, which WordPress doesn't honor in
+	 * queries and which previously hid events from the editor.
+	 *
+	 * Capped at 500 events per call so a 5000-event league doesn't blow the
+	 * AJAX request's max_execution_time / memory_limit. The query filters out
+	 * already-archived events so callers can re-invoke (offset 0) until
+	 * `done` is true.
 	 *
 	 * @param int $league_id      League term ID.
 	 * @param int $new_season_id  The newly created season term ID to exclude.
-	 * @return int Number of events archived.
+	 * @return array { count: int, done: bool, next_offset: int }
 	 */
 	private function archive_old_events( $league_id, $new_season_id ) {
+		$chunk_size = 500;
+
 		$events = get_posts(
 			array(
 				'post_type'      => 'sp_event',
 				'post_status'    => 'publish',
-				'posts_per_page' => -1,
+				'posts_per_page' => $chunk_size,
 				'fields'         => 'ids',
 				'tax_query'      => array(
 					'relation' => 'AND',
@@ -369,20 +526,88 @@ jQuery(document).ready(function($) {
 						'operator' => 'NOT IN',
 					),
 				),
+				// Filter out events we already stamped; that lets callers
+				// re-invoke at offset 0 until the query goes empty.
+				'meta_query'     => array(
+					array(
+						'key'     => '_spem_archived',
+						'compare' => 'NOT EXISTS',
+					),
+				),
 			)
 		);
 
 		$count = 0;
 		foreach ( $events as $event_id ) {
-			wp_update_post(
-				array(
-					'ID'          => $event_id,
-					'post_status' => 'past',
-				)
-			);
+			update_post_meta( $event_id, '_spem_archived', 1 );
 			$count++;
 		}
 
-		return $count;
+		// Done when fewer rows came back than the cap — there's nothing left
+		// to stamp on a follow-up call.
+		$done = $count < $chunk_size;
+
+		return array(
+			'count'       => $count,
+			'done'        => $done,
+			'next_offset' => $done ? 0 : $count,
+		);
+	}
+
+	/**
+	 * Validate a season name string. Allowed forms:
+	 *   W2025, W2025-26, S2025, S2025-26, W2025 Playoffs, W2025-26 Playoffs
+	 *
+	 * @param string $name Candidate season name.
+	 * @return bool
+	 */
+	private function is_valid_season_name( $name ) {
+		return (bool) preg_match( '/^[A-Za-z]\d{4}(-\d{2})?( Playoffs)?$/', $name );
+	}
+
+	/**
+	 * Localized error message describing the accepted season-name format.
+	 *
+	 * @return string
+	 */
+	private function season_name_error_message() {
+		return __( 'Invalid season name. Examples: W2025, W2025-26, S2025-26 Playoffs.', 'sportspress-events-manager' );
+	}
+
+	/**
+	 * One-time migration: convert legacy post_status='past' sp_event posts to
+	 * the new `_spem_archived` meta flag and republish them so they appear in
+	 * queries and the editor again.
+	 *
+	 * Safe to run repeatedly — it's a no-op once no past-status events remain.
+	 */
+	public static function migrate_past_status_to_meta_flag() {
+		// Direct $wpdb is required because 'past' is not a registered status
+		// and get_posts() refuses to return it.
+		global $wpdb;
+
+		$ids = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT ID FROM {$wpdb->posts} WHERE post_type = %s AND post_status = %s",
+				'sp_event',
+				'past'
+			)
+		);
+
+		if ( empty( $ids ) ) {
+			return 0;
+		}
+
+		foreach ( $ids as $event_id ) {
+			update_post_meta( (int) $event_id, '_spem_archived', 1 );
+			wp_update_post(
+				array(
+					'ID'          => (int) $event_id,
+					'post_status' => 'publish',
+				)
+			);
+		}
+
+		return count( $ids );
 	}
 }

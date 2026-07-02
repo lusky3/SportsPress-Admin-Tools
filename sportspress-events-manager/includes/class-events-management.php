@@ -13,6 +13,22 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPEM_Events_Management {
 
+	/** Maximum data rows allowed in a single import. */
+	const SPEM_MAX_IMPORT_ROWS = 1000;
+
+	/**
+	 * Number of placeholder sp_player meta rows to seed on event creation.
+	 * SportsPress expects two placeholder rows per side so that the player
+	 * performance UI renders correctly for the home and away teams.
+	 */
+	const SP_PLACEHOLDER_PLAYER_ROWS = 2;
+
+	/**
+	 * Number of placeholder sp_staff meta rows to seed on event creation.
+	 * Matches SportsPress's two-row convention for coaching staff entries.
+	 */
+	const SP_PLACEHOLDER_STAFF_ROWS = 2;
+
 	/**
 	 * Track whether the auto-create hook has been registered to prevent duplicates.
 	 *
@@ -28,6 +44,12 @@ class SPEM_Events_Management {
 
 	/** @var array Instance-level cache for leagues keyed by name. */
 	private $league_cache = array();
+
+	/** @var array Normalized-name → team ID lookup map (built per import). */
+	private $team_name_map = array();
+
+	/** @var array Existing-event lookup: home|away|date => event_id (built per import). */
+	private $existing_event_map = array();
 
 	/** @var array|null Cached performance keys. */
 	private $cached_performance_keys = null;
@@ -91,23 +113,36 @@ class SPEM_Events_Management {
 	 * @param int $team_id The team post ID.
 	 */
 	public function auto_create_calendar( $team_id ) {
-		// Check if calendar already exists for this team
-		$existing_calendars = get_posts(
+		$team_id = (int) $team_id;
+
+		// Check if calendar already exists for this team. Avoid serialize() in
+		// meta_query (brittle/blocked on some hosts) — narrow with a LIKE on
+		// the serialized fragment, then verify with a PHP-side membership
+		// check to defend against false positives.
+		$candidate_ids = get_posts(
 			array(
-				'post_type'  => 'sp_calendar',
-				'meta_query' => array(
+				'post_type'      => 'sp_calendar',
+				'post_status'    => 'any',
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'meta_query'     => array(
 					array(
 						'key'     => 'sp_team',
-						'value'   => serialize( array( $team_id ) ),
-						'compare' => '=',
+						'value'   => sprintf( 'i:%d;', $team_id ),
+						'compare' => 'LIKE',
 					),
 				),
-				'posts_per_page' => 1,
 			)
 		);
 
-		if ( ! empty( $existing_calendars ) ) {
-			return;
+		if ( ! empty( $candidate_ids ) ) {
+			update_meta_cache( 'post', $candidate_ids );
+			foreach ( $candidate_ids as $cal_id ) {
+				$cal_teams = (array) get_post_meta( $cal_id, 'sp_team', true );
+				if ( in_array( $team_id, array_map( 'intval', $cal_teams ), true ) ) {
+					return;
+				}
+			}
 		}
 
 		$calendar_title = $this->build_calendar_title( $team_id );
@@ -278,8 +313,17 @@ class SPEM_Events_Management {
 			return new WP_Error( 'permission_denied', __( 'You do not have permission to import events.', 'sportspress-events-manager' ) );
 		}
 
+		if ( ! is_array( $file ) || ! isset( $file['error'], $file['tmp_name'], $file['size'] ) ) {
+			return new WP_Error( 'upload_error', __( 'File upload failed.', 'sportspress-events-manager' ) );
+		}
+
 		if ( $file['error'] !== UPLOAD_ERR_OK ) {
 			return new WP_Error( 'upload_error', __( 'File upload failed.', 'sportspress-events-manager' ) );
+		}
+
+		// Reject anything that didn't actually arrive via HTTP upload.
+		if ( ! is_uploaded_file( $file['tmp_name'] ) ) {
+			return new WP_Error( 'upload_error', __( 'Invalid upload.', 'sportspress-events-manager' ) );
 		}
 
 		// Limit file size to 5MB
@@ -288,26 +332,252 @@ class SPEM_Events_Management {
 			return new WP_Error( 'file_too_large', __( 'File exceeds the 5MB size limit.', 'sportspress-events-manager' ) );
 		}
 
-		$file_path = $file['tmp_name'];
+		$file_path     = $file['tmp_name'];
 		$original_name = isset( $file['name'] ) ? $file['name'] : '';
-		$events_data = $this->parse_file( $file_path, $original_name );
+		$reported_type = isset( $file['type'] ) ? strtolower( (string) $file['type'] ) : '';
 
-		if ( is_wp_error( $events_data ) ) {
-			return $events_data;
+		// Validate MIME/extension via WordPress, restricted to our two formats.
+		$allowed_mimes = array(
+			'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+			'csv'  => 'text/csv',
+		);
+		$check = wp_check_filetype_and_ext( $file_path, $original_name, $allowed_mimes );
+		if ( empty( $check['ext'] ) || empty( $check['type'] ) ) {
+			return new WP_Error( 'invalid_file_type', __( 'Invalid file type. Only XLSX and CSV files are allowed.', 'sportspress-events-manager' ) );
 		}
 
-		if ( empty( $events_data ) ) {
-			return new WP_Error( 'parse_error', __( 'No valid event data found in file.', 'sportspress-events-manager' ) );
+		// Cross-check the browser-reported MIME against the allowed list as a
+		// belt-and-suspenders measure. Browsers send a few well-known
+		// alternatives for CSV/XLSX, so accept those too.
+		//
+		// Tradeoff note on `text/plain`: most real-world .csv uploads come back
+		// as `text/plain` from both browsers and finfo, so removing it would
+		// reject legitimate CSV imports. We accept it here, but the upstream
+		// wp_check_filetype_and_ext() call already validated the file as a
+		// CSV/XLSX by content+extension before we got here, so a `text/plain`
+		// payload that isn't actually CSV would have been rejected above.
+		// We also reject empty types outright — finfo should always return
+		// something for a real upload, and "" smells like a malformed request.
+		$allowed_reported = array(
+			'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+			'application/vnd.ms-excel',
+			'text/csv',
+			'application/csv',
+			'application/vnd.ms-excel.sheet.binary.macroenabled.12',
+			'text/plain',
+		);
+		if ( '' === $reported_type || ! in_array( $reported_type, $allowed_reported, true ) ) {
+			return new WP_Error( 'invalid_file_type', __( 'Invalid file type. Only XLSX and CSV files are allowed.', 'sportspress-events-manager' ) );
 		}
 
-		$imported = 0;
-		foreach ( $events_data as $event_data ) {
-			if ( $this->create_event( $event_data ) ) {
-				$imported++;
+		// Serialize the whole import behind a cross-request mutex so two
+		// concurrent uploads can't duplicate teams/events or lose-update the
+		// sp_results/sp_players meta merges (M11). Guarded by class_exists so
+		// the plugin still degrades gracefully under an older parent that
+		// predates SPAT_Lock.
+		$lock_key       = 'spem_import_events';
+		$lock_available = class_exists( 'SPAT_Lock' );
+		if ( $lock_available && ! SPAT_Lock::acquire( $lock_key, 60 ) ) {
+			return new WP_Error(
+				'import_locked',
+				__( 'Another import is already running. Please wait for it to finish and try again.', 'sportspress-events-manager' )
+			);
+		}
+
+		try {
+			$events_data = $this->parse_file( $file_path, $original_name );
+
+			if ( is_wp_error( $events_data ) ) {
+				return $events_data;
+			}
+
+			if ( empty( $events_data ) ) {
+				return new WP_Error( 'parse_error', __( 'No valid event data found in file.', 'sportspress-events-manager' ) );
+			}
+
+			// Prefetch existing events covering the date range of the import so
+			// duplicate detection inside create_event() is O(1) instead of O(N²).
+			$this->build_existing_event_map( $events_data );
+			// Build a normalized team-name → ID map once so find_or_create_team()
+			// can short-circuit lookups without re-querying per row.
+			$this->build_team_name_map( $events_data );
+
+			$imported = 0;
+			$errors   = array();
+			$warnings = array();
+			foreach ( $events_data as $i => $event_data ) {
+				$row_warnings = array();
+				$result       = $this->create_event( $event_data, $row_warnings );
+				if ( is_wp_error( $result ) ) {
+					$errors[ $i ] = $result->get_error_message();
+				} elseif ( $result ) {
+					$imported++;
+				}
+				if ( ! empty( $row_warnings ) ) {
+					$warnings[ $i ] = implode( ' ', $row_warnings );
+				}
+			}
+
+			return array(
+				'imported' => $imported,
+				'errors'   => $errors,
+				'warnings' => $warnings,
+			);
+		} finally {
+			if ( $lock_available ) {
+				SPAT_Lock::release( $lock_key );
+			}
+		}
+	}
+
+	/**
+	 * Build a lookup of existing sp_event posts covering the date range of
+	 * the import. Keyed by "home_id|away_id|YYYY-MM-DD".
+	 *
+	 * @param array $events_data Parsed import rows.
+	 */
+	private function build_existing_event_map( $events_data ) {
+		$this->existing_event_map = array();
+
+		$dates = array();
+		foreach ( $events_data as $row ) {
+			$ts = isset( $row['date'] ) ? strtotime( $row['date'] ) : false;
+			if ( false !== $ts ) {
+				// WordPress forces the PHP timezone to UTC, so strtotime() parses
+				// the wall-clock cell as a UTC instant. Format it back with
+				// gmdate() (also UTC) to keep the same wall-clock date. Using
+				// wp_date() here would re-render in the site timezone and shift
+				// the day on any non-UTC install (H3).
+				$dates[] = gmdate( 'Y-m-d', $ts );
 			}
 		}
 
-		return $imported;
+		if ( empty( $dates ) ) {
+			return;
+		}
+
+		$min = min( $dates );
+		$max = max( $dates );
+
+		// Fetch all sp_event posts in the range; build the map in PHP.
+		$existing_ids = get_posts(
+			array(
+				'post_type'      => 'sp_event',
+				'post_status'    => array( 'publish', 'future' ),
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'date_query'     => array(
+					array(
+						'after'     => $min . ' 00:00:00',
+						'before'    => $max . ' 23:59:59',
+						'inclusive' => true,
+					),
+				),
+			)
+		);
+
+		if ( empty( $existing_ids ) ) {
+			return;
+		}
+
+		update_meta_cache( 'post', $existing_ids );
+
+		foreach ( $existing_ids as $eid ) {
+			$teams = array_map( 'intval', (array) get_post_meta( $eid, 'sp_team', false ) );
+			if ( count( $teams ) < 2 ) {
+				continue;
+			}
+			$post  = get_post( $eid );
+			// gmdate() keeps the stored wall-clock date; wp_date() would shift
+			// it in the site timezone and break duplicate matching (H3).
+			$date  = $post ? gmdate( 'Y-m-d', strtotime( $post->post_date ) ) : '';
+			if ( ! $date ) {
+				continue;
+			}
+			$key = $teams[0] . '|' . $teams[1] . '|' . $date;
+			if ( ! isset( $this->existing_event_map[ $key ] ) ) {
+				$this->existing_event_map[ $key ] = (int) $eid;
+			}
+		}
+	}
+
+	/**
+	 * Build a normalized-name → team ID map covering every team referenced
+	 * by the import. Reuses the existing team_cache so find_or_create_team
+	 * picks up the result on first lookup.
+	 *
+	 * @param array $events_data Parsed import rows.
+	 */
+	private function build_team_name_map( $events_data ) {
+		global $wpdb;
+
+		$this->team_name_map = array();
+
+		// Collect the wanted normalized names AND the raw titles seen in the
+		// import. We query by raw title (cheap IN clause against the post_title
+		// index) and only normalize the few rows that come back, instead of
+		// dragging EVERY sp_team post into PHP just to normalize their titles.
+		$wanted     = array(); // normalized => true
+		$raw_titles = array(); // raw post_title strings seen in the import
+		foreach ( $events_data as $row ) {
+			foreach ( array( 'home_team', 'away_team' ) as $field ) {
+				if ( empty( $row[ $field ] ) ) {
+					continue;
+				}
+				$raw = wp_strip_all_tags( (string) $row[ $field ] );
+				$raw = trim( preg_replace( '/\s+/', ' ', $raw ) );
+				if ( '' === $raw ) {
+					continue;
+				}
+				$raw_titles[ $raw ] = true;
+				$wanted[ $this->normalize_team_name( $raw ) ] = true;
+			}
+		}
+
+		if ( empty( $raw_titles ) ) {
+			return;
+		}
+
+		$titles       = array_keys( $raw_titles );
+		$placeholders = implode( ',', array_fill( 0, count( $titles ), '%s' ) );
+
+		// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- dynamic placeholder count.
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT ID, post_title FROM {$wpdb->posts}
+				WHERE post_type = 'sp_team'
+				AND post_status IN ('publish','draft','pending','private','future')
+				AND post_title IN ({$placeholders})",
+				...$titles
+			)
+		);
+
+		if ( empty( $rows ) ) {
+			return;
+		}
+
+		foreach ( $rows as $r ) {
+			$norm = $this->normalize_team_name( $r->post_title );
+			if ( isset( $wanted[ $norm ] ) && ! isset( $this->team_name_map[ $norm ] ) ) {
+				$this->team_name_map[ $norm ] = (int) $r->ID;
+			}
+		}
+	}
+
+	/**
+	 * Normalize a team name for case/accent-insensitive matching.
+	 *
+	 * @param string $name Raw team name.
+	 * @return string Normalized form.
+	 */
+	private function normalize_team_name( $name ) {
+		$name = wp_strip_all_tags( (string) $name );
+		if ( function_exists( 'remove_accents' ) ) {
+			$name = remove_accents( $name );
+		}
+		$name = strtolower( $name );
+		$name = preg_replace( '/\s+/', ' ', trim( $name ) );
+		return $name;
 	}
 
 	/**
@@ -359,7 +629,10 @@ class SPEM_Events_Management {
 				return new WP_Error( 'file_error', __( 'Could not open uploaded file.', 'sportspress-events-manager' ) );
 			}
 
-			while ( ( $data = fgetcsv( $handle ) ) !== false ) {
+			// Pass explicit separator/enclosure/escape — PHP 8.4 deprecates
+			// relying on the default escape argument. Empty escape disables
+			// backslash escaping, which also avoids surprising cell mangling.
+			while ( ( $data = fgetcsv( $handle, 0, ',', '"', '' ) ) !== false ) {
 				$rows[] = $data;
 			}
 			fclose( $handle );
@@ -367,6 +640,20 @@ class SPEM_Events_Management {
 
 		if ( empty( $rows ) || count( $rows ) < 2 ) {
 			return new WP_Error( 'parse_error', __( 'File contains no data rows.', 'sportspress-events-manager' ) );
+		}
+
+		// Reject oversized imports before we touch the database.
+		$data_rows = count( $rows ) - 1;
+		if ( $data_rows > self::SPEM_MAX_IMPORT_ROWS ) {
+			return new WP_Error(
+				'too_many_rows',
+				sprintf(
+					/* translators: 1: number of data rows in the upload, 2: configured limit */
+					__( 'Too many rows: %1$d (max %2$d). Split the file and try again.', 'sportspress-events-manager' ),
+					$data_rows,
+					self::SPEM_MAX_IMPORT_ROWS
+				)
+			);
 		}
 
 		return $this->map_columns_to_events( $rows );
@@ -428,8 +715,8 @@ class SPEM_Events_Management {
 
 			$event = array(
 				'date'      => $date_val,
-				'home_team' => $this->clean_team_name( $home_val ),
-				'away_team' => $this->clean_team_name( $away_val ),
+				'home_team' => $this->neutralize_formula( $this->clean_team_name( $home_val ) ),
+				'away_team' => $this->neutralize_formula( $this->clean_team_name( $away_val ) ),
 				'time'      => '',
 				'venue'     => '',
 				'league'    => '',
@@ -439,10 +726,10 @@ class SPEM_Events_Management {
 				$event['time'] = sanitize_text_field( $row[ $col_map['time'] ] );
 			}
 			if ( $col_map['venue'] !== false && isset( $row[ $col_map['venue'] ] ) ) {
-				$event['venue'] = sanitize_text_field( $row[ $col_map['venue'] ] );
+				$event['venue'] = $this->neutralize_formula( sanitize_text_field( $row[ $col_map['venue'] ] ) );
 			}
 			if ( $col_map['league'] !== false && isset( $row[ $col_map['league'] ] ) ) {
-				$event['league'] = sanitize_text_field( $row[ $col_map['league'] ] );
+				$event['league'] = $this->neutralize_formula( sanitize_text_field( $row[ $col_map['league'] ] ) );
 			}
 
 			$events[] = $event;
@@ -483,24 +770,63 @@ class SPEM_Events_Management {
 	}
 
 	/**
+	 * Neutralize CSV/spreadsheet formula injection in an imported cell value.
+	 *
+	 * Imported team/venue/league names are persisted as post titles and term
+	 * names. If such a value is later re-exported to CSV/XLSX and opened in a
+	 * spreadsheet, a leading =, +, -, @ (or a leading tab/CR that some apps
+	 * strip before parsing) makes the cell execute as a formula. We defang the
+	 * value at import time by prefixing a single quote, the standard mitigation
+	 * recommended by OWASP. Also strips leading control chars (tab/CR/LF) that
+	 * are used to smuggle a formula trigger past naive filters.
+	 *
+	 * @param string $value Raw imported cell value (already sanitized).
+	 * @return string Neutralized value safe to persist.
+	 */
+	private function neutralize_formula( $value ) {
+		$value = (string) $value;
+		// Drop leading whitespace/control characters used to hide the trigger.
+		$value = preg_replace( '/^[\t\r\n ]+/', '', $value );
+		if ( '' === $value ) {
+			return $value;
+		}
+		if ( in_array( $value[0], array( '=', '+', '-', '@' ), true ) ) {
+			$value = "'" . $value;
+		}
+		return $value;
+	}
+
+	/**
 	 * Create a single SportsPress event from parsed data.
 	 *
 	 * @param array $event_data Event data with date, home_team, away_team, time, venue, league.
-	 * @return bool True on success.
+	 * @param array $warnings   Collected (by reference) non-fatal per-row warnings.
+	 * @return int|WP_Error Event ID on success, WP_Error on failure.
 	 */
-	private function create_event( $event_data ) {
-		// Parse date with validation
+	private function create_event( $event_data, &$warnings = array() ) {
+		// Parse date with validation. WordPress forces PHP's timezone to UTC,
+		// so strtotime() yields a UTC instant for the wall-clock cell; format
+		// it back with gmdate() (also UTC) so the stored date is the exact
+		// wall-clock date from the file. wp_date() would re-render in the site
+		// timezone and shift the day/time on non-UTC installs (H3).
 		$timestamp = strtotime( $event_data['date'] );
 		if ( $timestamp === false ) {
-			return false;
+			return new WP_Error( 'invalid_date', __( 'Invalid date format.', 'sportspress-events-manager' ) );
 		}
-		$date = date( 'Y-m-d', $timestamp );
+		$date = gmdate( 'Y-m-d', $timestamp );
 
 		$time = '19:00';
 		if ( ! empty( $event_data['time'] ) ) {
 			$time_ts = strtotime( $event_data['time'] );
 			if ( $time_ts !== false ) {
-				$time = date( 'H:i', $time_ts );
+				$time = gmdate( 'H:i', $time_ts );
+			} else {
+				// Surface the fallback instead of silently masking a typo.
+				$warnings[] = sprintf(
+					/* translators: %s: the unparseable time cell value from the import */
+					__( 'Could not parse time "%s"; defaulted to 19:00.', 'sportspress-events-manager' ),
+					$event_data['time']
+				);
 			}
 		}
 
@@ -509,37 +835,46 @@ class SPEM_Events_Management {
 		$away_team_id = $this->find_or_create_team( $event_data['away_team'] );
 
 		if ( ! $home_team_id || ! $away_team_id ) {
-			return false;
+			return new WP_Error( 'team_error', __( 'Could not find or create teams.', 'sportspress-events-manager' ) );
 		}
 
 		$event_title = $event_data['home_team'] . ' vs ' . $event_data['away_team'];
 
 		// Check for duplicate event (same date, home team, away team).
-		$existing = get_posts(
-			array(
-				'post_type'   => 'sp_event',
-				'post_status' => array( 'publish', 'future' ),
-				'date_query'  => array(
-					array(
-						'year'  => gmdate( 'Y', strtotime( $date ) ),
-						'month' => gmdate( 'n', strtotime( $date ) ),
-						'day'   => gmdate( 'j', strtotime( $date ) ),
-					),
-				),
-				'meta_query'  => array(
-					array(
-						'key'   => 'sp_team',
-						'value' => $home_team_id,
-					),
-				),
-				'fields'      => 'ids',
-			)
-		);
+		// Use the prebuilt map when available (bulk imports); otherwise fall
+		// back to a single-event query.
+		$dup_key = $home_team_id . '|' . $away_team_id . '|' . $date;
+		if ( isset( $this->existing_event_map[ $dup_key ] ) ) {
+			return (int) $this->existing_event_map[ $dup_key ];
+		}
 
-		foreach ( $existing as $existing_id ) {
-			$teams = get_post_meta( $existing_id, 'sp_team', false );
-			if ( in_array( $away_team_id, array_map( 'intval', $teams ), true ) ) {
-				return $existing_id; // Duplicate — return existing event ID.
+		if ( empty( $this->existing_event_map ) ) {
+			$existing = get_posts(
+				array(
+					'post_type'   => 'sp_event',
+					'post_status' => array( 'publish', 'future' ),
+					'date_query'  => array(
+						array(
+							'year'  => gmdate( 'Y', strtotime( $date ) ),
+							'month' => gmdate( 'n', strtotime( $date ) ),
+							'day'   => gmdate( 'j', strtotime( $date ) ),
+						),
+					),
+					'meta_query'  => array(
+						array(
+							'key'   => 'sp_team',
+							'value' => $home_team_id,
+						),
+					),
+					'fields'      => 'ids',
+				)
+			);
+
+			foreach ( $existing as $existing_id ) {
+				$teams = get_post_meta( $existing_id, 'sp_team', false );
+				if ( in_array( $away_team_id, array_map( 'intval', $teams ), true ) ) {
+					return (int) $existing_id; // Duplicate — return existing event ID.
+				}
 			}
 		}
 
@@ -553,20 +888,24 @@ class SPEM_Events_Management {
 		);
 
 		if ( ! $event_id || is_wp_error( $event_id ) ) {
-			return false;
+			return is_wp_error( $event_id ) ? $event_id : new WP_Error( 'insert_error', __( 'Failed to create event.', 'sportspress-events-manager' ) );
 		}
 
-		// Set permalink
+		// Set permalink to the numeric event ID (intentional: SP events get an
+		// ID-based slug). Cast to string so post_name is the expected type.
 		wp_update_post(
 			array(
 				'ID'        => $event_id,
-				'post_name' => $event_id,
+				'post_name' => (string) $event_id,
 			)
 		);
 
 		// Add teams
 		add_post_meta( $event_id, 'sp_team', $home_team_id );
 		add_post_meta( $event_id, 'sp_team', $away_team_id );
+
+		// Record in the in-import dup map for any siblings still to process.
+		$this->existing_event_map[ $dup_key ] = (int) $event_id;
 
 		// Add venue if provided
 		if ( ! empty( $event_data['venue'] ) ) {
@@ -590,11 +929,15 @@ class SPEM_Events_Management {
 			wp_set_object_terms( $event_id, array( $current_season['term_id'] ), 'sp_season' );
 		}
 
-		// Initialize SportsPress event meta using dynamic performance keys
-		add_post_meta( $event_id, 'sp_player', 0 );
-		add_post_meta( $event_id, 'sp_player', 0 );
-		add_post_meta( $event_id, 'sp_staff', 0 );
-		add_post_meta( $event_id, 'sp_staff', 0 );
+		// Initialize SportsPress event meta using dynamic performance keys.
+		// SportsPress seeds two empty placeholder rows for players/staff so
+		// the event editor renders correctly; we mirror that convention.
+		for ( $i = 0; $i < self::SP_PLACEHOLDER_PLAYER_ROWS; $i++ ) {
+			add_post_meta( $event_id, 'sp_player', 0 );
+		}
+		for ( $i = 0; $i < self::SP_PLACEHOLDER_STAFF_ROWS; $i++ ) {
+			add_post_meta( $event_id, 'sp_staff', 0 );
+		}
 
 		$performance_keys = $this->get_performance_keys();
 		$empty_performance = array_fill_keys( $performance_keys, '' );
@@ -615,7 +958,7 @@ class SPEM_Events_Management {
 		);
 		update_post_meta( $event_id, 'sp_results', $results );
 
-		return true;
+		return (int) $event_id;
 	}
 
 	/**
@@ -694,6 +1037,14 @@ class SPEM_Events_Management {
 			return $this->team_cache[ $team_name ];
 		}
 
+		// Use the prefetched normalized map if available so we don't run a
+		// per-team query during a bulk import.
+		$norm = $this->normalize_team_name( $team_name );
+		if ( '' !== $norm && isset( $this->team_name_map[ $norm ] ) ) {
+			$this->team_cache[ $team_name ] = $this->team_name_map[ $norm ];
+			return $this->team_name_map[ $norm ];
+		}
+
 		$query = new WP_Query(
 			array(
 				'post_type'      => 'sp_team',
@@ -706,6 +1057,9 @@ class SPEM_Events_Management {
 
 		if ( $query->have_posts() ) {
 			$this->team_cache[ $team_name ] = $query->posts[0];
+			if ( '' !== $norm ) {
+				$this->team_name_map[ $norm ] = $query->posts[0];
+			}
 			return $query->posts[0];
 		}
 
@@ -717,11 +1071,20 @@ class SPEM_Events_Management {
 			)
 		);
 
-		if ( $id ) {
+		// wp_insert_post() returns 0 on failure and a WP_Error when
+		// wp_insert_post( …, true ) is used or a hook short-circuits it. A
+		// WP_Error is truthy, so returning it unchecked would (a) get cached
+		// and written into event meta, and (b) blow up create_event()'s
+		// string concat under PHP 8. Normalize any failure to false (M8).
+		if ( $id && ! is_wp_error( $id ) ) {
 			$this->team_cache[ $team_name ] = $id;
+			if ( '' !== $norm ) {
+				$this->team_name_map[ $norm ] = $id;
+			}
+			return $id;
 		}
 
-		return $id;
+		return false;
 	}
 
 	/**

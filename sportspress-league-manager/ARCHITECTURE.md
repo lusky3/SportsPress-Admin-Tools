@@ -149,6 +149,13 @@ class SportsPress_League_Manager {
             'version'       => SPLM_VERSION,
             'file'          => __FILE__,
         ));
+        SPAT_Plugin_Manager::register_plugin('league_player_notes', array(
+            'name'          => 'Player Notes',
+            'description'   => 'Private timestamped notes on player records',
+            'parent_module' => 'league_player_notes',
+            'version'       => SPLM_VERSION,
+            'file'          => __FILE__,
+        ));
 
         // Install capabilities
         SPLM_Capabilities::install_capabilities();
@@ -160,7 +167,7 @@ class SportsPress_League_Manager {
         $enabled = get_option('spat_enabled_modules', array());
         $any_enabled = array_intersect(
             $enabled,
-            array('league_manager_dashboard', 'league_roster_management', 'league_fee_tracking')
+            array('league_manager_dashboard', 'league_roster_management', 'league_fee_tracking', 'league_player_notes')
         );
 
         if (empty($any_enabled)) {
@@ -179,6 +186,16 @@ class SportsPress_League_Manager {
 ## 5. Capability Model
 
 ### Custom Capability: `manage_league`
+
+> **Implementation note (reconciliation):** The `manage_league` custom capability
+> described in this section was *planned* but is **not** implemented in the shipped
+> code. There is no `CAP` const, no activation grant, and no `grant_to_user()`. The
+> **live gate is `manage_sportspress`**: `SPLM_Capabilities::can_manage()` checks
+> `manage_sportspress`, and `can_read()` additionally allows
+> `edit_others_sp_events` / `edit_others_sp_players` / `edit_sp_events`. The code
+> sample below is aspirational design, retained for context — treat
+> `manage_sportspress` as the actual capability wherever this document says
+> `manage_league`.
 
 This is the single gate for all League Manager pages. It does NOT require `manage_options`.
 
@@ -284,6 +301,7 @@ Each feature is a separate module ID registered with `SPAT_Plugin_Manager`. The 
 | `league_manager_dashboard`    | Dashboard & health check       | Top-level page, SP config validation        |
 | `league_roster_management`    | Roster management              | Team/roster submenu, CSV upload AJAX        |
 | `league_fee_tracking`         | Fee tracking                   | Fee lookup submenu, fee search AJAX         |
+| `league_player_notes`         | Player notes                   | Notes meta box, AJAX CRUD, frontend display |
 
 Admins toggle these in **Settings → SportsPress Admin Tools → Modules**. The plugin's `load_enabled_modules()` only instantiates classes for enabled modules — matching the pattern in `sportspress-player-tools.php`.
 
@@ -711,12 +729,12 @@ Admin-only path (manage_options):
 
 ## 16. Security Checklist
 
-- [ ] All admin pages gated by `current_user_can('manage_league')`
-- [ ] All AJAX handlers verify nonce + capability before processing
-- [ ] File uploads validated: MIME type, extension, size limit from `splm_roster_max_upload_kb`
-- [ ] All output escaped with `esc_html()`, `esc_attr()`, `wp_kses_post()`
-- [ ] All input sanitized with `sanitize_text_field()`, `absint()`, etc.
-- [ ] SQL queries use `$wpdb->prepare()` when parameterized
-- [ ] No direct `$_GET`/`$_POST` access without sanitization
-- [ ] Capability removed on deactivation, data removed on uninstall (if opted in)
-- [ ] Debug logging respects `spat_debug_verbose_logging` and `splm_debug_logging` flags
+- [x] All admin pages gated by `current_user_can('manage_league')`
+- [x] All AJAX handlers verify nonce + capability before processing
+- [x] File uploads validated: MIME type, extension, size limit from `splm_roster_max_upload_kb`
+- [x] All output escaped with `esc_html()`, `esc_attr()`, `wp_kses_post()`
+- [x] All input sanitized with `sanitize_text_field()`, `absint()`, etc.
+- [x] SQL queries use `$wpdb->prepare()` when parameterized
+- [x] No direct `$_GET`/`$_POST` access without sanitization
+- [x] Capability removed on deactivation, data removed on uninstall (if opted in)
+- [x] Debug logging respects `spat_debug_verbose_logging` and `splm_debug_logging` flags

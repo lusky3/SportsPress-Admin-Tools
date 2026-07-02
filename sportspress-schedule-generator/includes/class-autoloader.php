@@ -73,6 +73,7 @@ class SPSG_Autoloader {
 			'SPSG_Abstract_Constraint' => $base_path . 'abstract-constraint.php',
 			'SPSG_Error_Handler' => $base_path . 'class-error-handler.php',
 			'SPSG_Statistics_Calculator' => $base_path . 'class-statistics-calculator.php',
+			'SPSG_Schedule_Helper' => $base_path . 'class-schedule-helper.php',
 
 			// Constraint classes
 			'SPSG_Blackout_Constraint' => $base_path . 'constraints/class-blackout-constraint.php',

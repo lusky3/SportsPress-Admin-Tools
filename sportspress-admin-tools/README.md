@@ -36,7 +36,7 @@ plugin architecture.
 
 - **Webhook Processing**: Automatically processes Interac e-Transfer notifications
 - **Multiple Providers**: Supports Generic, deliverhook.com, and Cloudflare Email Routing
-- **Smart Order Matching**: Three-tier matching strategy (Order Number → Email → Name)
+- **Smart Order Matching**: Two-tier matching strategy (Email → Name) with amount validation
 - **Manual Management**: Interface for handling unmatched payments
 - **Notification System**: Menu counter shows pending manual matches
 - **Audit Trail**: Complete logging with hide functionality for invalid records
@@ -83,7 +83,7 @@ plugin architecture.
 - **Roster Manager**: CSV upload with preview for team rosters
 - **Fee Tracker**: WooCommerce integration for registration payment tracking
 - **Player Notes**: Private timestamped notes on player records
-- **Custom Capability**: `manage_league` role for non-admin league managers
+- **Capability gating**: gated by the SportsPress-core `manage_sportspress` capability for non-admin league managers (no custom capability is registered)
 
 ## Installation
 

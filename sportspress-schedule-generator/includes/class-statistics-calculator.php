@@ -9,7 +9,7 @@
 
 // Prevent direct access
 if ( ! defined( 'ABSPATH' ) ) {
-	wp_die();
+	exit;
 }
 
 /**
@@ -21,9 +21,10 @@ class SPSG_Statistics_Calculator {
 	/**
 	 * Calculate comprehensive statistics for a schedule
 	 *
-	 * @param array $schedule Array of SPSG_Game objects
+	 * @param array $schedule Array of SPSG_Game objects (must be objects, not arrays)
 	 * @return array Statistics array
 	 */
+	// Note: iterates the schedule multiple times for different statistics. For large schedules (1000+ games), consider a single-pass approach.
 	public function calculate( $schedule ) {
 		if ( empty( $schedule ) ) {
 			return $this->get_empty_stats();
@@ -300,26 +301,29 @@ class SPSG_Statistics_Calculator {
 
 			foreach ( $stats['venue_utilization'] as $venue_id => $venue_data ) {
 				$variance = abs( $venue_data['games'] - $avg_utilization );
-				$variance_percent = ( $variance / $avg_utilization ) * 100;
 
-				if ( $variance > $threshold ) {
-					$issues[] = array(
-						'type' => 'venue_utilization_imbalance',
-						'severity' => 'info',
-						'message' => sprintf(
-							__( 'Venue utilization imbalance for %1$s: %2$d games (%3$.1f%% variance from average)', 'sportspress-schedule-generator' ),
-							$venue_data['name'],
-							$venue_data['games'],
-							$variance_percent
-						),
-						'details' => array(
-							'venue_id' => $venue_id,
-							'venue_name' => $venue_data['name'],
-							'games' => $venue_data['games'],
-							'average' => round( $avg_utilization, 2 ),
-							'variance_percent' => round( $variance_percent, 2 ),
-						),
-					);
+				if ( $avg_utilization > 0 ) {
+					$variance_percent = ( $variance / $avg_utilization ) * 100;
+
+					if ( $variance > $threshold ) {
+						$issues[] = array(
+							'type' => 'venue_utilization_imbalance',
+							'severity' => 'info',
+							'message' => sprintf(
+								__( 'Venue utilization imbalance for %1$s: %2$d games (%3$.1f%% variance from average)', 'sportspress-schedule-generator' ),
+								$venue_data['name'],
+								$venue_data['games'],
+								$variance_percent
+							),
+							'details' => array(
+								'venue_id' => $venue_id,
+								'venue_name' => $venue_data['name'],
+								'games' => $venue_data['games'],
+								'average' => round( $avg_utilization, 2 ),
+								'variance_percent' => round( $variance_percent, 2 ),
+							),
+						);
+					}
 				}
 			}
 		}
@@ -349,47 +353,5 @@ class SPSG_Statistics_Calculator {
 			'inter_division_games' => 0,
 			'imbalances' => array(),
 		);
-	}
-
-	/**
-	 * Format statistics for display
-	 *
-	 * @param array $stats Statistics array
-	 * @return string Formatted HTML output
-	 */
-	public function format_for_display( $stats ) {
-		if ( empty( $stats ) || $stats['total_games'] === 0 ) {
-			return '<p>' . esc_html__( 'No statistics available.', 'sportspress-schedule-generator' ) . '</p>';
-		}
-
-		$output = '<div class="spsg-statistics">';
-
-		// Summary stats
-		$output .= '<h3>' . esc_html__( 'Summary', 'sportspress-schedule-generator' ) . '</h3>';
-		$output .= '<ul>';
-		$output .= '<li>' . sprintf( __( 'Total Games: %d', 'sportspress-schedule-generator' ), $stats['total_games'] ) . '</li>';
-		$output .= '<li>' . sprintf(
-			__( 'Games per Team: min=%1$d, max=%2$d, avg=%3$.2f', 'sportspress-schedule-generator' ),
-			$stats['games_per_team']['min'],
-			$stats['games_per_team']['max'],
-			$stats['games_per_team']['avg']
-		) . '</li>';
-		$output .= '<li>' . sprintf( __( 'Inter-Division Games: %d', 'sportspress-schedule-generator' ), $stats['inter_division_games'] ) . '</li>';
-		$output .= '</ul>';
-
-		// Imbalances
-		if ( ! empty( $stats['imbalances'] ) ) {
-			$output .= '<h3>' . esc_html__( 'Detected Imbalances', 'sportspress-schedule-generator' ) . '</h3>';
-			$output .= '<ul class="spsg-imbalances">';
-			foreach ( $stats['imbalances'] as $issue ) {
-				$class = 'spsg-imbalance-' . $issue['severity'];
-				$output .= '<li class="' . esc_attr( $class ) . '">' . esc_html( $issue['message'] ) . '</li>';
-			}
-			$output .= '</ul>';
-		}
-
-		$output .= '</div>';
-
-		return $output;
 	}
 }

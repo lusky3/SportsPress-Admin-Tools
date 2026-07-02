@@ -54,11 +54,11 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint {
 	 * Validate back-to-back time slot restrictions
 	 */
 	private function validate_back_to_back_restrictions( $game, $schedule, $config ) {
-		if ( ! isset( $config->team_restrictions['back_to_back_avoidance'] ) ) {
+		if ( ! isset( $config->team_restrictions['back_to_back_avoid'] ) ) {
 			return true;
 		}
 
-		$restrictions = $config->team_restrictions['back_to_back_avoidance'];
+		$restrictions = $config->team_restrictions['back_to_back_avoid'];
 		$game_teams = array( $this->get_team_id( $game->home_team ), $this->get_team_id( $game->away_team ) );
 
 		foreach ( $restrictions as $restriction ) {
@@ -103,11 +103,11 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint {
 	 * Validate overlap restrictions (simultaneous games and buffer time)
 	 */
 	private function validate_overlap_restrictions( $game, $schedule, $config ) {
-		if ( ! isset( $config->team_restrictions['overlap_avoidance'] ) ) {
+		if ( ! isset( $config->team_restrictions['overlap_avoid'] ) ) {
 			return true;
 		}
 
-		$restrictions = $config->team_restrictions['overlap_avoidance'];
+		$restrictions = $config->team_restrictions['overlap_avoid'];
 		$game_teams = array( $this->get_team_id( $game->home_team ), $this->get_team_id( $game->away_team ) );
 
 		foreach ( $restrictions as $restriction ) {
@@ -195,13 +195,15 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint {
 		$game_date = $game->date;
 		$game_time_slot = $game->time_slot;
 
-		// Get time slots for the game day
+		// Get time slots for the game day. Use cascade-aware resolution so the
+		// adjacency check honors per-venue / per-date overrides.
 		$game_day = strtolower( ( new DateTime( $game_date ) )->format( 'l' ) );
-		if ( ! isset( $config->time_slots[ $game_day ] ) ) {
+		$venue_id = isset( $game->venue_id ) ? $game->venue_id : ( isset( $game->venue ) ? SPSG_Schedule_Helper::extract_id( $game->venue ) : 0 );
+		$day_time_slots = SPSG_Schedule_Helper::resolve_venue_slots( $venue_id, $game_date, $game_day, $config );
+		if ( empty( $day_time_slots ) ) {
 			return $violations;
 		}
 
-		$day_time_slots = $config->time_slots[ $game_day ];
 		$current_slot_index = array_search( $game_time_slot, $day_time_slots );
 
 		if ( $current_slot_index === false ) {
@@ -217,19 +219,27 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint {
 			$adjacent_slots[] = $day_time_slots[ $current_slot_index + 1 ];
 		}
 
-		// Check for games in adjacent slots with restricted teams
+		// $schedule is already pre-filtered to same-day games by the constraint
+		// manager, so iterating it once with a cheap adjacency check + team-id
+		// intersection is O(games_on_day) instead of O(total_schedule).
+		$adjacent_set = array_flip( $adjacent_slots );
 		foreach ( $schedule as $existing_game ) {
-			if ( $existing_game->date === $game_date && in_array( $existing_game->time_slot, $adjacent_slots ) ) {
-				$existing_teams = array( $this->get_team_id( $existing_game->home_team ), $this->get_team_id( $existing_game->away_team ) );
-				$team_overlap = array_intersect( $existing_teams, $restricted_teams );
+			if ( $existing_game->date !== $game_date ) {
+				continue;
+			}
+			if ( ! isset( $adjacent_set[ $existing_game->time_slot ] ) ) {
+				continue;
+			}
 
-				if ( ! empty( $team_overlap ) ) {
-					$violations[] = array(
-						'game' => $existing_game,
-						'teams' => $team_overlap,
-						'time_slot' => $existing_game->time_slot,
-					);
-				}
+			$existing_teams = array( $this->get_team_id( $existing_game->home_team ), $this->get_team_id( $existing_game->away_team ) );
+			$team_overlap   = array_intersect( $existing_teams, $restricted_teams );
+
+			if ( ! empty( $team_overlap ) ) {
+				$violations[] = array(
+					'game'      => $existing_game,
+					'teams'     => $team_overlap,
+					'time_slot' => $existing_game->time_slot,
+				);
 			}
 		}
 
@@ -441,14 +451,21 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint {
 	}
 
 	/**
-	 * Count team games on specific date
+	 * Count team games on specific date.
+	 *
+	 * $schedule is assumed to be pre-filtered to same-day games by the constraint
+	 * manager. The explicit date check is retained so direct callers (and tests)
+	 * passing a full schedule still get correct results.
 	 */
 	private function count_team_games_on_date( $team_id, $date, $schedule ) {
 		$count = 0;
 
 		foreach ( $schedule as $game ) {
-			if ( $game->date === $date &&
-			( $this->get_team_id( $game->home_team ) === $team_id || $this->get_team_id( $game->away_team ) === $team_id ) ) {
+			if ( $game->date !== $date ) {
+				continue;
+			}
+			if ( $this->get_team_id( $game->home_team ) === $team_id
+				|| $this->get_team_id( $game->away_team ) === $team_id ) {
 				$count++;
 			}
 		}

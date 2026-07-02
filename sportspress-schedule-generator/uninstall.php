@@ -17,13 +17,17 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 
 	// Remove all plugin options
 	$options = array(
-		'spsg_saved_configurations',
+		'spsg_configurations',
 		'spsg_configuration_changes',
 		'spsg_error_log',
 		'spsg_enable_debug_logging',
 		'spsg_max_generation_time',
 		'spsg_default_timezone',
 		'spsg_enable_change_tracking',
+		'spsg_autoload_fixed',
+		'spsg_day_weights',
+		'spsg_balance_time_slots',
+		'spsg_balance_home_away',
 	);
 
 	foreach ( $options as $option ) {

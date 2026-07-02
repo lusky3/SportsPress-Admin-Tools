@@ -1,4 +1,8 @@
 version: 2
+# Third-party actions are pinned to commit SHAs (with version comments).
+# First-party GitHub-owned actions (actions/checkout, actions/setup-node) are
+# exempted from SHA pinning and remain tag-pinned; dependabot still updates
+# the tag versions on the weekly cadence below.
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -7,3 +11,19 @@ updates:
       day: "monday"
     commit-message:
       prefix: "ci"
+
+  - package-ecosystem: "npm"
+    directory: "/sportspress-league-manager"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "deps"
+
+  - package-ecosystem: "docker"
+    directory: "/sportspress-schedule-generator/tests/docker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "deps"

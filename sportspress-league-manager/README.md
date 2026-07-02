@@ -57,14 +57,14 @@ Add private notes to player records visible only to admins and league managers.
 
 ## Granting Access to League Managers
 
-The plugin uses a custom `manage_league` capability — it does NOT require `manage_options` (full admin access).
+The plugin uses SportsPress's built-in `manage_sportspress` capability — it does NOT require `manage_options` (full admin access).
 
 **To give a user access:**
-1. Install a role editor plugin (e.g., User Role Editor)
-2. Add the `manage_league` capability to the desired user or role
+1. Assign the user the `sp_league_manager` role (provided by SportsPress), or
+2. Use a role editor plugin to add the `manage_sportspress` capability to a custom role
 3. The user will see the "League Manager" menu on their next login
 
-Administrators automatically get the `manage_league` capability.
+Administrators automatically have access.
 
 ## Configuration (Admin Only)
 
@@ -98,7 +98,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full technical architecture docum
 
 **Key design decisions:**
 - `SPLM_` class prefix, `splm_` option/meta prefix
-- `manage_league` capability (not `manage_options`)
+- `manage_sportspress` capability gate (not `manage_options`)
 - Read-only SportsPress data access via `SPLM_SportsPress_Data` facade
 - Parent plugin controls module enable/disable and admin-only settings
 - All output escaped, all input sanitized, all AJAX handlers verify nonce + capability
@@ -109,25 +109,39 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full technical architecture docum
 sportspress-league-manager/
 ├── sportspress-league-manager.php    # Plugin bootstrap
 ├── uninstall.php                     # Clean removal
-├── ARCHITECTURE.md                   # Technical architecture
 ├── README.md                         # This file
+├── ARCHITECTURE.md                   # Technical architecture document
+├── docs/
+│   ├── sdd-player-notes.md          # Player Notes design document
+│   ├── technical.md                  # Technical reference
+│   └── schedule-generator-ssd.md    # Schedule Generator integration spec
 ├── includes/
-│   ├── class-admin.php               # Menu, scripts, SPAT settings tab
-│   ├── class-admin-ajax.php          # AJAX handlers (6 endpoints)
-│   ├── class-admin-renderer.php      # Page HTML rendering
+│   ├── class-admin.php               # Menu redirect + SPAT settings tab
 │   ├── class-autoloader.php          # SPLM_ class autoloader
-│   ├── class-capabilities.php        # manage_league capability
-│   ├── class-error-handler.php       # User-facing error formatting
-│   ├── class-health-checker.php      # SportsPress config validation
-│   ├── class-help-provider.php       # Contextual help content
+│   ├── class-dashboard-frontend.php  # React SPA template registration + asset enqueue
+│   ├── class-player-notes.php        # Player notes meta box, hooks, frontend display
 │   ├── class-player-notes-database.php # Player notes DB operations
-│   ├── class-player-notes.php        # Player notes meta box & AJAX
-│   └── class-sportspress-data.php    # Read-only SP data facade
-└── assets/
-    ├── css/league-manager.css        # Admin UI styles
-    ├── css/player-notes.css          # Player notes styles
-    ├── js/league-manager.js          # Frontend interactions
-    └── js/player-notes.js            # Player notes AJAX
+│   ├── class-rest-api.php            # Read-only REST endpoints (splm/v1)
+│   └── class-sportspress-data.php    # SportsPress data helper
+├── assets/
+│   ├── css/
+│   │   ├── league-manager.css        # Dashboard styles
+│   │   └── player-notes.css          # Player notes styles
+│   └── js/
+│       ├── league-manager.js         # Dashboard interactions
+│       └── player-notes.js           # Player notes AJAX
+├── src/dashboard/                    # React SPA source
+│   ├── index.js                      # Entry point
+│   ├── App.jsx                       # Root component + routing
+│   ├── components/Layout.jsx         # Sidebar + header shell
+│   ├── lib/api.js                    # API client functions
+│   ├── pages/                        # Page components
+│   └── styles.css                    # Dashboard styles
+├── build/                            # Compiled React app (generated)
+│   ├── index.js
+│   └── index.css
+└── templates/
+    └── template-league-dashboard.php # WordPress page template
 ```
 
 ## License

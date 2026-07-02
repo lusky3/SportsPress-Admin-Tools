@@ -7,7 +7,7 @@
 
 // Prevent direct access
 if ( ! defined( 'ABSPATH' ) ) {
-	wp_die();
+	exit;
 }
 
 /**
@@ -115,6 +115,28 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 			return $validation;
 		}
 
+		// Per-user save lock. wp_cache_add() is atomic on object-cache
+		// backends and returns false if another request already holds the
+		// lock, preventing two concurrent saves from clobbering each other
+		// when serialised through the wp_options blob.
+		$user_id  = get_current_user_id();
+		$lock_key = 'spsg_config_save_lock_' . $user_id;
+		if ( $user_id ) {
+			// 60s TTL — large configs with many teams/venues can take longer
+			// than 10s to validate + persist, especially on shared hosting.
+			if ( class_exists( 'SPAT_Lock' ) ) {
+				$lock_acquired = SPAT_Lock::acquire( $lock_key, 60 );
+			} else {
+				$lock_acquired = wp_cache_add( $lock_key, 1, 'spsg_locks', 60 );
+			}
+			if ( ! $lock_acquired ) {
+				return new WP_Error(
+					'spsg_save_in_progress',
+					__( 'Another save is in progress. Please retry in a moment.', 'sportspress-schedule-generator' )
+				);
+			}
+		}
+
 		// Get existing configurations
 		$configurations = get_option( self::OPTION_NAME, array() );
 
@@ -128,7 +150,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 
 		// Add timestamp and ID if new
 		if ( $is_new ) {
-			$sanitized['id'] = uniqid( 'config_' );
+			$sanitized['id'] = 'config_' . bin2hex( random_bytes( 8 ) );
 			$sanitized['created'] = current_time( 'mysql' );
 		}
 		$sanitized['modified'] = current_time( 'mysql' );
@@ -141,7 +163,16 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 		// Save configuration
 		$configurations[ $sanitized['id'] ] = $sanitized;
 
-		$result = update_option( self::OPTION_NAME, $configurations );
+		$result = update_option( self::OPTION_NAME, $configurations, 'no' );
+
+		// Release the save lock now that the DB write has completed.
+		if ( $user_id ) {
+			if ( class_exists( 'SPAT_Lock' ) ) {
+				SPAT_Lock::release( $lock_key );
+			} else {
+				wp_cache_delete( $lock_key, 'spsg_locks' );
+			}
+		}
 
 		if ( $result ) {
 			$this->current_config = new SPSG_Schedule_Configuration( $sanitized );
@@ -156,6 +187,10 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 
 	/**
 	 * Load configuration from database
+	 *
+	 * @param string|null $config_id Optional configuration ID to load.
+	 * @return SPSG_Schedule_Configuration
+	 * @note If $config_id is provided but not found, falls back to the most recently modified config. If no configs exist, returns defaults.
 	 */
 	public function load( $config_id = null ) {
 		$configurations = get_option( self::OPTION_NAME, array() );
@@ -215,16 +250,16 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 
 		if ( isset( $configurations[ $config_id ] ) ) {
 			unset( $configurations[ $config_id ] );
-			$result = update_option( self::OPTION_NAME, $configurations );
+			update_option( self::OPTION_NAME, $configurations, 'no' );
 
-			if ( $result ) {
-				do_action( 'spsg_configuration_deleted', $config_id );
-			}
+			// Clean up placeholder teams created for this config
+			SPSG_Placeholder_Team_Manager::cleanup_for_config( $config_id );
 
-			return $result;
+			do_action( 'spsg_configuration_deleted', $config_id );
+			return true; // Always return true after successful delete
 		}
 
-		return false;
+		return new WP_Error( 'not_found', __( 'Configuration not found', 'sportspress-schedule-generator' ) );
 	}
 
 	/**
@@ -330,7 +365,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 					'current_version' => $current_version,
 				)
 			);
-		} elseif ( $import_major < $current_major && get_option( 'spsg_enable_debug_logging', false ) ) {
+		} elseif ( $import_major < $current_major && get_option( 'spsg_enable_debug_logging', '0' ) ) {
 			// Warn about older versions but allow import
 			error_log(
 				sprintf(
@@ -362,6 +397,25 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 
 		if ( ! isset( $config['inter_division_games'] ) ) {
 			$config['inter_division_games'] = array();
+		}
+
+		// Migrate legacy team-restriction keys to canonical names.
+		// Older payloads used `back_to_back_avoidance` / `overlap_avoidance`; the
+		// constraint engine, REST API and sanitizer now expect `_avoid` suffixes.
+		if ( isset( $config['team_restrictions'] ) && is_array( $config['team_restrictions'] ) ) {
+			$tr = $config['team_restrictions'];
+
+			if ( isset( $tr['back_to_back_avoidance'] ) && ! isset( $tr['back_to_back_avoid'] ) ) {
+				$tr['back_to_back_avoid'] = $tr['back_to_back_avoidance'];
+			}
+			unset( $tr['back_to_back_avoidance'] );
+
+			if ( isset( $tr['overlap_avoidance'] ) && ! isset( $tr['overlap_avoid'] ) ) {
+				$tr['overlap_avoid'] = $tr['overlap_avoidance'];
+			}
+			unset( $tr['overlap_avoidance'] );
+
+			$config['team_restrictions'] = $tr;
 		}
 
 		// Future migrations can be added here based on $from_version
@@ -454,13 +508,13 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 	}
 
 	/**
-	 * Track configuration changes
+	 * Track configuration changes (public so REST save_draft can call it)
 	 *
 	 * @param string $config_id Configuration ID
 	 * @param array  $old_config Old configuration data
 	 * @param array  $new_config New configuration data
 	 */
-	private function track_changes( $config_id, $old_config, $new_config ) {
+	public function track_changes( $config_id, $old_config, $new_config ) {
 		// Check if change tracking is enabled
 		if ( ! get_option( 'spsg_enable_change_tracking', true ) ) {
 			return;
@@ -654,23 +708,16 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 	 * @return array Array of preset metadata
 	 */
 	public function list_presets() {
-		return array(
-			'summer_league' => array(
-				'name' => __( 'Summer League', 'sportspress-schedule-generator' ),
-				'description' => __( 'Summer season with Friday night games (60 min matches, 18 games per team, 6:00 PM - 11:00 PM)', 'sportspress-schedule-generator' ),
-				'icon' => 'dashicons-palmtree',
-			),
-			'winter_league' => array(
-				'name' => __( 'Winter League', 'sportspress-schedule-generator' ),
-				'description' => __( 'Winter season with Friday and Sunday night games (60 min matches, 24 games per team)', 'sportspress-schedule-generator' ),
-				'icon' => 'dashicons-calendar-alt',
-			),
-			'tournament' => array(
-				'name' => __( 'Tournament', 'sportspress-schedule-generator' ),
-				'description' => __( 'Weekend tournament format (60 min matches, 4 games per team)', 'sportspress-schedule-generator' ),
-				'icon' => 'dashicons-awards',
-			),
-		);
+		$defs = $this->get_preset_definitions();
+		$out = array();
+		foreach ( $defs as $key => $def ) {
+			$out[ $key ] = array(
+				'name'        => $def['name'],
+				'description' => $def['description'],
+				'icon'        => $def['icon'] ?? '',
+			);
+		}
+		return $out;
 	}
 
 	/**
@@ -699,6 +746,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 			'summer_league' => array(
 				'name' => __( 'Summer League', 'sportspress-schedule-generator' ),
 				'description' => __( 'Summer season with Friday night games', 'sportspress-schedule-generator' ),
+				'icon' => 'dashicons-palmtree',
 				'config' => array(
 					'games_per_team' => 18,
 					'match_length' => 60,
@@ -724,6 +772,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 			'winter_league' => array(
 				'name' => __( 'Winter League', 'sportspress-schedule-generator' ),
 				'description' => __( 'Winter season with Friday and Sunday night games', 'sportspress-schedule-generator' ),
+				'icon' => 'dashicons-calendar-alt',
 				'config' => array(
 					'games_per_team' => 24,
 					'match_length' => 60,
@@ -753,6 +802,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 			'tournament' => array(
 				'name' => __( 'Tournament', 'sportspress-schedule-generator' ),
 				'description' => __( 'Weekend tournament format', 'sportspress-schedule-generator' ),
+				'icon' => 'dashicons-awards',
 				'config' => array(
 					'games_per_team' => 4,
 					'match_length' => 60,

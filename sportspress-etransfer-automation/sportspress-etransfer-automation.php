@@ -5,11 +5,12 @@
  * Version: 1.0.0
  * Author: Cody (lusky3)
  * Text Domain: sportspress-etransfer-automation
- * License: GPL v2 or later
+ * License: GPLv2 or later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Requires at least: 5.0
- * Tested up to: 6.4
- * Requires PHP: 7.4
- * Depends: SportsPress Admin Tools
+ * Tested up to: 6.7
+ * Requires PHP: 8.1
+ * Requires Plugins: sportspress-admin-tools
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -28,6 +29,20 @@ class SportsPress_ETransfer_Automation {
 		register_deactivation_hook( __FILE__, array( $this, 'deactivate' ) );
 		add_action( 'plugins_loaded', array( $this, 'init' ) );
 		add_action( 'spet_cleanup_old_logs', array( $this, 'run_log_cleanup' ) );
+		add_action( 'before_woocommerce_init', array( $this, 'declare_woocommerce_compatibility' ) );
+	}
+
+	/**
+	 * Declare WooCommerce High-Performance Order Storage (HPOS / custom order
+	 * tables) compatibility. This plugin reads orders exclusively through the
+	 * HPOS-safe CRUD layer (wc_get_orders / wc_get_order / WC_Order methods) and
+	 * never queries the legacy posts table directly, so it is compatible with
+	 * both storage backends.
+	 */
+	public function declare_woocommerce_compatibility() {
+		if ( class_exists( '\Automattic\WooCommerce\Utilities\FeaturesUtil' ) ) {
+			\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );
+		}
 	}
 
 	public function check_activation_requirements() {
@@ -37,7 +52,6 @@ class SportsPress_ETransfer_Automation {
 		}
 
 		require_once SPET_PLUGIN_PATH . 'includes/class-database.php';
-		SPET_Database::create_tables();
 
 		// Set default equivalent names if not already set
 		if ( empty( get_option( 'spet_equivalent_names' ) ) ) {
@@ -61,6 +75,15 @@ class SportsPress_ETransfer_Automation {
 	public function run_log_cleanup() {
 		require_once SPET_PLUGIN_PATH . 'includes/class-database.php';
 		SPET_Database::cleanup_old_logs( 90 );
+
+		// Piggyback deterministic cleanup of stale wp_options rate-limit rows on
+		// the same daily cron, replacing the old 1-in-100 in-request sweep (which
+		// is retained only as a fallback). No-op when an external object cache is
+		// active. Loaded only when the module is enabled.
+		if ( class_exists( 'SPET_ETransfer_Automation' ) ) {
+			$automation = new SPET_ETransfer_Automation();
+			$automation->cleanup_stale_rate_limits();
+		}
 	}
 
 	public function init() {
@@ -109,12 +132,44 @@ class SportsPress_ETransfer_Automation {
 			add_action( 'admin_notices', array( $this, 'parent_plugin_missing_notice' ) );
 			return false;
 		}
+
+		// H7: enforce the parent-child contract version floor. class_exists() alone
+		// passes against an older parent that predates the SPAT_* helper classes
+		// this child calls (e.g. SPAT_Lock, SPAT_Database); the first such call
+		// would fatal. Require a declared contract version and degrade with an
+		// admin notice otherwise.
+		if ( ! defined( 'SPAT_CONTRACT_VERSION' ) || version_compare( SPAT_CONTRACT_VERSION, '1.0.0', '<' ) ) {
+			add_action( 'admin_notices', array( $this, 'parent_version_notice' ) );
+			return false;
+		}
+
+		// Hard dependency: this plugin auto-completes WooCommerce orders and reads
+		// them exclusively through the WooCommerce CRUD layer. Bail with a notice
+		// when WooCommerce is unavailable rather than fataling on the first
+		// wc_get_orders()/WC_Order call.
+		if ( ! class_exists( 'WooCommerce' ) ) {
+			add_action( 'admin_notices', array( $this, 'woocommerce_missing_notice' ) );
+			return false;
+		}
+
 		return true;
 	}
 
 	public function parent_plugin_missing_notice() {
 		echo '<div class="notice notice-error"><p>';
-		echo 'SportsPress e-Transfer Automation requires SportsPress Admin Tools to be installed and activated.';
+		echo esc_html( 'SportsPress e-Transfer Automation requires SportsPress Admin Tools to be installed and activated.' );
+		echo '</p></div>';
+	}
+
+	public function parent_version_notice() {
+		echo '<div class="notice notice-error"><p>';
+		echo esc_html( 'SportsPress e-Transfer Automation requires a newer version of SportsPress Admin Tools. Please update the parent plugin.' );
+		echo '</p></div>';
+	}
+
+	public function woocommerce_missing_notice() {
+		echo '<div class="notice notice-error"><p>';
+		echo esc_html( 'SportsPress e-Transfer Automation requires WooCommerce to be installed and activated.' );
 		echo '</p></div>';
 	}
 }

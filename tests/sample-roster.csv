@@ -1,0 +1,11 @@
+name,email,number,position,notes
+John Smith,john.smith@example.com,10,Forward,Team captain
+Jane Doe,jane.doe@example.com,15,Defense,
+Mike Johnson,mike.johnson@example.com,7,Goalie,Backup goalie
+Sarah Wilson,sarah.wilson@example.com,22,Forward,
+Tom Brown,tom.brown@example.com,3,Defense,Assistant captain
+Lisa Davis,lisa.davis@example.com,18,Forward,
+Chris Miller,chris.miller@example.com,1,Goalie,Starting goalie
+Amy Taylor,amy.taylor@example.com,11,Forward,
+David Lee,david.lee@example.com,5,Defense,
+Emma White,emma.white@example.com,9,Forward,

@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class SPR_Database {
+class SPPR_Database {
 
 	public static function get_registration_logs( $limit = 100, $offset = 0 ) {
 		if ( class_exists( 'SPAT_Database' ) ) {
@@ -28,9 +28,9 @@ class SPR_Database {
 		return array();
 	}
 
-	public static function log_registration_activity( $order_id, $customer_name, $player_id, $season, $position, $action = 'player_registration' ) {
+	public static function log_registration_activity( $order_id, $customer_name, $player_id, $season, $position, $action = 'player_registration', $links_to_order = false ) {
 		if ( class_exists( 'SPAT_Database' ) ) {
-			SPAT_Database::log_registration_activity( $order_id, $customer_name, $player_id, $season, $position, $action );
+			SPAT_Database::log_registration_activity( $order_id, $customer_name, $player_id, $season, $position, $action, $links_to_order );
 		}
 	}
 

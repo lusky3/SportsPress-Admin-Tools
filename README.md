@@ -38,7 +38,7 @@ To use these tools, you must install the **SportsPress Admin Tools** parent plug
 |-----------|------|-----------|---------|
 | `manage_options` | Administrator | All | Settings, schedule generation, exports, email sync, config |
 | `manage_woocommerce` | Shop Manager+ | e-Transfer Automation | Payment matching and file downloads |
-| `manage_sportspress` | SP League Manager+ | League Manager | Roster uploads, player notes, dashboard tasks |
+| `manage_sportspress` | SP League Manager+ | League Manager | Roster uploads, player notes, dashboard tasks (the live gate; `can_read()` also allows `edit_others_sp_events`/`edit_others_sp_players`/`edit_sp_events`) |
 | `edit_post` | Editor+ (contextual) | Player Tools | Editing player email and skill level on individual posts |
 
 The `manage_sportspress` capability is provided by SportsPress core and granted to the SP League Manager role and Administrators automatically.
@@ -92,7 +92,7 @@ make test-down        # Tear down the environment
 
 #### Test Architecture
 
-- **Unit tests** (`run-all-tests.sh`): Standalone PHP tests with mocked WordPress functions. Run anywhere with PHP 8.2+.
+- **Unit tests** (`run-all-tests.sh`): Standalone PHP tests with mocked WordPress functions. Run anywhere with PHP 8.1+.
 - **Integration tests** (`tests/integration/`): Execute inside WordPress via `wp eval-file`. Test plugin activation, database tables, hook registration, and cross-plugin interactions.
 - **Smoke tests** (`tests/api-smoke-test.sh`): Verify the REST API, SportsPress data, and plugin activation status.
 - **Agent test suites** (`sportspress-sandbox/tests/suites/`): Markdown-based test cases for LLM agents to execute via Playwright MCP.
