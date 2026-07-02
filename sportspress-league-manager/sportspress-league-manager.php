@@ -20,6 +20,12 @@ define( 'SPLM_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPLM_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
 define( 'SPLM_VERSION', '1.0.0' );
 
+// Minimum parent contract version this child requires. The parent publishes
+// SPAT_CONTRACT_VERSION; a class_exists( 'SPAT_Plugin_Manager' ) gate alone is
+// not enough because an older parent can satisfy it yet predate the shared
+// classes this child calls (SPAT_Lock, etc.). See H7 in the security audit.
+define( 'SPLM_REQUIRED_CONTRACT', '1.0.0' );
+
 class SportsPress_League_Manager {
 
 	public function __construct() {
@@ -85,7 +91,7 @@ class SportsPress_League_Manager {
 			'league_player_notes',
 			array(
 				'name'          => 'Player Notes',
-				'description'   => 'Admin-only timestamped notes on player records',
+				'description'   => 'Timestamped notes on player records (SportsPress managers)',
 				'parent_module' => 'league_player_notes',
 				'version'       => SPLM_VERSION,
 				'file'          => __FILE__,
@@ -125,12 +131,45 @@ class SportsPress_League_Manager {
 			add_action( 'admin_notices', array( $this, 'parent_plugin_missing_notice' ) );
 			return false;
 		}
+
+		// H7: enforce a parent contract-version floor. An older parent that
+		// predates SPAT_CONTRACT_VERSION (or is below the required version)
+		// still passes the class_exists() gate above but may be missing the
+		// shared classes this child calls, which would fatal at first use.
+		if ( ! defined( 'SPAT_CONTRACT_VERSION' ) || version_compare( SPAT_CONTRACT_VERSION, SPLM_REQUIRED_CONTRACT, '<' ) ) {
+			add_action( 'admin_notices', array( $this, 'parent_version_notice' ) );
+			return false;
+		}
+
+		// Hard dependency: SportsPress core must be present (this plugin reads
+		// sp_* post types, taxonomies and SP_League_Table). See audit M13.
+		if ( ! class_exists( 'SportsPress' ) ) {
+			add_action( 'admin_notices', array( $this, 'sportspress_missing_notice' ) );
+			return false;
+		}
+
 		return true;
 	}
 
 	public function parent_plugin_missing_notice() {
 		echo '<div class="notice notice-error"><p>';
 		echo esc_html__( 'SportsPress League Manager requires SportsPress Admin Tools to be installed and activated.', 'sportspress-league-manager' );
+		echo '</p></div>';
+	}
+
+	public function parent_version_notice() {
+		echo '<div class="notice notice-error"><p>';
+		printf(
+			/* translators: %s: required SportsPress Admin Tools contract version. */
+			esc_html__( 'SportsPress League Manager requires SportsPress Admin Tools with contract version %s or higher. Please update the parent plugin.', 'sportspress-league-manager' ),
+			esc_html( SPLM_REQUIRED_CONTRACT )
+		);
+		echo '</p></div>';
+	}
+
+	public function sportspress_missing_notice() {
+		echo '<div class="notice notice-error"><p>';
+		echo esc_html__( 'SportsPress League Manager requires the SportsPress plugin to be installed and activated.', 'sportspress-league-manager' );
 		echo '</p></div>';
 	}
 }

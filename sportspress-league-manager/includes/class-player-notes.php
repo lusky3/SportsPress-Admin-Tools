@@ -21,7 +21,7 @@ class SPLM_Player_Notes {
 		// Backend: enqueue scripts on player edit screens.
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ) );
 
-		// Frontend: notes panel on player single pages (admin only).
+		// Frontend: notes panel on player single pages (SportsPress managers only).
 		if ( ! is_admin() && ! defined( 'WP_CLI' ) ) {
 			add_filter( 'the_content', array( $this, 'append_frontend_notes' ) );
 			add_action( 'wp_enqueue_scripts', array( $this, 'maybe_enqueue_frontend' ) );
@@ -51,7 +51,7 @@ class SPLM_Player_Notes {
 	// ------------------------------------------------------------------
 
 	public function add_meta_box() {
-		if ( ! current_user_can( 'manage_options' ) ) {
+		if ( ! SPLM_Capabilities::can_access_notes() ) {
 			return;
 		}
 
@@ -86,7 +86,7 @@ class SPLM_Player_Notes {
 		if ( ! in_array( $hook, array( 'post.php', 'post-new.php' ), true ) ) {
 			return;
 		}
-		if ( get_post_type() !== 'sp_player' || ! current_user_can( 'manage_options' ) ) {
+		if ( get_post_type() !== 'sp_player' || ! SPLM_Capabilities::can_access_notes() ) {
 			return;
 		}
 
@@ -121,11 +121,11 @@ class SPLM_Player_Notes {
 	}
 
 	// ------------------------------------------------------------------
-	// Frontend: Admin-only notes panel
+	// Frontend: manager-only notes panel
 	// ------------------------------------------------------------------
 
 	public function maybe_enqueue_frontend() {
-		if ( ! is_singular( 'sp_player' ) || ! current_user_can( 'manage_options' ) ) {
+		if ( ! is_singular( 'sp_player' ) || ! SPLM_Capabilities::can_access_notes() ) {
 			return;
 		}
 
@@ -169,7 +169,7 @@ class SPLM_Player_Notes {
 	public function ajax_get_player_notes() {
 		check_ajax_referer( 'splm_ajax_nonce', '_ajax_nonce' );
 
-		if ( ! current_user_can( 'manage_options' ) ) {
+		if ( ! SPLM_Capabilities::can_access_notes() ) {
 			wp_send_json_error( array( 'message' => 'Unauthorized.' ), 403 );
 		}
 
@@ -188,7 +188,7 @@ class SPLM_Player_Notes {
 	public function ajax_add_player_note() {
 		check_ajax_referer( 'splm_ajax_nonce', '_ajax_nonce' );
 
-		if ( ! current_user_can( 'manage_options' ) ) {
+		if ( ! SPLM_Capabilities::can_access_notes() ) {
 			wp_send_json_error( array( 'message' => 'Unauthorized.' ), 403 );
 		}
 
@@ -215,7 +215,7 @@ class SPLM_Player_Notes {
 	public function ajax_delete_player_note() {
 		check_ajax_referer( 'splm_ajax_nonce', '_ajax_nonce' );
 
-		if ( ! current_user_can( 'manage_options' ) ) {
+		if ( ! SPLM_Capabilities::can_access_notes() ) {
 			wp_send_json_error( array( 'message' => 'Unauthorized.' ), 403 );
 		}
 
@@ -239,7 +239,7 @@ class SPLM_Player_Notes {
 	public function ajax_update_player_note() {
 		check_ajax_referer( 'splm_ajax_nonce', '_ajax_nonce' );
 
-		if ( ! current_user_can( 'manage_options' ) ) {
+		if ( ! SPLM_Capabilities::can_access_notes() ) {
 			wp_send_json_error( array( 'message' => 'Unauthorized.' ), 403 );
 		}
 
@@ -260,17 +260,17 @@ class SPLM_Player_Notes {
 	}
 
 	// ------------------------------------------------------------------
-	// Frontend: Admin-only notes panel
+	// Frontend: manager-only notes panel
 	// ------------------------------------------------------------------
 
 	/**
-	 * Append notes panel to player post content (frontend, admin-only).
+	 * Append notes panel to player post content (frontend, managers only).
 	 *
 	 * @param string $content Post content.
 	 * @return string
 	 */
 	public function append_frontend_notes( $content ) {
-		if ( ! is_singular( 'sp_player' ) || ! current_user_can( 'manage_options' ) ) {
+		if ( ! is_singular( 'sp_player' ) || ! SPLM_Capabilities::can_access_notes() ) {
 			return $content;
 		}
 
