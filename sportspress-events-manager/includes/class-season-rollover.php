@@ -391,19 +391,49 @@ jQuery(document).ready(function($) {
 
 			// 4. Optionally create empty roster (player list)
 			if ( $create_rosters ) {
-				$list_title = $team->post_title . ' — ' . $season_name . ' Roster';
-				$list_id = wp_insert_post(
+				// Idempotency: skip if a roster already exists for this
+				// team+season. The wizard re-POSTs this whole action once per
+				// 500-event archive chunk, so without this check a >500-event
+				// league would get a duplicate roster set per chunk (H5).
+				// sp_list stores sp_team as a scalar post ID (see below), so a
+				// direct meta value match is exact — no serialized LIKE needed.
+				$existing_list_ids = get_posts(
 					array(
-						'post_type'   => 'sp_list',
-						'post_title'  => $list_title,
-						'post_status' => 'publish',
+						'post_type'      => 'sp_list',
+						'post_status'    => 'any',
+						'posts_per_page' => 1,
+						'fields'         => 'ids',
+						'tax_query'      => array(
+							array(
+								'taxonomy' => 'sp_season',
+								'field'    => 'term_id',
+								'terms'    => $season_term_id,
+							),
+						),
+						'meta_query'     => array(
+							array(
+								'key'   => 'sp_team',
+								'value' => (int) $team->ID,
+							),
+						),
 					)
 				);
-				if ( $list_id && ! is_wp_error( $list_id ) ) {
-					update_post_meta( $list_id, 'sp_team', $team->ID );
-					wp_set_object_terms( $list_id, array( $season_term_id ), 'sp_season' );
-					wp_set_object_terms( $list_id, array( $league_id ), 'sp_league' );
-					$rosters_created++;
+
+				if ( empty( $existing_list_ids ) ) {
+					$list_title = $team->post_title . ' — ' . $season_name . ' Roster';
+					$list_id = wp_insert_post(
+						array(
+							'post_type'   => 'sp_list',
+							'post_title'  => $list_title,
+							'post_status' => 'publish',
+						)
+					);
+					if ( $list_id && ! is_wp_error( $list_id ) ) {
+						update_post_meta( $list_id, 'sp_team', $team->ID );
+						wp_set_object_terms( $list_id, array( $season_term_id ), 'sp_season' );
+						wp_set_object_terms( $list_id, array( $league_id ), 'sp_league' );
+						$rosters_created++;
+					}
 				}
 			}
 		}

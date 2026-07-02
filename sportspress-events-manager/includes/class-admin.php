@@ -149,10 +149,21 @@ class SPEM_Admin {
 
 		if ( isset( $_POST['save_settings'] ) ) {
 			update_option( 'spem_auto_calendar_creation', isset( $_POST['spem_auto_calendar_creation'] ) ? '1' : '0' );
-			update_option( 'spem_calendar_type', sanitize_text_field( $_POST['spem_calendar_type'] ) );
-			update_option( 'spem_naming_prefix', sanitize_text_field( $_POST['spem_naming_prefix'] ) );
-			update_option( 'spem_naming_suffix', sanitize_text_field( $_POST['spem_naming_suffix'] ) );
-			update_option( 'spem_naming_separator', sanitize_text_field( $_POST['spem_naming_separator'] ) );
+
+			// Constrain the calendar type to the values the <select> actually
+			// offers rather than persisting whatever arrived in the POST body.
+			$calendar_type = isset( $_POST['spem_calendar_type'] )
+				? sanitize_text_field( wp_unslash( $_POST['spem_calendar_type'] ) )
+				: 'list';
+			$allowed_calendar_types = array( 'calendar', 'list', 'blocks' );
+			if ( ! in_array( $calendar_type, $allowed_calendar_types, true ) ) {
+				$calendar_type = 'list';
+			}
+			update_option( 'spem_calendar_type', $calendar_type );
+
+			update_option( 'spem_naming_prefix', isset( $_POST['spem_naming_prefix'] ) ? sanitize_text_field( wp_unslash( $_POST['spem_naming_prefix'] ) ) : '' );
+			update_option( 'spem_naming_suffix', isset( $_POST['spem_naming_suffix'] ) ? sanitize_text_field( wp_unslash( $_POST['spem_naming_suffix'] ) ) : '' );
+			update_option( 'spem_naming_separator', isset( $_POST['spem_naming_separator'] ) ? sanitize_text_field( wp_unslash( $_POST['spem_naming_separator'] ) ) : '|' );
 			update_option( 'spem_include_team_name', isset( $_POST['spem_include_team_name'] ) ? '1' : '0' );
 			update_option( 'spem_include_division', isset( $_POST['spem_include_division'] ) ? '1' : '0' );
 			echo '<div class="notice notice-success"><p>' . esc_html__( 'Settings saved.', 'sportspress-events-manager' ) . '</p></div>';
@@ -201,8 +212,28 @@ class SPEM_Admin {
 			} else {
 				$imported = isset( $result['imported'] ) ? (int) $result['imported'] : 0;
 				$errors   = isset( $result['errors'] ) && is_array( $result['errors'] ) ? $result['errors'] : array();
+				$warnings = isset( $result['warnings'] ) && is_array( $result['warnings'] ) ? $result['warnings'] : array();
 
 				echo '<div class="notice notice-success"><p>' . sprintf( esc_html__( 'Successfully imported %d events.', 'sportspress-events-manager' ), $imported ) . '</p></div>';
+
+				if ( ! empty( $warnings ) ) {
+					echo '<div class="notice notice-warning"><p>' . sprintf(
+						esc_html__( '%d row(s) imported with warnings:', 'sportspress-events-manager' ),
+						count( $warnings )
+					) . '</p><ul>';
+					foreach ( $warnings as $row_index => $message ) {
+						printf(
+							'<li>%s</li>',
+							sprintf(
+								/* translators: 1: spreadsheet row number (1-based, header excluded), 2: warning message */
+								esc_html__( 'Row %1$d: %2$s', 'sportspress-events-manager' ),
+								(int) $row_index + 1,
+								esc_html( $message )
+							)
+						);
+					}
+					echo '</ul></div>';
+				}
 
 				if ( ! empty( $errors ) ) {
 					echo '<div class="notice notice-warning"><p>' . sprintf(

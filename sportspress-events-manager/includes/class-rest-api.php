@@ -347,8 +347,14 @@ class SPEM_REST_API {
 		$reason    = sanitize_text_field( $request->get_param( 'reason' ) ?? '' );
 		$notify    = (bool) $request->get_param( 'notify' );
 
-		if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $new_date ) ) {
+		if ( ! preg_match( '/^(\d{4})-(\d{2})-(\d{2})$/', $new_date, $date_parts ) ) {
 			return new WP_Error( 'invalid_date', 'Date must be YYYY-MM-DD format.', array( 'status' => 400 ) );
+		}
+
+		// Reject calendar-impossible dates (e.g. 2026-02-31) that pass the regex
+		// but would otherwise be stored verbatim and returned as success (M9).
+		if ( ! checkdate( (int) $date_parts[2], (int) $date_parts[3], (int) $date_parts[1] ) ) {
+			return new WP_Error( 'invalid_date', 'Date is not a valid calendar date.', array( 'status' => 400 ) );
 		}
 
 		// `time` is optional. When omitted (or empty) default to 19:00, but a
@@ -377,17 +383,28 @@ class SPEM_REST_API {
 		// sets _spem_cancelled='1' and draft status; without clearing them here
 		// the game stays cancelled + unpublished forever (update_score() rejects
 		// it with 409). Reinstate it so the new date is live and scoreable.
-		$post_update = array(
-			'ID'        => $event_id,
-			'post_date' => $new_date . ' ' . $new_time . ':00',
+		$new_datetime = $new_date . ' ' . $new_time . ':00';
+		$post_update  = array(
+			'ID'            => $event_id,
+			'post_date'     => $new_datetime,
+			// Keep post_date_gmt in step with post_date, otherwise sort order,
+			// feeds and future/publish transitions run off the stale GMT value.
+			// edit_date must be true for wp_update_post() to honor an explicit
+			// post_date at all (M9).
+			'post_date_gmt' => get_gmt_from_date( $new_datetime ),
+			'edit_date'     => true,
 		);
 		if ( '1' === get_post_meta( $event_id, '_spem_cancelled', true ) ) {
 			delete_post_meta( $event_id, '_spem_cancelled' );
 			$post_update['post_status'] = 'publish';
 		}
 
-		// Update the event date (and status if reinstating).
-		wp_update_post( $post_update );
+		// Update the event date (and status if reinstating). Surface a write
+		// failure instead of reporting success on a no-op (M9).
+		$updated = wp_update_post( $post_update, true );
+		if ( is_wp_error( $updated ) || ! $updated ) {
+			return new WP_Error( 'update_failed', 'Failed to reschedule the game.', array( 'status' => 500 ) );
+		}
 
 		// Send notifications if requested. wp_mail() is slow with large
 		// rosters, so queue it via cron instead of blocking the request.
@@ -497,14 +514,21 @@ class SPEM_REST_API {
 			return;
 		}
 
+		// Atomically claim the payload BEFORE the (slow) mail loop rather than
+		// after it (M10). delete_post_meta() runs a real DELETE and returns
+		// false when the row is already gone, so of two concurrent cron fires
+		// only the one that actually removed the row proceeds — no double-send.
+		// Claiming first also means a payload freshly stashed by another
+		// reschedule while we were sending isn't deleted unsent.
+		if ( ! delete_post_meta( $event_id, '_spem_pending_notification' ) ) {
+			return;
+		}
+
 		$change_type   = isset( $payload['change_type'] ) ? (string) $payload['change_type'] : '';
 		$reason        = isset( $payload['reason'] ) ? (string) $payload['reason'] : '';
 		$original_date = isset( $payload['original_date'] ) ? (string) $payload['original_date'] : '';
 
 		$this->notify_teams( $event_id, $change_type, $reason, $original_date );
-
-		// Consume the payload so a duplicate cron fire doesn't re-send.
-		delete_post_meta( $event_id, '_spem_pending_notification' );
 	}
 
 	/**
@@ -634,6 +658,11 @@ class SPEM_REST_API {
 			'post_status'    => 'publish',
 			'fields'         => 'ids',
 		) );
+		// Prime the post cache once so the per-row get_post_field() calls read
+		// from cache instead of issuing one query per performance slug (N+1).
+		if ( ! empty( $perf_posts ) ) {
+			_prime_post_caches( $perf_posts, false, false );
+		}
 		$valid_slugs = array();
 		foreach ( $perf_posts as $perf_id ) {
 			$valid_slugs[] = get_post_field( 'post_name', $perf_id );
@@ -734,9 +763,15 @@ class SPEM_REST_API {
 			return new WP_Error( 'invalid_to_season', 'Invalid to_season term ID.', array( 'status' => 400 ) );
 		}
 
-		$players = get_posts( array(
+		// Cap the scan rather than pulling every sp_player site-wide into memory
+		// with posts_per_page => -1. The default ceiling covers any realistic
+		// league; sites with an unusually large roster base can raise it via the
+		// filter.
+		$max_players = (int) apply_filters( 'spem_rollover_preview_max_players', 5000 );
+		$players     = get_posts( array(
 			'post_type'      => 'sp_player',
-			'posts_per_page' => -1,
+			'posts_per_page' => $max_players,
+			'no_found_rows'  => true,
 			'meta_query'     => array(
 				array(
 					'key'     => 'sp_current_team',
