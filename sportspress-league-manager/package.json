@@ -15,6 +15,13 @@
     "@dnd-kit/utilities": "^3.2.2"
   },
   "overrides": {
-    "shell-quote": ">=1.8.4"
+    "shell-quote": ">=1.8.4",
+    "serialize-javascript": ">=7.0.5",
+    "minimatch": ">=3.1.4",
+    "uuid": ">=11.1.1",
+    "linkify-it": ">=5.0.1",
+    "markdown-it": ">=14.2.0",
+    "@opentelemetry/core": ">=2.8.0",
+    "webpack-dev-server": ">=5.2.5 <6"
   }
 }
