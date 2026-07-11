@@ -34,6 +34,10 @@ run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-matchup-generato
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-exporters.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-constraints.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-league-manager.php"
+run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-consistency-checker.php"
+run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-sportspress-writer.php"
+run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-recognition-providers.php"
+run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-roster-matcher.php"
 
 echo "════════════════════════════════════════"
 echo "  ALL TESTS SUMMARY"

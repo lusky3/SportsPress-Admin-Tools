@@ -1,0 +1,4 @@
+# Local sample/real score-sheet images used for testing recognition.
+# These are real match data (player names/numbers) — never commit them.
+score-sheet-*.jpg
+lusky3_*
