@@ -54,6 +54,11 @@ class SPSS_SelfHosted_Provider implements SPSS_Recognition_Provider {
 		return '' !== trim( $this->get_endpoint() );
 	}
 
+	/** Self-hosted inference has no per-call API charge. */
+	public function estimated_cost_per_sheet(): float {
+		return 0.0;
+	}
+
 	/**
 	 * Resolve the sidecar base URL from the option, trimmed of any trailing
 	 * slash. Defaults to empty (not loopback) so the provider reports itself
