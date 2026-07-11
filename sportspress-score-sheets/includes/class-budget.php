@@ -95,19 +95,31 @@ class SPSS_Budget {
 	 * Prunes any month keys other than the current month before saving.
 	 */
 	public static function record( string $provider_id, $provider = null ): void {
-		$cost   = self::cost_per_sheet( $provider_id, $provider );
-		$month  = self::current_month();
-		$ledger = self::get_ledger();
+		// Serialize the get_option→add→update_option so concurrent cron workers
+		// can't lost-update the ledger and silently overrun the monthly cap.
+		$mutate = function () use ( $provider_id, $provider ) {
+			$cost   = self::cost_per_sheet( $provider_id, $provider );
+			$month  = self::current_month();
+			$ledger = self::get_ledger();
 
-		// Prune every month other than the current one to keep the option small.
-		$current = isset( $ledger[ $month ] ) && is_array( $ledger[ $month ] ) ? $ledger[ $month ] : array();
+			// Prune every month other than the current one to keep the option small.
+			$current = isset( $ledger[ $month ] ) && is_array( $ledger[ $month ] ) ? $ledger[ $month ] : array();
 
-		$prior = isset( $current[ $provider_id ] ) ? (float) $current[ $provider_id ] : 0.0;
-		$current[ $provider_id ] = $prior + $cost;
+			$prior = isset( $current[ $provider_id ] ) ? (float) $current[ $provider_id ] : 0.0;
+			$current[ $provider_id ] = $prior + $cost;
 
-		$ledger = array( $month => $current );
+			$ledger = array( $month => $current );
 
-		update_option( self::LEDGER_OPTION, $ledger );
+			update_option( self::LEDGER_OPTION, $ledger );
+		};
+
+		// Fall back to the unlocked path if the parent lock helper is unavailable.
+		if ( class_exists( 'SPAT_Lock' ) ) {
+			SPAT_Lock::with( 'spss_budget', 10, $mutate );
+			return;
+		}
+
+		$mutate();
 	}
 
 	/**

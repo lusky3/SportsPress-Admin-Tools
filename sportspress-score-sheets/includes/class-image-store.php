@@ -16,6 +16,12 @@ class SPSS_Image_Store {
 
 	const SUBDIR = 'spss-sheets';
 
+	/** Cap the long edge of stored images (px); re-encoding also strips EXIF/GPS. */
+	const MAX_EDGE = 2600;
+
+	/** JPEG/WebP re-encode quality. */
+	const IMAGE_QUALITY = 85;
+
 	public static function dir() {
 		$uploads = wp_upload_dir();
 		return trailingslashit( $uploads['basedir'] ) . self::SUBDIR;
@@ -76,9 +82,9 @@ class SPSS_Image_Store {
 		// Cap the long edge; re-encoding drops EXIF (incl. GPS) entirely.
 		$size = $editor->get_size();
 		if ( is_array( $size ) && ! empty( $size['width'] ) && ! empty( $size['height'] ) ) {
-			$editor->resize( 2600, 2600, false );
+			$editor->resize( self::MAX_EDGE, self::MAX_EDGE, false );
 		}
-		$editor->set_quality( 85 );
+		$editor->set_quality( self::IMAGE_QUALITY );
 
 		$ext      = in_array( strtolower( $ext ), array( 'jpg', 'jpeg', 'png', 'webp' ), true ) ? strtolower( $ext ) : 'jpg';
 		$filename = 'sheet-' . wp_generate_password( 20, false ) . '.' . ( 'jpeg' === $ext ? 'jpg' : $ext );

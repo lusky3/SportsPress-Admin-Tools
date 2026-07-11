@@ -172,6 +172,127 @@ assert_test(
     'Same jersey #12 resolves to the correct side (home->100, away->200)'
 );
 
+// ── leading-zero jersey normalization (finding #6) ───────────────────────────
+
+// Roster number '7' must match a sheet jersey written as '07' (and vice versa).
+$lz_rosters = make_rosters(
+    array(
+        array('player_id' => 71, 'name' => 'Zero Seven', 'number' => '7'),
+        array('player_id' => 13, 'name' => 'Oh One Three', 'number' => '013'),
+    ),
+    array()
+);
+$result = new SPSS_Extraction_Result(array(
+    'players' => array(
+        array('team' => 'home', 'jersey_written' => '07', 'player_name' => 'x'),
+        array('team' => 'home', 'jersey_written' => '13', 'player_name' => 'y'),
+    ),
+));
+SPSS_Roster_Matcher::match($result, $lz_rosters);
+$players = $result->data['players'];
+assert_test(
+    $players[0]['matched_player_id'] === 71 && $players[0]['matched_by'] === 'roster_number',
+    'Sheet jersey "07" matches roster number "7" (leading zero stripped)'
+);
+assert_test(
+    $players[1]['matched_player_id'] === 13 && $players[1]['matched_by'] === 'roster_number',
+    'Sheet jersey "13" matches roster number "013" (leading zero stripped)'
+);
+
+// Vice versa: roster '07' matches a sheet jersey '7'.
+$lz_rosters2 = make_rosters(
+    array(array('player_id' => 70, 'name' => 'Seven', 'number' => '07')),
+    array()
+);
+$result = new SPSS_Extraction_Result(array(
+    'players' => array(
+        array('team' => 'home', 'jersey_written' => '7', 'player_name' => 'x'),
+    ),
+));
+SPSS_Roster_Matcher::match($result, $lz_rosters2);
+assert_test(
+    $result->data['players'][0]['matched_player_id'] === 70,
+    'Sheet jersey "7" matches roster number "07" (leading zero stripped, both sides)'
+);
+
+// A bare zero jersey ('0'/'00') normalizes to '0' and still matches.
+$zero_rosters = make_rosters(
+    array(array('player_id' => 90, 'name' => 'Goalie Zero', 'number' => '00')),
+    array()
+);
+$result = new SPSS_Extraction_Result(array(
+    'players' => array(
+        array('team' => 'home', 'jersey_written' => '0', 'player_name' => 'x'),
+    ),
+));
+SPSS_Roster_Matcher::match($result, $zero_rosters);
+assert_test(
+    $result->data['players'][0]['matched_player_id'] === 90,
+    'Bare zero jerseys "00" and "0" both normalize to "0" and match'
+);
+
+// ── roster-side duplicate jersey number (finding #23) ────────────────────────
+
+// Two roster players share number '9': a sheet entry for '9' must NOT be
+// silently attributed to whichever was listed first. It falls through to name
+// matching, or stays unmatched when the name does not resolve.
+$dup_rosters = make_rosters(
+    array(
+        array('player_id' => 901, 'name' => 'First Nine', 'number' => '9'),
+        array('player_id' => 902, 'name' => 'Second Nine', 'number' => '9'),
+    ),
+    array()
+);
+$result = new SPSS_Extraction_Result(array(
+    'players' => array(
+        array('team' => 'home', 'jersey_written' => '9', 'player_name' => 'Nobody Here'),
+    ),
+));
+SPSS_Roster_Matcher::match($result, $dup_rosters);
+$players = $result->data['players'];
+assert_test(
+    $players[0]['matched_player_id'] !== 901,
+    'Colliding roster number "9" is not silently attributed to the first player'
+);
+assert_test(
+    $players[0]['matched_player_id'] === null && $players[0]['matched_by'] === 'unmatched',
+    'Sheet entry for a colliding number with no name match stays unmatched'
+);
+
+// When the name does resolve, the collision falls through to a name match.
+$result = new SPSS_Extraction_Result(array(
+    'players' => array(
+        array('team' => 'home', 'jersey_written' => '9', 'player_name' => 'Second Nine'),
+    ),
+));
+SPSS_Roster_Matcher::match($result, $dup_rosters);
+assert_test(
+    $result->data['players'][0]['matched_player_id'] === 902
+        && $result->data['players'][0]['matched_by'] === 'roster_name',
+    'Colliding number falls through to name match when the name resolves'
+);
+
+// A non-colliding number on the same roster still matches by number.
+$mixed_rosters = make_rosters(
+    array(
+        array('player_id' => 901, 'name' => 'First Nine', 'number' => '9'),
+        array('player_id' => 902, 'name' => 'Second Nine', 'number' => '9'),
+        array('player_id' => 111, 'name' => 'Unique Eleven', 'number' => '11'),
+    ),
+    array()
+);
+$result = new SPSS_Extraction_Result(array(
+    'players' => array(
+        array('team' => 'home', 'jersey_written' => '11', 'player_name' => 'z'),
+    ),
+));
+SPSS_Roster_Matcher::match($result, $mixed_rosters);
+assert_test(
+    $result->data['players'][0]['matched_player_id'] === 111
+        && $result->data['players'][0]['matched_by'] === 'roster_number',
+    'A unique number still matches by number even when the roster has a collision'
+);
+
 // ── missing scoring/penalties keys are tolerated ─────────────────────────────
 
 $result = new SPSS_Extraction_Result(array(

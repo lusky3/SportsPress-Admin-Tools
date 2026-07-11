@@ -90,68 +90,40 @@ class SPSS_Admin {
 			);
 		}
 
-		// Hosted LLM providers: a (masked) API key + an editable model id each.
-		// The model default is '' so the provider falls back to its own
-		// default_model(); the field displays the effective value via get_model().
-		foreach ( array( 'claude', 'gemini', 'openai', 'openrouter' ) as $id ) {
-			register_setting(
-				self::SETTINGS_GROUP,
-				"spss_{$id}_api_key",
-				array(
-					'type' => 'string',
-					'sanitize_callback' => array( $this, 'sanitize_' . $id . '_key' ),
-					'default' => '',
-				)
-			);
-			register_setting(
-				self::SETTINGS_GROUP,
-				"spss_{$id}_model",
-				array(
-					'type' => 'string',
-					'sanitize_callback' => 'sanitize_text_field',
-					'default' => '',
-				)
-			);
+		// Per-provider settings fields (API key, model, endpoint, base URL, …).
+		// Driven by each provider's settings_fields() so a filter-registered
+		// provider self-describes and its options are registered without hardcoding
+		// provider taxonomy here.
+		foreach ( SPSS_Recognition_Manager::get_providers() as $provider ) {
+			foreach ( (array) $provider->settings_fields() as $field ) {
+				if ( empty( $field['option'] ) ) {
+					continue;
+				}
+				$option = (string) $field['option'];
+				if ( ! empty( $field['secret'] ) ) {
+					$sanitize = function ( $value ) use ( $option ) {
+						return $this->preserve_masked_key( $value, $option );
+					};
+				} elseif ( 'url' === ( $field['type'] ?? '' ) ) {
+					$sanitize = 'esc_url_raw';
+				} else {
+					$sanitize = 'sanitize_text_field';
+				}
+				register_setting(
+					self::SETTINGS_GROUP,
+					$option,
+					array(
+						'type'              => 'string',
+						'sanitize_callback' => $sanitize,
+						'default'           => '',
+						// Provider config (incl. secret API keys) is only read in
+						// admin/cron/REST, never on the public front end — keep it out
+						// of the autoloaded alloptions blob.
+						'autoload'          => false,
+					)
+				);
+			}
 		}
-		// Aggregator gateway base URL (OpenRouter by default; any OpenAI-compatible endpoint).
-		register_setting(
-			self::SETTINGS_GROUP,
-			'spss_openrouter_base_url',
-			array(
-				'type'              => 'string',
-				'sanitize_callback' => 'esc_url_raw',
-				'default'           => '',
-			)
-		);
-
-		// Self-hosted sidecar: endpoint + optional model + optional bearer key.
-		register_setting(
-			self::SETTINGS_GROUP,
-			'spss_selfhosted_endpoint',
-			array(
-				'type' => 'string',
-				'sanitize_callback' => 'esc_url_raw',
-				'default' => '',
-			)
-		);
-		register_setting(
-			self::SETTINGS_GROUP,
-			'spss_selfhosted_model',
-			array(
-				'type' => 'string',
-				'sanitize_callback' => 'sanitize_text_field',
-				'default' => '',
-			)
-		);
-		register_setting(
-			self::SETTINGS_GROUP,
-			'spss_selfhosted_key',
-			array(
-				'type' => 'string',
-				'sanitize_callback' => array( $this, 'sanitize_selfhosted_key' ),
-				'default' => '',
-			)
-		);
 
 		// Remote intake (email Worker / custom webhook + Twilio SMS/MMS).
 		register_setting(
@@ -161,6 +133,7 @@ class SPSS_Admin {
 				'type' => 'string',
 				'sanitize_callback' => 'sanitize_text_field',
 				'default' => '',
+				'autoload' => false,
 			)
 		);
 		register_setting(
@@ -170,6 +143,7 @@ class SPSS_Admin {
 				'type' => 'string',
 				'sanitize_callback' => 'sanitize_text_field',
 				'default' => '',
+				'autoload' => false,
 			)
 		);
 		register_setting(
@@ -179,6 +153,7 @@ class SPSS_Admin {
 				'type' => 'string',
 				'sanitize_callback' => array( $this, 'sanitize_twilio_token' ),
 				'default' => '',
+				'autoload' => false,
 			)
 		);
 
@@ -203,26 +178,6 @@ class SPSS_Admin {
 			return (string) get_option( $option, '' );
 		}
 		return sanitize_text_field( $value );
-	}
-
-	public function sanitize_claude_key( $value ) {
-		return $this->preserve_masked_key( $value, 'spss_claude_api_key' );
-	}
-
-	public function sanitize_gemini_key( $value ) {
-		return $this->preserve_masked_key( $value, 'spss_gemini_api_key' );
-	}
-
-	public function sanitize_openai_key( $value ) {
-		return $this->preserve_masked_key( $value, 'spss_openai_api_key' );
-	}
-
-	public function sanitize_openrouter_key( $value ) {
-		return $this->preserve_masked_key( $value, 'spss_openrouter_api_key' );
-	}
-
-	public function sanitize_selfhosted_key( $value ) {
-		return $this->preserve_masked_key( $value, 'spss_selfhosted_key' );
 	}
 
 	public function sanitize_twilio_token( $value ) {
@@ -277,14 +232,14 @@ class SPSS_Admin {
 		<tr>
 			<th scope="row"><label for="spss_<?php echo esc_attr( $id ); ?>_monthly_budget"><?php esc_html_e( 'Monthly budget ($)', 'sportspress-score-sheets' ); ?></label></th>
 			<td>
-				<input type="number" step="0.01" min="0" name="spss_<?php echo esc_attr( $id ); ?>_monthly_budget" id="spss_<?php echo esc_attr( $id ); ?>_monthly_budget" value="<?php echo esc_attr( '' === $budget || 0 === (int) $budget ? '' : $budget ); ?>" />
+				<input type="number" step="0.01" min="0" name="spss_<?php echo esc_attr( $id ); ?>_monthly_budget" id="spss_<?php echo esc_attr( $id ); ?>_monthly_budget" value="<?php echo esc_attr( '' === $budget || (float) $budget <= 0 ? '' : $budget ); ?>" />
 				<p class="description"><?php esc_html_e( 'Blank / 0 = unlimited. When the estimated spend would exceed this in a calendar month, recognition fails over to the next provider in the chain.', 'sportspress-score-sheets' ); ?></p>
 			</td>
 		</tr>
 		<tr>
 			<th scope="row"><label for="spss_<?php echo esc_attr( $id ); ?>_cost_per_sheet"><?php esc_html_e( 'Est. cost per sheet ($)', 'sportspress-score-sheets' ); ?></label></th>
 			<td>
-				<input type="number" step="0.001" min="0" name="spss_<?php echo esc_attr( $id ); ?>_cost_per_sheet" id="spss_<?php echo esc_attr( $id ); ?>_cost_per_sheet" value="<?php echo esc_attr( '' === $cost || 0 === (int) $cost ? '' : $cost ); ?>" placeholder="<?php echo esc_attr( number_format( $default_cost, 3 ) ); ?>" />
+				<input type="number" step="0.001" min="0" name="spss_<?php echo esc_attr( $id ); ?>_cost_per_sheet" id="spss_<?php echo esc_attr( $id ); ?>_cost_per_sheet" value="<?php echo esc_attr( '' === $cost || (float) $cost <= 0 ? '' : $cost ); ?>" placeholder="<?php echo esc_attr( number_format( $default_cost, 3 ) ); ?>" />
 				<p class="description"><?php esc_html_e( 'Used only to meter the budget above (spend is estimated, not billed). Blank uses the provider default shown.', 'sportspress-score-sheets' ); ?></p>
 			</td>
 		</tr>
@@ -330,52 +285,41 @@ class SPSS_Admin {
 				</table>
 
 				<?php foreach ( $providers as $id => $p ) : ?>
-					<?php if ( $p instanceof SPSS_Abstract_LLM_Provider ) : ?>
-						<h2><?php echo esc_html( $p->get_label() ); ?></h2>
-						<table class="form-table" role="presentation">
+					<?php $fields = method_exists( $p, 'settings_fields' ) ? (array) $p->settings_fields() : array(); ?>
+					<h2><?php echo esc_html( $p->get_label() ); ?></h2>
+					<table class="form-table" role="presentation">
+						<?php foreach ( $fields as $field ) : ?>
+							<?php
+							$option     = (string) ( $field['option'] ?? '' );
+							$ftype      = (string) ( $field['type'] ?? 'text' );
+							$is_secret  = ! empty( $field['secret'] );
+							$input_type = in_array( $ftype, array( 'password', 'url', 'number', 'text' ), true ) ? $ftype : 'text';
+							if ( $is_secret ) {
+								$value       = '';
+								$placeholder = $this->masked( $option );
+								$desc        = '' !== $this->masked( $option ) ? __( 'A key is stored. Leave blank to keep it.', 'sportspress-score-sheets' ) : (string) ( $field['description'] ?? '' );
+							} elseif ( 'spss_' . $id . '_model' === $option && method_exists( $p, 'get_model' ) ) {
+								$value       = (string) $p->get_model();
+								$placeholder = (string) ( $field['placeholder'] ?? '' );
+								$desc        = (string) ( $field['description'] ?? '' );
+							} else {
+								$value       = (string) get_option( $option, '' );
+								$placeholder = (string) ( $field['placeholder'] ?? '' );
+								$desc        = (string) ( $field['description'] ?? '' );
+							}
+							?>
 							<tr>
-								<th scope="row"><label for="spss_<?php echo esc_attr( $id ); ?>_api_key"><?php esc_html_e( 'API key', 'sportspress-score-sheets' ); ?></label></th>
+								<th scope="row"><label for="<?php echo esc_attr( $option ); ?>"><?php echo esc_html( $field['label'] ?? $option ); ?></label></th>
 								<td>
-									<input type="password" name="spss_<?php echo esc_attr( $id ); ?>_api_key" id="spss_<?php echo esc_attr( $id ); ?>_api_key" class="regular-text" autocomplete="off" placeholder="<?php echo esc_attr( $this->masked( "spss_{$id}_api_key" ) ); ?>" value="" />
-									<p class="description"><?php echo '' !== $this->masked( "spss_{$id}_api_key" ) ? esc_html__( 'A key is stored. Leave blank to keep it.', 'sportspress-score-sheets' ) : esc_html__( 'Enter a key to enable this provider.', 'sportspress-score-sheets' ); ?></p>
+									<input type="<?php echo esc_attr( $input_type ); ?>" name="<?php echo esc_attr( $option ); ?>" id="<?php echo esc_attr( $option ); ?>" class="regular-text" <?php echo $is_secret ? 'autocomplete="off" ' : ''; ?>placeholder="<?php echo esc_attr( $placeholder ); ?>" value="<?php echo esc_attr( $value ); ?>" />
+									<?php if ( '' !== $desc ) : ?>
+										<p class="description"><?php echo esc_html( $desc ); ?></p>
+									<?php endif; ?>
 								</td>
 							</tr>
-							<tr>
-								<th scope="row"><label for="spss_<?php echo esc_attr( $id ); ?>_model"><?php esc_html_e( 'Model', 'sportspress-score-sheets' ); ?></label></th>
-								<td><input type="text" name="spss_<?php echo esc_attr( $id ); ?>_model" id="spss_<?php echo esc_attr( $id ); ?>_model" class="regular-text" value="<?php echo esc_attr( $p->get_model() ); ?>" /><?php echo 'openrouter' === $id ? ' <span class="description">' . esc_html__( 'e.g. openai/gpt-4o, anthropic/claude-*, google/gemini-*, qwen/qwen2.5-vl-* — must support vision + structured output.', 'sportspress-score-sheets' ) . '</span>' : ''; ?></td>
-							</tr>
-							<?php if ( 'openrouter' === $id ) : ?>
-								<tr>
-									<th scope="row"><label for="spss_openrouter_base_url"><?php esc_html_e( 'Gateway base URL', 'sportspress-score-sheets' ); ?></label></th>
-									<td>
-										<input type="url" name="spss_openrouter_base_url" id="spss_openrouter_base_url" class="regular-text" placeholder="<?php echo esc_attr( SPSS_OpenRouter_Provider::DEFAULT_BASE_URL ); ?>" value="<?php echo esc_attr( get_option( 'spss_openrouter_base_url', '' ) ); ?>" />
-										<p class="description"><?php esc_html_e( 'Defaults to OpenRouter. Point at any other OpenAI-compatible aggregator/gateway (Together, Groq, Fireworks, a LiteLLM/vLLM proxy, …).', 'sportspress-score-sheets' ); ?></p>
-									</td>
-								</tr>
-							<?php endif; ?>
-							<?php $this->render_budget_rows( $id ); ?>
-						</table>
-					<?php elseif ( 'selfhosted' === $id ) : ?>
-						<h2><?php echo esc_html( $p->get_label() ); ?></h2>
-						<table class="form-table" role="presentation">
-							<tr>
-								<th scope="row"><label for="spss_selfhosted_endpoint"><?php esc_html_e( 'Sidecar endpoint URL', 'sportspress-score-sheets' ); ?></label></th>
-								<td>
-									<input type="url" name="spss_selfhosted_endpoint" id="spss_selfhosted_endpoint" class="regular-text" placeholder="http://127.0.0.1:8000" value="<?php echo esc_attr( get_option( 'spss_selfhosted_endpoint', '' ) ); ?>" />
-									<p class="description"><?php esc_html_e( 'Base URL of your local recognition sidecar (POSTs to /v1/recognize). Leave blank to disable.', 'sportspress-score-sheets' ); ?></p>
-								</td>
-							</tr>
-							<tr>
-								<th scope="row"><label for="spss_selfhosted_model"><?php esc_html_e( 'Model (optional)', 'sportspress-score-sheets' ); ?></label></th>
-								<td><input type="text" name="spss_selfhosted_model" id="spss_selfhosted_model" class="regular-text" value="<?php echo esc_attr( get_option( 'spss_selfhosted_model', '' ) ); ?>" /></td>
-							</tr>
-							<tr>
-								<th scope="row"><label for="spss_selfhosted_key"><?php esc_html_e( 'Bearer token (optional)', 'sportspress-score-sheets' ); ?></label></th>
-								<td><input type="password" name="spss_selfhosted_key" id="spss_selfhosted_key" class="regular-text" autocomplete="off" placeholder="<?php echo esc_attr( $this->masked( 'spss_selfhosted_key' ) ); ?>" value="" /></td>
-							</tr>
-							<?php $this->render_budget_rows( $id ); ?>
-						</table>
-					<?php endif; ?>
+						<?php endforeach; ?>
+						<?php $this->render_budget_rows( $id ); ?>
+					</table>
 				<?php endforeach; ?>
 
 				<h2><?php esc_html_e( 'Remote intake (email / SMS / webhook)', 'sportspress-score-sheets' ); ?></h2>

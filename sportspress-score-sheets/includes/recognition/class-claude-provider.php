@@ -49,7 +49,7 @@ class SPSS_Claude_Provider extends SPSS_Abstract_LLM_Provider {
 	protected function build_body( string $image_b64, string $media_type, array $context ): array {
 		return array(
 			'model'       => $this->get_model(),
-			'max_tokens'  => 2048,
+			'max_tokens'  => self::MAX_TOKENS,
 			'tools'       => array( $this->tool_definition() ),
 			'tool_choice' => array(
 				'type' => 'tool',
@@ -91,149 +91,10 @@ class SPSS_Claude_Provider extends SPSS_Abstract_LLM_Provider {
 	}
 
 	private function tool_definition() {
-		$conf        = array(
-			'type' => 'string',
-			'enum' => array( 'high', 'medium', 'low' ),
-		);
-		$int_or_null = array( 'type' => array( 'integer', 'null' ) );
-		$str_or_null = array( 'type' => array( 'string', 'null' ) );
-
 		return array(
 			'name'         => 'extract_scoresheet',
 			'description'  => 'Return the structured contents of a hand-filled hockey score sheet.',
-			'input_schema' => array(
-				'type'       => 'object',
-				'properties' => array(
-					'sheet_meta' => array(
-						'type'       => 'object',
-						'properties' => array(
-							'date'            => $str_or_null,
-							'location'        => $str_or_null,
-							'legible_overall' => $conf,
-						),
-					),
-					'teams'      => array(
-						'type'       => 'object',
-						'properties' => array(
-							'home' => $this->team_schema( $str_or_null, $int_or_null ),
-							'away' => $this->team_schema( $str_or_null, $int_or_null ),
-						),
-					),
-					'periods'    => array(
-						'type'  => 'array',
-						'items' => array(
-							'type'       => 'object',
-							'properties' => array(
-								'period' => array( 'type' => 'integer' ),
-								'home'   => $int_or_null,
-								'away'   => $int_or_null,
-							),
-						),
-					),
-					'players'    => array(
-						'type'  => 'array',
-						'items' => array(
-							'type'       => 'object',
-							'properties' => array(
-								'team'              => array(
-									'type' => 'string',
-									'enum' => array( 'home', 'away' ),
-								),
-								'player_name'       => $str_or_null,
-								'jersey_written'    => $str_or_null,
-								'matched_player_id' => $int_or_null,
-								'matched_by'        => array(
-									'type' => 'string',
-									'enum' => array( 'roster_number', 'roster_name', 'unmatched' ),
-								),
-								'goals'             => $int_or_null,
-								'assists'           => $int_or_null,
-								'pim'               => $int_or_null,
-								'field_confidence'  => array(
-									'type'       => 'object',
-									'properties' => array(
-										'jersey'  => $conf,
-										'goals'   => $conf,
-										'assists' => $conf,
-									),
-								),
-							),
-							'required'   => array( 'team', 'jersey_written' ),
-						),
-					),
-					'scoring'    => array(
-						'type'  => 'array',
-						'items' => array(
-							'type'       => 'object',
-							'properties' => array(
-								'team'           => array(
-									'type' => 'string',
-									'enum' => array( 'home', 'away' ),
-								),
-								'goal_number'    => $int_or_null,
-								'scorer_jersey'  => $str_or_null,
-								'assist1_jersey' => $str_or_null,
-								'assist2_jersey' => $str_or_null,
-								'period'         => $int_or_null,
-							),
-						),
-					),
-					'penalties'  => array(
-						'type'  => 'array',
-						'items' => array(
-							'type'       => 'object',
-							'properties' => array(
-								'team'    => array(
-									'type' => 'string',
-									'enum' => array( 'home', 'away' ),
-								),
-								'jersey'  => $str_or_null,
-								'length'  => $int_or_null,
-								'period'  => $int_or_null,
-								'offense' => $str_or_null,
-							),
-						),
-					),
-					'goalies'    => array(
-						'type'  => 'array',
-						'items' => array(
-							'type'       => 'object',
-							'properties' => array(
-								'team'              => array(
-									'type' => 'string',
-									'enum' => array( 'home', 'away' ),
-								),
-								'jersey_written'    => $str_or_null,
-								'matched_player_id' => $int_or_null,
-								'goals_against'     => $int_or_null,
-							),
-						),
-					),
-					'flags'      => array(
-						'type'  => 'array',
-						'items' => array(
-							'type'       => 'object',
-							'properties' => array(
-								'type'         => array( 'type' => 'string' ),
-								'detail'       => array( 'type' => 'string' ),
-								'player_index' => $int_or_null,
-							),
-						),
-					),
-				),
-				'required'   => array( 'teams', 'players' ),
-			),
-		);
-	}
-
-	private function team_schema( $str_or_null, $int_or_null ) {
-		return array(
-			'type'       => 'object',
-			'properties' => array(
-				'name_written'    => $str_or_null,
-				'matched_team_id' => $int_or_null,
-				'final_score'     => $int_or_null,
-			),
+			'input_schema' => $this->render_schema_anthropic(),
 		);
 	}
 }

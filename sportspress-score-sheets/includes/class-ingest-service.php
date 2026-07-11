@@ -83,54 +83,71 @@ class SPSS_Ingest_Service {
 	 */
 	public static function process( $sheet_id ) {
 		$sheet = SPSS_Database::get_sheet( $sheet_id );
-		if ( ! $sheet || SPSS_Database::STATUS_QUEUED !== $sheet->status ) {
-			return; // Already processed, or gone.
+		if ( ! $sheet ) {
+			return; // Gone.
 		}
-		SPSS_Database::update_sheet( $sheet_id, array( 'status' => SPSS_Database::STATUS_PROCESSING ) );
 
-		$abs = SPSS_Image_Store::resolve( $sheet->image_path );
-		if ( ! $abs ) {
+		// Atomic claim: only the worker that flips queued→processing proceeds,
+		// so a cron double-fire can't double-pay recognition on one sheet.
+		if ( 1 !== SPSS_Database::claim_for_processing( $sheet_id ) ) {
+			return; // Not queued, or already claimed by another worker.
+		}
+
+		// From here the sheet is 'processing'. Any uncaught Throwable must move
+		// it to FAILED, or it strands forever (never retried, PII image kept).
+		try {
+			$abs = SPSS_Image_Store::resolve( $sheet->image_path );
+			if ( ! $abs ) {
+				SPSS_Database::update_sheet(
+					$sheet_id,
+					array(
+						'status' => SPSS_Database::STATUS_FAILED,
+						'error' => 'image missing',
+					)
+				);
+				return;
+			}
+
+			$context = self::build_context( (int) $sheet->event_id );
+			$result  = SPSS_Recognition_Manager::recognize( $abs, $context );
+
+			if ( is_wp_error( $result ) ) {
+				SPSS_Database::update_sheet(
+					$sheet_id,
+					array(
+						'status'   => SPSS_Database::STATUS_FAILED,
+						'provider' => SPSS_Recognition_Manager::get_primary_id(),
+						'error'    => $result->get_error_message(),
+					)
+				);
+				return;
+			}
+
+			// Deterministic jersey->player_id resolution against the rosters (never
+			// trust the model's matching), + derive per-player pim from penalties.
+			SPSS_Roster_Matcher::match( $result, $context['rosters'] ?? array() );
+
+			// Deterministic reconciliation: append flags for score/roster/range issues.
+			SPSS_Consistency_Checker::check( $result );
+
+			SPSS_Database::update_sheet(
+				$sheet_id,
+				array(
+					'status'         => SPSS_Database::STATUS_PENDING_REVIEW,
+					'provider'       => $result->provider,
+					'extracted_json' => wp_json_encode( $result->to_array() ),
+					'error'          => null,
+				)
+			);
+		} catch ( \Throwable $e ) {
 			SPSS_Database::update_sheet(
 				$sheet_id,
 				array(
 					'status' => SPSS_Database::STATUS_FAILED,
-					'error' => 'image missing',
+					'error'  => $e->getMessage(),
 				)
 			);
-			return;
 		}
-
-		$context = self::build_context( (int) $sheet->event_id );
-		$result  = SPSS_Recognition_Manager::recognize( $abs, $context );
-
-		if ( is_wp_error( $result ) ) {
-			SPSS_Database::update_sheet(
-				$sheet_id,
-				array(
-					'status'   => SPSS_Database::STATUS_FAILED,
-					'provider' => SPSS_Recognition_Manager::get_primary_id(),
-					'error'    => $result->get_error_message(),
-				)
-			);
-			return;
-		}
-
-		// Deterministic jersey->player_id resolution against the rosters (never
-		// trust the model's matching), + derive per-player pim from penalties.
-		SPSS_Roster_Matcher::match( $result, $context['rosters'] ?? array() );
-
-		// Deterministic reconciliation: append flags for score/roster/range issues.
-		SPSS_Consistency_Checker::check( $result );
-
-		SPSS_Database::update_sheet(
-			$sheet_id,
-			array(
-				'status'         => SPSS_Database::STATUS_PENDING_REVIEW,
-				'provider'       => $result->provider,
-				'extracted_json' => wp_json_encode( $result->to_array() ),
-				'error'          => null,
-			)
-		);
 	}
 
 	/**
@@ -178,7 +195,7 @@ class SPSS_Ingest_Service {
 	 * (per the repo data-model rule), with jersey number from sp_number.
 	 */
 	private static function team_roster( $team_id ) {
-		$players = get_posts(
+		$player_ids = get_posts(
 			array(
 				'post_type'      => 'sp_player',
 				'post_status'    => 'publish',
@@ -188,8 +205,15 @@ class SPSS_Ingest_Service {
 				'fields'         => 'ids',
 			)
 		);
+
+		// Prime post + meta caches once so the per-player get_the_title() /
+		// get_post_meta() calls below don't fire ~2 queries each (N+1).
+		if ( $player_ids ) {
+			_prime_post_caches( $player_ids, true, true );
+		}
+
 		$roster = array();
-		foreach ( $players as $pid ) {
+		foreach ( $player_ids as $pid ) {
 			$roster[] = array(
 				'player_id' => (int) $pid,
 				'name'      => get_the_title( $pid ),
@@ -259,7 +283,7 @@ class SPSS_Ingest_Service {
 					return $out;
 				}
 
-				SPSS_Database::update_sheet(
+				$confirmed_ok = SPSS_Database::update_sheet(
 					$sheet_id,
 					array(
 						'status'     => SPSS_Database::STATUS_CONFIRMED,
@@ -267,6 +291,11 @@ class SPSS_Ingest_Service {
 						'applied_at' => current_time( 'mysql', true ),
 					)
 				);
+				// If the status write failed, leave the image in place so the
+				// sheet stays re-appliable rather than stranded pending_review.
+				if ( false === $confirmed_ok ) {
+					return new WP_Error( 'spss_status_write_failed', __( 'Could not mark the sheet confirmed; left for retry.', 'sportspress-score-sheets' ) );
+				}
 
 				// PII minimization: the event now holds the data; drop the source image.
 				if ( ! empty( $sheet->image_path ) ) {

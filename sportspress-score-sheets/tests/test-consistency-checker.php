@@ -198,6 +198,49 @@ assert_test(
     'Missing goals with high confidence does not flag illegible'
 );
 
+// Enum confidence 'high' → no illegible flag (finding #4 regression guard).
+$enum_high = make_result(0, null, array(
+    make_player(array('team' => 'home', 'jersey_written' => '10', 'matched_player_id' => 1, 'goals' => null,
+        'field_confidence' => array('goals' => 'high'))),
+));
+$added = SPSS_Consistency_Checker::check($enum_high);
+assert_test(
+    count_flags($enum_high, 'illegible') === 0,
+    'Missing goals with enum confidence "high" does not flag illegible'
+);
+
+// Enum confidence 'low' → illegible flag (finding #4 regression guard).
+$enum_low = make_result(0, 0, array(
+    make_player(array('team' => 'home', 'jersey_written' => '10', 'matched_player_id' => 1, 'goals' => null,
+        'field_confidence' => array('goals' => 'low'))),
+));
+$added = SPSS_Consistency_Checker::check($enum_low);
+assert_test(
+    count_flags($enum_low, 'illegible') === 1,
+    'Missing goals with enum confidence "low" flags illegible'
+);
+$enum_low_flag = null;
+foreach ($enum_low->flags as $f) {
+    if ($f['type'] === 'illegible') {
+        $enum_low_flag = $f;
+    }
+}
+assert_test(
+    $enum_low_flag !== null && strpos($enum_low_flag['detail'], 'low') !== false,
+    'illegible flag detail prints the actual confidence value, not 0.00'
+);
+
+// Enum confidence 'medium' → no illegible flag (only genuinely low flags).
+$enum_medium = make_result(0, null, array(
+    make_player(array('team' => 'home', 'jersey_written' => '10', 'matched_player_id' => 1, 'goals' => null,
+        'field_confidence' => array('goals' => 'medium'))),
+));
+$added = SPSS_Consistency_Checker::check($enum_medium);
+assert_test(
+    count_flags($enum_medium, 'illegible') === 0,
+    'Missing goals with enum confidence "medium" does not flag illegible'
+);
+
 // ── Out of range ─────────────────────────────────────────────────────────────
 
 $range = make_result(0, 0, array(

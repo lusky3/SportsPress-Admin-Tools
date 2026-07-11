@@ -48,13 +48,13 @@ class SPSS_OpenAI_Provider extends SPSS_Abstract_LLM_Provider {
 	protected function build_body( string $image_b64, string $media_type, array $context ): array {
 		return array(
 			'model'                 => $this->get_model(),
-			'max_completion_tokens' => 2048,
+			'max_completion_tokens' => self::MAX_TOKENS,
 			'response_format'       => array(
 				'type'        => 'json_schema',
 				'json_schema' => array(
 					'name'   => 'extract_scoresheet',
 					'strict' => true,
-					'schema' => $this->json_schema(),
+					'schema' => $this->render_schema_openai_strict(),
 				),
 			),
 			'messages'              => array(
@@ -95,173 +95,5 @@ class SPSS_OpenAI_Provider extends SPSS_Abstract_LLM_Provider {
 			return new WP_Error( 'spss_openai_no_json', __( 'Recognition did not return structured data.', 'sportspress-score-sheets' ) );
 		}
 		return SPSS_Extraction_Result::from_array( $arr, $this->get_id(), wp_json_encode( $arr ) );
-	}
-
-	/**
-	 * Response schema in OpenAI's strict dialect: every object declares
-	 * `additionalProperties => false` and lists every property in `required`;
-	 * optionality is expressed via nullable union types (['integer','null']).
-	 */
-	private function json_schema() {
-		$conf        = array(
-			'type' => 'string',
-			'enum' => array( 'high', 'medium', 'low' ),
-		);
-		$int_or_null = array( 'type' => array( 'integer', 'null' ) );
-		$str_or_null = array( 'type' => array( 'string', 'null' ) );
-
-		return array(
-			'type'                 => 'object',
-			'additionalProperties' => false,
-			'properties'           => array(
-				'sheet_meta' => array(
-					'type'                 => 'object',
-					'additionalProperties' => false,
-					'properties'           => array(
-						'date'            => $str_or_null,
-						'location'        => $str_or_null,
-						'legible_overall' => $conf,
-					),
-					'required'             => array( 'date', 'location', 'legible_overall' ),
-				),
-				'teams'      => array(
-					'type'                 => 'object',
-					'additionalProperties' => false,
-					'properties'           => array(
-						'home' => $this->team_schema( $str_or_null, $int_or_null ),
-						'away' => $this->team_schema( $str_or_null, $int_or_null ),
-					),
-					'required'             => array( 'home', 'away' ),
-				),
-				'periods'    => array(
-					'type'  => 'array',
-					'items' => array(
-						'type'                 => 'object',
-						'additionalProperties' => false,
-						'properties'           => array(
-							'period' => array( 'type' => 'integer' ),
-							'home'   => $int_or_null,
-							'away'   => $int_or_null,
-						),
-						'required'             => array( 'period', 'home', 'away' ),
-					),
-				),
-				'players'    => array(
-					'type'  => 'array',
-					'items' => array(
-						'type'                 => 'object',
-						'additionalProperties' => false,
-						'properties'           => array(
-							'team'              => array(
-								'type' => 'string',
-								'enum' => array( 'home', 'away' ),
-							),
-							'player_name'       => $str_or_null,
-							'jersey_written'    => $str_or_null,
-							'matched_player_id' => $int_or_null,
-							'matched_by'        => array(
-								'type' => 'string',
-								'enum' => array( 'roster_number', 'roster_name', 'unmatched' ),
-							),
-							'goals'             => $int_or_null,
-							'assists'           => $int_or_null,
-							'pim'               => $int_or_null,
-							'field_confidence'  => array(
-								'type'                 => 'object',
-								'additionalProperties' => false,
-								'properties'           => array(
-									'jersey'  => $conf,
-									'goals'   => $conf,
-									'assists' => $conf,
-								),
-								'required'             => array( 'jersey', 'goals', 'assists' ),
-							),
-						),
-						'required'             => array( 'team', 'player_name', 'jersey_written', 'matched_player_id', 'matched_by', 'goals', 'assists', 'pim', 'field_confidence' ),
-					),
-				),
-				'scoring'    => array(
-					'type'  => 'array',
-					'items' => array(
-						'type'                 => 'object',
-						'additionalProperties' => false,
-						'properties'           => array(
-							'team'           => array(
-								'type' => 'string',
-								'enum' => array( 'home', 'away' ),
-							),
-							'goal_number'    => $int_or_null,
-							'scorer_jersey'  => $str_or_null,
-							'assist1_jersey' => $str_or_null,
-							'assist2_jersey' => $str_or_null,
-							'period'         => $int_or_null,
-						),
-						'required'             => array( 'team', 'goal_number', 'scorer_jersey', 'assist1_jersey', 'assist2_jersey', 'period' ),
-					),
-				),
-				'penalties'  => array(
-					'type'  => 'array',
-					'items' => array(
-						'type'                 => 'object',
-						'additionalProperties' => false,
-						'properties'           => array(
-							'team'    => array(
-								'type' => 'string',
-								'enum' => array( 'home', 'away' ),
-							),
-							'jersey'  => $str_or_null,
-							'length'  => $int_or_null,
-							'period'  => $int_or_null,
-							'offense' => $str_or_null,
-						),
-						'required'             => array( 'team', 'jersey', 'length', 'period', 'offense' ),
-					),
-				),
-				'goalies'    => array(
-					'type'  => 'array',
-					'items' => array(
-						'type'                 => 'object',
-						'additionalProperties' => false,
-						'properties'           => array(
-							'team'              => array(
-								'type' => 'string',
-								'enum' => array( 'home', 'away' ),
-							),
-							'jersey_written'    => $str_or_null,
-							'matched_player_id' => $int_or_null,
-							'goals_against'     => $int_or_null,
-						),
-						'required'             => array( 'team', 'jersey_written', 'matched_player_id', 'goals_against' ),
-					),
-				),
-				'flags'      => array(
-					'type'  => 'array',
-					'items' => array(
-						'type'                 => 'object',
-						'additionalProperties' => false,
-						'properties'           => array(
-							'type'         => array( 'type' => 'string' ),
-							'detail'       => array( 'type' => 'string' ),
-							'player_index' => $int_or_null,
-						),
-						'required'             => array( 'type', 'detail', 'player_index' ),
-					),
-				),
-			),
-			'required'             => array( 'sheet_meta', 'teams', 'periods', 'players', 'scoring', 'penalties', 'goalies', 'flags' ),
-		);
-	}
-
-	private function team_schema( $str_or_null, $int_or_null ) {
-		return array(
-			'type'                 => 'object',
-			'additionalProperties' => false,
-			'properties'           => array(
-				'name_written'    => $str_or_null,
-				'matched_team_id' => $int_or_null,
-				'final_score'     => $int_or_null,
-			),
-			'required'             => array( 'name_written', 'matched_team_id', 'final_score' ),
-		);
 	}
 }

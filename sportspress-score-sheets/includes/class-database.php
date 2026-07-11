@@ -30,6 +30,19 @@ class SPSS_Database {
 		return $wpdb->prefix . 'spss_sheets';
 	}
 
+	/**
+	 * Run the schema installer when the stored DB version is behind the code's.
+	 * create_tables() uses dbDelta, which is idempotent, so this safely upgrades
+	 * an existing install to any additive schema change without a bespoke
+	 * migration. Cheap no-op once versions match. Called on load.
+	 */
+	public static function maybe_upgrade() {
+		if ( (string) get_option( self::DB_VERSION_OPTION, '' ) === self::DB_VERSION ) {
+			return;
+		}
+		self::create_tables();
+	}
+
 	public static function create_tables() {
 		global $wpdb;
 		$table           = self::table_name();
@@ -95,6 +108,19 @@ class SPSS_Database {
 
 		$ok = $wpdb->insert( self::table_name(), $row ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		if ( false === $ok ) {
+			// UNIQUE(image_hash) race: the pre-check passed but a concurrent
+			// insert won. Report the benign duplicate (callers ack 200) instead
+			// of a generic failure (400) if a matching row now exists.
+			if ( '' !== $hash ) {
+				$existing = self::find_by_hash( $hash );
+				if ( $existing ) {
+					return new WP_Error(
+						'spss_duplicate_sheet',
+						__( 'This image has already been submitted.', 'sportspress-score-sheets' ),
+						array( 'sheet_id' => (int) $existing->id )
+					);
+				}
+			}
 			return new WP_Error( 'spss_db_insert_failed', __( 'Could not queue the score sheet.', 'sportspress-score-sheets' ) );
 		}
 		return (int) $wpdb->insert_id;
@@ -135,6 +161,27 @@ class SPSS_Database {
 	}
 
 	/**
+	 * Atomically claim a queued sheet for processing: a single conditional
+	 * UPDATE that flips queued→processing, so a cron double-fire can't let two
+	 * workers both process (and double-pay recognition on) one sheet. Only the
+	 * worker that sees a 1-row result won the claim.
+	 *
+	 * @param int $id Sheet row id.
+	 * @return int Rows affected (1 on a successful claim, else 0).
+	 */
+	public static function claim_for_processing( $id ) {
+		global $wpdb;
+		return (int) $wpdb->query( // phpcs:ignore WordPress.DB
+			$wpdb->prepare(
+				'UPDATE ' . self::table_name() . ' SET status = %s WHERE id = %d AND status = %s',
+				self::STATUS_PROCESSING,
+				(int) $id,
+				self::STATUS_QUEUED
+			)
+		);
+	}
+
+	/**
 	 * List sheets, optionally filtered by status, newest first.
 	 *
 	 * @return array
@@ -164,7 +211,7 @@ class SPSS_Database {
 		$days   = max( 1, (int) $days );
 		$cutoff = gmdate( 'Y-m-d H:i:s', time() - $days * DAY_IN_SECONDS );
 
-		$rows = $wpdb->get_results( $wpdb->prepare( 'SELECT id, image_path FROM ' . self::table_name() . " WHERE created_at < %s AND status IN ('confirmed','failed','duplicate')", $cutoff ) ); // phpcs:ignore WordPress.DB
+		$rows = $wpdb->get_results( $wpdb->prepare( 'SELECT id, image_path FROM ' . self::table_name() . " WHERE created_at < %s AND status IN ('confirmed','failed','duplicate','processing')", $cutoff ) ); // phpcs:ignore WordPress.DB
 		if ( ! $rows ) {
 			return 0;
 		}

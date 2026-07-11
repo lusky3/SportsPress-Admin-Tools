@@ -308,6 +308,25 @@ assert_test(
 );
 assert_test($mock_add_post_meta === 0, 'add_post_meta() is never called (overwrite only)');
 
+// ── No published sp_performance posts → g/a/pim fallback (finding #5) ──────
+// When the sp_performance query is empty, the writer must still accept the
+// core g/a/pim slugs rather than silently dropping every player stat.
+seed_fixture();
+$mock_perf_ids = array(); // no published performances
+$writer->apply(100, array(
+    'home_team_id' => 10,
+    'away_team_id' => 20,
+    'home_score'   => 2,
+    'away_score'   => 1,
+    'players'      => array(
+        array('team_id' => 10, 'player_id' => 30, 'stats' => array('g' => 2, 'a' => 1, 'pim' => 4)),
+    ),
+));
+$row = $mock_post_meta[100]['sp_players'][10][30];
+assert_test($row['g'] === 2, 'g stat written via fallback when no sp_performance posts exist');
+assert_test($row['a'] === 1, 'a stat written via fallback when no sp_performance posts exist');
+assert_test($row['pim'] === 4, 'pim stat written via fallback when no sp_performance posts exist');
+
 // ── Missing SP_Event class returns WP_Error ───────────────────────────────
 // (Cannot un-define SP_Event here; the guard is covered by direct review.)
 

@@ -3,10 +3,11 @@
  * Contract every score-sheet recognition backend implements.
  *
  * Providers are registered with SPSS_Recognition_Manager (see the
- * `spss_register_recognition_providers` filter). The admin picks a Primary and
- * an optional Secondary (cross-check) provider in settings, so new backends —
- * a hosted doc-AI, a second LLM, a self-hosted OCR sidecar — drop in by
- * implementing this interface without touching the pipeline.
+ * `spss_register_recognition_providers` filter). The admin configures an ordered
+ * recognition chain (lead + failover) plus any number of confirmation providers
+ * in settings, so new backends — a hosted doc-AI, a second LLM, a self-hosted
+ * OCR sidecar — drop in by implementing this interface (and describing their own
+ * settings via settings_fields()) without touching the pipeline or the admin UI.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -35,4 +36,24 @@ interface SPSS_Recognition_Provider {
 	 * @return SPSS_Extraction_Result|WP_Error
 	 */
 	public function recognize( string $image_abs_path, array $context );
+
+	/**
+	 * Rough estimated $-cost of one recognition call, used by SPSS_Budget for
+	 * spend tracking. Return 0.0 for backends with no per-call charge.
+	 */
+	public function estimated_cost_per_sheet(): float;
+
+	/**
+	 * Describe this provider's settings so the admin can render its configuration
+	 * UI generically (instead of hardcoding per-provider branches).
+	 *
+	 * @return array[] Ordered field descriptors, each:
+	 *                 - 'option'      => string   Option name (e.g. 'spss_claude_api_key').
+	 *                 - 'label'       => string   Field label.
+	 *                 - 'type'        => string   'password' | 'text' | 'url'.
+	 *                 - 'secret'      => bool     Whether the value is a stored secret.
+	 *                 - 'placeholder' => string   Placeholder hint.
+	 *                 - 'description' => string   Help text.
+	 */
+	public function settings_fields(): array;
 }
