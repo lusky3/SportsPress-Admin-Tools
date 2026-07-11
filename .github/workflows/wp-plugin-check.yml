@@ -22,26 +22,75 @@ concurrency:
 jobs:
   plugin-check:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        plugin:
-          - sportspress-admin-tools
-          - sportspress-etransfer-automation
-          - sportspress-events-manager
-          - sportspress-league-manager
-          - sportspress-player-registration
-          - sportspress-player-tools
-          - sportspress-schedule-generator
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
 
-      - name: Run Plugin Check
-        uses: wordpress/plugin-check-action@6f5a57e173c065a394b78688f75df543e4011902 # v1.1.5
+      - name: Set up Node
+        uses: actions/setup-node@v6
         with:
-          build-dir: ${{ matrix.plugin }}
-          ignore-warnings: 'true'
-          exclude-directories: tests,docs
-          categories: general
-          exclude-checks: i18n_usage
+          node-version: '20'
+
+      # The six child plugins wp_die() on standalone activation because they
+      # require the SPAT_Plugin_Manager parent. The wordpress/plugin-check-action
+      # activates each plugin in isolation and can't pre-activate a dependency
+      # that isn't on wordpress.org, so it fails for every child. Instead we run
+      # Plugin Check via wp-env: the parent framework (and the Plugin Check
+      # plugin) are activated, and the whole suite is mapped into the site so
+      # `wp plugin check` can analyse each plugin — active or not — with the
+      # parent present.
+      - name: Configure wp-env
+        run: |
+          cat > .wp-env.json <<'JSON'
+          {
+            "plugins": [
+              "./sportspress-admin-tools",
+              "https://downloads.wordpress.org/plugin/plugin-check.latest-stable.zip"
+            ],
+            "mappings": {
+              "wp-content/plugins/sportspress-etransfer-automation": "./sportspress-etransfer-automation",
+              "wp-content/plugins/sportspress-events-manager": "./sportspress-events-manager",
+              "wp-content/plugins/sportspress-league-manager": "./sportspress-league-manager",
+              "wp-content/plugins/sportspress-player-registration": "./sportspress-player-registration",
+              "wp-content/plugins/sportspress-player-tools": "./sportspress-player-tools",
+              "wp-content/plugins/sportspress-schedule-generator": "./sportspress-schedule-generator"
+            }
+          }
+          JSON
+
+      - name: Start wp-env
+        run: npx --yes @wordpress/env@latest start
+
+      # `wp plugin check` always exits 0 (it reports findings, it doesn't gate on
+      # them), so we parse the CSV output and fail on any ERROR row. Warnings and
+      # the i18n_usage check are excluded to match the previous configuration;
+      # tests/ and docs/ are out of scope.
+      - name: Run Plugin Check on all suite plugins
+        run: |
+          set -uo pipefail
+          plugins="sportspress-admin-tools sportspress-etransfer-automation sportspress-events-manager sportspress-league-manager sportspress-player-registration sportspress-player-tools sportspress-schedule-generator"
+          fail=0
+          for p in $plugins; do
+            echo "::group::Plugin Check: $p"
+            out=$(npx --yes @wordpress/env@latest run cli wp plugin check "$p" \
+              --categories=general \
+              --exclude-directories=tests,docs \
+              --ignore-warnings \
+              --exclude-checks=i18n_usage \
+              --format=csv 2>/dev/null)
+            echo "$out"
+            if printf '%s\n' "$out" | grep -q ',ERROR,'; then
+              echo "::error::Plugin Check found ERROR-level issues in $p"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "Plugin Check failed — see the ERROR rows above."
+            exit 1
+          fi
+          echo "Plugin Check passed for all plugins."
+
+      - name: Stop wp-env
+        if: always()
+        run: npx --yes @wordpress/env@latest stop

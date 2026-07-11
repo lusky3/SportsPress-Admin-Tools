@@ -42,6 +42,18 @@ jobs:
           command: code test
           args: --severity-threshold=high
 
+      # Snyk SCA (`test`) resolves the dependency graph from node_modules, so the
+      # tree must be installed first — otherwise it errors with SNYK-CLI-0000
+      # "Missing node_modules folder".
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Install league-manager dependencies
+        working-directory: sportspress-league-manager
+        run: npm ci
+
       - name: Run Snyk SCA against the league-manager npm tree
         uses: snyk/actions/node@9adf32b1121593767fc3c057af55b55db032dc04 # v1.0.0
         env:
