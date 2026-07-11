@@ -115,6 +115,10 @@ class SPSS_Ingest_Service {
 			return;
 		}
 
+		// Deterministic jersey->player_id resolution against the rosters (never
+		// trust the model's matching), + derive per-player pim from penalties.
+		SPSS_Roster_Matcher::match( $result, $context['rosters'] ?? array() );
+
 		// Deterministic reconciliation: append flags for score/roster/range issues.
 		SPSS_Consistency_Checker::check( $result );
 

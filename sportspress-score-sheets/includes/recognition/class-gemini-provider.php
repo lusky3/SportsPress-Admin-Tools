@@ -142,6 +142,7 @@ class SPSS_Gemini_Provider extends SPSS_Abstract_LLM_Provider {
 								'type' => 'STRING',
 								'enum' => array( 'home', 'away' ),
 							),
+							'player_name'       => $str_nullable,
 							'jersey_written'    => $str_nullable,
 							'matched_player_id' => $int_nullable,
 							'matched_by'        => array(
@@ -159,6 +160,39 @@ class SPSS_Gemini_Provider extends SPSS_Abstract_LLM_Provider {
 									'assists' => $conf,
 								),
 							),
+						),
+					),
+				),
+				'scoring'    => array(
+					'type'  => 'ARRAY',
+					'items' => array(
+						'type'       => 'OBJECT',
+						'properties' => array(
+							'team'           => array(
+								'type' => 'STRING',
+								'enum' => array( 'home', 'away' ),
+							),
+							'goal_number'    => $int_nullable,
+							'scorer_jersey'  => $str_nullable,
+							'assist1_jersey' => $str_nullable,
+							'assist2_jersey' => $str_nullable,
+							'period'         => $int_nullable,
+						),
+					),
+				),
+				'penalties'  => array(
+					'type'  => 'ARRAY',
+					'items' => array(
+						'type'       => 'OBJECT',
+						'properties' => array(
+							'team'    => array(
+								'type' => 'STRING',
+								'enum' => array( 'home', 'away' ),
+							),
+							'jersey'  => $str_nullable,
+							'length'  => $int_nullable,
+							'period'  => $int_nullable,
+							'offense' => $str_nullable,
 						),
 					),
 				),

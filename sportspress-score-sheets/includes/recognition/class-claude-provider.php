@@ -139,6 +139,7 @@ class SPSS_Claude_Provider extends SPSS_Abstract_LLM_Provider {
 									'type' => 'string',
 									'enum' => array( 'home', 'away' ),
 								),
+								'player_name'       => $str_or_null,
 								'jersey_written'    => $str_or_null,
 								'matched_player_id' => $int_or_null,
 								'matched_by'        => array(
@@ -158,6 +159,39 @@ class SPSS_Claude_Provider extends SPSS_Abstract_LLM_Provider {
 								),
 							),
 							'required'   => array( 'team', 'jersey_written' ),
+						),
+					),
+					'scoring'    => array(
+						'type'  => 'array',
+						'items' => array(
+							'type'       => 'object',
+							'properties' => array(
+								'team'           => array(
+									'type' => 'string',
+									'enum' => array( 'home', 'away' ),
+								),
+								'goal_number'    => $int_or_null,
+								'scorer_jersey'  => $str_or_null,
+								'assist1_jersey' => $str_or_null,
+								'assist2_jersey' => $str_or_null,
+								'period'         => $int_or_null,
+							),
+						),
+					),
+					'penalties'  => array(
+						'type'  => 'array',
+						'items' => array(
+							'type'       => 'object',
+							'properties' => array(
+								'team'    => array(
+									'type' => 'string',
+									'enum' => array( 'home', 'away' ),
+								),
+								'jersey'  => $str_or_null,
+								'length'  => $int_or_null,
+								'period'  => $int_or_null,
+								'offense' => $str_or_null,
+							),
 						),
 					),
 					'goalies'    => array(

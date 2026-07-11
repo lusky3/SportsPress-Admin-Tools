@@ -54,6 +54,8 @@ class SPSS_Extraction_Result {
 			'teams'      => $this->data['teams'] ?? array(),
 			'periods'    => $this->data['periods'] ?? array(),
 			'players'    => $this->data['players'] ?? array(),
+			'scoring'    => $this->data['scoring'] ?? array(),
+			'penalties'  => $this->data['penalties'] ?? array(),
 			'goalies'    => $this->data['goalies'] ?? array(),
 			'flags'      => $this->flags,
 			'provider'   => $this->provider,

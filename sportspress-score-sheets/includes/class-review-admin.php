@@ -165,7 +165,78 @@ class SPSS_Review_Admin {
 								</tbody>
 							</table>
 
-							<p class="description"><?php esc_html_e( 'Rows with no player selected are skipped. Confirming writes the score, outcomes, and player stats to the event.', 'sportspress-score-sheets' ); ?></p>
+							<?php
+							// Resolve a jersey (on a side) to "#N Name" using the roster.
+							$label_for = function ( $side, $jersey ) use ( $rosters ) {
+								$jersey = trim( (string) $jersey );
+								if ( '' === $jersey ) {
+									return '—';
+								}
+								$num = preg_replace( '/\D/', '', $jersey );
+								foreach ( (array) ( $rosters[ $side ] ?? array() ) as $r ) {
+									if ( preg_replace( '/\D/', '', (string) $r['number'] ) === $num && '' !== $num ) {
+										return '#' . $jersey . ' ' . $r['name'];
+									}
+								}
+								return '#' . $jersey;
+							};
+							$scoring   = (array) ( $data['scoring'] ?? array() );
+							$penalties = (array) ( $data['penalties'] ?? array() );
+	?>
+
+							<?php if ( $scoring ) : ?>
+								<h2><?php esc_html_e( 'Scoring (read from the sheet — for reference)', 'sportspress-score-sheets' ); ?></h2>
+								<table class="widefat striped">
+									<thead><tr>
+										<th><?php esc_html_e( 'Side', 'sportspress-score-sheets' ); ?></th>
+										<th><?php esc_html_e( 'Goal', 'sportspress-score-sheets' ); ?></th>
+										<th><?php esc_html_e( 'Scorer', 'sportspress-score-sheets' ); ?></th>
+										<th><?php esc_html_e( 'Assist 1', 'sportspress-score-sheets' ); ?></th>
+										<th><?php esc_html_e( 'Assist 2', 'sportspress-score-sheets' ); ?></th>
+										<th><?php esc_html_e( 'Period', 'sportspress-score-sheets' ); ?></th>
+									</tr></thead>
+									<tbody>
+									<?php foreach ( $scoring as $s ) : ?>
+										<?php $sside = ( 'away' === ( $s['team'] ?? 'home' ) ) ? 'away' : 'home'; ?>
+										<tr>
+											<td><?php echo esc_html( $teams[ 'away' === $sside ? 1 : 0 ] ? get_the_title( $teams[ 'away' === $sside ? 1 : 0 ] ) : ucfirst( $sside ) ); ?></td>
+											<td><?php echo esc_html( $s['goal_number'] ?? '' ); ?></td>
+											<td><?php echo esc_html( $label_for( $sside, $s['scorer_jersey'] ?? '' ) ); ?></td>
+											<td><?php echo esc_html( $label_for( $sside, $s['assist1_jersey'] ?? '' ) ); ?></td>
+											<td><?php echo esc_html( $label_for( $sside, $s['assist2_jersey'] ?? '' ) ); ?></td>
+											<td><?php echo esc_html( $s['period'] ?? '' ); ?></td>
+										</tr>
+									<?php endforeach; ?>
+									</tbody>
+								</table>
+							<?php endif; ?>
+
+							<?php if ( $penalties ) : ?>
+								<h2><?php esc_html_e( 'Penalties (read from the sheet — feeds PIM above)', 'sportspress-score-sheets' ); ?></h2>
+								<table class="widefat striped">
+									<thead><tr>
+										<th><?php esc_html_e( 'Side', 'sportspress-score-sheets' ); ?></th>
+										<th><?php esc_html_e( 'Player', 'sportspress-score-sheets' ); ?></th>
+										<th><?php esc_html_e( 'Minutes', 'sportspress-score-sheets' ); ?></th>
+										<th><?php esc_html_e( 'Period', 'sportspress-score-sheets' ); ?></th>
+										<th><?php esc_html_e( 'Offense', 'sportspress-score-sheets' ); ?></th>
+									</tr></thead>
+									<tbody>
+									<?php foreach ( $penalties as $pen ) : ?>
+										<?php $pside = ( 'away' === ( $pen['team'] ?? 'home' ) ) ? 'away' : 'home'; ?>
+										<tr>
+											<td><?php echo esc_html( $teams[ 'away' === $pside ? 1 : 0 ] ? get_the_title( $teams[ 'away' === $pside ? 1 : 0 ] ) : ucfirst( $pside ) ); ?></td>
+											<td><?php echo esc_html( $label_for( $pside, $pen['jersey'] ?? '' ) ); ?></td>
+											<td><?php echo esc_html( $pen['length'] ?? '' ); ?></td>
+											<td><?php echo esc_html( $pen['period'] ?? '' ); ?></td>
+											<td><?php echo esc_html( $pen['offense'] ?? '' ); ?></td>
+										</tr>
+									<?php endforeach; ?>
+									</tbody>
+								</table>
+							<?php endif; ?>
+
+							<p class="description"><?php esc_html_e( 'Player stats above are what gets written (PIM is pre-filled from the penalties table). The scoring and penalties tables are read-only reference — verify them against the image. Rows with no player selected are skipped.', 'sportspress-score-sheets' ); ?></p>
 							<?php submit_button( __( 'Confirm &amp; apply to event', 'sportspress-score-sheets' ) ); ?>
 						</form>
 					<?php endif; ?>

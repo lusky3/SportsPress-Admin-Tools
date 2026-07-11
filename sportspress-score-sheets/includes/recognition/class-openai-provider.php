@@ -156,6 +156,7 @@ class SPSS_OpenAI_Provider extends SPSS_Abstract_LLM_Provider {
 								'type' => 'string',
 								'enum' => array( 'home', 'away' ),
 							),
+							'player_name'       => $str_or_null,
 							'jersey_written'    => $str_or_null,
 							'matched_player_id' => $int_or_null,
 							'matched_by'        => array(
@@ -176,7 +177,44 @@ class SPSS_OpenAI_Provider extends SPSS_Abstract_LLM_Provider {
 								'required'             => array( 'jersey', 'goals', 'assists' ),
 							),
 						),
-						'required'             => array( 'team', 'jersey_written', 'matched_player_id', 'matched_by', 'goals', 'assists', 'pim', 'field_confidence' ),
+						'required'             => array( 'team', 'player_name', 'jersey_written', 'matched_player_id', 'matched_by', 'goals', 'assists', 'pim', 'field_confidence' ),
+					),
+				),
+				'scoring'    => array(
+					'type'  => 'array',
+					'items' => array(
+						'type'                 => 'object',
+						'additionalProperties' => false,
+						'properties'           => array(
+							'team'           => array(
+								'type' => 'string',
+								'enum' => array( 'home', 'away' ),
+							),
+							'goal_number'    => $int_or_null,
+							'scorer_jersey'  => $str_or_null,
+							'assist1_jersey' => $str_or_null,
+							'assist2_jersey' => $str_or_null,
+							'period'         => $int_or_null,
+						),
+						'required'             => array( 'team', 'goal_number', 'scorer_jersey', 'assist1_jersey', 'assist2_jersey', 'period' ),
+					),
+				),
+				'penalties'  => array(
+					'type'  => 'array',
+					'items' => array(
+						'type'                 => 'object',
+						'additionalProperties' => false,
+						'properties'           => array(
+							'team'    => array(
+								'type' => 'string',
+								'enum' => array( 'home', 'away' ),
+							),
+							'jersey'  => $str_or_null,
+							'length'  => $int_or_null,
+							'period'  => $int_or_null,
+							'offense' => $str_or_null,
+						),
+						'required'             => array( 'team', 'jersey', 'length', 'period', 'offense' ),
 					),
 				),
 				'goalies'    => array(
@@ -210,7 +248,7 @@ class SPSS_OpenAI_Provider extends SPSS_Abstract_LLM_Provider {
 					),
 				),
 			),
-			'required'             => array( 'sheet_meta', 'teams', 'periods', 'players', 'goalies', 'flags' ),
+			'required'             => array( 'sheet_meta', 'teams', 'periods', 'players', 'scoring', 'penalties', 'goalies', 'flags' ),
 		);
 	}
 
