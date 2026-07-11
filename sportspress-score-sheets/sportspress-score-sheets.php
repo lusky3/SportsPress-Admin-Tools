@@ -104,6 +104,7 @@ class SportsPress_Score_Sheets {
 		require_once SPSS_PLUGIN_PATH . 'includes/recognition/class-openai-provider.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/recognition/class-openrouter-provider.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/recognition/class-selfhosted-provider.php';
+		require_once SPSS_PLUGIN_PATH . 'includes/class-budget.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/recognition/class-recognition-manager.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/class-roster-matcher.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/class-consistency-checker.php';

@@ -38,6 +38,7 @@ run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-consistency-checker.ph
 run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-sportspress-writer.php"
 run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-recognition-providers.php"
 run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-roster-matcher.php"
+run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-budget.php"
 
 echo "════════════════════════════════════════"
 echo "  ALL TESTS SUMMARY"

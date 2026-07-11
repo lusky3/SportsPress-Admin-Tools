@@ -48,24 +48,46 @@ class SPSS_Admin {
 	}
 
 	public function register_settings() {
+		// Ordered recognition (failover) chain + confirmation set — arrays of provider ids.
 		register_setting(
 			self::SETTINGS_GROUP,
-			'spss_primary_provider',
+			'spss_primary_chain',
 			array(
-				'type' => 'string',
-				'sanitize_callback' => 'sanitize_key',
-				'default' => 'claude',
+				'type'              => 'array',
+				'sanitize_callback' => array( $this, 'sanitize_provider_ids' ),
+				'default'           => array(),
 			)
 		);
 		register_setting(
 			self::SETTINGS_GROUP,
-			'spss_secondary_provider',
+			'spss_confirmation_providers',
 			array(
-				'type' => 'string',
-				'sanitize_callback' => 'sanitize_key',
-				'default' => '',
+				'type'              => 'array',
+				'sanitize_callback' => array( $this, 'sanitize_provider_ids' ),
+				'default'           => array(),
 			)
 		);
+		// Per-provider monthly budget cap + estimated cost per sheet.
+		foreach ( array_keys( SPSS_Recognition_Manager::get_providers() ) as $pid ) {
+			register_setting(
+				self::SETTINGS_GROUP,
+				"spss_{$pid}_monthly_budget",
+				array(
+					'type' => 'number',
+					'sanitize_callback' => array( $this, 'sanitize_money' ),
+					'default' => 0,
+				)
+			);
+			register_setting(
+				self::SETTINGS_GROUP,
+				"spss_{$pid}_cost_per_sheet",
+				array(
+					'type' => 'number',
+					'sanitize_callback' => array( $this, 'sanitize_money' ),
+					'default' => 0,
+				)
+			);
+		}
 
 		// Hosted LLM providers: a (masked) API key + an editable model id each.
 		// The model default is '' so the provider falls back to its own
@@ -178,13 +200,56 @@ class SPSS_Admin {
 		return '' !== $key ? str_repeat( '•', 8 ) . substr( $key, -4 ) : '';
 	}
 
+	/**
+	 * Sanitize a checkbox-group array of provider ids down to known providers.
+	 */
+	public function sanitize_provider_ids( $value ) {
+		if ( ! is_array( $value ) ) {
+			return array();
+		}
+		$valid = array_keys( SPSS_Recognition_Manager::get_providers() );
+		return array_values( array_intersect( array_map( 'sanitize_key', $value ), $valid ) );
+	}
+
+	/** Clamp a money field to a non-negative float. */
+	public function sanitize_money( $value ) {
+		return max( 0, (float) $value );
+	}
+
+	/**
+	 * Render the per-provider monthly-budget + estimated-cost-per-sheet rows,
+	 * shared by every provider block.
+	 */
+	private function render_budget_rows( $id ) {
+		$provider     = SPSS_Recognition_Manager::get_provider( $id );
+		$default_cost = ( $provider && method_exists( $provider, 'estimated_cost_per_sheet' ) ) ? (float) $provider->estimated_cost_per_sheet() : 0.0;
+		$budget       = get_option( "spss_{$id}_monthly_budget", '' );
+		$cost         = get_option( "spss_{$id}_cost_per_sheet", '' );
+		?>
+		<tr>
+			<th scope="row"><label for="spss_<?php echo esc_attr( $id ); ?>_monthly_budget"><?php esc_html_e( 'Monthly budget ($)', 'sportspress-score-sheets' ); ?></label></th>
+			<td>
+				<input type="number" step="0.01" min="0" name="spss_<?php echo esc_attr( $id ); ?>_monthly_budget" id="spss_<?php echo esc_attr( $id ); ?>_monthly_budget" value="<?php echo esc_attr( '' === $budget || 0 === (int) $budget ? '' : $budget ); ?>" />
+				<p class="description"><?php esc_html_e( 'Blank / 0 = unlimited. When the estimated spend would exceed this in a calendar month, recognition fails over to the next provider in the chain.', 'sportspress-score-sheets' ); ?></p>
+			</td>
+		</tr>
+		<tr>
+			<th scope="row"><label for="spss_<?php echo esc_attr( $id ); ?>_cost_per_sheet"><?php esc_html_e( 'Est. cost per sheet ($)', 'sportspress-score-sheets' ); ?></label></th>
+			<td>
+				<input type="number" step="0.001" min="0" name="spss_<?php echo esc_attr( $id ); ?>_cost_per_sheet" id="spss_<?php echo esc_attr( $id ); ?>_cost_per_sheet" value="<?php echo esc_attr( '' === $cost || 0 === (int) $cost ? '' : $cost ); ?>" placeholder="<?php echo esc_attr( number_format( $default_cost, 3 ) ); ?>" />
+				<p class="description"><?php esc_html_e( 'Used only to meter the budget above (spend is estimated, not billed). Blank uses the provider default shown.', 'sportspress-score-sheets' ); ?></p>
+			</td>
+		</tr>
+		<?php
+	}
+
 	public function render_settings() {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			return;
 		}
 		$providers = SPSS_Recognition_Manager::get_providers();
-		$primary   = SPSS_Recognition_Manager::get_primary_id();
-		$secondary = SPSS_Recognition_Manager::get_secondary_id();
+		$chain   = SPSS_Recognition_Manager::get_primary_chain();
+		$confirm = SPSS_Recognition_Manager::get_confirmation_ids();
 		?>
 		<div class="wrap">
 			<h1><?php esc_html_e( 'Score Sheets — Settings', 'sportspress-score-sheets' ); ?></h1>
@@ -192,28 +257,26 @@ class SPSS_Admin {
 			<form method="post" action="options.php">
 				<?php settings_fields( self::SETTINGS_GROUP ); ?>
 
-				<h2><?php esc_html_e( 'Recognition providers', 'sportspress-score-sheets' ); ?></h2>
+				<h2><?php esc_html_e( 'Recognition chain (lead + failover)', 'sportspress-score-sheets' ); ?></h2>
 				<table class="form-table" role="presentation">
 					<tr>
-						<th scope="row"><label for="spss_primary_provider"><?php esc_html_e( 'Primary provider', 'sportspress-score-sheets' ); ?></label></th>
+						<th scope="row"><?php esc_html_e( 'Providers to try', 'sportspress-score-sheets' ); ?></th>
 						<td>
-							<select name="spss_primary_provider" id="spss_primary_provider">
-								<?php foreach ( $providers as $id => $p ) : ?>
-									<option value="<?php echo esc_attr( $id ); ?>" <?php selected( $primary, $id ); ?>><?php echo esc_html( $p->get_label() ); ?><?php echo $p->is_configured() ? '' : esc_html__( ' (not configured)', 'sportspress-score-sheets' ); ?></option>
-								<?php endforeach; ?>
-							</select>
+							<input type="hidden" name="spss_primary_chain[]" value="" />
+							<?php foreach ( $providers as $id => $p ) : ?>
+								<label><input type="checkbox" name="spss_primary_chain[]" value="<?php echo esc_attr( $id ); ?>" <?php checked( in_array( $id, $chain, true ) ); ?> /> <?php echo esc_html( $p->get_label() ); ?><?php echo $p->is_configured() ? '' : ' <span class="description">' . esc_html__( '(not configured)', 'sportspress-score-sheets' ) . '</span>'; ?></label><br />
+							<?php endforeach; ?>
+							<p class="description"><?php esc_html_e( 'The lead result comes from the first checked provider that is configured, within budget, and succeeds; the others are automatic fallbacks, tried in the order listed above.', 'sportspress-score-sheets' ); ?></p>
 						</td>
 					</tr>
 					<tr>
-						<th scope="row"><label for="spss_secondary_provider"><?php esc_html_e( 'Secondary (cross-check, optional)', 'sportspress-score-sheets' ); ?></label></th>
+						<th scope="row"><?php esc_html_e( 'Confirmation (cross-check)', 'sportspress-score-sheets' ); ?></th>
 						<td>
-							<select name="spss_secondary_provider" id="spss_secondary_provider">
-								<option value="" <?php selected( $secondary, '' ); ?>><?php esc_html_e( '— None —', 'sportspress-score-sheets' ); ?></option>
-								<?php foreach ( $providers as $id => $p ) : ?>
-									<option value="<?php echo esc_attr( $id ); ?>" <?php selected( $secondary, $id ); ?>><?php echo esc_html( $p->get_label() ); ?></option>
-								<?php endforeach; ?>
-							</select>
-							<p class="description"><?php esc_html_e( 'If set, each sheet is read twice and any disagreement is flagged for review.', 'sportspress-score-sheets' ); ?></p>
+							<input type="hidden" name="spss_confirmation_providers[]" value="" />
+							<?php foreach ( $providers as $id => $p ) : ?>
+								<label><input type="checkbox" name="spss_confirmation_providers[]" value="<?php echo esc_attr( $id ); ?>" <?php checked( in_array( $id, $confirm, true ) ); ?> /> <?php echo esc_html( $p->get_label() ); ?></label><br />
+							<?php endforeach; ?>
+							<p class="description"><?php esc_html_e( 'Each checked provider also reads the sheet; any disagreement with the lead result is flagged for review. Uses extra API calls and budget.', 'sportspress-score-sheets' ); ?></p>
 						</td>
 					</tr>
 				</table>
@@ -242,6 +305,7 @@ class SPSS_Admin {
 									</td>
 								</tr>
 							<?php endif; ?>
+							<?php $this->render_budget_rows( $id ); ?>
 						</table>
 					<?php elseif ( 'selfhosted' === $id ) : ?>
 						<h2><?php echo esc_html( $p->get_label() ); ?></h2>
@@ -261,6 +325,7 @@ class SPSS_Admin {
 								<th scope="row"><label for="spss_selfhosted_key"><?php esc_html_e( 'Bearer token (optional)', 'sportspress-score-sheets' ); ?></label></th>
 								<td><input type="password" name="spss_selfhosted_key" id="spss_selfhosted_key" class="regular-text" autocomplete="off" placeholder="<?php echo esc_attr( $this->masked( 'spss_selfhosted_key' ) ); ?>" value="" /></td>
 							</tr>
+							<?php $this->render_budget_rows( $id ); ?>
 						</table>
 					<?php endif; ?>
 				<?php endforeach; ?>
@@ -282,8 +347,7 @@ class SPSS_Admin {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			return;
 		}
-		$primary    = SPSS_Recognition_Manager::get_provider( SPSS_Recognition_Manager::get_primary_id() );
-		$primary_ok = $primary && $primary->is_configured();
+		$primary_ok = SPSS_Recognition_Manager::has_usable_primary();
 		$events     = get_posts(
 			array(
 				'post_type'      => 'sp_event',
