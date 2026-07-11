@@ -10,7 +10,7 @@
 
 // Prevent direct access
 if ( ! defined( 'ABSPATH' ) ) {
-	wp_die();
+	exit;
 }
 
 /**
@@ -896,7 +896,7 @@ class SPSG_Admin_Renderer {
 					<li><?php printf( __( 'Games per team: %d', 'sportspress-schedule-generator' ), $config->games_per_team ); ?></li>
 					<li><?php printf( __( 'Divisions: %d', 'sportspress-schedule-generator' ), count( $config->divisions ?: array() ) ); ?></li>
 					<li><?php printf( __( 'Venues: %d', 'sportspress-schedule-generator' ), count( $config->venues ?: array() ) ); ?></li>
-					<li><?php printf( __( 'Playing days: %s', 'sportspress-schedule-generator' ), implode( ', ', $config->playing_days ?: array() ) ); ?></li>
+					<li><?php printf( esc_html__( 'Playing days: %s', 'sportspress-schedule-generator' ), esc_html( implode( ', ', $config->playing_days ?: array() ) ) ); ?></li>
 				</ul>
 			</div>
 

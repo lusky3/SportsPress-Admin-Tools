@@ -160,6 +160,18 @@ class SPSG_REST_API {
 							'validate_callback' => function ( $val ) {
 								return is_numeric( $val ) && (int) $val > 0; },
 						),
+						// M-4: declare the body params the handler reads so the REST
+						// framework sanitizes/validates them instead of relying on inline casts.
+						'replacement_id' => array(
+							'required' => true,
+							'sanitize_callback' => 'absint',
+							'validate_callback' => function ( $val ) {
+								return is_numeric( $val ) && (int) $val > 0; },
+						),
+						'delete' => array(
+							'default' => true,
+							'sanitize_callback' => 'rest_sanitize_boolean',
+						),
 					),
 				)
 			)
