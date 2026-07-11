@@ -70,7 +70,7 @@ class SPSS_Admin {
 		// Hosted LLM providers: a (masked) API key + an editable model id each.
 		// The model default is '' so the provider falls back to its own
 		// default_model(); the field displays the effective value via get_model().
-		foreach ( array( 'claude', 'gemini', 'openai' ) as $id ) {
+		foreach ( array( 'claude', 'gemini', 'openai', 'openrouter' ) as $id ) {
 			register_setting(
 				self::SETTINGS_GROUP,
 				"spss_{$id}_api_key",
@@ -90,6 +90,16 @@ class SPSS_Admin {
 				)
 			);
 		}
+		// Aggregator gateway base URL (OpenRouter by default; any OpenAI-compatible endpoint).
+		register_setting(
+			self::SETTINGS_GROUP,
+			'spss_openrouter_base_url',
+			array(
+				'type'              => 'string',
+				'sanitize_callback' => 'esc_url_raw',
+				'default'           => '',
+			)
+		);
 
 		// Self-hosted sidecar: endpoint + optional model + optional bearer key.
 		register_setting(
@@ -155,6 +165,10 @@ class SPSS_Admin {
 		return $this->preserve_masked_key( $value, 'spss_openai_api_key' );
 	}
 
+	public function sanitize_openrouter_key( $value ) {
+		return $this->preserve_masked_key( $value, 'spss_openrouter_api_key' );
+	}
+
 	public function sanitize_selfhosted_key( $value ) {
 		return $this->preserve_masked_key( $value, 'spss_selfhosted_key' );
 	}
@@ -217,8 +231,17 @@ class SPSS_Admin {
 							</tr>
 							<tr>
 								<th scope="row"><label for="spss_<?php echo esc_attr( $id ); ?>_model"><?php esc_html_e( 'Model', 'sportspress-score-sheets' ); ?></label></th>
-								<td><input type="text" name="spss_<?php echo esc_attr( $id ); ?>_model" id="spss_<?php echo esc_attr( $id ); ?>_model" class="regular-text" value="<?php echo esc_attr( $p->get_model() ); ?>" /></td>
+								<td><input type="text" name="spss_<?php echo esc_attr( $id ); ?>_model" id="spss_<?php echo esc_attr( $id ); ?>_model" class="regular-text" value="<?php echo esc_attr( $p->get_model() ); ?>" /><?php echo 'openrouter' === $id ? ' <span class="description">' . esc_html__( 'e.g. openai/gpt-4o, anthropic/claude-*, google/gemini-*, qwen/qwen2.5-vl-* — must support vision + structured output.', 'sportspress-score-sheets' ) . '</span>' : ''; ?></td>
 							</tr>
+							<?php if ( 'openrouter' === $id ) : ?>
+								<tr>
+									<th scope="row"><label for="spss_openrouter_base_url"><?php esc_html_e( 'Gateway base URL', 'sportspress-score-sheets' ); ?></label></th>
+									<td>
+										<input type="url" name="spss_openrouter_base_url" id="spss_openrouter_base_url" class="regular-text" placeholder="<?php echo esc_attr( SPSS_OpenRouter_Provider::DEFAULT_BASE_URL ); ?>" value="<?php echo esc_attr( get_option( 'spss_openrouter_base_url', '' ) ); ?>" />
+										<p class="description"><?php esc_html_e( 'Defaults to OpenRouter. Point at any other OpenAI-compatible aggregator/gateway (Together, Groq, Fireworks, a LiteLLM/vLLM proxy, …).', 'sportspress-score-sheets' ); ?></p>
+									</td>
+								</tr>
+							<?php endif; ?>
 						</table>
 					<?php elseif ( 'selfhosted' === $id ) : ?>
 						<h2><?php echo esc_html( $p->get_label() ); ?></h2>

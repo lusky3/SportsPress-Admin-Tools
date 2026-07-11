@@ -23,7 +23,7 @@ class SPSS_Recognition_Manager {
 	public static function get_providers() {
 		$providers = array();
 
-		foreach ( array( 'SPSS_Claude_Provider', 'SPSS_Gemini_Provider', 'SPSS_OpenAI_Provider', 'SPSS_SelfHosted_Provider' ) as $class ) {
+		foreach ( array( 'SPSS_Claude_Provider', 'SPSS_Gemini_Provider', 'SPSS_OpenAI_Provider', 'SPSS_OpenRouter_Provider', 'SPSS_SelfHosted_Provider' ) as $class ) {
 			if ( class_exists( $class ) ) {
 				$provider                        = new $class();
 				$providers[ $provider->get_id() ] = $provider;

@@ -81,15 +81,18 @@ require_once $recognition_dir . '/class-abstract-llm-provider.php';
 // Optional LLM providers written by a sibling agent. Load only if present so a
 // not-yet-created file degrades to a skipped provider instead of a fatal.
 $optional_providers = array(
-    'claude'   => $recognition_dir . '/class-claude-provider.php',
-    'gemini'   => $recognition_dir . '/class-gemini-provider.php',
-    'openai'   => $recognition_dir . '/class-openai-provider.php',
+    'claude'     => $recognition_dir . '/class-claude-provider.php',
+    'gemini'     => $recognition_dir . '/class-gemini-provider.php',
+    'openai'     => $recognition_dir . '/class-openai-provider.php',
+    // openrouter extends the OpenAI provider, so it must load after it.
+    'openrouter' => $recognition_dir . '/class-openrouter-provider.php',
 );
 $provider_classes = array();
 $class_map        = array(
-    'claude' => 'SPSS_Claude_Provider',
-    'gemini' => 'SPSS_Gemini_Provider',
-    'openai' => 'SPSS_OpenAI_Provider',
+    'claude'     => 'SPSS_Claude_Provider',
+    'gemini'     => 'SPSS_Gemini_Provider',
+    'openai'     => 'SPSS_OpenAI_Provider',
+    'openrouter' => 'SPSS_OpenRouter_Provider',
 );
 foreach ($optional_providers as $id => $file) {
     if (is_readable($file)) {
