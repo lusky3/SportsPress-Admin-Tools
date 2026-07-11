@@ -1,0 +1,85 @@
+/* Score Sheets admin styling. */
+
+.spss-review-grid {
+	display: flex;
+	gap: 24px;
+	align-items: flex-start;
+	flex-wrap: wrap;
+}
+
+.spss-review-image {
+	flex: 1 1 360px;
+	max-width: 520px;
+	position: sticky;
+	top: 40px;
+}
+
+.spss-review-image img {
+	max-width: 100%;
+	height: auto;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	box-shadow: 0 1px 3px rgba( 0, 0, 0, 0.1 );
+}
+
+.spss-review-form {
+	flex: 2 1 480px;
+	min-width: 320px;
+}
+
+.spss-players input[type="number"] {
+	width: 4em;
+}
+
+/* Fields the recognition/consistency pass flagged for attention. */
+.spss-review .spss-flagged {
+	background: #fff3cd;
+	box-shadow: inset 3px 0 0 #ff9800;
+}
+
+.spss-flags {
+	margin: 6px 0 0 18px;
+	list-style: disc;
+}
+
+/* Queue status badges. */
+.spss-status {
+	display: inline-block;
+	padding: 2px 8px;
+	border-radius: 10px;
+	font-size: 12px;
+	line-height: 1.6;
+	white-space: nowrap;
+}
+
+.spss-status-queued,
+.spss-status-processing {
+	background: #f0f0f1;
+	color: #50575e;
+}
+
+.spss-status-pending_review {
+	background: #fcf9e8;
+	color: #914b00;
+}
+
+.spss-status-confirmed {
+	background: #edfaef;
+	color: #007017;
+}
+
+.spss-status-failed {
+	background: #fcf0f1;
+	color: #b32d2e;
+}
+
+.spss-status-duplicate {
+	background: #f0f0f1;
+	color: #757575;
+}
+
+@media screen and ( max-width: 782px ) {
+	.spss-review-image {
+		position: static;
+	}
+}
