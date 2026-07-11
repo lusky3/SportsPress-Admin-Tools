@@ -125,7 +125,7 @@ assert_test(
     'Null player goal suppresses score_mismatch on that side'
 );
 
-// ── Unmatched jersey ─────────────────────────────────────────────────────────
+// ── Write-in / unmatched jersey ──────────────────────────────────────────────
 
 $unmatched = make_result(1, 0, array(
     make_player(array('team' => 'home', 'jersey_written' => '99', 'matched_player_id' => null,
@@ -135,18 +135,18 @@ $unmatched = make_result(1, 0, array(
 $added = SPSS_Consistency_Checker::check($unmatched);
 
 assert_test(
-    count_flags($unmatched, 'unmatched_jersey') === 1,
-    'Unmatched player row flags unmatched_jersey'
+    count_flags($unmatched, 'write_in') === 1,
+    'Unmatched player row flags write_in (not an error)'
 );
 $unmatched_flag = null;
 foreach ($unmatched->flags as $f) {
-    if ($f['type'] === 'unmatched_jersey') {
+    if ($f['type'] === 'write_in') {
         $unmatched_flag = $f;
     }
 }
 assert_test(
     $unmatched_flag !== null && $unmatched_flag['player_index'] === 0,
-    'unmatched_jersey flag carries the player_index'
+    'write_in flag carries the player_index'
 );
 
 // ── Duplicate jersey ─────────────────────────────────────────────────────────

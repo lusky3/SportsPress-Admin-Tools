@@ -99,11 +99,15 @@ class SPSS_Consistency_Checker {
 	}
 
 	/**
-	 * Check 2: unmatched_jersey.
+	 * Check 2: write-in / unmatched jersey.
 	 *
-	 * Any player row that could not be tied to a SportsPress player record needs
-	 * a human to resolve it. Flags rows with no matched_player_id, or whose
-	 * matched_by is explicitly 'unmatched'.
+	 * A player row that could not be tied to a roster player is treated as a
+	 * WRITE-IN (a substitute who filled in for the match) — an expected, benign
+	 * case, not an error. Their goals still count toward the team total (which is
+	 * written from the sheet's final score, not summed per-player), so they need
+	 * no player attribution. The flag is informational: the reviewer either
+	 * accepts the write-in or, if the jersey was simply misread, maps the correct
+	 * roster player. Rows with no stats at all are the more likely OCR misreads.
 	 */
 	private static function check_unmatched_jerseys( SPSS_Extraction_Result $result ) {
 		foreach ( self::players( $result ) as $index => $player ) {
@@ -111,14 +115,15 @@ class SPSS_Consistency_Checker {
 			$matched_by = $player['matched_by'] ?? '';
 
 			if ( is_null( $matched_id ) || 'unmatched' === $matched_by ) {
-				$jersey = $player['jersey_written'] ?? '';
-				$team   = $player['team'] ?? '';
+				$jersey  = $player['jersey_written'] ?? '';
+				$team    = $player['team'] ?? '';
+				$has_stat = ( ! empty( $player['goals'] ) || ! empty( $player['assists'] ) );
 
-				$result->add_flag(
-					'unmatched_jersey',
-					sprintf( '%s jersey "%s" could not be matched to a player', $team, $jersey ),
-					$index
-				);
+				$detail = $has_stat
+					? sprintf( '%s #%s is not on the roster — treated as a write-in; its goals still count in the team total. Map a roster player only if the jersey was misread.', $team, $jersey )
+					: sprintf( '%s #%s is not on the roster (no stats read) — likely a misread jersey; verify or leave as a write-in.', $team, $jersey );
+
+				$result->add_flag( 'write_in', $detail, $index );
 			}
 		}
 	}

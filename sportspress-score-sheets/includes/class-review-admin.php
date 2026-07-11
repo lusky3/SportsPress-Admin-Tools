@@ -236,7 +236,8 @@ class SPSS_Review_Admin {
 								</table>
 							<?php endif; ?>
 
-							<p class="description"><?php esc_html_e( 'Player stats above are what gets written (PIM is pre-filled from the penalties table). The scoring and penalties tables are read-only reference — verify them against the image. Rows with no player selected are skipped.', 'sportspress-score-sheets' ); ?></p>
+							<p class="description"><?php esc_html_e( 'Player stats above are what gets written per-player (PIM is pre-filled from the penalties table). The scoring and penalties tables are read-only reference — verify them against the image.', 'sportspress-score-sheets' ); ?></p>
+							<p class="description"><?php esc_html_e( 'Write-ins: a player not on the roster (a substitute who filled in) is fine — leave it as "Write-in / no player record" and their goals still count in the team total, which comes from the final score above. Only pick a roster player if the jersey was misread.', 'sportspress-score-sheets' ); ?></p>
 							<?php submit_button( __( 'Confirm &amp; apply to event', 'sportspress-score-sheets' ) ); ?>
 						</form>
 					<?php endif; ?>
@@ -267,7 +268,7 @@ class SPSS_Review_Admin {
 	private function player_dropdown( $i, $rosters, $side, $selected_id ) {
 		$roster = $rosters[ $side ] ?? array();
 		printf( '<select name="players[%d][player_id]">', (int) $i );
-		echo '<option value="0">' . esc_html__( '— skip —', 'sportspress-score-sheets' ) . '</option>';
+		echo '<option value="0">' . esc_html__( '— Write-in / no player record —', 'sportspress-score-sheets' ) . '</option>';
 		foreach ( $roster as $r ) {
 			printf(
 				'<option value="%d" %s>%s</option>',

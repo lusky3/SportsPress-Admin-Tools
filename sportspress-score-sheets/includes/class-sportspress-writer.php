@@ -75,6 +75,11 @@ class SPSS_SportsPress_Writer {
 		// ── Score + auto outcomes ────────────────────────────────────────────
 		// update_main_results() writes the primary result key on its own
 		// (sp_get_main_result_option()) and assigns win/loss/tie outcomes.
+		// The team total is the reviewer-confirmed FINAL score (from the sheet),
+		// written directly — not summed from attributed players. That's why a
+		// write-in / substitute (a scorer not on the roster, left unattributed)
+		// still has their goal reflected in the team total: it's part of this
+		// final score even though no per-player sp_players row is created for them.
 		$event = new SP_Event( $event_id );
 		$event->update_main_results(
 			array(
