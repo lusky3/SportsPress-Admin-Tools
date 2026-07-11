@@ -7,7 +7,7 @@
 
 // Prevent direct access
 if ( ! defined( 'ABSPATH' ) ) {
-	wp_die();
+	exit;
 }
 
 /**
@@ -48,6 +48,7 @@ class SPSG_Schedule_Generator {
 	private function init_hooks() {
 		add_action( 'wp_ajax_spsg_generate_schedule', array( $this, 'ajax_generate_schedule' ) );
 		add_action( 'wp_ajax_spsg_export_schedule', array( $this, 'ajax_export_schedule' ) );
+		add_action( 'wp_ajax_spsg_download_export', array( $this, 'ajax_download_export' ) );
 		add_action( 'wp_ajax_spsg_validate_config', array( $this, 'ajax_validate_config' ) );
 		add_action( 'wp_ajax_spsg_import_to_sportspress', array( $this, 'ajax_import_to_sportspress' ) );
 	}
@@ -79,7 +80,7 @@ class SPSG_Schedule_Generator {
 	 * AJAX handler for schedule generation
 	 */
 	public function ajax_generate_schedule() {
-		check_ajax_referer( 'spsg_generate_schedule', 'nonce' );
+		check_ajax_referer( 'spsg_generate_schedule', 'spsg_nonce' );
 
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( __( self::INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator' ) );
@@ -217,16 +218,16 @@ class SPSG_Schedule_Generator {
 	 * AJAX handler for schedule export
 	 */
 	public function ajax_export_schedule() {
-		check_ajax_referer( 'spsg_export_schedule', 'nonce' );
+		check_ajax_referer( 'spsg_export_schedule', 'spsg_nonce' );
 
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( __( self::INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator' ) );
 			return;
 		}
 
-		$schedule_id = sanitize_text_field( $_POST['schedule_id'] ?? '' );
-		$format = sanitize_text_field( $_POST['format'] ?? 'csv' );
-		$xlsx_style = sanitize_text_field( $_POST['xlsx_style'] ?? 'compact' );
+		$schedule_id = sanitize_text_field( wp_unslash( $_POST['schedule_id'] ?? '' ) );
+		$format = sanitize_text_field( wp_unslash( $_POST['format'] ?? 'csv' ) );
+		$xlsx_style = sanitize_text_field( wp_unslash( $_POST['xlsx_style'] ?? 'compact' ) );
 
 		if ( empty( $schedule_id ) ) {
 			wp_send_json_error( __( 'No schedule ID provided', 'sportspress-schedule-generator' ) );
@@ -252,15 +253,15 @@ class SPSG_Schedule_Generator {
 		$filters = array();
 
 		if ( ! empty( $_POST['division'] ) ) {
-			$filters['division'] = sanitize_text_field( $_POST['division'] );
+			$filters['division'] = sanitize_text_field( wp_unslash( $_POST['division'] ) );
 		}
 
 		if ( ! empty( $_POST['date_from'] ) ) {
-			$filters['date_from'] = sanitize_text_field( $_POST['date_from'] );
+			$filters['date_from'] = sanitize_text_field( wp_unslash( $_POST['date_from'] ) );
 		}
 
 		if ( ! empty( $_POST['date_to'] ) ) {
-			$filters['date_to'] = sanitize_text_field( $_POST['date_to'] );
+			$filters['date_to'] = sanitize_text_field( wp_unslash( $_POST['date_to'] ) );
 		}
 
 		try {
@@ -280,11 +281,20 @@ class SPSG_Schedule_Generator {
 				return;
 			}
 
+			// M-5: hand back a capability-checked download endpoint rather than the
+			// direct uploads URL (which is unprotected on Nginx). The absolute server
+			// path is intentionally not returned to the client.
 			wp_send_json_success(
 				array(
 					'message' => __( 'Schedule exported successfully', 'sportspress-schedule-generator' ),
-					'download_url' => $result['url'],
-					'file_path' => $result['path'],
+					'download_url' => add_query_arg(
+						array(
+							'action' => 'spsg_download_export',
+							'file' => rawurlencode( $result['filename'] ),
+							'spsg_nonce' => wp_create_nonce( 'spsg_download_export' ),
+						),
+						admin_url( 'admin-ajax.php' )
+					),
 					'file_name' => $result['filename'],
 				)
 			);
@@ -301,10 +311,56 @@ class SPSG_Schedule_Generator {
 	}
 
 	/**
+	 * M-5: Stream an exported file through a capability-checked handler.
+	 *
+	 * Export files live under wp-content/uploads/spsg-exports/, which is only
+	 * protected from direct access on Apache (.htaccess). Serving them here means
+	 * access always requires manage_options + a valid nonce regardless of web
+	 * server, and the direct file URL is never handed to the client.
+	 */
+	public function ajax_download_export() {
+		check_ajax_referer( 'spsg_download_export', 'spsg_nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You do not have permission to download this file.', 'sportspress-schedule-generator' ), '', array( 'response' => 403 ) );
+		}
+
+		// basename() + sanitize_file_name() strip any path-traversal components.
+		$requested = isset( $_GET['file'] ) ? basename( sanitize_file_name( wp_unslash( $_GET['file'] ) ) ) : '';
+		$ext       = strtolower( pathinfo( $requested, PATHINFO_EXTENSION ) );
+
+		if ( '' === $requested || ! in_array( $ext, array( 'csv', 'xlsx' ), true ) ) {
+			wp_die( esc_html__( 'Invalid or missing file.', 'sportspress-schedule-generator' ), '', array( 'response' => 400 ) );
+		}
+
+		$upload_dir = wp_upload_dir();
+		$export_dir = trailingslashit( $upload_dir['basedir'] ) . 'spsg-exports';
+		$real_base  = realpath( $export_dir );
+		$real_path  = realpath( trailingslashit( $export_dir ) . $requested );
+
+		// Confirm the resolved path is a real file physically inside the export dir.
+		if ( false === $real_base || false === $real_path || 0 !== strpos( $real_path, $real_base . DIRECTORY_SEPARATOR ) || ! is_file( $real_path ) ) {
+			wp_die( esc_html__( 'File not found.', 'sportspress-schedule-generator' ), '', array( 'response' => 404 ) );
+		}
+
+		$mime = 'csv' === $ext ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+		nocache_headers();
+		header( 'Content-Type: ' . $mime );
+		header( 'Content-Disposition: attachment; filename="' . $requested . '"' );
+		header( 'Content-Length: ' . filesize( $real_path ) );
+		header( 'X-Content-Type-Options: nosniff' );
+
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_readfile -- streaming a validated file to the browser; WP_Filesystem has no streaming read.
+		readfile( $real_path );
+		exit;
+	}
+
+	/**
 	 * AJAX handler for configuration validation
 	 */
 	public function ajax_validate_config() {
-		check_ajax_referer( 'spsg_validate_config', 'nonce' );
+		check_ajax_referer( 'spsg_validate_config', 'spsg_nonce' );
 
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( __( self::INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator' ) );
@@ -399,7 +455,7 @@ class SPSG_Schedule_Generator {
 	 * AJAX handler for importing schedule to SportsPress
 	 */
 	public function ajax_import_to_sportspress() {
-		check_ajax_referer( 'spsg_import_to_sportspress', 'nonce' );
+		check_ajax_referer( 'spsg_import_to_sportspress', 'spsg_nonce' );
 
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( __( self::INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator' ) );
@@ -407,7 +463,7 @@ class SPSG_Schedule_Generator {
 		}
 
 		// Get schedule ID from request
-		$schedule_id = sanitize_text_field( $_POST['schedule_id'] ?? '' );
+		$schedule_id = sanitize_text_field( wp_unslash( $_POST['schedule_id'] ?? '' ) );
 
 		if ( empty( $schedule_id ) ) {
 			wp_send_json_error( __( 'No schedule ID provided', 'sportspress-schedule-generator' ) );
@@ -424,13 +480,13 @@ class SPSG_Schedule_Generator {
 
 		// Get import options from request
 		$options = array(
-			'conflict_resolution' => sanitize_text_field( $_POST['conflict_resolution'] ?? 'skip' ),
-			'event_status' => sanitize_text_field( $_POST['event_status'] ?? 'publish' ),
+			'conflict_resolution' => sanitize_text_field( wp_unslash( $_POST['conflict_resolution'] ?? 'skip' ) ),
+			'event_status' => sanitize_text_field( wp_unslash( $_POST['event_status'] ?? 'publish' ) ),
 			'dry_run' => filter_var( $_POST['dry_run'] ?? false, FILTER_VALIDATE_BOOLEAN ),
 			'league_id' => isset( $_POST['league_id'] ) ? absint( $_POST['league_id'] ) : null,
 			'season_id' => isset( $_POST['season_id'] ) ? absint( $_POST['season_id'] ) : null,
 			'create_placeholder_teams' => filter_var( $_POST['create_placeholder_teams'] ?? false, FILTER_VALIDATE_BOOLEAN ),
-			'config_id' => sanitize_text_field( $_POST['config_id'] ?? '' ),
+			'config_id' => sanitize_text_field( wp_unslash( $_POST['config_id'] ?? '' ) ),
 		);
 
 		// Validate conflict resolution option

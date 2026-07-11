@@ -103,7 +103,7 @@
                 type: 'POST',
                 data: {
                     action: 'spsg_validate_config',
-                    nonce: spsgData.nonces.validate_config
+                    spsg_nonce: spsgData.nonces.validate_config
                 },
                 beforeSend: function() {
                     self.showMessage('info', 'Validating configuration...');
@@ -178,7 +178,7 @@
                 type: 'POST',
                 data: {
                     action: 'spsg_clone_config',
-                    nonce: spsgData.nonces.clone_config,
+                    spsg_nonce: spsgData.nonces.clone_config,
                     config_id: configId,
                     new_name: newName
                 },
@@ -225,7 +225,7 @@
                 type: 'POST',
                 data: {
                     action: 'spsg_generate_schedule',
-                    nonce: spsgData.nonces.generate_schedule
+                    spsg_nonce: spsgData.nonces.generate_schedule
                 },
                 beforeSend: function() {
                     $('#spsg-generate-schedule').prop('disabled', true).text('Generating...');
@@ -282,7 +282,7 @@
                 type: 'POST',
                 data: {
                     action: 'spsg_export_schedule',
-                    nonce: spsgData.nonces.export_schedule,
+                    spsg_nonce: spsgData.nonces.export_schedule,
                     schedule_id: this.scheduleId,
                     format: format,
                     xlsx_style: $('#spsg-xlsx-style').val() || 'compact',
@@ -727,7 +727,7 @@
                 type: 'POST',
                 data: {
                     action: 'spsg_get_generation_progress',
-                    nonce: spsgData.nonces.get_generation_progress
+                    spsg_nonce: spsgData.nonces.get_generation_progress
                 },
                 success: function(response) {
                     if (response.success) {
@@ -874,7 +874,7 @@
                 type: 'POST',
                 data: {
                     action: 'spsg_get_import_dialog_data',
-                    nonce: spsgData.nonces.get_import_dialog_data
+                    spsg_nonce: spsgData.nonces.get_import_dialog_data
                 },
                 success: function(response) {
                     if (response.success) {
@@ -1009,7 +1009,7 @@
                 type: 'POST',
                 data: $.extend({}, options, {
                     action: 'spsg_import_to_sportspress',
-                    nonce: spsgData.nonces.import_to_sportspress,
+                    spsg_nonce: spsgData.nonces.import_to_sportspress,
                     offset: offset,
                     limit: limit
                 }),
@@ -1307,7 +1307,7 @@
                 type: 'POST',
                 data: {
                     action: 'spsg_preview_import',
-                    nonce: spsgData.nonces.preview_import,
+                    spsg_nonce: spsgData.nonces.preview_import,
                     config_data: configData
                 },
                 beforeSend: function() {

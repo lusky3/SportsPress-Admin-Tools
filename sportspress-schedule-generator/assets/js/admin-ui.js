@@ -85,7 +85,7 @@
             data: {
                 action: 'spsg_import_league',
                 league_id: leagueId,
-                nonce: nonces.import_league
+                spsg_nonce: nonces.import_league
             },
             success: function(response) {
                 if (response.success) {
@@ -94,7 +94,7 @@
                         type: 'POST',
                         data: {
                             action: 'spsg_save_imported_league',
-                            nonce: nonces.save_imported_league,
+                            spsg_nonce: nonces.save_imported_league,
                             config_id: $('#spsg-config-id').val() || '',
                             imported_data: JSON.stringify(response.data)
                         },
@@ -132,7 +132,7 @@
             type: 'POST',
             data: {
                 action: 'spsg_get_available_venues',
-                nonce: sgNonces.get_available_venues
+                spsg_nonce: sgNonces.get_available_venues
             },
             success: function(response) {
                 if (response.success) {
@@ -288,7 +288,7 @@
 
         var formData = new FormData();
         formData.append('action', 'spsg_upload_venue_csv');
-        formData.append('nonce', sgNonces.upload_venue_csv);
+        formData.append('spsg_nonce', sgNonces.upload_venue_csv);
         formData.append('csv_file', fileInput.files[0]);
 
         var $btn = $(this);
@@ -431,7 +431,7 @@
                 type: 'POST',
                 data: {
                     action: 'spsg_import_venue_schedule',
-                    nonce: sgNonces.import_venue_schedule,
+                    spsg_nonce: sgNonces.import_venue_schedule,
                     schedules: schedules,
                     venue_mapping: venueMapping,
                     new_venues: newVenues
@@ -608,7 +608,7 @@
             type: 'POST',
             data: {
                 action: 'spsg_load_sp_teams',
-                nonce: sgNonces.load_sp_teams,
+                spsg_nonce: sgNonces.load_sp_teams,
                 division_id: spDivisionId
             },
             success: function(response) {
@@ -815,7 +815,7 @@
                 data: {
                     action: 'spsg_delete_config',
                     config_id: configId,
-                    nonce: nonces.delete_config
+                    spsg_nonce: nonces.delete_config
                 },
                 success: function(response) {
                     if (response.success) {
@@ -885,7 +885,7 @@
             data: {
                 action: 'spsg_load_preset',
                 preset_name: presetId,
-                nonce: sgNonces.load_preset
+                spsg_nonce: sgNonces.load_preset
             },
             success: function(response) {
                 if (response.success) {
@@ -1098,7 +1098,7 @@
                 action: 'spsg_get_change_history',
                 config_id: configId,
                 limit: 10,
-                nonce: sgNonces.get_change_history
+                spsg_nonce: sgNonces.get_change_history
             },
             success: function(response) {
                 if (response.success) {
@@ -1168,7 +1168,7 @@
             type: 'POST',
             data: {
                 action: 'spsg_clear_change_history',
-                nonce: sgNonces.clear_change_history
+                spsg_nonce: sgNonces.clear_change_history
             },
             success: function(response) {
                 if (response.success) {
@@ -1486,7 +1486,7 @@
                     type: 'POST',
                     data: {
                         action: 'spsg_get_placeholder_teams',
-                        nonce: sgNonces.get_placeholder_teams
+                        spsg_nonce: sgNonces.get_placeholder_teams
                     }
                 }),
                 $.ajax({
@@ -1494,7 +1494,7 @@
                     type: 'POST',
                     data: {
                         action: 'spsg_get_real_teams',
-                        nonce: sgNonces.get_real_teams
+                        spsg_nonce: sgNonces.get_real_teams
                     }
                 })
             ).done(function(placeholderResp, realTeamsResp) {
@@ -1591,7 +1591,7 @@
                 type: 'POST',
                 data: {
                     action: 'spsg_replace_placeholder_team',
-                    nonce: sgNonces.replace_placeholder_team,
+                    spsg_nonce: sgNonces.replace_placeholder_team,
                     placeholder_id: placeholderId,
                     replacement_id: replacementId,
                     delete_placeholder: '1'
@@ -1686,7 +1686,7 @@
                     type: 'POST',
                     data: {
                         action: 'spsg_replace_placeholder_team',
-                        nonce: sgNonces.replace_placeholder_team,
+                        spsg_nonce: sgNonces.replace_placeholder_team,
                         placeholder_id: item.placeholder_id,
                         replacement_id: item.replacement_id,
                         delete_placeholder: '1'
