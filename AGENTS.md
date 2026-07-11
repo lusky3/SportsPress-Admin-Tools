@@ -40,6 +40,28 @@ When adding a new child module, follow the bootstrap pattern in `sportspress-sch
 
 Every AJAX/REST handler must call both `check_ajax_referer()` and `current_user_can()` before doing work. See `phpcs.xml` — the WordPress security sniffs are excluded due to false-positive noise, so capability/nonce checks are enforced by review and `AUDIT-REPORT.md`, not by phpcs.
 
+### Security checklist (every form submission / AJAX / REST handler)
+
+1. **Nonce** — `check_ajax_referer()` / `wp_verify_nonce()`. The nonce *field name* sent by JS must match the PHP check (a mismatch is a real bug — see `specs/spsg-qa-audit/`).
+2. **Capability** — `current_user_can()` (see the table above).
+3. **Sanitize input** — `sanitize_text_field()`, `absint()`, `sanitize_email()`, and `wp_unslash()` before sanitizing `$_POST`/`$_GET`.
+4. **Escape output** — `esc_html()`, `esc_attr()`, `esc_url()`.
+5. **Direct-access guard** — `if ( ! defined( 'ABSPATH' ) ) exit;` at the top of every file.
+
+```php
+public function handle_ajax_action() {
+    check_ajax_referer( 'spat_nonce', 'nonce' );
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( 'Unauthorized' );
+    }
+    $id = absint( $_POST['id'] );
+    // ... process ...
+    wp_send_json_success( $result );
+}
+```
+
+DB: always `$wpdb->prepare()` for values (table names can't be placeholders). Create custom tables on activation with `dbDelta()`; drop only in `uninstall.php`. All user-facing strings use `__()`/`esc_html_e()` with the plugin's text-domain (= directory name).
+
 ## Build & Test Commands
 
 The repo expects a sibling `../sportspress-sandbox` checkout (WordPress 6.x + SportsPress in Docker). The `Makefile` targets all assume that path.
@@ -111,6 +133,54 @@ Sandbox services when running: WordPress :8082, Playwright MCP :3002, Mailpit :8
 - **Uninstall semantics**: each plugin's `uninstall.php` is gated by the parent `spat_remove_data_on_uninstall` option. Capabilities are dropped on deactivation; data only on uninstall when opted in.
 - **`SPLM_SportsPress_Data` rule**: query SportsPress data via WP core (`get_posts`, `get_terms`, `get_post_meta`) against SP CPTs/taxonomies. Do not call SportsPress's internal PHP functions — they are not a stable API.
 
+## Working Principles
+
+Condensed here; `skills/karpathy-guidelines/SKILL.md` has the full version.
+
+- **Think before coding.** State assumptions; if multiple interpretations exist, surface them rather than picking silently. If a simpler approach exists, say so.
+- **Simplicity first.** Minimum code that solves the problem — no speculative features, single-use abstractions, or error handling for impossible states. If 200 lines could be 50, rewrite.
+- **Surgical changes.** Touch only what the request requires. Don't "improve" adjacent code, refactor what isn't broken, or reformat unrelated lines. Match existing style. Remove only the orphans *your* change created; flag pre-existing dead code, don't delete it.
+- **Goal-driven.** Turn tasks into verifiable goals ("add validation" → "write tests for invalid inputs, then make them pass").
+
+## Systematic Debugging
+
+**Root cause before fixes — symptom fixes are failure.** No fix without investigation first.
+
+1. **Investigate** — read the full error/stack trace; reproduce consistently; check recent changes (`git diff`); trace the bad value to its source. WP-specific: `wp-content/debug.log`, `$wpdb->last_error`/`last_query`, hook order via `did_action()`.
+2. **Pattern-match** — find working examples in the same codebase; diff working vs broken.
+3. **Hypothesize** — one hypothesis, smallest possible change, one variable at a time.
+4. **Implement** — failing test that reproduces → single root-cause fix → test passes → no other tests broke.
+
+If 3+ fixes fail, stop and question the architecture.
+
+## Verification Before Completion
+
+**Evidence before claims, always.** Before claiming any status: identify the command that proves it, run it fresh, read the full output + exit code, then claim.
+
+| Claim | Requires | Not sufficient |
+|-------|----------|----------------|
+| Tests pass | Test output showing 0 failures | "should pass", a previous run |
+| Linter clean | Linter output, 0 errors | Partial check |
+| Build succeeds | Build exit 0 | Linter passing |
+| Bug fixed | Original symptom reproduced → now passes | Code changed, assumed fixed |
+| Plugin activates | WP-CLI activation check | "should work" |
+
+Always verify before committing/pushing, moving on, or reporting a fix. "Linter passed" ≠ "tests pass".
+
+## Browser QA (Playwright MCP)
+
+For hands-on QA of admin pages; full methodology in `skills/web-quality-audit/SKILL.md`. After each page load: no PHP fatal/parse error or white screen; no unexpected `.notice-error`; no console JS errors (ignore `wp-emoji` noise); plugin scripts present; correct page title. After each AJAX/submit: `response.success === true`, success notice shown, data persisted on reload, no unrelated data changed. Watch `browser_network_requests` for 500s, 404s, `admin-ajax.php` errors, >5s requests.
+
+| Symptom | Root cause |
+|---------|-----------|
+| Plugin section empty | Plugin inactive or module disabled |
+| `[object Object]` in UI | JS passed an object to `.text()` instead of the message |
+| Button does nothing | JS not enqueued, or element `display:none` |
+| AJAX returns `0` | Missing `wp_ajax_` hook / wrong action name |
+| AJAX returns `-1` | Nonce verification failed |
+| 500 on AJAX | PHP fatal in handler — check `debug.log` |
+| Form submits but data lost | Missing input `name`, or nonce field absent |
+
 ## SportsPress Data Model (for reference)
 
 Post types: `sp_team`, `sp_player`, `sp_event`, `sp_table`, `sp_list`.
@@ -120,5 +190,27 @@ Player→team link: `sp_current_team` post meta on `sp_player`.
 ## Sandbox / Staging Notes
 
 - Local sandbox lives at `../sportspress-sandbox` (separate repo). The Makefile fails fast if absent.
-- A staging environment exists at `tikal.lusk.ee:8080` with full production data. Production is `sonic.lusk.ee` — treat as **read-only**. Full details in `.kiro/steering/staging-environment.md`.
+- A staging environment exists at `tikal.lusk.ee:8080` with full production data. Production is `sonic.lusk.ee` — treat as **read-only**. Detailed access/credentials are kept out of version control in the local, gitignored `.agents/ops/staging-environment.md`.
 - Outgoing email is disabled on staging via mu-plugin.
+
+## Specs
+
+Active feature specs live in `specs/` (one directory per feature). Currently active:
+
+- **`specs/dashboard-gaps-player-portal/`** — the current focus. A not-yet-built `sportspress-player-portal` child plugin (WooCommerce My-Account tabs for player schedule/stats/team). Zero code exists yet; all tasks are open.
+- **`specs/spsg-qa-audit/`** — schedule-generator security/QA tracker with real unshipped work, notably the **H-1 nonce field-name mismatch** (live functional bug) and several unaddressed MEDIUM findings. See its Remediation Status table for what's fixed vs open.
+
+When a spec is fully shipped, delete it and add a line to **Shipped Features** below rather than leaving a stale checklist.
+
+## Skills
+
+Project-specific agent skills are in `skills/` (tracked): `anti-slop-ui`, `karpathy-guidelines`, `sportspress-internals`, `wordpress-plugin-dev`, `wp-performance-review`. General/shared skills (accessibility, best-practices, php-pro, ui-ux-pro-max, web-quality-audit, wordpress-pro, wp-plugin-directory-guidelines) are managed centrally in the gitignored `.agents/skills/` store, not committed here.
+
+## Shipped Features
+
+Delivered work whose specs have been removed (kept here as a short record):
+
+- **League Manager dashboard** (PR #11) — React SPA: Dashboard, Schedule, Score Entry, Standings, Season Setup pages; `splm/v1` REST API. *Known gap:* the reschedule/cancel `notify` flag is accepted end-to-end but no email is sent yet (no `SPLM_Notification` / `wp_mail()` in the plugin) — track as a standalone issue if pursued.
+- **Season Setup page + division-assignment wizard** — 4-step drag-and-drop (`@dnd-kit`) team/division assignment; `POST /season/create`, `GET /teams/with-divisions`.
+- **Schedule Generator** phases 2 (configuration manager, presets, change history) & 3 (matchup generation, slot allocator, statistics, SportsPress import, progress/cancel) — fully shipped. Deliberately descoped: PDF report export, drag-and-drop post-generation editing, interactive conflict-resolution chooser.
+- **Schedule Generator UI enhancements** — config clone, import preview modal, export filters, statistics panel, format detection. Outstanding items were QA/accessibility/docs process only (see `specs/spsg-qa-audit/`), not missing features.
