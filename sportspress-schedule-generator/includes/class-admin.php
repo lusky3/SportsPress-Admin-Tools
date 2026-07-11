@@ -357,7 +357,7 @@ class SPSG_Admin {
 	 */
 	public function enqueue_admin_scripts( $hook ) {
 		if ( strpos( $hook, 'spsg-schedule-generator' ) === false &&
-		( ! isset( $_GET['page'] ) || sanitize_text_field( $_GET['page'] ) !== 'sportspress-admin-tools' ) ) {
+		( ! isset( $_GET['page'] ) || sanitize_text_field( wp_unslash( $_GET['page'] ) ) !== 'sportspress-admin-tools' ) ) {
 			return;
 		}
 
@@ -576,7 +576,7 @@ class SPSG_Admin {
 	 * Handle form submission
 	 */
 	private function handle_form_submission() {
-		$action = sanitize_text_field( $_POST['spsg_action'] );
+		$action = sanitize_text_field( wp_unslash( $_POST['spsg_action'] ) );
 
 		if ( $action === 'save_config' ) {
 			$config_data = $this->sanitize_form_data( $_POST );

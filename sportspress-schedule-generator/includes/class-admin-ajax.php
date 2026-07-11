@@ -10,7 +10,7 @@
 
 // Prevent direct access
 if ( ! defined( 'ABSPATH' ) ) {
-	wp_die();
+	exit;
 }
 
 /**
@@ -106,7 +106,7 @@ class SPSG_Admin_Ajax {
 			wp_send_json_error( __( SPSG_Admin::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator' ) );
 		}
 
-		$config_id = sanitize_text_field( $_POST['config_id'] ?? '' );
+		$config_id = sanitize_text_field( wp_unslash( $_POST['config_id'] ?? '' ) );
 		$config = $this->config_manager->load( $config_id );
 
 		if ( $config && is_object( $config ) && method_exists( $config, 'to_array' ) ) {
@@ -152,8 +152,8 @@ class SPSG_Admin_Ajax {
 			wp_send_json_error( __( SPSG_Admin::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator' ) );
 		}
 
-		$config_id = isset( $_POST['config_id'] ) ? sanitize_text_field( $_POST['config_id'] ) : '';
-		$imported_data = isset( $_POST['imported_data'] ) ? json_decode( stripslashes( $_POST['imported_data'] ), true ) : array();
+		$config_id = isset( $_POST['config_id'] ) ? sanitize_text_field( wp_unslash( $_POST['config_id'] ) ) : '';
+		$imported_data = isset( $_POST['imported_data'] ) ? json_decode( wp_unslash( $_POST['imported_data'] ), true ) : array();
 
 		if ( empty( $imported_data ) || empty( $imported_data['divisions'] ) ) {
 			wp_send_json_error( __( 'No data to import', 'sportspress-schedule-generator' ) );
@@ -287,7 +287,7 @@ class SPSG_Admin_Ajax {
 			wp_send_json_error( __( SPSG_Admin::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator' ) );
 		}
 
-		$config_id = sanitize_text_field( $_POST['config_id'] ?? '' );
+		$config_id = sanitize_text_field( wp_unslash( $_POST['config_id'] ?? '' ) );
 		if ( empty( $config_id ) ) {
 			wp_send_json_error( __( 'No configuration ID provided', 'sportspress-schedule-generator' ) );
 		}
@@ -311,8 +311,8 @@ class SPSG_Admin_Ajax {
 			wp_send_json_error( __( SPSG_Admin::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator' ) );
 		}
 
-		$config_id = sanitize_text_field( $_POST['config_id'] ?? '' );
-		$new_name = sanitize_text_field( $_POST['new_name'] ?? '' );
+		$config_id = sanitize_text_field( wp_unslash( $_POST['config_id'] ?? '' ) );
+		$new_name = sanitize_text_field( wp_unslash( $_POST['new_name'] ?? '' ) );
 
 		if ( empty( $config_id ) ) {
 			wp_send_json_error( __( 'No configuration ID provided', 'sportspress-schedule-generator' ) );
@@ -410,7 +410,7 @@ class SPSG_Admin_Ajax {
 			wp_send_json_error( __( SPSG_Admin::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator' ) );
 		}
 
-		$preset_name = sanitize_text_field( $_POST['preset_name'] ?? '' );
+		$preset_name = sanitize_text_field( wp_unslash( $_POST['preset_name'] ?? '' ) );
 		if ( empty( $preset_name ) ) {
 			wp_send_json_error( __( 'Invalid preset name', 'sportspress-schedule-generator' ) );
 		}
@@ -443,7 +443,7 @@ class SPSG_Admin_Ajax {
 			wp_send_json_error( __( SPSG_Admin::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator' ) );
 		}
 
-		$config_id = sanitize_text_field( $_POST['config_id'] ?? '' );
+		$config_id = sanitize_text_field( wp_unslash( $_POST['config_id'] ?? '' ) );
 		if ( empty( $config_id ) ) {
 			wp_send_json_error( __( 'Invalid configuration ID', 'sportspress-schedule-generator' ) );
 		}
@@ -800,8 +800,8 @@ class SPSG_Admin_Ajax {
 		}
 
 		$schedules = map_deep( wp_unslash( $_POST['schedules'] ?? array() ), 'sanitize_text_field' );
-		$venue_mapping = array_map( 'sanitize_text_field', $_POST['venue_mapping'] ?? array() );
-		$new_venues = array_map( 'sanitize_text_field', $_POST['new_venues'] ?? array() );
+		$venue_mapping = array_map( 'sanitize_text_field', wp_unslash( $_POST['venue_mapping'] ?? array() ) );
+		$new_venues = array_map( 'sanitize_text_field', wp_unslash( $_POST['new_venues'] ?? array() ) );
 
 		if ( empty( $schedules ) ) {
 			wp_send_json_error( __( 'No schedule data provided', 'sportspress-schedule-generator' ) );
@@ -904,7 +904,7 @@ class SPSG_Admin_Ajax {
 			wp_send_json_error( __( SPSG_Admin::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator' ) );
 		}
 
-		$config_id = sanitize_text_field( $_POST['config_id'] ?? '' );
+		$config_id = sanitize_text_field( wp_unslash( $_POST['config_id'] ?? '' ) );
 		if ( empty( $config_id ) ) {
 			wp_send_json_error( __( 'No configuration ID provided', 'sportspress-schedule-generator' ) );
 		}
@@ -932,7 +932,7 @@ class SPSG_Admin_Ajax {
 			wp_send_json_error( __( SPSG_Admin::MSG_INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator' ) );
 		}
 
-		$config_id = sanitize_text_field( $_POST['config_id'] ?? '' );
+		$config_id = sanitize_text_field( wp_unslash( $_POST['config_id'] ?? '' ) );
 		$placeholders = SPSG_Placeholder_Team_Manager::get_placeholder_teams( $config_id );
 
 		wp_send_json_success(

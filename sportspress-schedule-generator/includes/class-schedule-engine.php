@@ -6,7 +6,7 @@
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
-	wp_die();
+	exit;
 }
 
 if ( ! defined( 'HOUR_IN_SECONDS' ) ) {
