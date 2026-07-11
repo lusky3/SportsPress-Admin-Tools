@@ -70,6 +70,16 @@ abstract class SPSS_Abstract_LLM_Provider implements SPSS_Recognition_Provider {
 		return '' !== trim( $this->get_key() );
 	}
 
+	/**
+	 * Rough default $-cost per sheet, used by SPSS_Budget when no per-provider
+	 * `spss_<id>_cost_per_sheet` option is set. A deliberate estimate (image +
+	 * ~few-K-token extraction on a mid-tier vision model); override per provider
+	 * in settings for accuracy.
+	 */
+	public function estimated_cost_per_sheet(): float {
+		return 0.02;
+	}
+
 	public function recognize( string $image_abs_path, array $context ) {
 		if ( ! $this->is_configured() ) {
 			return new WP_Error( 'spss_' . $this->get_id() . '_no_key', sprintf( /* translators: %s: provider label */ __( '%s is not configured (missing API key).', 'sportspress-score-sheets' ), $this->get_label() ) );
