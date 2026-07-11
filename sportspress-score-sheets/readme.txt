@@ -4,6 +4,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
+Stable tag: 1.0.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -11,7 +12,7 @@ Ingest photos of hand-filled score sheets, read them with a pluggable recognitio
 
 == Description ==
 
-A child module of SportsPress Admin Tools. Upload a phone photo of a paper hockey score sheet; the plugin sends it to a recognition provider (Claude vision by default), reads the final score and per-player stats, runs consistency checks (player goals must sum to the team score, jersey numbers must match the roster), and presents the extracted values next to the image for an administrator to review and correct. Nothing is written to SportsPress until a human confirms.
+A child module of SportsPress Admin Tools. Submit a phone photo of a paper hockey score sheet — by **admin upload**, **HMAC webhook**, **emailed photo** (via a Cloudflare Worker), or **Twilio SMS/MMS** (see assets/remote-intake.md); all channels land in the same review queue. the plugin sends it to a recognition provider (Claude vision by default), reads the final score and per-player stats, runs consistency checks (player goals must sum to the team score, jersey numbers must match the roster), and presents the extracted values next to the image for an administrator to review and correct. Nothing is written to SportsPress until a human confirms.
 
 On confirmation, the event's score and outcome (win/loss/tie, plus OT/SO loss) and each player's box-score stats (goals, assists, PIM, …) are written to the SportsPress event. Standings and player totals update automatically.
 

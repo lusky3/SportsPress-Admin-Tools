@@ -51,6 +51,32 @@ class SPSS_OpenRouter_Provider extends SPSS_OpenAI_Provider {
 		return $this->base_url() . '/chat/completions';
 	}
 
+	/**
+	 * Same api_key + model fields as the base, but the model carries a capability
+	 * hint and the gateway base URL is appended (aggregators need a configurable
+	 * endpoint).
+	 *
+	 * @return array[]
+	 */
+	public function settings_fields(): array {
+		$fields       = parent::settings_fields();
+		$model_option = 'spss_' . $this->get_id() . '_model';
+		foreach ( $fields as $i => $field ) {
+			if ( $model_option === $field['option'] ) {
+				$fields[ $i ]['description'] = __( 'e.g. openai/gpt-4o, anthropic/claude-*, google/gemini-*, qwen/qwen2.5-vl-* — must support vision + structured output.', 'sportspress-score-sheets' );
+			}
+		}
+		$fields[] = array(
+			'option'      => 'spss_openrouter_base_url',
+			'label'       => __( 'Gateway base URL', 'sportspress-score-sheets' ),
+			'type'        => 'url',
+			'secret'      => false,
+			'placeholder' => self::DEFAULT_BASE_URL,
+			'description' => __( 'Defaults to OpenRouter. Point at any other OpenAI-compatible aggregator/gateway (Together, Groq, Fireworks, a LiteLLM/vLLM proxy, …).', 'sportspress-score-sheets' ),
+		);
+		return $fields;
+	}
+
 	protected function auth_headers(): array {
 		$headers = array(
 			'content-type'  => 'application/json',

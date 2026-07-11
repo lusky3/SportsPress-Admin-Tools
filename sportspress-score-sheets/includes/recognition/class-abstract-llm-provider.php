@@ -7,6 +7,11 @@
  * option resolution, the roster-anchoring system prompt, the per-request context
  * text, image media-type detection, and the retry/backoff HTTP loop) is shared.
  *
+ * The canonical score-sheet JSON schema is defined once here (scoresheet_schema)
+ * and rendered into each vendor's dialect (Anthropic tool input_schema, Gemini
+ * responseSchema, OpenAI strict json_schema) by the render_schema_* helpers, so
+ * the shape is single-sourced instead of hand-maintained per provider.
+ *
  * Key/model options follow the convention `spss_<id>_api_key` / `spss_<id>_model`
  * (with an optional `<KEY_CONSTANT>` override for wp-config).
  */
@@ -15,7 +20,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+// The retry/backoff HTTP loop + media-type helper are shared with the
+// self-hosted provider via this trait; load it here so the abstract base is
+// usable on its own (e.g. the standalone provider tests), independent of the
+// plugin bootstrap's require order.
+require_once __DIR__ . '/trait-recognition-http.php';
+
 abstract class SPSS_Abstract_LLM_Provider implements SPSS_Recognition_Provider {
+
+	use SPSS_Recognition_HTTP;
+
+	/** Upper bound on generated tokens for the structured extraction response. */
+	const MAX_TOKENS = 2048;
 
 	/** Provider id (e.g. 'claude'); also the option-name stem. */
 	abstract public function get_id(): string;
@@ -80,6 +96,35 @@ abstract class SPSS_Abstract_LLM_Provider implements SPSS_Recognition_Provider {
 		return 0.02;
 	}
 
+	/**
+	 * Settings fields this provider exposes so the admin can render its
+	 * configuration UI generically (see the interface contract). LLM providers
+	 * share an API key + model; subclasses append/adjust as needed.
+	 *
+	 * @return array[]
+	 */
+	public function settings_fields(): array {
+		$id = $this->get_id();
+		return array(
+			array(
+				'option'      => 'spss_' . $id . '_api_key',
+				'label'       => __( 'API key', 'sportspress-score-sheets' ),
+				'type'        => 'password',
+				'secret'      => true,
+				'placeholder' => '',
+				'description' => __( 'Enter a key to enable this provider.', 'sportspress-score-sheets' ),
+			),
+			array(
+				'option'      => 'spss_' . $id . '_model',
+				'label'       => __( 'Model', 'sportspress-score-sheets' ),
+				'type'        => 'text',
+				'secret'      => false,
+				'placeholder' => '',
+				'description' => '',
+			),
+		);
+	}
+
 	public function recognize( string $image_abs_path, array $context ) {
 		if ( ! $this->is_configured() ) {
 			return new WP_Error( 'spss_' . $this->get_id() . '_no_key', sprintf( /* translators: %s: provider label */ __( '%s is not configured (missing API key).', 'sportspress-score-sheets' ), $this->get_label() ) );
@@ -98,50 +143,6 @@ abstract class SPSS_Abstract_LLM_Provider implements SPSS_Recognition_Provider {
 			return $decoded;
 		}
 		return $this->parse_response( $decoded );
-	}
-
-	/**
-	 * POST JSON with bounded exponential-backoff retry on rate-limit/overload/5xx.
-	 *
-	 * @param string $url     Endpoint.
-	 * @param array  $headers Request headers.
-	 * @param array  $body    Request body (JSON-encoded here).
-	 * @return array|WP_Error Decoded JSON on success.
-	 */
-	protected function request_with_retry( $url, array $headers, array $body ) {
-		$attempts = 0;
-		$max      = 3;
-		$last_err = null;
-
-		while ( $attempts < $max ) {
-			++$attempts;
-			$response = wp_remote_post(
-				$url,
-				array(
-					'timeout' => 60,
-					'headers' => $headers,
-					'body'    => wp_json_encode( $body ),
-				)
-			);
-
-			if ( is_wp_error( $response ) ) {
-				$last_err = $response;
-			} else {
-				$code = (int) wp_remote_retrieve_response_code( $response );
-				if ( 200 === $code ) {
-					return json_decode( wp_remote_retrieve_body( $response ), true );
-				}
-				if ( 429 !== $code && 529 !== $code && $code < 500 ) {
-					return new WP_Error( 'spss_' . $this->get_id() . '_http', sprintf( /* translators: %d: HTTP status */ __( 'Recognition API returned HTTP %d.', 'sportspress-score-sheets' ), $code ), array( 'body' => wp_remote_retrieve_body( $response ) ) );
-				}
-				$last_err = new WP_Error( 'spss_' . $this->get_id() . '_http', sprintf( 'HTTP %d', $code ) );
-			}
-
-			if ( $attempts < $max ) {
-				sleep( (int) pow( 2, $attempts ) );
-			}
-		}
-		return $last_err ?: new WP_Error( 'spss_' . $this->get_id() . '_failed', __( 'Recognition request failed.', 'sportspress-score-sheets' ) );
 	}
 
 	/**
@@ -201,20 +202,301 @@ abstract class SPSS_Abstract_LLM_Provider implements SPSS_Recognition_Provider {
 	}
 
 	/**
-	 * Detect an image's MIME type from content, falling back to extension.
+	 * Canonical, dialect-neutral description of the score-sheet object. Each node
+	 * is `['kind' => scalar|enum|object|array, …]`; the render_schema_* helpers
+	 * turn it into the vendor-specific schema. Nullable scalars are 'int'/'str';
+	 * non-nullable scalars are 'int_plain'/'str_plain'; 'conf' is the legibility
+	 * enum. `anthropic_required` records the required lists Anthropic emits (the
+	 * OpenAI strict dialect requires every property; Gemini requires none).
+	 *
+	 * @return array
 	 */
-	protected static function media_type( $path ) {
-		$info = @getimagesize( $path ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
-		if ( is_array( $info ) && ! empty( $info['mime'] ) && in_array( $info['mime'], array( 'image/jpeg', 'image/png', 'image/webp', 'image/gif' ), true ) ) {
-			return $info['mime'];
-		}
-		$ext = strtolower( pathinfo( $path, PATHINFO_EXTENSION ) );
-		$map = array(
-			'jpg'  => 'image/jpeg',
-			'jpeg' => 'image/jpeg',
-			'png'  => 'image/png',
-			'webp' => 'image/webp',
+	protected function scoresheet_schema(): array {
+		$int  = array( 'kind' => 'int' );
+		$str  = array( 'kind' => 'str' );
+		$conf = array( 'kind' => 'conf' );
+
+		$team = array(
+			'kind'       => 'object',
+			'properties' => array(
+				'name_written'    => $str,
+				'matched_team_id' => $int,
+				'final_score'     => $int,
+			),
 		);
-		return $map[ $ext ] ?? 'image/jpeg';
+
+		$side_enum = array(
+			'kind'   => 'enum',
+			'values' => array( 'home', 'away' ),
+		);
+
+		return array(
+			'kind'               => 'object',
+			'anthropic_required' => array( 'teams', 'players' ),
+			'properties'         => array(
+				'sheet_meta' => array(
+					'kind'       => 'object',
+					'properties' => array(
+						'date'            => $str,
+						'location'        => $str,
+						'legible_overall' => $conf,
+					),
+				),
+				'teams'      => array(
+					'kind'       => 'object',
+					'properties' => array(
+						'home' => $team,
+						'away' => $team,
+					),
+				),
+				'periods'    => array(
+					'kind'  => 'array',
+					'items' => array(
+						'kind'       => 'object',
+						'properties' => array(
+							'period' => array( 'kind' => 'int_plain' ),
+							'home'   => $int,
+							'away'   => $int,
+						),
+					),
+				),
+				'players'    => array(
+					'kind'  => 'array',
+					'items' => array(
+						'kind'               => 'object',
+						'anthropic_required' => array( 'team', 'jersey_written' ),
+						'properties'         => array(
+							'team'              => $side_enum,
+							'player_name'       => $str,
+							'jersey_written'    => $str,
+							'matched_player_id' => $int,
+							'matched_by'        => array(
+								'kind'   => 'enum',
+								'values' => array( 'roster_number', 'roster_name', 'unmatched' ),
+							),
+							'goals'             => $int,
+							'assists'           => $int,
+							'pim'               => $int,
+							'field_confidence'  => array(
+								'kind'       => 'object',
+								'properties' => array(
+									'jersey'  => $conf,
+									'goals'   => $conf,
+									'assists' => $conf,
+								),
+							),
+						),
+					),
+				),
+				'scoring'    => array(
+					'kind'  => 'array',
+					'items' => array(
+						'kind'       => 'object',
+						'properties' => array(
+							'team'           => $side_enum,
+							'goal_number'    => $int,
+							'scorer_jersey'  => $str,
+							'assist1_jersey' => $str,
+							'assist2_jersey' => $str,
+							'period'         => $int,
+						),
+					),
+				),
+				'penalties'  => array(
+					'kind'  => 'array',
+					'items' => array(
+						'kind'       => 'object',
+						'properties' => array(
+							'team'    => $side_enum,
+							'jersey'  => $str,
+							'length'  => $int,
+							'period'  => $int,
+							'offense' => $str,
+						),
+					),
+				),
+				'goalies'    => array(
+					'kind'  => 'array',
+					'items' => array(
+						'kind'       => 'object',
+						'properties' => array(
+							'team'              => $side_enum,
+							'jersey_written'    => $str,
+							'matched_player_id' => $int,
+							'goals_against'     => $int,
+						),
+					),
+				),
+				'flags'      => array(
+					'kind'  => 'array',
+					'items' => array(
+						'kind'       => 'object',
+						'properties' => array(
+							'type'         => array( 'kind' => 'str_plain' ),
+							'detail'       => array( 'kind' => 'str_plain' ),
+							'player_index' => $int,
+						),
+					),
+				),
+			),
+		);
+	}
+
+	/**
+	 * Render the canonical schema in Anthropic's tool input_schema dialect:
+	 * nullable union types (['integer','null']), enums as string+enum, and a
+	 * `required` list only where the canonical spec declares one.
+	 *
+	 * @return array
+	 */
+	protected function render_schema_anthropic(): array {
+		return self::render_node_anthropic( $this->scoresheet_schema() );
+	}
+
+	private static function render_node_anthropic( array $node ): array {
+		switch ( $node['kind'] ) {
+			case 'int':
+				return array( 'type' => array( 'integer', 'null' ) );
+			case 'str':
+				return array( 'type' => array( 'string', 'null' ) );
+			case 'int_plain':
+				return array( 'type' => 'integer' );
+			case 'str_plain':
+				return array( 'type' => 'string' );
+			case 'conf':
+				return array(
+					'type' => 'string',
+					'enum' => array( 'high', 'medium', 'low' ),
+				);
+			case 'enum':
+				return array(
+					'type' => 'string',
+					'enum' => $node['values'],
+				);
+			case 'array':
+				return array(
+					'type'  => 'array',
+					'items' => self::render_node_anthropic( $node['items'] ),
+				);
+			case 'object':
+			default:
+				$props = array();
+				foreach ( $node['properties'] as $name => $child ) {
+					$props[ $name ] = self::render_node_anthropic( $child );
+				}
+				$out = array(
+					'type'       => 'object',
+					'properties' => $props,
+				);
+				if ( ! empty( $node['anthropic_required'] ) ) {
+					$out['required'] = $node['anthropic_required'];
+				}
+				return $out;
+		}
+	}
+
+	/**
+	 * Render the canonical schema in Gemini's responseSchema dialect: UPPERCASE
+	 * type strings and optionality via `nullable => true`. No `required` lists.
+	 *
+	 * @return array
+	 */
+	protected function render_schema_gemini(): array {
+		return self::render_node_gemini( $this->scoresheet_schema() );
+	}
+
+	private static function render_node_gemini( array $node ): array {
+		switch ( $node['kind'] ) {
+			case 'int':
+				return array(
+					'type'     => 'INTEGER',
+					'nullable' => true,
+				);
+			case 'str':
+				return array(
+					'type'     => 'STRING',
+					'nullable' => true,
+				);
+			case 'int_plain':
+				return array( 'type' => 'INTEGER' );
+			case 'str_plain':
+				return array( 'type' => 'STRING' );
+			case 'conf':
+				return array(
+					'type' => 'STRING',
+					'enum' => array( 'high', 'medium', 'low' ),
+				);
+			case 'enum':
+				return array(
+					'type' => 'STRING',
+					'enum' => $node['values'],
+				);
+			case 'array':
+				return array(
+					'type'  => 'ARRAY',
+					'items' => self::render_node_gemini( $node['items'] ),
+				);
+			case 'object':
+			default:
+				$props = array();
+				foreach ( $node['properties'] as $name => $child ) {
+					$props[ $name ] = self::render_node_gemini( $child );
+				}
+				return array(
+					'type'       => 'OBJECT',
+					'properties' => $props,
+				);
+		}
+	}
+
+	/**
+	 * Render the canonical schema in OpenAI's strict json_schema dialect: every
+	 * object declares `additionalProperties => false` and lists every property in
+	 * `required`; optionality is via nullable union types.
+	 *
+	 * @return array
+	 */
+	protected function render_schema_openai_strict(): array {
+		return self::render_node_openai_strict( $this->scoresheet_schema() );
+	}
+
+	private static function render_node_openai_strict( array $node ): array {
+		switch ( $node['kind'] ) {
+			case 'int':
+				return array( 'type' => array( 'integer', 'null' ) );
+			case 'str':
+				return array( 'type' => array( 'string', 'null' ) );
+			case 'int_plain':
+				return array( 'type' => 'integer' );
+			case 'str_plain':
+				return array( 'type' => 'string' );
+			case 'conf':
+				return array(
+					'type' => 'string',
+					'enum' => array( 'high', 'medium', 'low' ),
+				);
+			case 'enum':
+				return array(
+					'type' => 'string',
+					'enum' => $node['values'],
+				);
+			case 'array':
+				return array(
+					'type'  => 'array',
+					'items' => self::render_node_openai_strict( $node['items'] ),
+				);
+			case 'object':
+			default:
+				$props = array();
+				foreach ( $node['properties'] as $name => $child ) {
+					$props[ $name ] = self::render_node_openai_strict( $child );
+				}
+				return array(
+					'type'                 => 'object',
+					'additionalProperties' => false,
+					'properties'           => $props,
+					'required'             => array_keys( $node['properties'] ),
+				);
+		}
 	}
 }

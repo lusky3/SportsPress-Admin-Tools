@@ -24,9 +24,24 @@ class SPSS_Consistency_Checker {
 
 	/**
 	 * Confidence at or below which a missing/illegible field is worth flagging.
-	 * field_confidence values are expected to be in the 0..1 range.
+	 *
+	 * The field_confidence value may arrive either as a numeric 0..1 score or as
+	 * one of the provider enum strings 'high'|'medium'|'low'. Enum values map to a
+	 * numeric rank (see self::CONFIDENCE_RANK) before comparison; numeric values
+	 * are used directly. With the threshold at 0.5 only genuinely low confidence
+	 * flags: 'high' (1.0) and 'medium' (0.6) never flag, 'low' (0.0) always does.
 	 */
 	const LOW_CONFIDENCE = 0.5;
+
+	/**
+	 * Numeric rank for each provider confidence enum value. Chosen so that, with
+	 * LOW_CONFIDENCE = 0.5 and a <= comparison, only 'low' crosses the threshold.
+	 */
+	const CONFIDENCE_RANK = array(
+		'high'   => 1.0,
+		'medium' => 0.6,
+		'low'    => 0.0,
+	);
 
 	/**
 	 * Run every consistency check against $result.
@@ -187,10 +202,10 @@ class SPSS_Consistency_Checker {
 			// Missing goals, but only when the reader itself was unsure.
 			if ( is_null( $goals ) ) {
 				$goals_conf = $confidence['goals'] ?? null;
-				if ( ! is_null( $goals_conf ) && (float) $goals_conf <= self::LOW_CONFIDENCE ) {
+				if ( ! is_null( $goals_conf ) && self::confidence_score( $goals_conf ) <= self::LOW_CONFIDENCE ) {
 					$result->add_flag(
 						'illegible',
-						sprintf( 'goals missing with low confidence (%.2f) for jersey "%s"', (float) $goals_conf, $jersey ),
+						sprintf( 'goals missing with low confidence (%s) for jersey "%s"', (string) $goals_conf, $jersey ),
 						$index
 					);
 				}
@@ -223,6 +238,25 @@ class SPSS_Consistency_Checker {
 				}
 			}
 		}
+	}
+
+	/**
+	 * Normalize a field_confidence value to a numeric 0..1 score.
+	 *
+	 * Accepts either a numeric score (used directly) or one of the provider enum
+	 * strings 'high'|'medium'|'low' (mapped via self::CONFIDENCE_RANK). Anything
+	 * unrecognized is treated as lowest confidence (0.0) so it errs toward
+	 * flagging rather than silently passing.
+	 *
+	 * @param mixed $value Raw field_confidence value.
+	 * @return float Confidence score in the 0..1 range.
+	 */
+	private static function confidence_score( $value ): float {
+		if ( is_numeric( $value ) ) {
+			return (float) $value;
+		}
+		$key = strtolower( trim( (string) $value ) );
+		return self::CONFIDENCE_RANK[ $key ] ?? 0.0;
 	}
 
 	/**
