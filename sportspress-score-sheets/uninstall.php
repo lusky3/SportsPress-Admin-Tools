@@ -32,6 +32,13 @@ SPSS_Database::drop_tables();
 delete_option( 'spss_db_version' );
 delete_option( 'spss_primary_provider' );
 delete_option( 'spss_secondary_provider' );
+delete_option( 'spss_primary_chain' );
+delete_option( 'spss_confirmation_providers' );
+delete_option( 'spss_spend_ledger' );
+foreach ( array( 'claude', 'gemini', 'openai', 'openrouter', 'selfhosted' ) as $pid ) {
+	delete_option( "spss_{$pid}_monthly_budget" );
+	delete_option( "spss_{$pid}_cost_per_sheet" );
+}
 delete_option( 'spss_claude_api_key' );
 delete_option( 'spss_claude_model' );
 delete_option( 'spss_gemini_api_key' );
