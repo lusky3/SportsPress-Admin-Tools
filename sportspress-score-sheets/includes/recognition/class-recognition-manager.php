@@ -23,11 +23,15 @@ class SPSS_Recognition_Manager {
 	public static function get_providers() {
 		$providers = array();
 
-		$claude = new SPSS_Claude_Provider();
-		$providers[ $claude->get_id() ] = $claude;
+		foreach ( array( 'SPSS_Claude_Provider', 'SPSS_Gemini_Provider', 'SPSS_OpenAI_Provider', 'SPSS_SelfHosted_Provider' ) as $class ) {
+			if ( class_exists( $class ) ) {
+				$provider                        = new $class();
+				$providers[ $provider->get_id() ] = $provider;
+			}
+		}
 
 		/**
-		 * Register additional recognition providers.
+		 * Register additional recognition providers (third-party backends).
 		 *
 		 * @param SPSS_Recognition_Provider[] $providers Keyed by provider id.
 		 */

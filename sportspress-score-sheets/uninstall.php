@@ -34,6 +34,13 @@ delete_option( 'spss_primary_provider' );
 delete_option( 'spss_secondary_provider' );
 delete_option( 'spss_claude_api_key' );
 delete_option( 'spss_claude_model' );
+delete_option( 'spss_gemini_api_key' );
+delete_option( 'spss_gemini_model' );
+delete_option( 'spss_openai_api_key' );
+delete_option( 'spss_openai_model' );
+delete_option( 'spss_selfhosted_endpoint' );
+delete_option( 'spss_selfhosted_model' );
+delete_option( 'spss_selfhosted_key' );
 delete_option( 'spss_retention_days' );
 delete_option( 'spss_webhook_secret' );
 

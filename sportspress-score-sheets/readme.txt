@@ -15,7 +15,7 @@ A child module of SportsPress Admin Tools. Upload a phone photo of a paper hocke
 
 On confirmation, the event's score and outcome (win/loss/tie, plus OT/SO loss) and each player's box-score stats (goals, assists, PIM, …) are written to the SportsPress event. Standings and player totals update automatically.
 
-Recognition is pluggable: additional backends can be registered via the `spss_register_recognition_providers` filter, and an optional secondary provider can cross-check the primary and flag disagreements.
+Recognition is pluggable. Built-in providers: **Claude vision** (Anthropic), **Gemini vision** (Google), **GPT vision** (OpenAI), and a **self-hosted** option that POSTs to a local recognition sidecar (a GPU vision-language model via Ollama/vLLM, or a CPU PaddleOCR-VL service) so images never leave your infrastructure. Pick a Primary and an optional Secondary (cross-check) provider under Settings; disagreements between the two are flagged for review. Further backends can be registered via the `spss_register_recognition_providers` filter. Each provider is inert until you configure its key/endpoint. Model ids are editable settings — verify the current model in your provider's console.
 
 = Privacy =
 

@@ -98,7 +98,11 @@ class SportsPress_Score_Sheets {
 		require_once SPSS_PLUGIN_PATH . 'includes/class-image-store.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/recognition/class-extraction-result.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/recognition/interface-recognition-provider.php';
+		require_once SPSS_PLUGIN_PATH . 'includes/recognition/class-abstract-llm-provider.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/recognition/class-claude-provider.php';
+		require_once SPSS_PLUGIN_PATH . 'includes/recognition/class-gemini-provider.php';
+		require_once SPSS_PLUGIN_PATH . 'includes/recognition/class-openai-provider.php';
+		require_once SPSS_PLUGIN_PATH . 'includes/recognition/class-selfhosted-provider.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/recognition/class-recognition-manager.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/class-consistency-checker.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/class-sportspress-writer.php';

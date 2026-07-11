@@ -66,24 +66,60 @@ class SPSS_Admin {
 				'default' => '',
 			)
 		);
+
+		// Hosted LLM providers: a (masked) API key + an editable model id each.
+		// The model default is '' so the provider falls back to its own
+		// default_model(); the field displays the effective value via get_model().
+		foreach ( array( 'claude', 'gemini', 'openai' ) as $id ) {
+			register_setting(
+				self::SETTINGS_GROUP,
+				"spss_{$id}_api_key",
+				array(
+					'type' => 'string',
+					'sanitize_callback' => array( $this, 'sanitize_' . $id . '_key' ),
+					'default' => '',
+				)
+			);
+			register_setting(
+				self::SETTINGS_GROUP,
+				"spss_{$id}_model",
+				array(
+					'type' => 'string',
+					'sanitize_callback' => 'sanitize_text_field',
+					'default' => '',
+				)
+			);
+		}
+
+		// Self-hosted sidecar: endpoint + optional model + optional bearer key.
 		register_setting(
 			self::SETTINGS_GROUP,
-			'spss_claude_api_key',
+			'spss_selfhosted_endpoint',
 			array(
 				'type' => 'string',
-				'sanitize_callback' => array( $this, 'sanitize_api_key' ),
+				'sanitize_callback' => 'esc_url_raw',
 				'default' => '',
 			)
 		);
 		register_setting(
 			self::SETTINGS_GROUP,
-			'spss_claude_model',
+			'spss_selfhosted_model',
 			array(
 				'type' => 'string',
 				'sanitize_callback' => 'sanitize_text_field',
-				'default' => SPSS_Claude_Provider::DEFAULT_MODEL,
+				'default' => '',
 			)
 		);
+		register_setting(
+			self::SETTINGS_GROUP,
+			'spss_selfhosted_key',
+			array(
+				'type' => 'string',
+				'sanitize_callback' => array( $this, 'sanitize_selfhosted_key' ),
+				'default' => '',
+			)
+		);
+
 		register_setting(
 			self::SETTINGS_GROUP,
 			'spss_retention_days',
@@ -96,15 +132,36 @@ class SPSS_Admin {
 	}
 
 	/**
-	 * Keep the stored key unchanged when the field is submitted with the masked
-	 * placeholder (so we never overwrite a real key with dots).
+	 * Keep a stored secret unchanged when the field is submitted with its masked
+	 * placeholder (so we never overwrite a real key with bullet characters).
 	 */
-	public function sanitize_api_key( $value ) {
+	private function preserve_masked_key( $value, $option ) {
 		$value = trim( (string) $value );
 		if ( '' !== $value && false !== strpos( $value, '•' ) ) {
-			return (string) get_option( 'spss_claude_api_key', '' );
+			return (string) get_option( $option, '' );
 		}
 		return sanitize_text_field( $value );
+	}
+
+	public function sanitize_claude_key( $value ) {
+		return $this->preserve_masked_key( $value, 'spss_claude_api_key' );
+	}
+
+	public function sanitize_gemini_key( $value ) {
+		return $this->preserve_masked_key( $value, 'spss_gemini_api_key' );
+	}
+
+	public function sanitize_openai_key( $value ) {
+		return $this->preserve_masked_key( $value, 'spss_openai_api_key' );
+	}
+
+	public function sanitize_selfhosted_key( $value ) {
+		return $this->preserve_masked_key( $value, 'spss_selfhosted_key' );
+	}
+
+	private function masked( $option ) {
+		$key = (string) get_option( $option, '' );
+		return '' !== $key ? str_repeat( '•', 8 ) . substr( $key, -4 ) : '';
 	}
 
 	public function render_settings() {
@@ -114,21 +171,21 @@ class SPSS_Admin {
 		$providers = SPSS_Recognition_Manager::get_providers();
 		$primary   = SPSS_Recognition_Manager::get_primary_id();
 		$secondary = SPSS_Recognition_Manager::get_secondary_id();
-		$key       = (string) get_option( 'spss_claude_api_key', '' );
-		$masked    = '' !== $key ? str_repeat( '•', 8 ) . substr( $key, -4 ) : '';
 		?>
 		<div class="wrap">
 			<h1><?php esc_html_e( 'Score Sheets — Settings', 'sportspress-score-sheets' ); ?></h1>
 			<p class="description"><?php esc_html_e( 'Score-sheet images are sent to the selected recognition provider for transcription. No values are written to SportsPress until an admin reviews and confirms them.', 'sportspress-score-sheets' ); ?></p>
 			<form method="post" action="options.php">
 				<?php settings_fields( self::SETTINGS_GROUP ); ?>
+
+				<h2><?php esc_html_e( 'Recognition providers', 'sportspress-score-sheets' ); ?></h2>
 				<table class="form-table" role="presentation">
 					<tr>
 						<th scope="row"><label for="spss_primary_provider"><?php esc_html_e( 'Primary provider', 'sportspress-score-sheets' ); ?></label></th>
 						<td>
 							<select name="spss_primary_provider" id="spss_primary_provider">
 								<?php foreach ( $providers as $id => $p ) : ?>
-									<option value="<?php echo esc_attr( $id ); ?>" <?php selected( $primary, $id ); ?>><?php echo esc_html( $p->get_label() ); ?></option>
+									<option value="<?php echo esc_attr( $id ); ?>" <?php selected( $primary, $id ); ?>><?php echo esc_html( $p->get_label() ); ?><?php echo $p->is_configured() ? '' : esc_html__( ' (not configured)', 'sportspress-score-sheets' ); ?></option>
 								<?php endforeach; ?>
 							</select>
 						</td>
@@ -145,17 +202,48 @@ class SPSS_Admin {
 							<p class="description"><?php esc_html_e( 'If set, each sheet is read twice and any disagreement is flagged for review.', 'sportspress-score-sheets' ); ?></p>
 						</td>
 					</tr>
-					<tr>
-						<th scope="row"><label for="spss_claude_api_key"><?php esc_html_e( 'Anthropic API key', 'sportspress-score-sheets' ); ?></label></th>
-						<td>
-							<input type="password" name="spss_claude_api_key" id="spss_claude_api_key" class="regular-text" autocomplete="off" placeholder="<?php echo esc_attr( $masked ); ?>" value="" />
-							<p class="description"><?php echo $masked ? esc_html__( 'A key is stored. Leave blank to keep it.', 'sportspress-score-sheets' ) : esc_html__( 'Required for the Claude provider.', 'sportspress-score-sheets' ); ?></p>
-						</td>
-					</tr>
-					<tr>
-						<th scope="row"><label for="spss_claude_model"><?php esc_html_e( 'Claude model', 'sportspress-score-sheets' ); ?></label></th>
-						<td><input type="text" name="spss_claude_model" id="spss_claude_model" class="regular-text" value="<?php echo esc_attr( get_option( 'spss_claude_model', SPSS_Claude_Provider::DEFAULT_MODEL ) ); ?>" /></td>
-					</tr>
+				</table>
+
+				<?php foreach ( $providers as $id => $p ) : ?>
+					<?php if ( $p instanceof SPSS_Abstract_LLM_Provider ) : ?>
+						<h2><?php echo esc_html( $p->get_label() ); ?></h2>
+						<table class="form-table" role="presentation">
+							<tr>
+								<th scope="row"><label for="spss_<?php echo esc_attr( $id ); ?>_api_key"><?php esc_html_e( 'API key', 'sportspress-score-sheets' ); ?></label></th>
+								<td>
+									<input type="password" name="spss_<?php echo esc_attr( $id ); ?>_api_key" id="spss_<?php echo esc_attr( $id ); ?>_api_key" class="regular-text" autocomplete="off" placeholder="<?php echo esc_attr( $this->masked( "spss_{$id}_api_key" ) ); ?>" value="" />
+									<p class="description"><?php echo '' !== $this->masked( "spss_{$id}_api_key" ) ? esc_html__( 'A key is stored. Leave blank to keep it.', 'sportspress-score-sheets' ) : esc_html__( 'Enter a key to enable this provider.', 'sportspress-score-sheets' ); ?></p>
+								</td>
+							</tr>
+							<tr>
+								<th scope="row"><label for="spss_<?php echo esc_attr( $id ); ?>_model"><?php esc_html_e( 'Model', 'sportspress-score-sheets' ); ?></label></th>
+								<td><input type="text" name="spss_<?php echo esc_attr( $id ); ?>_model" id="spss_<?php echo esc_attr( $id ); ?>_model" class="regular-text" value="<?php echo esc_attr( $p->get_model() ); ?>" /></td>
+							</tr>
+						</table>
+					<?php elseif ( 'selfhosted' === $id ) : ?>
+						<h2><?php echo esc_html( $p->get_label() ); ?></h2>
+						<table class="form-table" role="presentation">
+							<tr>
+								<th scope="row"><label for="spss_selfhosted_endpoint"><?php esc_html_e( 'Sidecar endpoint URL', 'sportspress-score-sheets' ); ?></label></th>
+								<td>
+									<input type="url" name="spss_selfhosted_endpoint" id="spss_selfhosted_endpoint" class="regular-text" placeholder="http://127.0.0.1:8000" value="<?php echo esc_attr( get_option( 'spss_selfhosted_endpoint', '' ) ); ?>" />
+									<p class="description"><?php esc_html_e( 'Base URL of your local recognition sidecar (POSTs to /v1/recognize). Leave blank to disable.', 'sportspress-score-sheets' ); ?></p>
+								</td>
+							</tr>
+							<tr>
+								<th scope="row"><label for="spss_selfhosted_model"><?php esc_html_e( 'Model (optional)', 'sportspress-score-sheets' ); ?></label></th>
+								<td><input type="text" name="spss_selfhosted_model" id="spss_selfhosted_model" class="regular-text" value="<?php echo esc_attr( get_option( 'spss_selfhosted_model', '' ) ); ?>" /></td>
+							</tr>
+							<tr>
+								<th scope="row"><label for="spss_selfhosted_key"><?php esc_html_e( 'Bearer token (optional)', 'sportspress-score-sheets' ); ?></label></th>
+								<td><input type="password" name="spss_selfhosted_key" id="spss_selfhosted_key" class="regular-text" autocomplete="off" placeholder="<?php echo esc_attr( $this->masked( 'spss_selfhosted_key' ) ); ?>" value="" /></td>
+							</tr>
+						</table>
+					<?php endif; ?>
+				<?php endforeach; ?>
+
+				<h2><?php esc_html_e( 'Retention', 'sportspress-score-sheets' ); ?></h2>
+				<table class="form-table" role="presentation">
 					<tr>
 						<th scope="row"><label for="spss_retention_days"><?php esc_html_e( 'Retain processed sheets (days)', 'sportspress-score-sheets' ); ?></label></th>
 						<td><input type="number" min="1" max="365" name="spss_retention_days" id="spss_retention_days" value="<?php echo esc_attr( (int) get_option( 'spss_retention_days', 30 ) ); ?>" /></td>
