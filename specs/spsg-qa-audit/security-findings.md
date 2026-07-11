@@ -6,20 +6,23 @@
 
 ---
 
-## Remediation Status (verified against code 2026-07-03)
+## Remediation Status
 
-This is an **active tracker** — the audit below is retained for detail; the table is the source of truth for what remains.
+All actionable findings were fixed in **PR #23** (merged 2026-07-11). The audit below is retained for detail.
 
 | Finding | Status | Notes |
 |---------|--------|-------|
-| **H-1** nonce field-name mismatch | ❌ OPEN | PHP handlers check field `spsg_nonce`; JS still sends bare `nonce:` in `schedule-generator.js` (106,181,228,285,730,877,1012,1310) and all of `admin-ui.js`. Only `get_export_formats` was converted. Fix both JS files. |
-| **M-1** unescaped `printf()` (playing days) | ❌ OPEN | `class-admin-renderer.php:899` — add `esc_html()`. |
-| **M-2** missing `wp_unslash()` on `$_POST` | ❌ OPEN | `class-admin-ajax.php:109,290,314,446,907,935`. |
-| **M-3** REST `/publish` unregistered params | ❌ OPEN | Declare args with `sanitize_callback`. |
-| **M-4** REST `/placeholders/{id}/replace` body params | ❌ OPEN | Add `sanitize_callback`. |
-| **M-5** predictable export URLs | ⚠️ PARTIAL | Filename entropy (`bin2hex(random_bytes(8))`) **and** daily cleanup cron `spsg_cleanup_export_files` landed in commit `fe3d145`. **Remaining:** serve exports through a capability-checked handler instead of direct URLs. |
-| **L-1…L-5** low-severity items | ❌ OPEN | See LOW section. |
-| Functional Issue 3 (`games_per_team` validated post- not pre-generation) | ❌ OPEN | Optional: add pre-generation feasibility check. |
+| **H-1** nonce field-name mismatch | ✅ FIXED | Standardized on field `spsg_nonce` across `schedule-generator.js`, `admin-ui.js` (incl. FormData) and the 4 `class-schedule-generator.php` handlers. Verified in ddev: all per-action nonces verify; legacy `nonce` field rejected. |
+| **M-1** unescaped `printf()` (playing days) | ✅ FIXED | `class-admin-renderer.php` now uses `esc_html__()`/`esc_html()`. |
+| **M-2** missing `wp_unslash()` on `$_POST` | ✅ FIXED | Every `$_POST`/`$_GET` read wrapped in `wp_unslash()` across `class-admin-ajax.php`, `class-schedule-generator.php`, `class-admin.php`. |
+| **M-3** REST `/publish` unregistered params | ✅ FIXED | Already resolved earlier — all params declared with sanitize/validate callbacks. |
+| **M-4** REST `/placeholders/{id}/replace` body params | ✅ FIXED | `replacement_id` (required, `absint`, >0) and `delete` (`rest_sanitize_boolean`) declared on the route. |
+| **M-5** predictable export URLs | ✅ FIXED | New capability+nonce-checked `spsg_download_export` handler (basename + `sanitize_file_name`, `.csv`/`.xlsx` only, `realpath` containment, attachment streaming); direct uploads URL + absolute path no longer returned. Entropy + cleanup cron landed earlier (`fe3d145`). Verified in ddev: valid file streams; traversal/bad-ext/missing/bad-nonce rejected with no leak. |
+| **L-1** ABSPATH guard inconsistency | ✅ FIXED | All guards standardized to `exit;`. |
+| **L-2 / L-3** `wp_unslash()` on arrays / `stripslashes` | ✅ FIXED | Covered by the M-2 sweep. |
+| **L-4** `save_draft` partial validation | ⏸️ WON'T FIX | Documented, sanitized design choice for the wizard UI. |
+| **L-5** CSV MIME-or-extension fallback | ⏸️ WON'T FIX | Intentional — CSV MIME detection is unreliable; tightening would reject legitimate uploads. |
+| Functional Issue 3 (`games_per_team` validated post- not pre-generation) | 🔵 OPTIONAL | Enhancement, not a defect — `ajax_generate_schedule` already runs a `check_feasibility()` pre-generation gate. |
 
 ---
 
@@ -235,7 +238,7 @@ The export directory has `.htaccess` protection (Apache only) and `index.php`/`i
 
 **Recommended fix:**
 1. ✅ DONE (`fe3d145`) — random token added to filenames: `'schedule_' . wp_date('Y-m-d_H-i-s') . '_' . bin2hex(random_bytes(8)) . '.csv'`
-2. ❌ REMAINING — serve exports through a WordPress handler that checks capabilities instead of direct file URLs
+2. ✅ DONE (PR #23) — exports are served through the capability+nonce-checked `spsg_download_export` handler; the direct file URL is no longer returned to the client
 3. ✅ DONE (`fe3d145`) — WP-Cron cleanup routine (`spsg_cleanup_export_files`) deletes old exports
 
 ---
