@@ -30,11 +30,13 @@ if ( is_dir( $dir ) ) {
 SPSS_Database::drop_tables();
 
 delete_option( 'spss_db_version' );
-delete_option( 'spss_primary_provider' );
-delete_option( 'spss_secondary_provider' );
 delete_option( 'spss_primary_chain' );
 delete_option( 'spss_confirmation_providers' );
 delete_option( 'spss_spend_ledger' );
+// Keep this provider-id list in sync with the built-ins registered in
+// SPSS_Recognition_Manager. (Uninstall runs without the plugin loaded, so it
+// can't enumerate the manager; filter-registered third-party providers must
+// clean up their own spss_<id>_* options on their own uninstall.)
 foreach ( array( 'claude', 'gemini', 'openai', 'openrouter', 'selfhosted' ) as $pid ) {
 	delete_option( "spss_{$pid}_monthly_budget" );
 	delete_option( "spss_{$pid}_cost_per_sheet" );
@@ -53,5 +55,7 @@ delete_option( 'spss_selfhosted_model' );
 delete_option( 'spss_selfhosted_key' );
 delete_option( 'spss_retention_days' );
 delete_option( 'spss_webhook_secret' );
+delete_option( 'spss_twilio_account_sid' );
+delete_option( 'spss_twilio_auth_token' );
 
 wp_clear_scheduled_hook( 'spss_cleanup_old_sheets' );

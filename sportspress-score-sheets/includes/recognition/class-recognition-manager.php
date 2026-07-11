@@ -54,31 +54,28 @@ class SPSS_Recognition_Manager {
 	/**
 	 * Ordered recognition (failover) chain of provider ids. The lead result comes
 	 * from the first one that is configured, within budget, and succeeds; the rest
-	 * are fallbacks. Falls back to the legacy single `spss_primary_provider`.
+	 * are fallbacks. Defaults to Claude when nothing is configured yet.
 	 *
 	 * @return string[]
 	 */
 	public static function get_primary_chain() {
 		$chain = get_option( 'spss_primary_chain', array() );
 		if ( ! is_array( $chain ) || empty( $chain ) ) {
-			$legacy = (string) get_option( 'spss_primary_provider', 'claude' );
-			$chain  = array( '' !== $legacy ? $legacy : 'claude' );
+			$chain = array( 'claude' );
 		}
 		return array_values( array_unique( array_filter( array_map( 'strval', $chain ) ) ) );
 	}
 
 	/**
 	 * Confirmation (cross-check) provider ids. Each is run in addition to the lead
-	 * and its disagreements are flagged. Falls back to the legacy single
-	 * `spss_secondary_provider`.
+	 * and its disagreements are flagged. Empty by default.
 	 *
 	 * @return string[]
 	 */
 	public static function get_confirmation_ids() {
 		$ids = get_option( 'spss_confirmation_providers', array() );
-		if ( ! is_array( $ids ) || empty( $ids ) ) {
-			$legacy = (string) get_option( 'spss_secondary_provider', '' );
-			$ids    = '' !== $legacy ? array( $legacy ) : array();
+		if ( ! is_array( $ids ) ) {
+			$ids = array();
 		}
 		return array_values( array_unique( array_filter( array_map( 'strval', $ids ) ) ) );
 	}
@@ -132,11 +129,11 @@ class SPSS_Recognition_Manager {
 				continue;
 			}
 			$r = $p->recognize( $image_abs_path, $context );
-			SPSS_Budget::record( $id, $p ); // A call was made; bill it (estimate).
 			if ( is_wp_error( $r ) ) {
 				$errors[] = $p->get_label() . ': ' . $r->get_error_message();
-				continue; // Fail over to the next provider in the chain.
+				continue; // Fail over to the next provider in the chain; no charge on error.
 			}
+			SPSS_Budget::record( $id, $p ); // A billable call succeeded; record it (estimate).
 			$lead    = $r;
 			$lead_id = $id;
 			break;
@@ -159,8 +156,8 @@ class SPSS_Recognition_Manager {
 				continue;
 			}
 			$second = $c->recognize( $image_abs_path, $context );
-			SPSS_Budget::record( $cid, $c );
 			if ( ! is_wp_error( $second ) ) {
+				SPSS_Budget::record( $cid, $c ); // Bill only a genuine (non-error) call.
 				self::cross_check( $lead, $second, $c->get_label() );
 			}
 		}

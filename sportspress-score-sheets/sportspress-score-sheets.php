@@ -49,6 +49,14 @@ class SportsPress_Score_Sheets {
 		require_once SPSS_PLUGIN_PATH . 'includes/class-database.php';
 		SPSS_Database::create_tables();
 
+		// Generate a webhook secret for remote intake (email Worker / custom senders)
+		// if one isn't set yet. Operators can regenerate it from Settings.
+		if ( '' === (string) get_option( 'spss_webhook_secret', '' ) ) {
+			// autoload 'no': the secret is only read in the REST intake handler,
+			// never on the public front end.
+			add_option( 'spss_webhook_secret', wp_generate_password( 40, false ), '', 'no' );
+		}
+
 		if ( ! wp_next_scheduled( 'spss_cleanup_old_sheets' ) ) {
 			wp_schedule_event( time(), 'daily', 'spss_cleanup_old_sheets' );
 		}
@@ -94,10 +102,20 @@ class SportsPress_Score_Sheets {
 	}
 
 	private function load_functionality() {
+		// The cron worker (process_sheet) may call this after init() already ran
+		// it on plugins_loaded; guard so classes aren't re-instantiated and hooks
+		// aren't double-registered.
+		static $loaded = false;
+		if ( $loaded ) {
+			return;
+		}
+		$loaded = true;
+
 		require_once SPSS_PLUGIN_PATH . 'includes/class-database.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/class-image-store.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/recognition/class-extraction-result.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/recognition/interface-recognition-provider.php';
+		require_once SPSS_PLUGIN_PATH . 'includes/recognition/trait-recognition-http.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/recognition/class-abstract-llm-provider.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/recognition/class-claude-provider.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/recognition/class-gemini-provider.php';
@@ -111,8 +129,14 @@ class SportsPress_Score_Sheets {
 		require_once SPSS_PLUGIN_PATH . 'includes/class-sportspress-writer.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/class-ingest-service.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/class-file-server.php';
+		require_once SPSS_PLUGIN_PATH . 'includes/class-rest-api.php';
+
+		// Apply any additive schema upgrade for installs that predate the current
+		// DB version (idempotent no-op once versions match).
+		SPSS_Database::maybe_upgrade();
 
 		new SPSS_File_Server();
+		new SPSS_REST_API();
 
 		if ( is_admin() ) {
 			require_once SPSS_PLUGIN_PATH . 'includes/class-admin.php';
