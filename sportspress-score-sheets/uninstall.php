@@ -53,5 +53,7 @@ delete_option( 'spss_selfhosted_model' );
 delete_option( 'spss_selfhosted_key' );
 delete_option( 'spss_retention_days' );
 delete_option( 'spss_webhook_secret' );
+delete_option( 'spss_twilio_account_sid' );
+delete_option( 'spss_twilio_auth_token' );
 
 wp_clear_scheduled_hook( 'spss_cleanup_old_sheets' );
