@@ -73,6 +73,16 @@ class SPSS_Review_Admin {
 		?>
 		<div class="wrap spss-review">
 			<h1><?php esc_html_e( 'Review Score Sheet', 'sportspress-score-sheets' ); ?></h1>
+			<?php
+			// Surface an apply failure / lock-contention message redirected here by
+			// handle_confirm() (otherwise the write silently appears to do nothing).
+			if ( isset( $_GET['spss_err'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+				printf(
+					'<div class="notice notice-error"><p>%s</p></div>',
+					esc_html( sanitize_text_field( wp_unslash( $_GET['spss_err'] ) ) ) // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+				);
+			}
+			?>
 
 			<?php if ( ! empty( $data['flags'] ) ) : ?>
 				<div class="notice notice-warning"><p><strong><?php esc_html_e( 'Please check the highlighted items:', 'sportspress-score-sheets' ); ?></strong></p>
@@ -324,6 +334,22 @@ class SPSS_Review_Admin {
 
 		$result   = SPSS_Ingest_Service::apply_confirmed( $sheet_id, $confirmed );
 		$queue_url = admin_url( 'admin.php?page=' . SPSS_Admin::MENU_SLUG );
+
+		// SPAT_Lock::with() returns false when a concurrent apply already holds the
+		// per-sheet lock. Nothing was written this time — tell the user to retry
+		// rather than reporting a (false) success.
+		if ( false === $result ) {
+			wp_safe_redirect(
+				add_query_arg(
+					array(
+						'sheet_id' => $sheet_id,
+						'spss_err' => rawurlencode( __( 'Another apply is already in progress for this sheet. Please try again in a moment.', 'sportspress-score-sheets' ) ),
+					),
+					admin_url( 'admin.php?page=' . self::PAGE_SLUG )
+				)
+			);
+			exit;
+		}
 
 		if ( is_wp_error( $result ) ) {
 			wp_safe_redirect(

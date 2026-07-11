@@ -39,8 +39,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPSS_SelfHosted_Provider implements SPSS_Recognition_Provider {
 
+	use SPSS_Recognition_HTTP;
+
 	const DEFAULT_ENDPOINT = 'http://127.0.0.1:8000';
 	const RECOGNIZE_PATH    = '/v1/recognize';
+	const TIMEOUT           = 120;
 
 	public function get_id(): string {
 		return 'selfhosted';
@@ -57,6 +60,42 @@ class SPSS_SelfHosted_Provider implements SPSS_Recognition_Provider {
 	/** Self-hosted inference has no per-call API charge. */
 	public function estimated_cost_per_sheet(): float {
 		return 0.0;
+	}
+
+	/**
+	 * Settings fields for the admin to render generically (see the interface
+	 * contract): the sidecar endpoint, an optional model hint, and an optional
+	 * bearer token.
+	 *
+	 * @return array[]
+	 */
+	public function settings_fields(): array {
+		return array(
+			array(
+				'option'      => 'spss_selfhosted_endpoint',
+				'label'       => __( 'Sidecar endpoint URL', 'sportspress-score-sheets' ),
+				'type'        => 'url',
+				'secret'      => false,
+				'placeholder' => self::DEFAULT_ENDPOINT,
+				'description' => __( 'Base URL of your local recognition sidecar (POSTs to /v1/recognize). Leave blank to disable.', 'sportspress-score-sheets' ),
+			),
+			array(
+				'option'      => 'spss_selfhosted_model',
+				'label'       => __( 'Model (optional)', 'sportspress-score-sheets' ),
+				'type'        => 'text',
+				'secret'      => false,
+				'placeholder' => '',
+				'description' => '',
+			),
+			array(
+				'option'      => 'spss_selfhosted_key',
+				'label'       => __( 'Bearer token (optional)', 'sportspress-score-sheets' ),
+				'type'        => 'password',
+				'secret'      => true,
+				'placeholder' => '',
+				'description' => '',
+			),
+		);
 	}
 
 	/**
@@ -108,7 +147,7 @@ class SPSS_SelfHosted_Provider implements SPSS_Recognition_Provider {
 			$headers['authorization'] = 'Bearer ' . $key;
 		}
 
-		$decoded = $this->request_with_retry( $this->get_endpoint() . self::RECOGNIZE_PATH, $headers, $body );
+		$decoded = $this->request_with_retry( $this->get_endpoint() . self::RECOGNIZE_PATH, $headers, $body, self::TIMEOUT );
 		if ( is_wp_error( $decoded ) ) {
 			return $decoded;
 		}
@@ -139,68 +178,17 @@ class SPSS_SelfHosted_Provider implements SPSS_Recognition_Provider {
 	}
 
 	/**
-	 * POST JSON with bounded exponential-backoff retry. Retries on transport
-	 * errors, rate-limit (429), and 5xx; does not retry other 4xx. The timeout
-	 * is long because local CPU inference is slow.
-	 *
-	 * @param string $url     Endpoint.
-	 * @param array  $headers Request headers.
-	 * @param array  $body    Request body (JSON-encoded here).
-	 * @return array|WP_Error Decoded JSON on success.
+	 * Retry/backoff HTTP POST + media_type() come from SPSS_Recognition_HTTP.
+	 * Local CPU inference is slow, so recognize() passes a long timeout
+	 * (self::TIMEOUT); the shared loop retries transport errors, 429, 529, and
+	 * 5xx. Only the human-facing failure strings differ from the base.
 	 */
-	protected function request_with_retry( $url, array $headers, array $body ) {
-		$attempts = 0;
-		$max      = 3;
-		$last_err = null;
-
-		while ( $attempts < $max ) {
-			++$attempts;
-			$response = wp_remote_post(
-				$url,
-				array(
-					'timeout' => 120,
-					'headers' => $headers,
-					'body'    => wp_json_encode( $body ),
-				)
-			);
-
-			if ( is_wp_error( $response ) ) {
-				$last_err = $response;
-			} else {
-				$code = (int) wp_remote_retrieve_response_code( $response );
-				if ( 200 === $code ) {
-					return json_decode( wp_remote_retrieve_body( $response ), true );
-				}
-				if ( 429 !== $code && $code < 500 ) {
-					return new WP_Error( 'spss_selfhosted_http', sprintf( /* translators: %d: HTTP status */ __( 'Self-hosted OCR returned HTTP %d.', 'sportspress-score-sheets' ), $code ), array( 'body' => wp_remote_retrieve_body( $response ) ) );
-				}
-				$last_err = new WP_Error( 'spss_selfhosted_http', sprintf( 'HTTP %d', $code ) );
-			}
-
-			if ( $attempts < $max ) {
-				sleep( (int) pow( 2, $attempts ) );
-			}
-		}
-		return $last_err ?: new WP_Error( 'spss_selfhosted_failed', __( 'Self-hosted OCR request failed.', 'sportspress-score-sheets' ) );
+	protected function http_status_error_message() {
+		/* translators: %d: HTTP status */
+		return __( 'Self-hosted OCR returned HTTP %d.', 'sportspress-score-sheets' );
 	}
 
-	/**
-	 * Detect an image's MIME type from content, falling back to extension.
-	 * Mirrors the hosted providers' helper so the sidecar receives the same
-	 * media_type hint.
-	 */
-	protected static function media_type( $path ) {
-		$info = @getimagesize( $path ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
-		if ( is_array( $info ) && ! empty( $info['mime'] ) && in_array( $info['mime'], array( 'image/jpeg', 'image/png', 'image/webp', 'image/gif' ), true ) ) {
-			return $info['mime'];
-		}
-		$ext = strtolower( pathinfo( $path, PATHINFO_EXTENSION ) );
-		$map = array(
-			'jpg'  => 'image/jpeg',
-			'jpeg' => 'image/jpeg',
-			'png'  => 'image/png',
-			'webp' => 'image/webp',
-		);
-		return $map[ $ext ] ?? 'image/jpeg';
+	protected function request_failed_message() {
+		return __( 'Self-hosted OCR request failed.', 'sportspress-score-sheets' );
 	}
 }

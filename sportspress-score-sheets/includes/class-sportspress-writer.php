@@ -208,6 +208,11 @@ class SPSS_SportsPress_Writer {
 	 * Allowlist of stat slugs, taken from published sp_performance post_names
 	 * (g, a, pim, ga...). Unknown slugs are rejected.
 	 *
+	 * When the sp_performance query returns nothing (unpublished/misconfigured
+	 * performances), fall back to the core g/a/pim set — mirroring the ingest
+	 * side (class-ingest-service.php) — so a confirmed sheet still writes its box
+	 * scores instead of silently dropping every player stat.
+	 *
 	 * @return string[]
 	 */
 	private function valid_stat_slugs() {
@@ -228,6 +233,6 @@ class SPSS_SportsPress_Writer {
 			}
 		}
 
-		return $slugs;
+		return $slugs ? $slugs : array( 'g', 'a', 'pim' );
 	}
 }

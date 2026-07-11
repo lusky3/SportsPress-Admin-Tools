@@ -32,6 +32,15 @@ class SPSS_REST_API {
 	 */
 	const INGEST_RATE_LIMIT = 60;
 
+	/**
+	 * Hard cap on decoded image size (bytes). Mirrors the 15MB admin upload cap
+	 * so the public webhook/MMS paths cannot spool an unbounded temp file.
+	 */
+	const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+
+	/** Accepted clock skew / replay window for signed ingest requests (seconds). */
+	const REPLAY_WINDOW = 300;
+
 	public function __construct() {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 	}
@@ -85,7 +94,7 @@ class SPSS_REST_API {
 			return new WP_Error( 'spss_missing_timestamp', __( 'Request timestamp is required.', 'sportspress-score-sheets' ), array( 'status' => 403 ) );
 		}
 		$ts_epoch = is_numeric( $timestamp ) ? (int) $timestamp : strtotime( $timestamp );
-		if ( false === $ts_epoch || abs( time() - $ts_epoch ) > 300 ) {
+		if ( false === $ts_epoch || abs( time() - $ts_epoch ) > self::REPLAY_WINDOW ) {
 			return new WP_Error( 'spss_request_expired', __( 'Request timestamp is too old or invalid.', 'sportspress-score-sheets' ), array( 'status' => 403 ) );
 		}
 
@@ -97,8 +106,10 @@ class SPSS_REST_API {
 			return new WP_Error( 'spss_invalid_signature', __( 'Invalid webhook signature.', 'sportspress-score-sheets' ), array( 'status' => 403 ) );
 		}
 
-		// Rate limit only verified requests (unauthenticated ones never touch it).
-		if ( self::check_rate_limit( 'spss_rl_ingest', self::INGEST_RATE_LIMIT ) ) {
+		// Rate limit only verified requests (unauthenticated ones never touch it),
+		// keyed per sender (client IP) so one busy sender can't starve the others
+		// and a flood is bounded per source.
+		if ( self::check_rate_limit( 'spss_rl_ingest_' . self::sender_key(), self::INGEST_RATE_LIMIT ) ) {
 			return new WP_Error( 'spss_rate_limited', __( 'Too many requests.', 'sportspress-score-sheets' ), array( 'status' => 429 ) );
 		}
 
@@ -117,6 +128,10 @@ class SPSS_REST_API {
 			return new WP_Error( 'spss_bad_image', __( 'image_b64 is not valid base64.', 'sportspress-score-sheets' ), array( 'status' => 400 ) );
 		}
 
+		if ( strlen( $bytes ) > self::MAX_IMAGE_BYTES ) {
+			return new WP_Error( 'spss_image_too_large', __( 'Image exceeds the maximum allowed size.', 'sportspress-score-sheets' ), array( 'status' => 413 ) );
+		}
+
 		return self::ingest_bytes( $bytes, $channel, $source_ref, $ext );
 	}
 
@@ -132,7 +147,9 @@ class SPSS_REST_API {
 	public function handle_twilio( $request ) {
 		$token = get_option( 'spss_twilio_auth_token', '' );
 		if ( '' === $token ) {
-			return new WP_Error( 'spss_not_configured', __( 'Twilio is not configured.', 'sportspress-score-sheets' ), array( 'status' => 503 ) );
+			// A missing token is a permanent misconfiguration; Twilio would retry a
+			// 5xx pointlessly, so ack with 200 TwiML and process nothing.
+			return self::twiml_ack();
 		}
 
 		$params    = (array) $request->get_body_params();
@@ -140,6 +157,7 @@ class SPSS_REST_API {
 		$signature = (string) $request->get_header( 'x-twilio-signature' );
 		$expected  = self::twilio_signature( $url, $params, $token );
 
+		// An invalid signature SHOULD fail hard (403) — this is not a benign ack.
 		if ( '' === $signature || ! hash_equals( $expected, $signature ) ) {
 			self::debug_log( 'twilio signature mismatch' );
 			return new WP_Error( 'spss_invalid_signature', __( 'Invalid Twilio signature.', 'sportspress-score-sheets' ), array( 'status' => 403 ) );
@@ -147,15 +165,25 @@ class SPSS_REST_API {
 
 		// No media on this message — acknowledge so Twilio doesn't retry.
 		if ( empty( $params['MediaUrl0'] ) ) {
-			return rest_ensure_response( array( 'status' => 'received' ) );
+			return self::twiml_ack();
+		}
+
+		// SSRF guard: the credentialed fetch below must only ever hit Twilio hosts,
+		// so validate the host before sending the auth token anywhere.
+		$media_url = (string) $params['MediaUrl0'];
+		if ( ! self::is_allowed_twilio_media_url( $media_url ) ) {
+			self::debug_log( 'twilio media host rejected' );
+			return self::twiml_ack();
 		}
 
 		$account_sid = get_option( 'spss_twilio_account_sid', '' );
 		$response    = wp_remote_get(
-			(string) $params['MediaUrl0'],
+			$media_url,
 			array(
-				'timeout' => 20,
-				'headers' => array(
+				'timeout'     => 20,
+				// Never follow a redirect off Twilio with the auth token attached.
+				'redirection' => 0,
+				'headers'     => array(
 					'Authorization' => 'Basic ' . base64_encode( $account_sid . ':' . $token ),
 				),
 			)
@@ -163,12 +191,17 @@ class SPSS_REST_API {
 		if ( is_wp_error( $response ) ) {
 			self::debug_log( 'twilio media fetch failed: ' . $response->get_error_message() );
 			// Still 2xx: retries won't help a fetch failure, and Twilio only needs an ack.
-			return rest_ensure_response( array( 'status' => 'received' ) );
+			return self::twiml_ack();
 		}
 
 		$bytes = wp_remote_retrieve_body( $response );
 		if ( '' === $bytes ) {
-			return rest_ensure_response( array( 'status' => 'received' ) );
+			return self::twiml_ack();
+		}
+
+		if ( strlen( $bytes ) > self::MAX_IMAGE_BYTES ) {
+			self::debug_log( 'twilio media exceeds max size' );
+			return self::twiml_ack();
 		}
 
 		$media_type = (string) wp_remote_retrieve_header( $response, 'content-type' );
@@ -181,7 +214,64 @@ class SPSS_REST_API {
 		}
 
 		// Twilio only needs a 2xx; the queue outcome is handled out of band.
-		return rest_ensure_response( array( 'status' => 'received' ) );
+		return self::twiml_ack();
+	}
+
+	/**
+	 * Whether a Twilio MMS media URL is safe to fetch with the account credentials
+	 * attached. Requires https and a host under twilio.com / twiliocdn.com. This is
+	 * the key control against SSRF / credential forwarding to an attacker host.
+	 *
+	 * @param string $url Candidate media URL (Twilio's MediaUrl0).
+	 * @return bool True only for an https Twilio-owned host.
+	 */
+	private static function is_allowed_twilio_media_url( $url ): bool {
+		$parts = wp_parse_url( (string) $url );
+		if ( ! is_array( $parts ) ) {
+			return false;
+		}
+
+		$scheme = isset( $parts['scheme'] ) ? strtolower( (string) $parts['scheme'] ) : '';
+		$host   = isset( $parts['host'] ) ? strtolower( (string) $parts['host'] ) : '';
+		if ( 'https' !== $scheme || '' === $host ) {
+			return false;
+		}
+
+		return (bool) preg_match( '/(^|\.)(twilio\.com|twiliocdn\.com)$/i', $host );
+	}
+
+	/**
+	 * Build an empty-TwiML ack for Twilio. Twilio's webhook expects a text/xml TwiML
+	 * document, not JSON — returning JSON triggers 11200/12300 content-type errors.
+	 *
+	 * WP_REST_Response serializes its data as JSON by default, so we register a
+	 * one-shot rest_pre_serve_request filter that emits the raw XML for this exact
+	 * response object and short-circuits the JSON serializer.
+	 *
+	 * @return WP_REST_Response Empty TwiML document served as text/xml.
+	 */
+	private static function twiml_ack() {
+		$xml      = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
+		$response = new WP_REST_Response( $xml, 200 );
+		$response->header( 'Content-Type', 'text/xml; charset=UTF-8' );
+
+		add_filter(
+			'rest_pre_serve_request',
+			static function ( $served, $result ) use ( $response, $xml ) {
+				if ( $result === $response ) {
+					if ( ! headers_sent() ) {
+						header( 'Content-Type: text/xml; charset=UTF-8' );
+					}
+					echo $xml; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+					return true;
+				}
+				return $served;
+			},
+			10,
+			2
+		);
+
+		return $response;
 	}
 
 	// ── Static signature helpers (pure; unit-testable without HTTP/WP) ────────
@@ -279,7 +369,7 @@ class SPSS_REST_API {
 	 * true if the limit is exceeded. Self-contained mirror of the etransfer
 	 * check_rate_limit shape (transient-backed, portable to any host).
 	 *
-	 * @param string $rate_key
+	 * @param string $rate_key Transient key backing this counter.
 	 * @param int    $limit  Max requests per window.
 	 * @param int    $window Window length in seconds.
 	 * @return bool True if rate limited.
@@ -296,9 +386,25 @@ class SPSS_REST_API {
 	}
 
 	/**
+	 * Short, stable per-sender key for rate limiting, derived from the client IP.
+	 * Uses REMOTE_ADDR only — forwarded headers are attacker-controlled and are
+	 * NOT trusted for a security decision. Falls back to 'unknown' when absent
+	 * (all such callers then share one bucket, which is the safe/strict default).
+	 *
+	 * @return string 12-char hex sender key.
+	 */
+	private static function sender_key() {
+		$ip = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
+		if ( '' === $ip ) {
+			$ip = 'unknown';
+		}
+		return substr( md5( $ip ), 0, 12 );
+	}
+
+	/**
 	 * Best-effort image extension from a MIME type. Defaults to 'jpg'.
 	 *
-	 * @param string $media_type
+	 * @param string $media_type MIME type (optionally with parameters).
 	 * @return string
 	 */
 	private static function ext_from_media_type( $media_type ) {
@@ -323,7 +429,7 @@ class SPSS_REST_API {
 	 * Verbose debug logging, gated by the repo-wide flag per AGENTS.md. Never
 	 * logs request bodies, secrets, or PII.
 	 *
-	 * @param string $message
+	 * @param string $message Message to log (must not contain secrets or PII).
 	 */
 	private static function debug_log( $message ) {
 		if ( '1' === get_option( 'spat_debug_verbose_logging', '0' ) ) {

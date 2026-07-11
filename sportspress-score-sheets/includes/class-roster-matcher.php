@@ -55,6 +55,24 @@ class SPSS_Roster_Matcher {
 			);
 		}
 
+		// First pass: count how many roster players carry each normalized number
+		// so we can tell a unique number from a collision.
+		$number_counts = array();
+		foreach ( $roster as $entry ) {
+			if ( ! is_array( $entry ) || ! isset( $entry['player_id'] ) ) {
+				continue;
+			}
+			$number_key = self::normalize_number( $entry['number'] ?? null );
+			if ( '' !== $number_key ) {
+				$number_counts[ $number_key ] = ( $number_counts[ $number_key ] ?? 0 ) + 1;
+			}
+		}
+
+		// Second pass: index only numbers that are unique on this roster. A number
+		// shared by two or more roster players is ambiguous, so we deliberately
+		// leave it out of by_number — a sheet entry for that number falls through
+		// to name matching (or stays unmatched) rather than being mis-attributed
+		// to whichever player happened to be listed first.
 		foreach ( $roster as $entry ) {
 			if ( ! is_array( $entry ) || ! isset( $entry['player_id'] ) ) {
 				continue;
@@ -63,7 +81,9 @@ class SPSS_Roster_Matcher {
 			$player_id = (int) $entry['player_id'];
 
 			$number_key = self::normalize_number( $entry['number'] ?? null );
-			if ( '' !== $number_key && ! isset( $by_number[ $number_key ] ) ) {
+			if ( '' !== $number_key
+				&& 1 === ( $number_counts[ $number_key ] ?? 0 )
+				&& ! isset( $by_number[ $number_key ] ) ) {
 				$by_number[ $number_key ] = $player_id;
 			}
 
@@ -266,8 +286,10 @@ class SPSS_Roster_Matcher {
 	}
 
 	/**
-	 * Normalize a jersey/number: cast to string, trim, strip non-digits.
-	 * e.g. "#7 " -> "7". Returns '' when nothing usable remains.
+	 * Normalize a jersey/number: cast to string, trim, strip non-digits, then
+	 * strip leading zeros so leading-zero variants compare equal (e.g. "#07 " ->
+	 * "7", "07" -> "7"). A single bare zero is preserved ("00" -> "0", "0" ->
+	 * "0"). Returns '' when nothing usable remains.
 	 *
 	 * @param mixed $value Raw jersey/number.
 	 * @return string
@@ -276,7 +298,12 @@ class SPSS_Roster_Matcher {
 		if ( is_null( $value ) ) {
 			return '';
 		}
-		return preg_replace( '/\D/', '', trim( (string) $value ) );
+		$digits = preg_replace( '/\D/', '', trim( (string) $value ) );
+		if ( '' === $digits ) {
+			return '';
+		}
+		$digits = ltrim( $digits, '0' );
+		return '' === $digits ? '0' : $digits;
 	}
 
 	/**
