@@ -49,6 +49,12 @@ class SportsPress_Score_Sheets {
 		require_once SPSS_PLUGIN_PATH . 'includes/class-database.php';
 		SPSS_Database::create_tables();
 
+		// Generate a webhook secret for remote intake (email Worker / custom senders)
+		// if one isn't set yet. Operators can regenerate it from Settings.
+		if ( '' === (string) get_option( 'spss_webhook_secret', '' ) ) {
+			update_option( 'spss_webhook_secret', wp_generate_password( 40, false ) );
+		}
+
 		if ( ! wp_next_scheduled( 'spss_cleanup_old_sheets' ) ) {
 			wp_schedule_event( time(), 'daily', 'spss_cleanup_old_sheets' );
 		}
@@ -111,8 +117,10 @@ class SportsPress_Score_Sheets {
 		require_once SPSS_PLUGIN_PATH . 'includes/class-sportspress-writer.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/class-ingest-service.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/class-file-server.php';
+		require_once SPSS_PLUGIN_PATH . 'includes/class-rest-api.php';
 
 		new SPSS_File_Server();
+		new SPSS_REST_API();
 
 		if ( is_admin() ) {
 			require_once SPSS_PLUGIN_PATH . 'includes/class-admin.php';

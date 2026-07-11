@@ -17,6 +17,7 @@ class SPSS_Admin {
 		add_action( 'admin_menu', array( $this, 'add_menu' ) );
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_action( 'admin_post_spss_upload_sheet', array( $this, 'handle_upload' ) );
+		add_action( 'admin_post_spss_regen_secret', array( $this, 'regenerate_secret' ) );
 	}
 
 	public function add_menu() {
@@ -152,6 +153,35 @@ class SPSS_Admin {
 			)
 		);
 
+		// Remote intake (email Worker / custom webhook + Twilio SMS/MMS).
+		register_setting(
+			self::SETTINGS_GROUP,
+			'spss_webhook_secret',
+			array(
+				'type' => 'string',
+				'sanitize_callback' => 'sanitize_text_field',
+				'default' => '',
+			)
+		);
+		register_setting(
+			self::SETTINGS_GROUP,
+			'spss_twilio_account_sid',
+			array(
+				'type' => 'string',
+				'sanitize_callback' => 'sanitize_text_field',
+				'default' => '',
+			)
+		);
+		register_setting(
+			self::SETTINGS_GROUP,
+			'spss_twilio_auth_token',
+			array(
+				'type' => 'string',
+				'sanitize_callback' => array( $this, 'sanitize_twilio_token' ),
+				'default' => '',
+			)
+		);
+
 		register_setting(
 			self::SETTINGS_GROUP,
 			'spss_retention_days',
@@ -193,6 +223,24 @@ class SPSS_Admin {
 
 	public function sanitize_selfhosted_key( $value ) {
 		return $this->preserve_masked_key( $value, 'spss_selfhosted_key' );
+	}
+
+	public function sanitize_twilio_token( $value ) {
+		return $this->preserve_masked_key( $value, 'spss_twilio_auth_token' );
+	}
+
+	/**
+	 * Rotate the webhook secret (its own admin-post button, since the WP Settings
+	 * API can't both display and regenerate a secret cleanly).
+	 */
+	public function regenerate_secret() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Unauthorized', 'sportspress-score-sheets' ), '', array( 'response' => 403 ) );
+		}
+		check_admin_referer( 'spss_regen_secret' );
+		update_option( 'spss_webhook_secret', wp_generate_password( 40, false ) );
+		wp_safe_redirect( add_query_arg( 'spss_notice', 'secret', admin_url( 'admin.php?page=' . self::SETTINGS_SLUG ) ) );
+		exit;
 	}
 
 	private function masked( $option ) {
@@ -329,6 +377,35 @@ class SPSS_Admin {
 						</table>
 					<?php endif; ?>
 				<?php endforeach; ?>
+
+				<h2><?php esc_html_e( 'Remote intake (email / SMS / webhook)', 'sportspress-score-sheets' ); ?></h2>
+				<p class="description"><?php esc_html_e( 'Optional. Let sheets arrive by webhook, emailed photo (Cloudflare Worker), or Twilio SMS/MMS — all land in the same review queue. See assets/remote-intake.md for setup. Every remote sheet still requires human review before it is written.', 'sportspress-score-sheets' ); ?></p>
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Webhook URL', 'sportspress-score-sheets' ); ?></th>
+						<td><code><?php echo esc_html( rest_url( 'spss/v1/ingest' ) ); ?></code></td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="spss_webhook_secret_display"><?php esc_html_e( 'Webhook secret', 'sportspress-score-sheets' ); ?></label></th>
+						<td>
+							<input type="text" id="spss_webhook_secret_display" class="regular-text code" readonly="readonly" value="<?php echo esc_attr( get_option( 'spss_webhook_secret', '' ) ); ?>" onfocus="this.select();" />
+							<a class="button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=spss_regen_secret' ), 'spss_regen_secret' ) ); ?>"><?php esc_html_e( 'Regenerate', 'sportspress-score-sheets' ); ?></a>
+							<p class="description"><?php esc_html_e( 'Shared with the email Worker / any custom sender. Requests are HMAC-SHA256 signed (timestamp.body); 300s replay window.', 'sportspress-score-sheets' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Twilio webhook URL', 'sportspress-score-sheets' ); ?></th>
+						<td><code><?php echo esc_html( rest_url( 'spss/v1/twilio' ) ); ?></code></td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="spss_twilio_account_sid"><?php esc_html_e( 'Twilio Account SID', 'sportspress-score-sheets' ); ?></label></th>
+						<td><input type="text" name="spss_twilio_account_sid" id="spss_twilio_account_sid" class="regular-text" value="<?php echo esc_attr( get_option( 'spss_twilio_account_sid', '' ) ); ?>" /></td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="spss_twilio_auth_token"><?php esc_html_e( 'Twilio Auth Token', 'sportspress-score-sheets' ); ?></label></th>
+						<td><input type="password" name="spss_twilio_auth_token" id="spss_twilio_auth_token" class="regular-text" autocomplete="off" placeholder="<?php echo esc_attr( $this->masked( 'spss_twilio_auth_token' ) ); ?>" value="" /></td>
+					</tr>
+				</table>
 
 				<h2><?php esc_html_e( 'Retention', 'sportspress-score-sheets' ); ?></h2>
 				<table class="form-table" role="presentation">
