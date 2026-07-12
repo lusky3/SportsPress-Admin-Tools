@@ -42,6 +42,13 @@ jobs:
         # coverage/clover.xml. Best-effort: test correctness is gated by the
         # ci-tests workflow, so a suite hiccup here must not block the scan.
         run: bash tools/coverage/run.sh coverage/clover.xml || echo "coverage run reported failures; proceeding with partial report"
+      - name: DEBUG dump clover
+        run: |
+          echo "=== clover.xml size ==="; wc -c coverage/clover.xml || true
+          echo "=== first <file> block ==="; sed -n '1,12p' coverage/clover.xml || true
+          echo "=== does the first path exist on disk? ==="
+          first=$(grep -oE 'name="[^"]+"' coverage/clover.xml | head -1 | sed -E 's/name="//; s/"$//')
+          echo "first file: $first"; [ -f "$first" ] && echo "EXISTS" || echo "MISSING"
       - name: SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8.2.0
         env:
