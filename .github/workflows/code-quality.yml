@@ -37,11 +37,11 @@ jobs:
         with:
           php-version: '8.3'
           coverage: pcov
-      - name: Generate PHP coverage (Clover)
+      - name: Generate PHP coverage (generic report)
         # Runs the standalone suites under PCOV and merges them into
-        # coverage/clover.xml. Best-effort: test correctness is gated by the
+        # coverage/coverage.xml. Best-effort: test correctness is gated by the
         # ci-tests workflow, so a suite hiccup here must not block the scan.
-        run: bash tools/coverage/run.sh coverage/clover.xml || echo "coverage run reported failures; proceeding with partial report"
+        run: bash tools/coverage/run.sh coverage/coverage.xml || echo "coverage run reported failures; proceeding with partial report"
       - name: SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8.2.0
         env:

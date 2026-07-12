@@ -1,10 +1,13 @@
 <?php
 /**
  * Merge per-process PCOV JSON dumps (written by tools/coverage/prepend.php) into
- * a single Clover XML report that SonarCloud (sonar.php.coverage.reportPaths)
- * understands.
+ * a single SonarQube "generic coverage" report (sonar.coverageReportPaths).
  *
- * Usage: php tools/coverage/merge.php <dumps-dir> <output-clover.xml> <repo-root>
+ * We use the generic format rather than Clover because SonarPHP's Clover
+ * importer silently drops hand-rolled (non-PHPUnit) reports; the generic format
+ * is unambiguous and resolves <file path> relative to sonar.projectBaseDir.
+ *
+ * Usage: php tools/coverage/merge.php <dumps-dir> <output.xml> <repo-root>
  *
  * PCOV line values: >0 executed, -1 executable-but-not-run, absent = ignore.
  * A line is "coverable" if any dump lists it non-zero; "covered" if any dump
@@ -63,31 +66,26 @@ foreach ( (array) glob( $dumps_dir . '/cov-*.json' ) as $dump ) {
 
 ksort( $merged );
 
-$xml  = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
-$xml .= "<coverage generated=\"0\"><project timestamp=\"0\">\n";
-$tot_stmts = 0;
+$xml       = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+$xml      .= "<coverage version=\"1\">\n";
+$tot_lines = 0;
 $tot_cov   = 0;
 foreach ( $merged as $file => $lines ) {
 	ksort( $lines );
-	$stmts = count( $lines );
-	$cov   = count( array_filter( $lines, static fn( $c ) => $c > 0 ) );
-	$tot_stmts += $stmts;
-	$tot_cov   += $cov;
-	// Emit ABSOLUTE paths (as PhpUnit's Clover does). SonarPHP resolves a
-	// relative report path against the report file's own directory (coverage/),
-	// not the project root, which matches nothing; absolute paths match the
-	// files indexed from the same CI workspace.
-	$xml .= '  <file name="' . htmlspecialchars( $file, ENT_XML1 ) . "\">\n";
+	$tot_lines += count( $lines );
+	$tot_cov   += count( array_filter( $lines, static fn( $c ) => $c > 0 ) );
+	// Generic coverage resolves <file path> relative to sonar.projectBaseDir
+	// (the repo root), so emit repo-relative paths.
+	$rel  = ( 0 === strpos( $file, $root . '/' ) ) ? substr( $file, strlen( $root ) + 1 ) : $file;
+	$xml .= '  <file path="' . htmlspecialchars( $rel, ENT_XML1 ) . "\">\n";
 	foreach ( $lines as $ln => $c ) {
-		$xml .= '    <line num="' . (int) $ln . '" type="stmt" count="' . (int) $c . "\"/>\n";
+		$xml .= '    <lineToCover lineNumber="' . (int) $ln . '" covered="' . ( $c > 0 ? 'true' : 'false' ) . "\"/>\n";
 	}
-	$xml .= '    <metrics statements="' . $stmts . '" coveredstatements="' . $cov . "\"/>\n";
 	$xml .= "  </file>\n";
 }
-$xml .= '  <metrics files="' . count( $merged ) . '" statements="' . $tot_stmts . '" coveredstatements="' . $tot_cov . "\"/>\n";
-$xml .= "</project></coverage>\n";
+$xml .= "</coverage>\n";
 
 file_put_contents( $out_path, $xml );
 
-$pct = $tot_stmts > 0 ? round( 100 * $tot_cov / $tot_stmts, 1 ) : 0.0;
-fwrite( STDERR, sprintf( "Clover written: %s\nfiles=%d covered=%d/%d statements (%s%%)\n", $out_path, count( $merged ), $tot_cov, $tot_stmts, $pct ) );
+$pct = $tot_lines > 0 ? round( 100 * $tot_cov / $tot_lines, 1 ) : 0.0;
+fwrite( STDERR, sprintf( "Coverage report written: %s\nfiles=%d covered=%d/%d lines (%s%%)\n", $out_path, count( $merged ), $tot_cov, $tot_lines, $pct ) );
