@@ -1,8 +1,9 @@
 version: 2
-# Third-party actions are pinned to commit SHAs (with version comments).
-# First-party GitHub-owned actions (actions/checkout, actions/setup-node) are
-# exempted from SHA pinning and remain tag-pinned; dependabot still updates
-# the tag versions on the weekly cadence below.
+# All GitHub Actions — first- and third-party — are pinned to full commit SHAs
+# with a trailing `# vX.Y.Z` version comment. Dependabot reads that comment to
+# bump both the SHA and the comment on the weekly cadence below, so pinning
+# stays current without manual SHA lookups (and satisfies Sonar php/actions
+# S7637 "use full commit SHA hash").
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
