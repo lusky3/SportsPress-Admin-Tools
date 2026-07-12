@@ -49,7 +49,7 @@ wp-content/cache/
 wp-content/debug.log
 
 # Testing
-coverage/
+/coverage/
 .phpunit.result.cache
 phpunit.xml
 
