@@ -73,10 +73,11 @@ foreach ( $merged as $file => $lines ) {
 	$cov   = count( array_filter( $lines, static fn( $c ) => $c > 0 ) );
 	$tot_stmts += $stmts;
 	$tot_cov   += $cov;
-	// Emit repo-relative paths so Sonar resolves them regardless of the CI
-	// checkout's absolute location.
-	$rel        = ( 0 === strpos( $file, $root . '/' ) ) ? substr( $file, strlen( $root ) + 1 ) : $file;
-	$xml       .= '  <file name="' . htmlspecialchars( $rel, ENT_XML1 ) . "\">\n";
+	// Emit ABSOLUTE paths (as PhpUnit's Clover does). SonarPHP resolves a
+	// relative report path against the report file's own directory (coverage/),
+	// not the project root, which matches nothing; absolute paths match the
+	// files indexed from the same CI workspace.
+	$xml .= '  <file name="' . htmlspecialchars( $file, ENT_XML1 ) . "\">\n";
 	foreach ( $lines as $ln => $c ) {
 		$xml .= '    <line num="' . (int) $ln . '" type="stmt" count="' . (int) $c . "\"/>\n";
 	}
