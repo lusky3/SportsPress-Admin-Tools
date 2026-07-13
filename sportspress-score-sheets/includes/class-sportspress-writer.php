@@ -171,6 +171,11 @@ class SPSS_SportsPress_Writer {
 			if ( $player_id <= 0 || 'sp_player' !== get_post_type( $player_id ) ) {
 				continue;
 			}
+			// Player must actually be rostered on the side's resolved team, or the
+			// row is mis-attributing stats to the wrong team — skip it.
+			if ( (int) get_post_meta( $player_id, 'sp_current_team', true ) !== $team_id ) {
+				continue;
+			}
 
 			if ( ! isset( $players[ $team_id ] ) || ! is_array( $players[ $team_id ] ) ) {
 				$players[ $team_id ] = array();

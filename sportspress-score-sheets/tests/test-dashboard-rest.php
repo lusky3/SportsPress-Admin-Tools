@@ -116,9 +116,51 @@ if (!class_exists('WP_REST_Request')) {
     }
 }
 
-// SPSS_Ingest_Service carries map_confirmed(), the method under test. The class
-// file references other SPSS_*/SPAT_* classes only inside method bodies we do
-// not call here, so requiring it is side-effect free.
+if (!function_exists('is_wp_error')) {
+    function is_wp_error($thing) { return $thing instanceof WP_Error; }
+}
+if (!function_exists('get_current_user_id')) {
+    function get_current_user_id() { return 7; }
+}
+if (!function_exists('get_the_title')) {
+    function get_the_title($id) { return 'Title ' . (int) $id; }
+}
+if (!function_exists('_prime_post_caches')) {
+    // Record the ids primed so a test can assert the N+1-avoiding prime happened.
+    function _prime_post_caches($ids, $update_term = true, $update_meta = true) {
+        $GLOBALS['spss_primed'][] = $ids;
+    }
+}
+
+// Stub the storage/file layers the dashboard handlers call. Only the methods the
+// handlers under test touch are implemented; return values are test-controllable.
+if (!class_exists('SPSS_File_Server')) {
+    class SPSS_File_Server {
+        public static function image_url($id) { return 'https://example.test/img/' . (int) $id; }
+    }
+}
+if (!class_exists('SPSS_Database')) {
+    class SPSS_Database {
+        const STATUS_CONFIRMED = 'confirmed';
+        // Configurable per test.
+        public static $sheets    = array();
+        public static $count_all = 0;
+        public static function get_sheets($status = '', $limit = 100, $offset = 0) {
+            return self::$sheets;
+        }
+        public static function count_all() {
+            return self::$count_all;
+        }
+        public static function count_by_status($status) {
+            return 0;
+        }
+    }
+}
+
+// SPSS_Ingest_Service carries map_confirmed(), the method under test, plus the
+// shared accept_bytes() that upload_sheet() delegates to. The class file
+// references other SPSS_*/SPAT_* classes only inside method bodies we do not
+// call here, so requiring it is side-effect free.
 require_once dirname(__FILE__) . '/../includes/class-ingest-service.php';
 require_once dirname(__FILE__) . '/../includes/class-dashboard-rest.php';
 
@@ -285,6 +327,118 @@ foreach ($GLOBALS['spss_rest_routes'] as $route) {
     }
 }
 assert_test($ns_ok, 'register_routes: all routes registered under the spss/v1 namespace');
+
+// ═══════════════════════════════════════════════════════════════════════════
+echo "\n=== Testing confirm_error_status() mapping (F7) ===\n\n";
+// ═══════════════════════════════════════════════════════════════════════════
+
+// confirm_error_status() is a private static security-adjacent mapping; invoke
+// it via reflection (the suite's established pattern for private statics).
+$ces = new ReflectionMethod('SPSS_Dashboard_REST', 'confirm_error_status');
+$ces->setAccessible(true);
+$status_for = function ($code) use ($ces) {
+    return $ces->invoke(null, $code);
+};
+
+assert_test(
+    500 === $status_for('spss_status_write_failed'),
+    'confirm_error_status: spss_status_write_failed → 500 (retryable DB write failure)'
+);
+assert_test(
+    409 === $status_for('spss_not_reviewable'),
+    'confirm_error_status: spss_not_reviewable → 409'
+);
+assert_test(
+    404 === $status_for('spss_not_found'),
+    'confirm_error_status: spss_not_found → 404'
+);
+assert_test(
+    500 === $status_for('spss_db_insert_failed'),
+    'confirm_error_status: any spss_db_* code → 500'
+);
+assert_test(
+    400 === $status_for('spss_something_else'),
+    'confirm_error_status: unknown code → 400 (default)'
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+echo "\n=== Testing upload_sheet() (F5 shared accept_bytes) ===\n\n";
+// ═══════════════════════════════════════════════════════════════════════════
+
+$dash = new SPSS_Dashboard_REST();
+
+// (a) Bad base64 → 400 (rejected before the ingest core is ever reached).
+$req = new WP_REST_Request(json_encode(array('image_b64' => '!!!not-base64!!!')));
+$res = $dash->upload_sheet($req);
+assert_test(
+    $res instanceof WP_Error && 'spss_bad_image' === $res->get_error_code()
+        && 400 === ($res->get_error_data()['status'] ?? 0),
+    'upload_sheet: invalid base64 → spss_bad_image (400)'
+);
+
+// (b) Oversized decoded bytes → 413 (size cap enforced by shared accept_bytes).
+$big  = str_repeat("\x00", (15 * 1024 * 1024) + 16);
+$req  = new WP_REST_Request(json_encode(array('image_b64' => base64_encode($big))));
+$res  = $dash->upload_sheet($req);
+assert_test(
+    $res instanceof WP_Error && 'spss_image_too_large' === $res->get_error_code()
+        && 413 === ($res->get_error_data()['status'] ?? 0),
+    'upload_sheet: oversized image → spss_image_too_large (413)'
+);
+unset($big);
+
+// (c) Missing image_b64 → 400.
+$req = new WP_REST_Request(json_encode(array('nope' => 1)));
+$res = $dash->upload_sheet($req);
+assert_test(
+    $res instanceof WP_Error && 'spss_bad_request' === $res->get_error_code(),
+    'upload_sheet: missing image_b64 → spss_bad_request (400)'
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+echo "\n=== Testing get_sheets() unfiltered total uses count_all (F2) ===\n\n";
+// ═══════════════════════════════════════════════════════════════════════════
+
+$GLOBALS['spss_primed'] = array();
+
+// Two rows on this page, but the full table has a distinct, larger count.
+SPSS_Database::$sheets = array(
+    (object) array(
+        'id' => 1, 'created_at' => '2026-01-01 00:00:00', 'channel' => 'upload',
+        'status' => 'pending_review', 'provider' => null, 'event_id' => 500,
+        'extracted_json' => '{"flags":["a","b"]}', 'image_path' => 'x/y.jpg',
+    ),
+    (object) array(
+        'id' => 2, 'created_at' => '2026-01-02 00:00:00', 'channel' => 'mms',
+        'status' => 'confirmed', 'provider' => 'claude', 'event_id' => null,
+        'extracted_json' => '{}', 'image_path' => '',
+    ),
+);
+SPSS_Database::$count_all = 137; // distinct from the page size (2)
+
+$res = $dash->get_sheets(new WP_REST_Request('', array('status' => '', 'limit' => 100, 'offset' => 0)));
+$body = $res->get_data();
+assert_test(
+    $res instanceof WP_REST_Response && 2 === count($body['data']),
+    'get_sheets: returns the page rows'
+);
+assert_test(
+    137 === $body['total'],
+    'get_sheets: unfiltered total comes from count_all (137), not the page size (2)'
+);
+assert_test(
+    137 !== count($body['data']),
+    'get_sheets: total (137) is distinct from the page count (2) — pagination correct'
+);
+// The referenced event (500) was primed once before the title lookups (N+1 fix).
+$flat_primed = array();
+foreach ($GLOBALS['spss_primed'] as $group) {
+    foreach ((array) $group as $pid) { $flat_primed[] = (int) $pid; }
+}
+assert_test(
+    in_array(500, $flat_primed, true),
+    'get_sheets: referenced event id is post-cache primed before per-row title lookups'
+);
 
 // ── Summary ─────────────────────────────────────────────────────────────────
 

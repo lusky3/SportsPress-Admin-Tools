@@ -32,12 +32,6 @@ class SPSS_REST_API {
 	 */
 	const INGEST_RATE_LIMIT = 60;
 
-	/**
-	 * Hard cap on decoded image size (bytes). Mirrors the 15MB admin upload cap
-	 * so the public webhook/MMS paths cannot spool an unbounded temp file.
-	 */
-	const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
-
 	/** Accepted clock skew / replay window for signed ingest requests (seconds). */
 	const REPLAY_WINDOW = 300;
 
@@ -147,7 +141,7 @@ class SPSS_REST_API {
 			return new WP_Error( 'spss_bad_image', __( 'image_b64 is not valid base64.', 'sportspress-score-sheets' ), array( 'status' => 400 ) );
 		}
 
-		if ( strlen( $bytes ) > self::MAX_IMAGE_BYTES ) {
+		if ( strlen( $bytes ) > SPSS_Ingest_Service::MAX_IMAGE_BYTES ) {
 			return new WP_Error( 'spss_image_too_large', __( 'Image exceeds the maximum allowed size.', 'sportspress-score-sheets' ), array( 'status' => 413 ) );
 		}
 
@@ -218,7 +212,7 @@ class SPSS_REST_API {
 			return self::twiml_ack();
 		}
 
-		if ( strlen( $bytes ) > self::MAX_IMAGE_BYTES ) {
+		if ( strlen( $bytes ) > SPSS_Ingest_Service::MAX_IMAGE_BYTES ) {
 			self::debug_log( 'twilio media exceeds max size' );
 			return self::twiml_ack();
 		}
@@ -246,6 +240,12 @@ class SPSS_REST_API {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public function handle_whatsapp_verify( $request ) {
+		// Rate limit per sender before any token comparison, mirroring the POST path,
+		// so the verify handshake can't be used to hammer hash_equals().
+		if ( self::check_rate_limit( 'spss_rl_whatsapp_' . self::sender_key(), self::INGEST_RATE_LIMIT ) ) {
+			return new WP_Error( 'spss_rate_limited', __( 'Too many requests.', 'sportspress-score-sheets' ), array( 'status' => 429 ) );
+		}
+
 		$expected  = (string) get_option( 'spss_whatsapp_verify_token', '' );
 		$mode      = (string) $request->get_param( 'hub_mode' );
 		$token     = (string) $request->get_param( 'hub_verify_token' );
@@ -275,6 +275,7 @@ class SPSS_REST_API {
 		$access_token = (string) get_option( 'spss_whatsapp_access_token', '' );
 		if ( '' === $app_secret || '' === $access_token ) {
 			// Permanent misconfiguration; ack 200 so Meta doesn't retry pointlessly.
+			self::debug_log( 'whatsapp not configured' );
 			return rest_ensure_response( array( 'status' => 'received' ) );
 		}
 
@@ -370,7 +371,7 @@ class SPSS_REST_API {
 			return;
 		}
 		$bytes = wp_remote_retrieve_body( $dl );
-		if ( '' === $bytes || strlen( $bytes ) > self::MAX_IMAGE_BYTES ) {
+		if ( '' === $bytes || strlen( $bytes ) > SPSS_Ingest_Service::MAX_IMAGE_BYTES ) {
 			self::debug_log( 'whatsapp media empty or exceeds max size' );
 			return;
 		}
@@ -468,6 +469,7 @@ class SPSS_REST_API {
 		$body     = (string) $body;
 		$response = new WP_REST_Response( $body, 200 );
 		$response->header( 'Content-Type', $content_type );
+		$response->header( 'X-Content-Type-Options', 'nosniff' );
 
 		add_filter(
 			'rest_pre_serve_request',
@@ -475,6 +477,7 @@ class SPSS_REST_API {
 				if ( $result === $response ) {
 					if ( ! headers_sent() ) {
 						header( 'Content-Type: ' . $content_type );
+						header( 'X-Content-Type-Options: nosniff' );
 					}
 					echo $body; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 					return true;
@@ -537,38 +540,26 @@ class SPSS_REST_API {
 	// ── Internals ─────────────────────────────────────────────────────────────
 
 	/**
-	 * Write decoded bytes to a temp file, funnel through the ingest service, and
-	 * translate the result into an HTTP response.
+	 * Funnel decoded bytes through the shared ingest core (size cap + temp-file
+	 * plumbing live in SPSS_Ingest_Service::accept_bytes) and translate the result
+	 * into an HTTP response.
 	 *
 	 * @param string      $bytes      Decoded image bytes.
-	 * @param string      $channel    Ingest channel (webhook|email|mms).
+	 * @param string      $channel    Ingest channel (webhook|email|mms|whatsapp).
 	 * @param string|null $source_ref External id (Message-ID / MessageSid).
 	 * @param string      $ext        Image extension hint.
 	 * @return WP_REST_Response|WP_Error
 	 */
 	private static function ingest_bytes( $bytes, $channel, $source_ref, $ext ) {
-		$tmp = wp_tempnam();
-		if ( ! $tmp ) {
-			return new WP_Error( 'spss_tmp_failed', __( 'Could not create a temp file.', 'sportspress-score-sheets' ), array( 'status' => 500 ) );
-		}
-
-		$written = file_put_contents( $tmp, $bytes ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
-		if ( false === $written ) {
-			@unlink( $tmp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.unlink_unlink
-			return new WP_Error( 'spss_tmp_failed', __( 'Could not write the temp file.', 'sportspress-score-sheets' ), array( 'status' => 500 ) );
-		}
-
-		$result = SPSS_Ingest_Service::accept_image(
+		$result = SPSS_Ingest_Service::accept_bytes(
+			$bytes,
 			array(
-				'tmp_path'    => $tmp,
 				'ext'         => $ext,
 				'channel'     => $channel,
 				'source_ref'  => $source_ref,
 				'uploaded_by' => 0, // System-submitted.
 			)
 		);
-
-		@unlink( $tmp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.unlink_unlink
 
 		if ( is_wp_error( $result ) ) {
 			// A re-sent image is an expected, benign outcome — ack it as 200.

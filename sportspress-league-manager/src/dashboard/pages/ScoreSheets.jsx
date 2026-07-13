@@ -183,8 +183,10 @@ function ReviewView( { id, season, readOnly, onBack, onToast } ) {
 	const nextKey = useRef( 0 );
 
 	const loadEvents = useCallback( () => {
-		fetchScoreSheetEvents( season ).then( setEvents ).catch( () => {} );
-	}, [ season ] );
+		fetchScoreSheetEvents( season )
+			.then( setEvents )
+			.catch( () => onToast( { message: 'Could not load games — refresh and try again.', type: 'error' } ) );
+	}, [ season, onToast ] );
 
 	useEffect( () => {
 		setLoading( true );
@@ -193,13 +195,16 @@ function ReviewView( { id, season, readOnly, onBack, onToast } ) {
 			setDetail( d );
 			setEventId( d.event?.id ? String( d.event.id ) : '' );
 			const players = d.extracted?.players || [];
-			setRows( players.map( ( p ) => ( {
+			setRows( players.map( ( p, i ) => ( {
 				key: nextKey.current++,
-				side: p.side === 'away' ? 'away' : 'home',
+				// Original index into extracted.players, so per-row flag
+				// highlighting (below) lines up with extracted.flags[].player_index.
+				player_index: i,
+				side: p.team === 'away' ? 'away' : 'home',
 				jersey_written: p.jersey_written ?? '',
-				player_id: p.player_id ?? 0,
-				g: p.g ?? 0,
-				a: p.a ?? 0,
+				player_id: p.matched_player_id ?? 0,
+				g: p.goals ?? 0,
+				a: p.assists ?? 0,
 				pim: p.pim ?? 0,
 			} ) ) );
 			setHomeScore( d.home_score ?? 0 );
@@ -230,7 +235,19 @@ function ReviewView( { id, season, readOnly, onBack, onToast } ) {
 	}
 
 	const rosters = detail.rosters || { home: [], away: [] };
-	const rosterOptions = [ ...( rosters.home || [] ), ...( rosters.away || [] ) ];
+	// Roster scoped to a row's side — a reviewer should only pick from the team the
+	// player actually belongs to (mirrors class-review-admin.php's $rosters[$side]).
+	const rosterForSide = ( side ) => ( side === 'away' ? rosters.away : rosters.home ) || [];
+	// Map extracted.players index → collected flag detail/type strings, so the
+	// specific flagged player row can be highlighted (mirrors class-review-admin.php
+	// $flags_by_index). Only entries carrying a non-null player_index apply to a row.
+	const flagsByIndex = {};
+	( detail.extracted?.flags || [] ).forEach( ( f ) => {
+		if ( f.player_index !== undefined && f.player_index !== null ) {
+			const idx = f.player_index;
+			( flagsByIndex[ idx ] = flagsByIndex[ idx ] || [] ).push( f.detail || f.type || '' );
+		}
+	} );
 	const homeTeamName = detail.event?.home_team || 'Home';
 	const awayTeamName = detail.event?.away_team || 'Away';
 	const teamNameForSide = ( side ) => ( side === 'away' ? awayTeamName : homeTeamName );
@@ -415,8 +432,15 @@ function ReviewView( { id, season, readOnly, onBack, onToast } ) {
 									</tr>
 								</thead>
 								<tbody>
-									{ rows.map( ( r ) => (
-										<tr key={ r.key }>
+									{ rows.map( ( r ) => {
+										// Recompute per row from the row's CURRENT side, so changing
+										// Side both re-scopes the player list and re-flags the row.
+										const rowFlags = r.player_index != null ? flagsByIndex[ r.player_index ] : undefined;
+										const flagged = !! ( rowFlags && rowFlags.length );
+										const flagTitle = flagged ? rowFlags.join( '; ' ) : undefined;
+										const sideRoster = rosterForSide( r.side );
+										return (
+										<tr key={ r.key } className={ flagged ? 'splm-row--flagged' : undefined } title={ flagTitle }>
 											<td>
 												<select className="splm-select" value={ r.side }
 													onChange={ ( e ) => updateRow( r.key, 'side', e.target.value ) } disabled={ readOnly }
@@ -425,13 +449,18 @@ function ReviewView( { id, season, readOnly, onBack, onToast } ) {
 													<option value="away">{ awayTeamName }</option>
 												</select>
 											</td>
-											<td>{ r.jersey_written || '—' }</td>
+											<td>
+												{ r.jersey_written || '—' }
+												{ flagged && (
+													<span className="splm-row__flag-note" role="note"> ⚠ { flagTitle }</span>
+												) }
+											</td>
 											<td>
 												<select className="splm-select" value={ r.player_id }
 													onChange={ ( e ) => updateRow( r.key, 'player_id', parseInt( e.target.value, 10 ) || 0 ) }
 													disabled={ readOnly } aria-label="Player">
 													<option value={ 0 }>Write-in / no player record</option>
-													{ rosterOptions.map( ( p ) => (
+													{ sideRoster.map( ( p ) => (
 														<option key={ p.player_id } value={ p.player_id }>
 															{ ( p.number ? `#${ p.number } ` : '' ) + p.name }
 														</option>
@@ -460,7 +489,8 @@ function ReviewView( { id, season, readOnly, onBack, onToast } ) {
 												</td>
 											) }
 										</tr>
-									) ) }
+										);
+									} ) }
 								</tbody>
 							</table>
 						</div>
