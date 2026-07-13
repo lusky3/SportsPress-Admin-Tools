@@ -13,6 +13,7 @@ import DivisionBalance from './pages/DivisionBalance';
 import TeamComparison from './pages/TeamComparison';
 import SeasonReport from './pages/SeasonReport';
 import SeasonSetup from './pages/SeasonSetup';
+import ScoreSheets from './pages/ScoreSheets';
 import './styles.css';
 
 const PAGES = {
@@ -28,6 +29,7 @@ const PAGES = {
 	'team-compare': TeamComparison,
 	'season-report': SeasonReport,
 	'season-setup': SeasonSetup,
+	'score-sheets': ScoreSheets,
 };
 
 // UX-11: derive the initial page from the URL hash so deep links / refresh land

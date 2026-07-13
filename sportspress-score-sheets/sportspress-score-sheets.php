@@ -130,6 +130,7 @@ class SportsPress_Score_Sheets {
 		require_once SPSS_PLUGIN_PATH . 'includes/class-ingest-service.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/class-file-server.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/class-rest-api.php';
+		require_once SPSS_PLUGIN_PATH . 'includes/class-dashboard-rest.php';
 
 		// Apply any additive schema upgrade for installs that predate the current
 		// DB version (idempotent no-op once versions match).
@@ -137,6 +138,7 @@ class SportsPress_Score_Sheets {
 
 		new SPSS_File_Server();
 		new SPSS_REST_API();
+		new SPSS_Dashboard_REST();
 
 		if ( is_admin() ) {
 			require_once SPSS_PLUGIN_PATH . 'includes/class-admin.php';
