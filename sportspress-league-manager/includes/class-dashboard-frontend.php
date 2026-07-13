@@ -247,10 +247,13 @@ class SPLM_Dashboard_Frontend {
 					'events_manager'     => class_exists( 'SPEM_REST_API' ),
 					'player_tools'       => class_exists( 'SPPT_REST_API' ),
 					'schedule_generator' => class_exists( 'SPSG_REST_API' ),
-					// Score Sheets is an optional SPAT module; mirror the enabled-module
-					// check so the SPA hides the Sheets tab when it's off (its spss/v1
-					// REST only registers when the module is enabled).
-					'score_sheets'       => in_array( 'score_sheets', (array) get_option( 'spat_enabled_modules', array() ), true ),
+					// Score Sheets: mirror the sibling flags with a live class check so
+					// the SPA hides the Sheets tab whenever the plugin is inactive or
+					// removed. SPSS_Dashboard_REST is only defined when the plugin is
+					// active AND its module is enabled (it registers the spss/v1 routes),
+					// so this is true iff those endpoints actually exist — avoids a stale
+					// 'spat_enabled_modules' option leaving a tab that 404s.
+					'score_sheets'       => class_exists( 'SPSS_Dashboard_REST' ),
 				),
 			)
 		);
