@@ -22,13 +22,13 @@
 	/* Borders */
 	--splm-border: #cbd5e1;          /* slate-300: component/button/card borders */
 	--splm-border-light: #e2e8f0;    /* slate-200: faint dividers, neutral badge bg */
-	--splm-border-strong: #94a3b8;   /* slate-400: A1 form-control boundary (>=3:1) */
+	--splm-border-strong: #64748b;   /* slate-400: A1 form-control boundary (>=3:1) */
 
 	/* Text */
 	--splm-text: #1e293b;            /* primary text / headings */
 	--splm-text-secondary: #475569;  /* slate-600: nav, table headers, filters */
 	--splm-text-strong: #374151;     /* gray-700: sub-headings, neutral badge text */
-	--splm-muted: #64748b;           /* slate-500: muted text (AA on surface) */
+	--splm-muted: #5f6d7c;           /* AA on both surface (5.3:1) and the grey page bg (4.7:1) */
 	--splm-text-faint: #94a3b8;      /* slate-400: decorative "vs" / grips */
 	--splm-neutral: #6b7280;         /* gray-500: neutral fill (secondary btn) + muted class */
 	--splm-neutral-strong: #4b5563;  /* gray-600: neutral fill hover */
@@ -111,9 +111,13 @@
 		--splm-header-control-bg: #334155;
 		--splm-header-control-border: #475569;
 
-		--splm-primary: #3b82f6;
+		/* blue-400: primary is used as TEXT/links on dark surfaces; #3b82f6 was
+		   only 4.0:1 (under AA). #60a5fa clears 4.5:1 on surface (5.75) and bg
+		   (7.0). Solid FILLS (buttons, stepper num) use --splm-primary-dark so
+		   white labels stay >=4.5:1 — see the dark override block below. */
+		--splm-primary: #60a5fa;
 		--splm-primary-dark: #2563eb;
-		--splm-primary-tint: #0f2747;    /* dark blue; keeps active-nav label ~4:1 */
+		--splm-primary-tint: #0f2747;    /* dark blue; active-nav label #60a5fa = 5.9:1 */
 		--splm-primary-border: #3b82f6;
 		--splm-accent: #60a5fa;
 
@@ -935,9 +939,11 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: var(--splm-text); }
 /* Score-sheet review-pane heading (fixes the h2→h3 skip). */
 .splm-score-sheets__review-heading { margin: 0.25rem 0 1rem; }
 
-/* AA: in dark mode white-on-primary is ~3.7:1 on --splm-primary; use the darker
-   fill so primary buttons clear 4.5:1 for normal-weight labels. */
+/* AA: dark --splm-primary (#60a5fa) is tuned for TEXT contrast, so white-on-primary
+   FILLS would only be ~2.8:1. Route every white-labelled primary fill through the
+   darker --splm-primary-dark (#2563eb, white label = 4.9:1) in dark mode. */
 @media (prefers-color-scheme: dark) {
 	.splm-btn--primary,
-	.splm-btn--primary:hover { background: var(--splm-primary-dark); }
+	.splm-btn--primary:hover { background: var(--splm-primary-dark); border-color: var(--splm-primary-dark); }
+	.splm-stepper__item--current .splm-stepper__num { background: var(--splm-primary-dark); }
 }
