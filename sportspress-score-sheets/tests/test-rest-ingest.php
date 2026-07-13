@@ -137,10 +137,12 @@ if (!class_exists('WP_REST_Request')) {
         private $body;
         private $headers;
         private $body_params;
-        public function __construct($body = '', $headers = array(), $body_params = array()) {
+        private $params;
+        public function __construct($body = '', $headers = array(), $body_params = array(), $params = array()) {
             $this->body        = $body;
             $this->headers     = array_change_key_case($headers, CASE_LOWER);
             $this->body_params = $body_params;
+            $this->params      = $params;
         }
         public function get_body() { return $this->body; }
         public function get_header($key) {
@@ -148,6 +150,9 @@ if (!class_exists('WP_REST_Request')) {
             return isset($this->headers[$key]) ? $this->headers[$key] : '';
         }
         public function get_body_params() { return $this->body_params; }
+        public function get_param($key) {
+            return isset($this->params[$key]) ? $this->params[$key] : null;
+        }
     }
 }
 if (!class_exists('SPSS_Ingest_Service')) {
@@ -423,6 +428,114 @@ assert_test(
     false === $is_allowed('https://169.254.169.254/latest/meta-data/'),
     'is_allowed_twilio_media_url: rejects link-local metadata IP (SSRF)'
 );
+
+// ═══════════════════════════════════════════════════════════════════════════
+echo "\n=== Testing WhatsApp (Meta Cloud API) ===\n\n";
+// ═══════════════════════════════════════════════════════════════════════════
+
+// whatsapp_signature: hex HMAC-SHA256 of the raw body with the app secret.
+$wa_body   = '{"entry":[{"changes":[{"value":{"messages":[]}}]}]}';
+$wa_secret = 'meta-app-secret';
+$wa_sig    = SPSS_REST_API::whatsapp_signature($wa_body, $wa_secret);
+assert_test(
+    $wa_sig === hash_hmac('sha256', $wa_body, $wa_secret),
+    'whatsapp_signature equals hash_hmac(sha256, body, app_secret)'
+);
+assert_test(
+    SPSS_REST_API::whatsapp_signature($wa_body . 'x', $wa_secret) !== $wa_sig,
+    'whatsapp_signature: tampered body changes the signature'
+);
+
+// ── Webhook verification (GET) ───────────────────────────────────────────────
+
+$GLOBALS['spss_options']    = array('spss_whatsapp_verify_token' => 'my-verify-token');
+$GLOBALS['spss_transients'] = array();
+
+$res = $api->handle_whatsapp_verify(new WP_REST_Request('', array(), array(), array(
+    'hub_mode'         => 'subscribe',
+    'hub_verify_token' => 'my-verify-token',
+    'hub_challenge'    => 'CHALLENGE_123',
+)));
+assert_test(
+    $res instanceof WP_REST_Response && 'CHALLENGE_123' === $res->get_data(),
+    'handle_whatsapp_verify: valid token echoes hub.challenge verbatim'
+);
+
+$res = $api->handle_whatsapp_verify(new WP_REST_Request('', array(), array(), array(
+    'hub_mode'         => 'subscribe',
+    'hub_verify_token' => 'WRONG-token',
+    'hub_challenge'    => 'CHALLENGE_123',
+)));
+assert_test(
+    $res instanceof WP_Error && 403 === ($res->get_error_data()['status'] ?? 0),
+    'handle_whatsapp_verify: wrong verify token → 403'
+);
+
+$GLOBALS['spss_options'] = array(); // no verify token configured
+$res = $api->handle_whatsapp_verify(new WP_REST_Request('', array(), array(), array(
+    'hub_mode'         => 'subscribe',
+    'hub_verify_token' => 'anything',
+    'hub_challenge'    => 'x',
+)));
+assert_test(
+    $res instanceof WP_Error && 403 === ($res->get_error_data()['status'] ?? 0),
+    'handle_whatsapp_verify: unconfigured verify token → 403 (never echoes)'
+);
+
+// ── Inbound messages (POST) ──────────────────────────────────────────────────
+
+// (1) Unconfigured → ack 200 so Meta doesn't retry, process nothing.
+$GLOBALS['spss_options']    = array();
+$GLOBALS['spss_transients'] = array();
+$res = $api->handle_whatsapp(new WP_REST_Request($wa_body, array('x-hub-signature-256' => 'sha256=' . $wa_sig)));
+assert_test(
+    $res instanceof WP_REST_Response && 'received' === ($res->get_data()['status'] ?? ''),
+    'handle_whatsapp: unconfigured → 200 received'
+);
+
+// (2) Configured + bad signature → 403.
+$GLOBALS['spss_options'] = array(
+    'spss_whatsapp_app_secret'   => $wa_secret,
+    'spss_whatsapp_access_token' => 'access-token',
+);
+$GLOBALS['spss_transients'] = array();
+$res = $api->handle_whatsapp(new WP_REST_Request($wa_body, array('x-hub-signature-256' => 'sha256=deadbeef')));
+assert_test(
+    $res instanceof WP_Error && 403 === ($res->get_error_data()['status'] ?? 0),
+    'handle_whatsapp: bad X-Hub-Signature-256 → 403'
+);
+
+// (3) Configured + missing signature header → 403.
+$GLOBALS['spss_transients'] = array();
+$res = $api->handle_whatsapp(new WP_REST_Request($wa_body, array()));
+assert_test(
+    $res instanceof WP_Error && 403 === ($res->get_error_data()['status'] ?? 0),
+    'handle_whatsapp: missing signature header → 403'
+);
+
+// (4) Configured + valid signature (no media messages) → 200 received (auth passed).
+$GLOBALS['spss_transients'] = array();
+$res = $api->handle_whatsapp(new WP_REST_Request($wa_body, array('x-hub-signature-256' => 'sha256=' . $wa_sig)));
+assert_test(
+    $res instanceof WP_REST_Response && 'received' === ($res->get_data()['status'] ?? ''),
+    'handle_whatsapp: valid signature → 200 received (auth passed)'
+);
+
+// ── is_allowed_whatsapp_media_url (SSRF host allow-list) ─────────────────────
+
+echo "\n=== Testing is_allowed_whatsapp_media_url() ===\n\n";
+$wa_allow_m = new ReflectionMethod('SPSS_REST_API', 'is_allowed_whatsapp_media_url');
+$wa_allow_m->setAccessible(true);
+$wa_allow = function ($url) use ($wa_allow_m) {
+    return $wa_allow_m->invoke(null, $url);
+};
+assert_test(true === $wa_allow('https://graph.facebook.com/v21.0/12345'), 'accepts https://graph.facebook.com/...');
+assert_test(true === $wa_allow('https://lookaside.fbsbx.com/whatsapp_business/attachments/?mid=abc'), 'accepts https://lookaside.fbsbx.com/...');
+assert_test(true === $wa_allow('https://scontent-abc.xx.fbcdn.net/v/t1/xyz'), 'accepts https://*.fbcdn.net/...');
+assert_test(false === $wa_allow('http://graph.facebook.com/v21.0/12345'), 'rejects http:// (non-https)');
+assert_test(false === $wa_allow('https://evil.com/v21.0/12345'), 'rejects https://evil.com/...');
+assert_test(false === $wa_allow('https://graph.facebook.com.evil.com/x'), 'rejects suffix-spoof graph.facebook.com.evil.com');
+assert_test(false === $wa_allow('https://169.254.169.254/latest/meta-data/'), 'rejects link-local metadata IP (SSRF)');
 
 // ── Summary ─────────────────────────────────────────────────────────────────
 

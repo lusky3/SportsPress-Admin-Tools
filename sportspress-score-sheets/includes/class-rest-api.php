@@ -68,6 +68,25 @@ class SPSS_REST_API {
 				'permission_callback' => '__return_true',
 			)
 		);
+
+		// WhatsApp Cloud API (Meta, direct — no Twilio). GET is the one-time
+		// webhook verification handshake; POST delivers inbound messages.
+		register_rest_route(
+			self::NAMESPACE,
+			'/whatsapp',
+			array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => array( $this, 'handle_whatsapp_verify' ),
+					'permission_callback' => '__return_true',
+				),
+				array(
+					'methods'             => 'POST',
+					'callback'            => array( $this, 'handle_whatsapp' ),
+					'permission_callback' => '__return_true',
+				),
+			)
+		);
 	}
 
 	// ── Handlers ────────────────────────────────────────────────────────────
@@ -218,6 +237,186 @@ class SPSS_REST_API {
 	}
 
 	/**
+	 * WhatsApp Cloud API webhook verification (GET). Meta calls this once at setup
+	 * with hub.mode / hub.verify_token / hub.challenge query params (PHP rewrites
+	 * the dots to underscores). On a matching verify token, echo hub.challenge back
+	 * as the raw response body.
+	 *
+	 * @param WP_REST_Request $request Incoming REST request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function handle_whatsapp_verify( $request ) {
+		$expected  = (string) get_option( 'spss_whatsapp_verify_token', '' );
+		$mode      = (string) $request->get_param( 'hub_mode' );
+		$token     = (string) $request->get_param( 'hub_verify_token' );
+		$challenge = (string) $request->get_param( 'hub_challenge' );
+
+		if ( '' === $expected || 'subscribe' !== $mode || '' === $token || ! hash_equals( $expected, $token ) ) {
+			self::debug_log( 'whatsapp verify token mismatch' );
+			return new WP_Error( 'spss_whatsapp_verify_failed', __( 'Verification failed.', 'sportspress-score-sheets' ), array( 'status' => 403 ) );
+		}
+
+		return self::raw_response( $challenge, 'text/plain; charset=UTF-8' );
+	}
+
+	/**
+	 * WhatsApp Cloud API inbound webhook (POST). Auth is Meta's X-Hub-Signature-256
+	 * (HMAC-SHA256 of the raw body with the app secret). For each inbound image (or
+	 * image sent as a document), the media id is resolved to a short-lived Graph URL
+	 * and the bytes are downloaded with the access token, then funneled into the
+	 * shared pipeline. Always acks 200 so Meta does not retry (queue outcome is
+	 * handled out of band).
+	 *
+	 * @param WP_REST_Request $request Incoming REST request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function handle_whatsapp( $request ) {
+		$app_secret   = (string) get_option( 'spss_whatsapp_app_secret', '' );
+		$access_token = (string) get_option( 'spss_whatsapp_access_token', '' );
+		if ( '' === $app_secret || '' === $access_token ) {
+			// Permanent misconfiguration; ack 200 so Meta doesn't retry pointlessly.
+			return rest_ensure_response( array( 'status' => 'received' ) );
+		}
+
+		$raw       = $request->get_body();
+		$signature = (string) $request->get_header( 'x-hub-signature-256' );
+		$expected  = 'sha256=' . self::whatsapp_signature( $raw, $app_secret );
+		if ( '' === $signature || ! hash_equals( $expected, $signature ) ) {
+			self::debug_log( 'whatsapp signature mismatch' );
+			return new WP_Error( 'spss_invalid_signature', __( 'Invalid webhook signature.', 'sportspress-score-sheets' ), array( 'status' => 403 ) );
+		}
+
+		// Rate limit verified requests per sender.
+		if ( self::check_rate_limit( 'spss_rl_whatsapp_' . self::sender_key(), self::INGEST_RATE_LIMIT ) ) {
+			return new WP_Error( 'spss_rate_limited', __( 'Too many requests.', 'sportspress-score-sheets' ), array( 'status' => 429 ) );
+		}
+
+		$data    = json_decode( (string) $raw, true );
+		$version = self::whatsapp_graph_version();
+		if ( is_array( $data ) && ! empty( $data['entry'] ) && is_array( $data['entry'] ) ) {
+			foreach ( $data['entry'] as $entry ) {
+				$changes = ( is_array( $entry ) && ! empty( $entry['changes'] ) && is_array( $entry['changes'] ) ) ? $entry['changes'] : array();
+				foreach ( $changes as $change ) {
+					$messages = ( is_array( $change ) && isset( $change['value']['messages'] ) && is_array( $change['value']['messages'] ) ) ? $change['value']['messages'] : array();
+					foreach ( $messages as $message ) {
+						if ( ! is_array( $message ) ) {
+							continue;
+						}
+						$type  = isset( $message['type'] ) ? (string) $message['type'] : '';
+						$media = null;
+						if ( 'image' === $type && ! empty( $message['image']['id'] ) ) {
+							$media = (string) $message['image']['id'];
+						} elseif ( 'document' === $type && ! empty( $message['document']['id'] ) ) {
+							$media = (string) $message['document']['id'];
+						}
+						if ( null === $media ) {
+							continue;
+						}
+						$source_ref = isset( $message['id'] ) ? (string) $message['id'] : null;
+						self::fetch_and_ingest_whatsapp_media( $media, $access_token, $version, $source_ref );
+					}
+				}
+			}
+		}
+
+		// Meta only needs a prompt 2xx.
+		return rest_ensure_response( array( 'status' => 'received' ) );
+	}
+
+	/**
+	 * Resolve a WhatsApp media id to its short-lived Graph URL, download the bytes
+	 * with the access token, and funnel them into the ingest pipeline. Every fetch
+	 * is host-allowlisted to Meta domains so the access token is never forwarded
+	 * elsewhere (SSRF guard).
+	 *
+	 * @param string      $media_id     WhatsApp media id from the webhook payload.
+	 * @param string      $access_token Cloud API access token (sent as Bearer).
+	 * @param string      $version      Graph API version (e.g. 'v21.0').
+	 * @param string|null $source_ref   WhatsApp message id, for dedupe/audit.
+	 */
+	private static function fetch_and_ingest_whatsapp_media( $media_id, $access_token, $version, $source_ref ) {
+		// Step 1: media id -> metadata (including the short-lived download URL).
+		$graph_url = 'https://graph.facebook.com/' . rawurlencode( $version ) . '/' . rawurlencode( $media_id );
+		$meta_resp = wp_remote_get(
+			$graph_url,
+			array(
+				'timeout'     => 20,
+				'redirection' => 0,
+				'headers'     => array( 'Authorization' => 'Bearer ' . $access_token ),
+			)
+		);
+		if ( is_wp_error( $meta_resp ) ) {
+			self::debug_log( 'whatsapp media lookup failed: ' . $meta_resp->get_error_message() );
+			return;
+		}
+		$info = json_decode( (string) wp_remote_retrieve_body( $meta_resp ), true );
+		$url  = ( is_array( $info ) && ! empty( $info['url'] ) ) ? (string) $info['url'] : '';
+		if ( '' === $url || ! self::is_allowed_whatsapp_media_url( $url ) ) {
+			self::debug_log( 'whatsapp media url missing or host rejected' );
+			return;
+		}
+
+		// Step 2: download the bytes (Bearer required; the URL expires in ~5 min).
+		$dl = wp_remote_get(
+			$url,
+			array(
+				'timeout'     => 20,
+				'redirection' => 0,
+				'headers'     => array( 'Authorization' => 'Bearer ' . $access_token ),
+			)
+		);
+		if ( is_wp_error( $dl ) ) {
+			self::debug_log( 'whatsapp media download failed: ' . $dl->get_error_message() );
+			return;
+		}
+		$bytes = wp_remote_retrieve_body( $dl );
+		if ( '' === $bytes || strlen( $bytes ) > self::MAX_IMAGE_BYTES ) {
+			self::debug_log( 'whatsapp media empty or exceeds max size' );
+			return;
+		}
+
+		$mime = ( is_array( $info ) && ! empty( $info['mime_type'] ) ) ? (string) $info['mime_type'] : (string) wp_remote_retrieve_header( $dl, 'content-type' );
+		$ext  = self::ext_from_media_type( $mime );
+
+		$result = self::ingest_bytes( $bytes, 'whatsapp', $source_ref, $ext );
+		if ( is_wp_error( $result ) ) {
+			self::debug_log( 'whatsapp ingest error: ' . $result->get_error_code() );
+		}
+	}
+
+	/**
+	 * Whether a WhatsApp/Graph media URL is safe to fetch with the access token
+	 * attached. Requires https and a Meta-owned host (graph.facebook.com,
+	 * lookaside.fbsbx.com, *.fbcdn.net). SSRF / token-forwarding guard.
+	 *
+	 * @param string $url Candidate media URL.
+	 * @return bool
+	 */
+	private static function is_allowed_whatsapp_media_url( $url ): bool {
+		$parts = wp_parse_url( (string) $url );
+		if ( ! is_array( $parts ) ) {
+			return false;
+		}
+		$scheme = isset( $parts['scheme'] ) ? strtolower( (string) $parts['scheme'] ) : '';
+		$host   = isset( $parts['host'] ) ? strtolower( (string) $parts['host'] ) : '';
+		if ( 'https' !== $scheme || '' === $host ) {
+			return false;
+		}
+		return (bool) preg_match( '/(^|\.)(facebook\.com|fbcdn\.net|fbsbx\.com)$/i', $host );
+	}
+
+	/**
+	 * Configured Graph API version for WhatsApp media calls (e.g. 'v21.0').
+	 * Sanitized to the vNN.N shape; falls back to a sane default.
+	 *
+	 * @return string
+	 */
+	private static function whatsapp_graph_version() {
+		$version = (string) get_option( 'spss_whatsapp_graph_version', 'v21.0' );
+		return preg_match( '/^v\d+\.\d+$/', $version ) ? $version : 'v21.0';
+	}
+
+	/**
 	 * Whether a Twilio MMS media URL is safe to fetch with the account credentials
 	 * attached. Requires https and a host under twilio.com / twiliocdn.com. This is
 	 * the key control against SSRF / credential forwarding to an attacker host.
@@ -251,18 +450,33 @@ class SPSS_REST_API {
 	 * @return WP_REST_Response Empty TwiML document served as text/xml.
 	 */
 	private static function twiml_ack() {
-		$xml      = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
-		$response = new WP_REST_Response( $xml, 200 );
-		$response->header( 'Content-Type', 'text/xml; charset=UTF-8' );
+		return self::raw_response( '<?xml version="1.0" encoding="UTF-8"?><Response></Response>', 'text/xml; charset=UTF-8' );
+	}
+
+	/**
+	 * Return a WP_REST_Response whose raw body is emitted verbatim under the given
+	 * Content-Type. WP_REST_Response serializes its data as JSON by default, so a
+	 * one-shot rest_pre_serve_request filter short-circuits the serializer for this
+	 * exact response object. Used for TwiML (Twilio ack) and the plain-text
+	 * hub.challenge echo (WhatsApp webhook verification).
+	 *
+	 * @param string $body         Raw response body.
+	 * @param string $content_type Content-Type header value.
+	 * @return WP_REST_Response
+	 */
+	private static function raw_response( $body, $content_type ) {
+		$body     = (string) $body;
+		$response = new WP_REST_Response( $body, 200 );
+		$response->header( 'Content-Type', $content_type );
 
 		add_filter(
 			'rest_pre_serve_request',
-			static function ( $served, $result ) use ( $response, $xml ) {
+			static function ( $served, $result ) use ( $response, $body, $content_type ) {
 				if ( $result === $response ) {
 					if ( ! headers_sent() ) {
-						header( 'Content-Type: text/xml; charset=UTF-8' );
+						header( 'Content-Type: ' . $content_type );
 					}
-					echo $xml; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+					echo $body; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 					return true;
 				}
 				return $served;
@@ -287,6 +501,19 @@ class SPSS_REST_API {
 	 */
 	public static function ingest_signature( $timestamp, $raw, $secret ) {
 		return hash_hmac( 'sha256', $timestamp . '.' . $raw, $secret );
+	}
+
+	/**
+	 * WhatsApp Cloud API webhook signature: hex HMAC-SHA256 of the raw request body
+	 * keyed with the Meta app secret. The X-Hub-Signature-256 header value is
+	 * "sha256=" concatenated with this digest.
+	 *
+	 * @param string $raw        Raw request body.
+	 * @param string $app_secret Meta app secret.
+	 * @return string Lower-case hex digest.
+	 */
+	public static function whatsapp_signature( $raw, $app_secret ) {
+		return hash_hmac( 'sha256', (string) $raw, $app_secret );
 	}
 
 	/**
