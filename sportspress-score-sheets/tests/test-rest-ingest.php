@@ -157,9 +157,18 @@ if (!class_exists('WP_REST_Request')) {
 }
 if (!class_exists('SPSS_Ingest_Service')) {
     class SPSS_Ingest_Service {
-        // Configurable return value for accept_image (int sheet id or WP_Error).
+        // Shared size cap (single source of truth in the real class).
+        const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+        // Configurable return value for accept_image/accept_bytes (int sheet id or WP_Error).
         public static $result = 123;
         public static function accept_image(array $args) {
+            return self::$result;
+        }
+        // Mirrors the real accept_bytes: enforce the size cap, else defer to accept_image.
+        public static function accept_bytes($bytes, array $args) {
+            if (strlen($bytes) > self::MAX_IMAGE_BYTES) {
+                return new WP_Error('spss_image_too_large', 'Image exceeds the maximum allowed size.', array('status' => 413));
+            }
             return self::$result;
         }
     }

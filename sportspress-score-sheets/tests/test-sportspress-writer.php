@@ -154,6 +154,9 @@ function seed_fixture() {
     $mock_post_types[30] = 'sp_player';
     $mock_post_types[40] = 'sp_player';
     $mock_post_meta[30]['sp_number'] = '7';
+    // Roster membership: player 30 on home team 10, player 40 on away team 20.
+    $mock_post_meta[30]['sp_current_team'] = 10;
+    $mock_post_meta[40]['sp_current_team'] = 20;
     $mock_perf_ids       = array(1, 2, 3);
     $mock_post_names[1]  = 'g';
     $mock_post_names[2]  = 'a';
@@ -285,6 +288,40 @@ $writer->apply(100, array(
 assert_test(
     !isset($mock_post_meta[100]['sp_players'][10][555]),
     'a player id that is not an sp_player post is skipped'
+);
+
+// ── Player not rostered on the side's team is skipped (finding F9) ─────────
+// Player 40 is rostered on the away team (20), but the row claims the home
+// team (10). The roster-membership guard must skip it so its stats are never
+// mis-attributed to the wrong team.
+seed_fixture();
+$writer->apply(100, array(
+    'home_team_id' => 10,
+    'away_team_id' => 20,
+    'home_score'   => 0,
+    'away_score'   => 0,
+    'players'      => array(
+        array('team_id' => 10, 'player_id' => 40, 'stats' => array('g' => 3)), // 40 is on team 20
+    ),
+));
+assert_test(
+    !isset($mock_post_meta[100]['sp_players'][10][40]),
+    'a player whose sp_current_team != row team_id is not written'
+);
+// And correctly attributing player 40 to its own team (20) still writes.
+seed_fixture();
+$writer->apply(100, array(
+    'home_team_id' => 10,
+    'away_team_id' => 20,
+    'home_score'   => 0,
+    'away_score'   => 0,
+    'players'      => array(
+        array('team_id' => 20, 'player_id' => 40, 'stats' => array('g' => 3)),
+    ),
+));
+assert_test(
+    isset($mock_post_meta[100]['sp_players'][20][40]) && 3 === $mock_post_meta[100]['sp_players'][20][40]['g'],
+    'a player rostered on the row team_id is written'
 );
 
 // ── Overwrite, not accumulate (idempotent re-apply) ───────────────────────

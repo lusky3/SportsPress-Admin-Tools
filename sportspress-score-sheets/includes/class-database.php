@@ -202,6 +202,17 @@ class SPSS_Database {
 	}
 
 	/**
+	 * Total row count across all statuses (no WHERE). Mirrors count_by_status so
+	 * the unfiltered GET /sheets total is the full queue size, not just the page.
+	 *
+	 * @return int
+	 */
+	public static function count_all() {
+		global $wpdb;
+		return (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . self::table_name() ); // phpcs:ignore WordPress.DB
+	}
+
+	/**
 	 * Delete rows (and their source images) older than $days that are no longer
 	 * awaiting review. Confirmed rows keep a metadata-only audit trail but their
 	 * source images are removed at confirm time by the ingest service.

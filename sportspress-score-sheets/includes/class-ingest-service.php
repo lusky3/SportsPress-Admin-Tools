@@ -15,6 +15,52 @@ if ( ! defined( 'ABSPATH' ) ) {
 class SPSS_Ingest_Service {
 
 	/**
+	 * Hard cap on decoded image size (bytes). Single source of truth shared by
+	 * every intake path (dashboard upload + HMAC/Twilio/WhatsApp webhooks) so the
+	 * temp file a decoded image spools can never be unbounded.
+	 */
+	const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+
+	/**
+	 * Accept already-decoded image bytes from any channel: enforce the size cap,
+	 * spool to a temp file, funnel through accept_image(), and always clean up the
+	 * temp file. The shared core behind the dashboard upload and every webhook
+	 * intake path, so the size cap and temp-file plumbing live in exactly one place.
+	 *
+	 * @param string $bytes Decoded image bytes.
+	 * @param array  $args {
+	 *   @type string      $ext         Source extension hint (jpg|png|webp|heic|pdf).
+	 *   @type string      $channel     'upload'|'mms'|'whatsapp'|'webhook'|'email'.
+	 *   @type string|null $source_ref  External id (MMS SID / message id). Optional.
+	 *   @type int         $event_id    Pre-selected target event. Optional.
+	 *   @type int         $uploaded_by User id. Optional.
+	 * }
+	 * @return int|WP_Error Queue row id, or WP_Error (incl. 'spss_duplicate_sheet').
+	 */
+	public static function accept_bytes( string $bytes, array $args ) {
+		if ( strlen( $bytes ) > self::MAX_IMAGE_BYTES ) {
+			return new WP_Error( 'spss_image_too_large', __( 'Image exceeds the maximum allowed size.', 'sportspress-score-sheets' ), array( 'status' => 413 ) );
+		}
+
+		$tmp = wp_tempnam();
+		if ( ! $tmp ) {
+			return new WP_Error( 'spss_tmp_failed', __( 'Could not create a temp file.', 'sportspress-score-sheets' ), array( 'status' => 500 ) );
+		}
+
+		$written = file_put_contents( $tmp, $bytes ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+		if ( false === $written ) {
+			@unlink( $tmp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.unlink_unlink
+			return new WP_Error( 'spss_tmp_failed', __( 'Could not write the temp file.', 'sportspress-score-sheets' ), array( 'status' => 500 ) );
+		}
+
+		$result = self::accept_image( array_merge( $args, array( 'tmp_path' => $tmp ) ) );
+
+		@unlink( $tmp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.unlink_unlink
+
+		return $result;
+	}
+
+	/**
 	 * Accept an image from any channel and queue it for recognition.
 	 *
 	 * @param array $args {

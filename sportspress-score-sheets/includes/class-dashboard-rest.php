@@ -26,12 +26,6 @@ class SPSS_Dashboard_REST {
 
 	const NAMESPACE = 'spss/v1';
 
-	/**
-	 * Hard cap on decoded upload size (bytes). Mirrors the intake API's 15MB cap
-	 * so the dashboard path cannot spool an unbounded temp file either.
-	 */
-	const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
-
 	public function __construct() {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 	}
@@ -132,6 +126,18 @@ class SPSS_Dashboard_REST {
 
 		$sheets = SPSS_Database::get_sheets( $status, $limit, $offset );
 
+		// Prime post + meta caches for every referenced event once, so the per-row
+		// get_the_title() below doesn't fire ~2 queries each (N+1).
+		$event_ids = array();
+		foreach ( (array) $sheets as $sheet ) {
+			if ( $sheet->event_id ) {
+				$event_ids[] = (int) $sheet->event_id;
+			}
+		}
+		if ( $event_ids ) {
+			_prime_post_caches( array_values( array_unique( $event_ids ) ), true, true );
+		}
+
 		$data = array();
 		foreach ( (array) $sheets as $sheet ) {
 			$extracted   = json_decode( (string) $sheet->extracted_json, true );
@@ -154,7 +160,7 @@ class SPSS_Dashboard_REST {
 			);
 		}
 
-		$total = ( '' !== $status ) ? SPSS_Database::count_by_status( $status ) : count( $data );
+		$total = ( '' !== $status ) ? SPSS_Database::count_by_status( $status ) : SPSS_Database::count_all();
 
 		return new WP_REST_Response(
 			array(
@@ -246,26 +252,12 @@ class SPSS_Dashboard_REST {
 		if ( false === $bytes || '' === $bytes ) {
 			return new WP_Error( 'spss_bad_image', __( 'image_b64 is not valid base64.', 'sportspress-score-sheets' ), array( 'status' => 400 ) );
 		}
-		if ( strlen( $bytes ) > self::MAX_IMAGE_BYTES ) {
-			return new WP_Error( 'spss_image_too_large', __( 'Image exceeds the maximum allowed size.', 'sportspress-score-sheets' ), array( 'status' => 413 ) );
-		}
 
 		$ext      = isset( $body['ext'] ) ? sanitize_key( (string) $body['ext'] ) : 'jpg';
 		$event_id = isset( $body['event_id'] ) ? absint( $body['event_id'] ) : 0;
 
-		$tmp = wp_tempnam();
-		if ( ! $tmp ) {
-			return new WP_Error( 'spss_tmp_failed', __( 'Could not create a temp file.', 'sportspress-score-sheets' ), array( 'status' => 500 ) );
-		}
-
-		$written = file_put_contents( $tmp, $bytes ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
-		if ( false === $written ) {
-			@unlink( $tmp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.unlink_unlink
-			return new WP_Error( 'spss_tmp_failed', __( 'Could not write the temp file.', 'sportspress-score-sheets' ), array( 'status' => 500 ) );
-		}
-
+		// Size cap + temp-file plumbing live once in the shared ingest core.
 		$args = array(
-			'tmp_path'    => $tmp,
 			'ext'         => ( '' !== $ext ) ? $ext : 'jpg',
 			'channel'     => 'upload',
 			'uploaded_by' => get_current_user_id(),
@@ -274,9 +266,7 @@ class SPSS_Dashboard_REST {
 			$args['event_id'] = $event_id;
 		}
 
-		$result = SPSS_Ingest_Service::accept_image( $args );
-
-		@unlink( $tmp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.unlink_unlink
+		$result = SPSS_Ingest_Service::accept_bytes( $bytes, $args );
 
 		if ( is_wp_error( $result ) ) {
 			// A re-sent image is an expected, benign outcome — ack it as 200.
@@ -375,7 +365,17 @@ class SPSS_Dashboard_REST {
 
 		$event_ids = get_posts( $query_args );
 
-		$data = array();
+		// Prime the event post + meta caches so the per-event get_post_meta(sp_team)
+		// and get_the_title() calls below are served from cache, not ~2 queries each.
+		if ( $event_ids ) {
+			_prime_post_caches( array_map( 'intval', (array) $event_ids ), true, true );
+		}
+
+		// First pass: read each event's two team ids (get_post_meta is cache-served
+		// after priming) and prime the team posts too, so the title lookups in the
+		// build pass below don't each fire their own query (N+1).
+		$event_teams = array();
+		$team_ids    = array();
 		foreach ( (array) $event_ids as $event_id ) {
 			$event_id = (int) $event_id;
 			$teams    = array_values( array_filter( array_map( 'intval', (array) get_post_meta( $event_id, 'sp_team', false ) ) ) );
@@ -384,7 +384,16 @@ class SPSS_Dashboard_REST {
 			if ( 2 !== count( $teams ) ) {
 				continue;
 			}
+			$event_teams[ $event_id ] = $teams;
+			$team_ids[]               = $teams[0];
+			$team_ids[]               = $teams[1];
+		}
+		if ( $team_ids ) {
+			_prime_post_caches( array_values( array_unique( $team_ids ) ), true, true );
+		}
 
+		$data = array();
+		foreach ( $event_teams as $event_id => $teams ) {
 			$data[] = array(
 				'id'           => $event_id,
 				'title'        => (string) get_the_title( $event_id ),
@@ -396,7 +405,12 @@ class SPSS_Dashboard_REST {
 			);
 		}
 
-		return new WP_REST_Response( array( 'data' => $data ) );
+		return new WP_REST_Response(
+			array(
+				'data'  => $data,
+				'total' => count( $data ),
+			)
+		);
 	}
 
 	// ── Internals ─────────────────────────────────────────────────────────────
@@ -469,8 +483,12 @@ class SPSS_Dashboard_REST {
 				return 404;
 			case 'spss_not_reviewable':
 				return 409;
+			case 'spss_status_write_failed':
+				return 500;
 			default:
-				return 400;
+				// A DB-layer failure (spss_db_*) is a server fault, not a bad request;
+				// it is retryable, so surface it as 500 rather than 400.
+				return ( 0 === strpos( (string) $code, 'spss_db_' ) ) ? 500 : 400;
 		}
 	}
 }

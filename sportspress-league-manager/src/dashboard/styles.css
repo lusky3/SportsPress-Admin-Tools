@@ -765,3 +765,8 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: #1e293b; }
 @media (max-width: 782px) {
 	.splm-score-sheets__grid { grid-template-columns: 1fr; }
 }
+
+/* Score-sheet review: highlight player rows that carry a consistency flag. */
+.splm-row--flagged { background: #fffbeb; }
+.splm-row--flagged > td { border-top: 1px solid #fde68a; border-bottom: 1px solid #fde68a; }
+.splm-row__flag-note { color: #b45309; font-size: 0.75rem; margin-left: 0.4rem; white-space: nowrap; }
