@@ -157,6 +157,54 @@ class SPSS_Admin {
 			)
 		);
 
+		// WhatsApp Cloud API (Meta, direct). App secret + access token are secrets
+		// (masked); the verify token is an operator-chosen handshake nonce shown in
+		// plaintext so it can be copied into the Meta console; graph version is text.
+		register_setting(
+			self::SETTINGS_GROUP,
+			'spss_whatsapp_app_secret',
+			array(
+				'type' => 'string',
+				'sanitize_callback' => function ( $value ) {
+					return $this->preserve_masked_key( $value, 'spss_whatsapp_app_secret' );
+				},
+				'default' => '',
+				'autoload' => false,
+			)
+		);
+		register_setting(
+			self::SETTINGS_GROUP,
+			'spss_whatsapp_access_token',
+			array(
+				'type' => 'string',
+				'sanitize_callback' => function ( $value ) {
+					return $this->preserve_masked_key( $value, 'spss_whatsapp_access_token' );
+				},
+				'default' => '',
+				'autoload' => false,
+			)
+		);
+		register_setting(
+			self::SETTINGS_GROUP,
+			'spss_whatsapp_verify_token',
+			array(
+				'type' => 'string',
+				'sanitize_callback' => 'sanitize_text_field',
+				'default' => '',
+				'autoload' => false,
+			)
+		);
+		register_setting(
+			self::SETTINGS_GROUP,
+			'spss_whatsapp_graph_version',
+			array(
+				'type' => 'string',
+				'sanitize_callback' => 'sanitize_text_field',
+				'default' => 'v21.0',
+				'autoload' => false,
+			)
+		);
+
 		register_setting(
 			self::SETTINGS_GROUP,
 			'spss_retention_days',
@@ -348,6 +396,32 @@ class SPSS_Admin {
 					<tr>
 						<th scope="row"><label for="spss_twilio_auth_token"><?php esc_html_e( 'Twilio Auth Token', 'sportspress-score-sheets' ); ?></label></th>
 						<td><input type="password" name="spss_twilio_auth_token" id="spss_twilio_auth_token" class="regular-text" autocomplete="off" placeholder="<?php echo esc_attr( $this->masked( 'spss_twilio_auth_token' ) ); ?>" value="" /></td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'WhatsApp webhook URL (Meta)', 'sportspress-score-sheets' ); ?></th>
+						<td>
+							<code><?php echo esc_html( rest_url( 'spss/v1/whatsapp' ) ); ?></code>
+							<p class="description"><?php esc_html_e( 'Direct WhatsApp Cloud API (no Twilio). Set this as the Callback URL in the Meta app\'s WhatsApp webhook config, subscribe to the "messages" field, and use the verify token below.', 'sportspress-score-sheets' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="spss_whatsapp_verify_token"><?php esc_html_e( 'WhatsApp verify token', 'sportspress-score-sheets' ); ?></label></th>
+						<td>
+							<input type="text" name="spss_whatsapp_verify_token" id="spss_whatsapp_verify_token" class="regular-text" value="<?php echo esc_attr( get_option( 'spss_whatsapp_verify_token', '' ) ); ?>" />
+							<p class="description"><?php esc_html_e( 'Any string you choose; enter the same value in the Meta webhook config. Used only for the one-time verification handshake.', 'sportspress-score-sheets' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="spss_whatsapp_app_secret"><?php esc_html_e( 'WhatsApp app secret', 'sportspress-score-sheets' ); ?></label></th>
+						<td><input type="password" name="spss_whatsapp_app_secret" id="spss_whatsapp_app_secret" class="regular-text" autocomplete="off" placeholder="<?php echo esc_attr( $this->masked( 'spss_whatsapp_app_secret' ) ); ?>" value="" /><p class="description"><?php esc_html_e( 'Meta app secret — validates the X-Hub-Signature-256 on every inbound webhook.', 'sportspress-score-sheets' ); ?></p></td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="spss_whatsapp_access_token"><?php esc_html_e( 'WhatsApp access token', 'sportspress-score-sheets' ); ?></label></th>
+						<td><input type="password" name="spss_whatsapp_access_token" id="spss_whatsapp_access_token" class="regular-text" autocomplete="off" placeholder="<?php echo esc_attr( $this->masked( 'spss_whatsapp_access_token' ) ); ?>" value="" /><p class="description"><?php esc_html_e( 'Cloud API token (a permanent System User token is recommended) — used as the Bearer to download media.', 'sportspress-score-sheets' ); ?></p></td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="spss_whatsapp_graph_version"><?php esc_html_e( 'Graph API version', 'sportspress-score-sheets' ); ?></label></th>
+						<td><input type="text" name="spss_whatsapp_graph_version" id="spss_whatsapp_graph_version" class="small-text" value="<?php echo esc_attr( get_option( 'spss_whatsapp_graph_version', 'v21.0' ) ); ?>" placeholder="v21.0" /></td>
 					</tr>
 				</table>
 

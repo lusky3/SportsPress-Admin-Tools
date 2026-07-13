@@ -161,6 +161,52 @@ Let people text a photo of a score sheet to a Twilio number.
 - On a valid request, the plugin downloads the image from `MediaUrl0` and
   queues it as `channel=mms`, using the Twilio message SID as `source_ref`.
 
+> **WhatsApp via Twilio:** Twilio delivers inbound WhatsApp on this **same**
+> `/spss/v1/twilio` webhook (identical `MediaUrl0` + `X-Twilio-Signature`; only
+> `From`/`To` are `whatsapp:` addresses). Enable a WhatsApp sender on your Twilio
+> number and point it here — no extra setup. For a direct integration without
+> Twilio, use the Meta Cloud API below instead.
+
+## 4. WhatsApp — Meta Cloud API (direct)
+
+Receive score sheets over WhatsApp with no Twilio middleman, using Meta's
+WhatsApp Business (Cloud API).
+
+### Configure
+
+1. In the [Meta App Dashboard](https://developers.facebook.com/apps/), add the
+   **WhatsApp** product and note the **Phone Number ID**, a **permanent access
+   token** (a System User token is recommended), and the app **App Secret**
+   (App Settings → Basic).
+2. In WordPress at **Score Sheets → Settings → Remote intake**, fill in the
+   **WhatsApp app secret**, **access token**, a **verify token** (any string you
+   invent), and optionally the **Graph API version** (default `v21.0`).
+3. In the Meta app's **WhatsApp → Configuration → Webhook**, set the Callback URL
+   to:
+
+   ```
+   https://SITE/wp-json/spss/v1/whatsapp
+   ```
+
+   enter the **same verify token**, click **Verify and save**, then **subscribe
+   to the `messages` field**.
+
+### Validation & flow
+
+- **Verification (one-time):** Meta sends a `GET` with
+  `hub.mode`/`hub.verify_token`/`hub.challenge`; the plugin checks the verify
+  token (timing-safe) and echoes the challenge back as plain text.
+- **Inbound messages:** each `POST` is signed with `X-Hub-Signature-256`
+  (HMAC-SHA256 of the raw body with your app secret); the plugin validates it and
+  rejects mismatches with `403`. It always acks `200` on a valid request so Meta
+  does not retry.
+- For every inbound image (or image sent as a document), the plugin resolves the
+  media id to a short-lived Graph URL and downloads the bytes with your access
+  token — both requests are **host-restricted to Meta domains**
+  (`graph.facebook.com`, `lookaside.fbsbx.com`, `*.fbcdn.net`) so the token is
+  never forwarded elsewhere. Sheets queue as `channel=whatsapp`, using the
+  WhatsApp message id as `source_ref`.
+
 ---
 
 ## After intake

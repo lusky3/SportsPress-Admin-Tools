@@ -57,5 +57,9 @@ delete_option( 'spss_retention_days' );
 delete_option( 'spss_webhook_secret' );
 delete_option( 'spss_twilio_account_sid' );
 delete_option( 'spss_twilio_auth_token' );
+delete_option( 'spss_whatsapp_app_secret' );
+delete_option( 'spss_whatsapp_access_token' );
+delete_option( 'spss_whatsapp_verify_token' );
+delete_option( 'spss_whatsapp_graph_version' );
 
 wp_clear_scheduled_hook( 'spss_cleanup_old_sheets' );
