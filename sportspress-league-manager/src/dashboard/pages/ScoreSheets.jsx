@@ -62,6 +62,8 @@ function Queue( { onReview, onView, onToast } ) {
 	const [ loading, setLoading ] = useState( true );
 	const [ error, setError ] = useState( '' );
 	const [ uploading, setUploading ] = useState( false );
+	// Client-side sort of the fetched rows (no refetch). Default: newest first.
+	const [ sort, setSort ] = useState( { column: 'created_at', direction: 'desc' } );
 
 	const load = useCallback( () => {
 		setLoading( true );
@@ -92,6 +94,41 @@ function Queue( { onReview, onView, onToast } ) {
 			onToast( { message: err?.message || 'Upload failed', type: 'error' } );
 		}
 		setUploading( false );
+	};
+
+	// Toggle direction when re-clicking the active column; otherwise start ascending.
+	const toggleSort = ( column ) => {
+		setSort( ( prev ) => (
+			prev.column === column
+				? { column, direction: prev.direction === 'asc' ? 'desc' : 'asc' }
+				: { column, direction: 'asc' }
+		) );
+	};
+
+	// Sort a copy of the fetched rows — created_at by date, the rest by string.
+	const sortedSheets = [ ...sheets ].sort( ( a, b ) => {
+		const dir = sort.direction === 'asc' ? 1 : -1;
+		if ( sort.column === 'created_at' ) {
+			const at = Date.parse( a.created_at );
+			const bt = Date.parse( b.created_at );
+			if ( ! Number.isNaN( at ) && ! Number.isNaN( bt ) ) return ( at - bt ) * dir;
+			return String( a.created_at || '' ).localeCompare( String( b.created_at || '' ) ) * dir;
+		}
+		return String( a[ sort.column ] || '' ).localeCompare( String( b[ sort.column ] || '' ) ) * dir;
+	} );
+
+	// Render a keyboard-activatable, aria-sort-aware column header.
+	const sortableHeader = ( label, column ) => {
+		const active = sort.column === column;
+		const ariaSort = active ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none';
+		const caret = active ? ( sort.direction === 'asc' ? ' ▲' : ' ▼' ) : '';
+		return (
+			<th scope="col" aria-sort={ ariaSort }>
+				<button type="button" className="splm-sort-btn" onClick={ () => toggleSort( column ) }>
+					{ label }{ caret }
+				</button>
+			</th>
+		);
 	};
 
 	return (
@@ -125,28 +162,28 @@ function Queue( { onReview, onView, onToast } ) {
 			{ loading ? (
 				<div className="splm-loading">Loading sheets…</div>
 			) : sheets.length === 0 ? (
-				<p className="splm-empty">No score sheets found.</p>
+				<p className="splm-empty">No score sheets yet. Upload one above, or set up email / SMS / WhatsApp intake (see the plugin&apos;s remote-intake guide).</p>
 			) : (
 				<div className="splm-table-wrapper">
 					<table className="splm-table">
 						<thead>
 							<tr>
-								<th>Created</th>
-								<th>Channel</th>
-								<th>Status</th>
-								<th>Event</th>
-								<th>Flags</th>
-								<th></th>
+								{ sortableHeader( 'Created', 'created_at' ) }
+								{ sortableHeader( 'Channel', 'channel' ) }
+								{ sortableHeader( 'Status', 'status' ) }
+								{ sortableHeader( 'Event', 'event_title' ) }
+								<th scope="col">Flags</th>
+								<th scope="col"></th>
 							</tr>
 						</thead>
 						<tbody>
-							{ sheets.map( ( s ) => (
+							{ sortedSheets.map( ( s ) => (
 								<tr key={ s.id }>
 									<td>{ s.created_at }</td>
 									<td>{ s.channel || '—' }</td>
 									<td><StatusBadge status={ s.status } /></td>
 									<td>{ s.event_title || '—' }</td>
-									<td>{ s.flags_count > 0 ? s.flags_count : '' }</td>
+									<td className="splm-tabular">{ s.flags_count > 0 ? s.flags_count : '' }</td>
 									<td>
 										{ s.status === 'pending_review' ? (
 											<button className="splm-btn splm-btn--small splm-btn--primary" onClick={ () => onReview( s.id ) }>
@@ -311,6 +348,8 @@ function ReviewView( { id, season, readOnly, onBack, onToast } ) {
 		<div className="splm-score-sheets__review">
 			<button className="splm-btn" onClick={ onBack }>← Back to queue</button>
 
+			<h2 className="splm-score-sheets__review-heading">{ homeTeamName } vs { awayTeamName } — review</h2>
+
 			<p className="splm-score-sheets__meta">
 				<StatusBadge status={ detail.status } />
 				{ detail.channel && <span> · { detail.channel }</span> }
@@ -387,7 +426,7 @@ function ReviewView( { id, season, readOnly, onBack, onToast } ) {
 								<tr>
 									<th>{ homeTeamName } score</th>
 									<td>
-										<input type="number" min="0" className="splm-score-input" value={ homeScore }
+										<input type="number" min="0" className="splm-score-input splm-tabular" value={ homeScore }
 											onChange={ ( e ) => setHomeScore( toInt( e.target.value ) ) } disabled={ readOnly }
 											aria-label={ `${ homeTeamName } score` } />
 									</td>
@@ -395,7 +434,7 @@ function ReviewView( { id, season, readOnly, onBack, onToast } ) {
 								<tr>
 									<th>{ awayTeamName } score</th>
 									<td>
-										<input type="number" min="0" className="splm-score-input" value={ awayScore }
+										<input type="number" min="0" className="splm-score-input splm-tabular" value={ awayScore }
 											onChange={ ( e ) => setAwayScore( toInt( e.target.value ) ) } disabled={ readOnly }
 											aria-label={ `${ awayTeamName } score` } />
 									</td>
@@ -422,13 +461,13 @@ function ReviewView( { id, season, readOnly, onBack, onToast } ) {
 							<table className="splm-table">
 								<thead>
 									<tr>
-										<th>Side</th>
-										<th>Jersey</th>
-										<th>Player</th>
-										<th>G</th>
-										<th>A</th>
-										<th>PIM</th>
-										{ ! readOnly && <th></th> }
+										<th scope="col">Side</th>
+										<th scope="col">Jersey</th>
+										<th scope="col">Player</th>
+										<th scope="col">G</th>
+										<th scope="col">A</th>
+										<th scope="col">PIM</th>
+										{ ! readOnly && <th scope="col"></th> }
 									</tr>
 								</thead>
 								<tbody>
@@ -468,17 +507,17 @@ function ReviewView( { id, season, readOnly, onBack, onToast } ) {
 												</select>
 											</td>
 											<td>
-												<input type="number" min="0" className="splm-score-input" value={ r.g }
+												<input type="number" min="0" className="splm-score-input splm-tabular" value={ r.g }
 													onChange={ ( e ) => updateRow( r.key, 'g', toInt( e.target.value ) ) } disabled={ readOnly }
 													aria-label="Goals" />
 											</td>
 											<td>
-												<input type="number" min="0" className="splm-score-input" value={ r.a }
+												<input type="number" min="0" className="splm-score-input splm-tabular" value={ r.a }
 													onChange={ ( e ) => updateRow( r.key, 'a', toInt( e.target.value ) ) } disabled={ readOnly }
 													aria-label="Assists" />
 											</td>
 											<td>
-												<input type="number" min="0" className="splm-score-input" value={ r.pim }
+												<input type="number" min="0" className="splm-score-input splm-tabular" value={ r.pim }
 													onChange={ ( e ) => updateRow( r.key, 'pim', toInt( e.target.value ) ) } disabled={ readOnly }
 													aria-label="Penalty minutes" />
 											</td>
@@ -509,7 +548,7 @@ function ReviewView( { id, season, readOnly, onBack, onToast } ) {
 							<div className="splm-table-wrapper">
 								<table className="splm-table">
 									<thead>
-										<tr><th>Side</th><th>Goal</th><th>Scorer</th><th>Assist 1</th><th>Assist 2</th><th>Period</th></tr>
+										<tr><th scope="col">Side</th><th scope="col">Goal</th><th scope="col">Scorer</th><th scope="col">Assist 1</th><th scope="col">Assist 2</th><th scope="col">Period</th></tr>
 									</thead>
 									<tbody>
 										{ scoring.map( ( s, i ) => {
@@ -538,7 +577,7 @@ function ReviewView( { id, season, readOnly, onBack, onToast } ) {
 							<div className="splm-table-wrapper">
 								<table className="splm-table">
 									<thead>
-										<tr><th>Side</th><th>Player</th><th>Minutes</th><th>Period</th><th>Offense</th></tr>
+										<tr><th scope="col">Side</th><th scope="col">Player</th><th scope="col">Minutes</th><th scope="col">Period</th><th scope="col">Offense</th></tr>
 									</thead>
 									<tbody>
 										{ penalties.map( ( pen, i ) => {
