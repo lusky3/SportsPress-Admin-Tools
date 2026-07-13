@@ -9,6 +9,7 @@ const NAV_ITEMS = [
 	{ id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
 	{ id: 'schedule', label: 'Schedule', icon: 'schedule' },
 	{ id: 'scores', label: 'Scores', icon: 'scores' },
+	{ id: 'score-sheets', label: 'Sheets', icon: 'score-sheets' },
 	{ id: 'standings', label: 'Standings', icon: 'standings' },
 	{ id: 'rosters', label: 'Rosters', icon: 'rosters' },
 	{ id: 'payments', label: 'Payments', icon: 'payments' },
@@ -73,6 +74,7 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 	// season-setup, and the core SPLM/SP pages) stay gated on capability alone.
 	const capMap = {
 		scores: caps.canEnterScores && depPresent( 'events_manager' ),
+		'score-sheets': caps.canReviewScoreSheets && depPresent( 'score_sheets' ),
 		rosters: caps.canManageRosters,
 		payments: caps.canViewPayments && depPresent( 'woocommerce' ),
 		health: caps.canViewHealth,

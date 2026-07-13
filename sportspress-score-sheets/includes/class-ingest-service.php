@@ -246,6 +246,59 @@ class SPSS_Ingest_Service {
 	}
 
 	/**
+	 * Map reviewed score-sheet values to the confirmed payload consumed by
+	 * apply_confirmed() / SPSS_SportsPress_Writer::apply().
+	 *
+	 * Shared by the wp-admin review handler (SPSS_Review_Admin::handle_confirm)
+	 * and the dashboard REST confirm endpoint so both produce a byte-identical
+	 * payload. Teams are resolved from the event's sp_team meta server-side
+	 * (teams[0]=home, teams[1]=away); a caller's team ids are never trusted.
+	 * Player rows with a player_id <= 0 are write-ins and are skipped (their
+	 * goals still count in the team total, which comes from the final score).
+	 *
+	 * @param int    $event_id     Target event id.
+	 * @param mixed  $home_score   Home final score (coerced via absint; ''/null → 0).
+	 * @param mixed  $away_score   Away final score (coerced via absint; ''/null → 0).
+	 * @param string $ot_loss_side 'home'|'away'; anything else normalizes to ''.
+	 * @param array  $player_rows  Rows of [ side, player_id, g, a, pim ].
+	 * @return array Confirmed payload for SPSS_SportsPress_Writer::apply().
+	 */
+	public static function map_confirmed( int $event_id, $home_score, $away_score, string $ot_loss_side, array $player_rows ): array {
+		$teams   = $event_id ? array_values( array_filter( array_map( 'intval', (array) get_post_meta( $event_id, 'sp_team', false ) ) ) ) : array();
+		$home_id = $teams[0] ?? 0;
+		$away_id = $teams[1] ?? 0;
+
+		$players = array();
+		foreach ( $player_rows as $row ) {
+			$pid = isset( $row['player_id'] ) ? absint( $row['player_id'] ) : 0;
+			if ( ! $pid ) {
+				continue; // Write-in / skipped row.
+			}
+			$side      = ( isset( $row['side'] ) && 'away' === $row['side'] ) ? 'away' : 'home';
+			$team_id   = ( 'away' === $side ) ? $away_id : $home_id;
+			$players[] = array(
+				'team_id'   => $team_id,
+				'player_id' => $pid,
+				'stats'     => array(
+					'g'   => isset( $row['g'] ) && '' !== $row['g'] ? absint( $row['g'] ) : 0,
+					'a'   => isset( $row['a'] ) && '' !== $row['a'] ? absint( $row['a'] ) : 0,
+					'pim' => isset( $row['pim'] ) && '' !== $row['pim'] ? absint( $row['pim'] ) : 0,
+				),
+			);
+		}
+
+		return array(
+			'event_id'     => (int) $event_id,
+			'home_team_id' => $home_id,
+			'away_team_id' => $away_id,
+			'home_score'   => ( '' !== $home_score && null !== $home_score ) ? absint( $home_score ) : 0,
+			'away_score'   => ( '' !== $away_score && null !== $away_score ) ? absint( $away_score ) : 0,
+			'ot_loss_side' => in_array( $ot_loss_side, array( 'home', 'away' ), true ) ? $ot_loss_side : '',
+			'players'      => $players,
+		);
+	}
+
+	/**
 	 * Apply a reviewed+confirmed sheet to its SportsPress event. The ONLY path
 	 * that writes to SportsPress. Idempotent: guarded by a per-sheet lock and a
 	 * status check so a re-submitted confirm is a no-op.

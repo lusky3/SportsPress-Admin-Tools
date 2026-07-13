@@ -232,6 +232,9 @@ class SPLM_Dashboard_Frontend {
 					'canManageRosters'  => current_user_can( 'edit_others_sp_players' ),
 					'canViewPayments'   => current_user_can( 'edit_others_sp_players' ) || SPLM_Capabilities::can_manage(),
 					'canViewHealth'     => SPLM_Capabilities::can_manage(),
+					// Score-sheet review writes event results/player stats; gate on the
+					// same capability the score-sheets REST enforces (manage_options).
+					'canReviewScoreSheets' => current_user_can( 'manage_options' ),
 				),
 				// Graceful degradation: these flags MUST mirror the exact class_exists
 				// guards in SPLM_REST_API::register_delegated_routes() (and the spsg/v1
@@ -244,6 +247,10 @@ class SPLM_Dashboard_Frontend {
 					'events_manager'     => class_exists( 'SPEM_REST_API' ),
 					'player_tools'       => class_exists( 'SPPT_REST_API' ),
 					'schedule_generator' => class_exists( 'SPSG_REST_API' ),
+					// Score Sheets is an optional SPAT module; mirror the enabled-module
+					// check so the SPA hides the Sheets tab when it's off (its spss/v1
+					// REST only registers when the module is enabled).
+					'score_sheets'       => in_array( 'score_sheets', (array) get_option( 'spat_enabled_modules', array() ), true ),
 				),
 			)
 		);

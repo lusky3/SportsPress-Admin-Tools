@@ -247,3 +247,30 @@ export function importGamesPreview( file ) {
 export function importGames( games, seasonId ) {
 	return apiFetch( { path: '/splm/v1/games/import', method: 'POST', data: { games, season_id: seasonId } } );
 }
+
+// spss/v1 — Score Sheets. The queue is a { data, total } list (unwrapped);
+// single-sheet and confirm endpoints return their response as-is.
+export function fetchSheets( status = '' ) {
+	const params = status ? '?status=' + encodeURIComponent( status ) : '';
+	return apiFetch( { path: `/spss/v1/sheets${ params }` } ).then( unwrapList );
+}
+
+export function fetchSheet( id ) {
+	return apiFetch( { path: `/spss/v1/sheets/${ id }` } );
+}
+
+export function fetchScoreSheetEvents( season = '' ) {
+	const params = season ? '?season=' + encodeURIComponent( season ) : '';
+	return apiFetch( { path: `/spss/v1/events${ params }` } ).then( unwrapList );
+}
+
+export function uploadSheet( { image_b64, ext, event_id } = {} ) {
+	const data = { image_b64 };
+	if ( ext ) data.ext = ext;
+	if ( event_id ) data.event_id = event_id;
+	return apiFetch( { path: '/spss/v1/sheets', method: 'POST', data } );
+}
+
+export function confirmSheet( id, payload ) {
+	return apiFetch( { path: `/spss/v1/sheets/${ id }/confirm`, method: 'POST', data: payload } );
+}

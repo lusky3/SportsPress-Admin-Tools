@@ -298,39 +298,16 @@ class SPSS_Review_Admin {
 		check_admin_referer( 'spss_confirm_sheet_' . $sheet_id, 'spss_confirm_nonce' );
 
 		$event_id = isset( $_POST['event_id'] ) ? absint( $_POST['event_id'] ) : 0;
-		$teams    = $event_id ? array_values( array_filter( array_map( 'intval', (array) get_post_meta( $event_id, 'sp_team', false ) ) ) ) : array();
-		$home_id  = $teams[0] ?? 0;
-		$away_id  = $teams[1] ?? 0;
 
-		$players_raw = isset( $_POST['players'] ) && is_array( $_POST['players'] ) ? wp_unslash( $_POST['players'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-		$players     = array();
-		foreach ( $players_raw as $row ) {
-			$pid = isset( $row['player_id'] ) ? absint( $row['player_id'] ) : 0;
-			if ( ! $pid ) {
-				continue; // skipped row
-			}
-			$side     = ( isset( $row['side'] ) && 'away' === $row['side'] ) ? 'away' : 'home';
-			$team_id  = ( 'away' === $side ) ? $away_id : $home_id;
-			$players[] = array(
-				'team_id'   => $team_id,
-				'player_id' => $pid,
-				'stats'     => array(
-					'g'   => isset( $row['g'] ) && '' !== $row['g'] ? absint( $row['g'] ) : 0,
-					'a'   => isset( $row['a'] ) && '' !== $row['a'] ? absint( $row['a'] ) : 0,
-					'pim' => isset( $row['pim'] ) && '' !== $row['pim'] ? absint( $row['pim'] ) : 0,
-				),
-			);
-		}
+		// Read the reviewed values from POST, then delegate the mapping to the
+		// shared helper so this path and the dashboard REST confirm endpoint
+		// produce a byte-identical confirmed payload (teams resolved server-side).
+		$players_raw  = isset( $_POST['players'] ) && is_array( $_POST['players'] ) ? wp_unslash( $_POST['players'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$home_score   = isset( $_POST['home_score'] ) ? sanitize_text_field( wp_unslash( $_POST['home_score'] ) ) : '';
+		$away_score   = isset( $_POST['away_score'] ) ? sanitize_text_field( wp_unslash( $_POST['away_score'] ) ) : '';
+		$ot_loss_side = isset( $_POST['ot_loss_side'] ) ? sanitize_key( wp_unslash( $_POST['ot_loss_side'] ) ) : '';
 
-		$confirmed = array(
-			'event_id'     => $event_id,
-			'home_team_id' => $home_id,
-			'away_team_id' => $away_id,
-			'home_score'   => isset( $_POST['home_score'] ) && '' !== $_POST['home_score'] ? absint( $_POST['home_score'] ) : 0,
-			'away_score'   => isset( $_POST['away_score'] ) && '' !== $_POST['away_score'] ? absint( $_POST['away_score'] ) : 0,
-			'ot_loss_side' => ( isset( $_POST['ot_loss_side'] ) && in_array( $_POST['ot_loss_side'], array( 'home', 'away' ), true ) ) ? sanitize_key( wp_unslash( $_POST['ot_loss_side'] ) ) : '',
-			'players'      => $players,
-		);
+		$confirmed = SPSS_Ingest_Service::map_confirmed( $event_id, $home_score, $away_score, $ot_loss_side, $players_raw );
 
 		$result   = SPSS_Ingest_Service::apply_confirmed( $sheet_id, $confirmed );
 		$queue_url = admin_url( 'admin.php?page=' . SPSS_Admin::MENU_SLUG );
