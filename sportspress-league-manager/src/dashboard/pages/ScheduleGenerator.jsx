@@ -82,13 +82,13 @@ function VenueSel({venues,selected,onLoad,onChange}) {
 	);
 }
 
-function SLLoad({items,onLoad,value,onChange}) {
+function SLLoad({items,onLoad,value,onChange,label}) {
 	const loadedRef = useRef(false);
 	useEffect(() => {
 		if (!loadedRef.current && !items.length) { loadedRef.current = true; onLoad(); }
 	}, [items.length, onLoad]);
 	return (
-		<select className="splm-select" value={value} onChange={e=>onChange(e.target.value)}>
+		<select className="splm-select" aria-label={label} value={value} onChange={e=>onChange(e.target.value)}>
 			<option value="">Select…</option>
 			{items.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
 		</select>
@@ -587,7 +587,7 @@ export default function ScheduleGenerator() {
 							<button className="splm-btn" onClick={addDiv}>Add Division</button>
 							<button className="splm-btn" onClick={doImport}>{spL.length?'Import Selected':'Import from SportsPress'}</button>
 							{spL.length>0&&<>
-								<select className="splm-select" value={importLg} onChange={e=>setImportLg(e.target.value)}><option value="">Pick a league…</option>{spL.filter(l=>l.name.toUpperCase()!=='ALL').map(l=><option key={l.id} value={l.id}>{l.name} ({l.teams?.length||0})</option>)}</select>
+								<select className="splm-select" aria-label="League to import" value={importLg} onChange={e=>setImportLg(e.target.value)}><option value="">Pick a league…</option>{spL.filter(l=>l.name.toUpperCase()!=='ALL').map(l=><option key={l.id} value={l.id}>{l.name} ({l.teams?.length||0})</option>)}</select>
 								{/* #2: Import All always visible once leagues loaded */}
 								<button className="splm-btn" title="Import each league as a separate division" onClick={()=>{
 									const newDivs = spL.filter(l => l.teams?.length && l.name.toUpperCase()!=='ALL' && !cfg.divisions.some(d=>d.name===l.name))
@@ -651,7 +651,7 @@ export default function ScheduleGenerator() {
 									<button className="splm-btn" onClick={()=>addTeam(div.id,true)}>Add TBD</button>
 									{/* #4: per-division SP team loading */}
 									{spL.length>0&&(
-										<select className="splm-select" style={{width:140}} value="" onChange={async e=>{
+										<select className="splm-select" style={{width:140}} value="" aria-label="Load teams from SportsPress" onChange={async e=>{
 											if(!e.target.value) return;
 											const teams = await spsg.getLeagueTeams(e.target.value).catch(()=>[]);
 											const existing = new Set(div.teams.map(t=>t.name));
@@ -810,7 +810,7 @@ export default function ScheduleGenerator() {
 									{(csvParsed.csv_venues||[]).map(v=>(
 										<div key={v} style={{display:'flex',gap:'0.5rem',alignItems:'center',marginBottom:'0.25rem'}}>
 											<span style={{minWidth:150}}>{v}</span>
-											<select className="splm-select" value={csvMapping[v]||''} onChange={e=>setCsvMapping(m=>({...m,[v]:e.target.value}))}>
+											<select className="splm-select" aria-label={`Map ${v} to SportsPress venue`} value={csvMapping[v]||''} onChange={e=>setCsvMapping(m=>({...m,[v]:e.target.value}))}>
 												<option value="">Skip</option>
 												{(csvParsed.sp_venues||[]).map(sv=><option key={sv.id} value={sv.id}>{sv.name}</option>)}
 												<option value="__new__">Create new venue</option>
@@ -887,7 +887,7 @@ export default function ScheduleGenerator() {
 							{cfg.divisions.flatMap(d=>d.teams).map(t=>(
 								<div key={t.id} style={{display:'flex',gap:'0.5rem',alignItems:'center',marginBottom:'0.25rem'}}>
 									<span style={{minWidth:120}}>{t.name}</span>
-									<select className="splm-select" value={cfg.advanced.venue_prefs[t.id]||''}
+									<select className="splm-select" aria-label={`Home venue preference for ${t.name}`} value={cfg.advanced.venue_prefs[t.id]||''}
 										onChange={e=>up({advanced:{...cfg.advanced,venue_prefs:{...cfg.advanced.venue_prefs,[t.id]:e.target.value}}})}>
 										<option value="">Any</option>
 										{spV.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
@@ -921,15 +921,15 @@ export default function ScheduleGenerator() {
 						<h3>Schedule Preview ({schedule.games?.length||0} games)</h3>
 						{/* #8: Preview filters — division, team, venue, date range */}
 						<div style={{display:'flex',gap:'0.5rem',flexWrap:'wrap',marginBottom:'0.5rem'}}>
-							<select className="splm-select" value={divF} onChange={e=>setDivF(e.target.value)}>
+							<select className="splm-select" aria-label="Filter by division" value={divF} onChange={e=>setDivF(e.target.value)}>
 								<option value="">All Divisions</option>
 								{divisionOptions.map(d=><option key={d} value={d}>{d}</option>)}
 							</select>
-							<select className="splm-select" value={previewFilters?.team||''} onChange={e=>setPreviewFilters(f=>({...f,team:e.target.value}))}>
+							<select className="splm-select" aria-label="Filter by team" value={previewFilters?.team||''} onChange={e=>setPreviewFilters(f=>({...f,team:e.target.value}))}>
 								<option value="">All Teams</option>
 								{teamOptions.map(t=><option key={t} value={t}>{t}</option>)}
 							</select>
-							<select className="splm-select" value={previewFilters?.venue||''} onChange={e=>setPreviewFilters(f=>({...f,venue:e.target.value}))}>
+							<select className="splm-select" aria-label="Filter by venue" value={previewFilters?.venue||''} onChange={e=>setPreviewFilters(f=>({...f,venue:e.target.value}))}>
 								<option value="">All Venues</option>
 								{venueOptions.map(v=><option key={v} value={v}>{v}</option>)}
 							</select>
@@ -968,7 +968,7 @@ export default function ScheduleGenerator() {
 								const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=fname;a.click();URL.revokeObjectURL(a.href);
 							}}>Export CSV</button>
 							{/* #9: XLSX style selector */}
-							<select className="splm-select" style={{width:120}} value={xlsxStyle} onChange={e=>setXlsxStyle(e.target.value)}>
+							<select className="splm-select" style={{width:120}} aria-label="XLSX export style" value={xlsxStyle} onChange={e=>setXlsxStyle(e.target.value)}>
 								<option value="detailed">XLSX Detailed</option>
 								<option value="compact">XLSX Compact</option>
 							</select>
@@ -1041,8 +1041,8 @@ export default function ScheduleGenerator() {
 					<div className="splm-card" style={{marginTop:'0.75rem'}}>
 						<h4>Publish to SportsPress</h4>
 						<div style={{display:'grid',gridTemplateColumns:'1fr 1fr auto',gap:'0.75rem',alignItems:'end'}}>
-							<div><label>Season</label><SLLoad items={spS} onLoad={()=>spsg.getSeasons().then(setSpS)} value={pubSeason} onChange={setPubSeason}/></div>
-							<div><label>League</label><SLLoad items={spL} onLoad={()=>spsg.getLeagues().then(setSpL)} value={pubLeague} onChange={setPubLeague}/></div>
+							<div><label>Season</label><SLLoad label="Season" items={spS} onLoad={()=>spsg.getSeasons().then(setSpS)} value={pubSeason} onChange={setPubSeason}/></div>
+							<div><label>League</label><SLLoad label="League" items={spL} onLoad={()=>spsg.getLeagues().then(setSpL)} value={pubLeague} onChange={setPubLeague}/></div>
 							<button className="splm-btn splm-btn--primary" onClick={()=>{ if(pubOpts.dry_run||window.confirm(`Publish ${schedule.games?.length||0} events to SportsPress?`)) doPub(); }} disabled={publishing||!pubSeason||!pubLeague}>{publishing?'Publishing…':pubOpts.dry_run?'Dry Run':'Publish'}</button>
 						</div>
 						<details style={{marginTop:'0.5rem'}}>
@@ -1078,7 +1078,7 @@ export default function ScheduleGenerator() {
 							{placeholders.map(ph=>(
 								<div key={ph.id} style={{display:'flex',gap:'0.5rem',alignItems:'center',marginBottom:'0.5rem'}}>
 									<span style={{minWidth:120}}><span className="splm-badge splm-badge--warning">TBD</span> {ph.name}</span>
-									<select className="splm-select" value={replaceMap[ph.id]||''} onChange={e=>setReplaceMap(m=>({...m,[ph.id]:e.target.value}))}>
+									<select className="splm-select" aria-label={`Assign real team for ${ph.name}`} value={replaceMap[ph.id]||''} onChange={e=>setReplaceMap(m=>({...m,[ph.id]:e.target.value}))}>
 										<option value="">Assign real team…</option>
 										{spTeams.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
 									</select>
@@ -1119,14 +1119,14 @@ export default function ScheduleGenerator() {
 					<div style={{display:'grid',gridTemplateColumns:'1fr 1fr auto',gap:'0.75rem',alignItems:'end'}}>
 						<div>
 							<label>From Season</label>
-							<select className="splm-select" value={rFrom} onChange={e=>setRFrom(e.target.value)}>
+							<select className="splm-select" aria-label="From season" value={rFrom} onChange={e=>setRFrom(e.target.value)}>
 								<option value="">Select…</option>
 								{rSeasons.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
 							</select>
 						</div>
 						<div>
 							<label>To Season</label>
-							<select className="splm-select" value={rTo} onChange={e=>setRTo(e.target.value)}>
+							<select className="splm-select" aria-label="To season" value={rTo} onChange={e=>setRTo(e.target.value)}>
 								<option value="">Select…</option>
 								{rSeasons.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
 							</select>

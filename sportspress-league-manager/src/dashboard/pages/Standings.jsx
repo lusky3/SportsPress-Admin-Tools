@@ -80,7 +80,7 @@ export default function Standings( { season } ) {
 			) }
 			{ genModal && (
 				<div className="splm-card" style={ { marginTop: '1rem' } }>
-					<select className="splm-select" value={ genLeague } onChange={ ( e ) => setGenLeague( e.target.value ) }>
+					<select className="splm-select" value={ genLeague } onChange={ ( e ) => setGenLeague( e.target.value ) } aria-label="Select division">
 						<option value="">Select division...</option>
 						{ leagues.map( ( l ) => <option key={ l.id } value={ l.id }>{ l.name }</option> ) }
 					</select>
