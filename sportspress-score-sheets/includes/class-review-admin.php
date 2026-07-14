@@ -27,7 +27,7 @@ class SPSS_Review_Admin {
 			SPSS_Admin::MENU_SLUG,
 			__( 'Review Sheet', 'sportspress-score-sheets' ),
 			__( 'Review Sheet', 'sportspress-score-sheets' ),
-			'manage_options',
+			'manage_sportspress',
 			self::PAGE_SLUG,
 			array( $this, 'render' )
 		);
@@ -42,7 +42,7 @@ class SPSS_Review_Admin {
 	}
 
 	public function render() {
-		if ( ! current_user_can( 'manage_options' ) ) {
+		if ( ! current_user_can( 'manage_sportspress' ) ) {
 			return;
 		}
 		$sheet_id = isset( $_GET['sheet_id'] ) ? absint( $_GET['sheet_id'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
@@ -291,7 +291,7 @@ class SPSS_Review_Admin {
 	}
 
 	public function handle_confirm() {
-		if ( ! current_user_can( 'manage_options' ) ) {
+		if ( ! current_user_can( 'manage_sportspress' ) ) {
 			wp_die( esc_html__( 'Unauthorized', 'sportspress-score-sheets' ), '', array( 'response' => 403 ) );
 		}
 		$sheet_id = isset( $_POST['sheet_id'] ) ? absint( $_POST['sheet_id'] ) : 0;
