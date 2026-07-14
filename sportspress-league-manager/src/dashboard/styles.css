@@ -484,6 +484,8 @@
 .splm-table td { padding: 0.5rem; border-bottom: 1px solid var(--splm-surface-muted); }
 .splm-table__team { font-weight: 500; }
 .splm-table__pts { font-weight: 700; color: var(--splm-primary); }
+/* Roster "Notes" button when the player has notes on file. */
+.splm-btn--has-notes { border-color: var(--splm-primary); color: var(--splm-primary); font-weight: 600; }
 .splm-table__team-link { color: var(--splm-primary); text-decoration: none; }
 .splm-table__team-link:hover { text-decoration: underline; }
 .splm-standings__group { margin-top: 1.25rem; }

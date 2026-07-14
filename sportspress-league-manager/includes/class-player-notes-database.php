@@ -70,6 +70,37 @@ class SPLM_Player_Notes_Database {
 	}
 
 	/**
+	 * Count active (non-deleted) notes for a set of players in one query, so the
+	 * roster view can flag which players have notes without N per-row requests.
+	 *
+	 * @param int[] $player_ids Player post IDs.
+	 * @return array<int,int> Map of player_id => note count (players with 0 omitted).
+	 */
+	public static function count_by_players( array $player_ids ) {
+		global $wpdb;
+		$player_ids = array_values( array_unique( array_filter( array_map( 'absint', $player_ids ) ) ) );
+		if ( empty( $player_ids ) ) {
+			return array();
+		}
+		$table        = self::table_name();
+		$placeholders = implode( ',', array_fill( 0, count( $player_ids ), '%d' ) );
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is internal; placeholders are %d.
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT player_id, COUNT(*) AS c FROM {$table}
+				 WHERE is_deleted = 0 AND player_id IN ($placeholders)
+				 GROUP BY player_id",
+				$player_ids
+			)
+		);
+		$out = array();
+		foreach ( (array) $rows as $r ) {
+			$out[ (int) $r->player_id ] = (int) $r->c;
+		}
+		return $out;
+	}
+
+	/**
 	 * Get a single note by ID.
 	 *
 	 * @param int $note_id Note ID.

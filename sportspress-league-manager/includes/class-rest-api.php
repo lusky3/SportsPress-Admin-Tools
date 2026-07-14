@@ -3569,6 +3569,22 @@ class SPLM_REST_API {
 		// --- Notes routes (always registered — owned by SPLM, never delegated) ---
 		register_rest_route(
 			self::REST_NAMESPACE,
+			'/notes/counts',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_note_counts' ),
+				'permission_callback' => array( $this, 'check_notes_permission' ),
+				'args'                => array(
+					'player_ids' => array(
+						'type'              => 'string',
+						'required'          => true,
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+				),
+			)
+		);
+		register_rest_route(
+			self::REST_NAMESPACE,
 			'/notes',
 			array(
 				array(
@@ -3668,6 +3684,22 @@ class SPLM_REST_API {
 	private function notes_module_enabled() {
 		$enabled = get_option( 'spat_enabled_modules', array() );
 		return is_array( $enabled ) && in_array( 'league_player_notes', $enabled, true );
+	}
+
+	/**
+	 * GET /notes/counts — active note counts for a set of players (roster
+	 * indicator). Returns { counts: { player_id: n, ... } }; players with no
+	 * notes are omitted. Returns empty (not 503) when the module is disabled so
+	 * the roster view degrades to simply showing no indicators.
+	 */
+	public function get_note_counts( $request ) {
+		if ( ! $this->notes_module_enabled() ) {
+			return new WP_REST_Response( array( 'counts' => (object) array() ), 200 );
+		}
+		$raw = (string) $request->get_param( 'player_ids' );
+		$ids = array_filter( array_map( 'absint', explode( ',', $raw ) ) );
+		$counts = SPLM_Player_Notes_Database::count_by_players( $ids );
+		return new WP_REST_Response( array( 'counts' => (object) $counts ), 200 );
 	}
 
 	/**
