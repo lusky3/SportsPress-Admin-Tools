@@ -126,6 +126,7 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 							className="splm-select splm-header__season-select"
 							value={ season }
 							onChange={ ( e ) => onSeasonChange( e.target.value ) }
+							aria-label="Filter by season"
 						>
 							<option value="">All Seasons</option>
 							{ seasons.map( ( s ) => (

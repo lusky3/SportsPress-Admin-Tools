@@ -15,6 +15,13 @@ class SPLM_Dashboard_Frontend {
 		add_filter( 'theme_page_templates', array( $this, 'register_template' ) );
 		add_filter( 'template_include', array( $this, 'load_template' ) );
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+		// Isolate the standalone dashboard from the active theme's front-end CSS.
+		// The template renders wp_head()/wp_footer() (needed for our own bundle),
+		// which also pulls in the theme stylesheet — whose generic table/typography
+		// rules (e.g. `th{background:#f4f4f4}`, `td{color:#222}`) bleed into the
+		// dashboard and break contrast in dark mode. Runs late (priority 100) so it
+		// dequeues after the theme has registered its styles.
+		add_action( 'wp_enqueue_scripts', array( $this, 'dequeue_theme_styles' ), 100 );
 		// F15: enforce auth at template_redirect (priority 1) — earlier than
 		// template_include, before any output, and emit nocache_headers().
 		add_action( 'template_redirect', array( $this, 'enforce_template_auth' ), 1 );
@@ -34,6 +41,13 @@ class SPLM_Dashboard_Frontend {
 			return;
 		}
 
+		// This is a standalone, chrome-free interface (see the template docblock).
+		// The WP admin bar would otherwise leak onto the page — it injects core
+		// markup with its own a11y issues (e.g. the low-contrast #adminbar-search
+		// field) that we neither own nor style. Suppress it here so the page is
+		// truly standalone.
+		add_filter( 'show_admin_bar', '__return_false' );
+
 		nocache_headers();
 
 		if ( ! is_user_logged_in() ) {
@@ -44,6 +58,36 @@ class SPLM_Dashboard_Frontend {
 		if ( ! SPLM_Capabilities::can_read() ) {
 			wp_safe_redirect( home_url() );
 			exit;
+		}
+	}
+
+	/**
+	 * Remove theme-origin stylesheets on the standalone dashboard page so only
+	 * the dashboard's own design system applies. Core/plugin styles are left
+	 * intact; only stylesheets served from the parent/child theme directories
+	 * are dequeued.
+	 */
+	public function dequeue_theme_styles() {
+		if ( ! is_page() || 'template-league-dashboard.php' !== get_page_template_slug() ) {
+			return;
+		}
+		global $wp_styles;
+		if ( ! ( $wp_styles instanceof WP_Styles ) ) {
+			return;
+		}
+		$theme_uris = array_unique(
+			array( get_template_directory_uri(), get_stylesheet_directory_uri() )
+		);
+		foreach ( $wp_styles->registered as $handle => $style ) {
+			if ( empty( $style->src ) || 'splm-dashboard' === $handle ) {
+				continue;
+			}
+			foreach ( $theme_uris as $uri ) {
+				if ( false !== strpos( $style->src, $uri ) ) {
+					wp_dequeue_style( $handle );
+					break;
+				}
+			}
 		}
 	}
 

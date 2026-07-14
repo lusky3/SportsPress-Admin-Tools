@@ -2064,9 +2064,13 @@ class SPLM_REST_API {
 				// with the payments capability (same gate as the payment/role
 				// branches below); score-keepers still get the action/season feed
 				// with the name redacted rather than leaking registrant identities.
-				$description = $can_see_sensitive
-					? sprintf( '%s — %s (%s)', $r->customer_name, $r->action, $r->season )
-					: sprintf( '%s (%s)', $r->action, $r->season );
+				// Registration-log actions are stored as machine codes
+				// (e.g. "player_found_by_name"). Present them as human-readable
+				// sentence case ("Player found by name") in the activity feed.
+				$action_label = ucfirst( str_replace( '_', ' ', (string) $r->action ) );
+				$description   = $can_see_sensitive
+					? sprintf( '%s — %s (%s)', $r->customer_name, $action_label, $r->season )
+					: sprintf( '%s (%s)', $action_label, $r->season );
 				$items[] = array(
 					'timestamp'   => $r->timestamp,
 					'type'        => 'registration',

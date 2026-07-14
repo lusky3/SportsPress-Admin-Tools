@@ -159,6 +159,11 @@
 .splm-dashboard-body {
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 	background: var(--splm-bg);
+	/* A11y: set the base text color from the token so any element that does not
+	   set its own color inherits a theme-aware color. Without this, un-colored
+	   text falls back to the UA default (black) — invisible on dark surfaces in
+	   dark mode (team names, activity descriptions, etc. read dark-on-dark). */
+	color: var(--splm-text);
 	/* UI-2/UX-21: dvh (not vh) and let content define height; flex column below
 	   so the footer/nav size themselves instead of a magic-number calc(). */
 	min-height: 100dvh;
@@ -338,7 +343,7 @@
 	align-items: center;
 	font-size: 0.85rem;
 }
-.splm-alert--warning { background: var(--splm-warning-bg); border: 1px solid var(--splm-warning-border); }
+.splm-alert--warning { background: var(--splm-warning-bg); border: 1px solid var(--splm-warning-border); color: var(--splm-warning-text); }
 /* UI-7: success alert variant. */
 .splm-alert--success { background: var(--splm-success-bg); border: 1px solid var(--splm-success); color: var(--splm-success-text-strong); }
 /* UI-14: error alert variant (replaces inline #fcf0f0/#d63638). */
@@ -441,7 +446,9 @@
 .splm-score-entry__teams { display: flex; align-items: center; justify-content: center; gap: 1rem; }
 .splm-score-entry__team { text-align: center; }
 .splm-score-entry__team-name { display: block; font-weight: 600; margin-bottom: 0.75rem; font-size: 0.9rem; }
-.splm-score-entry__vs { font-size: 1.2rem; color: var(--splm-text-faint); font-weight: 600; }
+/* A11y: --splm-text-faint is decorative (~2.6:1 light) and failed contrast on
+   the "vs" separator. Use --splm-muted, which is AA on all surfaces. */
+.splm-score-entry__vs { font-size: 1.2rem; color: var(--splm-muted); font-weight: 600; }
 .splm-score-entry__controls { display: flex; align-items: center; gap: 0.75rem; }
 .splm-score-entry__value { font-size: 2.5rem; font-weight: 700; min-width: 2ch; }
 .splm-score-btn {
@@ -463,7 +470,11 @@
 
 /* Standings table */
 .splm-table-wrapper { overflow-x: auto; }
-.splm-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+/* Set an explicit surface background + text color so the dashboard's tables are
+   not at the mercy of a host theme's generic `table { background; color }` rules
+   (which otherwise bleed in via wp_head and break contrast in dark mode). The
+   `.splm-table` class outranks a bare `table` selector, so this wins. */
+.splm-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; background: var(--splm-surface); color: var(--splm-text); }
 .splm-table th { text-align: left; padding: 0.5rem; border-bottom: 2px solid var(--splm-border-light); font-weight: 600; color: var(--splm-text-secondary); }
 .splm-table td { padding: 0.5rem; border-bottom: 1px solid var(--splm-surface-muted); }
 .splm-table__team { font-weight: 500; }
@@ -487,6 +498,9 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: var(--splm-text); }
 	border-radius: 6px;
 	font-size: 0.85rem;
 	background: var(--splm-surface);
+	/* Explicit token color so a host theme's generic select/input { color:#222 }
+	   cannot bleed in and render dark text on the dark surface in dark mode. */
+	color: var(--splm-text);
 	margin-bottom: 1rem;
 }
 .splm-header__season-select {
@@ -714,7 +728,7 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: var(--splm-text); }
 .splm-player-stats__input:focus { border-color: var(--splm-accent); }
 .splm-player-stats__toggle { margin: 0.75rem 0; cursor: pointer; }
 .splm-player-stats__toggle summary { color: var(--splm-accent); font-weight: 500; cursor: pointer; }
-.splm-muted { color: var(--splm-neutral); font-size: 0.85rem; }
+.splm-muted { color: var(--splm-muted); font-size: 0.85rem; }
 .splm-btn--secondary { background: var(--splm-neutral); color: var(--splm-on-primary); border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; margin-top: 0.5rem; }
 .splm-btn--secondary:hover { background: var(--splm-neutral-strong); }
 

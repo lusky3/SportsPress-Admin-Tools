@@ -32,12 +32,12 @@ export default function TeamComparison( { season } ) {
 			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 
 			<div className="splm-team-compare__selectors">
-				<select className="splm-select" value={ teamA } onChange={ ( e ) => setTeamA( e.target.value ) }>
+				<select className="splm-select" value={ teamA } onChange={ ( e ) => setTeamA( e.target.value ) } aria-label="Select team A">
 					<option value="">Select team A...</option>
 					{ teams.map( ( t ) => <option key={ t.id } value={ t.id }>{ t.name }</option> ) }
 				</select>
 				<span className="splm-team-compare__vs">vs</span>
-				<select className="splm-select" value={ teamB } onChange={ ( e ) => setTeamB( e.target.value ) }>
+				<select className="splm-select" value={ teamB } onChange={ ( e ) => setTeamB( e.target.value ) } aria-label="Select team B">
 					<option value="">Select team B...</option>
 					{ teams.map( ( t ) => <option key={ t.id } value={ t.id }>{ t.name }</option> ) }
 				</select>

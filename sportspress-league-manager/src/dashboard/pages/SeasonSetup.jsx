@@ -435,7 +435,7 @@ export default function SeasonSetup() {
 						<div style={ { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' } }>
 							<div>
 								<label>League</label>
-								<select className="splm-select" value={ leagueId } onChange={ ( e ) => setLeagueId( e.target.value ) }>
+								<select className="splm-select" aria-label="League" value={ leagueId } onChange={ ( e ) => setLeagueId( e.target.value ) }>
 									<option value="">Select…</option>
 									{ leagues.filter( ( l ) => ! l.parent ).map( ( l ) => <option key={ l.id } value={ l.id }>{ l.name }</option> ) }
 								</select>
@@ -584,14 +584,14 @@ export default function SeasonSetup() {
 						<div style={ { display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '0.75rem', alignItems: 'end' } }>
 							<div>
 								<label>From Season</label>
-								<select className="splm-select" value={ rFrom } onChange={ ( e ) => setRFrom( e.target.value ) }>
+								<select className="splm-select" aria-label="From season" value={ rFrom } onChange={ ( e ) => setRFrom( e.target.value ) }>
 									<option value="">Select…</option>
 									{ rSeasons.map( ( s ) => <option key={ s.id } value={ s.id }>{ s.name }</option> ) }
 								</select>
 							</div>
 							<div>
 								<label>To Season</label>
-								<select className="splm-select" value={ rTo } onChange={ ( e ) => setRTo( e.target.value ) }>
+								<select className="splm-select" aria-label="To season" value={ rTo } onChange={ ( e ) => setRTo( e.target.value ) }>
 									<option value="">Select…</option>
 									{ rSeasons.map( ( s ) => <option key={ s.id } value={ s.id }>{ s.name }</option> ) }
 								</select>
