@@ -307,6 +307,11 @@
 .splm-game-list__teams { font-weight: 500; }
 /* UX-13: was #94a3b8 (~2.3:1 on white) → --splm-muted for WCAG AA. */
 .splm-game-list__venue { color: var(--splm-muted); }
+/* Game rows link to the event; keep the flex row layout, drop link chrome. */
+.splm-game-list__link { text-decoration: none; color: inherit; border-radius: 4px; }
+.splm-game-list__link:hover { background: var(--splm-surface-alt); }
+.splm-activity__link { color: var(--splm-primary); text-decoration: none; }
+.splm-activity__link:hover { text-decoration: underline; }
 
 /* Buttons */
 .splm-btn {
