@@ -12,12 +12,10 @@ function activityTypeClass( type ) {
 }
 
 const ACTIVITY_TIMESTAMP_FORMATTER = new Intl.DateTimeFormat( undefined, {
-	year: 'numeric',
-	month: 'short',
-	day: 'numeric',
-	hour: '2-digit',
-	minute: '2-digit',
+	year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
 } );
+const GAME_DATE_FORMATTER = new Intl.DateTimeFormat( undefined, { year: 'numeric', month: 'short', day: 'numeric' } );
+const GAME_TIME_FORMATTER = new Intl.DateTimeFormat( undefined, { hour: 'numeric', minute: '2-digit' } );
 
 function formatActivityTimestamp( raw ) {
 	if ( ! raw ) return '';
@@ -27,8 +25,48 @@ function formatActivityTimestamp( raw ) {
 	return ACTIVITY_TIMESTAMP_FORMATTER.format( d );
 }
 
+function formatGameDate( raw ) {
+	if ( ! raw ) return '';
+	const d = new Date( `${ raw }T00:00:00` );
+	return Number.isNaN( d.getTime() ) ? String( raw ) : GAME_DATE_FORMATTER.format( d );
+}
+
+function formatGameTime( raw ) {
+	if ( ! raw ) return '';
+	const [ h, m ] = String( raw ).split( ':' );
+	if ( h === undefined ) return '';
+	const d = new Date();
+	d.setHours( Number( h ), Number( m ) || 0, 0, 0 );
+	return Number.isNaN( d.getTime() ) ? '' : GAME_TIME_FORMATTER.format( d );
+}
+
+function humanizeActivityType( type ) {
+	return String( type || '' ).replace( /(^|\s)\w/g, ( c ) => c.toUpperCase() );
+}
+
+// A game row that links to the event page (view/interact) — keeps the flex
+// layout of splm-game-list__item while being a single accessible link.
+function GameRow( { game, children } ) {
+	if ( game.permalink ) {
+		return (
+			<li>
+				<a
+					className="splm-game-list__item splm-game-list__link"
+					href={ game.permalink }
+					target="_blank"
+					rel="noopener noreferrer"
+				>
+					{ children }
+				</a>
+			</li>
+		);
+	}
+	return <li className="splm-game-list__item">{ children }</li>;
+}
+
 export default function Dashboard( { onNavigate, season } ) {
-	const [ games, setGames ] = useState( [] );
+	const [ upcomingGames, setUpcomingGames ] = useState( [] );
+	const [ recentGames, setRecentGames ] = useState( [] );
 	const [ activity, setActivity ] = useState( [] );
 	const [ loading, setLoading ] = useState( true );
 	const [ error, setError ] = useState( '' );
@@ -44,12 +82,21 @@ export default function Dashboard( { onNavigate, season } ) {
 	useEffect( () => {
 		let cancelled = false;
 		setLoading( true );
+		setError( '' );
+		const today = new Date().toISOString().split( 'T' )[ 0 ];
+		const seasonParam = season ? { season } : {};
+		// Two targeted queries instead of pulling the oldest N events and
+		// slicing client-side (which hid upcoming games once a season exceeded
+		// per_page): upcoming = from today ascending; recent = up to today
+		// descending (also feeds the "needs scores" prompt).
 		Promise.all( [
-			fetchGames( season ? { season } : {} ),
+			fetchGames( { ...seasonParam, from: today, order: 'asc', per_page: 8 } ),
+			fetchGames( { ...seasonParam, to: today, order: 'desc', per_page: 25 } ),
 			fetchActivity( 10 ),
-		] ).then( ( [ gamesData, actData ] ) => {
+		] ).then( ( [ up, recent, actData ] ) => {
 			if ( cancelled ) return;
-			setGames( gamesData );
+			setUpcomingGames( up );
+			setRecentGames( recent );
 			setActivity( actData );
 			setLoading( false );
 		} ).catch( ( err ) => {
@@ -68,19 +115,14 @@ export default function Dashboard( { onNavigate, season } ) {
 		saveUserPreferences( { dashboard_layout: next } ).catch( () => {} );
 	};
 
-	// UI-10: derive these only when `games` changes, not on every unrelated
-	// render (settings toggle, etc.).
 	const { upcoming, needScores, recent } = useMemo( () => {
 		const today = new Date().toISOString().split( 'T' )[ 0 ];
 		return {
-			upcoming: games.filter( ( g ) => g.date >= today && ! g.cancelled ).slice( 0, 5 ),
-			needScores: games.filter( ( g ) => g.date < today && g.home_score === null && ! g.cancelled ),
-			recent: [ ...games ]
-				.filter( ( g ) => g.home_score !== null )
-				.sort( ( a, b ) => b.date.localeCompare( a.date ) )
-				.slice( 0, 5 ),
+			upcoming: upcomingGames.filter( ( g ) => ! g.cancelled ).slice( 0, 5 ),
+			recent: recentGames.filter( ( g ) => g.home_score !== null && ! g.cancelled ).slice( 0, 5 ),
+			needScores: recentGames.filter( ( g ) => g.date < today && g.home_score === null && ! g.cancelled ),
 		};
-	}, [ games ] );
+	}, [ upcomingGames, recentGames ] );
 
 	if ( loading ) {
 		return <div className="splm-loading">Loading...</div>;
@@ -128,61 +170,59 @@ export default function Dashboard( { onNavigate, season } ) {
 				{ visibleCards.includes( 'upcoming' ) && (
 					<section className="splm-card">
 						<h3>Upcoming Games</h3>
-					{ upcoming.length === 0 ? (
-						<p className="splm-empty">No upcoming games.</p>
-					) : (
-						<ul className="splm-game-list">
-							{ upcoming.map( ( g ) => (
-								<li key={ g.id } className="splm-game-list__item">
-									<span className="splm-game-list__date">{ g.date } { g.time }</span>
-									<span className="splm-game-list__teams">
-										{ g.home_team.name } vs { g.away_team.name }
-									</span>
-									<span className="splm-game-list__venue">{ g.venue }</span>
-								</li>
-							) ) }
-						</ul>
-					) }
-				</section>
+						{ upcoming.length === 0 ? (
+							<p className="splm-empty">No upcoming games.</p>
+						) : (
+							<ul className="splm-game-list">
+								{ upcoming.map( ( g ) => (
+									<GameRow key={ g.id } game={ g }>
+										<span className="splm-game-list__date">{ formatGameDate( g.date ) }{ g.time ? ` · ${ formatGameTime( g.time ) }` : '' }</span>
+										<span className="splm-game-list__teams">{ g.home_team.name } vs { g.away_team.name }</span>
+										{ g.venue && <span className="splm-game-list__venue">{ g.venue }</span> }
+									</GameRow>
+								) ) }
+							</ul>
+						) }
+					</section>
 				) }
 
 				{ visibleCards.includes( 'recent' ) && (
-				<section className="splm-card">
-					<h3>Recent Scores</h3>
-					{ recent.length === 0 ? (
-						<p className="splm-empty">No scores yet.</p>
-					) : (
-						<ul className="splm-game-list">
-							{ recent.map( ( g ) => (
-								<li key={ g.id } className="splm-game-list__item">
-									<span className="splm-game-list__date">{ g.date }</span>
-									<span className="splm-game-list__teams">
-										{ g.home_team.name } { g.home_score } - { g.away_score } { g.away_team.name }
-									</span>
-								</li>
-							) ) }
-						</ul>
-					) }
-				</section>
+					<section className="splm-card">
+						<h3>Recent Scores</h3>
+						{ recent.length === 0 ? (
+							<p className="splm-empty">No scores yet.</p>
+						) : (
+							<ul className="splm-game-list">
+								{ recent.map( ( g ) => (
+									<GameRow key={ g.id } game={ g }>
+										<span className="splm-game-list__date">{ formatGameDate( g.date ) }</span>
+										<span className="splm-game-list__teams">{ g.home_team.name } { g.home_score } – { g.away_score } { g.away_team.name }</span>
+									</GameRow>
+								) ) }
+							</ul>
+						) }
+					</section>
 				) }
 
 				{ visibleCards.includes( 'activity' ) && (
-				<section className="splm-card">
-					<h3>Recent Activity</h3>
-					{ activity.length === 0 ? (
-						<p className="splm-empty">No recent activity.</p>
-					) : (
-						<ul className="splm-game-list">
-							{ activity.map( ( a, i ) => (
-								<li key={ i } className="splm-game-list__item">
-									<span className="splm-game-list__date">{ formatActivityTimestamp( a.timestamp ) }</span>
-									<span className={ `splm-activity-badge splm-activity-badge--${ activityTypeClass( a.type ) }` }>{ a.type }</span>
-									<span>{ a.description }</span>
-								</li>
-							) ) }
-						</ul>
-					) }
-				</section>
+					<section className="splm-card">
+						<h3>Recent Activity</h3>
+						{ activity.length === 0 ? (
+							<p className="splm-empty">No recent activity.</p>
+						) : (
+							<ul className="splm-game-list">
+								{ activity.map( ( a, i ) => (
+									<li key={ i } className="splm-game-list__item">
+										<span className="splm-game-list__date">{ formatActivityTimestamp( a.timestamp ) }</span>
+										<span className={ `splm-activity-badge splm-activity-badge--${ activityTypeClass( a.type ) }` }>{ humanizeActivityType( a.type ) }</span>
+										{ a.link
+											? <a className="splm-activity__link" href={ a.link } target="_blank" rel="noopener noreferrer">{ a.description }</a>
+											: <span>{ a.description }</span> }
+									</li>
+								) ) }
+							</ul>
+						) }
+					</section>
 				) }
 			</div>
 

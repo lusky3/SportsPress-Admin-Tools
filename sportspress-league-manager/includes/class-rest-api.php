@@ -39,6 +39,21 @@ if ( ! defined( 'ABSPATH' ) ) {
  *                           "no pagination" (total_pages becomes 1).
  * @return array
  */
+if ( ! function_exists( 'splm_clean_team_name' ) ) {
+	/**
+	 * Teams in this league carry their sponsor as a trailing parenthetical, e.g.
+	 * "Spartans (Lusk.Tech)". Strip it for display so scoreboards, standings and
+	 * rosters read cleanly. Falls back to the original if stripping empties it.
+	 *
+	 * @param string $name Raw team title.
+	 * @return string
+	 */
+	function splm_clean_team_name( $name ) {
+		$clean = trim( preg_replace( '/\s*\([^()]*\)\s*$/', '', (string) $name ) );
+		return '' !== $clean ? $clean : (string) $name;
+	}
+}
+
 if ( ! function_exists( 'splm_rest_list_response' ) ) {
 	function splm_rest_list_response( array $items, $total = null, $page = 1, $per_page = 0 ) {
 		$items = array_values( $items );
@@ -490,14 +505,36 @@ class SPLM_REST_API {
 		$per_page = min( 200, max( 1, (int) ( $request->get_param( 'per_page' ) ?? 100 ) ) );
 		$offset   = max( 0, (int) ( $request->get_param( 'offset' ) ?? 0 ) );
 
-		$args = array(
+		// Order + an optional date window let the dashboard fetch the "upcoming"
+		// (from today, ASC) and "recent" (to today, DESC) slices directly, instead
+		// of pulling the oldest per_page events and filtering client-side — which
+		// silently hid all upcoming games once a season exceeded per_page rows.
+		$order = 'DESC' === strtoupper( (string) $request->get_param( 'order' ) ) ? 'DESC' : 'ASC';
+		$args  = array(
 			'post_type'      => 'sp_event',
 			'posts_per_page' => $per_page,
 			'offset'         => $offset,
 			'orderby'        => 'date',
-			'order'          => 'ASC',
+			'order'          => $order,
 			'post_status'    => array( 'publish', 'future' ),
 		);
+
+		$date_query = array();
+		if ( $request->get_param( 'from' ) ) {
+			$date_query[] = array(
+				'after'     => sanitize_text_field( (string) $request->get_param( 'from' ) ),
+				'inclusive' => true,
+			);
+		}
+		if ( $request->get_param( 'to' ) ) {
+			$date_query[] = array(
+				'before'    => sanitize_text_field( (string) $request->get_param( 'to' ) ),
+				'inclusive' => true,
+			);
+		}
+		if ( ! empty( $date_query ) ) {
+			$args['date_query'] = $date_query;
+		}
 
 		$tax_query = array();
 		if ( $request->get_param( 'season' ) ) {
@@ -558,15 +595,18 @@ class SPLM_REST_API {
 
 			$games[] = array(
 				'id'         => $event->ID,
+				'permalink'  => get_permalink( $event ),
 				'date'       => get_the_date( 'Y-m-d', $event ),
 				'time'       => get_the_date( 'H:i', $event ),
+				// Raw title (not get_the_title) so a the_title filter — e.g. a
+				// sponsor-suffix add-on — cannot inject "(Sponsor)" into the name.
 				'home_team'  => array(
 					'id'   => $home_id,
-					'name' => $home_id ? get_the_title( $home_id ) : '',
+					'name' => $home_id ? splm_clean_team_name( get_post_field( 'post_title', $home_id, 'raw' ) ) : '',
 				),
 				'away_team'  => array(
 					'id'   => $away_id,
-					'name' => $away_id ? get_the_title( $away_id ) : '',
+					'name' => $away_id ? splm_clean_team_name( get_post_field( 'post_title', $away_id, 'raw' ) ) : '',
 				),
 				'venue'      => is_array( $venue ) && ! empty( $venue ) ? $venue[0] : '',
 				'home_score' => $home_score,
@@ -2049,6 +2089,20 @@ class SPLM_REST_API {
 		// only edit_sp_events get the registration feed but not these branches.
 		$can_see_sensitive = $this->check_payments_permission();
 
+		// Build an admin edit URL for a WooCommerce order, HPOS-aware, so activity
+		// rows can link to the underlying record. Empty when there is no order.
+		$order_edit_url = function ( $order_id ) {
+			$order_id = (int) $order_id;
+			if ( ! $order_id ) {
+				return '';
+			}
+			if ( class_exists( '\Automattic\WooCommerce\Utilities\OrderUtil' )
+				&& \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
+				return admin_url( 'admin.php?page=wc-orders&action=edit&id=' . $order_id );
+			}
+			return admin_url( 'post.php?post=' . $order_id . '&action=edit' );
+		};
+
 		$table_exists = function ( $table ) use ( $wpdb, $allowed_tables ) {
 			if ( ! in_array( $table, $allowed_tables, true ) ) {
 				return false;
@@ -2058,7 +2112,7 @@ class SPLM_REST_API {
 
 		if ( $table_exists( $reg_table ) ) {
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name validated against static allowlist above
-			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT timestamp, customer_name, action, season FROM `{$reg_table}` ORDER BY id DESC LIMIT %d", $limit ) );
+			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT timestamp, customer_name, action, season, order_id, player_id FROM `{$reg_table}` ORDER BY id DESC LIMIT %d", $limit ) );
 			foreach ( (array) $rows as $r ) {
 				// M6: customer_name is registrant PII. Only surface it to callers
 				// with the payments capability (same gate as the payment/role
@@ -2071,10 +2125,15 @@ class SPLM_REST_API {
 				$description   = $can_see_sensitive
 					? sprintf( '%s — %s (%s)', $r->customer_name, $action_label, $r->season )
 					: sprintf( '%s (%s)', $action_label, $r->season );
+				$link = $order_edit_url( $r->order_id );
+				if ( ! $link && (int) $r->player_id ) {
+					$link = admin_url( 'post.php?post=' . (int) $r->player_id . '&action=edit' );
+				}
 				$items[] = array(
 					'timestamp'   => $r->timestamp,
 					'type'        => 'registration',
 					'description' => $description,
+					'link'        => $link,
 				);
 			}
 		}
@@ -2083,12 +2142,13 @@ class SPLM_REST_API {
 			// Hidden rows are flagged via result = 'Hidden from management' (see
 			// SPAT_Database::HIDDEN_STATUS); there is no is_hidden column.
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name validated against static allowlist above
-			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT timestamp, from_name, amount, result FROM `{$etransfer_table}` WHERE result != %s ORDER BY id DESC LIMIT %d", 'Hidden from management', $limit ) );
+			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT timestamp, from_name, amount, result, order_id FROM `{$etransfer_table}` WHERE result != %s ORDER BY id DESC LIMIT %d", 'Hidden from management', $limit ) );
 			foreach ( (array) $rows as $r ) {
 				$items[] = array(
 					'timestamp'   => $r->timestamp,
 					'type'        => 'payment',
 					'description' => sprintf( '%s — $%s — %s', $r->from_name, $r->amount, $r->result ),
+					'link'        => $order_edit_url( $r->order_id ),
 				);
 			}
 		}
@@ -2098,12 +2158,13 @@ class SPLM_REST_API {
 			// user_id, user_name, action. There is no user_login or role_added
 			// column — using those silently returns no rows.
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name validated against static allowlist above
-			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT timestamp, user_name, action FROM `{$role_table}` ORDER BY id DESC LIMIT %d", $limit ) );
+			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT timestamp, user_name, action, user_id FROM `{$role_table}` ORDER BY id DESC LIMIT %d", $limit ) );
 			foreach ( (array) $rows as $r ) {
 				$items[] = array(
 					'timestamp'   => $r->timestamp,
 					'type'        => 'role',
 					'description' => sprintf( '%s — %s', $r->user_name, $r->action ),
+					'link'        => (int) $r->user_id ? admin_url( 'user-edit.php?user_id=' . (int) $r->user_id ) : '',
 				);
 			}
 		}
