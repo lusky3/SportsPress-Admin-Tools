@@ -484,6 +484,10 @@
 .splm-table td { padding: 0.5rem; border-bottom: 1px solid var(--splm-surface-muted); }
 .splm-table__team { font-weight: 500; }
 .splm-table__pts { font-weight: 700; color: var(--splm-primary); }
+.splm-table__team-link { color: var(--splm-primary); text-decoration: none; }
+.splm-table__team-link:hover { text-decoration: underline; }
+.splm-standings__group { margin-top: 1.25rem; }
+.splm-standings__group > h3 { margin: 0 0 0.5rem; }
 .splm-table tbody tr:hover { background: var(--splm-surface-alt); }
 
 /* Utilities */
