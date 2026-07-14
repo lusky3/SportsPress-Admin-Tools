@@ -97,6 +97,16 @@ export function fetchNotes( playerId ) {
 	return apiFetch( { path: `/splm/v1/notes?player=${ playerId }` } ).then( unwrapList );
 }
 
+// Batch note counts for a roster, so rows can show a "has notes" indicator
+// without one request per player. Returns { player_id: count }.
+export function fetchNoteCounts( playerIds ) {
+	const ids = ( playerIds || [] ).filter( Boolean ).join( ',' );
+	if ( ! ids ) return Promise.resolve( {} );
+	return apiFetch( { path: `/splm/v1/notes/counts?player_ids=${ ids }` } )
+		.then( ( res ) => ( res && res.counts ) ? res.counts : {} )
+		.catch( () => ( {} ) );
+}
+
 export function addNote( playerId, content ) {
 	return apiFetch( {
 		path: '/splm/v1/notes',

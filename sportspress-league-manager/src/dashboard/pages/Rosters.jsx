@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, memo } from '@wordpress/element';
-import { fetchTeams, fetchRosterDetails, fetchNotes, addNote, movePlayer, updatePlayer, updatePlayerMetadata, setCaptain, removePlayer, importRoster, calculateSkills, bulkUploadRoster, bulkProcessRoster } from '../lib/api';
+import { fetchTeams, fetchRosterDetails, fetchNotes, fetchNoteCounts, addNote, movePlayer, updatePlayer, updatePlayerMetadata, setCaptain, removePlayer, importRoster, calculateSkills, bulkUploadRoster, bulkProcessRoster } from '../lib/api';
 import Toast from '../components/Toast';
 import Icon from '../components/icons';
 
@@ -290,6 +290,7 @@ export default function Rosters( { season } ) {
 	const [ roster, setRoster ] = useState( [] );
 	const [ loading, setLoading ] = useState( false );
 	const [ notesPlayer, setNotesPlayer ] = useState( null );
+	const [ noteCounts, setNoteCounts ] = useState( {} );
 	const [ movePlayerData, setMovePlayerData ] = useState( null );
 	const [ toast, setToast ] = useState( null ); // UI-13: { message, type }
 	// Graceful degradation: skill-level editing and Calculate Skills route
@@ -310,7 +311,12 @@ export default function Rosters( { season } ) {
 		let cancelled = false;
 		setLoading( true );
 		fetchRosterDetails( selectedTeam, season )
-			.then( ( data ) => { if ( ! cancelled ) { setRoster( data ); setLoading( false ); } } )
+			.then( ( data ) => {
+				if ( cancelled ) return;
+				setRoster( data );
+				setLoading( false );
+				fetchNoteCounts( data.map( ( p ) => p.id ) ).then( ( c ) => { if ( ! cancelled ) setNoteCounts( c ); } );
+			} )
 			.catch( () => { if ( ! cancelled ) setLoading( false ); } );
 		return () => { cancelled = true; };
 	}, [ selectedTeam, season ] );
@@ -436,7 +442,11 @@ export default function Rosters( { season } ) {
 									</td>
 									<td>
 										<div className="splm-roster-list__actions">
-											<button className="splm-btn splm-btn--small" onClick={ () => setNotesPlayer( player ) }>Notes</button>
+											<button
+												className={ `splm-btn splm-btn--small${ noteCounts[ player.id ] ? ' splm-btn--has-notes' : '' }` }
+												onClick={ () => setNotesPlayer( player ) }
+												aria-label={ noteCounts[ player.id ] ? `Notes (${ noteCounts[ player.id ] } on file)` : 'Notes' }
+											>Notes{ noteCounts[ player.id ] ? ` (${ noteCounts[ player.id ] })` : '' }</button>
 											<button className="splm-btn splm-btn--small" onClick={ () => setMovePlayerData( player ) }>Move</button>
 											<button className="splm-btn splm-btn--small splm-btn--danger" onClick={ () => {
 												if ( window.confirm( `Remove ${ player.name } from this roster?` ) ) {
@@ -453,7 +463,7 @@ export default function Rosters( { season } ) {
 			) }
 
 			{ notesPlayer && (
-				<NotesPanel player={ notesPlayer } onClose={ () => setNotesPlayer( null ) } />
+				<NotesPanel player={ notesPlayer } onClose={ () => { setNotesPlayer( null ); fetchNoteCounts( roster.map( ( p ) => p.id ) ).then( setNoteCounts ); } } />
 			) }
 
 			{ movePlayerData && (
