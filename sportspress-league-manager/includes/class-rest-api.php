@@ -671,24 +671,63 @@ class SPLM_REST_API {
 					if ( ! is_numeric( $team_id ) ) {
 						continue;
 					}
+					$gf = isset( $row['gf'] ) ? (int) $row['gf'] : 0;
+					$ga = isset( $row['ga'] ) ? (int) $row['ga'] : 0;
 					$standings[] = array(
-						'team_id' => (int) $team_id,
-						'team'    => get_the_title( $team_id ),
-						'p'       => isset( $row['p'] ) ? (int) $row['p'] : 0,
-						'w'       => isset( $row['w'] ) ? (int) $row['w'] : 0,
-						'l'       => isset( $row['l'] ) ? (int) $row['l'] : 0,
-						'd'       => isset( $row['d'] ) ? (int) $row['d'] : 0,
-						'pts'     => isset( $row['pts'] ) ? (int) $row['pts'] : 0,
+						'team_id'  => (int) $team_id,
+						'team'     => splm_clean_team_name( get_post_field( 'post_title', $team_id, 'raw' ) ),
+						'team_url' => get_permalink( (int) $team_id ),
+						// SportsPress for Ice Hockey stat keys (gp/tie/ot/gf/ga/diff),
+						// NOT the soccer defaults (p/d) the dashboard read before —
+						// which silently rendered 0 for games-played and draws.
+						'gp'       => isset( $row['gp'] ) ? (int) $row['gp'] : 0,
+						'w'        => isset( $row['w'] ) ? (int) $row['w'] : 0,
+						'l'        => isset( $row['l'] ) ? (int) $row['l'] : 0,
+						't'        => isset( $row['tie'] ) ? (int) $row['tie'] : 0,
+						'ot'       => isset( $row['ot'] ) ? (int) $row['ot'] : 0,
+						'gf'       => $gf,
+						'ga'       => $ga,
+						'diff'     => isset( $row['diff'] ) ? (int) $row['diff'] : ( $gf - $ga ),
+						'pts'      => isset( $row['pts'] ) ? (int) $row['pts'] : 0,
 					);
 				}
 			}
 
+			// Division (sp_league) name for the table heading, and whether this is
+			// a playoff table — the regular + playoff tables share the season query
+			// (playoff season is a child term), so the UI groups them by this flag.
+			$division   = wp_get_object_terms( $tid, 'sp_league', array( 'fields' => 'names' ) );
+			$division   = ( is_array( $division ) && ! empty( $division ) ) ? $division[0] : get_the_title( $tid );
+			$seasons    = wp_get_object_terms( $tid, 'sp_season', array( 'fields' => 'names' ) );
+			$is_playoff = false;
+			foreach ( (array) $seasons as $sname ) {
+				if ( false !== stripos( $sname, 'playoff' ) ) {
+					$is_playoff = true;
+					break;
+				}
+			}
+			$sort = preg_match( '/(\d+)/', $division, $m ) ? (int) $m[1] : PHP_INT_MAX;
+
 			$response[] = array(
 				'table_id'   => (int) $tid,
-				'table_name' => get_the_title( $tid ),
+				'table_name' => $division,
+				'division'   => $division,
+				'is_playoff' => $is_playoff,
+				'sort'       => $sort,
 				'standings'  => $standings,
 			);
 		}
+
+		// Regular season first, then playoffs; each ordered Division 1, 2, 3, ...
+		usort(
+			$response,
+			function ( $a, $b ) {
+				if ( $a['is_playoff'] !== $b['is_playoff'] ) {
+					return $a['is_playoff'] ? 1 : -1;
+				}
+				return $a['sort'] <=> $b['sort'];
+			}
+		);
 
 		return new WP_REST_Response( splm_rest_list_response( $response ), 200 );
 	}

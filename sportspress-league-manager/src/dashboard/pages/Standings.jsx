@@ -1,5 +1,53 @@
 import { useState, useEffect } from '@wordpress/element';
-import { fetchStandings, fetchTeams, generateStandings } from '../lib/api';
+import { fetchStandings, generateStandings } from '../lib/api';
+
+function StandingsTable( { table } ) {
+	return (
+		<div className="splm-standings__division">
+			<h4>{ table.table_name || table.division || 'Standings' }</h4>
+			<div className="splm-table-wrapper">
+				<table className="splm-table">
+					<thead>
+						<tr>
+							<th scope="col">#</th>
+							<th scope="col">Team</th>
+							<th scope="col">GP</th>
+							<th scope="col">W</th>
+							<th scope="col">L</th>
+							<th scope="col">T</th>
+							<th scope="col">OT</th>
+							<th scope="col">GF</th>
+							<th scope="col">GA</th>
+							<th scope="col">DIFF</th>
+							<th scope="col">Pts</th>
+						</tr>
+					</thead>
+					<tbody>
+						{ table.standings.map( ( row, i ) => (
+							<tr key={ row.team_id }>
+								<td>{ i + 1 }</td>
+								<td className="splm-table__team">
+									{ row.team_url
+										? <a className="splm-table__team-link" href={ row.team_url } target="_blank" rel="noopener noreferrer">{ row.team }</a>
+										: row.team }
+								</td>
+								<td>{ row.gp }</td>
+								<td>{ row.w }</td>
+								<td>{ row.l }</td>
+								<td>{ row.t }</td>
+								<td>{ row.ot }</td>
+								<td>{ row.gf }</td>
+								<td>{ row.ga }</td>
+								<td>{ row.diff > 0 ? `+${ row.diff }` : row.diff }</td>
+								<td className="splm-table__pts">{ row.pts }</td>
+							</tr>
+						) ) }
+					</tbody>
+				</table>
+			</div>
+		</div>
+	);
+}
 
 export default function Standings( { season } ) {
 	const [ tables, setTables ] = useState( [] );
@@ -46,8 +94,6 @@ export default function Standings( { season } ) {
 		try {
 			await generateStandings( genLeague, season );
 			setGenModal( false );
-			// UI-16: pass a fresh guard ref so loadStandings's cancel check has a
-			// defined object (it dereferences cancelledRef.cancelled).
 			loadStandings( { cancelled: false } );
 		} catch ( err ) {
 			setError( err?.message || 'Failed to generate' );
@@ -59,15 +105,8 @@ export default function Standings( { season } ) {
 		return <div className="splm-loading">Loading standings...</div>;
 	}
 
-	if ( tables.length === 0 ) {
-		return (
-			<div className="splm-standings">
-				<h2>Standings</h2>
-				{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
-				<p className="splm-empty">No standings data available.</p>
-			</div>
-		);
-	}
+	const regular = tables.filter( ( t ) => ! t.is_playoff );
+	const playoff = tables.filter( ( t ) => t.is_playoff );
 
 	return (
 		<div className="splm-standings">
@@ -89,39 +128,22 @@ export default function Standings( { season } ) {
 					</button>
 				</div>
 			) }
-			{ tables.map( ( table ) => (
-				<div key={ table.table_id } className="splm-standings__division">
-					{ tables.length > 1 && <h3>{ table.table_name }</h3> }
-					<div className="splm-table-wrapper">
-						<table className="splm-table">
-							<thead>
-								<tr>
-									<th>#</th>
-									<th>Team</th>
-									<th>GP</th>
-									<th>W</th>
-									<th>L</th>
-									<th>D</th>
-									<th>Pts</th>
-								</tr>
-							</thead>
-							<tbody>
-								{ table.standings.map( ( row, i ) => (
-									<tr key={ row.team_id }>
-										<td>{ i + 1 }</td>
-										<td className="splm-table__team">{ row.team }</td>
-										<td>{ row.p }</td>
-										<td>{ row.w }</td>
-										<td>{ row.l }</td>
-										<td>{ row.d }</td>
-										<td className="splm-table__pts">{ row.pts }</td>
-									</tr>
-								) ) }
-							</tbody>
-						</table>
-					</div>
-				</div>
-			) ) }
+
+			{ tables.length === 0 && <p className="splm-empty">No standings data available.</p> }
+
+			{ regular.length > 0 && (
+				<section className="splm-standings__group">
+					{ playoff.length > 0 && <h3>Regular Season</h3> }
+					{ regular.map( ( t ) => <StandingsTable key={ t.table_id } table={ t } /> ) }
+				</section>
+			) }
+
+			{ playoff.length > 0 && (
+				<section className="splm-standings__group">
+					<h3>Playoffs</h3>
+					{ playoff.map( ( t ) => <StandingsTable key={ t.table_id } table={ t } /> ) }
+				</section>
+			) }
 		</div>
 	);
 }
