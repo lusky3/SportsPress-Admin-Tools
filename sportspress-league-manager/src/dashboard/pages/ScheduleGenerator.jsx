@@ -587,9 +587,9 @@ export default function ScheduleGenerator() {
 							<button className="splm-btn" onClick={addDiv}>Add Division</button>
 							<button className="splm-btn" onClick={doImport}>{spL.length?'Import Selected':'Import from SportsPress'}</button>
 							{spL.length>0&&<>
-								<select className="splm-select" aria-label="League to import" value={importLg} onChange={e=>setImportLg(e.target.value)}><option value="">Pick a league…</option>{spL.filter(l=>l.name.toUpperCase()!=='ALL').map(l=><option key={l.id} value={l.id}>{l.name} ({l.teams?.length||0})</option>)}</select>
+								<select className="splm-select" aria-label="Division to import" value={importLg} onChange={e=>setImportLg(e.target.value)}><option value="">Pick a division…</option>{spL.filter(l=>l.name.toUpperCase()!=='ALL').map(l=><option key={l.id} value={l.id}>{l.name} ({l.teams?.length||0})</option>)}</select>
 								{/* #2: Import All always visible once leagues loaded */}
-								<button className="splm-btn" title="Import each league as a separate division" onClick={()=>{
+								<button className="splm-btn" title="Import all divisions" onClick={()=>{
 									const newDivs = spL.filter(l => l.teams?.length && l.name.toUpperCase()!=='ALL' && !cfg.divisions.some(d=>d.name===l.name))
 										.map(l => ({id:mkId('div'),name:l.name,teams:l.teams.map(t=>({id:mkId('team'),name:t.name,is_tbd:false}))}));
 									if (newDivs.length) up({divisions:[...cfg.divisions,...newDivs]});
@@ -1042,7 +1042,7 @@ export default function ScheduleGenerator() {
 						<h4>Publish to SportsPress</h4>
 						<div style={{display:'grid',gridTemplateColumns:'1fr 1fr auto',gap:'0.75rem',alignItems:'end'}}>
 							<div><label>Season</label><SLLoad label="Season" items={spS} onLoad={()=>spsg.getSeasons().then(setSpS)} value={pubSeason} onChange={setPubSeason}/></div>
-							<div><label>League</label><SLLoad label="League" items={spL} onLoad={()=>spsg.getLeagues().then(setSpL)} value={pubLeague} onChange={setPubLeague}/></div>
+							<div><label>Division</label><SLLoad label="Division" items={spL} onLoad={()=>spsg.getLeagues().then(setSpL)} value={pubLeague} onChange={setPubLeague}/></div>
 							<button className="splm-btn splm-btn--primary" onClick={()=>{ if(pubOpts.dry_run||window.confirm(`Publish ${schedule.games?.length||0} events to SportsPress?`)) doPub(); }} disabled={publishing||!pubSeason||!pubLeague}>{publishing?'Publishing…':pubOpts.dry_run?'Dry Run':'Publish'}</button>
 						</div>
 						<details style={{marginTop:'0.5rem'}}>

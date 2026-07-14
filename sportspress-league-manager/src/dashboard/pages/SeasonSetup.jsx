@@ -434,8 +434,8 @@ export default function SeasonSetup() {
 					<div className="splm-card">
 						<div style={ { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' } }>
 							<div>
-								<label>League</label>
-								<select className="splm-select" aria-label="League" value={ leagueId } onChange={ ( e ) => setLeagueId( e.target.value ) }>
+								<label>Division</label>
+								<select className="splm-select" aria-label="Division" value={ leagueId } onChange={ ( e ) => setLeagueId( e.target.value ) }>
 									<option value="">Select…</option>
 									{ leagues.filter( ( l ) => ! l.parent ).map( ( l ) => <option key={ l.id } value={ l.id }>{ l.name }</option> ) }
 								</select>
@@ -535,7 +535,7 @@ export default function SeasonSetup() {
 								{ createCalendars && <tr><td><strong>Calendars</strong></td><td>Will be updated to new season</td></tr> }
 								{ createRosters && <tr><td><strong>Rosters</strong></td><td>Empty roster lists will be created</td></tr> }
 								{ createPlayoffs && <tr><td><strong>Playoffs</strong></td><td>{ seasonName } Playoffs sub-season will be created</td></tr> }
-								<tr><td><strong>Standings</strong></td><td>League tables created for each active division</td></tr>
+								<tr><td><strong>Standings</strong></td><td>Standings tables created for each active division</td></tr>
 								<tr><td><strong>Current season</strong></td><td>Site default season will be set to { seasonName }</td></tr>
 							</tbody>
 						</table>
