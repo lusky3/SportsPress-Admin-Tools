@@ -48,7 +48,7 @@ function Cap({cfg}) {
 	return (
 		<div className="splm-card" style={{marginTop:'1rem'}}>
 			<strong>Capacity:</strong> {need} needed / {avail} available ({pct}%)
-			<div style={{height:8,background:'#ddd',borderRadius:4,marginTop:6}}>
+			<div style={{height:8,background:'var(--splm-border)',borderRadius:4,marginTop:6}}>
 				<div style={{width:`${Math.min(pct,100)}%`,height:'100%',background:col,borderRadius:4}}/>
 			</div>
 		</div>
@@ -451,7 +451,7 @@ export default function ScheduleGenerator() {
 										{/* Inline history panel */}
 										{historyId===c.id&&(
 											<tr>
-												<td colSpan={5} style={{background:'#f6f7f7',padding:'0.75rem'}}>
+												<td colSpan={5} style={{background:'var(--splm-surface-alt)',padding:'0.75rem'}}>
 													{!historyData.length
 														? <p className="splm-muted">No change history recorded.</p>
 														: <><table className="splm-table" style={{fontSize:'0.85em'}}>
@@ -501,7 +501,7 @@ export default function ScheduleGenerator() {
 							<div style={{display:'inline-block',position:'relative'}} ref={presetRef}>
 								<button type="button" className="splm-btn" aria-haspopup="menu" aria-expanded={presetOpen} onClick={()=>setPresetOpen(o=>!o)}>Use Preset ▾</button>
 								{presetOpen&&(
-									<div role="menu" style={{position:'absolute',background:'#fff',border:'1px solid var(--splm-border)',borderRadius:4,padding:'0.5rem',zIndex:10,minWidth:220,boxShadow:'0 2px 8px rgba(0,0,0,0.1)'}}>
+									<div role="menu" style={{position:'absolute',background:'var(--splm-surface)',border:'1px solid var(--splm-border)',borderRadius:4,padding:'0.5rem',zIndex:10,minWidth:220,boxShadow:'0 2px 8px rgba(0,0,0,0.1)'}}>
 										{Object.entries(presets).map(([key,p])=>(
 											<button key={key} type="button" role="menuitem" className="splm-more-menu__item" style={{flexDirection:'column',alignItems:'flex-start'}} onClick={async()=>{
 												setPresetOpen(false);
@@ -900,7 +900,7 @@ export default function ScheduleGenerator() {
 					{generating&&(
 						<div className="splm-card" style={{marginTop:'0.75rem'}} role="status" aria-live="polite" aria-busy="true">
 							<strong>Generating schedule…</strong>
-							<div style={{height:8,background:'#ddd',borderRadius:4,marginTop:6}}>
+							<div style={{height:8,background:'var(--splm-border)',borderRadius:4,marginTop:6}}>
 								<div style={{width:'100%',height:'100%',background:'var(--splm-primary)',borderRadius:4,animation:'splm-pulse 1.5s ease-in-out infinite'}}/>
 							</div>
 						</div>
@@ -1065,7 +1065,7 @@ export default function ScheduleGenerator() {
 							<div style={{marginTop:'0.5rem'}}>
 								{pubProg.done
 									? <p style={{color:'var(--splm-success)'}}>✅ {pubProg.dry_run?'Dry run: would publish':'Published'} {pubProg.imported} of {pubProg.total} events{pubProg.skipped?` (${pubProg.skipped} skipped)`:''}{!pubProg.dry_run?' — view on the Schedule page.':''}</p>
-									: <><p style={{fontSize:'0.85em',marginBottom:'0.25rem'}}>{pubProg.imported} of {pubProg.total} events {pubOpts.dry_run?'checked':'published'}…</p><div style={{height:8,background:'#ddd',borderRadius:4}}><div style={{width:`${pubProg.total?Math.round(pubProg.imported/pubProg.total*100):0}%`,height:'100%',background:'var(--splm-primary)',borderRadius:4,transition:'width 0.3s'}}/></div></>
+									: <><p style={{fontSize:'0.85em',marginBottom:'0.25rem'}}>{pubProg.imported} of {pubProg.total} events {pubOpts.dry_run?'checked':'published'}…</p><div style={{height:8,background:'var(--splm-border)',borderRadius:4}}><div style={{width:`${pubProg.total?Math.round(pubProg.imported/pubProg.total*100):0}%`,height:'100%',background:'var(--splm-primary)',borderRadius:4,transition:'width 0.3s'}}/></div></>
 								}
 							</div>
 						)}
