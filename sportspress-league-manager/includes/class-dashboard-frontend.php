@@ -277,8 +277,9 @@ class SPLM_Dashboard_Frontend {
 					'canViewPayments'   => current_user_can( 'edit_others_sp_players' ) || SPLM_Capabilities::can_manage(),
 					'canViewHealth'     => SPLM_Capabilities::can_manage(),
 					// Score-sheet review writes event results/player stats; gate on the
-					// same capability the score-sheets REST enforces (manage_options).
-					'canReviewScoreSheets' => current_user_can( 'manage_options' ),
+					// same capability the score-sheets REST enforces (manage_sportspress,
+					// the SportsPress management tier — NOT manage_options/full admin).
+					'canReviewScoreSheets' => SPLM_Capabilities::can_manage(),
 				),
 				// Graceful degradation: these flags MUST mirror the exact class_exists
 				// guards in SPLM_REST_API::register_delegated_routes() (and the spsg/v1

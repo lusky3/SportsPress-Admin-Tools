@@ -45,7 +45,7 @@ class SPSS_File_Server {
 		if ( ! $sheet_id || ! wp_verify_nonce( $nonce, self::ACTION . '_' . $sheet_id ) ) {
 			wp_die( esc_html__( 'Invalid or expired link.', 'sportspress-score-sheets' ), '', array( 'response' => 403 ) );
 		}
-		if ( ! current_user_can( 'manage_options' ) ) {
+		if ( ! current_user_can( 'manage_sportspress' ) ) {
 			wp_die( esc_html__( 'You do not have permission to view this image.', 'sportspress-score-sheets' ), '', array( 'response' => 403 ) );
 		}
 

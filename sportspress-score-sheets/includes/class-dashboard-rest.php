@@ -6,7 +6,9 @@
  * manager's browser. Unlike SPSS_REST_API (the public HMAC/Twilio/WhatsApp
  * intake), every route here is gated by cookie + nonce + capability: the React
  * app posts through wp.apiFetch, which sends the logged-in user's REST nonce, so
- * each permission_callback simply requires manage_options. No secrets, no HMAC.
+ * each permission_callback requires the manage_sportspress capability (the
+ * SportsPress management tier that league managers hold — not manage_options).
+ * No secrets, no HMAC.
  *
  * Namespace: spss/v1 (shared with the intake API; the paths do not collide).
  *
@@ -32,11 +34,15 @@ class SPSS_Dashboard_REST {
 
 	/**
 	 * Register the dashboard routes. Every route is cookie+nonce authenticated and
-	 * requires the manage_options capability.
+	 * requires the manage_sportspress capability.
 	 */
 	public function register_routes() {
 		$can_manage = function () {
-			return current_user_can( 'manage_options' );
+			// Score-sheet review writes SportsPress event results + player box-score
+			// stats — a SportsPress management task, so gate on manage_sportspress.
+			// NOT manage_options: that is the WP administrator capability and would
+			// force every reviewer (league managers) to be a full site admin.
+			return current_user_can( 'manage_sportspress' );
 		};
 
 		register_rest_route(
