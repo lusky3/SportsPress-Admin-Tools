@@ -450,7 +450,7 @@ export default function SeasonSetup() {
 						{ leagueId && (
 							<div style={ { marginTop: '1rem' } }>
 								<strong>Divisions</strong>
-								<div style={ { maxHeight: '180px', overflow: 'auto', border: '1px solid var(--splm-border, #ddd)', borderRadius: '4px', padding: '0.5rem', marginTop: '0.25rem' } }>
+								<div style={ { maxHeight: '180px', overflow: 'auto', border: '1px solid var(--splm-border)', borderRadius: '4px', padding: '0.5rem', marginTop: '0.25rem' } }>
 									{ leafDivisions.map( ( d ) => (
 										<label key={ d.id } className="splm-checkbox" style={ { display: 'block', padding: '0.2rem 0' } }>
 											<input type="checkbox" checked={ !! selectedDivisions[ d.id ] } onChange={ ( e ) => setSelectedDivisions( ( prev ) => ( { ...prev, [ d.id ]: e.target.checked } ) ) } />

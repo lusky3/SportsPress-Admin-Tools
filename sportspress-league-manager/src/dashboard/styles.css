@@ -7,8 +7,10 @@
    values here are byte-for-byte the hexes they replaced, so light mode renders
    identically. Dark mode (further down) re-points the VALUES only — no rule is
    duplicated, so the single :root override themes the whole dashboard.
-   NOTE: chart series colors and any colors set inline in JSX (e.g. via style={})
-   are NOT covered by these tokens and need a separate pass. */
+   Inline JSX styles (progress/capacity bars, menus, nested rows) also resolve
+   through these tokens via `style={{ background: 'var(--splm-*)' }}`, so they
+   theme too. The only untokenized colors left are black translucent box-shadows
+   (`rgba(0,0,0,.1)`), which are theme-agnostic by design. */
 :root {
 	/* Surfaces / structure (slate) */
 	--splm-bg: #f0f2f5;              /* app/page background */
@@ -83,9 +85,8 @@
 /* Dark mode: re-point token VALUES only (not a proper inversion — a dark slate
    palette). Because every rule already resolves through the tokens above, this
    single block themes the entire dashboard. Muted/body/secondary text pairs
-   were checked for WCAG AA against their dark surfaces.
-   NOTE: chart series colors and inline-styled colors in JSX are NOT tokenized
-   and still need a dedicated dark-mode pass. */
+   were checked for WCAG AA against their dark surfaces. Inline JSX styles use
+   the same tokens (via var()), so they theme here as well. */
 @media (prefers-color-scheme: dark) {
 	:root {
 		--splm-bg: #0f172a;
