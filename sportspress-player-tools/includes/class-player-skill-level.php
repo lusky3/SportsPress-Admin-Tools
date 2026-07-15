@@ -303,51 +303,122 @@ class SPT_Player_Skill_Level {
 	 * @return array { updated: int, skipped_manual: int, skipped_low_gp: int }
 	 */
 	public function calculate_skill_levels( $league_id, $season_id, $min_games = 3 ) {
+		// Stats come from the per-event box scores (sp_players), NOT the aggregated
+		// sp_statistics meta — SportsPress does not roll imported/dashboard-entered
+		// box scores up into that meta, so it is empty on this data. A "season" scope
+		// includes the season term AND its children (e.g. regular + its playoffs);
+		// season 0 means all-time across every season.
+		$season_terms = array();
+		if ( $season_id ) {
+			$season_terms[] = (int) $season_id;
+			$children = get_terms(
+				array(
+					'taxonomy'   => 'sp_season',
+					'parent'     => $season_id,
+					'hide_empty' => false,
+					'fields'     => 'ids',
+				)
+			);
+			if ( ! is_wp_error( $children ) ) {
+				$season_terms = array_merge( $season_terms, array_map( 'intval', $children ) );
+			}
+		}
+
 		$args = array(
-			'post_type'      => 'sp_player',
+			'post_type'      => 'sp_event',
 			'posts_per_page' => -1,
 			'post_status'    => 'publish',
 			'fields'         => 'ids',
 		);
-
-		if ( $league_id ) {
-			$args['tax_query'] = array(
-				array(
-					'taxonomy' => 'sp_league',
-					'field'    => 'term_id',
-					'terms'    => $league_id,
-				),
+		$tax = array();
+		if ( ! empty( $season_terms ) ) {
+			$tax[] = array(
+				'taxonomy' => 'sp_season',
+				'field'    => 'term_id',
+				'terms'    => $season_terms,
 			);
 		}
+		if ( $league_id ) {
+			$tax[] = array(
+				'taxonomy' => 'sp_league',
+				'field'    => 'term_id',
+				'terms'    => $league_id,
+			);
+		}
+		if ( count( $tax ) > 1 ) {
+			$tax['relation'] = 'AND';
+		}
+		if ( ! empty( $tax ) ) {
+			$args['tax_query'] = $tax;
+		}
+		$event_ids = get_posts( $args );
 
-		$player_ids = get_posts( $args );
-		$scores     = array();
-		$low_gp     = 0;
-
-		foreach ( $player_ids as $pid ) {
-			$stats = get_post_meta( $pid, 'sp_statistics', true );
-			if ( ! is_array( $stats ) ) {
+		// Aggregate appearances + goals/assists/pim/goals-against per player.
+		$agg = array();
+		foreach ( $event_ids as $eid ) {
+			$players = get_post_meta( $eid, 'sp_players', true );
+			if ( ! is_array( $players ) ) {
 				continue;
 			}
+			foreach ( $players as $rows ) {
+				if ( ! is_array( $rows ) ) {
+					continue;
+				}
+				foreach ( $rows as $pid => $st ) {
+					if ( ! is_array( $st ) ) {
+						continue;
+					}
+					$pid = (int) $pid;
+					if ( ! isset( $agg[ $pid ] ) ) {
+						$agg[ $pid ] = array(
+							'gp'  => 0,
+							'g'   => 0,
+							'a'   => 0,
+							'pim' => 0,
+							'ga'  => 0,
+						);
+					}
+					$agg[ $pid ]['gp']++;
+					$agg[ $pid ]['g']   += (int) ( $st['g'] ?? 0 );
+					$agg[ $pid ]['a']   += (int) ( $st['a'] ?? 0 );
+					$agg[ $pid ]['pim'] += (int) ( $st['pim'] ?? 0 );
+					$agg[ $pid ]['ga']  += (int) ( $st['ga'] ?? 0 );
+				}
+			}
+		}
 
-			$player_stats = $this->extract_stats( $stats, $league_id, $season_id );
-			$gp           = intval( $player_stats['gp'] ?? 0 );
+		$scores = array();
+		$low_gp = 0;
+		$total  = 0;
 
+		foreach ( $agg as $pid => $s ) {
+			$gp = (int) $s['gp'];
 			if ( $gp < $min_games ) {
 				++$low_gp;
 				continue;
 			}
+			++$total;
 
 			$is_goalie = $this->is_goalie( $pid );
+			$gaa       = $gp > 0 ? $s['ga'] / $gp : 0;
+			$points    = $s['g'] + $s['a'];
 
 			if ( $is_goalie ) {
-				$gaa = floatval( $player_stats['gaatwo'] ?? 0 );
 				// Negative so lower GAA = higher score (0 GAA → score 0, best rank).
 				$raw_score = -$gaa;
 			} else {
-				$p         = intval( $player_stats['p'] ?? 0 );
-				$raw_score = $p / $gp;
+				$raw_score = $points / $gp;
 			}
+
+			$player_stats = array(
+				'gp'     => $gp,
+				'g'      => $s['g'],
+				'a'      => $s['a'],
+				'pim'    => $s['pim'],
+				'ga'     => $s['ga'],
+				'p'      => $points,
+				'gaatwo' => $gaa,
+			);
 
 			/**
 			 * Filter the raw score used for skill level ranking.
