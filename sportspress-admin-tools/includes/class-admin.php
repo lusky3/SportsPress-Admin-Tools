@@ -97,7 +97,10 @@ class SPAT_Admin {
                     }
                 });
                 $(".tab-content").each(function() {
-                    $(this).attr("role", "tabpanel").attr("tabindex", "0").prop("hidden", true);
+                    // .hide() as well as the hidden prop: some panels ship with an
+                    // inline style="display:none" that the hidden attribute alone
+                    // cannot override, which left those tabs blank when activated.
+                    $(this).attr("role", "tabpanel").attr("tabindex", "0").prop("hidden", true).hide();
                 });
 
                 // Store initial form data for each tab
@@ -147,10 +150,12 @@ class SPAT_Admin {
                     if (!tabId) { return; }
 
                     $(".nav-tab").removeClass("nav-tab-active").attr("aria-selected", "false").attr("tabindex", "-1");
-                    $(".tab-content").prop("hidden", true);
+                    $(".tab-content").prop("hidden", true).hide();
 
                     $tab.addClass("nav-tab-active").attr("aria-selected", "true").attr("tabindex", "0");
-                    $("#" + tabId).prop("hidden", false);
+                    // .show() clears any inline display:none so the panel is visible
+                    // even if it was rendered hidden by inline style, not just [hidden].
+                    $("#" + tabId).prop("hidden", false).show();
 
                     $("input[name=current_tab]").val(tabId);
                     hasUnsavedChanges = false;
