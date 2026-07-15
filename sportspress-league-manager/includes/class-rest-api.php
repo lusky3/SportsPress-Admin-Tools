@@ -472,6 +472,60 @@ class SPLM_REST_API {
 				'permission_callback' => array( $this, 'check_manage_permission' ),
 			)
 		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/divisions/create',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'create_division' ),
+				'permission_callback' => array( $this, 'check_manage_permission' ),
+			)
+		);
+	}
+
+	/**
+	 * POST /divisions/create — create (or reuse) a top-level sp_league division.
+	 *
+	 * Season Setup lets a manager add a brand-new division on the fly. Divisions
+	 * are top-level sp_league terms (parent 0); an existing term with the same
+	 * name is reused rather than duplicated.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function create_division( $request ) {
+		$params = $request->get_json_params();
+		$name   = is_array( $params ) && isset( $params['name'] ) ? trim( sanitize_text_field( $params['name'] ) ) : '';
+		if ( '' === $name ) {
+			return new WP_Error( 'missing_name', 'A division name is required.', array( 'status' => 400 ) );
+		}
+
+		$existing = get_term_by( 'name', $name, 'sp_league' );
+		if ( $existing && ! is_wp_error( $existing ) ) {
+			return new WP_REST_Response(
+				array(
+					'id'      => (int) $existing->term_id,
+					'name'    => $existing->name,
+					'created' => false,
+				),
+				200
+			);
+		}
+
+		$result = wp_insert_term( $name, 'sp_league' );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		return new WP_REST_Response(
+			array(
+				'id'      => (int) $result['term_id'],
+				'name'    => $name,
+				'created' => true,
+			),
+			201
+		);
 	}
 
 	public function check_read_permission() {
@@ -886,8 +940,15 @@ class SPLM_REST_API {
 			$terms = wp_get_object_terms( $team->ID, 'sp_league' );
 			$division_id   = null;
 			$division_name = null;
+			$league_ids    = array();
 
 			if ( ! is_wp_error( $terms ) && ! empty( $terms ) ) {
+				// All league terms this team belongs to — lets the client group a
+				// team under any division (including a top-level parent) via the
+				// localized term hierarchy, rather than only its leaf division.
+				$league_ids = wp_list_pluck( $terms, 'term_id' );
+				$league_ids = array_map( 'intval', $league_ids );
+
 				// Filter to leaf-level terms (no children).
 				$leaves = array_filter(
 					$terms,
@@ -913,6 +974,7 @@ class SPLM_REST_API {
 				'name'          => $team->post_title,
 				'division_id'   => $division_id,
 				'division_name' => $division_name,
+				'league_ids'    => $league_ids,
 			);
 		}
 
@@ -2637,11 +2699,16 @@ class SPLM_REST_API {
 			)
 		);
 
-		if ( empty( $teams ) ) {
-			return new WP_Error( 'no_teams', 'No teams found in the selected league.', array( 'status' => 400 ) );
+		// A brand-new division legitimately has no existing teams — proceed as
+		// long as the caller is adding new teams to it. Only bail when there is
+		// nothing at all to place.
+		if ( empty( $teams ) && empty( $new_team_names ) ) {
+			return new WP_Error( 'no_teams', 'No teams found in the selected division, and no new teams were provided.', array( 'status' => 400 ) );
 		}
 
-		// If specific team_ids were provided, filter to only those.
+		// If specific team_ids were provided, filter to only those. When the
+		// filter matches nothing but new teams are being created, continue with an
+		// empty existing set rather than erroring.
 		if ( ! empty( $team_ids_filter ) ) {
 			$teams = array_filter(
 				$teams,
@@ -2649,8 +2716,8 @@ class SPLM_REST_API {
 					return in_array( $team->ID, $team_ids_filter, true );
 				}
 			);
-			if ( empty( $teams ) ) {
-				return new WP_Error( 'no_teams', 'None of the selected teams are in this league.', array( 'status' => 400 ) );
+			if ( empty( $teams ) && empty( $new_team_names ) ) {
+				return new WP_Error( 'no_teams', 'None of the selected teams are in this division.', array( 'status' => 400 ) );
 			}
 		}
 
@@ -3241,21 +3308,58 @@ class SPLM_REST_API {
 			// cache in one query so the per-player get_post_meta calls below
 			// don't each hit the DB (matches the bounded pattern used by
 			// compare_teams head-to-head and the skill-distribution endpoint).
-			$player_ids = get_posts(
-				array(
-					'post_type'      => 'sp_player',
-					'posts_per_page' => 5000,
-					'fields'         => 'ids',
-					'meta_query'     => array(
-						array(
-							'key' => 'sp_current_team',
-							'value' => $team_id,
+			if ( $season_id ) {
+				// Season-scoped roster: a player is on this team THIS season iff
+				// their sp_leagues meta (league => season => team) maps $season_id
+				// to $team_id. sp_current_team is NOT season-scoped — it accumulates
+				// every player ever assigned to the (reused) team post, which
+				// massively over-counts (e.g. 51 vs ~15). Mirrors Rosters/Balance.
+				$season_players = get_posts(
+					array(
+						'post_type'      => 'sp_player',
+						'posts_per_page' => 5000,
+						'fields'         => 'ids',
+						'tax_query'      => array(
+							array(
+								'taxonomy' => 'sp_season',
+								'terms'    => $season_id,
+							),
 						),
-					),
-				)
-			);
-			if ( ! empty( $player_ids ) ) {
-				update_meta_cache( 'post', $player_ids );
+					)
+				);
+				if ( ! empty( $season_players ) ) {
+					update_meta_cache( 'post', $season_players );
+				}
+				$player_ids = array();
+				foreach ( $season_players as $pid ) {
+					$leagues = get_post_meta( $pid, 'sp_leagues', true );
+					if ( ! is_array( $leagues ) ) {
+						continue;
+					}
+					foreach ( $leagues as $season_map ) {
+						if ( is_array( $season_map ) && (int) ( $season_map[ $season_id ] ?? 0 ) === $team_id ) {
+							$player_ids[] = $pid;
+							break;
+						}
+					}
+				}
+			} else {
+				$player_ids = get_posts(
+					array(
+						'post_type'      => 'sp_player',
+						'posts_per_page' => 5000,
+						'fields'         => 'ids',
+						'meta_query'     => array(
+							array(
+								'key'   => 'sp_current_team',
+								'value' => $team_id,
+							),
+						),
+					)
+				);
+				if ( ! empty( $player_ids ) ) {
+					update_meta_cache( 'post', $player_ids );
+				}
 			}
 			$skill_sum = 0;
 			$skill_cnt = 0;
@@ -3338,13 +3442,12 @@ class SPLM_REST_API {
 			return new WP_Error( 'invalid_season', 'Season not found.', array( 'status' => 404 ) );
 		}
 
-		$stat_keys    = apply_filters( 'splm_report_stat_keys', get_option( 'splm_report_stat_keys', array( 'p', 'g', 'a', 'pim', 'gaa' ) ), $season_id );
 		$leader_count = (int) apply_filters( 'splm_report_leader_count', get_option( 'splm_report_leader_count', 10 ), '', $season_id );
 
 		// --- Active divisions: regular-season standings tables collapsed by
 		// division term (playoff child tables skipped). Mirrors the Standings/
 		// Balance derivation so the report reflects THIS season only and division
-		// names are not duplicated per-table (the bug the report showed before). ---
+		// names are not duplicated per-table. ---
 		$divisions   = array();
 		$team_to_div = array();
 		if ( class_exists( 'SP_League_Table' ) ) {
@@ -3410,9 +3513,12 @@ class SPLM_REST_API {
 			);
 		}
 
-		// --- Games: season totals + per-division tallies (an event is attributed
-		// to a division by its home team). Includes future-dated games so
-		// "remaining" reflects the games still to be played. ---
+		// --- Games: season totals + per-division tallies (event attributed to a
+		// division by its home team). Player stat leaders are aggregated from the
+		// per-event box scores (sp_players) here, NOT from each player's
+		// sp_statistics meta: the dashboard/score-sheet writers populate the event
+		// box score, and SportsPress does not always recompute the per-player
+		// aggregate, so sp_statistics is frequently empty even when stats exist. ---
 		$event_ids = get_posts(
 			array(
 				'post_type'      => 'sp_event',
@@ -3430,8 +3536,10 @@ class SPLM_REST_API {
 		if ( ! empty( $event_ids ) ) {
 			update_meta_cache( 'post', $event_ids );
 		}
-		$played    = 0;
-		$cancelled = 0;
+		$played      = 0;
+		$cancelled   = 0;
+		$box         = array(); // player_id => array( g, a, pim ).
+		$player_team = array(); // player_id => team_id (for leader display).
 		foreach ( $event_ids as $eid ) {
 			$teams = get_post_meta( $eid, 'sp_team', false );
 			$home  = isset( $teams[0] ) ? (int) $teams[0] : 0;
@@ -3455,11 +3563,36 @@ class SPLM_REST_API {
 			} elseif ( $dt ) {
 				$divisions[ $dt ]['remaining']++;
 			}
+			// Box score: sp_players = array( team_id => array( player_id => stats ) ).
+			$sp_players = get_post_meta( $eid, 'sp_players', true );
+			if ( is_array( $sp_players ) ) {
+				foreach ( $sp_players as $tid => $rows ) {
+					if ( ! is_array( $rows ) ) {
+						continue;
+					}
+					foreach ( $rows as $pid => $st ) {
+						if ( ! is_array( $st ) ) {
+							continue;
+						}
+						$pid = (int) $pid;
+						if ( ! isset( $box[ $pid ] ) ) {
+							$box[ $pid ]         = array(
+								'g' => 0,
+								'a' => 0,
+								'pim' => 0,
+							);
+							$player_team[ $pid ] = (int) $tid;
+						}
+						$box[ $pid ]['g']   += (int) ( $st['g'] ?? 0 );
+						$box[ $pid ]['a']   += (int) ( $st['a'] ?? 0 );
+						$box[ $pid ]['pim'] += (int) ( $st['pim'] ?? 0 );
+					}
+				}
+			}
 		}
 
-		// --- Players: stat leaders + per-division roster (season-scoped via
-		// sp_leagues, the same source Rosters/Balance use — sp_current_team is
-		// NOT season-scoped). ---
+		// --- Per-division roster (season-scoped via sp_leagues, the same source
+		// Rosters/Balance use — sp_current_team is NOT season-scoped). ---
 		$player_ids = get_posts(
 			array(
 				'post_type'      => 'sp_player',
@@ -3476,52 +3609,48 @@ class SPLM_REST_API {
 		if ( ! empty( $player_ids ) ) {
 			update_meta_cache( 'post', $player_ids );
 		}
-
-		$leaders    = array_fill_keys( $stat_keys, array() );
-		$player_div = array(); // player_id => division term_id (season roster).
+		$player_div = array();
 		foreach ( $player_ids as $pid ) {
 			$leagues = get_post_meta( $pid, 'sp_leagues', true );
-			if ( is_array( $leagues ) ) {
-				foreach ( $leagues as $season_map ) {
-					if ( is_array( $season_map ) && ! empty( $season_map[ $season_id ] ) ) {
-						$team = (int) $season_map[ $season_id ];
-						if ( isset( $team_to_div[ $team ] ) ) {
-							$dt                = $team_to_div[ $team ];
-							$player_div[ $pid ] = $dt;
-							$divisions[ $dt ]['roster']++;
-						}
-						break;
-					}
-				}
-			}
-
-			$sp_stats = get_post_meta( $pid, 'sp_statistics', true );
-			if ( ! is_array( $sp_stats ) ) {
+			if ( ! is_array( $leagues ) ) {
 				continue;
 			}
-			$totals = array_fill_keys( $stat_keys, 0 );
-			foreach ( $sp_stats as $league_data ) {
-				if ( ! is_array( $league_data ) ) {
-					continue;
-				}
-				foreach ( $league_data as $sid => $st ) {
-					if ( (int) $sid !== $season_id || ! is_array( $st ) ) {
-						continue;
+			foreach ( $leagues as $season_map ) {
+				if ( is_array( $season_map ) && ! empty( $season_map[ $season_id ] ) ) {
+					$team = (int) $season_map[ $season_id ];
+					if ( isset( $team_to_div[ $team ] ) ) {
+						$dt                 = $team_to_div[ $team ];
+						$player_div[ $pid ] = $dt;
+						$divisions[ $dt ]['roster']++;
 					}
-					foreach ( $stat_keys as $key ) {
-						$totals[ $key ] += (float) ( $st[ $key ] ?? 0 );
-					}
+					break;
 				}
 			}
-			$team_id = get_post_meta( $pid, 'sp_current_team', true );
-			$name    = get_the_title( $pid );
-			$team    = $team_id ? get_the_title( $team_id ) : '';
-			foreach ( $stat_keys as $key ) {
-				if ( $totals[ $key ] > 0 ) {
+		}
+
+		// --- Stat leaders from box scores. Points = goals + assists. ---
+		$leaders = array(
+			'p'   => array(),
+			'g'   => array(),
+			'a'   => array(),
+			'pim' => array(),
+		);
+		foreach ( $box as $pid => $b ) {
+			$vals = array(
+				'g'   => $b['g'],
+				'a'   => $b['a'],
+				'pim' => $b['pim'],
+				'p'   => $b['g'] + $b['a'],
+			);
+			$tid  = $player_team[ $pid ] ?? 0;
+			$name = get_the_title( $pid );
+			$team = $tid ? get_the_title( $tid ) : '';
+			foreach ( $vals as $key => $value ) {
+				if ( $value > 0 ) {
 					$leaders[ $key ][] = array(
 						'player' => $name,
 						'team'   => $team,
-						'value'  => $totals[ $key ],
+						'value'  => $value,
 					);
 				}
 			}

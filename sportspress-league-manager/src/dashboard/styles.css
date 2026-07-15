@@ -662,6 +662,11 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: var(--splm-text); }
 .splm-season-setup__meta > label { display: flex; flex-direction: column; gap: 0.2rem; min-width: 12rem; }
 .splm-season-setup__opts { display: flex; flex-direction: column; gap: 0.35rem; }
 .splm-season-setup__actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem; }
+.splm-season-setup__season { display: flex; flex-direction: column; gap: 0.2rem; max-width: 16rem; margin-bottom: 0.75rem; }
+/* #33 revise: select-or-create division picker at the top of the builder. */
+.splm-division-picker { display: flex; align-items: flex-end; gap: 0.75rem; flex-wrap: wrap; }
+.splm-division-picker__select { display: flex; flex-direction: column; gap: 0.2rem; min-width: 16rem; flex: 1; }
+.splm-division-picker input[type="text"] { min-width: 12rem; }
 .splm-division-box { margin-bottom: 1rem; }
 .splm-division-box__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; }
 .splm-division-box__select { display: flex; flex-direction: column; gap: 0.2rem; flex: 1; }

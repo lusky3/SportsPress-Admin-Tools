@@ -1,38 +1,25 @@
 import { useState, useEffect, useRef, useMemo } from '@wordpress/element';
-import { createSeason, fetchTeamsWithDivisions, rolloverPreview, rolloverExecute, spsg } from '../lib/api';
+import { createSeason, createDivision, fetchTeamsWithDivisions, rolloverPreview, rolloverExecute, spsg } from '../lib/api';
 import Toast from '../components/Toast';
 
 const SEASON_REGEX = /^[A-Za-z]?\d{4}(-\d{2,4})?$/;
+const NEW_DIVISION = '__new__';
 
 let boxCounter = 0;
-const makeBox = () => ( { key: `box-${ boxCounter++ }`, divisionId: '', teams: {}, newTeamName: '', newTeams: [] } );
 
-/* ─── One division "context box": pick a division, choose/add its teams ─── */
-function DivisionBox( { box, index, divisionOptions, teamsByDivision, takenDivisions, onChange, onRemove, canRemove } ) {
-	const teams = box.divisionId ? ( teamsByDivision[ box.divisionId ] || [] ) : [];
-	// Offer divisions not already chosen in another box (plus this box's own).
-	const options = divisionOptions.filter( ( d ) => String( d.id ) === String( box.divisionId ) || ! takenDivisions.has( String( d.id ) ) );
+/* ─── A division content box: choose which of its teams are playing, add teams ─── */
+function DivisionBox( { box, teams, onChange, onRemove } ) {
 	const checkedCount = teams.filter( ( t ) => box.teams[ t.id ] ).length;
-
-	const selectDivision = ( divisionId ) => {
-		// Default every team in the division to "playing".
-		const list = teamsByDivision[ divisionId ] || [];
-		const teamsSel = {};
-		list.forEach( ( t ) => { teamsSel[ t.id ] = true; } );
-		onChange( { ...box, divisionId, teams: teamsSel } );
-	};
 
 	const toggleTeam = ( id ) => onChange( { ...box, teams: { ...box.teams, [ id ]: ! box.teams[ id ] } } );
 	const setAll = ( val ) => {
-		const teamsSel = {};
-		teams.forEach( ( t ) => { teamsSel[ t.id ] = val; } );
-		onChange( { ...box, teams: teamsSel } );
+		const sel = {};
+		teams.forEach( ( t ) => { sel[ t.id ] = val; } );
+		onChange( { ...box, teams: sel } );
 	};
-
 	const addNewTeam = () => {
 		const name = box.newTeamName.trim();
-		if ( ! name ) return;
-		if ( box.newTeams.some( ( n ) => n.toLowerCase() === name.toLowerCase() ) ) return;
+		if ( ! name || box.newTeams.some( ( n ) => n.toLowerCase() === name.toLowerCase() ) ) return;
 		onChange( { ...box, newTeams: [ ...box.newTeams, name ], newTeamName: '' } );
 	};
 	const removeNewTeam = ( name ) => onChange( { ...box, newTeams: box.newTeams.filter( ( n ) => n !== name ) } );
@@ -40,58 +27,46 @@ function DivisionBox( { box, index, divisionOptions, teamsByDivision, takenDivis
 	return (
 		<div className="splm-card splm-division-box">
 			<div className="splm-division-box__head">
-				<label className="splm-division-box__select">
-					<span className="splm-schedule__filter-label">Division { index + 1 }</span>
-					<select className="splm-select" value={ box.divisionId } onChange={ ( e ) => selectDivision( e.target.value ) }>
-						<option value="">Select a division…</option>
-						{ options.map( ( d ) => (
-							<option key={ d.id } value={ d.id }>{ d.name } ({ d.teamCount } teams)</option>
-						) ) }
-					</select>
-				</label>
-				{ canRemove && (
-					<button type="button" className="splm-btn splm-btn--small" onClick={ onRemove }>Remove</button>
-				) }
+				<h3 style={ { margin: 0 } }>{ box.divisionName }</h3>
+				<button type="button" className="splm-btn splm-btn--small" onClick={ onRemove }>Remove</button>
 			</div>
-
-			{ box.divisionId && (
-				<div className="splm-division-box__teams">
-					<div className="splm-division-box__teams-head">
-						<strong>Teams { checkedCount > 0 ? `(${ checkedCount } playing)` : '' }</strong>
+			<div className="splm-division-box__teams">
+				<div className="splm-division-box__teams-head">
+					<strong>Teams { checkedCount > 0 ? `(${ checkedCount } playing)` : '' }</strong>
+					{ teams.length > 0 && (
 						<span>
 							<button type="button" className="splm-linkbtn" onClick={ () => setAll( true ) }>All</button>
 							{ ' · ' }
 							<button type="button" className="splm-linkbtn" onClick={ () => setAll( false ) }>None</button>
 						</span>
-					</div>
-					<div className="splm-division-box__team-list">
-						{ teams.length === 0 ? (
-							<p className="splm-muted">No existing teams in this division — add new ones below.</p>
-						) : teams.map( ( t ) => (
-							<label key={ t.id } className="splm-checkbox splm-division-box__team">
-								<input type="checkbox" checked={ !! box.teams[ t.id ] } onChange={ () => toggleTeam( t.id ) } />
-								{ t.name }
-							</label>
+					) }
+				</div>
+				<div className="splm-division-box__team-list">
+					{ teams.length === 0 ? (
+						<p className="splm-muted">No existing teams in this division — add new ones below.</p>
+					) : teams.map( ( t ) => (
+						<label key={ t.id } className="splm-checkbox splm-division-box__team">
+							<input type="checkbox" checked={ !! box.teams[ t.id ] } onChange={ () => toggleTeam( t.id ) } />
+							{ t.name }
+						</label>
+					) ) }
+				</div>
+				{ box.newTeams.length > 0 && (
+					<div className="splm-division-box__new">
+						{ box.newTeams.map( ( n ) => (
+							<span key={ n } className="splm-chip">{ n } (new)
+								<button type="button" className="splm-chip__x" onClick={ () => removeNewTeam( n ) } aria-label={ `Remove ${ n }` }>✕</button>
+							</span>
 						) ) }
 					</div>
-
-					{ box.newTeams.length > 0 && (
-						<div className="splm-division-box__new">
-							{ box.newTeams.map( ( n ) => (
-								<span key={ n } className="splm-chip">{ n } (new)
-									<button type="button" className="splm-chip__x" onClick={ () => removeNewTeam( n ) } aria-label={ `Remove ${ n }` }>✕</button>
-								</span>
-							) ) }
-						</div>
-					) }
-					<div className="splm-division-box__add">
-						<input type="text" className="splm-select" placeholder="Add a new team to this division" value={ box.newTeamName }
-							onChange={ ( e ) => onChange( { ...box, newTeamName: e.target.value } ) }
-							onKeyDown={ ( e ) => { if ( e.key === 'Enter' ) { e.preventDefault(); addNewTeam(); } } } />
-						<button type="button" className="splm-btn" onClick={ addNewTeam } disabled={ ! box.newTeamName.trim() }>Add team</button>
-					</div>
+				) }
+				<div className="splm-division-box__add">
+					<input type="text" className="splm-select" placeholder="Add a new team to this division" value={ box.newTeamName }
+						onChange={ ( e ) => onChange( { ...box, newTeamName: e.target.value } ) }
+						onKeyDown={ ( e ) => { if ( e.key === 'Enter' ) { e.preventDefault(); addNewTeam(); } } } />
+					<button type="button" className="splm-btn" onClick={ addNewTeam } disabled={ ! box.newTeamName.trim() }>Add team</button>
 				</div>
-			) }
+			</div>
 		</div>
 	);
 }
@@ -103,7 +78,13 @@ export default function SeasonSetup() {
 	const [ createCalendars, setCreateCalendars ] = useState( true );
 	const [ createRosters, setCreateRosters ] = useState( false );
 	const [ createPlayoffs, setCreatePlayoffs ] = useState( true );
-	const [ boxes, setBoxes ] = useState( [ makeBox() ] );
+	const [ boxes, setBoxes ] = useState( [] );
+
+	// Division picker (top of the builder).
+	const [ pickValue, setPickValue ] = useState( '' );
+	const [ newDivName, setNewDivName ] = useState( '' );
+	const [ createdDivisions, setCreatedDivisions ] = useState( [] ); // divisions made on the fly this session
+	const [ adding, setAdding ] = useState( false );
 
 	const [ allTeams, setAllTeams ] = useState( null );
 	const [ teamsLoading, setTeamsLoading ] = useState( true );
@@ -112,7 +93,7 @@ export default function SeasonSetup() {
 	const [ toast, setToast ] = useState( null );
 	const [ results, setResults ] = useState( null );
 
-	// Rollover (unchanged from prior — runs after a season is created).
+	// Rollover (runs after a season is created) — unchanged.
 	const [ rSeasons, setRSeasons ] = useState( [] );
 	const [ rFrom, setRFrom ] = useState( '' );
 	const [ rTo, setRTo ] = useState( '' );
@@ -137,50 +118,111 @@ export default function SeasonSetup() {
 			.finally( () => { if ( ! cancelledRef.current.cancelled ) setTeamsLoading( false ); } );
 	}, [] );
 
-	// Divisions that actually contain teams, with counts — the only ones worth
-	// picking (avoids empty parent terms). Teams grouped by their leaf division.
-	const { divisionOptions, teamsByDivision } = useMemo( () => {
-		const byDiv = {};
-		const opts = {};
-		( allTeams || [] ).forEach( ( t ) => {
-			if ( t.division_id == null ) return;
-			const id = String( t.division_id );
-			( byDiv[ id ] = byDiv[ id ] || [] ).push( { id: t.id, name: t.name } );
-			opts[ id ] = { id, name: t.division_name || `Division ${ id }`, teamCount: ( opts[ id ]?.teamCount || 0 ) + 1 };
-		} );
-		const options = Object.values( opts ).sort( ( a, b ) => a.name.localeCompare( b.name ) );
-		return { divisionOptions: options, teamsByDivision: byDiv };
-	}, [ allTeams ] );
+	const leagues = window.splmDashboard?.leagues || [];
 
-	const takenDivisions = useMemo( () => new Set( boxes.map( ( b ) => String( b.divisionId ) ).filter( Boolean ) ), [ boxes ] );
+	// Resolve any sp_league term to its top-level ancestor (walk the parent chain).
+	const childToTop = useMemo( () => {
+		const byId = {};
+		leagues.forEach( ( l ) => { byId[ l.id ] = l; } );
+		const resolve = ( id ) => {
+			let cur = byId[ id ];
+			const seen = new Set();
+			while ( cur && cur.parent && byId[ cur.parent ] && ! seen.has( cur.id ) ) {
+				seen.add( cur.id );
+				cur = byId[ cur.parent ];
+			}
+			return cur ? cur.id : id;
+		};
+		const map = {};
+		leagues.forEach( ( l ) => { map[ l.id ] = resolve( l.id ); } );
+		return map;
+	}, [ leagues ] );
+
+	// Teams grouped under their top-level division (so "Division 4" gathers its
+	// Div 4A/4B/4C sub-groups instead of showing "divisions inside divisions").
+	const teamsByDivision = useMemo( () => {
+		const byDiv = {};
+		( allTeams || [] ).forEach( ( t ) => {
+			const tops = new Set();
+			( t.league_ids || [] ).forEach( ( lid ) => { tops.add( childToTop[ lid ] ?? lid ); } );
+			tops.forEach( ( top ) => {
+				( byDiv[ top ] = byDiv[ top ] || [] ).push( { id: t.id, name: t.name } );
+			} );
+		} );
+		return byDiv;
+	}, [ allTeams, childToTop ] );
+
+	// Division options: top-level terms + any created this session, minus the
+	// ones already added as boxes.
+	const divisionOptions = useMemo( () => {
+		const taken = new Set( boxes.map( ( b ) => String( b.divisionId ) ) );
+		const opts = leagues
+			.filter( ( l ) => ! l.parent )
+			.map( ( l ) => ( { id: String( l.id ), name: l.name } ) )
+			.concat( createdDivisions.map( ( d ) => ( { id: String( d.id ), name: d.name } ) ) );
+		const seen = new Set();
+		return opts
+			.filter( ( o ) => ! taken.has( o.id ) && ! seen.has( o.id ) && seen.add( o.id ) )
+			.sort( ( a, b ) => a.name.localeCompare( b.name ) );
+	}, [ leagues, createdDivisions, boxes ] );
+
+	const divName = ( id ) => {
+		const l = leagues.find( ( x ) => String( x.id ) === String( id ) ) || createdDivisions.find( ( x ) => String( x.id ) === String( id ) );
+		return l ? l.name : String( id );
+	};
 
 	const handleNameChange = ( val ) => {
 		setSeasonName( val );
 		setNameError( val && ! SEASON_REGEX.test( val ) ? 'Format: W2025, S2025-26, or 2025' : '' );
 	};
 
-	const updateBox = ( idx, next ) => setBoxes( ( prev ) => prev.map( ( b, i ) => ( i === idx ? next : b ) ) );
-	const addBox = () => setBoxes( ( prev ) => [ ...prev, makeBox() ] );
-	const removeBox = ( idx ) => setBoxes( ( prev ) => prev.filter( ( _, i ) => i !== idx ) );
+	const spawnBox = ( divisionId, divisionName ) => {
+		const list = teamsByDivision[ divisionId ] || [];
+		const teams = {};
+		list.forEach( ( t ) => { teams[ t.id ] = true; } );
+		setBoxes( ( prev ) => [ ...prev, { key: `box-${ boxCounter++ }`, divisionId: String( divisionId ), divisionName, teams, newTeamName: '', newTeams: [] } ] );
+	};
 
-	// A box contributes if it has a division and at least one playing team (existing or new).
-	const activeBoxes = boxes.filter( ( b ) => b.divisionId && ( Object.values( b.teams ).some( Boolean ) || b.newTeams.length > 0 ) );
+	const handleAdd = async () => {
+		setError( '' );
+		if ( pickValue === NEW_DIVISION ) {
+			const name = newDivName.trim();
+			if ( ! name ) return;
+			setAdding( true );
+			try {
+				const d = await createDivision( name );
+				if ( cancelledRef.current.cancelled ) return;
+				setCreatedDivisions( ( prev ) => ( prev.some( ( x ) => String( x.id ) === String( d.id ) ) ? prev : [ ...prev, { id: d.id, name: d.name } ] ) );
+				spawnBox( d.id, d.name );
+				setNewDivName( '' );
+				setPickValue( '' );
+			} catch ( err ) {
+				setError( err?.message || 'Could not create division.' );
+			}
+			setAdding( false );
+		} else if ( pickValue ) {
+			spawnBox( pickValue, divName( pickValue ) );
+			setPickValue( '' );
+		}
+	};
+
+	const updateBox = ( key, next ) => setBoxes( ( prev ) => prev.map( ( b ) => ( b.key === key ? next : b ) ) );
+	const removeBox = ( key ) => setBoxes( ( prev ) => prev.filter( ( b ) => b.key !== key ) );
+
+	// A box contributes if it has at least one playing team (existing or new).
+	const activeBoxes = boxes.filter( ( b ) => Object.values( b.teams ).some( Boolean ) || b.newTeams.length > 0 );
 	const canPreview = !! seasonName && ! nameError && activeBoxes.length > 0;
 
 	const buildPreview = () => activeBoxes.map( ( b ) => {
 		const teams = teamsByDivision[ b.divisionId ] || [];
 		const playing = teams.filter( ( t ) => b.teams[ t.id ] );
-		const opt = divisionOptions.find( ( d ) => String( d.id ) === String( b.divisionId ) );
-		return { divisionId: b.divisionId, divisionName: opt?.name || b.divisionId, playing, newTeams: b.newTeams };
+		return { divisionId: b.divisionId, divisionName: b.divisionName, playing, newTeams: b.newTeams };
 	} );
 
 	const handleCreate = async () => {
 		setBusy( true );
 		setError( '' );
 		const agg = { teams_updated: 0, calendars_created: 0, calendars_updated: 0, rosters_created: 0, tables_created: 0, new_teams_created: 0, divisions: 0, errors: [] };
-		// One createSeason call per division (each keyed to its own sp_league term).
-		// Sequential so the shared "set default season" side-effect and result
-		// aggregation stay predictable; different league_ids use separate locks.
 		for ( const b of activeBoxes ) {
 			const teams = teamsByDivision[ b.divisionId ] || [];
 			const teamIds = teams.filter( ( t ) => b.teams[ t.id ] ).map( ( t ) => Number( t.id ) );
@@ -206,10 +248,10 @@ export default function SeasonSetup() {
 					agg.season_name = data.season_name || seasonName;
 					agg.season_id = data.season_id;
 				} else {
-					agg.errors.push( `${ b.divisionId }: no season id returned` );
+					agg.errors.push( `${ b.divisionName }: no season id returned` );
 				}
 			} catch ( err ) {
-				agg.errors.push( err?.message || 'Failed' );
+				agg.errors.push( `${ b.divisionName }: ${ err?.message || 'failed' }` );
 			}
 			if ( cancelledRef.current.cancelled ) return;
 		}
@@ -232,7 +274,10 @@ export default function SeasonSetup() {
 		setResults( null );
 		setSeasonName( '' );
 		setNameError( '' );
-		setBoxes( [ makeBox() ] );
+		setBoxes( [] );
+		setCreatedDivisions( [] );
+		setPickValue( '' );
+		setNewDivName( '' );
 		setError( '' );
 	};
 
@@ -246,21 +291,19 @@ export default function SeasonSetup() {
 			{ /* STEP 1 — Build */ }
 			{ step === 1 && (
 				<>
-					<p className="splm-muted">Name the season, then add one box per division and choose which teams are playing. Use <strong>Add Division</strong> to set up several divisions at once.</p>
+					<p className="splm-muted">Name the season, then add each division playing this season — pick an existing division or create a new one, click <strong>Add</strong>, and choose its teams in the box that appears.</p>
 					{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 
 					<div className="splm-card">
-						<div className="splm-season-setup__meta">
-							<label>
-								<span className="splm-schedule__filter-label">Season name</span>
-								<input type="text" className="splm-select" placeholder="W2025-26" value={ seasonName } onChange={ ( e ) => handleNameChange( e.target.value ) } />
-								{ nameError && <small style={ { color: 'var(--splm-danger)' } }>{ nameError }</small> }
-							</label>
-							<div className="splm-season-setup__opts">
-								<label className="splm-checkbox"><input type="checkbox" checked={ createCalendars } onChange={ ( e ) => setCreateCalendars( e.target.checked ) } /> Update team calendars to this season</label>
-								<label className="splm-checkbox"><input type="checkbox" checked={ createRosters } onChange={ ( e ) => setCreateRosters( e.target.checked ) } /> Create empty roster lists</label>
-								<label className="splm-checkbox"><input type="checkbox" checked={ createPlayoffs } onChange={ ( e ) => setCreatePlayoffs( e.target.checked ) } /> Create Playoffs sub-season</label>
-							</div>
+						<label className="splm-season-setup__season">
+							<span className="splm-schedule__filter-label">Season name</span>
+							<input type="text" className="splm-select" placeholder="W2025-26" value={ seasonName } onChange={ ( e ) => handleNameChange( e.target.value ) } />
+							{ nameError && <small style={ { color: 'var(--splm-danger)' } }>{ nameError }</small> }
+						</label>
+						<div className="splm-season-setup__opts">
+							<label className="splm-checkbox"><input type="checkbox" checked={ createCalendars } onChange={ ( e ) => setCreateCalendars( e.target.checked ) } /> Update team calendars to this season</label>
+							<label className="splm-checkbox"><input type="checkbox" checked={ createRosters } onChange={ ( e ) => setCreateRosters( e.target.checked ) } /> Create empty roster lists</label>
+							<label className="splm-checkbox"><input type="checkbox" checked={ createPlayoffs } onChange={ ( e ) => setCreatePlayoffs( e.target.checked ) } /> Create Playoffs sub-season</label>
 						</div>
 					</div>
 
@@ -268,23 +311,44 @@ export default function SeasonSetup() {
 						<div className="splm-loading">Loading divisions…</div>
 					) : (
 						<>
-							{ boxes.map( ( box, idx ) => (
+							{ /* Division picker */ }
+							<div className="splm-card splm-division-picker">
+								<label className="splm-division-picker__select">
+									<span className="splm-schedule__filter-label">Add a division</span>
+									<select className="splm-select" value={ pickValue } onChange={ ( e ) => setPickValue( e.target.value ) }>
+										<option value="">Select a division…</option>
+										{ divisionOptions.map( ( d ) => (
+											<option key={ d.id } value={ d.id }>{ d.name } ({ ( teamsByDivision[ d.id ] || [] ).length } teams)</option>
+										) ) }
+										<option value={ NEW_DIVISION }>＋ Create a new division…</option>
+									</select>
+								</label>
+								{ pickValue === NEW_DIVISION && (
+									<input type="text" className="splm-select" placeholder="New division name" value={ newDivName }
+										onChange={ ( e ) => setNewDivName( e.target.value ) }
+										onKeyDown={ ( e ) => { if ( e.key === 'Enter' ) { e.preventDefault(); handleAdd(); } } } />
+								) }
+								<button type="button" className="splm-btn splm-btn--primary" onClick={ handleAdd }
+									disabled={ adding || ! pickValue || ( pickValue === NEW_DIVISION && ! newDivName.trim() ) }>
+									{ adding ? 'Adding…' : 'Add' }
+								</button>
+							</div>
+
+							{ boxes.map( ( box ) => (
 								<DivisionBox
 									key={ box.key }
 									box={ box }
-									index={ idx }
-									divisionOptions={ divisionOptions }
-									teamsByDivision={ teamsByDivision }
-									takenDivisions={ takenDivisions }
-									onChange={ ( next ) => updateBox( idx, next ) }
-									onRemove={ () => removeBox( idx ) }
-									canRemove={ boxes.length > 1 }
+									teams={ teamsByDivision[ box.divisionId ] || [] }
+									onChange={ ( next ) => updateBox( box.key, next ) }
+									onRemove={ () => removeBox( box.key ) }
 								/>
 							) ) }
-							<div className="splm-season-setup__actions">
-								<button type="button" className="splm-btn" onClick={ addBox } disabled={ divisionOptions.length <= takenDivisions.size }>+ Add Division</button>
-								<button type="button" className="splm-btn splm-btn--primary" disabled={ ! canPreview } onClick={ () => setStep( 2 ) }>Preview changes →</button>
-							</div>
+
+							{ boxes.length > 0 && (
+								<div className="splm-season-setup__actions">
+									<button type="button" className="splm-btn splm-btn--primary" disabled={ ! canPreview } onClick={ () => setStep( 2 ) }>Preview changes →</button>
+								</div>
+							) }
 						</>
 					) }
 				</>
@@ -297,18 +361,20 @@ export default function SeasonSetup() {
 					{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 					<div className="splm-card">
 						<h3 style={ { marginTop: 0 } }>Season “{ seasonName }”</h3>
-						<table className="splm-table" style={ { width: '100%' } }>
-							<thead><tr><th scope="col">Division</th><th scope="col">Teams playing</th><th scope="col">New teams</th></tr></thead>
-							<tbody>
-								{ preview.map( ( p ) => (
-									<tr key={ p.divisionId }>
-										<td><strong>{ p.divisionName }</strong></td>
-										<td>{ p.playing.length }{ p.playing.length > 0 ? `: ${ p.playing.map( ( t ) => t.name ).join( ', ' ) }` : '' }</td>
-										<td>{ p.newTeams.length ? p.newTeams.join( ', ' ) : '—' }</td>
-									</tr>
-								) ) }
-							</tbody>
-						</table>
+						<div className="splm-table-wrapper">
+							<table className="splm-table">
+								<thead><tr><th scope="col">Division</th><th scope="col">Teams playing</th><th scope="col">New teams</th></tr></thead>
+								<tbody>
+									{ preview.map( ( p ) => (
+										<tr key={ p.divisionId }>
+											<td><strong>{ p.divisionName }</strong></td>
+											<td>{ p.playing.length }{ p.playing.length > 0 ? `: ${ p.playing.map( ( t ) => t.name ).join( ', ' ) }` : '' }</td>
+											<td>{ p.newTeams.length ? p.newTeams.join( ', ' ) : '—' }</td>
+										</tr>
+									) ) }
+								</tbody>
+							</table>
+						</div>
 						<ul className="splm-muted" style={ { marginTop: '0.75rem' } }>
 							<li>Standings tables will be created for each division above.</li>
 							{ createCalendars && <li>Team calendars will be updated to “{ seasonName }”.</li> }
