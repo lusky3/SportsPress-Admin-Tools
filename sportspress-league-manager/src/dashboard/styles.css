@@ -221,7 +221,9 @@
 .splm-help-section { scroll-margin-top: 5rem; padding: 0.75rem 0; border-top: 1px solid var(--splm-border-light); border-radius: 6px; }
 .splm-help-section h3 { margin-bottom: 0.4rem; color: var(--splm-text-strong); }
 .splm-help-section h4 { margin: 0.75rem 0 0.25rem; }
-.splm-help-section code { background: var(--splm-surface-muted); padding: 0.05rem 0.3rem; border-radius: 3px; font-size: 0.85em; }
+/* Explicit color (not just background): a residual host-theme/UA `code` color
+   can bleed onto the standalone template and render dark-on-dark otherwise. */
+.splm-help-section code { background: var(--splm-surface-muted); color: var(--splm-text); padding: 0.05rem 0.3rem; border-radius: 3px; font-size: 0.85em; }
 .splm-help-section--flash { animation: splm-help-flash 1.6s ease-out; }
 @keyframes splm-help-flash { 0% { background: var(--splm-primary-tint); } 100% { background: transparent; } }
 
