@@ -1,9 +1,29 @@
 import { useState, useEffect, useCallback } from '@wordpress/element';
-import { fetchGames, rescheduleGame, cancelGame, importGamesPreview, importGames } from '../lib/api';
+import { fetchGamesPage, rescheduleGame, cancelGame, importGamesPreview, importGames } from '../lib/api';
 import Toast from '../components/Toast';
+
+const PER_PAGE = 50;
+const TODAY = new Date().toISOString().split( 'T' )[ 0 ];
+
+// Divisions (sp_league terms) localized by the frontend — reused to populate
+// the division filter without an extra round-trip. Sorted by name.
+function divisionOptions() {
+	const leagues = window.splmDashboard?.leagues || [];
+	return [ ...leagues ].sort( ( a, b ) => String( a.name ).localeCompare( String( b.name ) ) );
+}
+
+function formatDayHeading( date ) {
+	const d = new Date( `${ date }T12:00:00` );
+	return Number.isNaN( d.getTime() )
+		? date
+		: d.toLocaleDateString( undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' } );
+}
 
 export default function Schedule( { season } ) {
 	const [ games, setGames ] = useState( [] );
+	const [ total, setTotal ] = useState( 0 );
+	const [ totalPages, setTotalPages ] = useState( 0 );
+	const [ page, setPage ] = useState( 1 );
 	const [ loading, setLoading ] = useState( true );
 	const [ modal, setModal ] = useState( null );
 	const [ error, setError ] = useState( '' );
@@ -11,10 +31,59 @@ export default function Schedule( { season } ) {
 	const [ importing, setImporting ] = useState( false );
 	const [ toast, setToast ] = useState( '' ); // UI-13: in-app success feedback
 
+	// Filters.
+	const [ statusFilter, setStatusFilter ] = useState( 'upcoming' );
+	const [ divisionFilter, setDivisionFilter ] = useState( '' );
+	const [ teamSearch, setTeamSearch ] = useState( '' );
+
+	const canManage = window.splmDashboard?.capabilities?.canManageSchedule !== false;
+	const adminUrl = window.splmDashboard?.adminUrl || '/wp-admin/';
+
+	// Reset to first page whenever the query (season or a server-side filter)
+	// changes, so we never request a page number past the new result set.
+	useEffect( () => {
+		setPage( 1 );
+	}, [ season, statusFilter, divisionFilter ] );
+
+	const loadGames = useCallback( () => {
+		let cancelled = false;
+		setLoading( true );
+		const params = { per_page: PER_PAGE, offset: ( page - 1 ) * PER_PAGE };
+		if ( season ) params.season = season;
+		if ( divisionFilter ) params.league = divisionFilter;
+		if ( 'upcoming' === statusFilter ) {
+			params.from = TODAY;
+			params.order = 'asc';
+		} else if ( 'past' === statusFilter ) {
+			params.to = TODAY;
+			params.order = 'desc';
+		} else {
+			params.order = 'asc';
+		}
+		fetchGamesPage( params ).then( ( res ) => {
+			if ( cancelled ) return;
+			setGames( res.data );
+			setTotal( res.total );
+			setTotalPages( res.totalPages );
+			setLoading( false );
+		} ).catch( ( err ) => {
+			if ( cancelled ) return;
+			setError( err?.message || 'Failed to load games' );
+			setLoading( false );
+		} );
+		return () => { cancelled = true; };
+	}, [ season, page, statusFilter, divisionFilter ] );
+
+	useEffect( () => {
+		const cleanup = loadGames();
+		return cleanup;
+	}, [ loadGames ] );
+
 	const handleImportFile = ( e ) => {
 		const file = e.target.files?.[ 0 ];
 		if ( ! file ) return;
 		importGamesPreview( file ).then( setImportPreview ).catch( ( err ) => setError( err?.message || 'Failed to parse file' ) );
+		e.target.value = ''; // allow re-selecting the same file
 	};
 
 	const handleImportConfirm = async () => {
@@ -32,26 +101,6 @@ export default function Schedule( { season } ) {
 		setImporting( false );
 	};
 
-	const loadGames = useCallback( () => {
-		let cancelled = false;
-		setLoading( true );
-		fetchGames( season ? { season } : {} ).then( ( data ) => {
-			if ( cancelled ) return;
-			setGames( data );
-			setLoading( false );
-		} ).catch( ( err ) => {
-			if ( cancelled ) return;
-			setError( err?.message || 'Failed to load games' );
-			setLoading( false );
-		} );
-		return () => { cancelled = true; };
-	}, [ season ] );
-
-	useEffect( () => {
-		const cleanup = loadGames();
-		return cleanup;
-	}, [ loadGames ] );
-
 	const handleReschedule = async ( e ) => {
 		e.preventDefault();
 		const form = new FormData( e.target );
@@ -66,22 +115,32 @@ export default function Schedule( { season } ) {
 	};
 
 	const handleCancel = async ( game ) => {
-		if ( window.confirm( 'Cancel this game?' ) ) {
+		// eslint-disable-next-line no-alert
+		if ( window.confirm( 'Cancel this game? Affected players can be notified.' ) ) {
 			await cancelGame( game.id, { reason: 'Cancelled by admin', notify: true } ).catch( ( err ) => setError( err?.message || 'Failed' ) );
 			loadGames();
 		}
 	};
 
-	if ( loading ) {
-		return <div className="splm-loading">Loading schedule...</div>;
-	}
+	// Client-side team search narrows the current page (server has no team param).
+	const q = teamSearch.trim().toLowerCase();
+	const visibleGames = q
+		? games.filter( ( g ) => `${ g.home_team.name } ${ g.away_team.name }`.toLowerCase().includes( q ) )
+		: games;
 
-	// Group games by date.
-	const grouped = {};
-	games.forEach( ( g ) => {
-		if ( ! grouped[ g.date ] ) grouped[ g.date ] = [];
-		grouped[ g.date ].push( g );
+	// Group (already-ordered) games by date, preserving server order.
+	const grouped = [];
+	const byDate = {};
+	visibleGames.forEach( ( g ) => {
+		if ( ! byDate[ g.date ] ) {
+			byDate[ g.date ] = [];
+			grouped.push( [ g.date, byDate[ g.date ] ] );
+		}
+		byDate[ g.date ].push( g );
 	} );
+
+	const startIdx = total === 0 ? 0 : ( page - 1 ) * PER_PAGE + 1;
+	const endIdx = Math.min( page * PER_PAGE, total );
 
 	return (
 		<div className="splm-schedule">
@@ -92,10 +151,65 @@ export default function Schedule( { season } ) {
 			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 
 			<div className="splm-schedule__toolbar">
-				<label className="splm-btn">
-					Import Games <input type="file" accept=".csv,.xlsx" onChange={ handleImportFile } hidden />
-				</label>
+				<div className="splm-schedule__filters">
+					<label>
+						<span className="splm-schedule__filter-label">Show</span>
+						<select className="splm-select" value={ statusFilter } onChange={ ( e ) => setStatusFilter( e.target.value ) }>
+							<option value="upcoming">Upcoming</option>
+							<option value="past">Past</option>
+							<option value="all">All</option>
+						</select>
+					</label>
+					<label>
+						<span className="splm-schedule__filter-label">Division</span>
+						<select className="splm-select" value={ divisionFilter } onChange={ ( e ) => setDivisionFilter( e.target.value ) }>
+							<option value="">All divisions</option>
+							{ divisionOptions().map( ( d ) => (
+								<option key={ d.id } value={ d.id }>{ d.name }</option>
+							) ) }
+						</select>
+					</label>
+					<label>
+						<span className="splm-schedule__filter-label">Team</span>
+						<input
+							type="search"
+							className="splm-select"
+							placeholder="Filter this page by team…"
+							value={ teamSearch }
+							onChange={ ( e ) => setTeamSearch( e.target.value ) }
+						/>
+					</label>
+				</div>
+				{ canManage && (
+					<label className="splm-btn">
+						Import Games <input type="file" accept=".csv,.xlsx" onChange={ handleImportFile } hidden />
+					</label>
+				) }
 			</div>
+
+			{ canManage && (
+				<details className="splm-schedule__help">
+					<summary>How to import games (CSV or XLSX format)</summary>
+					<div className="splm-schedule__help-body">
+						<p>Upload a spreadsheet with one row per game and a header row. Column names are matched case-insensitively.</p>
+						<ul>
+							<li><strong>Required:</strong> <code>Date</code>, <code>Home Team</code>, <code>Away Team</code></li>
+							<li><strong>Optional:</strong> <code>Time</code>, <code>Venue</code>, <code>Division</code></li>
+						</ul>
+						<p className="splm-muted">Accepted header names: Date (or “Game Date”, “Event Date”) · Time (or “Game Time”, “Start Time”) · Home Team (or “Home”) · Away Team (or “Away”, “Visitor”) · Venue (or “Location”, “Arena”, “Rink”) · Division (or “League”).</p>
+						<p className="splm-muted">Team names are matched to existing teams by name. Rows missing a required value are skipped and reported. You’ll see a preview before anything is created.</p>
+						<p className="splm-muted">Example:</p>
+						<div className="splm-table-wrapper">
+							<table className="splm-table">
+								<thead><tr><th scope="col">Date</th><th scope="col">Time</th><th scope="col">Home Team</th><th scope="col">Away Team</th><th scope="col">Venue</th><th scope="col">Division</th></tr></thead>
+								<tbody>
+									<tr><td>2026-09-15</td><td>19:30</td><td>Penguins</td><td>Jets</td><td>Main Rink</td><td>Division 1</td></tr>
+								</tbody>
+							</table>
+						</div>
+					</div>
+				</details>
+			) }
 
 			{ importPreview && (
 				<div className="splm-card" style={ { marginBottom: '1rem' } }>
@@ -107,7 +221,7 @@ export default function Schedule( { season } ) {
 					) }
 					<div className="splm-table-wrapper">
 						<table className="splm-table">
-							<thead><tr><th>Date</th><th>Time</th><th>Home</th><th>Away</th><th>Venue</th></tr></thead>
+							<thead><tr><th scope="col">Date</th><th scope="col">Time</th><th scope="col">Home</th><th scope="col">Away</th><th scope="col">Venue</th></tr></thead>
 							<tbody>
 								{ importPreview.games.slice( 0, 20 ).map( ( g, i ) => (
 									<tr key={ i }><td>{ g.date }</td><td>{ g.time }</td><td>{ g.home_team }</td><td>{ g.away_team }</td><td>{ g.venue }</td></tr>
@@ -123,48 +237,72 @@ export default function Schedule( { season } ) {
 				</div>
 			) }
 
-			{ Object.entries( grouped ).map( ( [ date, dateGames ] ) => (
-				<div key={ date } className="splm-schedule__day">
-					<h3 className="splm-schedule__date">
-						{ new Date( date + 'T12:00:00' ).toLocaleDateString( undefined, {
-							weekday: 'long', month: 'long', day: 'numeric',
-						} ) }
-					</h3>
-					{ dateGames.map( ( g ) => (
-						<div key={ g.id } className={ `splm-game-card ${ g.cancelled ? 'splm-game-card--cancelled' : '' }` }>
-							<div className="splm-game-card__info">
-								<span className="splm-game-card__time">{ g.time }</span>
-								<span className="splm-game-card__matchup">
-									{ g.home_team.name } vs { g.away_team.name }
-								</span>
-								<span className="splm-game-card__venue">{ g.venue }</span>
-								{ g.home_score !== null && (
-									<span className="splm-game-card__score">
-										{ g.home_score } - { g.away_score }
-									</span>
-								) }
-								{ g.cancelled && <span className="splm-game-card__badge">Cancelled</span> }
-							</div>
-							{ ! g.cancelled && ( window.splmDashboard?.capabilities?.canManageSchedule !== false ) && (
-								<div className="splm-game-card__actions">
-									<button
-										className="splm-btn splm-btn--small"
-										onClick={ () => setModal( g ) }
-									>
-										Reschedule
-									</button>
-									<button
-										className="splm-btn splm-btn--small splm-btn--danger"
-										onClick={ () => handleCancel( g ) }
-									>
-										Cancel
-									</button>
+			<div className="splm-schedule__summary" aria-live="polite">
+				{ loading
+					? 'Loading…'
+					: total === 0
+						? 'No games match these filters.'
+						: `Showing ${ startIdx }–${ endIdx } of ${ total } ${ statusFilter } game${ total === 1 ? '' : 's' }${ q ? ` · ${ visibleGames.length } match “${ teamSearch }” on this page` : '' }` }
+			</div>
+
+			{ loading ? (
+				<div className="splm-loading">Loading schedule...</div>
+			) : (
+				<>
+					{ grouped.map( ( [ date, dateGames ] ) => (
+						<div key={ date } className="splm-schedule__day">
+							<h3 className="splm-schedule__date">{ formatDayHeading( date ) }</h3>
+							{ dateGames.map( ( g ) => (
+								<div key={ g.id } className={ `splm-game-card ${ g.cancelled ? 'splm-game-card--cancelled' : '' }` }>
+									<div className="splm-game-card__info">
+										<span className="splm-game-card__time">{ g.time }</span>
+										<span className="splm-game-card__matchup">
+											{ g.home_team.name } vs { g.away_team.name }
+										</span>
+										<span className="splm-game-card__venue">{ g.venue }</span>
+										{ g.home_score !== null && (
+											<span className="splm-game-card__score">
+												{ g.home_score } - { g.away_score }
+											</span>
+										) }
+										{ g.cancelled && <span className="splm-game-card__badge">Cancelled</span> }
+									</div>
+									<div className="splm-game-card__actions">
+										{ g.permalink && (
+											<a className="splm-btn splm-btn--small" href={ g.permalink } target="_blank" rel="noopener noreferrer">
+												View
+											</a>
+										) }
+										{ canManage && (
+											<a className="splm-btn splm-btn--small" href={ `${ adminUrl }post.php?post=${ g.id }&action=edit` } target="_blank" rel="noopener noreferrer">
+												Edit
+											</a>
+										) }
+										{ canManage && ! g.cancelled && (
+											<>
+												<button className="splm-btn splm-btn--small" onClick={ () => setModal( g ) }>
+													Reschedule
+												</button>
+												<button className="splm-btn splm-btn--small splm-btn--danger" onClick={ () => handleCancel( g ) }>
+													Cancel
+												</button>
+											</>
+										) }
+									</div>
 								</div>
-							) }
+							) ) }
 						</div>
 					) ) }
-				</div>
-			) ) }
+
+					{ total > PER_PAGE && (
+						<div className="splm-pager">
+							<button type="button" className="splm-btn" onClick={ () => setPage( ( p ) => Math.max( 1, p - 1 ) ) } disabled={ page <= 1 }>Previous</button>
+							<span className="splm-pager__status">Page { page } of { totalPages }</span>
+							<button type="button" className="splm-btn" onClick={ () => setPage( ( p ) => Math.min( totalPages, p + 1 ) ) } disabled={ page >= totalPages }>Next</button>
+						</div>
+					) }
+				</>
+			) }
 
 			{ modal && (
 				<div className="splm-modal-overlay" onClick={ () => setModal( null ) }>

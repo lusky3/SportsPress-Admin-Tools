@@ -12,6 +12,19 @@ export function fetchGames( params = {} ) {
 		.then( unwrapList );
 }
 
+// Paged variant: keeps the { data, total, total_pages, page } envelope so the
+// Schedule view can show "X of Y" and page controls instead of silently
+// truncating at the endpoint's per_page cap.
+export function fetchGamesPage( params = {} ) {
+	const query = new URLSearchParams( params ).toString();
+	return apiFetch( { path: `/splm/v1/games${ query ? '?' + query : '' }` } ).then( ( res ) => ( {
+		data: Array.isArray( res?.data ) ? res.data : [],
+		total: Number( res?.total ) || 0,
+		totalPages: Number( res?.total_pages ) || 0,
+		page: Number( res?.page ) || 1,
+	} ) );
+}
+
 export function updateScore( gameId, homeScore, awayScore ) {
 	return apiFetch( {
 		path: `/splm/v1/games/${ gameId }/score`,

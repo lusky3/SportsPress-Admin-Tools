@@ -315,6 +315,12 @@
 
 /* Buttons */
 .splm-btn {
+	/* inline-flex + no underline so <a class="splm-btn"> (View/Edit links) render
+	   identically to <button class="splm-btn"> and align in action rows. */
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	text-decoration: none;
 	padding: 0.5rem 1rem;
 	/* UI-1: explicit text color + visible border so secondary (white) buttons
 	   are legible and not white-on-white. */
@@ -326,6 +332,7 @@
 	font-size: 0.85rem;
 	font-weight: 500;
 }
+.splm-btn:hover { text-decoration: none; }
 .splm-btn:hover { background: var(--splm-surface-alt); }
 .splm-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 .splm-btn--primary { background: var(--splm-primary); color: var(--splm-on-primary); border-color: var(--splm-primary); }
@@ -413,7 +420,7 @@
 .splm-game-card__venue { color: var(--splm-muted); } /* UX-13 */
 .splm-game-card__score { background: var(--splm-success-tint); padding: 0.15rem 0.5rem; border-radius: 4px; font-weight: 600; color: var(--splm-success-text); }
 .splm-game-card__badge { background: var(--splm-danger-bg); color: var(--splm-danger-text); padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; }
-.splm-game-card__actions { display: flex; gap: 0.25rem; }
+.splm-game-card__actions { display: flex; flex-wrap: wrap; gap: 0.25rem; }
 
 /* Modal */
 .splm-modal-overlay {
@@ -905,7 +912,17 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: var(--splm-text); }
 .splm-team-compare__selectors { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
 .splm-team-compare__vs { font-weight: 600; font-size: 18px; }
 
-.splm-schedule__toolbar { margin-bottom: 16px; }
+.splm-schedule__toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: 12px; }
+.splm-schedule__filters { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.splm-schedule__filters label { display: flex; flex-direction: column; gap: 0.2rem; }
+.splm-schedule__filter-label { font-size: 0.75rem; font-weight: 600; color: var(--splm-muted); text-transform: uppercase; letter-spacing: 0.02em; }
+/* #28: in-dashboard import help so the user isn't sent to an external guide. */
+.splm-schedule__help { margin-bottom: 16px; border: 1px solid var(--splm-border-light); border-radius: 8px; background: var(--splm-surface); }
+.splm-schedule__help > summary { cursor: pointer; padding: 0.6rem 0.9rem; font-weight: 600; color: var(--splm-text-strong); }
+.splm-schedule__help-body { padding: 0 0.9rem 0.9rem; font-size: 0.9rem; }
+.splm-schedule__help-body ul { margin: 0.5rem 0; padding-left: 1.2rem; }
+.splm-schedule__help-body code { background: var(--splm-surface-muted); padding: 0.05rem 0.3rem; border-radius: 3px; font-size: 0.85em; }
+.splm-schedule__summary { margin-bottom: 12px; font-size: 0.9rem; color: var(--splm-muted); }
 
 @media (max-width: 600px) {
 	.splm-header__search { flex: 1 1 100%; order: 3; }

@@ -258,6 +258,10 @@ class SPLM_Dashboard_Frontend {
 			array(
 				'nonce'           => wp_create_nonce( 'wp_rest' ),
 				'apiBase'         => rest_url( 'splm/v1/' ),
+				// Base wp-admin URL so the Schedule view can build an "Edit" link to
+				// the native event editor for managers (gated client-side on the
+				// canManageSchedule capability below).
+				'adminUrl'        => admin_url(),
 				'leagueName'      => get_bloginfo( 'name' ),
 				'currentSeason'   => ! empty( $current_season ) ? $current_season[0]->term_id : '',
 				'logoutUrl'       => wp_logout_url( home_url() ),
