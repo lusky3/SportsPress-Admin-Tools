@@ -2996,111 +2996,159 @@ class SPLM_REST_API {
 	 */
 	public function get_division_balance( $request ) {
 		$season_id = absint( $request->get_param( 'season' ) );
+		global $wpdb;
 
-		$all_leagues = get_terms(
-			array(
-				'taxonomy' => 'sp_league',
-				'hide_empty' => false,
-			)
-		);
-		if ( is_wp_error( $all_leagues ) ) {
+		// A division is "active" in a season iff it has a standings table for that
+		// season — the same source the Standings tab uses. The sp_league "Division N"
+		// terms are reused every season and sp_team season tags are stale, so neither
+		// is a sound basis for "which divisions are in THIS season" (that bug showed
+		// ~16 historical divisions, incl. Open Division, for a 5-division season).
+		if ( ! $season_id || ! class_exists( 'SP_League_Table' ) ) {
 			return new WP_REST_Response( splm_rest_list_response( array() ), 200 );
 		}
 
-		// Use leaf divisions (those with no children).
-		$parent_ids = array();
-		foreach ( $all_leagues as $l ) {
-			if ( $l->parent ) {
-				$parent_ids[ $l->parent ] = true;
+		$table_ids = get_posts(
+			array(
+				'post_type'      => 'sp_table',
+				'posts_per_page' => 100,
+				'post_status'    => 'publish',
+				'fields'         => 'ids',
+				'tax_query'      => array(
+					array(
+						'taxonomy' => 'sp_season',
+						'terms'    => $season_id,
+					),
+				),
+			)
+		);
+
+		// Collapse to one entry per division; regular season only (the playoff
+		// child-season tables come back from the same query — skip them).
+		$divisions = array();
+		foreach ( $table_ids as $tid ) {
+			$seasons    = wp_get_object_terms( $tid, 'sp_season', array( 'fields' => 'names' ) );
+			$is_playoff = false;
+			foreach ( (array) $seasons as $sn ) {
+				if ( false !== stripos( $sn, 'playoff' ) ) {
+					$is_playoff = true;
+					break;
+				}
+			}
+			if ( $is_playoff ) {
+				continue;
+			}
+			$lg = wp_get_object_terms( $tid, 'sp_league', array( 'fields' => 'all' ) );
+			if ( is_wp_error( $lg ) || empty( $lg ) ) {
+				continue;
+			}
+			$lg    = $lg[0];
+			$table = new SP_League_Table( $tid );
+			$data  = $table->data();
+			if ( ! isset( $divisions[ $lg->term_id ] ) ) {
+				$divisions[ $lg->term_id ] = array(
+					'id'       => (int) $lg->term_id,
+					'name'     => $lg->name,
+					'sort'     => preg_match( '/(\d+)/', $lg->name, $m ) ? (int) $m[1] : PHP_INT_MAX,
+					'team_ids' => array(),
+				);
+			}
+			foreach ( (array) $data as $k => $v ) {
+				if ( is_numeric( $k ) ) {
+					$divisions[ $lg->term_id ]['team_ids'][ (int) $k ] = true;
+				}
 			}
 		}
-		$divisions = array_filter(
-			$all_leagues,
-			function ( $l ) use ( $parent_ids ) {
-				return ! isset( $parent_ids[ $l->term_id ] );
+
+		uasort(
+			$divisions,
+			function ( $a, $b ) {
+				return $a['sort'] <=> $b['sort'];
 			}
 		);
 
-		$results = array();
-		foreach ( $divisions as $div ) {
-			$tax_query = array(
-				array(
-					'taxonomy' => 'sp_league',
-					'terms' => $div->term_id,
-				),
-			);
-			if ( $season_id ) {
-				$tax_query['relation'] = 'AND';
-				$tax_query[]           = array(
-					'taxonomy' => 'sp_season',
-					'terms' => $season_id,
-				);
+		// Season-correct player set: a player is in a division THIS season if their
+		// sp_leagues meta (league => season => team) maps $season_id to one of the
+		// division's teams. sp_current_team is NOT season-scoped — it accumulates
+		// every player ever assigned to a reused team post (which inflated counts
+		// to ~180/team). This mirrors how the roster endpoint resolves membership.
+		$team_to_div = array();
+		foreach ( $divisions as $dtid => $div ) {
+			foreach ( array_keys( $div['team_ids'] ) as $t ) {
+				$team_to_div[ (int) $t ] = $dtid;
 			}
+		}
 
-			$team_ids = get_posts(
-				array(
-					'post_type'      => 'sp_team',
-					'posts_per_page' => 5000, // Bounded (read-level endpoint); matches the cap used elsewhere in this file.
-					'tax_query'      => $tax_query,
-					'fields'         => 'ids',
-				)
-			);
+		$candidates = get_posts(
+			array(
+				'post_type'      => 'sp_player',
+				'posts_per_page' => 5000,
+				'fields'         => 'ids',
+				'tax_query'      => array(
+					array(
+						'taxonomy' => 'sp_season',
+						'terms'    => $season_id,
+					),
+				),
+			)
+		);
+		if ( ! empty( $candidates ) ) {
+			update_meta_cache( 'post', $candidates );
+		}
 
-			if ( empty( $team_ids ) ) {
+		$acc = array(); // division term_id => array( players:int, skills:int[] )
+		foreach ( (array) $candidates as $pid ) {
+			$leagues = get_post_meta( $pid, 'sp_leagues', true );
+			if ( ! is_array( $leagues ) ) {
 				continue;
 			}
-
-			// H3: single SQL join replaces get_posts + N+1 meta lookups,
-			// bounded by LIMIT 5000 to protect against unbounded memory on
-			// large leagues.
-			global $wpdb;
-			$placeholders  = implode( ',', array_fill( 0, count( $team_ids ), '%d' ) );
-			$query_args    = array_map( 'intval', $team_ids );
-			$sql           = "SELECT p.ID, pm1.meta_value AS team_id, pm2.meta_value AS skill_level
-				FROM {$wpdb->posts} p
-				LEFT JOIN {$wpdb->postmeta} pm1 ON pm1.post_id = p.ID AND pm1.meta_key = 'sp_current_team'
-				LEFT JOIN {$wpdb->postmeta} pm2 ON pm2.post_id = p.ID AND pm2.meta_key = 'spt_skill_level'
-				WHERE p.post_type = 'sp_player' AND p.post_status = 'publish'
-				AND pm1.meta_value IN ($placeholders)
-				LIMIT 5000";
-			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-			$player_rows = $wpdb->get_results( $wpdb->prepare( $sql, $query_args ) );
-
-			$player_ids = array();
-			$skills     = array();
-			foreach ( (array) $player_rows as $row ) {
-				$player_ids[] = (int) $row->ID;
-				$sl           = (int) $row->skill_level;
-				if ( $sl > 0 ) {
-					$skills[] = $sl;
+			$team = 0;
+			foreach ( $leagues as $season_map ) {
+				if ( is_array( $season_map ) && ! empty( $season_map[ $season_id ] ) ) {
+					$team = (int) $season_map[ $season_id ];
+					break;
 				}
 			}
+			if ( ! $team || ! isset( $team_to_div[ $team ] ) ) {
+				continue;
+			}
+			$dtid = $team_to_div[ $team ];
+			if ( ! isset( $acc[ $dtid ] ) ) {
+				$acc[ $dtid ] = array( 'players' => 0, 'skills' => array() );
+			}
+			$acc[ $dtid ]['players']++;
+			$sl = (int) get_post_meta( $pid, 'spt_skill_level', true );
+			if ( $sl > 0 ) {
+				$acc[ $dtid ]['skills'][] = $sl;
+			}
+		}
 
+		$results = array();
+		foreach ( $divisions as $dtid => $div ) {
+			$players = isset( $acc[ $dtid ] ) ? $acc[ $dtid ]['players'] : 0;
+			$skills  = isset( $acc[ $dtid ] ) ? $acc[ $dtid ]['skills'] : array();
 			sort( $skills );
 			$count = count( $skills );
 			$dist  = array_fill( 1, 10, 0 );
 			foreach ( $skills as $s ) {
-				$dist[ $s ]++;
+				if ( isset( $dist[ $s ] ) ) {
+					$dist[ $s ]++;
+				}
 			}
-
-			// L3: signal when the SQL LIMIT 5000 was reached so the client
-			// can warn that skill stats are based on a partial sample.
-			$truncated = ( count( $player_rows ) >= 5000 );
 
 			$results[] = array(
 				'division'     => array(
-					'id' => $div->term_id,
-					'name' => $div->name,
+					'id'   => $div['id'],
+					'name' => $div['name'],
 				),
-				'teams'        => count( $team_ids ),
-				'players'      => count( $player_ids ),
+				'teams'        => count( $div['team_ids'] ),
+				'players'      => $players,
 				'rated'        => $count,
 				'skill_avg'    => $count ? round( array_sum( $skills ) / $count, 1 ) : 0,
 				'skill_min'    => $count ? min( $skills ) : 0,
 				'skill_max'    => $count ? max( $skills ) : 0,
 				'skill_median' => $count ? $skills[ intdiv( $count, 2 ) ] : 0,
 				'distribution' => $dist,
-				'truncated'    => $truncated,
+				'truncated'    => false,
 			);
 		}
 
