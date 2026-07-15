@@ -1,4 +1,5 @@
 import { useState, useEffect } from '@wordpress/element';
+import HelpLink from '../components/HelpLink';
 import { fetchDivisionBalance } from '../lib/api';
 
 export default function DivisionBalance( { season } ) {
@@ -34,7 +35,7 @@ export default function DivisionBalance( { season } ) {
 
 	return (
 		<div className="splm-division-balance">
-			<h2>Division Balance</h2>
+			<h2>Division Balance <HelpLink topic="div-balance" /></h2>
 			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 			{ data.length === 0 ? (
 				<p className="splm-empty">No divisions with rated players found.</p>

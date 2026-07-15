@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from '@wordpress/element';
+import HelpLink from '../components/HelpLink';
 import { fetchGames, updateScore, fetchGamePlayers, saveGamePlayers, batchUpdateScores } from '../lib/api';
 
 const DATE_FMT = new Intl.DateTimeFormat( undefined, { weekday: 'short', month: 'short', day: 'numeric' } );
@@ -336,7 +337,7 @@ export default function ScoreEntry( { season } ) {
 	if ( games.length === 0 ) {
 		return (
 			<div className="splm-score-entry">
-				<h2>Score Entry</h2>
+				<h2>Score Entry <HelpLink topic="scores" /></h2>
 				<div className="splm-empty-state">
 					{ showingAll ? (
 						<p>✅ All past games have scores entered!</p>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from '@wordpress/element';
+import HelpLink from '../components/HelpLink';
 import { fetchTeams, compareTeams } from '../lib/api';
 
 export default function TeamComparison( { season } ) {
@@ -28,7 +29,7 @@ export default function TeamComparison( { season } ) {
 
 	return (
 		<div className="splm-team-compare">
-			<h2>Team Comparison</h2>
+			<h2>Team Comparison <HelpLink topic="team-compare" /></h2>
 			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 
 			<div className="splm-team-compare__selectors">

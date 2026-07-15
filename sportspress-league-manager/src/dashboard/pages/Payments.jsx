@@ -1,4 +1,5 @@
 import { useState, useEffect } from '@wordpress/element';
+import HelpLink from '../components/HelpLink';
 import { fetchPayments } from '../lib/api';
 
 // M7: status values we ship CSS for. Anything else gets the "other" class
@@ -86,7 +87,7 @@ export default function Payments( { season } ) {
 
 	return (
 		<div className="splm-payments">
-			<h2>Payments</h2>
+			<h2>Payments <HelpLink topic="payments" /></h2>
 
 			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 

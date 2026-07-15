@@ -1,4 +1,5 @@
 import { useState, useEffect } from '@wordpress/element';
+import HelpLink from '../components/HelpLink';
 import { fetchSeasonSummary } from '../lib/api';
 
 // Human labels for the stat-leader keys the report endpoint returns.
@@ -29,7 +30,7 @@ export default function SeasonReport( { season } ) {
 		return () => { cancelled = true; };
 	}, [ season ] );
 
-	if ( ! season ) return <div className="splm-season-report"><h2>Season Report</h2><p className="splm-empty">Select a season to generate a report.</p></div>;
+	if ( ! season ) return <div className="splm-season-report"><h2>Season Report <HelpLink topic="season-report" /></h2><p className="splm-empty">Select a season to generate a report.</p></div>;
 	if ( loading ) return <div className="splm-loading">Generating report...</div>;
 
 	const reg = report?.registration;
@@ -37,7 +38,7 @@ export default function SeasonReport( { season } ) {
 
 	return (
 		<div className="splm-season-report">
-			<h2>Season Report{ report ? ` — ${ report.season.name }` : '' }</h2>
+			<h2>Season Report{ report ? ` — ${ report.season.name }` : '' } <HelpLink topic="season-report" /></h2>
 			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 
 			{ report && (

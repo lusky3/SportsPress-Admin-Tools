@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, memo } from '@wordpress/element';
+import HelpLink from '../components/HelpLink';
 import { fetchTeams, fetchRosterDetails, fetchNotes, fetchNoteCounts, addNote, movePlayer, updatePlayer, updatePlayerMetadata, setCaptain, removePlayer, importRoster, calculateSkills, bulkUploadRoster, bulkProcessRoster } from '../lib/api';
 import Toast from '../components/Toast';
 import Icon from '../components/icons';
@@ -347,7 +348,7 @@ export default function Rosters( { season } ) {
 
 	return (
 		<div className="splm-rosters">
-			<h2>Rosters</h2>
+			<h2>Rosters <HelpLink topic="rosters" /></h2>
 			<Toast message={ toast?.message } type={ toast?.type } onDismiss={ () => setToast( null ) } />
 			<div className="splm-rosters__toolbar">
 				{ /* UX-5: label the team selector. */ }
