@@ -299,16 +299,10 @@ export default function Rosters( { season } ) {
 	const playerToolsAvailable = window.splmDashboard?.dependencies?.player_tools !== false;
 
 	// Skill-calc season scope. Parent seasons only (a season implicitly includes
-	// its children, e.g. playoffs). Default to the *previous* season — the
-	// highest-id parent season below the current default — since that's the last
-	// one with a full set of games; term ids increase chronologically.
+	// its children, e.g. playoffs). Defaults to All-time (career) so a single
+	// strong season can't spike a rating; a specific season can still be picked.
 	const parentSeasons = ( window.splmDashboard?.seasons || [] ).filter( ( s ) => ! s.parent );
-	const currentSeasonId = Number( window.splmDashboard?.currentSeason || 0 );
-	const previousSeasonId = parentSeasons
-		.map( ( s ) => Number( s.id ) )
-		.filter( ( id ) => id < currentSeasonId )
-		.sort( ( a, b ) => b - a )[ 0 ] || ( parentSeasons[ 0 ] ? Number( parentSeasons[ 0 ].id ) : 0 );
-	const [ skillSeason, setSkillSeason ] = useState( String( previousSeasonId || 0 ) );
+	const [ skillSeason, setSkillSeason ] = useState( '0' );
 	const [ calcating, setCalcating ] = useState( false );
 
 	useEffect( () => {
