@@ -3182,21 +3182,39 @@ class SPLM_REST_API {
 			$dtid = $team_to_div[ $team ];
 			if ( ! isset( $acc[ $dtid ] ) ) {
 				$acc[ $dtid ] = array(
-					'players' => 0,
-					'skills' => array(),
+					'players'  => 0,
+					'skills'   => array(),
+					'by_level' => array(),
 				);
 			}
 			$acc[ $dtid ]['players']++;
 			$sl = (int) get_post_meta( $pid, 'spt_skill_level', true );
 			if ( $sl > 0 ) {
 				$acc[ $dtid ]['skills'][] = $sl;
+				// Record who is at each level so the UI can list them (not just a count).
+				$acc[ $dtid ]['by_level'][ $sl ][] = array(
+					'id'   => $pid,
+					'name' => get_the_title( $pid ),
+					'team' => get_the_title( $team ),
+				);
 			}
 		}
 
 		$results = array();
 		foreach ( $divisions as $dtid => $div ) {
-			$players = isset( $acc[ $dtid ] ) ? $acc[ $dtid ]['players'] : 0;
-			$skills  = isset( $acc[ $dtid ] ) ? $acc[ $dtid ]['skills'] : array();
+			$players  = isset( $acc[ $dtid ] ) ? $acc[ $dtid ]['players'] : 0;
+			$skills   = isset( $acc[ $dtid ] ) ? $acc[ $dtid ]['skills'] : array();
+			$by_level = isset( $acc[ $dtid ] ) ? $acc[ $dtid ]['by_level'] : array();
+			// Sort each level's players by name for a stable, readable list.
+			foreach ( $by_level as &$lvl_players ) {
+				usort(
+					$lvl_players,
+					function ( $a, $b ) {
+						return strcasecmp( $a['name'], $b['name'] );
+					}
+				);
+			}
+			unset( $lvl_players );
 			sort( $skills );
 			$count = count( $skills );
 			$dist  = array_fill( 1, 10, 0 );
@@ -3219,6 +3237,7 @@ class SPLM_REST_API {
 				'skill_max'    => $count ? max( $skills ) : 0,
 				'skill_median' => $count ? $skills[ intdiv( $count, 2 ) ] : 0,
 				'distribution' => $dist,
+				'players_by_level' => $by_level,
 				'truncated'    => false,
 			);
 		}
