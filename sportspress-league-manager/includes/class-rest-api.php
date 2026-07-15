@@ -54,6 +54,24 @@ if ( ! function_exists( 'splm_clean_team_name' ) ) {
 	}
 }
 
+if ( ! function_exists( 'splm_display_title' ) ) {
+	/**
+	 * Post title for display in the React dashboard.
+	 *
+	 * WordPress runs get_the_title() through the `the_title` filter, which
+	 * wptexturize()s the title — turning a plain apostrophe into the HTML entity
+	 * &#8217; (and &, dashes, etc. into their entities). React renders JSON
+	 * strings as text, so those entities show up literally ("O&#8217;Grady").
+	 * Decoding them back to real UTF-8 characters makes names display correctly.
+	 *
+	 * @param int $id Post ID.
+	 * @return string
+	 */
+	function splm_display_title( $id ) {
+		return html_entity_decode( get_the_title( $id ), ENT_QUOTES, 'UTF-8' );
+	}
+}
+
 if ( ! function_exists( 'splm_order_edit_url' ) ) {
 	/**
 	 * Admin edit URL for a WooCommerce order, HPOS-aware. Empty when no order.
@@ -771,7 +789,7 @@ class SPLM_REST_API {
 			// a playoff table — the regular + playoff tables share the season query
 			// (playoff season is a child term), so the UI groups them by this flag.
 			$division   = wp_get_object_terms( $tid, 'sp_league', array( 'fields' => 'names' ) );
-			$division   = ( is_array( $division ) && ! empty( $division ) ) ? $division[0] : get_the_title( $tid );
+			$division   = ( is_array( $division ) && ! empty( $division ) ) ? $division[0] : splm_display_title( $tid );
 			$seasons    = wp_get_object_terms( $tid, 'sp_season', array( 'fields' => 'names' ) );
 			$is_playoff = false;
 			foreach ( (array) $seasons as $sname ) {
@@ -1227,7 +1245,7 @@ class SPLM_REST_API {
 		// one pass instead of N get_the_title() lookups.
 		$team_titles = array();
 		foreach ( array_unique( array_values( $players_by_team ) ) as $tid ) {
-			$team_titles[ $tid ] = get_the_title( $tid );
+			$team_titles[ $tid ] = splm_display_title( $tid );
 		}
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
@@ -1401,7 +1419,7 @@ class SPLM_REST_API {
 				if ( 0 === ( $counts[ $team_id ] ?? 0 ) ) {
 					$issues['teams_without_players'][] = array(
 						'id'   => $team_id,
-						'name' => get_the_title( $team_id ),
+						'name' => splm_display_title( $team_id ),
 					);
 				}
 			}
@@ -1448,7 +1466,7 @@ class SPLM_REST_API {
 		foreach ( $events_no_venue as $event_id ) {
 			$issues['events_without_venue'][] = array(
 				'id'    => $event_id,
-				'title' => get_the_title( $event_id ),
+				'title' => splm_display_title( $event_id ),
 			);
 		}
 
@@ -1471,7 +1489,7 @@ class SPLM_REST_API {
 			if ( empty( $results ) ) {
 				$issues['events_without_results'][] = array(
 					'id'    => $event_id,
-					'title' => get_the_title( $event_id ),
+					'title' => splm_display_title( $event_id ),
 					'date'  => get_the_date( 'Y-m-d', $event_id ),
 				);
 			}
@@ -1640,7 +1658,7 @@ class SPLM_REST_API {
 			}
 			$seen[ $team_id ] = true;
 
-			$team_name = get_the_title( $team_id );
+			$team_name = splm_display_title( $team_id );
 			$list_name = str_replace(
 				array( '{team}', '{season}' ),
 				array( $team_name, $season_name ),
@@ -2182,7 +2200,7 @@ class SPLM_REST_API {
 				'id'        => $p->ID,
 				'name'      => $p->post_title,
 				'team_id'   => (int) $team_id,
-				'team_name' => $team_id ? get_the_title( $team_id ) : '',
+				'team_name' => $team_id ? splm_display_title( $team_id ) : '',
 				'number'    => get_post_meta( $p->ID, 'sp_number', true ),
 			);
 		}
@@ -3194,8 +3212,8 @@ class SPLM_REST_API {
 				// Record who is at each level so the UI can list them (not just a count).
 				$acc[ $dtid ]['by_level'][ $sl ][] = array(
 					'id'   => $pid,
-					'name' => get_the_title( $pid ),
-					'team' => get_the_title( $team ),
+					'name' => splm_display_title( $pid ),
+					'team' => splm_display_title( $team ),
 				);
 			}
 		}
@@ -3411,7 +3429,7 @@ class SPLM_REST_API {
 			}
 
 			return array(
-				'name'      => get_the_title( $team_id ),
+				'name'      => splm_display_title( $team_id ),
 				'players'   => count( $player_ids ),
 				'avg_skill' => $skill_cnt ? round( $skill_sum / $skill_cnt, 1 ) : 0,
 				'stats'     => $stats,
@@ -3663,8 +3681,8 @@ class SPLM_REST_API {
 				'p'   => $b['g'] + $b['a'],
 			);
 			$tid  = $player_team[ $pid ] ?? 0;
-			$name = get_the_title( $pid );
-			$team = $tid ? get_the_title( $tid ) : '';
+			$name = splm_display_title( $pid );
+			$team = $tid ? splm_display_title( $tid ) : '';
 			foreach ( $vals as $key => $value ) {
 				if ( $value > 0 ) {
 					$leaders[ $key ][] = array(
