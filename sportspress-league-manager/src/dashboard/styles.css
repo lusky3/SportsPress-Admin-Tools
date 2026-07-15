@@ -657,6 +657,25 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: var(--splm-text); }
 .splm-health-alert__list { margin: 0.3rem 0 0; padding-left: 1.2rem; font-size: 0.85rem; }
 .splm-health-alert__list li { margin-bottom: 0.15rem; }
 
+/* #33: Season Setup — division-centric "context boxes". */
+.splm-season-setup__meta { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-start; }
+.splm-season-setup__meta > label { display: flex; flex-direction: column; gap: 0.2rem; min-width: 12rem; }
+.splm-season-setup__opts { display: flex; flex-direction: column; gap: 0.35rem; }
+.splm-season-setup__actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem; }
+.splm-division-box { margin-bottom: 1rem; }
+.splm-division-box__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; }
+.splm-division-box__select { display: flex; flex-direction: column; gap: 0.2rem; flex: 1; }
+.splm-division-box__teams { margin-top: 1rem; }
+.splm-division-box__teams-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.4rem; }
+.splm-division-box__team-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 0.15rem 1rem; max-height: 220px; overflow: auto; border: 1px solid var(--splm-border-light); border-radius: 6px; padding: 0.5rem; }
+.splm-division-box__team { display: flex; align-items: center; gap: 0.4rem; padding: 0.15rem 0; }
+.splm-division-box__new { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.6rem; }
+.splm-division-box__add { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
+.splm-division-box__add input { flex: 1; }
+.splm-chip { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.15rem 0.5rem; border-radius: 999px; background: var(--splm-primary-tint); color: var(--splm-text); font-size: 0.8rem; }
+.splm-chip__x { border: 0; background: none; cursor: pointer; color: var(--splm-muted); font-size: 0.8rem; line-height: 1; padding: 0; }
+.splm-linkbtn { border: 0; background: none; color: var(--splm-primary); cursor: pointer; font-size: 0.8rem; padding: 0; text-decoration: underline; }
+
 /* Summary stats */
 .splm-summary-stats {
 	display: flex;
