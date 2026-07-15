@@ -402,12 +402,14 @@ class SPT_Player_Skill_Level {
 			$is_goalie = $this->is_goalie( $pid );
 			$gaa       = $gp > 0 ? $s['ga'] / $gp : 0;
 			$points    = $s['g'] + $s['a'];
-			// Goals are weighted heavier than assists: assists are noisier and far
-			// more linemate/scorekeeper dependent, so a pure-assist season should
-			// not rank a player as an elite skater. Ranking uses this weighted
-			// rate; 'p' below still reports true points for display.
-			$goal_weight = (float) apply_filters( 'spt_skill_goal_weight', 2 );
-			$weighted    = ( $goal_weight * $s['g'] ) + $s['a'];
+			// Goals are weighted heavier than assists for ranking: assists are
+			// noisier and far more linemate/scorekeeper dependent (the league also
+			// sees inflated assist credit), so they shouldn't drive a rating the way
+			// goals do. Ranking uses goals×2 + assists×0.5; 'p' below still reports
+			// true points for display. Both weights are filterable.
+			$goal_weight   = (float) apply_filters( 'spt_skill_goal_weight', 2 );
+			$assist_weight = (float) apply_filters( 'spt_skill_assist_weight', 0.5 );
+			$weighted      = ( $goal_weight * $s['g'] ) + ( $assist_weight * $s['a'] );
 
 			if ( $is_goalie ) {
 				// Negative so lower GAA = higher score (0 GAA → score 0, best rank).
