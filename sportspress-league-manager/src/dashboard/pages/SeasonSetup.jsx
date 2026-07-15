@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from '@wordpress/element';
+import HelpLink from '../components/HelpLink';
 import { createSeason, createDivision, fetchTeamsWithDivisions, rolloverPreview, rolloverExecute } from '../lib/api';
 import Toast from '../components/Toast';
 
@@ -293,7 +294,7 @@ export default function SeasonSetup() {
 
 	return (
 		<div className="splm-wizard">
-			<h2>Season Setup</h2>
+			<h2>Season Setup <HelpLink topic="season-setup" /></h2>
 			<Toast message={ toast?.message } type={ toast?.type } onDismiss={ () => setToast( null ) } />
 
 			<div className="splm-score-entry__mode-toggle">

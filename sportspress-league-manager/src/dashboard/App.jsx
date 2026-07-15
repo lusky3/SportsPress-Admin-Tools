@@ -14,6 +14,7 @@ import TeamComparison from './pages/TeamComparison';
 import SeasonReport from './pages/SeasonReport';
 import SeasonSetup from './pages/SeasonSetup';
 import ScoreSheets from './pages/ScoreSheets';
+import Help from './pages/Help';
 import './styles.css';
 
 const PAGES = {
@@ -30,6 +31,7 @@ const PAGES = {
 	'season-report': SeasonReport,
 	'season-setup': SeasonSetup,
 	'score-sheets': ScoreSheets,
+	help: Help,
 };
 
 // UX-11: derive the initial page from the URL hash so deep links / refresh land
@@ -43,6 +45,7 @@ export default function App() {
 	const [ page, setPage ] = useState( pageFromHash );
 	const [ season, setSeason ] = useState( window.splmDashboard?.currentSeason ?? '' );
 	const [ announcement, setAnnouncement ] = useState( '' );
+	const [ helpTopic, setHelpTopic ] = useState( '' );
 	const isFirstRender = useRef( true );
 	const PageComponent = PAGES[ page ] || Dashboard;
 
@@ -88,13 +91,28 @@ export default function App() {
 		setAnnouncement( `Navigated to ${ page }` );
 	}, [ page ] );
 
+	// "?" HelpLinks fire a window event; open the Help page at the requested
+	// topic. A ref bumps a nonce so re-clicking the same topic re-scrolls.
+	useEffect( () => {
+		const onHelp = ( e ) => {
+			setHelpTopic( `${ e.detail || '' }#${ Date.now() }` );
+			setPage( 'help' );
+			const target = '#/help';
+			if ( window.location.hash !== target ) {
+				window.location.hash = target;
+			}
+		};
+		window.addEventListener( 'splm:help', onHelp );
+		return () => window.removeEventListener( 'splm:help', onHelp );
+	}, [] );
+
 	return (
 		<Layout currentPage={ page } onNavigate={ navigate } onSeasonChange={ setSeason } season={ season }>
 			<div aria-live="polite" aria-atomic="true" className="screen-reader-text">
 				{ announcement }
 			</div>
 			<DependencyNotice />
-			<PageComponent onNavigate={ navigate } season={ season } />
+			<PageComponent onNavigate={ navigate } season={ season } helpTopic={ helpTopic } />
 		</Layout>
 	);
 }

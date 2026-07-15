@@ -45,6 +45,8 @@ const ICON_PATHS = {
 	pencil: <><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" /></>,
 	// more / overflow
 	more: <><circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /></>,
+	// help: question mark in a circle
+	help: <><circle cx="12" cy="12" r="9" /><path d="M9.5 9a2.5 2.5 0 0 1 4.5 1.5c0 1.5-2 2-2 3.5" /><line x1="12" y1="17" x2="12" y2="17.01" /></>,
 };
 
 /**

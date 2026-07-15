@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from '@wordpress/element';
+import HelpLink from '../components/HelpLink';
 import { fetchGamesPage, rescheduleGame, cancelGame, importGamesPreview, importGames } from '../lib/api';
 import Toast from '../components/Toast';
 
@@ -144,7 +145,7 @@ export default function Schedule( { season } ) {
 
 	return (
 		<div className="splm-schedule">
-			<h2>Schedule</h2>
+			<h2>Schedule <HelpLink topic="schedule" /></h2>
 
 			<Toast message={ toast } onDismiss={ () => setToast( '' ) } />
 
@@ -186,30 +187,6 @@ export default function Schedule( { season } ) {
 					</label>
 				) }
 			</div>
-
-			{ canManage && (
-				<details className="splm-schedule__help">
-					<summary>How to import games (CSV or XLSX format)</summary>
-					<div className="splm-schedule__help-body">
-						<p>Upload a spreadsheet with one row per game and a header row. Column names are matched case-insensitively.</p>
-						<ul>
-							<li><strong>Required:</strong> <code>Date</code>, <code>Home Team</code>, <code>Away Team</code></li>
-							<li><strong>Optional:</strong> <code>Time</code>, <code>Venue</code>, <code>Division</code></li>
-						</ul>
-						<p className="splm-muted">Accepted header names: Date (or “Game Date”, “Event Date”) · Time (or “Game Time”, “Start Time”) · Home Team (or “Home”) · Away Team (or “Away”, “Visitor”) · Venue (or “Location”, “Arena”, “Rink”) · Division (or “League”).</p>
-						<p className="splm-muted">Team names are matched to existing teams by name. Rows missing a required value are skipped and reported. You’ll see a preview before anything is created.</p>
-						<p className="splm-muted">Example:</p>
-						<div className="splm-table-wrapper">
-							<table className="splm-table">
-								<thead><tr><th scope="col">Date</th><th scope="col">Time</th><th scope="col">Home Team</th><th scope="col">Away Team</th><th scope="col">Venue</th><th scope="col">Division</th></tr></thead>
-								<tbody>
-									<tr><td>2026-09-15</td><td>19:30</td><td>Penguins</td><td>Jets</td><td>Main Rink</td><td>Division 1</td></tr>
-								</tbody>
-							</table>
-						</div>
-					</div>
-				</details>
-			) }
 
 			{ importPreview && (
 				<div className="splm-card" style={ { marginBottom: '1rem' } }>

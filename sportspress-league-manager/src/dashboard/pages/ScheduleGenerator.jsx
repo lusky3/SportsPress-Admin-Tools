@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Fragment } from '@wordpress/element';
+import HelpLink from '../components/HelpLink';
 import { spsg } from '../lib/api';
 import Toast from '../components/Toast';
 
@@ -353,7 +354,7 @@ export default function ScheduleGenerator() {
 	return (
 		<>
 		<div className="splm-wizard">
-			<h2>Schedule Generator</h2>
+			<h2>Schedule Generator <HelpLink topic="schedule-gen" /></h2>
 			<Toast message={toast?.message} type={toast?.type} onDismiss={()=>setToast(null)}/>
 			{error && <div className="splm-alert splm-alert--warning" role="alert">{error}</div>}
 			{step>0&&step<4&&(

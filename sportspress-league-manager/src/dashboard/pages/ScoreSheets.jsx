@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from '@wordpress/element';
+import HelpLink from '../components/HelpLink';
 import { fetchSheets, fetchSheet, fetchScoreSheetEvents, uploadSheet, confirmSheet } from '../lib/api';
 import Toast from '../components/Toast';
 
@@ -56,24 +57,6 @@ function deriveExt( file ) {
 	return TYPE_EXT[ file.type ] || '';
 }
 
-// #34: in-dashboard help so users aren't sent to an external plugin guide.
-function HelpPanel() {
-	return (
-		<details className="splm-score-sheets__help">
-			<summary>How score sheets work</summary>
-			<div className="splm-score-sheets__help-body">
-				<p>Turn a photo of a completed, handwritten score sheet into an event’s final score and player stats — without typing it all in by hand.</p>
-				<ol>
-					<li><strong>Add a sheet.</strong> Click <em>Upload sheet</em> and choose a photo (JPG/PNG) or PDF of the finished score sheet. Sheets can also arrive automatically by email, SMS, or WhatsApp when an administrator has set up remote intake — those land in this same queue.</li>
-					<li><strong>Automatic reading.</strong> Each sheet moves through <em>Queued → Processing</em> while it’s read, then becomes <em>Pending review</em>. <em>Failed</em> means it couldn’t be read — upload a clearer, well-lit photo.</li>
-					<li><strong>Review.</strong> Open a <em>Pending review</em> sheet. Anything the reader was unsure about is highlighted for you. Confirm which game it belongs to, correct any misread jersey numbers or scores, then choose <em>Confirm &amp; apply to event</em>.</li>
-					<li><strong>Done.</strong> Confirmed sheets write the final score and player stats straight to the event, then show as <em>Confirmed</em> and open read-only.</li>
-				</ol>
-				<p className="splm-muted"><strong>Tip:</strong> write-ins are fine — leave a substitute as “Write-in / no player record” and their goals still count in the team total from the final score. Only pick a roster player when a jersey number was misread.</p>
-			</div>
-		</details>
-	);
-}
 
 function Queue( { onReview, onView, onToast } ) {
 	const [ status, setStatus ] = useState( '' );
@@ -152,7 +135,6 @@ function Queue( { onReview, onView, onToast } ) {
 
 	return (
 		<div className="splm-score-sheets__queue">
-			<HelpPanel />
 			<div className="splm-score-sheets__toolbar">
 				<label className="splm-score-sheets__filter">
 					Status:{ ' ' }
@@ -182,7 +164,7 @@ function Queue( { onReview, onView, onToast } ) {
 			{ loading ? (
 				<div className="splm-loading">Loading sheets…</div>
 			) : sheets.length === 0 ? (
-				<p className="splm-empty">No score sheets yet. Click <strong>Upload sheet</strong> above to add one — expand <em>How score sheets work</em> for the full workflow. Sheets sent in by email, SMS, or WhatsApp (when remote intake is set up) also appear here.</p>
+				<p className="splm-empty">No score sheets yet. Click <strong>Upload sheet</strong> above to add one — see the <strong>?</strong> next to the title for how it works. Sheets sent in by email, SMS, or WhatsApp (when remote intake is set up) also appear here.</p>
 			) : (
 				<div className="splm-table-wrapper">
 					<table className="splm-table">
@@ -645,7 +627,7 @@ export default function ScoreSheets( { season } ) {
 
 	return (
 		<div className="splm-score-sheets">
-			<h2>Score Sheets</h2>
+			<h2>Score Sheets <HelpLink topic="score-sheets" /></h2>
 			<Toast message={ toast?.message } type={ toast?.type } onDismiss={ () => setToast( null ) } />
 			{ view === 'queue' ? (
 				<Queue onReview={ openReview } onView={ openView } onToast={ setToast } />

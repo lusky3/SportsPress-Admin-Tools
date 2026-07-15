@@ -1,4 +1,5 @@
 import { useState, useEffect } from '@wordpress/element';
+import HelpLink from '../components/HelpLink';
 import { fetchHealth } from '../lib/api';
 
 const ICONS = { error: '❌', warning: '⚠️', info: 'ℹ️' };
@@ -74,7 +75,7 @@ export default function HealthChecks() {
 
 	return (
 		<div className="splm-health">
-			<h2>Health Checks</h2>
+			<h2>Health Checks <HelpLink topic="health" /></h2>
 			<p className="splm-muted">Data problems that can throw off standings, notifications, or reports. Expand a check to see the affected records and open each one to fix it.</p>
 			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 

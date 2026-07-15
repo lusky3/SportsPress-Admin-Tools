@@ -1,4 +1,5 @@
 import { useState, useEffect } from '@wordpress/element';
+import HelpLink from '../components/HelpLink';
 import { fetchStandings, generateStandings } from '../lib/api';
 
 function StandingsTable( { table } ) {
@@ -110,7 +111,7 @@ export default function Standings( { season } ) {
 
 	return (
 		<div className="splm-standings">
-			<h2>Standings</h2>
+			<h2>Standings <HelpLink topic="standings" /></h2>
 			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 			{ season && (
 				<button className="splm-btn" onClick={ () => setGenModal( ! genModal ) }>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from '@wordpress/element';
+import HelpLink from '../components/HelpLink';
 import { fetchGames, fetchActivity, saveUserPreferences } from '../lib/api';
 import Icon from '../components/icons';
 
@@ -131,7 +132,7 @@ export default function Dashboard( { onNavigate, season } ) {
 	return (
 		<div className="splm-dashboard">
 			<div className="splm-dashboard__header">
-				<h2>Dashboard</h2>
+				<h2>Dashboard <HelpLink topic="dashboard" /></h2>
 				<button
 					className="splm-btn splm-btn--small"
 					onClick={ () => setShowSettings( ! showSettings ) }

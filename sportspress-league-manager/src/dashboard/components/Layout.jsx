@@ -19,6 +19,7 @@ const NAV_ITEMS = [
 	{ id: 'season-setup', label: 'Seasons', icon: 'seasons' },
 	{ id: 'health', label: 'Health', icon: 'health' },
 	{ id: 'schedule-gen', label: 'Generate', icon: 'schedule-gen' },
+	{ id: 'help', label: 'Help', icon: 'help' },
 ];
 
 const MOBILE_VISIBLE = 5;
