@@ -16,8 +16,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPT_Email_Sync {
 
+	const TAB = 'player-tools';
+
 	public function __construct() {
-		add_action( 'spat_admin_page_content', array( $this, 'render_section' ), 20 );
+		// Render INSIDE the Player Tools panel (opened by SPT_Admin) via its inner
+		// hook — not directly on spat_admin_page_content, which fired after
+		// SPT_Admin had already closed the panel <div>, leaving this section
+		// outside every tab panel (so it showed on every tab).
+		add_action( 'spt_player_tools_content', array( $this, 'render_section' ) );
 		add_action( 'admin_post_spt_apply_email_sync', array( $this, 'handle_apply' ) );
 		add_action( 'admin_post_spt_export_unmatched_csv', array( $this, 'handle_csv_export' ) );
 	}
@@ -91,7 +97,12 @@ class SPT_Email_Sync {
 		}
 
 		$scan_url = wp_nonce_url(
-			add_query_arg( 'spt_sync_scan', '1' ),
+			add_query_arg(
+				array(
+					'spt_sync_scan' => '1',
+					'tab'           => self::TAB, // keep the Player Tools tab active on reload
+				)
+			),
 			'spt_email_scan'
 		);
 		printf(
@@ -440,6 +451,7 @@ class SPT_Email_Sync {
 			add_query_arg(
 				array(
 					'page'        => 'sportspress-admin-tools',
+					'tab'         => self::TAB,
 					'spt_synced'  => $updated,
 					'spt_skipped' => $skipped,
 				),

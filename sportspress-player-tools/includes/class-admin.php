@@ -23,6 +23,8 @@ class SPT_Admin {
 	public function add_admin_content() {
 		echo '<div id="player-tools" class="tab-content" style="display:none;">';
 		$this->admin_page_content();
+		// Other Player Tools features (e.g. Email Sync) render inside this panel.
+		do_action( 'spt_player_tools_content' );
 		echo '</div>';
 	}
 
