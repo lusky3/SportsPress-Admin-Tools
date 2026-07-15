@@ -648,6 +648,14 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: var(--splm-text); }
 .splm-health-alert__icon { font-size: 1rem; }
 .splm-health-alert__message { flex: 1; }
 .splm-health-alert__count { color: var(--splm-muted); font-size: 0.75rem; white-space: nowrap; }
+/* #35: header row + actionable detail (fix hint, in-dashboard action link, and
+   an expandable list of affected records that each open in the WP editor). */
+.splm-health-alert__head { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; }
+.splm-health-alert__fix { margin: 0.4rem 0 0.2rem; font-size: 0.85rem; }
+.splm-health-alert__action { font-weight: 600; white-space: nowrap; }
+.splm-health-alert__details > summary { cursor: pointer; font-size: 0.8rem; color: var(--splm-muted); padding: 0.2rem 0; }
+.splm-health-alert__list { margin: 0.3rem 0 0; padding-left: 1.2rem; font-size: 0.85rem; }
+.splm-health-alert__list li { margin-bottom: 0.15rem; }
 
 /* Summary stats */
 .splm-summary-stats {
@@ -923,6 +931,12 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: var(--splm-text); }
 .splm-schedule__help-body ul { margin: 0.5rem 0; padding-left: 1.2rem; }
 .splm-schedule__help-body code { background: var(--splm-surface-muted); padding: 0.05rem 0.3rem; border-radius: 3px; font-size: 0.85em; }
 .splm-schedule__summary { margin-bottom: 12px; font-size: 0.9rem; color: var(--splm-muted); }
+/* #34: in-dashboard Score Sheets help (shares the schedule-help look). */
+.splm-score-sheets__help { margin-bottom: 16px; border: 1px solid var(--splm-border-light); border-radius: 8px; background: var(--splm-surface); }
+.splm-score-sheets__help > summary { cursor: pointer; padding: 0.6rem 0.9rem; font-weight: 600; color: var(--splm-text-strong); }
+.splm-score-sheets__help-body { padding: 0 0.9rem 0.9rem; font-size: 0.9rem; }
+.splm-score-sheets__help-body ol { margin: 0.5rem 0; padding-left: 1.3rem; }
+.splm-score-sheets__help-body li { margin-bottom: 0.4rem; }
 
 @media (max-width: 600px) {
 	.splm-header__search { flex: 1 1 100%; order: 3; }
