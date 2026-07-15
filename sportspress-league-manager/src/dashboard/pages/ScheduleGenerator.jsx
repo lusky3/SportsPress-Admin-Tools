@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Fragment } from '@wordpress/element';
 import { spsg } from '../lib/api';
-import { rolloverPreview, rolloverExecute } from '../lib/api';
 import Toast from '../components/Toast';
 
 const WIZARD_STEPS = [ 'Teams & Season', 'Rinks & Times', 'Review & Generate' ];
@@ -131,15 +130,6 @@ export default function ScheduleGenerator() {
 	const [placeholders,setPlaceholders] = useState([]);
 	const [replaceMap,setReplaceMap] = useState({});
 	const [spTeams,setSpTeams] = useState([]);
-	// Rollover state
-	const [rc,setRc] = useState(null);
-	const [rFrom,setRFrom] = useState('');
-	const [rTo,setRTo] = useState('');
-	const [rPrev,setRPrev] = useState(null);
-	const [rSel,setRSel] = useState({});
-	const [rLoad,setRLoad] = useState(false);
-	const [rMsg,setRMsg] = useState('');
-	const [rErr,setRErr] = useState('');
 	// Import file ref
 	const importRef = useRef(null);
 	const tbdRef = useRef(0);
@@ -154,7 +144,6 @@ export default function ScheduleGenerator() {
 
 	useEffect(() => {
 		loadConfigs();
-		spsg.getSeasons().then(s=>setRc({seasons:s})).catch(()=>{});
 		spsg.listPresets().then(setPresets).catch(()=>{});
 		spsg.getDistributionSettings().then(setDistSettings).catch(()=>{});
 	}, []);
@@ -358,7 +347,6 @@ export default function ScheduleGenerator() {
 		return set;
 	}, [schedule]);
 
-	const rSeasons = rc?.seasons||[];
 	const f = {display:'flex',gap:'0.5rem'};
 	const g2 = {display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.75rem'};
 
@@ -1108,77 +1096,6 @@ export default function ScheduleGenerator() {
 			)}
 		</div>
 
-		{/* ── SEASON ROLLOVER ── */}
-		{rc&&(
-			<div className="splm-wizard" style={{marginTop:'2rem'}}>
-				<h2>Season Rollover</h2>
-				<p className="splm-muted">Move players who didn't register for the new season from current team to past teams.</p>
-				{rErr&&<div className="splm-alert splm-alert--warning">{rErr}</div>}
-				{rMsg&&<div className="splm-card"><p>{rMsg}</p></div>}
-				<div className="splm-card">
-					<div style={{display:'grid',gridTemplateColumns:'1fr 1fr auto',gap:'0.75rem',alignItems:'end'}}>
-						<div>
-							<label>From Season</label>
-							<select className="splm-select" aria-label="From season" value={rFrom} onChange={e=>setRFrom(e.target.value)}>
-								<option value="">Select…</option>
-								{rSeasons.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-							</select>
-						</div>
-						<div>
-							<label>To Season</label>
-							<select className="splm-select" aria-label="To season" value={rTo} onChange={e=>setRTo(e.target.value)}>
-								<option value="">Select…</option>
-								{rSeasons.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-							</select>
-						</div>
-						<button className="splm-btn splm-btn--primary" disabled={rLoad||!rFrom||!rTo} onClick={()=>{
-							setRErr(''); setRMsg(''); setRLoad(true);
-							rolloverPreview(rFrom,rTo)
-								.then(data=>{ setRPrev(data); const sel={}; (data.not_returning||[]).forEach(p=>{sel[p.id]=true;}); setRSel(sel); })
-								.catch(()=>setRErr('Failed to load preview'))
-								.finally(()=>setRLoad(false));
-						}}>{rLoad?'Loading…':'Preview'}</button>
-					</div>
-				</div>
-				{rPrev&&(
-					<div className="splm-card">
-						<p><strong>{rPrev.returning_count||0}</strong> returning · <strong>{rPrev.total_not_returning||0}</strong> not returning</p>
-						{(rPrev.not_returning||[]).map(group=>{
-							const allChecked = group.players.every(p=>rSel[p.id]);
-							return (
-								<details key={group.team_id} style={{marginBottom:'0.5rem'}}>
-									<summary style={{cursor:'pointer',fontWeight:600}}>
-										<label className="splm-checkbox" style={{display:'inline'}} onClick={e=>e.stopPropagation()}>
-											<input type="checkbox" checked={allChecked} onChange={e=>{
-												setRSel(prev=>{ const next={...prev}; group.players.forEach(p=>{next[p.id]=e.target.checked;}); return next; });
-											}}/>
-										</label>
-										{group.team} ({group.players.length})
-									</summary>
-									<div style={{paddingLeft:'2rem'}}>
-										{group.players.map(p=>(
-											<label key={p.id} className="splm-checkbox" style={{display:'block'}}>
-												<input type="checkbox" checked={!!rSel[p.id]} onChange={e=>setRSel(prev=>({...prev,[p.id]:e.target.checked}))}/>
-												{p.name}
-											</label>
-										))}
-									</div>
-								</details>
-							);
-						})}
-						<button className="splm-btn splm-btn--danger" style={{marginTop:'1rem'}} disabled={rLoad||!Object.values(rSel).some(Boolean)} onClick={()=>{
-							const ids=Object.keys(rSel).filter(k=>rSel[k]).map(Number);
-							if (!ids.length) return;
-							setRErr(''); setRLoad(true);
-							rolloverExecute(rFrom,rTo,ids)
-								.then(data=>{ setRMsg(`✅ ${data.count||ids.length} player(s) moved to past teams.`); setRPrev(null); })
-								.catch(()=>setRErr('Failed to execute rollover'))
-								.finally(()=>setRLoad(false));
-						}}>{rLoad?'Processing…':'Move Selected to Past Teams'}</button>
-					</div>
-				)}
-			</div>
-		)}
 		</>
 	);
 }
