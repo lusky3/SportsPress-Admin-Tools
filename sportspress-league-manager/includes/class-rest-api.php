@@ -2420,13 +2420,14 @@ class SPLM_REST_API {
 		$league_id = absint( $params['league_id'] ?? 0 );
 		$season_id = absint( $params['season_id'] ?? 0 );
 
-		$this->maybe_load_sibling_class( 'SPPT_Player_Skill_Level' );
-		if ( ! class_exists( 'SPPT_Player_Skill_Level' ) ) {
+		// Player Tools uses the SPT_ prefix (SportsPress Player Tools); the class is
+		// loaded by that plugin only when its Skill Level module is enabled.
+		if ( ! class_exists( 'SPT_Player_Skill_Level' ) ) {
 			return new WP_Error( 'missing_dependency', 'Player Tools plugin with Skill Level module is required.', array( 'status' => 503 ) );
 		}
 
-		$skill  = new SPPT_Player_Skill_Level();
-		$result = $skill->calculate_for_league_season( $league_id, $season_id );
+		$skill  = new SPT_Player_Skill_Level();
+		$result = $skill->calculate_skill_levels( $league_id, $season_id );
 
 		return is_wp_error( $result ) ? $result : new WP_REST_Response( $result, 200 );
 	}
