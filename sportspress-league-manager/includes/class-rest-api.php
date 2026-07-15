@@ -3113,7 +3113,10 @@ class SPLM_REST_API {
 			}
 			$dtid = $team_to_div[ $team ];
 			if ( ! isset( $acc[ $dtid ] ) ) {
-				$acc[ $dtid ] = array( 'players' => 0, 'skills' => array() );
+				$acc[ $dtid ] = array(
+					'players' => 0,
+					'skills' => array(),
+				);
 			}
 			$acc[ $dtid ]['players']++;
 			$sl = (int) get_post_meta( $pid, 'spt_skill_level', true );
