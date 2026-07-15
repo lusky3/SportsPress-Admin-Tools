@@ -567,10 +567,18 @@ class SPEM_REST_API {
 				'posts_per_page' => 200,
 				'post_status'    => 'publish',
 				'meta_query'     => array(
+					// Mirror SportsPress core visibility: visible when sp_visible is
+					// explicitly 1 OR the meta key was never set. Fresh installs leave
+					// it unset (visible by default), so a strict `= '1'` filter would
+					// wrongly hide every stat column and leave the grid empty.
+					'relation' => 'OR',
+					array(
+						'key'   => 'sp_visible',
+						'value' => 1,
+					),
 					array(
 						'key'     => 'sp_visible',
-						'value'   => '1',
-						'compare' => '=',
+						'compare' => 'NOT EXISTS',
 					),
 				),
 			)

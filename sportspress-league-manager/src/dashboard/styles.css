@@ -472,6 +472,10 @@
 .splm-score-btn:active { background: var(--splm-surface-muted); }
 .splm-score-entry__saved { padding: 2rem 1rem; }
 .splm-score-entry__after-save { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-top: 1rem; }
+/* #26: shared action row for the score card and player-stats panel (Submit
+   Score / Enter Player Stats / Back / Skip) so stats entry is reachable up
+   front and the empty state is never a dead-end. */
+.splm-score-entry__actions { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-top: 1.5rem; }
 
 /* Standings table */
 .splm-table-wrapper { overflow-x: auto; }
@@ -729,6 +733,9 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: var(--splm-text); }
 
 /* Player Stats Entry */
 .splm-player-stats { margin-top: 1rem; }
+/* #26: player filter for long rosters (sp_current_team accumulates history). */
+.splm-player-stats__filter { display: block; margin-bottom: 1rem; }
+.splm-player-stats__filter input { width: 100%; max-width: 22rem; }
 .splm-player-stats__team { margin-bottom: 1.5rem; }
 .splm-player-stats__team h4 { margin-bottom: 0.5rem; font-size: 0.9rem; color: var(--splm-text-strong); }
 .splm-player-stats__table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }

@@ -1,6 +1,26 @@
 import { useState, useEffect, useCallback, useRef } from '@wordpress/element';
 import { fetchGames, updateScore, fetchGamePlayers, saveGamePlayers, batchUpdateScores } from '../lib/api';
 
+const DATE_FMT = new Intl.DateTimeFormat( undefined, { weekday: 'short', month: 'short', day: 'numeric' } );
+const TIME_FMT = new Intl.DateTimeFormat( undefined, { hour: 'numeric', minute: '2-digit' } );
+
+function formatGameDate( raw ) {
+	if ( ! raw ) return '';
+	const d = new Date( `${ raw }T00:00:00` );
+	return Number.isNaN( d.getTime() ) ? String( raw ) : DATE_FMT.format( d );
+}
+function formatGameTime( raw ) {
+	if ( ! raw ) return '';
+	const [ h, m ] = String( raw ).split( ':' );
+	if ( h === undefined ) return '';
+	const d = new Date();
+	d.setHours( Number( h ), Number( m ) || 0, 0, 0 );
+	return Number.isNaN( d.getTime() ) ? '' : TIME_FMT.format( d );
+}
+function gameWhen( g ) {
+	return [ formatGameDate( g.date ), formatGameTime( g.time ), g.venue ].filter( Boolean ).join( ' · ' );
+}
+
 function GameNight( { season } ) {
 	const [ date, setDate ] = useState( new Date().toISOString().split( 'T' )[ 0 ] );
 	const [ games, setGames ] = useState( [] );
@@ -48,11 +68,11 @@ function GameNight( { season } ) {
 				<>
 					<div className="splm-table-wrapper">
 						<table className="splm-table">
-							<thead><tr><th>Time</th><th>Home</th><th></th><th>Away</th><th></th><th>Venue</th></tr></thead>
+							<thead><tr><th scope="col">Time</th><th scope="col">Home</th><th scope="col">Score</th><th scope="col">Away</th><th scope="col">Final</th><th scope="col">Venue</th></tr></thead>
 							<tbody>
 								{ games.map( ( g ) => (
 									<tr key={ g.id } className={ g.home_score !== null ? 'splm-row--muted' : '' }>
-										<td>{ g.time }</td>
+										<td>{ formatGameTime( g.time ) || g.time }</td>
 										<td>{ g.home_team.name }</td>
 										<td>
 											<input type="number" min="0" className="splm-score-input" value={ scores[ g.id ]?.home ?? 0 }
@@ -92,15 +112,17 @@ function GameNight( { season } ) {
 	);
 }
 
-function PlayerStats( { gameId, onDone } ) {
+function PlayerStats( { gameId, game, onDone, onBack } ) {
 	const [ data, setData ] = useState( null );
 	const [ stats, setStats ] = useState( {} );
 	const [ saving, setSaving ] = useState( false );
+	// Rosters can be long (sp_current_team accumulates every historical member),
+	// so a name/number filter keeps the stats grid usable.
+	const [ filter, setFilter ] = useState( '' );
 
 	useEffect( () => {
 		fetchGamePlayers( gameId ).then( ( res ) => {
 			setData( res );
-			// Initialize stats from existing data.
 			const init = {};
 			res.teams.forEach( ( team ) => {
 				init[ team.id ] = {};
@@ -119,8 +141,25 @@ function PlayerStats( { gameId, onDone } ) {
 		return <div className="splm-loading">Loading players...</div>;
 	}
 
+	const heading = game ? `${ game.home_team.name } vs ${ game.away_team.name }` : 'Player Stats';
+
+	// Actionable empty state — never a dead-end. Events are created with no
+	// players selected by default, so explain that and always offer a way out.
 	if ( data.performances.length === 0 || data.teams.every( ( t ) => t.players.length === 0 ) ) {
-		return <p className="splm-muted">No players or performance types configured.</p>;
+		return (
+			<div className="splm-player-stats">
+				<h4>{ heading }</h4>
+				<div className="splm-alert splm-alert--warning" role="status">
+					{ data.performances.length === 0
+						? 'No box-score stat types are configured for this sport, so player stats can’t be entered here. Ask an administrator to add visible performance columns in SportsPress.'
+						: 'Neither team has players on its roster yet, so player stats can’t be entered. Add players to these teams first (they need a current team assigned), then come back.' }
+				</div>
+				<div className="splm-score-entry__actions">
+					{ onBack && <button className="splm-btn" onClick={ onBack }>← Back</button> }
+					<button className="splm-btn splm-btn--secondary" onClick={ onDone }>Skip → Next game</button>
+				</div>
+			</div>
+		);
 	}
 
 	const updateStat = ( teamId, playerId, slug, value ) => {
@@ -143,25 +182,46 @@ function PlayerStats( { gameId, onDone } ) {
 		onDone();
 	};
 
+	const q = filter.trim().toLowerCase();
+	const totalPlayers = data.teams.reduce( ( n, t ) => n + t.players.length, 0 );
+	const matchPlayer = ( p ) => ! q || p.name.toLowerCase().includes( q ) || String( p.number || '' ).includes( q );
+
 	return (
 		<div className="splm-player-stats">
-			{ data.teams.map( ( team ) => (
+			<h4>{ heading }</h4>
+			{ totalPlayers > 12 && (
+				<label className="splm-player-stats__filter">
+					<span className="screen-reader-text">Filter players</span>
+					<input
+						type="search"
+						className="splm-select"
+						placeholder="Filter players by name or number…"
+						value={ filter }
+						onChange={ ( e ) => setFilter( e.target.value ) }
+					/>
+				</label>
+			) }
+			{ data.teams.map( ( team ) => {
+				const visible = team.players.filter( matchPlayer );
+				return (
 				<div key={ team.id } className="splm-player-stats__team">
 					<h4>{ team.name }</h4>
 					{ team.players.length === 0 ? (
-						<p className="splm-muted">No players</p>
+						<p className="splm-muted">No players assigned to this team.</p>
+					) : visible.length === 0 ? (
+						<p className="splm-muted">No players match “{ filter }”.</p>
 					) : (
 						<table className="splm-player-stats__table">
 							<thead>
 								<tr>
-									<th>Player</th>
+									<th scope="col">Player</th>
 									{ data.performances.map( ( perf ) => (
-										<th key={ perf.slug }>{ perf.label }</th>
+										<th scope="col" key={ perf.slug }>{ perf.label }</th>
 									) ) }
 								</tr>
 							</thead>
 							<tbody>
-								{ team.players.map( ( player ) => (
+								{ visible.map( ( player ) => (
 									<tr key={ player.id }>
 										<td>
 											{ player.number ? `#${ player.number } ` : '' }
@@ -177,6 +237,7 @@ function PlayerStats( { gameId, onDone } ) {
 													onChange={ ( e ) =>
 														updateStat( team.id, player.id, perf.slug, e.target.value )
 													}
+													aria-label={ `${ perf.label } for ${ player.name }` }
 												/>
 											</td>
 										) ) }
@@ -186,14 +247,14 @@ function PlayerStats( { gameId, onDone } ) {
 						</table>
 					) }
 				</div>
-			) ) }
-			<button
-				className="splm-btn splm-btn--primary"
-				onClick={ handleSave }
-				disabled={ saving }
-			>
-				{ saving ? 'Saving...' : 'Save Stats' }
-			</button>
+				);
+			} ) }
+			<div className="splm-score-entry__actions">
+				{ onBack && <button className="splm-btn" onClick={ onBack }>← Back</button> }
+				<button className="splm-btn splm-btn--primary" onClick={ handleSave } disabled={ saving }>
+					{ saving ? 'Saving...' : 'Save Stats' }
+				</button>
+			</div>
 		</div>
 	);
 }
@@ -208,16 +269,12 @@ export default function ScoreEntry( { season } ) {
 	const [ saved, setSaved ] = useState( false );
 	const [ error, setError ] = useState( '' );
 	const [ showStats, setShowStats ] = useState( false );
-	const [ scoreSubmitted, setScoreSubmitted ] = useState( false );
 	const [ showingAll, setShowingAll ] = useState( false );
 	const [ mode, setMode ] = useState( 'single' );
 	// UX-10: incrementing key forces the role=status node to remount each save
 	// so screen readers re-announce "Score saved!" on the 2nd, 3rd… game.
 	const [ saveAnnounceKey, setSaveAnnounceKey ] = useState( 0 );
 
-	// UI-5: single cancel-guarded loader shared by the mount effect AND the
-	// "show all" button, so we never setState after unmount and don't duplicate
-	// the filter logic. liveRef tracks the latest in-flight request.
 	const liveRef = useRef( 0 );
 
 	const loadGames = useCallback( ( params ) => {
@@ -235,7 +292,6 @@ export default function ScoreEntry( { season } ) {
 
 	useEffect( () => {
 		loadGames( season ? { season } : {} );
-		// Invalidate any in-flight request on unmount / season change.
 		return () => { liveRef.current++; };
 	}, [ season, loadGames ] );
 
@@ -248,7 +304,6 @@ export default function ScoreEntry( { season } ) {
 
 	const advanceToNext = () => {
 		setSaved( false );
-		setScoreSubmitted( false );
 		setShowStats( false );
 		setHomeScore( 0 );
 		setAwayScore( 0 );
@@ -272,7 +327,6 @@ export default function ScoreEntry( { season } ) {
 			setError( err?.message || 'Failed to save score' );
 			setSaving( false );
 		}
-		setScoreSubmitted( true );
 	};
 
 	if ( loading ) {
@@ -313,95 +367,68 @@ export default function ScoreEntry( { season } ) {
 			{ mode === 'batch' ? (
 				<GameNight season={ season } />
 			) : (
-			<>
-			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
-			<p className="splm-score-entry__progress">
-				Game { current + 1 } of { games.length }
-			</p>
+				<>
+					{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
+					<p className="splm-score-entry__progress">
+						Game { current + 1 } of { games.length }
+					</p>
 
-			{ saved && ! showStats ? (
-				<div className="splm-score-entry__saved">
-					<div className="splm-alert splm-alert--success" role="status" key={ saveAnnounceKey }>
-						Score saved!
-					</div>
-					{ /* UX-10: explicit toggle button instead of an empty
-					     summary-only <details> whose purpose was unclear. */ }
-					<div className="splm-score-entry__after-save">
-						<button className="splm-btn splm-btn--primary" onClick={ () => setShowStats( true ) }>
-							Enter Player Stats
-						</button>
-						<button className="splm-btn splm-btn--secondary" onClick={ advanceToNext }>
-							Skip → Next Game
-						</button>
-					</div>
-				</div>
-			) : showStats && scoreSubmitted ? (
-				<div>
-					<div className="splm-alert splm-alert--success" role="status" key={ saveAnnounceKey }>Score saved!</div>
-					<PlayerStats gameId={ game.id } onDone={ advanceToNext } />
-				</div>
-			) : (
-				<div className="splm-score-entry__card">
-					<div className="splm-score-entry__date">
-						{ game.date } — { game.venue }
-					</div>
-
-					<div className="splm-score-entry__teams">
-						<div className="splm-score-entry__team">
-							<span className="splm-score-entry__team-name">{ game.home_team.name }</span>
-							<div className="splm-score-entry__controls">
-								<button
-									className="splm-score-btn"
-									onClick={ () => setHomeScore( Math.max( 0, homeScore - 1 ) ) }
-									aria-label={ `Decrease ${ game.home_team?.name || 'home' } score` }
-								>
-									−
+					{ showStats ? (
+						<div>
+							{ saved && <div className="splm-alert splm-alert--success" role="status" key={ saveAnnounceKey }>Score saved!</div> }
+							<PlayerStats gameId={ game.id } game={ game } onDone={ advanceToNext } onBack={ () => setShowStats( false ) } />
+						</div>
+					) : saved ? (
+						<div className="splm-score-entry__saved">
+							<div className="splm-alert splm-alert--success" role="status" key={ saveAnnounceKey }>
+								Score saved!
+							</div>
+							<div className="splm-score-entry__after-save">
+								<button className="splm-btn splm-btn--primary" onClick={ () => setShowStats( true ) }>
+									Enter Player Stats
 								</button>
-								<span className="splm-score-entry__value">{ homeScore }</span>
-								<button
-									className="splm-score-btn"
-									onClick={ () => setHomeScore( homeScore + 1 ) }
-									aria-label={ `Increase ${ game.home_team?.name || 'home' } score` }
-								>
-									+
+								<button className="splm-btn splm-btn--secondary" onClick={ advanceToNext }>
+									Skip → Next game
 								</button>
 							</div>
 						</div>
+					) : (
+						<div className="splm-score-entry__card">
+							<div className="splm-score-entry__date">{ gameWhen( game ) }</div>
 
-						<div className="splm-score-entry__vs">vs</div>
+							<div className="splm-score-entry__teams">
+								<div className="splm-score-entry__team">
+									<span className="splm-score-entry__team-name">{ game.home_team.name }</span>
+									<div className="splm-score-entry__controls">
+										<button className="splm-score-btn" onClick={ () => setHomeScore( Math.max( 0, homeScore - 1 ) ) } aria-label={ `Decrease ${ game.home_team?.name || 'home' } score` }>−</button>
+										<span className="splm-score-entry__value">{ homeScore }</span>
+										<button className="splm-score-btn" onClick={ () => setHomeScore( homeScore + 1 ) } aria-label={ `Increase ${ game.home_team?.name || 'home' } score` }>+</button>
+									</div>
+								</div>
 
-						<div className="splm-score-entry__team">
-							<span className="splm-score-entry__team-name">{ game.away_team.name }</span>
-							<div className="splm-score-entry__controls">
-								<button
-									className="splm-score-btn"
-									onClick={ () => setAwayScore( Math.max( 0, awayScore - 1 ) ) }
-									aria-label={ `Decrease ${ game.away_team?.name || 'away' } score` }
-								>
-									−
+								<div className="splm-score-entry__vs">vs</div>
+
+								<div className="splm-score-entry__team">
+									<span className="splm-score-entry__team-name">{ game.away_team.name }</span>
+									<div className="splm-score-entry__controls">
+										<button className="splm-score-btn" onClick={ () => setAwayScore( Math.max( 0, awayScore - 1 ) ) } aria-label={ `Decrease ${ game.away_team?.name || 'away' } score` }>−</button>
+										<span className="splm-score-entry__value">{ awayScore }</span>
+										<button className="splm-score-btn" onClick={ () => setAwayScore( awayScore + 1 ) } aria-label={ `Increase ${ game.away_team?.name || 'away' } score` }>+</button>
+									</div>
+								</div>
+							</div>
+
+							<div className="splm-score-entry__actions">
+								<button className="splm-btn splm-btn--primary splm-btn--large" onClick={ handleSubmit } disabled={ saving }>
+									{ saving ? 'Saving...' : 'Submit Score' }
 								</button>
-								<span className="splm-score-entry__value">{ awayScore }</span>
-								<button
-									className="splm-score-btn"
-									onClick={ () => setAwayScore( awayScore + 1 ) }
-									aria-label={ `Increase ${ game.away_team?.name || 'away' } score` }
-								>
-									+
+								<button className="splm-btn splm-btn--secondary" onClick={ () => setShowStats( true ) }>
+									Enter Player Stats
 								</button>
 							</div>
 						</div>
-					</div>
-
-					<button
-						className="splm-btn splm-btn--primary splm-btn--large"
-						onClick={ handleSubmit }
-						disabled={ saving }
-					>
-						{ saving ? 'Saving...' : 'Submit Score' }
-					</button>
-				</div>
-			) }
-			</>
+					) }
+				</>
 			) }
 		</div>
 	);
