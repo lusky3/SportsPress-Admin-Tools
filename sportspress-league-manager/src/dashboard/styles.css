@@ -937,10 +937,19 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: var(--splm-text); }
 .splm-row--muted { opacity: 0.5; }
 
 .splm-skill-dist { margin-top: 12px; }
-.splm-skill-dist__bar { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
-.splm-skill-dist__label { width: 20px; text-align: right; font-size: 12px; font-weight: 600; }
-.splm-skill-dist__fill { height: 16px; background: var(--splm-primary); border-radius: 2px; min-width: 2px; transition: width 0.3s; } /* UI-14 */
-.splm-skill-dist__count { font-size: 12px; color: var(--splm-muted); }
+/* Bars are <button>s so a level's players can be opened in a modal; reset the
+   native button chrome and keep the row layout. */
+.splm-skill-dist__bar { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; width: 100%; padding: 2px 4px; border: 0; background: none; color: inherit; font: inherit; text-align: left; border-radius: 4px; }
+.splm-skill-dist__bar--clickable { cursor: pointer; }
+.splm-skill-dist__bar--clickable:hover { background: var(--splm-surface-alt); }
+.splm-skill-dist__bar--clickable:focus-visible { outline: 2px solid var(--splm-accent); outline-offset: 1px; }
+.splm-skill-dist__bar:disabled { cursor: default; }
+.splm-skill-dist__label { width: 20px; text-align: right; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+.splm-skill-dist__fill { display: block; height: 16px; background: var(--splm-primary); border-radius: 2px; min-width: 2px; transition: width 0.3s; } /* UI-14 */
+.splm-skill-dist__count { font-size: 12px; color: var(--splm-muted); flex-shrink: 0; }
+/* Player list inside the balance modal. */
+.splm-player-list { margin: 0.5rem 0 0; padding-left: 1.2rem; max-height: 50vh; overflow-y: auto; }
+.splm-player-list li { margin-bottom: 0.2rem; }
 
 .splm-team-compare__selectors { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
 .splm-team-compare__vs { font-weight: 600; font-size: 18px; }

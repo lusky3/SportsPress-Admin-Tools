@@ -5,6 +5,11 @@ export default function DivisionBalance( { season } ) {
 	const [ data, setData ] = useState( [] );
 	const [ loading, setLoading ] = useState( true );
 	const [ error, setError ] = useState( '' );
+	// { divisionName, level, players:[{id,name,team}] } | null
+	const [ modal, setModal ] = useState( null );
+
+	const adminUrl = window.splmDashboard?.adminUrl || '/wp-admin/';
+	const editUrl = ( id ) => `${ adminUrl }post.php?post=${ id }&action=edit`;
 
 	useEffect( () => {
 		let cancelled = false;
@@ -16,6 +21,14 @@ export default function DivisionBalance( { season } ) {
 		} );
 		return () => { cancelled = true; };
 	}, [ season ] );
+
+	// Close the modal on Escape.
+	useEffect( () => {
+		if ( ! modal ) return undefined;
+		const onKey = ( e ) => { if ( e.key === 'Escape' ) setModal( null ); };
+		document.addEventListener( 'keydown', onKey );
+		return () => document.removeEventListener( 'keydown', onKey );
+	}, [ modal ] );
 
 	if ( loading ) return <div className="splm-loading">Loading division balance...</div>;
 
@@ -49,16 +62,47 @@ export default function DivisionBalance( { season } ) {
 								</div>
 							</div>
 							<div className="splm-skill-dist">
-								{ Object.entries( div.distribution ).map( ( [ level, count ] ) => (
-									<div key={ level } className="splm-skill-dist__bar" title={ `Level ${ level }: ${ count } players` }>
-										<span className="splm-skill-dist__label">{ level }</span>
-										<div className="splm-skill-dist__fill" style={ { width: `${ div.rated ? ( count / div.rated ) * 100 : 0 }%` } } />
-										<span className="splm-skill-dist__count">{ count }</span>
-									</div>
-								) ) }
+								{ Object.entries( div.distribution ).map( ( [ level, count ] ) => {
+									const players = div.players_by_level?.[ level ] || [];
+									const clickable = count > 0 && players.length > 0;
+									return (
+										<button
+											key={ level }
+											type="button"
+											className={ `splm-skill-dist__bar${ clickable ? ' splm-skill-dist__bar--clickable' : '' }` }
+											disabled={ ! clickable }
+											onClick={ () => clickable && setModal( { divisionName: div.division.name, level, players } ) }
+											title={ clickable ? `Level ${ level }: ${ count } player(s) — click to view` : `Level ${ level }: ${ count } players` }
+											aria-label={ `Level ${ level }, ${ count } players${ clickable ? ' — view list' : '' }` }
+										>
+											<span className="splm-skill-dist__label">{ level }</span>
+											<span className="splm-skill-dist__fill" style={ { width: `${ div.rated ? ( count / div.rated ) * 100 : 0 }%` } } />
+											<span className="splm-skill-dist__count">{ count }</span>
+										</button>
+									);
+								} ) }
 							</div>
 						</section>
 					) ) }
+				</div>
+			) }
+
+			{ modal && (
+				<div className="splm-modal-overlay" onClick={ () => setModal( null ) }>
+					<div className="splm-modal" role="dialog" aria-modal="true" aria-label={ `${ modal.divisionName }, skill level ${ modal.level }` } onClick={ ( e ) => e.stopPropagation() }>
+						<h3>{ modal.divisionName } — Skill level { modal.level } <span className="splm-muted">({ modal.players.length })</span></h3>
+						<ul className="splm-player-list">
+							{ modal.players.map( ( p ) => (
+								<li key={ p.id }>
+									<a href={ editUrl( p.id ) } target="_blank" rel="noopener noreferrer">{ p.name }</a>
+									{ p.team ? <span className="splm-muted"> — { p.team }</span> : null }
+								</li>
+							) ) }
+						</ul>
+						<div className="splm-modal__actions">
+							<button type="button" className="splm-btn" onClick={ () => setModal( null ) }>Close</button>
+						</div>
+					</div>
 				</div>
 			) }
 		</div>
