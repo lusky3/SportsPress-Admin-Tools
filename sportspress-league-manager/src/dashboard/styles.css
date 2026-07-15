@@ -197,6 +197,12 @@
 /* UX-13: logout link lightened to meet contrast on the dark header. */
 .splm-header__logout { color: var(--splm-on-dark-muted); text-decoration: none; }
 .splm-header__logout:hover { color: var(--splm-on-primary); text-decoration: underline; }
+.splm-header__link { color: var(--splm-on-dark-muted); text-decoration: none; white-space: nowrap; }
+.splm-header__link:hover { color: var(--splm-on-primary); text-decoration: underline; }
+/* SportsPress Pro's team-bar/sponsor chrome is unhooked server-side on the
+   dashboard; hide any empty shell its JS still prepends so it can't reserve
+   space at the top of the page. */
+.sp-header, .sp-header-sponsors, .sp-sponsors { display: none !important; }
 
 /* Layout */
 /* UI-2/UI-3/UX-21: drop the magic-number full-viewport min-height. flex:1 lets

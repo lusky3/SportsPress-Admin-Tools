@@ -135,6 +135,8 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 						</select>
 					) }
 					{ ! seasons.length && <span className="splm-header__season">{ config.currentSeason || '' }</span> }
+					{ config.homeUrl && <a href={ config.homeUrl } className="splm-header__link">View site</a> }
+					{ config.canAccessAdmin && config.adminUrl && <a href={ config.adminUrl } className="splm-header__link">WP Admin</a> }
 					{ config.logoutUrl && <a href={ config.logoutUrl } className="splm-header__logout">
 						Log out
 					</a> }

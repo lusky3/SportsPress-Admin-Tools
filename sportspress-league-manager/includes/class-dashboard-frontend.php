@@ -25,6 +25,50 @@ class SPLM_Dashboard_Frontend {
 		// F15: enforce auth at template_redirect (priority 1) — earlier than
 		// template_include, before any output, and emit nocache_headers().
 		add_action( 'template_redirect', array( $this, 'enforce_template_auth' ), 1 );
+		// Strip SportsPress Pro's site chrome (league-menu team bar + sponsor
+		// banner) from the standalone dashboard. Runs on wp_head, before the
+		// template's wp_footer() where those modules render.
+		add_action( 'wp_head', array( $this, 'strip_sportspress_chrome' ), 0 );
+	}
+
+	/**
+	 * Whether the current request is rendering the standalone dashboard page.
+	 *
+	 * @return bool
+	 */
+	private function is_dashboard_template() {
+		return is_page() && 'template-league-dashboard.php' === get_page_template_slug();
+	}
+
+	/**
+	 * Remove SportsPress Pro's front-end chrome from the dashboard page.
+	 *
+	 * The league-menu module renders a `.sp-header` bar of team logos and the
+	 * sponsors module a `.sp-header-sponsors` banner, both on wp_footer. This is
+	 * a standalone management view, not a public SportsPress page, so neither
+	 * belongs. Both modules are instantiated anonymously (no global handle), so
+	 * their wp_footer callbacks are matched by class and removed — which also
+	 * avoids loading the ~20 team-logo images the bar would emit.
+	 */
+	public function strip_sportspress_chrome() {
+		if ( ! $this->is_dashboard_template() ) {
+			return;
+		}
+		global $wp_filter;
+		$classes = array( 'SportsPress_League_Menu', 'SportsPress_Sponsors' );
+		foreach ( array( 'wp_footer', 'get_footer' ) as $hook ) {
+			if ( empty( $wp_filter[ $hook ] ) || ! ( $wp_filter[ $hook ] instanceof WP_Hook ) ) {
+				continue;
+			}
+			foreach ( $wp_filter[ $hook ]->callbacks as $priority => $callbacks ) {
+				foreach ( $callbacks as $cb ) {
+					$fn = $cb['function'] ?? null;
+					if ( is_array( $fn ) && isset( $fn[0] ) && is_object( $fn[0] ) && in_array( get_class( $fn[0] ), $classes, true ) ) {
+						remove_action( $hook, $fn, $priority );
+					}
+				}
+			}
+		}
 	}
 
 	/**
@@ -265,6 +309,10 @@ class SPLM_Dashboard_Frontend {
 				// the native event editor for managers (gated client-side on the
 				// canManageSchedule capability below).
 				'adminUrl'        => admin_url(),
+				// Site home + whether this user has a reason to visit wp-admin, for
+				// the dashboard's "return to site / admin" links.
+				'homeUrl'         => home_url(),
+				'canAccessAdmin'  => current_user_can( 'edit_posts' ),
 				'leagueName'      => get_bloginfo( 'name' ),
 				'currentSeason'   => ! empty( $current_season ) ? $current_season[0]->term_id : '',
 				'logoutUrl'       => wp_logout_url( home_url() ),
