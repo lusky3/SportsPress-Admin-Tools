@@ -484,6 +484,10 @@
 .splm-table td { padding: 0.5rem; border-bottom: 1px solid var(--splm-surface-muted); }
 .splm-table__team { font-weight: 500; }
 .splm-table__pts { font-weight: 700; color: var(--splm-primary); }
+/* Pager (top + bottom of paged tables) + order-detail link. */
+.splm-pager { display: flex; align-items: center; gap: 0.75rem; margin: 0.75rem 0; flex-wrap: wrap; }
+.splm-order-link { color: var(--splm-primary); text-decoration: none; white-space: nowrap; }
+.splm-order-link:hover { text-decoration: underline; }
 /* Roster "Notes" button when the player has notes on file. */
 .splm-btn--has-notes { border-color: var(--splm-primary); color: var(--splm-primary); font-weight: 600; }
 .splm-table__team-link { color: var(--splm-primary); text-decoration: none; }
