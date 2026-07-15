@@ -3330,7 +3330,9 @@ class SPLM_REST_API {
 	 * GET /reports/season-summary — standings, stat leaders, game counts.
 	 */
 	public function get_season_summary( $request ) {
-		$season_id = $request->get_param( 'season' );
+		global $wpdb;
+
+		$season_id = absint( $request->get_param( 'season' ) );
 		$season    = get_term( $season_id, 'sp_season' );
 		if ( ! $season || is_wp_error( $season ) ) {
 			return new WP_Error( 'invalid_season', 'Season not found.', array( 'status' => 404 ) );
@@ -3339,35 +3341,125 @@ class SPLM_REST_API {
 		$stat_keys    = apply_filters( 'splm_report_stat_keys', get_option( 'splm_report_stat_keys', array( 'p', 'g', 'a', 'pim', 'gaa' ) ), $season_id );
 		$leader_count = (int) apply_filters( 'splm_report_leader_count', get_option( 'splm_report_leader_count', 10 ), '', $season_id );
 
-		// Standings tables. Bounded to 5000 rows to protect against unbounded
-		// memory/timeout on very large seasons (matches the cap pattern used
-		// elsewhere in this file).
-		$tables    = get_posts(
+		// --- Active divisions: regular-season standings tables collapsed by
+		// division term (playoff child tables skipped). Mirrors the Standings/
+		// Balance derivation so the report reflects THIS season only and division
+		// names are not duplicated per-table (the bug the report showed before). ---
+		$divisions   = array();
+		$team_to_div = array();
+		if ( class_exists( 'SP_League_Table' ) ) {
+			$table_ids = get_posts(
+				array(
+					'post_type'      => 'sp_table',
+					'posts_per_page' => 100,
+					'post_status'    => 'publish',
+					'fields'         => 'ids',
+					'tax_query'      => array(
+						array(
+							'taxonomy' => 'sp_season',
+							'terms'    => $season_id,
+						),
+					),
+				)
+			);
+			foreach ( $table_ids as $tid ) {
+				$seasons    = wp_get_object_terms( $tid, 'sp_season', array( 'fields' => 'names' ) );
+				$is_playoff = false;
+				foreach ( (array) $seasons as $sn ) {
+					if ( false !== stripos( $sn, 'playoff' ) ) {
+						$is_playoff = true;
+						break;
+					}
+				}
+				if ( $is_playoff ) {
+					continue;
+				}
+				$lg = wp_get_object_terms( $tid, 'sp_league', array( 'fields' => 'all' ) );
+				if ( is_wp_error( $lg ) || empty( $lg ) ) {
+					continue;
+				}
+				$lg = $lg[0];
+				if ( ! isset( $divisions[ $lg->term_id ] ) ) {
+					$divisions[ $lg->term_id ] = array(
+						'id'         => (int) $lg->term_id,
+						'name'       => $lg->name,
+						'sort'       => preg_match( '/(\d+)/', $lg->name, $m ) ? (int) $m[1] : PHP_INT_MAX,
+						'team_ids'   => array(),
+						'scheduled'  => 0,
+						'played'     => 0,
+						'remaining'  => 0,
+						'cancelled'  => 0,
+						'roster'     => 0,
+						'registered' => 0,
+						'paid'       => 0,
+					);
+				}
+				$table = new SP_League_Table( $tid );
+				foreach ( (array) $table->data() as $k => $v ) {
+					if ( is_numeric( $k ) ) {
+						$divisions[ $lg->term_id ]['team_ids'][ (int) $k ] = true;
+						$team_to_div[ (int) $k ] = $lg->term_id;
+					}
+				}
+			}
+			uasort(
+				$divisions,
+				function ( $a, $b ) {
+					return $a['sort'] <=> $b['sort'];
+				}
+			);
+		}
+
+		// --- Games: season totals + per-division tallies (an event is attributed
+		// to a division by its home team). Includes future-dated games so
+		// "remaining" reflects the games still to be played. ---
+		$event_ids = get_posts(
 			array(
-				'post_type'      => 'sp_table',
+				'post_type'      => 'sp_event',
 				'posts_per_page' => 5000,
+				'post_status'    => array( 'publish', 'future' ),
+				'fields'         => 'ids',
 				'tax_query'      => array(
 					array(
 						'taxonomy' => 'sp_season',
-						'terms' => $season_id,
+						'terms'    => $season_id,
 					),
 				),
 			)
 		);
-		$divisions = array();
-		foreach ( $tables as $t ) {
-			// Fix: use 'all' to leverage primed term-object cache; extract name in PHP.
-			$leagues     = wp_get_object_terms( $t->ID, 'sp_league', array( 'fields' => 'all' ) );
-			$league_name = ( ! is_wp_error( $leagues ) && ! empty( $leagues ) ) ? $leagues[0]->name : $t->post_title;
-			$divisions[] = array(
-				'name' => $league_name,
-				'table_id' => $t->ID,
-			);
+		if ( ! empty( $event_ids ) ) {
+			update_meta_cache( 'post', $event_ids );
+		}
+		$played    = 0;
+		$cancelled = 0;
+		foreach ( $event_ids as $eid ) {
+			$teams = get_post_meta( $eid, 'sp_team', false );
+			$home  = isset( $teams[0] ) ? (int) $teams[0] : 0;
+			$dt    = $team_to_div[ $home ] ?? 0;
+			if ( $dt ) {
+				$divisions[ $dt ]['scheduled']++;
+			}
+			if ( '1' === get_post_meta( $eid, '_spem_cancelled', true ) ) {
+				$cancelled++;
+				if ( $dt ) {
+					$divisions[ $dt ]['cancelled']++;
+				}
+				continue;
+			}
+			$results = get_post_meta( $eid, 'sp_results', true );
+			if ( is_array( $results ) && self::results_have_score( $results ) ) {
+				$played++;
+				if ( $dt ) {
+					$divisions[ $dt ]['played']++;
+				}
+			} elseif ( $dt ) {
+				$divisions[ $dt ]['remaining']++;
+			}
 		}
 
-		// Stat leaders. Cap at 5000 and prime the meta cache in one query so
-		// the per-player get_post_meta loop below doesn't run unbounded N+1
-		// queries (matches the bounded + bulk-prime pattern in compare_teams).
+		// --- Players: stat leaders + per-division roster (season-scoped via
+		// sp_leagues, the same source Rosters/Balance use — sp_current_team is
+		// NOT season-scoped). ---
 		$player_ids = get_posts(
 			array(
 				'post_type'      => 'sp_player',
@@ -3375,7 +3467,7 @@ class SPLM_REST_API {
 				'tax_query'      => array(
 					array(
 						'taxonomy' => 'sp_season',
-						'terms' => $season_id,
+						'terms'    => $season_id,
 					),
 				),
 				'fields'         => 'ids',
@@ -3385,8 +3477,24 @@ class SPLM_REST_API {
 			update_meta_cache( 'post', $player_ids );
 		}
 
-		$leaders = array_fill_keys( $stat_keys, array() );
+		$leaders    = array_fill_keys( $stat_keys, array() );
+		$player_div = array(); // player_id => division term_id (season roster).
 		foreach ( $player_ids as $pid ) {
+			$leagues = get_post_meta( $pid, 'sp_leagues', true );
+			if ( is_array( $leagues ) ) {
+				foreach ( $leagues as $season_map ) {
+					if ( is_array( $season_map ) && ! empty( $season_map[ $season_id ] ) ) {
+						$team = (int) $season_map[ $season_id ];
+						if ( isset( $team_to_div[ $team ] ) ) {
+							$dt                = $team_to_div[ $team ];
+							$player_div[ $pid ] = $dt;
+							$divisions[ $dt ]['roster']++;
+						}
+						break;
+					}
+				}
+			}
+
 			$sp_stats = get_post_meta( $pid, 'sp_statistics', true );
 			if ( ! is_array( $sp_stats ) ) {
 				continue;
@@ -3396,12 +3504,12 @@ class SPLM_REST_API {
 				if ( ! is_array( $league_data ) ) {
 					continue;
 				}
-				foreach ( $league_data as $sid => $s ) {
-					if ( (int) $sid !== $season_id || ! is_array( $s ) ) {
+				foreach ( $league_data as $sid => $st ) {
+					if ( (int) $sid !== $season_id || ! is_array( $st ) ) {
 						continue;
 					}
 					foreach ( $stat_keys as $key ) {
-						$totals[ $key ] += (float) ( $s[ $key ] ?? 0 );
+						$totals[ $key ] += (float) ( $st[ $key ] ?? 0 );
 					}
 				}
 			}
@@ -3412,8 +3520,8 @@ class SPLM_REST_API {
 				if ( $totals[ $key ] > 0 ) {
 					$leaders[ $key ][] = array(
 						'player' => $name,
-						'team' => $team,
-						'value' => $totals[ $key ],
+						'team'   => $team,
+						'value'  => $totals[ $key ],
 					);
 				}
 			}
@@ -3429,55 +3537,107 @@ class SPLM_REST_API {
 		}
 		unset( $list );
 
-		// Game counts. Cap at 5000 and prime the meta cache in one query so the
-		// per-event get_post_meta loop below avoids N+1 queries.
-		$event_ids = get_posts(
-			array(
-				'post_type'      => 'sp_event',
-				'posts_per_page' => 5000,
-				'tax_query'      => array(
-					array(
-						'taxonomy' => 'sp_season',
-						'terms' => $season_id,
-					),
-				),
-				'fields'         => 'ids',
-			)
-		);
-		if ( ! empty( $event_ids ) ) {
-			update_meta_cache( 'post', $event_ids );
+		// --- Registration / payment reconciliation. The registration log keys
+		// rows by season NAME; "paid" is derived from the linked WooCommerce
+		// order status. Season totals plus per-division counts (roster players
+		// who are registered / paid). ---
+		$registered_ids = array();
+		$player_orders  = array();
+		$log_table      = $wpdb->prefix . 'spat_registration_logs';
+		$log_exists     = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $log_table ) ) === $log_table;
+		if ( $log_exists ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name built from $wpdb->prefix.
+			$log_rows = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT DISTINCT player_id, order_id FROM `{$log_table}` WHERE season = %s AND player_id > 0",
+					$season->name
+				)
+			);
+			foreach ( (array) $log_rows as $lr ) {
+				$pid = (int) $lr->player_id;
+				$registered_ids[ $pid ] = true;
+				if ( ! empty( $lr->order_id ) ) {
+					$player_orders[ $pid ][] = (int) $lr->order_id;
+				}
+			}
 		}
-		$played    = 0;
-		$cancelled = 0;
-		foreach ( $event_ids as $eid ) {
-			// _spem_cancelled is the real cancellation flag (events-manager);
-			// the previous read of 'sp_status' === 'cancelled' was never set.
-			if ( '1' === get_post_meta( $eid, '_spem_cancelled', true ) ) {
-				$cancelled++;
-				continue;
+
+		// Resolve which of the registration orders are actually paid.
+		$paid_order_ids = array();
+		if ( function_exists( 'wc_get_orders' ) && ! empty( $player_orders ) ) {
+			$all_order_ids = array();
+			foreach ( $player_orders as $oids ) {
+				foreach ( $oids as $oid ) {
+					$all_order_ids[ $oid ] = true;
+				}
 			}
-			// A non-empty sp_results array isn't enough: import_games seeds
-			// sp_results to an empty array, which still satisfies is_array().
-			// Count as played only when an actual score value is present.
-			$results = get_post_meta( $eid, 'sp_results', true );
-			if ( is_array( $results ) && self::results_have_score( $results ) ) {
-				$played++;
+			$paid = wc_get_orders(
+				array(
+					'include' => array_keys( $all_order_ids ),
+					'status'  => array( 'wc-completed', 'wc-processing' ),
+					'return'  => 'ids',
+					'limit'   => -1,
+				)
+			);
+			foreach ( (array) $paid as $oid ) {
+				$paid_order_ids[ (int) $oid ] = true;
 			}
+		}
+
+		$paid_ids = array();
+		foreach ( $player_orders as $pid => $oids ) {
+			foreach ( $oids as $oid ) {
+				if ( isset( $paid_order_ids[ $oid ] ) ) {
+					$paid_ids[ $pid ] = true;
+					break;
+				}
+			}
+		}
+
+		// Fold registered/paid into each division via the season roster map.
+		foreach ( $player_div as $pid => $dt ) {
+			if ( isset( $registered_ids[ $pid ] ) ) {
+				$divisions[ $dt ]['registered']++;
+			}
+			if ( isset( $paid_ids[ $pid ] ) ) {
+				$divisions[ $dt ]['paid']++;
+			}
+		}
+
+		// Shape the divisions payload (drop internal team_ids map; expose counts).
+		$divisions_out = array();
+		foreach ( $divisions as $d ) {
+			$divisions_out[] = array(
+				'name'       => $d['name'],
+				'teams'      => count( $d['team_ids'] ),
+				'scheduled'  => $d['scheduled'],
+				'played'     => $d['played'],
+				'remaining'  => $d['remaining'],
+				'cancelled'  => $d['cancelled'],
+				'roster'     => $d['roster'],
+				'registered' => $d['registered'],
+				'paid'       => $d['paid'],
+			);
 		}
 
 		return new WP_REST_Response(
 			array(
-				'season'    => array(
-					'id' => $season_id,
+				'season'       => array(
+					'id'   => $season_id,
 					'name' => $season->name,
 				),
-				'divisions' => $divisions,
-				'leaders'   => $leaders,
-				'games'     => array(
+				'divisions'    => $divisions_out,
+				'leaders'      => $leaders,
+				'games'        => array(
 					'scheduled' => count( $event_ids ),
-					'played' => $played,
+					'played'    => $played,
 					'cancelled' => $cancelled,
 					'remaining' => count( $event_ids ) - $played - $cancelled,
+				),
+				'registration' => array(
+					'roster'     => count( $player_ids ),
+					'registered' => count( $registered_ids ),
+					'paid'       => count( $paid_ids ),
 				),
 			),
 			200
