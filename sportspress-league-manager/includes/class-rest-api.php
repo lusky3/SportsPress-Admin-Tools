@@ -54,6 +54,26 @@ if ( ! function_exists( 'splm_clean_team_name' ) ) {
 	}
 }
 
+if ( ! function_exists( 'splm_order_edit_url' ) ) {
+	/**
+	 * Admin edit URL for a WooCommerce order, HPOS-aware. Empty when no order.
+	 *
+	 * @param int $order_id Order ID.
+	 * @return string
+	 */
+	function splm_order_edit_url( $order_id ) {
+		$order_id = (int) $order_id;
+		if ( ! $order_id ) {
+			return '';
+		}
+		if ( class_exists( '\Automattic\WooCommerce\Utilities\OrderUtil' )
+			&& \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
+			return admin_url( 'admin.php?page=wc-orders&action=edit&id=' . $order_id );
+		}
+		return admin_url( 'post.php?post=' . $order_id . '&action=edit' );
+	}
+}
+
 if ( ! function_exists( 'splm_rest_list_response' ) ) {
 	function splm_rest_list_response( array $items, $total = null, $page = 1, $per_page = 0 ) {
 		$items = array_values( $items );
@@ -1206,6 +1226,7 @@ class SPLM_REST_API {
 			$pid    = $row['player_id'];
 			$status = 'unpaid';
 			$amount = '';
+			$order  = null;
 
 			if ( isset( $reg_map[ $pid ] ) ) {
 				$order = wc_get_order( $reg_map[ $pid ] );
@@ -1251,12 +1272,15 @@ class SPLM_REST_API {
 				}
 			}
 
+			$oid = ( $order && ! is_wp_error( $order ) ) ? (int) $order->get_id() : 0;
 			$data[] = array(
 				'player_id' => $pid,
 				'player'    => $row['player'],
-				'team'      => $row['team'],
+				'team'      => splm_clean_team_name( $row['team'] ),
 				'status'    => $status,
 				'amount'    => $amount,
+				'order_id'  => $oid,
+				'order_url' => $oid ? splm_order_edit_url( $oid ) : '',
 			);
 		}
 
@@ -2128,19 +2152,9 @@ class SPLM_REST_API {
 		// only edit_sp_events get the registration feed but not these branches.
 		$can_see_sensitive = $this->check_payments_permission();
 
-		// Build an admin edit URL for a WooCommerce order, HPOS-aware, so activity
-		// rows can link to the underlying record. Empty when there is no order.
-		$order_edit_url = function ( $order_id ) {
-			$order_id = (int) $order_id;
-			if ( ! $order_id ) {
-				return '';
-			}
-			if ( class_exists( '\Automattic\WooCommerce\Utilities\OrderUtil' )
-				&& \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ) {
-				return admin_url( 'admin.php?page=wc-orders&action=edit&id=' . $order_id );
-			}
-			return admin_url( 'post.php?post=' . $order_id . '&action=edit' );
-		};
+		// HPOS-aware order edit URL (shared helper) so activity rows can link to
+		// the underlying order/player record.
+		$order_edit_url = 'splm_order_edit_url';
 
 		$table_exists = function ( $table ) use ( $wpdb, $allowed_tables ) {
 			if ( ! in_array( $table, $allowed_tables, true ) ) {

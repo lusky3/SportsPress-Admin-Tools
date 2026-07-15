@@ -10,6 +10,24 @@ function statusClass( status ) {
 
 const PER_PAGE = 50;
 
+function Pager( { page, totalPages, startIdx, endIdx, total, onPrev, onNext, atLastGuess } ) {
+	return (
+		<div className="splm-pager">
+			<button type="button" className="splm-btn" onClick={ onPrev } disabled={ page <= 1 }>Previous</button>
+			<span className="splm-pager__status" aria-live="polite">
+				Showing { startIdx }–{ endIdx } of { total }
+				{ totalPages > 1 ? ` (page ${ page } of ${ totalPages })` : '' }
+			</span>
+			<button
+				type="button"
+				className="splm-btn"
+				onClick={ onNext }
+				disabled={ totalPages ? page >= totalPages : atLastGuess }
+			>Next</button>
+		</div>
+	);
+}
+
 export default function Payments( { season } ) {
 	const [ payments, setPayments ] = useState( [] );
 	const [ total, setTotal ] = useState( 0 );
@@ -44,16 +62,27 @@ export default function Payments( { season } ) {
 		return <div className="splm-loading">Loading payments...</div>;
 	}
 
-	// F22: summary counts now reflect the current page only (server-side
-	// pagination means we no longer have the full set in memory). The per-page
-	// counts still give the operator immediate signal; full counts would
-	// require a dedicated aggregate endpoint.
+	// F22: summary counts reflect the current page only (server-side pagination).
 	const paid = payments.filter( ( p ) => p.status === 'paid' );
 	const unpaid = payments.filter( ( p ) => p.status === 'unpaid' );
 	const pending = payments.filter( ( p ) => p.status === 'pending' );
 
 	const startIdx = total === 0 ? 0 : ( page - 1 ) * PER_PAGE + 1;
 	const endIdx = Math.min( page * PER_PAGE, total );
+	const sym = window.splmDashboard?.currencySymbol || '$';
+
+	const pager = payments.length > 0 ? (
+		<Pager
+			page={ page }
+			totalPages={ totalPages }
+			startIdx={ startIdx }
+			endIdx={ endIdx }
+			total={ total }
+			atLastGuess={ payments.length < PER_PAGE }
+			onPrev={ () => setPage( ( p ) => Math.max( 1, p - 1 ) ) }
+			onNext={ () => setPage( ( p ) => ( totalPages ? Math.min( totalPages, p + 1 ) : p + 1 ) ) }
+		/>
+	) : null;
 
 	return (
 		<div className="splm-payments">
@@ -80,54 +109,38 @@ export default function Payments( { season } ) {
 				<p className="splm-empty">No payment records.</p>
 			) : (
 				<>
+					{ pager }
 					<div className="splm-table-wrapper">
 						<table className="splm-table splm-payment-table">
 							<thead>
 								<tr>
-									<th>Player</th>
-									<th>Team</th>
-									<th>Status</th>
-									<th>Amount</th>
+									<th scope="col">Player</th>
+									<th scope="col">Team</th>
+									<th scope="col">Status</th>
+									<th scope="col">Amount</th>
 								</tr>
 							</thead>
 							<tbody>
 								{ payments.map( ( p ) => {
 									const sc = statusClass( p.status );
+									const amount = `${ sym }${ parseFloat( p.amount || 0 ).toFixed( 2 ) }`;
 									return (
 										<tr key={ p.player_id } className={ `splm-payment-table__row--${ sc }` }>
 											<td>{ p.player }</td>
 											<td>{ p.team }</td>
 											<td><span className={ `splm-payment-table__status splm-payment-table__status--${ sc }` }>{ p.status }</span></td>
-											<td>{ window.splmDashboard?.currencySymbol || '$' }{ parseFloat( p.amount || 0 ).toFixed( 2 ) }</td>
+											<td>
+												{ p.order_url
+													? <a className="splm-order-link" href={ p.order_url } target="_blank" rel="noopener noreferrer" title="View order">{ amount } ↗</a>
+													: amount }
+											</td>
 										</tr>
 									);
 								} ) }
 							</tbody>
 						</table>
 					</div>
-
-					<div className="splm-pager" style={ { display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '1rem' } }>
-						<button
-							type="button"
-							className="splm-btn"
-							onClick={ () => setPage( ( p ) => Math.max( 1, p - 1 ) ) }
-							disabled={ page <= 1 }
-						>
-							Previous
-						</button>
-						<span className="splm-pager__status" aria-live="polite">
-							Showing { startIdx }–{ endIdx } of { total }
-							{ totalPages > 1 ? ` (page ${ page } of ${ totalPages })` : '' }
-						</span>
-						<button
-							type="button"
-							className="splm-btn"
-							onClick={ () => setPage( ( p ) => ( totalPages ? Math.min( totalPages, p + 1 ) : p + 1 ) ) }
-							disabled={ totalPages ? page >= totalPages : payments.length < PER_PAGE }
-						>
-							Next
-						</button>
-					</div>
+					{ pager }
 				</>
 			) }
 		</div>
