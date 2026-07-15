@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from '@wordpress/element';
-import { createSeason, createDivision, fetchTeamsWithDivisions, rolloverPreview, rolloverExecute, spsg } from '../lib/api';
+import { createSeason, createDivision, fetchTeamsWithDivisions, rolloverPreview, rolloverExecute } from '../lib/api';
 import Toast from '../components/Toast';
 
 const SEASON_REGEX = /^[A-Za-z]?\d{4}(-\d{2,4})?$/;
@@ -93,8 +93,13 @@ export default function SeasonSetup() {
 	const [ toast, setToast ] = useState( null );
 	const [ results, setResults ] = useState( null );
 
-	// Rollover (runs after a season is created) — unchanged.
-	const [ rSeasons, setRSeasons ] = useState( [] );
+	// Top-level view: the create wizard or the standalone rollover tool.
+	const [ view, setView ] = useState( 'create' );
+
+	// Rollover — now available on its own (not only after creating a season).
+	// Seasons come from the localized dashboard list (no manage_options needed,
+	// unlike the schedule-generator seasons endpoint).
+	const [ rSeasons, setRSeasons ] = useState( () => ( window.splmDashboard?.seasons || [] ).map( ( s ) => ( { id: s.id, name: s.name } ) ) );
 	const [ rFrom, setRFrom ] = useState( '' );
 	const [ rTo, setRTo ] = useState( '' );
 	const [ rPrev, setRPrev ] = useState( null );
@@ -117,6 +122,7 @@ export default function SeasonSetup() {
 			.catch( ( err ) => { if ( ! cancelledRef.current.cancelled ) setError( err?.message || 'Failed to load teams.' ); } )
 			.finally( () => { if ( ! cancelledRef.current.cancelled ) setTeamsLoading( false ); } );
 	}, [] );
+
 
 	const leagues = window.splmDashboard?.leagues || [];
 
@@ -264,7 +270,9 @@ export default function SeasonSetup() {
 		setResults( agg );
 		setToast( { message: `Season "${ agg.season_name }" created across ${ agg.divisions } division(s).`, type: 'success' } );
 		if ( agg.season_id ) {
-			spsg.getSeasons().then( ( s ) => { if ( ! cancelledRef.current.cancelled ) { setRSeasons( s ); setRTo( String( agg.season_id ) ); } } ).catch( () => {} );
+			// Ensure the just-created season is selectable in the rollover "To" list.
+			setRSeasons( ( prev ) => prev.some( ( s ) => String( s.id ) === String( agg.season_id ) ) ? prev : [ ...prev, { id: agg.season_id, name: agg.season_name } ] );
+			setRTo( String( agg.season_id ) );
 		}
 		setStep( 3 );
 	};
@@ -288,8 +296,17 @@ export default function SeasonSetup() {
 			<h2>Season Setup</h2>
 			<Toast message={ toast?.message } type={ toast?.type } onDismiss={ () => setToast( null ) } />
 
+			<div className="splm-score-entry__mode-toggle">
+				<button type="button" className={ `splm-btn ${ view === 'create' ? 'splm-btn--primary' : '' }` } onClick={ () => setView( 'create' ) }>
+					Create Season
+				</button>
+				<button type="button" className={ `splm-btn ${ view === 'rollover' ? 'splm-btn--primary' : '' }` } onClick={ () => setView( 'rollover' ) }>
+					Player Rollover
+				</button>
+			</div>
+
 			{ /* STEP 1 — Build */ }
-			{ step === 1 && (
+			{ view === 'create' && step === 1 && (
 				<>
 					<p className="splm-muted">Name the season, then add each division playing this season — pick an existing division or create a new one, click <strong>Add</strong>, and choose its teams in the box that appears.</p>
 					{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
@@ -355,7 +372,7 @@ export default function SeasonSetup() {
 			) }
 
 			{ /* STEP 2 — Preview */ }
-			{ step === 2 && (
+			{ view === 'create' && step === 2 && (
 				<>
 					<p className="splm-muted">Review what will be created, then confirm to write the changes.</p>
 					{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
@@ -395,8 +412,8 @@ export default function SeasonSetup() {
 				</>
 			) }
 
-			{ /* STEP 3 — Result + rollover */ }
-			{ step === 3 && (
+			{ /* STEP 3 — Result */ }
+			{ view === 'create' && step === 3 && (
 				<>
 					{ results && (
 						<div className="splm-card" style={ { marginBottom: '1rem' } }>
@@ -406,12 +423,21 @@ export default function SeasonSetup() {
 							{ results.errors.length > 0 && (
 								<div className="splm-alert splm-alert--warning" role="alert">Some divisions had problems: { results.errors.join( ' · ' ) }</div>
 							) }
-							<button className="splm-btn" onClick={ resetAll }>← Create another</button>
+							<div className="splm-season-setup__actions">
+								<button className="splm-btn" onClick={ resetAll }>← Create another</button>
+								<button className="splm-btn splm-btn--primary" onClick={ () => { setRTo( results.season_id ? String( results.season_id ) : rTo ); setView( 'rollover' ); } }>
+									Player Rollover →
+								</button>
+							</div>
 						</div>
 					) }
+				</>
+			) }
 
-					<h3>Player Rollover</h3>
-					<p className="splm-muted">Move players who didn’t register for the new season from their current team to past teams.</p>
+			{ /* PLAYER ROLLOVER — standalone tool */ }
+			{ view === 'rollover' && (
+				<>
+					<p className="splm-muted">Move players who didn’t register for the new season from their current team to past teams. Pick the season they’re moving <em>from</em> and the new season, preview who isn’t returning, then apply.</p>
 					{ rErr && <div className="splm-alert splm-alert--warning" role="alert">{ rErr }</div> }
 					{ rMsg && <div className="splm-card"><p>{ rMsg }</p></div> }
 					<div className="splm-card">
