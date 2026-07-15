@@ -208,8 +208,11 @@ class SPLM_Dashboard_Frontend {
 		$seasons = array_map(
 			function ( $term ) {
 				return array(
-					'id'   => $term->term_id,
-					'name' => $term->name,
+					'id'     => $term->term_id,
+					'name'   => $term->name,
+					// Parent term id (0 = top-level). Lets the UI list parent seasons
+					// and treat a season + its children (e.g. playoffs) together.
+					'parent' => (int) $term->parent,
 				);
 			},
 			! empty( $all_seasons ) && ! is_wp_error( $all_seasons ) ? $all_seasons : array()

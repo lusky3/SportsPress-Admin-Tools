@@ -298,6 +298,19 @@ export default function Rosters( { season } ) {
 	// are not registered, so surface an inline note instead of a control that 404s.
 	const playerToolsAvailable = window.splmDashboard?.dependencies?.player_tools !== false;
 
+	// Skill-calc season scope. Parent seasons only (a season implicitly includes
+	// its children, e.g. playoffs). Default to the *previous* season — the
+	// highest-id parent season below the current default — since that's the last
+	// one with a full set of games; term ids increase chronologically.
+	const parentSeasons = ( window.splmDashboard?.seasons || [] ).filter( ( s ) => ! s.parent );
+	const currentSeasonId = Number( window.splmDashboard?.currentSeason || 0 );
+	const previousSeasonId = parentSeasons
+		.map( ( s ) => Number( s.id ) )
+		.filter( ( id ) => id < currentSeasonId )
+		.sort( ( a, b ) => b - a )[ 0 ] || ( parentSeasons[ 0 ] ? Number( parentSeasons[ 0 ].id ) : 0 );
+	const [ skillSeason, setSkillSeason ] = useState( String( previousSeasonId || 0 ) );
+	const [ calcating, setCalcating ] = useState( false );
+
 	useEffect( () => {
 		let cancelled = false;
 		fetchTeams( season )
@@ -358,18 +371,35 @@ export default function Rosters( { season } ) {
 				</select>
 				{ selectedTeam && <CSVUpload teamId={ selectedTeam } seasonId={ season } onImported={ reload } /> }
 				{ playerToolsAvailable && (
-					<button className="splm-btn" onClick={ () => {
-						calculateSkills( 0, season || 0 ).then( ( r ) => {
-							// M6: skipped_manual may be absent if Player Tools is older;
-							// fall back to 0 rather than rendering "undefined manual skipped".
-							const updated = r?.updated ?? 0;
-							const skipped = r?.skipped_manual ?? 0;
-							setToast( { message: `Updated ${ updated } players (${ skipped } manual skipped)`, type: 'success' } );
-							if ( selectedTeam ) reload();
-						} ).catch( ( err ) => setToast( { message: err?.message || 'Failed', type: 'error' } ) );
-					} }>
-						Calculate Skills
-					</button>
+					<span className="splm-rosters__skillcalc">
+						<label htmlFor="splm-skill-season" className="screen-reader-text">Season to rate skill from</label>
+						<select
+							id="splm-skill-season"
+							className="splm-select"
+							value={ skillSeason }
+							onChange={ ( e ) => setSkillSeason( e.target.value ) }
+							title="Season used to rate skill (includes its playoffs)"
+						>
+							<option value="0">All-time</option>
+							{ parentSeasons.map( ( s ) => (
+								<option key={ s.id } value={ s.id }>{ s.name }</option>
+							) ) }
+						</select>
+						<button className="splm-btn" disabled={ calcating } onClick={ () => {
+							setCalcating( true );
+							calculateSkills( 0, Number( skillSeason ) || 0 ).then( ( r ) => {
+								// skipped_manual may be absent on older Player Tools; fall back to 0.
+								const updated = r?.updated ?? 0;
+								const skipped = r?.skipped_manual ?? 0;
+								const lowGp = r?.skipped_low_gp ?? 0;
+								setToast( { message: `Updated ${ updated } players (${ skipped } manual kept, ${ lowGp } under 3 games)`, type: 'success' } );
+								if ( selectedTeam ) reload();
+							} ).catch( ( err ) => setToast( { message: err?.message || 'Failed', type: 'error' } ) )
+								.finally( () => setCalcating( false ) );
+						} }>
+							{ calcating ? 'Calculating…' : 'Calculate Skills' }
+						</button>
+					</span>
 				) }
 			</div>
 
