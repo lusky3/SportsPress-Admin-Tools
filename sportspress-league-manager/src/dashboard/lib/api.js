@@ -163,6 +163,11 @@ export function rolloverExecute( fromSeason, toSeason, playerIds ) {
 	return apiFetch( { path: '/splm/v1/season/rollover-execute', method: 'POST', data: { from_season: fromSeason, to_season: toSeason, player_ids: playerIds } } );
 }
 
+// Create (or reuse) a top-level division. Returns { id, name, created }.
+export function createDivision( name ) {
+	return apiFetch( { path: '/splm/v1/divisions/create', method: 'POST', data: { name } } );
+}
+
 export function createSeason( seasonName, leagueId, { createCalendars = false, createRosters = false, createPlayoffs = false, teamIds = [], newTeams = [], newTeamDivisions = [], divisionAssignments = {} } = {} ) {
 	const data = { season_name: seasonName, league_id: leagueId, create_calendars: createCalendars, create_rosters: createRosters, create_playoffs: createPlayoffs };
 	if ( teamIds.length ) data.team_ids = teamIds;

@@ -1,50 +1,12 @@
 import { useState, useEffect } from '@wordpress/element';
-import { fetchSeasonSummary, fetchStandings } from '../lib/api';
+import { fetchSeasonSummary } from '../lib/api';
 
 // Human labels for the stat-leader keys the report endpoint returns.
-const STAT_LABELS = { p: 'Points', g: 'Goals', a: 'Assists', pim: 'Penalty Minutes', gaa: 'Goals Against Avg' };
+const STAT_LABELS = { p: 'Points', g: 'Goals', a: 'Assists', pim: 'Penalty Minutes' };
 const statLabel = ( key ) => STAT_LABELS[ key ] || key.toUpperCase();
-
-function StandingsTable( { table } ) {
-	const rows = table.standings || [];
-	if ( rows.length === 0 ) return null;
-	return (
-		<div className="splm-standings__division">
-			<h4>{ table.table_name || table.division || 'Standings' }</h4>
-			<div className="splm-table-wrapper">
-				<table className="splm-table">
-					<thead>
-						<tr>
-							<th scope="col">#</th><th scope="col">Team</th><th scope="col">GP</th><th scope="col">W</th>
-							<th scope="col">L</th><th scope="col">T</th><th scope="col">OT</th><th scope="col">GF</th>
-							<th scope="col">GA</th><th scope="col">DIFF</th><th scope="col">Pts</th>
-						</tr>
-					</thead>
-					<tbody>
-						{ rows.map( ( row, i ) => (
-							<tr key={ row.team_id }>
-								<td>{ i + 1 }</td>
-								<td className="splm-table__team">
-									{ row.team_url
-										? <a className="splm-table__team-link" href={ row.team_url } target="_blank" rel="noopener noreferrer">{ row.team }</a>
-										: row.team }
-								</td>
-								<td>{ row.gp }</td><td>{ row.w }</td><td>{ row.l }</td><td>{ row.t }</td><td>{ row.ot }</td>
-								<td>{ row.gf }</td><td>{ row.ga }</td>
-								<td>{ row.diff > 0 ? `+${ row.diff }` : row.diff }</td>
-								<td className="splm-table__pts">{ row.pts }</td>
-							</tr>
-						) ) }
-					</tbody>
-				</table>
-			</div>
-		</div>
-	);
-}
 
 export default function SeasonReport( { season } ) {
 	const [ report, setReport ] = useState( null );
-	const [ standings, setStandings ] = useState( [] );
 	const [ loading, setLoading ] = useState( false );
 	const [ error, setError ] = useState( '' );
 
@@ -53,11 +15,10 @@ export default function SeasonReport( { season } ) {
 		let cancelled = false;
 		setLoading( true );
 		setError( '' );
-		Promise.all( [ fetchSeasonSummary( season ), fetchStandings( null, season ).catch( () => [] ) ] )
-			.then( ( [ d, s ] ) => {
+		fetchSeasonSummary( season )
+			.then( ( d ) => {
 				if ( cancelled ) return;
 				setReport( d );
-				setStandings( Array.isArray( s ) ? s : [] );
 				setLoading( false );
 			} )
 			.catch( ( err ) => {
@@ -72,8 +33,6 @@ export default function SeasonReport( { season } ) {
 	if ( loading ) return <div className="splm-loading">Generating report...</div>;
 
 	const reg = report?.registration;
-	const regularTables = standings.filter( ( t ) => ! t.is_playoff );
-	const playoffTables = standings.filter( ( t ) => t.is_playoff );
 	const leaderEntries = report ? Object.entries( report.leaders || {} ).filter( ( [ , players ] ) => players.length > 0 ) : [];
 
 	return (
@@ -138,20 +97,6 @@ export default function SeasonReport( { season } ) {
 									</tbody>
 								</table>
 							</div>
-						</section>
-					) }
-
-					{ /* Full standings */ }
-					{ regularTables.length > 0 && (
-						<section className="splm-card">
-							<h3>Standings</h3>
-							{ regularTables.map( ( t, i ) => <StandingsTable key={ t.table_id || t.division || i } table={ t } /> ) }
-						</section>
-					) }
-					{ playoffTables.length > 0 && (
-						<section className="splm-card">
-							<h3>Playoff Standings</h3>
-							{ playoffTables.map( ( t, i ) => <StandingsTable key={ t.table_id || t.division || i } table={ t } /> ) }
 						</section>
 					) }
 
