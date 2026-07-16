@@ -302,3 +302,8 @@ export function uploadSheet( { image_b64, ext, event_id } = {} ) {
 export function confirmSheet( id, payload ) {
 	return apiFetch( { path: `/spss/v1/sheets/${ id }/confirm`, method: 'POST', data: payload } );
 }
+
+// Re-queue a failed sheet for recognition.
+export function reprocessSheet( id ) {
+	return apiFetch( { path: `/spss/v1/sheets/${ id }/reprocess`, method: 'POST' } );
+}

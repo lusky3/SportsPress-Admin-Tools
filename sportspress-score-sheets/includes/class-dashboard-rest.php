@@ -101,6 +101,16 @@ class SPSS_Dashboard_REST {
 
 		register_rest_route(
 			self::NAMESPACE,
+			'/sheets/(?P<id>\d+)/reprocess',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'reprocess_sheet' ),
+				'permission_callback' => $can_manage,
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
 			'/events',
 			array(
 				'methods'             => 'GET',
@@ -335,6 +345,58 @@ class SPSS_Dashboard_REST {
 		}
 
 		return new WP_REST_Response( array( 'event_id' => (int) $result ), 200 );
+	}
+
+	/**
+	 * POST /sheets/<id>/reprocess — re-queue a failed sheet for recognition.
+	 *
+	 * Failed sheets (transient provider/API errors, budget exhaustion) had no
+	 * recovery path and just sat until the retention cron deleted them. This
+	 * flips a failed sheet back to queued, clears the error, and re-schedules
+	 * the async worker.
+	 *
+	 * @param WP_REST_Request $request Incoming request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function reprocess_sheet( $request ) {
+		$sheet_id = (int) $request['id'];
+		$sheet    = SPSS_Database::get_sheet( $sheet_id );
+
+		if ( ! $sheet ) {
+			return new WP_Error( 'spss_not_found', __( 'Score sheet not found.', 'sportspress-score-sheets' ), array( 'status' => 404 ) );
+		}
+		if ( SPSS_Database::STATUS_FAILED !== $sheet->status ) {
+			return new WP_Error(
+				'spss_not_failed',
+				__( 'Only failed sheets can be reprocessed.', 'sportspress-score-sheets' ),
+				array( 'status' => 400 )
+			);
+		}
+		if ( empty( $sheet->image_path ) ) {
+			return new WP_Error(
+				'spss_no_image',
+				__( 'This sheet no longer has a stored image to reprocess.', 'sportspress-score-sheets' ),
+				array( 'status' => 409 )
+			);
+		}
+
+		SPSS_Database::update_sheet(
+			$sheet_id,
+			array(
+				'status' => SPSS_Database::STATUS_QUEUED,
+				'error'  => null,
+			)
+		);
+		wp_schedule_single_event( time(), 'spss_process_sheet', array( $sheet_id ) );
+		spawn_cron();
+
+		return new WP_REST_Response(
+			array(
+				'id'     => $sheet_id,
+				'status' => SPSS_Database::STATUS_QUEUED,
+			),
+			200
+		);
 	}
 
 	/**

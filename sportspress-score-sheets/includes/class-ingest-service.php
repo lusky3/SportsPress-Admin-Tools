@@ -88,6 +88,20 @@ class SPSS_Ingest_Service {
 
 		$existing = SPSS_Database::find_by_hash( $hash );
 		if ( $existing ) {
+			// Record an audit-only row so the "Duplicate" queue filter reflects the
+			// re-submission (previously the status existed but was never persisted).
+			// image_hash is UNIQUE and the real hash belongs to $existing, so use a
+			// synthetic unique hash; no image is stored for the audit row.
+			SPSS_Database::insert_sheet(
+				array(
+					'uploaded_by' => (int) ( $args['uploaded_by'] ?? get_current_user_id() ),
+					'channel'     => (string) ( $args['channel'] ?? 'upload' ),
+					'image_path'  => '',
+					'image_hash'  => hash( 'sha256', $hash . '|dup|' . microtime( true ) . '|' . wp_rand() ),
+					'source_ref'  => 'duplicate-of:' . (int) $existing->id,
+					'status'      => SPSS_Database::STATUS_DUPLICATE,
+				)
+			);
 			return new WP_Error(
 				'spss_duplicate_sheet',
 				__( 'This image has already been submitted.', 'sportspress-score-sheets' ),

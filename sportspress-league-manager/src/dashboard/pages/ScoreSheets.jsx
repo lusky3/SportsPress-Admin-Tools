@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from '@wordpress/element';
 import HelpLink from '../components/HelpLink';
-import { fetchSheets, fetchSheet, fetchScoreSheetEvents, uploadSheet, confirmSheet } from '../lib/api';
+import { fetchSheets, fetchSheet, fetchScoreSheetEvents, uploadSheet, confirmSheet, reprocessSheet } from '../lib/api';
 import Toast from '../components/Toast';
 
 // Queue status filter — values are the raw `status` strings the backend stores.
@@ -64,6 +64,7 @@ function Queue( { onReview, onView, onToast } ) {
 	const [ loading, setLoading ] = useState( true );
 	const [ error, setError ] = useState( '' );
 	const [ uploading, setUploading ] = useState( false );
+	const [ reprocessing, setReprocessing ] = useState( null ); // sheet id being re-queued
 	// Client-side sort of the fetched rows (no refetch). Default: newest first.
 	const [ sort, setSort ] = useState( { column: 'created_at', direction: 'desc' } );
 
@@ -76,6 +77,14 @@ function Queue( { onReview, onView, onToast } ) {
 	}, [ status ] );
 
 	useEffect( () => { load(); }, [ load ] );
+
+	const handleReprocess = ( id ) => {
+		setReprocessing( id );
+		reprocessSheet( id )
+			.then( () => { onToast( { message: 'Sheet re-queued for processing.', type: 'success' } ); load(); } )
+			.catch( ( err ) => onToast( { message: err?.message || 'Reprocess failed', type: 'error' } ) )
+			.finally( () => setReprocessing( null ) );
+	};
 
 	const handleUpload = async ( e ) => {
 		const file = e.target.files?.[ 0 ];
@@ -190,6 +199,10 @@ function Queue( { onReview, onView, onToast } ) {
 										{ s.status === 'pending_review' ? (
 											<button className="splm-btn splm-btn--small splm-btn--primary" onClick={ () => onReview( s.id ) }>
 												Review
+											</button>
+										) : s.status === 'failed' ? (
+											<button className="splm-btn splm-btn--small" onClick={ () => handleReprocess( s.id ) } disabled={ reprocessing === s.id }>
+												{ reprocessing === s.id ? 'Requeuing…' : 'Reprocess' }
 											</button>
 										) : (
 											<button className="splm-btn splm-btn--small" onClick={ () => onView( s.id ) }>
