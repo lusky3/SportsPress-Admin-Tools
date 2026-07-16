@@ -81,7 +81,7 @@ class SportsPress_Player_Tools {
 		// passes against an older parent that predates the SPAT_* helper classes this
 		// child calls; the first such call would fatal. Require a declared contract
 		// version and degrade with an admin notice otherwise.
-		if ( ! defined( 'SPAT_CONTRACT_VERSION' ) || version_compare( SPAT_CONTRACT_VERSION, '1.0.0', '<' ) ) {
+		if ( ! defined( 'SPAT_CONTRACT_VERSION' ) || version_compare( SPAT_CONTRACT_VERSION, '1.1.0', '<' ) ) {
 			add_action( 'admin_notices', array( $this, 'parent_version_notice' ) );
 			return;
 		}

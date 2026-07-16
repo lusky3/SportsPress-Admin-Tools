@@ -28,7 +28,13 @@ define( 'SPAT_VERSION', '1.0.4' );
 // a required floor and compare against this value so a mismatched parent that
 // still passes the class_exists() gate degrades gracefully instead of fataling
 // on the first call to a class that predates their expectations.
-define( 'SPAT_CONTRACT_VERSION', '1.0.0' );
+//
+// BUMP THIS whenever the shared cross-plugin surface changes (a SPAT_Database
+// signature/column, a shared hook contract, etc.) and raise the required floor
+// in the children that depend on the change. 1.1.0 added the links_to_order
+// parameter + column to log_registration_activity (used by league-manager,
+// player-registration, and player-tools).
+define( 'SPAT_CONTRACT_VERSION', '1.1.0' );
 
 // Schema version the bundled migrations target. Kept in lockstep with
 // SPAT_VERSION so the plugin header tracks DB iterations; SPAT_Database reads

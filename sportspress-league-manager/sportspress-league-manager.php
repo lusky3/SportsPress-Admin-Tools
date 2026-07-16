@@ -24,7 +24,7 @@ define( 'SPLM_VERSION', '1.0.0' );
 // SPAT_CONTRACT_VERSION; a class_exists( 'SPAT_Plugin_Manager' ) gate alone is
 // not enough because an older parent can satisfy it yet predate the shared
 // classes this child calls (SPAT_Lock, etc.). See H7 in the security audit.
-define( 'SPLM_REQUIRED_CONTRACT', '1.0.0' );
+define( 'SPLM_REQUIRED_CONTRACT', '1.1.0' );
 
 class SportsPress_League_Manager {
 

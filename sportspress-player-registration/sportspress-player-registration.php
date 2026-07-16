@@ -66,7 +66,7 @@ class SportsPress_Player_Registration {
 		// child depends on. Require a declared contract version and degrade with an
 		// admin notice otherwise. Do NOT self-deactivate here — the parent is present,
 		// just outdated, so orphaning the child would be wrong.
-		if ( ! defined( 'SPAT_CONTRACT_VERSION' ) || version_compare( SPAT_CONTRACT_VERSION, '1.0.0', '<' ) ) {
+		if ( ! defined( 'SPAT_CONTRACT_VERSION' ) || version_compare( SPAT_CONTRACT_VERSION, '1.1.0', '<' ) ) {
 			add_action( 'admin_notices', array( $this, 'parent_version_notice' ) );
 			return;
 		}
