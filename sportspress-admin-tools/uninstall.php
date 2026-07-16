@@ -33,15 +33,12 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 	// Read the verbose flag before we delete it below.
 	$verbose = '1' === get_option( 'spat_debug_verbose_logging', '0' );
 
-	// Remove all plugin options the framework writes.
+	// Remove all plugin options the framework writes. (Child-owned options —
+	// e.g. spet_webhook_secret, spr_*, spt_* — are removed by each child's own
+	// uninstall; the previously-listed spat_etransfer_*/spat_player_* keys here
+	// never existed and were no-op deletes, so they've been dropped.)
 	$options = array(
 		'spat_enabled_modules',
-		'spat_etransfer_webhook_secret',
-		'spat_etransfer_secret_type',
-		'spat_etransfer_custom_secret',
-		'spat_player_registration_auto_role',
-		'spat_player_registration_auto_create',
-		'spat_player_stats_auto_enable',
 		'spat_remove_data_on_uninstall',
 		'spat_db_version',
 		'spat_logs_migrated',
