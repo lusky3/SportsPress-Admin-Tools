@@ -15,10 +15,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 class SPT_Player_Skill_Level {
 
 	/** Goalie position slugs to detect. */
-	// SportsPress default position slugs are prefixed with menu order, so a
-	// goalie is commonly '1-goalie' (not '0-goalie'). Match a range of forms;
-	// is_goalie() also falls back to matching the term NAME so slug numbering
-	// can't silently mis-classify every goalie as a skater.
+	/**
+	 * Position slugs treated as goalies.
+	 *
+	 * SportsPress default position slugs are prefixed with menu order, so a
+	 * goalie is commonly '1-goalie' (not '0-goalie'). is_goalie() also falls back
+	 * to matching the term NAME so slug numbering can't mis-classify a goalie.
+	 *
+	 * @var string[]
+	 */
 	private static $goalie_slugs = array( 'goalie', 'goaltender', 'goalkeeper', 'g', '0-goalie', '1-goalie' );
 
 	public function __construct() {
