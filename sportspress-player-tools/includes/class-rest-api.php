@@ -486,13 +486,8 @@ class SPPT_REST_API {
 			update_post_meta( $player_id, 'spt_skill_updated', current_time( 'mysql' ) );
 
 			// Record history if the optional skill module is loaded.
-			if ( class_exists( 'SPT_Player_Skill_Level' ) ) {
-				$ref = new ReflectionClass( 'SPT_Player_Skill_Level' );
-				if ( $ref->hasMethod( 'record_history' ) ) {
-					$method = $ref->getMethod( 'record_history' );
-					$method->setAccessible( true );
-					$method->invokeArgs( null, array( $player_id, $clamped, 'manual', 0 ) );
-				}
+			if ( class_exists( 'SPT_Player_Skill_Level' ) && is_callable( array( 'SPT_Player_Skill_Level', 'record_history' ) ) ) {
+				SPT_Player_Skill_Level::record_history( $player_id, $clamped, 'manual', 0 );
 			}
 
 			return new WP_REST_Response(
