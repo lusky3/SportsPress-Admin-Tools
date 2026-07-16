@@ -93,6 +93,10 @@ class SPAT_Health_Dashboard {
 
 		$enabled_modules = get_option( 'spat_enabled_modules', array() );
 
+		// Canonical map (plugin file => name, module). Kept explicit so an
+		// installed-but-INACTIVE child is still detectable — inactive plugins
+		// never register with SPAT_Plugin_Manager, so the registry alone can't
+		// surface them.
 		$child_plugins = array(
 			'sportspress-etransfer-automation/sportspress-etransfer-automation.php' => array(
 				'name' => 'e-Transfer Automation',
@@ -118,7 +122,40 @@ class SPAT_Health_Dashboard {
 				'name' => 'Events Manager',
 				'module' => 'events_management',
 			),
+			'sportspress-score-sheets/sportspress-score-sheets.php' => array(
+				'name' => 'Score Sheets',
+				'module' => 'score_sheets',
+			),
 		);
+
+		// Self-heal from the plugin registry: any active child that registered a
+		// module we don't already list gets appended, so a newly-added plugin
+		// shows up here without editing this map. Registered files are absolute
+		// (__FILE__); reduce to the wp-content/plugins-relative basename used as
+		// the get_plugins() key.
+		if ( class_exists( 'SPAT_Plugin_Manager' ) ) {
+			$known_modules = wp_list_pluck( $child_plugins, 'module' );
+			foreach ( SPAT_Plugin_Manager::get_registered_plugins() as $data ) {
+				$module = isset( $data['parent_module'] ) ? $data['parent_module'] : '';
+				$file   = isset( $data['file'] ) ? $data['file'] : '';
+				if ( '' === $module || '' === $file || in_array( $module, $known_modules, true ) ) {
+					continue;
+				}
+				$basename = plugin_basename( $file );
+				$child_plugins[ $basename ] = array(
+					'name'   => isset( $data['name'] ) && '' !== $data['name'] ? $data['name'] : $basename,
+					'module' => $module,
+				);
+				$known_modules[] = $module;
+			}
+		}
+
+		/**
+		 * Filter the child plugins shown on the health dashboard.
+		 *
+		 * @param array $child_plugins Plugin-file => [ name, module ] map.
+		 */
+		$child_plugins = apply_filters( 'spat_health_dashboard_plugins', $child_plugins );
 
 		if ( ! function_exists( 'get_plugins' ) ) {
 			require_once ABSPATH . 'wp-admin/includes/plugin.php';
@@ -190,7 +227,18 @@ class SPAT_Health_Dashboard {
 			$wpdb->prefix . 'spat_registration_logs',
 			$wpdb->prefix . 'spat_role_logs',
 			$wpdb->prefix . 'spat_temp_data',
+			$wpdb->prefix . 'spss_sheets',
+			$wpdb->prefix . 'splm_player_notes',
 		);
+
+		/**
+		 * Filter the tables shown on the health dashboard.
+		 *
+		 * Child plugins can contribute their own fully-qualified table names.
+		 *
+		 * @param array $tables List of $wpdb->prefix-qualified table names.
+		 */
+		$tables = apply_filters( 'spat_health_dashboard_tables', $tables );
 
 		// Use cached SHOW TABLE STATUS for performance
 		$table_status = get_transient( 'spat_table_status' );
