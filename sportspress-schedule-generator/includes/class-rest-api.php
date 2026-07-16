@@ -415,6 +415,33 @@ class SPSG_REST_API {
 				)
 			)
 		);
+		// CSV export — the export manager advertises both csv and xlsx, but only
+		// xlsx had a REST route, so REST consumers could not fetch CSV.
+		register_rest_route(
+			$ns,
+			'/export/csv',
+			array_merge(
+				$perm,
+				array(
+					'methods' => 'POST',
+					'callback' => array( $this, 'spsg_export_csv' ),
+					'args' => array(
+						'schedule_id' => array(
+							'required' => true,
+							'sanitize_callback' => 'sanitize_text_field',
+							'validate_callback' => function ( $val ) {
+								return is_string( $val ) && strlen( $val ) > 0; },
+						),
+						'config_id' => array(
+							'required' => true,
+							'sanitize_callback' => 'sanitize_text_field',
+							'validate_callback' => function ( $val ) {
+								return is_string( $val ) && strlen( $val ) > 0; },
+						),
+					),
+				)
+			)
+		);
 		// Venue CSV import
 		register_rest_route(
 			$ns,
@@ -914,6 +941,23 @@ class SPSG_REST_API {
 		$style  = in_array( $request->get_param( 'style' ), array( 'compact', 'detailed' ), true ) ? $request->get_param( 'style' ) : 'detailed';
 		$em = new SPSG_Export_Manager();
 		$result = $em->export( $schedule, $config, 'xlsx', array(), $style );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+		return rest_ensure_response( array( 'url' => $result['url'] ) );
+	}
+
+	public function spsg_export_csv( $request ) {
+		$schedule = get_transient( 'spsg_schedule_' . $request->get_param( 'schedule_id' ) );
+		if ( ! $schedule ) {
+			return new WP_Error( 'schedule_not_found', 'Schedule not found or expired.', array( 'status' => 404 ) );
+		}
+		$config = $this->cm()->load( $request->get_param( 'config_id' ) );
+		if ( is_wp_error( $config ) ) {
+			return $config;
+		}
+		$em     = new SPSG_Export_Manager();
+		$result = $em->export( $schedule, $config, 'csv' );
 		if ( is_wp_error( $result ) ) {
 			return $result;
 		}
