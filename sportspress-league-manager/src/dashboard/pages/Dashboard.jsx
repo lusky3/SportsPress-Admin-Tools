@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from '@wordpress/element';
 import HelpLink from '../components/HelpLink';
-import { fetchGames, fetchActivity, saveUserPreferences } from '../lib/api';
+import { fetchGames, fetchActivity, fetchStats, saveUserPreferences } from '../lib/api';
 import Icon from '../components/icons';
 
 const CARDS = [ 'upcoming', 'recent', 'activity' ];
@@ -69,6 +69,7 @@ export default function Dashboard( { onNavigate, season } ) {
 	const [ upcomingGames, setUpcomingGames ] = useState( [] );
 	const [ recentGames, setRecentGames ] = useState( [] );
 	const [ activity, setActivity ] = useState( [] );
+	const [ stats, setStats ] = useState( null );
 	const [ loading, setLoading ] = useState( true );
 	const [ error, setError ] = useState( '' );
 	const [ visibleCards, setVisibleCards ] = useState( () => {
@@ -105,6 +106,16 @@ export default function Dashboard( { onNavigate, season } ) {
 			setError( err?.message || 'Failed to load' );
 			setLoading( false );
 		} );
+
+		// Stats tile is best-effort and season-scoped: fetch independently so a
+		// stats failure (or no season selected) never blocks the dashboard.
+		if ( season ) {
+			fetchStats( season )
+				.then( ( s ) => { if ( ! cancelled ) setStats( s ); } )
+				.catch( () => { if ( ! cancelled ) setStats( null ); } );
+		} else {
+			setStats( null );
+		}
 		return () => { cancelled = true; };
 	}, [ season ] );
 
@@ -153,6 +164,36 @@ export default function Dashboard( { onNavigate, season } ) {
 							{ card.charAt( 0 ).toUpperCase() + card.slice( 1 ) }
 						</label>
 					) ) }
+				</div>
+			) }
+
+			{ stats && (
+				<div className="splm-stat-tiles" aria-label="Season at a glance">
+					<div className="splm-stat-tile">
+						<span className="splm-stat-tile__value">{ stats.teams }</span>
+						<span className="splm-stat-tile__label">Team{ stats.teams === 1 ? '' : 's' }</span>
+					</div>
+					<div className="splm-stat-tile">
+						<span className="splm-stat-tile__value">{ stats.players }</span>
+						<span className="splm-stat-tile__label">Player{ stats.players === 1 ? '' : 's' }</span>
+					</div>
+					{ stats.fees && (
+						<button
+							type="button"
+							className="splm-stat-tile splm-stat-tile--fees"
+							onClick={ () => onNavigate( 'payments' ) }
+							title="View payments"
+						>
+							<span className="splm-stat-tile__value">
+								{ stats.fees.paid }<span className="splm-stat-tile__value-sub"> / { stats.players }</span>
+							</span>
+							<span className="splm-stat-tile__label">Registration fees paid</span>
+							<span className="splm-stat-tile__breakdown">
+								{ stats.fees.pending > 0 && <span className="splm-stat-tile__chip splm-stat-tile__chip--pending">{ stats.fees.pending } pending</span> }
+								{ stats.fees.unpaid > 0 && <span className="splm-stat-tile__chip splm-stat-tile__chip--unpaid">{ stats.fees.unpaid } unpaid</span> }
+							</span>
+						</button>
+					) }
 				</div>
 			) }
 
