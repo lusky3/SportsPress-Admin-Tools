@@ -160,6 +160,13 @@ export function fetchHealth() {
 	return apiFetch( { path: '/splm/v1/health' } );
 }
 
+// /stats is a cached season counter set ({ teams, players, fees }) for the
+// dashboard at-a-glance tile. Returned as-is (not a list).
+export function fetchStats( season ) {
+	const params = season ? `?season=${ season }` : '';
+	return apiFetch( { path: `/splm/v1/stats${ params }` } );
+}
+
 export function fetchGamePlayers( gameId ) {
 	// /games/{id}/players is a single-game aggregate ({performances, teams}).
 	return apiFetch( { path: `/splm/v1/games/${ gameId }/players` } );

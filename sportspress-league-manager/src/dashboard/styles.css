@@ -322,6 +322,35 @@
 .splm-grid { display: grid; gap: 1rem; }
 @media (min-width: 768px) { .splm-grid { grid-template-columns: 1fr 1fr; } }
 
+/* At-a-glance stat tiles (dashboard header) */
+.splm-stat-tiles {
+	display: grid;
+	grid-template-columns: repeat( auto-fit, minmax( 8rem, 1fr ) );
+	gap: 0.75rem;
+	margin-bottom: 1.25rem;
+}
+.splm-stat-tile {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+	padding: 0.85rem 1rem;
+	background: var(--splm-surface);
+	border: 1px solid var(--splm-border);
+	border-radius: 8px;
+	text-align: left;
+}
+/* The fees tile is a button (navigates to Payments) — reset button chrome. */
+button.splm-stat-tile { cursor: pointer; font: inherit; color: inherit; width: 100%; }
+button.splm-stat-tile:hover { border-color: var(--splm-primary); background: var(--splm-surface-alt); }
+button.splm-stat-tile:focus-visible { outline: 2px solid var(--splm-focus); outline-offset: 2px; }
+.splm-stat-tile__value { font-size: 1.6rem; font-weight: 700; color: var(--splm-text); line-height: 1.1; }
+.splm-stat-tile__value-sub { font-size: 1rem; font-weight: 500; color: var(--splm-muted); }
+.splm-stat-tile__label { font-size: 0.8rem; color: var(--splm-muted); }
+.splm-stat-tile__breakdown { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
+.splm-stat-tile__chip { font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 10px; font-weight: 600; }
+.splm-stat-tile__chip--pending { background: var(--splm-warning-bg-2); color: var(--splm-warning-text-2); }
+.splm-stat-tile__chip--unpaid { background: var(--splm-danger-bg); color: var(--splm-danger-text); }
+
 /* Game list */
 .splm-game-list { list-style: none; }
 .splm-game-list__item {

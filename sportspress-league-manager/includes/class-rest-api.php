@@ -300,6 +300,24 @@ class SPLM_REST_API {
 
 		register_rest_route(
 			self::REST_NAMESPACE,
+			'/stats',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_stats' ),
+				'permission_callback' => array( $this, 'check_read_permission' ),
+				'args'                => array(
+					'season' => array(
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
 			'/seasons',
 			array(
 				'methods'             => 'GET',
@@ -1515,6 +1533,119 @@ class SPLM_REST_API {
 		}
 
 		return $data;
+	}
+
+	/**
+	 * GET /stats — at-a-glance season counters for the dashboard header tile:
+	 * team + player totals and a registration-fee summary. Cached per season for
+	 * 5 minutes (a WooCommerce paid-status lookup is the only non-trivial cost)
+	 * so repeat dashboard loads are cheap.
+	 *
+	 * Fee figures reflect registration-log orders: `paid` = orders in a WC paid
+	 * status, `pending` = tracked orders not yet paid, `unpaid` = players with no
+	 * registration order. This omits the Payments page's billing-name fallback
+	 * (too costly to run over the whole season here), so `unpaid` may read
+	 * slightly high versus the Payments list — the tile links there for detail.
+	 */
+	public function get_stats( $request ) {
+		$season_id  = absint( $request->get_param( 'season' ) );
+		$can_fees   = $this->check_payments_permission();
+		// Key by fee visibility so a no-fees (non-payments) response never gets
+		// served to a payments-capable user, or vice versa.
+		$cache_key  = 'splm_stats_' . $season_id . '_' . ( $can_fees ? 'f1' : 'f0' );
+
+		$cached = get_transient( $cache_key );
+		if ( is_array( $cached ) ) {
+			return new WP_REST_Response( $cached, 200 );
+		}
+
+		global $wpdb;
+
+		// Active teams for the season (from its events).
+		$events = get_posts(
+			array(
+				'post_type'      => 'sp_event',
+				'posts_per_page' => 5000,
+				'post_status'    => array( 'publish', 'future' ),
+				'fields'         => 'ids',
+				'tax_query'      => array(
+					array(
+						'taxonomy' => 'sp_season',
+						'terms'    => $season_id,
+					),
+				),
+			)
+		);
+
+		$team_ids = array();
+		foreach ( $events as $eid ) {
+			foreach ( get_post_meta( $eid, 'sp_team', false ) as $tid ) {
+				$team_ids[ (int) $tid ] = true;
+			}
+		}
+		$team_ids = array_keys( $team_ids );
+
+		$players_by_team = empty( $team_ids )
+			? array()
+			: $this->resolve_players_by_team_for_season( $team_ids, $season_id );
+		$player_ids    = array_keys( $players_by_team );
+		$players_count = count( $player_ids );
+
+		$stats = array(
+			'season'  => $season_id,
+			'teams'   => count( $team_ids ),
+			'players' => $players_count,
+			'fees'    => null,
+		);
+
+		// Registration-fee summary — only for users who can see the Payments page
+		// (same tier as /payments), and only when WooCommerce is present.
+		if ( $can_fees && function_exists( 'wc_get_orders' ) && ! empty( $player_ids ) ) {
+			$order_by_player = array();
+			$log_table       = $wpdb->prefix . 'spat_registration_logs';
+			$table_exists    = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $log_table ) );
+			if ( $table_exists ) {
+				$ph = implode( ',', array_fill( 0, count( $player_ids ), '%d' ) );
+				// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+				$rows = $wpdb->get_results(
+					$wpdb->prepare(
+						'SELECT player_id, order_id FROM `' . esc_sql( $log_table ) . "`
+						 WHERE order_id > 0 AND player_id IN ($ph)",
+						$player_ids
+					)
+				);
+				foreach ( $rows as $row ) {
+					$order_by_player[ (int) $row->player_id ] = (int) $row->order_id;
+				}
+			}
+
+			$order_ids = array_values( array_unique( $order_by_player ) );
+			$paid      = 0;
+			if ( ! empty( $order_ids ) ) {
+				// Bulk paid-status lookup — HPOS-safe (wc_get_orders translates
+				// post__in/status), and returns ids only so no orders are loaded.
+				$paid_ids = wc_get_orders(
+					array(
+						'limit'    => -1,
+						'return'   => 'ids',
+						'post__in' => $order_ids,
+						'status'   => wc_get_is_paid_statuses(),
+					)
+				);
+				$paid = is_array( $paid_ids ) ? count( $paid_ids ) : 0;
+			}
+
+			$tracked = count( $order_by_player );
+			$stats['fees'] = array(
+				'paid'    => $paid,
+				'pending' => max( 0, $tracked - $paid ),
+				'unpaid'  => max( 0, $players_count - $tracked ),
+			);
+		}
+
+		set_transient( $cache_key, $stats, 5 * MINUTE_IN_SECONDS );
+
+		return new WP_REST_Response( $stats, 200 );
 	}
 
 	/**
