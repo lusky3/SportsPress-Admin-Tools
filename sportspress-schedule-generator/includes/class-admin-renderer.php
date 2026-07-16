@@ -782,7 +782,14 @@ class SPSG_Admin_Renderer {
 
 			<div id="spsg-team-restrictions-container">
 				<?php
-				$overlap_restrictions = $config->team_restrictions['overlap_avoidance'] ?? array();
+				// Canonical key is `overlap_avoid` (the sanitizer and config
+				// migration store it there); fall back to the legacy
+				// `overlap_avoidance` for configs saved before the migration.
+				// Reading only the legacy key meant saved overlap restrictions
+				// never repopulated on edit.
+				$overlap_restrictions = $config->team_restrictions['overlap_avoid']
+					?? $config->team_restrictions['overlap_avoidance']
+					?? array();
 				if ( ! empty( $overlap_restrictions ) ) {
 					foreach ( $overlap_restrictions as $index => $restriction ) {
 						$this->render_team_restriction_row( $restriction, $index, $config );
