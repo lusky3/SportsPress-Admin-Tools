@@ -2727,6 +2727,30 @@ class SPLM_REST_API {
 	/**
 	 * POST /standings/generate — create a league table for a league/season.
 	 */
+	/**
+	 * Delegate table generation to Events Manager's canonical generator when it
+	 * is available, loading the class file on demand. Returns the generate()
+	 * result (array|WP_Error), or null when Events Manager is not present so the
+	 * caller falls back to the inline implementation.
+	 *
+	 * @param int $league_id sp_league term id.
+	 * @param int $season_id sp_season term id.
+	 * @return array|WP_Error|null
+	 */
+	private function generate_table_via_events_manager( $league_id, $season_id ) {
+		if ( ! class_exists( 'SPEM_League_Table_Generator' ) ) {
+			$file = dirname( SPLM_PLUGIN_PATH ) . '/sportspress-events-manager/includes/class-league-table-generator.php';
+			if ( file_exists( $file ) ) {
+				require_once $file;
+			}
+		}
+		if ( ! class_exists( 'SPEM_League_Table_Generator' ) ) {
+			return null;
+		}
+		$generator = new SPEM_League_Table_Generator();
+		return $generator->generate( $league_id, $season_id );
+	}
+
 	public function generate_standings( $request ) {
 		$params = $request->get_json_params();
 		if ( ! is_array( $params ) ) {
@@ -2737,6 +2761,18 @@ class SPLM_REST_API {
 
 		if ( ! $league_id || ! $season_id ) {
 			return new WP_Error( 'missing_params', 'league_id and season_id are required.', array( 'status' => 400 ) );
+		}
+
+		// Delegate to the canonical generator in Events Manager when present, so
+		// the dashboard and the wp-admin generator share one implementation.
+		// Falls through to the inline copy below only when Events Manager is not
+		// installed (dashboard-only deployments).
+		$delegated = $this->generate_table_via_events_manager( $league_id, $season_id );
+		if ( null !== $delegated ) {
+			if ( is_wp_error( $delegated ) ) {
+				return $delegated;
+			}
+			return new WP_REST_Response( $delegated, 200 );
 		}
 
 		$league = get_term( $league_id, 'sp_league' );
