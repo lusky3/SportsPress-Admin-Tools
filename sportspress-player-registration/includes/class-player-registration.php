@@ -304,6 +304,10 @@ class SPPR_Player_Registration {
 
 			// Fire notification for newly created player
 			if ( $player_id && $action === 'player_created' ) {
+				// Apply the detected position (e.g. goalie) to the new player.
+				// Only on create so a re-run can't clobber an admin-set position.
+				$this->assign_position( $player_id, $position );
+
 				$team_names = wp_get_object_terms( $player_id, 'sp_team', array( 'fields' => 'names' ) );
 				$team = ! empty( $team_names ) ? implode( ', ', $team_names ) : '';
 				do_action( 'spat_player_registered', $customer_name, $team, $season );
@@ -318,6 +322,46 @@ class SPPR_Player_Registration {
 			'player_id' => $player_id,
 			'action' => $action,
 		);
+	}
+
+	/**
+	 * Apply a detected position (e.g. "goalie") to a player's sp_position term.
+	 *
+	 * Matches an existing sp_position term by slug or name (case-insensitive),
+	 * with a goalie synonym fallback, and sets it (replacing any prior position).
+	 * No-op for an empty position or when no matching term exists.
+	 *
+	 * @param int    $player_id Player post ID.
+	 * @param string $position  Detected position keyword.
+	 * @return void
+	 */
+	private function assign_position( $player_id, $position ) {
+		$position = strtolower( trim( (string) $position ) );
+		if ( '' === $position ) {
+			return;
+		}
+		$terms = get_terms(
+			array(
+				'taxonomy'   => 'sp_position',
+				'hide_empty' => false,
+			)
+		);
+		if ( is_wp_error( $terms ) || empty( $terms ) ) {
+			return;
+		}
+		$is_goalie = (bool) preg_match( '/goal(ie|tender|keeper)/', $position );
+		foreach ( $terms as $term ) {
+			$slug = strtolower( $term->slug );
+			$name = strtolower( $term->name );
+			$match = false !== strpos( $slug, $position ) || false !== strpos( $name, $position );
+			if ( ! $match && $is_goalie ) {
+				$match = (bool) preg_match( '/goal(ie|tender|keeper)/', $slug . ' ' . $name );
+			}
+			if ( $match ) {
+				wp_set_object_terms( $player_id, array( (int) $term->term_id ), 'sp_position' );
+				return;
+			}
+		}
 	}
 
 	private function find_existing_player( $customer_name, $customer_email ) {

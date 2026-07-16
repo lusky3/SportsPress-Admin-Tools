@@ -85,7 +85,7 @@ class SportsPress_Player_Registration {
 
 		// Load functionality if parent module is enabled
 		$enabled_modules = get_option( 'spat_enabled_modules', array() );
-		if ( in_array( 'player_registration', $enabled_modules ) ) {
+		if ( in_array( 'player_registration', $enabled_modules, true ) ) {
 			$this->load_functionality();
 		}
 	}
