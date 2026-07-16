@@ -27,7 +27,7 @@ Diagnoses common SportsPress issues that trip up managers:
 Each issue includes a plain-language explanation and suggested action.
 
 ### 🧙 First-Run Wizard
-New league managers get a 3-step onboarding wizard: select your league, verify teams are configured, run a health check. Dismissible and re-accessible from the Help tab.
+_Planned:_ a first-run onboarding wizard (select your league → verify teams → run a health check), re-accessible from the Help tab. Not yet implemented — in the meantime the Help tab documents each feature and the Health tab surfaces setup problems.
 
 ### 💡 Contextual Help
 Every page element has inline help tooltips. WordPress help tabs provide page-level guidance. No separate documentation page needed — help is where you need it.
@@ -79,7 +79,8 @@ In **Settings → SportsPress Admin Tools → League Manager** tab:
 
 ## CSV Roster Format
 
-Upload rosters as CSV files with these columns:
+Upload rosters as CSV files with a header row. Columns are matched by header
+name (case-insensitive), so order doesn't matter:
 
 ```
 name,number,position,email
@@ -88,9 +89,13 @@ Jane Doe,7,Defense,jane@example.com
 ```
 
 - **name** (required): Player's full name
-- **number** (optional): Jersey number
-- **position** (optional): Player position
-- **email** (optional): Player email address
+- **number** (optional): Jersey number — header aliases: `no`, `#`, `jersey`
+- **position** (optional): Player position — alias: `pos`
+- **email** (optional): Player email address — alias: `e-mail`
+
+Fields containing a comma may be wrapped in double quotes. If the file has no
+recognizable header row, columns are read positionally in the order above
+(name, number, position, email).
 
 ## Architecture
 

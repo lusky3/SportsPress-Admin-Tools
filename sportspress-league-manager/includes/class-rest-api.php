@@ -328,7 +328,7 @@ class SPLM_REST_API {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'batch_update_scores' ),
-				'permission_callback' => array( $this, 'check_manage_permission' ),
+				'permission_callback' => array( $this, 'check_score_permission' ),
 			)
 		);
 
@@ -552,6 +552,18 @@ class SPLM_REST_API {
 
 	public function check_manage_permission() {
 		return SPLM_Capabilities::can_manage();
+	}
+
+	/**
+	 * Permission for entering scores. Mirrors the single-game score route
+	 * (delegated to Events Manager's check_score_permission = edit_others_sp_events)
+	 * and the localized canEnterScores flag, so a scorekeeper who can save one
+	 * game at a time can also use batch "Save All".
+	 *
+	 * @return bool
+	 */
+	public function check_score_permission() {
+		return current_user_can( 'edit_others_sp_events' ) || SPLM_Capabilities::can_manage();
 	}
 
 	public function check_payments_permission() {

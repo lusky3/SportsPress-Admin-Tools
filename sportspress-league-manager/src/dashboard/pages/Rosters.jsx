@@ -229,6 +229,34 @@ const SkillCell = memo( function SkillCell( { value, playerId, onSaved } ) {
 	);
 } );
 
+// Split one CSV line, honouring "quoted" fields (with ""-escaped quotes) so a
+// name or email containing a comma doesn't shift the columns.
+function parseCsvLine( line ) {
+	const out = [];
+	let cur = '';
+	let inQ = false;
+	for ( let i = 0; i < line.length; i++ ) {
+		const ch = line[ i ];
+		if ( inQ ) {
+			if ( ch === '"' ) {
+				if ( line[ i + 1 ] === '"' ) { cur += '"'; i++; } else { inQ = false; }
+			} else { cur += ch; }
+		} else if ( ch === '"' ) { inQ = true; }
+		else if ( ch === ',' ) { out.push( cur ); cur = ''; }
+		else { cur += ch; }
+	}
+	out.push( cur );
+	return out.map( ( c ) => c.trim() );
+}
+
+// Column aliases → canonical field. Matched against the header row.
+const CSV_ALIASES = {
+	name: 'name',
+	number: 'number', no: 'number', '#': 'number', jersey: 'number',
+	position: 'position', pos: 'position',
+	email: 'email', 'e-mail': 'email',
+};
+
 function CSVUpload( { teamId, seasonId, onImported } ) {
 	const [ show, setShow ] = useState( false );
 	const [ preview, setPreview ] = useState( null );
@@ -238,13 +266,29 @@ function CSVUpload( { teamId, seasonId, onImported } ) {
 		if ( ! file ) return;
 		const reader = new FileReader();
 		reader.onload = ( ev ) => {
-			const lines = ev.target.result.trim().split( '\n' ).filter( ( l ) => l.trim() );
-			const rows = lines.map( ( line ) => {
-				const cols = line.split( ',' ).map( ( c ) => c.trim() );
-				return { name: cols[ 0 ] || '', number: cols[ 1 ] || '', email: cols[ 2 ] || '', position: cols[ 3 ] || '' };
-			} );
-			// Skip header if first row looks like a header
-			if ( rows.length && rows[ 0 ].name.toLowerCase() === 'name' ) rows.shift();
+			const lines = ev.target.result.replace( /\r/g, '' ).trim().split( '\n' ).filter( ( l ) => l.trim() );
+			if ( ! lines.length ) { setPreview( [] ); return; }
+
+			// Map columns by header when present; else fall back to the documented
+			// order (name, number, position, email).
+			const first = parseCsvLine( lines[ 0 ] ).map( ( c ) => c.toLowerCase() );
+			const looksLikeHeader = first.some( ( c ) => CSV_ALIASES[ c ] );
+			let idx = { name: 0, number: 1, position: 2, email: 3 };
+			if ( looksLikeHeader ) {
+				idx = { name: -1, number: -1, position: -1, email: -1 };
+				first.forEach( ( c, i ) => { const f = CSV_ALIASES[ c ]; if ( f && idx[ f ] === -1 ) idx[ f ] = i; } );
+			}
+			const dataLines = looksLikeHeader ? lines.slice( 1 ) : lines;
+			const at = ( cols, i ) => ( i >= 0 && cols[ i ] !== undefined ? cols[ i ] : '' );
+			const rows = dataLines.map( ( line ) => {
+				const cols = parseCsvLine( line );
+				return {
+					name: at( cols, idx.name ),
+					number: at( cols, idx.number ),
+					email: at( cols, idx.email ),
+					position: at( cols, idx.position ),
+				};
+			} ).filter( ( r ) => r.name );
 			setPreview( rows );
 		};
 		reader.readAsText( file );
@@ -315,7 +359,9 @@ export default function Rosters( { season } ) {
 	}, [ season ] );
 
 	useEffect( () => {
-		if ( ! selectedTeam ) return;
+		// Roster details + CSV import are Player Tools (SPPT) routes; don't call
+		// them when the module is off (they 404). The UI shows a dependency note.
+		if ( ! selectedTeam || ! playerToolsAvailable ) return;
 		let cancelled = false;
 		setLoading( true );
 		fetchRosterDetails( selectedTeam, season )
@@ -350,6 +396,7 @@ export default function Rosters( { season } ) {
 		<div className="splm-rosters">
 			<h2>Rosters <HelpLink topic="rosters" /></h2>
 			<Toast message={ toast?.message } type={ toast?.type } onDismiss={ () => setToast( null ) } />
+			{ playerToolsAvailable && (
 			<div className="splm-rosters__toolbar">
 				{ /* UX-5: label the team selector. */ }
 				<label htmlFor="splm-roster-team" className="screen-reader-text">Select team</label>
@@ -397,12 +444,14 @@ export default function Rosters( { season } ) {
 					</span>
 				) }
 			</div>
+			) }
 
 			{ ! playerToolsAvailable && (
 				<p className="splm-rosters__dep-note" role="note">
-					Skill-level editing and bulk skill calculation are unavailable — the
-					Player Tools module is not enabled. Enable it under Settings →
-					SportsPress Admin Tools.
+					Rosters are unavailable — the Player Tools plugin is not active.
+					Roster viewing, CSV import, skill editing, and Calculate Skills all
+					require it. Activate Player Tools (Settings → SportsPress Admin Tools)
+					to use this tab.
 				</p>
 			) }
 
