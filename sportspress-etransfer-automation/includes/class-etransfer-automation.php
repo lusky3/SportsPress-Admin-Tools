@@ -97,6 +97,23 @@ class SPET_ETransfer_Automation {
 		// Extract payment data
 		$payment_data = $this->extract_payment_data( $data );
 		if ( ! $payment_data ) {
+			// An authenticated webhook whose body we couldn't parse (the parser is
+			// English-Interac-template only) previously vanished with just a
+			// verbose-only error_log. Record an audit row so a mis-parsed payment
+			// surfaces in the admin log for manual handling instead of being lost.
+			if ( class_exists( 'SPET_Database' ) ) {
+				SPET_Database::log_etransfer_activity(
+					array(
+						'from_email'     => '',
+						'from_name'      => '',
+						'amount'         => 0,
+						'match_criteria' => 'extraction_failed',
+						'result'         => 'extraction_failed',
+						'webhook_data'   => $data,
+						'payment_data'   => null,
+					)
+				);
+			}
 			return new WP_Error( 'invalid_payment_data', 'Could not extract payment data', array( 'status' => 400 ) );
 		}
 
