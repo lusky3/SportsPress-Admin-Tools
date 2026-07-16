@@ -15,7 +15,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 class SPT_Player_Skill_Level {
 
 	/** Goalie position slugs to detect. */
-	private static $goalie_slugs = array( 'goalie', 'goalkeeper', 'g', '0-goalie' );
+	/**
+	 * Position slugs treated as goalies.
+	 *
+	 * SportsPress default position slugs are prefixed with menu order, so a
+	 * goalie is commonly '1-goalie' (not '0-goalie'). is_goalie() also falls back
+	 * to matching the term NAME so slug numbering can't mis-classify a goalie.
+	 *
+	 * @var string[]
+	 */
+	private static $goalie_slugs = array( 'goalie', 'goaltender', 'goalkeeper', 'g', '0-goalie', '1-goalie' );
 
 	public function __construct() {
 		// Phase 1: Meta box + admin column.
@@ -211,15 +220,31 @@ class SPT_Player_Skill_Level {
 			return;
 		}
 
-		$raw = $_POST['spt_skill_level'] ?? '';
+		$current = get_post_meta( $post_id, 'spt_skill_level', true );
+		$raw     = isset( $_POST['spt_skill_level'] ) ? sanitize_text_field( wp_unslash( $_POST['spt_skill_level'] ) ) : '';
+
 		if ( '' === $raw || ! is_numeric( $raw ) ) {
-			delete_post_meta( $post_id, 'spt_skill_level' );
-			delete_post_meta( $post_id, 'spt_skill_source' );
-			delete_post_meta( $post_id, 'spt_skill_updated' );
+			// Only clear if there was a value; an empty field on an unrelated
+			// save of an unrated player is a no-op.
+			if ( '' !== $current ) {
+				delete_post_meta( $post_id, 'spt_skill_level' );
+				delete_post_meta( $post_id, 'spt_skill_source' );
+				delete_post_meta( $post_id, 'spt_skill_updated' );
+			}
 			return;
 		}
 
 		$level = min( 10, max( 1, absint( $raw ) ) );
+
+		// The meta box pre-fills the input with the current level, so an unrelated
+		// player save resubmits the same value. Only treat it as a manual override
+		// when the value actually CHANGED — otherwise saving a player for any other
+		// reason would silently flip an auto rating to manual and exclude the player
+		// from future bulk recalculations.
+		if ( (string) $level === (string) $current ) {
+			return;
+		}
+
 		update_post_meta( $post_id, 'spt_skill_level', $level );
 		update_post_meta( $post_id, 'spt_skill_source', 'manual' );
 		update_post_meta( $post_id, 'spt_skill_updated', current_time( 'c' ) );
@@ -302,7 +327,13 @@ class SPT_Player_Skill_Level {
 	 * @param int $min_games Minimum games played.
 	 * @return array { updated: int, skipped_manual: int, skipped_low_gp: int }
 	 */
-	public function calculate_skill_levels( $league_id, $season_id, $min_games = 3 ) {
+	public function calculate_skill_levels( $league_id, $season_id, $min_games = null ) {
+		// Default to the admin-configured threshold so callers that don't pass it
+		// (e.g. the league dashboard's Calculate Skills) match the wp-admin tool.
+		if ( null === $min_games ) {
+			$min_games = absint( get_option( 'spt_skill_min_games', 3 ) );
+		}
+		$min_games = max( 1, (int) $min_games );
 		// Stats come from the per-event box scores (sp_players), NOT the aggregated
 		// sp_statistics meta — SportsPress does not roll imported/dashboard-entered
 		// box scores up into that meta, so it is empty on this data. A "season" scope
@@ -387,9 +418,13 @@ class SPT_Player_Skill_Level {
 			}
 		}
 
-		$scores = array();
-		$low_gp = 0;
-		$total  = 0;
+		// Skaters and goalies are ranked in SEPARATE pools: a skater's score is
+		// points-rate (positive) and a goalie's is −GAA (negative), so ranking
+		// them together always sorted every goalie to the bottom (→ skill 1).
+		// Each pool is percentile-mapped to its own full 1–10 range.
+		$skater_scores = array();
+		$goalie_scores = array();
+		$low_gp        = 0;
 
 		foreach ( $agg as $pid => $s ) {
 			$gp = (int) $s['gp'];
@@ -397,7 +432,6 @@ class SPT_Player_Skill_Level {
 				++$low_gp;
 				continue;
 			}
-			++$total;
 
 			$is_goalie = $this->is_goalie( $pid );
 			$gaa       = $gp > 0 ? $s['ga'] / $gp : 0;
@@ -436,21 +470,32 @@ class SPT_Player_Skill_Level {
 			 * @param array $player_stats Stat values for this player.
 			 * @param bool  $is_goalie   Whether the player is a goalie.
 			 */
-			$scores[ $pid ] = apply_filters( 'spt_skill_calculate_raw_score', $raw_score, $pid, $player_stats, $is_goalie );
+			$raw_score = apply_filters( 'spt_skill_calculate_raw_score', $raw_score, $pid, $player_stats, $is_goalie );
+			if ( $is_goalie ) {
+				$goalie_scores[ $pid ] = $raw_score;
+			} else {
+				$skater_scores[ $pid ] = $raw_score;
+			}
 		}
 
-		// Rank and map to 1-10.
-		arsort( $scores );
-		$total          = count( $scores );
-		$rank           = 0;
+		$total          = count( $skater_scores ) + count( $goalie_scores );
 		$updated        = 0;
 		$skipped_manual = 0;
 
-		foreach ( $scores as $pid => $raw ) {
-			++$rank;
-			$percentile = $total > 1 ? ( $total - $rank ) / ( $total - 1 ) : 0.5;
-			$skill      = max( 1, min( 10, (int) round( $percentile * 9 ) + 1 ) );
+		// Percentile-map each pool independently to 1–10.
+		$skill_of = array();
+		foreach ( array( $skater_scores, $goalie_scores ) as $pool ) {
+			arsort( $pool );
+			$n    = count( $pool );
+			$rank = 0;
+			foreach ( $pool as $pid => $raw ) {
+				++$rank;
+				$percentile        = $n > 1 ? ( $n - $rank ) / ( $n - 1 ) : 0.5;
+				$skill_of[ $pid ]  = max( 1, min( 10, (int) round( $percentile * 9 ) + 1 ) );
+			}
+		}
 
+		foreach ( $skill_of as $pid => $skill ) {
 			$source = get_post_meta( $pid, 'spt_skill_source', true );
 			if ( 'manual' === $source ) {
 				++$skipped_manual;
@@ -538,12 +583,17 @@ class SPT_Player_Skill_Level {
 	 * Check if a player is a goalie.
 	 */
 	private function is_goalie( $player_id ) {
-		$positions = wp_get_post_terms( $player_id, 'sp_position', array( 'fields' => 'slugs' ) );
-		if ( is_wp_error( $positions ) ) {
+		$positions = wp_get_post_terms( $player_id, 'sp_position' );
+		if ( is_wp_error( $positions ) || empty( $positions ) ) {
 			return false;
 		}
-		foreach ( $positions as $slug ) {
-			if ( in_array( strtolower( $slug ), self::$goalie_slugs, true ) ) {
+		foreach ( $positions as $term ) {
+			if ( in_array( strtolower( $term->slug ), self::$goalie_slugs, true ) ) {
+				return true;
+			}
+			// Name fallback: catches any slug numbering (e.g. "1-goalie") as long
+			// as the label reads Goalie/Goaltender/Goalkeeper.
+			if ( preg_match( '/goal(ie|tender|keeper)/i', $term->name ) ) {
 				return true;
 			}
 		}
@@ -563,7 +613,7 @@ class SPT_Player_Skill_Level {
 	 * @param string $source    'manual' or 'auto'.
 	 * @param int    $season_id Optional season term ID.
 	 */
-	private static function record_history( $player_id, $level, $source, $season_id = 0 ) {
+	public static function record_history( $player_id, $level, $source, $season_id = 0 ) {
 		$history = get_post_meta( $player_id, 'spt_skill_history', true );
 		if ( ! is_array( $history ) ) {
 			$history = array();
