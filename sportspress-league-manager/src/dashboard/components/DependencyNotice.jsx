@@ -34,6 +34,11 @@ export const DEPENDENCY_FEATURES = [
 		message:
 			'Payments/fees are unavailable — WooCommerce is not active. Install and activate WooCommerce to track registration fees.',
 	},
+	{
+		key: 'player_tools',
+		message:
+			'Rosters and skill ratings are unavailable — the Player Tools plugin is not active. Activate it to manage rosters and player skill.',
+	},
 ];
 
 /**
