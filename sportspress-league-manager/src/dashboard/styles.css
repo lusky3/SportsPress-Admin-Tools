@@ -640,6 +640,25 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: var(--splm-text); }
 }
 .splm-notes-panel__date { font-size: 0.75rem; color: var(--splm-muted); }
 .splm-notes-panel__list { flex: 1; overflow-y: auto; }
+.splm-notes-panel__note-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+	margin-bottom: 0.15rem;
+}
+.splm-notes-panel__delete {
+	background: none;
+	border: none;
+	color: var(--splm-muted);
+	cursor: pointer;
+	font-size: 0.85rem;
+	line-height: 1;
+	padding: 0.15rem 0.3rem;
+	border-radius: 3px;
+}
+.splm-notes-panel__delete:hover { color: var(--splm-danger); background: var(--splm-danger-tint); }
+.splm-notes-panel__confirm { display: inline-flex; gap: 0.35rem; }
 
 /* Payment table */
 .splm-payment-table__row--paid { background: var(--splm-success-tint); }
@@ -850,6 +869,30 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: var(--splm-text); }
 /* CSV upload */
 .splm-csv-upload { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
 .splm-csv-upload .splm-table-wrapper { width: 100%; margin: 0.5rem 0; }
+.splm-dropzone {
+	width: 100%;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	align-items: center;
+	justify-content: center;
+	padding: 1rem;
+	border: 2px dashed var(--splm-border);
+	border-radius: 6px;
+	background: var(--splm-surface-alt);
+	transition: border-color 0.15s ease, background 0.15s ease;
+}
+.splm-dropzone--over { border-color: var(--splm-primary); background: var(--splm-primary-tint); }
+.splm-dropzone__hint { margin: 0; color: var(--splm-muted); font-size: 0.85rem; }
+.splm-dropzone label { cursor: pointer; margin: 0; }
+/* Visually hide the native file input; the label is the clickable affordance. */
+.splm-dropzone__input {
+	position: absolute;
+	width: 1px; height: 1px;
+	padding: 0; margin: -1px;
+	overflow: hidden; clip: rect(0 0 0 0);
+	white-space: nowrap; border: 0;
+}
 
 /* Rosters toolbar */
 .splm-rosters__toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-start; margin-bottom: 1rem; }

@@ -128,6 +128,13 @@ export function addNote( playerId, content ) {
 	} );
 }
 
+export function deleteNote( noteId ) {
+	return apiFetch( {
+		path: `/splm/v1/notes/${ noteId }`,
+		method: 'DELETE',
+	} );
+}
+
 export function fetchPayments( season, { page = 1, perPage = 200 } = {} ) {
 	// Paginated list endpoint. Returns the full { data, total, page, total_pages }
 	// envelope so the Payments page can render its pager. The page calls

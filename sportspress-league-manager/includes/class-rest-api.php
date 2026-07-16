@@ -4038,6 +4038,23 @@ class SPLM_REST_API {
 				),
 			)
 		);
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/notes/(?P<id>\d+)',
+			array(
+				'methods'             => 'DELETE',
+				'callback'            => array( $this, 'delete_note' ),
+				'permission_callback' => array( $this, 'check_notes_write_permission' ),
+				'args'                => array(
+					'id' => array(
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+				),
+			)
+		);
 	}
 
 	/**
@@ -4172,6 +4189,38 @@ class SPLM_REST_API {
 				'id' => $note_id,
 			),
 			201
+		);
+	}
+
+	/**
+	 * DELETE /notes/{id} — soft-delete a player note via
+	 * SPLM_Player_Notes_Database. Mirrors the trust tier of add_note
+	 * (manage_sportspress) so any note manager can retract a note; the row is
+	 * flagged is_deleted rather than removed, preserving the audit trail.
+	 */
+	public function delete_note( $request ) {
+		if ( ! $this->notes_module_enabled() ) {
+			return new WP_Error( 'module_disabled', 'Player notes module is not enabled.', array( 'status' => 503 ) );
+		}
+		$note_id = absint( $request->get_param( 'id' ) );
+
+		// get_note() only returns rows with is_deleted = 0, so a repeat delete
+		// (or an unknown id) reports 404 rather than silently succeeding.
+		$note = SPLM_Player_Notes_Database::get_note( $note_id );
+		if ( ! $note ) {
+			return new WP_Error( 'not_found', 'Note not found.', array( 'status' => 404 ) );
+		}
+
+		if ( ! SPLM_Player_Notes_Database::soft_delete( $note_id ) ) {
+			return new WP_Error( 'delete_failed', 'Failed to delete note.', array( 'status' => 500 ) );
+		}
+
+		return new WP_REST_Response(
+			array(
+				'success' => true,
+				'id'      => $note_id,
+			),
+			200
 		);
 	}
 }

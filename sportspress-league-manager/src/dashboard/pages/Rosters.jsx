@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, memo } from '@wordpress/element';
 import HelpLink from '../components/HelpLink';
-import { fetchTeams, fetchRosterDetails, fetchNotes, fetchNoteCounts, addNote, movePlayer, updatePlayer, updatePlayerMetadata, setCaptain, removePlayer, importRoster, calculateSkills, bulkUploadRoster, bulkProcessRoster } from '../lib/api';
+import { fetchTeams, fetchRosterDetails, fetchNotes, fetchNoteCounts, addNote, deleteNote, movePlayer, updatePlayer, updatePlayerMetadata, setCaptain, removePlayer, importRoster, calculateSkills, bulkUploadRoster, bulkProcessRoster } from '../lib/api';
 import Toast from '../components/Toast';
 import Icon from '../components/icons';
 
@@ -49,6 +49,10 @@ function NotesPanel( { player, onClose } ) {
 	const [ notes, setNotes ] = useState( [] );
 	const [ content, setContent ] = useState( '' );
 	const [ loading, setLoading ] = useState( true );
+	// F: id of the note pending a delete confirmation (inline two-step confirm,
+	// not window.confirm — a native dialog would block the whole dashboard).
+	const [ confirmingDelete, setConfirmingDelete ] = useState( null );
+	const [ deletingId, setDeletingId ] = useState( null );
 
 	const refresh = () => {
 		return fetchNotes( player.id ).then( ( data ) => {
@@ -72,6 +76,15 @@ function NotesPanel( { player, onClose } ) {
 		} );
 	};
 
+	const handleDelete = ( noteId ) => {
+		setDeletingId( noteId );
+		deleteNote( noteId ).then( () => {
+			setConfirmingDelete( null );
+			setDeletingId( null );
+			refresh();
+		} ).catch( () => setDeletingId( null ) );
+	};
+
 	// UX-9: trap Tab inside the panel, move focus in on open, restore on close.
 	const trapRef = useFocusTrap( onClose );
 
@@ -87,9 +100,38 @@ function NotesPanel( { player, onClose } ) {
 					<div className="splm-loading">Loading...</div>
 				) : (
 					<div className="splm-notes-panel__list">
+						{ notes.length === 0 && <p className="splm-empty">No notes yet.</p> }
 						{ notes.map( ( n, i ) => (
 							<div key={ n.id ?? i } className="splm-notes-panel__note">
-								<span className="splm-notes-panel__date">{ n.created_at }</span>
+								<div className="splm-notes-panel__note-head">
+									<span className="splm-notes-panel__date">{ n.created_at }{ n.author ? ` · ${ n.author }` : '' }</span>
+									{ n.id && (
+										confirmingDelete === n.id ? (
+											<span className="splm-notes-panel__confirm">
+												<button
+													type="button"
+													className="splm-btn splm-btn--small splm-btn--danger"
+													onClick={ () => handleDelete( n.id ) }
+													disabled={ deletingId === n.id }
+												>{ deletingId === n.id ? 'Deleting…' : 'Confirm delete' }</button>
+												<button
+													type="button"
+													className="splm-btn splm-btn--small"
+													onClick={ () => setConfirmingDelete( null ) }
+													disabled={ deletingId === n.id }
+												>Cancel</button>
+											</span>
+										) : (
+											<button
+												type="button"
+												className="splm-notes-panel__delete"
+												onClick={ () => setConfirmingDelete( n.id ) }
+												aria-label="Delete note"
+												title="Delete note"
+											>✕</button>
+										)
+									) }
+								</div>
 								<p>{ n.content }</p>
 							</div>
 						) ) }
@@ -257,41 +299,59 @@ const CSV_ALIASES = {
 	email: 'email', 'e-mail': 'email',
 };
 
+// Parse raw CSV text into roster rows, mapping columns by header when present
+// and otherwise falling back to the documented order (name, number, position,
+// email). Shared by the file picker and the drag-and-drop zone.
+function parseRosterCsv( text ) {
+	const lines = String( text ).replace( /\r/g, '' ).trim().split( '\n' ).filter( ( l ) => l.trim() );
+	if ( ! lines.length ) return [];
+
+	const first = parseCsvLine( lines[ 0 ] ).map( ( c ) => c.toLowerCase() );
+	const looksLikeHeader = first.some( ( c ) => CSV_ALIASES[ c ] );
+	let idx = { name: 0, number: 1, position: 2, email: 3 };
+	if ( looksLikeHeader ) {
+		idx = { name: -1, number: -1, position: -1, email: -1 };
+		first.forEach( ( c, i ) => { const f = CSV_ALIASES[ c ]; if ( f && idx[ f ] === -1 ) idx[ f ] = i; } );
+	}
+	const dataLines = looksLikeHeader ? lines.slice( 1 ) : lines;
+	const at = ( cols, i ) => ( i >= 0 && cols[ i ] !== undefined ? cols[ i ] : '' );
+	return dataLines.map( ( line ) => {
+		const cols = parseCsvLine( line );
+		return {
+			name: at( cols, idx.name ),
+			number: at( cols, idx.number ),
+			email: at( cols, idx.email ),
+			position: at( cols, idx.position ),
+		};
+	} ).filter( ( r ) => r.name );
+}
+
 function CSVUpload( { teamId, seasonId, onImported } ) {
 	const [ show, setShow ] = useState( false );
 	const [ preview, setPreview ] = useState( null );
+	const [ dragOver, setDragOver ] = useState( false );
+	const [ fileError, setFileError ] = useState( '' );
 
-	const handleFile = ( e ) => {
-		const file = e.target.files[ 0 ];
+	const ingestFile = ( file ) => {
 		if ( ! file ) return;
+		// Accept by extension as well as MIME — browsers report .csv variously as
+		// text/csv, application/vnd.ms-excel, or an empty type on some OSes.
+		if ( ! /\.csv$/i.test( file.name ) && ! /csv/i.test( file.type ) ) {
+			setFileError( 'Please choose a .csv file.' );
+			return;
+		}
+		setFileError( '' );
 		const reader = new FileReader();
-		reader.onload = ( ev ) => {
-			const lines = ev.target.result.replace( /\r/g, '' ).trim().split( '\n' ).filter( ( l ) => l.trim() );
-			if ( ! lines.length ) { setPreview( [] ); return; }
-
-			// Map columns by header when present; else fall back to the documented
-			// order (name, number, position, email).
-			const first = parseCsvLine( lines[ 0 ] ).map( ( c ) => c.toLowerCase() );
-			const looksLikeHeader = first.some( ( c ) => CSV_ALIASES[ c ] );
-			let idx = { name: 0, number: 1, position: 2, email: 3 };
-			if ( looksLikeHeader ) {
-				idx = { name: -1, number: -1, position: -1, email: -1 };
-				first.forEach( ( c, i ) => { const f = CSV_ALIASES[ c ]; if ( f && idx[ f ] === -1 ) idx[ f ] = i; } );
-			}
-			const dataLines = looksLikeHeader ? lines.slice( 1 ) : lines;
-			const at = ( cols, i ) => ( i >= 0 && cols[ i ] !== undefined ? cols[ i ] : '' );
-			const rows = dataLines.map( ( line ) => {
-				const cols = parseCsvLine( line );
-				return {
-					name: at( cols, idx.name ),
-					number: at( cols, idx.number ),
-					email: at( cols, idx.email ),
-					position: at( cols, idx.position ),
-				};
-			} ).filter( ( r ) => r.name );
-			setPreview( rows );
-		};
+		reader.onload = ( ev ) => setPreview( parseRosterCsv( ev.target.result ) );
 		reader.readAsText( file );
+	};
+
+	const handleFile = ( e ) => ingestFile( e.target.files[ 0 ] );
+
+	const handleDrop = ( e ) => {
+		e.preventDefault();
+		setDragOver( false );
+		ingestFile( e.dataTransfer?.files?.[ 0 ] );
 	};
 
 	const handleImport = () => {
@@ -308,8 +368,23 @@ function CSVUpload( { teamId, seasonId, onImported } ) {
 
 	return (
 		<div className="splm-csv-upload">
-			<input type="file" accept=".csv" onChange={ handleFile } />
-			{ preview && (
+			<div
+				className={ `splm-dropzone${ dragOver ? ' splm-dropzone--over' : '' }` }
+				onDragOver={ ( e ) => { e.preventDefault(); setDragOver( true ); } }
+				onDragLeave={ () => setDragOver( false ) }
+				onDrop={ handleDrop }
+			>
+				<p className="splm-dropzone__hint">Drag a CSV here, or</p>
+				<label className="splm-btn splm-btn--small">
+					Choose file
+					<input type="file" accept=".csv" onChange={ handleFile } className="splm-dropzone__input" />
+				</label>
+			</div>
+			{ fileError && <div className="splm-alert splm-alert--warning" role="alert">{ fileError }</div> }
+			{ preview && preview.length === 0 && (
+				<p className="splm-empty">No rows found in that file.</p>
+			) }
+			{ preview && preview.length > 0 && (
 				<>
 					<div className="splm-table-wrapper">
 						<table className="splm-table">
