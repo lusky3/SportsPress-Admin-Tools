@@ -3859,22 +3859,15 @@ class SPLM_REST_API {
 	private function register_delegated_routes() {
 		// --- Events Manager routes (SPEM_REST_API) — only when sibling present ---
 		if ( class_exists( 'SPEM_REST_API' ) ) {
+			$modules  = (array) get_option( 'spat_enabled_modules', array() );
+			// The SPEM class also loads for season_rollover alone, so class_exists
+			// isn't enough to expose GAME write routes — gate those on the
+			// events_management module specifically (mirrors SPEM's own
+			// register_game_routes). Rollover routes stay available whenever SPEM
+			// is present (either module).
+			$events_on = in_array( 'events_management', $modules, true );
+
 			$event_routes = array(
-				'/games/(?P<id>\d+)/score'      => array(
-					'methods' => 'POST',
-					'callback' => 'update_score',
-					'permission' => 'check_score_permission',
-				),
-				'/games/(?P<id>\d+)/reschedule' => array(
-					'methods' => 'POST',
-					'callback' => 'reschedule_game',
-					'permission' => 'check_manage_permission',
-				),
-				'/games/(?P<id>\d+)/cancel'     => array(
-					'methods' => 'POST',
-					'callback' => 'cancel_game',
-					'permission' => 'check_manage_permission',
-				),
 				'/season/rollover-preview'      => array(
 					'methods' => 'POST',
 					'callback' => 'rollover_preview',
@@ -3886,6 +3879,24 @@ class SPLM_REST_API {
 					'permission' => 'check_manage_permission',
 				),
 			);
+
+			if ( $events_on ) {
+				$event_routes['/games/(?P<id>\d+)/score']      = array(
+					'methods' => 'POST',
+					'callback' => 'update_score',
+					'permission' => 'check_score_permission',
+				);
+				$event_routes['/games/(?P<id>\d+)/reschedule'] = array(
+					'methods' => 'POST',
+					'callback' => 'reschedule_game',
+					'permission' => 'check_manage_permission',
+				);
+				$event_routes['/games/(?P<id>\d+)/cancel']     = array(
+					'methods' => 'POST',
+					'callback' => 'cancel_game',
+					'permission' => 'check_manage_permission',
+				);
+			}
 
 			foreach ( $event_routes as $route => $config ) {
 				register_rest_route(
@@ -3899,22 +3910,24 @@ class SPLM_REST_API {
 				);
 			}
 
-			register_rest_route(
-				self::REST_NAMESPACE,
-				'/games/(?P<id>\d+)/players',
-				array(
+			if ( $events_on ) {
+				register_rest_route(
+					self::REST_NAMESPACE,
+					'/games/(?P<id>\d+)/players',
 					array(
-						'methods'             => 'GET',
-						'callback'            => $this->make_delegate( 'SPEM_REST_API', 'get_game_players' ),
-						'permission_callback' => $this->make_delegate( 'SPEM_REST_API', 'check_score_permission' ),
-					),
-					array(
-						'methods'             => 'POST',
-						'callback'            => $this->make_delegate( 'SPEM_REST_API', 'save_game_players' ),
-						'permission_callback' => $this->make_delegate( 'SPEM_REST_API', 'check_score_permission' ),
-					),
-				)
-			);
+						array(
+							'methods'             => 'GET',
+							'callback'            => $this->make_delegate( 'SPEM_REST_API', 'get_game_players' ),
+							'permission_callback' => $this->make_delegate( 'SPEM_REST_API', 'check_score_permission' ),
+						),
+						array(
+							'methods'             => 'POST',
+							'callback'            => $this->make_delegate( 'SPEM_REST_API', 'save_game_players' ),
+							'permission_callback' => $this->make_delegate( 'SPEM_REST_API', 'check_score_permission' ),
+						),
+					)
+				);
+			}
 		}
 
 		// --- Player Tools routes (SPPT_REST_API) — only when sibling present ---
