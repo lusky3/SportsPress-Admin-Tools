@@ -135,13 +135,24 @@ export function deleteNote( noteId ) {
 	} );
 }
 
-export function fetchPayments( season, { page = 1, perPage = 200 } = {} ) {
+export function fetchPayments( season, { page = 1, perPage = 200, search = '' } = {} ) {
 	// Paginated list endpoint. Returns the full { data, total, page, total_pages }
 	// envelope so the Payments page can render its pager. The page calls
 	// `res.data`, `res.total`, and `res.total_pages` directly.
 	const params = new URLSearchParams( { per_page: String( perPage ), page: String( page ) } );
 	if ( season ) params.set( 'season', season );
+	if ( search ) params.set( 'search', search );
 	return apiFetch( { path: `/splm/v1/payments?${ params }` } );
+}
+
+// Full (season + search) payment set as CSV. Returns { filename, csv, count };
+// the caller builds a Blob and triggers the download so the request still
+// carries the apiFetch nonce.
+export function exportPayments( season, { search = '' } = {} ) {
+	const params = new URLSearchParams();
+	if ( season ) params.set( 'season', season );
+	if ( search ) params.set( 'search', search );
+	return apiFetch( { path: `/splm/v1/payments/export?${ params }` } );
 }
 
 export function fetchHealth() {

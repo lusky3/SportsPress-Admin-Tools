@@ -255,6 +255,35 @@ class SPLM_REST_API {
 						'sanitize_callback' => 'absint',
 						'validate_callback' => 'rest_validate_request_arg',
 					),
+					'search' => array(
+						'type'              => 'string',
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_text_field',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+				),
+			)
+		);
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/payments/export',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'export_payments' ),
+				'permission_callback' => array( $this, 'check_payments_permission' ),
+				'args'                => array(
+					'season' => array(
+						'type'              => 'integer',
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+					'search' => array(
+						'type'              => 'string',
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_text_field',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
 				),
 			)
 		);
@@ -1190,13 +1219,126 @@ class SPLM_REST_API {
 			return new WP_REST_Response( splm_rest_list_response( array(), 0, 1, 1 ), 200 );
 		}
 
-		global $wpdb;
-
 		$season_id = absint( $request->get_param( 'season' ) );
 		$per_page  = min( 500, max( 1, (int) ( $request->get_param( 'per_page' ) ?? 50 ) ) );
 		$page      = max( 1, (int) ( $request->get_param( 'page' ) ?? 1 ) );
+		$search    = sanitize_text_field( (string) $request->get_param( 'search' ) );
 
-		// Get active teams from this season's events.
+		// Lightweight (id, title, team) rows for every player matching the
+		// season + optional name search — cheap to materialize in full so the
+		// filtered total is exact; the expensive WC order lookups stay scoped to
+		// the page slice below.
+		$rows        = $this->resolve_payment_player_rows( $season_id, $search );
+		$total       = count( $rows );
+		$total_pages = $per_page > 0 ? (int) ceil( $total / $per_page ) : 0;
+
+		if ( 0 === $total ) {
+			$response = new WP_REST_Response( splm_rest_list_response( array(), 0, $page, $per_page ), 200 );
+			$response->header( 'X-WP-Total', 0 );
+			$response->header( 'X-WP-TotalPages', 0 );
+			return $response;
+		}
+
+		// M4: clamp out-of-range page requests back to the last real page so
+		// callers don't get an empty array on stale pagination state.
+		if ( $page > $total_pages ) {
+			$page = max( 1, $total_pages );
+		}
+
+		$offset    = ( $page - 1 ) * $per_page;
+		$page_rows = array_slice( $rows, $offset, $per_page );
+		$data      = $this->enrich_payment_rows( $page_rows );
+
+		$response = new WP_REST_Response(
+			splm_rest_list_response( $data, $total, $page, $per_page ),
+			200
+		);
+		$response->header( 'X-WP-Total', $total );
+		$response->header( 'X-WP-TotalPages', $total_pages );
+
+		return $response;
+	}
+
+	/**
+	 * GET /payments/export — CSV of the full (season + search) payment set, not
+	 * just the current page. Returned as { filename, csv, count } JSON so the
+	 * dashboard can trigger a client-side download that reuses the apiFetch
+	 * nonce, rather than streaming a file (which would need a separate
+	 * authenticated download path).
+	 */
+	public function export_payments( $request ) {
+		$season_id = absint( $request->get_param( 'season' ) );
+		$search    = sanitize_text_field( (string) $request->get_param( 'search' ) );
+		$filename  = 'payments-season-' . $season_id . ( '' !== $search ? '-filtered' : '' ) . '.csv';
+
+		if ( ! function_exists( 'wc_get_order' ) ) {
+			return new WP_REST_Response(
+				array(
+					'filename' => $filename,
+					'csv'      => "Player,Team,Status,Amount,Order ID\r\n",
+					'count'    => 0,
+				),
+				200
+			);
+		}
+
+		$rows = $this->resolve_payment_player_rows( $season_id, $search );
+		$data = $this->enrich_payment_rows( $rows );
+
+		$lines = array( $this->to_csv_row( array( 'Player', 'Team', 'Status', 'Amount', 'Order ID' ) ) );
+		foreach ( $data as $d ) {
+			$lines[] = $this->to_csv_row(
+				array(
+					$d['player'],
+					$d['team'],
+					$d['status'],
+					'' === $d['amount'] ? '' : (string) $d['amount'],
+					$d['order_id'] ? (string) $d['order_id'] : '',
+				)
+			);
+		}
+
+		return new WP_REST_Response(
+			array(
+				'filename' => $filename,
+				'csv'      => implode( "\r\n", $lines ) . "\r\n",
+				'count'    => count( $data ),
+			),
+			200
+		);
+	}
+
+	/**
+	 * Escape one CSV row (RFC 4180): quote fields containing comma, quote, or
+	 * newline, doubling embedded quotes. A leading =/+/-/@ is prefixed with a
+	 * tab so spreadsheet apps don't interpret the field as a formula.
+	 */
+	private function to_csv_row( array $fields ) {
+		$escaped = array_map(
+			function ( $f ) {
+				$f = (string) $f;
+				if ( '' !== $f && in_array( $f[0], array( '=', '+', '-', '@' ), true ) ) {
+					$f = "\t" . $f;
+				}
+				if ( preg_match( '/[",\r\n]/', $f ) ) {
+					$f = '"' . str_replace( '"', '""', $f ) . '"';
+				}
+				return $f;
+			},
+			$fields
+		);
+		return implode( ',', $escaped );
+	}
+
+	/**
+	 * Resolve the season's active teams to a sorted list of lightweight player
+	 * rows: [ { player_id, player, team_id, team } ]. Optional $search filters
+	 * on player name (post_title LIKE). Sorted by (team, player). Shared by the
+	 * paginated list and the CSV export so both see an identical result set.
+	 */
+	private function resolve_payment_player_rows( $season_id, $search = '' ) {
+		global $wpdb;
+
 		$events = get_posts(
 			array(
 				'post_type'      => 'sp_event',
@@ -1220,86 +1362,82 @@ class SPLM_REST_API {
 		}
 
 		if ( empty( $team_ids ) ) {
-			$response = new WP_REST_Response( splm_rest_list_response( array(), 0, $page, $per_page ), 200 );
-			$response->header( 'X-WP-Total', 0 );
-			$response->header( 'X-WP-TotalPages', 0 );
-			return $response;
+			return array();
 		}
 
 		// Resolve player_id => team_id for this season in a single pass. The
 		// season-candidate query is team-independent, so this is O(players),
-		// not the O(teams × players) the per-team loop used to incur per page.
+		// not the O(teams × players) the per-team loop used to incur.
 		$players_by_team = $this->resolve_players_by_team_for_season( $team_ids, $season_id );
-
-		$total       = count( $players_by_team );
-		$total_pages = $per_page > 0 ? (int) ceil( $total / $per_page ) : 0;
-
-		if ( 0 === $total ) {
-			$response = new WP_REST_Response( splm_rest_list_response( array(), 0, $page, $per_page ), 200 );
-			$response->header( 'X-WP-Total', 0 );
-			$response->header( 'X-WP-TotalPages', 0 );
-			return $response;
+		if ( empty( $players_by_team ) ) {
+			return array();
 		}
 
-		// M4: clamp out-of-range page requests back to the last real page so
-		// callers don't get an empty array on stale pagination state.
-		if ( $page > $total_pages ) {
-			$page = max( 1, $total_pages );
-		}
-
-		// SQL-side sort + paginate over the materialized player_id set so we
-		// only do WC order lookups for this page's slice.
 		$player_ids   = array_keys( $players_by_team );
 		$placeholders = implode( ',', array_fill( 0, count( $player_ids ), '%d' ) );
-		$offset       = ( $page - 1 ) * $per_page;
 
-		// Build a CASE so MySQL can resolve team title for each player row in
-		// one pass instead of N get_the_title() lookups.
 		$team_titles = array();
 		foreach ( array_unique( array_values( $players_by_team ) ) as $tid ) {
 			$team_titles[ $tid ] = splm_display_title( $tid );
 		}
 
-		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		$rows = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT p.ID, p.post_title
-			FROM {$wpdb->posts} p
-			WHERE p.ID IN ($placeholders) AND p.post_type = 'sp_player'
-			ORDER BY p.post_title ASC
-			LIMIT %d OFFSET %d",
-				array_merge( $player_ids, array( $per_page, $offset ) )
-			)
-		);
+		$sql    = "SELECT p.ID, p.post_title FROM {$wpdb->posts} p WHERE p.ID IN ($placeholders) AND p.post_type = 'sp_player'";
+		$params = $player_ids;
+		if ( '' !== $search ) {
+			$sql     .= ' AND p.post_title LIKE %s';
+			$params[] = '%' . $wpdb->esc_like( $search ) . '%';
+		}
+		$sql .= ' ORDER BY p.post_title ASC';
 
-		// Sort the page rows by (team_title, player_title) — keeps display
-		// stable across pages while staying inside the SQL-bounded slice.
-		$page_rows = array();
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $params ) );
+
+		$out = array();
 		foreach ( $rows as $row ) {
-			$pid       = (int) $row->ID;
-			$tid       = $players_by_team[ $pid ] ?? 0;
-			$page_rows[] = array(
-				'player_id'   => $pid,
-				'player'      => $row->post_title,
-				'team_id'     => $tid,
-				'team'        => $team_titles[ $tid ] ?? '',
+			$pid   = (int) $row->ID;
+			$tid   = $players_by_team[ $pid ] ?? 0;
+			$out[] = array(
+				'player_id' => $pid,
+				'player'    => $row->post_title,
+				'team_id'   => $tid,
+				'team'      => $team_titles[ $tid ] ?? '',
 			);
 		}
+
+		// Sort by (team, player) — stable display order across pages.
 		usort(
-			$page_rows,
+			$out,
 			function ( $a, $b ) {
 				$t = strcmp( $a['team'], $b['team'] );
 				return $t !== 0 ? $t : strcmp( $a['player'], $b['player'] );
 			}
 		);
 
-		// Pull registration-log order ids only for this page's players.
+		return $out;
+	}
+
+	/**
+	 * Enrich a slice of player rows with WooCommerce payment status. Order
+	 * lookups (registration-log order ids first, then a billing-name fallback)
+	 * are scoped to the passed rows, so callers control how many WC reads run.
+	 *
+	 * @param array $page_rows Rows from resolve_payment_player_rows().
+	 * @return array Payment records ready for the REST/CSV response.
+	 */
+	private function enrich_payment_rows( array $page_rows ) {
+		if ( empty( $page_rows ) ) {
+			return array();
+		}
+
+		global $wpdb;
+
+		// Pull registration-log order ids only for these players.
 		$reg_map      = array();
 		$log_table    = $wpdb->prefix . 'spat_registration_logs';
 		$table_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $log_table ) );
-		if ( $table_exists && ! empty( $page_rows ) ) {
-			$page_ids   = wp_list_pluck( $page_rows, 'player_id' );
-			$ph_page    = implode( ',', array_fill( 0, count( $page_ids ), '%d' ) );
+		if ( $table_exists ) {
+			$page_ids = wp_list_pluck( $page_rows, 'player_id' );
+			$ph_page  = implode( ',', array_fill( 0, count( $page_ids ), '%d' ) );
 			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 			$logs = $wpdb->get_results(
 				$wpdb->prepare(
@@ -1364,7 +1502,7 @@ class SPLM_REST_API {
 				}
 			}
 
-			$oid = ( $order && ! is_wp_error( $order ) ) ? (int) $order->get_id() : 0;
+			$oid    = ( $order && ! is_wp_error( $order ) ) ? (int) $order->get_id() : 0;
 			$data[] = array(
 				'player_id' => $pid,
 				'player'    => $row['player'],
@@ -1376,14 +1514,7 @@ class SPLM_REST_API {
 			);
 		}
 
-		$response = new WP_REST_Response(
-			splm_rest_list_response( $data, $total, $page, $per_page ),
-			200
-		);
-		$response->header( 'X-WP-Total', $total );
-		$response->header( 'X-WP-TotalPages', $total_pages );
-
-		return $response;
+		return $data;
 	}
 
 	/**

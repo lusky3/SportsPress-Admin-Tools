@@ -1,6 +1,6 @@
 import { useState, useEffect } from '@wordpress/element';
 import HelpLink from '../components/HelpLink';
-import { fetchPayments } from '../lib/api';
+import { fetchPayments, exportPayments } from '../lib/api';
 
 // M7: status values we ship CSS for. Anything else gets the "other" class
 // rather than letting the server inject arbitrary tokens into className.
@@ -36,16 +36,27 @@ export default function Payments( { season } ) {
 	const [ page, setPage ] = useState( 1 );
 	const [ loading, setLoading ] = useState( true );
 	const [ error, setError ] = useState( '' );
+	// Raw text box vs the debounced value actually sent to the server, so we
+	// don't fire a request on every keystroke.
+	const [ searchInput, setSearchInput ] = useState( '' );
+	const [ search, setSearch ] = useState( '' );
+	const [ exporting, setExporting ] = useState( false );
 
-	// Reset to first page whenever season changes.
+	// Reset to first page whenever season or the active search changes.
 	useEffect( () => {
 		setPage( 1 );
-	}, [ season ] );
+	}, [ season, search ] );
+
+	// Debounce the search box (300ms) into the value used for fetching.
+	useEffect( () => {
+		const t = setTimeout( () => setSearch( searchInput.trim() ), 300 );
+		return () => clearTimeout( t );
+	}, [ searchInput ] );
 
 	useEffect( () => {
 		let cancelled = false;
 		setLoading( true );
-		fetchPayments( season, { page, perPage: PER_PAGE } ).then( ( res ) => {
+		fetchPayments( season, { page, perPage: PER_PAGE, search } ).then( ( res ) => {
 			if ( cancelled ) return;
 			setPayments( res.data );
 			setTotal( res.total );
@@ -57,9 +68,29 @@ export default function Payments( { season } ) {
 			setLoading( false );
 		} );
 		return () => { cancelled = true; };
-	}, [ season, page ] );
+	}, [ season, page, search ] );
 
-	if ( loading ) {
+	const handleExport = () => {
+		setExporting( true );
+		setError( '' );
+		exportPayments( season, { search } ).then( ( res ) => {
+			const blob = new Blob( [ res.csv || '' ], { type: 'text/csv;charset=utf-8;' } );
+			const url = URL.createObjectURL( blob );
+			const a = document.createElement( 'a' );
+			a.href = url;
+			a.download = res.filename || 'payments.csv';
+			document.body.appendChild( a );
+			a.click();
+			document.body.removeChild( a );
+			URL.revokeObjectURL( url );
+			setExporting( false );
+		} ).catch( ( err ) => {
+			setError( err?.message || 'Failed to export payments' );
+			setExporting( false );
+		} );
+	};
+
+	if ( loading && payments.length === 0 && ! search ) {
 		return <div className="splm-loading">Loading payments...</div>;
 	}
 
@@ -89,6 +120,26 @@ export default function Payments( { season } ) {
 		<div className="splm-payments">
 			<h2>Payments <HelpLink topic="payments" /></h2>
 
+			<div className="splm-payments__toolbar">
+				<label htmlFor="splm-payments-search" className="screen-reader-text">Search players or teams</label>
+				<input
+					id="splm-payments-search"
+					type="search"
+					className="splm-search-input splm-payments__search"
+					placeholder="Search player name…"
+					value={ searchInput }
+					onChange={ ( e ) => setSearchInput( e.target.value ) }
+				/>
+				<button
+					type="button"
+					className="splm-btn"
+					onClick={ handleExport }
+					disabled={ exporting || total === 0 }
+				>
+					{ exporting ? 'Exporting…' : 'Export CSV' }
+				</button>
+			</div>
+
 			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 
 			<div className="splm-summary-stats">
@@ -107,7 +158,7 @@ export default function Payments( { season } ) {
 			</div>
 
 			{ payments.length === 0 ? (
-				<p className="splm-empty">No payment records.</p>
+				<p className="splm-empty">{ search ? `No players match “${ search }”.` : 'No payment records.' }</p>
 			) : (
 				<>
 					{ pager }
