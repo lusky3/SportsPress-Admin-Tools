@@ -1336,6 +1336,60 @@
         });
     }
 
+    // Back-to-back restrictions - Add restriction (mirrors the overlap handler
+    // above; back-to-back rows carry only a team select, no buffer field).
+    $('#spsg-add-b2b-restriction').click(function() {
+        var container = $('#spsg-b2b-restrictions-container');
+        var index = container.children().length;
+        var template = $('.spsg-b2b-restriction-row:first').clone();
+
+        template.find('select, input').each(function() {
+            var name = $(this).attr('name');
+            if (name) {
+                $(this).attr('name', name.replace(/\[\d+\]/, '[' + index + ']'));
+            }
+        });
+
+        template.find('select option').prop('selected', false);
+        template.attr('data-index', index);
+
+        container.append(template);
+
+        if (typeof SlimSelect !== 'undefined') {
+            template.find('.spsg-b2b-restriction-select').each(function() {
+                new SlimSelect({
+                    select: this,
+                    settings: {
+                        allowDeselect: true,
+                        placeholderText: i18n.selectTeams
+                    }
+                });
+            });
+        }
+    });
+
+    $(document).on('click', '.spsg-remove-b2b-restriction', function() {
+        if ($('.spsg-b2b-restriction-row').length > 1) {
+            if (confirm(i18n.removeRestriction)) {
+                $(this).closest('.spsg-b2b-restriction-row').remove();
+            }
+        } else {
+            alert(i18n.atLeastOneRestriction);
+        }
+    });
+
+    if (typeof SlimSelect !== 'undefined') {
+        $('.spsg-b2b-restriction-select').each(function() {
+            new SlimSelect({
+                select: this,
+                settings: {
+                    allowDeselect: true,
+                    placeholderText: i18n.selectTeams
+                }
+            });
+        });
+    }
+
     // AJAX form validation and submission
     $('#spsg-config-form').submit(function(e) {
         e.preventDefault();

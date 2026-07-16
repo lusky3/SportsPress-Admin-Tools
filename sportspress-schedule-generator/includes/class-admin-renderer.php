@@ -794,6 +794,27 @@ class SPSG_Admin_Renderer {
 			</div>
 			<button type="button" class="button" id="spsg-add-team-restriction"><?php esc_html_e( 'Add Team Restriction', 'sportspress-schedule-generator' ); ?></button>
 
+			<h3><?php esc_html_e( 'Back-to-Back Restrictions', 'sportspress-schedule-generator' ); ?></h3>
+			<p class="description"><?php esc_html_e( 'Teams that should not play in consecutive time slots (e.g., teams that share players who need rest between games).', 'sportspress-schedule-generator' ); ?></p>
+
+			<div id="spsg-b2b-restrictions-container">
+				<?php
+				// Canonical key is `back_to_back_avoid`; fall back to the legacy
+				// `back_to_back_avoidance` for configs saved before the migration.
+				$b2b_restrictions = $config->team_restrictions['back_to_back_avoid']
+					?? $config->team_restrictions['back_to_back_avoidance']
+					?? array();
+				if ( ! empty( $b2b_restrictions ) ) {
+					foreach ( $b2b_restrictions as $index => $restriction ) {
+						$this->render_b2b_restriction_row( $restriction, $index, $config );
+					}
+				} else {
+					$this->render_b2b_restriction_row( array(), 0, $config );
+				}
+				?>
+			</div>
+			<button type="button" class="button" id="spsg-add-b2b-restriction"><?php esc_html_e( 'Add Back-to-Back Restriction', 'sportspress-schedule-generator' ); ?></button>
+
 			<h3><?php esc_html_e( 'Blackout Dates', 'sportspress-schedule-generator' ); ?></h3>
 			<table class="form-table">
 				<tr>
@@ -861,6 +882,50 @@ class SPSG_Admin_Renderer {
 				<tr>
 					<td colspan="2">
 						<button type="button" class="button spsg-remove-team-restriction"><?php esc_html_e( 'Remove Restriction', 'sportspress-schedule-generator' ); ?></button>
+					</td>
+				</tr>
+			</table>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Render a back-to-back restriction row.
+	 *
+	 * Mirrors render_team_restriction_row() but without a buffer field —
+	 * back_to_back_avoid restrictions carry only a team list (see the
+	 * configuration sanitizer). Uses the canonical `back_to_back_avoid` key.
+	 */
+	public function render_b2b_restriction_row( $restriction, $index, $config ) {
+		$teams = $restriction['teams'] ?? array();
+
+		$all_teams = array_unique( $this->collect_all_teams( $config ) );
+		sort( $all_teams );
+		?>
+		<div class="spsg-b2b-restriction-row" data-index="<?php echo esc_attr( $index ); ?>" style="background: #f9f9f9; padding: 15px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 4px;">
+			<table class="form-table" style="margin: 0;">
+				<tr>
+					<th scope="row"><?php esc_html_e( 'Teams That Cannot Play in Consecutive Slots', 'sportspress-schedule-generator' ); ?></th>
+					<td>
+						<div class="spsg-b2b-restriction-teams">
+							<?php if ( ! empty( $all_teams ) ) : ?>
+								<select name="team_restrictions[back_to_back_avoid][<?php echo esc_attr( $index ); ?>][teams][]" multiple class="spsg-b2b-restriction-select" style="width: 100%; min-height: 120px;">
+									<?php foreach ( $all_teams as $team ) : ?>
+										<option value="<?php echo esc_attr( $team ); ?>" <?php selected( in_array( $team, $teams ) ); ?>>
+											<?php echo esc_html( $team ); ?>
+										</option>
+									<?php endforeach; ?>
+								</select>
+								<p class="description"><?php esc_html_e( 'Select 2 or more teams that cannot be scheduled in back-to-back time slots. Hold Ctrl/Cmd to select multiple teams.', 'sportspress-schedule-generator' ); ?></p>
+							<?php else : ?>
+								<p class="description" style="color: #d63638;"><?php esc_html_e( 'Please add teams to divisions first before configuring team restrictions.', 'sportspress-schedule-generator' ); ?></p>
+							<?php endif; ?>
+						</div>
+					</td>
+				</tr>
+				<tr>
+					<td colspan="2">
+						<button type="button" class="button spsg-remove-b2b-restriction"><?php esc_html_e( 'Remove Restriction', 'sportspress-schedule-generator' ); ?></button>
 					</td>
 				</tr>
 			</table>
