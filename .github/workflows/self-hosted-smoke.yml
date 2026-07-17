@@ -4,6 +4,8 @@ name: Self-hosted runner smoke test
 # executes jobs. Safe to keep or delete once the runner is verified.
 on:
   workflow_dispatch:
+  push:
+    branches: [worktree-self-hosted-runner-smoke]
 
 jobs:
   smoke:
