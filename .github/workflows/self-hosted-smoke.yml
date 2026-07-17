@@ -1,0 +1,24 @@
+name: Self-hosted runner smoke test
+
+# Manual smoke test to confirm the self-hosted runner (amy) picks up and
+# executes jobs. Safe to keep or delete once the runner is verified.
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: [self-hosted, linux, x64]
+    steps:
+      - name: Report runner identity
+        run: |
+          echo "Running on: $(hostname)"
+          echo "User: $(whoami)"
+          echo "Kernel: $(uname -a)"
+          echo "CPUs: $(nproc)  Mem: $(free -h | awk '/Mem:/{print $2}')"
+          echo "Date (should be current UTC): $(date -u)"
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      - name: Confirm checkout
+        run: |
+          echo "Checked out $(git rev-parse --short HEAD) on $GITHUB_REF"
+          ls -la | head
