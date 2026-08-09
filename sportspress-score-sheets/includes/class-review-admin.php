@@ -309,7 +309,8 @@ class SPSS_Review_Admin {
 
 		$confirmed = SPSS_Ingest_Service::map_confirmed( $event_id, $home_score, $away_score, $ot_loss_side, $players_raw );
 
-		$result   = SPSS_Ingest_Service::apply_confirmed( $sheet_id, $confirmed );
+		$skipped   = array();
+		$result    = SPSS_Ingest_Service::apply_confirmed( $sheet_id, $confirmed, $skipped );
 		$queue_url = admin_url( 'admin.php?page=' . SPSS_Admin::MENU_SLUG );
 
 		// SPAT_Lock::with() returns false when a concurrent apply already holds the
@@ -340,6 +341,21 @@ class SPSS_Review_Admin {
 			);
 			exit;
 		}
+		// The writer silently drops confirmed rows whose player isn't rostered on
+		// that team. Report them instead of claiming a clean "Results applied".
+		if ( ! empty( $skipped ) ) {
+			wp_safe_redirect(
+				add_query_arg(
+					array(
+						'spss_notice'  => 'applied_partial',
+						'spss_skipped' => count( $skipped ),
+					),
+					$queue_url
+				)
+			);
+			exit;
+		}
+
 		wp_safe_redirect( add_query_arg( 'spss_notice', 'applied', $queue_url ) );
 		exit;
 	}

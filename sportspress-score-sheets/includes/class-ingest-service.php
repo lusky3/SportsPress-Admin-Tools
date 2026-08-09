@@ -112,6 +112,24 @@ class SPSS_Ingest_Service {
 		// Store a metadata-stripped, size-capped copy in the protected dir.
 		$relative = SPSS_Image_Store::store_from_path( $tmp, (string) ( $args['ext'] ?? 'jpg' ) );
 		if ( is_wp_error( $relative ) ) {
+			// The server cannot decode this image (HEIC without libheif, PDF
+			// without Imagick, …). Record a failed queue row anyway: on the
+			// webhook paths the WP_Error is only debug-logged and the request
+			// acked, so without a row the sheet vanishes with no trace at all.
+			// The real hash is used so a Twilio/WhatsApp re-delivery of the same
+			// image collapses onto this one row instead of piling up.
+			SPSS_Database::insert_sheet(
+				array(
+					'uploaded_by' => (int) ( $args['uploaded_by'] ?? get_current_user_id() ),
+					'channel'     => (string) ( $args['channel'] ?? 'upload' ),
+					'image_path'  => '',
+					'image_hash'  => $hash,
+					'source_ref'  => $args['source_ref'] ?? null,
+					'event_id'    => isset( $args['event_id'] ) ? (int) $args['event_id'] : null,
+					'status'      => SPSS_Database::STATUS_FAILED,
+					'error'       => $relative->get_error_message(),
+				)
+			);
 			return $relative;
 		}
 
@@ -142,6 +160,13 @@ class SPSS_Ingest_Service {
 	 * Async worker: run recognition + consistency checks on a queued sheet.
 	 */
 	public static function process( $sheet_id ) {
+		// Opportunistic sweep: a worker killed by a fatal timeout/OOM leaves its
+		// row in `processing` forever (no catchable Throwable ever runs), which
+		// hides the sheet from reprocessing until the retention cron deletes it.
+		// The worker runs on every ingest, so this is the earliest cheap point to
+		// retire those rows. The daily cleanup cron sweeps too.
+		SPSS_Database::fail_stale_processing();
+
 		$sheet = SPSS_Database::get_sheet( $sheet_id );
 		if ( ! $sheet ) {
 			return; // Gone.
@@ -200,11 +225,17 @@ class SPSS_Ingest_Service {
 				)
 			);
 		} catch ( \Throwable $e ) {
+			// Never persist the raw exception text: it routinely carries absolute
+			// filesystem paths, which the queue then renders back to the operator.
+			// The detail goes to the error log under the repo-wide verbose flag.
+			if ( '1' === get_option( 'spat_debug_verbose_logging', '0' ) ) {
+				error_log( '[SPSS] recognition worker threw: ' . $e->getMessage() ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+			}
 			SPSS_Database::update_sheet(
 				$sheet_id,
 				array(
 					'status' => SPSS_Database::STATUS_FAILED,
-					'error'  => $e->getMessage(),
+					'error'  => __( 'Recognition failed unexpectedly. Reprocess to try again; see the error log for details.', 'sportspress-score-sheets' ),
 				)
 			);
 		}
@@ -365,15 +396,20 @@ class SPSS_Ingest_Service {
 	 *
 	 * @param int   $sheet_id  Queue row id being confirmed.
 	 * @param array $confirmed Reviewed data, shape consumed by SPSS_SportsPress_Writer::apply().
+	 * @param array $skipped   Out-param: reviewer-confirmed player rows the writer
+	 *                         refused (wrong roster/team/post-type). Callers must
+	 *                         surface these — "Results applied" otherwise reports
+	 *                         success while confirmed stats were silently dropped.
 	 * @return int|WP_Error  event_id on success.
 	 */
-	public static function apply_confirmed( $sheet_id, array $confirmed ) {
+	public static function apply_confirmed( $sheet_id, array $confirmed, &$skipped = null ) {
 		$sheet_id = (int) $sheet_id;
+		$skipped  = array();
 
 		return SPAT_Lock::with(
 			'spss_apply_' . $sheet_id,
 			30,
-			function () use ( $sheet_id, $confirmed ) {
+			function () use ( $sheet_id, $confirmed, &$skipped ) {
 				$sheet = SPSS_Database::get_sheet( $sheet_id );
 				if ( ! $sheet ) {
 					return new WP_Error( 'spss_not_found', __( 'Sheet not found.', 'sportspress-score-sheets' ) );
@@ -395,6 +431,7 @@ class SPSS_Ingest_Service {
 				if ( is_wp_error( $out ) ) {
 					return $out;
 				}
+				$skipped = $writer->get_skipped_players();
 
 				$confirmed_ok = SPSS_Database::update_sheet(
 					$sheet_id,

@@ -176,6 +176,13 @@ class SPSS_REST_API {
 			return new WP_Error( 'spss_invalid_signature', __( 'Invalid Twilio signature.', 'sportspress-score-sheets' ), array( 'status' => 403 ) );
 		}
 
+		// Rate limit verified requests per sender, mirroring /ingest. Twilio can
+		// deliver a burst (or re-deliver on our 5xx), and each message costs a
+		// credentialed media fetch plus a recognition call.
+		if ( self::check_rate_limit( 'spss_rl_twilio_' . self::sender_key(), self::INGEST_RATE_LIMIT ) ) {
+			return new WP_Error( 'spss_rate_limited', __( 'Too many requests.', 'sportspress-score-sheets' ), array( 'status' => 429 ) );
+		}
+
 		// No media on this message — acknowledge so Twilio doesn't retry.
 		if ( empty( $params['MediaUrl0'] ) ) {
 			return self::twiml_ack();
@@ -190,40 +197,40 @@ class SPSS_REST_API {
 		}
 
 		$account_sid = get_option( 'spss_twilio_account_sid', '' );
-		$response    = wp_remote_get(
+		$media       = self::fetch_media(
 			$media_url,
-			array(
-				'timeout'     => 20,
-				// Never follow a redirect off Twilio with the auth token attached.
-				'redirection' => 0,
-				'headers'     => array(
-					'Authorization' => 'Basic ' . base64_encode( $account_sid . ':' . $token ),
-				),
-			)
+			array( 'Authorization' => 'Basic ' . base64_encode( $account_sid . ':' . $token ) ),
+			array( __CLASS__, 'is_allowed_twilio_media_url' )
 		);
-		if ( is_wp_error( $response ) ) {
-			self::debug_log( 'twilio media fetch failed: ' . $response->get_error_message() );
-			// Still 2xx: retries won't help a fetch failure, and Twilio only needs an ack.
+		if ( is_wp_error( $media ) ) {
+			self::debug_log( 'twilio media fetch failed: ' . $media->get_error_code() );
+			// A transient failure must NOT be acked: a 200 tells Twilio the sheet
+			// was accepted and it is never re-delivered, silently losing it. Return
+			// 5xx so Twilio retries the webhook.
+			if ( 'spss_media_transient' === $media->get_error_code() ) {
+				return new WP_Error( 'spss_twilio_media_unavailable', __( 'Could not download the message media; please retry.', 'sportspress-score-sheets' ), array( 'status' => 503 ) );
+			}
+			// Permanent (4xx / rejected redirect / empty body) — retrying cannot help.
 			return self::twiml_ack();
 		}
 
-		$bytes = wp_remote_retrieve_body( $response );
-		if ( '' === $bytes ) {
-			return self::twiml_ack();
-		}
-
+		$bytes = $media['bytes'];
 		if ( strlen( $bytes ) > SPSS_Ingest_Service::MAX_IMAGE_BYTES ) {
 			self::debug_log( 'twilio media exceeds max size' );
 			return self::twiml_ack();
 		}
 
-		$media_type = (string) wp_remote_retrieve_header( $response, 'content-type' );
-		$ext        = self::ext_from_media_type( $media_type );
+		$ext        = self::ext_from_media_type( $media['content_type'] );
 		$source_ref = isset( $params['MessageSid'] ) ? (string) $params['MessageSid'] : null;
 
 		$result = self::ingest_bytes( $bytes, 'mms', $source_ref, $ext );
 		if ( is_wp_error( $result ) ) {
 			self::debug_log( 'twilio ingest error: ' . $result->get_error_code() );
+			// Same reasoning: a temp-file/DB failure is retryable, so let Twilio
+			// re-deliver instead of acking a sheet we never queued.
+			if ( self::is_transient_ingest_error( $result->get_error_code() ) ) {
+				return new WP_Error( 'spss_twilio_queue_failed', __( 'Could not queue the score sheet; please retry.', 'sportspress-score-sheets' ), array( 'status' => 503 ) );
+			}
 		}
 
 		// Twilio only needs a 2xx; the queue outcome is handled out of band.
@@ -292,8 +299,9 @@ class SPSS_REST_API {
 			return new WP_Error( 'spss_rate_limited', __( 'Too many requests.', 'sportspress-score-sheets' ), array( 'status' => 429 ) );
 		}
 
-		$data    = json_decode( (string) $raw, true );
-		$version = self::whatsapp_graph_version();
+		$data     = json_decode( (string) $raw, true );
+		$version  = self::whatsapp_graph_version();
+		$rate_key = 'spss_rl_whatsapp_' . self::sender_key();
 		if ( is_array( $data ) && ! empty( $data['entry'] ) && is_array( $data['entry'] ) ) {
 			foreach ( $data['entry'] as $entry ) {
 				$changes = ( is_array( $entry ) && ! empty( $entry['changes'] ) && is_array( $entry['changes'] ) ) ? $entry['changes'] : array();
@@ -312,6 +320,13 @@ class SPSS_REST_API {
 						}
 						if ( null === $media ) {
 							continue;
+						}
+						// The request-level limit above counts one request; a single
+						// request can carry many media items, each costing a fetch and
+						// a recognition call — so meter per item too.
+						if ( self::check_rate_limit( $rate_key, self::INGEST_RATE_LIMIT ) ) {
+							self::debug_log( 'whatsapp media rate limit reached; remaining items skipped' );
+							break 3;
 						}
 						$source_ref = isset( $message['id'] ) ? (string) $message['id'] : null;
 						self::fetch_and_ingest_whatsapp_media( $media, $access_token, $version, $source_ref );
@@ -350,6 +365,13 @@ class SPSS_REST_API {
 			self::debug_log( 'whatsapp media lookup failed: ' . $meta_resp->get_error_message() );
 			return;
 		}
+		// Check the status: a 4xx/5xx body is an error document, not metadata, and
+		// json_decode'ing it silently yielded "url missing" before.
+		$meta_code = (int) wp_remote_retrieve_response_code( $meta_resp );
+		if ( 200 !== $meta_code ) {
+			self::debug_log( 'whatsapp media lookup returned HTTP ' . $meta_code );
+			return;
+		}
 		$info = json_decode( (string) wp_remote_retrieve_body( $meta_resp ), true );
 		$url  = ( is_array( $info ) && ! empty( $info['url'] ) ) ? (string) $info['url'] : '';
 		if ( '' === $url || ! self::is_allowed_whatsapp_media_url( $url ) ) {
@@ -358,31 +380,118 @@ class SPSS_REST_API {
 		}
 
 		// Step 2: download the bytes (Bearer required; the URL expires in ~5 min).
-		$dl = wp_remote_get(
+		// Meta redirects the lookaside URL to a pre-signed fbcdn host, so the fetch
+		// follows one allowlisted hop with the response code checked on each.
+		$dl = self::fetch_media(
 			$url,
-			array(
-				'timeout'     => 20,
-				'redirection' => 0,
-				'headers'     => array( 'Authorization' => 'Bearer ' . $access_token ),
-			)
+			array( 'Authorization' => 'Bearer ' . $access_token ),
+			array( __CLASS__, 'is_allowed_whatsapp_media_url' )
 		);
 		if ( is_wp_error( $dl ) ) {
-			self::debug_log( 'whatsapp media download failed: ' . $dl->get_error_message() );
+			self::debug_log( 'whatsapp media download failed: ' . $dl->get_error_code() );
 			return;
 		}
-		$bytes = wp_remote_retrieve_body( $dl );
-		if ( '' === $bytes || strlen( $bytes ) > SPSS_Ingest_Service::MAX_IMAGE_BYTES ) {
-			self::debug_log( 'whatsapp media empty or exceeds max size' );
+		$bytes = $dl['bytes'];
+		if ( strlen( $bytes ) > SPSS_Ingest_Service::MAX_IMAGE_BYTES ) {
+			self::debug_log( 'whatsapp media exceeds max size' );
 			return;
 		}
 
-		$mime = ( is_array( $info ) && ! empty( $info['mime_type'] ) ) ? (string) $info['mime_type'] : (string) wp_remote_retrieve_header( $dl, 'content-type' );
+		$mime = ( is_array( $info ) && ! empty( $info['mime_type'] ) ) ? (string) $info['mime_type'] : $dl['content_type'];
 		$ext  = self::ext_from_media_type( $mime );
 
 		$result = self::ingest_bytes( $bytes, 'whatsapp', $source_ref, $ext );
 		if ( is_wp_error( $result ) ) {
 			self::debug_log( 'whatsapp ingest error: ' . $result->get_error_code() );
 		}
+	}
+
+	/**
+	 * GET a media URL, following at most one redirect by hand.
+	 *
+	 * wp_remote_get() runs with redirection => 0 so the credentials in $headers are
+	 * never replayed to whatever host a Location header names. Twilio answers its
+	 * media resource with a 302 to a pre-signed CDN URL (and Meta sometimes does the
+	 * same), so a single hop is followed explicitly: the target is re-validated
+	 * against the same host allowlist and fetched WITHOUT the Authorization header,
+	 * because a pre-signed URL carries its own signature and rejects a second auth
+	 * mechanism.
+	 *
+	 * The response code is checked on every hop — the previous code read the body
+	 * unconditionally, so a blocked redirect or an error page looked like "no media"
+	 * and was acked.
+	 *
+	 * @param string   $url        Media URL (already host-allowlisted by the caller).
+	 * @param array    $headers    Request headers for the first hop (auth).
+	 * @param callable $is_allowed Host allowlist predicate applied to any redirect.
+	 * @return array|WP_Error { bytes:string, content_type:string }, or WP_Error whose
+	 *                        code is 'spss_media_transient' when a retry could succeed.
+	 */
+	private static function fetch_media( $url, array $headers, callable $is_allowed ) {
+		$args = array(
+			'timeout'     => 20,
+			'redirection' => 0,
+			'headers'     => $headers,
+		);
+
+		$response = wp_remote_get( $url, $args );
+		if ( is_wp_error( $response ) ) {
+			return new WP_Error( 'spss_media_transient', $response->get_error_message() );
+		}
+		$code = (int) wp_remote_retrieve_response_code( $response );
+
+		if ( $code >= 300 && $code < 400 ) {
+			$location = (string) wp_remote_retrieve_header( $response, 'location' );
+			if ( '' === $location || ! call_user_func( $is_allowed, $location ) ) {
+				return new WP_Error( 'spss_media_bad_redirect', 'redirect target missing or off-allowlist' );
+			}
+			$response = wp_remote_get(
+				$location,
+				array(
+					'timeout'     => 20,
+					'redirection' => 0,
+				)
+			);
+			if ( is_wp_error( $response ) ) {
+				return new WP_Error( 'spss_media_transient', $response->get_error_message() );
+			}
+			$code = (int) wp_remote_retrieve_response_code( $response );
+		}
+
+		if ( 200 !== $code ) {
+			// 429/5xx can succeed on a re-delivery; a 4xx never will.
+			$transient = ( 429 === $code || $code >= 500 );
+			return new WP_Error(
+				$transient ? 'spss_media_transient' : 'spss_media_http',
+				sprintf( 'media fetch returned HTTP %d', $code )
+			);
+		}
+
+		$bytes = (string) wp_remote_retrieve_body( $response );
+		if ( '' === $bytes ) {
+			return new WP_Error( 'spss_media_empty', 'media body was empty' );
+		}
+
+		return array(
+			'bytes'        => $bytes,
+			'content_type' => (string) wp_remote_retrieve_header( $response, 'content-type' ),
+		);
+	}
+
+	/**
+	 * Whether an ingest failure is worth a webhook re-delivery. Storage/DB faults
+	 * are; a decoded image the server can never read (or one over the size cap) is
+	 * not, and re-delivering it would just loop.
+	 *
+	 * @param string $code WP_Error code from SPSS_Ingest_Service.
+	 * @return bool
+	 */
+	private static function is_transient_ingest_error( $code ) {
+		return in_array(
+			(string) $code,
+			array( 'spss_tmp_failed', 'spss_db_insert_failed', 'spss_read_failed' ),
+			true
+		);
 	}
 
 	/**
@@ -583,23 +692,25 @@ class SPSS_REST_API {
 	}
 
 	/**
-	 * Simple per-window rate limit: a transient counter keyed $rate_key. Returns
+	 * Simple fixed-window rate limit: a transient counter keyed $rate_key. Returns
 	 * true if the limit is exceeded. Self-contained mirror of the etransfer
 	 * check_rate_limit shape (transient-backed, portable to any host).
 	 *
-	 * @param string $rate_key Transient key backing this counter.
+	 * The counter key carries the wall-clock window index so each hit cannot extend
+	 * the transient's TTL. With a single sliding key, a sender making one request per
+	 * second refreshed the TTL forever and stayed locked out permanently once the
+	 * count crossed the limit; bucketing guarantees the count resets every $window.
+	 *
+	 * @param string $rate_key Transient key stem backing this counter.
 	 * @param int    $limit  Max requests per window.
 	 * @param int    $window Window length in seconds.
 	 * @return bool True if rate limited.
 	 */
 	private static function check_rate_limit( $rate_key, $limit = 60, $window = 60 ) {
-		$count = get_transient( $rate_key );
-		if ( false === $count ) {
-			set_transient( $rate_key, 1, $window );
-			return false;
-		}
-		$count = (int) $count + 1;
-		set_transient( $rate_key, $count, $window );
+		$window = max( 1, (int) $window );
+		$bucket = $rate_key . '_' . (int) floor( time() / $window );
+		$count  = (int) get_transient( $bucket ) + 1;
+		set_transient( $bucket, $count, $window );
 		return $count > (int) $limit;
 	}
 

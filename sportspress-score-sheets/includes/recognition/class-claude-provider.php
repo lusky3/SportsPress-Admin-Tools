@@ -82,6 +82,11 @@ class SPSS_Claude_Provider extends SPSS_Abstract_LLM_Provider {
 		if ( ! is_array( $decoded ) || empty( $decoded['content'] ) || ! is_array( $decoded['content'] ) ) {
 			return new WP_Error( 'spss_claude_bad_response', __( 'Unexpected recognition API response.', 'sportspress-score-sheets' ) );
 		}
+		// A response cut off at max_tokens leaves the tool input partial (or
+		// absent); report that specifically instead of "no structured data".
+		if ( isset( $decoded['stop_reason'] ) && 'max_tokens' === $decoded['stop_reason'] ) {
+			return $this->truncated_error();
+		}
 		foreach ( $decoded['content'] as $block ) {
 			if ( isset( $block['type'], $block['name'] ) && 'tool_use' === $block['type'] && 'extract_scoresheet' === $block['name'] && isset( $block['input'] ) && is_array( $block['input'] ) ) {
 				return SPSS_Extraction_Result::from_array( $block['input'], $this->get_id(), wp_json_encode( $block['input'] ) );

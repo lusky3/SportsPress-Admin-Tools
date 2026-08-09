@@ -66,12 +66,31 @@ class SportsPress_Score_Sheets {
 		wp_clear_scheduled_hook( 'spss_cleanup_old_sheets' );
 	}
 
+	/**
+	 * Daily data hygiene: retire stranded rows, then purge sheets past the
+	 * retention window (deleting their stored images).
+	 *
+	 * Deliberately NOT gated on module_enabled(). The toggle governs intake and
+	 * UI — whether new sheets can arrive and whether the screens render. Disabling
+	 * it must not suspend deletion of score-sheet photos already on disk: those
+	 * are PII and the retention setting is an unconditional promise, so a disabled
+	 * module previously meant "keep every image forever". Both calls are cheap
+	 * no-ops when the queue is empty, and the cron itself only exists between
+	 * activation and deactivation.
+	 */
 	public function run_sheet_cleanup() {
-		if ( ! $this->module_enabled() ) {
-			return;
-		}
 		require_once SPSS_PLUGIN_PATH . 'includes/class-database.php';
 		require_once SPSS_PLUGIN_PATH . 'includes/class-image-store.php';
+
+		// load_functionality() (which normally runs this) is module-gated, so with
+		// the module off this cron would be the first thing to touch the table —
+		// converge the schema first. Cheap no-op once the versions match.
+		SPSS_Database::maybe_upgrade();
+
+		// Give stranded `processing` rows a terminal, reprocessable state before
+		// the retention sweep can silently delete them.
+		SPSS_Database::fail_stale_processing();
+
 		$retention_days = (int) get_option( 'spss_retention_days', 30 );
 		SPSS_Database::cleanup_old_sheets( $retention_days );
 	}

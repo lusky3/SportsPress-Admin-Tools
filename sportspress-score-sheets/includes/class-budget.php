@@ -19,6 +19,18 @@ class SPSS_Budget {
 	/** Option holding the per-month, per-provider spend ledger. */
 	const LEDGER_OPTION = 'spss_spend_ledger';
 
+	/**
+	 * Monthly cap ($) applied to a provider whose budget was never configured.
+	 *
+	 * "Unset" used to mean unlimited, so a fresh install with an API key and an
+	 * open intake webhook had no spend ceiling at all. At the built-in ~$0.02/sheet
+	 * estimate this is ~1,250 sheets a month — far past any real league's volume,
+	 * so it is a runaway guard, not a working limit. An explicit 0 (or a blank
+	 * field) still means unlimited, so existing installs — which have already
+	 * stored 0 — are unaffected.
+	 */
+	const DEFAULT_MONTHLY_BUDGET = 25.0;
+
 	/** Current UTC calendar month key, e.g. "2026-07". */
 	private static function current_month() {
 		return gmdate( 'Y-m' );
@@ -46,11 +58,14 @@ class SPSS_Budget {
 
 	/**
 	 * Monthly cap ($) from option "spss_{id}_monthly_budget".
-	 * 0 or unset = unlimited.
+	 * An explicit 0 = unlimited; never configured = DEFAULT_MONTHLY_BUDGET.
 	 */
 	public static function monthly_budget( string $provider_id ): float {
-		$budget = (float) get_option( 'spss_' . $provider_id . '_monthly_budget', 0 );
-		return max( 0.0, $budget );
+		$budget = get_option( 'spss_' . $provider_id . '_monthly_budget', null );
+		if ( null === $budget || false === $budget || '' === $budget ) {
+			return self::DEFAULT_MONTHLY_BUDGET;
+		}
+		return max( 0.0, (float) $budget );
 	}
 
 	/**

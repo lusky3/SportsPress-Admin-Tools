@@ -76,6 +76,11 @@ class SPSS_Gemini_Provider extends SPSS_Abstract_LLM_Provider {
 	}
 
 	protected function parse_response( $decoded ) {
+		// MAX_TOKENS truncation yields an unparseable JSON fragment (or no parts at
+		// all), so check finishReason before anything else.
+		if ( is_array( $decoded ) && isset( $decoded['candidates'][0]['finishReason'] ) && 'MAX_TOKENS' === $decoded['candidates'][0]['finishReason'] ) {
+			return $this->truncated_error();
+		}
 		if ( ! is_array( $decoded ) || ! isset( $decoded['candidates'][0]['content']['parts'][0]['text'] ) ) {
 			return new WP_Error( 'spss_gemini_bad_response', __( 'Unexpected recognition API response.', 'sportspress-score-sheets' ) );
 		}
