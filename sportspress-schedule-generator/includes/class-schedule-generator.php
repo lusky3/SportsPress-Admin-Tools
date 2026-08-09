@@ -16,7 +16,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 class SPSG_Schedule_Generator {
 
 
-	/** @var string Error message for insufficient permissions */
+	/**
+	 * Error message for insufficient permissions.
+	 *
+	 * Kept for backward compatibility with external callers. The user-facing
+	 * strings are written as literals at each call site so `__()` can actually
+	 * be picked up by the translation-string scanner (a constant is invisible
+	 * to it).
+	 *
+	 * @var string
+	 */
 	const INSUFFICIENT_PERMISSIONS = 'Insufficient permissions';
 
 	/**
@@ -83,7 +92,7 @@ class SPSG_Schedule_Generator {
 		check_ajax_referer( 'spsg_generate_schedule', 'spsg_nonce' );
 
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_send_json_error( __( self::INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator' ) );
+			wp_send_json_error( __( 'Insufficient permissions', 'sportspress-schedule-generator' ) );
 			return;
 		}
 
@@ -143,9 +152,16 @@ class SPSG_Schedule_Generator {
 		$stats_calculator = new SPSG_Statistics_Calculator();
 		$stats = $stats_calculator->calculate( $result['schedule'] );
 
-		// Add generation time to stats
-		if ( isset( $result['generation_time'] ) ) {
-			$stats['generation_time'] = $result['generation_time'];
+		// Merge the engine's own stats in. LOW (2026-08): this read
+		// $result['generation_time'], a key generate_schedule() never returns —
+		// the timing (and the constraint-violation / makeup counters) live under
+		// $result['stats'], so the reported generation time was always missing.
+		if ( ! empty( $result['stats'] ) && is_array( $result['stats'] ) ) {
+			foreach ( array( 'generation_time', 'constraint_violations', 'makeup_games', 'matchup_warnings' ) as $key ) {
+				if ( isset( $result['stats'][ $key ] ) ) {
+					$stats[ $key ] = $result['stats'][ $key ];
+				}
+			}
 		}
 
 		// Store generated schedule and stats in transients
@@ -208,6 +224,14 @@ class SPSG_Schedule_Generator {
 	 * Check if a game is inter-division
 	 */
 	private function is_inter_division_game( $game ) {
+		// M51: the engine stamps `is_inter_division` on each game; the teams
+		// themselves never carry a division_id, so the old comparison always
+		// reported false and inter-division games were never badged in the
+		// preview table.
+		if ( ! empty( $game->is_inter_division ) ) {
+			return true;
+		}
+
 		if ( ! isset( $game->home_team->division_id ) || ! isset( $game->away_team->division_id ) ) {
 			return false;
 		}
@@ -221,7 +245,7 @@ class SPSG_Schedule_Generator {
 		check_ajax_referer( 'spsg_export_schedule', 'spsg_nonce' );
 
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_send_json_error( __( self::INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator' ) );
+			wp_send_json_error( __( 'Insufficient permissions', 'sportspress-schedule-generator' ) );
 			return;
 		}
 
@@ -249,20 +273,13 @@ class SPSG_Schedule_Generator {
 			return;
 		}
 
-		// Get optional filters
-		$filters = array();
-
-		if ( ! empty( $_POST['division'] ) ) {
-			$filters['division'] = sanitize_text_field( wp_unslash( $_POST['division'] ) );
-		}
-
-		if ( ! empty( $_POST['date_from'] ) ) {
-			$filters['date_from'] = sanitize_text_field( wp_unslash( $_POST['date_from'] ) );
-		}
-
-		if ( ! empty( $_POST['date_to'] ) ) {
-			$filters['date_to'] = sanitize_text_field( wp_unslash( $_POST['date_to'] ) );
-		}
+		// Get optional filters.
+		//
+		// H22: the admin JS posts these nested under `filters[...]` while this
+		// handler only ever read top-level keys, so the export always contained
+		// every game even though the UI showed a filtered count. Accept both
+		// shapes, preferring the nested one.
+		$filters = $this->read_export_filters();
 
 		try {
 			// Load configuration for export context
@@ -308,6 +325,33 @@ class SPSG_Schedule_Generator {
 				)
 			);
 		}
+	}
+
+	/**
+	 * Read export filters from the current request.
+	 *
+	 * Accepts `filters[division]` (what the admin JS sends) as well as a
+	 * top-level `division` key, so both payload shapes filter identically.
+	 * Nonce and capability are verified by the calling handler.
+	 *
+	 * @return array Filters accepted by SPSG_Export_Manager::export().
+	 */
+	private function read_export_filters() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- caller runs check_ajax_referer() before this.
+		$nested = isset( $_POST['filters'] ) && is_array( $_POST['filters'] ) ? wp_unslash( $_POST['filters'] ) : array();
+
+		$filters = array();
+
+		foreach ( array( 'division', 'date_from', 'date_to' ) as $key ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing -- caller runs check_ajax_referer() before this.
+			$value = $nested[ $key ] ?? ( isset( $_POST[ $key ] ) ? wp_unslash( $_POST[ $key ] ) : '' );
+
+			if ( is_string( $value ) && '' !== $value ) {
+				$filters[ $key ] = sanitize_text_field( $value );
+			}
+		}
+
+		return $filters;
 	}
 
 	/**
@@ -363,7 +407,7 @@ class SPSG_Schedule_Generator {
 		check_ajax_referer( 'spsg_validate_config', 'spsg_nonce' );
 
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_send_json_error( __( self::INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator' ) );
+			wp_send_json_error( __( 'Insufficient permissions', 'sportspress-schedule-generator' ) );
 			return;
 		}
 
@@ -392,6 +436,10 @@ class SPSG_Schedule_Generator {
 				return;
 			}
 
+			// H18: capacity advisories no longer fail validation; carry them
+			// through so a tight-but-schedulable season still tells the admin.
+			$config_warnings = array_values( $config->get_validation_warnings() );
+
 			$feasibility = $this->constraint_manager->check_feasibility( $config );
 			if ( $feasibility !== true ) {
 				wp_send_json_success(
@@ -399,7 +447,7 @@ class SPSG_Schedule_Generator {
 						'message' => __( 'Configuration is valid but may not be feasible', 'sportspress-schedule-generator' ),
 						'is_valid' => true,
 						'is_feasible' => false,
-						'warnings' => is_array( $feasibility ) ? $feasibility : array( $feasibility ),
+						'warnings' => array_merge( $config_warnings, is_array( $feasibility ) ? $feasibility : array( $feasibility ) ),
 						'errors' => array(),
 					)
 				);
@@ -412,7 +460,7 @@ class SPSG_Schedule_Generator {
 					'is_valid' => true,
 					'is_feasible' => true,
 					'errors' => array(),
-					'warnings' => array(),
+					'warnings' => $config_warnings,
 				)
 			);
 
@@ -458,7 +506,7 @@ class SPSG_Schedule_Generator {
 		check_ajax_referer( 'spsg_import_to_sportspress', 'spsg_nonce' );
 
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_send_json_error( __( self::INSUFFICIENT_PERMISSIONS, 'sportspress-schedule-generator' ) );
+			wp_send_json_error( __( 'Insufficient permissions', 'sportspress-schedule-generator' ) );
 			return;
 		}
 
@@ -505,7 +553,11 @@ class SPSG_Schedule_Generator {
 		// Handle chunking
 		$total_games = count( $schedule );
 		$offset = isset( $_POST['offset'] ) ? absint( $_POST['offset'] ) : 0;
+		// LOW (2026-08): `limit=0` produced an empty chunk with a next_offset
+		// equal to the current one, so the JS import loop polled forever without
+		// ever advancing. Clamp to a sane range.
 		$limit = isset( $_POST['limit'] ) ? absint( $_POST['limit'] ) : 50; // Default chunk size
+		$limit = max( 1, min( 500, $limit ) );
 
 		// Slice schedule for this chunk
 		$chunk = array_slice( $schedule, $offset, $limit );

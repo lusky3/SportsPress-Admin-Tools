@@ -409,7 +409,7 @@ class SPSS_REST_API {
 	/**
 	 * GET a media URL, following at most one redirect by hand.
 	 *
-	 * wp_remote_get() runs with redirection => 0 so the credentials in $headers are
+	 * The wp_remote_get() call runs with redirection => 0 so credentials in $headers are
 	 * never replayed to whatever host a Location header names. Twilio answers its
 	 * media resource with a 302 to a pre-signed CDN URL (and Meta sometimes does the
 	 * same), so a single hop is followed explicitly: the target is re-validated

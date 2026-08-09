@@ -97,7 +97,7 @@ class SPSG_Admin_Renderer {
 				</td>
 			</tr>
 			<tr>
-				<th scope="row"><?php esc_html_e( SPSG_Admin::LABEL_GAMES_PER_TEAM, 'sportspress-schedule-generator' ); ?></th>
+				<th scope="row"><?php esc_html_e( 'Games Per Team', 'sportspress-schedule-generator' ); ?></th>
 				<td>
 					<input type="number" name="games_per_team" value="<?php echo esc_attr( $config->games_per_team ); ?>" min="1" max="50" required />
 					<p class="description"><?php esc_html_e( 'Total number of games each team should play during the season', 'sportspress-schedule-generator' ); ?></p>
@@ -175,7 +175,7 @@ class SPSG_Admin_Renderer {
 		</table>
 
 		<p class="submit">
-			<input type="submit" name="submit" class="button-primary" value="<?php esc_html_e( SPSG_Admin::LABEL_SAVE_CONFIGURATION, 'sportspress-schedule-generator' ); ?>" />
+			<input type="submit" name="submit" class="button-primary" value="<?php esc_html_e( 'Save Configuration', 'sportspress-schedule-generator' ); ?>" />
 		</p>
 		<?php
 	}
@@ -243,7 +243,7 @@ class SPSG_Admin_Renderer {
 								}
 								?>
 							</select>
-							<button type="button" class="button" id="spsg-import-league-btn"><?php esc_html_e( SPSG_Admin::LABEL_IMPORT_LEAGUE, 'sportspress-schedule-generator' ); ?></button>
+							<button type="button" class="button" id="spsg-import-league-btn"><?php esc_html_e( 'Import League Structure', 'sportspress-schedule-generator' ); ?></button>
 							<p class="description">
 								<?php esc_html_e( 'Import teams and divisions from a SportsPress league. This will create multiple division blocks with all teams from the league\'s child divisions.', 'sportspress-schedule-generator' ); ?>
 								<br>
@@ -336,7 +336,7 @@ class SPSG_Admin_Renderer {
 		</div>
 
 		<p class="submit">
-			<input type="submit" name="submit" class="button-primary" value="<?php esc_html_e( SPSG_Admin::LABEL_SAVE_CONFIGURATION, 'sportspress-schedule-generator' ); ?>" />
+			<input type="submit" name="submit" class="button-primary" value="<?php esc_html_e( 'Save Configuration', 'sportspress-schedule-generator' ); ?>" />
 		</p>
 		<?php
 	}
@@ -403,7 +403,7 @@ class SPSG_Admin_Renderer {
 		echo '<table class="widefat striped">';
 		echo '<thead><tr>';
 		echo '<th>' . esc_html__( 'Division Pair', 'sportspress-schedule-generator' ) . '</th>';
-		echo '<th>' . esc_html__( SPSG_Admin::LABEL_GAMES_PER_TEAM, 'sportspress-schedule-generator' ) . '</th>';
+		echo '<th>' . esc_html__( 'Games Per Team', 'sportspress-schedule-generator' ) . '</th>';
 		echo '</tr></thead>';
 		echo '<tbody>';
 
@@ -633,7 +633,7 @@ class SPSG_Admin_Renderer {
 		</div>
 
 		<p class="submit">
-			<input type="submit" name="submit" class="button-primary" value="<?php esc_html_e( SPSG_Admin::LABEL_SAVE_CONFIGURATION, 'sportspress-schedule-generator' ); ?>" />
+			<input type="submit" name="submit" class="button-primary" value="<?php esc_html_e( 'Save Configuration', 'sportspress-schedule-generator' ); ?>" />
 		</p>
 		<?php
 	}
@@ -834,7 +834,7 @@ class SPSG_Admin_Renderer {
 		</div>
 
 		<p class="submit">
-			<input type="submit" name="submit" class="button-primary" value="<?php esc_html_e( SPSG_Admin::LABEL_SAVE_CONFIGURATION, 'sportspress-schedule-generator' ); ?>" />
+			<input type="submit" name="submit" class="button-primary" value="<?php esc_html_e( 'Save Configuration', 'sportspress-schedule-generator' ); ?>" />
 		</p>
 		<?php
 	}
@@ -856,7 +856,7 @@ class SPSG_Admin_Renderer {
 					<td>
 						<div class="spsg-team-restriction-teams">
 							<?php if ( ! empty( $all_teams ) ) : ?>
-								<select name="team_restrictions[overlap_avoidance][<?php echo esc_attr( $index ); ?>][teams][]" multiple class="spsg-team-restriction-select" style="width: 100%; min-height: 120px;">
+								<select name="team_restrictions[overlap_avoid][<?php echo esc_attr( $index ); ?>][teams][]" multiple class="spsg-team-restriction-select" style="width: 100%; min-height: 120px;">
 									<?php foreach ( $all_teams as $team ) : ?>
 										<option value="<?php echo esc_attr( $team ); ?>" <?php selected( in_array( $team, $teams ) ); ?>>
 											<?php echo esc_html( $team ); ?>
@@ -874,7 +874,7 @@ class SPSG_Admin_Renderer {
 					<th scope="row"><?php esc_html_e( 'Buffer Time (minutes)', 'sportspress-schedule-generator' ); ?></th>
 					<td>
 						<input type="number"
-							   name="team_restrictions[overlap_avoidance][<?php echo esc_attr( $index ); ?>][buffer_minutes]"
+							   name="team_restrictions[overlap_avoid][<?php echo esc_attr( $index ); ?>][buffer_minutes]"
 							   value="<?php echo esc_attr( $buffer_minutes ); ?>"
 							   min="0" max="240" step="15"
 							   class="small-text" />
@@ -1334,7 +1334,7 @@ class SPSG_Admin_Renderer {
 					<span class="spsg-stat-value"><?php echo esc_html( $stats['total_games'] ?? count( $schedule ) ); ?></span>
 				</div>
 				<div class="spsg-stat">
-					<span class="spsg-stat-label"><?php esc_html_e( SPSG_Admin::LABEL_GAMES_PER_TEAM, 'sportspress-schedule-generator' ); ?></span>
+					<span class="spsg-stat-label"><?php esc_html_e( 'Games Per Team', 'sportspress-schedule-generator' ); ?></span>
 					<span class="spsg-stat-value">
 						<?php
 						if ( isset( $stats['games_per_team'] ) ) {

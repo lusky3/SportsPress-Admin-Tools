@@ -26,6 +26,23 @@ class SPSG_Configuration_Validator {
 	private $config;
 
 	/**
+	 * Longest permitted season span, in days (~4 years). Guards every
+	 * date-walking routine in the plugin against an absurd season_end.
+	 */
+	const MAX_SEASON_DAYS = 1500;
+
+	/**
+	 * Non-blocking advisories collected during the last validate() run.
+	 *
+	 * H18: the capacity check used to return its "tight capacity" tier as a
+	 * WP_Error, which the generate path treats as a hard failure. Advisories now
+	 * live here so callers can surface them without blocking generation.
+	 *
+	 * @var array
+	 */
+	private $warnings = array();
+
+	/**
 	 * Constructor
 	 *
 	 * @param SPSG_Schedule_Configuration $config Configuration to validate
@@ -35,12 +52,22 @@ class SPSG_Configuration_Validator {
 	}
 
 	/**
+	 * Non-blocking warnings raised by the last validate() call.
+	 *
+	 * @return array List of warning strings.
+	 */
+	public function get_warnings() {
+		return $this->warnings;
+	}
+
+	/**
 	 * Run all validation checks
 	 *
 	 * @return bool|WP_Error True if valid, WP_Error with details if invalid
 	 */
 	public function validate() {
-		$errors = array();
+		$errors         = array();
+		$this->warnings = array();
 
 		$this->validate_dates( $errors );
 		$this->validate_blackout_dates_range( $errors );
@@ -77,6 +104,24 @@ class SPSG_Configuration_Validator {
 				$this->config->season_end->format( 'Y-m-d' ),
 				$this->config->season_start->format( 'Y-m-d' )
 			);
+			return;
+		}
+
+		// LOW (2026-08): draft saves happily accepted `season_end: 9999-12-31`,
+		// and every date-walking routine (slot generation, capacity counting,
+		// feasibility) then iterates ~2.9 million days — an admin-triggered DoS.
+		// Cap the span at something no real season approaches.
+		if ( $this->config->season_start && $this->config->season_end ) {
+			$span_days = (int) $this->config->season_start->diff( $this->config->season_end )->days;
+
+			if ( $span_days > self::MAX_SEASON_DAYS ) {
+				$errors['season_length'] = sprintf(
+					/* translators: 1: season length in days, 2: maximum allowed days */
+					__( 'Season spans %1$d days, which exceeds the %2$d-day maximum. Please shorten the season.', 'sportspress-schedule-generator' ),
+					$span_days,
+					self::MAX_SEASON_DAYS
+				);
+			}
 		}
 	}
 
@@ -313,6 +358,15 @@ class SPSG_Configuration_Validator {
 
 	/**
 	 * Validate resource capacity (time slots vs games needed)
+	 *
+	 * H18: the old estimate was `weekly_slots × weeks − blackout_slots`, where
+	 * `weekly_slots` counted the global time-slot list exactly once regardless of
+	 * how many venues exist — while the slot allocator emits one slot per
+	 * (venue, date, time). A three-venue league therefore looked ~3× smaller than
+	 * it is and was rejected well below real capacity. Delegating to
+	 * SPSG_Schedule_Helper::count_available_slots() reuses the allocator's own
+	 * cascade (venue_date_availability → venue_timeslots → time_slots) including
+	 * global and per-venue blackouts, so validation and allocation agree.
 	 */
 	private function validate_resource_capacity() {
 		$total_teams = $this->count_total_teams();
@@ -322,18 +376,22 @@ class SPSG_Configuration_Validator {
 		}
 
 		$total_games_needed = ( $total_teams * $this->config->games_per_team ) / 2;
-		$slots_per_week = $this->count_weekly_slots();
 
-		if ( $slots_per_week === 0 ) {
+		if ( $this->count_weekly_slots() === 0 ) {
 			return new WP_Error(
 				'insufficient_timeslots',
 				__( 'No time slots configured for the selected playing days. Please add time slots.', 'sportspress-schedule-generator' )
 			);
 		}
 
-		$season_weeks = ceil( $this->config->season_start->diff( $this->config->season_end )->days / 7 );
-		$blackout_slots_lost = $this->count_blackout_slots_lost();
-		$total_slots_available = ( $slots_per_week * $season_weeks ) - $blackout_slots_lost;
+		$total_slots_available = SPSG_Schedule_Helper::count_available_slots( $this->config );
+
+		if ( $total_slots_available <= 0 ) {
+			return new WP_Error(
+				'insufficient_timeslots',
+				__( 'No time slots configured for the selected playing days. Please add time slots.', 'sportspress-schedule-generator' )
+			);
+		}
 
 		return $this->check_capacity_thresholds( $total_games_needed, $total_slots_available );
 	}
@@ -363,26 +421,12 @@ class SPSG_Configuration_Validator {
 	}
 
 	/**
-	 * Count slots lost due to blackout dates
-	 */
-	private function count_blackout_slots_lost() {
-		$lost = 0;
-		foreach ( $this->config->blackout_dates as $blackout ) {
-			try {
-				$blackout_date = new DateTime( $blackout );
-				$day_name = strtolower( $blackout_date->format( 'l' ) );
-				if ( in_array( $day_name, $this->config->playing_days ) && isset( $this->config->time_slots[ $day_name ] ) ) {
-					$lost += count( $this->config->time_slots[ $day_name ] );
-				}
-			} catch ( Exception $e ) {
-				// Skip invalid dates
-			}
-		}
-		return $lost;
-	}
-
-	/**
 	 * Check capacity thresholds and return appropriate error/success
+	 *
+	 * H18: only a genuine shortfall blocks. The "tight capacity" tier is advisory
+	 * — it was previously returned as a WP_Error, which the generate path treats
+	 * as a hard validation failure, so a perfectly schedulable season was refused
+	 * with a warning-worded message.
 	 */
 	private function check_capacity_thresholds( $total_games_needed, $total_slots_available ) {
 		$effective_capacity = $total_slots_available * 0.8;
@@ -400,13 +444,10 @@ class SPSG_Configuration_Validator {
 		}
 
 		if ( $total_games_needed > ( $total_slots_available * 0.7 ) ) {
-			return new WP_Error(
-				'tight_capacity',
-				sprintf(
-					__( 'Warning: Schedule capacity is tight. Need %1$d games with only %2$d slots available. Consider adding more time slots or extending the season for better scheduling flexibility.', 'sportspress-schedule-generator' ),
-					$total_games_needed,
-					$total_slots_available
-				)
+			$this->warnings['tight_capacity'] = sprintf(
+				__( 'Warning: Schedule capacity is tight. Need %1$d games with only %2$d slots available. Consider adding more time slots or extending the season for better scheduling flexibility.', 'sportspress-schedule-generator' ),
+				$total_games_needed,
+				$total_slots_available
 			);
 		}
 

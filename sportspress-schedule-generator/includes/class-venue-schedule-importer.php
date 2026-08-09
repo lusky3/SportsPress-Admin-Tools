@@ -280,4 +280,41 @@ class SPSG_Venue_Schedule_Importer {
 
 		return $availability;
 	}
+
+	/**
+	 * Merge newly imported availability ranges into an existing list, replacing
+	 * any range that covers the same week rather than appending a duplicate.
+	 *
+	 * M47: both the REST and AJAX venue-CSV apply paths used a bare
+	 * `array_merge()`, so re-uploading a corrected CSV (the normal way to fix a
+	 * typo) doubled every range. Duplicated ranges never change which slots
+	 * resolve at run time — SPSG_Schedule_Helper::resolve_venue_slots() returns
+	 * the first matching range — but they do inflate SPSG capacity math and make
+	 * the stored configuration grow without bound.
+	 *
+	 * Ranges are keyed on the (start_date, end_date) tuple; a re-import of the
+	 * same week wins so a corrected CSV actually takes effect.
+	 *
+	 * @param array $existing Existing ranges for a venue.
+	 * @param array $incoming Newly converted ranges for the same venue.
+	 * @return array Merged, de-duplicated range list.
+	 */
+	public static function merge_availability_ranges( $existing, $incoming ) {
+		$by_range = array();
+
+		foreach ( array( (array) $existing, (array) $incoming ) as $set ) {
+			foreach ( $set as $range ) {
+				if ( ! is_array( $range ) ) {
+					continue;
+				}
+
+				$key = ( $range['start_date'] ?? '' ) . '|' . ( $range['end_date'] ?? '' );
+
+				// Later sets (the incoming import) overwrite earlier ones.
+				$by_range[ $key ] = $range;
+			}
+		}
+
+		return array_values( $by_range );
+	}
 }

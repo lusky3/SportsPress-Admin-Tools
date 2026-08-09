@@ -210,13 +210,13 @@ class SPEM_League_Table_Generator {
 				echo '<div class="notice notice-info"><p>' . sprintf(
 					/* translators: %s: table title link */
 					esc_html__( 'A league table already exists for that league and season: %s. No new table was created.', 'sportspress-events-manager' ),
-					$link_html
+					wp_kses_post( $link_html )
 				) . '</p></div>';
 			} else {
 				echo '<div class="notice notice-success"><p>' . sprintf(
 					/* translators: 1: table title link, 2: team count */
 					esc_html__( 'Created league table %1$s with %2$d teams.', 'sportspress-events-manager' ),
-					$link_html,
+					wp_kses_post( $link_html ),
 					(int) $result['teams']
 				) . '</p></div>';
 			}

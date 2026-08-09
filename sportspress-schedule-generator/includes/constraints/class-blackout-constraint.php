@@ -65,14 +65,23 @@ class SPSG_Blackout_Constraint extends SPSG_Abstract_Constraint {
 
 	/**
 	 * Track missed game for makeup scheduling
+	 *
+	 * M50 (2026-08 audit): this branch is currently UNREACHABLE from the live
+	 * generation path. SPSG_Slot_Allocator::generate_available_slots() filters
+	 * blackout dates out before any slot is proposed, so validate() never sees a
+	 * game on a blackout date and $makeup_games is always empty — which is why
+	 * stats['makeup_games'] is always 0. The machinery is retained (it is
+	 * correct, covered by tests/test-constraints.php and callable directly) but
+	 * wiring it to real unplaceable demand is an engine redesign, not a bug fix;
+	 * see the audit report. Do not assume makeup games are being produced.
 	 */
 	private function track_missed_game( $game, $blackout_date ) {
 		$day_name = strtolower( $blackout_date->format( 'l' ) );
 
 		$makeup_key = sprintf(
 			'%s_%s_%s',
-			$game->home_team->id,
-			$game->away_team->id,
+			SPSG_Schedule_Helper::extract_id( $game->home_team ),
+			SPSG_Schedule_Helper::extract_id( $game->away_team ),
 			$blackout_date->format( 'Y-m-d' )
 		);
 
@@ -89,8 +98,8 @@ class SPSG_Blackout_Constraint extends SPSG_Abstract_Constraint {
 		$this->log(
 			sprintf(
 				'Tracked makeup game for %s vs %s on %s',
-				$game->home_team->name,
-				$game->away_team->name,
+				SPSG_Schedule_Helper::extract_id( $game->home_team ),
+				SPSG_Schedule_Helper::extract_id( $game->away_team ),
 				$blackout_date->format( 'Y-m-d' )
 			)
 		);

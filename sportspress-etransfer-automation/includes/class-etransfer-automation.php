@@ -476,7 +476,7 @@ class SPET_ETransfer_Automation {
 	 * admin path takes the same lock so an admin and a webhook can't collide
 	 * either.
 	 *
-	 * @param int $order_id
+	 * @param int $order_id WooCommerce order ID.
 	 * @return string
 	 */
 	public static function order_lock_key( $order_id ) {
@@ -487,7 +487,7 @@ class SPET_ETransfer_Automation {
 	 * Acquire the per-order completion lock. Returns the SPAT_Lock handle, true
 	 * (object-cache fallback), or false when another request holds it.
 	 *
-	 * @param int $order_id
+	 * @param int $order_id WooCommerce order ID.
 	 * @return string|bool
 	 */
 	public static function acquire_order_lock( $order_id ) {
@@ -502,7 +502,7 @@ class SPET_ETransfer_Automation {
 	 * Release the per-order completion lock, owner-checked when a SPAT_Lock
 	 * handle is available.
 	 *
-	 * @param int         $order_id
+	 * @param int         $order_id WooCommerce order ID.
 	 * @param string|bool $handle Value returned by acquire_order_lock().
 	 */
 	public static function release_order_lock( $order_id, $handle ) {
@@ -1169,8 +1169,8 @@ class SPET_ETransfer_Automation {
 	 * $failure_reason so the caller can route the payment to manual review
 	 * instead of silently swallowing a real transfer.
 	 *
-	 * @param int    $order_id
-	 * @param array  $payment_data
+	 * @param int    $order_id     WooCommerce order ID.
+	 * @param array  $payment_data Extracted e-Transfer payment fields.
 	 * @param string $failure_reason Out-param: SPET_Database::RESULT_* constant.
 	 * @return bool
 	 */

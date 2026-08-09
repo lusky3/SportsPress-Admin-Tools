@@ -32,14 +32,17 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 		// This is a soft constraint, so we calculate violation cost instead of hard blocking
 		$cost = $this->get_violation_cost( $game, $schedule, $config );
 
-		// Allow the game but with cost penalty
+		// Allow the game but with cost penalty. Teams may arrive as arrays or
+		// objects depending on how the configuration was authored, so resolve
+		// the display names defensively rather than assuming object property
+		// access (which emits a warning on every scored game for array teams).
 		if ( $cost > 0 ) {
 			$this->log(
 				sprintf(
 					'Distribution violation cost: %.2f for game %s vs %s on %s %s',
 					$cost,
-					$game->home_team->name,
-					$game->away_team->name,
+					$this->get_team_label( $game->home_team ),
+					$this->get_team_label( $game->away_team ),
 					$game->date,
 					$game->time_slot
 				)
@@ -47,6 +50,25 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 		}
 
 		return true; // Soft constraint always allows, but with cost
+	}
+
+	/**
+	 * Resolve a human-readable label for a team given as array, object or string.
+	 *
+	 * @param mixed $team Team entity.
+	 * @return string Team name (falls back to the ID, then an empty string).
+	 */
+	private function get_team_label( $team ) {
+		if ( is_string( $team ) ) {
+			return $team;
+		}
+		if ( is_object( $team ) ) {
+			return (string) ( $team->name ?? $team->id ?? '' );
+		}
+		if ( is_array( $team ) ) {
+			return (string) ( $team['name'] ?? $team['id'] ?? '' );
+		}
+		return '';
 	}
 
 	/**

@@ -26,6 +26,22 @@ class SPSG_Division_Grouping_Constraint extends SPSG_Abstract_Constraint {
 	}
 
 	/**
+	 * Resolve an entity ID from an object, array or string.
+	 *
+	 * Divisions and venues reach the constraints as objects for intra-division
+	 * matchups but as plain arrays for inter-division ones (and venues are
+	 * always the raw config arrays), so direct `->id` access both warns and
+	 * silently resolves to null. Delegating keeps every comparison consistent
+	 * with the slot allocator's own ID extraction.
+	 *
+	 * @param mixed $entity Division or venue entity.
+	 * @return string Resolved ID.
+	 */
+	private static function entity_id( $entity ) {
+		return SPSG_Schedule_Helper::extract_id( $entity );
+	}
+
+	/**
 	 * Validate division grouping (always allows, but calculates cost)
 	 */
 	public function validate( $game, $schedule, $config ) {
@@ -54,8 +70,8 @@ class SPSG_Division_Grouping_Constraint extends SPSG_Abstract_Constraint {
 	private function calculate_grouping_cost( $game, $schedule, $config ) {
 		$game_date = $game->date;
 		$game_time_slot = $game->time_slot;
-		$game_division = $game->division->id;
-		$game_venue = is_array( $game->venue ) ? $game->venue['id'] : $game->venue->id;
+		$game_division = self::entity_id( $game->division );
+		$game_venue = self::entity_id( $game->venue );
 
 		// Get all games on the same date and venue
 		$same_date_venue_games = $this->get_games_by_date_and_venue( $game_date, $game_venue, $schedule );
@@ -78,7 +94,7 @@ class SPSG_Division_Grouping_Constraint extends SPSG_Abstract_Constraint {
 	 */
 	private function calculate_venue_efficiency_cost( $game, $schedule, $config ) {
 		$game_date = $game->date;
-		$game_venue = is_array( $game->venue ) ? $game->venue['id'] : $game->venue->id;
+		$game_venue = self::entity_id( $game->venue );
 
 		// Get venue utilization for the date
 		$venue_games = $this->get_games_by_date_and_venue( $game_date, $game_venue, $schedule );
@@ -115,7 +131,7 @@ class SPSG_Division_Grouping_Constraint extends SPSG_Abstract_Constraint {
 
 		foreach ( $existing_games as $existing_game ) {
 			if ( in_array( $existing_game->time_slot, $adjacent_slots ) &&
-			$existing_game->division->id === $division_id ) {
+			self::entity_id( $existing_game->division ) === $division_id ) {
 				$benefit += 50.0; // High benefit for adjacent same-division games
 			}
 		}
@@ -140,7 +156,7 @@ class SPSG_Division_Grouping_Constraint extends SPSG_Abstract_Constraint {
 		$games = array();
 
 		foreach ( $schedule as $game ) {
-			if ( $game->date === $date && $game->venue->id === $venue_id ) {
+			if ( $game->date === $date && self::entity_id( $game->venue ) === $venue_id ) {
 				$games[] = $game;
 			}
 		}
@@ -197,7 +213,7 @@ class SPSG_Division_Grouping_Constraint extends SPSG_Abstract_Constraint {
 		$count = 0;
 
 		foreach ( $games as $game ) {
-			if ( $game->division->id === $division_id ) {
+			if ( self::entity_id( $game->division ) === $division_id ) {
 				$count++;
 			}
 		}
@@ -228,8 +244,9 @@ class SPSG_Division_Grouping_Constraint extends SPSG_Abstract_Constraint {
 			);
 
 			foreach ( $adjacent_games as $adjacent_game ) {
-				if ( $adjacent_game->division->id !== $division_id &&
-				$this->breaks_consecutive_sequence( $adjacent_game->division->id, $time_slot, $existing_games, $time_slots ) ) {
+				$adjacent_division_id = self::entity_id( $adjacent_game->division );
+				if ( $adjacent_division_id !== $division_id &&
+				$this->breaks_consecutive_sequence( $adjacent_division_id, $time_slot, $existing_games, $time_slots ) ) {
 					$penalty += 30.0;
 				}
 			}
@@ -248,7 +265,7 @@ class SPSG_Division_Grouping_Constraint extends SPSG_Abstract_Constraint {
 		$other_division_games = array_filter(
 			$existing_games,
 			function ( $game ) use ( $other_division_id ) {
-				return $game->division->id === $other_division_id;
+				return self::entity_id( $game->division ) === $other_division_id;
 			}
 		);
 
@@ -305,7 +322,7 @@ class SPSG_Division_Grouping_Constraint extends SPSG_Abstract_Constraint {
 		// Group games by date and venue
 		$grouped_games = array();
 		foreach ( $schedule as $game ) {
-			$key = $game->date . '_' . $game->venue->id;
+			$key = $game->date . '_' . self::entity_id( $game->venue );
 			if ( ! isset( $grouped_games[ $key ] ) ) {
 				$grouped_games[ $key ] = array();
 			}
@@ -359,7 +376,7 @@ class SPSG_Division_Grouping_Constraint extends SPSG_Abstract_Constraint {
 		$group_length = 0;
 
 		foreach ( $games as $game ) {
-			$division_id = $game->division->id;
+			$division_id = self::entity_id( $game->division );
 			$divisions[ $division_id ] = isset( $divisions[ $division_id ] ) ? $divisions[ $division_id ] + 1 : 1;
 
 			if ( $current_division === $division_id ) {

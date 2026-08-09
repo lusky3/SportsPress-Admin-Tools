@@ -90,7 +90,7 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint {
 					'back_to_back_violation',
 					sprintf(
 						__( 'Teams cannot play in consecutive time slots: %s', 'sportspress-schedule-generator' ),
-						implode( ', ', $this->get_team_names( $restricted_teams ) )
+						implode( ', ', $this->get_team_names( $restricted_teams, $config ) )
 					)
 				);
 			}
@@ -148,7 +148,7 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint {
 						sprintf(
 							__( 'Teams require %1$d minute buffer between games: %2$s (conflicting game at %3$s)', 'sportspress-schedule-generator' ),
 							$buffer_minutes,
-							implode( ', ', $this->get_team_names( $restricted_teams ) ),
+							implode( ', ', $this->get_team_names( $restricted_teams, $config ) ),
 							$violation['time_slot']
 						)
 					);
@@ -157,7 +157,7 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint {
 						'overlap_violation',
 						sprintf(
 							__( 'Teams cannot play simultaneously: %s', 'sportspress-schedule-generator' ),
-							implode( ', ', $this->get_team_names( $restricted_teams ) )
+							implode( ', ', $this->get_team_names( $restricted_teams, $config ) )
 						)
 					);
 				}
@@ -192,43 +192,49 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint {
 	 */
 	private function find_consecutive_time_slot_violations( $game, $schedule, $restricted_teams, $config ) {
 		$violations = array();
-		$game_date = $game->date;
-		$game_time_slot = $game->time_slot;
+		$game_date  = $game->date;
 
-		// Get time slots for the game day. Use cascade-aware resolution so the
-		// adjacency check honors per-venue / per-date overrides.
-		$game_day = strtolower( ( new DateTime( $game_date ) )->format( 'l' ) );
-		$venue_id = isset( $game->venue_id ) ? $game->venue_id : ( isset( $game->venue ) ? SPSG_Schedule_Helper::extract_id( $game->venue ) : 0 );
-		$day_time_slots = SPSG_Schedule_Helper::resolve_venue_slots( $venue_id, $game_date, $game_day, $config );
-		if ( empty( $day_time_slots ) ) {
+		// M52: adjacency used to be positional — the game's index inside *its own
+		// venue's* slot grid ±1, compared byte-for-byte against other games'
+		// time_slot strings. With per-venue grids ("19:00,20:15,21:30" at one
+		// venue, "19:30,20:30" at another) the index of a slot means nothing
+		// across venues, so the restriction either silently never fired or fired
+		// against games that were nowhere near each other. Adjacency is now
+		// defined in minutes: two games are back-to-back when the gap between the
+		// end of one and the start of the other is smaller than one match length.
+		$game_start = $this->slot_to_minutes( $game->time_slot );
+		if ( null === $game_start ) {
 			return $violations;
 		}
 
-		$current_slot_index = array_search( $game_time_slot, $day_time_slots );
-
-		if ( $current_slot_index === false ) {
-			return $violations;
+		$match_length = isset( $config->match_length ) ? (int) $config->match_length : 60;
+		if ( $match_length <= 0 ) {
+			$match_length = 60;
 		}
 
-		// Check previous and next time slots
-		$adjacent_slots = array();
-		if ( $current_slot_index > 0 ) {
-			$adjacent_slots[] = $day_time_slots[ $current_slot_index - 1 ];
-		}
-		if ( $current_slot_index < count( $day_time_slots ) - 1 ) {
-			$adjacent_slots[] = $day_time_slots[ $current_slot_index + 1 ];
-		}
+		$game_end = $game_start + $match_length;
 
 		// $schedule is already pre-filtered to same-day games by the constraint
-		// manager, so iterating it once with a cheap adjacency check + team-id
-		// intersection is O(games_on_day) instead of O(total_schedule).
-		$adjacent_set = array_flip( $adjacent_slots );
+		// manager, so this stays O(games_on_day).
 		foreach ( $schedule as $existing_game ) {
 			if ( $existing_game->date !== $game_date ) {
 				continue;
 			}
-			if ( ! isset( $adjacent_set[ $existing_game->time_slot ] ) ) {
+
+			$existing_start = $this->slot_to_minutes( $existing_game->time_slot );
+			if ( null === $existing_start ) {
 				continue;
+			}
+
+			$existing_end = $existing_start + $match_length;
+
+			// Gap between the two games (0 when they abut or overlap).
+			$gap = ( $existing_start >= $game_end )
+				? $existing_start - $game_end
+				: ( ( $game_start >= $existing_end ) ? $game_start - $existing_end : 0 );
+
+			if ( $gap >= $match_length ) {
+				continue; // Far enough apart to not be "consecutive".
 			}
 
 			$existing_teams = array( $this->get_team_id( $existing_game->home_team ), $this->get_team_id( $existing_game->away_team ) );
@@ -244,6 +250,28 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint {
 		}
 
 		return $violations;
+	}
+
+	/**
+	 * Convert a slot value to minutes since midnight.
+	 *
+	 * Accepts "HH:MM" strings as well as numeric minute offsets.
+	 *
+	 * @param mixed $slot Slot value.
+	 * @return int|null Minutes since midnight, or null when unparseable.
+	 */
+	private function slot_to_minutes( $slot ) {
+		if ( is_numeric( $slot ) ) {
+			return (int) $slot;
+		}
+
+		if ( ! is_string( $slot ) || false === strpos( $slot, ':' ) ) {
+			return null;
+		}
+
+		$parts = explode( ':', $slot );
+
+		return ( (int) $parts[0] ) * 60 + ( (int) ( $parts[1] ?? 0 ) );
 	}
 
 
@@ -474,11 +502,46 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint {
 	}
 
 	/**
-	 * Get team names from IDs
+	 * Resolve team IDs to display names using the configuration's divisions.
+	 *
+	 * LOW (2026-08): this returned the raw IDs, so admin-facing violation
+	 * messages read like "Teams cannot play simultaneously: 4812, 4907" instead
+	 * of naming the teams. IDs that cannot be resolved are passed through so a
+	 * message is never empty.
+	 *
+	 * @param array       $team_ids Team identifiers.
+	 * @param object|null $config   Configuration whose divisions carry the names.
+	 * @return array Display names.
 	 */
-	private function get_team_names( $team_ids ) {
-		// This would typically fetch from database or config
-		// For now, return IDs as placeholder
-		return $team_ids;
+	private function get_team_names( $team_ids, $config = null ) {
+		if ( ! $config || empty( $config->divisions ) ) {
+			return $team_ids;
+		}
+
+		$names = array();
+		foreach ( $config->divisions as $division ) {
+			$teams = is_object( $division ) ? ( $division->teams ?? array() ) : ( $division['teams'] ?? array() );
+
+			foreach ( (array) $teams as $team ) {
+				if ( is_string( $team ) ) {
+					$names[ $team ] = $team;
+					continue;
+				}
+				if ( is_object( $team ) ) {
+					$names[ (string) ( $team->id ?? '' ) ] = (string) ( $team->name ?? $team->id ?? '' );
+					continue;
+				}
+				if ( is_array( $team ) ) {
+					$names[ (string) ( $team['id'] ?? '' ) ] = (string) ( $team['name'] ?? $team['id'] ?? '' );
+				}
+			}
+		}
+
+		return array_map(
+			function ( $id ) use ( $names ) {
+				return $names[ (string) $id ] ?? $id;
+			},
+			$team_ids
+		);
 	}
 }

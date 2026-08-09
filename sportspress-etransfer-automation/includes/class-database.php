@@ -172,7 +172,7 @@ class SPET_Database {
 	 * Fetch unmatched webhook logs: no order_id, not hidden, and a result that
 	 * needs a human (see review_result_patterns()).
 	 *
-	 * webhook_data is selected as well so the review UI can render the raw
+	 * The webhook_data column is selected as well so the review UI can render the raw
 	 * extracted email for rows the parser could not understand — without it an
 	 * 'extraction_failed' row shows as a blank line with nothing to act on (H3).
 	 */

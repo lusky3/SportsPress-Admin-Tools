@@ -424,6 +424,16 @@ class SPSG_Sports_Press_Integration {
 			self::$cache['events_by_game_id'] = array();
 		}
 
+		// LOW (2026-08): only positive hits were cached, so on a fresh import —
+		// the common case, where nothing matches — every game fell through to a
+		// per-game WP_Query. Seed the whole requested set as misses first, then
+		// overwrite the ones that actually exist.
+		foreach ( $game_ids as $game_id ) {
+			if ( ! array_key_exists( $game_id, self::$cache['events_by_game_id'] ) ) {
+				self::$cache['events_by_game_id'][ $game_id ] = null;
+			}
+		}
+
 		foreach ( $results as $row ) {
 			// Map game_id -> event_id
 			self::$cache['events_by_game_id'][ $row->meta_value ] = $row->post_id;
@@ -438,8 +448,11 @@ class SPSG_Sports_Press_Integration {
 			return null;
 		}
 
-		// Check cache first
-		if ( isset( self::$cache['events_by_game_id'] ) && isset( self::$cache['events_by_game_id'][ $game->id ] ) ) {
+		// Check cache first. array_key_exists (not isset) so a cached negative
+		// lookup — stored as null by preload_events_by_game_ids() — short-circuits
+		// instead of falling through to a per-game query.
+		if ( isset( self::$cache['events_by_game_id'] )
+			&& array_key_exists( $game->id, self::$cache['events_by_game_id'] ) ) {
 			return self::$cache['events_by_game_id'][ $game->id ];
 		}
 

@@ -1085,16 +1085,16 @@ endif;
 							$matched_player   = isset( $overrides[ $global_idx ]['player'] ) ? (int) $overrides[ $global_idx ]['player'] : (int) ( $match['player'] ?? 0 );
 							?>
 
-						<?php
-						// M35: a row whose auto-match was rejected as too distant gets
-						// the explicit no-match option pre-selected and the same warning
-						// highlight ambiguity uses, so the admin has to make a decision
-						// instead of the row quietly importing against a wrong name.
-						$no_match_style   = 'background-color: #fff3cd; border-left: 3px solid #ff9800;';
-						$team_highlight   = ( $team_ambiguous || ! $matched_team ) ? $no_match_style : '';
-						$player_highlight = ( $player_ambiguous || ! $matched_player ) ? $no_match_style : '';
-						$no_match_label   = __( '— No match: skip this row —', 'sportspress-player-tools' );
-						?>
+							<?php
+							// M35: a row whose auto-match was rejected as too distant gets
+							// the explicit no-match option pre-selected and the same warning
+							// highlight ambiguity uses, so the admin has to make a decision
+							// instead of the row quietly importing against a wrong name.
+							$no_match_style   = 'background-color: #fff3cd; border-left: 3px solid #ff9800;';
+							$team_highlight   = ( $team_ambiguous || ! $matched_team ) ? $no_match_style : '';
+							$player_highlight = ( $player_ambiguous || ! $matched_player ) ? $no_match_style : '';
+							$no_match_label   = __( '— No match: skip this row —', 'sportspress-player-tools' );
+							?>
 						<tr>
 							<td><?php echo esc_html( $row['team'] ); ?></td>
 							<td style="<?php echo esc_attr( $team_highlight ); ?>">
@@ -1282,9 +1282,9 @@ endif;
 	/**
 	 * M35: maximum levenshtein distance still considered a match.
 	 *
-	 * find_closest() returns the nearest title no matter how far away it is, so a
-	 * CSV row for somebody who simply is not in the system used to be silently
-	 * attached to the alphabetically nearest wrong player. Scale the ceiling with
+	 * Because find_closest() returns the nearest title no matter how far away it
+	 * is, a CSV row for somebody who simply is not in the system used to be
+	 * silently attached to the alphabetically nearest wrong player. Scale the ceiling with
 	 * the length of the searched name (a 4-char name tolerates far less drift than
 	 * a 25-char one) with a floor of 3 to keep ordinary typos matching.
 	 *

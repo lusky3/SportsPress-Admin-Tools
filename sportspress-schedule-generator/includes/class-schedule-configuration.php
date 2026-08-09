@@ -161,6 +161,13 @@ class SPSG_Schedule_Configuration {
 	public $generic_teams;
 
 	/**
+	 * Non-blocking warnings from the most recent validate() call (H18).
+	 *
+	 * @var array
+	 */
+	private $validation_warnings = array();
+
+	/**
 	 * Constructor
 	 */
 	public function __construct( $data = array() ) {
@@ -219,6 +226,47 @@ class SPSG_Schedule_Configuration {
 		foreach ( $array_fields as $field ) {
 			$this->$field = isset( $data[ $field ] ) ? (array) $data[ $field ] : array();
 		}
+
+		// H17: normalize legacy `*_avoidance` restriction keys on every load, not
+		// just on import. Configurations stored before the rename kept rendering
+		// their overlap / back-to-back groups in the admin UI (which reads both
+		// spellings) while SPSG_Team_Restriction_Constraint only ever looks at the
+		// canonical `*_avoid` keys — so shared-player protection was silently off.
+		$this->team_restrictions = self::normalize_team_restrictions( $this->team_restrictions );
+	}
+
+	/**
+	 * Rename legacy team-restriction keys to their canonical spellings.
+	 *
+	 * `back_to_back_avoidance` → `back_to_back_avoid`
+	 * `overlap_avoidance`      → `overlap_avoid`
+	 *
+	 * Canonical keys already present win; the legacy key is always removed so no
+	 * consumer can read a stale copy.
+	 *
+	 * @param array $team_restrictions Raw team restrictions.
+	 * @return array Normalized team restrictions.
+	 */
+	public static function normalize_team_restrictions( $team_restrictions ) {
+		if ( ! is_array( $team_restrictions ) ) {
+			return array();
+		}
+
+		$legacy_map = array(
+			'back_to_back_avoidance' => 'back_to_back_avoid',
+			'overlap_avoidance'      => 'overlap_avoid',
+		);
+
+		foreach ( $legacy_map as $legacy_key => $canonical_key ) {
+			if ( isset( $team_restrictions[ $legacy_key ] ) ) {
+				if ( ! isset( $team_restrictions[ $canonical_key ] ) ) {
+					$team_restrictions[ $canonical_key ] = $team_restrictions[ $legacy_key ];
+				}
+				unset( $team_restrictions[ $legacy_key ] );
+			}
+		}
+
+		return $team_restrictions;
 	}
 
 	/**
@@ -258,7 +306,23 @@ class SPSG_Schedule_Configuration {
 	 */
 	public function validate() {
 		$validator = new SPSG_Configuration_Validator( $this );
-		return $validator->validate();
+		$result    = $validator->validate();
+
+		// H18: capacity advisories are non-blocking. Keep them retrievable via
+		// get_validation_warnings() so the admin UI can show them without the
+		// validator having to fail the whole configuration.
+		$this->validation_warnings = $validator->get_warnings();
+
+		return $result;
+	}
+
+	/**
+	 * Non-blocking warnings raised by the last validate() call.
+	 *
+	 * @return array List of warning strings.
+	 */
+	public function get_validation_warnings() {
+		return $this->validation_warnings;
 	}
 
 	/**
