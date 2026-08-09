@@ -427,13 +427,27 @@ class SPT_Email_Sync {
 		}
 		check_admin_referer( 'spt_apply_email_sync', 'spt_sync_nonce' );
 
-		$player_ids = array_map( 'absint', $_POST['players'] ?? array() );
-		$emails     = array_map( 'sanitize_email', (array) ( $_POST['email'] ?? array() ) );
+		// LOW (player-tools): $_POST was read without wp_unslash(), so WordPress's
+		// added slashes survived into sanitize_email() — an address containing a
+		// quote arrived escaped and failed is_email(). Unslash before sanitizing.
+		$raw_players = isset( $_POST['players'] ) ? (array) wp_unslash( $_POST['players'] ) : array();
+		$raw_emails  = isset( $_POST['email'] ) ? (array) wp_unslash( $_POST['email'] ) : array();
+
+		$player_ids = array_map( 'absint', $raw_players );
+		$emails     = array_map( 'sanitize_email', $raw_emails );
 		$updated    = 0;
 		$skipped    = 0;
 
 		foreach ( $player_ids as $pid ) {
 			if ( ! isset( $emails[ $pid ] ) ) {
+				++$skipped;
+				continue;
+			}
+			// LOW (player-tools): the POSTed IDs were trusted as-is, so a crafted
+			// (or simply stale) submission could stamp spt_email onto ANY post — a
+			// page, an order, another plugin's CPT. This tool only ever operates on
+			// players, so require the post type before writing.
+			if ( 'sp_player' !== get_post_type( $pid ) ) {
 				++$skipped;
 				continue;
 			}

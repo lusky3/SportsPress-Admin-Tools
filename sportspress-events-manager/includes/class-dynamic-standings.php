@@ -14,6 +14,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPEM_Dynamic_Standings {
 
+	/**
+	 * Lifetime, in seconds, of a rendered standings block in the transient
+	 * cache (5 minutes). A literal rather than MINUTE_IN_SECONDS: class
+	 * constants are resolved when the class is declared, which would make
+	 * loading this file depend on WordPress's constants already being defined.
+	 */
+	const STANDINGS_CACHE_TTL = 300;
+
 	public function __construct() {
 		add_shortcode( 'arl_standings', array( $this, 'render_shortcode' ) );
 		add_action( 'wp_ajax_spem_get_standings', array( $this, 'ajax_get_standings' ) );
@@ -148,8 +156,10 @@ class SPEM_Dynamic_Standings {
 
 		$default_type = in_array( $atts['type'], array( 'regular', 'playoff' ), true ) ? $atts['type'] : 'regular';
 
-		// Initial render.
-		$initial_html = $this->get_standings_html( $default_season, $default_type );
+		// Initial render — cached like the AJAX path. This is the *page load*
+		// every visitor pays for, so leaving it uncached while caching only the
+		// filter switches had the caching exactly backwards.
+		$initial_html = $this->get_cached_standings_html( $default_season, $default_type );
 
 		ob_start();
 		?>
@@ -208,13 +218,7 @@ class SPEM_Dynamic_Standings {
 			wp_send_json_error( array( 'message' => __( 'Invalid request.', 'sportspress-events-manager' ) ) );
 		}
 
-		$cache_key = $this->build_cache_key( $season, $type );
-		$html      = get_transient( $cache_key );
-
-		if ( false === $html ) {
-			$html = $this->get_standings_html( $season, $type );
-			set_transient( $cache_key, $html, 5 * MINUTE_IN_SECONDS );
-		}
+		$html = $this->get_cached_standings_html( $season, $type );
 
 		wp_send_json_success(
 			array(
@@ -223,6 +227,30 @@ class SPEM_Dynamic_Standings {
 				'type'   => $type,
 			)
 		);
+	}
+
+	/**
+	 * Rendered standings HTML for a season+type, via the transient cache.
+	 *
+	 * Callers reached from a request parameter MUST validate the season slug
+	 * against a real sp_season term first (see ajax_get_standings) — otherwise
+	 * crafted slugs can fill the cache with arbitrary keys. The shortcode path
+	 * passes an author-authored attribute or a server-resolved slug.
+	 *
+	 * @param string $season Season slug.
+	 * @param string $type   'regular' or 'playoff'.
+	 * @return string HTML.
+	 */
+	private function get_cached_standings_html( $season, $type ) {
+		$cache_key = $this->build_cache_key( $season, $type );
+		$html      = get_transient( $cache_key );
+
+		if ( false === $html ) {
+			$html = $this->get_standings_html( $season, $type );
+			set_transient( $cache_key, $html, self::STANDINGS_CACHE_TTL );
+		}
+
+		return $html;
 	}
 
 	/**

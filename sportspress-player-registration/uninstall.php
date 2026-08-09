@@ -23,4 +23,8 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 	delete_option( 'spr_auto_season' );
 	delete_option( 'spr_db_version' );
 	delete_option( 'spr_registration_keyword' );
+	// LOW (registration): spr_email_meta is read by
+	// SPPR_Player_Registration::email_meta_enabled() but has no settings field, so
+	// it was missed here — a read-only option left behind on uninstall.
+	delete_option( 'spr_email_meta' );
 }

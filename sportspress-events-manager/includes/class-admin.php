@@ -114,6 +114,17 @@ class SPEM_Admin {
 			<?php submit_button( __( 'Save Settings', 'sportspress-events-manager' ), 'primary', 'save_settings' ); ?>
 		</form>
 
+		<?php
+		// The calendar tools and the importer are implemented by
+		// SPEM_Events_Management, which the bootstrap only loads when the
+		// events_management module is enabled. This tab renders for ANY of the
+		// four modules, so hide (and refuse to process) those forms when that
+		// module is off (H23).
+		if ( ! $this->events_management_enabled() ) {
+			return;
+		}
+		?>
+
 		<h2><?php esc_html_e( 'Tools', 'sportspress-events-manager' ); ?></h2>
 
 		<form method="post" onsubmit="return confirm('<?php echo esc_js( __( 'Reset all calendars to current season?', 'sportspress-events-manager' ) ); ?>')">
@@ -131,6 +142,41 @@ class SPEM_Admin {
 		<h3><?php esc_html_e( 'Event Import', 'sportspress-events-manager' ); ?></h3>
 		<?php $this->display_import_form(); ?>
 		<?php
+	}
+
+	/**
+	 * Whether the Events Management module — which owns the calendar tools and
+	 * the event importer — is currently enabled.
+	 *
+	 * @return bool
+	 */
+	private function events_management_enabled() {
+		$enabled_modules = (array) get_option( 'spat_enabled_modules', array() );
+		return in_array( 'events_management', $enabled_modules, true );
+	}
+
+	/**
+	 * Instantiate SPEM_Events_Management, loading its class file on demand.
+	 *
+	 * The bootstrap only require()s class-events-management.php when the
+	 * events_management module is enabled, but it loads this admin class
+	 * whenever ANY events-manager module is on. Instantiating the class
+	 * directly therefore threw `Class "SPEM_Events_Management" not found` and
+	 * white-screened the parent settings page for anyone running only, say,
+	 * Dynamic Standings (H23). Callers must treat null as "module disabled".
+	 *
+	 * @return SPEM_Events_Management|null
+	 */
+	private function get_events_management() {
+		if ( ! $this->events_management_enabled() ) {
+			return null;
+		}
+
+		if ( ! class_exists( 'SPEM_Events_Management' ) ) {
+			require_once SPEM_PLUGIN_PATH . 'includes/class-events-management.php';
+		}
+
+		return new SPEM_Events_Management();
 	}
 
 	/**
@@ -169,8 +215,19 @@ class SPEM_Admin {
 			echo '<div class="notice notice-success"><p>' . esc_html__( 'Settings saved.', 'sportspress-events-manager' ) . '</p></div>';
 		}
 
+		if ( ! isset( $_POST['reset_calendars'] ) && ! isset( $_POST['create_missing_calendars'] ) ) {
+			return;
+		}
+
+		// Both calendar tools live in SPEM_Events_Management; refuse the POST
+		// (rather than fataling on a missing class) when that module is off.
+		$events_manager = $this->get_events_management();
+		if ( null === $events_manager ) {
+			echo '<div class="notice notice-error"><p>' . esc_html__( 'Calendar tools require the Events Management module to be enabled.', 'sportspress-events-manager' ) . '</p></div>';
+			return;
+		}
+
 		if ( isset( $_POST['reset_calendars'] ) ) {
-			$events_manager = new SPEM_Events_Management();
 			$updated = $events_manager->reset_calendars_to_current_season();
 			if ( ! empty( $updated ) ) {
 				echo '<div class="notice notice-success"><p>' . sprintf( esc_html__( 'Updated %d calendars to current season:', 'sportspress-events-manager' ), count( $updated ) ) . '</p><ul>';
@@ -184,7 +241,6 @@ class SPEM_Admin {
 		}
 
 		if ( isset( $_POST['create_missing_calendars'] ) ) {
-			$events_manager = new SPEM_Events_Management();
 			$created = $events_manager->create_missing_calendars();
 			echo '<div class="notice notice-success"><p>' . sprintf( esc_html__( 'Created %d calendars for teams without existing calendars.', 'sportspress-events-manager' ), intval( $created ) ) . '</p></div>';
 		}
@@ -202,19 +258,35 @@ class SPEM_Admin {
 			return;
 		}
 
+		$events_manager = $this->get_events_management();
+		if ( null === $events_manager ) {
+			return;
+		}
+
 		if ( isset( $_POST['import_events'] ) && isset( $_FILES['event_file'] ) ) {
 			check_admin_referer( 'spem_admin_actions', 'spem_admin_nonce' );
-			$events_manager = new SPEM_Events_Management();
 			$result = $events_manager->import_events_from_file( $_FILES['event_file'] );
 
 			if ( is_wp_error( $result ) ) {
 				echo '<div class="notice notice-error"><p>' . esc_html( $result->get_error_message() ) . '</p></div>';
 			} else {
 				$imported = isset( $result['imported'] ) ? (int) $result['imported'] : 0;
+				$skipped  = isset( $result['skipped'] ) ? (int) $result['skipped'] : 0;
 				$errors   = isset( $result['errors'] ) && is_array( $result['errors'] ) ? $result['errors'] : array();
 				$warnings = isset( $result['warnings'] ) && is_array( $result['warnings'] ) ? $result['warnings'] : array();
 
 				echo '<div class="notice notice-success"><p>' . sprintf( esc_html__( 'Successfully imported %d events.', 'sportspress-events-manager' ), $imported ) . '</p></div>';
+
+				// Rows that matched an existing event are NOT imports — reporting
+				// them as such made a re-uploaded schedule claim "300 events
+				// imported" while creating none (M15).
+				if ( $skipped > 0 ) {
+					echo '<div class="notice notice-info"><p>' . sprintf(
+						/* translators: %d: number of rows that already existed */
+						esc_html__( '%d row(s) already existed and were skipped.', 'sportspress-events-manager' ),
+						$skipped
+					) . '</p></div>';
+				}
 
 				if ( ! empty( $warnings ) ) {
 					echo '<div class="notice notice-warning"><p>' . sprintf(

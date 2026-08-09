@@ -15,6 +15,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPEM_Season_Rollover {
 
+	/**
+	 * TTL, in seconds, of the per-league rollover mutex. Sized for one wizard
+	 * request: the full season/team/calendar/roster pass plus a single 500-event
+	 * archive chunk, not the whole multi-chunk wizard run.
+	 */
+	const ROLLOVER_LOCK_TTL = 300;
+
 	public function __construct() {
 		add_action( 'wp_ajax_spem_season_rollover_preview', array( $this, 'ajax_preview' ) );
 		add_action( 'wp_ajax_spem_season_rollover_execute', array( $this, 'ajax_execute' ) );
@@ -303,6 +310,55 @@ jQuery(document).ready(function($) {
 			wp_send_json_error( $this->season_name_error_message() );
 		}
 
+		// Serialize per league. The season/team/calendar/roster steps are
+		// check-then-insert, not atomic, so two admins (or a double-clicked
+		// button) running a rollover on the same league concurrently mint
+		// duplicate sp_calendar / sp_list posts (M13).
+		//
+		// This does NOT break the wizard's chunked archive flow: the JS issues
+		// each 500-event continuation only from the previous request's `done`
+		// callback, so the chunks are strictly sequential and each one acquires
+		// and releases the lock within its own request. That also requires the
+		// JSON response to be emitted OUTSIDE the critical section — wp_send_json_*
+		// calls exit(), which would skip the release and strand the lock for its
+		// whole TTL, blocking the very next chunk.
+		if ( class_exists( 'SPAT_Lock' ) ) {
+			$result = SPAT_Lock::with(
+				'spem_rollover_' . $league_id,
+				self::ROLLOVER_LOCK_TTL,
+				function () use ( $league_id, $season_name, $create_calendars, $create_rosters, $archive_old ) {
+					return $this->run_rollover( $league_id, $season_name, $create_calendars, $create_rosters, $archive_old );
+				}
+			);
+
+			// run_rollover() returns an array or a WP_Error, never false, so a
+			// literal false is SPAT_Lock::with()'s "already held" signal.
+			if ( false === $result ) {
+				wp_send_json_error( __( 'A season rollover is already running for this league. Please wait for it to finish.', 'sportspress-events-manager' ) );
+			}
+		} else {
+			$result = $this->run_rollover( $league_id, $season_name, $create_calendars, $create_rosters, $archive_old );
+		}
+
+		if ( is_wp_error( $result ) ) {
+			wp_send_json_error( $result->get_error_message() );
+		}
+
+		wp_send_json_success( $result );
+	}
+
+	/**
+	 * Perform the rollover. Runs inside the per-league mutex, so it must never
+	 * emit output or exit — every failure path returns a WP_Error instead.
+	 *
+	 * @param int    $league_id        League term ID.
+	 * @param string $season_name      Validated new season name.
+	 * @param bool   $create_calendars Whether to create per-team calendars.
+	 * @param bool   $create_rosters   Whether to create per-team player lists.
+	 * @param bool   $archive_old      Whether to archive a chunk of old events.
+	 * @return array|WP_Error Response payload for the wizard, or an error.
+	 */
+	private function run_rollover( $league_id, $season_name, $create_calendars, $create_rosters, $archive_old ) {
 		// 1. Create new season term
 		$existing = get_term_by( 'name', $season_name, 'sp_season' );
 		if ( $existing ) {
@@ -310,7 +366,7 @@ jQuery(document).ready(function($) {
 		} else {
 			$result = wp_insert_term( $season_name, 'sp_season' );
 			if ( is_wp_error( $result ) ) {
-				wp_send_json_error( $result->get_error_message() );
+				return $result;
 			}
 			$season_term_id = $result['term_id'];
 		}
@@ -318,7 +374,7 @@ jQuery(document).ready(function($) {
 		// 2. Get teams and assign new season
 		$teams = $this->get_league_teams( $league_id );
 		if ( empty( $teams ) ) {
-			wp_send_json_error( __( 'No teams found in the selected league.', 'sportspress-events-manager' ) );
+			return new WP_Error( 'no_teams', __( 'No teams found in the selected league.', 'sportspress-events-manager' ) );
 		}
 
 		$teams_updated     = 0;
@@ -452,15 +508,13 @@ jQuery(document).ready(function($) {
 		// 6. Update the default season for the dynamic standings shortcode.
 		update_option( 'spem_current_season_id', $season_term_id );
 
-		wp_send_json_success(
-			array(
-				'season_name'       => $season_name,
-				'teams_updated'     => $teams_updated,
-				'calendars_created' => $calendars_created,
-				'rosters_created'   => $rosters_created,
-				'events_archived'   => $events_archived,
-				'archive_done'      => $archive_done,
-			)
+		return array(
+			'season_name'       => $season_name,
+			'teams_updated'     => $teams_updated,
+			'calendars_created' => $calendars_created,
+			'rosters_created'   => $rosters_created,
+			'events_archived'   => $events_archived,
+			'archive_done'      => $archive_done,
 		);
 	}
 

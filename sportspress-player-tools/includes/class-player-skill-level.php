@@ -19,12 +19,33 @@ class SPT_Player_Skill_Level {
 	 * Position slugs treated as goalies.
 	 *
 	 * SportsPress default position slugs are prefixed with menu order, so a
-	 * goalie is commonly '1-goalie' (not '0-goalie'). is_goalie() also falls back
-	 * to matching the term NAME so slug numbering can't mis-classify a goalie.
+	 * goalie is commonly '1-goalie' (not '0-goalie'). term_is_goalie() also falls
+	 * back to matching the term NAME so slug numbering can't mis-classify a goalie.
 	 *
 	 * @var string[]
 	 */
 	private static $goalie_slugs = array( 'goalie', 'goaltender', 'goalkeeper', 'g', '0-goalie', '1-goalie' );
+
+	/**
+	 * M32: hard ceiling on the number of events pulled into one calculation.
+	 *
+	 * Matches the PT-7 cap used by SPPT_REST_API for roster reads. The default
+	 * calculation scope is all-time, so an unbounded query loaded every event in
+	 * the site's history (plus each one's meta) into a synchronous admin request.
+	 */
+	const MAX_EVENTS = 5000;
+
+	/**
+	 * M32: chunk size for cache priming and batched term lookups.
+	 */
+	const CHUNK_SIZE = 200;
+
+	/**
+	 * H28: raw scores are floats, so tie detection compares with a tolerance
+	 * rather than ===. Scores are points-per-game / GAA magnitudes, so 1e-9 is
+	 * far below any meaningful difference.
+	 */
+	const TIE_EPSILON = 0.000000001;
 
 	public function __construct() {
 		// Phase 1: Meta box + admin column.
@@ -96,6 +117,24 @@ class SPT_Player_Skill_Level {
 				);
 				if ( 0 === intval( $result['updated'] ) && intval( $result['skipped_low_gp'] ) > 0 ) {
 					$msg .= ' ' . esc_html__( 'Try lowering the Minimum Games threshold or selecting a season with more game data.', 'sportspress-player-tools' );
+				}
+				// M31: goalies with no goals-against recorded anywhere are excluded
+				// rather than scored as a 0.00 GAA. Say so instead of leaving the
+				// operator to wonder why their goalies were not rated.
+				$no_data = isset( $result['skipped_no_data'] ) ? intval( $result['skipped_no_data'] ) : 0;
+				if ( $no_data > 0 ) {
+					$msg .= ' ' . sprintf(
+						/* translators: %d: number of goalies with no goals-against data */
+						esc_html(
+							_n(
+								'%d goalie was skipped because no goals-against were recorded for them.',
+								'%d goalies were skipped because no goals-against were recorded for them.',
+								$no_data,
+								'sportspress-player-tools'
+							)
+						),
+						$no_data
+					);
 				}
 				echo '<div class="notice notice-success is-dismissible"><p>' . $msg . '</p></div>';
 			}
@@ -325,7 +364,7 @@ class SPT_Player_Skill_Level {
 	 * @param int $league_id League term ID (0 = all).
 	 * @param int $season_id Season term ID (0 = all).
 	 * @param int $min_games Minimum games played.
-	 * @return array { updated: int, skipped_manual: int, skipped_low_gp: int }
+	 * @return array { updated: int, skipped_manual: int, skipped_low_gp: int, skipped_no_data: int, total_eligible: int }
 	 */
 	public function calculate_skill_levels( $league_id, $season_id, $min_games = null ) {
 		// Default to the admin-configured threshold so callers that don't pass it
@@ -355,9 +394,13 @@ class SPT_Player_Skill_Level {
 			}
 		}
 
+		// M32: was posts_per_page => -1. "All seasons" is the default scope, so the
+		// unbounded query pulled every published event in the site's history — and
+		// then read each one's meta individually — inside one synchronous admin
+		// request. Cap at the plugin-wide PT-7 ceiling.
 		$args = array(
 			'post_type'      => 'sp_event',
-			'posts_per_page' => -1,
+			'posts_per_page' => self::MAX_EVENTS,
 			'post_status'    => 'publish',
 			'fields'         => 'ids',
 		);
@@ -385,115 +428,30 @@ class SPT_Player_Skill_Level {
 		$event_ids = get_posts( $args );
 
 		// Aggregate appearances + goals/assists/pim/goals-against per player.
+		// M32: prime the postmeta cache one chunk at a time so the per-event
+		// get_post_meta() below is served from cache — previously this issued one
+		// SELECT per event (N+1) on top of the unbounded event query.
 		$agg = array();
-		foreach ( $event_ids as $eid ) {
-			$players = get_post_meta( $eid, 'sp_players', true );
-			if ( ! is_array( $players ) ) {
-				continue;
-			}
-			foreach ( $players as $rows ) {
-				if ( ! is_array( $rows ) ) {
-					continue;
-				}
-				foreach ( $rows as $pid => $st ) {
-					if ( ! is_array( $st ) ) {
-						continue;
-					}
-					$pid = (int) $pid;
-					if ( ! isset( $agg[ $pid ] ) ) {
-						$agg[ $pid ] = array(
-							'gp'  => 0,
-							'g'   => 0,
-							'a'   => 0,
-							'pim' => 0,
-							'ga'  => 0,
-						);
-					}
-					$agg[ $pid ]['gp']++;
-					$agg[ $pid ]['g']   += (int) ( $st['g'] ?? 0 );
-					$agg[ $pid ]['a']   += (int) ( $st['a'] ?? 0 );
-					$agg[ $pid ]['pim'] += (int) ( $st['pim'] ?? 0 );
-					$agg[ $pid ]['ga']  += (int) ( $st['ga'] ?? 0 );
-				}
+		foreach ( array_chunk( $event_ids, self::CHUNK_SIZE ) as $event_chunk ) {
+			update_meta_cache( 'post', $event_chunk );
+			foreach ( $event_chunk as $eid ) {
+				$agg = self::aggregate_event_players( get_post_meta( $eid, 'sp_players', true ), $agg );
 			}
 		}
 
-		// Skaters and goalies are ranked in SEPARATE pools: a skater's score is
-		// points-rate (positive) and a goalie's is −GAA (negative), so ranking
-		// them together always sorted every goalie to the bottom (→ skill 1).
-		// Each pool is percentile-mapped to its own full 1–10 range.
-		$skater_scores = array();
-		$goalie_scores = array();
-		$low_gp        = 0;
+		// M32: resolve goalie status for the entire candidate set in one batched
+		// term query per chunk instead of a wp_get_post_terms() call per player.
+		$goalie_ids = self::get_goalie_ids( array_keys( $agg ) );
 
-		foreach ( $agg as $pid => $s ) {
-			$gp = (int) $s['gp'];
-			if ( $gp < $min_games ) {
-				++$low_gp;
-				continue;
-			}
+		$pools = self::build_score_pools( $agg, $min_games, $goalie_ids );
 
-			$is_goalie = $this->is_goalie( $pid );
-			$gaa       = $gp > 0 ? $s['ga'] / $gp : 0;
-			$points    = $s['g'] + $s['a'];
-			// Goals are weighted heavier than assists for ranking: assists are
-			// noisier and far more linemate/scorekeeper dependent (the league also
-			// sees inflated assist credit), so they shouldn't drive a rating the way
-			// goals do. Ranking uses goals×2 + assists×0.5; 'p' below still reports
-			// true points for display. Both weights are filterable.
-			$goal_weight   = (float) apply_filters( 'spt_skill_goal_weight', 2 );
-			$assist_weight = (float) apply_filters( 'spt_skill_assist_weight', 0.5 );
-			$weighted      = ( $goal_weight * $s['g'] ) + ( $assist_weight * $s['a'] );
-
-			if ( $is_goalie ) {
-				// Negative so lower GAA = higher score (0 GAA → score 0, best rank).
-				$raw_score = -$gaa;
-			} else {
-				$raw_score = $weighted / $gp;
-			}
-
-			$player_stats = array(
-				'gp'     => $gp,
-				'g'      => $s['g'],
-				'a'      => $s['a'],
-				'pim'    => $s['pim'],
-				'ga'     => $s['ga'],
-				'p'      => $points,
-				'gaatwo' => $gaa,
-			);
-
-			/**
-			 * Filter the raw score used for skill level ranking.
-			 *
-			 * @param float $raw_score   Calculated raw score.
-			 * @param int   $pid         Player post ID.
-			 * @param array $player_stats Stat values for this player.
-			 * @param bool  $is_goalie   Whether the player is a goalie.
-			 */
-			$raw_score = apply_filters( 'spt_skill_calculate_raw_score', $raw_score, $pid, $player_stats, $is_goalie );
-			if ( $is_goalie ) {
-				$goalie_scores[ $pid ] = $raw_score;
-			} else {
-				$skater_scores[ $pid ] = $raw_score;
-			}
-		}
-
-		$total          = count( $skater_scores ) + count( $goalie_scores );
+		$total          = count( $pools['skaters'] ) + count( $pools['goalies'] );
 		$updated        = 0;
 		$skipped_manual = 0;
 
-		// Percentile-map each pool independently to 1–10.
-		$skill_of = array();
-		foreach ( array( $skater_scores, $goalie_scores ) as $pool ) {
-			arsort( $pool );
-			$n    = count( $pool );
-			$rank = 0;
-			foreach ( $pool as $pid => $raw ) {
-				++$rank;
-				$percentile        = $n > 1 ? ( $n - $rank ) / ( $n - 1 ) : 0.5;
-				$skill_of[ $pid ]  = max( 1, min( 10, (int) round( $percentile * 9 ) + 1 ) );
-			}
-		}
+		// Percentile-map each pool independently to 1–10 (H28: tie-aware).
+		$skill_of = self::map_scores_to_skills( $pools['skaters'] )
+			+ self::map_scores_to_skills( $pools['goalies'] );
 
 		foreach ( $skill_of as $pid => $skill ) {
 			$source = get_post_meta( $pid, 'spt_skill_source', true );
@@ -510,94 +468,297 @@ class SPT_Player_Skill_Level {
 		}
 
 		return array(
-			'updated'        => $updated,
-			'skipped_manual' => $skipped_manual,
-			'skipped_low_gp' => $low_gp,
-			'total_eligible' => $total,
+			'updated'         => $updated,
+			'skipped_manual'  => $skipped_manual,
+			'skipped_low_gp'  => $pools['skipped_low_gp'],
+			// M31: goalies with no goals-against data anywhere in scope. Reported
+			// rather than silently scored as a perfect 0.00 GAA.
+			'skipped_no_data' => $pools['skipped_no_data'],
+			'total_eligible'  => $total,
 		);
 	}
 
 	/**
-	 * Extract the best matching stats for a player given league/season filters.
+	 * Fold one event's `sp_players` box score into a running aggregate.
 	 *
-	 * SportsPress stores stats as: league_id => season_id => { g, a, pim, p, gp, ... }
-	 * Season 0 = totals across all seasons for that league.
-	 * League 0 = totals across all leagues.
+	 * Pure helper (no WordPress calls) so the aggregation rules are unit-testable.
 	 *
-	 * @param array $stats    The sp_statistics meta value.
-	 * @param int   $league_id Target league (0 = aggregate).
-	 * @param int   $season_id Target season (0 = aggregate).
-	 * @return array Stat values.
+	 * M30: SportsPress reserves player key `0` inside each team's `sp_players` row
+	 * set for the team TOTALS line. It is an array like any player row, so the
+	 * is_array() guard let it through as a phantom "player" carrying the whole
+	 * team's goals and assists — always the top scorer, dragging every real
+	 * player's percentile down. Any non-positive key is now skipped.
+	 *
+	 * M31: track whether a goals-against value was ever actually recorded. An
+	 * absent (or blank) `ga` key means "not tracked", which is NOT the same as a
+	 * genuine shutout (an explicit 0) and must not be scored as a 0.00 GAA.
+	 *
+	 * @param mixed $players The `sp_players` meta value for one event.
+	 * @param array $agg     Running aggregate keyed by player post ID.
+	 * @return array Updated aggregate.
 	 */
-	private function extract_stats( $stats, $league_id, $season_id ) {
-		// Exact match first.
-		if ( $league_id && $season_id && isset( $stats[ $league_id ][ $season_id ] ) ) {
-			return $stats[ $league_id ][ $season_id ];
+	public static function aggregate_event_players( $players, $agg = array() ) {
+		if ( ! is_array( $players ) ) {
+			return $agg;
 		}
-
-		// Specific league, aggregate season.
-		if ( $league_id && isset( $stats[ $league_id ][0] ) ) {
-			return $stats[ $league_id ][0];
-		}
-
-		// Specific season across all leagues — sum up.
-		if ( $season_id ) {
-			$merged = array();
-			foreach ( $stats as $lid => $seasons ) {
-				if ( ! is_array( $seasons ) || ! isset( $seasons[ $season_id ] ) ) {
-					continue;
-				}
-				foreach ( $seasons[ $season_id ] as $key => $val ) {
-					if ( ! isset( $merged[ $key ] ) ) {
-						$merged[ $key ] = 0;
-					}
-					$merged[ $key ] += floatval( $val );
-				}
-			}
-			if ( ! empty( $merged ) ) {
-				return $merged;
-			}
-		}
-
-		// Fallback: aggregate across everything (league 0, season 0).
-		if ( isset( $stats[0][0] ) ) {
-			return $stats[0][0];
-		}
-
-		// Last resort: first non-empty entry.
-		foreach ( $stats as $lid => $seasons ) {
-			if ( ! is_array( $seasons ) ) {
+		foreach ( $players as $rows ) {
+			if ( ! is_array( $rows ) ) {
 				continue;
 			}
-			foreach ( $seasons as $sid => $data ) {
-				if ( is_array( $data ) && intval( $data['gp'] ?? 0 ) > 0 ) {
-					return $data;
+			foreach ( $rows as $pid => $st ) {
+				if ( ! is_array( $st ) ) {
+					continue;
+				}
+				$pid = (int) $pid;
+				// M30: skip the reserved team-totals row (and any junk key).
+				if ( $pid <= 0 ) {
+					continue;
+				}
+				if ( ! isset( $agg[ $pid ] ) ) {
+					$agg[ $pid ] = array(
+						'gp'     => 0,
+						'g'      => 0,
+						'a'      => 0,
+						'pim'    => 0,
+						'ga'     => 0,
+						'has_ga' => false,
+					);
+				}
+				$agg[ $pid ]['gp']++;
+				$agg[ $pid ]['g']   += (int) ( $st['g'] ?? 0 );
+				$agg[ $pid ]['a']   += (int) ( $st['a'] ?? 0 );
+				$agg[ $pid ]['pim'] += (int) ( $st['pim'] ?? 0 );
+				$agg[ $pid ]['ga']  += (int) ( $st['ga'] ?? 0 );
+				// M31: '0' / 0 is real data (a shutout). '' / null / missing is not.
+				if ( array_key_exists( 'ga', $st ) && null !== $st['ga'] && '' !== trim( (string) $st['ga'] ) ) {
+					$agg[ $pid ]['has_ga'] = true;
 				}
 			}
 		}
-
-		return array();
+		return $agg;
 	}
 
 	/**
-	 * Check if a player is a goalie.
+	 * Split an aggregate into the skater and goalie scoring pools.
+	 *
+	 * Skaters and goalies are ranked in SEPARATE pools: a skater's score is
+	 * points-rate (positive) and a goalie's is −GAA (negative), so ranking them
+	 * together always sorted every goalie to the bottom (→ skill 1). Each pool is
+	 * percentile-mapped to its own full 1–10 range by map_scores_to_skills().
+	 *
+	 * Goals are weighted heavier than assists: assists are noisier and far more
+	 * linemate/scorekeeper dependent (the league also sees inflated assist
+	 * credit), so they shouldn't drive a rating the way goals do. Ranking uses
+	 * goals×2 + assists×0.5; 'p' in the filter payload still reports true points.
+	 *
+	 * @param array $agg        Aggregate from aggregate_event_players().
+	 * @param int   $min_games  Minimum games played to be scored.
+	 * @param array $goalie_ids Set of player IDs that are goalies (id => true).
+	 * @return array { skaters: array, goalies: array, skipped_low_gp: int, skipped_no_data: int }
 	 */
-	private function is_goalie( $player_id ) {
-		$positions = wp_get_post_terms( $player_id, 'sp_position' );
-		if ( is_wp_error( $positions ) || empty( $positions ) ) {
-			return false;
-		}
-		foreach ( $positions as $term ) {
-			if ( in_array( strtolower( $term->slug ), self::$goalie_slugs, true ) ) {
-				return true;
+	public static function build_score_pools( array $agg, $min_games, array $goalie_ids ) {
+		$skaters         = array();
+		$goalies         = array();
+		$low_gp          = 0;
+		$skipped_no_data = 0;
+
+		$min_games = max( 1, (int) $min_games );
+
+		// The weights take no per-player arguments, so they are resolved once
+		// instead of on every iteration (previously inside the loop).
+		$goal_weight   = (float) apply_filters( 'spt_skill_goal_weight', 2 );
+		$assist_weight = (float) apply_filters( 'spt_skill_assist_weight', 0.5 );
+
+		foreach ( $agg as $pid => $s ) {
+			$gp = (int) ( $s['gp'] ?? 0 );
+			if ( $gp < $min_games ) {
+				++$low_gp;
+				continue;
 			}
-			// Name fallback: catches any slug numbering (e.g. "1-goalie") as long
-			// as the label reads Goalie/Goaltender/Goalkeeper.
-			if ( preg_match( '/goal(ie|tender|keeper)/i', $term->name ) ) {
-				return true;
+
+			$is_goalie = ! empty( $goalie_ids[ $pid ] );
+
+			// M31: a goalie with no goals-against recorded anywhere in scope has a
+			// GAA of 0 only because the stat is untracked — which used to rank them
+			// ABOVE every goalie who actually posted a good GAA, and hand them a 10.
+			// Exclude them from the pool entirely; the caller reports the count.
+			if ( $is_goalie && empty( $s['has_ga'] ) ) {
+				++$skipped_no_data;
+				continue;
+			}
+
+			$ga       = (int) ( $s['ga'] ?? 0 );
+			$goals    = (int) ( $s['g'] ?? 0 );
+			$assists  = (int) ( $s['a'] ?? 0 );
+			$gaa      = $gp > 0 ? $ga / $gp : 0;
+			$points   = $goals + $assists;
+			$weighted = ( $goal_weight * $goals ) + ( $assist_weight * $assists );
+
+			if ( $is_goalie ) {
+				// Negative so lower GAA = higher score (0 GAA → score 0, best rank).
+				$raw_score = -$gaa;
+			} else {
+				$raw_score = $weighted / $gp;
+			}
+
+			$player_stats = array(
+				'gp'     => $gp,
+				'g'      => $goals,
+				'a'      => $assists,
+				'pim'    => (int) ( $s['pim'] ?? 0 ),
+				'ga'     => $ga,
+				'p'      => $points,
+				'gaatwo' => $gaa,
+			);
+
+			/**
+			 * Filter the raw score used for skill level ranking.
+			 *
+			 * @param float $raw_score    Calculated raw score.
+			 * @param int   $pid          Player post ID.
+			 * @param array $player_stats Stat values for this player.
+			 * @param bool  $is_goalie    Whether the player is a goalie.
+			 */
+			$raw_score = (float) apply_filters( 'spt_skill_calculate_raw_score', $raw_score, $pid, $player_stats, $is_goalie );
+
+			if ( $is_goalie ) {
+				$goalies[ $pid ] = $raw_score;
+			} else {
+				$skaters[ $pid ] = $raw_score;
 			}
 		}
-		return false;
+
+		return array(
+			'skaters'         => $skaters,
+			'goalies'         => $goalies,
+			'skipped_low_gp'  => $low_gp,
+			'skipped_no_data' => $skipped_no_data,
+		);
+	}
+
+	/**
+	 * Percentile-map one pool of raw scores onto the 1–10 skill scale.
+	 *
+	 * H28 — TIE HANDLING. The previous implementation walked the sorted pool and
+	 * incremented a counter, so every player got a distinct rank even when their
+	 * raw scores were identical: 30 pointless skaters in a 60-skater pool fanned
+	 * out across skills ~5 down to 1 purely by array encounter order, and these
+	 * ratings feed team balancing. Ranking is now tie-aware.
+	 *
+	 * Equal raw score ⇒ equal rank ⇒ equal percentile ⇒ equal skill. The shared
+	 * rank is the MEAN of the sorted positions the tie group occupies (a midrank,
+	 * a.k.a. fractional ranking), NOT the group's best position (standard
+	 * competition ranking).
+	 *
+	 * That choice is what makes the boundary behave. With competition ranking a
+	 * pool where EVERY score is identical would collapse to rank 1 for everyone —
+	 * percentile 1.0, skill 10 for the whole league, which is exactly the "no data
+	 * ⇒ everyone elite" failure mode. With midranks an all-tied pool lands on the
+	 * middle of the scale (skill 6), the 30-tied-at-the-bottom case lands near the
+	 * bottom, and 30-tied-at-the-top lands near the top — the group is placed
+	 * where the group actually sits in the distribution.
+	 *
+	 * Mapping is unchanged for strictly-ordered pools: best ⇒ percentile 1 ⇒ 10,
+	 * worst ⇒ percentile 0 ⇒ 1, and a single-entry pool ⇒ 0.5 ⇒ 6.
+	 *
+	 * @param array $pool Map of player ID => raw score.
+	 * @return array Map of player ID => skill level (1–10).
+	 */
+	public static function map_scores_to_skills( array $pool ) {
+		$skills = array();
+		$n      = count( $pool );
+		if ( 0 === $n ) {
+			return $skills;
+		}
+
+		arsort( $pool );
+		$pids = array_keys( $pool );
+
+		$i = 0;
+		while ( $i < $n ) {
+			$score = (float) $pool[ $pids[ $i ] ];
+
+			// Extend the group over every following entry with the same score.
+			$j = $i + 1;
+			while ( $j < $n && abs( (float) $pool[ $pids[ $j ] ] - $score ) <= self::TIE_EPSILON ) {
+				++$j;
+			}
+
+			// Sorted positions are 1-based: this group occupies ($i + 1) .. $j.
+			$rank       = ( ( $i + 1 ) + $j ) / 2;
+			$percentile = $n > 1 ? ( $n - $rank ) / ( $n - 1 ) : 0.5;
+			$skill      = max( 1, min( 10, (int) round( $percentile * 9 ) + 1 ) );
+
+			for ( $k = $i; $k < $j; $k++ ) {
+				$skills[ $pids[ $k ] ] = $skill;
+			}
+
+			$i = $j;
+		}
+
+		return $skills;
+	}
+
+	// LOW (player-tools): the ~50-line private extract_stats() helper that used to
+	// live here was dead code. It read the aggregated `sp_statistics` meta, which
+	// this class deliberately does NOT use — see the comment in
+	// calculate_skill_levels(): SportsPress never rolls imported/dashboard-entered
+	// box scores up into that meta, so it is empty on this data. Nothing called it.
+
+	/**
+	 * Resolve which of the given players are goalies, in batched term queries.
+	 *
+	 * M32: this replaces a per-player wp_get_post_terms() call inside the scoring
+	 * loop (one query per player). `wp_get_object_terms()` accepts an array of
+	 * object IDs, so the whole candidate set costs one query per chunk.
+	 *
+	 * @param array $player_ids Player post IDs.
+	 * @return array Set of goalie player IDs, keyed by ID (id => true).
+	 */
+	private static function get_goalie_ids( array $player_ids ) {
+		$goalies = array();
+		if ( empty( $player_ids ) ) {
+			return $goalies;
+		}
+
+		foreach ( array_chunk( array_map( 'intval', $player_ids ), self::CHUNK_SIZE ) as $chunk ) {
+			$terms = wp_get_object_terms(
+				$chunk,
+				'sp_position',
+				array( 'fields' => 'all_with_object_id' )
+			);
+			if ( is_wp_error( $terms ) || empty( $terms ) ) {
+				continue;
+			}
+			foreach ( $terms as $term ) {
+				$object_id = isset( $term->object_id ) ? (int) $term->object_id : 0;
+				if ( ! $object_id || isset( $goalies[ $object_id ] ) ) {
+					continue;
+				}
+				if ( self::term_is_goalie( $term ) ) {
+					$goalies[ $object_id ] = true;
+				}
+			}
+		}
+
+		return $goalies;
+	}
+
+	/**
+	 * Whether an sp_position term denotes a goalie.
+	 *
+	 * @param object $term Term object with slug/name.
+	 * @return bool
+	 */
+	private static function term_is_goalie( $term ) {
+		$slug = isset( $term->slug ) ? strtolower( (string) $term->slug ) : '';
+		if ( in_array( $slug, self::$goalie_slugs, true ) ) {
+			return true;
+		}
+		// Name fallback: catches any slug numbering (e.g. "1-goalie") as long
+		// as the label reads Goalie/Goaltender/Goalkeeper.
+		$name = isset( $term->name ) ? (string) $term->name : '';
+		return (bool) preg_match( '/goal(ie|tender|keeper)/i', $name );
 	}
 
 	// ------------------------------------------------------------------

@@ -413,18 +413,19 @@ class SPPR_Admin {
 			wp_die( esc_html__( 'Order not found.', 'sportspress-player-registration' ), '', array( 'response' => 404 ) );
 		}
 
-		$order->delete_meta_data( '_spr_processed' );
-		$order->save();
-
 		// Call the registration handler directly instead of re-firing
 		// `woocommerce_order_status_completed`, which would fan out to every other
 		// listener (emails, inventory, etc.). The instance is exposed by the main
 		// plugin file as $GLOBALS['sportspress_player_registration'].
+		//
+		// LOW (registration): resolve the handler BEFORE clearing the processed
+		// marker. The clear used to happen first, so an un-initialized plugin left
+		// the order with no marker at all — the previous 'failed' state was
+		// destroyed and the order then looked as though it had never been attempted,
+		// while the 503 told the admin nothing had happened.
 		$bootstrap = isset( $GLOBALS['sportspress_player_registration'] ) ? $GLOBALS['sportspress_player_registration'] : null;
 		$registration = ( $bootstrap && method_exists( $bootstrap, 'get_registration' ) ) ? $bootstrap->get_registration() : null;
-		if ( $registration && method_exists( $registration, 'process_completed_order' ) ) {
-			$registration->process_completed_order( $order_id );
-		} else {
+		if ( ! $registration || ! method_exists( $registration, 'process_completed_order' ) ) {
 			// Refuse to fall back to re-firing the completed-order hook — that
 			// would notify every other listener (emails, inventory, etc.) for an
 			// admin re-run, which is explicitly not what this action is for.
@@ -434,6 +435,11 @@ class SPPR_Admin {
 				array( 'response' => 503 )
 			);
 		}
+
+		$order->delete_meta_data( '_spr_processed' );
+		$order->save();
+
+		$registration->process_completed_order( $order_id );
 
 		$redirect = wp_get_referer();
 		if ( ! $redirect ) {

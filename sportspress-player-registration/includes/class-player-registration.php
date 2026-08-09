@@ -75,8 +75,28 @@ class SPPR_Player_Registration {
 			return;
 		}
 
-		// Open the try IMMEDIATELY after the lock claim so the finally runs on
-		// every exit path (including throws during meta writes) and the lock is
+		// LOW (registration): the lock above is keyed per ORDER, so it does nothing
+		// about two DIFFERENT orders for the same person completing concurrently —
+		// both run find_existing_player(), both see no match, and both create an
+		// sp_player with the same title. Take a second, name-scoped lock so the
+		// find-then-create sequence is serialized per customer name. Best effort:
+		// after a short retry window we proceed anyway rather than dropping a paid
+		// registration on the floor. Lock order is always order → name, so two
+		// waiters can never deadlock.
+		$name_lock_key    = 'spr_player_name_' . md5( strtolower( $customer_name ) );
+		$name_lock_handle = false;
+		if ( class_exists( 'SPAT_Lock' ) ) {
+			for ( $attempt = 0; $attempt < 5; $attempt++ ) {
+				$name_lock_handle = SPAT_Lock::acquire( $name_lock_key, 60 );
+				if ( false !== $name_lock_handle ) {
+					break;
+				}
+				usleep( 100000 ); // 100ms backoff before retrying a contended lock.
+			}
+		}
+
+		// Open the try IMMEDIATELY after the lock claims so the finally runs on
+		// every exit path (including throws during meta writes) and the locks are
 		// always released. The SPAT_Lock acquired above — not any meta marker — is
 		// the authoritative single-flight guard, so a single save at the end suffices.
 		try {
@@ -157,14 +177,30 @@ class SPPR_Player_Registration {
 				}
 				SPAT_Logger::error( 'player_registration', 'process_completed_order failed', $context );
 			}
-			throw $e;
+			// M37: do NOT re-throw. This runs on `woocommerce_order_status_completed`,
+			// so an exception escaping here aborts do_action() for the whole hook:
+			// every later listener is suppressed (customer/admin emails, webhooks,
+			// stock and points integrations) and the admin's status change fatals with
+			// a white screen. Registration failing must not take the order with it.
+			// The recovery path is already in place above — the '_spr_processed' =>
+			// 'failed' marker makes the order re-runnable from the admin re-run action
+			// and the logger records the cause — so the exception has nowhere useful
+			// left to go. Swallow it and let the rest of the hook run.
 		} finally {
 			// Always release the lock so the next attempt (rerun / retry) is not
 			// blocked by the 300s TTL. Matches the e-Transfer webhook pattern.
 			if ( class_exists( 'SPAT_Lock' ) ) {
-				SPAT_Lock::release( $lock_key );
+				// Pass the acquire handle so a request that overran its TTL releases
+				// only its OWN lock, never the next holder's live one (the "legacy
+				// unconditional delete" SPAT_Lock's handle argument exists to prevent).
+				SPAT_Lock::release( $lock_key, is_string( $claimed ) ? $claimed : null );
 			} else {
 				wp_cache_delete( $lock_key, 'spr_claims' );
+			}
+			// Same for the name-scoped lock, and only when this request actually
+			// acquired one.
+			if ( is_string( $name_lock_handle ) && class_exists( 'SPAT_Lock' ) ) {
+				SPAT_Lock::release( $name_lock_key, $name_lock_handle );
 			}
 		}
 	}
@@ -331,6 +367,15 @@ class SPPR_Player_Registration {
 	 * with a goalie synonym fallback, and sets it (replacing any prior position).
 	 * No-op for an empty position or when no matching term exists.
 	 *
+	 * LOW (registration): matching used to be a bare substring test
+	 * (strpos($slug, $position)), so the default position "player" matched ANY
+	 * term whose slug or name merely contained it — "Utility Player", "Rostered
+	 * Player", "Player (Sub)" — and whichever of those get_terms() returned first
+	 * (alphabetical) silently won. Matching is now exact on slug or name, with
+	 * SportsPress's menu-order slug prefix ("2-player") tolerated and the goalie
+	 * synonym set kept as an explicit fallback. When nothing matches exactly the
+	 * player is left without a position rather than given an arbitrary one.
+	 *
 	 * @param int    $player_id Player post ID.
 	 * @param string $position  Detected position keyword.
 	 * @return void
@@ -349,18 +394,32 @@ class SPPR_Player_Registration {
 		if ( is_wp_error( $terms ) || empty( $terms ) ) {
 			return;
 		}
-		$is_goalie = (bool) preg_match( '/goal(ie|tender|keeper)/', $position );
+		$is_goalie      = (bool) preg_match( '/goal(ie|tender|keeper)/', $position );
+		$goalie_synonym = null;
+
 		foreach ( $terms as $term ) {
-			$slug = strtolower( $term->slug );
-			$name = strtolower( $term->name );
-			$match = false !== strpos( $slug, $position ) || false !== strpos( $name, $position );
-			if ( ! $match && $is_goalie ) {
-				$match = (bool) preg_match( '/goal(ie|tender|keeper)/', $slug . ' ' . $name );
-			}
-			if ( $match ) {
+			$slug = strtolower( (string) $term->slug );
+			$name = strtolower( trim( (string) $term->name ) );
+
+			// SportsPress prefixes position slugs with the menu order ("2-player"),
+			// so strip a leading numeric prefix before comparing slugs.
+			$slug_base = preg_replace( '/^\d+-/', '', $slug );
+
+			if ( $name === $position || $slug === $position || $slug_base === $position ) {
 				wp_set_object_terms( $player_id, array( (int) $term->term_id ), 'sp_position' );
 				return;
 			}
+
+			// Remember the first goalie-labelled term in case the detected keyword is
+			// a goalie synonym that doesn't match any term name exactly.
+			if ( $is_goalie && null === $goalie_synonym
+				&& preg_match( '/goal(ie|tender|keeper)/', $slug_base . ' ' . $name ) ) {
+				$goalie_synonym = (int) $term->term_id;
+			}
+		}
+
+		if ( $goalie_synonym ) {
+			wp_set_object_terms( $player_id, array( $goalie_synonym ), 'sp_position' );
 		}
 	}
 

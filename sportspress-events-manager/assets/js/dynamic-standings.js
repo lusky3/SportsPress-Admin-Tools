@@ -6,7 +6,10 @@
 
   var D = window.spemStandings || {};
 
-  function loadStandings(season, type) {
+  // `pushHistory` defaults to true. Passing false is required when the load was
+  // itself triggered by a popstate: pushing a new entry there overwrites the
+  // forward stack, so the Forward button stopped working after any Back.
+  function loadStandings(season, type, pushHistory) {
     var $content = $('#arl-standings-content');
     $content.css('opacity', '0.5');
 
@@ -32,7 +35,7 @@
     });
 
     // Update URL without reload.
-    if (window.history && window.history.pushState) {
+    if (pushHistory !== false && window.history && window.history.pushState) {
       var url = new URL(window.location);
       url.searchParams.set('season', season);
       url.searchParams.set('type', type);
@@ -78,7 +81,7 @@
       var t = p.get('type') || 'regular';
       $season.val(s);
       $type.val(t);
-      loadStandings(s, t);
+      loadStandings(s, t, false);
     });
   });
 

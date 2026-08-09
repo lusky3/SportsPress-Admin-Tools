@@ -64,6 +64,28 @@ class SPT_Batch_List_Creator {
 
 		echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Player lists created successfully.', 'sportspress-player-tools' ) . '</p></div>';
 
+		// M35: report CSV rows that were skipped because the team or player was left
+		// as "No match", so an admin can't mistake a partial import for a full one.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only display of a count from our own redirect.
+		$skipped_rows = isset( $_GET['spt_batch_skipped_rows'] ) ? absint( wp_unslash( $_GET['spt_batch_skipped_rows'] ) ) : 0;
+		if ( $skipped_rows > 0 ) {
+			printf(
+				'<div class="notice notice-warning is-dismissible"><p>%s</p></div>',
+				esc_html(
+					sprintf(
+						/* translators: %d: number of skipped CSV rows */
+						_n(
+							'%d CSV row was skipped because it had no matching team or player.',
+							'%d CSV rows were skipped because they had no matching team or player.',
+							$skipped_rows,
+							'sportspress-player-tools'
+						),
+						$skipped_rows
+					)
+				)
+			);
+		}
+
 		// PT3/F5: pull the one-shot locked-teams transient set by process_batch() and
 		// turn it into a warning notice so admins know which rosters they need to
 		// rerun after the conflicting editor finishes.
@@ -296,9 +318,12 @@ class SPT_Batch_List_Creator {
 		foreach ( $data as $idx => $row ) {
 			$team_amb   = false;
 			$player_amb = false;
+			// M35: find_match() returns 0 when nothing is close enough, so the preview
+			// defaults the row to the explicit "no match" option rather than silently
+			// attaching a player who simply isn't in the system to the nearest name.
 			$matches[ $idx ] = array(
-				'team'             => $this->find_closest( $row['team'], $team_objects, $team_amb ),
-				'player'           => $this->find_closest( $row['name'], $player_objects, $player_amb ),
+				'team'             => $this->find_match( $row['team'], $team_objects, $team_amb ),
+				'player'           => $this->find_match( $row['name'], $player_objects, $player_amb ),
 				'team_ambiguous'   => $team_amb,
 				'player_ambiguous' => $player_amb,
 			);
@@ -648,34 +673,37 @@ class SPT_Batch_List_Creator {
 			}
 		}
 
-		// Group by team
+		// Group by team.
+		//
+		// M35: a row is skipped outright when either side is unresolved (the admin
+		// chose "No match", or the cached ID failed the PT2/F6 post-type re-check).
+		// The team entry is only created once a real player lands in it — otherwise
+		// a team whose every row was skipped would still be registered here, and in
+		// "update" mode that means delete_post_meta( sp_player ) followed by zero
+		// additions: a silently wiped roster.
 		$team_players = array();
+		$skipped_rows = 0;
 		foreach ( $teams as $idx => $team_id ) {
-			if ( ! $team_id ) {
+			if ( ! $team_id || empty( $players[ $idx ] ) ) {
+				++$skipped_rows;
 				continue;
 			}
 			if ( ! isset( $team_players[ $team_id ] ) ) {
 				$team_players[ $team_id ] = array();
 			}
-			if ( isset( $players[ $idx ] ) && $players[ $idx ] ) {
-				$team_players[ $team_id ][] = $players[ $idx ];
-			}
+			$team_players[ $team_id ][] = $players[ $idx ];
 		}
 
 		// Get season name
 		$season_term = get_term( $season_id, 'sp_season' );
 		$season_name = ( $season_term && ! is_wp_error( $season_term ) ) ? $season_term->name : '';
 
-		// Clean up temp data
-		global $wpdb;
-		$table = $wpdb->prefix . 'spat_temp_data';
-		$wpdb->delete(
-			$table,
-			array(
-				'user_id' => get_current_user_id(),
-				'data_type' => 'batch_list',
-			)
-		);
+		// M34: the temp payload used to be deleted HERE, before any list was
+		// created. A failure part-way through the loop below (a wp_insert_post
+		// error, a fatal, a request timeout on a large batch) then destroyed all of
+		// the reviewed matches and manual overrides with nothing created to show for
+		// it, and the "rerun the skipped teams" notice pointed at a payload that no
+		// longer existed. The delete now happens after the loop completes.
 
 		// PT3/F5: collect team names whose list was locked by another editor so the
 		// success notice can surface what got skipped instead of silently no-oping.
@@ -824,6 +852,18 @@ class SPT_Batch_List_Creator {
 			}
 		}
 
+		// M34: clean up the temp payload only once every list has been processed, so
+		// a mid-loop failure leaves the reviewed/override state intact for a rerun.
+		global $wpdb;
+		$table = $wpdb->prefix . 'spat_temp_data';
+		$wpdb->delete(
+			$table,
+			array(
+				'user_id'   => get_current_user_id(),
+				'data_type' => 'batch_list',
+			)
+		);
+
 		// PT3/F5: stash the locked-team list in a per-user transient so the redirect
 		// target can render a warning alongside the success notice. The transient is
 		// one-shot — success_notice() deletes it after rendering.
@@ -836,9 +876,11 @@ class SPT_Batch_List_Creator {
 
 		$redirect = add_query_arg(
 			array(
-				'post_type'          => 'sp_list',
-				'spt_batch_created'  => 1,
-				'spt_batch_skipped'  => count( $locked_teams ),
+				'post_type'              => 'sp_list',
+				'spt_batch_created'      => 1,
+				'spt_batch_skipped'      => count( $locked_teams ),
+				// M35: rows the admin marked (or the matcher left) as "no match".
+				'spt_batch_skipped_rows' => $skipped_rows,
 			),
 			admin_url( 'edit.php' )
 		);
@@ -1043,10 +1085,21 @@ endif;
 							$matched_player   = isset( $overrides[ $global_idx ]['player'] ) ? (int) $overrides[ $global_idx ]['player'] : (int) ( $match['player'] ?? 0 );
 							?>
 
+						<?php
+						// M35: a row whose auto-match was rejected as too distant gets
+						// the explicit no-match option pre-selected and the same warning
+						// highlight ambiguity uses, so the admin has to make a decision
+						// instead of the row quietly importing against a wrong name.
+						$no_match_style   = 'background-color: #fff3cd; border-left: 3px solid #ff9800;';
+						$team_highlight   = ( $team_ambiguous || ! $matched_team ) ? $no_match_style : '';
+						$player_highlight = ( $player_ambiguous || ! $matched_player ) ? $no_match_style : '';
+						$no_match_label   = __( '— No match: skip this row —', 'sportspress-player-tools' );
+						?>
 						<tr>
 							<td><?php echo esc_html( $row['team'] ); ?></td>
-							<td style="<?php echo $team_ambiguous ? esc_attr( 'background-color: #fff3cd; border-left: 3px solid #ff9800;' ) : ''; ?>">
+							<td style="<?php echo esc_attr( $team_highlight ); ?>">
 								<select name="team_<?php echo esc_attr( $global_idx ); ?>" class="spt-team-select" style="width: 100%;" required>
+									<option value="0" <?php selected( $matched_team, 0 ); ?>><?php echo esc_html( $no_match_label ); ?></option>
 									<?php foreach ( $team_objects as $team ) : ?>
 										<option value="<?php echo esc_attr( $team->ID ); ?>" <?php selected( $matched_team, $team->ID ); ?>>
 											<?php echo esc_html( $team->post_title ); ?>
@@ -1055,8 +1108,9 @@ endif;
 								</select>
 							</td>
 							<td><?php echo esc_html( $row['name'] ); ?></td>
-							<td style="<?php echo $player_ambiguous ? esc_attr( 'background-color: #fff3cd; border-left: 3px solid #ff9800;' ) : ''; ?>">
+							<td style="<?php echo esc_attr( $player_highlight ); ?>">
 								<select name="player_<?php echo esc_attr( $global_idx ); ?>" class="spt-player-select" style="width: 100%;" required>
+									<option value="0" <?php selected( $matched_player, 0 ); ?>><?php echo esc_html( $no_match_label ); ?></option>
 									<?php foreach ( $player_objects as $player ) : ?>
 										<option value="<?php echo esc_attr( $player->ID ); ?>" <?php selected( $matched_player, $player->ID ); ?>>
 											<?php echo esc_html( $player->post_title ); ?>
@@ -1225,12 +1279,57 @@ endif;
 		return $index;
 	}
 
-	private function find_closest( $name, $posts, &$is_ambiguous = false ) {
-		$name_lower = strtolower( trim( $name ) );
+	/**
+	 * M35: maximum levenshtein distance still considered a match.
+	 *
+	 * find_closest() returns the nearest title no matter how far away it is, so a
+	 * CSV row for somebody who simply is not in the system used to be silently
+	 * attached to the alphabetically nearest wrong player. Scale the ceiling with
+	 * the length of the searched name (a 4-char name tolerates far less drift than
+	 * a 25-char one) with a floor of 3 to keep ordinary typos matching.
+	 *
+	 * @param string $name CSV value being matched.
+	 * @return int Maximum acceptable distance.
+	 */
+	private static function max_match_distance( $name ) {
+		$len = function_exists( 'mb_strlen' ) ? mb_strlen( trim( (string) $name ) ) : strlen( trim( (string) $name ) );
+		return max( 3, (int) floor( $len * 0.4 ) );
+	}
+
+	/**
+	 * M35: resolve a CSV value to a post ID, or 0 when nothing is close enough.
+	 *
+	 * Wraps find_closest() (whose "always return the nearest" contract is relied on
+	 * elsewhere and by its tests) with the distance ceiling above, so the preview
+	 * can default the row to an explicit "no match" instead of a wrong player.
+	 *
+	 * @param string $name         CSV value.
+	 * @param array  $posts        Candidate WP_Post objects.
+	 * @param bool   $is_ambiguous Out: whether the match was ambiguous.
+	 * @return int Post ID, or 0 for no acceptable match.
+	 */
+	private function find_match( $name, $posts, &$is_ambiguous = false ) {
+		$distance = PHP_INT_MAX;
+		$id       = $this->find_closest( $name, $posts, $is_ambiguous, $distance );
+
+		if ( null === $id || $distance > self::max_match_distance( $name ) ) {
+			// Not a match at all — an "ambiguous" flag would just highlight a row
+			// that has no candidate to be ambiguous between.
+			$is_ambiguous = false;
+			return 0;
+		}
+
+		return (int) $id;
+	}
+
+	private function find_closest( $name, $posts, &$is_ambiguous = false, &$best_distance = null ) {
+		$name_lower    = strtolower( trim( $name ) );
+		$best_distance = PHP_INT_MAX;
 
 		// PT-9: O(1) exact-match short-circuit before the O(N) levenshtein scan.
 		$exact_index = $this->build_exact_index( $posts );
 		if ( isset( $exact_index[ $name_lower ] ) ) {
+			$best_distance = 0;
 			return $exact_index[ $name_lower ];
 		}
 
@@ -1249,6 +1348,7 @@ endif;
 			// Exact match gets highest priority (kept as a safety net; the index
 			// above already covers this case).
 			if ( $name_lower === $title_lower || $name_lower === $title_clean_lower ) {
+				$best_distance = 0;
 				return $post->ID;
 			}
 
@@ -1270,7 +1370,8 @@ endif;
 		}
 
 		// Mark as ambiguous if second best is close to best
-		$is_ambiguous = ( $second_best_dist < PHP_INT_MAX && ( $second_best_dist - $best_dist ) < 3 );
+		$is_ambiguous  = ( $second_best_dist < PHP_INT_MAX && ( $second_best_dist - $best_dist ) < 3 );
+		$best_distance = $best_dist;
 
 		return $best;
 	}
