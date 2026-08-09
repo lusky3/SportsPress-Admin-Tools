@@ -19,7 +19,14 @@ class SPAT_Database {
 
 		$charset_collate = $wpdb->get_charset_collate();
 
-		// e-Transfer webhook logs table
+		// e-Transfer webhook logs table.
+		// webhook_data/payment_data are DEFAULT NULL, never DEFAULT '': stock
+		// MySQL 5.7+/8.x rejects a non-NULL literal default on a BLOB/TEXT column
+		// (ER_BLOB_CANT_HAVE_DEFAULT, error 1101) and aborts the whole CREATE, so
+		// on MySQL this table simply never existed. Only MariaDB accepts it, which
+		// is why the current deployment never noticed (AT/H25). Both writers pass
+		// the columns explicitly and the GDPR eraser already stores NULL there, so
+		// nothing depends on '' being the default.
 		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
 		$sql = "CREATE TABLE $table_name (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
@@ -31,8 +38,8 @@ class SPAT_Database {
             match_criteria varchar(255) DEFAULT '',
             order_id bigint(20) unsigned DEFAULT NULL,
             result varchar(255) DEFAULT '',
-            webhook_data longtext DEFAULT '',
-            payment_data longtext DEFAULT '',
+            webhook_data longtext DEFAULT NULL,
+            payment_data longtext DEFAULT NULL,
             PRIMARY KEY (id),
             KEY timestamp (timestamp),
             KEY order_id (order_id),
@@ -114,24 +121,45 @@ class SPAT_Database {
 		// leave installs in a state where spat_db_version = '1.0.4' but the new
 		// column / index is missing — readers then fail with 'Unknown column'.
 		if ( self::schema_matches_current_version() ) {
-			update_option( 'spat_db_version', defined( 'SPAT_DB_VERSION' ) ? SPAT_DB_VERSION : '1.0.4' );
+			update_option( 'spat_db_version', defined( 'SPAT_DB_VERSION' ) ? SPAT_DB_VERSION : '1.0.5' );
 		} elseif ( class_exists( 'SPAT_Logger' ) ) {
 			SPAT_Logger::error( 'database', 'dbDelta did not produce the expected schema; spat_db_version left unset for retry.' );
 		}
 	}
 
 	/**
-	 * Verify the post-dbDelta schema matches what 1.0.4 declares. Returns true
-	 * only when all expected columns and indexes exist; used to gate the
-	 * version marker so a half-applied migration retries on the next page load.
+	 * Verify the post-dbDelta schema matches what the current version declares.
+	 * Returns true only when all expected tables, columns and indexes exist;
+	 * used to gate the version marker so a half-applied migration retries on the
+	 * next page load.
+	 *
+	 * ALL FOUR tables created above must be listed here. Covering only the two
+	 * that gained columns/indexes meant a table whose CREATE failed outright
+	 * (e.g. spat_etransfer_logs on stock MySQL, H25) was still stamped as a
+	 * successful migration and never retried — converting a transient failure
+	 * into a permanent, silent one (H26).
+	 *
+	 * Index checks are by NAME, not by uniqueness. spat_etransfer_logs carried a
+	 * non-unique KEY reference_number before it was converted to a UNIQUE KEY, and
+	 * that conversion fails silently on an install that already holds duplicate
+	 * references. Matching on name keeps such an install out of an unfixable
+	 * 5-minute retry loop while still catching a table that never came up at all.
 	 */
 	private static function schema_matches_current_version() {
 		global $wpdb;
 
 		$expectations = array(
+			$wpdb->prefix . 'spat_etransfer_logs' => array(
+				'columns' => array( 'webhook_data', 'payment_data' ),
+				'indexes' => array( 'reference_number' ),
+			),
 			$wpdb->prefix . 'spat_registration_logs' => array(
 				'columns' => array( 'links_to_order' ),
 				'indexes' => array( 'player_id_links' ),
+			),
+			$wpdb->prefix . 'spat_role_logs' => array(
+				'columns' => array( 'user_id' ),
+				'indexes' => array( 'user_id' ),
 			),
 			$wpdb->prefix . 'spat_temp_data' => array(
 				'columns' => array(),

@@ -65,14 +65,28 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 	}
 
 	// Sweep any stale advisory-lock rows (autoload='no') left by interrupted
-	// SPAT_Lock holders, plus the health-dashboard status cache transient.
-	// Literal prefix (SPAT_Lock::OPTION_PREFIX) — the class isn't autoloaded
-	// during uninstall, so don't reference the constant here.
+	// SPAT_Lock holders. Literal prefix (SPAT_Lock::OPTION_PREFIX) — the class
+	// isn't autoloaded during uninstall, so don't reference the constant here.
 	$wpdb->query(
 		$wpdb->prepare(
 			"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s",
 			$wpdb->esc_like( 'spat_lock_' ) . '%'
 		)
 	);
+
+	// SPAT_Logger's throttle transients (spat_log_win_* / spat_log_cnt_*) are
+	// keyed by a payload digest, so they can't be enumerated and deleted by
+	// name — sweep both the value and timeout rows by prefix.
+	$wpdb->query(
+		$wpdb->prepare(
+			"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+			'_transient_' . $wpdb->esc_like( 'spat_log_' ) . '%',
+			'_transient_timeout_' . $wpdb->esc_like( 'spat_log_' ) . '%'
+		)
+	);
+
+	// Named transients: health-dashboard caches and the dbDelta retry throttle.
 	delete_transient( 'spat_table_status' );
+	delete_transient( 'spat_status_snapshot' );
+	delete_transient( 'spat_db_migrate_attempted' );
 }

@@ -469,6 +469,18 @@ class SPAT_Privacy {
 		$offset    = ( $page - 1 ) * self::BATCH_SIZE;
 		$batch_ids = array_slice( $player_ids, $offset, self::BATCH_SIZE );
 
+		// Delete THIS batch's registration-log rows before the loop below strips
+		// the meta that makes them discoverable. The sweep used to be deferred to
+		// the final page, which meant an interrupted multi-page run (expired
+		// transient, paused queue, fatal) left the rows for pages 1..N-1
+		// permanently unreachable: get_player_ids_for_email() resolves player ids
+		// from the spt_email / sp_user meta this loop deletes, so a re-run can no
+		// longer find them and the "re-run to finish" message was false (M2).
+		// Deleting per batch rather than per player keeps it to one DELETE and one
+		// message per page while still guaranteeing rows go first; it also covers
+		// ids that the loop skips on the post-type check.
+		$items_removed += $this->erase_registration_logs( $batch_ids, $messages );
+
 		foreach ( $batch_ids as $player_id ) {
 			$player = get_post( $player_id );
 			if ( ! $player || 'sp_player' !== $player->post_type ) {
@@ -498,14 +510,14 @@ class SPAT_Privacy {
 
 		$done = ( $offset + self::BATCH_SIZE ) >= count( $player_ids );
 
-		// Bulk log sweeps run once, on the FINAL page, over the cached full
-		// player-id list. Deferring to $done keeps each page's items_removed
-		// scoped to the work that page actually performed (its <=BATCH_SIZE
-		// player anonymizations), so the per-page totals reported to the WP
-		// eraser sum to the true number of removed items instead of
-		// front-loading the entire log-deletion count onto page 1.
+		// The e-transfer sweep still runs once, on the FINAL page. Unlike the
+		// registration logs it is keyed on from_email, not on player meta, so an
+		// interrupted run leaves it fully discoverable and a re-run completes it —
+		// the recovery message is accurate for this table. Deferring it also keeps
+		// each page's items_removed scoped to the work that page performed, so the
+		// per-page totals reported to the WP eraser sum to the true number of
+		// removed items instead of front-loading onto page 1.
 		if ( $done ) {
-			$items_removed += $this->erase_registration_logs( $player_ids, $messages );
 			$items_removed += $this->erase_etransfer_logs( $email_address, $messages );
 		}
 

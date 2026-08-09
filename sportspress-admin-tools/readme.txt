@@ -4,7 +4,7 @@ Tags: sportspress, automation, sports
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 8.1
-Stable tag: 1.0.4
+Stable tag: 1.0.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -31,6 +31,15 @@ Each child plugin registers with this parent and loads only when its module is e
 2. Activate the plugin through the 'Plugins' screen in WordPress
 
 == Changelog ==
+
+= 1.0.5 =
+* Fix e-transfer log table creation on stock MySQL — `longtext DEFAULT ''` is rejected there, so the table was never created (MariaDB accepted it). Schema version bumped so affected installs re-run the migration.
+* Schema verifier now checks all four tables, so a failed CREATE is no longer stamped as a successful migration.
+* System Status: a child registering several modules against one plugin file no longer overwrites its own row.
+* GDPR eraser deletes registration-log entries per batch, before the meta that makes them discoverable is removed.
+* Schema migration and backfills no longer run on front-end/REST requests, and the dbDelta pass is lock-guarded.
+* Saving settings from a child tab returns to that tab instead of "General".
+* Correct timezone on "Last Webhook Received"; log failed notification emails; uninstall now clears logger throttle and migration transients.
 
 = 1.0.4 =
 * Database schema updates: links_to_order column and supporting indexes on registration logs, unique key on temp data.

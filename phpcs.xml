@@ -42,25 +42,129 @@
 		<exclude name="Squiz.Commenting.ClassComment.SpacingAfter"/>
 		<exclude name="Generic.PHP.DeprecatedFunctions.Deprecated"/>
 
-		<!-- DB table name interpolation - table names cannot use prepare() placeholders -->
-		<exclude name="WordPress.DB.PreparedSQL.InterpolatedNotPrepared"/>
-		<exclude name="WordPress.DB.PreparedSQL.NotPrepared"/>
+	</rule>
 
-		<!--
-			Security sniffs excluded due to high false-positive rate in this codebase.
-			These are manually audited - see AUDIT-REPORT.md for the full security review.
-			Common false positives: wp_verify_nonce() flagged as unsanitized input,
-			$_SERVER['REMOTE_ADDR'] flagged as needing unslash, wp_kses_post() output
-			flagged as unescaped, nonce checks in AJAX handlers not detected.
-		-->
-		<exclude name="WordPress.Security.EscapeOutput.OutputNotEscaped"/>
-		<exclude name="WordPress.Security.ValidatedSanitizedInput.MissingUnslash"/>
-		<exclude name="WordPress.Security.ValidatedSanitizedInput.InputNotSanitized"/>
-		<exclude name="WordPress.Security.ValidatedSanitizedInput.InputNotValidated"/>
-		<exclude name="WordPress.Security.NonceVerification.Missing"/>
+	<!--
+		=====================================================================
+		SECURITY SNIFFS — enabled suite-wide (audit 2026-08 finding M56)
+		=====================================================================
+
+		These sniffs (WordPress.Security.* and WordPress.DB.PreparedSQL.*) used
+		to be excluded from the `WordPress` ruleset entirely, which meant the
+		lint gate produced ZERO injection / escaping / nonce signal — including
+		on brand-new code. They are now ON globally.
+
+		The ~177 pre-existing violations they surface are quarantined with a
+		per-file BASELINE below rather than by disabling the sniffs.
+		Consequences of that choice:
+
+		  * Any NEW file is fully checked by every security sniff.
+		  * Any file NOT listed below is fully checked — so a new escaping /
+		    sanitisation / nonce / prepare() defect outside the baseline set
+		    fails CI, which is the whole point of re-enabling these.
+		  * The baseline is a shrinking list, not a permanent exemption.
+
+		HOW TO SHRINK THE BASELINE (please do, opportunistically):
+		  1. Fix the violations in a file (escape output, wp_unslash + sanitize,
+		     $wpdb->prepare()) — or annotate a genuine false positive inline
+		     with an inline `phpcs:ignore &lt;Sniff.Code&gt;` comment (plus a
+		     justification after the standard double-dash separator) on the
+		     offending line.
+		  2. Delete that file's <exclude-pattern> line here.
+		  3. Re-run `phpcs` — it must stay green.
+
+		DO NOT add new entries to the baseline to make CI pass. A new violation
+		means new code needs fixing. Regenerate the whole block only after a
+		deliberate, reviewed sweep.
+
+		Note on WordPress.DB.PreparedSQL.InterpolatedNotPrepared: most hits are
+		`{$wpdb->prefix}`-style TABLE NAME interpolation, which genuinely cannot
+		use a prepare() placeholder. Those are safe; the sniff stays on so that
+		interpolation of *values* in new code is still caught.
+
+		Note on NonceVerification: its codes are warnings by default and this
+		ruleset runs with warning-severity=0 (see below), so they would be
+		invisible. They are promoted to errors so the nonce gate actually gates.
+	-->
+
+	<rule ref="WordPress.Security.NonceVerification">
+		<type>error</type>
+	</rule>
+
+	<!-- ===== BASELINE (pre-existing violations, regenerated 2026-08-08) ===== -->
+
+	<!-- WordPress.DB.PreparedSQL: 60 violations across 18 baselined files -->
+	<rule ref="WordPress.DB.PreparedSQL">
+		<exclude-pattern>*/sportspress-admin-tools/includes/class-database.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-admin-tools/includes/class-privacy.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-admin-tools/sportspress-admin-tools.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-admin-tools/uninstall.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-etransfer-automation/includes/class-database.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-etransfer-automation/includes/class-etransfer-admin.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-etransfer-automation/includes/class-etransfer-automation.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-etransfer-automation/uninstall.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-events-manager/includes/class-dynamic-standings.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-events-manager/includes/class-events-management.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-league-manager/includes/class-player-notes-database.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-league-manager/includes/class-rest-api.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-player-tools/includes/class-batch-list-creator.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-player-tools/includes/class-email-sync.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-player-tools/includes/class-rest-api.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-player-tools/uninstall.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-schedule-generator/includes/class-sportspress-integration.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-score-sheets/includes/class-database.php</exclude-pattern>
+	</rule>
+
+	<!-- WordPress.Security.EscapeOutput: 69 violations across 14 baselined files -->
+	<rule ref="WordPress.Security.EscapeOutput">
+		<exclude-pattern>*/sportspress-admin-tools/includes/class-admin.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-admin-tools/includes/class-health-dashboard.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-admin-tools/includes/class-plugin-manager.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-etransfer-automation/includes/class-admin.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-etransfer-automation/includes/class-etransfer-admin.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-etransfer-automation/includes/class-file-downloads.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-events-manager/includes/class-admin.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-league-manager/includes/class-admin.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-player-tools/includes/class-batch-list-creator.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-player-tools/includes/class-email-sync.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-player-tools/includes/class-player-skill-level.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-schedule-generator/includes/class-admin-renderer.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-schedule-generator/includes/class-admin.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-schedule-generator/includes/class-error-handler.php</exclude-pattern>
+	</rule>
+
+	<!-- WordPress.Security.NonceVerification: 16 violations across 4 baselined files -->
+	<rule ref="WordPress.Security.NonceVerification">
+		<exclude-pattern>*/sportspress-admin-tools/includes/class-admin.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-player-tools/includes/class-batch-list-creator.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-schedule-generator/includes/class-admin.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-schedule-generator/includes/class-schedule-generator.php</exclude-pattern>
+	</rule>
+
+	<!-- WordPress.Security.ValidatedSanitizedInput: 32 violations across 13 baselined files -->
+	<rule ref="WordPress.Security.ValidatedSanitizedInput">
+		<exclude-pattern>*/sportspress-admin-tools/includes/class-admin.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-etransfer-automation/includes/class-admin.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-etransfer-automation/includes/class-etransfer-automation.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-etransfer-automation/includes/class-file-downloads.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-events-manager/includes/class-admin.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-league-manager/includes/class-player-notes.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-player-tools/includes/class-batch-list-creator.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-player-tools/includes/class-email-sync.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-player-tools/includes/class-player-modifications.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-player-tools/includes/class-player-profile-picture.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-schedule-generator/includes/class-admin-ajax.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-schedule-generator/includes/class-admin.php</exclude-pattern>
+		<exclude-pattern>*/sportspress-schedule-generator/includes/class-schedule-generator.php</exclude-pattern>
 	</rule>
 
 	<arg name="extensions" value="php"/>
+	<!--
+		Style/documentation warnings stay silenced (2,300+ pre-existing, almost
+		all phpcbf-fixable formatting noise). Security findings are unaffected:
+		they are errors, and the NonceVerification codes are promoted to errors
+		above precisely so this setting cannot hide them.
+	-->
 	<arg name="warning-severity" value="0"/>
 	<arg value="p"/>
 	<arg value="s"/>

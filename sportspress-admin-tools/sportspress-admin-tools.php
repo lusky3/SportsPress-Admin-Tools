@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SportsPress Admin Tools
  * Description: Administrative tools for SportsPress
- * Version: 1.0.4
+ * Version: 1.0.5
  * Author: Cody (lusky3)
  * Text Domain: sportspress-admin-tools
  * Requires at least: 5.0
@@ -22,7 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // Define plugin constants
 define( 'SPAT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPAT_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPAT_VERSION', '1.0.4' );
+define( 'SPAT_VERSION', '1.0.5' );
 
 // Parent side of the parent/child capability contract (H7). Children declare
 // a required floor and compare against this value so a mismatched parent that
@@ -39,6 +39,11 @@ define( 'SPAT_CONTRACT_VERSION', '1.1.0' );
 // Schema version the bundled migrations target. Kept in lockstep with
 // SPAT_VERSION so the plugin header tracks DB iterations; SPAT_Database reads
 // this constant instead of hardcoding the target in two places (AT-5).
+//
+// 1.0.5 exists specifically to force a re-run: installs that hit the H25
+// CREATE TABLE failure on stock MySQL had spat_db_version stamped '1.0.4'
+// anyway (H26's incomplete verifier), so without a version bump the corrected
+// schema would never be applied to them.
 define( 'SPAT_DB_VERSION', SPAT_VERSION );
 
 // Main plugin class
@@ -70,6 +75,38 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 			require_once SPAT_PLUGIN_PATH . 'includes/class-database.php';
 			require_once SPAT_PLUGIN_PATH . 'includes/class-plugin-manager.php';
 
+			// Schema migration and one-time backfills are maintenance work that only
+			// needs to happen where an operator or the scheduler can observe it.
+			// Running the version probe, SHOW COLUMNS and backfill SELECT on every
+			// front-end and REST request added queries to uncached page loads for no
+			// benefit (M3). Activation already creates the tables; anything missed
+			// lands on the next admin pageload or cron run.
+			if ( is_admin() || wp_doing_cron() ) {
+				$this->maybe_upgrade_database();
+			}
+
+			// Load text domain
+			load_plugin_textdomain( 'sportspress-admin-tools', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
+
+			// Initialize notifications (works on both admin and front-end for webhook-triggered events)
+			require_once SPAT_PLUGIN_PATH . 'includes/class-notifications.php';
+			new SPAT_Notifications();
+
+			// GDPR privacy exporters and erasers — loaded unconditionally
+			require_once SPAT_PLUGIN_PATH . 'includes/class-privacy.php';
+			new SPAT_Privacy();
+
+			// Initialize admin
+			if ( is_admin() ) {
+				$this->init_admin();
+			}
+		}
+
+		/**
+		 * Bring the schema up to SPAT_DB_VERSION and run any pending one-time
+		 * backfills. Called only from admin/cron requests (M3).
+		 */
+		private function maybe_upgrade_database(): void {
 			// Run dbDelta on version bump so new indexes/columns reach existing installs
 			// without forcing operators to deactivate/reactivate the plugin.
 			// create_tables() only stamps spat_db_version once the schema verifies,
@@ -79,7 +116,17 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 			if ( get_option( 'spat_db_version' ) !== SPAT_DB_VERSION
 				&& false === get_transient( 'spat_db_migrate_attempted' ) ) {
 				set_transient( 'spat_db_migrate_attempted', 1, 5 * MINUTE_IN_SECONDS );
-				SPAT_Database::create_tables();
+				// Serialize the dbDelta pass the same way the backfill below is.
+				// Two admins landing inside the same retry window would otherwise
+				// run concurrent dbDelta calls plus the spat_temp_data dedupe
+				// DELETE against each other (M3).
+				SPAT_Lock::with(
+					'spat_create_tables',
+					60,
+					function () {
+						SPAT_Database::create_tables();
+					}
+				);
 			}
 
 			// One-time backfill of the links_to_order column added in 1.0.4.
@@ -119,22 +166,6 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 						update_option( 'spat_logs_backfilled_links_to_order', '1' );
 					}
 				}
-			}
-
-			// Load text domain
-			load_plugin_textdomain( 'sportspress-admin-tools', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
-
-			// Initialize notifications (works on both admin and front-end for webhook-triggered events)
-			require_once SPAT_PLUGIN_PATH . 'includes/class-notifications.php';
-			new SPAT_Notifications();
-
-			// GDPR privacy exporters and erasers — loaded unconditionally
-			require_once SPAT_PLUGIN_PATH . 'includes/class-privacy.php';
-			new SPAT_Privacy();
-
-			// Initialize admin
-			if ( is_admin() ) {
-				$this->init_admin();
 			}
 		}
 

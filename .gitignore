@@ -6,6 +6,14 @@ vendor/
 .env
 .env.*
 
+# Secrets / credentials scratch files.
+# `.regtoken.tmp` (a GitHub Actions self-hosted runner registration token) was
+# committed to this public repo in 15d32ad; these patterns stop that class of
+# scratch file from ever being staged again. Do NOT remove.
+.regtoken*
+*.regtoken
+*.tmp
+
 # OS files
 .DS_Store
 Thumbs.db
