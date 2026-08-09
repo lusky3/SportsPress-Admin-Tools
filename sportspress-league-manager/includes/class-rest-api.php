@@ -160,6 +160,27 @@ class SPLM_REST_API {
 						'sanitize_callback' => 'absint',
 						'validate_callback' => 'rest_validate_request_arg',
 					),
+					// LOW: get_games() has always read from/to/order, but they were
+					// undeclared — so they were undocumented in the route schema and
+					// unvalidated (a bad `from` reached WP_Query's date_query as-is).
+					'from'     => array(
+						'type'              => 'string',
+						'format'            => 'date',
+						'sanitize_callback' => 'sanitize_text_field',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+					'to'       => array(
+						'type'              => 'string',
+						'format'            => 'date',
+						'sanitize_callback' => 'sanitize_text_field',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+					'order'    => array(
+						'type'              => 'string',
+						'default'           => 'ASC',
+						'enum'              => array( 'ASC', 'DESC', 'asc', 'desc' ),
+						'validate_callback' => 'rest_validate_request_arg',
+					),
 				),
 			)
 		);
@@ -282,6 +303,24 @@ class SPLM_REST_API {
 						'type'              => 'string',
 						'default'           => '',
 						'sanitize_callback' => 'sanitize_text_field',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+					// H12: the export is chunked on the same bound the paginated
+					// list uses, so one request can never fan out unbounded
+					// WooCommerce lookups. The client walks pages.
+					'per_page' => array(
+						'type'              => 'integer',
+						'default'           => 500,
+						'minimum'           => 1,
+						'maximum'           => 500,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+					'page' => array(
+						'type'              => 'integer',
+						'default'           => 1,
+						'minimum'           => 1,
+						'sanitize_callback' => 'absint',
 						'validate_callback' => 'rest_validate_request_arg',
 					),
 				),
@@ -580,7 +619,17 @@ class SPLM_REST_API {
 
 		$result = wp_insert_term( $name, 'sp_league' );
 		if ( is_wp_error( $result ) ) {
-			return $result;
+			// LOW: a raw WP_Error from wp_insert_term() carries no status, so
+			// REST rendered every one as a 500 — including "term already exists"
+			// (a race with the get_term_by() check above) and validation errors
+			// the caller could fix. Map to the documented codes: 409 on a
+			// duplicate, 400 for anything else user-correctable.
+			$status = ( 'term_exists' === $result->get_error_code() ) ? 409 : 400;
+			return new WP_Error(
+				$result->get_error_code(),
+				$result->get_error_message(),
+				array( 'status' => $status )
+			);
 		}
 
 		return new WP_REST_Response(
@@ -619,15 +668,47 @@ class SPLM_REST_API {
 	}
 
 	/**
+	 * The single definition of "paid" used by every fee figure this class reports.
+	 *
+	 * M22: the /stats tile queried wc_get_is_paid_statuses() while
+	 * /reports/season-summary hard-coded array( 'wc-completed', 'wc-processing' ),
+	 * so the two surfaces disagreed on any site that filters the paid set (or
+	 * uses a gateway with its own paid status). WooCommerce's helper is the
+	 * canonical, filterable list — and it is what WC_Order::is_paid() (used by
+	 * enrich_payment_rows()) consults — so route everything through it, with a
+	 * literal fallback for the WooCommerce-absent case.
+	 *
+	 * @return string[] Order statuses that count as paid (unprefixed).
+	 */
+	private static function paid_order_statuses() {
+		if ( function_exists( 'wc_get_is_paid_statuses' ) ) {
+			$statuses = wc_get_is_paid_statuses();
+			if ( ! empty( $statuses ) ) {
+				return array_values( (array) $statuses );
+			}
+		}
+		return array( 'completed', 'processing' );
+	}
+
+	/**
 	 * Acquire a cross-request mutex, guarding against a parent too old to ship
 	 * SPAT_Lock (M12/H7). When the class is unavailable we cannot lock, so we
 	 * degrade to "acquired" (best-effort) and let the caller proceed rather
 	 * than fatal — matching the class_exists( 'SPAT_Lock' ) guards used by the
 	 * sibling plugins.
 	 *
+	 * SPAT_Lock::acquire() returns an OWNER HANDLE (a truthy string), not a bool,
+	 * and SPAT_Lock::release() only drops the lock when handed that handle back.
+	 * Return it so callers can release safely; a caller that overruns its TTL
+	 * then releases without the handle would otherwise delete the NEXT holder's
+	 * live lock (the unconditional-delete pattern the parent's owner check
+	 * exists to prevent). Truthiness is unchanged, so existing `if ( ! $ok )`
+	 * call sites keep working.
+	 *
 	 * @param string $key Lock key.
 	 * @param int    $ttl Time-to-live in seconds.
-	 * @return bool True when the lock is held (or SPAT_Lock is unavailable).
+	 * @return string|bool Owner handle, true when SPAT_Lock is unavailable, or
+	 *                     false when the lock is held by someone else.
 	 */
 	private function lock_acquire( $key, $ttl ) {
 		if ( ! class_exists( 'SPAT_Lock' ) ) {
@@ -640,12 +721,14 @@ class SPLM_REST_API {
 	 * Release a mutex acquired via lock_acquire(). No-op when SPAT_Lock is
 	 * unavailable (M12/H7).
 	 *
-	 * @param string $key Lock key.
+	 * @param string      $key    Lock key.
+	 * @param string|bool $handle Handle returned by lock_acquire(). Always pass
+	 *                            it — without it the release is unconditional.
 	 * @return void
 	 */
-	private function lock_release( $key ) {
+	private function lock_release( $key, $handle = null ) {
 		if ( class_exists( 'SPAT_Lock' ) ) {
-			SPAT_Lock::release( $key );
+			SPAT_Lock::release( $key, is_string( $handle ) ? $handle : null );
 		}
 	}
 
@@ -1062,6 +1145,10 @@ class SPLM_REST_API {
 	 * GET /rosters — players on a team with contact info.
 	 */
 	public function get_rosters( $request ) {
+		// M27: roster viewing is the league_roster_management module.
+		if ( ! self::module_enabled( 'league_roster_management' ) ) {
+			return $this->module_disabled_error( 'Roster Management' );
+		}
 		$team_id   = absint( $request->get_param( 'team' ) );
 		$season_id = absint( $request->get_param( 'season' ) );
 
@@ -1233,6 +1320,10 @@ class SPLM_REST_API {
 	 * expensive per-row work (wc_get_orders / wc_get_order) is now bounded.
 	 */
 	public function get_payments( $request ) {
+		// M27: fee status is the league_fee_tracking module.
+		if ( ! self::module_enabled( 'league_fee_tracking' ) ) {
+			return $this->module_disabled_error( 'Fee Tracking' );
+		}
 		if ( ! function_exists( 'wc_get_order' ) ) {
 			return new WP_REST_Response( splm_rest_list_response( array(), 0, 1, 1 ), 200 );
 		}
@@ -1278,52 +1369,103 @@ class SPLM_REST_API {
 	}
 
 	/**
-	 * GET /payments/export — CSV of the full (season + search) payment set, not
-	 * just the current page. Returned as { filename, csv, count } JSON so the
-	 * dashboard can trigger a client-side download that reuses the apiFetch
-	 * nonce, rather than streaming a file (which would need a separate
-	 * authenticated download path).
+	 * Column headings for the payments CSV. Shared by the export chunker so the
+	 * header row is emitted exactly once (on page 1).
+	 */
+	const PAYMENT_EXPORT_COLUMNS = array( 'Player', 'Team', 'Status', 'Amount', 'Order ID', 'Matched By' );
+
+	/**
+	 * GET /payments/export — one CHUNK of the (season + search) payment set as
+	 * CSV. Returned as { filename, csv, count, page, total, total_pages } JSON so
+	 * the dashboard can assemble the file client-side, reusing the apiFetch nonce
+	 * rather than streaming a file (which would need a separate authenticated
+	 * download path).
+	 *
+	 * H12: this used to enrich the ENTIRE season in one request. Enrichment does
+	 * a WooCommerce order lookup per row plus a billing-name meta-JOIN
+	 * wc_get_orders() per registration-log miss, which is exactly why the
+	 * paginated /payments endpoint caps its slice at 500 — the export ignored
+	 * that bound, and repeated clicks stacked concurrent full-season runs. Now it
+	 * pages on the same 500-row bound, and a per-user lock makes a double-click
+	 * return 409 instead of doubling the load. The full export is preserved: the
+	 * client walks pages 1..total_pages and concatenates.
 	 */
 	public function export_payments( $request ) {
+		// M27: same module gate as the paginated list it exports.
+		if ( ! self::module_enabled( 'league_fee_tracking' ) ) {
+			return $this->module_disabled_error( 'Fee Tracking' );
+		}
 		$season_id = absint( $request->get_param( 'season' ) );
 		$search    = sanitize_text_field( (string) $request->get_param( 'search' ) );
+		$per_page  = min( 500, max( 1, (int) ( $request->get_param( 'per_page' ) ?? 500 ) ) );
+		$page      = max( 1, (int) ( $request->get_param( 'page' ) ?? 1 ) );
 		$filename  = 'payments-season-' . $season_id . ( '' !== $search ? '-filtered' : '' ) . '.csv';
+		$header    = $this->to_csv_row( self::PAYMENT_EXPORT_COLUMNS );
 
 		if ( ! function_exists( 'wc_get_order' ) ) {
 			return new WP_REST_Response(
 				array(
-					'filename' => $filename,
-					'csv'      => "Player,Team,Status,Amount,Order ID\r\n",
-					'count'    => 0,
+					'filename'    => $filename,
+					'csv'         => $header . "\r\n",
+					'count'       => 0,
+					'page'        => 1,
+					'total'       => 0,
+					'total_pages' => 0,
 				),
 				200
 			);
 		}
 
-		$rows = $this->resolve_payment_player_rows( $season_id, $search );
-		$data = $this->enrich_payment_rows( $rows );
-
-		$lines = array( $this->to_csv_row( array( 'Player', 'Team', 'Status', 'Amount', 'Order ID' ) ) );
-		foreach ( $data as $d ) {
-			$lines[] = $this->to_csv_row(
-				array(
-					$d['player'],
-					$d['team'],
-					$d['status'],
-					'' === $d['amount'] ? '' : (string) $d['amount'],
-					$d['order_id'] ? (string) $d['order_id'] : '',
-				)
+		// One export at a time per user — a second click while the first walk is
+		// still running would otherwise double the WooCommerce fan-out.
+		$lock_key    = 'splm_payments_export_' . get_current_user_id();
+		$export_lock = $this->lock_acquire( $lock_key, 60 );
+		if ( ! $export_lock ) {
+			return new WP_Error(
+				'export_in_progress',
+				'An export is already running for your account. Please wait for it to finish.',
+				array( 'status' => 409 )
 			);
 		}
 
-		return new WP_REST_Response(
-			array(
-				'filename' => $filename,
-				'csv'      => implode( "\r\n", $lines ) . "\r\n",
-				'count'    => count( $data ),
-			),
-			200
-		);
+		try {
+			$rows        = $this->resolve_payment_player_rows( $season_id, $search );
+			$total       = count( $rows );
+			$total_pages = $total > 0 ? (int) ceil( $total / $per_page ) : 0;
+
+			$data = ( 0 === $total )
+				? array()
+				: $this->enrich_payment_rows( array_slice( $rows, ( $page - 1 ) * $per_page, $per_page ) );
+
+			// Header on the first chunk only, so concatenated chunks form one file.
+			$lines = ( 1 === $page ) ? array( $header ) : array();
+			foreach ( $data as $d ) {
+				$lines[] = $this->to_csv_row(
+					array(
+						$d['player'],
+						$d['team'],
+						$d['status'],
+						'' === $d['amount'] ? '' : (string) $d['amount'],
+						$d['order_id'] ? (string) $d['order_id'] : '',
+						$d['matched_by'],
+					)
+				);
+			}
+
+			return new WP_REST_Response(
+				array(
+					'filename'    => $filename,
+					'csv'         => empty( $lines ) ? '' : implode( "\r\n", $lines ) . "\r\n",
+					'count'       => count( $data ),
+					'page'        => $page,
+					'total'       => $total,
+					'total_pages' => $total_pages,
+				),
+				200
+			);
+		} finally {
+			$this->lock_release( $lock_key, $export_lock );
+		}
 	}
 
 	/**
@@ -1475,12 +1617,17 @@ class SPLM_REST_API {
 			$status = 'unpaid';
 			$amount = '';
 			$order  = null;
+			// M21: how this row's order was found. 'registration_log' is an
+			// authoritative player→order link written at registration time;
+			// 'billing_name' is the heuristic fallback below.
+			$matched_by = '';
 
 			if ( isset( $reg_map[ $pid ] ) ) {
 				$order = wc_get_order( $reg_map[ $pid ] );
 				if ( $order ) {
-					$amount = $order->get_total();
-					$status = $order->is_paid() ? 'paid' : 'pending';
+					$amount     = $order->get_total();
+					$status     = $order->is_paid() ? 'paid' : 'pending';
+					$matched_by = 'registration_log';
 				}
 			}
 
@@ -1516,19 +1663,28 @@ class SPLM_REST_API {
 						$order  = $orders[0];
 						$amount = $order->get_total();
 						$status = $order->is_paid() ? 'paid' : 'pending';
+						// M21: this is the NEWEST order with a matching billing
+						// name — no product, season or date constraint — so it can
+						// legitimately be a merch order, last season's
+						// registration, or a same-name stranger. Keep the row (it
+						// is a useful reconciliation hint) but label its
+						// provenance so nobody reads it as a confirmed
+						// registration payment. Surfaced in the UI and the CSV.
+						$matched_by = 'billing_name';
 					}
 				}
 			}
 
 			$oid    = ( $order && ! is_wp_error( $order ) ) ? (int) $order->get_id() : 0;
 			$data[] = array(
-				'player_id' => $pid,
-				'player'    => $row['player'],
-				'team'      => splm_clean_team_name( $row['team'] ),
-				'status'    => $status,
-				'amount'    => $amount,
-				'order_id'  => $oid,
-				'order_url' => $oid ? splm_order_edit_url( $oid ) : '',
+				'player_id'  => $pid,
+				'player'     => $row['player'],
+				'team'       => splm_clean_team_name( $row['team'] ),
+				'status'     => $status,
+				'amount'     => $amount,
+				'order_id'   => $oid,
+				'order_url'  => $oid ? splm_order_edit_url( $oid ) : '',
+				'matched_by' => $matched_by,
 			);
 		}
 
@@ -1577,13 +1733,20 @@ class SPLM_REST_API {
 			)
 		);
 
+		// H9: resolve_players_by_team_for_season() takes an ID-KEYED SET
+		// ( team_id => true ) — it runs array_keys() itself for the IN clause and
+		// tests membership with isset( $team_ids[ $tid ] ). Passing a plain list
+		// here made it query sp_current_team IN (0,1,2,…) and match team post IDs
+		// against array offsets, so the Players tile always read 0 and the fee
+		// block (guarded on $player_ids) never ran. Pass the set through unchanged
+		// — count() on the set is still the distinct-team count. See
+		// resolve_payment_player_rows(), which has always called it correctly.
 		$team_ids = array();
 		foreach ( $events as $eid ) {
 			foreach ( get_post_meta( $eid, 'sp_team', false ) as $tid ) {
 				$team_ids[ (int) $tid ] = true;
 			}
 		}
-		$team_ids = array_keys( $team_ids );
 
 		$players_by_team = empty( $team_ids )
 			? array()
@@ -1619,8 +1782,8 @@ class SPLM_REST_API {
 				}
 			}
 
-			$order_ids = array_values( array_unique( $order_by_player ) );
-			$paid      = 0;
+			$order_ids     = array_values( array_unique( $order_by_player ) );
+			$paid_order_id = array();
 			if ( ! empty( $order_ids ) ) {
 				// Bulk paid-status lookup — HPOS-safe (wc_get_orders translates
 				// post__in/status), and returns ids only so no orders are loaded.
@@ -1629,10 +1792,24 @@ class SPLM_REST_API {
 						'limit'    => -1,
 						'return'   => 'ids',
 						'post__in' => $order_ids,
-						'status'   => wc_get_is_paid_statuses(),
+						'status'   => self::paid_order_statuses(),
 					)
 				);
-				$paid = is_array( $paid_ids ) ? count( $paid_ids ) : 0;
+				foreach ( (array) $paid_ids as $oid ) {
+					$paid_order_id[ (int) $oid ] = true;
+				}
+			}
+
+			// M18: every figure in this tile counts PLAYERS. Counting distinct
+			// paid orders undercounted any family/multi-player order (one order,
+			// N registrations) while `pending` was already player-based, so the
+			// three numbers did not add up to the roster. Fold order status back
+			// onto players — the same shape get_season_summary() uses.
+			$paid = 0;
+			foreach ( $order_by_player as $oid ) {
+				if ( isset( $paid_order_id[ (int) $oid ] ) ) {
+					$paid++;
+				}
 			}
 
 			$tracked = count( $order_by_player );
@@ -1804,6 +1981,10 @@ class SPLM_REST_API {
 	 * POST /rosters/bulk-upload — parse multi-team CSV, return preview with fuzzy matches.
 	 */
 	public function bulk_upload_roster( $request ) {
+		// M27: roster CSV import is the league_roster_management module.
+		if ( ! self::module_enabled( 'league_roster_management' ) ) {
+			return $this->module_disabled_error( 'Roster Management' );
+		}
 		$files = $request->get_file_params();
 		if ( empty( $files['file'] ) || $files['file']['error'] !== UPLOAD_ERR_OK ) {
 			return new WP_Error( 'upload_error', 'File upload failed.', array( 'status' => 400 ) );
@@ -1888,6 +2069,10 @@ class SPLM_REST_API {
 	 * POST /rosters/bulk-process — create/update player lists from confirmed CSV data.
 	 */
 	public function bulk_process_roster( $request ) {
+		// M27: roster list creation is the league_roster_management module.
+		if ( ! self::module_enabled( 'league_roster_management' ) ) {
+			return $this->module_disabled_error( 'Roster Management' );
+		}
 		$params    = $request->get_json_params();
 		$teams     = $params['teams'] ?? array();
 		$season_id = absint( $params['season_id'] ?? 0 );
@@ -2012,7 +2197,7 @@ class SPLM_REST_API {
 				}
 				add_post_meta( $list_id, 'sp_player', $pid );
 			}
-			$this->lock_release( $lock_key );
+			$this->lock_release( $lock_key, $acquired );
 		}
 
 		// H1: response includes counts AND per-item errors so callers can
@@ -2127,6 +2312,16 @@ class SPLM_REST_API {
 				continue;
 			}
 
+			// M26: reject unparseable date/time here rather than letting the row
+			// reach post_date. Surfacing it in the preview means the operator can
+			// fix the file before importing instead of finding 1970 fixtures.
+			$raw_time = ( false !== $col_map['time'] && isset( $row[ $col_map['time'] ] ) ) ? trim( $row[ $col_map['time'] ] ) : '';
+			list( $normalized, $reason ) = $this->normalize_import_datetime( $date, $raw_time );
+			if ( false === $normalized ) {
+				$warnings[] = sprintf( 'Row %d: %s, skipped.', $i + 1, $reason );
+				continue;
+			}
+
 			$games[] = array(
 				'date'      => sanitize_text_field( $date ),
 				'time'      => false !== $col_map['time'] && isset( $row[ $col_map['time'] ] ) ? sanitize_text_field( trim( $row[ $col_map['time'] ] ) ) : '',
@@ -2186,7 +2381,14 @@ class SPLM_REST_API {
 				continue;
 			}
 
-			$post_date = $date . ' ' . ( preg_match( '/^\d{2}:\d{2}$/', $time ) ? $time : '19:00' ) . ':00';
+			// M26: strict parse — never write an unvalidated string into post_date,
+			// and never silently rewrite an unrecognized time to 19:00.
+			list( $post_date, $reason ) = $this->normalize_import_datetime( $date, $time );
+			if ( false === $post_date ) {
+				$errors[] = sprintf( 'Skipped %s vs %s — %s', $home_name, $away_name, $reason );
+				$skipped++;
+				continue;
+			}
 
 			// M-ImportRaceWindow: insert as draft first so save_post / event
 			// hooks that read sp_team don't fire on a post with no teams.
@@ -2219,7 +2421,7 @@ class SPLM_REST_API {
 			delete_post_meta( $event_id, 'sp_team' );
 			add_post_meta( $event_id, 'sp_team', $home_id );
 			add_post_meta( $event_id, 'sp_team', $away_id );
-			$this->lock_release( $event_lock_key );
+			$this->lock_release( $event_lock_key, $event_acquired );
 
 			if ( $venue ) {
 				$venue_term = term_exists( $venue, 'sp_venue' );
@@ -2264,7 +2466,98 @@ class SPLM_REST_API {
 	}
 
 	/**
-	 * Lookup an existing sp_team by exact title. Returns 0 if not found.
+	 * Date formats accepted by the games importer, tried in order. Deliberately
+	 * excludes ambiguous day/month-first forms (is 03/04 March 4th or April 3rd?)
+	 * — those are reported as unrecognized rather than guessed at.
+	 */
+	private const IMPORT_DATE_FORMATS = array( 'Y-m-d', 'Y/m/d', 'm/d/Y' );
+
+	/**
+	 * Time formats accepted by the games importer, tried in order.
+	 */
+	private const IMPORT_TIME_FORMATS = array( 'H:i', 'H:i:s', 'g:i A', 'g:iA' );
+
+	/**
+	 * Normalize an imported date + time into a `Y-m-d H:i:s` post_date.
+	 *
+	 * M26: the importer previously concatenated the raw CSV date straight into
+	 * post_date and only accepted a literal `HH:MM` time. A non-ISO date ("Mar 4
+	 * 2026", "04/03/2026") produced an invalid post_date — 0000-00-00, a 1970
+	 * event, or a generic wp_insert_post failure — and ANY unrecognized time was
+	 * silently rewritten to 19:00, quietly moving games. Parse strictly and let
+	 * the caller report the row instead.
+	 *
+	 * @param string $date Raw date cell.
+	 * @param string $time Raw time cell ('' means "use the 19:00 default").
+	 * @return array{0:string|false,1:string} [ post_date, reason ]. post_date is
+	 *                                        false when the row cannot be parsed.
+	 */
+	private function normalize_import_datetime( $date, $time ) {
+		$date = trim( (string) $date );
+		$time = trim( (string) $time );
+
+		$parsed_date = false;
+		foreach ( self::IMPORT_DATE_FORMATS as $format ) {
+			// '!' resets every unspecified field, so no part of "now" leaks in.
+			$candidate = DateTimeImmutable::createFromFormat( '!' . $format, $date );
+			if ( self::datetime_parse_clean( $candidate ) ) {
+				$parsed_date = $candidate;
+				break;
+			}
+		}
+		if ( ! $parsed_date ) {
+			return array( false, sprintf( 'unrecognized date "%s" (expected YYYY-MM-DD)', $date ) );
+		}
+
+		if ( '' === $time ) {
+			return array( $parsed_date->format( 'Y-m-d' ) . ' 19:00:00', '' );
+		}
+
+		$parsed_time = false;
+		foreach ( self::IMPORT_TIME_FORMATS as $format ) {
+			// Upper-cased so "7:00 pm" matches the 'g:i A' meridiem formats.
+			$candidate = DateTimeImmutable::createFromFormat( '!' . $format, strtoupper( $time ) );
+			if ( self::datetime_parse_clean( $candidate ) ) {
+				$parsed_time = $candidate;
+				break;
+			}
+		}
+		if ( ! $parsed_time ) {
+			return array( false, sprintf( 'unrecognized time "%s" (expected HH:MM or "7:00 PM")', $time ) );
+		}
+
+		return array( $parsed_date->format( 'Y-m-d' ) . ' ' . $parsed_time->format( 'H:i:s' ), '' );
+	}
+
+	/**
+	 * Whether a createFromFormat() result parsed with no warnings or errors.
+	 *
+	 * DateTimeImmutable::getLastErrors() returns false (not a zeroed array) when
+	 * there was nothing to report as of PHP 8.2, so both shapes are handled.
+	 *
+	 * @param DateTimeImmutable|false $candidate Result of createFromFormat().
+	 * @return bool
+	 */
+	private static function datetime_parse_clean( $candidate ) {
+		if ( ! $candidate instanceof DateTimeImmutable ) {
+			return false;
+		}
+		$errors = DateTimeImmutable::getLastErrors();
+		if ( false === $errors || ! is_array( $errors ) ) {
+			return true;
+		}
+		return empty( $errors['warning_count'] ) && empty( $errors['error_count'] );
+	}
+
+	/**
+	 * Lookup an existing sp_team by title. Returns 0 if not found.
+	 *
+	 * LOW: exact-title matching alone rejected the names this dashboard itself
+	 * displays. Teams here carry their sponsor as a trailing parenthetical
+	 * ("Spartans (Lusk.Tech)") which every dashboard view strips for display, so
+	 * an operator building an import file from the schedule or standings screen
+	 * produced rows that all failed as "unknown team(s)". Fall back to comparing
+	 * sponsor-stripped titles, refusing to guess when two teams collide.
 	 */
 	private function find_existing_team( $name ) {
 		$existing = get_posts(
@@ -2276,7 +2569,27 @@ class SPLM_REST_API {
 				'fields'         => 'ids',
 			)
 		);
-		return ! empty( $existing ) ? (int) $existing[0] : 0;
+		if ( ! empty( $existing ) ) {
+			return (int) $existing[0];
+		}
+
+		$target = strtolower( trim( splm_clean_team_name( $name ) ) );
+		if ( '' === $target ) {
+			return 0;
+		}
+
+		$match = 0;
+		foreach ( $this->fetch_id_title_index( 'sp_team' )['rows'] as $row ) {
+			if ( strtolower( trim( splm_clean_team_name( $row['title'] ) ) ) !== $target ) {
+				continue;
+			}
+			if ( $match && $match !== (int) $row['id'] ) {
+				return 0; // Ambiguous once the sponsor is stripped — don't guess.
+			}
+			$match = (int) $row['id'];
+		}
+
+		return $match;
 	}
 
 	/**
@@ -2333,9 +2646,19 @@ class SPLM_REST_API {
 	}
 
 	/**
+	 * Hard ceiling on levenshtein() comparisons per fuzzy lookup (M28).
+	 *
+	 * With the length bucketing below this is only reached by pathological data
+	 * (hundreds of same-length titles); it exists so one oversized CSV cannot
+	 * turn the preview endpoint into a 502.
+	 */
+	private const FUZZY_MATCH_MAX_COMPARISONS = 400;
+
+	/**
 	 * Fetch a lightweight ID+title index for a post type via direct SQL.
-	 * Returns array with two keys:
+	 * Returns array with three keys:
 	 *   'by_lc'   => map lowercase-title => row (id, title)
+	 *   'by_len'  => map title length => list of rows of that length (M28)
 	 *   'rows'    => list of all rows
 	 */
 	private function fetch_id_title_index( $post_type ) {
@@ -2356,16 +2679,26 @@ class SPLM_REST_API {
 			ARRAY_A
 		);
 
-		$by_lc = array();
+		$by_lc  = array();
+		$by_len = array();
 		foreach ( (array) $rows as $r ) {
 			$key = strtolower( trim( (string) $r['title'] ) );
-			if ( '' !== $key && ! isset( $by_lc[ $key ] ) ) {
+			if ( '' === $key ) {
+				continue;
+			}
+			if ( ! isset( $by_lc[ $key ] ) ) {
 				$by_lc[ $key ] = $r;
 			}
+			// M28: bucket by title length once, so a fuzzy lookup can visit only
+			// the lengths within its distance budget instead of scanning every
+			// row to apply the same filter (O(rows) per CSV name → O(bucket)).
+			$r['title_lc']              = $key;
+			$by_len[ strlen( $key ) ][] = $r;
 		}
 		$cache[ $post_type ] = array(
-			'by_lc' => $by_lc,
-			'rows' => (array) $rows,
+			'by_lc'  => $by_lc,
+			'by_len' => $by_len,
+			'rows'   => (array) $rows,
 		);
 		return $cache[ $post_type ];
 	}
@@ -2375,7 +2708,8 @@ class SPLM_REST_API {
 	 *
 	 * Order of operations:
 	 *   1. Exact lowercase-trim match against the hash map (O(1)).
-	 *   2. Levenshtein only on candidates pre-filtered by length proximity.
+	 *   2. Levenshtein only on the length buckets within the distance budget,
+	 *      under a hard comparison cap (M28).
 	 */
 	private function fuzzy_match_index( $name, $index ) {
 		$name_lc = strtolower( trim( (string) $name ) );
@@ -2393,27 +2727,47 @@ class SPLM_REST_API {
 		// Accept distance up to 2 OR 40% of length, whichever is larger.
 		$max_dist  = max( 2, (int) floor( $name_len * 0.4 ) );
 
-		foreach ( $index['rows'] as $r ) {
-			$title_lc = strtolower( trim( (string) $r['title'] ) );
-			if ( '' === $title_lc ) {
+		// levenshtein() is capped at 255 bytes per argument; anything longer is
+		// not a person's or team's name, and comparing it would emit a warning.
+		if ( $name_len > 255 ) {
+			return null;
+		}
+
+		// Levenshtein distance can never be less than the difference in string
+		// lengths, so only buckets within $max_dist of our length can win.
+		$buckets  = isset( $index['by_len'] ) ? $index['by_len'] : array();
+		$compared = 0;
+		$low      = max( 0, $name_len - $max_dist );
+		$high     = min( 255, $name_len + $max_dist );
+
+		for ( $len = $low; $len <= $high; $len++ ) {
+			if ( empty( $buckets[ $len ] ) ) {
 				continue;
 			}
-			// Length-distance pre-filter — Levenshtein cannot be lower than
-			// the difference in string lengths, so skip obviously-far candidates.
-			if ( abs( strlen( $title_lc ) - $name_len ) > $max_dist ) {
-				continue;
-			}
-			$dist = levenshtein( $name_lc, $title_lc );
-			if ( $dist < $best_dist ) {
-				$best_dist = $dist;
-				$best      = $r;
-				if ( 0 === $dist ) {
-					break;
+			foreach ( $buckets[ $len ] as $r ) {
+				if ( $compared >= self::FUZZY_MATCH_MAX_COMPARISONS ) {
+					// Budget exhausted — return the best seen so far (possibly
+					// none) rather than stalling the request.
+					break 2;
+				}
+				$compared++;
+				$dist = levenshtein( $name_lc, $r['title_lc'] );
+				if ( $dist < $best_dist ) {
+					$best_dist = $dist;
+					$best      = $r;
+					if ( 0 === $dist ) {
+						break 2;
+					}
 				}
 			}
 		}
 
-		return ( $best && $best_dist <= $max_dist ) ? $best : null;
+		if ( ! $best || $best_dist > $max_dist ) {
+			return null;
+		}
+		// Drop the internal lowercase helper key from the returned row.
+		unset( $best['title_lc'] );
+		return $best;
 	}
 
 	/**
@@ -2587,18 +2941,56 @@ class SPLM_REST_API {
 	}
 
 	/**
+	 * Maximum entries accepted by a single POST /scores/batch call.
+	 *
+	 * H11: the route was uncapped, and every accepted entry fires
+	 * do_action( 'save_post_sp_event' ) — a full SportsPress standings/stats
+	 * recalculation. A score-tier user could therefore post thousands of entries
+	 * in one request and pin the site. One game night in this league is well
+	 * under 100 games, so the cap never binds in real use; the React client
+	 * sends only the games listed for the selected date.
+	 */
+	const BATCH_SCORE_MAX = 100;
+
+	/**
 	 * POST /scores/batch — update scores for multiple games at once.
 	 */
 	public function batch_update_scores( $request ) {
+		// M20: score entry is owned by the Events Manager events_management
+		// module — the single-game /games/{id}/score sibling is only registered
+		// when it is on (#72). Batch writes went straight to sp_results and
+		// bypassed that gate entirely, so the Scores tab could save "All" while
+		// saving one game 404'd. Mirror the notes-module 503 pattern.
+		if ( ! $this->scores_module_enabled() ) {
+			return new WP_Error(
+				'module_disabled',
+				'Score entry requires the Events Manager events_management module.',
+				array( 'status' => 503 )
+			);
+		}
+
 		$params = $request->get_json_params();
 		if ( ! is_array( $params ) ) {
 			return new WP_Error( 'invalid_payload', 'Request body must be a JSON object.', array( 'status' => 400 ) );
 		}
 		$scores = ( isset( $params['scores'] ) && is_array( $params['scores'] ) ) ? $params['scores'] : array();
+
+		if ( count( $scores ) > self::BATCH_SCORE_MAX ) {
+			return new WP_Error(
+				'too_many_scores',
+				sprintf( 'A batch may contain at most %d games.', self::BATCH_SCORE_MAX ),
+				array( 'status' => 400 )
+			);
+		}
+
 		$updated = 0;
 		$errors  = array();
 
 		foreach ( $scores as $entry ) {
+			if ( ! is_array( $entry ) ) {
+				$errors[] = 'Malformed score entry, skipped.';
+				continue;
+			}
 			$game_id    = absint( $entry['game_id'] ?? 0 );
 			$home_score = $entry['home_score'] ?? null;
 			$away_score = $entry['away_score'] ?? null;
@@ -2614,8 +3006,17 @@ class SPLM_REST_API {
 				continue;
 			}
 
-			$home_int = absint( $home_score );
-			$away_int = absint( $away_score );
+			// H11: absint( null ) / absint( 'abc' ) is 0, so an entry with a
+			// missing or non-numeric score used to be recorded as a real 0-0
+			// draw — silently rewriting standings. Require both scores to be
+			// non-negative integers and report the row instead.
+			if ( ! $this->is_valid_score( $home_score ) || ! $this->is_valid_score( $away_score ) ) {
+				$errors[] = sprintf( 'Game %d: both scores must be whole numbers of 0 or more.', $game_id );
+				continue;
+			}
+
+			$home_int = (int) $home_score;
+			$away_int = (int) $away_score;
 
 			// Compute per-team outcome so SportsPress league-table aggregations
 			// reflect wins/losses/draws.
@@ -2826,7 +3227,7 @@ class SPLM_REST_API {
 		foreach ( $teams as $team ) {
 			add_post_meta( $table_id, 'sp_team', $team->ID );
 		}
-		$this->lock_release( $table_lock_key );
+		$this->lock_release( $table_lock_key, $table_acquired );
 		update_post_meta( $table_id, 'sp_columns', array( 'pos', 'name', 'p', 'w', 'd', 'l', 'f', 'a', 'gd', 'pts' ) );
 
 		return new WP_REST_Response(
@@ -3308,7 +3709,7 @@ class SPLM_REST_API {
 		}
 
 		// F6: release the per-league+season mutex now the writes are complete.
-		$this->lock_release( $season_lock_key );
+		$this->lock_release( $season_lock_key, $season_acquired );
 
 		// Update current season options.
 		//
@@ -4017,11 +4418,19 @@ class SPLM_REST_API {
 		// --- Registration / payment reconciliation. The registration log keys
 		// rows by season NAME; "paid" is derived from the linked WooCommerce
 		// order status. Season totals plus per-division counts (roster players
-		// who are registered / paid). ---
-		$registered_ids = array();
-		$player_orders  = array();
-		$log_table      = $wpdb->prefix . 'spat_registration_logs';
-		$log_exists     = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $log_table ) ) === $log_table;
+		// who are registered / paid).
+		//
+		// M23: this route sits at the read tier (coaches / scorekeepers), but
+		// these are the same registration + fee aggregates /stats deliberately
+		// gates behind the payments tier. Compute them only for callers who
+		// could read them from /payments anyway; everyone else gets nulls and
+		// the report hides the section (see SeasonReport.jsx). ---
+		$can_see_payments = $this->check_payments_permission();
+		$registered_ids   = array();
+		$player_orders    = array();
+		$log_table        = $wpdb->prefix . 'spat_registration_logs';
+		$log_exists       = $can_see_payments
+			&& $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $log_table ) ) === $log_table;
 		if ( $log_exists ) {
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name built from $wpdb->prefix.
 			$log_rows = $wpdb->get_results(
@@ -4048,10 +4457,12 @@ class SPLM_REST_API {
 					$all_order_ids[ $oid ] = true;
 				}
 			}
+			// M22: same "paid" definition as the /stats tile and the Payments
+			// list (WC_Order::is_paid()); see paid_order_statuses().
 			$paid = wc_get_orders(
 				array(
 					'include' => array_keys( $all_order_ids ),
-					'status'  => array( 'wc-completed', 'wc-processing' ),
+					'status'  => self::paid_order_statuses(),
 					'return'  => 'ids',
 					'limit'   => -1,
 				)
@@ -4082,6 +4493,8 @@ class SPLM_REST_API {
 		}
 
 		// Shape the divisions payload (drop internal team_ids map; expose counts).
+		// M23: registered/paid are null — not 0 — for callers below the payments
+		// tier, so the client hides the columns instead of reporting "0 paid".
 		$divisions_out = array();
 		foreach ( $divisions as $d ) {
 			$divisions_out[] = array(
@@ -4092,8 +4505,8 @@ class SPLM_REST_API {
 				'remaining'  => $d['remaining'],
 				'cancelled'  => $d['cancelled'],
 				'roster'     => $d['roster'],
-				'registered' => $d['registered'],
-				'paid'       => $d['paid'],
+				'registered' => $can_see_payments ? $d['registered'] : null,
+				'paid'       => $can_see_payments ? $d['paid'] : null,
 			);
 		}
 
@@ -4111,11 +4524,13 @@ class SPLM_REST_API {
 					'cancelled' => $cancelled,
 					'remaining' => count( $event_ids ) - $played - $cancelled,
 				),
-				'registration' => array(
-					'roster'     => count( $player_ids ),
-					'registered' => count( $registered_ids ),
-					'paid'       => count( $paid_ids ),
-				),
+				'registration' => $can_see_payments
+					? array(
+						'roster'     => count( $player_ids ),
+						'registered' => count( $registered_ids ),
+						'paid'       => count( $paid_ids ),
+					)
+					: null,
 			),
 			200
 		);
@@ -4157,13 +4572,13 @@ class SPLM_REST_API {
 	private function register_delegated_routes() {
 		// --- Events Manager routes (SPEM_REST_API) — only when sibling present ---
 		if ( class_exists( 'SPEM_REST_API' ) ) {
-			$modules  = (array) get_option( 'spat_enabled_modules', array() );
 			// The SPEM class also loads for season_rollover alone, so class_exists
 			// isn't enough to expose GAME write routes — gate those on the
 			// events_management module specifically (mirrors SPEM's own
 			// register_game_routes). Rollover routes stay available whenever SPEM
-			// is present (either module).
-			$events_on = in_array( 'events_management', $modules, true );
+			// is present (either module). M20: the same predicate now also gates
+			// /scores/batch and drives the localized events_manager flag.
+			$events_on = self::scores_module_enabled();
 
 			$event_routes = array(
 				'/season/rollover-preview'      => array(
@@ -4411,11 +4826,82 @@ class SPLM_REST_API {
 	}
 
 	/**
+	 * Guard: is one of this plugin's parent-registered modules enabled?
+	 *
+	 * M27: only the notes group honoured its module toggle, so a site with (say)
+	 * just Player Notes enabled still served the payments and roster endpoints —
+	 * the module switches in the parent's settings screen were decorative for
+	 * every group but one. This is the shared predicate; each feature group's
+	 * handlers 503 through it, mirroring the notes pattern, and the same flags
+	 * are localized so the SPA hides those tabs instead of showing a tab that
+	 * 503s.
+	 *
+	 * @param string $module Module slug registered in sportspress-league-manager.php.
+	 * @return bool
+	 */
+	public static function module_enabled( $module ) {
+		$enabled = get_option( 'spat_enabled_modules', array() );
+		return is_array( $enabled ) && in_array( $module, $enabled, true );
+	}
+
+	/**
 	 * Guard: is the league_player_notes module enabled?
 	 */
 	private function notes_module_enabled() {
+		return self::module_enabled( 'league_player_notes' );
+	}
+
+	/**
+	 * WP_Error for a request to a feature whose module is switched off.
+	 *
+	 * @param string $label Human name of the feature group.
+	 * @return WP_Error
+	 */
+	private function module_disabled_error( $label ) {
+		return new WP_Error(
+			'module_disabled',
+			sprintf( 'The %s module is not enabled.', $label ),
+			array( 'status' => 503 )
+		);
+	}
+
+	/**
+	 * Guard: is score entry available on this install?
+	 *
+	 * M20: the single-game score/reschedule/cancel routes are registered only
+	 * when Events Manager is present AND its events_management module is on (see
+	 * register_delegated_routes()). This is the same condition, so the batch
+	 * route and the localized `dependencies.events_manager` flag can agree with
+	 * what is actually registered.
+	 *
+	 * @return bool
+	 */
+	public static function scores_module_enabled() {
+		if ( ! class_exists( 'SPEM_REST_API' ) ) {
+			return false;
+		}
 		$enabled = get_option( 'spat_enabled_modules', array() );
-		return is_array( $enabled ) && in_array( 'league_player_notes', $enabled, true );
+		return is_array( $enabled ) && in_array( 'events_management', $enabled, true );
+	}
+
+	/**
+	 * Whether a submitted score is a usable non-negative whole number.
+	 *
+	 * Accepts ints and numeric strings ("3"), rejects null, '', bools, floats
+	 * with a fractional part, negatives and anything non-numeric. See H11.
+	 *
+	 * @param mixed $value Raw score from the request payload.
+	 * @return bool
+	 */
+	private function is_valid_score( $value ) {
+		if ( is_bool( $value ) || null === $value || '' === $value ) {
+			return false;
+		}
+		if ( ! is_numeric( $value ) ) {
+			return false;
+		}
+		$num = $value + 0;
+		return $num >= 0 && (float) (int) $num === (float) $num;
 	}
 
 	/**

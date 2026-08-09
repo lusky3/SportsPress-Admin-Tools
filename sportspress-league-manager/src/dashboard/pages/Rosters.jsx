@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, memo } from '@wordpress/element';
+import { useState, useEffect, useRef, useCallback, memo } from '@wordpress/element';
 import HelpLink from '../components/HelpLink';
 import { fetchTeams, fetchRosterDetails, fetchNotes, fetchNoteCounts, addNote, deleteNote, movePlayer, updatePlayer, updatePlayerMetadata, setCaptain, removePlayer, importRoster, calculateSkills, bulkUploadRoster, bulkProcessRoster } from '../lib/api';
 import Toast from '../components/Toast';
@@ -45,7 +45,14 @@ function useFocusTrap( onClose ) {
 	return ref;
 }
 
-function NotesPanel( { player, onClose } ) {
+// M25: every write path on this page fired a bare .then() — a rejected request
+// (403, 503 module gate, network drop, validation error) produced an unhandled
+// promise rejection and NOTHING on screen, so the operator believed the change
+// had saved. `notify( message, type )` routes failures into the Toast this page
+// already renders; it is threaded down to the children that write.
+const errMessage = ( err, fallback ) => err?.message || fallback;
+
+function NotesPanel( { player, onClose, notify } ) {
 	const [ notes, setNotes ] = useState( [] );
 	const [ content, setContent ] = useState( '' );
 	const [ loading, setLoading ] = useState( true );
@@ -58,7 +65,10 @@ function NotesPanel( { player, onClose } ) {
 		return fetchNotes( player.id ).then( ( data ) => {
 			setNotes( data );
 			setLoading( false );
-		} ).catch( () => setLoading( false ) );
+		} ).catch( ( err ) => {
+			setLoading( false );
+			notify( errMessage( err, 'Failed to load notes' ), 'error' );
+		} );
 	};
 
 	useEffect( () => {
@@ -73,7 +83,7 @@ function NotesPanel( { player, onClose } ) {
 		addNote( player.id, content ).then( () => {
 			setContent( '' );
 			refresh();
-		} );
+		} ).catch( ( err ) => notify( errMessage( err, 'Failed to add note' ), 'error' ) );
 	};
 
 	const handleDelete = ( noteId ) => {
@@ -82,7 +92,10 @@ function NotesPanel( { player, onClose } ) {
 			setConfirmingDelete( null );
 			setDeletingId( null );
 			refresh();
-		} ).catch( () => setDeletingId( null ) );
+		} ).catch( ( err ) => {
+			setDeletingId( null );
+			notify( errMessage( err, 'Failed to delete note' ), 'error' );
+		} );
 	};
 
 	// UX-9: trap Tab inside the panel, move focus in on open, restore on close.
@@ -150,14 +163,19 @@ function NotesPanel( { player, onClose } ) {
 	);
 }
 
-function MoveModal( { player, teams, currentTeam, onClose, onMoved } ) {
+function MoveModal( { player, teams, currentTeam, onClose, onMoved, notify } ) {
 	const [ toTeam, setToTeam ] = useState( '' );
+	const [ moving, setMoving ] = useState( false );
 
 	const handleMove = () => {
-		if ( ! toTeam ) return;
+		if ( ! toTeam || moving ) return;
+		setMoving( true );
 		movePlayer( player.id, currentTeam, toTeam ).then( () => {
 			onMoved();
 			onClose();
+		} ).catch( ( err ) => {
+			setMoving( false );
+			notify( errMessage( err, `Failed to move ${ player.name }` ), 'error' );
 		} );
 	};
 
@@ -178,7 +196,7 @@ function MoveModal( { player, teams, currentTeam, onClose, onMoved } ) {
 				</select>
 				<div className="splm-modal__actions">
 					<button className="splm-btn" onClick={ onClose }>Cancel</button>
-					<button className="splm-btn splm-btn--primary" onClick={ handleMove }>Move</button>
+					<button className="splm-btn splm-btn--primary" onClick={ handleMove } disabled={ moving }>{ moving ? 'Moving…' : 'Move' }</button>
 				</div>
 			</div>
 		</div>
@@ -187,7 +205,7 @@ function MoveModal( { player, teams, currentTeam, onClose, onMoved } ) {
 
 // UI-11: memoized so editing one cell doesn't re-render every other cell.
 // Keyed by player id + field at the call site.
-const EditableCell = memo( function EditableCell( { value, field, fieldLabel, playerId, onSaved } ) {
+const EditableCell = memo( function EditableCell( { value, field, fieldLabel, playerId, onSaved, notify } ) {
 	const [ editing, setEditing ] = useState( false );
 	const [ val, setVal ] = useState( value );
 
@@ -198,7 +216,14 @@ const EditableCell = memo( function EditableCell( { value, field, fieldLabel, pl
 		const trimmed = typeof val === 'string' ? val.trim() : val;
 		const originalTrimmed = typeof value === 'string' ? value.trim() : value;
 		if ( trimmed !== originalTrimmed ) {
-			updatePlayer( playerId, field, trimmed ).then( () => onSaved( field, trimmed ) );
+			updatePlayer( playerId, field, trimmed )
+				.then( () => onSaved( field, trimmed ) )
+				// M25: revert the cell to the stored value so the grid never shows
+				// an edit the server rejected.
+				.catch( ( err ) => {
+					setVal( value );
+					notify( errMessage( err, `Failed to save ${ fieldLabel || field }` ), 'error' );
+				} );
 		}
 	};
 
@@ -230,14 +255,19 @@ const EditableCell = memo( function EditableCell( { value, field, fieldLabel, pl
 	);
 } );
 
-const SkillCell = memo( function SkillCell( { value, playerId, onSaved } ) {
+const SkillCell = memo( function SkillCell( { value, playerId, onSaved, notify } ) {
 	const [ editing, setEditing ] = useState( false );
 	const [ val, setVal ] = useState( value || '' );
 
 	const save = ( newVal ) => {
 		setEditing( false );
 		if ( newVal !== value ) {
-			updatePlayerMetadata( playerId, 'skill_level', newVal ).then( () => onSaved( 'skill_level', newVal ) );
+			updatePlayerMetadata( playerId, 'skill_level', newVal )
+				.then( () => onSaved( 'skill_level', newVal ) )
+				.catch( ( err ) => {
+					setVal( value || '' );
+					notify( errMessage( err, 'Failed to save skill level' ), 'error' );
+				} );
 		}
 	};
 
@@ -326,11 +356,12 @@ function parseRosterCsv( text ) {
 	} ).filter( ( r ) => r.name );
 }
 
-function CSVUpload( { teamId, seasonId, onImported } ) {
+function CSVUpload( { teamId, seasonId, onImported, notify } ) {
 	const [ show, setShow ] = useState( false );
 	const [ preview, setPreview ] = useState( null );
 	const [ dragOver, setDragOver ] = useState( false );
 	const [ fileError, setFileError ] = useState( '' );
+	const [ importing, setImporting ] = useState( false );
 
 	const ingestFile = ( file ) => {
 		if ( ! file ) return;
@@ -355,11 +386,16 @@ function CSVUpload( { teamId, seasonId, onImported } ) {
 	};
 
 	const handleImport = () => {
+		if ( importing ) return;
+		setImporting( true );
 		importRoster( teamId, seasonId, preview ).then( () => {
 			setPreview( null );
 			setShow( false );
+			notify( `Imported ${ preview.length } player${ preview.length === 1 ? '' : 's' }.`, 'success' );
 			onImported();
-		} );
+		} ).catch( ( err ) => {
+			notify( errMessage( err, 'Failed to import roster' ), 'error' );
+		} ).finally( () => setImporting( false ) );
 	};
 
 	if ( ! show ) {
@@ -396,7 +432,7 @@ function CSVUpload( { teamId, seasonId, onImported } ) {
 							</tbody>
 						</table>
 					</div>
-					<button className="splm-btn splm-btn--primary" onClick={ handleImport }>Import</button>
+					<button className="splm-btn splm-btn--primary" onClick={ handleImport } disabled={ importing }>{ importing ? 'Importing…' : 'Import' }</button>
 				</>
 			) }
 			<button className="splm-btn" onClick={ () => { setShow( false ); setPreview( null ); } }>Cancel</button>
@@ -429,7 +465,9 @@ export default function Rosters( { season } ) {
 		let cancelled = false;
 		fetchTeams( season )
 			.then( ( data ) => { if ( ! cancelled ) setTeams( data ); } )
-			.catch( () => {} );
+			.catch( ( err ) => {
+				if ( ! cancelled ) setToast( { message: errMessage( err, 'Failed to load teams' ), type: 'error' } );
+			} );
 		return () => { cancelled = true; };
 	}, [ season ] );
 
@@ -446,13 +484,27 @@ export default function Rosters( { season } ) {
 				setLoading( false );
 				fetchNoteCounts( data.map( ( p ) => p.id ) ).then( ( c ) => { if ( ! cancelled ) setNoteCounts( c ); } );
 			} )
-			.catch( () => { if ( ! cancelled ) setLoading( false ); } );
+			.catch( ( err ) => {
+				if ( cancelled ) return;
+				setLoading( false );
+				setRoster( [] );
+				setToast( { message: errMessage( err, 'Failed to load roster' ), type: 'error' } );
+			} );
 		return () => { cancelled = true; };
 	}, [ selectedTeam, season ] );
 
+	// M25: single entry point for surfacing failures through the Toast this page
+	// already renders. useCallback so the memoized cells don't re-render on
+	// every parent update.
+	const notify = useCallback( ( message, type = 'error' ) => {
+		setToast( { message, type } );
+	}, [] );
+
 	const reload = () => {
 		if ( selectedTeam ) {
-			fetchRosterDetails( selectedTeam, season ).then( setRoster );
+			fetchRosterDetails( selectedTeam, season )
+				.then( setRoster )
+				.catch( ( err ) => notify( errMessage( err, 'Failed to reload roster' ) ) );
 		}
 	};
 
@@ -464,7 +516,13 @@ export default function Rosters( { season } ) {
 		const newVal = ! player.is_captain;
 		setCaptain( player.id, selectedTeam, newVal ).then( () => {
 			updateRosterPlayer( player.id, 'is_captain', newVal );
-		} );
+		} ).catch( ( err ) => notify( errMessage( err, `Failed to update captain for ${ player.name }` ) ) );
+	};
+
+	const handleRemovePlayer = ( player ) => {
+		removePlayer( player.id, selectedTeam )
+			.then( reload )
+			.catch( ( err ) => notify( errMessage( err, `Failed to remove ${ player.name }` ) ) );
 	};
 
 	return (
@@ -486,7 +544,7 @@ export default function Rosters( { season } ) {
 						<option key={ t.id } value={ t.id }>{ t.name }</option>
 					) ) }
 				</select>
-				{ selectedTeam && <CSVUpload teamId={ selectedTeam } seasonId={ season } onImported={ reload } /> }
+				{ selectedTeam && <CSVUpload teamId={ selectedTeam } seasonId={ season } onImported={ reload } notify={ notify } /> }
 				{ playerToolsAvailable && (
 					<span className="splm-rosters__skillcalc">
 						<label htmlFor="splm-skill-season" className="screen-reader-text">Season to rate skill from</label>
@@ -509,9 +567,9 @@ export default function Rosters( { season } ) {
 								const updated = r?.updated ?? 0;
 								const skipped = r?.skipped_manual ?? 0;
 								const lowGp = r?.skipped_low_gp ?? 0;
-								setToast( { message: `Updated ${ updated } players (${ skipped } manual kept, ${ lowGp } under 3 games)`, type: 'success' } );
+								notify( `Updated ${ updated } players (${ skipped } manual kept, ${ lowGp } under 3 games)`, 'success' );
 								if ( selectedTeam ) reload();
-							} ).catch( ( err ) => setToast( { message: err?.message || 'Failed', type: 'error' } ) )
+							} ).catch( ( err ) => notify( errMessage( err, 'Failed to calculate skills' ) ) )
 								.finally( () => setCalcating( false ) );
 						} }>
 							{ calcating ? 'Calculating…' : 'Calculate Skills' }
@@ -555,21 +613,21 @@ export default function Rosters( { season } ) {
 							{ roster.map( ( player ) => (
 								<tr key={ player.id }>
 									<td>
-										<EditableCell key={ `${ player.id }-number` } value={ player.number } field="number" fieldLabel={ `number for ${ player.name }` } playerId={ player.id } onSaved={ ( f, v ) => updateRosterPlayer( player.id, f, v ) } />
+										<EditableCell key={ `${ player.id }-number` } value={ player.number } field="number" fieldLabel={ `number for ${ player.name }` } playerId={ player.id } onSaved={ ( f, v ) => updateRosterPlayer( player.id, f, v ) } notify={ notify } />
 									</td>
 									<td className="splm-table__team">{ player.name }</td>
 									<td>
-										<EditableCell key={ `${ player.id }-position` } value={ player.position } field="position" fieldLabel={ `position for ${ player.name }` } playerId={ player.id } onSaved={ ( f, v ) => updateRosterPlayer( player.id, f, v ) } />
+										<EditableCell key={ `${ player.id }-position` } value={ player.position } field="position" fieldLabel={ `position for ${ player.name }` } playerId={ player.id } onSaved={ ( f, v ) => updateRosterPlayer( player.id, f, v ) } notify={ notify } />
 									</td>
 									<td>
 										{ playerToolsAvailable ? (
-											<SkillCell key={ `${ player.id }-skill` } value={ player.skill_level } playerId={ player.id } onSaved={ ( f, v ) => updateRosterPlayer( player.id, f, v ) } />
+											<SkillCell key={ `${ player.id }-skill` } value={ player.skill_level } playerId={ player.id } onSaved={ ( f, v ) => updateRosterPlayer( player.id, f, v ) } notify={ notify } />
 										) : (
 											<span className="splm-editable__value">{ player.skill_level || '—' }</span>
 										) }
 									</td>
 									<td>
-										<EditableCell key={ `${ player.id }-email` } value={ player.email } field="email" fieldLabel={ `email for ${ player.name }` } playerId={ player.id } onSaved={ ( f, v ) => updateRosterPlayer( player.id, f, v ) } />
+										<EditableCell key={ `${ player.id }-email` } value={ player.email } field="email" fieldLabel={ `email for ${ player.name }` } playerId={ player.id } onSaved={ ( f, v ) => updateRosterPlayer( player.id, f, v ) } notify={ notify } />
 									</td>
 									<td>
 										{ /* UI-6: text + color cue, not emoji-color alone. */ }
@@ -599,7 +657,7 @@ export default function Rosters( { season } ) {
 											<button className="splm-btn splm-btn--small" onClick={ () => setMovePlayerData( player ) }>Move</button>
 											<button className="splm-btn splm-btn--small splm-btn--danger" onClick={ () => {
 												if ( window.confirm( `Remove ${ player.name } from this roster?` ) ) {
-													removePlayer( player.id, selectedTeam ).then( reload );
+													handleRemovePlayer( player );
 												}
 											} }>✕</button>
 										</div>
@@ -612,7 +670,16 @@ export default function Rosters( { season } ) {
 			) }
 
 			{ notesPlayer && (
-				<NotesPanel player={ notesPlayer } onClose={ () => { setNotesPlayer( null ); fetchNoteCounts( roster.map( ( p ) => p.id ) ).then( setNoteCounts ); } } />
+				<NotesPanel
+					player={ notesPlayer }
+					notify={ notify }
+					onClose={ () => {
+						setNotesPlayer( null );
+						// fetchNoteCounts already swallows its own errors and
+						// resolves to {}; the indicator is cosmetic.
+						fetchNoteCounts( roster.map( ( p ) => p.id ) ).then( setNoteCounts );
+					} }
+				/>
 			) }
 
 			{ movePlayerData && (
@@ -622,6 +689,7 @@ export default function Rosters( { season } ) {
 					currentTeam={ selectedTeam }
 					onClose={ () => setMovePlayerData( null ) }
 					onMoved={ reload }
+					notify={ notify }
 				/>
 			) }
 		</div>

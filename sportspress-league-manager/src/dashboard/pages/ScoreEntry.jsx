@@ -5,6 +5,15 @@ import { fetchGames, updateScore, fetchGamePlayers, saveGamePlayers, batchUpdate
 const DATE_FMT = new Intl.DateTimeFormat( undefined, { weekday: 'short', month: 'short', day: 'numeric' } );
 const TIME_FMT = new Intl.DateTimeFormat( undefined, { hour: 'numeric', minute: '2-digit' } );
 
+// H10: /games caps per_page at 200 and defaults to the OLDEST 100 of the season.
+// Both modes here used to fetch that default page and filter client-side, so once
+// a season passed 100 events every later game became invisible: Game Night showed
+// "No games on this date" for any date in the back half of the season, and single
+// mode reported everything scored while unscored games sat past the cut. Fetch a
+// targeted window instead — the same fix Dashboard.jsx already carries.
+const GAMES_PER_PAGE = 200;
+const today = () => new Date().toISOString().split( 'T' )[ 0 ];
+
 function formatGameDate( raw ) {
 	if ( ! raw ) return '';
 	const d = new Date( `${ raw }T00:00:00` );
@@ -23,35 +32,54 @@ function gameWhen( g ) {
 }
 
 function GameNight( { season } ) {
-	const [ date, setDate ] = useState( new Date().toISOString().split( 'T' )[ 0 ] );
+	const [ date, setDate ] = useState( today );
 	const [ games, setGames ] = useState( [] );
 	const [ scores, setScores ] = useState( {} );
 	const [ saving, setSaving ] = useState( false );
 	const [ result, setResult ] = useState( null );
+	const [ loadError, setLoadError ] = useState( '' );
 
 	useEffect( () => {
-		fetchGames( season ? { season } : {} ).then( ( data ) => {
+		if ( ! date ) return undefined;
+		let cancelled = false;
+		setLoadError( '' );
+		// H10: ask the server for exactly this date instead of paging blindly.
+		fetchGames( {
+			...( season ? { season } : {} ),
+			from: date,
+			to: date,
+			per_page: GAMES_PER_PAGE,
+		} ).then( ( data ) => {
+			if ( cancelled ) return;
 			const dayGames = data.filter( ( g ) => g.date === date && ! g.cancelled );
 			setGames( dayGames );
 			const init = {};
 			dayGames.forEach( ( g ) => { init[ g.id ] = { home: g.home_score ?? 0, away: g.away_score ?? 0 }; } );
 			setScores( init );
-		} ).catch( () => {} );
+		} ).catch( ( err ) => {
+			if ( cancelled ) return;
+			setGames( [] );
+			setLoadError( err?.message || 'Failed to load games for this date' );
+		} );
+		return () => { cancelled = true; };
 	}, [ date, season ] );
 
+	// M25: try/finally so a rejected save can never leave the button wedged on
+	// "Saving...".
 	const handleSaveAll = async () => {
-		setSaving( true );
 		const batch = games
 			.filter( ( g ) => g.home_score === null )
 			.map( ( g ) => ( { game_id: g.id, home_score: scores[ g.id ]?.home ?? 0, away_score: scores[ g.id ]?.away ?? 0 } ) );
-		if ( batch.length === 0 ) { setSaving( false ); return; }
+		if ( batch.length === 0 ) return;
+		setSaving( true );
 		try {
 			const res = await batchUpdateScores( batch );
 			setResult( res );
 		} catch ( err ) {
-			setResult( { errors: [ err?.message || 'Failed' ] } );
+			setResult( { errors: [ err?.message || 'Failed to save scores' ] } );
+		} finally {
+			setSaving( false );
 		}
-		setSaving( false );
 	};
 
 	const updateField = ( id, field, val ) => {
@@ -63,6 +91,7 @@ function GameNight( { season } ) {
 	return (
 		<div>
 			<label>Date: <input type="date" value={ date } onChange={ ( e ) => { setDate( e.target.value ); setResult( null ); } } /></label>
+			{ loadError && <div className="splm-alert splm-alert--warning" role="alert">{ loadError }</div> }
 			{ games.length === 0 ? (
 				<p className="splm-empty">No games on this date.</p>
 			) : (
@@ -117,12 +146,18 @@ function PlayerStats( { gameId, game, onDone, onBack } ) {
 	const [ data, setData ] = useState( null );
 	const [ stats, setStats ] = useState( {} );
 	const [ saving, setSaving ] = useState( false );
+	// M25: surface load/save failures instead of swallowing them — a rejected
+	// fetch used to leave "Loading players..." on screen forever.
+	const [ error, setError ] = useState( '' );
 	// Rosters can be long (sp_current_team accumulates every historical member),
 	// so a name/number filter keeps the stats grid usable.
 	const [ filter, setFilter ] = useState( '' );
 
 	useEffect( () => {
+		let cancelled = false;
+		setError( '' );
 		fetchGamePlayers( gameId ).then( ( res ) => {
+			if ( cancelled ) return;
 			setData( res );
 			const init = {};
 			res.teams.forEach( ( team ) => {
@@ -135,11 +170,25 @@ function PlayerStats( { gameId, game, onDone, onBack } ) {
 				} );
 			} );
 			setStats( init );
-		} ).catch( () => {} );
+		} ).catch( ( err ) => {
+			if ( cancelled ) return;
+			setError( err?.message || 'Failed to load players for this game' );
+		} );
+		return () => { cancelled = true; };
 	}, [ gameId ] );
 
 	if ( ! data ) {
-		return <div className="splm-loading">Loading players...</div>;
+		return error ? (
+			<div className="splm-player-stats">
+				<div className="splm-alert splm-alert--warning" role="alert">{ error }</div>
+				<div className="splm-score-entry__actions">
+					{ onBack && <button className="splm-btn" onClick={ onBack }>← Back</button> }
+					<button className="splm-btn splm-btn--secondary" onClick={ onDone }>Skip → Next game</button>
+				</div>
+			</div>
+		) : (
+			<div className="splm-loading">Loading players...</div>
+		);
 	}
 
 	const heading = game ? `${ game.home_team.name } vs ${ game.away_team.name }` : 'Player Stats';
@@ -176,11 +225,21 @@ function PlayerStats( { gameId, game, onDone, onBack } ) {
 		} ) );
 	};
 
+	// M25: the await had no error handling at all — a rejected save left the
+	// button stuck on "Saving..." with no message and no way to retry, and
+	// onDone() still ran on success only by luck of the throw. try/finally
+	// guarantees the button resets; onDone() advances only on a real success.
 	const handleSave = async () => {
 		setSaving( true );
-		await saveGamePlayers( gameId, stats );
-		setSaving( false );
-		onDone();
+		setError( '' );
+		try {
+			await saveGamePlayers( gameId, stats );
+			onDone();
+		} catch ( err ) {
+			setError( err?.message || 'Failed to save player stats' );
+		} finally {
+			setSaving( false );
+		}
 	};
 
 	const q = filter.trim().toLowerCase();
@@ -190,6 +249,7 @@ function PlayerStats( { gameId, game, onDone, onBack } ) {
 	return (
 		<div className="splm-player-stats">
 			<h4>{ heading }</h4>
+			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 			{ totalPlayers > 12 && (
 				<label className="splm-player-stats__filter">
 					<span className="screen-reader-text">Filter players</span>
@@ -281,14 +341,24 @@ export default function ScoreEntry( { season } ) {
 	const loadGames = useCallback( ( params ) => {
 		const token = ++liveRef.current;
 		setLoading( true );
-		fetchGames( params ).then( ( data ) => {
+		setError( '' );
+		const cutoff = today();
+		// H10: request the most recent games up to today (descending) rather than
+		// the season's oldest page, so late-season games are reachable. Re-sorted
+		// to chronological order below — a scorekeeper catches up oldest-first.
+		fetchGames( { ...params, to: cutoff, order: 'desc', per_page: GAMES_PER_PAGE } ).then( ( data ) => {
 			if ( token !== liveRef.current ) return; // stale / unmounted
-			const today = new Date().toISOString().split( 'T' )[ 0 ];
-			const needScores = data.filter( ( g ) => g.date <= today && g.home_score === null && ! g.cancelled );
+			const needScores = data
+				.filter( ( g ) => g.date <= cutoff && g.home_score === null && ! g.cancelled )
+				.reverse();
 			setGames( needScores );
 			setCurrent( 0 );
 			setLoading( false );
-		} ).catch( () => { if ( token === liveRef.current ) setLoading( false ); } );
+		} ).catch( ( err ) => {
+			if ( token !== liveRef.current ) return;
+			setError( err?.message || 'Failed to load games' );
+			setLoading( false );
+		} );
 	}, [] );
 
 	useEffect( () => {

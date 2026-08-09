@@ -29,8 +29,11 @@ class SPLM_SportsPress_Data {
 	 */
 	public static function get_teams( array $filters = array() ): array {
 		$args = array(
+			// Bounded — matches the 5000 cap used by every other query in this
+			// plugin. `-1` on a site-wide post type is an unbounded read that can
+			// exhaust memory on a large install.
 			'post_type'      => 'sp_team',
-			'posts_per_page' => -1,
+			'posts_per_page' => 5000,
 			'post_status'    => 'publish',
 		);
 
@@ -69,7 +72,7 @@ class SPLM_SportsPress_Data {
 		return get_posts(
 			array(
 				'post_type'      => 'sp_player',
-				'posts_per_page' => -1,
+				'posts_per_page' => 5000, // Bounded — see get_teams().
 				'post_status'    => 'publish',
 				'meta_query'     => array(
 					array(

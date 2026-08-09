@@ -15,6 +15,7 @@ import SeasonReport from './pages/SeasonReport';
 import SeasonSetup from './pages/SeasonSetup';
 import ScoreSheets from './pages/ScoreSheets';
 import Help from './pages/Help';
+import { saveUserPreferences } from './lib/api';
 import './styles.css';
 
 const PAGES = {
@@ -41,9 +42,22 @@ function pageFromHash() {
 	return PAGES[ hash ] ? hash : 'dashboard';
 }
 
+// M19: POST /user/preferences already stored splm_preferred_season, but nothing
+// read it back, so the header filter reset to the newest season on every load.
+// Prefer the saved season when it still exists as a term; otherwise fall back to
+// the server-computed current season.
+function initialSeason() {
+	const config = window.splmDashboard || {};
+	const saved = Number( config.preferredSeason ) || 0;
+	if ( saved && ( config.seasons || [] ).some( ( s ) => Number( s.id ) === saved ) ) {
+		return String( saved );
+	}
+	return config.currentSeason ?? '';
+}
+
 export default function App() {
 	const [ page, setPage ] = useState( pageFromHash );
-	const [ season, setSeason ] = useState( window.splmDashboard?.currentSeason ?? '' );
+	const [ season, setSeason ] = useState( initialSeason );
 	const [ announcement, setAnnouncement ] = useState( '' );
 	const [ helpTopic, setHelpTopic ] = useState( '' );
 	const isFirstRender = useRef( true );
@@ -106,8 +120,15 @@ export default function App() {
 		return () => window.removeEventListener( 'splm:help', onHelp );
 	}, [] );
 
+	// M19: persist the picked season so it survives a reload. Best-effort — a
+	// failed preference write must never interrupt navigation.
+	const changeSeason = ( next ) => {
+		setSeason( next );
+		saveUserPreferences( { preferred_season: Number( next ) || 0 } ).catch( () => {} );
+	};
+
 	return (
-		<Layout currentPage={ page } onNavigate={ navigate } onSeasonChange={ setSeason } season={ season }>
+		<Layout currentPage={ page } onNavigate={ navigate } onSeasonChange={ changeSeason } season={ season }>
 			<div aria-live="polite" aria-atomic="true" className="screen-reader-text">
 				{ announcement }
 			</div>

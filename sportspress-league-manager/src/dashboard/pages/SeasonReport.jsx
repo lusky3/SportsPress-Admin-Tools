@@ -73,10 +73,14 @@ export default function SeasonReport( { season } ) {
 							<div className="splm-table-wrapper">
 								<table className="splm-table">
 									<thead>
+										{ /* M23: registration/payment columns are only populated for
+										     callers at the payments tier; the server sends null
+										     otherwise, so drop the columns rather than print "0 paid". */ }
 										<tr>
 											<th scope="col">Division</th><th scope="col">Teams</th><th scope="col">Played</th>
 											<th scope="col">Remaining</th><th scope="col">Complete</th>
-											<th scope="col">Roster</th><th scope="col">Registered</th><th scope="col">Paid</th>
+											<th scope="col">Roster</th>
+											{ reg && <><th scope="col">Registered</th><th scope="col">Paid</th></> }
 										</tr>
 									</thead>
 									<tbody>
@@ -90,8 +94,7 @@ export default function SeasonReport( { season } ) {
 													<td>{ d.remaining }</td>
 													<td>{ pct }%</td>
 													<td>{ d.roster }</td>
-													<td>{ d.registered }</td>
-													<td>{ d.paid }</td>
+													{ reg && <><td>{ d.registered }</td><td>{ d.paid }</td></> }
 												</tr>
 											);
 										} ) }

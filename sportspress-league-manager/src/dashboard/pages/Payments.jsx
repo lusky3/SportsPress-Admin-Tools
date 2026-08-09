@@ -1,6 +1,6 @@
 import { useState, useEffect } from '@wordpress/element';
 import HelpLink from '../components/HelpLink';
-import { fetchPayments, exportPayments } from '../lib/api';
+import { fetchPayments, exportPaymentsAll } from '../lib/api';
 
 // M7: status values we ship CSS for. Anything else gets the "other" class
 // rather than letting the server inject arbitrary tokens into className.
@@ -41,6 +41,9 @@ export default function Payments( { season } ) {
 	const [ searchInput, setSearchInput ] = useState( '' );
 	const [ search, setSearch ] = useState( '' );
 	const [ exporting, setExporting ] = useState( false );
+	// H12: the export now walks pages server-side-bounded at 500 rows each, so
+	// show which chunk is in flight on a long season.
+	const [ exportProgress, setExportProgress ] = useState( null );
 
 	// Reset to first page whenever season or the active search changes.
 	useEffect( () => {
@@ -71,9 +74,14 @@ export default function Payments( { season } ) {
 	}, [ season, page, search ] );
 
 	const handleExport = () => {
+		if ( exporting ) return;
 		setExporting( true );
 		setError( '' );
-		exportPayments( season, { search } ).then( ( res ) => {
+		setExportProgress( null );
+		exportPaymentsAll( season, {
+			search,
+			onProgress: ( page, totalPages ) => setExportProgress( totalPages > 1 ? { page, totalPages } : null ),
+		} ).then( ( res ) => {
 			const blob = new Blob( [ res.csv || '' ], { type: 'text/csv;charset=utf-8;' } );
 			const url = URL.createObjectURL( blob );
 			const a = document.createElement( 'a' );
@@ -83,10 +91,11 @@ export default function Payments( { season } ) {
 			a.click();
 			document.body.removeChild( a );
 			URL.revokeObjectURL( url );
-			setExporting( false );
 		} ).catch( ( err ) => {
 			setError( err?.message || 'Failed to export payments' );
+		} ).finally( () => {
 			setExporting( false );
+			setExportProgress( null );
 		} );
 	};
 
@@ -136,7 +145,9 @@ export default function Payments( { season } ) {
 					onClick={ handleExport }
 					disabled={ exporting || total === 0 }
 				>
-					{ exporting ? 'Exporting…' : 'Export CSV' }
+					{ exporting
+						? ( exportProgress ? `Exporting ${ exportProgress.page }/${ exportProgress.totalPages }…` : 'Exporting…' )
+						: 'Export CSV' }
 				</button>
 			</div>
 
@@ -180,7 +191,20 @@ export default function Payments( { season } ) {
 										<tr key={ p.player_id } className={ `splm-payment-table__row--${ sc }` }>
 											<td>{ p.player }</td>
 											<td>{ p.team }</td>
-											<td><span className={ `splm-payment-table__status splm-payment-table__status--${ sc }` }>{ p.status }</span></td>
+											<td>
+												<span className={ `splm-payment-table__status splm-payment-table__status--${ sc }` }>{ p.status }</span>
+												{ /* M21: a billing-name match is a heuristic — the newest
+												     order with the same first/last name, with no product,
+												     season or date constraint. Flag it so a merch order,
+												     last season's registration, or a same-name stranger
+												     isn't read as a confirmed registration payment. */ }
+												{ p.matched_by === 'billing_name' && (
+													<abbr
+														className="splm-payment-table__match-hint"
+														title="Matched by billing name only — not linked to a registration record. Open the order to verify."
+													>?</abbr>
+												) }
+											</td>
 											<td>
 												{ p.order_url
 													? <a className="splm-order-link" href={ p.order_url } target="_blank" rel="noopener noreferrer" title="View order">{ amount } ↗</a>

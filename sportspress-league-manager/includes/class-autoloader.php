@@ -31,13 +31,21 @@ class SPLM_Autoloader {
 	private static function build_class_map() {
 		$base = SPLM_PLUGIN_PATH . 'includes/';
 
+		// LOW: SPLM_Error_Handler, SPLM_Health_Checker and SPLM_SportsPress_Data
+		// ship in includes/ and are referenced by the admin screens, the
+		// integration tests and the documented architecture, but were missing
+		// here — so every class_exists() probe for them was false at runtime and
+		// the files were only ever loaded by tests that require() them directly.
 		self::$class_map = array(
 			'SPLM_Admin'                 => $base . 'class-admin.php',
 			'SPLM_Capabilities'          => $base . 'class-capabilities.php',
+			'SPLM_Dashboard_Frontend'    => $base . 'class-dashboard-frontend.php',
+			'SPLM_Error_Handler'         => $base . 'class-error-handler.php',
+			'SPLM_Health_Checker'        => $base . 'class-health-checker.php',
 			'SPLM_Player_Notes'          => $base . 'class-player-notes.php',
 			'SPLM_Player_Notes_Database' => $base . 'class-player-notes-database.php',
 			'SPLM_REST_API'              => $base . 'class-rest-api.php',
-			'SPLM_Dashboard_Frontend'    => $base . 'class-dashboard-frontend.php',
+			'SPLM_SportsPress_Data'      => $base . 'class-sportspress-data.php',
 		);
 	}
 }
