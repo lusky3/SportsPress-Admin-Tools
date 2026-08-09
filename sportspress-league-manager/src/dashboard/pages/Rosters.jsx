@@ -195,8 +195,8 @@ function MoveModal( { player, teams, currentTeam, onClose, onMoved, notify } ) {
 					) ) }
 				</select>
 				<div className="splm-modal__actions">
-					<button className="splm-btn" onClick={ onClose }>Cancel</button>
-					<button className="splm-btn splm-btn--primary" onClick={ handleMove } disabled={ moving }>{ moving ? 'Moving…' : 'Move' }</button>
+					<button type="button" className="splm-btn" onClick={ onClose }>Cancel</button>
+					<button type="button" className="splm-btn splm-btn--primary" onClick={ handleMove } disabled={ moving }>{ moving ? 'Moving…' : 'Move' }</button>
 				</div>
 			</div>
 		</div>

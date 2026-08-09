@@ -283,7 +283,14 @@ async function sendWebhook(emailData, env, message, state) {
 
   if (!response) {
     // Never reached WordPress at all. Do not bounce a payment notification over
-    // a network blip — hand it to a human.
+    // a network blip — hand it to a human. Surface the last connection-level
+    // error so the operator can tell a DNS/TLS failure from an outage.
+    if (lastNetworkError) {
+      console.error(
+        'Webhook unreachable after retries:',
+        String(lastNetworkError?.message || lastNetworkError).replaceAll(/[\r\n]/g, ' ')
+      );
+    }
     await forwardCopy(message, env, state);
     rejectAsLastResort(message, state, 'Webhook endpoint unreachable');
     return;
