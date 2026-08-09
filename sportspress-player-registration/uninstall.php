@@ -21,6 +21,7 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 	delete_option( 'spr_auto_role' );
 	delete_option( 'spr_player_role' );
 	delete_option( 'spr_auto_season' );
+	delete_option( 'spr_owner_can_edit' );
 	delete_option( 'spr_db_version' );
 	delete_option( 'spr_registration_keyword' );
 	// LOW (registration): spr_email_meta is read by
