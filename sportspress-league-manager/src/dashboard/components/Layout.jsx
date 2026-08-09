@@ -33,6 +33,10 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 	// build that drops a flag doesn't silently hide a working feature.
 	const deps = config.dependencies || {};
 	const depPresent = ( key ) => deps[ key ] !== false;
+	// M27: this plugin's own module toggles, enforced server-side by
+	// SPLM_REST_API::module_enabled(). Same fail-open rule as dependencies.
+	const modules = config.modules || {};
+	const modulePresent = ( key ) => modules[ key ] !== false;
 	const [ moreOpen, setMoreOpen ] = useState( false );
 	const moreRef = useRef( null );
 	const [ searchQuery, setSearchQuery ] = useState( '' );
@@ -76,8 +80,8 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 	const capMap = {
 		scores: caps.canEnterScores && depPresent( 'events_manager' ),
 		'score-sheets': caps.canReviewScoreSheets && depPresent( 'score_sheets' ),
-		rosters: caps.canManageRosters,
-		payments: caps.canViewPayments && depPresent( 'woocommerce' ),
+		rosters: caps.canManageRosters && modulePresent( 'rosters' ),
+		payments: caps.canViewPayments && depPresent( 'woocommerce' ) && modulePresent( 'fees' ),
 		health: caps.canViewHealth,
 		'schedule-gen': caps.canManageSchedule && depPresent( 'schedule_generator' ),
 		'season-setup': caps.canManageSchedule,

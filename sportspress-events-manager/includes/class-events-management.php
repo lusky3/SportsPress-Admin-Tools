@@ -17,6 +17,13 @@ class SPEM_Events_Management {
 	const SPEM_MAX_IMPORT_ROWS = 1000;
 
 	/**
+	 * TTL, in seconds, of the import mutex. Must comfortably exceed the wall
+	 * time of a worst-case SPEM_MAX_IMPORT_ROWS import — a lapsed TTL lets a
+	 * second import steal the lock while the first is still writing.
+	 */
+	const IMPORT_LOCK_TTL = 300;
+
+	/**
 	 * Number of placeholder sp_player meta rows to seed on event creation.
 	 * SportsPress expects two placeholder rows per side so that the player
 	 * performance UI renders correctly for the home and away teams.
@@ -375,59 +382,94 @@ class SPEM_Events_Management {
 		// sp_results/sp_players meta merges (M11). Guarded by class_exists so
 		// the plugin still degrades gracefully under an older parent that
 		// predates SPAT_Lock.
-		$lock_key       = 'spem_import_events';
-		$lock_available = class_exists( 'SPAT_Lock' );
-		if ( $lock_available && ! SPAT_Lock::acquire( $lock_key, 60 ) ) {
+		//
+		// SPAT_Lock::with() releases with the acquire handle, so a request that
+		// overruns the TTL can no longer delete the *next* holder's lock — the
+		// discarded handle plus unconditional release() made the July mutex
+		// self-defeating in exactly the long-import case it existed for. The TTL
+		// is sized for a full SPEM_MAX_IMPORT_ROWS (1000-row) import, which the
+		// old 60s could not cover (M12).
+		if ( ! class_exists( 'SPAT_Lock' ) ) {
+			return $this->run_import( $file_path, $original_name );
+		}
+
+		$result = SPAT_Lock::with(
+			'spem_import_events',
+			self::IMPORT_LOCK_TTL,
+			function () use ( $file_path, $original_name ) {
+				return $this->run_import( $file_path, $original_name );
+			}
+		);
+
+		// run_import() only ever returns an array or a WP_Error, so a literal
+		// false is unambiguously SPAT_Lock::with()'s "already held" signal.
+		if ( false === $result ) {
 			return new WP_Error(
 				'import_locked',
 				__( 'Another import is already running. Please wait for it to finish and try again.', 'sportspress-events-manager' )
 			);
 		}
 
-		try {
-			$events_data = $this->parse_file( $file_path, $original_name );
+		return $result;
+	}
 
-			if ( is_wp_error( $events_data ) ) {
-				return $events_data;
-			}
+	/**
+	 * Parse and import an already-validated upload. Runs inside the import
+	 * mutex; callers must not invoke it directly.
+	 *
+	 * @param string $file_path     Path to the temporary uploaded file.
+	 * @param string $original_name Original filename for extension detection.
+	 * @return array|WP_Error { imported, skipped, errors, warnings } or error.
+	 */
+	private function run_import( $file_path, $original_name ) {
+		$events_data = $this->parse_file( $file_path, $original_name );
 
-			if ( empty( $events_data ) ) {
-				return new WP_Error( 'parse_error', __( 'No valid event data found in file.', 'sportspress-events-manager' ) );
-			}
+		if ( is_wp_error( $events_data ) ) {
+			return $events_data;
+		}
 
-			// Prefetch existing events covering the date range of the import so
-			// duplicate detection inside create_event() is O(1) instead of O(N²).
-			$this->build_existing_event_map( $events_data );
-			// Build a normalized team-name → ID map once so find_or_create_team()
-			// can short-circuit lookups without re-querying per row.
-			$this->build_team_name_map( $events_data );
+		if ( empty( $events_data ) ) {
+			return new WP_Error( 'parse_error', __( 'No valid event data found in file.', 'sportspress-events-manager' ) );
+		}
 
-			$imported = 0;
-			$errors   = array();
-			$warnings = array();
-			foreach ( $events_data as $i => $event_data ) {
-				$row_warnings = array();
-				$result       = $this->create_event( $event_data, $row_warnings );
-				if ( is_wp_error( $result ) ) {
-					$errors[ $i ] = $result->get_error_message();
-				} elseif ( $result ) {
+		// Prefetch existing events covering the date range of the import so
+		// duplicate detection inside create_event() is O(1) instead of O(N²).
+		$this->build_existing_event_map( $events_data );
+		// Build a normalized team-name → ID map once so find_or_create_team()
+		// can short-circuit lookups without re-querying per row.
+		$this->build_team_name_map( $events_data );
+
+		$imported = 0;
+		$skipped  = 0;
+		$errors   = array();
+		$warnings = array();
+		foreach ( $events_data as $i => $event_data ) {
+			$row_warnings = array();
+			$was_created  = false;
+			$result       = $this->create_event( $event_data, $row_warnings, $was_created );
+			if ( is_wp_error( $result ) ) {
+				$errors[ $i ] = $result->get_error_message();
+			} elseif ( $result ) {
+				// A duplicate row returns the *existing* event id — counting it
+				// as an import made a re-uploaded schedule report hundreds of
+				// events "imported" while creating none (M15).
+				if ( $was_created ) {
 					$imported++;
-				}
-				if ( ! empty( $row_warnings ) ) {
-					$warnings[ $i ] = implode( ' ', $row_warnings );
+				} else {
+					$skipped++;
 				}
 			}
-
-			return array(
-				'imported' => $imported,
-				'errors'   => $errors,
-				'warnings' => $warnings,
-			);
-		} finally {
-			if ( $lock_available ) {
-				SPAT_Lock::release( $lock_key );
+			if ( ! empty( $row_warnings ) ) {
+				$warnings[ $i ] = implode( ' ', $row_warnings );
 			}
 		}
+
+		return array(
+			'imported' => $imported,
+			'skipped'  => $skipped,
+			'errors'   => $errors,
+			'warnings' => $warnings,
+		);
 	}
 
 	/**
@@ -463,7 +505,10 @@ class SPEM_Events_Management {
 		$existing_ids = get_posts(
 			array(
 				'post_type'      => 'sp_event',
-				'post_status'    => array( 'publish', 'future' ),
+				// 'draft' included: cancel_game() drafts an event rather than
+				// deleting it, so omitting the status made a re-import
+				// resurrect cancelled fixtures as brand-new published events.
+				'post_status'    => array( 'publish', 'future', 'draft' ),
 				'posts_per_page' => -1,
 				'fields'         => 'ids',
 				'date_query'     => array(
@@ -801,9 +846,13 @@ class SPEM_Events_Management {
 	 *
 	 * @param array $event_data Event data with date, home_team, away_team, time, venue, league.
 	 * @param array $warnings   Collected (by reference) non-fatal per-row warnings.
+	 * @param bool  $created    Set (by reference) to true when a new event was
+	 *                          inserted, false when an existing one was matched.
 	 * @return int|WP_Error Event ID on success, WP_Error on failure.
 	 */
-	private function create_event( $event_data, &$warnings = array() ) {
+	private function create_event( $event_data, &$warnings = array(), &$created = null ) {
+		$created = false;
+
 		// Parse date with validation. WordPress forces PHP's timezone to UTC,
 		// so strtotime() yields a UTC instant for the wall-clock cell; format
 		// it back with gmdate() (also UTC) so the stored date is the exact
@@ -852,7 +901,10 @@ class SPEM_Events_Management {
 			$existing = get_posts(
 				array(
 					'post_type'   => 'sp_event',
-					'post_status' => array( 'publish', 'future' ),
+					// 'draft' included: cancel_game() drafts an event rather than
+					// deleting it, so omitting the status made a re-import
+					// resurrect cancelled fixtures as brand-new published events.
+					'post_status' => array( 'publish', 'future', 'draft' ),
 					'date_query'  => array(
 						array(
 							'year'  => gmdate( 'Y', strtotime( $date ) ),
@@ -890,6 +942,8 @@ class SPEM_Events_Management {
 		if ( ! $event_id || is_wp_error( $event_id ) ) {
 			return is_wp_error( $event_id ) ? $event_id : new WP_Error( 'insert_error', __( 'Failed to create event.', 'sportspress-events-manager' ) );
 		}
+
+		$created = true;
 
 		// Set permalink to the numeric event ID (intentional: SP events get an
 		// ID-based slug). Cast to string so post_name is the expected type.

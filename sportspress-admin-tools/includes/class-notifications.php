@@ -276,7 +276,20 @@ class SPAT_Notifications {
 	private function send( $subject, $body ) {
 		$to = $this->get_recipient();
 		$headers = array( 'Content-Type: text/html; charset=UTF-8' );
-		wp_mail( $to, $subject, $body, $headers );
+
+		// wp_mail() returning false means the notification never left the site
+		// (bad SMTP config, a plugin short-circuiting wp_mail, a rejected
+		// recipient). Discarding that silently left operators believing the
+		// alerts were arriving; log it so the failure is at least visible.
+		// The subject is included but never the body — bodies carry player
+		// names and payment amounts.
+		if ( ! wp_mail( $to, $subject, $body, $headers ) && class_exists( 'SPAT_Logger' ) ) {
+			SPAT_Logger::warn(
+				'notifications',
+				'wp_mail() failed to send a notification',
+				array( 'subject' => $subject )
+			);
+		}
 	}
 
 	private function row( $label, $value ) {

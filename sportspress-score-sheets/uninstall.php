@@ -15,11 +15,17 @@ if ( '1' !== (string) get_option( 'spat_remove_data_on_uninstall', '0' ) ) {
 require_once plugin_dir_path( __FILE__ ) . 'includes/class-database.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/class-image-store.php';
 
-// Delete stored images, then the storage directory.
+// Delete stored images, then the storage directory. glob('*') skips dotfiles, so
+// the protect_dir() .htaccess survived and rmdir() could never succeed — leaving
+// the directory (and its deny rules) behind forever. Sweep the dotfiles too.
 $dir = SPSS_Image_Store::dir();
 if ( is_dir( $dir ) ) {
-	foreach ( (array) glob( trailingslashit( $dir ) . '*' ) as $file ) {
-		if ( is_file( $file ) ) {
+	$entries = array_merge(
+		(array) glob( trailingslashit( $dir ) . '*' ),
+		(array) glob( trailingslashit( $dir ) . '.[!.]*' )
+	);
+	foreach ( $entries as $file ) {
+		if ( $file && is_file( $file ) ) {
 			wp_delete_file( $file );
 		}
 	}

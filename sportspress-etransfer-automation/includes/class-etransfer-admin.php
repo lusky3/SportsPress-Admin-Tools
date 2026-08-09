@@ -100,6 +100,7 @@ class SPET_ETransfer_Admin {
 	public function admin_page() {
 		// Handle manual match submission
 		if ( isset( $_POST['manual_match'] ) && isset( $_POST['log_index'] ) && isset( $_POST['order_id'] )
+			&& isset( $_POST['_wpnonce'] )
 			&& wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) ), 'manual_match_etransfer' ) ) {
 			if ( ! current_user_can( 'manage_woocommerce' ) ) {
 				wp_die( __( 'You do not have permission to perform this action.', 'sportspress-etransfer-automation' ) );
@@ -134,6 +135,7 @@ class SPET_ETransfer_Admin {
 
 		// Handle hide submission
 		if ( isset( $_POST['hide_log'] ) && isset( $_POST['log_id'] )
+			&& isset( $_POST['_wpnonce'] )
 			&& wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) ), 'hide_etransfer_log' ) ) {
 			if ( ! current_user_can( 'manage_woocommerce' ) ) {
 				wp_die( __( 'You do not have permission to perform this action.', 'sportspress-etransfer-automation' ) );
@@ -148,6 +150,7 @@ class SPET_ETransfer_Admin {
 
 		// Handle purge old logs
 		if ( isset( $_POST['purge_old_logs'] )
+			&& isset( $_POST['_wpnonce'] )
 			&& wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) ), 'spet_purge_old_logs' ) ) {
 			if ( ! current_user_can( 'manage_woocommerce' ) ) {
 				wp_die( __( 'You do not have permission to perform this action.', 'sportspress-etransfer-automation' ) );
@@ -216,6 +219,7 @@ class SPET_ETransfer_Admin {
 		echo '<th>' . esc_html__( 'Amount', 'sportspress-etransfer-automation' ) . '</th>';
 		echo '<th>' . esc_html__( 'Reference', 'sportspress-etransfer-automation' ) . '</th>';
 		echo '<th>' . esc_html__( 'Result', 'sportspress-etransfer-automation' ) . '</th>';
+		echo '<th>' . esc_html__( 'Evidence', 'sportspress-etransfer-automation' ) . '</th>';
 		echo '<th>' . esc_html__( 'Match to Order', 'sportspress-etransfer-automation' ) . '</th>';
 		echo '</tr></thead><tbody>';
 
@@ -226,6 +230,9 @@ class SPET_ETransfer_Admin {
 				echo '<td>' . esc_html( '$' . number_format( $log->amount, 2 ) ) . '</td>';
 				echo '<td>' . esc_html( $log->reference_number ?: 'N/A' ) . '</td>';
 				echo '<td>' . esc_html( $log->result ) . '</td>';
+				echo '<td>';
+				self::render_evidence_cell( $log );
+				echo '</td>';
 				echo '<td>';
 
 				echo '<form method="post" style="display:inline;">';
@@ -254,6 +261,52 @@ class SPET_ETransfer_Admin {
 		}
 
 		echo '</tbody></table>';
+	}
+
+	/**
+	 * Render the stored raw email for an unmatched row.
+	 *
+	 * H3: rows written when the Interac parser failed ('extraction_failed') carry
+	 * no sender, no amount and no reference — they used to render as a blank line
+	 * with a "Match & Complete" button and nothing to decide on, while the only
+	 * copy of the evidence sat unread in webhook_data until the 30-day PII sweep
+	 * cleared it. Showing the extracted text makes the row actionable.
+	 *
+	 * @param object $log Row from SPET_Database::get_unmatched_etransfer_logs().
+	 */
+	private static function render_evidence_cell( $log ) {
+		if ( empty( $log->webhook_data ) ) {
+			echo '<span class="description">' . esc_html__( 'Not retained', 'sportspress-etransfer-automation' ) . '</span>';
+			return;
+		}
+
+		$payload = maybe_unserialize( $log->webhook_data );
+
+		$text = '';
+		if ( is_array( $payload ) ) {
+			if ( isset( $payload['text'] ) && is_string( $payload['text'] ) ) {
+				$text = $payload['text'];
+			} else {
+				$text = wp_json_encode( $payload );
+			}
+		} elseif ( is_string( $payload ) ) {
+			$text = $payload;
+		}
+
+		$text = trim( (string) $text );
+		if ( '' === $text ) {
+			echo '<span class="description">' . esc_html__( 'Not retained', 'sportspress-etransfer-automation' ) . '</span>';
+			return;
+		}
+
+		// Cap what we paint into the page; the full value stays in the row.
+		if ( strlen( $text ) > 4000 ) {
+			$text = substr( $text, 0, 4000 ) . "\n…";
+		}
+
+		echo '<details><summary>' . esc_html__( 'View email', 'sportspress-etransfer-automation' ) . '</summary>';
+		echo '<pre style="max-height:16em;overflow:auto;white-space:pre-wrap;word-break:break-word;">' . esc_html( $text ) . '</pre>';
+		echo '</details>';
 	}
 
 	private function display_all_webhooks( $logs ) {
@@ -385,34 +438,90 @@ class SPET_ETransfer_Admin {
 			return false;
 		}
 
-		// Mismatch note (only the winner records this).
-		if ( $has_mismatch ) {
-			$order->add_order_note(
-				sprintf(
-					/* translators: 1: e-Transfer amount, 2: order total */
-					__( 'Amount mismatch: e-Transfer was $%1$.2f but order total is $%2$.2f. Manually confirmed by admin.', 'sportspress-etransfer-automation' ),
-					$log_amount,
-					$order_total
+		// M6: the claim above is deliberately taken BEFORE the order side-effects
+		// (so two concurrent admins can't both stamp notes onto the order), but it
+		// writes "…processed successfully" optimistically. Everything below is
+		// therefore verified, and the claim is rolled back if the order does not
+		// actually reach 'completed' — otherwise a post-claim failure leaves a
+		// permanently unfixable "success" row against an uncompleted order.
+		//
+		// H5: take the same per-order lock the webhook path uses and re-read the
+		// status inside it, so an admin match and an inbound e-Transfer (or two
+		// admins matching different log rows to the same order) cannot both
+		// complete it.
+		$order_lock = class_exists( 'SPET_ETransfer_Automation' )
+			? SPET_ETransfer_Automation::acquire_order_lock( $order_id )
+			: true;
+
+		$completed = false;
+		if ( false !== $order_lock ) {
+			try {
+				clean_post_cache( $order_id );
+				wp_cache_delete( $order_id, 'orders' );
+				$order = wc_get_order( $order_id );
+
+				if ( $order && $order->has_status( 'on-hold' ) ) {
+					// Mismatch note (only the winner records this).
+					if ( $has_mismatch ) {
+						$order->add_order_note(
+							sprintf(
+								/* translators: 1: e-Transfer amount, 2: order total */
+								__( 'Amount mismatch: e-Transfer was $%1$.2f but order total is $%2$.2f. Manually confirmed by admin.', 'sportspress-etransfer-automation' ),
+								$log_amount,
+								$order_total
+							)
+						);
+					}
+
+					// Add transaction ID (reference number)
+					if ( ! empty( $log->reference_number ) ) {
+						$order->set_transaction_id( $log->reference_number );
+					}
+
+					// Add order note
+					$note = sprintf(
+						/* translators: 1: reference number, 2: amount */
+						__( 'e-Transfer payment processed manually from webhook log. Reference: %1$s, Amount: $%2$.2f', 'sportspress-etransfer-automation' ),
+						$log->reference_number ?: 'N/A',
+						$log->amount ?: 0
+					);
+					$order->add_order_note( $note );
+
+					// Update order status to completed
+					$status_ok = $order->update_status( 'completed', __( 'Payment confirmed via manual webhook match.', 'sportspress-etransfer-automation' ) );
+					$saved_id = $order->save();
+
+					$completed = ( false !== $status_ok && ! empty( $saved_id ) && $order->has_status( 'completed' ) );
+				}
+			} catch ( \Exception $e ) {
+				$completed = false;
+				error_log( '[SPET] Manual match failed for order ' . intval( $order_id ) . ': ' . $e->getMessage() );
+			} finally {
+				if ( class_exists( 'SPET_ETransfer_Automation' ) ) {
+					SPET_ETransfer_Automation::release_order_lock( $order_id, $order_lock );
+				}
+			}
+		}
+
+		if ( ! $completed ) {
+			// Release the claim so the row returns to the review list and the
+			// admin can retry, and never leave a "success" result standing behind
+			// an order that was not completed.
+			$wpdb->query(
+				$wpdb->prepare(
+					"UPDATE `{$wpdb->prefix}spat_etransfer_logs`
+					SET order_id = NULL,
+						result = %s,
+						match_criteria = %s
+					WHERE id = %d AND order_id = %d",
+					SPET_Database::RESULT_MANUAL_MATCH_FAILED,
+					'Manual Match',
+					intval( $log_id ),
+					intval( $order_id )
 				)
 			);
+			return false;
 		}
-
-		// Add transaction ID (reference number)
-		if ( ! empty( $log->reference_number ) ) {
-			$order->set_transaction_id( $log->reference_number );
-		}
-
-		// Add order note
-		$note = sprintf(
-			__( 'e-Transfer payment processed manually from webhook log. Reference: %1$s, Amount: $%2$.2f', 'sportspress-etransfer-automation' ),
-			$log->reference_number ?: 'N/A',
-			$log->amount ?: 0
-		);
-		$order->add_order_note( $note );
-
-		// Update order status to completed
-		$order->update_status( 'completed', __( 'Payment confirmed via manual webhook match.', 'sportspress-etransfer-automation' ) );
-		$order->save();
 
 		return true;
 	}

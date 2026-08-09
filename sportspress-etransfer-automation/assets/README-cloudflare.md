@@ -43,7 +43,12 @@ This Cloudflare Worker processes Interac e-Transfer notification emails and forw
    # Enter: Your webhook secret from the plugin settings
    
    wrangler secret put FORWARD_EMAIL
-   # Enter: admin@yoursite.com (optional - for email forwarding)
+   # Enter: admin@yoursite.com
+   # STRONGLY RECOMMENDED. This address receives a copy of every payment
+   # notification, and it is the Worker's only safety net when WordPress
+   # cannot be reached: with it set, a failed webhook hands the email to a
+   # human instead of permanently bouncing it. Must be a VERIFIED
+   # destination address in Cloudflare Email Routing.
    
    # Allowed sender domains. REQUIRED if you FORWARD Interac emails through
    # your own mail provider (the only built-in trusted sender is the direct
@@ -86,8 +91,27 @@ This Cloudflare Worker processes Interac e-Transfer notification emails and forw
 |----------|----------|-------------|
 | `WEBHOOK_URL` | Yes | Your WordPress site's webhook endpoint |
 | `WEBHOOK_SECRET` | Yes | HMAC signing secret from plugin settings |
-| `FORWARD_EMAIL` | No | Email address to forward processed emails to |
+| `FORWARD_EMAIL` | Strongly recommended | Address that receives a copy of every payment notification. Also the fallback when the webhook fails: without it, an unreachable or erroring WordPress means the notification is permanently rejected. Must be verified in Cloudflare Email Routing. |
 | `CUSTOM_HEADERS` | No | JSON object with additional HTTP headers |
+
+## What happens when webhook delivery fails
+
+A payment notification is irreplaceable — Interac does not re-send it — so the
+Worker never discards one because of a transient problem:
+
+1. **Connection failure, `408`, `425`, `429`, `502`, `504`** — retried in-worker
+   up to twice (1s then 3s). The signed payload and its timestamp are reused, so
+   every attempt stays inside WordPress's 300s replay window and the plugin's
+   duplicate guard treats them as one payment.
+2. **`500` / `503`** — not retried. WordPress returns these only after it has
+   already written an audit row (visible under *WooCommerce → e-Transfer
+   Webhooks → Unmatched Webhooks*), so retrying would only duplicate the row.
+3. **Still failing** — the message is forwarded to `FORWARD_EMAIL` (awaited) and,
+   if that succeeds, the message is **accepted**: a human now has the payment
+   email and can match it manually from the review screen.
+4. **No `FORWARD_EMAIL`, or the forward itself failed** — only then is the
+   message rejected. That is a permanent SMTP failure and the notification is
+   lost, which is why `FORWARD_EMAIL` should always be configured.
 
 ## Troubleshooting
 

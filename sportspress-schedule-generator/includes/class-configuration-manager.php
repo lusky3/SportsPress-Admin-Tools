@@ -22,6 +22,25 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 	const OPTION_NAME = 'spsg_configurations';
 
 	/**
+	 * Lock key guarding read-modify-write cycles on the shared
+	 * {@see OPTION_NAME} blob.
+	 *
+	 * M43: the lock used to be keyed per user (`..._save_lock_<user_id>`), so two
+	 * admins editing at the same time serialised nothing — each read the whole
+	 * configurations array, modified its own entry and wrote the array back,
+	 * dropping the other's changes wholesale. Every writer of the blob now takes
+	 * this single global lock.
+	 */
+	const SAVE_LOCK_KEY = 'spsg_configurations_write';
+
+	/**
+	 * Seconds to hold the configurations write lock. Large configurations with
+	 * many teams/venues can take several seconds to validate and persist on
+	 * shared hosting.
+	 */
+	const SAVE_LOCK_TTL = 60;
+
+	/**
 	 * Current configuration instance
 	 */
 	private $current_config;
@@ -115,63 +134,57 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 			return $validation;
 		}
 
-		// Per-user save lock. wp_cache_add() is atomic on object-cache
-		// backends and returns false if another request already holds the
-		// lock, preventing two concurrent saves from clobbering each other
-		// when serialised through the wp_options blob.
-		$user_id  = get_current_user_id();
-		$lock_key = 'spsg_config_save_lock_' . $user_id;
-		if ( $user_id ) {
-			// 60s TTL — large configs with many teams/venues can take longer
-			// than 10s to validate + persist, especially on shared hosting.
-			if ( class_exists( 'SPAT_Lock' ) ) {
-				$lock_acquired = SPAT_Lock::acquire( $lock_key, 60 );
-			} else {
-				$lock_acquired = wp_cache_add( $lock_key, 1, 'spsg_locks', 60 );
+		// Global save lock over the shared configurations blob (M43).
+		$lock_handle = self::acquire_write_lock();
+		if ( false === $lock_handle ) {
+			return new WP_Error(
+				'spsg_save_in_progress',
+				__( 'Another save is in progress. Please retry in a moment.', 'sportspress-schedule-generator' )
+			);
+		}
+
+		try {
+			// Get existing configurations
+			$configurations = get_option( self::OPTION_NAME, array() );
+
+			// Load existing config for change tracking
+			$existing_config = null;
+			$is_new = ! isset( $sanitized['id'] );
+
+			if ( ! $is_new && isset( $configurations[ $sanitized['id'] ] ) ) {
+				$existing_config = $configurations[ $sanitized['id'] ];
 			}
-			if ( ! $lock_acquired ) {
-				return new WP_Error(
-					'spsg_save_in_progress',
-					__( 'Another save is in progress. Please retry in a moment.', 'sportspress-schedule-generator' )
-				);
+
+			// Add timestamp and ID if new
+			if ( $is_new ) {
+				$sanitized['id'] = 'config_' . bin2hex( random_bytes( 8 ) );
+				$sanitized['created'] = current_time( 'mysql' );
 			}
-		}
+			$sanitized['modified'] = current_time( 'mysql' );
 
-		// Get existing configurations
-		$configurations = get_option( self::OPTION_NAME, array() );
-
-		// Load existing config for change tracking
-		$existing_config = null;
-		$is_new = ! isset( $sanitized['id'] );
-
-		if ( ! $is_new && isset( $configurations[ $sanitized['id'] ] ) ) {
-			$existing_config = $configurations[ $sanitized['id'] ];
-		}
-
-		// Add timestamp and ID if new
-		if ( $is_new ) {
-			$sanitized['id'] = 'config_' . bin2hex( random_bytes( 8 ) );
-			$sanitized['created'] = current_time( 'mysql' );
-		}
-		$sanitized['modified'] = current_time( 'mysql' );
-
-		// Track changes if this is an update
-		if ( $existing_config ) {
-			$this->track_changes( $sanitized['id'], $existing_config, $sanitized );
-		}
-
-		// Save configuration
-		$configurations[ $sanitized['id'] ] = $sanitized;
-
-		$result = update_option( self::OPTION_NAME, $configurations, 'no' );
-
-		// Release the save lock now that the DB write has completed.
-		if ( $user_id ) {
-			if ( class_exists( 'SPAT_Lock' ) ) {
-				SPAT_Lock::release( $lock_key );
-			} else {
-				wp_cache_delete( $lock_key, 'spsg_locks' );
+			// Track changes if this is an update
+			if ( $existing_config ) {
+				$this->track_changes( $sanitized['id'], $existing_config, $sanitized );
 			}
+
+			// Save configuration
+			$configurations[ $sanitized['id'] ] = $sanitized;
+
+			$result = update_option( self::OPTION_NAME, $configurations, 'no' );
+
+			// LOW (2026-08): update_option() returns false when the stored value is
+			// already byte-identical, which is a successful no-op, not a failure —
+			// re-saving an unchanged configuration reported "save failed" to the
+			// admin. Confirm against what is actually stored instead.
+			if ( ! $result ) {
+				$stored = get_option( self::OPTION_NAME, array() );
+				$result = isset( $stored[ $sanitized['id'] ] )
+					&& serialize( $stored[ $sanitized['id'] ] ) === serialize( $sanitized );
+			}
+		} finally {
+			// Release the save lock however we leave the critical section, so a
+			// failure mid-write can never strand it for the whole TTL.
+			self::release_write_lock( $lock_handle );
 		}
 
 		if ( $result ) {
@@ -186,6 +199,56 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 	}
 
 	/**
+	 * Log a message when debug logging is enabled.
+	 *
+	 * @param string $message Message.
+	 */
+	private function log( $message ) {
+		if ( get_option( 'spsg_enable_debug_logging', '0' ) === '1' ) {
+			error_log( sprintf( '[SPSG Config Manager] %s', $message ) );
+		}
+	}
+
+	/**
+	 * Acquire the global configurations write lock.
+	 *
+	 * Returns the owner handle from SPAT_Lock (which release() checks so a
+	 * holder whose TTL lapsed can't delete somebody else's live lock) or `true`
+	 * when falling back to the object cache. Returns false when the lock is
+	 * already held.
+	 *
+	 * @return string|bool Lock handle, true for the fallback backend, or false.
+	 */
+	public static function acquire_write_lock() {
+		if ( class_exists( 'SPAT_Lock' ) ) {
+			return SPAT_Lock::acquire( self::SAVE_LOCK_KEY, self::SAVE_LOCK_TTL );
+		}
+
+		// Fallback: wp_cache_add() is atomic on external object caches. On the
+		// default per-request cache it degrades to a no-op, which is the same
+		// behaviour this plugin has always had without the parent installed.
+		return wp_cache_add( self::SAVE_LOCK_KEY, 1, 'spsg_locks', self::SAVE_LOCK_TTL ) ? true : false;
+	}
+
+	/**
+	 * Release the global configurations write lock.
+	 *
+	 * @param string|bool $handle Handle returned by {@see acquire_write_lock()}.
+	 */
+	public static function release_write_lock( $handle ) {
+		if ( false === $handle ) {
+			return;
+		}
+
+		if ( class_exists( 'SPAT_Lock' ) ) {
+			SPAT_Lock::release( self::SAVE_LOCK_KEY, is_string( $handle ) ? $handle : null );
+			return;
+		}
+
+		wp_cache_delete( self::SAVE_LOCK_KEY, 'spsg_locks' );
+	}
+
+	/**
 	 * Load configuration from database
 	 *
 	 * @param string|null $config_id Optional configuration ID to load.
@@ -197,6 +260,15 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 
 		if ( $config_id && isset( $configurations[ $config_id ] ) ) {
 			return new SPSG_Schedule_Configuration( $configurations[ $config_id ] );
+		}
+
+		// LOW (2026-08): an unknown ID silently falls through to "most recent
+		// configuration", so a stale bookmark or a deleted config quietly
+		// generates against somebody else's season. The fallback is preserved
+		// (callers depend on always getting a configuration back) but it is no
+		// longer silent.
+		if ( $config_id ) {
+			$this->log( sprintf( 'Configuration "%s" not found; falling back to the most recently modified one.', $config_id ) );
 		}
 
 		// Return most recent configuration or defaults
@@ -246,20 +318,35 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 	 * Delete configuration
 	 */
 	public function delete( $config_id ) {
-		$configurations = get_option( self::OPTION_NAME, array() );
-
-		if ( isset( $configurations[ $config_id ] ) ) {
-			unset( $configurations[ $config_id ] );
-			update_option( self::OPTION_NAME, $configurations, 'no' );
-
-			// Clean up placeholder teams created for this config
-			SPSG_Placeholder_Team_Manager::cleanup_for_config( $config_id );
-
-			do_action( 'spsg_configuration_deleted', $config_id );
-			return true; // Always return true after successful delete
+		// M43: deleting is a read-modify-write on the shared blob too — without
+		// the lock a concurrent save would resurrect the deleted config (or the
+		// delete would drop the concurrent save).
+		$lock_handle = self::acquire_write_lock();
+		if ( false === $lock_handle ) {
+			return new WP_Error(
+				'spsg_save_in_progress',
+				__( 'Another save is in progress. Please retry in a moment.', 'sportspress-schedule-generator' )
+			);
 		}
 
-		return new WP_Error( 'not_found', __( 'Configuration not found', 'sportspress-schedule-generator' ) );
+		try {
+			$configurations = get_option( self::OPTION_NAME, array() );
+
+			if ( ! isset( $configurations[ $config_id ] ) ) {
+				return new WP_Error( 'not_found', __( 'Configuration not found', 'sportspress-schedule-generator' ) );
+			}
+
+			unset( $configurations[ $config_id ] );
+			update_option( self::OPTION_NAME, $configurations, 'no' );
+		} finally {
+			self::release_write_lock( $lock_handle );
+		}
+
+		// Clean up placeholder teams created for this config
+		SPSG_Placeholder_Team_Manager::cleanup_for_config( $config_id );
+
+		do_action( 'spsg_configuration_deleted', $config_id );
+		return true; // Always return true after successful delete
 	}
 
 	/**
@@ -402,20 +489,10 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 		// Migrate legacy team-restriction keys to canonical names.
 		// Older payloads used `back_to_back_avoidance` / `overlap_avoidance`; the
 		// constraint engine, REST API and sanitizer now expect `_avoid` suffixes.
+		// Shares the implementation with SPSG_Schedule_Configuration so the import
+		// path and the load path (H17) can never drift apart.
 		if ( isset( $config['team_restrictions'] ) && is_array( $config['team_restrictions'] ) ) {
-			$tr = $config['team_restrictions'];
-
-			if ( isset( $tr['back_to_back_avoidance'] ) && ! isset( $tr['back_to_back_avoid'] ) ) {
-				$tr['back_to_back_avoid'] = $tr['back_to_back_avoidance'];
-			}
-			unset( $tr['back_to_back_avoidance'] );
-
-			if ( isset( $tr['overlap_avoidance'] ) && ! isset( $tr['overlap_avoid'] ) ) {
-				$tr['overlap_avoid'] = $tr['overlap_avoidance'];
-			}
-			unset( $tr['overlap_avoidance'] );
-
-			$config['team_restrictions'] = $tr;
+			$config['team_restrictions'] = SPSG_Schedule_Configuration::normalize_team_restrictions( $config['team_restrictions'] );
 		}
 
 		// Future migrations can be added here based on $from_version

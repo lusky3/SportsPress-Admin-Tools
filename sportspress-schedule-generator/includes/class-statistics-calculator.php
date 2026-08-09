@@ -229,14 +229,43 @@ class SPSG_Statistics_Calculator {
 		$count = 0;
 
 		foreach ( $schedule as $game ) {
-			// Check if teams are from different divisions
-			if ( isset( $game->home_team->division_id ) && isset( $game->away_team->division_id )
-				&& $game->home_team->division_id !== $game->away_team->division_id ) {
+			// M51: this used to compare `$game->home_team->division_id`, which the
+			// engine never sets — teams carry only id/name — so the count was
+			// always 0. The slot allocator stamps `is_inter_division` on every
+			// game it creates (copied from the matchup); use that, and keep the
+			// division_id comparison as a fallback for externally supplied games.
+			$g = (array) $game;
+
+			if ( ! empty( $g['is_inter_division'] ) ) {
+				$count++;
+				continue;
+			}
+
+			$home_division = self::team_division_id( $g['home_team'] ?? null );
+			$away_division = self::team_division_id( $g['away_team'] ?? null );
+
+			if ( '' !== $home_division && '' !== $away_division && $home_division !== $away_division ) {
 				$count++;
 			}
 		}
 
 		return $count;
+	}
+
+	/**
+	 * Read a team's division_id when one is present (array or object team).
+	 *
+	 * @param mixed $team Team entity.
+	 * @return string Division ID or an empty string.
+	 */
+	private static function team_division_id( $team ) {
+		if ( is_object( $team ) ) {
+			return (string) ( $team->division_id ?? '' );
+		}
+		if ( is_array( $team ) ) {
+			return (string) ( $team['division_id'] ?? '' );
+		}
+		return '';
 	}
 
 	/**

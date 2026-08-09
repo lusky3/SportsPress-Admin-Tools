@@ -30,8 +30,34 @@ abstract class SPSS_Abstract_LLM_Provider implements SPSS_Recognition_Provider {
 
 	use SPSS_Recognition_HTTP;
 
-	/** Upper bound on generated tokens for the structured extraction response. */
-	const MAX_TOKENS = 2048;
+	/**
+	 * Upper bound on generated tokens for the structured extraction response.
+	 *
+	 * A busy sheet (full rosters both sides + play-by-play + penalties) serializes
+	 * to well over 2048 tokens of structured JSON, and every provider silently
+	 * truncates at the cap — which surfaced only as a generic "did not return
+	 * structured data" and then re-paid the next provider in the chain for the
+	 * same oversized output. Headroom is far cheaper than a failed sheet.
+	 */
+	const MAX_TOKENS = 8192;
+
+	/**
+	 * WP_Error for a response the model cut off at MAX_TOKENS. Distinct from the
+	 * generic parse failure so the queue tells an operator what actually happened
+	 * (and so failing over to another provider is recognisably futile).
+	 *
+	 * @return WP_Error
+	 */
+	protected function truncated_error() {
+		return new WP_Error(
+			'spss_' . $this->get_id() . '_truncated',
+			sprintf(
+				/* translators: %s: provider label */
+				__( '%s hit its output limit before finishing the sheet, so the extraction is incomplete. Try a photo of one team at a time.', 'sportspress-score-sheets' ),
+				$this->get_label()
+			)
+		);
+	}
 
 	/** Provider id (e.g. 'claude'); also the option-name stem. */
 	abstract public function get_id(): string;

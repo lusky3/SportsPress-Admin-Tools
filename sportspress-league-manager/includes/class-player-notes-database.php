@@ -21,6 +21,14 @@ class SPLM_Player_Notes_Database {
 
 	/**
 	 * Create the notes table via dbDelta.
+	 *
+	 * Returns whether the table actually exists afterwards. dbDelta() itself
+	 * returns a list of applied statements (and nothing useful on failure), so
+	 * the caller previously stamped splm_notes_db_version on a `null !== false`
+	 * check — meaning a failed CREATE was recorded as done and never retried,
+	 * leaving every notes query erroring against a missing table. Verify instead.
+	 *
+	 * @return bool True when the table is present after the attempt.
 	 */
 	public static function create_table() {
 		global $wpdb;
@@ -45,6 +53,19 @@ class SPLM_Player_Notes_Database {
 
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta( $sql );
+
+		return self::table_exists();
+	}
+
+	/**
+	 * Whether the notes table exists.
+	 *
+	 * @return bool
+	 */
+	public static function table_exists() {
+		global $wpdb;
+		$table = self::table_name();
+		return $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table;
 	}
 
 	/**

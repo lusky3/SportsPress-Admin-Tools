@@ -76,7 +76,9 @@ class SPSS_Admin {
 				array(
 					'type' => 'number',
 					'sanitize_callback' => array( $this, 'sanitize_money' ),
-					'default' => 0,
+					// Never-configured providers get a runaway guard, not "unlimited";
+					// an explicit 0 (blank field) still means unlimited.
+					'default' => SPSS_Budget::DEFAULT_MONTHLY_BUDGET,
 				)
 			);
 			register_setting(
@@ -126,16 +128,14 @@ class SPSS_Admin {
 		}
 
 		// Remote intake (email Worker / custom webhook + Twilio SMS/MMS).
-		register_setting(
-			self::SETTINGS_GROUP,
-			'spss_webhook_secret',
-			array(
-				'type' => 'string',
-				'sanitize_callback' => 'sanitize_text_field',
-				'default' => '',
-				'autoload' => false,
-			)
-		);
+		//
+		// NOTE: `spss_webhook_secret` is deliberately NOT registered in this group.
+		// It has no form field (the settings page shows it read-only and rotates it
+		// through its own admin-post button), and options.php calls
+		// update_option( $option, null ) for every whitelisted option absent from
+		// the POST — which would wipe the shared secret on every "Save Changes"
+		// and 503 the ingest endpoint. It is written only by regenerate_secret()
+		// and plugin activation.
 		register_setting(
 			self::SETTINGS_GROUP,
 			'spss_twilio_account_sid',
@@ -217,15 +217,54 @@ class SPSS_Admin {
 	}
 
 	/**
-	 * Keep a stored secret unchanged when the field is submitted with its masked
-	 * placeholder (so we never overwrite a real key with bullet characters).
+	 * Keep a stored secret unchanged unless the operator actually typed a new one.
+	 *
+	 * Secret fields render with value="" and the mask only as a *placeholder*, so
+	 * the browser submits '' on every save unless the key is retyped — which is
+	 * exactly the "A key is stored. Leave blank to keep it." contract the UI
+	 * promises. Treating '' as a new (empty) value made every "Save Changes"
+	 * silently erase every stored API key and token. A submitted value containing
+	 * the mask character is likewise never a real key.
+	 *
+	 * Erasing a stored secret therefore needs the explicit per-field "Clear the
+	 * stored value" checkbox rendered next to it.
 	 */
 	private function preserve_masked_key( $value, $option ) {
 		$value = trim( (string) $value );
-		if ( '' !== $value && false !== strpos( $value, '•' ) ) {
+
+		// Explicit opt-in erase.
+		if ( $this->clear_requested( $option ) ) {
+			return '';
+		}
+
+		// Blank (left alone) or the mask echoed back == keep what is stored.
+		if ( '' === $value || false !== strpos( $value, '•' ) ) {
 			return (string) get_option( $option, '' );
 		}
+
 		return sanitize_text_field( $value );
+	}
+
+	/**
+	 * Whether the settings form asked for this secret to be erased.
+	 *
+	 * The checkbox posts the option name into `spss_clear_secret[]`, which is not
+	 * itself a registered setting — options.php ignores it and only this sanitize
+	 * callback reads it. options.php has already verified the settings-group nonce
+	 * and the manage_options capability before any sanitize callback runs, so no
+	 * further nonce check belongs here.
+	 *
+	 * @param string $option Option name being sanitized.
+	 * @return bool
+	 */
+	private function clear_requested( $option ) {
+		// phpcs:disable WordPress.Security.NonceVerification.Missing
+		if ( empty( $_POST['spss_clear_secret'] ) || ! is_array( $_POST['spss_clear_secret'] ) ) {
+			return false;
+		}
+		$clear = array_map( 'sanitize_text_field', wp_unslash( (array) $_POST['spss_clear_secret'] ) );
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+		return in_array( (string) $option, $clear, true );
 	}
 
 	public function sanitize_twilio_token( $value ) {
@@ -252,6 +291,22 @@ class SPSS_Admin {
 	}
 
 	/**
+	 * Render the "Clear the stored value" checkbox that accompanies a secret
+	 * field. Submitting a secret field blank keeps the stored value, so this is
+	 * the only way to erase one. Rendered only when something is actually stored.
+	 *
+	 * @param string $option Option name of the secret.
+	 */
+	private function render_clear_checkbox( $option ) {
+		if ( '' === $this->masked( $option ) ) {
+			return;
+		}
+		?>
+		<p><label for="<?php echo esc_attr( $option ); ?>_clear"><input type="checkbox" name="spss_clear_secret[]" id="<?php echo esc_attr( $option ); ?>_clear" value="<?php echo esc_attr( $option ); ?>" /> <?php esc_html_e( 'Clear the stored value', 'sportspress-score-sheets' ); ?></label></p>
+		<?php
+	}
+
+	/**
 	 * Sanitize a checkbox-group array of provider ids down to known providers.
 	 */
 	public function sanitize_provider_ids( $value ) {
@@ -274,8 +329,13 @@ class SPSS_Admin {
 	private function render_budget_rows( $id ) {
 		$provider     = SPSS_Recognition_Manager::get_provider( $id );
 		$default_cost = ( $provider && method_exists( $provider, 'estimated_cost_per_sheet' ) ) ? (float) $provider->estimated_cost_per_sheet() : 0.0;
-		$budget       = get_option( "spss_{$id}_monthly_budget", '' );
-		$cost         = get_option( "spss_{$id}_cost_per_sheet", '' );
+		// Show what SPSS_Budget will actually enforce: a provider whose budget was
+		// never configured is capped at the default, not unlimited.
+		$budget = get_option( "spss_{$id}_monthly_budget", null );
+		if ( null === $budget || false === $budget || '' === $budget ) {
+			$budget = SPSS_Budget::DEFAULT_MONTHLY_BUDGET;
+		}
+		$cost = get_option( "spss_{$id}_cost_per_sheet", '' );
 		?>
 		<tr>
 			<th scope="row"><label for="spss_<?php echo esc_attr( $id ); ?>_monthly_budget"><?php esc_html_e( 'Monthly budget ($)', 'sportspress-score-sheets' ); ?></label></th>
@@ -363,6 +423,11 @@ class SPSS_Admin {
 									<?php if ( '' !== $desc ) : ?>
 										<p class="description"><?php echo esc_html( $desc ); ?></p>
 									<?php endif; ?>
+									<?php
+									if ( $is_secret ) {
+										$this->render_clear_checkbox( $option );
+									}
+									?>
 								</td>
 							</tr>
 						<?php endforeach; ?>
@@ -395,7 +460,7 @@ class SPSS_Admin {
 					</tr>
 					<tr>
 						<th scope="row"><label for="spss_twilio_auth_token"><?php esc_html_e( 'Twilio Auth Token', 'sportspress-score-sheets' ); ?></label></th>
-						<td><input type="password" name="spss_twilio_auth_token" id="spss_twilio_auth_token" class="regular-text" autocomplete="off" placeholder="<?php echo esc_attr( $this->masked( 'spss_twilio_auth_token' ) ); ?>" value="" /></td>
+						<td><input type="password" name="spss_twilio_auth_token" id="spss_twilio_auth_token" class="regular-text" autocomplete="off" placeholder="<?php echo esc_attr( $this->masked( 'spss_twilio_auth_token' ) ); ?>" value="" /><?php $this->render_clear_checkbox( 'spss_twilio_auth_token' ); ?></td>
 					</tr>
 					<tr>
 						<th scope="row"><?php esc_html_e( 'WhatsApp webhook URL (Meta)', 'sportspress-score-sheets' ); ?></th>
@@ -413,11 +478,11 @@ class SPSS_Admin {
 					</tr>
 					<tr>
 						<th scope="row"><label for="spss_whatsapp_app_secret"><?php esc_html_e( 'WhatsApp app secret', 'sportspress-score-sheets' ); ?></label></th>
-						<td><input type="password" name="spss_whatsapp_app_secret" id="spss_whatsapp_app_secret" class="regular-text" autocomplete="off" placeholder="<?php echo esc_attr( $this->masked( 'spss_whatsapp_app_secret' ) ); ?>" value="" /><p class="description"><?php esc_html_e( 'Meta app secret — validates the X-Hub-Signature-256 on every inbound webhook.', 'sportspress-score-sheets' ); ?></p></td>
+						<td><input type="password" name="spss_whatsapp_app_secret" id="spss_whatsapp_app_secret" class="regular-text" autocomplete="off" placeholder="<?php echo esc_attr( $this->masked( 'spss_whatsapp_app_secret' ) ); ?>" value="" /><p class="description"><?php esc_html_e( 'Meta app secret — validates the X-Hub-Signature-256 on every inbound webhook.', 'sportspress-score-sheets' ); ?></p><?php $this->render_clear_checkbox( 'spss_whatsapp_app_secret' ); ?></td>
 					</tr>
 					<tr>
 						<th scope="row"><label for="spss_whatsapp_access_token"><?php esc_html_e( 'WhatsApp access token', 'sportspress-score-sheets' ); ?></label></th>
-						<td><input type="password" name="spss_whatsapp_access_token" id="spss_whatsapp_access_token" class="regular-text" autocomplete="off" placeholder="<?php echo esc_attr( $this->masked( 'spss_whatsapp_access_token' ) ); ?>" value="" /><p class="description"><?php esc_html_e( 'Cloud API token (a permanent System User token is recommended) — used as the Bearer to download media.', 'sportspress-score-sheets' ); ?></p></td>
+						<td><input type="password" name="spss_whatsapp_access_token" id="spss_whatsapp_access_token" class="regular-text" autocomplete="off" placeholder="<?php echo esc_attr( $this->masked( 'spss_whatsapp_access_token' ) ); ?>" value="" /><p class="description"><?php esc_html_e( 'Cloud API token (a permanent System User token is recommended) — used as the Bearer to download media.', 'sportspress-score-sheets' ); ?></p><?php $this->render_clear_checkbox( 'spss_whatsapp_access_token' ); ?></td>
 					</tr>
 					<tr>
 						<th scope="row"><label for="spss_whatsapp_graph_version"><?php esc_html_e( 'Graph API version', 'sportspress-score-sheets' ); ?></label></th>
@@ -490,7 +555,18 @@ class SPSS_Admin {
 					</tr>
 					<tr>
 						<th scope="row"><label for="spss_sheet_file"><?php esc_html_e( 'Photo of the sheet', 'sportspress-score-sheets' ); ?></label></th>
-						<td><input type="file" name="sheet" id="spss_sheet_file" accept="image/*" required /></td>
+						<td>
+							<input type="file" name="sheet" id="spss_sheet_file" accept="image/*" required />
+							<p class="description">
+								<?php
+								printf(
+									/* translators: %s: comma-separated list of accepted file extensions */
+									esc_html__( 'Accepted on this server: %s. (HEIC and PDF are listed only when this server can decode them.)', 'sportspress-score-sheets' ),
+									esc_html( implode( ', ', self::supported_uploads()['extensions'] ) )
+								);
+								?>
+							</p>
+						</td>
 					</tr>
 				</table>
 				<?php submit_button( __( 'Upload &amp; read', 'sportspress-score-sheets' ) ); ?>
@@ -548,6 +624,27 @@ class SPSS_Admin {
 		if ( '' === $notice ) {
 			return;
 		}
+		// Applied, but the writer refused one or more reviewer-confirmed player
+		// rows — carries a count, so it can't live in the static map below.
+		if ( 'applied_partial' === $notice ) {
+			$count = isset( $_GET['spss_skipped'] ) ? absint( $_GET['spss_skipped'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			printf(
+				'<div class="notice notice-warning is-dismissible"><p>%s</p></div>',
+				esc_html(
+					sprintf(
+						/* translators: %d: number of confirmed player rows that were not written */
+						_n(
+							'Results applied, but %d confirmed player row was not written because that player is not on the team it was attributed to. Fix the roster (or the row) and confirm again.',
+							'Results applied, but %d confirmed player rows were not written because those players are not on the teams they were attributed to. Fix the roster (or the rows) and confirm again.',
+							$count,
+							'sportspress-score-sheets'
+						),
+						$count
+					)
+				)
+			);
+			return;
+		}
 		$map = array(
 			'uploaded'  => array( 'success', __( 'Sheet uploaded — reading in the background. Refresh in a moment.', 'sportspress-score-sheets' ) ),
 			'duplicate' => array( 'warning', __( 'That image was already submitted.', 'sportspress-score-sheets' ) ),
@@ -557,6 +654,55 @@ class SPSS_Admin {
 		if ( isset( $map[ $notice ] ) ) {
 			printf( '<div class="notice notice-%s is-dismissible"><p>%s</p></div>', esc_attr( $map[ $notice ][0] ), esc_html( $map[ $notice ][1] ) );
 		}
+	}
+
+	/**
+	 * Image types this server can actually decode.
+	 *
+	 * HEIC (the iPhone camera default) and PDF passed the upload validator but
+	 * then died in wp_get_image_editor() unless the installed editor really
+	 * supports them — accepting them blindly turned an iPhone photo into an
+	 * unexplained "Upload failed". Probe the editor instead of advertising a
+	 * hardcoded list, with jpeg/png as a floor so the list can never be empty.
+	 *
+	 * @return array { extensions:string[], mime_types:string[] }
+	 */
+	private static function supported_uploads() {
+		// Probing instantiates image editors, and both the queue render and the
+		// upload handler ask — resolve once per request.
+		static $cached = null;
+		if ( null !== $cached ) {
+			return $cached;
+		}
+
+		$candidates = array(
+			'image/jpeg'      => array( 'jpg', 'jpeg' ),
+			'image/png'       => array( 'png' ),
+			'image/webp'      => array( 'webp' ),
+			'image/heic'      => array( 'heic' ),
+			'application/pdf' => array( 'pdf' ),
+		);
+
+		$mime_types = array();
+		$extensions = array();
+		foreach ( $candidates as $mime => $exts ) {
+			if ( ! wp_image_editor_supports( array( 'mime_type' => $mime ) ) ) {
+				continue;
+			}
+			$mime_types[] = $mime;
+			$extensions   = array_merge( $extensions, $exts );
+		}
+
+		if ( empty( $mime_types ) ) {
+			$mime_types = array( 'image/jpeg', 'image/png' );
+			$extensions = array( 'jpg', 'jpeg', 'png' );
+		}
+
+		$cached = array(
+			'extensions' => $extensions,
+			'mime_types' => $mime_types,
+		);
+		return $cached;
 	}
 
 	public function handle_upload() {
@@ -580,11 +726,12 @@ class SPSS_Admin {
 			'size'     => isset( $_FILES['sheet']['size'] ) ? (int) $_FILES['sheet']['size'] : 0,
 		);
 
-		$valid = SPAT_Upload_Validator::validate(
+		$supported = self::supported_uploads();
+		$valid     = SPAT_Upload_Validator::validate(
 			$file,
 			array(
-				'allowed_extensions' => array( 'jpg', 'jpeg', 'png', 'webp', 'heic', 'pdf' ),
-				'allowed_mime_types' => array( 'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'application/pdf' ),
+				'allowed_extensions' => $supported['extensions'],
+				'allowed_mime_types' => $supported['mime_types'],
 				'max_bytes'          => 15 * 1024 * 1024,
 			)
 		);

@@ -101,15 +101,27 @@ assert_test(
 
 // ── monthly_budget ───────────────────────────────────────────────────────────
 
+// M39: a provider whose budget was NEVER configured falls back to the default
+// runaway guard, not "unlimited" — an unset option used to mean no cap at all.
 reset_options();
 assert_test(
-    SPSS_Budget::monthly_budget('openai') === 0.0,
-    'monthly_budget: unset = 0 (unlimited)'
+    SPSS_Budget::monthly_budget('openai') === SPSS_Budget::DEFAULT_MONTHLY_BUDGET,
+    'monthly_budget: never configured = DEFAULT_MONTHLY_BUDGET (not unlimited)'
+);
+assert_test(
+    SPSS_Budget::DEFAULT_MONTHLY_BUDGET > 0.0,
+    'monthly_budget: the default is a real cap (> 0)'
 );
 update_option('spss_openai_monthly_budget', 0);
 assert_test(
     SPSS_Budget::monthly_budget('openai') === 0.0,
-    'monthly_budget: explicit 0 = unlimited'
+    'monthly_budget: explicit 0 = unlimited (opt out of the default)'
+);
+reset_options();
+update_option('spss_openai_monthly_budget', ''); // blank field -> stored empty
+assert_test(
+    SPSS_Budget::monthly_budget('openai') === SPSS_Budget::DEFAULT_MONTHLY_BUDGET,
+    'monthly_budget: empty-string option is treated as unconfigured'
 );
 update_option('spss_openai_monthly_budget', 12.5);
 assert_test(
@@ -120,10 +132,20 @@ assert_test(
 // ── can_spend: unlimited provider always true ────────────────────────────────
 
 reset_options();
+update_option('spss_openai_monthly_budget', 0); // explicit opt-out = unlimited
 update_option('spss_openai_cost_per_sheet', 100.0); // large cost, no cap
 assert_test(
     SPSS_Budget::can_spend('openai') === true,
-    'can_spend: unlimited provider (no cap) is always true'
+    'can_spend: unlimited provider (explicit 0 cap) is always true'
+);
+
+// The same provider WITHOUT an explicit 0 is capped by the default, so a single
+// absurdly expensive sheet is refused instead of billed.
+reset_options();
+update_option('spss_openai_cost_per_sheet', 100.0);
+assert_test(
+    SPSS_Budget::can_spend('openai') === false,
+    'can_spend: unconfigured provider is bounded by the default cap'
 );
 
 // ── can_spend: cap 1.00, cost 0.30 → allow 3, deny the 4th ───────────────────
@@ -166,9 +188,10 @@ assert_test(
     SPSS_Budget::remaining('openai') === 2.50,
     'remaining: decreases as spend is recorded (5.00 - 2.50 = 2.50)'
 );
+update_option('spss_gemini_monthly_budget', 0); // explicit opt-out = unlimited
 assert_test(
     SPSS_Budget::remaining('gemini') === INF,
-    'remaining: INF for an unlimited (unconfigured) provider'
+    'remaining: INF for an explicitly-unlimited (0 cap) provider'
 );
 assert_test(
     SPSS_Budget::spent_this_month('gemini') === 0.0,

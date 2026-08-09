@@ -128,27 +128,7 @@ class SPAT_Health_Dashboard {
 			),
 		);
 
-		// Self-heal from the plugin registry: any active child that registered a
-		// module we don't already list gets appended, so a newly-added plugin
-		// shows up here without editing this map. Registered files are absolute
-		// (__FILE__); reduce to the wp-content/plugins-relative basename used as
-		// the get_plugins() key.
-		if ( class_exists( 'SPAT_Plugin_Manager' ) ) {
-			$known_modules = wp_list_pluck( $child_plugins, 'module' );
-			foreach ( SPAT_Plugin_Manager::get_registered_plugins() as $data ) {
-				$module = isset( $data['parent_module'] ) ? $data['parent_module'] : '';
-				$file   = isset( $data['file'] ) ? $data['file'] : '';
-				if ( '' === $module || '' === $file || in_array( $module, $known_modules, true ) ) {
-					continue;
-				}
-				$basename = plugin_basename( $file );
-				$child_plugins[ $basename ] = array(
-					'name'   => isset( $data['name'] ) && '' !== $data['name'] ? $data['name'] : $basename,
-					'module' => $module,
-				);
-				$known_modules[] = $module;
-			}
-		}
+		$child_plugins = $this->merge_registered_plugins( $child_plugins );
 
 		/**
 		 * Filter the child plugins shown on the health dashboard.
@@ -177,6 +157,53 @@ class SPAT_Health_Dashboard {
 		}
 
 		echo '</table>';
+	}
+
+	/**
+	 * Self-heal the canonical map from the plugin registry: any active child
+	 * whose plugin file we don't already list gets appended, so a newly-added
+	 * plugin shows up here without editing the map. Registered files are
+	 * absolute (__FILE__); reduce to the wp-content/plugins-relative basename
+	 * used as the get_plugins() key — which is also this table's row key.
+	 *
+	 * Dedupe is on the BASENAME, not the module. One row represents one plugin,
+	 * and a child may register several modules against the same file — League
+	 * Manager registers four (dashboard/roster/fees/notes). Keying only on
+	 * module let each subsequent registration overwrite the plugin's row, so
+	 * League Manager rendered as "Player Notes" with the Module-Enabled cell
+	 * reporting the wrong module (H27). The module check is kept as well so a
+	 * module already mapped to a different file isn't listed twice.
+	 *
+	 * @param array $child_plugins Plugin-file basename => [ name, module ] map.
+	 * @return array The map with unlisted registrants appended.
+	 */
+	private function merge_registered_plugins( $child_plugins ) {
+		if ( ! class_exists( 'SPAT_Plugin_Manager' ) ) {
+			return $child_plugins;
+		}
+
+		$known_modules = wp_list_pluck( $child_plugins, 'module' );
+
+		foreach ( SPAT_Plugin_Manager::get_registered_plugins() as $data ) {
+			$module = isset( $data['parent_module'] ) ? $data['parent_module'] : '';
+			$file   = isset( $data['file'] ) ? $data['file'] : '';
+			if ( '' === $module || '' === $file ) {
+				continue;
+			}
+
+			$basename = plugin_basename( $file );
+			if ( isset( $child_plugins[ $basename ] ) || in_array( $module, $known_modules, true ) ) {
+				continue;
+			}
+
+			$child_plugins[ $basename ] = array(
+				'name'   => isset( $data['name'] ) && '' !== $data['name'] ? $data['name'] : $basename,
+				'module' => $module,
+			);
+			$known_modules[] = $module;
+		}
+
+		return $child_plugins;
 	}
 
 	/* ── Cron Health ── */
@@ -270,10 +297,62 @@ class SPAT_Health_Dashboard {
 		echo '</table>';
 	}
 
-	/* ── Webhook Status ── */
-	private function render_webhook_status() {
+	/**
+	 * Cached snapshot of the queries this tab would otherwise run on every
+	 * settings-page load. The panel is rendered on each visit whether or not it
+	 * is the tab the operator opened, so a SHOW TABLES + MAX(timestamp) and two
+	 * get_terms() calls were being paid unconditionally. Shares the 5-minute
+	 * window already used for table status.
+	 *
+	 * @return array Snapshot keys: etransfer_table, last_webhook, has_leagues, has_seasons.
+	 */
+	private function get_status_snapshot() {
 		global $wpdb;
 
+		$snapshot = get_transient( 'spat_status_snapshot' );
+		if ( is_array( $snapshot ) ) {
+			return $snapshot;
+		}
+
+		$table    = $wpdb->prefix . 'spat_etransfer_logs';
+		$snapshot = array(
+			'etransfer_table' => $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table,
+			'last_webhook'    => null,
+			// Default true so a site without SportsPress doesn't warn about
+			// leagues/seasons it has no concept of (matches the original guard).
+			'has_leagues'     => true,
+			'has_seasons'     => true,
+		);
+
+		if ( $snapshot['etransfer_table'] ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is the internal prefix + literal table name, not user input.
+			$snapshot['last_webhook'] = $wpdb->get_var( "SELECT MAX(timestamp) FROM `{$table}`" );
+		}
+
+		if ( class_exists( 'SportsPress' ) ) {
+			$taxonomies = array(
+				'has_leagues' => 'sp_league',
+				'has_seasons' => 'sp_season',
+			);
+			foreach ( $taxonomies as $key => $taxonomy ) {
+				$terms            = get_terms(
+					array(
+						'taxonomy'   => $taxonomy,
+						'hide_empty' => false,
+						'number'     => 1,
+					)
+				);
+				$snapshot[ $key ] = ! ( empty( $terms ) || is_wp_error( $terms ) );
+			}
+		}
+
+		set_transient( 'spat_status_snapshot', $snapshot, 5 * MINUTE_IN_SECONDS );
+
+		return $snapshot;
+	}
+
+	/* ── Webhook Status ── */
+	private function render_webhook_status() {
 		echo '<h3>' . esc_html__( 'Webhook Status', 'sportspress-admin-tools' ) . '</h3>';
 		echo '<table class="spat-status-table">';
 
@@ -286,13 +365,15 @@ class SPAT_Health_Dashboard {
 		$this->row_html( 'Secret Configured', $has_secret ? $this->status( 'ok', 'Yes' ) : $this->status( 'err', 'No' ) );
 		$this->debug( 'Webhook secret: ' . ( $has_secret ? 'configured' : 'MISSING' ) );
 
-		// Last webhook received — check most recent log entry
-		$table = $wpdb->prefix . 'spat_etransfer_logs';
-		$table_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table;
-		if ( $table_exists ) {
-			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is the internal prefix + literal table name, not user input.
-			$last = $wpdb->get_var( "SELECT MAX(timestamp) FROM `{$table}`" );
-			$this->row_html( 'Last Webhook Received', $last ? esc_html( wp_date( 'Y-m-d H:i:s', strtotime( $last ) ) ) : $this->status( 'warn', 'Never' ) );
+		// Last webhook received — check most recent log entry.
+		// mysql2date() parses the stored site-local datetime *in* the site
+		// timezone and formats it there. wp_date( ..., strtotime( $last ) )
+		// treated the string as UTC and then applied the site offset a second
+		// time, so every webhook was reported 4-5 hours out on this install.
+		$snapshot = $this->get_status_snapshot();
+		if ( $snapshot['etransfer_table'] ) {
+			$last = $snapshot['last_webhook'];
+			$this->row_html( 'Last Webhook Received', $last ? esc_html( mysql2date( 'Y-m-d H:i:s', $last ) ) : $this->status( 'warn', 'Never' ) );
 			$this->debug( 'Last webhook: ' . ( $last ?: 'never' ) );
 		}
 
@@ -308,24 +389,11 @@ class SPAT_Health_Dashboard {
 		}
 
 		if ( class_exists( 'SportsPress' ) ) {
-			$leagues = get_terms(
-				array(
-					'taxonomy' => 'sp_league',
-					'hide_empty' => false,
-					'number' => 1,
-				)
-			);
-			if ( empty( $leagues ) || is_wp_error( $leagues ) ) {
+			$snapshot = $this->get_status_snapshot();
+			if ( ! $snapshot['has_leagues'] ) {
 				$warnings[] = __( 'No SportsPress leagues configured.', 'sportspress-admin-tools' );
 			}
-			$seasons = get_terms(
-				array(
-					'taxonomy' => 'sp_season',
-					'hide_empty' => false,
-					'number' => 1,
-				)
-			);
-			if ( empty( $seasons ) || is_wp_error( $seasons ) ) {
+			if ( ! $snapshot['has_seasons'] ) {
 				$warnings[] = __( 'No SportsPress seasons configured.', 'sportspress-admin-tools' );
 			}
 		}

@@ -145,14 +145,37 @@ export function fetchPayments( season, { page = 1, perPage = 200, search = '' } 
 	return apiFetch( { path: `/splm/v1/payments?${ params }` } );
 }
 
-// Full (season + search) payment set as CSV. Returns { filename, csv, count };
-// the caller builds a Blob and triggers the download so the request still
-// carries the apiFetch nonce.
-export function exportPayments( season, { search = '' } = {} ) {
-	const params = new URLSearchParams();
+// One CHUNK of the (season + search) payment set as CSV. Returns
+// { filename, csv, count, page, total, total_pages }. H12: the endpoint is
+// paged so a single request can never fan out unbounded WooCommerce order
+// lookups; use exportPaymentsAll() to assemble the whole file.
+export function exportPayments( season, { search = '', page = 1, perPage = 500 } = {} ) {
+	const params = new URLSearchParams( { page: String( page ), per_page: String( perPage ) } );
 	if ( season ) params.set( 'season', season );
 	if ( search ) params.set( 'search', search );
 	return apiFetch( { path: `/splm/v1/payments/export?${ params }` } );
+}
+
+// Walk every export page and concatenate the CSV chunks (the header ships with
+// page 1 only). Sequential by design — the point of the chunking is to keep
+// concurrent WooCommerce load bounded. `onProgress( page, totalPages )` lets the
+// caller show progress on a long season.
+export async function exportPaymentsAll( season, { search = '', onProgress } = {} ) {
+	const first = await exportPayments( season, { search, page: 1 } );
+	let csv = first.csv || '';
+	let count = first.count || 0;
+	const totalPages = Number( first.total_pages ) || 0;
+	onProgress?.( 1, totalPages );
+
+	for ( let page = 2; page <= totalPages; page++ ) {
+		// eslint-disable-next-line no-await-in-loop
+		const chunk = await exportPayments( season, { search, page } );
+		csv += chunk.csv || '';
+		count += chunk.count || 0;
+		onProgress?.( page, totalPages );
+	}
+
+	return { filename: first.filename, csv, count };
 }
 
 export function fetchHealth() {

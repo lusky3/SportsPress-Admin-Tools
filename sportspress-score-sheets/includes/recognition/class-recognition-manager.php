@@ -18,6 +18,19 @@ if ( ! defined( 'ABSPATH' ) ) {
 class SPSS_Recognition_Manager {
 
 	/**
+	 * Wall-clock budget for one recognize() call, across the whole failover chain
+	 * and every confirmation provider.
+	 *
+	 * Each provider owns a bounded retry/backoff loop, but those bounds compose:
+	 * the self-hosted sidecar alone is 3 × 120s + 6s of backoff, and a chain plus
+	 * cross-checks could run well past ten minutes inside a single cron request —
+	 * long enough for PHP's own limit to kill the worker mid-chain, which strands
+	 * the sheet in `processing` (no catchable Throwable). Stopping cleanly at the
+	 * budget leaves a `failed`, reprocessable row and a readable reason instead.
+	 */
+	const MAX_CHAIN_SECONDS = 600;
+
+	/**
 	 * @return SPSS_Recognition_Provider[] keyed by provider id.
 	 */
 	public static function get_providers() {
@@ -114,8 +127,13 @@ class SPSS_Recognition_Manager {
 		$errors    = array();
 		$lead      = null;
 		$lead_id   = '';
+		$started   = microtime( true );
 
 		foreach ( self::get_primary_chain() as $id ) {
+			if ( ( microtime( true ) - $started ) > self::MAX_CHAIN_SECONDS ) {
+				$errors[] = 'recognition time budget exhausted before trying the rest of the chain';
+				break;
+			}
 			$p = $providers[ $id ] ?? null;
 			if ( ! $p ) {
 				continue;
@@ -147,7 +165,13 @@ class SPSS_Recognition_Manager {
 		}
 
 		// Confirmation cross-checks (each configured + in-budget provider, except the lead).
+		// The lead result is already in hand, so an exhausted time budget just skips
+		// the remaining cross-checks rather than failing the sheet.
 		foreach ( self::get_confirmation_ids() as $cid ) {
+			if ( ( microtime( true ) - $started ) > self::MAX_CHAIN_SECONDS ) {
+				$lead->add_flag( 'cross_check_skipped', 'Ran out of time before cross-checking; the lead result was not verified.' );
+				break;
+			}
 			if ( $cid === $lead_id ) {
 				continue;
 			}

@@ -187,14 +187,20 @@ class SPLM_Dashboard_Frontend {
 		// build/ is committed to the repo, but a checkout or deploy that is
 		// missing it (e.g. a fresh source tree before `npm run build`) would
 		// otherwise enqueue a 404'd bundle and silently render an empty
-		// <div id="splm-dashboard">. Surface a clear admin notice instead.
+		// <div id="splm-dashboard-root">.
+		//
+		// LOW: this used to hook admin_notices — which never fires on this page,
+		// because the dashboard is a FRONT-END page template. The warning could
+		// therefore never render, leaving a blank screen with no explanation.
+		// Print it into the page itself instead (wp_footer runs inside the
+		// template, right after the mount point).
 		if ( ! file_exists( $script_file ) ) {
 			add_action(
-				'admin_notices',
+				'wp_footer',
 				function () {
-					echo '<div class="notice notice-error"><p>';
+					echo '<div style="max-width:60em;margin:2em auto;padding:1em;border:1px solid #d63638;background:#fcf0f1;color:#1d2327;font-family:system-ui,sans-serif;">';
 					echo esc_html__( 'SportsPress League Manager dashboard assets are missing. Run "npm run build" inside the sportspress-league-manager directory.', 'sportspress-league-manager' );
-					echo '</p></div>';
+					echo '</div>';
 				}
 			);
 			return;
@@ -281,6 +287,15 @@ class SPLM_Dashboard_Frontend {
 			! empty( $all_leagues ) && ! is_wp_error( $all_leagues ) ? $all_leagues : array()
 		);
 
+		// M19: POST /user/preferences persists these three, but nothing sent them
+		// back to the client — so "Visible Cards" reverted on every reload and the
+		// season filter always reset to the newest season. Read the saved values
+		// here so the SPA can restore them (see Dashboard.jsx / App.jsx).
+		$user_id           = get_current_user_id();
+		$dashboard_layout  = get_user_meta( $user_id, 'splm_dashboard_layout', true );
+		$preferred_league  = (int) get_user_meta( $user_id, 'splm_preferred_league', true );
+		$preferred_season  = (int) get_user_meta( $user_id, 'splm_preferred_season', true );
+
 		// Currency symbol (F16) — fall back to "$" when WooCommerce is absent.
 		$currency_symbol = function_exists( 'get_woocommerce_currency_symbol' )
 			? get_woocommerce_currency_symbol()
@@ -320,7 +335,21 @@ class SPLM_Dashboard_Frontend {
 				'seasons'         => $seasons,
 				'leagues'         => $leagues,
 				'currencySymbol'  => $currency_symbol,
+				// M19 — saved per-user preferences (written by POST /user/preferences).
+				'dashboardLayout' => is_array( $dashboard_layout ) ? array_values( $dashboard_layout ) : array(),
+				'preferredLeague' => $preferred_league,
+				'preferredSeason' => $preferred_season,
 				'features'        => $features,
+				// M27: this plugin's own module toggles, now enforced by the REST
+				// handlers (see SPLM_REST_API::module_enabled). Localized so the
+				// SPA hides a tab whose module is off instead of rendering one
+				// that 503s. Fail-open in the client, like `dependencies`.
+				'modules'         => array(
+					'dashboard' => SPLM_REST_API::module_enabled( 'league_manager_dashboard' ),
+					'rosters'   => SPLM_REST_API::module_enabled( 'league_roster_management' ),
+					'fees'      => SPLM_REST_API::module_enabled( 'league_fee_tracking' ),
+					'notes'     => SPLM_REST_API::module_enabled( 'league_player_notes' ),
+				),
 				// F7 — canonical capability flags routed through SPLM_Capabilities
 				// (kept alongside legacy granular flags for compatibility).
 				'capabilities'    => array(
@@ -344,7 +373,14 @@ class SPLM_Dashboard_Frontend {
 				'dependencies'    => array(
 					'sportspress'        => class_exists( 'SportsPress' ),
 					'woocommerce'        => class_exists( 'WooCommerce' ),
-					'events_manager'     => class_exists( 'SPEM_REST_API' ),
+					// M20: the Scores tab is shown on this flag, but the routes it
+					// calls (/games/{id}/score, /games/{id}/players, /scores/batch)
+					// need the events_management MODULE, not just the class — the
+					// SPEM class also loads for season_rollover alone. Testing
+					// class_exists here left the tab visible on a rollover-only
+					// install where every single-game save 404'd. Use the exact
+					// predicate that registers those routes.
+					'events_manager'     => SPLM_REST_API::scores_module_enabled(),
 					'player_tools'       => class_exists( 'SPPT_REST_API' ),
 					'schedule_generator' => class_exists( 'SPSG_REST_API' ),
 					// Score Sheets: mirror the sibling flags with a live class check so

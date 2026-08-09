@@ -90,6 +90,11 @@ class SPSS_OpenAI_Provider extends SPSS_Abstract_LLM_Provider {
 		if ( ! empty( $msg['refusal'] ) ) {
 			return new WP_Error( 'spss_openai_refusal', (string) $msg['refusal'] );
 		}
+		// finish_reason 'length' means the JSON was cut off at the token cap, so
+		// json_decode below would fail with a misleading "no structured data".
+		if ( isset( $decoded['choices'][0]['finish_reason'] ) && 'length' === $decoded['choices'][0]['finish_reason'] ) {
+			return $this->truncated_error();
+		}
 		$arr = isset( $msg['content'] ) ? json_decode( (string) $msg['content'], true ) : null;
 		if ( ! is_array( $arr ) ) {
 			return new WP_Error( 'spss_openai_no_json', __( 'Recognition did not return structured data.', 'sportspress-score-sheets' ) );

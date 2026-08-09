@@ -17,9 +17,11 @@
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-// If uninstall not called from WordPress, exit
+// If uninstall not called from WordPress, exit. Must be a plain exit — this
+// file runs outside the normal bootstrap, so wp_die() may not be defined and
+// would itself fatal instead of stopping cleanly.
 if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
-	wp_die();
+	exit;
 }
 
 // Check if parent plugin wants data removed
@@ -75,9 +77,13 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 
 	// Drop any leftover standings transients. The versioned-namespace flush
 	// already orphans these, but uninstall is a good place to purge for real.
+	// `spem_ltg_result_*` holds a League Table Generator submission result
+	// across its POST/redirect/GET hop and is normally consumed within a minute.
 	$wpdb->query(
 		"DELETE FROM {$wpdb->options}
 		 WHERE option_name LIKE '\\_transient\\_spem\\_standings\\_v%'
-		    OR option_name LIKE '\\_transient\\_timeout\\_spem\\_standings\\_v%'"
+		    OR option_name LIKE '\\_transient\\_timeout\\_spem\\_standings\\_v%'
+		    OR option_name LIKE '\\_transient\\_spem\\_ltg\\_result\\_%'
+		    OR option_name LIKE '\\_transient\\_timeout\\_spem\\_ltg\\_result\\_%'"
 	);
 }

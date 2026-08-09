@@ -101,8 +101,8 @@ class SPSG_Admin {
 	 */
 	public function add_admin_menu() {
 		add_menu_page(
-			__( self::LABEL_SCHEDULE_GENERATOR, 'sportspress-schedule-generator' ),
-			__( self::LABEL_SCHEDULE_GENERATOR, 'sportspress-schedule-generator' ),
+			__( 'Schedule Generator', 'sportspress-schedule-generator' ),
+			__( 'Schedule Generator', 'sportspress-schedule-generator' ),
 			'manage_options',
 			'spsg-schedule-generator',
 			array( $this, 'schedule_generator_page' ),
@@ -113,8 +113,8 @@ class SPSG_Admin {
 		if ( class_exists( 'SportsPress' ) ) {
 			add_submenu_page(
 				'sportspress',
-				__( self::LABEL_SCHEDULE_GENERATOR, 'sportspress-schedule-generator' ),
-				__( self::LABEL_SCHEDULE_GENERATOR, 'sportspress-schedule-generator' ),
+				__( 'Schedule Generator', 'sportspress-schedule-generator' ),
+				__( 'Schedule Generator', 'sportspress-schedule-generator' ),
 				'manage_options',
 				'spsg-schedule-generator-sp',
 				array( $this, 'redirect_to_main_page' )
@@ -134,7 +134,7 @@ class SPSG_Admin {
 	 * Add tab to SPAT admin interface
 	 */
 	public function add_spat_tab() {
-		echo '<a href="#schedule-generator" class="nav-tab">' . esc_html( __( self::LABEL_SCHEDULE_GENERATOR, 'sportspress-schedule-generator' ) ) . '</a>';
+		echo '<a href="#schedule-generator" class="nav-tab">' . esc_html( __( 'Schedule Generator', 'sportspress-schedule-generator' ) ) . '</a>';
 	}
 
 	/**
@@ -315,7 +315,7 @@ class SPSG_Admin {
 				<a href="#divisions-teams" class="nav-tab"><?php esc_html_e( 'Divisions & Teams', 'sportspress-schedule-generator' ); ?></a>
 				<a href="#venues-times" class="nav-tab"><?php esc_html_e( 'Venues & Times', 'sportspress-schedule-generator' ); ?></a>
 				<a href="#constraints" class="nav-tab"><?php esc_html_e( 'Constraints', 'sportspress-schedule-generator' ); ?></a>
-				<a href="#generate" class="nav-tab"><?php esc_html_e( self::LABEL_GENERATE_SCHEDULE, 'sportspress-schedule-generator' ); ?></a>
+				<a href="#generate" class="nav-tab"><?php esc_html_e( 'Generate Schedule', 'sportspress-schedule-generator' ); ?></a>
 				<a href="#placeholder-teams" class="nav-tab"><?php esc_html_e( 'Placeholder Teams', 'sportspress-schedule-generator' ); ?></a>
 			</nav>
 
@@ -490,7 +490,7 @@ class SPSG_Admin {
 	private function get_admin_ui_i18n_strings() {
 		return array(
 			'unsavedChanges' => __( 'You have unsaved changes. Are you sure you want to leave?', 'sportspress-schedule-generator' ),
-			'importLeague' => __( self::LABEL_IMPORT_LEAGUE, 'sportspress-schedule-generator' ),
+			'importLeague' => __( 'Import League Structure', 'sportspress-schedule-generator' ),
 			'selectVenuesToImport' => __( 'Select Venues to Import', 'sportspress-schedule-generator' ),
 			'chooseVenues' => __( 'Choose which venues you want to add to your schedule configuration:', 'sportspress-schedule-generator' ),
 			'selectAll' => __( 'Select All', 'sportspress-schedule-generator' ),
@@ -519,7 +519,7 @@ class SPSG_Admin {
 			'mapTo' => __( 'Map To', 'sportspress-schedule-generator' ),
 			'mapToExisting' => __( 'Map to existing', 'sportspress-schedule-generator' ),
 			'createNewVenue' => __( 'Create new venue', 'sportspress-schedule-generator' ),
-			'importSchedule' => __( self::LABEL_IMPORT_SCHEDULE, 'sportspress-schedule-generator' ),
+			'importSchedule' => __( 'Import Schedule', 'sportspress-schedule-generator' ),
 			'importing' => __( 'Importing...', 'sportspress-schedule-generator' ),
 			'venueScheduleImported' => __( 'Venue schedule imported successfully!', 'sportspress-schedule-generator' ),
 			'failedToImportSchedule' => __( 'Failed to import schedule. Please try again.', 'sportspress-schedule-generator' ),
@@ -544,7 +544,7 @@ class SPSG_Admin {
 			'saveConfigFirst' => __( 'Please save the configuration first to view change history', 'sportspress-schedule-generator' ),
 			'viewRecentChanges' => __( 'View Recent Changes', 'sportspress-schedule-generator' ),
 			'loading' => __( 'Loading...', 'sportspress-schedule-generator' ),
-			'noChanges' => __( self::MSG_NO_CHANGES, 'sportspress-schedule-generator' ),
+			'noChanges' => __( 'No changes recorded yet', 'sportspress-schedule-generator' ),
 			'dateTime' => __( 'Date/Time', 'sportspress-schedule-generator' ),
 			'user' => __( 'User', 'sportspress-schedule-generator' ),
 			'field' => __( 'Field', 'sportspress-schedule-generator' ),

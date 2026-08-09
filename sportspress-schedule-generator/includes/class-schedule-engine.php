@@ -55,6 +55,11 @@ class SPSG_Schedule_Engine {
 	private $max_generation_time = 300; // 5 minutes default
 
 	/**
+	 * Minimum seconds between cache-busted cancellation reads (H16).
+	 */
+	const CANCEL_POLL_INTERVAL = 1.0;
+
+	/**
 	 * Progress tracking transient key
 	 */
 	private $progress_transient_key;
@@ -94,6 +99,7 @@ class SPSG_Schedule_Engine {
 
 		// Reset state
 		$this->current_schedule = array();
+		$this->cancel_read_times = array();
 		$this->init_stats();
 
 		// Clear any stale cancellation flag from a previous run so it can't
@@ -236,18 +242,66 @@ class SPSG_Schedule_Engine {
 		$team_games = $this->count_team_games( $matchups );
 
 		// For custom matchup style, accept any count up to games_per_team.
-		// For round-robin styles, require exact match.
+		// For round-robin styles the achievable count is dictated by the division
+		// size and the inter-division split, NOT by games_per_team — see
+		// build_round_robin_expectations().
 		$expected_games = $config->games_per_team;
 		$is_custom = ( $config->matchup_style === 'custom' );
 		$errors = array();
 		$warnings = array();
 
-		foreach ( $team_games as $team_id => $game_count ) {
-			$mismatch = $is_custom
-				? ( $game_count > $expected_games )
-				: ( $game_count !== $expected_games );
+		$rr_expectations = $is_custom ? array() : $this->build_round_robin_expectations( $config );
 
-			if ( $mismatch ) {
+		foreach ( $team_games as $team_id => $game_count ) {
+			if ( ! $is_custom ) {
+				// H19: the engine used to demand an exact match against
+				// games_per_team while the validator only enforced "at least",
+				// and inter-division games are distributed round-robin-fashion
+				// across a division's teams so exact equality is unreachable
+				// whenever the pair total isn't divisible by the division size.
+				// Such a configuration validated cleanly then failed generation
+				// with a confusing per-team error. Compare against the range the
+				// matchup generator can actually produce instead.
+				$bounds = $rr_expectations[ $team_id ] ?? null;
+
+				if ( null === $bounds ) {
+					// Team not resolvable to a division (e.g. injected outside
+					// the config); nothing reliable to compare against.
+					continue;
+				}
+
+				if ( $game_count < $bounds['min'] || $game_count > $bounds['max'] ) {
+					$team_name = $this->get_team_name( $team_id, $config );
+					$errors[]  = sprintf(
+						/* translators: 1: team name, 2: actual count, 3: minimum expected, 4: maximum expected */
+						__( 'Team "%1$s" has %2$d games but expected between %3$d and %4$d', 'sportspress-schedule-generator' ),
+						$team_name,
+						$game_count,
+						$bounds['min'],
+						$bounds['max']
+					);
+					continue;
+				}
+
+				// games_per_team is advisory for round-robin styles: the number
+				// of games is fixed by the format. Surface the difference rather
+				// than blocking on it.
+				if ( $expected_games > 0 && $game_count !== $expected_games ) {
+					$warning = sprintf(
+						/* translators: 1: team name, 2: actual count, 3: configured count */
+						__( 'Team "%1$s" has %2$d games; the configured games per team (%3$d) is not achievable with this round-robin format and was ignored.', 'sportspress-schedule-generator' ),
+						$this->get_team_name( $team_id, $config ),
+						$game_count,
+						$expected_games
+					);
+					$warnings[] = $warning;
+					$this->log( $warning );
+				}
+
+				continue;
+			}
+
+			if ( $game_count > $expected_games ) {
 				$team_name = $this->get_team_name( $team_id, $config );
 				$errors[] = sprintf(
 					__( 'Team "%1$s" has %2$d games but expected %3$d', 'sportspress-schedule-generator' ),
@@ -260,7 +314,7 @@ class SPSG_Schedule_Engine {
 
 			// Custom style: under-count is permitted but worth surfacing so a
 			// silent under-allocation doesn't go unnoticed in the UI/logs.
-			if ( $is_custom && $game_count < $expected_games ) {
+			if ( $game_count < $expected_games ) {
 				$team_name = $this->get_team_name( $team_id, $config );
 				$warning   = sprintf(
 					/* translators: 1: team name, 2: actual count, 3: expected count */
@@ -285,6 +339,12 @@ class SPSG_Schedule_Engine {
 			);
 		}
 
+		// Surface non-blocking matchup warnings through the generation stats so
+		// the UI can show "games per team was not achievable" without failing.
+		if ( ! empty( $warnings ) ) {
+			$this->stats['matchup_warnings'] = array_values( array_unique( $warnings ) );
+		}
+
 		// Validate inter-division totals if configured
 		if ( ! empty( $config->inter_division_games ) ) {
 			$validation = $this->validate_inter_division_totals( $matchups, $config );
@@ -294,6 +354,80 @@ class SPSG_Schedule_Engine {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Compute the achievable games-per-team range for round-robin styles.
+	 *
+	 * Intra-division play is exact: every team meets each of its division-mates
+	 * once per leg, i.e. `(division_size - 1) * legs` games.
+	 *
+	 * Inter-division play is not. `inter_division_games` configures a TOTAL per
+	 * division pair, which SPSG_Matchup_Generator spreads as evenly as it can
+	 * across the teams on each side. When the total isn't divisible by a
+	 * division's size, some teams necessarily get one more game than others —
+	 * hence a range rather than a single number.
+	 *
+	 * @param SPSG_Schedule_Configuration $config Configuration.
+	 * @return array team_id => array{min:int,max:int}
+	 */
+	private function build_round_robin_expectations( $config ) {
+		$legs = ( 'single_round_robin' === $config->matchup_style ) ? 1 : 2;
+
+		$division_sizes = array();
+		$team_division  = array();
+
+		foreach ( $config->divisions as $division ) {
+			$division_id = $division['id'] ?? '';
+			$teams       = $division['teams'] ?? array();
+
+			$division_sizes[ $division_id ] = count( $teams );
+
+			foreach ( $teams as $team ) {
+				$team_division[ $this->extract_team_id( $team ) ] = $division_id;
+			}
+		}
+
+		// Per-division inter-division allowances, accumulated over every
+		// configured pair that involves the division.
+		$inter_min = array();
+		$inter_max = array();
+
+		foreach ( (array) $config->inter_division_games as $pair_key => $game_count ) {
+			$game_count = (int) $game_count;
+			if ( $game_count <= 0 ) {
+				continue;
+			}
+
+			$parts = explode( ':', (string) $pair_key );
+			if ( count( $parts ) !== 2 ) {
+				continue;
+			}
+
+			foreach ( $parts as $division_id ) {
+				$size = $division_sizes[ $division_id ] ?? 0;
+				if ( $size <= 0 ) {
+					continue;
+				}
+
+				$inter_min[ $division_id ] = ( $inter_min[ $division_id ] ?? 0 ) + (int) floor( $game_count / $size );
+				$inter_max[ $division_id ] = ( $inter_max[ $division_id ] ?? 0 ) + (int) ceil( $game_count / $size );
+			}
+		}
+
+		$expectations = array();
+
+		foreach ( $team_division as $team_id => $division_id ) {
+			$size  = $division_sizes[ $division_id ] ?? 0;
+			$intra = $size >= 2 ? ( $size - 1 ) * $legs : 0;
+
+			$expectations[ $team_id ] = array(
+				'min' => $intra + ( $inter_min[ $division_id ] ?? 0 ),
+				'max' => $intra + ( $inter_max[ $division_id ] ?? 0 ),
+			);
+		}
+
+		return $expectations;
 	}
 
 	/**
@@ -547,10 +681,15 @@ class SPSG_Schedule_Engine {
 	private function create_timeout_error() {
 		$elapsed = microtime( true ) - $this->generation_start_time;
 
+		// LOW (2026-08): this used to claim "Partial results have been saved",
+		// but nothing persists $this->current_schedule — it is only attached to
+		// the error payload for the caller to inspect, and every caller discards
+		// it. Say what actually happens.
 		return new WP_Error(
 			'generation_timeout',
 			sprintf(
-				__( 'Schedule generation timed out after %.1f seconds. Partial results have been saved.', 'sportspress-schedule-generator' ),
+				/* translators: %.1f: elapsed seconds */
+				__( 'Schedule generation timed out after %.1f seconds. No schedule was saved — reduce the number of games, add time slots or venues, and try again.', 'sportspress-schedule-generator' ),
 				$elapsed
 			),
 			array(
@@ -686,9 +825,13 @@ class SPSG_Schedule_Engine {
 	 */
 	public function is_cancelled() {
 		// Check the dedicated cancel flag first — this is what the REST and
-		// AJAX cancel handlers actually write. Object cache (hot path) then
-		// transient fallback, mirroring how the handlers set both.
-		if ( wp_cache_get( $this->cancel_transient_key, 'spsg_progress' ) || get_transient( $this->cancel_transient_key ) ) {
+		// AJAX cancel handlers actually write. Object cache (hot path, same
+		// request only) then a cache-busted transient read.
+		if ( wp_cache_get( $this->cancel_transient_key, 'spsg_progress' ) ) {
+			return true;
+		}
+
+		if ( $this->read_cancel_transient( $this->cancel_transient_key ) ) {
 			return true;
 		}
 
@@ -696,14 +839,61 @@ class SPSG_Schedule_Engine {
 		// (set when a cancel arrived after progress was already initialized).
 		$progress = wp_cache_get( $this->progress_transient_key, 'spsg_progress' );
 		if ( false === $progress ) {
-			$progress = get_transient( $this->progress_transient_key );
+			$progress = $this->read_cancel_transient( $this->progress_transient_key );
 		}
 
 		if ( $progress === false ) {
 			return false;
 		}
 
-		return isset( $progress['cancelled'] ) && $progress['cancelled'] === true;
+		return is_array( $progress ) && isset( $progress['cancelled'] ) && $progress['cancelled'] === true;
+	}
+
+	/**
+	 * Timestamp of the last cache-busted transient read, per transient key.
+	 *
+	 * @var array<string,float>
+	 */
+	private $cancel_read_times = array();
+
+	/**
+	 * Read a cancellation-related transient in a way the *engine's* request can
+	 * actually observe.
+	 *
+	 * H16: the cancel handler runs in a separate HTTP request, so its write is
+	 * only visible through the database. Without a persistent object cache the
+	 * engine's very first `get_transient()` miss adds the transient's option
+	 * names to the per-request `notoptions` cache; every later read then
+	 * short-circuits before touching the DB, so a cancel issued mid-run was
+	 * never seen and the Cancel button was a no-op against a 300-second
+	 * synchronous generation. Busting those cache entries before each read makes
+	 * the poll hit the database.
+	 *
+	 * The read is throttled so the polls the allocator makes (every 25 matchups
+	 * in the greedy pass, every node in backtracking) cannot turn into a query
+	 * storm.
+	 *
+	 * @param string $key Transient key.
+	 * @return mixed Transient value, or false when unset/throttled.
+	 */
+	private function read_cancel_transient( $key ) {
+		$now  = microtime( true );
+		$last = $this->cancel_read_times[ $key ] ?? 0.0;
+
+		if ( ( $now - $last ) < self::CANCEL_POLL_INTERVAL ) {
+			return false;
+		}
+
+		$this->cancel_read_times[ $key ] = $now;
+
+		// `notoptions` is the entry that poisons subsequent reads; the two
+		// option caches are dropped so a value written by another request is
+		// picked up rather than served from this request's stale copy.
+		wp_cache_delete( 'notoptions', 'options' );
+		wp_cache_delete( '_transient_' . $key, 'options' );
+		wp_cache_delete( '_transient_timeout_' . $key, 'options' );
+
+		return get_transient( $key );
 	}
 
 	/**

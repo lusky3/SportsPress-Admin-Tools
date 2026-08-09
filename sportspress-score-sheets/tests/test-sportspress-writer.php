@@ -323,6 +323,68 @@ assert_test(
     isset($mock_post_meta[100]['sp_players'][20][40]) && 3 === $mock_post_meta[100]['sp_players'][20][40]['g'],
     'a player rostered on the row team_id is written'
 );
+assert_test(
+    array() === $writer->get_skipped_players(),
+    'a fully-written apply reports no skipped players'
+);
+
+// ── Skipped rows are reported, not silently dropped (M41) ─────────────────
+// "Results applied" used to claim success while reviewer-confirmed rows the
+// guards above rejected vanished with no trace.
+seed_fixture();
+$writer->apply(100, array(
+    'home_team_id' => 10,
+    'away_team_id' => 20,
+    'home_score'   => 0,
+    'away_score'   => 0,
+    'players'      => array(
+        array('team_id' => 10, 'player_id' => 40, 'stats' => array('g' => 3)),   // on team 20
+        array('team_id' => 10, 'player_id' => 555, 'stats' => array('g' => 1)),  // not an sp_player
+        array('team_id' => 99, 'player_id' => 30, 'stats' => array('g' => 1)),   // team not in event
+        array('team_id' => 10, 'player_id' => 30, 'stats' => array('g' => 2)),   // valid
+    ),
+));
+$skipped = $writer->get_skipped_players();
+assert_test(
+    3 === count($skipped),
+    'apply reports every reviewer-confirmed row it refused (3 of 4)'
+);
+$reasons = array();
+foreach ($skipped as $s) {
+    $reasons[$s['player_id']] = $s['reason'];
+}
+assert_test(
+    'not_on_team_roster' === ($reasons[40] ?? ''),
+    'a wrong-team row is reported as not_on_team_roster'
+);
+assert_test(
+    'not_a_player' === ($reasons[555] ?? ''),
+    'a non-sp_player row is reported as not_a_player'
+);
+assert_test(
+    'team_not_in_event' === ($reasons[30] ?? ''),
+    'a row naming a team outside the event is reported as team_not_in_event'
+);
+assert_test(
+    isset($mock_post_meta[100]['sp_players'][10][30]) && 2 === $mock_post_meta[100]['sp_players'][10][30]['g'],
+    'the one valid row is still written alongside the skipped ones'
+);
+
+// The report is per-apply, never cumulative across calls.
+seed_fixture();
+$writer->apply(100, array(
+    'home_team_id' => 10,
+    'away_team_id' => 20,
+    'home_score'   => 0,
+    'away_score'   => 0,
+    'players'      => array(
+        array('team_id' => 20, 'player_id' => 40, 'stats' => array('g' => 1)),
+    ),
+));
+assert_test(
+    array() === $writer->get_skipped_players(),
+    'the skipped list resets on each apply (not cumulative)'
+);
 
 // ── Overwrite, not accumulate (idempotent re-apply) ───────────────────────
 seed_fixture();

@@ -15,7 +15,10 @@ compatibility_date = "2025-12-01"
 # Environment variables (set these in Cloudflare dashboard or via wrangler)
 # WEBHOOK_URL = "https://yoursite.com/wp-json/spet/v1/etransfer-webhook"
 # WEBHOOK_SECRET = "your-webhook-secret-from-plugin"
-# FORWARD_EMAIL = "admin@yoursite.com" (optional)
+# FORWARD_EMAIL = "admin@yoursite.com" (strongly recommended: archival copy AND
+#                the fallback that stops a failed webhook from permanently
+#                bouncing a payment notification; must be a verified
+#                Cloudflare Email Routing destination)
 # CUSTOM_HEADERS = '{"X-Custom-Header":"value","Authorization":"Bearer token"}' (optional)
 # DEBUG = "true" (optional - includes full headers and HTML content in webhook)
 

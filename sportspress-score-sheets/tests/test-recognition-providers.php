@@ -225,6 +225,83 @@ assert_test(
     'abstract base media_type() returns image/jpeg for a .jpg path'
 );
 
+// ── Output-truncation detection (M38) ────────────────────────────────────────
+// A response cut off at the token cap used to surface as a generic "did not
+// return structured data", so the chain failed over and re-paid the next
+// provider for the same oversized sheet. Each vendor signals it differently.
+
+assert_test(
+    SPSS_Abstract_LLM_Provider::MAX_TOKENS >= 8192,
+    'MAX_TOKENS leaves headroom for a full two-roster sheet (>= 8192)'
+);
+
+/** Invoke a provider's protected parse_response() on a canned decoded body. */
+function parse_with($provider, $decoded) {
+    $m = new ReflectionMethod(get_class($provider), 'parse_response');
+    $m->setAccessible(true);
+    return $m->invoke($provider, $decoded);
+}
+
+$truncation_cases = array(
+    'claude' => array(
+        'decoded'  => array(
+            'stop_reason' => 'max_tokens',
+            'content'     => array(array('type' => 'text', 'text' => '{"teams":')),
+        ),
+        'expected' => 'spss_claude_truncated',
+    ),
+    'gemini' => array(
+        'decoded'  => array(
+            'candidates' => array(array('finishReason' => 'MAX_TOKENS')),
+        ),
+        'expected' => 'spss_gemini_truncated',
+    ),
+    'openai' => array(
+        'decoded'  => array(
+            'choices' => array(
+                array(
+                    'finish_reason' => 'length',
+                    'message'       => array('content' => '{"teams":'),
+                ),
+            ),
+        ),
+        'expected' => 'spss_openai_truncated',
+    ),
+);
+
+foreach ($truncation_cases as $id => $case) {
+    if (!isset($provider_classes[$id])) {
+        continue;
+    }
+    $p   = new $provider_classes[$id]();
+    $out = parse_with($p, $case['decoded']);
+    assert_test(
+        is_wp_error($out) && $case['expected'] === $out->get_error_code(),
+        "$id: a truncated response yields a distinct *_truncated error, not a generic parse failure"
+    );
+}
+
+// A complete response is still parsed normally — the truncation check must not
+// swallow the happy path.
+if (isset($provider_classes['openai'])) {
+    $p   = new $provider_classes['openai']();
+    $out = parse_with(
+        $p,
+        array(
+            'choices' => array(
+                array(
+                    'finish_reason' => 'stop',
+                    'message'       => array('content' => '{"teams":{"home":{},"away":{}},"players":[]}'),
+                ),
+            ),
+        )
+    );
+    assert_test(
+        !is_wp_error($out),
+        'openai: a finish_reason=stop response still parses to a result'
+    );
+}
+
 // ── Summary ─────────────────────────────────────────────────────────────────
 
 echo "\n=== Results ===\n";

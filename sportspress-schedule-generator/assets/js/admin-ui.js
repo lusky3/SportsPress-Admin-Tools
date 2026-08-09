@@ -1283,21 +1283,78 @@
         updateDayWeightsTotal();
     });
 
-    // Team restrictions - Add restriction
-    $('#spsg-add-team-restriction').click(function() {
-        var container = $('#spsg-team-restrictions-container');
-        var index = container.children().length;
-        var template = $('.spsg-team-restriction-row:first').clone();
+    // M48/M49: restriction rows are cloned from the first row on "Add". Two bugs
+    // lived here:
+    //   * the new row's index came from container.children().length, so after a
+    //     Remove the next Add reused an index that another row already had and
+    //     the two groups silently merged into one union group on save;
+    //   * the source row has already had SlimSelect initialised on it, so the
+    //     clone carried a dead widget (an .ss-main sibling, a hidden <select>
+    //     and a stale search buffer) and the UI was unreliable past the first row.
+    // Pristine templates are captured up front — before any SlimSelect init —
+    // and indexes come from a monotonic counter.
+    var restrictionTemplates = {};
+    var restrictionIndexCounters = {};
 
-        template.find('select, input').each(function() {
+    function captureRestrictionTemplate(key, rowSelector) {
+        var $row = $(rowSelector).first();
+        if (!$row.length || restrictionTemplates[key]) {
+            return;
+        }
+        var $template = $row.clone();
+        // Belt and braces in case a widget was already attached.
+        $template.find('.ss-main').remove();
+        $template.find('select').removeClass('ss-main').removeAttr('data-ssid').show();
+        $template.find('select option').prop('selected', false);
+        restrictionTemplates[key] = $template;
+    }
+
+    function nextRestrictionIndex(key, rowSelector) {
+        var highest = -1;
+        $(rowSelector).each(function() {
+            var idx = parseInt($(this).attr('data-index'), 10);
+            if (!isNaN(idx) && idx > highest) {
+                highest = idx;
+            }
+        });
+        var counter = restrictionIndexCounters[key] || 0;
+        var next = Math.max(counter, highest + 1);
+        restrictionIndexCounters[key] = next + 1;
+        return next;
+    }
+
+    function buildRestrictionRow(key, rowSelector, index) {
+        var source = restrictionTemplates[key];
+        var $row = source ? source.clone() : $(rowSelector).first().clone();
+
+        $row.find('.ss-main').remove();
+        $row.find('select').removeClass('ss-main').removeAttr('data-ssid').show();
+
+        $row.find('select, input').each(function() {
             var name = $(this).attr('name');
             if (name) {
                 $(this).attr('name', name.replace(/\[\d+\]/, '[' + index + ']'));
             }
+            var id = $(this).attr('id');
+            if (id) {
+                $(this).attr('id', id.replace(/\d+/, index));
+            }
         });
 
-        template.find('select option').prop('selected', false);
-        template.attr('data-index', index);
+        $row.find('select option').prop('selected', false);
+        $row.attr('data-index', index);
+
+        return $row;
+    }
+
+    captureRestrictionTemplate('overlap', '.spsg-team-restriction-row');
+    captureRestrictionTemplate('b2b', '.spsg-b2b-restriction-row');
+
+    // Team restrictions - Add restriction
+    $('#spsg-add-team-restriction').click(function() {
+        var container = $('#spsg-team-restrictions-container');
+        var index = nextRestrictionIndex('overlap', '.spsg-team-restriction-row');
+        var template = buildRestrictionRow('overlap', '.spsg-team-restriction-row', index);
 
         container.append(template);
 
@@ -1340,18 +1397,8 @@
     // above; back-to-back rows carry only a team select, no buffer field).
     $('#spsg-add-b2b-restriction').click(function() {
         var container = $('#spsg-b2b-restrictions-container');
-        var index = container.children().length;
-        var template = $('.spsg-b2b-restriction-row:first').clone();
-
-        template.find('select, input').each(function() {
-            var name = $(this).attr('name');
-            if (name) {
-                $(this).attr('name', name.replace(/\[\d+\]/, '[' + index + ']'));
-            }
-        });
-
-        template.find('select option').prop('selected', false);
-        template.attr('data-index', index);
+        var index = nextRestrictionIndex('b2b', '.spsg-b2b-restriction-row');
+        var template = buildRestrictionRow('b2b', '.spsg-b2b-restriction-row', index);
 
         container.append(template);
 

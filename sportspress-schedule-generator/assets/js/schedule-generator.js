@@ -18,6 +18,13 @@
         },
         
         init: function() {
+            // H21: generateSchedule() sets this.scheduleId and then reloads the
+            // page, which throws the in-memory value away. The server renders the
+            // id into a hidden field, so pick it back up on load — otherwise the
+            // export buttons report "No schedule to export" while the schedule is
+            // sitting right there on screen.
+            this.scheduleId = this.getScheduleId();
+
             this.bindEvents();
             this.checkConfigurationStatus();
             this.checkExportFormats();
@@ -26,6 +33,14 @@
             if ($('#spsg-schedule-preview-container').length && $('#spsg-schedule-table').length) {
                 this.initializePreviewFeatures();
             }
+        },
+        
+        /**
+         * Resolve the current schedule ID: in-memory first, then the hidden
+         * field the preview renders (which survives the post-generation reload).
+         */
+        getScheduleId: function() {
+            return this.scheduleId || $('#spsg-current-schedule-id').val() || null;
         },
         
         /**
@@ -264,13 +279,18 @@
         
         exportSchedule: function(format) {
             var self = this;
+            var scheduleId = this.getScheduleId();
             
-            if (!this.scheduleId) {
+            if (!scheduleId) {
                 this.showMessage('error', 'No schedule to export. Please generate a schedule first.');
                 return;
             }
             
-            // Collect filter values
+            // H22: these were sent nested under `filters` while the PHP handler
+            // read top-level keys, so every "filtered" export silently contained
+            // the whole season. Send both shapes — flat for the AJAX handler,
+            // nested for callers that expect the object — and let the server
+            // prefer whichever is present.
             var filters = {
                 division: $('#spsg-export-division').val() || '',
                 date_from: $('#spsg-export-date-from').val() || '',
@@ -283,9 +303,12 @@
                 data: {
                     action: 'spsg_export_schedule',
                     spsg_nonce: spsgData.nonces.export_schedule,
-                    schedule_id: this.scheduleId,
+                    schedule_id: scheduleId,
                     format: format,
                     xlsx_style: $('#spsg-xlsx-style').val() || 'compact',
+                    division: filters.division,
+                    date_from: filters.date_from,
+                    date_to: filters.date_to,
                     filters: filters
                 },
                 beforeSend: function() {
@@ -654,7 +677,7 @@
         },
         
         importToSportsPress: function() {
-            var scheduleId = $('#spsg-current-schedule-id').val();
+            var scheduleId = this.getScheduleId();
             
             if (!scheduleId) {
                 this.showMessage('error', 'No schedule to import. Please generate a schedule first.');

@@ -35,6 +35,43 @@ class SPSG_Slot_Allocator {
 	private $max_backtrack_depth = 50;
 
 	/**
+	 * Remaining node-visit budget for the backtracking search.
+	 *
+	 * M53: the depth limit can never bind — `$depth` is incremented once per
+	 * successful placement, so it equals the matchup index and is bounded by
+	 * count($matchups), while the limit is 5× that. Only the wall clock stopped
+	 * an O(slots^n) search, which pins a worker for the full generation timeout
+	 * on an infeasible configuration. A node budget makes the search fail fast
+	 * and deterministically instead.
+	 *
+	 * @var int
+	 */
+	private $backtrack_budget = 0;
+
+	/**
+	 * Set when the backtracking search stopped because {@see $backtrack_budget}
+	 * ran out rather than because the search space was genuinely exhausted.
+	 *
+	 * @var bool
+	 */
+	private $backtrack_budget_exhausted = false;
+
+	/**
+	 * Candidate-slot examinations allowed per matchup during backtracking.
+	 *
+	 * The budget is charged per slot examined rather than per recursion node,
+	 * because each node scans the whole slot list — counting nodes alone lets an
+	 * infeasible configuration burn minutes inside a "small" node count.
+	 */
+	const BACKTRACK_VISITS_PER_MATCHUP = 500;
+
+	/**
+	 * Floor on the total backtracking budget, so very small schedules still get
+	 * a meaningful search.
+	 */
+	const BACKTRACK_MIN_VISITS = 50000;
+
+	/**
 	 * Available slots cache
 	 */
 	private $available_slots = array();
@@ -56,6 +93,56 @@ class SPSG_Slot_Allocator {
 	 * Count of games with soft constraint violations
 	 */
 	private $constraint_violations = 0;
+
+	/**
+	 * When false (the default) a pair of teams may not meet twice on the same
+	 * date. H15: double round-robin used to emit both meetings of a pair back
+	 * to back and the conflict check only rejected time-OVERLAPPING games, so
+	 * the rematch landed the same night one slot later.
+	 *
+	 * {@see allocate()} flips this to true for a final relaxed retry so a
+	 * genuinely tight configuration (e.g. a one-day tournament) can still be
+	 * scheduled rather than failing outright.
+	 *
+	 * @var bool
+	 */
+	private $allow_same_date_rematch = false;
+
+	/**
+	 * Set when the strict same-date rematch rule actually rejected a slot during
+	 * the current pass. Used to decide whether a relaxed retry is worth running.
+	 *
+	 * @var bool
+	 */
+	private $same_date_rematch_blocked = false;
+
+	/**
+	 * Maximum number of valid candidate slots scored per matchup.
+	 *
+	 * The candidate window is walked chronologically, so this bounds the cost
+	 * evaluation to the earliest N placeable slots — schedules still fill from
+	 * the start of the season, but within that window the lowest-cost slot wins
+	 * instead of blindly taking the first one (H14).
+	 */
+	const MAX_SLOT_CANDIDATES = 15;
+
+	/**
+	 * Cost credited to a slot at the home team's preferred venue. Large enough
+	 * to dominate the soft-constraint terms so a configured preference is
+	 * honoured whenever a preferred-venue slot is among the candidates, which
+	 * preserves the previous "return the preferred venue immediately" behaviour.
+	 */
+	const PREFERRED_VENUE_BONUS = 1000.0;
+
+	/**
+	 * Cost charged per game a participating team already has on the candidate
+	 * date. The distribution constraint scores days of the *week*, so it cannot
+	 * tell "twice this Friday" apart from "once each of two Fridays"; without
+	 * this term nothing discourages double-headers (H14). Scaled above the
+	 * division-grouping terms so packing a venue never justifies making a team
+	 * play twice in one night, but below the preferred-venue credit.
+	 */
+	const SAME_DATE_TEAM_PENALTY = 250.0;
 
 	/**
 	 * Set true when greedy_allocate() / backtrack_allocate() exited because
@@ -101,6 +188,8 @@ class SPSG_Slot_Allocator {
 		$this->constraint_violations = 0;
 		$this->was_cancelled = false;
 		$this->was_timed_out = false;
+		$this->allow_same_date_rematch   = false;
+		$this->same_date_rematch_blocked = false;
 
 		// Scale backtrack depth with the size of the workload — the default
 		// of 50 is meaningless for a 200-game season. Engine-level timeout
@@ -158,6 +247,30 @@ class SPSG_Slot_Allocator {
 		}
 
 		if ( $schedule === false ) {
+			// H15: the same-date rematch rule is a hard rule during the normal
+			// passes, but it must never be the sole reason a season cannot be
+			// generated (a one-day tournament legitimately replays pairs). If it
+			// actually blocked slots, retry greedily with the rule relaxed before
+			// surfacing a failure.
+			if ( ! $this->allow_same_date_rematch && $this->same_date_rematch_blocked ) {
+				$this->log( 'Allocation failed with strict rematch spacing; retrying relaxed' );
+				$this->allow_same_date_rematch = true;
+
+				$schedule = $this->greedy_allocate( $matchups, $config, $progress_callback, $cancellation_callback, $timeout_callback );
+
+				if ( $this->was_cancelled ) {
+					return $this->build_cancellation_error( count( $matchups ) );
+				}
+				if ( $this->was_timed_out ) {
+					return $this->build_timeout_error( count( $matchups ) );
+				}
+
+				if ( $schedule !== false ) {
+					$this->log( 'Relaxed allocation succeeded (pairs may meet twice on one date)' );
+					return $schedule;
+				}
+			}
+
 			return new WP_Error(
 				'allocation_failed',
 				__( 'Could not allocate all games. Try adjusting time slots, venues, or blackout dates.', 'sportspress-schedule-generator' ),
@@ -341,7 +454,18 @@ class SPSG_Slot_Allocator {
 		$used_slots = array();
 		$schedule_by_date = array();
 
+		// M53: bound the search by work done, not just by the wall clock.
+		$this->backtrack_budget           = max(
+			self::BACKTRACK_MIN_VISITS,
+			count( $matchups ) * self::BACKTRACK_VISITS_PER_MATCHUP
+		);
+		$this->backtrack_budget_exhausted = false;
+
 		$result = $this->backtrack_recursive( $matchups, 0, $schedule, $used_slots, $schedule_by_date, $config, 0, $progress_callback, $cancellation_callback, $timeout_callback );
+
+		if ( $this->backtrack_budget_exhausted ) {
+			$this->log( 'Backtracking gave up: node budget exhausted' );
+		}
 
 		return $result ? $schedule : false;
 	}
@@ -365,6 +489,12 @@ class SPSG_Slot_Allocator {
 			return true;
 		}
 
+		// M53: fail fast once the search budget is spent.
+		if ( $this->backtrack_budget <= 0 ) {
+			$this->backtrack_budget_exhausted = true;
+			return false;
+		}
+
 		if ( $progress_callback && $index % 10 === 0 ) {
 			call_user_func( $progress_callback, $index );
 		}
@@ -372,6 +502,13 @@ class SPSG_Slot_Allocator {
 		$matchup = $matchups[ $index ];
 
 		foreach ( $this->available_slots as $slot ) {
+			// M53: every examined slot costs budget, so the bound reflects the
+			// actual O(slots^n) work rather than just recursion depth.
+			if ( --$this->backtrack_budget <= 0 ) {
+				$this->backtrack_budget_exhausted = true;
+				return false;
+			}
+
 			$slot_key = $this->get_slot_key( $slot );
 
 			if ( isset( $used_slots[ $slot_key ] ) ) {
@@ -404,7 +541,14 @@ class SPSG_Slot_Allocator {
 	 * Find best available slot for matchup
 	 *
 	 * Uses date-indexed schedule for O(1) conflict checks and caps
-	 * cost evaluation at the first 15 valid slots for performance.
+	 * cost evaluation at the first {@see MAX_SLOT_CANDIDATES} valid slots for
+	 * performance.
+	 *
+	 * H14: this used to return the first valid slot outright, which meant the
+	 * soft (distribution) and optimization (division grouping) constraints never
+	 * influenced placement at all. Candidates are still gathered in chronological
+	 * order — so schedules still fill from the start of the season — but the
+	 * lowest-cost candidate within that window is the one that gets used.
 	 *
 	 * @param object                      $matchup Matchup object
 	 * @param array                       $used_slots Already used slots
@@ -414,8 +558,9 @@ class SPSG_Slot_Allocator {
 	 */
 	public function find_best_slot( $matchup, $used_slots, $schedule_by_date, $config ) {
 		$best_slot          = null;
+		$best_cost          = null;
 		$candidates_checked = 0;
-		$max_candidates     = 15;
+		$max_candidates     = self::MAX_SLOT_CANDIDATES;
 
 		// Resolve home team's preferred venue (if configured)
 		$preferred_venue_id = null;
@@ -439,24 +584,17 @@ class SPSG_Slot_Allocator {
 					continue;
 				}
 
-				if ( ! $this->is_slot_valid( $matchup, $slot, $schedule_by_date, $config ) ) {
+				// Build the game once and reuse it for validation and scoring.
+				$game = $this->create_game( $matchup, $slot, $config );
+
+				if ( ! $this->is_slot_valid( $matchup, $slot, $schedule_by_date, $config, $game ) ) {
 					continue;
 				}
 
-				// No preference configured — return first valid slot.
-				if ( ! $preferred_venue_id ) {
-					return $slot;
-				}
+				$cost = $this->calculate_slot_cost( $game, $slot, $schedule_by_date, $config, $preferred_venue_id );
 
-				$slot_venue_id = $this->extract_id( $slot->venue );
-
-				// Preferred venue found — return immediately.
-				if ( $slot_venue_id === $preferred_venue_id ) {
-					return $slot;
-				}
-
-				// Keep first valid slot as fallback.
-				if ( ! $best_slot ) {
+				if ( null === $best_cost || $cost < $best_cost ) {
+					$best_cost = $cost;
 					$best_slot = $slot;
 				}
 
@@ -476,12 +614,44 @@ class SPSG_Slot_Allocator {
 	 * Uses soft/optimization constraints to calculate a violation cost.
 	 * Lower costs are better (0 is perfect).
 	 *
-	 * @param object                      $matchup Matchup object
-	 * @param object                      $slot Slot object
-	 * @param array                       $schedule Current schedule
-	 * @param SPSG_Schedule_Configuration $config Configuration
+	 * Hard constraints are already known to pass (the caller only scores slots
+	 * that cleared {@see is_slot_valid()}) and their validate() result is
+	 * memoized, so the aggregate here is effectively the soft/optimization sum.
+	 *
+	 * @param object                      $game               Pre-built game object for this placement.
+	 * @param object                      $slot               Slot object.
+	 * @param array                       $schedule_by_date   Schedule indexed by date.
+	 * @param SPSG_Schedule_Configuration $config             Configuration.
+	 * @param string|null                 $preferred_venue_id Home team's preferred venue, if any.
 	 * @return float Cost (lower is better)
 	 */
+	private function calculate_slot_cost( $game, $slot, $schedule_by_date, $config, $preferred_venue_id = null ) {
+		$same_day_games = $schedule_by_date[ $slot->date ] ?? array();
+
+		$cost = (float) $this->constraint_manager->calculate_violation_cost( $game, $same_day_games, $config, $schedule_by_date );
+
+		// Discourage double-headers: charge for each game either team already
+		// has on this date.
+		if ( ! empty( $same_day_games ) ) {
+			$home_team_id = $this->extract_id( $game->home_team );
+			$away_team_id = $this->extract_id( $game->away_team );
+
+			foreach ( $same_day_games as $existing_game ) {
+				if ( $this->has_team_conflict( $existing_game, $home_team_id, $away_team_id ) ) {
+					$cost += self::SAME_DATE_TEAM_PENALTY;
+				}
+			}
+		}
+
+		// A configured home-venue preference outweighs the soft terms, matching
+		// the previous behaviour of returning a preferred-venue slot on sight.
+		if ( $preferred_venue_id && $this->extract_id( $slot->venue ) === $preferred_venue_id ) {
+			$cost -= self::PREFERRED_VENUE_BONUS;
+		}
+
+		return $cost;
+	}
+
 	/**
 	 * Get available venues for a specific date with their time slots
 	 *
@@ -611,15 +781,16 @@ class SPSG_Slot_Allocator {
 
 		// Only check games on the same date (O(1) lookup vs O(n) scan).
 		$same_day_games = $schedule_by_date[ $slot->date ] ?? array();
-		if ( empty( $same_day_games ) ) {
-			// No games on this date yet — always valid (skip constraint check for speed).
-			return true;
-		}
 
 		$venue_id_slot = $this->extract_id( $slot->venue );
 		$home_team_id = $this->extract_id( $matchup->home_team );
 		$away_team_id = $this->extract_id( $matchup->away_team );
 
+		// Cheap same-day conflict screen. This loop is a no-op when the date is
+		// still empty; the constraint validation below runs either way. H13: an
+		// early `return true` for the first game of a date used to bypass every
+		// hard constraint, so schedule-independent restrictions (day / venue /
+		// preferred-time) never fired on each playing day's opening slot.
 		foreach ( $same_day_games as $existing_game ) {
 			// Check venue/time conflict
 			if ( $this->extract_id( $existing_game->venue ) === $venue_id_slot
@@ -630,6 +801,15 @@ class SPSG_Slot_Allocator {
 			// Check team conflicts (teams can't play multiple games at same time)
 			if ( $this->has_team_conflict( $existing_game, $home_team_id, $away_team_id )
 				&& $this->times_overlap( $existing_game->time_slot, $slot->time_slot, $match_length, 0 ) ) {
+				return false;
+			}
+
+			// H15: the same two teams must not meet twice on one date. The old
+			// team-conflict check above only rejected time-OVERLAPPING games, so
+			// a double round-robin happily put A-vs-B at 19:00 and again at 20:00.
+			if ( ! $this->allow_same_date_rematch
+				&& $this->is_same_pairing( $existing_game, $home_team_id, $away_team_id ) ) {
+				$this->same_date_rematch_blocked = true;
 				return false;
 			}
 		}
@@ -669,6 +849,22 @@ class SPSG_Slot_Allocator {
 			|| $existing_away_id === $home_team_id
 			|| $existing_home_id === $away_team_id
 			|| $existing_away_id === $away_team_id;
+	}
+
+	/**
+	 * Check whether an existing game is the same (unordered) pairing.
+	 *
+	 * @param object $existing_game Already-scheduled game.
+	 * @param string $home_team_id  Candidate home team ID.
+	 * @param string $away_team_id  Candidate away team ID.
+	 * @return bool True when both games are between the same two teams.
+	 */
+	private function is_same_pairing( $existing_game, $home_team_id, $away_team_id ) {
+		$existing_home_id = $this->extract_id( $existing_game->home_team );
+		$existing_away_id = $this->extract_id( $existing_game->away_team );
+
+		return ( $existing_home_id === $home_team_id && $existing_away_id === $away_team_id )
+			|| ( $existing_home_id === $away_team_id && $existing_away_id === $home_team_id );
 	}
 
 	/**

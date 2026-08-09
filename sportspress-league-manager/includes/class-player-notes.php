@@ -11,6 +11,19 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPLM_Player_Notes {
 
+	/**
+	 * How long after posting a note its author may still edit the text.
+	 *
+	 * M24: this window was advertised to the browser as `editLimit` and enforced
+	 * ONLY in player-notes.js — ajax_update_player_note() rewrote any note by id
+	 * for any notes-capable user, forever. Notes are management commentary kept
+	 * as an audit trail (deletes are soft, never destructive), so an unlogged,
+	 * unattributed rewrite of someone else's words is precisely what that trail
+	 * is supposed to prevent. The constant is the single source of truth for both
+	 * the localized value and the server check.
+	 */
+	const EDIT_WINDOW = 24 * HOUR_IN_SECONDS;
+
 	public function __construct() {
 		// Create table on first load if needed.
 		$this->maybe_create_table();
@@ -39,8 +52,10 @@ class SPLM_Player_Notes {
 	 */
 	private function maybe_create_table() {
 		if ( get_option( 'splm_notes_db_version' ) !== '1.0' ) {
-			$result = SPLM_Player_Notes_Database::create_table();
-			if ( $result !== false ) {
+			// create_table() now verifies the table exists after dbDelta. Only
+			// stamp the version on a confirmed success, so a failed migration is
+			// retried on the next load instead of being recorded as done.
+			if ( true === SPLM_Player_Notes_Database::create_table() ) {
 				update_option( 'splm_notes_db_version', '1.0' );
 			}
 		}
@@ -104,7 +119,7 @@ class SPLM_Player_Notes {
 				'ajaxUrl'   => admin_url( 'admin-ajax.php' ),
 				'nonce'     => wp_create_nonce( 'splm_ajax_nonce' ),
 				'userId'    => get_current_user_id(),
-				'editLimit' => 24 * 60 * 60,
+				'editLimit' => self::EDIT_WINDOW,
 				'i18n'      => array(
 					'confirmDelete' => __( 'Delete this note?', 'sportspress-league-manager' ),
 					'saving'        => __( 'Saving…', 'sportspress-league-manager' ),
@@ -143,7 +158,7 @@ class SPLM_Player_Notes {
 				'ajaxUrl'   => admin_url( 'admin-ajax.php' ),
 				'nonce'     => wp_create_nonce( 'splm_ajax_nonce' ),
 				'userId'    => get_current_user_id(),
-				'editLimit' => 24 * 60 * 60,
+				'editLimit' => self::EDIT_WINDOW,
 				'i18n'      => array(
 					'confirmDelete' => __( 'Delete this note?', 'sportspress-league-manager' ),
 					'saving'        => __( 'Saving…', 'sportspress-league-manager' ),
@@ -234,6 +249,47 @@ class SPLM_Player_Notes {
 	}
 
 	/**
+	 * Whether the current user may rewrite the text of an existing note.
+	 *
+	 * M24 policy — editing is author-only, within EDIT_WINDOW of posting, with no
+	 * capability override. This is deliberately NARROWER than the notes trust
+	 * tier and it does NOT lock managers out of moderation:
+	 *
+	 *   - Removing an inappropriate note is the moderation action, and
+	 *     ajax_delete_player_note() / DELETE /notes/{id} stay open to every
+	 *     notes-capable user (SPLM_Capabilities::can_access_notes()). That path
+	 *     soft-deletes, so the row and its authorship survive for audit.
+	 *   - Editing silently replaces another manager's words under their name,
+	 *     with no history kept (Notes_Database::update() overwrites in place).
+	 *     An admin who needs different wording on the record can delete and
+	 *     re-add under their own byline, which leaves both versions traceable.
+	 *
+	 * The 24h window is the one already advertised to the browser via the
+	 * localized `editLimit`; it is now actually enforced.
+	 *
+	 * @param object $note Row from SPLM_Player_Notes_Database::get_note().
+	 * @return true|string True when allowed, else a reason for the client.
+	 */
+	private function can_edit_note( $note ) {
+		if ( (int) $note->author_id !== get_current_user_id() ) {
+			return __( 'You can only edit notes you wrote. Delete the note instead if it needs to be retracted.', 'sportspress-league-manager' );
+		}
+
+		// created_at is stored/compared as UTC — Notes_Database::update() writes
+		// current_time( 'mysql', true ) and player-notes.js parses it with a "Z"
+		// suffix, so keep the same basis here.
+		$created = strtotime( $note->created_at . ' UTC' );
+		if ( ! $created ) {
+			return __( 'This note has no readable timestamp and can no longer be edited.', 'sportspress-league-manager' );
+		}
+		if ( ( time() - $created ) > self::EDIT_WINDOW ) {
+			return __( 'The 24-hour window for editing this note has passed. Delete the note instead if it needs to be retracted.', 'sportspress-league-manager' );
+		}
+
+		return true;
+	}
+
+	/**
 	 * AJAX: Update a note's text.
 	 */
 	public function ajax_update_player_note() {
@@ -248,6 +304,21 @@ class SPLM_Player_Notes {
 
 		if ( ! $note_id || empty( $note ) ) {
 			wp_send_json_error( array( 'message' => 'Note ID and text are required.' ) );
+		}
+
+		// M24: enforce authorship + the advertised 24h window server-side. The
+		// browser already hides the Edit control under the same rule, but the
+		// AJAX action accepted any note id from any notes-capable user.
+		// get_note() only returns rows with is_deleted = 0, so an unknown or
+		// already-deleted id reports 404 instead of silently succeeding.
+		$existing = SPLM_Player_Notes_Database::get_note( $note_id );
+		if ( ! $existing ) {
+			wp_send_json_error( array( 'message' => 'Note not found.' ), 404 );
+		}
+
+		$allowed = $this->can_edit_note( $existing );
+		if ( true !== $allowed ) {
+			wp_send_json_error( array( 'message' => $allowed ), 403 );
 		}
 
 		$updated = SPLM_Player_Notes_Database::update( $note_id, $note );

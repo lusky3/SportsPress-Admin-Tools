@@ -53,13 +53,14 @@ jobs:
               "wp-content/plugins/sportspress-league-manager": "./sportspress-league-manager",
               "wp-content/plugins/sportspress-player-registration": "./sportspress-player-registration",
               "wp-content/plugins/sportspress-player-tools": "./sportspress-player-tools",
-              "wp-content/plugins/sportspress-schedule-generator": "./sportspress-schedule-generator"
+              "wp-content/plugins/sportspress-schedule-generator": "./sportspress-schedule-generator",
+              "wp-content/plugins/sportspress-score-sheets": "./sportspress-score-sheets"
             }
           }
           JSON
 
       - name: Start wp-env
-        run: npx --yes @wordpress/env@latest start
+        run: npx --yes @wordpress/env@11.12.0 start
 
       # `wp plugin check` always exits 0 (it reports findings, it doesn't gate on
       # them), so we parse the CSV output and fail on any ERROR row. Warnings and
@@ -68,11 +69,11 @@ jobs:
       - name: Run Plugin Check on all suite plugins
         run: |
           set -uo pipefail
-          plugins="sportspress-admin-tools sportspress-etransfer-automation sportspress-events-manager sportspress-league-manager sportspress-player-registration sportspress-player-tools sportspress-schedule-generator"
+          plugins="sportspress-admin-tools sportspress-etransfer-automation sportspress-events-manager sportspress-league-manager sportspress-player-registration sportspress-player-tools sportspress-schedule-generator sportspress-score-sheets"
           fail=0
           for p in $plugins; do
             echo "::group::Plugin Check: $p"
-            out=$(npx --yes @wordpress/env@latest run cli wp plugin check "$p" \
+            out=$(npx --yes @wordpress/env@11.12.0 run cli wp plugin check "$p" \
               --categories=general \
               --exclude-directories=tests,docs \
               --ignore-warnings \
@@ -93,4 +94,4 @@ jobs:
 
       - name: Stop wp-env
         if: always()
-        run: npx --yes @wordpress/env@latest stop
+        run: npx --yes @wordpress/env@11.12.0 stop

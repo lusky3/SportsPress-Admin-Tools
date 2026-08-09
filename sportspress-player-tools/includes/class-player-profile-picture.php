@@ -165,10 +165,28 @@ class SPT_Player_Profile_Picture {
 
 		$attachment_id = media_handle_upload( 'profile_picture', $player_id );
 
-		if ( ! is_wp_error( $attachment_id ) ) {
-			set_post_thumbnail( $player_id, $attachment_id );
+		// LOW (player-tools): a media_handle_upload() failure used to fall straight
+		// off the end of this method — no notice, no redirect. The account page
+		// simply re-rendered the empty form, so a failed upload (unwritable uploads
+		// dir, disk full, a mime the WP allowlist rejects) was indistinguishable
+		// from never having pressed the button. Every other exit path here already
+		// surfaces a wc_add_notice(); this one now does too.
+		if ( is_wp_error( $attachment_id ) ) {
+			wc_add_notice(
+				sprintf(
+					/* translators: %s: error message from WordPress */
+					__( 'The picture could not be saved: %s', 'sportspress-player-tools' ),
+					$attachment_id->get_error_message()
+				),
+				'error'
+			);
 			wp_safe_redirect( wc_get_account_endpoint_url( 'profile-picture' ) );
 			exit;
 		}
+
+		set_post_thumbnail( $player_id, $attachment_id );
+		wc_add_notice( __( 'Profile picture updated.', 'sportspress-player-tools' ), 'success' );
+		wp_safe_redirect( wc_get_account_endpoint_url( 'profile-picture' ) );
+		exit;
 	}
 }

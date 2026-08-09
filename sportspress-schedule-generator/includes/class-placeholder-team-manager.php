@@ -18,6 +18,15 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class SPSG_Placeholder_Team_Manager {
 
+	/**
+	 * Upper bound for sp_team queries.
+	 *
+	 * LOW (2026-08): these used `posts_per_page => -1`, contrary to SG-7 — a
+	 * site with a large team archive loads every post into memory to populate a
+	 * dropdown. No real league approaches this cap.
+	 */
+	const MAX_TEAMS_QUERY = 5000;
+
 
 	/**
 	 * Meta key used to mark placeholder teams
@@ -191,7 +200,7 @@ class SPSG_Placeholder_Team_Manager {
 		$query = new WP_Query(
 			array(
 				'post_type'      => 'sp_team',
-				'posts_per_page' => -1,
+				'posts_per_page' => self::MAX_TEAMS_QUERY,
 				'meta_query'     => $meta_query,
 				'orderby'        => 'title',
 				'order'          => 'ASC',
@@ -219,7 +228,7 @@ class SPSG_Placeholder_Team_Manager {
 	 *
 	 * @param int  $placeholder_id   The placeholder team post ID
 	 * @param int  $replacement_id   The real team post ID
-	 * @param bool $delete_placeholder Whether to delete the placeholder post after replacement
+	 * @param bool $delete_placeholder Whether to trash the placeholder post after replacement
 	 * @return array Results with counts of updated events
 	 */
 	public static function replace_team( $placeholder_id, $replacement_id, $delete_placeholder = true ) {
@@ -229,8 +238,9 @@ class SPSG_Placeholder_Team_Manager {
 		$replacement_id = absint( $replacement_id );
 
 		$results = array(
-			'events_updated' => 0,
-			'errors'         => array(),
+			'events_updated'     => 0,
+			'placeholder_status' => 'kept',
+			'errors'             => array(),
 		);
 
 		// Validate both teams exist
@@ -242,11 +252,29 @@ class SPSG_Placeholder_Team_Manager {
 			return $results;
 		}
 
+		// M45: refuse to operate on anything that is not actually a placeholder.
+		// Without this guard a mistyped ID merged a *real* team's fixtures into
+		// another team and then permanently destroyed it (the caller's default
+		// is $delete_placeholder = true on both the REST and AJAX paths).
+		if ( ! self::is_placeholder( $placeholder_id ) ) {
+			$results['errors'][] = sprintf(
+				/* translators: %d: team post ID */
+				__( 'Team ID %d is not a generated placeholder team and will not be replaced.', 'sportspress-schedule-generator' ),
+				$placeholder_id
+			);
+			return $results;
+		}
+
 		if ( ! get_post( $replacement_id ) || get_post_type( $replacement_id ) !== 'sp_team' ) {
 			$results['errors'][] = sprintf(
 				__( 'Replacement team ID %d not found.', 'sportspress-schedule-generator' ),
 				$replacement_id
 			);
+			return $results;
+		}
+
+		if ( $placeholder_id === $replacement_id ) {
+			$results['errors'][] = __( 'Placeholder and replacement teams must be different.', 'sportspress-schedule-generator' );
 			return $results;
 		}
 
@@ -271,9 +299,23 @@ class SPSG_Placeholder_Team_Manager {
 		// Transfer league/season taxonomy terms from placeholder to replacement
 		self::transfer_taxonomy_terms( $placeholder_id, $replacement_id );
 
-		// Delete placeholder team if requested and all events updated successfully
+		// Remove the placeholder if requested and every event updated cleanly.
+		// M45: this used to force-delete (wp_delete_post( $id, true )), which is
+		// unrecoverable. Trashing keeps the post restorable if the replacement
+		// turns out to be wrong.
 		if ( $delete_placeholder && empty( $results['errors'] ) ) {
-			wp_delete_post( $placeholder_id, true );
+			$trashed = wp_trash_post( $placeholder_id );
+
+			if ( $trashed ) {
+				$results['placeholder_status'] = 'trashed';
+			} else {
+				$results['placeholder_status'] = 'kept';
+				$results['errors'][]           = sprintf(
+					/* translators: %d: team post ID */
+					__( 'Placeholder team %d could not be moved to the trash; it was left in place.', 'sportspress-schedule-generator' ),
+					$placeholder_id
+				);
+			}
 		}
 
 		return $results;
@@ -527,7 +569,7 @@ class SPSG_Placeholder_Team_Manager {
 		$query = new WP_Query(
 			array(
 				'post_type'      => 'sp_team',
-				'posts_per_page' => -1,
+				'posts_per_page' => self::MAX_TEAMS_QUERY,
 				'meta_query'     => array(
 					'relation' => 'OR',
 					array(

@@ -44,6 +44,17 @@ class SPPT_REST_API {
 						'sanitize_callback' => 'absint',
 						'validate_callback' => 'rest_validate_request_arg',
 					),
+					// H29: which season's sp_leagues entry the move rewrites. Optional
+					// and defaulted to 0 for backward compatibility — 0 resolves the
+					// same way remove_player() does (configured default season, then
+					// the player's most recent season term).
+					'season'    => array(
+						'type'              => 'integer',
+						'required'          => false,
+						'default'           => 0,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
 				),
 			)
 		);
@@ -293,18 +304,91 @@ class SPPT_REST_API {
 		delete_post_meta( $player_id, 'sp_current_team', $from_team );
 		add_post_meta( $player_id, 'sp_current_team', $to_team );
 
+		// H29: sp_team/sp_current_team are NOT season-scoped, but the season-scoped
+		// roster view (get_roster_details(), and the league dashboard's Rosters and
+		// Balance screens) resolves membership from sp_leagues
+		// (league_id => season_id => team_id). Writing only the team meta left every
+		// season-scoped view still showing the player on from_team after a move.
+		// remove_player() and import_roster() already maintain sp_leagues for exactly
+		// this reason; this mirrors their meta shape.
+		//
+		// Only the resolved target season is rewritten. Rewriting every season would
+		// retroactively move the player on PAST rosters, destroying roster history —
+		// an entry for an earlier season legitimately still points at from_team.
+		$target_season_id = $this->resolve_target_season( $player_id, absint( $request->get_param( 'season' ) ) );
+		$season_rewritten = false;
+		if ( $target_season_id ) {
+			$leagues_meta = get_post_meta( $player_id, 'sp_leagues', true );
+			if ( is_array( $leagues_meta ) ) {
+				$changed = false;
+				foreach ( $leagues_meta as $league_id => $season_map ) {
+					if ( is_array( $season_map ) && isset( $season_map[ $target_season_id ] )
+						&& (int) $season_map[ $target_season_id ] === $from_team ) {
+						$leagues_meta[ $league_id ][ $target_season_id ] = $to_team;
+						$changed = true;
+					}
+				}
+				if ( $changed ) {
+					update_post_meta( $player_id, 'sp_leagues', $leagues_meta );
+					$season_rewritten = true;
+				}
+			}
+		}
+
 		// Auto-create transfer note for history tracking.
 		$this->log_transfer_note( $player_id, $from_team, $to_team );
 
 		return new WP_REST_Response(
 			array(
-				'success'   => true,
-				'player_id' => $player_id,
-				'from_team' => $from_team,
-				'to_team'   => $to_team,
+				'success'          => true,
+				'player_id'        => $player_id,
+				'from_team'        => $from_team,
+				'to_team'          => $to_team,
+				// H29: lets a caller tell "the season roster was updated" from "the
+				// player had no sp_leagues entry for this season to rewrite".
+				'season'           => $target_season_id,
+				'season_rewritten' => $season_rewritten,
 			),
 			200
 		);
+	}
+
+	/**
+	 * Resolve which season a roster write applies to.
+	 *
+	 * PT2/F4: prefer the explicit season parameter; fall back to the configured
+	 * default season; finally fall back to the most recently assigned season term
+	 * on the player. Shared by remove_player() and move_player() so both endpoints
+	 * agree on which season's sp_leagues entry they are touching.
+	 *
+	 * @param int $player_id Player post ID.
+	 * @param int $season_id Explicitly requested season term ID (0 = resolve).
+	 * @return int Season term ID, or 0 when none could be resolved.
+	 */
+	private function resolve_target_season( $player_id, $season_id ) {
+		if ( (int) $season_id > 0 ) {
+			return (int) $season_id;
+		}
+
+		$default_season = (int) get_option( 'sportspress_season' );
+		if ( $default_season > 0 ) {
+			return $default_season;
+		}
+
+		$seasons = wp_get_object_terms(
+			$player_id,
+			'sp_season',
+			array(
+				'orderby' => 'term_id',
+				'order'   => 'DESC',
+				'fields'  => 'ids',
+			)
+		);
+		if ( ! is_wp_error( $seasons ) && ! empty( $seasons ) ) {
+			return (int) $seasons[0];
+		}
+
+		return 0;
 	}
 
 	/**
@@ -367,30 +451,9 @@ class SPPT_REST_API {
 		delete_post_meta( $player_id, 'sp_current_team', $team_id );
 		delete_post_meta( $player_id, 'sp_team', $team_id );
 
-		// PT2/F4: prefer the explicit season parameter; fall back to the configured
-		// default season; finally fall back to the most recently assigned season term.
-		$target_season_id = 0;
-		if ( $season_id > 0 ) {
-			$target_season_id = $season_id;
-		} else {
-			$default_season = (int) get_option( 'sportspress_season' );
-			if ( $default_season > 0 ) {
-				$target_season_id = $default_season;
-			} else {
-				$seasons = wp_get_object_terms(
-					$player_id,
-					'sp_season',
-					array(
-						'orderby' => 'term_id',
-						'order'   => 'DESC',
-						'fields'  => 'ids',
-					)
-				);
-				if ( ! is_wp_error( $seasons ) && ! empty( $seasons ) ) {
-					$target_season_id = (int) $seasons[0];
-				}
-			}
-		}
+		// PT2/F4: explicit season → configured default season → most recent season
+		// term. Shared with move_player() via resolve_target_season().
+		$target_season_id = $this->resolve_target_season( $player_id, $season_id );
 
 		// Update sp_leagues: only remove the targeted season entry for this team.
 		$leagues_meta = get_post_meta( $player_id, 'sp_leagues', true );
@@ -480,10 +543,24 @@ class SPPT_REST_API {
 		$value = $request->get_param( 'value' );
 
 		if ( 'skill_level' === $field ) {
-			$clamped = min( 10, max( 1, absint( $value ) ) );
+			// LOW (player-tools): absint() turned any non-numeric value into 0, which
+			// the clamp then silently stored as a MANUAL rating of 1 — permanently
+			// excluding that player from every future auto-recalculation. Reject
+			// non-numeric / out-of-range input instead of inventing a rating.
+			if ( ! is_numeric( $value ) ) {
+				return new WP_Error( 'invalid_skill_level', 'Skill level must be a number from 1 to 10.', array( 'status' => 400 ) );
+			}
+			$clamped = (int) $value;
+			if ( $clamped < 1 || $clamped > 10 ) {
+				return new WP_Error( 'invalid_skill_level', 'Skill level must be a number from 1 to 10.', array( 'status' => 400 ) );
+			}
 			update_post_meta( $player_id, 'spt_skill_level', $clamped );
 			update_post_meta( $player_id, 'spt_skill_source', 'manual' );
-			update_post_meta( $player_id, 'spt_skill_updated', current_time( 'mysql' ) );
+			// LOW (player-tools): SPT_Player_Skill_Level writes spt_skill_updated as an
+			// ISO-8601 string (current_time('c')); this endpoint wrote MySQL datetime,
+			// so the same meta key carried two formats depending on which path last
+			// touched it. Use the canonical ISO form.
+			update_post_meta( $player_id, 'spt_skill_updated', current_time( 'c' ) );
 
 			// Record history if the optional skill module is loaded.
 			if ( class_exists( 'SPT_Player_Skill_Level' ) && is_callable( array( 'SPT_Player_Skill_Level', 'record_history' ) ) ) {
@@ -530,6 +607,22 @@ class SPPT_REST_API {
 			return new WP_Error( 'too_many_players', 'Maximum 100 players per import.', array( 'status' => 400 ) );
 		}
 
+		// M33: validate the wiring targets BEFORE writing anything. Neither the team
+		// post type nor the season term was checked, so a bad ID silently produced up
+		// to 100 players wired to a non-existent team/season — sp_current_team and
+		// sp_leagues pointing at nothing, invisible in every roster view, with the
+		// endpoint reporting "imported: 100". Every sibling write endpoint here
+		// already validates its team, so this matches them.
+		$team = get_post( $team_id );
+		if ( ! $team || 'sp_team' !== $team->post_type ) {
+			return new WP_Error( 'invalid_team', 'Team not found.', array( 'status' => 404 ) );
+		}
+
+		$season_term = get_term( $season_id, 'sp_season' );
+		if ( ! $season_term || is_wp_error( $season_term ) ) {
+			return new WP_Error( 'invalid_season', 'Season term not found.', array( 'status' => 404 ) );
+		}
+
 		$imported  = array();
 
 		// PT3/F-import: derive the league IDs from the target team's sp_league terms
@@ -551,10 +644,16 @@ class SPPT_REST_API {
 			// PT3/F-import: de-dupe — re-running an import previously created a brand
 			// new sp_player for every row. Look up an existing player by exact title
 			// (case-insensitive, exact match) and update it instead of duplicating.
+			//
+			// M33: restricted from 'any' to 'publish'. 'any' matches draft/pending/
+			// private players (it does exclude trash), so an import row could bind to
+			// an unpublished record, report success, and leave the player invisible in
+			// every roster view. Only a published player is a real roster member; if
+			// none exists a new published player is created below.
 			$existing = get_posts(
 				array(
 					'post_type'              => 'sp_player',
-					'post_status'            => 'any',
+					'post_status'            => 'publish',
 					'title'                  => $name,
 					'posts_per_page'         => 1,
 					'fields'                 => 'ids',

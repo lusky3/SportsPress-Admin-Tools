@@ -706,6 +706,23 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: var(--splm-text); }
 .splm-payment-table__status--pending { background: var(--splm-warning-bg-2); color: var(--splm-warning-text-2); }
 .splm-payment-table__status--other { background: var(--splm-border-light); color: var(--splm-text-strong); }
 
+/* M21: marks a row whose order was matched by billing name only (heuristic). */
+.splm-payment-table__match-hint {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.1rem;
+	height: 1.1rem;
+	margin-left: 0.35rem;
+	border-radius: 50%;
+	background: var(--splm-warning-bg-2);
+	color: var(--splm-warning-text-2);
+	font-size: 0.7rem;
+	font-weight: 700;
+	text-decoration: none;
+	cursor: help;
+}
+
 /* Health alerts */
 .splm-health-alert {
 	border-radius: 8px;

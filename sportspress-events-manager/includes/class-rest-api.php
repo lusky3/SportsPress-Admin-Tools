@@ -13,6 +13,20 @@ class SPEM_REST_API {
 
 	const REST_NAMESPACE = 'splm/v1'; // Shared with league-manager and player-tools — paths must not overlap
 
+	/**
+	 * Date format used for every date rendered into a notification email.
+	 * Shared by the "Original date" and "New date" lines so the two can never
+	 * drift apart (see format_notification_date()).
+	 */
+	const NOTIFICATION_DATE_FORMAT = 'l, F j, Y \a\t g:i A';
+
+	/**
+	 * TTL, in seconds, for the per-event mutex guarding the sp_results /
+	 * sp_players read-modify-write merges. Short: the critical section is a
+	 * couple of meta reads plus one write.
+	 */
+	const EVENT_LOCK_TTL = 15;
+
 	public function __construct() {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 
@@ -286,37 +300,50 @@ class SPEM_REST_API {
 			return new WP_Error( 'invalid_event', 'Game has no teams assigned.', array( 'status' => 400 ) );
 		}
 
-		// Build SportsPress results format.
-		$result_key       = 'goals';
-		$existing_results = get_post_meta( $event_id, 'sp_results', true );
-		if ( ! is_array( $existing_results ) ) {
-			$existing_results = array();
-		}
-
-		if ( function_exists( 'sp_get_main_result_option' ) ) {
-			$main = sp_get_main_result_option();
-			if ( $main ) {
-				$result_key = $main;
-			}
-		} else {
-			$first_team = reset( $existing_results );
-			if ( is_array( $first_team ) ) {
-				$keys = array_keys( $first_team );
-				if ( ! empty( $keys ) ) {
-					$result_key = $keys[0];
+		// Read-merge-write of the shared sp_results meta, serialized per event
+		// so two concurrent score submissions can't lose one another's keys.
+		$merged = $this->with_event_lock(
+			$event_id,
+			function () use ( $event_id, $home_id, $away_id, $home_score, $away_score ) {
+				// Build SportsPress results format.
+				$result_key       = 'goals';
+				$existing_results = get_post_meta( $event_id, 'sp_results', true );
+				if ( ! is_array( $existing_results ) ) {
+					$existing_results = array();
 				}
+
+				if ( function_exists( 'sp_get_main_result_option' ) ) {
+					$main = sp_get_main_result_option();
+					if ( $main ) {
+						$result_key = $main;
+					}
+				} else {
+					$first_team = reset( $existing_results );
+					if ( is_array( $first_team ) ) {
+						$keys = array_keys( $first_team );
+						if ( ! empty( $keys ) ) {
+							$result_key = $keys[0];
+						}
+					}
+				}
+
+				// Deep-merge: preserve any other per-team result keys (outcome,
+				// shootout, etc.) that other plugins may have set.
+				$home_existing = isset( $existing_results[ $home_id ] ) && is_array( $existing_results[ $home_id ] ) ? $existing_results[ $home_id ] : array();
+				$away_existing = isset( $existing_results[ $away_id ] ) && is_array( $existing_results[ $away_id ] ) ? $existing_results[ $away_id ] : array();
+
+				$existing_results[ $home_id ] = array_merge( $home_existing, array( $result_key => $home_score ) );
+				$existing_results[ $away_id ] = array_merge( $away_existing, array( $result_key => $away_score ) );
+
+				update_post_meta( $event_id, 'sp_results', $existing_results );
+
+				return true;
 			}
+		);
+
+		if ( is_wp_error( $merged ) ) {
+			return $merged;
 		}
-
-		// Deep-merge: preserve any other per-team result keys (outcome,
-		// shootout, etc.) that other plugins may have set.
-		$home_existing = isset( $existing_results[ $home_id ] ) && is_array( $existing_results[ $home_id ] ) ? $existing_results[ $home_id ] : array();
-		$away_existing = isset( $existing_results[ $away_id ] ) && is_array( $existing_results[ $away_id ] ) ? $existing_results[ $away_id ] : array();
-
-		$existing_results[ $home_id ] = array_merge( $home_existing, array( $result_key => $home_score ) );
-		$existing_results[ $away_id ] = array_merge( $away_existing, array( $result_key => $away_score ) );
-
-		update_post_meta( $event_id, 'sp_results', $existing_results );
 
 		// Publish the event if it was scheduled/future.
 		if ( 'publish' !== $event->post_status ) {
@@ -459,15 +486,23 @@ class SPEM_REST_API {
 			return new WP_Error( 'not_found', 'Game not found.', array( 'status' => 404 ) );
 		}
 
-		update_post_meta( $event_id, '_spem_cancelled', '1' );
-		update_post_meta( $event_id, '_spem_change_reason', $reason );
-
-		wp_update_post(
+		// Unpublish first, and only claim the cancellation once that succeeded.
+		// The old order set _spem_cancelled='1' and mailed every player while an
+		// unchecked wp_update_post() left the game publicly published — the
+		// unfixed sibling of the reschedule path's return check (M16).
+		$updated = wp_update_post(
 			array(
 				'ID'          => $event_id,
 				'post_status' => 'draft',
-			)
+			),
+			true
 		);
+		if ( is_wp_error( $updated ) || ! $updated ) {
+			return new WP_Error( 'update_failed', 'Failed to cancel the game.', array( 'status' => 500 ) );
+		}
+
+		update_post_meta( $event_id, '_spem_cancelled', '1' );
+		update_post_meta( $event_id, '_spem_change_reason', $reason );
 
 		if ( $notify ) {
 			update_post_meta(
@@ -669,11 +704,6 @@ class SPEM_REST_API {
 			return new WP_Error( 'not_found', 'Game not found.', array( 'status' => 404 ) );
 		}
 
-		$existing = get_post_meta( $event_id, 'sp_players', true );
-		if ( ! is_array( $existing ) ) {
-			$existing = array();
-		}
-
 		// Validate team and player IDs.
 		$event_teams = array_map( 'intval', get_post_meta( $event_id, 'sp_team', false ) );
 
@@ -696,8 +726,8 @@ class SPEM_REST_API {
 			$valid_slugs[] = get_post_field( 'post_name', $perf_id );
 		}
 
-		// Prime the post cache for every player ID up front so the per-row
-		// get_post_type() calls below don't issue N individual queries.
+		// Prime the post and meta caches for every player ID up front so the
+		// per-row sp_number reads below don't issue N individual queries.
 		$all_player_ids = array();
 		if ( is_array( $stats ) ) {
 			foreach ( $stats as $team_players ) {
@@ -712,64 +742,124 @@ class SPEM_REST_API {
 			}
 		}
 		if ( ! empty( $all_player_ids ) ) {
-			_prime_post_caches( array_unique( $all_player_ids ), false, false );
+			_prime_post_caches( array_unique( $all_player_ids ), false, true );
 		}
 
-		// Merge new stats with existing data, preserving status/sub/number/position.
-		foreach ( $stats as $team_id => $players ) {
-			$team_id = (int) $team_id;
-			if ( ! in_array( $team_id, $event_teams, true ) ) {
-				continue;
-			}
-			if ( ! is_array( $players ) ) {
-				continue;
-			}
-			// Cap players per team to avoid an unbounded payload writing
-			// thousands of rows into a single sp_players meta value.
-			if ( count( $players ) > 200 ) {
-				$players = array_slice( $players, 0, 200, true );
-			}
-			if ( ! isset( $existing[ $team_id ] ) ) {
-				$existing[ $team_id ] = array();
-			}
-			foreach ( $players as $player_id => $perf_data ) {
-				$player_id = (int) $player_id;
-				if ( 'sp_player' !== get_post_type( $player_id ) ) {
-					continue;
+		// Read-merge-write of the shared sp_players meta, serialized per event
+		// so two scorekeepers saving different teams can't lose one another's
+		// lineups (July M11 residual / M14).
+		$merged = $this->with_event_lock(
+			$event_id,
+			function () use ( $event_id, $stats, $event_teams, $valid_slugs ) {
+				$existing = get_post_meta( $event_id, 'sp_players', true );
+				if ( ! is_array( $existing ) ) {
+					$existing = array();
 				}
-				if ( ! is_array( $perf_data ) ) {
-					continue;
-				}
-				if ( ! isset( $existing[ $team_id ][ $player_id ] ) ) {
-					// Seed the SportsPress-required roster keys for a player that
-					// isn't yet present in this event's sp_players meta. SP core
-					// represents each roster row as { number, position, status,
-					// sub, <perf slugs...> }; writing only perf values would leave
-					// a malformed row that breaks the event editor lineup table.
-					// `status` defaults to 'lineup' (a starter) and `sub` to 0,
-					// matching SportsPress's own new-player defaults; number is
-					// primed from the player's sp_number meta when available.
-					$existing[ $team_id ][ $player_id ] = array(
-						'number'   => (string) get_post_meta( $player_id, 'sp_number', true ),
-						'position' => '',
-						'status'   => 'lineup',
-						'sub'      => 0,
-					);
-				}
-				foreach ( $perf_data as $slug => $value ) {
-					$slug = sanitize_key( $slug );
-					if ( ! in_array( $slug, $valid_slugs, true ) ) {
-						continue; // Reject unknown performance slugs.
+
+				// Merge new stats with existing data, preserving status/sub/number/position.
+				foreach ( $stats as $team_id => $players ) {
+					$team_id = (int) $team_id;
+					if ( ! in_array( $team_id, $event_teams, true ) ) {
+						continue;
 					}
-					// Clamp to [0, 9999] — stops negative values and absurd numbers.
-					$existing[ $team_id ][ $player_id ][ $slug ] = max( 0, min( 9999, (int) $value ) );
+					if ( ! is_array( $players ) ) {
+						continue;
+					}
+					// Cap players per team to avoid an unbounded payload writing
+					// thousands of rows into a single sp_players meta value.
+					if ( count( $players ) > 200 ) {
+						$players = array_slice( $players, 0, 200, true );
+					}
+					// Only players actually on this team's roster may be written
+					// into its lineup. The post-type check alone let any sp_player
+					// on the site — including another team's — be inserted (M14).
+					// Resolved from the same source GET /players lists from, so
+					// the two endpoints can never disagree about who is eligible.
+					$roster = $this->get_team_roster_map( $team_id );
+					if ( ! isset( $existing[ $team_id ] ) ) {
+						$existing[ $team_id ] = array();
+					}
+					foreach ( $players as $player_id => $perf_data ) {
+						$player_id = (int) $player_id;
+						if ( ! isset( $roster[ $player_id ] ) ) {
+							continue;
+						}
+						if ( ! is_array( $perf_data ) ) {
+							continue;
+						}
+						if ( ! isset( $existing[ $team_id ][ $player_id ] ) ) {
+							// Seed the SportsPress-required roster keys for a player that
+							// isn't yet present in this event's sp_players meta. SP core
+							// represents each roster row as { number, position, status,
+							// sub, <perf slugs...> }; writing only perf values would leave
+							// a malformed row that breaks the event editor lineup table.
+							// `status` defaults to 'lineup' (a starter) and `sub` to 0,
+							// matching SportsPress's own new-player defaults; number is
+							// primed from the player's sp_number meta when available.
+							$existing[ $team_id ][ $player_id ] = array(
+								'number'   => (string) get_post_meta( $player_id, 'sp_number', true ),
+								'position' => '',
+								'status'   => 'lineup',
+								'sub'      => 0,
+							);
+						}
+						foreach ( $perf_data as $slug => $value ) {
+							$slug = sanitize_key( $slug );
+							if ( ! in_array( $slug, $valid_slugs, true ) ) {
+								continue; // Reject unknown performance slugs.
+							}
+							// Clamp to [0, 9999] — stops negative values and absurd numbers.
+							$existing[ $team_id ][ $player_id ][ $slug ] = max( 0, min( 9999, (int) $value ) );
+						}
+					}
 				}
-			}
-		}
 
-		update_post_meta( $event_id, 'sp_players', $existing );
+				update_post_meta( $event_id, 'sp_players', $existing );
+
+				return true;
+			}
+		);
+
+		if ( is_wp_error( $merged ) ) {
+			return $merged;
+		}
 
 		return new WP_REST_Response( array( 'success' => true ), 200 );
+	}
+
+	/**
+	 * Roster membership set for a team, as an `id => true` map.
+	 *
+	 * Deliberately the same query GET /games/{id}/players builds its roster
+	 * from (published sp_player posts whose sp_current_team meta names the
+	 * team, capped at 500) so the read and write endpoints agree on exactly
+	 * who is eligible for a team's lineup.
+	 *
+	 * @param int $team_id Team post ID.
+	 * @return array<int,bool> Player ID => true.
+	 */
+	private function get_team_roster_map( $team_id ) {
+		$player_ids = get_posts(
+			array(
+				'post_type'      => 'sp_player',
+				'posts_per_page' => 500,
+				'fields'         => 'ids',
+				'no_found_rows'  => true,
+				'meta_query'     => array(
+					array(
+						'key'   => 'sp_current_team',
+						'value' => (int) $team_id,
+					),
+				),
+			)
+		);
+
+		$roster = array();
+		foreach ( $player_ids as $player_id ) {
+			$roster[ (int) $player_id ] = true;
+		}
+
+		return $roster;
 	}
 
 	/**
@@ -1024,7 +1114,7 @@ class SPEM_REST_API {
 				"The following game has been cancelled:\n\n%s vs %s\nOriginally scheduled: %s\n\nReason: %s",
 				$home_team,
 				$away_team,
-				get_the_date( 'l, F j, Y \a\t g:i A', $event ),
+				get_the_date( self::NOTIFICATION_DATE_FORMAT, $event ),
 				$reason ?: 'No reason provided'
 			);
 		} else {
@@ -1033,8 +1123,8 @@ class SPEM_REST_API {
 				"The following game has been rescheduled:\n\n%s vs %s\n\nOriginal date: %s\nNew date: %s\n\nReason: %s",
 				$home_team,
 				$away_team,
-				$original_date ? wp_date( 'l, F j, Y \a\t g:i A', strtotime( $original_date ) ) : 'Unknown',
-				get_the_date( 'l, F j, Y \a\t g:i A', $event ),
+				$this->format_notification_date( $original_date ),
+				get_the_date( self::NOTIFICATION_DATE_FORMAT, $event ),
 				$reason ?: 'No reason provided'
 			);
 		}
@@ -1045,5 +1135,73 @@ class SPEM_REST_API {
 		}
 
 		update_post_meta( $event_id, '_spem_notified', current_time( 'mysql' ) );
+	}
+
+	/**
+	 * Render a stored `post_date` string for a notification email.
+	 *
+	 * `post_date` is site-local wall-clock ("2026-08-08 19:00:00"), NOT an
+	 * instant. mysql2date() parses it in the site timezone and renders it back
+	 * in the site timezone — an identity for the wall clock, which is exactly
+	 * what get_the_date() does for the "New date" line, so the two lines agree.
+	 *
+	 * The previous `wp_date( $format, strtotime( $original_date ) )` was the
+	 * same double conversion fixed in the importer in July (H3): WordPress pins
+	 * PHP's timezone to UTC, so strtotime() read the wall clock as a UTC
+	 * instant and wp_date() then re-rendered it in the site timezone — shifting
+	 * every "Original date" line by the site UTC offset (4–5 hours here) (H24).
+	 *
+	 * @param string $mysql_date A `post_date`-shaped local datetime string.
+	 * @return string Formatted date, or 'Unknown' when absent/unparseable.
+	 */
+	private function format_notification_date( $mysql_date ) {
+		if ( empty( $mysql_date ) ) {
+			return 'Unknown';
+		}
+
+		$formatted = mysql2date( self::NOTIFICATION_DATE_FORMAT, $mysql_date );
+
+		return $formatted ? $formatted : 'Unknown';
+	}
+
+	/**
+	 * Run a read-modify-write on an event's meta under a short per-event mutex.
+	 *
+	 * `sp_results` and `sp_players` are single serialized meta values that both
+	 * write paths merge into. Without a lock two scorekeepers saving different
+	 * teams' lineups at the same time both read the pre-merge value and the
+	 * later write silently drops the earlier one — an entire team's submission
+	 * (July M11 residual / M14).
+	 *
+	 * Degrades to running the callback unguarded under a parent that predates
+	 * SPAT_Lock, matching the import path's class_exists() guard.
+	 *
+	 * @param int      $event_id Event post ID.
+	 * @param callable $callback Critical section; must perform its own reads.
+	 * @return mixed|WP_Error Callback return value, or WP_Error on contention.
+	 */
+	private function with_event_lock( $event_id, callable $callback ) {
+		if ( ! class_exists( 'SPAT_Lock' ) ) {
+			return $callback();
+		}
+
+		$lock_key = 'spem_event_' . (int) $event_id;
+		$handle   = SPAT_Lock::acquire( $lock_key, self::EVENT_LOCK_TTL );
+
+		if ( false === $handle ) {
+			return new WP_Error(
+				'event_locked',
+				'Another update for this game is in progress. Please try again.',
+				array( 'status' => 409 )
+			);
+		}
+
+		try {
+			return $callback();
+		} finally {
+			// Owner-checked release: pass the acquire handle so a request that
+			// overran the TTL can't delete the next holder's live lock.
+			SPAT_Lock::release( $lock_key, $handle );
+		}
 	}
 }

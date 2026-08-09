@@ -20,14 +20,58 @@ jobs:
           for dir in sportspress-*; do
             if [ -d "$dir" ]; then
               echo "Packaging $dir..."
-              zip -r "dist/${dir}.zip" "$dir" -x "*/tests/*" "*/.git*" "*/composer.*" "*/node_modules/*" "*/assets/README*" "*/docs/*" "*/assets/wrangler.toml"
+              # Exclusions mirror each plugin's .distignore. Notable rules:
+              #   - 'sportspress-league-manager/src/*' is scoped to that plugin
+              #     on purpose: it is the only plugin with un-built React
+              #     sources, and a bare '*/src/*' would silently strip a future
+              #     plugin's shipped src/ directory.
+              #   - build/ is deliberately NOT excluded — the compiled league
+              #     manager dashboard bundle MUST ship.
+              zip -r "dist/${dir}.zip" "$dir" \
+                -x "*/tests/*" \
+                   "*/.git*" \
+                   "*/.distignore" \
+                   "*/composer.*" \
+                   "*/node_modules/*" \
+                   "*/assets/README*" \
+                   "*/docs/*" \
+                   "*/assets/wrangler.toml" \
+                   "*/assets/remote-intake.md" \
+                   "*/package.json" \
+                   "*/package-lock.json" \
+                   "*/ARCHITECTURE.md" \
+                   "*/AGENTS.md" \
+                   "sportspress-league-manager/src/*"
             fi
           done
+
+      # Publish checksums alongside the zips so consumers can verify a download
+      # against the release page instead of trusting the transport alone.
+      - name: Generate SHA256SUMS
+        working-directory: dist
+        run: |
+          sha256sum *.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Verify league-manager bundle is present in its zip
+        run: |
+          # Regression guard: a mis-scoped -x pattern must never strip the
+          # compiled dashboard that the plugin cannot run without.
+          for f in build/index.js build/index.css build/index.asset.php; do
+            if ! unzip -l dist/sportspress-league-manager.zip \
+                 | grep -q "sportspress-league-manager/$f"; then
+              echo "::error::sportspress-league-manager/$f is missing from the release zip."
+              exit 1
+            fi
+          done
+          echo "League manager build/ bundle present in the release zip."
 
       - name: Release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
         with:
-          files: dist/*.zip
+          files: |
+            dist/*.zip
+            dist/SHA256SUMS.txt
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -29,6 +29,26 @@ class SPSS_SportsPress_Writer {
 	const STAT_MAX = 9999;
 
 	/**
+	 * Reviewer-confirmed player rows apply_players() declined to write, each as
+	 * [ player_id, team_id, reason ]. Populated per apply() call.
+	 *
+	 * @var array[]
+	 */
+	private $skipped_players = array();
+
+	/**
+	 * Player rows the last apply() refused to write. A confirmed row can be
+	 * dropped for a legitimate reason (the player is not rostered on that team),
+	 * but dropping it silently made "Results applied" a lie — the caller surfaces
+	 * these to the reviewer.
+	 *
+	 * @return array[] List of [ player_id:int, team_id:int, reason:string ].
+	 */
+	public function get_skipped_players(): array {
+		return $this->skipped_players;
+	}
+
+	/**
 	 * Apply confirmed score-sheet data to a SportsPress event.
 	 *
 	 * @param int   $event_id  Target SportsPress event id.
@@ -40,6 +60,8 @@ class SPSS_SportsPress_Writer {
 	 * @return int|WP_Error  event_id on success
 	 */
 	public function apply( int $event_id, array $confirmed ) {
+		$this->skipped_players = array();
+
 		if ( ! class_exists( 'SP_Event' ) ) {
 			return new WP_Error(
 				'spss_no_sportspress',
@@ -154,6 +176,20 @@ class SPSS_SportsPress_Writer {
 			$players = array();
 		}
 
+		// Prime the player post + meta caches once so the per-row get_post_type() /
+		// get_post_meta() checks below don't each fire their own queries (N+1).
+		if ( function_exists( '_prime_post_caches' ) ) {
+			$player_ids = array();
+			foreach ( $rows as $row ) {
+				if ( is_array( $row ) && ! empty( $row['player_id'] ) ) {
+					$player_ids[] = (int) $row['player_id'];
+				}
+			}
+			if ( $player_ids ) {
+				_prime_post_caches( array_values( array_unique( $player_ids ) ), true, true );
+			}
+		}
+
 		foreach ( $rows as $row ) {
 			if ( ! is_array( $row ) ) {
 				continue;
@@ -165,15 +201,18 @@ class SPSS_SportsPress_Writer {
 
 			// Team must belong to the event.
 			if ( ! in_array( $team_id, $event_teams, true ) ) {
+				$this->skip_player( $player_id, $team_id, 'team_not_in_event' );
 				continue;
 			}
 			// Player must be a real sp_player post.
 			if ( $player_id <= 0 || 'sp_player' !== get_post_type( $player_id ) ) {
+				$this->skip_player( $player_id, $team_id, 'not_a_player' );
 				continue;
 			}
 			// Player must actually be rostered on the side's resolved team, or the
 			// row is mis-attributing stats to the wrong team — skip it.
 			if ( (int) get_post_meta( $player_id, 'sp_current_team', true ) !== $team_id ) {
+				$this->skip_player( $player_id, $team_id, 'not_on_team_roster' );
 				continue;
 			}
 
@@ -207,6 +246,26 @@ class SPSS_SportsPress_Writer {
 		update_post_meta( $event_id, 'sp_players', $players );
 
 		return true;
+	}
+
+	/**
+	 * Record a confirmed player row that was not written, for the caller to
+	 * surface. Write-in rows (player_id <= 0) never reach the writer — they are
+	 * dropped by map_confirmed() by design — so they are not reported here.
+	 *
+	 * @param int    $player_id Player post id from the row.
+	 * @param int    $team_id   Team post id the row was attributed to.
+	 * @param string $reason    Machine-readable reason code.
+	 */
+	private function skip_player( $player_id, $team_id, $reason ) {
+		if ( (int) $player_id <= 0 ) {
+			return;
+		}
+		$this->skipped_players[] = array(
+			'player_id' => (int) $player_id,
+			'team_id'   => (int) $team_id,
+			'reason'    => (string) $reason,
+		);
 	}
 
 	/**

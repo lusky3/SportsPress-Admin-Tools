@@ -324,7 +324,8 @@ class SPSS_Dashboard_REST {
 
 		$confirmed = SPSS_Ingest_Service::map_confirmed( $event_id, $home_score, $away_score, $ot_loss_side, $player_rows );
 
-		$result = SPSS_Ingest_Service::apply_confirmed( $sheet_id, $confirmed );
+		$skipped = array();
+		$result  = SPSS_Ingest_Service::apply_confirmed( $sheet_id, $confirmed, $skipped );
 
 		// Lock contention: another apply already holds the per-sheet lock. Nothing
 		// was written this time — tell the client to retry rather than reporting
@@ -344,16 +345,30 @@ class SPSS_Dashboard_REST {
 			return $result;
 		}
 
-		return new WP_REST_Response( array( 'event_id' => (int) $result ), 200 );
+		// skipped_players is non-empty when the writer refused a reviewer-confirmed
+		// row (player not rostered on that team, etc.). The client must warn rather
+		// than report a clean "Results applied".
+		return new WP_REST_Response(
+			array(
+				'event_id'        => (int) $result,
+				'skipped_players' => array_values( (array) $skipped ),
+			),
+			200
+		);
 	}
 
 	/**
-	 * POST /sheets/<id>/reprocess — re-queue a failed sheet for recognition.
+	 * POST /sheets/<id>/reprocess — re-queue a failed or stalled sheet.
 	 *
 	 * Failed sheets (transient provider/API errors, budget exhaustion) had no
 	 * recovery path and just sat until the retention cron deleted them. This
 	 * flips a failed sheet back to queued, clears the error, and re-schedules
 	 * the async worker.
+	 *
+	 * A sheet stranded in `processing` is accepted too, once it is old enough that
+	 * its worker cannot still be alive: a fatal timeout/OOM is not a catchable
+	 * Throwable, so nothing ever moved that row on and rejecting it here left
+	 * silent deletion by the retention cron as the only exit.
 	 *
 	 * @param WP_REST_Request $request Incoming request.
 	 * @return WP_REST_Response|WP_Error
@@ -365,10 +380,10 @@ class SPSS_Dashboard_REST {
 		if ( ! $sheet ) {
 			return new WP_Error( 'spss_not_found', __( 'Score sheet not found.', 'sportspress-score-sheets' ), array( 'status' => 404 ) );
 		}
-		if ( SPSS_Database::STATUS_FAILED !== $sheet->status ) {
+		if ( SPSS_Database::STATUS_FAILED !== $sheet->status && ! SPSS_Database::is_stale_processing( $sheet ) ) {
 			return new WP_Error(
 				'spss_not_failed',
-				__( 'Only failed sheets can be reprocessed.', 'sportspress-score-sheets' ),
+				__( 'Only failed or stalled sheets can be reprocessed.', 'sportspress-score-sheets' ),
 				array( 'status' => 400 )
 			);
 		}

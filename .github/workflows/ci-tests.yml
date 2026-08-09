@@ -6,19 +6,27 @@ on:
     paths:
       - '**/*.php'
       - 'sportspress-league-manager/src/**'
+      # The committed bundle must be in the filter too, otherwise a change that
+      # touches ONLY build/index.js|.css never triggers this workflow and the
+      # build-drift gate below never runs — a tampered bundle would ship
+      # unchecked. See audit H2.
+      - 'sportspress-league-manager/build/**'
       - 'sportspress-league-manager/templates/**'
       - 'sportspress-league-manager/assets/**'
       - 'sportspress-league-manager/package.json'
       - 'sportspress-league-manager/package-lock.json'
+      - '.github/workflows/ci-tests.yml'
   pull_request:
     branches: [main]
     paths:
       - '**/*.php'
       - 'sportspress-league-manager/src/**'
+      - 'sportspress-league-manager/build/**'
       - 'sportspress-league-manager/templates/**'
       - 'sportspress-league-manager/assets/**'
       - 'sportspress-league-manager/package.json'
       - 'sportspress-league-manager/package-lock.json'
+      - '.github/workflows/ci-tests.yml'
 
 # Least-privilege default token: this workflow only needs to read the repo.
 permissions:

@@ -406,6 +406,11 @@ class SPSG_REST_API {
 							'validate_callback' => function ( $val ) {
 								return is_string( $val ) && strlen( $val ) > 0; },
 						),
+						'filters' => array(
+							'required' => false,
+							'validate_callback' => function ( $val ) {
+								return is_array( $val ); },
+						),
 						'style' => array(
 							'sanitize_callback' => 'sanitize_text_field',
 							'validate_callback' => function ( $val ) {
@@ -437,6 +442,11 @@ class SPSG_REST_API {
 							'sanitize_callback' => 'sanitize_text_field',
 							'validate_callback' => function ( $val ) {
 								return is_string( $val ) && strlen( $val ) > 0; },
+						),
+						'filters' => array(
+							'required' => false,
+							'validate_callback' => function ( $val ) {
+								return is_array( $val ); },
 						),
 					),
 				)
@@ -524,19 +534,34 @@ class SPSG_REST_API {
 
 		$sanitizer = new SPSG_Configuration_Sanitizer();
 		$sanitized = $sanitizer->sanitize( $data );
-		$configs = get_option( SPSG_Configuration_Manager::OPTION_NAME, array() );
-		$is_new = ! isset( $sanitized['id'] );
-		if ( $is_new ) {
-			$sanitized['id'] = 'config_' . bin2hex( random_bytes( 8 ) );
-			$sanitized['created'] = current_time( 'mysql' );
+
+		// M43: this is a read-modify-write of the shared configurations blob and
+		// used to run with no lock at all, so a draft save from one admin could
+		// drop another admin's concurrent save wholesale. Take the same global
+		// lock SPSG_Configuration_Manager::save() uses.
+		$lock_handle = SPSG_Configuration_Manager::acquire_write_lock();
+		if ( false === $lock_handle ) {
+			return new WP_Error( 'spsg_save_in_progress', 'Another save is in progress. Please retry in a moment.', array( 'status' => 409 ) );
 		}
-		$sanitized['modified'] = current_time( 'mysql' );
-		// Track changes for updates (so history panel shows dashboard edits)
-		if ( ! $is_new && isset( $configs[ $sanitized['id'] ] ) ) {
-			$this->cm()->track_changes( $sanitized['id'], $configs[ $sanitized['id'] ], $sanitized );
+
+		try {
+			$configs = get_option( SPSG_Configuration_Manager::OPTION_NAME, array() );
+			$is_new = ! isset( $sanitized['id'] );
+			if ( $is_new ) {
+				$sanitized['id'] = 'config_' . bin2hex( random_bytes( 8 ) );
+				$sanitized['created'] = current_time( 'mysql' );
+			}
+			$sanitized['modified'] = current_time( 'mysql' );
+			// Track changes for updates (so history panel shows dashboard edits)
+			if ( ! $is_new && isset( $configs[ $sanitized['id'] ] ) ) {
+				$this->cm()->track_changes( $sanitized['id'], $configs[ $sanitized['id'] ], $sanitized );
+			}
+			$configs[ $sanitized['id'] ] = $sanitized;
+			update_option( SPSG_Configuration_Manager::OPTION_NAME, $configs, 'no' );
+		} finally {
+			SPSG_Configuration_Manager::release_write_lock( $lock_handle );
 		}
-		$configs[ $sanitized['id'] ] = $sanitized;
-		update_option( SPSG_Configuration_Manager::OPTION_NAME, $configs, 'no' );
+
 		return $sanitized['id'];
 	}
 
@@ -821,10 +846,18 @@ class SPSG_REST_API {
 		if ( $file['size'] > 1048576 ) {
 			return new WP_Error( 'file_too_large', 'CSV file must be under 1MB.', array( 'status' => 400 ) );
 		}
+		// LOW (2026-08): this was disjunctive — a `.csv` filename alone satisfied
+		// it, so the finfo sniff could be bypassed by renaming any file. The AJAX
+		// twin requires BOTH; match it.
 		$allowed_types = array( 'text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel' );
+
+		if ( ! str_ends_with( strtolower( $file['name'] ), '.csv' ) ) {
+			return new WP_Error( 'invalid_file_type', 'File must be a CSV.', array( 'status' => 400 ) );
+		}
+
 		$finfo = new finfo( FILEINFO_MIME_TYPE );
-		$mime = $finfo->file( $file['tmp_name'] );
-		if ( ! in_array( $mime, $allowed_types, true ) && ! str_ends_with( strtolower( $file['name'] ), '.csv' ) ) {
+		$mime  = $finfo->file( $file['tmp_name'] );
+		if ( ! in_array( $mime, $allowed_types, true ) ) {
 			return new WP_Error( 'invalid_file_type', 'File must be a CSV.', array( 'status' => 400 ) );
 		}
 		$schedules = SPSG_Venue_Schedule_Importer::parse_csv( $files['csv']['tmp_name'] );
@@ -906,24 +939,93 @@ class SPSG_REST_API {
 			$venue_mapping[ $csv_name ] = $venue_id;
 		}
 		$availability = SPSG_Venue_Schedule_Importer::convert_to_availability( $schedules, $venue_mapping );
-		// Merge into config's venue_date_availability
-		$configs = get_option( SPSG_Configuration_Manager::OPTION_NAME, array() );
-		if ( ! isset( $configs[ $config_id ] ) ) {
-			return new WP_Error( 'not_found', 'Config not found.', array( 'status' => 404 ) );
+
+		// M43: lock the shared configurations blob around this read-modify-write.
+		$lock_handle = SPSG_Configuration_Manager::acquire_write_lock();
+		if ( false === $lock_handle ) {
+			return new WP_Error( 'spsg_save_in_progress', 'Another save is in progress. Please retry in a moment.', array( 'status' => 409 ) );
 		}
-		$existing = $configs[ $config_id ]['venue_date_availability'] ?? array();
-		foreach ( $availability as $vid => $ranges ) {
-			$existing[ $vid ] = array_merge( $existing[ $vid ] ?? array(), $ranges );
+
+		try {
+			// Merge into config's venue_date_availability
+			$configs = get_option( SPSG_Configuration_Manager::OPTION_NAME, array() );
+			if ( ! isset( $configs[ $config_id ] ) ) {
+				return new WP_Error( 'not_found', 'Config not found.', array( 'status' => 404 ) );
+			}
+			$existing = $configs[ $config_id ]['venue_date_availability'] ?? array();
+			foreach ( $availability as $vid => $ranges ) {
+				// M47: re-uploading the same venue CSV used to blindly array_merge,
+				// doubling every range on each apply and inflating the capacity
+				// math the validator and feasibility checks rely on.
+				$existing[ $vid ] = SPSG_Venue_Schedule_Importer::merge_availability_ranges( $existing[ $vid ] ?? array(), $ranges );
+			}
+			$configs[ $config_id ]['venue_date_availability'] = $existing;
+			$configs[ $config_id ]['modified'] = current_time( 'mysql' );
+			update_option( SPSG_Configuration_Manager::OPTION_NAME, $configs, 'no' );
+		} finally {
+			SPSG_Configuration_Manager::release_write_lock( $lock_handle );
 		}
-		$configs[ $config_id ]['venue_date_availability'] = $existing;
-		$configs[ $config_id ]['modified'] = current_time( 'mysql' );
-		update_option( SPSG_Configuration_Manager::OPTION_NAME, $configs, 'no' );
+
 		return rest_ensure_response(
 			array(
 				'applied' => count( $availability ),
 				'venues' => array_keys( $availability ),
 			)
 		);
+	}
+
+	/**
+	 * Build the export response payload.
+	 *
+	 * H20: the direct uploads URL used to be serialized straight back to the
+	 * client. That URL is fetchable unauthenticated on Nginx (exactly the
+	 * exposure the AJAX path closed by routing downloads through a capability +
+	 * nonce checked handler) and returns 403 on Apache, where the export
+	 * directory ships a `Require all denied` .htaccess — so the REST export was
+	 * simultaneously leaky on one web server and broken on the other. Hand back
+	 * the same protected admin-ajax endpoint the AJAX export uses.
+	 *
+	 * @param array $result Export result from SPSG_Export_Manager::export().
+	 * @return array Response payload.
+	 */
+	private function export_download_response( $result ) {
+		return array(
+			'download_url' => add_query_arg(
+				array(
+					'action'     => 'spsg_download_export',
+					'file'       => rawurlencode( $result['filename'] ),
+					'spsg_nonce' => wp_create_nonce( 'spsg_download_export' ),
+				),
+				admin_url( 'admin-ajax.php' )
+			),
+			'file_name'    => $result['filename'],
+		);
+	}
+
+	/**
+	 * Read optional export filters off a REST request.
+	 *
+	 * Accepts either a nested `filters` object or top-level parameters so both
+	 * the React dashboard and hand-rolled callers work.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return array Filters accepted by SPSG_Export_Manager::export().
+	 */
+	private function export_filters_from_request( $request ) {
+		$raw = $request->get_param( 'filters' );
+		if ( ! is_array( $raw ) ) {
+			$raw = array();
+		}
+
+		$filters = array();
+		foreach ( array( 'division', 'date_from', 'date_to' ) as $key ) {
+			$value = $raw[ $key ] ?? $request->get_param( $key );
+			if ( is_string( $value ) && '' !== $value ) {
+				$filters[ $key ] = sanitize_text_field( $value );
+			}
+		}
+
+		return $filters;
 	}
 
 	public function spsg_export_xlsx( $request ) {
@@ -940,11 +1042,11 @@ class SPSG_REST_API {
 		}
 		$style  = in_array( $request->get_param( 'style' ), array( 'compact', 'detailed' ), true ) ? $request->get_param( 'style' ) : 'detailed';
 		$em = new SPSG_Export_Manager();
-		$result = $em->export( $schedule, $config, 'xlsx', array(), $style );
+		$result = $em->export( $schedule, $config, 'xlsx', $this->export_filters_from_request( $request ), $style );
 		if ( is_wp_error( $result ) ) {
 			return $result;
 		}
-		return rest_ensure_response( array( 'url' => $result['url'] ) );
+		return rest_ensure_response( $this->export_download_response( $result ) );
 	}
 
 	public function spsg_export_csv( $request ) {
@@ -957,11 +1059,11 @@ class SPSG_REST_API {
 			return $config;
 		}
 		$em     = new SPSG_Export_Manager();
-		$result = $em->export( $schedule, $config, 'csv' );
+		$result = $em->export( $schedule, $config, 'csv', $this->export_filters_from_request( $request ) );
 		if ( is_wp_error( $result ) ) {
 			return $result;
 		}
-		return rest_ensure_response( array( 'url' => $result['url'] ) );
+		return rest_ensure_response( $this->export_download_response( $result ) );
 	}
 
 	public function spsg_get_history( $request ) {
@@ -1177,6 +1279,15 @@ class SPSG_REST_API {
 		$config = $this->cm()->load( $request->get_param( 'config_id' ) );
 		if ( is_wp_error( $config ) ) {
 			return $config;
+		}
+
+		// M46: the AJAX generation path raises the execution limit before running
+		// the engine; this one didn't, so on a 30s-limit host the same
+		// configuration succeeded via admin-ajax and 500'd mid-generation via
+		// REST. Apply the same budget.
+		$max_time = absint( get_option( 'spsg_max_generation_time', 300 ) );
+		if ( function_exists( 'set_time_limit' ) ) {
+			@set_time_limit( $max_time ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- disabled by some hosts.
 		}
 		// Apply admin-configured distribution rules if set
 		$day_weights = get_option( 'spsg_day_weights', array() );

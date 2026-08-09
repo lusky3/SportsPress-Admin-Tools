@@ -109,15 +109,24 @@ class SPSG_Export_Manager {
 
 		$filtered = $schedule;
 
-		// Filter by division
+		// Filter by division.
+		//
+		// H22: the export dropdown is populated from the preview table's
+		// `data-division` attribute, which carries the division NAME, while this
+		// comparison preferred the division ID whenever one was present — so a
+		// name never matched and "Division A only" exports came back empty (or,
+		// when divisions had no id, matched by accident). Match either identifier
+		// so both the admin UI and id-passing API clients work.
 		if ( ! empty( $filters['division'] ) ) {
-			$division_id = $filters['division'];
-			$filtered    = array_filter(
+			$division_key = (string) $filters['division'];
+			$filtered     = array_filter(
 				$filtered,
-				function ( $game ) use ( $division_id ) {
+				function ( $game ) use ( $division_key ) {
 					$g   = (array) $game;
 					$div = isset( $g['division'] ) ? (array) $g['division'] : array();
-					return ( $div['id'] ?? $div['name'] ?? '' ) === $division_id;
+
+					return (string) ( $div['id'] ?? '' ) === $division_key
+						|| (string) ( $div['name'] ?? '' ) === $division_key;
 				}
 			);
 		}

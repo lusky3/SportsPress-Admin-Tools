@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class SPSS_Database {
 
 	const DB_VERSION_OPTION = 'spss_db_version';
-	const DB_VERSION        = '1.0.0';
+	const DB_VERSION        = '1.1.0';
 
 	/** Sheet lifecycle statuses. */
 	const STATUS_QUEUED         = 'queued';
@@ -24,6 +24,17 @@ class SPSS_Database {
 	const STATUS_CONFIRMED      = 'confirmed';
 	const STATUS_FAILED         = 'failed';
 	const STATUS_DUPLICATE      = 'duplicate';
+
+	/**
+	 * How long a row may sit in `processing` before its worker is presumed dead.
+	 *
+	 * A fatal timeout/OOM in the recognition worker is not a catchable Throwable,
+	 * so the row keeps the status the atomic claim gave it and is never retried.
+	 * The threshold is comfortably above the worst-case chain wall-time bound
+	 * (SPSS_Recognition_Manager::MAX_CHAIN_SECONDS) so a slow-but-alive worker is
+	 * never swept out from under itself.
+	 */
+	const STALE_PROCESSING_SECONDS = 1800;
 
 	public static function table_name() {
 		global $wpdb;
@@ -61,6 +72,7 @@ class SPSS_Database {
 			event_id BIGINT UNSIGNED DEFAULT NULL,
 			extracted_json LONGTEXT DEFAULT NULL,
 			error TEXT DEFAULT NULL,
+			processing_started_at DATETIME DEFAULT NULL,
 			applied_at DATETIME DEFAULT NULL,
 			PRIMARY KEY  (id),
 			UNIQUE KEY image_hash (image_hash),
@@ -104,6 +116,9 @@ class SPSS_Database {
 			'source_ref'  => isset( $data['source_ref'] ) ? (string) $data['source_ref'] : null,
 			'status'      => (string) ( $data['status'] ?? self::STATUS_QUEUED ),
 			'event_id'    => isset( $data['event_id'] ) ? (int) $data['event_id'] : null,
+			// Set when a row is inserted already-failed (e.g. an image this server
+			// cannot decode), so the queue shows the reason instead of a bare row.
+			'error'       => isset( $data['error'] ) ? (string) $data['error'] : null,
 		);
 
 		$ok = $wpdb->insert( self::table_name(), $row ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
@@ -166,6 +181,9 @@ class SPSS_Database {
 	 * workers both process (and double-pay recognition on) one sheet. Only the
 	 * worker that sees a 1-row result won the claim.
 	 *
+	 * The claim also stamps processing_started_at, which is what makes a stranded
+	 * row detectable (created_at can be arbitrarily old on a re-queued sheet).
+	 *
 	 * @param int $id Sheet row id.
 	 * @return int Rows affected (1 on a successful claim, else 0).
 	 */
@@ -173,10 +191,56 @@ class SPSS_Database {
 		global $wpdb;
 		return (int) $wpdb->query( // phpcs:ignore WordPress.DB
 			$wpdb->prepare(
-				'UPDATE ' . self::table_name() . ' SET status = %s WHERE id = %d AND status = %s',
+				'UPDATE ' . self::table_name() . ' SET status = %s, processing_started_at = %s WHERE id = %d AND status = %s',
 				self::STATUS_PROCESSING,
+				current_time( 'mysql', true ),
 				(int) $id,
 				self::STATUS_QUEUED
+			)
+		);
+	}
+
+	/**
+	 * Whether a sheet row has been stuck in `processing` long enough that its
+	 * worker must be gone (a fatal timeout/OOM leaves no catchable Throwable, so
+	 * nothing ever moved it on).
+	 *
+	 * @param object $sheet   Sheet row.
+	 * @param int    $seconds Staleness threshold.
+	 * @return bool
+	 */
+	public static function is_stale_processing( $sheet, $seconds = self::STALE_PROCESSING_SECONDS ) {
+		if ( ! is_object( $sheet ) || self::STATUS_PROCESSING !== (string) ( $sheet->status ?? '' ) ) {
+			return false;
+		}
+		// Rows claimed before the processing_started_at column existed fall back to
+		// created_at, which for those rows is the only timestamp available.
+		$started = ! empty( $sheet->processing_started_at ) ? $sheet->processing_started_at : ( $sheet->created_at ?? '' );
+		if ( '' === (string) $started ) {
+			return false;
+		}
+		$epoch = strtotime( (string) $started . ' UTC' );
+		return $epoch && $epoch < ( time() - max( 60, (int) $seconds ) );
+	}
+
+	/**
+	 * Move sheets stranded in `processing` to `failed` so they stop being
+	 * invisible: a failed row is listed with its error, is reprocessable, and no
+	 * longer waits for the retention cron to silently delete it (and its image).
+	 *
+	 * @param int $seconds Staleness threshold (seconds since the claim).
+	 * @return int Rows flipped.
+	 */
+	public static function fail_stale_processing( $seconds = self::STALE_PROCESSING_SECONDS ) {
+		global $wpdb;
+		$cutoff = gmdate( 'Y-m-d H:i:s', time() - max( 60, (int) $seconds ) );
+		return (int) $wpdb->query( // phpcs:ignore WordPress.DB
+			$wpdb->prepare(
+				'UPDATE ' . self::table_name() . ' SET status = %s, error = %s WHERE status = %s AND COALESCE(processing_started_at, created_at) < %s',
+				self::STATUS_FAILED,
+				__( 'Recognition did not finish — the worker timed out or was stopped. Reprocess to try again.', 'sportspress-score-sheets' ),
+				self::STATUS_PROCESSING,
+				$cutoff
 			)
 		);
 	}
@@ -226,15 +290,18 @@ class SPSS_Database {
 		if ( ! $rows ) {
 			return 0;
 		}
-		$deleted = 0;
+		$ids = array();
 		foreach ( $rows as $row ) {
 			if ( ! empty( $row->image_path ) && class_exists( 'SPSS_Image_Store' ) ) {
 				SPSS_Image_Store::delete( $row->image_path );
 			}
-			$wpdb->delete( self::table_name(), array( 'id' => (int) $row->id ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-			++$deleted;
+			$ids[] = (int) $row->id;
 		}
-		return $deleted;
+		// One DELETE for the whole batch rather than a query per row (the daily
+		// retention sweep can span hundreds of rows).
+		$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+		$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . self::table_name() . " WHERE id IN ({$placeholders})", $ids ) ); // phpcs:ignore WordPress.DB
+		return count( $ids );
 	}
 
 	public static function drop_tables() {

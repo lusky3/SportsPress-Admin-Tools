@@ -82,9 +82,26 @@ if (!function_exists('is_wp_error')) {
         return $thing instanceof WP_Error;
     }
 }
+// Programmable HTTP: tests seed $GLOBALS['spss_http'] with url => response and
+// read back $GLOBALS['spss_http_log'] to assert what was actually requested
+// (notably that credentials are NOT replayed onto a redirect target).
+$GLOBALS['spss_http']     = array();
+$GLOBALS['spss_http_log'] = array();
+
 if (!function_exists('wp_remote_get')) {
     function wp_remote_get($url, $args = array()) {
-        return array('body' => '', 'headers' => array());
+        $GLOBALS['spss_http_log'][] = array('url' => $url, 'args' => $args);
+        if (isset($GLOBALS['spss_http'][$url])) {
+            return $GLOBALS['spss_http'][$url];
+        }
+        return array('body' => '', 'headers' => array(), 'response' => array('code' => 200));
+    }
+}
+if (!function_exists('wp_remote_retrieve_response_code')) {
+    function wp_remote_retrieve_response_code($response) {
+        return (is_array($response) && isset($response['response']['code']))
+            ? $response['response']['code']
+            : 200;
     }
 }
 if (!function_exists('wp_remote_retrieve_body')) {
@@ -436,6 +453,181 @@ assert_test(
 assert_test(
     false === $is_allowed('https://169.254.169.254/latest/meta-data/'),
     'is_allowed_twilio_media_url: rejects link-local metadata IP (SSRF)'
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+echo "\n=== Testing handle_twilio() media download (H7) ===\n\n";
+// ═══════════════════════════════════════════════════════════════════════════
+
+$twilio_hook_url = rest_url('spss/v1/twilio');
+$twilio_media    = 'https://api.twilio.com/2010-04-01/Accounts/AC/Messages/MM/Media/ME';
+$twilio_cdn      = 'https://media.twiliocdn.com/AC/signed-object?sig=abc';
+
+/** Build a signature-valid Twilio webhook request carrying one media item. */
+function make_twilio_request($token, $params) {
+    $sig = SPSS_REST_API::twilio_signature(rest_url('spss/v1/twilio'), $params, $token);
+    return new WP_REST_Request('', array('x-twilio-signature' => $sig), $params);
+}
+
+/** Reset options/transients/HTTP between Twilio cases. */
+function reset_twilio_state($token = 'twilio-token') {
+    $GLOBALS['spss_transients'] = array();
+    $GLOBALS['spss_http']       = array();
+    $GLOBALS['spss_http_log']   = array();
+    $GLOBALS['spss_options']    = array(
+        'spss_twilio_auth_token'  => $token,
+        'spss_twilio_account_sid' => 'AC0123456789',
+    );
+}
+
+$tw_token  = 'twilio-token';
+$tw_params = array(
+    'MessageSid' => 'MM0001',
+    'From'       => '+15551234567',
+    'MediaUrl0'  => $twilio_media,
+);
+
+// (1) Twilio's documented 302 to its CDN must be followed, not silently dropped.
+//     redirection => 0 previously made every MMS look like an empty body.
+reset_twilio_state($tw_token);
+$GLOBALS['spss_http'][$twilio_media] = array(
+    'body'     => '',
+    'headers'  => array('location' => $twilio_cdn),
+    'response' => array('code' => 302),
+);
+$GLOBALS['spss_http'][$twilio_cdn] = array(
+    'body'     => 'JPEGBYTES',
+    'headers'  => array('content-type' => 'image/jpeg'),
+    'response' => array('code' => 200),
+);
+SPSS_Ingest_Service::$result = 777;
+$res = $api->handle_twilio(make_twilio_request($tw_token, $tw_params));
+assert_test(
+    $res instanceof WP_REST_Response && 200 === $res->get_status(),
+    'handle_twilio: 302-to-CDN media is followed and acked 200'
+);
+assert_test(
+    2 === count($GLOBALS['spss_http_log'])
+        && $twilio_cdn === $GLOBALS['spss_http_log'][1]['url'],
+    'handle_twilio: the redirect target is actually fetched (2 requests)'
+);
+assert_test(
+    empty($GLOBALS['spss_http_log'][1]['args']['headers']['Authorization']),
+    'handle_twilio: account credentials are NOT replayed onto the CDN redirect'
+);
+assert_test(
+    !empty($GLOBALS['spss_http_log'][0]['args']['headers']['Authorization']),
+    'handle_twilio: the first hop still carries the Basic auth header'
+);
+
+// (2) A redirect off the Twilio allowlist must never be fetched.
+reset_twilio_state($tw_token);
+$GLOBALS['spss_http'][$twilio_media] = array(
+    'body'     => '',
+    'headers'  => array('location' => 'https://evil.example/steal'),
+    'response' => array('code' => 302),
+);
+$res = $api->handle_twilio(make_twilio_request($tw_token, $tw_params));
+assert_test(
+    $res instanceof WP_REST_Response && 200 === $res->get_status(),
+    'handle_twilio: off-allowlist redirect is refused (permanent, so acked)'
+);
+assert_test(
+    1 === count($GLOBALS['spss_http_log']),
+    'handle_twilio: no request is ever made to the off-allowlist redirect target'
+);
+
+// (3) A 5xx on the media fetch is transient — return 5xx so Twilio re-delivers
+//     instead of the sheet being acked away.
+reset_twilio_state($tw_token);
+$GLOBALS['spss_http'][$twilio_media] = array(
+    'body'     => 'oops',
+    'headers'  => array(),
+    'response' => array('code' => 503),
+);
+$res = $api->handle_twilio(make_twilio_request($tw_token, $tw_params));
+assert_test(
+    $res instanceof WP_Error && 503 === ($res->get_error_data()['status'] ?? 0),
+    'handle_twilio: transient media failure (503) returns 5xx so Twilio retries'
+);
+
+// (4) A 404 is permanent — retrying cannot help, so ack it.
+reset_twilio_state($tw_token);
+$GLOBALS['spss_http'][$twilio_media] = array(
+    'body'     => 'not found',
+    'headers'  => array(),
+    'response' => array('code' => 404),
+);
+$res = $api->handle_twilio(make_twilio_request($tw_token, $tw_params));
+assert_test(
+    $res instanceof WP_REST_Response && 200 === $res->get_status(),
+    'handle_twilio: permanent media failure (404) is acked, not retried forever'
+);
+
+// (5) A 200 that is actually an error page with an empty body is not ingested.
+reset_twilio_state($tw_token);
+$GLOBALS['spss_http'][$twilio_media] = array(
+    'body'     => '',
+    'headers'  => array('content-type' => 'image/jpeg'),
+    'response' => array('code' => 200),
+);
+$res = $api->handle_twilio(make_twilio_request($tw_token, $tw_params));
+assert_test(
+    $res instanceof WP_REST_Response && 200 === $res->get_status(),
+    'handle_twilio: empty 200 body is acked without queueing anything'
+);
+
+// (6) An invalid signature still fails hard.
+reset_twilio_state($tw_token);
+$res = $api->handle_twilio(new WP_REST_Request('', array('x-twilio-signature' => 'nope'), $tw_params));
+assert_test(
+    $res instanceof WP_Error && 403 === ($res->get_error_data()['status'] ?? 0),
+    'handle_twilio: bad X-Twilio-Signature → 403 (unchanged)'
+);
+
+// (7) The queue failing for a retryable reason must also produce a 5xx.
+reset_twilio_state($tw_token);
+$GLOBALS['spss_http'][$twilio_media] = array(
+    'body'     => 'JPEGBYTES',
+    'headers'  => array('content-type' => 'image/jpeg'),
+    'response' => array('code' => 200),
+);
+SPSS_Ingest_Service::$result = new WP_Error('spss_db_insert_failed', 'db down');
+$res = $api->handle_twilio(make_twilio_request($tw_token, $tw_params));
+assert_test(
+    $res instanceof WP_Error && 503 === ($res->get_error_data()['status'] ?? 0),
+    'handle_twilio: retryable queue failure returns 5xx (sheet is not acked away)'
+);
+SPSS_Ingest_Service::$result = 4242;
+
+// ═══════════════════════════════════════════════════════════════════════════
+echo "\n=== Testing the fixed-window rate limiter ===\n\n";
+// ═══════════════════════════════════════════════════════════════════════════
+
+// A sliding TTL meant a steady stream of requests refreshed the counter forever,
+// so once a sender crossed the limit it stayed limited indefinitely. The bucket
+// key must change with the wall-clock window.
+$rl = new ReflectionMethod('SPSS_REST_API', 'check_rate_limit');
+$rl->setAccessible(true);
+
+$GLOBALS['spss_transients'] = array();
+$limited = false;
+for ($i = 0; $i < 3; $i++) {
+    $limited = $rl->invoke(null, 'spss_rl_test', 3, 60) || $limited;
+}
+assert_test(!$limited, 'check_rate_limit: the first 3 hits of a limit-3 window pass');
+assert_test(
+    true === $rl->invoke(null, 'spss_rl_test', 3, 60),
+    'check_rate_limit: the 4th hit in the same window is limited'
+);
+$keys = array_keys($GLOBALS['spss_transients']);
+assert_test(
+    1 === count($keys) && 0 === strpos($keys[0], 'spss_rl_test_'),
+    'check_rate_limit: the counter is stored under a window-bucketed key'
+);
+assert_test(
+    'spss_rl_test' !== (string) $keys[0],
+    'check_rate_limit: the bare key is never used (no ever-sliding TTL)'
 );
 
 // ═══════════════════════════════════════════════════════════════════════════

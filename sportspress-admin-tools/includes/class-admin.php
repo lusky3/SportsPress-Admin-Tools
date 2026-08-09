@@ -53,7 +53,7 @@ class SPAT_Admin {
 		}
 
 		// Double check we're on the right page
-		if ( ! isset( $_GET['page'] ) || sanitize_text_field( $_GET['page'] ) !== 'sportspress-admin-tools' ) {
+		if ( ! isset( $_GET['page'] ) || sanitize_text_field( wp_unslash( $_GET['page'] ) ) !== 'sportspress-admin-tools' ) {
 			return;
 		}
 
@@ -145,6 +145,19 @@ class SPAT_Admin {
                     updateUnsavedIndicator(tabId, changed);
                 });
 
+                // Keep the address bar in sync with the visible tab, so a reload
+                // stays put and the _wp_http_referer rewritten on submit below
+                // always reflects the tab actually being saved (M1).
+                function syncTabToUrl(tabId) {
+                    if (!window.history || !window.history.replaceState) { return; }
+                    try {
+                        var url = new URL(window.location.href);
+                        url.searchParams.set("tab", tabId);
+                        url.searchParams.delete("settings-updated");
+                        window.history.replaceState({}, "", url.toString());
+                    } catch (e) {}
+                }
+
                 function activateTab($tab, focusPanel) {
                     var tabId = ($tab.attr("href") || "").substring(1);
                     if (!tabId) { return; }
@@ -159,6 +172,7 @@ class SPAT_Admin {
 
                     $("input[name=current_tab]").val(tabId);
                     hasUnsavedChanges = false;
+                    syncTabToUrl(tabId);
 
                     if (focusPanel) { $tab.focus(); }
                 }
@@ -204,11 +218,24 @@ class SPAT_Admin {
                     $tabs.eq(newIdx).focus();
                 });
 
-                // Reset change tracking after form submission
+                // Reset change tracking after form submission, and carry the tab
+                // through the save. Every tab POSTs to options.php, which
+                // GET-redirects to _wp_http_referer — appending &tab=<id> there is
+                // what makes the operator land back on the tab they saved from
+                // instead of "General" (M1).
                 $(".tab-content form").on("submit", function() {
                     hasUnsavedChanges = false;
                     var tabId = $(this).closest(".tab-content").attr("id");
                     updateUnsavedIndicator(tabId, false);
+
+                    var $referer = $(this).find("input[name=_wp_http_referer]");
+                    if (tabId && $referer.length) {
+                        try {
+                            var refUrl = new URL($referer.val(), window.location.origin);
+                            refUrl.searchParams.set("tab", tabId);
+                            $referer.val(refUrl.pathname + refUrl.search);
+                        } catch (e) {}
+                    }
                 });
 
                 // Warn on page unload if there are unsaved changes
@@ -510,18 +537,13 @@ class SPAT_Admin {
 	}
 
 	public function settings_page() {
-		// Handle tab persistence after form submission
-		if ( isset( $_POST['current_tab'] ) && isset( $_GET['settings-updated'] ) ) {
-			if ( check_admin_referer( 'spat_tab_redirect', '_wpnonce_tab' ) ) {
-				$tab        = sanitize_text_field( wp_unslash( $_POST['current_tab'] ) );
-				$valid_slug = (bool) preg_match( '/^[a-z0-9_-]{1,64}$/', $tab );
-				if ( $valid_slug ) {
-					wp_safe_redirect( admin_url( 'options-general.php?page=sportspress-admin-tools&settings-updated=true&tab=' . rawurlencode( $tab ) ) );
-					exit;
-				}
-			}
-		}
-
+		// Tab persistence across a save is handled client-side (see
+		// enqueue_admin_scripts): every tab's form POSTs to options.php, which
+		// GET-redirects to _wp_http_referer before this callback can ever see a
+		// $_POST, so the server-side redirect that used to live here was dead
+		// code and saving from any child tab landed back on "General" (M1). The
+		// JS rewrites _wp_http_referer to carry &tab=<id> so options.php sends
+		// the browser back to the tab the operator saved from.
 		if ( isset( $_GET['settings-updated'] ) ) {
 			add_settings_error( 'spat_messages', 'spat_message', __( 'Settings Saved', 'sportspress-admin-tools' ), 'updated' );
 		}
@@ -548,7 +570,6 @@ class SPAT_Admin {
 				<form action="options.php" method="post">
 					<input type="hidden" name="current_tab" value="general">
 					<?php
-					wp_nonce_field( 'spat_tab_redirect', '_wpnonce_tab' );
 					settings_fields( 'spat_general_settings' );
 					do_settings_sections( 'spat_general_settings' );
 					submit_button( __( 'Save Settings', 'sportspress-admin-tools' ) );

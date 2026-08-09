@@ -18,8 +18,69 @@ function isEnvTrue(value) {
   return typeof value === 'string' && value.trim().toLowerCase() === 'true';
 }
 
+/**
+ * Webhook statuses worth retrying inside the Worker.
+ *
+ * Deliberately EXCLUDES 500 and 503: those are the two statuses WordPress
+ * itself returns after it has already written an audit row (processing_failed
+ * and "WooCommerce unavailable"), so retrying would only mint duplicate review
+ * rows for one payment. Everything here is a status where the request provably
+ * never reached — or was explicitly refused by — the application logic.
+ */
+const RETRYABLE_WEBHOOK_STATUSES = new Set([408, 425, 429, 502, 504]);
+const WEBHOOK_RETRY_DELAYS_MS = [1000, 3000];
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Forward the archival copy to FORWARD_EMAIL, awaited and at most once.
+ *
+ * H4/M7: this is the ONLY thing standing between a transient WordPress hiccup
+ * and a permanently destroyed payment notification, so it must be awaited (an
+ * un-awaited forward can be dropped when the invocation ends) and its outcome
+ * must be known before we decide whether it is safe to bounce the message.
+ *
+ * @returns {Promise<boolean>} true when a human demonstrably has a copy.
+ */
+async function forwardCopy(message, env, state) {
+  if (state.forwarded) return true;
+  if (!env.FORWARD_EMAIL) {
+    console.error('FORWARD_EMAIL is not configured: no archival copy of this payment notification can be made.');
+    return false;
+  }
+  try {
+    await message.forward(env.FORWARD_EMAIL);
+    state.forwarded = true;
+    return true;
+  } catch (error) {
+    console.error('Failed to forward archival copy:', String(error?.message || error).replaceAll(/[\r\n]/g, ' '));
+    return false;
+  }
+}
+
+/**
+ * Permanently bounce the message — but only ever as a LAST RESORT, once we know
+ * no archival copy exists. setReject() is a permanent SMTP 5xx: the notification
+ * is gone and Interac/the forwarder will not re-send it.
+ */
+function rejectAsLastResort(message, state, reason) {
+  if (state.forwarded) {
+    // A human already has the mail; bouncing now would only send a confusing
+    // DSN and cannot recover anything.
+    console.error('Accepting message despite failure (archival copy already forwarded):', reason);
+    return;
+  }
+  console.error('No archival copy could be made; permanently rejecting:', reason);
+  message.setReject(reason);
+}
+
 export default {
   async email(message, env, ctx) {
+    // Per-invocation state so the outer catch below knows whether a copy of
+    // this payment notification is already safe with a human.
+    const state = { forwarded: false };
     try {
       // Authorize ONLY on the envelope sender (message.from). Cloudflare Email
       // Routing sets this from the verified SMTP envelope and it is covered by
@@ -39,15 +100,19 @@ export default {
 
       // Build email data after the envelope has been authorized.
       const emailData = await buildEmailData(message, env);
-      
-      await sendWebhook(emailData, env, message);
+
+      await sendWebhook(emailData, env, message, state);
     } catch (error) {
       console.error('Email processing error:', {
         message: String(error.message || error).replaceAll(/[\r\n]/g, ' '),
         name: error.name,
         stack: error.stack?.replaceAll(/[\r\n]/g, ' | ')
       });
-      message.setReject('Processing error');
+      // The sender already passed the safe-domain check, so this is a real
+      // payment notification we failed to process. Get it in front of a human
+      // before considering a bounce (H4).
+      await forwardCopy(message, env, state);
+      rejectAsLastResort(message, state, 'Processing error');
     }
   }
 };
@@ -162,32 +227,76 @@ function appendAuthHeaders(emailData, allHeaders, authHeaders) {
   }
 }
 
-async function sendWebhook(emailData, env, message) {
+async function sendWebhook(emailData, env, message, state) {
   if (!env.WEBHOOK_URL || !env.WEBHOOK_SECRET) {
     console.error('Missing WEBHOOK_URL or WEBHOOK_SECRET environment variables');
-    message.setReject('Configuration error');
+    await forwardCopy(message, env, state);
+    rejectAsLastResort(message, state, 'Configuration error');
     return;
   }
 
   const url = new URL(env.WEBHOOK_URL);
   if (!url.protocol.startsWith('https')) {
     console.error('Webhook URL must use HTTPS');
-    message.setReject('Invalid webhook URL protocol');
+    await forwardCopy(message, env, state);
+    rejectAsLastResort(message, state, 'Invalid webhook URL protocol');
     return;
   }
 
+  // The signature covers the timestamp and WordPress rejects anything older
+  // than 300s, so all retries below deliberately reuse ONE timestamp+payload
+  // (they are re-deliveries of the same request, not new ones).
   emailData.timestamp = new Date().toISOString();
   const payload = JSON.stringify(emailData);
   const headers = await buildHeaders(payload, env.WEBHOOK_SECRET, env.CUSTOM_HEADERS, emailData.timestamp);
-  
-  const response = await fetch(env.WEBHOOK_URL, {
-    method: 'POST',
-    headers,
-    body: payload,
-    redirect: 'manual'
-  });
 
-  await handleWebhookResponse(response, message, env);
+  let response = null;
+  let lastNetworkError = null;
+
+  for (let attempt = 0; attempt < WEBHOOK_RETRY_DELAYS_MS.length + 1; attempt++) {
+    if (attempt > 0) {
+      await sleep(WEBHOOK_RETRY_DELAYS_MS[attempt - 1]);
+      console.log('Retrying webhook delivery, attempt', attempt + 1);
+    }
+
+    try {
+      response = await fetch(env.WEBHOOK_URL, {
+        method: 'POST',
+        headers,
+        body: payload,
+        redirect: 'manual'
+      });
+      lastNetworkError = null;
+    } catch (error) {
+      // Connection-level failure: nothing reached WordPress, always retryable.
+      response = null;
+      lastNetworkError = error;
+      console.error('Webhook request failed:', String(error?.message || error).replaceAll(/[\r\n]/g, ' '));
+      continue;
+    }
+
+    if (response.ok || !RETRYABLE_WEBHOOK_STATUSES.has(response.status)) {
+      break;
+    }
+    console.error('Webhook returned a retryable status:', response.status);
+  }
+
+  if (!response) {
+    // Never reached WordPress at all. Do not bounce a payment notification over
+    // a network blip — hand it to a human. Surface the last connection-level
+    // error so the operator can tell a DNS/TLS failure from an outage.
+    if (lastNetworkError) {
+      console.error(
+        'Webhook unreachable after retries:',
+        String(lastNetworkError?.message || lastNetworkError).replaceAll(/[\r\n]/g, ' ')
+      );
+    }
+    await forwardCopy(message, env, state);
+    rejectAsLastResort(message, state, 'Webhook endpoint unreachable');
+    return;
+  }
+
+  await handleWebhookResponse(response, message, env, state);
 }
 
 async function buildHeaders(payload, secret, customHeaders, timestamp) {
@@ -212,21 +321,34 @@ async function buildHeaders(payload, secret, customHeaders, timestamp) {
   return headers;
 }
 
-async function handleWebhookResponse(response, message, env) {
+async function handleWebhookResponse(response, message, env, state) {
   if (response.ok) {
     console.log('Webhook sent successfully');
-    if (env.FORWARD_EMAIL) {
-      message.forward(env.FORWARD_EMAIL);
-    }
-  } else {
-    try {
-      const responseText = await response.text();
-      console.error('Webhook failed:', response.status, encodeURIComponent(responseText.replaceAll(/[\r\n]/g, ' ').substring(0, 200)));
-    } catch (textError) {
-      console.error('Webhook failed:', response.status, 'Unable to read response:', textError.message);
-    }
-    message.setReject('Webhook processing failed');
+    // M7: await the archival copy. An un-awaited forward() can be discarded
+    // when the invocation terminates first, silently losing the archive.
+    await forwardCopy(message, env, state);
+    return;
   }
+
+  try {
+    const responseText = await response.text();
+    console.error('Webhook failed:', response.status, encodeURIComponent(responseText.replaceAll(/[\r\n]/g, ' ').substring(0, 200)));
+  } catch (textError) {
+    console.error('Webhook failed:', response.status, 'Unable to read response:', textError.message);
+  }
+
+  // H4: the previous behaviour was setReject() on ANY non-2xx, which is a
+  // permanent SMTP 5xx — WordPress being in maintenance mode, rate-limiting the
+  // request, or returning the 500 whose own server-side comments assume
+  // re-delivery all permanently destroyed a real payment notification, and the
+  // FORWARD_EMAIL copy was only sent on success.
+  //
+  // Now the copy goes out FIRST and is awaited. If a human has it, we accept the
+  // message (nothing is lost and the operator can process the payment by hand);
+  // only when no copy could be made do we fall back to a bounce, which at least
+  // surfaces the failure instead of dropping it silently.
+  await forwardCopy(message, env, state);
+  rejectAsLastResort(message, state, 'Webhook processing failed');
 }
 
 /**
@@ -412,25 +534,83 @@ function extractFromMultipart(body, boundary) {
 }
 
 /**
- * Decode email body based on Content-Transfer-Encoding
+ * Read the charset from a MIME part's Content-Type header. Defaults to utf-8,
+ * which is what Interac sends.
+ */
+function parseCharset(headers) {
+  const match = headers.match(/charset\s*=\s*"?([\w-]+)"?/i);
+  return match ? match[1].toLowerCase() : 'utf-8';
+}
+
+/**
+ * Decode a byte array using the declared charset, falling back to utf-8 when
+ * the label is one TextDecoder doesn't know.
+ */
+function bytesToText(bytes, charset) {
+  try {
+    return new TextDecoder(charset).decode(bytes);
+  } catch (e) {
+    return new TextDecoder('utf-8').decode(bytes);
+  }
+}
+
+/**
+ * Decode email body based on Content-Transfer-Encoding.
+ *
+ * Both transfer encodings produce BYTES, which must then be decoded with the
+ * part's declared charset. The previous implementation skipped that second step
+ * — atob() and String.fromCharCode() both yield one character per byte, i.e. an
+ * implicit Latin-1 decode — so a UTF-8 accented name arrived at WordPress as
+ * mojibake ("Rémi" -> "RÃ©mi") and then failed name matching, routing a
+ * perfectly good payment to manual review.
+ *
+ * Known limitation: a part sent as 7bit/8bit in a non-UTF-8 charset is already
+ * decoded as UTF-8 by streamToString() before it gets here and cannot be
+ * recovered at this layer.
  */
 function decodeBody(body, headers) {
   const encodingMatch = headers.match(/Content-Transfer-Encoding:\s*(\S+)/i);
   if (!encodingMatch) return body;
-  
+
   const encoding = encodingMatch[1].toLowerCase();
+  const charset = parseCharset(headers);
+
   if (encoding === 'base64') {
     try {
-      return atob(body.replace(/\s/g, ''));
+      const binary = atob(body.replace(/\s/g, ''));
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i) & 0xff;
+      }
+      return bytesToText(bytes, charset);
     } catch (e) {
       return body;
     }
   }
+
   if (encoding === 'quoted-printable') {
-    return body
-      .replace(/=\r?\n/g, '')
-      .replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+    // Drop soft line breaks, then rebuild the byte stream: "=XX" escapes are
+    // raw bytes, everything else is 7-bit ASCII (any stray non-ASCII is
+    // re-encoded as UTF-8 so the buffer stays well-formed).
+    const unfolded = body.replace(/=\r?\n/g, '');
+    const encoder = new TextEncoder();
+    const bytes = [];
+    for (let i = 0; i < unfolded.length; i++) {
+      const char = unfolded[i];
+      if (char === '=' && /^[0-9A-Fa-f]{2}$/.test(unfolded.substr(i + 1, 2))) {
+        bytes.push(parseInt(unfolded.substr(i + 1, 2), 16));
+        i += 2;
+      } else if (char.charCodeAt(0) < 128) {
+        bytes.push(char.charCodeAt(0));
+      } else {
+        for (const byte of encoder.encode(char)) {
+          bytes.push(byte);
+        }
+      }
+    }
+    return bytesToText(new Uint8Array(bytes), charset);
   }
+
   return body;
 }
 
