@@ -19,6 +19,9 @@ if (!function_exists('get_option')) {
 if (!function_exists('add_action')) {
     function add_action() {}
 }
+if (!function_exists('add_filter')) {
+    function add_filter() {}
+}
 
 $mock_titles = array();
 if (!function_exists('get_the_title')) {

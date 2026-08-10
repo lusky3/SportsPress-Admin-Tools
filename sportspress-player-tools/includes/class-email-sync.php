@@ -4,7 +4,9 @@
  *
  * Matching priority:
  * 1. SPR registration log → order billing email (highest confidence)
- * 2. post_author → WP user email + billing_email user meta
+ * 2. post_author → WP user email + billing_email user meta, but ONLY when the
+ *    player's own sp_user meta confirms that author really is this player's
+ *    account, and never for accounts that authored players in bulk
  * 3. Unmatched → CSV export for manual entry
  *
  * @author Cody (lusky3)
@@ -17,6 +19,27 @@ if ( ! defined( 'ABSPATH' ) ) {
 class SPT_Email_Sync {
 
 	const TAB = 'player-tools';
+
+	/**
+	 * Above this many authored sp_player posts, a post_author is treated as a
+	 * bulk importer (staff doing data entry) rather than as a player.
+	 *
+	 * Rationale: post_author records who CREATED the record, not who the record
+	 * is about. On rookiehockey.ca five staff accounts author ~1,800 of the 2,121
+	 * players; a real player-owned account authors their own record and maybe a
+	 * family member's, so a handful is the natural ceiling. Anything above that
+	 * is data entry, and its address is a staff address that must never be
+	 * stamped onto a player.
+	 */
+	const BULK_IMPORT_AUTHOR_THRESHOLD = 5;
+
+	/**
+	 * Confidence levels attached to each candidate email.
+	 *
+	 * Only CONFIDENCE_HIGH rows may be pre-checked in the preview.
+	 */
+	const CONFIDENCE_HIGH = 'high';
+	const CONFIDENCE_LOW  = 'low';
 
 	public function __construct() {
 		// Render INSIDE the Player Tools panel (opened by SPT_Admin) via its inner
@@ -69,7 +92,7 @@ class SPT_Email_Sync {
 		}
 
 		echo '<hr><h2>' . esc_html__( 'Sync Player Emails', 'sportspress-player-tools' ) . '</h2>';
-		echo '<p class="description">' . esc_html__( 'Populate missing player emails from WooCommerce registration orders and linked user accounts.', 'sportspress-player-tools' ) . '</p>';
+		echo '<p class="description">' . esc_html__( 'Populate missing player emails from WooCommerce registration orders and verified linked user accounts. Records created in bulk by staff accounts are not matched to the staff address.', 'sportspress-player-tools' ) . '</p>';
 
 		if ( isset( $_GET['spt_sync_scan'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ?? '' ) ), 'spt_email_scan' ) ) {
 			$this->render_preview();
@@ -133,13 +156,32 @@ class SPT_Email_Sync {
 
 		// --- Matched players table ---
 		if ( ! empty( $matched ) ) {
+			// PT-SAFETY (audit 2026-08): rows used to render `checked` regardless of
+			// how the email was found, under a check-all that was also `checked`, so
+			// one click on "Apply Selected" would have written every guess. Only
+			// genuinely high-confidence rows are pre-checked now, and the check-all
+			// deliberately cannot reach the weak ones.
+			$has_high = false;
+			foreach ( $matched as $m ) {
+				if ( $this->is_high_confidence( $m['emails'][0] ) ) {
+					$has_high = true;
+					break;
+				}
+			}
+
 			echo '<h3>' . esc_html__( 'Matched Players', 'sportspress-player-tools' ) . ' (' . count( $matched ) . ')</h3>';
+			echo '<p class="description">' . esc_html__( 'Only high-confidence matches are pre-selected. Unchecked rows are guesses — read the Source column and tick them yourself only if you know the address is right.', 'sportspress-player-tools' ) . '</p>';
 			echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
 			echo '<input type="hidden" name="action" value="spt_apply_email_sync">';
 			wp_nonce_field( 'spt_apply_email_sync', 'spt_sync_nonce' );
 
 			echo '<table class="widefat striped"><thead><tr>';
-			echo '<th><input type="checkbox" id="spt-check-all" checked></th>';
+			if ( $has_high ) {
+				echo '<th><input type="checkbox" id="spt-check-all" checked title="'
+					. esc_attr__( 'Select all high-confidence rows', 'sportspress-player-tools' ) . '"></th>';
+			} else {
+				echo '<th></th>';
+			}
 			echo '<th>' . esc_html__( 'Player', 'sportspress-player-tools' ) . '</th>';
 			echo '<th>' . esc_html__( 'Email', 'sportspress-player-tools' ) . '</th>';
 			echo '<th>' . esc_html__( 'Source', 'sportspress-player-tools' ) . '</th>';
@@ -148,6 +190,7 @@ class SPT_Email_Sync {
 			foreach ( $matched as $m ) {
 				$player_id = $m['player_id'];
 				$best      = $m['emails'][0]; // Highest priority match.
+				$high      = $this->is_high_confidence( $best );
 
 				// If multiple emails, show a select.
 				if ( count( $m['emails'] ) > 1 ) {
@@ -158,7 +201,15 @@ class SPT_Email_Sync {
 							. '</option>';
 					}
 					$email_field .= '</select>';
-					$source_text  = esc_html__( 'Multiple sources', 'sportspress-player-tools' );
+					// Name the winning source rather than a bland "Multiple sources",
+					// so a weak default is still visible at a glance.
+					$source_text = esc_html( $best['source'] ) . ' ' . esc_html(
+						sprintf(
+							/* translators: %d: number of alternative email options */
+							__( '(+%d other option(s))', 'sportspress-player-tools' ),
+							count( $m['emails'] ) - 1
+						)
+					);
 				} else {
 					$email_field = '<input type="hidden" name="email[' . esc_attr( $player_id ) . ']" value="' . esc_attr( $best['email'] ) . '">'
 						. esc_html( $best['email'] );
@@ -166,7 +217,8 @@ class SPT_Email_Sync {
 				}
 
 				echo '<tr>';
-				echo '<td><input type="checkbox" name="players[]" value="' . esc_attr( $player_id ) . '" checked></td>';
+				echo '<td><input type="checkbox" class="' . ( $high ? 'spt-high-confidence' : 'spt-low-confidence' ) . '"'
+					. ' name="players[]" value="' . esc_attr( $player_id ) . '"' . ( $high ? ' checked' : '' ) . '></td>';
 				echo '<td><a href="' . esc_url( get_edit_post_link( $player_id ) ) . '">' . esc_html( get_the_title( $player_id ) ) . '</a></td>';
 				echo '<td>' . $email_field . '</td>';
 				echo '<td>' . $source_text . '</td>';
@@ -181,9 +233,13 @@ class SPT_Email_Sync {
 			// Check-all JS. Capture the toggle's state first; using `.bind(this)`
 			// on the forEach callback rebinds `this` to each checkbox, so every box
 			// would just be set to its own current state (a no-op).
-			echo '<script>document.getElementById("spt-check-all").addEventListener("change",function(){';
-			echo 'var on=this.checked;document.querySelectorAll(\'input[name="players[]"]\').forEach(function(c){c.checked=on;});';
-			echo '});</script>';
+			// The selector is scoped to .spt-high-confidence on purpose: check-all
+			// must not be able to silently re-arm the guesses.
+			if ( $has_high ) {
+				echo '<script>document.getElementById("spt-check-all").addEventListener("change",function(){';
+				echo 'var on=this.checked;document.querySelectorAll(\'input.spt-high-confidence[name="players[]"]\').forEach(function(c){c.checked=on;});';
+				echo '});</script>';
+			}
 		}
 
 		// --- Unmatched players ---
@@ -230,13 +286,21 @@ class SPT_Email_Sync {
 	*/
 
 	/**
+	 * Is this candidate email safe to pre-select?
+	 *
+	 * @param array $entry One candidate from an emails list.
+	 * @return bool
+	 */
+	private function is_high_confidence( $entry ) {
+		return isset( $entry['confidence'] ) && self::CONFIDENCE_HIGH === $entry['confidence'];
+	}
+
+	/**
 	 * Find email matches for all players missing spt_email.
 	 *
-	 * @return array Array of [ player_id, player_name, emails => [ [email, source], ... ] ]
+	 * @return array Array of [ player_id, emails => [ [email, source, confidence], ... ] ]
 	 */
 	private function find_matches() {
-		global $wpdb;
-
 		$players = $this->get_players_missing_email();
 		if ( empty( $players ) ) {
 			return array();
@@ -256,12 +320,14 @@ class SPT_Email_Sync {
 			$pid    = $player->ID;
 			$emails = array();
 
-			// SPR match first (highest confidence).
+			// SPR match first (highest confidence): the registration log ties this
+			// exact player row to the order that paid for it.
 			if ( isset( $spr_emails[ $pid ] ) ) {
 				foreach ( $spr_emails[ $pid ] as $email ) {
 					$emails[] = array(
-						'email'  => $email,
-						'source' => __( 'Registration order', 'sportspress-player-tools' ),
+						'email'      => $email,
+						'source'     => __( 'Registration order', 'sportspress-player-tools' ),
+						'confidence' => self::CONFIDENCE_HIGH,
 					);
 				}
 			}
@@ -350,41 +416,115 @@ class SPT_Email_Sync {
 	}
 
 	/**
-	 * Match players to emails via their linked WP user (post_author).
+	 * Count how many sp_player posts each user authored.
+	 *
+	 * Deliberately ONE grouped query over the whole post type rather than a
+	 * lookup per player: the preview can cover thousands of players, and the
+	 * bulk-importer signal is "how much of the roster did this account create",
+	 * which is a property of the account, not of the current batch.
+	 *
+	 * @return array user_id => number of sp_player posts authored.
+	 */
+	private function get_author_player_counts() {
+		global $wpdb;
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT post_author, COUNT(*) AS total
+				FROM {$wpdb->posts}
+				WHERE post_type = %s AND post_status != 'trash'
+				GROUP BY post_author",
+				'sp_player'
+			)
+		);
+
+		$counts = array();
+		foreach ( (array) $rows as $row ) {
+			$counts[ (int) $row->post_author ] = (int) $row->total;
+		}
+
+		return $counts;
+	}
+
+	/**
+	 * Match players to emails via their WP user.
+	 *
+	 * PT-SAFETY (audit 2026-08): this used to read post_author as "the player's
+	 * own account" and label whatever it found "Linked user account". post_author
+	 * is actually whoever CREATED the record. On rookiehockey.ca that is five
+	 * staff accounts covering ~1,800 of 2,121 players, so the old behaviour would
+	 * have stamped staff addresses onto players — routing player notifications to
+	 * the office and then letting email-based matching confidently pick the wrong
+	 * human. Two guards now apply:
+	 *
+	 *   1. Bulk importers are dropped outright. An account that authored more
+	 *      than self::BULK_IMPORT_AUTHOR_THRESHOLD players is doing data entry,
+	 *      not playing, and its address is never offered at any confidence. If
+	 *      such a person really is a player, an admin types their address in by
+	 *      hand — far cheaper than un-picking 1,800 wrong addresses.
+	 *   2. What survives is high-confidence ONLY when the player's own sp_user
+	 *      meta names that same user, i.e. the registration flow actually linked
+	 *      this player to this account. Everything else is a weak hint: it is
+	 *      labelled as the record creator and left unchecked in the preview.
 	 *
 	 * @param array $players Array of WP_Post objects.
-	 * @return array player_id => [ [email, source], ... ]
+	 * @return array player_id => [ [email, source, confidence], ... ]
 	 */
 	private function match_via_post_author( $players ) {
 		$results = array();
 
-		// Collect unique non-zero post_author IDs.
+		$author_counts = $this->get_author_player_counts();
+
+		// Collect unique post_author IDs that are still worth resolving. Authors
+		// over the threshold are skipped here so we never even load their user
+		// record, let alone offer their address.
 		$author_ids = array();
 		foreach ( $players as $player ) {
-			if ( ! empty( $player->post_author ) && (int) $player->post_author !== 0 ) {
-				$author_ids[] = (int) $player->post_author;
+			$author_id = (int) ( $player->post_author ?? 0 );
+			if ( $author_id === 0 ) {
+				continue;
 			}
+			if ( ( $author_counts[ $author_id ] ?? 0 ) > self::BULK_IMPORT_AUTHOR_THRESHOLD ) {
+				continue;
+			}
+			$author_ids[] = $author_id;
 		}
 		$author_ids = array_unique( $author_ids );
 		if ( empty( $author_ids ) ) {
 			return $results;
 		}
 
-		// Batch-load all users in one query.
+		// Batch-load all remaining users in one query.
 		$users    = get_users( array( 'include' => $author_ids ) );
 		$user_map = array();
 		foreach ( $users as $user ) {
-			$user_map[ $user->ID ] = $user;
+			$user_map[ (int) $user->ID ] = $user;
 		}
 
 		foreach ( $players as $player ) {
-			if ( empty( $player->post_author ) || (int) $player->post_author === 0 ) {
+			$author_id = (int) ( $player->post_author ?? 0 );
+			if ( $author_id === 0 ) {
 				continue;
 			}
 
-			$user = $user_map[ (int) $player->post_author ] ?? null;
+			$user = $user_map[ $author_id ] ?? null;
 			if ( ! $user ) {
 				continue;
+			}
+
+			// The only positive evidence that this author IS this player: the
+			// player's own sp_user link points back at them. get_post_meta() reads
+			// the meta cache primed by get_players_missing_email(), so this costs
+			// no extra query.
+			$linked_user = (int) get_post_meta( $player->ID, 'sp_user', true );
+			$verified    = ( $linked_user > 0 && $linked_user === $author_id );
+
+			if ( $verified ) {
+				$confidence  = self::CONFIDENCE_HIGH;
+				$user_source = __( 'Linked user account (verified)', 'sportspress-player-tools' );
+			} else {
+				$confidence  = self::CONFIDENCE_LOW;
+				$user_source = __( 'Record creator — may not be the player', 'sportspress-player-tools' );
 			}
 
 			$entries = array();
@@ -392,17 +532,23 @@ class SPT_Email_Sync {
 			// WP user email.
 			if ( is_email( $user->user_email ) ) {
 				$entries[] = array(
-					'email'  => strtolower( $user->user_email ),
-					'source' => __( 'Linked user account', 'sportspress-player-tools' ),
+					'email'      => strtolower( $user->user_email ),
+					'source'     => $user_source,
+					'confidence' => $confidence,
 				);
 			}
 
-			// WooCommerce billing email (may differ from user email).
+			// WooCommerce billing email (may differ from user email). It inherits
+			// the same confidence: it is only as trustworthy as the link to the
+			// user it hangs off.
 			$billing_email = get_user_meta( $user->ID, 'billing_email', true );
 			if ( $billing_email && is_email( $billing_email ) && strtolower( $billing_email ) !== strtolower( $user->user_email ) ) {
 				$entries[] = array(
-					'email'  => strtolower( $billing_email ),
-					'source' => __( 'Billing email', 'sportspress-player-tools' ),
+					'email'      => strtolower( $billing_email ),
+					'source'     => $verified
+						? __( 'Billing email (verified account)', 'sportspress-player-tools' )
+						: __( 'Record creator billing email — may not be the player', 'sportspress-player-tools' ),
+					'confidence' => $confidence,
 				);
 			}
 

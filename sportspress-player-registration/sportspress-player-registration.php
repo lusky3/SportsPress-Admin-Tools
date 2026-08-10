@@ -30,6 +30,16 @@ class SportsPress_Player_Registration {
 	private $admin;
 
 	public function __construct() {
+		// Ownership capability guard, loaded ABOVE every gate below on purpose.
+		// Registration persists post_author on player records, so the guard has to
+		// outlive the conditions that created it: WooCommerce missing, the
+		// player_registration module toggled off, or an outdated parent plugin must
+		// none of them silently restore authorship-derived edit rights. The class is
+		// self-contained (get_option / get_post / user_can only) so it costs nothing
+		// to load this early.
+		require_once SPPR_PLUGIN_PATH . 'includes/class-ownership-caps.php';
+		SPPR_Ownership_Caps::register();
+
 		register_activation_hook( __FILE__, array( $this, 'check_activation_requirements' ) );
 		add_action( 'plugins_loaded', array( $this, 'init' ) );
 		// Declare WooCommerce HPOS (custom order tables) compatibility. Must run on
@@ -102,6 +112,13 @@ class SportsPress_Player_Registration {
 		require_once SPPR_PLUGIN_PATH . 'includes/class-admin.php';
 
 		$this->registration = new SPPR_Player_Registration();
+
+		// Maintenance commands (e.g. the sp_user -> post_author backfill). The file
+		// declares nothing outside WP-CLI, but skip the include entirely on web
+		// requests so it never costs anything there.
+		if ( class_exists( 'WP_CLI' ) ) {
+			require_once SPPR_PLUGIN_PATH . 'includes/class-cli.php';
+		}
 
 		if ( is_admin() ) {
 			$this->admin = new SPPR_Admin();

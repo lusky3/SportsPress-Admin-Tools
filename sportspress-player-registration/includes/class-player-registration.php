@@ -15,6 +15,9 @@ class SPPR_Player_Registration {
 		add_action( 'woocommerce_order_status_completed', array( $this, 'process_completed_order' ) );
 		add_action( 'woocommerce_order_status_refunded', array( $this, 'handle_order_reversed' ) );
 		add_action( 'woocommerce_order_status_cancelled', array( $this, 'handle_order_reversed' ) );
+		// NOTE: the map_meta_cap guard that pairs with link_user_to_player() is NOT
+		// registered here. It lives in SPPR_Ownership_Caps and is hooked from the main
+		// plugin file above the module gate, so it survives this class not loading.
 	}
 
 	/**
@@ -301,14 +304,23 @@ class SPPR_Player_Registration {
 		$player_id = $match['player_id'];
 		$action = $match['action'];
 
-		// Email conflict is terminal: a player with the same name exists but a
-		// different stored email — likely a guest/user duplicate or two distinct
-		// people sharing a name. Do NOT auto-create a parallel record; surface
-		// the conflict for manual reconciliation instead.
-		if ( $action === 'multiple_players_found_email_conflict' ) {
+		// Both conflict actions are terminal: an ambiguous match means a player with
+		// this identity already exists but we cannot tell WHICH one — likely a
+		// guest/user duplicate or two distinct people sharing a name. Do NOT
+		// auto-create a parallel record; surface the conflict for manual
+		// reconciliation instead.
+		//
+		// BEHAVIOR CHANGE: 'multiple_players_found_name_match_requires_email' used
+		// to fall through to the create branch below with a null player_id, so an
+		// order that could not be disambiguated added yet another same-named record
+		// — the exact duplicate-manufacturing this lookup exists to prevent. It now
+		// stops here, and process_completed_order() already refuses to mark such an
+		// order processed so a human can resolve it and re-run.
+		if ( $action === 'multiple_players_found_email_conflict'
+			|| $action === 'multiple_players_found_name_match_requires_email' ) {
 			return array(
 				'player_id' => 0,
-				'action' => 'multiple_players_found_email_conflict',
+				'action' => $action,
 			);
 		}
 
@@ -423,10 +435,52 @@ class SPPR_Player_Registration {
 		}
 	}
 
+	/**
+	 * Resolve the sp_player record a paying customer already has, if any.
+	 *
+	 * Three steps, strongest identifier first:
+	 *   1. stored email (spt_email) — survives renames and roster suffixes,
+	 *   2. exact post_title,
+	 *   3. post_title with trailing parenthetical suffixes stripped.
+	 *
+	 * Step 3 exists because the exact-title step alone manufactured duplicates on
+	 * live data: the roster carries suffixed titles ("Dennis Arnold (G)", "Peter
+	 * Kondo (C)") that a WooCommerce billing name can never equal, so every such
+	 * customer got a second, empty record.
+	 *
+	 * @param string $customer_name  Validated billing name.
+	 * @param string $customer_email Billing email (may be empty).
+	 * @return array{player_id:int|null,action:string}
+	 */
 	private function find_existing_player( $customer_name, $customer_email ) {
 		$email_meta_enabled = $this->email_meta_enabled();
+		$normalized_email   = ( $email_meta_enabled && ! empty( $customer_email ) )
+			? strtolower( sanitize_email( $customer_email ) )
+			: '';
 
-		// Use exact title match via wpdb since WP_Query 'title' param is unreliable
+		// STEP 1 — email. The customer's own email is the only identifier that is
+		// stable across a title suffix, a divisional rename or a marriage, so it
+		// outranks any name match. Only 44 of ~2100 players carry the meta today,
+		// so this is a cheap miss for most orders and an exact hit for the rest.
+		if ( '' !== $normalized_email ) {
+			$by_email = $this->find_player_ids_by_email( $normalized_email );
+			if ( count( $by_email ) > 1 ) {
+				// Two live records claim the same person. Terminal — a human picks.
+				return array(
+					'player_id' => 0,
+					'action' => 'multiple_players_found_email_conflict',
+				);
+			}
+			if ( count( $by_email ) === 1 ) {
+				return array(
+					'player_id' => $by_email[0],
+					'action' => 'player_found_by_email',
+				);
+			}
+		}
+
+		// STEP 2 — exact title. Use exact title match via wpdb since WP_Query
+		// 'title' param is unreliable.
 		global $wpdb;
 		$player_ids = $wpdb->get_col(
 			$wpdb->prepare(
@@ -447,15 +501,23 @@ class SPPR_Player_Registration {
 			// If email metadata is enabled and the stored player email differs from the
 			// new customer email, surface a conflict instead of silently merging — likely
 			// a guest+user duplicate or two distinct people sharing a name.
-			if ( $email_meta_enabled && ! empty( $customer_email ) ) {
-				$stored_email = strtolower( (string) get_post_meta( $players[0]->ID, 'spt_email', true ) );
-				$normalized_email = strtolower( sanitize_email( $customer_email ) );
-				if ( $stored_email && $stored_email !== $normalized_email ) {
-					return array(
-						'player_id' => 0,
-						'action' => 'multiple_players_found_email_conflict',
-					);
-				}
+			if ( $this->stored_email_conflicts( $players[0]->ID, $normalized_email ) ) {
+				return array(
+					'player_id' => 0,
+					'action' => 'multiple_players_found_email_conflict',
+				);
+			}
+			// An exact hit is only conclusive when it is the ONLY live record for this
+			// person. The duplicates this lookup exists to stop are already ON the live
+			// roster — "Peter Kondo" (created Aug 9) now sits beside "Peter Kondo (C)" —
+			// so matching the exact title alone would silently keep feeding the newer,
+			// empty record and compound the split. Two live records for one name is
+			// ambiguity no matter which one the title happens to equal.
+			if ( count( $this->find_live_normalized_candidates( $customer_name ) ) > 1 ) {
+				return array(
+					'player_id' => null,
+					'action' => 'multiple_players_found_name_match_requires_email',
+				);
 			}
 			return array(
 				'player_id' => $players[0]->ID,
@@ -474,10 +536,209 @@ class SPPR_Player_Registration {
 			);
 		}
 
+		// STEP 3 — suffix-tolerant title.
+		return $this->find_player_by_normalized_name( $customer_name, $normalized_email );
+	}
+
+	/**
+	 * Published sp_player IDs whose spt_email meta equals a normalized email.
+	 *
+	 * Tombstoned records (see is_tombstoned_player_title()) are dropped: a record a
+	 * human retired must never absorb a new registration, even when it still holds
+	 * the customer's address.
+	 *
+	 * @param string $normalized_email Lowercased, sanitized email.
+	 * @return int[] Unique player IDs.
+	 */
+	private function find_player_ids_by_email( $normalized_email ) {
+		global $wpdb;
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT p.ID, p.post_title FROM {$wpdb->posts} p
+				INNER JOIN {$wpdb->postmeta} m ON m.post_id = p.ID
+				WHERE p.post_type = 'sp_player' AND p.post_status = 'publish'
+				AND m.meta_key = 'spt_email' AND m.meta_value = %s",
+				$normalized_email
+			)
+		);
+
+		$ids = array();
+		foreach ( (array) $rows as $row ) {
+			if ( $this->is_tombstoned_player_title( $row->post_title ) ) {
+				continue;
+			}
+			// Keyed so a player carrying the meta twice counts once and cannot fake
+			// an "ambiguous" conflict.
+			$ids[ (int) $row->ID ] = (int) $row->ID;
+		}
+
+		return array_values( $ids );
+	}
+
+	/**
+	 * Match a player whose title differs from the billing name only by a trailing
+	 * parenthetical suffix — "Dennis Arnold" vs "Dennis Arnold (G)".
+	 *
+	 * Ambiguity among LIVE records is terminal, never a guess: "Peter Kondo" has
+	 * both "Peter Kondo (C)" and the "Peter Kondo" his own registration created, and
+	 * picking either silently would be worse than asking a human. Tombstones do not
+	 * create that ambiguity — see find_live_normalized_candidates().
+	 *
+	 * @param string $customer_name    Validated billing name.
+	 * @param string $normalized_email Lowercased billing email, or '' when unused.
+	 * @return array{player_id:int|null,action:string}
+	 */
+	private function find_player_by_normalized_name( $customer_name, $normalized_email ) {
+		$live = $this->find_live_normalized_candidates( $customer_name );
+
+		if ( count( $live ) > 1 ) {
+			return array(
+				'player_id' => null,
+				'action' => 'multiple_players_found_name_match_requires_email',
+			);
+		}
+
+		if ( count( $live ) === 1 ) {
+			if ( $this->stored_email_conflicts( $live[0], $normalized_email ) ) {
+				return array(
+					'player_id' => 0,
+					'action' => 'multiple_players_found_email_conflict',
+				);
+			}
+			return array(
+				'player_id' => $live[0],
+				'action' => 'player_found_by_normalized_name',
+			);
+		}
+
+		// Nothing, or nothing but tombstones: a genuinely new registration.
 		return array(
 			'player_id' => null,
 			'action' => '',
 		);
+	}
+
+	/**
+	 * Live (non-tombstoned) published players whose title normalizes to this name.
+	 *
+	 * Tombstoned records are dropped BEFORE anything is counted, so they are simply
+	 * invisible to matching. That is the whole point of the marker: eleven of the
+	 * "(dup)" records on the live roster have exactly one live sibling, and treating
+	 * the tombstone as evidence of ambiguity would make those eleven people
+	 * permanently unmatchable — a conflict on every future registration, which is
+	 * the outcome the marker was created to prevent. "(dup)" means "ignore this row,
+	 * use the other one", so this method does exactly that.
+	 *
+	 * @param string $customer_name Validated billing name.
+	 * @return int[] Unique live candidate player IDs.
+	 */
+	private function find_live_normalized_candidates( $customer_name ) {
+		global $wpdb;
+
+		$key = $this->normalize_player_title( $customer_name );
+		if ( '' === $key ) {
+			return array();
+		}
+
+		// Bounded query. Normalizing all ~2100 published players in PHP on every
+		// order would be wasteful, so MySQL narrows to titles STARTING with the
+		// normalized name ("Peter Kondo%") and only that handful is normalized here.
+		// The trade-off is deliberate: a suffix that PRECEDES the name ("(Sub) Peter
+		// Kondo") is not found. No such record exists on the live roster.
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT ID, post_title FROM {$wpdb->posts} WHERE post_type = 'sp_player' AND post_status = 'publish' AND post_title LIKE %s",
+				$wpdb->esc_like( $key ) . '%'
+			)
+		);
+
+		$live = array();
+		foreach ( (array) $rows as $row ) {
+			if ( $this->normalize_player_title( $row->post_title ) !== $key ) {
+				continue;
+			}
+			if ( $this->is_tombstoned_player_title( $row->post_title ) ) {
+				continue;
+			}
+			$live[ (int) $row->ID ] = (int) $row->ID;
+		}
+
+		return array_values( $live );
+	}
+
+	/**
+	 * Comparison key for an sp_player title or a billing name.
+	 *
+	 * Drops every parenthetical segment, collapses whitespace and lowercases, so
+	 * "Michael Nagatakiya (G)" and "Michael Nagatakiya" collapse to one key. The
+	 * result is a comparison key ONLY — never display it, never write it to a post.
+	 *
+	 * @param string $title Raw post title or billing name.
+	 * @return string Normalized comparison key.
+	 */
+	private function normalize_player_title( $title ) {
+		$title = preg_replace( '/\([^)]*\)/', ' ', (string) $title );
+		$title = trim( preg_replace( '/\s+/', ' ', $title ) );
+		// Accented names (José García) need the multibyte fold; strtolower() is
+		// byte-wise and would leave them unequal.
+		return function_exists( 'mb_strtolower' ) ? mb_strtolower( $title, 'UTF-8' ) : strtolower( $title );
+	}
+
+	/**
+	 * Whether a player title marks a deliberately retired ("tombstoned") record.
+	 *
+	 * ASSUMPTION — READ THIS BEFORE CHANGING ANYTHING ELSE. Roughly 17 published
+	 * sp_player records carry a "(dup)"-style suffix, e.g. "Peter Kondo (Dup / Div
+	 * 3)". A human put that there to declare the record dead and to point at the
+	 * sibling row that is real: it means "ignore this one, use the other one".
+	 *
+	 * A tombstone is therefore INVISIBLE to matching — not merely unselectable. It
+	 * is removed from the candidate set before anything is counted, so it can
+	 * neither be matched nor make a name look ambiguous. Treating it as ambiguity
+	 * would strand the eleven people whose "(dup)" row has exactly one live sibling,
+	 * failing every future registration for precisely the records the marker was
+	 * added to disambiguate.
+	 *
+	 * This method is the ONLY place that convention is encoded — if the league ever
+	 * stops using "(dup)", or starts using a different marker, change it here and
+	 * nowhere else.
+	 *
+	 * Only the parenthetical segments are inspected, deliberately: a surname that
+	 * merely contains the letters "dup" (Dupont, Dupuis, Duplessis) must not be
+	 * mistaken for a tombstone.
+	 *
+	 * @param string $title Raw post title.
+	 * @return bool True when the record is retired and must not be matched.
+	 */
+	private function is_tombstoned_player_title( $title ) {
+		if ( ! preg_match_all( '/\(([^)]*)\)/', (string) $title, $matches ) ) {
+			return false;
+		}
+		foreach ( $matches[1] as $segment ) {
+			if ( stripos( $segment, 'dup' ) !== false ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Whether a candidate player's stored email contradicts the billing email.
+	 *
+	 * An empty stored email is not a contradiction — most records have none — and
+	 * an empty billing email (or disabled email meta) disables the check entirely.
+	 *
+	 * @param int    $player_id        Candidate player post ID.
+	 * @param string $normalized_email Lowercased billing email, or '' when unused.
+	 * @return bool True when the two emails are both present and different.
+	 */
+	private function stored_email_conflicts( $player_id, $normalized_email ) {
+		if ( '' === $normalized_email ) {
+			return false;
+		}
+		$stored_email = strtolower( (string) get_post_meta( $player_id, 'spt_email', true ) );
+		return ( $stored_email && $stored_email !== $normalized_email );
 	}
 
 	private function match_player_by_email( $players, $customer_email ) {
@@ -590,8 +851,53 @@ class SPPR_Player_Registration {
 		SPPR_Database::log_role_assignment( $user_id, $user->display_name, 'role_assigned' );
 	}
 
+	/**
+	 * Link a WordPress user to their player record.
+	 *
+	 * The sp_user meta is what SportsPress reads, but post_author is what WordPress
+	 * itself treats as ownership, so both are set and the player owns their own
+	 * record. create_new_player() already authors new records this way; this closes
+	 * the gap for players matched to a pre-existing record.
+	 *
+	 * SAFETY: authorship alone would hand every sp_player role holder wp-admin edit
+	 * rights over their own record, because map_meta_cap grants edit_posts /
+	 * edit_published_posts on a post you authored and the role holds both.
+	 * SPPR_Ownership_Caps::filter_owner_player_caps() revokes that again unless the
+	 * site opts in via spr_owner_can_edit. That guard is hooked from the main plugin
+	 * file, above the module gate, so it holds even when this class never loads.
+	 *
+	 * @param int $user_id   WordPress user ID.
+	 * @param int $player_id Player post ID.
+	 * @return void
+	 */
 	private function link_user_to_player( $user_id, $player_id ) {
 		update_post_meta( $player_id, 'sp_user', $user_id );
+
+		$player = get_post( $player_id );
+		if ( ! $player || (int) $player->post_author === (int) $user_id ) {
+			return;
+		}
+
+		// wp_update_post(), never a raw UPDATE: authorship changes have to run the
+		// normal save path so caches, revisions and post-save listeners all see it.
+		$result = wp_update_post(
+			array(
+				'ID' => (int) $player_id,
+				'post_author' => (int) $user_id,
+			),
+			true
+		);
+
+		if ( ( is_wp_error( $result ) || ! $result ) && class_exists( 'SPAT_Logger' ) ) {
+			$context = array(
+				'player_id' => (int) $player_id,
+				'user_id' => (int) $user_id,
+			);
+			if ( is_wp_error( $result ) && method_exists( 'SPAT_Logger', 'is_verbose' ) && SPAT_Logger::is_verbose() ) {
+				$context['error'] = $result->get_error_message();
+			}
+			SPAT_Logger::error( 'player_registration', 'Failed to set player post_author', $context );
+		}
 	}
 
 	private function validate_and_clean_name( $name ) {

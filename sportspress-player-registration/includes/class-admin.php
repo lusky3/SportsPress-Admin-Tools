@@ -50,6 +50,7 @@ class SPPR_Admin {
 			)
 		);
 		register_setting( 'spr_settings', 'spr_auto_season', $checkbox_args );
+		register_setting( 'spr_settings', 'spr_owner_can_edit', $checkbox_args );
 		register_setting(
 			'spr_settings',
 			'spr_registration_keyword',
@@ -94,6 +95,7 @@ class SPPR_Admin {
 		$auto_role = get_option( 'spr_auto_role', '1' );
 		$player_role = get_option( 'spr_player_role', 'sp_player' );
 		$auto_season = get_option( 'spr_auto_season', '1' );
+		$owner_can_edit = get_option( 'spr_owner_can_edit', '0' );
 		$registration_keyword = get_option( 'spr_registration_keyword', 'registration' );
 		?>
 			<form action="options.php" method="post">
@@ -156,6 +158,17 @@ class SPPR_Admin {
 						</td>
 					</tr>
 						<tr>
+							<th scope="row"><?php esc_html_e( 'Players Can Edit Their Own Record', 'sportspress-player-registration' ); ?></th>
+							<td>
+								<label>
+									<input type="hidden" name="spr_owner_can_edit" value="0" />
+									<input type="checkbox" name="spr_owner_can_edit" value="1" <?php checked( $owner_can_edit, '1' ); ?> />
+									<?php esc_html_e( 'Let a player open and edit their own player record in wp-admin', 'sportspress-player-registration' ); ?>
+								</label>
+								<p class="description"><?php esc_html_e( 'Registration makes each player the owner (post author) of their own player record. Leave this OFF (the default) and ownership stays informational only — players still cannot open or delete the record. Turn it ON and every user holding the player role gains a wp-admin edit screen for their own record, including its name, number, team and positions. Administrators and anyone who can edit other players are unaffected either way.', 'sportspress-player-registration' ); ?></p>
+							</td>
+						</tr>
+						<tr>
 							<th scope="row"><?php esc_html_e( 'Registration Category Keyword', 'sportspress-player-registration' ); ?></th>
 							<td>
 								<input type="text" name="spr_registration_keyword" value="<?php echo esc_attr( $registration_keyword ); ?>" class="regular-text" />
@@ -206,6 +219,10 @@ class SPPR_Admin {
 				$action_text = 'Found by Name';
 			} elseif ( $log->action === 'player_found_by_name_and_email' ) {
 				$action_text = 'Found by Name and Email';
+			} elseif ( $log->action === 'player_found_by_email' ) {
+				$action_text = 'Found by Email';
+			} elseif ( $log->action === 'player_found_by_normalized_name' ) {
+				$action_text = 'Found by Name (suffix ignored)';
 			} elseif ( $log->action === 'player_created' ) {
 				$action_text = 'Created New Player';
 			} elseif ( $log->action === 'multiple_players_found_name_match_requires_email' ) {
