@@ -7,7 +7,7 @@
     "start": "wp-scripts start src/dashboard/index.js --output-path=build"
   },
   "devDependencies": {
-    "@wordpress/scripts": "^33.0.0"
+    "@wordpress/scripts": "^34.0.0"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
