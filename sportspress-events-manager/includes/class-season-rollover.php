@@ -523,111 +523,13 @@ jQuery(document).ready(function($) {
 			$teams_updated++;
 
 			// 3. Optionally create calendar
-			if ( $create_calendars ) {
-				// Idempotency: skip if calendar already exists for this
-				// team+season. Avoid serialize() in meta_query — narrow with
-				// a LIKE on the serialized fragment, then do a PHP-side team
-				// check to defend against false positives.
-				$season_cal_ids = get_posts(
-					array(
-						'post_type'      => 'sp_calendar',
-						'post_status'    => 'any',
-						'posts_per_page' => -1,
-						'fields'         => 'ids',
-						'tax_query'      => array(
-							array(
-								'taxonomy' => 'sp_season',
-								'field'    => 'term_id',
-								'terms'    => $season_term_id,
-							),
-						),
-						'meta_query'     => array(
-							array(
-								'key'     => 'sp_team',
-								'value'   => sprintf( 'i:%d;', (int) $team->ID ),
-								'compare' => 'LIKE',
-							),
-						),
-					)
-				);
-
-				$existing_cal = array();
-				if ( ! empty( $season_cal_ids ) ) {
-					update_meta_cache( 'post', $season_cal_ids );
-					foreach ( $season_cal_ids as $cal_id ) {
-						$cal_teams = (array) get_post_meta( $cal_id, 'sp_team', true );
-						if ( in_array( (int) $team->ID, array_map( 'intval', $cal_teams ), true ) ) {
-							$existing_cal[] = $cal_id;
-							break;
-						}
-					}
-				}
-
-				if ( empty( $existing_cal ) ) {
-					$cal_title = $team->post_title . ' — ' . $season_name;
-					$cal_id = wp_insert_post(
-						array(
-							'post_type'   => 'sp_calendar',
-							'post_title'  => $cal_title,
-							'post_status' => 'publish',
-						)
-					);
-					if ( $cal_id && ! is_wp_error( $cal_id ) ) {
-						update_post_meta( $cal_id, 'sp_team', array( $team->ID ) );
-						wp_set_object_terms( $cal_id, array( $season_term_id ), 'sp_season' );
-						wp_set_object_terms( $cal_id, array( $league_id ), 'sp_league' );
-						update_post_meta( $cal_id, 'sp_format', get_option( 'spem_calendar_type', 'list' ) );
-						$calendars_created++;
-					}
-				}
+			if ( $create_calendars && $this->maybe_create_calendar( $team, $season_name, $season_term_id, $league_id ) ) {
+				$calendars_created++;
 			}
 
 			// 4. Optionally create empty roster (player list)
-			if ( $create_rosters ) {
-				// Idempotency: skip if a roster already exists for this
-				// team+season. The wizard re-POSTs this whole action once per
-				// 500-event archive chunk, so without this check a >500-event
-				// league would get a duplicate roster set per chunk (H5).
-				// sp_list stores sp_team as a scalar post ID (see below), so a
-				// direct meta value match is exact — no serialized LIKE needed.
-				$existing_list_ids = get_posts(
-					array(
-						'post_type'      => 'sp_list',
-						'post_status'    => 'any',
-						'posts_per_page' => 1,
-						'fields'         => 'ids',
-						'tax_query'      => array(
-							array(
-								'taxonomy' => 'sp_season',
-								'field'    => 'term_id',
-								'terms'    => $season_term_id,
-							),
-						),
-						'meta_query'     => array(
-							array(
-								'key'   => 'sp_team',
-								'value' => (int) $team->ID,
-							),
-						),
-					)
-				);
-
-				if ( empty( $existing_list_ids ) ) {
-					$list_title = $team->post_title . ' — ' . $season_name . ' Roster';
-					$list_id = wp_insert_post(
-						array(
-							'post_type'   => 'sp_list',
-							'post_title'  => $list_title,
-							'post_status' => 'publish',
-						)
-					);
-					if ( $list_id && ! is_wp_error( $list_id ) ) {
-						update_post_meta( $list_id, 'sp_team', $team->ID );
-						wp_set_object_terms( $list_id, array( $season_term_id ), 'sp_season' );
-						wp_set_object_terms( $list_id, array( $league_id ), 'sp_league' );
-						$rosters_created++;
-					}
-				}
+			if ( $create_rosters && $this->maybe_create_roster( $team, $season_name, $season_term_id, $league_id ) ) {
+				$rosters_created++;
 			}
 		}
 
@@ -650,24 +552,8 @@ jQuery(document).ready(function($) {
 		$playoff_season_id = 0;
 		$playoff_name      = '';
 		if ( $create_playoffs ) {
-			$playoff_name     = SPEM_Rollover_Teams::playoff_name( $season_name );
-			$existing_playoff = get_term_by( 'name', $playoff_name, 'sp_season' );
-
-			if ( $existing_playoff ) {
-				$playoff_season_id = (int) $existing_playoff->term_id;
-			} else {
-				$playoff_result = wp_insert_term(
-					$playoff_name,
-					'sp_season',
-					array(
-						'slug'   => SPEM_Rollover_Teams::playoff_slug( $season_name ),
-						'parent' => $season_term_id,
-					)
-				);
-				if ( ! is_wp_error( $playoff_result ) ) {
-					$playoff_season_id = (int) $playoff_result['term_id'];
-				}
-			}
+			$playoff_name      = SPEM_Rollover_Teams::playoff_name( $season_name );
+			$playoff_season_id = $this->resolve_playoff_season( $season_name, $season_term_id );
 
 			// Playoff rosters mirror the regular season exactly (S2026 and
 			// S2026 Playoffs both carry 22 teams), so assign the same set.
@@ -678,25 +564,13 @@ jQuery(document).ready(function($) {
 			}
 		}
 
-		// 7. Optionally generate standings tables. generate() is idempotent per
-		// league+season, which matters because the archive loop re-runs this
-		// whole handler once per 500-event chunk.
+		// 7. Optionally generate standings tables.
 		$tables_created = 0;
 		if ( $create_tables ) {
-			if ( class_exists( 'SPEM_League_Table_Generator' ) ) {
-				$generator = new SPEM_League_Table_Generator();
-
-				foreach ( array_filter( array( $season_term_id, $playoff_season_id ) ) as $target_season ) {
-					$table = $generator->generate( $league_id, $target_season );
-					if ( ! is_wp_error( $table ) && ! empty( $table['created'] ) ) {
-						$tables_created++;
-					}
-				}
-			} else {
-				// Module disabled. Warn via the result rather than fataling — the
-				// rest of the rollover is still valid work.
-				$tables_created = -1;
-			}
+			$tables_created = $this->generate_standings_tables(
+				$league_id,
+				array_filter( array( $season_term_id, $playoff_season_id ) )
+			);
 		}
 
 		// 8. Update the default season for the dynamic standings shortcode.
@@ -713,6 +587,195 @@ jQuery(document).ready(function($) {
 			'events_archived'   => $events_archived,
 			'archive_done'      => $archive_done,
 		);
+	}
+
+	/**
+	 * Create a team's calendar for a season unless one already exists.
+	 *
+	 * Idempotency matters because the wizard re-POSTs the whole execute action
+	 * once per 500-event archive chunk.
+	 *
+	 * @param WP_Post $team           Team post.
+	 * @param string  $season_name    New season name (used in the title).
+	 * @param int     $season_term_id New season term ID.
+	 * @param int     $league_id      League term ID.
+	 * @return bool True when a calendar was created.
+	 */
+	private function maybe_create_calendar( $team, $season_name, $season_term_id, $league_id ) {
+		// Avoid serialize() in meta_query — narrow with a LIKE on the serialized
+		// fragment, then do a PHP-side team check to defend against false
+		// positives.
+		$season_cal_ids = get_posts(
+			array(
+				'post_type'      => 'sp_calendar',
+				'post_status'    => 'any',
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'tax_query'      => array(
+					array(
+						'taxonomy' => 'sp_season',
+						'field'    => 'term_id',
+						'terms'    => $season_term_id,
+					),
+				),
+				'meta_query'     => array(
+					array(
+						'key'     => 'sp_team',
+						'value'   => sprintf( 'i:%d;', (int) $team->ID ),
+						'compare' => 'LIKE',
+					),
+				),
+			)
+		);
+
+		if ( ! empty( $season_cal_ids ) ) {
+			update_meta_cache( 'post', $season_cal_ids );
+			foreach ( $season_cal_ids as $cal_id ) {
+				$cal_teams = (array) get_post_meta( $cal_id, 'sp_team', true );
+				if ( in_array( (int) $team->ID, array_map( 'intval', $cal_teams ), true ) ) {
+					return false;
+				}
+			}
+		}
+
+		$cal_id = wp_insert_post(
+			array(
+				'post_type'   => 'sp_calendar',
+				'post_title'  => $team->post_title . ' — ' . $season_name,
+				'post_status' => 'publish',
+			)
+		);
+
+		if ( ! $cal_id || is_wp_error( $cal_id ) ) {
+			return false;
+		}
+
+		update_post_meta( $cal_id, 'sp_team', array( $team->ID ) );
+		wp_set_object_terms( $cal_id, array( $season_term_id ), 'sp_season' );
+		wp_set_object_terms( $cal_id, array( $league_id ), 'sp_league' );
+		update_post_meta( $cal_id, 'sp_format', get_option( 'spem_calendar_type', 'list' ) );
+
+		return true;
+	}
+
+	/**
+	 * Create a team's empty roster for a season unless one already exists.
+	 *
+	 * Note that sp_list stores sp_team as a scalar post ID, so a direct meta
+	 * value match is exact — no serialized LIKE needed, unlike the calendar path.
+	 *
+	 * @param WP_Post $team           Team post.
+	 * @param string  $season_name    New season name (used in the title).
+	 * @param int     $season_term_id New season term ID.
+	 * @param int     $league_id      League term ID.
+	 * @return bool True when a roster was created.
+	 */
+	private function maybe_create_roster( $team, $season_name, $season_term_id, $league_id ) {
+		$existing_list_ids = get_posts(
+			array(
+				'post_type'      => 'sp_list',
+				'post_status'    => 'any',
+				'posts_per_page' => 1,
+				'fields'         => 'ids',
+				'tax_query'      => array(
+					array(
+						'taxonomy' => 'sp_season',
+						'field'    => 'term_id',
+						'terms'    => $season_term_id,
+					),
+				),
+				'meta_query'     => array(
+					array(
+						'key'   => 'sp_team',
+						'value' => (int) $team->ID,
+					),
+				),
+			)
+		);
+
+		if ( ! empty( $existing_list_ids ) ) {
+			return false;
+		}
+
+		$list_id = wp_insert_post(
+			array(
+				'post_type'   => 'sp_list',
+				'post_title'  => $team->post_title . ' — ' . $season_name . ' Roster',
+				'post_status' => 'publish',
+			)
+		);
+
+		if ( ! $list_id || is_wp_error( $list_id ) ) {
+			return false;
+		}
+
+		update_post_meta( $list_id, 'sp_team', $team->ID );
+		wp_set_object_terms( $list_id, array( $season_term_id ), 'sp_season' );
+		wp_set_object_terms( $list_id, array( $league_id ), 'sp_league' );
+
+		return true;
+	}
+
+	/**
+	 * Find or create the playoff season term for a season.
+	 *
+	 * Created as a hierarchical child, matching how every playoff term in the
+	 * live data is already modelled. Name and slug both come from the season
+	 * name so SPEM_Dynamic_Standings can pair them: it detects playoffs by
+	 * "Playoff" in the name and strips /-?playoffs?$/i from the slug.
+	 *
+	 * @param string $season_name    Regular season name.
+	 * @param int    $season_term_id Regular season term ID (becomes the parent).
+	 * @return int Playoff term ID, or 0 when creation failed.
+	 */
+	private function resolve_playoff_season( $season_name, $season_term_id ) {
+		$playoff_name     = SPEM_Rollover_Teams::playoff_name( $season_name );
+		$existing_playoff = get_term_by( 'name', $playoff_name, 'sp_season' );
+
+		if ( $existing_playoff ) {
+			return (int) $existing_playoff->term_id;
+		}
+
+		$playoff_result = wp_insert_term(
+			$playoff_name,
+			'sp_season',
+			array(
+				'slug'   => SPEM_Rollover_Teams::playoff_slug( $season_name ),
+				'parent' => $season_term_id,
+			)
+		);
+
+		return is_wp_error( $playoff_result ) ? 0 : (int) $playoff_result['term_id'];
+	}
+
+	/**
+	 * Generate a standings table per season term.
+	 *
+	 * The generator is idempotent per league+season, which matters because the
+	 * archive loop re-runs the whole rollover once per 500-event chunk.
+	 *
+	 * @param int   $league_id  League term ID.
+	 * @param int[] $season_ids Season term IDs to generate tables for.
+	 * @return int Number created, or -1 when the generator module is disabled.
+	 */
+	private function generate_standings_tables( $league_id, $season_ids ) {
+		// Module disabled. Report it rather than fataling — the rest of the
+		// rollover is still valid work.
+		if ( ! class_exists( 'SPEM_League_Table_Generator' ) ) {
+			return -1;
+		}
+
+		$generator = new SPEM_League_Table_Generator();
+		$created   = 0;
+
+		foreach ( $season_ids as $season_id ) {
+			$table = $generator->generate( $league_id, $season_id );
+			if ( ! is_wp_error( $table ) && ! empty( $table['created'] ) ) {
+				$created++;
+			}
+		}
+
+		return $created;
 	}
 
 	/**
