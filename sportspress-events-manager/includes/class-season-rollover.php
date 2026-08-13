@@ -492,24 +492,14 @@ jQuery(document).ready(function($) {
 		}
 
 		// 2. Resolve the selected teams
-		$team_ids = array_map( 'intval', (array) $team_ids );
-		if ( empty( $team_ids ) ) {
-			return new WP_Error( 'no_teams', __( 'No teams were selected for the new season.', 'sportspress-events-manager' ) );
+		$teams = $this->resolve_selected_teams( $team_ids );
+		if ( is_wp_error( $teams ) ) {
+			return $teams;
 		}
-
-		$teams = get_posts(
-			array(
-				'post_type'      => 'sp_team',
-				'post_status'    => 'publish',
-				'posts_per_page' => -1,
-				'post__in'       => $team_ids,
-				'orderby'        => 'post__in',
-			)
-		);
 
 		// A selected team deleted or unpublished between preview and execute is
 		// an ordinary race; report the count rather than aborting the rollover.
-		$teams_skipped = count( $team_ids ) - count( $teams );
+		$teams_skipped = count( array_map( 'intval', (array) $team_ids ) ) - count( $teams );
 
 		// 3/4. Assign the season and optionally scaffold calendars and rosters.
 		$counts          = $this->assign_teams_to_season( $teams, $season_name, $season_term_id, $league_id, $options );
@@ -583,6 +573,34 @@ jQuery(document).ready(function($) {
 		}
 
 		return (int) $result['term_id'];
+	}
+
+	/**
+	 * Turn a validated ID list into published team posts, preserving order.
+	 *
+	 * The IDs have already been intersected against published sp_team posts by
+	 * SPEM_Rollover_Teams::sanitize_ids(); this re-queries so the executor works
+	 * on live post objects rather than trusting the request.
+	 *
+	 * @param int[] $team_ids Validated team IDs.
+	 * @return WP_Post[]|WP_Error Team posts, or an error when nothing was selected.
+	 */
+	private function resolve_selected_teams( $team_ids ) {
+		$team_ids = array_map( 'intval', (array) $team_ids );
+
+		if ( empty( $team_ids ) ) {
+			return new WP_Error( 'no_teams', __( 'No teams were selected for the new season.', 'sportspress-events-manager' ) );
+		}
+
+		return get_posts(
+			array(
+				'post_type'      => 'sp_team',
+				'post_status'    => 'publish',
+				'posts_per_page' => -1,
+				'post__in'       => $team_ids,
+				'orderby'        => 'post__in',
+			)
+		);
 	}
 
 	/**
