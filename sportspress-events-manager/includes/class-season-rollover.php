@@ -13,6 +13,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+require_once __DIR__ . '/class-rollover-teams.php';
+
 class SPEM_Season_Rollover {
 
 	/**
@@ -61,17 +63,32 @@ jQuery(document).ready(function($) {
         $.post(ajaxurl, {
             action: 'spem_season_rollover_preview',
             _ajax_nonce: $('#spem_rollover_nonce').val(),
-            league: league,
+            source_season: $('#spem-rollover-source').val(),
             season_name: season
         }, function(response) {
             if (response.success) {
                 var d = response.data;
+                var carrying = {};
+                $.each(d.carry_over, function(i, t) { carrying[t.id] = true; });
+
                 var html = '<p><strong>Season:</strong> ' + $('<span>').text(d.season_name).html() + '</p>';
-                html += '<p><strong>Teams (' + d.teams.length + '):</strong></p><ul>';
-                $.each(d.teams, function(i, t) {
-                    html += '<li>' + $('<span>').text(t.name).html() + '</li>';
+                html += '<p><strong>Carrying forward (' + d.carry_over.length + '):</strong></p>';
+                html += '<div class=\"spem-team-list\" style=\"max-height:260px;overflow:auto;border:1px solid #ccd0d4;padding:8px;\">';
+                $.each(d.carry_over, function(i, t) {
+                    html += '<label style=\"display:block;\"><input type=\"checkbox\" class=\"spem-team\" value=\"' + parseInt(t.id, 10) + '\" checked /> ' + $('<span>').text(t.name).html() + '</label>';
                 });
-                html += '</ul>';
+                html += '</div>';
+
+                html += '<p><strong>Add teams not in that season:</strong> <input type=\"search\" id=\"spem-team-filter\" placeholder=\"Filter…\" /></p>';
+                html += '<div class=\"spem-team-pool\" style=\"max-height:260px;overflow:auto;border:1px solid #ccd0d4;padding:8px;\">';
+                $.each(d.pool, function(i, t) {
+                    if (carrying[t.id]) return;
+                    var label = t.name + (t.last_season ? ' (last: ' + t.last_season + ')' : '');
+                    html += '<label style=\"display:block;\" data-name=\"' + $('<span>').text(t.name.toLowerCase()).html() + '\"><input type=\"checkbox\" class=\"spem-team\" value=\"' + parseInt(t.id, 10) + '\" /> ' + $('<span>').text(label).html() + '</label>';
+                });
+                html += '</div>';
+                html += '<p><strong>Selected: <span id=\"spem-team-count\">' + d.carry_over.length + '</span> teams</strong></p>';
+
                 \$preview.html(html);
                 \$execute.show();
             } else {
@@ -79,6 +96,25 @@ jQuery(document).ready(function($) {
             }
         });
     });
+
+    // Live count so the operator can sanity-check 31 against an expected 30-34.
+    \$section.on('change', '.spem-team', function() {
+        $('#spem-team-count').text(\$section.find('.spem-team:checked').length);
+    });
+
+    \$section.on('input', '#spem-team-filter', function() {
+        var q = $(this).val().toLowerCase();
+        \$section.find('.spem-team-pool label').each(function() {
+            var \$l = $(this);
+            \$l.toggle(!q || \$l.attr('data-name').indexOf(q) !== -1);
+        });
+    });
+
+    function selectedTeamIds() {
+        return \$section.find('.spem-team:checked').map(function() {
+            return parseInt(this.value, 10);
+        }).get();
+    }
 
     // Hard cap on continuation chunks. archive_old_events processes 500 events
     // per call, so the default of 50 iterations covers 25,000 events — well past
@@ -136,6 +172,10 @@ jQuery(document).ready(function($) {
             html += '<li>Teams updated: ' + d.teams_updated + '</li>';
             if (d.calendars_created > 0) html += '<li>Calendars created: ' + d.calendars_created + '</li>';
             if (d.rosters_created > 0) html += '<li>Rosters created: ' + d.rosters_created + '</li>';
+            if (d.playoff_season) html += '<li>Playoff season created: ' + $('<span>').text(d.playoff_season).html() + '</li>';
+            if (d.tables_created > 0) html += '<li>Standings tables generated: ' + d.tables_created + '</li>';
+            if (d.tables_created === -1) html += '<li><strong>Standings not generated:</strong> enable the League Table Generator module.</li>';
+            if (d.teams_skipped > 0) html += '<li><strong>Teams skipped:</strong> ' + d.teams_skipped + ' (no longer published)</li>';
             if (totalArchived > 0) html += '<li>Events archived: ' + totalArchived + '</li>';
             html += '</ul></div>';
             \$result.html(html);
@@ -151,13 +191,25 @@ jQuery(document).ready(function($) {
         \$btn.prop('disabled', true);
         \$result.html('<p>Processing...</p>');
 
+        // team_ids lives in baseParams because archiveLoop() re-posts these
+        // verbatim once per 500-event chunk; reading the checkboxes fresh each
+        // time would break if the operator touched the list mid-run.
         var baseParams = {
             league: $('#spem-rollover-league').val(),
             season_name: $('#spem-rollover-season').val(),
+            team_ids: selectedTeamIds(),
             create_calendars: $('#spem-rollover-calendars').is(':checked') ? 1 : 0,
             create_rosters: $('#spem-rollover-rosters').is(':checked') ? 1 : 0,
-            archive_old: $('#spem-rollover-archive').is(':checked') ? 1 : 0
+            archive_old: $('#spem-rollover-archive').is(':checked') ? 1 : 0,
+            create_playoffs: $('#spem-rollover-playoffs').is(':checked') ? 1 : 0,
+            create_tables: $('#spem-rollover-tables').is(':checked') ? 1 : 0
         };
+
+        if (!baseParams.team_ids.length) {
+            \$result.html('<div class=\"notice notice-error\"><p>Select at least one team for the new season.</p></div>');
+            \$btn.prop('disabled', false);
+            return;
+        }
 
         executeRollover(baseParams).done(function(response) {
             if (!response.success) {
@@ -194,6 +246,35 @@ jQuery(document).ready(function($) {
 			<?php wp_nonce_field( 'spem_season_rollover', 'spem_rollover_nonce' ); ?>
 
 			<table class="form-table">
+				<tr>
+					<th scope="row"><label for="spem-rollover-source"><?php esc_html_e( 'Carry Teams From', 'sportspress-events-manager' ); ?></label></th>
+					<td>
+						<select id="spem-rollover-source">
+							<option value=""><?php esc_html_e( '— Start with no teams —', 'sportspress-events-manager' ); ?></option>
+							<?php
+							$season_terms = get_terms(
+								array(
+									'taxonomy'   => 'sp_season',
+									'hide_empty' => false,
+									'orderby'    => 'term_id',
+									'order'      => 'DESC',
+								)
+							);
+							$current_season = absint( get_option( 'spem_current_season_id', 0 ) );
+							if ( ! empty( $season_terms ) && ! is_wp_error( $season_terms ) ) :
+								foreach ( $season_terms as $season_term ) :
+									?>
+									<option value="<?php echo esc_attr( $season_term->term_id ); ?>" <?php selected( $season_term->term_id, $current_season ); ?>>
+										<?php echo esc_html( $season_term->name ); ?>
+									</option>
+									<?php
+								endforeach;
+							endif;
+							?>
+						</select>
+						<p class="description"><?php esc_html_e( 'Its teams are pre-selected below. Untick any that are not returning, then add newcomers.', 'sportspress-events-manager' ); ?></p>
+					</td>
+				</tr>
 				<tr>
 					<th scope="row"><label for="spem-rollover-league"><?php esc_html_e( 'League', 'sportspress-events-manager' ); ?></label></th>
 					<td>
@@ -235,6 +316,14 @@ jQuery(document).ready(function($) {
 						<th scope="row"><?php esc_html_e( 'Archive Old Season', 'sportspress-events-manager' ); ?></th>
 						<td><label><input type="checkbox" id="spem-rollover-archive" /> <?php esc_html_e( 'Mark old season events in this league as past', 'sportspress-events-manager' ); ?></label></td>
 					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Create Playoff Season', 'sportspress-events-manager' ); ?></th>
+						<td><label><input type="checkbox" id="spem-rollover-playoffs" /> <?php esc_html_e( 'Also create a "… Playoffs" season with the same teams', 'sportspress-events-manager' ); ?></label></td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Generate Standings', 'sportspress-events-manager' ); ?></th>
+						<td><label><input type="checkbox" id="spem-rollover-tables" /> <?php esc_html_e( 'Generate a league table for each season created', 'sportspress-events-manager' ); ?></label></td>
+					</tr>
 				</table>
 				<p><button type="button" id="spem-rollover-execute-btn" class="button button-primary"><?php esc_html_e( 'Execute Rollover', 'sportspress-events-manager' ); ?></button></p>
 			</div>
@@ -254,34 +343,40 @@ jQuery(document).ready(function($) {
 			wp_send_json_error( __( 'Permission denied.', 'sportspress-events-manager' ) );
 		}
 
-		$league_id   = isset( $_POST['league'] ) ? absint( $_POST['league'] ) : 0;
-		$season_name = isset( $_POST['season_name'] ) ? trim( sanitize_text_field( wp_unslash( $_POST['season_name'] ) ) ) : '';
+		$source_season = isset( $_POST['source_season'] ) ? absint( $_POST['source_season'] ) : 0;
+		$season_name   = isset( $_POST['season_name'] ) ? trim( sanitize_text_field( wp_unslash( $_POST['season_name'] ) ) ) : '';
 
-		if ( ! $league_id || empty( $season_name ) ) {
-			wp_send_json_error( __( 'League and season name are required.', 'sportspress-events-manager' ) );
+		if ( empty( $season_name ) ) {
+			wp_send_json_error( __( 'A new season name is required.', 'sportspress-events-manager' ) );
 		}
 
 		if ( ! $this->is_valid_season_name( $season_name ) ) {
 			wp_send_json_error( $this->season_name_error_message() );
 		}
 
-		$teams = $this->get_league_teams( $league_id );
-		if ( empty( $teams ) ) {
-			wp_send_json_error( __( 'No teams found in the selected league.', 'sportspress-events-manager' ) );
-		}
+		// A source season is optional: an operator standing up a brand-new
+		// league has nothing to carry forward and builds the list from the pool.
+		$carry_over = array();
+		if ( $source_season ) {
+			$term = get_term( $source_season, 'sp_season' );
+			if ( ! $term || is_wp_error( $term ) ) {
+				wp_send_json_error( __( 'Invalid source season.', 'sportspress-events-manager' ) );
+			}
 
-		$team_list = array();
-		foreach ( $teams as $team ) {
-			$team_list[] = array(
-				'id' => $team->ID,
-				'name' => $team->post_title,
-			);
+			foreach ( $this->get_season_teams( $source_season ) as $team ) {
+				$carry_over[] = array(
+					'id'   => (int) $team->ID,
+					'name' => $team->post_title,
+				);
+			}
 		}
 
 		wp_send_json_success(
 			array(
-				'season_name' => $season_name,
-				'teams'       => $team_list,
+				'season_name'   => $season_name,
+				'source_season' => $source_season,
+				'carry_over'    => $carry_over,
+				'pool'          => $this->get_team_pool(),
 			)
 		);
 	}
@@ -296,11 +391,22 @@ jQuery(document).ready(function($) {
 			wp_send_json_error( __( 'Permission denied.', 'sportspress-events-manager' ) );
 		}
 
-		$league_id        = isset( $_POST['league'] ) ? absint( $_POST['league'] ) : 0;
-		$season_name      = isset( $_POST['season_name'] ) ? trim( sanitize_text_field( wp_unslash( $_POST['season_name'] ) ) ) : '';
-		$create_calendars = ! empty( $_POST['create_calendars'] );
-		$create_rosters   = ! empty( $_POST['create_rosters'] );
-		$archive_old      = ! empty( $_POST['archive_old'] );
+		$league_id   = isset( $_POST['league'] ) ? absint( $_POST['league'] ) : 0;
+		$season_name = isset( $_POST['season_name'] ) ? trim( sanitize_text_field( wp_unslash( $_POST['season_name'] ) ) ) : '';
+
+		// Never trust the posted list: intersect it against published sp_team
+		// posts server-side. sanitize_ids() casts every element to int and drops
+		// anything not in the whitelist.
+		$raw_team_ids = isset( $_POST['team_ids'] ) ? wp_unslash( $_POST['team_ids'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- sanitized by sanitize_ids() on the next line.
+		$team_ids     = SPEM_Rollover_Teams::sanitize_ids( $raw_team_ids, $this->get_valid_team_ids() );
+
+		$options = array(
+			'create_calendars' => ! empty( $_POST['create_calendars'] ),
+			'create_rosters'   => ! empty( $_POST['create_rosters'] ),
+			'archive_old'      => ! empty( $_POST['archive_old'] ),
+			'create_playoffs'  => ! empty( $_POST['create_playoffs'] ),
+			'create_tables'    => ! empty( $_POST['create_tables'] ),
+		);
 
 		if ( ! $league_id || empty( $season_name ) ) {
 			wp_send_json_error( __( 'League and season name are required.', 'sportspress-events-manager' ) );
@@ -308,6 +414,10 @@ jQuery(document).ready(function($) {
 
 		if ( ! $this->is_valid_season_name( $season_name ) ) {
 			wp_send_json_error( $this->season_name_error_message() );
+		}
+
+		if ( empty( $team_ids ) ) {
+			wp_send_json_error( __( 'Select at least one team for the new season.', 'sportspress-events-manager' ) );
 		}
 
 		// Serialize per league. The season/team/calendar/roster steps are
@@ -326,8 +436,8 @@ jQuery(document).ready(function($) {
 			$result = SPAT_Lock::with(
 				'spem_rollover_' . $league_id,
 				self::ROLLOVER_LOCK_TTL,
-				function () use ( $league_id, $season_name, $create_calendars, $create_rosters, $archive_old ) {
-					return $this->run_rollover( $league_id, $season_name, $create_calendars, $create_rosters, $archive_old );
+				function () use ( $league_id, $season_name, $team_ids, $options ) {
+					return $this->run_rollover( $league_id, $season_name, $team_ids, $options );
 				}
 			);
 
@@ -337,7 +447,7 @@ jQuery(document).ready(function($) {
 				wp_send_json_error( __( 'A season rollover is already running for this league. Please wait for it to finish.', 'sportspress-events-manager' ) );
 			}
 		} else {
-			$result = $this->run_rollover( $league_id, $season_name, $create_calendars, $create_rosters, $archive_old );
+			$result = $this->run_rollover( $league_id, $season_name, $team_ids, $options );
 		}
 
 		if ( is_wp_error( $result ) ) {
@@ -351,14 +461,25 @@ jQuery(document).ready(function($) {
 	 * Perform the rollover. Runs inside the per-league mutex, so it must never
 	 * emit output or exit — every failure path returns a WP_Error instead.
 	 *
-	 * @param int    $league_id        League term ID.
-	 * @param string $season_name      Validated new season name.
-	 * @param bool   $create_calendars Whether to create per-team calendars.
-	 * @param bool   $create_rosters   Whether to create per-team player lists.
-	 * @param bool   $archive_old      Whether to archive a chunk of old events.
+	 * The caller supplies the team list. Team membership used to be derived from
+	 * the league term, but sp_league accumulates over a team's whole history —
+	 * Division 4 carries 55 teams of which 13 played S2026 — so derivation
+	 * assigned roughly four times too many teams to every new season.
+	 *
+	 * @param int    $league_id   League term ID (scopes archiving and tagging).
+	 * @param string $season_name Validated new season name.
+	 * @param int[]  $team_ids    Validated published sp_team IDs.
+	 * @param array  $options     create_calendars, create_rosters, archive_old,
+	 *                            create_playoffs, create_tables.
 	 * @return array|WP_Error Response payload for the wizard, or an error.
 	 */
-	private function run_rollover( $league_id, $season_name, $create_calendars, $create_rosters, $archive_old ) {
+	public function run_rollover( $league_id, $season_name, $team_ids, $options ) {
+		$create_calendars = ! empty( $options['create_calendars'] );
+		$create_rosters   = ! empty( $options['create_rosters'] );
+		$archive_old      = ! empty( $options['archive_old'] );
+		$create_playoffs  = ! empty( $options['create_playoffs'] );
+		$create_tables    = ! empty( $options['create_tables'] );
+
 		// 1. Create new season term
 		$existing = get_term_by( 'name', $season_name, 'sp_season' );
 		if ( $existing ) {
@@ -371,11 +492,25 @@ jQuery(document).ready(function($) {
 			$season_term_id = $result['term_id'];
 		}
 
-		// 2. Get teams and assign new season
-		$teams = $this->get_league_teams( $league_id );
-		if ( empty( $teams ) ) {
-			return new WP_Error( 'no_teams', __( 'No teams found in the selected league.', 'sportspress-events-manager' ) );
+		// 2. Resolve the selected teams
+		$team_ids = array_map( 'intval', (array) $team_ids );
+		if ( empty( $team_ids ) ) {
+			return new WP_Error( 'no_teams', __( 'No teams were selected for the new season.', 'sportspress-events-manager' ) );
 		}
+
+		$teams = get_posts(
+			array(
+				'post_type'      => 'sp_team',
+				'post_status'    => 'publish',
+				'posts_per_page' => -1,
+				'post__in'       => $team_ids,
+				'orderby'        => 'post__in',
+			)
+		);
+
+		// A selected team deleted or unpublished between preview and execute is
+		// an ordinary race; report the count rather than aborting the rollover.
+		$teams_skipped = count( $team_ids ) - count( $teams );
 
 		$teams_updated     = 0;
 		$calendars_created = 0;
@@ -505,38 +640,175 @@ jQuery(document).ready(function($) {
 			$archive_done     = $archive_result['done'];
 		}
 
-		// 6. Update the default season for the dynamic standings shortcode.
+		// 6. Optionally create the playoff season as a child term.
+		//
+		// Hierarchy matches existing practice — every playoff term in the live
+		// data is already a child of its season. The naming is what the standings
+		// widget actually keys on: it detects playoffs by "Playoff" in the NAME
+		// and pairs them to a season by stripping /-?playoffs?$/i from the SLUG.
+		// Deriving both from the season name keeps that pairing intact.
+		$playoff_season_id = 0;
+		$playoff_name      = '';
+		if ( $create_playoffs ) {
+			$playoff_name     = SPEM_Rollover_Teams::playoff_name( $season_name );
+			$existing_playoff = get_term_by( 'name', $playoff_name, 'sp_season' );
+
+			if ( $existing_playoff ) {
+				$playoff_season_id = (int) $existing_playoff->term_id;
+			} else {
+				$playoff_result = wp_insert_term(
+					$playoff_name,
+					'sp_season',
+					array(
+						'slug'   => SPEM_Rollover_Teams::playoff_slug( $season_name ),
+						'parent' => $season_term_id,
+					)
+				);
+				if ( ! is_wp_error( $playoff_result ) ) {
+					$playoff_season_id = (int) $playoff_result['term_id'];
+				}
+			}
+
+			// Playoff rosters mirror the regular season exactly (S2026 and
+			// S2026 Playoffs both carry 22 teams), so assign the same set.
+			if ( $playoff_season_id ) {
+				foreach ( $teams as $team ) {
+					wp_set_object_terms( $team->ID, $playoff_season_id, 'sp_season', true );
+				}
+			}
+		}
+
+		// 7. Optionally generate standings tables. generate() is idempotent per
+		// league+season, which matters because the archive loop re-runs this
+		// whole handler once per 500-event chunk.
+		$tables_created = 0;
+		if ( $create_tables ) {
+			if ( class_exists( 'SPEM_League_Table_Generator' ) ) {
+				$generator = new SPEM_League_Table_Generator();
+
+				foreach ( array_filter( array( $season_term_id, $playoff_season_id ) ) as $target_season ) {
+					$table = $generator->generate( $league_id, $target_season );
+					if ( ! is_wp_error( $table ) && ! empty( $table['created'] ) ) {
+						$tables_created++;
+					}
+				}
+			} else {
+				// Module disabled. Warn via the result rather than fataling — the
+				// rest of the rollover is still valid work.
+				$tables_created = -1;
+			}
+		}
+
+		// 8. Update the default season for the dynamic standings shortcode.
 		update_option( 'spem_current_season_id', $season_term_id );
 
 		return array(
 			'season_name'       => $season_name,
+			'playoff_season'    => $playoff_name,
 			'teams_updated'     => $teams_updated,
+			'teams_skipped'     => $teams_skipped,
 			'calendars_created' => $calendars_created,
 			'rosters_created'   => $rosters_created,
+			'tables_created'    => $tables_created,
 			'events_archived'   => $events_archived,
 			'archive_done'      => $archive_done,
 		);
 	}
 
 	/**
-	 * Get all published teams in a league.
+	 * Published teams assigned to a season term.
 	 *
-	 * @param int $league_id League term ID.
-	 * @return WP_Post[] Array of team posts.
+	 * The include_children flag is off deliberately: sp_season is hierarchical
+	 * and playoff terms are real children of their season (S2026 Playoffs has
+	 * parent S2026), so the default would fold a season's playoff roster into
+	 * its regular-season roster.
+	 *
+	 * @param int $season_id sp_season term ID.
+	 * @return WP_Post[]
 	 */
-	private function get_league_teams( $league_id ) {
+	private function get_season_teams( $season_id ) {
 		return get_posts(
 			array(
 				'post_type'      => 'sp_team',
 				'post_status'    => 'publish',
 				'posts_per_page' => -1,
+				'orderby'        => 'title',
+				'order'          => 'ASC',
 				'tax_query'      => array(
 					array(
-						'taxonomy' => 'sp_league',
-						'field'    => 'term_id',
-						'terms'    => $league_id,
+						'taxonomy'         => 'sp_season',
+						'field'            => 'term_id',
+						'terms'            => (int) $season_id,
+						'include_children' => false,
 					),
 				),
+			)
+		);
+	}
+
+	/**
+	 * Every published team, with the most recent season it played.
+	 *
+	 * Feeds the "add a team not in the source season" picker. 143 teams on the
+	 * production install, so a single unpaginated pass is fine; the last-season
+	 * label is what makes a 143-row list usable.
+	 *
+	 * @return array List of array{id:int, name:string, last_season:string}.
+	 */
+	private function get_team_pool() {
+		$teams = get_posts(
+			array(
+				'post_type'      => 'sp_team',
+				'post_status'    => 'publish',
+				'posts_per_page' => -1,
+				'orderby'        => 'title',
+				'order'          => 'ASC',
+			)
+		);
+
+		$pool = array();
+
+		foreach ( $teams as $team ) {
+			// Highest term_id wins as "most recent": season terms are created in
+			// chronological order, and there is no date field on a term.
+			$seasons     = wp_get_object_terms( $team->ID, 'sp_season' );
+			$last_season = '';
+
+			if ( ! is_wp_error( $seasons ) && ! empty( $seasons ) ) {
+				usort(
+					$seasons,
+					static function ( $a, $b ) {
+						return $b->term_id <=> $a->term_id;
+					}
+				);
+				$last_season = $seasons[0]->name;
+			}
+
+			$pool[] = array(
+				'id'          => (int) $team->ID,
+				'name'        => $team->post_title,
+				'last_season' => $last_season,
+			);
+		}
+
+		return $pool;
+	}
+
+	/**
+	 * IDs of all published teams — the whitelist for posted selections.
+	 *
+	 * @return int[]
+	 */
+	private function get_valid_team_ids() {
+		return array_map(
+			'intval',
+			get_posts(
+				array(
+					'post_type'      => 'sp_team',
+					'post_status'    => 'publish',
+					'posts_per_page' => -1,
+					'fields'         => 'ids',
+				)
 			)
 		);
 	}
