@@ -383,6 +383,13 @@ jQuery(document).ready(function($) {
 
 	/**
 	 * AJAX handler: execute the season rollover.
+	 *
+	 * SPEM_Rollover_Teams is a stateless pure helper with no dependencies —
+	 * static access is what lets the standalone test harness exercise it with no
+	 * WordPress bootstrap. Injecting an instance purely to satisfy the linter
+	 * would buy nothing and cost testability.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function ajax_execute() {
 		check_ajax_referer( 'spem_season_rollover' );
@@ -474,22 +481,14 @@ jQuery(document).ready(function($) {
 	 * @return array|WP_Error Response payload for the wizard, or an error.
 	 */
 	public function run_rollover( $league_id, $season_name, $team_ids, $options ) {
-		$create_calendars = ! empty( $options['create_calendars'] );
-		$create_rosters   = ! empty( $options['create_rosters'] );
-		$archive_old      = ! empty( $options['archive_old'] );
-		$create_playoffs  = ! empty( $options['create_playoffs'] );
-		$create_tables    = ! empty( $options['create_tables'] );
+		$archive_old     = ! empty( $options['archive_old'] );
+		$create_playoffs = ! empty( $options['create_playoffs'] );
+		$create_tables   = ! empty( $options['create_tables'] );
 
-		// 1. Create new season term
-		$existing = get_term_by( 'name', $season_name, 'sp_season' );
-		if ( $existing ) {
-			$season_term_id = $existing->term_id;
-		} else {
-			$result = wp_insert_term( $season_name, 'sp_season' );
-			if ( is_wp_error( $result ) ) {
-				return $result;
-			}
-			$season_term_id = $result['term_id'];
+		// 1. Find or create the new season term
+		$season_term_id = $this->resolve_season_term( $season_name );
+		if ( is_wp_error( $season_term_id ) ) {
+			return $season_term_id;
 		}
 
 		// 2. Resolve the selected teams
@@ -512,34 +511,17 @@ jQuery(document).ready(function($) {
 		// an ordinary race; report the count rather than aborting the rollover.
 		$teams_skipped = count( $team_ids ) - count( $teams );
 
-		$teams_updated     = 0;
-		$calendars_created = 0;
-		$rosters_created   = 0;
-		$events_archived   = 0;
-
-		foreach ( $teams as $team ) {
-			// Append (not replace) the new season to the team
-			wp_set_object_terms( $team->ID, $season_term_id, 'sp_season', true );
-			$teams_updated++;
-
-			// 3. Optionally create calendar
-			if ( $create_calendars && $this->maybe_create_calendar( $team, $season_name, $season_term_id, $league_id ) ) {
-				$calendars_created++;
-			}
-
-			// 4. Optionally create empty roster (player list)
-			if ( $create_rosters && $this->maybe_create_roster( $team, $season_name, $season_term_id, $league_id ) ) {
-				$rosters_created++;
-			}
-		}
+		// 3/4. Assign the season and optionally scaffold calendars and rosters.
+		$counts          = $this->assign_teams_to_season( $teams, $season_name, $season_term_id, $league_id, $options );
+		$events_archived = 0;
 
 		// 5. Optionally archive old season events. Capped per call — the UI
 		// re-invokes the archive step until `archive_done` returns true.
 		$archive_done = true;
 		if ( $archive_old ) {
-			$archive_result   = $this->archive_old_events( $league_id, $season_term_id );
-			$events_archived  = $archive_result['count'];
-			$archive_done     = $archive_result['done'];
+			$archive_result  = $this->archive_old_events( $league_id, $season_term_id );
+			$events_archived = $archive_result['count'];
+			$archive_done    = $archive_result['done'];
 		}
 
 		// 6. Optionally create the playoff season as a child term.
@@ -552,16 +534,10 @@ jQuery(document).ready(function($) {
 		$playoff_season_id = 0;
 		$playoff_name      = '';
 		if ( $create_playoffs ) {
-			$playoff_name      = SPEM_Rollover_Teams::playoff_name( $season_name );
-			$playoff_season_id = $this->resolve_playoff_season( $season_name, $season_term_id );
+			$playoff = $this->resolve_playoff_season( $season_name, $season_term_id, $teams );
 
-			// Playoff rosters mirror the regular season exactly (S2026 and
-			// S2026 Playoffs both carry 22 teams), so assign the same set.
-			if ( $playoff_season_id ) {
-				foreach ( $teams as $team ) {
-					wp_set_object_terms( $team->ID, $playoff_season_id, 'sp_season', true );
-				}
-			}
+			$playoff_season_id = $playoff['id'];
+			$playoff_name      = $playoff['name'];
 		}
 
 		// 7. Optionally generate standings tables.
@@ -579,14 +555,73 @@ jQuery(document).ready(function($) {
 		return array(
 			'season_name'       => $season_name,
 			'playoff_season'    => $playoff_name,
-			'teams_updated'     => $teams_updated,
+			'teams_updated'     => $counts['teams_updated'],
 			'teams_skipped'     => $teams_skipped,
-			'calendars_created' => $calendars_created,
-			'rosters_created'   => $rosters_created,
+			'calendars_created' => $counts['calendars_created'],
+			'rosters_created'   => $counts['rosters_created'],
 			'tables_created'    => $tables_created,
 			'events_archived'   => $events_archived,
 			'archive_done'      => $archive_done,
 		);
+	}
+
+	/**
+	 * Find an existing season term by name, or create it.
+	 *
+	 * @param string $season_name Validated season name.
+	 * @return int|WP_Error Term ID, or the insert error.
+	 */
+	private function resolve_season_term( $season_name ) {
+		$existing = get_term_by( 'name', $season_name, 'sp_season' );
+		if ( $existing ) {
+			return (int) $existing->term_id;
+		}
+
+		$result = wp_insert_term( $season_name, 'sp_season' );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		return (int) $result['term_id'];
+	}
+
+	/**
+	 * Assign the new season to each team and scaffold their optional records.
+	 *
+	 * The season is appended rather than replaced, so a team accumulates its
+	 * season history exactly as before.
+	 *
+	 * @param WP_Post[] $teams          Selected team posts.
+	 * @param string    $season_name    New season name.
+	 * @param int       $season_term_id New season term ID.
+	 * @param int       $league_id      League term ID.
+	 * @param array     $options        create_calendars, create_rosters.
+	 * @return array{teams_updated:int, calendars_created:int, rosters_created:int}
+	 */
+	private function assign_teams_to_season( $teams, $season_name, $season_term_id, $league_id, $options ) {
+		$create_calendars = ! empty( $options['create_calendars'] );
+		$create_rosters   = ! empty( $options['create_rosters'] );
+
+		$counts = array(
+			'teams_updated'     => 0,
+			'calendars_created' => 0,
+			'rosters_created'   => 0,
+		);
+
+		foreach ( $teams as $team ) {
+			wp_set_object_terms( $team->ID, $season_term_id, 'sp_season', true );
+			$counts['teams_updated']++;
+
+			if ( $create_calendars && $this->maybe_create_calendar( $team, $season_name, $season_term_id, $league_id ) ) {
+				$counts['calendars_created']++;
+			}
+
+			if ( $create_rosters && $this->maybe_create_roster( $team, $season_name, $season_term_id, $league_id ) ) {
+				$counts['rosters_created']++;
+			}
+		}
+
+		return $counts;
 	}
 
 	/**
@@ -724,28 +759,49 @@ jQuery(document).ready(function($) {
 	 * name so SPEM_Dynamic_Standings can pair them: it detects playoffs by
 	 * "Playoff" in the name and strips /-?playoffs?$/i from the slug.
 	 *
-	 * @param string $season_name    Regular season name.
-	 * @param int    $season_term_id Regular season term ID (becomes the parent).
-	 * @return int Playoff term ID, or 0 when creation failed.
+	 * SPEM_Rollover_Teams is a stateless pure helper with no dependencies —
+	 * static access is what lets the standalone test harness exercise it with no
+	 * WordPress bootstrap. Injecting an instance purely to satisfy the linter
+	 * would buy nothing and cost testability.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param string    $season_name    Regular season name.
+	 * @param int       $season_term_id Regular season term ID (becomes the parent).
+	 * @param WP_Post[] $teams          Teams to assign to the playoff season.
+	 * @return array{id:int, name:string} Term ID (0 on failure) and playoff name.
 	 */
-	private function resolve_playoff_season( $season_name, $season_term_id ) {
+	private function resolve_playoff_season( $season_name, $season_term_id, $teams ) {
 		$playoff_name     = SPEM_Rollover_Teams::playoff_name( $season_name );
 		$existing_playoff = get_term_by( 'name', $playoff_name, 'sp_season' );
 
 		if ( $existing_playoff ) {
-			return (int) $existing_playoff->term_id;
+			$playoff_id = (int) $existing_playoff->term_id;
+		} else {
+			$playoff_result = wp_insert_term(
+				$playoff_name,
+				'sp_season',
+				array(
+					'slug'   => SPEM_Rollover_Teams::playoff_slug( $season_name ),
+					'parent' => $season_term_id,
+				)
+			);
+
+			$playoff_id = is_wp_error( $playoff_result ) ? 0 : (int) $playoff_result['term_id'];
 		}
 
-		$playoff_result = wp_insert_term(
-			$playoff_name,
-			'sp_season',
-			array(
-				'slug'   => SPEM_Rollover_Teams::playoff_slug( $season_name ),
-				'parent' => $season_term_id,
-			)
-		);
+		// Playoff rosters mirror the regular season exactly (S2026 and
+		// S2026 Playoffs both carry 22 teams), so assign the same set.
+		if ( $playoff_id ) {
+			foreach ( $teams as $team ) {
+				wp_set_object_terms( $team->ID, $playoff_id, 'sp_season', true );
+			}
+		}
 
-		return is_wp_error( $playoff_result ) ? 0 : (int) $playoff_result['term_id'];
+		return array(
+			'id'   => $playoff_id,
+			'name' => $playoff_name,
+		);
 	}
 
 	/**
