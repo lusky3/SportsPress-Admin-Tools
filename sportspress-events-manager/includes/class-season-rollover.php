@@ -15,6 +15,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 require_once __DIR__ . '/class-rollover-teams.php';
 require_once __DIR__ . '/class-naming.php';
+require_once __DIR__ . '/class-standings-pages.php';
+require_once __DIR__ . '/class-schedule-template.php';
 
 class SPEM_Season_Rollover {
 
@@ -253,6 +255,10 @@ jQuery(document).ready(function($) {
             if (d.tables_created > 0) html += '<li>Standings tables generated: ' + d.tables_created + '</li>';
             if (d.tables_created === -1) html += '<li><strong>Standings not generated:</strong> enable the League Table Generator module.</li>';
             if (d.teams_skipped > 0) html += '<li><strong>Teams skipped:</strong> ' + d.teams_skipped + ' (no longer published)</li>';
+            if (d.page_archived) html += '<li>Archived standings page created for ' + $('<span>').text(d.page_archived).html() + '</li>';
+            if (d.pages_updated > 0) html += '<li>Standings pages repointed: ' + d.pages_updated + '</li>';
+            if (d.pages_skipped) html += '<li><strong>Standings pages not updated:</strong> ' + $('<span>').text(d.pages_skipped).html() + '</li>';
+            if (d.schedule_template) html += '<li>Schedule generator draft saved: ' + $('<span>').text(d.schedule_template).html() + '</li>';
             if (totalArchived > 0) html += '<li>Events archived: ' + totalArchived + '</li>';
             html += '</ul></div>';
             \$result.html(html);
@@ -278,7 +284,9 @@ jQuery(document).ready(function($) {
             create_rosters: $('#spem-rollover-rosters').is(':checked') ? 1 : 0,
             archive_old: $('#spem-rollover-archive').is(':checked') ? 1 : 0,
             create_playoffs: $('#spem-rollover-playoffs').is(':checked') ? 1 : 0,
-            create_tables: $('#spem-rollover-tables').is(':checked') ? 1 : 0
+            create_tables: $('#spem-rollover-tables').is(':checked') ? 1 : 0,
+            update_pages: $('#spem-rollover-pages').is(':checked') ? 1 : 0,
+            create_schedule_template: $('#spem-rollover-schedule').is(':checked') ? 1 : 0
         };
 
         if (!Object.keys(baseParams.assignments).length) {
@@ -381,6 +389,20 @@ jQuery(document).ready(function($) {
 						<th scope="row"><?php esc_html_e( 'Generate Standings', 'sportspress-events-manager' ); ?></th>
 						<td><label><input type="checkbox" id="spem-rollover-tables" /> <?php esc_html_e( 'Generate a league table for each season created', 'sportspress-events-manager' ); ?></label></td>
 					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Schedule Template', 'sportspress-events-manager' ); ?></th>
+						<td>
+							<label><input type="checkbox" id="spem-rollover-schedule" /> <?php esc_html_e( 'Seed a schedule generator draft with these divisions and teams', 'sportspress-events-manager' ); ?></label>
+							<p class="description"><?php esc_html_e( 'You still set season dates, venues and time slots in the generator.', 'sportspress-events-manager' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Update Standings Pages', 'sportspress-events-manager' ); ?></th>
+						<td>
+							<label><input type="checkbox" id="spem-rollover-pages" /> <?php esc_html_e( 'Archive the outgoing season and point the standings pages at the new tables', 'sportspress-events-manager' ); ?></label>
+							<p class="description"><?php esc_html_e( 'Requires Generate Standings, and the page settings on this screen.', 'sportspress-events-manager' ); ?></p>
+						</td>
+					</tr>
 				</table>
 				<p><button type="button" id="spem-rollover-execute-btn" class="button button-primary"><?php esc_html_e( 'Execute Rollover', 'sportspress-events-manager' ); ?></button></p>
 			</div>
@@ -482,6 +504,8 @@ jQuery(document).ready(function($) {
 			'archive_old'      => ! empty( $_POST['archive_old'] ),
 			'create_playoffs'  => ! empty( $_POST['create_playoffs'] ),
 			'create_tables'    => ! empty( $_POST['create_tables'] ),
+			'update_pages'     => ! empty( $_POST['update_pages'] ),
+			'create_schedule_template' => ! empty( $_POST['create_schedule_template'] ),
 		);
 
 		if ( empty( $season_name ) ) {
@@ -611,13 +635,29 @@ jQuery(document).ready(function($) {
 		// which is how the data already works: S2026 has five tables, one for
 		// each of Divisions 1-5.
 		$tables_created = 0;
+		$table_ids      = array();
 		if ( $create_tables ) {
 			// Stamped from what actually resolved, not from the request — see
 			// assign_divisions()'s 'resolved' key.
-			$tables_created = $this->generate_division_tables( $totals['resolved'], $season_ids );
+			$generated      = $this->generate_division_tables( $totals['resolved'], $season_ids );
+			$tables_created = $generated['created'];
+			$table_ids      = $generated['tables'];
 		}
 
-		// 8. Point both current-season settings at the new season.
+		// 8. Optionally archive the outgoing season's standings page and repoint
+		// the live pages at the new tables. Only meaningful once the tables
+		// exist, because the pages render them by hardcoded ID.
+		$pages = $this->update_standings_pages( $options, $table_ids, $season_term_id, $playoff_season_id );
+
+		// 9. Optionally seed a schedule-generator draft from the same divisions,
+		// so the operator does not re-enter them by hand.
+		$schedule_template = '';
+		if ( ! empty( $options['create_schedule_template'] ) ) {
+			$seeder            = new SPEM_Schedule_Template();
+			$schedule_template = $seeder->create( $season_name, $totals['resolved'] );
+		}
+
+		// 10. Point both current-season settings at the new season.
 		//
 		// Two exist and they had drifted apart: spem_current_season_id drives the
 		// [arl_standings] widget, while sportspress_season is SportsPress core's
@@ -635,8 +675,40 @@ jQuery(document).ready(function($) {
 			'calendars_created' => $totals['calendars_created'],
 			'rosters_created'   => $totals['rosters_created'],
 			'tables_created'    => $tables_created,
+			'page_archived'     => $pages['archived'],
+			'pages_updated'     => $pages['updated'],
+			'pages_skipped'     => $pages['skipped'],
+			'schedule_template' => $schedule_template,
 			'events_archived'   => $archive['count'],
 			'archive_done'      => $archive['done'],
+		);
+	}
+
+	/**
+	 * Repoint the standings pages, if the operator asked for it.
+	 *
+	 * @param array $options           update_pages.
+	 * @param array $table_ids         Season term ID => table IDs.
+	 * @param int   $season_term_id    New season term ID.
+	 * @param int   $playoff_season_id New playoff term ID, or 0.
+	 * @return array{archived:string, updated:int, skipped:string}
+	 */
+	private function update_standings_pages( $options, $table_ids, $season_term_id, $playoff_season_id ) {
+		$idle = array(
+			'archived' => '',
+			'updated'  => 0,
+			'skipped'  => '',
+		);
+
+		if ( empty( $options['update_pages'] ) || empty( $table_ids ) ) {
+			return $idle;
+		}
+
+		$updater = new SPEM_Standings_Pages();
+
+		return $updater->update(
+			isset( $table_ids[ $season_term_id ] ) ? $table_ids[ $season_term_id ] : array(),
+			( $playoff_season_id && isset( $table_ids[ $playoff_season_id ] ) ) ? $table_ids[ $playoff_season_id ] : array()
 		);
 	}
 
@@ -706,10 +778,17 @@ jQuery(document).ready(function($) {
 	 *
 	 * @param array<int, int[]> $assignments league term ID => team post IDs.
 	 * @param int[]             $season_ids  Season terms to build tables for.
-	 * @return int Number created, or -1 when the generator module is disabled.
+	 * @return array{created:int, tables:array<int, int[]>} Count (-1 when the
+	 *         generator module is disabled) and, per season term, the table IDs
+	 *         in division order — which is what the standings pages render.
 	 */
 	private function generate_division_tables( $assignments, $season_ids ) {
 		$created = 0;
+		$tables  = array();
+
+		foreach ( $season_ids as $season_id ) {
+			$tables[ (int) $season_id ] = array();
+		}
 
 		foreach ( $assignments as $league_id => $team_ids ) {
 			$league_id = (int) $league_id;
@@ -718,17 +797,25 @@ jQuery(document).ready(function($) {
 			// -1 signals the generator module is disabled; propagate it once
 			// rather than accumulating a nonsense total.
 			if ( -1 === $made ) {
-				return -1;
+				return array(
+					'created' => -1,
+					'tables'  => array(),
+				);
 			}
 
 			$created += $made;
 
 			foreach ( $season_ids as $season_id ) {
-				$this->stamp_table_membership( $league_id, (int) $season_id, $team_ids );
+				$stamped = $this->stamp_table_membership( $league_id, (int) $season_id, $team_ids );
+
+				$tables[ (int) $season_id ] = array_merge( $tables[ (int) $season_id ], $stamped );
 			}
 		}
 
-		return $created;
+		return array(
+			'created' => $created,
+			'tables'  => $tables,
+		);
 	}
 
 	/**
@@ -740,7 +827,7 @@ jQuery(document).ready(function($) {
 	 * @param int   $league_id League term ID.
 	 * @param int   $season_id Season term ID.
 	 * @param int[] $team_ids  Teams assigned to this division.
-	 * @return void
+	 * @return int[] The table IDs that were stamped.
 	 */
 	private function stamp_table_membership( $league_id, $season_id, $team_ids ) {
 		$tables = get_posts(
@@ -777,6 +864,8 @@ jQuery(document).ready(function($) {
 				add_post_meta( $table_id, 'sp_team', (int) $team_id );
 			}
 		}
+
+		return array_map( 'intval', $tables );
 	}
 
 	/**

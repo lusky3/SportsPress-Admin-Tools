@@ -51,6 +51,10 @@ class SPEM_Admin {
 		$list_include_team     = get_option( 'spem_list_include_team', '1' );
 		$list_include_division = get_option( 'spem_list_include_division', '0' );
 		$list_include_season   = get_option( 'spem_list_include_season', '1' );
+
+		$standings_page_id = absint( get_option( 'spem_standings_page_id', 0 ) );
+		$playoffs_page_id  = absint( get_option( 'spem_playoffs_page_id', 0 ) );
+		$archive_parent_id = absint( get_option( 'spem_standings_archive_parent_id', 0 ) );
 		?>
 		<form method="post">
 			<?php wp_nonce_field( 'spem_admin_actions', 'spem_admin_nonce' ); ?>
@@ -169,6 +173,62 @@ class SPEM_Admin {
 				</tr>
 			</table>
 
+			<h2><?php esc_html_e( 'Standings Pages', 'sportspress-events-manager' ); ?></h2>
+			<p class="description">
+				<?php esc_html_e( 'Which pages the season rollover keeps in step. The two live pages are updated together, and the outgoing season is archived beneath the archive parent.', 'sportspress-events-manager' ); ?>
+			</p>
+			<table class="form-table">
+				<tr>
+					<th scope="row"><label for="spem_standings_page_id"><?php esc_html_e( 'Current Standings Page', 'sportspress-events-manager' ); ?></label></th>
+					<td>
+						<?php
+						wp_dropdown_pages(
+							array(
+								'name'             => 'spem_standings_page_id',
+								'id'               => 'spem_standings_page_id',
+								'selected'         => $standings_page_id,
+								'show_option_none' => __( '— None —', 'sportspress-events-manager' ),
+								'option_none_value' => 0,
+							)
+						);
+						?>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="spem_playoffs_page_id"><?php esc_html_e( 'Current Playoffs Page', 'sportspress-events-manager' ); ?></label></th>
+					<td>
+						<?php
+						wp_dropdown_pages(
+							array(
+								'name'             => 'spem_playoffs_page_id',
+								'id'               => 'spem_playoffs_page_id',
+								'selected'         => $playoffs_page_id,
+								'show_option_none' => __( '— None —', 'sportspress-events-manager' ),
+								'option_none_value' => 0,
+							)
+						);
+						?>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="spem_standings_archive_parent_id"><?php esc_html_e( 'Archive Parent Page', 'sportspress-events-manager' ); ?></label></th>
+					<td>
+						<?php
+						wp_dropdown_pages(
+							array(
+								'name'             => 'spem_standings_archive_parent_id',
+								'id'               => 'spem_standings_archive_parent_id',
+								'selected'         => $archive_parent_id,
+								'show_option_none' => __( '— None —', 'sportspress-events-manager' ),
+								'option_none_value' => 0,
+							)
+						);
+						?>
+						<p class="description"><?php esc_html_e( 'Each finished season gets a "Standings | <season>" child page here.', 'sportspress-events-manager' ); ?></p>
+					</td>
+				</tr>
+			</table>
+
 			<?php submit_button( __( 'Save Settings', 'sportspress-events-manager' ), 'primary', 'save_settings' ); ?>
 		</form>
 
@@ -277,6 +337,10 @@ class SPEM_Admin {
 			update_option( 'spem_list_include_team', isset( $_POST['spem_list_include_team'] ) ? '1' : '0' );
 			update_option( 'spem_list_include_division', isset( $_POST['spem_list_include_division'] ) ? '1' : '0' );
 			update_option( 'spem_list_include_season', isset( $_POST['spem_list_include_season'] ) ? '1' : '0' );
+
+			update_option( 'spem_standings_page_id', isset( $_POST['spem_standings_page_id'] ) ? absint( wp_unslash( $_POST['spem_standings_page_id'] ) ) : 0 );
+			update_option( 'spem_playoffs_page_id', isset( $_POST['spem_playoffs_page_id'] ) ? absint( wp_unslash( $_POST['spem_playoffs_page_id'] ) ) : 0 );
+			update_option( 'spem_standings_archive_parent_id', isset( $_POST['spem_standings_archive_parent_id'] ) ? absint( wp_unslash( $_POST['spem_standings_archive_parent_id'] ) ) : 0 );
 			echo '<div class="notice notice-success"><p>' . esc_html__( 'Settings saved.', 'sportspress-events-manager' ) . '</p></div>';
 		}
 
