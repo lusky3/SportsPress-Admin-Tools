@@ -11,6 +11,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+require_once __DIR__ . '/class-naming.php';
+
 class SPEM_Events_Management {
 
 	/** Maximum data rows allowed in a single import. */
@@ -76,42 +78,29 @@ class SPEM_Events_Management {
 	 *
 	 * @param int $team_id The team post ID.
 	 * @return string The generated calendar title.
+	 *
+	 * SPEM_Naming and SPEM_Standings_Content are stateless pure helpers with no
+	 * dependencies — static access is exactly what lets the standalone harness
+	 * exercise them with no WordPress bootstrap. Injecting instances purely to
+	 * satisfy the linter would cost testability and buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function build_calendar_title( $team_id ) {
-		$prefix       = get_option( 'spem_naming_prefix', '' );
-		$suffix       = get_option( 'spem_naming_suffix', '' );
-		$separator    = get_option( 'spem_naming_separator', '|' );
-		$include_team = get_option( 'spem_include_team_name', '1' );
-		$include_div  = get_option( 'spem_include_division', '0' );
-
-		$parts = array();
-
-		if ( ! empty( $prefix ) ) {
-			$parts[] = $prefix;
+		$division     = '';
+		$team_leagues = wp_get_object_terms( $team_id, 'sp_league' );
+		if ( ! empty( $team_leagues ) && ! is_wp_error( $team_leagues ) ) {
+			$division = $team_leagues[0]->name;
 		}
 
-		if ( $include_team === '1' ) {
-			$parts[] = get_the_title( $team_id );
-		}
-
-		if ( $include_div === '1' ) {
-			$team_leagues = wp_get_object_terms( $team_id, 'sp_league' );
-			if ( ! empty( $team_leagues ) && ! is_wp_error( $team_leagues ) ) {
-				$parts[] = $team_leagues[0]->name;
-			}
-		}
-
-		if ( ! empty( $suffix ) ) {
-			$parts[] = $suffix;
-		}
-
-		// If no parts were added, fall back to team name
-		if ( empty( $parts ) ) {
-			return get_the_title( $team_id );
-		}
-
-		$sep = ! empty( $separator ) ? ' ' . trim( $separator ) . ' ' : ' ';
-		return implode( $sep, $parts );
+		return SPEM_Naming::build(
+			SPEM_Naming::settings( SPEM_Naming::calendar_keys() ),
+			array(
+				'team'     => get_the_title( $team_id ),
+				'division' => $division,
+				'season'   => '',
+			)
+		);
 	}
 
 	/**
