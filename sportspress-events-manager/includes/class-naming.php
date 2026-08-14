@@ -33,23 +33,14 @@ class SPEM_Naming {
 	 * @return string
 	 */
 	public static function build( array $settings, array $values ) {
-		$separator = isset( $settings['separator'] ) ? trim( (string) $settings['separator'] ) : '|';
-		$parts     = array();
+		$parts = array();
 
-		$candidates = array(
-			array( true, isset( $settings['prefix'] ) ? $settings['prefix'] : '' ),
-			array( ! empty( $settings['team'] ), isset( $values['team'] ) ? $values['team'] : '' ),
-			array( ! empty( $settings['division'] ), isset( $values['division'] ) ? $values['division'] : '' ),
-			array( ! empty( $settings['season'] ), isset( $values['season'] ) ? $values['season'] : '' ),
-			array( true, isset( $settings['suffix'] ) ? $settings['suffix'] : '' ),
-		);
+		// Fixed order. Prefix and suffix are always eligible; the middle three
+		// are gated by their own setting.
+		foreach ( array( 'prefix', 'team', 'division', 'season', 'suffix' ) as $part ) {
+			$value = self::resolve_part( $part, $settings, $values );
 
-		foreach ( $candidates as $candidate ) {
-			list( $enabled, $value ) = $candidate;
-
-			$value = trim( (string) $value );
-
-			if ( $enabled && '' !== $value ) {
+			if ( '' !== $value ) {
 				$parts[] = $value;
 			}
 		}
@@ -57,12 +48,34 @@ class SPEM_Naming {
 		// Every part disabled or empty: fall back to the team name so a
 		// misconfigured setting never produces an untitled post.
 		if ( ! $parts ) {
-			return trim( (string) ( isset( $values['team'] ) ? $values['team'] : '' ) );
+			return trim( (string) ( $values['team'] ?? '' ) );
 		}
 
-		$glue = '' !== $separator ? ' ' . $separator . ' ' : ' ';
+		$separator = trim( (string) ( $settings['separator'] ?? '|' ) );
+		$glue      = '' !== $separator ? ' ' . $separator . ' ' : ' ';
 
 		return implode( $glue, $parts );
+	}
+
+	/**
+	 * Resolve one title part, or '' when it is disabled or has no value.
+	 *
+	 * @param string $part     prefix, team, division, season or suffix.
+	 * @param array  $settings Settings array.
+	 * @param array  $values   Resolved values.
+	 * @return string
+	 */
+	private static function resolve_part( $part, array $settings, array $values ) {
+		// Prefix and suffix come from the settings and have no on/off flag.
+		if ( 'prefix' === $part || 'suffix' === $part ) {
+			return trim( (string) ( $settings[ $part ] ?? '' ) );
+		}
+
+		if ( empty( $settings[ $part ] ) ) {
+			return '';
+		}
+
+		return trim( (string) ( $values[ $part ] ?? '' ) );
 	}
 
 	/**

@@ -11,6 +11,11 @@ define( 'ABSPATH', __DIR__ );
 
 // Minimal stand-ins for the two WordPress functions the builder touches.
 if ( ! function_exists( '__' ) ) {
+	/**
+	 * Stub mirroring the WordPress signature; unused arguments are deliberate.
+	 *
+	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+	 */
 	function __( $text, $domain = '' ) { // phpcs:ignore
 		return $text;
 	}

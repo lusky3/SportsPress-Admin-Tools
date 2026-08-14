@@ -39,20 +39,7 @@ class SPEM_Schedule_Template {
 			return '';
 		}
 
-		$divisions = array();
-
-		foreach ( $assignments as $league_id => $team_ids ) {
-			$league = get_term( (int) $league_id, 'sp_league' );
-			if ( ! $league || is_wp_error( $league ) ) {
-				continue;
-			}
-
-			$divisions[] = array(
-				'id'    => (string) (int) $league_id,
-				'name'  => $league->name,
-				'teams' => array_map( 'strval', array_map( 'intval', $team_ids ) ),
-			);
-		}
+		$divisions = $this->build_divisions( $assignments );
 
 		if ( ! $divisions ) {
 			return '';
@@ -97,5 +84,34 @@ class SPEM_Schedule_Template {
 		update_option( self::OPTION_NAME, $configurations, 'no' );
 
 		return $sanitized['name'];
+	}
+
+	/**
+	 * Shape the rollover's assignments the way the generator expects.
+	 *
+	 * Divisions whose league term has vanished are dropped rather than emitted
+	 * nameless, since the generator lists them by name.
+	 *
+	 * @param array<int, int[]> $assignments league term ID => team post IDs.
+	 * @return array List of array{id:string, name:string, teams:string[]}.
+	 */
+	private function build_divisions( array $assignments ) {
+		$divisions = array();
+
+		foreach ( $assignments as $league_id => $team_ids ) {
+			$league = get_term( (int) $league_id, 'sp_league' );
+
+			if ( ! $league || is_wp_error( $league ) ) {
+				continue;
+			}
+
+			$divisions[] = array(
+				'id'    => (string) (int) $league_id,
+				'name'  => $league->name,
+				'teams' => array_map( 'strval', array_map( 'intval', $team_ids ) ),
+			);
+		}
+
+		return $divisions;
 	}
 }

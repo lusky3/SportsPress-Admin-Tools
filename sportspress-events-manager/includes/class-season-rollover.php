@@ -983,8 +983,7 @@ jQuery(document).ready(function($) {
 		$create_calendars = ! empty( $options['create_calendars'] );
 		$create_rosters   = ! empty( $options['create_rosters'] );
 
-		$season_ids     = array_map( 'intval', (array) $season_ids );
-		$season_term_id = $season_ids ? $season_ids[0] : 0;
+		$season_ids = array_map( 'intval', (array) $season_ids );
 
 		$counts = array(
 			'teams_updated'     => 0,
@@ -1038,6 +1037,13 @@ jQuery(document).ready(function($) {
 	 * @param int[]   $season_ids  New season term ID plus its playoff child.
 	 * @param int     $league_id   League term ID.
 	 * @return bool True when a calendar was created (not merely repointed).
+	 *
+	 * SPEM_Naming and SPEM_Standings_Content are stateless pure helpers with no
+	 * dependencies — static access is exactly what lets the standalone harness
+	 * exercise them with no WordPress bootstrap. Injecting instances purely to
+	 * satisfy the linter would cost testability and buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function maybe_create_calendar( $team, $season_name, $season_ids, $league_id ) {
 		$existing = $this->find_team_calendar( $team->ID );
@@ -1123,6 +1129,13 @@ jQuery(document).ready(function($) {
 	 * @param int     $league_id   League term ID, for the optional division part.
 	 * @param array   $defaults    Part defaults for this group.
 	 * @return string
+	 *
+	 * SPEM_Naming and SPEM_Standings_Content are stateless pure helpers with no
+	 * dependencies — static access is exactly what lets the standalone harness
+	 * exercise them with no WordPress bootstrap. Injecting instances purely to
+	 * satisfy the linter would cost testability and buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function build_title( array $keys, $team, $season_name, $league_id, array $defaults = array() ) {
 		$league   = get_term( $league_id, 'sp_league' );
@@ -1155,6 +1168,13 @@ jQuery(document).ready(function($) {
 	 * @param int[]   $season_ids  New season term ID plus its playoff child.
 	 * @param int     $league_id   League term ID.
 	 * @return bool True when a roster was created.
+	 *
+	 * SPEM_Naming and SPEM_Standings_Content are stateless pure helpers with no
+	 * dependencies — static access is exactly what lets the standalone harness
+	 * exercise them with no WordPress bootstrap. Injecting instances purely to
+	 * satisfy the linter would cost testability and buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function maybe_create_roster( $team, $season_name, $season_ids, $league_id ) {
 		$season_term_id = $season_ids ? (int) $season_ids[0] : 0;

@@ -14,10 +14,20 @@ define( 'ABSPATH', __DIR__ );
 
 $GLOBALS['test_options'] = array();
 
+/**
+ * Stub mirroring the WordPress signature; unused arguments are deliberate.
+ *
+ * @SuppressWarnings(PHPMD.Superglobals)
+ */
 function get_option( $key, $default = false ) {
 	return array_key_exists( $key, $GLOBALS['test_options'] ) ? $GLOBALS['test_options'][ $key ] : $default;
 }
 
+/**
+ * Stub mirroring the WordPress signature; unused arguments are deliberate.
+ *
+ * @SuppressWarnings(PHPMD.Superglobals,PHPMD.UnusedFormalParameter)
+ */
 function update_option( $key, $value, $autoload = null ) {
 	$GLOBALS['test_options'][ $key ] = $value;
 	return true;
@@ -31,10 +41,20 @@ function sanitize_text_field( $text ) {
 	return trim( strip_tags( (string) $text ) );
 }
 
+/**
+ * Stub mirroring the WordPress signature; unused arguments are deliberate.
+ *
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
 function current_time( $type ) {
 	return '2026-08-14 00:00:00';
 }
 
+/**
+ * Stub mirroring the WordPress signature; unused arguments are deliberate.
+ *
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
 function __( $text, $domain = '' ) { // phpcs:ignore
 	return $text;
 }
@@ -44,6 +64,11 @@ $GLOBALS['test_terms'] = array(
 	20 => 'Division 2',
 );
 
+/**
+ * Stub mirroring the WordPress signature; unused arguments are deliberate.
+ *
+ * @SuppressWarnings(PHPMD.Superglobals,PHPMD.UnusedFormalParameter)
+ */
 function get_term( $id, $taxonomy ) {
 	if ( ! isset( $GLOBALS['test_terms'][ $id ] ) ) {
 		return null;
@@ -52,6 +77,11 @@ function get_term( $id, $taxonomy ) {
 	return (object) array( 'term_id' => $id, 'name' => $GLOBALS['test_terms'][ $id ] );
 }
 
+/**
+ * Stub mirroring the WordPress signature; unused arguments are deliberate.
+ *
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
 function is_wp_error( $thing ) {
 	return false;
 }

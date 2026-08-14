@@ -78,6 +78,13 @@ class SPEM_Events_Management {
 	 *
 	 * @param int $team_id The team post ID.
 	 * @return string The generated calendar title.
+	 *
+	 * SPEM_Naming and SPEM_Standings_Content are stateless pure helpers with no
+	 * dependencies — static access is exactly what lets the standalone harness
+	 * exercise them with no WordPress bootstrap. Injecting instances purely to
+	 * satisfy the linter would cost testability and buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function build_calendar_title( $team_id ) {
 		$division     = '';

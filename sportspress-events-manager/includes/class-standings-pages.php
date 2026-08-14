@@ -40,80 +40,161 @@ class SPEM_Standings_Pages {
 	 * @return array{archived:string, updated:int, skipped:string} Result summary.
 	 */
 	public function update( array $regular_ids, array $playoff_ids ) {
-		$standings_id = (int) get_option( 'spem_standings_page_id', 0 );
-		$playoffs_id  = (int) get_option( 'spem_playoffs_page_id', 0 );
-		$archive_id   = (int) get_option( 'spem_standings_archive_parent_id', 0 );
-
 		$result = array(
 			'archived' => '',
 			'updated'  => 0,
 			'skipped'  => '',
 		);
 
-		if ( ! $standings_id ) {
-			$result['skipped'] = __( 'No standings page is configured.', 'sportspress-events-manager' );
+		$pages = $this->resolve_pages();
+		if ( isset( $pages['error'] ) ) {
+			$result['skipped'] = $pages['error'];
 
 			return $result;
+		}
+
+		$outgoing = $this->resolve_outgoing( $pages['standings'], $pages['playoffs'] );
+		if ( isset( $outgoing['error'] ) ) {
+			$result['skipped'] = $outgoing['error'];
+
+			return $result;
+		}
+
+		$result['archived'] = $this->maybe_archive( $outgoing );
+
+		$result['updated'] = $this->repoint( $pages, $regular_ids, $playoff_ids );
+
+		return $result;
+	}
+
+	/**
+	 * Load the configured pages.
+	 *
+	 * @return array{standings:WP_Post, playoffs:WP_Post|null}|array{error:string}
+	 */
+	private function resolve_pages() {
+		$standings_id = (int) get_option( 'spem_standings_page_id', 0 );
+
+		if ( ! $standings_id ) {
+			return array( 'error' => __( 'No standings page is configured.', 'sportspress-events-manager' ) );
 		}
 
 		$standings = get_post( $standings_id );
 		if ( ! $standings ) {
-			$result['skipped'] = __( 'The configured standings page no longer exists.', 'sportspress-events-manager' );
-
-			return $result;
+			return array( 'error' => __( 'The configured standings page no longer exists.', 'sportspress-events-manager' ) );
 		}
 
-		$playoffs = $playoffs_id ? get_post( $playoffs_id ) : null;
+		$playoffs_id = (int) get_option( 'spem_playoffs_page_id', 0 );
 
-		// Work out which season the pages are currently showing, from the tables
-		// they render rather than from their titles.
-		$outgoing_regular = SPEM_Standings_Content::extract_table_ids( $standings->post_content );
-		$outgoing_playoff = $playoffs ? SPEM_Standings_Content::extract_table_ids( $playoffs->post_content ) : array();
+		return array(
+			'standings' => $standings,
+			'playoffs'  => $playoffs_id ? get_post( $playoffs_id ) : null,
+		);
+	}
 
-		$regular_season = $this->season_of_tables( $outgoing_regular );
-		$playoff_season = $this->season_of_tables( $outgoing_playoff, true );
+	/**
+	 * Work out which season the live pages are currently showing.
+	 *
+	 * Read from the tables they render rather than their titles, and refused
+	 * when the two disagree — see update()'s note on half-finished moves.
+	 *
+	 * @param WP_Post      $standings Standings page.
+	 * @param WP_Post|null $playoffs  Playoffs page, when configured.
+	 * @return array{season:?array, regular:int[], playoff:int[]}|array{error:string}
+	 *
+	 * SPEM_Naming and SPEM_Standings_Content are stateless pure helpers with no
+	 * dependencies — static access is exactly what lets the standalone harness
+	 * exercise them with no WordPress bootstrap. Injecting instances purely to
+	 * satisfy the linter would cost testability and buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private function resolve_outgoing( $standings, $playoffs ) {
+		$regular_tables = SPEM_Standings_Content::extract_table_ids( $standings->post_content );
+		$playoff_tables = $playoffs ? SPEM_Standings_Content::extract_table_ids( $playoffs->post_content ) : array();
 
-		if ( $regular_season && $playoff_season && $regular_season['id'] !== $playoff_season['id'] ) {
-			$result['skipped'] = sprintf(
-				/* translators: 1: standings page season, 2: playoffs page season */
-				__( 'The standings page shows %1$s but the playoffs page shows %2$s. Reconcile them before rolling over, or the archive would capture two different seasons.', 'sportspress-events-manager' ),
-				$regular_season['name'],
-				$playoff_season['name']
+		$regular_season = $this->season_of_tables( $regular_tables );
+		$playoff_season = $this->season_of_tables( $playoff_tables, true );
+
+		$mismatch = $regular_season && $playoff_season && $regular_season['id'] !== $playoff_season['id'];
+
+		if ( $mismatch ) {
+			return array(
+				'error' => sprintf(
+					/* translators: 1: standings page season, 2: playoffs page season */
+					__( 'The standings page shows %1$s but the playoffs page shows %2$s. Reconcile them before rolling over, or the archive would capture two different seasons.', 'sportspress-events-manager' ),
+					$regular_season['name'],
+					$playoff_season['name']
+				),
 			);
-
-			return $result;
 		}
 
-		$outgoing = $regular_season ? $regular_season : $playoff_season;
+		return array(
+			'season'  => $regular_season ? $regular_season : $playoff_season,
+			'regular' => $regular_tables,
+			'playoff' => $playoff_tables,
+		);
+	}
 
-		// Archive whatever the pages were showing, if there was anything.
-		if ( $archive_id && $outgoing && ( $outgoing_regular || $outgoing_playoff ) ) {
-			$archived = $this->archive( $outgoing['name'], $archive_id, $outgoing_regular, $outgoing_playoff );
-			if ( $archived ) {
-				$result['archived'] = $outgoing['name'];
-			}
+	/**
+	 * Archive the outgoing season, when there is one and somewhere to put it.
+	 *
+	 * @param array $outgoing Output of resolve_outgoing().
+	 * @return string Archived season name, or ''.
+	 */
+	private function maybe_archive( array $outgoing ) {
+		$archive_id = (int) get_option( 'spem_standings_archive_parent_id', 0 );
+
+		if ( ! $archive_id || empty( $outgoing['season'] ) ) {
+			return '';
 		}
 
-		// Repoint both live pages together.
+		if ( ! $outgoing['regular'] && ! $outgoing['playoff'] ) {
+			return '';
+		}
+
+		$archived = $this->archive( $outgoing['season']['name'], $archive_id, $outgoing['regular'], $outgoing['playoff'] );
+
+		return $archived ? $outgoing['season']['name'] : '';
+	}
+
+	/**
+	 * Write the new table IDs onto both live pages.
+	 *
+	 * @param array $pages       Output of resolve_pages().
+	 * @param int[] $regular_ids New regular-season table IDs.
+	 * @param int[] $playoff_ids New playoff table IDs.
+	 * @return int Pages written.
+	 *
+	 * SPEM_Naming and SPEM_Standings_Content are stateless pure helpers with no
+	 * dependencies — static access is exactly what lets the standalone harness
+	 * exercise them with no WordPress bootstrap. Injecting instances purely to
+	 * satisfy the linter would cost testability and buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private function repoint( array $pages, array $regular_ids, array $playoff_ids ) {
+		$written = 0;
+
 		wp_update_post(
 			array(
-				'ID'           => $standings_id,
-				'post_content' => SPEM_Standings_Content::replace_table_ids( $standings->post_content, $regular_ids ),
+				'ID'           => $pages['standings']->ID,
+				'post_content' => SPEM_Standings_Content::replace_table_ids( $pages['standings']->post_content, $regular_ids ),
 			)
 		);
-		$result['updated']++;
+		$written++;
 
-		if ( $playoffs ) {
+		if ( $pages['playoffs'] ) {
 			wp_update_post(
 				array(
-					'ID'           => $playoffs_id,
-					'post_content' => SPEM_Standings_Content::replace_table_ids( $playoffs->post_content, $playoff_ids ),
+					'ID'           => $pages['playoffs']->ID,
+					'post_content' => SPEM_Standings_Content::replace_table_ids( $pages['playoffs']->post_content, $playoff_ids ),
 				)
 			);
-			$result['updated']++;
+			$written++;
 		}
 
-		return $result;
+		return $written;
 	}
 
 	/**
@@ -124,6 +205,13 @@ class SPEM_Standings_Pages {
 	 * @param int[]  $regular_ids Regular-season table IDs.
 	 * @param int[]  $playoff_ids Playoff table IDs.
 	 * @return int Archive page ID, or 0 on failure.
+	 *
+	 * SPEM_Naming and SPEM_Standings_Content are stateless pure helpers with no
+	 * dependencies — static access is exactly what lets the standalone harness
+	 * exercise them with no WordPress bootstrap. Injecting instances purely to
+	 * satisfy the linter would cost testability and buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function archive( $season_name, $parent_id, array $regular_ids, array $playoff_ids ) {
 		$title   = sprintf( 'Standings | %s', $season_name );
