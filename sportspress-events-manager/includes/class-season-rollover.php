@@ -602,8 +602,10 @@ jQuery(document).ready(function($) {
 		// each of Divisions 1-5.
 		$tables_created = 0;
 		if ( $create_tables ) {
+			// Stamped from what actually resolved, not from the request — see
+			// assign_divisions()'s 'resolved' key.
 			$tables_created = $this->generate_division_tables(
-				$assignments,
+				$totals['resolved'],
 				array_filter( array( $season_term_id, $playoff_season_id ) )
 			);
 		}
@@ -632,7 +634,7 @@ jQuery(document).ready(function($) {
 	 * @param string            $season_name    New season name.
 	 * @param int               $season_term_id New season term ID.
 	 * @param array             $options        create_calendars, create_rosters.
-	 * @return array{teams_updated:int, teams_skipped:int, calendars_created:int, rosters_created:int, teams:WP_Post[]}
+	 * @return array{teams_updated:int, teams_skipped:int, calendars_created:int, rosters_created:int, teams:WP_Post[], resolved:array<int, int[]>}
 	 */
 	private function assign_divisions( $assignments, $season_name, $season_term_id, $options ) {
 		$totals = array(
@@ -641,6 +643,11 @@ jQuery(document).ready(function($) {
 			'calendars_created' => 0,
 			'rosters_created'   => 0,
 			'teams'             => array(),
+			// What actually landed, per division. The standings tables are
+			// stamped from this rather than from the request, so a team that
+			// disappeared between preview and execute is left off the table
+			// instead of being listed in a division it never joined.
+			'resolved'          => array(),
 		);
 
 		foreach ( $assignments as $league_id => $team_ids ) {
@@ -659,6 +666,10 @@ jQuery(document).ready(function($) {
 			$totals['calendars_created'] += $counts['calendars_created'];
 			$totals['rosters_created']   += $counts['rosters_created'];
 			$totals['teams']              = array_merge( $totals['teams'], $teams );
+
+			if ( $teams ) {
+				$totals['resolved'][ (int) $league_id ] = array_map( 'intval', wp_list_pluck( $teams, 'ID' ) );
+			}
 		}
 
 		return $totals;
