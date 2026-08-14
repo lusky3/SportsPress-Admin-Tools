@@ -603,7 +603,7 @@ jQuery(document).ready(function($) {
 		$tables_created = 0;
 		if ( $create_tables ) {
 			$tables_created = $this->generate_division_tables(
-				array_keys( $assignments ),
+				$assignments,
 				array_filter( array( $season_term_id, $playoff_season_id ) )
 			);
 		}
@@ -665,20 +665,31 @@ jQuery(document).ready(function($) {
 	}
 
 	/**
-	 * Generate a standings table for every division/season combination.
+	 * Generate a standings table for every division/season combination, then
+	 * stamp each table with the division's assigned teams.
 	 *
 	 * One table per division per season is how the data already works: S2026
 	 * carries five tables, one each for Divisions 1-5.
 	 *
-	 * @param int[] $league_ids Divisions taking part in this rollover.
-	 * @param int[] $season_ids Season terms to build tables for.
+	 * The stamping is not optional. SPEM_League_Table_Generator populates a new
+	 * table's sp_team meta from a league-term-and-season query, and the league
+	 * term is cumulative history — a team that ever played Division 5 still
+	 * carries that term. Left alone, a team promoted from Division 4 to
+	 * Division 3 in this wizard lands on whichever historical division's table
+	 * its old terms match, so the operator's choice would have no effect on the
+	 * standings at all. The table's sp_team meta IS the record of who played a
+	 * division in a season, so it is written from the assignment.
+	 *
+	 * @param array<int, int[]> $assignments league term ID => team post IDs.
+	 * @param int[]             $season_ids  Season terms to build tables for.
 	 * @return int Number created, or -1 when the generator module is disabled.
 	 */
-	private function generate_division_tables( $league_ids, $season_ids ) {
+	private function generate_division_tables( $assignments, $season_ids ) {
 		$created = 0;
 
-		foreach ( $league_ids as $league_id ) {
-			$made = $this->generate_standings_tables( (int) $league_id, $season_ids );
+		foreach ( $assignments as $league_id => $team_ids ) {
+			$league_id = (int) $league_id;
+			$made      = $this->generate_standings_tables( $league_id, $season_ids );
 
 			// -1 signals the generator module is disabled; propagate it once
 			// rather than accumulating a nonsense total.
@@ -687,9 +698,61 @@ jQuery(document).ready(function($) {
 			}
 
 			$created += $made;
+
+			foreach ( $season_ids as $season_id ) {
+				$this->stamp_table_membership( $league_id, (int) $season_id, $team_ids );
+			}
 		}
 
 		return $created;
+	}
+
+	/**
+	 * Write a division's assigned teams onto its standings table.
+	 *
+	 * Mirrors the shape the live tables already use: a leading 0 row, which
+	 * SportsPress reserves for the table's totals, followed by one row per team.
+	 *
+	 * @param int   $league_id League term ID.
+	 * @param int   $season_id Season term ID.
+	 * @param int[] $team_ids  Teams assigned to this division.
+	 * @return void
+	 */
+	private function stamp_table_membership( $league_id, $season_id, $team_ids ) {
+		$tables = get_posts(
+			array(
+				'post_type'      => 'sp_table',
+				'post_status'    => 'publish',
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'tax_query'      => array(
+					'relation' => 'AND',
+					array(
+						'taxonomy'         => 'sp_league',
+						'field'            => 'term_id',
+						'terms'            => $league_id,
+						'include_children' => false,
+					),
+					array(
+						'taxonomy'         => 'sp_season',
+						'field'            => 'term_id',
+						'terms'            => $season_id,
+						'include_children' => false,
+					),
+				),
+			)
+		);
+
+		foreach ( $tables as $table_id ) {
+			delete_post_meta( $table_id, 'sp_team' );
+
+			// The reserved totals row first, matching every hand-built table.
+			add_post_meta( $table_id, 'sp_team', 0 );
+
+			foreach ( $team_ids as $team_id ) {
+				add_post_meta( $table_id, 'sp_team', (int) $team_id );
+			}
+		}
 	}
 
 	/**
@@ -815,6 +878,14 @@ jQuery(document).ready(function($) {
 
 		foreach ( $teams as $team ) {
 			wp_set_object_terms( $team->ID, $season_term_id, 'sp_season', true );
+
+			// Append the division so a promoted team is discoverable under it —
+			// anything querying teams by league (the schedule generator, for one)
+			// would otherwise never see it there. Appending keeps the term
+			// cumulative, which is why the standings table's sp_team meta, not
+			// this term, is treated as the record of who played a division.
+			wp_set_object_terms( $team->ID, $league_id, 'sp_league', true );
+
 			$counts['teams_updated']++;
 
 			if ( $create_calendars && $this->maybe_create_calendar( $team, $season_name, $season_term_id, $league_id ) ) {
