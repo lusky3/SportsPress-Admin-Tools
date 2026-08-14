@@ -24,6 +24,15 @@ class SPEM_Season_Rollover {
 	 */
 	const ROLLOVER_LOCK_TTL = 300;
 
+	/**
+	 * Events archived per request. Sized so one AJAX request stays well inside
+	 * max_execution_time; the wizard re-posts until archiving reports done.
+	 *
+	 * This is a per-request budget shared across every division in the rollover,
+	 * not a per-division one — see archive_across_divisions().
+	 */
+	const ARCHIVE_CHUNK_SIZE = 500;
+
 	public function __construct() {
 		add_action( 'wp_ajax_spem_season_rollover_preview', array( $this, 'ajax_preview' ) );
 		add_action( 'wp_ajax_spem_season_rollover_execute', array( $this, 'ajax_execute' ) );
@@ -182,9 +191,10 @@ jQuery(document).ready(function($) {
         return out;
     }
 
-    // Hard cap on continuation chunks. archive_old_events processes 500 events
-    // per call, so the default of 50 iterations covers 25,000 events — well past
-    // any realistic league size. Prevents runaway recursion on a malformed server
+    // Hard cap on continuation chunks. The server archives at most 500 events
+    // per request — one budget shared across every division, not per division —
+    // so the default of 50 iterations covers 25,000 events, well past any
+    // realistic league size. Prevents runaway recursion on a malformed server
     // response. Override via the `spem_max_archive_chunks` filter if a site
     // genuinely needs more.
     var MAX_ARCHIVE_CHUNKS = " . (int) apply_filters( 'spem_max_archive_chunks', 50 ) . ";
@@ -683,11 +693,14 @@ jQuery(document).ready(function($) {
 	}
 
 	/**
-	 * Archive a chunk of old events for each division in the rollover.
+	 * Archive a chunk of old events across the divisions in the rollover.
 	 *
-	 * Each call caps itself at 500 events and the wizard re-invokes the whole
-	 * handler until `done` comes back true, so this reports done only once every
-	 * division reports done.
+	 * The 500-event cap is a per-REQUEST budget shared by every division, not a
+	 * per-division one. archive_old_events() caps each of its own calls at 500,
+	 * so looping five divisions unguarded would stamp up to 2500 events in a
+	 * single AJAX request and risk max_execution_time — the exact failure the cap
+	 * exists to prevent. Stopping early only costs another continuation, since
+	 * the wizard re-posts until every division reports done.
 	 *
 	 * @param int[] $league_ids     Divisions taking part in this rollover.
 	 * @param int   $season_term_id New season term ID to exclude from archiving.
@@ -706,6 +719,15 @@ jQuery(document).ready(function($) {
 		$done     = true;
 
 		foreach ( $league_ids as $league_id ) {
+			// Budget spent for this request; hand back with done=false so the
+			// wizard issues another chunk rather than pushing this one longer.
+			if ( $archived >= self::ARCHIVE_CHUNK_SIZE ) {
+				return array(
+					'count' => $archived,
+					'done'  => false,
+				);
+			}
+
 			$result    = $this->archive_old_events( (int) $league_id, $season_term_id );
 			$archived += $result['count'];
 
@@ -982,8 +1004,11 @@ jQuery(document).ready(function($) {
 		}
 
 		return array(
-			'id'   => $playoff_id,
-			'name' => $playoff_name,
+			'id' => $playoff_id,
+			// An unresolvable term must not be reported as created: run_rollover()
+			// copies this straight into the response and the wizard renders
+			// "Playoff season created" for any non-empty name.
+			'name' => $playoff_id ? $playoff_name : '',
 		);
 	}
 
@@ -1250,7 +1275,7 @@ jQuery(document).ready(function($) {
 	 * @return array { count: int, done: bool, next_offset: int }
 	 */
 	private function archive_old_events( $league_id, $new_season_id ) {
-		$chunk_size = 500;
+		$chunk_size = self::ARCHIVE_CHUNK_SIZE;
 
 		$events = get_posts(
 			array(
