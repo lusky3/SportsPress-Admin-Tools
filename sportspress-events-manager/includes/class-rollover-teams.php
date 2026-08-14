@@ -60,6 +60,78 @@ class SPEM_Rollover_Teams {
 	}
 
 	/**
+	 * Reduce a posted division-assignment map to trusted league => team IDs.
+	 *
+	 * Enforces the invariant the live data already holds: a team plays exactly
+	 * one division per season. S2026 splits 4/4/6/4/4 across five divisions,
+	 * totalling exactly the season's 22 teams. A team that somehow arrives under
+	 * two divisions is kept in the first and dropped from the rest, so the result
+	 * is deterministic rather than dependent on iteration order.
+	 *
+	 * Divisions left with no teams are dropped — an empty division would create a
+	 * season term assignment and a standings table with nothing in it.
+	 *
+	 * @param mixed $raw           Raw $_POST payload (expected league => team[]).
+	 * @param array $valid_teams   Server-derived published sp_team IDs.
+	 * @param array $valid_leagues Server-derived sp_league term IDs.
+	 * @return array<int, int[]> league_id => team_ids.
+	 */
+	public static function sanitize_assignments( $raw, array $valid_teams, array $valid_leagues ) {
+		if ( ! is_array( $raw ) ) {
+			return array();
+		}
+
+		$leagues = array_map( 'intval', $valid_leagues );
+
+		$out   = array();
+		$taken = array();
+
+		foreach ( $raw as $league_id => $team_ids ) {
+			$league_id = (int) $league_id;
+
+			if ( ! in_array( $league_id, $leagues, true ) || ! is_array( $team_ids ) ) {
+				continue;
+			}
+
+			// Per-league validation and within-league dedup.
+			$candidates = self::sanitize_ids( $team_ids, $valid_teams );
+			$kept       = array();
+
+			// Then dedup across leagues, first assignment winning.
+			foreach ( $candidates as $team_id ) {
+				if ( isset( $taken[ $team_id ] ) ) {
+					continue;
+				}
+
+				$taken[ $team_id ] = true;
+				$kept[]            = $team_id;
+			}
+
+			if ( $kept ) {
+				$out[ $league_id ] = $kept;
+			}
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Total teams across every division in an assignment map.
+	 *
+	 * @param array $assignments Output of sanitize_assignments().
+	 * @return int
+	 */
+	public static function count_assigned_teams( array $assignments ) {
+		$total = 0;
+
+		foreach ( $assignments as $team_ids ) {
+			$total += count( (array) $team_ids );
+		}
+
+		return $total;
+	}
+
+	/**
 	 * Playoff term name for a season.
 	 *
 	 * @param string $season_name Regular season name, e.g. 'W2026-27'.

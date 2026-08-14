@@ -105,6 +105,99 @@ assert_test(
 	'…and that typo genuinely fails to pair with its season'
 );
 
+echo "\n=== SPEM_Rollover_Teams::sanitize_assignments() ===\n\n";
+
+$teams   = array( 10, 11, 12, 13, 14 );
+$leagues = array( 100, 200, 300 );
+
+$plain = SPEM_Rollover_Teams::sanitize_assignments(
+	array(
+		100 => array( 10, 11 ),
+		200 => array( 12 ),
+	),
+	$teams,
+	$leagues
+);
+assert_test(
+	array(
+		100 => array( 10, 11 ),
+		200 => array( 12 ),
+	) === $plain,
+	'a clean assignment map passes through unchanged'
+);
+
+// Every team plays exactly one division per season — S2026 is 4+4+6+4+4 = 22,
+// exactly the season's team count. First assignment wins so the result is
+// deterministic rather than dependent on hash order.
+$dupe = SPEM_Rollover_Teams::sanitize_assignments(
+	array(
+		100 => array( 10, 11 ),
+		200 => array( 11, 12 ),
+	),
+	$teams,
+	$leagues
+);
+assert_test(
+	array(
+		100 => array( 10, 11 ),
+		200 => array( 12 ),
+	) === $dupe,
+	'a team assigned to two divisions is kept only in the first'
+);
+
+$unknown = SPEM_Rollover_Teams::sanitize_assignments(
+	array(
+		100 => array( 10, 999 ),
+		777 => array( 11 ),
+	),
+	$teams,
+	$leagues
+);
+assert_test(
+	array( 100 => array( 10 ) ) === $unknown,
+	'unknown team ids and unknown league ids are dropped'
+);
+
+$empty_league = SPEM_Rollover_Teams::sanitize_assignments(
+	array(
+		100 => array( 10 ),
+		200 => array(),
+	),
+	$teams,
+	$leagues
+);
+assert_test(
+	array( 100 => array( 10 ) ) === $empty_league,
+	'a division with no teams is dropped rather than kept empty'
+);
+
+assert_test(
+	array() === SPEM_Rollover_Teams::sanitize_assignments( 'nonsense', $teams, $leagues ),
+	'a non-array payload yields an empty map'
+);
+assert_test(
+	array() === SPEM_Rollover_Teams::sanitize_assignments( array( 100 => 'nope' ), $teams, $leagues ),
+	'a non-array team list for a league is skipped'
+);
+assert_test(
+	array( 100 => array( 13 ) ) === SPEM_Rollover_Teams::sanitize_assignments(
+		array( '100' => array( '13', '13', 0, -2 ) ),
+		$teams,
+		$leagues
+	),
+	'string keys/values cast, duplicates collapse, non-positive ids drop'
+);
+
+assert_test(
+	3 === SPEM_Rollover_Teams::count_assigned_teams(
+		array(
+			100 => array( 10, 11 ),
+			200 => array( 12 ),
+		)
+	),
+	'count_assigned_teams totals across divisions'
+);
+
 echo "\n=== Results ===\n\n";
 echo "Passed: {$passed}\nFailed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );
