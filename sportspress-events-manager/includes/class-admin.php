@@ -42,6 +42,15 @@ class SPEM_Admin {
 		$naming_separator = get_option( 'spem_naming_separator', '|' );
 		$include_team     = get_option( 'spem_include_team_name', '1' );
 		$include_division = get_option( 'spem_include_division', '0' );
+
+		// Player list naming. Defaults reproduce the live convention, e.g.
+		// "B-Town Bulldogs | S2026" — team plus season, pipe-separated.
+		$list_prefix           = get_option( 'spem_list_naming_prefix', '' );
+		$list_suffix           = get_option( 'spem_list_naming_suffix', '' );
+		$list_separator        = get_option( 'spem_list_naming_separator', '|' );
+		$list_include_team     = get_option( 'spem_list_include_team', '1' );
+		$list_include_division = get_option( 'spem_list_include_division', '0' );
+		$list_include_season   = get_option( 'spem_list_include_season', '1' );
 		?>
 		<form method="post">
 			<?php wp_nonce_field( 'spem_admin_actions', 'spem_admin_nonce' ); ?>
@@ -106,6 +115,55 @@ class SPEM_Admin {
 						<label>
 							<input type="checkbox" name="spem_include_division" value="1" <?php checked( $include_division, '1' ); ?> />
 							<?php esc_html_e( 'Include division/league name in calendar title', 'sportspress-events-manager' ); ?>
+						</label>
+					</td>
+				</tr>
+			</table>
+
+			<h2><?php esc_html_e( 'Player List Naming', 'sportspress-events-manager' ); ?></h2>
+			<p class="description">
+				<?php esc_html_e( 'Titles for player lists (rosters) created by the season rollover. Defaults reproduce the existing convention, e.g. "Kings | S2026".', 'sportspress-events-manager' ); ?>
+			</p>
+			<table class="form-table">
+				<tr>
+					<th scope="row"><?php esc_html_e( 'Prefix', 'sportspress-events-manager' ); ?></th>
+					<td><input type="text" name="spem_list_naming_prefix" value="<?php echo esc_attr( $list_prefix ); ?>" class="regular-text" /></td>
+				</tr>
+				<tr>
+					<th scope="row"><?php esc_html_e( 'Suffix', 'sportspress-events-manager' ); ?></th>
+					<td><input type="text" name="spem_list_naming_suffix" value="<?php echo esc_attr( $list_suffix ); ?>" class="regular-text" /></td>
+				</tr>
+				<tr>
+					<th scope="row"><?php esc_html_e( 'Separator', 'sportspress-events-manager' ); ?></th>
+					<td>
+						<input type="text" name="spem_list_naming_separator" value="<?php echo esc_attr( $list_separator ); ?>" class="regular-text" />
+						<p class="description"><?php esc_html_e( 'Character to separate name parts (e.g., | or -)', 'sportspress-events-manager' ); ?></p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><?php esc_html_e( 'Include Team Name', 'sportspress-events-manager' ); ?></th>
+					<td>
+						<label>
+							<input type="checkbox" name="spem_list_include_team" value="1" <?php checked( $list_include_team, '1' ); ?> />
+							<?php esc_html_e( 'Include team name in list title', 'sportspress-events-manager' ); ?>
+						</label>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><?php esc_html_e( 'Include Division', 'sportspress-events-manager' ); ?></th>
+					<td>
+						<label>
+							<input type="checkbox" name="spem_list_include_division" value="1" <?php checked( $list_include_division, '1' ); ?> />
+							<?php esc_html_e( 'Include division/league name in list title', 'sportspress-events-manager' ); ?>
+						</label>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><?php esc_html_e( 'Include Season', 'sportspress-events-manager' ); ?></th>
+					<td>
+						<label>
+							<input type="checkbox" name="spem_list_include_season" value="1" <?php checked( $list_include_season, '1' ); ?> />
+							<?php esc_html_e( 'Include season name in list title', 'sportspress-events-manager' ); ?>
 						</label>
 					</td>
 				</tr>
@@ -212,6 +270,13 @@ class SPEM_Admin {
 			update_option( 'spem_naming_separator', isset( $_POST['spem_naming_separator'] ) ? sanitize_text_field( wp_unslash( $_POST['spem_naming_separator'] ) ) : '|' );
 			update_option( 'spem_include_team_name', isset( $_POST['spem_include_team_name'] ) ? '1' : '0' );
 			update_option( 'spem_include_division', isset( $_POST['spem_include_division'] ) ? '1' : '0' );
+
+			update_option( 'spem_list_naming_prefix', isset( $_POST['spem_list_naming_prefix'] ) ? sanitize_text_field( wp_unslash( $_POST['spem_list_naming_prefix'] ) ) : '' );
+			update_option( 'spem_list_naming_suffix', isset( $_POST['spem_list_naming_suffix'] ) ? sanitize_text_field( wp_unslash( $_POST['spem_list_naming_suffix'] ) ) : '' );
+			update_option( 'spem_list_naming_separator', isset( $_POST['spem_list_naming_separator'] ) ? sanitize_text_field( wp_unslash( $_POST['spem_list_naming_separator'] ) ) : '|' );
+			update_option( 'spem_list_include_team', isset( $_POST['spem_list_include_team'] ) ? '1' : '0' );
+			update_option( 'spem_list_include_division', isset( $_POST['spem_list_include_division'] ) ? '1' : '0' );
+			update_option( 'spem_list_include_season', isset( $_POST['spem_list_include_season'] ) ? '1' : '0' );
 			echo '<div class="notice notice-success"><p>' . esc_html__( 'Settings saved.', 'sportspress-events-manager' ) . '</p></div>';
 		}
 
