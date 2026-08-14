@@ -51,10 +51,19 @@ class SPEM_Naming {
 			return trim( (string) ( $values['team'] ?? '' ) );
 		}
 
-		$separator = trim( (string) ( $settings['separator'] ?? '|' ) );
-		$glue      = '' !== $separator ? ' ' . $separator . ' ' : ' ';
+		return implode( self::glue( $settings ), $parts );
+	}
 
-		return implode( $glue, $parts );
+	/**
+	 * The separator, padded, or a single space when none is configured.
+	 *
+	 * @param array $settings Settings array.
+	 * @return string
+	 */
+	private static function glue( array $settings ) {
+		$separator = trim( (string) ( $settings['separator'] ?? '|' ) );
+
+		return '' !== $separator ? ' ' . $separator . ' ' : ' ';
 	}
 
 	/**

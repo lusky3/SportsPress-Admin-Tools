@@ -26,7 +26,8 @@ function get_option( $key, $default = false ) {
 /**
  * Stub mirroring the WordPress signature; unused arguments are deliberate.
  *
- * @SuppressWarnings(PHPMD.Superglobals,PHPMD.UnusedFormalParameter)
+ * @SuppressWarnings(PHPMD.Superglobals)
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
  */
 function update_option( $key, $value, $autoload = null ) {
 	$GLOBALS['test_options'][ $key ] = $value;
@@ -67,7 +68,8 @@ $GLOBALS['test_terms'] = array(
 /**
  * Stub mirroring the WordPress signature; unused arguments are deliberate.
  *
- * @SuppressWarnings(PHPMD.Superglobals,PHPMD.UnusedFormalParameter)
+ * @SuppressWarnings(PHPMD.Superglobals)
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
  */
 function get_term( $id, $taxonomy ) {
 	if ( ! isset( $GLOBALS['test_terms'][ $id ] ) ) {

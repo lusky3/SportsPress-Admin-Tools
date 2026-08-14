@@ -10,20 +10,21 @@
 define( 'ABSPATH', __DIR__ );
 
 // Minimal stand-ins for the two WordPress functions the builder touches.
-if ( ! function_exists( '__' ) ) {
-	/**
-	 * Stub mirroring the WordPress signature; unused arguments are deliberate.
-	 *
-	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
-	 */
-	function __( $text, $domain = '' ) { // phpcs:ignore
-		return $text;
-	}
+// Declared unconditionally rather than behind function_exists(): PMD associates
+// a docblock with a function only when the declaration is unconditional, so the
+// suppression below would otherwise be ignored.
+
+/**
+ * Stub mirroring the WordPress signature; the unused argument is deliberate.
+ *
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
+function __( $text, $domain = '' ) { // phpcs:ignore
+	return $text;
 }
-if ( ! function_exists( 'esc_html' ) ) {
-	function esc_html( $text ) {
-		return htmlspecialchars( (string) $text, ENT_QUOTES, 'UTF-8' );
-	}
+
+function esc_html( $text ) {
+	return htmlspecialchars( (string) $text, ENT_QUOTES, 'UTF-8' );
 }
 
 require_once __DIR__ . '/../includes/class-standings-content.php';
