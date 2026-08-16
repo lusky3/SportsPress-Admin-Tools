@@ -205,9 +205,8 @@ class SPLM_Leaders_REST {
 	 * @param int $season_id Season term id.
 	 * @return array Rows, most severe first.
 	 */
-	public static function build_watch( $season_id ) {
-		$season_id = (int) $season_id;
-		$players   = SPLM_Player_Stats_Aggregator::for_season( $season_id, array( 'include_playoffs' => true ) );
+	public static function build_watch( int $season_id ): array {
+		$players = SPLM_Player_Stats_Aggregator::for_season( $season_id, array( 'include_playoffs' => true ) );
 		if ( ! $players ) {
 			return array();
 		}
@@ -256,7 +255,13 @@ class SPLM_Leaders_REST {
 				if ( $a['severity'] !== $b['severity'] ) {
 					return 'critical' === $a['severity'] ? -1 : 1;
 				}
-				return $b['season_pim'] <=> $a['season_pim'];
+				if ( $a['season_pim'] !== $b['season_pim'] ) {
+					return $b['season_pim'] <=> $a['season_pim'];
+				}
+				// Final key so the order is fully determined by the comparator:
+				// usort() is not stable for equal elements, and a watch list that
+				// reshuffles between requests reads as data changing when it has not.
+				return strcasecmp( $a['player'], $b['player'] );
 			}
 		);
 
