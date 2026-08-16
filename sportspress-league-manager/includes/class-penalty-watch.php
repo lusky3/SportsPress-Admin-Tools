@@ -31,7 +31,7 @@ class SPLM_Penalty_Watch {
 	 *
 	 * @return array
 	 */
-	public static function default_tiers() {
+	public static function default_tiers(): array {
 		return array(
 			array(
 				'key'         => 'season-warn',
@@ -69,7 +69,7 @@ class SPLM_Penalty_Watch {
 	 * @param array $acks   tier_key => value_at_ack.
 	 * @return array Flags, criticals first.
 	 */
-	public static function evaluate( array $totals, array $tiers, array $acks ) {
+	public static function evaluate( array $totals, array $tiers, array $acks ): array {
 		$matched = array();
 
 		foreach ( $tiers as $tier ) {
@@ -122,7 +122,7 @@ class SPLM_Penalty_Watch {
 	 * @param array $raw Candidate tiers.
 	 * @return array Valid tiers, or the defaults when none survive.
 	 */
-	public static function sanitize_tiers( array $raw ) {
+	public static function sanitize_tiers( array $raw ): array {
 		$out = array();
 
 		foreach ( $raw as $tier ) {
