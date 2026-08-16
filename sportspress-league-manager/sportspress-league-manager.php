@@ -124,6 +124,17 @@ class SportsPress_League_Manager {
 		// REST API and Dashboard Frontend load regardless of admin context.
 		new SPLM_REST_API();
 		new SPLM_Dashboard_Frontend();
+
+		new SPLM_Leaders_REST();
+
+		// Any write to an event box score invalidates the cached boards. Hooking
+		// the meta key itself rather than each writer's own action means no write
+		// path can be missed — league manager, score sheets, WP admin, or any
+		// future writer all land here. The 15-minute TTL remains the backstop.
+		add_action( 'save_post_sp_event', array( 'SPLM_Leaders_REST', 'flush_cache' ) );
+		add_action( 'updated_post_meta', array( 'SPLM_Leaders_REST', 'maybe_flush_meta' ), 10, 3 );
+		add_action( 'added_post_meta', array( 'SPLM_Leaders_REST', 'maybe_flush_meta' ), 10, 3 );
+		add_action( 'deleted_post_meta', array( 'SPLM_Leaders_REST', 'maybe_flush_meta' ), 10, 3 );
 	}
 
 	private function check_parent_plugin() {

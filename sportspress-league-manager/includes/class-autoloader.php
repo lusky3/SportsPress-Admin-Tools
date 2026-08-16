@@ -43,6 +43,7 @@ class SPLM_Autoloader {
 			'SPLM_Error_Handler'         => $base . 'class-error-handler.php',
 			'SPLM_Health_Checker'        => $base . 'class-health-checker.php',
 			'SPLM_Leaders'               => $base . 'class-leaders.php',
+			'SPLM_Leaders_REST'          => $base . 'class-leaders-rest.php',
 			'SPLM_Player_Notes'          => $base . 'class-player-notes.php',
 			'SPLM_Player_Notes_Database' => $base . 'class-player-notes-database.php',
 			'SPLM_Player_Stats_Aggregator' => $base . 'class-player-stats-aggregator.php',
