@@ -42,6 +42,7 @@ class SPLM_Autoloader {
 			'SPLM_Dashboard_Frontend'    => $base . 'class-dashboard-frontend.php',
 			'SPLM_Error_Handler'         => $base . 'class-error-handler.php',
 			'SPLM_Health_Checker'        => $base . 'class-health-checker.php',
+			'SPLM_Leaders'               => $base . 'class-leaders.php',
 			'SPLM_Player_Notes'          => $base . 'class-player-notes.php',
 			'SPLM_Player_Notes_Database' => $base . 'class-player-notes-database.php',
 			'SPLM_REST_API'              => $base . 'class-rest-api.php',
