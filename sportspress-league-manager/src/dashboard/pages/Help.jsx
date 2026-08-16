@@ -11,6 +11,7 @@ const SECTIONS = [
 	{ id: 'payments', title: 'Payments' },
 	{ id: 'div-balance', title: 'Division Balance' },
 	{ id: 'team-compare', title: 'Compare' },
+	{ id: 'leaders', title: 'Leaders' },
 	{ id: 'season-report', title: 'Season Report' },
 	{ id: 'season-setup', title: 'Seasons & Rollover' },
 	{ id: 'health', title: 'Health Checks' },
@@ -109,6 +110,14 @@ export default function Help( { helpTopic } ) {
 			<section id="help-team-compare" className="splm-help-section">
 				<h3>Compare</h3>
 				<p>Head-to-head record and roster comparison for two teams. With a season selected, roster counts are scoped to that season.</p>
+			</section>
+
+			<section id="help-leaders" className="splm-help-section">
+				<h3>Leaders</h3>
+				<p>Leaderboards for points, goals, assists and penalty minutes, built from the player stats entered on each game. <strong>Division</strong> narrows the boards to one division; <strong>Range</strong> switches between the full season and the last 4 or 8 weeks, so you can see who has been hot lately rather than who leads overall. <strong>Include playoff games</strong> folds playoff results into the totals.</p>
+				<h4>Penalty Watch</h4>
+				<p>Below the boards, managers see every player who has passed a penalty threshold — either a season total or a total inside the recent rolling window. Thresholds and the window length are set by an administrator in League Manager settings.</p>
+				<p><strong>Acknowledge</strong> records that you have dealt with a flag, along with the player’s total at that moment. They drop off the list and come back only if they pass that total, cross a higher threshold, or pick up enough minutes in a later window. It is a “seen and handled” marker, not a suspension — it changes nothing about the player or the game record.</p>
 			</section>
 
 			<section id="help-season-report" className="splm-help-section">
