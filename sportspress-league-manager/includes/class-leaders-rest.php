@@ -46,6 +46,48 @@ class SPLM_Leaders_REST {
 				),
 			)
 		);
+
+		register_rest_route(
+			self::NAMESPACE_V1,
+			'/discipline/watch',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_watch' ),
+				'permission_callback' => array( $this, 'can_manage' ),
+				'args'                => array(
+					'season' => array(
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE_V1,
+			'/discipline/acknowledge',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'post_acknowledge' ),
+				'permission_callback' => array( $this, 'can_manage' ),
+				'args'                => array(
+					'player'   => array(
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+					),
+					'season'   => array(
+						'required'          => true,
+						'sanitize_callback' => 'absint',
+					),
+					'tier_key' => array(
+						'required'          => true,
+						'sanitize_callback' => 'sanitize_key',
+					),
+					'status'   => array( 'sanitize_callback' => 'sanitize_key' ),
+					'note'     => array( 'sanitize_callback' => 'wp_kses_post' ),
+				),
+			)
+		);
 	}
 
 	/**
@@ -56,6 +98,23 @@ class SPLM_Leaders_REST {
 	public function can_read() {
 		if ( ! SPLM_Capabilities::can_read() ) {
 			return new WP_Error( 'forbidden', __( 'You cannot view league data.', 'sportspress-league-manager' ), array( 'status' => 403 ) );
+		}
+
+		return true;
+	}
+
+	/**
+	 * Manage access: the watch list names individuals and their penalty
+	 * records, so it is not part of the general read tier.
+	 *
+	 * @return bool|WP_Error
+	 */
+	public function can_manage() {
+		if ( ! SPLM_REST_API::module_enabled( 'league_discipline' ) ) {
+			return new WP_Error( 'module_disabled', __( 'Penalty discipline is not enabled.', 'sportspress-league-manager' ), array( 'status' => 503 ) );
+		}
+		if ( ! SPLM_Capabilities::can_manage() ) {
+			return new WP_Error( 'forbidden', __( 'You cannot view discipline data.', 'sportspress-league-manager' ), array( 'status' => 403 ) );
 		}
 
 		return true;
@@ -135,6 +194,158 @@ class SPLM_Leaders_REST {
 		set_transient( $cache_key, $payload, self::CACHE_TTL );
 
 		return new WP_REST_Response( $payload, 200 );
+	}
+
+	/**
+	 * Flagged players for a season.
+	 *
+	 * Playoffs are included unconditionally: discipline is cumulative and a
+	 * playoff penalty counts the same as a regular-season one.
+	 *
+	 * @param int $season_id Season term id.
+	 * @return array Rows, most severe first.
+	 */
+	public static function build_watch( $season_id ) {
+		$season_id = (int) $season_id;
+		$players   = SPLM_Player_Stats_Aggregator::for_season( $season_id, array( 'include_playoffs' => true ) );
+		if ( ! $players ) {
+			return array();
+		}
+
+		$tiers  = SPLM_Penalty_Watch::sanitize_tiers( (array) get_option( 'splm_discipline_tiers', array() ) );
+		$acks   = SPLM_Discipline_Database::acks_for_season( $season_id );
+		$weeks  = (int) get_option( 'splm_discipline_window_weeks', 4 );
+		$cutoff = SPLM_Player_Stats_Aggregator::window_cutoff(
+			$weeks,
+			current_time( 'Y-m-d' ),
+			SPLM_Player_Stats_Aggregator::season_start( $players )
+		);
+
+		$rows = array();
+		foreach ( $players as $player_id => $player ) {
+			$window = SPLM_Player_Stats_Aggregator::window_totals( $player['weeks'], $cutoff );
+			$flags  = SPLM_Penalty_Watch::evaluate(
+				array(
+					'season' => (int) $player['totals']['pim'],
+					'window' => (int) $window['pim'],
+				),
+				$tiers,
+				$acks[ $player_id ] ?? array()
+			);
+
+			if ( ! $flags ) {
+				continue;
+			}
+
+			$rows[] = array(
+				'player_id'  => (int) $player_id,
+				'player'     => $player['name'],
+				'team'       => $player['team'],
+				'division'   => $player['div_name'],
+				'season_pim' => (int) $player['totals']['pim'],
+				'window_pim' => (int) $window['pim'],
+				'gp'         => (int) $player['totals']['gp'],
+				'flags'      => $flags,
+				'severity'   => $flags[0]['severity'],
+			);
+		}
+
+		usort(
+			$rows,
+			function ( $a, $b ) {
+				if ( $a['severity'] !== $b['severity'] ) {
+					return 'critical' === $a['severity'] ? -1 : 1;
+				}
+				return $b['season_pim'] <=> $a['season_pim'];
+			}
+		);
+
+		return $rows;
+	}
+
+	/**
+	 * GET /discipline/watch — flagged players, wrapped as a list.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function get_watch( $request ) {
+		$season_id = absint( $request->get_param( 'season' ) );
+		$season    = get_term( $season_id, 'sp_season' );
+		if ( ! $season || is_wp_error( $season ) ) {
+			return new WP_Error( 'invalid_season', __( 'Season not found.', 'sportspress-league-manager' ), array( 'status' => 404 ) );
+		}
+
+		$cache_key = self::cache_key( 'watch', array( $season_id ) );
+		$rows      = get_transient( $cache_key );
+		if ( false === $rows ) {
+			$rows = self::build_watch( $season_id );
+			self::remember( $cache_key );
+			set_transient( $cache_key, $rows, self::CACHE_TTL );
+		}
+
+		return new WP_REST_Response( splm_rest_list_response( $rows ), 200 );
+	}
+
+	/**
+	 * POST /discipline/acknowledge — record that a flag was actioned.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function post_acknowledge( $request ) {
+		$player_id = absint( $request->get_param( 'player' ) );
+		$season_id = absint( $request->get_param( 'season' ) );
+		$tier_key  = sanitize_key( (string) $request->get_param( 'tier_key' ) );
+
+		if ( ! $player_id || ! $season_id || '' === $tier_key ) {
+			return new WP_Error( 'invalid_input', __( 'Player, season and tier are required.', 'sportspress-league-manager' ), array( 'status' => 400 ) );
+		}
+
+		// The value recorded must be the value that actually triggered the flag,
+		// so it is read from the current watch rather than taken from the client.
+		$value = null;
+		foreach ( self::build_watch( $season_id ) as $row ) {
+			if ( $row['player_id'] !== $player_id ) {
+				continue;
+			}
+			foreach ( $row['flags'] as $flag ) {
+				if ( $flag['tier_key'] === $tier_key ) {
+					$value = (int) $flag['value'];
+					break 2;
+				}
+			}
+		}
+
+		if ( null === $value ) {
+			return new WP_Error( 'not_flagged', __( 'That player is not currently flagged for this threshold.', 'sportspress-league-manager' ), array( 'status' => 404 ) );
+		}
+
+		$ok = SPLM_Discipline_Database::acknowledge(
+			$player_id,
+			$season_id,
+			$tier_key,
+			$value,
+			(string) $request->get_param( 'status' ),
+			(string) $request->get_param( 'note' ),
+			get_current_user_id()
+		);
+
+		if ( ! $ok ) {
+			return new WP_Error( 'ack_failed', __( 'Could not record the acknowledgement.', 'sportspress-league-manager' ), array( 'status' => 500 ) );
+		}
+
+		self::flush_cache();
+
+		return new WP_REST_Response(
+			array(
+				'success'      => true,
+				'player_id'    => $player_id,
+				'tier_key'     => $tier_key,
+				'value_at_ack' => $value,
+			),
+			200
+		);
 	}
 
 	/**
