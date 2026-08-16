@@ -373,8 +373,13 @@ class SPLM_Leaders_REST {
 	/**
 	 * GET /discipline/watch — flagged players, wrapped as a list.
 	 *
+	 * This feature is built from static utility classes by design, so static
+	 * access here is the intended shape rather than an oversight.
+	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function get_watch( $request ) {
 		$season_id = absint( $request->get_param( 'season' ) );
