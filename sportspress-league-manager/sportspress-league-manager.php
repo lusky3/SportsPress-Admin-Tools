@@ -137,6 +137,16 @@ class SportsPress_League_Manager {
 		// into league_manager_dashboard.
 		if ( in_array( 'league_discipline', $enabled, true ) ) {
 			SPLM_Discipline_Database::maybe_upgrade();
+			new SPLM_Discipline_Digest();
+			if ( get_option( 'splm_discipline_digest_enabled' ) ) {
+				SPLM_Discipline_Digest::schedule();
+			} else {
+				SPLM_Discipline_Digest::unschedule();
+			}
+		}
+
+		if ( ! in_array( 'league_discipline', $enabled, true ) && class_exists( 'SPLM_Discipline_Digest' ) ) {
+			SPLM_Discipline_Digest::unschedule();
 		}
 
 		// REST API and Dashboard Frontend load regardless of admin context.

@@ -41,6 +41,7 @@ class SPLM_Autoloader {
 			'SPLM_Capabilities'          => $base . 'class-capabilities.php',
 			'SPLM_Dashboard_Frontend'    => $base . 'class-dashboard-frontend.php',
 			'SPLM_Discipline_Database'   => $base . 'class-discipline-database.php',
+			'SPLM_Discipline_Digest'     => $base . 'class-discipline-digest.php',
 			'SPLM_Error_Handler'         => $base . 'class-error-handler.php',
 			'SPLM_Health_Checker'        => $base . 'class-health-checker.php',
 			'SPLM_Leaders'               => $base . 'class-leaders.php',
