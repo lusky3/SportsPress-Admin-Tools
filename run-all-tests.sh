@@ -52,6 +52,7 @@ run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-schedule-template.ph
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-league-manager.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-rest-api.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-leaders.php"
+run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-player-stats-aggregator.php"
 run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-consistency-checker.php"
 run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-sportspress-writer.php"
 run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-recognition-providers.php"

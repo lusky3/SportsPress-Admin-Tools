@@ -45,6 +45,7 @@ class SPLM_Autoloader {
 			'SPLM_Leaders'               => $base . 'class-leaders.php',
 			'SPLM_Player_Notes'          => $base . 'class-player-notes.php',
 			'SPLM_Player_Notes_Database' => $base . 'class-player-notes-database.php',
+			'SPLM_Player_Stats_Aggregator' => $base . 'class-player-stats-aggregator.php',
 			'SPLM_REST_API'              => $base . 'class-rest-api.php',
 			'SPLM_SportsPress_Data'      => $base . 'class-sportspress-data.php',
 		);
