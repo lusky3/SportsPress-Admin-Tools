@@ -304,6 +304,16 @@ export function fetchSeasonSummary( seasonId ) {
 	return apiFetch( { path: `/splm/v1/reports/season-summary?season=${ seasonId }` } );
 }
 
+// /leaders is an aggregate report (overall + per-division boards), not a list.
+export function fetchLeaders( seasonId, { division = 0, limit = 0, windowWeeks = 0, includePlayoffs = false } = {} ) {
+	const params = new URLSearchParams( { season: seasonId } );
+	if ( division ) params.set( 'division', division );
+	if ( limit ) params.set( 'limit', limit );
+	if ( windowWeeks ) params.set( 'window_weeks', windowWeeks );
+	if ( includePlayoffs ) params.set( 'include_playoffs', '1' );
+	return apiFetch( { path: `/splm/v1/leaders?${ params.toString() }` } );
+}
+
 export function bulkUploadRoster( file ) {
 	const formData = new FormData();
 	formData.append( 'file', file );
