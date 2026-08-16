@@ -88,6 +88,7 @@ export default function Leaders( { season } ) {
 				<label htmlFor="splm-leaders-division">Division</label>
 				<select
 					id="splm-leaders-division"
+					className="splm-select"
 					value={ division }
 					onChange={ ( e ) => setDivision( Number( e.target.value ) ) }
 				>
@@ -100,6 +101,7 @@ export default function Leaders( { season } ) {
 				<label htmlFor="splm-leaders-window">Range</label>
 				<select
 					id="splm-leaders-window"
+					className="splm-select"
 					value={ windowWeeks }
 					onChange={ ( e ) => setWindowWeeks( Number( e.target.value ) ) }
 				>
