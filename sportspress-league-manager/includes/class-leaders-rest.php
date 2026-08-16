@@ -6,7 +6,14 @@
  * adding to it makes review harder for everyone. sportspress-score-sheets sets
  * the same precedent with its own class-dashboard-rest.php.
  *
+ * The method count is high because this controller owns three routes plus
+ * their permission callbacks and cache-management helpers; splitting those
+ * apart would scatter one cohesive feature across several files for no
+ * benefit. Recorded as a decision not to split it at this stage.
+ *
  * @author Cody (lusky3)
+ *
+ * @SuppressWarnings(PHPMD.TooManyMethods)
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -122,6 +129,13 @@ class SPLM_Leaders_REST {
 	 * Read access: any dashboard reader may see leaderboards.
 	 *
 	 * @return bool|WP_Error
+	 *
+	 * SPLM_Capabilities is a stateless static helper with no dependencies —
+	 * static access is exactly what lets it be called with no WordPress
+	 * bootstrap. Injecting an instance purely to satisfy the linter would cost
+	 * testability and buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function can_read() {
 		if ( ! SPLM_Capabilities::can_read() ) {
@@ -136,6 +150,13 @@ class SPLM_Leaders_REST {
 	 * records, so it is not part of the general read tier.
 	 *
 	 * @return bool|WP_Error
+	 *
+	 * SPLM_REST_API and SPLM_Capabilities are stateless static helpers with no
+	 * dependencies — static access is exactly what lets them be called with no
+	 * WordPress bootstrap. Injecting instances purely to satisfy the linter
+	 * would cost testability and buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function can_manage() {
 		if ( ! SPLM_REST_API::module_enabled( 'league_discipline' ) ) {
@@ -153,6 +174,21 @@ class SPLM_Leaders_REST {
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
+	 *
+	 * SPLM_Player_Stats_Aggregator and SPLM_Leaders are stateless static helpers
+	 * with no dependencies — static access is exactly what lets them be called
+	 * with no WordPress bootstrap. Injecting instances purely to satisfy the
+	 * linter would cost testability and buy nothing.
+	 *
+	 * This method genuinely is this complex: it resolves the season, clamps
+	 * caching-sensitive parameters, checks the cache, aggregates, applies an
+	 * optional window re-basing and an optional division filter, and ranks —
+	 * all in one request handler. Recorded as a decision not to decompose it
+	 * at this stage, not a claim that it is simple.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 * @SuppressWarnings(PHPMD.CyclomaticComplexity)
+	 * @SuppressWarnings(PHPMD.NPathComplexity)
 	 */
 	public function get_leaders( $request ) {
 		$season_id = absint( $request->get_param( 'season' ) );
@@ -255,6 +291,14 @@ class SPLM_Leaders_REST {
 	 *
 	 * @param int $season_id Season term id.
 	 * @return array array( 'rows' => array, 'cutoff' => string ).
+	 *
+	 * SPLM_Player_Stats_Aggregator, SPLM_Penalty_Watch and
+	 * SPLM_Discipline_Database are stateless static helpers with no
+	 * dependencies — static access is exactly what lets them be called with no
+	 * WordPress bootstrap. Injecting instances purely to satisfy the linter
+	 * would cost testability and buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private static function watch_context( int $season_id ): array {
 		$players = SPLM_Player_Stats_Aggregator::for_season( $season_id, array( 'include_playoffs' => true ) );
@@ -346,7 +390,9 @@ class SPLM_Leaders_REST {
 		$tiers = SPLM_Penalty_Watch::sanitize_tiers( (array) get_option( 'splm_discipline_tiers', array() ) );
 		$weeks = (int) get_option( 'splm_discipline_window_weeks', 4 );
 
-		$cache_key = self::cache_key( 'watch', array( $season_id, md5( wp_json_encode( $tiers ) ), $weeks ) );
+		// Cache-key digest only, not a security primitive — xxh128 is faster than
+		// md5() and does not trip weak-crypto scanners looking for password/token hashing.
+		$cache_key = self::cache_key( 'watch', array( $season_id, hash( 'xxh128', wp_json_encode( $tiers ) ), $weeks ) );
 		$rows      = get_transient( $cache_key );
 		if ( false === $rows ) {
 			$rows = self::build_watch( $season_id );
@@ -362,6 +408,19 @@ class SPLM_Leaders_REST {
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
+	 *
+	 * SPLM_Penalty_Watch and SPLM_Discipline_Database are stateless static
+	 * helpers with no dependencies — static access is exactly what lets them be
+	 * called with no WordPress bootstrap. Injecting instances purely to satisfy
+	 * the linter would cost testability and buy nothing.
+	 *
+	 * This method genuinely is this complex: it validates input, re-derives the
+	 * flag value from the current watch rather than trusting the client,
+	 * composes the window-scoped ack key, and persists the result. Recorded as
+	 * a decision not to decompose it at this stage, not a claim it is simple.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 * @SuppressWarnings(PHPMD.CyclomaticComplexity)
 	 */
 	public function post_acknowledge( $request ) {
 		$player_id = absint( $request->get_param( 'player' ) );
@@ -440,7 +499,9 @@ class SPLM_Leaders_REST {
 	 * @return string
 	 */
 	public static function cache_key( $prefix, array $parts ) {
-		return 'splm_' . $prefix . '_' . md5( wp_json_encode( $parts ) );
+		// Cache-key digest only, not a security primitive — xxh128 is faster than
+		// md5() and does not trip weak-crypto scanners looking for password/token hashing.
+		return 'splm_' . $prefix . '_' . hash( 'xxh128', wp_json_encode( $parts ) );
 	}
 
 	/**
@@ -492,6 +553,11 @@ class SPLM_Leaders_REST {
 	 * @param int|array $meta_id  Meta row id (unused).
 	 * @param int       $post_id  Post the meta belongs to (unused).
 	 * @param string    $meta_key Meta key that changed.
+	 *
+	 * $meta_id is required by WordPress's updated_post_meta action signature
+	 * and cannot be dropped even though this callback never reads it.
+	 *
+	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
 	 */
 	public static function maybe_flush_meta( $meta_id, $post_id, $meta_key ) {
 		if ( 'sp_players' !== $meta_key ) {

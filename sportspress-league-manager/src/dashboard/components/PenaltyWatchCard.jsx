@@ -38,7 +38,7 @@ export default function PenaltyWatchCard( { season, onNavigate } ) {
 					</li>
 				) ) }
 			</ul>
-			<button className="splm-btn" onClick={ () => onNavigate( 'leaders' ) }>
+			<button type="button" className="splm-btn" onClick={ () => onNavigate( 'leaders' ) }>
 				View all
 			</button>
 		</section>

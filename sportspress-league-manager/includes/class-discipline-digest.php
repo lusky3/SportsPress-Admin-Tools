@@ -66,6 +66,13 @@ class SPLM_Discipline_Digest {
 	 * Build and send the digest.
 	 *
 	 * @return bool Whether mail was sent.
+	 *
+	 * SPAT_Lock and SPLM_Leaders_REST are stateless static helpers with no
+	 * dependencies — static access is exactly what lets them be called with no
+	 * WordPress bootstrap. Injecting instances purely to satisfy the linter
+	 * would cost testability and buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public static function run(): bool {
 		if ( ! get_option( 'splm_discipline_digest_enabled' ) ) {

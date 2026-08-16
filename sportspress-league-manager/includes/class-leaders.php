@@ -142,6 +142,12 @@ class SPLM_Leaders {
 	 * @param array $a Row.
 	 * @param array $b Row.
 	 * @return int
+	 *
+	 * False positive: this is used as a usort() callable via
+	 * array( __CLASS__, 'compare_rows' ), which PMD's static analysis cannot
+	 * see is a call site.
+	 *
+	 * @SuppressWarnings(PHPMD.UnusedPrivateMethod)
 	 */
 	private static function compare_rows( $a, $b ) {
 		if ( $a['value'] !== $b['value'] ) {

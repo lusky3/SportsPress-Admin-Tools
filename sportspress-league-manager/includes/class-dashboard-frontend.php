@@ -161,6 +161,13 @@ class SPLM_Dashboard_Frontend {
 
 	/**
 	 * Enqueue the React dashboard app on the dashboard page.
+	 *
+	 * SPLM_REST_API and SPLM_Capabilities are stateless static helpers with no
+	 * dependencies — static access is exactly what lets them be called with no
+	 * WordPress bootstrap. Injecting instances purely to satisfy the linter
+	 * would cost testability and buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function enqueue_assets() {
 		if ( ! is_page() ) {

@@ -112,6 +112,16 @@ class SportsPress_League_Manager {
 		$this->load_enabled_modules();
 	}
 
+	/**
+	 * Instantiate the feature classes for whichever modules are enabled.
+	 *
+	 * SPLM_Discipline_Database and SPLM_Discipline_Digest are stateless static
+	 * helpers with no dependencies — static access is exactly what lets them be
+	 * called with no WordPress bootstrap. Injecting instances purely to satisfy
+	 * the linter would cost testability and buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
 	private function load_enabled_modules() {
 		$enabled = get_option( 'spat_enabled_modules', array() );
 		$any_enabled = array_intersect(

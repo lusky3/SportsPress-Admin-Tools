@@ -206,6 +206,12 @@ class SPLM_Penalty_Watch {
 	 * @param array $a Flag.
 	 * @param array $b Flag.
 	 * @return int
+	 *
+	 * False positive: this is used as a usort() callable via
+	 * array( __CLASS__, 'compare_flags' ), which PMD's static analysis cannot
+	 * see is a call site.
+	 *
+	 * @SuppressWarnings(PHPMD.UnusedPrivateMethod)
 	 */
 	private static function compare_flags( $a, $b ) {
 		$a_rank = self::severity_rank( (string) $a['severity'] );

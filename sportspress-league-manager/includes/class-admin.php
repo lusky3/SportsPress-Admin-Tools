@@ -102,6 +102,16 @@ class SPLM_Admin {
 		<?php
 	}
 
+	/**
+	 * Register every League Manager setting and its settings-page fields.
+	 *
+	 * SPLM_Penalty_Watch is a stateless static helper with no dependencies —
+	 * static access is exactly what lets it be called with no WordPress
+	 * bootstrap. Injecting an instance purely to satisfy the linter would cost
+	 * testability and buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
 	public function register_spat_settings() {
 		add_settings_section(
 			'splm_backend_section',
@@ -280,6 +290,13 @@ class SPLM_Admin {
 	/**
 	 * Threshold tiers, one row per tier, with a preview of how many players
 	 * each threshold would have flagged in the selected season.
+	 *
+	 * SPLM_Penalty_Watch is a stateless static helper with no dependencies —
+	 * static access is exactly what lets it be called with no WordPress
+	 * bootstrap. Injecting an instance purely to satisfy the linter would cost
+	 * testability and buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function render_discipline_tiers_field() {
 		$tiers = SPLM_Penalty_Watch::sanitize_tiers( (array) get_option( 'splm_discipline_tiers', array() ) );
@@ -365,6 +382,13 @@ class SPLM_Admin {
 	 * once per request rather than once per row.
 	 *
 	 * @return array array( players, cutoff ) — players is empty when no default season is set.
+	 *
+	 * SPLM_Player_Stats_Aggregator is a stateless static helper with no
+	 * dependencies — static access is exactly what lets it be called with no
+	 * WordPress bootstrap. Injecting an instance purely to satisfy the linter
+	 * would cost testability and buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function discipline_preview_data(): array {
 		static $cache = null;

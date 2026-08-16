@@ -185,6 +185,7 @@ export default function Leaders( { season } ) {
 										<td>
 											{ row.flags.map( ( f ) => (
 												<button
+													type="button"
 													key={ f.tier_key }
 													className="splm-btn splm-btn--small"
 													onClick={ () => onAcknowledge( row, f ) }
