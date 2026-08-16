@@ -345,10 +345,11 @@ class SPLM_Dashboard_Frontend {
 				// SPA hides a tab whose module is off instead of rendering one
 				// that 503s. Fail-open in the client, like `dependencies`.
 				'modules'         => array(
-					'dashboard' => SPLM_REST_API::module_enabled( 'league_manager_dashboard' ),
-					'rosters'   => SPLM_REST_API::module_enabled( 'league_roster_management' ),
-					'fees'      => SPLM_REST_API::module_enabled( 'league_fee_tracking' ),
-					'notes'     => SPLM_REST_API::module_enabled( 'league_player_notes' ),
+					'dashboard'  => SPLM_REST_API::module_enabled( 'league_manager_dashboard' ),
+					'rosters'    => SPLM_REST_API::module_enabled( 'league_roster_management' ),
+					'fees'       => SPLM_REST_API::module_enabled( 'league_fee_tracking' ),
+					'notes'      => SPLM_REST_API::module_enabled( 'league_player_notes' ),
+					'discipline' => SPLM_REST_API::module_enabled( 'league_discipline' ),
 				),
 				// F7 — canonical capability flags routed through SPLM_Capabilities
 				// (kept alongside legacy granular flags for compatibility).

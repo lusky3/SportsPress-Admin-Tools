@@ -98,6 +98,17 @@ class SportsPress_League_Manager {
 			)
 		);
 
+		SPAT_Plugin_Manager::register_plugin(
+			'league_discipline',
+			array(
+				'name'          => 'Penalty Discipline',
+				'description'   => 'Penalty-minute watch list, acknowledgements and weekly digest',
+				'parent_module' => 'league_discipline',
+				'version'       => SPLM_VERSION,
+				'file'          => __FILE__,
+			)
+		);
+
 		$this->load_enabled_modules();
 	}
 
@@ -105,7 +116,7 @@ class SportsPress_League_Manager {
 		$enabled = get_option( 'spat_enabled_modules', array() );
 		$any_enabled = array_intersect(
 			$enabled,
-			array( 'league_manager_dashboard', 'league_roster_management', 'league_fee_tracking', 'league_player_notes' )
+			array( 'league_manager_dashboard', 'league_roster_management', 'league_fee_tracking', 'league_player_notes', 'league_discipline' )
 		);
 
 		if ( empty( $any_enabled ) ) {
@@ -121,13 +132,18 @@ class SportsPress_League_Manager {
 			new SPLM_Player_Notes();
 		}
 
+		// The discipline schema is only needed once the module is deliberately
+		// enabled — see the module registration above for why it isn't folded
+		// into league_manager_dashboard.
+		if ( in_array( 'league_discipline', $enabled, true ) ) {
+			SPLM_Discipline_Database::maybe_upgrade();
+		}
+
 		// REST API and Dashboard Frontend load regardless of admin context.
 		new SPLM_REST_API();
 		new SPLM_Dashboard_Frontend();
 
 		new SPLM_Leaders_REST();
-
-		SPLM_Discipline_Database::maybe_upgrade();
 
 		// Any write to an event box score invalidates the cached boards. Hooking
 		// the meta key itself rather than each writer's own action means no write

@@ -123,7 +123,8 @@ class SPLM_Penalty_Watch {
 	 * @return array Valid tiers, or the defaults when none survive.
 	 */
 	public static function sanitize_tiers( array $raw ): array {
-		$out = array();
+		$out  = array();
+		$seen = array();
 
 		foreach ( $raw as $tier ) {
 			if ( ! is_array( $tier ) ) {
@@ -140,6 +141,13 @@ class SPLM_Penalty_Watch {
 			if ( ! in_array( $scope, self::SCOPES, true ) || ! in_array( $severity, self::SEVERITIES, true ) ) {
 				continue;
 			}
+
+			// Duplicate keys would share a single acknowledgement row and
+			// suppress ambiguously, so keep only the first occurrence.
+			if ( isset( $seen[ $key ] ) ) {
+				continue;
+			}
+			$seen[ $key ] = true;
 
 			$out[] = array(
 				'key'         => $key,

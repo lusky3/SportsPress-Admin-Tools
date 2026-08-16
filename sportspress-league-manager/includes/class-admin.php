@@ -151,6 +151,19 @@ class SPLM_Admin {
 		);
 		register_setting( 'splm_backend_settings', 'splm_report_leader_count', array( 'sanitize_callback' => 'absint' ) );
 
+		register_setting(
+			'splm_backend_settings',
+			'splm_discipline_tiers',
+			array(
+				'sanitize_callback' => array( 'SPLM_Penalty_Watch', 'sanitize_tiers' ),
+				'default'           => SPLM_Penalty_Watch::default_tiers(),
+			)
+		);
+		register_setting( 'splm_backend_settings', 'splm_discipline_window_weeks', array( 'sanitize_callback' => 'absint' ) );
+		register_setting( 'splm_backend_settings', 'splm_discipline_digest_enabled', array( 'sanitize_callback' => 'absint' ) );
+		register_setting( 'splm_backend_settings', 'splm_discipline_digest_recipients', array( 'sanitize_callback' => 'sanitize_text_field' ) );
+		register_setting( 'splm_backend_settings', 'splm_discipline_digest_day', array( 'sanitize_callback' => 'sanitize_key' ) );
+
 		$this->add_field( 'splm_default_season', __( 'Season Override', 'sportspress-league-manager' ), array( $this, 'render_default_season_field' ) );
 		$this->add_field( 'splm_fee_source', __( 'Fee Integration Source', 'sportspress-league-manager' ), array( $this, 'render_fee_source_field' ) );
 		$this->add_field( 'splm_debug_logging', __( 'Debug Logging', 'sportspress-league-manager' ), array( $this, 'render_debug_logging_field' ) );
@@ -158,6 +171,8 @@ class SPLM_Admin {
 		$this->add_field( 'splm_comparison_stat_keys', __( 'Team Comparison Stats', 'sportspress-league-manager' ), array( $this, 'render_comparison_stat_keys_field' ) );
 		$this->add_field( 'splm_report_stat_keys', __( 'Season Report Leader Categories', 'sportspress-league-manager' ), array( $this, 'render_report_stat_keys_field' ) );
 		$this->add_field( 'splm_report_leader_count', __( 'Leaders Per Category', 'sportspress-league-manager' ), array( $this, 'render_report_leader_count_field' ) );
+		$this->add_field( 'splm_discipline_window_weeks', __( 'Penalty Window (weeks)', 'sportspress-league-manager' ), array( $this, 'render_discipline_window_field' ) );
+		$this->add_field( 'splm_discipline_tiers', __( 'Penalty Thresholds', 'sportspress-league-manager' ), array( $this, 'render_discipline_tiers_field' ) );
 	}
 
 	private function add_field( $id, $title, $callback ) {
@@ -246,5 +261,112 @@ class SPLM_Admin {
 			$checked = in_array( $slug, $selected, true ) ? ' checked' : '';
 			echo '<label style="margin-right:12px"><input type="checkbox" name="' . esc_attr( $name ) . '[]" value="' . esc_attr( $slug ) . '"' . $checked . '/> ' . esc_html( $item->post_title ) . '</label>';
 		}
+	}
+
+	/**
+	 * Rolling-window length in weeks.
+	 */
+	public function render_discipline_window_field() {
+		echo '<input type="number" name="splm_discipline_window_weeks" value="' . esc_attr( get_option( 'splm_discipline_window_weeks', 4 ) ) . '" min="1" max="52"/>';
+		echo '<p class="description">' . esc_html__( 'How many recent calendar weeks the rolling penalty window covers. Includes the current week.', 'sportspress-league-manager' ) . '</p>';
+	}
+
+	/**
+	 * Threshold tiers, one row per tier, with a preview of how many players
+	 * each threshold would have flagged in the selected season.
+	 */
+	public function render_discipline_tiers_field() {
+		$tiers = SPLM_Penalty_Watch::sanitize_tiers( (array) get_option( 'splm_discipline_tiers', array() ) );
+
+		echo '<table class="widefat" style="max-width:40em">';
+		echo '<thead><tr><th>' . esc_html__( 'Tier', 'sportspress-league-manager' ) . '</th><th>' . esc_html__( 'Scope', 'sportspress-league-manager' ) . '</th><th>' . esc_html__( 'Minutes', 'sportspress-league-manager' ) . '</th><th>' . esc_html__( 'Would flag', 'sportspress-league-manager' ) . '</th></tr></thead><tbody>';
+
+		foreach ( $tiers as $i => $tier ) {
+			$count = $this->preview_flag_count( $tier );
+			printf(
+				'<tr><td>%s<input type="hidden" name="splm_discipline_tiers[%d][key]" value="%s"/><input type="hidden" name="splm_discipline_tiers[%d][severity]" value="%s"/></td>'
+					. '<td>%s<input type="hidden" name="splm_discipline_tiers[%d][scope]" value="%s"/></td>'
+					. '<td><input type="number" min="1" max="200" name="splm_discipline_tiers[%d][minutes]" value="%d"/></td>'
+					. '<td>%s</td></tr>',
+				esc_html( $tier['key'] ),
+				(int) $i,
+				esc_attr( $tier['key'] ),
+				(int) $i,
+				esc_attr( $tier['severity'] ),
+				esc_html( $tier['scope'] ),
+				(int) $i,
+				esc_attr( $tier['scope'] ),
+				(int) $i,
+				(int) $tier['minutes'],
+				esc_html(
+					null === $count
+						? __( '—', 'sportspress-league-manager' )
+						/* translators: %d: number of players. */
+						: sprintf( _n( '%d player', '%d players', $count, 'sportspress-league-manager' ), $count )
+				)
+			);
+		}
+
+		echo '</tbody></table>';
+		echo '<p class="description">' . esc_html__( 'Player counts are for the default season, so you can see whether a threshold is useful before saving it.', 'sportspress-league-manager' ) . '</p>';
+	}
+
+	/**
+	 * Season aggregate and window cutoff for the threshold preview, computed once.
+	 *
+	 * Rendering the tier table asks "how many players would this threshold flag?"
+	 * for every tier. Aggregating the season is the expensive part, so it happens
+	 * once per request rather than once per row.
+	 *
+	 * @return array array( players, cutoff ) — players is empty when no default season is set.
+	 */
+	private function discipline_preview_data(): array {
+		static $cache = null;
+
+		if ( null !== $cache ) {
+			return $cache;
+		}
+
+		$season_id = (int) get_option( 'splm_default_season', 0 );
+		$players   = $season_id
+			? SPLM_Player_Stats_Aggregator::for_season( $season_id, array( 'include_playoffs' => true ) )
+			: array();
+
+		$cutoff = SPLM_Player_Stats_Aggregator::window_cutoff(
+			(int) get_option( 'splm_discipline_window_weeks', 4 ),
+			current_time( 'Y-m-d' ),
+			SPLM_Player_Stats_Aggregator::season_start( $players )
+		);
+
+		$cache = array( $players, $cutoff );
+
+		return $cache;
+	}
+
+	/**
+	 * How many players the given tier would flag in the default season.
+	 *
+	 * @param array $tier Tier definition.
+	 * @return int|null Null when there is no season to measure against.
+	 */
+	private function preview_flag_count( array $tier ) {
+		list( $players, $cutoff ) = $this->discipline_preview_data();
+
+		if ( ! $players ) {
+			return null;
+		}
+
+		$count = 0;
+		foreach ( $players as $player ) {
+			$value = 'window' === $tier['scope']
+				? SPLM_Player_Stats_Aggregator::window_totals( $player['weeks'], $cutoff )['pim']
+				: $player['totals']['pim'];
+
+			if ( $value >= (int) $tier['minutes'] ) {
+				++$count;
+			}
+		}
+
+		return $count;
 	}
 }

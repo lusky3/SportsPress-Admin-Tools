@@ -122,6 +122,15 @@ assert_test(
 	'sanitising nothing falls back to the defaults so the feature is never silently disabled'
 );
 
+$deduped = SPLM_Penalty_Watch::sanitize_tiers(
+	array(
+		array( 'key' => 'season-warn', 'scope' => 'season', 'minutes' => '15', 'severity' => 'warning' ),
+		array( 'key' => 'season-warn', 'scope' => 'window', 'minutes' => '9', 'severity' => 'critical' ),
+	)
+);
+assert_test( 1 === count( $deduped ), 'a duplicate tier key is dropped, keeping only the first occurrence' );
+assert_test( 'season' === $deduped[0]['scope'] && 15 === $deduped[0]['minutes'], 'the first occurrence of a duplicated key is the one that survives' );
+
 echo "\n=== Results ===\n\n";
 echo "Passed: {$passed}\nFailed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );
