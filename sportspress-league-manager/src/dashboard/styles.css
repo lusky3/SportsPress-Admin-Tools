@@ -458,6 +458,7 @@ button.splm-stat-tile:focus-visible { outline: 2px solid var(--splm-focus); outl
 	color: var(--splm-badge-text);
 }
 .splm-badge--warning { background: var(--splm-warning-bg); color: var(--splm-warning-text-2); }
+.splm-badge--critical { background: var(--splm-danger-bg); color: var(--splm-danger-text); }
 
 /* Schedule */
 .splm-schedule__date { font-size: 0.9rem; color: var(--splm-text-secondary); margin: 1.5rem 0 0.5rem; padding-bottom: 0.25rem; border-bottom: 1px solid var(--splm-border-light); }

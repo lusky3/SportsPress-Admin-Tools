@@ -1,6 +1,6 @@
 import { useState, useEffect } from '@wordpress/element';
 import HelpLink from '../components/HelpLink';
-import { fetchLeaders } from '../lib/api';
+import { fetchLeaders, fetchPenaltyWatch, acknowledgePenalty } from '../lib/api';
 
 const STAT_LABELS = { p: 'Points', g: 'Goals', a: 'Assists', pim: 'Penalty Minutes' };
 const STAT_ORDER = [ 'p', 'g', 'a', 'pim' ];
@@ -45,6 +45,25 @@ export default function Leaders( { season } ) {
 	const [ division, setDivision ] = useState( 0 );
 	const [ windowWeeks, setWindowWeeks ] = useState( 0 );
 	const [ includePlayoffs, setIncludePlayoffs ] = useState( false );
+	const [ watch, setWatch ] = useState( [] );
+	const [ watchReload, setWatchReload ] = useState( 0 );
+	const canSeeWatch = window.splmDashboard?.modules?.discipline !== false
+		&& window.splmDashboard?.capabilities?.canManage !== false;
+
+	useEffect( () => {
+		if ( ! season || ! canSeeWatch ) return undefined;
+		let cancelled = false;
+		fetchPenaltyWatch( season )
+			.then( ( d ) => { if ( ! cancelled ) setWatch( d || [] ); } )
+			.catch( () => { if ( ! cancelled ) setWatch( [] ); } );
+		return () => { cancelled = true; };
+	}, [ season, canSeeWatch, watchReload ] );
+
+	const onAcknowledge = ( row, flag ) => {
+		acknowledgePenalty( { player: row.player_id, season, tierKey: flag.tier_key } )
+			.then( () => setWatchReload( ( n ) => n + 1 ) )
+			.catch( ( err ) => setError( err?.message || 'Could not acknowledge' ) );
+	};
 
 	useEffect( () => {
 		if ( ! season ) return undefined;
@@ -131,6 +150,57 @@ export default function Leaders( { season } ) {
 			{ ! loading && active && STAT_ORDER.map( ( k ) => (
 				<Board key={ k } statKey={ k } rows={ active[ k ] } />
 			) ) }
+
+			{ canSeeWatch && watch.length > 0 && (
+				<section className="splm-card">
+					<h3>Penalty Watch</h3>
+					<div className="splm-table-wrapper">
+						<table className="splm-table">
+							<thead>
+								<tr>
+									<th scope="col">Player</th>
+									<th scope="col">Team</th>
+									<th scope="col">Division</th>
+									<th scope="col">Season PIM</th>
+									<th scope="col">Recent PIM</th>
+									<th scope="col">Flag</th>
+									<th scope="col">Action</th>
+								</tr>
+							</thead>
+							<tbody>
+								{ watch.map( ( row ) => (
+									<tr key={ row.player_id }>
+										<td>{ row.player }</td>
+										<td>{ row.team }</td>
+										<td>{ row.division }</td>
+										<td>{ row.season_pim }</td>
+										<td>{ row.window_pim }</td>
+										<td>
+											{ row.flags.map( ( f ) => (
+												<span key={ f.tier_key } className={ `splm-badge splm-badge--${ f.severity }` }>
+													{ f.tier_key } ({ f.value })
+												</span>
+											) ) }
+										</td>
+										<td>
+											{ row.flags.map( ( f ) => (
+												<button
+													key={ f.tier_key }
+													className="splm-btn splm-btn--small"
+													onClick={ () => onAcknowledge( row, f ) }
+												>
+													Acknowledge { f.tier_key }
+												</button>
+											) ) }
+										</td>
+									</tr>
+								) ) }
+							</tbody>
+						</table>
+					</div>
+					<p className="splm-muted">Acknowledging records the player’s current total. They reappear here only if they pass it or reach a higher threshold.</p>
+				</section>
+			) }
 		</div>
 	);
 }

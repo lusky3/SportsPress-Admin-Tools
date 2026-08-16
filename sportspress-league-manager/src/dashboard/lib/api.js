@@ -314,6 +314,21 @@ export function fetchLeaders( seasonId, { division = 0, limit = 0, windowWeeks =
 	return apiFetch( { path: `/splm/v1/leaders?${ params.toString() }` } );
 }
 
+// /discipline/watch is a list endpoint ({ data, total, page, total_pages }); unwrap it.
+export function fetchPenaltyWatch( seasonId ) {
+	return apiFetch( { path: `/splm/v1/discipline/watch?season=${ seasonId }` } ).then( unwrapList );
+}
+
+// The server derives the recorded value from current totals — the client must
+// not send one.
+export function acknowledgePenalty( { player, season, tierKey, status = 'reviewed', note = '' } ) {
+	return apiFetch( {
+		path: '/splm/v1/discipline/acknowledge',
+		method: 'POST',
+		data: { player, season, tier_key: tierKey, status, note },
+	} );
+}
+
 export function bulkUploadRoster( file ) {
 	const formData = new FormData();
 	formData.append( 'file', file );

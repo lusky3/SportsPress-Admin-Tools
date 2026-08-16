@@ -356,6 +356,7 @@ class SPLM_Dashboard_Frontend {
 				'capabilities'    => array(
 					'can_read'          => SPLM_Capabilities::can_read(),
 					'can_manage'        => SPLM_Capabilities::can_manage(),
+					'canManage'         => SPLM_Capabilities::can_manage(),
 					'canManageSchedule' => SPLM_Capabilities::can_manage(),
 					'canEnterScores'    => current_user_can( 'edit_others_sp_events' ),
 					'canManageRosters'  => current_user_can( 'edit_others_sp_players' ),

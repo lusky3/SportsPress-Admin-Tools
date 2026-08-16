@@ -2,8 +2,9 @@ import { useState, useEffect, useMemo } from '@wordpress/element';
 import HelpLink from '../components/HelpLink';
 import { fetchGames, fetchActivity, fetchStats, saveUserPreferences } from '../lib/api';
 import Icon from '../components/icons';
+import PenaltyWatchCard from '../components/PenaltyWatchCard';
 
-const CARDS = [ 'upcoming', 'recent', 'activity' ];
+const CARDS = [ 'upcoming', 'recent', 'activity', 'penalties' ];
 
 // M7: allowlist the activity types we ship CSS for. Any new types must be
 // added here AND in styles.css; unknown types fall back to "other".
@@ -265,6 +266,10 @@ export default function Dashboard( { onNavigate, season } ) {
 							</ul>
 						) }
 					</section>
+				) }
+
+				{ visibleCards.includes( 'penalties' ) && window.splmDashboard?.modules?.discipline !== false && (
+					<PenaltyWatchCard season={ season } onNavigate={ onNavigate } />
 				) }
 			</div>
 
