@@ -173,6 +173,12 @@ class SPLM_Admin {
 		$this->add_field( 'splm_report_leader_count', __( 'Leaders Per Category', 'sportspress-league-manager' ), array( $this, 'render_report_leader_count_field' ) );
 		$this->add_field( 'splm_discipline_window_weeks', __( 'Penalty Window (weeks)', 'sportspress-league-manager' ), array( $this, 'render_discipline_window_field' ) );
 		$this->add_field( 'splm_discipline_tiers', __( 'Penalty Thresholds', 'sportspress-league-manager' ), array( $this, 'render_discipline_tiers_field' ) );
+		// These three must have fields: options.php writes null over every option
+		// registered in a submitted group that is absent from the POST, so a
+		// registered-but-unrendered option is wiped on every save of this tab.
+		$this->add_field( 'splm_discipline_digest_enabled', __( 'Penalty Digest Email', 'sportspress-league-manager' ), array( $this, 'render_discipline_digest_enabled_field' ) );
+		$this->add_field( 'splm_discipline_digest_recipients', __( 'Digest Recipients', 'sportspress-league-manager' ), array( $this, 'render_discipline_digest_recipients_field' ) );
+		$this->add_field( 'splm_discipline_digest_day', __( 'Digest Day', 'sportspress-league-manager' ), array( $this, 'render_discipline_digest_day_field' ) );
 	}
 
 	private function add_field( $id, $title, $callback ) {
@@ -309,6 +315,46 @@ class SPLM_Admin {
 
 		echo '</tbody></table>';
 		echo '<p class="description">' . esc_html__( 'Player counts are for the default season, so you can see whether a threshold is useful before saving it.', 'sportspress-league-manager' ) . '</p>';
+	}
+
+	/**
+	 * Opt-in switch for the weekly digest email.
+	 */
+	public function render_discipline_digest_enabled_field() {
+		echo '<input type="checkbox" name="splm_discipline_digest_enabled" value="1" ' . checked( (int) get_option( 'splm_discipline_digest_enabled' ), 1, false ) . '/>';
+		echo '<p class="description">' . esc_html__( 'Send a weekly email listing every player over a penalty threshold. Turning this on starts sending mail; leaving it off sends nothing.', 'sportspress-league-manager' ) . '</p>';
+	}
+
+	/**
+	 * Who the weekly digest goes to.
+	 */
+	public function render_discipline_digest_recipients_field() {
+		echo '<input type="text" class="regular-text" name="splm_discipline_digest_recipients" value="' . esc_attr( get_option( 'splm_discipline_digest_recipients', '' ) ) . '"/>';
+		echo '<p class="description">' . esc_html__( 'Comma-separated email addresses. When empty, the digest goes to the site admin email.', 'sportspress-league-manager' ) . '</p>';
+	}
+
+	/**
+	 * Weekday the weekly digest is scheduled for.
+	 */
+	public function render_discipline_digest_day_field() {
+		$days = array(
+			'monday'    => __( 'Monday', 'sportspress-league-manager' ),
+			'tuesday'   => __( 'Tuesday', 'sportspress-league-manager' ),
+			'wednesday' => __( 'Wednesday', 'sportspress-league-manager' ),
+			'thursday'  => __( 'Thursday', 'sportspress-league-manager' ),
+			'friday'    => __( 'Friday', 'sportspress-league-manager' ),
+			'saturday'  => __( 'Saturday', 'sportspress-league-manager' ),
+			'sunday'    => __( 'Sunday', 'sportspress-league-manager' ),
+		);
+
+		$current = (string) get_option( 'splm_discipline_digest_day', 'monday' );
+
+		echo '<select name="splm_discipline_digest_day">';
+		foreach ( $days as $value => $label ) {
+			echo '<option value="' . esc_attr( $value ) . '" ' . selected( $current, $value, false ) . '>' . esc_html( $label ) . '</option>';
+		}
+		echo '</select>';
+		echo '<p class="description">' . esc_html__( 'The digest is sent at 08:00 site time on this day. Changing the day applies the next time the digest is scheduled, so turn the digest off and on again to move an existing schedule.', 'sportspress-league-manager' ) . '</p>';
 	}
 
 	/**
