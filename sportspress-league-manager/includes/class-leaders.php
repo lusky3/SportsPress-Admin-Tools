@@ -28,7 +28,7 @@ class SPLM_Leaders {
 	 * @param int   $limit     Rows per board; coerced to at least 1.
 	 * @return array stat_key => ordered rows.
 	 */
-	public static function rank( array $players, array $stat_keys, $limit ) {
+	public static function rank( array $players, array $stat_keys, int $limit ): array {
 		$limit = max( 1, (int) $limit );
 		$out   = array_fill_keys( $stat_keys, array() );
 
@@ -71,7 +71,7 @@ class SPLM_Leaders {
 	 * @param int   $limit     Rows per board.
 	 * @return array List of array( id, name, leaders ).
 	 */
-	public static function by_division( array $players, array $stat_keys, $limit ) {
+	public static function by_division( array $players, array $stat_keys, int $limit ): array {
 		$grouped = array();
 		$names   = array();
 
