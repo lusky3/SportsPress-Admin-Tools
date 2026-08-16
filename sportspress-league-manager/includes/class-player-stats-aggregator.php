@@ -133,6 +133,11 @@ class SPLM_Player_Stats_Aggregator {
 			return array();
 		}
 		update_meta_cache( 'post', $event_ids );
+		// update_meta_cache() primes meta only. get_posts( fields => ids ) returns
+		// before WP_Query primes the posts table, so without this every get_post()
+		// below is its own query. The two false flags skip term and meta priming:
+		// terms are not needed here and meta is primed on the line above.
+		_prime_post_caches( $event_ids, false, false );
 
 		$maps      = self::division_maps( $season_id );
 		$buckets   = array();
@@ -180,10 +185,25 @@ class SPLM_Player_Stats_Aggregator {
 			}
 		}
 
+		// Resolve every attributed team up front so the player and team posts can
+		// be primed in one query. splm_display_title() calls get_the_title(),
+		// which queries per post when the post is not in cache, and neither of
+		// these id sets has been through a WP_Query — update_meta_cache() would
+		// not help, since it primes meta and not the posts table.
+		$teams = array();
+		foreach ( array_keys( $buckets ) as $player_id ) {
+			$teams[ (int) $player_id ] = self::attributed_team( (int) $player_id, $maps, $team_tally );
+		}
+
+		$prime = array_filter( array_unique( array_merge( array_keys( $teams ), array_values( $teams ) ) ) );
+		if ( $prime ) {
+			_prime_post_caches( $prime, false, false );
+		}
+
 		$out = array();
 		foreach ( $buckets as $player_id => $weeks ) {
 			ksort( $weeks );
-			$team_id = self::attributed_team( $player_id, $maps, $team_tally );
+			$team_id = (int) ( $teams[ (int) $player_id ] ?? 0 );
 			$div_id  = (int) ( $maps['team_to_div'][ $team_id ] ?? 0 );
 
 			$out[ $player_id ] = array(
