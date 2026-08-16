@@ -203,10 +203,10 @@ class SPLM_Player_Stats_Aggregator {
 	/**
 	 * Event ids for a season.
 	 *
-	 * sp_season is hierarchical and tax_query defaults to include_children,
-	 * which silently sweeps playoff games into a "regular season" query. The
-	 * flag is therefore set explicitly in both directions rather than left to
-	 * the default.
+	 * The sp_season taxonomy is hierarchical and tax_query defaults to
+	 * include_children, which silently sweeps playoff games into a "regular
+	 * season" query. The flag is therefore set explicitly in both directions
+	 * rather than left to the default.
 	 *
 	 * @param int  $season_id        Term id.
 	 * @param bool $include_playoffs Whether to include child (playoff) terms.
