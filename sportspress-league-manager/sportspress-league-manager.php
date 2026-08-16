@@ -163,6 +163,11 @@ class SportsPress_League_Manager {
 		add_action( 'updated_post_meta', array( 'SPLM_Leaders_REST', 'maybe_flush_meta' ), 10, 3 );
 		add_action( 'added_post_meta', array( 'SPLM_Leaders_REST', 'maybe_flush_meta' ), 10, 3 );
 		add_action( 'deleted_post_meta', array( 'SPLM_Leaders_REST', 'maybe_flush_meta' ), 10, 3 );
+
+		// Threshold and window changes change the answer too, so a settings save
+		// must invalidate the same caches an event write does.
+		add_action( 'update_option_splm_discipline_tiers', array( 'SPLM_Leaders_REST', 'flush_cache' ) );
+		add_action( 'update_option_splm_discipline_window_weeks', array( 'SPLM_Leaders_REST', 'flush_cache' ) );
 	}
 
 	private function check_parent_plugin() {

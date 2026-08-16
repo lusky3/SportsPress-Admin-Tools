@@ -64,12 +64,13 @@ class SPLM_Penalty_Watch {
 	 * acknowledging a critical reveals the warning underneath instead of hiding
 	 * the player altogether.
 	 *
-	 * @param array $totals array( 'season' => int, 'window' => int ).
-	 * @param array $tiers  Tier list.
-	 * @param array $acks   tier_key => value_at_ack.
+	 * @param array  $totals       array( 'season' => int, 'window' => int ).
+	 * @param array  $tiers        Tier list.
+	 * @param array  $acks         Acknowledgement key => value_at_ack.
+	 * @param string $window_start Week key the rolling window currently starts at.
 	 * @return array Flags, criticals first.
 	 */
-	public static function evaluate( array $totals, array $tiers, array $acks ): array {
+	public static function evaluate( array $totals, array $tiers, array $acks, string $window_start = '' ): array {
 		$matched = array();
 
 		foreach ( $tiers as $tier ) {
@@ -86,8 +87,16 @@ class SPLM_Penalty_Watch {
 			// An acknowledgement records the total at the time. The flag stays
 			// down until the player earns more than that, which is what stops
 			// the same three names alerting every week forever.
-			$key = (string) $tier['key'];
-			if ( array_key_exists( $key, $acks ) && $value <= (int) $acks[ $key ] ) {
+			//
+			// A window acknowledgement is scoped to the window it was taken in:
+			// a rolling window falls again as weeks roll past, so a bare tier key
+			// would compare this window's total against a total earned in a
+			// completely different window and mute the alarm for the rest of the
+			// season. A season total only ever grows, so season scope needs no
+			// such scoping.
+			$key     = (string) $tier['key'];
+			$ack_key = self::ack_key( $tier, $window_start );
+			if ( array_key_exists( $ack_key, $acks ) && $value <= (int) $acks[ $ack_key ] ) {
 				continue;
 			}
 
@@ -102,10 +111,15 @@ class SPLM_Penalty_Watch {
 
 		$flags = array();
 		foreach ( $matched as $scope_flags ) {
+			// Severity decides which match represents the scope, not minutes:
+			// thresholds are editable, so a critical tier can legitimately sit
+			// below a warning tier and must still win.
 			usort(
 				$scope_flags,
 				function ( $a, $b ) {
-					return $b['minutes'] <=> $a['minutes'];
+					$rank = self::severity_rank( $a['severity'] ) <=> self::severity_rank( $b['severity'] );
+
+					return $rank ? $rank : ( $b['minutes'] <=> $a['minutes'] );
 				}
 			);
 			$flags[] = $scope_flags[0];
@@ -117,16 +131,40 @@ class SPLM_Penalty_Watch {
 	}
 
 	/**
+	 * The acknowledgement key a tier is stored and looked up under.
+	 *
+	 * Window tiers carry the window they were acknowledged in so the same
+	 * acknowledgement cannot suppress a later, disjoint window.
+	 *
+	 * @param array  $tier         Tier definition.
+	 * @param string $window_start Week key the rolling window starts at.
+	 * @return string
+	 */
+	public static function ack_key( array $tier, string $window_start ): string {
+		$key = (string) ( $tier['key'] ?? '' );
+
+		if ( 'window' !== (string) ( $tier['scope'] ?? '' ) ) {
+			return $key;
+		}
+
+		return $key . '@' . $window_start;
+	}
+
+	/**
 	 * Validate a stored or submitted tier list.
 	 *
-	 * @param array $raw Candidate tiers.
+	 * Untyped because this runs as a register_setting() sanitiser: options.php
+	 * hands the callback null when the field is missing from the POST, and a
+	 * hard array type hint would turn that into a fatal on save.
+	 *
+	 * @param mixed $raw Candidate tiers.
 	 * @return array Valid tiers, or the defaults when none survive.
 	 */
-	public static function sanitize_tiers( array $raw ): array {
+	public static function sanitize_tiers( $raw ): array {
 		$out  = array();
 		$seen = array();
 
-		foreach ( $raw as $tier ) {
+		foreach ( (array) $raw as $tier ) {
 			if ( ! is_array( $tier ) ) {
 				continue;
 			}
@@ -170,17 +208,28 @@ class SPLM_Penalty_Watch {
 	 * @return int
 	 */
 	private static function compare_flags( $a, $b ) {
-		$rank = array(
-			'critical' => 0,
-			'warning'  => 1,
-		);
-		$a_rank = $rank[ $a['severity'] ] ?? 9;
-		$b_rank = $rank[ $b['severity'] ] ?? 9;
+		$a_rank = self::severity_rank( (string) $a['severity'] );
+		$b_rank = self::severity_rank( (string) $b['severity'] );
 
 		if ( $a_rank !== $b_rank ) {
 			return $a_rank <=> $b_rank;
 		}
 
 		return $b['minutes'] <=> $a['minutes'];
+	}
+
+	/**
+	 * Sort rank for a severity; lower is more severe.
+	 *
+	 * @param string $severity Severity name.
+	 * @return int
+	 */
+	private static function severity_rank( string $severity ): int {
+		$rank = array(
+			'critical' => 0,
+			'warning'  => 1,
+		);
+
+		return $rank[ $severity ] ?? 9;
 	}
 }

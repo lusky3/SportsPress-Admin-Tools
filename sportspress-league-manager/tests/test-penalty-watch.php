@@ -105,6 +105,69 @@ assert_test(
 	'suppression is per scope'
 );
 
+echo "\n=== window acknowledgements are scoped to their window ===\n\n";
+
+$this_window = '2026-01-05';
+$old_window  = '2025-11-10';
+$window_ack  = array( SPLM_Penalty_Watch::ack_key( $tiers[2], $this_window ) => 9 );
+
+assert_test(
+	'window-critical@2026-01-05' === SPLM_Penalty_Watch::ack_key( $tiers[2], $this_window ),
+	'ack_key() composes a window key from the tier and the window start'
+);
+assert_test(
+	'season-warn' === SPLM_Penalty_Watch::ack_key( $tiers[0], $this_window ),
+	'ack_key() leaves a season tier key alone'
+);
+assert_test(
+	array() === SPLM_Penalty_Watch::evaluate( array( 'season' => 0, 'window' => 9 ), $tiers, $window_ack, $this_window ),
+	'a window acknowledgement suppresses the flag inside the window it was taken in'
+);
+assert_test(
+	array( 'window-critical' ) === $keys( SPLM_Penalty_Watch::evaluate( array( 'season' => 0, 'window' => 9 ), $tiers, $window_ack, $old_window ) ),
+	'the same acknowledgement does not suppress a different window: a repeat offence in a later window still alerts'
+);
+assert_test(
+	array( 'window-critical' ) === $keys( SPLM_Penalty_Watch::evaluate( array( 'season' => 0, 'window' => 9 ), $tiers, array( 'window-critical' => 9 ), $this_window ) ),
+	'a bare window tier key is not an acknowledgement of any window'
+);
+assert_test(
+	array() === SPLM_Penalty_Watch::evaluate( array( 'season' => 12, 'window' => 0 ), $tiers, array( 'season-warn' => 12 ), $this_window ),
+	'season-scope suppression is unchanged when a window start is supplied'
+);
+assert_test(
+	array( 'season-warn' ) === $keys( SPLM_Penalty_Watch::evaluate( array( 'season' => 13, 'window' => 0 ), $tiers, array( 'season-warn' => 12 ), $this_window ) ),
+	'season-scope re-alerting is unchanged when a window start is supplied'
+);
+
+echo "\n=== severity, not minutes, picks the flag for a scope ===\n\n";
+
+$inverted = array(
+	array(
+		'key'         => 'season-warn',
+		'scope'       => 'season',
+		'minutes'     => 20,
+		'severity'    => 'warning',
+		'consequence' => null,
+	),
+	array(
+		'key'         => 'season-critical',
+		'scope'       => 'season',
+		'minutes'     => 18,
+		'severity'    => 'critical',
+		'consequence' => null,
+	),
+);
+
+assert_test(
+	array( 'season-critical' ) === $keys( SPLM_Penalty_Watch::evaluate( array( 'season' => 22, 'window' => 0 ), $inverted, array() ) ),
+	'with the warning threshold edited above the critical one, a player over both is reported as critical'
+);
+assert_test(
+	'critical' === SPLM_Penalty_Watch::evaluate( array( 'season' => 22, 'window' => 0 ), $inverted, array() )[0]['severity'],
+	'the reported flag carries the critical severity, so the row sorts and badges as critical'
+);
+
 echo "\n=== sanitize_tiers() ===\n\n";
 
 $clean = SPLM_Penalty_Watch::sanitize_tiers(
@@ -130,6 +193,10 @@ $deduped = SPLM_Penalty_Watch::sanitize_tiers(
 );
 assert_test( 1 === count( $deduped ), 'a duplicate tier key is dropped, keeping only the first occurrence' );
 assert_test( 'season' === $deduped[0]['scope'] && 15 === $deduped[0]['minutes'], 'the first occurrence of a duplicated key is the one that survives' );
+assert_test(
+	SPLM_Penalty_Watch::default_tiers() === SPLM_Penalty_Watch::sanitize_tiers( null ),
+	'null falls back to the defaults instead of fatalling: options.php passes null when the field is absent from the POST'
+);
 
 echo "\n=== Results ===\n\n";
 echo "Passed: {$passed}\nFailed: {$failed}\n";

@@ -19,6 +19,17 @@ class SPLM_Leaders_REST {
 	const CACHE_GROUP  = 'splm_leaders_cache_keys';
 	const CACHE_TTL    = 900; // 15 minutes.
 
+	/**
+	 * Ceilings for the request parameters that multiply cache keys and scan cost.
+	 */
+	const MAX_LIMIT        = 100;
+	const MAX_WINDOW_WEEKS = 52;
+
+	/**
+	 * How many transient keys are remembered for prompt invalidation.
+	 */
+	const MAX_REMEMBERED_KEYS = 200;
+
 	public function __construct() {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 	}
@@ -40,8 +51,25 @@ class SPLM_Leaders_REST {
 						'sanitize_callback' => 'absint',
 					),
 					'division'         => array( 'sanitize_callback' => 'absint' ),
-					'limit'            => array( 'sanitize_callback' => 'absint' ),
-					'window_weeks'     => array( 'sanitize_callback' => 'absint' ),
+					// Bounded because every distinct value is a separate full
+					// season scan and a separate remembered transient; without a
+					// ceiling, looping over limit=1..n is a cheap way to fill
+					// wp_options. rest_validate_request_arg() is required —
+					// minimum/maximum are inert without a validate callback.
+					'limit'            => array(
+						'type'              => 'integer',
+						'minimum'           => 1,
+						'maximum'           => self::MAX_LIMIT,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+					'window_weeks'     => array(
+						'type'              => 'integer',
+						'minimum'           => 1,
+						'maximum'           => self::MAX_WINDOW_WEEKS,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
 					'include_playoffs' => array( 'sanitize_callback' => 'rest_sanitize_boolean' ),
 				),
 			)
@@ -133,9 +161,16 @@ class SPLM_Leaders_REST {
 			return new WP_Error( 'invalid_season', __( 'Season not found.', 'sportspress-league-manager' ), array( 'status' => 404 ) );
 		}
 
-		$limit            = absint( $request->get_param( 'limit' ) );
-		$limit            = $limit ? $limit : (int) get_option( 'splm_report_leader_count', 10 );
-		$window_weeks     = absint( $request->get_param( 'window_weeks' ) );
+		$limit        = absint( $request->get_param( 'limit' ) );
+		$limit        = $limit ? $limit : (int) get_option( 'splm_report_leader_count', 10 );
+		$window_weeks = absint( $request->get_param( 'window_weeks' ) );
+
+		// The route args already reject out-of-range values, but clamp again so
+		// an internal call that builds its own WP_REST_Request cannot bypass the
+		// bound and mint unbounded cache keys.
+		$limit        = min( self::MAX_LIMIT, max( 1, $limit ) );
+		$window_weeks = $window_weeks ? min( self::MAX_WINDOW_WEEKS, max( 1, $window_weeks ) ) : 0;
+
 		$include_playoffs = (bool) $request->get_param( 'include_playoffs' );
 		$division         = absint( $request->get_param( 'division' ) );
 
@@ -190,8 +225,8 @@ class SPLM_Leaders_REST {
 			'divisions' => SPLM_Leaders::by_division( $players, SPLM_Leaders::STAT_KEYS, $limit ),
 		);
 
-		self::remember( $cache_key );
 		set_transient( $cache_key, $payload, self::CACHE_TTL );
+		self::remember( $cache_key );
 
 		return new WP_REST_Response( $payload, 200 );
 	}
@@ -206,9 +241,28 @@ class SPLM_Leaders_REST {
 	 * @return array Rows, most severe first.
 	 */
 	public static function build_watch( int $season_id ): array {
+		$context = self::watch_context( $season_id );
+
+		return $context['rows'];
+	}
+
+	/**
+	 * Watch rows plus the window they were evaluated against.
+	 *
+	 * The cutoff is part of the result because a window acknowledgement is keyed
+	 * to its window, so whoever records one needs the same cutoff the flag was
+	 * produced with — recomputing it separately would risk the two drifting.
+	 *
+	 * @param int $season_id Season term id.
+	 * @return array array( 'rows' => array, 'cutoff' => string ).
+	 */
+	private static function watch_context( int $season_id ): array {
 		$players = SPLM_Player_Stats_Aggregator::for_season( $season_id, array( 'include_playoffs' => true ) );
 		if ( ! $players ) {
-			return array();
+			return array(
+				'rows'   => array(),
+				'cutoff' => '',
+			);
 		}
 
 		$tiers  = SPLM_Penalty_Watch::sanitize_tiers( (array) get_option( 'splm_discipline_tiers', array() ) );
@@ -229,7 +283,8 @@ class SPLM_Leaders_REST {
 					'window' => (int) $window['pim'],
 				),
 				$tiers,
-				$acks[ $player_id ] ?? array()
+				$acks[ $player_id ] ?? array(),
+				$cutoff
 			);
 
 			if ( ! $flags ) {
@@ -265,7 +320,10 @@ class SPLM_Leaders_REST {
 			}
 		);
 
-		return $rows;
+		return array(
+			'rows'   => $rows,
+			'cutoff' => (string) $cutoff,
+		);
 	}
 
 	/**
@@ -281,12 +339,19 @@ class SPLM_Leaders_REST {
 			return new WP_Error( 'invalid_season', __( 'Season not found.', 'sportspress-league-manager' ), array( 'status' => 404 ) );
 		}
 
-		$cache_key = self::cache_key( 'watch', array( $season_id ) );
+		// The thresholds and the window length are inputs to the result, so they
+		// belong in the key: without them, lowering a threshold leaves the watch
+		// list and the Dashboard card showing the old numbers for up to the TTL
+		// while the settings screen's live preview shows the new ones.
+		$tiers = SPLM_Penalty_Watch::sanitize_tiers( (array) get_option( 'splm_discipline_tiers', array() ) );
+		$weeks = (int) get_option( 'splm_discipline_window_weeks', 4 );
+
+		$cache_key = self::cache_key( 'watch', array( $season_id, md5( wp_json_encode( $tiers ) ), $weeks ) );
 		$rows      = get_transient( $cache_key );
 		if ( false === $rows ) {
 			$rows = self::build_watch( $season_id );
-			self::remember( $cache_key );
 			set_transient( $cache_key, $rows, self::CACHE_TTL );
+			self::remember( $cache_key );
 		}
 
 		return new WP_REST_Response( splm_rest_list_response( $rows ), 200 );
@@ -309,14 +374,17 @@ class SPLM_Leaders_REST {
 
 		// The value recorded must be the value that actually triggered the flag,
 		// so it is read from the current watch rather than taken from the client.
-		$value = null;
-		foreach ( self::build_watch( $season_id ) as $row ) {
+		$context = self::watch_context( $season_id );
+		$value   = null;
+		$scope   = '';
+		foreach ( $context['rows'] as $row ) {
 			if ( $row['player_id'] !== $player_id ) {
 				continue;
 			}
 			foreach ( $row['flags'] as $flag ) {
 				if ( $flag['tier_key'] === $tier_key ) {
 					$value = (int) $flag['value'];
+					$scope = (string) $flag['scope'];
 					break 2;
 				}
 			}
@@ -326,10 +394,21 @@ class SPLM_Leaders_REST {
 			return new WP_Error( 'not_flagged', __( 'That player is not currently flagged for this threshold.', 'sportspress-league-manager' ), array( 'status' => 404 ) );
 		}
 
+		// The client sends the plain tier key; the server composes the stored key
+		// so a window acknowledgement is scoped to the window it was taken in and
+		// cannot mute a later, disjoint window.
+		$ack_key = SPLM_Penalty_Watch::ack_key(
+			array(
+				'key'   => $tier_key,
+				'scope' => $scope,
+			),
+			(string) $context['cutoff']
+		);
+
 		$ok = SPLM_Discipline_Database::acknowledge(
 			$player_id,
 			$season_id,
-			$tier_key,
+			$ack_key,
 			$value,
 			(string) $request->get_param( 'status' ),
 			(string) $request->get_param( 'note' ),
@@ -376,10 +455,21 @@ class SPLM_Leaders_REST {
 	 */
 	private static function remember( $key ) {
 		$keys = (array) get_option( self::CACHE_GROUP, array() );
-		if ( ! in_array( $key, $keys, true ) ) {
-			$keys[] = $key;
-			update_option( self::CACHE_GROUP, $keys, false );
+		if ( in_array( $key, $keys, true ) ) {
+			return;
 		}
+
+		$keys[] = $key;
+
+		// Capped so the option cannot grow without bound and so a flush cannot
+		// turn into thousands of delete_transient() calls inside a save_post
+		// hook. The TTL is still the real backstop: a key dropped from this list
+		// simply expires on its own instead of being invalidated promptly.
+		if ( count( $keys ) > self::MAX_REMEMBERED_KEYS ) {
+			$keys = array_slice( $keys, -self::MAX_REMEMBERED_KEYS );
+		}
+
+		update_option( self::CACHE_GROUP, $keys, false );
 	}
 
 	/**

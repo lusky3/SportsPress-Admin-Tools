@@ -91,7 +91,8 @@ class SPLM_Discipline_Database {
 	 * SPLM_Penalty_Watch::evaluate().
 	 *
 	 * @param int $season_id Season term id.
-	 * @return array player_id => array( tier_key => value_at_ack ).
+	 * @return array player_id => array( ack_key => value_at_ack ), where ack_key
+	 *               is a tier key or "<tier>@<window start>" for a window tier.
 	 */
 	public static function acks_for_season( int $season_id ): array {
 		global $wpdb;
@@ -125,7 +126,8 @@ class SPLM_Discipline_Database {
 	 *
 	 * @param int    $player_id Player post id.
 	 * @param int    $season_id Season term id.
-	 * @param string $tier_key  Tier identifier.
+	 * @param string $tier_key  Acknowledgement key: a tier identifier, or
+	 *                          "<tier>@<window start>" for a window tier.
 	 * @param int    $value     PIM total at acknowledgement.
 	 * @param string $status    reviewed|suspension_served|dismissed.
 	 * @param string $note      Optional note.
@@ -141,6 +143,15 @@ class SPLM_Discipline_Database {
 
 		$allowed = array( 'reviewed', 'suspension_served', 'dismissed' );
 		$status  = in_array( $status, $allowed, true ) ? $status : 'reviewed';
+
+		// A window acknowledgement is keyed "<tier>@<window start>". sanitize_key()
+		// strips the "@", which would store a key evaluate() can never look up, so
+		// each half is sanitised separately and the separator is reattached.
+		$parts    = explode( '@', $tier_key, 2 );
+		$tier_key = sanitize_key( $parts[0] );
+		if ( isset( $parts[1] ) && '' !== sanitize_key( $parts[1] ) ) {
+			$tier_key .= '@' . sanitize_key( $parts[1] );
+		}
 
 		$table = self::table_name();
 
@@ -158,7 +169,7 @@ class SPLM_Discipline_Database {
 					created_at = VALUES(created_at)",
 				(int) $player_id,
 				(int) $season_id,
-				sanitize_key( $tier_key ),
+				$tier_key,
 				(int) $value,
 				$status,
 				wp_kses_post( $note ),
