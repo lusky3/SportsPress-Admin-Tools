@@ -31,8 +31,20 @@ class SPLM_Discipline_Digest {
 			return;
 		}
 
-		$day  = (string) get_option( 'splm_discipline_digest_day', 'monday' );
-		$next = strtotime( 'next ' . $day . ' 08:00' );
+		$day = (string) get_option( 'splm_discipline_digest_day', 'monday' );
+
+		// WordPress forces PHP's timezone to UTC, so a bare strtotime() would
+		// schedule 08:00 UTC — 03:00 or 04:00 local for this league. The date is
+		// resolved in the site's timezone and converted back to a UTC timestamp,
+		// which is what wp_schedule_event() expects.
+		$next = false;
+		try {
+			$local = new DateTime( 'next ' . $day . ' 08:00', wp_timezone() );
+			$next  = $local->getTimestamp();
+		} catch ( Exception $e ) {
+			$next = false;
+		}
+
 		if ( ! $next ) {
 			$next = time() + DAY_IN_SECONDS;
 		}
@@ -57,6 +69,14 @@ class SPLM_Discipline_Digest {
 	 */
 	public static function run(): bool {
 		if ( ! get_option( 'splm_discipline_digest_enabled' ) ) {
+			return false;
+		}
+
+		// A parent too old to ship SPAT_Lock (M12/H7) leaves nothing to serialise
+		// the cron double-fire this whole method exists to survive. Sending the
+		// board a duplicate disciplinary email is worse than skipping a week, so
+		// the safe failure is to send nothing.
+		if ( ! class_exists( 'SPAT_Lock' ) ) {
 			return false;
 		}
 
