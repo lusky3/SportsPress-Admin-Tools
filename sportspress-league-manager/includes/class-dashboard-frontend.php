@@ -161,6 +161,13 @@ class SPLM_Dashboard_Frontend {
 
 	/**
 	 * Enqueue the React dashboard app on the dashboard page.
+	 *
+	 * SPLM_REST_API and SPLM_Capabilities are stateless static helpers with no
+	 * dependencies — static access is exactly what lets them be called with no
+	 * WordPress bootstrap. Injecting instances purely to satisfy the linter
+	 * would cost testability and buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function enqueue_assets() {
 		if ( ! is_page() ) {
@@ -345,16 +352,18 @@ class SPLM_Dashboard_Frontend {
 				// SPA hides a tab whose module is off instead of rendering one
 				// that 503s. Fail-open in the client, like `dependencies`.
 				'modules'         => array(
-					'dashboard' => SPLM_REST_API::module_enabled( 'league_manager_dashboard' ),
-					'rosters'   => SPLM_REST_API::module_enabled( 'league_roster_management' ),
-					'fees'      => SPLM_REST_API::module_enabled( 'league_fee_tracking' ),
-					'notes'     => SPLM_REST_API::module_enabled( 'league_player_notes' ),
+					'dashboard'  => SPLM_REST_API::module_enabled( 'league_manager_dashboard' ),
+					'rosters'    => SPLM_REST_API::module_enabled( 'league_roster_management' ),
+					'fees'       => SPLM_REST_API::module_enabled( 'league_fee_tracking' ),
+					'notes'      => SPLM_REST_API::module_enabled( 'league_player_notes' ),
+					'discipline' => SPLM_REST_API::module_enabled( 'league_discipline' ),
 				),
 				// F7 — canonical capability flags routed through SPLM_Capabilities
 				// (kept alongside legacy granular flags for compatibility).
 				'capabilities'    => array(
 					'can_read'          => SPLM_Capabilities::can_read(),
 					'can_manage'        => SPLM_Capabilities::can_manage(),
+					'canManage'         => SPLM_Capabilities::can_manage(),
 					'canManageSchedule' => SPLM_Capabilities::can_manage(),
 					'canEnterScores'    => current_user_can( 'edit_others_sp_events' ),
 					'canManageRosters'  => current_user_can( 'edit_others_sp_players' ),

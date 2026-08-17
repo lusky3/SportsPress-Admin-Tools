@@ -12,6 +12,7 @@ import ScheduleGenerator from './pages/ScheduleGenerator';
 import DivisionBalance from './pages/DivisionBalance';
 import TeamComparison from './pages/TeamComparison';
 import SeasonReport from './pages/SeasonReport';
+import Leaders from './pages/Leaders';
 import SeasonSetup from './pages/SeasonSetup';
 import ScoreSheets from './pages/ScoreSheets';
 import Help from './pages/Help';
@@ -29,6 +30,7 @@ const PAGES = {
 	'schedule-gen': ScheduleGenerator,
 	'div-balance': DivisionBalance,
 	'team-compare': TeamComparison,
+	leaders: Leaders,
 	'season-report': SeasonReport,
 	'season-setup': SeasonSetup,
 	'score-sheets': ScoreSheets,

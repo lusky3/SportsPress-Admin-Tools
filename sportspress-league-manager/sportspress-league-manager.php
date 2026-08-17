@@ -98,14 +98,35 @@ class SportsPress_League_Manager {
 			)
 		);
 
+		SPAT_Plugin_Manager::register_plugin(
+			'league_discipline',
+			array(
+				'name'          => 'Penalty Discipline',
+				'description'   => 'Penalty-minute watch list, acknowledgements and weekly digest',
+				'parent_module' => 'league_discipline',
+				'version'       => SPLM_VERSION,
+				'file'          => __FILE__,
+			)
+		);
+
 		$this->load_enabled_modules();
 	}
 
+	/**
+	 * Instantiate the feature classes for whichever modules are enabled.
+	 *
+	 * SPLM_Discipline_Database and SPLM_Discipline_Digest are stateless static
+	 * helpers with no dependencies — static access is exactly what lets them be
+	 * called with no WordPress bootstrap. Injecting instances purely to satisfy
+	 * the linter would cost testability and buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
 	private function load_enabled_modules() {
 		$enabled = get_option( 'spat_enabled_modules', array() );
 		$any_enabled = array_intersect(
 			$enabled,
-			array( 'league_manager_dashboard', 'league_roster_management', 'league_fee_tracking', 'league_player_notes' )
+			array( 'league_manager_dashboard', 'league_roster_management', 'league_fee_tracking', 'league_player_notes', 'league_discipline' )
 		);
 
 		if ( empty( $any_enabled ) ) {
@@ -121,9 +142,42 @@ class SportsPress_League_Manager {
 			new SPLM_Player_Notes();
 		}
 
+		// The discipline schema is only needed once the module is deliberately
+		// enabled — see the module registration above for why it isn't folded
+		// into league_manager_dashboard.
+		if ( in_array( 'league_discipline', $enabled, true ) ) {
+			SPLM_Discipline_Database::maybe_upgrade();
+			new SPLM_Discipline_Digest();
+			if ( get_option( 'splm_discipline_digest_enabled' ) ) {
+				SPLM_Discipline_Digest::schedule();
+			} else {
+				SPLM_Discipline_Digest::unschedule();
+			}
+		}
+
+		if ( ! in_array( 'league_discipline', $enabled, true ) && class_exists( 'SPLM_Discipline_Digest' ) ) {
+			SPLM_Discipline_Digest::unschedule();
+		}
+
 		// REST API and Dashboard Frontend load regardless of admin context.
 		new SPLM_REST_API();
 		new SPLM_Dashboard_Frontend();
+
+		new SPLM_Leaders_REST();
+
+		// Any write to an event box score invalidates the cached boards. Hooking
+		// the meta key itself rather than each writer's own action means no write
+		// path can be missed — league manager, score sheets, WP admin, or any
+		// future writer all land here. The 15-minute TTL remains the backstop.
+		add_action( 'save_post_sp_event', array( 'SPLM_Leaders_REST', 'flush_cache' ) );
+		add_action( 'updated_post_meta', array( 'SPLM_Leaders_REST', 'maybe_flush_meta' ), 10, 3 );
+		add_action( 'added_post_meta', array( 'SPLM_Leaders_REST', 'maybe_flush_meta' ), 10, 3 );
+		add_action( 'deleted_post_meta', array( 'SPLM_Leaders_REST', 'maybe_flush_meta' ), 10, 3 );
+
+		// Threshold and window changes change the answer too, so a settings save
+		// must invalidate the same caches an event write does.
+		add_action( 'update_option_splm_discipline_tiers', array( 'SPLM_Leaders_REST', 'flush_cache' ) );
+		add_action( 'update_option_splm_discipline_window_weeks', array( 'SPLM_Leaders_REST', 'flush_cache' ) );
 	}
 
 	private function check_parent_plugin() {

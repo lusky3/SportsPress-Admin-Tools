@@ -304,6 +304,31 @@ export function fetchSeasonSummary( seasonId ) {
 	return apiFetch( { path: `/splm/v1/reports/season-summary?season=${ seasonId }` } );
 }
 
+// /leaders is an aggregate report (overall + per-division boards), not a list.
+export function fetchLeaders( seasonId, { division = 0, limit = 0, windowWeeks = 0, includePlayoffs = false } = {} ) {
+	const params = new URLSearchParams( { season: seasonId } );
+	if ( division ) params.set( 'division', division );
+	if ( limit ) params.set( 'limit', limit );
+	if ( windowWeeks ) params.set( 'window_weeks', windowWeeks );
+	if ( includePlayoffs ) params.set( 'include_playoffs', '1' );
+	return apiFetch( { path: `/splm/v1/leaders?${ params.toString() }` } );
+}
+
+// /discipline/watch is a list endpoint ({ data, total, page, total_pages }); unwrap it.
+export function fetchPenaltyWatch( seasonId ) {
+	return apiFetch( { path: `/splm/v1/discipline/watch?season=${ seasonId }` } ).then( unwrapList );
+}
+
+// The server derives the recorded value from current totals — the client must
+// not send one.
+export function acknowledgePenalty( { player, season, tierKey, status = 'reviewed', note = '' } ) {
+	return apiFetch( {
+		path: '/splm/v1/discipline/acknowledge',
+		method: 'POST',
+		data: { player, season, tier_key: tierKey, status, note },
+	} );
+}
+
 export function bulkUploadRoster( file ) {
 	const formData = new FormData();
 	formData.append( 'file', file );

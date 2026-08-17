@@ -15,6 +15,7 @@ const NAV_ITEMS = [
 	{ id: 'payments', label: 'Payments', icon: 'payments' },
 	{ id: 'div-balance', label: 'Balance', icon: 'div-balance' },
 	{ id: 'team-compare', label: 'Compare', icon: 'team-compare' },
+	{ id: 'leaders', label: 'Leaders', icon: 'season-report' },
 	{ id: 'season-report', label: 'Report', icon: 'season-report' },
 	{ id: 'season-setup', label: 'Seasons', icon: 'seasons' },
 	{ id: 'health', label: 'Health', icon: 'health' },
