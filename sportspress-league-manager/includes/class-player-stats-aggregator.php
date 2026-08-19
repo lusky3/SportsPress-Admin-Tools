@@ -281,6 +281,7 @@ class SPLM_Player_Stats_Aggregator {
 	 *
 	 * @SuppressWarnings(PHPMD.CyclomaticComplexity)
 	 * @SuppressWarnings(PHPMD.NPathComplexity)
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private static function division_maps( $season_id ) {
 		$team_to_div = array();
