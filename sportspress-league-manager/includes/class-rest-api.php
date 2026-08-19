@@ -902,7 +902,10 @@ class SPLM_REST_API {
 			$standings = array();
 			if ( is_array( $data ) ) {
 				foreach ( $data as $team_id => $row ) {
-					if ( ! is_numeric( $team_id ) ) {
+					// SP_League_Table::data() ends with a reserved key 0 holding the
+					// totals/averages row, not a team. is_numeric( 0 ) is true, so it
+					// needs the truthiness check too or it renders as a blank extra row.
+					if ( ! is_numeric( $team_id ) || ! (int) $team_id ) {
 						continue;
 					}
 					$gf = isset( $row['gf'] ) ? (int) $row['gf'] : 0;
@@ -3850,7 +3853,9 @@ class SPLM_REST_API {
 				);
 			}
 			foreach ( (array) $data as $k => $v ) {
-				if ( is_numeric( $k ) ) {
+				// Skip the reserved key 0 (totals row) — counting it inflates every
+				// division by one phantom team.
+				if ( is_numeric( $k ) && (int) $k ) {
 					$divisions[ $lg->term_id ]['team_ids'][ (int) $k ] = true;
 				}
 			}
@@ -4248,7 +4253,9 @@ class SPLM_REST_API {
 				}
 				$table = new SP_League_Table( $tid );
 				foreach ( (array) $table->data() as $k => $v ) {
-					if ( is_numeric( $k ) ) {
+					// Skip the reserved key 0 (totals row) — counting it inflates every
+					// division by one phantom team.
+					if ( is_numeric( $k ) && (int) $k ) {
 						$divisions[ $lg->term_id ]['team_ids'][ (int) $k ] = true;
 						$team_to_div[ (int) $k ] = $lg->term_id;
 					}
