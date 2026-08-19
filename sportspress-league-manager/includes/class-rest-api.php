@@ -901,10 +901,9 @@ class SPLM_REST_API {
 
 			$standings = array();
 			if ( is_array( $data ) ) {
-				foreach ( $data as $team_id => $row ) {
-					if ( ! is_numeric( $team_id ) ) {
-						continue;
-					}
+				// SPLM_League_Table_Rows drops SportsPress's reserved key-0 totals
+				// row, which is numeric and would otherwise render as a blank team.
+				foreach ( SPLM_League_Table_Rows::team_rows( $data ) as $team_id => $row ) {
 					$gf = isset( $row['gf'] ) ? (int) $row['gf'] : 0;
 					$ga = isset( $row['ga'] ) ? (int) $row['ga'] : 0;
 					$standings[] = array(
@@ -3849,10 +3848,10 @@ class SPLM_REST_API {
 					'team_ids' => array(),
 				);
 			}
-			foreach ( (array) $data as $k => $v ) {
-				if ( is_numeric( $k ) ) {
-					$divisions[ $lg->term_id ]['team_ids'][ (int) $k ] = true;
-				}
+			// Reserved key-0 totals row excluded; counting it inflates every
+			// division by one phantom team.
+			foreach ( SPLM_League_Table_Rows::team_ids( (array) $data ) as $k ) {
+				$divisions[ $lg->term_id ]['team_ids'][ $k ] = true;
 			}
 		}
 
@@ -4247,11 +4246,11 @@ class SPLM_REST_API {
 					);
 				}
 				$table = new SP_League_Table( $tid );
-				foreach ( (array) $table->data() as $k => $v ) {
-					if ( is_numeric( $k ) ) {
-						$divisions[ $lg->term_id ]['team_ids'][ (int) $k ] = true;
-						$team_to_div[ (int) $k ] = $lg->term_id;
-					}
+				// Reserved key-0 totals row excluded; counting it inflates every
+				// division by one phantom team.
+				foreach ( SPLM_League_Table_Rows::team_ids( (array) $table->data() ) as $k ) {
+					$divisions[ $lg->term_id ]['team_ids'][ $k ] = true;
+					$team_to_div[ $k ]                          = $lg->term_id;
 				}
 			}
 			uasort(

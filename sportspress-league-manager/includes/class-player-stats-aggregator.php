@@ -281,6 +281,7 @@ class SPLM_Player_Stats_Aggregator {
 	 *
 	 * @SuppressWarnings(PHPMD.CyclomaticComplexity)
 	 * @SuppressWarnings(PHPMD.NPathComplexity)
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private static function division_maps( $season_id ) {
 		$team_to_div = array();
@@ -315,10 +316,8 @@ class SPLM_Player_Stats_Aggregator {
 				continue;
 			}
 			$table = new SP_League_Table( $table_id );
-			foreach ( array_keys( (array) $table->data() ) as $team_id ) {
-				if ( is_numeric( $team_id ) && (int) $team_id ) {
-					$team_to_div[ (int) $team_id ] = (int) $league->term_id;
-				}
+			foreach ( SPLM_League_Table_Rows::team_ids( (array) $table->data() ) as $team_id ) {
+				$team_to_div[ $team_id ] = (int) $league->term_id;
 			}
 		}
 

@@ -46,6 +46,7 @@ class SPLM_Autoloader {
 			'SPLM_Health_Checker'        => $base . 'class-health-checker.php',
 			'SPLM_Leaders'               => $base . 'class-leaders.php',
 			'SPLM_Leaders_REST'          => $base . 'class-leaders-rest.php',
+			'SPLM_League_Table_Rows'     => $base . 'class-league-table-rows.php',
 			'SPLM_Penalty_Watch'         => $base . 'class-penalty-watch.php',
 			'SPLM_Player_Notes'          => $base . 'class-player-notes.php',
 			'SPLM_Player_Notes_Database' => $base . 'class-player-notes-database.php',
