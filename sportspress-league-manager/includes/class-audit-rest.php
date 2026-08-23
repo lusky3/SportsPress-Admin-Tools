@@ -85,6 +85,55 @@ class SPLM_Audit_REST {
 	}
 
 	/**
+	 * The season this feature is allowed to audit and repair.
+	 *
+	 * The dashboard's season picker lists every season ever played and
+	 * remembers the user's last choice, so an unconstrained season parameter
+	 * would let a convener who happens to be looking at an old season press
+	 * "fix all" and re-point every current calendar at it. The repairs only
+	 * make sense for the season in progress, so that is the only one accepted.
+	 *
+	 * @return int Term id, or 0 when no current season is configured.
+	 */
+	private function current_season_id(): int {
+		$id = (int) get_option( 'spem_current_season_id', 0 );
+
+		return $id ? $id : (int) get_option( 'sportspress_season', 0 );
+	}
+
+	/**
+	 * Reject any season other than the one in progress.
+	 *
+	 * @param int $season_id Requested season term id.
+	 * @return WP_Term|WP_Error
+	 */
+	private function resolve_season( int $season_id ) {
+		$season = get_term( $season_id, 'sp_season' );
+		if ( ! $season || is_wp_error( $season ) ) {
+			return new WP_Error( 'invalid_season', __( 'Season not found.', 'sportspress-league-manager' ), array( 'status' => 404 ) );
+		}
+
+		$current = $this->current_season_id();
+		if ( ! $current ) {
+			return new WP_Error(
+				'no_current_season',
+				__( 'No current season is set, so there is nothing to audit against.', 'sportspress-league-manager' ),
+				array( 'status' => 409 )
+			);
+		}
+
+		if ( $season_id !== $current ) {
+			return new WP_Error(
+				'not_current_season',
+				__( 'Only the current season can be audited or repaired. Switch the season selector to the current season and try again.', 'sportspress-league-manager' ),
+				array( 'status' => 409 )
+			);
+		}
+
+		return $season;
+	}
+
+	/**
 	 * GET /audit — what is currently mis-configured for a season.
 	 *
 	 * @param WP_REST_Request $request Request.
@@ -92,9 +141,9 @@ class SPLM_Audit_REST {
 	 */
 	public function get_audit( $request ) {
 		$season_id = absint( $request->get_param( 'season' ) );
-		$season    = get_term( $season_id, 'sp_season' );
-		if ( ! $season || is_wp_error( $season ) ) {
-			return new WP_Error( 'invalid_season', __( 'Season not found.', 'sportspress-league-manager' ), array( 'status' => 404 ) );
+		$season    = $this->resolve_season( $season_id );
+		if ( is_wp_error( $season ) ) {
+			return $season;
 		}
 
 		$report = SPLM_Season_Audit::run( $season_id );
@@ -106,8 +155,11 @@ class SPLM_Audit_REST {
 				array( 'key' => $key ),
 				$description,
 				array(
-					'count' => $report[ $key ]['count'] ?? 0,
-					'items' => $report[ $key ]['items'] ?? array(),
+					'count'  => $report[ $key ]['count'] ?? 0,
+					// Only the listing is truncated; a repair still covers every
+					// match, which is why count is reported in full.
+					'items'  => array_slice( $report[ $key ]['items'] ?? array(), 0, SPLM_Season_Audit::MAX_ITEMS ),
+					'capped' => ! empty( $report[ $key ]['capped'] ),
 				)
 			);
 		}
@@ -134,9 +186,9 @@ class SPLM_Audit_REST {
 		$season_id = absint( $request->get_param( 'season' ) );
 		$check     = sanitize_key( (string) $request->get_param( 'check' ) );
 
-		$season = get_term( $season_id, 'sp_season' );
-		if ( ! $season || is_wp_error( $season ) ) {
-			return new WP_Error( 'invalid_season', __( 'Season not found.', 'sportspress-league-manager' ), array( 'status' => 404 ) );
+		$season = $this->resolve_season( $season_id );
+		if ( is_wp_error( $season ) ) {
+			return $season;
 		}
 
 		if ( ! in_array( $check, SPLM_Season_Audit::CHECKS, true ) ) {
@@ -144,6 +196,16 @@ class SPLM_Audit_REST {
 		}
 
 		$result = SPLM_Season_Audit::fix( $check, $season_id );
+
+		// A held lock means another repair is running, which is not the same
+		// as "nothing needed fixing" and must not be reported as success.
+		if ( ! empty( $result['locked'] ) ) {
+			return new WP_Error(
+				'audit_locked',
+				__( 'Another repair is already running. Try again in a moment.', 'sportspress-league-manager' ),
+				array( 'status' => 409 )
+			);
+		}
 
 		return new WP_REST_Response(
 			array(

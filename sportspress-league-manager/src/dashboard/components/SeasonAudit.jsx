@@ -18,6 +18,10 @@ export default function SeasonAudit( { season } ) {
 	useEffect( () => {
 		if ( ! season ) return undefined;
 		let cancelled = false;
+		// Clear the previous season's findings first: leaving them on screen
+		// would show one season's numbers under another season's heading.
+		setReport( null );
+		setError( '' );
 		fetchAudit( season )
 			.then( ( data ) => {
 				if ( cancelled ) return;
@@ -31,6 +35,13 @@ export default function SeasonAudit( { season } ) {
 	}, [ season, reload ] );
 
 	const runFix = ( check ) => {
+		// Every other bulk action in this dashboard confirms first, and this one
+		// rewrites league records.
+		const seasonName = report?.season?.name || 'this season';
+		// eslint-disable-next-line no-alert
+		if ( ! window.confirm( `Repair ${ check.count } record(s) for ${ seasonName }?\n\n${ check.fix_label }.` ) ) {
+			return;
+		}
 		setBusy( check.key );
 		setResult( '' );
 		setError( '' );
@@ -46,16 +57,27 @@ export default function SeasonAudit( { season } ) {
 			} );
 	};
 
-	if ( ! season || ! report ) return null;
+	if ( ! season ) return null;
+
+	// A failed initial load leaves report null; showing nothing would hide the
+	// failure entirely, so the error is rendered on its own.
+	if ( ! report ) {
+		return error ? (
+			<section className="splm-audit">
+				<h3>Season configuration</h3>
+				<div className="splm-alert splm-alert--warning" role="alert">{ error }</div>
+			</section>
+		) : null;
+	}
 
 	const found = ( report.checks || [] ).filter( ( c ) => c.count > 0 );
 
 	return (
 		<section className="splm-audit">
-			<h3>Season configuration</h3>
+			<h3>Season configuration — { report.season?.name }</h3>
 			<p className="splm-muted">
-				Problems that make current-season data look wrong even though the games,
-				teams and players are correct. These can be repaired from here.
+				Problems that make { report.season?.name } data look wrong even though the
+				games, teams and players are correct. These can be repaired from here.
 			</p>
 
 			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
@@ -73,7 +95,9 @@ export default function SeasonAudit( { season } ) {
 						</div>
 						<p className="splm-health-alert__fix">{ check.problem }</p>
 						<details className="splm-health-alert__details">
-							<summary>Show { check.count } affected { check.applies_to }</summary>
+							<summary>
+								Show { check.items.length } of { check.count } affected { check.applies_to }
+							</summary>
 							<ul className="splm-health-alert__list">
 								{ check.items.map( ( it ) => (
 									<li key={ it.id }>
@@ -85,6 +109,12 @@ export default function SeasonAudit( { season } ) {
 								) ) }
 							</ul>
 						</details>
+						{ check.capped && (
+							<p className="splm-muted">
+								More than { check.items.length } records match; repairing will fix
+								every one, then re-run this check to see what remains.
+							</p>
+						) }
 						<button
 							type="button"
 							className="splm-btn splm-btn--primary"

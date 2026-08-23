@@ -27,26 +27,42 @@ class SPLM_Season_Audit {
 	const CHECKS = array( 'stale_date_range', 'calendar_season' );
 
 	/**
-	 * Upper bound on records reported or repaired in one pass.
+	 * Upper bound on matches reported or repaired in one pass.
 	 */
 	const MAX_ITEMS = 200;
 
 	/**
+	 * Upper bound on records examined per post type.
+	 *
+	 * The cap is applied to the records EXAMINED, not to the matches, because
+	 * capping the candidate query would hide older affected records behind
+	 * newer healthy ones and let the audit report a clean bill of health.
+	 */
+	const MAX_CANDIDATES = 2000;
+
+	/**
 	 * Whether a record's date filter cannot overlap the season.
 	 *
-	 * Only the `range` mode filters by date; mode `0` means "all dates" and the
-	 * stored from/to values are then inert, which is why the mode is checked
-	 * before the dates. An unknown season start returns false: without it there
-	 * is nothing to compare against, and guessing would rewrite records that
-	 * are fine.
+	 * Only an absolute `range` filters by the stored dates. Mode `0` means
+	 * "all dates", and a `range` in relative mode uses sp_date_past/future and
+	 * ignores from/to entirely — in both cases the stored dates are inert
+	 * leftovers, so treating them as a filter would convert a working record.
+	 *
+	 * An unknown season start returns false: without it there is nothing to
+	 * compare against, and guessing would rewrite records that are fine.
 	 *
 	 * @param string $mode         The record's sp_date mode.
+	 * @param string $relative     The record's sp_date_relative flag.
 	 * @param string $date_to      The record's sp_date_to value (Y-m-d).
 	 * @param string $season_start Date of the season's first event (Y-m-d).
 	 * @return bool
 	 */
-	public static function is_stale_range( string $mode, string $date_to, string $season_start ): bool {
+	public static function is_stale_range( string $mode, string $relative, string $date_to, string $season_start ): bool {
 		if ( 'range' !== $mode || '' === $date_to || '' === $season_start ) {
+			return false;
+		}
+
+		if ( '' !== $relative && '0' !== $relative ) {
 			return false;
 		}
 
@@ -65,6 +81,36 @@ class SPLM_Season_Audit {
 	}
 
 	/**
+	 * The season term plus any child (playoff) terms.
+	 *
+	 * A calendar attached only to the parent misses playoff games, which are
+	 * tagged to the child term. The season rollover writes both, so a repair
+	 * has to write both or it produces a calendar worse than a rolled-over one.
+	 *
+	 * @param int $season_id Season term id.
+	 * @return array Int term ids, parent first.
+	 */
+	public static function season_terms( int $season_id ): array {
+		$ids      = array( $season_id );
+		$children = get_terms(
+			array(
+				'taxonomy'   => 'sp_season',
+				'hide_empty' => false,
+				'parent'     => $season_id,
+				'fields'     => 'ids',
+			)
+		);
+
+		if ( ! is_wp_error( $children ) ) {
+			foreach ( $children as $child ) {
+				$ids[] = (int) $child;
+			}
+		}
+
+		return array_values( array_unique( array_map( 'intval', $ids ) ) );
+	}
+
+	/**
 	 * Human-facing description of a check.
 	 *
 	 * @param string $key Check key.
@@ -75,7 +121,7 @@ class SPLM_Season_Audit {
 			'stale_date_range' => array(
 				'label'      => __( 'Records still filtered to a past season', 'sportspress-league-manager' ),
 				'severity'   => 'error',
-				'problem'    => __( 'These were copied from an earlier season and kept its date filter, so they show no statistics for the current season even though the games, teams and players are all correct.', 'sportspress-league-manager' ),
+				'problem'    => __( 'These were copied from an earlier season and kept its date filter, so they show no statistics for this season even though the games, teams and players are all correct.', 'sportspress-league-manager' ),
 				'fix_label'  => __( 'Clear the date filter', 'sportspress-league-manager' ),
 				'applies_to' => __( 'player lists, calendars and league tables', 'sportspress-league-manager' ),
 			),
@@ -83,7 +129,7 @@ class SPLM_Season_Audit {
 				'label'      => __( 'Team calendars not showing this season', 'sportspress-league-manager' ),
 				'severity'   => 'warning',
 				'problem'    => __( 'These calendars belong to teams playing this season but are still attached to an earlier season, so their schedules appear empty.', 'sportspress-league-manager' ),
-				'fix_label'  => __( 'Attach to the current season', 'sportspress-league-manager' ),
+				'fix_label'  => __( 'Attach to this season', 'sportspress-league-manager' ),
 				'applies_to' => __( 'team calendars', 'sportspress-league-manager' ),
 			),
 		);
@@ -122,16 +168,12 @@ class SPLM_Season_Audit {
 	 * Run every check for a season.
 	 *
 	 * @param int $season_id Season term id.
-	 * @return array check_key => array( items, count ).
+	 * @return array check_key => array( items, count, capped ).
 	 */
 	public static function run( int $season_id ): array {
 		$out = array();
 		foreach ( self::CHECKS as $key ) {
-			$items       = self::find( $key, $season_id );
-			$out[ $key ] = array(
-				'items' => $items,
-				'count' => count( $items ),
-			);
+			$out[ $key ] = self::find( $key, $season_id );
 		}
 
 		return $out;
@@ -146,23 +188,27 @@ class SPLM_Season_Audit {
 	 *
 	 * @param string $check_key Check key.
 	 * @param int    $season_id Season term id.
-	 * @return array fixed, skipped, items.
+	 * @return array fixed, skipped, items, and locked when the lock was held.
 	 */
 	public static function fix( string $check_key, int $season_id ): array {
+		$empty = array(
+			'fixed'   => 0,
+			'skipped' => 0,
+			'items'   => array(),
+			'locked'  => false,
+		);
+
 		if ( ! in_array( $check_key, self::CHECKS, true ) ) {
-			return array(
-				'fixed'   => 0,
-				'skipped' => 0,
-				'items'   => array(),
-			);
+			return $empty;
 		}
 
 		$apply = function () use ( $check_key, $season_id ) {
 			$fixed   = 0;
 			$skipped = 0;
 			$done    = array();
+			$result  = self::find( $check_key, $season_id );
 
-			foreach ( self::find( $check_key, $season_id ) as $item ) {
+			foreach ( $result['items'] as $item ) {
 				$ok = 'stale_date_range' === $check_key
 					? self::clear_date_filter( (int) $item['id'] )
 					: self::attach_season( (int) $item['id'], $season_id );
@@ -182,19 +228,25 @@ class SPLM_Season_Audit {
 				'fixed'   => $fixed,
 				'skipped' => $skipped,
 				'items'   => $done,
+				'locked'  => false,
 			);
 		};
 
 		// Two conveners clicking at once would otherwise interleave detection
-		// and repair against the same records.
+		// and repair. The key is per season and per check so unrelated repairs
+		// do not block each other.
 		if ( class_exists( 'SPAT_Lock' ) ) {
-			$result = SPAT_Lock::with( 'splm_season_audit_fix', 120, $apply );
+			$result = SPAT_Lock::with( "splm_season_audit_{$check_key}_{$season_id}", 120, $apply );
 
-			return is_array( $result ) ? $result : array(
-				'fixed'   => 0,
-				'skipped' => 0,
-				'items'   => array(),
-			);
+			// with() returns false when the lock could not be acquired, which
+			// must not be reported as "nothing needed fixing".
+			if ( ! is_array( $result ) ) {
+				$empty['locked'] = true;
+
+				return $empty;
+			}
+
+			return $result;
 		}
 
 		return $apply();
@@ -205,12 +257,21 @@ class SPLM_Season_Audit {
 	 *
 	 * @param string $key       Check key.
 	 * @param int    $season_id Season term id.
-	 * @return array List of array( id, title, detail ).
+	 * @return array items, count, capped.
 	 */
 	private static function find( string $key, int $season_id ): array {
-		return 'stale_date_range' === $key
+		$found = 'stale_date_range' === $key
 			? self::find_stale_ranges( $season_id )
 			: self::find_untagged_calendars( $season_id );
+
+		// Every match is returned: a repair must cover all of them. Truncation
+		// for display happens in the REST layer, which is the only place that
+		// needs to keep a response small.
+		return array(
+			'items'  => $found,
+			'count'  => count( $found ),
+			'capped' => count( $found ) > self::MAX_ITEMS,
+		);
 	}
 
 	/**
@@ -230,8 +291,8 @@ class SPLM_Season_Audit {
 			$ids = get_posts(
 				array(
 					'post_type'      => $type,
-					'posts_per_page' => self::MAX_ITEMS,
-					'post_status'    => 'any',
+					'posts_per_page' => self::MAX_CANDIDATES,
+					'post_status'    => array( 'publish', 'draft', 'pending', 'private', 'future' ),
 					'fields'         => 'ids',
 					'tax_query'      => array(
 						array(
@@ -249,9 +310,10 @@ class SPLM_Season_Audit {
 			_prime_post_caches( $ids, false, false );
 
 			foreach ( $ids as $post_id ) {
-				$mode = (string) get_post_meta( $post_id, 'sp_date', true );
-				$to   = (string) get_post_meta( $post_id, 'sp_date_to', true );
-				if ( ! self::is_stale_range( $mode, $to, $season_start ) ) {
+				$mode     = (string) get_post_meta( $post_id, 'sp_date', true );
+				$relative = (string) get_post_meta( $post_id, 'sp_date_relative', true );
+				$to       = (string) get_post_meta( $post_id, 'sp_date_to', true );
+				if ( ! self::is_stale_range( $mode, $relative, $to, $season_start ) ) {
 					continue;
 				}
 
@@ -265,7 +327,7 @@ class SPLM_Season_Audit {
 			}
 		}
 
-		return array_slice( $found, 0, self::MAX_ITEMS );
+		return $found;
 	}
 
 	/**
@@ -286,8 +348,8 @@ class SPLM_Season_Audit {
 		$calendars = get_posts(
 			array(
 				'post_type'      => 'sp_calendar',
-				'posts_per_page' => 500,
-				'post_status'    => 'any',
+				'posts_per_page' => self::MAX_CANDIDATES,
+				'post_status'    => array( 'publish', 'draft', 'pending', 'private', 'future' ),
 				'fields'         => 'ids',
 			)
 		);
@@ -324,7 +386,7 @@ class SPLM_Season_Audit {
 			);
 		}
 
-		return array_slice( $found, 0, self::MAX_ITEMS );
+		return $found;
 	}
 
 	/**
@@ -343,18 +405,20 @@ class SPLM_Season_Audit {
 	}
 
 	/**
-	 * Point a calendar at the current season.
+	 * Point a calendar at this season and its playoffs.
 	 *
-	 * The season is replaced rather than appended: a calendar shows the seasons
-	 * it carries, so appending would make it show every season it has ever been
-	 * attached to. This matches what the season rollover does.
+	 * The seasons are replaced rather than appended: a calendar shows the
+	 * seasons it carries, so appending would make it show every season it has
+	 * ever been attached to. Both the parent and its playoff child are written,
+	 * matching the season rollover — writing only the parent would leave the
+	 * calendar missing every playoff game.
 	 *
 	 * @param int $post_id   Calendar id.
 	 * @param int $season_id Season term id.
 	 * @return bool
 	 */
 	private static function attach_season( int $post_id, int $season_id ): bool {
-		$result = wp_set_object_terms( $post_id, array( $season_id ), 'sp_season' );
+		$result = wp_set_object_terms( $post_id, self::season_terms( $season_id ), 'sp_season' );
 
 		return ! is_wp_error( $result );
 	}
