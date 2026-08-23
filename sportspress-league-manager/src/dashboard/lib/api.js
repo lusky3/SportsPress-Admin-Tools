@@ -178,6 +178,21 @@ export async function exportPaymentsAll( season, { search = '', onProgress } = {
 	return { filename: first.filename, csv, count };
 }
 
+// /audit is an aggregate report of season-configuration problems, not a list.
+// Both routes require the manage capability; the server enforces it.
+export function fetchAudit( seasonId ) {
+	return apiFetch( { path: `/splm/v1/audit?season=${ seasonId }` } );
+}
+
+// Repairs every record the named check currently reports, in one call.
+export function applyAuditFix( seasonId, checkKey ) {
+	return apiFetch( {
+		path: '/splm/v1/audit/fix',
+		method: 'POST',
+		data: { season: seasonId, check: checkKey },
+	} );
+}
+
 export function fetchHealth() {
 	// /health is an aggregate report — returns the object as-is, not a list.
 	return apiFetch( { path: '/splm/v1/health' } );
