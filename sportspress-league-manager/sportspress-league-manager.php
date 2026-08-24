@@ -164,6 +164,7 @@ class SportsPress_League_Manager {
 		new SPLM_Dashboard_Frontend();
 
 		new SPLM_Leaders_REST();
+		new SPLM_Audit_REST();
 
 		// Any write to an event box score invalidates the cached boards. Hooking
 		// the meta key itself rather than each writer's own action means no write

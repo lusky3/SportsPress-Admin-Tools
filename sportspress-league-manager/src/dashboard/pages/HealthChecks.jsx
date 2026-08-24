@@ -1,5 +1,6 @@
 import { useState, useEffect } from '@wordpress/element';
 import HelpLink from '../components/HelpLink';
+import SeasonAudit from '../components/SeasonAudit';
 import { fetchHealth } from '../lib/api';
 
 const ICONS = { error: '❌', warning: '⚠️', info: 'ℹ️' };
@@ -43,7 +44,7 @@ const CHECKS = [
 	},
 ];
 
-export default function HealthChecks() {
+export default function HealthChecks( { season } ) {
 	const [ report, setReport ] = useState( null );
 	const [ loading, setLoading ] = useState( true );
 	const [ error, setError ] = useState( '' );
@@ -68,6 +69,7 @@ export default function HealthChecks() {
 
 	const adminUrl = window.splmDashboard?.adminUrl || '/wp-admin/';
 	const editUrl = ( id ) => `${ adminUrl }post.php?post=${ id }&action=edit`;
+	const canManage = window.splmDashboard?.capabilities?.canManage !== false;
 
 	const groups = CHECKS
 		.map( ( check ) => ( { check, items: Array.isArray( report?.[ check.key ] ) ? report[ check.key ] : [] } ) )
@@ -78,6 +80,10 @@ export default function HealthChecks() {
 			<h2>Health Checks <HelpLink topic="health" /></h2>
 			<p className="splm-muted">Data problems that can throw off standings, notifications, or reports. Expand a check to see the affected records and open each one to fix it.</p>
 			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
+
+			{ /* Repairable season-configuration problems. Manage-only: the fix
+			     writes to league records, and the server enforces the same rule. */ }
+			{ canManage && <SeasonAudit season={ season } /> }
 
 			{ groups.length === 0 && ! error ? (
 				<p className="splm-empty">All systems healthy. ✓</p>

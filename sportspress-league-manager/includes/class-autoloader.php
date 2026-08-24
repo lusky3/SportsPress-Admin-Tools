@@ -38,6 +38,7 @@ class SPLM_Autoloader {
 		// the files were only ever loaded by tests that require() them directly.
 		self::$class_map = array(
 			'SPLM_Admin'                 => $base . 'class-admin.php',
+			'SPLM_Audit_REST'            => $base . 'class-audit-rest.php',
 			'SPLM_Capabilities'          => $base . 'class-capabilities.php',
 			'SPLM_Dashboard_Frontend'    => $base . 'class-dashboard-frontend.php',
 			'SPLM_Discipline_Database'   => $base . 'class-discipline-database.php',
@@ -52,6 +53,7 @@ class SPLM_Autoloader {
 			'SPLM_Player_Notes_Database' => $base . 'class-player-notes-database.php',
 			'SPLM_Player_Stats_Aggregator' => $base . 'class-player-stats-aggregator.php',
 			'SPLM_REST_API'              => $base . 'class-rest-api.php',
+			'SPLM_Season_Audit'          => $base . 'class-season-audit.php',
 			'SPLM_SportsPress_Data'      => $base . 'class-sportspress-data.php',
 		);
 	}
