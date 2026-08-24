@@ -71,6 +71,8 @@ class SPLM_Audit_REST {
 	 * Repairing league records is a league-management action.
 	 *
 	 * @return bool|WP_Error
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function can_manage() {
 		if ( ! SPLM_Capabilities::can_manage() ) {
@@ -138,6 +140,8 @@ class SPLM_Audit_REST {
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function get_audit( $request ) {
 		$season_id = absint( $request->get_param( 'season' ) );
@@ -181,6 +185,8 @@ class SPLM_Audit_REST {
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function post_fix( $request ) {
 		$season_id = absint( $request->get_param( 'season' ) );

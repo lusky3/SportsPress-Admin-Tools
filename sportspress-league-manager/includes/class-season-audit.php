@@ -19,6 +19,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * Season audit checks and their repairs.
+ *
+ * The method count and overall complexity are above PMD's defaults because the
+ * class deliberately holds both halves of each check — how to find the affected
+ * records and how to repair them — so the two cannot drift apart. Splitting them
+ * across classes would separate a detector from its fix, which is the exact
+ * failure this feature exists to prevent.
+ *
+ * @SuppressWarnings(PHPMD.TooManyMethods)
+ * @SuppressWarnings(PHPMD.ExcessiveClassComplexity)
+ */
 class SPLM_Season_Audit {
 
 	/**
@@ -189,6 +201,8 @@ class SPLM_Season_Audit {
 	 * @param string $check_key Check key.
 	 * @param int    $season_id Season term id.
 	 * @return array fixed, skipped, items, and locked when the lock was held.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public static function fix( string $check_key, int $season_id ): array {
 		$empty = array(
@@ -338,6 +352,8 @@ class SPLM_Season_Audit {
 	 *
 	 * @param int $season_id Season term id.
 	 * @return array
+	 *
+	 * @SuppressWarnings(PHPMD.CyclomaticComplexity)
 	 */
 	private static function find_untagged_calendars( int $season_id ): array {
 		$playing = self::season_team_ids( $season_id );
