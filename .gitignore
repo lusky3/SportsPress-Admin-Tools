@@ -30,6 +30,7 @@ Desktop.ini
 .settings/
 .buildpath
 .claude
+.codegraph
 .codex
 .cursor
 
