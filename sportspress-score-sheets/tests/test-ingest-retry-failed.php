@@ -57,7 +57,10 @@ function is_wp_error( $t ) { return $t instanceof WP_Error; }
 // ── Misc WP shims used by accept_image()/retry_failed_row() ─────────────────
 function __( $text ) { return $text; }
 function get_current_user_id() { return 9; }
-function wp_schedule_single_event( $timestamp, $hook, $args ) {
+function wp_schedule_single_event() {
+	// Only the 3rd positional arg (the hook's callback args) is relevant here;
+	// func_get_arg() avoids declaring formal parameters this stub never uses.
+	$args = func_get_arg( 2 );
 	spss_retry_state()->scheduled[] = $args[0];
 	return true;
 }
@@ -116,12 +119,15 @@ class SPSS_Database {
 }
 
 class SPSS_Image_Store {
-	public static function store_from_path( $tmp, $ext = 'jpg' ) {
+	public static function store_from_path() {
+		// Only the 2nd positional arg (extension) matters to this stub; the
+		// source path is irrelevant to a fake stored-path generator.
+		$ext   = func_num_args() > 1 ? func_get_arg( 1 ) : 'jpg';
 		$state = spss_retry_state();
 		if ( $state->store_should_fail ) {
 			return new WP_Error( 'spss_image_unreadable', $state->store_error );
 		}
-		return 'spss-sheets/sheet-' . substr( md5( $tmp . microtime() ), 0, 12 ) . '.' . $ext;
+		return 'spss-sheets/sheet-' . bin2hex( random_bytes( 6 ) ) . '.' . $ext;
 	}
 	public static function delete( $relative ) {
 		spss_retry_state()->deleted_paths[] = $relative;
@@ -169,7 +175,7 @@ check( 'a NEW audit-only row was added (duplicate, not an update)', count( $stat
 $dup_row = end( $state->rows );
 check( 'the audit row is marked duplicate', SPSS_Database::STATUS_DUPLICATE === $dup_row->status );
 check( 'the original row (id ' . $r1 . ') is untouched (still queued)', SPSS_Database::STATUS_QUEUED === $state->rows[ $r1 ]->status );
-unlink( $tmp_a2 );
+unlink( $tmp_a2 ); // nosemgrep -- test-only tempnam() path from this same file, not external input
 
 echo "=== A FAILED row's hash: resubmission retries the SAME row, not a duplicate ===\n";
 $tmp_b = tempnam( sys_get_temp_dir(), 'spss_retry_b_' );
@@ -202,7 +208,7 @@ check( 'the row now has a stored image_path', '' !== $state->rows[ $failed_id ]-
 check( 'the stored error was cleared', '' === $state->rows[ $failed_id ]->error );
 check( 'event_id was updated to the value this attempt supplied', 42 === $state->rows[ $failed_id ]->event_id );
 check( 'processing was scheduled for the EXISTING id', in_array( $failed_id, $state->scheduled, true ) );
-unlink( $tmp_b2 );
+unlink( $tmp_b2 ); // nosemgrep -- test-only tempnam() path from this same file, not external input
 
 echo "=== A FAILED row's hash: resubmission that STILL fails updates the same row, no pile-up ===\n";
 $tmp_c = tempnam( sys_get_temp_dir(), 'spss_retry_c_' );
@@ -231,11 +237,11 @@ check( 'no new row was inserted — one row per hash, even across repeat failure
 check( 'the existing row\'s error was refreshed to the latest message', 'A different error this time.' === $state->rows[ $still_failing_id ]->error );
 check( 'the row is still marked failed', SPSS_Database::STATUS_FAILED === $state->rows[ $still_failing_id ]->status );
 check( 'nothing was scheduled for this id (still not queued)', ! in_array( $still_failing_id, $state->scheduled, true ) );
-unlink( $tmp_c2 );
+unlink( $tmp_c2 ); // nosemgrep -- test-only tempnam() path from this same file, not external input
 
-unlink( $tmp_a );
-unlink( $tmp_b );
-unlink( $tmp_c );
+unlink( $tmp_a ); // nosemgrep -- test-only tempnam() path from this same file, not external input
+unlink( $tmp_b ); // nosemgrep -- test-only tempnam() path from this same file, not external input
+unlink( $tmp_c ); // nosemgrep -- test-only tempnam() path from this same file, not external input
 
 echo "\n=== Results ===\nPassed: $pass\nFailed: $fail\n";
 exit( $fail > 0 ? 1 : 0 );

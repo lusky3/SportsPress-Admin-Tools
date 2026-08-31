@@ -152,6 +152,11 @@ class SPSS_Ingest_Service {
 	 * @param string $tmp      Absolute path to the freshly-received image file.
 	 * @param array  $args     Same shape as accept_image()'s $args.
 	 * @return int|WP_Error Queue row id, or WP_Error (incl. 'spss_duplicate_sheet').
+	 *
+	 * SPSS_Database is a stateless static-method-only helper — every other
+	 * method in this file already calls it the same way.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private static function handle_hash_match( $existing, $hash, $tmp, array $args ) {
 		// A FAILED row accomplished nothing — most commonly a storage error
@@ -202,6 +207,13 @@ class SPSS_Ingest_Service {
 	 * @param string $tmp      Absolute path to the freshly-received image file.
 	 * @param array  $args     Same shape as accept_image()'s $args.
 	 * @return int|WP_Error Existing row id on success, or WP_Error.
+	 *
+	 * SPSS_Database is a stateless static-method-only helper — every other
+	 * method in this file already calls it the same way (find_by_hash(),
+	 * insert_sheet(), claim_for_processing(), …). Injecting an instance purely
+	 * to satisfy the linter would cost testability and buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private static function retry_failed_row( $existing, $tmp, array $args ) {
 		$relative = SPSS_Image_Store::store_from_path( $tmp, (string) ( $args['ext'] ?? 'jpg' ) );
