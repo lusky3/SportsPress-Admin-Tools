@@ -88,25 +88,7 @@ class SPSS_Ingest_Service {
 
 		$existing = SPSS_Database::find_by_hash( $hash );
 		if ( $existing ) {
-			// Record an audit-only row so the "Duplicate" queue filter reflects the
-			// re-submission (previously the status existed but was never persisted).
-			// image_hash is UNIQUE and the real hash belongs to $existing, so use a
-			// synthetic unique hash; no image is stored for the audit row.
-			SPSS_Database::insert_sheet(
-				array(
-					'uploaded_by' => (int) ( $args['uploaded_by'] ?? get_current_user_id() ),
-					'channel'     => (string) ( $args['channel'] ?? 'upload' ),
-					'image_path'  => '',
-					'image_hash'  => hash( 'sha256', $hash . '|dup|' . microtime( true ) . '|' . wp_rand() ),
-					'source_ref'  => 'duplicate-of:' . (int) $existing->id,
-					'status'      => SPSS_Database::STATUS_DUPLICATE,
-				)
-			);
-			return new WP_Error(
-				'spss_duplicate_sheet',
-				__( 'This image has already been submitted.', 'sportspress-score-sheets' ),
-				array( 'sheet_id' => (int) $existing->id )
-			);
+			return self::handle_hash_match( $existing, $hash, $tmp, $args );
 		}
 
 		// Store a metadata-stripped, size-capped copy in the protected dir.
@@ -154,6 +136,118 @@ class SPSS_Ingest_Service {
 		spawn_cron();
 
 		return $sheet_id;
+	}
+
+	/**
+	 * Dispatch a hash match found by accept_image(): a FAILED row is retried
+	 * (see retry_failed_row()); anything else (queued/processing/pending_review/
+	 * confirmed/duplicate) is a genuine duplicate, recorded as an audit-only row.
+	 *
+	 * Split out of accept_image() to keep each function's branching simple on
+	 * its own, matching the same split applied to extract_error_detail() in the
+	 * recognition HTTP trait.
+	 *
+	 * @param object $existing Row returned by SPSS_Database::find_by_hash().
+	 * @param string $hash     The freshly-hashed submission (== $existing->image_hash).
+	 * @param string $tmp      Absolute path to the freshly-received image file.
+	 * @param array  $args     Same shape as accept_image()'s $args.
+	 * @return int|WP_Error Queue row id, or WP_Error (incl. 'spss_duplicate_sheet').
+	 *
+	 * SPSS_Database is a stateless static-method-only helper — every other
+	 * method in this file already calls it the same way.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function handle_hash_match( $existing, $hash, $tmp, array $args ) {
+		// A FAILED row accomplished nothing — most commonly a storage error
+		// (e.g. an unwritable uploads directory) that never even got as far as
+		// saving the image. Treating a resubmission of the identical bytes as a
+		// "duplicate" would make that exact photo permanently un-submittable
+		// once the underlying cause is fixed: its hash is already taken, and
+		// re-photographing the same physical sheet reproduces the same bytes.
+		// Retry using the SAME row instead, so a transient failure is
+		// recoverable and there is still exactly one row per hash regardless of
+		// how many attempts it took.
+		if ( SPSS_Database::STATUS_FAILED === $existing->status ) {
+			return self::retry_failed_row( $existing, $tmp, $args );
+		}
+
+		// A genuine duplicate: something already succeeded or is in flight for
+		// this exact image. Record an audit-only row so the "Duplicate" queue
+		// filter reflects the re-submission (previously the status existed but
+		// was never persisted). image_hash is UNIQUE and the real hash belongs
+		// to $existing, so use a synthetic unique hash; no image is stored for
+		// the audit row.
+		SPSS_Database::insert_sheet(
+			array(
+				'uploaded_by' => (int) ( $args['uploaded_by'] ?? get_current_user_id() ),
+				'channel'     => (string) ( $args['channel'] ?? 'upload' ),
+				'image_path'  => '',
+				'image_hash'  => hash( 'sha256', $hash . '|dup|' . microtime( true ) . '|' . wp_rand() ),
+				'source_ref'  => 'duplicate-of:' . (int) $existing->id,
+				'status'      => SPSS_Database::STATUS_DUPLICATE,
+			)
+		);
+		return new WP_Error(
+			'spss_duplicate_sheet',
+			__( 'This image has already been submitted.', 'sportspress-score-sheets' ),
+			array( 'sheet_id' => (int) $existing->id )
+		);
+	}
+
+	/**
+	 * Retry ingest for an existing FAILED row whose hash matches a fresh
+	 * submission of the identical image bytes (see accept_image()). Updates the
+	 * same row rather than inserting a new one — attempts a fresh
+	 * store_from_path() (the failed row never got that far, so image_path is
+	 * empty) and requeues on success; on a repeat failure, just refreshes the
+	 * stored error rather than creating another row.
+	 *
+	 * @param object $existing Existing failed sheet row (from find_by_hash()).
+	 * @param string $tmp      Absolute path to the freshly-received image file.
+	 * @param array  $args     Same shape as accept_image()'s $args.
+	 * @return int|WP_Error Existing row id on success, or WP_Error.
+	 *
+	 * SPSS_Database is a stateless static-method-only helper — every other
+	 * method in this file already calls it the same way (find_by_hash(),
+	 * insert_sheet(), claim_for_processing(), …). Injecting an instance purely
+	 * to satisfy the linter would cost testability and buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function retry_failed_row( $existing, $tmp, array $args ) {
+		$relative = SPSS_Image_Store::store_from_path( $tmp, (string) ( $args['ext'] ?? 'jpg' ) );
+
+		if ( is_wp_error( $relative ) ) {
+			SPSS_Database::update_sheet( $existing->id, array( 'error' => $relative->get_error_message() ) );
+			return $relative;
+		}
+
+		$fields = array(
+			'status'     => SPSS_Database::STATUS_QUEUED,
+			'image_path' => $relative,
+			'error'      => '',
+		);
+		// Only override event/source association when this attempt actually
+		// supplies one — an unrelated retry (no event reselected) shouldn't wipe
+		// out whatever the original attempt had set.
+		if ( ! empty( $args['event_id'] ) ) {
+			$fields['event_id'] = (int) $args['event_id'];
+		}
+		if ( ! empty( $args['source_ref'] ) ) {
+			$fields['source_ref'] = $args['source_ref'];
+		}
+
+		$updated = SPSS_Database::update_sheet( $existing->id, $fields );
+		if ( false === $updated ) {
+			SPSS_Image_Store::delete( $relative );
+			return new WP_Error( 'spss_retry_update_failed', __( 'Could not update the existing sheet row for retry.', 'sportspress-score-sheets' ) );
+		}
+
+		wp_schedule_single_event( time(), 'spss_process_sheet', array( (int) $existing->id ) );
+		spawn_cron();
+
+		return (int) $existing->id;
 	}
 
 	/**
