@@ -12,45 +12,52 @@
  *   - never leaked to a different host (the security boundary);
  *   - disabled (empty host) or missing creds => no headers;
  *   - the SPSS_CF_ACCESS_CLIENT_SECRET constant overrides the option;
- *   - the spss_recognition_request_headers filter can add/override headers;
- *   - and, with no Access configured, the outbound header set is unchanged.
+ *   - the spss_recognition_request_headers filter can add/override headers.
+ *
+ * Shim state lives on SPSS_CF_Test_State (static props), not $GLOBALS, and shim
+ * signatures declare only the params they use — keeping the harness itself clean
+ * under static analysis.
  */
 
 define( 'ABSPATH', dirname( __FILE__ ) . '/' );
 
-// ── In-memory options ────────────────────────────────────────────────────────
-$GLOBALS['spss_options'] = array();
+/** In-memory harness state (options, registered filters, last captured request). */
+class SPSS_CF_Test_State {
+	public static $options = array();
+	public static $filters = array();
+	public static $last_request = array();
+}
+
+// ── Option store ─────────────────────────────────────────────────────────────
 function get_option( $name, $default = false ) {
-	return array_key_exists( $name, $GLOBALS['spss_options'] ) ? $GLOBALS['spss_options'][ $name ] : $default;
+	return array_key_exists( $name, SPSS_CF_Test_State::$options ) ? SPSS_CF_Test_State::$options[ $name ] : $default;
 }
 function update_option( $name, $value ) {
-	$GLOBALS['spss_options'][ $name ] = $value;
+	SPSS_CF_Test_State::$options[ $name ] = $value;
 	return true;
 }
 
 // ── Minimal filter registry (so the filter seam is actually exercised) ─────────
-$GLOBALS['spss_filters'] = array();
-function add_filter( $tag, $cb, $priority = 10, $args = 1 ) {
-	$GLOBALS['spss_filters'][ $tag ][] = $cb;
+function add_filter( $tag, $cb ) {
+	SPSS_CF_Test_State::$filters[ $tag ][] = $cb;
 	return true;
 }
 function apply_filters( $tag, $value ) {
-	$args = array_slice( func_get_args(), 1 );
-	foreach ( $GLOBALS['spss_filters'][ $tag ] ?? array() as $cb ) {
-		$args[0] = call_user_func_array( $cb, $args );
+	$extra = array_slice( func_get_args(), 2 );
+	foreach ( SPSS_CF_Test_State::$filters[ $tag ] ?? array() as $cb ) {
+		$value = call_user_func_array( $cb, array_merge( array( $value ), $extra ) );
 	}
-	return $args[0];
+	return $value;
 }
 
-// ── Other WP shims ───────────────────────────────────────────────────────────
-function __( $text, $domain = 'default' ) { return $text; }
+// ── Other WP shims (extra call args are ignored by PHP, so 1-arg is enough) ────
+function __( $text ) { return $text; }
 function wp_parse_url( $url, $component = -1 ) { return parse_url( $url, $component ); }
 function wp_json_encode( $data ) { return json_encode( $data ); }
 
 // Capturing HTTP: record the headers each call receives, reply 200 with JSON.
-$GLOBALS['spss_last_request'] = null;
 function wp_remote_post( $url, $args ) {
-	$GLOBALS['spss_last_request'] = array( 'url' => $url, 'headers' => $args['headers'] );
+	SPSS_CF_Test_State::$last_request = array( 'url' => $url, 'headers' => $args['headers'] );
 	return array( 'code' => 200, 'body' => json_encode( array( 'ok' => true ) ) );
 }
 function wp_remote_retrieve_response_code( $r ) { return $r['code']; }
@@ -67,14 +74,14 @@ class WP_Error {
 
 require_once ABSPATH . '../includes/recognition/trait-recognition-http.php';
 
-// A minimal user of the trait, exposing the protected surface for assertions.
+/** A minimal user of the trait, exposing the protected surface for assertions. */
 class SPSS_CF_Test_Provider {
 	use SPSS_Recognition_HTTP;
 	public function get_id(): string { return 'test'; }
 	public function headers_for( $url ) { return $this->cf_access_headers( $url ); }
 	public function post_to( $url ) {
 		$this->request_with_retry( $url, array( 'Authorization' => 'Bearer provider-key' ), array( 'x' => 1 ), 5 );
-		return $GLOBALS['spss_last_request']['headers'];
+		return SPSS_CF_Test_State::$last_request['headers'];
 	}
 }
 
@@ -98,7 +105,7 @@ $url = 'https://litellm.example.com/v1/chat/completions';
 echo "=== cf_access_headers(): host gating + credentials ===\n";
 
 // Disabled: no host configured.
-$GLOBALS['spss_options'] = array();
+SPSS_CF_Test_State::$options = array();
 check( 'no host configured => no headers', array() === $p->headers_for( $url ) );
 
 // Configured + matching host + both creds.
