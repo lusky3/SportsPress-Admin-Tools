@@ -66,6 +66,7 @@ run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-cf-access.php"
 run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-provider-diagnostics.php"
 run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-sheet-lifecycle.php"
 run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-rest-ingest.php"
+run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-ingest-retry-failed.php"
 run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-dashboard-rest.php"
 
 echo "════════════════════════════════════════"
