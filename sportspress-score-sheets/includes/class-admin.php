@@ -205,6 +205,44 @@ class SPSS_Admin {
 			)
 		);
 
+		// Cloudflare Access service token (optional). Attached to recognition
+		// requests whose host matches spss_cf_access_host, so a provider endpoint
+		// behind Cloudflare Access (e.g. a self-hosted gateway) can be reached
+		// non-interactively. The client secret is masked; it may also be supplied
+		// via the SPSS_CF_ACCESS_CLIENT_SECRET constant (which takes precedence).
+		register_setting(
+			self::SETTINGS_GROUP,
+			'spss_cf_access_host',
+			array(
+				'type' => 'string',
+				'sanitize_callback' => 'sanitize_text_field',
+				'default' => '',
+				'autoload' => false,
+			)
+		);
+		register_setting(
+			self::SETTINGS_GROUP,
+			'spss_cf_access_client_id',
+			array(
+				'type' => 'string',
+				'sanitize_callback' => 'sanitize_text_field',
+				'default' => '',
+				'autoload' => false,
+			)
+		);
+		register_setting(
+			self::SETTINGS_GROUP,
+			'spss_cf_access_client_secret',
+			array(
+				'type' => 'string',
+				'sanitize_callback' => function ( $value ) {
+					return $this->preserve_masked_key( $value, 'spss_cf_access_client_secret' );
+				},
+				'default' => '',
+				'autoload' => false,
+			)
+		);
+
 		register_setting(
 			self::SETTINGS_GROUP,
 			'spss_retention_days',
@@ -487,6 +525,25 @@ class SPSS_Admin {
 					<tr>
 						<th scope="row"><label for="spss_whatsapp_graph_version"><?php esc_html_e( 'Graph API version', 'sportspress-score-sheets' ); ?></label></th>
 						<td><input type="text" name="spss_whatsapp_graph_version" id="spss_whatsapp_graph_version" class="small-text" value="<?php echo esc_attr( get_option( 'spss_whatsapp_graph_version', 'v21.0' ) ); ?>" placeholder="v21.0" /></td>
+					</tr>
+				</table>
+
+				<h2><?php esc_html_e( 'Cloudflare Access (optional)', 'sportspress-score-sheets' ); ?></h2>
+				<p class="description">
+					<?php esc_html_e( 'If a recognition provider\'s endpoint sits behind Cloudflare Access, create an Access service token (Zero Trust → Access → Service Auth), allow it in that application\'s policy, and set its host + credentials here. The two CF-Access headers are then sent on recognition requests to that host, alongside the provider\'s own API key. Leave the host blank to disable.', 'sportspress-score-sheets' ); ?>
+				</p>
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><label for="spss_cf_access_host"><?php esc_html_e( 'Access-protected host', 'sportspress-score-sheets' ); ?></label></th>
+						<td><input type="text" name="spss_cf_access_host" id="spss_cf_access_host" class="regular-text" value="<?php echo esc_attr( get_option( 'spss_cf_access_host', '' ) ); ?>" placeholder="litellm.example.com" /><p class="description"><?php esc_html_e( 'Hostname only (no scheme/path). Headers are attached only to requests whose host matches this exactly.', 'sportspress-score-sheets' ); ?></p></td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="spss_cf_access_client_id"><?php esc_html_e( 'CF-Access-Client-Id', 'sportspress-score-sheets' ); ?></label></th>
+						<td><input type="text" name="spss_cf_access_client_id" id="spss_cf_access_client_id" class="regular-text" autocomplete="off" value="<?php echo esc_attr( get_option( 'spss_cf_access_client_id', '' ) ); ?>" /></td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="spss_cf_access_client_secret"><?php esc_html_e( 'CF-Access-Client-Secret', 'sportspress-score-sheets' ); ?></label></th>
+						<td><input type="password" name="spss_cf_access_client_secret" id="spss_cf_access_client_secret" class="regular-text" autocomplete="off" placeholder="<?php echo esc_attr( $this->masked( 'spss_cf_access_client_secret' ) ); ?>" value="" /><p class="description"><?php esc_html_e( 'May instead be defined as the SPSS_CF_ACCESS_CLIENT_SECRET constant in wp-config.php (which takes precedence).', 'sportspress-score-sheets' ); ?></p><?php $this->render_clear_checkbox( 'spss_cf_access_client_secret' ); ?></td>
 					</tr>
 				</table>
 

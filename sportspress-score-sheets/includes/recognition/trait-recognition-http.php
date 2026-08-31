@@ -28,6 +28,15 @@ trait SPSS_Recognition_HTTP {
 	 * @return array|WP_Error Decoded JSON on success.
 	 */
 	protected function request_with_retry( $url, array $headers, array $body, $timeout = 60, array $retry_statuses = array( 429, 529 ) ) {
+		// Attach Cloudflare Access service-token headers when the endpoint is
+		// behind Access (transport concern, orthogonal to the provider). The
+		// filter is the public seam for this and any future gateway auth.
+		$headers = apply_filters(
+			'spss_recognition_request_headers',
+			array_merge( $headers, $this->cf_access_headers( $url ) ),
+			$url
+		);
+
 		$attempts = 0;
 		$max      = 3;
 		$last_err = null;
@@ -90,5 +99,45 @@ trait SPSS_Recognition_HTTP {
 			'webp' => 'image/webp',
 		);
 		return $map[ $ext ] ?? 'image/jpeg';
+	}
+
+	/**
+	 * Cloudflare Access service-token headers for requests whose host matches the
+	 * configured Access host. Returns an empty array when Access is not
+	 * configured or the destination host does not match — so the service-token
+	 * secret is never sent to any other host (e.g. a provider hitting the vendor
+	 * API directly).
+	 *
+	 * The client secret is read from the SPSS_CF_ACCESS_CLIENT_SECRET constant
+	 * first (so it can live in wp-config, never the DB), then the option.
+	 *
+	 * @param string $url Outbound request URL.
+	 * @return array<string,string> Header map, possibly empty.
+	 */
+	protected function cf_access_headers( $url ) {
+		$configured_host = strtolower( trim( (string) get_option( 'spss_cf_access_host', '' ) ) );
+		if ( '' === $configured_host ) {
+			return array();
+		}
+
+		$request_host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+		if ( '' === $request_host || $request_host !== $configured_host ) {
+			return array();
+		}
+
+		$client_id = trim( (string) get_option( 'spss_cf_access_client_id', '' ) );
+		$secret    = ( defined( 'SPSS_CF_ACCESS_CLIENT_SECRET' ) && constant( 'SPSS_CF_ACCESS_CLIENT_SECRET' ) )
+			? (string) constant( 'SPSS_CF_ACCESS_CLIENT_SECRET' )
+			: (string) get_option( 'spss_cf_access_client_secret', '' );
+		$secret    = trim( $secret );
+
+		if ( '' === $client_id || '' === $secret ) {
+			return array();
+		}
+
+		return array(
+			'CF-Access-Client-Id'     => $client_id,
+			'CF-Access-Client-Secret' => $secret,
+		);
 	}
 }
