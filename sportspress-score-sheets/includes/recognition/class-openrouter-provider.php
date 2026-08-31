@@ -52,6 +52,15 @@ class SPSS_OpenRouter_Provider extends SPSS_OpenAI_Provider {
 	}
 
 	/**
+	 * OpenAI-compatible models-list endpoint at the configured base URL — works
+	 * against OpenRouter itself as well as a self-hosted gateway (e.g. LiteLLM)
+	 * pointed at by spss_openrouter_base_url.
+	 */
+	protected function probe_url(): string {
+		return $this->base_url() . '/models';
+	}
+
+	/**
 	 * Same api_key + model fields as the base, but the model carries a capability
 	 * hint and the gateway base URL is appended (aggregators need a configurable
 	 * endpoint).

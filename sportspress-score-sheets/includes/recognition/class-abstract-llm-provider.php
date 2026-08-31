@@ -113,6 +113,62 @@ abstract class SPSS_Abstract_LLM_Provider implements SPSS_Recognition_Provider {
 	}
 
 	/**
+	 * URL for a free/cheap GET used by test_connection() — typically a
+	 * models-list endpoint, since every hosted vendor here happens to have one
+	 * and it costs nothing to call. Empty string means this provider has no
+	 * such endpoint; test_connection() reports that rather than guessing.
+	 */
+	protected function probe_url(): string {
+		return '';
+	}
+
+	/**
+	 * Shared connectivity/auth check: GET probe_url() with this provider's own
+	 * auth headers, then classify the response with the same detail-extraction
+	 * used for a failed recognize() call, so a failed test reads exactly like a
+	 * failed sheet would.
+	 */
+	public function test_connection() {
+		if ( ! $this->is_configured() ) {
+			return new WP_Error( 'spss_' . $this->get_id() . '_not_configured', __( 'No API key is configured.', 'sportspress-score-sheets' ) );
+		}
+
+		$url = $this->probe_url();
+		if ( '' === $url ) {
+			return new WP_Error( 'spss_' . $this->get_id() . '_no_probe', __( 'This provider does not support a connection test.', 'sportspress-score-sheets' ) );
+		}
+
+		$result = $this->probe_get( $url, $this->auth_headers() );
+		if ( is_wp_error( $result ) ) {
+			return new WP_Error(
+				'spss_' . $this->get_id() . '_unreachable',
+				sprintf(
+					/* translators: 1: provider label, 2: underlying network error */
+					__( 'Could not reach %1$s: %2$s', 'sportspress-score-sheets' ),
+					$this->get_label(),
+					$result->get_error_message()
+				)
+			);
+		}
+
+		if ( $result['code'] >= 200 && $result['code'] < 300 ) {
+			return true;
+		}
+
+		$message = sprintf(
+			/* translators: 1: provider label, 2: HTTP status */
+			__( '%1$s responded with HTTP %2$d.', 'sportspress-score-sheets' ),
+			$this->get_label(),
+			$result['code']
+		);
+		$detail = self::extract_error_detail( $result['body'] );
+		if ( '' !== $detail ) {
+			$message .= ' ' . $detail;
+		}
+		return new WP_Error( 'spss_' . $this->get_id() . '_test_failed', $message );
+	}
+
+	/**
 	 * Rough default $-cost per sheet, used by SPSS_Budget when no per-provider
 	 * `spss_<id>_cost_per_sheet` option is set. A deliberate estimate (image +
 	 * ~few-K-token extraction on a mid-tier vision model); override per provider

@@ -142,6 +142,7 @@ if (!class_exists('SPSS_File_Server')) {
 if (!class_exists('SPSS_Database')) {
     class SPSS_Database {
         const STATUS_CONFIRMED = 'confirmed';
+        const STATUS_FAILED    = 'failed';
         // Configurable per test.
         public static $sheets    = array();
         public static $count_all = 0;
@@ -438,6 +439,35 @@ foreach ($GLOBALS['spss_primed'] as $group) {
 assert_test(
     in_array(500, $flat_primed, true),
     'get_sheets: referenced event id is post-cache primed before per-row title lookups'
+);
+
+// A failed sheet's error is now included in the list payload (previously only
+// the single-sheet detail endpoint exposed it, so the queue table couldn't
+// show *why* a sheet failed without an extra request).
+SPSS_Database::$sheets = array(
+    (object) array(
+        'id' => 3, 'created_at' => '2026-01-03 00:00:00', 'channel' => 'upload',
+        'status' => 'failed', 'provider' => 'openrouter', 'event_id' => null,
+        'extracted_json' => '{}', 'image_path' => '',
+        'error' => 'OpenRouter / OpenAI-compatible aggregator: Recognition API returned HTTP 401. Invalid proxy server token passed.',
+    ),
+    (object) array(
+        'id' => 4, 'created_at' => '2026-01-04 00:00:00', 'channel' => 'upload',
+        'status' => 'pending_review', 'provider' => 'claude', 'event_id' => null,
+        'extracted_json' => '{}', 'image_path' => '',
+        'error' => '',
+    ),
+);
+SPSS_Database::$count_all = 2;
+$res_err  = $dash->get_sheets(new WP_REST_Request('', array('status' => '', 'limit' => 100, 'offset' => 0)));
+$rows_err = $res_err->get_data()['data'];
+assert_test(
+    'OpenRouter / OpenAI-compatible aggregator: Recognition API returned HTTP 401. Invalid proxy server token passed.' === $rows_err[0]['error'],
+    'get_sheets: a failed row includes its stored error text'
+);
+assert_test(
+    null === $rows_err[1]['error'],
+    'get_sheets: a non-failed row reports error as null (not the raw empty-string column)'
 );
 
 // ── Summary ─────────────────────────────────────────────────────────────────

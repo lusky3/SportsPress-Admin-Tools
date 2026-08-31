@@ -73,6 +73,11 @@ function admin_url( $path = '' ) { return 'https://example.test/wp-admin/' . ltr
 function rest_url( $path = '' ) { return 'https://example.test/wp-json/' . ltrim( (string) $path, '/' ); }
 function wp_nonce_url( $url, $action = -1 ) { return $url . '&_wpnonce=test'; }
 function current_user_can( $cap ) { return true; }
+function get_current_user_id() { return 1; }
+// No "Test connection" result is ever pending in this harness — render_test_result()
+// must see a consistent "nothing to show" rather than fatal on an unstubbed function.
+function get_transient() { return false; }
+function delete_transient() { return true; }
 function settings_fields( $group ) { echo '<input type="hidden" name="option_page" value="' . $group . '" />'; }
 function submit_button( $text = null ) { echo '<p class="submit"><input type="submit" /></p>'; }
 function checked( $checked, $current = true, $echo = true ) {

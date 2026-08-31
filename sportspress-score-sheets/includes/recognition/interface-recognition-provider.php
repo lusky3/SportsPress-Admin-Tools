@@ -56,4 +56,19 @@ interface SPSS_Recognition_Provider {
 	 *                 - 'description' => string   Help text.
 	 */
 	public function settings_fields(): array;
+
+	/**
+	 * Validate the current configuration against the live endpoint — a cheap
+	 * connectivity + auth check, NOT a billed recognize() call. Backs the
+	 * settings page's "Test connection" action, so a bad key or a wrong
+	 * endpoint is caught when it's configured, not on the first real sheet.
+	 *
+	 * A provider with no lightweight endpoint to probe (e.g. one whose only
+	 * contract is a single inference endpoint) may fall back to a bare
+	 * reachability check — in that case the returned WP_Error/true should make
+	 * clear that auth itself was not verified.
+	 *
+	 * @return true|WP_Error True on a successful, authenticated response.
+	 */
+	public function test_connection();
 }

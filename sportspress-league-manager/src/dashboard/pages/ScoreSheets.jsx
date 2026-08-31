@@ -192,7 +192,12 @@ function Queue( { onReview, onView, onToast } ) {
 								<tr key={ s.id }>
 									<td>{ s.created_at }</td>
 									<td>{ s.channel || '—' }</td>
-									<td><StatusBadge status={ s.status } /></td>
+									<td>
+										<StatusBadge status={ s.status } />
+										{ s.status === 'failed' && s.error && (
+											<div className="splm-score-sheets__error" title={ s.error }>{ s.error }</div>
+										) }
+									</td>
 									<td>{ s.event_title || '—' }</td>
 									<td className="splm-tabular">{ s.flags_count > 0 ? s.flags_count : '' }</td>
 									<td>
