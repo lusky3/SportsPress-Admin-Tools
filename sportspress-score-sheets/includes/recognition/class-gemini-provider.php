@@ -38,6 +38,11 @@ class SPSS_Gemini_Provider extends SPSS_Abstract_LLM_Provider {
 		return self::API_BASE . rawurlencode( $this->get_model() ) . ':generateContent';
 	}
 
+	/** Google's models-list endpoint — API_BASE minus the trailing model segment. */
+	protected function probe_url(): string {
+		return untrailingslashit( self::API_BASE );
+	}
+
 	protected function auth_headers(): array {
 		return array(
 			'content-type'   => 'application/json',

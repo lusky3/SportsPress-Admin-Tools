@@ -38,6 +38,11 @@ class SPSS_OpenAI_Provider extends SPSS_Abstract_LLM_Provider {
 		return self::API_URL;
 	}
 
+	/** OpenAI's models-list endpoint — free, authenticated the same way. */
+	protected function probe_url(): string {
+		return 'https://api.openai.com/v1/models';
+	}
+
 	protected function auth_headers(): array {
 		return array(
 			'content-type'  => 'application/json',

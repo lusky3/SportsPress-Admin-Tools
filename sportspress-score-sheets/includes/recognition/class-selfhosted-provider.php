@@ -57,6 +57,42 @@ class SPSS_SelfHosted_Provider implements SPSS_Recognition_Provider {
 		return '' !== trim( $this->get_endpoint() );
 	}
 
+	/**
+	 * Reachability-only check: the sidecar contract is a single
+	 * POST /v1/recognize, so unlike the hosted vendors there is no models-list
+	 * or health endpoint to authenticate against. A GET to the endpoint root
+	 * succeeding — even with a 404, since nothing is routed there — proves the
+	 * network path (and, on this session's staging setup, the private mesh
+	 * route) is open; it does NOT prove the bearer token is valid, so the
+	 * success message says so rather than implying full validation like the
+	 * hosted providers' test_connection() does.
+	 */
+	public function test_connection() {
+		if ( ! $this->is_configured() ) {
+			return new WP_Error( 'spss_selfhosted_not_configured', __( 'No sidecar endpoint is configured.', 'sportspress-score-sheets' ) );
+		}
+
+		$headers = array();
+		$key     = trim( $this->get_key() );
+		if ( '' !== $key ) {
+			$headers['authorization'] = 'Bearer ' . $key;
+		}
+
+		$result = $this->probe_get( $this->get_endpoint() . '/', $headers, 10 );
+		if ( is_wp_error( $result ) ) {
+			return new WP_Error(
+				'spss_selfhosted_unreachable',
+				sprintf(
+					/* translators: %s: underlying network error */
+					__( 'Could not reach the sidecar: %s', 'sportspress-score-sheets' ),
+					$result->get_error_message()
+				)
+			);
+		}
+
+		return true;
+	}
+
 	/** Self-hosted inference has no per-call API charge. */
 	public function estimated_cost_per_sheet(): float {
 		return 0.0;

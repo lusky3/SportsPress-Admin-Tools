@@ -173,6 +173,7 @@ class SPSS_Dashboard_REST {
 				'event_title' => $event_id ? (string) get_the_title( $event_id ) : '',
 				'flags_count' => $flags_count,
 				'image_url'   => $has_image ? SPSS_File_Server::image_url( (int) $sheet->id ) : '',
+				'error'       => ( SPSS_Database::STATUS_FAILED === $sheet->status && $sheet->error ) ? (string) $sheet->error : null,
 			);
 		}
 

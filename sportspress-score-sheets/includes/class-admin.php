@@ -13,11 +13,15 @@ class SPSS_Admin {
 	const SETTINGS_SLUG = 'spss-settings';
 	const SETTINGS_GROUP = 'spss_settings';
 
+	/** Transient key prefix for a "Test connection" result, scoped per-user + per-provider. */
+	const TEST_RESULT_TRANSIENT_PREFIX = 'spss_test_result_';
+
 	public function __construct() {
 		add_action( 'admin_menu', array( $this, 'add_menu' ) );
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_action( 'admin_post_spss_upload_sheet', array( $this, 'handle_upload' ) );
 		add_action( 'admin_post_spss_regen_secret', array( $this, 'regenerate_secret' ) );
+		add_action( 'admin_post_spss_test_provider', array( $this, 'handle_test_provider' ) );
 	}
 
 	public function add_menu() {
@@ -323,6 +327,61 @@ class SPSS_Admin {
 		exit;
 	}
 
+	/**
+	 * "Test connection" button handler: run the named provider's
+	 * test_connection() and stash the (bounded, already-human-readable) result
+	 * in a short-lived transient — PRG back to Settings, which consumes it via
+	 * render_test_result(). A transient carries the result across the redirect
+	 * (unlike the fixed-string spss_notice query-arg pattern used elsewhere on
+	 * this page) because the message content is dynamic per outcome, mirroring
+	 * the pattern already used for the League Table Generator's PRG result.
+	 */
+	public function handle_test_provider() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Unauthorized', 'sportspress-score-sheets' ), '', array( 'response' => 403 ) );
+		}
+
+		$id = isset( $_GET['provider'] ) ? sanitize_key( wp_unslash( $_GET['provider'] ) ) : '';
+		check_admin_referer( 'spss_test_provider_' . $id );
+
+		$provider = SPSS_Recognition_Manager::get_provider( $id );
+		if ( $provider ) {
+			$result = $provider->test_connection();
+			set_transient(
+				self::TEST_RESULT_TRANSIENT_PREFIX . get_current_user_id() . '_' . $id,
+				is_wp_error( $result )
+					? array(
+						'ok'      => false,
+						'message' => $result->get_error_message(),
+					)
+					: array( 'ok' => true ),
+				MINUTE_IN_SECONDS
+			);
+		}
+
+		wp_safe_redirect( admin_url( 'admin.php?page=' . self::SETTINGS_SLUG ) );
+		exit;
+	}
+
+	/**
+	 * Render (and consume) a pending "Test connection" result for one provider,
+	 * if the button was just clicked. No-op when nothing is pending.
+	 */
+	private function render_test_result( $id ) {
+		$key    = self::TEST_RESULT_TRANSIENT_PREFIX . get_current_user_id() . '_' . $id;
+		$result = get_transient( $key );
+		if ( false === $result || ! is_array( $result ) ) {
+			return;
+		}
+		delete_transient( $key );
+
+		if ( ! empty( $result['ok'] ) ) {
+			echo '<div class="notice notice-success inline"><p>' . esc_html__( 'Connection succeeded.', 'sportspress-score-sheets' ) . '</p></div>';
+		} else {
+			echo '<div class="notice notice-error inline"><p>' . esc_html( (string) ( $result['message'] ?? __( 'Connection failed.', 'sportspress-score-sheets' ) ) ) . '</p></div>';
+		}
+	}
+
 	private function masked( $option ) {
 		$key = (string) get_option( $option, '' );
 		return '' !== $key ? str_repeat( '•', 8 ) . substr( $key, -4 ) : '';
@@ -433,6 +492,7 @@ class SPSS_Admin {
 				<?php foreach ( $providers as $id => $p ) : ?>
 					<?php $fields = method_exists( $p, 'settings_fields' ) ? (array) $p->settings_fields() : array(); ?>
 					<h2><?php echo esc_html( $p->get_label() ); ?></h2>
+					<?php $this->render_test_result( $id ); ?>
 					<table class="form-table" role="presentation">
 						<?php foreach ( $fields as $field ) : ?>
 							<?php
@@ -471,6 +531,14 @@ class SPSS_Admin {
 						<?php endforeach; ?>
 						<?php $this->render_budget_rows( $id ); ?>
 					</table>
+					<?php if ( $p->is_configured() ) : ?>
+						<p>
+							<a class="button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=spss_test_provider&provider=' . $id ), 'spss_test_provider_' . $id ) ); ?>"><?php esc_html_e( 'Test connection', 'sportspress-score-sheets' ); ?></a>
+							<?php if ( 'selfhosted' === $id ) : ?>
+								<span class="description"><?php esc_html_e( 'Confirms the sidecar is reachable, not that the bearer token is valid — there is no lightweight endpoint to check that against.', 'sportspress-score-sheets' ); ?></span>
+							<?php endif; ?>
+						</p>
+					<?php endif; ?>
 				<?php endforeach; ?>
 
 				<h2><?php esc_html_e( 'Remote intake (email / SMS / webhook)', 'sportspress-score-sheets' ); ?></h2>

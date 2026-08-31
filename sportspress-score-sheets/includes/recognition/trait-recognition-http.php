@@ -60,7 +60,12 @@ trait SPSS_Recognition_HTTP {
 					return json_decode( wp_remote_retrieve_body( $response ), true );
 				}
 				if ( ! in_array( $code, $retry_statuses, true ) && $code < 500 ) {
-					return new WP_Error( 'spss_' . $this->get_id() . '_http', sprintf( $this->http_status_error_message(), $code ), array( 'body' => wp_remote_retrieve_body( $response ) ) );
+					$message = sprintf( $this->http_status_error_message(), $code );
+					$detail  = self::extract_error_detail( wp_remote_retrieve_body( $response ) );
+					if ( '' !== $detail ) {
+						$message .= ' ' . $detail;
+					}
+					return new WP_Error( 'spss_' . $this->get_id() . '_http', $message, array( 'body' => wp_remote_retrieve_body( $response ) ) );
 				}
 				$last_err = new WP_Error( 'spss_' . $this->get_id() . '_http', sprintf( 'HTTP %d', $code ) );
 			}
@@ -81,6 +86,87 @@ trait SPSS_Recognition_HTTP {
 	/** Human message when every retry attempt failed. */
 	protected function request_failed_message() {
 		return __( 'Recognition request failed.', 'sportspress-score-sheets' );
+	}
+
+	/**
+	 * Extract a short, human-readable diagnostic from an HTTP error response
+	 * body. Parses the common `{"error":{"message":...}}` / `{"error":"..."}`
+	 * JSON shapes used by OpenAI-compatible gateways (incl. LiteLLM),
+	 * Anthropic, and Gemini; falls back to a bounded, HTML-stripped plain-text
+	 * snippet for anything else (an HTML error page, a bare string body).
+	 *
+	 * Bounded and stripped before it ever reaches a UI — a vendor error page
+	 * must not be able to dump something huge or markup-bearing into the
+	 * stored `error` column. Shared by request_with_retry()'s stored-error
+	 * message and test_connection()'s probe verdict, so a failed sheet and a
+	 * failed connection test read the same way.
+	 *
+	 * @param string $body  Raw HTTP response body.
+	 * @param int    $limit Max characters returned.
+	 * @return string Never empty when $body is non-empty; '' when $body is empty.
+	 */
+	protected static function extract_error_detail( $body, $limit = 300 ) {
+		$body = (string) $body;
+		if ( '' === trim( $body ) ) {
+			return '';
+		}
+
+		$decoded = json_decode( $body, true );
+		if ( is_array( $decoded ) ) {
+			$err = $decoded['error'] ?? null;
+			$msg = is_array( $err ) ? ( $err['message'] ?? null ) : ( is_string( $err ) ? $err : null );
+			if ( ! is_string( $msg ) || '' === trim( $msg ) ) {
+				$msg = is_string( $decoded['message'] ?? null ) ? $decoded['message'] : null;
+			}
+			if ( is_string( $msg ) && '' !== trim( $msg ) ) {
+				return mb_substr( trim( $msg ), 0, $limit );
+			}
+		}
+
+		$plain = trim( wp_strip_all_tags( $body ) );
+		if ( '' === $plain ) {
+			return '';
+		}
+		return mb_substr( preg_replace( '/\s+/', ' ', $plain ), 0, $limit );
+	}
+
+	/**
+	 * Single-attempt GET for a lightweight connectivity/auth probe.
+	 *
+	 * Deliberately does not retry — a "Test connection" click should return
+	 * fast, not sit through request_with_retry()'s exponential backoff on what
+	 * is very likely a definite auth failure, not a transient one. Still
+	 * routes through the same CF-Access header injection + filter as
+	 * request_with_retry(), so a probe against an Access-protected endpoint
+	 * authenticates the same way a real recognition call would.
+	 *
+	 * @param string $url     Endpoint to GET.
+	 * @param array  $headers Request headers.
+	 * @param int    $timeout Request timeout in seconds.
+	 * @return array{code:int,body:string}|WP_Error
+	 */
+	protected function probe_get( $url, array $headers, $timeout = 15 ) {
+		$headers = apply_filters(
+			'spss_recognition_request_headers',
+			array_merge( $headers, $this->cf_access_headers( $url ) ),
+			$url
+		);
+
+		$response = wp_remote_get(
+			$url,
+			array(
+				'timeout' => $timeout,
+				'headers' => $headers,
+			)
+		);
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+
+		return array(
+			'code' => (int) wp_remote_retrieve_response_code( $response ),
+			'body' => (string) wp_remote_retrieve_body( $response ),
+		);
 	}
 
 	/**
