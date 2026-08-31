@@ -335,6 +335,15 @@ class SPSS_Admin {
 	 * (unlike the fixed-string spss_notice query-arg pattern used elsewhere on
 	 * this page) because the message content is dynamic per outcome, mirroring
 	 * the pattern already used for the League Table Generator's PRG result.
+	 *
+	 * Reading $_GET directly here is the same idiom this file already uses in
+	 * regenerate_secret()/handle_upload() (a standard WordPress admin-post
+	 * handler): the value is sanitized (sanitize_key()) before use and the
+	 * request is nonce-verified immediately below, so wrapping it through an
+	 * indirection purely to avoid the superglobal would cost readability and
+	 * buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.Superglobals)
 	 */
 	public function handle_test_provider() {
 		if ( ! current_user_can( 'manage_options' ) ) {

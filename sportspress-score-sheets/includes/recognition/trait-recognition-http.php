@@ -111,16 +111,9 @@ trait SPSS_Recognition_HTTP {
 			return '';
 		}
 
-		$decoded = json_decode( $body, true );
-		if ( is_array( $decoded ) ) {
-			$err = $decoded['error'] ?? null;
-			$msg = is_array( $err ) ? ( $err['message'] ?? null ) : ( is_string( $err ) ? $err : null );
-			if ( ! is_string( $msg ) || '' === trim( $msg ) ) {
-				$msg = is_string( $decoded['message'] ?? null ) ? $decoded['message'] : null;
-			}
-			if ( is_string( $msg ) && '' !== trim( $msg ) ) {
-				return mb_substr( trim( $msg ), 0, $limit );
-			}
+		$msg = self::message_from_json_error( $body );
+		if ( null !== $msg ) {
+			return mb_substr( $msg, 0, $limit );
 		}
 
 		$plain = trim( wp_strip_all_tags( $body ) );
@@ -128,6 +121,32 @@ trait SPSS_Recognition_HTTP {
 			return '';
 		}
 		return mb_substr( preg_replace( '/\s+/', ' ', $plain ), 0, $limit );
+	}
+
+	/**
+	 * Pull a usable message string out of a JSON-decoded error body, matching
+	 * the `{"error":{"message":...}}` / `{"error":"..."}` / `{"message":"..."}`
+	 * shapes various vendors use (OpenAI-compatible/LiteLLM, Anthropic, Gemini).
+	 * Split out of extract_error_detail() to keep each function's branching
+	 * simple on its own.
+	 *
+	 * @param string $body Raw HTTP response body.
+	 * @return string|null Trimmed message, or null when $body isn't JSON or
+	 *                      matches none of these shapes.
+	 */
+	private static function message_from_json_error( $body ) {
+		$decoded = json_decode( $body, true );
+		if ( ! is_array( $decoded ) ) {
+			return null;
+		}
+
+		$err = $decoded['error'] ?? null;
+		$msg = is_array( $err ) ? ( $err['message'] ?? null ) : $err;
+		if ( ! is_string( $msg ) || '' === trim( $msg ) ) {
+			$msg = $decoded['message'] ?? null;
+		}
+
+		return ( is_string( $msg ) && '' !== trim( $msg ) ) ? trim( $msg ) : null;
 	}
 
 	/**
