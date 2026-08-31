@@ -21,30 +21,41 @@
 
 define( 'ABSPATH', dirname( __FILE__ ) . '/' );
 
-/** In-memory harness state (options, registered filters, last captured request). */
+/** Plain data holder for harness state (options, filters, last captured request). */
 class SPSS_CF_Test_State {
-	public static $options = array();
-	public static $filters = array();
-	public static $last_request = array();
+	public $options      = array();
+	public $filters      = array();
+	public $last_request = array();
+}
+
+/** Single harness-state instance (function-static object avoids $GLOBALS). */
+function spss_cf_test_state() {
+	static $state = null;
+	if ( null === $state ) {
+		$state = new SPSS_CF_Test_State();
+	}
+	return $state;
 }
 
 // ── Option store ─────────────────────────────────────────────────────────────
 function get_option( $name, $default = false ) {
-	return array_key_exists( $name, SPSS_CF_Test_State::$options ) ? SPSS_CF_Test_State::$options[ $name ] : $default;
+	$state = spss_cf_test_state();
+	return array_key_exists( $name, $state->options ) ? $state->options[ $name ] : $default;
 }
 function update_option( $name, $value ) {
-	SPSS_CF_Test_State::$options[ $name ] = $value;
+	spss_cf_test_state()->options[ $name ] = $value;
 	return true;
 }
 
 // ── Minimal filter registry (so the filter seam is actually exercised) ─────────
 function add_filter( $tag, $cb ) {
-	SPSS_CF_Test_State::$filters[ $tag ][] = $cb;
+	spss_cf_test_state()->filters[ $tag ][] = $cb;
 	return true;
 }
 function apply_filters( $tag, $value ) {
-	$extra = array_slice( func_get_args(), 2 );
-	foreach ( SPSS_CF_Test_State::$filters[ $tag ] ?? array() as $cb ) {
+	$extra   = array_slice( func_get_args(), 2 );
+	$filters = spss_cf_test_state()->filters[ $tag ] ?? array();
+	foreach ( $filters as $cb ) {
 		$value = call_user_func_array( $cb, array_merge( array( $value ), $extra ) );
 	}
 	return $value;
@@ -57,7 +68,7 @@ function wp_json_encode( $data ) { return json_encode( $data ); }
 
 // Capturing HTTP: record the headers each call receives, reply 200 with JSON.
 function wp_remote_post( $url, $args ) {
-	SPSS_CF_Test_State::$last_request = array( 'url' => $url, 'headers' => $args['headers'] );
+	spss_cf_test_state()->last_request = array( 'url' => $url, 'headers' => $args['headers'] );
 	return array( 'code' => 200, 'body' => json_encode( array( 'ok' => true ) ) );
 }
 function wp_remote_retrieve_response_code( $r ) { return $r['code']; }
@@ -81,7 +92,7 @@ class SPSS_CF_Test_Provider {
 	public function headers_for( $url ) { return $this->cf_access_headers( $url ); }
 	public function post_to( $url ) {
 		$this->request_with_retry( $url, array( 'Authorization' => 'Bearer provider-key' ), array( 'x' => 1 ), 5 );
-		return SPSS_CF_Test_State::$last_request['headers'];
+		return spss_cf_test_state()->last_request['headers'];
 	}
 }
 
@@ -105,7 +116,7 @@ $url = 'https://litellm.example.com/v1/chat/completions';
 echo "=== cf_access_headers(): host gating + credentials ===\n";
 
 // Disabled: no host configured.
-SPSS_CF_Test_State::$options = array();
+spss_cf_test_state()->options = array();
 check( 'no host configured => no headers', array() === $p->headers_for( $url ) );
 
 // Configured + matching host + both creds.
