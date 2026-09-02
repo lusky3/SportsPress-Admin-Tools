@@ -412,7 +412,7 @@ class SPLM_Waitlist {
 	 * line-item token, regardless of whether the offer's deadline has since
 	 * passed.
 	 *
-	 * is_claimable() (via claim_state()) treats a past deadline as
+	 * Is_claimable() (via claim_state()) treats a past deadline as
 	 * disqualifying, which is correct at the purchase gate and in the
 	 * email/user fallback below — in both places, expiry is the only thing
 	 * standing between a live invite and a stale one. It is the WRONG rule
@@ -483,7 +483,7 @@ class SPLM_Waitlist {
 	/**
 	 * A claim token.
 	 *
-	 * random_bytes(), not wp_generate_password() or md5(): this is a security
+	 * Random_bytes(), not wp_generate_password() or md5(): this is a security
 	 * token, 32 bytes of CSPRNG output makes enumeration infeasible, and the
 	 * repo's Semgrep rules flag weaker constructions. 64 hex characters fits
 	 * the varchar(64) column exactly.
@@ -497,7 +497,7 @@ class SPLM_Waitlist {
 	/**
 	 * Column payload for an offer.
 	 *
-	 * resolved_order_id is explicitly cleared: a re-offered row may carry one
+	 * Resolved_order_id is explicitly cleared: a re-offered row may carry one
 	 * from a previous cycle, and leaving it would make the new offer look
 	 * already fulfilled.
 	 *
@@ -952,21 +952,21 @@ class SPLM_Waitlist {
 		// see C1). Nulling it does not buy any of the two things it looks
 		// like it buys, and it costs the one thing this feature needs most:
 		//
-		//   - "A link that arrives late cannot be claimed" is already
-		//     enforced by STATUS, not by the token's presence: the public
-		//     claim route's claim_state() returns 'expired' the moment
-		//     status is STATUS_EXPIRED, independent of claim_token
-		//     (class-waitlist.php's claim_state()), and the purchase gate's
-		//     product_from_request_token() -> resolve_token() path checks
-		//     is_claimable() (the strict predicate), which still rejects an
-		//     expired row outright (class-waitlist-gate.php). Neither
-		//     consumer that must reject a stale link relies on the token
-		//     being gone.
-		//   - "The UNIQUE index is free for the next offer on this row" is
-		//     not a real constraint: a re-offer of this SAME row writes a
-		//     freshly generated token onto this SAME row via UPDATE
-		//     (offer_updates()), replacing the old value in place — there is
-		//     no second row for the retained token to collide with.
+		// - "A link that arrives late cannot be claimed" is already
+		// enforced by STATUS, not by the token's presence: the public
+		// claim route's claim_state() returns 'expired' the moment
+		// status is STATUS_EXPIRED, independent of claim_token
+		// (class-waitlist.php's claim_state()), and the purchase gate's
+		// product_from_request_token() -> resolve_token() path checks
+		// is_claimable() (the strict predicate), which still rejects an
+		// expired row outright (class-waitlist-gate.php). Neither
+		// consumer that must reject a stale link relies on the token
+		// being gone.
+		// - "The UNIQUE index is free for the next offer on this row" is
+		// not a real constraint: a re-offer of this SAME row writes a
+		// freshly generated token onto this SAME row via UPDATE
+		// (offer_updates()), replacing the old value in place — there is
+		// no second row for the retained token to collide with.
 		//
 		// What retaining it buys: handle_order_completed() ties a completed
 		// order back to its offer by looking up the token that rode the

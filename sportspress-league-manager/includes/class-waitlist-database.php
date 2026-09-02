@@ -103,7 +103,7 @@ class SPLM_Waitlist_Database {
 	/**
 	 * Create the table.
 	 *
-	 * claim_token is nullable and UNIQUE deliberately: MySQL permits any
+	 * Claim_token is nullable and UNIQUE deliberately: MySQL permits any
 	 * number of NULLs under a unique index, so every un-offered row coexists
 	 * while offered rows are still guaranteed a distinct token. Changing this
 	 * to NOT NULL DEFAULT '' — the obvious-looking tidy-up — makes the second
@@ -242,7 +242,7 @@ class SPLM_Waitlist_Database {
 		global $wpdb;
 		$row = $wpdb->get_row( // phpcs:ignore WordPress.DB
 			$wpdb->prepare(
-				'SELECT * FROM ' . self::table_name() . ' WHERE email = %s AND season = %s AND position = %s AND status IN (%s, %s) ORDER BY id ASC LIMIT 1',
+				'SELECT * FROM ' . self::table_name() . ' WHERE email = %s AND season = %s AND position = %s AND status IN (%s, %s) ORDER BY id ASC LIMIT 1', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table name, not a value; cannot use a placeholder.
 				strtolower( $email ),
 				$season,
 				$position,
@@ -277,7 +277,7 @@ class SPLM_Waitlist_Database {
 		global $wpdb;
 		$row = $wpdb->get_row( // phpcs:ignore WordPress.DB
 			$wpdb->prepare(
-				'SELECT * FROM ' . self::table_name() . ' WHERE source_order_id = %d AND waitlist_product_id = %d ORDER BY id ASC LIMIT 1',
+				'SELECT * FROM ' . self::table_name() . ' WHERE source_order_id = %d AND waitlist_product_id = %d ORDER BY id ASC LIMIT 1', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table name, not a value; cannot use a placeholder.
 				$order_id,
 				$product_id
 			)
@@ -295,7 +295,7 @@ class SPLM_Waitlist_Database {
 		global $wpdb;
 		return (array) $wpdb->get_results( // phpcs:ignore WordPress.DB
 			$wpdb->prepare(
-				'SELECT * FROM ' . self::table_name() . ' WHERE target_product_id = %d AND status = %s',
+				'SELECT * FROM ' . self::table_name() . ' WHERE target_product_id = %d AND status = %s', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table name, not a value; cannot use a placeholder.
 				$product_id,
 				self::STATUS_OFFERED
 			)
@@ -313,7 +313,7 @@ class SPLM_Waitlist_Database {
 	 */
 	public static function past_due_offered( array $filters = array() ): array {
 		global $wpdb;
-		$sql    = 'SELECT * FROM ' . self::table_name() . ' WHERE status = %s AND expires_at IS NOT NULL AND expires_at <= %s';
+		$sql    = 'SELECT * FROM ' . self::table_name() . ' WHERE status = %s AND expires_at IS NOT NULL AND expires_at <= %s'; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table name, not a value; cannot use a placeholder.
 		$params = array( self::STATUS_OFFERED, self::now() );
 
 		if ( ! empty( $filters['season'] ) ) {
@@ -353,7 +353,7 @@ class SPLM_Waitlist_Database {
 		$clause = implode( ' AND ', $where );
 		$table  = self::table_name();
 
-		$total_sql = "SELECT COUNT(*) FROM {$table} WHERE {$clause}";
+		$total_sql = "SELECT COUNT(*) FROM {$table} WHERE {$clause}"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name and whitelisted column identifiers, not values; cannot use a placeholder.
 		$total     = (int) ( empty( $params )
 			? $wpdb->get_var( $total_sql ) // phpcs:ignore WordPress.DB
 			: $wpdb->get_var( $wpdb->prepare( $total_sql, $params ) ) ); // phpcs:ignore WordPress.DB
@@ -362,7 +362,7 @@ class SPLM_Waitlist_Database {
 		$per_page = max( 1, min( 100, $per_page ) );
 		$offset   = ( $page - 1 ) * $per_page;
 
-		$rows_sql    = "SELECT * FROM {$table} WHERE {$clause} ORDER BY created_at ASC, id ASC LIMIT %d OFFSET %d";
+		$rows_sql    = "SELECT * FROM {$table} WHERE {$clause} ORDER BY created_at ASC, id ASC LIMIT %d OFFSET %d"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name and whitelisted column identifiers, not values; cannot use a placeholder.
 		$rows_params = array_merge( $params, array( $per_page, $offset ) );
 		$rows        = (array) $wpdb->get_results( $wpdb->prepare( $rows_sql, $rows_params ) ); // phpcs:ignore WordPress.DB
 
@@ -388,7 +388,7 @@ class SPLM_Waitlist_Database {
 		if ( '' !== $season ) {
 			$ids = $wpdb->get_col( // phpcs:ignore WordPress.DB
 				$wpdb->prepare(
-					"SELECT DISTINCT target_product_id FROM {$table} WHERE target_product_id > 0 AND season = %s",
+					"SELECT DISTINCT target_product_id FROM {$table} WHERE target_product_id > 0 AND season = %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not a value; cannot use a placeholder.
 					$season
 				)
 			);

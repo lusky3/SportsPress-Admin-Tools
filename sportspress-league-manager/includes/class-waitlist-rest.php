@@ -324,7 +324,7 @@ class SPLM_Waitlist_REST {
 	/**
 	 * Shape one row for the dashboard.
 	 *
-	 * claim_token is deliberately absent. Anyone who can read the queue could
+	 * Claim_token is deliberately absent. Anyone who can read the queue could
 	 * otherwise claim any spot on someone else's behalf, and the dashboard has
 	 * no use for it — the offer email carries the link.
 	 *
