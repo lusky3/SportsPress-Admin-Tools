@@ -827,6 +827,80 @@ class SPLM_Waitlist {
 	}
 
 	/**
+	 * Pair (or repair) a row's registration product.
+	 *
+	 * The only path to this before I1: Remove + re-Add via the manual
+	 * create_entry() form, which loses everything about the original
+	 * purchase (source_order_id, the original queue position/timestamp).
+	 * A row with target_product_id = 0 is otherwise permanently un-offerable
+	 * — ingestion could not pair it with a real product, and nothing else
+	 * ever revisits that decision.
+	 *
+	 * Refused for an 'offered' row: the live claim link already points at
+	 * whatever product the offer was made against, so changing the target
+	 * underneath it would silently send the player to a different product
+	 * mid-window. Cancel the offer first, then set the target, then re-offer.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param int $id                Row id.
+	 * @param int $target_product_id New target product id.
+	 * @return array|WP_Error
+	 */
+	public static function set_target( $id, $target_product_id ) {
+		$id                = (int) $id;
+		$target_product_id = (int) $target_product_id;
+
+		$row = SPLM_Waitlist_Database::get( $id );
+		if ( ! $row ) {
+			return new WP_Error( 'splm_waitlist_not_found', __( 'Waitlist entry not found.', 'sportspress-league-manager' ), array( 'status' => 404 ) );
+		}
+
+		if ( SPLM_Waitlist_Database::STATUS_OFFERED === (string) $row->status ) {
+			return new WP_Error(
+				'splm_waitlist_bad_status',
+				__( 'This entry has a live offer. Cancel it before changing the registration product.', 'sportspress-league-manager' ),
+				array( 'status' => 409 )
+			);
+		}
+
+		// The dependency is absent, not the request malformed — matching
+		// create_entry()'s own guard for the same call. Checked before the
+		// bad-target branch below so a deactivated WooCommerce reports 503
+		// rather than a misleading "choose an existing product" 400.
+		if ( ! function_exists( 'wc_get_product' ) ) {
+			return new WP_Error(
+				'splm_waitlist_no_woocommerce',
+				__( 'WooCommerce is required to validate a registration product.', 'sportspress-league-manager' ),
+				array( 'status' => 503 )
+			);
+		}
+
+		if ( $target_product_id <= 0 || ! wc_get_product( $target_product_id ) ) {
+			return new WP_Error(
+				'splm_waitlist_bad_target',
+				__( 'Choose an existing registration product for this entry.', 'sportspress-league-manager' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		if ( ! SPLM_Waitlist_Database::update( $id, array( 'target_product_id' => $target_product_id ) ) ) {
+			return new WP_Error(
+				'splm_waitlist_write_failed',
+				__( 'Could not save the registration product.', 'sportspress-league-manager' ),
+				array( 'status' => 500 )
+			);
+		}
+
+		return array(
+			'success'           => true,
+			'id'                => $id,
+			'target_product_id' => $target_product_id,
+			'target_gated'      => class_exists( 'SPLM_Waitlist_Gate' ) ? SPLM_Waitlist_Gate::is_gated( $target_product_id ) : false,
+		);
+	}
+
+	/**
 	 * Whether a row should be expired right now.
 	 *
 	 * Pure, and the whole defence against a stale cron event. Clearing pending

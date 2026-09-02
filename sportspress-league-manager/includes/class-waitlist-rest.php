@@ -209,6 +209,31 @@ class SPLM_Waitlist_REST {
 
 		register_rest_route(
 			self::REST_NAMESPACE,
+			'/waitlist/(?P<id>\d+)/target',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'set_target' ),
+				'permission_callback' => array( __CLASS__, 'can_manage' ),
+				'args'                => array(
+					// Same reasoning as the offer/cancel routes' 'id' above: the
+					// route regex already constrains this to digits only.
+					'id'                => array(
+						'required'          => true,
+						'type'              => 'integer',
+						'sanitize_callback' => 'absint',
+					),
+					'target_product_id' => array(
+						'required'          => true,
+						'type'              => 'integer',
+						'validate_callback' => 'rest_validate_request_arg',
+						'sanitize_callback' => 'absint',
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
 			'/waitlist/gate',
 			array(
 				'methods'             => 'POST',
@@ -480,6 +505,22 @@ class SPLM_Waitlist_REST {
 	 */
 	public function cancel_offer( $request ) {
 		return SPLM_Waitlist::cancel( (int) $request->get_param( 'id' ) );
+	}
+
+	/**
+	 * I1: pair or repair a row's registration product after ingestion. A
+	 * dedicated action route (POST .../target), matching the existing
+	 * .../offer and .../cancel shape, rather than a generic PATCH /waitlist/
+	 * {id} — this file has no generic row-update endpoint, and every other
+	 * mutation here is one named action per route.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return array|WP_Error
+	 */
+	public function set_target( $request ) {
+		return SPLM_Waitlist::set_target( (int) $request->get_param( 'id' ), (int) $request->get_param( 'target_product_id' ) );
 	}
 
 	/**

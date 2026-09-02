@@ -143,22 +143,26 @@ class WP_REST_Request {
 
 /**
  * A fake $wpdb: just enough of the interface SPLM_Waitlist_Database::
- * find_active()/insert() use to make create_entry()'s branches testable
- * without a real database. Follows the same shape as
- * test-waitlist-claim.php's Fake_WPDB.
+ * find_active()/insert()/get()/update() use to make create_entry()'s and
+ * set_target()'s branches testable without a real database. Follows the same
+ * shape as test-waitlist-claim.php's Fake_WPDB.
  *
  * $rows is keyed by the first bound parameter of the preceding prepare()
- * call — the lowercased email find_active() searches on — since create_entry()
- * never issues two different queries within one test. $insert_succeeds
- * drives insert()'s success/failure branch; $insert_id is what a successful
- * insert() reports back, read via SPLM_Waitlist_Database::insert()'s own
- * $wpdb->insert_id.
+ * call — an email for find_active(), a row id for get() — since no single
+ * test in this file issues two different queries whose first bound params
+ * collide. $insert_succeeds drives insert()'s success/failure branch;
+ * $insert_id is what a successful insert() reports back, read via
+ * SPLM_Waitlist_Database::insert()'s own $wpdb->insert_id. $update_return
+ * drives update()'s success/failure branch (I1); $update_calls records what
+ * was written so a test can assert on the payload without a real table.
  */
 class Fake_WPDB {
 	public $prefix          = 'wp_';
 	public $rows            = array();
 	public $insert_succeeds = true;
 	public $insert_id       = 0;
+	public $update_return   = true;
+	public $update_calls    = array();
 	private $last_args      = array();
 
 	public function prepare( $query, ...$args ) { // phpcs:ignore
@@ -177,6 +181,15 @@ class Fake_WPDB {
 		}
 		$this->insert_id = 501;
 		return 1;
+	}
+
+	public function update( $table, $data, $where ) { // phpcs:ignore
+		$this->update_calls[] = array(
+			'table' => $table,
+			'data'  => $data,
+			'where' => $where,
+		);
+		return $this->update_return ? 1 : false;
 	}
 }
 
@@ -490,6 +503,13 @@ function create_entry_params( array $overrides = array() ) {
 
 $rest = new SPLM_Waitlist_REST();
 
+// register_rest_route() is stubbed to a no-op that discards its args, so this
+// cannot verify what those args declare -- but it does exercise every args
+// array in register_routes() (including the new .../target route, I1) as
+// real PHP, catching anything php -l's syntax-only check would not.
+$rest->register_routes();
+assert_test( true, 'register_routes() runs without error against every declared route, including .../target (I1)' );
+
 // Branch 1: the target product does not exist (or was never a real product,
 // e.g. an omitted/zero target_product_id).
 splm_waitlist_lifecycle_test_state()->wc_products = array();
@@ -537,6 +557,77 @@ $wpdb->insert_succeeds = true;
 $success = $rest->create_entry( new WP_REST_Request( create_entry_params() ) );
 assert_test( is_array( $success ) && true === $success['success'], 'create_entry() reports success once every check passes' );
 assert_test( 501 === $success['id'], 'the newly inserted row id is returned' );
+
+echo "\n=== set_target() (I1): pairing/repairing a row's registration product ===\n\n";
+
+// Branch 1: the row does not exist.
+splm_waitlist_lifecycle_test_state()->wc_products = array( 11 => true );
+$wpdb->rows          = array();
+$wpdb->update_calls  = array();
+$wpdb->update_return = true;
+
+$target_not_found = $rest->set_target( new WP_REST_Request( array( 'id' => 999, 'target_product_id' => 11 ) ) );
+assert_test( is_wp_error( $target_not_found ), 'set_target() refuses an unknown row' );
+assert_test( 'splm_waitlist_not_found' === $target_not_found->get_error_code(), 'the not-found refusal carries its own error code' );
+assert_test( 404 === $target_not_found->get_error_data()['status'], 'the not-found refusal is a 404' );
+
+// Branch 2: the row exists but has a live offer -- changing the target under
+// a live claim link would redirect the player to a different product.
+$wpdb->rows = array( 30 => (object) array( 'id' => 30, 'status' => 'offered', 'target_product_id' => 11 ) );
+
+$target_offered = $rest->set_target( new WP_REST_Request( array( 'id' => 30, 'target_product_id' => 12 ) ) );
+assert_test( is_wp_error( $target_offered ), 'set_target() refuses to change the target of an offered row' );
+assert_test( 'splm_waitlist_bad_status' === $target_offered->get_error_code(), 'the offered-row refusal carries its own error code' );
+assert_test( 409 === $target_offered->get_error_data()['status'], 'the offered-row refusal is a 409' );
+assert_test( array() === $wpdb->update_calls, 'the offered-row refusal writes nothing' );
+
+// Branch 3: the row is queued (offerable target the wrong way -- this is the
+// exact case I1 exists for), but the requested target does not resolve via
+// wc_get_product().
+$wpdb->rows = array( 31 => (object) array( 'id' => 31, 'status' => 'queued', 'target_product_id' => 0 ) );
+splm_waitlist_lifecycle_test_state()->wc_products = array();
+
+$target_bad = $rest->set_target( new WP_REST_Request( array( 'id' => 31, 'target_product_id' => 999 ) ) );
+assert_test( is_wp_error( $target_bad ), 'set_target() refuses a target product that does not exist' );
+assert_test( 'splm_waitlist_bad_target' === $target_bad->get_error_code(), 'the bad-target refusal carries its own error code' );
+assert_test( 400 === $target_bad->get_error_data()['status'], 'the bad-target refusal is a 400' );
+
+// Branch 4: everything validates -- a queued row with no target gets one,
+// and the response reports target_gated so the dashboard can update the row
+// in place without a re-fetch.
+splm_waitlist_lifecycle_test_state()->wc_products = array( 40 => true );
+splm_waitlist_lifecycle_test_state()->post_meta[40]['_splm_waitlist_gated'] = '1';
+$wpdb->rows          = array( 32 => (object) array( 'id' => 32, 'status' => 'queued', 'target_product_id' => 0 ) );
+$wpdb->update_calls  = array();
+$wpdb->update_return = true;
+
+$target_success = $rest->set_target( new WP_REST_Request( array( 'id' => 32, 'target_product_id' => 40 ) ) );
+assert_test( is_array( $target_success ) && true === $target_success['success'], 'set_target() reports success once every check passes' );
+assert_test( 32 === $target_success['id'], 'the response echoes the row id' );
+assert_test( 40 === $target_success['target_product_id'], 'the response echoes the newly set target product id' );
+assert_test( true === $target_success['target_gated'], 'the response reports the target\'s current gate state' );
+assert_test( 1 === count( $wpdb->update_calls ), 'exactly one update is written' );
+assert_test( 40 === ( $wpdb->update_calls[0]['data']['target_product_id'] ?? null ), 'the update writes the new target product id' );
+assert_test( array( 'id' => 32 ) === ( $wpdb->update_calls[0]['where'] ?? null ), 'the update targets the correct row' );
+
+// An expired row (the common real case: ingestion could not pair a target,
+// and the row has since lapsed) is offerable too, so it must also be
+// settable.
+splm_waitlist_lifecycle_test_state()->wc_products = array( 41 => true );
+$wpdb->rows = array( 33 => (object) array( 'id' => 33, 'status' => 'expired', 'target_product_id' => 0 ) );
+
+$target_on_expired = $rest->set_target( new WP_REST_Request( array( 'id' => 33, 'target_product_id' => 41 ) ) );
+assert_test( is_array( $target_on_expired ) && true === $target_on_expired['success'], 'set_target() also succeeds on an expired row' );
+
+// Branch 5: the database write itself fails.
+splm_waitlist_lifecycle_test_state()->wc_products = array( 42 => true );
+$wpdb->rows          = array( 34 => (object) array( 'id' => 34, 'status' => 'queued', 'target_product_id' => 0 ) );
+$wpdb->update_return = false;
+
+$target_write_failed = $rest->set_target( new WP_REST_Request( array( 'id' => 34, 'target_product_id' => 42 ) ) );
+assert_test( is_wp_error( $target_write_failed ), 'set_target() reports a failed write rather than pretending to succeed' );
+assert_test( 'splm_waitlist_write_failed' === $target_write_failed->get_error_code(), 'the write-failure refusal carries its own error code' );
+assert_test( 500 === $target_write_failed->get_error_data()['status'], 'the write-failure refusal is a 500' );
 
 echo "\n";
 echo "Passed: {$passed}\n";
