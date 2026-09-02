@@ -40,6 +40,38 @@ function add_filter() { // phpcs:ignore
 	return true;
 }
 
+class WP_Error {
+	public $code;
+	public $message;
+	public $data;
+
+	public function __construct( $code = '', $message = '', $data = array() ) {
+		$this->code    = $code;
+		$this->message = $message;
+		$this->data    = $data;
+	}
+
+	public function get_error_code() {
+		return $this->code;
+	}
+
+	public function get_error_message() {
+		return $this->message;
+	}
+
+	public function get_error_data() {
+		return $this->data;
+	}
+}
+
+function is_wp_error( $thing ) {
+	return $thing instanceof WP_Error;
+}
+
+function rest_url( $path = '' ) {
+	return 'https://example.test/wp-json/' . ltrim( (string) $path, '/' );
+}
+
 require_once __DIR__ . '/../includes/class-waitlist-database.php';
 require_once __DIR__ . '/../includes/class-waitlist.php';
 
@@ -143,6 +175,67 @@ assert_test( $w::is_paid_status( 'completed', array( 'processing', 'completed' )
 assert_test( ! $w::is_paid_status( 'pending', array( 'processing', 'completed' ) ), 'pending is not paid' );
 assert_test( ! $w::is_paid_status( 'cancelled', array( 'processing', 'completed' ) ), 'cancelled is not paid' );
 assert_test( ! $w::is_paid_status( '', array( 'processing', 'completed' ) ), 'an empty status is not paid' );
+
+echo "\n=== validate_hours() ===\n\n";
+
+assert_test( 48 === $w::validate_hours( null ), 'an omitted window defaults to 48 hours' );
+assert_test( 48 === $w::validate_hours( 48 ), 'the default is accepted explicitly' );
+assert_test( 72 === $w::validate_hours( 72 ), 'a longer window is accepted' );
+assert_test( 72 === $w::validate_hours( '72' ), 'a numeric string is accepted and cast' );
+assert_test( 1 === $w::validate_hours( 1 ), 'the minimum of one hour is accepted' );
+assert_test( 720 === $w::validate_hours( 720 ), 'the maximum of 720 hours is accepted' );
+
+// The reason this validation exists: a typo'd 0 or a negative would create an
+// offer that is already expired at the moment it is emailed, and an absurd
+// value would create one that never expires.
+assert_test( is_wp_error( $w::validate_hours( 0 ) ), 'zero hours is refused, since it would send an already-expired invite' );
+assert_test( is_wp_error( $w::validate_hours( -5 ) ), 'a negative window is refused' );
+assert_test( is_wp_error( $w::validate_hours( 721 ) ), 'a window past the maximum is refused' );
+assert_test( is_wp_error( $w::validate_hours( 100000 ) ), 'an absurd window is refused rather than creating a permanent offer' );
+assert_test( is_wp_error( $w::validate_hours( 'soon' ) ), 'a non-numeric window is refused' );
+assert_test( 'splm_invalid_hours' === $w::validate_hours( 0 )->get_error_code(), 'the refusal carries a specific error code' );
+
+echo "\n=== can_offer() ===\n\n";
+
+assert_test( $w::can_offer( 'queued' ), 'a queued row can be offered' );
+assert_test( $w::can_offer( 'expired' ), 'an expired row can be re-offered' );
+assert_test( ! $w::can_offer( 'offered' ), 'a row already offered cannot be offered again without cancelling first' );
+assert_test( ! $w::can_offer( 'claimed' ), 'a claimed row cannot be offered' );
+assert_test( ! $w::can_offer( 'cancelled' ), 'a cancelled row cannot be offered' );
+assert_test( ! $w::can_offer( '' ), 'an empty status cannot be offered' );
+
+echo "\n=== generate_token() ===\n\n";
+
+$token_a = $w::generate_token();
+$token_b = $w::generate_token();
+assert_test( 64 === strlen( $token_a ), 'a token is 64 characters, fitting the varchar(64) column exactly' );
+assert_test( 1 === preg_match( '/^[a-f0-9]{64}$/', $token_a ), 'a token is lowercase hex, matching the route regex' );
+assert_test( $token_a !== $token_b, 'two tokens differ' );
+
+echo "\n=== offer_updates() ===\n\n";
+
+$expiry  = SPLM_Waitlist_Database::expiry_from_hours( 48 );
+$updates = $w::offer_updates( $token_a, $expiry );
+assert_test( 'offered' === $updates['status'], 'an offer sets status to offered' );
+assert_test( $token_a === $updates['claim_token'], 'the token is stored' );
+assert_test( $expiry['expires_at'] === $updates['expires_at'], 'the deadline is stored as the UTC string from expiry_from_hours' );
+assert_test( isset( $updates['offered_at'] ), 'the offer time is stamped' );
+assert_test( $updates['offered_at'] === gmdate( 'Y-m-d H:i:s' ), 'the offer time is UTC' );
+assert_test( null === $updates['resolved_order_id'], 'a fresh offer clears any resolved order from a previous cycle' );
+
+echo "\n=== unwind_updates() ===\n\n";
+
+$unwind = $w::unwind_updates();
+assert_test( 'queued' === $unwind['status'], 'unwinding returns the row to queued so the person keeps their place' );
+assert_test( null === $unwind['claim_token'], 'unwinding clears the token so the dead link cannot be used' );
+assert_test( null === $unwind['expires_at'], 'unwinding clears the deadline' );
+assert_test( null === $unwind['offered_at'], 'unwinding clears the offer time' );
+
+echo "\n=== claim_url() ===\n\n";
+
+$url = $w::claim_url( $token_a );
+assert_test( strpos( $url, $token_a ) !== false, 'the claim URL carries the token' );
+assert_test( strpos( $url, 'splm/v1/waitlist/claim/' ) !== false, 'the claim URL points at the claim route' );
 
 echo "\n";
 echo "Passed: {$passed}\n";

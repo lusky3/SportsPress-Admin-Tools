@@ -22,6 +22,17 @@ class SPLM_Waitlist {
 	 */
 	const EXPIRE_HOOK = 'splm_waitlist_expire_offer';
 
+	/**
+	 * Offer window bounds, in hours.
+	 *
+	 * The floor matters: a zero or negative window creates an offer that is
+	 * already expired at the moment it is emailed, which reads to the player
+	 * as a broken link. The ceiling stops a typo turning an offer permanent.
+	 */
+	const DEFAULT_HOURS = 48;
+	const MIN_HOURS     = 1;
+	const MAX_HOURS     = 720;
+
 	public function __construct() {
 		// woocommerce_order_status_changed, NOT ..._status_processing.
 		//
@@ -222,5 +233,339 @@ class SPLM_Waitlist {
 		}
 
 		return $created;
+	}
+
+	/**
+	 * Validate a requested offer window.
+	 *
+	 * @param mixed $hours Requested hours, or null for the default.
+	 * @return int|WP_Error
+	 */
+	public static function validate_hours( $hours ) {
+		if ( null === $hours || '' === $hours ) {
+			return self::DEFAULT_HOURS;
+		}
+		if ( ! is_numeric( $hours ) ) {
+			return new WP_Error(
+				'splm_invalid_hours',
+				__( 'The claim window must be a number of hours.', 'sportspress-league-manager' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$hours = (int) $hours;
+		if ( $hours < self::MIN_HOURS || $hours > self::MAX_HOURS ) {
+			return new WP_Error(
+				'splm_invalid_hours',
+				sprintf(
+					/* translators: 1: minimum hours, 2: maximum hours. */
+					__( 'The claim window must be between %1$d and %2$d hours.', 'sportspress-league-manager' ),
+					self::MIN_HOURS,
+					self::MAX_HOURS
+				),
+				array( 'status' => 400 )
+			);
+		}
+
+		return $hours;
+	}
+
+	/**
+	 * Whether a row's status permits offering it.
+	 *
+	 * An expired row can be re-offered — that is the normal way a convener
+	 * moves down the queue. An already-offered row cannot: cancel it first, so
+	 * the live token is invalidated rather than orphaned.
+	 *
+	 * @param string $status Current status.
+	 * @return bool
+	 */
+	public static function can_offer( $status ): bool {
+		return in_array(
+			(string) $status,
+			array( SPLM_Waitlist_Database::STATUS_QUEUED, SPLM_Waitlist_Database::STATUS_EXPIRED ),
+			true
+		);
+	}
+
+	/**
+	 * A claim token.
+	 *
+	 * random_bytes(), not wp_generate_password() or md5(): this is a security
+	 * token, 32 bytes of CSPRNG output makes enumeration infeasible, and the
+	 * repo's Semgrep rules flag weaker constructions. 64 hex characters fits
+	 * the varchar(64) column exactly.
+	 *
+	 * @return string
+	 */
+	public static function generate_token(): string {
+		return bin2hex( random_bytes( 32 ) );
+	}
+
+	/**
+	 * Column payload for an offer.
+	 *
+	 * resolved_order_id is explicitly cleared: a re-offered row may carry one
+	 * from a previous cycle, and leaving it would make the new offer look
+	 * already fulfilled.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param string $token  Claim token.
+	 * @param array  $expiry Output of SPLM_Waitlist_Database::expiry_from_hours().
+	 * @return array
+	 */
+	public static function offer_updates( $token, array $expiry ): array {
+		return array(
+			'status'            => SPLM_Waitlist_Database::STATUS_OFFERED,
+			'claim_token'       => (string) $token,
+			'offered_at'        => SPLM_Waitlist_Database::now(),
+			'expires_at'        => (string) $expiry['expires_at'],
+			'resolved_order_id' => null,
+		);
+	}
+
+	/**
+	 * Column payload returning a row to queued.
+	 *
+	 * Used when the notification email fails to send. The person keeps their
+	 * place in the queue and the token is cleared so the link that was never
+	 * delivered cannot later be used.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @return array
+	 */
+	public static function unwind_updates(): array {
+		return array(
+			'status'      => SPLM_Waitlist_Database::STATUS_QUEUED,
+			'claim_token' => null,
+			'offered_at'  => null,
+			'expires_at'  => null,
+		);
+	}
+
+	/**
+	 * The public claim URL for a token.
+	 *
+	 * @param string $token Claim token.
+	 * @return string
+	 */
+	public static function claim_url( $token ): string {
+		return rest_url( 'splm/v1/waitlist/claim/' . rawurlencode( (string) $token ) );
+	}
+
+	/**
+	 * Offer a spot: token, deadline, cron, email — all under one lock.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param int   $id    Row id.
+	 * @param mixed $hours Requested window, or null for the default.
+	 * @return array|WP_Error
+	 */
+	public static function offer( $id, $hours = null ) {
+		$hours = self::validate_hours( $hours );
+		if ( is_wp_error( $hours ) ) {
+			return $hours;
+		}
+
+		$id = (int) $id;
+
+		// One lock around the whole sequence so a double-clicked button cannot
+		// issue two tokens or schedule two expiry events for one row.
+		$result = SPAT_Lock::with(
+			'splm_waitlist_offer_' . $id,
+			60,
+			static function () use ( $id, $hours ) {
+				return self::offer_locked( $id, $hours );
+			}
+		);
+
+		if ( false === $result ) {
+			return new WP_Error(
+				'splm_waitlist_locked',
+				__( 'Another offer for this entry is in progress. Try again in a moment.', 'sportspress-league-manager' ),
+				array( 'status' => 409 )
+			);
+		}
+
+		return $result;
+	}
+
+	/**
+	 * The offer sequence, already serialised by offer().
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param int $id    Row id.
+	 * @param int $hours Validated window.
+	 * @return array|WP_Error
+	 */
+	private static function offer_locked( $id, $hours ) {
+		$row = SPLM_Waitlist_Database::get( $id );
+		if ( ! $row ) {
+			return new WP_Error( 'splm_waitlist_not_found', __( 'Waitlist entry not found.', 'sportspress-league-manager' ), array( 'status' => 404 ) );
+		}
+		if ( ! self::can_offer( $row->status ) ) {
+			return new WP_Error(
+				'splm_waitlist_bad_status',
+				__( 'Only a queued or expired entry can be offered a spot.', 'sportspress-league-manager' ),
+				array( 'status' => 409 )
+			);
+		}
+		if ( (int) $row->target_product_id <= 0 ) {
+			// The row most likely to be offered by accident: ingestion could
+			// not pair it with a real product, so there is nothing to send
+			// the player to.
+			return new WP_Error(
+				'splm_waitlist_no_target',
+				__( 'This entry has no registration product set. Choose one before offering the spot.', 'sportspress-league-manager' ),
+				array( 'status' => 409 )
+			);
+		}
+
+		// Unconditionally, before scheduling anything. A cancelled offer's
+		// event survives the cancel; without this clear, a re-offer would have
+		// two events pending and the older one would fire at the old deadline.
+		wp_clear_scheduled_hook( self::EXPIRE_HOOK, array( $id ) );
+
+		$token  = self::generate_token();
+		$expiry = SPLM_Waitlist_Database::expiry_from_hours( $hours );
+
+		if ( ! SPLM_Waitlist_Database::update( $id, self::offer_updates( $token, $expiry ) ) ) {
+			return new WP_Error( 'splm_waitlist_write_failed', __( 'Could not record the offer.', 'sportspress-league-manager' ), array( 'status' => 500 ) );
+		}
+
+		wp_schedule_single_event( $expiry['timestamp'], self::EXPIRE_HOOK, array( $id ) );
+
+		$fresh = SPLM_Waitlist_Database::get( $id );
+		if ( ! self::send_offer_email( $fresh, $token ) ) {
+			// A failed send would otherwise leave a ticking deadline on an
+			// invite nobody received, and the person would silently lose their
+			// turn. Unwind completely so a retry is clean.
+			wp_clear_scheduled_hook( self::EXPIRE_HOOK, array( $id ) );
+			SPLM_Waitlist_Database::update( $id, self::unwind_updates() );
+
+			return new WP_Error(
+				'splm_waitlist_mail_failed',
+				__( 'The offer email could not be sent, so the offer was cancelled. The entry is still queued — try again.', 'sportspress-league-manager' ),
+				array( 'status' => 500 )
+			);
+		}
+
+		return array(
+			'success'    => true,
+			'id'         => $id,
+			'expires_at' => $expiry['expires_at'],
+			'warnings'   => self::offer_warnings( (int) $fresh->target_product_id ),
+		);
+	}
+
+	/**
+	 * Non-blocking advisories to show beside the offer confirmation.
+	 *
+	 * @param int $product_id Target product id.
+	 * @return array<int, array{code:string,message:string}>
+	 */
+	public static function offer_warnings( $product_id ): array {
+		$warnings = array();
+
+		if ( ! get_post_meta( (int) $product_id, '_splm_waitlist_gated', true ) ) {
+			$warnings[] = array(
+				'code'    => 'not_gated',
+				'message' => __( 'This registration product is not gated, so anyone who finds its URL can buy the spot without an offer.', 'sportspress-league-manager' ),
+			);
+		}
+
+		return $warnings;
+	}
+
+	/**
+	 * Email the entrant their claim link.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param object $row   Waitlist row.
+	 * @param string $token Claim token.
+	 * @return bool Whether wp_mail() accepted the message.
+	 */
+	public static function send_offer_email( $row, $token ): bool {
+		$deadline = wp_date(
+			get_option( 'date_format' ) . ' ' . get_option( 'time_format' ),
+			strtotime( $row->expires_at . ' UTC' )
+		);
+
+		$subject = sprintf(
+			/* translators: %s: season code. */
+			__( 'A %s registration spot is available for you', 'sportspress-league-manager' ),
+			$row->season
+		);
+
+		$body = sprintf(
+			/* translators: 1: entrant name, 2: season code, 3: local deadline, 4: claim URL. */
+			__(
+				"Hi %1\$s,\n\nA spot has opened up for %2\$s and it is being offered to you.\n\nClaim it by %3\$s:\n\n%4\$s\n\nIf you do not claim it by then, the spot will be offered to someone else.\n",
+				'sportspress-league-manager'
+			),
+			$row->name ? $row->name : __( 'there', 'sportspress-league-manager' ),
+			$row->season,
+			$deadline,
+			self::claim_url( $token )
+		);
+
+		$sent = wp_mail( $row->email, $subject, $body );
+
+		if ( ! $sent && class_exists( 'SPAT_Logger' ) ) {
+			SPAT_Logger::error(
+				'waitlist',
+				'wp_mail() rejected a waitlist offer notification',
+				array(
+					'waitlist_id' => (int) $row->id,
+					'season'      => (string) $row->season,
+				)
+			);
+		}
+
+		return (bool) $sent;
+	}
+
+	/**
+	 * Cancel a live offer, or remove a queued entry from the queue.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param int $id Row id.
+	 * @return array|WP_Error
+	 */
+	public static function cancel( $id ) {
+		$id  = (int) $id;
+		$row = SPLM_Waitlist_Database::get( $id );
+		if ( ! $row ) {
+			return new WP_Error( 'splm_waitlist_not_found', __( 'Waitlist entry not found.', 'sportspress-league-manager' ), array( 'status' => 404 ) );
+		}
+		if ( SPLM_Waitlist_Database::STATUS_CLAIMED === $row->status ) {
+			return new WP_Error(
+				'splm_waitlist_bad_status',
+				__( 'A claimed entry cannot be cancelled. Reverse the order instead.', 'sportspress-league-manager' ),
+				array( 'status' => 409 )
+			);
+		}
+
+		wp_clear_scheduled_hook( self::EXPIRE_HOOK, array( $id ) );
+
+		SPLM_Waitlist_Database::update(
+			$id,
+			array(
+				'status'      => SPLM_Waitlist_Database::STATUS_CANCELLED,
+				'claim_token' => null,
+				'expires_at'  => null,
+			)
+		);
+
+		return array(
+			'success' => true,
+			'id'      => $id,
+		);
 	}
 }
