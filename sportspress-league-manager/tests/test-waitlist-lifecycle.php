@@ -28,8 +28,16 @@ function sanitize_text_field( $text ) {
 	return trim( (string) $text );
 }
 
-function get_option( $name, $default = false ) { // phpcs:ignore
-	return $default;
+/**
+ * $name (core's 1st positional arg) is never consulted by this stub -- every
+ * caller in this harness gets its default back unconditionally -- so it is
+ * skipped positionally via func_get_arg() rather than declared as an ignored
+ * formal parameter. func_num_args() guards the read since real call sites
+ * (e.g. get_option( self::VERSION_OPTION )) omit the 2nd argument entirely,
+ * matching the default of false the original signature declared.
+ */
+function get_option() { // phpcs:ignore
+	return func_num_args() > 1 ? func_get_arg( 1 ) : false;
 }
 
 function add_action() { // phpcs:ignore
@@ -112,7 +120,9 @@ function register_rest_route() { // phpcs:ignore
 	return true;
 }
 
-function esc_html__( $text, $domain = '' ) { // phpcs:ignore
+// $domain is never read by this stub -- dropped entirely rather than
+// declared as an ignored formal parameter.
+function esc_html__( $text ) { // phpcs:ignore
 	return $text;
 }
 
@@ -170,12 +180,19 @@ class Fake_WPDB {
 		return $query;
 	}
 
-	public function get_row( $query ) { // phpcs:ignore
+	// get_row() keys off the bound param recorded by the preceding prepare()
+	// call, never off the query string itself, so $query is dropped
+	// entirely rather than declared as an ignored formal parameter.
+	public function get_row() { // phpcs:ignore
 		$key = $this->last_args[0] ?? null;
 		return isset( $this->rows[ $key ] ) ? $this->rows[ $key ] : null;
 	}
 
-	public function insert( $table, $data ) { // phpcs:ignore
+	// Neither $table nor $data is read -- this harness only needs
+	// insert_succeeds/insert_id to drive the success/failure branch -- so
+	// both are dropped entirely rather than declared as ignored formal
+	// parameters.
+	public function insert() { // phpcs:ignore
 		if ( ! $this->insert_succeeds ) {
 			return false;
 		}
@@ -399,6 +416,25 @@ echo "\n=== offer(): a held lock maps to 409 ===\n\n";
 // Defined only if nothing else already provided the class.
 if ( ! class_exists( 'SPAT_Lock' ) ) {
 	class SPAT_Lock { // phpcs:ignore
+		/**
+		 * $key and $ttl_seconds are unused here (this fake simulates a lock
+		 * that is already held, so it never gets far enough to need them),
+		 * and ordinarily that would be fixed the same way as every other
+		 * stub in this file: drop them and read $callback positionally with
+		 * func_get_arg(). That does not work here -- $callback carries a
+		 * `callable` type hint core's real SPAT_Lock::with() declares, and
+		 * func_get_arg() always returns an untyped value, so converting
+		 * would silently drop the one piece of real type-checking this fake
+		 * still performs on its own signature. $key and $ttl_seconds cannot
+		 * be dropped either without leaving one: PHP formal parameters are a
+		 * contiguous prefix, so keeping $callback declared (and typed) at
+		 * its real 3rd position requires $key and $ttl_seconds to also be
+		 * formally declared at positions 1 and 2. Suppressed here, not
+		 * fixed, because it is the one case in this task where the fix
+		 * would cost the exact thing the test double exists to preserve.
+		 *
+		 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+		 */
 		public static function with( $key, $ttl_seconds, callable $callback ) { // phpcs:ignore
 			return false;
 		}

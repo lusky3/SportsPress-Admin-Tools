@@ -73,7 +73,19 @@ function splm_gate_test_state() {
 	return $state;
 }
 
-function add_action( $hook, $callback = null, $priority = 10, $accepted_args = 1 ) { // phpcs:ignore
+/**
+ * $callback is never consulted -- the constructor test below only asserts
+ * on which hook fired and how it was registered (priority, accepted_args),
+ * never on what would run -- so it is skipped positionally via
+ * func_get_arg() rather than declared as an ignored formal parameter.
+ * func_num_args() guards both reads so a real call site that omits the
+ * trailing arguments (e.g. add_action( 'wp_loaded', $cb, 5 ), with no
+ * accepted_args) still gets the exact defaults the original signature
+ * declared, rather than a func_get_arg() fatal.
+ */
+function add_action( $hook ) { // phpcs:ignore
+	$priority      = func_num_args() > 2 ? func_get_arg( 2 ) : 10;
+	$accepted_args = func_num_args() > 3 ? func_get_arg( 3 ) : 1;
 	splm_gate_test_state()->hooks[] = array(
 		'type'          => 'action',
 		'hook'          => $hook,
@@ -83,7 +95,10 @@ function add_action( $hook, $callback = null, $priority = 10, $accepted_args = 1
 	return true;
 }
 
-function add_filter( $hook, $callback = null, $priority = 10, $accepted_args = 1 ) { // phpcs:ignore
+/** Same conversion as add_action() above, and for the same reason. */
+function add_filter( $hook ) { // phpcs:ignore
+	$priority      = func_num_args() > 2 ? func_get_arg( 2 ) : 10;
+	$accepted_args = func_num_args() > 3 ? func_get_arg( 3 ) : 1;
 	splm_gate_test_state()->hooks[] = array(
 		'type'          => 'filter',
 		'hook'          => $hook,
@@ -93,7 +108,10 @@ function add_filter( $hook, $callback = null, $priority = 10, $accepted_args = 1
 	return true;
 }
 
-function get_post_meta( $post_id, $key = '', $single = false ) { // phpcs:ignore
+// $single is never read -- this fake has no concept of single vs. array
+// meta values -- so it is dropped entirely rather than declared as an
+// ignored formal parameter.
+function get_post_meta( $post_id, $key = '' ) { // phpcs:ignore
 	$state = splm_gate_test_state();
 	return isset( $state->post_meta[ $post_id ][ $key ] ) ? $state->post_meta[ $post_id ][ $key ] : '';
 }

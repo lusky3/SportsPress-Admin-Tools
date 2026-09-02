@@ -65,15 +65,31 @@ function add_action() { // phpcs:ignore
 	return true;
 }
 
-function add_filter( $hook, $callback = null, $priority = 10, $accepted_args = 1 ) { // phpcs:ignore
+/**
+ * $priority and $accepted_args are consumed by real WordPress but never by
+ * this harness -- callbacks are retrieved by hook alone via
+ * splm_claim_test_state()->filters[ $hook ], never re-sorted or invoked with
+ * a fixed arg count -- so they are dropped entirely rather than declared as
+ * formal parameters this stub would then ignore. PHP silently discards the
+ * extra positional arguments every real call site still passes.
+ */
+function add_filter( $hook, $callback = null ) { // phpcs:ignore
 	if ( null !== $callback ) {
 		splm_claim_test_state()->filters[ $hook ][] = $callback;
 	}
 	return true;
 }
 
-function get_option( $name, $default = false ) { // phpcs:ignore
-	return $default;
+/**
+ * $name (core's 1st positional arg) is never consulted by this stub -- every
+ * caller in this harness gets its default back unconditionally -- so it is
+ * skipped positionally via func_get_arg() rather than declared as an ignored
+ * formal parameter. func_num_args() guards the read since some real call
+ * sites (e.g. get_option( self::VERSION_OPTION )) omit the 2nd argument
+ * entirely, matching the default of false the original signature declared.
+ */
+function get_option() { // phpcs:ignore
+	return func_num_args() > 1 ? func_get_arg( 1 ) : false;
 }
 
 function sanitize_text_field( $text ) {
@@ -194,12 +210,16 @@ class Fake_WPDB {
 		return $query;
 	}
 
-	public function get_row( $query ) {
+	// get_row()/get_results() key off the bound param recorded by the
+	// preceding prepare() call, never off the query string itself, so
+	// $query is dropped entirely rather than declared as an ignored formal
+	// parameter.
+	public function get_row() {
 		$key = $this->last_args[0] ?? null;
 		return isset( $this->rows[ $key ] ) ? $this->rows[ $key ] : null;
 	}
 
-	public function get_results( $query ) {
+	public function get_results() {
 		$key = $this->last_args[0] ?? null;
 		return isset( $this->results[ $key ] ) ? $this->results[ $key ] : array();
 	}
@@ -341,7 +361,10 @@ function wc_get_order( $order_id ) {
 	return isset( $orders[ $order_id ] ) ? $orders[ $order_id ] : false;
 }
 
-function wp_clear_scheduled_hook( $hook, $args = array() ) { // phpcs:ignore
+// Neither $hook nor $args is read -- this harness only needs
+// wp_clear_scheduled_hook() to be callable and always succeed -- so both are
+// dropped entirely rather than declared as ignored formal parameters.
+function wp_clear_scheduled_hook() { // phpcs:ignore
 	return true;
 }
 
