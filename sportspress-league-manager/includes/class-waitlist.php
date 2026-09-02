@@ -55,6 +55,11 @@ class SPLM_Waitlist {
 		add_action( self::EXPIRE_HOOK, array( __CLASS__, 'expire_offer' ) );
 		add_filter( 'woocommerce_add_cart_item_data', array( $this, 'add_cart_item_data' ), 10, 2 );
 		add_action( 'woocommerce_checkout_create_order_line_item', array( $this, 'persist_cart_item_meta' ), 10, 3 );
+
+		// A separate subscriber to the same event SPPR_Player_Registration
+		// listens on. Neither knows about the other; both just react to a
+		// completed order.
+		add_action( 'woocommerce_order_status_completed', array( $this, 'handle_order_completed' ) );
 	}
 
 	/**
@@ -876,5 +881,154 @@ class SPLM_Waitlist {
 		}
 
 		return $expired;
+	}
+
+	/**
+	 * Which offer, if any, a completed order fulfils.
+	 *
+	 * Pure. Two paths, strongest signal first:
+	 *
+	 * 1. The claim token carried on the order's own line item. Authoritative —
+	 *    the email is not consulted at all, which is what makes a shared or
+	 *    changed billing address a non-issue.
+	 * 2. Product plus email or user id. This is the never-clicked-the-link
+	 *    case: a forwarded email that lost the link, or a player who reached
+	 *    the product some other way. It is a fallback precisely because it
+	 *    guesses, and the guess fails whenever someone checks out under a
+	 *    different address than their waitlist order used.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param object|null $by_token            Row found by line item token.
+	 * @param object[]    $offered_for_product Offered rows for the purchased product.
+	 * @param string      $email               Order billing email.
+	 * @param int         $user_id             Order customer id.
+	 * @return object|null
+	 */
+	public static function match_offer( $by_token, array $offered_for_product, $email, $user_id ) {
+		if ( $by_token && self::is_claimable( $by_token ) ) {
+			return $by_token;
+		}
+
+		$email   = strtolower( trim( (string) $email ) );
+		$user_id = (int) $user_id;
+
+		$matches = array();
+		foreach ( $offered_for_product as $row ) {
+			if ( ! self::is_claimable( $row ) ) {
+				continue;
+			}
+
+			$row_email = strtolower( trim( (string) $row->email ) );
+			$row_user  = (int) $row->user_id;
+
+			// Both guards matter: an empty billing email must not match a row
+			// with an empty email, and user_id 0 must not match a guest row's
+			// 0 — otherwise every guest checkout would collide with every
+			// guest entry.
+			$email_hit = ( '' !== $email && $row_email === $email );
+			$user_hit  = ( $user_id > 0 && $row_user === $user_id );
+
+			if ( $email_hit || $user_hit ) {
+				$matches[ (int) $row->id ] = $row;
+			}
+		}
+
+		if ( empty( $matches ) ) {
+			return null;
+		}
+
+		// find_active() should make duplicates impossible, but if two live
+		// offers exist for one person, resolve the oldest so the outcome is
+		// deterministic rather than dependent on row order.
+		ksort( $matches );
+		return reset( $matches );
+	}
+
+	/**
+	 * Mark an offer claimed and stand down its expiry.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param int $id       Row id.
+	 * @param int $order_id Fulfilling order id.
+	 * @return bool
+	 */
+	public static function mark_claimed( $id, $order_id ): bool {
+		$id = (int) $id;
+
+		wp_clear_scheduled_hook( self::EXPIRE_HOOK, array( $id ) );
+
+		return SPLM_Waitlist_Database::update(
+			$id,
+			array(
+				'status'            => SPLM_Waitlist_Database::STATUS_CLAIMED,
+				'resolved_order_id' => (int) $order_id,
+				// Cleared so the link cannot be replayed and the UNIQUE index
+				// is free if this person is ever queued again.
+				'claim_token'       => null,
+			)
+		);
+	}
+
+	/**
+	 * Resolve offers fulfilled by a completed order.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param int $order_id Order ID.
+	 * @return void
+	 */
+	public function handle_order_completed( $order_id ) {
+		if ( ! function_exists( 'wc_get_order' ) ) {
+			return;
+		}
+		$order = wc_get_order( $order_id );
+		if ( ! $order ) {
+			return;
+		}
+
+		$email   = strtolower( sanitize_email( (string) $order->get_billing_email() ) );
+		$user_id = (int) $order->get_user_id();
+
+		foreach ( $order->get_items() as $item ) {
+			$product = $item->get_product();
+			if ( ! $product ) {
+				continue;
+			}
+
+			$token    = (string) $item->get_meta( self::CART_META_KEY );
+			$by_token = self::is_token_shaped( $token )
+				? SPLM_Waitlist_Database::find_by_token( $token )
+				: null;
+
+			$product_id = (int) $product->get_id();
+			$offered    = SPLM_Waitlist_Database::find_offered_for_product( $product_id );
+
+			// A variation is purchased, but the waitlist stored the parent.
+			if ( empty( $offered ) && $product->get_type() === 'variation' ) {
+				$offered = SPLM_Waitlist_Database::find_offered_for_product( (int) $product->get_parent_id() );
+			}
+
+			$match = self::match_offer( $by_token, $offered, $email, $user_id );
+			if ( ! $match ) {
+				continue;
+			}
+
+			self::mark_claimed( (int) $match->id, (int) $order->get_id() );
+
+			if ( class_exists( 'SPAT_Logger' ) ) {
+				$matched_by = ( $by_token && self::is_claimable( $by_token ) ) ? 'token' : 'email_or_user';
+				SPAT_Logger::info(
+					'waitlist',
+					sprintf(
+						'a waitlist offer was claimed: waitlist_id=%d order_id=%d matched_by=%s',
+						(int) $match->id,
+						(int) $order->get_id(),
+						$matched_by
+					)
+				);
+			}
+		}
 	}
 }

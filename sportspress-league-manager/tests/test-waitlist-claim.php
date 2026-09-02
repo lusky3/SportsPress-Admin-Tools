@@ -414,6 +414,55 @@ assert_test( 1 === count( array_unique( $failure_bodies ) ), 'all four failure s
 assert_test( false === strpos( $failure_bodies['missing'], '<\\/' ), 'the HTML body contains no JSON-escaped "<\\/" that would break an RCDATA element like <title>' );
 assert_test( false !== strpos( $failure_bodies['missing'], '</title>' ), 'the HTML body closes <title> normally' );
 
+echo "\n=== match_offer(): the exact path ===\n\n";
+
+$token_row = row( array( 'id' => 5, 'email' => 'queued@example.com' ) );
+
+// The token came off the order's own line item, so it is authoritative: the
+// email is not consulted at all. This is what makes a shared or changed
+// billing address a non-issue.
+assert_test( 5 === $w::match_offer( $token_row, array(), 'someone-else@example.com', 0 )->id, 'a line item token wins outright, whatever email the order used' );
+assert_test( 5 === $w::match_offer( $token_row, array(), '', 0 )->id, 'a line item token resolves even with no billing email' );
+
+// But a token pointing at a row that is no longer offerable must not resolve.
+$stale_token_row = row( array( 'id' => 5, 'status' => 'claimed' ) );
+assert_test( null === $w::match_offer( $stale_token_row, array(), 'player@example.com', 0 ), 'a token for an already-claimed row does not re-resolve' );
+
+$lapsed_token_row = row( array( 'id' => 5, 'expires_at' => gmdate( 'Y-m-d H:i:s', time() - 60 ) ) );
+assert_test( null === $w::match_offer( $lapsed_token_row, array(), 'player@example.com', 0 ), 'a token for a lapsed offer does not resolve' );
+
+echo "\n=== match_offer(): the fallback path ===\n\n";
+
+$offered = array(
+	row( array( 'id' => 7, 'email' => 'player@example.com', 'user_id' => 0 ) ),
+	row( array( 'id' => 8, 'email' => 'other@example.com', 'user_id' => 42 ) ),
+);
+
+assert_test( 7 === $w::match_offer( null, $offered, 'player@example.com', 0 )->id, 'with no token, a matching billing email resolves' );
+assert_test( 7 === $w::match_offer( null, $offered, 'PLAYER@Example.COM', 0 )->id, 'the email match is case-insensitive' );
+assert_test( 8 === $w::match_offer( null, $offered, 'unrelated@example.com', 42 )->id, 'a matching user id resolves when the email does not' );
+assert_test( null === $w::match_offer( null, $offered, 'nobody@example.com', 0 ), 'no match on either signal resolves nothing' );
+assert_test( null === $w::match_offer( null, array(), 'player@example.com', 0 ), 'no offered rows for the product resolves nothing' );
+
+// user_id 0 must never match a guest row's 0 — every guest would collide.
+$guest_offered = array( row( array( 'id' => 9, 'email' => 'someone@example.com', 'user_id' => 0 ) ) );
+assert_test( null === $w::match_offer( null, $guest_offered, 'different@example.com', 0 ), 'a guest order does not match a guest row by user_id 0' );
+
+// An empty billing email must not match a row with an empty email either.
+$blank_offered = array( row( array( 'id' => 10, 'email' => '', 'user_id' => 0 ) ) );
+assert_test( null === $w::match_offer( null, $blank_offered, '', 0 ), 'two empty emails are not a match' );
+
+echo "\n=== match_offer(): ambiguity ===\n\n";
+
+// Two live offers for the same product and the same person should not happen —
+// find_active() prevents it at ingestion — but if it does, resolve the oldest
+// rather than picking arbitrarily, so the behaviour is at least deterministic.
+$dupes = array(
+	row( array( 'id' => 12, 'email' => 'player@example.com' ) ),
+	row( array( 'id' => 11, 'email' => 'player@example.com' ) ),
+);
+assert_test( 11 === $w::match_offer( null, $dupes, 'player@example.com', 0 )->id, 'duplicate live offers resolve the lowest id deterministically' );
+
 echo "\n";
 echo "Passed: {$passed}\n";
 echo "Failed: {$failed}\n";
