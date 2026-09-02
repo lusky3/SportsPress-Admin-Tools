@@ -229,6 +229,14 @@ class SPLM_Waitlist_Gate {
 
 		$map = array();
 		foreach ( self::normalise_entitlements( array_keys( $raw ) ) as $id ) {
+			// normalise_entitlements() casts keys to int, so a non-canonical
+			// numeric key ('07', '1e2') can produce an id absent from $raw --
+			// nothing this plugin writes does that, but the session is
+			// client-influenced storage and this method's contract is to
+			// treat it as hostile, so the read stays guarded.
+			if ( ! isset( $raw[ $id ] ) ) {
+				continue;
+			}
 			$token = $raw[ $id ];
 			if ( is_string( $token ) && '' !== $token ) {
 				$map[ $id ] = $token;
@@ -470,13 +478,19 @@ class SPLM_Waitlist_Gate {
 	 * WooCommerce's own hook for the message shown when it removes an item
 	 * from the cart, called from wherever that removal happens.
 	 *
+	 * $product defaults to null because this is registered with
+	 * accepted_args 2, but a third party re-applying the filter (or a future
+	 * WooCommerce version) calling apply_filters() with only the message
+	 * argument would otherwise raise ArgumentCountError -- a fatal on the
+	 * cart page, the exact failure class this task exists to prevent.
+	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
-	 * @param string $message Default WooCommerce removal message.
-	 * @param object $product The removed product.
+	 * @param string      $message Default WooCommerce removal message.
+	 * @param object|null $product The removed product, if supplied.
 	 * @return string
 	 */
-	public function filter_cart_item_removed_message( $message, $product ) {
+	public function filter_cart_item_removed_message( $message, $product = null ) {
 		if ( ! $product || ! is_object( $product ) || 0 === self::gated_product_id( $product ) ) {
 			return $message;
 		}

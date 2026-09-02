@@ -421,6 +421,29 @@ $ungated = new SPLM_Gate_Fake_Product( 100 );
 assert_test( true === $gate->filter_is_purchasable( true, $ungated ), 'a purchasable product with no gate meta at all stays purchasable' );
 assert_test( 0 === $state->find_by_token_calls, 'the cheap-exit path never queries the waitlist table' );
 
+// The assertion above is too weak on its own to prove ordering: with no WC()
+// and no session, entitlement_ids() short-circuits to an empty array before
+// ever reaching resolve_token(), so the counter would read 0 even if the
+// entitlement lookup ran BEFORE the gate check. Rerun with a live, claimable
+// session token in place -- for a DIFFERENT, unrelated product -- so that if
+// entitlement_ids() were ever called on this ungated product's path, the
+// query would actually happen and the counter would move. It must not.
+$state->wc_available        = true;
+$state->session_available   = true;
+$live_token                  = str_repeat( 'f', 64 );
+$state->tokens[ $live_token ] = splm_gate_row( 999, true );
+$state->session_data          = array( SPLM_Waitlist_Gate::SESSION_KEY => array( 999 => $live_token ) );
+$state->find_by_token_calls  = 0;
+
+assert_test( true === $gate->filter_is_purchasable( true, $ungated ), 'an ungated product stays purchasable even with a live session token present' );
+assert_test(
+	0 === $state->find_by_token_calls,
+	'the cheap-exit path never queries the waitlist table, even with a live claimable session token in place -- this pins the ordering: moving entitlement_ids() above the gate check makes this non-zero (confirmed by temporarily doing exactly that; see the round-2 report)'
+);
+
+$state->wc_available = false;
+$state->session_data = array();
+
 $state->post_meta[100][ SPLM_Waitlist_Gate::GATE_META ] = '0';
 assert_test( true === $gate->filter_is_purchasable( true, $ungated ), "a '0' gate meta value is treated as ungated" );
 
