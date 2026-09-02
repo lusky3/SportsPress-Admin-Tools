@@ -291,17 +291,30 @@ class SPLM_Waitlist_REST {
 	 *
 	 * Datetimes go out as the stored UTC strings; the client localises them.
 	 *
+	 * target_gated exposes the target product's CURRENT gate state so the
+	 * dashboard's Season access panel can show a truthful label on first
+	 * render, rather than assuming "not gated" until a convener happens to
+	 * toggle it. A zero target reports false rather than asking
+	 * SPLM_Waitlist_Gate::is_gated() about post id 0.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
 	 * @param object $row Waitlist row.
 	 * @return array
 	 */
 	public static function row_to_response( $row ): array {
+		$target_product_id = (int) $row->target_product_id;
+
 		return array(
 			'id'                  => (int) $row->id,
 			'season'              => (string) $row->season,
 			'position'            => (string) $row->position,
 			'waitlist_product_id' => (int) $row->waitlist_product_id,
-			'target_product_id'   => (int) $row->target_product_id,
-			'has_target'          => (int) $row->target_product_id > 0,
+			'target_product_id'   => $target_product_id,
+			'has_target'          => $target_product_id > 0,
+			'target_gated'        => $target_product_id > 0 && class_exists( 'SPLM_Waitlist_Gate' )
+				? SPLM_Waitlist_Gate::is_gated( $target_product_id )
+				: false,
 			'name'                => (string) $row->name,
 			'email'               => (string) $row->email,
 			'user_id'             => (int) $row->user_id,

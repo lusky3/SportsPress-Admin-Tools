@@ -61,23 +61,63 @@ export default function Waitlist() {
 	const [ error, setError ] = useState( '' );
 	const [ notice, setNotice ] = useState( '' );
 	const [ warnings, setWarnings ] = useState( [] );
-	const [ filters, setFilters ] = useState( { season: '', position: '', status: '' } );
+	// Raw text box vs the debounced value actually sent to the server, so we
+	// don't fire a request on every keystroke — matches Payments.jsx's search
+	// box. Position and status are discrete selects, so they stay immediate.
+	const [ seasonInput, setSeasonInput ] = useState( '' );
+	const [ season, setSeason ] = useState( '' );
+	const [ position, setPosition ] = useState( '' );
+	const [ status, setStatus ] = useState( '' );
 	const [ gates, setGates ] = useState( {} );
 	const [ busyId, setBusyId ] = useState( 0 );
 	const [ adding, setAdding ] = useState( false );
 	const [ form, setForm ] = useState( { name: '', email: '', season: '', position: 'player', target_product_id: '' } );
 
+	// Debounce the season box (300ms) into the value used for fetching.
+	useEffect( () => {
+		const t = setTimeout( () => setSeason( seasonInput.trim() ), 300 );
+		return () => clearTimeout( t );
+	}, [ seasonInput ] );
+
+	// cancelled guards against a slower earlier request (e.g. from a filter
+	// change that has since been superseded) overwriting the table with stale
+	// data after a later request resolves first — same pattern as
+	// Payments.jsx / Schedule.jsx.
 	const load = useCallback( () => {
+		let cancelled = false;
 		setLoading( true );
 		setError( '' );
-		fetchWaitlist( filters )
-			.then( ( res ) => setRows( res.data ) )
-			.catch( ( e ) => setError( e?.message || 'Could not load the waitlist.' ) )
-			.finally( () => setLoading( false ) );
-	}, [ filters ] );
+		fetchWaitlist( { season, position, status } )
+			.then( ( res ) => {
+				if ( cancelled ) return;
+				setRows( res.data );
+				// Seed/refresh the Season access panel's gate state from the
+				// rows just fetched. target_gated is the server's live truth,
+				// so this keeps the panel honest on first render and every
+				// reload, instead of defaulting every product to "Gate" (not
+				// gated) until a convener happens to toggle it.
+				setGates( ( prev ) => {
+					const next = { ...prev };
+					res.data.forEach( ( row ) => {
+						if ( row.target_product_id > 0 ) {
+							next[ row.target_product_id ] = Boolean( row.target_gated );
+						}
+					} );
+					return next;
+				} );
+				setLoading( false );
+			} )
+			.catch( ( e ) => {
+				if ( cancelled ) return;
+				setError( e?.message || 'Could not load the waitlist.' );
+				setLoading( false );
+			} );
+		return () => { cancelled = true; };
+	}, [ season, position, status ] );
 
 	useEffect( () => {
-		load();
+		const cleanup = load();
+		return cleanup;
 	}, [ load ] );
 
 	// Target products for the Season access panel, derived from the rows on
@@ -94,7 +134,7 @@ export default function Waitlist() {
 
 	const handleOffer = ( row ) => {
 		const input = window.prompt(
-			`Claim window in hours for ${ row.name || row.email }?`,
+			`Offer this spot to ${ row.name || row.email }? This emails them a real claim link. Claim window in hours:`,
 			String( DEFAULT_HOURS )
 		);
 		if ( input === null ) {
@@ -202,16 +242,16 @@ export default function Waitlist() {
 					<input
 						type="text"
 						className="splm-select"
-						value={ filters.season }
-						onChange={ ( e ) => setFilters( { ...filters, season: e.target.value } ) }
+						value={ seasonInput }
+						onChange={ ( e ) => setSeasonInput( e.target.value ) }
 					/>
 				</label>
 				<label>
 					<span className="splm-waitlist__filter-label">Position</span>
 					<select
 						className="splm-select"
-						value={ filters.position }
-						onChange={ ( e ) => setFilters( { ...filters, position: e.target.value } ) }
+						value={ position }
+						onChange={ ( e ) => setPosition( e.target.value ) }
 					>
 						<option value="">All</option>
 						<option value="player">Player</option>
@@ -222,8 +262,8 @@ export default function Waitlist() {
 					<span className="splm-waitlist__filter-label">Status</span>
 					<select
 						className="splm-select"
-						value={ filters.status }
-						onChange={ ( e ) => setFilters( { ...filters, status: e.target.value } ) }
+						value={ status }
+						onChange={ ( e ) => setStatus( e.target.value ) }
 					>
 						<option value="">All</option>
 						<option value="queued">Queued</option>

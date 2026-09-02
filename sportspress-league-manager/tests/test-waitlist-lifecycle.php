@@ -186,6 +186,11 @@ $wpdb = new Fake_WPDB();
 require_once __DIR__ . '/../includes/class-waitlist-database.php';
 require_once __DIR__ . '/../includes/class-waitlist.php';
 require_once __DIR__ . '/../includes/class-waitlist-rest.php';
+// Needed for row_to_response()'s target_gated: SPLM_Waitlist_Gate::is_gated()
+// is a static, read-only get_post_meta() call, so requiring the class here
+// carries no side effects (its constructor, which hooks WordPress actions/
+// filters, is never invoked in this file).
+require_once __DIR__ . '/../includes/class-waitlist-gate.php';
 
 $passed = 0;
 $failed = 0;
@@ -451,6 +456,17 @@ assert_test( ! array_key_exists( 'claim_token', $shaped ), 'the claim token key 
 $no_target = clone $response_row;
 $no_target->target_product_id = 0;
 assert_test( false === $r::row_to_response( $no_target )['has_target'], 'a row without a target reports has_target false so the UI can disable Offer' );
+
+// target_gated exposes the target product's CURRENT gate state, so the
+// dashboard's Season access panel can show a truthful label on first render
+// instead of assuming "not gated" until a convener happens to toggle it.
+splm_waitlist_lifecycle_test_state()->post_meta[11]['_splm_waitlist_gated'] = '1';
+assert_test( true === $r::row_to_response( $response_row )['target_gated'], 'a gated target product reports target_gated true' );
+
+splm_waitlist_lifecycle_test_state()->post_meta[11]['_splm_waitlist_gated'] = '';
+assert_test( false === $r::row_to_response( $response_row )['target_gated'], 'an ungated target product reports target_gated false' );
+
+assert_test( false === $r::row_to_response( $no_target )['target_gated'], 'a row without a target reports target_gated false without calling is_gated( 0 )' );
 
 echo "\n=== create_entry(): the four WP_Error branches, plus success ===\n\n";
 
