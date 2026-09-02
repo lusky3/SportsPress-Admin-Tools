@@ -23,22 +23,51 @@ function __( $text, $domain = '' ) { // phpcs:ignore
 	return $text;
 }
 
+/**
+ * Mutable harness state. A class rather than $GLOBALS because Codacy's
+ * PHPMD Superglobals rule flags the latter, and instance properties rather
+ * than statics because it flags Class::$prop[...] subscripts as undefined.
+ */
+class SPLM_Claim_Test_State {
+	/**
+	 * Every registered callback, keyed by hook (rather than discarding it),
+	 * so a test can retrieve and invoke the one-shot rest_pre_serve_request
+	 * filter failure_response() registers — that is the only way to prove,
+	 * in a standalone harness with no real WP_REST_Server, that the
+	 * JSON-serializer short-circuit actually fires and echoes the raw HTML
+	 * body.
+	 */
+	public $filters = array();
+
+	/**
+	 * Controllable get_permalink() responses, keyed by product id, so a test
+	 * can arrange for a specific id to behave like a deleted post
+	 * (get_permalink() returning false) without touching any other case.
+	 */
+	public $permalinks = array();
+
+	/**
+	 * Controllable wc_get_order() responses, keyed by order id, for
+	 * handle_order_completed().
+	 */
+	public $orders = array();
+}
+
+function splm_claim_test_state() {
+	static $state = null;
+	if ( null === $state ) {
+		$state = new SPLM_Claim_Test_State();
+	}
+	return $state;
+}
+
 function add_action() { // phpcs:ignore
 	return true;
 }
 
-/**
- * Records every registered callback (rather than discarding it) so a test
- * can retrieve and invoke the one-shot rest_pre_serve_request filter
- * failure_response() registers — that is the only way to prove, in a
- * standalone harness with no real WP_REST_Server, that the JSON-serializer
- * short-circuit actually fires and echoes the raw HTML body.
- */
-$GLOBALS['__filters'] = array();
-
 function add_filter( $hook, $callback = null, $priority = 10, $accepted_args = 1 ) { // phpcs:ignore
 	if ( null !== $callback ) {
-		$GLOBALS['__filters'][ $hook ][] = $callback;
+		splm_claim_test_state()->filters[ $hook ][] = $callback;
 	}
 	return true;
 }
@@ -69,19 +98,11 @@ function esc_html__( $text, $domain = '' ) { // phpcs:ignore
 	return esc_html( __( $text, $domain ) );
 }
 
-/**
- * Controllable get_permalink()/add_query_arg() pair for add_to_cart_url().
- *
- * Keyed by product id so a test can arrange for a specific id to behave like
- * a deleted post (get_permalink() returning false) without touching any
- * other case.
- */
-$GLOBALS['__permalinks'] = array();
-
 function get_permalink( $post_id ) {
-	$post_id = (int) $post_id;
-	return array_key_exists( $post_id, $GLOBALS['__permalinks'] )
-		? $GLOBALS['__permalinks'][ $post_id ]
+	$post_id    = (int) $post_id;
+	$permalinks = splm_claim_test_state()->permalinks;
+	return array_key_exists( $post_id, $permalinks )
+		? $permalinks[ $post_id ]
 		: 'https://example.test/?product=' . $post_id;
 }
 
@@ -293,13 +314,9 @@ function sanitize_email( $email ) { // phpcs:ignore
 	return $email;
 }
 
-/**
- * Controllable wc_get_order(), keyed by order id, for handle_order_completed().
- */
-$GLOBALS['__orders'] = array();
-
 function wc_get_order( $order_id ) {
-	return isset( $GLOBALS['__orders'][ $order_id ] ) ? $GLOBALS['__orders'][ $order_id ] : false;
+	$orders = splm_claim_test_state()->orders;
+	return isset( $orders[ $order_id ] ) ? $orders[ $order_id ] : false;
 }
 
 function wp_clear_scheduled_hook( $hook, $args = array() ) { // phpcs:ignore
@@ -439,7 +456,7 @@ assert_test( ! $w::is_token_shaped( '' ), 'an empty string is not' );
 
 echo "\n=== add_to_cart_url() ===\n\n";
 
-$GLOBALS['__permalinks'][11] = 'https://example.test/product/11/';
+splm_claim_test_state()->permalinks[11] = 'https://example.test/product/11/';
 $cart_url = SPLM_Waitlist_REST::add_to_cart_url( row(), str_repeat( 'c', 64 ) );
 assert_test( false !== strpos( $cart_url, 'add-to-cart=11' ), 'the add-to-cart URL carries the target product id' );
 assert_test( false !== strpos( $cart_url, $w::CLAIM_ARG . '=' . str_repeat( 'c', 64 ) ), 'the add-to-cart URL carries the claim token' );
@@ -447,7 +464,7 @@ assert_test( false !== strpos( $cart_url, $w::CLAIM_ARG . '=' . str_repeat( 'c',
 // A deleted target product: get_permalink() returns false. Without a guard,
 // add_query_arg( $args, false ) falls back to $_SERVER['REQUEST_URI'] — this
 // route's own URL — producing a redirect loop back into the claim route.
-$GLOBALS['__permalinks'][404] = false;
+splm_claim_test_state()->permalinks[404] = false;
 $looping_row = row( array( 'target_product_id' => 404 ) );
 assert_test( '' === SPLM_Waitlist_REST::add_to_cart_url( $looping_row, str_repeat( 'd', 64 ) ), 'a deleted target product yields no URL rather than looping back into the claim route' );
 
@@ -497,10 +514,10 @@ $rest = new SPLM_Waitlist_REST();
 
 // Valid claim: 302 into the add-to-cart URL, and no serve-request filter is
 // registered — that machinery exists only for the dead-link page.
-$GLOBALS['__permalinks'][11]                     = 'https://example.test/product/11/';
-$valid_token                                     = str_repeat( '1', 64 );
-$wpdb->rows                                      = array( $valid_token => row() );
-$GLOBALS['__filters']['rest_pre_serve_request']  = array();
+splm_claim_test_state()->permalinks[11]                    = 'https://example.test/product/11/';
+$valid_token                                               = str_repeat( '1', 64 );
+$wpdb->rows                                                = array( $valid_token => row() );
+splm_claim_test_state()->filters['rest_pre_serve_request'] = array();
 
 $valid_response = $rest->handle_claim( new WP_REST_Request( array( 'token' => $valid_token ) ) );
 assert_test( 302 === $valid_response->get_status(), 'a valid claim link 302s' );
@@ -508,16 +525,16 @@ $valid_headers = $valid_response->get_headers();
 assert_test( false !== strpos( $valid_headers['Location'] ?? '', 'add-to-cart=11' ), 'the redirect carries the add-to-cart product id' );
 assert_test( false !== strpos( $valid_headers['Location'] ?? '', $w::CLAIM_ARG . '=' . $valid_token ), 'the redirect carries the claim token' );
 assert_test( 'no-store' === ( $valid_headers['Cache-Control'] ?? '' ), 'the redirect is never cached — it carries a live credential in its Location' );
-assert_test( empty( $GLOBALS['__filters']['rest_pre_serve_request'] ), 'a valid claim registers no serve-request filter' );
+assert_test( empty( splm_claim_test_state()->filters['rest_pre_serve_request'] ), 'a valid claim registers no serve-request filter' );
 
 // A live, otherwise-claimable offer whose target product was deleted:
 // get_permalink() returns false, add_to_cart_url() returns '', and
 // handle_claim() must fall through to the dead-link response rather than
 // redirecting into a loop.
-$GLOBALS['__permalinks'][404] = false;
-$deleted_target_token         = str_repeat( '2', 64 );
-$wpdb->rows                   = array( $deleted_target_token => row( array( 'target_product_id' => 404 ) ) );
-$deleted_target_response      = $rest->handle_claim( new WP_REST_Request( array( 'token' => $deleted_target_token ) ) );
+splm_claim_test_state()->permalinks[404] = false;
+$deleted_target_token                    = str_repeat( '2', 64 );
+$wpdb->rows                              = array( $deleted_target_token => row( array( 'target_product_id' => 404 ) ) );
+$deleted_target_response                 = $rest->handle_claim( new WP_REST_Request( array( 'token' => $deleted_target_token ) ) );
 assert_test( 200 === $deleted_target_response->get_status(), 'a claimable row with a deleted target product renders the dead-link page instead of looping' );
 
 // Every failure state renders byte-identical status, headers and body.
@@ -537,9 +554,9 @@ $token_chars = array(
 $failure_bodies = array();
 
 foreach ( $failure_rows as $state => $fixture_row ) {
-	$token                                          = str_repeat( $token_chars[ $state ], 64 );
-	$wpdb->rows                                     = array( $token => $fixture_row );
-	$GLOBALS['__filters']['rest_pre_serve_request'] = array();
+	$token                                                      = str_repeat( $token_chars[ $state ], 64 );
+	$wpdb->rows                                                 = array( $token => $fixture_row );
+	splm_claim_test_state()->filters['rest_pre_serve_request'] = array();
 
 	$response = $rest->handle_claim( new WP_REST_Request( array( 'token' => $token ) ) );
 
@@ -556,7 +573,7 @@ foreach ( $failure_rows as $state => $fixture_row ) {
 	// WP_REST_Server::serve_request() would, then assert it short-circuits
 	// and echoes the raw body verbatim — the un-JSON-encoded body is what
 	// keeps <title> from being broken by an escaped "<\/".
-	$serve_filters = $GLOBALS['__filters']['rest_pre_serve_request'] ?? array();
+	$serve_filters = splm_claim_test_state()->filters['rest_pre_serve_request'] ?? array();
 	if ( empty( $serve_filters ) ) {
 		assert_test( false, "the {$state} state registers a rest_pre_serve_request filter to bypass JSON serialization" );
 	} else {
@@ -638,12 +655,12 @@ assert_test( 11 === $w::match_offer( null, $dupes, 'player@example.com', 0 )->id
  */
 function reset_waitlist_order_fakes() {
 	global $wpdb;
-	$wpdb->rows          = array();
-	$wpdb->results       = array();
+	$wpdb->rows = array();
+	$wpdb->results = array();
 	$wpdb->update_return = 1;
-	$wpdb->update_calls  = array();
-	SPAT_Logger::$calls  = array();
-	$GLOBALS['__orders'] = array();
+	$wpdb->update_calls = array();
+	SPAT_Logger::$calls = array();
+	splm_claim_test_state()->orders = array();
 }
 
 /**
@@ -675,7 +692,7 @@ $token_item->add_meta_data( $w::CART_META_KEY, $claim_token, true );
 $token_item->set_product( new Fake_WC_Product( 11 ) );
 
 $token_order              = new Fake_WC_Order( 500, 'someone-else@example.com', 0, array( $token_item ) );
-$GLOBALS['__orders'][500] = $token_order;
+splm_claim_test_state()->orders[500] = $token_order;
 
 $wl->handle_order_completed( 500 );
 
@@ -712,7 +729,7 @@ $fail_item->add_meta_data( $w::CART_META_KEY, $fail_token, true );
 $fail_item->set_product( new Fake_WC_Product( 11 ) );
 
 $fail_order               = new Fake_WC_Order( 501, 'someone-else@example.com', 0, array( $fail_item ) );
-$GLOBALS['__orders'][501] = $fail_order;
+splm_claim_test_state()->orders[501] = $fail_order;
 
 $wl->handle_order_completed( 501 );
 
@@ -739,7 +756,7 @@ $variation_item = new Fake_Order_Item();
 $variation_item->set_product( new Fake_WC_Product( 31, 'variation', 30 ) );
 
 $fallback_order           = new Fake_WC_Order( 502, 'player@example.com', 0, array( $variation_item ) );
-$GLOBALS['__orders'][502] = $fallback_order;
+splm_claim_test_state()->orders[502] = $fallback_order;
 
 $wl->handle_order_completed( 502 );
 
@@ -762,7 +779,7 @@ $no_match_item = new Fake_Order_Item();
 $no_match_item->set_product( new Fake_WC_Product( 99 ) );
 
 $no_match_order           = new Fake_WC_Order( 503, 'nobody@example.com', 0, array( $no_match_item ) );
-$GLOBALS['__orders'][503] = $no_match_order;
+splm_claim_test_state()->orders[503] = $no_match_order;
 
 $wl->handle_order_completed( 503 );
 
