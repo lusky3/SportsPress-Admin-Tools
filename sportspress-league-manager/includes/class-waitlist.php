@@ -76,6 +76,14 @@ class SPLM_Waitlist {
 		if ( ! empty( $facts['has_active'] ) ) {
 			return null;
 		}
+		// Guards against the same order firing this listener twice after it
+		// already produced a row that is no longer queued/offered — e.g. an
+		// already-claimed order whose status is re-touched in wp-admin. Without
+		// this, has_active alone (queued/offered only) would miss it and a
+		// second queued row would appear for someone already registered.
+		if ( ! empty( $facts['already_ingested'] ) ) {
+			return null;
+		}
 
 		$season = (string) ( $facts['season'] ?? '' );
 		if ( '' === $season ) {
@@ -161,9 +169,23 @@ class SPLM_Waitlist {
 			$season   = SPAT_Season::from_product( $lookup_id );
 			$position = SPAT_Season::position_from_product( $lookup_id, $product );
 
+			$order_id = (int) $order->get_id();
+
 			$existing = ( $season && $email )
 				? SPLM_Waitlist_Database::find_active( $email, $season, $position )
 				: null;
+
+			// find_active() only sees queued/offered, so it misses the case
+			// where this same order already produced a row that has since moved
+			// on (claimed, expired, cancelled). Without this second check, an
+			// already-claimed order whose status is re-touched in wp-admin —
+			// an admin correction, a refund followed by re-completing the same
+			// order — would silently create a second queued row for someone
+			// who is already registered, and a later offer pass could email
+			// them an invite for a spot they don't need.
+			$already_ingested = $order_id
+				? (bool) SPLM_Waitlist_Database::find_by_source_order( $order_id, (int) $lookup_id )
+				: false;
 
 			$row = self::build_row(
 				array(
@@ -175,8 +197,9 @@ class SPLM_Waitlist {
 					'email'             => $email,
 					'name'              => $name,
 					'user_id'           => (int) $order->get_user_id(),
-					'order_id'          => (int) $order->get_id(),
+					'order_id'          => $order_id,
 					'has_active'        => (bool) $existing,
+					'already_ingested'  => $already_ingested,
 				)
 			);
 

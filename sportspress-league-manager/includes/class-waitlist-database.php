@@ -254,6 +254,38 @@ class SPLM_Waitlist_Database {
 	}
 
 	/**
+	 * The first row this order already produced for this waitlist product, at
+	 * any status.
+	 *
+	 * Unlike find_active(), this deliberately sees claimed/expired/cancelled
+	 * rows too — it exists to stop an already-claimed order from producing a
+	 * second queued row when its status is re-touched (an admin correction, a
+	 * refund-then-recomplete, any accidental flip-and-restore in wp-admin).
+	 * find_active() can't see that case because it only looks at queued/offered.
+	 *
+	 * A zero order id never matches: a manually-added entry has
+	 * source_order_id = 0, and those must not block each other.
+	 *
+	 * @param int $order_id   Source order id.
+	 * @param int $product_id Waitlist product id.
+	 * @return object|null
+	 */
+	public static function find_by_source_order( int $order_id, int $product_id ): ?object {
+		if ( $order_id <= 0 ) {
+			return null;
+		}
+		global $wpdb;
+		$row = $wpdb->get_row( // phpcs:ignore WordPress.DB
+			$wpdb->prepare(
+				'SELECT * FROM ' . self::table_name() . ' WHERE source_order_id = %d AND waitlist_product_id = %d ORDER BY id ASC LIMIT 1',
+				$order_id,
+				$product_id
+			)
+		);
+		return $row ? $row : null;
+	}
+
+	/**
 	 * Offered rows whose target product is this one.
 	 *
 	 * @param int $product_id Product post ID.

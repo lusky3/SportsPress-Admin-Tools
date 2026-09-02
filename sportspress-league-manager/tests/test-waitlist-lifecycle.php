@@ -76,6 +76,7 @@ function facts( array $overrides = array() ) {
 			'user_id'            => 7,
 			'order_id'           => 4321,
 			'has_active'         => false,
+			'already_ingested'   => false,
 		),
 		$overrides
 	);
@@ -104,6 +105,18 @@ assert_test( null === $w::build_row( facts( array( 'has_active' => true ) ) ), '
 assert_test( null === $w::build_row( facts( array( 'season' => null ) ) ), 'a product with no detectable season is not ingested' );
 assert_test( null === $w::build_row( facts( array( 'season' => '' ) ) ), 'an empty season is not ingested' );
 assert_test( null === $w::build_row( facts( array( 'email' => '' ) ) ), 'an order with no billing email is not ingested, since email is how the entrant is identified' );
+
+echo "\n=== build_row(): re-ingesting an already-processed order ===\n\n";
+
+// An already-claimed order whose status is re-touched in wp-admin must not
+// produce a second queued row, even though has_active (queued/offered only)
+// would not catch it.
+assert_test( null === $w::build_row( facts( array( 'already_ingested' => true ) ) ), 'an order that already produced a row for this product is not ingested again, even when has_active is false' );
+assert_test( is_array( $w::build_row( facts( array( 'already_ingested' => false ) ) ) ), 'already_ingested = false with everything else valid still accepts' );
+assert_test(
+	null === $w::build_row( facts( array( 'has_active' => false, 'already_ingested' => true ) ) ),
+	'already_ingested alone is enough to decline regardless of has_active'
+);
 
 echo "\n=== build_row(): an ambiguous target is still queued ===\n\n";
 
