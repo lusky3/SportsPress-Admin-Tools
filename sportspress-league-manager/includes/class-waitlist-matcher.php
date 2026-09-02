@@ -163,7 +163,11 @@ class SPLM_Waitlist_Matcher {
 			array(
 				'post_type'      => 'product',
 				'post_status'    => 'publish',
-				'posts_per_page' => 100,
+				// Unbounded: the tax_query already constrains to registration-category
+				// products (~dozen on this league's store). A cap would make truncation
+				// indistinguishable from a genuinely absent pairing, corrupting the
+				// ambiguity signal select_target() exists to produce.
+				'posts_per_page' => -1,
 				'fields'         => 'ids',
 				'tax_query'      => array( // phpcs:ignore WordPress.DB.SlowDBQuery
 					array(
