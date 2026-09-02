@@ -63,16 +63,48 @@ class SPLM_Waitlist_Matcher {
 	}
 
 	/**
+	 * Whether a single candidate qualifies as the target for a season and
+	 * position.
+	 *
+	 * Owns the per-candidate rules that select_target() used to inline:
+	 *
+	 * - Candidates flagged `is_waitlist` are excluded. The waitlist SKU
+	 *   shares its season and position with the product being searched
+	 *   for, so without this exclusion it would match itself and the claim
+	 *   link would loop back to the waitlist instead of a real product.
+	 * - Season must match exactly; a candidate with no detectable season
+	 *   (null) never matches, even against an empty `$season` — that guard
+	 *   lives in select_target() so it is enforced once, not per candidate.
+	 * - Position must match exactly.
+	 *
+	 * Pure: no WordPress calls, just array reads and comparisons.
+	 *
+	 * @param array  $candidate Single id/season/position/is_waitlist map.
+	 * @param string $season    Season code to match.
+	 * @param string $position  'player' or 'goalie'.
+	 * @return bool
+	 */
+	private static function candidate_matches( array $candidate, $season, $position ): bool {
+		if ( ! empty( $candidate['is_waitlist'] ) ) {
+			return false;
+		}
+		if ( ( $candidate['season'] ?? null ) !== $season ) {
+			return false;
+		}
+		return ( $candidate['position'] ?? '' ) === $position;
+	}
+
+	/**
 	 * The single real product matching a season and position.
 	 *
 	 * Pure. Ambiguity resolves to 0 rather than a guess: the dashboard can ask
 	 * a convener which product was meant, but a silently wrong target sends a
 	 * player to the wrong season's checkout and cannot be undone.
 	 *
-	 * Waitlist candidates are excluded because the waitlist SKU shares its
-	 * season and position with the product being searched for — without the
-	 * filter it would be its own target and the claim link would loop back to
-	 * the waitlist.
+	 * Per-candidate qualification (the waitlist exclusion and the season and
+	 * position equality checks) lives in candidate_matches(); this method
+	 * owns what a set of qualifying candidates means — the empty-season
+	 * guard, the dedupe-by-id, and the exactly-one rule.
 	 *
 	 * @param array  $candidates List of id/season/position/is_waitlist maps.
 	 * @param string $season     Season code to match.
@@ -86,13 +118,7 @@ class SPLM_Waitlist_Matcher {
 
 		$matches = array();
 		foreach ( $candidates as $candidate ) {
-			if ( ! empty( $candidate['is_waitlist'] ) ) {
-				continue;
-			}
-			if ( ( $candidate['season'] ?? null ) !== $season ) {
-				continue;
-			}
-			if ( ( $candidate['position'] ?? '' ) !== $position ) {
+			if ( ! self::candidate_matches( $candidate, $season, $position ) ) {
 				continue;
 			}
 			// Keyed by id so the same product listed twice is one match and
