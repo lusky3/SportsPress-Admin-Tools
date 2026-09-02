@@ -235,13 +235,14 @@ class SPLM_Waitlist {
 			if ( SPLM_Waitlist_Database::insert( $row ) ) {
 				$created++;
 			} elseif ( class_exists( 'SPAT_Logger' ) ) {
+				// The ids are folded into the message string itself, not passed
+				// as $context: SPAT_Logger::write() only emits $context when
+				// spat_verbose is on, and throttles on md5() of the message —
+				// so two different orders failing inside the same 60 seconds
+				// would otherwise collapse into one line naming neither.
 				SPAT_Logger::error(
 					'waitlist',
-					'failed to insert a waitlist row',
-					array(
-						'order_id'   => (int) $order->get_id(),
-						'product_id' => (int) $lookup_id,
-					)
+					sprintf( 'failed to insert a waitlist row: order_id=%d product_id=%d', (int) $order->get_id(), (int) $lookup_id )
 				);
 			}
 		}
@@ -676,8 +677,7 @@ class SPLM_Waitlist {
 				if ( class_exists( 'SPAT_Logger' ) ) {
 					SPAT_Logger::error(
 						'waitlist',
-						'failed to unwind a waitlist offer after wp_mail() failed',
-						array( 'waitlist_id' => $id )
+						sprintf( 'failed to unwind a waitlist offer after wp_mail() failed: waitlist_id=%d', $id )
 					);
 				}
 
@@ -768,11 +768,7 @@ class SPLM_Waitlist {
 		if ( ! $sent && class_exists( 'SPAT_Logger' ) ) {
 			SPAT_Logger::error(
 				'waitlist',
-				'wp_mail() rejected a waitlist offer notification',
-				array(
-					'waitlist_id' => (int) $row->id,
-					'season'      => (string) $row->season,
-				)
+				sprintf( 'wp_mail() rejected a waitlist offer notification: waitlist_id=%d season=%s', (int) $row->id, (string) $row->season )
 			);
 		}
 
@@ -814,7 +810,7 @@ class SPLM_Waitlist {
 
 		if ( ! $cancelled ) {
 			if ( class_exists( 'SPAT_Logger' ) ) {
-				SPAT_Logger::error( 'waitlist', 'failed to write a waitlist cancellation', array( 'waitlist_id' => $id ) );
+				SPAT_Logger::error( 'waitlist', sprintf( 'failed to write a waitlist cancellation: waitlist_id=%d', $id ) );
 			}
 
 			return new WP_Error(
@@ -919,11 +915,17 @@ class SPLM_Waitlist {
 			}
 		} catch ( \Throwable $e ) {
 			if ( class_exists( 'SPAT_Logger' ) ) {
-				$context = array( 'filters' => $filters );
+				// The filters are folded into the message string itself so they
+				// survive on a default install: SPAT_Logger::write() only emits
+				// $context when spat_verbose is on. $context is kept for the
+				// exception detail alone, which is genuinely fine to withhold by
+				// default.
+				$message = sprintf( 'waitlist sweep failed: filters=%s', wp_json_encode( $filters ) );
+				$context = array();
 				if ( method_exists( 'SPAT_Logger', 'is_verbose' ) && SPAT_Logger::is_verbose() ) {
 					$context['exception_msg'] = $e->getMessage();
 				}
-				SPAT_Logger::error( 'waitlist', 'waitlist sweep failed', $context );
+				SPAT_Logger::error( 'waitlist', $message, $context );
 			}
 		}
 
