@@ -27,6 +27,7 @@ function __( $text, $domain = '' ) { // phpcs:ignore
 }
 
 require_once __DIR__ . '/../includes/class-waitlist-database.php';
+require_once __DIR__ . '/../includes/class-waitlist.php';
 
 $passed = 0;
 $failed = 0;
@@ -84,6 +85,35 @@ assert_test( 'offered' === $db::STATUS_OFFERED, 'offered' );
 assert_test( 'claimed' === $db::STATUS_CLAIMED, 'claimed' );
 assert_test( 'expired' === $db::STATUS_EXPIRED, 'expired' );
 assert_test( 'cancelled' === $db::STATUS_CANCELLED, 'cancelled' );
+
+echo "\n=== should_expire(): the stale-event defence ===\n\n";
+
+$w    = 'SPLM_Waitlist';
+$past = gmdate( 'Y-m-d H:i:s', time() - 3600 );
+$soon = gmdate( 'Y-m-d H:i:s', time() + 3600 );
+
+assert_test( $w::should_expire( 'offered', $past ), 'an offered row past its deadline expires' );
+
+// THE bug this predicate exists to prevent. Cancel an offer, re-offer the
+// same row a day later, and the FIRST cron event is still queued: it fires at
+// the old deadline and would expire the brand-new offer. wp_clear_scheduled_hook
+// cannot recall an event already in flight, so the callback must re-check.
+assert_test( ! $w::should_expire( 'offered', $soon ), 'an offered row whose deadline is still in the future survives a stale event firing' );
+
+assert_test( ! $w::should_expire( 'queued', $past ), 'a queued row is never expired, whatever a stale event says' );
+assert_test( ! $w::should_expire( 'claimed', $past ), 'a claimed row is never expired — the player already paid' );
+assert_test( ! $w::should_expire( 'cancelled', $past ), 'a cancelled row is not re-expired' );
+assert_test( ! $w::should_expire( 'expired', $past ), 'an already-expired row is not expired twice' );
+assert_test( ! $w::should_expire( 'offered', null ), 'an offered row with no deadline is not expired' );
+assert_test( ! $w::should_expire( 'offered', '' ), 'an offered row with an empty deadline is not expired' );
+
+// The boundary, stated explicitly: a deadline reached exactly now has passed.
+assert_test( $w::should_expire( 'offered', gmdate( 'Y-m-d H:i:s' ) ), 'a deadline of exactly now has passed' );
+
+// And the timezone trap: under America/Toronto, comparing a UTC-stored
+// deadline against local time is a four to five hour error. A deadline two
+// hours out must not look past due.
+assert_test( ! $w::should_expire( 'offered', gmdate( 'Y-m-d H:i:s', time() + ( 2 * 3600 ) ) ), 'a deadline two hours out is not expired despite the site being UTC-4/5' );
 
 echo "\n";
 echo "Passed: {$passed}\n";

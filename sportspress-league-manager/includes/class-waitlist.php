@@ -46,6 +46,7 @@ class SPLM_Waitlist {
 		// error at all. Listening for any paid status removes the trap; the
 		// duplicate guard in build_row() makes repeated firing harmless.
 		add_action( 'woocommerce_order_status_changed', array( $this, 'handle_order_status_changed' ), 10, 4 );
+		add_action( self::EXPIRE_HOOK, array( __CLASS__, 'expire_offer' ) );
 	}
 
 	/**
@@ -629,5 +630,94 @@ class SPLM_Waitlist {
 			'success' => true,
 			'id'      => $id,
 		);
+	}
+
+	/**
+	 * Whether a row should be expired right now.
+	 *
+	 * Pure, and the whole defence against a stale cron event. Clearing pending
+	 * events on cancel and re-offer is not sufficient: an event already in
+	 * flight cannot be recalled, so if a convener cancels an offer and
+	 * re-offers the same row a day later, the FIRST event still fires at the
+	 * old deadline. Expiring on the mere fact of firing would kill the new
+	 * offer. This re-reads the row's own state instead.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param string      $status     Current status.
+	 * @param string|null $expires_at Stored UTC deadline.
+	 * @return bool
+	 */
+	public static function should_expire( $status, $expires_at ): bool {
+		if ( SPLM_Waitlist_Database::STATUS_OFFERED !== (string) $status ) {
+			return false;
+		}
+		return SPLM_Waitlist_Database::is_past_due( $expires_at );
+	}
+
+	/**
+	 * Cron callback: expire one offer, if it really is due.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param int $id Row id.
+	 * @return bool Whether the row was expired.
+	 */
+	public static function expire_offer( $id ): bool {
+		$row = SPLM_Waitlist_Database::get( (int) $id );
+		if ( ! $row || ! self::should_expire( $row->status, $row->expires_at ) ) {
+			return false;
+		}
+
+		// The token is cleared so a link that arrives late cannot be claimed,
+		// and so the UNIQUE index is free for the next offer on this row.
+		return SPLM_Waitlist_Database::update(
+			(int) $id,
+			array(
+				'status'      => SPLM_Waitlist_Database::STATUS_EXPIRED,
+				'claim_token' => null,
+			)
+		);
+	}
+
+	/**
+	 * Backstop: expire every past-due offer matching these filters.
+	 *
+	 * The scheduled event is the primary mechanism. This exists because
+	 * WP-Cron's self-trigger is not reliable on every host — it has been
+	 * observed failing to complete on this league's staging box — and a
+	 * stalled cron would otherwise leave a row showing "offered" with a
+	 * deadline in the past indefinitely.
+	 *
+	 * Bounded to the caller's own filters so a dashboard request only touches
+	 * rows it was already asking about, and failures are swallowed: a sweep
+	 * problem must never fail the read that triggered it.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param array $filters Optional 'season' and 'position'.
+	 * @return int Rows expired.
+	 */
+	public static function sweep( array $filters = array() ): int {
+		$expired = 0;
+
+		try {
+			foreach ( SPLM_Waitlist_Database::past_due_offered( $filters ) as $row ) {
+				if ( self::expire_offer( (int) $row->id ) ) {
+					wp_clear_scheduled_hook( self::EXPIRE_HOOK, array( (int) $row->id ) );
+					$expired++;
+				}
+			}
+		} catch ( \Throwable $e ) {
+			if ( class_exists( 'SPAT_Logger' ) ) {
+				$context = array( 'filters' => $filters );
+				if ( method_exists( 'SPAT_Logger', 'is_verbose' ) && SPAT_Logger::is_verbose() ) {
+					$context['exception_msg'] = $e->getMessage();
+				}
+				SPAT_Logger::error( 'waitlist', 'waitlist sweep failed', $context );
+			}
+		}
+
+		return $expired;
 	}
 }
