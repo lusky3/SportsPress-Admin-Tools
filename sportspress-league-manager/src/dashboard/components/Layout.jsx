@@ -13,7 +13,9 @@ const NAV_ITEMS = [
 	{ id: 'standings', label: 'Standings', icon: 'standings' },
 	{ id: 'rosters', label: 'Rosters', icon: 'rosters' },
 	{ id: 'payments', label: 'Payments', icon: 'payments' },
-	{ id: 'waitlist', label: 'Waitlist', icon: 'payments' },
+	// M5: was 'payments' -- duplicated the adjacent Payments glyph. 'rosters'
+	// (people) fits a queue of players waiting for a spot.
+	{ id: 'waitlist', label: 'Waitlist', icon: 'rosters' },
 	{ id: 'div-balance', label: 'Balance', icon: 'div-balance' },
 	{ id: 'team-compare', label: 'Compare', icon: 'team-compare' },
 	{ id: 'leaders', label: 'Leaders', icon: 'season-report' },
