@@ -400,6 +400,18 @@ class SPLM_Waitlist_REST {
 		$position = (string) $request->get_param( 'position' );
 		$target   = (int) $request->get_param( 'target_product_id' );
 
+		// I4: every other WooCommerce touch in this file is guarded. This one
+		// was not: enabling the module with WooCommerce deactivated fatalled
+		// this route on an undefined function. 503 rather than 400 — the
+		// dependency is absent, not the request malformed.
+		if ( ! function_exists( 'wc_get_product' ) ) {
+			return new WP_Error(
+				'splm_waitlist_no_woocommerce',
+				__( 'WooCommerce is required to validate a registration product.', 'sportspress-league-manager' ),
+				array( 'status' => 503 )
+			);
+		}
+
 		if ( $target <= 0 || ! wc_get_product( $target ) ) {
 			return new WP_Error(
 				'splm_waitlist_bad_target',

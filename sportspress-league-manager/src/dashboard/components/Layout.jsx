@@ -84,7 +84,7 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 		'score-sheets': caps.canReviewScoreSheets && depPresent( 'score_sheets' ),
 		rosters: caps.canManageRosters && modulePresent( 'rosters' ),
 		payments: caps.canViewPayments && depPresent( 'woocommerce' ) && modulePresent( 'fees' ),
-		waitlist: caps.canManage && modulePresent( 'waitlist' ),
+		waitlist: caps.canManage && depPresent( 'woocommerce' ) && modulePresent( 'waitlist' ),
 		health: caps.canViewHealth,
 		'schedule-gen': caps.canManageSchedule && depPresent( 'schedule_generator' ),
 		'season-setup': caps.canManageSchedule,
