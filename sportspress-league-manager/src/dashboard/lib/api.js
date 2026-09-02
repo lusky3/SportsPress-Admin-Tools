@@ -395,3 +395,37 @@ export function confirmSheet( id, payload ) {
 export function reprocessSheet( id ) {
 	return apiFetch( { path: `/spss/v1/sheets/${ id }/reprocess`, method: 'POST' } );
 }
+
+// splm/v1 — Waitlist. The list endpoint conforms to the standard envelope; the
+// paged variant is kept because a season's queue can outgrow one page.
+export function fetchWaitlist( params = {} ) {
+	const query = new URLSearchParams(
+		Object.fromEntries( Object.entries( params ).filter( ( [ , v ] ) => v !== '' && v != null ) )
+	).toString();
+	return apiFetch( { path: `/splm/v1/waitlist${ query ? '?' + query : '' }` } ).then( ( res ) => ( {
+		data: Array.isArray( res?.data ) ? res.data : [],
+		total: Number( res?.total ) || 0,
+		totalPages: Number( res?.total_pages ) || 0,
+		page: Number( res?.page ) || 1,
+	} ) );
+}
+
+export function addWaitlistEntry( entry ) {
+	return apiFetch( { path: '/splm/v1/waitlist', method: 'POST', data: entry } );
+}
+
+export function offerWaitlistSpot( id, hours ) {
+	return apiFetch( { path: `/splm/v1/waitlist/${ id }/offer`, method: 'POST', data: { hours } } );
+}
+
+export function cancelWaitlistEntry( id ) {
+	return apiFetch( { path: `/splm/v1/waitlist/${ id }/cancel`, method: 'POST' } );
+}
+
+export function setWaitlistGate( productId, gated ) {
+	return apiFetch( {
+		path: '/splm/v1/waitlist/gate',
+		method: 'POST',
+		data: { product_id: productId, gated },
+	} );
+}

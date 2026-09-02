@@ -357,6 +357,7 @@ class SPLM_Dashboard_Frontend {
 					'fees'       => SPLM_REST_API::module_enabled( 'league_fee_tracking' ),
 					'notes'      => SPLM_REST_API::module_enabled( 'league_player_notes' ),
 					'discipline' => SPLM_REST_API::module_enabled( 'league_discipline' ),
+					'waitlist'   => SPLM_REST_API::module_enabled( 'league_waitlist' ),
 				),
 				// F7 — canonical capability flags routed through SPLM_Capabilities
 				// (kept alongside legacy granular flags for compatibility).
