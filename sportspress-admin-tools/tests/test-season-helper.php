@@ -122,6 +122,20 @@ assert_test( 'goalie' === $s::position_from_product( 201 ), 'a goalie-tagged pro
 assert_test( 'player' === $s::position_from_product( 202 ), 'an otherwise-tagged product is a player' );
 assert_test( 'player' === $s::position_from_product( 203 ), 'an untagged product defaults to player' );
 
+echo "\n=== SPPR parity: the cases that shaped these regexes ===\n\n";
+
+// These are the shapes actually present on the live roster and store. They are
+// asserted here because Task 2 rewires SPPR_Player_Registration to call this
+// helper, and a regression here silently misfiles a paid registration.
+assert_test( 'W2025-26' === $s::from_title( 'W2025-26 Player Registration' ), 'parity: the current winter season product title' );
+assert_test( 'S2026' === $s::from_title( 'S2026 Goalie Registration' ), 'parity: the current summer goalie product title' );
+assert_test( 'W2025-26' === $s::from_title( 'W2025-26 Player Registration - Waitlist' ), 'parity: a waitlist-suffixed title still yields the season' );
+assert_test( null === $s::from_title( 'Late Fee' ), 'parity: a non-registration product yields no season' );
+
+$state->titles[ 301 ]    = 'Player Registration';
+$state->cat_terms[ 301 ] = array( term( 'W2025-26' ), term( 'registration' ) );
+assert_test( 'W2025-26' === $s::from_product( 301 ), 'parity: category fallback order matches SPPR (first matching category wins)' );
+
 echo "\n";
 echo "Passed: {$passed}\n";
 echo "Failed: {$failed}\n";

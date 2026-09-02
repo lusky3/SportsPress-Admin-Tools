@@ -233,6 +233,14 @@ class SPPR_Player_Registration {
 		SPPR_Database::log_registration_activity( $order_id, $customer_name, 0, '', '', 'registration_reversed' );
 	}
 
+	/**
+	 * Registration line items on an order, with each product's season position.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param WC_Order $order Completed order.
+	 * @return array List of arrays with 'product_id' and 'position' keys.
+	 */
 	private function get_registration_items( $order ) {
 		$items = array();
 
@@ -260,16 +268,9 @@ class SPPR_Player_Registration {
 				continue;
 			}
 
-			$tags = wp_get_post_terms( $lookup_id, 'product_tag' );
-			$position = 'player';
-
-			foreach ( $tags as $tag ) {
-				$matched = strtolower( $tag->name ) === 'goalie';
-				if ( apply_filters( 'spr_is_goalie_tag', $matched, $tag, $product ) ) {
-					$position = 'goalie';
-					break;
-				}
-			}
+			$position = class_exists( 'SPAT_Season' )
+				? SPAT_Season::position_from_product( $lookup_id, $product )
+				: 'player';
 
 			$items[] = array(
 				'product_id' => $lookup_id,
@@ -280,20 +281,27 @@ class SPPR_Player_Registration {
 		return $items;
 	}
 
+	/**
+	 * Season code for a registration product.
+	 *
+	 * Delegates to SPAT_Season so the waitlist queue in League Manager and this
+	 * registration path cannot disagree about what season a product belongs to.
+	 * Kept as a private method with its original name and return contract so
+	 * every existing call site is unchanged.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param int $product_id Product post ID.
+	 * @return string|null Season code, or null.
+	 */
 	private function extract_season_from_product( $product_id ) {
-		$product_title = get_the_title( $product_id );
-		if ( preg_match( '/\b([WS]\d{4}(?:-\d{2})?)\b/', $product_title, $matches ) ) {
-			return $matches[1];
+		if ( ! class_exists( 'SPAT_Season' ) ) {
+			// The parent plugin gates this class's loading, so this is
+			// unreachable in practice — but returning null rather than
+			// fataling keeps a paid order recoverable if it ever happens.
+			return null;
 		}
-
-		$categories = wp_get_post_terms( $product_id, 'product_cat' );
-		foreach ( $categories as $category ) {
-			if ( preg_match( '/^[WS]\d{4}(-\d{2})?$/', $category->name ) ) {
-				return $category->name;
-			}
-		}
-
-		return null;
+		return SPAT_Season::from_product( $product_id );
 	}
 
 	private function find_or_create_player( $customer_name, $season, $position, $customer_email = '', $user_id = 0 ) {

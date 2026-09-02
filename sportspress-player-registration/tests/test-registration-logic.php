@@ -36,6 +36,7 @@ if (!function_exists('wp_get_post_terms')) {
     }
 }
 
+require_once dirname(__FILE__) . '/../../sportspress-admin-tools/includes/class-season.php';
 require_once dirname(__FILE__) . '/../includes/class-player-registration.php';
 
 // Test helpers
