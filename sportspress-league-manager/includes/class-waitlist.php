@@ -706,13 +706,21 @@ class SPLM_Waitlist {
 	/**
 	 * Non-blocking advisories to show beside the offer confirmation.
 	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
 	 * @param int $product_id Target product id.
 	 * @return array<int, array{code:string,message:string}>
 	 */
 	public static function offer_warnings( $product_id ): array {
 		$warnings = array();
 
-		if ( ! get_post_meta( (int) $product_id, '_splm_waitlist_gated', true ) ) {
+		// class_exists() guards a call site that can run without the gate
+		// loaded (e.g. the class autoloads lazily and this runs before
+		// anything else has referenced it); falling back to the literal meta
+		// key keeps the same behaviour in that case.
+		$gate_meta = class_exists( 'SPLM_Waitlist_Gate' ) ? SPLM_Waitlist_Gate::GATE_META : '_splm_waitlist_gated';
+
+		if ( ! get_post_meta( (int) $product_id, $gate_meta, true ) ) {
 			$warnings[] = array(
 				'code'    => 'not_gated',
 				'message' => __( 'This registration product is not gated, so anyone who finds its URL can buy the spot without an offer.', 'sportspress-league-manager' ),
