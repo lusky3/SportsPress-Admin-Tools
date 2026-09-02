@@ -948,13 +948,41 @@ class SPLM_Waitlist {
 			return false;
 		}
 
-		// The token is cleared so a link that arrives late cannot be claimed,
-		// and so the UNIQUE index is free for the next offer on this row.
+		// claim_token is DELIBERATELY RETAINED here (this used to null it —
+		// see C1). Nulling it does not buy any of the two things it looks
+		// like it buys, and it costs the one thing this feature needs most:
+		//
+		//   - "A link that arrives late cannot be claimed" is already
+		//     enforced by STATUS, not by the token's presence: the public
+		//     claim route's claim_state() returns 'expired' the moment
+		//     status is STATUS_EXPIRED, independent of claim_token
+		//     (class-waitlist.php's claim_state()), and the purchase gate's
+		//     product_from_request_token() -> resolve_token() path checks
+		//     is_claimable() (the strict predicate), which still rejects an
+		//     expired row outright (class-waitlist-gate.php). Neither
+		//     consumer that must reject a stale link relies on the token
+		//     being gone.
+		//   - "The UNIQUE index is free for the next offer on this row" is
+		//     not a real constraint: a re-offer of this SAME row writes a
+		//     freshly generated token onto this SAME row via UPDATE
+		//     (offer_updates()), replacing the old value in place — there is
+		//     no second row for the retained token to collide with.
+		//
+		// What retaining it buys: handle_order_completed() ties a completed
+		// order back to its offer by looking up the token that rode the
+		// order's own line item (find_by_token()). This league's $0
+		// registration orders routinely sit in Processing for days and are
+		// completed by hand — very often AFTER this row has already been
+		// swept to expired. Nulling the token here made that row permanently
+		// unfindable by find_by_token() from that point on, so a player who
+		// claimed well inside the window showed up as silently 'expired' the
+		// moment an admin got around to completing the order (C1). Tie-back
+		// uses is_claimable_by_token(), not is_claimable(), specifically so
+		// expiry does not re-disqualify a token that already did its job.
 		return SPLM_Waitlist_Database::update(
 			(int) $id,
 			array(
-				'status'      => SPLM_Waitlist_Database::STATUS_EXPIRED,
-				'claim_token' => null,
+				'status' => SPLM_Waitlist_Database::STATUS_EXPIRED,
 			)
 		);
 	}

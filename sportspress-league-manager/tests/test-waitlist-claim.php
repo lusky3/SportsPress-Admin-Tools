@@ -169,6 +169,17 @@ class WP_REST_Response {
  * is what update() reports back, settable per test to drive the failed-write
  * branch in handle_order_completed(); $update_calls records what was written
  * so a test can assert on the payload without a real table.
+ *
+ * update() also mutates any row object in $rows whose ->id matches
+ * $where['id'], in place. This is what makes the "realistic path" C1
+ * regression test possible: a single row object registered under BOTH its
+ * id key (for get()) and its token key (for find_by_token()) can be handed
+ * to the REAL expire_offer() and then re-discovered, post-mutation, by the
+ * REAL find_by_token() — exercising the actual interaction between the two
+ * rather than two independently hand-set fixtures. Every other existing
+ * test in this file resets $rows between scenarios and never re-queries a
+ * row after updating it, so this is additive and does not change their
+ * behaviour.
  */
 class Fake_WPDB {
 	public $prefix        = 'wp_';
@@ -199,6 +210,17 @@ class Fake_WPDB {
 			'data'  => $data,
 			'where' => $where,
 		);
+
+		if ( isset( $where['id'] ) ) {
+			foreach ( $this->rows as $row ) {
+				if ( is_object( $row ) && isset( $row->id ) && (int) $row->id === (int) $where['id'] ) {
+					foreach ( $data as $column => $value ) {
+						$row->$column = $value;
+					}
+				}
+			}
+		}
+
 		return $this->update_return;
 	}
 }
@@ -751,8 +773,15 @@ assert_test( false !== strpos( $token_info[0]['message'] ?? '', 'matched_by=toke
 assert_test( false !== strpos( $token_info[0]['message'] ?? '', 'waitlist_id=20' ), 'the log names the matched waitlist id' );
 assert_test( false !== strpos( $token_info[0]['message'] ?? '', 'order_id=500' ), 'the log names the fulfilling order id' );
 
-echo "\n=== handle_order_completed(): a claim survives the offer's own expiry (C1) ===\n\n";
+echo "\n=== handle_order_completed(): a claim survives the offer's own expiry, predicate-level (C1) ===\n\n";
 
+// This scenario hand-sets a row already at status='expired' with its token
+// still intact, to test match_offer()/is_claimable_by_token() in isolation
+// from how a row actually reaches that state. See the NEXT section below for
+// the realistic path -- a row expired by the real expire_offer(), which is
+// what actually proves the fix, since expire_offer() is also where the bug
+// lived (it used to null the token on expiry, see below).
+//
 // The exact bug: a $0 registration order sits in Processing (this league's
 // baseline for these products) and is completed by hand days later, after
 // the row's own offer window has already elapsed and the row has been
@@ -800,6 +829,83 @@ assert_test( 1 === count( $expired_claim_info ), 'the late claim logs exactly on
 assert_test( false !== strpos( $expired_claim_info[0]['message'] ?? '', 'matched_by=token' ), 'the log records the token path won, not the fallback (C1)' );
 assert_test( false !== strpos( $expired_claim_info[0]['message'] ?? '', 'waitlist_id=23' ), 'the log names the matched waitlist id (C1)' );
 assert_test( false !== strpos( $expired_claim_info[0]['message'] ?? '', 'order_id=504' ), 'the log names the fulfilling order id (C1)' );
+
+echo "\n=== handle_order_completed(): the REALISTIC path -- expired by the real expire_offer(), then completed (C1) ===\n\n";
+
+// Unlike the section above, this does not hand-set status='expired' on a
+// fixture. It drives the row through the production sequence: offer it,
+// let the REAL expire_offer() (the cron/sweep() handler) expire it, and only
+// THEN complete an order carrying its original token. This is what actually
+// proves the fix, because the bug lived inside expire_offer() itself: it
+// used to null claim_token on expiry, which made find_by_token() unable to
+// ever find the row again by that token -- no predicate downstream (however
+// correct) gets a chance to run if $by_token is already null. Retaining the
+// token is safe because every consumer that must reject a stale link gates
+// on STATUS, not on the token's presence: claim_state() (the public claim
+// route) and is_claimable() (the purchase gate) both still refuse an
+// 'expired' row outright.
+reset_waitlist_order_fakes();
+
+$realistic_id    = 24;
+$realistic_token = str_repeat( '0', 64 );
+
+$realistic_row = row(
+	array(
+		'id'                => $realistic_id,
+		'status'            => 'offered',
+		'expires_at'        => gmdate( 'Y-m-d H:i:s', time() - 60 ), // already past due
+		'target_product_id' => 11,
+		'email'             => 'queued@example.com',
+		'user_id'           => 0,
+		'claim_token'       => $realistic_token,
+	)
+);
+
+// The SAME row object is registered under both its id key (what get(), and
+// so expire_offer(), looks it up by) and its token key (what find_by_token()
+// looks it up by). Fake_WPDB::update() mutates matching row objects in
+// place by id, so a mutation made through the id key is visible through the
+// token key too -- exactly like one row in one real table.
+$wpdb->rows[ $realistic_id ]    = $realistic_row;
+$wpdb->rows[ $realistic_token ] = $realistic_row;
+
+// Step 1: expire it for real.
+$really_expired = $w::expire_offer( $realistic_id );
+assert_test( true === $really_expired, 'expire_offer() actually expires the past-due row' );
+assert_test( 'expired' === $realistic_row->status, 'the row is now status=expired' );
+assert_test(
+	$realistic_token === $realistic_row->claim_token,
+	'the token SURVIVES expire_offer() -- nulling it here is exactly what made the row unfindable by its own token once cron/sweep() ran (C1)'
+);
+
+$wpdb->update_calls = array(); // isolate step 2's write from expire_offer()'s own write above.
+
+// Step 2: the order carrying that token completes AFTER the row was
+// already expired above -- the actual production sequence for a multi-day
+// Processing hold.
+$realistic_item = new Fake_Order_Item();
+$realistic_item->add_meta_data( $w::CART_META_KEY, $realistic_token, true );
+$realistic_item->set_product( new Fake_WC_Product( 11 ) );
+
+$realistic_order                     = new Fake_WC_Order( 505, 'someone-else@example.com', 0, array( $realistic_item ) );
+splm_claim_test_state()->orders[505] = $realistic_order;
+
+$wl->handle_order_completed( 505 );
+
+assert_test( 1 === count( $wpdb->update_calls ), 'the late order still writes exactly one update against the row expire_offer() itself expired (C1)' );
+$realistic_update = $wpdb->update_calls[0] ?? array(
+	'data'  => array(),
+	'where' => array(),
+);
+assert_test( 'claimed' === ( $realistic_update['data']['status'] ?? null ), 'the really-expired row is still marked claimed (C1)' );
+assert_test( 505 === ( $realistic_update['data']['resolved_order_id'] ?? null ), 'resolved_order_id ties back to the late order (C1)' );
+assert_test( array( 'id' => $realistic_id ) === ( $realistic_update['where'] ?? null ), 'the update targets the row expire_offer() itself expired' );
+
+$realistic_info = waitlist_log_calls( 'info' );
+assert_test( 1 === count( $realistic_info ), 'the realistic late claim logs exactly one success line (C1)' );
+assert_test( false !== strpos( $realistic_info[0]['message'] ?? '', 'matched_by=token' ), 'matched_by reports the token path, end to end (C1)' );
+assert_test( false !== strpos( $realistic_info[0]['message'] ?? '', 'waitlist_id=24' ), 'the log names the matched waitlist id (C1)' );
+assert_test( false !== strpos( $realistic_info[0]['message'] ?? '', 'order_id=505' ), 'the log names the fulfilling order id (C1)' );
 
 echo "\n=== handle_order_completed(): a failed write is not misreported as success ===\n\n";
 
