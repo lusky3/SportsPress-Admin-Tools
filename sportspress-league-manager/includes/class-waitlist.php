@@ -1002,12 +1002,21 @@ class SPLM_Waitlist {
 				? SPLM_Waitlist_Database::find_by_token( $token )
 				: null;
 
-			$product_id = (int) $product->get_id();
-			$offered    = SPLM_Waitlist_Database::find_offered_for_product( $product_id );
+			// A claimable token wins outright (match_offer() never consults
+			// $offered in that case), so the product-plus-email/user lookup —
+			// including its variation-parent retry — is skipped entirely on
+			// the common path. One fewer query per completed order.
+			$token_claimable = $by_token && self::is_claimable( $by_token );
 
-			// A variation is purchased, but the waitlist stored the parent.
-			if ( empty( $offered ) && $product->get_type() === 'variation' ) {
-				$offered = SPLM_Waitlist_Database::find_offered_for_product( (int) $product->get_parent_id() );
+			$offered = array();
+			if ( ! $token_claimable ) {
+				$product_id = (int) $product->get_id();
+				$offered    = SPLM_Waitlist_Database::find_offered_for_product( $product_id );
+
+				// A variation is purchased, but the waitlist stored the parent.
+				if ( empty( $offered ) && $product->get_type() === 'variation' ) {
+					$offered = SPLM_Waitlist_Database::find_offered_for_product( (int) $product->get_parent_id() );
+				}
 			}
 
 			$match = self::match_offer( $by_token, $offered, $email, $user_id );
@@ -1015,10 +1024,32 @@ class SPLM_Waitlist {
 				continue;
 			}
 
-			self::mark_claimed( (int) $match->id, (int) $order->get_id() );
+			// $match === $by_token identifies the token path without a second
+			// claim_state() evaluation: match_offer() returns $by_token itself
+			// in that branch, so identity is exact, not just equivalent.
+			$matched_by = ( $match === $by_token ) ? 'token' : 'email_or_user';
+
+			if ( ! self::mark_claimed( (int) $match->id, (int) $order->get_id() ) ) {
+				// The claim was resolved but the write failed. Logging the
+				// success line below would tell an operator the row is
+				// claimed when it is still sitting at offered — check the
+				// write's return value and log the failure instead, matching
+				// cancel()'s shape elsewhere in this class.
+				if ( class_exists( 'SPAT_Logger' ) ) {
+					SPAT_Logger::error(
+						'waitlist',
+						sprintf(
+							'failed to write a waitlist claim: waitlist_id=%d order_id=%d matched_by=%s',
+							(int) $match->id,
+							(int) $order->get_id(),
+							$matched_by
+						)
+					);
+				}
+				continue;
+			}
 
 			if ( class_exists( 'SPAT_Logger' ) ) {
-				$matched_by = ( $by_token && self::is_claimable( $by_token ) ) ? 'token' : 'email_or_user';
 				SPAT_Logger::info(
 					'waitlist',
 					sprintf(

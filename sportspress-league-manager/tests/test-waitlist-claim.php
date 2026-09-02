@@ -137,22 +137,48 @@ class WP_REST_Response {
 
 /**
  * A fake $wpdb: just enough of the interface SPLM_Waitlist_Database::
- * find_by_token()/table_name() use to make find_by_token() controllable per
- * test without touching a real database. $rows is keyed by token and reset
- * by each test that needs a specific lookup result.
+ * get()/find_by_token()/find_offered_for_product()/update()/table_name() use
+ * to make those calls controllable per test without touching a real
+ * database.
+ *
+ * $rows and $results are both keyed by the first bound parameter of the
+ * preceding prepare() call — a token for find_by_token(), an id for get(), a
+ * product id for find_offered_for_product() — since none of those call sites
+ * this task reaches ever collide on that key within one test. $update_return
+ * is what update() reports back, settable per test to drive the failed-write
+ * branch in handle_order_completed(); $update_calls records what was written
+ * so a test can assert on the payload without a real table.
  */
 class Fake_WPDB {
-	public $prefix = 'wp_';
-	public $rows   = array();
-	private $last_token = '';
+	public $prefix        = 'wp_';
+	public $rows          = array();
+	public $results       = array();
+	public $update_return = 1;
+	public $update_calls  = array();
+	private $last_args    = array();
 
 	public function prepare( $query, ...$args ) {
-		$this->last_token = isset( $args[0] ) ? (string) $args[0] : '';
+		$this->last_args = $args;
 		return $query;
 	}
 
 	public function get_row( $query ) {
-		return isset( $this->rows[ $this->last_token ] ) ? $this->rows[ $this->last_token ] : null;
+		$key = $this->last_args[0] ?? null;
+		return isset( $this->rows[ $key ] ) ? $this->rows[ $key ] : null;
+	}
+
+	public function get_results( $query ) {
+		$key = $this->last_args[0] ?? null;
+		return isset( $this->results[ $key ] ) ? $this->results[ $key ] : array();
+	}
+
+	public function update( $table, $data, $where ) {
+		$this->update_calls[] = array(
+			'table' => $table,
+			'data'  => $data,
+			'where' => $where,
+		);
+		return $this->update_return;
 	}
 }
 
@@ -161,10 +187,15 @@ $wpdb = new Fake_WPDB();
 
 /**
  * A fake order line item recording add_meta_data() calls, for
- * persist_cart_item_meta().
+ * persist_cart_item_meta() — and, via get_meta(), for handle_order_completed()
+ * reading the token back. Reusing one class for both the write
+ * (persist_cart_item_meta()) and the read (handle_order_completed()) pins the
+ * accessor contract mechanically: a token written through add_meta_data() here
+ * is the same token get_meta() must hand back.
  */
 class Fake_Order_Item {
 	public $meta = array();
+	private $product;
 
 	public function add_meta_data( $key, $value, $unique = false ) {
 		$this->meta[] = array(
@@ -172,6 +203,144 @@ class Fake_Order_Item {
 			'value'  => $value,
 			'unique' => $unique,
 		);
+	}
+
+	/**
+	 * The most recently written value for $key, or '' if never written —
+	 * mirroring WC_Order_Item's own get_meta( $key ) single-value form.
+	 */
+	public function get_meta( $key ) {
+		for ( $i = count( $this->meta ) - 1; $i >= 0; $i-- ) {
+			if ( $this->meta[ $i ]['key'] === $key ) {
+				return $this->meta[ $i ]['value'];
+			}
+		}
+		return '';
+	}
+
+	public function set_product( $product ) {
+		$this->product = $product;
+	}
+
+	public function get_product() {
+		return $this->product;
+	}
+}
+
+/**
+ * Minimal WC_Product-shaped fake: id, type and parent id are the only three
+ * things handle_order_completed() reads off a purchased product.
+ */
+class Fake_WC_Product {
+	private $id;
+	private $type;
+	private $parent_id;
+
+	public function __construct( $id, $type = 'simple', $parent_id = 0 ) {
+		$this->id        = $id;
+		$this->type      = $type;
+		$this->parent_id = $parent_id;
+	}
+
+	public function get_id() {
+		return $this->id;
+	}
+
+	public function get_type() {
+		return $this->type;
+	}
+
+	public function get_parent_id() {
+		return $this->parent_id;
+	}
+}
+
+/**
+ * Minimal WC_Order-shaped fake: billing email, user id, order id and line
+ * items are the whole surface handle_order_completed() touches.
+ */
+class Fake_WC_Order {
+	private $id;
+	private $billing_email;
+	private $user_id;
+	private $items;
+
+	public function __construct( $id, $billing_email, $user_id, array $items ) {
+		$this->id            = $id;
+		$this->billing_email = $billing_email;
+		$this->user_id       = $user_id;
+		$this->items         = $items;
+	}
+
+	public function get_id() {
+		return $this->id;
+	}
+
+	public function get_billing_email() {
+		return $this->billing_email;
+	}
+
+	public function get_user_id() {
+		return $this->user_id;
+	}
+
+	public function get_items() {
+		return $this->items;
+	}
+}
+
+function sanitize_email( $email ) { // phpcs:ignore
+	return $email;
+}
+
+/**
+ * Controllable wc_get_order(), keyed by order id, for handle_order_completed().
+ */
+$GLOBALS['__orders'] = array();
+
+function wc_get_order( $order_id ) {
+	return isset( $GLOBALS['__orders'][ $order_id ] ) ? $GLOBALS['__orders'][ $order_id ] : false;
+}
+
+function wp_clear_scheduled_hook( $hook, $args = array() ) { // phpcs:ignore
+	return true;
+}
+
+/**
+ * Recording fake for the class_exists( 'SPAT_Logger' ) branches in
+ * class-waitlist.php. The real SPAT_Logger lives in the parent plugin and is
+ * not loaded by this standalone harness; defining it here as a spy is what
+ * lets the failed-write logging branch (Task 10 fix round) be asserted
+ * mechanically rather than by inspection. Guarded so it cannot collide with a
+ * real definition if one is ever pulled in.
+ */
+if ( ! class_exists( 'SPAT_Logger' ) ) {
+	class SPAT_Logger {
+		public static $calls = array();
+
+		public static function error( $tag, $message, $context = array() ) {
+			self::$calls[] = array(
+				'level'   => 'error',
+				'tag'     => $tag,
+				'message' => $message,
+			);
+		}
+
+		public static function info( $tag, $message, $context = array() ) {
+			self::$calls[] = array(
+				'level'   => 'info',
+				'tag'     => $tag,
+				'message' => $message,
+			);
+		}
+
+		public static function warn( $tag, $message, $context = array() ) {
+			self::$calls[] = array(
+				'level'   => 'warn',
+				'tag'     => $tag,
+				'message' => $message,
+			);
+		}
 	}
 }
 
@@ -462,6 +631,148 @@ $dupes = array(
 	row( array( 'id' => 11, 'email' => 'player@example.com' ) ),
 );
 assert_test( 11 === $w::match_offer( null, $dupes, 'player@example.com', 0 )->id, 'duplicate live offers resolve the lowest id deterministically' );
+
+/**
+ * Resets every mutable fake handle_order_completed() touches, so one
+ * scenario's fixtures cannot leak into the next.
+ */
+function reset_waitlist_order_fakes() {
+	global $wpdb;
+	$wpdb->rows          = array();
+	$wpdb->results       = array();
+	$wpdb->update_return = 1;
+	$wpdb->update_calls  = array();
+	SPAT_Logger::$calls  = array();
+	$GLOBALS['__orders'] = array();
+}
+
+/**
+ * Filters SPAT_Logger::$calls down to one level, for readable assertions.
+ */
+function waitlist_log_calls( $level ) {
+	return array_values(
+		array_filter(
+			SPAT_Logger::$calls,
+			function ( $call ) use ( $level ) {
+				return $level === $call['level'];
+			}
+		)
+	);
+}
+
+echo "\n=== handle_order_completed(): the token path ===\n\n";
+
+reset_waitlist_order_fakes();
+
+$token_target_row           = row( array( 'id' => 20, 'email' => 'queued@example.com' ) );
+$claim_token                = str_repeat( '7', 64 );
+$wpdb->rows[ $claim_token ]  = $token_target_row;
+
+// The token is bound the same way persist_cart_item_meta() binds it, so this
+// pins the write/read accessor contract, not just the resolution logic.
+$token_item = new Fake_Order_Item();
+$token_item->add_meta_data( $w::CART_META_KEY, $claim_token, true );
+$token_item->set_product( new Fake_WC_Product( 11 ) );
+
+$token_order              = new Fake_WC_Order( 500, 'someone-else@example.com', 0, array( $token_item ) );
+$GLOBALS['__orders'][500] = $token_order;
+
+$wl->handle_order_completed( 500 );
+
+assert_test( 1 === count( $wpdb->update_calls ), 'a completed order with a valid line item token writes exactly one update' );
+$token_update = $wpdb->update_calls[0] ?? array(
+	'data'  => array(),
+	'where' => array(),
+);
+assert_test( 'claimed' === ( $token_update['data']['status'] ?? null ), 'the matched row is marked claimed' );
+assert_test( 500 === ( $token_update['data']['resolved_order_id'] ?? null ), 'resolved_order_id is set to the fulfilling order' );
+assert_test(
+	array_key_exists( 'claim_token', $token_update['data'] ) && null === $token_update['data']['claim_token'],
+	'claim_token is cleared so the link cannot be replayed'
+);
+assert_test( array( 'id' => 20 ) === ( $token_update['where'] ?? null ), 'the update targets the matched row by id' );
+
+$token_info = waitlist_log_calls( 'info' );
+assert_test( 1 === count( $token_info ), 'a successful claim logs exactly one info line' );
+assert_test( false !== strpos( $token_info[0]['message'] ?? '', 'matched_by=token' ), 'the log records the token path, not the fallback' );
+assert_test( false !== strpos( $token_info[0]['message'] ?? '', 'waitlist_id=20' ), 'the log names the matched waitlist id' );
+assert_test( false !== strpos( $token_info[0]['message'] ?? '', 'order_id=500' ), 'the log names the fulfilling order id' );
+
+echo "\n=== handle_order_completed(): a failed write is not misreported as success ===\n\n";
+
+reset_waitlist_order_fakes();
+
+$fail_row                 = row( array( 'id' => 21, 'email' => 'queued@example.com' ) );
+$fail_token               = str_repeat( '8', 64 );
+$wpdb->rows[ $fail_token ] = $fail_row;
+$wpdb->update_return       = false; // simulate the UPDATE failing.
+
+$fail_item = new Fake_Order_Item();
+$fail_item->add_meta_data( $w::CART_META_KEY, $fail_token, true );
+$fail_item->set_product( new Fake_WC_Product( 11 ) );
+
+$fail_order               = new Fake_WC_Order( 501, 'someone-else@example.com', 0, array( $fail_item ) );
+$GLOBALS['__orders'][501] = $fail_order;
+
+$wl->handle_order_completed( 501 );
+
+$fail_info  = waitlist_log_calls( 'info' );
+$fail_error = waitlist_log_calls( 'error' );
+
+assert_test( array() === $fail_info, 'a failed claim write logs no success line' );
+assert_test( 1 === count( $fail_error ), 'a failed claim write logs exactly one error line' );
+assert_test( false !== strpos( $fail_error[0]['message'] ?? '', 'waitlist_id=21' ), 'the failure log names the waitlist id' );
+assert_test( false !== strpos( $fail_error[0]['message'] ?? '', 'order_id=501' ), 'the failure log names the order id' );
+assert_test( false !== strpos( $fail_error[0]['message'] ?? '', 'matched_by=token' ), 'the failure log records which path matched' );
+
+echo "\n=== handle_order_completed(): the variation-parent retry and fallback path ===\n\n";
+
+reset_waitlist_order_fakes();
+
+$fallback_row      = row( array( 'id' => 22, 'email' => 'player@example.com', 'user_id' => 0 ) );
+$wpdb->results[30] = array( $fallback_row ); // offered rows are keyed by the parent product id.
+
+// No bound token at all — the never-clicked-the-link case the fallback exists
+// for. get_meta() on a line item that never had add_meta_data() called on it
+// must read back '' rather than fatal.
+$variation_item = new Fake_Order_Item();
+$variation_item->set_product( new Fake_WC_Product( 31, 'variation', 30 ) );
+
+$fallback_order           = new Fake_WC_Order( 502, 'player@example.com', 0, array( $variation_item ) );
+$GLOBALS['__orders'][502] = $fallback_order;
+
+$wl->handle_order_completed( 502 );
+
+assert_test( 1 === count( $wpdb->update_calls ), 'the variation retry against the parent id resolves and writes one update' );
+$fallback_update = $wpdb->update_calls[0] ?? array(
+	'data'  => array(),
+	'where' => array(),
+);
+assert_test( array( 'id' => 22 ) === ( $fallback_update['where'] ?? null ), 'the fallback match updates the row found via the parent product id' );
+
+$fallback_info = waitlist_log_calls( 'info' );
+assert_test( 1 === count( $fallback_info ), 'the fallback path logs exactly one success line' );
+assert_test( false !== strpos( $fallback_info[0]['message'] ?? '', 'matched_by=email_or_user' ), 'the log records the fallback path, not the token path' );
+
+echo "\n=== handle_order_completed(): no match, no order ===\n\n";
+
+reset_waitlist_order_fakes();
+
+$no_match_item = new Fake_Order_Item();
+$no_match_item->set_product( new Fake_WC_Product( 99 ) );
+
+$no_match_order           = new Fake_WC_Order( 503, 'nobody@example.com', 0, array( $no_match_item ) );
+$GLOBALS['__orders'][503] = $no_match_order;
+
+$wl->handle_order_completed( 503 );
+
+assert_test( array() === $wpdb->update_calls, 'an order matching no offer writes nothing' );
+assert_test( array() === SPAT_Logger::$calls, 'an order matching no offer logs nothing' );
+
+// wc_get_order() returning false (order not found / not loadable) must not fatal.
+reset_waitlist_order_fakes();
+$wl->handle_order_completed( 999999 );
+assert_test( array() === $wpdb->update_calls, 'an order that cannot be loaded writes nothing and does not fatal' );
 
 echo "\n";
 echo "Passed: {$passed}\n";
