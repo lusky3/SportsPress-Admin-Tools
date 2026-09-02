@@ -29,6 +29,7 @@ run_test() {
 run_test "$SCRIPT_DIR/sportspress-admin-tools/tests/test-lock.php"
 run_test "$SCRIPT_DIR/sportspress-admin-tools/tests/test-database.php"
 run_test "$SCRIPT_DIR/sportspress-admin-tools/tests/test-health-dashboard.php"
+run_test "$SCRIPT_DIR/sportspress-admin-tools/tests/test-season-helper.php"
 run_test "$SCRIPT_DIR/sportspress-etransfer-automation/tests/test-name-matcher.php"
 run_test "$SCRIPT_DIR/sportspress-etransfer-automation/tests/test-etransfer-automation.php"
 run_test "$SCRIPT_DIR/sportspress-etransfer-automation/tests/test-webhook-routing.php"
