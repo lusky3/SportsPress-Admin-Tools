@@ -32,6 +32,26 @@ class SportsPress_League_Manager {
 		register_activation_hook( __FILE__, array( $this, 'check_activation_requirements' ) );
 		register_deactivation_hook( __FILE__, array( $this, 'deactivate' ) );
 		add_action( 'plugins_loaded', array( $this, 'init' ) );
+		add_action( 'before_woocommerce_init', array( $this, 'declare_hpos_compatibility' ) );
+	}
+
+	/**
+	 * Declare WooCommerce High-Performance Order Storage (custom order tables)
+	 * compatibility.
+	 *
+	 * This plugin reads orders exclusively through the HPOS-safe CRUD layer
+	 * (wc_get_order / wc_get_orders / WC_Order methods) and never queries
+	 * wp_posts or wp_postmeta for order data, so it is compatible either way.
+	 * Without this declaration WooCommerce lists the plugin as incompatible and
+	 * blocks HPOS from being enabled. Mirrors the declaration in
+	 * sportspress-etransfer-automation.
+	 *
+	 * @return void
+	 */
+	public function declare_hpos_compatibility() {
+		if ( class_exists( '\Automattic\WooCommerce\Utilities\FeaturesUtil' ) ) {
+			\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );
+		}
 	}
 
 	public function check_activation_requirements() {
@@ -109,6 +129,17 @@ class SportsPress_League_Manager {
 			)
 		);
 
+		SPAT_Plugin_Manager::register_plugin(
+			'league_waitlist',
+			array(
+				'name'          => 'Registration Waitlist',
+				'description'   => 'Waitlist queue, timed spot offers and purchase gating for full seasons',
+				'parent_module' => 'league_waitlist',
+				'version'       => SPLM_VERSION,
+				'file'          => __FILE__,
+			)
+		);
+
 		$this->load_enabled_modules();
 	}
 
@@ -126,7 +157,7 @@ class SportsPress_League_Manager {
 		$enabled = get_option( 'spat_enabled_modules', array() );
 		$any_enabled = array_intersect(
 			$enabled,
-			array( 'league_manager_dashboard', 'league_roster_management', 'league_fee_tracking', 'league_player_notes', 'league_discipline' )
+			array( 'league_manager_dashboard', 'league_roster_management', 'league_fee_tracking', 'league_player_notes', 'league_discipline', 'league_waitlist' )
 		);
 
 		if ( empty( $any_enabled ) ) {
@@ -157,6 +188,14 @@ class SportsPress_League_Manager {
 
 		if ( ! in_array( 'league_discipline', $enabled, true ) && class_exists( 'SPLM_Discipline_Digest' ) ) {
 			SPLM_Discipline_Digest::unschedule();
+		}
+
+		// The waitlist schema is only needed once the module is deliberately
+		// enabled — see the module registration above for why it is not folded
+		// into league_manager_dashboard. The feature's own classes are wired in
+		// by later commits; this establishes the table.
+		if ( in_array( 'league_waitlist', $enabled, true ) ) {
+			SPLM_Waitlist_Database::maybe_upgrade();
 		}
 
 		// REST API and Dashboard Frontend load regardless of admin context.

@@ -55,6 +55,11 @@ class SPLM_Autoloader {
 			'SPLM_REST_API'              => $base . 'class-rest-api.php',
 			'SPLM_Season_Audit'          => $base . 'class-season-audit.php',
 			'SPLM_SportsPress_Data'      => $base . 'class-sportspress-data.php',
+			'SPLM_Waitlist'              => $base . 'class-waitlist.php',
+			'SPLM_Waitlist_Database'     => $base . 'class-waitlist-database.php',
+			'SPLM_Waitlist_Gate'         => $base . 'class-waitlist-gate.php',
+			'SPLM_Waitlist_Matcher'      => $base . 'class-waitlist-matcher.php',
+			'SPLM_Waitlist_REST'         => $base . 'class-waitlist-rest.php',
 		);
 	}
 }

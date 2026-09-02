@@ -41,5 +41,16 @@ $wpdb->query(
 	)
 );
 
-// Drop player notes table.
+// Drop this plugin's tables. splm_discipline_ack was missing here since the
+// discipline feature shipped, so it is added in the same pass.
 $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}splm_player_notes" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}splm_discipline_ack" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}splm_waitlist" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+// Pending offer-expiry events would otherwise sit in cron with no handler.
+wp_clear_scheduled_hook( 'splm_waitlist_expire_offer' );
+
+// The generic sweep above covers options, transients and user meta but not
+// post meta. This key is inert once the gate filter is gone, so removing it is
+// tidiness rather than a functional fix.
+delete_post_meta_by_key( '_splm_waitlist_gated' );
