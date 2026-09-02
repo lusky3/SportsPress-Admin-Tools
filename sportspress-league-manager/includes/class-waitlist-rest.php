@@ -58,6 +58,20 @@ class SPLM_Waitlist_REST {
 						'season'   => array(
 							'required'          => false,
 							'type'              => 'string',
+							// No enum to check here — season codes are free-form
+							// (build_row() is what decides what a valid one looks
+							// like) — so this is a bare type check. It exists
+							// because sanitize_callback alone, WITHOUT an
+							// explicit validate_callback, is not enough:
+							// WP_REST_Request::sanitize_params() only defaults
+							// validate_callback to rest_validate_request_arg()
+							// when NO sanitize_callback is declared at all. Once
+							// a sanitize_callback is present, as it is here,
+							// that fallback never fires, and a malformed value
+							// would be silently coerced (e.g. an array
+							// flattened by sanitize_text_field()) rather than
+							// rejected with 400 rest_invalid_param.
+							'validate_callback' => 'rest_validate_request_arg',
 							'sanitize_callback' => 'sanitize_text_field',
 						),
 						'position' => array(
@@ -76,12 +90,20 @@ class SPLM_Waitlist_REST {
 							'required'          => false,
 							'type'              => 'integer',
 							'default'           => 1,
+							// Same reasoning as 'season' above: an explicit
+							// sanitize_callback suppresses core's own default
+							// validate_callback, so one is declared here too.
+							// get_waitlist() re-clamps to >= 1 regardless; this
+							// is what makes a non-integer 400 instead of being
+							// silently absint()'d to 0 and then clamped.
+							'validate_callback' => 'rest_validate_request_arg',
 							'sanitize_callback' => 'absint',
 						),
 						'per_page' => array(
 							'required'          => false,
 							'type'              => 'integer',
 							'default'           => 50,
+							'validate_callback' => 'rest_validate_request_arg',
 							'sanitize_callback' => 'absint',
 						),
 					),
@@ -94,6 +116,11 @@ class SPLM_Waitlist_REST {
 						'name'              => array(
 							'required'          => true,
 							'type'              => 'string',
+							// See the 'season' arg above for why this needs an
+							// explicit validate_callback despite declaring a
+							// type: the sanitize_callback here would otherwise
+							// silently suppress core's own default one.
+							'validate_callback' => 'rest_validate_request_arg',
 							'sanitize_callback' => 'sanitize_text_field',
 						),
 						'email'             => array(
@@ -105,6 +132,8 @@ class SPLM_Waitlist_REST {
 						'season'            => array(
 							'required'          => true,
 							'type'              => 'string',
+							// See the GET /waitlist 'season' arg above.
+							'validate_callback' => 'rest_validate_request_arg',
 							'sanitize_callback' => 'sanitize_text_field',
 						),
 						'position'          => array(
@@ -131,6 +160,10 @@ class SPLM_Waitlist_REST {
 				'callback'            => array( $this, 'offer_spot' ),
 				'permission_callback' => array( __CLASS__, 'can_manage' ),
 				'args'                => array(
+					// No validate_callback here, deliberately: the route
+					// regex '(?P<id>\d+)' already refuses anything that is
+					// not one or more digits before this arg's callbacks
+					// ever run, so a second type check would be redundant.
 					'id'    => array(
 						'required'          => true,
 						'type'              => 'integer',
@@ -155,6 +188,8 @@ class SPLM_Waitlist_REST {
 				'callback'            => array( $this, 'cancel_offer' ),
 				'permission_callback' => array( __CLASS__, 'can_manage' ),
 				'args'                => array(
+					// Same reasoning as the offer route's 'id' above: the
+					// route regex already constrains this to digits only.
 					'id' => array(
 						'required'          => true,
 						'type'              => 'integer',

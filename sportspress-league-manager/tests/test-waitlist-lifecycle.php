@@ -52,6 +52,13 @@ class SPLM_Waitlist_Lifecycle_Test_State {
 	 * "no meta" behaviour.
 	 */
 	public $post_meta = array();
+
+	/**
+	 * Controllable wc_get_product() stub for create_entry(), keyed by
+	 * product id. Unset reads as false, matching wc_get_product()'s real
+	 * "no such product" return.
+	 */
+	public $wc_products = array();
 }
 
 function splm_waitlist_lifecycle_test_state() {
@@ -112,6 +119,69 @@ function esc_html__( $text, $domain = '' ) { // phpcs:ignore
 function esc_html( $text ) {
 	return $text;
 }
+
+function wc_get_product( $id ) { // phpcs:ignore
+	return splm_waitlist_lifecycle_test_state()->wc_products[ (int) $id ] ?? false;
+}
+
+/**
+ * Minimal WP_REST_Request stub: just enough surface for create_entry() to
+ * run and for a test to supply its params. Mirrors the equivalent stub in
+ * test-waitlist-claim.php.
+ */
+class WP_REST_Request {
+	private $params;
+
+	public function __construct( array $params = array() ) {
+		$this->params = $params;
+	}
+
+	public function get_param( $key ) {
+		return isset( $this->params[ $key ] ) ? $this->params[ $key ] : null;
+	}
+}
+
+/**
+ * A fake $wpdb: just enough of the interface SPLM_Waitlist_Database::
+ * find_active()/insert() use to make create_entry()'s branches testable
+ * without a real database. Follows the same shape as
+ * test-waitlist-claim.php's Fake_WPDB.
+ *
+ * $rows is keyed by the first bound parameter of the preceding prepare()
+ * call — the lowercased email find_active() searches on — since create_entry()
+ * never issues two different queries within one test. $insert_succeeds
+ * drives insert()'s success/failure branch; $insert_id is what a successful
+ * insert() reports back, read via SPLM_Waitlist_Database::insert()'s own
+ * $wpdb->insert_id.
+ */
+class Fake_WPDB {
+	public $prefix          = 'wp_';
+	public $rows            = array();
+	public $insert_succeeds = true;
+	public $insert_id       = 0;
+	private $last_args      = array();
+
+	public function prepare( $query, ...$args ) { // phpcs:ignore
+		$this->last_args = $args;
+		return $query;
+	}
+
+	public function get_row( $query ) { // phpcs:ignore
+		$key = $this->last_args[0] ?? null;
+		return isset( $this->rows[ $key ] ) ? $this->rows[ $key ] : null;
+	}
+
+	public function insert( $table, $data ) { // phpcs:ignore
+		if ( ! $this->insert_succeeds ) {
+			return false;
+		}
+		$this->insert_id = 501;
+		return 1;
+	}
+}
+
+global $wpdb;
+$wpdb = new Fake_WPDB();
 
 require_once __DIR__ . '/../includes/class-waitlist-database.php';
 require_once __DIR__ . '/../includes/class-waitlist.php';
@@ -381,6 +451,76 @@ assert_test( ! array_key_exists( 'claim_token', $shaped ), 'the claim token key 
 $no_target = clone $response_row;
 $no_target->target_product_id = 0;
 assert_test( false === $r::row_to_response( $no_target )['has_target'], 'a row without a target reports has_target false so the UI can disable Offer' );
+
+echo "\n=== create_entry(): the four WP_Error branches, plus success ===\n\n";
+
+/**
+ * A complete, valid set of create_entry() request params. Each test
+ * overrides one key so it is obvious which single condition is under test —
+ * the same convention facts() uses above for build_row().
+ */
+function create_entry_params( array $overrides = array() ) {
+	return array_merge(
+		array(
+			'name'              => 'Sam Player',
+			'email'             => 'Player@Example.COM',
+			'season'            => 'S2026',
+			'position'          => 'player',
+			'target_product_id' => 11,
+		),
+		$overrides
+	);
+}
+
+$rest = new SPLM_Waitlist_REST();
+
+// Branch 1: the target product does not exist (or was never a real product,
+// e.g. an omitted/zero target_product_id).
+splm_waitlist_lifecycle_test_state()->wc_products = array();
+$wpdb->rows            = array();
+$wpdb->insert_succeeds = true;
+
+$bad_target = $rest->create_entry( new WP_REST_Request( create_entry_params() ) );
+assert_test( is_wp_error( $bad_target ), 'create_entry() refuses a target product that does not exist' );
+assert_test( 'splm_waitlist_bad_target' === $bad_target->get_error_code(), 'the bad-target refusal carries its own error code' );
+assert_test( 400 === $bad_target->get_error_data()['status'], 'the bad-target refusal is a 400' );
+
+// Branch 2: the target exists, but find_active() already has a live row for
+// this email/season/position.
+splm_waitlist_lifecycle_test_state()->wc_products = array( 11 => true );
+$wpdb->rows = array( 'player@example.com' => (object) array( 'id' => 1 ) );
+
+$duplicate = $rest->create_entry( new WP_REST_Request( create_entry_params() ) );
+assert_test( is_wp_error( $duplicate ), 'create_entry() refuses a duplicate active entry' );
+assert_test( 'splm_waitlist_duplicate' === $duplicate->get_error_code(), 'the duplicate refusal carries its own error code' );
+assert_test( 409 === $duplicate->get_error_data()['status'], 'the duplicate refusal is a 409' );
+
+// Branch 3: no duplicate, but the facts build_row() receives are themselves
+// invalid (here, an empty season) — the exact case test-waitlist-lifecycle's
+// own build_row() assertions cover directly, reached this time through the
+// REST callback.
+$wpdb->rows = array();
+
+$invalid = $rest->create_entry( new WP_REST_Request( create_entry_params( array( 'season' => '' ) ) ) );
+assert_test( is_wp_error( $invalid ), 'create_entry() refuses a row build_row() itself declines' );
+assert_test( 'splm_waitlist_invalid' === $invalid->get_error_code(), 'the invalid-row refusal carries its own error code' );
+assert_test( 400 === $invalid->get_error_data()['status'], 'the invalid-row refusal is a 400' );
+
+// Branch 4: everything validates, but the database write itself fails.
+$wpdb->insert_succeeds = false;
+
+$write_failed = $rest->create_entry( new WP_REST_Request( create_entry_params() ) );
+assert_test( is_wp_error( $write_failed ), 'create_entry() reports a failed write rather than pretending to succeed' );
+assert_test( 'splm_waitlist_write_failed' === $write_failed->get_error_code(), 'the write-failure refusal carries its own error code' );
+assert_test( 500 === $write_failed->get_error_data()['status'], 'the write-failure refusal is a 500' );
+
+// The accepting case: target exists, no duplicate, a valid row, and the
+// write succeeds.
+$wpdb->insert_succeeds = true;
+
+$success = $rest->create_entry( new WP_REST_Request( create_entry_params() ) );
+assert_test( is_array( $success ) && true === $success['success'], 'create_entry() reports success once every check passes' );
+assert_test( 501 === $success['id'], 'the newly inserted row id is returned' );
 
 echo "\n";
 echo "Passed: {$passed}\n";
