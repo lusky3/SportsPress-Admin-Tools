@@ -46,6 +46,8 @@ class SportsPress_League_Manager {
 	 * blocks HPOS from being enabled. Mirrors the declaration in
 	 * sportspress-etransfer-automation.
 	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
 	 * @return void
 	 */
 	public function declare_hpos_compatibility() {
