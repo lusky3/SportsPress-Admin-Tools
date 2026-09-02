@@ -41,16 +41,27 @@ class SPLM_Waitlist_Gate {
 		add_filter( 'woocommerce_is_purchasable', array( $this, 'filter_is_purchasable' ), 10, 2 );
 
 		// Priority 5, ahead of WC_Form_Handler::add_to_cart_action() at 20, so
-		// the session is seeded before the cart consults is_purchasable().
-		// filter_is_purchasable() also accepts a token straight off the
-		// request, so this ordering is belt-and-braces rather than load-bearing.
+		// the session is seeded before the cart consults is_purchasable() on
+		// the claim link's own add-to-cart request. This hook is LOAD-BEARING:
+		// it is what lets the entitlement survive every request AFTER this
+		// one — the cart page, checkout, a reload — because the session
+		// persists and the request-token check in filter_is_purchasable()
+		// does not. That request-token check exists only as belt-and-braces
+		// for the very first request, before this seeding has had a chance to
+		// run; do not remove this hook on the assumption the fallback covers
+		// for it.
 		add_action( 'wp_loaded', array( $this, 'seed_entitlement' ), 5 );
 
 		// WC_Cart::check_cart_items() re-runs is_purchasable() on every
-		// checkout load. When an offer lapses mid-checkout the item leaves the
-		// cart, and WooCommerce's default wording ("Sorry, this product cannot
-		// be purchased") tells the player nothing.
+		// checkout load. Kept as a fallback alongside the removal-message
+		// filter below, in case WooCommerce's own removal does not run before
+		// this fires for some code path this plugin has not exercised.
 		add_action( 'woocommerce_check_cart_items', array( $this, 'check_cart_items' ) );
+
+		// WooCommerce's own hook for the wording shown when it removes an
+		// item from the cart because it is no longer purchasable — the
+		// primary mechanism for the "offer lapsed mid-checkout" case.
+		add_filter( 'woocommerce_cart_item_removed_message', array( $this, 'filter_cart_item_removed_message' ), 10, 2 );
 	}
 
 	/**
@@ -77,12 +88,12 @@ class SPLM_Waitlist_Gate {
 	}
 
 	/**
-	 * Coerce a session value into a clean list of product ids.
+	 * Coerce a raw list into a clean list of positive int ids.
 	 *
-	 * The session is client-influenced storage, so nothing about its shape is
-	 * assumed.
+	 * Used to sanitize session-derived data, which is client-influenced
+	 * storage: nothing about its shape is assumed.
 	 *
-	 * @param mixed $raw Session value.
+	 * @param mixed $raw Raw list.
 	 * @return int[]
 	 */
 	public static function normalise_entitlements( $raw ): array {
@@ -120,7 +131,7 @@ class SPLM_Waitlist_Gate {
 	}
 
 	/**
-	 * Whether a product is waitlist-gated.
+	 * Whether a product's own meta marks it gated (no parent walk).
 	 *
 	 * A post meta read, deliberately: is_purchasable() runs for every product
 	 * in every loop, and this value is object-cached alongside the post, so
@@ -135,83 +146,229 @@ class SPLM_Waitlist_Gate {
 	}
 
 	/**
+	 * Whether a product is gated, walking to its parent for a variation, and
+	 * the id that gate is keyed on.
+	 *
+	 * A variation inherits its parent's gate, and both the claim link and the
+	 * session carry the PARENT id — target_product_id is the parent, never
+	 * the variation — so entitlement has to be checked against the id this
+	 * returns, not necessarily the product's own id. Shared by
+	 * filter_is_purchasable() and check_cart_items() so both apply the same
+	 * definition of "gated" to a variation; before this existed the two
+	 * disagreed and a lapsed variation got no expiry notice from the cart
+	 * hook even though the purchasability filter correctly blocked it.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param object $product Product object.
+	 * @return int The gate-holding id, or 0 if the product is not gated.
+	 */
+	public static function gated_product_id( $product ): int {
+		$product_id = (int) $product->get_id();
+		if ( self::is_gated( $product_id ) ) {
+			return $product_id;
+		}
+
+		$parent_id = method_exists( $product, 'get_parent_id' ) ? (int) $product->get_parent_id() : 0;
+		if ( $parent_id > 0 && self::is_gated( $parent_id ) ) {
+			return $parent_id;
+		}
+
+		return 0;
+	}
+
+	/**
 	 * Turn gating on or off for a product.
+	 *
+	 * Reports the state actually achieved rather than whether the underlying
+	 * meta call reported a change: update_post_meta() returns false when the
+	 * stored value is already what was requested, and delete_post_meta()
+	 * returns false when there was nothing to delete. Re-gating an
+	 * already-gated product (or un-gating an already-ungated one) is a
+	 * legitimate no-op, not a failure — a caller such as an admin toggle
+	 * route would otherwise read an idempotent save as "save failed".
 	 *
 	 * @param int  $product_id Product post ID.
 	 * @param bool $gated      Desired state.
-	 * @return bool
+	 * @return bool Whether the product ends this call in the requested state.
 	 */
 	public static function set_gated( $product_id, $gated ): bool {
 		$product_id = (int) $product_id;
 
 		if ( $gated ) {
-			return (bool) update_post_meta( $product_id, self::GATE_META, '1' );
+			update_post_meta( $product_id, self::GATE_META, '1' );
+		} else {
+			delete_post_meta( $product_id, self::GATE_META );
 		}
-		return (bool) delete_post_meta( $product_id, self::GATE_META );
+
+		return self::is_gated( $product_id ) === (bool) $gated;
 	}
 
 	/**
-	 * Product ids the current visitor holds a live offer for.
+	 * The visitor's session-stored entitlements, as product id => claim
+	 * token.
 	 *
 	 * WC()->session is null in REST and cron contexts, so every read is
-	 * guarded.
+	 * guarded. The session is client-influenced storage, so its keys are run
+	 * through normalise_entitlements() and any non-string/empty token is
+	 * dropped, the same way any other untrusted input would be.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @return array<int, string>
+	 */
+	public static function session_map(): array {
+		if ( ! function_exists( 'WC' ) || ! WC() || ! isset( WC()->session ) || ! WC()->session ) {
+			return array();
+		}
+
+		$raw = WC()->session->get( self::SESSION_KEY );
+		if ( ! is_array( $raw ) ) {
+			return array();
+		}
+
+		$map = array();
+		foreach ( self::normalise_entitlements( array_keys( $raw ) ) as $id ) {
+			$token = $raw[ $id ];
+			if ( is_string( $token ) && '' !== $token ) {
+				$map[ $id ] = $token;
+			}
+		}
+
+		return $map;
+	}
+
+	/**
+	 * Product ids the current visitor holds a REVALIDATED live offer for.
+	 *
+	 * The session can outlive the offer it was granted from — it survives
+	 * for as long as the WC session does, well past a 48-hour offer window —
+	 * so a bare "was granted at some point" check is not enough: it would
+	 * hand out an unbounded extension past expiry, and would let one claim
+	 * buy more than the one offered spot since nothing would ever revoke it.
+	 * Every id here is re-checked against the waitlist row on this call via
+	 * resolve_token(), which is memoized per token per request, so a shop
+	 * loop over several gated products costs at most one query per distinct
+	 * token rather than one per product.
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
 	 * @return int[]
 	 */
 	public static function entitlement_ids(): array {
-		if ( ! function_exists( 'WC' ) || ! WC() || ! isset( WC()->session ) || ! WC()->session ) {
-			return array();
+		$ids = array();
+		foreach ( self::session_map() as $product_id => $token ) {
+			if ( self::resolve_token( $token ) === $product_id ) {
+				$ids[] = $product_id;
+			}
 		}
-		return self::normalise_entitlements( WC()->session->get( self::SESSION_KEY ) );
+		return $ids;
 	}
 
 	/**
-	 * Record an entitlement in the session.
+	 * Record an entitlement in the session, alongside the token it came
+	 * from.
+	 *
+	 * The token travels with the id so entitlement_ids() can revalidate it
+	 * later rather than trusting a bare id indefinitely.
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
-	 * @param int $product_id Product post ID.
+	 * @param int    $product_id Product post ID.
+	 * @param string $token      The claim token that granted this.
 	 * @return void
 	 */
-	public static function grant( $product_id ): void {
+	public static function grant( $product_id, $token ): void {
 		if ( ! function_exists( 'WC' ) || ! WC() || ! isset( WC()->session ) || ! WC()->session ) {
 			return;
 		}
 
-		$ids = self::entitlement_ids();
-		if ( ! self::entitles( $ids, $product_id ) ) {
-			$ids[] = (int) $product_id;
-			WC()->session->set( self::SESSION_KEY, $ids );
+		$product_id = (int) $product_id;
+		if ( $product_id <= 0 || ! is_string( $token ) || '' === $token ) {
+			return;
 		}
+
+		$map                = self::session_map();
+		$map[ $product_id ] = $token;
+		WC()->session->set( self::SESSION_KEY, $map );
+	}
+
+	/**
+	 * Whether a claim token still constitutes a live, claimable offer for a
+	 * given product.
+	 *
+	 * Memoized per token for the life of the request: a shop loop, or a
+	 * single filter_is_purchasable() call checking both a variation's own id
+	 * and its parent's, should not turn one token into more than one query.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param string $token Claim token.
+	 * @return int The product id it entitles, or 0 if it no longer does.
+	 */
+	public static function resolve_token( $token ): int {
+		static $cache = array();
+
+		if ( array_key_exists( $token, $cache ) ) {
+			return $cache[ $token ];
+		}
+
+		$row        = SPLM_Waitlist_Database::find_by_token( $token );
+		$product_id = ( $row && SPLM_Waitlist::is_claimable( $row ) ) ? (int) $row->target_product_id : 0;
+
+		$cache[ $token ] = $product_id;
+
+		return $product_id;
+	}
+
+	/**
+	 * The claim token and product id carried by the current request, if any.
+	 *
+	 * Memoized: $_GET does not change mid-request, and this is called from
+	 * both seed_entitlement() and (via product_from_request_token())
+	 * filter_is_purchasable(), possibly for several products in one loop.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 * @SuppressWarnings(PHPMD.Superglobals)
+	 *
+	 * @return array{product_id: int, token: string}
+	 */
+	public static function request_claim(): array {
+		static $claim = null;
+
+		if ( null !== $claim ) {
+			return $claim;
+		}
+
+		$claim = array(
+			'product_id' => 0,
+			'token'      => '',
+		);
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only capture of a token from our own claim redirect; is_token_shaped() validates its form below and resolve_token() validates it against the database, and this causes no state change, so a nonce would be meaningless on a link that arrives via email.
+		$token = isset( $_GET[ SPLM_Waitlist::CLAIM_ARG ] ) ? sanitize_text_field( wp_unslash( $_GET[ SPLM_Waitlist::CLAIM_ARG ] ) ) : '';
+		if ( ! SPLM_Waitlist::is_token_shaped( $token ) ) {
+			return $claim;
+		}
+
+		$product_id = self::resolve_token( $token );
+		if ( $product_id > 0 ) {
+			$claim = array(
+				'product_id' => $product_id,
+				'token'      => $token,
+			);
+		}
+
+		return $claim;
 	}
 
 	/**
 	 * The product a request-borne token entitles, if any.
 	 *
-	 * @SuppressWarnings(PHPMD.StaticAccess)
-	 * @SuppressWarnings(PHPMD.Superglobals)
-	 *
 	 * @return int Product id, or 0.
 	 */
 	public static function product_from_request_token(): int {
-		if ( ! isset( $_GET[ SPLM_Waitlist::CLAIM_ARG ] ) ) {
-			return 0;
-		}
-
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only capture of a token from our own claim redirect; is_token_shaped() validates its form below and find_by_token() validates it against the database, and this causes no state change, so a nonce would be meaningless on a link that arrives via email.
-		$token = sanitize_text_field( wp_unslash( $_GET[ SPLM_Waitlist::CLAIM_ARG ] ) );
-		if ( ! SPLM_Waitlist::is_token_shaped( $token ) ) {
-			return 0;
-		}
-
-		$row = SPLM_Waitlist_Database::find_by_token( $token );
-		if ( ! $row || ! SPLM_Waitlist::is_claimable( $row ) ) {
-			return 0;
-		}
-
-		return (int) $row->target_product_id;
+		return self::request_claim()['product_id'];
 	}
 
 	/**
@@ -222,9 +379,9 @@ class SPLM_Waitlist_Gate {
 	 * @return void
 	 */
 	public function seed_entitlement(): void {
-		$product_id = self::product_from_request_token();
-		if ( $product_id > 0 ) {
-			self::grant( $product_id );
+		$claim = self::request_claim();
+		if ( $claim['product_id'] > 0 ) {
+			self::grant( $claim['product_id'], $claim['token'] );
 		}
 	}
 
@@ -239,32 +396,45 @@ class SPLM_Waitlist_Gate {
 	 */
 	public function filter_is_purchasable( $purchasable, $product ) {
 		// Cheapest possible exit for the common case, before anything else.
-		if ( ! $purchasable || ! $product ) {
+		// The incoming value is returned untouched rather than re-derived, so
+		// a caller relying on a non-bool truthy/falsy value gets back exactly
+		// what it passed in. ! is_object() guards a third party re-applying
+		// this filter with something other than a product object.
+		if ( ! $purchasable || ! $product || ! is_object( $product ) ) {
+			return $purchasable;
+		}
+
+		$gate_id = self::gated_product_id( $product );
+		if ( 0 === $gate_id ) {
 			return $purchasable;
 		}
 
 		$product_id = (int) $product->get_id();
-		$gated      = self::is_gated( $product_id );
-
-		// A variation inherits its parent's gate.
-		if ( ! $gated && method_exists( $product, 'get_parent_id' ) && $product->get_parent_id() ) {
-			$gated = self::is_gated( (int) $product->get_parent_id() );
-		}
-
-		if ( ! $gated ) {
-			return $purchasable;
-		}
-
 		$is_manager = class_exists( 'SPLM_Capabilities' ) && SPLM_Capabilities::can_manage();
 
-		$entitled = self::entitles( self::entitlement_ids(), $product_id )
-			|| self::product_from_request_token() === $product_id;
+		// Checked against both the product's own id and the gate id, because
+		// for a variation those differ: the gate (and the entitlement granted
+		// by the claim link) is keyed on the PARENT id.
+		$ids      = self::entitlement_ids();
+		$entitled = self::entitles( $ids, $product_id )
+			|| self::entitles( $ids, $gate_id )
+			|| self::product_from_request_token() === $gate_id;
 
 		return self::decide( true, true, $is_manager, $entitled );
 	}
 
 	/**
-	 * Explain a gated item disappearing from the cart.
+	 * Fallback: explain a gated item disappearing from the cart.
+	 *
+	 * filter_cart_item_removed_message() below is the primary mechanism —
+	 * WooCommerce calls that filter from wherever it performs the removal
+	 * itself. This handler exists in case that ordering assumption does not
+	 * hold for some code path this plugin has not exercised, so it re-checks
+	 * purchasability on woocommerce_check_cart_items and adds its own notice
+	 * for anything still in the cart at that point. It does not claim to
+	 * have performed a removal — only that the item is no longer purchasable
+	 * — because by the time this runs, WooCommerce, not this method, is
+	 * responsible for whether the item is still there.
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
@@ -277,7 +447,7 @@ class SPLM_Waitlist_Gate {
 
 		foreach ( WC()->cart->get_cart() as $cart_item ) {
 			$product = isset( $cart_item['data'] ) ? $cart_item['data'] : null;
-			if ( ! $product || ! self::is_gated( (int) $product->get_id() ) ) {
+			if ( ! $product || ! is_object( $product ) || 0 === self::gated_product_id( $product ) ) {
 				continue;
 			}
 			if ( $product->is_purchasable() ) {
@@ -285,10 +455,32 @@ class SPLM_Waitlist_Gate {
 			}
 
 			wc_add_notice(
-				__( 'Your invite for this registration has expired, so it was removed from your cart. Please contact your convener.', 'sportspress-league-manager' ),
+				__( 'Your invite for this registration has expired, so it is no longer available to purchase. Please contact your convener.', 'sportspress-league-manager' ),
 				'error'
 			);
 			return;
 		}
+	}
+
+	/**
+	 * Replace WooCommerce's default cart-item-removed wording for a gated
+	 * product with a player-facing explanation.
+	 *
+	 * The primary mechanism for the "offer lapsed mid-checkout" case: this is
+	 * WooCommerce's own hook for the message shown when it removes an item
+	 * from the cart, called from wherever that removal happens.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param string $message Default WooCommerce removal message.
+	 * @param object $product The removed product.
+	 * @return string
+	 */
+	public function filter_cart_item_removed_message( $message, $product ) {
+		if ( ! $product || ! is_object( $product ) || 0 === self::gated_product_id( $product ) ) {
+			return $message;
+		}
+
+		return __( 'Your invite for this registration has expired, so it was removed from your cart. Please contact your convener.', 'sportspress-league-manager' );
 	}
 }

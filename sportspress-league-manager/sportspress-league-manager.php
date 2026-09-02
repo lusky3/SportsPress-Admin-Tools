@@ -192,8 +192,7 @@ class SportsPress_League_Manager {
 
 		// The waitlist schema is only needed once the module is deliberately
 		// enabled — see the module registration above for why it is not folded
-		// into league_manager_dashboard. The feature's own classes are wired in
-		// by later commits; this establishes the table.
+		// into league_manager_dashboard.
 		if ( in_array( 'league_waitlist', $enabled, true ) ) {
 			SPLM_Waitlist_Database::maybe_upgrade();
 			new SPLM_Waitlist();
