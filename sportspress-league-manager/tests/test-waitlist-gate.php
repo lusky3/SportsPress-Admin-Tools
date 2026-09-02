@@ -321,8 +321,6 @@ assert_test(
 $seed_hook = splm_gate_find_hook( 'wp_loaded', 'action' );
 assert_test( null !== $seed_hook && 5 === $seed_hook['priority'], 'seed_entitlement() is hooked to wp_loaded at priority 5, ahead of add_to_cart_action() at 20' );
 
-assert_test( null !== splm_gate_find_hook( 'woocommerce_check_cart_items', 'action' ), 'the constructor registers the check_cart_items() fallback' );
-
 $removed_hook = splm_gate_find_hook( 'woocommerce_cart_item_removed_message', 'filter' );
 assert_test( null !== $removed_hook, 'the constructor registers the cart-item-removed message filter' );
 assert_test( null !== $removed_hook && 2 === $removed_hook['accepted_args'], 'woocommerce_cart_item_removed_message is hooked with accepted_args 2' );
@@ -490,52 +488,9 @@ assert_test(
 $state->session_data = array();
 $state->post_meta    = array();
 $state->wc_available  = false;
+$state->cart_items    = array();
 
-echo "\n=== check_cart_items(): fallback notice, shared gate detection (M2) ===\n\n";
-
-$state->wc_available = false;
-$state->cart_items   = array( array( 'data' => new SPLM_Gate_Fake_Product( 900, 0, false ) ) );
-$state->notices      = array();
-$gate->check_cart_items();
-assert_test( array() === $state->notices, 'check_cart_items() is a no-op when WC() itself is unavailable' );
-
-$state->wc_available = true;
-
-$state->post_meta  = array( 910 => array( SPLM_Waitlist_Gate::GATE_META => '1' ) );
-$state->cart_items = array( array( 'data' => new SPLM_Gate_Fake_Product( 910, 0, true ) ) );
-$state->notices    = array();
-$gate->check_cart_items();
-assert_test( array() === $state->notices, 'a gated item that is still purchasable gets no notice' );
-
-$state->post_meta  = array();
-$state->cart_items = array( array( 'data' => new SPLM_Gate_Fake_Product( 920, 0, false ) ) );
-$state->notices    = array();
-$gate->check_cart_items();
-assert_test( array() === $state->notices, 'an unpurchasable item that is not gated at all gets no notice (unrelated to the waitlist)' );
-
-$state->post_meta  = array( 930 => array( SPLM_Waitlist_Gate::GATE_META => '1' ) );
-$state->cart_items = array( array( 'data' => new SPLM_Gate_Fake_Product( 930, 0, false ) ) );
-$state->notices    = array();
-$gate->check_cart_items();
-assert_test( 1 === count( $state->notices ), 'a gated, no-longer-purchasable simple product gets exactly one notice' );
-assert_test(
-	! empty( $state->notices ) && false === strpos( $state->notices[0]['message'], 'was removed' ),
-	'the fallback notice does not claim to have removed the item -- it did not (M3-style honesty fix from Important 3)'
-);
-
-// M2: a lapsed VARIATION whose own meta carries no gate flag (only its
-// parent's does) must still be caught, using the same gated_product_id()
-// walk the purchasability filter uses.
-$state->post_meta  = array( 940 => array( SPLM_Waitlist_Gate::GATE_META => '1' ) );
-$state->cart_items = array( array( 'data' => new SPLM_Gate_Fake_Product( 941, 940, false ) ) );
-$state->notices    = array();
-$gate->check_cart_items();
-assert_test( 1 === count( $state->notices ), 'a lapsed variation of a gated parent gets a notice too (M2)' );
-
-$state->post_meta  = array();
-$state->cart_items = array();
-
-echo "\n=== filter_cart_item_removed_message(): primary mechanism (Important 3) ===\n\n";
+echo "\n=== filter_cart_item_removed_message(): the ONLY mechanism (M1) ===\n\n";
 
 $state->post_meta = array( 950 => array( SPLM_Waitlist_Gate::GATE_META => '1' ) );
 $gated_removed    = new SPLM_Gate_Fake_Product( 950 );

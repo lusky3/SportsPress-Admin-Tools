@@ -52,15 +52,23 @@ class SPLM_Waitlist_Gate {
 		// for it.
 		add_action( 'wp_loaded', array( $this, 'seed_entitlement' ), 5 );
 
-		// WC_Cart::check_cart_items() re-runs is_purchasable() on every
-		// checkout load. Kept as a fallback alongside the removal-message
-		// filter below, in case WooCommerce's own removal does not run before
-		// this fires for some code path this plugin has not exercised.
-		add_action( 'woocommerce_check_cart_items', array( $this, 'check_cart_items' ) );
-
-		// WooCommerce's own hook for the wording shown when it removes an
-		// item from the cart because it is no longer purchasable — the
-		// primary mechanism for the "offer lapsed mid-checkout" case.
+		// M1: a gated item that lapses mid-session is removed from the cart
+		// by WC_Cart_Session::get_cart_from_session() itself, hooked at
+		// wp_loaded priority 10 (class-wc-cart-session.php:184-201) — that
+		// removal fires the woocommerce_cart_item_removed_message filter
+		// below. woocommerce_check_cart_items, which a since-deleted
+		// check_cart_items() fallback used to re-check here, only fires
+		// LATER: from WC_Checkout::process_checkout()
+		// (class-wc-checkout.php:343) and the cart/checkout shortcodes. By
+		// the time either of those could run, WC_Cart_Session has already
+		// removed the item and this filter has already fired. Verified
+		// against WooCommerce core, the Blocks StoreApi path, and the
+		// same-request add-to-cart path — there is no reachable route where
+		// a gated item survives long enough for a woocommerce_check_cart_items
+		// handler to see it. WooCommerce's own hook for the wording shown
+		// when it removes an item from the cart because it is no longer
+		// purchasable — the ONLY mechanism needed for the "offer lapsed
+		// mid-checkout" case.
 		add_filter( 'woocommerce_cart_item_removed_message', array( $this, 'filter_cart_item_removed_message' ), 10, 2 );
 	}
 
@@ -153,10 +161,8 @@ class SPLM_Waitlist_Gate {
 	 * session carry the PARENT id — target_product_id is the parent, never
 	 * the variation — so entitlement has to be checked against the id this
 	 * returns, not necessarily the product's own id. Shared by
-	 * filter_is_purchasable() and check_cart_items() so both apply the same
-	 * definition of "gated" to a variation; before this existed the two
-	 * disagreed and a lapsed variation got no expiry notice from the cart
-	 * hook even though the purchasability filter correctly blocked it.
+	 * filter_is_purchasable() and filter_cart_item_removed_message() so both
+	 * apply the same definition of "gated" to a variation.
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
@@ -429,45 +435,6 @@ class SPLM_Waitlist_Gate {
 			|| self::product_from_request_token() === $gate_id;
 
 		return self::decide( true, true, $is_manager, $entitled );
-	}
-
-	/**
-	 * Fallback: explain a gated item disappearing from the cart.
-	 *
-	 * filter_cart_item_removed_message() below is the primary mechanism —
-	 * WooCommerce calls that filter from wherever it performs the removal
-	 * itself. This handler exists in case that ordering assumption does not
-	 * hold for some code path this plugin has not exercised, so it re-checks
-	 * purchasability on woocommerce_check_cart_items and adds its own notice
-	 * for anything still in the cart at that point. It does not claim to
-	 * have performed a removal — only that the item is no longer purchasable
-	 * — because by the time this runs, WooCommerce, not this method, is
-	 * responsible for whether the item is still there.
-	 *
-	 * @SuppressWarnings(PHPMD.StaticAccess)
-	 *
-	 * @return void
-	 */
-	public function check_cart_items(): void {
-		if ( ! function_exists( 'WC' ) || ! WC() || ! isset( WC()->cart ) || ! WC()->cart ) {
-			return;
-		}
-
-		foreach ( WC()->cart->get_cart() as $cart_item ) {
-			$product = isset( $cart_item['data'] ) ? $cart_item['data'] : null;
-			if ( ! $product || ! is_object( $product ) || 0 === self::gated_product_id( $product ) ) {
-				continue;
-			}
-			if ( $product->is_purchasable() ) {
-				continue;
-			}
-
-			wc_add_notice(
-				__( 'Your invite for this registration has expired, so it is no longer available to purchase. Please contact your convener.', 'sportspress-league-manager' ),
-				'error'
-			);
-			return;
-		}
 	}
 
 	/**
