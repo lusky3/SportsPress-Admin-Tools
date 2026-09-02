@@ -290,15 +290,17 @@ class SPLM_Waitlist_REST {
 	}
 
 	/**
+	 * M3: delegates to SPLM_Waitlist::validate_hours() rather than
+	 * re-implementing the same bounds, so MIN_HOURS/MAX_HOURS have exactly
+	 * one place they are enforced.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
 	 * @param mixed $value Candidate window.
 	 * @return bool
 	 */
 	public static function validate_hours( $value ): bool {
-		if ( ! is_numeric( $value ) ) {
-			return false;
-		}
-		$hours = (int) $value;
-		return $hours >= SPLM_Waitlist::MIN_HOURS && $hours <= SPLM_Waitlist::MAX_HOURS;
+		return ! is_wp_error( SPLM_Waitlist::validate_hours( $value ) );
 	}
 
 	/**

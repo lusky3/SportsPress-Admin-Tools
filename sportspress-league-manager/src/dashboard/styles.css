@@ -1267,6 +1267,14 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: var(--splm-text); }
 	font-size: 0.8125rem;
 	margin-top: 0.25rem;
 	max-width: 18rem;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.375rem;
+}
+
+.splm-waitlist__target-input {
+	width: 6rem;
 }
 
 .splm-waitlist__add-form {

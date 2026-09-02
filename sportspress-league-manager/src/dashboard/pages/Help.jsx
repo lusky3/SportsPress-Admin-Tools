@@ -9,6 +9,7 @@ const SECTIONS = [
 	{ id: 'standings', title: 'Standings' },
 	{ id: 'rosters', title: 'Rosters & Skill' },
 	{ id: 'payments', title: 'Payments' },
+	{ id: 'waitlist', title: 'Waitlist' },
 	{ id: 'div-balance', title: 'Division Balance' },
 	{ id: 'team-compare', title: 'Compare' },
 	{ id: 'leaders', title: 'Leaders' },
@@ -100,6 +101,13 @@ export default function Help( { helpTopic } ) {
 			<section id="help-payments" className="splm-help-section">
 				<h3>Payments</h3>
 				<p>Per-player payment status for the season, paged (controls at top and bottom). The amount links to the underlying WooCommerce order. The summary counts reflect the current page.</p>
+			</section>
+
+			<section id="help-waitlist" className="splm-help-section">
+				<h3>Waitlist</h3>
+				<p>Manages the queue for a full season. Someone joins by buying a $0 waitlist product; when a spot opens, <strong>Offer</strong> emails them a timed claim link (the window defaults to 48 hours, and can be set per offer). Clicking the link redirects into normal checkout for the paired registration product. <strong>Re-offer</strong> appears once an offer lapses, so you can move straight to the next person.</p>
+				<p>A row without a paired registration product shows "No registration product paired" — set one via the number field next to the flag before you can offer that spot.</p>
+				<p className="splm-muted"><strong>Season access</strong> gates a registration product so it can only be bought by someone holding a live offer (or a manager); this emails a real person, so double-check the target before sending an offer.</p>
 			</section>
 
 			<section id="help-div-balance" className="splm-help-section">

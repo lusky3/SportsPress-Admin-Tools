@@ -422,6 +422,15 @@ export function cancelWaitlistEntry( id ) {
 	return apiFetch( { path: `/splm/v1/waitlist/${ id }/cancel`, method: 'POST' } );
 }
 
+// I1: pair/repair a row's registration product after ingestion.
+export function setWaitlistTarget( id, targetProductId ) {
+	return apiFetch( {
+		path: `/splm/v1/waitlist/${ id }/target`,
+		method: 'POST',
+		data: { target_product_id: targetProductId },
+	} );
+}
+
 export function setWaitlistGate( productId, gated ) {
 	return apiFetch( {
 		path: '/splm/v1/waitlist/gate',

@@ -5,9 +5,18 @@ import {
 	offerWaitlistSpot,
 	cancelWaitlistEntry,
 	setWaitlistGate,
+	setWaitlistTarget,
 } from '../lib/api';
+import HelpLink from '../components/HelpLink';
 
-const DEFAULT_HOURS = 48;
+// M3: mirrors SPLM_Waitlist::DEFAULT_HOURS/MIN_HOURS/MAX_HOURS, localized via
+// splmDashboard.waitlistHours so the two copies of these bounds cannot drift.
+// The literals here are only the last-resort fallback if that config is
+// somehow missing.
+const HOURS_CONFIG = ( window.splmDashboard && window.splmDashboard.waitlistHours ) || {};
+const DEFAULT_HOURS = HOURS_CONFIG.default || 48;
+const MIN_HOURS = HOURS_CONFIG.min || 1;
+const MAX_HOURS = HOURS_CONFIG.max || 720;
 
 // Deadlines arrive as UTC 'Y-m-d H:i:s'. Date can't parse that shape reliably
 // across browsers, so normalise it to ISO with an explicit Z before parsing —
@@ -72,6 +81,10 @@ export default function Waitlist() {
 	const [ busyId, setBusyId ] = useState( 0 );
 	const [ adding, setAdding ] = useState( false );
 	const [ form, setForm ] = useState( { name: '', email: '', season: '', position: 'player', target_product_id: '' } );
+	// I1: per-row draft value for the inline "set a target product" control,
+	// keyed by row id, plus which row's Set button is mid-request.
+	const [ targetInputs, setTargetInputs ] = useState( {} );
+	const [ settingTargetId, setSettingTargetId ] = useState( 0 );
 
 	// Debounce the season box (300ms) into the value used for fetching.
 	useEffect( () => {
@@ -141,8 +154,8 @@ export default function Waitlist() {
 			return;
 		}
 		const hours = Number( input );
-		if ( ! Number.isInteger( hours ) || hours < 1 || hours > 720 ) {
-			setError( 'The claim window must be a whole number of hours between 1 and 720.' );
+		if ( ! Number.isInteger( hours ) || hours < MIN_HOURS || hours > MAX_HOURS ) {
+			setError( `The claim window must be a whole number of hours between ${ MIN_HOURS } and ${ MAX_HOURS }.` );
 			return;
 		}
 
@@ -190,6 +203,33 @@ export default function Waitlist() {
 			.catch( ( e ) => setError( e?.message || 'Could not change gating.' ) );
 	};
 
+	// I1: pair a queued/expired row with a registration product in place,
+	// instead of the only prior path (Remove + re-Add), which loses the
+	// row's source order and original queue position.
+	const handleSetTarget = ( row ) => {
+		const raw = targetInputs[ row.id ];
+		const targetProductId = Number( raw );
+		if ( ! raw || ! Number.isInteger( targetProductId ) || targetProductId <= 0 ) {
+			setError( 'Enter a valid registration product ID.' );
+			return;
+		}
+		setSettingTargetId( row.id );
+		setError( '' );
+		setNotice( '' );
+		setWaitlistTarget( row.id, targetProductId )
+			.then( () => {
+				setNotice( 'Registration product set.' );
+				setTargetInputs( ( prev ) => {
+					const next = { ...prev };
+					delete next[ row.id ];
+					return next;
+				} );
+				load();
+			} )
+			.catch( ( e ) => setError( e?.message || 'Could not set the registration product.' ) )
+			.finally( () => setSettingTargetId( 0 ) );
+	};
+
 	const handleAdd = ( event ) => {
 		event.preventDefault();
 		setAdding( true );
@@ -206,7 +246,7 @@ export default function Waitlist() {
 
 	return (
 		<div className="splm-waitlist">
-			<h2>Waitlist</h2>
+			<h2>Waitlist <HelpLink topic="waitlist" /></h2>
 
 			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 			{ notice && <div className="splm-alert splm-alert--success" role="status">{ notice }</div> }
@@ -308,7 +348,23 @@ export default function Waitlist() {
 										</span>
 										{ ! row.has_target && (
 											<div className="splm-waitlist__flag" role="note">
-												No registration product paired — set one before offering.
+												<span>No registration product paired — set one before offering.</span>
+												<input
+													type="number"
+													className="splm-select splm-waitlist__target-input"
+													min="1"
+													placeholder="Product ID"
+													value={ targetInputs[ row.id ] ?? '' }
+													onChange={ ( e ) => setTargetInputs( ( prev ) => ( { ...prev, [ row.id ]: e.target.value } ) ) }
+												/>
+												<button
+													type="button"
+													className="splm-btn splm-btn--small"
+													disabled={ settingTargetId === row.id }
+													onClick={ () => handleSetTarget( row ) }
+												>
+													{ settingTargetId === row.id ? 'Setting…' : 'Set' }
+												</button>
 											</div>
 										) }
 									</td>

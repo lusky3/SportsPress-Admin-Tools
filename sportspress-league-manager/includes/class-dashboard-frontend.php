@@ -359,6 +359,15 @@ class SPLM_Dashboard_Frontend {
 					'discipline' => SPLM_REST_API::module_enabled( 'league_discipline' ),
 					'waitlist'   => SPLM_REST_API::module_enabled( 'league_waitlist' ),
 				),
+				// M3: Waitlist.jsx previously hardcoded 48/1/720 as a second copy
+				// of SPLM_Waitlist's own bounds. Localized here so the two cannot
+				// drift; class_exists() falls back to the same defaults if the
+				// module's class somehow isn't loaded (e.g. the module disabled).
+				'waitlistHours'   => array(
+					'default' => class_exists( 'SPLM_Waitlist' ) ? SPLM_Waitlist::DEFAULT_HOURS : 48,
+					'min'     => class_exists( 'SPLM_Waitlist' ) ? SPLM_Waitlist::MIN_HOURS : 1,
+					'max'     => class_exists( 'SPLM_Waitlist' ) ? SPLM_Waitlist::MAX_HOURS : 720,
+				),
 				// F7 — canonical capability flags routed through SPLM_Capabilities
 				// (kept alongside legacy granular flags for compatibility).
 				'capabilities'    => array(
