@@ -196,6 +196,7 @@ class SportsPress_League_Manager {
 		// by later commits; this establishes the table.
 		if ( in_array( 'league_waitlist', $enabled, true ) ) {
 			SPLM_Waitlist_Database::maybe_upgrade();
+			new SPLM_Waitlist();
 		}
 
 		// REST API and Dashboard Frontend load regardless of admin context.
