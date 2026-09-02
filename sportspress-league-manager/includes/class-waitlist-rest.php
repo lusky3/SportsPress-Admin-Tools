@@ -45,6 +45,388 @@ class SPLM_Waitlist_REST {
 				),
 			)
 		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/waitlist',
+			array(
+				array(
+					'methods'             => 'GET',
+					'callback'            => array( $this, 'get_waitlist' ),
+					'permission_callback' => array( __CLASS__, 'can_manage' ),
+					'args'                => array(
+						'season'   => array(
+							'required'          => false,
+							'type'              => 'string',
+							'sanitize_callback' => 'sanitize_text_field',
+						),
+						'position' => array(
+							'required'          => false,
+							'type'              => 'string',
+							'validate_callback' => array( __CLASS__, 'validate_position' ),
+							'sanitize_callback' => 'sanitize_text_field',
+						),
+						'status'   => array(
+							'required'          => false,
+							'type'              => 'string',
+							'validate_callback' => array( __CLASS__, 'validate_status' ),
+							'sanitize_callback' => 'sanitize_text_field',
+						),
+						'page'     => array(
+							'required'          => false,
+							'type'              => 'integer',
+							'default'           => 1,
+							'sanitize_callback' => 'absint',
+						),
+						'per_page' => array(
+							'required'          => false,
+							'type'              => 'integer',
+							'default'           => 50,
+							'sanitize_callback' => 'absint',
+						),
+					),
+				),
+				array(
+					'methods'             => 'POST',
+					'callback'            => array( $this, 'create_entry' ),
+					'permission_callback' => array( __CLASS__, 'can_manage' ),
+					'args'                => array(
+						'name'              => array(
+							'required'          => true,
+							'type'              => 'string',
+							'sanitize_callback' => 'sanitize_text_field',
+						),
+						'email'             => array(
+							'required'          => true,
+							'type'              => 'string',
+							'validate_callback' => 'is_email',
+							'sanitize_callback' => 'sanitize_email',
+						),
+						'season'            => array(
+							'required'          => true,
+							'type'              => 'string',
+							'sanitize_callback' => 'sanitize_text_field',
+						),
+						'position'          => array(
+							'required'          => true,
+							'type'              => 'string',
+							'validate_callback' => array( __CLASS__, 'validate_position' ),
+							'sanitize_callback' => 'sanitize_text_field',
+						),
+						'target_product_id' => array(
+							'required'          => true,
+							'type'              => 'integer',
+							'sanitize_callback' => 'absint',
+						),
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/waitlist/(?P<id>\d+)/offer',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'offer_spot' ),
+				'permission_callback' => array( __CLASS__, 'can_manage' ),
+				'args'                => array(
+					'id'    => array(
+						'required'          => true,
+						'type'              => 'integer',
+						'sanitize_callback' => 'absint',
+					),
+					'hours' => array(
+						'required'          => false,
+						'type'              => 'integer',
+						'default'           => SPLM_Waitlist::DEFAULT_HOURS,
+						'validate_callback' => array( __CLASS__, 'validate_hours' ),
+						'sanitize_callback' => 'absint',
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/waitlist/(?P<id>\d+)/cancel',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'cancel_offer' ),
+				'permission_callback' => array( __CLASS__, 'can_manage' ),
+				'args'                => array(
+					'id' => array(
+						'required'          => true,
+						'type'              => 'integer',
+						'sanitize_callback' => 'absint',
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/waitlist/gate',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'toggle_gate' ),
+				'permission_callback' => array( __CLASS__, 'can_manage' ),
+				'args'                => array(
+					'product_id' => array(
+						'required'          => true,
+						'type'              => 'integer',
+						'validate_callback' => array( __CLASS__, 'validate_target_product' ),
+						'sanitize_callback' => 'absint',
+					),
+					'gated'      => array(
+						'required'          => true,
+						'type'              => 'boolean',
+						'sanitize_callback' => 'rest_sanitize_boolean',
+					),
+				),
+			)
+		);
+	}
+
+	/**
+	 * Permission callback for every admin route.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @return bool
+	 */
+	public static function can_manage(): bool {
+		return class_exists( 'SPLM_Capabilities' ) && SPLM_Capabilities::can_manage();
+	}
+
+	/**
+	 * @param mixed $value Candidate position.
+	 * @return bool
+	 */
+	public static function validate_position( $value ): bool {
+		return is_scalar( $value ) && in_array( (string) $value, array( 'player', 'goalie' ), true );
+	}
+
+	/**
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param mixed $value Candidate status.
+	 * @return bool
+	 */
+	public static function validate_status( $value ): bool {
+		return is_scalar( $value ) && in_array( (string) $value, SPLM_Waitlist_Database::statuses(), true );
+	}
+
+	/**
+	 * @param mixed $value Candidate window.
+	 * @return bool
+	 */
+	public static function validate_hours( $value ): bool {
+		if ( ! is_numeric( $value ) ) {
+			return false;
+		}
+		$hours = (int) $value;
+		return $hours >= SPLM_Waitlist::MIN_HOURS && $hours <= SPLM_Waitlist::MAX_HOURS;
+	}
+
+	/**
+	 * Whether a product id is one this feature actually manages.
+	 *
+	 * Constrains the gate toggle so it cannot be pointed at an arbitrary post
+	 * and make some unrelated product unpurchasable.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param mixed $value Candidate product id.
+	 * @return bool
+	 */
+	public static function validate_target_product( $value ): bool {
+		if ( ! is_numeric( $value ) || (int) $value <= 0 ) {
+			return false;
+		}
+		return in_array( (int) $value, SPLM_Waitlist_Database::target_product_ids(), true );
+	}
+
+	/**
+	 * Shape one row for the dashboard.
+	 *
+	 * claim_token is deliberately absent. Anyone who can read the queue could
+	 * otherwise claim any spot on someone else's behalf, and the dashboard has
+	 * no use for it — the offer email carries the link.
+	 *
+	 * Datetimes go out as the stored UTC strings; the client localises them.
+	 *
+	 * @param object $row Waitlist row.
+	 * @return array
+	 */
+	public static function row_to_response( $row ): array {
+		return array(
+			'id'                  => (int) $row->id,
+			'season'              => (string) $row->season,
+			'position'            => (string) $row->position,
+			'waitlist_product_id' => (int) $row->waitlist_product_id,
+			'target_product_id'   => (int) $row->target_product_id,
+			'has_target'          => (int) $row->target_product_id > 0,
+			'name'                => (string) $row->name,
+			'email'               => (string) $row->email,
+			'user_id'             => (int) $row->user_id,
+			'source_order_id'     => (int) $row->source_order_id,
+			'status'              => (string) $row->status,
+			'offered_at'          => $row->offered_at ? (string) $row->offered_at : null,
+			'expires_at'          => $row->expires_at ? (string) $row->expires_at : null,
+			'resolved_order_id'   => $row->resolved_order_id ? (int) $row->resolved_order_id : null,
+			'created_at'          => (string) $row->created_at,
+		);
+	}
+
+	/**
+	 * List the queue, sweeping any past-due offers first.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|array
+	 */
+	public function get_waitlist( $request ) {
+		$filters = array(
+			'season'   => (string) $request->get_param( 'season' ),
+			'position' => (string) $request->get_param( 'position' ),
+			'status'   => (string) $request->get_param( 'status' ),
+		);
+
+		// Backstop for WP-Cron's unreliable self-trigger, bounded to the rows
+		// this request was already asking about. sweep() swallows its own
+		// failures so a sweep problem cannot fail the read.
+		SPLM_Waitlist::sweep(
+			array(
+				'season'   => $filters['season'],
+				'position' => $filters['position'],
+			)
+		);
+
+		$page     = max( 1, (int) $request->get_param( 'page' ) );
+		$per_page = min( 100, max( 1, (int) $request->get_param( 'per_page' ) ) );
+
+		$result = SPLM_Waitlist_Database::query( $filters, $page, $per_page );
+
+		$items = array();
+		foreach ( $result['rows'] as $row ) {
+			$items[] = self::row_to_response( $row );
+		}
+
+		if ( function_exists( 'splm_rest_list_response' ) ) {
+			return splm_rest_list_response( $items, (int) $result['total'], $page, $per_page );
+		}
+
+		return array(
+			'data'        => $items,
+			'total'       => (int) $result['total'],
+			'page'        => $page,
+			'total_pages' => (int) ceil( $result['total'] / $per_page ),
+		);
+	}
+
+	/**
+	 * Add someone to the queue by hand.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return array|WP_Error
+	 */
+	public function create_entry( $request ) {
+		$email    = strtolower( (string) $request->get_param( 'email' ) );
+		$season   = (string) $request->get_param( 'season' );
+		$position = (string) $request->get_param( 'position' );
+		$target   = (int) $request->get_param( 'target_product_id' );
+
+		if ( $target <= 0 || ! wc_get_product( $target ) ) {
+			return new WP_Error(
+				'splm_waitlist_bad_target',
+				__( 'Choose an existing registration product for this entry.', 'sportspress-league-manager' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		if ( SPLM_Waitlist_Database::find_active( $email, $season, $position ) ) {
+			return new WP_Error(
+				'splm_waitlist_duplicate',
+				__( 'This person is already queued or has a live offer for that season and position.', 'sportspress-league-manager' ),
+				array( 'status' => 409 )
+			);
+		}
+
+		$row = SPLM_Waitlist::build_row(
+			array(
+				'is_waitlist'       => true,
+				'season'            => $season,
+				'position'          => $position,
+				'product_id'        => 0,
+				'target_product_id' => $target,
+				'email'             => $email,
+				'name'              => (string) $request->get_param( 'name' ),
+				'user_id'           => 0,
+				'order_id'          => 0,
+				'has_active'        => false,
+			)
+		);
+
+		if ( null === $row ) {
+			return new WP_Error(
+				'splm_waitlist_invalid',
+				__( 'That entry is missing a season or an email address.', 'sportspress-league-manager' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$id = SPLM_Waitlist_Database::insert( $row );
+		if ( ! $id ) {
+			return new WP_Error( 'splm_waitlist_write_failed', __( 'Could not save the entry.', 'sportspress-league-manager' ), array( 'status' => 500 ) );
+		}
+
+		return array(
+			'success' => true,
+			'id'      => (int) $id,
+		);
+	}
+
+	/**
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return array|WP_Error
+	 */
+	public function offer_spot( $request ) {
+		return SPLM_Waitlist::offer( (int) $request->get_param( 'id' ), $request->get_param( 'hours' ) );
+	}
+
+	/**
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return array|WP_Error
+	 */
+	public function cancel_offer( $request ) {
+		return SPLM_Waitlist::cancel( (int) $request->get_param( 'id' ) );
+	}
+
+	/**
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return array
+	 */
+	public function toggle_gate( $request ) {
+		$product_id = (int) $request->get_param( 'product_id' );
+		$gated      = (bool) $request->get_param( 'gated' );
+
+		SPLM_Waitlist_Gate::set_gated( $product_id, $gated );
+
+		return array(
+			'success'    => true,
+			'product_id' => $product_id,
+			'gated'      => SPLM_Waitlist_Gate::is_gated( $product_id ),
+		);
 	}
 
 	/**

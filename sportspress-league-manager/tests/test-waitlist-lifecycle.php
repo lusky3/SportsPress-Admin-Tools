@@ -41,16 +41,33 @@ function add_filter() { // phpcs:ignore
 }
 
 /**
- * Controllable post-meta stub for offer_warnings(), keyed by post id then
- * meta key. Empty/unset reads as falsy, matching get_post_meta()'s real
- * "no meta" behaviour.
- *
+ * Mutable harness state. A class rather than $GLOBALS because Codacy's
+ * PHPMD Superglobals rule flags the latter, and instance properties rather
+ * than statics because it flags Class::$prop[...] subscripts as undefined.
+ */
+class SPLM_Waitlist_Lifecycle_Test_State {
+	/**
+	 * Controllable post-meta stub for offer_warnings(), keyed by post id then
+	 * meta key. Empty/unset reads as falsy, matching get_post_meta()'s real
+	 * "no meta" behaviour.
+	 */
+	public $post_meta = array();
+}
+
+function splm_waitlist_lifecycle_test_state() {
+	static $state = null;
+	if ( null === $state ) {
+		$state = new SPLM_Waitlist_Lifecycle_Test_State();
+	}
+	return $state;
+}
+
+/**
  * @SuppressWarnings(PHPMD.UnusedFormalParameter)
  */
 function get_post_meta( $post_id, $key = '', $single = false ) { // phpcs:ignore
-	return $GLOBALS['__test_post_meta'][ $post_id ][ $key ] ?? '';
+	return splm_waitlist_lifecycle_test_state()->post_meta[ $post_id ][ $key ] ?? '';
 }
-$GLOBALS['__test_post_meta'] = array();
 
 class WP_Error {
 	public $code;
@@ -84,8 +101,21 @@ function rest_url( $path = '' ) {
 	return 'https://example.test/wp-json/' . ltrim( (string) $path, '/' );
 }
 
+function register_rest_route() { // phpcs:ignore
+	return true;
+}
+
+function esc_html__( $text, $domain = '' ) { // phpcs:ignore
+	return $text;
+}
+
+function esc_html( $text ) {
+	return $text;
+}
+
 require_once __DIR__ . '/../includes/class-waitlist-database.php';
 require_once __DIR__ . '/../includes/class-waitlist.php';
+require_once __DIR__ . '/../includes/class-waitlist-rest.php';
 
 $passed = 0;
 $failed = 0;
@@ -256,14 +286,14 @@ assert_test( strpos( $url, 'splm/v1/waitlist/claim/' ) !== false, 'the claim URL
 
 echo "\n=== offer_warnings() ===\n\n";
 
-$GLOBALS['__test_post_meta'][123]['_splm_waitlist_gated'] = '';
+splm_waitlist_lifecycle_test_state()->post_meta[123]['_splm_waitlist_gated'] = '';
 $ungated_warnings = $w::offer_warnings( 123 );
 assert_test(
 	1 === count( $ungated_warnings ) && 'not_gated' === $ungated_warnings[0]['code'],
 	'an ungated target product produces a not_gated warning'
 );
 
-$GLOBALS['__test_post_meta'][123]['_splm_waitlist_gated'] = '1';
+splm_waitlist_lifecycle_test_state()->post_meta[123]['_splm_waitlist_gated'] = '1';
 assert_test( array() === $w::offer_warnings( 123 ), 'a gated target product produces no warnings' );
 
 echo "\n=== offer(): the validation short-circuit ===\n\n";
@@ -291,6 +321,66 @@ $locked = $w::offer( 1, 48 );
 assert_test( is_wp_error( $locked ), 'offer() reports a held lock as an error rather than a fatal or a silent no-op' );
 assert_test( 'splm_waitlist_locked' === $locked->get_error_code(), 'the held-lock refusal carries its own error code' );
 assert_test( 409 === $locked->get_error_data()['status'], 'the held-lock refusal is a 409' );
+
+echo "\n=== REST arg validation ===\n\n";
+
+$r = 'SPLM_Waitlist_REST';
+
+assert_test( $r::validate_position( 'player' ), 'player is a valid position' );
+assert_test( $r::validate_position( 'goalie' ), 'goalie is a valid position' );
+assert_test( ! $r::validate_position( 'defence' ), 'an arbitrary position is refused' );
+assert_test( ! $r::validate_position( '' ), 'an empty position is refused' );
+assert_test( ! $r::validate_position( array( 'player' ) ), 'a non-scalar position is refused' );
+
+assert_test( $r::validate_status( 'queued' ), 'queued is a valid status filter' );
+assert_test( $r::validate_status( 'claimed' ), 'claimed is a valid status filter' );
+assert_test( ! $r::validate_status( 'pending' ), 'a WooCommerce status is not a waitlist status' );
+assert_test( ! $r::validate_status( 'DROP TABLE' ), 'an injection attempt is refused by the enum, never reaching a query' );
+
+assert_test( $r::validate_hours( 48 ), '48 hours validates' );
+assert_test( $r::validate_hours( '72' ), 'a numeric string validates' );
+assert_test( ! $r::validate_hours( 0 ), 'zero hours fails validation at the route boundary too' );
+assert_test( ! $r::validate_hours( 721 ), 'a window past the maximum fails at the route boundary' );
+assert_test( ! $r::validate_hours( 'soon' ), 'a non-numeric window fails at the route boundary' );
+
+echo "\n=== row_to_response() ===\n\n";
+
+$response_row = (object) array(
+	'id'                  => 3,
+	'season'              => 'S2026',
+	'position'            => 'goalie',
+	'waitlist_product_id' => 99,
+	'target_product_id'   => 11,
+	'name'                => 'Sam Player',
+	'email'               => 'player@example.com',
+	'user_id'             => 7,
+	'source_order_id'     => 4321,
+	'status'              => 'offered',
+	'claim_token'         => str_repeat( 'c', 64 ),
+	'offered_at'          => '2026-09-02 12:00:00',
+	'expires_at'          => '2026-09-04 12:00:00',
+	'resolved_order_id'   => null,
+	'created_at'          => '2026-09-01 08:00:00',
+	'updated_at'          => '2026-09-02 12:00:00',
+);
+
+$shaped = $r::row_to_response( $response_row );
+
+assert_test( 3 === $shaped['id'], 'the id is exposed' );
+assert_test( 'S2026' === $shaped['season'], 'the season is exposed' );
+assert_test( 'offered' === $shaped['status'], 'the status is exposed' );
+assert_test( '2026-09-04 12:00:00' === $shaped['expires_at'], 'the UTC deadline is exposed for the client to localise' );
+assert_test( true === $shaped['has_target'], 'a row with a target reports has_target true' );
+
+// The token must never reach the dashboard. Anyone who can read the queue
+// could otherwise claim any spot on someone else's behalf, and the dashboard
+// has no use for it — the offer email carries the link.
+assert_test( ! isset( $shaped['claim_token'] ), 'the claim token is NOT exposed in the admin response' );
+assert_test( ! array_key_exists( 'claim_token', $shaped ), 'the claim token key is absent entirely, not merely null' );
+
+$no_target = clone $response_row;
+$no_target->target_product_id = 0;
+assert_test( false === $r::row_to_response( $no_target )['has_target'], 'a row without a target reports has_target false so the UI can disable Offer' );
 
 echo "\n";
 echo "Passed: {$passed}\n";
