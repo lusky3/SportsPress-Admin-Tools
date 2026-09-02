@@ -33,6 +33,12 @@ class SPLM_Waitlist {
 	const MIN_HOURS     = 1;
 	const MAX_HOURS     = 720;
 
+	/**
+	 * Query arg on the claim redirect, and the line item meta it becomes.
+	 */
+	const CLAIM_ARG    = 'splm_wl';
+	const CART_META_KEY = '_splm_waitlist_id';
+
 	public function __construct() {
 		// woocommerce_order_status_changed, NOT ..._status_processing.
 		//
@@ -47,6 +53,8 @@ class SPLM_Waitlist {
 		// duplicate guard in build_row() makes repeated firing harmless.
 		add_action( 'woocommerce_order_status_changed', array( $this, 'handle_order_status_changed' ), 10, 4 );
 		add_action( self::EXPIRE_HOOK, array( __CLASS__, 'expire_offer' ) );
+		add_filter( 'woocommerce_add_cart_item_data', array( $this, 'add_cart_item_data' ), 10, 2 );
+		add_action( 'woocommerce_checkout_create_order_line_item', array( $this, 'persist_cart_item_meta' ), 10, 3 );
 	}
 
 	/**
@@ -237,6 +245,43 @@ class SPLM_Waitlist {
 	}
 
 	/**
+	 * Capture the claim token from an add-to-cart request.
+	 *
+	 * This is what makes the order tie-back exact rather than inferred: the
+	 * token rides the cart item into the order as line item meta, so matching
+	 * does not depend on the player checking out under the same email address
+	 * their waitlist order used.
+	 *
+	 * @SuppressWarnings(PHPMD.Superglobals)
+	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+	 *
+	 * @param array $data       Existing cart item data.
+	 * @param int   $product_id Product being added; unused, the token is
+	 *                          validated against the row at tie-back time.
+	 * @return array
+	 */
+	public function add_cart_item_data( $data, $product_id ) {
+		$token = isset( $_GET[ self::CLAIM_ARG ] ) ? sanitize_text_field( wp_unslash( $_GET[ self::CLAIM_ARG ] ) ) : '';
+		return self::build_cart_item_data( (array) $data, $token );
+	}
+
+	/**
+	 * Persist the bound token onto the order line item.
+	 *
+	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+	 *
+	 * @param object $item   Order line item.
+	 * @param string $key    Cart item key; unused.
+	 * @param array  $values Cart item data.
+	 * @return void
+	 */
+	public function persist_cart_item_meta( $item, $key, $values ) {
+		if ( ! empty( $values[ self::CART_META_KEY ] ) ) {
+			$item->add_meta_data( self::CART_META_KEY, (string) $values[ self::CART_META_KEY ], true );
+		}
+	}
+
+	/**
 	 * Validate a requested offer window.
 	 *
 	 * @param mixed $hours Requested hours, or null for the default.
@@ -287,6 +332,106 @@ class SPLM_Waitlist {
 			array( SPLM_Waitlist_Database::STATUS_QUEUED, SPLM_Waitlist_Database::STATUS_EXPIRED ),
 			true
 		);
+	}
+
+	/**
+	 * Whether a string has the shape of a claim token.
+	 *
+	 * Matches the REST route's own regex exactly — lowercase hex, 64 chars —
+	 * so a malformed value is rejected before it reaches a query.
+	 *
+	 * @param string $token Candidate token.
+	 * @return bool
+	 */
+	public static function is_token_shaped( $token ): bool {
+		return 1 === preg_match( '/^[a-f0-9]{64}$/', (string) $token );
+	}
+
+	/**
+	 * What state a claim link is in.
+	 *
+	 * Pure. A queued row reports 'missing' rather than its own status: its
+	 * token was cleared when the offer ended, so a link presenting one is
+	 * stale, and saying so distinguishes nothing useful.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param object|null $row Waitlist row, or null when the token is unknown.
+	 * @return string 'valid'|'missing'|'expired'|'claimed'|'cancelled'
+	 */
+	public static function claim_state( $row ): string {
+		if ( ! $row ) {
+			return 'missing';
+		}
+
+		$status = (string) $row->status;
+
+		if ( SPLM_Waitlist_Database::STATUS_CLAIMED === $status ) {
+			return 'claimed';
+		}
+		if ( SPLM_Waitlist_Database::STATUS_CANCELLED === $status ) {
+			return 'cancelled';
+		}
+		if ( SPLM_Waitlist_Database::STATUS_EXPIRED === $status ) {
+			return 'expired';
+		}
+		if ( SPLM_Waitlist_Database::STATUS_OFFERED !== $status ) {
+			return 'missing';
+		}
+		if ( SPLM_Waitlist_Database::is_past_due( $row->expires_at ) ) {
+			return 'expired';
+		}
+		// A live offer with nowhere to send the player is not claimable;
+		// redirecting to product 0 would add the wrong thing to their cart.
+		if ( (int) $row->target_product_id <= 0 ) {
+			return 'missing';
+		}
+
+		return 'valid';
+	}
+
+	/**
+	 * Convenience over claim_state().
+	 *
+	 * @param object|null $row Waitlist row.
+	 * @return bool
+	 */
+	public static function is_claimable( $row ): bool {
+		return 'valid' === self::claim_state( $row );
+	}
+
+	/**
+	 * The one message every claim failure produces.
+	 *
+	 * Deliberately identical for unknown, expired, claimed and cancelled. It
+	 * is not an oracle, and a later pass adding "more helpful error messages"
+	 * must not make it one. The state is still logged server-side.
+	 *
+	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+	 *
+	 * @param string $state Result of claim_state(); accepted for the caller's
+	 *                      clarity and deliberately not branched on.
+	 * @return string
+	 */
+	public static function claim_failure_message( $state ): string {
+		return __( 'This invite has expired. Please contact your convener.', 'sportspress-league-manager' );
+	}
+
+	/**
+	 * Cart item data for a token.
+	 *
+	 * Pure, so the binding rule is testable without a cart.
+	 *
+	 * @param array  $data  Existing cart item data.
+	 * @param string $token Claim token from the request, or ''.
+	 * @return array
+	 */
+	public static function build_cart_item_data( array $data, $token ): array {
+		if ( ! self::is_token_shaped( $token ) ) {
+			return $data;
+		}
+		$data[ self::CART_META_KEY ] = (string) $token;
+		return $data;
 	}
 
 	/**
