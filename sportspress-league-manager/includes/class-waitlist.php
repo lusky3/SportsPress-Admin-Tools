@@ -407,6 +407,45 @@ class SPLM_Waitlist {
 	}
 
 	/**
+	 * Whether a row can be tied back to a completed order by its OWN
+	 * line-item token, regardless of whether the offer's deadline has since
+	 * passed.
+	 *
+	 * is_claimable() (via claim_state()) treats a past deadline as
+	 * disqualifying, which is correct at the purchase gate and in the
+	 * email/user fallback below — in both places, expiry is the only thing
+	 * standing between a live invite and a stale one. It is the WRONG rule
+	 * at order tie-back time: a token carried on the order's own line item
+	 * (persist_cart_item_meta()) is proof the player added the target
+	 * product to their cart while the offer was still live. This league
+	 * routinely leaves $0 registration orders sitting in Processing for days
+	 * (e-Transfer reconciliation, manual completion by a convener), so the
+	 * order can easily complete AFTER the row's deadline has already been
+	 * swept to `expired` by cron. That is a timing artifact of when someone
+	 * clicked a button in wp-admin — not evidence the player missed their
+	 * window — and must not retroactively invalidate a claim that already
+	 * happened. Still rejects `claimed` (already resolved), `cancelled`, a
+	 * missing row, and a zero target (nothing to have redirected to).
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param object|null $row Waitlist row, or null when the token is unknown.
+	 * @return bool
+	 */
+	public static function is_claimable_by_token( $row ): bool {
+		if ( ! $row ) {
+			return false;
+		}
+
+		$status = (string) $row->status;
+		if ( ! in_array( $status, array( SPLM_Waitlist_Database::STATUS_OFFERED, SPLM_Waitlist_Database::STATUS_EXPIRED ), true ) ) {
+			return false;
+		}
+
+		return (int) $row->target_product_id > 0;
+	}
+
+	/**
 	 * The one message every claim failure produces.
 	 *
 	 * Deliberately identical for unknown, expired, claimed and cancelled. It
@@ -906,7 +945,11 @@ class SPLM_Waitlist {
 	 * @return object|null
 	 */
 	public static function match_offer( $by_token, array $offered_for_product, $email, $user_id ) {
-		if ( $by_token && self::is_claimable( $by_token ) ) {
+		// is_claimable_by_token(), not is_claimable(): this row's token came
+		// off the order's own line item, which is proof the player acted
+		// inside the claim window regardless of when the order itself was
+		// completed. See is_claimable_by_token()'s docblock.
+		if ( $by_token && self::is_claimable_by_token( $by_token ) ) {
 			return $by_token;
 		}
 
@@ -1002,11 +1045,16 @@ class SPLM_Waitlist {
 				? SPLM_Waitlist_Database::find_by_token( $token )
 				: null;
 
-			// A claimable token wins outright (match_offer() never consults
-			// $offered in that case), so the product-plus-email/user lookup —
-			// including its variation-parent retry — is skipped entirely on
-			// the common path. One fewer query per completed order.
-			$token_claimable = $by_token && self::is_claimable( $by_token );
+			// A claimable-by-token row wins outright (match_offer() never
+			// consults $offered in that case), so the product-plus-email/user
+			// lookup — including its variation-parent retry — is skipped
+			// entirely on the common path. One fewer query per completed
+			// order. is_claimable_by_token(), not is_claimable(): see that
+			// method's docblock — an admin completing this order after the
+			// row's deadline must not push this optimisation into running
+			// the fallback lookup, which would find nothing anyway since it
+			// only selects status = 'offered'.
+			$token_claimable = $by_token && self::is_claimable_by_token( $by_token );
 
 			$offered = array();
 			if ( ! $token_claimable ) {

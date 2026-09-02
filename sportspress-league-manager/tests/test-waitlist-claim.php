@@ -420,6 +420,23 @@ assert_test( ! $w::is_claimable( row( array( 'expires_at' => gmdate( 'Y-m-d H:i:
 // on a site running four to five hours behind UTC.
 assert_test( $w::is_claimable( row( array( 'expires_at' => gmdate( 'Y-m-d H:i:s', time() + ( 2 * 3600 ) ) ) ) ), 'a deadline two hours out is still claimable under a non-UTC site timezone' );
 
+echo "\n=== is_claimable_by_token() (C1) ===\n\n";
+
+// The whole point of this predicate: unlike is_claimable(), a past deadline
+// does not disqualify. A token on the order's own line item is proof the
+// player acted inside the window regardless of when an admin completed the
+// order.
+assert_test( $w::is_claimable_by_token( row() ), 'a live offer is claimable by token' );
+assert_test( $w::is_claimable_by_token( row( array( 'expires_at' => gmdate( 'Y-m-d H:i:s', time() - 60 ) ) ) ), 'a lapsed-but-still-offered row is claimable by token' );
+assert_test( $w::is_claimable_by_token( row( array( 'status' => 'expired', 'expires_at' => null ) ) ), 'a row already flipped to expired is claimable by token' );
+
+// It still rejects everything is_claimable() rejects except expiry.
+assert_test( ! $w::is_claimable_by_token( null ), 'an unknown row is not claimable by token' );
+assert_test( ! $w::is_claimable_by_token( row( array( 'status' => 'claimed' ) ) ), 'an already-claimed row is not claimable by token' );
+assert_test( ! $w::is_claimable_by_token( row( array( 'status' => 'cancelled' ) ) ), 'a cancelled row is not claimable by token' );
+assert_test( ! $w::is_claimable_by_token( row( array( 'status' => 'queued' ) ) ), 'a queued row is not claimable by token' );
+assert_test( ! $w::is_claimable_by_token( row( array( 'target_product_id' => 0 ) ) ), 'a row with no target product is not claimable by token even while offered' );
+
 echo "\n=== every failure looks the same from outside ===\n\n";
 
 // Deliberately NOT an oracle. A caller must not be able to tell an unknown
@@ -610,12 +627,31 @@ $token_row = row( array( 'id' => 5, 'email' => 'queued@example.com' ) );
 assert_test( 5 === $w::match_offer( $token_row, array(), 'someone-else@example.com', 0 )->id, 'a line item token wins outright, whatever email the order used' );
 assert_test( 5 === $w::match_offer( $token_row, array(), '', 0 )->id, 'a line item token resolves even with no billing email' );
 
-// But a token pointing at a row that is no longer offerable must not resolve.
+// But a token pointing at a row that is no longer offerable AT ALL must not
+// re-resolve -- claimed and cancelled are terminal, and is_claimable_by_token()
+// rejects both regardless of the token's own shape.
 $stale_token_row = row( array( 'id' => 5, 'status' => 'claimed' ) );
 assert_test( null === $w::match_offer( $stale_token_row, array(), 'player@example.com', 0 ), 'a token for an already-claimed row does not re-resolve' );
 
+$cancelled_token_row = row( array( 'id' => 5, 'status' => 'cancelled' ) );
+assert_test( null === $w::match_offer( $cancelled_token_row, array(), 'player@example.com', 0 ), 'a token for a cancelled row does not resolve' );
+
+// C1: unlike is_claimable(), a token match on the order's own line item DOES
+// still resolve once the deadline has passed, whether or not the row's
+// status has actually flipped to 'expired' yet -- see
+// is_claimable_by_token()'s docblock. This was the exact bug: an order that
+// completes (e.g. an admin manually completing a Processing order days
+// later) after its offer's deadline used to be silently dropped here.
 $lapsed_token_row = row( array( 'id' => 5, 'expires_at' => gmdate( 'Y-m-d H:i:s', time() - 60 ) ) );
-assert_test( null === $w::match_offer( $lapsed_token_row, array(), 'player@example.com', 0 ), 'a token for a lapsed offer does not resolve' );
+assert_test( 5 === $w::match_offer( $lapsed_token_row, array(), 'player@example.com', 0 )->id, 'a token for a lapsed-but-still-offered row still resolves (C1)' );
+
+$expired_status_token_row = row( array( 'id' => 5, 'status' => 'expired', 'expires_at' => null ) );
+assert_test( 5 === $w::match_offer( $expired_status_token_row, array(), 'player@example.com', 0 )->id, 'a token for a row already flipped to expired still resolves (C1)' );
+
+// A token is still worthless without a target: nowhere to have redirected to
+// in the first place, so there is nothing authoritative about it.
+$no_target_token_row = row( array( 'id' => 5, 'status' => 'expired', 'target_product_id' => 0 ) );
+assert_test( null === $w::match_offer( $no_target_token_row, array(), 'player@example.com', 0 ), 'a token for a row with no target product does not resolve even when expired' );
 
 echo "\n=== match_offer(): the fallback path ===\n\n";
 
@@ -714,6 +750,56 @@ assert_test( 1 === count( $token_info ), 'a successful claim logs exactly one in
 assert_test( false !== strpos( $token_info[0]['message'] ?? '', 'matched_by=token' ), 'the log records the token path, not the fallback' );
 assert_test( false !== strpos( $token_info[0]['message'] ?? '', 'waitlist_id=20' ), 'the log names the matched waitlist id' );
 assert_test( false !== strpos( $token_info[0]['message'] ?? '', 'order_id=500' ), 'the log names the fulfilling order id' );
+
+echo "\n=== handle_order_completed(): a claim survives the offer's own expiry (C1) ===\n\n";
+
+// The exact bug: a $0 registration order sits in Processing (this league's
+// baseline for these products) and is completed by hand days later, after
+// the row's own offer window has already elapsed and the row has been
+// swept to 'expired' by cron/sweep(). The token the player's cart carried
+// is still on the ORDER's own line item (persist_cart_item_meta() put it
+// there at checkout time, unconditionally, before the offer window ever
+// mattered), so it is still discoverable here. Before the fix,
+// match_offer() applied is_claimable() to $by_token and expiry alone
+// silenced this whole path: a player who paid inside the window showed up
+// as merely 'expired' in the queue, and the natural next admin action
+// (re-offer to the next person) would double-book the spot with no stock
+// control to catch it.
+reset_waitlist_order_fakes();
+
+$expired_claim_row          = row(
+	array(
+		'id'     => 23,
+		'email'  => 'queued@example.com',
+		'status' => 'expired',
+	)
+);
+$expired_claim_token        = str_repeat( '9', 64 );
+$wpdb->rows[ $expired_claim_token ] = $expired_claim_row;
+
+$expired_claim_item = new Fake_Order_Item();
+$expired_claim_item->add_meta_data( $w::CART_META_KEY, $expired_claim_token, true );
+$expired_claim_item->set_product( new Fake_WC_Product( 11 ) );
+
+$expired_claim_order                 = new Fake_WC_Order( 504, 'someone-else@example.com', 0, array( $expired_claim_item ) );
+splm_claim_test_state()->orders[504] = $expired_claim_order;
+
+$wl->handle_order_completed( 504 );
+
+assert_test( 1 === count( $wpdb->update_calls ), 'an order completed after the row expired still writes exactly one update (C1)' );
+$expired_claim_update = $wpdb->update_calls[0] ?? array(
+	'data'  => array(),
+	'where' => array(),
+);
+assert_test( 'claimed' === ( $expired_claim_update['data']['status'] ?? null ), 'the expired row is still marked claimed rather than left silently expired (C1)' );
+assert_test( 504 === ( $expired_claim_update['data']['resolved_order_id'] ?? null ), 'resolved_order_id ties back to the late-completed order (C1)' );
+assert_test( array( 'id' => 23 ) === ( $expired_claim_update['where'] ?? null ), 'the update targets the matched (formerly expired) row by id' );
+
+$expired_claim_info = waitlist_log_calls( 'info' );
+assert_test( 1 === count( $expired_claim_info ), 'the late claim logs exactly one success line (C1)' );
+assert_test( false !== strpos( $expired_claim_info[0]['message'] ?? '', 'matched_by=token' ), 'the log records the token path won, not the fallback (C1)' );
+assert_test( false !== strpos( $expired_claim_info[0]['message'] ?? '', 'waitlist_id=23' ), 'the log names the matched waitlist id (C1)' );
+assert_test( false !== strpos( $expired_claim_info[0]['message'] ?? '', 'order_id=504' ), 'the log names the fulfilling order id (C1)' );
 
 echo "\n=== handle_order_completed(): a failed write is not misreported as success ===\n\n";
 
