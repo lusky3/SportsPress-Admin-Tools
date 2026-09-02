@@ -64,6 +64,276 @@ function Countdown( { expiresAt } ) {
 	);
 }
 
+// I1: pairs a queued/expired row (that has no registration product) with one
+// in place. The explanatory text stays a `role="note"` aside, but the input
+// and button now live in a sibling wrapper — a11y reviewers flagged the note
+// region for holding interactive controls, which isn't what that role is for.
+// The input also gets a real (visually hidden) <label>; it previously relied
+// on a placeholder alone, which axe reports as no accessible name. The Set
+// button's aria-label names the row so a screen reader user doesn't hear a
+// table full of buttons that all just say "Set".
+function TargetPairingNotice( { row, value, disabled, onChange, onSet } ) {
+	const inputId = `splm-waitlist-target-${ row.id }`;
+	const who = row.name || row.email;
+
+	return (
+		<div className="splm-waitlist__flag">
+			<span role="note">No registration product paired — set one before offering.</span>
+			<span className="splm-waitlist__flag-controls">
+				<label htmlFor={ inputId } className="screen-reader-text">
+					{ `Registration product ID for ${ who }` }
+				</label>
+				<input
+					id={ inputId }
+					type="number"
+					className="splm-select splm-waitlist__target-input"
+					min="1"
+					placeholder="Product ID"
+					value={ value ?? '' }
+					onChange={ onChange }
+				/>
+				<button
+					type="button"
+					className="splm-btn splm-btn--small"
+					disabled={ disabled }
+					aria-label={ `Set registration product for ${ who }` }
+					onClick={ onSet }
+				>
+					{ disabled ? 'Setting…' : 'Set' }
+				</button>
+			</span>
+		</div>
+	);
+}
+
+// Deadline column: only offered rows have a live countdown, everything else
+// is a dash.
+function DeadlineCell( { row } ) {
+	if ( row.status !== 'offered' ) {
+		return '—';
+	}
+	return (
+		<>
+			{ formatLocal( row.expires_at ) }{ ' ' }
+			<Countdown expiresAt={ row.expires_at } />
+		</>
+	);
+}
+
+// Row actions: Offer/Re-offer is only available to queued/expired rows and is
+// disabled (with an explanatory title) until a target product is paired;
+// Cancel/Remove is available to everything except a finished row.
+function RowActions( { row, canOffer, canCancel, busy, onOffer, onCancel } ) {
+	return (
+		<td className="splm-waitlist__actions">
+			{ canOffer && (
+				<button
+					type="button"
+					className="splm-btn splm-btn--small"
+					disabled={ busy || ! row.has_target }
+					title={ row.has_target ? '' : 'This entry has no registration product paired.' }
+					onClick={ onOffer }
+				>
+					{ row.status === 'expired' ? 'Re-offer' : 'Offer' }
+				</button>
+			) }
+			{ canCancel && (
+				<button
+					type="button"
+					className="splm-btn splm-btn--small splm-btn--danger"
+					disabled={ busy }
+					onClick={ onCancel }
+				>
+					{ row.status === 'offered' ? 'Cancel offer' : 'Remove' }
+				</button>
+			) }
+		</td>
+	);
+}
+
+// One queue row: joined/name/email/season/position, status (plus the inline
+// target-pairing control when the row has none), deadline, and actions. Knows
+// how to render itself and delegates back to the handlers it's given — all
+// the data-fetching and mutation logic stays in Waitlist.
+function WaitlistRow( { row, targetInput, settingTargetId, busyId, onTargetInputChange, onSetTarget, onOffer, onCancel } ) {
+	const canOffer = row.status === 'queued' || row.status === 'expired';
+	const canCancel = row.status !== 'claimed' && row.status !== 'cancelled';
+
+	return (
+		<tr>
+			<td>{ formatLocal( row.created_at ) }</td>
+			<td>{ row.name || '—' }</td>
+			<td>{ row.email }</td>
+			<td>{ row.season }</td>
+			<td>{ row.position }</td>
+			<td>
+				<span className={ `splm-waitlist__status splm-waitlist__status--${ row.status }` }>
+					{ row.status }
+				</span>
+				{ ! row.has_target && (
+					<TargetPairingNotice
+						row={ row }
+						value={ targetInput }
+						disabled={ settingTargetId === row.id }
+						onChange={ ( e ) => onTargetInputChange( row.id, e.target.value ) }
+						onSet={ () => onSetTarget( row ) }
+					/>
+				) }
+			</td>
+			<td><DeadlineCell row={ row } /></td>
+			<RowActions
+				row={ row }
+				canOffer={ canOffer }
+				canCancel={ canCancel }
+				busy={ busyId === row.id }
+				onOffer={ () => onOffer( row ) }
+				onCancel={ () => onCancel( row ) }
+			/>
+		</tr>
+	);
+}
+
+// Season access panel: lists the registration products backing the rows
+// currently on screen and lets a convener toggle purchase gating on each.
+function SeasonAccessPanel( { targets, gates, onGate } ) {
+	return (
+		<div className="splm-card splm-waitlist__access">
+			<h3>Season access</h3>
+			<p className="splm-muted">
+				A gated product cannot be bought by the public — only by someone holding a live
+				offer. Un-gating puts it back on sale to anyone who has its URL.
+			</p>
+			{ targets.length === 0 && <p className="splm-empty">No registration products for the current filter.</p> }
+			<ul className="splm-waitlist__gates">
+				{ targets.map( ( t ) => {
+					const gated = gates[ t.id ];
+					return (
+						<li key={ t.id }>
+							<span>#{ t.id } — { t.season } { t.position }</span>
+							<button type="button" className="splm-btn splm-btn--small" onClick={ () => onGate( t.id, ! gated ) }>
+								{ gated ? 'Un-gate' : 'Gate' }
+							</button>
+						</li>
+					);
+				} ) }
+			</ul>
+		</div>
+	);
+}
+
+// Season/position/status filters. Season is free text (debounced by the
+// caller); position and status are discrete selects that apply immediately.
+function Filters( { seasonInput, onSeasonInputChange, position, onPositionChange, status, onStatusChange } ) {
+	return (
+		<div className="splm-waitlist__filters">
+			<label>
+				<span className="splm-waitlist__filter-label">Season</span>
+				<input
+					type="text"
+					className="splm-select"
+					value={ seasonInput }
+					onChange={ ( e ) => onSeasonInputChange( e.target.value ) }
+				/>
+			</label>
+			<label>
+				<span className="splm-waitlist__filter-label">Position</span>
+				<select
+					className="splm-select"
+					value={ position }
+					onChange={ ( e ) => onPositionChange( e.target.value ) }
+				>
+					<option value="">All</option>
+					<option value="player">Player</option>
+					<option value="goalie">Goalie</option>
+				</select>
+			</label>
+			<label>
+				<span className="splm-waitlist__filter-label">Status</span>
+				<select
+					className="splm-select"
+					value={ status }
+					onChange={ ( e ) => onStatusChange( e.target.value ) }
+				>
+					<option value="">All</option>
+					<option value="queued">Queued</option>
+					<option value="offered">Offered</option>
+					<option value="claimed">Claimed</option>
+					<option value="expired">Expired</option>
+					<option value="cancelled">Cancelled</option>
+				</select>
+			</label>
+		</div>
+	);
+}
+
+// Manual-add form: knows about the fields a new entry needs, nothing about
+// how adding actually happens.
+function AddEntryForm( { form, adding, onFieldChange, onSubmit } ) {
+	return (
+		<div className="splm-card splm-waitlist__add">
+			<h3>Add to waitlist</h3>
+			<form onSubmit={ onSubmit } className="splm-waitlist__add-form">
+				<label>
+					<span className="splm-waitlist__filter-label">Name</span>
+					<input
+						type="text"
+						className="splm-select"
+						required
+						value={ form.name }
+						onChange={ ( e ) => onFieldChange( 'name', e.target.value ) }
+					/>
+				</label>
+				<label>
+					<span className="splm-waitlist__filter-label">Email</span>
+					<input
+						type="email"
+						className="splm-select"
+						required
+						value={ form.email }
+						onChange={ ( e ) => onFieldChange( 'email', e.target.value ) }
+					/>
+				</label>
+				<label>
+					<span className="splm-waitlist__filter-label">Season</span>
+					<input
+						type="text"
+						className="splm-select"
+						required
+						placeholder="S2026"
+						value={ form.season }
+						onChange={ ( e ) => onFieldChange( 'season', e.target.value ) }
+					/>
+				</label>
+				<label>
+					<span className="splm-waitlist__filter-label">Position</span>
+					<select
+						className="splm-select"
+						value={ form.position }
+						onChange={ ( e ) => onFieldChange( 'position', e.target.value ) }
+					>
+						<option value="player">Player</option>
+						<option value="goalie">Goalie</option>
+					</select>
+				</label>
+				<label>
+					<span className="splm-waitlist__filter-label">Registration product ID</span>
+					<input
+						type="number"
+						className="splm-select"
+						required
+						min="1"
+						value={ form.target_product_id }
+						onChange={ ( e ) => onFieldChange( 'target_product_id', e.target.value ) }
+					/>
+				</label>
+				<button type="submit" className="splm-btn splm-btn--primary" disabled={ adding }>
+					{ adding ? 'Adding…' : 'Add' }
+				</button>
+			</form>
+		</div>
+	);
+}
+
 export default function Waitlist() {
 	const [ rows, setRows ] = useState( [] );
 	const [ loading, setLoading ] = useState( true );
@@ -230,6 +500,10 @@ export default function Waitlist() {
 			.finally( () => setSettingTargetId( 0 ) );
 	};
 
+	const handleTargetInputChange = ( id, value ) => {
+		setTargetInputs( ( prev ) => ( { ...prev, [ id ]: value } ) );
+	};
+
 	const handleAdd = ( event ) => {
 		event.preventDefault();
 		setAdding( true );
@@ -244,6 +518,10 @@ export default function Waitlist() {
 			.finally( () => setAdding( false ) );
 	};
 
+	const handleFormFieldChange = ( field, value ) => {
+		setForm( { ...form, [ field ]: value } );
+	};
+
 	return (
 		<div className="splm-waitlist">
 			<h2>Waitlist <HelpLink topic="waitlist" /></h2>
@@ -254,66 +532,16 @@ export default function Waitlist() {
 				<div key={ w.code } className="splm-alert splm-alert--warning" role="alert">{ w.message }</div>
 			) ) }
 
-			<div className="splm-card splm-waitlist__access">
-				<h3>Season access</h3>
-				<p className="splm-muted">
-					A gated product cannot be bought by the public — only by someone holding a live
-					offer. Un-gating puts it back on sale to anyone who has its URL.
-				</p>
-				{ targets.length === 0 && <p className="splm-empty">No registration products for the current filter.</p> }
-				<ul className="splm-waitlist__gates">
-					{ targets.map( ( t ) => {
-						const gated = gates[ t.id ];
-						return (
-							<li key={ t.id }>
-								<span>#{ t.id } — { t.season } { t.position }</span>
-								<button type="button" className="splm-btn splm-btn--small" onClick={ () => handleGate( t.id, ! gated ) }>
-									{ gated ? 'Un-gate' : 'Gate' }
-								</button>
-							</li>
-						);
-					} ) }
-				</ul>
-			</div>
+			<SeasonAccessPanel targets={ targets } gates={ gates } onGate={ handleGate } />
 
-			<div className="splm-waitlist__filters">
-				<label>
-					<span className="splm-waitlist__filter-label">Season</span>
-					<input
-						type="text"
-						className="splm-select"
-						value={ seasonInput }
-						onChange={ ( e ) => setSeasonInput( e.target.value ) }
-					/>
-				</label>
-				<label>
-					<span className="splm-waitlist__filter-label">Position</span>
-					<select
-						className="splm-select"
-						value={ position }
-						onChange={ ( e ) => setPosition( e.target.value ) }
-					>
-						<option value="">All</option>
-						<option value="player">Player</option>
-						<option value="goalie">Goalie</option>
-					</select>
-				</label>
-				<label>
-					<span className="splm-waitlist__filter-label">Status</span>
-					<select
-						className="splm-select"
-						value={ status }
-						onChange={ ( e ) => setStatus( e.target.value ) }
-					>
-						<option value="">All</option>
-						<option value="queued">Queued</option>
-						<option value="offered">Offered</option>
-						<option value="claimed">Claimed</option>
-						<option value="expired">Expired</option>
-						<option value="cancelled">Cancelled</option>
-					</select>
-				</label>
-			</div>
+			<Filters
+				seasonInput={ seasonInput }
+				onSeasonInputChange={ setSeasonInput }
+				position={ position }
+				onPositionChange={ setPosition }
+				status={ status }
+				onStatusChange={ setStatus }
+			/>
 
 			{ loading && <div className="splm-loading">Loading…</div> }
 
@@ -336,139 +564,29 @@ export default function Waitlist() {
 						</thead>
 						<tbody>
 							{ rows.map( ( row ) => (
-								<tr key={ row.id }>
-									<td>{ formatLocal( row.created_at ) }</td>
-									<td>{ row.name || '—' }</td>
-									<td>{ row.email }</td>
-									<td>{ row.season }</td>
-									<td>{ row.position }</td>
-									<td>
-										<span className={ `splm-waitlist__status splm-waitlist__status--${ row.status }` }>
-											{ row.status }
-										</span>
-										{ ! row.has_target && (
-											<div className="splm-waitlist__flag" role="note">
-												<span>No registration product paired — set one before offering.</span>
-												<input
-													type="number"
-													className="splm-select splm-waitlist__target-input"
-													min="1"
-													placeholder="Product ID"
-													value={ targetInputs[ row.id ] ?? '' }
-													onChange={ ( e ) => setTargetInputs( ( prev ) => ( { ...prev, [ row.id ]: e.target.value } ) ) }
-												/>
-												<button
-													type="button"
-													className="splm-btn splm-btn--small"
-													disabled={ settingTargetId === row.id }
-													onClick={ () => handleSetTarget( row ) }
-												>
-													{ settingTargetId === row.id ? 'Setting…' : 'Set' }
-												</button>
-											</div>
-										) }
-									</td>
-									<td>
-										{ row.status === 'offered' ? (
-											<>
-												{ formatLocal( row.expires_at ) }{ ' ' }
-												<Countdown expiresAt={ row.expires_at } />
-											</>
-										) : (
-											'—'
-										) }
-									</td>
-									<td className="splm-waitlist__actions">
-										{ ( row.status === 'queued' || row.status === 'expired' ) && (
-											<button
-												type="button"
-												className="splm-btn splm-btn--small"
-												disabled={ busyId === row.id || ! row.has_target }
-												title={ row.has_target ? '' : 'This entry has no registration product paired.' }
-												onClick={ () => handleOffer( row ) }
-											>
-												{ row.status === 'expired' ? 'Re-offer' : 'Offer' }
-											</button>
-										) }
-										{ row.status !== 'claimed' && row.status !== 'cancelled' && (
-											<button
-												type="button"
-												className="splm-btn splm-btn--small splm-btn--danger"
-												disabled={ busyId === row.id }
-												onClick={ () => handleCancel( row ) }
-											>
-												{ row.status === 'offered' ? 'Cancel offer' : 'Remove' }
-											</button>
-										) }
-									</td>
-								</tr>
+								<WaitlistRow
+									key={ row.id }
+									row={ row }
+									targetInput={ targetInputs[ row.id ] ?? '' }
+									settingTargetId={ settingTargetId }
+									busyId={ busyId }
+									onTargetInputChange={ handleTargetInputChange }
+									onSetTarget={ handleSetTarget }
+									onOffer={ handleOffer }
+									onCancel={ handleCancel }
+								/>
 							) ) }
 						</tbody>
 					</table>
 				</div>
 			) }
 
-			<div className="splm-card splm-waitlist__add">
-				<h3>Add to waitlist</h3>
-				<form onSubmit={ handleAdd } className="splm-waitlist__add-form">
-					<label>
-						<span className="splm-waitlist__filter-label">Name</span>
-						<input
-							type="text"
-							className="splm-select"
-							required
-							value={ form.name }
-							onChange={ ( e ) => setForm( { ...form, name: e.target.value } ) }
-						/>
-					</label>
-					<label>
-						<span className="splm-waitlist__filter-label">Email</span>
-						<input
-							type="email"
-							className="splm-select"
-							required
-							value={ form.email }
-							onChange={ ( e ) => setForm( { ...form, email: e.target.value } ) }
-						/>
-					</label>
-					<label>
-						<span className="splm-waitlist__filter-label">Season</span>
-						<input
-							type="text"
-							className="splm-select"
-							required
-							placeholder="S2026"
-							value={ form.season }
-							onChange={ ( e ) => setForm( { ...form, season: e.target.value } ) }
-						/>
-					</label>
-					<label>
-						<span className="splm-waitlist__filter-label">Position</span>
-						<select
-							className="splm-select"
-							value={ form.position }
-							onChange={ ( e ) => setForm( { ...form, position: e.target.value } ) }
-						>
-							<option value="player">Player</option>
-							<option value="goalie">Goalie</option>
-						</select>
-					</label>
-					<label>
-						<span className="splm-waitlist__filter-label">Registration product ID</span>
-						<input
-							type="number"
-							className="splm-select"
-							required
-							min="1"
-							value={ form.target_product_id }
-							onChange={ ( e ) => setForm( { ...form, target_product_id: e.target.value } ) }
-						/>
-					</label>
-					<button type="submit" className="splm-btn splm-btn--primary" disabled={ adding }>
-						{ adding ? 'Adding…' : 'Add' }
-					</button>
-				</form>
-			</div>
+			<AddEntryForm
+				form={ form }
+				adding={ adding }
+				onFieldChange={ handleFormFieldChange }
+				onSubmit={ handleAdd }
+			/>
 		</div>
 	);
 }

@@ -1277,6 +1277,14 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: var(--splm-text); }
 	width: 6rem;
 }
 
+/* A11y: the input + Set button live in a wrapper sibling to the role="note"
+   message (interactive controls don't belong inside a note region). display:
+   contents drops the wrapper from the box tree so its children stay direct
+   flex items of .splm-waitlist__flag, keeping the original wrapping layout. */
+.splm-waitlist__flag-controls {
+	display: contents;
+}
+
 .splm-waitlist__add-form {
 	display: flex;
 	flex-wrap: wrap;
