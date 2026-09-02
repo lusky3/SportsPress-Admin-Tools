@@ -36,7 +36,7 @@ class SPLM_Waitlist {
 	/**
 	 * Query arg on the claim redirect, and the line item meta it becomes.
 	 */
-	const CLAIM_ARG    = 'splm_wl';
+	const CLAIM_ARG     = 'splm_wl';
 	const CART_META_KEY = '_splm_waitlist_id';
 
 	public function __construct() {
@@ -261,6 +261,7 @@ class SPLM_Waitlist {
 	 * @return array
 	 */
 	public function add_cart_item_data( $data, $product_id ) {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only capture of our own claim token from the add-to-cart redirect; is_token_shaped() validates it below and this causes no state change, so a nonce would be meaningless on a link that arrives via email.
 		$token = isset( $_GET[ self::CLAIM_ARG ] ) ? sanitize_text_field( wp_unslash( $_GET[ self::CLAIM_ARG ] ) ) : '';
 		return self::build_cart_item_data( (array) $data, $token );
 	}

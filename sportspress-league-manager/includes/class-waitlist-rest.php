@@ -48,11 +48,21 @@ class SPLM_Waitlist_REST {
 	}
 
 	/**
-	 * The add-to-cart URL a valid claim redirects to.
+	 * The add-to-cart URL a valid claim redirects to, or '' when there is
+	 * nowhere to send the player.
 	 *
 	 * WooCommerce's own add-to-cart flow, so the resulting order is created by
 	 * WooCommerce exactly as any other — no custom order construction, and no
 	 * reimplementation of tax, coupon or stock handling.
+	 *
+	 * get_permalink() returns false for a deleted post. Without this guard,
+	 * add_query_arg( $args, false ) falls back to $_SERVER['REQUEST_URI'] —
+	 * this route's OWN URL — so the redirect would point back at itself: the
+	 * same still-valid row re-validates on every hop, producing a loop capped
+	 * only by the browser, with one SELECT per hop, on an unauthenticated
+	 * endpoint. claim_state() already guards target_product_id <= 0 for the
+	 * same reason; this is the same concern for a target that is nonzero but
+	 * has since been deleted.
 	 *
 	 * @param object $row   Waitlist row.
 	 * @param string $token Claim token.
@@ -60,13 +70,18 @@ class SPLM_Waitlist_REST {
 	 */
 	public static function add_to_cart_url( $row, $token ): string {
 		$product_id = (int) $row->target_product_id;
+		$permalink  = get_permalink( $product_id );
+
+		if ( ! $permalink ) {
+			return '';
+		}
 
 		return add_query_arg(
 			array(
 				'add-to-cart'             => $product_id,
-				SPLM_Waitlist::CLAIM_ARG => (string) $token,
+				SPLM_Waitlist::CLAIM_ARG  => (string) $token,
 			),
-			get_permalink( $product_id )
+			$permalink
 		);
 	}
 
@@ -80,6 +95,13 @@ class SPLM_Waitlist_REST {
 	 * redirect only; the session entitlement is seeded on the frontend
 	 * add-to-cart request that carries the token, not here.
 	 *
+	 * One narrow exception: on a failure, SPAT_Logger's best-effort throttle
+	 * may write a spat_log_win_ or spat_log_cnt_ option on a site with no
+	 * persistent object cache. That write is bounded, only happens when a
+	 * claim is already being rejected, and never touches the waitlist row or
+	 * its token — it does not reopen the prefetch-safety hole this comment
+	 * guards.
+	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
 	 * @param WP_REST_Request $request Request.
@@ -89,16 +111,26 @@ class SPLM_Waitlist_REST {
 		$token = (string) $request->get_param( 'token' );
 		$row   = SPLM_Waitlist_Database::find_by_token( $token );
 		$state = SPLM_Waitlist::claim_state( $row );
+		$url   = ( 'valid' === $state ) ? self::add_to_cart_url( $row, $token ) : '';
+
+		if ( 'valid' === $state && '' === $url ) {
+			// Otherwise claimable, but nowhere to send the player — e.g. its
+			// target product post was deleted after the offer went out. Fall
+			// through to the ordinary dead-link response rather than the
+			// redirect loop add_to_cart_url() would otherwise produce.
+			$state = 'missing';
+		}
 
 		if ( 'valid' !== $state ) {
 			if ( class_exists( 'SPAT_Logger' ) ) {
+				// The uniform message below withholds the real state from the
+				// player by design; it must not also be withheld from the
+				// log. SPAT_Logger::write() only emits a $context array when
+				// spat_verbose is on, so the state and row id are folded into
+				// the message string itself to survive on a default install.
 				SPAT_Logger::warn(
 					'waitlist',
-					'a claim link was rejected',
-					array(
-						'state'       => $state,
-						'waitlist_id' => $row ? (int) $row->id : 0,
-					)
+					sprintf( 'a claim link was rejected: state=%s waitlist_id=%d', $state, $row ? (int) $row->id : 0 )
 				);
 			}
 			return $this->failure_response( $state );
@@ -107,7 +139,13 @@ class SPLM_Waitlist_REST {
 		return new WP_REST_Response(
 			null,
 			302,
-			array( 'Location' => self::add_to_cart_url( $row, $token ) )
+			array(
+				'Location'      => $url,
+				// The redirect carries a live, single-use credential in its
+				// query string. Cache it and a shared cache could hand the
+				// same claim link's Location to a different visitor.
+				'Cache-Control' => 'no-store',
+			)
 		);
 	}
 
@@ -120,6 +158,19 @@ class SPLM_Waitlist_REST {
 	 * The body is a static translated string. Nothing from the token or the
 	 * database is interpolated into it, so there is nothing to escape and no
 	 * way for a crafted token to reach the output.
+	 *
+	 * WP_REST_Server::response_to_data() runs every response through
+	 * wp_json_encode(), and get_json_encode_options() returns 0 unless
+	 * `_pretty` is requested — so forward slashes and quotes get escaped
+	 * (`<\/title>`). That breaks this page: `<\/title>` does not close an
+	 * RCDATA <title> element, so the browser's tokenizer swallows the rest of
+	 * the document as title text and the player sees a blank page. This
+	 * mirrors sportspress-score-sheets/includes/class-rest-api.php's
+	 * raw_response(): a one-shot rest_pre_serve_request filter short-circuits
+	 * the JSON serializer for this exact response object. The short-circuit
+	 * bypasses WP_REST_Server's normal header-sending path entirely, so the
+	 * filter re-emits the headers itself via header() rather than relying on
+	 * $response->header() having taken effect.
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
@@ -138,8 +189,27 @@ class SPLM_Waitlist_REST {
 
 		$response = new WP_REST_Response( $html, 200 );
 		$response->header( 'Content-Type', 'text/html; charset=utf-8' );
+		$response->header( 'X-Content-Type-Options', 'nosniff' );
 		// A dead link must not be cached as though it were the live answer.
 		$response->header( 'Cache-Control', 'no-store' );
+
+		add_filter(
+			'rest_pre_serve_request',
+			static function ( $served, $result ) use ( $response, $html ) {
+				if ( $result !== $response ) {
+					return $served;
+				}
+				if ( ! headers_sent() ) {
+					header( 'Content-Type: text/html; charset=utf-8' );
+					header( 'X-Content-Type-Options: nosniff' );
+					header( 'Cache-Control: no-store' );
+				}
+				echo $html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+				return true;
+			},
+			10,
+			2
+		);
 
 		return $response;
 	}
