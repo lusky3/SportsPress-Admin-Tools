@@ -145,6 +145,14 @@ class SPLM_Waitlist_REST {
 						'target_product_id' => array(
 							'required'          => true,
 							'type'              => 'integer',
+							// I5: a declared sanitize_callback with no
+							// validate_callback suppresses core's own default
+							// (see the 'season' arg above), so target_product_id=[]
+							// was silently coerced to 1 by absint() instead of
+							// being rejected with 400. This only checks the
+							// declared 'integer' type; create_entry() below still
+							// does the "resolves via wc_get_product()" check itself.
+							'validate_callback' => 'rest_validate_request_arg',
 							'sanitize_callback' => 'absint',
 						),
 					),
@@ -216,6 +224,10 @@ class SPLM_Waitlist_REST {
 					'gated'      => array(
 						'required'          => true,
 						'type'              => 'boolean',
+						// I5: see the target_product_id arg above — a declared
+						// sanitize_callback with no validate_callback silently
+						// coerced gated=[] to true instead of rejecting it.
+						'validate_callback' => 'rest_validate_request_arg',
 						'sanitize_callback' => 'rest_sanitize_boolean',
 					),
 				),
