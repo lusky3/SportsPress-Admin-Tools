@@ -25,238 +25,273 @@ class SPLM_Waitlist_REST {
 	}
 
 	public function register_routes() {
+		// Public by design: the token in the path IS the credential, and
+		// handle_claim() validates it. A malformed token never reaches a
+		// query — the route regex rejects it first.
+		$this->add_route( 'GET', '/waitlist/claim/(?P<token>[a-f0-9]{64})', array( $this, 'handle_claim' ), self::claim_args(), '__return_true' );
+
+		// GET and POST are registered separately, on the same path, rather
+		// than as one call's array-of-two-endpoints form: WP_REST_Server
+		// merges same-route registrations by appending
+		// (register_route() does array_merge() on the existing endpoint
+		// list for that path), so this is equivalent, and it keeps each
+		// verb's callback/args pairing next to its own line instead of
+		// nested inside a shared array.
+		$this->add_route( 'GET', '/waitlist', array( $this, 'get_waitlist' ), self::list_args() );
+		$this->add_route( 'POST', '/waitlist', array( $this, 'create_entry' ), self::create_args() );
+
+		$this->add_route( 'POST', '/waitlist/(?P<id>\d+)/offer', array( $this, 'offer_spot' ), self::offer_args() );
+		$this->add_route( 'POST', '/waitlist/(?P<id>\d+)/cancel', array( $this, 'cancel_offer' ), self::id_only_args() );
+		$this->add_route( 'POST', '/waitlist/(?P<id>\d+)/target', array( $this, 'set_target' ), self::target_args() );
+		$this->add_route( 'POST', '/waitlist/gate', array( $this, 'toggle_gate' ), self::gate_args() );
+	}
+
+	/**
+	 * Register one route under self::REST_NAMESPACE.
+	 *
+	 * Every route here but the public claim route shares the same
+	 * permission_callback, so that is the default; the claim route passes
+	 * '__return_true' explicitly.
+	 *
+	 * @param string   $methods    HTTP method(s), e.g. 'GET' or 'POST'.
+	 * @param string   $path       Route path, without the namespace.
+	 * @param callable $callback   Route handler.
+	 * @param array    $args       Arg definitions, from one of the *_args() methods.
+	 * @param callable $permission Permission callback. Defaults to can_manage().
+	 * @return void
+	 */
+	private function add_route( string $methods, string $path, $callback, array $args, $permission = null ) {
 		register_rest_route(
 			self::REST_NAMESPACE,
-			'/waitlist/claim/(?P<token>[a-f0-9]{64})',
+			$path,
 			array(
-				'methods'             => 'GET',
-				'callback'            => array( $this, 'handle_claim' ),
-				// Public by design: the token in the path IS the credential,
-				// and handle_claim() validates it. A malformed token never
-				// reaches a query — the route regex rejects it first.
-				'permission_callback' => '__return_true',
-				'args'                => array(
-					'token' => array(
-						'required'          => true,
-						'type'              => 'string',
-						'validate_callback' => array( 'SPLM_Waitlist', 'is_token_shaped' ),
-						'sanitize_callback' => 'sanitize_text_field',
-					),
-				),
+				'methods'             => $methods,
+				'callback'            => $callback,
+				'permission_callback' => $permission ?? array( __CLASS__, 'can_manage' ),
+				'args'                => $args,
 			)
 		);
+	}
 
-		register_rest_route(
-			self::REST_NAMESPACE,
-			'/waitlist',
-			array(
-				array(
-					'methods'             => 'GET',
-					'callback'            => array( $this, 'get_waitlist' ),
-					'permission_callback' => array( __CLASS__, 'can_manage' ),
-					'args'                => array(
-						'season'   => array(
-							'required'          => false,
-							'type'              => 'string',
-							// No enum to check here — season codes are free-form
-							// (build_row() is what decides what a valid one looks
-							// like) — so this is a bare type check. It exists
-							// because sanitize_callback alone, WITHOUT an
-							// explicit validate_callback, is not enough:
-							// WP_REST_Request::sanitize_params() only defaults
-							// validate_callback to rest_validate_request_arg()
-							// when NO sanitize_callback is declared at all. Once
-							// a sanitize_callback is present, as it is here,
-							// that fallback never fires, and a malformed value
-							// would be silently coerced (e.g. an array
-							// flattened by sanitize_text_field()) rather than
-							// rejected with 400 rest_invalid_param.
-							'validate_callback' => 'rest_validate_request_arg',
-							'sanitize_callback' => 'sanitize_text_field',
-						),
-						'position' => array(
-							'required'          => false,
-							'type'              => 'string',
-							'validate_callback' => array( __CLASS__, 'validate_position' ),
-							'sanitize_callback' => 'sanitize_text_field',
-						),
-						'status'   => array(
-							'required'          => false,
-							'type'              => 'string',
-							'validate_callback' => array( __CLASS__, 'validate_status' ),
-							'sanitize_callback' => 'sanitize_text_field',
-						),
-						'page'     => array(
-							'required'          => false,
-							'type'              => 'integer',
-							'default'           => 1,
-							// Same reasoning as 'season' above: an explicit
-							// sanitize_callback suppresses core's own default
-							// validate_callback, so one is declared here too.
-							// get_waitlist() re-clamps to >= 1 regardless; this
-							// is what makes a non-integer 400 instead of being
-							// silently absint()'d to 0 and then clamped.
-							'validate_callback' => 'rest_validate_request_arg',
-							'sanitize_callback' => 'absint',
-						),
-						'per_page' => array(
-							'required'          => false,
-							'type'              => 'integer',
-							'default'           => 50,
-							'validate_callback' => 'rest_validate_request_arg',
-							'sanitize_callback' => 'absint',
-						),
-					),
-				),
-				array(
-					'methods'             => 'POST',
-					'callback'            => array( $this, 'create_entry' ),
-					'permission_callback' => array( __CLASS__, 'can_manage' ),
-					'args'                => array(
-						'name'              => array(
-							'required'          => true,
-							'type'              => 'string',
-							// See the 'season' arg above for why this needs an
-							// explicit validate_callback despite declaring a
-							// type: the sanitize_callback here would otherwise
-							// silently suppress core's own default one.
-							'validate_callback' => 'rest_validate_request_arg',
-							'sanitize_callback' => 'sanitize_text_field',
-						),
-						'email'             => array(
-							'required'          => true,
-							'type'              => 'string',
-							'validate_callback' => 'is_email',
-							'sanitize_callback' => 'sanitize_email',
-						),
-						'season'            => array(
-							'required'          => true,
-							'type'              => 'string',
-							// See the GET /waitlist 'season' arg above.
-							'validate_callback' => 'rest_validate_request_arg',
-							'sanitize_callback' => 'sanitize_text_field',
-						),
-						'position'          => array(
-							'required'          => true,
-							'type'              => 'string',
-							'validate_callback' => array( __CLASS__, 'validate_position' ),
-							'sanitize_callback' => 'sanitize_text_field',
-						),
-						'target_product_id' => array(
-							'required'          => true,
-							'type'              => 'integer',
-							// I5: a declared sanitize_callback with no
-							// validate_callback suppresses core's own default
-							// (see the 'season' arg above), so target_product_id=[]
-							// was silently coerced to 1 by absint() instead of
-							// being rejected with 400. This only checks the
-							// declared 'integer' type; create_entry() below still
-							// does the "resolves via wc_get_product()" check itself.
-							'validate_callback' => 'rest_validate_request_arg',
-							'sanitize_callback' => 'absint',
-						),
-					),
-				),
-			)
+	/**
+	 * Arg definitions for GET /waitlist/claim/{token}.
+	 *
+	 * @return array
+	 */
+	private static function claim_args(): array {
+		return array(
+			'token' => array(
+				'required'          => true,
+				'type'              => 'string',
+				'validate_callback' => array( 'SPLM_Waitlist', 'is_token_shaped' ),
+				'sanitize_callback' => 'sanitize_text_field',
+			),
 		);
+	}
 
-		register_rest_route(
-			self::REST_NAMESPACE,
-			'/waitlist/(?P<id>\d+)/offer',
-			array(
-				'methods'             => 'POST',
-				'callback'            => array( $this, 'offer_spot' ),
-				'permission_callback' => array( __CLASS__, 'can_manage' ),
-				'args'                => array(
-					// No validate_callback here, deliberately: the route
-					// regex '(?P<id>\d+)' already refuses anything that is
-					// not one or more digits before this arg's callbacks
-					// ever run, so a second type check would be redundant.
-					'id'    => array(
-						'required'          => true,
-						'type'              => 'integer',
-						'sanitize_callback' => 'absint',
-					),
-					'hours' => array(
-						'required'          => false,
-						'type'              => 'integer',
-						'default'           => SPLM_Waitlist::DEFAULT_HOURS,
-						'validate_callback' => array( __CLASS__, 'validate_hours' ),
-						'sanitize_callback' => 'absint',
-					),
-				),
-			)
+	/**
+	 * Arg definitions for GET /waitlist (the filterable, paginated list).
+	 *
+	 * @return array
+	 */
+	private static function list_args(): array {
+		return array(
+			'season'   => array(
+				'required'          => false,
+				'type'              => 'string',
+				// No enum to check here — season codes are free-form
+				// (build_row() is what decides what a valid one looks
+				// like) — so this is a bare type check. It exists
+				// because sanitize_callback alone, WITHOUT an
+				// explicit validate_callback, is not enough:
+				// WP_REST_Request::sanitize_params() only defaults
+				// validate_callback to rest_validate_request_arg()
+				// when NO sanitize_callback is declared at all. Once
+				// a sanitize_callback is present, as it is here,
+				// that fallback never fires, and a malformed value
+				// would be silently coerced (e.g. an array
+				// flattened by sanitize_text_field()) rather than
+				// rejected with 400 rest_invalid_param.
+				'validate_callback' => 'rest_validate_request_arg',
+				'sanitize_callback' => 'sanitize_text_field',
+			),
+			'position' => array(
+				'required'          => false,
+				'type'              => 'string',
+				'validate_callback' => array( __CLASS__, 'validate_position' ),
+				'sanitize_callback' => 'sanitize_text_field',
+			),
+			'status'   => array(
+				'required'          => false,
+				'type'              => 'string',
+				'validate_callback' => array( __CLASS__, 'validate_status' ),
+				'sanitize_callback' => 'sanitize_text_field',
+			),
+			'page'     => array(
+				'required'          => false,
+				'type'              => 'integer',
+				'default'           => 1,
+				// Same reasoning as 'season' above: an explicit
+				// sanitize_callback suppresses core's own default
+				// validate_callback, so one is declared here too.
+				// get_waitlist() re-clamps to >= 1 regardless; this
+				// is what makes a non-integer 400 instead of being
+				// silently absint()'d to 0 and then clamped.
+				'validate_callback' => 'rest_validate_request_arg',
+				'sanitize_callback' => 'absint',
+			),
+			'per_page' => array(
+				'required'          => false,
+				'type'              => 'integer',
+				'default'           => 50,
+				'validate_callback' => 'rest_validate_request_arg',
+				'sanitize_callback' => 'absint',
+			),
 		);
+	}
 
-		register_rest_route(
-			self::REST_NAMESPACE,
-			'/waitlist/(?P<id>\d+)/cancel',
-			array(
-				'methods'             => 'POST',
-				'callback'            => array( $this, 'cancel_offer' ),
-				'permission_callback' => array( __CLASS__, 'can_manage' ),
-				'args'                => array(
-					// Same reasoning as the offer route's 'id' above: the
-					// route regex already constrains this to digits only.
-					'id' => array(
-						'required'          => true,
-						'type'              => 'integer',
-						'sanitize_callback' => 'absint',
-					),
-				),
-			)
+	/**
+	 * Arg definitions for POST /waitlist (manual add).
+	 *
+	 * @return array
+	 */
+	private static function create_args(): array {
+		return array(
+			'name'              => array(
+				'required'          => true,
+				'type'              => 'string',
+				// See the 'season' arg in list_args() for why this needs an
+				// explicit validate_callback despite declaring a type: the
+				// sanitize_callback here would otherwise silently suppress
+				// core's own default one.
+				'validate_callback' => 'rest_validate_request_arg',
+				'sanitize_callback' => 'sanitize_text_field',
+			),
+			'email'             => array(
+				'required'          => true,
+				'type'              => 'string',
+				'validate_callback' => 'is_email',
+				'sanitize_callback' => 'sanitize_email',
+			),
+			'season'            => array(
+				'required'          => true,
+				'type'              => 'string',
+				// See the 'season' arg in list_args().
+				'validate_callback' => 'rest_validate_request_arg',
+				'sanitize_callback' => 'sanitize_text_field',
+			),
+			'position'          => array(
+				'required'          => true,
+				'type'              => 'string',
+				'validate_callback' => array( __CLASS__, 'validate_position' ),
+				'sanitize_callback' => 'sanitize_text_field',
+			),
+			'target_product_id' => array(
+				'required'          => true,
+				'type'              => 'integer',
+				// I5: a declared sanitize_callback with no
+				// validate_callback suppresses core's own default
+				// (see the 'season' arg in list_args()), so
+				// target_product_id=[] was silently coerced to 1 by
+				// absint() instead of being rejected with 400. This only
+				// checks the declared 'integer' type; create_entry() below
+				// still does the "resolves via wc_get_product()" check
+				// itself.
+				'validate_callback' => 'rest_validate_request_arg',
+				'sanitize_callback' => 'absint',
+			),
 		);
+	}
 
-		register_rest_route(
-			self::REST_NAMESPACE,
-			'/waitlist/(?P<id>\d+)/target',
-			array(
-				'methods'             => 'POST',
-				'callback'            => array( $this, 'set_target' ),
-				'permission_callback' => array( __CLASS__, 'can_manage' ),
-				'args'                => array(
-					// Same reasoning as the offer/cancel routes' 'id' above: the
-					// route regex already constrains this to digits only.
-					'id'                => array(
-						'required'          => true,
-						'type'              => 'integer',
-						'sanitize_callback' => 'absint',
-					),
-					'target_product_id' => array(
-						'required'          => true,
-						'type'              => 'integer',
-						'validate_callback' => 'rest_validate_request_arg',
-						'sanitize_callback' => 'absint',
-					),
-				),
-			)
+	/**
+	 * Arg definitions for POST /waitlist/{id}/offer.
+	 *
+	 * @return array
+	 */
+	private static function offer_args(): array {
+		return array(
+			// No validate_callback on 'id' here, deliberately: the route
+			// regex '(?P<id>\d+)' already refuses anything that is not one
+			// or more digits before this arg's callbacks ever run, so a
+			// second type check would be redundant.
+			'id'    => array(
+				'required'          => true,
+				'type'              => 'integer',
+				'sanitize_callback' => 'absint',
+			),
+			'hours' => array(
+				'required'          => false,
+				'type'              => 'integer',
+				'default'           => SPLM_Waitlist::DEFAULT_HOURS,
+				'validate_callback' => array( __CLASS__, 'validate_hours' ),
+				'sanitize_callback' => 'absint',
+			),
 		);
+	}
 
-		register_rest_route(
-			self::REST_NAMESPACE,
-			'/waitlist/gate',
-			array(
-				'methods'             => 'POST',
-				'callback'            => array( $this, 'toggle_gate' ),
-				'permission_callback' => array( __CLASS__, 'can_manage' ),
-				'args'                => array(
-					'product_id' => array(
-						'required'          => true,
-						'type'              => 'integer',
-						'validate_callback' => array( __CLASS__, 'validate_target_product' ),
-						'sanitize_callback' => 'absint',
-					),
-					'gated'      => array(
-						'required'          => true,
-						'type'              => 'boolean',
-						// I5: see the target_product_id arg above — a declared
-						// sanitize_callback with no validate_callback silently
-						// coerced gated=[] to true instead of rejecting it.
-						'validate_callback' => 'rest_validate_request_arg',
-						'sanitize_callback' => 'rest_sanitize_boolean',
-					),
-				),
-			)
+	/**
+	 * Arg definitions for routes whose only argument is the path's numeric
+	 * {id} — currently POST /waitlist/{id}/cancel.
+	 *
+	 * @return array
+	 */
+	private static function id_only_args(): array {
+		return array(
+			// Same reasoning as offer_args()'s 'id' above: the route regex
+			// already constrains this to digits only.
+			'id' => array(
+				'required'          => true,
+				'type'              => 'integer',
+				'sanitize_callback' => 'absint',
+			),
+		);
+	}
+
+	/**
+	 * Arg definitions for POST /waitlist/{id}/target.
+	 *
+	 * @return array
+	 */
+	private static function target_args(): array {
+		return array(
+			// Same reasoning as the offer/cancel routes' 'id' above: the
+			// route regex already constrains this to digits only.
+			'id'                => array(
+				'required'          => true,
+				'type'              => 'integer',
+				'sanitize_callback' => 'absint',
+			),
+			'target_product_id' => array(
+				'required'          => true,
+				'type'              => 'integer',
+				'validate_callback' => 'rest_validate_request_arg',
+				'sanitize_callback' => 'absint',
+			),
+		);
+	}
+
+	/**
+	 * Arg definitions for POST /waitlist/gate.
+	 *
+	 * @return array
+	 */
+	private static function gate_args(): array {
+		return array(
+			'product_id' => array(
+				'required'          => true,
+				'type'              => 'integer',
+				'validate_callback' => array( __CLASS__, 'validate_target_product' ),
+				'sanitize_callback' => 'absint',
+			),
+			'gated'      => array(
+				'required'          => true,
+				'type'              => 'boolean',
+				// I5: see the target_product_id arg above — a declared
+				// sanitize_callback with no validate_callback silently
+				// coerced gated=[] to true instead of rejecting it.
+				'validate_callback' => 'rest_validate_request_arg',
+				'sanitize_callback' => 'rest_sanitize_boolean',
+			),
 		);
 	}
 
@@ -414,19 +449,24 @@ class SPLM_Waitlist_REST {
 	}
 
 	/**
-	 * Add someone to the queue by hand.
+	 * Validate a manual-add request and build its row, without writing it.
+	 *
+	 * Returns a WP_Error for any of the four ways a manual add can be
+	 * rejected (missing WooCommerce, a target product that doesn't resolve,
+	 * a duplicate active entry, or a row that fails build_row()'s own
+	 * checks), or the row array ready for SPLM_Waitlist_Database::insert()
+	 * on success. create_entry() only dispatches on which of those it got.
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
-	 * @param WP_REST_Request $request Request.
+	 * @param string $email    Lower-cased, already-validated email.
+	 * @param string $season   Season code.
+	 * @param string $position 'player' or 'goalie'.
+	 * @param int    $target   Candidate target_product_id.
+	 * @param string $name     Display name.
 	 * @return array|WP_Error
 	 */
-	public function create_entry( $request ) {
-		$email    = strtolower( (string) $request->get_param( 'email' ) );
-		$season   = (string) $request->get_param( 'season' );
-		$position = (string) $request->get_param( 'position' );
-		$target   = (int) $request->get_param( 'target_product_id' );
-
+	private static function validate_new_entry( string $email, string $season, string $position, int $target, string $name ) {
 		// I4: every other WooCommerce touch in this file is guarded. This one
 		// was not: enabling the module with WooCommerce deactivated fatalled
 		// this route on an undefined function. 503 rather than 400 — the
@@ -463,7 +503,7 @@ class SPLM_Waitlist_REST {
 				'product_id'        => 0,
 				'target_product_id' => $target,
 				'email'             => $email,
-				'name'              => (string) $request->get_param( 'name' ),
+				'name'              => $name,
 				'user_id'           => 0,
 				'order_id'          => 0,
 				'has_active'        => false,
@@ -476,6 +516,30 @@ class SPLM_Waitlist_REST {
 				__( 'That entry is missing a season or an email address.', 'sportspress-league-manager' ),
 				array( 'status' => 400 )
 			);
+		}
+
+		return $row;
+	}
+
+	/**
+	 * Add someone to the queue by hand.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return array|WP_Error
+	 */
+	public function create_entry( $request ) {
+		$row = self::validate_new_entry(
+			strtolower( (string) $request->get_param( 'email' ) ),
+			(string) $request->get_param( 'season' ),
+			(string) $request->get_param( 'position' ),
+			(int) $request->get_param( 'target_product_id' ),
+			(string) $request->get_param( 'name' )
+		);
+
+		if ( is_wp_error( $row ) ) {
+			return $row;
 		}
 
 		$id = SPLM_Waitlist_Database::insert( $row );
