@@ -5,9 +5,11 @@
  * These conventions are edited by hand by the league every season — the
  * season code format and the goalie tag name — so they live in exactly one
  * place. Both SPPR_Player_Registration (which registers paid players) and
- * SPLM_Waitlist (which queues them) call this; the regexes below were
+ * SPLM_Waitlist (which queues them) call this; the season regexes below were
  * extracted verbatim from SPPR's formerly-private methods, and
- * tests/test-season-helper.php asserts that parity.
+ * tests/test-season-helper.php asserts that parity. is_goalie_tag_name() is
+ * the one deliberate exception: see its own docblock for the one-line change
+ * from SPPR's original.
  *
  * @author Cody (lusky3)
  */
@@ -53,6 +55,14 @@ class SPAT_Season {
 	 * Exact match, not a substring: "goalies" must not match, because that is
 	 * how SPPR has always behaved and a league tag rename should be a
 	 * deliberate edit here rather than a silent behaviour change.
+	 *
+	 * NOT extracted verbatim, unlike this file's other methods: SPPR's
+	 * original was `strtolower( $tag->name ) === 'goalie'`, with no trim().
+	 * This adds one, so a whitespace-padded tag name (" Goalie") now matches
+	 * where it previously would not have. That is a deliberate improvement
+	 * made during the extraction, not a preserved behaviour — call it out
+	 * here rather than let it hide behind a "verbatim" claim that no longer
+	 * applies to this one method.
 	 *
 	 * @param string $name Tag name.
 	 * @return bool
