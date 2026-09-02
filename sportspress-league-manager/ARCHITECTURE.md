@@ -302,6 +302,8 @@ Each feature is a separate module ID registered with `SPAT_Plugin_Manager`. The 
 | `league_roster_management`    | Roster management              | Team/roster submenu, CSV upload AJAX        |
 | `league_fee_tracking`         | Fee tracking                   | Fee lookup submenu, fee search AJAX         |
 | `league_player_notes`         | Player notes                   | Notes meta box, AJAX CRUD, frontend display |
+| `league_discipline`           | Penalty discipline             | Discipline schema/digest, Leaders penalty-watch panel |
+| `league_waitlist`             | Registration waitlist          | Waitlist schema, purchase gate, offer emails, `splm/v1/waitlist*` routes |
 
 Admins toggle these in **Settings → SportsPress Admin Tools → Modules**. The plugin's `load_enabled_modules()` only instantiates classes for enabled modules — matching the pattern in `sportspress-player-tools.php`.
 
