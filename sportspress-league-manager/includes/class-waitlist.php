@@ -372,8 +372,27 @@ class SPLM_Waitlist {
 
 		$id = (int) $id;
 
+		// Every other SPAT_Lock::with() call site in the repo guards against a
+		// parent plugin too old (or deactivated) to ship the class, degrading
+		// rather than fataling. This is a user-initiated write that emails a
+		// real person and mints a security token, so refusing with a clear
+		// 503 is a better trade than running the sequence unserialised.
+		if ( ! class_exists( 'SPAT_Lock' ) ) {
+			return new WP_Error(
+				'splm_waitlist_no_lock',
+				__( 'The parent plugin is too old to provide the locking this action needs. Update SportsPress Admin Tools and try again.', 'sportspress-league-manager' ),
+				array( 'status' => 503 )
+			);
+		}
+
 		// One lock around the whole sequence so a double-clicked button cannot
-		// issue two tokens or schedule two expiry events for one row.
+		// issue two tokens or schedule two expiry events for one row. The
+		// 60-second TTL can lapse if wp_mail() is slow, at which point
+		// SPAT_Lock's stale-steal would admit a second holder — but the
+		// can_offer() status re-check inside offer_locked() is what actually
+		// refuses that second holder (the row is no longer queued/expired by
+		// then), not the TTL. The status guard is the real serialisation
+		// backstop.
 		$result = SPAT_Lock::with(
 			'splm_waitlist_offer_' . $id,
 			60,
@@ -439,13 +458,44 @@ class SPLM_Waitlist {
 
 		wp_schedule_single_event( $expiry['timestamp'], self::EXPIRE_HOOK, array( $id ) );
 
-		$fresh = SPLM_Waitlist_Database::get( $id );
-		if ( ! self::send_offer_email( $fresh, $token ) ) {
+		// No re-fetch: every field the email needs (name, season, email, id)
+		// is already on $row, and the deadline is $expiry['expires_at'] in
+		// hand. A re-fetch here could return null for a row deleted between
+		// the update above and this point, and every consumer below would
+		// then dereference null unguarded.
+		$row->expires_at = $expiry['expires_at'];
+
+		if ( ! self::send_offer_email( $row, $token ) ) {
 			// A failed send would otherwise leave a ticking deadline on an
 			// invite nobody received, and the person would silently lose their
-			// turn. Unwind completely so a retry is clean.
+			// turn. Unwind completely so a retry is clean. Row first, then
+			// cron: for the one round trip between these two writes, a
+			// `queued` row with a stray expiry event is harmless (the expiry
+			// handler ignores it once it checks status), whereas the reverse
+			// order would leave a live token with no deadline.
+			$unwound = SPLM_Waitlist_Database::update( $id, self::unwind_updates() );
 			wp_clear_scheduled_hook( self::EXPIRE_HOOK, array( $id ) );
-			SPLM_Waitlist_Database::update( $id, self::unwind_updates() );
+
+			if ( ! $unwound ) {
+				// The row is still `offered` with a live token and the cron
+				// event is now gone. This is the worst of both states, so it
+				// gets its own code and message rather than being folded into
+				// the ordinary mail-failed case — the convener must cancel
+				// the entry manually rather than simply retrying.
+				if ( class_exists( 'SPAT_Logger' ) ) {
+					SPAT_Logger::error(
+						'waitlist',
+						'failed to unwind a waitlist offer after wp_mail() failed',
+						array( 'waitlist_id' => $id )
+					);
+				}
+
+				return new WP_Error(
+					'splm_waitlist_unwind_failed',
+					__( 'The offer email could not be sent, and the entry could not be returned to the queue automatically. It is stuck as offered with a live link — cancel it manually.', 'sportspress-league-manager' ),
+					array( 'status' => 500 )
+				);
+			}
 
 			return new WP_Error(
 				'splm_waitlist_mail_failed',
@@ -458,7 +508,7 @@ class SPLM_Waitlist {
 			'success'    => true,
 			'id'         => $id,
 			'expires_at' => $expiry['expires_at'],
-			'warnings'   => self::offer_warnings( (int) $fresh->target_product_id ),
+			'warnings'   => self::offer_warnings( (int) $row->target_product_id ),
 		);
 	}
 
@@ -554,7 +604,7 @@ class SPLM_Waitlist {
 
 		wp_clear_scheduled_hook( self::EXPIRE_HOOK, array( $id ) );
 
-		SPLM_Waitlist_Database::update(
+		$cancelled = SPLM_Waitlist_Database::update(
 			$id,
 			array(
 				'status'      => SPLM_Waitlist_Database::STATUS_CANCELLED,
@@ -562,6 +612,18 @@ class SPLM_Waitlist {
 				'expires_at'  => null,
 			)
 		);
+
+		if ( ! $cancelled ) {
+			if ( class_exists( 'SPAT_Logger' ) ) {
+				SPAT_Logger::error( 'waitlist', 'failed to write a waitlist cancellation', array( 'waitlist_id' => $id ) );
+			}
+
+			return new WP_Error(
+				'splm_waitlist_cancel_failed',
+				__( 'Could not record the cancellation. Try again.', 'sportspress-league-manager' ),
+				array( 'status' => 500 )
+			);
+		}
 
 		return array(
 			'success' => true,

@@ -40,6 +40,18 @@ function add_filter() { // phpcs:ignore
 	return true;
 }
 
+/**
+ * Controllable post-meta stub for offer_warnings(), keyed by post id then
+ * meta key. Empty/unset reads as falsy, matching get_post_meta()'s real
+ * "no meta" behaviour.
+ *
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
+function get_post_meta( $post_id, $key = '', $single = false ) { // phpcs:ignore
+	return $GLOBALS['__test_post_meta'][ $post_id ][ $key ] ?? '';
+}
+$GLOBALS['__test_post_meta'] = array();
+
 class WP_Error {
 	public $code;
 	public $message;
@@ -220,7 +232,12 @@ assert_test( 'offered' === $updates['status'], 'an offer sets status to offered'
 assert_test( $token_a === $updates['claim_token'], 'the token is stored' );
 assert_test( $expiry['expires_at'] === $updates['expires_at'], 'the deadline is stored as the UTC string from expiry_from_hours' );
 assert_test( isset( $updates['offered_at'] ), 'the offer time is stamped' );
-assert_test( $updates['offered_at'] === gmdate( 'Y-m-d H:i:s' ), 'the offer time is UTC' );
+// Not an exact-string comparison against a freshly computed gmdate(): that
+// flakes whenever the clock ticks a second between the call and the check.
+// A tolerance window plus a format check verify the same property (UTC, now)
+// without the race.
+assert_test( abs( strtotime( $updates['offered_at'] . ' UTC' ) - time() ) <= 1, 'the offer time is within a second of now' );
+assert_test( 1 === preg_match( '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $updates['offered_at'] ), 'the offer time is a UTC MySQL datetime string' );
 assert_test( null === $updates['resolved_order_id'], 'a fresh offer clears any resolved order from a previous cycle' );
 
 echo "\n=== unwind_updates() ===\n\n";
@@ -236,6 +253,44 @@ echo "\n=== claim_url() ===\n\n";
 $url = $w::claim_url( $token_a );
 assert_test( strpos( $url, $token_a ) !== false, 'the claim URL carries the token' );
 assert_test( strpos( $url, 'splm/v1/waitlist/claim/' ) !== false, 'the claim URL points at the claim route' );
+
+echo "\n=== offer_warnings() ===\n\n";
+
+$GLOBALS['__test_post_meta'][123]['_splm_waitlist_gated'] = '';
+$ungated_warnings = $w::offer_warnings( 123 );
+assert_test(
+	1 === count( $ungated_warnings ) && 'not_gated' === $ungated_warnings[0]['code'],
+	'an ungated target product produces a not_gated warning'
+);
+
+$GLOBALS['__test_post_meta'][123]['_splm_waitlist_gated'] = '1';
+assert_test( array() === $w::offer_warnings( 123 ), 'a gated target product produces no warnings' );
+
+echo "\n=== offer(): the validation short-circuit ===\n\n";
+
+// validate_hours() runs before SPAT_Lock is ever referenced, so this is
+// assertable with no lock or database stubs at all.
+$bad_hours = $w::offer( 1, 0 );
+assert_test( is_wp_error( $bad_hours ), 'offer() refuses an invalid window before touching the lock or the database' );
+assert_test( 'splm_invalid_hours' === $bad_hours->get_error_code(), 'the refusal carries validate_hours()\'s own error code' );
+
+echo "\n=== offer(): a held lock maps to 409 ===\n\n";
+
+// A fake SPAT_Lock whose with() always reports the lock already held, so the
+// false -> 409 mapping in offer() is assertable without a real lock backend.
+// Defined only if nothing else already provided the class.
+if ( ! class_exists( 'SPAT_Lock' ) ) {
+	class SPAT_Lock { // phpcs:ignore
+		public static function with( $key, $ttl_seconds, callable $callback ) { // phpcs:ignore
+			return false;
+		}
+	}
+}
+
+$locked = $w::offer( 1, 48 );
+assert_test( is_wp_error( $locked ), 'offer() reports a held lock as an error rather than a fatal or a silent no-op' );
+assert_test( 'splm_waitlist_locked' === $locked->get_error_code(), 'the held-lock refusal carries its own error code' );
+assert_test( 409 === $locked->get_error_data()['status'], 'the held-lock refusal is a 409' );
 
 echo "\n";
 echo "Passed: {$passed}\n";
