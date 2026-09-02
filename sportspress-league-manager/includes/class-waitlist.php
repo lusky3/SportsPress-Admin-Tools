@@ -658,12 +658,23 @@ class SPLM_Waitlist {
 	/**
 	 * Cron callback: expire one offer, if it really is due.
 	 *
+	 * $id defaults to 0 so this degrades instead of fataling when invoked
+	 * with no argument — a hand-triggered `wp cron event run
+	 * splm_waitlist_expire_offer`, or a legacy event somehow scheduled
+	 * without args. Without the default, PHP 8's ArgumentCountError would
+	 * throw before should_expire() is ever reached. That path matters here:
+	 * running cron events by hand is this league's routine practice on hosts
+	 * where WP-Cron's self-trigger does not reliably complete — the exact
+	 * unreliability sweep() exists to back up.
+	 * SPLM_Waitlist_Database::get( 0 ) returns null, so the `! $row` check
+	 * below short-circuits to false.
+	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
 	 * @param int $id Row id.
 	 * @return bool Whether the row was expired.
 	 */
-	public static function expire_offer( $id ): bool {
+	public static function expire_offer( int $id = 0 ): bool {
 		$row = SPLM_Waitlist_Database::get( (int) $id );
 		if ( ! $row || ! self::should_expire( $row->status, $row->expires_at ) ) {
 			return false;
