@@ -319,6 +319,42 @@ assert_test( 'mixed@example.com' === $padded['email'], 'a padded, mixed-case ema
 $guest = $w::build_row( facts( array( 'user_id' => 0 ) ) );
 assert_test( is_array( $guest ) && 0 === $guest['user_id'], 'a guest checkout is ingested with user_id 0' );
 
+echo "\n=== build_row(): omitted and null facts fall back identically ===\n\n";
+
+// build_row()'s two callers supply different subsets — the manual-add REST
+// route has no order, so it never sends already_ingested, product_id or a
+// user_id — and a resolver that finds nothing returns null rather than
+// omitting the key. Both must land on the same default, which is what the
+// per-field defaults it normalises with are for.
+$sparse = $w::build_row(
+	array(
+		'is_waitlist' => true,
+		'season'      => 'S2026',
+		'email'       => 'sparse@example.com',
+	)
+);
+assert_test( is_array( $sparse ), 'facts carrying only the essentials still build a row' );
+assert_test( 'player' === $sparse['position'], 'an omitted position defaults to player' );
+assert_test( 0 === $sparse['waitlist_product_id'] && 0 === $sparse['target_product_id'], 'omitted product ids default to 0' );
+assert_test( '' === $sparse['name'] && 0 === $sparse['user_id'] && 0 === $sparse['source_order_id'], 'an omitted name, user and order default to empty/zero' );
+
+$nulled = $w::build_row(
+	facts(
+		array(
+			'position'          => null,
+			'name'              => null,
+			'user_id'           => null,
+			'order_id'          => null,
+			'target_product_id' => null,
+		)
+	)
+);
+assert_test( $sparse['position'] === $nulled['position'], 'an explicitly null position falls back exactly like an omitted one' );
+assert_test(
+	array( $nulled['name'], $nulled['user_id'], $nulled['source_order_id'], $nulled['target_product_id'] ) === array( '', 0, 0, 0 ),
+	'explicitly null facts fall back exactly like omitted ones, never to a null cast'
+);
+
 echo "\n=== is_paid_status() ===\n\n";
 
 assert_test( $w::is_paid_status( 'processing', array( 'processing', 'completed' ) ), 'processing is a paid status' );

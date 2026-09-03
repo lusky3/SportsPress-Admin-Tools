@@ -76,43 +76,121 @@ class SPLM_Waitlist {
 	 * @return array|null
 	 */
 	public static function build_row( array $facts ) {
-		if ( empty( $facts['is_waitlist'] ) ) {
+		$facts = self::normalized_facts( $facts );
+
+		if ( ! self::is_new_waitlist_purchase( $facts ) ) {
 			return null;
+		}
+		if ( ! self::identifies_an_entrant( $facts ) ) {
+			return null;
+		}
+
+		return self::queued_row( $facts );
+	}
+
+	/**
+	 * Every fact build_row() reads, filled in and normalised.
+	 *
+	 * The two callers hand over overlapping but different subsets — ingestion
+	 * resolves an order's facts, the manual-add REST route has no order at all
+	 * — so an omitted key is normal and each one has a documented default here
+	 * rather than a `?? default` scattered through the payload below.
+	 *
+	 * Absent and null are the same thing, which is exactly what the per-field
+	 * `??` this replaces did: a season resolver that returns null must land on
+	 * the default rather than on a null cast. isset() is null-safe in the same
+	 * way, so the two are equivalent field for field.
+	 *
+	 * @param array $facts Caller-supplied facts.
+	 * @return array
+	 */
+	private static function normalized_facts( array $facts ): array {
+		$defaults = array(
+			'is_waitlist'       => false,
+			'has_active'        => false,
+			'already_ingested'  => false,
+			'season'            => '',
+			'position'          => 'player',
+			'product_id'        => 0,
+			'target_product_id' => 0,
+			'name'              => '',
+			'email'             => '',
+			'user_id'           => 0,
+			'order_id'          => 0,
+		);
+
+		foreach ( $defaults as $key => $default ) {
+			if ( ! isset( $facts[ $key ] ) ) {
+				$facts[ $key ] = $default;
+			}
+		}
+
+		$facts['season'] = (string) $facts['season'];
+		// Lower-cased and trimmed once, here, because the email is both a
+		// guard (see identifies_an_entrant()) and a stored value, and the two
+		// must be judging the same string.
+		$facts['email'] = strtolower( trim( (string) $facts['email'] ) );
+
+		return $facts;
+	}
+
+	/**
+	 * Whether this line item is a waitlist purchase not already in the queue.
+	 *
+	 * @param array $facts Normalised facts.
+	 * @return bool
+	 */
+	private static function is_new_waitlist_purchase( array $facts ): bool {
+		if ( empty( $facts['is_waitlist'] ) ) {
+			return false;
 		}
 		if ( ! empty( $facts['has_active'] ) ) {
-			return null;
+			return false;
 		}
+
 		// Guards against the same order firing this listener twice after it
 		// already produced a row that is no longer queued/offered — e.g. an
 		// already-claimed order whose status is re-touched in wp-admin. Without
 		// this, has_active alone (queued/offered only) would miss it and a
 		// second queued row would appear for someone already registered.
-		if ( ! empty( $facts['already_ingested'] ) ) {
-			return null;
-		}
+		return empty( $facts['already_ingested'] );
+	}
 
-		$season = (string) ( $facts['season'] ?? '' );
-		if ( '' === $season ) {
-			return null;
+	/**
+	 * Whether the facts name a specific person in a specific season.
+	 *
+	 * @param array $facts Normalised facts.
+	 * @return bool
+	 */
+	private static function identifies_an_entrant( array $facts ): bool {
+		if ( '' === $facts['season'] ) {
+			return false;
 		}
 
 		// Email is how an entrant is identified for deduplication, for the
 		// offer notification and for the order tie-back. Without one there is
 		// nothing to queue.
-		$email = strtolower( trim( (string) ( $facts['email'] ?? '' ) ) );
-		if ( '' === $email ) {
-			return null;
-		}
+		return '' !== $facts['email'];
+	}
 
+	/**
+	 * The insert payload for facts that passed every guard.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param array $facts Normalised facts.
+	 * @return array
+	 */
+	private static function queued_row( array $facts ): array {
 		return array(
-			'season'              => $season,
-			'position'            => (string) ( $facts['position'] ?? 'player' ),
-			'waitlist_product_id' => (int) ( $facts['product_id'] ?? 0 ),
-			'target_product_id'   => (int) ( $facts['target_product_id'] ?? 0 ),
-			'name'                => sanitize_text_field( $facts['name'] ?? '' ),
-			'email'               => $email,
-			'user_id'             => (int) ( $facts['user_id'] ?? 0 ),
-			'source_order_id'     => (int) ( $facts['order_id'] ?? 0 ),
+			'season'              => $facts['season'],
+			'position'            => (string) $facts['position'],
+			'waitlist_product_id' => (int) $facts['product_id'],
+			'target_product_id'   => (int) $facts['target_product_id'],
+			'name'                => sanitize_text_field( $facts['name'] ),
+			'email'               => $facts['email'],
+			'user_id'             => (int) $facts['user_id'],
+			'source_order_id'     => (int) $facts['order_id'],
 			'status'              => SPLM_Waitlist_Database::STATUS_QUEUED,
 		);
 	}
