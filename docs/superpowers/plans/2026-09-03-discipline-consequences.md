@@ -332,7 +332,11 @@ Replace the emitted array at the end of the loop (lines 190-196) and add the two
 				$consequence = 'none';
 			}
 
-			$games = absint( $tier['games'] ?? 0 );
+			// (int) rather than absint(). sanitize_tiers() otherwise touches only
+			// sanitize_key() — test-penalty-watch.php's stub block says so in a
+			// comment and stubs nothing else — so introducing absint() here
+			// fatals that pre-existing suite with "undefined function absint()".
+			$games = max( 0, (int) ( $tier['games'] ?? 0 ) );
 			if ( 'suspend' !== $consequence ) {
 				// Only a suspension owes games. Leaving a stale count on a warn
 				// tier would let a later edit to the consequence resurrect it.
@@ -732,7 +736,7 @@ One row per decision the system makes about a (player, season, tier). Follows `c
 - Produces: `SPLM_Discipline_Notice_Database` with status constants `STATUS_BASELINE`, `STATUS_PENDING`, `STATUS_SENT`, `STATUS_FAILED`, `STATUS_DISCARDED`, `STATUS_SERVED`, and:
   - `table_name(): string`
   - `now(): string` — `gmdate( 'Y-m-d H:i:s' )`, UTC
-  - `create_table(): bool`, `table_exists(): bool`, `maybe_upgrade(): void`, `drop_table(): void`
+  - `create_table(): bool`, `table_exists(): bool`, `maybe_upgrade(): void`
   - `insert( array $row ): int` — 0 on failure
   - `update( int $id, array $fields ): bool`
   - `find( int $id )` — row object or `null`
@@ -1082,17 +1086,6 @@ class SPLM_Discipline_Notice_Database {
 	}
 
 	/**
-	 * Drop the table (for uninstall).
-	 *
-	 * @return void
-	 */
-	public static function drop_table(): void {
-		global $wpdb;
-		$table = self::table_name();
-		$wpdb->query( "DROP TABLE IF EXISTS {$table}" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-	}
-
-	/**
 	 * Insert a notice row.
 	 *
 	 * created_at is stamped here rather than left to the column default so the
@@ -1195,7 +1188,7 @@ class SPLM_Discipline_Notice_Database {
 	/**
 	 * Paginated rows for the queue surfaces.
 	 *
-	 * @param array $filters  Accepts 'season' (int), 'status' (string), 'consequence' (string).
+	 * @param array $filters  Accepts 'season' (int) and 'status' (string).
 	 * @param int   $page     1-indexed page.
 	 * @param int   $per_page Rows per page.
 	 * @return array array( 'rows' => array, 'total' => int ).
@@ -1220,10 +1213,6 @@ class SPLM_Discipline_Notice_Database {
 		if ( ! empty( $filters['status'] ) && in_array( $filters['status'], self::STATUSES, true ) ) {
 			$where[]  = 'status = %s';
 			$params[] = (string) $filters['status'];
-		}
-		if ( ! empty( $filters['consequence'] ) ) {
-			$where[]  = 'consequence = %s';
-			$params[] = (string) $filters['consequence'];
 		}
 
 		$table  = self::table_name();
@@ -1626,20 +1615,16 @@ class SPLM_Discipline_Notice {
 }
 ```
 
-- [ ] **Step 5: Add the penalty-watch require to the predicate test**
-
-`rank_matches()` calls `SPLM_Penalty_Watch::consequence_rank()`. `test-discipline-notice-selection.php` already requires the class; `test-discipline-notice-predicate.php` does not, and does not need it — but add it above the notice require in the selection test only if the run reports an undefined-class error.
-
-- [ ] **Step 6: Run both suites**
+- [ ] **Step 5: Run both suites**
 
 ```bash
 php sportspress-league-manager/tests/test-discipline-notice-predicate.php
 php sportspress-league-manager/tests/test-discipline-notice-selection.php
 ```
 
-Expected: both PASS with `Failed: 0`.
+Expected: both PASS with `Failed: 0`. Note `test-discipline-notice-predicate.php` needs no `class-penalty-watch.php` require — `should_fire()` touches nothing from it — while `test-discipline-notice-selection.php` already has one, which `rank_matches()`'s call to `consequence_rank()` depends on.
 
-- [ ] **Step 7: Lint and commit**
+- [ ] **Step 6: Lint and commit**
 
 ```bash
 php -l sportspress-league-manager/includes/class-discipline-notice.php
@@ -1724,9 +1709,25 @@ function splm_recipients_test_state() {
 	return $state;
 }
 
-function get_post_meta( $post_id, $key ) {
-	$meta = splm_recipients_test_state()->meta;
-	return isset( $meta[ (int) $post_id ][ $key ] ) ? $meta[ (int) $post_id ][ $key ] : '';
+/**
+ * $single is honoured deliberately, and this is load-bearing.
+ *
+ * WordPress returns an ARRAY when $single is false. A stub that ignored the
+ * parameter would let production code that forgot `, true` pass every
+ * assertion in this file — and that code is not merely wrong, it is
+ * dangerous: absint( array( 77 ) ) evaluates to 1, so a missing $single
+ * addresses every player's disciplinary notice to user ID 1, normally the
+ * site owner, and records it on the row as correct.
+ */
+function get_post_meta( $post_id, $key, $single = false ) {
+	$meta  = splm_recipients_test_state()->meta;
+	$value = isset( $meta[ (int) $post_id ][ $key ] ) ? $meta[ (int) $post_id ][ $key ] : '';
+
+	if ( $single ) {
+		return $value;
+	}
+
+	return '' === $value ? array() : array( $value );
 }
 
 function get_option( $name, $default = false ) {
@@ -1885,6 +1886,23 @@ $state->options['splm_discipline_notice_cc']         = 'same@example.test';
 $deduped = $r::bcc_for( 499, 0 );
 assert_test( array( 'same@example.test' ) === $deduped, 'an address listed twice is copied once' );
 
+echo "\n=== the meta reads pass \$single ===\n\n";
+
+// Regression guard. Without `, true` WordPress hands back an array, and
+// absint( array( 77 ) ) is 1 — so a player with sp_user meta would resolve to
+// user ID 1, normally the site owner, and the notice would be addressed to
+// them and recorded on the row as correct. This asserts the stub's array
+// behaviour is real, so the guard cannot be defeated by relaxing the stub.
+assert_test(
+	array() === get_post_meta( 999, 'spt_email' ),
+	'the stub returns an array when $single is omitted, mirroring WordPress'
+);
+assert_test(
+	array( 'direct@example.test' ) === get_post_meta( 10, 'spt_email' ),
+	'a present value is still wrapped in an array when $single is omitted'
+);
+assert_test( 1 === absint( array( 77 ) ), 'absint() of an array is 1, which is why $single matters' );
+
 echo "\n=== Results ===\n\n";
 echo "Passed: {$passed}\nFailed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );
@@ -1942,7 +1960,7 @@ class SPLM_Discipline_Notice_Recipients {
 			return $none;
 		}
 
-		$direct = sanitize_email( (string) get_post_meta( $player_id, 'spt_email' ) );
+		$direct = sanitize_email( (string) get_post_meta( $player_id, 'spt_email', true ) );
 		if ( $direct && is_email( $direct ) ) {
 			return array(
 				'email' => $direct,
@@ -1950,7 +1968,7 @@ class SPLM_Discipline_Notice_Recipients {
 			);
 		}
 
-		$user_id = absint( get_post_meta( $player_id, 'sp_user' ) );
+		$user_id = absint( get_post_meta( $player_id, 'sp_user', true ) );
 		if ( $user_id ) {
 			$user = get_userdata( $user_id );
 			if ( $user && ! empty( $user->user_email ) ) {
@@ -1984,12 +2002,12 @@ class SPLM_Discipline_Notice_Recipients {
 			return '';
 		}
 
-		$list_id = absint( get_post_meta( $team_id, 'sp_list' ) );
+		$list_id = absint( get_post_meta( $team_id, 'sp_list', true ) );
 		if ( ! $list_id || 'sp_list' !== get_post_type( $list_id ) ) {
 			return '';
 		}
 
-		$captain_id = absint( get_post_meta( $list_id, 'spt_captain' ) );
+		$captain_id = absint( get_post_meta( $list_id, 'spt_captain', true ) );
 		if ( ! $captain_id ) {
 			return '';
 		}
@@ -2208,6 +2226,26 @@ assert_test( 18 === $mail::next_threshold( 13, $tiers ), 'a value between tiers 
 assert_test( 0 === $mail::next_threshold( 18, $tiers ), 'at the top season tier there is no next threshold' );
 assert_test( 0 === $mail::next_threshold( 40, $tiers ), 'past every threshold there is no next threshold' );
 
+// warning_sentence() says "you will be suspended", so a tier that only warns
+// must not be offered as the next threshold or the mail states a falsehood.
+$warn_then_suspend = array(
+	array( 'key' => 'w1', 'scope' => 'season', 'minutes' => 12, 'severity' => 'warning', 'consequence' => 'warn', 'games' => 0 ),
+	array( 'key' => 'w2', 'scope' => 'season', 'minutes' => 18, 'severity' => 'warning', 'consequence' => 'warn', 'games' => 0 ),
+	array( 'key' => 's1', 'scope' => 'season', 'minutes' => 25, 'severity' => 'critical', 'consequence' => 'suspend', 'games' => 1 ),
+);
+assert_test(
+	25 === $mail::next_threshold( 12, $warn_then_suspend ),
+	'a tier that only warns is skipped: the next threshold named is the next one that actually suspends'
+);
+assert_test(
+	0 === $mail::next_threshold( 12, array( array( 'key' => 'w', 'scope' => 'season', 'minutes' => 18, 'severity' => 'warning', 'consequence' => 'warn', 'games' => 0 ) ) ),
+	'with no suspending tier above, there is no threshold to promise'
+);
+assert_test(
+	0 === $mail::next_threshold( 2, array( array( 'key' => 'win', 'scope' => 'window', 'minutes' => 8, 'severity' => 'critical', 'consequence' => 'suspend', 'games' => 1 ) ) ),
+	'a window tier is not a number a player can reason about from a season total, so it is not offered'
+);
+
 echo "\n=== the warning body names the next threshold ===\n\n";
 
 $warning = $mail::body(
@@ -2383,21 +2421,27 @@ class SPLM_Discipline_Notice_Mail {
 	}
 
 	/**
-	 * The next threshold above a value, for the warning's wording.
+	 * The next SUSPENDING season threshold above a value.
 	 *
-	 * Only season-scope tiers are considered: a warning tells the player what
-	 * their season total is heading towards, and a window threshold is not a
-	 * number they can reason about from a season total.
+	 * Two filters, both load-bearing. Only season-scope tiers, because a
+	 * warning tells the player what their season total is heading towards and a
+	 * window threshold is not a number they can reason about from one. And only
+	 * tiers that actually suspend, because warning_sentence() renders "you will
+	 * be suspended" — a league configured warn@12 / warn@18 / suspend@25 would
+	 * otherwise tell a player at 12 they face suspension at 18, which is false.
 	 *
 	 * @param int   $value Current season total.
 	 * @param array $tiers Tier list.
-	 * @return int The next threshold, or 0 when the value is past all of them.
+	 * @return int The next suspending threshold, or 0 when there is none above.
 	 */
 	public static function next_threshold( int $value, array $tiers ): int {
 		$above = array();
 
 		foreach ( $tiers as $tier ) {
 			if ( 'season' !== (string) ( $tier['scope'] ?? '' ) ) {
+				continue;
+			}
+			if ( 'suspend' !== (string) ( $tier['consequence'] ?? '' ) ) {
 				continue;
 			}
 			$minutes = (int) ( $tier['minutes'] ?? 0 );
@@ -2533,9 +2577,14 @@ class SPLM_Discipline_Notice_Mail {
 				'posts_per_page' => 1,
 				'orderby'        => 'date',
 				'order'          => 'ASC',
+				// current_time(), NOT gmdate(). WP_Query matches date_query
+				// against post_date, which is site-local; between 00:00 and
+				// 05:00 UTC the two dates disagree and an event later the same
+				// local evening would be excluded. This is the same date the
+				// pass and watch_context() derive.
 				'date_query'     => array(
 					array(
-						'after'     => gmdate( 'Y-m-d' ),
+						'after'     => current_time( 'Y-m-d' ),
 						'inclusive' => true,
 					),
 				),
@@ -2697,8 +2746,9 @@ function sanitize_key( $key ) {
 	return strtolower( preg_replace( '/[^a-z0-9_\-]/i', '', (string) $key ) );
 }
 
-function class_exists_stub() {
-	return true;
+// SPLM_Discipline_Notice_Pass::baseline_token() digests its inputs through this.
+function wp_json_encode( $data, $flags = 0 ) {
+	return json_encode( $data, $flags ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode
 }
 
 require_once __DIR__ . '/../includes/class-penalty-watch.php';
@@ -2995,6 +3045,10 @@ Append to `class-discipline-notice-mail.php`:
 
 			return false;
 		}
+
+		// A suspended player who captains their own team resolves as their own
+		// captain Bcc and would receive two copies.
+		$bcc = array_values( array_diff( $bcc, array( $to ) ) );
 
 		$headers = array();
 		if ( $bcc ) {
@@ -3310,8 +3364,8 @@ Append to `sportspress-league-manager/tests/test-discipline-notice-mode.php`, im
 ```php
 require_once __DIR__ . '/../includes/class-discipline-notice-pass.php';
 
-$pass  = 'SPLM_Discipline_Notice_Pass';
-$state = splm_notice_mode_test_state();
+// $state is already bound earlier in this file; do not redeclare it.
+$pass = 'SPLM_Discipline_Notice_Pass';
 
 echo "\n=== the baseline token ===\n\n";
 
@@ -5131,11 +5185,13 @@ Expected: exit 0.
 
 - [ ] **Step 6: Verify the icon name resolves**
 
-`NAV_ITEMS` entries carry an `icon` that `<Icon name={...} />` resolves. `season-report` is reused from the existing `leaders` entry, so it is known-good; confirm no console warning appears for it.
+`NAV_ITEMS` entries carry an `icon` that `<Icon name={...} />` resolves. `season-report` is reused from the existing `leaders` entry, so it is known-good. The icon map is `components/icons.js` — **not** `Icon.jsx`, which does not exist:
 
 ```bash
-grep -n "season-report" sportspress-league-manager/src/dashboard/components/Icon.jsx
+grep -n "season-report" sportspress-league-manager/src/dashboard/components/icons.js
 ```
+
+Expected: two matches. An empty result means you have the wrong filename, not a missing icon.
 
 - [ ] **Step 7: Commit source and build together**
 
@@ -5692,6 +5748,44 @@ And the param docblock at line 132:
 	 * @param string $status    reviewed|suspension_served|dismissed|notice_sent.
 ```
 
+Then add a read helper to the same class, because Step 2 must not overwrite a convener's own acknowledgement:
+
+```php
+	/**
+	 * Whether an acknowledgement already exists for this key.
+	 *
+	 * acknowledge() upserts on UNIQUE (player_id, season_id, tier_key) and
+	 * overwrites value_at_ack, status, note and author_id unconditionally. The
+	 * notice path needs to know when NOT to call it: a convener who
+	 * acknowledged a tier at a deliberately high value — the way they silence a
+	 * player for the rest of a season — would otherwise have that value reset
+	 * and their note erased by an automatic notice_sent write.
+	 *
+	 * @param int    $player_id Player post id.
+	 * @param int    $season_id Season term id.
+	 * @param string $tier_key  Acknowledgement key.
+	 * @return bool
+	 */
+	public static function has_ack( int $player_id, int $season_id, string $tier_key ): bool {
+		global $wpdb;
+
+		if ( ! self::table_exists() ) {
+			return false;
+		}
+
+		$table = self::table_name();
+
+		return (bool) $wpdb->get_var( // phpcs:ignore WordPress.DB
+			$wpdb->prepare(
+				"SELECT id FROM {$table} WHERE player_id = %d AND season_id = %d AND tier_key = %s LIMIT 1", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not a value; cannot use a placeholder.
+				$player_id,
+				$season_id,
+				$tier_key
+			)
+		);
+	}
+```
+
 - [ ] **Step 2: Write the companion ack on a successful send**
 
 In `SPLM_Discipline_Notice_Mail::send()`, inside the `if ( $sent )` branch, after the row update and before the `return true;`:
@@ -5701,9 +5795,17 @@ In `SPLM_Discipline_Notice_Mail::send()`, inside the `if ( $sent )` branch, afte
 			// stops listing a player who has already been told. Reuses the
 			// existing suppression machinery rather than adding a second one:
 			// value_at_ack already means "quiet until they earn more".
+			//
+			// ONLY when no acknowledgement exists. acknowledge() upserts on
+			// UNIQUE (player, season, tier) and overwrites value_at_ack, status,
+			// note AND author_id unconditionally — so writing unconditionally
+			// here would destroy a convener's own acknowledgement, losing their
+			// note and resetting a deliberately-high value_at_ack (the way a
+			// convener silences a player) back down, which restarts the digest
+			// nagging about someone they had already dealt with.
 			if ( class_exists( 'SPLM_Discipline_Database' ) ) {
 				$row = SPLM_Discipline_Notice_Database::find( $notice_id );
-				if ( $row ) {
+				if ( $row && ! SPLM_Discipline_Database::has_ack( (int) $row->player_id, (int) $row->season_id, (string) $row->ack_key ) ) {
 					SPLM_Discipline_Database::acknowledge(
 						(int) $row->player_id,
 						(int) $row->season_id,
