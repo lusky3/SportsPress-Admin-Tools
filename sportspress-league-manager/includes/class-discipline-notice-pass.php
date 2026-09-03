@@ -295,15 +295,7 @@ class SPLM_Discipline_Notice_Pass {
 	private static function plan_and_write( int $player_id, int $season_id, array $fireable, array $player, int $season_total, array $tiers, bool $baselining ): int {
 		$written = 0;
 
-		// Resolved before planning, because whether an address exists decides
-		// the row's status. Skipped on a baselining pass, which mails nobody
-		// and so has no need of an address.
-		$address = $baselining
-			? array(
-				'email' => '',
-				'via'   => '',
-			)
-			: SPLM_Discipline_Notice_Recipients::player_email( $player_id );
+		$address = self::resolve_address( $player_id, $baselining );
 
 		$unreleased = SPLM_Discipline_Notice_Database::latest_unreleased( $player_id, $season_id );
 
@@ -345,27 +337,7 @@ class SPLM_Discipline_Notice_Pass {
 		$match = $planned['notice'];
 
 		if ( ! empty( $planned['supersedes'] ) && $unreleased ) {
-			// The queued row is upgraded to the more severe consequence rather
-			// than joined by a second one, so the convener's queue always shows
-			// the most severe live consequence and never two rows for one
-			// player. The row keeps its id, so a surface already showing it
-			// simply refreshes.
-			$upgraded = SPLM_Discipline_Notice_Database::update(
-				(int) $unreleased->id,
-				array(
-					'tier_key'       => (string) $match['tier_key'],
-					'ack_key'        => (string) ( $match['ack_key'] ?? $match['tier_key'] ),
-					'scope'          => (string) $match['scope'],
-					'severity'       => (string) $match['severity'],
-					'consequence'    => (string) $match['consequence'],
-					'games'          => (int) $match['games'],
-					'value_at_fire'  => (int) $match['value'],
-					'season_at_fire' => $season_total,
-					'status'         => $planned['status'],
-				)
-			);
-
-			return $upgraded ? $written + 1 : $written;
+			return $written + ( self::supersede( (int) $unreleased->id, $match, $season_total, (string) $planned['status'] ) ? 1 : 0 );
 		}
 
 		$notice_id = self::write_row(
@@ -490,6 +462,64 @@ class SPLM_Discipline_Notice_Pass {
 		return array(
 			'fireable'  => $fireable,
 			'refreshed' => $refreshed,
+		);
+	}
+
+	/**
+	 * The player's address, or an empty pair on a baselining pass.
+	 *
+	 * Resolved before planning, because whether an address exists decides the
+	 * row's status. A baselining pass mails nobody and so has no need of one,
+	 * and skipping the lookup there avoids a per-player query on the pass that
+	 * touches every player in the season.
+	 *
+	 * @param int  $player_id  Player post id.
+	 * @param bool $baselining Whether this pass is a baselining pass.
+	 * @return array array( 'email' => string, 'via' => string ).
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function resolve_address( int $player_id, bool $baselining ): array {
+		if ( $baselining ) {
+			return array(
+				'email' => '',
+				'via'   => '',
+			);
+		}
+
+		return SPLM_Discipline_Notice_Recipients::player_email( $player_id );
+	}
+
+	/**
+	 * Upgrade the queued row to a more severe consequence, in place.
+	 *
+	 * The queued notice is rewritten rather than joined by a second one, so a
+	 * convener's queue always shows the most severe live consequence and never
+	 * two rows for one player. The row keeps its id, so a surface already
+	 * displaying it simply refreshes rather than gaining a duplicate.
+	 *
+	 * @param int    $id           Row id to rewrite.
+	 * @param array  $match        The more severe match.
+	 * @param int    $season_total The player's season PIM.
+	 * @param string $status       Row status to set.
+	 * @return bool
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function supersede( int $id, array $match, int $season_total, string $status ): bool {
+		return SPLM_Discipline_Notice_Database::update(
+			$id,
+			array(
+				'tier_key'       => (string) $match['tier_key'],
+				'ack_key'        => (string) ( $match['ack_key'] ?? $match['tier_key'] ),
+				'scope'          => (string) $match['scope'],
+				'severity'       => (string) $match['severity'],
+				'consequence'    => (string) $match['consequence'],
+				'games'          => (int) $match['games'],
+				'value_at_fire'  => (int) $match['value'],
+				'season_at_fire' => $season_total,
+				'status'         => $status,
+			)
 		);
 	}
 

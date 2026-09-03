@@ -255,18 +255,7 @@ class SPLM_Discipline_Notice {
 		// mails nobody. That is what makes switching notices on mid-season, or
 		// editing a threshold, silent.
 		if ( $baselining ) {
-			$flat = array();
-			foreach ( $eligible as $scope_matches ) {
-				$flat = array_merge( $flat, $scope_matches );
-			}
-
-			return array(
-				'notice'     => null,
-				'status'     => SPLM_Discipline_Notice_Database::STATUS_PENDING,
-				'send'       => false,
-				'baselines'  => $flat,
-				'supersedes' => false,
-			);
+			return array_merge( $nothing, array( 'baselines' => self::flatten( $eligible ) ) );
 		}
 
 		$chosen = self::select( $eligible );
@@ -285,21 +274,8 @@ class SPLM_Discipline_Notice {
 		// A winner no more severe than what is already queued writes nothing.
 		// A more severe winner is returned with 'supersedes' set, and the caller
 		// rewrites that row in place rather than adding a second one.
-		if ( ! $baselining && $pending_rank < 9 ) {
-			$winner_rank = SPLM_Penalty_Watch::consequence_rank( (string) $chosen['notice']['consequence'] );
-			if ( $winner_rank >= $pending_rank ) {
-				return $nothing;
-			}
-
-			return array(
-				'notice'     => $chosen['notice'],
-				'status'     => $has_address
-					? SPLM_Discipline_Notice_Database::STATUS_PENDING
-					: SPLM_Discipline_Notice_Database::STATUS_FAILED,
-				'send'       => false,
-				'baselines'  => array(),
-				'supersedes' => true,
-			);
+		if ( $pending_rank < 9 ) {
+			return self::against_queue( $chosen['notice'], $pending_rank, $has_address, $nothing );
 		}
 
 		$mode = (string) ( $modes[ (string) $chosen['notice']['consequence'] ] ?? self::MODE_DISABLED );
@@ -356,6 +332,52 @@ class SPLM_Discipline_Notice {
 		return array(
 			'notice'    => array_shift( $ranked ),
 			'baselines' => $ranked,
+		);
+	}
+
+	/**
+	 * Flatten scope-grouped matches into one list.
+	 *
+	 * @param array $by_scope Scope => matches.
+	 * @return array
+	 */
+	private static function flatten( array $by_scope ): array {
+		$flat = array();
+
+		foreach ( $by_scope as $scope_matches ) {
+			$flat = array_merge( $flat, $scope_matches );
+		}
+
+		return $flat;
+	}
+
+	/**
+	 * Resolve a winner against whatever is already queued for this player.
+	 *
+	 * Extracted from plan_writes() to keep it off CyclomaticComplexity and
+	 * NPathComplexity, and because the rule is independently meaningful: the
+	 * queue holds at most one unreleased notice per player per season, and the
+	 * one it holds is the most severe live consequence.
+	 *
+	 * @param array $winner       The selected match.
+	 * @param int   $pending_rank Rank of the queued row.
+	 * @param bool  $has_address  Whether the player's address resolved.
+	 * @param array $nothing      The empty result to return when blocked.
+	 * @return array
+	 */
+	private static function against_queue( array $winner, int $pending_rank, bool $has_address, array $nothing ): array {
+		if ( SPLM_Penalty_Watch::consequence_rank( (string) $winner['consequence'] ) >= $pending_rank ) {
+			return $nothing;
+		}
+
+		return array(
+			'notice'     => $winner,
+			'status'     => $has_address
+				? SPLM_Discipline_Notice_Database::STATUS_PENDING
+				: SPLM_Discipline_Notice_Database::STATUS_FAILED,
+			'send'       => false,
+			'baselines'  => array(),
+			'supersedes' => true,
 		);
 	}
 
