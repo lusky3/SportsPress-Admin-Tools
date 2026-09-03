@@ -237,76 +237,129 @@ class SPLM_Waitlist {
 		$name    = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
 
 		foreach ( $order->get_items() as $item ) {
-			$product = $item->get_product();
-			if ( ! $product ) {
-				continue;
-			}
-
-			// A variation's category lives on its parent, matching how SPPR
-			// resolves the same thing.
-			$lookup_id = $product->get_type() === 'variation' ? $product->get_parent_id() : $product->get_id();
-
-			if ( ! SPLM_Waitlist_Matcher::is_waitlist_product( $lookup_id ) ) {
-				continue;
-			}
-
-			$season   = SPAT_Season::from_product( $lookup_id );
-			$position = SPAT_Season::position_from_product( $lookup_id, $product );
-
-			$order_id = (int) $order->get_id();
-
-			$existing = ( $season && $email )
-				? SPLM_Waitlist_Database::find_active( $email, $season, $position )
-				: null;
-
-			// find_active() only sees queued/offered, so it misses the case
-			// where this same order already produced a row that has since moved
-			// on (claimed, expired, cancelled). Without this second check, an
-			// already-claimed order whose status is re-touched in wp-admin —
-			// an admin correction, a refund followed by re-completing the same
-			// order — would silently create a second queued row for someone
-			// who is already registered, and a later offer pass could email
-			// them an invite for a spot they don't need.
-			$already_ingested = $order_id
-				? (bool) SPLM_Waitlist_Database::find_by_source_order( $order_id, (int) $lookup_id )
-				: false;
-
-			$row = self::build_row(
-				array(
-					'is_waitlist'       => true,
-					'season'            => $season,
-					'position'          => $position,
-					'product_id'        => (int) $lookup_id,
-					'target_product_id' => $season ? SPLM_Waitlist_Matcher::find_target_product( $season, $position ) : 0,
-					'email'             => $email,
-					'name'              => $name,
-					'user_id'           => (int) $order->get_user_id(),
-					'order_id'          => $order_id,
-					'has_active'        => (bool) $existing,
-					'already_ingested'  => $already_ingested,
-				)
-			);
-
-			if ( null === $row ) {
-				continue;
-			}
-
-			if ( SPLM_Waitlist_Database::insert( $row ) ) {
+			if ( self::ingest_line_item( $order, $item, $email, $name ) ) {
 				$created++;
-			} elseif ( class_exists( 'SPAT_Logger' ) ) {
-				// The ids are folded into the message string itself, not passed
-				// as $context: SPAT_Logger::write() only emits $context when
-				// spat_verbose is on, and throttles on md5() of the message —
-				// so two different orders failing inside the same 60 seconds
-				// would otherwise collapse into one line naming neither.
-				SPAT_Logger::error(
-					'waitlist',
-					sprintf( 'failed to insert a waitlist row: order_id=%d product_id=%d', (int) $order->get_id(), (int) $lookup_id )
-				);
 			}
 		}
 
 		return $created;
+	}
+
+	/**
+	 * Queue one line item, if it is a waitlist purchase worth queueing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param WC_Order $order Order object.
+	 * @param object   $item  Order line item.
+	 * @param string   $email Order billing email, lower-cased.
+	 * @param string   $name  Order billing name.
+	 * @return bool Whether a row was created.
+	 */
+	private static function ingest_line_item( $order, $item, string $email, string $name ): bool {
+		$product = $item->get_product();
+		if ( ! $product ) {
+			return false;
+		}
+
+		// A variation's category lives on its parent, matching how SPPR
+		// resolves the same thing.
+		$lookup_id = $product->get_type() === 'variation' ? $product->get_parent_id() : $product->get_id();
+
+		if ( ! SPLM_Waitlist_Matcher::is_waitlist_product( $lookup_id ) ) {
+			return false;
+		}
+
+		$row = self::build_row( self::line_item_facts( $order, $product, (int) $lookup_id, $email, $name ) );
+		if ( null === $row ) {
+			return false;
+		}
+
+		return self::insert_queued_row( $row, (int) $order->get_id(), (int) $lookup_id );
+	}
+
+	/**
+	 * The facts build_row() judges one waitlist line item on.
+	 *
+	 * Every lookup ingestion needs — the season and position the product
+	 * encodes, the registration product it pairs with, and the two ways this
+	 * person may already be in the table — resolved in one place, so
+	 * build_row() stays a pure decision over plain data.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param WC_Order $order     Order object.
+	 * @param object   $product   Line item product.
+	 * @param int      $lookup_id Product id categories are read from.
+	 * @param string   $email     Order billing email, lower-cased.
+	 * @param string   $name      Order billing name.
+	 * @return array
+	 */
+	private static function line_item_facts( $order, $product, int $lookup_id, string $email, string $name ): array {
+		$season   = SPAT_Season::from_product( $lookup_id );
+		$position = SPAT_Season::position_from_product( $lookup_id, $product );
+
+		$order_id = (int) $order->get_id();
+
+		$existing = ( $season && $email )
+			? SPLM_Waitlist_Database::find_active( $email, $season, $position )
+			: null;
+
+		// find_active() only sees queued/offered, so it misses the case
+		// where this same order already produced a row that has since moved
+		// on (claimed, expired, cancelled). Without this second check, an
+		// already-claimed order whose status is re-touched in wp-admin —
+		// an admin correction, a refund followed by re-completing the same
+		// order — would silently create a second queued row for someone
+		// who is already registered, and a later offer pass could email
+		// them an invite for a spot they don't need.
+		$already_ingested = $order_id
+			? (bool) SPLM_Waitlist_Database::find_by_source_order( $order_id, $lookup_id )
+			: false;
+
+		return array(
+			'is_waitlist'       => true,
+			'season'            => $season,
+			'position'          => $position,
+			'product_id'        => $lookup_id,
+			'target_product_id' => $season ? SPLM_Waitlist_Matcher::find_target_product( $season, $position ) : 0,
+			'email'             => $email,
+			'name'              => $name,
+			'user_id'           => (int) $order->get_user_id(),
+			'order_id'          => $order_id,
+			'has_active'        => (bool) $existing,
+			'already_ingested'  => $already_ingested,
+		);
+	}
+
+	/**
+	 * Write one queued row, reporting a failed insert rather than swallowing it.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param array $row       Insert payload from build_row().
+	 * @param int   $order_id  Originating order id.
+	 * @param int   $lookup_id Waitlist product id.
+	 * @return bool Whether the row was written.
+	 */
+	private static function insert_queued_row( array $row, int $order_id, int $lookup_id ): bool {
+		if ( SPLM_Waitlist_Database::insert( $row ) ) {
+			return true;
+		}
+
+		if ( class_exists( 'SPAT_Logger' ) ) {
+			// The ids are folded into the message string itself, not passed
+			// as $context: SPAT_Logger::write() only emits $context when
+			// spat_verbose is on, and throttles on md5() of the message —
+			// so two different orders failing inside the same 60 seconds
+			// would otherwise collapse into one line naming neither.
+			SPAT_Logger::error(
+				'waitlist',
+				sprintf( 'failed to insert a waitlist row: order_id=%d product_id=%d', $order_id, $lookup_id )
+			);
+		}
+
+		return false;
 	}
 
 	/**
