@@ -27,7 +27,7 @@ function __( $text, $domain = '' ) { // phpcs:ignore
 }
 
 require_once __DIR__ . '/../includes/class-waitlist-database.php';
-require_once __DIR__ . '/../includes/class-waitlist.php';
+require_once __DIR__ . '/../includes/class-waitlist-expiry.php';
 
 $passed = 0;
 $failed = 0;
@@ -88,7 +88,7 @@ assert_test( 'cancelled' === $db::STATUS_CANCELLED, 'cancelled' );
 
 echo "\n=== should_expire(): the stale-event defence ===\n\n";
 
-$w    = 'SPLM_Waitlist';
+$w    = 'SPLM_Waitlist_Expiry';
 $past = gmdate( 'Y-m-d H:i:s', time() - 3600 );
 $soon = gmdate( 'Y-m-d H:i:s', time() + 3600 );
 

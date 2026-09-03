@@ -408,6 +408,8 @@ if ( ! class_exists( 'SPAT_Logger' ) ) {
 
 require_once __DIR__ . '/../includes/class-waitlist-database.php';
 require_once __DIR__ . '/../includes/class-waitlist.php';
+require_once __DIR__ . '/../includes/class-waitlist-claim.php';
+require_once __DIR__ . '/../includes/class-waitlist-expiry.php';
 require_once __DIR__ . '/../includes/class-waitlist-rest.php';
 
 $passed = 0;
@@ -424,7 +426,9 @@ function assert_test( $condition, $message ) {
 	}
 }
 
-$w = 'SPLM_Waitlist';
+$c = 'SPLM_Waitlist_Claim';  // the claim vocabulary and its cart binding
+$w = 'SPLM_Waitlist';        // order tie-back: match_offer()
+$x = 'SPLM_Waitlist_Expiry'; // deadline enforcement: expire_offer()
 
 function row( array $overrides = array() ) {
 	return (object) array_merge(
@@ -443,27 +447,27 @@ function row( array $overrides = array() ) {
 
 echo "\n=== claim_state() ===\n\n";
 
-assert_test( 'valid' === $w::claim_state( row() ), 'a live offer is claimable' );
-assert_test( 'missing' === $w::claim_state( null ), 'an unknown token is missing' );
-assert_test( 'expired' === $w::claim_state( row( array( 'expires_at' => gmdate( 'Y-m-d H:i:s', time() - 60 ) ) ) ), 'an offer past its deadline is expired' );
-assert_test( 'claimed' === $w::claim_state( row( array( 'status' => 'claimed' ) ) ), 'an already-claimed offer reports claimed' );
-assert_test( 'cancelled' === $w::claim_state( row( array( 'status' => 'cancelled' ) ) ), 'a cancelled offer reports cancelled' );
-assert_test( 'expired' === $w::claim_state( row( array( 'status' => 'expired' ) ) ), 'a row already marked expired reports expired' );
-assert_test( 'missing' === $w::claim_state( row( array( 'status' => 'queued' ) ) ), 'a queued row is not claimable — its token was cleared, so this is a stale link' );
+assert_test( 'valid' === $c::claim_state( row() ), 'a live offer is claimable' );
+assert_test( 'missing' === $c::claim_state( null ), 'an unknown token is missing' );
+assert_test( 'expired' === $c::claim_state( row( array( 'expires_at' => gmdate( 'Y-m-d H:i:s', time() - 60 ) ) ) ), 'an offer past its deadline is expired' );
+assert_test( 'claimed' === $c::claim_state( row( array( 'status' => 'claimed' ) ) ), 'an already-claimed offer reports claimed' );
+assert_test( 'cancelled' === $c::claim_state( row( array( 'status' => 'cancelled' ) ) ), 'a cancelled offer reports cancelled' );
+assert_test( 'expired' === $c::claim_state( row( array( 'status' => 'expired' ) ) ), 'a row already marked expired reports expired' );
+assert_test( 'missing' === $c::claim_state( row( array( 'status' => 'queued' ) ) ), 'a queued row is not claimable — its token was cleared, so this is a stale link' );
 
 // A live offer whose target product went missing cannot be claimed: there is
 // nowhere to redirect to, and 0 would add-to-cart the wrong thing.
-assert_test( 'missing' === $w::claim_state( row( array( 'target_product_id' => 0 ) ) ), 'an offer with no target product is not claimable' );
+assert_test( 'missing' === $c::claim_state( row( array( 'target_product_id' => 0 ) ) ), 'an offer with no target product is not claimable' );
 
 echo "\n=== is_claimable() ===\n\n";
 
-assert_test( $w::is_claimable( row() ), 'a live offer is claimable' );
-assert_test( ! $w::is_claimable( null ), 'an unknown token is not claimable' );
-assert_test( ! $w::is_claimable( row( array( 'expires_at' => gmdate( 'Y-m-d H:i:s', time() - 1 ) ) ) ), 'a lapsed offer is not claimable' );
+assert_test( $c::is_claimable( row() ), 'a live offer is claimable' );
+assert_test( ! $c::is_claimable( null ), 'an unknown token is not claimable' );
+assert_test( ! $c::is_claimable( row( array( 'expires_at' => gmdate( 'Y-m-d H:i:s', time() - 1 ) ) ) ), 'a lapsed offer is not claimable' );
 
 // The timezone trap again: a deadline two hours out must not read as lapsed
 // on a site running four to five hours behind UTC.
-assert_test( $w::is_claimable( row( array( 'expires_at' => gmdate( 'Y-m-d H:i:s', time() + ( 2 * 3600 ) ) ) ) ), 'a deadline two hours out is still claimable under a non-UTC site timezone' );
+assert_test( $c::is_claimable( row( array( 'expires_at' => gmdate( 'Y-m-d H:i:s', time() + ( 2 * 3600 ) ) ) ) ), 'a deadline two hours out is still claimable under a non-UTC site timezone' );
 
 echo "\n=== is_claimable_by_token() (C1) ===\n\n";
 
@@ -471,16 +475,16 @@ echo "\n=== is_claimable_by_token() (C1) ===\n\n";
 // does not disqualify. A token on the order's own line item is proof the
 // player acted inside the window regardless of when an admin completed the
 // order.
-assert_test( $w::is_claimable_by_token( row() ), 'a live offer is claimable by token' );
-assert_test( $w::is_claimable_by_token( row( array( 'expires_at' => gmdate( 'Y-m-d H:i:s', time() - 60 ) ) ) ), 'a lapsed-but-still-offered row is claimable by token' );
-assert_test( $w::is_claimable_by_token( row( array( 'status' => 'expired', 'expires_at' => null ) ) ), 'a row already flipped to expired is claimable by token' );
+assert_test( $c::is_claimable_by_token( row() ), 'a live offer is claimable by token' );
+assert_test( $c::is_claimable_by_token( row( array( 'expires_at' => gmdate( 'Y-m-d H:i:s', time() - 60 ) ) ) ), 'a lapsed-but-still-offered row is claimable by token' );
+assert_test( $c::is_claimable_by_token( row( array( 'status' => 'expired', 'expires_at' => null ) ) ), 'a row already flipped to expired is claimable by token' );
 
 // It still rejects everything is_claimable() rejects except expiry.
-assert_test( ! $w::is_claimable_by_token( null ), 'an unknown row is not claimable by token' );
-assert_test( ! $w::is_claimable_by_token( row( array( 'status' => 'claimed' ) ) ), 'an already-claimed row is not claimable by token' );
-assert_test( ! $w::is_claimable_by_token( row( array( 'status' => 'cancelled' ) ) ), 'a cancelled row is not claimable by token' );
-assert_test( ! $w::is_claimable_by_token( row( array( 'status' => 'queued' ) ) ), 'a queued row is not claimable by token' );
-assert_test( ! $w::is_claimable_by_token( row( array( 'target_product_id' => 0 ) ) ), 'a row with no target product is not claimable by token even while offered' );
+assert_test( ! $c::is_claimable_by_token( null ), 'an unknown row is not claimable by token' );
+assert_test( ! $c::is_claimable_by_token( row( array( 'status' => 'claimed' ) ) ), 'an already-claimed row is not claimable by token' );
+assert_test( ! $c::is_claimable_by_token( row( array( 'status' => 'cancelled' ) ) ), 'a cancelled row is not claimable by token' );
+assert_test( ! $c::is_claimable_by_token( row( array( 'status' => 'queued' ) ) ), 'a queued row is not claimable by token' );
+assert_test( ! $c::is_claimable_by_token( row( array( 'target_product_id' => 0 ) ) ), 'a row with no target product is not claimable by token even while offered' );
 
 echo "\n=== every failure looks the same from outside ===\n\n";
 
@@ -490,7 +494,7 @@ echo "\n=== every failure looks the same from outside ===\n\n";
 $states   = array( 'missing', 'expired', 'claimed', 'cancelled' );
 $messages = array();
 foreach ( $states as $state ) {
-	$messages[] = $w::claim_failure_message( $state );
+	$messages[] = $c::claim_failure_message( $state );
 }
 assert_test( 1 === count( array_unique( $messages ) ), 'unknown, expired, claimed and cancelled all produce one identical message' );
 assert_test( '' !== $messages[0], 'the message is not empty' );
@@ -498,30 +502,30 @@ assert_test( strpos( strtolower( $messages[0] ), 'expire' ) !== false, 'the shar
 
 echo "\n=== cart item data binding ===\n\n";
 
-$bound = $w::build_cart_item_data( array( 'existing' => 'kept' ), str_repeat( 'b', 64 ) );
+$bound = $c::build_cart_item_data( array( 'existing' => 'kept' ), str_repeat( 'b', 64 ) );
 assert_test( 'kept' === $bound['existing'], 'existing cart item data is preserved' );
-assert_test( str_repeat( 'b', 64 ) === $bound[ $w::CART_META_KEY ], 'the token is bound to the cart item' );
+assert_test( str_repeat( 'b', 64 ) === $bound[ $c::CART_META_KEY ], 'the token is bound to the cart item' );
 
-$unbound = $w::build_cart_item_data( array( 'existing' => 'kept' ), '' );
-assert_test( ! isset( $unbound[ $w::CART_META_KEY ] ), 'no token means no binding key, so an ordinary purchase is untouched' );
+$unbound = $c::build_cart_item_data( array( 'existing' => 'kept' ), '' );
+assert_test( ! isset( $unbound[ $c::CART_META_KEY ] ), 'no token means no binding key, so an ordinary purchase is untouched' );
 
-$bad = $w::build_cart_item_data( array(), 'not-a-token' );
-assert_test( ! isset( $bad[ $w::CART_META_KEY ] ), 'a malformed token is not bound' );
+$bad = $c::build_cart_item_data( array(), 'not-a-token' );
+assert_test( ! isset( $bad[ $c::CART_META_KEY ] ), 'a malformed token is not bound' );
 
 echo "\n=== token shape guard ===\n\n";
 
-assert_test( $w::is_token_shaped( str_repeat( 'a', 64 ) ), 'a 64-char lowercase hex string is token-shaped' );
-assert_test( ! $w::is_token_shaped( str_repeat( 'a', 63 ) ), 'a short string is not' );
-assert_test( ! $w::is_token_shaped( str_repeat( 'A', 64 ) ), 'uppercase is not, matching the route regex exactly' );
-assert_test( ! $w::is_token_shaped( str_repeat( 'z', 64 ) ), 'non-hex characters are not' );
-assert_test( ! $w::is_token_shaped( '' ), 'an empty string is not' );
+assert_test( $c::is_token_shaped( str_repeat( 'a', 64 ) ), 'a 64-char lowercase hex string is token-shaped' );
+assert_test( ! $c::is_token_shaped( str_repeat( 'a', 63 ) ), 'a short string is not' );
+assert_test( ! $c::is_token_shaped( str_repeat( 'A', 64 ) ), 'uppercase is not, matching the route regex exactly' );
+assert_test( ! $c::is_token_shaped( str_repeat( 'z', 64 ) ), 'non-hex characters are not' );
+assert_test( ! $c::is_token_shaped( '' ), 'an empty string is not' );
 
 echo "\n=== add_to_cart_url() ===\n\n";
 
 splm_claim_test_state()->permalinks[11] = 'https://example.test/product/11/';
 $cart_url = SPLM_Waitlist_REST::add_to_cart_url( row(), str_repeat( 'c', 64 ) );
 assert_test( false !== strpos( $cart_url, 'add-to-cart=11' ), 'the add-to-cart URL carries the target product id' );
-assert_test( false !== strpos( $cart_url, $w::CLAIM_ARG . '=' . str_repeat( 'c', 64 ) ), 'the add-to-cart URL carries the claim token' );
+assert_test( false !== strpos( $cart_url, $c::CLAIM_ARG . '=' . str_repeat( 'c', 64 ) ), 'the add-to-cart URL carries the claim token' );
 
 // A deleted target product: get_permalink() returns false. Without a guard,
 // add_query_arg( $args, false ) falls back to $_SERVER['REQUEST_URI'] — this
@@ -532,42 +536,43 @@ assert_test( '' === SPLM_Waitlist_REST::add_to_cart_url( $looping_row, str_repea
 
 echo "\n=== add_cart_item_data() ===\n\n";
 
-$wl = new SPLM_Waitlist();
+$wl   = new SPLM_Waitlist();
+$cart = new SPLM_Waitlist_Claim();
 
-$_GET[ $w::CLAIM_ARG ] = str_repeat( 'e', 64 );
-$from_request = $wl->add_cart_item_data( array( 'existing' => 'kept' ), 0 );
+$_GET[ $c::CLAIM_ARG ] = str_repeat( 'e', 64 );
+$from_request = $cart->add_cart_item_data( array( 'existing' => 'kept' ), 0 );
 assert_test( 'kept' === $from_request['existing'], 'existing cart item data is preserved when capturing from the request' );
-assert_test( str_repeat( 'e', 64 ) === $from_request[ $w::CART_META_KEY ], 'a valid token in $_GET is bound to the cart item' );
-unset( $_GET[ $w::CLAIM_ARG ] );
+assert_test( str_repeat( 'e', 64 ) === $from_request[ $c::CART_META_KEY ], 'a valid token in $_GET is bound to the cart item' );
+unset( $_GET[ $c::CLAIM_ARG ] );
 
-$_GET[ $w::CLAIM_ARG ] = 'not-a-token';
-$malformed_from_request = $wl->add_cart_item_data( array(), 0 );
-assert_test( ! isset( $malformed_from_request[ $w::CART_META_KEY ] ), 'a malformed token in $_GET is not bound' );
-unset( $_GET[ $w::CLAIM_ARG ] );
+$_GET[ $c::CLAIM_ARG ] = 'not-a-token';
+$malformed_from_request = $cart->add_cart_item_data( array(), 0 );
+assert_test( ! isset( $malformed_from_request[ $c::CART_META_KEY ] ), 'a malformed token in $_GET is not bound' );
+unset( $_GET[ $c::CLAIM_ARG ] );
 
 // ?splm_wl[]=x — array injection. Must not fatal.
-$_GET[ $w::CLAIM_ARG ] = array( 'x' );
-$array_injection = $wl->add_cart_item_data( array(), 0 );
-assert_test( ! isset( $array_injection[ $w::CART_META_KEY ] ), 'an array-shaped claim arg does not fatal and is not bound' );
-unset( $_GET[ $w::CLAIM_ARG ] );
+$_GET[ $c::CLAIM_ARG ] = array( 'x' );
+$array_injection = $cart->add_cart_item_data( array(), 0 );
+assert_test( ! isset( $array_injection[ $c::CART_META_KEY ] ), 'an array-shaped claim arg does not fatal and is not bound' );
+unset( $_GET[ $c::CLAIM_ARG ] );
 
-$no_arg_present = $wl->add_cart_item_data( array( 'existing' => 'kept' ), 0 );
+$no_arg_present = $cart->add_cart_item_data( array( 'existing' => 'kept' ), 0 );
 assert_test(
-	'kept' === $no_arg_present['existing'] && ! isset( $no_arg_present[ $w::CART_META_KEY ] ),
+	'kept' === $no_arg_present['existing'] && ! isset( $no_arg_present[ $c::CART_META_KEY ] ),
 	'no claim arg in the request leaves cart item data untouched'
 );
 
 echo "\n=== persist_cart_item_meta() ===\n\n";
 
 $item = new Fake_Order_Item();
-$wl->persist_cart_item_meta( $item, 'any-key', array( $w::CART_META_KEY => str_repeat( 'f', 64 ) ) );
+$cart->persist_cart_item_meta( $item, 'any-key', array( $c::CART_META_KEY => str_repeat( 'f', 64 ) ) );
 assert_test( 1 === count( $item->meta ), 'a bound cart item value writes exactly one meta entry' );
-assert_test( $w::CART_META_KEY === $item->meta[0]['key'], 'the persisted meta key is CART_META_KEY' );
+assert_test( $c::CART_META_KEY === $item->meta[0]['key'], 'the persisted meta key is CART_META_KEY' );
 assert_test( str_repeat( 'f', 64 ) === $item->meta[0]['value'], 'the persisted meta value is the token' );
 assert_test( true === $item->meta[0]['unique'], 'the meta is written with $unique = true so re-saving never duplicates the row' );
 
 $item_no_token = new Fake_Order_Item();
-$wl->persist_cart_item_meta( $item_no_token, 'any-key', array() );
+$cart->persist_cart_item_meta( $item_no_token, 'any-key', array() );
 assert_test( array() === $item_no_token->meta, 'an ordinary cart item with no bound token writes no meta at all' );
 
 echo "\n=== handle_claim() and failure_response() ===\n\n";
@@ -585,7 +590,7 @@ $valid_response = $rest->handle_claim( new WP_REST_Request( array( 'token' => $v
 assert_test( 302 === $valid_response->get_status(), 'a valid claim link 302s' );
 $valid_headers = $valid_response->get_headers();
 assert_test( false !== strpos( $valid_headers['Location'] ?? '', 'add-to-cart=11' ), 'the redirect carries the add-to-cart product id' );
-assert_test( false !== strpos( $valid_headers['Location'] ?? '', $w::CLAIM_ARG . '=' . $valid_token ), 'the redirect carries the claim token' );
+assert_test( false !== strpos( $valid_headers['Location'] ?? '', $c::CLAIM_ARG . '=' . $valid_token ), 'the redirect carries the claim token' );
 assert_test( 'no-store' === ( $valid_headers['Cache-Control'] ?? '' ), 'the redirect is never cached — it carries a live credential in its Location' );
 assert_test( empty( splm_claim_test_state()->filters['rest_pre_serve_request'] ), 'a valid claim registers no serve-request filter' );
 
@@ -769,7 +774,7 @@ $wpdb->rows[ $claim_token ]  = $token_target_row;
 // The token is bound the same way persist_cart_item_meta() binds it, so this
 // pins the write/read accessor contract, not just the resolution logic.
 $token_item = new Fake_Order_Item();
-$token_item->add_meta_data( $w::CART_META_KEY, $claim_token, true );
+$token_item->add_meta_data( $c::CART_META_KEY, $claim_token, true );
 $token_item->set_product( new Fake_WC_Product( 11 ) );
 
 $token_order              = new Fake_WC_Order( 500, 'someone-else@example.com', 0, array( $token_item ) );
@@ -830,7 +835,7 @@ $expired_claim_token        = str_repeat( '9', 64 );
 $wpdb->rows[ $expired_claim_token ] = $expired_claim_row;
 
 $expired_claim_item = new Fake_Order_Item();
-$expired_claim_item->add_meta_data( $w::CART_META_KEY, $expired_claim_token, true );
+$expired_claim_item->add_meta_data( $c::CART_META_KEY, $expired_claim_token, true );
 $expired_claim_item->set_product( new Fake_WC_Product( 11 ) );
 
 $expired_claim_order                 = new Fake_WC_Order( 504, 'someone-else@example.com', 0, array( $expired_claim_item ) );
@@ -893,7 +898,7 @@ $wpdb->rows[ $realistic_id ]    = $realistic_row;
 $wpdb->rows[ $realistic_token ] = $realistic_row;
 
 // Step 1: expire it for real.
-$really_expired = $w::expire_offer( $realistic_id );
+$really_expired = $x::expire_offer( $realistic_id );
 assert_test( true === $really_expired, 'expire_offer() actually expires the past-due row' );
 assert_test( 'expired' === $realistic_row->status, 'the row is now status=expired' );
 assert_test(
@@ -907,7 +912,7 @@ $wpdb->update_calls = array(); // isolate step 2's write from expire_offer()'s o
 // already expired above -- the actual production sequence for a multi-day
 // Processing hold.
 $realistic_item = new Fake_Order_Item();
-$realistic_item->add_meta_data( $w::CART_META_KEY, $realistic_token, true );
+$realistic_item->add_meta_data( $c::CART_META_KEY, $realistic_token, true );
 $realistic_item->set_product( new Fake_WC_Product( 11 ) );
 
 $realistic_order                     = new Fake_WC_Order( 505, 'someone-else@example.com', 0, array( $realistic_item ) );
@@ -940,7 +945,7 @@ $wpdb->rows[ $fail_token ] = $fail_row;
 $wpdb->update_return       = false; // simulate the UPDATE failing.
 
 $fail_item = new Fake_Order_Item();
-$fail_item->add_meta_data( $w::CART_META_KEY, $fail_token, true );
+$fail_item->add_meta_data( $c::CART_META_KEY, $fail_token, true );
 $fail_item->set_product( new Fake_WC_Product( 11 ) );
 
 $fail_order               = new Fake_WC_Order( 501, 'someone-else@example.com', 0, array( $fail_item ) );

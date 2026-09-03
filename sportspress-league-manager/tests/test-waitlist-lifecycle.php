@@ -215,6 +215,8 @@ $wpdb = new Fake_WPDB();
 
 require_once __DIR__ . '/../includes/class-waitlist-database.php';
 require_once __DIR__ . '/../includes/class-waitlist.php';
+require_once __DIR__ . '/../includes/class-waitlist-claim.php';
+require_once __DIR__ . '/../includes/class-waitlist-offer.php';
 require_once __DIR__ . '/../includes/class-waitlist-rest.php';
 // Needed for row_to_response()'s target_gated: SPLM_Waitlist_Gate::is_gated()
 // is a static, read-only get_post_meta() call, so requiring the class here
@@ -236,7 +238,9 @@ function assert_test( $condition, $message ) {
 	}
 }
 
-$w = 'SPLM_Waitlist';
+$w = 'SPLM_Waitlist';       // ingestion: build_row(), is_paid_status()
+$o = 'SPLM_Waitlist_Offer'; // the convener's actions
+$c = 'SPLM_Waitlist_Claim'; // the token vocabulary
 
 /**
  * A complete, ingestible set of facts. Individual assertions override one key
@@ -325,36 +329,36 @@ assert_test( ! $w::is_paid_status( '', array( 'processing', 'completed' ) ), 'an
 
 echo "\n=== validate_hours() ===\n\n";
 
-assert_test( 48 === $w::validate_hours( null ), 'an omitted window defaults to 48 hours' );
-assert_test( 48 === $w::validate_hours( 48 ), 'the default is accepted explicitly' );
-assert_test( 72 === $w::validate_hours( 72 ), 'a longer window is accepted' );
-assert_test( 72 === $w::validate_hours( '72' ), 'a numeric string is accepted and cast' );
-assert_test( 1 === $w::validate_hours( 1 ), 'the minimum of one hour is accepted' );
-assert_test( 720 === $w::validate_hours( 720 ), 'the maximum of 720 hours is accepted' );
+assert_test( 48 === $o::validate_hours( null ), 'an omitted window defaults to 48 hours' );
+assert_test( 48 === $o::validate_hours( 48 ), 'the default is accepted explicitly' );
+assert_test( 72 === $o::validate_hours( 72 ), 'a longer window is accepted' );
+assert_test( 72 === $o::validate_hours( '72' ), 'a numeric string is accepted and cast' );
+assert_test( 1 === $o::validate_hours( 1 ), 'the minimum of one hour is accepted' );
+assert_test( 720 === $o::validate_hours( 720 ), 'the maximum of 720 hours is accepted' );
 
 // The reason this validation exists: a typo'd 0 or a negative would create an
 // offer that is already expired at the moment it is emailed, and an absurd
 // value would create one that never expires.
-assert_test( is_wp_error( $w::validate_hours( 0 ) ), 'zero hours is refused, since it would send an already-expired invite' );
-assert_test( is_wp_error( $w::validate_hours( -5 ) ), 'a negative window is refused' );
-assert_test( is_wp_error( $w::validate_hours( 721 ) ), 'a window past the maximum is refused' );
-assert_test( is_wp_error( $w::validate_hours( 100000 ) ), 'an absurd window is refused rather than creating a permanent offer' );
-assert_test( is_wp_error( $w::validate_hours( 'soon' ) ), 'a non-numeric window is refused' );
-assert_test( 'splm_invalid_hours' === $w::validate_hours( 0 )->get_error_code(), 'the refusal carries a specific error code' );
+assert_test( is_wp_error( $o::validate_hours( 0 ) ), 'zero hours is refused, since it would send an already-expired invite' );
+assert_test( is_wp_error( $o::validate_hours( -5 ) ), 'a negative window is refused' );
+assert_test( is_wp_error( $o::validate_hours( 721 ) ), 'a window past the maximum is refused' );
+assert_test( is_wp_error( $o::validate_hours( 100000 ) ), 'an absurd window is refused rather than creating a permanent offer' );
+assert_test( is_wp_error( $o::validate_hours( 'soon' ) ), 'a non-numeric window is refused' );
+assert_test( 'splm_invalid_hours' === $o::validate_hours( 0 )->get_error_code(), 'the refusal carries a specific error code' );
 
 echo "\n=== can_offer() ===\n\n";
 
-assert_test( $w::can_offer( 'queued' ), 'a queued row can be offered' );
-assert_test( $w::can_offer( 'expired' ), 'an expired row can be re-offered' );
-assert_test( ! $w::can_offer( 'offered' ), 'a row already offered cannot be offered again without cancelling first' );
-assert_test( ! $w::can_offer( 'claimed' ), 'a claimed row cannot be offered' );
-assert_test( ! $w::can_offer( 'cancelled' ), 'a cancelled row cannot be offered' );
-assert_test( ! $w::can_offer( '' ), 'an empty status cannot be offered' );
+assert_test( $o::can_offer( 'queued' ), 'a queued row can be offered' );
+assert_test( $o::can_offer( 'expired' ), 'an expired row can be re-offered' );
+assert_test( ! $o::can_offer( 'offered' ), 'a row already offered cannot be offered again without cancelling first' );
+assert_test( ! $o::can_offer( 'claimed' ), 'a claimed row cannot be offered' );
+assert_test( ! $o::can_offer( 'cancelled' ), 'a cancelled row cannot be offered' );
+assert_test( ! $o::can_offer( '' ), 'an empty status cannot be offered' );
 
 echo "\n=== generate_token() ===\n\n";
 
-$token_a = $w::generate_token();
-$token_b = $w::generate_token();
+$token_a = $c::generate_token();
+$token_b = $c::generate_token();
 assert_test( 64 === strlen( $token_a ), 'a token is 64 characters, fitting the varchar(64) column exactly' );
 assert_test( 1 === preg_match( '/^[a-f0-9]{64}$/', $token_a ), 'a token is lowercase hex, matching the route regex' );
 assert_test( $token_a !== $token_b, 'two tokens differ' );
@@ -362,7 +366,7 @@ assert_test( $token_a !== $token_b, 'two tokens differ' );
 echo "\n=== offer_updates() ===\n\n";
 
 $expiry  = SPLM_Waitlist_Database::expiry_from_hours( 48 );
-$updates = $w::offer_updates( $token_a, $expiry );
+$updates = $o::offer_updates( $token_a, $expiry );
 assert_test( 'offered' === $updates['status'], 'an offer sets status to offered' );
 assert_test( $token_a === $updates['claim_token'], 'the token is stored' );
 assert_test( $expiry['expires_at'] === $updates['expires_at'], 'the deadline is stored as the UTC string from expiry_from_hours' );
@@ -377,7 +381,7 @@ assert_test( null === $updates['resolved_order_id'], 'a fresh offer clears any r
 
 echo "\n=== unwind_updates() ===\n\n";
 
-$unwind = $w::unwind_updates();
+$unwind = $o::unwind_updates();
 assert_test( 'queued' === $unwind['status'], 'unwinding returns the row to queued so the person keeps their place' );
 assert_test( null === $unwind['claim_token'], 'unwinding clears the token so the dead link cannot be used' );
 assert_test( null === $unwind['expires_at'], 'unwinding clears the deadline' );
@@ -385,27 +389,27 @@ assert_test( null === $unwind['offered_at'], 'unwinding clears the offer time' )
 
 echo "\n=== claim_url() ===\n\n";
 
-$url = $w::claim_url( $token_a );
+$url = $c::claim_url( $token_a );
 assert_test( strpos( $url, $token_a ) !== false, 'the claim URL carries the token' );
 assert_test( strpos( $url, 'splm/v1/waitlist/claim/' ) !== false, 'the claim URL points at the claim route' );
 
 echo "\n=== offer_warnings() ===\n\n";
 
 splm_waitlist_lifecycle_test_state()->post_meta[123]['_splm_waitlist_gated'] = '';
-$ungated_warnings = $w::offer_warnings( 123 );
+$ungated_warnings = $o::offer_warnings( 123 );
 assert_test(
 	1 === count( $ungated_warnings ) && 'not_gated' === $ungated_warnings[0]['code'],
 	'an ungated target product produces a not_gated warning'
 );
 
 splm_waitlist_lifecycle_test_state()->post_meta[123]['_splm_waitlist_gated'] = '1';
-assert_test( array() === $w::offer_warnings( 123 ), 'a gated target product produces no warnings' );
+assert_test( array() === $o::offer_warnings( 123 ), 'a gated target product produces no warnings' );
 
 echo "\n=== offer(): the validation short-circuit ===\n\n";
 
 // validate_hours() runs before SPAT_Lock is ever referenced, so this is
 // assertable with no lock or database stubs at all.
-$bad_hours = $w::offer( 1, 0 );
+$bad_hours = $o::offer( 1, 0 );
 assert_test( is_wp_error( $bad_hours ), 'offer() refuses an invalid window before touching the lock or the database' );
 assert_test( 'splm_invalid_hours' === $bad_hours->get_error_code(), 'the refusal carries validate_hours()\'s own error code' );
 
@@ -441,7 +445,7 @@ if ( ! class_exists( 'SPAT_Lock' ) ) {
 	}
 }
 
-$locked = $w::offer( 1, 48 );
+$locked = $o::offer( 1, 48 );
 assert_test( is_wp_error( $locked ), 'offer() reports a held lock as an error rather than a fatal or a silent no-op' );
 assert_test( 'splm_waitlist_locked' === $locked->get_error_code(), 'the held-lock refusal carries its own error code' );
 assert_test( 409 === $locked->get_error_data()['status'], 'the held-lock refusal is a 409' );

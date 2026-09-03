@@ -328,7 +328,7 @@ class SPLM_Waitlist_Gate {
 		}
 
 		$row        = SPLM_Waitlist_Database::find_by_token( $token );
-		$product_id = ( $row && SPLM_Waitlist::is_claimable( $row ) ) ? (int) $row->target_product_id : 0;
+		$product_id = ( $row && SPLM_Waitlist_Claim::is_claimable( $row ) ) ? (int) $row->target_product_id : 0;
 
 		$cache[ $token ] = $product_id;
 
@@ -360,8 +360,8 @@ class SPLM_Waitlist_Gate {
 		);
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only capture of a token from our own claim redirect; is_token_shaped() validates its form below and resolve_token() validates it against the database, and this causes no state change, so a nonce would be meaningless on a link that arrives via email.
-		$token = isset( $_GET[ SPLM_Waitlist::CLAIM_ARG ] ) ? sanitize_text_field( wp_unslash( $_GET[ SPLM_Waitlist::CLAIM_ARG ] ) ) : '';
-		if ( ! SPLM_Waitlist::is_token_shaped( $token ) ) {
+		$token = isset( $_GET[ SPLM_Waitlist_Claim::CLAIM_ARG ] ) ? sanitize_text_field( wp_unslash( $_GET[ SPLM_Waitlist_Claim::CLAIM_ARG ] ) ) : '';
+		if ( ! SPLM_Waitlist_Claim::is_token_shaped( $token ) ) {
 			return $claim;
 		}
 

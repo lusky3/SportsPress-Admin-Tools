@@ -157,7 +157,7 @@ function wc_add_notice( $message, $type = 'success' ) { // phpcs:ignore
 
 /**
  * Fake claim record, matching the shape SPLM_Waitlist_Database::find_by_token()
- * returns: enough for SPLM_Waitlist::is_claimable() and the gate's own read
+ * returns: enough for SPLM_Waitlist_Claim::is_claimable() and the gate's own read
  * of target_product_id.
  */
 function splm_gate_row( $target_product_id, $claimable = true ) {
@@ -167,7 +167,7 @@ function splm_gate_row( $target_product_id, $claimable = true ) {
 	return $row;
 }
 
-class SPLM_Waitlist {
+class SPLM_Waitlist_Claim {
 	const CLAIM_ARG = 'splm_wl';
 
 	public static function is_token_shaped( $token ) {

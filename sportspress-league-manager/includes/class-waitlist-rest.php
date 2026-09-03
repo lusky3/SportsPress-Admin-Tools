@@ -83,7 +83,7 @@ class SPLM_Waitlist_REST {
 			'token' => array(
 				'required'          => true,
 				'type'              => 'string',
-				'validate_callback' => array( 'SPLM_Waitlist', 'is_token_shaped' ),
+				'validate_callback' => array( 'SPLM_Waitlist_Claim', 'is_token_shaped' ),
 				'sanitize_callback' => 'sanitize_text_field',
 			),
 		);
@@ -222,7 +222,7 @@ class SPLM_Waitlist_REST {
 			'hours' => array(
 				'required'          => false,
 				'type'              => 'integer',
-				'default'           => SPLM_Waitlist::DEFAULT_HOURS,
+				'default'           => SPLM_Waitlist_Offer::DEFAULT_HOURS,
 				'validate_callback' => array( __CLASS__, 'validate_hours' ),
 				'sanitize_callback' => 'absint',
 			),
@@ -325,7 +325,7 @@ class SPLM_Waitlist_REST {
 	}
 
 	/**
-	 * M3: delegates to SPLM_Waitlist::validate_hours() rather than
+	 * M3: delegates to SPLM_Waitlist_Offer::validate_hours() rather than
 	 * re-implementing the same bounds, so MIN_HOURS/MAX_HOURS have exactly
 	 * one place they are enforced.
 	 *
@@ -335,7 +335,7 @@ class SPLM_Waitlist_REST {
 	 * @return bool
 	 */
 	public static function validate_hours( $value ): bool {
-		return ! is_wp_error( SPLM_Waitlist::validate_hours( $value ) );
+		return ! is_wp_error( SPLM_Waitlist_Offer::validate_hours( $value ) );
 	}
 
 	/**
@@ -419,7 +419,7 @@ class SPLM_Waitlist_REST {
 		// Backstop for WP-Cron's unreliable self-trigger, bounded to the rows
 		// this request was already asking about. sweep() swallows its own
 		// failures so a sweep problem cannot fail the read.
-		SPLM_Waitlist::sweep(
+		SPLM_Waitlist_Expiry::sweep(
 			array(
 				'season'   => $filters['season'],
 				'position' => $filters['position'],
@@ -560,7 +560,7 @@ class SPLM_Waitlist_REST {
 	 * @return array|WP_Error
 	 */
 	public function offer_spot( $request ) {
-		return SPLM_Waitlist::offer( (int) $request->get_param( 'id' ), $request->get_param( 'hours' ) );
+		return SPLM_Waitlist_Offer::offer( (int) $request->get_param( 'id' ), $request->get_param( 'hours' ) );
 	}
 
 	/**
@@ -570,7 +570,7 @@ class SPLM_Waitlist_REST {
 	 * @return array|WP_Error
 	 */
 	public function cancel_offer( $request ) {
-		return SPLM_Waitlist::cancel( (int) $request->get_param( 'id' ) );
+		return SPLM_Waitlist_Offer::cancel( (int) $request->get_param( 'id' ) );
 	}
 
 	/**
@@ -586,7 +586,7 @@ class SPLM_Waitlist_REST {
 	 * @return array|WP_Error
 	 */
 	public function set_target( $request ) {
-		return SPLM_Waitlist::set_target( (int) $request->get_param( 'id' ), (int) $request->get_param( 'target_product_id' ) );
+		return SPLM_Waitlist_Offer::set_target( (int) $request->get_param( 'id' ), (int) $request->get_param( 'target_product_id' ) );
 	}
 
 	/**
@@ -639,8 +639,8 @@ class SPLM_Waitlist_REST {
 
 		return add_query_arg(
 			array(
-				'add-to-cart'             => $product_id,
-				SPLM_Waitlist::CLAIM_ARG  => (string) $token,
+				'add-to-cart'                  => $product_id,
+				SPLM_Waitlist_Claim::CLAIM_ARG => (string) $token,
 			),
 			$permalink
 		);
@@ -671,7 +671,7 @@ class SPLM_Waitlist_REST {
 	public function handle_claim( $request ) {
 		$token = (string) $request->get_param( 'token' );
 		$row   = SPLM_Waitlist_Database::find_by_token( $token );
-		$state = SPLM_Waitlist::claim_state( $row );
+		$state = SPLM_Waitlist_Claim::claim_state( $row );
 		$url   = ( 'valid' === $state ) ? self::add_to_cart_url( $row, $token ) : '';
 
 		if ( 'valid' === $state && '' === $url ) {
@@ -739,7 +739,7 @@ class SPLM_Waitlist_REST {
 	 * @return WP_REST_Response
 	 */
 	private function failure_response( $state ): WP_REST_Response {
-		$message = SPLM_Waitlist::claim_failure_message( $state );
+		$message = SPLM_Waitlist_Claim::claim_failure_message( $state );
 
 		$html = '<!doctype html><html lang="en"><head><meta charset="utf-8">'
 			. '<meta name="viewport" content="width=device-width,initial-scale=1">'

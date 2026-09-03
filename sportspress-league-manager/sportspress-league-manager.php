@@ -197,7 +197,15 @@ class SportsPress_League_Manager {
 		// into league_manager_dashboard.
 		if ( in_array( 'league_waitlist', $enabled, true ) ) {
 			SPLM_Waitlist_Database::maybe_upgrade();
+			// Three constructors, because the waitlist's hooks belong to three
+			// concerns: SPLM_Waitlist listens for paid and completed orders,
+			// SPLM_Waitlist_Claim binds the claim token through the cart, and
+			// SPLM_Waitlist_Expiry answers the scheduled expiry event. Drop
+			// any one of these lines and its hooks silently never register.
+			// SPLM_Waitlist_Offer is deliberately absent: it hooks nothing.
 			new SPLM_Waitlist();
+			new SPLM_Waitlist_Claim();
+			new SPLM_Waitlist_Expiry();
 			new SPLM_Waitlist_Gate();
 			new SPLM_Waitlist_REST();
 		}
