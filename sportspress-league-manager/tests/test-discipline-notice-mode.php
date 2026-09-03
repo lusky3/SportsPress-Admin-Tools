@@ -45,7 +45,7 @@ function get_option( $name, $default = false ) {
 // Writes into the same map get_option reads, so the baselining tests can
 // assert the stored token actually changed rather than just that the computed
 // one differs — the distinction that hid a real defect in review.
-function update_option( $name, $value, $autoload = null ) { // phpcs:ignore
+function update_option( $name, $value ) { // phpcs:ignore
 	splm_notice_mode_test_state()->options[ $name ] = $value;
 	return true;
 }
@@ -55,11 +55,14 @@ function wp_mail( $to, $subject, $body, $headers = array() ) {
 	return splm_notice_mode_test_state()->mail_succeeds;
 }
 
-function __( $text, $domain = null ) { // phpcs:ignore
+// $domain is never consulted, so it is omitted rather than declared as an
+// ignored formal parameter — PHP allows extra arguments to a userland
+// function, and this is the repo's convention for unused stub params.
+function __( $text ) { // phpcs:ignore
 	return $text;
 }
 
-function _n( $single, $plural, $number, $domain = null ) { // phpcs:ignore
+function _n( $single, $plural, $number ) { // phpcs:ignore
 	return 1 === (int) $number ? $single : $plural;
 }
 

@@ -14,12 +14,15 @@ function sanitize_key( $key ) {
 	return strtolower( preg_replace( '/[^a-z0-9_\-]/i', '', (string) $key ) );
 }
 
-function __( $text, $domain = null ) { // phpcs:ignore
+// $domain is never consulted, so it is omitted rather than declared as an
+// ignored formal parameter — PHP allows extra arguments to a userland
+// function, and this is the repo's convention for unused stub params.
+function __( $text ) { // phpcs:ignore
 	return $text;
 }
 
 // suspension_sentence() pluralises its game count through _n().
-function _n( $single, $plural, $number, $domain = null ) { // phpcs:ignore
+function _n( $single, $plural, $number ) { // phpcs:ignore
 	return 1 === (int) $number ? $single : $plural;
 }
 
