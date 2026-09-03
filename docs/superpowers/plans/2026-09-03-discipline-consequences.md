@@ -3156,8 +3156,17 @@ require_once __DIR__ . '/../includes/class-discipline-notice-mail.php';
  * class is never loaded in this file.
  */
 class SPLM_Discipline_Notice_Database {
-	const STATUS_SENT   = 'sent';
-	const STATUS_FAILED = 'failed';
+	// All six statuses, not only the two send() writes. This file also loads
+	// class-discipline-notice.php for its mode constants, and that class
+	// references STATUS_PENDING — so a stand-in carrying only SENT and FAILED
+	// is a landmine for the next assertion added here (Task 9 appends to this
+	// very file), which would fatal on an undefined constant.
+	const STATUS_BASELINE  = 'baseline';
+	const STATUS_PENDING   = 'pending';
+	const STATUS_SENT      = 'sent';
+	const STATUS_FAILED    = 'failed';
+	const STATUS_DISCARDED = 'discarded';
+	const STATUS_SERVED    = 'served';
 
 	public static function now() {
 		return gmdate( 'Y-m-d H:i:s' );
