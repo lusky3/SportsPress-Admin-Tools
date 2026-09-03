@@ -224,7 +224,7 @@ class SPLM_Waitlist_Gate {
 	 * @return array<int, string>
 	 */
 	public static function session_map(): array {
-		if ( ! function_exists( 'WC' ) || ! WC() || ! isset( WC()->session ) || ! WC()->session ) {
+		if ( ! self::has_active_session() ) {
 			return array();
 		}
 
@@ -235,21 +235,53 @@ class SPLM_Waitlist_Gate {
 
 		$map = array();
 		foreach ( self::normalise_entitlements( array_keys( $raw ) ) as $id ) {
-			// normalise_entitlements() casts keys to int, so a non-canonical
-			// numeric key ('07', '1e2') can produce an id absent from $raw --
-			// nothing this plugin writes does that, but the session is
-			// client-influenced storage and this method's contract is to
-			// treat it as hostile, so the read stays guarded.
-			if ( ! isset( $raw[ $id ] ) ) {
-				continue;
-			}
-			$token = $raw[ $id ];
-			if ( is_string( $token ) && '' !== $token ) {
+			$token = self::session_entitlement_token( $raw, $id );
+			if ( null !== $token ) {
 				$map[ $id ] = $token;
 			}
 		}
 
 		return $map;
+	}
+
+	/**
+	 * Whether WooCommerce has a session this request can read entitlements
+	 * from.
+	 *
+	 * WC() does not exist at all outside a WooCommerce-active install, and
+	 * WC()->session is null in REST and cron contexts (WooCommerce only
+	 * initialises the session object on a frontend request) -- so every step
+	 * of reaching it is guarded rather than assumed.
+	 *
+	 * @return bool
+	 */
+	private static function has_active_session(): bool {
+		return function_exists( 'WC' ) && WC() && isset( WC()->session ) && WC()->session;
+	}
+
+	/**
+	 * One entitlement's token out of the session's raw, hostile storage.
+	 *
+	 * $id has already passed through normalise_entitlements(), which casts
+	 * keys to int -- so a non-canonical numeric key ('07', '1e2') can produce
+	 * an id absent from $raw. Nothing this plugin writes does that, but the
+	 * session is client-influenced storage and this method's contract is to
+	 * treat it as hostile: the isset() guard is what keeps that lookup from
+	 * raising a reproduced PHP 8 "Undefined array key" warning, and the
+	 * is_string()/non-empty check refuses anything else a tampered session
+	 * could hold in that slot.
+	 *
+	 * @param array $raw Raw session entitlement map, keyed by product id.
+	 * @param int   $id  Normalised product id to look up.
+	 * @return string|null The token, or null if absent or not a non-empty string.
+	 */
+	private static function session_entitlement_token( array $raw, int $id ): ?string {
+		if ( ! isset( $raw[ $id ] ) ) {
+			return null;
+		}
+
+		$token = $raw[ $id ];
+		return ( is_string( $token ) && '' !== $token ) ? $token : null;
 	}
 
 	/**
