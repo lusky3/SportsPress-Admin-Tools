@@ -498,79 +498,122 @@ class SPLM_Waitlist {
 		$user_id = (int) $order->get_user_id();
 
 		foreach ( $order->get_items() as $item ) {
-			$product = $item->get_product();
-			if ( ! $product ) {
-				continue;
-			}
+			self::resolve_line_item_claim( $order, $item, $email, $user_id );
+		}
+	}
 
-			$token    = (string) $item->get_meta( SPLM_Waitlist_Claim::CART_META_KEY );
-			$by_token = SPLM_Waitlist_Claim::is_token_shaped( $token )
-				? SPLM_Waitlist_Database::find_by_token( $token )
-				: null;
+	/**
+	 * Resolve whichever offer one completed line item fulfils.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param WC_Order $order   Order object.
+	 * @param object   $item    Order line item.
+	 * @param string   $email   Order billing email, lower-cased.
+	 * @param int      $user_id Order customer id.
+	 * @return void
+	 */
+	private static function resolve_line_item_claim( $order, $item, string $email, int $user_id ) {
+		$product = $item->get_product();
+		if ( ! $product ) {
+			return;
+		}
 
-			// A claimable-by-token row wins outright (match_offer() never
-			// consults $offered in that case), so the product-plus-email/user
-			// lookup — including its variation-parent retry — is skipped
-			// entirely on the common path. One fewer query per completed
-			// order. is_claimable_by_token(), not is_claimable(): see that
-			// method's docblock — an admin completing this order after the
-			// row's deadline must not push this optimisation into running
-			// the fallback lookup, which would find nothing anyway since it
-			// only selects status = 'offered'.
-			$token_claimable = $by_token && SPLM_Waitlist_Claim::is_claimable_by_token( $by_token );
+		$token    = (string) $item->get_meta( SPLM_Waitlist_Claim::CART_META_KEY );
+		$by_token = SPLM_Waitlist_Claim::is_token_shaped( $token )
+			? SPLM_Waitlist_Database::find_by_token( $token )
+			: null;
 
-			$offered = array();
-			if ( ! $token_claimable ) {
-				$product_id = (int) $product->get_id();
-				$offered    = SPLM_Waitlist_Database::find_offered_for_product( $product_id );
+		// A claimable-by-token row wins outright (match_offer() never
+		// consults $offered in that case), so the product-plus-email/user
+		// lookup — including its variation-parent retry — is skipped
+		// entirely on the common path. One fewer query per completed
+		// order. is_claimable_by_token(), not is_claimable(): see that
+		// method's docblock — an admin completing this order after the
+		// row's deadline must not push this optimisation into running
+		// the fallback lookup, which would find nothing anyway since it
+		// only selects status = 'offered'.
+		$token_claimable = $by_token && SPLM_Waitlist_Claim::is_claimable_by_token( $by_token );
 
-				// A variation is purchased, but the waitlist stored the parent.
-				if ( empty( $offered ) && $product->get_type() === 'variation' ) {
-					$offered = SPLM_Waitlist_Database::find_offered_for_product( (int) $product->get_parent_id() );
-				}
-			}
+		$offered = array();
+		if ( ! $token_claimable ) {
+			$offered = self::offered_rows_for_product( $product );
+		}
 
-			$match = self::match_offer( $by_token, $offered, $email, $user_id );
-			if ( ! $match ) {
-				continue;
-			}
+		$match = self::match_offer( $by_token, $offered, $email, $user_id );
+		if ( ! $match ) {
+			return;
+		}
 
-			// $match === $by_token identifies the token path without a second
-			// claim_state() evaluation: match_offer() returns $by_token itself
-			// in that branch, so identity is exact, not just equivalent.
-			$matched_by = ( $match === $by_token ) ? 'token' : 'email_or_user';
+		// $match === $by_token identifies the token path without a second
+		// claim_state() evaluation: match_offer() returns $by_token itself
+		// in that branch, so identity is exact, not just equivalent.
+		$matched_by = ( $match === $by_token ) ? 'token' : 'email_or_user';
 
-			if ( ! self::mark_claimed( (int) $match->id, (int) $order->get_id() ) ) {
-				// The claim was resolved but the write failed. Logging the
-				// success line below would tell an operator the row is
-				// claimed when it is still sitting at offered — check the
-				// write's return value and log the failure instead, matching
-				// SPLM_Waitlist_Offer::cancel()'s shape.
-				if ( class_exists( 'SPAT_Logger' ) ) {
-					SPAT_Logger::error(
-						'waitlist',
-						sprintf(
-							'failed to write a waitlist claim: waitlist_id=%d order_id=%d matched_by=%s',
-							(int) $match->id,
-							(int) $order->get_id(),
-							$matched_by
-						)
-					);
-				}
-				continue;
-			}
+		self::record_claim( $match, (int) $order->get_id(), $matched_by );
+	}
 
+	/**
+	 * The offered rows a purchased product could be fulfilling.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param object $product Purchased product.
+	 * @return object[]
+	 */
+	private static function offered_rows_for_product( $product ): array {
+		$product_id = (int) $product->get_id();
+		$offered    = SPLM_Waitlist_Database::find_offered_for_product( $product_id );
+
+		// A variation is purchased, but the waitlist stored the parent.
+		if ( empty( $offered ) && $product->get_type() === 'variation' ) {
+			$offered = SPLM_Waitlist_Database::find_offered_for_product( (int) $product->get_parent_id() );
+		}
+
+		return $offered;
+	}
+
+	/**
+	 * Write the claim, and report which way it went.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param object $match      Resolved waitlist row.
+	 * @param int    $order_id   Fulfilling order id.
+	 * @param string $matched_by 'token' or 'email_or_user'.
+	 * @return void
+	 */
+	private static function record_claim( $match, int $order_id, string $matched_by ) {
+		if ( ! self::mark_claimed( (int) $match->id, $order_id ) ) {
+			// The claim was resolved but the write failed. Logging the
+			// success line below would tell an operator the row is
+			// claimed when it is still sitting at offered — check the
+			// write's return value and log the failure instead, matching
+			// SPLM_Waitlist_Offer::cancel()'s shape.
 			if ( class_exists( 'SPAT_Logger' ) ) {
-				SPAT_Logger::info(
+				SPAT_Logger::error(
 					'waitlist',
 					sprintf(
-						'a waitlist offer was claimed: waitlist_id=%d order_id=%d matched_by=%s',
+						'failed to write a waitlist claim: waitlist_id=%d order_id=%d matched_by=%s',
 						(int) $match->id,
-						(int) $order->get_id(),
+						$order_id,
 						$matched_by
 					)
 				);
 			}
+			return;
+		}
+
+		if ( class_exists( 'SPAT_Logger' ) ) {
+			SPAT_Logger::info(
+				'waitlist',
+				sprintf(
+					'a waitlist offer was claimed: waitlist_id=%d order_id=%d matched_by=%s',
+					(int) $match->id,
+					$order_id,
+					$matched_by
+				)
+			);
 		}
 	}
 }
