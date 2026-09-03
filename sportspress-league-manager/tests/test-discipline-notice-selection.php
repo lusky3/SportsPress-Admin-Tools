@@ -292,6 +292,33 @@ assert_test(
 	'and produces no baseline row either: eligible_matches() and select() agree on what is actionable'
 );
 
+echo "\n=== a warning does not follow a suspension ===\n\n";
+
+$both_queued = array( 'warn' => 'queued', 'suspend' => 'queued' );
+
+$after_suspension = $notice::plan_writes( $both_tiers, $both_queued, false, true, true );
+assert_test(
+	'season-critical' === ( $after_suspension['notice']['tier_key'] ?? '' ),
+	'with a suspension outstanding the suspending tier can still fire'
+);
+assert_test(
+	array() === $after_suspension['baselines'],
+	'and the warning tier is not baselined either: it is moot for the rest of the season'
+);
+
+$warn_alone = array( 'season' => array( $mk( 'season-warn', 'season', 'warn', 0, 12 ) ) );
+$muted      = $notice::plan_writes( $warn_alone, $both_queued, false, true, true );
+assert_test(
+	null === $muted['notice'],
+	'a warning alone does not fire once a suspension has been issued: "at 18 you will be suspended" is false for a player already suspended'
+);
+
+$not_muted = $notice::plan_writes( $warn_alone, $both_queued, false, true, false );
+assert_test(
+	'season-warn' === ( $not_muted['notice']['tier_key'] ?? '' ),
+	'and with no suspension outstanding the same warning fires normally'
+);
+
 echo "\n=== Results ===\n\n";
 echo "Passed: {$passed}\nFailed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );

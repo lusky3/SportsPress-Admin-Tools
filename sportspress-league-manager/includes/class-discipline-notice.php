@@ -176,10 +176,12 @@ class SPLM_Discipline_Notice {
 	 * the warning the league actually enabled is both skipped and baselined out
 	 * of existence.
 	 *
-	 * @param array $matches_by_scope Scope => matches that passed should_fire().
-	 * @param array $modes            consequence => mode, e.g. array( 'warn' => 'queued' ).
-	 * @param bool  $baselining       Whether this pass is a baselining pass.
-	 * @param bool  $has_address      Whether the player's address resolved.
+	 * @param array $matches_by_scope        Scope => matches that passed should_fire().
+	 * @param array $modes                   consequence => mode, e.g. array( 'warn' => 'queued' ).
+	 * @param bool  $baselining              Whether this pass is a baselining pass.
+	 * @param bool  $has_address             Whether the player's address resolved.
+	 * @param bool  $suspension_outstanding  Whether a suspension notice already exists
+	 *                                       for this player and season.
 	 * @return array array(
 	 *               'notice'    => array|null,
 	 *               'status'    => string,
@@ -187,8 +189,8 @@ class SPLM_Discipline_Notice {
 	 *               'baselines' => array,
 	 *             )
 	 */
-	public static function plan_writes( array $matches_by_scope, array $modes, bool $baselining, bool $has_address ): array {
-		$eligible = self::eligible_matches( $matches_by_scope, $modes );
+	public static function plan_writes( array $matches_by_scope, array $modes, bool $baselining, bool $has_address, bool $suspension_outstanding = false ): array {
+		$eligible = self::eligible_matches( $matches_by_scope, $modes, $suspension_outstanding );
 
 		$nothing = array(
 			'notice'    => null,
@@ -286,11 +288,13 @@ class SPLM_Discipline_Notice {
 	 * baseline row. The spec is explicit: disabled means discipline behaves
 	 * exactly as it did before notices existed.
 	 *
-	 * @param array $matches_by_scope Scope => matches.
-	 * @param array $modes            consequence => mode.
+	 * @param array $matches_by_scope       Scope => matches.
+	 * @param array $modes                  consequence => mode.
+	 * @param bool  $suspension_outstanding Whether a suspension notice already exists
+	 *                                      for this player and season.
 	 * @return array Scope => surviving matches.
 	 */
-	private static function eligible_matches( array $matches_by_scope, array $modes ): array {
+	private static function eligible_matches( array $matches_by_scope, array $modes, bool $suspension_outstanding = false ): array {
 		$eligible = array();
 
 		foreach ( $matches_by_scope as $scope => $scope_matches ) {
@@ -303,6 +307,13 @@ class SPLM_Discipline_Notice {
 				// key writes a baseline row for a tier that can never produce
 				// a notice.
 				if ( ! in_array( $consequence, self::ACTIONABLE, true ) ) {
+					continue;
+				}
+
+				// A warning is moot once a suspension has been issued this
+				// season: its whole content is "at N you will be suspended",
+				// which is false for a player already suspended at N.
+				if ( $suspension_outstanding && 'suspend' !== $consequence ) {
 					continue;
 				}
 

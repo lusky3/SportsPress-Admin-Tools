@@ -278,6 +278,39 @@ class SPLM_Discipline_Notice_Database {
 	}
 
 	/**
+	 * Whether a suspension notice already exists for this player and season.
+	 *
+	 * Excludes `baseline` (nothing was issued) and `discarded` (a convener
+	 * decided against it), so only a suspension that was actually raised
+	 * silences the warning tiers beneath it.
+	 *
+	 * @param int $player_id Player post id.
+	 * @param int $season_id Season term id.
+	 * @return bool
+	 */
+	public static function has_suspension_notice( int $player_id, int $season_id ): bool {
+		global $wpdb;
+
+		if ( ! self::table_exists() ) {
+			return false;
+		}
+
+		$table = self::table_name();
+
+		return (bool) $wpdb->get_var( // phpcs:ignore WordPress.DB
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not a value; cannot use a placeholder.
+				"SELECT id FROM {$table}
+				 WHERE player_id = %d AND season_id = %d AND consequence = 'suspend'
+				   AND status IN ( 'pending', 'sent', 'served' )
+				 LIMIT 1",
+				$player_id,
+				$season_id
+			)
+		);
+	}
+
+	/**
 	 * Paginated rows for the queue surfaces.
 	 *
 	 * @param array $filters  Accepts 'season' (int) and 'status' (string).
