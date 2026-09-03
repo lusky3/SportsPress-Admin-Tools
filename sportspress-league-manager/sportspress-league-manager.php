@@ -214,6 +214,25 @@ class SportsPress_League_Manager {
 			} else {
 				SPLM_Discipline_Notice_Pass::unschedule();
 			}
+
+			// No sibling plugin currently hooks these filters — splm_player_notes
+			// is hard-coded into the parent's default list — so this is the
+			// first use. That is the correct direction: a child contributing
+			// its own rows beats editing the parent.
+			add_filter(
+				'spat_health_dashboard_tables',
+				function ( $tables ) {
+					$tables[] = SPLM_Discipline_Notice_Database::table_name();
+					return $tables;
+				}
+			);
+			add_filter(
+				'spat_health_dashboard_crons',
+				function ( $crons ) {
+					$crons[ SPLM_Discipline_Notice_Pass::HOOK ] = 'Discipline Notice Evaluation';
+					return $crons;
+				}
+			);
 		}
 
 		if ( ! in_array( 'league_discipline', $enabled, true ) ) {

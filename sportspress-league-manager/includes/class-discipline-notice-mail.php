@@ -294,6 +294,33 @@ class SPLM_Discipline_Notice_Mail {
 				)
 			);
 
+			// A sent notice also acknowledges the flag, so the weekly digest
+			// stops listing a player who has already been told. Reuses the
+			// existing suppression machinery rather than adding a second one:
+			// value_at_ack already means "quiet until they earn more".
+			//
+			// ONLY when no acknowledgement exists. acknowledge() upserts on
+			// UNIQUE (player, season, tier) and overwrites value_at_ack, status,
+			// note AND author_id unconditionally — so writing unconditionally
+			// here would destroy a convener's own acknowledgement, losing their
+			// note and resetting a deliberately-high value_at_ack (the way a
+			// convener silences a player) back down, which restarts the digest
+			// nagging about someone they had already dealt with.
+			if ( class_exists( 'SPLM_Discipline_Database' ) ) {
+				$row = SPLM_Discipline_Notice_Database::find( $notice_id );
+				if ( $row && ! SPLM_Discipline_Database::has_ack( (int) $row->player_id, (int) $row->season_id, (string) $row->ack_key ) ) {
+					SPLM_Discipline_Database::acknowledge(
+						(int) $row->player_id,
+						(int) $row->season_id,
+						(string) $row->ack_key,
+						(int) $row->value_at_fire,
+						'notice_sent',
+						'',
+						get_current_user_id()
+					);
+				}
+			}
+
 			return true;
 		}
 
