@@ -189,20 +189,17 @@ class SportsPress_League_Manager {
 				SPLM_Discipline_Digest::unschedule();
 			}
 
-			// Three constructors, because the notice feature's hooks belong to
-			// three concerns: the pass answers the scheduled event, the REST
-			// class registers the routes both queue surfaces call, and the
-			// admin class contributes the technical tab. Drop any one of these
+			// Four constructors, because the notice feature's hooks belong to
+			// four concerns: the pass answers the scheduled event, the REST
+			// class registers the routes both queue surfaces call, the admin
+			// class contributes the technical tab, and the privacy class
+			// registers the GDPR exporter and eraser. Drop any one of these
 			// lines and its hooks silently never register.
 			// SPLM_Discipline_Notice, _Mail and _Recipients are deliberately
 			// absent: they hook nothing.
-			// SPLM_Discipline_Notice_Privacy is instantiated by Task 15, which
-			// creates it. Adding the line here would make every page load with
-			// this module enabled fatal on "class not found" for as long as it
-			// took Task 15 to land, and no PHP test would catch it because none
-			// of them bootstrap WordPress.
 			new SPLM_Discipline_Notice_Pass();
 			new SPLM_Discipline_Notice_REST();
+			new SPLM_Discipline_Notice_Privacy();
 			if ( is_admin() ) {
 				new SPLM_Discipline_Notice_Admin();
 			}
