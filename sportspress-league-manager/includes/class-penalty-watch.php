@@ -66,19 +66,22 @@ class SPLM_Penalty_Watch {
 	}
 
 	/**
-	 * Flags for one player.
+	 * Every matched tier for one player, grouped by scope.
 	 *
-	 * Suppressed tiers are removed BEFORE the highest-per-scope choice, so
-	 * acknowledging a critical reveals the warning underneath instead of hiding
-	 * the player altogether.
+	 * This is evaluate()'s matching half, exposed on its own. evaluate() keeps
+	 * the highest-SEVERITY match per scope, which is right for the watch list
+	 * and wrong for notices: severity and consequence are independent axes, so
+	 * the highest-severity match in a scope is not necessarily the one carrying
+	 * a consequence. The notice pass needs all of them and picks its own winner.
 	 *
 	 * @param array  $totals       array( 'season' => int, 'window' => int ).
 	 * @param array  $tiers        Tier list.
 	 * @param array  $acks         Acknowledgement key => value_at_ack.
 	 * @param string $window_start Week key the rolling window currently starts at.
-	 * @return array Flags, criticals first.
+	 * @return array scope => list of matches, in tier order. Scopes with no
+	 *               match are absent.
 	 */
-	public static function evaluate( array $totals, array $tiers, array $acks, string $window_start = '' ): array {
+	public static function matches( array $totals, array $tiers, array $acks = array(), string $window_start = '' ): array {
 		$matched = array();
 
 		foreach ( $tiers as $tier ) {
@@ -102,23 +105,42 @@ class SPLM_Penalty_Watch {
 			// completely different window and mute the alarm for the rest of the
 			// season. A season total only ever grows, so season scope needs no
 			// such scoping.
-			$key     = (string) $tier['key'];
 			$ack_key = self::ack_key( $tier, $window_start );
 			if ( array_key_exists( $ack_key, $acks ) && $value <= (int) $acks[ $ack_key ] ) {
 				continue;
 			}
 
 			$matched[ $scope ][] = array(
-				'tier_key' => $key,
-				'scope'    => $scope,
-				'severity' => (string) $tier['severity'],
-				'minutes'  => (int) $tier['minutes'],
-				'value'    => $value,
+				'tier_key'    => (string) $tier['key'],
+				'scope'       => $scope,
+				'severity'    => (string) $tier['severity'],
+				'minutes'     => (int) $tier['minutes'],
+				'value'       => $value,
+				'consequence' => (string) ( $tier['consequence'] ?? 'none' ),
+				'games'       => (int) ( $tier['games'] ?? 0 ),
 			);
 		}
 
+		return $matched;
+	}
+
+	/**
+	 * Flags for one player: the highest-severity match per scope, criticals first.
+	 *
+	 * Suppressed tiers are removed BEFORE the highest-per-scope choice, so
+	 * acknowledging a critical reveals the warning underneath instead of hiding
+	 * the player altogether. That happens inside matches().
+	 *
+	 * @param array  $totals       array( 'season' => int, 'window' => int ).
+	 * @param array  $tiers        Tier list.
+	 * @param array  $acks         Acknowledgement key => value_at_ack.
+	 * @param string $window_start Week key the rolling window currently starts at.
+	 * @return array Flags, criticals first.
+	 */
+	public static function evaluate( array $totals, array $tiers, array $acks, string $window_start = '' ): array {
 		$flags = array();
-		foreach ( $matched as $scope_flags ) {
+
+		foreach ( self::matches( $totals, $tiers, $acks, $window_start ) as $scope_flags ) {
 			// Severity decides which match represents the scope, not minutes:
 			// thresholds are editable, so a critical tier can legitimately sit
 			// below a warning tier and must still win.
