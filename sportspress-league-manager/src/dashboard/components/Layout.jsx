@@ -13,6 +13,9 @@ const NAV_ITEMS = [
 	{ id: 'standings', label: 'Standings', icon: 'standings' },
 	{ id: 'rosters', label: 'Rosters', icon: 'rosters' },
 	{ id: 'payments', label: 'Payments', icon: 'payments' },
+	// M5: was 'payments' -- duplicated the adjacent Payments glyph. 'rosters'
+	// (people) fits a queue of players waiting for a spot.
+	{ id: 'waitlist', label: 'Waitlist', icon: 'rosters' },
 	{ id: 'div-balance', label: 'Balance', icon: 'div-balance' },
 	{ id: 'team-compare', label: 'Compare', icon: 'team-compare' },
 	{ id: 'leaders', label: 'Leaders', icon: 'season-report' },
@@ -83,6 +86,7 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 		'score-sheets': caps.canReviewScoreSheets && depPresent( 'score_sheets' ),
 		rosters: caps.canManageRosters && modulePresent( 'rosters' ),
 		payments: caps.canViewPayments && depPresent( 'woocommerce' ) && modulePresent( 'fees' ),
+		waitlist: caps.canManage && depPresent( 'woocommerce' ) && modulePresent( 'waitlist' ),
 		health: caps.canViewHealth,
 		'schedule-gen': caps.canManageSchedule && depPresent( 'schedule_generator' ),
 		'season-setup': caps.canManageSchedule,

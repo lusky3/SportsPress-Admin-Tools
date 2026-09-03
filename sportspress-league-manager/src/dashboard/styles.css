@@ -1193,3 +1193,101 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: var(--splm-text); }
 	.splm-btn--primary:hover { background: var(--splm-primary-dark); border-color: var(--splm-primary-dark); }
 	.splm-stepper__item--current .splm-stepper__num { background: var(--splm-primary-dark); }
 }
+
+/* Waitlist */
+.splm-waitlist__gates {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
+
+.splm-waitlist__gates li {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	border: 1px solid var(--splm-border);
+	border-radius: 6px;
+	padding: 0.35rem 0.6rem;
+}
+
+.splm-waitlist__filters {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 1rem;
+	margin: 1rem 0;
+}
+
+.splm-waitlist__filters label,
+.splm-waitlist__add-form label {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+}
+
+.splm-waitlist__filter-label {
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: var(--splm-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+}
+
+.splm-waitlist__actions { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+
+.splm-waitlist__status {
+	display: inline-block;
+	padding: 0.15rem 0.5rem;
+	border-radius: 4px;
+	font-size: 0.75rem;
+	font-weight: 500;
+	text-transform: capitalize;
+	background: var(--splm-border-light);
+	color: var(--splm-text-strong);
+}
+
+.splm-waitlist__status--offered { background: var(--splm-warning-bg-2); color: var(--splm-warning-text-2); }
+.splm-waitlist__status--claimed { background: var(--splm-success-bg); color: var(--splm-success-text); }
+.splm-waitlist__status--expired,
+.splm-waitlist__status--cancelled { background: var(--splm-border-light); color: var(--splm-muted); }
+
+.splm-waitlist__countdown {
+	font-size: 0.8125rem;
+	color: var(--splm-muted);
+	white-space: nowrap;
+}
+
+.splm-waitlist__countdown--soon { color: var(--splm-danger-text-strong); font-weight: 600; }
+.splm-waitlist__countdown--lapsed { color: var(--splm-muted); font-style: italic; }
+
+.splm-waitlist__flag {
+	color: var(--splm-warning-text-3);
+	font-size: 0.8125rem;
+	margin-top: 0.25rem;
+	max-width: 18rem;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.375rem;
+}
+
+.splm-waitlist__target-input {
+	width: 6rem;
+}
+
+/* A11y: the input + Set button live in a wrapper sibling to the role="note"
+   message (interactive controls don't belong inside a note region). display:
+   contents drops the wrapper from the box tree so its children stay direct
+   flex items of .splm-waitlist__flag, keeping the original wrapping layout. */
+.splm-waitlist__flag-controls {
+	display: contents;
+}
+
+.splm-waitlist__add-form {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 1rem;
+	align-items: flex-end;
+}
