@@ -19,7 +19,14 @@ if ( ! defined( 'ABSPATH' ) ) {
  * option count, so splitting the class would only move the same methods behind
  * an indirection and split one screen's markup across two files.
  *
+ * TooManyPublicMethods is suppressed alongside the other two for the same
+ * reason and cannot be reduced by visibility alone: register_setting()'s
+ * callback is invoked via call_user_func() from outside the class, which
+ * requires a public method, so every render_*_field() callback is public by
+ * the Settings API's own contract.
+ *
  * @SuppressWarnings(PHPMD.TooManyMethods)
+ * @SuppressWarnings(PHPMD.TooManyPublicMethods)
  * @SuppressWarnings(PHPMD.ExcessiveClassComplexity)
  */
 class SPLM_Admin {

@@ -266,6 +266,35 @@ class SPLM_Discipline_Notice_Pass {
 			return $written;
 		}
 
+		return $written + self::plan_and_write( $player_id, $season_id, $fireable, $player, $season_total, $tiers, $baselining );
+	}
+
+	/**
+	 * Plan and execute writes for one player's fireable crossings.
+	 *
+	 * Extracted from process_player() rather than inlined: it put
+	 * process_player() at exactly PHPMD's ExcessiveMethodLength threshold of
+	 * 100 lines, which Codacy's zero-new-issues gate would have flagged. The
+	 * two halves are genuinely separable — process_player() decides WHICH
+	 * crossings are live, this method decides and executes WHAT happens to
+	 * them: resolve the address, ask plan_writes() what to do with it, then
+	 * write the baseline rows, the notice row, and send the mail the plan
+	 * calls for.
+	 *
+	 * @param int   $player_id    Player post id.
+	 * @param int   $season_id    Season term id.
+	 * @param array $fireable     Fireable matches from collect_fireable().
+	 * @param array $player       Aggregator row.
+	 * @param int   $season_total The player's season PIM.
+	 * @param array $tiers        Configured tiers, for the mail context.
+	 * @param bool  $baselining   Whether this is a baselining pass.
+	 * @return int Rows written by this call.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function plan_and_write( int $player_id, int $season_id, array $fireable, array $player, int $season_total, array $tiers, bool $baselining ): int {
+		$written = 0;
+
 		// Resolved before planning, because whether an address exists decides
 		// the row's status. Skipped on a baselining pass, which mails nobody
 		// and so has no need of an address.
