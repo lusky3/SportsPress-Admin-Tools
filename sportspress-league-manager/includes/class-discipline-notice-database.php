@@ -15,6 +15,12 @@
  *
  * @author Cody (lusky3)
  *
+ * A single-table gateway holding its own schema and queries, the same shape
+ * as the three sibling gateways. Splitting the schema from the queries would
+ * put a table's definition and its only consumers in different files.
+ *
+ * @SuppressWarnings(PHPMD.TooManyMethods)
+ *
  * A single-table gateway holding its own schema and queries, the same shape as
  * the three sibling gateways (class-discipline-database.php,
  * class-waitlist-database.php, class-player-notes-database.php). Splitting the

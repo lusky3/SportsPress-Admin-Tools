@@ -8,6 +8,11 @@
  * capabilities and the other does not.
  *
  * @author Cody (lusky3)
+ *
+ * Four routes, each with a handler and an args block, plus the shared row
+ * shape both surfaces render. The method count is the route count.
+ *
+ * @SuppressWarnings(PHPMD.TooManyMethods)
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

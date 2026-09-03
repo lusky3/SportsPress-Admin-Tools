@@ -12,6 +12,12 @@
  * they are suspended.
  *
  * @author Cody (lusky3)
+ *
+ * The pass is a pipeline: read totals, collect crossings, plan, write, send.
+ * Each step is a method so it can be reasoned about alone; collapsing them
+ * would rebuild the 130-line method these extractions came out of.
+ *
+ * @SuppressWarnings(PHPMD.TooManyMethods)
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

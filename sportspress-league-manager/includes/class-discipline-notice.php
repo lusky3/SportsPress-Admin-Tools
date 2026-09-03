@@ -14,6 +14,12 @@
  *
  * @author Cody (lusky3)
  *
+ * Every method here is one rule in the decision core, and the rules are the
+ * reason this class exists as a testable unit. Merging them to reduce the
+ * count would put several rules behind one entry point and undo that.
+ *
+ * @SuppressWarnings(PHPMD.TooManyMethods)
+ *
  * @SuppressWarnings(PHPMD.StaticAccess)
  */
 

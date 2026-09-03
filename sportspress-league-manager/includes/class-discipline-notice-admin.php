@@ -11,6 +11,11 @@
  * logic lives in exactly one place and both surfaces are gated identically.
  *
  * @author Cody (lusky3)
+ *
+ * One method per rendered region of a single admin table. Collapsing them
+ * would rebuild a 70-line render method, which is what they came out of.
+ *
+ * @SuppressWarnings(PHPMD.TooManyMethods)
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

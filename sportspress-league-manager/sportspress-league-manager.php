@@ -167,6 +167,12 @@ class SportsPress_League_Manager {
 	 * right seam: everything here is one module's wiring.
 	 *
 	 * @return void
+	 *
+	 * These are stateless static helpers with no dependencies — static access is
+	 * what lets them be reached during bootstrap before any container exists.
+	 * Injecting instances purely to satisfy the linter would buy nothing.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function load_discipline_module() {
 		SPLM_Discipline_Database::maybe_upgrade();

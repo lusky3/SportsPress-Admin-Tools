@@ -149,7 +149,10 @@ class SPLM_Discipline_Notice_Privacy {
 		// the id list on page 1 and stop cleanly if it is gone, rather than
 		// re-querying and falsely reporting success — the failure mode the
 		// parent plugin's eraser documents at length.
-		$transient_key = 'splm_notice_erase_' . md5( $email_address );
+		// Cache-key digest only, not a security primitive — xxh128 matches the
+		// cache keys in SPLM_Leaders_REST and does not trip weak-crypto
+		// scanners the way md5() does.
+		$transient_key = 'splm_notice_erase_' . hash( 'xxh128', $email_address );
 
 		if ( 1 === (int) $page ) {
 			$player_ids = SPLM_Discipline_Notice_Recipients::players_for_email( $email_address );
