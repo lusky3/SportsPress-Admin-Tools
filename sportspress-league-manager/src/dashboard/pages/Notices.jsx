@@ -193,7 +193,15 @@ export default function Notices( { season } ) {
 	const handleDiscard = ( row ) =>
 		act( row, discardNotice, `Discard this notice? ${ row.player } will not be told.`, 'Notice discarded.' );
 
-	const handleServe = ( row ) => act( row, serveNotice, '', 'Suspension marked served.' );
+	// serve() is a one-way sent -> served transition with no un-serve route on
+	// the server, so it confirms like every other irreversible action here.
+	const handleServe = ( row ) =>
+		act(
+			row,
+			serveNotice,
+			`Mark ${ row.player }'s suspension as served? This cannot be undone.`,
+			'Suspension marked served.'
+		);
 
 	return (
 		<div className="splm-notices">
