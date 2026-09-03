@@ -105,6 +105,7 @@ Adding a file is not enough in this repo. Each of these is a hard requirement, a
 | 14 | Bootstrap, autoloader, uninstall | 9, 10, 11 |
 | 15 | GDPR export and erase | 3, 5 |
 | 16 | Phase 2 polish: digest suppression, health rows | 14 |
+| 17 | Static analysis gate (phpcs, phpmd, build drift) | 16 |
 
 ---
 
@@ -327,28 +328,10 @@ Replace the emitted array at the end of the loop (lines 190-196) and add the two
 ```php
 			// Until this feature every tier's consequence was hard-coded to null
 			// here, which is why the settings screen could never persist one.
-			$consequence = (string) ( $tier['consequence'] ?? 'none' );
-			if ( ! in_array( $consequence, self::CONSEQUENCES, true ) ) {
-				$consequence = 'none';
-			}
-
-			// (int) rather than absint(). sanitize_tiers() otherwise touches only
-			// sanitize_key() — test-penalty-watch.php's stub block says so in a
-			// comment and stubs nothing else — so introducing absint() here
-			// fatals that pre-existing suite with "undefined function absint()".
-			$games = max( 0, (int) ( $tier['games'] ?? 0 ) );
-			if ( 'suspend' !== $consequence ) {
-				// Only a suspension owes games. Leaving a stale count on a warn
-				// tier would let a later edit to the consequence resurrect it.
-				$games = 0;
-			} elseif ( $games < 1 ) {
-				// A suspension of zero games is a configuration mistake. Correcting
-				// it beats dropping the tier, which would silently disable the
-				// threshold a convener had just tried to configure.
-				$games = 1;
-			} elseif ( $games > self::MAX_GAMES ) {
-				$games = self::MAX_GAMES;
-			}
+			// Extracted rather than inlined: the four extra branches would push
+			// sanitize_tiers() from no complexity findings at all to CC 13 and
+			// NPath 578, and Codacy's gate is zero-new-issues.
+			list( $consequence, $games ) = self::normalize_consequence( $tier );
 
 			$out[] = array(
 				'key'         => $key,
@@ -360,7 +343,52 @@ Replace the emitted array at the end of the loop (lines 190-196) and add the two
 			);
 ```
 
-- [ ] **Step 6: Update the class docblock**
+- [ ] **Step 6: Add the normalisation helper**
+
+Add to `class-penalty-watch.php`, beside the other private statics:
+
+```php
+	/**
+	 * Normalise a tier's consequence and its games count.
+	 *
+	 * Extracted from sanitize_tiers() rather than inlined: the branch count of
+	 * the two together trips CyclomaticComplexity and NPathComplexity on a
+	 * method that currently produces no complexity findings at all, and this
+	 * half is independently meaningful.
+	 *
+	 * @param array $tier Candidate tier.
+	 * @return array array( string $consequence, int $games ).
+	 */
+	private static function normalize_consequence( array $tier ): array {
+		$consequence = (string) ( $tier['consequence'] ?? 'none' );
+		if ( ! in_array( $consequence, self::CONSEQUENCES, true ) ) {
+			$consequence = 'none';
+		}
+
+		// (int) rather than absint(). This class otherwise touches only
+		// sanitize_key() — test-penalty-watch.php's stub block says so in a
+		// comment and stubs nothing else — so introducing absint() here would
+		// fatal that pre-existing suite with "undefined function absint()".
+		$games = max( 0, (int) ( $tier['games'] ?? 0 ) );
+
+		if ( 'suspend' !== $consequence ) {
+			// Only a suspension owes games. Leaving a stale count on a warn
+			// tier would let a later edit to the consequence resurrect it.
+			return array( $consequence, 0 );
+		}
+
+		if ( $games < 1 ) {
+			// A suspension of zero games is a configuration mistake. Correcting
+			// it beats dropping the tier, which would silently disable the
+			// threshold a convener had just tried to configure.
+			return array( $consequence, 1 );
+		}
+
+		return array( $consequence, min( $games, self::MAX_GAMES ) );
+	}
+```
+
+- [ ] **Step 7: Update the class docblock**
 
 The header currently states the opposite of what is now true. Replace lines 5-8:
 
@@ -372,7 +400,7 @@ The header currently states the opposite of what is now true. Replace lines 5-8:
  * consequence is SPLM_Discipline_Notice's job, not this class's.
 ```
 
-- [ ] **Step 7: Repair the four existing assertions**
+- [ ] **Step 8: Repair the four existing assertions**
 
 In `tests/test-penalty-watch.php`, line 49 becomes:
 
@@ -389,7 +417,7 @@ assert_test( 'none' === $clean[0]['consequence'], 'a tier submitted without a co
 
 The two `'consequence' => null,` literals in the `$inverted` fixture (lines 151 and 158) become `'consequence' => 'none',` with `'games' => 0,` added, so the fixture matches what `sanitize_tiers()` now emits.
 
-- [ ] **Step 8: Register the new test file**
+- [ ] **Step 9: Register the new test file**
 
 In `run-all-tests.sh`, immediately after the `test-penalty-watch.php` line:
 
@@ -397,7 +425,7 @@ In `run-all-tests.sh`, immediately after the `test-penalty-watch.php` line:
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-discipline-consequence.php"
 ```
 
-- [ ] **Step 9: Run both suites**
+- [ ] **Step 10: Run both suites**
 
 ```bash
 php sportspress-league-manager/tests/test-discipline-consequence.php
@@ -406,7 +434,7 @@ php sportspress-league-manager/tests/test-penalty-watch.php
 
 Expected: both PASS with `Failed: 0`. `test-penalty-watch.php` must still report its full original assertion count plus the one added in Step 7 — a drop means an assertion was deleted rather than repaired.
 
-- [ ] **Step 10: Lint and commit**
+- [ ] **Step 11: Lint and commit**
 
 ```bash
 php -l sportspress-league-manager/includes/class-penalty-watch.php
@@ -817,8 +845,12 @@ class Fake_WPDB {
 		return 'wp_splm_discipline_notice';
 	}
 
-	public function insert( $table, $data ) { // phpcs:ignore
-		splm_notice_db_test_state()->inserts[] = $data;
+	// $table is core's 1st positional arg and is never consulted here, so it is
+	// skipped positionally via func_get_arg() rather than declared as an ignored
+	// formal parameter — the convention this repo's waitlist tests established
+	// to avoid PHPMD.UnusedFormalParameter without a suppression comment.
+	public function insert() { // phpcs:ignore
+		splm_notice_db_test_state()->inserts[] = func_get_arg( 1 );
 		if ( ! $this->insert_succeeds ) {
 			return false;
 		}
@@ -826,8 +858,8 @@ class Fake_WPDB {
 		return 1;
 	}
 
-	public function update( $table, $data, $where ) { // phpcs:ignore
-		splm_notice_db_test_state()->updates[] = array( $where, $data );
+	public function update() { // phpcs:ignore
+		splm_notice_db_test_state()->updates[] = array( func_get_arg( 2 ), func_get_arg( 1 ) );
 		return 1;
 	}
 }
@@ -963,6 +995,14 @@ Create `sportspress-league-manager/includes/class-discipline-notice-database.php
  * by the site's offset.
  *
  * @author Cody (lusky3)
+ *
+ * A single-table gateway holding its own schema and queries, the same shape as
+ * the three sibling gateways (class-discipline-database.php,
+ * class-waitlist-database.php, class-player-notes-database.php). Splitting the
+ * schema off from the queries would put a table's definition and its only
+ * consumers in different files for no gain.
+ *
+ * @SuppressWarnings(PHPMD.TooManyPublicMethods)
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -1112,8 +1152,8 @@ class SPLM_Discipline_Notice_Database {
 	/**
 	 * Insert a notice row.
 	 *
-	 * created_at is stamped here rather than left to the column default so the
-	 * value is UTC regardless of the database server's timezone.
+	 * Stamps created_at here rather than leaving it to the column default, so
+	 * the value is UTC regardless of the database server's timezone.
 	 *
 	 * @param array $row Row fields.
 	 * @return int New row id, or 0 on failure.
@@ -1658,7 +1698,15 @@ Create `sportspress-league-manager/includes/class-discipline-notice.php`:
  * mail, no options. That is what lets the rules that decide whether a player
  * is told they are suspended be tested exhaustively with no WordPress at all.
  *
+ * SPLM_Penalty_Watch and SPLM_Discipline_Notice_Database are stateless static
+ * helpers with no dependencies — static access is exactly what lets them be
+ * reached with no WordPress bootstrap, which is this class's whole point.
+ * Injecting instances purely to satisfy the linter would cost the testability
+ * and buy nothing.
+ *
  * @author Cody (lusky3)
+ *
+ * @SuppressWarnings(PHPMD.StaticAccess)
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -1774,18 +1822,7 @@ class SPLM_Discipline_Notice {
 	 *             )
 	 */
 	public static function plan_writes( array $matches_by_scope, array $modes, bool $baselining, bool $has_address ): array {
-		$eligible = array();
-		foreach ( $matches_by_scope as $scope => $scope_matches ) {
-			foreach ( (array) $scope_matches as $match ) {
-				$mode = (string) ( $modes[ (string) ( $match['consequence'] ?? '' ) ] ?? self::MODE_DISABLED );
-				// A disabled consequence writes nothing at all — not a notice
-				// and not a baseline. The spec is explicit: disabled means
-				// discipline behaves exactly as it did before notices existed.
-				if ( self::MODE_DISABLED !== $mode ) {
-					$eligible[ $scope ][] = $match;
-				}
-			}
-		}
+		$eligible = self::eligible_matches( $matches_by_scope, $modes );
 
 		$nothing = array(
 			'notice'    => null,
@@ -1874,6 +1911,32 @@ class SPLM_Discipline_Notice {
 			'notice'    => array_shift( $ranked ),
 			'baselines' => $ranked,
 		);
+	}
+
+	/**
+	 * Drop matches whose consequence has its delivery mode switched off.
+	 *
+	 * A disabled consequence writes nothing at all — not a notice and not a
+	 * baseline row. The spec is explicit: disabled means discipline behaves
+	 * exactly as it did before notices existed.
+	 *
+	 * @param array $matches_by_scope Scope => matches.
+	 * @param array $modes            consequence => mode.
+	 * @return array Scope => surviving matches.
+	 */
+	private static function eligible_matches( array $matches_by_scope, array $modes ): array {
+		$eligible = array();
+
+		foreach ( $matches_by_scope as $scope => $scope_matches ) {
+			foreach ( (array) $scope_matches as $match ) {
+				$mode = (string) ( $modes[ (string) ( $match['consequence'] ?? '' ) ] ?? self::MODE_DISABLED );
+				if ( self::MODE_DISABLED !== $mode ) {
+					$eligible[ $scope ][] = $match;
+				}
+			}
+		}
+
+		return $eligible;
 	}
 
 	/**
@@ -2560,7 +2623,13 @@ assert_test( false !== strpos( $warning, 'Alex' ), 'the warning greets the playe
 assert_test( false !== strpos( $warning, '12' ), 'the warning states the accumulated total' );
 assert_test( false !== strpos( $warning, 'W2025-26' ), 'the warning names the season' );
 assert_test( false !== strpos( $warning, '18' ), 'the warning names the next threshold, which is what makes it a warning' );
-assert_test( false === strpos( $warning, 'suspended' ), 'a warning does not tell the player they are suspended' );
+// The warning DOES contain the word "suspended" — "at 18 you will be
+// suspended" is the whole point of naming the next threshold. What it must
+// never carry is the declarative claim that the player is suspended NOW.
+assert_test(
+	false === strpos( $warning, 'You are suspended' ),
+	'a warning says what will happen, never that the player is already suspended'
+);
 
 $topped_out = $mail::body(
     array(
@@ -2683,9 +2752,9 @@ Create `sportspress-league-manager/includes/class-discipline-notice-mail.php`. T
 /**
  * Notice wording and delivery.
  *
- * body() is pure so the wording can be tested exhaustively with no WordPress:
- * the resolved game arrives as a string the caller looked up, never as an id
- * this class queries.
+ * The body() helper is pure, so the wording can be tested exhaustively with no
+ * WordPress: the resolved game arrives as a string the caller looked up, never
+ * as an id this class queries.
  *
  * @author Cody (lusky3)
  */
@@ -3439,7 +3508,7 @@ as a named failure before calling wp_mail rather than after."
 Makes all three modes selectable, adds the cc list, and adds consequence and games inputs to the existing tier table.
 
 **Files:**
-- Modify: `sportspress-league-manager/includes/class-admin.php:115-192` (`register_spat_settings`), `:301-334` (`render_discipline_tiers_field`)
+- Modify: `sportspress-league-manager/includes/class-admin.php:115-192` (`register_spat_settings`), `:301-335` (`render_discipline_tiers_field`)
 - Manual verification only — the settings screen needs a real WordPress.
 
 **Interfaces:**
@@ -3474,7 +3543,7 @@ In `register_spat_settings()`, after the existing `splm_discipline_digest_day` r
 
 - [ ] **Step 2: Add the three fields**
 
-After the existing `splm_discipline_digest_day` field registration (line 190). Extend the existing "these three must have fields" comment to name all six:
+After the existing `splm_discipline_digest_day` field registration (line 191 — line 190 is the *recipients* field). Extend the existing "these three must have fields" comment to name all six:
 
 ```php
 		$this->add_field( SPLM_Discipline_Notice::OPTION_MODE_WARNING, __( 'Warning Notices', 'sportspress-league-manager' ), array( $this, 'render_notice_mode_warning_field' ) );
@@ -3606,13 +3675,29 @@ Extend the closing description so the coercion rules are visible where they appl
 		echo '<p class="description">' . esc_html__( 'Player counts are for the default season, so you can see whether a threshold is useful before saving it. Editing a threshold re-baselines that tier: players already over it are not notified, only those who earn more afterwards. Games apply to suspensions only.', 'sportspress-league-manager' ) . '</p>';
 ```
 
-- [ ] **Step 5: Lint**
+- [ ] **Step 5: Suppress the two class-level findings this task creates**
+
+The three new render methods push `SPLM_Admin` over two PHPMD thresholds it does not currently exceed — measured `TooManyMethods` 27 (limit 25) and `ExcessiveClassComplexity` 53 (limit 50). Codacy's gate is zero-new-issues, so these must be declared. The precedent is `class-waitlist.php:37-38`, `class-season-audit.php:31-32` and `class-waitlist-gate.php:44-45`, which all carry both at the class docblock.
+
+Add to `SPLM_Admin`'s class docblock:
+
+```php
+ * A settings screen: one render_*_field() method per registered option, which
+ * is the shape the WordPress Settings API asks for. The method count IS the
+ * option count, so splitting the class would only move the same methods behind
+ * an indirection and split one screen's markup across two files.
+ *
+ * @SuppressWarnings(PHPMD.TooManyMethods)
+ * @SuppressWarnings(PHPMD.ExcessiveClassComplexity)
+```
+
+- [ ] **Step 6: Lint**
 
 ```bash
 php -l sportspress-league-manager/includes/class-admin.php
 ```
 
-- [ ] **Step 6: Confirm the existing suites still pass**
+- [ ] **Step 7: Confirm the existing suites still pass**
 
 ```bash
 ./run-all-tests.sh 2>&1 | tail -20
@@ -3620,7 +3705,7 @@ php -l sportspress-league-manager/includes/class-admin.php
 
 Expected: every suite passes. No test covers `class-admin.php` directly — this step is guarding against a syntax error or a changed constant breaking a suite that loads `SPLM_Penalty_Watch`.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add sportspress-league-manager/includes/class-admin.php
@@ -3717,6 +3802,14 @@ assert_test(
 $pass::remember_token();
 
 echo "\n=== queued to automatic does NOT re-baseline ===\n\n";
+
+// Both modes must be ENABLED and remembered first, or this tests the wrong
+// transition: the block above left suspensions disabled, so flipping both to
+// automatic would cross the disabled boundary for suspensions and correctly
+// baseline. Isolate the one transition under test.
+$state->options['splm_discipline_notice_mode_warning']    = 'queued';
+$state->options['splm_discipline_notice_mode_suspension'] = 'queued';
+$pass::remember_token();
 
 $state->options['splm_discipline_notice_mode_warning']    = 'automatic';
 $state->options['splm_discipline_notice_mode_suspension'] = 'automatic';
@@ -4023,46 +4116,9 @@ class SPLM_Discipline_Notice_Pass {
 			$cutoff
 		);
 
-		$fireable = array();
-		$written  = 0;
-
-		foreach ( $matches as $scope => $scope_matches ) {
-			foreach ( $scope_matches as $match ) {
-				// Keyed on the tier, not the ack key: ack_key embeds the rolling
-				// window's start, which advances weekly, so an ack_key lookup
-				// would find nothing each week and re-fire the same suspension
-				// once per week the minutes remain in the window.
-				$latest = SPLM_Discipline_Notice_Database::latest_for( $player_id, $season_id, (string) $match['tier_key'] );
-
-				if ( SPLM_Discipline_Notice::should_fire( $match, $latest, $season_total ) ) {
-					// The ack key still travels on the row, for the digest's
-					// acknowledgement write.
-					$match['ack_key'] = SPLM_Penalty_Watch::ack_key(
-						array(
-							'key'   => $match['tier_key'],
-							'scope' => $match['scope'],
-						),
-						$cutoff
-					);
-					$fireable[ $scope ][] = $match;
-					continue;
-				}
-
-				// An unreleased draft is revised in place rather than stacked:
-				// three pending rows for one escalation would mail three
-				// suspensions when a convener released them.
-				if ( SPLM_Discipline_Notice::needs_refresh( $latest, $season_total ) ) {
-					SPLM_Discipline_Notice_Database::update(
-						(int) $latest->id,
-						array(
-							'value_at_fire'  => (int) $match['value'],
-							'season_at_fire' => $season_total,
-						)
-					);
-					++$written;
-				}
-			}
-		}
+		$collected = self::collect_fireable( $player_id, $season_id, $matches, $cutoff, $season_total );
+		$fireable  = $collected['fireable'];
+		$written   = $collected['refreshed'];
 
 		if ( ! $fireable ) {
 			return $written;
@@ -4143,9 +4199,74 @@ class SPLM_Discipline_Notice_Pass {
 	}
 
 	/**
+	 * Partition a player's matches into those that fire and those that revise.
+	 *
+	 * Extracted from process_player() rather than inlined: together they trip
+	 * CyclomaticComplexity, NPathComplexity and ExcessiveMethodLength, and
+	 * Codacy's gate is zero-new-issues. This half is also the only part that
+	 * touches the database on the read side, so it isolates cleanly.
+	 *
+	 * @param int    $player_id    Player post id.
+	 * @param int    $season_id    Season term id.
+	 * @param array  $matches      Scope => matches from SPLM_Penalty_Watch::matches().
+	 * @param string $cutoff       Window cutoff week key.
+	 * @param int    $season_total The player's season PIM.
+	 * @return array array( 'fireable' => array, 'refreshed' => int ).
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function collect_fireable( int $player_id, int $season_id, array $matches, string $cutoff, int $season_total ): array {
+		$fireable  = array();
+		$refreshed = 0;
+
+		foreach ( $matches as $scope => $scope_matches ) {
+			foreach ( $scope_matches as $match ) {
+				// Keyed on the tier, not the ack key: ack_key embeds the rolling
+				// window's start, which advances weekly, so an ack_key lookup
+				// would find nothing each week and re-fire the same suspension
+				// once per week the minutes remain in the window.
+				$latest = SPLM_Discipline_Notice_Database::latest_for( $player_id, $season_id, (string) $match['tier_key'] );
+
+				if ( SPLM_Discipline_Notice::should_fire( $match, $latest, $season_total ) ) {
+					// The ack key still travels on the row, for the digest's
+					// acknowledgement write.
+					$match['ack_key']     = SPLM_Penalty_Watch::ack_key(
+						array(
+							'key'   => $match['tier_key'],
+							'scope' => $match['scope'],
+						),
+						$cutoff
+					);
+					$fireable[ $scope ][] = $match;
+					continue;
+				}
+
+				// An unreleased draft is revised in place rather than stacked:
+				// three pending rows for one escalation would mail three
+				// suspensions when a convener released them.
+				if ( SPLM_Discipline_Notice::needs_refresh( $latest, $season_total ) ) {
+					SPLM_Discipline_Notice_Database::update(
+						(int) $latest->id,
+						array(
+							'value_at_fire'  => (int) $match['value'],
+							'season_at_fire' => $season_total,
+						)
+					);
+					++$refreshed;
+				}
+			}
+		}
+
+		return array(
+			'fireable'  => $fireable,
+			'refreshed' => $refreshed,
+		);
+	}
+
+	/**
 	 * Write one notice row.
 	 *
-	 * team and division are snapshotted from the aggregator row rather than
+	 * Team and division are snapshotted from the aggregator row rather than
 	 * resolved on read: cheaper, and it records who the player was playing for
 	 * when the minutes were earned rather than who they play for now.
 	 *
@@ -5073,6 +5194,14 @@ class SPLM_Discipline_Notice_Admin {
 	 * @param array $row      Response-shaped row.
 	 * @param bool  $readonly Whether to suppress action controls.
 	 * @return void
+	 *
+	 * Fifteen cells each with an em-dash fallback is inherently a wide NPath.
+	 * The alternative — a helper per cell — would scatter one table's markup
+	 * across fifteen methods and trip TooManyMethods instead, which is the
+	 * documented tension in
+	 * docs/superpowers/plans/2026-09-02-registration-waitlist-followups.md.
+	 *
+	 * @SuppressWarnings(PHPMD.NPathComplexity)
 	 */
 	private function render_row( array $row, bool $readonly ): void {
 		$em = '—';
@@ -5330,7 +5459,6 @@ Create `sportspress-league-manager/src/dashboard/pages/Notices.jsx`:
 ```jsx
 import { useCallback, useEffect, useState } from '@wordpress/element';
 import { fetchNotices, releaseNotice, discardNotice, serveNotice } from '../lib/api';
-import HelpLink from '../components/HelpLink';
 
 // Timestamps arrive as UTC 'Y-m-d H:i:s'. Date can't parse that shape reliably
 // across browsers, so normalise it to ISO with an explicit Z before parsing —
@@ -5528,7 +5656,10 @@ export default function Notices( { season } ) {
 
 	return (
 		<div className="splm-notices">
-			<h2>Discipline Notices <HelpLink topic="discipline" /></h2>
+			{ /* No HelpLink: Help.jsx's SECTIONS has no 'discipline' entry, so the
+			     link would navigate to Help and then no-op looking for
+			     #help-discipline. Add a Help section first if one is wanted. */ }
+			<h2>Discipline Notices</h2>
 
 			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 			{ notice && <div className="splm-alert splm-alert--success" role="status">{ notice }</div> }
@@ -5586,15 +5717,7 @@ export default function Notices( { season } ) {
 }
 ```
 
-- [ ] **Step 3: Verify `HelpLink` accepts the topic**
-
-`Notices.jsx` uses `<HelpLink topic="discipline" />`. Check that `src/dashboard/pages/Help.jsx` has a `discipline` topic; if it does not, either add one or drop the `HelpLink` rather than shipping a link to a missing anchor.
-
-```bash
-grep -n "discipline" sportspress-league-manager/src/dashboard/pages/Help.jsx
-```
-
-- [ ] **Step 4: Build**
+- [ ] **Step 3: Build**
 
 ```bash
 cd sportspress-league-manager && npm run build && cd ..
@@ -5602,7 +5725,7 @@ cd sportspress-league-manager && npm run build && cd ..
 
 Expected: exit 0. `build/` is intentionally committed — the PHP loader enqueues `build/index.js` directly, so a source change without a rebuild ships a stale dashboard.
 
-- [ ] **Step 5: Commit source and build together**
+- [ ] **Step 4: Commit source and build together**
 
 ```bash
 git add sportspress-league-manager/src/dashboard/pages/Notices.jsx \
@@ -5700,8 +5823,7 @@ export default function NoticeQueueCard( { season, onNavigate } ) {
 				{ pending > 0 && failed > 0 && '. ' }
 				{ failed > 0 && (
 					<>
-						<strong>{ failed }</strong>
-						{ failed === 1 ? ' could not be sent' : ' could not be sent' }
+						<strong>{ failed }</strong> could not be sent
 					</>
 				) }
 			</p>
@@ -5809,7 +5931,7 @@ Wires everything up. Until this task lands, none of the new classes load and the
 
 **Files:**
 - Modify: `sportspress-league-manager/includes/class-autoloader.php:38-65`
-- Modify: `sportspress-league-manager/sportspress-league-manager.php:120-143` (module description), `:178-190` (`load_enabled_modules`)
+- Modify: `sportspress-league-manager/sportspress-league-manager.php:123-132` (the `league_discipline` registration; its description string is line 127), `:178-190` (`load_enabled_modules`)
 - Modify: `sportspress-league-manager/uninstall.php:43-46`
 
 **Interfaces:**
@@ -5851,17 +5973,20 @@ Replace the existing `league_discipline` block in `load_enabled_modules()` (line
 				SPLM_Discipline_Digest::unschedule();
 			}
 
-			// Four constructors, because the notice feature's hooks belong to
-			// four concerns: the pass answers the scheduled event, the REST
-			// class registers the routes both queue surfaces call, the admin
-			// class contributes the technical tab, and the privacy class
-			// registers the GDPR exporter and eraser. Drop any one of these
+			// Three constructors, because the notice feature's hooks belong to
+			// three concerns: the pass answers the scheduled event, the REST
+			// class registers the routes both queue surfaces call, and the
+			// admin class contributes the technical tab. Drop any one of these
 			// lines and its hooks silently never register.
 			// SPLM_Discipline_Notice, _Mail and _Recipients are deliberately
 			// absent: they hook nothing.
+			// SPLM_Discipline_Notice_Privacy is instantiated by Task 15, which
+			// creates it. Adding the line here would make every page load with
+			// this module enabled fatal on "class not found" for as long as it
+			// took Task 15 to land, and no PHP test would catch it because none
+			// of them bootstrap WordPress.
 			new SPLM_Discipline_Notice_Pass();
 			new SPLM_Discipline_Notice_REST();
-			new SPLM_Discipline_Notice_Privacy();
 			if ( is_admin() ) {
 				new SPLM_Discipline_Notice_Admin();
 			}
@@ -5902,7 +6027,7 @@ The registered description still describes only the watch list. In the `league_d
 
 - [ ] **Step 4: Drop the table on uninstall**
 
-In `uninstall.php`, beside the existing drops (line 45). The generic `DELETE FROM options WHERE option_name LIKE 'splm_%'` sweep already covers the four new options, so no option deletes are needed here:
+In `uninstall.php`, beside the existing drops (lines 46-48; line 45 is their comment). The generic `DELETE FROM options WHERE option_name LIKE 'splm_%'` sweep already covers the four new options, so no option deletes are needed here:
 
 ```php
 $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}splm_discipline_notice" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
@@ -5929,8 +6054,8 @@ This catches the most likely silent failure — a class-map typo. Each name must
 ```bash
 cd sportspress-league-manager
 for c in SPLM_Discipline_Notice SPLM_Discipline_Notice_Admin SPLM_Discipline_Notice_Database \
-         SPLM_Discipline_Notice_Mail SPLM_Discipline_Notice_Pass SPLM_Discipline_Notice_Recipients \
-         SPLM_Discipline_Notice_REST; do
+         SPLM_Discipline_Notice_Mail SPLM_Discipline_Notice_Pass SPLM_Discipline_Notice_Privacy \
+         SPLM_Discipline_Notice_Recipients SPLM_Discipline_Notice_REST; do
   f="includes/class-$( echo "$c" | sed 's/^SPLM_//' | tr '[:upper:]' '[:lower:]' | tr '_' '-' ).php"
   if grep -q "'$c'" includes/class-autoloader.php && [ -f "$f" ]; then
     echo "ok   $c -> $f"
@@ -6270,22 +6395,33 @@ class SPLM_Discipline_Notice_Privacy {
 }
 ```
 
-- [ ] **Step 2: Lint and confirm the class is reachable**
+- [ ] **Step 2: Instantiate it**
+
+Task 14 deliberately left this line out, because adding it before the class file existed would have made every page load with the module enabled fatal on "class not found" — and no PHP test would have caught it, since none of them bootstrap WordPress. Add it now, in `load_enabled_modules()`'s `league_discipline` branch, beside the other constructors:
+
+```php
+			new SPLM_Discipline_Notice_Privacy();
+```
+
+Update the comment above them from "Three constructors" to "Four constructors", and add the privacy class to its list of concerns — it registers the GDPR exporter and eraser.
+
+- [ ] **Step 3: Lint and confirm the class is reachable**
 
 ```bash
 php -l sportspress-league-manager/includes/class-discipline-notice-privacy.php
+php -l sportspress-league-manager/sportspress-league-manager.php
 grep -c "SPLM_Discipline_Notice_Privacy" sportspress-league-manager/includes/class-autoloader.php
 ```
 
-Expected: `php -l` clean, and the grep prints `1` — the entry was added in Task 14.
+Expected: both `php -l` clean, and the grep prints `1` — the class-map entry was added in Task 14. Task 14 Step 6's reachability script should now pass for all eight classes.
 
-- [ ] **Step 3: Run the full suite**
+- [ ] **Step 4: Run the full suite**
 
 ```bash
 ./run-all-tests.sh 2>&1 | tail -12
 ```
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add sportspress-league-manager/includes/class-discipline-notice-privacy.php
@@ -6342,8 +6478,9 @@ Then add a read helper to the same class, because Step 2 must not overwrite a co
 	/**
 	 * Whether an acknowledgement already exists for this key.
 	 *
-	 * acknowledge() upserts on UNIQUE (player_id, season_id, tier_key) and
-	 * overwrites value_at_ack, status, note and author_id unconditionally. The
+	 * The acknowledge() writer upserts on UNIQUE (player_id, season_id,
+	 * tier_key) and overwrites value_at_ack, status, note and author_id
+	 * unconditionally. The
 	 * notice path needs to know when NOT to call it: a convener who
 	 * acknowledged a tier at a deliberately high value — the way they silence a
 	 * player for the rest of a season — would otherwise have that value reset
@@ -6507,3 +6644,92 @@ None of the following is reachable by a unit test. Run it after Task 16, in this
 - [ ] **Disabling the module stops the cron.** Turn the module off, load an admin page, confirm `wp cron event list | grep splm_discipline_notices` returns nothing.
 - [ ] **GDPR round trip.** Run Tools → Export Personal Data for a notified player's address and confirm the Disciplinary Notices group appears. Then run Erase Personal Data and confirm `recipient` reads "Redacted" and `player_id` is 0.
 - [ ] **The health page lists both.** Confirm the SPAT health dashboard shows the notice table with a row count and the notice cron with its next run.
+
+---
+
+### Task 17: Static analysis gate
+
+The merge gates are stricter than `run-all-tests.sh`. This task runs them all and fixes whatever they surface, so the branch is green before review rather than after.
+
+**Files:** whichever the tools flag. No new files.
+
+**The actual gates**, established by reading `.github/workflows/`:
+
+| Workflow | What fails it |
+|---|---|
+| `php-lint.yml` | `php -l` on any changed PHP file, then `phpcs --standard=phpcs.xml`. **Errors only** — `phpcs.xml` sets `warning-severity=0`. |
+| `ci-tests.yml` | `bash run-all-tests.sh` on PHP 8.1, 8.2 and 8.3; the schedule-generator Docker test; and the league-manager build-drift check (`npm ci` → `npm run build` → `git diff --exit-code sportspress-league-manager/build/`). |
+| `wp-plugin-check.yml` | any `,ERROR,` row from the WordPress Plugin Check. |
+| `security-scan.yml` | Snyk Code SAST at `--severity-threshold=high`; `npm audit --omit=dev --audit-level=high`. |
+| `secret-scan.yml` | gitleaks. |
+| `code-quality.yml` | SonarCloud, informational — it does not wait on a quality gate. |
+| **Codacy** (server-side, not a workflow) | **zero new issues**, under an org Coding Standard the repo config cannot override. This is where PHPMD reaches the PR; no workflow runs PHPMD locally. |
+
+- [ ] **Step 1: Lint every changed PHP file**
+
+```bash
+git diff --name-only main...HEAD -- '*.php' | xargs -r -n1 php -l
+```
+
+Expected: `No syntax errors detected` for each.
+
+- [ ] **Step 2: Run PHPCS exactly as CI does**
+
+```bash
+phpcs --standard=phpcs.xml $(git diff --name-only main...HEAD -- '*.php' | tr '\n' ' ')
+```
+
+Expected: exit 0. Note two sniffs that catch new code in this repo and are easy to trip:
+
+- `Generic.Commenting.DocComment.LongNotCapital` — a docblock's long description must start with a capital. `phpcs.xml` excludes `MissingShort` and `ShortNotCapital` but **not** this one, and it is an error. Reword rather than suppress.
+- `WordPress.DB.PreparedSQL.InterpolatedNotPrepared` is reported **on the SQL string's own line**, so a DB ignore needs a second, line-specific ignore there — the ignore on the `$wpdb->get_row(` call line does not reach it. `class-discipline-database.php:106-111` is the reference.
+
+- [ ] **Step 3: Run PHPMD over the new and modified classes**
+
+Codacy runs this server-side with a zero-new-issues gate, so finding it locally is the only way to avoid a red PR:
+
+```bash
+phpmd sportspress-league-manager/includes/class-discipline-notice.php,\
+sportspress-league-manager/includes/class-discipline-notice-database.php,\
+sportspress-league-manager/includes/class-discipline-notice-recipients.php,\
+sportspress-league-manager/includes/class-discipline-notice-mail.php,\
+sportspress-league-manager/includes/class-discipline-notice-pass.php,\
+sportspress-league-manager/includes/class-discipline-notice-rest.php,\
+sportspress-league-manager/includes/class-discipline-notice-admin.php,\
+sportspress-league-manager/includes/class-discipline-notice-privacy.php,\
+sportspress-league-manager/includes/class-penalty-watch.php,\
+sportspress-league-manager/includes/class-admin.php \
+  text codesize,design,unusedcode
+```
+
+The suppressions this plan already places (`SPLM_Discipline_Notice`'s `StaticAccess`, `SPLM_Discipline_Notice_Database`'s `TooManyPublicMethods`, `SPLM_Admin`'s `TooManyMethods` + `ExcessiveClassComplexity`, `render_row()`'s `NPathComplexity`, and `StaticAccess` on each static-calling method) cover the findings measured during review. Anything else that appears is new.
+
+**Reduce before suppressing.** Two extractions in this plan exist for exactly this reason — `SPLM_Penalty_Watch::normalize_consequence()` and `SPLM_Discipline_Notice_Pass::collect_fireable()` — and both left the calling method genuinely simpler, not just under a threshold. Suppress only when the alternative is worse, and say why in the docblock: note that extracting to fix a method-complexity finding raises the class's method count and, because class complexity is a sum, its class complexity too. That tension is documented in `docs/superpowers/plans/2026-09-02-registration-waitlist-followups.md`.
+
+- [ ] **Step 4: Confirm the build is drift-free**
+
+```bash
+cd sportspress-league-manager && npm run build && cd ..
+git diff --exit-code sportspress-league-manager/build/
+```
+
+Expected: exit 0 from both. The gate evaluates the final tree, not each commit, so committing `build/` in Tasks 12 and 13 separately is fine.
+
+- [ ] **Step 5: Run the full suite on the merged result**
+
+```bash
+./run-all-tests.sh 2>&1 | tail -16
+```
+
+Expected: every suite passes. There should now be 55 suites — the 49 that existed before this branch plus the six added here.
+
+- [ ] **Step 6: Commit any fixes**
+
+```bash
+git add -A
+git commit -m "chore(discipline): satisfy the static analysis gates
+
+phpcs, phpmd and the build-drift check, run as CI runs them."
+```
+
+If nothing needed fixing, skip the commit and say so.
