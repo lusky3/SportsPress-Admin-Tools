@@ -438,3 +438,31 @@ export function setWaitlistGate( productId, gated ) {
 		data: { product_id: productId, gated },
 	} );
 }
+
+// splm/v1 — Discipline notices. The list endpoint conforms to the standard
+// envelope; release/discard/serve are the only mutating actions the convener
+// surface exposes — the technical view and this one act through the same
+// four routes.
+export function fetchNotices( params = {} ) {
+	const query = new URLSearchParams(
+		Object.fromEntries( Object.entries( params ).filter( ( [ , v ] ) => v !== '' && v != null ) )
+	).toString();
+	return apiFetch( { path: `/splm/v1/discipline/notices${ query ? '?' + query : '' }` } ).then( ( res ) => ( {
+		data: Array.isArray( res?.data ) ? res.data : [],
+		total: Number( res?.total ) || 0,
+		totalPages: Number( res?.total_pages ) || 0,
+		page: Number( res?.page ) || 1,
+	} ) );
+}
+
+export function releaseNotice( id ) {
+	return apiFetch( { path: `/splm/v1/discipline/notices/${ id }/release`, method: 'POST' } );
+}
+
+export function discardNotice( id ) {
+	return apiFetch( { path: `/splm/v1/discipline/notices/${ id }/discard`, method: 'POST' } );
+}
+
+export function serveNotice( id ) {
+	return apiFetch( { path: `/splm/v1/discipline/notices/${ id }/serve`, method: 'POST' } );
+}
