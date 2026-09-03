@@ -490,8 +490,7 @@ export default function Waitlist() {
 			.then( () => {
 				setNotice( 'Registration product set.' );
 				setTargetInputs( ( prev ) => {
-					const next = { ...prev };
-					delete next[ row.id ];
+					const { [ row.id ]: _removed, ...next } = prev;
 					return next;
 				} );
 				load();
