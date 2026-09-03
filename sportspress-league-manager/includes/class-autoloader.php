@@ -44,6 +44,7 @@ class SPLM_Autoloader {
 			'SPLM_Discipline_Database'   => $base . 'class-discipline-database.php',
 			'SPLM_Discipline_Digest'     => $base . 'class-discipline-digest.php',
 			'SPLM_Discipline_Notice'            => $base . 'class-discipline-notice.php',
+			'SPLM_Discipline_Notice_Baseline'   => $base . 'class-discipline-notice-baseline.php',
 			'SPLM_Discipline_Notice_Admin'      => $base . 'class-discipline-notice-admin.php',
 			'SPLM_Discipline_Notice_Database'   => $base . 'class-discipline-notice-database.php',
 			'SPLM_Discipline_Notice_Mail'       => $base . 'class-discipline-notice-mail.php',

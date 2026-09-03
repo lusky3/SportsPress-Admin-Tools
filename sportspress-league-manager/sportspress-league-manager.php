@@ -209,7 +209,7 @@ class SportsPress_League_Manager {
 			// enabled value. Re-enabling would then compute the same token,
 			// skip baselining, and mail everyone who crossed while notices
 			// were off. Record it here instead.
-			SPLM_Discipline_Notice_Pass::remember_token();
+			SPLM_Discipline_Notice_Baseline::remember();
 		}
 
 		// No sibling plugin currently hooks these filters — splm_player_notes

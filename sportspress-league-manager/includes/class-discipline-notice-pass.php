@@ -23,7 +23,6 @@ class SPLM_Discipline_Notice_Pass {
 	const HOOK = 'splm_discipline_notices';
 	const LOCK = 'splm_discipline_notices';
 
-	const OPTION_BASELINE_TOKEN = 'splm_discipline_notice_baseline_token';
 
 	public function __construct() {
 		add_action( self::HOOK, array( __CLASS__, 'run' ) );
@@ -71,97 +70,8 @@ class SPLM_Discipline_Notice_Pass {
 		}
 	}
 
-	/**
-	 * A token over the inputs whose change must baseline rather than notify.
-	 *
-	 * Two things are folded in:
-	 *
-	 *  - each tier's key and minutes, so editing a threshold baselines that
-	 *    tier — lowering season-critical from 18 to 10 must not mail everyone
-	 *    already between the two;
-	 *  - whether each mode is enabled, as a BOOLEAN, so turning notices on
-	 *    mid-season baselines instead of mailing the sixteen players already
-	 *    over season-warn.
-	 *
-	 * Recording enablement as a boolean rather than as the mode's value is what
-	 * keeps queued -> automatic from re-baselining: both are enabled, and the
-	 * only boundary that matters is disabled.
-	 *
-	 * A tier's consequence is deliberately NOT in the token. Promoting a
-	 * warning tier to a suspension is a convener asking for it to take effect,
-	 * and the re-fire predicate still prevents a re-send at an unchanged total.
-	 *
-	 * @return string
-	 *
-	 * @SuppressWarnings(PHPMD.StaticAccess)
-	 */
-	public static function baseline_token(): string {
-		return wp_json_encode( self::tier_tokens() );
-	}
 
-	/**
-	 * A baseline token per tier.
-	 *
-	 * Per tier, not one for the pass. A single shared token meant ANY change to
-	 * anything baselined EVERYTHING: nudging window-critical from 8 to 9 muted
-	 * every player who crossed season-critical — a suspension — that same day,
-	 * permanently, at that total. The spec is singular about this: a threshold
-	 * edit "re-baselines that tier", and the mode trigger is "a mode
-	 * transitioning out of disabled".
-	 *
-	 * Each tier's token digests its own minutes plus whether ITS consequence's
-	 * delivery mode is enabled — as a boolean, so queued to automatic still
-	 * does not re-baseline. A tier's consequence is deliberately absent: a
-	 * convener promoting a warning to a suspension means it to take effect.
-	 *
-	 * @return array tier_key => token.
-	 *
-	 * @SuppressWarnings(PHPMD.StaticAccess)
-	 */
-	public static function tier_tokens(): array {
-		$tiers  = SPLM_Penalty_Watch::sanitize_tiers( (array) get_option( 'splm_discipline_tiers', array() ) );
-		$tokens = array();
 
-		foreach ( $tiers as $tier ) {
-			$consequence = (string) $tier['consequence'];
-			$tokens[ (string) $tier['key'] ] = hash(
-				// Digest only, not a security primitive — xxh128 is faster than
-				// md5() and does not trip weak-crypto scanners, matching the
-				// cache keys in SPLM_Leaders_REST.
-				'xxh128',
-				wp_json_encode(
-					array(
-						'minutes' => (int) $tier['minutes'],
-						'mode_on' => SPLM_Discipline_Notice::MODE_DISABLED !== SPLM_Discipline_Notice::mode_for( $consequence ),
-					)
-				)
-			);
-		}
-
-		ksort( $tokens );
-
-		return $tokens;
-	}
-
-	/**
-	 * Whether one tier must baseline rather than notify on this pass.
-	 *
-	 * @param string $tier_key Tier identifier.
-	 * @return bool
-	 */
-	public static function is_baselining_tier( string $tier_key ): bool {
-		$stored = (array) get_option( self::OPTION_BASELINE_TOKEN, array() );
-		$now    = self::tier_tokens();
-
-		if ( ! isset( $now[ $tier_key ] ) ) {
-			return false;
-		}
-
-		// A tier with no stored token has never been seen — first run, or a
-		// newly added tier — so it baselines rather than mailing everyone who
-		// is already over it.
-		return ! isset( $stored[ $tier_key ] ) || $stored[ $tier_key ] !== $now[ $tier_key ];
-	}
 
 
 	/**
@@ -196,7 +106,7 @@ class SPLM_Discipline_Notice_Pass {
 			// stored, no baselining happens, and every player who crossed while
 			// notices were off is mailed at once. That is precisely the
 			// mid-season switch-on that baselining exists to prevent.
-			self::remember_token();
+			SPLM_Discipline_Notice_Baseline::remember();
 
 			return 0;
 		}
@@ -246,39 +156,12 @@ class SPLM_Discipline_Notice_Pass {
 			$written += self::process_player( (int) $player_id, $player, $season_id, $tiers, $cutoff, $baselining );
 		}
 
-		self::remember_token();
+		SPLM_Discipline_Notice_Baseline::remember();
 
 		return $written;
 	}
 
-	/**
-	 * Whether the next pass must baseline rather than notify.
-	 *
-	 * A named seam rather than an inline comparison so a test can assert the
-	 * BEHAVIOUR — "does this configuration change baseline or notify" — instead
-	 * of asserting that two token strings differ, which is an implementation
-	 * detail that can hold while the stored token is never updated.
-	 *
-	 * @return bool
-	 */
-	public static function is_baselining(): bool {
-		foreach ( array_keys( self::tier_tokens() ) as $tier_key ) {
-			if ( self::is_baselining_tier( $tier_key ) ) {
-				return true;
-			}
-		}
 
-		return false;
-	}
-
-	/**
-	 * Store the current token, so the next pass does not baseline again.
-	 *
-	 * @return void
-	 */
-	public static function remember_token(): void {
-		update_option( self::OPTION_BASELINE_TOKEN, self::tier_tokens(), false );
-	}
 
 	/**
 	 * Evaluate and act on one player.
@@ -329,7 +212,7 @@ class SPLM_Discipline_Notice_Pass {
 
 		foreach ( $fireable as $scope => $scope_matches ) {
 			foreach ( $scope_matches as $match ) {
-				if ( $baselining || self::is_baselining_tier( (string) $match['tier_key'] ) ) {
+				if ( $baselining || SPLM_Discipline_Notice_Baseline::is_baselining_tier( (string) $match['tier_key'] ) ) {
 					$to_baseline[ $scope ][] = $match;
 					continue;
 				}

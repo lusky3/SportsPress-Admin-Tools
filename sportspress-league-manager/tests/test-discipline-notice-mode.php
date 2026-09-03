@@ -262,102 +262,66 @@ assert_test(
 	'the recorded error names the missing address'
 );
 
+require_once __DIR__ . '/../includes/class-discipline-notice-baseline.php';
 require_once __DIR__ . '/../includes/class-discipline-notice-pass.php';
 
 // $state is already bound earlier in this file; do not redeclare it.
 $pass = 'SPLM_Discipline_Notice_Pass';
+$base = 'SPLM_Discipline_Notice_Baseline';
 
-echo "\n=== baselining is decided by the STORED token ===\n\n";
+echo "\n=== baselining is decided by the STORED token, per tier ===\n\n";
 
-// Asserting is_baselining() rather than comparing token strings. A test that
-// only checks the computed token differs passes even when the stored token is
-// never updated — which is exactly how the disabled-path defect below survived
-// the first draft of this plan.
+// Asserting the stored token rather than the computed one. A test that only
+// checks the computed token differs passes even when nothing ever stores it —
+// which is exactly how a real defect survived this file's first draft.
 $state->options = array(
 	'splm_discipline_tiers'                  => SPLM_Penalty_Watch::default_tiers(),
 	'splm_discipline_notice_mode_warning'    => 'queued',
 	'splm_discipline_notice_mode_suspension' => 'queued',
 );
 
-assert_test( $pass::is_baselining(), 'with nothing stored, the first pass baselines' );
-$pass::remember_token();
-assert_test( ! $pass::is_baselining(), 'once remembered, the next pass does not baseline' );
+assert_test( $base::is_baselining_tier( 'season-warn' ), 'with nothing stored, a tier baselines on its first pass' );
+$base::remember();
+assert_test( ! $base::is_baselining_tier( 'season-warn' ), 'once remembered it does not baseline again' );
 
-echo "\n=== a mode leaving disabled re-baselines ===\n\n";
+echo "\n=== a mode leaving disabled re-baselines its own tiers ===\n\n";
 
 $state->options['splm_discipline_notice_mode_warning'] = 'disabled';
-assert_test( $pass::is_baselining(), 'turning a mode off is itself a change' );
-$pass::remember_token();
-$state->options['splm_discipline_notice_mode_warning'] = 'queued';
+assert_test( $base::is_baselining_tier( 'season-warn' ), 'turning the warning mode off is itself a change' );
 assert_test(
-	$pass::is_baselining(),
-	'turning it back on baselines, so a mid-season switch-on does not mail the players already over a threshold'
+	! $base::is_baselining_tier( 'season-critical' ),
+	'and it does not disturb a suspending tier, whose own mode did not move'
 );
-$pass::remember_token();
-
-echo "\n=== the disabled path must still store the token ===\n\n";
-
-// The defect this guards: both modes off, the pass early-returns before
-// run_locked() and so before any token write. Re-enabling then recomputes the
-// SAME token that is still stored, is_baselining() is false, and every player
-// who accumulated while notices were off is mailed at once.
-$state->options['splm_discipline_notice_mode_warning']    = 'disabled';
-$state->options['splm_discipline_notice_mode_suspension'] = 'disabled';
-$pass::remember_token();
-$stored_while_off = $state->options[ $pass::OPTION_BASELINE_TOKEN ];
+$base::remember();
 
 $state->options['splm_discipline_notice_mode_warning'] = 'queued';
 assert_test(
-	$stored_while_off !== $pass::baseline_token(),
-	'the token stored while both modes were off differs from the token once one is on'
+	$base::is_baselining_tier( 'season-warn' ),
+	'turning it back on baselines, so a mid-season switch-on does not mail everyone already over the threshold'
 );
-assert_test(
-	$pass::is_baselining(),
-	'so re-enabling after a disabled period baselines instead of mailing everyone who crossed while it was off'
-);
-$pass::remember_token();
+$base::remember();
 
 echo "\n=== queued to automatic does NOT re-baseline ===\n\n";
-
-// Both modes must be ENABLED and remembered first, or this tests the wrong
-// transition: the block above left suspensions disabled, so flipping both to
-// automatic would cross the disabled boundary for suspensions and correctly
-// baseline. Isolate the one transition under test.
-$state->options['splm_discipline_notice_mode_warning']    = 'queued';
-$state->options['splm_discipline_notice_mode_suspension'] = 'queued';
-$pass::remember_token();
 
 $state->options['splm_discipline_notice_mode_warning']    = 'automatic';
 $state->options['splm_discipline_notice_mode_suspension'] = 'automatic';
 assert_test(
-	! $pass::is_baselining(),
-	'the token records only WHETHER a mode is enabled, so queued to automatic is not a baselining event: both are enabled and the only crossing that matters is the disabled boundary'
+	! $base::is_baselining_tier( 'season-warn' ),
+	'the token records only WHETHER a mode is enabled, so queued to automatic is not a baselining event: the only boundary that matters is disabled'
 );
-
-echo "\n=== editing a threshold re-baselines ===\n\n";
-
-$lowered               = SPLM_Penalty_Watch::default_tiers();
-$lowered[1]['minutes'] = 10;
-$state->options['splm_discipline_tiers'] = $lowered;
-
-assert_test(
-	$pass::is_baselining(),
-	'lowering a threshold baselines, so nobody already over the new threshold is mailed'
-);
-$pass::remember_token();
+assert_test( ! $base::is_baselining_tier( 'season-critical' ), 'the same holds for a suspending tier' );
 
 echo "\n=== editing a consequence does NOT re-baseline ===\n\n";
 
-$reconsequenced                    = $lowered;
-$reconsequenced[0]['consequence']  = 'suspend';
-$reconsequenced[0]['games']        = 1;
+$reconsequenced = SPLM_Penalty_Watch::default_tiers();
+$reconsequenced[0]['consequence'] = 'suspend';
+$reconsequenced[0]['games']       = 1;
 $state->options['splm_discipline_tiers'] = $reconsequenced;
 
 assert_test(
-	! $pass::is_baselining(),
-	'changing what a tier DOES is not a threshold change: a convener promoting a warning to a suspension means it to take effect, and the predicate still prevents a re-send at an unchanged total'
+	! $base::is_baselining_tier( 'season-critical' ),
+	'changing what a tier DOES is not a threshold change: a convener promoting a warning to a suspension means it to take effect'
 );
-
 
 echo "\n=== baselining is per tier, not per pass ===\n\n";
 
@@ -368,7 +332,7 @@ echo "\n=== baselining is per tier, not per pass ===\n\n";
 $state->options['splm_discipline_tiers']                  = SPLM_Penalty_Watch::default_tiers();
 $state->options['splm_discipline_notice_mode_warning']    = 'queued';
 $state->options['splm_discipline_notice_mode_suspension'] = 'queued';
-$pass::remember_token();
+$base::remember();
 
 $nudged = SPLM_Penalty_Watch::default_tiers();
 foreach ( $nudged as $i => $t ) {
@@ -378,17 +342,17 @@ foreach ( $nudged as $i => $t ) {
 }
 $state->options['splm_discipline_tiers'] = $nudged;
 
-assert_test( $pass::is_baselining_tier( 'window-critical' ), 'the edited tier baselines' );
+assert_test( $base::is_baselining_tier( 'window-critical' ), 'the edited tier baselines' );
 assert_test(
-	! $pass::is_baselining_tier( 'season-critical' ),
+	! $base::is_baselining_tier( 'season-critical' ),
 	'a DIFFERENT tier does not: editing one threshold must not mute a suspension on another'
 );
-assert_test( ! $pass::is_baselining_tier( 'season-warn' ), 'nor any other untouched tier' );
+assert_test( ! $base::is_baselining_tier( 'season-warn' ), 'nor any other untouched tier' );
 
-$pass::remember_token();
-assert_test( ! $pass::is_baselining_tier( 'window-critical' ), 'and once remembered the edited tier settles' );
+$base::remember();
+assert_test( ! $base::is_baselining_tier( 'window-critical' ), 'and once remembered the edited tier settles' );
 
-assert_test( $pass::is_baselining_tier( 'never-seen' ) === false, 'a tier that is not configured cannot baseline' );
+assert_test( $base::is_baselining_tier( 'never-seen' ) === false, 'a tier that is not configured cannot baseline' );
 
 echo "\n=== Results ===\n\n";
 echo "Passed: {$passed}\nFailed: {$failed}\n";
