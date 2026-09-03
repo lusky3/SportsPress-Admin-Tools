@@ -278,6 +278,46 @@ class SPLM_Discipline_Notice_Database {
 	}
 
 	/**
+	 * Whether an unreleased notice already exists for this player and season.
+	 *
+	 * At most one notice per player per season may sit in the queue awaiting
+	 * release. Without this bound, a pass whose winner is suppressed as
+	 * `pending` lets the runner-up win selection on its own the next time
+	 * round, and the convener ends up releasing two notices for one
+	 * escalation — the player told twice they are suspended for one game,
+	 * which is the harm select() prevents within a pass, displaced across
+	 * passes.
+	 *
+	 * Only `pending` counts. A `sent` notice is history and must not stop a
+	 * later, genuine crossing from firing.
+	 *
+	 * @param int $player_id Player post id.
+	 * @param int $season_id Season term id.
+	 * @return bool
+	 */
+	public static function has_pending_notice( int $player_id, int $season_id ): bool {
+		global $wpdb;
+
+		if ( ! self::table_exists() ) {
+			return false;
+		}
+
+		$table = self::table_name();
+
+		return (bool) $wpdb->get_var( // phpcs:ignore WordPress.DB
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not a value; cannot use a placeholder.
+				"SELECT id FROM {$table}
+				 WHERE player_id = %d AND season_id = %d AND status = %s
+				 LIMIT 1",
+				$player_id,
+				$season_id,
+				self::STATUS_PENDING
+			)
+		);
+	}
+
+	/**
 	 * Whether a suspension notice already exists for this player and season.
 	 *
 	 * Excludes `baseline` (nothing was issued) and `discarded` (a convener

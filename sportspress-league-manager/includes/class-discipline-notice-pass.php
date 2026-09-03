@@ -287,7 +287,11 @@ class SPLM_Discipline_Notice_Pass {
 			// Without this the runner-up baseline lets a warning fire a pass
 			// later and the player receives BOTH emails for one escalation.
 			// See Task 9's "the warning that arrives after the suspension".
-			SPLM_Discipline_Notice_Database::has_suspension_notice( $player_id, $season_id )
+			SPLM_Discipline_Notice_Database::has_suspension_notice( $player_id, $season_id ),
+			// Bounds the queue to one unreleased notice per player per season.
+			// Without it, a winner suppressed as `pending` lets the runner-up
+			// win selection alone next pass and the convener releases two.
+			SPLM_Discipline_Notice_Database::has_pending_notice( $player_id, $season_id )
 		);
 
 		foreach ( $planned['baselines'] as $match ) {

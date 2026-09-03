@@ -319,6 +319,35 @@ assert_test(
 	'and with no suspension outstanding the same warning fires normally'
 );
 
+echo "\n=== at most one unreleased notice per player per season ===\n\n";
+
+// The winner of an earlier pass sits `pending`, so should_fire() suppresses
+// it — and without a bound the runner-up wins selection on its own, giving the
+// convener two notices to release for one escalation. With the default tiers a
+// player who earns all 18 season minutes inside the 4-week window matches BOTH
+// suspending tiers, so this is reachable in ordinary use, not a contrivance.
+$two_suspends = array(
+	'season' => array( $mk( 'season-critical', 'season', 'suspend', 1, 18 ) ),
+	'window' => array( $mk( 'window-critical', 'window', 'suspend', 1, 8 ) ),
+);
+$queued_both = array( 'warn' => 'queued', 'suspend' => 'queued' );
+
+$blocked = $notice::plan_writes( $two_suspends, $queued_both, false, true, true, true );
+assert_test( null === $blocked['notice'], 'with a notice already awaiting release, no second notice is created' );
+assert_test( array() === $blocked['baselines'], 'and nothing is baselined either, so the runner-up can still fire once the queue clears' );
+
+$unblocked = $notice::plan_writes( $two_suspends, $queued_both, false, true, true, false );
+assert_test(
+	null !== $unblocked['notice'],
+	'with nothing awaiting release the same input produces a notice, so the bound is the pending row and not the input'
+);
+
+$baselining_exempt = $notice::plan_writes( $two_suspends, $queued_both, true, true, true, true );
+assert_test(
+	2 === count( $baselining_exempt['baselines'] ),
+	'a baselining pass is exempt from the bound: it mails nobody and only records values'
+);
+
 echo "\n=== Results ===\n\n";
 echo "Passed: {$passed}\nFailed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );

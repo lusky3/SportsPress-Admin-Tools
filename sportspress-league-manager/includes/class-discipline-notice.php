@@ -182,6 +182,9 @@ class SPLM_Discipline_Notice {
 	 * @param bool  $has_address             Whether the player's address resolved.
 	 * @param bool  $suspension_outstanding  Whether a suspension notice already exists
 	 *                                       for this player and season.
+	 * @param bool  $pending_outstanding     Whether an unreleased notice already exists
+	 *                                       for this player and season. Defaults false
+	 *                                       so existing callers are unaffected.
 	 * @return array array(
 	 *               'notice'    => array|null,
 	 *               'status'    => string,
@@ -189,7 +192,7 @@ class SPLM_Discipline_Notice {
 	 *               'baselines' => array,
 	 *             )
 	 */
-	public static function plan_writes( array $matches_by_scope, array $modes, bool $baselining, bool $has_address, bool $suspension_outstanding = false ): array {
+	public static function plan_writes( array $matches_by_scope, array $modes, bool $baselining, bool $has_address, bool $suspension_outstanding = false, bool $pending_outstanding = false ): array {
 		$eligible = self::eligible_matches( $matches_by_scope, $modes, $suspension_outstanding );
 
 		$nothing = array(
@@ -200,6 +203,16 @@ class SPLM_Discipline_Notice {
 		);
 
 		if ( ! $eligible ) {
+			return $nothing;
+		}
+
+		// At most one unreleased notice per player per season. When an earlier
+		// pass's winner is still `pending`, should_fire() suppresses it — and
+		// without this bound the runner-up wins selection on its own, so a
+		// convener releasing the queue sends two notices for one escalation.
+		// That is the harm select() prevents within a pass, displaced across
+		// passes. A baselining pass is exempt: it mails nobody.
+		if ( $pending_outstanding && ! $baselining ) {
 			return $nothing;
 		}
 
