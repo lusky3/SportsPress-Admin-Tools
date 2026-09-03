@@ -155,12 +155,16 @@ already told this player?" must survive a page load. One new table:
 id             bigint unsigned auto_increment PRIMARY KEY
 player_id      bigint unsigned NOT NULL          KEY
 season_id      bigint unsigned NOT NULL          KEY
-tier_key       varchar(50)     NOT NULL
-ack_key        varchar(80)     NOT NULL          -- tier_key, or tier_key@window_start
+tier_key       varchar(50)     NOT NULL          -- the suppression key
+ack_key        varchar(80)     NOT NULL          -- tier_key, or tier_key@window_start; for the digest ack only
+scope          varchar(20)     NOT NULL          -- 'season' | 'window'
 severity       varchar(20)     NOT NULL
 consequence    varchar(20)     NOT NULL          -- 'warn' | 'suspend'
 games          smallint unsigned NOT NULL DEFAULT 0
-value_at_fire  int             NOT NULL          -- the PIM total that triggered it
+value_at_fire  int             NOT NULL          -- the figure that crossed the threshold; display
+season_at_fire int             NOT NULL          -- the season total at the time; the predicate compares this
+team           varchar(200)    NOT NULL DEFAULT ''  -- snapshot at fire time
+division       varchar(200)    NOT NULL DEFAULT ''  -- snapshot at fire time
 status         varchar(20)     NOT NULL DEFAULT 'pending'
 recipient      varchar(200)    NOT NULL DEFAULT ''  -- address actually used
 recipient_via  varchar(20)     NOT NULL DEFAULT ''  -- 'spt_email' | 'sp_user'
@@ -171,8 +175,13 @@ released_by    bigint unsigned NOT NULL DEFAULT 0    -- 0 for an automatic send
 last_error     varchar(255)    NOT NULL DEFAULT ''
 note           text
 created_at     datetime        NOT NULL
-KEY player_season_ack (player_id, season_id, ack_key)
+KEY player_season_tier (player_id, season_id, tier_key)
+KEY season_status (season_id, status)
 ```
+
+`team` and `division` are snapshots rather than resolved on read: cheaper, and
+more accurate, since they record who the player was playing for when the
+minutes were earned rather than who they play for now.
 
 Statuses: `baseline | pending | sent | failed | discarded | served`.
 
@@ -192,20 +201,41 @@ predicate plus the pass lock, described next.
 
 ### One predicate governs re-firing
 
-For a given `(player_id, season_id, ack_key)`, take the row with the highest
-`id`. Suppress the crossing unless `value > that row's value_at_fire`.
+For a given `(player_id, season_id, tier_key)`, take the row with the highest
+`id`. Suppress the crossing unless the player's **season total** now exceeds
+that row's `season_at_fire`.
+
+The comparison is the season total, never the value that matched the tier, and
+that is the whole correctness argument. A season total only ever grows; a
+rolling window total falls as weeks roll past. Comparing the matched value would
+re-fire a window tier every week the minutes stay inside the window — one
+eight-minute incident becoming four suspension emails — and scoping suppression
+to the window instead would mute a genuine later offence that happened to reach
+the same window figure. A monotonic comparison has neither failure.
+
+The row therefore stores two figures: `value_at_fire`, the number that crossed
+the threshold and the one shown to humans, and `season_at_fire`, the number the
+predicate compares.
+
+Suppression is keyed on `tier_key`, **not** on `ack_key`. `ack_key` embeds the
+rolling window's start date, which advances weekly, so an `ack_key` lookup finds
+no prior row each week — the same re-fire bug by a different route. The
+`ack_key` is still stored, because the digest's acknowledgement write needs it.
 
 Every status participates identically. That single rule delivers:
 
-- A `sent` notice does not re-send next week at the same total.
+- A `sent` notice does not re-send while the player earns nothing more.
 - A `baseline` row suppresses a player who was already over at switch-on.
 - A `served` suspension re-fires once the player earns more, with no special case.
-- A `discarded` notice does not come back at the same total — a convener's
-  decision to discard sticks until the player earns more.
+- A `discarded` notice does not come back — a convener's decision to discard
+  sticks until the player earns more.
+- A `failed` send does not duplicate: it stays visible in the queue and is
+  retried through the release route.
 
-`failed` is the one status needing care: a failed send must remain actionable, so
-it stays visible in the queue and is retried through the release route rather
-than by re-firing.
+`pending` is the one status that suppresses even when the total *has* grown. An
+unreleased notice is a draft, so a rising total revises it in place rather than
+stacking a second row — three pending rows for one escalation would mail three
+suspensions when a convener released them.
 
 ## Baselining
 
@@ -420,7 +450,7 @@ suppression machinery rather than adding a second one, and requires adding
 ## Surface A — WP admin, technical
 
 A second League Manager tab on the SPAT settings page, registered through the
-existing `spat_admin_page_tabs` / `spat_admin_page_after_tabs` actions that
+existing `spat_admin_page_tabs` / `spat_admin_page_content` actions that
 league-manager already hooks. It is a **separate tab** from League Manager's
 settings, not a section inside them: that panel is a single
 `<form action="options.php">`, and nesting an actionable queue inside it would
@@ -494,7 +524,7 @@ The card renders nothing when both counts are zero and both modes are
 | Player-tools inactive | No captain Bcc; notice still sends. |
 | `SPAT_Lock` unavailable | Pass does nothing. Safer than a possible double send. |
 | `splm_default_season` unset | Pass does nothing; technical view says so explicitly. |
-| Module disabled mid-season | Pass stops writing rows; existing rows and the queue remain readable. |
+| Module disabled mid-season | Pass stops writing rows. The REST routes and the React page 503, per this codebase's module convention; the WP-admin technical tab keeps rendering existing rows read-only, with a warning banner and no action controls, because an administrator looking at a feature someone just switched off is usually trying to find out what it already sent. |
 | Cron never fires | No notices. The technical view's next-run display is how this gets noticed. |
 | Score sheet inflates PIM erroneously | Why `queued` is the recommended mode for suspensions: a human sees the notice before the player does. |
 

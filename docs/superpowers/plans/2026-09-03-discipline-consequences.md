@@ -4,7 +4,7 @@
 
 **Goal:** Make crossing a penalty-minute threshold notify the player — a warning at the lower tiers, a suspension at the upper ones — with per-severity control over whether that mail sends automatically, queues for a human to release, or is switched off.
 
-**Architecture:** `SPLM_Penalty_Watch` gains an actionable `consequence` per tier and a new `matches()` that exposes every matched tier instead of one flag per scope. A new `splm_discipline_notice` table persists one row per decision, with a single re-fire predicate over its latest row per (player, season, ack_key). A daily `SPAT_Lock`-guarded cron pass writes rows and, in `automatic` mode, sends. Four REST routes serve both queue surfaces — a technical WP-admin tab and a simplified React page — so release logic exists exactly once.
+**Architecture:** `SPLM_Penalty_Watch` gains an actionable `consequence` per tier and a new `matches()` that exposes every matched tier instead of one flag per scope. A new `splm_discipline_notice` table persists one row per decision, with a single re-fire predicate over its latest row per (player, season, tier) that compares the player's monotonic season total. A daily `SPAT_Lock`-guarded cron pass writes rows and, in `automatic` mode, sends. Four REST routes serve both queue surfaces — a technical WP-admin tab and a simplified React page — so release logic exists exactly once.
 
 **Tech Stack:** WordPress 6.4+, PHP 8.1+, `@wordpress/element` + `@wordpress/api-fetch` (built with `wp-scripts`), standalone `assert_test` PHP test harness (no WordPress bootstrap).
 
@@ -740,7 +740,7 @@ One row per decision the system makes about a (player, season, tier). Follows `c
   - `insert( array $row ): int` — 0 on failure
   - `update( int $id, array $fields ): bool`
   - `find( int $id )` — row object or `null`
-  - `latest_for( int $player_id, int $season_id, string $ack_key )` — row object or `null`
+  - `latest_for( int $player_id, int $season_id, string $tier_key )` — row object or `null`. Keyed on `tier_key`, **not** `ack_key`: see the method's docblock for why an `ack_key` lookup re-fires window notices weekly.
   - `query( array $filters, int $page, int $per_page ): array` — `array( 'rows' => array, 'total' => int )`
   - `counts_by_status( int $season_id ): array` — `status => int`
 
@@ -902,11 +902,12 @@ $id = $db::insert(
 		'season_id'     => 34,
 		'tier_key'      => 'season-critical',
 		'ack_key'       => 'season-critical',
-		'severity'      => 'critical',
-		'consequence'   => 'suspend',
-		'games'         => 1,
-		'value_at_fire' => 18,
-		'status'        => $db::STATUS_PENDING,
+		'severity'       => 'critical',
+		'consequence'    => 'suspend',
+		'games'          => 1,
+		'value_at_fire'  => 8,
+		'season_at_fire' => 18,
+		'status'         => $db::STATUS_PENDING,
 	)
 );
 
@@ -915,8 +916,12 @@ $written = splm_notice_db_test_state()->inserts[0];
 assert_test( 701 === $id, 'insert() returns the new row id' );
 assert_test( isset( $written['created_at'] ), 'insert() stamps created_at rather than trusting a column default' );
 assert_test( $written['created_at'] === gmdate( 'Y-m-d H:i:s' ), 'created_at is UTC' );
-assert_test( 12 === $written['player_id'] && 18 === $written['value_at_fire'], 'the caller fields survive' );
+assert_test( 12 === $written['player_id'], 'the caller fields survive' );
 assert_test( 'pending' === $written['status'], 'the status survives' );
+assert_test(
+	8 === $written['value_at_fire'] && 18 === $written['season_at_fire'],
+	'the two value columns are stored separately: value_at_fire is the figure that crossed the threshold, season_at_fire is what the predicate compares'
+);
 
 echo "\n=== insert() failure is reported, not swallowed ===\n\n";
 
@@ -1016,10 +1021,25 @@ class SPLM_Discipline_Notice_Database {
 	/**
 	 * Create the table.
 	 *
-	 * The (player_id, season_id, ack_key) key is deliberately NOT unique: a
+	 * The (player_id, season_id, tier_key) key is deliberately NOT unique: a
 	 * player may legitimately receive the same tier's notice twice in a season
 	 * — once at 18 minutes, again at 25 — and both rows are history worth
 	 * keeping. Duplicate protection is the re-fire predicate plus the pass lock.
+	 *
+	 * Two value columns, and the distinction is load-bearing:
+	 *
+	 *  - value_at_fire is the figure that crossed the threshold — a window
+	 *    total for a window tier, a season total for a season tier. Display only.
+	 *  - season_at_fire is the player's SEASON total at the time, and it is what
+	 *    the re-fire predicate compares. A season total only ever grows; a
+	 *    rolling window total falls as weeks pass, so comparing window totals
+	 *    would re-fire the same suspension every week the minutes stay inside
+	 *    the window, and comparing them across windows would suppress a genuine
+	 *    later offence that happened to reach the same window figure.
+	 *
+	 * team and division are snapshots taken at fire time rather than resolved
+	 * on read. That is cheaper (no per-row aggregator call) and more accurate:
+	 * it records who the player was playing for when the minutes were earned.
 	 *
 	 * @return bool True when the table is present afterwards.
 	 */
@@ -1034,10 +1054,14 @@ class SPLM_Discipline_Notice_Database {
 			season_id bigint(20) unsigned NOT NULL,
 			tier_key varchar(50) NOT NULL,
 			ack_key varchar(80) NOT NULL,
+			scope varchar(20) NOT NULL DEFAULT '',
 			severity varchar(20) NOT NULL DEFAULT '',
 			consequence varchar(20) NOT NULL DEFAULT 'none',
 			games smallint(5) unsigned NOT NULL DEFAULT 0,
 			value_at_fire int NOT NULL DEFAULT 0,
+			season_at_fire int NOT NULL DEFAULT 0,
+			team varchar(200) NOT NULL DEFAULT '',
+			division varchar(200) NOT NULL DEFAULT '',
 			status varchar(20) NOT NULL DEFAULT 'pending',
 			recipient varchar(200) NOT NULL DEFAULT '',
 			recipient_via varchar(20) NOT NULL DEFAULT '',
@@ -1049,7 +1073,7 @@ class SPLM_Discipline_Notice_Database {
 			note text NULL,
 			created_at datetime NOT NULL,
 			PRIMARY KEY (id),
-			KEY player_season_ack (player_id, season_id, ack_key),
+			KEY player_season_tier (player_id, season_id, tier_key),
 			KEY season_status (season_id, status)
 		) {$charset};";
 
@@ -1151,18 +1175,27 @@ class SPLM_Discipline_Notice_Database {
 	}
 
 	/**
-	 * The most recent row for one player, season and acknowledgement key.
+	 * The most recent row for one player, season and TIER.
 	 *
 	 * This is the row the re-fire predicate compares against. Ordering by id
 	 * rather than created_at because two rows written inside the same second
 	 * during one pass must still have a determinate winner.
 	 *
+	 * Keyed on tier_key, deliberately NOT on ack_key. ack_key embeds the
+	 * rolling window's start date for window tiers, and window_cutoff()
+	 * advances every Monday — so an ack_key lookup would find no prior row
+	 * each week and re-fire the same suspension up to four times for one
+	 * incident, once per week the minutes remain inside the window.
+	 *
+	 * The ack_key column is still stored, because the digest's
+	 * acknowledgement write needs it. It is just not the suppression key.
+	 *
 	 * @param int    $player_id Player post id.
 	 * @param int    $season_id Season term id.
-	 * @param string $ack_key   Tier key, or "<tier>@<window start>".
+	 * @param string $tier_key  Tier identifier.
 	 * @return object|null
 	 */
-	public static function latest_for( int $player_id, int $season_id, string $ack_key ) {
+	public static function latest_for( int $player_id, int $season_id, string $tier_key ) {
 		global $wpdb;
 
 		if ( ! self::table_exists() ) {
@@ -1175,12 +1208,12 @@ class SPLM_Discipline_Notice_Database {
 			$wpdb->prepare(
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not a value; cannot use a placeholder.
 				"SELECT * FROM {$table}
-				 WHERE player_id = %d AND season_id = %d AND ack_key = %s
+				 WHERE player_id = %d AND season_id = %d AND tier_key = %s
 				 ORDER BY id DESC
 				 LIMIT 1",
 				$player_id,
 				$season_id,
-				$ack_key
+				$tier_key
 			)
 		);
 	}
@@ -1320,11 +1353,17 @@ The decision core. Pure functions: totals and rows in, decisions out — no data
 - Modify: `sportspress-league-manager/tests/test-discipline-notice-predicate.php` (append a section)
 
 **Interfaces:**
-- Consumes: `SPLM_Penalty_Watch::matches()` output rows (Task 2); `SPLM_Discipline_Notice_Database::STATUS_*` (Task 3).
+- Consumes: `SPLM_Penalty_Watch::matches()` output rows (Task 2); `SPLM_Discipline_Notice_Database::STATUS_PENDING`/`STATUS_FAILED` (Task 3).
 - Produces: `SPLM_Discipline_Notice` with:
-  - `should_fire( array $match, $latest ): bool` — `$latest` is a row object or `null`
+  - `MODE_AUTOMATIC` / `MODE_QUEUED` / `MODE_DISABLED` and `MODES` — declared here, not in Task 7, because `plan_writes()` needs them
+  - `ACTIONABLE` — the consequences that can produce a notice
+  - `should_fire( array $match, $latest, int $season_total ): bool`
+  - `needs_refresh( $latest, int $season_total ): bool`
+  - `plan_writes( array $matches_by_scope, array $modes, bool $baselining, bool $has_address ): array` — `array( 'notice' => array|null, 'status' => string, 'send' => bool, 'baselines' => array )`
   - `select( array $matches_by_scope ): array` — `array( 'notice' => array|null, 'baselines' => array )`
   - `rank_matches( array $matches ): array` — sorted copy, most severe first
+
+**Why the predicate compares the season total.** A rolling window total is not monotonic: it falls as weeks roll past. Comparing the matched value re-fires a window tier every week the minutes stay inside the window — one 8-minute incident becoming four suspension emails — and keying suppression on the window instead mutes a genuine later offence that reaches the same window figure. The season total only grows, so it has neither failure. `value_at_fire` remains the display figure.
 
 - [ ] **Step 1: Append the predicate tests**
 
@@ -1334,10 +1373,10 @@ Append to `sportspress-league-manager/tests/test-discipline-notice-predicate.php
 require_once __DIR__ . '/../includes/class-discipline-notice.php';
 
 $notice = 'SPLM_Discipline_Notice';
-$row    = function ( $status, $value ) {
+$row    = function ( $status, $season_at_fire ) {
 	return (object) array(
-		'status'        => $status,
-		'value_at_fire' => $value,
+		'status'         => $status,
+		'season_at_fire' => $season_at_fire,
 	);
 };
 $match  = function ( $value ) {
@@ -1354,34 +1393,86 @@ $match  = function ( $value ) {
 
 echo "\n=== the re-fire predicate ===\n\n";
 
-assert_test( $notice::should_fire( $match( 18 ), null ), 'with no prior row, a match fires' );
+assert_test( $notice::should_fire( $match( 18 ), null, 18 ), 'with no prior row, a match fires' );
 
-foreach ( array( 'baseline', 'sent', 'discarded', 'served', 'pending' ) as $status ) {
+// 'pending' is excluded on purpose and tested separately below.
+foreach ( array( 'baseline', 'sent', 'discarded', 'served', 'failed' ) as $status ) {
 	assert_test(
-		! $notice::should_fire( $match( 18 ), $row( $status, 18 ) ),
-		"a {$status} row at the same value suppresses the match"
+		! $notice::should_fire( $match( 18 ), $row( $status, 18 ), 18 ),
+		"a {$status} row at the same season total suppresses the match"
 	);
 	assert_test(
-		$notice::should_fire( $match( 19 ), $row( $status, 18 ) ),
+		$notice::should_fire( $match( 19 ), $row( $status, 18 ), 19 ),
 		"a {$status} row does not suppress once the player earns more"
 	);
 }
 
 assert_test(
-	! $notice::should_fire( $match( 18 ), $row( 'baseline', 25 ) ),
-	'a baseline above the current value still suppresses, so a mid-season switch-on cannot mail anyone'
+	! $notice::should_fire( $match( 18 ), $row( 'baseline', 25 ), 18 ),
+	'a baseline above the current total still suppresses, so a mid-season switch-on cannot mail anyone'
 );
 assert_test(
-	! $notice::should_fire( $match( 18 ), $row( 'failed', 18 ) ),
-	'a failed row does not re-fire: it stays actionable in the queue and is retried through release instead'
+	! $notice::should_fire( $match( 18 ), $row( 'failed', 18 ), 18 ),
+	'a failed row does not duplicate: it stays actionable in the queue and is retried through release instead'
 );
+
+echo "\n=== the predicate compares the SEASON total, not the matched value ===\n\n";
+
+// This is the window-tier bug the season comparison exists to prevent. A
+// rolling window is not monotonic: the same 8 minutes stay inside the window
+// for four weeks, so a value-based comparison would re-fire the suspension
+// every week — four emails for one incident.
+$window_match = function ( $window_value ) {
+	return array(
+		'tier_key'    => 'window-critical',
+		'scope'       => 'window',
+		'severity'    => 'critical',
+		'minutes'     => 8,
+		'value'       => $window_value,
+		'consequence' => 'suspend',
+		'games'       => 1,
+	);
+};
+
+assert_test(
+	! $notice::should_fire( $window_match( 8 ), $row( 'sent', 8 ), 8 ),
+	'a window tier does not re-fire next week while the season total is unchanged, even though the window still shows the same 8 minutes'
+);
+assert_test(
+	$notice::should_fire( $window_match( 8 ), $row( 'sent', 8 ), 16 ),
+	'a genuine later offence fires again: the window figure is identical but the season total has grown'
+);
+assert_test(
+	! $notice::should_fire( $window_match( 12 ), $row( 'sent', 20 ), 20 ),
+	'a rising window figure alone does not fire when the season total has not moved'
+);
+
+echo "\n=== a pending notice is revised, not duplicated ===\n\n";
+
+assert_test(
+	! $notice::should_fire( $match( 20 ), $row( 'pending', 18 ), 20 ),
+	'a pending row does not fire a second notice when the total grows: releasing a stack would mail several suspensions for one escalation'
+);
+assert_test(
+	$notice::needs_refresh( $row( 'pending', 18 ), 20 ),
+	'that pending row is flagged for revision instead'
+);
+assert_test(
+	! $notice::needs_refresh( $row( 'pending', 18 ), 18 ),
+	'an unchanged total needs no revision'
+);
+assert_test(
+	! $notice::needs_refresh( $row( 'sent', 18 ), 20 ),
+	'only a pending row is revisable; a sent one is history'
+);
+assert_test( ! $notice::needs_refresh( null, 20 ), 'no row means nothing to revise' );
 
 echo "\n=== only consequence-bearing matches can fire ===\n\n";
 
 $inert = $match( 18 );
 $inert['consequence'] = 'none';
 
-assert_test( ! $notice::should_fire( $inert, null ), 'a tier with no consequence never fires a notice' );
+assert_test( ! $notice::should_fire( $inert, null, 18 ), 'a tier with no consequence never fires a notice' );
 ```
 
 - [ ] **Step 2: Append the selection tests**
@@ -1389,6 +1480,9 @@ assert_test( ! $notice::should_fire( $inert, null ), 'a tier with no consequence
 Append to `sportspress-league-manager/tests/test-discipline-notice-selection.php`, immediately **before** its `=== Results ===` block:
 
 ```php
+// Loaded for its STATUS_* constants only, which plan_writes() returns. No
+// method on it is called here, so it needs no $wpdb.
+require_once __DIR__ . '/../includes/class-discipline-notice-database.php';
 require_once __DIR__ . '/../includes/class-discipline-notice.php';
 
 $notice = 'SPLM_Discipline_Notice';
@@ -1468,6 +1562,78 @@ assert_test(
 	array() === $notice::select( $only_none )['baselines'],
 	'a match with no consequence is not baselined either: it was never a candidate'
 );
+
+echo "\n=== plan_writes(): the mode filter runs BEFORE selection ===\n\n";
+
+// The configuration that exposed the defect: a league that wants warnings but
+// not automatic suspensions. The suspension outranks the warning, so selecting
+// first and checking the mode afterwards delivers nothing at all.
+$both_tiers = array(
+	'season' => array(
+		$mk( 'season-warn', 'season', 'warn', 0, 12 ),
+		$mk( 'season-critical', 'season', 'suspend', 1, 18 ),
+	),
+);
+$warn_only_modes = array( 'warn' => 'queued', 'suspend' => 'disabled' );
+
+$planned = $notice::plan_writes( $both_tiers, $warn_only_modes, false, true );
+
+assert_test(
+	null !== $planned['notice'] && 'season-warn' === $planned['notice']['tier_key'],
+	'with suspensions disabled, the warning the league DID enable is the notice — not silently dropped because a disabled suspension outranked it'
+);
+assert_test(
+	array() === $planned['baselines'],
+	'the disabled suspension is not baselined either: a disabled consequence writes no rows at all'
+);
+
+$all_disabled = $notice::plan_writes( $both_tiers, array( 'warn' => 'disabled', 'suspend' => 'disabled' ), false, true );
+assert_test( null === $all_disabled['notice'], 'both modes disabled produces no notice' );
+assert_test( array() === $all_disabled['baselines'], 'both modes disabled produces no baseline rows' );
+
+echo "\n=== plan_writes(): status and send ===\n\n";
+
+$queued = $notice::plan_writes( $both_tiers, array( 'warn' => 'queued', 'suspend' => 'queued' ), false, true );
+assert_test( 'pending' === $queued['status'], 'queued mode writes pending' );
+assert_test( false === $queued['send'], 'queued mode does not send' );
+assert_test( 'season-critical' === $queued['notice']['tier_key'], 'the suspension wins when both modes are on' );
+assert_test( 1 === count( $queued['baselines'] ), 'the runner-up is baselined' );
+
+$auto = $notice::plan_writes( $both_tiers, array( 'warn' => 'automatic', 'suspend' => 'automatic' ), false, true );
+assert_test( true === $auto['send'], 'automatic mode sends' );
+assert_test( 'pending' === $auto['status'], 'automatic mode still writes pending first, so a send failure has a row to land on' );
+
+echo "\n=== plan_writes(): no address fails immediately ===\n\n";
+
+$no_address = $notice::plan_writes( $both_tiers, array( 'warn' => 'queued', 'suspend' => 'queued' ), false, false );
+assert_test(
+	'failed' === $no_address['status'],
+	'a player with no address lands failed at evaluation time, not as a pending row whose problem only surfaces when someone tries to release it'
+);
+assert_test( false === $no_address['send'], 'nothing is sent without an address' );
+
+$no_address_auto = $notice::plan_writes( $both_tiers, array( 'warn' => 'automatic', 'suspend' => 'automatic' ), false, false );
+assert_test( false === $no_address_auto['send'], 'automatic mode does not attempt a send without an address' );
+assert_test( 'failed' === $no_address_auto['status'], 'and records it as failed' );
+
+echo "\n=== plan_writes(): a baselining pass mails nobody ===\n\n";
+
+$baselining = $notice::plan_writes( $both_tiers, array( 'warn' => 'queued', 'suspend' => 'queued' ), true, true );
+assert_test( null === $baselining['notice'], 'a baselining pass produces no notice' );
+assert_test( false === $baselining['send'], 'a baselining pass sends nothing' );
+assert_test( 2 === count( $baselining['baselines'] ), 'a baselining pass records every eligible match' );
+
+$baselining_filtered = $notice::plan_writes( $both_tiers, $warn_only_modes, true, true );
+assert_test(
+	1 === count( $baselining_filtered['baselines'] ),
+	'a baselining pass still respects the mode filter: a disabled consequence is not baselined'
+);
+assert_test(
+	'season-warn' === $baselining_filtered['baselines'][0]['tier_key'],
+	'and it is the enabled consequence that gets the baseline row'
+);
+
+assert_test( null === $notice::plan_writes( array(), array(), false, true )['notice'], 'no matches means no notice' );
 ```
 
 - [ ] **Step 3: Run both to confirm they fail**
@@ -1504,29 +1670,48 @@ class SPLM_Discipline_Notice {
 	/** Consequences that can produce a notice. 'none' cannot. */
 	const ACTIONABLE = array( 'warn', 'suspend' );
 
+	const MODE_AUTOMATIC = 'automatic';
+	const MODE_QUEUED    = 'queued';
+	const MODE_DISABLED  = 'disabled';
+
+	const MODES = array( self::MODE_DISABLED, self::MODE_QUEUED, self::MODE_AUTOMATIC );
+
 	/**
-	 * Whether a match should produce a new notice row.
+	 * Whether a match should produce a NEW notice row.
 	 *
-	 * One predicate governs every status. For a given (player, season,
-	 * ack_key) the latest row's value_at_fire is the bar: the player must have
-	 * earned MORE than that to be told again. Every status participates
-	 * identically, which is what delivers all of these without special cases:
+	 * One predicate governs every status, and it compares the player's SEASON
+	 * total — never the matched value.
 	 *
-	 *  - a sent notice does not re-send next week at an unchanged total;
+	 * That distinction is the whole correctness argument. A season total only
+	 * ever grows; a rolling window total falls as weeks roll past. Comparing
+	 * the matched value would mean a window tier re-fires every week the
+	 * minutes stay inside the window — one 8-minute incident becoming four
+	 * suspension emails — while keying suppression on the window itself would
+	 * mute a genuine later offence that reached the same window figure. A
+	 * monotonic comparison has neither failure.
+	 *
+	 * Every status participates identically, which delivers all of these with
+	 * no special cases:
+	 *
+	 *  - a sent notice does not re-send while the player earns nothing;
 	 *  - a baseline row suppresses a player who was already over at switch-on;
 	 *  - a served suspension re-fires once the player offends again;
-	 *  - a convener's discard sticks until the player earns more.
+	 *  - a convener's discard sticks until the player earns more;
+	 *  - a failed row does not duplicate: it stays actionable in the queue and
+	 *    is retried through the release route.
 	 *
-	 * 'failed' is the one status needing care, and it is handled by the same
-	 * rule: a failed row suppresses re-firing because it must stay actionable
-	 * in the queue and be retried through the release route. Re-firing it would
-	 * create a second row for a notice a human is still looking at.
+	 * 'pending' is the one status that returns false even when the total HAS
+	 * grown. A pending notice is a draft nobody has released yet, so a rising
+	 * total should revise it in place rather than stack a second row — three
+	 * pending rows for one escalation would mail three suspensions when
+	 * released. The caller updates the pending row instead; see needs_refresh().
 	 *
-	 * @param array       $match  A row from SPLM_Penalty_Watch::matches().
-	 * @param object|null $latest The most recent notice row for this ack key.
+	 * @param array       $match        A row from SPLM_Penalty_Watch::matches().
+	 * @param object|null $latest       The most recent notice row for this tier.
+	 * @param int         $season_total The player's current season PIM.
 	 * @return bool
 	 */
-	public static function should_fire( array $match, $latest ): bool {
+	public static function should_fire( array $match, $latest, int $season_total ): bool {
 		$consequence = (string) ( $match['consequence'] ?? 'none' );
 		if ( ! in_array( $consequence, self::ACTIONABLE, true ) ) {
 			return false;
@@ -1536,7 +1721,118 @@ class SPLM_Discipline_Notice {
 			return true;
 		}
 
-		return (int) $match['value'] > (int) $latest->value_at_fire;
+		if ( SPLM_Discipline_Notice_Database::STATUS_PENDING === (string) $latest->status ) {
+			return false;
+		}
+
+		return $season_total > (int) $latest->season_at_fire;
+	}
+
+	/**
+	 * Whether an unreleased pending row should be revised in place.
+	 *
+	 * The counterpart to should_fire()'s pending exclusion: the notice still
+	 * needs to tell the convener the player's current total, it just must not
+	 * become a second row.
+	 *
+	 * @param object|null $latest       The most recent notice row for this tier.
+	 * @param int         $season_total The player's current season PIM.
+	 * @return bool
+	 */
+	public static function needs_refresh( $latest, int $season_total ): bool {
+		if ( ! $latest || SPLM_Discipline_Notice_Database::STATUS_PENDING !== (string) $latest->status ) {
+			return false;
+		}
+
+		return $season_total > (int) $latest->season_at_fire;
+	}
+
+	/**
+	 * Decide what a pass writes for one player.
+	 *
+	 * Pure: matches, modes, and two booleans in; decisions out. No options, no
+	 * database, no mail. This exists as its own function because the three
+	 * rules below are the ones most likely to be got wrong, and inside the
+	 * pass's database-and-mail body nothing could test them.
+	 *
+	 * The mode filter runs BEFORE selection, which is load-bearing. Selecting
+	 * first and checking the mode afterwards means a league running
+	 * warn=queued with suspend=disabled gets nothing at all for a player over
+	 * both tiers: the suspension wins selection, its disabled mode aborts, and
+	 * the warning the league actually enabled is both skipped and baselined out
+	 * of existence.
+	 *
+	 * @param array $matches_by_scope Scope => matches that passed should_fire().
+	 * @param array $modes            consequence => mode, e.g. array( 'warn' => 'queued' ).
+	 * @param bool  $baselining       Whether this pass is a baselining pass.
+	 * @param bool  $has_address      Whether the player's address resolved.
+	 * @return array array(
+	 *               'notice'    => array|null,
+	 *               'status'    => string,
+	 *               'send'      => bool,
+	 *               'baselines' => array,
+	 *             )
+	 */
+	public static function plan_writes( array $matches_by_scope, array $modes, bool $baselining, bool $has_address ): array {
+		$eligible = array();
+		foreach ( $matches_by_scope as $scope => $scope_matches ) {
+			foreach ( (array) $scope_matches as $match ) {
+				$mode = (string) ( $modes[ (string) ( $match['consequence'] ?? '' ) ] ?? self::MODE_DISABLED );
+				// A disabled consequence writes nothing at all — not a notice
+				// and not a baseline. The spec is explicit: disabled means
+				// discipline behaves exactly as it did before notices existed.
+				if ( self::MODE_DISABLED !== $mode ) {
+					$eligible[ $scope ][] = $match;
+				}
+			}
+		}
+
+		$nothing = array(
+			'notice'    => null,
+			'status'    => SPLM_Discipline_Notice_Database::STATUS_PENDING,
+			'send'      => false,
+			'baselines' => array(),
+		);
+
+		if ( ! $eligible ) {
+			return $nothing;
+		}
+
+		// A baselining pass records every candidate at its current value and
+		// mails nobody. That is what makes switching notices on mid-season, or
+		// editing a threshold, silent.
+		if ( $baselining ) {
+			$flat = array();
+			foreach ( $eligible as $scope_matches ) {
+				$flat = array_merge( $flat, $scope_matches );
+			}
+
+			return array(
+				'notice'    => null,
+				'status'    => SPLM_Discipline_Notice_Database::STATUS_PENDING,
+				'send'      => false,
+				'baselines' => $flat,
+			);
+		}
+
+		$chosen = self::select( $eligible );
+		if ( ! $chosen['notice'] ) {
+			return array_merge( $nothing, array( 'baselines' => $chosen['baselines'] ) );
+		}
+
+		$mode = (string) ( $modes[ (string) $chosen['notice']['consequence'] ] ?? self::MODE_DISABLED );
+
+		return array(
+			'notice'    => $chosen['notice'],
+			// No address means the row lands failed immediately, with a cause a
+			// human can act on, rather than sitting as an ordinary pending row
+			// whose problem only surfaces when someone tries to release it.
+			'status'    => $has_address
+				? SPLM_Discipline_Notice_Database::STATUS_PENDING
+				: SPLM_Discipline_Notice_Database::STATUS_FAILED,
+			'send'      => self::MODE_AUTOMATIC === $mode && $has_address,
+			'baselines' => $chosen['baselines'],
+		);
 	}
 
 	/**
@@ -2670,7 +2966,6 @@ Reads the two delivery modes, and performs the send with its Bcc header and fail
 **Interfaces:**
 - Consumes: `SPLM_Discipline_Notice_Recipients::bcc_for()` (Task 5); `SPLM_Discipline_Notice_Mail::subject()`/`body()` (Task 6); `SPLM_Discipline_Notice_Database::update()` and statuses (Task 3).
 - Produces:
-  - `SPLM_Discipline_Notice::MODE_AUTOMATIC` = `'automatic'`, `MODE_QUEUED` = `'queued'`, `MODE_DISABLED` = `'disabled'`, and `MODES` listing all three
   - `SPLM_Discipline_Notice::mode_for( string $consequence ): string`
   - `SPLM_Discipline_Notice::sanitize_mode( $raw ): string`
   - `SPLM_Discipline_Notice::option_for( string $consequence ): string` — the option name
@@ -2723,6 +3018,14 @@ function splm_notice_mode_test_state() {
 function get_option( $name, $default = false ) {
 	$options = splm_notice_mode_test_state()->options;
 	return array_key_exists( $name, $options ) ? $options[ $name ] : $default;
+}
+
+// Writes into the same map get_option reads, so the baselining tests can
+// assert the stored token actually changed rather than just that the computed
+// one differs — the distinction that hid a real defect in review.
+function update_option( $name, $value, $autoload = null ) { // phpcs:ignore
+	splm_notice_mode_test_state()->options[ $name ] = $value;
+	return true;
 }
 
 function wp_mail( $to, $subject, $body, $headers = array() ) {
@@ -2938,17 +3241,11 @@ php sportspress-league-manager/tests/test-discipline-notice-mode.php
 
 Expected: FAIL — `mode_for()` and `send()` do not exist.
 
-- [ ] **Step 3: Add the mode block to `SPLM_Discipline_Notice`**
+- [ ] **Step 3: Add the mode-reading block to `SPLM_Discipline_Notice`**
 
-Insert into `class-discipline-notice.php`, above `should_fire()`:
+The `MODE_*` and `MODES` constants already exist — Task 4 declared them, because `plan_writes()` needs them. This step adds only the option names and the three reader methods. Insert into `class-discipline-notice.php`, below the constants and above `should_fire()`:
 
 ```php
-	const MODE_AUTOMATIC = 'automatic';
-	const MODE_QUEUED    = 'queued';
-	const MODE_DISABLED  = 'disabled';
-
-	const MODES = array( self::MODE_DISABLED, self::MODE_QUEUED, self::MODE_AUTOMATIC );
-
 	const OPTION_MODE_WARNING    = 'splm_discipline_notice_mode_warning';
 	const OPTION_MODE_SUSPENSION = 'splm_discipline_notice_mode_suspension';
 
@@ -3350,8 +3647,10 @@ The only writer of notice rows. Runs daily, `SPAT_Lock`-guarded, and never from 
 - Test: `sportspress-league-manager/tests/test-discipline-notice-mode.php` (append a baseline-token section)
 
 **Interfaces:**
-- Consumes: `SPLM_Penalty_Watch::matches()` (Task 2); `SPLM_Discipline_Notice::should_fire()`/`select()`/`mode_for()` (Tasks 4, 7); `SPLM_Discipline_Notice_Database` (Task 3); `SPLM_Discipline_Notice_Recipients::player_email()`/`bcc_for()` (Task 5); `SPLM_Discipline_Notice_Mail` (Tasks 6, 7); `SPLM_Player_Stats_Aggregator::for_season()`/`window_cutoff()`/`window_totals()`/`season_start()`.
-- Produces: `SPLM_Discipline_Notice_Pass` with `HOOK = 'splm_discipline_notices'`, `LOCK = 'splm_discipline_notices'`, `OPTION_BASELINE_TOKEN = 'splm_discipline_notice_baseline_token'`, and `schedule(): void`, `unschedule(): void`, `run(): int`, `baseline_token(): string`.
+- Consumes: `SPLM_Penalty_Watch::matches()`/`ack_key()` (Task 2); `SPLM_Discipline_Notice::should_fire()`/`needs_refresh()`/`plan_writes()`/`mode_for()` (Tasks 4, 7); `SPLM_Discipline_Notice_Database` (Task 3); `SPLM_Discipline_Notice_Recipients::player_email()`/`bcc_for()` (Task 5); `SPLM_Discipline_Notice_Mail` (Tasks 6, 7); `SPLM_Player_Stats_Aggregator::for_season()`/`window_cutoff()`/`window_totals()`/`season_start()`.
+- Produces: `SPLM_Discipline_Notice_Pass` with `HOOK = 'splm_discipline_notices'`, `LOCK = 'splm_discipline_notices'`, `OPTION_BASELINE_TOKEN = 'splm_discipline_notice_baseline_token'`, and `schedule(): void`, `unschedule(): void`, `run(): int`, `run_locked(): int`, `baseline_token(): string`, `is_baselining(): bool`, `remember_token(): void`.
+
+**The pass decides nothing itself.** Mode filtering, selection, status and send are all `SPLM_Discipline_Notice::plan_writes()`, which is pure and tested. The pass reads totals, looks up the latest row per tier, and executes the plan. Keeping the decisions out of here is what makes them testable at all — the three defects peer review found in the first draft of this task (warnings swallowed by a disabled suspension mode, disabled modes still writing baseline rows, and a missing address writing `pending` instead of `failed`) all lived in decision logic buried inside a method that no test could reach.
 
 **How the three baselining triggers collapse into one mechanism.** The spec names three events that must baseline: first run after install, a mode leaving `disabled`, and a tier's `minutes` being edited. Rather than three separate hooks, the pass stores a token derived from *(each tier's key and minutes)* plus *(whether each mode is enabled at all)*. A token mismatch means baseline.
 
@@ -3367,57 +3666,86 @@ require_once __DIR__ . '/../includes/class-discipline-notice-pass.php';
 // $state is already bound earlier in this file; do not redeclare it.
 $pass = 'SPLM_Discipline_Notice_Pass';
 
-echo "\n=== the baseline token ===\n\n";
+echo "\n=== baselining is decided by the STORED token ===\n\n";
 
+// Asserting is_baselining() rather than comparing token strings. A test that
+// only checks the computed token differs passes even when the stored token is
+// never updated — which is exactly how the disabled-path defect below survived
+// the first draft of this plan.
 $state->options = array(
-	'splm_discipline_tiers'                     => SPLM_Penalty_Watch::default_tiers(),
-	'splm_discipline_notice_mode_warning'       => 'queued',
-	'splm_discipline_notice_mode_suspension'    => 'queued',
+	'splm_discipline_tiers'                  => SPLM_Penalty_Watch::default_tiers(),
+	'splm_discipline_notice_mode_warning'    => 'queued',
+	'splm_discipline_notice_mode_suspension' => 'queued',
 );
-$base = $pass::baseline_token();
 
-assert_test( '' !== $base, 'a token is produced' );
-assert_test( $base === $pass::baseline_token(), 'the token is stable across calls with unchanged inputs' );
+assert_test( $pass::is_baselining(), 'with nothing stored, the first pass baselines' );
+$pass::remember_token();
+assert_test( ! $pass::is_baselining(), 'once remembered, the next pass does not baseline' );
 
 echo "\n=== a mode leaving disabled re-baselines ===\n\n";
 
 $state->options['splm_discipline_notice_mode_warning'] = 'disabled';
+assert_test( $pass::is_baselining(), 'turning a mode off is itself a change' );
+$pass::remember_token();
+$state->options['splm_discipline_notice_mode_warning'] = 'queued';
 assert_test(
-	$base !== $pass::baseline_token(),
-	'turning a mode off changes the token, so turning it back on re-baselines'
+	$pass::is_baselining(),
+	'turning it back on baselines, so a mid-season switch-on does not mail the players already over a threshold'
 );
+$pass::remember_token();
+
+echo "\n=== the disabled path must still store the token ===\n\n";
+
+// The defect this guards: both modes off, the pass early-returns before
+// run_locked() and so before any token write. Re-enabling then recomputes the
+// SAME token that is still stored, is_baselining() is false, and every player
+// who accumulated while notices were off is mailed at once.
+$state->options['splm_discipline_notice_mode_warning']    = 'disabled';
+$state->options['splm_discipline_notice_mode_suspension'] = 'disabled';
+$pass::remember_token();
+$stored_while_off = $state->options[ $pass::OPTION_BASELINE_TOKEN ];
+
+$state->options['splm_discipline_notice_mode_warning'] = 'queued';
+assert_test(
+	$stored_while_off !== $pass::baseline_token(),
+	'the token stored while both modes were off differs from the token once one is on'
+);
+assert_test(
+	$pass::is_baselining(),
+	'so re-enabling after a disabled period baselines instead of mailing everyone who crossed while it was off'
+);
+$pass::remember_token();
 
 echo "\n=== queued to automatic does NOT re-baseline ===\n\n";
 
 $state->options['splm_discipline_notice_mode_warning']    = 'automatic';
 $state->options['splm_discipline_notice_mode_suspension'] = 'automatic';
 assert_test(
-	$base === $pass::baseline_token(),
-	'the token records only WHETHER a mode is enabled, so queued to automatic is not a baselining event: both are enabled and the crossing that matters is the disabled boundary'
+	! $pass::is_baselining(),
+	'the token records only WHETHER a mode is enabled, so queued to automatic is not a baselining event: both are enabled and the only crossing that matters is the disabled boundary'
 );
 
 echo "\n=== editing a threshold re-baselines ===\n\n";
 
-$lowered    = SPLM_Penalty_Watch::default_tiers();
+$lowered               = SPLM_Penalty_Watch::default_tiers();
 $lowered[1]['minutes'] = 10;
-$state->options['splm_discipline_tiers']                  = $lowered;
-$state->options['splm_discipline_notice_mode_warning']    = 'queued';
-$state->options['splm_discipline_notice_mode_suspension'] = 'queued';
+$state->options['splm_discipline_tiers'] = $lowered;
 
 assert_test(
-	$base !== $pass::baseline_token(),
-	'lowering a threshold changes the token, so nobody already over the new threshold is mailed'
+	$pass::is_baselining(),
+	'lowering a threshold baselines, so nobody already over the new threshold is mailed'
 );
+$pass::remember_token();
 
 echo "\n=== editing a consequence does NOT re-baseline ===\n\n";
 
-$reconsequenced = SPLM_Penalty_Watch::default_tiers();
-$reconsequenced[0]['consequence'] = 'suspend';
-$reconsequenced[0]['games']       = 1;
+$reconsequenced                    = $lowered;
+$reconsequenced[0]['consequence']  = 'suspend';
+$reconsequenced[0]['games']        = 1;
 $state->options['splm_discipline_tiers'] = $reconsequenced;
 
 assert_test(
-	$base === $pass::baseline_token(),
+	! $pass::is_baselining(),
 	'changing what a tier DOES is not a threshold change: a convener promoting a warning to a suspension means it to take effect, and the predicate still prevents a re-send at an unchanged total'
 );
 ```
@@ -3577,6 +3905,16 @@ class SPLM_Discipline_Notice_Pass {
 		// discipline behaves exactly as it did before notices existed.
 		if ( SPLM_Discipline_Notice::MODE_DISABLED === $warn_mode
 			&& SPLM_Discipline_Notice::MODE_DISABLED === $suspend_mode ) {
+			// The token is stored even on this path, and that is load-bearing.
+			// Without it: a league running warn=queued stores token T1, turns
+			// warnings off (token would become T2 but is never written), lets
+			// players accumulate for weeks, then turns warnings back on — at
+			// which point the recomputed token is T1 again, matches what is
+			// stored, no baselining happens, and every player who crossed while
+			// notices were off is mailed at once. That is precisely the
+			// mid-season switch-on that baselining exists to prevent.
+			self::remember_token();
+
 			return 0;
 		}
 
@@ -3618,19 +3956,39 @@ class SPLM_Discipline_Notice_Pass {
 			SPLM_Player_Stats_Aggregator::season_start( $players )
 		);
 
-		$token     = self::baseline_token();
-		$baselining = (string) get_option( self::OPTION_BASELINE_TOKEN, '' ) !== $token;
+		$baselining = self::is_baselining();
 
 		$written = 0;
 		foreach ( $players as $player_id => $player ) {
 			$written += self::process_player( (int) $player_id, $player, $season_id, $tiers, $cutoff, $baselining );
 		}
 
-		if ( $baselining ) {
-			update_option( self::OPTION_BASELINE_TOKEN, $token, false );
-		}
+		self::remember_token();
 
 		return $written;
+	}
+
+	/**
+	 * Whether the next pass must baseline rather than notify.
+	 *
+	 * A named seam rather than an inline comparison so a test can assert the
+	 * BEHAVIOUR — "does this configuration change baseline or notify" — instead
+	 * of asserting that two token strings differ, which is an implementation
+	 * detail that can hold while the stored token is never updated.
+	 *
+	 * @return bool
+	 */
+	public static function is_baselining(): bool {
+		return (string) get_option( self::OPTION_BASELINE_TOKEN, '' ) !== self::baseline_token();
+	}
+
+	/**
+	 * Store the current token, so the next pass does not baseline again.
+	 *
+	 * @return void
+	 */
+	public static function remember_token(): void {
+		update_option( self::OPTION_BASELINE_TOKEN, self::baseline_token(), false );
 	}
 
 	/**
@@ -3647,7 +4005,8 @@ class SPLM_Discipline_Notice_Pass {
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private static function process_player( int $player_id, array $player, int $season_id, array $tiers, string $cutoff, bool $baselining ): int {
-		$window = SPLM_Player_Stats_Aggregator::window_totals( $player['weeks'], $cutoff );
+		$season_total = (int) $player['totals']['pim'];
+		$window       = SPLM_Player_Stats_Aggregator::window_totals( $player['weeks'], $cutoff );
 
 		// Acknowledgements are deliberately NOT passed. An ack means a convener
 		// reviewed a flag and it suppresses the digest; if it also suppressed
@@ -3656,7 +4015,7 @@ class SPLM_Discipline_Notice_Pass {
 		// notification. Notice suppression is the notice table's own predicate.
 		$matches = SPLM_Penalty_Watch::matches(
 			array(
-				'season' => (int) $player['totals']['pim'],
+				'season' => $season_total,
 				'window' => (int) $window['pim'],
 			),
 			$tiers,
@@ -3665,72 +4024,93 @@ class SPLM_Discipline_Notice_Pass {
 		);
 
 		$fireable = array();
+		$written  = 0;
+
 		foreach ( $matches as $scope => $scope_matches ) {
 			foreach ( $scope_matches as $match ) {
-				$ack_key = SPLM_Penalty_Watch::ack_key(
-					array(
-						'key'   => $match['tier_key'],
-						'scope' => $match['scope'],
-					),
-					$cutoff
-				);
-				$latest = SPLM_Discipline_Notice_Database::latest_for( $player_id, $season_id, $ack_key );
+				// Keyed on the tier, not the ack key: ack_key embeds the rolling
+				// window's start, which advances weekly, so an ack_key lookup
+				// would find nothing each week and re-fire the same suspension
+				// once per week the minutes remain in the window.
+				$latest = SPLM_Discipline_Notice_Database::latest_for( $player_id, $season_id, (string) $match['tier_key'] );
 
-				if ( SPLM_Discipline_Notice::should_fire( $match, $latest ) ) {
-					$match['ack_key']      = $ack_key;
+				if ( SPLM_Discipline_Notice::should_fire( $match, $latest, $season_total ) ) {
+					// The ack key still travels on the row, for the digest's
+					// acknowledgement write.
+					$match['ack_key'] = SPLM_Penalty_Watch::ack_key(
+						array(
+							'key'   => $match['tier_key'],
+							'scope' => $match['scope'],
+						),
+						$cutoff
+					);
 					$fireable[ $scope ][] = $match;
+					continue;
+				}
+
+				// An unreleased draft is revised in place rather than stacked:
+				// three pending rows for one escalation would mail three
+				// suspensions when a convener released them.
+				if ( SPLM_Discipline_Notice::needs_refresh( $latest, $season_total ) ) {
+					SPLM_Discipline_Notice_Database::update(
+						(int) $latest->id,
+						array(
+							'value_at_fire'  => (int) $match['value'],
+							'season_at_fire' => $season_total,
+						)
+					);
+					++$written;
 				}
 			}
 		}
 
 		if ( ! $fireable ) {
-			return 0;
-		}
-
-		$chosen = SPLM_Discipline_Notice::select( $fireable );
-		$written = 0;
-
-		// On a baselining pass every candidate is recorded at its current value
-		// and nobody is mailed. That is what makes switching notices on
-		// mid-season, or lowering a threshold, silent.
-		if ( $baselining ) {
-			$all = $chosen['baselines'];
-			if ( $chosen['notice'] ) {
-				$all[] = $chosen['notice'];
-			}
-			foreach ( $all as $match ) {
-				$written += self::write_row( $player_id, $season_id, $match, SPLM_Discipline_Notice_Database::STATUS_BASELINE ) ? 1 : 0;
-			}
-
 			return $written;
 		}
 
-		// The runner-up is baselined so it does not fire its own notice on the
-		// next pass at an unchanged total.
-		foreach ( $chosen['baselines'] as $match ) {
-			$written += self::write_row( $player_id, $season_id, $match, SPLM_Discipline_Notice_Database::STATUS_BASELINE ) ? 1 : 0;
+		// Resolved before planning, because whether an address exists decides
+		// the row's status. Skipped on a baselining pass, which mails nobody
+		// and so has no need of an address.
+		$address = $baselining
+			? array(
+				'email' => '',
+				'via'   => '',
+			)
+			: SPLM_Discipline_Notice_Recipients::player_email( $player_id );
+
+		$planned = SPLM_Discipline_Notice::plan_writes(
+			$fireable,
+			array(
+				'warn'    => SPLM_Discipline_Notice::mode_for( 'warn' ),
+				'suspend' => SPLM_Discipline_Notice::mode_for( 'suspend' ),
+			),
+			$baselining,
+			'' !== $address['email']
+		);
+
+		foreach ( $planned['baselines'] as $match ) {
+			$written += self::write_row(
+				$player_id,
+				$season_id,
+				$match,
+				$player,
+				$season_total,
+				SPLM_Discipline_Notice_Database::STATUS_BASELINE
+			) ? 1 : 0;
 		}
 
-		if ( ! $chosen['notice'] ) {
+		if ( ! $planned['notice'] ) {
 			return $written;
 		}
 
-		$match = $chosen['notice'];
-		$mode  = SPLM_Discipline_Notice::mode_for( (string) $match['consequence'] );
-
-		if ( SPLM_Discipline_Notice::MODE_DISABLED === $mode ) {
-			// This consequence's mode is off while the other is on. Write
-			// nothing: a disabled mode records nothing, per the spec.
-			return $written;
-		}
-
-		$address = SPLM_Discipline_Notice_Recipients::player_email( $player_id );
-
+		$match     = $planned['notice'];
 		$notice_id = self::write_row(
 			$player_id,
 			$season_id,
 			$match,
-			SPLM_Discipline_Notice_Database::STATUS_PENDING,
+			$player,
+			$season_total,
+			$planned['status'],
 			$address
 		);
 
@@ -3740,7 +4120,7 @@ class SPLM_Discipline_Notice_Pass {
 
 		++$written;
 
-		if ( SPLM_Discipline_Notice::MODE_AUTOMATIC !== $mode ) {
+		if ( ! $planned['send'] ) {
 			return $written;
 		}
 
@@ -3752,7 +4132,7 @@ class SPLM_Discipline_Notice_Pass {
 				'consequence'    => (string) $match['consequence'],
 				'games'          => (int) $match['games'],
 				'value'          => (int) $match['value'],
-				'next_threshold' => SPLM_Discipline_Notice_Mail::next_threshold( (int) $player['totals']['pim'], $tiers ),
+				'next_threshold' => SPLM_Discipline_Notice_Mail::next_threshold( $season_total, $tiers ),
 				'game_label'     => SPLM_Discipline_Notice_Mail::next_game_label( (int) $player['team_id'] ),
 			),
 			$address['email'],
@@ -3765,31 +4145,47 @@ class SPLM_Discipline_Notice_Pass {
 	/**
 	 * Write one notice row.
 	 *
-	 * @param int    $player_id Player post id.
-	 * @param int    $season_id Season term id.
-	 * @param array  $match     Match row, carrying its ack_key.
-	 * @param string $status    Row status.
-	 * @param array  $address   Optional resolved address from player_email().
+	 * team and division are snapshotted from the aggregator row rather than
+	 * resolved on read: cheaper, and it records who the player was playing for
+	 * when the minutes were earned rather than who they play for now.
+	 *
+	 * @param int    $player_id    Player post id.
+	 * @param int    $season_id    Season term id.
+	 * @param array  $match        Match row, carrying its ack_key.
+	 * @param array  $player       Aggregator row, for the team/division snapshot.
+	 * @param int    $season_total The player's season PIM, for the predicate.
+	 * @param string $status       Row status.
+	 * @param array  $address      Optional resolved address from player_email().
 	 * @return int New row id, or 0 on failure.
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
-	private static function write_row( int $player_id, int $season_id, array $match, string $status, array $address = array() ): int {
-		return SPLM_Discipline_Notice_Database::insert(
-			array(
-				'player_id'     => $player_id,
-				'season_id'     => $season_id,
-				'tier_key'      => (string) $match['tier_key'],
-				'ack_key'       => (string) $match['ack_key'],
-				'severity'      => (string) $match['severity'],
-				'consequence'   => (string) $match['consequence'],
-				'games'         => (int) $match['games'],
-				'value_at_fire' => (int) $match['value'],
-				'status'        => $status,
-				'recipient'     => (string) ( $address['email'] ?? '' ),
-				'recipient_via' => (string) ( $address['via'] ?? '' ),
-			)
+	private static function write_row( int $player_id, int $season_id, array $match, array $player, int $season_total, string $status, array $address = array() ): int {
+		$row = array(
+			'player_id'      => $player_id,
+			'season_id'      => $season_id,
+			'tier_key'       => (string) $match['tier_key'],
+			'ack_key'        => (string) ( $match['ack_key'] ?? $match['tier_key'] ),
+			'scope'          => (string) $match['scope'],
+			'severity'       => (string) $match['severity'],
+			'consequence'    => (string) $match['consequence'],
+			'games'          => (int) $match['games'],
+			'value_at_fire'  => (int) $match['value'],
+			'season_at_fire' => $season_total,
+			'team'           => (string) ( $player['team'] ?? '' ),
+			'division'       => (string) ( $player['div_name'] ?? '' ),
+			'status'         => $status,
+			'recipient'      => (string) ( $address['email'] ?? '' ),
+			'recipient_via'  => (string) ( $address['via'] ?? '' ),
 		);
+
+		// A row that lands failed for a missing address needs to say so, or the
+		// convener sees a failure with no cause.
+		if ( SPLM_Discipline_Notice_Database::STATUS_FAILED === $status ) {
+			$row['last_error'] = __( 'No email address on file for this player.', 'sportspress-league-manager' );
+		}
+
+		return SPLM_Discipline_Notice_Database::insert( $row );
 	}
 
 	/**
@@ -4277,13 +4673,19 @@ class SPLM_Discipline_Notice_REST {
 			'player_id'     => $player_id,
 			'player'        => get_the_title( $player_id ),
 			'season_id'     => (int) $row->season_id,
-			'tier_key'      => (string) $row->tier_key,
-			'ack_key'       => (string) $row->ack_key,
-			'severity'      => (string) $row->severity,
-			'consequence'   => (string) $row->consequence,
-			'games'         => (int) $row->games,
-			'value_at_fire' => (int) $row->value_at_fire,
-			'status'        => (string) $row->status,
+			'tier_key'       => (string) $row->tier_key,
+			'ack_key'        => (string) $row->ack_key,
+			'scope'          => (string) $row->scope,
+			'severity'       => (string) $row->severity,
+			'consequence'    => (string) $row->consequence,
+			'games'          => (int) $row->games,
+			'value_at_fire'  => (int) $row->value_at_fire,
+			'season_at_fire' => (int) $row->season_at_fire,
+			// Snapshots taken when the notice fired, so a mid-season roster
+			// move does not rewrite the history of an old notice.
+			'team'           => (string) $row->team,
+			'division'       => (string) $row->division,
+			'status'         => (string) $row->status,
 			'recipient'     => (string) $row->recipient,
 			'recipient_via' => (string) $row->recipient_via,
 			'bcc'           => (string) $row->bcc,
@@ -4383,6 +4785,8 @@ The administrator's view: every column, plus cron and mode diagnostics.
 1. **This is its own tab**, not a section inside League Manager's. That panel is a single `<form action="options.php">` (`class-admin.php:90-103`); nesting an actionable queue inside it would be invalid HTML and would post the queue's buttons to `options.php`.
 2. **No `WP_List_Table`.** There is no precedent for it anywhere in the repo, and it is a private core class. Use the repo's hand-rolled `<table class="widefat">` idiom, as in `render_discipline_tiers_field()`.
 3. **Actions call the REST routes**, using a `wp_rest` nonce. No `admin_post_*` handler — see Task 10's commit message.
+4. **A disabled module makes this view read-only, not blank.** The REST routes and the React page 503 when the module is off, per convention. This table reads the database directly, so it keeps rendering with the action controls suppressed and a warning banner. See spec deviation 4.
+5. **The status filter is links, not a form.** This tab shares a page with League Manager's settings `<form action="options.php">`; a nested filter form would be invalid HTML, and one placed outside would still sit inside SPAT's tab panel markup. Query-string links avoid the question entirely.
 
 - [ ] **Step 1: Create the admin class**
 
@@ -4436,12 +4840,18 @@ class SPLM_Discipline_Notice_Admin {
 	public function add_content() {
 		echo '<div id="discipline-queue" class="tab-content" style="display: none;">';
 
-		if ( ! SPLM_REST_API::module_enabled( 'league_discipline' ) ) {
-			echo '<p>' . esc_html__( 'The Penalty Discipline module is not enabled, so no notices are being evaluated.', 'sportspress-league-manager' ) . '</p></div>';
-			return;
-		}
-
+		// A disabled module makes this view READ-ONLY rather than blank. The
+		// REST routes and the React page are both module-gated and 503 when it
+		// is off — but this table reads the database directly, and an
+		// administrator looking at a feature someone just switched off is
+		// usually trying to find out what it already sent. Withholding the
+		// audit trail is the one thing this surface must not do.
+		$readonly  = ! SPLM_REST_API::module_enabled( 'league_discipline' );
 		$season_id = (int) get_option( 'splm_default_season', 0 );
+
+		if ( $readonly ) {
+			echo '<div class="notice notice-warning inline"><p>' . esc_html__( 'The Penalty Discipline module is disabled. No notices are being evaluated and no action can be taken here; the rows below are history.', 'sportspress-league-manager' ) . '</p></div>';
+		}
 
 		$this->render_diagnostics( $season_id );
 
@@ -4450,10 +4860,61 @@ class SPLM_Discipline_Notice_Admin {
 			return;
 		}
 
-		$this->render_table( $season_id );
-		$this->render_script();
+		$status = $this->requested_status();
+
+		$this->render_filter( $status );
+		$this->render_table( $season_id, $status, $readonly );
+
+		if ( ! $readonly ) {
+			$this->render_script();
+		}
 
 		echo '</div>';
+	}
+
+	/**
+	 * The status filter from the query string.
+	 *
+	 * @return string A valid status, or '' for all.
+	 *
+	 * @SuppressWarnings(PHPMD.Superglobals)
+	 */
+	private function requested_status(): string {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only filter on a settings screen; changes no state.
+		$raw = isset( $_GET['splm_notice_status'] ) ? sanitize_key( wp_unslash( $_GET['splm_notice_status'] ) ) : '';
+
+		return in_array( $raw, SPLM_Discipline_Notice_Database::STATUSES, true ) ? $raw : '';
+	}
+
+	/**
+	 * Status filter links.
+	 *
+	 * Links rather than a form, so this cannot post into the settings form
+	 * that shares the page.
+	 *
+	 * @param string $current Selected status.
+	 * @return void
+	 */
+	private function render_filter( string $current ): void {
+		$base = admin_url( 'options-general.php?page=sportspress-admin-tools&tab=discipline-queue' );
+
+		$links = array( '' => __( 'All', 'sportspress-league-manager' ) );
+		foreach ( SPLM_Discipline_Notice_Database::STATUSES as $status ) {
+			$links[ $status ] = $status;
+		}
+
+		$out = array();
+		foreach ( $links as $value => $label ) {
+			$url   = $value ? add_query_arg( 'splm_notice_status', $value, $base ) : $base;
+			$out[] = sprintf(
+				'<a href="%s"%s>%s</a>',
+				esc_url( $url . '#discipline-queue' ),
+				$value === $current ? ' style="font-weight:700;text-decoration:none"' : '',
+				esc_html( $label )
+			);
+		}
+
+		echo '<p>' . esc_html__( 'Filter:', 'sportspress-league-manager' ) . ' ' . wp_kses_post( implode( ' | ', $out ) ) . '</p>';
 	}
 
 	/**
@@ -4511,27 +4972,38 @@ class SPLM_Discipline_Notice_Admin {
 	/**
 	 * The full row table.
 	 *
-	 * @param int $season_id Season term id.
+	 * @param int    $season_id Season term id.
+	 * @param string $status    Status filter, or '' for all.
+	 * @param bool   $readonly  Whether to suppress action controls.
 	 * @return void
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
-	private function render_table( int $season_id ): void {
-		$result = SPLM_Discipline_Notice_Database::query( array( 'season' => $season_id ), 1, self::PER_PAGE );
+	private function render_table( int $season_id, string $status, bool $readonly ): void {
+		$result = SPLM_Discipline_Notice_Database::query(
+			array(
+				'season' => $season_id,
+				'status' => $status,
+			),
+			1,
+			self::PER_PAGE
+		);
 
 		echo '<h3>' . esc_html__( 'Notices', 'sportspress-league-manager' ) . '</h3>';
 
 		if ( ! $result['rows'] ) {
-			echo '<p>' . esc_html__( 'No notices have been recorded for this season yet.', 'sportspress-league-manager' ) . '</p>';
+			echo '<p>' . esc_html__( 'No notices match this filter.', 'sportspress-league-manager' ) . '</p>';
 			return;
 		}
 
 		$headings = array(
 			__( 'ID', 'sportspress-league-manager' ),
 			__( 'Player', 'sportspress-league-manager' ),
+			__( 'Team / division', 'sportspress-league-manager' ),
+			__( 'Season', 'sportspress-league-manager' ),
 			__( 'Tier / ack key', 'sportspress-league-manager' ),
 			__( 'Consequence', 'sportspress-league-manager' ),
-			__( 'PIM at fire', 'sportspress-league-manager' ),
+			__( 'PIM (fire / season)', 'sportspress-league-manager' ),
 			__( 'Status', 'sportspress-league-manager' ),
 			__( 'Recipient (via)', 'sportspress-league-manager' ),
 			__( 'Bcc', 'sportspress-league-manager' ),
@@ -4548,12 +5020,35 @@ class SPLM_Discipline_Notice_Admin {
 		}
 		echo '</tr></thead><tbody>';
 
+		$actionable = 0;
 		foreach ( $result['rows'] as $raw ) {
 			$row = SPLM_Discipline_Notice_REST::row_to_response( $raw );
-			$this->render_row( $row );
+			if ( in_array( $row['status'], array( 'pending', 'failed' ), true ) ) {
+				++$actionable;
+			}
+			$this->render_row( $row, $readonly );
 		}
 
 		echo '</tbody></table>';
+
+		// Bulk controls issue the per-notice REST calls in sequence, so the
+		// server contract stays single-item and idempotent.
+		if ( ! $readonly && $actionable ) {
+			printf(
+				'<p><button type="button" class="button button-primary splm-notice-bulk" data-action="release">%1$s</button> '
+					. '<button type="button" class="button splm-notice-bulk" data-action="discard">%2$s</button> '
+					. '<span class="description">%3$s</span></p>',
+				esc_html__( 'Release all shown', 'sportspress-league-manager' ),
+				esc_html__( 'Discard all shown', 'sportspress-league-manager' ),
+				esc_html(
+					sprintf(
+						/* translators: %d: number of actionable notices. */
+						_n( '%d notice can be acted on.', '%d notices can be acted on.', $actionable, 'sportspress-league-manager' ),
+						$actionable
+					)
+				)
+			);
+		}
 
 		printf(
 			'<p class="description">%s</p>',
@@ -4571,15 +5066,70 @@ class SPLM_Discipline_Notice_Admin {
 	/**
 	 * One table row.
 	 *
-	 * @param array $row Response-shaped row.
+	 * Cells are assembled into an array and imploded rather than passed to a
+	 * twenty-placeholder printf, which is unreadable and trivially easy to
+	 * mis-order. Each cell escapes its own content.
+	 *
+	 * @param array $row      Response-shaped row.
+	 * @param bool  $readonly Whether to suppress action controls.
 	 * @return void
 	 */
-	private function render_row( array $row ): void {
-		$actionable = in_array( $row['status'], array( 'pending', 'failed' ), true );
-		$servable   = 'sent' === $row['status'] && 'suspend' === $row['consequence'];
+	private function render_row( array $row, bool $readonly ): void {
+		$em = '—';
 
+		$cells = array(
+			(string) (int) $row['id'],
+			esc_html( $row['player'] ) . ' <code>#' . (int) $row['player_id'] . '</code>',
+			esc_html( $row['team'] ? $row['team'] : $em )
+				. '<br/><span class="description">' . esc_html( $row['division'] ? $row['division'] : $em ) . '</span>',
+			'<code>' . (int) $row['season_id'] . '</code>',
+			'<code>' . esc_html( $row['tier_key'] ) . '</code><br/><code>' . esc_html( $row['ack_key'] ) . '</code>',
+			esc_html( $row['consequence'] ) . ( $row['games'] ? esc_html( ' (' . (int) $row['games'] . ')' ) : '' ),
+			(int) $row['value_at_fire'] . ' / ' . (int) $row['season_at_fire'],
+			'<code>' . esc_html( $row['status'] ) . '</code>',
+			esc_html( $row['recipient'] ? $row['recipient'] : $em )
+				. '<br/><code>' . esc_html( $row['recipient_via'] ) . '</code>',
+			'<code>' . esc_html( $row['bcc'] ? $row['bcc'] : $em ) . '</code>',
+			esc_html( $row['sent_at'] ? $row['sent_at'] : $em ),
+			esc_html( $this->released_by_label( $row ) ),
+			esc_html( $row['last_error'] ? $row['last_error'] : $em ),
+			esc_html( $row['created_at'] ),
+			$readonly ? '' : $this->row_buttons( $row ),
+		);
+
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- every cell escapes its own content above.
+		echo '<tr><td>' . implode( '</td><td>', $cells ) . '</td></tr>';
+	}
+
+	/**
+	 * Who released a notice.
+	 *
+	 * A zero released_by means "automatic" only on a row that actually sent;
+	 * on a baseline row it means nothing happened.
+	 *
+	 * @param array $row Response-shaped row.
+	 * @return string
+	 */
+	private function released_by_label( array $row ): string {
+		if ( $row['released_by'] ) {
+			return (string) (int) $row['released_by'];
+		}
+
+		return 'sent' === $row['status']
+			? __( 'automatic', 'sportspress-league-manager' )
+			: '—';
+	}
+
+	/**
+	 * The action buttons for one row.
+	 *
+	 * @param array $row Response-shaped row.
+	 * @return string
+	 */
+	private function row_buttons( array $row ): string {
 		$buttons = '';
-		if ( $actionable ) {
+
+		if ( in_array( $row['status'], array( 'pending', 'failed' ), true ) ) {
 			$buttons .= sprintf(
 				'<button type="button" class="button splm-notice-action" data-action="release" data-id="%d">%s</button> ',
 				(int) $row['id'],
@@ -4591,7 +5141,8 @@ class SPLM_Discipline_Notice_Admin {
 				esc_html__( 'Discard', 'sportspress-league-manager' )
 			);
 		}
-		if ( $servable ) {
+
+		if ( 'sent' === $row['status'] && 'suspend' === $row['consequence'] ) {
 			$buttons .= sprintf(
 				'<button type="button" class="button splm-notice-action" data-action="serve" data-id="%d">%s</button>',
 				(int) $row['id'],
@@ -4599,28 +5150,7 @@ class SPLM_Discipline_Notice_Admin {
 			);
 		}
 
-		printf(
-			'<tr><td>%1$d</td><td>%2$s <code>#%3$d</code></td><td><code>%4$s</code><br/><code>%5$s</code></td>'
-				. '<td>%6$s%7$s</td><td>%8$d</td><td><code>%9$s</code></td><td>%10$s<br/><code>%11$s</code></td>'
-				. '<td><code>%12$s</code></td><td>%13$s</td><td>%14$s</td><td>%15$s</td><td>%16$s</td><td>%17$s</td></tr>',
-			(int) $row['id'],
-			esc_html( $row['player'] ),
-			(int) $row['player_id'],
-			esc_html( $row['tier_key'] ),
-			esc_html( $row['ack_key'] ),
-			esc_html( $row['consequence'] ),
-			$row['games'] ? esc_html( ' (' . (int) $row['games'] . ')' ) : '',
-			(int) $row['value_at_fire'],
-			esc_html( $row['status'] ),
-			esc_html( $row['recipient'] ? $row['recipient'] : '—' ),
-			esc_html( $row['recipient_via'] ),
-			esc_html( $row['bcc'] ? $row['bcc'] : '—' ),
-			esc_html( $row['sent_at'] ? $row['sent_at'] : '—' ),
-			esc_html( $row['released_by'] ? (string) $row['released_by'] : __( 'automatic', 'sportspress-league-manager' ) ),
-			esc_html( $row['last_error'] ? $row['last_error'] : '—' ),
-			esc_html( $row['created_at'] ),
-			$buttons // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- assembled from esc_html above.
-		);
+		return $buttons;
 	}
 
 	/**
@@ -4640,29 +5170,65 @@ class SPLM_Discipline_Notice_Admin {
 		( function () {
 			var base = <?php echo wp_json_encode( $base ); ?>;
 			var nonce = <?php echo wp_json_encode( $nonce ); ?>;
+
+			function act( id, action ) {
+				return fetch( base + id + '/' + action, {
+					method: 'POST',
+					headers: { 'X-WP-Nonce': nonce, 'Content-Type': 'application/json' },
+					credentials: 'same-origin'
+				} ).then( function ( response ) {
+					return response.json().then( function ( body ) {
+						return { ok: response.ok, body: body };
+					} );
+				} );
+			}
+
 			document.querySelectorAll( '.splm-notice-action' ).forEach( function ( button ) {
 				button.addEventListener( 'click', function () {
-					var action = button.getAttribute( 'data-action' );
-					var id = button.getAttribute( 'data-id' );
 					button.disabled = true;
-					fetch( base + id + '/' + action, {
-						method: 'POST',
-						headers: { 'X-WP-Nonce': nonce, 'Content-Type': 'application/json' },
-						credentials: 'same-origin'
-					} ).then( function ( response ) {
-						return response.json().then( function ( body ) {
-							return { ok: response.ok, body: body };
+					act( button.getAttribute( 'data-id' ), button.getAttribute( 'data-action' ) )
+						.then( function ( result ) {
+							if ( result.ok ) {
+								window.location.reload();
+								return;
+							}
+							button.disabled = false;
+							window.alert( ( result.body && result.body.message ) || 'The action failed.' );
+						} )
+						.catch( function () {
+							button.disabled = false;
+							window.alert( 'The action could not be sent.' );
 						} );
-					} ).then( function ( result ) {
-						if ( result.ok ) {
-							window.location.reload();
-							return;
+				} );
+			} );
+
+			// Bulk issues the same per-notice calls in sequence, so the server
+			// contract stays single-item and each one keeps its own lock.
+			// Sequential rather than parallel: releasing sends mail, and a
+			// burst of concurrent sends is how a host's mail limit gets hit.
+			document.querySelectorAll( '.splm-notice-bulk' ).forEach( function ( button ) {
+				button.addEventListener( 'click', function () {
+					var action = button.getAttribute( 'data-action' );
+					var ids = Array.prototype.map.call(
+						document.querySelectorAll( '.splm-notice-action[data-action="' + action + '"]' ),
+						function ( el ) { return el.getAttribute( 'data-id' ); }
+					);
+					if ( ! ids.length || ! window.confirm( action + ' ' + ids.length + ' notice(s)?' ) ) {
+						return;
+					}
+					button.disabled = true;
+					var failures = 0;
+					ids.reduce( function ( chain, id ) {
+						return chain.then( function () {
+							return act( id, action ).then( function ( result ) {
+								if ( ! result.ok ) { failures++; }
+							} ).catch( function () { failures++; } );
+						} );
+					}, Promise.resolve() ).then( function () {
+						if ( failures ) {
+							window.alert( failures + ' of ' + ids.length + ' could not be processed. Reloading to show current state.' );
 						}
-						button.disabled = false;
-						window.alert( ( result.body && result.body.message ) || 'The action failed.' );
-					} ).catch( function () {
-						button.disabled = false;
-						window.alert( 'The action could not be sent.' );
+						window.location.reload();
 					} );
 				} );
 			} );
@@ -4847,11 +5413,23 @@ function RowActions( { row, busy, onRelease, onDiscard, onServe } ) {
 	);
 }
 
+// Which accumulation crossed the line. A convener seeing "8 PIM" needs to know
+// whether that is a season total or a recent-window one, or the number looks
+// wrong next to a player whose season total is far higher.
+function penaltyLabel( row ) {
+	if ( row.scope === 'window' ) {
+		return `${ row.value_at_fire } PIM in the recent window`;
+	}
+	return `${ row.value_at_fire } PIM this season`;
+}
+
 function NoticeRow( { row, busy, onRelease, onDiscard, onServe } ) {
 	return (
 		<tr>
 			<td>{ row.player || '—' }</td>
-			<td>{ row.value_at_fire } PIM</td>
+			<td>{ row.team || '—' }</td>
+			<td>{ row.division || '—' }</td>
+			<td>{ penaltyLabel( row ) }</td>
 			<td>{ consequenceLabel( row ) }</td>
 			<td>
 				<span className={ `splm-badge splm-badge--${ row.status }` }>
@@ -4885,6 +5463,7 @@ function Filters( { status, onStatusChange } ) {
 
 export default function Notices( { season } ) {
 	const [ rows, setRows ] = useState( [] );
+	const [ total, setTotal ] = useState( 0 );
 	const [ loading, setLoading ] = useState( true );
 	const [ error, setError ] = useState( '' );
 	const [ notice, setNotice ] = useState( '' );
@@ -4902,6 +5481,7 @@ export default function Notices( { season } ) {
 			.then( ( res ) => {
 				if ( cancelled ) return;
 				setRows( res.data );
+				setTotal( res.total );
 				setLoading( false );
 			} )
 			.catch( ( e ) => {
@@ -4971,6 +5551,8 @@ export default function Notices( { season } ) {
 						<thead>
 							<tr>
 								<th scope="col">Player</th>
+								<th scope="col">Team</th>
+								<th scope="col">Division</th>
 								<th scope="col">Penalties</th>
 								<th scope="col">Consequence</th>
 								<th scope="col">Status</th>
@@ -4991,6 +5573,12 @@ export default function Notices( { season } ) {
 							) ) }
 						</tbody>
 					</table>
+					{ total > rows.length && (
+						<p className="splm-muted">
+							Showing the { rows.length } most recent of { total }. Narrow the filter to see
+							the rest.
+						</p>
+					) }
 				</div>
 			) }
 		</div>
@@ -5887,6 +6475,10 @@ Two, both deliberate, both discovered while reading the code the spec argues abo
 
 2. **The technical queue is its own tab.** The spec says "a second League Manager tab", which this follows — recorded here only because the reason is load-bearing and easy to undo by accident: League Manager's existing tab panel is a single `<form action="options.php">`, so an actionable queue cannot be nested inside it.
 
+3. **The pass re-derives its context instead of calling `watch_context()`.** Spec §"Evaluation pass" step 3 says to compute `watch_context()` so the pass, the watch list and the digest cannot disagree. It cannot: `watch_context()` is `private static`, it applies acknowledgement suppression (which notices must ignore), and it collapses to one flag per scope by severity (notices need every match, ranked by consequence). The pass therefore reads the same aggregator, tiers and window cutoff directly. The shared core is `SPLM_Penalty_Watch::matches()`, which both paths now call — so the tier evaluation itself is still single-sourced, which is what the spec was actually protecting.
+
+4. **The technical tab stays readable when the module is disabled.** The spec's failure table says "existing rows and the queue remain readable" after a mid-season disable, while the codebase's convention is that a disabled module 503s every route. Both surfaces cannot satisfy both. The REST routes and the React page stay module-gated per convention; the WP-admin tab reads the database directly, so it keeps rendering the audit trail with every action control suppressed and a warning banner. An administrator looking at a feature someone just switched off is usually trying to find out what it already sent, and withholding that is the one thing this surface must not do.
+
 ## Staging Verification
 
 None of the following is reachable by a unit test. Run it after Task 16, in this order.
@@ -5904,6 +6496,12 @@ None of the following is reachable by a unit test. Run it after Task 16, in this
 - [ ] **Both surfaces agree.** The same notice's status matches in the WP-admin tab and the React page, and releasing from one is reflected in the other after reload.
 - [ ] **Double-click cannot double-send.** Click Release twice quickly; the second attempt returns a 409 conflict, and the player receives one email.
 - [ ] **The alert card appears for a convener with a saved layout.** Log in as a convener who has previously toggled dashboard cards and confirm the notice alert card still renders — this is the `visibleCards` trap from Task 13.
+- [ ] **A window notice does not re-fire weekly.** The defect this design exists to prevent, and no unit test can reach the weekly rollover. Give one player enough penalty minutes in a single week to cross `window-critical` and nothing else, run the pass (one notice), then re-run it on each of the next three Mondays — or fake the rollover by advancing `splm_discipline_window_weeks` — and confirm **no further notice fires** while their season total is unchanged. Then add more minutes and confirm one does.
+- [ ] **A pending notice is revised, not stacked.** With suspensions `queued`, let a flagged player's total rise across two passes. Confirm the queue still holds **one** row for that tier, with its PIM figure updated — not two rows that would mail two suspensions when released.
+- [ ] **A disabled suspension mode does not swallow warnings.** Set warnings `queued` and suspensions `disabled`, then push a player past both a warning and a suspending threshold. Confirm the **warning** notice appears in the queue, and that no baseline row was written for the suspending tier.
+- [ ] **Re-enabling after a disabled period does not mail everyone.** Turn both modes off, add penalty minutes to several flagged players, then turn a mode back on and run the pass. Confirm baseline rows appear and **no** notices are sent.
+- [ ] **The technical tab survives a module disable.** Turn the Penalty Discipline module off and reload the Discipline Queue tab: the rows must still render, with a warning banner and no action buttons.
+- [ ] **Bulk release works and is sequential.** With several pending notices, use "Release all shown" and confirm each player receives exactly one email and the page reloads with all rows sent.
 - [ ] **An acknowledgement does not cancel a notice.** This is the one load-bearing behaviour no unit test reaches: `matches()` honours acknowledgements (the watch list needs that), and the pass's independence comes from passing it an *empty* ack array. Acknowledge a flagged player from the Leaders page, then run the pass, and confirm the notice still fires. If it does not, the pass is passing real acks and acknowledging a flag — the exact thing the digest email tells conveners to do — silently cancels the player's notification.
 - [ ] **Serving works and re-firing works.** Mark a suspension served, then add more penalty minutes and re-run the pass: a new notice fires.
 - [ ] **Disabling the module stops the cron.** Turn the module off, load an admin page, confirm `wp cron event list | grep splm_discipline_notices` returns nothing.
