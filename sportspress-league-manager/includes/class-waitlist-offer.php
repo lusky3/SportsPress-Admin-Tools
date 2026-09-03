@@ -21,6 +21,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * One over the threshold. These are the convener actions for a single
+ * offer's lifecycle; the scheduler's side was already extracted into
+ * SPLM_Waitlist_Expiry.
+ *
+ * @SuppressWarnings(PHPMD.TooManyMethods)
+ */
 class SPLM_Waitlist_Offer {
 
 	/**

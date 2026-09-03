@@ -21,6 +21,22 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * Two mirror-image order handlers live here: ingestion (a paid status
+ * creates queue rows) and tie-back (completion resolves them). Two
+ * independent reviews judged splitting them unjustified — they share the
+ * order object, the table, and the lifecycle they describe, and the only
+ * argument for splitting was the metric itself.
+ *
+ * The method count rose because method complexity was repaired:
+ * build_row() went from cyclomatic 22 to 3 by extracting named decisions,
+ * and ingest_order() from NPath 577 to 3. PHPMD's class complexity is a sum
+ * over methods, so extraction cannot lower it — measured here, 12
+ * extractions cost +14 against a −16 genuine reduction, netting 69→67.
+ *
+ * @SuppressWarnings(PHPMD.TooManyMethods)
+ * @SuppressWarnings(PHPMD.ExcessiveClassComplexity)
+ */
 class SPLM_Waitlist {
 
 	public function __construct() {

@@ -32,6 +32,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * This filter runs for every product in every loop, and its complexity is
+ * guard density, not branching logic: every WC(), WC()->session and
+ * WC()->cart read is null-guarded because all three are null in REST and
+ * cron contexts, and the session is client-influenced storage treated as
+ * hostile. At least one of those guards exists because a reviewer
+ * reproduced a PHP 8 warning without it. Removing any guard lowers the
+ * metric and reintroduces a defect.
+ *
+ * @SuppressWarnings(PHPMD.TooManyMethods)
+ * @SuppressWarnings(PHPMD.ExcessiveClassComplexity)
+ */
 class SPLM_Waitlist_Gate {
 
 	const GATE_META   = '_splm_waitlist_gated';

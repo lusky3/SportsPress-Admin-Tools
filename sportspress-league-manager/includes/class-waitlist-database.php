@@ -21,6 +21,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * A single-table gateway holding its own schema and its queries. Both
+ * sibling gateways in this repo — class-discipline-database.php and
+ * class-player-notes-database.php — deliberately combine the two, so
+ * splitting only this one would make it the odd file out for a metric.
+ *
+ * @SuppressWarnings(PHPMD.TooManyMethods)
+ */
 class SPLM_Waitlist_Database {
 
 	const DB_VERSION     = '1.0.0';

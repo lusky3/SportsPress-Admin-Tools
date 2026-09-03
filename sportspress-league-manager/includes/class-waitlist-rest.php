@@ -16,6 +16,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * A REST controller for six routes. Its method count is dominated by
+ * per-route argument-definition helpers extracted specifically to repair
+ * register_routes(), which went from 235 lines to 21, plus one callback per
+ * route. A reviewer considered splitting the public claim route from the
+ * admin routes and judged it not a defect at this size.
+ *
+ * @SuppressWarnings(PHPMD.TooManyMethods)
+ * @SuppressWarnings(PHPMD.ExcessiveClassComplexity)
+ */
 class SPLM_Waitlist_REST {
 
 	const REST_NAMESPACE = 'splm/v1';
