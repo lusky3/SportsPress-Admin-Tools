@@ -380,7 +380,13 @@ if ( ! class_exists( 'SPAT_Logger' ) ) {
 	class SPAT_Logger {
 		public static $calls = array();
 
-		public static function error( $tag, $message, $context = array() ) {
+		// $context is never read by this spy -- every real call site passes
+		// it only so spat_verbose logging can include extra detail, and
+		// nothing here asserts on it -- so it is dropped entirely rather
+		// than declared as an ignored formal parameter. PHP silently
+		// discards the extra positional argument the two- and three-arg
+		// real call sites still pass.
+		public static function error( $tag, $message ) {
 			self::$calls[] = array(
 				'level'   => 'error',
 				'tag'     => $tag,
@@ -388,7 +394,7 @@ if ( ! class_exists( 'SPAT_Logger' ) ) {
 			);
 		}
 
-		public static function info( $tag, $message, $context = array() ) {
+		public static function info( $tag, $message ) {
 			self::$calls[] = array(
 				'level'   => 'info',
 				'tag'     => $tag,
@@ -396,7 +402,7 @@ if ( ! class_exists( 'SPAT_Logger' ) ) {
 			);
 		}
 
-		public static function warn( $tag, $message, $context = array() ) {
+		public static function warn( $tag, $message ) {
 			self::$calls[] = array(
 				'level'   => 'warn',
 				'tag'     => $tag,

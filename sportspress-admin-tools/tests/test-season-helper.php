@@ -43,14 +43,26 @@ function get_the_title( $post_id ) {
 	return isset( $state->titles[ $post_id ] ) ? $state->titles[ $post_id ] : '';
 }
 
-function wp_get_post_terms( $post_id, $taxonomy, $args = array() ) { // phpcs:ignore
+// $args is never read by this stub -- both call sites in class-season.php
+// (from_product()'s product_cat lookup and position_from_product()'s
+// product_tag lookup) pass only $post_id and $taxonomy -- so it is dropped
+// entirely rather than declared as an ignored formal parameter.
+function wp_get_post_terms( $post_id, $taxonomy ) { // phpcs:ignore
 	$state = spat_season_test_state();
 	$bag   = ( 'product_cat' === $taxonomy ) ? $state->cat_terms : $state->tag_terms;
 	return isset( $bag[ $post_id ] ) ? $bag[ $post_id ] : array();
 }
 
-function apply_filters( $hook, $value ) { // phpcs:ignore
-	return $value;
+/**
+ * $hook (the filter name) is never consulted by this stub -- it always
+ * returns the value unmodified, mirroring a site with no spr_is_goalie_tag
+ * consumer registered -- so it is skipped positionally via func_get_arg()
+ * rather than declared as an ignored formal parameter. The one call site
+ * (class-season.php's position_from_product()) always passes at least the
+ * hook name and the value.
+ */
+function apply_filters() { // phpcs:ignore
+	return func_get_arg( 1 );
 }
 
 function term( $name ) {
