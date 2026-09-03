@@ -203,6 +203,13 @@ class SportsPress_League_Manager {
 			SPLM_Discipline_Notice_Pass::schedule();
 		} else {
 			SPLM_Discipline_Notice_Pass::unschedule();
+			// The pass records the baseline token itself when it runs with both
+			// modes off — but unscheduling means it never runs, so that branch
+			// is unreachable from here and the token would keep its last
+			// enabled value. Re-enabling would then compute the same token,
+			// skip baselining, and mail everyone who crossed while notices
+			// were off. Record it here instead.
+			SPLM_Discipline_Notice_Pass::remember_token();
 		}
 
 		// No sibling plugin currently hooks these filters — splm_player_notes

@@ -278,7 +278,7 @@ class SPLM_Discipline_Notice_Database {
 	}
 
 	/**
-	 * Whether an unreleased notice already exists for this player and season.
+	 * The unreleased notice for this player and season, if there is one.
 	 *
 	 * At most one notice per player per season may sit in the queue awaiting
 	 * release. Without this bound, a pass whose winner is suppressed as
@@ -288,14 +288,16 @@ class SPLM_Discipline_Notice_Database {
 	 * which is the harm select() prevents within a pass, displaced across
 	 * passes.
 	 *
-	 * Only `pending` counts. A `sent` notice is history and must not stop a
-	 * later, genuine crossing from firing.
+	 * `pending` and `failed` both count: a failed send is still an unreleased
+	 * draft sitting in the queue with a Release button. Counting only `pending`
+	 * let failed rows stack, so one "Release all" click sent a player two
+	 * identical suspensions. A `sent` notice is history and does not count.
 	 *
 	 * @param int $player_id Player post id.
 	 * @param int $season_id Season term id.
-	 * @return bool
+	 * @return object|null The unreleased row, or null when the queue is clear.
 	 */
-	public static function has_pending_notice( int $player_id, int $season_id ): bool {
+	public static function latest_unreleased( int $player_id, int $season_id ) {
 		global $wpdb;
 
 		if ( ! self::table_exists() ) {
@@ -304,15 +306,17 @@ class SPLM_Discipline_Notice_Database {
 
 		$table = self::table_name();
 
-		return (bool) $wpdb->get_var( // phpcs:ignore WordPress.DB
+		return $wpdb->get_row( // phpcs:ignore WordPress.DB
 			$wpdb->prepare(
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not a value; cannot use a placeholder.
-				"SELECT id FROM {$table}
-				 WHERE player_id = %d AND season_id = %d AND status = %s
+				"SELECT * FROM {$table}
+				 WHERE player_id = %d AND season_id = %d AND status IN ( %s, %s )
+				 ORDER BY id DESC
 				 LIMIT 1",
 				$player_id,
 				$season_id,
-				self::STATUS_PENDING
+				self::STATUS_PENDING,
+				self::STATUS_FAILED
 			)
 		);
 	}

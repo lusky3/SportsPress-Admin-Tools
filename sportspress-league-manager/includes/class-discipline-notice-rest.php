@@ -250,7 +250,12 @@ class SPLM_Discipline_Notice_REST {
 				'consequence'    => (string) $row->consequence,
 				'games'          => (int) $row->games,
 				'value'          => (int) $row->value_at_fire,
-				'next_threshold' => SPLM_Discipline_Notice_Mail::next_threshold( (int) $row->value_at_fire, $tiers ),
+				// season_at_fire, not value_at_fire: next_threshold() compares against
+				// SEASON suspending tiers, and value_at_fire is the matched figure
+				// (a rolling-window total for a window tier). Feeding it the window
+				// number told a player "at 25 you will be suspended" when their
+				// season total was already past 25.
+				'next_threshold' => SPLM_Discipline_Notice_Mail::next_threshold( (int) $row->season_at_fire, $tiers ),
 				'game_label'     => SPLM_Discipline_Notice_Mail::next_game_label( $team_id ),
 			),
 			$address['email'],

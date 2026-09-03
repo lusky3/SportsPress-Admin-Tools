@@ -91,6 +91,49 @@ class SPLM_Discipline_Notice {
 	}
 
 	/**
+	 * The consequence rank of an unreleased row, or 9 when there is none.
+	 *
+	 * Keeps the pass from having to know how ranks are numbered.
+	 *
+	 * @param object|null $row Notice row, or null.
+	 * @return int
+	 */
+	public static function consequence_rank_of( $row ): int {
+		if ( ! $row ) {
+			return 9;
+		}
+
+		return SPLM_Penalty_Watch::consequence_rank( (string) $row->consequence );
+	}
+
+	/**
+	 * Whether a row is still awaiting a human.
+	 *
+	 * `pending` and `failed` are both unreleased drafts: a failed send stays in
+	 * the queue with a Release button and is retried through the same route.
+	 * Treating only `pending` as unreleased let a failed row re-fire the moment
+	 * the player's total grew, so a convener who fixed a missing address and hit
+	 * "Release all" sent the same player two identical suspensions.
+	 *
+	 * @param object|null $row Notice row.
+	 * @return bool
+	 */
+	private static function is_unreleased( $row ): bool {
+		if ( ! $row ) {
+			return false;
+		}
+
+		return in_array(
+			(string) $row->status,
+			array(
+				SPLM_Discipline_Notice_Database::STATUS_PENDING,
+				SPLM_Discipline_Notice_Database::STATUS_FAILED,
+			),
+			true
+		);
+	}
+
+	/**
 	 * Whether a match should produce a NEW notice row.
 	 *
 	 * One predicate governs every status, and it compares the player's SEASON
@@ -135,7 +178,7 @@ class SPLM_Discipline_Notice {
 			return true;
 		}
 
-		if ( SPLM_Discipline_Notice_Database::STATUS_PENDING === (string) $latest->status ) {
+		if ( self::is_unreleased( $latest ) ) {
 			return false;
 		}
 
@@ -154,7 +197,7 @@ class SPLM_Discipline_Notice {
 	 * @return bool
 	 */
 	public static function needs_refresh( $latest, int $season_total ): bool {
-		if ( ! $latest || SPLM_Discipline_Notice_Database::STATUS_PENDING !== (string) $latest->status ) {
+		if ( ! self::is_unreleased( $latest ) ) {
 			return false;
 		}
 
@@ -182,9 +225,10 @@ class SPLM_Discipline_Notice {
 	 * @param bool  $has_address             Whether the player's address resolved.
 	 * @param bool  $suspension_outstanding  Whether a suspension notice already exists
 	 *                                       for this player and season.
-	 * @param bool  $pending_outstanding     Whether an unreleased notice already exists
-	 *                                       for this player and season. Defaults false
-	 *                                       so existing callers are unaffected.
+	 * @param int   $pending_rank            consequence_rank() of the unreleased notice
+	 *                                       already queued for this player and season,
+	 *                                       or 9 when the queue is clear. Defaults 9 so
+	 *                                       existing callers are unaffected.
 	 * @return array array(
 	 *               'notice'    => array|null,
 	 *               'status'    => string,
@@ -192,27 +236,18 @@ class SPLM_Discipline_Notice {
 	 *               'baselines' => array,
 	 *             )
 	 */
-	public static function plan_writes( array $matches_by_scope, array $modes, bool $baselining, bool $has_address, bool $suspension_outstanding = false, bool $pending_outstanding = false ): array {
+	public static function plan_writes( array $matches_by_scope, array $modes, bool $baselining, bool $has_address, bool $suspension_outstanding = false, int $pending_rank = 9 ): array {
 		$eligible = self::eligible_matches( $matches_by_scope, $modes, $suspension_outstanding );
 
 		$nothing = array(
-			'notice'    => null,
-			'status'    => SPLM_Discipline_Notice_Database::STATUS_PENDING,
-			'send'      => false,
-			'baselines' => array(),
+			'notice'     => null,
+			'status'     => SPLM_Discipline_Notice_Database::STATUS_PENDING,
+			'send'       => false,
+			'baselines'  => array(),
+			'supersedes' => false,
 		);
 
 		if ( ! $eligible ) {
-			return $nothing;
-		}
-
-		// At most one unreleased notice per player per season. When an earlier
-		// pass's winner is still `pending`, should_fire() suppresses it — and
-		// without this bound the runner-up wins selection on its own, so a
-		// convener releasing the queue sends two notices for one escalation.
-		// That is the harm select() prevents within a pass, displaced across
-		// passes. A baselining pass is exempt: it mails nobody.
-		if ( $pending_outstanding && ! $baselining ) {
 			return $nothing;
 		}
 
@@ -226,10 +261,11 @@ class SPLM_Discipline_Notice {
 			}
 
 			return array(
-				'notice'    => null,
-				'status'    => SPLM_Discipline_Notice_Database::STATUS_PENDING,
-				'send'      => false,
-				'baselines' => $flat,
+				'notice'     => null,
+				'status'     => SPLM_Discipline_Notice_Database::STATUS_PENDING,
+				'send'       => false,
+				'baselines'  => $flat,
+				'supersedes' => false,
 			);
 		}
 
@@ -238,9 +274,38 @@ class SPLM_Discipline_Notice {
 			return array_merge( $nothing, array( 'baselines' => $chosen['baselines'] ) );
 		}
 
+		// At most one unreleased notice per player per season — but the bound is
+		// applied AFTER selection, comparing severity, and that ordering is the
+		// whole point. Applying it before select() discarded a strictly more
+		// severe candidate in favour of an already-queued lesser one: a player
+		// sitting on a queued warning who then crossed a suspending tier had the
+		// suspension silently dropped, and the convener released a warning
+		// saying "at 25 you will be suspended" to someone already past it.
+		//
+		// A winner no more severe than what is already queued writes nothing.
+		// A more severe winner is returned with 'supersedes' set, and the caller
+		// rewrites that row in place rather than adding a second one.
+		if ( ! $baselining && $pending_rank < 9 ) {
+			$winner_rank = SPLM_Penalty_Watch::consequence_rank( (string) $chosen['notice']['consequence'] );
+			if ( $winner_rank >= $pending_rank ) {
+				return $nothing;
+			}
+
+			return array(
+				'notice'     => $chosen['notice'],
+				'status'     => $has_address
+					? SPLM_Discipline_Notice_Database::STATUS_PENDING
+					: SPLM_Discipline_Notice_Database::STATUS_FAILED,
+				'send'       => false,
+				'baselines'  => array(),
+				'supersedes' => true,
+			);
+		}
+
 		$mode = (string) ( $modes[ (string) $chosen['notice']['consequence'] ] ?? self::MODE_DISABLED );
 
 		return array(
+			'supersedes' => false,
 			'notice'    => $chosen['notice'],
 			// No address means the row lands failed immediately, with a cause a
 			// human can act on, rather than sitting as an ordinary pending row

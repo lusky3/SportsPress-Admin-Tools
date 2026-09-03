@@ -305,6 +305,8 @@ class SPLM_Discipline_Notice_Pass {
 			)
 			: SPLM_Discipline_Notice_Recipients::player_email( $player_id );
 
+		$unreleased = SPLM_Discipline_Notice_Database::latest_unreleased( $player_id, $season_id );
+
 		$planned = SPLM_Discipline_Notice::plan_writes(
 			$fireable,
 			array(
@@ -317,10 +319,12 @@ class SPLM_Discipline_Notice_Pass {
 			// later and the player receives BOTH emails for one escalation.
 			// See Task 9's "the warning that arrives after the suspension".
 			SPLM_Discipline_Notice_Database::has_suspension_notice( $player_id, $season_id ),
-			// Bounds the queue to one unreleased notice per player per season.
-			// Without it, a winner suppressed as `pending` lets the runner-up
-			// win selection alone next pass and the convener releases two.
-			SPLM_Discipline_Notice_Database::has_pending_notice( $player_id, $season_id )
+			// Bounds the queue to one unreleased notice per player per season,
+			// by SEVERITY: a winner no more severe than what is already queued
+			// writes nothing, a more severe one rewrites that row in place.
+			// Passing a bare boolean here discarded a suspension in favour of
+			// an already-queued warning.
+			SPLM_Discipline_Notice::consequence_rank_of( $unreleased )
 		);
 
 		foreach ( $planned['baselines'] as $match ) {
@@ -338,7 +342,32 @@ class SPLM_Discipline_Notice_Pass {
 			return $written;
 		}
 
-		$match     = $planned['notice'];
+		$match = $planned['notice'];
+
+		if ( ! empty( $planned['supersedes'] ) && $unreleased ) {
+			// The queued row is upgraded to the more severe consequence rather
+			// than joined by a second one, so the convener's queue always shows
+			// the most severe live consequence and never two rows for one
+			// player. The row keeps its id, so a surface already showing it
+			// simply refreshes.
+			$upgraded = SPLM_Discipline_Notice_Database::update(
+				(int) $unreleased->id,
+				array(
+					'tier_key'       => (string) $match['tier_key'],
+					'ack_key'        => (string) ( $match['ack_key'] ?? $match['tier_key'] ),
+					'scope'          => (string) $match['scope'],
+					'severity'       => (string) $match['severity'],
+					'consequence'    => (string) $match['consequence'],
+					'games'          => (int) $match['games'],
+					'value_at_fire'  => (int) $match['value'],
+					'season_at_fire' => $season_total,
+					'status'         => $planned['status'],
+				)
+			);
+
+			return $upgraded ? $written + 1 : $written;
+		}
+
 		$notice_id = self::write_row(
 			$player_id,
 			$season_id,

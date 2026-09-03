@@ -332,14 +332,35 @@ $two_suspends = array(
 );
 $queued_both = array( 'warn' => 'queued', 'suspend' => 'queued' );
 
-$blocked = $notice::plan_writes( $two_suspends, $queued_both, false, true, true, true );
-assert_test( null === $blocked['notice'], 'with a notice already awaiting release, no second notice is created' );
-assert_test( array() === $blocked['baselines'], 'and nothing is baselined either, so the runner-up can still fire once the queue clears' );
+// The bound takes the queued row's consequence RANK (9 = queue clear), and is
+// applied after select() so a more severe winner is never discarded.
+$rank_suspend = SPLM_Penalty_Watch::consequence_rank( 'suspend' );
+$rank_warn    = SPLM_Penalty_Watch::consequence_rank( 'warn' );
 
-$unblocked = $notice::plan_writes( $two_suspends, $queued_both, false, true, true, false );
+$blocked = $notice::plan_writes( $two_suspends, $queued_both, false, true, true, $rank_suspend );
+assert_test( null === $blocked['notice'], 'a winner no more severe than the queued row writes nothing' );
+assert_test( array() === $blocked['baselines'], 'and nothing is baselined either, so it can still fire once the queue clears' );
+
+$unblocked = $notice::plan_writes( $two_suspends, $queued_both, false, true, true, 9 );
 assert_test(
 	null !== $unblocked['notice'],
-	'with nothing awaiting release the same input produces a notice, so the bound is the pending row and not the input'
+	'with the queue clear the same input produces a notice, so the bound is the queued row and not the input'
+);
+assert_test( empty( $unblocked['supersedes'] ), 'and it is a fresh row, not a supersede' );
+
+// The defect this ordering exists to prevent: a queued WARNING must not
+// swallow a suspension the player has since earned. Before the fix the bound
+// ran ahead of select() and returned nothing, so the suspension was never
+// created and the convener released a warning naming a threshold the player
+// was already past.
+$upgrade = $notice::plan_writes( $two_suspends, $queued_both, false, true, true, $rank_warn );
+assert_test(
+	null !== $upgrade['notice'] && 'suspend' === $upgrade['notice']['consequence'],
+	'a suspension still wins when only a warning is queued, rather than being discarded by the bound'
+);
+assert_test(
+	! empty( $upgrade['supersedes'] ),
+	'and it is flagged to rewrite that queued row in place, so the queue never holds two rows for one player'
 );
 
 $baselining_exempt = $notice::plan_writes( $two_suspends, $queued_both, true, true, true, true );

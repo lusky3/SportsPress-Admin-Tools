@@ -208,7 +208,9 @@ echo "\n=== the re-fire predicate ===\n\n";
 assert_test( $notice::should_fire( $match( 18 ), null, 18 ), 'with no prior row, a match fires' );
 
 // 'pending' is excluded on purpose and tested separately below.
-foreach ( array( 'baseline', 'sent', 'discarded', 'served', 'failed' ) as $status ) {
+// 'pending' and 'failed' are both unreleased and excluded here — they are
+// asserted separately below, because neither may fire a second row.
+foreach ( array( 'baseline', 'sent', 'discarded', 'served' ) as $status ) {
 	assert_test(
 		! $notice::should_fire( $match( 18 ), $row( $status, 18 ), 18 ),
 		"a {$status} row at the same season total suppresses the match"
@@ -225,7 +227,15 @@ assert_test(
 );
 assert_test(
 	! $notice::should_fire( $match( 18 ), $row( 'failed', 18 ), 18 ),
-	'a failed row does not duplicate: it stays actionable in the queue and is retried through release instead'
+	'a failed row does not duplicate at an unchanged total'
+);
+assert_test(
+	! $notice::should_fire( $match( 24 ), $row( 'failed', 20 ), 24 ),
+	'a failed row does not fire a second time even once the total GROWS: it is an unreleased draft sitting in the queue with a Release button, and stacking them meant one "Release all" click sent the player two identical suspensions'
+);
+assert_test(
+	$notice::needs_refresh( $row( 'failed', 20 ), 24 ),
+	'that failed row is revised in place instead, so the convener sees the current total'
 );
 
 echo "\n=== the predicate compares the SEASON total, not the matched value ===\n\n";
