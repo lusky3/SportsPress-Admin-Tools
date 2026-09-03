@@ -124,7 +124,7 @@ class SportsPress_League_Manager {
 			'league_discipline',
 			array(
 				'name'          => 'Penalty Discipline',
-				'description'   => 'Penalty-minute watch list, acknowledgements and weekly digest',
+				'description'   => 'Penalty-minute watch list, acknowledgements, weekly digest, and warning/suspension notices to players',
 				'parent_module' => 'league_discipline',
 				'version'       => SPLM_VERSION,
 				'file'          => __FILE__,
@@ -180,16 +180,54 @@ class SportsPress_League_Manager {
 		// into league_manager_dashboard.
 		if ( in_array( 'league_discipline', $enabled, true ) ) {
 			SPLM_Discipline_Database::maybe_upgrade();
+			SPLM_Discipline_Notice_Database::maybe_upgrade();
+
 			new SPLM_Discipline_Digest();
 			if ( get_option( 'splm_discipline_digest_enabled' ) ) {
 				SPLM_Discipline_Digest::schedule();
 			} else {
 				SPLM_Discipline_Digest::unschedule();
 			}
+
+			// Three constructors, because the notice feature's hooks belong to
+			// three concerns: the pass answers the scheduled event, the REST
+			// class registers the routes both queue surfaces call, and the
+			// admin class contributes the technical tab. Drop any one of these
+			// lines and its hooks silently never register.
+			// SPLM_Discipline_Notice, _Mail and _Recipients are deliberately
+			// absent: they hook nothing.
+			// SPLM_Discipline_Notice_Privacy is instantiated by Task 15, which
+			// creates it. Adding the line here would make every page load with
+			// this module enabled fatal on "class not found" for as long as it
+			// took Task 15 to land, and no PHP test would catch it because none
+			// of them bootstrap WordPress.
+			new SPLM_Discipline_Notice_Pass();
+			new SPLM_Discipline_Notice_REST();
+			if ( is_admin() ) {
+				new SPLM_Discipline_Notice_Admin();
+			}
+
+			// The pass is scheduled whenever either mode is on, and cleared when
+			// both are off, so a league that switches notices off stops paying
+			// for a daily aggregate scan.
+			$notices_on = SPLM_Discipline_Notice::MODE_DISABLED !== SPLM_Discipline_Notice::mode_for( 'warn' )
+				|| SPLM_Discipline_Notice::MODE_DISABLED !== SPLM_Discipline_Notice::mode_for( 'suspend' );
+			if ( $notices_on ) {
+				SPLM_Discipline_Notice_Pass::schedule();
+			} else {
+				SPLM_Discipline_Notice_Pass::unschedule();
+			}
 		}
 
-		if ( ! in_array( 'league_discipline', $enabled, true ) && class_exists( 'SPLM_Discipline_Digest' ) ) {
-			SPLM_Discipline_Digest::unschedule();
+		if ( ! in_array( 'league_discipline', $enabled, true ) ) {
+			if ( class_exists( 'SPLM_Discipline_Digest' ) ) {
+				SPLM_Discipline_Digest::unschedule();
+			}
+			// Disabling the module must also stop the notice pass, or a daily
+			// event keeps firing against a feature whose REST routes now 503.
+			if ( class_exists( 'SPLM_Discipline_Notice_Pass' ) ) {
+				SPLM_Discipline_Notice_Pass::unschedule();
+			}
 		}
 
 		// The waitlist schema is only needed once the module is deliberately

@@ -45,6 +45,7 @@ $wpdb->query(
 // discipline feature shipped, so it is added in the same pass.
 $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}splm_player_notes" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}splm_discipline_ack" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}splm_discipline_notice" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}splm_waitlist" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 // wp_unschedule_hook(), NOT wp_clear_scheduled_hook() (the pattern this
@@ -61,6 +62,12 @@ $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}splm_waitlist" ); // phpcs:ig
 // handler. wp_unschedule_hook() removes every event for a hook regardless of
 // its args, which is what a one-shot uninstall actually needs.
 wp_unschedule_hook( 'splm_waitlist_expire_offer' );
+
+// Same reasoning as above: wp_unschedule_hook() removes every event for a
+// hook regardless of its args. splm_discipline_notices is argless today, but
+// using the unconditional call keeps this file consistent and correct even
+// if that ever changes.
+wp_unschedule_hook( 'splm_discipline_notices' );
 
 // The generic sweep above covers options, transients and user meta but not
 // post meta. This key is inert once the gate filter is gone, so removing it is
