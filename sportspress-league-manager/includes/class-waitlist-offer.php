@@ -164,10 +164,10 @@ class SPLM_Waitlist_Offer {
 		// issue two tokens or schedule two expiry events for one row. The
 		// 60-second TTL can lapse if wp_mail() is slow, at which point
 		// SPAT_Lock's stale-steal would admit a second holder — but the
-		// can_offer() status re-check inside offer_locked() is what actually
-		// refuses that second holder (the row is no longer queued/expired by
-		// then), not the TTL. The status guard is the real serialisation
-		// backstop.
+		// can_offer() status re-check offer_locked() makes through
+		// offerable_row() is what actually refuses that second holder (the
+		// row is no longer queued/expired by then), not the TTL. The status
+		// guard is the real serialisation backstop.
 		$result = SPAT_Lock::with(
 			'splm_waitlist_offer_' . $id,
 			60,
@@ -197,26 +197,9 @@ class SPLM_Waitlist_Offer {
 	 * @return array|WP_Error
 	 */
 	private static function offer_locked( $id, $hours ) {
-		$row = SPLM_Waitlist_Database::get( $id );
-		if ( ! $row ) {
-			return new WP_Error( 'splm_waitlist_not_found', __( 'Waitlist entry not found.', 'sportspress-league-manager' ), array( 'status' => 404 ) );
-		}
-		if ( ! self::can_offer( $row->status ) ) {
-			return new WP_Error(
-				'splm_waitlist_bad_status',
-				__( 'Only a queued or expired entry can be offered a spot.', 'sportspress-league-manager' ),
-				array( 'status' => 409 )
-			);
-		}
-		if ( (int) $row->target_product_id <= 0 ) {
-			// The row most likely to be offered by accident: ingestion could
-			// not pair it with a real product, so there is nothing to send
-			// the player to.
-			return new WP_Error(
-				'splm_waitlist_no_target',
-				__( 'This entry has no registration product set. Choose one before offering the spot.', 'sportspress-league-manager' ),
-				array( 'status' => 409 )
-			);
+		$row = self::offerable_row( $id );
+		if ( is_wp_error( $row ) ) {
+			return $row;
 		}
 
 		// Unconditionally, before scheduling anything. A cancelled offer's
@@ -241,41 +224,7 @@ class SPLM_Waitlist_Offer {
 		$row->expires_at = $expiry['expires_at'];
 
 		if ( ! self::send_offer_email( $row, $token ) ) {
-			// A failed send would otherwise leave a ticking deadline on an
-			// invite nobody received, and the person would silently lose their
-			// turn. Unwind completely so a retry is clean. Row first, then
-			// cron: for the one round trip between these two writes, a
-			// `queued` row with a stray expiry event is harmless (the expiry
-			// handler ignores it once it checks status), whereas the reverse
-			// order would leave a live token with no deadline.
-			$unwound = SPLM_Waitlist_Database::update( $id, self::unwind_updates() );
-			wp_clear_scheduled_hook( SPLM_Waitlist_Expiry::EXPIRE_HOOK, array( $id ) );
-
-			if ( ! $unwound ) {
-				// The row is still `offered` with a live token and the cron
-				// event is now gone. This is the worst of both states, so it
-				// gets its own code and message rather than being folded into
-				// the ordinary mail-failed case — the convener must cancel
-				// the entry manually rather than simply retrying.
-				if ( class_exists( 'SPAT_Logger' ) ) {
-					SPAT_Logger::error(
-						'waitlist',
-						sprintf( 'failed to unwind a waitlist offer after wp_mail() failed: waitlist_id=%d', $id )
-					);
-				}
-
-				return new WP_Error(
-					'splm_waitlist_unwind_failed',
-					__( 'The offer email could not be sent, and the entry could not be returned to the queue automatically. It is stuck as offered with a live link — cancel it manually.', 'sportspress-league-manager' ),
-					array( 'status' => 500 )
-				);
-			}
-
-			return new WP_Error(
-				'splm_waitlist_mail_failed',
-				__( 'The offer email could not be sent, so the offer was cancelled. The entry is still queued — try again.', 'sportspress-league-manager' ),
-				array( 'status' => 500 )
-			);
+			return self::unwind_unsent_offer( $id );
 		}
 
 		return array(
@@ -283,6 +232,95 @@ class SPLM_Waitlist_Offer {
 			'id'         => $id,
 			'expires_at' => $expiry['expires_at'],
 			'warnings'   => self::offer_warnings( (int) $row->target_product_id ),
+		);
+	}
+
+	/**
+	 * The row this id can be offered, or the reason it cannot.
+	 *
+	 * Every way an offer is refused before anything is written or scheduled,
+	 * so offer_locked() above is only the sequence that actually happens.
+	 * Each refusal keeps its own error code: the dashboard tells a convener
+	 * "that entry is gone", "cancel the live offer first" and "set a
+	 * registration product first" apart by it.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param int $id Row id.
+	 * @return object|WP_Error
+	 */
+	private static function offerable_row( $id ) {
+		$row = SPLM_Waitlist_Database::get( $id );
+		if ( ! $row ) {
+			return new WP_Error( 'splm_waitlist_not_found', __( 'Waitlist entry not found.', 'sportspress-league-manager' ), array( 'status' => 404 ) );
+		}
+		if ( ! self::can_offer( $row->status ) ) {
+			return new WP_Error(
+				'splm_waitlist_bad_status',
+				__( 'Only a queued or expired entry can be offered a spot.', 'sportspress-league-manager' ),
+				array( 'status' => 409 )
+			);
+		}
+		if ( (int) $row->target_product_id <= 0 ) {
+			// The row most likely to be offered by accident: ingestion could
+			// not pair it with a real product, so there is nothing to send
+			// the player to.
+			return new WP_Error(
+				'splm_waitlist_no_target',
+				__( 'This entry has no registration product set. Choose one before offering the spot.', 'sportspress-league-manager' ),
+				array( 'status' => 409 )
+			);
+		}
+
+		return $row;
+	}
+
+	/**
+	 * Undo an offer whose notification email never went out.
+	 *
+	 * A failed send would otherwise leave a ticking deadline on an invite
+	 * nobody received, and the person would silently lose their turn. Unwind
+	 * completely so a retry is clean, and report which of the two outcomes
+	 * the convener is looking at — they call for different actions, so they
+	 * never share an error code.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param int $id Row id.
+	 * @return WP_Error Always: this is only reached once the send failed.
+	 */
+	private static function unwind_unsent_offer( $id ) {
+		// Row first, then cron: for the one round trip between these two
+		// writes, a `queued` row with a stray expiry event is harmless (the
+		// expiry handler ignores it once it checks status), whereas the
+		// reverse order would leave a live token with no deadline.
+		$unwound = SPLM_Waitlist_Database::update( $id, self::unwind_updates() );
+		wp_clear_scheduled_hook( SPLM_Waitlist_Expiry::EXPIRE_HOOK, array( $id ) );
+
+		if ( ! $unwound ) {
+			// The row is still `offered` with a live token and the cron
+			// event is now gone. This is the worst of both states, so it
+			// gets its own code and message rather than being folded into
+			// the ordinary mail-failed case — the convener must cancel
+			// the entry manually rather than simply retrying.
+			if ( class_exists( 'SPAT_Logger' ) ) {
+				SPAT_Logger::error(
+					'waitlist',
+					sprintf( 'failed to unwind a waitlist offer after wp_mail() failed: waitlist_id=%d', $id )
+				);
+			}
+
+			return new WP_Error(
+				'splm_waitlist_unwind_failed',
+				__( 'The offer email could not be sent, and the entry could not be returned to the queue automatically. It is stuck as offered with a live link — cancel it manually.', 'sportspress-league-manager' ),
+				array( 'status' => 500 )
+			);
+		}
+
+		return new WP_Error(
+			'splm_waitlist_mail_failed',
+			__( 'The offer email could not be sent, so the offer was cancelled. The entry is still queued — try again.', 'sportspress-league-manager' ),
+			array( 'status' => 500 )
 		);
 	}
 
