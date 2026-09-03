@@ -4319,20 +4319,42 @@ class SPLM_Discipline_Notice_Pass {
 
 		SPLM_Discipline_Notice_Mail::send(
 			$notice_id,
-			array(
-				'player_name'    => (string) $player['name'],
-				'season_name'    => self::season_name( $season_id ),
-				'consequence'    => (string) $match['consequence'],
-				'games'          => (int) $match['games'],
-				'value'          => (int) $match['value'],
-				'next_threshold' => SPLM_Discipline_Notice_Mail::next_threshold( $season_total, $tiers ),
-				'game_label'     => SPLM_Discipline_Notice_Mail::next_game_label( (int) $player['team_id'] ),
-			),
+			self::mail_context( $match, $player, $season_id, $season_total, $tiers ),
 			$address['email'],
 			SPLM_Discipline_Notice_Recipients::bcc_for( $season_id, (int) $player['team_id'] )
 		);
 
 		return $written;
+	}
+
+	/**
+	 * What the notice email needs to know about one crossing.
+	 *
+	 * Extracted from process_player() rather than inlined: it is a distinct
+	 * concern — the body's inputs, as opposed to the pass's bookkeeping — and
+	 * leaving it inline put process_player() at 104 lines against PHPMD's
+	 * ExcessiveMethodLength threshold of 100, which Codacy's zero-new-issues
+	 * gate would have flagged.
+	 *
+	 * @param array $match        The winning match.
+	 * @param array $player       Aggregator row.
+	 * @param int   $season_id    Season term id.
+	 * @param int   $season_total The player's season PIM.
+	 * @param array $tiers        Tier list, for the next-threshold lookup.
+	 * @return array Context for SPLM_Discipline_Notice_Mail::body().
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function mail_context( array $match, array $player, int $season_id, int $season_total, array $tiers ): array {
+		return array(
+			'player_name'    => (string) $player['name'],
+			'season_name'    => self::season_name( $season_id ),
+			'consequence'    => (string) $match['consequence'],
+			'games'          => (int) $match['games'],
+			'value'          => (int) $match['value'],
+			'next_threshold' => SPLM_Discipline_Notice_Mail::next_threshold( $season_total, $tiers ),
+			'game_label'     => SPLM_Discipline_Notice_Mail::next_game_label( (int) $player['team_id'] ),
+		);
 	}
 
 	/**
