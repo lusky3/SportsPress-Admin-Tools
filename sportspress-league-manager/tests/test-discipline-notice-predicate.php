@@ -182,6 +182,110 @@ $wpdb->insert_succeeds = false;
 assert_test( 0 === $db::insert( array( 'player_id' => 1, 'season_id' => 1, 'ack_key' => 'x' ) ), 'a failed insert returns 0' );
 $wpdb->insert_succeeds = true;
 
+require_once __DIR__ . '/../includes/class-discipline-notice.php';
+
+$notice = 'SPLM_Discipline_Notice';
+$row    = function ( $status, $season_at_fire ) {
+	return (object) array(
+		'status'         => $status,
+		'season_at_fire' => $season_at_fire,
+	);
+};
+$match  = function ( $value ) {
+	return array(
+		'tier_key'    => 'season-critical',
+		'scope'       => 'season',
+		'severity'    => 'critical',
+		'minutes'     => 18,
+		'value'       => $value,
+		'consequence' => 'suspend',
+		'games'       => 1,
+	);
+};
+
+echo "\n=== the re-fire predicate ===\n\n";
+
+assert_test( $notice::should_fire( $match( 18 ), null, 18 ), 'with no prior row, a match fires' );
+
+// 'pending' is excluded on purpose and tested separately below.
+foreach ( array( 'baseline', 'sent', 'discarded', 'served', 'failed' ) as $status ) {
+	assert_test(
+		! $notice::should_fire( $match( 18 ), $row( $status, 18 ), 18 ),
+		"a {$status} row at the same season total suppresses the match"
+	);
+	assert_test(
+		$notice::should_fire( $match( 19 ), $row( $status, 18 ), 19 ),
+		"a {$status} row does not suppress once the player earns more"
+	);
+}
+
+assert_test(
+	! $notice::should_fire( $match( 18 ), $row( 'baseline', 25 ), 18 ),
+	'a baseline above the current total still suppresses, so a mid-season switch-on cannot mail anyone'
+);
+assert_test(
+	! $notice::should_fire( $match( 18 ), $row( 'failed', 18 ), 18 ),
+	'a failed row does not duplicate: it stays actionable in the queue and is retried through release instead'
+);
+
+echo "\n=== the predicate compares the SEASON total, not the matched value ===\n\n";
+
+// This is the window-tier bug the season comparison exists to prevent. A
+// rolling window is not monotonic: the same 8 minutes stay inside the window
+// for four weeks, so a value-based comparison would re-fire the suspension
+// every week — four emails for one incident.
+$window_match = function ( $window_value ) {
+	return array(
+		'tier_key'    => 'window-critical',
+		'scope'       => 'window',
+		'severity'    => 'critical',
+		'minutes'     => 8,
+		'value'       => $window_value,
+		'consequence' => 'suspend',
+		'games'       => 1,
+	);
+};
+
+assert_test(
+	! $notice::should_fire( $window_match( 8 ), $row( 'sent', 8 ), 8 ),
+	'a window tier does not re-fire next week while the season total is unchanged, even though the window still shows the same 8 minutes'
+);
+assert_test(
+	$notice::should_fire( $window_match( 8 ), $row( 'sent', 8 ), 16 ),
+	'a genuine later offence fires again: the window figure is identical but the season total has grown'
+);
+assert_test(
+	! $notice::should_fire( $window_match( 12 ), $row( 'sent', 20 ), 20 ),
+	'a rising window figure alone does not fire when the season total has not moved'
+);
+
+echo "\n=== a pending notice is revised, not duplicated ===\n\n";
+
+assert_test(
+	! $notice::should_fire( $match( 20 ), $row( 'pending', 18 ), 20 ),
+	'a pending row does not fire a second notice when the total grows: releasing a stack would mail several suspensions for one escalation'
+);
+assert_test(
+	$notice::needs_refresh( $row( 'pending', 18 ), 20 ),
+	'that pending row is flagged for revision instead'
+);
+assert_test(
+	! $notice::needs_refresh( $row( 'pending', 18 ), 18 ),
+	'an unchanged total needs no revision'
+);
+assert_test(
+	! $notice::needs_refresh( $row( 'sent', 18 ), 20 ),
+	'only a pending row is revisable; a sent one is history'
+);
+assert_test( ! $notice::needs_refresh( null, 20 ), 'no row means nothing to revise' );
+
+echo "\n=== only consequence-bearing matches can fire ===\n\n";
+
+$inert = $match( 18 );
+$inert['consequence'] = 'none';
+
+assert_test( ! $notice::should_fire( $inert, null, 18 ), 'a tier with no consequence never fires a notice' );
+
 echo "\n=== Results ===\n\n";
 echo "Passed: {$passed}\nFailed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );

@@ -122,6 +122,161 @@ assert_test(
 	'a window ack does not suppress a disjoint window'
 );
 
+// Loaded for its STATUS_* constants only, which plan_writes() returns. No
+// method on it is called here, so it needs no $wpdb.
+require_once __DIR__ . '/../includes/class-discipline-notice-database.php';
+require_once __DIR__ . '/../includes/class-discipline-notice.php';
+
+$notice = 'SPLM_Discipline_Notice';
+$mk     = function ( $key, $scope, $consequence, $games, $minutes ) {
+	return array(
+		'tier_key'    => $key,
+		'scope'       => $scope,
+		'severity'    => 'suspend' === $consequence ? 'critical' : 'warning',
+		'minutes'     => $minutes,
+		'value'       => $minutes + 2,
+		'consequence' => $consequence,
+		'games'       => $games,
+	);
+};
+
+echo "\n=== one notice per player per pass ===\n\n";
+
+$two_scopes = array(
+	'season' => array( $mk( 'season-critical', 'season', 'suspend', 1, 18 ) ),
+	'window' => array( $mk( 'window-critical', 'window', 'suspend', 1, 8 ) ),
+);
+$chosen = $notice::select( $two_scopes );
+
+assert_test( is_array( $chosen['notice'] ), 'a winner is chosen' );
+assert_test(
+	1 === count( $chosen['baselines'] ),
+	'the runner-up is baselined rather than sent, so one set of minutes cannot mail the player twice'
+);
+assert_test(
+	$chosen['notice']['tier_key'] !== $chosen['baselines'][0]['tier_key'],
+	'the winner is not also baselined'
+);
+
+echo "\n=== ranking: consequence, then games, then minutes ===\n\n";
+
+$warn_and_suspend = array(
+	'season' => array(
+		$mk( 'high-warn', 'season', 'warn', 0, 30 ),
+		$mk( 'low-suspend', 'season', 'suspend', 1, 10 ),
+	),
+);
+assert_test(
+	'low-suspend' === $notice::select( $warn_and_suspend )['notice']['tier_key'],
+	'suspend beats warn even when the warn tier has the higher threshold'
+);
+
+$two_suspends = array(
+	'season' => array(
+		$mk( 'one-game', 'season', 'suspend', 1, 30 ),
+		$mk( 'three-game', 'season', 'suspend', 3, 18 ),
+	),
+);
+assert_test(
+	'three-game' === $notice::select( $two_suspends )['notice']['tier_key'],
+	'among suspensions the longer one wins, even from a lower threshold'
+);
+
+$tied = array(
+	'season' => array(
+		$mk( 'lower', 'season', 'suspend', 1, 12 ),
+		$mk( 'higher', 'season', 'suspend', 1, 20 ),
+	),
+);
+assert_test(
+	'higher' === $notice::select( $tied )['notice']['tier_key'],
+	'with consequence and games tied, the higher threshold wins'
+);
+
+echo "\n=== inert and empty input ===\n\n";
+
+assert_test( null === $notice::select( array() )['notice'], 'nothing matched means no notice' );
+assert_test( array() === $notice::select( array() )['baselines'], 'nothing matched means nothing to baseline' );
+
+$only_none = array( 'season' => array( $mk( 'inert', 'season', 'none', 0, 12 ) ) );
+assert_test( null === $notice::select( $only_none )['notice'], 'a match with no consequence cannot become a notice' );
+assert_test(
+	array() === $notice::select( $only_none )['baselines'],
+	'a match with no consequence is not baselined either: it was never a candidate'
+);
+
+echo "\n=== plan_writes(): the mode filter runs BEFORE selection ===\n\n";
+
+// The configuration that exposed the defect: a league that wants warnings but
+// not automatic suspensions. The suspension outranks the warning, so selecting
+// first and checking the mode afterwards delivers nothing at all.
+$both_tiers = array(
+	'season' => array(
+		$mk( 'season-warn', 'season', 'warn', 0, 12 ),
+		$mk( 'season-critical', 'season', 'suspend', 1, 18 ),
+	),
+);
+$warn_only_modes = array( 'warn' => 'queued', 'suspend' => 'disabled' );
+
+$planned = $notice::plan_writes( $both_tiers, $warn_only_modes, false, true );
+
+assert_test(
+	null !== $planned['notice'] && 'season-warn' === $planned['notice']['tier_key'],
+	'with suspensions disabled, the warning the league DID enable is the notice — not silently dropped because a disabled suspension outranked it'
+);
+assert_test(
+	array() === $planned['baselines'],
+	'the disabled suspension is not baselined either: a disabled consequence writes no rows at all'
+);
+
+$all_disabled = $notice::plan_writes( $both_tiers, array( 'warn' => 'disabled', 'suspend' => 'disabled' ), false, true );
+assert_test( null === $all_disabled['notice'], 'both modes disabled produces no notice' );
+assert_test( array() === $all_disabled['baselines'], 'both modes disabled produces no baseline rows' );
+
+echo "\n=== plan_writes(): status and send ===\n\n";
+
+$queued = $notice::plan_writes( $both_tiers, array( 'warn' => 'queued', 'suspend' => 'queued' ), false, true );
+assert_test( 'pending' === $queued['status'], 'queued mode writes pending' );
+assert_test( false === $queued['send'], 'queued mode does not send' );
+assert_test( 'season-critical' === $queued['notice']['tier_key'], 'the suspension wins when both modes are on' );
+assert_test( 1 === count( $queued['baselines'] ), 'the runner-up is baselined' );
+
+$auto = $notice::plan_writes( $both_tiers, array( 'warn' => 'automatic', 'suspend' => 'automatic' ), false, true );
+assert_test( true === $auto['send'], 'automatic mode sends' );
+assert_test( 'pending' === $auto['status'], 'automatic mode still writes pending first, so a send failure has a row to land on' );
+
+echo "\n=== plan_writes(): no address fails immediately ===\n\n";
+
+$no_address = $notice::plan_writes( $both_tiers, array( 'warn' => 'queued', 'suspend' => 'queued' ), false, false );
+assert_test(
+	'failed' === $no_address['status'],
+	'a player with no address lands failed at evaluation time, not as a pending row whose problem only surfaces when someone tries to release it'
+);
+assert_test( false === $no_address['send'], 'nothing is sent without an address' );
+
+$no_address_auto = $notice::plan_writes( $both_tiers, array( 'warn' => 'automatic', 'suspend' => 'automatic' ), false, false );
+assert_test( false === $no_address_auto['send'], 'automatic mode does not attempt a send without an address' );
+assert_test( 'failed' === $no_address_auto['status'], 'and records it as failed' );
+
+echo "\n=== plan_writes(): a baselining pass mails nobody ===\n\n";
+
+$baselining = $notice::plan_writes( $both_tiers, array( 'warn' => 'queued', 'suspend' => 'queued' ), true, true );
+assert_test( null === $baselining['notice'], 'a baselining pass produces no notice' );
+assert_test( false === $baselining['send'], 'a baselining pass sends nothing' );
+assert_test( 2 === count( $baselining['baselines'] ), 'a baselining pass records every eligible match' );
+
+$baselining_filtered = $notice::plan_writes( $both_tiers, $warn_only_modes, true, true );
+assert_test(
+	1 === count( $baselining_filtered['baselines'] ),
+	'a baselining pass still respects the mode filter: a disabled consequence is not baselined'
+);
+assert_test(
+	'season-warn' === $baselining_filtered['baselines'][0]['tier_key'],
+	'and it is the enabled consequence that gets the baseline row'
+);
+
+assert_test( null === $notice::plan_writes( array(), array(), false, true )['notice'], 'no matches means no notice' );
+
 echo "\n=== Results ===\n\n";
 echo "Passed: {$passed}\nFailed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );
