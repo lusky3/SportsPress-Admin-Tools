@@ -13,6 +13,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * A settings screen: one render_*_field() method per registered option, which
+ * is the shape the WordPress Settings API asks for. The method count IS the
+ * option count, so splitting the class would only move the same methods behind
+ * an indirection and split one screen's markup across two files.
+ *
+ * @SuppressWarnings(PHPMD.TooManyMethods)
+ * @SuppressWarnings(PHPMD.ExcessiveClassComplexity)
+ */
 class SPLM_Admin {
 
 	public function __construct() {
@@ -173,6 +182,23 @@ class SPLM_Admin {
 		register_setting( 'splm_backend_settings', 'splm_discipline_digest_enabled', array( 'sanitize_callback' => 'absint' ) );
 		register_setting( 'splm_backend_settings', 'splm_discipline_digest_recipients', array( 'sanitize_callback' => 'sanitize_text_field' ) );
 		register_setting( 'splm_backend_settings', 'splm_discipline_digest_day', array( 'sanitize_callback' => 'sanitize_key' ) );
+		register_setting(
+			'splm_backend_settings',
+			SPLM_Discipline_Notice::OPTION_MODE_WARNING,
+			array(
+				'sanitize_callback' => array( 'SPLM_Discipline_Notice', 'sanitize_mode' ),
+				'default'           => SPLM_Discipline_Notice::MODE_DISABLED,
+			)
+		);
+		register_setting(
+			'splm_backend_settings',
+			SPLM_Discipline_Notice::OPTION_MODE_SUSPENSION,
+			array(
+				'sanitize_callback' => array( 'SPLM_Discipline_Notice', 'sanitize_mode' ),
+				'default'           => SPLM_Discipline_Notice::MODE_DISABLED,
+			)
+		);
+		register_setting( 'splm_backend_settings', 'splm_discipline_notice_cc', array( 'sanitize_callback' => 'sanitize_text_field' ) );
 
 		$this->add_field( 'splm_default_season', __( 'Season Override', 'sportspress-league-manager' ), array( $this, 'render_default_season_field' ) );
 		$this->add_field( 'splm_fee_source', __( 'Fee Integration Source', 'sportspress-league-manager' ), array( $this, 'render_fee_source_field' ) );
@@ -183,12 +209,15 @@ class SPLM_Admin {
 		$this->add_field( 'splm_report_leader_count', __( 'Leaders Per Category', 'sportspress-league-manager' ), array( $this, 'render_report_leader_count_field' ) );
 		$this->add_field( 'splm_discipline_window_weeks', __( 'Penalty Window (weeks)', 'sportspress-league-manager' ), array( $this, 'render_discipline_window_field' ) );
 		$this->add_field( 'splm_discipline_tiers', __( 'Penalty Thresholds', 'sportspress-league-manager' ), array( $this, 'render_discipline_tiers_field' ) );
-		// These three must have fields: options.php writes null over every option
+		// These six must have fields: options.php writes null over every option
 		// registered in a submitted group that is absent from the POST, so a
 		// registered-but-unrendered option is wiped on every save of this tab.
 		$this->add_field( 'splm_discipline_digest_enabled', __( 'Penalty Digest Email', 'sportspress-league-manager' ), array( $this, 'render_discipline_digest_enabled_field' ) );
 		$this->add_field( 'splm_discipline_digest_recipients', __( 'Digest Recipients', 'sportspress-league-manager' ), array( $this, 'render_discipline_digest_recipients_field' ) );
 		$this->add_field( 'splm_discipline_digest_day', __( 'Digest Day', 'sportspress-league-manager' ), array( $this, 'render_discipline_digest_day_field' ) );
+		$this->add_field( SPLM_Discipline_Notice::OPTION_MODE_WARNING, __( 'Warning Notices', 'sportspress-league-manager' ), array( $this, 'render_notice_mode_warning_field' ) );
+		$this->add_field( SPLM_Discipline_Notice::OPTION_MODE_SUSPENSION, __( 'Suspension Notices', 'sportspress-league-manager' ), array( $this, 'render_notice_mode_suspension_field' ) );
+		$this->add_field( 'splm_discipline_notice_cc', __( 'Notice Copies To', 'sportspress-league-manager' ), array( $this, 'render_notice_cc_field' ) );
 	}
 
 	private function add_field( $id, $title, $callback ) {
@@ -302,25 +331,43 @@ class SPLM_Admin {
 		$tiers = SPLM_Penalty_Watch::sanitize_tiers( (array) get_option( 'splm_discipline_tiers', array() ) );
 
 		echo '<table class="widefat" style="max-width:40em">';
-		echo '<thead><tr><th>' . esc_html__( 'Tier', 'sportspress-league-manager' ) . '</th><th>' . esc_html__( 'Scope', 'sportspress-league-manager' ) . '</th><th>' . esc_html__( 'Minutes', 'sportspress-league-manager' ) . '</th><th>' . esc_html__( 'Would flag', 'sportspress-league-manager' ) . '</th></tr></thead><tbody>';
+		echo '<thead><tr><th>' . esc_html__( 'Tier', 'sportspress-league-manager' ) . '</th><th>' . esc_html__( 'Scope', 'sportspress-league-manager' )
+			. '</th><th>' . esc_html__( 'Minutes', 'sportspress-league-manager' ) . '</th><th>' . esc_html__( 'Consequence', 'sportspress-league-manager' )
+			. '</th><th>' . esc_html__( 'Games', 'sportspress-league-manager' ) . '</th><th>' . esc_html__( 'Would flag', 'sportspress-league-manager' ) . '</th></tr></thead><tbody>';
+
+		$consequence_labels = array(
+			'none'    => __( 'Nothing', 'sportspress-league-manager' ),
+			'warn'    => __( 'Warning notice', 'sportspress-league-manager' ),
+			'suspend' => __( 'Suspension', 'sportspress-league-manager' ),
+		);
 
 		foreach ( $tiers as $i => $tier ) {
 			$count = $this->preview_flag_count( $tier );
+
+			$consequence_select = '<select name="splm_discipline_tiers[' . (int) $i . '][consequence]">';
+			foreach ( $consequence_labels as $value => $label ) {
+				$consequence_select .= '<option value="' . esc_attr( $value ) . '" '
+					. selected( (string) $tier['consequence'], $value, false ) . '>' . esc_html( $label ) . '</option>';
+			}
+			$consequence_select .= '</select>';
+
 			printf(
-				'<tr><td>%s<input type="hidden" name="splm_discipline_tiers[%d][key]" value="%s"/><input type="hidden" name="splm_discipline_tiers[%d][severity]" value="%s"/></td>'
-					. '<td>%s<input type="hidden" name="splm_discipline_tiers[%d][scope]" value="%s"/></td>'
-					. '<td><input type="number" min="1" max="200" name="splm_discipline_tiers[%d][minutes]" value="%d"/></td>'
-					. '<td>%s</td></tr>',
+				'<tr><td>%1$s<input type="hidden" name="splm_discipline_tiers[%2$d][key]" value="%3$s"/><input type="hidden" name="splm_discipline_tiers[%2$d][severity]" value="%4$s"/></td>'
+					. '<td>%5$s<input type="hidden" name="splm_discipline_tiers[%2$d][scope]" value="%6$s"/></td>'
+					. '<td><input type="number" min="1" max="200" name="splm_discipline_tiers[%2$d][minutes]" value="%7$d"/></td>'
+					. '<td>%8$s</td>'
+					. '<td><input type="number" min="0" max="%9$d" name="splm_discipline_tiers[%2$d][games]" value="%10$d"/></td>'
+					. '<td>%11$s</td></tr>',
 				esc_html( $tier['key'] ),
 				(int) $i,
 				esc_attr( $tier['key'] ),
-				(int) $i,
 				esc_attr( $tier['severity'] ),
 				esc_html( $tier['scope'] ),
-				(int) $i,
 				esc_attr( $tier['scope'] ),
-				(int) $i,
 				(int) $tier['minutes'],
+				$consequence_select, // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- built from esc_attr/esc_html above.
+				(int) SPLM_Penalty_Watch::MAX_GAMES,
+				(int) $tier['games'],
 				esc_html(
 					null === $count
 						? __( '—', 'sportspress-league-manager' )
@@ -331,7 +378,7 @@ class SPLM_Admin {
 		}
 
 		echo '</tbody></table>';
-		echo '<p class="description">' . esc_html__( 'Player counts are for the default season, so you can see whether a threshold is useful before saving it.', 'sportspress-league-manager' ) . '</p>';
+		echo '<p class="description">' . esc_html__( 'Player counts are for the default season, so you can see whether a threshold is useful before saving it. Editing a threshold re-baselines that tier: players already over it are not notified, only those who earn more afterwards. Games apply to suspensions only.', 'sportspress-league-manager' ) . '</p>';
 	}
 
 	/**
@@ -372,6 +419,66 @@ class SPLM_Admin {
 		}
 		echo '</select>';
 		echo '<p class="description">' . esc_html__( 'The digest is sent at 08:00 site time on this day. Changing the day applies the next time the digest is scheduled, so turn the digest off and on again to move an existing schedule.', 'sportspress-league-manager' ) . '</p>';
+	}
+
+	/**
+	 * Radio group for one notice delivery mode.
+	 *
+	 * @param string $option      Option name.
+	 * @param string $description Field description.
+	 * @return void
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private function render_notice_mode( string $option, string $description ): void {
+		$labels = array(
+			SPLM_Discipline_Notice::MODE_DISABLED  => __( 'Disabled — record nothing, send nothing', 'sportspress-league-manager' ),
+			SPLM_Discipline_Notice::MODE_QUEUED    => __( 'Queued — hold for release in the dashboard', 'sportspress-league-manager' ),
+			SPLM_Discipline_Notice::MODE_AUTOMATIC => __( 'Automatic — send as soon as the threshold is crossed', 'sportspress-league-manager' ),
+		);
+
+		$current = SPLM_Discipline_Notice::sanitize_mode( get_option( $option, SPLM_Discipline_Notice::MODE_DISABLED ) );
+
+		echo '<fieldset>';
+		foreach ( $labels as $value => $label ) {
+			printf(
+				'<label style="display:block"><input type="radio" name="%1$s" value="%2$s" %3$s/> %4$s</label>',
+				esc_attr( $option ),
+				esc_attr( $value ),
+				checked( $current, $value, false ),
+				esc_html( $label )
+			);
+		}
+		echo '</fieldset>';
+		echo '<p class="description">' . esc_html( $description ) . '</p>';
+	}
+
+	/**
+	 * Delivery mode for warning notices.
+	 */
+	public function render_notice_mode_warning_field() {
+		$this->render_notice_mode(
+			SPLM_Discipline_Notice::OPTION_MODE_WARNING,
+			__( 'What happens when a player crosses a threshold whose consequence is a warning. Off by default; turning this on starts mailing players.', 'sportspress-league-manager' )
+		);
+	}
+
+	/**
+	 * Delivery mode for suspension notices.
+	 */
+	public function render_notice_mode_suspension_field() {
+		$this->render_notice_mode(
+			SPLM_Discipline_Notice::OPTION_MODE_SUSPENSION,
+			__( 'What happens when a player crosses a threshold whose consequence is a suspension. Queued is recommended: a score sheet that overstates penalty minutes would otherwise suspend a player before anyone reviews it.', 'sportspress-league-manager' )
+		);
+	}
+
+	/**
+	 * Extra addresses copied on every released notice.
+	 */
+	public function render_notice_cc_field() {
+		echo '<input type="text" class="regular-text" name="splm_discipline_notice_cc" value="' . esc_attr( get_option( 'splm_discipline_notice_cc', '' ) ) . '"/>';
+		echo '<p class="description">' . esc_html__( 'Comma-separated. Copied by Bcc on every notice, in addition to the digest recipients and the player’s captain. Leave blank to copy nobody extra.', 'sportspress-league-manager' ) . '</p>';
 	}
 
 	/**
