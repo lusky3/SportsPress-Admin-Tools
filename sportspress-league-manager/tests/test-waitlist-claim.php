@@ -735,6 +735,29 @@ $dupes = array(
 );
 assert_test( 11 === $w::match_offer( null, $dupes, 'player@example.com', 0 )->id, 'duplicate live offers resolve the lowest id deterministically' );
 
+echo "\n=== offer_belongs_to_orderer(): the fallback rule, one row at a time ===\n\n";
+
+// The predicate match_offer()'s fallback loop applies to each candidate.
+// Asserted directly as well as through match_offer() because it is where the
+// two guest-collision guards live, and because it is the one call site that
+// must keep using is_claimable() rather than is_claimable_by_token().
+assert_test( $w::offer_belongs_to_orderer( row( array( 'email' => 'player@example.com' ) ), 'player@example.com', 0 ), 'a matching email belongs to the orderer' );
+assert_test( $w::offer_belongs_to_orderer( row( array( 'email' => 'PLAYER@Example.COM' ) ), 'player@example.com', 0 ), 'the row\'s own email is lower-cased before comparing' );
+assert_test( $w::offer_belongs_to_orderer( row( array( 'email' => 'other@example.com', 'user_id' => 42 ) ), 'unrelated@example.com', 42 ), 'a matching user id belongs to the orderer even when the email does not' );
+assert_test( ! $w::offer_belongs_to_orderer( row(), 'nobody@example.com', 0 ), 'neither signal matching does not belong' );
+assert_test( ! $w::offer_belongs_to_orderer( row( array( 'email' => '', 'user_id' => 0 ) ), '', 0 ), 'two empty emails are not a match, and two zero user ids are not either' );
+assert_test( ! $w::offer_belongs_to_orderer( row( array( 'email' => 'someone@example.com' ) ), 'different@example.com', 0 ), 'a guest order does not collide with a guest row on user_id 0' );
+
+// The expiry asymmetry, pinned at the predicate itself: this half of the rule
+// has no token to vouch for the player, so a lapsed deadline disqualifies —
+// the opposite of the token path asserted above.
+assert_test(
+	! $w::offer_belongs_to_orderer( row( array( 'expires_at' => gmdate( 'Y-m-d H:i:s', time() - 60 ) ) ), 'player@example.com', 0 ),
+	'a lapsed offer does not belong to the orderer on the fallback path, unlike the token path (C1)'
+);
+assert_test( ! $w::offer_belongs_to_orderer( row( array( 'status' => 'claimed' ) ), 'player@example.com', 0 ), 'an already-claimed row does not belong to the orderer' );
+assert_test( ! $w::offer_belongs_to_orderer( row( array( 'target_product_id' => 0 ) ), 'player@example.com', 0 ), 'a row with no target product does not belong to the orderer' );
+
 /**
  * Resets every mutable fake handle_order_completed() touches, so one
  * scenario's fixtures cannot leak into the next.

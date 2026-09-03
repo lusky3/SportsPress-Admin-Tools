@@ -267,21 +267,7 @@ class SPLM_Waitlist {
 
 		$matches = array();
 		foreach ( $offered_for_product as $row ) {
-			if ( ! SPLM_Waitlist_Claim::is_claimable( $row ) ) {
-				continue;
-			}
-
-			$row_email = strtolower( trim( (string) $row->email ) );
-			$row_user  = (int) $row->user_id;
-
-			// Both guards matter: an empty billing email must not match a row
-			// with an empty email, and user_id 0 must not match a guest row's
-			// 0 — otherwise every guest checkout would collide with every
-			// guest entry.
-			$email_hit = ( '' !== $email && $row_email === $email );
-			$user_hit  = ( $user_id > 0 && $row_user === $user_id );
-
-			if ( $email_hit || $user_hit ) {
+			if ( self::offer_belongs_to_orderer( $row, $email, $user_id ) ) {
 				$matches[ (int) $row->id ] = $row;
 			}
 		}
@@ -295,6 +281,43 @@ class SPLM_Waitlist {
 		// deterministic rather than dependent on row order.
 		ksort( $matches );
 		return reset( $matches );
+	}
+
+	/**
+	 * Whether one offered row is the same person as the order that arrived.
+	 *
+	 * Pure — the whole of match_offer()'s fallback rule for a single row, and
+	 * the only place the two identity signals are weighed.
+	 *
+	 * is_claimable(), NOT is_claimable_by_token(): nothing on this path proves
+	 * the player acted inside the offer window, so a lapsed deadline still
+	 * disqualifies the row. The token path in match_offer() above is the only
+	 * place that distinction goes the other way, and the two must not be
+	 * merged — see SPLM_Waitlist_Claim::is_claimable_by_token()'s docblock.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param object $row     An offered waitlist row.
+	 * @param string $email   Billing email, already lower-cased and trimmed.
+	 * @param int    $user_id Order customer id, already cast.
+	 * @return bool
+	 */
+	public static function offer_belongs_to_orderer( $row, $email, $user_id ): bool {
+		if ( ! SPLM_Waitlist_Claim::is_claimable( $row ) ) {
+			return false;
+		}
+
+		$row_email = strtolower( trim( (string) $row->email ) );
+		$row_user  = (int) $row->user_id;
+
+		// Both guards matter: an empty billing email must not match a row
+		// with an empty email, and user_id 0 must not match a guest row's
+		// 0 — otherwise every guest checkout would collide with every
+		// guest entry.
+		$email_hit = ( '' !== $email && $row_email === $email );
+		$user_hit  = ( $user_id > 0 && $row_user === $user_id );
+
+		return $email_hit || $user_hit;
 	}
 
 	/**
