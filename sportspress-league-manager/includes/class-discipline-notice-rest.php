@@ -247,6 +247,8 @@ class SPLM_Discipline_Notice_REST {
 			array(
 				'player_name'    => get_the_title( $player_id ),
 				'season_name'    => self::season_name( $season_id ),
+				'scope'          => (string) $row->scope,
+				'season_value'   => (int) $row->season_at_fire,
 				'consequence'    => (string) $row->consequence,
 				'games'          => (int) $row->games,
 				'value'          => (int) $row->value_at_fire,

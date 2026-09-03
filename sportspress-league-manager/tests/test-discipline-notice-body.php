@@ -207,6 +207,51 @@ assert_test(
 	'a suspension does not arrive under the same subject as a warning'
 );
 
+echo "\n=== a window tier does not report its figure as a season total ===\n\n";
+
+// A window tier's matched value is a rolling few-weeks total. Reporting it as
+// "N penalty minutes in <season>" understates the player's real season figure
+// and reads as wrong to anyone who knows their own record.
+$window_body = $mail::body(
+	array(
+		'player_name'    => 'Bob',
+		'season_name'    => 'W2025-26',
+		'scope'          => 'window',
+		'value'          => 9,
+		'season_value'   => 13,
+		'consequence'    => 'suspend',
+		'games'          => 1,
+		'next_threshold' => 0,
+		'game_label'     => '',
+	)
+);
+
+assert_test( false !== strpos( $window_body, 'last few weeks' ), 'a window figure is described as recent, not seasonal' );
+assert_test( false !== strpos( $window_body, '13' ), 'and the real season total is stated alongside it' );
+assert_test(
+	false === strpos( $window_body, '9 penalty minutes in W2025-26' ),
+	'the window figure is never presented as the season total'
+);
+
+$season_body = $mail::body(
+	array(
+		'player_name'    => 'Alex',
+		'season_name'    => 'W2025-26',
+		'scope'          => 'season',
+		'value'          => 18,
+		'season_value'   => 18,
+		'consequence'    => 'suspend',
+		'games'          => 1,
+		'next_threshold' => 0,
+		'game_label'     => '',
+	)
+);
+assert_test(
+	false !== strpos( $season_body, '18 penalty minutes in W2025-26' ),
+	'a season tier still reads exactly as before'
+);
+assert_test( false === strpos( $season_body, 'last few weeks' ), 'and does not gain the window wording' );
+
 echo "\n=== Results ===\n\n";
 echo "Passed: {$passed}\nFailed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );

@@ -392,6 +392,8 @@ class SPLM_Discipline_Notice_Pass {
 		return array(
 			'player_name'    => (string) $player['name'],
 			'season_name'    => self::season_name( $season_id ),
+			'scope'          => (string) $match['scope'],
+			'season_value'   => $season_total,
 			'consequence'    => (string) $match['consequence'],
 			'games'          => (int) $match['games'],
 			'value'          => (int) $match['value'],

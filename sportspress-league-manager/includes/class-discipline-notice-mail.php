@@ -87,12 +87,7 @@ class SPLM_Discipline_Notice_Mail {
 			/* translators: %s: player name. */
 			sprintf( __( 'Hi %s,', 'sportspress-league-manager' ), $greeting ),
 			'',
-			sprintf(
-				/* translators: 1: penalty minutes, 2: season name. */
-				__( 'You have accumulated %1$d penalty minutes in %2$s.', 'sportspress-league-manager' ),
-				(int) ( $context['value'] ?? 0 ),
-				(string) ( $context['season_name'] ?? '' )
-			),
+			self::accumulated_sentence( $context ),
 			'',
 		);
 
@@ -106,6 +101,40 @@ class SPLM_Discipline_Notice_Mail {
 		}
 
 		return implode( "\n", $lines ) . "\n";
+	}
+
+	/**
+	 * The sentence stating what the player has accumulated.
+	 *
+	 * A window tier's matched value is a rolling few-weeks total, not a season
+	 * total — so reporting it as "N penalty minutes in <season>" understates
+	 * the player's actual season figure and reads as simply wrong to anyone who
+	 * knows their own record. The queue page already distinguishes the two; the
+	 * email now does too.
+	 *
+	 * @param array $context Body context; see body().
+	 * @return string
+	 */
+	private static function accumulated_sentence( array $context ): string {
+		$value  = (int) ( $context['value'] ?? 0 );
+		$season = (string) ( $context['season_name'] ?? '' );
+
+		if ( 'window' === (string) ( $context['scope'] ?? '' ) ) {
+			return sprintf(
+				/* translators: 1: recent penalty minutes, 2: season penalty minutes, 3: season name. */
+				__( 'You have accumulated %1$d penalty minutes in the last few weeks, and %2$d in %3$s overall.', 'sportspress-league-manager' ),
+				$value,
+				(int) ( $context['season_value'] ?? $value ),
+				$season
+			);
+		}
+
+		return sprintf(
+			/* translators: 1: penalty minutes, 2: season name. */
+			__( 'You have accumulated %1$d penalty minutes in %2$s.', 'sportspress-league-manager' ),
+			$value,
+			$season
+		);
 	}
 
 	/**
