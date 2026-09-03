@@ -6679,7 +6679,9 @@ Expected: `No syntax errors detected` for each.
 phpcs --standard=phpcs.xml $(git diff --name-only main...HEAD -- '*.php' | tr '\n' ' ')
 ```
 
-Expected: exit 0. Note two sniffs that catch new code in this repo and are easy to trip:
+Expected: exit 0. Note that `phpcs.xml` globally excludes `*/tests/*`, so test files are **not** part of this gate — do not expect them to be linted, and do not "fix" phpcs findings in a test file that phpcs never reported.
+
+Two sniffs catch new production code in this repo and are easy to trip:
 
 - `Generic.Commenting.DocComment.LongNotCapital` — a docblock's long description must start with a capital. `phpcs.xml` excludes `MissingShort` and `ShortNotCapital` but **not** this one, and it is an error. Reword rather than suppress.
 - `WordPress.DB.PreparedSQL.InterpolatedNotPrepared` is reported **on the SQL string's own line**, so a DB ignore needs a second, line-specific ignore there — the ignore on the `$wpdb->get_row(` call line does not reach it. `class-discipline-database.php:106-111` is the reference.
