@@ -2167,6 +2167,11 @@ function __( $text, $domain = null ) { // phpcs:ignore
 	return $text;
 }
 
+// suspension_sentence() pluralises its game count through _n().
+function _n( $single, $plural, $number, $domain = null ) { // phpcs:ignore
+	return 1 === (int) $number ? $single : $plural;
+}
+
 function esc_html( $text ) {
 	return htmlspecialchars( (string) $text, ENT_QUOTES );
 }
@@ -2574,17 +2579,7 @@ In `run-all-tests.sh`, after the `test-discipline-notice-recipients.php` line:
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-discipline-notice-body.php"
 ```
 
-- [ ] **Step 5: Add the `_n()` stub the test needs**
-
-`suspension_sentence()` calls `_n()`. Add to the test's stub block, beside `__()`:
-
-```php
-function _n( $single, $plural, $number, $domain = null ) { // phpcs:ignore
-	return 1 === (int) $number ? $single : $plural;
-}
-```
-
-- [ ] **Step 6: Run it**
+- [ ] **Step 5: Run it**
 
 ```bash
 php sportspress-league-manager/tests/test-discipline-notice-body.php
@@ -2592,7 +2587,7 @@ php sportspress-league-manager/tests/test-discipline-notice-body.php
 
 Expected: PASS with `Failed: 0`. `next_game_label()` is not exercised — it needs `get_posts()` and is covered by staging.
 
-- [ ] **Step 7: Lint and commit**
+- [ ] **Step 6: Lint and commit**
 
 ```bash
 php -l sportspress-league-manager/includes/class-discipline-notice-mail.php
