@@ -237,7 +237,18 @@ class SPLM_Discipline_Notice {
 
 		foreach ( $matches_by_scope as $scope => $scope_matches ) {
 			foreach ( (array) $scope_matches as $match ) {
-				$mode = (string) ( $modes[ (string) ( $match['consequence'] ?? '' ) ] ?? self::MODE_DISABLED );
+				$consequence = (string) ( $match['consequence'] ?? '' );
+
+				// Inert consequences are dropped here as well as in select(),
+				// so the two filters cannot disagree. Without this, a
+				// baselining pass whose modes map happens to carry a 'none'
+				// key writes a baseline row for a tier that can never produce
+				// a notice.
+				if ( ! in_array( $consequence, self::ACTIONABLE, true ) ) {
+					continue;
+				}
+
+				$mode = (string) ( $modes[ $consequence ] ?? self::MODE_DISABLED );
 				if ( self::MODE_DISABLED !== $mode ) {
 					$eligible[ $scope ][] = $match;
 				}

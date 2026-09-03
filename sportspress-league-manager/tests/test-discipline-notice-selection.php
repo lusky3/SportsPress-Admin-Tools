@@ -277,6 +277,21 @@ assert_test(
 
 assert_test( null === $notice::plan_writes( array(), array(), false, true )['notice'], 'no matches means no notice' );
 
+echo "\n=== plan_writes(): an inert consequence is never eligible ===\n\n";
+
+// The mode filter and select() must agree about what is actionable. Without
+// the ACTIONABLE guard in eligible_matches(), a baselining pass whose modes
+// map happens to carry a 'none' key writes a baseline row for a tier that can
+// never produce a notice.
+$inert_only = array( 'season' => array( $mk( 'inert', 'season', 'none', 0, 12 ) ) );
+$inert_plan = $notice::plan_writes( $inert_only, array( 'none' => 'queued' ), true, true );
+
+assert_test( null === $inert_plan['notice'], 'a none-consequence tier produces no notice even with a mode set for it' );
+assert_test(
+	array() === $inert_plan['baselines'],
+	'and produces no baseline row either: eligible_matches() and select() agree on what is actionable'
+);
+
 echo "\n=== Results ===\n\n";
 echo "Passed: {$passed}\nFailed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );
