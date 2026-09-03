@@ -75,6 +75,15 @@ Deferred because it is a pure move-refactor across five files whose safety net d
 end, and because it would have churned the diff at the moment the staging pass most needed to be
 unambiguous. Do it after staging is green.
 
+> **DONE — this item is closed.** The repo owner subsequently asked for a full repair pass on the static
+> analysis findings (see item 8), which made this split the right move after all rather than a deferral.
+> Commit `56205c9` extracted `SPLM_Waitlist_Claim` exactly as argued above, and went one step further:
+> the offer's convener actions became `SPLM_Waitlist_Offer` and the scheduler's side became
+> `SPLM_Waitlist_Expiry`, on the argument that the scheduler is a different actor — no lock, no human
+> waiting, returning `bool`/`int` rather than `WP_Error`, failures swallowed by design. Every assertion
+> count held across the move. What remains in `SPLM_Waitlist` is order-driven ingestion and tie-back,
+> which two reviews independently judged should stay together.
+
 ---
 
 ## 4. Residual Minors from the fix-wave re-review
@@ -82,7 +91,7 @@ unambiguous. Do it after staging is green.
 | Item | Location | Adjudication |
 |---|---|---|
 | `set_target()` accepts a `claimed` or `cancelled` row, so a fulfilled registration's product could be repointed with `resolved_order_id` left pointing at an order for a different product | `class-waitlist.php` — only `offered` is refused | **Follow-up.** UI-unreachable (the control renders only when the row has no target, and a claimed row has one), so it needs a hand-made API call from someone holding manager capability. A `can_offer( $row->status )` check is the one-line tightening. |
-| The inline set-target input has no accessible name, and the per-row `Set` buttons are all named just "Set" with no row context — both inside a `role="note"` container that is not meant to hold interactive controls | `src/dashboard/pages/Waitlist.jsx` | **Follow-up, and the cheapest of these to take.** Every other input on the page is wrapped in a `<label>`; this one has only a placeholder, which an axe scan reports as a missing label. |
+| The inline set-target input has no accessible name, and the per-row `Set` buttons are all named just "Set" with no row context — both inside a `role="note"` container that is not meant to hold interactive controls | `src/dashboard/pages/Waitlist.jsx` | **DONE** — closed by commit `ee06f14` during the repair pass in item 8. The input got a real `<label>`, each `Set` button an `aria-label` naming its row, and the interactive controls moved out of the `role="note"` region. |
 | The Waitlist nav item shares a glyph with Rosters | `src/dashboard/components/Layout.jsx` | **Accept.** The named defect (duplicating the *adjacent* Payments icon) is fixed, and this nav already tolerates a shared glyph between `leaders` and `season-report`. |
 | `Fake_WPDB::get_row()` keys off the bound parameter rather than the row's `claim_token` column, so it cannot reproduce "the row became unfindable because its token was nulled" behaviourally | `tests/test-waitlist-claim.php` | **Accept.** The guard is a field assertion rather than a behavioural one, but it was verified to fail against the pre-fix code by direct reproduction, so it does its job. |
 
@@ -130,9 +139,11 @@ took that to 12, and none of it changed behaviour:
 - `ingest_order()` (`class-waitlist.php`): NPath 577 → 3.
 - `register_routes()` (`class-waitlist-rest.php`): 235 lines → 21, by extracting one argument-definition
   helper per route.
-- `SPLM_Waitlist` (as it stood mid-branch, 1225 lines): split into four classes by concern —
-  `SPLM_Waitlist`, `SPLM_Waitlist_Gate`, `SPLM_Waitlist_Offer`, `SPLM_Waitlist_Database` — ahead of the
-  `SPLM_Waitlist_Claim` extraction still pending in item 3.
+- `SPLM_Waitlist` (as it stood mid-branch, 1225 lines): split into four classes by concern. The commit
+  (`56205c9`) added `SPLM_Waitlist_Claim`, `SPLM_Waitlist_Offer` and `SPLM_Waitlist_Expiry`, leaving
+  `SPLM_Waitlist` itself holding order-driven ingestion and tie-back. `SPLM_Waitlist_Gate` and
+  `SPLM_Waitlist_Database` already existed and were not products of the split. **This means item 3 below
+  is now done** — see the correction appended to it.
 - PHPCS: 27 errors → 0.
 - `UnusedFormalParameter`: repaired via `func_get_arg()` rather than suppressed, everywhere it appeared.
 
