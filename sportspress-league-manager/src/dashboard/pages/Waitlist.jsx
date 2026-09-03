@@ -489,10 +489,11 @@ export default function Waitlist() {
 		setWaitlistTarget( row.id, targetProductId )
 			.then( () => {
 				setNotice( 'Registration product set.' );
-				setTargetInputs( ( prev ) => {
-					const { [ row.id ]: _removed, ...next } = prev;
-					return next;
-				} );
+				setTargetInputs( ( prev ) =>
+					Object.fromEntries(
+						Object.entries( prev ).filter( ( [ key ] ) => key !== String( row.id ) )
+					)
+				);
 				load();
 			} )
 			.catch( ( e ) => setError( e?.message || 'Could not set the registration product.' ) )
