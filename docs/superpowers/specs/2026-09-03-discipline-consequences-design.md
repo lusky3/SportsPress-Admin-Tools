@@ -250,7 +250,8 @@ recording their present total in `value_at_fire` and mailing nobody:
 3. **A tier's `minutes` being edited.** This is the retroactivity guard.
    Dropping `season-critical` from 18 to 10 re-baselines the tier, so nobody
    currently over is mailed; only minutes earned after the edit can trigger.
-   Hooked on the existing `update_option_splm_discipline_tiers` action, which
+   Decided per tier from a stored per-tier token, so editing one threshold
+   re-baselines that tier alone and leaves the others notifying.
    already fires `SPLM_Leaders_REST::flush_cache`.
 
 Baselines live in the notice table rather than in `splm_discipline_ack`. Reusing

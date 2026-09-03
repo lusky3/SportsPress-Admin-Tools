@@ -358,6 +358,38 @@ assert_test(
 	'changing what a tier DOES is not a threshold change: a convener promoting a warning to a suspension means it to take effect, and the predicate still prevents a re-send at an unchanged total'
 );
 
+
+echo "\n=== baselining is per tier, not per pass ===\n\n";
+
+// A single shared token meant ANY change baselined EVERYTHING: nudging one
+// threshold muted every player who crossed a DIFFERENT tier that same day,
+// permanently, at that total. The spec is singular — a threshold edit
+// "re-baselines that tier".
+$state->options['splm_discipline_tiers']                  = SPLM_Penalty_Watch::default_tiers();
+$state->options['splm_discipline_notice_mode_warning']    = 'queued';
+$state->options['splm_discipline_notice_mode_suspension'] = 'queued';
+$pass::remember_token();
+
+$nudged = SPLM_Penalty_Watch::default_tiers();
+foreach ( $nudged as $i => $t ) {
+	if ( 'window-critical' === $t['key'] ) {
+		$nudged[ $i ]['minutes'] = 9;
+	}
+}
+$state->options['splm_discipline_tiers'] = $nudged;
+
+assert_test( $pass::is_baselining_tier( 'window-critical' ), 'the edited tier baselines' );
+assert_test(
+	! $pass::is_baselining_tier( 'season-critical' ),
+	'a DIFFERENT tier does not: editing one threshold must not mute a suspension on another'
+);
+assert_test( ! $pass::is_baselining_tier( 'season-warn' ), 'nor any other untouched tier' );
+
+$pass::remember_token();
+assert_test( ! $pass::is_baselining_tier( 'window-critical' ), 'and once remembered the edited tier settles' );
+
+assert_test( $pass::is_baselining_tier( 'never-seen' ) === false, 'a tier that is not configured cannot baseline' );
+
 echo "\n=== Results ===\n\n";
 echo "Passed: {$passed}\nFailed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );

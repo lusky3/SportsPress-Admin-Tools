@@ -96,25 +96,73 @@ class SPLM_Discipline_Notice_Pass {
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public static function baseline_token(): string {
-		$tiers = SPLM_Penalty_Watch::sanitize_tiers( (array) get_option( 'splm_discipline_tiers', array() ) );
-
-		$thresholds = array();
-		foreach ( $tiers as $tier ) {
-			$thresholds[ (string) $tier['key'] ] = (int) $tier['minutes'];
-		}
-		ksort( $thresholds );
-
-		$parts = array(
-			'thresholds' => $thresholds,
-			'warn_on'    => SPLM_Discipline_Notice::MODE_DISABLED !== SPLM_Discipline_Notice::mode_for( 'warn' ),
-			'suspend_on' => SPLM_Discipline_Notice::MODE_DISABLED !== SPLM_Discipline_Notice::mode_for( 'suspend' ),
-		);
-
-		// Digest only, not a security primitive — xxh128 is faster than md5()
-		// and does not trip weak-crypto scanners, matching the cache keys in
-		// SPLM_Leaders_REST.
-		return hash( 'xxh128', wp_json_encode( $parts ) );
+		return wp_json_encode( self::tier_tokens() );
 	}
+
+	/**
+	 * A baseline token per tier.
+	 *
+	 * Per tier, not one for the pass. A single shared token meant ANY change to
+	 * anything baselined EVERYTHING: nudging window-critical from 8 to 9 muted
+	 * every player who crossed season-critical — a suspension — that same day,
+	 * permanently, at that total. The spec is singular about this: a threshold
+	 * edit "re-baselines that tier", and the mode trigger is "a mode
+	 * transitioning out of disabled".
+	 *
+	 * Each tier's token digests its own minutes plus whether ITS consequence's
+	 * delivery mode is enabled — as a boolean, so queued to automatic still
+	 * does not re-baseline. A tier's consequence is deliberately absent: a
+	 * convener promoting a warning to a suspension means it to take effect.
+	 *
+	 * @return array tier_key => token.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	public static function tier_tokens(): array {
+		$tiers  = SPLM_Penalty_Watch::sanitize_tiers( (array) get_option( 'splm_discipline_tiers', array() ) );
+		$tokens = array();
+
+		foreach ( $tiers as $tier ) {
+			$consequence = (string) $tier['consequence'];
+			$tokens[ (string) $tier['key'] ] = hash(
+				// Digest only, not a security primitive — xxh128 is faster than
+				// md5() and does not trip weak-crypto scanners, matching the
+				// cache keys in SPLM_Leaders_REST.
+				'xxh128',
+				wp_json_encode(
+					array(
+						'minutes' => (int) $tier['minutes'],
+						'mode_on' => SPLM_Discipline_Notice::MODE_DISABLED !== SPLM_Discipline_Notice::mode_for( $consequence ),
+					)
+				)
+			);
+		}
+
+		ksort( $tokens );
+
+		return $tokens;
+	}
+
+	/**
+	 * Whether one tier must baseline rather than notify on this pass.
+	 *
+	 * @param string $tier_key Tier identifier.
+	 * @return bool
+	 */
+	public static function is_baselining_tier( string $tier_key ): bool {
+		$stored = (array) get_option( self::OPTION_BASELINE_TOKEN, array() );
+		$now    = self::tier_tokens();
+
+		if ( ! isset( $now[ $tier_key ] ) ) {
+			return false;
+		}
+
+		// A tier with no stored token has never been seen — first run, or a
+		// newly added tier — so it baselines rather than mailing everyone who
+		// is already over it.
+		return ! isset( $stored[ $tier_key ] ) || $stored[ $tier_key ] !== $now[ $tier_key ];
+	}
+
 
 	/**
 	 * Run the pass.
@@ -191,7 +239,7 @@ class SPLM_Discipline_Notice_Pass {
 			SPLM_Player_Stats_Aggregator::season_start( $players )
 		);
 
-		$baselining = self::is_baselining();
+		$baselining = false;
 
 		$written = 0;
 		foreach ( $players as $player_id => $player ) {
@@ -214,7 +262,13 @@ class SPLM_Discipline_Notice_Pass {
 	 * @return bool
 	 */
 	public static function is_baselining(): bool {
-		return (string) get_option( self::OPTION_BASELINE_TOKEN, '' ) !== self::baseline_token();
+		foreach ( array_keys( self::tier_tokens() ) as $tier_key ) {
+			if ( self::is_baselining_tier( $tier_key ) ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
@@ -223,7 +277,7 @@ class SPLM_Discipline_Notice_Pass {
 	 * @return void
 	 */
 	public static function remember_token(): void {
-		update_option( self::OPTION_BASELINE_TOKEN, self::baseline_token(), false );
+		update_option( self::OPTION_BASELINE_TOKEN, self::tier_tokens(), false );
 	}
 
 	/**
@@ -266,7 +320,32 @@ class SPLM_Discipline_Notice_Pass {
 			return $written;
 		}
 
-		return $written + self::plan_and_write( $player_id, $season_id, $fireable, $player, $season_total, $tiers, $baselining );
+		// Split by tier, because baselining is per tier: a convener nudging one
+		// threshold must not silently mute a crossing on a different one. Each
+		// half is planned separately — the baselining half records values and
+		// mails nobody, the other half behaves normally.
+		$to_baseline = array();
+		$to_notify   = array();
+
+		foreach ( $fireable as $scope => $scope_matches ) {
+			foreach ( $scope_matches as $match ) {
+				if ( $baselining || self::is_baselining_tier( (string) $match['tier_key'] ) ) {
+					$to_baseline[ $scope ][] = $match;
+					continue;
+				}
+				$to_notify[ $scope ][] = $match;
+			}
+		}
+
+		if ( $to_baseline ) {
+			$written += self::plan_and_write( $player_id, $season_id, $to_baseline, $player, $season_total, $tiers, true );
+		}
+
+		if ( $to_notify ) {
+			$written += self::plan_and_write( $player_id, $season_id, $to_notify, $player, $season_total, $tiers, false );
+		}
+
+		return $written;
 	}
 
 	/**
