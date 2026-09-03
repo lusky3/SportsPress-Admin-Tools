@@ -1399,7 +1399,7 @@ The decision core. Pure functions: totals and rows in, decisions out — no data
   - `ACTIONABLE` — the consequences that can produce a notice
   - `should_fire( array $match, $latest, int $season_total ): bool`
   - `needs_refresh( $latest, int $season_total ): bool`
-  - `plan_writes( array $matches_by_scope, array $modes, bool $baselining, bool $has_address ): array` — `array( 'notice' => array|null, 'status' => string, 'send' => bool, 'baselines' => array )`
+  - `plan_writes( array $matches_by_scope, array $modes, bool $baselining, bool $has_address, bool $suspension_outstanding = false ): array` — `array( 'notice' => array|null, 'status' => string, 'send' => bool, 'baselines' => array )`
   - `select( array $matches_by_scope ): array` — `array( 'notice' => array|null, 'baselines' => array )`
   - `rank_matches( array $matches ): array` — sorted copy, most severe first
 
@@ -1810,10 +1810,13 @@ class SPLM_Discipline_Notice {
 	 * the warning the league actually enabled is both skipped and baselined out
 	 * of existence.
 	 *
-	 * @param array $matches_by_scope Scope => matches that passed should_fire().
-	 * @param array $modes            consequence => mode, e.g. array( 'warn' => 'queued' ).
-	 * @param bool  $baselining       Whether this pass is a baselining pass.
-	 * @param bool  $has_address      Whether the player's address resolved.
+	 * @param array $matches_by_scope       Scope => matches that passed should_fire().
+	 * @param array $modes                  consequence => mode, e.g. array( 'warn' => 'queued' ).
+	 * @param bool  $baselining             Whether this pass is a baselining pass.
+	 * @param bool  $has_address            Whether the player's address resolved.
+	 * @param bool  $suspension_outstanding Whether a suspension notice already exists
+	 *                                      for this player this season. Defaults false
+	 *                                      so existing callers and tests are unaffected.
 	 * @return array array(
 	 *               'notice'    => array|null,
 	 *               'status'    => string,
@@ -1821,8 +1824,8 @@ class SPLM_Discipline_Notice {
 	 *               'baselines' => array,
 	 *             )
 	 */
-	public static function plan_writes( array $matches_by_scope, array $modes, bool $baselining, bool $has_address ): array {
-		$eligible = self::eligible_matches( $matches_by_scope, $modes );
+	public static function plan_writes( array $matches_by_scope, array $modes, bool $baselining, bool $has_address, bool $suspension_outstanding = false ): array {
+		$eligible = self::eligible_matches( $matches_by_scope, $modes, $suspension_outstanding );
 
 		$nothing = array(
 			'notice'    => null,
@@ -1920,16 +1923,36 @@ class SPLM_Discipline_Notice {
 	 * baseline row. The spec is explicit: disabled means discipline behaves
 	 * exactly as it did before notices existed.
 	 *
-	 * @param array $matches_by_scope Scope => matches.
-	 * @param array $modes            consequence => mode.
+	 * @param array $matches_by_scope       Scope => matches.
+	 * @param array $modes                  consequence => mode.
+	 * @param bool  $suspension_outstanding Whether a suspension notice already
+	 *                                      exists for this player and season.
 	 * @return array Scope => surviving matches.
 	 */
-	private static function eligible_matches( array $matches_by_scope, array $modes ): array {
+	private static function eligible_matches( array $matches_by_scope, array $modes, bool $suspension_outstanding ): array {
 		$eligible = array();
 
 		foreach ( $matches_by_scope as $scope => $scope_matches ) {
 			foreach ( (array) $scope_matches as $match ) {
-				$mode = (string) ( $modes[ (string) ( $match['consequence'] ?? '' ) ] ?? self::MODE_DISABLED );
+				$consequence = (string) ( $match['consequence'] ?? '' );
+
+				// Inert consequences are dropped here as well as in select(),
+				// so the two filters cannot disagree. Without this, a
+				// baselining pass whose modes map happens to carry a 'none'
+				// key writes a baseline row for a tier that can never produce
+				// a notice.
+				if ( ! in_array( $consequence, self::ACTIONABLE, true ) ) {
+					continue;
+				}
+
+				// A warning is moot once a suspension has been issued this
+				// season: its whole content is "at N you will be suspended",
+				// which is false for a player already suspended at N.
+				if ( $suspension_outstanding && 'suspend' !== $consequence ) {
+					continue;
+				}
+
+				$mode = (string) ( $modes[ $consequence ] ?? self::MODE_DISABLED );
 				if ( self::MODE_DISABLED !== $mode ) {
 					$eligible[ $scope ][] = $match;
 				}
@@ -1992,7 +2015,7 @@ git add sportspress-league-manager/includes/class-discipline-notice.php \
         sportspress-league-manager/tests/test-discipline-notice-selection.php
 git commit -m "feat(discipline): notice predicate and one-per-pass selection
 
-One predicate over the latest row's value_at_fire governs every status,
+One predicate over the latest row's season_at_fire governs every status,
 which delivers baseline suppression, no-resend, re-fire after served, and
 a sticky discard without special cases. A failed row suppresses re-firing
 deliberately: it stays actionable and is retried through release.
@@ -3741,7 +3764,108 @@ The only writer of notice rows. Runs daily, `SPAT_Lock`-guarded, and never from 
 
 This gets all three for free, and gets one important non-trigger right too: the token records whether a mode is enabled as a **boolean**, not its value, so moving `queued → automatic` does **not** re-baseline. Both are enabled; only crossing the disabled boundary counts.
 
-- [ ] **Step 1: Append the baseline-token tests**
+#### The warning that arrives after the suspension
+
+Task 4's review found this by simulating the pass rather than reading it, and it reproduces exactly. With both modes `queued` and a player climbing 18 → 20 → 22 against the default tiers:
+
+```
+season=18 | notice=season-critical  baselines=[season-warn] refreshed=[]
+season=20 | notice=season-warn      baselines=[]            refreshed=[season-critical]
+season=22 | notice=NONE             baselines=[]            refreshed=[season-warn,season-critical]
+```
+
+The winning tier behaves correctly — one fire, then refreshes. The **runner-up** does not stay put. Its baseline row was written at `season_at_fire = 18`, so at 20 the predicate sees 20 > 18 and fires it; the suspension is suppressed as `pending`, so the warning wins selection and becomes a second `pending` row. The convener then releases two notices and the player receives a suspension **and** a warning saying "at 18 penalty minutes you will be suspended" — which is false, because they already are.
+
+This is the harm `select()` exists to prevent, displaced from within one pass to across passes. `plan_writes()` cannot see it: its signature gives it no visibility of other tiers' rows. So the pass supplies the fact, and `plan_writes()` applies the rule.
+
+**The rule:** once a suspension notice exists for a player in a season, warning tiers no longer fire for that season. A warning's entire content is "at N you will be suspended", which is permanently false for a player already suspended at N — including after they have served it.
+
+- [ ] **Step 1: Add the database lookup**
+
+Add to `SPLM_Discipline_Notice_Database`:
+
+```php
+	/**
+	 * Whether a suspension notice already exists for this player and season.
+	 *
+	 * Excludes `baseline` (nothing was issued) and `discarded` (a convener
+	 * decided against it), so only a suspension that was actually raised
+	 * silences the warning tiers beneath it.
+	 *
+	 * @param int $player_id Player post id.
+	 * @param int $season_id Season term id.
+	 * @return bool
+	 */
+	public static function has_suspension_notice( int $player_id, int $season_id ): bool {
+		global $wpdb;
+
+		if ( ! self::table_exists() ) {
+			return false;
+		}
+
+		$table = self::table_name();
+
+		return (bool) $wpdb->get_var( // phpcs:ignore WordPress.DB
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not a value; cannot use a placeholder.
+				"SELECT id FROM {$table}
+				 WHERE player_id = %d AND season_id = %d AND consequence = 'suspend'
+				   AND status IN ( 'pending', 'sent', 'served' )
+				 LIMIT 1",
+				$player_id,
+				$season_id
+			)
+		);
+	}
+```
+
+- [ ] **Step 2: Add the filter to `plan_writes()`**
+
+`plan_writes()` gains a fifth parameter, `bool $suspension_outstanding = false` (defaulted, so Task 4's existing assertions are unaffected), which it forwards to `eligible_matches()`. Inside that loop, after the `ACTIONABLE` guard:
+
+```php
+				// A warning is moot once a suspension has been issued this
+				// season: its whole content is "at N you will be suspended",
+				// which is false for a player already suspended at N.
+				if ( $suspension_outstanding && 'suspend' !== $consequence ) {
+					continue;
+				}
+```
+
+- [ ] **Step 3: Assert the rule**
+
+Append to `sportspress-league-manager/tests/test-discipline-notice-selection.php`, before its `=== Results ===` block:
+
+```php
+echo "\n=== a warning does not follow a suspension ===\n\n";
+
+$both_queued = array( 'warn' => 'queued', 'suspend' => 'queued' );
+
+$after_suspension = $notice::plan_writes( $both_tiers, $both_queued, false, true, true );
+assert_test(
+	'season-critical' === ( $after_suspension['notice']['tier_key'] ?? '' ),
+	'with a suspension outstanding the suspending tier can still fire'
+);
+assert_test(
+	array() === $after_suspension['baselines'],
+	'and the warning tier is not baselined either: it is moot for the rest of the season'
+);
+
+$warn_alone = array( 'season' => array( $mk( 'season-warn', 'season', 'warn', 0, 12 ) ) );
+$muted      = $notice::plan_writes( $warn_alone, $both_queued, false, true, true );
+assert_test(
+	null === $muted['notice'],
+	'a warning alone does not fire once a suspension has been issued: "at 18 you will be suspended" is false for a player already suspended'
+);
+
+$not_muted = $notice::plan_writes( $warn_alone, $both_queued, false, true, false );
+assert_test(
+	'season-warn' === ( $not_muted['notice']['tier_key'] ?? '' ),
+	'and with no suspension outstanding the same warning fires normally'
+);
+```
+
+- [ ] **Step 4: Append the baseline-token tests**
 
 Append to `sportspress-league-manager/tests/test-discipline-notice-mode.php`, immediately **before** its `=== Results ===` block:
 
@@ -3843,7 +3967,7 @@ assert_test(
 );
 ```
 
-- [ ] **Step 2: Run it to confirm it fails**
+- [ ] **Step 5: Run it to confirm it fails**
 
 ```bash
 php sportspress-league-manager/tests/test-discipline-notice-mode.php
@@ -3851,7 +3975,7 @@ php sportspress-league-manager/tests/test-discipline-notice-mode.php
 
 Expected: FAIL — `class-discipline-notice-pass.php` does not exist.
 
-- [ ] **Step 3: Create the pass**
+- [ ] **Step 6: Create the pass**
 
 Create `sportspress-league-manager/includes/class-discipline-notice-pass.php`:
 
@@ -4141,7 +4265,11 @@ class SPLM_Discipline_Notice_Pass {
 				'suspend' => SPLM_Discipline_Notice::mode_for( 'suspend' ),
 			),
 			$baselining,
-			'' !== $address['email']
+			'' !== $address['email'],
+			// Without this the runner-up baseline lets a warning fire a pass
+			// later and the player receives BOTH emails for one escalation.
+			// See Task 9's "the warning that arrives after the suspension".
+			SPLM_Discipline_Notice_Database::has_suspension_notice( $player_id, $season_id )
 		);
 
 		foreach ( $planned['baselines'] as $match ) {
@@ -4323,7 +4451,7 @@ class SPLM_Discipline_Notice_Pass {
 }
 ```
 
-- [ ] **Step 4: Run the mode suite**
+- [ ] **Step 7: Run the mode suite**
 
 ```bash
 php sportspress-league-manager/tests/test-discipline-notice-mode.php
@@ -4331,7 +4459,7 @@ php sportspress-league-manager/tests/test-discipline-notice-mode.php
 
 Expected: PASS with `Failed: 0`. The `queued → automatic` assertion is the subtle one — if the token folded in the mode's *value* rather than its enabled-ness, promoting queued to automatic would silently baseline everyone and suppress a week of notices.
 
-- [ ] **Step 5: Lint and commit**
+- [ ] **Step 8: Lint and commit**
 
 ```bash
 php -l sportspress-league-manager/includes/class-discipline-notice-pass.php
