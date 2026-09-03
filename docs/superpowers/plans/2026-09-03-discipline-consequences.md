@@ -6855,7 +6855,27 @@ Two sniffs catch new production code in this repo and are easy to trip:
 - `Generic.Commenting.DocComment.LongNotCapital` — a docblock's long description must start with a capital. `phpcs.xml` excludes `MissingShort` and `ShortNotCapital` but **not** this one, and it is an error. Reword rather than suppress.
 - `WordPress.DB.PreparedSQL.InterpolatedNotPrepared` is reported **on the SQL string's own line**, so a DB ignore needs a second, line-specific ignore there — the ignore on the `$wpdb->get_row(` call line does not reach it. `class-discipline-database.php:106-111` is the reference.
 
-- [ ] **Step 3: Run PHPMD over the new and modified classes**
+- [ ] **Step 3: Run PHPMD over EVERY changed PHP file, not a hand-picked list**
+
+Derive the list from the diff rather than typing it, or you will miss files that
+other tasks modified. `sportspress-league-manager.php` is the one that bites:
+Tasks 14, 15 and 16 all add to `load_enabled_modules()`, and the accumulation
+crossed three thresholds at once — `ExcessiveMethodLength`, `CyclomaticComplexity`
+and `NPathComplexity` — none of which fire on `main`.
+
+```bash
+git diff --name-only main...HEAD -- '*.php' | grep -v '/build/' > /tmp/f.txt
+~/.config/composer/vendor/bin/phpmd $(cat /tmp/f.txt | paste -sd,) text codesize,design,unusedcode
+```
+
+For every finding, check whether it also fires on `main`'s copy of that file
+before treating it as new — that is what Codacy's zero-new-issues gate measures:
+
+```bash
+git show main:<path> > /tmp/x.php && ~/.config/composer/vendor/bin/phpmd /tmp/x.php text codesize,design,unusedcode
+```
+
+- [ ] **Step 3b: The original narrower run, kept for reference**
 
 Codacy runs this server-side with a zero-new-issues gate, so finding it locally is the only way to avoid a red PR:
 

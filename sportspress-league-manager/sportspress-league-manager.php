@@ -155,6 +155,76 @@ class SportsPress_League_Manager {
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
+	/**
+	 * Boot the penalty-discipline module.
+	 *
+	 * Extracted from load_enabled_modules() rather than inlined. Folding the
+	 * notice feature's schema, four constructors, cron scheduling and two
+	 * health-dashboard filters into the caller pushed it past three PHPMD
+	 * thresholds at once — ExcessiveMethodLength, CyclomaticComplexity and
+	 * NPathComplexity — none of which fire on main, and Codacy's gate is
+	 * zero-new-issues. Splitting on the module boundary is also simply the
+	 * right seam: everything here is one module's wiring.
+	 *
+	 * @return void
+	 */
+	private function load_discipline_module() {
+		SPLM_Discipline_Database::maybe_upgrade();
+		SPLM_Discipline_Notice_Database::maybe_upgrade();
+
+		new SPLM_Discipline_Digest();
+		if ( get_option( 'splm_discipline_digest_enabled' ) ) {
+			SPLM_Discipline_Digest::schedule();
+		} else {
+			SPLM_Discipline_Digest::unschedule();
+		}
+
+		// Four constructors, because the notice feature's hooks belong to
+		// four concerns: the pass answers the scheduled event, the REST
+		// class registers the routes both queue surfaces call, the admin
+		// class contributes the technical tab, and the privacy class
+		// registers the GDPR exporter and eraser. Drop any one of these
+		// lines and its hooks silently never register.
+		// SPLM_Discipline_Notice, _Mail and _Recipients are deliberately
+		// absent: they hook nothing.
+		new SPLM_Discipline_Notice_Pass();
+		new SPLM_Discipline_Notice_REST();
+		new SPLM_Discipline_Notice_Privacy();
+		if ( is_admin() ) {
+			new SPLM_Discipline_Notice_Admin();
+		}
+
+		// The pass is scheduled whenever either mode is on, and cleared when
+		// both are off, so a league that switches notices off stops paying
+		// for a daily aggregate scan.
+		$notices_on = SPLM_Discipline_Notice::MODE_DISABLED !== SPLM_Discipline_Notice::mode_for( 'warn' )
+			|| SPLM_Discipline_Notice::MODE_DISABLED !== SPLM_Discipline_Notice::mode_for( 'suspend' );
+		if ( $notices_on ) {
+			SPLM_Discipline_Notice_Pass::schedule();
+		} else {
+			SPLM_Discipline_Notice_Pass::unschedule();
+		}
+
+		// No sibling plugin currently hooks these filters — splm_player_notes
+		// is hard-coded into the parent's default list — so this is the
+		// first use. That is the correct direction: a child contributing
+		// its own rows beats editing the parent.
+		add_filter(
+			'spat_health_dashboard_tables',
+			function ( $tables ) {
+				$tables[] = SPLM_Discipline_Notice_Database::table_name();
+				return $tables;
+			}
+		);
+		add_filter(
+			'spat_health_dashboard_crons',
+			function ( $crons ) {
+				$crons[ SPLM_Discipline_Notice_Pass::HOOK ] = 'Discipline Notice Evaluation';
+				return $crons;
+			}
+		);
+	}
+
 	private function load_enabled_modules() {
 		$enabled = get_option( 'spat_enabled_modules', array() );
 		$any_enabled = array_intersect(
@@ -179,60 +249,7 @@ class SportsPress_League_Manager {
 		// enabled — see the module registration above for why it isn't folded
 		// into league_manager_dashboard.
 		if ( in_array( 'league_discipline', $enabled, true ) ) {
-			SPLM_Discipline_Database::maybe_upgrade();
-			SPLM_Discipline_Notice_Database::maybe_upgrade();
-
-			new SPLM_Discipline_Digest();
-			if ( get_option( 'splm_discipline_digest_enabled' ) ) {
-				SPLM_Discipline_Digest::schedule();
-			} else {
-				SPLM_Discipline_Digest::unschedule();
-			}
-
-			// Four constructors, because the notice feature's hooks belong to
-			// four concerns: the pass answers the scheduled event, the REST
-			// class registers the routes both queue surfaces call, the admin
-			// class contributes the technical tab, and the privacy class
-			// registers the GDPR exporter and eraser. Drop any one of these
-			// lines and its hooks silently never register.
-			// SPLM_Discipline_Notice, _Mail and _Recipients are deliberately
-			// absent: they hook nothing.
-			new SPLM_Discipline_Notice_Pass();
-			new SPLM_Discipline_Notice_REST();
-			new SPLM_Discipline_Notice_Privacy();
-			if ( is_admin() ) {
-				new SPLM_Discipline_Notice_Admin();
-			}
-
-			// The pass is scheduled whenever either mode is on, and cleared when
-			// both are off, so a league that switches notices off stops paying
-			// for a daily aggregate scan.
-			$notices_on = SPLM_Discipline_Notice::MODE_DISABLED !== SPLM_Discipline_Notice::mode_for( 'warn' )
-				|| SPLM_Discipline_Notice::MODE_DISABLED !== SPLM_Discipline_Notice::mode_for( 'suspend' );
-			if ( $notices_on ) {
-				SPLM_Discipline_Notice_Pass::schedule();
-			} else {
-				SPLM_Discipline_Notice_Pass::unschedule();
-			}
-
-			// No sibling plugin currently hooks these filters — splm_player_notes
-			// is hard-coded into the parent's default list — so this is the
-			// first use. That is the correct direction: a child contributing
-			// its own rows beats editing the parent.
-			add_filter(
-				'spat_health_dashboard_tables',
-				function ( $tables ) {
-					$tables[] = SPLM_Discipline_Notice_Database::table_name();
-					return $tables;
-				}
-			);
-			add_filter(
-				'spat_health_dashboard_crons',
-				function ( $crons ) {
-					$crons[ SPLM_Discipline_Notice_Pass::HOOK ] = 'Discipline Notice Evaluation';
-					return $crons;
-				}
-			);
+			$this->load_discipline_module();
 		}
 
 		if ( ! in_array( 'league_discipline', $enabled, true ) ) {
