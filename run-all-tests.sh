@@ -57,6 +57,7 @@ run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-player-stats-aggrega
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-penalty-watch.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-discipline-consequence.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-discipline-notice-selection.php"
+run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-discipline-notice-predicate.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-league-table-rows.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-season-audit.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-waitlist-time.php"
