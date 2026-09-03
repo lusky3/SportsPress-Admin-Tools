@@ -124,6 +124,9 @@ Two options, each `automatic | queued | disabled`:
 | `splm_discipline_notice_mode_warning` | `disabled` |
 | `splm_discipline_notice_mode_suspension` | `disabled` |
 
+All three values are selectable and fully functional on delivery; none is a
+stub, and none is deferred to a later phase. See Phasing.
+
 Behaviour by mode:
 
 - **`disabled`** — no notice rows are written at all. Discipline behaves exactly
@@ -539,17 +542,32 @@ sheet ingest.
 
 ## Phasing
 
-Three independently shippable phases; cut from the back if scope needs trimming.
+Two phases. **All three delivery modes — `disabled`, `queued` and `automatic` —
+must be fully implemented and selectable in Phase 1.** The release surfaces are
+what make `queued` mean anything, so they are not separable from the modes that
+depend on them; splitting them would ship a setting a league could select and
+then be stranded by.
 
-1. **Consequences and notices** — unseal `sanitize_tiers`, the settings fields,
-   the table, the predicate, baselining, the evaluation pass, and `automatic`
-   sending. No UI beyond settings; `queued` rows accumulate unreleased.
-2. **Release surfaces** — the four REST routes, the WP-admin technical tab, and
-   the React Notices page with its alert card.
-3. **Integration polish** — digest suppression via `notice_sent`, privacy
-   export/erase, health dashboard registration, uninstall.
+1. **The feature, end to end** — unseal `sanitize_tiers` and add the consequence
+   and games inputs; both mode settings offering all three values; the notice
+   table; `matches()`; the re-fire predicate; the three baselining triggers; the
+   evaluation pass with `automatic` sending; the four REST routes; the WP-admin
+   technical tab; the React Notices page and its alert card. Plus
+   `uninstall.php` dropping the table, options and cron, and the GDPR exporter
+   and eraser covering notice rows.
 
-Phase 1 is safe to ship alone only because both modes default to `disabled`. A
-league that switches a mode to `queued` before Phase 2 lands would have no way to
-release; the settings field for the modes should therefore not appear until
-Phase 2, or should offer only `disabled` and `automatic` until it does.
+2. **Integration polish** — digest suppression via the `notice_sent` ack status,
+   and health dashboard registration through `spat_health_dashboard_tables` and
+   `spat_health_dashboard_crons`.
+
+Uninstall and privacy sit in Phase 1 rather than in polish deliberately. The
+notice table holds player names and email addresses; a table the uninstaller
+does not drop and the GDPR exporter does not know about is a compliance gap, not
+a finishing touch. What genuinely defers is the digest's `notice_sent`
+suppression — until it lands, the weekly digest keeps listing a player who has
+already been notified, which is redundant but harmless — and the health
+dashboard rows, which are diagnostics.
+
+Cutting scope, if it comes to that, means reducing what Phase 1 *contains* —
+dropping the captain Bcc, or shipping the React surface before the WP-admin one
+— not deferring a mode.
