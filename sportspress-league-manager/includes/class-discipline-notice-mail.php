@@ -232,4 +232,88 @@ class SPLM_Discipline_Notice_Mail {
 		/* translators: 1: game date, 2: game title. */
 		return sprintf( __( '%1$s — %2$s', 'sportspress-league-manager' ), $when, $title );
 	}
+
+	/**
+	 * Send one notice and record the outcome on its row.
+	 *
+	 * The player is the To: recipient and everyone else is Bcc'd, so the player
+	 * never sees the board's addresses and the board sees the player's copy
+	 * verbatim. The addresses actually used are written to the row, not
+	 * recomputed later: the technical queue view has to be able to show what
+	 * happened rather than what would happen if the notice were sent now.
+	 *
+	 * @param int    $notice_id Row id.
+	 * @param array  $context   Body context; see body().
+	 * @param string $to        The player's resolved address.
+	 * @param array  $bcc       Addresses to copy.
+	 * @return bool Whether wp_mail() accepted the message.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	public static function send( int $notice_id, array $context, string $to, array $bcc ): bool {
+		if ( '' === $to ) {
+			// Caught before wp_mail() so the row records a cause a human can
+			// act on, rather than a generic delivery failure.
+			SPLM_Discipline_Notice_Database::update(
+				$notice_id,
+				array(
+					'status'     => SPLM_Discipline_Notice_Database::STATUS_FAILED,
+					'last_error' => __( 'No email address on file for this player.', 'sportspress-league-manager' ),
+					'bcc'        => implode( ', ', $bcc ),
+				)
+			);
+
+			return false;
+		}
+
+		// A suspended player who captains their own team resolves as their own
+		// captain Bcc and would receive two copies.
+		$bcc = array_values( array_diff( $bcc, array( $to ) ) );
+
+		$headers = array();
+		if ( $bcc ) {
+			$headers[] = 'Bcc: ' . implode( ', ', $bcc );
+		}
+
+		$sent = wp_mail(
+			$to,
+			self::subject( (string) ( $context['consequence'] ?? 'warn' ), (string) ( $context['season_name'] ?? '' ) ),
+			self::body( $context ),
+			$headers
+		);
+
+		if ( $sent ) {
+			SPLM_Discipline_Notice_Database::update(
+				$notice_id,
+				array(
+					'status'     => SPLM_Discipline_Notice_Database::STATUS_SENT,
+					'sent_at'    => SPLM_Discipline_Notice_Database::now(),
+					'recipient'  => $to,
+					'bcc'        => implode( ', ', $bcc ),
+					'last_error' => '',
+				)
+			);
+
+			return true;
+		}
+
+		SPLM_Discipline_Notice_Database::update(
+			$notice_id,
+			array(
+				'status'     => SPLM_Discipline_Notice_Database::STATUS_FAILED,
+				'recipient'  => $to,
+				'bcc'        => implode( ', ', $bcc ),
+				'last_error' => __( 'wp_mail() rejected the message.', 'sportspress-league-manager' ),
+			)
+		);
+
+		if ( class_exists( 'SPAT_Logger' ) ) {
+			SPAT_Logger::error(
+				'discipline',
+				sprintf( 'wp_mail() rejected a disciplinary notice: notice_id=%d', $notice_id )
+			);
+		}
+
+		return false;
+	}
 }

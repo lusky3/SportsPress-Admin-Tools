@@ -32,6 +32,64 @@ class SPLM_Discipline_Notice {
 
 	const MODES = array( self::MODE_DISABLED, self::MODE_QUEUED, self::MODE_AUTOMATIC );
 
+	const OPTION_MODE_WARNING    = 'splm_discipline_notice_mode_warning';
+	const OPTION_MODE_SUSPENSION = 'splm_discipline_notice_mode_suspension';
+
+	/**
+	 * The option backing a consequence's delivery mode.
+	 *
+	 * @param string $consequence 'warn' or 'suspend'.
+	 * @return string Option name, or '' for a consequence with no mode.
+	 */
+	public static function option_for( string $consequence ): string {
+		if ( 'suspend' === $consequence ) {
+			return self::OPTION_MODE_SUSPENSION;
+		}
+		if ( 'warn' === $consequence ) {
+			return self::OPTION_MODE_WARNING;
+		}
+
+		return '';
+	}
+
+	/**
+	 * The delivery mode governing a consequence.
+	 *
+	 * Sanitises what it reads rather than trusting the stored value: these
+	 * options decide whether mail goes to players, so a hand-edited or
+	 * partially-migrated option must not be able to enable an unrecognised
+	 * mode. Anything unexpected reads as disabled.
+	 *
+	 * @param string $consequence 'warn' or 'suspend'.
+	 * @return string One of MODES.
+	 */
+	public static function mode_for( string $consequence ): string {
+		$option = self::option_for( $consequence );
+		if ( '' === $option ) {
+			return self::MODE_DISABLED;
+		}
+
+		return self::sanitize_mode( get_option( $option, self::MODE_DISABLED ) );
+	}
+
+	/**
+	 * Validate a delivery mode.
+	 *
+	 * Untyped because this runs as a register_setting() sanitiser: options.php
+	 * hands the callback null when the field is missing from the POST, and a
+	 * hard string type hint would turn that into a fatal on save.
+	 *
+	 * @param mixed $raw Candidate mode.
+	 * @return string One of MODES; disabled for anything unrecognised.
+	 */
+	public static function sanitize_mode( $raw ): string {
+		if ( ! is_string( $raw ) ) {
+			return self::MODE_DISABLED;
+		}
+
+		return in_array( $raw, self::MODES, true ) ? $raw : self::MODE_DISABLED;
+	}
+
 	/**
 	 * Whether a match should produce a NEW notice row.
 	 *
