@@ -2,10 +2,11 @@
 /**
  * Penalty-minute threshold evaluation.
  *
- * Thresholds are a tier list rather than two loose numbers so that a real
- * suspension rule can later be expressed by adding tiers with a populated
- * 'consequence' instead of rewriting this. Nothing here asserts a consequence
- * today; the field exists and is always null.
+ * Thresholds are a tier list rather than two loose numbers so that a suspension
+ * rule can be expressed by populating a tier's 'consequence' instead of
+ * rewriting this. A tier's consequence is one of 'none', 'warn' or 'suspend';
+ * a 'suspend' tier also carries the number of games owed. Acting on a
+ * consequence is SPLM_Discipline_Notice's job, not this class's.
  *
  * Pure by construction: totals in, flags out.
  *
@@ -18,8 +19,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPLM_Penalty_Watch {
 
-	const SCOPES     = array( 'season', 'window' );
-	const SEVERITIES = array( 'warning', 'critical' );
+	const SCOPES       = array( 'season', 'window' );
+	const SEVERITIES   = array( 'warning', 'critical' );
+	const CONSEQUENCES = array( 'none', 'warn', 'suspend' );
+
+	/** Upper bound on a tier's games count. A suspension longer than this is a data-entry error, not a policy. */
+	const MAX_GAMES = 10;
 
 	/**
 	 * Seeded tiers.
@@ -38,39 +43,45 @@ class SPLM_Penalty_Watch {
 				'scope'       => 'season',
 				'minutes'     => 12,
 				'severity'    => 'warning',
-				'consequence' => null,
+				'consequence' => 'warn',
+				'games'       => 0,
 			),
 			array(
 				'key'         => 'season-critical',
 				'scope'       => 'season',
 				'minutes'     => 18,
 				'severity'    => 'critical',
-				'consequence' => null,
+				'consequence' => 'suspend',
+				'games'       => 1,
 			),
 			array(
 				'key'         => 'window-critical',
 				'scope'       => 'window',
 				'minutes'     => 8,
 				'severity'    => 'critical',
-				'consequence' => null,
+				'consequence' => 'suspend',
+				'games'       => 1,
 			),
 		);
 	}
 
 	/**
-	 * Flags for one player.
+	 * Every matched tier for one player, grouped by scope.
 	 *
-	 * Suppressed tiers are removed BEFORE the highest-per-scope choice, so
-	 * acknowledging a critical reveals the warning underneath instead of hiding
-	 * the player altogether.
+	 * This is evaluate()'s matching half, exposed on its own. evaluate() keeps
+	 * the highest-SEVERITY match per scope, which is right for the watch list
+	 * and wrong for notices: severity and consequence are independent axes, so
+	 * the highest-severity match in a scope is not necessarily the one carrying
+	 * a consequence. The notice pass needs all of them and picks its own winner.
 	 *
 	 * @param array  $totals       array( 'season' => int, 'window' => int ).
 	 * @param array  $tiers        Tier list.
 	 * @param array  $acks         Acknowledgement key => value_at_ack.
 	 * @param string $window_start Week key the rolling window currently starts at.
-	 * @return array Flags, criticals first.
+	 * @return array scope => list of matches, in tier order. Scopes with no
+	 *               match are absent.
 	 */
-	public static function evaluate( array $totals, array $tiers, array $acks, string $window_start = '' ): array {
+	public static function matches( array $totals, array $tiers, array $acks = array(), string $window_start = '' ): array {
 		$matched = array();
 
 		foreach ( $tiers as $tier ) {
@@ -94,23 +105,42 @@ class SPLM_Penalty_Watch {
 			// completely different window and mute the alarm for the rest of the
 			// season. A season total only ever grows, so season scope needs no
 			// such scoping.
-			$key     = (string) $tier['key'];
 			$ack_key = self::ack_key( $tier, $window_start );
 			if ( array_key_exists( $ack_key, $acks ) && $value <= (int) $acks[ $ack_key ] ) {
 				continue;
 			}
 
 			$matched[ $scope ][] = array(
-				'tier_key' => $key,
-				'scope'    => $scope,
-				'severity' => (string) $tier['severity'],
-				'minutes'  => (int) $tier['minutes'],
-				'value'    => $value,
+				'tier_key'    => (string) $tier['key'],
+				'scope'       => $scope,
+				'severity'    => (string) $tier['severity'],
+				'minutes'     => (int) $tier['minutes'],
+				'value'       => $value,
+				'consequence' => (string) ( $tier['consequence'] ?? 'none' ),
+				'games'       => (int) ( $tier['games'] ?? 0 ),
 			);
 		}
 
+		return $matched;
+	}
+
+	/**
+	 * Flags for one player: the highest-severity match per scope, criticals first.
+	 *
+	 * Suppressed tiers are removed BEFORE the highest-per-scope choice, so
+	 * acknowledging a critical reveals the warning underneath instead of hiding
+	 * the player altogether. That happens inside matches().
+	 *
+	 * @param array  $totals       array( 'season' => int, 'window' => int ).
+	 * @param array  $tiers        Tier list.
+	 * @param array  $acks         Acknowledgement key => value_at_ack.
+	 * @param string $window_start Week key the rolling window currently starts at.
+	 * @return array Flags, criticals first.
+	 */
+	public static function evaluate( array $totals, array $tiers, array $acks, string $window_start = '' ): array {
 		$flags = array();
-		foreach ( $matched as $scope_flags ) {
+
+		foreach ( self::matches( $totals, $tiers, $acks, $window_start ) as $scope_flags ) {
 			// Severity decides which match represents the scope, not minutes:
 			// thresholds are editable, so a critical tier can legitimately sit
 			// below a warning tier and must still win.
@@ -187,12 +217,20 @@ class SPLM_Penalty_Watch {
 			}
 			$seen[ $key ] = true;
 
+			// Until this feature every tier's consequence was hard-coded to null
+			// here, which is why the settings screen could never persist one.
+			// Extracted rather than inlined: the four extra branches would push
+			// sanitize_tiers() from no complexity findings at all to CC 13 and
+			// NPath 578, and Codacy's gate is zero-new-issues.
+			list( $consequence, $games ) = self::normalize_consequence( $tier );
+
 			$out[] = array(
 				'key'         => $key,
 				'scope'       => $scope,
 				'minutes'     => $minutes,
 				'severity'    => $severity,
-				'consequence' => null,
+				'consequence' => $consequence,
+				'games'       => $games,
 			);
 		}
 
@@ -237,5 +275,62 @@ class SPLM_Penalty_Watch {
 		);
 
 		return $rank[ $severity ] ?? 9;
+	}
+
+	/**
+	 * Sort rank for a consequence; lower is more severe.
+	 *
+	 * Deliberately mirrors severity_rank()'s "lower is more severe" convention
+	 * so the two can be read together without one inverting the other.
+	 *
+	 * @param string $consequence Consequence name.
+	 * @return int
+	 */
+	public static function consequence_rank( string $consequence ): int {
+		$rank = array(
+			'suspend' => 0,
+			'warn'    => 1,
+		);
+
+		return $rank[ $consequence ] ?? 9;
+	}
+
+	/**
+	 * Normalise a tier's consequence and its games count.
+	 *
+	 * Extracted from sanitize_tiers() rather than inlined: the branch count of
+	 * the two together trips CyclomaticComplexity and NPathComplexity on a
+	 * method that currently produces no complexity findings at all, and this
+	 * half is independently meaningful.
+	 *
+	 * @param array $tier Candidate tier.
+	 * @return array array( string $consequence, int $games ).
+	 */
+	private static function normalize_consequence( array $tier ): array {
+		$consequence = (string) ( $tier['consequence'] ?? 'none' );
+		if ( ! in_array( $consequence, self::CONSEQUENCES, true ) ) {
+			$consequence = 'none';
+		}
+
+		// (int) rather than absint(). This class otherwise touches only
+		// sanitize_key() — test-penalty-watch.php's stub block says so in a
+		// comment and stubs nothing else — so introducing absint() here would
+		// fatal that pre-existing suite with "undefined function absint()".
+		$games = max( 0, (int) ( $tier['games'] ?? 0 ) );
+
+		if ( 'suspend' !== $consequence ) {
+			// Only a suspension owes games. Leaving a stale count on a warn
+			// tier would let a later edit to the consequence resurrect it.
+			return array( $consequence, 0 );
+		}
+
+		if ( $games < 1 ) {
+			// A suspension of zero games is a configuration mistake. Correcting
+			// it beats dropping the tier, which would silently disable the
+			// threshold a convener had just tried to configure.
+			return array( $consequence, 1 );
+		}
+
+		return array( $consequence, min( $games, self::MAX_GAMES ) );
 	}
 }

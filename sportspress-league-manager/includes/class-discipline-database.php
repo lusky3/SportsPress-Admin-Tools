@@ -129,7 +129,7 @@ class SPLM_Discipline_Database {
 	 * @param string $tier_key  Acknowledgement key: a tier identifier, or
 	 *                          "<tier>@<window start>" for a window tier.
 	 * @param int    $value     PIM total at acknowledgement.
-	 * @param string $status    reviewed|suspension_served|dismissed.
+	 * @param string $status    reviewed|suspension_served|dismissed|notice_sent.
 	 * @param string $note      Optional note.
 	 * @param int    $author_id Acting user.
 	 * @return bool
@@ -141,7 +141,7 @@ class SPLM_Discipline_Database {
 			return false;
 		}
 
-		$allowed = array( 'reviewed', 'suspension_served', 'dismissed' );
+		$allowed = array( 'reviewed', 'suspension_served', 'dismissed', 'notice_sent' );
 		$status  = in_array( $status, $allowed, true ) ? $status : 'reviewed';
 
 		// A window acknowledgement is keyed "<tier>@<window start>". sanitize_key()
@@ -179,5 +179,40 @@ class SPLM_Discipline_Database {
 		);
 
 		return false !== $result;
+	}
+
+	/**
+	 * Whether an acknowledgement already exists for this key.
+	 *
+	 * The acknowledge() writer upserts on UNIQUE (player_id, season_id,
+	 * tier_key) and overwrites value_at_ack, status, note and author_id
+	 * unconditionally. The notice path needs to know when NOT to call it: a
+	 * convener who acknowledged a tier at a deliberately high value — the way
+	 * they silence a player for the rest of a season — would otherwise have
+	 * that value reset and their note erased by an automatic notice_sent
+	 * write.
+	 *
+	 * @param int    $player_id Player post id.
+	 * @param int    $season_id Season term id.
+	 * @param string $tier_key  Acknowledgement key.
+	 * @return bool
+	 */
+	public static function has_ack( int $player_id, int $season_id, string $tier_key ): bool {
+		global $wpdb;
+
+		if ( ! self::table_exists() ) {
+			return false;
+		}
+
+		$table = self::table_name();
+
+		return (bool) $wpdb->get_var( // phpcs:ignore WordPress.DB
+			$wpdb->prepare(
+				"SELECT id FROM {$table} WHERE player_id = %d AND season_id = %d AND tier_key = %s LIMIT 1", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not a value; cannot use a placeholder.
+				$player_id,
+				$season_id,
+				$tier_key
+			)
+		);
 	}
 }

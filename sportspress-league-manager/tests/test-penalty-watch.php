@@ -46,7 +46,8 @@ assert_test(
 assert_test( 12 === $tiers[0]['minutes'], 'season warning defaults to 12 PIM' );
 assert_test( 18 === $tiers[1]['minutes'], 'season critical defaults to 18 PIM' );
 assert_test( 8 === $tiers[2]['minutes'], 'window critical defaults to 8 PIM' );
-assert_test( null === $tiers[0]['consequence'], 'no tier asserts a consequence in this version' );
+assert_test( 'warn' === $tiers[0]['consequence'], 'the season warning tier carries a warn consequence' );
+assert_test( 'suspend' === $tiers[1]['consequence'], 'the season critical tier suspends' );
 
 echo "\n=== evaluate() ===\n\n";
 
@@ -148,14 +149,16 @@ $inverted = array(
 		'scope'       => 'season',
 		'minutes'     => 20,
 		'severity'    => 'warning',
-		'consequence' => null,
+		'consequence' => 'none',
+		'games'       => 0,
 	),
 	array(
 		'key'         => 'season-critical',
 		'scope'       => 'season',
 		'minutes'     => 18,
 		'severity'    => 'critical',
-		'consequence' => null,
+		'consequence' => 'none',
+		'games'       => 0,
 	),
 );
 
@@ -179,7 +182,7 @@ $clean = SPLM_Penalty_Watch::sanitize_tiers(
 );
 assert_test( 1 === count( $clean ), 'tiers with an unknown scope or a zero threshold are dropped' );
 assert_test( 15 === $clean[0]['minutes'], 'numeric strings are coerced to ints' );
-assert_test( null === $clean[0]['consequence'], 'consequence is normalised to null' );
+assert_test( 'none' === $clean[0]['consequence'], 'a tier submitted without a consequence normalises to none' );
 assert_test(
 	SPLM_Penalty_Watch::default_tiers() === SPLM_Penalty_Watch::sanitize_tiers( array() ),
 	'sanitising nothing falls back to the defaults so the feature is never silently disabled'

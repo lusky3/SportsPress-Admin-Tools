@@ -3,6 +3,7 @@ import HelpLink from '../components/HelpLink';
 import { fetchGames, fetchActivity, fetchStats, saveUserPreferences } from '../lib/api';
 import Icon from '../components/icons';
 import PenaltyWatchCard from '../components/PenaltyWatchCard';
+import NoticeQueueCard from '../components/NoticeQueueCard';
 
 const CARDS = [ 'upcoming', 'recent', 'activity', 'penalties' ];
 
@@ -266,6 +267,10 @@ export default function Dashboard( { onNavigate, season } ) {
 							</ul>
 						) }
 					</section>
+				) }
+
+				{ window.splmDashboard?.modules?.discipline !== false && (
+					<NoticeQueueCard season={ season } onNavigate={ onNavigate } />
 				) }
 
 				{ visibleCards.includes( 'penalties' ) && window.splmDashboard?.modules?.discipline !== false && (

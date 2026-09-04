@@ -19,6 +19,7 @@ const NAV_ITEMS = [
 	{ id: 'div-balance', label: 'Balance', icon: 'div-balance' },
 	{ id: 'team-compare', label: 'Compare', icon: 'team-compare' },
 	{ id: 'leaders', label: 'Leaders', icon: 'season-report' },
+	{ id: 'notices', label: 'Notices', icon: 'season-report' },
 	{ id: 'season-report', label: 'Report', icon: 'season-report' },
 	{ id: 'season-setup', label: 'Seasons', icon: 'seasons' },
 	{ id: 'health', label: 'Health', icon: 'health' },
@@ -90,6 +91,7 @@ export default function Layout( { currentPage, onNavigate, onSeasonChange, seaso
 		health: caps.canViewHealth,
 		'schedule-gen': caps.canManageSchedule && depPresent( 'schedule_generator' ),
 		'season-setup': caps.canManageSchedule,
+		notices: caps.canManage && modulePresent( 'discipline' ),
 	};
 	const visibleItems = NAV_ITEMS.filter( ( item ) => capMap[ item.id ] === undefined || capMap[ item.id ] );
 

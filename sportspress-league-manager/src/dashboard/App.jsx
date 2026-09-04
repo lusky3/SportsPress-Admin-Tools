@@ -16,6 +16,7 @@ import Leaders from './pages/Leaders';
 import SeasonSetup from './pages/SeasonSetup';
 import ScoreSheets from './pages/ScoreSheets';
 import Waitlist from './pages/Waitlist';
+import Notices from './pages/Notices';
 import Help from './pages/Help';
 import { saveUserPreferences } from './lib/api';
 import './styles.css';
@@ -36,6 +37,7 @@ const PAGES = {
 	'season-setup': SeasonSetup,
 	'score-sheets': ScoreSheets,
 	waitlist: Waitlist,
+	notices: Notices,
 	help: Help,
 };
 
