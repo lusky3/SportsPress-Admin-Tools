@@ -159,6 +159,32 @@ invariant" now spans two files that must stay in agreement. That is the cost
 being accepted, and it is why the invariant gets a comment in both files rather
 than only one.
 
+#### The cross-plugin dependency this creates
+
+Signal 1 calls `SPPR_Player_Registration::find_existing_player()`, which today is
+**private** and lives in player-registration. Part 2 therefore needs it promoted
+to a callable seam before it can be reused. Promote it to `public static`, or —
+better — lift the matcher into its own class that both the order pipeline and
+the backfill call, so neither owns it.
+
+Whichever shape is chosen, two properties are non-negotiable and belong in its
+docblock:
+
+- **It creates nothing.** The moment a "find" helper grows a create path, this
+  backfill inherits it silently and starts minting players.
+- **It returns terminal `*_conflict` actions rather than guessing.** That
+  behaviour is what makes it safe to run unattended across thousands of orders;
+  a variant that picked a winner would be actively dangerous here.
+
+Do NOT reach for `find_or_create_player()`. See "Rejected: bulk re-running order
+processing".
+
+This is a real coupling and worth naming: player-tools would gain a dependency
+on a player-registration class. It is narrower than the alternative — the
+alternative is a *second* name/email matcher, which would drift from the one
+that actually processes orders and produce a backfill that disagrees with
+registration about who a player is.
+
 ### Part 2 — A new `sp_user` backfill
 
 A scan → preview → human-approves → apply tool, modelled directly on
@@ -168,14 +194,25 @@ is deliberately unmeasured" below.
 
 Candidate signals per unlinked player, highest confidence first:
 
-1. **Registration log → order → customer** (HIGH). `spat_registration_logs`
-   joins `player_id` to `order_id`; the order names a `customer_id`. Unambiguous
-   where present.
+1. **Completed WooCommerce order → customer → player** (HIGH). Walk completed
+   orders, take the order's `_customer_user`, and resolve the player with
+   `SPPR_Player_Registration::find_existing_player( $billing_name, $billing_email )`.
+   That method is the pure-find half of the registration matcher — email, then
+   exact title, then title with roster suffixes stripped — and it already
+   returns terminal `*_conflict` actions instead of guessing when two records
+   claim one person. It creates nothing.
 2. **`spt_email` matches exactly one user's `user_email` or `billing_email`**
    (HIGH).
 3. **Normalised name matches exactly one user's `display_name`** (LOW).
 4. **`post_author`, corroborated by signal 2 or 3, and only when that author has
    authored no more than `BULK_IMPORT_AUTHOR_THRESHOLD` (5) players** (LOW).
+
+Signal 1 supersedes an earlier draft that read the *registration log*
+(`spat_registration_logs`) rather than the orders. That was a measurement
+error worth recording, because it nearly sized this feature out of existence:
+the log resolves **1** of the 1,904 unlinked players, because the log only
+holds what was already processed. The orders behind it are a different
+population entirely.
 
 Rules:
 
@@ -204,29 +241,57 @@ The two tools are safe as a pair only because of that ordering. **If
 email-sync's priority-2 rule ever loosens, this backfill becomes circular.** A
 comment saying so belongs in both files.
 
-#### Why reach is deliberately unmeasured
+#### Reach: measured where it can be, and not where it cannot
 
-Measured on `arl-local`, against the 1,904 unlinked players:
+Against the 1,904 unlinked players and the order history behind them:
 
-| Signal | Reach |
+| Signal | Reach on `arl-local` |
 |---|---|
-| Registration log → one user | **1** (74 more are guest checkouts with no customer) |
-| `spt_email` present | **0** — only 9 `spt_email` rows exist site-wide, all empty; email-sync has never run here |
+| **Completed orders with a logged-in customer** | **5,686** of 7,261 |
+| **Distinct customers on those orders** | **1,445** |
+| **…of whom have no `sp_user` link today** | **1,246** |
+| Registration log → one user | 1 (the log is nearly empty) |
+| `spt_email` present on an unlinked player | 0 — only 9 `spt_email` rows exist site-wide, all empty; email-sync has never run here |
 | Exact `display_name` match to one user | 850 (48 ambiguous, 1,006 no match) |
 
-So `arl-local` cannot tell us what this will achieve — its email data does not
-exist, and its registration log is thin (consistent with the known prod defect
-where WooCommerce product 115690 lacked the "Registration" category, so S2026
-orders were never logged). **Real reach must be measured on prod or staging.**
+So signal 1 is worth building and signals 2–4 are the tail. Around **1,246
+customers** are reachable through order history alone — the difference between
+a backfill that is not worth writing and one that resolves most of the gap.
 
-That uncertainty is the argument for the design rather than a gap in it: a
-preview-and-approve tool is correct whether it proposes 40 links or 1,400, and
-needs no advance estimate to be safe. An automatic migration would need one.
+Two honest caveats. `arl-local` is a local copy: `_spr_processed` is unset on
+**all 7,266** completed orders there, which either means the pipeline never ran
+over history or the flag did not come across in the copy. And signal 1's *hit
+rate* still depends on `find_existing_player()` matching a billing name to a
+roster title, which cannot be predicted from counts. **Confirm both on prod or
+staging before Part 2 is written.**
 
-And name matching cannot be trusted to close the gap even where it fires:
-`Cody Lusk` normalises to the same string for **five** users (9, 825, 1276,
-1872, 2083), so the reporter's own record lands in the ambiguous bucket. Some
-records will only ever be resolved by a human who knows the league.
+Name matching cannot close the remainder even where it fires: `Cody Lusk`
+normalises to the same string for **five** users (9, 825, 1276, 1872, 2083), so
+the reporter's own record lands in the ambiguous bucket. Some links will only
+ever be made by a human who knows the league — which is why the preview gate is
+not optional, whatever the reach turns out to be.
+
+#### Rejected: bulk re-running order processing
+
+The obvious shortcut is to re-run registration over historical orders. The
+per-order action already exists — "Re-run player registration", a row action on
+completed orders — and re-running calls `link_user_to_player()`, so it does
+write `sp_user`. Reusing it looks free.
+
+It is not. Re-running order processing also calls `find_or_create_player()`,
+which **creates player records**, and then assigns roles, writes registration
+log rows, changes `post_author`, and marks the order processed. Firing that
+across 5,686 never-processed orders could mint thousands of duplicate players
+and hand out roles — on the very table this project exists to repair.
+
+This is why the design calls `find_existing_player()` directly instead. It is
+the same matching logic with none of the side effects: read-only, creates
+nothing, and already returns a terminal conflict action rather than guessing.
+The backfill writes `sp_user` and nothing else.
+
+Recorded explicitly because the shortcut looks like free reuse of tested code,
+and a future reader who reaches for it will not discover the blast radius until
+after the run.
 
 ## Testing
 
@@ -270,13 +335,27 @@ admin preview screen, the apply handler. Staging checks:
 - **No change to the multi-player refusal**, and no picker for admins — handing
   someone who authored 294 players a UI for writing photos onto any of them is
   the bug with a nicer interface.
+- **No bulk re-run of order processing**, however tempting the reuse. See
+  "Rejected: bulk re-running order processing".
 - **No new player↔user table.** `sp_user` is established and read by four files
   across three plugins; a second mechanism would mean two truths.
 
 ## Effort
 
-Part 1 is small — one query, one string, two test files. Part 2 is the real work,
-but it is a close sibling of `SPT_Email_Sync` (scan, confidence ladder, preview
-table, apply handler, CSV export) and should follow its structure closely enough
-to be reviewed against it. Sequencing matters more than size: they ship together,
-and the prod reach measurement happens before Part 2 is written, not after.
+Part 1 is small — one query, one string, one test file. **Implemented.**
+
+Part 2 is the real work, but less of it than a fresh matcher would be: it is a
+close sibling of `SPT_Email_Sync` (scan, confidence ladder, preview table, apply
+handler, CSV export) and it borrows the matching from
+`find_existing_player()` rather than reinventing it. The genuinely new pieces
+are the order walk, promoting that matcher to a callable seam, and the preview
+screen.
+
+Sequencing matters more than size, and it has one hard ordering:
+
+1. **Measure on prod or staging first.** Confirm the order and `_spr_processed`
+   counts hold there, and sample what `find_existing_player()` actually matches
+   for real billing names. `arl-local` cannot answer the second question at all.
+2. **Then write Part 2**, sized to what that found.
+3. **Part 1 does not reach players until Part 2 ships**, because on its own it
+   hides the feature from ~90% of them.
