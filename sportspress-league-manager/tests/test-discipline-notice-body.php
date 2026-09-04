@@ -252,6 +252,70 @@ assert_test(
 );
 assert_test( false === strpos( $season_body, 'last few weeks' ), 'and does not gain the window wording' );
 
+echo "\n=== context() ===\n\n";
+
+// The rule the two callers must not diverge on. A window tier's matched value
+// is a rolling total; next_threshold compares against SEASON suspending tiers,
+// so deriving it from the matched value tells a player "at 18 you will be
+// suspended" when their season total is already past 18.
+$window_context = $mail::context(
+	array(
+		'player_name'  => 'Alex',
+		'season_name'  => 'W2025-26',
+		'scope'        => 'window',
+		'value'        => 9,
+		'season_value' => 14,
+		'consequence'  => 'suspend',
+		'games'        => 1,
+		'team_id'      => 0,
+	),
+	$tiers
+);
+
+assert_test(
+	18 === $window_context['next_threshold'],
+	'next_threshold derives from season_value (14 -> 18), not the matched window value'
+);
+assert_test( 9 === $window_context['value'], 'the matched value is carried through unchanged' );
+assert_test( 14 === $window_context['season_value'], 'and so is the season total' );
+
+// A season total already past every suspending tier has nothing to warn towards.
+$topped_out = $mail::context(
+	array(
+		'season_value' => 25,
+		'team_id'      => 0,
+	),
+	$tiers
+);
+assert_test( 0 === $topped_out['next_threshold'], 'no threshold above the season total yields 0' );
+
+assert_test(
+	'' === $topped_out['player_name'] && 0 === $topped_out['games'],
+	'missing fields default rather than notice-erroring'
+);
+
+$expected_keys = array(
+	'player_name',
+	'season_name',
+	'scope',
+	'season_value',
+	'consequence',
+	'games',
+	'value',
+	'next_threshold',
+	'game_label',
+);
+assert_test(
+	array() === array_diff( $expected_keys, array_keys( $window_context ) ),
+	'context() supplies every key body() reads'
+);
+
+// A context built by context() is what body() actually consumes.
+assert_test(
+	false !== strpos( $mail::body( $window_context ), 'last few weeks' ),
+	'body() renders a context() result end to end'
+);
+
 echo "\n=== Results ===\n\n";
 echo "Passed: {$passed}\nFailed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );

@@ -357,16 +357,18 @@ class SPLM_Discipline_Notice_Pass {
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private static function mail_context( array $match, array $player, int $season_id, int $season_total, array $tiers ): array {
-		return array(
-			'player_name'    => (string) $player['name'],
-			'season_name'    => self::season_name( $season_id ),
-			'scope'          => (string) $match['scope'],
-			'season_value'   => $season_total,
-			'consequence'    => (string) $match['consequence'],
-			'games'          => (int) $match['games'],
-			'value'          => (int) $match['value'],
-			'next_threshold' => SPLM_Discipline_Notice_Mail::next_threshold( $season_total, $tiers ),
-			'game_label'     => SPLM_Discipline_Notice_Mail::next_game_label( (int) $player['team_id'] ),
+		return SPLM_Discipline_Notice_Mail::context(
+			array(
+				'player_name'  => (string) $player['name'],
+				'season_name'  => self::season_name( $season_id ),
+				'scope'        => (string) $match['scope'],
+				'season_value' => $season_total,
+				'consequence'  => (string) $match['consequence'],
+				'games'        => (int) $match['games'],
+				'value'        => (int) $match['value'],
+				'team_id'      => (int) $player['team_id'],
+			),
+			$tiers
 		);
 	}
 

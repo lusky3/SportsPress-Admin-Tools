@@ -263,6 +263,40 @@ class SPLM_Discipline_Notice_Mail {
 	}
 
 	/**
+	 * Assemble the body context for one notice.
+	 *
+	 * Two callers need this: the scheduled pass, which has the live match, and
+	 * the release route, which has only the stored row. They are the same nine
+	 * keys, and the two derived ones carry rules that must not diverge — so the
+	 * derivation lives here once rather than being copied into both.
+	 *
+	 * @param array $fields Keys: player_name, season_name, scope, consequence,
+	 *                      games, value, season_value, team_id.
+	 * @param array $tiers  Sanitized tier list.
+	 * @return array Body context; see body().
+	 */
+	public static function context( array $fields, array $tiers ): array {
+		$season_value = (int) ( $fields['season_value'] ?? 0 );
+
+		return array(
+			'player_name'    => (string) ( $fields['player_name'] ?? '' ),
+			'season_name'    => (string) ( $fields['season_name'] ?? '' ),
+			'scope'          => (string) ( $fields['scope'] ?? '' ),
+			'season_value'   => $season_value,
+			'consequence'    => (string) ( $fields['consequence'] ?? '' ),
+			'games'          => (int) ( $fields['games'] ?? 0 ),
+			'value'          => (int) ( $fields['value'] ?? 0 ),
+			// season_value, not value: next_threshold() compares against SEASON
+			// suspending tiers, and value is the matched figure — a rolling-window
+			// total for a window tier. Feeding it the window number told a player
+			// "at 25 you will be suspended" when their season total was already
+			// past 25.
+			'next_threshold' => self::next_threshold( $season_value, $tiers ),
+			'game_label'     => self::next_game_label( (int) ( $fields['team_id'] ?? 0 ) ),
+		);
+	}
+
+	/**
 	 * Send one notice and record the outcome on its row.
 	 *
 	 * The player is the To: recipient and everyone else is Bcc'd, so the player
@@ -283,16 +317,12 @@ class SPLM_Discipline_Notice_Mail {
 		if ( '' === $to ) {
 			// Caught before wp_mail() so the row records a cause a human can
 			// act on, rather than a generic delivery failure.
-			SPLM_Discipline_Notice_Database::update(
+			return self::fail(
 				$notice_id,
-				array(
-					'status'     => SPLM_Discipline_Notice_Database::STATUS_FAILED,
-					'last_error' => __( 'No email address on file for this player.', 'sportspress-league-manager' ),
-					'bcc'        => implode( ', ', $bcc ),
-				)
+				$to,
+				$bcc,
+				__( 'No email address on file for this player.', 'sportspress-league-manager' )
 			);
-
-			return false;
 		}
 
 		// A suspended player who captains their own team resolves as their own
@@ -311,65 +341,110 @@ class SPLM_Discipline_Notice_Mail {
 			$headers
 		);
 
-		if ( $sent ) {
-			SPLM_Discipline_Notice_Database::update(
-				$notice_id,
-				array(
-					'status'     => SPLM_Discipline_Notice_Database::STATUS_SENT,
-					'sent_at'    => SPLM_Discipline_Notice_Database::now(),
-					'recipient'  => $to,
-					'bcc'        => implode( ', ', $bcc ),
-					'last_error' => '',
-				)
-			);
-
-			// A sent notice also acknowledges the flag, so the weekly digest
-			// stops listing a player who has already been told. Reuses the
-			// existing suppression machinery rather than adding a second one:
-			// value_at_ack already means "quiet until they earn more".
-			//
-			// ONLY when no acknowledgement exists. acknowledge() upserts on
-			// UNIQUE (player, season, tier) and overwrites value_at_ack, status,
-			// note AND author_id unconditionally — so writing unconditionally
-			// here would destroy a convener's own acknowledgement, losing their
-			// note and resetting a deliberately-high value_at_ack (the way a
-			// convener silences a player) back down, which restarts the digest
-			// nagging about someone they had already dealt with.
-			if ( class_exists( 'SPLM_Discipline_Database' ) ) {
-				$row = SPLM_Discipline_Notice_Database::find( $notice_id );
-				if ( $row && ! SPLM_Discipline_Database::has_ack( (int) $row->player_id, (int) $row->season_id, (string) $row->ack_key ) ) {
-					SPLM_Discipline_Database::acknowledge(
-						(int) $row->player_id,
-						(int) $row->season_id,
-						(string) $row->ack_key,
-						(int) $row->value_at_fire,
-						'notice_sent',
-						'',
-						get_current_user_id()
-					);
-				}
+		if ( ! $sent ) {
+			if ( class_exists( 'SPAT_Logger' ) ) {
+				SPAT_Logger::error(
+					'discipline',
+					sprintf( 'wp_mail() rejected a disciplinary notice: notice_id=%d', $notice_id )
+				);
 			}
 
-			return true;
+			return self::fail(
+				$notice_id,
+				$to,
+				$bcc,
+				__( 'wp_mail() rejected the message.', 'sportspress-league-manager' )
+			);
 		}
 
+		SPLM_Discipline_Notice_Database::update(
+			$notice_id,
+			array(
+				'status'     => SPLM_Discipline_Notice_Database::STATUS_SENT,
+				'sent_at'    => SPLM_Discipline_Notice_Database::now(),
+				'recipient'  => $to,
+				'bcc'        => implode( ', ', $bcc ),
+				'last_error' => '',
+			)
+		);
+
+		self::record_ack( $notice_id );
+
+		return true;
+	}
+
+	/**
+	 * Record a delivery failure on the row and report it as a failed send.
+	 *
+	 * Both failure paths write the same shape, and the row is the only place a
+	 * convener learns why nothing arrived — so they share one writer rather than
+	 * two that can drift apart on which columns they set.
+	 *
+	 * @param int    $notice_id Row id.
+	 * @param string $to        The address attempted; '' when none was resolved.
+	 * @param array  $bcc       Addresses that would have been copied.
+	 * @param string $message   The cause, in words a convener can act on.
+	 * @return bool Always false, so callers can `return self::fail( ... )`.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function fail( int $notice_id, string $to, array $bcc, string $message ): bool {
 		SPLM_Discipline_Notice_Database::update(
 			$notice_id,
 			array(
 				'status'     => SPLM_Discipline_Notice_Database::STATUS_FAILED,
 				'recipient'  => $to,
 				'bcc'        => implode( ', ', $bcc ),
-				'last_error' => __( 'wp_mail() rejected the message.', 'sportspress-league-manager' ),
+				'last_error' => $message,
 			)
 		);
 
-		if ( class_exists( 'SPAT_Logger' ) ) {
-			SPAT_Logger::error(
-				'discipline',
-				sprintf( 'wp_mail() rejected a disciplinary notice: notice_id=%d', $notice_id )
-			);
+		return false;
+	}
+
+	/**
+	 * Let a sent notice stand in for the convener's acknowledgement.
+	 *
+	 * A sent notice also acknowledges the flag, so the weekly digest stops
+	 * listing a player who has already been told. Reuses the existing
+	 * suppression machinery rather than adding a second one: value_at_ack
+	 * already means "quiet until they earn more".
+	 *
+	 * ONLY when no acknowledgement exists. acknowledge() upserts on
+	 * UNIQUE (player, season, tier) and overwrites value_at_ack, status, note
+	 * AND author_id unconditionally — so writing unconditionally here would
+	 * destroy a convener's own acknowledgement, losing their note and resetting
+	 * a deliberately-high value_at_ack (the way a convener silences a player)
+	 * back down, which restarts the digest nagging about someone they had
+	 * already dealt with.
+	 *
+	 * @param int $notice_id Row id.
+	 * @return void
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function record_ack( int $notice_id ): void {
+		if ( ! class_exists( 'SPLM_Discipline_Database' ) ) {
+			return;
 		}
 
-		return false;
+		$row = SPLM_Discipline_Notice_Database::find( $notice_id );
+		if ( ! $row ) {
+			return;
+		}
+
+		if ( SPLM_Discipline_Database::has_ack( (int) $row->player_id, (int) $row->season_id, (string) $row->ack_key ) ) {
+			return;
+		}
+
+		SPLM_Discipline_Database::acknowledge(
+			(int) $row->player_id,
+			(int) $row->season_id,
+			(string) $row->ack_key,
+			(int) $row->value_at_fire,
+			'notice_sent',
+			'',
+			get_current_user_id()
+		);
 	}
 }

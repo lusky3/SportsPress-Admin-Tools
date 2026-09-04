@@ -245,26 +245,9 @@ class SPLM_Discipline_Notice_REST {
 		$address = SPLM_Discipline_Notice_Recipients::player_email( $player_id );
 		$team_id = self::team_for( $player_id, $season_id );
 
-		$tiers = SPLM_Penalty_Watch::sanitize_tiers( (array) get_option( 'splm_discipline_tiers', array() ) );
-
 		$sent = SPLM_Discipline_Notice_Mail::send(
 			$id,
-			array(
-				'player_name'    => get_the_title( $player_id ),
-				'season_name'    => self::season_name( $season_id ),
-				'scope'          => (string) $row->scope,
-				'season_value'   => (int) $row->season_at_fire,
-				'consequence'    => (string) $row->consequence,
-				'games'          => (int) $row->games,
-				'value'          => (int) $row->value_at_fire,
-				// season_at_fire, not value_at_fire: next_threshold() compares against
-				// SEASON suspending tiers, and value_at_fire is the matched figure
-				// (a rolling-window total for a window tier). Feeding it the window
-				// number told a player "at 25 you will be suspended" when their
-				// season total was already past 25.
-				'next_threshold' => SPLM_Discipline_Notice_Mail::next_threshold( (int) $row->season_at_fire, $tiers ),
-				'game_label'     => SPLM_Discipline_Notice_Mail::next_game_label( $team_id ),
-			),
+			self::context_for( $row, $team_id ),
 			$address['email'],
 			SPLM_Discipline_Notice_Recipients::bcc_for( $season_id, $team_id )
 		);
@@ -327,14 +310,21 @@ class SPLM_Discipline_Notice_REST {
 			);
 		}
 
-		$ok = SPLM_Discipline_Notice_Database::update(
-			$id,
-			array(
-				'status'      => SPLM_Discipline_Notice_Database::STATUS_DISCARDED,
-				'released_by' => get_current_user_id(),
-				'note'        => (string) $request->get_param( 'note' ),
-			)
+		$fields = array(
+			'status'      => SPLM_Discipline_Notice_Database::STATUS_DISCARDED,
+			'released_by' => get_current_user_id(),
 		);
+
+		// Only written when the request actually carried one. Writing it always
+		// blanks whatever note the row already carries, because neither surface
+		// sends this parameter today — so every discard would silently erase the
+		// reason someone had recorded for the notice.
+		$note = (string) $request->get_param( 'note' );
+		if ( '' !== $note ) {
+			$fields['note'] = $note;
+		}
+
+		$ok = SPLM_Discipline_Notice_Database::update( $id, $fields );
 
 		if ( ! $ok ) {
 			return new WP_Error( 'splm_notice_write_failed', __( 'Could not discard the notice.', 'sportspress-league-manager' ), array( 'status' => 500 ) );
@@ -382,14 +372,18 @@ class SPLM_Discipline_Notice_REST {
 			);
 		}
 
-		$ok = SPLM_Discipline_Notice_Database::update(
-			$id,
-			array(
-				'status'    => SPLM_Discipline_Notice_Database::STATUS_SERVED,
-				'served_at' => SPLM_Discipline_Notice_Database::now(),
-				'note'      => (string) $request->get_param( 'note' ),
-			)
+		$fields = array(
+			'status'    => SPLM_Discipline_Notice_Database::STATUS_SERVED,
+			'served_at' => SPLM_Discipline_Notice_Database::now(),
 		);
+
+		// See discard(): an absent note parameter must not blank the stored one.
+		$note = (string) $request->get_param( 'note' );
+		if ( '' !== $note ) {
+			$fields['note'] = $note;
+		}
+
+		$ok = SPLM_Discipline_Notice_Database::update( $id, $fields );
 
 		if ( ! $ok ) {
 			return new WP_Error( 'splm_notice_write_failed', __( 'Could not mark the suspension served.', 'sportspress-league-manager' ), array( 'status' => 500 ) );
@@ -444,6 +438,39 @@ class SPLM_Discipline_Notice_REST {
 			'last_error'    => (string) $row->last_error,
 			'note'          => (string) $row->note,
 			'created_at'    => (string) $row->created_at,
+		);
+	}
+
+	/**
+	 * Build the mail context for a stored notice row.
+	 *
+	 * The counterpart of SPLM_Discipline_Notice_Pass::mail_context(), which
+	 * builds the same context from a live match. Both hand their fields to
+	 * SPLM_Discipline_Notice_Mail::context() so the derived values are computed
+	 * in one place — releasing a queued notice and sending one automatically
+	 * must produce identical wording.
+	 *
+	 * @param object $row     Notice row.
+	 * @param int    $team_id The player's team for the row's season.
+	 * @return array Body context.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function context_for( $row, int $team_id ): array {
+		$tiers = SPLM_Penalty_Watch::sanitize_tiers( (array) get_option( 'splm_discipline_tiers', array() ) );
+
+		return SPLM_Discipline_Notice_Mail::context(
+			array(
+				'player_name'  => get_the_title( (int) $row->player_id ),
+				'season_name'  => self::season_name( (int) $row->season_id ),
+				'scope'        => (string) $row->scope,
+				'season_value' => (int) $row->season_at_fire,
+				'consequence'  => (string) $row->consequence,
+				'games'        => (int) $row->games,
+				'value'        => (int) $row->value_at_fire,
+				'team_id'      => $team_id,
+			),
+			$tiers
 		);
 	}
 
