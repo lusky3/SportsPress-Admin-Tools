@@ -38,6 +38,7 @@ run_test "$SCRIPT_DIR/sportspress-player-registration/tests/test-player-matching
 run_test "$SCRIPT_DIR/sportspress-player-tools/tests/test-batch-list-creator.php"
 run_test "$SCRIPT_DIR/sportspress-player-tools/tests/test-player-skill-level.php"
 run_test "$SCRIPT_DIR/sportspress-player-tools/tests/test-email-sync.php"
+run_test "$SCRIPT_DIR/sportspress-player-tools/tests/test-profile-picture-resolution.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-matchup-generator.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-exporters.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-constraints.php"
