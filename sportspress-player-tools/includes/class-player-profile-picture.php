@@ -57,9 +57,17 @@ class SPT_Player_Profile_Picture {
 	 * into a write path, and a bare author match is precisely what produced the
 	 * bug. A hidden feature is recoverable; an overwritten photo is not.
 	 *
-	 * Read-only by design: registration's link_user_to_player() and the
-	 * backfill tool are the only writers of sp_user, so there is one place to
-	 * audit how a link is formed. See
+	 * Read-only by design. It is worth knowing what this method now trusts:
+	 * sp_user has FIVE mutators across four codebases — registration's
+	 * link_user_to_player(), the blueline theme's user-facing "claim your
+	 * player" flow (a fuzzy match against a billing name the account holder
+	 * edits themselves), the GDPR eraser's delete, and sportspress-player-merge
+	 * writing and restoring it via raw SQL. So this fix does not remove the
+	 * "write a photo onto a stranger's record" risk; it moves the trust
+	 * decision to whoever set the link. That is still a large improvement on
+	 * post_author, which recorded nothing but who typed the record in.
+	 *
+	 * Consolidating those writers is tracked separately. See
 	 * docs/superpowers/specs/2026-09-04-player-user-link-design.md.
 	 *
 	 * @param int $user_id WordPress user id.
