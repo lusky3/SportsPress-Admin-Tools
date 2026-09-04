@@ -44,6 +44,19 @@ concurrency:
 jobs:
   snyk-code:
     runs-on: ubuntu-latest
+    # Hoisted to job level so the steps below can test whether it is set.
+    # GitHub does NOT expose Actions secrets to workflows triggered by
+    # Dependabot pull requests — those runs read the separate *Dependabot*
+    # secrets store, which is empty here. Without the guards below, every
+    # Dependabot PR fails these steps with "Authentication error (SNYK-0005)",
+    # which looks like a vulnerability finding and is not one.
+    #
+    # BETTER FIX, needs a repo admin: add SNYK_TOKEN under
+    # Settings -> Secrets and variables -> Dependabot. Then these steps run on
+    # dependency PRs too — which is where an SCA scan is most valuable — and
+    # the guards become inert rather than load-bearing.
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,9 +66,8 @@ jobs:
       # and SCA (test). We use a single language entry point and switch
       # behavior via the `command` arg.
       - name: Run Snyk Code (SAST)
+        if: env.SNYK_TOKEN != ''
         uses: snyk/actions/node@9adf32b1121593767fc3c057af55b55db032dc04 # v1.0.0
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
           command: code test
           args: --severity-threshold=high
@@ -73,12 +85,24 @@ jobs:
         run: npm ci
 
       - name: Run Snyk SCA against the league-manager npm tree
+        if: env.SNYK_TOKEN != ''
         uses: snyk/actions/node@9adf32b1121593767fc3c057af55b55db032dc04 # v1.0.0
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
           command: test
           args: --severity-threshold=high --file=sportspress-league-manager/package.json
+
+      # A skipped scan must not read as a clean scan. Without this the job goes
+      # green having tested nothing, which is more dangerous than the auth
+      # failure it replaces: green is what people trust.
+      - name: Warn when Snyk was skipped
+        if: env.SNYK_TOKEN == ''
+        run: |
+          echo "::warning title=Snyk did not run::SNYK_TOKEN is unavailable, so \
+          neither the SAST nor the SCA scan ran for this event. Dependabot pull \
+          requests cannot read Actions secrets. This branch is still covered by \
+          the push-to-main run and the weekly cron, and npm-audit ran normally. \
+          To scan dependency PRs at PR time, add SNYK_TOKEN under Settings -> \
+          Secrets and variables -> Dependabot."
 
   npm-audit:
     runs-on: ubuntu-latest
