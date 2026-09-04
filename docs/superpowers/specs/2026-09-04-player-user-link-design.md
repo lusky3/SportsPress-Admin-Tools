@@ -59,7 +59,7 @@ the claims the original Part 2 rested on. Corrections are recorded below rather
 than quietly edited away, because two of them are mistakes worth not repeating.
 
 Consolidating `sp_user` ownership is now tracked in its own document:
-`2026-09-05-sp-user-ownership-design.md`.
+`2026-09-04-sp-user-ownership-design.md`.
 
 ## What `sp_user` actually is
 
@@ -213,4 +213,4 @@ Part 1: one query, one string, one test file. **Implemented.**
 
 Part 2: **withdrawn** — see "Why Part 2 was withdrawn". The follow-on work is
 consolidating `sp_user` ownership into SPAT, specified separately in
-`2026-09-05-sp-user-ownership-design.md`.
+`2026-09-04-sp-user-ownership-design.md`.
