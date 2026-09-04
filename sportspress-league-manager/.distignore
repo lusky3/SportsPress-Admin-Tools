@@ -11,6 +11,7 @@
 .gitignore
 .gitattributes
 .distignore
+.snyk
 .editorconfig
 .amazonq
 

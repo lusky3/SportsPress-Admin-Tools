@@ -1,0 +1,50 @@
+# Snyk policy file — https://docs.snyk.io/manage-risk/policies
+#
+# WHY THIS FILE IS HERE AND NOT AT THE REPO ROOT
+#
+# There are two Snyk policy files in this repo and they are not interchangeable:
+#
+#   /.snyk                          SAST (`snyk code test`), which runs from the
+#                                   repo root with no --file. Root is where it
+#                                   looks; that file holds a code exclusion.
+#   /sportspress-league-manager/    SCA (`snyk test --file=sportspress-league-
+#     .snyk                         manager/package.json`). Despite running from
+#                                   the repo root, Snyk resolves the policy
+#                                   beside the TARGET MANIFEST, not the cwd.
+#
+# This was verified, not assumed: with this policy at the repo root the adm-zip
+# ignore below is silently ignored and the scan stays red. Move it and the whole
+# reason for the file disappears with no error message. Keep it next to
+# package.json.
+#
+# Every entry MUST carry an `expires` date. An ignore that never lapses is a
+# decision nobody revisits; a dated one forces the question again on a known
+# day. When an entry expires the scan turns red again — that is the point, and
+# the fix is to re-evaluate, not to extend it reflexively.
+version: v1.25.0
+ignore:
+  SNYK-JS-ADMZIP-19276676:
+    - '*':
+        reason: >-
+          Symlink Attack in adm-zip@0.6.0, reachable only through
+          @wordpress/scripts (wp-env). Snyk reports no upgrade or patch at any
+          version, so this cannot be resolved by bumping a dependency.
+
+          Not shipped: adm-zip is dev-only (`dev: true` in package-lock.json),
+          and .distignore strips /node_modules, package.json and
+          package-lock.json from the packaged plugin — the distributed artifact
+          is the compiled build/ bundle. The production dependency set is three
+          @dnd-kit packages, which is why the production-only npm-audit job
+          passes while this scan does not.
+
+          Not exploitable here: the attack requires extracting a hostile
+          archive. adm-zip is invoked by wp-env against archives it downloads
+          from WordPress.org during local environment setup, never against
+          user-supplied input, and never at runtime on a WordPress site.
+
+          Revisit on expiry: check whether @wordpress/scripts has moved off
+          adm-zip or a patched release exists. If neither, re-date this entry
+          with a fresh assessment rather than removing the expiry.
+        expires: 2026-12-03T00:00:00.000Z
+        created: 2026-09-04T00:00:00.000Z
+patch: {}

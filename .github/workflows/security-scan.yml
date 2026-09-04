@@ -6,11 +6,29 @@ on:
     paths:
       - '**/*.php'
       - '**/*.js'
+      # Dependency manifests: the SCA step resolves its graph from these, so a
+      # deps-only change is exactly the change most likely to move this scan's
+      # result. Without them a lockfile bump that fixes (or introduces) an
+      # advisory never triggers the scanner that reports it.
+      - '**/package.json'
+      - '**/package-lock.json'
+      # Policy files decide what the scan suppresses; editing one must re-run it.
+      - '**/.snyk'
+      - '.github/workflows/security-scan.yml'
   pull_request:
     branches: [main]
     paths:
       - '**/*.php'
       - '**/*.js'
+      # Dependency manifests: the SCA step resolves its graph from these, so a
+      # deps-only change is exactly the change most likely to move this scan's
+      # result. Without them a lockfile bump that fixes (or introduces) an
+      # advisory never triggers the scanner that reports it.
+      - '**/package.json'
+      - '**/package-lock.json'
+      # Policy files decide what the scan suppresses; editing one must re-run it.
+      - '**/.snyk'
+      - '.github/workflows/security-scan.yml'
   schedule:
     - cron: "0 0 * * 0" # Run weekly on Sundays (full scan regardless of paths)
 
