@@ -6,7 +6,39 @@ on:
       - "v*" # Push events to matching v*, i.e. v1.0, v20.15.10
 
 jobs:
+  # Refuse to publish a plugin whose SHIPPED code changed since the previous tag
+  # without a version bump and a matching changelog entry. Runs before packaging
+  # so a mislabelled release never produces a zip at all — a release that exists
+  # but is wrong is worse than one that failed to build, because people download
+  # the former.
+  #
+  # Changes confined to tests/, docs/ and the rest of .distignore do NOT demand a
+  # bump: forcing one for work no user receives would train everyone to bump
+  # meaninglessly, which defeats the guard.
+  release-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The guard compares this tag against the previous one, so it needs
+          # the full history and every tag. The default shallow clone has
+          # neither and would silently pass everything.
+          fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: "8.2"
+
+      - name: Verify the guard's own logic still holds
+        run: php tests/test-release-guard.php
+
+      - name: Check every plugin is labelled for release
+        run: php scripts/release-guard.php --verbose
+
   package:
+    needs: release-guard
     runs-on: ubuntu-latest
     permissions:
       contents: write

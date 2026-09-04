@@ -26,6 +26,7 @@ run_test() {
 }
 
 # Discover and run all standalone test files
+run_test "$SCRIPT_DIR/tests/test-release-guard.php"
 run_test "$SCRIPT_DIR/sportspress-admin-tools/tests/test-lock.php"
 run_test "$SCRIPT_DIR/sportspress-admin-tools/tests/test-database.php"
 run_test "$SCRIPT_DIR/sportspress-admin-tools/tests/test-health-dashboard.php"
