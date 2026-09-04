@@ -75,16 +75,20 @@ once per order. It sets both `sp_user` **and** `post_author`.
 
 ### Current coverage
 
-| | Count |
-|---|---|
-| Published players | 2,108 |
-| With an `sp_user` link | 204 (10%) |
-| **Without any link** | **1,904 (90%)** |
-| Of the 204: `post_author == sp_user` | 58 |
-| Of the 204: `post_author != sp_user` | 146 |
+Staging (`tikal`, rebuilt from a prod dump) is the authoritative figure;
+`arl-local` is shown alongside as a cross-check, and the two agree on shape.
 
-The 90% are bulk imports, admin-created records, and anything predating the
-feature. Cody's player 66 is one of them.
+| | Staging | arl-local |
+|---|---|---|
+| Published players | 2,183 | 2,108 |
+| With an `sp_user` link | 367 (17%) | 204 (10%) |
+| **Without any link** | **1,816 (83%)** | 1,904 (90%) |
+| Of the linked: `post_author == sp_user` | — | 58 |
+| Of the linked: `post_author != sp_user` | — | 146 |
+
+**Roughly 83% of players carry no link.** They are bulk imports, admin-created
+records, and anything predating the feature. Cody's player 66 is one of them.
+Every proportion elsewhere in this document uses the staging figure.
 
 ### The direction of truth is already settled
 
@@ -99,7 +103,7 @@ confidence". The profile-picture class simply never received that treatment.
 
 ## Design
 
-Two parts, shipped together. Part 1 alone would leave the feature dark for 90%
+Two parts, shipped together. Part 1 alone would leave the feature dark for ~83%
 of players; Part 2 alone would leave the write bug in place.
 
 ### Part 1 — Strict `sp_user` resolution
@@ -146,7 +150,7 @@ registration being the only current writer of `sp_user`.
 
 The two write it for different reasons. Registration sets a link as a *side
 effect* of processing one order, for one player, at the moment of purchase.
-This is *bulk data repair* across 1,904 historical records with a human review
+This is *bulk data repair* across ~1,816 historical records with a human review
 gate — which is what player-tools already is: five single-field meta boxes and
 bulk CSV tools, including `SPT_Email_Sync`, whose panel, confidence ladder and
 threshold constant this reuses directly. Putting a reviewed bulk operation
@@ -210,7 +214,7 @@ Candidate signals per unlinked player, highest confidence first:
 Signal 1 supersedes an earlier draft that read the *registration log*
 (`spat_registration_logs`) rather than the orders. That was a measurement
 error worth recording, because it nearly sized this feature out of existence:
-the log resolves **1** of the 1,904 unlinked players, because the log only
+the log resolved **1** of arl-local's 1,904 unlinked players, because the log only
 holds what was already processed. The orders behind it are a different
 population entirely.
 
@@ -226,6 +230,13 @@ Rules:
   `wp spr backfill-owners`, which stays a separate, separately-approved step.
 - **Idempotent and non-destructive.** Skips any player that already has a link;
   never overwrites one.
+- **Collisions are surfaced, never resolved silently.** The rules above cover one
+  player claimed by several users. The reverse also happens here: two customers
+  can resolve to the *same* player — a shared household email, a parent ordering
+  for a child, two people of the same name. Any player proposed by more than one
+  customer in a single run is listed and pre-checked for neither. Writing
+  whichever came first would hand a record to the wrong person, which is the bug
+  this project exists to fix.
 - **CSV export of the unmatched**, as email-sync does, so the remainder can be
   resolved offline and re-imported.
 
@@ -241,35 +252,53 @@ The two tools are safe as a pair only because of that ordering. **If
 email-sync's priority-2 rule ever loosens, this backfill becomes circular.** A
 comment saying so belongs in both files.
 
-#### Reach: measured where it can be, and not where it cannot
+#### Reach: measured on staging
 
-Against the 1,904 unlinked players and the order history behind them:
+Staging (`tikal`, rebuilt from a prod dump) — not `arl-local`, which has no
+email data and cannot answer this:
 
-| Signal | Reach on `arl-local` |
-|---|---|
-| **Completed orders with a logged-in customer** | **5,686** of 7,261 |
-| **Distinct customers on those orders** | **1,445** |
-| **…of whom have no `sp_user` link today** | **1,246** |
-| Registration log → one user | 1 (the log is nearly empty) |
-| `spt_email` present on an unlinked player | 0 — only 9 `spt_email` rows exist site-wide, all empty; email-sync has never run here |
-| Exact `display_name` match to one user | 850 (48 ambiguous, 1,006 no match) |
+| | Staging | arl-local |
+|---|---|---|
+| Published players | 2,183 | 2,108 |
+| With an `sp_user` link | 367 (17%) | 204 (10%) |
+| Completed orders | 7,578 | 7,261 |
+| …with a logged-in customer | **5,963** | 5,686 |
+| …ever `_spr_processed` | **0** | 0 |
+| Distinct customers on completed orders | 1,498 | 1,445 |
+| **…with no `sp_user` link** | **1,132** | 1,246 |
 
-So signal 1 is worth building and signals 2–4 are the tail. Around **1,246
-customers** are reachable through order history alone — the difference between
-a backfill that is not worth writing and one that resolves most of the gap.
+The two environments agree on shape, and `_spr_processed` being unset on every
+completed order in both says the registration pipeline has never run over
+history anywhere.
 
-Two honest caveats. `arl-local` is a local copy: `_spr_processed` is unset on
-**all 7,266** completed orders there, which either means the pipeline never ran
-over history or the flag did not come across in the copy. And signal 1's *hit
-rate* still depends on `find_existing_player()` matching a billing name to a
-roster title, which cannot be predicted from counts. **Confirm both on prod or
-staging before Part 2 is written.**
+**The match rate, which counts cannot give you.** A random sample of 300
+unlinked customers, resolving each order's billing name and email through
+`find_existing_player()`:
 
-Name matching cannot close the remainder even where it fires: `Cody Lusk`
-normalises to the same string for **five** users (9, 825, 1276, 1872, 2083), so
-the reporter's own record lands in the ambiguous bucket. Some links will only
-ever be made by a human who knows the league — which is why the preview gate is
-not optional, whatever the reach turns out to be.
+| Outcome | n | % |
+|---|---|---|
+| `player_found_by_name` | 240 | 80% |
+| `player_found_by_normalized_name` | 7 | 2% |
+| `player_found_by_email` | 5 | 2% |
+| **Resolved** | **252** | **84%** |
+| `multiple_players_found_name_match_requires_email` | 11 | 4% |
+| `multiple_players_found_email_conflict` | 4 | 1% |
+| No match | 33 | 11% |
+
+Projected over the 1,132 unlinked customers: **~951 new links**, taking
+`sp_user` coverage from 367/2,183 (17%) to roughly **1,318/2,183 (60%)**, with
+~57 terminal conflicts for a human and ~125 with no match at all.
+
+**A methodology note for whoever re-measures.** The first sample took the 200
+most recent customers and reported **94%**. That is wrong by construction:
+recent customers are the ones most likely to have a current roster entry.
+Sampling randomly across the whole history gave **84%**. Ten points of
+optimism hid in `ORDER BY id DESC`. Sample randomly.
+
+One outcome is worth reading twice. In the random sample, user 1077
+"Nick Prystie" resolved to player 3352 "Nick Prystie" — the very record the
+`codylusk` account was writing photos onto. The backfill hands that player to
+the person it actually belongs to.
 
 #### Rejected: bulk re-running order processing
 
@@ -353,9 +382,17 @@ screen.
 
 Sequencing matters more than size, and it has one hard ordering:
 
-1. **Measure on prod or staging first.** Confirm the order and `_spr_processed`
-   counts hold there, and sample what `find_existing_player()` actually matches
-   for real billing names. `arl-local` cannot answer the second question at all.
-2. **Then write Part 2**, sized to what that found.
+1. ~~Measure on prod or staging first.~~ **Done** — see "Reach: measured on
+   staging". The signal is worth building: ~951 links at an 84% match rate,
+   taking coverage from 17% to about 60%.
+2. **Write Part 2**, sized to that: an order walk, a promoted matcher seam, and
+   a preview screen. The confidence ladder's signals 2–4 are the tail and can be
+   cut from a first release if they are not carrying weight — signal 1 does the
+   work.
 3. **Part 1 does not reach players until Part 2 ships**, because on its own it
-   hides the feature from ~90% of them.
+   hides the feature from ~83% of them.
+
+After a successful backfill run, `wp spr backfill-owners --write` becomes
+worth revisiting as a separate decision: with far more `sp_user` links present,
+it would realign `post_author` for all of them at once. It remains out of scope
+here and is not required for any of the above to be correct.
