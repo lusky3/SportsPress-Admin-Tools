@@ -4,7 +4,7 @@ Tags: sportspress, woocommerce, player, registration, automation
 Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: GPLv2 or later
 
 Automatically creates SportsPress player records from WooCommerce registration orders.
@@ -39,6 +39,18 @@ SportsPress Player Registration automatically creates SportsPress player records
 4. Configure automatic creation and role assignment in settings
 
 == Changelog ==
+
+= 1.1.0 =
+* New: a waitlist for full divisions. Registrants arriving after a division fills join the queue, and as places open the plugin sends a timed claim offer; nobody else can buy that spot until the offer expires or its holder takes it.
+* Two orders landing at the same moment can no longer both create the same player. The claim is atomic now.
+* The importer matches someone registering as Jr or III to their existing record instead of creating a second one.
+* The position the importer detects actually reaches the player record. It used to read the value and drop it.
+* A registration whose email collides with an existing account fails once and stops, rather than retrying forever.
+* Season assignment no longer rides along with record creation, and the keyword the name matcher uses is a visible setting.
+* Linking a player to an order sets `links_to_order`, so other tools can spot registration-created records without inferring it from a list of actions.
+* Refunds follow their own path. A refund no longer leaves behind a registration entry saying the opposite.
+* Sample data in the admin is synthetic, imports validate harder, and email addresses sit under the PII retention tier.
+* Works with WooCommerce High-Performance Order Storage.
 
 = 1.0.0 =
 * Initial release

@@ -4,7 +4,7 @@ Tags: sportspress, schedule, league, round-robin, calendar
 Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -57,6 +57,18 @@ The plugin validates configuration feasibility before generation and provides sp
 Yes. The import dialog lets you choose conflict resolution (skip or overwrite), event status, league, and season. Import runs in chunks with progress tracking.
 
 == Changelog ==
+
+= 1.1.0 =
+* New: a back-to-back restriction you can set from the admin, so a team won't play on consecutive days and nobody has to hand-edit configuration to stop it.
+* New: venue CSV import, per-day weighting, and rules for spreading games across dates and venues.
+* New: a REST `/export/csv` route, plus a change-history viewer showing what a draft changed between saves.
+* New: the last of the wp-admin features moved into the React dashboard.
+* Corrected the allocator's backtracking validation cache, which could accept a schedule that violated a constraint it had already checked. Constraint checks follow cascades now, and a finished schedule isn't validated a second time.
+* A cancelled allocation and one that timed out look different in the log. They used to surface identically, which made a stuck run hard to tell from an abandoned one.
+* Overlap restrictions come back when you edit a configuration, rather than quietly emptying themselves.
+* Exported CSV values neutralise spreadsheet formula injection, and export filenames carry enough entropy that one doesn't give away the next.
+* Cloning a draft goes through `save_draft`, so validation the original already passed doesn't block the copy. Edits made in the dashboard turn up in history.
+* Hardened the REST routes, fixed the venue cache reset, and deprecated the legacy `splm/v1/schedule/*` endpoints.
 
 = 1.0.0 =
 * Initial release

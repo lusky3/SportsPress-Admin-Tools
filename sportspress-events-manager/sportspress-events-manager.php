@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SportsPress Events Manager (Child Plugin)
  * Description: Child plugin for SportsPress Admin Tools - Events Management modules
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: Cody (lusky3)
  * Text Domain: sportspress-events-manager
  * License: GPL v2 or later
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 define( 'SPEM_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPEM_VERSION', '1.0.0' );
+define( 'SPEM_VERSION', '1.1.0' );
 
 class SportsPress_Events_Manager {
 

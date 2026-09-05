@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SportsPress e-Transfer Automation (Child Plugin)
  * Description: Child plugin for SportsPress Admin Tools - e-Transfer Automation module
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Cody (lusky3)
  * Text Domain: sportspress-etransfer-automation
  * License: GPLv2 or later
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'SPET_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPET_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPET_VERSION', '1.0.0' );
+define( 'SPET_VERSION', '1.0.1' );
 
 class SportsPress_ETransfer_Automation {
 

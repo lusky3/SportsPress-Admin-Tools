@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SportsPress Player Tools (Child Plugin)
  * Description: Child plugin for SportsPress Admin Tools - Player Tools modules
- * Version: 1.0.1
+ * Version: 1.1.0
  * Author: Cody (lusky3)
  * Text Domain: sportspress-player-tools
  * License: GPL v2 or later
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'SPT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPT_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPT_VERSION', '1.0.1' );
+define( 'SPT_VERSION', '1.1.0' );
 define( 'SPT_BATCH_LIST_CREATOR_FILE', 'includes/class-batch-list-creator.php' );
 
 class SportsPress_Player_Tools {
