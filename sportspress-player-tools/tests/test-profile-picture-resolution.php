@@ -30,17 +30,37 @@ define( 'ABSPATH', dirname( __FILE__ ) . '/' );
 //   502   Second Link      authored by 9, sp_user = 55
 //   503   Duplicate Link   authored by 9, sp_user = 55        -> 55 is ambiguous
 // ---------------------------------------------------------------------------
-$GLOBALS['ppr_roster'] = array(
-	66   => array( 'author' => 9,    'sp_user' => null ),
-	3352 => array( 'author' => 1276, 'sp_user' => null ),
-	500  => array( 'author' => 9,    'sp_user' => 42 ),
-	501  => array( 'author' => 42,   'sp_user' => 77 ),
-	502  => array( 'author' => 9,    'sp_user' => 55 ),
-	503  => array( 'author' => 9,    'sp_user' => 55 ),
-);
+final class PPR_Fixture {
 
-/** Every get_posts() arg set the resolver issued, for assertion. */
-$GLOBALS['ppr_queries'] = array();
+	/** Post id => array( author, sp_user|null ). */
+	public static $roster = array(
+		66   => array( 'author' => 9,    'sp_user' => null ),
+		3352 => array( 'author' => 1276, 'sp_user' => null ),
+		500  => array( 'author' => 9,    'sp_user' => 42 ),
+		501  => array( 'author' => 42,   'sp_user' => 77 ),
+		502  => array( 'author' => 9,    'sp_user' => 55 ),
+		503  => array( 'author' => 9,    'sp_user' => 55 ),
+	);
+
+	/** Every get_posts() arg set the resolver issued, for assertion. */
+	public static $queries = array();
+
+	/**
+	 * Post ids whose roster row satisfies $matches.
+	 *
+	 * @param callable $matches Receives one roster row, returns bool.
+	 * @return array<int>
+	 */
+	public static function ids_where( callable $matches ): array {
+		$out = array();
+		foreach ( self::$roster as $id => $row ) {
+			if ( $matches( $row ) ) {
+				$out[] = $id;
+			}
+		}
+		return $out;
+	}
+}
 
 if ( ! function_exists( 'get_posts' ) ) {
 	/**
@@ -51,26 +71,24 @@ if ( ! function_exists( 'get_posts' ) ) {
 	 * wrong question gets the wrong answer, which is the point.
 	 */
 	function get_posts( $args = array() ) {
-		$GLOBALS['ppr_queries'][] = $args;
-		$out = array();
+		PPR_Fixture::$queries[] = $args;
 
 		if ( isset( $args['author'] ) ) {
-			foreach ( $GLOBALS['ppr_roster'] as $id => $row ) {
-				if ( (int) $row['author'] === (int) $args['author'] ) {
-					$out[] = $id;
+			$want = (int) $args['author'];
+			return PPR_Fixture::ids_where(
+				static function ( $row ) use ( $want ) {
+					return (int) $row['author'] === $want;
 				}
-			}
-			return $out;
+			);
 		}
 
 		if ( ! empty( $args['meta_query'][0]['key'] ) && 'sp_user' === $args['meta_query'][0]['key'] ) {
 			$want = (int) $args['meta_query'][0]['value'];
-			foreach ( $GLOBALS['ppr_roster'] as $id => $row ) {
-				if ( null !== $row['sp_user'] && (int) $row['sp_user'] === $want ) {
-					$out[] = $id;
+			return PPR_Fixture::ids_where(
+				static function ( $row ) use ( $want ) {
+					return null !== $row['sp_user'] && (int) $row['sp_user'] === $want;
 				}
-			}
-			return $out;
+			);
 		}
 
 		// An unrecognised query shape must not look like a successful lookup.
@@ -85,8 +103,8 @@ if ( ! function_exists( 'add_filter' ) ) {
 	function add_filter() {}
 }
 if ( ! function_exists( '__' ) ) {
-	function __( $t, $d = '' ) {
-		return $t;
+	function __( $text ) {
+		return $text;
 	}
 }
 
@@ -107,7 +125,7 @@ function assert_test( $condition, $message ) {
 }
 
 function resolve( $user_id ) {
-	$GLOBALS['ppr_queries'] = array();
+	PPR_Fixture::$queries = array();
 	$obj = new SPT_Player_Profile_Picture();
 	$ref = new ReflectionMethod( $obj, 'get_user_player_posts' );
 	$ref->setAccessible( true );
@@ -157,7 +175,7 @@ echo "\n=== the query actually issued ===\n\n";
 // A stub that ignored its args would let the broken code pass every assertion
 // above. Assert the shape of the question, not just the answer.
 resolve( 42 );
-$q = $GLOBALS['ppr_queries'][0] ?? array();
+$q = PPR_Fixture::$queries[0] ?? array();
 assert_test( ! isset( $q['author'] ), 'the resolver does NOT query by post_author' );
 assert_test(
 	isset( $q['meta_query'][0]['key'] ) && 'sp_user' === $q['meta_query'][0]['key'],
@@ -172,10 +190,10 @@ echo "\n=== caching ===\n\n";
 $obj = new SPT_Player_Profile_Picture();
 $ref = new ReflectionMethod( $obj, 'get_user_player_posts' );
 $ref->setAccessible( true );
-$GLOBALS['ppr_queries'] = array();
+PPR_Fixture::$queries = array();
 $ref->invokeArgs( $obj, array( 42 ) );
 $ref->invokeArgs( $obj, array( 42 ) );
-assert_test( 1 === count( $GLOBALS['ppr_queries'] ), 'a repeated lookup for one user issues a single query' );
+assert_test( 1 === count( PPR_Fixture::$queries ), 'a repeated lookup for one user issues a single query' );
 
 echo "\n=== Results ===\n\n";
 echo "Passed: {$passed}\nFailed: {$failed}\n";
