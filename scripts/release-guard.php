@@ -174,12 +174,12 @@ function spat_guard_read_versions( string $header_php, string $readme ): array {
 	$constant = spat_guard_read_version_constant( $header_php );
 
 	$header = '';
-	if ( preg_match( '/^[\s*]*Version:\s*([0-9][0-9A-Za-z.\-]*)/mi', $header_php, $m ) ) {
+	if ( preg_match( '/^[\s*]*Version:\s*(\d[\da-z.\-]*)/mi', $header_php, $m ) ) {
 		$header = trim( $m[1] );
 	}
 
 	$stable = '';
-	if ( preg_match( '/^Stable tag:\s*([0-9][0-9A-Za-z.\-]*)/mi', $readme, $m ) ) {
+	if ( preg_match( '/^Stable tag:\s*(\d[\da-z.\-]*)/mi', $readme, $m ) ) {
 		$stable = trim( $m[1] );
 	}
 
