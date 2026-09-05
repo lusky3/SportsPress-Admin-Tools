@@ -58,7 +58,9 @@ wp-content/cache/
 wp-content/debug.log
 
 # Testing
-coverage/
+# Anchored: the generated Clover report lives at the repo root. Unanchored,
+# this pattern also swallowed bin/coverage/ — the tooling that writes it.
+/coverage/
 .phpunit.result.cache
 phpunit.xml
 
@@ -79,3 +81,7 @@ BRAINSTORM-REPORT.md
 .agents/
 ruvector.db
 skills-lock.json
+
+# Raw per-suite coverage snapshots from run-coverage.sh. The merged report
+# lands in coverage/, already ignored above.
+/.coverage-raw/
