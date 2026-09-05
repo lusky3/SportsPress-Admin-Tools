@@ -4,7 +4,7 @@ Tags: sportspress, events, calendar, import, season
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 8.1
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -44,6 +44,16 @@ They are automatically created as SportsPress posts/terms during import.
 No. The rollover creates new season terms and updates team assignments. Preview your teams before executing and use the archive option carefully.
 
 == Changelog ==
+
+= 1.1.0 =
+* New: the season rollover now automates the rest of the transition rather than stopping after calendars and rosters — including a season-wide pass that assigns every team to a division in one step.
+* New: league table generator, available in wp-admin and shared with the League Manager dashboard.
+* Player stats are surfaced up front on score entry, fixing a visibility bug that left the section unreachable.
+* Rollover is idempotent: running it twice no longer duplicates the work of the first run.
+* Event import reads dates in the site's timezone instead of the server's, and the standings asset URL resolves correctly when the plugin is not in the default directory.
+* Imported CSV values are neutralised against spreadsheet formula injection, and uploads are checked by MIME type rather than by extension alone.
+* Standings caching is versioned so a stale table is no longer served after an underlying change, and roster keys are seeded so an empty roster renders rather than erroring.
+* Notification sending moved to an asynchronous cron handler that reads a stashed payload, so a slow mail server no longer blocks the request that triggered it.
 
 = 1.0.0 =
 * Initial release

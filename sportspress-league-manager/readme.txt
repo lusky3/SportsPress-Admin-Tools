@@ -4,7 +4,7 @@ Tags: sportspress, league, manager, roster, fees
 Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -47,6 +47,48 @@ WooCommerce is optional. Without it, fee tracking can be configured for manual e
 CSV files with `Team` and `Name` columns (both required). Each row maps a player Name to a Team; rows missing either value are skipped.
 
 == Changelog ==
+
+= 1.1.0 =
+
+**Registration and payments**
+
+* New: registration waitlist with timed claim offers, gating purchase until an offer is taken or expires.
+* New: payments search and a full-set CSV export, rather than only the current page.
+
+**Discipline and player records**
+
+* New: warning and suspension notices sent to players, with the delivery mode configurable per severity.
+* New: stat leaders page and penalty discipline tracking.
+* New: click a skill level to see which players sit in it.
+* Delete a player note directly from the dashboard, and upload a roster by dragging the file onto the page.
+
+**Season management**
+
+* New: season audit with one-click repairs for conveners, surfacing configuration problems and offering to fix them.
+* New: division-centric Season Setup builder with per-division team boxes.
+* New: league table generator, shared with Events Manager.
+* Season Report rebuilt with standings, per-division breakdown and registration figures.
+
+**Dashboard**
+
+* New: at-a-glance stat tiles, consolidated Help page with per-section "?" links, and in-dashboard Score Sheets help.
+* Schedule view gains filters, pagination, view/edit actions and import help.
+* Dropped the SportsPress Pro chrome; added return-to-site and return-to-admin links.
+
+**Score sheets**
+
+* Reprocess failed sheets, and duplicate audit rows are persisted rather than discarded.
+* Provider errors are surfaced with a "Test connection" check instead of failing silently.
+
+**Fixes**
+
+* Standings no longer include SportsPress's reserved totals row, which was being read as a team.
+* "Calculate Skills" returned 503 because it called a Player Tools class and method that had been renamed.
+* Leaders are reported from box scores; the unreliable report standings were removed.
+* Player and team names containing entities render correctly in the React dashboard instead of showing raw HTML.
+* Delegated game routes are gated on the events_management module being enabled.
+* CSV column mapping corrected, roster handling degrades gracefully on malformed input, and batch score submission is capped.
+* Code chips in Help are legible in dark mode; they were dark-on-dark.
 
 = 1.0.0 =
 * Initial release

@@ -4,7 +4,7 @@ Tags: sportspress, woocommerce, etransfer, payment, automation
 Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.0.0
+Stable tag: 1.0.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,6 +48,15 @@ Payments are matched to on-hold WooCommerce orders by: (1) Reply-To email vs bil
 Unmatched payments appear in WooCommerce → e-Transfer Webhooks where you can manually match them to orders or hide false positives.
 
 == Changelog ==
+
+= 1.0.1 =
+* Payment safety: a name-based order match now requires the paid amount to align exactly with the order total before the order is auto-completed. Name matching is fuzzy, so a name hit alone is weak evidence of who paid; anything that does not align is routed to manual review instead. Email (Reply-To) matches are a strong identity signal and keep their existing behaviour of auto-completing unless the amount mismatches.
+* DKIM verification pins the `authserv-id` in Authentication-Results and strips ARC headers at the worker, so a forwarded or replayed notification cannot be presented as a fresh one. Verification failures are logged before they are enforced.
+* Order side effects run only after the payment claim is won, so a duplicate or concurrent webhook can no longer act on the same order twice. Payments corrected after an initial failure can be retried.
+* `X-Forwarded-For` is honoured only when the request arrives from an admin-configured proxy IP or CIDR; otherwise `REMOTE_ADDR` is used.
+* Extraction failures are logged with their reason instead of returning a bare 400 with nothing recorded.
+* Secrets are masked in log output, and stored personal data is pruned according to the configured retention tier.
+* Compatible with WooCommerce High-Performance Order Storage (HPOS).
 
 = 1.0.0 =
 * Initial release

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SportsPress Schedule Generator (Child Plugin)
  * Description: Child plugin for SportsPress Admin Tools - League Schedule Generator
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: Cody (lusky3)
  * Text Domain: sportspress-schedule-generator
  * License: GPL v2 or later
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'SPSG_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPSG_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPSG_VERSION', '1.0.0' );
+define( 'SPSG_VERSION', '1.1.0' );
 
 class SportsPress_Schedule_Generator {
 
