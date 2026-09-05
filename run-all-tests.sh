@@ -12,6 +12,13 @@ FAILED_FILES=()
 run_test() {
     local file="$1"
     local rel="${file#$SCRIPT_DIR/}"
+
+    # List mode: print the registry and run nothing. run-coverage.sh sources
+    # this script to learn which suites exist, so the two cannot drift apart.
+    if [ -n "${SPAT_LIST_TESTS:-}" ]; then
+        echo "$file"
+        return 0
+    fi
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "Running: $rel"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -83,8 +90,14 @@ run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-rest-ingest.php"
 run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-ingest-retry-failed.php"
 run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-dashboard-rest.php"
 
+# Nothing to summarise when the run was only a registry dump.
+if [ -n "${SPAT_LIST_TESTS:-}" ]; then
+    exit 0
+fi
+
 echo "════════════════════════════════════════"
 echo "  ALL TESTS SUMMARY"
+
 echo "════════════════════════════════════════"
 echo "  Test suites passed: $TOTAL_PASS"
 echo "  Test suites failed: $TOTAL_FAIL"
