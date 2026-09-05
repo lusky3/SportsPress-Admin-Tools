@@ -17,6 +17,11 @@ jobs:
   # meaninglessly, which defeats the guard.
   release-guard:
     runs-on: ubuntu-latest
+    # The guard only reads the repository and its tags; it publishes nothing.
+    # Without this it inherits the repository default, which is wider than the
+    # job needs and wider than every other workflow here declares.
+    permissions:
+      contents: read
     steps:
       - name: Checkout Code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
