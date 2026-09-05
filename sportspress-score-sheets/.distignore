@@ -1,0 +1,34 @@
+# Files and directories excluded from the distributed plugin build.
+# Mirrors the WordPress.org SVN "dotorg" exclusion model: anything listed
+# here is stripped before packaging so it never ships to production.
+
+# Dev tooling / VCS
+/.git
+/.github
+.gitignore
+.gitattributes
+.distignore
+.editorconfig
+
+# Tests, fixtures, and debug scripts (never shipped)
+/tests
+
+# Build / dependency tooling
+/node_modules
+composer.json
+composer.lock
+package.json
+package-lock.json
+phpcs.xml
+phpunit.xml
+phpunit.xml.dist
+
+# Docs that don't belong in the distributed package
+/docs
+README.md
+AGENTS.md
+ARCHITECTURE.md
+
+# Operator-facing setup notes for the remote intake worker; not plugin code.
+assets/remote-intake.md
+assets/README*

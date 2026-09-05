@@ -6,7 +6,39 @@ on:
       - "v*" # Push events to matching v*, i.e. v1.0, v20.15.10
 
 jobs:
+  # Refuse to publish a plugin whose SHIPPED code changed since the previous tag
+  # without a version bump and a matching changelog entry. Runs before packaging
+  # so a mislabelled release never produces a zip at all — a release that exists
+  # but is wrong is worse than one that failed to build, because people download
+  # the former.
+  #
+  # Changes confined to tests/, docs/ and the rest of .distignore do NOT demand a
+  # bump: forcing one for work no user receives would train everyone to bump
+  # meaninglessly, which defeats the guard.
+  release-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The guard compares this tag against the previous one, so it needs
+          # the full history and every tag. The default shallow clone has
+          # neither and would silently pass everything.
+          fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: "8.2"
+
+      - name: Verify the guard's own logic still holds
+        run: php tests/test-release-guard.php
+
+      - name: Check every plugin is labelled for release
+        run: php scripts/release-guard.php --verbose
+
   package:
+    needs: release-guard
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -20,28 +52,27 @@ jobs:
           for dir in sportspress-*; do
             if [ -d "$dir" ]; then
               echo "Packaging $dir..."
-              # Exclusions mirror each plugin's .distignore. Notable rules:
-              #   - 'sportspress-league-manager/src/*' is scoped to that plugin
-              #     on purpose: it is the only plugin with un-built React
-              #     sources, and a bare '*/src/*' would silently strip a future
-              #     plugin's shipped src/ directory.
-              #   - build/ is deliberately NOT excluded — the compiled league
-              #     manager dashboard bundle MUST ship.
-              zip -r "dist/${dir}.zip" "$dir" \
-                -x "*/tests/*" \
-                   "*/.git*" \
-                   "*/.distignore" \
-                   "*/composer.*" \
-                   "*/node_modules/*" \
-                   "*/assets/README*" \
-                   "*/docs/*" \
-                   "*/assets/wrangler.toml" \
-                   "*/assets/remote-intake.md" \
-                   "*/package.json" \
-                   "*/package-lock.json" \
-                   "*/ARCHITECTURE.md" \
-                   "*/AGENTS.md" \
-                   "sportspress-league-manager/src/*"
+              # Exclusions come from the plugin's own .distignore — the single
+              # source of truth that scripts/release-guard.php also reads. This
+              # used to be a hand-copied list of -x patterns, which drifted out
+              # of step with .distignore and with the guard in both directions.
+              #
+              # A plugin with no .distignore ships everything; the guard treats
+              # that same missing file the same way, so the two agree even in
+              # the degenerate case.
+              excludes=()
+              if [ -f "$dir/.distignore" ]; then
+                while IFS= read -r line || [ -n "$line" ]; do
+                  line="${line%%#*}"
+                  line="$(printf '%s' "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+                  [ -z "$line" ] && continue
+                  line="${line#/}"
+                  # Both forms: the entry itself, and anything beneath it when
+                  # the entry names a directory.
+                  excludes+=( "$dir/$line" "$dir/$line/*" )
+                done < "$dir/.distignore"
+              fi
+              zip -r "dist/${dir}.zip" "$dir" -x "${excludes[@]}"
             fi
           done
 
