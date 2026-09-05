@@ -50,13 +50,13 @@ Unmatched payments appear in WooCommerce → e-Transfer Webhooks where you can m
 == Changelog ==
 
 = 1.0.1 =
-* Payment safety: a name-based order match now requires the paid amount to align exactly with the order total before the order is auto-completed. Name matching is fuzzy, so a name hit alone is weak evidence of who paid; anything that does not align is routed to manual review instead. Email (Reply-To) matches are a strong identity signal and keep their existing behaviour of auto-completing unless the amount mismatches.
-* DKIM verification pins the `authserv-id` in Authentication-Results and strips ARC headers at the worker, so a forwarded or replayed notification cannot be presented as a fresh one. Verification failures are logged before they are enforced.
-* Order side effects run only after the payment claim is won, so a duplicate or concurrent webhook can no longer act on the same order twice. Payments corrected after an initial failure can be retried.
-* `X-Forwarded-For` is honoured only when the request arrives from an admin-configured proxy IP or CIDR; otherwise `REMOTE_ADDR` is used.
-* Extraction failures are logged with their reason instead of returning a bare 400 with nothing recorded.
-* Secrets are masked in log output, and stored personal data is pruned according to the configured retention tier.
-* Compatible with WooCommerce High-Performance Order Storage (HPOS).
+* A name-matched payment no longer completes the order unless the amount matches exactly. Name matching handles nicknames and equivalents, so a name hit on its own says very little about who actually paid; anything that doesn't line up goes to manual review. Payments matched on the Reply-To address behave as before, since that's a strong enough signal to complete on unless the amount disagrees.
+* DKIM checks pin the `authserv-id` in Authentication-Results, and the worker strips ARC headers, so nobody can replay a forwarded notification as a fresh one. Failures show up in the log before they start rejecting anything.
+* The plugin claims a payment before it touches the order, so two webhooks firing at once can't both complete it. A payment that failed and was later corrected now retries cleanly.
+* `X-Forwarded-For` counts only when the request comes from a proxy IP or CIDR you've listed. Otherwise `REMOTE_ADDR` wins.
+* When extraction fails, the log says why. It used to return a bare 400 and record nothing at all.
+* Logs mask secrets, and stored personal data expires on whatever retention tier you've set.
+* Works with WooCommerce High-Performance Order Storage.
 
 = 1.0.0 =
 * Initial release

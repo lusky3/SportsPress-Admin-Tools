@@ -43,15 +43,15 @@ Yes. The batch list creator supports both "Create new" and "Update existing" mod
 == Changelog ==
 
 = 1.1.0 =
-* Fixed a write bug in profile pictures. The page resolved "your player record" by post author, which records who created a record rather than who it is about — so an account that had created someone else's player was shown that player as its own profile, and uploading wrote the photo onto it. Resolution is now by the `sp_user` link only. Note that players with no `sp_user` set no longer see the upload form at all; that is deliberate, and safer than writing to the wrong record.
-* New: skill ratings are computed from box scores, with a season scope, goals weighted above assists (assists count 0.5), and goaltenders ranked separately from skaters. Goalie detection was also fixed, and a rating set automatically no longer flips itself back to manual.
+* Fixed a bug that wrote to the wrong player. The profile-picture page worked out "your player record" from the post author, which records who created a record rather than who it's about, so an account that had once created someone else's player saw that player as its own profile. Uploading put the photo there. Resolution now goes by the `sp_user` link and nothing else. Worth knowing: a player with no `sp_user` set sees no upload form at all. That's deliberate, and better than writing onto a stranger's record.
+* New: skill ratings computed from box scores, scoped by season. Goals count for more than assists, an assist being worth 0.5, and goaltenders rank apart from skaters. Goalie detection was wrong before, and a rating the plugin set automatically would flip itself back to manual.
 * New: REST endpoints for roster management and schedule generation.
-* Email sync re-derives on the server which address may be written to which player, instead of trusting the submitted pair.
-* Roster lookups use `sp_leagues` meta so they are season-correct, and roster details use `sp_team` meta; player number, position and email are shown on roster pages.
-* Registration-created players are identified by the `links_to_order` column rather than an allowlist of actions.
-* "Sync Player Emails" no longer appears on every settings tab, and child tabs no longer render blank.
-* Batch processing: check-all works, batch runs take a lock, queries are capped, and the batch wipe and registered-flag bugs are closed. Dead REST methods removed.
-* Sample data shown in the admin is synthetic; imported data is validated more strictly; e-mail addresses are stored under the PII retention tier.
+* Email sync works out on the server which address may go on which player, rather than trusting whatever the form posted.
+* Roster lookups read `sp_leagues` meta, so they answer for the right season, and roster details read `sp_team`. Player number, position and email all show on roster pages now.
+* The `links_to_order` column identifies registration-created players. The old allowlist of actions is gone.
+* "Sync Player Emails" stays on its own settings tab instead of turning up on every one, and child tabs no longer come up blank.
+* Batch runs: check-all works, a run takes a lock, and queries have a cap. Closed both the batch wipe and the registered-flag bug, and dropped some dead REST methods.
+* Sample data in the admin is synthetic, imports validate harder, and email addresses sit under the PII retention tier.
 
 = 1.0.1 =
 * Security: Sanitize columns array in batch processing

@@ -59,16 +59,16 @@ Yes. The import dialog lets you choose conflict resolution (skip or overwrite), 
 == Changelog ==
 
 = 1.1.0 =
-* New: back-to-back restriction admin UI, so a team can be prevented from playing on consecutive days without hand-editing configuration.
-* New: venue CSV import, per-day weighting, and distribution rules for spreading games across dates and venues.
-* New: REST `/export/csv` route, and a change-history viewer for reviewing what a draft changed between saves.
-* New: the remaining wp-admin features migrated to the React dashboard.
-* Corrected the allocator's backtracking validation cache, which could accept a schedule that violated a constraint it had already checked. Constraint checking is cascade-aware, and a generated schedule is no longer validated twice.
-* A cancelled allocation is now distinguishable from one that timed out, rather than both surfacing as the same failure.
-* Overlap restrictions repopulate when a configuration is edited instead of silently reverting to empty.
-* Exported CSV values are neutralised against spreadsheet formula injection, and export filenames carry enough entropy that one export cannot be guessed from another.
-* Draft cloning goes through `save_draft`, so a clone is not blocked by validation the original already passed, and edits made in the dashboard are tracked in history.
-* REST routes hardened, venue cache reset correctly, and the legacy `splm/v1/schedule/*` endpoints deprecated.
+* New: a back-to-back restriction you can set from the admin, so a team won't play on consecutive days and nobody has to hand-edit configuration to stop it.
+* New: venue CSV import, per-day weighting, and rules for spreading games across dates and venues.
+* New: a REST `/export/csv` route, plus a change-history viewer showing what a draft changed between saves.
+* New: the last of the wp-admin features moved into the React dashboard.
+* Corrected the allocator's backtracking validation cache, which could accept a schedule that violated a constraint it had already checked. Constraint checks follow cascades now, and a finished schedule isn't validated a second time.
+* A cancelled allocation and one that timed out look different in the log. They used to surface identically, which made a stuck run hard to tell from an abandoned one.
+* Overlap restrictions come back when you edit a configuration, rather than quietly emptying themselves.
+* Exported CSV values neutralise spreadsheet formula injection, and export filenames carry enough entropy that one doesn't give away the next.
+* Cloning a draft goes through `save_draft`, so validation the original already passed doesn't block the copy. Edits made in the dashboard turn up in history.
+* Hardened the REST routes, fixed the venue cache reset, and deprecated the legacy `splm/v1/schedule/*` endpoints.
 
 = 1.0.0 =
 * Initial release

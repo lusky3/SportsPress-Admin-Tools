@@ -41,16 +41,16 @@ SportsPress Player Registration automatically creates SportsPress player records
 == Changelog ==
 
 = 1.1.0 =
-* New: registration waitlist. When a division is full, further registrants join a waitlist and are sent a timed claim offer as places open up; the offer gates purchase until it expires or is taken.
-* Players are claimed atomically, so two simultaneous orders can no longer both create a record for the same person.
-* Registrations for names carrying a suffix (Jr, III) no longer create a second player alongside the existing one.
-* A detected playing position is now actually applied to the player record — it was read and then discarded.
-* An email that conflicts with an existing account is treated as terminal rather than retried indefinitely.
-* Season assignment is decoupled from record creation, and the name-matching keyword setting is exposed in the admin.
-* `links_to_order` is set when a player is linked to an order, so downstream tools can tell registration-created records from hand-made ones without guessing from an action allowlist.
-* Refunds are handled explicitly, and refund logging is gated so a refund no longer writes a misleading registration entry.
-* Sample data used in the admin is synthetic; imported data is validated more strictly; e-mail addresses are stored under the PII retention tier.
-* Compatible with WooCommerce High-Performance Order Storage (HPOS).
+* New: a waitlist for full divisions. Registrants arriving after a division fills join the queue, and as places open the plugin sends a timed claim offer; nobody else can buy that spot until the offer expires or its holder takes it.
+* Two orders landing at the same moment can no longer both create the same player. The claim is atomic now.
+* The importer matches someone registering as Jr or III to their existing record instead of creating a second one.
+* The position the importer detects actually reaches the player record. It used to read the value and drop it.
+* A registration whose email collides with an existing account fails once and stops, rather than retrying forever.
+* Season assignment no longer rides along with record creation, and the keyword the name matcher uses is a visible setting.
+* Linking a player to an order sets `links_to_order`, so other tools can spot registration-created records without inferring it from a list of actions.
+* Refunds follow their own path. A refund no longer leaves behind a registration entry saying the opposite.
+* Sample data in the admin is synthetic, imports validate harder, and email addresses sit under the PII retention tier.
+* Works with WooCommerce High-Performance Order Storage.
 
 = 1.0.0 =
 * Initial release

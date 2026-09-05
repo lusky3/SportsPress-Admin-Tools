@@ -46,14 +46,14 @@ No. The rollover creates new season terms and updates team assignments. Preview 
 == Changelog ==
 
 = 1.1.0 =
-* New: the season rollover now automates the rest of the transition rather than stopping after calendars and rosters — including a season-wide pass that assigns every team to a division in one step.
-* New: league table generator, available in wp-admin and shared with the League Manager dashboard.
-* Player stats are surfaced up front on score entry, fixing a visibility bug that left the section unreachable.
-* Rollover is idempotent: running it twice no longer duplicates the work of the first run.
-* Event import reads dates in the site's timezone instead of the server's, and the standings asset URL resolves correctly when the plugin is not in the default directory.
-* Imported CSV values are neutralised against spreadsheet formula injection, and uploads are checked by MIME type rather than by extension alone.
-* Standings caching is versioned so a stale table is no longer served after an underlying change, and roster keys are seeded so an empty roster renders rather than erroring.
-* Notification sending moved to an asynchronous cron handler that reads a stashed payload, so a slow mail server no longer blocks the request that triggered it.
+* Season rollover finishes the job now. It used to stop after calendars and rosters; it carries on through the rest of the transition, including a single pass that puts every team into a division.
+* New: a league table generator in wp-admin, shared with the League Manager dashboard.
+* Score entry shows player stats up front. A visibility bug had left that section unreachable.
+* Run the rollover twice and the second run does nothing, instead of duplicating the first.
+* Event import reads dates in the site's timezone rather than the server's, and the standings asset URL resolves even when the plugin sits outside the default directory.
+* CSV imports neutralise spreadsheet formula injection, and uploads get checked on MIME type rather than extension alone.
+* Standings caches carry a version, so editing the underlying data no longer leaves a stale table on the page. An empty roster renders instead of erroring.
+* Notifications go out through a cron handler that picks up a stashed payload, so a slow mail server stops holding up the request that triggered it.
 
 = 1.0.0 =
 * Initial release

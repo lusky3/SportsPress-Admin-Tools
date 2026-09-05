@@ -49,46 +49,45 @@ CSV files with `Team` and `Name` columns (both required). Each row maps a player
 == Changelog ==
 
 = 1.1.0 =
-
 **Registration and payments**
 
-* New: registration waitlist with timed claim offers, gating purchase until an offer is taken or expires.
-* New: payments search and a full-set CSV export, rather than only the current page.
+* New: a waitlist with timed claim offers. A spot stays reserved for whoever holds the offer until they take it or it runs out.
+* Payments search, and a CSV export covering the whole set rather than just the page you're looking at.
 
 **Discipline and player records**
 
-* New: warning and suspension notices sent to players, with the delivery mode configurable per severity.
-* New: stat leaders page and penalty discipline tracking.
-* New: click a skill level to see which players sit in it.
-* Delete a player note directly from the dashboard, and upload a roster by dragging the file onto the page.
+* New: warning and suspension notices that go to players, with the delivery mode set per severity.
+* New: a stat leaders page, and penalty tracking for discipline.
+* Click a skill level to see who's in it.
+* Delete a player note from the dashboard, and drop a roster file onto the page to upload it.
 
 **Season management**
 
-* New: season audit with one-click repairs for conveners, surfacing configuration problems and offering to fix them.
-* New: division-centric Season Setup builder with per-division team boxes.
-* New: league table generator, shared with Events Manager.
-* Season Report rebuilt with standings, per-division breakdown and registration figures.
+* New: a season audit for conveners. It surfaces configuration problems and offers to fix them in one click.
+* New: Season Setup rebuilt around divisions, with a box per division for its teams.
+* New: a league table generator, shared with Events Manager.
+* Season Report rebuilt with standings, a per-division breakdown, and registration figures.
 
 **Dashboard**
 
-* New: at-a-glance stat tiles, consolidated Help page with per-section "?" links, and in-dashboard Score Sheets help.
-* Schedule view gains filters, pagination, view/edit actions and import help.
-* Dropped the SportsPress Pro chrome; added return-to-site and return-to-admin links.
+* New: at-a-glance stat tiles, a Help page pulling everything together with "?" links per section, and Score Sheets help without leaving the dashboard.
+* Schedule view gains filters, pagination, view and edit actions, and import help.
+* Dropped the SportsPress Pro chrome. Added links back to the site and to wp-admin.
 
 **Score sheets**
 
-* Reprocess failed sheets, and duplicate audit rows are persisted rather than discarded.
-* Provider errors are surfaced with a "Test connection" check instead of failing silently.
+* Reprocess a sheet that failed, and duplicate audit rows stick around rather than vanishing.
+* Provider errors surface with a "Test connection" check rather than failing quietly.
 
 **Fixes**
 
-* Standings no longer include SportsPress's reserved totals row, which was being read as a team.
-* "Calculate Skills" returned 503 because it called a Player Tools class and method that had been renamed.
-* Leaders are reported from box scores; the unreliable report standings were removed.
-* Player and team names containing entities render correctly in the React dashboard instead of showing raw HTML.
-* Delegated game routes are gated on the events_management module being enabled.
-* CSV column mapping corrected, roster handling degrades gracefully on malformed input, and batch score submission is capped.
-* Code chips in Help are legible in dark mode; they were dark-on-dark.
+* Standings no longer count SportsPress's reserved totals row as a team.
+* "Calculate Skills" returned 503 because it called a Player Tools class and method that Player Tools had since renamed.
+* Leaders come from box scores. The report standings were unreliable, so they're gone.
+* Player and team names containing entities render properly in the React dashboard instead of showing raw HTML.
+* Delegated game routes check that the events_management module is on.
+* CSV column mapping corrected, roster handling degrades gracefully on malformed input, and batch score submission has a cap.
+* Code chips in Help are legible in dark mode. They were dark on dark.
 
 = 1.0.0 =
 * Initial release
