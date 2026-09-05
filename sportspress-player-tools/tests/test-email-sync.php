@@ -477,6 +477,75 @@ assert_test(
     'Unmatched players still get the CSV export button'
 );
 
+echo "\n-- 8. Apply gate: the server re-derives what may be written --\n";
+
+// handle_apply() used to write whatever was POSTed. Everything protecting the
+// data lived in the rendered form: "only HIGH is pre-checked" was a `checked`
+// attribute, nothing more. A stale form, a back-button resubmit, or a
+// hand-edited POST could stamp any address onto any player the scan had ever
+// listed — and the file's own PT-SAFETY note records a check-all bug of exactly
+// this family already shipping once. These two helpers move the decision to the
+// server, where the scan result is the authority rather than the form.
+
+$matches = array(
+    array(
+        'player_id' => 10,
+        'emails'    => array(
+            array('email' => 'Real@Example.com', 'source' => 'Registration order', 'confidence' => 'high'),
+            array('email' => 'alt@example.com',  'source' => 'Record creator',     'confidence' => 'low'),
+        ),
+    ),
+    array('player_id' => 11, 'emails' => array()),
+);
+
+$offered = invoke_private($sync, 'offered_map', array($matches));
+
+assert_test(
+    isset($offered[10]) && count($offered[10]) === 2,
+    'offered_map collects every address the scan offered for a player'
+);
+assert_test(
+    !isset($offered[11]) || empty($offered[11]),
+    'a player the scan offered nothing for has no offered addresses'
+);
+assert_test(
+    in_array('real@example.com', $offered[10], true),
+    'offered addresses are normalised to lower case for comparison'
+);
+
+// The write gate itself.
+$permit = function ($pid, $email) use ($sync, $offered) {
+    return invoke_private($sync, 'write_permitted', array($offered, $pid, $email));
+};
+
+assert_test($permit(10, 'real@example.com'), 'an address the scan offered is permitted');
+assert_test($permit(10, 'REAL@EXAMPLE.COM'), 'case differences do not defeat the gate');
+assert_test($permit(10, '  alt@example.com  '), 'surrounding whitespace does not defeat the gate');
+
+// The attacks and accidents this exists to stop.
+assert_test(
+    !$permit(10, 'attacker@evil.test'),
+    'an address the scan never offered is REFUSED even for a listed player'
+);
+assert_test(
+    !$permit(11, 'real@example.com'),
+    'an address offered for one player cannot be written to another'
+);
+assert_test(
+    !$permit(99, 'real@example.com'),
+    'a player id the scan never listed is REFUSED'
+);
+assert_test( !$permit(10, ''), 'an empty address is refused' );
+
+// Staleness: the scan is re-run at apply time, so a player who gained an email
+// between preview and apply is no longer offered and is skipped rather than
+// overwritten.
+$stale_offered = invoke_private($sync, 'offered_map', array(array()));
+assert_test(
+    !invoke_private($sync, 'write_permitted', array($stale_offered, 10, 'real@example.com')),
+    'a row the current scan no longer offers is refused (stale form)'
+);
+
 echo "\n=== Results ===\n";
 echo "Passed: $passed\n";
 echo "Failed: $failed\n";

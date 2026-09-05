@@ -39,16 +39,66 @@ class SPT_Player_Profile_Picture {
 		return $vars;
 	}
 
+	/**
+	 * The player records linked to a WordPress user.
+	 *
+	 * Resolves on the sp_user meta link and nothing else. This used to query
+	 * 'author' => $user_id, which is a different question: post_author records
+	 * who CREATED a record, not who it is about. On rookiehockey.ca that made
+	 * the account `codylusk` — which authored exactly one player, "Nick
+	 * Prystie" — resolve to Nick Prystie, so the page showed his record as
+	 * "your Profile Picture" and Upload called set_post_thumbnail() on it. A
+	 * read bug shows you a stranger's face; this one defaced a stranger's
+	 * record.
+	 *
+	 * There is deliberately NO author fallback, even though ~90% of players
+	 * carry no sp_user link and the feature is therefore hidden from them until
+	 * the link is backfilled. A fallback would put fuzzy identity matching back
+	 * into a write path, and a bare author match is precisely what produced the
+	 * bug. A hidden feature is recoverable; an overwritten photo is not.
+	 *
+	 * Read-only by design. It is worth knowing what this method now trusts:
+	 * sp_user has FIVE mutators across four codebases — registration's
+	 * link_user_to_player(), the blueline theme's user-facing "claim your
+	 * player" flow (a fuzzy match against a billing name the account holder
+	 * edits themselves), the GDPR eraser's delete, and sportspress-player-merge
+	 * writing and restoring it via raw SQL. So this fix does not remove the
+	 * "write a photo onto a stranger's record" risk; it moves the trust
+	 * decision to whoever set the link. That is still a large improvement on
+	 * post_author, which recorded nothing but who typed the record in.
+	 *
+	 * Consolidating those writers is tracked separately. See
+	 * docs/superpowers/specs/2026-09-04-player-user-link-design.md.
+	 *
+	 * @param int $user_id WordPress user id.
+	 * @return array Player post ids linked to this user.
+	 */
 	private function get_user_player_posts( $user_id ) {
+		$user_id = (int) $user_id;
+
 		if ( isset( $this->player_posts_cache[ $user_id ] ) ) {
 			return $this->player_posts_cache[ $user_id ];
 		}
+
+		// A meta_query for user 0 would match every player whose sp_user was
+		// stored as an empty string, handing the whole roster to a logged-out
+		// request. Answer it without asking.
+		if ( $user_id <= 0 ) {
+			$this->player_posts_cache[ $user_id ] = array();
+			return $this->player_posts_cache[ $user_id ];
+		}
+
 		$this->player_posts_cache[ $user_id ] = get_posts(
 			array(
 				'post_type' => 'sp_player',
-				'author' => $user_id,
 				'posts_per_page' => -1,
 				'fields' => 'ids',
+				'meta_query' => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- the sp_user link is the only way to resolve a player's owner; there is no taxonomy for it.
+					array(
+						'key' => 'sp_user',
+						'value' => $user_id,
+					),
+				),
 			)
 		);
 		return $this->player_posts_cache[ $user_id ];
@@ -79,9 +129,9 @@ class SPT_Player_Profile_Picture {
 			<?php if ( $player_count !== 1 ) : ?>
 				<div class="woocommerce-message woocommerce-message--info">
 					<?php if ( $player_count === 0 ) : ?>
-						<p><?php esc_html_e( 'You do not have a player profile associated with your account. Please contact the site administrator.', 'sportspress-player-tools' ); ?></p>
+						<p><?php esc_html_e( 'Your account is not linked to a player record yet, so there is nothing to add a picture to. Please contact the site administrator to have it linked.', 'sportspress-player-tools' ); ?></p>
 					<?php else : ?>
-						<p><?php esc_html_e( 'You have multiple player profiles associated with your account. Please contact the site administrator.', 'sportspress-player-tools' ); ?></p>
+						<p><?php esc_html_e( 'More than one player record is linked to your account, so we cannot tell which one is yours. Please contact the site administrator.', 'sportspress-player-tools' ); ?></p>
 					<?php endif; ?>
 				</div>
 				<?php
