@@ -565,6 +565,106 @@ class SPT_Email_Sync {
 	*/
 
 	/**
+	 * Reduce a scan result to player_id => [offered addresses].
+	 *
+	 * Addresses are lower-cased and trimmed so the comparison in
+	 * write_permitted() cannot be defeated by presentation differences.
+	 *
+	 * @param array $matches Result of find_matches().
+	 * @return array player_id => array of normalised email strings.
+	 */
+	private static function offered_map( array $matches ): array {
+		$map = array();
+
+		foreach ( $matches as $row ) {
+			// (int) rather than absint(): this helper and write_permitted() are
+			// deliberately free of WordPress so they can be tested directly, and
+			// the <= 0 guard below already rejects what absint() would clamp.
+			$pid = (int) ( $row['player_id'] ?? 0 );
+			if ( $pid <= 0 ) {
+				continue;
+			}
+
+			foreach ( (array) ( $row['emails'] ?? array() ) as $entry ) {
+				$email = strtolower( trim( (string) ( $entry['email'] ?? '' ) ) );
+				if ( '' !== $email ) {
+					$map[ $pid ][] = $email;
+				}
+			}
+		}
+
+		return $map;
+	}
+
+	/**
+	 * Whether a POSTed (player, email) pair may be written.
+	 *
+	 * The rendered form is not evidence. Everything that protected this data
+	 * used to live in the markup — "only HIGH is pre-checked" was a `checked`
+	 * attribute and nothing else — so a stale form, a back-button resubmit or a
+	 * hand-edited POST could stamp any address onto any listed player. The
+	 * PT-SAFETY note above records a check-all bug of this same family already
+	 * shipping once.
+	 *
+	 * The authority is therefore the scan, re-run at apply time: a pair is
+	 * written only if the CURRENT scan still offers that exact address for that
+	 * exact player. That also makes the operation self-limiting, because a
+	 * player who gained an address between preview and apply is no longer
+	 * offered and is skipped rather than overwritten.
+	 *
+	 * @param array  $offered_map Result of offered_map().
+	 * @param int    $player_id   Player post id from the request.
+	 * @param string $email       Address from the request.
+	 * @return bool
+	 */
+	private static function write_permitted( array $offered_map, int $player_id, string $email ): bool {
+		$email = strtolower( trim( $email ) );
+		if ( '' === $email || empty( $offered_map[ $player_id ] ) ) {
+			return false;
+		}
+
+		return in_array( $email, $offered_map[ $player_id ], true );
+	}
+
+	/**
+	 * The address that may be written for one POSTed player, or null.
+	 *
+	 * Every reason to refuse a row lives here, so the apply loop reads as
+	 * "decide, then write" rather than four interleaved guards.
+	 *
+	 * @param array $offered Result of offered_map(), the current scan's offer.
+	 * @param int   $pid     Player post id from the request.
+	 * @param array $emails  Sanitised addresses from the request, keyed by id.
+	 * @return string|null Address to write, or null to skip.
+	 */
+	private function writable_email( array $offered, int $pid, array $emails ): ?string {
+		if ( ! isset( $emails[ $pid ] ) ) {
+			return null;
+		}
+
+		// LOW (player-tools): the POSTed IDs were trusted as-is, so a crafted
+		// (or simply stale) submission could stamp spt_email onto ANY post — a
+		// page, an order, another plugin's CPT. This tool only ever operates on
+		// players, so require the post type before writing.
+		if ( 'sp_player' !== get_post_type( $pid ) ) {
+			return null;
+		}
+
+		// Fix #15: emails already sanitized by the array_map in handle_apply().
+		$email = $emails[ $pid ];
+		if ( ! $email || ! is_email( $email ) ) {
+			return null;
+		}
+
+		// The submission is not evidence — see write_permitted().
+		if ( ! self::write_permitted( $offered, $pid, $email ) ) {
+			return null;
+		}
+
+		return $email;
+	}
+
+	/**
 	 * Handle the "Apply Selected" form submission.
 	 */
 	public function handle_apply() {
@@ -584,27 +684,22 @@ class SPT_Email_Sync {
 		$updated    = 0;
 		$skipped    = 0;
 
+		// Re-derive what may be written instead of trusting the submission. See
+		// write_permitted(). The scan is the same one that rendered the preview,
+		// so this adds no new matching logic — only the refusal to write a pair
+		// the current scan does not offer.
+		$offered = self::offered_map( $this->find_matches() );
+
 		foreach ( $player_ids as $pid ) {
-			if ( ! isset( $emails[ $pid ] ) ) {
+			$email = $this->writable_email( $offered, $pid, $emails );
+
+			if ( null === $email ) {
 				++$skipped;
 				continue;
 			}
-			// LOW (player-tools): the POSTed IDs were trusted as-is, so a crafted
-			// (or simply stale) submission could stamp spt_email onto ANY post — a
-			// page, an order, another plugin's CPT. This tool only ever operates on
-			// players, so require the post type before writing.
-			if ( 'sp_player' !== get_post_type( $pid ) ) {
-				++$skipped;
-				continue;
-			}
-			// Fix #15: emails already sanitized by the array_map above.
-			$email = $emails[ $pid ];
-			if ( $email && is_email( $email ) ) {
-				update_post_meta( $pid, 'spt_email', $email );
-				++$updated;
-			} else {
-				++$skipped;
-			}
+
+			update_post_meta( $pid, 'spt_email', $email );
+			++$updated;
 		}
 
 		wp_safe_redirect(
