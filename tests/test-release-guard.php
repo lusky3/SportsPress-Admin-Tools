@@ -41,21 +41,40 @@ function state( array $over = array() ) {
 	);
 }
 
-echo "\n=== what counts as a shipped change ===\n\n";
+echo "\n=== what counts as a shipped change (.distignore driven) ===\n\n";
+
+// The real vocabulary used across the eight plugins: anchored directories,
+// bare root files, and a glob.
+$distignore = spat_guard_parse_distignore(
+	"# a comment\n\n/tests\n/docs\n/.github\n/node_modules\n/src\n"
+	. ".distignore\n.gitignore\n.snyk\ncomposer.json\nphpcs.xml\n"
+	. "README.md\nAGENTS.md\nassets/README*\n"
+);
+
+assert_test( ! in_array( '# a comment', $distignore, true ), 'comments are stripped from .distignore' );
+assert_test( in_array( 'tests', $distignore, true ), 'a leading slash is an anchor, not part of the name' );
 
 // The guard must not demand a version bump for work a user never receives,
 // or it teaches people to bump meaninglessly — worse than no guard at all.
-foreach ( array( 'tests/test-foo.php', 'docs/design.md', 'package.json', 'phpcs.xml', '.distignore', 'AGENTS.md', 'src/app.js' ) as $p ) {
-	assert_test( spat_guard_is_non_shipping( $p ), "'{$p}' does not force a version bump" );
+foreach ( array( 'tests/test-foo.php', 'docs/design.md', 'composer.json', 'phpcs.xml', '.distignore', 'AGENTS.md', 'src/app.js', 'assets/README.txt' ) as $path ) {
+	assert_test( spat_guard_is_non_shipping( $path, $distignore ), "'{$path}' does not force a version bump" );
 }
 
 // Everything else ships, including the compiled bundle.
-foreach ( array( 'includes/class-foo.php', 'build/index.js', 'readme.txt', 'sportspress-example.php', 'assets/app.css' ) as $p ) {
-	assert_test( ! spat_guard_is_non_shipping( $p ), "'{$p}' DOES force a version bump" );
+foreach ( array( 'includes/class-foo.php', 'build/index.js', 'readme.txt', 'sportspress-example.php', 'assets/app.css' ) as $path ) {
+	assert_test( ! spat_guard_is_non_shipping( $path, $distignore ), "'{$path}' DOES force a version bump" );
 }
 
 // A path nobody anticipated must default to "ships", not to silently escaping.
-assert_test( ! spat_guard_is_non_shipping( 'newthing/file.php' ), 'an unrecognised directory defaults to shipping' );
+assert_test( ! spat_guard_is_non_shipping( 'newthing/file.php', $distignore ), 'an unrecognised directory defaults to shipping' );
+
+// Regression: these six were hardcoded as non-shipping while the packager
+// genuinely shipped them, so a change confined to one reached users with no
+// version bump. Reading .distignore is what fixed that, and a plugin without
+// one must ship everything rather than assume.
+foreach ( array( 'CLAUDE.md', '.claude/settings.json', 'phpunit.xml', '.editorconfig', 'src/app.js', 'README.md' ) as $path ) {
+	assert_test( ! spat_guard_is_non_shipping( $path, array() ), "with no .distignore, '{$path}' ships and needs a bump" );
+}
 
 echo "\n=== version parsing ===\n\n";
 
@@ -67,10 +86,27 @@ assert_test( '2.3.4' === $v['stable'], 'reads Stable tag: from readme.txt' );
 assert_test( '2.3.4' === $v['constant'], 'reads the *_VERSION constant' );
 
 // SPAT_DB_VERSION is derived and SPAT_CONTRACT_VERSION moves independently;
-// neither should be mistaken for the release version.
-$php2 = "<?php\n/**\n * Version: 1.0.5\n */\ndefine( 'SPAT_VERSION', '1.0.5' );\ndefine( 'SPAT_CONTRACT_VERSION', '1.1.0' );\ndefine( 'SPAT_DB_VERSION', SPAT_VERSION );\n";
+// neither should be mistaken for the release version. Declared FIRST on
+// purpose: the previous version of this test put SPAT_VERSION first, so it
+// passed on ordering alone and would have passed with the exclusion deleted.
+$php2 = "<?php\n/**\n * Version: 1.0.5\n */\ndefine( 'SPAT_CONTRACT_VERSION', '9.9.9' );\ndefine( 'SPAT_DB_VERSION', '7.7.7' );\ndefine( 'SPAT_VERSION', '1.0.5' );\n";
 $v2   = spat_guard_read_versions( $php2, '' );
-assert_test( '1.0.5' === $v2['constant'], 'CONTRACT and DB version constants are not mistaken for the release version' );
+assert_test( '1.0.5' === $v2['constant'], 'CONTRACT/DB constants are skipped even when declared first' );
+
+// Being strict about quote style used to mean an unrecognised style silently
+// disabled the check that matters most.
+$dq = spat_guard_read_versions( "<?php\n * Version: 2.0.0\ndefine( \"SPX_VERSION\", \"2.0.0\" );\n", '' );
+assert_test( '2.0.0' === $dq['constant'], 'a double-quoted define() is read, not silently skipped' );
+
+$cn = spat_guard_read_versions( "<?php\n * Version: 2.0.0\nconst SPX_VERSION = '2.0.0';\n", '' );
+assert_test( '2.0.0' === $cn['constant'], 'a const declaration is read, not silently skipped' );
+
+// An unreadable constant must be reported rather than passing quietly.
+$weird = spat_guard_read_versions( "<?php\n * Version: 2.0.0\ndefine( 'SPX_VERSION', spx_compute() );\n", '' );
+assert_test( '' === $weird['constant'], 'an unparseable constant value yields no version' );
+assert_test( true === $weird['constant_declared'], '  but is still recorded as declared' );
+$r = spat_guard_check_plugin( state( array( 'versions' => $weird + array( 'header' => '2.0.0', 'stable' => '2.0.0' ) ) ) );
+assert_test( ! $r['ok'], 'a declared-but-unreadable constant BLOCKS instead of passing silently' );
 
 echo "\n=== changelog detection ===\n\n";
 

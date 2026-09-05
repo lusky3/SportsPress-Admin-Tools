@@ -52,28 +52,27 @@ jobs:
           for dir in sportspress-*; do
             if [ -d "$dir" ]; then
               echo "Packaging $dir..."
-              # Exclusions mirror each plugin's .distignore. Notable rules:
-              #   - 'sportspress-league-manager/src/*' is scoped to that plugin
-              #     on purpose: it is the only plugin with un-built React
-              #     sources, and a bare '*/src/*' would silently strip a future
-              #     plugin's shipped src/ directory.
-              #   - build/ is deliberately NOT excluded — the compiled league
-              #     manager dashboard bundle MUST ship.
-              zip -r "dist/${dir}.zip" "$dir" \
-                -x "*/tests/*" \
-                   "*/.git*" \
-                   "*/.distignore" \
-                   "*/composer.*" \
-                   "*/node_modules/*" \
-                   "*/assets/README*" \
-                   "*/docs/*" \
-                   "*/assets/wrangler.toml" \
-                   "*/assets/remote-intake.md" \
-                   "*/package.json" \
-                   "*/package-lock.json" \
-                   "*/ARCHITECTURE.md" \
-                   "*/AGENTS.md" \
-                   "sportspress-league-manager/src/*"
+              # Exclusions come from the plugin's own .distignore — the single
+              # source of truth that scripts/release-guard.php also reads. This
+              # used to be a hand-copied list of -x patterns, which drifted out
+              # of step with .distignore and with the guard in both directions.
+              #
+              # A plugin with no .distignore ships everything; the guard treats
+              # that same missing file the same way, so the two agree even in
+              # the degenerate case.
+              excludes=()
+              if [ -f "$dir/.distignore" ]; then
+                while IFS= read -r line || [ -n "$line" ]; do
+                  line="${line%%#*}"
+                  line="$(printf '%s' "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+                  [ -z "$line" ] && continue
+                  line="${line#/}"
+                  # Both forms: the entry itself, and anything beneath it when
+                  # the entry names a directory.
+                  excludes+=( "$dir/$line" "$dir/$line/*" )
+                done < "$dir/.distignore"
+              fi
+              zip -r "dist/${dir}.zip" "$dir" -x "${excludes[@]}"
             fi
           done
 

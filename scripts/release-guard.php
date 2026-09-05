@@ -5,10 +5,12 @@
  *
  * Runs on a v* tag, before packaging. For every sportspress-* plugin it asks:
  *
- *   1. Did anything SHIPPED change since the previous tag? Changes confined to
- *      tests/, docs/ and the other .distignore'd paths do not reach a user, so
- *      they must not force a version bump — otherwise the guard trains people
- *      to bump versions meaninglessly, which is worse than no guard.
+ *   1. Did anything SHIPPED change since the previous tag? "Shipped" is read
+ *      from the plugin's own .distignore — the same file the packaging step
+ *      builds its zip exclusions from, so the two cannot drift apart. Changes
+ *      confined to tests/, docs/ and the rest do not reach a user, so they must
+ *      not force a version bump — otherwise the guard trains people to bump
+ *      versions meaninglessly, which is worse than no guard.
  *   2. If so, is the version higher than it was at the previous tag?
  *   3. Does readme.txt's changelog carry a "= <new version> =" section?
  *   4. Do all THREE version locations agree — the plugin header's Version:,
@@ -25,6 +27,8 @@
  *   php scripts/release-guard.php [--base=<git-ref>] [--verbose]
  *
  * Exit 0 = safe to publish. Exit 1 = one or more plugins would ship unlabelled.
+ * Exit 2 = the guard could not determine the answer, which is never a pass: a
+ * gate that cannot see must block, not wave things through.
  *
  * @package SportsPress_Admin_Tools
  */
@@ -34,41 +38,129 @@
 // ---------------------------------------------------------------------------
 
 /**
- * Paths inside a plugin that never reach a user, mirroring .distignore.
+ * Parse a .distignore into a list of exclusion patterns.
  *
- * Kept deliberately conservative: anything not listed counts as shipped, so a
- * new directory defaults to REQUIRING a bump rather than silently escaping the
- * guard.
+ * .distignore is the single source of truth for what never reaches a user:
+ * the packaging workflow builds its zip exclusions from the same file. Keeping
+ * a second hand-copied list here is what let the two drift apart before.
  *
- * @param string $relative_path Path relative to the plugin directory.
+ * @param string $contents Contents of a plugin's .distignore, '' when absent.
+ * @return array<string> Patterns, plugin-root-relative, comments stripped.
+ */
+function spat_guard_parse_distignore( string $contents ): array {
+	$patterns = array();
+
+	foreach ( explode( "\n", $contents ) as $line ) {
+		$line = trim( preg_replace( '/#.*$/', '', $line ) );
+		if ( '' === $line ) {
+			continue;
+		}
+		// Every pattern is plugin-root-relative, so a leading slash is just an
+		// anchor marker and carries no extra meaning here.
+		$patterns[] = ltrim( $line, '/' );
+	}
+
+	return $patterns;
+}
+
+/**
+ * Whether a path inside a plugin is excluded from the built package.
+ *
+ * Deliberately conservative: a path that matches nothing counts as SHIPPED, so
+ * an unanticipated file defaults to REQUIRING a version bump rather than
+ * silently escaping the guard. A plugin with no .distignore therefore ships
+ * everything, which is the safe reading of a missing file.
+ *
+ * @param string        $relative_path Path relative to the plugin directory.
+ * @param array<string> $patterns      Result of spat_guard_parse_distignore().
  * @return bool True when the path is excluded from the built package.
  */
-function spat_guard_is_non_shipping( string $relative_path ): bool {
-	$prefixes = array( 'tests/', 'docs/', '.github/', 'node_modules/', 'src/', '.claude/' );
-	foreach ( $prefixes as $prefix ) {
-		if ( 0 === strpos( $relative_path, $prefix ) ) {
+function spat_guard_is_non_shipping( string $relative_path, array $patterns ): bool {
+	foreach ( $patterns as $pattern ) {
+		// Exact file, or the directory itself.
+		if ( $relative_path === $pattern ) {
+			return true;
+		}
+		// Anything beneath an excluded directory.
+		if ( 0 === strpos( $relative_path, $pattern . '/' ) ) {
+			return true;
+		}
+		// Globs such as "assets/README*", and globbed directory contents.
+		if ( fnmatch( $pattern, $relative_path ) || fnmatch( $pattern . '/*', $relative_path ) ) {
 			return true;
 		}
 	}
 
-	$files = array(
-		'.distignore',
-		'.gitignore',
-		'.gitattributes',
-		'.editorconfig',
-		'composer.json',
-		'composer.lock',
-		'package.json',
-		'package-lock.json',
-		'phpcs.xml',
-		'phpunit.xml',
-		'phpunit.xml.dist',
-		'AGENTS.md',
-		'ARCHITECTURE.md',
-		'CLAUDE.md',
+	return false;
+}
+
+/**
+ * Constant name prefixes that are deliberately independent of the release
+ * version: SPAT_DB_VERSION is derived and drives migrations, and
+ * SPAT_CONTRACT_VERSION tracks the inter-plugin contract. Neither should ever
+ * be mistaken for the version being shipped.
+ */
+const SPAT_GUARD_NON_RELEASE_CONSTANTS = array( 'SPAT_CONTRACT', 'SPAT_DB' );
+
+/**
+ * Whether a constant name is one of the deliberately-independent ones.
+ *
+ * @param string $name Constant name with the trailing _VERSION removed.
+ * @return bool
+ */
+function spat_guard_is_release_constant( string $name ): bool {
+	return ! in_array( $name, SPAT_GUARD_NON_RELEASE_CONSTANTS, true );
+}
+
+/**
+ * Read the plugin's release-version constant.
+ *
+ * Accepts both quote styles and both declaration forms. Being strict here used
+ * to mean an unrecognised style silently disabled the comparison — and this is
+ * the check that matters most, since admin-tools derives SPAT_DB_VERSION from
+ * this constant, so a stale value is a migration that never runs.
+ *
+ * @param string $header_php Contents of the main plugin file.
+ * @return array{value:string,declared:bool} `declared` is true when the file
+ *                                           names a release-version constant at
+ *                                           all, readable or not.
+ */
+function spat_guard_read_version_constant( string $header_php ): array {
+	$forms = array(
+		'/define\(\s*[\'"]([A-Z][A-Z0-9_]*)_VERSION[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]\s*\)/',
+		'/const\s+([A-Z][A-Z0-9_]*)_VERSION\s*=\s*[\'"]([^\'"]+)[\'"]/',
 	);
 
-	return in_array( $relative_path, $files, true );
+	foreach ( $forms as $form ) {
+		if ( ! preg_match_all( $form, $header_php, $matches, PREG_SET_ORDER ) ) {
+			continue;
+		}
+		foreach ( $matches as $match ) {
+			if ( spat_guard_is_release_constant( $match[1] ) ) {
+				return array(
+					'value'    => trim( $match[2] ),
+					'declared' => true,
+				);
+			}
+		}
+	}
+
+	// Nothing readable. Report whether one is nonetheless declared, so the
+	// caller can complain rather than skip the check in silence.
+	$declared = false;
+	if ( preg_match_all( '/[\'"]([A-Z][A-Z0-9_]*)_VERSION[\'"]/', $header_php, $named, PREG_SET_ORDER ) ) {
+		foreach ( $named as $match ) {
+			if ( spat_guard_is_release_constant( $match[1] ) ) {
+				$declared = true;
+				break;
+			}
+		}
+	}
+
+	return array(
+		'value'    => '',
+		'declared' => $declared,
+	);
 }
 
 /**
@@ -76,34 +168,27 @@ function spat_guard_is_non_shipping( string $relative_path ): bool {
  *
  * @param string $header_php Contents of the main plugin file.
  * @param string $readme     Contents of readme.txt.
- * @return array{header:string,stable:string,constant:string}
+ * @return array{header:string,stable:string,constant:string,constant_declared:bool}
  */
 function spat_guard_read_versions( string $header_php, string $readme ): array {
-	$out = array(
-		'header'   => '',
-		'stable'   => '',
-		'constant' => '',
-	);
+	$constant = spat_guard_read_version_constant( $header_php );
 
+	$header = '';
 	if ( preg_match( '/^[\s*]*Version:\s*([0-9][0-9A-Za-z.\-]*)/mi', $header_php, $m ) ) {
-		$out['header'] = trim( $m[1] );
-	}
-	if ( preg_match( '/^Stable tag:\s*([0-9][0-9A-Za-z.\-]*)/mi', $readme, $m ) ) {
-		$out['stable'] = trim( $m[1] );
-	}
-	// Any FOO_VERSION constant, excluding the derived/contract ones that are
-	// deliberately independent of the release version.
-	if ( preg_match_all( "/define\(\s*'([A-Z]+)_VERSION'\s*,\s*'([^']+)'\s*\)/", $header_php, $all, PREG_SET_ORDER ) ) {
-		foreach ( $all as $m ) {
-			if ( in_array( $m[1], array( 'SPAT_CONTRACT', 'SPAT_DB' ), true ) ) {
-				continue;
-			}
-			$out['constant'] = trim( $m[2] );
-			break;
-		}
+		$header = trim( $m[1] );
 	}
 
-	return $out;
+	$stable = '';
+	if ( preg_match( '/^Stable tag:\s*([0-9][0-9A-Za-z.\-]*)/mi', $readme, $m ) ) {
+		$stable = trim( $m[1] );
+	}
+
+	return array(
+		'header'            => $header,
+		'stable'            => $stable,
+		'constant'          => $constant['value'],
+		'constant_declared' => $constant['declared'],
+	);
 }
 
 /**
@@ -146,6 +231,9 @@ function spat_guard_version_problems( array $versions ): array {
 	}
 	if ( '' !== $versions['constant'] && $versions['constant'] !== $current ) {
 		$problems[] = sprintf( '*_VERSION constant (%s) disagrees with Version: header (%s)', $versions['constant'], $current );
+	}
+	if ( '' === $versions['constant'] && ! empty( $versions['constant_declared'] ) ) {
+		$problems[] = 'a *_VERSION constant is declared but its value could not be read — the guard cannot verify it';
 	}
 
 	return $problems;
@@ -214,17 +302,20 @@ function spat_guard_check_plugin( array $state ): array {
 }
 
 /**
- * Run a git command and return its stdout.
+ * Run a git command and return its stdout, or null when the command failed.
  *
  * Takes an argument array and hands it to proc_open unchanged, so no shell is
  * ever spawned and tag or path arguments cannot be reinterpreted as syntax.
- * A failing command yields '' — every caller here treats "no output" and
- * "command failed" the same way.
+ *
+ * The null return matters more than it looks: collapsing "command failed" into
+ * "no output" makes this guard fail OPEN — a bad ref or a tagless clone would
+ * report no changes for every plugin and exit 0. Callers must treat null as a
+ * hard error, never as an empty result.
  *
  * @param array<string> $args Arguments after `git`.
- * @return string Standard output, or '' when the command failed.
+ * @return string|null Standard output, or null when git exited non-zero.
  */
-function spat_guard_git( array $args ): string {
+function spat_guard_git( array $args ): ?string {
 	$descriptors = array(
 		1 => array( 'pipe', 'w' ),
 		2 => array( 'pipe', 'w' ),
@@ -232,7 +323,7 @@ function spat_guard_git( array $args ): string {
 
 	$process = proc_open( array_merge( array( 'git' ), $args ), $descriptors, $pipes );
 	if ( ! is_resource( $process ) ) {
-		return '';
+		return null;
 	}
 
 	$out = (string) stream_get_contents( $pipes[1] );
@@ -241,7 +332,21 @@ function spat_guard_git( array $args ): string {
 	stream_get_contents( $pipes[2] );
 	fclose( $pipes[2] );
 
-	return 0 === proc_close( $process ) ? $out : '';
+	return 0 === proc_close( $process ) ? $out : null;
+}
+
+/**
+ * Abort the run with a message on stderr and a non-zero exit.
+ *
+ * Used wherever the guard cannot establish what it is supposed to check. An
+ * unverifiable release is a blocked release, never a passing one.
+ *
+ * @param string $message Why the guard cannot proceed.
+ * @return void
+ */
+function spat_guard_abort( string $message ) {
+	fwrite( STDERR, "Release guard could not run: {$message}\n" );
+	exit( 2 );
 }
 
 // ---------------------------------------------------------------------------
@@ -267,38 +372,71 @@ $root    = dirname( __DIR__ );
 
 chdir( $root );
 
-$base = $opts['base'] ?? '';
-if ( '' === $base ) {
-	// The tag before this one. On the very first tag there is nothing to compare
-	// against, so consistency is still checked but no bump is demanded.
-	$base = trim( spat_guard_git( array( 'describe', '--tags', '--abbrev=0', 'HEAD^' ) ) );
+// Establish that git works at all before reading anything into its silence.
+// Without this, "no previous tag" and "git is broken" look identical, and the
+// guard would wave every plugin through.
+if ( null === spat_guard_git( array( 'rev-parse', '--git-dir' ) ) ) {
+	spat_guard_abort( 'git is unavailable or this is not a repository' );
 }
 
-echo $base ? "Comparing against: {$base}\n\n" : "No previous tag found — checking version consistency only.\n\n";
+// getopt() yields false for a bare `--base` with no value; casting keeps the
+// rest of this file dealing with exactly one "absent" representation.
+$base = isset( $opts['base'] ) && is_string( $opts['base'] ) ? trim( $opts['base'] ) : '';
+
+if ( '' !== $base ) {
+	if ( null === spat_guard_git( array( 'rev-parse', '--verify', '--quiet', $base . '^{commit}' ) ) ) {
+		spat_guard_abort( "--base={$base} does not resolve to a commit" );
+	}
+} else {
+	// The tag before this one. git describe also fails when no tag is reachable,
+	// which for a first release is legitimate — but only because the check above
+	// already proved git itself is healthy.
+	$described = spat_guard_git( array( 'describe', '--tags', '--abbrev=0', 'HEAD^' ) );
+	$base      = null === $described ? '' : trim( $described );
+}
+
+echo '' !== $base ? "Comparing against: {$base}\n\n" : "No previous tag found — checking version consistency only.\n\n";
 
 $failed = 0;
 $dirs   = glob( 'sportspress-*', GLOB_ONLYDIR ) ?: array();
 
+if ( empty( $dirs ) ) {
+	spat_guard_abort( 'no sportspress-* plugin directories found' );
+}
+
 foreach ( $dirs as $plugin ) {
 	$main   = "{$plugin}/{$plugin}.php";
 	$readme = "{$plugin}/readme.txt";
+
+	// A plugin whose main file does not match its directory name would silently
+	// vanish from this report, so say so and block rather than skipping.
 	if ( ! is_file( $main ) ) {
+		++$failed;
+		printf( "FAIL  %-34s %-9s %s\n", $plugin, 'unknown', '-' );
+		echo "        - no {$plugin}.php found, so this plugin cannot be checked\n";
 		continue;
 	}
 
 	$readme_txt = is_file( $readme ) ? (string) file_get_contents( $readme ) : '';
 	$versions   = spat_guard_read_versions( (string) file_get_contents( $main ), $readme_txt );
 
+	$has_distignore = is_file( "{$plugin}/.distignore" );
+	$distignore     = $has_distignore
+		? spat_guard_parse_distignore( (string) file_get_contents( "{$plugin}/.distignore" ) )
+		: array();
+
 	$shipped_changed = false;
 	$previous        = '';
 
 	if ( '' !== $base ) {
-		$changed = array_filter(
-			explode( "\n", spat_guard_git( array( 'diff', '--name-only', $base, 'HEAD', '--', $plugin ) ) )
-		);
-		foreach ( $changed as $file ) {
+		$diff = spat_guard_git( array( 'diff', '--name-only', $base, 'HEAD', '--', $plugin ) );
+		if ( null === $diff ) {
+			spat_guard_abort( "could not diff {$plugin} between {$base} and HEAD" );
+		}
+
+		foreach ( array_filter( explode( "\n", $diff ) ) as $file ) {
 			$rel = substr( trim( $file ), strlen( $plugin ) + 1 );
-			if ( '' !== $rel && ! spat_guard_is_non_shipping( $rel ) ) {
+			if ( '' !== $rel && ! spat_guard_is_non_shipping( $rel, $distignore ) ) {
 				$shipped_changed = true;
 				if ( $verbose ) {
 					echo "  [{$plugin}] shipped change: {$rel}\n";
@@ -307,8 +445,10 @@ foreach ( $dirs as $plugin ) {
 			}
 		}
 
+		// A plugin that did not exist at the base ref has no previous version;
+		// git failing here is that case, not an error.
 		$prev_main = spat_guard_git( array( 'show', $base . ':' . $main ) );
-		if ( '' !== $prev_main ) {
+		if ( null !== $prev_main && '' !== $prev_main ) {
 			$prev_v   = spat_guard_read_versions( $prev_main, '' );
 			$previous = $prev_v['header'];
 		}
@@ -324,14 +464,22 @@ foreach ( $dirs as $plugin ) {
 		)
 	);
 
+	// The packaging step builds its zip exclusions from this same file, so a
+	// missing one does not mean "nothing to exclude" — it means tests/, docs/
+	// and dev tooling all ship to users.
+	if ( ! $has_distignore ) {
+		$result['ok']         = false;
+		$result['problems'][] = 'no .distignore, so tests/ and dev tooling would ship to users';
+	}
+
 	$label = $shipped_changed ? 'changed' : 'unchanged';
 	if ( $result['ok'] ) {
 		printf( "PASS  %-34s %-9s v%s\n", $plugin, $label, $versions['header'] );
 	} else {
 		++$failed;
 		printf( "FAIL  %-34s %-9s v%s\n", $plugin, $label, $versions['header'] );
-		foreach ( $result['problems'] as $p ) {
-			echo "        - {$p}\n";
+		foreach ( $result['problems'] as $problem ) {
+			echo "        - {$problem}\n";
 		}
 	}
 }
