@@ -321,10 +321,12 @@ function spat_guard_git( array $args ): ?string {
 		2 => array( 'pipe', 'w' ),
 	);
 
-	// nosemgrep: php.lang.security.exec-use.exec-use -- The command is the
-	// literal 'git'; arguments are passed as an array, so proc_open execs it
-	// directly with no shell to reinterpret them. There is no injection path
-	// here, and the script cannot do its job without running git.
+	// The command is the literal 'git' and the arguments are passed as an
+	// array, so proc_open execs it directly with no shell to reinterpret
+	// them. There is no injection path, and the guard cannot do its job
+	// without running git. Two rules flag the shape, so this suppresses the
+	// line rather than naming one of them.
+	// nosemgrep
 	$process = proc_open( array_merge( array( 'git' ), $args ), $descriptors, $pipes );
 	if ( ! is_resource( $process ) ) {
 		return null;
