@@ -51,7 +51,7 @@ CSV files with `Team` and `Name` columns (both required). Each row maps a player
 = 1.1.0 =
 **Registration and payments**
 
-* New: a waitlist with timed claim offers. A spot stays reserved for whoever holds the offer until they take it or it runs out.
+* New: a waitlist with timed claim offers. A spot stays reserved for whoever holds the offer until they take it or it runs out. Withdraw an offer and that person keeps their place in the queue; remove them and they come off it.
 * Payments search, and a CSV export covering the whole set rather than just the page you're looking at.
 
 **Discipline and player records**
