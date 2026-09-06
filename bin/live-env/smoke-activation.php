@@ -54,7 +54,8 @@ if ( class_exists( 'SPLM_Dashboard_Frontend' ) ) {
 	check( $page_id > 0, 'League Dashboard page is provisioned' );
 	check( $page_id > 0 && '' !== get_permalink( $page_id ), 'League Dashboard permalink resolves' );
 } else {
-	$failures[] = 'SPLM_Dashboard_Frontend did not load';
+	echo "FAIL SPLM_Dashboard_Frontend did not load\n";
+	$GLOBALS['failures'][] = 'SPLM_Dashboard_Frontend did not load';
 }
 
 if ( defined( 'SPAT_CONTRACT_VERSION' ) ) {
@@ -74,7 +75,8 @@ if ( defined( 'SPAT_CONTRACT_VERSION' ) ) {
 		}
 	}
 } else {
-	$failures[] = 'SPAT_CONTRACT_VERSION is not defined';
+	echo "FAIL SPAT_CONTRACT_VERSION is not defined\n";
+	$GLOBALS['failures'][] = 'SPAT_CONTRACT_VERSION is not defined';
 }
 
 $debug_log = WP_CONTENT_DIR . '/debug.log';
