@@ -8,6 +8,7 @@
  * Requires at least: 5.0
  * Tested up to: 6.8
  * Requires PHP: 8.1
+ * Update URI: https://github.com/lusky3/SportsPress-Admin-Tools
  * License: GPLv2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  */
@@ -24,6 +25,23 @@ define( 'SPAT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPAT_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
 define( 'SPAT_VERSION', '1.0.5' );
 
+// Native WordPress updates, served from this repository's releases.
+//
+// Deferred to plugins_loaded on purpose. The updater lives in the parent
+// plugin and WordPress does not guarantee the order it loads plugins in, so at
+// file scope this would silently do nothing on any site where this plugin
+// happened to load first — and in the parent's own case it would run before
+// its autoloader was even registered. The update filters all fire long after
+// plugins_loaded, so nothing is lost by waiting.
+add_action(
+	'plugins_loaded',
+	static function () {
+		if ( class_exists( 'SPAT_Updater' ) ) {
+			SPAT_Updater::watch( __FILE__ );
+		}
+	}
+);
+
 // Parent side of the parent/child capability contract (H7). Children declare
 // a required floor and compare against this value so a mismatched parent that
 // still passes the class_exists() gate degrades gracefully instead of fataling
@@ -34,7 +52,13 @@ define( 'SPAT_VERSION', '1.0.5' );
 // in the children that depend on the change. 1.1.0 added the links_to_order
 // parameter + column to log_registration_activity (used by league-manager,
 // player-registration, and player-tools).
-define( 'SPAT_CONTRACT_VERSION', '1.1.0' );
+//
+// 1.2.0 added SPAT_Player, which sportspress-player-registration and
+// sportspress-player-tools call UNGUARDED — those two raise their floor to
+// match. SPAT_Updater arrived in the same version but every caller guards it
+// with class_exists(), so an older parent there costs updates rather than
+// fataling, and no floor depends on it.
+define( 'SPAT_CONTRACT_VERSION', '1.2.0' );
 
 // Schema version the bundled migrations target. Kept in lockstep with
 // SPAT_VERSION so the plugin header tracks DB iterations; SPAT_Database reads
@@ -56,6 +80,8 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 			'SPAT_Lock'              => 'includes/class-lock.php',
 			'SPAT_Season'            => 'includes/class-season.php',
 			'SPAT_Player'            => 'includes/class-player.php',
+			'SPAT_Updater'           => 'includes/class-updater.php',
+			'SPAT_Updater_Release'   => 'includes/class-updater-release.php',
 			'SPAT_Upload_Validator'  => 'includes/class-upload-validator.php',
 			'SimpleXLSX'             => 'includes/SimpleXLSX.php',
 		);

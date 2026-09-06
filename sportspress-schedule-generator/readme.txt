@@ -59,6 +59,7 @@ Yes. The import dialog lets you choose conflict resolution (skip or overwrite), 
 == Changelog ==
 
 = 1.1.0 =
+* New: this plugin now updates itself through the normal WordPress Plugins screen, sourced from the project's GitHub releases.
 * New: a back-to-back restriction you can set from the admin, so a team won't play on consecutive days and nobody has to hand-edit configuration to stop it.
 * New: venue CSV import, per-day weighting, and rules for spreading games across dates and venues.
 * New: a REST `/export/csv` route, plus a change-history viewer showing what a draft changed between saves.

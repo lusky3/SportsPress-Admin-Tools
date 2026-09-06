@@ -46,6 +46,7 @@ No. The rollover creates new season terms and updates team assignments. Preview 
 == Changelog ==
 
 = 1.1.0 =
+* New: this plugin now updates itself through the normal WordPress Plugins screen, sourced from the project's GitHub releases.
 * Season rollover finishes the job now. It used to stop after calendars and rosters; it carries on through the rest of the transition, including a single pass that puts every team into a division.
 * New: a league table generator in wp-admin, shared with the League Manager dashboard.
 * Score entry shows player stats up front. A visibility bug had left that section unreachable.

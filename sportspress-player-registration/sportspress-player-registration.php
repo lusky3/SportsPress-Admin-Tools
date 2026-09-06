@@ -10,6 +10,7 @@
  * Requires at least: 5.0
  * Tested up to: 6.9
  * Requires PHP: 8.1
+ * Update URI: https://github.com/lusky3/SportsPress-Admin-Tools
  * Depends: SportsPress Admin Tools
  */
 
@@ -20,6 +21,23 @@ if ( ! defined( 'ABSPATH' ) ) {
 define( 'SPPR_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPPR_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
 define( 'SPPR_VERSION', '1.1.0' );
+
+// Native WordPress updates, served from this repository's releases.
+//
+// Deferred to plugins_loaded on purpose. The updater lives in the parent
+// plugin and WordPress does not guarantee the order it loads plugins in, so at
+// file scope this would silently do nothing on any site where this plugin
+// happened to load first — and in the parent's own case it would run before
+// its autoloader was even registered. The update filters all fire long after
+// plugins_loaded, so nothing is lost by waiting.
+add_action(
+	'plugins_loaded',
+	static function () {
+		if ( class_exists( 'SPAT_Updater' ) ) {
+			SPAT_Updater::watch( __FILE__ );
+		}
+	}
+);
 
 class SportsPress_Player_Registration {
 
@@ -76,7 +94,7 @@ class SportsPress_Player_Registration {
 		// child depends on. Require a declared contract version and degrade with an
 		// admin notice otherwise. Do NOT self-deactivate here — the parent is present,
 		// just outdated, so orphaning the child would be wrong.
-		if ( ! defined( 'SPAT_CONTRACT_VERSION' ) || version_compare( SPAT_CONTRACT_VERSION, '1.1.0', '<' ) ) {
+		if ( ! defined( 'SPAT_CONTRACT_VERSION' ) || version_compare( SPAT_CONTRACT_VERSION, '1.2.0', '<' ) ) {
 			add_action( 'admin_notices', array( $this, 'parent_version_notice' ) );
 			return;
 		}

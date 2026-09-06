@@ -33,6 +33,7 @@ Each child plugin registers with this parent and loads only when its module is e
 == Changelog ==
 
 = 1.0.5 =
+* New: these plugins now update themselves. WordPress shows an update on the Plugins screen when a release adds one, with the usual "View details" and one-click install, sourced from the project's GitHub releases rather than the plugin directory.
 * Fix e-transfer log table creation on stock MySQL — `longtext DEFAULT ''` is rejected there, so the table was never created (MariaDB accepted it). Schema version bumped so affected installs re-run the migration.
 * Schema verifier now checks all four tables, so a failed CREATE is no longer stamped as a successful migration.
 * System Status: a child registering several modules against one plugin file no longer overwrites its own row.
