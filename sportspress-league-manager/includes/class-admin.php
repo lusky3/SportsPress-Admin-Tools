@@ -102,6 +102,8 @@ class SPLM_Admin {
 	/**
 	 * Render a fallback page in case the admin_init redirect didn't fire
 	 * (e.g. headers already sent). Provides a link only — no inline script.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function render_redirect_page() {
 		// Only reached when the redirect above could not run. Resolve the page
