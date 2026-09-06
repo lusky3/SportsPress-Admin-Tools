@@ -15,6 +15,15 @@
  *
  * See class-updater.php for why a manifest exists at all.
  *
+ * Eleven methods against PHPMD's threshold of ten, suppressed rather than
+ * split again: the class was already split out of SPAT_Updater on the real
+ * seam, every method here is part of one job — knowing what GitHub is
+ * offering — and every complexity threshold is met. Splitting further to move
+ * a count would put related rules in different files for no reader's benefit.
+ * Same reasoning SPLM_Waitlist_Gate carries.
+ *
+ * @SuppressWarnings(PHPMD.TooManyMethods)
+ *
  * @author Cody (lusky3)
  */
 
@@ -26,6 +35,9 @@ class SPAT_Updater_Release {
 
 	const REPO          = 'lusky3/SportsPress-Admin-Tools';
 	const MANIFEST_NAME = 'manifest.json';
+
+	/** Manifest shape this updater understands. */
+	const SCHEMA        = 1;
 	const CACHE_KEY     = 'spat_updater_manifest';
 	const CACHE_TTL     = 12 * HOUR_IN_SECONDS;
 	/**
@@ -103,7 +115,34 @@ class SPAT_Updater_Release {
 			return null;
 		}
 		$entry = $manifest['plugins'][ $slug ];
-		return empty( $entry['version'] ) ? null : $entry;
+		if ( empty( $entry['version'] ) ) {
+			return null;
+		}
+
+		// The asset name is bound to the slug rather than taken from the entry.
+		// An entry for sportspress-player-tools naming
+		// sportspress-admin-tools.zip would otherwise have WordPress unpack one
+		// plugin over another's directory — the manifest would be choosing
+		// which files land where, which is not a decision it gets to make.
+		// The field is still read so a disagreement is a refusal rather than
+		// something silently ignored.
+		$expected = self::asset_name( $slug );
+		if ( ! empty( $entry['asset'] ) && $entry['asset'] !== $expected ) {
+			return null;
+		}
+		$entry['asset'] = $expected;
+
+		return $entry;
+	}
+
+	/**
+	 * The only asset name a plugin may be updated from.
+	 *
+	 * @param string $slug Plugin slug.
+	 * @return string
+	 */
+	public static function asset_name( string $slug ): string {
+		return $slug . '.zip';
 	}
 
 	/**
@@ -145,29 +184,68 @@ class SPAT_Updater_Release {
 			return empty( $cached['manifest'] ) ? null : $cached;
 		}
 
-		$release = self::fetch_json( 'https://api.github.com/repos/' . self::REPO . '/releases/latest' );
+		$fresh = self::fetch_current();
 
+		// Both outcomes are cached. A failure is cached briefly under the same
+		// key, because this runs on the update check and that fires on ordinary
+		// admin page loads — an unreachable GitHub must not mean a blocking
+		// request on every one of them.
+		set_site_transient(
+			self::CACHE_KEY,
+			null === $fresh ? array( 'manifest' => null ) : $fresh,
+			null === $fresh ? self::FAILURE_TTL : self::CACHE_TTL
+		);
+
+		return $fresh;
+	}
+
+	/**
+	 * Fetch and vet the latest release, ignoring the cache.
+	 *
+	 * @return array|null
+	 */
+	private static function fetch_current(): ?array {
+		$release = self::fetch_json( 'https://api.github.com/repos/' . self::REPO . '/releases/latest' );
 		if ( ! is_array( $release ) || ! self::is_release_tag( (string) ( $release['tag_name'] ?? '' ) ) ) {
-			set_site_transient( self::CACHE_KEY, array( 'manifest' => null ), self::FAILURE_TTL );
 			return null;
 		}
 
+		$tag      = (string) $release['tag_name'];
 		$assets   = is_array( $release['assets'] ?? null ) ? $release['assets'] : array();
-		$manifest = self::fetch_manifest( $assets );
+		$manifest = self::fetch_manifest( $assets, $tag );
 
 		if ( null === $manifest ) {
-			set_site_transient( self::CACHE_KEY, array( 'manifest' => null ), self::FAILURE_TTL );
 			return null;
 		}
 
-		$data = array(
-			'tag'      => (string) $release['tag_name'],
+		return array(
+			'tag'      => $tag,
 			'assets'   => $assets,
 			'manifest' => $manifest,
 		);
-		set_site_transient( self::CACHE_KEY, $data, self::CACHE_TTL );
+	}
 
-		return $data;
+	/**
+	 * Whether a manifest is this project's, and describes this release.
+	 *
+	 * These three fields are written into the manifest precisely so they can be
+	 * checked, and until now nothing checked them — the only test asserting
+	 * `repo` was recording an intention the code ignored. A manifest naming
+	 * another project or another tag is not a manifest for what is about to be
+	 * installed, whether that is an attack or a mis-built release.
+	 *
+	 * @param array  $manifest Decoded manifest.
+	 * @param string $tag      Tag of the release it came from.
+	 * @return bool
+	 */
+	private static function belongs_to( array $manifest, string $tag ): bool {
+		if ( (int) ( $manifest['schema'] ?? 0 ) !== self::SCHEMA ) {
+			return false;
+		}
+		if ( (string) ( $manifest['repo'] ?? '' ) !== self::REPO ) {
+			return false;
+		}
+		return (string) ( $manifest['tag'] ?? '' ) === $tag;
 	}
 
 	/**
@@ -176,16 +254,18 @@ class SPAT_Updater_Release {
 	 * @param array $assets Release assets.
 	 * @return array|null
 	 */
-	private static function fetch_manifest( array $assets ): ?array {
+	private static function fetch_manifest( array $assets, string $tag ): ?array {
 		$url = self::asset_url( $assets, self::MANIFEST_NAME );
 		if ( '' === $url ) {
 			return null;
 		}
 		$manifest = self::fetch_json( $url );
 
-		return ( is_array( $manifest ) && ! empty( $manifest['plugins'] ) && is_array( $manifest['plugins'] ) )
-			? $manifest
-			: null;
+		if ( ! is_array( $manifest ) || empty( $manifest['plugins'] ) || ! is_array( $manifest['plugins'] ) ) {
+			return null;
+		}
+
+		return self::belongs_to( $manifest, $tag ) ? $manifest : null;
 	}
 
 	/**
@@ -225,30 +305,4 @@ class SPAT_Updater_Release {
 		delete_site_transient( self::CACHE_KEY );
 	}
 
-	/**
-	 * The manifest's changelog text as the modal's markup.
-	 *
-	 * Changelogs in readme.txt are one bullet per line. Escaped before any tag
-	 * is added: this text comes from a release asset, and the modal renders it
-	 * as HTML.
-	 *
-	 * @param string $changelog Raw changelog text.
-	 * @return string
-	 */
-	public static function changelog_html( string $changelog ): string {
-		if ( '' === trim( $changelog ) ) {
-			return '';
-		}
-
-		$items = array();
-		foreach ( preg_split( '/\r?\n/', $changelog ) as $line ) {
-			$line = trim( $line );
-			if ( '' === $line ) {
-				continue;
-			}
-			$items[] = '<li>' . esc_html( ltrim( $line, "*- \t" ) ) . '</li>';
-		}
-
-		return $items ? '<ul>' . implode( '', $items ) . '</ul>' : '';
-	}
 }

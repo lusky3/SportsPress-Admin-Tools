@@ -85,7 +85,8 @@ class SPAT_Updater {
 		add_filter( 'update_plugins_github.com', array( __CLASS__, 'filter_update_uri_check' ), 10, 3 );
 		add_filter( 'pre_set_site_transient_update_plugins', array( __CLASS__, 'filter_update_transient' ) );
 		add_filter( 'plugins_api', array( __CLASS__, 'filter_plugin_details' ), 10, 3 );
-		add_action( 'upgrader_process_complete', array( __CLASS__, 'flush' ), 10, 0 );
+		// The release class owns the cache, so it clears it — no pass-through here.
+		add_action( 'upgrader_process_complete', array( 'SPAT_Updater_Release', 'flush' ), 10, 0 );
 	}
 
 	/**
@@ -152,7 +153,7 @@ class SPAT_Updater {
 			return null;
 		}
 
-		$package = SPAT_Updater_Release::asset_url( $release['assets'], (string) ( $entry['asset'] ?? $slug . '.zip' ) );
+		$package = SPAT_Updater_Release::asset_url( $release['assets'], (string) $entry['asset'] );
 		if ( '' === $package ) {
 			// The release names a newer version but its zip is missing or came
 			// from somewhere unexpected. Offering an update WordPress cannot
@@ -288,22 +289,39 @@ class SPAT_Updater {
 			'requires'      => (string) ( $entry['requires'] ?? '' ),
 			'tested'        => (string) ( $entry['tested'] ?? '' ),
 			'requires_php'  => (string) ( $entry['requires_php'] ?? '' ),
-			'download_link' => SPAT_Updater_Release::asset_url( $release['assets'], (string) ( $entry['asset'] ?? $slug . '.zip' ) ),
+			'download_link' => SPAT_Updater_Release::asset_url( $release['assets'], (string) $entry['asset'] ),
 			'sections'      => array(
-				'changelog' => SPAT_Updater_Release::changelog_html( (string) ( $entry['changelog'] ?? '' ) ),
+				'changelog' => self::changelog_html( (string) ( $entry['changelog'] ?? '' ) ),
 			),
 		);
 	}
 
 
+
 	/**
-	 * Forget the cached manifest.
+	 * The manifest's changelog text as the modal's markup.
 	 *
-	 * @return void
+	 * Changelogs in readme.txt are one bullet per line. Escaped before any tag
+	 * is added: this text comes from a release asset, and the modal renders it
+	 * as HTML.
 	 *
-	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 * @param string $changelog Raw changelog text.
+	 * @return string
 	 */
-	public static function flush(): void {
-		SPAT_Updater_Release::flush();
+	private static function changelog_html( string $changelog ): string {
+		if ( '' === trim( $changelog ) ) {
+			return '';
+		}
+
+		$items = array();
+		foreach ( preg_split( '/\r?\n/', $changelog ) as $line ) {
+			$line = trim( $line );
+			if ( '' === $line ) {
+				continue;
+			}
+			$items[] = '<li>' . esc_html( ltrim( $line, "*- \t" ) ) . '</li>';
+		}
+
+		return $items ? '<ul>' . implode( '', $items ) . '</ul>' : '';
 	}
 }

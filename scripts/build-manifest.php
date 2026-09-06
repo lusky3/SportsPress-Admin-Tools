@@ -141,8 +141,19 @@ if ( empty( $manifest['plugins'] ) ) {
 	exit( 1 );
 }
 
-@mkdir( dirname( $out ), 0775, true ); // phpcs:ignore
-file_put_contents( $out, wp_json_encode_compat( $manifest ) . "\n" );
+// Both results are checked. Suppressing the mkdir and discarding the write
+// result meant a release job that could not write the manifest still printed
+// success here and failed later at upload, with nothing pointing at the cause.
+$dir = dirname( $out );
+if ( ! is_dir( $dir ) && ! mkdir( $dir, 0775, true ) && ! is_dir( $dir ) ) {
+	fwrite( STDERR, "manifest: could not create {$dir}\n" );
+	exit( 1 );
+}
+
+if ( false === file_put_contents( $out, wp_json_encode_compat( $manifest ) . "\n" ) ) {
+	fwrite( STDERR, "manifest: could not write {$out}\n" );
+	exit( 1 );
+}
 
 printf( "manifest: %d plugins written to %s\n", count( $manifest['plugins'] ), $out );
 foreach ( $manifest['plugins'] as $slug => $p ) {

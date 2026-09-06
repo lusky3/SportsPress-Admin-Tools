@@ -195,6 +195,7 @@ $manifest = array(
 		'sportspress-admin-tools' => array( 'version' => '1.0.5', 'asset' => 'sportspress-admin-tools.zip' ),
 		'sportspress-player-tools' => array( 'version' => '1.1.0', 'asset' => 'sportspress-player-tools.zip' ),
 		'sportspress-broken'       => array( 'asset' => 'x.zip' ),
+		'sportspress-crosswired'   => array( 'version' => '9.9.9', 'asset' => 'sportspress-admin-tools.zip' ),
 	),
 );
 
@@ -255,7 +256,14 @@ function spat_test_release( string $tag, array $versions ): array {
 		),
 		SPAT_TEST_DOWNLOAD . 'manifest.json' => array(
 			'code' => 200,
-			'body' => wp_json_encode_test( array( 'schema' => 1, 'tag' => $tag, 'plugins' => $plugins ) ),
+			'body' => wp_json_encode_test(
+				array(
+					'schema'  => 1,
+					'repo'    => 'lusky3/SportsPress-Admin-Tools',
+					'tag'     => $tag,
+					'plugins' => $plugins,
+				)
+			),
 		),
 	);
 }
@@ -316,7 +324,7 @@ assert_test( 2 === count( $requests ), 'two requests total — the release and i
 spat_test_check();
 assert_test( 2 === count( spat_updater_fixture()['requests'] ), 'a second check makes no further requests; the manifest is cached' );
 
-SPAT_Updater::flush();
+SPAT_Updater_Release::flush();
 spat_test_check();
 assert_test( 4 === count( spat_updater_fixture()['requests'] ), 'flushing the cache makes it fetch again — this is what runs after an upgrade' );
 
@@ -380,6 +388,72 @@ assert_test( is_object( $info ) && false === strpos( $info->sections['changelog'
 
 $untouched = SPAT_Updater::filter_plugin_details( false, 'plugin_information', (object) array( 'slug' => 'some-other-plugin' ) );
 assert_test( false === $untouched, 'another plugin\'s details request is left alone' );
+
+echo "\n=== a manifest does not get to choose which files land where ===\n\n";
+
+// The manifest names the asset for each plugin, and that name used to be
+// taken at face value. An entry for one plugin naming another's zip would have
+// WordPress unpack sportspress-admin-tools over the player-tools directory.
+assert_test(
+	null === $R::entry_for( $manifest, 'sportspress-crosswired' ),
+	'an entry naming another plugin\'s zip is refused outright'
+);
+assert_test(
+	'sportspress-player-tools.zip' === $R::entry_for( $manifest, 'sportspress-player-tools' )['asset'],
+	'a matching entry keeps its asset, normalised from the slug'
+);
+assert_test(
+	'sportspress-admin-tools.zip' === $R::asset_name( 'sportspress-admin-tools' ),
+	'the asset name is derived from the slug, not read from anywhere'
+);
+
+// An entry that omits the field is fine — it gets the only name it could have.
+$no_asset = array( 'plugins' => array( 'sportspress-player-tools' => array( 'version' => '2.0.0' ) ) );
+assert_test(
+	'sportspress-player-tools.zip' === $R::entry_for( $no_asset, 'sportspress-player-tools' )['asset'],
+	'an entry with no asset named still resolves to its own zip'
+);
+
+echo "\n=== a manifest has to be ours, and about this release ===\n\n";
+
+/** Swap one field of the manifest a release serves. */
+function spat_test_manifest_with( array $overrides ): array {
+	$responses = spat_test_release( 'v1.2.0', array( 'sportspress-player-tools' => '1.2.0' ) );
+	$manifest  = json_decode( $responses[ SPAT_TEST_DOWNLOAD . 'manifest.json' ]['body'], true );
+	foreach ( $overrides as $k => $v ) {
+		$manifest[ $k ] = $v;
+	}
+	$responses[ SPAT_TEST_DOWNLOAD . 'manifest.json' ]['body'] = wp_json_encode_test( $manifest );
+	return $responses;
+}
+
+foreach ( array(
+	'another project\'s manifest'          => array( 'repo' => 'someone-else/other-project' ),
+	'a manifest for a different release'   => array( 'tag' => 'v9.9.9' ),
+	'a manifest in a shape we do not know' => array( 'schema' => 2 ),
+) as $label => $override ) {
+	spat_updater_reset();
+	spat_updater_fixture(
+		array(
+			'versions'  => array( 'sportspress-player-tools/sportspress-player-tools.php' => '1.1.0' ),
+			'responses' => spat_test_manifest_with( $override ),
+		)
+	);
+	$out = spat_test_check();
+	assert_test( empty( $out->response ), "{$label} offers nothing, even though it names a newer version" );
+}
+
+// And the same release with its own manifest intact still works, so the checks
+// above are refusing the right thing rather than everything.
+spat_updater_reset();
+spat_updater_fixture(
+	array(
+		'versions'  => array( 'sportspress-player-tools/sportspress-player-tools.php' => '1.1.0' ),
+		'responses' => spat_test_manifest_with( array() ),
+	)
+);
+$out = spat_test_check();
+assert_test( ! empty( $out->response ), 'the genuine manifest for this release is still accepted' );
 
 echo "\n";
 echo "Passed: {$passed}\n";
