@@ -45,6 +45,11 @@ $reg_cat_id    = $reg_cat ? $reg_cat->term_id : wp_insert_term( 'Registration', 
 $player_tag    = get_term_by( 'name', 'Player', 'product_tag' );
 $player_tag_id = $player_tag ? $player_tag->term_id : wp_insert_term( 'Player', 'product_tag' )['term_id'];
 
+// S2026, deliberately different from smoke-waitlist.php's S2027 -- both
+// fixtures publish into the same Registration category, and
+// SPLM_Waitlist_Matcher::select_target() answers ambiguity across
+// same-season products in that category with 0. Keep these season codes
+// distinct or Tier 3's matcher check will silently break.
 $product = new WC_Product_Simple();
 $product->set_name( 'Player Registration (S2026)' );
 $product->set_regular_price( '0' );

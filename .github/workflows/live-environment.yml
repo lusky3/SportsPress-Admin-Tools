@@ -1,6 +1,12 @@
 name: Live Environment Matrix
 
 on:
+  # Deliberately not pull_request: this installs ~10 unpinned wordpress.org
+  # plugin versions and runs them as root across 16 cells, real wall-clock
+  # cost that isn't meant to gate every PR. If pull_request is ever added,
+  # confirm it's the plain form (not pull_request_target) -- fork PRs then
+  # get a read-only token and no secrets, matching `permissions: contents:
+  # read` below either way.
   push:
     branches: [main]
   workflow_dispatch:
@@ -36,6 +42,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup PHP
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
