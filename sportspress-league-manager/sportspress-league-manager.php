@@ -56,6 +56,9 @@ class SportsPress_League_Manager {
 		}
 	}
 
+	/**
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
 	public function check_activation_requirements() {
 		if ( ! class_exists( 'SPAT_Plugin_Manager' ) ) {
 			deactivate_plugins( plugin_basename( __FILE__ ) );

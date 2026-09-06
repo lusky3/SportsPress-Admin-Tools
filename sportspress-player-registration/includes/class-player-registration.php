@@ -304,6 +304,9 @@ class SPPR_Player_Registration {
 		return SPAT_Season::from_product( $product_id );
 	}
 
+	/**
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
 	private function find_or_create_player( $customer_name, $season, $position, $customer_email = '', $user_id = 0 ) {
 		$player_id = null;
 		$action = '';

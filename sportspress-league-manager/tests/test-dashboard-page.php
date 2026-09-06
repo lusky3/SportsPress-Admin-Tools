@@ -71,6 +71,11 @@ function get_post( $id ) {
 	$state = splm_page_state();
 	return isset( $state->posts[ $id ] ) ? $state->posts[ $id ] : null;
 }
+/**
+ * Stub mirroring the WordPress signature.
+ *
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
 function get_page_by_path( $path, $output = OBJECT, $post_type = 'page' ) { // phpcs:ignore
 	foreach ( splm_page_state()->posts as $post ) {
 		if ( $post->post_name === $path && $post->post_type === $post_type ) {
@@ -101,6 +106,11 @@ function wp_update_post( $args, $wp_error = false ) { // phpcs:ignore
 	}
 	return $id;
 }
+/**
+ * Stub mirroring the WordPress signature.
+ *
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
 function get_post_meta( $id, $key, $single = false ) { // phpcs:ignore
 	$state = splm_page_state();
 	return isset( $state->post_meta[ $id ][ $key ] ) ? $state->post_meta[ $id ][ $key ] : '';

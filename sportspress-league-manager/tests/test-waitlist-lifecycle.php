@@ -25,9 +25,15 @@ function __( $text, $domain = '' ) { // phpcs:ignore
  * file exercises the write, not the scheduler, so the calls are recorded and
  * otherwise inert.
  */
-$GLOBALS['splm_cleared_hooks'] = array();
+function splm_cleared_hooks( ?array $record = null ): array {
+	static $cleared = array();
+	if ( null !== $record ) {
+		$cleared[] = $record;
+	}
+	return $cleared;
+}
 function wp_clear_scheduled_hook( $hook, $args = array() ) { // phpcs:ignore
-	$GLOBALS['splm_cleared_hooks'][] = array( $hook, $args );
+	splm_cleared_hooks( array( $hook, $args ) );
 }
 
 

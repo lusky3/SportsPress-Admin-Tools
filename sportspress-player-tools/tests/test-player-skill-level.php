@@ -34,20 +34,6 @@ if ( ! function_exists( 'apply_filters' ) ) {
 	}
 }
 
-$GLOBALS['spt_post_meta'] = array();
-$GLOBALS['spt_posts']     = array();
-if ( ! function_exists( 'get_post_meta' ) ) {
-	function get_post_meta( $id, $key, $single = false ) { // phpcs:ignore
-		$value = $GLOBALS['spt_post_meta'][ $id ][ $key ] ?? array();
-		return $single ? ( $value[0] ?? '' ) : $value;
-	}
-}
-if ( ! function_exists( 'get_post' ) ) {
-	function get_post( $id ) {
-		return $GLOBALS['spt_posts'][ $id ] ?? null;
-	}
-}
-
 require_once dirname( __FILE__ ) . '/../includes/class-player-skill-level.php';
 
 // Test helpers.

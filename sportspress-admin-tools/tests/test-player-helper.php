@@ -18,16 +18,41 @@
 
 define( 'ABSPATH', __DIR__ );
 
-$GLOBALS['spat_post_meta'] = array();
-$GLOBALS['spat_posts']     = array();
+/**
+ * Fixture state, held in a function-local static rather than a superglobal.
+ *
+ * @param array|null $meta  Post meta: post id => key => values.
+ * @param array|null $posts Posts: post id => object.
+ * @return array
+ */
+function spat_player_fixture( ?array $meta = null, ?array $posts = null ): array {
+	static $state = array(
+		'meta'  => array(),
+		'posts' => array(),
+	);
+	if ( null !== $meta ) {
+		$state['meta'] = $meta;
+	}
+	if ( null !== $posts ) {
+		$state['posts'] = $posts;
+	}
+	return $state;
+}
 
+/**
+ * Stub mirroring the WordPress signature.
+ *
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
 function get_post_meta( $id, $key, $single = false ) { // phpcs:ignore
-	$value = $GLOBALS['spat_post_meta'][ $id ][ $key ] ?? array();
+	$state = spat_player_fixture();
+	$value = $state['meta'][ $id ][ $key ] ?? array();
 	return $single ? ( $value[0] ?? '' ) : $value;
 }
 
 function get_post( $id ) {
-	return $GLOBALS['spat_posts'][ $id ] ?? null;
+	$state = spat_player_fixture();
+	return $state['posts'][ $id ] ?? null;
 }
 
 require_once __DIR__ . '/../includes/class-player.php';
@@ -46,35 +71,40 @@ function assert_test( $condition, $message ) {
 	}
 }
 
-$GLOBALS['spat_posts'][701] = (object) array( 'ID' => 701, 'post_title' => 'Ice Hawks' );
-$GLOBALS['spat_posts'][702] = (object) array( 'ID' => 702, 'post_title' => 'Rink Rats' );
+spat_player_fixture(
+	null,
+	array(
+		701 => (object) array( 'ID' => 701, 'post_title' => 'Ice Hawks' ),
+		702 => (object) array( 'ID' => 702, 'post_title' => 'Rink Rats' ),
+	)
+);
 
 echo "\n=== SPAT_Player::team_names() ===\n\n";
 
-$GLOBALS['spat_post_meta'][601] = array( 'sp_team' => array( 701, 702 ) );
+spat_player_fixture( array( 601 => array( 'sp_team' => array( 701, 702 ) ) ) );
 assert_test(
 	array( 'Ice Hawks', 'Rink Rats' ) === SPAT_Player::team_names( 601 ),
 	'team names come from sp_team post meta, resolved to team post titles'
 );
 
 // The ordinary case at registration time, and the one that used to throw.
-$GLOBALS['spat_post_meta'][602] = array();
+spat_player_fixture( array( 602 => array() ) );
 assert_test( array() === SPAT_Player::team_names( 602 ), 'a player on no team yields an empty list, not an error' );
 
-$GLOBALS['spat_post_meta'][603] = array( 'sp_team' => array( 701, 9999 ) );
+spat_player_fixture( array( 603 => array( 'sp_team' => array( 701, 9999 ) ) ) );
 assert_test( array( 'Ice Hawks' ) === SPAT_Player::team_names( 603 ), 'a deleted team post is skipped rather than rendered as a blank name' );
 
 // Repeated meta for one team is a data anomaly, not two memberships. Rendering
 // "Ice Hawks, Ice Hawks" in an export or a notification is a defect either way.
-$GLOBALS['spat_post_meta'][604] = array( 'sp_team' => array( 701, 701, 702 ) );
+spat_player_fixture( array( 604 => array( 'sp_team' => array( 701, 701, 702 ) ) ) );
 assert_test( array( 'Ice Hawks', 'Rink Rats' ) === SPAT_Player::team_names( 604 ), 'a team recorded twice appears once' );
 
 // Re-indexed, so callers get a plain list rather than array_unique()'s gaps.
-$GLOBALS['spat_post_meta'][605] = array( 'sp_team' => array( 701, 701 ) );
+spat_player_fixture( array( 605 => array( 'sp_team' => array( 701, 701 ) ) ) );
 assert_test( array( 0 ) === array_keys( SPAT_Player::team_names( 605 ) ), 'the returned list is re-indexed from zero' );
 
 // Meta values arrive from the database as strings.
-$GLOBALS['spat_post_meta'][606] = array( 'sp_team' => array( '701', '702' ) );
+spat_player_fixture( array( 606 => array( 'sp_team' => array( '701', '702' ) ) ) );
 assert_test( array( 'Ice Hawks', 'Rink Rats' ) === SPAT_Player::team_names( 606 ), 'string meta values are cast before lookup' );
 
 // A player with no meta row at all, rather than an empty one.

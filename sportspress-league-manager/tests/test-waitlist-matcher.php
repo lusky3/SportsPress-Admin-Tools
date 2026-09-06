@@ -81,11 +81,30 @@ function has_term( $terms, $taxonomy, $post_id ) {
 	return (bool) array_intersect( (array) $terms, $assigned );
 }
 
-$GLOBALS['splm_last_query'] = array();
-$GLOBALS['splm_query_result'] = array();
+/**
+ * Records the last get_posts() args and serves a canned result.
+ *
+ * @param array|null $result Canned result to return from get_posts().
+ * @param array|null $args   Args to record.
+ * @return array Two keys: 'last' and 'result'.
+ */
+function splm_matcher_query( ?array $result = null, ?array $args = null ): array {
+	static $state = array(
+		'last'   => array(),
+		'result' => array(),
+	);
+	if ( null !== $result ) {
+		$state['result'] = $result;
+	}
+	if ( null !== $args ) {
+		$state['last'] = $args;
+	}
+	return $state;
+}
+
 function get_posts( $args ) {
-	$GLOBALS['splm_last_query'] = $args;
-	return $GLOBALS['splm_query_result'];
+	$state = splm_matcher_query( null, $args );
+	return $state['result'];
 }
 
 require_once __DIR__ . '/../../sportspress-admin-tools/includes/class-season.php';
@@ -244,10 +263,10 @@ splm_matcher_terms(
 	),
 	array()
 );
-$GLOBALS['splm_query_result'] = array();
+splm_matcher_query( array() );
 $m::find_target_product( 'W2026-27', 'player' );
 
-$tax = $GLOBALS['splm_last_query']['tax_query'];
+$tax = splm_matcher_query()['last']['tax_query'];
 assert_test( 1 === count( $tax ), 'the target query carries exactly one taxonomy clause' );
 assert_test( 'product_cat' === $tax[0]['taxonomy'], '  and it is product_cat, never product_tag' );
 assert_test( array( 91 ) === $tax[0]['terms'], '  scoped to the registration category, not the identically named tag' );
@@ -255,7 +274,7 @@ assert_test( ! isset( $tax['relation'] ), '  with no OR relation widening it acr
 
 // Password-protected products stay out: this league's late-registration
 // product is the second same-season candidate that made every target ambiguous.
-assert_test( false === $GLOBALS['splm_last_query']['has_password'], 'password-protected products are excluded from the candidate set' );
+assert_test( false === splm_matcher_query()['last']['has_password'], 'password-protected products are excluded from the candidate set' );
 
 // A store with no registration category has no target, rather than falling
 // back to a tag and guessing.

@@ -152,6 +152,8 @@ class SPAT_Privacy {
 	 *
 	 * @param string $email_address Email address.
 	 * @return array Export items.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function export_player_records( $email_address ) {
 		$items      = array();

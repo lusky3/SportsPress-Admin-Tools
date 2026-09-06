@@ -50,6 +50,8 @@ class SPLM_Dashboard_Frontend {
 	 * trashed. The page id is remembered so a later rename does not orphan it.
 	 *
 	 * @return int Page id, or 0 when the page could not be provisioned.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public static function ensure_page(): int {
 		$stored = (int) get_option( self::PAGE_OPT, 0 );
@@ -112,6 +114,8 @@ class SPLM_Dashboard_Frontend {
 	 *
 	 * @param WP_Post $page Candidate page.
 	 * @return int Page id, or 0 when it could not be made usable.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private static function adopt( $page ): int {
 		$page_id = (int) $page->ID;

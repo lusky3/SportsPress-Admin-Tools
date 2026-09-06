@@ -819,6 +819,8 @@ class SPT_Player_Skill_Level {
 
 	/**
 	 * Handle CSV export of player skill data.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function handle_export_csv() {
 		if ( ! current_user_can( 'manage_options' ) ) {

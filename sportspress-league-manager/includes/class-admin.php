@@ -61,6 +61,8 @@ class SPLM_Admin {
 	 *
 	 * Replaces the previous inline <script> redirect (F21) — admin_init runs
 	 * before headers are sent, so wp_safe_redirect is reliable.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function maybe_redirect_to_dashboard() {
 		if ( ! is_admin() ) {

@@ -261,19 +261,11 @@ class SPLM_Waitlist_Database {
 		global $wpdb;
 		$data['updated_at'] = self::now();
 
-		$where = array(
-			'id'     => $id,
-			'status' => $expected_status,
+		$result = $wpdb->update( // phpcs:ignore WordPress.DB
+			self::table_name(),
+			$data,
+			self::identity( $id, $expected_status, $expected_token )
 		);
-		// Deliberately only when there is a token to match. $wpdb->update()
-		// builds `column = %s` and cannot express `claim_token IS NULL`, so a
-		// null passed through here would silently become a comparison against
-		// the empty string and match nothing.
-		if ( null !== $expected_token && '' !== $expected_token ) {
-			$where['claim_token'] = $expected_token;
-		}
-
-		$result = $wpdb->update( self::table_name(), $data, $where ); // phpcs:ignore WordPress.DB
 
 		if ( false === $result ) {
 			return false;
@@ -284,19 +276,61 @@ class SPLM_Waitlist_Database {
 
 		// Zero affected rows is ambiguous, because MySQL reports 0 both when
 		// the WHERE matched nothing and when it matched a row that already
-		// held these exact values — reachable here whenever a transition is
-		// a no-op and updated_at happens to land in the same second. Re-read
-		// and let the row say which happened: if its status is still the one
-		// we guarded on, the guard did match and there was simply nothing to
-		// change.
+		// held these exact values — reachable whenever a transition is a no-op
+		// and updated_at lands in the same second. Re-read and let the row say
+		// which happened.
+		return self::still_matches( $id, $expected_status, $expected_token );
+	}
+
+	/**
+	 * Whether a caller supplied an offer identity to match on.
+	 *
+	 * @param string|null $token Claim token, or null for a row that has none.
+	 * @return bool
+	 */
+	private static function has_token( ?string $token ): bool {
+		return null !== $token && '' !== $token;
+	}
+
+	/**
+	 * The WHERE clause identifying the row a caller decided from.
+	 *
+	 * The token is added only when there is one to match. $wpdb->update()
+	 * builds `column = %s` and cannot express `claim_token IS NULL`, so a null
+	 * passed through would silently become a comparison against the empty
+	 * string and match nothing.
+	 *
+	 * @param int         $id              Row id.
+	 * @param string      $expected_status Status the caller read.
+	 * @param string|null $expected_token  Claim token the caller read, if any.
+	 * @return array
+	 */
+	private static function identity( int $id, string $expected_status, ?string $expected_token ): array {
+		$where = array(
+			'id'     => $id,
+			'status' => $expected_status,
+		);
+		if ( self::has_token( $expected_token ) ) {
+			$where['claim_token'] = $expected_token;
+		}
+		return $where;
+	}
+
+	/**
+	 * Whether the row still holds the identity a zero-row update was written
+	 * against.
+	 *
+	 * @param int         $id              Row id.
+	 * @param string      $expected_status Status the caller read.
+	 * @param string|null $expected_token  Claim token the caller read, if any.
+	 * @return bool
+	 */
+	private static function still_matches( int $id, string $expected_status, ?string $expected_token ): bool {
 		$row = self::get( $id );
 		if ( ! $row || $expected_status !== (string) $row->status ) {
 			return false;
 		}
-		if ( null !== $expected_token && '' !== $expected_token && $expected_token !== (string) $row->claim_token ) {
-			return false;
-		}
-		return true;
+		return ! self::has_token( $expected_token ) || $expected_token === (string) $row->claim_token;
 	}
 
 	/**
