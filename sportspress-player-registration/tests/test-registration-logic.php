@@ -36,6 +36,24 @@ if (!function_exists('wp_get_post_terms')) {
     }
 }
 
+$mock_post_meta = array();
+if (!function_exists('get_post_meta')) {
+    function get_post_meta($id, $key, $single = false) {
+        global $mock_post_meta;
+        $value = isset($mock_post_meta[$id][$key]) ? $mock_post_meta[$id][$key] : array();
+        return $single ? (isset($value[0]) ? $value[0] : '') : $value;
+    }
+}
+if (!function_exists('get_post')) {
+    function get_post($id) {
+        global $mock_titles;
+        if (!isset($mock_titles[$id])) {
+            return null;
+        }
+        return (object) array('ID' => $id, 'post_title' => $mock_titles[$id]);
+    }
+}
+
 require_once dirname(__FILE__) . '/../../sportspress-admin-tools/includes/class-season.php';
 require_once dirname(__FILE__) . '/../includes/class-player-registration.php';
 
@@ -150,6 +168,35 @@ $mock_titles[106] = 'Play W2024 Hockey';
 assert_test(
     invoke_private($reg, 'extract_season_from_product', array(106)) === 'W2024',
     'W2024 in middle of title matches'
+);
+
+// --- player_team_names ---
+echo "\n-- player_team_names --\n";
+
+// SportsPress has no sp_team taxonomy: teams are POSTS, linked from a player by
+// repeated sp_team post meta. The previous wp_get_object_terms() call returned
+// WP_Error( 'invalid_taxonomy' ), which is not empty(), so implode() threw and
+// process_completed_order() marked the whole order _spr_processed = failed.
+$mock_post_meta[900] = array('sp_team' => array(801, 802));
+$mock_titles[801] = 'Blue Jays';
+$mock_titles[802] = 'Red Wings';
+assert_test(
+    invoke_private($reg, 'player_team_names', array(900)) === 'Blue Jays, Red Wings',
+    'team names come from sp_team post meta, resolved to post titles'
+);
+
+// The normal case at creation time, and the one that used to crash.
+$mock_post_meta[901] = array();
+assert_test(
+    invoke_private($reg, 'player_team_names', array(901)) === '',
+    'a player with no teams yields an empty string, not an error'
+);
+
+// A team post that has since been deleted must be skipped, not rendered blank.
+$mock_post_meta[902] = array('sp_team' => array(801, 999));
+assert_test(
+    invoke_private($reg, 'player_team_names', array(902)) === 'Blue Jays',
+    'a deleted team post is skipped rather than producing an empty entry'
 );
 
 echo "\n=== Results ===\n";

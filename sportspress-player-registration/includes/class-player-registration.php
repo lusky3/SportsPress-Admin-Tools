@@ -364,9 +364,7 @@ class SPPR_Player_Registration {
 				// Only on create so a re-run can't clobber an admin-set position.
 				$this->assign_position( $player_id, $position );
 
-				$team_names = wp_get_object_terms( $player_id, 'sp_team', array( 'fields' => 'names' ) );
-				$team = ! empty( $team_names ) ? implode( ', ', $team_names ) : '';
-				do_action( 'spat_player_registered', $customer_name, $team, $season );
+				do_action( 'spat_player_registered', $customer_name, self::player_team_names( $player_id ), $season );
 			}
 		}
 
@@ -378,6 +376,35 @@ class SPPR_Player_Registration {
 			'player_id' => $player_id,
 			'action' => $action,
 		);
+	}
+
+	/**
+	 * A player's team names, for the registration notification.
+	 *
+	 * SportsPress stores teams as `sp_team` POSTS and links them from a player
+	 * through repeated `sp_team` post meta. There is no `sp_team` taxonomy, so
+	 * wp_get_object_terms() returns WP_Error( 'invalid_taxonomy' ) here — and a
+	 * WP_Error is not empty(), so the previous `! empty( $names ) ? implode(...)`
+	 * handed implode() a WP_Error and threw a TypeError. That was caught by
+	 * process_completed_order()'s Throwable handler, which marked the order
+	 * `_spr_processed = failed`, so every brand-new player registered but the
+	 * order was flagged as failed and the notification never fired.
+	 *
+	 * Returns a comma-joined string, empty when the player has no teams — which
+	 * is the normal case at creation time.
+	 *
+	 * @param int $player_id Player post ID.
+	 * @return string
+	 */
+	private static function player_team_names( $player_id ) {
+		$names = array();
+		foreach ( (array) get_post_meta( (int) $player_id, 'sp_team', false ) as $team_id ) {
+			$team = get_post( (int) $team_id );
+			if ( $team ) {
+				$names[] = $team->post_title;
+			}
+		}
+		return implode( ', ', $names );
 	}
 
 	/**
