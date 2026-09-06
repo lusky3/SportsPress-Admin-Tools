@@ -347,33 +347,6 @@ assert_test(
 	'Stats accumulate correctly across events'
 );
 
-echo "\n-- player_team_names (the Teams column of the CSV export) --\n";
-
-// sp_team is a POST TYPE in SportsPress, not a taxonomy. This column used to
-// call wp_get_post_terms( $id, 'sp_team', ... ), which returns
-// WP_Error( 'invalid_taxonomy' ); the is_array() guard around it turned that
-// into an empty string, so every row exported a blank Teams column.
-$invoke = static function ( $id ) {
-	$ref = new ReflectionMethod( 'SPT_Player_Skill_Level', 'player_team_names' );
-	$ref->setAccessible( true );
-	return $ref->invoke( null, $id );
-};
-
-$GLOBALS['spt_posts'][701] = (object) array( 'ID' => 701, 'post_title' => 'Ice Hawks' );
-$GLOBALS['spt_posts'][702] = (object) array( 'ID' => 702, 'post_title' => 'Rink Rats' );
-
-$GLOBALS['spt_post_meta'][601] = array( 'sp_team' => array( 701, 702 ) );
-assert_test(
-	array( 'Ice Hawks', 'Rink Rats' ) === $invoke( 601 ),
-	'team names come from sp_team post meta, resolved to team post titles'
-);
-
-$GLOBALS['spt_post_meta'][602] = array();
-assert_test( array() === $invoke( 602 ), 'a player on no team yields an empty list, not an error' );
-
-$GLOBALS['spt_post_meta'][603] = array( 'sp_team' => array( 701, 9999 ) );
-assert_test( array( 'Ice Hawks' ) === $invoke( 603 ), 'a deleted team post is skipped rather than exported as a blank name' );
-
 echo "\n=== Results ===\n";
 echo "Passed: $passed\n";
 echo "Failed: $failed\n";

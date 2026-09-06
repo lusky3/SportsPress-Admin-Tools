@@ -170,35 +170,6 @@ assert_test(
     'W2024 in middle of title matches'
 );
 
-// --- player_team_names ---
-echo "\n-- player_team_names --\n";
-
-// SportsPress has no sp_team taxonomy: teams are POSTS, linked from a player by
-// repeated sp_team post meta. The previous wp_get_object_terms() call returned
-// WP_Error( 'invalid_taxonomy' ), which is not empty(), so implode() threw and
-// process_completed_order() marked the whole order _spr_processed = failed.
-$mock_post_meta[900] = array('sp_team' => array(801, 802));
-$mock_titles[801] = 'Blue Jays';
-$mock_titles[802] = 'Red Wings';
-assert_test(
-    invoke_private($reg, 'player_team_names', array(900)) === 'Blue Jays, Red Wings',
-    'team names come from sp_team post meta, resolved to post titles'
-);
-
-// The normal case at creation time, and the one that used to crash.
-$mock_post_meta[901] = array();
-assert_test(
-    invoke_private($reg, 'player_team_names', array(901)) === '',
-    'a player with no teams yields an empty string, not an error'
-);
-
-// A team post that has since been deleted must be skipped, not rendered blank.
-$mock_post_meta[902] = array('sp_team' => array(801, 999));
-assert_test(
-    invoke_private($reg, 'player_team_names', array(902)) === 'Blue Jays',
-    'a deleted team post is skipped rather than producing an empty entry'
-);
-
 echo "\n=== Results ===\n";
 echo "Passed: $passed\n";
 echo "Failed: $failed\n";

@@ -186,23 +186,11 @@ class SPAT_Privacy {
 				);
 			}
 
-			$teams = wp_get_object_terms( $player_id, 'sp_team', array( 'fields' => 'names' ) );
-			if ( is_wp_error( $teams ) ) {
-				$teams = array();
-			}
-			$team_posts = get_post_meta( $player_id, 'sp_team', false );
-			if ( ! empty( $team_posts ) ) {
-				$team_names = array();
-				foreach ( $team_posts as $team_id ) {
-					$team_post = get_post( (int) $team_id );
-					if ( $team_post ) {
-						$team_names[] = $team_post->post_title;
-					}
-				}
-				if ( ! empty( $team_names ) ) {
-					$teams = array_unique( array_merge( $teams, $team_names ) );
-				}
-			}
+			// The wp_get_object_terms( 'sp_team' ) half this used to merge in was
+			// dead: sp_team is a post type, so it only ever returned a WP_Error
+			// that the is_wp_error() guard turned back into an empty array. The
+			// post-meta half was doing all the work, and now lives in SPAT_Player.
+			$teams = SPAT_Player::team_names( $player_id );
 			if ( ! empty( $teams ) ) {
 				$data[] = array(
 					'name'  => __( 'Teams', 'sportspress-admin-tools' ),
