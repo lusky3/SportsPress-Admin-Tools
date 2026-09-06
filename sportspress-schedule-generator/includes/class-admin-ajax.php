@@ -170,7 +170,16 @@ class SPSG_Admin_Ajax {
 		}
 
 		$saved_config_id = $config_data['id'] ?? $config_id;
-		$redirect_url = admin_url( 'admin.php?page=spsg-schedule-generator&config_id=' . $saved_config_id . '&imported=1' );
+		$redirect_url    = esc_url_raw(
+			add_query_arg(
+				array(
+					'page' => 'spsg-schedule-generator',
+					'config_id' => $saved_config_id,
+					'imported' => '1',
+				),
+				admin_url( 'admin.php' )
+			)
+		);
 		wp_send_json_success(
 			array(
 				'message' => sprintf( __( 'League imported successfully! %d division(s) added.', 'sportspress-schedule-generator' ), count( $divisions ) ),

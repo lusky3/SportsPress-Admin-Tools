@@ -232,7 +232,7 @@
             html += '<tr><th scope="row">' + i18n.venueName + '</th>';
             html += '<td>';
             html += '<input type="text" name="venues[' + index + '][name]" value="' + escHtml(venue.name) + '" class="regular-text" required />';
-            html += '<input type="hidden" name="venues[' + index + '][id]" value="' + venueId + '" />';
+            html += '<input type="hidden" name="venues[' + index + '][id]" value="' + escHtml(venueId) + '" />';
             html += '<button type="button" class="button spsg-remove-venue">' + i18n.remove + '</button>';
             html += '</td></tr>';
 
@@ -246,7 +246,7 @@
                 html += '<strong>' + day.charAt(0).toUpperCase() + day.slice(1) + '</strong>';
                 html += '</label>';
                 html += '<div class="spsg-venue-day-times" style="display:none;">';
-                html += '<textarea name="venue_timeslots[' + venueId + '][' + day + ']" rows="2" class="regular-text" placeholder="' + i18n.enterTimes + '"></textarea>';
+                html += '<textarea name="venue_timeslots[' + escHtml(venueId) + '][' + day + ']" rows="2" class="regular-text" placeholder="' + i18n.enterTimes + '"></textarea>';
                 html += '</div></div>';
             });
 
@@ -256,7 +256,7 @@
 
             html += '<tr><th scope="row">' + i18n.venueBlackoutDates + '</th>';
             html += '<td>';
-            html += '<textarea name="venue_blackout_dates[' + venueId + ']" rows="3" class="large-text" placeholder="' + i18n.blackoutDatesPlaceholder + '"></textarea>';
+            html += '<textarea name="venue_blackout_dates[' + escHtml(venueId) + ']" rows="3" class="large-text" placeholder="' + i18n.blackoutDatesPlaceholder + '"></textarea>';
             html += '<p class="description">' + i18n.blackoutDatesDesc + '</p>';
             html += '</td></tr>';
 
