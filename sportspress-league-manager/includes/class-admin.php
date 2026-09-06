@@ -74,7 +74,26 @@ class SPLM_Admin {
 		if ( ! SPLM_Capabilities::can_manage() ) {
 			return;
 		}
-		wp_safe_redirect( home_url( '/league-dashboard/' ) );
+
+		// Provision on the way through. This used to redirect to a hardcoded
+		// /league-dashboard/ that nothing ever created, so on a fresh install
+		// the menu item led straight to a 404 — and the page was the only way
+		// to drive any enabled module. ensure_page() is idempotent, so the
+		// cost here is one option read once the page exists.
+		//
+		// Manager-only and reached by a deliberate click on the menu item, so
+		// the write is neither anonymous nor incidental.
+		$page_id = SPLM_Dashboard_Frontend::ensure_page();
+		if ( ! $page_id ) {
+			// Provisioning failed (ensure_page() has logged why). Send them to
+			// the plugin's own settings rather than to a URL known to 404.
+			wp_safe_redirect( admin_url( 'admin.php?page=sportspress-admin-tools' ) );
+			exit;
+		}
+
+		// The permalink, not a fixed path: the page can legitimately have been
+		// renamed, and following it beats guessing.
+		wp_safe_redirect( get_permalink( $page_id ) );
 		exit;
 	}
 

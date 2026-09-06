@@ -818,6 +818,28 @@ class SPT_Player_Skill_Level {
 	}
 
 	/**
+	 * A player's team names.
+	 *
+	 * SportsPress stores teams as `sp_team` POSTS and links them from a player
+	 * through repeated `sp_team` post meta. There is no `sp_team` taxonomy, so
+	 * the term functions return WP_Error for it — quietly, wherever the result
+	 * is guarded by is_array() or ! empty().
+	 *
+	 * @param int $player_id Player post ID.
+	 * @return string[] Team names, empty when the player has none.
+	 */
+	private static function player_team_names( $player_id ) {
+		$names = array();
+		foreach ( (array) get_post_meta( (int) $player_id, 'sp_team', false ) as $team_id ) {
+			$team = get_post( (int) $team_id );
+			if ( $team ) {
+				$names[] = $team->post_title;
+			}
+		}
+		return $names;
+	}
+
+	/**
 	 * Handle CSV export of player skill data.
 	 */
 	public function handle_export_csv() {
@@ -848,7 +870,13 @@ class SPT_Player_Skill_Level {
 			$source  = get_post_meta( $player->ID, 'spt_skill_source', true );
 			$updated = get_post_meta( $player->ID, 'spt_skill_updated', true );
 
-			$teams   = wp_get_post_terms( $player->ID, 'sp_team', array( 'fields' => 'names' ) );
+			// sp_league IS a taxonomy; sp_team is NOT — SportsPress stores teams
+			// as posts and links them from a player through repeated `sp_team`
+			// post meta. wp_get_post_terms() therefore returned
+			// WP_Error( 'invalid_taxonomy' ) here, the is_array() guard below
+			// turned that into an empty string, and the Teams column of this
+			// export has been blank for every player since it was written.
+			$teams   = self::player_team_names( $player->ID );
 			$leagues = wp_get_post_terms( $player->ID, 'sp_league', array( 'fields' => 'names' ) );
 
 			fputcsv(
@@ -861,7 +889,7 @@ class SPT_Player_Skill_Level {
 						$level,
 						$source,
 						$updated ? date_i18n( 'Y-m-d', strtotime( $updated ) ) : '',
-						is_array( $teams ) ? implode( ', ', $teams ) : '',
+						implode( ', ', $teams ),
 						is_array( $leagues ) ? implode( ', ', $leagues ) : '',
 					)
 				)

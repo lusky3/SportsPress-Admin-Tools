@@ -61,6 +61,15 @@ class SportsPress_League_Manager {
 			deactivate_plugins( plugin_basename( __FILE__ ) );
 			wp_die( esc_html__( 'SportsPress League Manager requires SportsPress Admin Tools to be installed and activated first.', 'sportspress-league-manager' ) );
 		}
+
+		// The dashboard is a page template and needs a page to live on.
+		// Provisioned here rather than when a module is switched on, because
+		// activation is the one moment guaranteed to happen exactly once and
+		// with a full WordPress loaded. SPLM_Admin re-checks on its way to the
+		// dashboard, which is what repairs installs activated before this
+		// existed — including both arl.hockey hosts.
+		require_once SPLM_PLUGIN_PATH . 'includes/class-dashboard-frontend.php';
+		SPLM_Dashboard_Frontend::ensure_page();
 	}
 
 	public function deactivate() {
