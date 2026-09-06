@@ -478,9 +478,9 @@ class SPAT_Updater {
 	/**
 	 * The manifest's changelog text as the modal's markup.
 	 *
-	 * readme.txt changelogs are `* one per line`. Escaped before any tag is
-	 * added: this text comes from a release asset, and the modal renders it as
-	 * HTML.
+	 * Changelogs in readme.txt are one bullet per line. Escaped before any tag
+	 * is added: this text comes from a release asset, and the modal renders it
+	 * as HTML.
 	 *
 	 * @param string $changelog Raw changelog text.
 	 * @return string

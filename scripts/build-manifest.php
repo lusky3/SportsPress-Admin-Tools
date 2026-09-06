@@ -108,6 +108,8 @@ function spat_manifest_build( string $root, string $tag ): array {
 	);
 }
 
+// phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped -- CLI-only stdout, no WordPress runtime.
+
 $tag = $argv[1] ?? '';
 if ( '' === $tag ) {
 	fwrite( STDERR, "usage: php scripts/build-manifest.php <tag> [output-path]\n" );
