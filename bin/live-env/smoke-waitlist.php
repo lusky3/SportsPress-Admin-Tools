@@ -80,8 +80,12 @@ $order->save();
 $order->update_status( 'completed' );
 
 global $wpdb;
-$row = $wpdb->get_row(
-	$wpdb->prepare( 'SELECT * FROM ' . SPLM_Waitlist_Database::table_name() . ' WHERE email=%s', 'waitlist-smoke@example.test' )
+$table = SPLM_Waitlist_Database::table_name();
+$row   = $wpdb->get_row(
+	$wpdb->prepare(
+		"SELECT * FROM {$table} WHERE email=%s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not a value; cannot use a placeholder.
+		'waitlist-smoke@example.test'
+	)
 );
 check( null !== $row, 'a waitlist row was ingested from the completed order' );
 check( null !== $row && (int) $row->target_product_id === $target_id, "the row's target_product_id points at the real registration product" );
