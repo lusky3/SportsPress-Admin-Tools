@@ -93,7 +93,17 @@ add_filter(
 PHP
 
 echo "== SportsPress + WooCommerce (wordpress.org) =="
-wp plugin install sportspress woocommerce --activate --allow-root
+wp plugin install sportspress --activate --allow-root
+if [ "$WP_VERSION" = "6.9" ]; then
+  # The current WooCommerce release (11.1.0+) declares Requires-at-least 7.0
+  # and wp-cli refuses to install it on 6.9. 11.0.0 is the last release that
+  # still declares 6.9 -- pin to it here so this cell tests the newest
+  # WooCommerce a real WP 6.9 site could actually run, rather than skipping
+  # WooCommerce coverage for this WP version entirely.
+  wp plugin install woocommerce --version=11.0.0 --activate --allow-root
+else
+  wp plugin install woocommerce --activate --allow-root
+fi
 
 echo "== this repo's plugins, copied in (not symlinked, so build/ and every"
 echo "   vendored asset comes along -- matches bulk-plugin-installer-for-wordpress) =="
