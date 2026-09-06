@@ -49,22 +49,23 @@ update_option(
 	)
 );
 
-// The classes that key off spat_enabled_modules hook plugins_loaded/admin_init,
-// which already fired before this eval() runs -- re-fire init so the modules
-// this call just enabled actually wire up their hooks.
-do_action( 'init' );
+// SPLM/SPPR/SPEM gate load_enabled_modules() behind plugins_loaded, which
+// already fired before this eval() runs -- re-firing init cannot re-run a
+// plugins_loaded callback, so this option write only takes effect for the
+// fresh `wp` processes Tiers 2/3 run as. Assert against the option directly:
+// class_exists( 'SPLM_Waitlist_Database' ) would pass whether or not the
+// module is actually enabled, since SPLM's autoloader covers every waitlist
+// class unconditionally, regardless of spat_enabled_modules.
+check( SPAT_Plugin_Manager::is_module_enabled( 'league_waitlist' ), 'league_waitlist is enabled' );
 
-check( class_exists( 'SPLM_Waitlist_Database' ), 'league_waitlist module classes load' );
-
+check( class_exists( 'SPLM_Dashboard_Frontend' ), 'SPLM_Dashboard_Frontend loaded' );
 if ( class_exists( 'SPLM_Dashboard_Frontend' ) ) {
 	$page_id = SPLM_Dashboard_Frontend::ensure_page();
 	check( $page_id > 0, 'League Dashboard page is provisioned' );
 	check( $page_id > 0 && '' !== get_permalink( $page_id ), 'League Dashboard permalink resolves' );
-} else {
-	echo "FAIL SPLM_Dashboard_Frontend did not load\n";
-	$GLOBALS['failures'][] = 'SPLM_Dashboard_Frontend did not load';
 }
 
+check( defined( 'SPAT_CONTRACT_VERSION' ), 'SPAT_CONTRACT_VERSION is defined' );
 if ( defined( 'SPAT_CONTRACT_VERSION' ) ) {
 	// Read the floor each child actually declares rather than hardcoding a
 	// number here, so a future contract bump can't silently desync from
@@ -81,9 +82,6 @@ if ( defined( 'SPAT_CONTRACT_VERSION' ) ) {
 			);
 		}
 	}
-} else {
-	echo "FAIL SPAT_CONTRACT_VERSION is not defined\n";
-	$GLOBALS['failures'][] = 'SPAT_CONTRACT_VERSION is not defined';
 }
 
 $debug_log = WP_CONTENT_DIR . '/debug.log';

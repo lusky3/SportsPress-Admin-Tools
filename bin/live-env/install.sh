@@ -43,6 +43,11 @@ echo "== config =="
 wp config create \
   --dbname="$WP_DB_NAME" --dbuser="$WP_DB_USER" --dbpass="$WP_DB_PASSWORD" --dbhost="$WP_DB_HOST" \
   --allow-root
+# Without this, debug.log is never written and smoke-activation.php's
+# "debug.log has no fatals" check always takes the vacuous "does not exist
+# yet" branch -- the whole point of that check is to catch real fatals.
+wp config set WP_DEBUG true --raw --allow-root
+wp config set WP_DEBUG_LOG true --raw --allow-root
 
 # The service container's own healthcheck gates job start, but wp-cli's first
 # connection can still race the container's internal init on a cold start.
@@ -125,7 +130,7 @@ wp plugin activate \
   --allow-root
 
 echo "== starting the site (wp-cli's PHP built-in server) =="
-( wp server --host=0.0.0.0 --port=8080 --allow-root >/tmp/wp-server.log 2>&1 & )
+( wp server --host=127.0.0.1 --port=8080 --allow-root >/tmp/wp-server.log 2>&1 & )
 for _ in $(seq 1 30); do
   curl -sf http://localhost:8080/ >/dev/null 2>&1 && break
   sleep 1

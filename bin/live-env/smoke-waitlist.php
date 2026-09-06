@@ -39,6 +39,11 @@ $player_tag_id   = $player_tag ? $player_tag->term_id : wp_insert_term( 'Player'
 $waitlist_tag    = get_term_by( 'name', 'Waitlist', 'product_tag' );
 $waitlist_tag_id = $waitlist_tag ? $waitlist_tag->term_id : wp_insert_term( 'Waitlist', 'product_tag' )['term_id'];
 
+// S2027, deliberately different from smoke-registration.php's S2026: both
+// fixtures publish into the same Registration category, and the matcher's
+// select_target() answers ambiguity across same-season products in that
+// category with 0 -- sharing a season code here would silently break "the
+// matcher resolves..." below.
 // Target: a real registration product, same convention as smoke-registration.php.
 $target = new WC_Product_Simple();
 $target->set_name( 'Player Registration (S2027)' );
@@ -75,8 +80,12 @@ $order->save();
 $order->update_status( 'completed' );
 
 global $wpdb;
-$row = $wpdb->get_row(
-	$wpdb->prepare( "SELECT * FROM {$wpdb->prefix}splm_waitlist WHERE email=%s", 'waitlist-smoke@example.test' )
+$table = SPLM_Waitlist_Database::table_name();
+$row   = $wpdb->get_row(
+	$wpdb->prepare(
+		"SELECT * FROM {$table} WHERE email=%s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not a value; cannot use a placeholder.
+		'waitlist-smoke@example.test'
+	)
 );
 check( null !== $row, 'a waitlist row was ingested from the completed order' );
 check( null !== $row && (int) $row->target_product_id === $target_id, "the row's target_product_id points at the real registration product" );
@@ -106,7 +115,10 @@ $response  = wp_remote_get( $claim_url, array( 'redirection' => 0 ) );
 check( ! is_wp_error( $response ) && 302 === wp_remote_retrieve_response_code( $response ), 'the claim route redirects (302)' );
 
 $after_claim_view = SPLM_Waitlist_Database::get( $row->id );
-check( $after_claim_view->claim_token === $row->claim_token, 'viewing the claim link does not consume it (prefetch-safety)' );
+check(
+	null !== $after_claim_view && $after_claim_view->claim_token === $row->claim_token,
+	'viewing the claim link does not consume it (prefetch-safety)'
+);
 
 $purchase = wc_create_order();
 $purchase->add_product( wc_get_product( $target_id ), 1 );
