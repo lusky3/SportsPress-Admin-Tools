@@ -102,16 +102,26 @@ class SPLM_Admin {
 	 * (e.g. headers already sent). Provides a link only — no inline script.
 	 */
 	public function render_redirect_page() {
-		$dashboard_url = home_url( '/league-dashboard/' );
+		// Only reached when the redirect above could not run. Resolve the page
+		// rather than assuming its slug: it is provisioned, not fixed, and a
+		// convener is free to rename it. A hardcoded /league-dashboard/ here
+		// would send them to a 404 from the one screen whose job is to recover
+		// from the redirect failing.
+		$page_id       = SPLM_Dashboard_Frontend::ensure_page();
+		$dashboard_url = $page_id ? get_permalink( $page_id ) : '';
 		?>
 		<div class="wrap">
 			<h1><?php esc_html_e( 'League Manager', 'sportspress-league-manager' ); ?></h1>
-			<p>
-				<?php esc_html_e( 'The League Manager dashboard has moved.', 'sportspress-league-manager' ); ?>
-				<a href="<?php echo esc_url( $dashboard_url ); ?>" class="button button-primary">
-					<?php esc_html_e( 'Open League Dashboard →', 'sportspress-league-manager' ); ?>
-				</a>
-			</p>
+			<?php if ( $dashboard_url ) : ?>
+				<p>
+					<?php esc_html_e( 'The League Manager dashboard has moved.', 'sportspress-league-manager' ); ?>
+					<a href="<?php echo esc_url( $dashboard_url ); ?>" class="button button-primary">
+						<?php esc_html_e( 'Open League Dashboard →', 'sportspress-league-manager' ); ?>
+					</a>
+				</p>
+			<?php else : ?>
+				<p><?php esc_html_e( 'The League Manager dashboard page could not be created. Check that pages can be published on this site, then reload.', 'sportspress-league-manager' ); ?></p>
+			<?php endif; ?>
 		</div>
 		<?php
 	}

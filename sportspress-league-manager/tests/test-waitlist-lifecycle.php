@@ -246,6 +246,11 @@ class Fake_WPDB {
 		if ( isset( $where['status'] ) && $row && (string) $row->status !== (string) $where['status'] ) {
 			return 0;
 		}
+		// The claim token identifies WHICH offer a write belongs to, so a
+		// guarded write against a replaced offer has to miss here too.
+		if ( isset( $where['claim_token'] ) && $row && (string) $row->claim_token !== (string) $where['claim_token'] ) {
+			return 0;
+		}
 		if ( $row ) {
 			foreach ( $data as $column => $value ) {
 				$row->$column = $value;
@@ -832,6 +837,50 @@ $wpdb->before_update = null;
 $result              = $O::cancel( 51 );
 assert_test( ! is_wp_error( $result ), 'an uncontended cancellation still succeeds' );
 assert_test( 'queued' === $wpdb->rows[51]->status, '  and returns the player to the queue' );
+
+echo "\n=== a replaced offer is not expired by the one it replaced ===\n\n";
+
+// The status comes back around: offered(A) -> queued -> offered(B). An expiry
+// or unwind still in flight against offer A matches `offered` on status alone
+// and would expire offer B, or strip the token and deadline off an invitation
+// sent moments earlier. The token is what tells the two offers apart.
+$token_a = str_repeat( 'a', 64 );
+$token_b = str_repeat( 'b', 64 );
+
+$wpdb->rows = array(
+	60 => (object) array(
+		'id'          => 60,
+		'status'      => 'offered',
+		'claim_token' => $token_b,   // offer A has already been replaced by B
+		'expires_at'  => '2026-09-30 12:00:00',
+	),
+);
+
+// Offer A's stale expiry write, carrying the token it read.
+assert_test(
+	! $D::update_if_status( 60, 'offered', array( 'status' => 'expired' ), $token_a ),
+	'a stale expiry for the previous offer does not match the replacement'
+);
+assert_test( 'offered' === $wpdb->rows[60]->status, '  the new offer is still live' );
+assert_test( $token_b === $wpdb->rows[60]->claim_token, '  with its own token' );
+assert_test( '2026-09-30 12:00:00' === $wpdb->rows[60]->expires_at, '  and its own deadline' );
+
+// The same write, carrying the CURRENT token, does apply.
+assert_test(
+	$D::update_if_status( 60, 'offered', array( 'status' => 'expired' ), $token_b ),
+	'the expiry belonging to the live offer still applies'
+);
+assert_test( 'expired' === $wpdb->rows[60]->status, '  and moves the row' );
+
+// Rows with no token are identified by status alone — there is no earlier
+// offer in flight to confuse them with, and a null token cannot be expressed
+// as a SQL equality anyway.
+$wpdb->rows = array( 61 => (object) array( 'id' => 61, 'status' => 'queued', 'claim_token' => null ) );
+assert_test(
+	$D::update_if_status( 61, 'queued', array( 'status' => 'cancelled' ), null ),
+	'a row with no token is identified by status alone'
+);
+assert_test( 'cancelled' === $wpdb->rows[61]->status, '  and the write applies' );
 
 echo "\n";
 echo "Passed: {$passed}\n";

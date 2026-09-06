@@ -221,7 +221,14 @@ class SPLM_Waitlist_Offer {
 		// serialise them against an order completing, which is unlocked by
 		// design. Guarding on the status offerable_row() vetted means a claim
 		// that lands in the gap is not overwritten with a fresh offer.
-		if ( ! SPLM_Waitlist_Database::update_if_status( $id, $row->status, self::offer_updates( $token, $expiry ) ) ) {
+		// An expired row keeps its token (see SPLM_Waitlist_Expiry), so pass it:
+		// this offer replaces that specific one, not whatever is expired now.
+		if ( ! SPLM_Waitlist_Database::update_if_status(
+			$id,
+			$row->status,
+			self::offer_updates( $token, $expiry ),
+			null !== $row->claim_token ? (string) $row->claim_token : null
+		) ) {
 			return new WP_Error( 'splm_waitlist_write_failed', __( 'Could not record the offer.', 'sportspress-league-manager' ), array( 'status' => 500 ) );
 		}
 
@@ -235,7 +242,7 @@ class SPLM_Waitlist_Offer {
 		$row->expires_at = $expiry['expires_at'];
 
 		if ( ! self::send_offer_email( $row, $token ) ) {
-			return self::unwind_unsent_offer( $id );
+			return self::unwind_unsent_offer( $id, $token );
 		}
 
 		return array(
@@ -297,10 +304,11 @@ class SPLM_Waitlist_Offer {
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
-	 * @param int $id Row id.
+	 * @param int    $id    Row id.
+	 * @param string $token The token this offer wrote, identifying it.
 	 * @return WP_Error Always: this is only reached once the send failed.
 	 */
-	private static function unwind_unsent_offer( $id ) {
+	private static function unwind_unsent_offer( $id, $token ) {
 		// Row first, then cron: for the one round trip between these two
 		// writes, a `queued` row with a stray expiry event is harmless (the
 		// expiry handler ignores it once it checks status), whereas the
@@ -311,7 +319,12 @@ class SPLM_Waitlist_Offer {
 		$unwound = SPLM_Waitlist_Database::update_if_status(
 			$id,
 			SPLM_Waitlist_Database::STATUS_OFFERED,
-			self::unwind_updates()
+			self::unwind_updates(),
+			// Identified by the token this offer wrote. wp_mail() can outlive
+			// the 60-second offer lock, and once it does another offer can
+			// legitimately take this row — rolling that one back because this
+			// send failed would cancel an invitation that did go out.
+			$token
 		);
 		wp_clear_scheduled_hook( SPLM_Waitlist_Expiry::EXPIRE_HOOK, array( $id ) );
 
@@ -482,7 +495,11 @@ class SPLM_Waitlist_Offer {
 				'claim_token' => null,
 				'offered_at'  => null,
 				'expires_at'  => null,
-			)
+			),
+			// Identified by the offer the convener was looking at when they
+			// clicked. A cancel-and-reoffer elsewhere replaces the token, and
+			// withdrawing the wrong offer is as wrong as withdrawing none.
+			null !== $row->claim_token ? (string) $row->claim_token : null
 		);
 
 		if ( ! $cancelled ) {

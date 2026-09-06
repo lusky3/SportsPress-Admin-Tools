@@ -124,7 +124,12 @@ class SPLM_Waitlist_Expiry {
 			(string) $row->status,
 			array(
 				'status' => SPLM_Waitlist_Database::STATUS_EXPIRED,
-			)
+			),
+			// The token identifies THIS offer. Without it, a cancel-and-reoffer
+			// that happened while this handler was running would leave a fresh
+			// `offered` row for the status guard to match, and this stale event
+			// would expire an invitation sent moments earlier.
+			null !== $row->claim_token ? (string) $row->claim_token : null
 		);
 	}
 

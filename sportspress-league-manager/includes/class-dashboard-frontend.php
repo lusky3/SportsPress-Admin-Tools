@@ -55,28 +55,18 @@ class SPLM_Dashboard_Frontend {
 		$stored = (int) get_option( self::PAGE_OPT, 0 );
 		if ( $stored > 0 ) {
 			$page = get_post( $stored );
-			if ( $page && 'page' === $page->post_type && 'trash' !== $page->post_status ) {
-				self::apply_template( $stored );
-				return $stored;
+			if ( $page && 'page' === $page->post_type ) {
+				return self::adopt( $page );
 			}
 		}
 
 		// Adopt an existing page before making another. get_page_by_path()
 		// matches whatever status the page is in, which is what we want: a
-		// trashed dashboard should be restored, not duplicated.
+		// dashboard someone drafted or trashed should be restored, not
+		// duplicated at a second slug.
 		$existing = get_page_by_path( self::SLUG, OBJECT, 'page' );
 		if ( $existing ) {
-			if ( 'trash' === $existing->post_status ) {
-				wp_update_post(
-					array(
-						'ID'          => $existing->ID,
-						'post_status' => 'publish',
-					)
-				);
-			}
-			self::apply_template( $existing->ID );
-			update_option( self::PAGE_OPT, (int) $existing->ID );
-			return (int) $existing->ID;
+			return self::adopt( $existing );
 		}
 
 		$page_id = wp_insert_post(
@@ -106,6 +96,49 @@ class SPLM_Dashboard_Frontend {
 		update_option( self::PAGE_OPT, (int) $page_id );
 
 		return (int) $page_id;
+	}
+
+	/**
+	 * Take over an existing page as the dashboard.
+	 *
+	 * Publishes anything that is not already published, rather than only
+	 * un-trashing. `draft`, `pending`, `future` and `private` all leave the
+	 * pretty permalink unusable, so returning such a page hands the caller a
+	 * URL to redirect to that does not resolve — the same 404 this whole
+	 * method exists to prevent, arrived at by a different route.
+	 *
+	 * A page that cannot be published is not a usable dashboard, so that is a
+	 * provisioning failure rather than something to paper over.
+	 *
+	 * @param WP_Post $page Candidate page.
+	 * @return int Page id, or 0 when it could not be made usable.
+	 */
+	private static function adopt( $page ): int {
+		$page_id = (int) $page->ID;
+
+		if ( 'publish' !== $page->post_status ) {
+			$updated = wp_update_post(
+				array(
+					'ID'          => $page_id,
+					'post_status' => 'publish',
+				),
+				true
+			);
+			if ( is_wp_error( $updated ) || ! $updated ) {
+				if ( class_exists( 'SPAT_Logger' ) ) {
+					SPAT_Logger::error(
+						'league_manager',
+						sprintf( 'could not publish the League Dashboard page: page_id=%d status=%s', $page_id, $page->post_status )
+					);
+				}
+				return 0;
+			}
+		}
+
+		self::apply_template( $page_id );
+		update_option( self::PAGE_OPT, $page_id );
+
+		return $page_id;
 	}
 
 	/**

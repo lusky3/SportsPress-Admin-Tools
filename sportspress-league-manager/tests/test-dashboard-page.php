@@ -1,4 +1,4 @@
-<?php
+<?php if ( 'cli' !== PHP_SAPI ) { http_response_code( 403 ); exit; }
 /**
  * Standalone tests for SPLM_Dashboard_Frontend::ensure_page().
  *
@@ -32,6 +32,7 @@ class SPLM_Page_Test_State {
 	public $next_id    = 900;
 	public $insert_ok  = true;
 	public $inserts    = 0;
+	public $update_ok  = true;
 }
 
 function splm_page_state() {
@@ -50,6 +51,7 @@ function splm_page_reset() {
 	$state->next_id   = 900;
 	$state->insert_ok = true;
 	$state->inserts   = 0;
+	$state->update_ok = true;
 }
 
 class WP_Error {} // phpcs:ignore
@@ -88,9 +90,12 @@ function wp_insert_post( $args ) {
 	$state->posts[ $id ] = (object) $args;
 	return $id;
 }
-function wp_update_post( $args ) {
+function wp_update_post( $args, $wp_error = false ) { // phpcs:ignore
 	$state = splm_page_state();
-	$id    = (int) $args['ID'];
+	if ( ! $state->update_ok ) {
+		return $wp_error ? new WP_Error() : 0;
+	}
+	$id = (int) $args['ID'];
 	foreach ( $args as $key => $value ) {
 		$state->posts[ $id ]->$key = $value;
 	}
@@ -201,6 +206,61 @@ echo "\n=== provisioning fails ===\n\n";
 splm_page_reset();
 $st->insert_ok = false;
 assert_test( 0 === $F::ensure_page(), 'a failed insert reports 0 rather than a WP_Error the caller would redirect to' );
+
+echo "\n=== a page that exists but is not published ===\n\n";
+
+// draft, pending, future and private all leave the pretty permalink
+// unresolvable, so adopting one and handing back its id sends the caller to
+// the same 404 this method exists to prevent.
+foreach ( array( 'draft', 'pending', 'future', 'private' ) as $status ) {
+	splm_page_reset();
+	$st->posts[520] = (object) array(
+		'ID'          => 520,
+		'post_type'   => 'page',
+		'post_name'   => 'league-dashboard',
+		'post_status' => $status,
+	);
+	$adopted = $F::ensure_page();
+	assert_test( 520 === $adopted && 'publish' === $st->posts[520]->post_status, "a {$status} page found by slug is published before it is used" );
+}
+
+// Same again for the remembered id, which takes a different branch.
+foreach ( array( 'draft', 'private' ) as $status ) {
+	splm_page_reset();
+	$st->posts[521]                        = (object) array(
+		'ID'          => 521,
+		'post_type'   => 'page',
+		'post_name'   => 'renamed-dashboard',
+		'post_status' => $status,
+	);
+	$st->options['splm_dashboard_page_id'] = 521;
+	$adopted                               = $F::ensure_page();
+	assert_test( 521 === $adopted && 'publish' === $st->posts[521]->post_status, "a remembered {$status} page is published before it is used" );
+}
+
+// An already-published page is left alone rather than rewritten on every call.
+splm_page_reset();
+$st->posts[522] = (object) array(
+	'ID'          => 522,
+	'post_type'   => 'page',
+	'post_name'   => 'league-dashboard',
+	'post_status' => 'publish',
+);
+$st->update_ok  = false;   // any wp_update_post() call would now fail
+assert_test( 522 === $F::ensure_page(), 'a published page is adopted without being rewritten' );
+
+echo "\n=== the page cannot be published ===\n\n";
+
+splm_page_reset();
+$st->posts[523] = (object) array(
+	'ID'          => 523,
+	'post_type'   => 'page',
+	'post_name'   => 'league-dashboard',
+	'post_status' => 'draft',
+);
+$st->update_ok  = false;
+assert_test( 0 === $F::ensure_page(), 'a page that will not publish is reported as a provisioning failure, not handed back unusable' );
+assert_test( ! isset( $st->post_meta[523]['_wp_page_template'] ), '  and it is not claimed as the dashboard on the way out' );
 
 echo "\n";
 echo "Passed: {$passed}\n";
