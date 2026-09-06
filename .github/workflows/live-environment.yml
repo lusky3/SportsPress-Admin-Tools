@@ -2,12 +2,7 @@ name: Live Environment Matrix
 
 on:
   push:
-    # TEMP: feat/live-environment-matrix added only so this workflow's first
-    # real run can be triggered before it has ever merged to main --
-    # workflow_dispatch requires a workflow already registered on the
-    # default branch, which this one isn't yet. Reverted to `[main]` before
-    # merge.
-    branches: [main, feat/live-environment-matrix]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
