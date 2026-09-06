@@ -25,15 +25,14 @@ function assert_test( $condition, $message ) {
 	}
 }
 
-// The builder is a CLI script; run it and read what it produced, rather than
-// including it and having its argv handling fire.
-$root  = dirname( __DIR__, 2 );
-$out   = sys_get_temp_dir() . '/spat-manifest-test-' . getmypid() . '.json';
-$cmd   = escapeshellarg( PHP_BINARY ) . ' ' . escapeshellarg( $root . '/scripts/build-manifest.php' )
-	. ' v9.9.9 ' . escapeshellarg( $out ) . ' 2>&1';
-$output = shell_exec( $cmd );
-$data   = is_file( $out ) ? json_decode( (string) file_get_contents( $out ), true ) : null;
-@unlink( $out ); // phpcs:ignore
+// SPAT_MANIFEST_TEST_MODE (set above) stops the CLI section running, so the
+// builder can be required for its functions and driven directly. It used to be
+// invoked as a subprocess, which meant shell_exec() and a temp file to clean
+// up — a lot of machinery, and two static-analysis findings, for a function
+// call.
+$root = dirname( __DIR__, 2 );
+require_once $root . '/scripts/build-manifest.php';
+$data = spat_manifest_build( $root, 'v9.9.9' );
 
 echo "\n=== the manifest the release publishes ===\n\n";
 

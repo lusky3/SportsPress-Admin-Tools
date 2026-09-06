@@ -62,6 +62,16 @@ function spat_manifest_changelog( string $readme, string $version ): string {
 }
 
 /**
+ * json_encode with the flags WordPress would use, without needing WordPress.
+ *
+ * @param mixed $data Data to encode.
+ * @return string
+ */
+function wp_json_encode_compat( $data ): string {
+	return (string) json_encode( $data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
+}
+
+/**
  * The manifest for every plugin in the repository.
  *
  * @param string $root Repository root.
@@ -108,6 +118,13 @@ function spat_manifest_build( string $root, string $tag ): array {
 	);
 }
 
+// Everything above is reusable; everything below runs the command. Guarded the
+// same way scripts/release-guard.php is, so tests can require this file for its
+// functions without argv handling firing.
+if ( PHP_SAPI !== 'cli' || ( defined( 'SPAT_MANIFEST_TEST_MODE' ) && SPAT_MANIFEST_TEST_MODE ) ) {
+	return;
+}
+
 // phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped -- CLI-only stdout, no WordPress runtime.
 
 $tag = $argv[1] ?? '';
@@ -132,12 +149,3 @@ foreach ( $manifest['plugins'] as $slug => $p ) {
 	printf( "  %-34s %s\n", $slug, $p['version'] );
 }
 
-/**
- * json_encode with the flags WordPress would use, without needing WordPress.
- *
- * @param mixed $data Data to encode.
- * @return string
- */
-function wp_json_encode_compat( $data ): string {
-	return (string) json_encode( $data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
-}

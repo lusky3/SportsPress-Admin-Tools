@@ -81,6 +81,7 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 			'SPAT_Season'            => 'includes/class-season.php',
 			'SPAT_Player'            => 'includes/class-player.php',
 			'SPAT_Updater'           => 'includes/class-updater.php',
+			'SPAT_Updater_Release'   => 'includes/class-updater-release.php',
 			'SPAT_Upload_Validator'  => 'includes/class-upload-validator.php',
 			'SimpleXLSX'             => 'includes/SimpleXLSX.php',
 		);
