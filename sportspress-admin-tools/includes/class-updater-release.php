@@ -304,5 +304,4 @@ class SPAT_Updater_Release {
 	public static function flush(): void {
 		delete_site_transient( self::CACHE_KEY );
 	}
-
 }
