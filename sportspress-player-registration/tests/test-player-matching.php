@@ -285,6 +285,8 @@ assert_test(
     'Guard still DENIES the author while the registration module is off'
 );
 
+// find_or_create_player() delegates the team lookup to the shared SPAT helper.
+require_once dirname(__FILE__) . '/../../sportspress-admin-tools/includes/class-player.php';
 require_once dirname(__FILE__) . '/../includes/class-player-registration.php';
 
 $reg = new SPPR_Player_Registration();

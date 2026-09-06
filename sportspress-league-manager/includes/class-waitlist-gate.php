@@ -349,6 +349,26 @@ class SPLM_Waitlist_Gate {
 		$map                = self::session_map();
 		$map[ $product_id ] = $token;
 		WC()->session->set( self::SESSION_KEY, $map );
+
+		// Without this the write above is thrown away. WC_Session_Handler
+		// saves on shutdown only when has_session() is true, and that is
+		// `isset( $_COOKIE[ session cookie ] ) || $_has_cookie || is_user_logged_in()`
+		// — all three false for the exact visitor this feature is built for:
+		// someone opening a claim link in a browser that has never touched
+		// this store. The entitlement then survived only the request that
+		// carried the token, because filter_is_purchasable() also accepts a
+		// request token; navigate away and back and the spot became
+		// unbuyable, with no way back but the email.
+		//
+		// set_customer_session_cookie( true ) sets $_has_cookie, which is
+		// what makes the shutdown save happen. Anything that puts an item in
+		// the cart calls it too, which is why the happy path masked this.
+		// Guarded because $session is only typed as the abstract
+		// WC_Session in WooCommerce's own signature.
+		$session = WC()->session;
+		if ( method_exists( $session, 'set_customer_session_cookie' ) ) {
+			$session->set_customer_session_cookie( true );
+		}
 	}
 
 	/**

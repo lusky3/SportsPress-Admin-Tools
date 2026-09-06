@@ -304,6 +304,9 @@ class SPPR_Player_Registration {
 		return SPAT_Season::from_product( $product_id );
 	}
 
+	/**
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
 	private function find_or_create_player( $customer_name, $season, $position, $customer_email = '', $user_id = 0 ) {
 		$player_id = null;
 		$action = '';
@@ -364,9 +367,7 @@ class SPPR_Player_Registration {
 				// Only on create so a re-run can't clobber an admin-set position.
 				$this->assign_position( $player_id, $position );
 
-				$team_names = wp_get_object_terms( $player_id, 'sp_team', array( 'fields' => 'names' ) );
-				$team = ! empty( $team_names ) ? implode( ', ', $team_names ) : '';
-				do_action( 'spat_player_registered', $customer_name, $team, $season );
+				do_action( 'spat_player_registered', $customer_name, implode( ', ', SPAT_Player::team_names( $player_id ) ), $season );
 			}
 		}
 

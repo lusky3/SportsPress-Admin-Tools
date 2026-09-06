@@ -2,11 +2,12 @@
 /**
  * Identifying waitlist products and their real counterparts.
  *
- * The league marks a season full by swapping a registration product's
- * category to a waitlist one, so the category is the signal (it used to be a
- * naming convention, which was less reliable). Matching mirrors how SPPR
- * matches its own registration category: a case-insensitive substring test
- * against a configurable keyword.
+ * The league marks a season full by publishing a waitlist counterpart of the
+ * registration product. The marker is a term whose name contains a keyword,
+ * matched the same case-insensitive-substring way SPPR matches its own
+ * registration category — but it is looked for in BOTH product_cat and
+ * product_tag, because on the live store the waitlist marker is a tag while
+ * the registration marker is a category. See MARKER_TAXONOMIES.
  *
  * select_target() is pure and carries the logic worth testing. The queries
  * that feed it are thin, and are verified against staging.
@@ -130,15 +131,36 @@ class SPLM_Waitlist_Matcher {
 	}
 
 	/**
-	 * product_cat term ids whose name matches a keyword.
+	 * Taxonomies a keyword may be applied through.
 	 *
-	 * @param string $keyword Configured keyword.
+	 * The design assumed the marker was always a product category. The store
+	 * disagrees: every waitlist product this league has ever published — eight
+	 * of them, S2024 through W2026-27 — carries a `Waitlist` product *tag* and
+	 * sits in the ordinary `Registration` category, and no waitlist category
+	 * has ever existed. Reading only `product_cat` therefore made
+	 * is_waitlist_product() constantly false, so ingestion never fired and a
+	 * waitlist SKU could match itself as its own target.
+	 *
+	 * Both taxonomies are consulted rather than swapping one for the other,
+	 * because the convention is edited by hand each season and has already
+	 * changed once (naming convention, then tag). Order matters only for
+	 * short-circuiting.
+	 *
+	 * @var string[]
+	 */
+	const MARKER_TAXONOMIES = array( 'product_cat', 'product_tag' );
+
+	/**
+	 * Term ids in one taxonomy whose name matches a keyword.
+	 *
+	 * @param string $taxonomy Taxonomy name.
+	 * @param string $keyword  Configured keyword.
 	 * @return int[]
 	 */
-	public static function category_ids_for_keyword( $keyword ): array {
+	public static function term_ids_for_keyword( $taxonomy, $keyword ): array {
 		$terms = get_terms(
 			array(
-				'taxonomy'   => 'product_cat',
+				'taxonomy'   => $taxonomy,
 				'hide_empty' => false,
 			)
 		);
@@ -156,17 +178,67 @@ class SPLM_Waitlist_Matcher {
 	}
 
 	/**
-	 * Whether a product carries the waitlist category.
+	 * product_cat term ids whose name matches a keyword.
+	 *
+	 * @param string $keyword Configured keyword.
+	 * @return int[]
+	 */
+	public static function category_ids_for_keyword( $keyword ): array {
+		return self::term_ids_for_keyword( 'product_cat', $keyword );
+	}
+
+	/**
+	 * Matching term ids for a keyword, keyed by taxonomy.
+	 *
+	 * Resolved once per query rather than per product: has_marker() runs
+	 * across every registration-categorised product in find_target_product(),
+	 * and re-deriving the term list inside that loop would multiply the term
+	 * queries by the size of the catalogue.
+	 *
+	 * Taxonomies with no matching term are omitted, so an empty map means the
+	 * keyword marks nothing anywhere.
+	 *
+	 * @param string $keyword Configured keyword.
+	 * @return array<string,int[]>
+	 */
+	public static function marker_terms( $keyword ): array {
+		$map = array();
+		foreach ( self::MARKER_TAXONOMIES as $taxonomy ) {
+			$ids = self::term_ids_for_keyword( $taxonomy, $keyword );
+			if ( ! empty( $ids ) ) {
+				$map[ $taxonomy ] = $ids;
+			}
+		}
+		return $map;
+	}
+
+	/**
+	 * Whether a product carries any of the marker terms.
+	 *
+	 * An empty map is not a match — a keyword that names no term must not
+	 * mark every product.
+	 *
+	 * @param int                 $product_id Product post ID.
+	 * @param array<string,int[]> $markers    Map from marker_terms().
+	 * @return bool
+	 */
+	public static function has_marker( $product_id, array $markers ): bool {
+		foreach ( $markers as $taxonomy => $ids ) {
+			if ( has_term( $ids, $taxonomy, (int) $product_id ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Whether a product is marked as a waitlist product.
 	 *
 	 * @param int $product_id Product post ID.
 	 * @return bool
 	 */
 	public static function is_waitlist_product( $product_id ): bool {
-		$ids = self::category_ids_for_keyword( self::keyword() );
-		if ( empty( $ids ) ) {
-			return false;
-		}
-		return (bool) has_term( $ids, 'product_cat', (int) $product_id );
+		return self::has_marker( $product_id, self::marker_terms( self::keyword() ) );
 	}
 
 	/**
@@ -179,17 +251,43 @@ class SPLM_Waitlist_Matcher {
 	 * @return int Product id, or 0 when ambiguous or absent.
 	 */
 	public static function find_target_product( $season, $position ): int {
+		// Registration stays CATEGORY-ONLY while the waitlist marker is read
+		// from either taxonomy, and the asymmetry is deliberate rather than an
+		// oversight to tidy up.
+		//
+		// The two markers do opposite things to the candidate set. A waitlist
+		// marker EXCLUDES a product, so finding one in an extra taxonomy can
+		// only ever narrow the search — worst case a season has no target and
+		// the dashboard flags the row for a human. A registration marker
+		// INCLUDES a product, so widening it admits candidates: one ordinary
+		// product tagged `Registration` for the same season and position is
+		// enough to make the real product ambiguous, and select_target()
+		// answers ambiguity with 0 — which refuses every offer for that
+		// season. That is the exact failure this matcher was just repaired
+		// for, reintroduced from the other side.
+		//
+		// On this store `Registration` is a category and `Waitlist` is a tag,
+		// so each keyword is read where it actually lives.
 		$registration_ids = self::category_ids_for_keyword( self::registration_keyword() );
 		if ( empty( $registration_ids ) ) {
 			return 0;
 		}
-		$waitlist_ids = self::category_ids_for_keyword( self::keyword() );
+		$waitlist_markers = self::marker_terms( self::keyword() );
 
 		$product_ids = get_posts(
 			array(
 				'post_type'      => 'product',
 				'post_status'    => 'publish',
-				// Unbounded: the tax_query already constrains to registration-category
+				// Password-protected products are excluded. This league keeps a
+				// second registration product per season for late signups
+				// (117085, 116120, 113061 on the live store) and protects it
+				// with a post password, which is what "closed to the public"
+				// means here. Counting it made every recent season ambiguous,
+				// so select_target() returned 0 and every offer was refused —
+				// and had it won instead, the claim link would have landed the
+				// invitee on WordPress's password form rather than a checkout.
+				'has_password'   => false,
+				// Unbounded: the tax_query already constrains to registration-categorised
 				// products (~dozen on this league's store). A cap would make truncation
 				// indistinguishable from a genuinely absent pairing, corrupting the
 				// ambiguity signal select_target() exists to produce.
@@ -211,7 +309,7 @@ class SPLM_Waitlist_Matcher {
 				'id'          => (int) $product_id,
 				'season'      => SPAT_Season::from_product( (int) $product_id ),
 				'position'    => SPAT_Season::position_from_product( (int) $product_id ),
-				'is_waitlist' => ! empty( $waitlist_ids ) && has_term( $waitlist_ids, 'product_cat', (int) $product_id ),
+				'is_waitlist' => self::has_marker( (int) $product_id, $waitlist_markers ),
 			);
 		}
 

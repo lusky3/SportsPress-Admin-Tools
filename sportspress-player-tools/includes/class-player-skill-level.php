@@ -819,6 +819,8 @@ class SPT_Player_Skill_Level {
 
 	/**
 	 * Handle CSV export of player skill data.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function handle_export_csv() {
 		if ( ! current_user_can( 'manage_options' ) ) {
@@ -848,7 +850,10 @@ class SPT_Player_Skill_Level {
 			$source  = get_post_meta( $player->ID, 'spt_skill_source', true );
 			$updated = get_post_meta( $player->ID, 'spt_skill_updated', true );
 
-			$teams   = wp_get_post_terms( $player->ID, 'sp_team', array( 'fields' => 'names' ) );
+			// sp_league IS a taxonomy; sp_team is NOT — see SPAT_Player, which
+			// owns that distinction. This column used to call wp_get_post_terms()
+			// for both and was blank for every player as a result.
+			$teams   = SPAT_Player::team_names( $player->ID );
 			$leagues = wp_get_post_terms( $player->ID, 'sp_league', array( 'fields' => 'names' ) );
 
 			fputcsv(
@@ -861,7 +866,7 @@ class SPT_Player_Skill_Level {
 						$level,
 						$source,
 						$updated ? date_i18n( 'Y-m-d', strtotime( $updated ) ) : '',
-						is_array( $teams ) ? implode( ', ', $teams ) : '',
+						implode( ', ', $teams ),
 						is_array( $leagues ) ? implode( ', ', $leagues ) : '',
 					)
 				)

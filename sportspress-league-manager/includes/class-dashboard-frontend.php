@@ -31,13 +31,139 @@ class SPLM_Dashboard_Frontend {
 		add_action( 'wp_head', array( $this, 'strip_sportspress_chrome' ), 0 );
 	}
 
+	const TEMPLATE = 'template-league-dashboard.php';
+	const SLUG     = 'league-dashboard';
+	const PAGE_OPT = 'splm_dashboard_page_id';
+
+	/**
+	 * The dashboard page, created if this site has never had one.
+	 *
+	 * The dashboard is a page TEMPLATE, so it needs a page to be assigned to,
+	 * and nothing used to create one. Enabling a league module therefore gave
+	 * a convener a "League Manager" menu item that redirected straight to a
+	 * 404 — the module was on, and undrivable. Both arl.hockey hosts needed
+	 * the page made by hand before the waitlist could be used at all.
+	 *
+	 * Idempotent, and safe to call on an install that already has one: it
+	 * adopts a page found by slug rather than creating a second, repairs the
+	 * template assignment if it has been changed, and restores a page that was
+	 * trashed. The page id is remembered so a later rename does not orphan it.
+	 *
+	 * @return int Page id, or 0 when the page could not be provisioned.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	public static function ensure_page(): int {
+		$stored = (int) get_option( self::PAGE_OPT, 0 );
+		if ( $stored > 0 ) {
+			$page = get_post( $stored );
+			if ( $page && 'page' === $page->post_type ) {
+				return self::adopt( $page );
+			}
+		}
+
+		// Adopt an existing page before making another. get_page_by_path()
+		// matches whatever status the page is in, which is what we want: a
+		// dashboard someone drafted or trashed should be restored, not
+		// duplicated at a second slug.
+		$existing = get_page_by_path( self::SLUG, OBJECT, 'page' );
+		if ( $existing ) {
+			return self::adopt( $existing );
+		}
+
+		$page_id = wp_insert_post(
+			array(
+				'post_type'      => 'page',
+				'post_title'     => __( 'League Dashboard', 'sportspress-league-manager' ),
+				'post_name'      => self::SLUG,
+				'post_status'    => 'publish',
+				'post_content'   => '',
+				'comment_status' => 'closed',
+				'ping_status'    => 'closed',
+			)
+		);
+
+		if ( is_wp_error( $page_id ) || ! $page_id ) {
+			if ( class_exists( 'SPAT_Logger' ) ) {
+				SPAT_Logger::error( 'league_manager', 'could not create the League Dashboard page' );
+			}
+			return 0;
+		}
+
+		self::apply_template( $page_id );
+		// Staff tool, not content. enforce_template_auth() already sends
+		// anonymous visitors to wp-login, so this only keeps it out of
+		// listings that would otherwise advertise a page nobody can read.
+		update_post_meta( $page_id, '_yoast_wpseo_meta-robots-noindex', '1' );
+		update_option( self::PAGE_OPT, (int) $page_id );
+
+		return (int) $page_id;
+	}
+
+	/**
+	 * Take over an existing page as the dashboard.
+	 *
+	 * Publishes anything that is not already published, rather than only
+	 * un-trashing. `draft`, `pending`, `future` and `private` all leave the
+	 * pretty permalink unusable, so returning such a page hands the caller a
+	 * URL to redirect to that does not resolve — the same 404 this whole
+	 * method exists to prevent, arrived at by a different route.
+	 *
+	 * A page that cannot be published is not a usable dashboard, so that is a
+	 * provisioning failure rather than something to paper over.
+	 *
+	 * @param WP_Post $page Candidate page.
+	 * @return int Page id, or 0 when it could not be made usable.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function adopt( $page ): int {
+		$page_id = (int) $page->ID;
+
+		if ( 'publish' !== $page->post_status ) {
+			$updated = wp_update_post(
+				array(
+					'ID'          => $page_id,
+					'post_status' => 'publish',
+				),
+				true
+			);
+			if ( is_wp_error( $updated ) || ! $updated ) {
+				if ( class_exists( 'SPAT_Logger' ) ) {
+					SPAT_Logger::error(
+						'league_manager',
+						sprintf( 'could not publish the League Dashboard page: page_id=%d status=%s', $page_id, $page->post_status )
+					);
+				}
+				return 0;
+			}
+		}
+
+		self::apply_template( $page_id );
+		update_option( self::PAGE_OPT, $page_id );
+
+		return $page_id;
+	}
+
+	/**
+	 * Point a page at the dashboard template, if it is not already.
+	 *
+	 * @param int $page_id Page ID.
+	 * @return void
+	 */
+	private static function apply_template( $page_id ): void {
+		if ( self::TEMPLATE !== get_post_meta( (int) $page_id, '_wp_page_template', true ) ) {
+			update_post_meta( (int) $page_id, '_wp_page_template', self::TEMPLATE );
+		}
+	}
+
 	/**
 	 * Whether the current request is rendering the standalone dashboard page.
 	 *
 	 * @return bool
 	 */
 	private function is_dashboard_template() {
-		return is_page() && 'template-league-dashboard.php' === get_page_template_slug();
+		return is_page() && self::TEMPLATE === get_page_template_slug();
 	}
 
 	/**
@@ -81,7 +207,7 @@ class SPLM_Dashboard_Frontend {
 		if ( ! is_page() ) {
 			return;
 		}
-		if ( 'template-league-dashboard.php' !== get_page_template_slug() ) {
+		if ( self::TEMPLATE !== get_page_template_slug() ) {
 			return;
 		}
 
@@ -112,7 +238,7 @@ class SPLM_Dashboard_Frontend {
 	 * are dequeued.
 	 */
 	public function dequeue_theme_styles() {
-		if ( ! is_page() || 'template-league-dashboard.php' !== get_page_template_slug() ) {
+		if ( ! is_page() || self::TEMPLATE !== get_page_template_slug() ) {
 			return;
 		}
 		global $wp_styles;
@@ -139,7 +265,7 @@ class SPLM_Dashboard_Frontend {
 	 * Register the League Dashboard page template.
 	 */
 	public function register_template( $templates ) {
-		$templates['template-league-dashboard.php'] = 'League Dashboard';
+		$templates[ self::TEMPLATE ] = 'League Dashboard';
 		return $templates;
 	}
 
@@ -149,8 +275,8 @@ class SPLM_Dashboard_Frontend {
 	public function load_template( $template ) {
 		if ( is_page() ) {
 			$page_template = get_page_template_slug();
-			if ( 'template-league-dashboard.php' === $page_template ) {
-				$plugin_template = SPLM_PLUGIN_PATH . 'templates/template-league-dashboard.php';
+			if ( self::TEMPLATE === $page_template ) {
+				$plugin_template = SPLM_PLUGIN_PATH . 'templates/' . self::TEMPLATE;
 				if ( file_exists( $plugin_template ) ) {
 					return $plugin_template;
 				}
@@ -175,7 +301,7 @@ class SPLM_Dashboard_Frontend {
 		}
 
 		$page_template = get_page_template_slug();
-		if ( 'template-league-dashboard.php' !== $page_template ) {
+		if ( self::TEMPLATE !== $page_template ) {
 			return;
 		}
 

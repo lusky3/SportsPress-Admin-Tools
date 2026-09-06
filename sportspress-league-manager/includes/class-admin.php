@@ -61,6 +61,8 @@ class SPLM_Admin {
 	 *
 	 * Replaces the previous inline <script> redirect (F21) — admin_init runs
 	 * before headers are sent, so wp_safe_redirect is reliable.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function maybe_redirect_to_dashboard() {
 		if ( ! is_admin() ) {
@@ -74,25 +76,56 @@ class SPLM_Admin {
 		if ( ! SPLM_Capabilities::can_manage() ) {
 			return;
 		}
-		wp_safe_redirect( home_url( '/league-dashboard/' ) );
+
+		// Provision on the way through. This used to redirect to a hardcoded
+		// /league-dashboard/ that nothing ever created, so on a fresh install
+		// the menu item led straight to a 404 — and the page was the only way
+		// to drive any enabled module. ensure_page() is idempotent, so the
+		// cost here is one option read once the page exists.
+		//
+		// Manager-only and reached by a deliberate click on the menu item, so
+		// the write is neither anonymous nor incidental.
+		$page_id = SPLM_Dashboard_Frontend::ensure_page();
+		if ( ! $page_id ) {
+			// Provisioning failed (ensure_page() has logged why). Send them to
+			// the plugin's own settings rather than to a URL known to 404.
+			wp_safe_redirect( admin_url( 'admin.php?page=sportspress-admin-tools' ) );
+			exit;
+		}
+
+		// The permalink, not a fixed path: the page can legitimately have been
+		// renamed, and following it beats guessing.
+		wp_safe_redirect( get_permalink( $page_id ) );
 		exit;
 	}
 
 	/**
 	 * Render a fallback page in case the admin_init redirect didn't fire
 	 * (e.g. headers already sent). Provides a link only — no inline script.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function render_redirect_page() {
-		$dashboard_url = home_url( '/league-dashboard/' );
+		// Only reached when the redirect above could not run. Resolve the page
+		// rather than assuming its slug: it is provisioned, not fixed, and a
+		// convener is free to rename it. A hardcoded /league-dashboard/ here
+		// would send them to a 404 from the one screen whose job is to recover
+		// from the redirect failing.
+		$page_id       = SPLM_Dashboard_Frontend::ensure_page();
+		$dashboard_url = $page_id ? get_permalink( $page_id ) : '';
 		?>
 		<div class="wrap">
 			<h1><?php esc_html_e( 'League Manager', 'sportspress-league-manager' ); ?></h1>
-			<p>
-				<?php esc_html_e( 'The League Manager dashboard has moved.', 'sportspress-league-manager' ); ?>
-				<a href="<?php echo esc_url( $dashboard_url ); ?>" class="button button-primary">
-					<?php esc_html_e( 'Open League Dashboard →', 'sportspress-league-manager' ); ?>
-				</a>
-			</p>
+			<?php if ( $dashboard_url ) : ?>
+				<p>
+					<?php esc_html_e( 'The League Manager dashboard has moved.', 'sportspress-league-manager' ); ?>
+					<a href="<?php echo esc_url( $dashboard_url ); ?>" class="button button-primary">
+						<?php esc_html_e( 'Open League Dashboard →', 'sportspress-league-manager' ); ?>
+					</a>
+				</p>
+			<?php else : ?>
+				<p><?php esc_html_e( 'The League Manager dashboard page could not be created. Check that pages can be published on this site, then reload.', 'sportspress-league-manager' ); ?></p>
+			<?php endif; ?>
 		</div>
 		<?php
 	}

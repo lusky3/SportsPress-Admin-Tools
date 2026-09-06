@@ -36,6 +36,24 @@ if (!function_exists('wp_get_post_terms')) {
     }
 }
 
+$mock_post_meta = array();
+if (!function_exists('get_post_meta')) {
+    function get_post_meta($id, $key, $single = false) {
+        global $mock_post_meta;
+        $value = isset($mock_post_meta[$id][$key]) ? $mock_post_meta[$id][$key] : array();
+        return $single ? (isset($value[0]) ? $value[0] : '') : $value;
+    }
+}
+if (!function_exists('get_post')) {
+    function get_post($id) {
+        global $mock_titles;
+        if (!isset($mock_titles[$id])) {
+            return null;
+        }
+        return (object) array('ID' => $id, 'post_title' => $mock_titles[$id]);
+    }
+}
+
 require_once dirname(__FILE__) . '/../../sportspress-admin-tools/includes/class-season.php';
 require_once dirname(__FILE__) . '/../includes/class-player-registration.php';
 

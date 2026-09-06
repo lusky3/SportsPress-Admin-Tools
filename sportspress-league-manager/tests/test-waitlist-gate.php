@@ -46,6 +46,12 @@ class SPLM_Gate_Test_State {
 	/** @var bool Whether the fake WC()->session should be non-null. */
 	public $session_available = true;
 
+	/** @var int Times set_customer_session_cookie( true ) was called. */
+	public $session_cookie_calls = 0;
+
+	/** @var bool Swap in a session object lacking set_customer_session_cookie(). */
+	public $session_lacks_cookie_method = false;
+
 	/** @var array Backing store for the fake session's get()/set(). */
 	public $session_data = array();
 
@@ -230,6 +236,30 @@ class SPLM_Gate_Fake_Session {
 	public function set( $key, $value ) {
 		splm_gate_test_state()->session_data[ $key ] = $value;
 	}
+
+	/**
+	 * WooCommerce's real one sets $_has_cookie, which is the flag
+	 * WC_Session_Handler::save_data() checks (via has_session()) before it
+	 * persists anything. Counted here because grant() writing to the session
+	 * without this is a write that gets thrown away at shutdown.
+	 */
+	public function set_customer_session_cookie( $set ) {
+		if ( $set ) {
+			++splm_gate_test_state()->session_cookie_calls;
+		}
+	}
+}
+
+/** A session object predating set_customer_session_cookie(), to prove the guard. */
+class SPLM_Gate_Fake_Session_No_Cookie_Method {
+	public function get( $key, $default = null ) {
+		$state = splm_gate_test_state();
+		return array_key_exists( $key, $state->session_data ) ? $state->session_data[ $key ] : $default;
+	}
+
+	public function set( $key, $value ) {
+		splm_gate_test_state()->session_data[ $key ] = $value;
+	}
 }
 
 class SPLM_Gate_Fake_Cart {
@@ -250,7 +280,13 @@ function WC() { // phpcs:ignore
 	}
 
 	$wc          = new SPLM_Gate_Fake_WC();
-	$wc->session = $state->session_available ? new SPLM_Gate_Fake_Session() : null;
+	if ( ! $state->session_available ) {
+		$wc->session = null;
+	} elseif ( $state->session_lacks_cookie_method ) {
+		$wc->session = new SPLM_Gate_Fake_Session_No_Cookie_Method();
+	} else {
+		$wc->session = new SPLM_Gate_Fake_Session();
+	}
 	$wc->cart    = new SPLM_Gate_Fake_Cart();
 	return $wc;
 }
@@ -533,6 +569,46 @@ assert_test(
 	$default_message === $gate->filter_cart_item_removed_message( $default_message, null ),
 	'a null $product is a safe no-op for the removal-message filter'
 );
+
+echo "\n=== grant() persists the session (the claim link's whole point) ===\n\n";
+
+// WC_Session_Handler only writes to the DB on shutdown when has_session() is
+// true, and for a first-time visitor that is
+// `isset( $_COOKIE[...] ) || $_has_cookie || is_user_logged_in()` — all three
+// false for exactly the person this feature serves: someone opening a claim
+// link in a browser that has never touched this store. Without the cookie
+// call, grant()'s write is discarded and the entitlement lives only for the
+// request that carried the token.
+$state                       = splm_gate_test_state();
+$state->session_data         = array();
+$state->wc_available         = true;
+$state->session_available    = true;
+$state->session_cookie_calls = 0;
+
+$token_800 = str_repeat( '8', 64 );
+$state->tokens[ $token_800 ] = splm_gate_row( 800, true );
+$g::grant( 800, $token_800 );
+
+assert_test( 1 === $state->session_cookie_calls, 'grant() starts the session cookie, so the write survives shutdown' );
+assert_test( array( 800 ) === $g::entitlement_ids(), '  and the entitlement is readable afterwards' );
+
+// A refused grant must not start a session for a visitor who was never
+// entitled to anything — that would cost every such visitor their page cache.
+$state->session_cookie_calls = 0;
+$g::grant( 0, $token_800 );
+assert_test( 0 === $state->session_cookie_calls, 'a grant refused for a bad product id does not start a session' );
+$g::grant( 801, '' );
+assert_test( 0 === $state->session_cookie_calls, 'a grant refused for an empty token does not start a session' );
+
+// The method is guarded rather than assumed: WooCommerce types the property
+// as the abstract WC_Session, which does not declare it.
+$state->session_lacks_cookie_method = true;
+$state->session_data                = array();
+$token_802                          = str_repeat( 'c', 64 );
+$state->tokens[ $token_802 ] = splm_gate_row( 802, true );
+$g::grant( 802, $token_802 );
+assert_test( array( 802 ) === $g::entitlement_ids(), 'a session object without set_customer_session_cookie() still records the entitlement' );
+$state->session_lacks_cookie_method = false;
 
 echo "\n";
 echo "Passed: {$passed}\n";

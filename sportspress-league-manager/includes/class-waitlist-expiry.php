@@ -112,11 +112,24 @@ class SPLM_Waitlist_Expiry {
 		// moment an admin got around to completing the order (C1). Tie-back
 		// uses is_claimable_by_token(), not is_claimable(), specifically so
 		// expiry does not re-disqualify a token that already did its job.
-		return SPLM_Waitlist_Database::update(
+		// Conditional on the status should_expire() vetted. This handler runs
+		// unattended, and this league completes registration orders by hand
+		// days later — so an order completing between the read above and this
+		// write is not a remote possibility, it is the normal shape of a busy
+		// evening. An id-only write would stamp `expired` over a claim and
+		// leave a paid player recorded as having lost their spot, with
+		// resolved_order_id still pointing at their order.
+		return SPLM_Waitlist_Database::update_if_status(
 			(int) $id,
+			(string) $row->status,
 			array(
 				'status' => SPLM_Waitlist_Database::STATUS_EXPIRED,
-			)
+			),
+			// The token identifies THIS offer. Without it, a cancel-and-reoffer
+			// that happened while this handler was running would leave a fresh
+			// `offered` row for the status guard to match, and this stale event
+			// would expire an invitation sent moments earlier.
+			null !== $row->claim_token ? (string) $row->claim_token : null
 		);
 	}
 
