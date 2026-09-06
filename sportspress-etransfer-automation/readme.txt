@@ -50,6 +50,7 @@ Unmatched payments appear in WooCommerce → e-Transfer Webhooks where you can m
 == Changelog ==
 
 = 1.0.1 =
+* New: this plugin now updates itself through the normal WordPress Plugins screen, sourced from the project's GitHub releases.
 * A name-matched payment no longer completes the order unless the amount matches exactly. Name matching handles nicknames and equivalents, so a name hit on its own says very little about who actually paid; anything that doesn't line up goes to manual review. Payments matched on the Reply-To address behave as before, since that's a strong enough signal to complete on unless the amount disagrees.
 * DKIM checks pin the `authserv-id` in Authentication-Results, and the worker strips ARC headers, so nobody can replay a forwarded notification as a fresh one. Failures show up in the log before they start rejecting anything.
 * The plugin claims a payment before it touches the order, so two webhooks firing at once can't both complete it. A payment that failed and was later corrected now retries cleanly.

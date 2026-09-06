@@ -41,6 +41,7 @@ SportsPress Player Registration automatically creates SportsPress player records
 == Changelog ==
 
 = 1.1.0 =
+* New: this plugin now updates itself through the normal WordPress Plugins screen, sourced from the project's GitHub releases.
 * New: a waitlist for full divisions. Registrants arriving after a division fills join the queue, and as places open the plugin sends a timed claim offer; nobody else can buy that spot until the offer expires or its holder takes it.
 * Two orders landing at the same moment can no longer both create the same player. The claim is atomic now.
 * The importer matches someone registering as Jr or III to their existing record instead of creating a second one.

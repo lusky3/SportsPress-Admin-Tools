@@ -43,6 +43,7 @@ Yes. The batch list creator supports both "Create new" and "Update existing" mod
 == Changelog ==
 
 = 1.1.0 =
+* New: this plugin now updates itself through the normal WordPress Plugins screen, sourced from the project's GitHub releases.
 * Fixed a bug that wrote to the wrong player. The profile-picture page worked out "your player record" from the post author, which records who created a record rather than who it's about, so an account that had once created someone else's player saw that player as its own profile. Uploading put the photo there. Resolution now goes by the `sp_user` link and nothing else. Worth knowing: a player with no `sp_user` set sees no upload form at all. That's deliberate, and better than writing onto a stranger's record.
 * New: skill ratings computed from box scores, scoped by season. Goals count for more than assists, an assist being worth 0.5, and goaltenders rank apart from skaters. Goalie detection was wrong before, and a rating the plugin set automatically would flip itself back to manual.
 * New: REST endpoints for roster management and schedule generation.

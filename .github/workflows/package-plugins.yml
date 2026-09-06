@@ -51,6 +51,11 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: "8.2"
+
       - name: Create Zips
         run: |
           mkdir -p dist
@@ -81,6 +86,14 @@ jobs:
             fi
           done
 
+      # The in-plugin updater reads this. One release tag carries eight
+      # independently-versioned plugins, so a plugin cannot learn its own
+      # version from the tag it appears in — the manifest is where that
+      # question is answered. Built from the same parsing the release guard
+      # above uses, so the two cannot disagree about what version anything is.
+      - name: Build the update manifest
+        run: php scripts/build-manifest.php "${GITHUB_REF_NAME}" dist/manifest.json
+
       # Publish checksums alongside the zips so consumers can verify a download
       # against the release page instead of trusting the transport alone.
       - name: Generate SHA256SUMS
@@ -107,6 +120,7 @@ jobs:
         with:
           files: |
             dist/*.zip
+            dist/manifest.json
             dist/SHA256SUMS.txt
           generate_release_notes: true
         env:

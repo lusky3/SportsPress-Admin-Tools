@@ -49,6 +49,7 @@ CSV files with `Team` and `Name` columns (both required). Each row maps a player
 == Changelog ==
 
 = 1.1.0 =
+* New: this plugin now updates itself through the normal WordPress Plugins screen, sourced from the project's GitHub releases.
 **Registration and payments**
 
 * New: a waitlist with timed claim offers. A spot stays reserved for whoever holds the offer until they take it or it runs out. Withdraw an offer and that person keeps their place in the queue; remove them and they come off it.

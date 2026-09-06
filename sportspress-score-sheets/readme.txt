@@ -31,4 +31,5 @@ When using a hosted recognition provider (e.g. Claude), the uploaded image is tr
 == Changelog ==
 
 = 1.0.0 =
+* New: this plugin now updates itself through the normal WordPress Plugins screen, sourced from the project's GitHub releases.
 * Initial release: manual image upload, pluggable recognition (Claude vision), consistency checks, human review, and SportsPress event/stat write. MMS and inbound-email ingestion are planned to reuse the same pipeline.
