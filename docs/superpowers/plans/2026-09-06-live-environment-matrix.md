@@ -199,13 +199,19 @@ git commit -m "feat(live-env): wp-cli bootstrap for the matrix CI job"
  * Run via: wp eval-file bin/live-env/smoke-activation.php --path=<wp root> --allow-root
  */
 
-$failures = array();
+$GLOBALS['failures'] = array();
 
+// wp eval-file runs the whole file inside a method body (its own --help says
+// so: "because code is executed within a method, global variables need to be
+// explicitly globalized"), so a plain top-level $failures is local to that
+// invocation and invisible to `global $failures` inside a nested function.
+// $GLOBALS is the only storage both this file's top level and check() can
+// see consistently -- used on EVERY reference below, including the two
+// direct appends outside check(), not just inside it.
 function check( $condition, $message ) {
-	global $failures;
 	echo ( $condition ? 'OK   ' : 'FAIL ' ) . $message . "\n";
 	if ( ! $condition ) {
-		$failures[] = $message;
+		$GLOBALS['failures'][] = $message;
 	}
 }
 
@@ -247,7 +253,7 @@ if ( class_exists( 'SPLM_Dashboard_Frontend' ) ) {
 	check( $page_id > 0, 'League Dashboard page is provisioned' );
 	check( $page_id > 0 && '' !== get_permalink( $page_id ), 'League Dashboard permalink resolves' );
 } else {
-	$failures[] = 'SPLM_Dashboard_Frontend did not load';
+	$GLOBALS['failures'][] = 'SPLM_Dashboard_Frontend did not load';
 }
 
 if ( defined( 'SPAT_CONTRACT_VERSION' ) ) {
@@ -267,7 +273,7 @@ if ( defined( 'SPAT_CONTRACT_VERSION' ) ) {
 		}
 	}
 } else {
-	$failures[] = 'SPAT_CONTRACT_VERSION is not defined';
+	$GLOBALS['failures'][] = 'SPAT_CONTRACT_VERSION is not defined';
 }
 
 $debug_log = WP_CONTENT_DIR . '/debug.log';
@@ -278,9 +284,9 @@ if ( file_exists( $debug_log ) ) {
 	echo "OK   debug.log does not exist yet (nothing has logged)\n";
 }
 
-if ( ! empty( $failures ) ) {
-	fwrite( STDERR, "\n" . count( $failures ) . " check(s) failed:\n" );
-	foreach ( $failures as $f ) {
+if ( ! empty( $GLOBALS['failures'] ) ) {
+	fwrite( STDERR, "\n" . count( $GLOBALS['failures'] ) . " check(s) failed:\n" );
+	foreach ( $GLOBALS['failures'] as $f ) {
 		fwrite( STDERR, "  - $f\n" );
 	}
 	exit( 1 );
@@ -353,12 +359,19 @@ git commit -m "feat(live-env): tier 1 smoke check -- activation, modules, dashbo
  * Run via: wp eval-file bin/live-env/smoke-registration.php --path=<wp root> --allow-root
  */
 
-$failures = array();
+$GLOBALS['failures'] = array();
+
+// wp eval-file executes the whole file inside a method body (its own --help
+// says as much: "because code is executed within a method, global variables
+// need to be explicitly globalized"), so a plain top-level $failures is a
+// local to that invocation, invisible to global $failures inside a nested
+// function. $GLOBALS is the only storage both this file's top level and
+// check() can see consistently -- used on every reference, not just inside
+// check(), so nothing here silently diverges from what the exit check reads.
 function check( $condition, $message ) {
-	global $failures;
 	echo ( $condition ? 'OK   ' : 'FAIL ' ) . $message . "\n";
 	if ( ! $condition ) {
-		$failures[] = $message;
+		$GLOBALS['failures'][] = $message;
 	}
 }
 
@@ -418,9 +431,9 @@ if ( ! empty( $players ) ) {
 	check( in_array( 'S2026', (array) $seasons, true ), 'the player carries the S2026 season term' );
 }
 
-if ( ! empty( $failures ) ) {
-	fwrite( STDERR, "\n" . count( $failures ) . " check(s) failed:\n" );
-	foreach ( $failures as $f ) {
+if ( ! empty( $GLOBALS['failures'] ) ) {
+	fwrite( STDERR, "\n" . count( $GLOBALS['failures'] ) . " check(s) failed:\n" );
+	foreach ( $GLOBALS['failures'] as $f ) {
 		fwrite( STDERR, "  - $f\n" );
 	}
 	exit( 1 );
@@ -493,12 +506,15 @@ git commit -m "feat(live-env): tier 2 smoke check -- real order completion creat
  * Run via: wp eval-file bin/live-env/smoke-waitlist.php --path=<wp root> --allow-root
  */
 
-$failures = array();
+$GLOBALS['failures'] = array();
+
+// Same wp eval-file scope quirk as smoke-registration.php: the whole file
+// runs inside a method body, so $GLOBALS is used uniformly rather than a
+// plain top-level $failures that a nested function's `global` could not see.
 function check( $condition, $message ) {
-	global $failures;
 	echo ( $condition ? 'OK   ' : 'FAIL ' ) . $message . "\n";
 	if ( ! $condition ) {
-		$failures[] = $message;
+		$GLOBALS['failures'][] = $message;
 	}
 }
 
@@ -606,9 +622,9 @@ check( null !== $final && 'claimed' === $final->status, 'the row lands claimed (
 check( null !== $final && (int) $final->resolved_order_id === $purchase->get_id(), 'resolved_order_id points at the completing order' );
 check( null !== $final && null === $final->claim_token, 'the claim token is cleared' );
 
-if ( ! empty( $failures ) ) {
-	fwrite( STDERR, "\n" . count( $failures ) . " check(s) failed:\n" );
-	foreach ( $failures as $f ) {
+if ( ! empty( $GLOBALS['failures'] ) ) {
+	fwrite( STDERR, "\n" . count( $GLOBALS['failures'] ) . " check(s) failed:\n" );
+	foreach ( $GLOBALS['failures'] as $f ) {
 		fwrite( STDERR, "  - $f\n" );
 	}
 	exit( 1 );
