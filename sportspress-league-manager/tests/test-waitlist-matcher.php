@@ -81,6 +81,14 @@ function has_term( $terms, $taxonomy, $post_id ) {
 	return (bool) array_intersect( (array) $terms, $assigned );
 }
 
+$GLOBALS['splm_last_query'] = array();
+$GLOBALS['splm_query_result'] = array();
+function get_posts( $args ) {
+	$GLOBALS['splm_last_query'] = $args;
+	return $GLOBALS['splm_query_result'];
+}
+
+require_once __DIR__ . '/../../sportspress-admin-tools/includes/class-season.php';
 require_once __DIR__ . '/../includes/class-waitlist-matcher.php';
 
 $passed = 0;
@@ -217,6 +225,42 @@ splm_matcher_terms(
 	array( 200 => array( 'product_cat' => array( 91, 500 ), 'product_tag' => array( 7 ) ) )
 );
 assert_test( $m::is_waitlist_product( 200 ), 'a category-marked waitlist product still matches' );
+
+echo "\n=== find_target_product() looks for registration in categories only ===\n\n";
+
+// The asymmetry is load-bearing and easy to "tidy up" into a bug. A waitlist
+// marker EXCLUDES a candidate, so reading it from an extra taxonomy can only
+// narrow the search. A registration marker INCLUDES one, so reading it from
+// an extra taxonomy admits candidates — and a single ordinary product tagged
+// `Registration` for the same season and position makes the real product
+// ambiguous, which select_target() answers with 0, refusing every offer for
+// that season.
+splm_matcher_terms(
+	array(
+		'product_cat' => array( 91 => 'Registration' ),
+		// A tag by the same name exists on the live store, unused. If the
+		// registration lookup ever reads tags again, this is what it will find.
+		'product_tag' => array( 662 => 'Registration', 632 => 'Waitlist' ),
+	),
+	array()
+);
+$GLOBALS['splm_query_result'] = array();
+$m::find_target_product( 'W2026-27', 'player' );
+
+$tax = $GLOBALS['splm_last_query']['tax_query'];
+assert_test( 1 === count( $tax ), 'the target query carries exactly one taxonomy clause' );
+assert_test( 'product_cat' === $tax[0]['taxonomy'], '  and it is product_cat, never product_tag' );
+assert_test( array( 91 ) === $tax[0]['terms'], '  scoped to the registration category, not the identically named tag' );
+assert_test( ! isset( $tax['relation'] ), '  with no OR relation widening it across taxonomies' );
+
+// Password-protected products stay out: this league's late-registration
+// product is the second same-season candidate that made every target ambiguous.
+assert_test( false === $GLOBALS['splm_last_query']['has_password'], 'password-protected products are excluded from the candidate set' );
+
+// A store with no registration category has no target, rather than falling
+// back to a tag and guessing.
+splm_matcher_terms( array( 'product_cat' => array(), 'product_tag' => array( 662 => 'Registration' ) ), array() );
+assert_test( 0 === $m::find_target_product( 'W2026-27', 'player' ), 'a registration keyword that names only a tag finds no target' );
 
 echo "\n";
 echo "Passed: {$passed}\n";

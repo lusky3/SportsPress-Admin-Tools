@@ -20,6 +20,17 @@ function __( $text, $domain = '' ) { // phpcs:ignore
 	return $text;
 }
 
+/**
+ * Cron stubs. cancel() clears a pending expiry event before writing; this
+ * file exercises the write, not the scheduler, so the calls are recorded and
+ * otherwise inert.
+ */
+$GLOBALS['splm_cleared_hooks'] = array();
+function wp_clear_scheduled_hook( $hook, $args = array() ) { // phpcs:ignore
+	$GLOBALS['splm_cleared_hooks'][] = array( $hook, $args );
+}
+
+
 function sanitize_email( $email ) {
 	return $email;
 }
@@ -173,6 +184,8 @@ class Fake_WPDB {
 	public $insert_id       = 0;
 	public $update_return   = true;
 	public $update_calls    = array();
+	/** @var callable|null Fires once, at the start of the next update(). */
+	public $before_update   = null;
 	private $last_args      = array();
 
 	public function prepare( $query, ...$args ) { // phpcs:ignore
@@ -185,7 +198,10 @@ class Fake_WPDB {
 	// entirely rather than declared as an ignored formal parameter.
 	public function get_row() { // phpcs:ignore
 		$key = $this->last_args[0] ?? null;
-		return isset( $this->rows[ $key ] ) ? $this->rows[ $key ] : null;
+		// A clone, because a real SELECT hands back a snapshot. Returning the
+		// stored object let a caller's $row silently track later writes, which
+		// is exactly the interleaving these tests need to be able to stage.
+		return isset( $this->rows[ $key ] ) ? clone $this->rows[ $key ] : null;
 	}
 
 	// Neither $table nor $data is read -- this harness only needs
@@ -200,13 +216,42 @@ class Fake_WPDB {
 		return 1;
 	}
 
+	/**
+	 * Honours a status guard the way MySQL does, when the harness has a row
+	 * to check it against.
+	 *
+	 * This used to return a flat 1 and ignore $where entirely, which is why
+	 * the suite could not see a conditional update fail to match — the whole
+	 * point of update_if_status(). A guarded write against a row whose status
+	 * has moved on now returns 0 affected rows, and a matching one applies
+	 * $data to the stored row so a later get() sees the new state.
+	 */
 	public function update( $table, $data, $where ) { // phpcs:ignore
+		// Stage another writer landing between a caller's read and its write.
+		if ( is_callable( $this->before_update ) ) {
+			$hook                = $this->before_update;
+			$this->before_update = null;
+			$hook();
+		}
 		$this->update_calls[] = array(
 			'table' => $table,
 			'data'  => $data,
 			'where' => $where,
 		);
-		return $this->update_return ? 1 : false;
+		if ( ! $this->update_return ) {
+			return false;
+		}
+
+		$row = isset( $where['id'], $this->rows[ $where['id'] ] ) ? $this->rows[ $where['id'] ] : null;
+		if ( isset( $where['status'] ) && $row && (string) $row->status !== (string) $where['status'] ) {
+			return 0;
+		}
+		if ( $row ) {
+			foreach ( $data as $column => $value ) {
+				$row->$column = $value;
+			}
+		}
+		return 1;
 	}
 }
 
@@ -217,6 +262,8 @@ require_once __DIR__ . '/../includes/class-waitlist-database.php';
 require_once __DIR__ . '/../includes/class-waitlist.php';
 require_once __DIR__ . '/../includes/class-waitlist-claim.php';
 require_once __DIR__ . '/../includes/class-waitlist-offer.php';
+// cancel() names SPLM_Waitlist_Expiry::EXPIRE_HOOK when it clears a pending event.
+require_once __DIR__ . '/../includes/class-waitlist-expiry.php';
 require_once __DIR__ . '/../includes/class-waitlist-rest.php';
 // Needed for row_to_response()'s target_gated: SPLM_Waitlist_Gate::is_gated()
 // is a static, read-only get_post_meta() call, so requiring the class here
@@ -720,6 +767,71 @@ $target_write_failed = $rest->set_target( new WP_REST_Request( array( 'id' => 34
 assert_test( is_wp_error( $target_write_failed ), 'set_target() reports a failed write rather than pretending to succeed' );
 assert_test( 'splm_waitlist_write_failed' === $target_write_failed->get_error_code(), 'the write-failure refusal carries its own error code' );
 assert_test( 500 === $target_write_failed->get_error_data()['status'], 'the write-failure refusal is a 500' );
+
+echo "\n=== update_if_status(): a transition yields to a claim that lands first ===\n\n";
+
+$D = 'SPLM_Waitlist_Database';
+
+// The guard matches: an ordinary transition applies.
+$wpdb->rows          = array( 40 => (object) array( 'id' => 40, 'status' => 'offered' ) );
+$wpdb->update_return = true;
+assert_test( $D::update_if_status( 40, 'offered', array( 'status' => 'expired' ) ), 'a guarded write applies while the row still holds the expected status' );
+assert_test( 'expired' === $wpdb->rows[40]->status, '  and the row actually moved' );
+
+// The guard does not match: WooCommerce completed the order first.
+$wpdb->rows = array( 41 => (object) array( 'id' => 41, 'status' => 'claimed', 'resolved_order_id' => 900 ) );
+assert_test( ! $D::update_if_status( 41, 'offered', array( 'status' => 'expired' ) ), 'a guarded write refuses once the row has moved on' );
+assert_test( 'claimed' === $wpdb->rows[41]->status, '  and the claim is left intact' );
+assert_test( 900 === $wpdb->rows[41]->resolved_order_id, '  with its order still attached' );
+
+// Zero affected rows is ambiguous in MySQL — it means both "matched nothing"
+// and "matched a row that already held these values". The status the row
+// actually holds is what settles it.
+$wpdb->rows = array( 42 => (object) array( 'id' => 42, 'status' => 'cancelled' ) );
+assert_test( $D::update_if_status( 42, 'cancelled', array( 'status' => 'cancelled' ) ), 'a no-op transition on a matching row reads as success, not as a lost race' );
+
+$wpdb->update_return = false;
+assert_test( ! $D::update_if_status( 40, 'expired', array( 'status' => 'queued' ) ), 'a failed query is reported as failure' );
+$wpdb->update_return = true;
+
+echo "\n=== cancel() cannot un-claim a paid player ===\n\n";
+
+$O = 'SPLM_Waitlist_Offer';
+
+// The real interleaving: the convener opens the waitlist, the player pays,
+// the convener clicks "Cancel offer". cancel() reads `offered` — so the
+// existing claimed-status guard passes — and by the time it writes, the
+// completed order has marked the row `claimed`. An id-only write put that
+// paid player back in the queue with their token cleared, free to be offered
+// a second place.
+$wpdb->rows = array(
+	50 => (object) array(
+		'id'                => 50,
+		'status'            => 'offered',
+		'claim_token'       => str_repeat( 'a', 64 ),
+		'offered_at'        => '2026-09-06 10:00:00',
+		'expires_at'        => '2026-09-08 10:00:00',
+		'resolved_order_id' => null,
+	),
+);
+$wpdb->before_update = static function () use ( $wpdb ) {
+	$wpdb->rows[50]->status            = 'claimed';
+	$wpdb->rows[50]->resolved_order_id = 901;
+	$wpdb->rows[50]->claim_token       = null;
+};
+
+$result = $O::cancel( 50 );
+assert_test( is_wp_error( $result ), 'a cancellation that lost the race to a completed order is refused' );
+assert_test( is_wp_error( $result ) && 409 === $result->get_error_data()['status'], '  as a 409, so the convener is told to reload rather than shown a server error' );
+assert_test( 'claimed' === $wpdb->rows[50]->status, '  the claim survives' );
+assert_test( 901 === $wpdb->rows[50]->resolved_order_id, '  and so does the order it was paid on' );
+
+// Uncontended, the same call still works.
+$wpdb->rows          = array( 51 => (object) array( 'id' => 51, 'status' => 'offered', 'claim_token' => str_repeat( 'b', 64 ) ) );
+$wpdb->before_update = null;
+$result              = $O::cancel( 51 );
+assert_test( ! is_wp_error( $result ), 'an uncontended cancellation still succeeds' );
+assert_test( 'queued' === $wpdb->rows[51]->status, '  and returns the player to the queue' );
 
 echo "\n";
 echo "Passed: {$passed}\n";

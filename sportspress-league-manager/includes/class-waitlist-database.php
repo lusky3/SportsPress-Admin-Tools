@@ -221,6 +221,58 @@ class SPLM_Waitlist_Database {
 	}
 
 	/**
+	 * Update a row only while its status is still the one the caller read.
+	 *
+	 * Every lifecycle transition here is decided from a row that was read a
+	 * few statements earlier, and one of them — mark_claimed(), driven by
+	 * WooCommerce completing an order — can land in that gap. A plain
+	 * id-only write then silently reverses it: a cancellation that read
+	 * `offered` puts a paid player back in the queue with their token
+	 * cleared, and the sweep marks them `expired` with resolved_order_id
+	 * still set.
+	 *
+	 * So every transition except the claim itself is conditional. The claim
+	 * stays unconditional on purpose: it is the one fact backed by money,
+	 * and it should win any race it is in.
+	 *
+	 * @param int    $id              Row id.
+	 * @param string $expected_status Status the caller based its decision on.
+	 * @param array  $data            Columns to write.
+	 * @return bool True when this update applied; false when the row had
+	 *              already moved on, or the write failed.
+	 */
+	public static function update_if_status( int $id, string $expected_status, array $data ): bool {
+		global $wpdb;
+		$data['updated_at'] = self::now();
+
+		$result = $wpdb->update( // phpcs:ignore WordPress.DB
+			self::table_name(),
+			$data,
+			array(
+				'id'     => $id,
+				'status' => $expected_status,
+			)
+		);
+
+		if ( false === $result ) {
+			return false;
+		}
+		if ( $result > 0 ) {
+			return true;
+		}
+
+		// Zero affected rows is ambiguous, because MySQL reports 0 both when
+		// the WHERE matched nothing and when it matched a row that already
+		// held these exact values — reachable here whenever a transition is
+		// a no-op and updated_at happens to land in the same second. Re-read
+		// and let the row say which happened: if its status is still the one
+		// we guarded on, the guard did match and there was simply nothing to
+		// change.
+		$row = self::get( $id );
+		return $row && $expected_status === (string) $row->status;
+	}
+
+	/**
 	 * One row by claim token.
 	 *
 	 * @param string $token Claim token.

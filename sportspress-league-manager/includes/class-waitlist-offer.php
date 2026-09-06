@@ -217,7 +217,11 @@ class SPLM_Waitlist_Offer {
 		$token  = SPLM_Waitlist_Claim::generate_token();
 		$expiry = SPLM_Waitlist_Database::expiry_from_hours( $hours );
 
-		if ( ! SPLM_Waitlist_Database::update( $id, self::offer_updates( $token, $expiry ) ) ) {
+		// The lock above serialises offers against each other; it does not
+		// serialise them against an order completing, which is unlocked by
+		// design. Guarding on the status offerable_row() vetted means a claim
+		// that lands in the gap is not overwritten with a fresh offer.
+		if ( ! SPLM_Waitlist_Database::update_if_status( $id, $row->status, self::offer_updates( $token, $expiry ) ) ) {
 			return new WP_Error( 'splm_waitlist_write_failed', __( 'Could not record the offer.', 'sportspress-league-manager' ), array( 'status' => 500 ) );
 		}
 
@@ -301,7 +305,14 @@ class SPLM_Waitlist_Offer {
 		// writes, a `queued` row with a stray expiry event is harmless (the
 		// expiry handler ignores it once it checks status), whereas the
 		// reverse order would leave a live token with no deadline.
-		$unwound = SPLM_Waitlist_Database::update( $id, self::unwind_updates() );
+		// Guarded on `offered`, the status this row was left in a moment ago.
+		// The window is small, but rolling an offer back over a claim is the
+		// one outcome worse than the failed send being unwound at all.
+		$unwound = SPLM_Waitlist_Database::update_if_status(
+			$id,
+			SPLM_Waitlist_Database::STATUS_OFFERED,
+			self::unwind_updates()
+		);
 		wp_clear_scheduled_hook( SPLM_Waitlist_Expiry::EXPIRE_HOOK, array( $id ) );
 
 		if ( ! $unwound ) {
@@ -455,8 +466,13 @@ class SPLM_Waitlist_Offer {
 		// the waitlist with no way back short of editing the table by hand.
 		$next_status = self::status_after_cancel( $row->status );
 
-		$cancelled = SPLM_Waitlist_Database::update(
+		// Conditional on the status this decision was read from: an order
+		// completing in the gap marks the row `claimed`, and an id-only write
+		// would put a paid player back in the queue with their token cleared,
+		// free to be offered a second place.
+		$cancelled = SPLM_Waitlist_Database::update_if_status(
 			$id,
+			$row->status,
 			array(
 				'status'      => $next_status,
 				// Nulled either way, and load-bearing: an expired offer keeps
@@ -470,6 +486,18 @@ class SPLM_Waitlist_Offer {
 		);
 
 		if ( ! $cancelled ) {
+			// Two different failures wear the same return value, and the
+			// convener needs to be told which: a row that moved on is a
+			// stale page, not a broken site.
+			$current = SPLM_Waitlist_Database::get( $id );
+			if ( $current && (string) $current->status !== (string) $row->status ) {
+				return new WP_Error(
+					'splm_waitlist_bad_status',
+					__( 'This entry changed while the page was open — reload the waitlist and try again.', 'sportspress-league-manager' ),
+					array( 'status' => 409 )
+				);
+			}
+
 			if ( class_exists( 'SPAT_Logger' ) ) {
 				SPAT_Logger::error( 'waitlist', sprintf( 'failed to write a waitlist cancellation: waitlist_id=%d', $id ) );
 			}

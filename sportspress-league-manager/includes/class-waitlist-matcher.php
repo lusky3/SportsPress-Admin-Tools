@@ -251,20 +251,28 @@ class SPLM_Waitlist_Matcher {
 	 * @return int Product id, or 0 when ambiguous or absent.
 	 */
 	public static function find_target_product( $season, $position ): int {
-		$registration_markers = self::marker_terms( self::registration_keyword() );
-		if ( empty( $registration_markers ) ) {
+		// Registration stays CATEGORY-ONLY while the waitlist marker is read
+		// from either taxonomy, and the asymmetry is deliberate rather than an
+		// oversight to tidy up.
+		//
+		// The two markers do opposite things to the candidate set. A waitlist
+		// marker EXCLUDES a product, so finding one in an extra taxonomy can
+		// only ever narrow the search — worst case a season has no target and
+		// the dashboard flags the row for a human. A registration marker
+		// INCLUDES a product, so widening it admits candidates: one ordinary
+		// product tagged `Registration` for the same season and position is
+		// enough to make the real product ambiguous, and select_target()
+		// answers ambiguity with 0 — which refuses every offer for that
+		// season. That is the exact failure this matcher was just repaired
+		// for, reintroduced from the other side.
+		//
+		// On this store `Registration` is a category and `Waitlist` is a tag,
+		// so each keyword is read where it actually lives.
+		$registration_ids = self::category_ids_for_keyword( self::registration_keyword() );
+		if ( empty( $registration_ids ) ) {
 			return 0;
 		}
 		$waitlist_markers = self::marker_terms( self::keyword() );
-
-		$tax_query = array( 'relation' => 'OR' );
-		foreach ( $registration_markers as $taxonomy => $ids ) {
-			$tax_query[] = array(
-				'taxonomy' => $taxonomy,
-				'field'    => 'term_id',
-				'terms'    => $ids,
-			);
-		}
 
 		$product_ids = get_posts(
 			array(
@@ -279,13 +287,19 @@ class SPLM_Waitlist_Matcher {
 				// and had it won instead, the claim link would have landed the
 				// invitee on WordPress's password form rather than a checkout.
 				'has_password'   => false,
-				// Unbounded: the tax_query already constrains to registration-marked
+				// Unbounded: the tax_query already constrains to registration-categorised
 				// products (~dozen on this league's store). A cap would make truncation
 				// indistinguishable from a genuinely absent pairing, corrupting the
 				// ambiguity signal select_target() exists to produce.
 				'posts_per_page' => -1,
 				'fields'         => 'ids',
-				'tax_query'      => $tax_query, // phpcs:ignore WordPress.DB.SlowDBQuery
+				'tax_query'      => array( // phpcs:ignore WordPress.DB.SlowDBQuery
+					array(
+						'taxonomy' => 'product_cat',
+						'field'    => 'term_id',
+						'terms'    => $registration_ids,
+					),
+				),
 			)
 		);
 
