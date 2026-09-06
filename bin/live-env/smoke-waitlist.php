@@ -13,8 +13,15 @@ $GLOBALS['failures'] = array();
 // Same wp eval-file scope quirk as smoke-registration.php: the whole file
 // runs inside a method body, so $GLOBALS is used uniformly rather than a
 // plain top-level $failures that a nested function's `global` could not see.
+/**
+ * @SuppressWarnings(PHPMD.Superglobals) -- $GLOBALS is required here: wp
+ * eval-file executes this whole script inside a method body, so a plain
+ * `global $failures;` inside a nested function does not work (see wp help
+ * eval-file). $GLOBALS is the only scoping mechanism that reaches back to
+ * the file-level $failures array from inside check().
+ */
 function check( $condition, $message ) {
-	echo ( $condition ? 'OK   ' : 'FAIL ' ) . $message . "\n";
+	echo ( $condition ? 'OK   ' : 'FAIL ' ) . $message . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- CLI diagnostic output (wp eval-file), never rendered to a browser.
 	if ( ! $condition ) {
 		$GLOBALS['failures'][] = $message;
 	}

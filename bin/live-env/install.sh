@@ -46,7 +46,7 @@ wp config create \
 
 # The service container's own healthcheck gates job start, but wp-cli's first
 # connection can still race the container's internal init on a cold start.
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
   wp db check --allow-root >/dev/null 2>&1 && break
   sleep 2
 done
@@ -126,7 +126,7 @@ wp plugin activate \
 
 echo "== starting the site (wp-cli's PHP built-in server) =="
 ( wp server --host=0.0.0.0 --port=8080 --allow-root >/tmp/wp-server.log 2>&1 & )
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
   curl -sf http://localhost:8080/ >/dev/null 2>&1 && break
   sleep 1
 done

@@ -17,8 +17,15 @@ $GLOBALS['failures'] = array();
 // function. $GLOBALS is the only storage both this file's top level and
 // check() can see consistently -- used on every reference, not just inside
 // check(), so nothing here silently diverges from what the exit check reads.
+/**
+ * @SuppressWarnings(PHPMD.Superglobals) -- $GLOBALS is required here: wp
+ * eval-file executes this whole script inside a method body, so a plain
+ * `global $failures;` inside a nested function does not work (see wp help
+ * eval-file). $GLOBALS is the only scoping mechanism that reaches back to
+ * the file-level $failures array from inside check().
+ */
 function check( $condition, $message ) {
-	echo ( $condition ? 'OK   ' : 'FAIL ' ) . $message . "\n";
+	echo ( $condition ? 'OK   ' : 'FAIL ' ) . $message . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- CLI diagnostic output (wp eval-file), never rendered to a browser.
 	if ( ! $condition ) {
 		$GLOBALS['failures'][] = $message;
 	}
