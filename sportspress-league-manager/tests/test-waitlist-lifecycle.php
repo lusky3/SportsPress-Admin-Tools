@@ -391,6 +391,22 @@ assert_test( ! $o::can_offer( 'claimed' ), 'a claimed row cannot be offered' );
 assert_test( ! $o::can_offer( 'cancelled' ), 'a cancelled row cannot be offered' );
 assert_test( ! $o::can_offer( '' ), 'an empty status cannot be offered' );
 
+echo "\n=== status_after_cancel() ===\n\n";
+
+// The dashboard button reads "Cancel offer" on an offered row and "Remove" on
+// every other one. Those are two different intentions and cancel() must honour
+// both: sending an offered row to `cancelled` made the withdrawal terminal,
+// because can_offer() accepts only queued and expired — so a convener undoing
+// a mis-sent offer dropped that player off the waitlist entirely.
+assert_test( 'queued' === $o::status_after_cancel( 'offered' ), 'withdrawing an offer returns the person to the queue' );
+assert_test( 'cancelled' === $o::status_after_cancel( 'queued' ), 'removing a queued entry takes them off the waitlist' );
+assert_test( 'cancelled' === $o::status_after_cancel( 'expired' ), 'removing a lapsed entry takes them off the waitlist' );
+
+// The property that matters, stated as a round trip rather than as two
+// separate constants that happen to line up today.
+assert_test( $o::can_offer( $o::status_after_cancel( 'offered' ) ), 'a withdrawn offer can be re-offered without touching the database by hand' );
+assert_test( ! $o::can_offer( $o::status_after_cancel( 'queued' ) ), 'a removed entry cannot be offered' );
+
 echo "\n=== generate_token() ===\n\n";
 
 $token_a = $c::generate_token();

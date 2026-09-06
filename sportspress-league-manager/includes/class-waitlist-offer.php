@@ -404,6 +404,22 @@ class SPLM_Waitlist_Offer {
 	}
 
 	/**
+	 * The status a cancellation leaves a row in.
+	 *
+	 * Withdrawing an offer must return the person to the queue; removing a
+	 * queued entry takes them off it. Pure, so the distinction is pinned by a
+	 * test rather than by the one call site.
+	 *
+	 * @param string $status Current row status.
+	 * @return string
+	 */
+	public static function status_after_cancel( $status ): string {
+		return SPLM_Waitlist_Database::STATUS_OFFERED === $status
+			? SPLM_Waitlist_Database::STATUS_QUEUED
+			: SPLM_Waitlist_Database::STATUS_CANCELLED;
+	}
+
+	/**
 	 * Cancel a live offer, or remove a queued entry from the queue.
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
@@ -427,11 +443,28 @@ class SPLM_Waitlist_Offer {
 
 		wp_clear_scheduled_hook( SPLM_Waitlist_Expiry::EXPIRE_HOOK, array( $id ) );
 
+		// Withdrawing an offer returns the person to the queue; removing a
+		// queued entry takes them off it. One method, because the convener
+		// action is the same click, but the two outcomes are not the same and
+		// the dashboard already says so: the button reads "Cancel offer" on an
+		// offered row and "Remove" on every other one.
+		//
+		// Sending both to `cancelled` made "Cancel offer" terminal —
+		// can_offer() accepts only queued and expired, so a convener who
+		// cancelled a mis-sent offer had silently dropped that player from
+		// the waitlist with no way back short of editing the table by hand.
+		$next_status = self::status_after_cancel( $row->status );
+
 		$cancelled = SPLM_Waitlist_Database::update(
 			$id,
 			array(
-				'status'      => SPLM_Waitlist_Database::STATUS_CANCELLED,
+				'status'      => $next_status,
+				// Nulled either way, and load-bearing: an expired offer keeps
+				// its token so a late-completing order can still find it,
+				// whereas a withdrawn one must not be claimable by whoever
+				// still has the link.
 				'claim_token' => null,
+				'offered_at'  => null,
 				'expires_at'  => null,
 			)
 		);
@@ -451,6 +484,7 @@ class SPLM_Waitlist_Offer {
 		return array(
 			'success' => true,
 			'id'      => $id,
+			'status'  => $next_status,
 		);
 	}
 
