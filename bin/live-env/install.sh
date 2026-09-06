@@ -57,6 +57,41 @@ wp core install \
   --admin_user=admin --admin_password=admin --admin_email=admin@example.test \
   --skip-email --allow-root
 
+echo "== pretty permalinks (a Plain-structure default install never routes"
+echo "   /wp-json/... to the REST API -- SPLM_Waitlist_Offer's claim link"
+echo "   depends on this) =="
+wp rewrite structure '/%postname%/' --hard --allow-root
+wp rewrite flush --hard --allow-root
+
+echo "== mail: short-circuit wp_mail() (no MTA, no valid FQDN on this bare"
+echo "   install -- see mu-plugin for why) =="
+mkdir -p wp-content/mu-plugins
+cat > wp-content/mu-plugins/live-env-mail-shim.php <<'PHP'
+<?php
+/**
+ * The live-environment matrix installs WordPress at http://localhost:8080,
+ * a single-label hostname. WordPress derives its default wp_mail() From
+ * address as wordpress@<host>, which is wordpress@localhost here --
+ * PHPMailer's FILTER_VALIDATE_EMAIL rejects that as invalid and wp_mail()
+ * returns false before any transport is attempted. Runners also typically
+ * have no MTA (sendmail/postfix) installed at all, so even a valid From
+ * address wouldn't get anywhere. Short-circuit at pre_wp_mail (WP 5.7+) so
+ * flows that call wp_mail() -- e.g. SPLM_Waitlist_Offer::offer() -- can be
+ * verified without a real mail transport; log what would have been sent
+ * for debugging.
+ */
+add_filter(
+	'pre_wp_mail',
+	static function ( $null, $atts ) {
+		$to = is_array( $atts['to'] ) ? implode( ',', $atts['to'] ) : $atts['to'];
+		error_log( "live-env pre_wp_mail short-circuit: to=$to subject={$atts['subject']}" );
+		return true;
+	},
+	10,
+	2
+);
+PHP
+
 echo "== SportsPress + WooCommerce (wordpress.org) =="
 wp plugin install sportspress woocommerce --activate --allow-root
 
