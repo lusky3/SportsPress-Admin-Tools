@@ -148,4 +148,3 @@ printf( "manifest: %d plugins written to %s\n", count( $manifest['plugins'] ), $
 foreach ( $manifest['plugins'] as $slug => $p ) {
 	printf( "  %-34s %s\n", $slug, $p['version'] );
 }
-

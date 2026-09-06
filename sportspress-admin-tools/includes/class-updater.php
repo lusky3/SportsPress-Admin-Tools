@@ -138,6 +138,8 @@ class SPAT_Updater {
 	 * @param string $slug      Plugin slug.
 	 * @param string $installed Installed version.
 	 * @return array|null
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private static function update_for( string $slug, string $installed ): ?array {
 		$release = SPAT_Updater_Release::current();
@@ -254,6 +256,8 @@ class SPAT_Updater {
 	 * @param string $action plugins_api action.
 	 * @param object $args   Request args.
 	 * @return mixed
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public static function filter_plugin_details( $result, string $action, $args ) {
 		if ( 'plugin_information' !== $action || empty( $args->slug ) ) {
@@ -296,6 +300,8 @@ class SPAT_Updater {
 	 * Forget the cached manifest.
 	 *
 	 * @return void
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public static function flush(): void {
 		SPAT_Updater_Release::flush();
