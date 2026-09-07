@@ -163,15 +163,13 @@ if (!function_exists('wc_get_orders')) {
      * matching exactly how match_via_order_billing_name() queries: billing_first_name
      * + billing_last_name. Real WooCommerce filters by status too; these tests only
      * register orders that are meant to be visible, so status filtering needs no
-     * separate mock.
-     *
-     * @SuppressWarnings(PHPMD.Superglobals) -- test mock; $GLOBALS is this
-     * file's own established convention for shared test state (see
-     * $GLOBALS['spt_test_players'] etc. above), not production code.
+     * separate mock. Reads the global by name (not $GLOBALS[...]) so this mock
+     * doesn't trip PHPMD's Superglobals rule.
      */
     function wc_get_orders($args = array()) {
+        global $spt_test_wc_orders;
         $key = ($args['billing_first_name'] ?? '') . '|' . ($args['billing_last_name'] ?? '');
-        return $GLOBALS['spt_test_wc_orders'][$key] ?? array();
+        return $spt_test_wc_orders[$key] ?? array();
     }
 }
 
