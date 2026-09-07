@@ -432,13 +432,43 @@ class SPT_Email_Sync {
 	}
 
 	/**
+	 * Strip trailing parenthetical annotations from a player title.
+	 *
+	 * rookiehockey.ca titles carry a real, established convention of trailing
+	 * "(...)" markers: a position ("(G)", "(C)", "(A)", "(Skater)"), a
+	 * dedupe flag ("(dup)"), or even an alternate/maiden surname
+	 * ("Jackie Rizzo (Belisle)"). Found live: "Adam Beck (G)" split into
+	 * first="Adam", last="(G)" — the real last name "Beck" was never reached,
+	 * so the order lookup below searched for a billing last name that could
+	 * never exist. Stripped repeatedly (not just once) in case a title ever
+	 * carries more than one trailing group.
+	 *
+	 * A middle annotation is deliberately left alone — "Robert (Rob) Rabey"
+	 * still correctly yields first="Robert", last="Rabey" by position once
+	 * only the TRAILING group is a candidate for stripping.
+	 *
+	 * @param string $title Player post title.
+	 * @return string Title with trailing "(...)" annotation(s) removed.
+	 */
+	private static function strip_trailing_annotations( string $title ): string {
+		do {
+			$before = $title;
+			$title  = preg_replace( '/\s*\([^()]*\)\s*$/', '', $title );
+		} while ( $title !== $before && '' !== $title );
+
+		return trim( $title );
+	}
+
+	/**
 	 * Match players to WooCommerce orders by exact billing full name.
 	 *
 	 * spat_registration_logs only covers players who registered through this
 	 * plugin's own flow — on rookiehockey.ca that's 300 rows for 2000+
 	 * players, so most players have no row there even though a real order
 	 * exists for them. This strategy finds that order directly, by matching
-	 * the player's post title against an order's billing first + last name.
+	 * the player's post title (with any trailing annotation stripped — see
+	 * strip_trailing_annotations()) against an order's billing first + last
+	 * name.
 	 *
 	 * Unlike match_via_spr_orders(), a name is not an identity: two players
 	 * can share a name, and an order placed under a matching name is not
@@ -455,7 +485,7 @@ class SPT_Email_Sync {
 		$results = array();
 
 		foreach ( $players as $player ) {
-			$title = trim( $player->post_title );
+			$title = self::strip_trailing_annotations( trim( $player->post_title ) );
 			$parts = preg_split( '/\s+/', $title );
 			// Require first + last: a single-word title has nothing precise
 			// enough to match a billing name against.

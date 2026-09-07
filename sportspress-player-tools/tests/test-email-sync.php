@@ -481,6 +481,60 @@ assert_test(
     'Two orders sharing one billing email produce a single offer, not a duplicate'
 );
 
+// Trailing position/status annotations (found live: "Adam Beck (G)" split
+// into first="Adam", last="(G)" and never reached the real "Beck" order).
+reset_state();
+$GLOBALS['spt_test_wc_orders']['Adam|Beck'] = array(new SPT_Mock_WC_Order('adam.beck@example.com'));
+$result = invoke_private($sync, 'match_via_order_billing_name', array(array(make_player_named(1006, 'Adam Beck (G)'))));
+assert_test(
+    isset($result[1006]) && $result[1006][0]['email'] === 'adam.beck@example.com',
+    'A trailing "(G)" position annotation is stripped before matching'
+);
+
+// Other annotation styles seen live: captain/assistant markers, a dedupe
+// flag, and an alternate surname in parens.
+reset_state();
+$GLOBALS['spt_test_wc_orders']['Jennifer|Novak'] = array(new SPT_Mock_WC_Order('jnovak@example.com'));
+$result = invoke_private($sync, 'match_via_order_billing_name', array(array(make_player_named(1007, 'Jennifer Novak (C)'))));
+assert_test(isset($result[1007]), 'A trailing "(C)" captain annotation is stripped');
+
+reset_state();
+$GLOBALS['spt_test_wc_orders']['Derek|McElheron'] = array(new SPT_Mock_WC_Order('derek@example.com'));
+$result = invoke_private($sync, 'match_via_order_billing_name', array(array(make_player_named(1008, 'Derek McElheron (dup)'))));
+assert_test(isset($result[1008]), 'A trailing "(dup)" flag is stripped');
+
+reset_state();
+$GLOBALS['spt_test_wc_orders']['Jackie|Rizzo'] = array(new SPT_Mock_WC_Order('jackie@example.com'));
+$result = invoke_private($sync, 'match_via_order_billing_name', array(array(make_player_named(1009, 'Jackie Rizzo (Belisle)'))));
+assert_test(isset($result[1009]), 'A trailing alternate-surname annotation is stripped');
+
+// A middle annotation (a nickname) must NOT be treated as trailing -- only
+// the true trailing group is stripped, so the real last name still wins.
+reset_state();
+$GLOBALS['spt_test_wc_orders']['Robert|Rabey'] = array(new SPT_Mock_WC_Order('robert.rabey@example.com'));
+$result = invoke_private($sync, 'match_via_order_billing_name', array(array(make_player_named(1010, 'Robert (Rob) Rabey (G)'))));
+assert_test(
+    isset($result[1010]) && $result[1010][0]['email'] === 'robert.rabey@example.com',
+    'A middle nickname plus a trailing position annotation both resolve correctly to the real name'
+);
+
+assert_test(
+    invoke_private($sync, 'strip_trailing_annotations', array('Robert (Rob) Rabey (G)')) === 'Robert (Rob) Rabey',
+    'strip_trailing_annotations only removes the TRAILING group, leaving a middle nickname alone'
+);
+assert_test(
+    invoke_private($sync, 'strip_trailing_annotations', array('Adam Beck (G)')) === 'Adam Beck',
+    'strip_trailing_annotations removes a single trailing group'
+);
+assert_test(
+    invoke_private($sync, 'strip_trailing_annotations', array('Adam Beck (G) (dup)')) === 'Adam Beck',
+    'strip_trailing_annotations removes multiple trailing groups, not just the last one'
+);
+assert_test(
+    invoke_private($sync, 'strip_trailing_annotations', array('Adam Beck')) === 'Adam Beck',
+    'strip_trailing_annotations is a no-op when there is nothing to strip'
+);
+
 // Integration via find_matches(): the order-name match outranks a weak
 // post_author match for the SAME player -- the reported bug was the
 // record-creator email defaulting in the dropdown ahead of a real order.
