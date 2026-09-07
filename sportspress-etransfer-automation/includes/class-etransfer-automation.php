@@ -1000,11 +1000,31 @@ class SPET_ETransfer_Automation {
 			}
 		}
 
+		// Extract an order number from the sender's optional memo (the
+		// "Message:" field). Isolate that field specifically before searching
+		// for digits -- searching the whole template would also catch the
+		// transfer date's bare year. Within the memo, only a number that is
+		// clearly DELIMITED as a reference counts: prefixed with a short
+		// alpha code and a dash (the legacy "ARL-114490" convention), a "#",
+		// or the word "order". A bare, undelimited digit run is deliberately
+		// NOT treated as an order number -- a memo mentioning a season year
+		// ("winter 2025") or some other incidental number must never be
+		// misread as one. Most transfers carry no memo, or a memo with no
+		// recognizable reference; that's normal and simply means
+		// order-number matching is skipped below in favour of the weaker
+		// strategies.
+		$order_number = null;
+		if ( preg_match( '/Message:\s*\n+(.*?)\n+Date:/is', $text, $matches )
+			&& preg_match( '/(?:[A-Za-z]{2,6}-|#|order\s*#?\s*)(\d+)/i', $matches[1], $num_matches ) ) {
+			$order_number = (int) $num_matches[1];
+		}
+
 		return array(
 			'reference_number' => $reference_number,
 			'amount' => $amount,
 			'sender_name' => $sender_name,
 			'customer_email' => $customer_email,
+			'order_number' => $order_number,
 		);
 	}
 
@@ -1022,7 +1042,24 @@ class SPET_ETransfer_Automation {
 	}
 
 	private function find_matching_order( &$payment_data ) {
-		// Strategy 1: Email match
+		// Strategy 1: Order number
+		//
+		// The strongest evidence available: the payer had to look this number
+		// up and type it into the transfer's memo themselves. Still requires
+		// the referenced order to actually exist and be on-hold -- a stray
+		// number that doesn't correspond to a real pending order is not
+		// trusted, and simply falls through to the weaker strategies below
+		// rather than routing a nonsense number to manual review on its own.
+		if ( ! empty( $payment_data['order_number'] ) ) {
+			$order = wc_get_order( $payment_data['order_number'] );
+			if ( $order && $order->has_status( 'on-hold' ) ) {
+				$payment_data['match_criteria'] = 'Order Number (#' . $payment_data['order_number'] . ')';
+				$payment_data['match_type'] = 'order_number';
+				return $order->get_id();
+			}
+		}
+
+		// Strategy 2: Email match
 		//
 		// M8: fetch a small window rather than only the single newest on-hold
 		// order, and prefer the one whose total equals the amount actually
@@ -1057,7 +1094,7 @@ class SPET_ETransfer_Automation {
 			}
 		}
 
-		// Strategy 2: Name match (exact or similar names)
+		// Strategy 3: Name match (exact or similar names)
 		if ( ! empty( $payment_data['sender_name'] ) ) {
 			$name_limit = 100;
 

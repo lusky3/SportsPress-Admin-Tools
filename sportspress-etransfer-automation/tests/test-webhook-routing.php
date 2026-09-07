@@ -376,6 +376,11 @@ function interac_email( $reference, $amount, $sender ) {
 	return "INTERAC e-Transfer\n\nSent From:\n  $sender\n\nAmount:\n  \$$amount\n\nReference Number:\n  $reference";
 }
 
+/** Same template, but with a sender memo ("Message:") carrying an order number. */
+function interac_email_with_order_number( $reference, $amount, $sender, $memo ) {
+	return "INTERAC e-Transfer\n\nMessage:\n$memo\n\nDate: July 17, 2025\nSent From:\n  $sender\n\nAmount:\n  \$$amount\n\nReference Number:\n  $reference";
+}
+
 $_SERVER['REMOTE_ADDR'] = '203.0.113.10';
 $automation = new SPET_ETransfer_Automation();
 
@@ -691,6 +696,94 @@ $automation->handle_webhook(
 );
 assert_test( 'completed' === $mock_orders[204]->get_status(), 'M8: exact-amount order is chosen over the newest one' );
 assert_test( 'on-hold' === $mock_orders[205]->get_status(), 'M8: the wrong-total order is left alone' );
+
+// ---------------------------------------------------------------------------
+// 5h. Order number in the sender's memo
+// ---------------------------------------------------------------------------
+echo "\n-- order number matching --\n";
+
+// A memo carrying an order number matches on it even with no Reply-To and a
+// sender name that would never pass the fuzzy name matcher.
+reset_mocks();
+$mock_orders[401] = new Mock_WC_Order( 401, 150.00, 'on-hold', 'Colin', 'Hegarty', 'colin@example.com' );
+$automation->handle_webhook(
+	signed_request(
+		array(
+			'text' => interac_email_with_order_number( 'C1AzmvNdhNsa', '150.00', 'Someone Else Entirely', 'winter 2025 ARL-401' ),
+		)
+	)
+);
+$row = end( $wpdb->inserts );
+assert_test( 'Order updated successfully' === $row['result'], 'order-number match completes the order even though sender name would not fuzzy-match' );
+assert_test( 401 === (int) $row['order_id'], 'order-number match records the referenced order id' );
+assert_test( 'Order Number (#401)' === $row['match_criteria'], 'match_criteria records the order number' );
+
+// Order number takes priority over a DIFFERENT order that email/name would
+// otherwise have matched.
+reset_mocks();
+$mock_orders[402] = new Mock_WC_Order( 402, 150.00, 'on-hold', 'Andy', 'Giang', 'andy@example.com' );
+$mock_orders[403] = new Mock_WC_Order( 403, 150.00, 'on-hold', 'Wrong', 'Match', 'wrong@example.com' );
+$automation->handle_webhook(
+	signed_request(
+		array(
+			'text' => interac_email_with_order_number( 'CADzqxQ4', '150.00', 'Andy Giang', 'winter 2025 ARL-403' ),
+			'reply_to' => array( 'address' => 'andy@example.com' ), // would otherwise match order 402 by email
+		)
+	)
+);
+$row = end( $wpdb->inserts );
+assert_test( 403 === (int) $row['order_id'], 'order-number match wins over a same-amount email match on a different order' );
+assert_test( 'on-hold' === $mock_orders[402]->get_status(), 'the order email/name would have matched is left alone' );
+
+// A memo number that doesn't correspond to any real order falls through to
+// the weaker strategies rather than being trusted on its own.
+reset_mocks();
+$mock_orders[404] = new Mock_WC_Order( 404, 150.00, 'on-hold', 'Fallback', 'Person', 'fallback@example.com' );
+$automation->handle_webhook(
+	signed_request(
+		array(
+			'text' => interac_email_with_order_number( 'CA999999', '150.00', 'Fallback Person', 'winter 2025 ARL-999999' ),
+			'reply_to' => array( 'address' => 'fallback@example.com' ),
+		)
+	)
+);
+$row = end( $wpdb->inserts );
+assert_test( 404 === (int) $row['order_id'], 'a memo number matching no real order falls through to the email strategy' );
+
+// A memo number that DOES correspond to a real order, but that order is not
+// on-hold (already completed), is not trusted either.
+reset_mocks();
+$mock_orders[405] = new Mock_WC_Order( 405, 150.00, 'completed', 'Already', 'Done', 'done@example.com' );
+$mock_orders[406] = new Mock_WC_Order( 406, 150.00, 'on-hold', 'Fallback', 'Two', 'fallback2@example.com' );
+$automation->handle_webhook(
+	signed_request(
+		array(
+			'text' => interac_email_with_order_number( 'CA888888', '150.00', 'Fallback Two', 'winter 2025 ARL-405' ),
+			'reply_to' => array( 'address' => 'fallback2@example.com' ),
+		)
+	)
+);
+$row = end( $wpdb->inserts );
+assert_test( 406 === (int) $row['order_id'], 'a memo number referencing a non-on-hold order falls through to the email strategy' );
+assert_test( 'completed' === $mock_orders[405]->get_status(), 'the non-on-hold order referenced by the memo is left alone' );
+
+// An order-number match still goes through the same amount-mismatch review
+// gate as every other strategy -- it is stronger evidence of WHICH order, not
+// an exemption from verifying HOW MUCH was actually paid.
+reset_mocks();
+$mock_orders[407] = new Mock_WC_Order( 407, 575.00, 'on-hold', 'Mismatch', 'Case', 'mismatch@example.com' );
+$automation->handle_webhook(
+	signed_request(
+		array(
+			'text' => interac_email_with_order_number( 'CA777777', '150.00', 'Mismatch Case', 'winter 2025 ARL-407' ),
+		)
+	)
+);
+$row = end( $wpdb->inserts );
+assert_test( strpos( $row['result'], 'Amount mismatch' ) === 0, 'order-number match with a wrong amount still routes to manual review' );
+assert_test( ! isset( $row['order_id'] ), 'amount-mismatch row stores no order_id even when the order number pointed at a real order' );
+assert_test( 'on-hold' === $mock_orders[407]->get_status(), 'a mismatched order-number match never auto-completes the order' );
+$observed_review_results[] = $row['result'];
 
 // ---------------------------------------------------------------------------
 // 6. H5 — two concurrent distinct transfers cannot both complete one order

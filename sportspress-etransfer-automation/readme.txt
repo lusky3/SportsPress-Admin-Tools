@@ -4,7 +4,7 @@ Tags: sportspress, woocommerce, etransfer, payment, automation
 Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.0.1
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -41,13 +41,16 @@ Generic (any service that forwards email as JSON), deliverhook.com, and Cloudfla
 
 = How does order matching work? =
 
-Payments are matched to on-hold WooCommerce orders by: (1) Reply-To email vs billing email, (2) sender name vs billing name with equivalent name support. Amount is validated after matching.
+Payments are matched to on-hold WooCommerce orders by: (1) an order number in the sender's transfer message/memo, if they included one, (2) Reply-To email vs billing email, (3) sender name vs billing name with equivalent name support. Amount is validated after matching.
 
 = What happens if a payment can't be matched? =
 
 Unmatched payments appear in WooCommerce → e-Transfer Webhooks where you can manually match them to orders or hide false positives.
 
 == Changelog ==
+
+= 1.1.0 =
+* New: payments are now matched by order number first, if the sender put one in their transfer's message/memo field, before falling back to Reply-To email and sender name. It has to be clearly marked as a reference (e.g. "#1234", "order 1234", or the legacy "ARL-1234" style) and correspond to a real on-hold order -- a stray number, or an incidental one like a season year, is never treated as a match on its own.
 
 = 1.0.1 =
 * New: this plugin now updates itself through the normal WordPress Plugins screen, sourced from the project's GitHub releases.

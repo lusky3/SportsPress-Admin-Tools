@@ -106,6 +106,49 @@ assert_test($result === false, 'Empty text returns false');
 $result = invoke_private($automation, 'extract_payment_data', array(array()));
 assert_test($result === false, 'Missing text key returns false');
 
+// Order number: bare 6-digit number in the Message field
+$with_order_number = array(
+    'text' => "Reference Number:\n  CADzqxQ4\n\nMessage:\nwinter 2025 ARL-114490\n\nDate: July 17, 2025\nSent From:\n  Andy Giang\n\nAmount:\n  \$590.00"
+);
+$result = invoke_private($automation, 'extract_payment_data', array($with_order_number));
+assert_test($result !== false && $result['order_number'] === 114490, 'Order number extracted from Message field, prefix and year ignored');
+
+// Order number: "#" prefix
+$hash_order_number = array(
+    'text' => "Reference Number:\n  CA1\n\nMessage:\npayment #401\n\nDate: July 17, 2025\nSent From:\n  Test User\n\nAmount:\n  \$50.00"
+);
+$result = invoke_private($automation, 'extract_payment_data', array($hash_order_number));
+assert_test($result !== false && $result['order_number'] === 401, '# prefix is recognized as an order number');
+
+// Order number: "order" word prefix
+$order_word = array(
+    'text' => "Reference Number:\n  CA1\n\nMessage:\nfor order 401\n\nDate: July 17, 2025\nSent From:\n  Test User\n\nAmount:\n  \$50.00"
+);
+$result = invoke_private($automation, 'extract_payment_data', array($order_word));
+assert_test($result !== false && $result['order_number'] === 401, 'the word "order" is recognized as an order number prefix');
+
+// A bare, undelimited number is deliberately NOT treated as an order number --
+// otherwise a memo mentioning only a season year could be misread as one.
+$bare_number = array(
+    'text' => "Reference Number:\n  CA1\n\nMessage:\nwinter 2025 registration\n\nDate: July 17, 2025\nSent From:\n  Test User\n\nAmount:\n  \$50.00"
+);
+$result = invoke_private($automation, 'extract_payment_data', array($bare_number));
+assert_test($result !== false && $result['order_number'] === null, 'a bare undelimited number (e.g. a season year) is NOT treated as an order number');
+
+// No Message field at all
+$no_message = array(
+    'text' => "Reference Number:\n  CA1\n\nDate: July 17, 2025\nSent From:\n  Test User\n\nAmount:\n  \$50.00"
+);
+$result = invoke_private($automation, 'extract_payment_data', array($no_message));
+assert_test($result !== false && $result['order_number'] === null, 'No Message field leaves order_number null');
+
+// Message field present but with no number in it
+$message_no_number = array(
+    'text' => "Reference Number:\n  CA1\n\nMessage:\npayment for winter season goalie\n\nDate: July 17, 2025\nSent From:\n  Test User\n\nAmount:\n  \$50.00"
+);
+$result = invoke_private($automation, 'extract_payment_data', array($message_no_number));
+assert_test($result !== false && $result['order_number'] === null, 'Message with no number leaves order_number null');
+
 // --- verify_signature tests ---
 echo "\n-- verify_signature --\n";
 
