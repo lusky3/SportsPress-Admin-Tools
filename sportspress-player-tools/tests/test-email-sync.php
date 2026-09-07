@@ -172,6 +172,13 @@ class SPT_Mock_WC_Order {
 class SPT_Mock_WC_DateTime {
     private $formatted;
     public function __construct($formatted) { $this->formatted = $formatted; }
+
+    /**
+     * Stub mirroring WC_DateTime::date_i18n()'s signature; $format is unused
+     * because tests pass the already-formatted string to the constructor.
+     *
+     * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+     */
     public function date_i18n($format) { return $this->formatted; }
 }
 
