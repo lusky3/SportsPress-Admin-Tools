@@ -3,11 +3,15 @@
  * Email Sync — bulk-populate spt_email for players missing it.
  *
  * Matching priority:
- * 1. SPR registration log → order billing email (highest confidence)
- * 2. post_author → WP user email + billing_email user meta, but ONLY when the
+ * 1. SPR registration log → order billing email (highest confidence — the log
+ *    ties this exact player row to the order that paid for it)
+ * 2. WooCommerce order billing name → order billing email (the player's title
+ *    matches an order's billing first + last name; a name is not an identity,
+ *    so this is never pre-selected, only offered)
+ * 3. post_author → WP user email + billing_email user meta, but ONLY when the
  *    player's own sp_user meta confirms that author really is this player's
  *    account, and never for accounts that authored players in bulk
- * 3. Unmatched → CSV export for manual entry
+ * 4. Unmatched → CSV export for manual entry
  *
  * @author Cody (lusky3)
  */
@@ -159,29 +163,20 @@ class SPT_Email_Sync {
 			// PT-SAFETY (audit 2026-08): rows used to render `checked` regardless of
 			// how the email was found, under a check-all that was also `checked`, so
 			// one click on "Apply Selected" would have written every guess. Only
-			// genuinely high-confidence rows are pre-checked now, and the check-all
-			// deliberately cannot reach the weak ones.
-			$has_high = false;
-			foreach ( $matched as $m ) {
-				if ( $this->is_high_confidence( $m['emails'][0] ) ) {
-					$has_high = true;
-					break;
-				}
-			}
+			// genuinely high-confidence rows are pre-checked now. Check-all itself
+			// DOES reach every row (high and low confidence alike) — "select all"
+			// means all, and the safety this note describes lives in the per-row
+			// default state, not in check-all refusing to touch some rows.
 
 			echo '<h3>' . esc_html__( 'Matched Players', 'sportspress-player-tools' ) . ' (' . count( $matched ) . ')</h3>';
-			echo '<p class="description">' . esc_html__( 'Only high-confidence matches are pre-selected. Unchecked rows are guesses — read the Source column and tick them yourself only if you know the address is right.', 'sportspress-player-tools' ) . '</p>';
+			echo '<p class="description">' . esc_html__( 'Only high-confidence matches are pre-selected. Unchecked rows are guesses — read the Source column and tick them yourself (or use Select All) only once you know the address is right.', 'sportspress-player-tools' ) . '</p>';
 			echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
 			echo '<input type="hidden" name="action" value="spt_apply_email_sync">';
 			wp_nonce_field( 'spt_apply_email_sync', 'spt_sync_nonce' );
 
 			echo '<table class="widefat striped"><thead><tr>';
-			if ( $has_high ) {
-				echo '<th><input type="checkbox" id="spt-check-all" checked title="'
-					. esc_attr__( 'Select all high-confidence rows', 'sportspress-player-tools' ) . '"></th>';
-			} else {
-				echo '<th></th>';
-			}
+			echo '<th><input type="checkbox" id="spt-check-all" title="'
+				. esc_attr__( 'Select or deselect all rows', 'sportspress-player-tools' ) . '"></th>';
 			echo '<th>' . esc_html__( 'Player', 'sportspress-player-tools' ) . '</th>';
 			echo '<th>' . esc_html__( 'Email', 'sportspress-player-tools' ) . '</th>';
 			echo '<th>' . esc_html__( 'Source', 'sportspress-player-tools' ) . '</th>';
@@ -232,14 +227,13 @@ class SPT_Email_Sync {
 
 			// Check-all JS. Capture the toggle's state first; using `.bind(this)`
 			// on the forEach callback rebinds `this` to each checkbox, so every box
-			// would just be set to its own current state (a no-op).
-			// The selector is scoped to .spt-high-confidence on purpose: check-all
-			// must not be able to silently re-arm the guesses.
-			if ( $has_high ) {
-				echo '<script>document.getElementById("spt-check-all").addEventListener("change",function(){';
-				echo 'var on=this.checked;document.querySelectorAll(\'input.spt-high-confidence[name="players[]"]\').forEach(function(c){c.checked=on;});';
-				echo '});</script>';
-			}
+			// would just be set to its own current state (a no-op). Selector
+			// deliberately matches every row checkbox (both confidence classes) —
+			// "select all" is genuinely all-or-nothing; the default per-row state
+			// above is what protects the low-confidence guesses, not this toggle.
+			echo '<script>document.getElementById("spt-check-all").addEventListener("change",function(){';
+			echo 'var on=this.checked;document.querySelectorAll(\'input[name="players[]"]\').forEach(function(c){c.checked=on;});';
+			echo '});</script>';
 		}
 
 		// --- Unmatched players ---
@@ -311,10 +305,19 @@ class SPT_Email_Sync {
 		// Strategy 1: SPR registration logs → order billing email.
 		$spr_emails = $this->match_via_spr_orders( $player_ids );
 
-		// Strategy 2: post_author → user email + billing_email meta.
+		// Strategy 2: WooCommerce order billing name → order billing email.
+		// Covers players spat_registration_logs never learned about (on
+		// rookiehockey.ca that's the vast majority — the log only has 300 rows
+		// for 2000+ players) without trusting a name match unattended; see
+		// match_via_order_billing_name()'s own docblock.
+		$order_name_emails = $this->match_via_order_billing_name( $players );
+
+		// Strategy 3: post_author → user email + billing_email meta.
 		$author_emails = $this->match_via_post_author( $players );
 
-		// Merge results.
+		// Merge results. Order matters: earlier strategies populate $emails[0],
+		// which is both the pre-selected candidate for a single-email row and
+		// the default <option> for a multi-email row's <select>.
 		$results = array();
 		foreach ( $players as $player ) {
 			$pid    = $player->ID;
@@ -329,6 +332,19 @@ class SPT_Email_Sync {
 						'source'     => __( 'Registration order', 'sportspress-player-tools' ),
 						'confidence' => self::CONFIDENCE_HIGH,
 					);
+				}
+			}
+
+			// Order billing-name match: still an order's own billing email, so it
+			// outranks the post_author guess below even though neither is
+			// pre-checked.
+			if ( isset( $order_name_emails[ $pid ] ) ) {
+				$existing = array_column( $emails, 'email' );
+				foreach ( $order_name_emails[ $pid ] as $entry ) {
+					if ( ! in_array( $entry['email'], $existing, true ) ) {
+						$emails[]   = $entry;
+						$existing[] = $entry['email'];
+					}
 				}
 			}
 
@@ -409,6 +425,80 @@ class SPT_Email_Sync {
 			$email = strtolower( trim( $row->billing_email ) );
 			if ( is_email( $email ) ) {
 				$results[ (int) $row->player_id ][] = $email;
+			}
+		}
+
+		return $results;
+	}
+
+	/**
+	 * Match players to WooCommerce orders by exact billing full name.
+	 *
+	 * spat_registration_logs only covers players who registered through this
+	 * plugin's own flow — on rookiehockey.ca that's 300 rows for 2000+
+	 * players, so most players have no row there even though a real order
+	 * exists for them. This strategy finds that order directly, by matching
+	 * the player's post title against an order's billing first + last name.
+	 *
+	 * Unlike match_via_spr_orders(), a name is not an identity: two players
+	 * can share a name, and an order placed under a matching name is not
+	 * proof it was THIS player's own registration. Every result here is
+	 * therefore CONFIDENCE_LOW regardless of how many orders match — an
+	 * admin reviews and ticks the row, the tool never auto-selects it. A
+	 * unique match is still labelled distinctly from an ambiguous one so the
+	 * Source column reflects how much to trust it at a glance.
+	 *
+	 * @param array $players Array of WP_Post objects (missing spt_email).
+	 * @return array player_id => [ [email, source, confidence], ... ]
+	 */
+	private function match_via_order_billing_name( $players ) {
+		$results = array();
+
+		foreach ( $players as $player ) {
+			$title = trim( $player->post_title );
+			$parts = preg_split( '/\s+/', $title );
+			// Require first + last: a single-word title has nothing precise
+			// enough to match a billing name against.
+			if ( ! is_array( $parts ) || count( $parts ) < 2 ) {
+				continue;
+			}
+			$first_name = $parts[0];
+			$last_name  = end( $parts );
+
+			$orders = wc_get_orders(
+				array(
+					'billing_first_name' => $first_name,
+					'billing_last_name'  => $last_name,
+					'limit'              => 5,
+					'return'             => 'objects',
+					'status'             => array( 'completed', 'processing' ),
+				)
+			);
+			if ( empty( $orders ) ) {
+				continue;
+			}
+
+			$emails = array();
+			foreach ( $orders as $order ) {
+				$email = strtolower( trim( $order->get_billing_email() ) );
+				if ( is_email( $email ) && ! in_array( $email, $emails, true ) ) {
+					$emails[] = $email;
+				}
+			}
+			if ( empty( $emails ) ) {
+				continue;
+			}
+
+			$source = ( 1 === count( $emails ) )
+				? __( 'WooCommerce order billing name (exact match) — verify', 'sportspress-player-tools' )
+				: __( 'WooCommerce order billing name (multiple orders) — verify', 'sportspress-player-tools' );
+
+			foreach ( $emails as $email ) {
+				$results[ $player->ID ][] = array(
+					'email'      => $email,
+					'source'     => $source,
+					'confidence' => self::CONFIDENCE_LOW,
+				);
 			}
 		}
 

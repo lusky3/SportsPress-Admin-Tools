@@ -21,6 +21,7 @@ $GLOBALS['spt_test_players']   = array(); // WP_Post-like objects returned by ge
 $GLOBALS['spt_test_users']     = array(); // user_id => object( ID, user_email )
 $GLOBALS['spt_test_user_meta'] = array(); // user_id => array( key => value )
 $GLOBALS['spt_test_post_meta'] = array(); // post_id => array( key => value )
+$GLOBALS['spt_test_wc_orders'] = array(); // "First|Last" => array of SPT_Mock_WC_Order
 
 class SPT_Mock_WPDB {
     public $prefix   = 'wp_';
@@ -147,6 +148,29 @@ if (!function_exists('get_post_meta')) {
     }
 }
 
+/**
+ * WooCommerce order stand-in: only what match_via_order_billing_name() reads.
+ */
+class SPT_Mock_WC_Order {
+    private $email;
+    public function __construct($email) { $this->email = $email; }
+    public function get_billing_email() { return $this->email; }
+}
+
+if (!function_exists('wc_get_orders')) {
+    /**
+     * Test orders are registered by "First|Last" name in $GLOBALS['spt_test_wc_orders'],
+     * matching exactly how match_via_order_billing_name() queries: billing_first_name
+     * + billing_last_name. Real WooCommerce filters by status too; these tests only
+     * register orders that are meant to be visible, so status filtering needs no
+     * separate mock.
+     */
+    function wc_get_orders($args = array()) {
+        $key = ($args['billing_first_name'] ?? '') . '|' . ($args['billing_last_name'] ?? '');
+        return $GLOBALS['spt_test_wc_orders'][$key] ?? array();
+    }
+}
+
 require_once dirname(__FILE__) . '/../includes/class-email-sync.php';
 
 // ---------------------------------------------------------------------------
@@ -193,7 +217,16 @@ function reset_state() {
     $GLOBALS['spt_test_users']     = array();
     $GLOBALS['spt_test_user_meta'] = array();
     $GLOBALS['spt_test_post_meta'] = array();
+    $GLOBALS['spt_test_wc_orders'] = array();
     $GLOBALS['wpdb'] = new SPT_Mock_WPDB();
+}
+
+function make_player_named($id, $title, $author = 0) {
+    $p = new stdClass();
+    $p->ID = $id;
+    $p->post_author = $author;
+    $p->post_title = $title;
+    return $p;
 }
 
 $sync = new SPT_Email_Sync();
@@ -379,6 +412,94 @@ assert_test(
 );
 
 // ---------------------------------------------------------------------------
+// 5b. match_via_order_billing_name() — the fix for the coverage gap live data
+// exposed: spat_registration_logs is 300 rows for 2000+ players, so most
+// players have no row there even though a real WooCommerce order exists.
+// ---------------------------------------------------------------------------
+
+echo "\n-- match_via_order_billing_name --\n";
+
+// A single-word title has no first/last name to match against; skipped.
+reset_state();
+$result = invoke_private($sync, 'match_via_order_billing_name', array(array(make_player_named(1000, 'Cher'))));
+assert_test(empty($result), 'A single-word title is never matched against an order');
+
+// No order under that name at all.
+reset_state();
+$result = invoke_private($sync, 'match_via_order_billing_name', array(array(make_player_named(1001, 'Trevor Hudson'))));
+assert_test(empty($result), 'No matching order means no result for this strategy');
+
+// Exactly one order under that exact name: still LOW confidence (a name is
+// not an identity), but with a distinct "exact match" label.
+reset_state();
+$GLOBALS['spt_test_wc_orders']['Trevor|Hudson'] = array(new SPT_Mock_WC_Order('thudson@example.com'));
+$result = invoke_private($sync, 'match_via_order_billing_name', array(array(make_player_named(1002, 'Trevor Hudson'))));
+assert_test(
+    isset($result[1002]) && count($result[1002]) === 1 && $result[1002][0]['email'] === 'thudson@example.com',
+    'A unique order match resolves to that order\'s billing email'
+);
+assert_test(
+    $result[1002][0]['confidence'] === SPT_Email_Sync::CONFIDENCE_LOW,
+    'A unique order-name match is still LOW confidence, never pre-selected'
+);
+assert_test(
+    strpos($result[1002][0]['source'], 'exact match') !== false,
+    'A unique order-name match is labelled distinctly from an ambiguous one'
+);
+
+// Two orders under the same name, different emails: both offered, both LOW,
+// labelled as ambiguous so an admin knows to check before picking one.
+reset_state();
+$GLOBALS['spt_test_wc_orders']['James|Taylor'] = array(
+    new SPT_Mock_WC_Order('james.t@example.com'),
+    new SPT_Mock_WC_Order('jtaylor@example.com'),
+);
+$result = invoke_private($sync, 'match_via_order_billing_name', array(array(make_player_named(1003, 'James Taylor'))));
+assert_test(
+    isset($result[1003]) && count($result[1003]) === 2,
+    'Multiple distinct orders under the same name are all offered'
+);
+assert_test(
+    $result[1003][0]['confidence'] === SPT_Email_Sync::CONFIDENCE_LOW && $result[1003][1]['confidence'] === SPT_Email_Sync::CONFIDENCE_LOW,
+    'Every option from an ambiguous order-name match is LOW confidence'
+);
+assert_test(
+    strpos($result[1003][0]['source'], 'multiple orders') !== false,
+    'Ambiguous order-name matches are labelled as needing verification'
+);
+
+// Two orders under the same name with the SAME billing email: de-duplicated
+// to one offer, not two identical entries.
+reset_state();
+$GLOBALS['spt_test_wc_orders']['Evan|Muller'] = array(
+    new SPT_Mock_WC_Order('evan@example.com'),
+    new SPT_Mock_WC_Order('evan@example.com'),
+);
+$result = invoke_private($sync, 'match_via_order_billing_name', array(array(make_player_named(1004, 'Evan Muller'))));
+assert_test(
+    isset($result[1004]) && count($result[1004]) === 1,
+    'Two orders sharing one billing email produce a single offer, not a duplicate'
+);
+
+// Integration via find_matches(): the order-name match outranks a weak
+// post_author match for the SAME player -- the reported bug was the
+// record-creator email defaulting in the dropdown ahead of a real order.
+reset_state();
+$GLOBALS['spt_test_players'] = array(make_player_named(1005, 'Ryan Dewar', 43));
+$GLOBALS['spt_test_users'][43] = make_user(43, 'creator@example.com');
+$GLOBALS['wpdb']->author_counts = array(43 => 2); // over threshold -> "record creator", low confidence
+$GLOBALS['spt_test_wc_orders']['Ryan|Dewar'] = array(new SPT_Mock_WC_Order('ryan.dewar@example.com'));
+$matches = invoke_private($sync, 'find_matches');
+assert_test(
+    $matches[0]['emails'][0]['email'] === 'ryan.dewar@example.com',
+    'The order-name match is the default (first) option, ahead of the record-creator guess'
+);
+assert_test(
+    count($matches[0]['emails']) === 2,
+    'The record-creator email is still offered as a second option, not dropped'
+);
+
+// ---------------------------------------------------------------------------
 // 6. No signal at all → unmatched / CSV bucket.
 // ---------------------------------------------------------------------------
 
@@ -437,19 +558,22 @@ assert_test(
     'Weak row carries the spt-low-confidence class'
 );
 assert_test(
-    strpos($html, 'input.spt-high-confidence[name="players[]"]') !== false,
-    'Check-all JS only targets high-confidence rows'
+    strpos($html, 'querySelectorAll(\'input[name="players[]"]\')') !== false,
+    'Check-all JS targets every row, high and low confidence alike'
 );
 assert_test(
-    strpos($html, 'querySelectorAll(\'input[name="players[]"]\')') === false,
-    'Check-all JS no longer targets every row'
+    strpos($html, 'id="spt-check-all" title=') !== false && strpos($html, 'id="spt-check-all" checked') === false,
+    'Check-all itself is not pre-checked (not every row is)'
 );
 assert_test(
     strpos($html, 'Record creator') !== false,
     'Source column states plainly that a weak row is the record creator'
 );
 
-// Preview with only weak rows must not ship a check-all at all.
+// Preview with only weak rows still ships a working check-all -- select-all
+// must be able to reach the low-confidence rows too (issue reported live:
+// "there is a select all checkbox, but it does not select the ones with the
+// status 'record creator'... it's all or nothing").
 reset_state();
 $GLOBALS['spt_test_players'] = array(make_player(901, 43));
 $GLOBALS['spt_test_users'][43] = make_user(43, 'creator@example.com');
@@ -458,12 +582,16 @@ ob_start();
 invoke_private($sync, 'render_preview');
 $html = ob_get_clean();
 assert_test(
-    strpos($html, 'id="spt-check-all"') === false,
-    'No check-all control is rendered when every row is low confidence'
+    strpos($html, 'id="spt-check-all"') !== false,
+    'A check-all control renders even when every row is low confidence'
 );
 assert_test(
-    strpos($html, 'type="checkbox"') !== false && strpos($html, ' checked>') === false,
-    'Nothing is pre-checked when every row is low confidence'
+    strpos($html, ' checked>') === false,
+    'Nothing is pre-checked when every row is low confidence (check-all included)'
+);
+assert_test(
+    strpos($html, 'querySelectorAll(\'input[name="players[]"]\')') !== false,
+    'Check-all can still toggle the low-confidence row'
 );
 
 // Unmatched players still reach the CSV export UI.

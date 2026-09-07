@@ -4,7 +4,7 @@ Tags: sportspress, player, roster, csv, captain
 Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.1.0
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -41,6 +41,10 @@ CSV files must have "Team" and "Name" columns. Player names are automatically cl
 Yes. The batch list creator supports both "Create new" and "Update existing" modes. Update mode finds lists matching team and season, then replaces players.
 
 == Changelog ==
+
+= 1.2.0 =
+* New: the email sync tool now also matches players to a WooCommerce order by billing full name, not only via the registration-order log -- on rookiehockey.ca that log covers 300 of 2000+ players, so most real orders were previously invisible to it. These matches are never auto-selected (a name isn't an identity), but they close a large real gap: roughly two-thirds of previously "no match" players now have a real order offered to check.
+* Fix: Select All on the email sync preview now reaches every row, including "record creator" (weak) matches. It previously could only ever reach the pre-checked high-confidence rows, so there was no way to bulk-select the rest without clicking each one by hand.
 
 = 1.1.0 =
 * New: this plugin now updates itself through the normal WordPress Plugins screen, sourced from the project's GitHub releases.
