@@ -149,12 +149,37 @@ if (!function_exists('get_post_meta')) {
 }
 
 /**
- * WooCommerce order stand-in: only what match_via_order_billing_name() reads.
+ * WooCommerce order stand-in: only what match_via_order_billing_name() and
+ * find_order_billing_emails() read.
  */
 class SPT_Mock_WC_Order {
     private $email;
-    public function __construct($email) { $this->email = $email; }
+    private $date;
+    public function __construct($email, $date = null) {
+        $this->email = $email;
+        $this->date = $date;
+    }
     public function get_billing_email() { return $this->email; }
+    public function get_date_created() {
+        return null === $this->date ? null : new SPT_Mock_WC_DateTime($this->date);
+    }
+}
+
+/**
+ * WC_DateTime stand-in. Tests pass an already-formatted "Y-m-d" string, so
+ * date_i18n() just hands it back -- no real date parsing needed here.
+ */
+class SPT_Mock_WC_DateTime {
+    private $formatted;
+    public function __construct($formatted) { $this->formatted = $formatted; }
+
+    /**
+     * Stub mirroring WC_DateTime::date_i18n()'s signature; $format is unused
+     * because tests pass the already-formatted string to the constructor.
+     *
+     * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+     */
+    public function date_i18n($format) { return $this->formatted; }
 }
 
 if (!function_exists('wc_get_orders')) {
@@ -481,6 +506,44 @@ $result = invoke_private($sync, 'match_via_order_billing_name', array(array(make
 assert_test(
     isset($result[1004]) && count($result[1004]) === 1,
     'Two orders sharing one billing email produce a single offer, not a duplicate'
+);
+
+// Two orders under the same name, different emails, each with a date:
+// found live ("Adam Gallant" -- two real orders, 2022-03-15 and 2022-08-15).
+// The newer order's email must come first, and each option's Source must
+// name its own order's date so an admin can tell them apart without
+// leaving the page.
+reset_state();
+$GLOBALS['spt_test_wc_orders']['Adam|Gallant'] = array(
+    new SPT_Mock_WC_Order('adamga@microsoft.com', '2022-08-15'), // newer -- listed first, as a real orderby=date DESC query would return it
+    new SPT_Mock_WC_Order('adamga@hotmail.com', '2022-03-15'),
+);
+$result = invoke_private($sync, 'match_via_order_billing_name', array(array(make_player_named(1011, 'Adam Gallant'))));
+assert_test(
+    isset($result[1011]) && count($result[1011]) === 2,
+    'Both distinct-email orders are offered'
+);
+assert_test(
+    $result[1011][0]['email'] === 'adamga@microsoft.com',
+    'The newer order (2022-08-15) is the default (first) option'
+);
+assert_test(
+    strpos($result[1011][0]['source'], '2022-08-15') !== false,
+    'The newer option\'s Source names its own order date'
+);
+assert_test(
+    strpos($result[1011][1]['source'], '2022-03-15') !== false,
+    'The older option\'s Source names ITS order date, not the newer one\'s'
+);
+
+// No date available (get_date_created() returned null): the label omits a
+// date entirely rather than showing something misleading like an empty string.
+reset_state();
+$GLOBALS['spt_test_wc_orders']['No|Date'] = array(new SPT_Mock_WC_Order('nodate@example.com', null));
+$result = invoke_private($sync, 'match_via_order_billing_name', array(array(make_player_named(1012, 'No Date'))));
+assert_test(
+    isset($result[1012]) && false === strpos($result[1012][0]['source'], ', )') && false === strpos($result[1012][0]['source'], ', —'),
+    'A missing order date is omitted from the label, not rendered blank'
 );
 
 // Trailing position/status annotations (found live: "Adam Beck (G)" split
