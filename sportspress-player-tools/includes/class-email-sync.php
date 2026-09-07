@@ -460,17 +460,26 @@ class SPT_Email_Sync {
 	}
 
 	/**
-	 * Unique, valid billing emails from WooCommerce orders matching a
-	 * player's (annotation-stripped) full name.
+	 * Unique, valid billing emails (each with its order's date) from
+	 * WooCommerce orders matching a player's (annotation-stripped) full name.
 	 *
 	 * Extracted from match_via_order_billing_name() to keep that method's
 	 * branching (per-player skip conditions) separate from this one's
 	 * (name parsing, the order query, and de-duplicating results).
 	 *
+	 * orderby/order are explicit rather than relying on wc_get_orders()'s
+	 * own default (newest first): when two orders share a name, an admin
+	 * reviewing an ambiguous row needs to know which is more recent, and
+	 * that requires this method to reliably put the newest order for each
+	 * distinct email first — an implicit default is one WooCommerce version
+	 * bump away from silently reordering this.
+	 *
 	 * @param string $title Player post title.
-	 * @return string[] Normalised, de-duplicated email addresses; empty when
-	 *                   the title has no first + last name, no order
-	 *                   matches, or no matching order has a usable email.
+	 * @return array[] Each entry: [ 'email' => string, 'date' => string ]
+	 *                  (date formatted Y-m-d, '' if the order has none),
+	 *                  newest order first, one per distinct email. Empty
+	 *                  when the title has no first + last name, no order
+	 *                  matches, or no matching order has a usable email.
 	 */
 	private function find_order_billing_emails( string $title ): array {
 		$parts = preg_split( '/\s+/', self::strip_trailing_annotations( trim( $title ) ) );
@@ -487,18 +496,28 @@ class SPT_Email_Sync {
 				'limit'              => 5,
 				'return'             => 'objects',
 				'status'             => array( 'completed', 'processing' ),
+				'orderby'            => 'date',
+				'order'              => 'DESC',
 			)
 		);
 
-		$emails = array();
+		$entries = array();
+		$seen    = array();
 		foreach ( $orders as $order ) {
 			$email = strtolower( trim( $order->get_billing_email() ) );
-			if ( is_email( $email ) && ! in_array( $email, $emails, true ) ) {
-				$emails[] = $email;
+			if ( ! is_email( $email ) || isset( $seen[ $email ] ) ) {
+				continue;
 			}
+			$seen[ $email ] = true;
+
+			$created  = $order->get_date_created();
+			$entries[] = array(
+				'email' => $email,
+				'date'  => $created ? $created->date_i18n( 'Y-m-d' ) : '',
+			);
 		}
 
-		return $emails;
+		return $entries;
 	}
 
 	/**
@@ -523,23 +542,55 @@ class SPT_Email_Sync {
 	 * @param array $players Array of WP_Post objects (missing spt_email).
 	 * @return array player_id => [ [email, source, confidence], ... ]
 	 */
+	/**
+	 * Build the Source label for one order-billing-name candidate.
+	 *
+	 * Always names the order's date so an admin looking at an ambiguous
+	 * (multiple orders) row can tell which candidate is more recent without
+	 * leaving the page — find_order_billing_emails() already puts the
+	 * newest order for each distinct email first, but the label is what
+	 * actually makes that visible.
+	 *
+	 * @param string $date      Order date (Y-m-d), or '' if the order has none.
+	 * @param bool   $ambiguous Whether more than one order matched this player.
+	 * @return string
+	 */
+	private static function order_billing_name_source( string $date, bool $ambiguous ): string {
+		$label = $ambiguous
+			? __( 'multiple orders', 'sportspress-player-tools' )
+			: __( 'exact match', 'sportspress-player-tools' );
+
+		if ( '' === $date ) {
+			return sprintf(
+				/* translators: %s: "exact match" or "multiple orders" */
+				__( 'WooCommerce order billing name (%s) — verify', 'sportspress-player-tools' ),
+				$label
+			);
+		}
+
+		return sprintf(
+			/* translators: 1: "exact match" or "multiple orders", 2: order date (Y-m-d) */
+			__( 'WooCommerce order billing name (%1$s, %2$s) — verify', 'sportspress-player-tools' ),
+			$label,
+			$date
+		);
+	}
+
 	private function match_via_order_billing_name( $players ) {
 		$results = array();
 
 		foreach ( $players as $player ) {
-			$emails = $this->find_order_billing_emails( $player->post_title );
-			if ( empty( $emails ) ) {
+			$entries = $this->find_order_billing_emails( $player->post_title );
+			if ( empty( $entries ) ) {
 				continue;
 			}
 
-			$source = ( 1 === count( $emails ) )
-				? __( 'WooCommerce order billing name (exact match) — verify', 'sportspress-player-tools' )
-				: __( 'WooCommerce order billing name (multiple orders) — verify', 'sportspress-player-tools' );
+			$ambiguous = count( $entries ) > 1;
 
-			foreach ( $emails as $email ) {
+			foreach ( $entries as $entry ) {
 				$results[ $player->ID ][] = array(
-					'email'      => $email,
-					'source'     => $source,
+					'email'      => $entry['email'],
+					'source'     => self::order_billing_name_source( $entry['date'], $ambiguous ),
 					'confidence' => self::CONFIDENCE_LOW,
 				);
 			}
