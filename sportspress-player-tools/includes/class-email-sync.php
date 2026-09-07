@@ -434,8 +434,8 @@ class SPT_Email_Sync {
 	/**
 	 * Strip trailing parenthetical annotations from a player title.
 	 *
-	 * rookiehockey.ca titles carry a real, established convention of trailing
-	 * "(...)" markers: a position ("(G)", "(C)", "(A)", "(Skater)"), a
+	 * On rookiehockey.ca, titles carry a real, established convention of
+	 * trailing "(...)" markers: a position ("(G)", "(C)", "(A)", "(Skater)"), a
 	 * dedupe flag ("(dup)"), or even an alternate/maiden surname
 	 * ("Jackie Rizzo (Belisle)"). Found live: "Adam Beck (G)" split into
 	 * first="Adam", last="(G)" — the real last name "Beck" was never reached,
@@ -460,15 +460,57 @@ class SPT_Email_Sync {
 	}
 
 	/**
+	 * Unique, valid billing emails from WooCommerce orders matching a
+	 * player's (annotation-stripped) full name.
+	 *
+	 * Extracted from match_via_order_billing_name() to keep that method's
+	 * branching (per-player skip conditions) separate from this one's
+	 * (name parsing, the order query, and de-duplicating results).
+	 *
+	 * @param string $title Player post title.
+	 * @return string[] Normalised, de-duplicated email addresses; empty when
+	 *                   the title has no first + last name, no order
+	 *                   matches, or no matching order has a usable email.
+	 */
+	private function find_order_billing_emails( string $title ): array {
+		$parts = preg_split( '/\s+/', self::strip_trailing_annotations( trim( $title ) ) );
+		// Require first + last: a single-word title has nothing precise
+		// enough to match a billing name against.
+		if ( ! is_array( $parts ) || count( $parts ) < 2 ) {
+			return array();
+		}
+
+		$orders = wc_get_orders(
+			array(
+				'billing_first_name' => $parts[0],
+				'billing_last_name'  => end( $parts ),
+				'limit'              => 5,
+				'return'             => 'objects',
+				'status'             => array( 'completed', 'processing' ),
+			)
+		);
+
+		$emails = array();
+		foreach ( $orders as $order ) {
+			$email = strtolower( trim( $order->get_billing_email() ) );
+			if ( is_email( $email ) && ! in_array( $email, $emails, true ) ) {
+				$emails[] = $email;
+			}
+		}
+
+		return $emails;
+	}
+
+	/**
 	 * Match players to WooCommerce orders by exact billing full name.
 	 *
-	 * spat_registration_logs only covers players who registered through this
-	 * plugin's own flow — on rookiehockey.ca that's 300 rows for 2000+
-	 * players, so most players have no row there even though a real order
-	 * exists for them. This strategy finds that order directly, by matching
-	 * the player's post title (with any trailing annotation stripped — see
-	 * strip_trailing_annotations()) against an order's billing first + last
-	 * name.
+	 * The spat_registration_logs table only covers players who registered
+	 * through this plugin's own flow — on rookiehockey.ca that's 300 rows
+	 * for 2000+ players, so most players have no row there even though a
+	 * real order exists for them. This strategy finds that order directly,
+	 * by matching the player's post title (with any trailing annotation
+	 * stripped — see strip_trailing_annotations()) against an order's
+	 * billing first + last name.
 	 *
 	 * Unlike match_via_spr_orders(), a name is not an identity: two players
 	 * can share a name, and an order placed under a matching name is not
@@ -485,36 +527,7 @@ class SPT_Email_Sync {
 		$results = array();
 
 		foreach ( $players as $player ) {
-			$title = self::strip_trailing_annotations( trim( $player->post_title ) );
-			$parts = preg_split( '/\s+/', $title );
-			// Require first + last: a single-word title has nothing precise
-			// enough to match a billing name against.
-			if ( ! is_array( $parts ) || count( $parts ) < 2 ) {
-				continue;
-			}
-			$first_name = $parts[0];
-			$last_name  = end( $parts );
-
-			$orders = wc_get_orders(
-				array(
-					'billing_first_name' => $first_name,
-					'billing_last_name'  => $last_name,
-					'limit'              => 5,
-					'return'             => 'objects',
-					'status'             => array( 'completed', 'processing' ),
-				)
-			);
-			if ( empty( $orders ) ) {
-				continue;
-			}
-
-			$emails = array();
-			foreach ( $orders as $order ) {
-				$email = strtolower( trim( $order->get_billing_email() ) );
-				if ( is_email( $email ) && ! in_array( $email, $emails, true ) ) {
-					$emails[] = $email;
-				}
-			}
+			$emails = $this->find_order_billing_emails( $player->post_title );
 			if ( empty( $emails ) ) {
 				continue;
 			}

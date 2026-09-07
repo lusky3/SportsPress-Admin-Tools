@@ -164,6 +164,10 @@ if (!function_exists('wc_get_orders')) {
      * + billing_last_name. Real WooCommerce filters by status too; these tests only
      * register orders that are meant to be visible, so status filtering needs no
      * separate mock.
+     *
+     * @SuppressWarnings(PHPMD.Superglobals) -- test mock; $GLOBALS is this
+     * file's own established convention for shared test state (see
+     * $GLOBALS['spt_test_players'] etc. above), not production code.
      */
     function wc_get_orders($args = array()) {
         $key = ($args['billing_first_name'] ?? '') . '|' . ($args['billing_last_name'] ?? '');
