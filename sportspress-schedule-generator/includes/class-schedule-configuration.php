@@ -233,6 +233,45 @@ class SPSG_Schedule_Configuration {
 		// spellings) while SPSG_Team_Restriction_Constraint only ever looks at the
 		// canonical `*_avoid` keys — so shared-player protection was silently off.
 		$this->team_restrictions = self::normalize_team_restrictions( $this->team_restrictions );
+
+		$this->resolve_team_display_names();
+	}
+
+	/**
+	 * Resolve any bare SportsPress team-ID entries in divisions[].teams to
+	 * their real team name, in place.
+	 *
+	 * A division's teams are normally plain name strings (typed by hand, or
+	 * embedded by the "Load from SportsPress" picker, which writes the real
+	 * name at the time a team is added). A configuration authored directly
+	 * through the REST API (bypassing that picker) can instead store a bare
+	 * `sp_team` post ID in that slot. Nothing downstream ever looked such an
+	 * ID up, so the admin form, the generated schedule, and the SportsPress
+	 * import's by-name matching all showed/matched on the raw ID instead of
+	 * the team's real name.
+	 *
+	 * Runs on every load so the fix applies immediately without a one-time
+	 * migration; an admin Save afterward persists the resolved names like any
+	 * other edit. No-ops entirely outside a full WordPress/SportsPress
+	 * runtime (see {@see SPSG_Sports_Press_Integration::resolve_team_name()}).
+	 */
+	private function resolve_team_display_names() {
+		if ( empty( $this->divisions ) || ! class_exists( 'SPSG_Sports_Press_Integration' ) ) {
+			return;
+		}
+
+		foreach ( $this->divisions as &$division ) {
+			if ( empty( $division['teams'] ) || ! is_array( $division['teams'] ) ) {
+				continue;
+			}
+			foreach ( $division['teams'] as &$team ) {
+				if ( is_string( $team ) || is_int( $team ) ) {
+					$team = SPSG_Sports_Press_Integration::resolve_team_name( $team );
+				}
+			}
+			unset( $team );
+		}
+		unset( $division );
 	}
 
 	/**

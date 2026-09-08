@@ -40,6 +40,47 @@ class SPSG_Sports_Press_Integration {
 	}
 
 	/**
+	 * Resolve a stored team reference to a display name.
+	 *
+	 * A division's `teams` entries are normally plain name strings — typed
+	 * by hand, or embedded by the "Load from SportsPress" picker, which
+	 * writes the team's real name at the time it was added. But a
+	 * configuration can also be authored with a bare SportsPress `sp_team`
+	 * post ID in that same slot (e.g. written directly through the REST API
+	 * rather than through the picker), in which case the numeric string has
+	 * no display meaning of its own — every consumer that shows or matches
+	 * it (the admin form, the generated schedule, the SportsPress import's
+	 * name lookup) would otherwise show/match the raw ID instead of the
+	 * team's actual name.
+	 *
+	 * Only ever resolves an ID that names a real, published `sp_team` post;
+	 * anything else (including a literal name that happens to be numeric)
+	 * is returned unchanged.
+	 *
+	 * @param mixed $team_id_or_name Whatever is stored for this team slot.
+	 * @return mixed The real SportsPress team title when $team_id_or_name is
+	 *               a published sp_team post ID; otherwise the input as given.
+	 */
+	public static function resolve_team_name( $team_id_or_name ) {
+		if ( ! is_string( $team_id_or_name ) && ! is_int( $team_id_or_name ) ) {
+			return $team_id_or_name;
+		}
+		if ( ! ctype_digit( (string) $team_id_or_name ) ) {
+			return $team_id_or_name;
+		}
+		if ( ! self::is_sportspress_active() || ! function_exists( 'get_post' ) ) {
+			return $team_id_or_name;
+		}
+
+		$post = get_post( (int) $team_id_or_name );
+		if ( ! $post || 'sp_team' !== $post->post_type || 'publish' !== $post->post_status ) {
+			return $team_id_or_name;
+		}
+
+		return $post->post_title;
+	}
+
+	/**
 	 * Get all SportsPress teams
 	 */
 	public static function get_teams( $args = array() ) {

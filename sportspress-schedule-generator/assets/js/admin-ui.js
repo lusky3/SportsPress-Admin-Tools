@@ -728,6 +728,21 @@
     }).trigger('change');
 
     function calculateGenericTeams() {
+        // Team-checkbox changes and the add/remove/load-SP-teams buttons all
+        // call this unconditionally, regardless of whether the feature is
+        // enabled. The summary lives inside a row that's only shown while
+        // #spsg-generic-teams-enabled is checked, but bail out here too so a
+        // stale "N generic teams needed" is never left computed (and never
+        // shown, however that row's visibility is toggled) while the
+        // configuration doesn't actually use generic teams at all — a fully
+        // real division roster smaller than the (arbitrary) default target
+        // of 8 is completely normal and isn't something the operator asked
+        // to be warned about.
+        if (!$('#spsg-generic-teams-enabled').is(':checked')) {
+            $('#spsg-generic-teams-summary').empty();
+            return;
+        }
+
         var targetPerDivision = parseInt($('#spsg-generic-teams-per-division').val()) || 8;
         var divisions = $('.spsg-division-row').length;
         var totalGenericNeeded = 0;
