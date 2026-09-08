@@ -112,6 +112,8 @@ class SPT_Email_Sync {
 	 * either the scan button or the report, depending on the request. Split
 	 * out of render_section() to keep that method's own branching (the
 	 * success notice plus the sync scan gate) under the complexity threshold.
+	 *
+	 * @SuppressWarnings(PHPMD.Superglobals)
 	 */
 	private function render_duplicate_section() {
 		echo '<hr><h2>' . esc_html__( 'Duplicate Player Emails', 'sportspress-player-tools' ) . '</h2>';
