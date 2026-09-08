@@ -777,7 +777,21 @@ class SPSG_Slot_Allocator {
 	 */
 	public function is_slot_valid( $matchup, $slot, $schedule_by_date, $config, $game = null ) {
 		$match_length = $config->match_length ?? 60;
-		$buffer_time = 15; // 15 minute buffer between games
+
+		// Two games at one venue conflict only when their match intervals
+		// genuinely overlap. This used to pad the check with a hardcoded
+		// 15-minute buffer, which with the usual hourly grid (19:00, 20:00,
+		// 21:00 ...) and 60-minute matches made a 19:00 game "occupy"
+		// 19:00–20:15 and rejected the 20:00 slot at the same venue — so every
+		// other configured slot was silently unusable, real capacity was about
+		// half of what the operator configured, and the feasibility pre-check
+		// (which counts configured slots) disagreed with the allocator. A
+		// 32-team season needing 272 of 514 configured slots failed with
+		// `allocation_failed` while validation reported 56% utilisation. The
+		// per-venue slot grid is the operator's statement of how games fit at
+		// that venue; any turnover time belongs in match_length or the grid
+		// spacing, not in a constant the configuration cannot see.
+		$buffer_time = 0;
 
 		// Only check games on the same date (O(1) lookup vs O(n) scan).
 		$same_day_games = $schedule_by_date[ $slot->date ] ?? array();
