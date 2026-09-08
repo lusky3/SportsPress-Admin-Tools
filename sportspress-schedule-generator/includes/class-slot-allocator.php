@@ -84,8 +84,10 @@ class SPSG_Slot_Allocator {
 	private $slots_by_date = array();
 
 	/**
-	 * Sorted list of dates that have at least one available slot. Walked
-	 * chronologically so games land at the earliest available date.
+	 * Sorted list of dates that have at least one available slot.
+	 * {@see find_best_slot()} visits them from the matchup's pace target
+	 * outwards, so games land where they belong in the season rather than at
+	 * the earliest free date.
 	 */
 	private $sorted_slot_dates = array();
 
