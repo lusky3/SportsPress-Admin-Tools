@@ -170,7 +170,7 @@ class SPT_Email_Sync {
 
 			echo '<h3>' . esc_html__( 'Matched Players', 'sportspress-player-tools' ) . ' (' . count( $matched ) . ')</h3>';
 			echo '<p class="description">' . esc_html__( 'Only high-confidence matches are pre-selected. Unchecked rows are guesses — read the Source column and tick them yourself (or use Select All) only once you know the address is right.', 'sportspress-player-tools' ) . '</p>';
-			echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
+			echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" id="spt-email-sync-form">';
 			echo '<input type="hidden" name="action" value="spt_apply_email_sync">';
 			wp_nonce_field( 'spt_apply_email_sync', 'spt_sync_nonce' );
 
@@ -187,9 +187,12 @@ class SPT_Email_Sync {
 				$best      = $m['emails'][0]; // Highest priority match.
 				$high      = $this->is_high_confidence( $best );
 
-				// If multiple emails, show a select.
+				// If multiple emails, show a select. Fields deliberately carry NO
+				// `name` -- see the JS emitted after the table for why: it builds
+				// one JSON hidden field at submit time, so a huge roster never
+				// scales the request's input-var count (see PT-SAFETY-2 below).
 				if ( count( $m['emails'] ) > 1 ) {
-					$email_field = '<select name="email[' . esc_attr( $player_id ) . ']">';
+					$email_field = '<select class="spt-player-email" data-player-id="' . esc_attr( $player_id ) . '">';
 					foreach ( $m['emails'] as $opt ) {
 						$email_field .= '<option value="' . esc_attr( $opt['email'] ) . '">'
 							. esc_html( $opt['email'] ) . ' (' . esc_html( $opt['source'] ) . ')'
@@ -206,14 +209,14 @@ class SPT_Email_Sync {
 						)
 					);
 				} else {
-					$email_field = '<input type="hidden" name="email[' . esc_attr( $player_id ) . ']" value="' . esc_attr( $best['email'] ) . '">'
+					$email_field = '<input type="hidden" class="spt-player-email" data-player-id="' . esc_attr( $player_id ) . '" value="' . esc_attr( $best['email'] ) . '">'
 						. esc_html( $best['email'] );
 					$source_text = esc_html( $best['source'] );
 				}
 
 				echo '<tr>';
-				echo '<td><input type="checkbox" class="' . ( $high ? 'spt-high-confidence' : 'spt-low-confidence' ) . '"'
-					. ' name="players[]" value="' . esc_attr( $player_id ) . '"' . ( $high ? ' checked' : '' ) . '></td>';
+				echo '<td><input type="checkbox" class="spt-player-checkbox ' . ( $high ? 'spt-high-confidence' : 'spt-low-confidence' ) . '"'
+					. ' data-player-id="' . esc_attr( $player_id ) . '"' . ( $high ? ' checked' : '' ) . '></td>';
 				echo '<td><a href="' . esc_url( get_edit_post_link( $player_id ) ) . '">' . esc_html( get_the_title( $player_id ) ) . '</a></td>';
 				echo '<td>' . $email_field . '</td>';
 				echo '<td>' . $source_text . '</td>';
@@ -231,9 +234,36 @@ class SPT_Email_Sync {
 			// deliberately matches every row checkbox (both confidence classes) —
 			// "select all" is genuinely all-or-nothing; the default per-row state
 			// above is what protects the low-confidence guesses, not this toggle.
-			echo '<script>document.getElementById("spt-check-all").addEventListener("change",function(){';
-			echo 'var on=this.checked;document.querySelectorAll(\'input[name="players[]"]\').forEach(function(c){c.checked=on;});';
-			echo '});</script>';
+			//
+			// PT-SAFETY-2 (2026-09, Tikal incident): the form used to post one
+			// players[] entry plus one email[pid] entry per row. A ~550-row
+			// select-all easily topped PHP's default max_input_vars (1000) --
+			// with no error anywhere, the server just silently stopped parsing
+			// the tail of the request. 546 matched, 487 written, 59 vanished
+			// without a trace; the admin had no way to know rows were dropped.
+			// Building one JSON field at submit time keeps the request at a
+			// constant handful of input vars regardless of roster size, so this
+			// can't recur no matter how max_input_vars is configured on a given
+			// host. The per-row inputs carry no `name` at all, so if this script
+			// never runs (JS disabled/blocked), the form submits zero selections
+			// rather than silently applying a truncated subset.
+			echo '<script>';
+			echo 'document.getElementById("spt-check-all").addEventListener("change",function(){';
+			echo 'var on=this.checked;document.querySelectorAll(".spt-player-checkbox").forEach(function(c){c.checked=on;});';
+			echo '});';
+			echo 'document.getElementById("spt-email-sync-form").addEventListener("submit",function(){';
+			echo 'var selections=[];';
+			echo 'document.querySelectorAll(".spt-player-checkbox").forEach(function(cb){';
+			echo 'if(!cb.checked){return;}';
+			echo 'var pid=cb.getAttribute("data-player-id");';
+			echo 'var field=document.querySelector(\'.spt-player-email[data-player-id="\'+pid+\'"]\');';
+			echo 'selections.push({id:pid,email:field?field.value:""});';
+			echo '});';
+			echo 'var hidden=document.createElement("input");';
+			echo 'hidden.type="hidden";hidden.name="selections";hidden.value=JSON.stringify(selections);';
+			echo 'this.appendChild(hidden);';
+			echo '});';
+			echo '</script>';
 		}
 
 		// --- Unmatched players ---
@@ -834,7 +864,7 @@ class SPT_Email_Sync {
 			return null;
 		}
 
-		// Fix #15: emails already sanitized by the array_map in handle_apply().
+		// Fix #15: emails already sanitized by decode_selections() in handle_apply().
 		$email = $emails[ $pid ];
 		if ( ! $email || ! is_email( $email ) ) {
 			return null;
@@ -849,6 +879,66 @@ class SPT_Email_Sync {
 	}
 
 	/**
+	 * Parse one raw `selections` entry into a [ player_id, email ] pair.
+	 *
+	 * Split out of decode_selections() purely to keep that method's own
+	 * branching (the JSON-shape check plus the loop) under the complexity
+	 * threshold — the per-entry validation lives here instead.
+	 *
+	 * @param mixed $entry One decoded JSON array element.
+	 * @return array{0:int,1:string}|null Null when the entry has no usable id.
+	 */
+	private static function parse_selection_entry( $entry ): ?array {
+		if ( ! is_array( $entry ) ) {
+			return null;
+		}
+
+		$pid = absint( $entry['id'] ?? 0 );
+		if ( $pid <= 0 ) {
+			return null;
+		}
+
+		return array( $pid, sanitize_email( (string) ( $entry['email'] ?? '' ) ) );
+	}
+
+	/**
+	 * Parse the preview form's single JSON `selections` field into a
+	 * player_id => email map.
+	 *
+	 * PT-SAFETY-2: this replaces a players[]/email[pid] pair per row, which
+	 * scaled the request's input-var count with the roster and could exceed
+	 * PHP's max_input_vars on a large sync with no error surfaced anywhere
+	 * (see the JS docblock in render_preview()). One JSON string costs a
+	 * constant few input vars no matter how many rows are selected.
+	 *
+	 * Malformed JSON, a non-array payload, or entries missing a usable
+	 * integer id are simply dropped rather than erroring — same posture as
+	 * the players[]/email[] arrays this replaces, which likewise silently
+	 * ignored anything that didn't parse into a valid pid.
+	 *
+	 * @param string $raw Raw (already unslashed) JSON from $_POST['selections'].
+	 * @return array player_id => sanitized (not yet validated) email string.
+	 */
+	private static function decode_selections( string $raw ): array {
+		$decoded = json_decode( $raw, true );
+		if ( ! is_array( $decoded ) ) {
+			return array();
+		}
+
+		$selections = array();
+		foreach ( $decoded as $entry ) {
+			$parsed = self::parse_selection_entry( $entry );
+			if ( null === $parsed ) {
+				continue;
+			}
+			list( $pid, $email ) = $parsed;
+			$selections[ $pid ]  = $email;
+		}
+
+		return $selections;
+	}
+
+	/**
 	 * Handle the "Apply Selected" form submission.
 	 */
 	public function handle_apply() {
@@ -857,14 +947,11 @@ class SPT_Email_Sync {
 		}
 		check_admin_referer( 'spt_apply_email_sync', 'spt_sync_nonce' );
 
-		// LOW (player-tools): $_POST was read without wp_unslash(), so WordPress's
-		// added slashes survived into sanitize_email() — an address containing a
-		// quote arrived escaped and failed is_email(). Unslash before sanitizing.
-		$raw_players = isset( $_POST['players'] ) ? (array) wp_unslash( $_POST['players'] ) : array();
-		$raw_emails  = isset( $_POST['email'] ) ? (array) wp_unslash( $_POST['email'] ) : array();
-
-		$player_ids = array_map( 'absint', $raw_players );
-		$emails     = array_map( 'sanitize_email', $raw_emails );
+		// wp_unslash() before json_decode(): WordPress adds slashes to every
+		// $_POST scalar, including this JSON string, which would otherwise
+		// corrupt any escaped quote inside an email address.
+		$raw        = isset( $_POST['selections'] ) ? wp_unslash( (string) $_POST['selections'] ) : '';
+		$selections = self::decode_selections( $raw );
 		$updated    = 0;
 		$skipped    = 0;
 
@@ -874,8 +961,8 @@ class SPT_Email_Sync {
 		// the current scan does not offer.
 		$offered = self::offered_map( $this->find_matches() );
 
-		foreach ( $player_ids as $pid ) {
-			$email = $this->writable_email( $offered, $pid, $emails );
+		foreach ( array_keys( $selections ) as $pid ) {
+			$email = $this->writable_email( $offered, $pid, $selections );
 
 			if ( null === $email ) {
 				++$skipped;
