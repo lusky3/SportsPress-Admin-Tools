@@ -728,7 +728,10 @@ class SPSG_Admin_Renderer {
 							<?php
 							$days = array( 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday' );
 							$selected_days = $config->playing_days ?: array();
-							$day_ratios = $config->distribution_rules['day_ratios'] ?? array();
+							// Form-saved configs carry day_ratios; presets, imports and the
+							// REST path carry the documented day_balance. Show whichever is
+							// set so the form does not silently display an even split.
+							$day_ratios = $config->distribution_rules['day_ratios'] ?? $config->distribution_rules['day_balance'] ?? array();
 
 							foreach ( $days as $day ) {
 								if ( in_array( $day, $selected_days ) ) {

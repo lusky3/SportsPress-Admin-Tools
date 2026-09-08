@@ -136,6 +136,119 @@ class SPSG_Schedule_Helper {
 	}
 
 	/**
+	 * Resolve the target share of games for each playing day.
+	 *
+	 * `distribution_rules.day_ratios` is what the sanitizer derives from the
+	 * admin form's day_weights input. `day_balance` is the documented property
+	 * (docs/CONFIGURATION-PROPERTIES.md), what every preset ships and what the
+	 * REST generate path writes from the global day-weights option. An explicit
+	 * `day_ratios` wins when both are present; with neither, every playing day
+	 * gets an equal share.
+	 *
+	 * Shares are normalised so weights (3:1) and ratios (0.75 / 0.25) mean the
+	 * same thing. A playing day the rule leaves out gets a 0 share: that is
+	 * what the REST path produces for a zero-weight day, and keeping the
+	 * even-split default for it would make the shares sum to more than 1.
+	 *
+	 * Shared by the distribution constraint (per-team day balance) and the slot
+	 * allocator (per-date load targets) so the two cannot disagree about what
+	 * the operator asked for.
+	 *
+	 * @param object $config Schedule configuration.
+	 * @return array<string,float> day name => share in [0, 1], one entry per playing day.
+	 */
+	public static function resolve_day_ratios( $config ) {
+		$playing_days = (array) ( $config->playing_days ?? array() );
+
+		$source = self::day_share_source( (array) ( $config->distribution_rules ?? array() ) );
+		$shares = self::sanitize_day_shares( $source, $playing_days );
+		$total  = array_sum( $shares );
+
+		return $total > 0
+			? self::normalize_day_shares( $playing_days, $shares, $total )
+			: self::even_split_ratios( $playing_days );
+	}
+
+	/**
+	 * Scale validated day shares to sum to 1, filling in a 0 share for any
+	 * playing day the configured rule left out.
+	 *
+	 * @param array               $playing_days Playing day names.
+	 * @param array<string,float> $shares       Validated day => share (see {@see sanitize_day_shares()}).
+	 * @param float               $total        Sum of $shares, already known to be > 0.
+	 * @return array<string,float> day name => normalised share.
+	 */
+	private static function normalize_day_shares( $playing_days, $shares, $total ) {
+		$ratios = array();
+
+		foreach ( $playing_days as $day ) {
+			$ratios[ $day ] = isset( $shares[ $day ] ) ? $shares[ $day ] / $total : 0.0;
+		}
+
+		return $ratios;
+	}
+
+	/**
+	 * Equal share for every playing day (the fallback resolve_day_ratios()
+	 * returns when no day rule is configured, or is left in place for any day
+	 * a configured rule doesn't override).
+	 *
+	 * @param array $playing_days Playing day names.
+	 * @return array<string,float> day name => equal share.
+	 */
+	private static function even_split_ratios( $playing_days ) {
+		$default_ratio = count( $playing_days ) > 0 ? 1.0 / count( $playing_days ) : 0.0;
+		$ratios        = array();
+
+		foreach ( $playing_days as $day ) {
+			$ratios[ $day ] = $default_ratio;
+		}
+
+		return $ratios;
+	}
+
+	/**
+	 * Pick which distribution-rules key holds the configured day shares.
+	 * `day_ratios` (the admin form's derived value) wins when present;
+	 * `day_balance` (the documented property) otherwise.
+	 *
+	 * @param array $rules Configuration's distribution_rules.
+	 * @return array Raw day => share source, or empty when neither is set.
+	 */
+	private static function day_share_source( $rules ) {
+		if ( ! empty( $rules['day_ratios'] ) && is_array( $rules['day_ratios'] ) ) {
+			return $rules['day_ratios'];
+		}
+		if ( ! empty( $rules['day_balance'] ) && is_array( $rules['day_balance'] ) ) {
+			return $rules['day_balance'];
+		}
+		return array();
+	}
+
+	/**
+	 * Keep only entries that name an actual playing day and carry a
+	 * non-negative numeric share.
+	 *
+	 * @param array $source       Raw day => share source.
+	 * @param array $playing_days Playing day names.
+	 * @return array<string,float> Validated day => share.
+	 */
+	private static function sanitize_day_shares( $source, $playing_days ) {
+		$shares = array();
+
+		foreach ( $source as $day => $share ) {
+			if ( ! in_array( $day, $playing_days, true ) || ! is_numeric( $share ) ) {
+				continue;
+			}
+			if ( (float) $share >= 0 ) {
+				$shares[ $day ] = (float) $share;
+			}
+		}
+
+		return $shares;
+	}
+
+	/**
 	 * Check whether a venue is blacked out on the given date.
 	 *
 	 * @param int|string $venue_id Venue identifier.

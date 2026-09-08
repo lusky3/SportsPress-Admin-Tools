@@ -174,7 +174,7 @@ SPSG_Schedule_Generator (Main Plugin)
 
 1. **Validation Phase**: Check configuration feasibility (time slots, venues, date range)
 2. **Matchup Phase**: Generate all team pairings based on matchup style and inter-division rules
-3. **Allocation Phase**: Assign matchups to slots using scoring algorithm with constraint validation
+3. **Allocation Phase**: Assign matchups to slots using scoring algorithm with constraint validation. Each team's games are paced across the whole season (a team's k-th of T games is placed near k/T of the way through), dates on which either team already plays are only used when nothing else fits, and the lowest-cost slot near the pace target wins
 4. **Backtracking**: If greedy allocation fails, use backtracking to find valid solution
 5. **Verification Phase**: Final validation of complete schedule against all constraints
 
