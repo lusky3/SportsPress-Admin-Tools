@@ -169,6 +169,8 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 
 	/**
 	 * Get target day distribution ratios from config
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function get_target_day_ratios( $config ) {
 		// This used to read only `distribution_rules.day_ratios`, so for a

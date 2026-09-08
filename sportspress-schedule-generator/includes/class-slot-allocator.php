@@ -832,6 +832,8 @@ class SPSG_Slot_Allocator {
 	 * @param array                       $matchups All matchups being allocated.
 	 * @param SPSG_Schedule_Configuration $config   Configuration.
 	 * @return array<string,float> date => target games.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function build_date_target_load( $matchups, $config ) {
 		$total_games = count( $matchups );
@@ -839,20 +841,46 @@ class SPSG_Slot_Allocator {
 			return array();
 		}
 
-		$ratios        = SPSG_Schedule_Helper::resolve_day_ratios( $config );
-		$dates_per_day = array();
+		$ratios                        = SPSG_Schedule_Helper::resolve_day_ratios( $config );
+		list( $day_of_date, $dates_per_day ) = $this->index_dates_by_day();
+
+		return $this->distribute_target_load( $day_of_date, $dates_per_day, $ratios, $total_games );
+	}
+
+	/**
+	 * Group {@see $slots_by_date}'s dates by the day of the week they fall on.
+	 *
+	 * @return array{0: array<string,string>, 1: array<string,int>} [date => day, day => date count].
+	 */
+	private function index_dates_by_day() {
 		$day_of_date   = array();
+		$dates_per_day = array();
 
 		foreach ( $this->slots_by_date as $date => $slots ) {
 			$day = $slots[0]->day ?? strtolower( gmdate( 'l', strtotime( $date ) ) );
 
-			$day_of_date[ $date ]   = $day;
+			$day_of_date[ $date ]  = $day;
 			$dates_per_day[ $day ] = ( $dates_per_day[ $day ] ?? 0 ) + 1;
 		}
 
+		return array( $day_of_date, $dates_per_day );
+	}
+
+	/**
+	 * Spread each day's configured share of the season's games evenly over
+	 * that day's dates.
+	 *
+	 * @param array<string,string> $day_of_date   Date => day of the week.
+	 * @param array<string,int>    $dates_per_day Day of the week => date count.
+	 * @param array<string,float>  $ratios        Day of the week => target share.
+	 * @param int                  $total_games   Total games being allocated.
+	 * @return array<string,float> Date => target games.
+	 */
+	private function distribute_target_load( $day_of_date, $dates_per_day, $ratios, $total_games ) {
 		$targets = array();
+
 		foreach ( $day_of_date as $date => $day ) {
-			$share             = (float) ( $ratios[ $day ] ?? 0.0 );
+			$share           = (float) ( $ratios[ $day ] ?? 0.0 );
 			$targets[ $date ] = $share * $total_games / $dates_per_day[ $day ];
 		}
 

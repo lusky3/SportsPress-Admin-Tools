@@ -159,7 +159,35 @@ class SPSG_Schedule_Helper {
 	 */
 	public static function resolve_day_ratios( $config ) {
 		$playing_days = (array) ( $config->playing_days ?? array() );
+		$ratios       = self::even_split_ratios( $playing_days );
 
+		$source = self::day_share_source( (array) ( $config->distribution_rules ?? array() ) );
+		if ( empty( $source ) ) {
+			return $ratios;
+		}
+
+		$shares = self::sanitize_day_shares( $source, $playing_days );
+		$total  = array_sum( $shares );
+		if ( $total <= 0 ) {
+			return $ratios;
+		}
+
+		foreach ( $playing_days as $day ) {
+			$ratios[ $day ] = isset( $shares[ $day ] ) ? $shares[ $day ] / $total : 0.0;
+		}
+
+		return $ratios;
+	}
+
+	/**
+	 * Equal share for every playing day (the fallback resolve_day_ratios()
+	 * returns when no day rule is configured, or is left in place for any day
+	 * a configured rule doesn't override).
+	 *
+	 * @param array $playing_days Playing day names.
+	 * @return array<string,float> day name => equal share.
+	 */
+	private static function even_split_ratios( $playing_days ) {
 		$default_ratio = count( $playing_days ) > 0 ? 1.0 / count( $playing_days ) : 0.0;
 		$ratios        = array();
 
@@ -167,29 +195,48 @@ class SPSG_Schedule_Helper {
 			$ratios[ $day ] = $default_ratio;
 		}
 
-		$rules  = (array) ( $config->distribution_rules ?? array() );
-		$source = array();
-		if ( ! empty( $rules['day_ratios'] ) && is_array( $rules['day_ratios'] ) ) {
-			$source = $rules['day_ratios'];
-		} elseif ( ! empty( $rules['day_balance'] ) && is_array( $rules['day_balance'] ) ) {
-			$source = $rules['day_balance'];
-		}
+		return $ratios;
+	}
 
+	/**
+	 * Pick which distribution-rules key holds the configured day shares.
+	 * `day_ratios` (the admin form's derived value) wins when present;
+	 * `day_balance` (the documented property) otherwise.
+	 *
+	 * @param array $rules Configuration's distribution_rules.
+	 * @return array Raw day => share source, or empty when neither is set.
+	 */
+	private static function day_share_source( $rules ) {
+		if ( ! empty( $rules['day_ratios'] ) && is_array( $rules['day_ratios'] ) ) {
+			return $rules['day_ratios'];
+		}
+		if ( ! empty( $rules['day_balance'] ) && is_array( $rules['day_balance'] ) ) {
+			return $rules['day_balance'];
+		}
+		return array();
+	}
+
+	/**
+	 * Keep only entries that name an actual playing day and carry a
+	 * non-negative numeric share.
+	 *
+	 * @param array $source       Raw day => share source.
+	 * @param array $playing_days Playing day names.
+	 * @return array<string,float> Validated day => share.
+	 */
+	private static function sanitize_day_shares( $source, $playing_days ) {
 		$shares = array();
+
 		foreach ( $source as $day => $share ) {
-			if ( in_array( $day, $playing_days, true ) && is_numeric( $share ) && (float) $share >= 0 ) {
+			if ( ! in_array( $day, $playing_days, true ) || ! is_numeric( $share ) ) {
+				continue;
+			}
+			if ( (float) $share >= 0 ) {
 				$shares[ $day ] = (float) $share;
 			}
 		}
 
-		$total = array_sum( $shares );
-		if ( $total > 0 ) {
-			foreach ( $playing_days as $day ) {
-				$ratios[ $day ] = isset( $shares[ $day ] ) ? $shares[ $day ] / $total : 0.0;
-			}
-		}
-
-		return $ratios;
+		return $shares;
 	}
 
 	/**

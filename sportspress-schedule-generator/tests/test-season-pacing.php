@@ -27,12 +27,22 @@ define( 'ABSPATH', dirname( __FILE__ ) . '/' );
 define( 'SPSG_PLUGIN_PATH', dirname( __FILE__ ) . '/../' );
 
 if ( ! function_exists( '__' ) ) {
+	/**
+	 * Stub mirroring the WordPress signature; the unused argument is deliberate.
+	 *
+	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+	 */
 	function __( $s, $d = null ) { return $s; }
 }
 if ( ! function_exists( 'wp_rand' ) ) {
 	function wp_rand( $min = 0, $max = 0 ) { return $max ? rand( $min, $max ) : rand(); }
 }
 if ( ! function_exists( 'get_option' ) ) {
+	/**
+	 * Stub mirroring the WordPress signature; the unused argument is deliberate.
+	 *
+	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+	 */
 	function get_option( $key, $default = false ) { return $default; }
 }
 if ( ! function_exists( 'wp_parse_args' ) ) {
@@ -100,10 +110,16 @@ function sp_teams( $prefix, $n ) {
 	return $out;
 }
 
+/**
+ * @SuppressWarnings(PHPMD.StaticAccess)
+ */
 function sp_id( $entity ) {
 	return SPSG_Schedule_Helper::extract_id( $entity );
 }
 
+/**
+ * @SuppressWarnings(PHPMD.StaticAccess)
+ */
 function sp_allocate( $config ) {
 	SPSG_Abstract_Constraint::reset_validate_cache();
 	SPSG_Schedule_Helper::reset_venue_slots_cache();
