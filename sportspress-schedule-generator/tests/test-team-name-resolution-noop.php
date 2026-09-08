@@ -68,3 +68,4 @@ echo "Passed: $passed\n";
 echo "Failed: $failed\n";
 
 exit( $failed === 0 ? 0 : 1 );
+
