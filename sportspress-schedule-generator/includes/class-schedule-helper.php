@@ -159,18 +159,27 @@ class SPSG_Schedule_Helper {
 	 */
 	public static function resolve_day_ratios( $config ) {
 		$playing_days = (array) ( $config->playing_days ?? array() );
-		$ratios       = self::even_split_ratios( $playing_days );
 
 		$source = self::day_share_source( (array) ( $config->distribution_rules ?? array() ) );
-		if ( empty( $source ) ) {
-			return $ratios;
-		}
-
 		$shares = self::sanitize_day_shares( $source, $playing_days );
 		$total  = array_sum( $shares );
-		if ( $total <= 0 ) {
-			return $ratios;
-		}
+
+		return $total > 0
+			? self::normalize_day_shares( $playing_days, $shares, $total )
+			: self::even_split_ratios( $playing_days );
+	}
+
+	/**
+	 * Scale validated day shares to sum to 1, filling in a 0 share for any
+	 * playing day the configured rule left out.
+	 *
+	 * @param array               $playing_days Playing day names.
+	 * @param array<string,float> $shares       Validated day => share (see {@see sanitize_day_shares()}).
+	 * @param float               $total        Sum of $shares, already known to be > 0.
+	 * @return array<string,float> day name => normalised share.
+	 */
+	private static function normalize_day_shares( $playing_days, $shares, $total ) {
+		$ratios = array();
 
 		foreach ( $playing_days as $day ) {
 			$ratios[ $day ] = isset( $shares[ $day ] ) ? $shares[ $day ] / $total : 0.0;

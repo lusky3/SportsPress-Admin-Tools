@@ -26,25 +26,22 @@
 define( 'ABSPATH', dirname( __FILE__ ) . '/' );
 define( 'SPSG_PLUGIN_PATH', dirname( __FILE__ ) . '/../' );
 
-if ( ! function_exists( '__' ) ) {
-	/**
-	 * Stub mirroring the WordPress signature; the unused argument is deliberate.
-	 *
-	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
-	 */
-	function __( $s, $d = null ) { return $s; }
-}
+/**
+ * Stub mirroring the WordPress signature; the unused argument is deliberate.
+ *
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
+function __( $s, $d = null ) { return $s; }
+
 if ( ! function_exists( 'wp_rand' ) ) {
 	function wp_rand( $min = 0, $max = 0 ) { return $max ? rand( $min, $max ) : rand(); }
 }
-if ( ! function_exists( 'get_option' ) ) {
-	/**
-	 * Stub mirroring the WordPress signature; the unused argument is deliberate.
-	 *
-	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
-	 */
-	function get_option( $key, $default = false ) { return $default; }
-}
+/**
+ * Stub mirroring the WordPress signature; the unused argument is deliberate.
+ *
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
+function get_option( $key, $default = false ) { return $default; }
 if ( ! function_exists( 'wp_parse_args' ) ) {
 	function wp_parse_args( $args, $defaults = array() ) { return array_merge( $defaults, (array) $args ); }
 }
