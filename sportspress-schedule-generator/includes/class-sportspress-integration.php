@@ -40,6 +40,72 @@ class SPSG_Sports_Press_Integration {
 	}
 
 	/**
+	 * Resolve a stored team reference to a display name.
+	 *
+	 * A division's `teams` entries are normally plain name strings — typed
+	 * by hand, or embedded by the "Load from SportsPress" picker, which
+	 * writes the team's real name at the time it was added. But a
+	 * configuration can also be authored with a bare SportsPress `sp_team`
+	 * post ID in that same slot (e.g. written directly through the REST API
+	 * rather than through the picker), in which case the numeric string has
+	 * no display meaning of its own — every consumer that shows or matches
+	 * it (the admin form, the generated schedule, the SportsPress import's
+	 * name lookup) would otherwise show/match the raw ID instead of the
+	 * team's actual name.
+	 *
+	 * Only ever resolves an ID that names a real, published `sp_team` post;
+	 * anything else (including a literal name that happens to be numeric)
+	 * is returned unchanged.
+	 *
+	 * @param mixed $team_id_or_name Whatever is stored for this team slot.
+	 * @return mixed The real SportsPress team title when $team_id_or_name is
+	 *               a published sp_team post ID; otherwise the input as given.
+	 */
+	public static function resolve_team_name( $team_id_or_name ) {
+		if ( ! self::looks_like_team_id( $team_id_or_name ) ) {
+			return $team_id_or_name;
+		}
+
+		$post = self::published_team_post( (int) $team_id_or_name );
+
+		return $post ? $post->post_title : $team_id_or_name;
+	}
+
+	/**
+	 * Whether a stored team-slot value is shaped like a SportsPress post ID
+	 * (a bare digit string), as opposed to a literal team name.
+	 *
+	 * @param mixed $value Whatever is stored for this team slot.
+	 * @return bool
+	 */
+	private static function looks_like_team_id( $value ) {
+		if ( ! is_string( $value ) && ! is_int( $value ) ) {
+			return false;
+		}
+		return ctype_digit( (string) $value );
+	}
+
+	/**
+	 * Fetch a published sp_team post by ID, or null if it doesn't resolve to
+	 * one (missing, wrong post type, or not published).
+	 *
+	 * @param int $id Candidate post ID.
+	 * @return WP_Post|null
+	 */
+	private static function published_team_post( $id ) {
+		if ( ! self::is_sportspress_active() || ! function_exists( 'get_post' ) ) {
+			return null;
+		}
+
+		$post = get_post( $id );
+		if ( ! $post || 'sp_team' !== $post->post_type || 'publish' !== $post->post_status ) {
+			return null;
+		}
+
+		return $post;
+	}
+
+	/**
 	 * Get all SportsPress teams
 	 */
 	public static function get_teams( $args = array() ) {
