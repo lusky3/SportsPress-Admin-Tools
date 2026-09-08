@@ -47,11 +47,22 @@ class SPSG_Schedule_Helper {
 	 *
 	 * Games are grouped by real calendar week (Monday-Sunday, ISO-8601), so a
 	 * league playing e.g. Friday and Sunday both land under the same week
-	 * number, then weeks are numbered 1, 2, 3... in the order they first
-	 * appear (chronologically, assuming the schedule is date-ordered) --
-	 * "Week 1 of the season", not the ISO week-of-year number, which would
-	 * reset at each calendar year boundary (this plugin's seasons routinely
-	 * cross one) and mean nothing to an admin reading an export.
+	 * number. Weeks are then numbered 1, 2, 3... in true chronological
+	 * order -- "Week 1 of the season", not the ISO week-of-year number,
+	 * which would reset at each calendar year boundary (this plugin's
+	 * seasons routinely cross one) and mean nothing to an admin reading an
+	 * export.
+	 *
+	 * Numbering by the order dates first appear in `$schedule` (rather than
+	 * sorting) would seem equivalent, since a generated schedule is *mostly*
+	 * date-ordered, but isn't reliably so -- the slot allocator can place a
+	 * later matchup before an earlier one depending on how the search
+	 * proceeds, and did so on a real 272-game season, ending up with e.g.
+	 * "Week 3 — October 25" printed before "Week 4 — October 18". Grouping
+	 * dates into real weeks first, then sorting those week keys (an ISO
+	 * year + zero-padded ISO week number sorts correctly as a plain string)
+	 * before assigning sequential numbers avoids depending on the input
+	 * order at all.
 	 *
 	 * Shared by the CSV and XLSX exporters so a game reports the same week
 	 * number in either format -- neither a plain game object nor array ever
@@ -62,13 +73,33 @@ class SPSG_Schedule_Helper {
 	 * @return array<string,int> Date (Y-m-d) => week number.
 	 */
 	public static function build_week_number_map( $schedule ) {
-		$week_by_key  = array();
+		$dates_by_key = self::group_dates_by_real_week( $schedule );
+		ksort( $dates_by_key );
+
 		$week_by_date = array();
-		$next_week    = 1;
+		$week_num     = 1;
+		foreach ( $dates_by_key as $dates_in_week ) {
+			foreach ( $dates_in_week as $date ) {
+				$week_by_date[ $date ] = $week_num;
+			}
+			++$week_num;
+		}
+
+		return $week_by_date;
+	}
+
+	/**
+	 * Group a schedule's distinct dates by real calendar week.
+	 *
+	 * @param array $schedule Array of game objects/arrays, each carrying a `date`.
+	 * @return array<string,array<string,string>> ISO week key => set of dates (as a value=>value map, to dedupe).
+	 */
+	private static function group_dates_by_real_week( $schedule ) {
+		$dates_by_key = array();
 
 		foreach ( (array) $schedule as $game ) {
 			$date = is_array( $game ) ? ( $game['date'] ?? '' ) : ( $game->date ?? '' );
-			if ( '' === $date || isset( $week_by_date[ $date ] ) ) {
+			if ( '' === $date ) {
 				continue;
 			}
 
@@ -76,13 +107,11 @@ class SPSG_Schedule_Helper {
 			if ( null === $key ) {
 				continue;
 			}
-			if ( ! isset( $week_by_key[ $key ] ) ) {
-				$week_by_key[ $key ] = $next_week++;
-			}
-			$week_by_date[ $date ] = $week_by_key[ $key ];
+
+			$dates_by_key[ $key ][ $date ] = $date;
 		}
 
-		return $week_by_date;
+		return $dates_by_key;
 	}
 
 	/**

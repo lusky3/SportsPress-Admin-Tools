@@ -169,6 +169,26 @@ xdw_assert(
 	'week numbers are sequential starting at 1, in chronological order (got ' . $map['2026-09-25'] . ', ' . $map['2026-10-02'] . ')'
 );
 
+// Week numbers must be chronological even when the schedule array itself
+// isn't -- a real 272-game season fed to the pre-fix implementation (which
+// numbered by "order first seen in $schedule") produced "Week 3" for a date
+// that fell chronologically AFTER "Week 4", because the slot allocator
+// doesn't guarantee its output is date-ordered.
+$map_out_of_order = SPSG_Schedule_Helper::build_week_number_map(
+	array(
+		xdw_game( '2026-10-16', 'A', 'B', 'D1' ), // 3rd real week, listed 1st
+		xdw_game( '2026-09-25', 'A', 'B', 'D1' ), // 1st real week, listed 2nd
+		xdw_game( '2026-10-09', 'A', 'B', 'D1' ), // 2nd real week, listed 3rd
+	)
+);
+xdw_assert(
+	1 === $map_out_of_order['2026-09-25']
+		&& 2 === $map_out_of_order['2026-10-09']
+		&& 3 === $map_out_of_order['2026-10-16'],
+	'week numbers stay chronological even when input games are not date-ordered (got '
+		. $map_out_of_order['2026-09-25'] . ', ' . $map_out_of_order['2026-10-09'] . ', ' . $map_out_of_order['2026-10-16'] . ')'
+);
+
 // A season crossing a calendar-year boundary: these two dates are adjacent
 // days (Thu/Fri of the same real week) straddling Dec 31 / Jan 1.
 $map_boundary = SPSG_Schedule_Helper::build_week_number_map(
@@ -216,6 +236,51 @@ if ( ! class_exists( 'ZipArchive' ) ) {
 			xdw_assert(
 				false !== strpos( $shared_xml, 'Week 1 - Friday' ),
 				'both games share "Week 1" in their date headers (' . ( false !== strpos( $shared_xml, 'Week 2' ) ? 'found a spurious Week 2' : 'no Week 2 present' ) . ')'
+			);
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 2b. Compact XLSX: date SECTIONS themselves must appear in chronological
+//     order, not the schedule array's own (allocator-dependent) order. Found
+//     via direct verification against a real 272-game season, where a later
+//     date's section printed before an earlier one's.
+// ---------------------------------------------------------------------------
+echo "\nTest 2b: compact XLSX date sections are in chronological order\n";
+
+if ( ! class_exists( 'ZipArchive' ) ) {
+	echo "  (skipped — PHP ZipArchive extension not available)\n";
+} else {
+	$schedule = array(
+		xdw_game( '2026-10-16', 'A', 'B', 'D1' ), // listed 1st, chronologically 3rd
+		xdw_game( '2026-09-25', 'A', 'B', 'D1' ), // listed 2nd, chronologically 1st
+		xdw_game( '2026-10-09', 'A', 'B', 'D1' ), // listed 3rd, chronologically 2nd
+	);
+
+	$exporter = new SPSG_XLSX_Exporter();
+	$result   = $exporter->export( $schedule, null, 'compact' );
+
+	if ( xdw_assert( ! is_wp_error( $result ), 'compact export (out-of-order input) succeeds' ) ) {
+		$zip = new ZipArchive();
+		if ( xdw_assert( $zip->open( $result['path'] ) === true, 'compact XLSX opens as a ZIP' ) ) {
+			$shared_xml = $zip->getFromName( 'xl/sharedStrings.xml' );
+			$zip->close();
+
+			preg_match_all( '/<t>(Week \d+ - [^<]+)<\/t>/', $shared_xml, $labels );
+			$pos_sept25 = null;
+			$pos_oct16  = null;
+			foreach ( $labels[1] as $i => $label ) {
+				if ( false !== strpos( $label, 'September 25' ) ) {
+					$pos_sept25 = $i;
+				}
+				if ( false !== strpos( $label, 'October 16' ) ) {
+					$pos_oct16 = $i;
+				}
+			}
+			xdw_assert(
+				null !== $pos_sept25 && null !== $pos_oct16 && $pos_sept25 < $pos_oct16,
+				'September 25 section appears before October 16, despite the reverse input order'
 			);
 		}
 	}

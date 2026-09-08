@@ -305,11 +305,16 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 	 * @throws \RuntimeException If ZIP file cannot be created.
 	 */
 	private function write_xlsx_compact( $filepath, $rows, $division_map ) {
-		// Group rows by date, preserving order.
+		// Group rows by date. `$rows` follows the schedule's own order, which
+		// the slot allocator does not guarantee is date-ordered (it can place
+		// a later matchup before an earlier one depending on how its search
+		// proceeds) -- ksort() puts the date sections themselves back into
+		// calendar order; 'Y-m-d' keys sort correctly as plain strings.
 		$by_date = array();
 		foreach ( $rows as $r ) {
 			$by_date[ $r['date'] ][] = $r;
 		}
+		ksort( $by_date );
 
 		// Sort each date group by venue then time.
 		foreach ( $by_date as &$games ) {
