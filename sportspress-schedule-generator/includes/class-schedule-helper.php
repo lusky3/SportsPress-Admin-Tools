@@ -136,6 +136,63 @@ class SPSG_Schedule_Helper {
 	}
 
 	/**
+	 * Resolve the target share of games for each playing day.
+	 *
+	 * `distribution_rules.day_ratios` is what the sanitizer derives from the
+	 * admin form's day_weights input. `day_balance` is the documented property
+	 * (docs/CONFIGURATION-PROPERTIES.md), what every preset ships and what the
+	 * REST generate path writes from the global day-weights option. An explicit
+	 * `day_ratios` wins when both are present; with neither, every playing day
+	 * gets an equal share.
+	 *
+	 * Shares are normalised so weights (3:1) and ratios (0.75 / 0.25) mean the
+	 * same thing. A playing day the rule leaves out gets a 0 share: that is
+	 * what the REST path produces for a zero-weight day, and keeping the
+	 * even-split default for it would make the shares sum to more than 1.
+	 *
+	 * Shared by the distribution constraint (per-team day balance) and the slot
+	 * allocator (per-date load targets) so the two cannot disagree about what
+	 * the operator asked for.
+	 *
+	 * @param object $config Schedule configuration.
+	 * @return array<string,float> day name => share in [0, 1], one entry per playing day.
+	 */
+	public static function resolve_day_ratios( $config ) {
+		$playing_days = (array) ( $config->playing_days ?? array() );
+
+		$default_ratio = count( $playing_days ) > 0 ? 1.0 / count( $playing_days ) : 0.0;
+		$ratios        = array();
+
+		foreach ( $playing_days as $day ) {
+			$ratios[ $day ] = $default_ratio;
+		}
+
+		$rules  = (array) ( $config->distribution_rules ?? array() );
+		$source = array();
+		if ( ! empty( $rules['day_ratios'] ) && is_array( $rules['day_ratios'] ) ) {
+			$source = $rules['day_ratios'];
+		} elseif ( ! empty( $rules['day_balance'] ) && is_array( $rules['day_balance'] ) ) {
+			$source = $rules['day_balance'];
+		}
+
+		$shares = array();
+		foreach ( $source as $day => $share ) {
+			if ( in_array( $day, $playing_days, true ) && is_numeric( $share ) && (float) $share >= 0 ) {
+				$shares[ $day ] = (float) $share;
+			}
+		}
+
+		$total = array_sum( $shares );
+		if ( $total > 0 ) {
+			foreach ( $playing_days as $day ) {
+				$ratios[ $day ] = isset( $shares[ $day ] ) ? $shares[ $day ] / $total : 0.0;
+			}
+		}
+
+		return $ratios;
+	}
+
+	/**
 	 * Check whether a venue is blacked out on the given date.
 	 *
 	 * @param int|string $venue_id Venue identifier.

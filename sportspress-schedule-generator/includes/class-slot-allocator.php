@@ -119,12 +119,68 @@ class SPSG_Slot_Allocator {
 	/**
 	 * Maximum number of valid candidate slots scored per matchup.
 	 *
-	 * The candidate window is walked chronologically, so this bounds the cost
-	 * evaluation to the earliest N placeable slots — schedules still fill from
-	 * the start of the season, but within that window the lowest-cost slot wins
-	 * instead of blindly taking the first one (H14).
+	 * Candidates are gathered from the dates closest to the matchup's pace
+	 * target outwards (see {@see find_best_slot()}), so this bounds the cost
+	 * evaluation to the N placeable slots nearest the point in the season where
+	 * the game belongs; within that window the lowest-cost slot wins (H14).
+	 *
+	 * The window used to be walked chronologically from the season start. Once
+	 * a division's early dates were occupied, both teams of every remaining
+	 * matchup already played on every date inside the window, so the
+	 * double-header penalty had nowhere to steer and the game landed on an
+	 * early date anyway: a real 272-game season came out with 124 team
+	 * double-headers packed into 31 of 49 dates with the last two months empty.
 	 */
 	const MAX_SLOT_CANDIDATES = 15;
+
+	/**
+	 * Cost charged per playing date between a candidate slot and the matchup's
+	 * pace target. The k-th of a team's T games belongs roughly k/T of the way
+	 * through the season; this term keeps the pick near that point when the
+	 * soft constraints alone would not care, while staying small enough that a
+	 * clear time-slot or day-balance win can still move a game by a date or two.
+	 */
+	const PACING_COST_PER_DATE = 20.0;
+
+	/**
+	 * Cost charged for how full a candidate date already is, scaled by the
+	 * date's load relative to its target (a date carrying its whole target
+	 * costs the full amount). Every team's k-th game shares the same pace
+	 * target, so without this term all divisions pile onto the target date
+	 * until it is full and the dates in between stay nearly empty; with it a
+	 * date that already carries several games loses to a lightly loaded
+	 * neighbour.
+	 *
+	 * The target is the day's configured share of the season's games divided
+	 * over that day's dates (see {@see $date_target_load}), not the date's raw
+	 * capacity: measuring against capacity would silently pull games toward
+	 * whichever day has more slots and override the operator's day balance.
+	 *
+	 * The charge grows with the square of load / target, so a date below its
+	 * target stays cheap (a game there is not worth a two-date pace slip) while
+	 * a date past its target quickly loses to any neighbour with room.
+	 */
+	const DATE_LOAD_COST = 60.0;
+
+	/**
+	 * Target number of games per playing date, keyed by date. Built in
+	 * {@see allocate()} from the total matchup count and the day shares the
+	 * configuration asks for ({@see SPSG_Schedule_Helper::resolve_day_ratios()}).
+	 * Empty when find_best_slot() is used without allocate(); the load term
+	 * then falls back to the fraction of the date's slots in use.
+	 *
+	 * @var array<string,float>
+	 */
+	private $date_target_load = array();
+
+	/**
+	 * Total games each team will play, counted from the matchup list handed to
+	 * {@see allocate()}. Used to compute pace targets; falls back to the
+	 * configuration's games_per_team when a team is missing.
+	 *
+	 * @var array<string,int>
+	 */
+	private $team_total_games = array();
 
 	/**
 	 * Cost credited to a slot at the home team's preferred venue. Large enough
@@ -196,6 +252,15 @@ class SPSG_Slot_Allocator {
 		// and cancellation transients still bound total runtime.
 		$this->max_backtrack_depth = max( 50, count( $matchups ) * 5 );
 
+		// Per-team game totals drive the pace targets in find_best_slot().
+		$this->team_total_games = array();
+		foreach ( $matchups as $matchup ) {
+			foreach ( array( $matchup->home_team, $matchup->away_team ) as $team ) {
+				$team_id                            = $this->extract_id( $team );
+				$this->team_total_games[ $team_id ] = ( $this->team_total_games[ $team_id ] ?? 0 ) + 1;
+			}
+		}
+
 		// Generate available slots
 		$this->available_slots = $this->generate_available_slots( $config );
 
@@ -206,6 +271,8 @@ class SPSG_Slot_Allocator {
 		}
 		$this->sorted_slot_dates = array_keys( $this->slots_by_date );
 		sort( $this->sorted_slot_dates );
+
+		$this->date_target_load = $this->build_date_target_load( $matchups, $config );
 
 		if ( empty( $this->available_slots ) ) {
 			return new WP_Error(
@@ -541,14 +608,28 @@ class SPSG_Slot_Allocator {
 	 * Find best available slot for matchup
 	 *
 	 * Uses date-indexed schedule for O(1) conflict checks and caps
-	 * cost evaluation at the first {@see MAX_SLOT_CANDIDATES} valid slots for
+	 * cost evaluation at {@see MAX_SLOT_CANDIDATES} valid slots for
 	 * performance.
 	 *
 	 * H14: this used to return the first valid slot outright, which meant the
 	 * soft (distribution) and optimization (division grouping) constraints never
-	 * influenced placement at all. Candidates are still gathered in chronological
-	 * order — so schedules still fill from the start of the season — but the
-	 * lowest-cost candidate within that window is the one that gets used.
+	 * influenced placement at all. The lowest-cost candidate within a bounded
+	 * window is used instead.
+	 *
+	 * Candidate selection:
+	 *
+	 *  1. Dates are visited from the matchup's pace target outwards. The k-th
+	 *     of a team's T games belongs about k/T of the way through the season;
+	 *     the target is the average of the two teams' positions. Walking dates
+	 *     chronologically instead meant the window only ever saw the first few
+	 *     dates of the season, and once those were occupied every remaining
+	 *     game became a double-header on one of them.
+	 *  2. Dates on which either team already plays are held back and only
+	 *     scored when no other date can take the game, so a team plays twice on
+	 *     one date only when the configuration genuinely leaves no alternative.
+	 *  3. Within the window the constraint-manager cost decides, plus a small
+	 *     pacing term ({@see PACING_COST_PER_DATE}) so the pick stays near the
+	 *     target unless a soft constraint has a real reason to move it.
 	 *
 	 * @param object                      $matchup Matchup object
 	 * @param array                       $used_slots Already used slots
@@ -557,55 +638,219 @@ class SPSG_Slot_Allocator {
 	 * @return object|null Best slot or null
 	 */
 	public function find_best_slot( $matchup, $used_slots, $schedule_by_date, $config ) {
-		$best_slot          = null;
-		$best_cost          = null;
-		$candidates_checked = 0;
-		$max_candidates     = self::MAX_SLOT_CANDIDATES;
+		$home_id = $this->extract_id( $matchup->home_team );
+		$away_id = $this->extract_id( $matchup->away_team );
 
 		// Resolve home team's preferred venue (if configured)
 		$preferred_venue_id = null;
 		if ( ! empty( $config->home_away_preferences ) ) {
-			$home_id            = $this->extract_id( $matchup->home_team );
 			$preferred_venue_id = $config->home_away_preferences[ $home_id ] ?? null;
 		}
 
-		// Walk dates in chronological order; for each date scan only its
-		// own slots. This turns the inner loop from O(total_slots) into
-		// O(slots_per_day) which is dramatically smaller for typical seasons.
 		$dates = ! empty( $this->sorted_slot_dates ) ? $this->sorted_slot_dates : array_keys( $this->slots_by_date );
+		if ( empty( $dates ) ) {
+			return null;
+		}
 
-		foreach ( $dates as $date ) {
-			$day_slots = $this->slots_by_date[ $date ] ?? array();
-
-			foreach ( $day_slots as $slot ) {
-				$slot_key = $this->get_slot_key( $slot );
-
-				if ( isset( $used_slots[ $slot_key ] ) ) {
+		// Games already placed for each team, and the dates either team is
+		// already playing on. One pass over the schedule, O(games).
+		$placed     = array(
+			$home_id => 0,
+			$away_id => 0,
+		);
+		$busy_dates = array();
+		foreach ( $schedule_by_date as $date => $games ) {
+			foreach ( $games as $existing_game ) {
+				if ( ! $this->has_team_conflict( $existing_game, $home_id, $away_id ) ) {
 					continue;
 				}
+				$busy_dates[ $date ] = true;
 
-				// Build the game once and reuse it for validation and scoring.
-				$game = $this->create_game( $matchup, $slot, $config );
-
-				if ( ! $this->is_slot_valid( $matchup, $slot, $schedule_by_date, $config, $game ) ) {
-					continue;
+				$existing_home = $this->extract_id( $existing_game->home_team );
+				$existing_away = $this->extract_id( $existing_game->away_team );
+				if ( $existing_home === $home_id || $existing_away === $home_id ) {
+					$placed[ $home_id ]++;
 				}
-
-				$cost = $this->calculate_slot_cost( $game, $slot, $schedule_by_date, $config, $preferred_venue_id );
-
-				if ( null === $best_cost || $cost < $best_cost ) {
-					$best_cost = $cost;
-					$best_slot = $slot;
-				}
-
-				$candidates_checked++;
-				if ( $candidates_checked >= $max_candidates ) {
-					return $best_slot;
+				if ( $existing_home === $away_id || $existing_away === $away_id ) {
+					$placed[ $away_id ]++;
 				}
 			}
 		}
 
-		return $best_slot;
+		$ordered_dates = $this->order_dates_by_pace( $dates, $placed, $config );
+
+		// Pass 1: dates neither team plays on. Pass 2 (double-headers) only
+		// runs when pass 1 found nothing placeable at all.
+		foreach ( array( false, true ) as $allow_busy ) {
+			$best_slot          = null;
+			$best_cost          = null;
+			$candidates_checked = 0;
+
+			foreach ( $ordered_dates as $entry ) {
+				$date = $entry['date'];
+				if ( isset( $busy_dates[ $date ] ) !== $allow_busy ) {
+					continue;
+				}
+
+				$pacing_cost = $entry['distance'] * self::PACING_COST_PER_DATE;
+
+				foreach ( $this->slots_by_date[ $date ] ?? array() as $slot ) {
+					$slot_key = $this->get_slot_key( $slot );
+
+					if ( isset( $used_slots[ $slot_key ] ) ) {
+						continue;
+					}
+
+					// Build the game once and reuse it for validation and scoring.
+					$game = $this->create_game( $matchup, $slot, $config );
+
+					if ( ! $this->is_slot_valid( $matchup, $slot, $schedule_by_date, $config, $game ) ) {
+						continue;
+					}
+
+					$cost = $this->calculate_slot_cost( $game, $slot, $schedule_by_date, $config, $preferred_venue_id ) + $pacing_cost;
+
+					if ( null === $best_cost || $cost < $best_cost ) {
+						$best_cost = $cost;
+						$best_slot = $slot;
+					}
+
+					$candidates_checked++;
+					if ( $candidates_checked >= self::MAX_SLOT_CANDIDATES ) {
+						break 2;
+					}
+				}
+			}
+
+			if ( null !== $best_slot ) {
+				return $best_slot;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Order the season's playing dates by distance from the matchup's pace
+	 * target, nearest first (earlier date wins ties).
+	 *
+	 * When neither team's total is known (a caller that bypassed allocate()
+	 * with a configuration that has no games_per_team) the dates come back in
+	 * chronological order with a zero distance, i.e. the pre-pacing behaviour.
+	 *
+	 * @param array                       $dates  Chronologically sorted dates.
+	 * @param array<string,int>           $placed Games already placed per team id (both teams).
+	 * @param SPSG_Schedule_Configuration $config Configuration.
+	 * @return array List of ['date' => string, 'distance' => float] entries.
+	 */
+	private function order_dates_by_pace( $dates, $placed, $config ) {
+		$date_count = count( $dates );
+		$targets    = array();
+
+		foreach ( $placed as $team_id => $games_placed ) {
+			$target = $this->pace_target_index( $team_id, $games_placed, $date_count, $config );
+			if ( null !== $target ) {
+				$targets[] = $target;
+			}
+		}
+
+		$ordered = array();
+
+		if ( empty( $targets ) ) {
+			foreach ( $dates as $date ) {
+				$ordered[] = array(
+					'date'     => $date,
+					'distance' => 0.0,
+				);
+			}
+			return $ordered;
+		}
+
+		$ideal = array_sum( $targets ) / count( $targets );
+
+		foreach ( $dates as $index => $date ) {
+			$ordered[] = array(
+				'date'     => $date,
+				'distance' => abs( $index - $ideal ),
+				'index'    => $index,
+			);
+		}
+
+		usort(
+			$ordered,
+			function ( $a, $b ) {
+				if ( $a['distance'] === $b['distance'] ) {
+					return $a['index'] <=> $b['index'];
+				}
+				return $a['distance'] <=> $b['distance'];
+			}
+		);
+
+		return $ordered;
+	}
+
+	/**
+	 * Build the per-date target load: the day's configured share of all games
+	 * spread evenly over that day's playing dates.
+	 *
+	 * With Fri/Sun play, 272 games and a 62/38 split over 25 Fridays and 24
+	 * Sundays, a Friday targets ~6.7 games and a Sunday ~4.3. Dates whose day
+	 * has a 0 share get a 0 target.
+	 *
+	 * @param array                       $matchups All matchups being allocated.
+	 * @param SPSG_Schedule_Configuration $config   Configuration.
+	 * @return array<string,float> date => target games.
+	 */
+	private function build_date_target_load( $matchups, $config ) {
+		$total_games = count( $matchups );
+		if ( $total_games <= 0 || empty( $this->slots_by_date ) ) {
+			return array();
+		}
+
+		$ratios        = SPSG_Schedule_Helper::resolve_day_ratios( $config );
+		$dates_per_day = array();
+		$day_of_date   = array();
+
+		foreach ( $this->slots_by_date as $date => $slots ) {
+			$day = $slots[0]->day ?? strtolower( gmdate( 'l', strtotime( $date ) ) );
+
+			$day_of_date[ $date ]   = $day;
+			$dates_per_day[ $day ] = ( $dates_per_day[ $day ] ?? 0 ) + 1;
+		}
+
+		$targets = array();
+		foreach ( $day_of_date as $date => $day ) {
+			$share             = (float) ( $ratios[ $day ] ?? 0.0 );
+			$targets[ $date ] = $share * $total_games / $dates_per_day[ $day ];
+		}
+
+		return $targets;
+	}
+
+	/**
+	 * Where in the season (as a fractional index into the sorted date list) a
+	 * team's next game belongs.
+	 *
+	 * A team with T games spread evenly over D dates plays its k-th game
+	 * (0-based) at fraction (k + 0.5) / T of the season, i.e. around date index
+	 * (k + 0.5) / T * D - 0.5.
+	 *
+	 * @param string                      $team_id      Team id.
+	 * @param int                         $games_placed Games already scheduled for the team.
+	 * @param int                         $date_count   Number of playing dates in the season.
+	 * @param SPSG_Schedule_Configuration $config       Configuration (games_per_team fallback).
+	 * @return float|null Target index, or null when the team's total is unknown.
+	 */
+	private function pace_target_index( $team_id, $games_placed, $date_count, $config ) {
+		$total = (int) ( $this->team_total_games[ $team_id ] ?? 0 );
+		if ( $total <= 0 ) {
+			$total = (int) ( $config->games_per_team ?? 0 );
+		}
+		if ( $total <= 0 || $date_count <= 0 ) {
+			return null;
+		}
+
+		return ( ( $games_placed + 0.5 ) / $total ) * $date_count - 0.5;
 	}
 
 	/**
@@ -639,6 +884,25 @@ class SPSG_Slot_Allocator {
 			foreach ( $same_day_games as $existing_game ) {
 				if ( $this->has_team_conflict( $existing_game, $home_team_id, $away_team_id ) ) {
 					$cost += self::SAME_DATE_TEAM_PENALTY;
+				}
+			}
+		}
+
+		// Spread load across dates: prefer a date with room over one that is
+		// already busy, measured against the date's target share of the season
+		// (see DATE_LOAD_COST). A date whose day is meant to carry no games at
+		// all is discouraged for every game, first one included.
+		if ( ! empty( $same_day_games ) || array_key_exists( $slot->date, $this->date_target_load ) ) {
+			$games_on_date = count( $same_day_games );
+			if ( array_key_exists( $slot->date, $this->date_target_load ) ) {
+				$target = $this->date_target_load[ $slot->date ];
+				$cost  += $target > 0
+					? self::DATE_LOAD_COST * pow( $games_on_date / $target, 2 )
+					: self::DATE_LOAD_COST * pow( 2 + $games_on_date, 2 );
+			} else {
+				$date_capacity = count( $this->slots_by_date[ $slot->date ] ?? array() );
+				if ( $date_capacity > 0 ) {
+					$cost += self::DATE_LOAD_COST * pow( $games_on_date / $date_capacity, 2 );
 				}
 			}
 		}
