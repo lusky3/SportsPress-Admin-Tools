@@ -4,7 +4,7 @@ Tags: sportspress, player, roster, csv, captain
 Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.3.0
+Stable tag: 1.3.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -41,6 +41,9 @@ CSV files must have "Team" and "Name" columns. Player names are automatically cl
 Yes. The batch list creator supports both "Create new" and "Update existing" modes. Update mode finds lists matching team and season, then replaces players.
 
 == Changelog ==
+
+= 1.3.1 =
+* Fix: applying the email sync preview on a large roster could silently drop rows. The form posted one field pair per matched player, and PHP's max_input_vars (1000 by default) has no error path -- it just stops parsing past the limit, so a big "Select All" wrote some players and dropped the rest with no indication anything was lost. Caught live on staging: a 546-row selection wrote 487 and silently dropped 59. Apply now posts one JSON field regardless of how many rows are selected, so this can't recur no matter how the host is configured.
 
 = 1.3.0 =
 * The email sync tool's order-billing-name matches (the "verify" bucket) are now explicitly sorted newest-order-first rather than relying on WooCommerce's default, and each option's Source column now names its own order's date -- when two orders share a name under different addresses, you can now tell at a glance which is more recent instead of checking the database by hand.

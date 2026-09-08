@@ -118,6 +118,15 @@ if (!function_exists('wp_get_object_terms')) {
 if (!function_exists('is_email')) {
     function is_email($e) { return (bool) preg_match('/^[^@\s]+@[^@\s]+\.[^@\s]+$/', (string) $e); }
 }
+if (!function_exists('sanitize_email')) {
+    function sanitize_email($e) { return trim((string) $e); }
+}
+if (!function_exists('absint')) {
+    function absint($n) { return abs((int) $n); }
+}
+if (!function_exists('wp_unslash')) {
+    function wp_unslash($v) { return $v; }
+}
 if (!function_exists('wp_list_pluck')) {
     function wp_list_pluck($list, $field) {
         $out = array();
@@ -661,24 +670,28 @@ invoke_private($sync, 'render_preview');
 $html = ob_get_clean();
 
 assert_test(
-    strpos($html, 'value="900" checked') !== false,
+    strpos($html, 'data-player-id="900" checked') !== false,
     'High-confidence row is pre-checked'
 );
 assert_test(
-    strpos($html, 'value="901" checked') === false,
+    strpos($html, 'data-player-id="901" checked') === false,
     'Weak row renders UNCHECKED'
 );
 assert_test(
-    strpos($html, 'class="spt-high-confidence" name="players[]" value="900"') !== false,
+    strpos($html, 'class="spt-player-checkbox spt-high-confidence" data-player-id="900"') !== false,
     'High-confidence row carries the spt-high-confidence class'
 );
 assert_test(
-    strpos($html, 'class="spt-low-confidence" name="players[]" value="901"') !== false,
+    strpos($html, 'class="spt-player-checkbox spt-low-confidence" data-player-id="901"') !== false,
     'Weak row carries the spt-low-confidence class'
 );
 assert_test(
-    strpos($html, 'querySelectorAll(\'input[name="players[]"]\')') !== false,
+    strpos($html, 'querySelectorAll(".spt-player-checkbox")') !== false,
     'Check-all JS targets every row, high and low confidence alike'
+);
+assert_test(
+    strpos($html, 'name="players[]"') === false && strpos($html, "name=\"email[") === false,
+    'Row inputs carry no name -- only the JSON selections field the submit handler builds gets posted'
 );
 assert_test(
     strpos($html, 'id="spt-check-all" title=') !== false && strpos($html, 'id="spt-check-all" checked') === false,
@@ -709,7 +722,7 @@ assert_test(
     'Nothing is pre-checked when every row is low confidence (check-all included)'
 );
 assert_test(
-    strpos($html, 'querySelectorAll(\'input[name="players[]"]\')') !== false,
+    strpos($html, 'querySelectorAll(".spt-player-checkbox")') !== false,
     'Check-all can still toggle the low-confidence row'
 );
 
@@ -791,6 +804,59 @@ $stale_offered = invoke_private($sync, 'offered_map', array(array()));
 assert_test(
     !invoke_private($sync, 'write_permitted', array($stale_offered, 10, 'real@example.com')),
     'a row the current scan no longer offers is refused (stale form)'
+);
+
+echo "\n-- 9. decode_selections(): the JSON 'selections' field --\n";
+
+// PT-SAFETY-2: this replaced players[]/email[pid] as the wire format because
+// that pair-per-row scheme scaled the request's input-var count with the
+// roster and silently lost rows past PHP's max_input_vars. decode_selections()
+// is what handle_apply() runs the raw POSTed string through.
+
+$decoded = invoke_private($sync, 'decode_selections', array(
+    '[{"id":"10","email":"Real@Example.com"},{"id":"11","email":"second@example.com"}]'
+));
+assert_test(
+    $decoded === array(10 => 'Real@Example.com', 11 => 'second@example.com'),
+    'a well-formed JSON array decodes to a player_id => email map'
+);
+
+assert_test(
+    invoke_private($sync, 'decode_selections', array('not json at all')) === array(),
+    'malformed JSON decodes to an empty map rather than erroring'
+);
+
+assert_test(
+    invoke_private($sync, 'decode_selections', array('"just a string"')) === array(),
+    'valid JSON that is not an array (e.g. a bare string) decodes to an empty map'
+);
+
+assert_test(
+    invoke_private($sync, 'decode_selections', array('[]')) === array(),
+    'an empty selections array decodes to an empty map'
+);
+
+assert_test(
+    invoke_private($sync, 'decode_selections', array('[{"email":"noid@example.com"},{"id":0,"email":"zero@example.com"},"not-an-object"]')) === array(),
+    'entries missing an id, with id 0, or that are not objects are all dropped'
+);
+
+assert_test(
+    invoke_private($sync, 'decode_selections', array('[{"id":"7"}]')) === array(7 => ''),
+    'an entry with no email still maps its id, to an empty string'
+);
+
+// A single JSON field costs a handful of input vars no matter how many rows
+// are selected -- unlike the old players[]/email[pid] scheme, this can't run
+// into max_input_vars regardless of roster size.
+$huge = array();
+for ($i = 1; $i <= 2000; $i++) {
+    $huge[] = array('id' => (string) $i, 'email' => "player{$i}@example.com");
+}
+$decoded_huge = invoke_private($sync, 'decode_selections', array(json_encode($huge)));
+assert_test(
+    count($decoded_huge) === 2000 && $decoded_huge[2000] === 'player2000@example.com',
+    'a 2000-row selection (well beyond the default max_input_vars=1000) decodes intact as ONE JSON field'
 );
 
 echo "\n=== Results ===\n";
