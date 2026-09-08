@@ -17,7 +17,12 @@
 define( 'ABSPATH', dirname( __FILE__ ) . '/' );
 define( 'SPSG_PLUGIN_PATH', dirname( __FILE__ ) . '/../' );
 
-function __( $s, $d = null ) { return $s; } // phpcs:ignore -- $d unused, mirrors the real WP signature.
+/**
+ * Stub mirroring the WordPress signature; the unused argument is deliberate.
+ *
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
+function __( $s, $d = null ) { return $s; }
 function wp_timezone_string() { return 'America/Toronto'; }
 
 // Deliberately NOT requiring class-sportspress-integration.php.
