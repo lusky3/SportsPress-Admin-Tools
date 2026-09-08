@@ -25,15 +25,14 @@
 define( 'ABSPATH', dirname( __FILE__ ) . '/' );
 define( 'SPSG_PLUGIN_PATH', dirname( __FILE__ ) . '/../' );
 
-if ( ! function_exists( '__' ) ) {
-	/**
-	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
-	 */
-	function __( $s, $d = null ) { return $s; }
-}
-if ( ! function_exists( 'wp_timezone_string' ) ) {
-	function wp_timezone_string() { return 'America/Toronto'; }
-}
+/**
+ * Stub mirroring the WordPress signature; the unused argument is deliberate.
+ *
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
+function __( $s, $d = null ) { return $s; }
+
+function wp_timezone_string() { return 'America/Toronto'; }
 if ( ! class_exists( 'WP_Error' ) ) {
 	class WP_Error {
 		public $code; public $message; public $data;

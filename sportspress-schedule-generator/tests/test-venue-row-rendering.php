@@ -21,15 +21,20 @@
 define( 'ABSPATH', dirname( __FILE__ ) . '/' );
 define( 'SPSG_PLUGIN_PATH', dirname( __FILE__ ) . '/../' );
 
-if ( ! function_exists( '__' ) ) {
-	/**
-	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
-	 */
-	function __( $s, $d = null ) { return $s; }
-}
-if ( ! function_exists( 'esc_html_e' ) ) {
-	function esc_html_e( $s, $d = null ) { echo htmlspecialchars( $s, ENT_QUOTES ); }
-}
+/**
+ * Stub mirroring the WordPress signature; the unused argument is deliberate.
+ *
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
+function __( $s, $d = null ) { return $s; }
+
+/**
+ * Stub mirroring the WordPress signature; the unused argument is deliberate.
+ *
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
+function esc_html_e( $s, $d = null ) { echo htmlspecialchars( $s, ENT_QUOTES ); }
+
 if ( ! function_exists( 'esc_html' ) ) {
 	function esc_html( $s ) { return htmlspecialchars( (string) $s, ENT_QUOTES ); }
 }
@@ -50,6 +55,7 @@ if ( ! function_exists( 'wp_timezone_string' ) ) {
 	function wp_timezone_string() { return 'America/Toronto'; }
 }
 
+require_once SPSG_PLUGIN_PATH . 'includes/class-sportspress-integration.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-configuration.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-admin-renderer.php';
 
@@ -105,6 +111,96 @@ vrr_assert(
 vrr_assert(
 	false !== strpos( $html, '2026-12-25' ),
 	'blackout-dates textarea contains the saved date'
+);
+
+// ---------------------------------------------------------------------------
+// Fallback path: no $config at all (a brand-new venue row has nothing saved
+// yet) falls back to whatever the venue array itself carries directly under
+// 'timeslots' / 'blackout_dates' -- the legacy shape, kept so a caller that
+// doesn't have a configuration handy still renders sensibly.
+// ---------------------------------------------------------------------------
+echo "\n--- Fallback: no \$config, venue array carries its own data ---\n";
+
+ob_start();
+$renderer->render_venue_row(
+	array(
+		'id'             => '114686',
+		'name'           => 'Red',
+		'timeslots'      => array( 'friday' => array( '19:30' ) ),
+		'blackout_dates' => array( '2027-01-01' ),
+	),
+	1
+);
+$html_no_config = ob_get_clean();
+
+vrr_assert(
+	1 === preg_match( '/data-day="friday"[^>]*checked/', $html_no_config ),
+	'no $config: Friday checkbox is checked from the venue array\'s own "timeslots"'
+);
+vrr_assert(
+	false !== strpos( $html_no_config, '19:30' ),
+	'no $config: Friday textarea contains the venue array\'s own saved time'
+);
+vrr_assert(
+	false !== strpos( $html_no_config, '2027-01-01' ),
+	'no $config: blackout-dates textarea contains the venue array\'s own saved date'
+);
+
+// ---------------------------------------------------------------------------
+// A $config is given but has nothing for this venue: falls back to the venue
+// array the same way as "no $config at all".
+// ---------------------------------------------------------------------------
+echo "\n--- Fallback: \$config given but empty for this venue ---\n";
+
+$empty_config = new SPSG_Schedule_Configuration( array( 'venues' => array() ) );
+
+ob_start();
+$renderer->render_venue_row(
+	array(
+		'id'             => '999999',
+		'name'           => 'Unlisted Rink',
+		'timeslots'      => array( 'sunday' => array( '18:00' ) ),
+		'blackout_dates' => array( '2027-02-14' ),
+	),
+	2,
+	$empty_config
+);
+$html_empty_config = ob_get_clean();
+
+vrr_assert(
+	1 === preg_match( '/data-day="sunday"[^>]*checked/', $html_empty_config ),
+	'$config with nothing for this venue: still falls back to the venue array\'s own data'
+);
+vrr_assert(
+	false !== strpos( $html_empty_config, '2027-02-14' ),
+	'$config with nothing for this venue: blackout date still comes from the venue array'
+);
+
+// ---------------------------------------------------------------------------
+// render_venues_times_tab() is what actually calls render_venue_row() for
+// each configured venue (and passes $config through) -- cover that call
+// site too, for both the "has venues" and "no venues yet" branches.
+// ---------------------------------------------------------------------------
+echo "\n--- render_venues_times_tab() drives render_venue_row() per venue ---\n";
+
+ob_start();
+$renderer->render_venues_times_tab( $config );
+$tab_html = ob_get_clean();
+
+vrr_assert(
+	1 === preg_match( '/data-day="friday"[^>]*checked/', $tab_html ),
+	'render_venues_times_tab(): the configured venue\'s Friday hours show as checked'
+);
+
+$config_no_venues = new SPSG_Schedule_Configuration( array() );
+
+ob_start();
+$renderer->render_venues_times_tab( $config_no_venues );
+$tab_html_empty = ob_get_clean();
+
+vrr_assert(
+	false !== strpos( $tab_html_empty, 'venues[0][name]' ),
+	'render_venues_times_tab(): a config with no venues yet still renders one blank venue row'
 );
 
 echo "\n=== Results ===\n";
