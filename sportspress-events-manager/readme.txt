@@ -4,7 +4,8 @@ Tags: sportspress, events, calendar, import, season
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 8.1
-Stable tag: 1.1.0
+Requires Plugins: sportspress-admin-tools
+Stable tag: 1.1.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -44,6 +45,9 @@ They are automatically created as SportsPress posts/terms during import.
 No. The rollover creates new season terms and updates team assignments. Preview your teams before executing and use the archive option carefully.
 
 == Changelog ==
+
+= 1.1.1 =
+* Fix: readme.txt now carries the same `Requires Plugins` header the plugin file already declared, so the parent-plugin requirement shows consistently everywhere it's read from.
 
 = 1.1.0 =
 * New: this plugin now updates itself through the normal WordPress Plugins screen, sourced from the project's GitHub releases.

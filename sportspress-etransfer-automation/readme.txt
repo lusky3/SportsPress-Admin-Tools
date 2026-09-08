@@ -4,7 +4,8 @@ Tags: sportspress, woocommerce, etransfer, payment, automation
 Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.1.0
+Requires Plugins: sportspress-admin-tools
+Stable tag: 1.1.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,6 +49,9 @@ Payments are matched to on-hold WooCommerce orders by: (1) an order number in th
 Unmatched payments appear in WooCommerce → e-Transfer Webhooks where you can manually match them to orders or hide false positives.
 
 == Changelog ==
+
+= 1.1.1 =
+* Fix: readme.txt now carries the same `Requires Plugins` header the plugin file already declared, so the parent-plugin requirement shows consistently everywhere it's read from.
 
 = 1.1.0 =
 * New: payments are now matched by order number first, if the sender put one in their transfer's message/memo field, before falling back to Reply-To email and sender name. It has to be clearly marked as a reference (e.g. "#1234", "order 1234", or the legacy "ARL-1234" style) and correspond to a real on-hold order -- a stray number, or an incidental one like a season year, is never treated as a match on its own.
