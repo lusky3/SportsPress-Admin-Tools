@@ -524,9 +524,29 @@ class SPSG_Slot_Allocator {
 		$schedule_by_date = array();
 
 		// M53: bound the search by work done, not just by the wall clock.
+		//
+		// The per-matchup constant alone ignores how many slots exist to
+		// search through. A single clean pass with zero backtracking still
+		// visits, in the worst case, one slot examination per (matchup,
+		// candidate-before-the-valid-one) pair, which grows with the slot
+		// list size — a large season (many slots) could exhaust the old flat
+		// count($matchups) * BACKTRACK_VISITS_PER_MATCHUP budget before
+		// backtracking got any real room to retry a choice, independent of
+		// whether the configuration was actually infeasible. (This was NOT
+		// what made the W2026-27 season fail at 17 games/team — that was a
+		// hidden 15-minute same-venue buffer that halved real slot capacity,
+		// fixed separately; with it gone, greedy allocation alone succeeds
+		// and this budget is never exercised on that config. This fix stands
+		// on its own: it makes the budget scale with the actual search space
+		// instead of only the matchup count, which is still correct for any
+		// season where greedy fails and backtracking has real work to do.)
+		// Scale the per-matchup allowance by the slot list size too, so the
+		// budget always covers several full passes' worth of search, not
+		// less than one.
+		$per_matchup_allowance = max( self::BACKTRACK_VISITS_PER_MATCHUP, count( $this->available_slots ) * 3 );
 		$this->backtrack_budget           = max(
 			self::BACKTRACK_MIN_VISITS,
-			count( $matchups ) * self::BACKTRACK_VISITS_PER_MATCHUP
+			count( $matchups ) * $per_matchup_allowance
 		);
 		$this->backtrack_budget_exhausted = false;
 
@@ -571,17 +591,27 @@ class SPSG_Slot_Allocator {
 		$matchup = $matchups[ $index ];
 
 		foreach ( $this->available_slots as $slot ) {
-			// M53: every examined slot costs budget, so the bound reflects the
-			// actual O(slots^n) work rather than just recursion depth.
-			if ( --$this->backtrack_budget <= 0 ) {
-				$this->backtrack_budget_exhausted = true;
-				return false;
-			}
-
 			$slot_key = $this->get_slot_key( $slot );
 
 			if ( isset( $used_slots[ $slot_key ] ) ) {
 				continue;
+			}
+
+			// M53: charge budget only for slots that reach real constraint
+			// validation. Skipping an already-used slot above is an O(1) hash
+			// lookup, not the search work this budget is meant to bound —
+			// charging it anyway made the budget scale with total slot COUNT
+			// rather than remaining search effort. As a season fills up, most
+			// of $available_slots is already used, so a large slot list could
+			// exhaust the budget almost entirely on cheap skips before any
+			// real backtracking happened — worse, adding MORE slots made this
+			// effect stronger, the opposite of what more real capacity should
+			// do. Independent of {@see backtrack_allocate()}'s budget-sizing
+			// fix above: that scales how much budget is granted, this scales
+			// what each visit actually costs.
+			if ( --$this->backtrack_budget <= 0 ) {
+				$this->backtrack_budget_exhausted = true;
+				return false;
 			}
 
 			if ( ! $this->is_slot_valid( $matchup, $slot, $schedule_by_date, $config ) ) {
