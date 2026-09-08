@@ -45,6 +45,8 @@ class SPSG_CSV_Exporter implements SPSG_Exporter_Interface {
 
 	/**
 	 * Export schedule to CSV
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function export( $schedule, $config, $style = '' ) {
 		$upload_dir = wp_upload_dir();
@@ -84,6 +86,11 @@ class SPSG_CSV_Exporter implements SPSG_Exporter_Interface {
 		);
 		fputcsv( $file, $headers );
 
+		// Neither a plain game object nor array ever carries a week_number of
+		// its own (see SPSG_Slot_Allocator::create_game()); this was always
+		// blank without computing it here.
+		$week_by_date = SPSG_Schedule_Helper::build_week_number_map( $schedule );
+
 		// Write data
 		foreach ( $schedule as $game ) {
 			// Normalise to arrays to handle stdClass from transients.
@@ -115,7 +122,7 @@ class SPSG_CSV_Exporter implements SPSG_Exporter_Interface {
 				self::csv_safe( $division_name ),
 				self::csv_safe( $home_away ),
 				$is_inter_division ? 'Yes' : 'No',
-				$g['week_number'] ?? '',
+				$week_by_date[ $g['date'] ?? '' ] ?? '',
 				( ! empty( $g['is_makeup'] ) ) ? 'Yes' : 'No',
 				self::csv_safe( $g['original_date'] ?? '' ),
 			);

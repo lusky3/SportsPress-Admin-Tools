@@ -43,6 +43,68 @@ class SPSG_Schedule_Helper {
 	}
 
 	/**
+	 * Build a date => sequential season-week-number map from a schedule.
+	 *
+	 * Games are grouped by real calendar week (Monday-Sunday, ISO-8601), so a
+	 * league playing e.g. Friday and Sunday both land under the same week
+	 * number, then weeks are numbered 1, 2, 3... in the order they first
+	 * appear (chronologically, assuming the schedule is date-ordered) --
+	 * "Week 1 of the season", not the ISO week-of-year number, which would
+	 * reset at each calendar year boundary (this plugin's seasons routinely
+	 * cross one) and mean nothing to an admin reading an export.
+	 *
+	 * Shared by the CSV and XLSX exporters so a game reports the same week
+	 * number in either format -- neither a plain game object nor array ever
+	 * carries a week_number of its own (see {@see SPSG_Slot_Allocator::create_game()}),
+	 * so without this, an exported "Week" column has nothing to show at all.
+	 *
+	 * @param array $schedule Array of game objects/arrays, each carrying a `date`.
+	 * @return array<string,int> Date (Y-m-d) => week number.
+	 */
+	public static function build_week_number_map( $schedule ) {
+		$week_by_key  = array();
+		$week_by_date = array();
+		$next_week    = 1;
+
+		foreach ( (array) $schedule as $game ) {
+			$date = is_array( $game ) ? ( $game['date'] ?? '' ) : ( $game->date ?? '' );
+			if ( '' === $date || isset( $week_by_date[ $date ] ) ) {
+				continue;
+			}
+
+			$key = self::iso_week_key( $date );
+			if ( null === $key ) {
+				continue;
+			}
+			if ( ! isset( $week_by_key[ $key ] ) ) {
+				$week_by_key[ $key ] = $next_week++;
+			}
+			$week_by_date[ $date ] = $week_by_key[ $key ];
+		}
+
+		return $week_by_date;
+	}
+
+	/**
+	 * Build a key identifying the real (Mon-Sun) calendar week a date falls
+	 * in, stable across a season that crosses a year boundary.
+	 *
+	 * Combines the ISO week-numbering year (`o`) with the ISO week number
+	 * (`W`) rather than the plain calendar year (`Y`): a date in the last
+	 * days of December can belong to ISO week 1 of the *following* year (and
+	 * the reverse in early January), so `Y-W` alone can collide two
+	 * unrelated weeks onto the same key right at the boundary this plugin's
+	 * seasons commonly cross.
+	 *
+	 * @param string $date Date in Y-m-d format.
+	 * @return string|null Stable per-week key, or null if $date doesn't parse.
+	 */
+	private static function iso_week_key( $date ) {
+		$dt = DateTime::createFromFormat( 'Y-m-d', $date );
+		return $dt ? $dt->format( 'o-W' ) : null;
+	}
+
+	/**
 	 * Resolve the time slots available for a (venue, date, day_name) tuple,
 	 * respecting the priority cascade:
 	 *   1. Date-specific availability windows (venue_date_availability)

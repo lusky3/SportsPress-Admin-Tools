@@ -89,6 +89,8 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 			$rows[] = $g;
 		}
 
+		$this->assign_week_numbers( $rows );
+
 		try {
 			if ( 'detailed' === $style ) {
 				$this->write_xlsx_detailed( $filepath, $rows, $division_map );
@@ -111,6 +113,32 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 	/*
 	 * Data helpers
 	*/
+
+	/**
+	 * Assign a sequential week number to every row, in place.
+	 *
+	 * Delegates the actual week-grouping to
+	 * {@see SPSG_Schedule_Helper::build_week_number_map()} so the CSV and
+	 * XLSX exporters can never disagree on which week a date belongs to.
+	 * Computed once here so both export styles (compact and detailed) report
+	 * the same number for the same date: the detailed layout's "Week" column
+	 * previously had nothing populating it at all (games never carry a
+	 * week_number of their own), so it was always blank, while the compact
+	 * layout counted "Nth distinct date" instead of "Nth real week" and so
+	 * gave a league's Friday/Sunday pair two different week numbers.
+	 *
+	 * @param array $rows Normalised game rows (by reference).
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private function assign_week_numbers( array &$rows ) {
+		$week_by_date = SPSG_Schedule_Helper::build_week_number_map( $rows );
+
+		foreach ( $rows as &$row ) {
+			$row['week_number'] = $week_by_date[ $row['date'] ] ?? '';
+		}
+		unset( $row );
+	}
 
 	/**
 	 * Normalise a game (object or array) into a flat associative array.
@@ -307,9 +335,8 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 		};
 
 		// Pre-populate shared strings.
-		$week_num = 0;
 		foreach ( $by_date as $date => $games ) {
-			++$week_num;
+			$week_num = $games[0]['week_number'] ?? '';
 			$add_ss( $this->compact_date_label( $date, $week_num ) );
 			foreach ( $games as $g ) {
 				$add_ss( $g['venue'] );
@@ -356,11 +383,10 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 		$sheet_rows  = array(); // Each entry: array of cell arrays.
 		$merge_cells = array();
 		$r           = 2; // Start at row 2 (col A is margin).
-		$week_num    = 0;
 
 		foreach ( $by_date as $date => $games ) {
-			++$week_num;
-			$label = $this->compact_date_label( $date, $week_num );
+			$week_num = $games[0]['week_number'] ?? '';
+			$label    = $this->compact_date_label( $date, $week_num );
 
 			// Date header row — merged B:F.
 			$merge_cells[] = 'B' . $r . ':F' . $r;
@@ -447,13 +473,24 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 
 	/**
 	 * Format a date string into a human-friendly label for the compact header.
+	 *
+	 * `$date` is a bare calendar date ("Y-m-d") with no time-of-day or
+	 * timezone of its own -- it names a day, not a moment in time. This used
+	 * to go through `strtotime( $date )` (which PHP resolves as midnight in
+	 * the process's default timezone, UTC under WordPress) and then
+	 * `wp_date()` (which converts that timestamp into the *site's*
+	 * configured timezone before formatting). For any site timezone behind
+	 * UTC, that conversion pushes midnight back into the previous day, so a
+	 * Friday game printed as Thursday and a Sunday game as Saturday. Parsing
+	 * the date's components directly sidesteps the round trip entirely:
+	 * there is no moment-in-time to convert, so no timezone can shift it.
 	 */
 	private function compact_date_label( $date, $week_num ) {
-		$ts = strtotime( $date );
-		if ( ! $ts ) {
+		$dt = DateTime::createFromFormat( 'Y-m-d', $date );
+		if ( ! $dt ) {
 			return $date;
 		}
-		return 'Week ' . $week_num . ' - ' . wp_date( 'l F j, Y', $ts );
+		return 'Week ' . $week_num . ' - ' . $dt->format( 'l F j, Y' );
 	}
 
 	/**
