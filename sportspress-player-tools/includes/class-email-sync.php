@@ -879,6 +879,29 @@ class SPT_Email_Sync {
 	}
 
 	/**
+	 * Parse one raw `selections` entry into a [ player_id, email ] pair.
+	 *
+	 * Split out of decode_selections() purely to keep that method's own
+	 * branching (the JSON-shape check plus the loop) under the complexity
+	 * threshold — the per-entry validation lives here instead.
+	 *
+	 * @param mixed $entry One decoded JSON array element.
+	 * @return array{0:int,1:string}|null Null when the entry has no usable id.
+	 */
+	private static function parse_selection_entry( $entry ): ?array {
+		if ( ! is_array( $entry ) ) {
+			return null;
+		}
+
+		$pid = absint( $entry['id'] ?? 0 );
+		if ( $pid <= 0 ) {
+			return null;
+		}
+
+		return array( $pid, sanitize_email( (string) ( $entry['email'] ?? '' ) ) );
+	}
+
+	/**
 	 * Parse the preview form's single JSON `selections` field into a
 	 * player_id => email map.
 	 *
@@ -904,14 +927,12 @@ class SPT_Email_Sync {
 
 		$selections = array();
 		foreach ( $decoded as $entry ) {
-			if ( ! is_array( $entry ) ) {
+			$parsed = self::parse_selection_entry( $entry );
+			if ( null === $parsed ) {
 				continue;
 			}
-			$pid = absint( $entry['id'] ?? 0 );
-			if ( $pid <= 0 ) {
-				continue;
-			}
-			$selections[ $pid ] = sanitize_email( (string) ( $entry['email'] ?? '' ) );
+			list( $pid, $email ) = $parsed;
+			$selections[ $pid ]  = $email;
 		}
 
 		return $selections;
