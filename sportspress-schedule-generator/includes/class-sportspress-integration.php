@@ -62,22 +62,47 @@ class SPSG_Sports_Press_Integration {
 	 *               a published sp_team post ID; otherwise the input as given.
 	 */
 	public static function resolve_team_name( $team_id_or_name ) {
-		if ( ! is_string( $team_id_or_name ) && ! is_int( $team_id_or_name ) ) {
+		if ( ! self::looks_like_team_id( $team_id_or_name ) ) {
 			return $team_id_or_name;
 		}
-		if ( ! ctype_digit( (string) $team_id_or_name ) ) {
-			return $team_id_or_name;
+
+		$post = self::published_team_post( (int) $team_id_or_name );
+
+		return $post ? $post->post_title : $team_id_or_name;
+	}
+
+	/**
+	 * Whether a stored team-slot value is shaped like a SportsPress post ID
+	 * (a bare digit string), as opposed to a literal team name.
+	 *
+	 * @param mixed $value Whatever is stored for this team slot.
+	 * @return bool
+	 */
+	private static function looks_like_team_id( $value ) {
+		if ( ! is_string( $value ) && ! is_int( $value ) ) {
+			return false;
 		}
+		return ctype_digit( (string) $value );
+	}
+
+	/**
+	 * Fetch a published sp_team post by ID, or null if it doesn't resolve to
+	 * one (missing, wrong post type, or not published).
+	 *
+	 * @param int $id Candidate post ID.
+	 * @return WP_Post|null
+	 */
+	private static function published_team_post( $id ) {
 		if ( ! self::is_sportspress_active() || ! function_exists( 'get_post' ) ) {
-			return $team_id_or_name;
+			return null;
 		}
 
-		$post = get_post( (int) $team_id_or_name );
+		$post = get_post( $id );
 		if ( ! $post || 'sp_team' !== $post->post_type || 'publish' !== $post->post_status ) {
-			return $team_id_or_name;
+			return null;
 		}
 
-		return $post->post_title;
+		return $post;
 	}
 
 	/**

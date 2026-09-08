@@ -261,17 +261,28 @@ class SPSG_Schedule_Configuration {
 		}
 
 		foreach ( $this->divisions as &$division ) {
-			if ( empty( $division['teams'] ) || ! is_array( $division['teams'] ) ) {
-				continue;
-			}
-			foreach ( $division['teams'] as &$team ) {
-				if ( is_string( $team ) || is_int( $team ) ) {
-					$team = SPSG_Sports_Press_Integration::resolve_team_name( $team );
-				}
-			}
-			unset( $team );
+			self::resolve_division_team_names( $division );
 		}
 		unset( $division );
+	}
+
+	/**
+	 * Resolve one division's team entries in place.
+	 *
+	 * @param array $division Division data (by reference).
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function resolve_division_team_names( &$division ) {
+		if ( empty( $division['teams'] ) || ! is_array( $division['teams'] ) ) {
+			return;
+		}
+		foreach ( $division['teams'] as &$team ) {
+			if ( is_string( $team ) || is_int( $team ) ) {
+				$team = SPSG_Sports_Press_Integration::resolve_team_name( $team );
+			}
+		}
+		unset( $team );
 	}
 
 	/**

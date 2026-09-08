@@ -13,6 +13,10 @@
  * ID instead of the team's real name. SPSG_Schedule_Configuration::
  * load_from_array() now resolves these in place on every load.
  *
+ * See tests/test-team-name-resolution-noop.php for the companion "no-op
+ * without SPSG_Sports_Press_Integration loaded" safety check — kept in its
+ * own file so this one can require that class for the rest of these tests.
+ *
  * Standalone — bootstraps WP mocks then loads classes directly.
  *
  * @author Cody (lusky3)
@@ -21,33 +25,33 @@
 define( 'ABSPATH', dirname( __FILE__ ) . '/' );
 define( 'SPSG_PLUGIN_PATH', dirname( __FILE__ ) . '/../' );
 
-if ( ! function_exists( '__' ) ) {
-	/**
-	 * Stub mirroring the WordPress signature; the unused argument is deliberate.
-	 *
-	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
-	 */
-	function __( $s, $d = null ) { return $s; }
-}
-if ( ! function_exists( 'wp_timezone_string' ) ) {
-	function wp_timezone_string() { return 'America/Toronto'; }
+/**
+ * Stub mirroring the WordPress signature; the unused argument is deliberate.
+ *
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
+function __( $s, $d = null ) { return $s; }
+
+function wp_timezone_string() { return 'America/Toronto'; }
+
+/**
+ * Fake sp_team posts for get_post() to resolve against, keyed by ID.
+ * A function-local static avoids reaching for $GLOBALS.
+ */
+function get_post( $id ) {
+	static $posts = null;
+	if ( null === $posts ) {
+		$posts = array(
+			115093 => (object) array( 'ID' => 115093, 'post_type' => 'sp_team', 'post_status' => 'publish', 'post_title' => 'Ducks' ),
+			102749 => (object) array( 'ID' => 102749, 'post_type' => 'sp_team', 'post_status' => 'publish', 'post_title' => 'Hammers' ),
+			999001 => (object) array( 'ID' => 999001, 'post_type' => 'sp_team', 'post_status' => 'draft', 'post_title' => 'Unpublished Team' ),
+			999002 => (object) array( 'ID' => 999002, 'post_type' => 'sp_event', 'post_status' => 'publish', 'post_title' => 'Not A Team' ),
+		);
+	}
+	return $posts[ (int) $id ] ?? null;
 }
 
-// Fake sp_team posts, keyed by ID, for get_post() to resolve against.
-$GLOBALS['spsg_test_posts'] = array(
-	115093 => (object) array( 'ID' => 115093, 'post_type' => 'sp_team', 'post_status' => 'publish', 'post_title' => 'Ducks' ),
-	102749 => (object) array( 'ID' => 102749, 'post_type' => 'sp_team', 'post_status' => 'publish', 'post_title' => 'Hammers' ),
-	999001 => (object) array( 'ID' => 999001, 'post_type' => 'sp_team', 'post_status' => 'draft', 'post_title' => 'Unpublished Team' ),
-	999002 => (object) array( 'ID' => 999002, 'post_type' => 'sp_event', 'post_status' => 'publish', 'post_title' => 'Not A Team' ),
-);
-if ( ! function_exists( 'get_post' ) ) {
-	function get_post( $id ) {
-		return $GLOBALS['spsg_test_posts'][ (int) $id ] ?? null;
-	}
-}
-if ( ! class_exists( 'SportsPress' ) ) {
-	class SportsPress {}
-}
+class SportsPress {}
 
 require_once SPSG_PLUGIN_PATH . 'includes/class-sportspress-integration.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-configuration.php';
@@ -130,36 +134,6 @@ trn_assert(
 trn_assert(
 	array( array( 'id' => '76', 'name' => 'Oilers' ) ) === $config->divisions[1]['teams'],
 	'div2: an already-resolved {id, name} entry is left untouched'
-);
-
-// ---------------------------------------------------------------------------
-// 3. Safety: resolution is a no-op (not a fatal error) when
-//    SPSG_Sports_Press_Integration isn't loaded at all — the shape every
-//    other standalone test in this suite runs in.
-// ---------------------------------------------------------------------------
-echo "\nTest 3: no-op safety without SPSG_Sports_Press_Integration loaded\n";
-
-$plugin_path = SPSG_PLUGIN_PATH;
-$script      = <<<PHP
-<?php
-define( 'ABSPATH', __DIR__ . '/' );
-function __( \$s, \$d = null ) { return \$s; }
-function wp_timezone_string() { return 'America/Toronto'; }
-require_once '{$plugin_path}includes/class-schedule-configuration.php';
-\$config = new SPSG_Schedule_Configuration( array(
-	'divisions' => array( array( 'id' => 'd1', 'name' => 'D1', 'teams' => array( '115093' ) ) ),
-) );
-echo \$config->divisions[0]['teams'][0] === '115093' ? 'OK' : 'FAIL:' . var_export( \$config->divisions[0]['teams'][0], true );
-PHP;
-
-$tmp_file = tempnam( sys_get_temp_dir(), 'spsg_isolation_' ) . '.php';
-file_put_contents( $tmp_file, $script );
-$output = shell_exec( PHP_BINARY . ' ' . escapeshellarg( $tmp_file ) . ' 2>&1' );
-unlink( $tmp_file );
-
-trn_assert(
-	'OK' === trim( (string) $output ),
-	'a bare ID string is left unchanged when SPSG_Sports_Press_Integration is never loaded (got: ' . trim( (string) $output ) . ')'
 );
 
 echo "\n=== Results ===\n";

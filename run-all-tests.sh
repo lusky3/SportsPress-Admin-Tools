@@ -60,6 +60,7 @@ run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-venue-slot-grid.
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-day-balance.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-season-pacing.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-team-name-resolution.php"
+run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-team-name-resolution-noop.php"
 run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-events-import.php"
 run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-notifications.php"
 run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-rollover-teams.php"
