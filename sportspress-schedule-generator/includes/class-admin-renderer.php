@@ -622,10 +622,10 @@ class SPSG_Admin_Renderer {
 				<?php
 				if ( ! empty( $config->venues ) ) {
 					foreach ( $config->venues as $index => $venue ) {
-						$this->render_venue_row( $venue, $index );
+						$this->render_venue_row( $venue, $index, $config );
 					}
 				} else {
-					$this->render_venue_row( array(), 0 );
+					$this->render_venue_row( array(), 0, $config );
 				}
 				?>
 			</div>
@@ -640,10 +640,40 @@ class SPSG_Admin_Renderer {
 
 	/**
 	 * Render venue row
+	 *
+	 * Per-venue time slots and blackout dates are stored on the configuration
+	 * as `$config->venue_timeslots[$venue_id]` / `$config->venue_blackout_dates[$venue_id]`
+	 * (top-level, keyed by venue ID) -- NOT nested inside the venue's own
+	 * array entry. This used to read `$venue['timeslots']` /
+	 * `$venue['blackout_dates']` instead, keys that are never populated
+	 * anywhere the config is loaded from storage, so a saved venue's days
+	 * always rendered as unchecked with empty time-slot boxes regardless of
+	 * what was actually configured and saved.
+	 *
+	 * @param array                            $venue  Venue data (name, id).
+	 * @param int                              $index  Venue's position in the form.
+	 * @param SPSG_Schedule_Configuration|null $config Full configuration, to resolve the
+	 *                                                 venue's saved per-day slots/blackouts.
+	 *                                                 Omitted only for a brand-new venue row
+	 *                                                 with nothing saved yet.
 	 */
-	public function render_venue_row( $venue, $index ) {
+	public function render_venue_row( $venue, $index, $config = null ) {
 		$venue_id = $venue['id'] ?? 'venue_' . $index;
 		$days = array( 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday' );
+
+		$venue_timeslots_by_day = array();
+		if ( $config && ! empty( $config->venue_timeslots[ $venue_id ] ) ) {
+			$venue_timeslots_by_day = $config->venue_timeslots[ $venue_id ];
+		} elseif ( ! empty( $venue['timeslots'] ) ) {
+			$venue_timeslots_by_day = $venue['timeslots'];
+		}
+
+		$venue_blackouts = array();
+		if ( $config && ! empty( $config->venue_blackout_dates[ $venue_id ] ) ) {
+			$venue_blackouts = $config->venue_blackout_dates[ $venue_id ];
+		} elseif ( ! empty( $venue['blackout_dates'] ) ) {
+			$venue_blackouts = $venue['blackout_dates'];
+		}
 		?>
 		<div class="spsg-venue-row" data-index="<?php echo esc_attr( $index ); ?>">
 			<table class="form-table">
@@ -661,7 +691,7 @@ class SPSG_Admin_Renderer {
 						<div class="spsg-venue-timeslots">
 							<?php
 							foreach ( $days as $day ) :
-								$venue_timeslots = $venue['timeslots'][ $day ] ?? array();
+								$venue_timeslots = $venue_timeslots_by_day[ $day ] ?? array();
 								?>
 							<div class="spsg-venue-day-timeslots">
 								<label>
@@ -682,7 +712,6 @@ class SPSG_Admin_Renderer {
 					<td>
 						<textarea name="venue_blackout_dates[<?php echo esc_attr( $venue_id ); ?>]" rows="3" class="large-text" placeholder="<?php esc_html_e( 'Enter dates when this venue is unavailable (e.g., 2024-01-15, 2024-02-20)', 'sportspress-schedule-generator' ); ?>">
 						<?php
-						$venue_blackouts = $venue['blackout_dates'] ?? array();
 						echo esc_textarea( is_array( $venue_blackouts ) ? implode( "\n", $venue_blackouts ) : $venue_blackouts );
 						?>
 						</textarea>

@@ -31,7 +31,18 @@
     var initialFormData = $('#spsg-config-form').serialize();
 
     // Monitor form changes
+    //
+    // The Generate tab's schedule preview (export format, division/date
+    // filters) lives inside this same form for layout convenience, but
+    // isn't part of the saved configuration -- picking "Detailed" in the
+    // XLSX style dropdown, for instance, counted as an unsaved change here,
+    // so clicking Export XLSX (which navigates to a download URL) tripped
+    // the beforeunload warning below even though nothing about the
+    // configuration itself had changed. Excluded from dirty tracking.
     $('#spsg-config-form').on('change input', 'input, select, textarea', function() {
+        if ($(this).closest('#spsg-schedule-preview-container').length) {
+            return;
+        }
         var currentFormData = $('#spsg-config-form').serialize();
         formChanged = (currentFormData !== initialFormData);
     });
@@ -835,8 +846,22 @@
         var configData = $('#spsg-config-form').serializeArray();
         var configObj = {};
 
+        // A repeated field name (division team checkboxes, playing_days[],
+        // any multi-team restriction) previously just overwrote configObj on
+        // every occurrence, so the export silently kept only the LAST
+        // checked value for each such field -- e.g. a 6-team division
+        // exported with just one team, or playing_days[] with just one day,
+        // no matter how many were actually checked. Accumulate into an array
+        // instead whenever a name repeats.
         $.each(configData, function(i, field) {
-            configObj[field.name] = field.value;
+            if (Object.prototype.hasOwnProperty.call(configObj, field.name)) {
+                if (!Array.isArray(configObj[field.name])) {
+                    configObj[field.name] = [configObj[field.name]];
+                }
+                configObj[field.name].push(field.value);
+            } else {
+                configObj[field.name] = field.value;
+            }
         });
 
         var dataStr = JSON.stringify(configObj, null, 2);
@@ -1452,10 +1477,22 @@
 
         var formData = $form.serialize();
 
+        // The form's own spsg_nonce field (wp_nonce_field('spsg_admin_action', ...)
+        // in class-admin.php) is scoped for the save call below, whose handler
+        // checks it against that exact action. Sending the same token to this
+        // pre-flight validate call -- whose handler checks it against the
+        // 'spsg_validate_config' action -- always fails wp_verify_nonce()
+        // (nonces are action-scoped by design), so this call died before ever
+        // reaching real validation logic, regardless of whether the
+        // configuration was actually valid. Override spsg_nonce for this one
+        // call with the token already localized for that action; the save
+        // call further down is left using the form's own (correct) token.
+        var validateNonce = sgNonces.validate_config;
+
         $.ajax({
             url: ajaxurl,
             type: 'POST',
-            data: formData + '&action=spsg_validate_config',
+            data: formData + '&action=spsg_validate_config&spsg_nonce=' + encodeURIComponent(validateNonce),
             success: function(response) {
                 if (response.success) {
                     $submitBtn.val(i18n.saving);

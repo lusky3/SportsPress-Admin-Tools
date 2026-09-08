@@ -254,6 +254,23 @@ class SPSG_Configuration_Validator {
 		}
 
 		foreach ( $this->config->home_away_preferences as $team_id => $venue_id ) {
+			// An empty value means "no preference set" -- the default state
+			// for every team unless the admin explicitly picks one. Treating
+			// it as a reference to a nonexistent venue made ANY configuration
+			// with even one unset preference fail validation outright: the
+			// admin form renders one home_away_preferences[<team>] field per
+			// team unconditionally, so a config with 32 teams and zero actual
+			// preferences set (the common case -- this is an optional
+			// override) submitted 32 empty strings and failed on the first
+			// one, while a config built without ever touching this field at
+			// all (e.g. written directly via the REST API) had no entries
+			// here and never hit this check -- which is why "Save
+			// Configuration" could fail validation on a config that the
+			// separate "Validate Configuration" button reported as valid.
+			if ( '' === $venue_id || null === $venue_id ) {
+				continue;
+			}
+
 			$venue_exists = false;
 			foreach ( $this->config->venues as $venue ) {
 				if ( $venue['id'] === $venue_id ) {
