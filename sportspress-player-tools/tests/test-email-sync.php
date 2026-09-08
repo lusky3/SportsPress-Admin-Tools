@@ -36,6 +36,8 @@ class SPT_Mock_WPDB {
     public $tables_exist = false;
     /** Number of grouped author-count queries actually issued. */
     public $author_count_queries = 0;
+    /** Rows returned for find_duplicate_emails()'s spt_email join. */
+    public $spt_email_rows = array();
 
     private $last_args = array();
 
@@ -65,6 +67,9 @@ class SPT_Mock_WPDB {
         }
         if (strpos($query, 'spat_registration_logs') !== false) {
             return $this->spr_rows;
+        }
+        if (strpos($query, "meta_key = 'spt_email'") !== false) {
+            return $this->spt_email_rows;
         }
         return array();
     }
@@ -263,6 +268,14 @@ function make_player_named($id, $title, $author = 0) {
     $p->post_author = $author;
     $p->post_title = $title;
     return $p;
+}
+
+function make_email_row($id, $title, $email) {
+    $row = new stdClass();
+    $row->ID = $id;
+    $row->post_title = $title;
+    $row->email = $email;
+    return $row;
 }
 
 $sync = new SPT_Email_Sync();
@@ -694,6 +707,15 @@ assert_test(
     'Row inputs carry no name -- only the JSON selections field the submit handler builds gets posted'
 );
 assert_test(
+    strpos($html, 'class="spt-dup-note" data-player-id="900"') !== false
+    && strpos($html, 'class="spt-dup-note" data-player-id="901"') !== false,
+    'Each row gets a duplicate-email note placeholder for the recompute script to fill in'
+);
+assert_test(
+    strpos($html, 'sptRecomputeDuplicateEmails') !== false,
+    'The duplicate-email recompute script is emitted with the preview'
+);
+assert_test(
     strpos($html, 'id="spt-check-all" title=') !== false && strpos($html, 'id="spt-check-all" checked') === false,
     'Check-all itself is not pre-checked (not every row is)'
 );
@@ -857,6 +879,79 @@ $decoded_huge = invoke_private($sync, 'decode_selections', array(json_encode($hu
 assert_test(
     count($decoded_huge) === 2000 && $decoded_huge[2000] === 'player2000@example.com',
     'a 2000-row selection (well beyond the default max_input_vars=1000) decodes intact as ONE JSON field'
+);
+
+echo "\n-- 10. find_duplicate_emails(): the standing audit --\n";
+
+// Independent of the sync tool's own matching: this looks at whatever
+// spt_email is already on file, regardless of how it got there.
+
+reset_state();
+$GLOBALS['wpdb']->spt_email_rows = array(
+    make_email_row(1, 'Alice Adams',  'shared@example.com'),
+    make_email_row(2, 'Bob Adams',    'Shared@Example.com'), // same address, different case
+    make_email_row(3, 'Carol Smith',  'unique@example.com'),
+    make_email_row(4, 'Dan Smith',    ''),                    // empty -- excluded
+    make_email_row(5, 'Eve Jones',    'not-an-email'),         // invalid -- excluded
+);
+$dups = invoke_private($sync, 'find_duplicate_emails');
+
+assert_test(
+    count($dups) === 1 && isset($dups['shared@example.com']),
+    'only the genuinely shared address forms a group; unique and empty/invalid rows are excluded'
+);
+assert_test(
+    isset($dups['shared@example.com']) && count($dups['shared@example.com']) === 2,
+    'the shared-address group lists both players'
+);
+assert_test(
+    isset($dups['shared@example.com'][0]['player_id']) && $dups['shared@example.com'][0]['player_id'] === 1
+    && isset($dups['shared@example.com'][1]['player_id']) && $dups['shared@example.com'][1]['player_id'] === 2,
+    'a case-different match (Shared@Example.com vs shared@example.com) is still grouped as one address'
+);
+
+reset_state();
+$GLOBALS['wpdb']->spt_email_rows = array(
+    make_email_row(1, 'Alice Adams', 'alice@example.com'),
+    make_email_row(2, 'Bob Adams',   'bob@example.com'),
+);
+assert_test(
+    invoke_private($sync, 'find_duplicate_emails') === array(),
+    'no duplicates when every address is unique'
+);
+
+echo "\n-- 11. render_duplicate_report(): the report's HTML --\n";
+
+reset_state();
+$GLOBALS['wpdb']->spt_email_rows = array(
+    make_email_row(1, 'Alice Adams', 'shared@example.com'),
+    make_email_row(2, 'Bob Adams',   'shared@example.com'),
+    make_email_row(3, 'Carol Smith', 'unique@example.com'),
+);
+ob_start();
+invoke_private($sync, 'render_duplicate_report');
+$html = ob_get_clean();
+
+assert_test(
+    strpos($html, 'shared@example.com') !== false,
+    'the shared address appears in the report'
+);
+assert_test(
+    strpos($html, 'Alice Adams') !== false && strpos($html, 'Bob Adams') !== false,
+    'both players sharing the address are listed'
+);
+assert_test(
+    strpos($html, 'Carol Smith') === false && strpos($html, 'unique@example.com') === false,
+    'a player with a unique address is not listed in the report'
+);
+
+reset_state();
+ob_start();
+invoke_private($sync, 'render_duplicate_report');
+$html = ob_get_clean();
+assert_test(
+    strpos($html, 'No duplicate email addresses found') !== false,
+    'an empty result renders the "none found" message rather than an empty table'
 );
 
 echo "\n=== Results ===\n";
