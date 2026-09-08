@@ -103,6 +103,25 @@ class SPT_Email_Sync {
 		} else {
 			$this->render_scan_button();
 		}
+
+		$this->render_duplicate_section();
+	}
+
+	/**
+	 * Render the "Duplicate Player Emails" section: header, description, and
+	 * either the scan button or the report, depending on the request. Split
+	 * out of render_section() to keep that method's own branching (the
+	 * success notice plus the sync scan gate) under the complexity threshold.
+	 */
+	private function render_duplicate_section() {
+		echo '<hr><h2>' . esc_html__( 'Duplicate Player Emails', 'sportspress-player-tools' ) . '</h2>';
+		echo '<p class="description">' . esc_html__( 'Players who already have an email address on file, grouped by address. More than one player sharing an address may be a real household, or a mistake worth checking by hand — this report only lists them, it never changes anything.', 'sportspress-player-tools' ) . '</p>';
+
+		if ( isset( $_GET['spt_dup_scan'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ?? '' ) ), 'spt_email_dup_scan' ) ) {
+			$this->render_duplicate_report();
+		} else {
+			$this->render_duplicate_scan_button();
+		}
 	}
 
 	/**
@@ -137,6 +156,59 @@ class SPT_Email_Sync {
 			esc_url( $scan_url ),
 			esc_html__( 'Scan & Preview Matches', 'sportspress-player-tools' )
 		);
+	}
+
+	/**
+	 * Show the button that runs the duplicate-email scan.
+	 */
+	private function render_duplicate_scan_button() {
+		$scan_url = wp_nonce_url(
+			add_query_arg(
+				array(
+					'spt_dup_scan' => '1',
+					'tab'          => self::TAB,
+				)
+			),
+			'spt_email_dup_scan'
+		);
+		printf(
+			'<a href="%s" class="button button-primary">%s</a>',
+			esc_url( $scan_url ),
+			esc_html__( 'Scan for Duplicate Emails', 'sportspress-player-tools' )
+		);
+	}
+
+	/**
+	 * Render the duplicate-email report: every spt_email address currently
+	 * held by more than one published player.
+	 */
+	private function render_duplicate_report() {
+		$groups = $this->find_duplicate_emails();
+
+		if ( empty( $groups ) ) {
+			echo '<p><strong>' . esc_html__( 'No duplicate email addresses found.', 'sportspress-player-tools' ) . '</strong></p>';
+			return;
+		}
+
+		echo '<table class="widefat striped"><thead><tr>';
+		echo '<th>' . esc_html__( 'Email', 'sportspress-player-tools' ) . '</th>';
+		echo '<th>' . esc_html__( 'Players', 'sportspress-player-tools' ) . '</th>';
+		echo '</tr></thead><tbody>';
+
+		foreach ( $groups as $email => $players ) {
+			$links = array();
+			foreach ( $players as $player ) {
+				$links[] = '<a href="' . esc_url( get_edit_post_link( $player['player_id'] ) ) . '">'
+					. esc_html( $player['title'] ) . '</a>';
+			}
+
+			echo '<tr>';
+			echo '<td>' . esc_html( $email ) . '</td>';
+			echo '<td>' . implode( ', ', $links ) . '</td>';
+			echo '</tr>';
+		}
+
+		echo '</tbody></table>';
 	}
 
 	/**
@@ -218,7 +290,7 @@ class SPT_Email_Sync {
 				echo '<td><input type="checkbox" class="spt-player-checkbox ' . ( $high ? 'spt-high-confidence' : 'spt-low-confidence' ) . '"'
 					. ' data-player-id="' . esc_attr( $player_id ) . '"' . ( $high ? ' checked' : '' ) . '></td>';
 				echo '<td><a href="' . esc_url( get_edit_post_link( $player_id ) ) . '">' . esc_html( get_the_title( $player_id ) ) . '</a></td>';
-				echo '<td>' . $email_field . '</td>';
+				echo '<td>' . $email_field . ' <span class="spt-dup-note" data-player-id="' . esc_attr( $player_id ) . '"></span></td>';
 				echo '<td>' . $source_text . '</td>';
 				echo '</tr>';
 			}
@@ -247,6 +319,16 @@ class SPT_Email_Sync {
 			// host. The per-row inputs carry no `name` at all, so if this script
 			// never runs (JS disabled/blocked), the form submits zero selections
 			// rather than silently applying a truncated subset.
+			// Duplicate-email highlighting: purely a heads-up, never blocks Apply
+			// or touches which rows are checked. Two different players landing on
+			// the same address is sometimes a real household (siblings sharing a
+			// parent's inbox) and sometimes a matching mistake -- the admin is the
+			// one who can tell those apart, this just makes the coincidence visible
+			// before Apply instead of after. Recomputed on every <select> change
+			// (not just once at page load) so it stays correct if the admin picks
+			// a different candidate address for an ambiguous row.
+			echo '<style>.spt-dup-row{background:#fff8e1;}.spt-dup-note{color:#b32d2e;font-weight:600;}</style>';
+
 			echo '<script>';
 			echo 'document.getElementById("spt-check-all").addEventListener("change",function(){';
 			echo 'var on=this.checked;document.querySelectorAll(".spt-player-checkbox").forEach(function(c){c.checked=on;});';
@@ -263,6 +345,30 @@ class SPT_Email_Sync {
 			echo 'hidden.type="hidden";hidden.name="selections";hidden.value=JSON.stringify(selections);';
 			echo 'this.appendChild(hidden);';
 			echo '});';
+			echo 'function sptRecomputeDuplicateEmails(){';
+			echo 'var counts={};';
+			echo 'document.querySelectorAll(".spt-player-email").forEach(function(f){';
+			echo 'var v=(f.value||"").trim().toLowerCase();';
+			echo 'if(!v){return;}';
+			echo 'counts[v]=(counts[v]||0)+1;';
+			echo '});';
+			echo 'document.querySelectorAll(".spt-player-email").forEach(function(f){';
+			echo 'var v=(f.value||"").trim().toLowerCase();';
+			echo 'var n=v?(counts[v]||0):0;';
+			echo 'var pid=f.getAttribute("data-player-id");';
+			echo 'var note=document.querySelector(\'.spt-dup-note[data-player-id="\'+pid+\'"]\');';
+			echo 'var row=f.closest("tr");';
+			echo 'if(n>1){';
+			echo 'if(note){note.textContent="⚠ shared with "+(n-1)+" other player(s)";}';
+			echo 'if(row){row.classList.add("spt-dup-row");}';
+			echo '}else{';
+			echo 'if(note){note.textContent="";}';
+			echo 'if(row){row.classList.remove("spt-dup-row");}';
+			echo '}';
+			echo '});';
+			echo '}';
+			echo 'sptRecomputeDuplicateEmails();';
+			echo 'document.querySelectorAll(".spt-player-email").forEach(function(f){f.addEventListener("change",sptRecomputeDuplicateEmails);});';
 			echo '</script>';
 		}
 
@@ -1085,5 +1191,49 @@ class SPT_Email_Sync {
 
 	private function count_all_players() {
 		return (int) wp_count_posts( 'sp_player' )->publish;
+	}
+
+	/**
+	 * Every spt_email address currently held by more than one published player.
+	 *
+	 * A standing audit independent of the sync tool above: it looks at
+	 * whatever is already on file, not at anything the matcher just proposed.
+	 * One query, grouped in PHP rather than SQL, because MySQL's GROUP_CONCAT
+	 * has a length cap that a popular staff address shared across dozens of
+	 * players could quietly hit.
+	 *
+	 * @return array email => array of [ 'player_id' => int, 'title' => string ],
+	 *               one entry per group of 2+ players, keyed by the
+	 *               lower-cased address.
+	 */
+	private function find_duplicate_emails() {
+		global $wpdb;
+
+		$rows = $wpdb->get_results(
+			"SELECT p.ID, p.post_title, pm.meta_value AS email
+			FROM {$wpdb->posts} p
+			INNER JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key = 'spt_email'
+			WHERE p.post_type = 'sp_player' AND p.post_status = 'publish' AND pm.meta_value != ''
+			ORDER BY pm.meta_value"
+		);
+
+		$groups = array();
+		foreach ( (array) $rows as $row ) {
+			$email = strtolower( trim( (string) $row->email ) );
+			if ( '' === $email || ! is_email( $email ) ) {
+				continue;
+			}
+			$groups[ $email ][] = array(
+				'player_id' => (int) $row->ID,
+				'title'     => $row->post_title,
+			);
+		}
+
+		return array_filter(
+			$groups,
+			function ( $players ) {
+				return count( $players ) > 1;
+			}
+		);
 	}
 }

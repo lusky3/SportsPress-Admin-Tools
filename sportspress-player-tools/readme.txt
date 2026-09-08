@@ -4,7 +4,7 @@ Tags: sportspress, player, roster, csv, captain
 Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
-Stable tag: 1.3.1
+Stable tag: 1.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -41,6 +41,10 @@ CSV files must have "Team" and "Name" columns. Player names are automatically cl
 Yes. The batch list creator supports both "Create new" and "Update existing" modes. Update mode finds lists matching team and season, then replaces players.
 
 == Changelog ==
+
+= 1.4.0 =
+* New: the email sync preview now flags when two different players are about to be given the same address, right in the table -- a shared household address is sometimes real (siblings), sometimes a matching mistake, and this makes the coincidence visible before Apply instead of after. Never blocks Apply or changes what's checked; it's a heads-up, and it updates live if you pick a different candidate address from a row's dropdown.
+* New: a "Duplicate Player Emails" report lists every address currently held by more than one player, independent of the sync tool -- catches existing data problems (an old staff address left on several records, an accidental merge) as well as fresh matching mistakes. Read-only; each player links to its edit screen so you can fix it by hand.
 
 = 1.3.1 =
 * Fix: applying the email sync preview on a large roster could silently drop rows. The form posted one field pair per matched player, and PHP's max_input_vars (1000 by default) has no error path -- it just stops parsing past the limit, so a big "Select All" wrote some players and dropped the rest with no indication anything was lost. Caught live on staging: a 546-row selection wrote 487 and silently dropped 59. Apply now posts one JSON field regardless of how many rows are selected, so this can't recur no matter how the host is configured.
