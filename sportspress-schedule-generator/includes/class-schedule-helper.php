@@ -43,6 +43,106 @@ class SPSG_Schedule_Helper {
 	}
 
 	/**
+	 * Build a date => sequential season-week-number map from a schedule.
+	 *
+	 * Games are grouped by real calendar week (Monday-Sunday, ISO-8601), so a
+	 * league playing e.g. Friday and Sunday both land under the same week
+	 * number. Weeks are then numbered 1, 2, 3... in true chronological
+	 * order -- "Week 1 of the season", not the ISO week-of-year number,
+	 * which would reset at each calendar year boundary (this plugin's
+	 * seasons routinely cross one) and mean nothing to an admin reading an
+	 * export.
+	 *
+	 * Numbering by the order dates first appear in `$schedule` (rather than
+	 * sorting) would seem equivalent, since a generated schedule is *mostly*
+	 * date-ordered, but isn't reliably so -- the slot allocator can place a
+	 * later matchup before an earlier one depending on how the search
+	 * proceeds, and did so on a real 272-game season, ending up with e.g.
+	 * "Week 3 — October 25" printed before "Week 4 — October 18". Grouping
+	 * dates into real weeks first, then sorting those week keys (an ISO
+	 * year + zero-padded ISO week number sorts correctly as a plain string)
+	 * before assigning sequential numbers avoids depending on the input
+	 * order at all.
+	 *
+	 * Shared by the CSV and XLSX exporters so a game reports the same week
+	 * number in either format -- neither a plain game object nor array ever
+	 * carries a week_number of its own (see {@see SPSG_Slot_Allocator::create_game()}),
+	 * so without this, an exported "Week" column has nothing to show at all.
+	 *
+	 * @param array $schedule Array of game objects/arrays, each carrying a `date`.
+	 * @return array<string,int> Date (Y-m-d) => week number.
+	 */
+	public static function build_week_number_map( $schedule ) {
+		$dates_by_key = self::group_dates_by_real_week( $schedule );
+		ksort( $dates_by_key );
+
+		$week_by_date = array();
+		$week_num     = 1;
+		foreach ( $dates_by_key as $dates_in_week ) {
+			foreach ( $dates_in_week as $date ) {
+				$week_by_date[ $date ] = $week_num;
+			}
+			++$week_num;
+		}
+
+		return $week_by_date;
+	}
+
+	/**
+	 * Group a schedule's distinct dates by real calendar week.
+	 *
+	 * @param array $schedule Array of game objects/arrays, each carrying a `date`.
+	 * @return array<string,array<string,string>> ISO week key => set of dates (as a value=>value map, to dedupe).
+	 */
+	private static function group_dates_by_real_week( $schedule ) {
+		$dates_by_key = array();
+
+		foreach ( (array) $schedule as $game ) {
+			$date = self::extract_game_date( $game );
+			$key  = '' !== $date ? self::iso_week_key( $date ) : null;
+
+			if ( null === $key ) {
+				continue;
+			}
+
+			$dates_by_key[ $key ][ $date ] = $date;
+		}
+
+		return $dates_by_key;
+	}
+
+	/**
+	 * Read a game object/array's `date` field.
+	 *
+	 * @param array|object $game Game object or array.
+	 * @return string Date in Y-m-d format, or '' if absent.
+	 */
+	private static function extract_game_date( $game ) {
+		return is_array( $game ) ? ( $game['date'] ?? '' ) : ( $game->date ?? '' );
+	}
+
+	/**
+	 * Build a key identifying the real (Mon-Sun) calendar week a date falls
+	 * in, stable across a season that crosses a year boundary.
+	 *
+	 * Combines the ISO week-numbering year (`o`) with the ISO week number
+	 * (`W`) rather than the plain calendar year (`Y`): a date in the last
+	 * days of December can belong to ISO week 1 of the *following* year (and
+	 * the reverse in early January), so `Y-W` alone can collide two
+	 * unrelated weeks onto the same key right at the boundary this plugin's
+	 * seasons commonly cross.
+	 *
+	 * @param string $date Date in Y-m-d format.
+	 * @return string|null Stable per-week key, or null if $date doesn't parse.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function iso_week_key( $date ) {
+		$dt = DateTime::createFromFormat( 'Y-m-d', $date );
+		return $dt ? $dt->format( 'o-W' ) : null;
+	}
+
+	/**
 	 * Resolve the time slots available for a (venue, date, day_name) tuple,
 	 * respecting the priority cascade:
 	 *   1. Date-specific availability windows (venue_date_availability)
