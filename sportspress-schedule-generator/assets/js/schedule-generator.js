@@ -669,8 +669,10 @@
                         // "Group Arenas": same chronological date order, but
                         // every game at a given venue sits together within
                         // that date instead of interleaving by time alone.
-                        aVal = $(a).data('date') + ' ' + $(a).data('venue') + ' ' + $(a).data('time');
-                        bVal = $(b).data('date') + ' ' + $(b).data('venue') + ' ' + $(b).data('time');
+                        // Plain dataset reads (not jQuery's $(el).data()) --
+                        // a and b are raw elements here, not selector input.
+                        aVal = a.dataset.date + ' ' + a.dataset.venue + ' ' + a.dataset.time;
+                        bVal = b.dataset.date + ' ' + b.dataset.venue + ' ' + b.dataset.time;
                         break;
                     case 'time':
                         aVal = $(a).data('time');
