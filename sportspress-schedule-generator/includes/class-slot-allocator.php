@@ -1023,20 +1023,34 @@ class SPSG_Slot_Allocator {
 			}
 
 			$partner_teams = array_diff( $restricted_teams, $this_teams );
-			if ( empty( $partner_teams ) ) {
-				continue;
-			}
-
-			foreach ( $same_day_games as $existing_game ) {
-				$existing_teams = array( $this->extract_id( $existing_game->home_team ), $this->extract_id( $existing_game->away_team ) );
-				if ( array_intersect( $existing_teams, $partner_teams ) ) {
-					$bonus += self::OVERLAP_AVOID_SAME_DAY_BONUS;
-					break;
-				}
+			if ( $this->partner_already_playing( $same_day_games, $partner_teams ) ) {
+				$bonus += self::OVERLAP_AVOID_SAME_DAY_BONUS;
 			}
 		}
 
 		return $bonus;
+	}
+
+	/**
+	 * Whether any of $same_day_games already involves one of $partner_teams.
+	 *
+	 * @param array $same_day_games Games already scheduled on the candidate date.
+	 * @param array $partner_teams  Team IDs to look for among those games.
+	 * @return bool
+	 */
+	private function partner_already_playing( $same_day_games, $partner_teams ) {
+		if ( empty( $partner_teams ) ) {
+			return false;
+		}
+
+		foreach ( $same_day_games as $existing_game ) {
+			$existing_teams = array( $this->extract_id( $existing_game->home_team ), $this->extract_id( $existing_game->away_team ) );
+			if ( array_intersect( $existing_teams, $partner_teams ) ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
