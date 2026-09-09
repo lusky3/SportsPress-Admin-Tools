@@ -698,9 +698,9 @@ class SPSG_Admin_Renderer {
 					</td>
 				</tr>
 				<tr>
-					<th scope="row"><?php esc_html_e( 'Date-Specific Time Overrides', 'sportspress-schedule-generator' ); ?></th>
+					<th scope="row"><label for="spsg-venue-date-availability-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Date-Specific Time Overrides', 'sportspress-schedule-generator' ); ?></label></th>
 					<td>
-						<textarea name="venue_date_availability[<?php echo esc_attr( $venue_id ); ?>]" rows="3" class="large-text" placeholder="<?php esc_attr_e( '2026-12-27 = 16:00, 17:00, 18:00', 'sportspress-schedule-generator' ); ?>"><?php echo esc_textarea( $venue_date_overrides ); ?></textarea>
+						<textarea id="spsg-venue-date-availability-<?php echo esc_attr( $index ); ?>" name="venue_date_availability[<?php echo esc_attr( $venue_id ); ?>]" rows="3" class="large-text" placeholder="<?php esc_attr_e( '2026-12-27 = 16:00, 17:00, 18:00', 'sportspress-schedule-generator' ); ?>"><?php echo esc_textarea( $venue_date_overrides ); ?></textarea>
 						<p class="description">
 							<?php esc_html_e( 'Override this venue\'s available times for specific dates -- e.g. a shortened holiday slot. One override per line: "YYYY-MM-DD = TIME, TIME" for a single date, or "YYYY-MM-DD to YYYY-MM-DD = TIME, TIME" for a range. Takes priority over Available Days & Times for any date it covers.', 'sportspress-schedule-generator' ); ?>
 						</p>
@@ -779,13 +779,25 @@ class SPSG_Admin_Renderer {
 	private static function format_venue_date_availability_lines( $ranges ) {
 		$lines = array();
 		foreach ( (array) $ranges as $range ) {
-			$start = $range['start_date'] ?? '';
-			$end   = $range['end_date'] ?? $start;
-			$times = implode( ', ', (array) ( $range['time_slots'] ?? array() ) );
-			$date_part = ( $start === $end ) ? $start : "$start to $end";
-			$lines[] = "$date_part = $times";
+			$lines[] = self::format_venue_date_availability_line( $range );
 		}
 		return implode( "\n", $lines );
+	}
+
+	/**
+	 * Format a single date-availability range into one "DATE[ to DATE] =
+	 * TIME, TIME" line. Split out of {@see format_venue_date_availability_lines()}
+	 * purely to keep that loop's own complexity low.
+	 *
+	 * @param array $range A single `{start_date, end_date, time_slots}` range.
+	 * @return string One formatted line.
+	 */
+	private static function format_venue_date_availability_line( $range ) {
+		$start = $range['start_date'] ?? '';
+		$end   = $range['end_date'] ?? $start;
+		$times = implode( ', ', (array) ( $range['time_slots'] ?? array() ) );
+		$date_part = ( $start === $end ) ? $start : "$start to $end";
+		return "$date_part = $times";
 	}
 
 	/**
