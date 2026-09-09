@@ -22,8 +22,8 @@
 define( 'ABSPATH', dirname( __FILE__ ) . '/' );
 define( 'SPSG_PLUGIN_PATH', dirname( __FILE__ ) . '/../' );
 
-function __( $s, $d = null ) { return $s; } // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
-function esc_html_e( $s, $d = null ) { echo $s; } // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
+function __( $s ) { return $s; } // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
+function esc_html_e( $s ) { echo $s; } // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
 
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-helper.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-statistics-calculator.php';

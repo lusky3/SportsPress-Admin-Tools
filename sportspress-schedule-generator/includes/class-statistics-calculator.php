@@ -75,10 +75,28 @@ class SPSG_Statistics_Calculator {
 			return array();
 		}
 
+		$index = $this->build_division_index( $config->divisions );
+		$counts_by_week = $this->count_games_by_week_division_team( $schedule, $index['team_division'] );
+
+		return $this->collect_incomplete_week_issues( $config, $counts_by_week, $index );
+	}
+
+	/**
+	 * Index a config's divisions for the completeness check: which division
+	 * each team belongs to, each division's full team roster, and its
+	 * display name.
+	 *
+	 * @param array $divisions Configured divisions.
+	 * @return array{team_division:array,division_teams:array,division_names:array}
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private function build_division_index( $divisions ) {
 		$team_division = array();
 		$division_teams = array();
 		$division_names = array();
-		foreach ( $config->divisions as $division ) {
+
+		foreach ( $divisions as $division ) {
 			$div_id = $division['id'] ?: ( $division['name'] ?? '' );
 			$division_names[ $div_id ] = $division['name'] ?? $div_id;
 			$division_teams[ $div_id ] = (array) ( $division['teams'] ?? array() );
@@ -87,9 +105,27 @@ class SPSG_Statistics_Calculator {
 			}
 		}
 
-		$counts_by_week = $this->count_games_by_week_division_team( $schedule, $team_division );
+		return array(
+			'team_division' => $team_division,
+			'division_teams' => $division_teams,
+			'division_names' => $division_names,
+		);
+	}
 
+	/**
+	 * Walk every real week the season touches and collect participation
+	 * issues for each one confirmed complete.
+	 *
+	 * @param object $config         Schedule configuration.
+	 * @param array  $counts_by_week Output of {@see count_games_by_week_division_team()}.
+	 * @param array  $index          Output of {@see build_division_index()}.
+	 * @return array Issue entries.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private function collect_incomplete_week_issues( $config, $counts_by_week, $index ) {
 		$issues = array();
+
 		foreach ( SPSG_Schedule_Helper::get_season_week_keys( $config ) as $week_key ) {
 			if ( ! SPSG_Schedule_Helper::is_week_complete( $week_key, $config ) ) {
 				continue;
@@ -99,8 +135,8 @@ class SPSG_Statistics_Calculator {
 				$this->detect_week_participation_issues(
 					$week_key,
 					$counts_by_week[ $week_key ] ?? array(),
-					$division_teams,
-					$division_names,
+					$index['division_teams'],
+					$index['division_names'],
 					$config
 				)
 			);
@@ -120,25 +156,46 @@ class SPSG_Statistics_Calculator {
 		$counts = array();
 
 		foreach ( $schedule as $game ) {
-			$g = (array) $game;
-			$date = $g['date'] ?? '';
-			$week_key = '' !== $date ? SPSG_Schedule_Helper::iso_week_key( $date ) : null;
-			if ( null === $week_key ) {
-				continue;
-			}
-
-			foreach ( array( 'home_team', 'away_team' ) as $side ) {
-				$team_id = SPSG_Schedule_Helper::extract_id( $g[ $side ] ?? '' );
-				$div_id = $team_division[ $team_id ] ?? null;
-				if ( null === $div_id ) {
-					continue;
-				}
+			foreach ( $this->resolve_game_week_teams( $game, $team_division ) as $entry ) {
+				list( $week_key, $div_id, $team_id ) = $entry;
 				$counts[ $week_key ][ $div_id ][ $team_id ]
 					= ( $counts[ $week_key ][ $div_id ][ $team_id ] ?? 0 ) + 1;
 			}
 		}
 
 		return $counts;
+	}
+
+	/**
+	 * Resolve one game's home/away teams to (week key, division id, team)
+	 * tuples, skipping any side that doesn't resolve to a known division.
+	 * Split out of {@see count_games_by_week_division_team()} so that
+	 * method's own branching stays low.
+	 *
+	 * @param array|object $game          Game object/array.
+	 * @param array        $team_division Team name => division id.
+	 * @return array<int,array{0:string,1:string,2:string}> Zero, one, or two (week_key, div_id, team_id) tuples.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private function resolve_game_week_teams( $game, $team_division ) {
+		$g = (array) $game;
+		$date = $g['date'] ?? '';
+		$week_key = '' !== $date ? SPSG_Schedule_Helper::iso_week_key( $date ) : null;
+		if ( null === $week_key ) {
+			return array();
+		}
+
+		$entries = array();
+		foreach ( array( 'home_team', 'away_team' ) as $side ) {
+			$team_id = SPSG_Schedule_Helper::extract_id( $g[ $side ] ?? '' );
+			$div_id = $team_division[ $team_id ] ?? null;
+			if ( null !== $div_id ) {
+				$entries[] = array( $week_key, $div_id, $team_id );
+			}
+		}
+
+		return $entries;
 	}
 
 	/**
@@ -151,46 +208,90 @@ class SPSG_Statistics_Calculator {
 	 * @param array  $division_names Division id => display name.
 	 * @param object $config         Schedule configuration.
 	 * @return array Issue entries.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function detect_week_participation_issues( $week_key, $by_division, $division_teams, $division_names, $config ) {
-		$issues = array();
 		$week_dates = SPSG_Schedule_Helper::get_week_playing_dates( $week_key, $config );
-		$week_label = implode( ' / ', array_column( $week_dates, 'date' ) );
 
+		$issues = array();
 		foreach ( $division_teams as $div_id => $teams ) {
-			if ( count( $teams ) % 2 !== 0 ) {
-				continue; // Odd-sized division: a bye every week is unavoidable.
-			}
-
-			$team_counts = $by_division[ $div_id ] ?? array();
-			foreach ( $teams as $team_id ) {
-				$count = $team_counts[ $team_id ] ?? 0;
-				if ( 1 === $count ) {
-					continue;
-				}
-				$issues[] = array(
-					'type' => 'incomplete_week_participation',
-					'severity' => 'warning',
-					'message' => sprintf(
-						/* translators: 1: week date(s), 2: team name, 3: division name, 4: actual game count */
-						__( 'Week of %1$s: team "%2$s" (%3$s) played %4$d game(s), expected exactly 1 -- all playing days were available with no restrictions that week.', 'sportspress-schedule-generator' ),
-						$week_label,
-						$team_id,
-						$division_names[ $div_id ] ?? $div_id,
-						$count
-					),
-					'details' => array(
-						'week' => $week_key,
-						'dates' => array_column( $week_dates, 'date' ),
-						'team' => $team_id,
-						'division' => $division_names[ $div_id ] ?? $div_id,
-						'game_count' => $count,
-					),
-				);
-			}
+			$issues = array_merge(
+				$issues,
+				$this->detect_division_week_issues(
+					$week_key,
+					$teams,
+					$by_division[ $div_id ] ?? array(),
+					$division_names[ $div_id ] ?? $div_id,
+					$week_dates
+				)
+			);
 		}
 
 		return $issues;
+	}
+
+	/**
+	 * Build issue entries for one division's teams in one week. Split out of
+	 * {@see detect_week_participation_issues()} so that method's own
+	 * branching stays low.
+	 *
+	 * @param string $week_key      ISO week key.
+	 * @param array  $teams         Division's full configured team roster.
+	 * @param array  $team_counts   Team => game count, for this week (only teams that played).
+	 * @param string $division_name Division display name.
+	 * @param array  $week_dates    Output of {@see SPSG_Schedule_Helper::get_week_playing_dates()}.
+	 * @return array Issue entries.
+	 */
+	private function detect_division_week_issues( $week_key, $teams, $team_counts, $division_name, $week_dates ) {
+		if ( count( $teams ) % 2 !== 0 ) {
+			return array(); // Odd-sized division: a bye every week is unavoidable.
+		}
+
+		$issues = array();
+		foreach ( $teams as $team_id ) {
+			$count = $team_counts[ $team_id ] ?? 0;
+			if ( 1 === $count ) {
+				continue;
+			}
+			$issues[] = $this->build_participation_issue( $week_key, $team_id, $division_name, $count, $week_dates );
+		}
+
+		return $issues;
+	}
+
+	/**
+	 * Build a single "team didn't play exactly once" issue entry.
+	 *
+	 * @param string $week_key      ISO week key.
+	 * @param string $team_id       Team name.
+	 * @param string $division_name Division display name.
+	 * @param int    $count         Actual game count that week.
+	 * @param array  $week_dates    Output of {@see SPSG_Schedule_Helper::get_week_playing_dates()}.
+	 * @return array Issue entry.
+	 */
+	private function build_participation_issue( $week_key, $team_id, $division_name, $count, $week_dates ) {
+		$dates = array_column( $week_dates, 'date' );
+
+		return array(
+			'type' => 'incomplete_week_participation',
+			'severity' => 'warning',
+			'message' => sprintf(
+				/* translators: 1: week date(s), 2: team name, 3: division name, 4: actual game count */
+				__( 'Week of %1$s: team "%2$s" (%3$s) played %4$d game(s), expected exactly 1 -- all playing days were available with no restrictions that week.', 'sportspress-schedule-generator' ),
+				implode( ' / ', $dates ),
+				$team_id,
+				$division_name,
+				$count
+			),
+			'details' => array(
+				'week' => $week_key,
+				'dates' => $dates,
+				'team' => $team_id,
+				'division' => $division_name,
+				'game_count' => $count,
+			),
+		);
 	}
 
 	/**
