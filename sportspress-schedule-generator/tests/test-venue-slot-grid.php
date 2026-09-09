@@ -166,16 +166,18 @@ vsg_assert(
 	'the 21:00 slot is free'
 );
 
-// A team playing back to back (19:00 then 20:00) was never blocked by the venue
-// buffer; make sure the fix does not change that path either way.
+// A team playing back to back (19:00 then 20:00) is not a venue-buffer
+// conflict, but IS a same-week double-header -- the allocator now hard-blocks
+// a team playing twice in the same real calendar week (this fixture's week
+// has a single playing date, so "same week" here is "same date").
 $back_to_back = (object) array(
 	'home_team' => array( 'id' => 't1', 'name' => 'Team 1' ),
 	'away_team' => array( 'id' => 't3', 'name' => 'Team 3' ),
 	'division'  => (object) array( 'id' => 'd1', 'name' => 'D1' ),
 );
 vsg_assert(
-	true === $allocator->is_slot_valid( $back_to_back, $slot( '20:00' ), $by_date, $config ),
-	'team-level overlap check is unchanged (back-to-back games remain allowed)'
+	false === $allocator->is_slot_valid( $back_to_back, $slot( '20:00' ), $by_date, $config ),
+	'team-level double-header is blocked even without a venue-time overlap'
 );
 
 // ---------------------------------------------------------------------------
