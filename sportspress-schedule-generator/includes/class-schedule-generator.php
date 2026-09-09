@@ -150,7 +150,7 @@ class SPSG_Schedule_Generator {
 
 		// Calculate statistics using the statistics calculator
 		$stats_calculator = new SPSG_Statistics_Calculator();
-		$stats = $stats_calculator->calculate( $result['schedule'] );
+		$stats = $stats_calculator->calculate( $result['schedule'], $config );
 
 		// Merge the engine's own stats in. LOW (2026-08): this read
 		// $result['generation_time'], a key generate_schedule() never returns —

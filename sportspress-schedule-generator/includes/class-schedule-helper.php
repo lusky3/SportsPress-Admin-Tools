@@ -94,7 +94,7 @@ class SPSG_Schedule_Helper {
 	 * @param array $schedule Array of game objects/arrays, each carrying a `date`.
 	 * @return array<string,array<string,string>> ISO week key => set of dates (as a value=>value map, to dedupe).
 	 */
-	private static function group_dates_by_real_week( $schedule ) {
+	public static function group_dates_by_real_week( $schedule ) {
 		$dates_by_key = array();
 
 		foreach ( (array) $schedule as $game ) {
@@ -137,9 +137,266 @@ class SPSG_Schedule_Helper {
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
-	private static function iso_week_key( $date ) {
+	public static function iso_week_key( $date ) {
 		$dt = DateTime::createFromFormat( 'Y-m-d', $date );
 		return $dt ? $dt->format( 'o-W' ) : null;
+	}
+
+	/**
+	 * Resolve the calendar dates a real (Mon-Sun) week falls on for each of
+	 * the season's configured playing days, restricted to dates within
+	 * [season_start, season_end].
+	 *
+	 * A week clipped by the season boundary (e.g. the season starts on a
+	 * Sunday, so that first real week has no Friday in-season) returns fewer
+	 * entries than `count($config->playing_days)` -- callers use that to
+	 * treat a boundary week as inherently partial.
+	 *
+	 * @param string $week_key ISO week key, as produced by {@see iso_week_key()} ("o-W").
+	 * @param object $config   Schedule configuration.
+	 * @return array<int,array{date:string,day_name:string}> One entry per in-season playing day that week.
+	 */
+	public static function get_week_playing_dates( $week_key, $config ) {
+		$monday = self::week_monday( $week_key );
+		if ( null === $monday ) {
+			return array();
+		}
+
+		$dates = array();
+		foreach ( range( 0, 6 ) as $offset ) {
+			$entry = self::playing_date_for_offset( $monday, $offset, $config );
+			if ( null !== $entry ) {
+				$dates[] = $entry;
+			}
+		}
+
+		return $dates;
+	}
+
+	/**
+	 * Resolve an ISO week key ("o-W") to that week's Monday, fixed at
+	 * midnight.
+	 *
+	 * Fixed at midnight because `new DateTime()` with no args defaults to
+	 * the CURRENT wall-clock time, which would otherwise push a date
+	 * matching season_end (also midnight) past it in a `>` comparison
+	 * whenever the real-world time of day isn't exactly 00:00:00.
+	 *
+	 * @param string $week_key ISO week key ("o-W").
+	 * @return DateTime|null
+	 */
+	private static function week_monday( $week_key ) {
+		$parts = explode( '-', $week_key );
+		if ( 2 !== count( $parts ) ) {
+			return null;
+		}
+
+		$monday = new DateTime( 'midnight' );
+		$monday->setISODate( (int) $parts[0], (int) $parts[1] );
+		return $monday;
+	}
+
+	/**
+	 * Resolve the single calendar date $offset days after $monday, or null
+	 * if it isn't one of the season's configured playing days in-season.
+	 *
+	 * @param DateTime $monday A week's Monday, at midnight.
+	 * @param int      $offset Days after Monday (0-6).
+	 * @param object   $config Schedule configuration.
+	 * @return array{date:string,day_name:string}|null
+	 */
+	private static function playing_date_for_offset( $monday, $offset, $config ) {
+		$day = ( clone $monday )->add( new DateInterval( "P{$offset}D" ) );
+		$day_name = strtolower( $day->format( 'l' ) );
+
+		if ( ! self::is_configured_playing_day( $day_name, $config ) ) {
+			return null;
+		}
+
+		$day_str = $day->format( 'Y-m-d' );
+		if ( ! self::is_date_in_season( $day_str, $config ) ) {
+			return null;
+		}
+
+		return array(
+			'date' => $day_str,
+			'day_name' => $day_name,
+		);
+	}
+
+	/**
+	 * Whether $day_name is one of the config's configured playing days.
+	 *
+	 * @param string $day_name Lowercase day name.
+	 * @param object $config   Schedule configuration.
+	 * @return bool
+	 */
+	private static function is_configured_playing_day( $day_name, $config ) {
+		$playing_days = $config->playing_days ?? array();
+		return in_array( $day_name, $playing_days, true );
+	}
+
+	/**
+	 * Whether $date (Y-m-d) falls within the config's [season_start, season_end],
+	 * treating either bound as open-ended when absent.
+	 *
+	 * @param string $date   Date in YYYY-MM-DD format.
+	 * @param object $config Schedule configuration.
+	 * @return bool
+	 */
+	private static function is_date_in_season( $date, $config ) {
+		if ( ! self::is_on_or_after_season_start( $date, $config ) ) {
+			return false;
+		}
+		return self::is_on_or_before_season_end( $date, $config );
+	}
+
+	/**
+	 * @param string $date   Date in YYYY-MM-DD format.
+	 * @param object $config Schedule configuration.
+	 * @return bool
+	 */
+	private static function is_on_or_after_season_start( $date, $config ) {
+		$season_start = $config->season_start ?? null;
+		if ( ! ( $season_start instanceof DateTime ) ) {
+			return true;
+		}
+		return $date >= $season_start->format( 'Y-m-d' );
+	}
+
+	/**
+	 * @param string $date   Date in YYYY-MM-DD format.
+	 * @param object $config Schedule configuration.
+	 * @return bool
+	 */
+	private static function is_on_or_before_season_end( $date, $config ) {
+		$season_end = $config->season_end ?? null;
+		if ( ! ( $season_end instanceof DateTime ) ) {
+			return true;
+		}
+		return $date <= $season_end->format( 'Y-m-d' );
+	}
+
+	/**
+	 * Whether a (date, day) has no active blackout or date-specific override
+	 * for ANY venue -- i.e. the normal, unmodified schedule applies. A venue
+	 * whose date-specific window merely repeats the normal hours still
+	 * counts as "modified": the operator explicitly carved out that date, and
+	 * a week-completeness check should not assume it behaves like any other.
+	 *
+	 * @param string $date     Date in YYYY-MM-DD format.
+	 * @param object $config   Schedule configuration.
+	 * @return bool
+	 */
+	public static function is_date_unmodified( $date, $config ) {
+		if ( in_array( $date, (array) ( $config->blackout_dates ?? array() ), true ) ) {
+			return false;
+		}
+
+		foreach ( (array) ( $config->venues ?? array() ) as $venue ) {
+			if ( ! self::venue_is_unmodified_on( $venue, $date, $config ) ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Whether a single venue has no blackout or date-specific override active
+	 * on $date. Split out of {@see is_date_unmodified()} so that method's own
+	 * branching stays low.
+	 *
+	 * @param mixed  $venue  Venue entity (object, array, or string).
+	 * @param string $date   Date in YYYY-MM-DD format.
+	 * @param object $config Schedule configuration.
+	 * @return bool
+	 */
+	private static function venue_is_unmodified_on( $venue, $date, $config ) {
+		$venue_id = self::extract_id( $venue );
+		return ! self::is_venue_blacked_out( $venue_id, $date, $config )
+			&& ! self::has_date_specific_override( $venue_id, $date, $config );
+	}
+
+	/**
+	 * Whether $venue_id carries a `venue_date_availability` range covering $date.
+	 *
+	 * @param int|string $venue_id Venue identifier.
+	 * @param string     $date     Date in YYYY-MM-DD format.
+	 * @param object     $config   Schedule configuration.
+	 * @return bool
+	 */
+	private static function has_date_specific_override( $venue_id, $date, $config ) {
+		if ( empty( $config->venue_date_availability[ $venue_id ] ) ) {
+			return false;
+		}
+
+		foreach ( $config->venue_date_availability[ $venue_id ] as $range ) {
+			if ( $date >= $range['start_date'] && $date <= $range['end_date'] ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Enumerate every real (Mon-Sun) calendar week the season's date range
+	 * touches, regardless of whether any games were actually scheduled in
+	 * it -- so a week where a whole division went silent still gets
+	 * evaluated for completeness rather than being invisible to the check
+	 * because no games happen to reference it.
+	 *
+	 * @param object $config Schedule configuration.
+	 * @return array<int,string> ISO week keys ("o-W"), season order.
+	 */
+	public static function get_season_week_keys( $config ) {
+		if ( ! ( $config->season_start instanceof DateTime ) || ! ( $config->season_end instanceof DateTime ) ) {
+			return array();
+		}
+
+		$keys = array();
+		$current = clone $config->season_start;
+		while ( $current <= $config->season_end ) {
+			$key = self::iso_week_key( $current->format( 'Y-m-d' ) );
+			if ( null !== $key ) {
+				$keys[ $key ] = $key;
+			}
+			$current->add( new DateInterval( 'P1D' ) );
+		}
+
+		return array_values( $keys );
+	}
+
+	/**
+	 * Whether a real calendar week is "complete": every one of the season's
+	 * configured playing days falls in-season that week, and none of them
+	 * carries a blackout or date-specific override on any venue. Only a
+	 * complete week is a fair basis for expecting every team to play exactly
+	 * once -- see {@see SPSG_Statistics_Calculator::detect_incomplete_weeks()}.
+	 *
+	 * @param string $week_key ISO week key ("o-W").
+	 * @param object $config   Schedule configuration.
+	 * @return bool
+	 */
+	public static function is_week_complete( $week_key, $config ) {
+		$playing_days = $config->playing_days ?? array();
+		if ( empty( $playing_days ) ) {
+			return false;
+		}
+
+		$week_dates = self::get_week_playing_dates( $week_key, $config );
+		if ( count( $week_dates ) !== count( $playing_days ) ) {
+			return false;
+		}
+
+		foreach ( $week_dates as $entry ) {
+			if ( ! self::is_date_unmodified( $entry['date'], $config ) ) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	/**

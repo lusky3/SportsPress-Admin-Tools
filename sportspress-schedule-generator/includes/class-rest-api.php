@@ -1342,7 +1342,7 @@ class SPSG_REST_API {
 			$result['schedule']
 		);
 		// Rich statistics via SPSG_Statistics_Calculator
-		$rich_stats = ( new SPSG_Statistics_Calculator() )->calculate( $result['schedule'] );
+		$rich_stats = ( new SPSG_Statistics_Calculator() )->calculate( $result['schedule'], $config );
 		return rest_ensure_response(
 			array(
 				'schedule_id' => $sid,
