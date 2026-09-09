@@ -21,11 +21,13 @@ class SPSG_Statistics_Calculator {
 	/**
 	 * Calculate comprehensive statistics for a schedule
 	 *
-	 * @param array $schedule Array of SPSG_Game objects (must be objects, not arrays)
+	 * @param array                            $schedule Array of SPSG_Game objects (must be objects, not arrays)
+	 * @param SPSG_Schedule_Configuration|null $config   Optional configuration; when given, also
+	 *                                                   checks weekly participation completeness.
 	 * @return array Statistics array
 	 */
 	// Note: iterates the schedule multiple times for different statistics. For large schedules (1000+ games), consider a single-pass approach.
-	public function calculate( $schedule ) {
+	public function calculate( $schedule, $config = null ) {
 		if ( empty( $schedule ) ) {
 			return $this->get_empty_stats();
 		}
@@ -44,7 +46,151 @@ class SPSG_Statistics_Calculator {
 		// Add imbalance detection
 		$stats['imbalances'] = $this->detect_imbalances( $stats );
 
+		if ( $config ) {
+			$stats['imbalances'] = array_merge(
+				$stats['imbalances'],
+				$this->detect_incomplete_weeks( $schedule, $config )
+			);
+		}
+
 		return $stats;
+	}
+
+	/**
+	 * Warn about "complete" weeks (every configured playing day available,
+	 * no blackout or date-specific venue override that week) where a team
+	 * didn't play exactly once. On a normal week, every team in an
+	 * even-sized division should play exactly one game -- either day.
+	 *
+	 * Divisions with an odd team count always have one team bye every week
+	 * by construction and are skipped, since "everyone plays" is never
+	 * achievable for them regardless of scheduling quality.
+	 *
+	 * @param array                       $schedule Array of game objects/arrays.
+	 * @param SPSG_Schedule_Configuration $config   Schedule configuration.
+	 * @return array Imbalance-style issue entries.
+	 */
+	private function detect_incomplete_weeks( $schedule, $config ) {
+		if ( empty( $config->divisions ) || empty( $config->playing_days ) ) {
+			return array();
+		}
+
+		$team_division = array();
+		$division_teams = array();
+		$division_names = array();
+		foreach ( $config->divisions as $division ) {
+			$div_id = $division['id'] ?: ( $division['name'] ?? '' );
+			$division_names[ $div_id ] = $division['name'] ?? $div_id;
+			$division_teams[ $div_id ] = (array) ( $division['teams'] ?? array() );
+			foreach ( $division_teams[ $div_id ] as $team ) {
+				$team_division[ $team ] = $div_id;
+			}
+		}
+
+		$counts_by_week = $this->count_games_by_week_division_team( $schedule, $team_division );
+
+		$issues = array();
+		foreach ( SPSG_Schedule_Helper::get_season_week_keys( $config ) as $week_key ) {
+			if ( ! SPSG_Schedule_Helper::is_week_complete( $week_key, $config ) ) {
+				continue;
+			}
+			$issues = array_merge(
+				$issues,
+				$this->detect_week_participation_issues(
+					$week_key,
+					$counts_by_week[ $week_key ] ?? array(),
+					$division_teams,
+					$division_names,
+					$config
+				)
+			);
+		}
+
+		return $issues;
+	}
+
+	/**
+	 * Tally each team's game count per (real week, division).
+	 *
+	 * @param array $schedule       Array of game objects/arrays.
+	 * @param array $team_division  Team name => division id.
+	 * @return array<string,array<string,array<string,int>>> week key => division id => team => game count.
+	 */
+	private function count_games_by_week_division_team( $schedule, $team_division ) {
+		$counts = array();
+
+		foreach ( $schedule as $game ) {
+			$g = (array) $game;
+			$date = $g['date'] ?? '';
+			$week_key = '' !== $date ? SPSG_Schedule_Helper::iso_week_key( $date ) : null;
+			if ( null === $week_key ) {
+				continue;
+			}
+
+			foreach ( array( 'home_team', 'away_team' ) as $side ) {
+				$team_id = SPSG_Schedule_Helper::extract_id( $g[ $side ] ?? '' );
+				$div_id = $team_division[ $team_id ] ?? null;
+				if ( null === $div_id ) {
+					continue;
+				}
+				$counts[ $week_key ][ $div_id ][ $team_id ]
+					= ( $counts[ $week_key ][ $div_id ][ $team_id ] ?? 0 ) + 1;
+			}
+		}
+
+		return $counts;
+	}
+
+	/**
+	 * Build issue entries for teams that didn't play exactly once in a
+	 * confirmed-complete week.
+	 *
+	 * @param string $week_key       ISO week key.
+	 * @param array  $by_division    Division id => team => game count, for this week (only teams that played).
+	 * @param array  $division_teams Division id => full configured team roster.
+	 * @param array  $division_names Division id => display name.
+	 * @param object $config         Schedule configuration.
+	 * @return array Issue entries.
+	 */
+	private function detect_week_participation_issues( $week_key, $by_division, $division_teams, $division_names, $config ) {
+		$issues = array();
+		$week_dates = SPSG_Schedule_Helper::get_week_playing_dates( $week_key, $config );
+		$week_label = implode( ' / ', array_column( $week_dates, 'date' ) );
+
+		foreach ( $division_teams as $div_id => $teams ) {
+			if ( count( $teams ) % 2 !== 0 ) {
+				continue; // Odd-sized division: a bye every week is unavoidable.
+			}
+
+			$team_counts = $by_division[ $div_id ] ?? array();
+			foreach ( $teams as $team_id ) {
+				$count = $team_counts[ $team_id ] ?? 0;
+				if ( 1 === $count ) {
+					continue;
+				}
+				$issues[] = array(
+					'type' => 'incomplete_week_participation',
+					'severity' => 'warning',
+					'message' => sprintf(
+						/* translators: 1: week date(s), 2: team name, 3: division name, 4: actual game count */
+						__( 'Week of %1$s: team "%2$s" (%3$s) played %4$d game(s), expected exactly 1 -- all playing days were available with no restrictions that week.', 'sportspress-schedule-generator' ),
+						$week_label,
+						$team_id,
+						$division_names[ $div_id ] ?? $div_id,
+						$count
+					),
+					'details' => array(
+						'week' => $week_key,
+						'dates' => array_column( $week_dates, 'date' ),
+						'team' => $team_id,
+						'division' => $division_names[ $div_id ] ?? $div_id,
+						'game_count' => $count,
+					),
+				);
+			}
+		}
+
+		return $issues;
 	}
 
 	/**
