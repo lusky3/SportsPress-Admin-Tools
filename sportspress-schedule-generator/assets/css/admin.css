@@ -159,6 +159,13 @@
     max-width: 200px;
 }
 
+.spsg-group-arenas-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
 /* Schedule Table */
 .spsg-schedule-table {
     margin-top: 15px;
