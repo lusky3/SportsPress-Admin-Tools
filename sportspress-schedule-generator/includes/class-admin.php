@@ -292,6 +292,27 @@ class SPSG_Admin {
 	}
 
 	/**
+	 * Resolve which configuration id, if any, a page-render request is asking
+	 * for via "Load" (admin-ui.js navigates here with ?config_id=<id> instead
+	 * of posting).
+	 *
+	 * A POST save takes precedence: SPSG_Configuration_Manager::save()
+	 * already left the config manager holding the just-saved config, and a
+	 * lingering ?config_id from the URL a "Save" form submits to must not
+	 * override that with a stale target.
+	 *
+	 * @param array $get  $_GET superglobal (or a stand-in for tests).
+	 * @param array $post $_POST superglobal (or a stand-in for tests).
+	 * @return string Requested configuration id, or '' if none was requested.
+	 */
+	public static function resolve_requested_config_id( array $get, array $post ) {
+		if ( isset( $post['spsg_action'] ) || ! isset( $get['config_id'] ) ) {
+			return '';
+		}
+		return sanitize_text_field( wp_unslash( $get['config_id'] ) );
+	}
+
+	/**
 	 * Main schedule generator page
 	 */
 	public function schedule_generator_page() {
@@ -305,15 +326,7 @@ class SPSG_Admin {
 			$this->handle_form_submission();
 		}
 
-		// "Load" (admin-ui.js) navigates here with ?config_id=<id> instead of
-		// posting -- honour it so the requested configuration (not whatever
-		// happens to be most-recently-modified) actually renders. A POST save
-		// already left the config manager holding the just-saved config in
-		// SPSG_Configuration_Manager::save(); a GET request never touches
-		// $_POST, so the two branches can't disagree about which one wins.
-		$requested_config_id = ! isset( $_POST['spsg_action'] ) && isset( $_GET['config_id'] )
-			? sanitize_text_field( wp_unslash( $_GET['config_id'] ) )
-			: '';
+		$requested_config_id = self::resolve_requested_config_id( $_GET, $_POST );
 
 		$current_config = '' !== $requested_config_id
 			? $this->get_config_manager()->set_current( $requested_config_id )

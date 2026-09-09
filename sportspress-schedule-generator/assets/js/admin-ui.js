@@ -49,11 +49,11 @@
             selectedId = $select.val();
         }
 
-        $select.empty();
-        $select.append($('<option>', { value: '', text: i18n.currentConfiguration }));
+        var optionsHtml = '<option value="">' + escHtml(i18n.currentConfiguration) + '</option>';
         $.each(savedConfigs, function(id, info) {
-            $select.append($('<option>', { value: id, text: info.name + ' (' + info.modified + ')' }));
+            optionsHtml += '<option value="' + escHtml(id) + '">' + escHtml(info.name + ' (' + info.modified + ')') + '</option>';
         });
+        $select.html(optionsHtml);
         $select.val(selectedId || '');
     }
 
