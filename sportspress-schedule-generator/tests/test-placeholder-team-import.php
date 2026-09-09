@@ -117,10 +117,22 @@ function get_post_meta( $post_id, $key, $single = false ) {
 	return $single ? ( $values[0] ?? '' ) : $values;
 }
 
+function wp_update_post( $data ) {
+	global $ptit_posts;
+	if ( isset( $ptit_posts[ $data['ID'] ] ) ) {
+		$ptit_posts[ $data['ID'] ]->post_title = $data['post_title'];
+	}
+	return $data['ID'];
+}
+
+// sp_league/sp_season really are taxonomies (unlike sp_team) -- not what
+// this fix is about, so just a no-op here rather than a real term store.
+function wp_set_object_terms() {}
+
 function wp_parse_args( $args, $defaults ) {
 	return array_merge( $defaults, (array) $args );
 }
-function get_post_thumbnail_id( $post_id ) {
+function get_post_thumbnail_id() {
 	return 0;
 }
 function wp_timezone_string() {
@@ -206,7 +218,7 @@ $named_game = (object) array(
 // which needs SportsPress "active" and real team posts queryable by
 // get_posts(); stub get_posts() to hand back the fixture teams.
 if ( ! function_exists( 'get_posts' ) ) {
-	function get_posts( $args ) {
+	function get_posts() {
 		global $ptit_posts;
 		return array_values( $ptit_posts );
 	}
@@ -216,6 +228,22 @@ $result = $map_teams->invoke( $importer, $named_game );
 ptit_assert(
 	! is_wp_error( $result ) && 42 === $result['home_team_id'] && 43 === $result['away_team_id'],
 	'a real team\'s synthetic id (name-echo) resolves by name to its real sp_team post id, not the name string'
+);
+
+// A game whose team objects already carry real, existing sp_team post ids
+// (e.g. a REST-authored config, or a re-imported already-mapped game) takes
+// the has_real_team_ids() shortcut and skips the name lookup entirely.
+$already_resolved_game = (object) array(
+	'home_team' => (object) array( 'id' => 42, 'name' => 'Ducks' ),
+	'away_team' => (object) array( 'id' => 43, 'name' => 'Hammers' ),
+	'division' => (object) array( 'name' => 'Division 1' ),
+);
+$result_already_resolved = $map_teams->invoke( $importer, $already_resolved_game );
+ptit_assert(
+	! is_wp_error( $result_already_resolved )
+		&& 42 === $result_already_resolved['home_team_id']
+		&& 43 === $result_already_resolved['away_team_id'],
+	'a game whose teams already carry real sp_team post ids uses them directly (has_real_team_ids() shortcut)'
 );
 
 // A placeholder team name with no matching real team, placeholder creation
@@ -266,6 +294,43 @@ $set_event_teams->invoke( null, 555, 42, 43 );
 ptit_assert(
 	array( 42, 43 ) === get_post_meta( 555, 'sp_team', false ),
 	'set_event_teams() replaces any stale sp_team meta with exactly the two new team ids, as separate meta rows (get_post_meta with $single=false returns both)'
+);
+
+echo "\n=== Testing create_event_from_game()/update_event() actually call set_event_teams() ===\n\n";
+
+$sample_game = (object) array(
+	'id' => 'game-abc',
+	'date' => '2026-09-25',
+	'time_slot' => '19:00',
+	'home_team' => (object) array( 'id' => 42, 'name' => 'Ducks' ),
+	'away_team' => (object) array( 'id' => 43, 'name' => 'Hammers' ),
+	'venue' => (object) array( 'id' => 999 ),
+	'division' => (object) array( 'id' => 1 ),
+	'is_makeup' => false,
+);
+
+$new_event_id = SPSG_Sports_Press_Integration::create_event_from_game( $sample_game );
+ptit_assert(
+	! is_wp_error( $new_event_id ),
+	'create_event_from_game() succeeds for a game with real team ids'
+);
+ptit_assert(
+	array( 42, 43 ) === get_post_meta( $new_event_id, 'sp_team', false ),
+	'create_event_from_game() correctly links both real team ids via set_event_teams(), as separate meta rows'
+);
+
+$updated_game = (object) array(
+	'date' => '2026-10-02',
+	'time_slot' => '20:00',
+	'home_team' => (object) array( 'id' => 43, 'name' => 'Hammers' ),
+	'away_team' => (object) array( 'id' => 42, 'name' => 'Ducks' ),
+	'venue' => (object) array( 'id' => 999 ),
+	'division' => (object) array( 'id' => 1 ),
+);
+SPSG_Sports_Press_Integration::update_event( $new_event_id, $updated_game );
+ptit_assert(
+	array( 43, 42 ) === get_post_meta( $new_event_id, 'sp_team', false ),
+	'update_event() replaces the event\'s team links via set_event_teams() too, not just on creation'
 );
 
 echo "\n=== Testing SPSG_Slot_Allocator::create_game() normalizes venue to an object ===\n\n";
