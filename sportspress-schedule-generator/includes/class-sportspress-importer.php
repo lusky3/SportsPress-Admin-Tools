@@ -344,6 +344,37 @@ class SPSG_Sports_Press_Importer {
 	}
 
 	/**
+	 * Whether both teams on this game already carry a real, existing
+	 * SportsPress team post id -- as opposed to the synthetic `id === name`
+	 * every generated game's team objects carry once
+	 * SPSG_Matchup_Generator::generate_division_matchups() normalizes a
+	 * plain team-name string into `(object) ['id' => $name, 'name' => $name]`
+	 * (every division's teams are plain name strings by the time a
+	 * configuration is saved -- generic-team-filler placeholders included).
+	 * A real post id is never equal to its own name, so is_numeric() plus an
+	 * actual sp_team post lookup is enough to tell the two apart: without
+	 * this check every team, real or placeholder, took this branch and
+	 * `create_event_from_game()`/`update_event()` stored the literal name
+	 * string as the event's team id.
+	 *
+	 * @param object $game Game object.
+	 * @return bool
+	 */
+	private function has_real_team_ids( $game ) {
+		return isset( $game->home_team->id ) && is_numeric( $game->home_team->id ) && $this->is_real_team_post( $game->home_team->id )
+			&& isset( $game->away_team->id ) && is_numeric( $game->away_team->id ) && $this->is_real_team_post( $game->away_team->id );
+	}
+
+	/**
+	 * @param int|string $post_id Candidate SportsPress team post ID.
+	 * @return bool True if it is an existing, published sp_team post.
+	 */
+	private function is_real_team_post( $post_id ) {
+		$post = get_post( (int) $post_id );
+		return $post && 'sp_team' === $post->post_type;
+	}
+
+	/**
 	 * Map team names to SportsPress team IDs
 	 *
 	 * @param object $game Game object
@@ -359,11 +390,12 @@ class SPSG_Sports_Press_Importer {
 				'missing_team_names',
 				__( 'Game is missing team names.', 'sportspress-schedule-generator' )
 			);
-		} elseif ( isset( $game->home_team->id ) && isset( $game->away_team->id ) ) {
-			// Check if IDs are already set
+		} elseif ( $this->has_real_team_ids( $game ) ) {
+			// Both teams already carry a real, existing SportsPress team post
+			// id -- honour it directly rather than looking up by name.
 			$result = array(
-				'home_team_id' => $game->home_team->id,
-				'away_team_id' => $game->away_team->id,
+				'home_team_id' => (int) $game->home_team->id,
+				'away_team_id' => (int) $game->away_team->id,
 			);
 		} else {
 			// Look up teams by name
