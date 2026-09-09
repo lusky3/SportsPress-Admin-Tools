@@ -305,7 +305,19 @@ class SPSG_Admin {
 			$this->handle_form_submission();
 		}
 
-		$current_config = $this->get_config_manager()->get_current();
+		// "Load" (admin-ui.js) navigates here with ?config_id=<id> instead of
+		// posting -- honour it so the requested configuration (not whatever
+		// happens to be most-recently-modified) actually renders. A POST save
+		// already left the config manager holding the just-saved config in
+		// SPSG_Configuration_Manager::save(); a GET request never touches
+		// $_POST, so the two branches can't disagree about which one wins.
+		$requested_config_id = ! isset( $_POST['spsg_action'] ) && isset( $_GET['config_id'] )
+			? sanitize_text_field( wp_unslash( $_GET['config_id'] ) )
+			: '';
+
+		$current_config = '' !== $requested_config_id
+			? $this->get_config_manager()->set_current( $requested_config_id )
+			: $this->get_config_manager()->get_current();
 		?>
 		<div class="wrap">
 			<h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
@@ -430,6 +442,7 @@ class SPSG_Admin {
 					'delete_config' => wp_create_nonce( 'spsg_delete_config' ),
 				),
 				'presets' => $this->get_config_manager()->list_presets(),
+				'savedConfigs' => $this->get_config_manager()->get_all_configurations(),
 				'i18n' => $this->get_admin_ui_i18n_strings(),
 			)
 		);
@@ -569,6 +582,9 @@ class SPSG_Admin {
 			'validationFailed' => __( 'Configuration Validation Failed', 'sportspress-schedule-generator' ),
 			'fixErrors' => __( 'Please fix the following errors:', 'sportspress-schedule-generator' ),
 			'failedToValidate' => __( 'Failed to validate configuration. Please try again.', 'sportspress-schedule-generator' ),
+			'currentConfiguration' => __( 'Current Configuration', 'sportspress-schedule-generator' ),
+			/* translators: %s: the configuration name the admin entered. */
+			'overwriteConfigConfirm' => __( 'A configuration named "%s" already exists. Overwrite it?', 'sportspress-schedule-generator' ),
 		);
 	}
 
