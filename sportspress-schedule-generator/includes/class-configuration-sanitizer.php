@@ -159,6 +159,19 @@ class SPSG_Configuration_Sanitizer {
 				}
 				$sanitized['day_ratios'] = $day_ratios;
 			}
+		} elseif ( isset( $rules['day_ratios'] ) && is_array( $rules['day_ratios'] ) ) {
+			// SPSG_Configuration_Manager::save() sanitizes its input a second
+			// time (every caller already sanitizes $_POST before calling
+			// save(), which then sanitizes again itself) -- an
+			// already-sanitized distribution_rules carries `day_ratios`, the
+			// ONE-WAY result of the branch above, not the raw `day_weights`
+			// form field it came from. Without this branch, the second pass
+			// saw no `day_weights` key and silently discarded the ratios
+			// entirely, so every real Save of a custom day-weight split
+			// (e.g. 70/30) reverted to an even split the moment it hit the
+			// database, even though validation and the first sanitize pass
+			// both saw the correct value.
+			$sanitized['day_ratios'] = array_map( 'floatval', $rules['day_ratios'] );
 		}
 
 		return $sanitized;
