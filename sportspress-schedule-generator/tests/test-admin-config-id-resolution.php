@@ -55,25 +55,27 @@ if ( ! function_exists( 'get_option' ) ) {
 	}
 }
 if ( ! function_exists( 'add_action' ) ) {
-	function add_action( ...$args ) {}
+	// No-op: SPSG_Admin's constructor and SPSG_Admin_Ajax's registration both
+	// just need this callable, never anything it does with its arguments.
+	function add_action() {}
 }
 if ( ! function_exists( 'wp_create_nonce' ) ) {
 	function wp_create_nonce( $action ) { return 'nonce-' . $action; }
 }
 if ( ! function_exists( 'plugins_url' ) ) {
-	function plugins_url( $path, $file ) { return 'https://example.test/' . $path; }
+	function plugins_url( $path ) { return 'https://example.test/' . $path; }
 }
 if ( ! function_exists( 'admin_url' ) ) {
 	function admin_url( $path = '' ) { return 'https://example.test/wp-admin/' . $path; }
 }
 if ( ! function_exists( 'wp_enqueue_script' ) ) {
-	function wp_enqueue_script( ...$args ) {}
+	function wp_enqueue_script() {}
 }
 if ( ! function_exists( 'wp_enqueue_style' ) ) {
-	function wp_enqueue_style( ...$args ) {}
+	function wp_enqueue_style() {}
 }
 if ( ! function_exists( 'wp_add_inline_style' ) ) {
-	function wp_add_inline_style( ...$args ) {}
+	function wp_add_inline_style() {}
 }
 if ( ! function_exists( 'wp_localize_script' ) ) {
 	function wp_localize_script( $handle, $object_name, $data ) {

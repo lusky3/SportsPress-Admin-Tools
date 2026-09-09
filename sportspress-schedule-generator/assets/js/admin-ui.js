@@ -44,17 +44,32 @@
      * would keep showing whatever was saved as of the last full page load.
      */
     function refreshConfigSelector(selectedId) {
-        var $select = $('#spsg-config-selector');
+        var selectEl = document.getElementById('spsg-config-selector');
+        if (!selectEl) return;
         if (selectedId === undefined) {
-            selectedId = $select.val();
+            selectedId = selectEl.value;
         }
 
-        var optionsHtml = '<option value="">' + escHtml(i18n.currentConfiguration) + '</option>';
+        // Built with createElement()/textContent (never .html()/.append() with
+        // constructed markup) so option text can never be interpreted as HTML,
+        // no escaping required.
+        while (selectEl.firstChild) {
+            selectEl.removeChild(selectEl.firstChild);
+        }
+
+        var defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = i18n.currentConfiguration;
+        selectEl.appendChild(defaultOption);
+
         $.each(savedConfigs, function(id, info) {
-            optionsHtml += '<option value="' + escHtml(id) + '">' + escHtml(info.name + ' (' + info.modified + ')') + '</option>';
+            var option = document.createElement('option');
+            option.value = id;
+            option.textContent = info.name + ' (' + info.modified + ')';
+            selectEl.appendChild(option);
         });
-        $select.html(optionsHtml);
-        $select.val(selectedId || '');
+
+        selectEl.value = selectedId || '';
     }
 
     /**
