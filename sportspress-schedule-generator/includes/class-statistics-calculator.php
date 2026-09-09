@@ -88,21 +88,17 @@ class SPSG_Statistics_Calculator {
 	 *
 	 * @param array $divisions Configured divisions.
 	 * @return array{team_division:array,division_teams:array,division_names:array}
-	 *
-	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function build_division_index( $divisions ) {
-		$team_division = array();
 		$division_teams = array();
 		$division_names = array();
+		$team_division = array();
 
 		foreach ( $divisions as $division ) {
-			$div_id = $division['id'] ?: ( $division['name'] ?? '' );
-			$division_names[ $div_id ] = $division['name'] ?? $div_id;
-			$division_teams[ $div_id ] = (array) ( $division['teams'] ?? array() );
-			foreach ( $division_teams[ $div_id ] as $team ) {
-				$team_division[ $team ] = $div_id;
-			}
+			$div_id = $this->division_id( $division );
+			$division_names[ $div_id ] = $this->division_display_name( $division, $div_id );
+			$division_teams[ $div_id ] = $this->division_team_list( $division );
+			$team_division = array_merge( $team_division, $this->index_teams( $division_teams[ $div_id ], $div_id ) );
 		}
 
 		return array(
@@ -110,6 +106,53 @@ class SPSG_Statistics_Calculator {
 			'division_teams' => $division_teams,
 			'division_names' => $division_names,
 		);
+	}
+
+	/**
+	 * @param array $division Configured division.
+	 * @return string
+	 */
+	private function division_id( $division ) {
+		if ( ! empty( $division['id'] ) ) {
+			return $division['id'];
+		}
+		return $division['name'] ?? '';
+	}
+
+	/**
+	 * @param array  $division Configured division.
+	 * @param string $div_id   That division's resolved id (fallback display name).
+	 * @return string
+	 */
+	private function division_display_name( $division, $div_id ) {
+		if ( ! empty( $division['name'] ) ) {
+			return $division['name'];
+		}
+		return $div_id;
+	}
+
+	/**
+	 * @param array $division Configured division.
+	 * @return array Team name roster.
+	 */
+	private function division_team_list( $division ) {
+		if ( empty( $division['teams'] ) ) {
+			return array();
+		}
+		return (array) $division['teams'];
+	}
+
+	/**
+	 * @param array  $teams  Team names.
+	 * @param string $div_id Division id to map each team to.
+	 * @return array Team name => division id.
+	 */
+	private function index_teams( $teams, $div_id ) {
+		$map = array();
+		foreach ( $teams as $team ) {
+			$map[ $team ] = $div_id;
+		}
+		return $map;
 	}
 
 	/**
@@ -180,22 +223,50 @@ class SPSG_Statistics_Calculator {
 	 */
 	private function resolve_game_week_teams( $game, $team_division ) {
 		$g = (array) $game;
-		$date = $g['date'] ?? '';
-		$week_key = '' !== $date ? SPSG_Schedule_Helper::iso_week_key( $date ) : null;
+		$week_key = $this->game_week_key( $g );
 		if ( null === $week_key ) {
 			return array();
 		}
 
 		$entries = array();
 		foreach ( array( 'home_team', 'away_team' ) as $side ) {
-			$team_id = SPSG_Schedule_Helper::extract_id( $g[ $side ] ?? '' );
-			$div_id = $team_division[ $team_id ] ?? null;
-			if ( null !== $div_id ) {
-				$entries[] = array( $week_key, $div_id, $team_id );
+			$entry = $this->resolve_side_entry( $g, $side, $team_division, $week_key );
+			if ( null !== $entry ) {
+				$entries[] = $entry;
 			}
 		}
 
 		return $entries;
+	}
+
+	/**
+	 * @param array $g Game as an array (already cast from object/array).
+	 * @return string|null ISO week key, or null when the game has no date.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private function game_week_key( $g ) {
+		if ( empty( $g['date'] ) ) {
+			return null;
+		}
+		return SPSG_Schedule_Helper::iso_week_key( $g['date'] );
+	}
+
+	/**
+	 * @param array  $g             Game as an array.
+	 * @param string $side          'home_team' or 'away_team'.
+	 * @param array  $team_division Team name => division id.
+	 * @param string $week_key      This game's ISO week key.
+	 * @return array{0:string,1:string,2:string}|null (week_key, div_id, team_id), or null when the team has no known division.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private function resolve_side_entry( $g, $side, $team_division, $week_key ) {
+		$team_id = SPSG_Schedule_Helper::extract_id( $g[ $side ] ?? '' );
+		if ( ! isset( $team_division[ $team_id ] ) ) {
+			return null;
+		}
+		return array( $week_key, $team_division[ $team_id ], $team_id );
 	}
 
 	/**

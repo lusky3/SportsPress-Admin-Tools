@@ -209,12 +209,12 @@ class SPSG_Schedule_Helper {
 		$day = ( clone $monday )->add( new DateInterval( "P{$offset}D" ) );
 		$day_name = strtolower( $day->format( 'l' ) );
 
-		if ( ! in_array( $day_name, $config->playing_days ?? array(), true ) ) {
+		if ( ! self::is_configured_playing_day( $day_name, $config ) ) {
 			return null;
 		}
 
 		$day_str = $day->format( 'Y-m-d' );
-		if ( ! self::is_date_in_season( $day_str, $config->season_start ?? null, $config->season_end ?? null ) ) {
+		if ( ! self::is_date_in_season( $day_str, $config ) ) {
 			return null;
 		}
 
@@ -225,22 +225,56 @@ class SPSG_Schedule_Helper {
 	}
 
 	/**
-	 * Whether $date (Y-m-d) falls within [$season_start, $season_end],
-	 * treating either bound as open-ended when absent.
+	 * Whether $day_name is one of the config's configured playing days.
 	 *
-	 * @param string        $date         Date in YYYY-MM-DD format.
-	 * @param DateTime|null $season_start Season start, or null for no lower bound.
-	 * @param DateTime|null $season_end   Season end, or null for no upper bound.
+	 * @param string $day_name Lowercase day name.
+	 * @param object $config   Schedule configuration.
 	 * @return bool
 	 */
-	private static function is_date_in_season( $date, $season_start, $season_end ) {
-		if ( $season_start instanceof DateTime && $date < $season_start->format( 'Y-m-d' ) ) {
+	private static function is_configured_playing_day( $day_name, $config ) {
+		$playing_days = $config->playing_days ?? array();
+		return in_array( $day_name, $playing_days, true );
+	}
+
+	/**
+	 * Whether $date (Y-m-d) falls within the config's [season_start, season_end],
+	 * treating either bound as open-ended when absent.
+	 *
+	 * @param string $date   Date in YYYY-MM-DD format.
+	 * @param object $config Schedule configuration.
+	 * @return bool
+	 */
+	private static function is_date_in_season( $date, $config ) {
+		if ( ! self::is_on_or_after_season_start( $date, $config ) ) {
 			return false;
 		}
-		if ( $season_end instanceof DateTime && $date > $season_end->format( 'Y-m-d' ) ) {
-			return false;
+		return self::is_on_or_before_season_end( $date, $config );
+	}
+
+	/**
+	 * @param string $date   Date in YYYY-MM-DD format.
+	 * @param object $config Schedule configuration.
+	 * @return bool
+	 */
+	private static function is_on_or_after_season_start( $date, $config ) {
+		$season_start = $config->season_start ?? null;
+		if ( ! ( $season_start instanceof DateTime ) ) {
+			return true;
 		}
-		return true;
+		return $date >= $season_start->format( 'Y-m-d' );
+	}
+
+	/**
+	 * @param string $date   Date in YYYY-MM-DD format.
+	 * @param object $config Schedule configuration.
+	 * @return bool
+	 */
+	private static function is_on_or_before_season_end( $date, $config ) {
+		$season_end = $config->season_end ?? null;
+		if ( ! ( $season_end instanceof DateTime ) ) {
+			return true;
+		}
+		return $date <= $season_end->format( 'Y-m-d' );
 	}
 
 	/**
