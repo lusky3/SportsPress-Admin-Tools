@@ -313,6 +313,20 @@ class SPSG_Admin {
 	}
 
 	/**
+	 * Resolve the configuration a page render should show: the requested id
+	 * (from {@see resolve_requested_config_id()}) if one was asked for,
+	 * otherwise whatever the config manager already considers current.
+	 *
+	 * @param string $requested_config_id Id from resolve_requested_config_id(), or ''.
+	 * @return SPSG_Schedule_Configuration
+	 */
+	private function resolve_current_config( $requested_config_id ) {
+		return '' !== $requested_config_id
+			? $this->get_config_manager()->set_current( $requested_config_id )
+			: $this->get_config_manager()->get_current();
+	}
+
+	/**
 	 * Main schedule generator page
 	 */
 	public function schedule_generator_page() {
@@ -326,11 +340,7 @@ class SPSG_Admin {
 			$this->handle_form_submission();
 		}
 
-		$requested_config_id = self::resolve_requested_config_id( $_GET, $_POST );
-
-		$current_config = '' !== $requested_config_id
-			? $this->get_config_manager()->set_current( $requested_config_id )
-			: $this->get_config_manager()->get_current();
+		$current_config = $this->resolve_current_config( self::resolve_requested_config_id( $_GET, $_POST ) );
 		?>
 		<div class="wrap">
 			<h1><?php echo esc_html( get_admin_page_title() ); ?></h1>

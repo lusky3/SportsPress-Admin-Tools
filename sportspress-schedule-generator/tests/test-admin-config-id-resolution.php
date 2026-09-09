@@ -128,13 +128,30 @@ echo "\n=== Testing enqueue_admin_scripts() passes savedConfigs and new i18n str
 global $spsg_test_options, $spsg_test_localized;
 $spsg_test_options = array(
 	'spsg_configurations' => array(
-		'config_aaa' => array( 'name' => 'Fall League', 'modified' => '2026-08-01 10:00:00' ),
+		'config_aaa' => array( 'id' => 'config_aaa', 'name' => 'Fall League', 'modified' => '2026-08-01 10:00:00' ),
 	),
 );
 $spsg_test_localized = array();
 
 $admin = new SPSG_Admin();
 $admin->enqueue_admin_scripts( 'toplevel_page_spsg-schedule-generator' );
+
+echo "\n=== Testing SPSG_Admin::resolve_current_config() (the schedule_generator_page() call site) ===\n\n";
+
+$resolve_current_config = new ReflectionMethod( 'SPSG_Admin', 'resolve_current_config' );
+$resolve_current_config->setAccessible( true );
+
+$requested = $resolve_current_config->invoke( $admin, 'config_aaa' );
+acir_assert(
+	'config_aaa' === $requested->id,
+	'a requested id resolves to that exact configuration'
+);
+
+$fallback = $resolve_current_config->invoke( $admin, '' );
+acir_assert(
+	'config_aaa' === $fallback->id,
+	'no requested id falls back to get_current() (the only saved config, here)'
+);
 
 $admin_ui_data = $spsg_test_localized['spsg-admin-ui']['spsgAdminData'] ?? array();
 
