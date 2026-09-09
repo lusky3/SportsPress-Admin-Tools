@@ -419,7 +419,7 @@ class SPSG_Sports_Press_Integration {
 	 * SPSG_Placeholder_Team_Manager::find_events_with_team()/
 	 * update_event_team() already query and update against.
 	 *
-	 * @param int $event_id Event post ID.
+	 * @param int        $event_id Event post ID.
 	 * @param int|string $home_team_id Home team's sp_team post ID.
 	 * @param int|string $away_team_id Away team's sp_team post ID.
 	 */
