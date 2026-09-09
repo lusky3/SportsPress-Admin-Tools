@@ -412,6 +412,24 @@ class SPSG_Sports_Press_Integration {
 	}
 
 	/**
+	 * Set an event's home/away teams the way SportsPress actually stores
+	 * them: one `sp_team` post meta ROW per team id (add_post_meta, never a
+	 * single row holding a serialized array) -- `sp_team` is a post type on
+	 * this install, not a taxonomy, and this is the shape
+	 * SPSG_Placeholder_Team_Manager::find_events_with_team()/
+	 * update_event_team() already query and update against.
+	 *
+	 * @param int         $event_id      Event post ID.
+	 * @param int|string  $home_team_id  Home team's sp_team post ID.
+	 * @param int|string  $away_team_id  Away team's sp_team post ID.
+	 */
+	private static function set_event_teams( $event_id, $home_team_id, $away_team_id ) {
+		delete_post_meta( $event_id, 'sp_team' );
+		add_post_meta( $event_id, 'sp_team', $home_team_id );
+		add_post_meta( $event_id, 'sp_team', $away_team_id );
+	}
+
+	/**
 	 * Create SportsPress event from game
 	 */
 	public static function create_event_from_game( $game ) {
@@ -444,9 +462,15 @@ class SPSG_Sports_Press_Integration {
 			update_post_meta( $event_id, 'sp_venue', $game->venue->id );
 		}
 
-		// Set teams
-		$teams = array( $game->home_team->id, $game->away_team->id );
-		wp_set_object_terms( $event_id, $teams, 'sp_team' );
+		// Set teams. `sp_team` is a post type, not a taxonomy -- SportsPress
+		// stores an event's teams as one `sp_team` POST META ROW PER TEAM
+		// (add_post_meta, not update_post_meta with a serialized array); see
+		// SPSG_Placeholder_Team_Manager::update_event_team()/
+		// find_events_with_team(), which already read/write it that way.
+		// wp_set_object_terms() against a nonexistent 'sp_team' taxonomy
+		// always returned a silently-ignored WP_Error, so no event this
+		// plugin created ever actually had its teams set.
+		self::set_event_teams( $event_id, $game->home_team->id, $game->away_team->id );
 
 		// Set league/division
 		if ( isset( $game->division->id ) ) {
@@ -565,8 +589,7 @@ class SPSG_Sports_Press_Integration {
 		}
 
 		// Update teams
-		$teams = array( $game->home_team->id, $game->away_team->id );
-		wp_set_object_terms( $event_id, $teams, 'sp_team' );
+		self::set_event_teams( $event_id, $game->home_team->id, $game->away_team->id );
 
 		// Update league/division
 		if ( isset( $game->division->id ) ) {
