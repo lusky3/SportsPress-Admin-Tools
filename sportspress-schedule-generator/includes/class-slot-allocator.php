@@ -1146,7 +1146,15 @@ class SPSG_Slot_Allocator {
 			'match_length'      => $match_length,
 			'home_team'         => $matchup->home_team,
 			'away_team'         => $matchup->away_team,
-			'venue'             => $slot->venue,
+			// $slot->venue is always a raw $config->venues[] array here (never
+			// normalized, unlike home_team/away_team above and division
+			// below) -- object-cast it so `$game->venue->id`/`->name` (the
+			// import path: map_venue(), create_event_from_game(),
+			// update_event()) work the same as the matchup generator's own
+			// team/division normalization already does. Callers that expect
+			// an array (the preview renderer, exporters) already (array)-cast
+			// before reading it, so this is safe both ways.
+			'venue'             => is_array( $slot->venue ) ? (object) $slot->venue : $slot->venue,
 			'division'          => $matchup->division,
 			'is_inter_division' => $matchup->is_inter_division ?? false,
 			'is_makeup'         => false,
