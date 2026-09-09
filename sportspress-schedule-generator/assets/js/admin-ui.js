@@ -18,6 +18,76 @@
     var nonces = spsgAdminData.nonces;
     var presets = spsgAdminData.presets;
 
+    // id => {name, modified, ...}, kept in sync with the option 45 dropdown
+    // after every save so the two never disagree about what's saved.
+    var savedConfigs = spsgAdminData.savedConfigs || {};
+
+    /**
+     * Find the id of a saved configuration with this exact name, other than
+     * excludeId (the configuration currently being edited, so re-saving it
+     * unchanged never collides with itself).
+     */
+    function findConfigIdByName(name, excludeId) {
+        var match = null;
+        $.each(savedConfigs, function(id, info) {
+            if (id !== excludeId && info.name === name) {
+                match = id;
+                return false;
+            }
+        });
+        return match;
+    }
+
+    /**
+     * Rebuild the Configuration Management dropdown from `savedConfigs`.
+     * Save happens over AJAX (no page reload), so without this the dropdown
+     * would keep showing whatever was saved as of the last full page load.
+     */
+    function refreshConfigSelector(selectedId) {
+        var selectEl = document.getElementById('spsg-config-selector');
+        if (!selectEl) return;
+        if (selectedId === undefined) {
+            selectedId = selectEl.value;
+        }
+
+        // Built with createElement()/textContent (never .html()/.append() with
+        // constructed markup) so option text can never be interpreted as HTML,
+        // no escaping required.
+        while (selectEl.firstChild) {
+            selectEl.removeChild(selectEl.firstChild);
+        }
+
+        var defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = i18n.currentConfiguration;
+        selectEl.appendChild(defaultOption);
+
+        $.each(savedConfigs, function(id, info) {
+            var option = document.createElement('option');
+            option.value = id;
+            option.textContent = info.name + ' (' + info.modified + ')';
+            selectEl.appendChild(option);
+        });
+
+        selectEl.value = selectedId || '';
+    }
+
+    /**
+     * Switch to the Basic Configuration tab and briefly flash the
+     * Configuration Name field red -- used when a save is aborted because
+     * the admin declined to overwrite a same-named configuration.
+     */
+    function pulseConfigNameField() {
+        $('.spsg-nav-tabs .nav-tab[href="#basic-config"]').trigger('click');
+
+        var $field = $('#spsg-config-name');
+        $field.addClass('spsg-field-pulse');
+        $field.trigger('focus');
+        setTimeout(function() {
+            $field.removeClass('spsg-field-pulse');
+        }, 1600);
+    }
+
     // Nonces from the schedule-generator script (spsgData is localized on that handle)
     var sgNonces = (typeof spsgData !== 'undefined' && spsgData.nonces) ? spsgData.nonces : {};
 
@@ -807,7 +877,7 @@
 
         if (confirm('Load this configuration? Any unsaved changes will be lost.')) {
             formChanged = false;
-            window.location.href = '?page=spsg-schedule-generator&config_id=' + configId;
+            window.location.href = '?page=spsg-schedule-generator&config_id=' + encodeURIComponent(configId);
         }
     });
 
@@ -822,7 +892,11 @@
         var name = prompt('Enter a name for the new configuration:');
         if (name) {
             $('#spsg-config-name').val(name);
-            $('#spsg-config-form').append('<input type="hidden" name="save_as_new" value="1">');
+            // Always attempt a fresh entry, regardless of whatever
+            // configuration is currently loaded -- the submit handler's own
+            // name-collision check still runs and offers to overwrite if
+            // `name` already belongs to another saved configuration.
+            $('#spsg-config-id').val('');
             $('#spsg-config-form').submit();
         }
     });
@@ -1485,6 +1559,20 @@
         $('#spsg-validation-summary').remove();
 
         var $form = $(this);
+        var configName = $('#spsg-config-name').val();
+        var currentConfigId = $('#spsg-config-id').val() || '';
+        var collidingId = findConfigIdByName(configName, currentConfigId);
+
+        if (collidingId) {
+            if (!confirm(i18n.overwriteConfigConfirm.replace('%s', configName))) {
+                pulseConfigNameField();
+                return false;
+            }
+            // Confirmed: save into the existing configuration found by name
+            // instead of creating a second entry that shares its name.
+            $('#spsg-config-id').val(collidingId);
+        }
+
         var $submitBtn = $form.find('input[type=submit]');
         var originalBtnText = $submitBtn.val();
 
@@ -1519,6 +1607,12 @@
                         success: function(saveResponse) {
                             if (saveResponse.success) {
                                 $(document).trigger('spsg-config-saved');
+
+                                $('#spsg-config-id').val(saveResponse.data.config_id);
+                                if (saveResponse.data.configs) {
+                                    savedConfigs = saveResponse.data.configs;
+                                }
+                                refreshConfigSelector(saveResponse.data.config_id);
 
                                 var successMsg = '<div id="spsg-validation-summary" class="notice notice-success is-dismissible" style="margin: 20px 0;"><p><strong>' + escHtml(i18n.success) + '</strong> ' + escHtml(saveResponse.data.message) + '</p></div>';
                                 $form.before(successMsg);

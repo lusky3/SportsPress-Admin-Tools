@@ -91,6 +91,7 @@ class SPSG_Admin_Ajax {
 				array(
 					'message' => __( 'Configuration saved successfully! Your changes have been preserved.', 'sportspress-schedule-generator' ),
 					'config_id' => $result,
+					'configs' => $this->config_manager->get_all_configurations(),
 				)
 			);
 		}
