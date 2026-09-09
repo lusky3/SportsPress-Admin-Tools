@@ -44,9 +44,9 @@ class SPSG_Admin_Renderer {
 				<select id="spsg-config-selector" class="regular-text">
 					<option value=""><?php esc_html_e( 'Current Configuration', 'sportspress-schedule-generator' ); ?></option>
 					<?php
-					$saved_configs = get_option( 'spsg_configurations', array() );
+					$saved_configs = $this->config_manager->get_all_configurations();
 					foreach ( $saved_configs as $config_id => $config_info ) {
-						echo '<option value="' . esc_attr( $config_id ) . '">' . esc_html( $config_info['name'] ) . ' (' . esc_html( $config_info['modified'] ) . ')</option>';
+						echo '<option value="' . esc_attr( $config_id ) . '" ' . selected( $config->id ?? '', $config_id, false ) . '>' . esc_html( $config_info['name'] ) . ' (' . esc_html( $config_info['modified'] ) . ')</option>';
 					}
 					?>
 				</select>
@@ -75,6 +75,8 @@ class SPSG_Admin_Renderer {
 		</div>
 
 		<?php $this->render_import_preview_modal(); ?>
+
+		<input type="hidden" name="id" id="spsg-config-id" value="<?php echo esc_attr( $config->id ?? '' ); ?>" />
 
 		<table class="form-table">
 			<tr>

@@ -20,6 +20,22 @@ class SPSG_Schedule_Configuration {
 
 
 	/**
+	 * Saved configuration id (empty for a configuration that has never been
+	 * saved). Never touched by SPSG_Configuration_Validator -- this is
+	 * storage identity, not something a schedule can be valid or invalid on.
+	 *
+	 * @var string
+	 */
+	public $id;
+
+	/**
+	 * Configuration name, as entered on the Basic Configuration tab.
+	 *
+	 * @var string
+	 */
+	public $name;
+
+	/**
 	 * Season start date
 	 *
 	 * @var DateTime
@@ -175,9 +191,29 @@ class SPSG_Schedule_Configuration {
 	}
 
 	/**
+	 * Set storage identity fields (id, name) from raw config data.
+	 *
+	 * Kept separate from the rest of load_from_array(): these are never
+	 * defaulted from $defaults and never round-tripped through the
+	 * DateTime/array coercion the rest of that method does. An empty string
+	 * (not unset) is the correct value for a configuration that has never
+	 * been saved: it's what a brand-new admin form's hidden id field
+	 * submits, and what save() checks for to decide whether to mint a new
+	 * id.
+	 *
+	 * @param array $data Raw configuration data.
+	 */
+	private function load_identity_fields( $data ) {
+		$this->id = isset( $data['id'] ) ? (string) $data['id'] : '';
+		$this->name = isset( $data['name'] ) ? (string) $data['name'] : '';
+	}
+
+	/**
 	 * Load configuration from array
 	 */
 	public function load_from_array( $data ) {
+		$this->load_identity_fields( $data );
+
 		$defaults = array(
 			'games_per_team' => 0,
 			'match_length' => 60,
@@ -324,6 +360,8 @@ class SPSG_Schedule_Configuration {
 	 */
 	public function to_array() {
 		return array(
+			'id' => $this->id,
+			'name' => $this->name,
 			'season_start' => $this->season_start ? $this->season_start->format( 'Y-m-d' ) : '',
 			'season_end' => $this->season_end ? $this->season_end->format( 'Y-m-d' ) : '',
 			'games_per_team' => $this->games_per_team,

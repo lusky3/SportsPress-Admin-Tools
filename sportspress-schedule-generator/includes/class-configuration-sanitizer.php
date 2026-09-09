@@ -33,7 +33,11 @@ class SPSG_Configuration_Sanitizer {
 		$sanitized = array();
 
 		// Sanitize metadata fields (id, name, timestamps)
-		if ( isset( $data['id'] ) ) {
+		// An empty string (the admin form's hidden "id" field on a brand-new,
+		// never-saved configuration) must be treated the same as an absent
+		// key -- `isset()` alone is true for '', which would make the save
+		// path think a real (blank) id was submitted and skip generating one.
+		if ( ! empty( $data['id'] ) ) {
 			$sanitized['id'] = sanitize_text_field( $data['id'] );
 		}
 		if ( isset( $data['name'] ) ) {

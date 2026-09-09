@@ -292,6 +292,41 @@ class SPSG_Admin {
 	}
 
 	/**
+	 * Resolve which configuration id, if any, a page-render request is asking
+	 * for via "Load" (admin-ui.js navigates here with ?config_id=<id> instead
+	 * of posting).
+	 *
+	 * A POST save takes precedence: SPSG_Configuration_Manager::save()
+	 * already left the config manager holding the just-saved config, and a
+	 * lingering ?config_id from the URL a "Save" form submits to must not
+	 * override that with a stale target.
+	 *
+	 * @param array $get  $_GET superglobal (or a stand-in for tests).
+	 * @param array $post $_POST superglobal (or a stand-in for tests).
+	 * @return string Requested configuration id, or '' if none was requested.
+	 */
+	public static function resolve_requested_config_id( array $get, array $post ) {
+		if ( isset( $post['spsg_action'] ) || ! isset( $get['config_id'] ) ) {
+			return '';
+		}
+		return sanitize_text_field( wp_unslash( $get['config_id'] ) );
+	}
+
+	/**
+	 * Resolve the configuration a page render should show: the requested id
+	 * (from {@see resolve_requested_config_id()}) if one was asked for,
+	 * otherwise whatever the config manager already considers current.
+	 *
+	 * @param string $requested_config_id Id from resolve_requested_config_id(), or ''.
+	 * @return SPSG_Schedule_Configuration
+	 */
+	private function resolve_current_config( $requested_config_id ) {
+		return '' !== $requested_config_id
+			? $this->get_config_manager()->set_current( $requested_config_id )
+			: $this->get_config_manager()->get_current();
+	}
+
+	/**
 	 * Main schedule generator page
 	 */
 	public function schedule_generator_page() {
@@ -305,7 +340,7 @@ class SPSG_Admin {
 			$this->handle_form_submission();
 		}
 
-		$current_config = $this->get_config_manager()->get_current();
+		$current_config = $this->resolve_current_config( self::resolve_requested_config_id( $_GET, $_POST ) );
 		?>
 		<div class="wrap">
 			<h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
@@ -430,6 +465,7 @@ class SPSG_Admin {
 					'delete_config' => wp_create_nonce( 'spsg_delete_config' ),
 				),
 				'presets' => $this->get_config_manager()->list_presets(),
+				'savedConfigs' => $this->get_config_manager()->get_all_configurations(),
 				'i18n' => $this->get_admin_ui_i18n_strings(),
 			)
 		);
@@ -569,6 +605,9 @@ class SPSG_Admin {
 			'validationFailed' => __( 'Configuration Validation Failed', 'sportspress-schedule-generator' ),
 			'fixErrors' => __( 'Please fix the following errors:', 'sportspress-schedule-generator' ),
 			'failedToValidate' => __( 'Failed to validate configuration. Please try again.', 'sportspress-schedule-generator' ),
+			'currentConfiguration' => __( 'Current Configuration', 'sportspress-schedule-generator' ),
+			/* translators: %s: the configuration name the admin entered. */
+			'overwriteConfigConfirm' => __( 'A configuration named "%s" already exists. Overwrite it?', 'sportspress-schedule-generator' ),
 		);
 	}
 
