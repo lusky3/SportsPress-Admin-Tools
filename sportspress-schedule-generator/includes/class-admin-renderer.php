@@ -663,6 +663,9 @@ class SPSG_Admin_Renderer {
 		$venue_id = $venue['id'] ?? 'venue_' . $index;
 		$venue_timeslots_by_day = self::resolve_venue_timeslots_for_row( $venue, $venue_id, $config );
 		$venue_blackouts        = self::resolve_venue_blackouts_for_row( $venue, $venue_id, $config );
+		$venue_date_overrides   = self::format_venue_date_availability_lines(
+			self::resolve_venue_date_availability_for_row( $venue_id, $config )
+		);
 		?>
 		<div class="spsg-venue-row" data-index="<?php echo esc_attr( $index ); ?>">
 			<table class="form-table">
@@ -692,6 +695,15 @@ class SPSG_Admin_Renderer {
 						?>
 						</textarea>
 						<p class="description"><?php esc_html_e( 'Specific dates when this venue is unavailable. Enter one date per line in YYYY-MM-DD format. This is useful when a venue is temporarily closed or unavailable on specific days.', 'sportspress-schedule-generator' ); ?></p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="spsg-venue-date-availability-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Date-Specific Time Overrides', 'sportspress-schedule-generator' ); ?></label></th>
+					<td>
+						<textarea id="spsg-venue-date-availability-<?php echo esc_attr( $index ); ?>" name="venue_date_availability[<?php echo esc_attr( $venue_id ); ?>]" rows="3" class="large-text" placeholder="<?php esc_attr_e( '2026-12-27 = 16:00, 17:00, 18:00', 'sportspress-schedule-generator' ); ?>"><?php echo esc_textarea( $venue_date_overrides ); ?></textarea>
+						<p class="description">
+							<?php esc_html_e( 'Override this venue\'s available times for specific dates -- e.g. a shortened holiday slot. One override per line: "YYYY-MM-DD = TIME, TIME" for a single date, or "YYYY-MM-DD to YYYY-MM-DD = TIME, TIME" for a range. Takes priority over Available Days & Times for any date it covers.', 'sportspress-schedule-generator' ); ?>
+						</p>
 					</td>
 				</tr>
 			</table>
@@ -735,6 +747,57 @@ class SPSG_Admin_Renderer {
 			return $config->venue_blackout_dates[ $venue_id ];
 		}
 		return $venue['blackout_dates'] ?? array();
+	}
+
+	/**
+	 * Resolve a venue's saved date-specific time-slot override ranges for
+	 * the Venues & Times tab. Unlike timeslots/blackouts there is no legacy
+	 * venue-array key to fall back to -- this field never had a form control
+	 * before, so a brand-new row simply has none yet.
+	 *
+	 * @param string                           $venue_id Resolved venue ID.
+	 * @param SPSG_Schedule_Configuration|null $config   Full configuration, if available.
+	 * @return array Array of `{start_date, end_date, time_slots}` ranges.
+	 */
+	private static function resolve_venue_date_availability_for_row( $venue_id, $config ) {
+		if ( $config && ! empty( $config->venue_date_availability[ $venue_id ] ) ) {
+			return $config->venue_date_availability[ $venue_id ];
+		}
+		return array();
+	}
+
+	/**
+	 * Format saved date-availability ranges back into the textarea's
+	 * "DATE[ to DATE] = TIME, TIME" line format -- the inverse of
+	 * SPSG_Configuration_Sanitizer::parse_venue_date_availability_text(), so
+	 * a range imported via CSV (always a multi-day week) round-trips as one
+	 * readable, directly-editable line instead of being silently dropped.
+	 *
+	 * @param array $ranges Array of `{start_date, end_date, time_slots}` ranges.
+	 * @return string Textarea contents, one range per line.
+	 */
+	private static function format_venue_date_availability_lines( $ranges ) {
+		$lines = array();
+		foreach ( (array) $ranges as $range ) {
+			$lines[] = self::format_venue_date_availability_line( $range );
+		}
+		return implode( "\n", $lines );
+	}
+
+	/**
+	 * Format a single date-availability range into one "DATE[ to DATE] =
+	 * TIME, TIME" line. Split out of {@see format_venue_date_availability_lines()}
+	 * purely to keep that loop's own complexity low.
+	 *
+	 * @param array $range A single `{start_date, end_date, time_slots}` range.
+	 * @return string One formatted line.
+	 */
+	private static function format_venue_date_availability_line( $range ) {
+		$start = $range['start_date'] ?? '';
+		$end   = $range['end_date'] ?? $start;
+		$times = implode( ', ', (array) ( $range['time_slots'] ?? array() ) );
+		$date_part = ( $start === $end ) ? $start : "$start to $end";
+		return "$date_part = $times";
 	}
 
 	/**
