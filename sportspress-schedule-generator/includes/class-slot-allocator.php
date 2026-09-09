@@ -119,6 +119,31 @@ class SPSG_Slot_Allocator {
 	private $same_date_rematch_blocked = false;
 
 	/**
+	 * When false (the default) a team may not play twice in the same real
+	 * (Mon-Sun) calendar week -- on more than one date, or twice on the same
+	 * date. Previously only discouraged via a soft cost ({@see
+	 * SAME_DATE_TEAM_PENALTY}) that other pressures (pacing, date-load) could
+	 * outweigh, and only ever looked at the exact same date, so a team could
+	 * freely get a Friday AND a Sunday game the same week with nothing to
+	 * stop it.
+	 *
+	 * {@see allocate()} flips this to true for a final relaxed retry so a
+	 * genuinely tight configuration can still be scheduled rather than
+	 * failing outright.
+	 *
+	 * @var bool
+	 */
+	private $allow_same_week_doubleheader = false;
+
+	/**
+	 * Set when the strict same-week rule actually rejected a slot during the
+	 * current pass. Used to decide whether a relaxed retry is worth running.
+	 *
+	 * @var bool
+	 */
+	private $same_week_doubleheader_blocked = false;
+
+	/**
 	 * Maximum number of valid candidate slots scored per matchup.
 	 *
 	 * Candidates are gathered from the dates closest to the matchup's pace
@@ -265,6 +290,8 @@ class SPSG_Slot_Allocator {
 		$this->was_timed_out = false;
 		$this->allow_same_date_rematch   = false;
 		$this->same_date_rematch_blocked = false;
+		$this->allow_same_week_doubleheader   = false;
+		$this->same_week_doubleheader_blocked = false;
 
 		// Scale backtrack depth with the size of the workload — the default
 		// of 50 is meaningless for a 200-game season. Engine-level timeout
@@ -333,28 +360,23 @@ class SPSG_Slot_Allocator {
 		}
 
 		if ( $schedule === false ) {
-			// H15: the same-date rematch rule is a hard rule during the normal
-			// passes, but it must never be the sole reason a season cannot be
-			// generated (a one-day tournament legitimately replays pairs). If it
-			// actually blocked slots, retry greedily with the rule relaxed before
-			// surfacing a failure.
-			if ( ! $this->allow_same_date_rematch && $this->same_date_rematch_blocked ) {
-				$this->log( 'Allocation failed with strict rematch spacing; retrying relaxed' );
-				$this->allow_same_date_rematch = true;
+			// H15/{@see $allow_same_week_doubleheader}: these are hard rules
+			// during the normal passes, but neither must be the sole reason a
+			// season cannot be generated at all (a one-day tournament
+			// legitimately replays pairs; a genuinely tight config may need a
+			// double-header). If either actually blocked slots, retry greedily
+			// with just the rules that were blamed relaxed, before surfacing
+			// a failure.
+			$relaxed = $this->retry_with_relaxed_rules( $matchups, $config, $progress_callback, $cancellation_callback, $timeout_callback );
 
-				$schedule = $this->greedy_allocate( $matchups, $config, $progress_callback, $cancellation_callback, $timeout_callback );
-
-				if ( $this->was_cancelled ) {
-					return $this->build_cancellation_error( count( $matchups ) );
-				}
-				if ( $this->was_timed_out ) {
-					return $this->build_timeout_error( count( $matchups ) );
-				}
-
-				if ( $schedule !== false ) {
-					$this->log( 'Relaxed allocation succeeded (pairs may meet twice on one date)' );
-					return $schedule;
-				}
+			if ( $this->was_cancelled ) {
+				return $this->build_cancellation_error( count( $matchups ) );
+			}
+			if ( $this->was_timed_out ) {
+				return $this->build_timeout_error( count( $matchups ) );
+			}
+			if ( $relaxed !== false ) {
+				return $relaxed;
 			}
 
 			return new WP_Error(
@@ -369,6 +391,75 @@ class SPSG_Slot_Allocator {
 
 		$this->log( 'Backtracking allocation succeeded' );
 		return $schedule;
+	}
+
+	/**
+	 * Retry greedy allocation with whichever hard spacing rules actually
+	 * blocked a slot during the failed strict passes relaxed -- and only
+	 * those. See {@see $allow_same_date_rematch} and
+	 * {@see $allow_same_week_doubleheader}.
+	 *
+	 * @param array                       $matchups Array of matchup objects.
+	 * @param SPSG_Schedule_Configuration $config Configuration.
+	 * @param callable|null               $progress_callback Callback for progress updates.
+	 * @param callable|null               $cancellation_callback Callback to check for cancellation.
+	 * @param callable|null               $timeout_callback Callback to check for timeout.
+	 * @return array|false Array of games, or false when no rule needed relaxing or the retry also failed.
+	 */
+	private function retry_with_relaxed_rules( $matchups, $config, $progress_callback, $cancellation_callback, $timeout_callback ) {
+		if ( ! $this->relax_blocked_spacing_rules() ) {
+			return false;
+		}
+
+		$this->log( 'Allocation failed with strict spacing; retrying relaxed' );
+		$schedule = $this->greedy_allocate( $matchups, $config, $progress_callback, $cancellation_callback, $timeout_callback );
+
+		if ( $schedule !== false ) {
+			$this->log( 'Relaxed allocation succeeded' );
+		}
+
+		return $schedule;
+	}
+
+	/**
+	 * Flip whichever hard spacing rules were actually blamed for the strict
+	 * passes' failure -- and only those.
+	 *
+	 * @return bool Whether anything was relaxed (i.e. a retry is worth attempting).
+	 */
+	private function relax_blocked_spacing_rules() {
+		$relaxed_anything = false;
+
+		if ( $this->same_week_rule_was_blocked() ) {
+			$this->allow_same_week_doubleheader = true;
+			$relaxed_anything = true;
+		}
+		if ( $this->same_date_rule_was_blocked() ) {
+			$this->allow_same_date_rematch = true;
+			$relaxed_anything = true;
+		}
+
+		return $relaxed_anything;
+	}
+
+	/**
+	 * @return bool Whether the same-week rule is still strict and actually rejected a slot.
+	 */
+	private function same_week_rule_was_blocked() {
+		if ( $this->allow_same_week_doubleheader ) {
+			return false;
+		}
+		return $this->same_week_doubleheader_blocked;
+	}
+
+	/**
+	 * @return bool Whether the same-date rematch rule is still strict and actually rejected a slot.
+	 */
+	private function same_date_rule_was_blocked() {
+		if ( $this->allow_same_date_rematch ) {
+			return false;
+		}
+		return $this->same_date_rematch_blocked;
 	}
 
 	/**
@@ -1237,6 +1328,12 @@ class SPSG_Slot_Allocator {
 			}
 		}
 
+		// A team must not play twice in the same real (Mon-Sun) calendar
+		// week -- see {@see $allow_same_week_doubleheader}.
+		if ( $this->violates_same_week_rule( $slot->date, $home_team_id, $away_team_id, $schedule_by_date, $config ) ) {
+			return false;
+		}
+
 		// Validate with constraint manager - reuse pre-created game or create one.
 		// Forward the full date-indexed schedule so cross-day soft constraints
 		// (distribution) score the whole run, not just same-day games.
@@ -1246,6 +1343,63 @@ class SPSG_Slot_Allocator {
 		$validation = $this->constraint_manager->validate_game( $game, $same_day_games, $config, $schedule_by_date );
 
 		return $validation === true;
+	}
+
+	/**
+	 * Whether placing this candidate would break the same-week rule -- i.e.
+	 * the rule is currently enforced AND $home_team_id or $away_team_id
+	 * already has a game anywhere else in the real calendar week $slot_date
+	 * falls in. Sets {@see $same_week_doubleheader_blocked} when the rule is
+	 * enforced and actually the reason for the violation, so a relaxed retry
+	 * knows it's worth attempting.
+	 *
+	 * @param string $slot_date        Candidate slot's date (Y-m-d).
+	 * @param string $home_team_id     Candidate home team id.
+	 * @param string $away_team_id     Candidate away team id.
+	 * @param array  $schedule_by_date Schedule indexed by date.
+	 * @param object $config           Schedule configuration.
+	 * @return bool
+	 */
+	private function violates_same_week_rule( $slot_date, $home_team_id, $away_team_id, $schedule_by_date, $config ) {
+		if ( $this->allow_same_week_doubleheader ) {
+			return false;
+		}
+		if ( ! $this->has_same_week_team_conflict( $slot_date, $home_team_id, $away_team_id, $schedule_by_date, $config ) ) {
+			return false;
+		}
+		$this->same_week_doubleheader_blocked = true;
+		return true;
+	}
+
+	/**
+	 * Whether $home_team_id or $away_team_id already has a game anywhere in
+	 * the real calendar week $slot_date falls in -- on any of that week's
+	 * configured playing dates, the candidate slot's own date included.
+	 *
+	 * @param string $slot_date        Candidate slot's date (Y-m-d).
+	 * @param string $home_team_id     Candidate home team id.
+	 * @param string $away_team_id     Candidate away team id.
+	 * @param array  $schedule_by_date Schedule indexed by date.
+	 * @param object $config           Schedule configuration.
+	 * @return bool
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private function has_same_week_team_conflict( $slot_date, $home_team_id, $away_team_id, $schedule_by_date, $config ) {
+		$week_key = SPSG_Schedule_Helper::iso_week_key( $slot_date );
+		if ( null === $week_key ) {
+			return false;
+		}
+
+		foreach ( SPSG_Schedule_Helper::get_week_playing_dates( $week_key, $config ) as $entry ) {
+			foreach ( $schedule_by_date[ $entry['date'] ] ?? array() as $existing_game ) {
+				if ( $this->has_team_conflict( $existing_game, $home_team_id, $away_team_id ) ) {
+					return true;
+				}
+			}
+		}
+
+		return false;
 	}
 
 	/**
