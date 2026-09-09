@@ -54,7 +54,22 @@ class SPSG_Placeholder_Team_Manager {
 	 */
 	public static function generate_placeholder_names( $existing_teams, $target_count, $prefix = 'Team', $division_name = '' ) {
 		$placeholders = array();
-		$needed = $target_count - count( $existing_teams );
+		$needed = max( 0, $target_count - count( $existing_teams ) );
+
+		// Round-robin scheduling needs an even team count per division. The
+		// admin UI's live preview (admin-ui.js calculateGenericTeams()) already
+		// bumps `needed` by one whenever real+generic would still be odd --
+		// this mirrors that so the actual generated schedule matches what the
+		// preview promised. Without it, a division whose real roster already
+		// meets or exceeds $target_count but is itself an odd number (e.g. 7
+		// real teams against a target of 6) got zero placeholders here, so the
+		// preview's "1 generic team needed" silently never happened at
+		// generation time, leaving one team short a game season-wide (the
+		// total-teams-across-all-divisions parity the slot allocator can't
+		// satisfy when it's odd).
+		if ( ( count( $existing_teams ) + $needed ) % 2 !== 0 ) {
+			$needed++;
+		}
 
 		if ( $needed <= 0 ) {
 			return $placeholders;
