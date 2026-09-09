@@ -341,6 +341,12 @@
             html += '<p class="description">' + i18n.blackoutDatesDesc + '</p>';
             html += '</td></tr>';
 
+            html += '<tr><th scope="row">' + i18n.dateOverridesLabel + '</th>';
+            html += '<td>';
+            html += '<textarea name="venue_date_availability[' + escHtml(venueId) + ']" rows="3" class="large-text" placeholder="' + i18n.dateOverridesPlaceholder + '"></textarea>';
+            html += '<p class="description">' + i18n.dateOverridesDesc + '</p>';
+            html += '</td></tr>';
+
             html += '</table></div>';
 
             $('#spsg-venues-container').append(html);

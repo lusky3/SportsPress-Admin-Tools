@@ -35,6 +35,13 @@ function __( $s, $d = null ) { return $s; }
  */
 function esc_html_e( $s, $d = null ) { echo htmlspecialchars( $s, ENT_QUOTES ); }
 
+/**
+ * Stub mirroring the WordPress signature; the unused argument is deliberate.
+ *
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
+function esc_attr_e( $s, $d = null ) { echo htmlspecialchars( $s, ENT_QUOTES ); }
+
 if ( ! function_exists( 'esc_html' ) ) {
 	function esc_html( $s ) { return htmlspecialchars( (string) $s, ENT_QUOTES ); }
 }

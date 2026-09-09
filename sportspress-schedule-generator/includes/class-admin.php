@@ -540,6 +540,10 @@ class SPSG_Admin {
 			'venueBlackoutDates' => __( 'Venue Blackout Dates', 'sportspress-schedule-generator' ),
 			'blackoutDatesPlaceholder' => __( 'Enter dates when this venue is unavailable (e.g., 2024-01-15, 2024-02-20)', 'sportspress-schedule-generator' ),
 			'blackoutDatesDesc' => __( 'Specific dates when this venue is unavailable. Enter one date per line in YYYY-MM-DD format.', 'sportspress-schedule-generator' ),
+			'dateOverridesLabel' => __( 'Date-Specific Time Overrides', 'sportspress-schedule-generator' ),
+			'dateOverridesPlaceholder' => __( '2026-12-27 = 16:00, 17:00, 18:00', 'sportspress-schedule-generator' ),
+			/* translators: kept in sync with the same description in class-admin-renderer.php::render_venue_row(). */
+			'dateOverridesDesc' => __( 'Override this venue\'s available times for specific dates -- e.g. a shortened holiday slot. One override per line: "YYYY-MM-DD = TIME, TIME" for a single date, or "YYYY-MM-DD to YYYY-MM-DD = TIME, TIME" for a range. Takes priority over Available Days & Times for any date it covers.', 'sportspress-schedule-generator' ),
 			'previewAndImport' => __( 'Preview & Import', 'sportspress-schedule-generator' ),
 			'importVenueSchedule' => __( 'Import Venue Schedule', 'sportspress-schedule-generator' ),
 			'schedulePreview' => __( 'Schedule Preview', 'sportspress-schedule-generator' ),

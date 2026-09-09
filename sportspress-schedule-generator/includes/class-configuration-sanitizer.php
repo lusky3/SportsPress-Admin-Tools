@@ -288,12 +288,22 @@ class SPSG_Configuration_Sanitizer {
 
 	/**
 	 * Sanitize venue date availability
+	 *
+	 * Accepts either shape: the admin form's Venues & Times tab submits one
+	 * freeform textarea string per venue (see
+	 * {@see parse_venue_date_availability_text()} for the line format); the
+	 * CSV-import and REST paths already build structured
+	 * `[{start_date, end_date, time_slots}, ...]` arrays directly.
 	 */
 	private function sanitize_venue_date_availability( $venue_date_availability ) {
 		$sanitized = array();
 		foreach ( (array) $venue_date_availability as $venue_id => $date_ranges ) {
 			$venue_id = sanitize_text_field( $venue_id );
 			$sanitized[ $venue_id ] = array();
+
+			if ( is_string( $date_ranges ) ) {
+				$date_ranges = $this->parse_venue_date_availability_text( $date_ranges );
+			}
 
 			foreach ( (array) $date_ranges as $range ) {
 				$start_date = sanitize_text_field( $range['start_date'] ?? '' );
@@ -313,6 +323,52 @@ class SPSG_Configuration_Sanitizer {
 			}
 		}
 		return $sanitized;
+	}
+
+	/**
+	 * Parse the Venues & Times tab's freeform "date override" textarea into
+	 * the structured range shape {@see sanitize_venue_date_availability()}
+	 * validates.
+	 *
+	 * One override per line: `DATE = TIME, TIME, ...` for a single date, or
+	 * `DATE to DATE = TIME, TIME, ...` for a range (the shape a CSV-imported
+	 * week already produces, so re-saving after an edit round-trips it
+	 * without loss). `=` rather than `:` separates the date from the times
+	 * so the split can't be confused by the colon inside "16:00".
+	 *
+	 * @param string $text Raw textarea contents.
+	 * @return array Array of `{start_date, end_date, time_slots}` (still raw,
+	 *               unvalidated strings -- the caller's existing validation
+	 *               loop sanitizes and checks them the same as any other
+	 *               source).
+	 */
+	private function parse_venue_date_availability_text( $text ) {
+		$ranges = array();
+
+		foreach ( preg_split( '/[\r\n]+/', (string) $text, -1, PREG_SPLIT_NO_EMPTY ) as $line ) {
+			if ( false === strpos( $line, '=' ) ) {
+				continue;
+			}
+
+			list( $date_part, $times_part ) = array_map( 'trim', explode( '=', $line, 2 ) );
+
+			if ( ! preg_match( '/^(\d{4}-\d{2}-\d{2})(?:\s+to\s+(\d{4}-\d{2}-\d{2}))?$/i', $date_part, $m ) ) {
+				continue;
+			}
+
+			$times = array_filter( array_map( 'trim', explode( ',', $times_part ) ) );
+			if ( empty( $times ) ) {
+				continue;
+			}
+
+			$ranges[] = array(
+				'start_date' => $m[1],
+				'end_date' => $m[2] ?? $m[1],
+				'time_slots' => array_values( $times ),
+			);
+		}
+
+		return $ranges;
 	}
 
 	/**
