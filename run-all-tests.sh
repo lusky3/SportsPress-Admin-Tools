@@ -71,6 +71,7 @@ run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-config-name-and-
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-admin-config-id-resolution.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-venue-date-overrides.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-placeholder-team-import.php"
+run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-overlap-avoid-same-day-bonus.php"
 run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-events-import.php"
 run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-notifications.php"
 run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-rollover-teams.php"
