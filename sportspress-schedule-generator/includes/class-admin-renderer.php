@@ -1301,6 +1301,10 @@ class SPSG_Admin_Renderer {
 				<input type="date" id="spsg-filter-date-from" class="spsg-filter" placeholder="<?php esc_attr_e( 'From Date', 'sportspress-schedule-generator' ); ?>" />
 				<input type="date" id="spsg-filter-date-to" class="spsg-filter" placeholder="<?php esc_attr_e( 'To Date', 'sportspress-schedule-generator' ); ?>" />
 				<button type="button" class="button" id="spsg-clear-filters"><?php esc_html_e( 'Clear Filters', 'sportspress-schedule-generator' ); ?></button>
+				<label class="spsg-group-arenas-toggle">
+					<input type="checkbox" id="spsg-group-arenas" />
+					<?php esc_html_e( 'Group Arenas', 'sportspress-schedule-generator' ); ?>
+				</label>
 			</div>
 
 			<!-- Schedule Table -->
@@ -1332,9 +1336,9 @@ class SPSG_Admin_Renderer {
 							data-away-team="<?php echo esc_attr( $game['away_team']['name'] ?? '' ); ?>"
 							data-venue="<?php echo esc_attr( $game['venue']['name'] ?? '' ); ?>"
 							data-date="<?php echo esc_attr( $game['date'] ?? '' ); ?>"
-							data-time="<?php echo esc_attr( $game['time'] ?? '' ); ?>">
+							data-time="<?php echo esc_attr( $game['time_slot'] ?? '' ); ?>">
 							<td><?php echo esc_html( date( 'M j, Y', strtotime( $game['date'] ) ) ); ?></td>
-							<td><?php echo esc_html( $game['time'] ); ?></td>
+							<td><?php echo esc_html( $game['time_slot'] ?? '' ); ?></td>
 							<td><?php echo esc_html( $game['home_team']['name'] ?? '' ); ?></td>
 							<td><?php echo esc_html( $game['away_team']['name'] ?? '' ); ?></td>
 							<td><?php echo esc_html( $game['venue']['name'] ?? '' ); ?></td>

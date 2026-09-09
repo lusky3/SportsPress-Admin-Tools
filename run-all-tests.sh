@@ -66,6 +66,7 @@ run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-home-away-prefer
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-venue-row-rendering.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-placeholder-team-parity-rounding.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-day-weights-idempotent-sanitize.php"
+run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-schedule-preview-time-column.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-config-name-and-id.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-admin-config-id-resolution.php"
 run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-events-import.php"
