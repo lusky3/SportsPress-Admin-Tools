@@ -489,6 +489,8 @@ class SPSG_XLSX_Exporter implements SPSG_Exporter_Interface {
 	 * Friday game printed as Thursday and a Sunday game as Saturday. Parsing
 	 * the date's components directly sidesteps the round trip entirely:
 	 * there is no moment-in-time to convert, so no timezone can shift it.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function compact_date_label( $date, $week_num ) {
 		$dt = DateTime::createFromFormat( 'Y-m-d', $date );

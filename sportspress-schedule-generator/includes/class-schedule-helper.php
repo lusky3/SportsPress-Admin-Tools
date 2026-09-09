@@ -98,12 +98,9 @@ class SPSG_Schedule_Helper {
 		$dates_by_key = array();
 
 		foreach ( (array) $schedule as $game ) {
-			$date = is_array( $game ) ? ( $game['date'] ?? '' ) : ( $game->date ?? '' );
-			if ( '' === $date ) {
-				continue;
-			}
+			$date = self::extract_game_date( $game );
+			$key  = '' !== $date ? self::iso_week_key( $date ) : null;
 
-			$key = self::iso_week_key( $date );
 			if ( null === $key ) {
 				continue;
 			}
@@ -112,6 +109,16 @@ class SPSG_Schedule_Helper {
 		}
 
 		return $dates_by_key;
+	}
+
+	/**
+	 * Read a game object/array's `date` field.
+	 *
+	 * @param array|object $game Game object or array.
+	 * @return string Date in Y-m-d format, or '' if absent.
+	 */
+	private static function extract_game_date( $game ) {
+		return is_array( $game ) ? ( $game['date'] ?? '' ) : ( $game->date ?? '' );
 	}
 
 	/**
@@ -127,6 +134,8 @@ class SPSG_Schedule_Helper {
 	 *
 	 * @param string $date Date in Y-m-d format.
 	 * @return string|null Stable per-week key, or null if $date doesn't parse.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private static function iso_week_key( $date ) {
 		$dt = DateTime::createFromFormat( 'Y-m-d', $date );
