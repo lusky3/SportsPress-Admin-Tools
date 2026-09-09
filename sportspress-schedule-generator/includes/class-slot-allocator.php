@@ -203,6 +203,23 @@ class SPSG_Slot_Allocator {
 	const SAME_DATE_TEAM_PENALTY = 250.0;
 
 	/**
+	 * Cost credited, per matching `overlap_avoid` restriction group, to a slot
+	 * on a date where the OTHER team in that group already has a game.
+	 * `overlap_avoid` restrictions exist because the two teams share a
+	 * roster player (SPSG_Team_Restriction_Constraint already refuses to
+	 * place their games at overlapping/too-close times) -- this is the
+	 * separate, softer preference that when both teams play their own
+	 * (different) games in the same week, it's nicer for that shared player
+	 * if both land on the same day rather than one each on Friday and
+	 * Sunday. A preference only: smaller than SAME_DATE_TEAM_PENALTY so it
+	 * never argues for a double-header, and well below
+	 * PREFERRED_VENUE_BONUS/PACING_COST_PER_DATE's multi-date swing so a
+	 * genuinely better pacing/venue choice still wins when the two pull in
+	 * different directions.
+	 */
+	const OVERLAP_AVOID_SAME_DAY_BONUS = 120.0;
+
+	/**
 	 * Set true when greedy_allocate() / backtrack_allocate() exited because
 	 * of a user-initiated cancellation rather than a genuine "cannot place
 	 * this matchup" failure. The caller uses this to skip the backtracking
@@ -973,7 +990,53 @@ class SPSG_Slot_Allocator {
 			$cost -= self::PREFERRED_VENUE_BONUS;
 		}
 
+		$cost -= $this->overlap_avoid_same_day_bonus( $game, $same_day_games, $config );
+
 		return $cost;
+	}
+
+	/**
+	 * Credit for placing $game on a date where the OTHER team in one of its
+	 * `overlap_avoid` restriction groups already has a (different) game --
+	 * see {@see OVERLAP_AVOID_SAME_DAY_BONUS}. One credit per matching
+	 * restriction group; a group with more than two teams only needs one of
+	 * the other members present to count.
+	 *
+	 * @param object                      $game            Candidate game being placed.
+	 * @param array                       $same_day_games  Games already scheduled on the candidate date.
+	 * @param SPSG_Schedule_Configuration $config          Configuration (for team_restrictions).
+	 * @return float Total bonus (as a positive number the caller subtracts).
+	 */
+	private function overlap_avoid_same_day_bonus( $game, $same_day_games, $config ) {
+		if ( empty( $same_day_games ) || empty( $config->team_restrictions['overlap_avoid'] ) ) {
+			return 0.0;
+		}
+
+		$game_teams = array( $this->extract_id( $game->home_team ), $this->extract_id( $game->away_team ) );
+		$bonus = 0.0;
+
+		foreach ( $config->team_restrictions['overlap_avoid'] as $restriction ) {
+			$restricted_teams = (array) ( $restriction['teams'] ?? array() );
+			$this_teams = array_intersect( $game_teams, $restricted_teams );
+			if ( empty( $this_teams ) ) {
+				continue;
+			}
+
+			$partner_teams = array_diff( $restricted_teams, $this_teams );
+			if ( empty( $partner_teams ) ) {
+				continue;
+			}
+
+			foreach ( $same_day_games as $existing_game ) {
+				$existing_teams = array( $this->extract_id( $existing_game->home_team ), $this->extract_id( $existing_game->away_team ) );
+				if ( array_intersect( $existing_teams, $partner_teams ) ) {
+					$bonus += self::OVERLAP_AVOID_SAME_DAY_BONUS;
+					break;
+				}
+			}
+		}
+
+		return $bonus;
 	}
 
 	/**
