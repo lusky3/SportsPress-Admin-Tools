@@ -121,6 +121,7 @@ export default function ScheduleGenerator() {
 	const [validation,setValidation] = useState(null);
 	const [generating,setGenerating] = useState(false);
 	const [schedule,setSchedule] = useState(null);
+	const [discarding,setDiscarding] = useState(false);
 	const [divF,setDivF] = useState('');
 	const [previewFilters,setPreviewFilters] = useState({}); // #8: team/venue/date filters
 	const [pubProg,setPubProg] = useState(null);
@@ -269,7 +270,7 @@ export default function ScheduleGenerator() {
 			let maxIter = 1000;
 			while (true) {
 				if (--maxIter <= 0) { setError('Publish loop exceeded maximum iterations'); break; }
-				const r = await spsg.publish(schedule.id,pubSeason,pubLeague,off,50,pubOpts);
+				const r = await spsg.publish(schedule.id,pubSeason,pubLeague,off,50,{...pubOpts,config_id:configId});
 				totalImported += r.imported||0;
 				off += 50;
 				setPubProg({imported:totalImported,total:r.total||schedule.games?.length||0,dry_run:pubOpts.dry_run,skipped:r.skipped||0});
@@ -419,9 +420,11 @@ export default function ScheduleGenerator() {
 														if (saved) { setSchedule(saved); setStep(4); } else { setStep(1); }
 													});
 												}}>{configsWithDrafts.has(c.id) ? 'Resume' : 'Load'}</button>
-												{/* #11: clear draft */}
+												{/* #11: clear draft -- also discards the server-side saved
+												draft (SPSG_Schedule_Draft_Store), not just this browser's
+												local copy, so it stays cleared on Resume from elsewhere. */}
 												{configsWithDrafts.has(c.id) && (
-													<button className="splm-btn" title="Clear saved schedule draft" onClick={e=>{e.stopPropagation();try{sessionStorage.removeItem(`spsg_sched_${c.id}`);}catch{}loadConfigs();}}>✕ Draft</button>
+													<button className="splm-btn" title="Clear saved schedule draft" onClick={async e=>{e.stopPropagation();try{sessionStorage.removeItem(`spsg_sched_${c.id}`);}catch{}await spsg.discardDraft(c.id).catch(()=>undefined);loadConfigs();}}>✕ Draft</button>
 												)}
 												<button className="splm-btn splm-btn--danger" aria-label={`Delete ${c.name}`} onClick={()=>{ if(window.confirm(`Delete "${c.name}"?`)) spsg.deleteConfig(c.id).then(loadConfigs); }}>✕</button>
 												<button className="splm-btn" title="Export JSON" aria-label={`Export ${c.name} as JSON`} onClick={async()=>{
@@ -1092,6 +1095,13 @@ export default function ScheduleGenerator() {
 						<button className="splm-btn" onClick={()=>go(0)}>← All Configs</button>
 						<button className="splm-btn" onClick={()=>go(1)}>← Edit Settings</button>
 						<button className="splm-btn" onClick={()=>{setSchedule(null);setValidation(null);setStep(3);}}>Regenerate</button>
+						<button className="splm-btn" disabled={discarding} onClick={async()=>{
+							if (!window.confirm('Discard this draft schedule? This cannot be undone.')) return;
+							setDiscarding(true);
+							try { sessionStorage.removeItem(`spsg_sched_${configId}`); } catch {}
+							await spsg.discardDraft(configId).catch(()=>undefined);
+							setDiscarding(false); setSchedule(null); setValidation(null); go(0);
+						}}>{discarding?'Discarding…':'Discard Draft'}</button>
 					</div>
 				</div>
 			)}
