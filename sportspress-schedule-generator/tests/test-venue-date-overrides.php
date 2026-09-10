@@ -184,6 +184,40 @@ vdo_assert(
 	'Dec 27, 2026 (the overridden date) gets only the shortened 4pm-7pm slot list, not the normal Sunday hours'
 );
 
+echo "\n=== Testing an explicit 'this venue doesn't play this day' override isn't masked by the global fallback ===\n\n";
+
+// Reported live on Tikal (winter_2026-28_v1): venue "Red" has NO Sunday
+// hours at all (the admin UI's Sunday checkbox for Red is unchecked, which
+// saves venue_timeslots['114686']['sunday'] as an explicit empty array --
+// not an absent key). A global time_slots['sunday'] belonging to a DIFFERENT
+// venue's hours must not leak onto Red just because `!empty([])` is false.
+$no_sunday_config = new SPSG_Schedule_Configuration(
+	array(
+		'venues' => array( array( 'id' => '114686', 'name' => 'Red' ) ),
+		'venue_timeslots' => array(
+			'114686' => array(
+				'friday' => array( '18:45', '19:45' ),
+				'sunday' => array(),
+			),
+		),
+		'time_slots' => array(
+			'sunday' => array( '16:00', '17:00', '18:00', '19:00', '20:00', '21:00' ),
+		),
+	)
+);
+
+$red_sunday_slots = SPSG_Schedule_Helper::resolve_venue_slots( '114686', '2026-09-27', 'sunday', $no_sunday_config );
+vdo_assert(
+	empty( $red_sunday_slots ),
+	"a venue's explicit empty per-day timeslot list wins over the global fallback (no borrowed hours)"
+);
+
+$red_friday_slots = SPSG_Schedule_Helper::resolve_venue_slots( '114686', '2026-09-25', 'friday', $no_sunday_config );
+vdo_assert(
+	array( '18:45', '19:45' ) === $red_friday_slots,
+	'a day the venue DOES have configured still resolves normally (the fix is scoped to the empty case only)'
+);
+
 echo "\n=== Testing render_venue_row() shows the saved override and round-trips it ===\n\n";
 
 class SPSG_Test_Config_Manager_Stub_VDO {
