@@ -293,12 +293,7 @@ class SPSG_REST_API {
 					'methods' => 'POST',
 					'callback' => array( $this, 'spsg_generate' ),
 					'args' => array(
-						'config_id' => array(
-							'required' => true,
-							'sanitize_callback' => 'sanitize_text_field',
-							'validate_callback' => function ( $val ) {
-								return is_string( $val ) && strlen( $val ) > 0; },
-						),
+						'config_id' => $this->required_string_arg(),
 					),
 				)
 			)
@@ -340,12 +335,7 @@ class SPSG_REST_API {
 					// declarative pattern used elsewhere instead of relying solely on
 					// inline casts in the handler.
 					'args' => array(
-						'schedule_id' => array(
-							'required' => true,
-							'sanitize_callback' => 'sanitize_text_field',
-							'validate_callback' => function ( $val ) {
-								return is_string( $val ) && strlen( $val ) > 0; },
-						),
+						'schedule_id' => $this->required_string_arg(),
 						// Needed only to discard that configuration's saved draft once
 						// a real (non-dry-run) publish finishes every chunk -- see
 						// SPSG_Schedule_Draft_Store. Optional so an older client that
@@ -415,18 +405,8 @@ class SPSG_REST_API {
 					'methods' => 'POST',
 					'callback' => array( $this, 'spsg_export_xlsx' ),
 					'args' => array(
-						'schedule_id' => array(
-							'required' => true,
-							'sanitize_callback' => 'sanitize_text_field',
-							'validate_callback' => function ( $val ) {
-								return is_string( $val ) && strlen( $val ) > 0; },
-						),
-						'config_id' => array(
-							'required' => true,
-							'sanitize_callback' => 'sanitize_text_field',
-							'validate_callback' => function ( $val ) {
-								return is_string( $val ) && strlen( $val ) > 0; },
-						),
+						'schedule_id' => $this->required_string_arg(),
+						'config_id' => $this->required_string_arg(),
 						'filters' => array(
 							'required' => false,
 							'validate_callback' => function ( $val ) {
@@ -452,18 +432,8 @@ class SPSG_REST_API {
 					'methods' => 'POST',
 					'callback' => array( $this, 'spsg_export_csv' ),
 					'args' => array(
-						'schedule_id' => array(
-							'required' => true,
-							'sanitize_callback' => 'sanitize_text_field',
-							'validate_callback' => function ( $val ) {
-								return is_string( $val ) && strlen( $val ) > 0; },
-						),
-						'config_id' => array(
-							'required' => true,
-							'sanitize_callback' => 'sanitize_text_field',
-							'validate_callback' => function ( $val ) {
-								return is_string( $val ) && strlen( $val ) > 0; },
-						),
+						'schedule_id' => $this->required_string_arg(),
+						'config_id' => $this->required_string_arg(),
 						'filters' => array(
 							'required' => false,
 							'validate_callback' => function ( $val ) {
@@ -494,12 +464,7 @@ class SPSG_REST_API {
 					'methods' => 'POST',
 					'callback' => array( $this, 'spsg_venue_csv_apply' ),
 					'args' => array(
-						'config_id' => array(
-							'required' => true,
-							'sanitize_callback' => 'sanitize_text_field',
-							'validate_callback' => function ( $val ) {
-								return is_string( $val ) && strlen( $val ) > 0; },
-						),
+						'config_id' => $this->required_string_arg(),
 						'schedules' => array(
 							'required' => true,
 							'validate_callback' => function ( $val ) {
@@ -525,6 +490,20 @@ class SPSG_REST_API {
 					'callback' => array( $this, 'spsg_get_distribution_settings' ),
 				)
 			)
+		);
+	}
+
+	/**
+	 * Arg schema shared by every route param that must be a non-empty string
+	 * (schedule_id, config_id) -- kept in one place instead of repeating the
+	 * same sanitize/validate pair at each register_rest_route() call.
+	 */
+	private function required_string_arg() {
+		return array(
+			'required' => true,
+			'sanitize_callback' => 'sanitize_text_field',
+			'validate_callback' => function ( $val ) {
+				return is_string( $val ) && strlen( $val ) > 0; },
 		);
 	}
 
