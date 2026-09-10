@@ -60,6 +60,7 @@ class SPSG_Schedule_Generator {
 		add_action( 'wp_ajax_spsg_download_export', array( $this, 'ajax_download_export' ) );
 		add_action( 'wp_ajax_spsg_validate_config', array( $this, 'ajax_validate_config' ) );
 		add_action( 'wp_ajax_spsg_import_to_sportspress', array( $this, 'ajax_import_to_sportspress' ) );
+		add_action( 'wp_ajax_spsg_discard_draft', array( $this, 'ajax_discard_draft' ) );
 	}
 
 	/**
@@ -87,6 +88,8 @@ class SPSG_Schedule_Generator {
 
 	/**
 	 * AJAX handler for schedule generation
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function ajax_generate_schedule() {
 		check_ajax_referer( 'spsg_generate_schedule', 'spsg_nonce' );
@@ -164,12 +167,10 @@ class SPSG_Schedule_Generator {
 			}
 		}
 
-		// Store generated schedule and stats in transients
-		$schedule_id = 'schedule_' . bin2hex( random_bytes( 8 ) );
-		$user_id = get_current_user_id();
-		set_transient( 'spsg_schedule_' . $schedule_id, $result['schedule'], HOUR_IN_SECONDS );
-		set_transient( 'spsg_schedule_stats_' . $schedule_id, $stats, HOUR_IN_SECONDS );
-		set_transient( 'spsg_last_schedule_id_' . $user_id, $schedule_id, HOUR_IN_SECONDS );
+		// Persist as this configuration's current draft -- replaces any
+		// earlier draft for the same configuration -- so it survives across
+		// page loads until explicitly imported or discarded.
+		$schedule_id = SPSG_Schedule_Draft_Store::save( $config->id, $result['schedule'], $stats );
 
 		// Fire notification for schedule generation
 		do_action( 'spat_schedule_generated', $schedule_id, $stats );
@@ -240,6 +241,8 @@ class SPSG_Schedule_Generator {
 
 	/**
 	 * AJAX handler for schedule export
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function ajax_export_schedule() {
 		check_ajax_referer( 'spsg_export_schedule', 'spsg_nonce' );
@@ -258,11 +261,10 @@ class SPSG_Schedule_Generator {
 			return;
 		}
 
-		// Load schedule from transient
-		$schedule = get_transient( 'spsg_schedule_' . $schedule_id );
+		$schedule = SPSG_Schedule_Draft_Store::get_schedule_by_id( $schedule_id );
 
 		if ( ! $schedule ) {
-			wp_send_json_error( __( 'Schedule not found or expired. Please regenerate the schedule.', 'sportspress-schedule-generator' ) );
+			wp_send_json_error( __( 'Schedule not found. Please regenerate the schedule.', 'sportspress-schedule-generator' ) );
 			return;
 		}
 
@@ -501,6 +503,8 @@ class SPSG_Schedule_Generator {
 
 	/**
 	 * AJAX handler for importing schedule to SportsPress
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function ajax_import_to_sportspress() {
 		check_ajax_referer( 'spsg_import_to_sportspress', 'spsg_nonce' );
@@ -518,11 +522,10 @@ class SPSG_Schedule_Generator {
 			return;
 		}
 
-		// Load schedule from transient
-		$schedule = get_transient( 'spsg_schedule_' . $schedule_id );
+		$schedule = SPSG_Schedule_Draft_Store::get_schedule_by_id( $schedule_id );
 
 		if ( ! $schedule ) {
-			wp_send_json_error( __( 'Schedule not found or expired. Please regenerate the schedule.', 'sportspress-schedule-generator' ) );
+			wp_send_json_error( __( 'Schedule not found. Please regenerate the schedule.', 'sportspress-schedule-generator' ) );
 			return;
 		}
 
@@ -605,6 +608,8 @@ class SPSG_Schedule_Generator {
 			$next_offset = $offset + count( $chunk );
 			$has_more = $next_offset < $total_games;
 
+			$this->discard_draft_if_import_finished( $has_more, $options );
+
 			// Build success message
 			$message = sprintf(
 				__( 'Processed games %1$d to %2$d of %3$d', 'sportspress-schedule-generator' ),
@@ -635,5 +640,56 @@ class SPSG_Schedule_Generator {
 				)
 			);
 		}
+	}
+
+	/**
+	 * The draft's job is done once a real (non-dry-run) import finishes
+	 * importing every chunk -- discard it so the Generate tab returns to its
+	 * empty state rather than keep offering to re-import (or re-export) a
+	 * schedule that's now live in SportsPress.
+	 *
+	 * @param bool  $has_more Whether more chunks remain after this one.
+	 * @param array $options  Import options, as built in ajax_import_to_sportspress().
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private function discard_draft_if_import_finished( $has_more, $options ) {
+		if ( $has_more ) {
+			return;
+		}
+		if ( $options['dry_run'] ) {
+			return;
+		}
+		if ( empty( $options['config_id'] ) ) {
+			return;
+		}
+		SPSG_Schedule_Draft_Store::delete( $options['config_id'] );
+	}
+
+	/**
+	 * AJAX handler: discard a configuration's current draft schedule without
+	 * importing it.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 * @SuppressWarnings(PHPMD.Superglobals)
+	 */
+	public function ajax_discard_draft() {
+		check_ajax_referer( 'spsg_discard_draft', 'spsg_nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( __( 'Insufficient permissions', 'sportspress-schedule-generator' ) );
+			return;
+		}
+
+		$config_id = sanitize_text_field( wp_unslash( $_POST['config_id'] ?? '' ) );
+
+		if ( empty( $config_id ) ) {
+			wp_send_json_error( __( 'No configuration ID provided', 'sportspress-schedule-generator' ) );
+			return;
+		}
+
+		SPSG_Schedule_Draft_Store::delete( $config_id );
+
+		wp_send_json_success( array( 'message' => __( 'Draft discarded', 'sportspress-schedule-generator' ) ) );
 	}
 }

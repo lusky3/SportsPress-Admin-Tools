@@ -426,6 +426,7 @@ class SPSG_Admin {
 					'load_preset' => wp_create_nonce( 'spsg_load_preset' ),
 					'get_change_history' => wp_create_nonce( 'spsg_get_change_history' ),
 					'import_to_sportspress' => wp_create_nonce( 'spsg_import_to_sportspress' ),
+					'discard_draft' => wp_create_nonce( 'spsg_discard_draft' ),
 					'get_generation_progress' => wp_create_nonce( 'spsg_get_generation_progress' ),
 					'cancel_generation' => wp_create_nonce( 'spsg_cancel_generation' ),
 					'get_import_dialog_data' => wp_create_nonce( 'spsg_get_import_dialog_data' ),

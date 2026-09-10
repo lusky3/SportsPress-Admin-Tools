@@ -1077,11 +1077,14 @@ class SPSG_Admin_Renderer {
 
 	/**
 	 * Render generate tab
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function render_generate_tab( $config ) {
-		$schedule_id = get_transient( 'spsg_last_schedule_id_' . get_current_user_id() );
-		$schedule = $schedule_id ? get_transient( 'spsg_schedule_' . $schedule_id ) : null;
-		$stats = $schedule_id ? get_transient( 'spsg_schedule_stats_' . $schedule_id ) : null;
+		$draft = SPSG_Schedule_Draft_Store::get( $config->id );
+		$schedule_id = $draft['schedule_id'] ?? null;
+		$schedule = $draft['schedule'] ?? null;
+		$stats = $draft['stats'] ?? null;
 
 		?>
 		<div class="spsg-generate-section">
@@ -1122,6 +1125,7 @@ class SPSG_Admin_Renderer {
 			<?php $this->render_progress_indicator(); ?>
 
 			<?php if ( $schedule && ! empty( $schedule ) ) : ?>
+				<?php $this->render_draft_notice( $draft, $config->id ); ?>
 				<?php $this->render_schedule_preview( $schedule, $stats, $schedule_id ); ?>
 			<?php else : ?>
 				<div id="spsg-schedule-preview-placeholder"></div>
@@ -1131,6 +1135,32 @@ class SPSG_Admin_Renderer {
 		</div>
 
 		<?php $this->render_import_dialog(); ?>
+		<?php
+	}
+
+	/**
+	 * Render the "this is a saved draft" notice above the schedule preview,
+	 * with a button to discard it without importing.
+	 *
+	 * @param array  $draft     Output of SPSG_Schedule_Draft_Store::get().
+	 * @param string $config_id Configuration id the draft belongs to.
+	 */
+	private function render_draft_notice( $draft, $config_id ) {
+		?>
+		<div class="spsg-draft-notice notice notice-info inline">
+			<p>
+				<?php
+				printf(
+					/* translators: %s: date/time the draft was generated */
+					esc_html__( 'This is a saved draft, generated %s. It stays here until you import it to SportsPress or discard it -- editing settings above does not change it until you generate again.', 'sportspress-schedule-generator' ),
+					esc_html( $draft['generated_at'] ?? '' )
+				);
+				?>
+				<button type="button" class="button" id="spsg-discard-draft" data-config-id="<?php echo esc_attr( $config_id ); ?>">
+					<?php esc_html_e( 'Discard Draft', 'sportspress-schedule-generator' ); ?>
+				</button>
+			</p>
+		</div>
 		<?php
 	}
 
