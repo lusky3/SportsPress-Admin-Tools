@@ -346,6 +346,14 @@ class SPSG_REST_API {
 							'validate_callback' => function ( $val ) {
 								return is_string( $val ) && strlen( $val ) > 0; },
 						),
+						// Needed only to discard that configuration's saved draft once
+						// a real (non-dry-run) publish finishes every chunk -- see
+						// SPSG_Schedule_Draft_Store. Optional so an older client that
+						// doesn't send it simply skips the auto-discard.
+						'config_id' => array(
+							'default' => '',
+							'sanitize_callback' => 'sanitize_text_field',
+						),
 						'season_id' => array(
 							'default' => 0,
 							'sanitize_callback' => 'absint',
@@ -381,6 +389,19 @@ class SPSG_REST_API {
 							'sanitize_callback' => 'rest_sanitize_boolean',
 						),
 					),
+				)
+			)
+		);
+		// Discard a configuration's saved draft without publishing it.
+		register_rest_route(
+			$ns,
+			'/configs/(?P<id>[\w-]+)/draft',
+			array_merge(
+				$perm,
+				array(
+					'methods' => 'DELETE',
+					'callback' => array( $this, 'spsg_discard_draft' ),
+					'args' => $id_args,
 				)
 			)
 		);
@@ -1028,8 +1049,11 @@ class SPSG_REST_API {
 		return $filters;
 	}
 
+	/**
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
 	public function spsg_export_xlsx( $request ) {
-		$schedule = get_transient( 'spsg_schedule_' . $request->get_param( 'schedule_id' ) );
+		$schedule = SPSG_Schedule_Draft_Store::get_schedule_by_id( $request->get_param( 'schedule_id' ) );
 		if ( ! $schedule ) {
 			return new WP_Error( 'schedule_not_found', 'Schedule not found or expired.', array( 'status' => 404 ) );
 		}
@@ -1049,8 +1073,11 @@ class SPSG_REST_API {
 		return rest_ensure_response( $this->export_download_response( $result ) );
 	}
 
+	/**
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
 	public function spsg_export_csv( $request ) {
-		$schedule = get_transient( 'spsg_schedule_' . $request->get_param( 'schedule_id' ) );
+		$schedule = SPSG_Schedule_Draft_Store::get_schedule_by_id( $request->get_param( 'schedule_id' ) );
 		if ( ! $schedule ) {
 			return new WP_Error( 'schedule_not_found', 'Schedule not found or expired.', array( 'status' => 404 ) );
 		}
@@ -1274,6 +1301,8 @@ class SPSG_REST_API {
 	 * does write the progress/cancel transients); they are inert with respect to
 	 * this REST /generate call. The response always carries `status => complete`
 	 * on success so callers know the result is final, not a poll handle.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function spsg_generate( $request ) {
 		$config = $this->cm()->load( $request->get_param( 'config_id' ) );
@@ -1317,8 +1346,6 @@ class SPSG_REST_API {
 		if ( is_wp_error( $result ) ) {
 			return $result;
 		}
-		$sid = 'sched_' . bin2hex( random_bytes( 8 ) );
-		set_transient( 'spsg_schedule_' . $sid, $result['schedule'], HOUR_IN_SECONDS );
 		// Format games for the React UI
 		$games = array_map(
 			function ( $g ) {
@@ -1343,6 +1370,13 @@ class SPSG_REST_API {
 		);
 		// Rich statistics via SPSG_Statistics_Calculator
 		$rich_stats = ( new SPSG_Statistics_Calculator() )->calculate( $result['schedule'], $config );
+
+		// Persist as this configuration's current draft -- replaces any
+		// earlier draft for the same configuration -- so it survives across
+		// page loads until explicitly imported or discarded, matching the
+		// classic admin page's behaviour (SPSG_Schedule_Draft_Store).
+		$sid = SPSG_Schedule_Draft_Store::save( $config->id, $result['schedule'], $rich_stats );
+
 		return rest_ensure_response(
 			array(
 				'schedule_id' => $sid,
@@ -1416,9 +1450,13 @@ class SPSG_REST_API {
 
 	// --- Publish ---
 
-	/** Publish a generated schedule to SportsPress events. */
+	/**
+	 * Publish a generated schedule to SportsPress events.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
 	public function spsg_publish( $request ) {
-		$schedule = get_transient( 'spsg_schedule_' . $request->get_param( 'schedule_id' ) );
+		$schedule = SPSG_Schedule_Draft_Store::get_schedule_by_id( $request->get_param( 'schedule_id' ) );
 		if ( ! $schedule ) {
 			return new WP_Error( 'schedule_not_found', 'Schedule not found or expired.', array( 'status' => 404 ) );
 		}
@@ -1440,6 +1478,9 @@ class SPSG_REST_API {
 		if ( is_wp_error( $result ) ) {
 			return $result;
 		}
+		$remaining = max( 0, count( $schedule ) - $offset - $limit );
+		$this->discard_draft_if_publish_finished( $remaining, $dry, $request->get_param( 'config_id' ) );
+
 		return rest_ensure_response(
 			array(
 				'imported'   => $result['imported'] ?? 0,
@@ -1449,8 +1490,45 @@ class SPSG_REST_API {
 				'total'      => count( $schedule ),
 				'offset'     => $offset,
 				'limit'      => $limit,
-				'remaining'  => max( 0, count( $schedule ) - $offset - $limit ),
+				'remaining'  => $remaining,
 			)
 		);
+	}
+
+	/**
+	 * Discard a configuration's current draft schedule without publishing it.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	public function spsg_discard_draft( $request ) {
+		SPSG_Schedule_Draft_Store::delete( $request['id'] );
+		return rest_ensure_response( array( 'discarded' => true ) );
+	}
+
+	/**
+	 * The draft's job is done once a real (non-dry-run) publish finishes
+	 * importing every chunk -- discard it so a later Generate tab visit
+	 * doesn't keep offering to re-publish (or re-export) a schedule that's
+	 * now live in SportsPress. Mirrors
+	 * SPSG_Schedule_Generator::discard_draft_if_import_finished() for the
+	 * classic admin-ajax path.
+	 *
+	 * @param int    $remaining Games left to publish after this chunk.
+	 * @param bool   $dry_run   Whether this was a dry run.
+	 * @param string $config_id Configuration id, or '' if the client didn't send one.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private function discard_draft_if_publish_finished( $remaining, $dry_run, $config_id ) {
+		if ( $remaining > 0 ) {
+			return;
+		}
+		if ( $dry_run ) {
+			return;
+		}
+		if ( empty( $config_id ) ) {
+			return;
+		}
+		SPSG_Schedule_Draft_Store::delete( $config_id );
 	}
 }
