@@ -4,6 +4,8 @@
  * @author Cody (lusky3)
  */
 
+/* global spsgData, ajaxurl */
+
 (function($) {
     'use strict';
     

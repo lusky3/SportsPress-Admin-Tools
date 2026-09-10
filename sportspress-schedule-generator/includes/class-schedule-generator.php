@@ -88,6 +88,8 @@ class SPSG_Schedule_Generator {
 
 	/**
 	 * AJAX handler for schedule generation
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function ajax_generate_schedule() {
 		check_ajax_referer( 'spsg_generate_schedule', 'spsg_nonce' );
@@ -239,6 +241,8 @@ class SPSG_Schedule_Generator {
 
 	/**
 	 * AJAX handler for schedule export
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function ajax_export_schedule() {
 		check_ajax_referer( 'spsg_export_schedule', 'spsg_nonce' );
@@ -499,6 +503,8 @@ class SPSG_Schedule_Generator {
 
 	/**
 	 * AJAX handler for importing schedule to SportsPress
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function ajax_import_to_sportspress() {
 		check_ajax_referer( 'spsg_import_to_sportspress', 'spsg_nonce' );
@@ -644,6 +650,8 @@ class SPSG_Schedule_Generator {
 	 *
 	 * @param bool  $has_more Whether more chunks remain after this one.
 	 * @param array $options  Import options, as built in ajax_import_to_sportspress().
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function discard_draft_if_import_finished( $has_more, $options ) {
 		if ( $has_more ) {
@@ -661,6 +669,9 @@ class SPSG_Schedule_Generator {
 	/**
 	 * AJAX handler: discard a configuration's current draft schedule without
 	 * importing it.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 * @SuppressWarnings(PHPMD.Superglobals)
 	 */
 	public function ajax_discard_draft() {
 		check_ajax_referer( 'spsg_discard_draft', 'spsg_nonce' );

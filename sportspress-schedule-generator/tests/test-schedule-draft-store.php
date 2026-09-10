@@ -20,20 +20,23 @@
 define( 'ABSPATH', dirname( __FILE__ ) . '/' );
 define( 'SPSG_PLUGIN_PATH', dirname( __FILE__ ) . '/../' );
 
-$GLOBALS['sds_test_options'] = array();
+$sds_test_options = array();
 
 function get_option( $name, $default = false ) { // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
-	return $GLOBALS['sds_test_options'][ $name ] ?? $default;
+	global $sds_test_options;
+	return $sds_test_options[ $name ] ?? $default;
 }
-function update_option( $name, $value, $autoload = true ) { // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
-	$GLOBALS['sds_test_options'][ $name ] = $value;
+function update_option( $name, $value ) { // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
+	global $sds_test_options;
+	$sds_test_options[ $name ] = $value;
 	return true;
 }
 function delete_option( $name ) { // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
-	unset( $GLOBALS['sds_test_options'][ $name ] );
+	global $sds_test_options;
+	unset( $sds_test_options[ $name ] );
 	return true;
 }
-function current_time( $type ) { // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
+function current_time() { // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
 	return '2026-09-10 12:00:00';
 }
 

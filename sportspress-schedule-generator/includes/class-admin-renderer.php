@@ -1077,6 +1077,8 @@ class SPSG_Admin_Renderer {
 
 	/**
 	 * Render generate tab
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function render_generate_tab( $config ) {
 		$draft = SPSG_Schedule_Draft_Store::get( $config->id );
