@@ -100,6 +100,7 @@
             $('#spsg-export-xlsx').on('click', function() { SPSG.exportSchedule('xlsx'); });
             $('#spsg-cancel-generation').on('click', this.cancelGeneration.bind(this));
             $('#spsg-clone-config').on('click', this.cloneConfiguration.bind(this));
+            $('#spsg-discard-draft').on('click', this.discardDraft.bind(this));
         },
         
         checkConfigurationStatus: function() {
@@ -221,7 +222,40 @@
                 }
             });
         },
-        
+
+        discardDraft: function() {
+            var self = this;
+            var configId = $('#spsg-discard-draft').data('config-id') || $('#spsg-config-selector').val() || '';
+
+            if (!confirm('Discard this draft schedule? This cannot be undone.')) {
+                return;
+            }
+
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'spsg_discard_draft',
+                    spsg_nonce: spsgData.nonces.discard_draft,
+                    config_id: configId
+                },
+                beforeSend: function() {
+                    self.showMessage('info', 'Discarding draft...');
+                },
+                success: function(response) {
+                    if (response.success) {
+                        window.location.reload();
+                    } else {
+                        var errorMsg = response.data.message || response.data || 'Failed to discard draft';
+                        self.showMessage('error', errorMsg);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    self.showMessage('error', 'Discard request failed: ' + error);
+                }
+            });
+        },
+
         generateSchedule: function() {
             var self = this;
             
