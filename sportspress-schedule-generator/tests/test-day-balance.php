@@ -145,7 +145,10 @@ $cost_sun = $constraint->get_violation_cost( db_game( 't1', 't2', '2026-10-25' )
 db_assert( $cost_fri < $cost_sun, sprintf( 'Friday is cheaper under a 75/25 split (fri %.1f, sun %.1f)', $cost_fri, $cost_sun ) );
 // Un-normalised, a 3.0 "ratio" would demand 15 Friday games out of 5 and make
 // Friday look wildly over-target; keep the Friday cost small to prove it isn't.
-db_assert( $cost_fri < 20, 'Friday cost is small, so the 3:1 weights were normalised (' . $cost_fri . ')' );
+// Threshold scales with SPSG_Distribution_Constraint::DAY_BALANCE_COST_PER_GAME_DEVIATION
+// (a real 0.25-game deviation on each of two teams costs 2x that constant).
+$small_cost_threshold = 2 * SPSG_Distribution_Constraint::DAY_BALANCE_COST_PER_GAME_DEVIATION;
+db_assert( $cost_fri < $small_cost_threshold, 'Friday cost is small, so the 3:1 weights were normalised (' . $cost_fri . ')' );
 
 // ---------------------------------------------------------------------------
 // 3. An explicit day_ratios still wins over day_balance (form-saved configs).
