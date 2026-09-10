@@ -17,6 +17,24 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 
 
 	/**
+	 * Cost charged per game of deviation between a team's running day split
+	 * (e.g. Friday vs Sunday) and the configured target ratio.
+	 *
+	 * Raised from 10.0: at that weight, a typical 1-2 game deviation (cost
+	 * 10-20) was small next to SPSG_Slot_Allocator's other soft-cost terms
+	 * (PACING_COST_PER_DATE=20/date of distance, DATE_LOAD_COST up to ~60),
+	 * so day balance rarely won a close call -- individual teams stayed
+	 * clear of a 100/0 monopoly (nothing else pushes that hard toward one
+	 * day) but still drifted well off the operator's configured split
+	 * (observed 29%-88% Friday on a real 32-team, 70/30-configured season).
+	 * 40.0 puts a 1-2 game deviation on par with those other terms so it can
+	 * actually compete for a close placement decision, while staying below
+	 * SAME_DATE_TEAM_PENALTY (250) and PREFERRED_VENUE_BONUS (1000) so a
+	 * clearly better choice on those fronts still wins.
+	 */
+	const DAY_BALANCE_COST_PER_GAME_DEVIATION = 40.0;
+
+	/**
 	 * Initialize constraint
 	 */
 	protected function init() {
@@ -212,7 +230,7 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 		$deviation = abs( $current_games_for_day - $target_games_for_day );
 
 		// Convert deviation to cost (higher deviation = higher cost)
-		return $deviation * 10.0; // Scale factor for cost
+		return $deviation * self::DAY_BALANCE_COST_PER_GAME_DEVIATION;
 	}
 
 	/**

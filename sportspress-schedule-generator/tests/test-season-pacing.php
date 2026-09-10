@@ -281,8 +281,15 @@ if ( sp_assert( ! is_wp_error( $schedule ), 'allocation succeeds' . ( is_wp_erro
 	$s = sp_summarise( $schedule, $all_dates );
 	sp_assert( 0 === $s['double_headers'], 'no team plays twice on one date (' . $s['double_headers'] . ' double-headers)' );
 	sp_assert( 16 === $s['dates_used'], 'every playing date carries games (' . $s['dates_used'] . ' of 16)' );
-	// 8 games over 16 dates is a game every 2 dates; allow twice that.
-	sp_assert( $s['max_gap'] <= 4, 'no team waits more than 4 playing dates between games (worst ' . $s['max_gap'] . ')' );
+	// 8 games over 16 dates is a game every 2 dates; allow twice that, plus one
+	// -- SPSG_Distribution_Constraint::DAY_BALANCE_COST_PER_GAME_DEVIATION was
+	// raised so a team's own Friday/Sunday split can actually compete with
+	// pacing for a close placement call (H-2026-09: individual teams drifted
+	// 29%-88% Friday on a real 70/30-configured season despite no team ever
+	// being 100%/0%). Occasionally choosing the day-correct slot over the
+	// pacing-nearest one costs at most one extra date of wait here; test 3
+	// below already tolerates the same worst-gap-5 under an explicit skew.
+	sp_assert( $s['max_gap'] <= 5, 'no team waits more than 5 playing dates between games (worst ' . $s['max_gap'] . ')' );
 
 	$per_date = array_count_values( array_map( function ( $g ) { return $g->date; }, $schedule ) );
 	sp_assert( max( $per_date ) - min( $per_date ) <= 3, 'per-date load is even (min ' . min( $per_date ) . ', max ' . max( $per_date ) . ')' );
