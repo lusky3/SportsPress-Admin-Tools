@@ -69,6 +69,12 @@ class SPLM_Gate_Test_State {
 
 	/** @var int How many times SPLM_Waitlist_Database::find_by_token() actually ran. */
 	public $find_by_token_calls = 0;
+
+	/** @var array<string, bool> What SPLM_Waitlist_Claim::has_open_order() should report, keyed by token. */
+	public $open_order_tokens = array();
+
+	/** @var string[] Every token has_open_order() was actually asked about. */
+	public $has_open_order_calls = array();
 }
 
 function splm_gate_test_state() {
@@ -182,6 +188,12 @@ class SPLM_Waitlist_Claim {
 
 	public static function is_claimable( $row ) {
 		return (bool) ( isset( $row->claimable ) ? $row->claimable : false );
+	}
+
+	public static function has_open_order( $token ) {
+		$state = splm_gate_test_state();
+		$state->has_open_order_calls[] = $token;
+		return isset( $state->open_order_tokens[ $token ] ) ? $state->open_order_tokens[ $token ] : false;
 	}
 }
 
@@ -543,6 +555,77 @@ $state->session_data = array();
 $state->post_meta    = array();
 $state->wc_available  = false;
 $state->cart_items    = array();
+
+echo "\n=== filter_is_purchasable(): repurchase guard blocks a second order for an already-committed claim token ===\n\n";
+
+// Reproduces the production gap: a waitlist offer's claim token already
+// carries a processing order (a first, successful checkout), and the
+// customer's session still holds the entitlement that offer granted --
+// exactly the state that lets a reloaded claim link or a resubmitted
+// "place order" buy the same spot again.
+$state->post_meta         = array( 400 => array( SPLM_Waitlist_Gate::GATE_META => '1' ) );
+$state->wc_available      = true;
+$state->session_available = true;
+$state->session_data      = array();
+$state->can_manage        = false;
+$state->open_order_tokens = array();
+$state->has_open_order_calls = array();
+
+$repeat_product = new SPLM_Gate_Fake_Product( 400 );
+
+$token_400 = str_repeat( '4', 64 );
+$state->tokens[ $token_400 ] = splm_gate_row( 400, true );
+$g::grant( 400, $token_400 );
+
+// Sanity check first: with no committed order on record, the held
+// entitlement alone is still enough to buy it -- the guard must not be
+// blocking everything indiscriminately.
+assert_test(
+	true === $gate->filter_is_purchasable( true, $repeat_product ),
+	'sanity: a live entitlement with no committed order for its token is still purchasable'
+);
+
+// The actual gap this task closes: a processing order already carries this
+// exact claim token.
+$state->open_order_tokens = array( $token_400 => true );
+assert_test(
+	false === $gate->filter_is_purchasable( true, $repeat_product ),
+	'a second purchase attempt is blocked once an order already carries this claim token in a non-terminal-failure status'
+);
+assert_test(
+	in_array( $token_400, $state->has_open_order_calls, true ),
+	'the gate consults has_open_order() with the exact token responsible for the entitlement'
+);
+
+// Managers still bypass entirely -- an existing committed order must not
+// stop a convener creating or completing an order manually in wp-admin.
+$state->can_manage = true;
+assert_test(
+	true === $gate->filter_is_purchasable( true, $repeat_product ),
+	'a manager still bypasses the gate even with a committed order already on record'
+);
+$state->can_manage = false;
+
+// The cheap-exit discipline holds: an unentitled visitor is refused before
+// has_open_order() is ever consulted -- it is only worth asking once
+// something has already said "entitled".
+$state->has_open_order_calls = array();
+$state->session_data         = array();
+$unentitled_repeat = new SPLM_Gate_Fake_Product( 400 );
+assert_test(
+	false === $gate->filter_is_purchasable( true, $unentitled_repeat ),
+	'no entitlement at all still refuses, independent of the guard'
+);
+assert_test(
+	array() === $state->has_open_order_calls,
+	'has_open_order() is never consulted when there is no entitlement to reconsider in the first place'
+);
+
+$state->session_data      = array();
+$state->post_meta         = array();
+$state->wc_available      = false;
+$state->open_order_tokens = array();
+$state->has_open_order_calls = array();
 
 echo "\n=== filter_cart_item_removed_message(): the ONLY mechanism (M1) ===\n\n";
 

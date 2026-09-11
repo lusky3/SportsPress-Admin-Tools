@@ -242,4 +242,109 @@ class SPLM_Waitlist_Claim {
 	public static function claim_url( $token ): string {
 		return rest_url( 'splm/v1/waitlist/claim/' . rawurlencode( (string) $token ) );
 	}
+
+	/**
+	 * Order statuses that mean a claim token already has a real checkout
+	 * attempt sitting in the database. Deliberately NOT "paid" statuses:
+	 * pending and on-hold are unpaid but still represent a checkout already
+	 * committed to a row, for the exact token a second attempt is about to
+	 * reuse. cancelled/failed/refunded (and WordPress' own trash) are left
+	 * out on purpose — those are the terminal-failure outcomes a genuine
+	 * retry (a declined card, an abandoned PayPal popup) must still be let
+	 * through after.
+	 */
+	const OPEN_ORDER_STATUSES = array( 'pending', 'on-hold', 'processing', 'completed' );
+
+	/**
+	 * Whether an order already exists carrying this claim token on a line
+	 * item, in a status that is not a terminal failure.
+	 *
+	 * THE GAP THIS CLOSES. The WooCommerce session entitlement
+	 * (SPLM_Waitlist_Gate::grant()) and the waitlist row's own status both
+	 * keep a claimed product purchasable until an order reaches
+	 * `completed` — see SPLM_Waitlist::mark_claimed(), which only ever
+	 * runs from the woocommerce_order_status_completed hook. A first
+	 * checkout attempt that lands in `processing` (the common case for a
+	 * paid, non-shippable registration product), `on-hold`, or even
+	 * `pending` touches neither of those, so the SAME claim link — or a
+	 * browser that still holds the session entitlement from the first
+	 * attempt — sails through a second, independent checkout with no
+	 * resistance at all. That is precisely how one claimed offer produced
+	 * two distinct PayPal transactions 69 seconds apart in production. This
+	 * is defense in depth, not a fix for the double-submission itself: two
+	 * requests racing to be the FIRST to reach the database can still both
+	 * get here before either has committed an order, since there is
+	 * nothing yet for this query to find. It stops a genuinely LATER
+	 * second attempt — a reloaded claim link, a resubmitted "place order"
+	 * after the first succeeded.
+	 *
+	 * The line item lives in the dedicated wc_order_items /
+	 * wc_order_itemmeta tables, which predate HPOS and are unaffected by
+	 * it — an order's own storage may be a post or the HPOS orders table,
+	 * but its line items are always in these two regardless. That is what
+	 * makes the token lookup below a single direct query rather than two
+	 * (legacy vs. HPOS) code paths. wc_get_orders() cannot do this lookup
+	 * itself: its meta_query filters the ORDER's own meta, never a line
+	 * item's — see the billing-name fallback in
+	 * SPLM_REST_API::enrich_payment_rows() for that distinction. Once the
+	 * candidate order ids are in hand, the status check goes back through
+	 * wc_get_orders(), which IS HPOS-aware (`post__in` + `status`), the
+	 * same pattern SPLM_REST_API::get_stats() already relies on for the
+	 * same reason.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param string $token Claim token.
+	 * @return bool
+	 */
+	public static function has_open_order( $token ): bool {
+		$token = (string) $token;
+		if ( ! self::is_token_shaped( $token ) || ! function_exists( 'wc_get_orders' ) ) {
+			return false;
+		}
+
+		$order_ids = self::order_ids_for_token( $token );
+		if ( empty( $order_ids ) ) {
+			return false;
+		}
+
+		$open = wc_get_orders(
+			array(
+				'limit'    => 1,
+				'return'   => 'ids',
+				'post__in' => $order_ids,
+				'status'   => self::OPEN_ORDER_STATUSES,
+			)
+		);
+
+		return ! empty( $open );
+	}
+
+	/**
+	 * Order ids whose line items carry this token as CART_META_KEY.
+	 *
+	 * Params are bound token-first, not meta-key-first, purely so a test
+	 * fixture can key its fake results off the one thing that varies
+	 * between calls — the meta key is always the constant below.
+	 *
+	 * @return int[]
+	 */
+	private static function order_ids_for_token( string $token ): array {
+		global $wpdb;
+
+		$itemmeta = $wpdb->prefix . 'woocommerce_order_itemmeta';
+		$items    = $wpdb->prefix . 'woocommerce_order_items';
+
+		$ids = $wpdb->get_col( // phpcs:ignore WordPress.DB
+			$wpdb->prepare(
+				"SELECT DISTINCT oi.order_id FROM {$itemmeta} oim" // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names, not values; cannot use a placeholder.
+				. " INNER JOIN {$items} oi ON oi.order_item_id = oim.order_item_id" // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				. ' WHERE oim.meta_value = %s AND oim.meta_key = %s',
+				$token,
+				self::CART_META_KEY
+			)
+		);
+
+		return array_map( 'intval', (array) $ids );
+	}
 }
