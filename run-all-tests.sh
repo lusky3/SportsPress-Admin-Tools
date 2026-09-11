@@ -73,6 +73,7 @@ run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-venue-date-overr
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-placeholder-team-import.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-postseason-pairing.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-postseason-config.php"
+run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-postseason-seed-resolver.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-overlap-avoid-same-day-bonus.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-incomplete-week-detection.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-no-same-week-doubleheader.php"
