@@ -67,6 +67,36 @@ class SPSG_Postseason_Seed_Resolver {
 	}
 
 	/**
+	 * The inverse of seed_placeholder_names(): parse one placeholder team
+	 * name back into its division/stage/seed parts. Used by postseason
+	 * allocator constraints (championship/consolation day, time window) to
+	 * detect which bracket matchup a game belongs to from its team names --
+	 * valid only before seed resolution swaps placeholders for real teams,
+	 * which is exactly the window those constraints need to govern (the
+	 * design's own "lock in the day/time/venue structure ahead of time"
+	 * -- once placed, a game's slot doesn't move when replace_team() later
+	 * swaps in the real team).
+	 *
+	 * @param string $name Team name to parse.
+	 * @return array{division: string, stage: string, seed: int}|null Null if
+	 *              $name doesn't match the "<division> <Seed|RR-Seed> <n>"
+	 *              pattern at all.
+	 */
+	public static function parse_seed_placeholder_name( $name ) {
+		$pattern = '/^(.+?)\s+(' . preg_quote( self::SEED_STAGE, '/' ) . '|' . preg_quote( self::RR_SEED_STAGE, '/' ) . ')\s+(\d+)$/';
+
+		if ( ! preg_match( $pattern, trim( (string) $name ), $matches ) ) {
+			return null;
+		}
+
+		return array(
+			'division' => $matches[1],
+			'stage'    => $matches[2],
+			'seed'     => (int) $matches[3],
+		);
+	}
+
+	/**
 	 * Mint one division's full set of placeholder teams: $team_count "Seed"
 	 * placeholders (for the cross round-robin weeks) plus $team_count
 	 * "RR-Seed" placeholders (for the final week), via the existing

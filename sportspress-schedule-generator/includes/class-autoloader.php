@@ -81,6 +81,8 @@ class SPSG_Autoloader {
 			'SPSG_Distribution_Constraint' => $base_path . 'constraints/class-distribution-constraint.php',
 			'SPSG_Team_Restriction_Constraint' => $base_path . 'constraints/class-team-restriction-constraint.php',
 			'SPSG_Division_Grouping_Constraint' => $base_path . 'constraints/class-division-grouping-constraint.php',
+			'SPSG_Postseason_Day_Constraint' => $base_path . 'constraints/class-postseason-day-constraint.php',
+			'SPSG_Championship_Time_Window_Constraint' => $base_path . 'constraints/class-championship-time-window-constraint.php',
 
 			// Export classes
 			'SPSG_Export_Manager' => $base_path . 'class-export-manager.php',
@@ -96,6 +98,7 @@ class SPSG_Autoloader {
 			// Postseason
 			'SPSG_Postseason_Pairing' => $base_path . 'class-postseason-pairing.php',
 			'SPSG_Postseason_Seed_Resolver' => $base_path . 'class-postseason-seed-resolver.php',
+			'SPSG_Postseason_Bracket_Detector' => $base_path . 'class-postseason-bracket-detector.php',
 
 			// Data models
 			'SPSG_Game' => $base_path . 'models/class-game.php',
