@@ -92,11 +92,13 @@ class SPSG_Postseason_Seed_Resolver {
 	/**
 	 * Mint one stage's placeholders for one division.
 	 *
-	 * @param string $division_name
-	 * @param int    $team_count
-	 * @param string $stage
-	 * @param string $config_id
+	 * @param string $division_name Division name, e.g. "Div 1".
+	 * @param int    $team_count Division size (N).
+	 * @param string $stage self::SEED_STAGE or self::RR_SEED_STAGE.
+	 * @param string $config_id Postseason configuration id, recorded on each placeholder.
 	 * @return array Seed number => team post id (successfully created ones only).
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private static function mint_stage_placeholders( $division_name, $team_count, $stage, $config_id ) {
 		$ids = array();
@@ -132,6 +134,8 @@ class SPSG_Postseason_Seed_Resolver {
 	 * @return array Seed number => SPSG_Placeholder_Team_Manager::replace_team()'s
 	 *               result, for every seed actually resolved this call
 	 *               (already-resolved seeds are omitted entirely).
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public static function resolve_seeds( array $placeholder_ids, array $ranked_team_ids ) {
 		$results = array();
@@ -177,7 +181,7 @@ class SPSG_Postseason_Seed_Resolver {
 	/**
 	 * Whether one event has a recorded outcome for every team assigned to it.
 	 *
-	 * @param int $event_id
+	 * @param int $event_id sp_event post id to check.
 	 * @return bool
 	 */
 	private static function event_is_decided( $event_id ) {
