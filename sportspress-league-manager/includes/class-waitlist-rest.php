@@ -29,6 +29,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 class SPLM_Waitlist_REST {
 
 	const REST_NAMESPACE = 'splm/v1';
+	const SECRET_OPTION = 'splm_freescout_secret';
+	const REPLAY_WINDOW = 300;
+	const CUSTOMER_STATUS_RATE_LIMIT = 60;
 
 	public function __construct() {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
@@ -39,6 +42,11 @@ class SPLM_Waitlist_REST {
 		// handle_claim() validates it. A malformed token never reaches a
 		// query — the route regex rejects it first.
 		$this->add_route( 'GET', '/waitlist/claim/(?P<token>[a-f0-9]{64})', array( $this, 'handle_claim' ), self::claim_args(), '__return_true' );
+
+		// Server-to-server lookup for the FreeScout customer-sidebar module.
+		// Self-authenticating (HMAC), like the claim route above — but for a
+		// machine caller instead of a human with a link.
+		$this->add_route( 'POST', '/waitlist/customer-status', array( $this, 'handle_customer_status' ), array(), '__return_true' );
 
 		// GET and POST are registered separately, on the same path, rather
 		// than as one call's array-of-two-endpoints form: WP_REST_Server
@@ -783,5 +791,132 @@ class SPLM_Waitlist_REST {
 		);
 
 		return $response;
+	}
+
+	/**
+	 * POST /waitlist/customer-status — server-to-server waitlist lookup for
+	 * the FreeScout module. HMAC-authenticated exactly like
+	 * SPSS_REST_API::handle_ingest() (score-sheets) and the etransfer
+	 * webhook: sha256 over "<timestamp>.<raw-body>", a ±300s replay window,
+	 * hash_equals(), rate-limited per sender IP after the signature checks
+	 * out.
+	 *
+	 * @param WP_REST_Request $request Incoming REST request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function handle_customer_status( $request ) {
+		$raw = $request->get_body();
+
+		$secret = get_option( self::SECRET_OPTION, '' );
+		if ( '' === $secret ) {
+			return new WP_Error( 'splm_not_configured', __( 'FreeScout integration is not configured.', 'sportspress-league-manager' ), array( 'status' => 503 ) );
+		}
+
+		$timestamp = (string) $request->get_header( 'x-splm-timestamp' );
+		if ( '' === $timestamp ) {
+			return new WP_Error( 'splm_missing_timestamp', __( 'Request timestamp is required.', 'sportspress-league-manager' ), array( 'status' => 403 ) );
+		}
+		$ts_epoch = is_numeric( $timestamp ) ? (int) $timestamp : strtotime( $timestamp );
+		if ( false === $ts_epoch || abs( time() - $ts_epoch ) > self::REPLAY_WINDOW ) {
+			return new WP_Error( 'splm_request_expired', __( 'Request timestamp is too old or invalid.', 'sportspress-league-manager' ), array( 'status' => 403 ) );
+		}
+
+		$signature = (string) $request->get_header( 'x-splm-signature' );
+		$expected  = self::customer_status_signature( $timestamp, $raw, $secret );
+		if ( '' === $signature || ! hash_equals( $expected, $signature ) ) {
+			return new WP_Error( 'splm_invalid_signature', __( 'Invalid request signature.', 'sportspress-league-manager' ), array( 'status' => 403 ) );
+		}
+
+		if ( self::check_customer_status_rate_limit() ) {
+			return new WP_Error( 'splm_rate_limited', __( 'Too many requests.', 'sportspress-league-manager' ), array( 'status' => 429 ) );
+		}
+
+		$data = json_decode( $raw, true );
+		if ( ! is_array( $data ) || empty( $data['email'] ) || ! is_email( $data['email'] ) ) {
+			return new WP_Error( 'splm_bad_request', __( 'A valid email is required.', 'sportspress-league-manager' ), array( 'status' => 400 ) );
+		}
+
+		$email = sanitize_email( $data['email'] );
+		$rows  = SPLM_Waitlist_Database::find_active_for_email( $email );
+
+		return new WP_REST_Response(
+			array(
+				'email'   => $email,
+				'entries' => array_map( array( __CLASS__, 'shape_customer_status_entry' ), $rows ),
+			),
+			200
+		);
+	}
+
+	/**
+	 * Ingest-style HMAC: sha256 over "<timestamp>.<raw-body>". Mirrors
+	 * SPSS_REST_API::ingest_signature() exactly.
+	 *
+	 * @param string $timestamp Request timestamp, as sent in the header.
+	 * @param string $raw       Raw request body.
+	 * @param string $secret    Shared secret.
+	 * @return string Lower-case hex digest.
+	 */
+	public static function customer_status_signature( $timestamp, $raw, $secret ) {
+		return hash_hmac( 'sha256', $timestamp . '.' . $raw, $secret );
+	}
+
+	/**
+	 * @return bool True when this minute's verified-request budget for this
+	 *              sender is spent.
+	 */
+	private static function check_customer_status_rate_limit(): bool {
+		$window = 60;
+		$bucket = 'splm_rl_customer_status_' . self::sender_key() . '_' . (int) floor( time() / $window );
+		$count  = (int) get_transient( $bucket ) + 1;
+		set_transient( $bucket, $count, $window );
+		return $count > self::CUSTOMER_STATUS_RATE_LIMIT;
+	}
+
+	/**
+	 * @return string A short, non-reversible key for the calling IP.
+	 */
+	private static function sender_key(): string {
+		$ip = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
+		if ( '' === $ip ) {
+			$ip = 'unknown';
+		}
+		return substr( md5( $ip ), 0, 12 );
+	}
+
+	/**
+	 * One active waitlist row -> the shape the FreeScout module renders.
+	 * offered_at/expires_at are only meaningful once an offer exists;
+	 * queued and claimed rows carry both as null. There is no queue-rank
+	 * field: nothing in this codebase computes or stores one (see the
+	 * "Correction made during implementation planning" note in the
+	 * 2026-09-11 design spec).
+	 *
+	 * @param object $row A row from SPLM_Waitlist_Database::find_active_for_email().
+	 * @return array{season:string,status:string,offered_at:?string,expires_at:?string}
+	 */
+	private static function shape_customer_status_entry( $row ): array {
+		$status  = (string) $row->status;
+		$offered = SPLM_Waitlist_Database::STATUS_OFFERED === $status;
+		return array(
+			'season'     => (string) $row->season,
+			'status'     => $status,
+			'offered_at' => $offered ? self::to_iso8601( $row->offered_at ) : null,
+			'expires_at' => $offered ? self::to_iso8601( $row->expires_at ) : null,
+		);
+	}
+
+	/**
+	 * @param string|null $mysql_utc_datetime A UTC datetime as stored by
+	 *                                        SPLM_Waitlist_Database (see its
+	 *                                        own docblock: every datetime it
+	 *                                        writes is UTC).
+	 * @return string|null
+	 */
+	private static function to_iso8601( ?string $mysql_utc_datetime ): ?string {
+		if ( empty( $mysql_utc_datetime ) ) {
+			return null;
+		}
+		return gmdate( 'Y-m-d\TH:i:s\Z', strtotime( $mysql_utc_datetime . ' UTC' ) );
 	}
 }
