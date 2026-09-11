@@ -95,6 +95,7 @@ class SPSG_Autoloader {
 
 			// Postseason
 			'SPSG_Postseason_Pairing' => $base_path . 'class-postseason-pairing.php',
+			'SPSG_Postseason_Seed_Resolver' => $base_path . 'class-postseason-seed-resolver.php',
 
 			// Data models
 			'SPSG_Game' => $base_path . 'models/class-game.php',
