@@ -78,39 +78,57 @@ for ( $w = 0; $w < 3; $w++ ) {
 }
 
 /**
+ * Whether one week is a valid perfect matching (every team appears exactly
+ * once) that introduces no pairing already in $seen_pairs -- and records
+ * this week's pairings into $seen_pairs as it goes.
+ *
+ * @param array $week         List of array( $a, $b ) pairs.
+ * @param int   $division_size Expected number of distinct teams this week.
+ * @param array $seen_pairs   Reference: 'min-max' keys of every pairing seen
+ *                              in earlier weeks; updated with this week's own.
+ * @return bool
+ */
+function week_is_valid_matching( array $week, $division_size, array &$seen_pairs ) {
+	$played = array();
+	foreach ( $week as $pair ) {
+		list( $a, $b ) = $pair;
+		if ( isset( $played[ $a ] ) || isset( $played[ $b ] ) ) {
+			return false; // a team played twice in the same week
+		}
+		$played[ $a ] = true;
+		$played[ $b ] = true;
+
+		$key = implode( '-', array( min( $a, $b ), max( $a, $b ) ) );
+		if ( isset( $seen_pairs[ $key ] ) ) {
+			return false; // a pairing repeated across weeks
+		}
+		$seen_pairs[ $key ] = true;
+	}
+	return count( $played ) === $division_size; // nobody sat out
+}
+
+/**
  * Structural invariants any valid cross round-robin must satisfy, checked
  * for synthetic sizes the design spec has no hand-verified answer for (only
  * N=6 and N=8 are real, confirmed brackets) -- this is what "confirms the
  * cyclic construction generalizes rather than being special-cased" for
  * sizes beyond the two known-real ones.
+ *
+ * @param array  $weeks         SPSG_Postseason_Pairing::cross_round_robin()'s output.
+ * @param int    $division_size
+ * @param int    $round_robin_weeks
+ * @param string $label
  */
-function assert_valid_cross_round_robin( $division_size, $round_robin_weeks, $label ) {
+function assert_valid_cross_round_robin( array $weeks, $division_size, $round_robin_weeks, $label ) {
 	global $passed, $failed;
-
-	$weeks = SPSG_Postseason_Pairing::cross_round_robin( $division_size, $round_robin_weeks );
 
 	if ( test_assert( count( $weeks ) === $round_robin_weeks, "$label: produces $round_robin_weeks weeks" ) ) { $passed++; } else { $failed++; }
 
 	$seen_pairs      = array();
 	$all_weeks_valid = true;
 	foreach ( $weeks as $week ) {
-		$played = array();
-		foreach ( $week as $pair ) {
-			list( $a, $b ) = $pair;
-			if ( isset( $played[ $a ] ) || isset( $played[ $b ] ) ) {
-				$all_weeks_valid = false;
-			}
-			$played[ $a ] = true;
-			$played[ $b ] = true;
-
-			$key = implode( '-', array( min( $a, $b ), max( $a, $b ) ) );
-			if ( isset( $seen_pairs[ $key ] ) ) {
-				$all_weeks_valid = false; // a repeated pairing across weeks
-			}
-			$seen_pairs[ $key ] = true;
-		}
-		if ( count( $played ) !== $division_size ) {
-			$all_weeks_valid = false; // someone sat out, or a team played twice
+		if ( ! week_is_valid_matching( $week, $division_size, $seen_pairs ) ) {
+			$all_weeks_valid = false;
 		}
 	}
 
@@ -121,13 +139,13 @@ function assert_valid_cross_round_robin( $division_size, $round_robin_weeks, $la
 }
 
 echo "\n=== cross_round_robin(): synthetic N=10, round_robin_weeks=3 (partial, odd half=5) ===\n\n";
-assert_valid_cross_round_robin( 10, 3, 'N=10/rrw=3' );
+assert_valid_cross_round_robin( SPSG_Postseason_Pairing::cross_round_robin( 10, 3 ), 10, 3, 'N=10/rrw=3' );
 
 echo "\n=== cross_round_robin(): synthetic N=12, round_robin_weeks=6 (whole round robin, even half=6) ===\n\n";
-assert_valid_cross_round_robin( 12, 6, 'N=12/rrw=6' );
+assert_valid_cross_round_robin( SPSG_Postseason_Pairing::cross_round_robin( 12, 6 ), 12, 6, 'N=12/rrw=6' );
 
 echo "\n=== cross_round_robin(): synthetic N=6, round_robin_weeks=2 (partial, odd half=3) ===\n\n";
-assert_valid_cross_round_robin( 6, 2, 'N=6/rrw=2' );
+assert_valid_cross_round_robin( SPSG_Postseason_Pairing::cross_round_robin( 6, 2 ), 6, 2, 'N=6/rrw=2' );
 
 echo "\n=== cross_round_robin(): rejects invalid input ===\n\n";
 

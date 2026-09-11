@@ -97,8 +97,8 @@ class SPSG_Postseason_Pairing {
 	/**
 	 * Validate cross_round_robin()'s arguments and return $division_size / 2.
 	 *
-	 * @param int $division_size
-	 * @param int $round_robin_weeks
+	 * @param int $division_size Number of teams in the division.
+	 * @param int $round_robin_weeks Number of cross round-robin weeks requested.
 	 * @return int $division_size / 2.
 	 * @throws InvalidArgumentException If $division_size is not a positive
 	 *                                   even number, or $round_robin_weeks is
