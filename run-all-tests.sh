@@ -103,6 +103,7 @@ run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-waitlist-lifecycle.p
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-waitlist-claim.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-waitlist-tieback.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-waitlist-gate.php"
+run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-waitlist-find-active-for-email.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-dashboard-page.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-standings.php"
 run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-consistency-checker.php"

@@ -375,6 +375,30 @@ class SPLM_Waitlist_Database {
 	}
 
 	/**
+	 * Every active (queued/offered/claimed) row for an email, across every
+	 * season and position. find_active() answers a narrower question (does
+	 * THIS season+position already have an active row for THIS email, to
+	 * block duplicate entries) — this one answers "what is this person's
+	 * status everywhere," which is what the FreeScout integration asks.
+	 *
+	 * @param string $email Email address (case-insensitive).
+	 * @return object[] Rows ordered by season, then id. Empty array if none.
+	 */
+	public static function find_active_for_email( string $email ): array {
+		global $wpdb;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT * FROM ' . self::table_name() . ' WHERE email = %s AND status IN (%s, %s, %s) ORDER BY season ASC, id ASC', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table name, not a value; cannot use a placeholder.
+				strtolower( $email ),
+				self::STATUS_QUEUED,
+				self::STATUS_OFFERED,
+				self::STATUS_CLAIMED
+			)
+		);
+		return is_array( $rows ) ? $rows : array();
+	}
+
+	/**
 	 * The first row this order already produced for this waitlist product, at
 	 * any status.
 	 *
