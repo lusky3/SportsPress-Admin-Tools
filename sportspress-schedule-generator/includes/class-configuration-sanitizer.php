@@ -87,7 +87,73 @@ class SPSG_Configuration_Sanitizer {
 		// Sanitize generic teams configuration
 		$sanitized['generic_teams'] = $this->sanitize_generic_teams( $data );
 
+		// Sanitize postseason fields
+		$sanitized = array_merge( $sanitized, $this->sanitize_postseason_fields( $data ) );
+
 		return $sanitized;
+	}
+
+	/**
+	 * Sanitize the postseason-only fields (schema added alongside the
+	 * postseason/playoffs design's phase 3 -- design notes kept locally, not
+	 * in this repo). Split out of sanitize() purely to keep that method's
+	 * own length down; these fields have no other coupling to the rest of
+	 * sanitize()'s work.
+	 *
+	 * @param array $data Raw configuration data.
+	 * @return array Sanitized postseason fields, keyed the same as $data.
+	 */
+	private function sanitize_postseason_fields( $data ) {
+		return array(
+			'is_postseason' => ! empty( $data['is_postseason'] ),
+			'postseason_source_config_id' => sanitize_text_field( self::value( $data, 'postseason_source_config_id', '' ) ),
+			'postseason_source_season_id' => absint( self::value( $data, 'postseason_source_season_id', 0 ) ),
+			'postseason_season_id' => absint( self::value( $data, 'postseason_season_id', 0 ) ),
+			'round_robin_weeks' => max( 1, absint( self::value( $data, 'round_robin_weeks', 3 ) ) ),
+			'championship_day' => $this->sanitize_day_window( self::value( $data, 'championship_day', array() ) ),
+			'consolation_day' => sanitize_text_field( self::value( $data, 'consolation_day', '' ) ),
+			'seed_resolution_mode' => $this->sanitize_seed_resolution_mode( self::value( $data, 'seed_resolution_mode', 'manual' ) ),
+		);
+	}
+
+	/**
+	 * $arr[$key] if present, else $default. A named helper rather than `??`
+	 * repeated inline -- see the identical helper (and its rationale) in
+	 * SPSG_Configuration_Manager::value().
+	 *
+	 * @param array  $arr     Source array.
+	 * @param string $key     Key to read.
+	 * @param mixed  $default Value to use when the key is absent.
+	 * @return mixed
+	 */
+	private static function value( array $arr, $key, $default ) {
+		return array_key_exists( $key, $arr ) ? $arr[ $key ] : $default;
+	}
+
+	/**
+	 * Sanitize a day-of-week + time-window setting (championship_day).
+	 *
+	 * @param array $day_window Raw array( 'day', 'start', 'end' ).
+	 * @return array Sanitized array( 'day', 'start', 'end' ), each '' if absent.
+	 */
+	private function sanitize_day_window( $day_window ) {
+		$day_window = (array) $day_window;
+		return array(
+			'day'   => sanitize_text_field( $day_window['day'] ?? '' ),
+			'start' => sanitize_text_field( $day_window['start'] ?? '' ),
+			'end'   => sanitize_text_field( $day_window['end'] ?? '' ),
+		);
+	}
+
+	/**
+	 * Sanitize seed_resolution_mode to one of its two valid values.
+	 *
+	 * @param string $mode Raw mode.
+	 * @return string 'manual' or 'automatic'.
+	 */
+	private function sanitize_seed_resolution_mode( $mode ) {
+		$mode = sanitize_text_field( $mode );
+		return 'automatic' === $mode ? 'automatic' : 'manual';
 	}
 
 	/**

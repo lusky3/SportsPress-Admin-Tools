@@ -349,6 +349,78 @@ class SPSG_Sports_Press_Integration {
 	}
 
 	/**
+	 * Find or create the postseason's child sp_season term under a regular
+	 * season -- e.g. "W2026-27 Playoffs" as a child of "W2026-27". `sp_season`
+	 * is registered hierarchical, so this is a plain wp_insert_term() with
+	 * `parent` set (design notes kept locally, not in this repo).
+	 *
+	 * Idempotent: a second call for the same parent + name returns the
+	 * existing child term's id rather than creating a duplicate.
+	 *
+	 * @param int    $parent_season_id sp_season term id of the regular season.
+	 * @param string $child_name       Child term name. Defaults to the
+	 *                                  parent's own name + " Playoffs".
+	 * @return int|WP_Error Child term id, or WP_Error if the parent doesn't
+	 *                        exist or the term couldn't be created.
+	 */
+	public static function create_child_season( $parent_season_id, $child_name = null ) {
+		if ( ! self::is_sportspress_active() ) {
+			return new WP_Error( 'sportspress_inactive', __( 'SportsPress is not active.', 'sportspress-schedule-generator' ) );
+		}
+
+		$parent = get_term( $parent_season_id, 'sp_season' );
+		if ( ! $parent || is_wp_error( $parent ) ) {
+			return new WP_Error( 'parent_season_not_found', __( 'Parent season not found.', 'sportspress-schedule-generator' ) );
+		}
+
+		if ( null === $child_name ) {
+			$child_name = $parent->name . ' Playoffs';
+		}
+
+		$existing = self::find_child_season( $parent_season_id, $child_name );
+		if ( $existing ) {
+			return $existing;
+		}
+
+		$inserted = wp_insert_term( $child_name, 'sp_season', array( 'parent' => $parent_season_id ) );
+		if ( is_wp_error( $inserted ) ) {
+			return $inserted;
+		}
+
+		return (int) $inserted['term_id'];
+	}
+
+	/**
+	 * A direct child of $parent_season_id named $child_name, if one already
+	 * exists.
+	 *
+	 * @param int    $parent_season_id sp_season term id of the parent season.
+	 * @param string $child_name Child term name to look for.
+	 * @return int|null Existing child term id, or null.
+	 */
+	private static function find_child_season( $parent_season_id, $child_name ) {
+		$children = get_terms(
+			array(
+				'taxonomy'   => 'sp_season',
+				'parent'     => $parent_season_id,
+				'hide_empty' => false,
+			)
+		);
+
+		if ( is_wp_error( $children ) ) {
+			return null;
+		}
+
+		foreach ( $children as $child ) {
+			if ( $child->name === $child_name ) {
+				return (int) $child->term_id;
+			}
+		}
+
+		return null;
+	}
+
+	/**
 	 * Get league structure for division mapping
 	 */
 	public static function get_league_structure( $league_id ) {

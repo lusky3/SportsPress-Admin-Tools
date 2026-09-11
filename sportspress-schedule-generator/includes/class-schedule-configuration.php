@@ -177,6 +177,75 @@ class SPSG_Schedule_Configuration {
 	public $generic_teams;
 
 	/**
+	 * Whether this configuration is a postseason bracket (as opposed to a
+	 * regular-season schedule). See docs/superpowers/specs (kept locally,
+	 * not in this repo) for the postseason/playoffs design.
+	 *
+	 * @var bool
+	 */
+	public $is_postseason;
+
+	/**
+	 * The regular-season SPSG_Schedule_Configuration id this postseason
+	 * configuration's divisions/venues were copied from, if any -- empty for
+	 * a regular-season configuration. Provenance only; the copy is a
+	 * snapshot, freely edited afterward (e.g. re-grouped into custom pools).
+	 *
+	 * @var string
+	 */
+	public $postseason_source_config_id;
+
+	/**
+	 * The regular season's sp_season term id -- the season initial seeding
+	 * is computed from. 0 for a regular-season configuration.
+	 *
+	 * @var int
+	 */
+	public $postseason_source_season_id;
+
+	/**
+	 * This postseason bracket's own (child) sp_season term id, once created.
+	 * 0 until the child season has been created.
+	 *
+	 * @var int
+	 */
+	public $postseason_season_id;
+
+	/**
+	 * Number of cross round-robin weeks before the final
+	 * (championship/consolation) week. Meaningless outside a postseason
+	 * configuration.
+	 *
+	 * @var int
+	 */
+	public $round_robin_weeks;
+
+	/**
+	 * Day-of-week + time window every division's Championship game must land
+	 * on, e.g. array( 'day' => 'friday', 'start' => '18:00', 'end' => '21:00' ).
+	 *
+	 * @var array
+	 */
+	public $championship_day;
+
+	/**
+	 * Day of week every division's Consolation game must land on (no time
+	 * restriction).
+	 *
+	 * @var string
+	 */
+	public $consolation_day;
+
+	/**
+	 * 'manual' (an admin action resolves seed placeholders) or 'automatic'
+	 * (resolved as soon as every game in the relevant range has a completed
+	 * score).
+	 *
+	 * @var string
+	 */
+	public $seed_resolution_mode;
+
+	/**
 	 * Non-blocking warnings from the most recent validate() call (H18).
 	 *
 	 * @var array
@@ -219,6 +288,8 @@ class SPSG_Schedule_Configuration {
 			'match_length' => 60,
 			'matchup_style' => 'double_round_robin',
 			'timezone' => wp_timezone_string(),
+			'round_robin_weeks' => 3,
+			'seed_resolution_mode' => 'manual',
 		);
 
 		$array_fields = array(
@@ -236,6 +307,7 @@ class SPSG_Schedule_Configuration {
 			'home_away_preferences',
 			'inter_division_games',
 			'generic_teams',
+			'championship_day',
 		);
 
 		// Load date fields with error handling
@@ -263,6 +335,8 @@ class SPSG_Schedule_Configuration {
 			$this->$field = isset( $data[ $field ] ) ? (array) $data[ $field ] : array();
 		}
 
+		$this->load_postseason_fields( $data, $defaults );
+
 		// H17: normalize legacy `*_avoidance` restriction keys on every load, not
 		// just on import. Configurations stored before the rename kept rendering
 		// their overlap / back-to-back groups in the admin UI (which reads both
@@ -271,6 +345,41 @@ class SPSG_Schedule_Configuration {
 		$this->team_restrictions = self::normalize_team_restrictions( $this->team_restrictions );
 
 		$this->resolve_team_display_names();
+	}
+
+	/**
+	 * Load the postseason-only fields (schema added alongside the
+	 * postseason/playoffs design's phase 3 -- design notes kept locally, not
+	 * in this repo). Split out of load_from_array() purely to keep that
+	 * method's own complexity down; these fields have no other coupling to
+	 * the rest of load_from_array()'s work.
+	 *
+	 * @param array $data     Raw configuration data.
+	 * @param array $defaults This load's resolved defaults (round_robin_weeks,
+	 *                         seed_resolution_mode).
+	 */
+	private function load_postseason_fields( $data, $defaults ) {
+		$this->is_postseason               = ! empty( $data['is_postseason'] );
+		$this->postseason_source_config_id = (string) self::value( $data, 'postseason_source_config_id', '' );
+		$this->postseason_source_season_id = (int) self::value( $data, 'postseason_source_season_id', 0 );
+		$this->postseason_season_id        = (int) self::value( $data, 'postseason_season_id', 0 );
+		$this->round_robin_weeks           = (int) self::value( $data, 'round_robin_weeks', $defaults['round_robin_weeks'] );
+		$this->consolation_day             = (string) self::value( $data, 'consolation_day', '' );
+		$this->seed_resolution_mode        = self::value( $data, 'seed_resolution_mode', $defaults['seed_resolution_mode'] );
+	}
+
+	/**
+	 * $arr[$key] if present, else $default. A named helper rather than `??`
+	 * repeated inline -- see the identical helper (and its rationale) in
+	 * SPSG_Configuration_Manager::value().
+	 *
+	 * @param array  $arr     Source array.
+	 * @param string $key     Key to read.
+	 * @param mixed  $default Value to use when the key is absent.
+	 * @return mixed
+	 */
+	private static function value( array $arr, $key, $default ) {
+		return array_key_exists( $key, $arr ) ? $arr[ $key ] : $default;
 	}
 
 	/**
@@ -382,6 +491,14 @@ class SPSG_Schedule_Configuration {
 			'home_away_preferences' => $this->home_away_preferences,
 			'inter_division_games' => $this->inter_division_games,
 			'generic_teams' => $this->generic_teams,
+			'is_postseason' => $this->is_postseason,
+			'postseason_source_config_id' => $this->postseason_source_config_id,
+			'postseason_source_season_id' => $this->postseason_source_season_id,
+			'postseason_season_id' => $this->postseason_season_id,
+			'round_robin_weeks' => $this->round_robin_weeks,
+			'championship_day' => $this->championship_day,
+			'consolation_day' => $this->consolation_day,
+			'seed_resolution_mode' => $this->seed_resolution_mode,
 		);
 	}
 
