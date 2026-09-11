@@ -396,19 +396,31 @@ class SPLM_Standings {
 
 	/**
 	 * Reorder $team_ids best-to-worst using core SP_League_Table's own
-	 * points/priority-column/head-to-head sort (the PIM column from Task 2
-	 * participates automatically once it exists), scoped to one season and
-	 * an optional date range.
+	 * points/priority-column sort (the PIM column from Task 2 participates
+	 * automatically once it exists), scoped to one season and an optional
+	 * date range, with head-to-head tiebreaking applied to whatever that
+	 * sort leaves tied.
+	 *
+	 * Core's OWN head-to-head re-sort (the `$is_main_loop && 'h2h' ==
+	 * get_option('sportspress_table_tiebreaker')` block in
+	 * SP_League_Table::data()) can never take that branch through this call
+	 * pattern: `$is_main_loop` is forced false the instant $team_ids is
+	 * passed to data(), which every call this class makes always does (to
+	 * scope to one division). apply_head_to_head() below runs the identical
+	 * recursion core's own block would run -- `$this->data(false, $teams)`
+	 * restricted to just the tied group -- ourselves, so head-to-head
+	 * tiebreaking actually happens regardless of that option or the caller.
 	 *
 	 * @param array       $team_ids Team ids to rank.
 	 * @param int|string  $season_id sp_season term id.
 	 * @param string|null $from    Inclusive lower post_date bound, 'Y-m-d'.
 	 * @param string|null $to      Inclusive upper post_date bound, 'Y-m-d'.
-	 * @return array{order: array, ties: array} 'order': $team_ids reordered.
-	 *         'ties': list of arrays, each a group of 2+ team ids core left
-	 *         genuinely tied (same position) after its own sort -- read from
-	 *         SP_League_Table's own $tiebreakers property instead of
-	 *         re-deriving it.
+	 * @return array{order: array, ties: array} 'order': $team_ids reordered,
+	 *         with any group core's sort left tied already resolved by
+	 *         head-to-head wherever that was possible. 'ties': the residual
+	 *         groups head-to-head ALSO left tied -- smaller than (or equal
+	 *         to) core's own tiebreakers, since a group head-to-head fully
+	 *         resolves is no longer reported here.
 	 */
 	public static function rank_by_points_h2h( array $team_ids, $season_id, $from = null, $to = null ) {
 		$table_id = self::scratch_table_id();
@@ -429,6 +441,16 @@ class SPLM_Standings {
 		try {
 			$table = new SP_League_Table( $table_id );
 			$data  = $table->data( false, $team_ids );
+			$order = array_keys( $data );
+
+			$ties = array();
+			foreach ( (array) ( $table->tiebreakers ?? array() ) as $group ) {
+				if ( count( $group ) > 1 ) {
+					$ties[] = array_values( $group );
+				}
+			}
+
+			$order = self::apply_head_to_head( $table, $order, $ties );
 		} finally {
 			// Released the moment core is done with it, so a later unrelated
 			// table render in this same request cannot inherit this scope --
@@ -436,19 +458,72 @@ class SPLM_Standings {
 			self::clear_current_table_season_ids();
 		}
 
-		$order = array_keys( $data );
-
-		$ties = array();
-		foreach ( (array) ( $table->tiebreakers ?? array() ) as $group ) {
-			if ( count( $group ) > 1 ) {
-				$ties[] = array_values( $group );
-			}
-		}
-
 		return array(
 			'order' => $order,
 			'ties'  => $ties,
 		);
+	}
+
+	/**
+	 * Run core's own head-to-head recursion for every group $order left
+	 * tied, since SP_League_Table::data() can never take that branch itself
+	 * through this class's call pattern (see rank_by_points_h2h()'s
+	 * docblock). For each group, this is exactly core's own h2h line --
+	 * `$this->data( false, $teams )` -- restricted to just that group's own
+	 * games (core's `! $is_main_loop` event filter already drops any event
+	 * involving a team outside the passed-in list, which is precisely what
+	 * head-to-head needs). Whatever THAT recursive call itself leaves tied
+	 * (read from the table's own, freshly-recomputed $tiebreakers) becomes
+	 * the new, smaller residual tie groups PIM/coin-flip still need to
+	 * resolve.
+	 *
+	 * @param SP_League_Table $table Configured, already-queried table instance.
+	 * @param array           $order Best-to-worst order from the initial sort.
+	 * @param array           $ties  Reference: original tie groups (2+ teams
+	 *                               each); replaced with the residual groups
+	 *                               head-to-head itself left tied.
+	 * @return array $order, with each tied group re-sequenced by head-to-head.
+	 */
+	private static function apply_head_to_head( $table, array $order, array &$ties ) {
+		if ( empty( $ties ) ) {
+			return $order;
+		}
+
+		$residual_ties = array();
+
+		foreach ( $ties as $group ) {
+			$positions = self::tied_group_positions( $group, $order );
+			if ( null === $positions ) {
+				// Same invariant-violation guard as rank()'s own tied_group_positions()
+				// use: skip rather than let a false position corrupt $order.
+				$residual_ties[] = $group;
+				continue;
+			}
+
+			// SP_League_Table::data() resets $this->pos/$this->counter on
+			// every call but NEVER $this->tiebreakers -- calculate_pos()
+			// only ever appends to it. Left alone, this recursive call's own
+			// tiebreakers would merge with (and be unreadable from) whatever
+			// the outer call, or an earlier iteration of this loop, already
+			// left behind. Clearing it first is what makes the read below
+			// reflect ONLY this recursive call.
+			$table->tiebreakers = array();
+
+			$h2h_order = array_keys( $table->data( false, $group ) );
+			foreach ( $positions as $i => $position ) {
+				$order[ $position ] = $h2h_order[ $i ];
+			}
+
+			foreach ( (array) ( $table->tiebreakers ?? array() ) as $sub_group ) {
+				if ( count( $sub_group ) > 1 ) {
+					$residual_ties[] = array_values( $sub_group );
+				}
+			}
+		}
+
+		$ties = $residual_ties;
+
+		return $order;
 	}
 
 	/**
