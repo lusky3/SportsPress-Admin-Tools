@@ -557,7 +557,7 @@ class SPLM_Waitlist_Gate {
 	/**
 	 * Which single token is behind a product's current entitlement, if any.
 	 *
-	 * filter_is_purchasable()'s own three-way OR only answers "is SOME token
+	 * The filter_is_purchasable() three-way OR only answers "is SOME token
 	 * live for this product" — the repurchase guard needs the actual token
 	 * string to look an existing order up by, so this re-derives which of
 	 * the three sources it was, in the same priority order: the session
