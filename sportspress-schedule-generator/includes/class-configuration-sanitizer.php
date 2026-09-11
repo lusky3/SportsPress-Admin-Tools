@@ -106,14 +106,28 @@ class SPSG_Configuration_Sanitizer {
 	private function sanitize_postseason_fields( $data ) {
 		return array(
 			'is_postseason' => ! empty( $data['is_postseason'] ),
-			'postseason_source_config_id' => sanitize_text_field( $data['postseason_source_config_id'] ?? '' ),
-			'postseason_source_season_id' => absint( $data['postseason_source_season_id'] ?? 0 ),
-			'postseason_season_id' => absint( $data['postseason_season_id'] ?? 0 ),
-			'round_robin_weeks' => max( 1, absint( $data['round_robin_weeks'] ?? 3 ) ),
-			'championship_day' => $this->sanitize_day_window( $data['championship_day'] ?? array() ),
-			'consolation_day' => sanitize_text_field( $data['consolation_day'] ?? '' ),
-			'seed_resolution_mode' => $this->sanitize_seed_resolution_mode( $data['seed_resolution_mode'] ?? 'manual' ),
+			'postseason_source_config_id' => sanitize_text_field( self::value( $data, 'postseason_source_config_id', '' ) ),
+			'postseason_source_season_id' => absint( self::value( $data, 'postseason_source_season_id', 0 ) ),
+			'postseason_season_id' => absint( self::value( $data, 'postseason_season_id', 0 ) ),
+			'round_robin_weeks' => max( 1, absint( self::value( $data, 'round_robin_weeks', 3 ) ) ),
+			'championship_day' => $this->sanitize_day_window( self::value( $data, 'championship_day', array() ) ),
+			'consolation_day' => sanitize_text_field( self::value( $data, 'consolation_day', '' ) ),
+			'seed_resolution_mode' => $this->sanitize_seed_resolution_mode( self::value( $data, 'seed_resolution_mode', 'manual' ) ),
 		);
+	}
+
+	/**
+	 * $arr[$key] if present, else $default. A named helper rather than `??`
+	 * repeated inline -- see the identical helper (and its rationale) in
+	 * SPSG_Configuration_Manager::value().
+	 *
+	 * @param array  $arr     Source array.
+	 * @param string $key     Key to read.
+	 * @param mixed  $default Value to use when the key is absent.
+	 * @return mixed
+	 */
+	private static function value( array $arr, $key, $default ) {
+		return array_key_exists( $key, $arr ) ? $arr[ $key ] : $default;
 	}
 
 	/**

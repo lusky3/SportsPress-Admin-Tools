@@ -45,8 +45,18 @@ function pc_test_state() {
 }
 
 // --- WordPress function stubs -----------------------------------------
+// Every stub below mirrors a real WordPress function's signature exactly;
+// several of their parameters are unused in this harness by design.
+// @SuppressWarnings(PHPMD.UnusedFormalParameter) applies to each such stub
+// individually (a file-level annotation doesn't reach PHPMD here).
 
+/**
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
 function __( $s, $d = null ) { return $s; }
+/**
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
 function esc_html__( $s, $d = null ) { return $s; }
 
 function sanitize_text_field( $s ) { return trim( (string) $s ); }
@@ -54,7 +64,13 @@ function sanitize_key( $s ) { return strtolower( preg_replace( '/[^a-z0-9_\-]/',
 function absint( $n ) { return abs( (int) $n ); }
 function wp_timezone_string() { return 'America/Toronto'; }
 function wp_json_encode( $data ) { return json_encode( $data ); }
+/**
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
 function current_time( $type ) { return '2026-09-12 00:00:00'; }
+/**
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
 function do_action( $tag, ...$args ) {}
 
 function get_option( $name, $default = false ) {
@@ -62,13 +78,22 @@ function get_option( $name, $default = false ) {
 	return $state->options[ $name ] ?? $default;
 }
 
+/**
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
 function update_option( $name, $value, $autoload = null ) {
 	$state = pc_test_state();
 	$state->options[ $name ] = $value;
 	return true;
 }
 
+/**
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
 function wp_cache_add( $key, $value, $group = '', $ttl = 0 ) { return true; }
+/**
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
 function wp_cache_delete( $key, $group = '' ) { return true; }
 function wp_timezone() { return new DateTimeZone( 'America/Toronto' ); }
 
@@ -95,22 +120,24 @@ function get_term( $term_id, $taxonomy ) {
 	return new WP_Error( 'invalid_term', 'Term not found' );
 }
 
+function pc_term_matches( $term, $taxonomy, $parent ) {
+	if ( $term->taxonomy !== $taxonomy ) {
+		return false;
+	}
+	return null === $parent || (int) $term->parent === (int) $parent;
+}
+
 function get_terms( $args ) {
 	$state    = pc_test_state();
-	$taxonomy = $args['taxonomy'] ?? '';
-	$parent   = $args['parent'] ?? null;
+	$taxonomy = isset( $args['taxonomy'] ) ? $args['taxonomy'] : '';
+	$parent   = isset( $args['parent'] ) ? $args['parent'] : null;
 
-	$matches = array();
-	foreach ( $state->terms as $term ) {
-		if ( $term->taxonomy !== $taxonomy ) {
-			continue;
+	return array_values( array_filter(
+		$state->terms,
+		function ( $term ) use ( $taxonomy, $parent ) {
+			return pc_term_matches( $term, $taxonomy, $parent );
 		}
-		if ( null !== $parent && (int) $term->parent !== (int) $parent ) {
-			continue;
-		}
-		$matches[] = $term;
-	}
-	return $matches;
+	) );
 }
 
 function wp_insert_term( $name, $taxonomy, $args = array() ) {

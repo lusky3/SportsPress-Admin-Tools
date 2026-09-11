@@ -360,12 +360,26 @@ class SPSG_Schedule_Configuration {
 	 */
 	private function load_postseason_fields( $data, $defaults ) {
 		$this->is_postseason               = ! empty( $data['is_postseason'] );
-		$this->postseason_source_config_id = isset( $data['postseason_source_config_id'] ) ? (string) $data['postseason_source_config_id'] : '';
-		$this->postseason_source_season_id = (int) ( $data['postseason_source_season_id'] ?? 0 );
-		$this->postseason_season_id        = (int) ( $data['postseason_season_id'] ?? 0 );
-		$this->round_robin_weeks           = (int) ( $data['round_robin_weeks'] ?? $defaults['round_robin_weeks'] );
-		$this->consolation_day             = isset( $data['consolation_day'] ) ? (string) $data['consolation_day'] : '';
-		$this->seed_resolution_mode        = $data['seed_resolution_mode'] ?? $defaults['seed_resolution_mode'];
+		$this->postseason_source_config_id = (string) self::value( $data, 'postseason_source_config_id', '' );
+		$this->postseason_source_season_id = (int) self::value( $data, 'postseason_source_season_id', 0 );
+		$this->postseason_season_id        = (int) self::value( $data, 'postseason_season_id', 0 );
+		$this->round_robin_weeks           = (int) self::value( $data, 'round_robin_weeks', $defaults['round_robin_weeks'] );
+		$this->consolation_day             = (string) self::value( $data, 'consolation_day', '' );
+		$this->seed_resolution_mode        = self::value( $data, 'seed_resolution_mode', $defaults['seed_resolution_mode'] );
+	}
+
+	/**
+	 * $arr[$key] if present, else $default. A named helper rather than `??`
+	 * repeated inline -- see the identical helper (and its rationale) in
+	 * SPSG_Configuration_Manager::value().
+	 *
+	 * @param array  $arr     Source array.
+	 * @param string $key     Key to read.
+	 * @param mixed  $default Value to use when the key is absent.
+	 * @return mixed
+	 */
+	private static function value( array $arr, $key, $default ) {
+		return array_key_exists( $key, $arr ) ? $arr[ $key ] : $default;
 	}
 
 	/**

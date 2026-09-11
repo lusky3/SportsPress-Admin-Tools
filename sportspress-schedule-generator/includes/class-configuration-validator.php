@@ -222,27 +222,42 @@ class SPSG_Configuration_Validator {
 		}
 
 		foreach ( $this->config->divisions as $division ) {
-			$team_count = count( $division['teams'] ?? array() );
-			$name       = $division['name'] ?? __( 'Unnamed', 'sportspress-schedule-generator' );
-
-			if ( 0 !== $team_count % 2 ) {
-				$errors['round_robin_weeks'] = sprintf(
-					__( 'Division "%s" has an odd number of teams; postseason brackets require an even division size.', 'sportspress-schedule-generator' ),
-					$name
-				);
-				return;
-			}
-
-			if ( $this->config->round_robin_weeks > (int) ( $team_count / 2 ) ) {
-				$errors['round_robin_weeks'] = sprintf(
-					__( 'Round robin weeks (%1$d) can\'t exceed half of division "%2$s"\'s team count (%3$d).', 'sportspress-schedule-generator' ),
-					$this->config->round_robin_weeks,
-					$name,
-					$team_count
-				);
+			$error = $this->postseason_division_error( $division );
+			if ( $error ) {
+				$errors['round_robin_weeks'] = $error;
 				return;
 			}
 		}
+	}
+
+	/**
+	 * Whether one division can support this configuration's
+	 * round_robin_weeks -- see validate_postseason_settings().
+	 *
+	 * @param array $division One division's raw data.
+	 * @return string|null Error message, or null if the division is fine.
+	 */
+	private function postseason_division_error( array $division ) {
+		$team_count = count( $division['teams'] ?? array() );
+		$name       = $division['name'] ?? __( 'Unnamed', 'sportspress-schedule-generator' );
+
+		if ( 0 !== $team_count % 2 ) {
+			return sprintf(
+				__( 'Division "%s" has an odd number of teams; postseason brackets require an even division size.', 'sportspress-schedule-generator' ),
+				$name
+			);
+		}
+
+		if ( $this->config->round_robin_weeks > (int) ( $team_count / 2 ) ) {
+			return sprintf(
+				__( 'Round robin weeks (%1$d) can\'t exceed half of division "%2$s"\'s team count (%3$d).', 'sportspress-schedule-generator' ),
+				$this->config->round_robin_weeks,
+				$name,
+				$team_count
+			);
+		}
+
+		return null;
 	}
 
 	/**
