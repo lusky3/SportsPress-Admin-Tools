@@ -394,8 +394,8 @@ class SPSG_Sports_Press_Integration {
 	 * A direct child of $parent_season_id named $child_name, if one already
 	 * exists.
 	 *
-	 * @param int    $parent_season_id
-	 * @param string $child_name
+	 * @param int    $parent_season_id sp_season term id of the parent season.
+	 * @param string $child_name Child term name to look for.
 	 * @return int|null Existing child term id, or null.
 	 */
 	private static function find_child_season( $parent_season_id, $child_name ) {
