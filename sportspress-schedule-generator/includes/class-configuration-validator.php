@@ -78,6 +78,7 @@ class SPSG_Configuration_Validator {
 		$this->validate_home_away_preferences( $errors );
 		$this->validate_inter_division_games( $errors );
 		$this->validate_capacity( $errors );
+		$this->validate_postseason_settings( $errors );
 
 		if ( empty( $errors ) ) {
 			return true;
@@ -197,6 +198,49 @@ class SPSG_Configuration_Validator {
 					$division['name'] ?? __( 'Unnamed', 'sportspress-schedule-generator' )
 				);
 				break;
+			}
+		}
+	}
+
+	/**
+	 * Validate postseason-only settings: round_robin_weeks must be
+	 * achievable for every division, which -- per
+	 * SPSG_Postseason_Pairing::cross_round_robin() -- requires an even team
+	 * count no smaller than round_robin_weeks * 2. Odd-sized divisions are
+	 * out of scope for postseason brackets (see design notes).
+	 *
+	 * No-op for a regular-season configuration (is_postseason false).
+	 */
+	private function validate_postseason_settings( &$errors ) {
+		if ( ! $this->config->is_postseason ) {
+			return;
+		}
+
+		if ( $this->config->round_robin_weeks < 1 ) {
+			$errors['round_robin_weeks'] = __( 'Round robin weeks must be at least 1.', 'sportspress-schedule-generator' );
+			return;
+		}
+
+		foreach ( $this->config->divisions as $division ) {
+			$team_count = count( $division['teams'] ?? array() );
+			$name       = $division['name'] ?? __( 'Unnamed', 'sportspress-schedule-generator' );
+
+			if ( 0 !== $team_count % 2 ) {
+				$errors['round_robin_weeks'] = sprintf(
+					__( 'Division "%s" has an odd number of teams; postseason brackets require an even division size.', 'sportspress-schedule-generator' ),
+					$name
+				);
+				return;
+			}
+
+			if ( $this->config->round_robin_weeks > (int) ( $team_count / 2 ) ) {
+				$errors['round_robin_weeks'] = sprintf(
+					__( 'Round robin weeks (%1$d) can\'t exceed half of division "%2$s"\'s team count (%3$d).', 'sportspress-schedule-generator' ),
+					$this->config->round_robin_weeks,
+					$name,
+					$team_count
+				);
+				return;
 			}
 		}
 	}

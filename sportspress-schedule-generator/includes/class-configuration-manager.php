@@ -565,6 +565,83 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 	}
 
 	/**
+	 * Build a new postseason configuration's raw data from a regular-season
+	 * source configuration's own raw data -- divisions and venues default to
+	 * a copy of the source's (freely editable afterward: this IS the answer
+	 * to "advanced regrouping", since the result is just another saved,
+	 * exportable configuration), postseason-only settings default per the
+	 * design (round_robin_weeks 3, seed_resolution_mode manual).
+	 *
+	 * Pure data transformation -- no WordPress calls, no persistence. Callers
+	 * that want the result saved (e.g. create_postseason_configuration())
+	 * pass it to save() themselves.
+	 *
+	 * @param array $source    Source configuration's raw array (e.g. as read
+	 *                          from storage, or SPSG_Schedule_Configuration::to_array()).
+	 * @param array $overrides Any of: name, season_start, season_end,
+	 *                          postseason_source_season_id, round_robin_weeks,
+	 *                          championship_day, consolation_day,
+	 *                          seed_resolution_mode. Divisions, venues,
+	 *                          playing_days and time_slots always come from
+	 *                          $source (not overridable here) -- edit the
+	 *                          saved result afterward like any other config.
+	 * @return array Raw configuration data, ready for sanitize()/save().
+	 */
+	public function build_postseason_config_data( array $source, array $overrides = array() ) {
+		$round_robin_weeks = (int) ( $overrides['round_robin_weeks'] ?? 3 );
+
+		return array(
+			'name'                        => $overrides['name'] ?? ( ( $source['name'] ?? '' ) . ' Playoffs' ),
+			'season_start'                => $overrides['season_start'] ?? '',
+			'season_end'                  => $overrides['season_end'] ?? '',
+			'divisions'                   => $source['divisions'] ?? array(),
+			'venues'                      => $source['venues'] ?? array(), // reuses the regular season's venues
+			'playing_days'                => $source['playing_days'] ?? array(),
+			'time_slots'                  => $source['time_slots'] ?? array(),
+			'timezone'                    => $source['timezone'] ?? '',
+			'matchup_style'               => 'custom',
+			// The cross round-robin weeks plus the final (championship/
+			// consolation) week -- every team's real total game count for
+			// this bracket phase. validate_basic_fields() requires a
+			// positive games_per_team on any configuration, postseason or not.
+			'games_per_team'              => $round_robin_weeks + 1,
+			'is_postseason'               => true,
+			'postseason_source_config_id' => $source['id'] ?? '',
+			'postseason_source_season_id' => (int) ( $overrides['postseason_source_season_id'] ?? 0 ),
+			'round_robin_weeks'           => $round_robin_weeks,
+			'championship_day'            => $overrides['championship_day'] ?? array(),
+			'consolation_day'             => $overrides['consolation_day'] ?? '',
+			'seed_resolution_mode'        => $overrides['seed_resolution_mode'] ?? 'manual',
+		);
+	}
+
+	/**
+	 * Create and save a new postseason configuration derived from an
+	 * existing (regular-season) one.
+	 *
+	 * Reads $source_config_id directly from storage rather than via load()
+	 * (matching clone_configuration()'s own pattern) because load() silently
+	 * falls back to "the most recently modified configuration" for an
+	 * unknown id -- exactly wrong here, where an unknown id must fail loudly
+	 * rather than quietly build a postseason bracket from an unrelated season.
+	 *
+	 * @param string $source_config_id Regular-season configuration id to copy from.
+	 * @param array  $overrides        See build_postseason_config_data().
+	 * @return string|false|WP_Error New configuration's id on success.
+	 */
+	public function create_postseason_configuration( $source_config_id, array $overrides = array() ) {
+		$configurations = get_option( self::OPTION_NAME, array() );
+
+		if ( ! isset( $configurations[ $source_config_id ] ) ) {
+			return new WP_Error( 'config_not_found', __( 'Source configuration not found', 'sportspress-schedule-generator' ) );
+		}
+
+		$new_data = $this->build_postseason_config_data( $configurations[ $source_config_id ], $overrides );
+
+		return $this->save( $new_data );
+	}
+
+	/**
 	 * Clone configuration
 	 */
 	public function clone_configuration( $config_id, $new_name = null ) {
