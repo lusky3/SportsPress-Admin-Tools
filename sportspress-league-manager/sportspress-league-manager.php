@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'SPLM_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPLM_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPLM_VERSION', '1.1.1' );
+define( 'SPLM_VERSION', '1.1.2' );
 
 // Native WordPress updates, served from this repository's releases.
 //

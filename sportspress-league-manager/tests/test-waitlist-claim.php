@@ -52,6 +52,12 @@ class SPLM_Claim_Test_State {
 	 * (get_permalink() returning false) without touching any other case.
 	 */
 	public $permalinks = array();
+
+	/** @var array Every args array wc_get_orders() was actually called with. */
+	public $wc_get_orders_calls = array();
+
+	/** @var array What the fake wc_get_orders() should return next. */
+	public $wc_get_orders_result = array();
 }
 
 function splm_claim_test_state() {
@@ -117,6 +123,17 @@ function add_query_arg( array $args, $url ) {
 }
 
 /**
+ * Fake wc_get_orders(): records the args it was called with and returns
+ * whatever the test arranged, so has_open_order()'s status-check half is
+ * controllable without a real WooCommerce install.
+ */
+function wc_get_orders( array $args ) {
+	$state = splm_claim_test_state();
+	$state->wc_get_orders_calls[] = $args;
+	return $state->wc_get_orders_result;
+}
+
+/**
  * Minimal WP_REST_Request/Response stubs: just enough surface for
  * handle_claim() and failure_response() to run and for the test to inspect
  * status, headers and body afterwards.
@@ -171,9 +188,16 @@ class WP_REST_Response {
  * reaches ever collides on that key within one test.
  */
 class Fake_WPDB {
-	public $prefix     = 'wp_';
-	public $rows       = array();
-	private $last_args = array();
+	public $prefix      = 'wp_';
+	public $rows        = array();
+	private $last_args  = array();
+
+	/**
+	 * Controllable get_col() results for order_ids_for_token(), keyed by
+	 * the token — the first bound param has_open_order() prepares with —
+	 * since no call site this file reaches ever collides on that key.
+	 */
+	public $col_results = array();
 
 	public function prepare( $query, ...$args ) {
 		$this->last_args = $args;
@@ -187,6 +211,11 @@ class Fake_WPDB {
 	public function get_row() {
 		$key = $this->last_args[0] ?? null;
 		return isset( $this->rows[ $key ] ) ? $this->rows[ $key ] : null;
+	}
+
+	public function get_col() {
+		$key = $this->last_args[0] ?? null;
+		return isset( $this->col_results[ $key ] ) ? $this->col_results[ $key ] : array();
 	}
 }
 
@@ -320,6 +349,49 @@ assert_test( ! $c::is_token_shaped( str_repeat( 'a', 63 ) ), 'a short string is 
 assert_test( ! $c::is_token_shaped( str_repeat( 'A', 64 ) ), 'uppercase is not, matching the route regex exactly' );
 assert_test( ! $c::is_token_shaped( str_repeat( 'z', 64 ) ), 'non-hex characters are not' );
 assert_test( ! $c::is_token_shaped( '' ), 'an empty string is not' );
+
+echo "\n=== has_open_order(): the repurchase guard's own query ===\n\n";
+
+$token_open = str_repeat( '9', 64 );
+
+// Nothing in wc_order_itemmeta carries this token at all -- wc_get_orders()
+// must not even be asked, there is nothing for it to check.
+$wpdb->col_results             = array();
+$state = splm_claim_test_state();
+$state->wc_get_orders_calls    = array();
+$state->wc_get_orders_result   = array();
+assert_test( ! $c::has_open_order( $token_open ), 'a token with no matching line item anywhere has no open order' );
+assert_test( array() === $state->wc_get_orders_calls, 'wc_get_orders() is never called when no line item matched at all' );
+
+// A line item matched, but every order it belongs to is already
+// cancelled/failed/refunded -- not an open order.
+$wpdb->col_results           = array( $token_open => array( 501 ) );
+$state->wc_get_orders_calls  = array();
+$state->wc_get_orders_result = array();
+assert_test( ! $c::has_open_order( $token_open ), 'a matching line item whose order is cancelled/failed/refunded is not an open order' );
+assert_test( 1 === count( $state->wc_get_orders_calls ), 'wc_get_orders() IS consulted once a candidate order id exists' );
+
+// The actual production gap: a processing order already carries this token.
+$wpdb->col_results            = array( $token_open => array( 501 ) );
+$state->wc_get_orders_calls   = array();
+$state->wc_get_orders_result  = array( 501 );
+assert_test( $c::has_open_order( $token_open ), 'a processing order carrying this token IS an open order' );
+assert_test(
+	in_array( 'processing', $state->wc_get_orders_calls[0]['status'], true )
+		&& in_array( 'pending', $state->wc_get_orders_calls[0]['status'], true )
+		&& in_array( 'on-hold', $state->wc_get_orders_calls[0]['status'], true )
+		&& in_array( 'completed', $state->wc_get_orders_calls[0]['status'], true ),
+	'the status filter passed to wc_get_orders() covers pending, on-hold, processing and completed'
+);
+assert_test(
+	array( 501 ) === $state->wc_get_orders_calls[0]['post__in'],
+	'the candidate order ids from the line-item lookup are passed straight through as post__in'
+);
+
+// A malformed token short-circuits before any query at all.
+$state->wc_get_orders_calls = array();
+assert_test( ! $c::has_open_order( 'not-a-token' ), 'a malformed token is never an open order' );
+assert_test( array() === $state->wc_get_orders_calls, 'a malformed token never reaches wc_get_orders()' );
 
 echo "\n=== add_to_cart_url() ===\n\n";
 
