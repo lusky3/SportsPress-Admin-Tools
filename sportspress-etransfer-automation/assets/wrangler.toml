@@ -19,6 +19,23 @@ compatibility_date = "2025-12-01"
 #                the fallback that stops a failed webhook from permanently
 #                bouncing a payment notification; must be a verified
 #                Cloudflare Email Routing destination)
+# SAFE_DOMAINS = "yourdomain.com" (REQUIRED if your Interac notification mailbox
+#                is a FORWARD from another mail host rather than a direct
+#                Cloudflare Email Routing destination -- e.g. payments@yourdomain.com
+#                hosted elsewhere, forwarded to a Cloudflare-routed address. Most
+#                forwarders rewrite the envelope sender via SRS (Sender Rewriting
+#                Scheme), so the Worker sees the envelope-from as
+#                "SRS0=...=notify@yourdomain.com", not
+#                "notify@payments.interac.ca" -- comma-separated list, each entry
+#                either an exact domain or a leading-dot wildcard
+#                (".yourdomain.com") to also match subdomains. There is
+#                deliberately NO implicit trust of any forwarding provider here
+#                (a previous build trusted *.mxroute.com unconditionally, which on
+#                shared hosting let any other customer of that provider forge a
+#                signed Interac notification) -- populate this with YOUR OWN
+#                forwarder's resulting envelope domain, confirmed by testing a
+#                real forwarded email through and checking the Worker's
+#                Observability logs for the actual `mailFrom` it received.
 # CUSTOM_HEADERS = '{"X-Custom-Header":"value","Authorization":"Bearer token"}' (optional)
 # DEBUG = "true" (optional - includes full headers and HTML content in webhook)
 
