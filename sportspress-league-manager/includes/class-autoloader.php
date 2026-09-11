@@ -64,6 +64,7 @@ class SPLM_Autoloader {
 			'SPLM_REST_API'              => $base . 'class-rest-api.php',
 			'SPLM_Season_Audit'          => $base . 'class-season-audit.php',
 			'SPLM_SportsPress_Data'      => $base . 'class-sportspress-data.php',
+			'SPLM_Standings'             => $base . 'class-standings.php',
 			'SPLM_Waitlist'              => $base . 'class-waitlist.php',
 			'SPLM_Waitlist_Claim'        => $base . 'class-waitlist-claim.php',
 			'SPLM_Waitlist_Database'     => $base . 'class-waitlist-database.php',
