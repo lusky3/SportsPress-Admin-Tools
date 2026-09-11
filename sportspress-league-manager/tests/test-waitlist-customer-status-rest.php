@@ -41,7 +41,7 @@ function is_email( $email ) {
 	return is_string( $email ) && false !== strpos( $email, '@' );
 }
 function sanitize_email( $email ) {
-	return strtolower( trim( (string) $email ) );
+	return trim( (string) $email );
 }
 function sanitize_text_field( $str ) {
 	return trim( (string) $str );

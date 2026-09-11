@@ -836,7 +836,7 @@ class SPLM_Waitlist_REST {
 			return new WP_Error( 'splm_bad_request', __( 'A valid email is required.', 'sportspress-league-manager' ), array( 'status' => 400 ) );
 		}
 
-		$email = sanitize_email( $data['email'] );
+		$email = strtolower( sanitize_email( $data['email'] ) );
 		$rows  = SPLM_Waitlist_Database::find_active_for_email( $email );
 
 		return new WP_REST_Response(

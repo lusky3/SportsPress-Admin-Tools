@@ -614,9 +614,9 @@ class SPLM_Admin {
 	 * @return string
 	 */
 	public static function sanitize_freescout_secret( $submitted ): string {
-		// Non-string submissions are treated as empty
+		// Non-string submissions (e.g. options.php's null for an absent field) preserve the stored secret
 		if ( ! is_string( $submitted ) ) {
-			return '';
+			return (string) get_option( SPLM_Waitlist_REST::SECRET_OPTION, '' );
 		}
 		$submitted = trim( $submitted );
 		$is_masked = ( '' !== $submitted && preg_match( '/^(?:\xE2\x80\xA2)+$/', $submitted ) );

@@ -66,8 +66,8 @@ assert_test(
 );
 
 assert_test(
-	'' === SPLM_Admin::sanitize_freescout_secret( array( 'not' => 'a string' ) ),
-	'a non-string submission is treated as empty, not fatally coerced'
+	'old-secret-old-secret-old-secret' === SPLM_Admin::sanitize_freescout_secret( array( 'not' => 'a string' ) ),
+	'a non-string submission preserves the stored secret rather than wiping it'
 );
 
 echo "\n";
