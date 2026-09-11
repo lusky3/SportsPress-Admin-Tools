@@ -93,6 +93,9 @@ class SPSG_Autoloader {
 			// Placeholder team management
 			'SPSG_Placeholder_Team_Manager' => $base_path . 'class-placeholder-team-manager.php',
 
+			// Postseason
+			'SPSG_Postseason_Pairing' => $base_path . 'class-postseason-pairing.php',
+
 			// Data models
 			'SPSG_Game' => $base_path . 'models/class-game.php',
 			// Note: Team, Venue, and Division models not yet implemented
