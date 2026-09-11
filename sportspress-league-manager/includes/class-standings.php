@@ -443,7 +443,13 @@ class SPLM_Standings {
 			$data  = $table->data( false, $team_ids );
 			$order = array_keys( $data );
 
-			$ties  = self::tied_groups_from_tiebreakers( $table );
+			$ties = array();
+			foreach ( $table->tiebreakers as $group ) {
+				if ( count( $group ) > 1 ) {
+					$ties[] = array_values( $group );
+				}
+			}
+
 			$order = self::apply_head_to_head( $table, $order, $ties );
 		} finally {
 			// Released the moment core is done with it, so a later unrelated
@@ -508,31 +514,16 @@ class SPLM_Standings {
 				$order[ $position ] = $h2h_order[ $i ];
 			}
 
-			array_push( $residual_ties, ...self::tied_groups_from_tiebreakers( $table ) );
+			foreach ( $table->tiebreakers as $sub_group ) {
+				if ( count( $sub_group ) > 1 ) {
+					$residual_ties[] = array_values( $sub_group );
+				}
+			}
 		}
 
 		$ties = $residual_ties;
 
 		return $order;
-	}
-
-	/**
-	 * Groups of 2+ team ids a table's own $tiebreakers property currently
-	 * reports as tied, as a plain array( array( id, id, ... ), ... ) --
-	 * shared by rank_by_points_h2h()'s initial read and each head-to-head
-	 * recursion's own residual read in apply_head_to_head() above.
-	 *
-	 * @param SP_League_Table $table
-	 * @return array
-	 */
-	private static function tied_groups_from_tiebreakers( $table ) {
-		$groups = array();
-		foreach ( (array) ( $table->tiebreakers ?? array() ) as $group ) {
-			if ( count( $group ) > 1 ) {
-				$groups[] = array_values( $group );
-			}
-		}
-		return $groups;
 	}
 
 	/**
