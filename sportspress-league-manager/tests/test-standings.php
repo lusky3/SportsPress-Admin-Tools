@@ -745,7 +745,7 @@ assert_test(
 	'the tied group triggers a SECOND data() call -- the recursion core itself would run if $is_main_loop allowed it'
 );
 assert_test(
-	array( 10, 20, 30 ) === SPLM_Standings_Test_Table::$call_log[1],
+	array( 10, 20, 30 ) === ( SPLM_Standings_Test_Table::$call_log[1] ?? null ),
 	'the recursive call is restricted to exactly the tied group (core\'s own `$this->data(false, $teams)` line)'
 );
 assert_test(
