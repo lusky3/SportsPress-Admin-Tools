@@ -88,11 +88,26 @@ class SPSG_Postseason_Bracket_Detector {
 		if ( is_string( $team ) ) {
 			return $team;
 		}
-		if ( is_object( $team ) ) {
-			return (string) ( $team->name ?? $team->id ?? '' );
+
+		$name = self::field( $team, 'name' );
+
+		return '' !== $name ? (string) $name : (string) self::field( $team, 'id' );
+	}
+
+	/**
+	 * One field of a team reference given as an object or array, or '' when
+	 * absent or $entity is neither shape.
+	 *
+	 * @param mixed  $entity Team reference (object, array, or anything else).
+	 * @param string $key    Field name to read.
+	 * @return mixed
+	 */
+	private static function field( $entity, $key ) {
+		if ( is_array( $entity ) ) {
+			return $entity[ $key ] ?? '';
 		}
-		if ( is_array( $team ) ) {
-			return (string) ( $team['name'] ?? $team['id'] ?? '' );
+		if ( is_object( $entity ) ) {
+			return $entity->$key ?? '';
 		}
 		return '';
 	}

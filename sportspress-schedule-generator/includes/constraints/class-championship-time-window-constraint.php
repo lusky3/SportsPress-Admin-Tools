@@ -37,6 +37,7 @@ class SPSG_Championship_Time_Window_Constraint extends SPSG_Abstract_Constraint 
 	 * @return true|WP_Error
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
 	 */
 	public function validate( $game, $schedule, $config ) {
 		if ( empty( $config->is_postseason ) ) {
@@ -79,13 +80,26 @@ class SPSG_Championship_Time_Window_Constraint extends SPSG_Abstract_Constraint 
 			return null; // Not a final-week matchup, or a Consolation one.
 		}
 
-		$start = $config->championship_day['start'] ?? '';
-		$end   = $config->championship_day['end'] ?? '';
+		$start = self::value( $config->championship_day, 'start' );
+		$end   = self::value( $config->championship_day, 'end' );
 
 		if ( '' === $start || '' === $end ) {
 			return null; // Nothing configured yet.
 		}
 
 		return array( $start, $end );
+	}
+
+	/**
+	 * One key of an array, or a default when absent -- extracted so callers
+	 * don't need an inline null-coalesce.
+	 *
+	 * @param array  $arr     Array to read from.
+	 * @param string $key     Key to look up.
+	 * @param string $default Value to return if $key is absent.
+	 * @return string
+	 */
+	private static function value( $arr, $key, $default = '' ) {
+		return $arr[ $key ] ?? $default;
 	}
 }
