@@ -557,6 +557,18 @@ class SPLM_Standings_Test_Table {
 	 */
 	public static $simulated_ties = null;
 
+	/**
+	 * Queue of canned responses for the SECOND and later data() calls in a
+	 * request -- i.e. the recursive head-to-head calls apply_head_to_head()
+	 * makes -- each shift()ed off in turn: array( 'order' => [...], 'tiebreakers' => [...] ).
+	 * Empty means "fall back to the same default (reverse input) behavior
+	 * as the first call."
+	 */
+	public static $h2h_responses = array();
+
+	/** Every $team_ids a data() call received, in call order, for asserting on recursion. */
+	public static $call_log = array();
+
 	/** What the most recent data() call actually resolved its date scope to. */
 	public static $observed = array();
 
@@ -613,13 +625,49 @@ class SPLM_Standings_Test_Table {
 		);
 		// --- end of core mirror ---
 
+		self::$call_log[] = $team_ids;
+
+		// Only the SECOND-and-later call in a request (i.e. a recursive
+		// head-to-head call from apply_head_to_head()) draws from the
+		// queue -- the first (outer) call always takes the default path
+		// below, exactly like before this stub could simulate recursion.
+		if ( count( self::$call_log ) > 1 && ! empty( self::$h2h_responses ) ) {
+			$response = array_shift( self::$h2h_responses );
+			$this->merge_tiebreakers( $response['tiebreakers'] );
+			return array_fill_keys( $response['order'], array() );
+		}
+
 		$reversed = array_reverse( $team_ids );
 
-		$this->tiebreakers = ( null === self::$simulated_ties )
-			? array( 0 => $reversed )
-			: self::$simulated_ties;
+		$this->merge_tiebreakers(
+			( null === self::$simulated_ties ) ? array( 0 => $reversed ) : self::$simulated_ties
+		);
 
 		return array_fill_keys( $reversed, array() );
+	}
+
+	/**
+	 * Mirrors real SP_League_Table::calculate_pos()'s own tiebreakers
+	 * write: APPENDS to $this->tiebreakers, never resets it -- real data()
+	 * only ever resets $this->pos/$this->counter, not $this->tiebreakers.
+	 * Without this, the stub couldn't reproduce the real contamination bug
+	 * apply_head_to_head() has to defend against (a recursive call's own
+	 * tiebreakers merging with -- and being unreadable from -- an earlier
+	 * call's leftovers at the same position key).
+	 *
+	 * @param array $new_tiebreakers pos => array of team ids.
+	 */
+	private function merge_tiebreakers( array $new_tiebreakers ) {
+		foreach ( $new_tiebreakers as $pos => $group ) {
+			if ( ! isset( $this->tiebreakers[ $pos ] ) ) {
+				$this->tiebreakers[ $pos ] = array();
+			}
+			foreach ( $group as $id ) {
+				if ( ! in_array( $id, $this->tiebreakers[ $pos ], true ) ) {
+					$this->tiebreakers[ $pos ][] = $id;
+				}
+			}
+		}
 	}
 }
 
@@ -628,6 +676,10 @@ if ( ! class_exists( 'SP_League_Table' ) ) {
 }
 
 $state->object_terms = array(); // post_id => array( taxonomy => term_ids )
+
+// No ties in this section -- it's testing the basic ordering/season-wiring
+// only. The dedicated head-to-head tests below cover the tie-resolution path.
+SPLM_Standings_Test_Table::$simulated_ties = array();
 
 // Runs FIRST, while scratch_table_id()'s static is still unset, so the failure
 // path is the one exercised -- and so the next call proves the failure was not
@@ -661,13 +713,74 @@ assert_test(
 	'reorders team_ids using SP_League_Table::data() output order'
 );
 assert_test(
-	array( array( 30, 20, 10 ) ) === $ranked['ties'],
-	'exposes SP_League_Table\'s own tiebreakers groups (only groups with 2+ teams)'
+	array() === $ranked['ties'],
+	'no ties simulated in this section (see the dedicated head-to-head tests below for tiebreakers exposure)'
 );
 assert_test(
 	array( 5 ) === ( $state->object_terms[ SPLM_Standings::scratch_table_id() ]['sp_season'] ?? null ),
 	'assigns the requested season id to the scratch table before querying'
 );
+
+echo "\n=== rank_by_points_h2h(): head-to-head runs itself, since core's own re-sort structurally can't ===\n\n";
+
+// Core's native h2h block is gated on `$is_main_loop`, which is forced false
+// the instant $team_ids is passed to data() -- true of every call this class
+// makes. Proving a SECOND data() call happens, restricted to just the tied
+// group, is proof this class runs the recursion itself rather than relying on
+// (and silently getting nothing from) that gated core option.
+
+SPLM_Standings_Test_Table::$simulated_ties = array( 0 => array( 10, 20, 30 ) ); // all three tied on points
+SPLM_Standings_Test_Table::$h2h_responses  = array(
+	array(
+		'order'       => array( 20, 10, 30 ),
+		'tiebreakers' => array( 0 => array( 20 ), 1 => array( 10 ), 2 => array( 30 ) ), // fully resolved
+	),
+);
+SPLM_Standings_Test_Table::$call_log = array();
+
+$h2h_ranked = SPLM_Standings::rank_by_points_h2h( array( 10, 20, 30 ), 5 );
+
+assert_test(
+	2 === count( SPLM_Standings_Test_Table::$call_log ),
+	'the tied group triggers a SECOND data() call -- the recursion core itself would run if $is_main_loop allowed it'
+);
+assert_test(
+	array( 10, 20, 30 ) === ( SPLM_Standings_Test_Table::$call_log[1] ?? null ),
+	'the recursive call is restricted to exactly the tied group (core\'s own `$this->data(false, $teams)` line)'
+);
+assert_test(
+	array( 20, 10, 30 ) === $h2h_ranked['order'],
+	'head-to-head re-orders the tied group -- the plain points/PIM order does NOT survive unchanged'
+);
+assert_test(
+	array() === $h2h_ranked['ties'],
+	'head-to-head leaving no one tied means no residual ties reach PIM/coin-flip'
+);
+
+echo "\n=== rank_by_points_h2h(): a group head-to-head only partially resolves leaves a smaller residual tie ===\n\n";
+
+SPLM_Standings_Test_Table::$simulated_ties = array( 0 => array( 10, 20, 30 ) );
+SPLM_Standings_Test_Table::$h2h_responses  = array(
+	array(
+		'order'       => array( 20, 10, 30 ),
+		'tiebreakers' => array( 0 => array( 20 ), 1 => array( 10, 30 ) ), // 10 and 30 still tied
+	),
+);
+SPLM_Standings_Test_Table::$call_log = array();
+
+$h2h_partial = SPLM_Standings::rank_by_points_h2h( array( 10, 20, 30 ), 5 );
+
+assert_test(
+	array( 20, 10, 30 ) === $h2h_partial['order'],
+	'the group is still re-sequenced by head-to-head even when it only partially resolves the tie'
+);
+assert_test(
+	array( array( 10, 30 ) ) === $h2h_partial['ties'],
+	'only the still-tied subset survives as a residual tie group for PIM/coin-flip to pick up next'
+);
+
+SPLM_Standings_Test_Table::$h2h_responses  = array();
+SPLM_Standings_Test_Table::$simulated_ties = array(); // back to "no ties" for the sections below
 
 echo "\n=== rank_by_points_h2h(): the date range reaches core as POST META, not object properties ===\n\n";
 
