@@ -111,6 +111,18 @@ class SPLM_Waitlist_Notify {
 			self::line( __( 'Waitlist entry ID', 'sportspress-league-manager' ), (int) $row->id ),
 		);
 
+		// Present on every event once a row has ever been offered (it stays
+		// on the row through claim/expiry/withdrawal), and absent for a row
+		// removed straight from the queue, which was never offered at all.
+		$dispatched_by = isset( $row->dispatched_by ) ? (int) $row->dispatched_by : 0;
+		if ( $dispatched_by > 0 ) {
+			$dispatcher = get_userdata( $dispatched_by );
+			$lines[]    = self::line(
+				__( 'Dispatched by', 'sportspress-league-manager' ),
+				$dispatcher ? $dispatcher->display_name : __( '(unknown user)', 'sportspress-league-manager' )
+			);
+		}
+
 		if ( self::EVENT_OFFER_DISPATCHED === $event && ! empty( $context['expires_at'] ) ) {
 			$lines[] = self::line( __( 'Claim deadline (UTC)', 'sportspress-league-manager' ), $context['expires_at'] );
 		}

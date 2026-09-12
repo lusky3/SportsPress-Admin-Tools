@@ -444,6 +444,15 @@ export function setWaitlistGate( productId, gated ) {
 	} );
 }
 
+// Free-text convener note (e.g. a team/family preference); '' clears it.
+export function setWaitlistRestrictions( id, restrictions ) {
+	return apiFetch( {
+		path: `/splm/v1/waitlist/${ id }/restrictions`,
+		method: 'POST',
+		data: { restrictions },
+	} );
+}
+
 // splm/v1 — Discipline notices. The list endpoint conforms to the standard
 // envelope; release/discard/serve are the only mutating actions the convener
 // surface exposes — the technical view and this one act through the same
