@@ -34,7 +34,9 @@ function splm_admin_bar_node_test_state() {
 	return $state;
 }
 
-function __( $text, $domain = '' ) { // phpcs:ignore
+// $domain is never read by this stub -- dropped entirely rather than
+// declared as an ignored formal parameter.
+function __( $text ) { // phpcs:ignore
 	return $text;
 }
 

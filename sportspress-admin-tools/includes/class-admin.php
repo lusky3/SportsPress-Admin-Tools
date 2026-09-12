@@ -281,47 +281,27 @@ class SPAT_Admin {
 		register_setting(
 			'spat_general_settings',
 			'spat_remove_data_on_uninstall',
-			array(
-				'sanitize_callback' => function ( $value ) {
-					return $value === '1' ? '1' : '0';
-				},
-			)
+			array( 'sanitize_callback' => array( __CLASS__, 'sanitize_checkbox_flag' ) )
 		);
 		register_setting(
 			'spat_general_settings',
 			'spat_use_select2',
-			array(
-				'sanitize_callback' => function ( $value ) {
-					return $value === '1' ? '1' : '0';
-				},
-			)
+			array( 'sanitize_callback' => array( __CLASS__, 'sanitize_checkbox_flag' ) )
 		);
 		register_setting(
 			'spat_general_settings',
 			'spat_debug_show_sensitive',
-			array(
-				'sanitize_callback' => function ( $value ) {
-					return $value === '1' ? '1' : '0';
-				},
-			)
+			array( 'sanitize_callback' => array( __CLASS__, 'sanitize_checkbox_flag' ) )
 		);
 		register_setting(
 			'spat_general_settings',
 			'spat_debug_verbose_logging',
-			array(
-				'sanitize_callback' => function ( $value ) {
-					return $value === '1' ? '1' : '0';
-				},
-			)
+			array( 'sanitize_callback' => array( __CLASS__, 'sanitize_checkbox_flag' ) )
 		);
 		register_setting(
 			'spat_general_settings',
 			'spat_admin_bar_link_enabled',
-			array(
-				'sanitize_callback' => function ( $value ) {
-					return $value === '1' ? '1' : '0';
-				},
-			)
+			array( 'sanitize_callback' => array( __CLASS__, 'sanitize_checkbox_flag' ) )
 		);
 
 		// Child plugin settings will be registered by their respective admin classes
@@ -408,6 +388,19 @@ class SPAT_Admin {
 
 		// Allow child plugins to register their own settings
 		do_action( 'spat_admin_init_settings' );
+	}
+
+	/**
+	 * Shared sanitize_callback for every plain on/off checkbox setting on
+	 * this screen: coerces the raw submitted value to a canonical '1' or
+	 * '0'. Extracted so five near-identical inline closures don't keep
+	 * growing with each new checkbox this screen gains.
+	 *
+	 * @param mixed $value Raw submitted value.
+	 * @return string
+	 */
+	public static function sanitize_checkbox_flag( $value ): string {
+		return '1' === $value ? '1' : '0';
 	}
 
 	public function modules_section_callback() {
