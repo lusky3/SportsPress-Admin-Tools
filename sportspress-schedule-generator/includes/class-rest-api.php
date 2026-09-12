@@ -109,69 +109,12 @@ class SPSG_REST_API {
 				),
 			)
 		);
-		register_rest_route(
-			$ns,
-			'/configs/(?P<id>[\w-]+)/clone',
-			array_merge(
-				$perm,
-				array(
-					'methods' => 'POST',
-					'callback' => array( $this, 'spsg_clone_config' ),
-					'args' => $id_args,
-				)
-			)
-		);
-		register_rest_route(
-			$ns,
-			'/configs/(?P<id>[\w-]+)/validate',
-			array_merge(
-				$perm,
-				array(
-					'methods' => 'POST',
-					'callback' => array( $this, 'spsg_validate_config' ),
-					'args' => $id_args,
-				)
-			)
-		);
-		// Postseason: create a postseason configuration from a regular-season one
-		register_rest_route(
-			$ns,
-			'/configs/(?P<id>[\w-]+)/postseason',
-			array_merge(
-				$perm,
-				array(
-					'methods' => 'POST',
-					'callback' => array( $this, 'spsg_create_postseason_config' ),
-					'args' => $id_args,
-				)
-			)
-		);
-		// Postseason: mint every division's Seed/RR-Seed placeholder teams
-		register_rest_route(
-			$ns,
-			'/configs/(?P<id>[\w-]+)/postseason/placeholders',
-			array_merge(
-				$perm,
-				array(
-					'methods' => 'POST',
-					'callback' => array( $this, 'spsg_mint_postseason_placeholders' ),
-					'args' => $id_args,
-				)
-			)
-		);
-		// Postseason: resolve seed placeholders to real teams from a supplied ranking
-		register_rest_route(
-			$ns,
-			'/configs/(?P<id>[\w-]+)/postseason/resolve-seeds',
-			array_merge(
-				$perm,
-				array(
-					'methods' => 'POST',
-					'callback' => array( $this, 'spsg_resolve_postseason_seeds' ),
-					'args' => $id_args,
-				)
-			)
-		);
+		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/clone', $this->config_id_post_route( $perm, $id_args, 'spsg_clone_config' ) );
+		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/validate', $this->config_id_post_route( $perm, $id_args, 'spsg_validate_config' ) );
+		// Postseason
+		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/postseason', $this->config_id_post_route( $perm, $id_args, 'spsg_create_postseason_config' ) );
+		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/postseason/placeholders', $this->config_id_post_route( $perm, $id_args, 'spsg_mint_postseason_placeholders' ) );
+		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/postseason/resolve-seeds', $this->config_id_post_route( $perm, $id_args, 'spsg_resolve_postseason_seeds' ) );
 		register_rest_route(
 			$ns,
 			'/configs/(?P<id>[\w-]+)/placeholders',
@@ -524,10 +467,28 @@ class SPSG_REST_API {
 	}
 
 	/**
-	 * Arg schema shared by every route param that must be a non-empty string
-	 * (schedule_id, config_id) -- kept in one place instead of repeating the
-	 * same sanitize/validate pair at each register_rest_route() call.
+	 * The route definition shared by every config-scoped POST endpoint whose
+	 * only arg is the config id (clone, validate, and the postseason routes
+	 * all share this exact shape) -- extracted so register_routes() doesn't
+	 * repeat this same array literal at each call site, which is itself what
+	 * tripped a code-duplication check on this file.
+	 *
+	 * @param array  $perm     The shared permission_callback array.
+	 * @param array  $id_args  The shared config-id arg schema.
+	 * @param string $callback Name of the method on $this to call.
+	 * @return array
 	 */
+	private function config_id_post_route( $perm, $id_args, $callback ) {
+		return array_merge(
+			$perm,
+			array(
+				'methods' => 'POST',
+				'callback' => array( $this, $callback ),
+				'args' => $id_args,
+			)
+		);
+	}
+
 	/**
 	 * Arg schema shared by every route param that must be a positive integer
 	 * (team_count, and the id/replacement_id params above) -- kept in one
@@ -542,6 +503,11 @@ class SPSG_REST_API {
 		);
 	}
 
+	/**
+	 * Arg schema shared by every route param that must be a non-empty string
+	 * (schedule_id, config_id) -- kept in one place instead of repeating the
+	 * same sanitize/validate pair at each register_rest_route() call.
+	 */
 	private function required_string_arg() {
 		return array(
 			'required' => true,
