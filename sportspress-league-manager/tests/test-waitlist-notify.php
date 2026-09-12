@@ -27,6 +27,9 @@ class SPLM_Notify_Test_State {
 
 	/** Whether wp_mail() should report success. */
 	public $mail_succeeds = true;
+
+	/** Controllable get_userdata() responses, keyed by user id. */
+	public $users = array();
 }
 
 function splm_notify_test_state() {
@@ -53,6 +56,14 @@ function get_option( $name, $default = false ) {
 function wp_mail( $to, $subject, $body ) { // phpcs:ignore
 	splm_notify_test_state()->mail[] = array( $to, $subject, $body );
 	return splm_notify_test_state()->mail_succeeds;
+}
+
+function get_userdata( $user_id ) {
+	$users = splm_notify_test_state()->users;
+	if ( ! isset( $users[ $user_id ] ) ) {
+		return false;
+	}
+	return (object) array( 'display_name' => $users[ $user_id ] );
 }
 
 /**
@@ -203,6 +214,29 @@ SPAT_Logger::$calls    = array();
 
 $n::send( notify_row(), $n::EVENT_OFFER_EXPIRED );
 assert_test( array() === SPAT_Logger::$calls, 'a successful send logs nothing' );
+
+echo "\n=== send(): the 'Dispatched by' line ===\n\n";
+
+$state->options = array( SPLM_Waitlist_Notify::OPTION => 'ops@example.test' );
+$state->users   = array( 7 => 'Convener Cody' );
+
+$state->mail = array();
+$n::send( notify_row(), $n::EVENT_OFFER_EXPIRED );
+assert_test( false === strpos( $state->mail[0][2], 'Dispatched by' ), 'a row with no dispatched_by property carries no dispatched-by line' );
+
+$state->mail = array();
+$n::send( notify_row( array( 'dispatched_by' => 0 ) ), $n::EVENT_OFFER_EXPIRED );
+assert_test( false === strpos( $state->mail[0][2], 'Dispatched by' ), 'a row explicitly dispatched_by=0 (never offered) carries no dispatched-by line' );
+
+$state->mail = array();
+$n::send( notify_row( array( 'dispatched_by' => 7 ) ), $n::EVENT_OFFER_CLAIMED, array( 'order_id' => 1 ) );
+assert_test( false !== strpos( $state->mail[0][2], 'Dispatched by: Convener Cody' ), 'a dispatched row names the resolved convener, on every event, not just the dispatch itself' );
+
+$state->mail = array();
+$n::send( notify_row( array( 'dispatched_by' => 404 ) ), $n::EVENT_OFFER_EXPIRED );
+assert_test( false !== strpos( $state->mail[0][2], 'Dispatched by: (unknown user)' ), 'a dispatched_by pointing at a deleted user falls back to a placeholder rather than a blank line' );
+
+$state->options = array();
 
 echo "\n";
 echo "Passed: {$passed}\n";

@@ -106,6 +106,9 @@ class SPLM_Waitlist_Lifecycle_Test_State {
 
 	/** Each wp_schedule_single_event() call as array( timestamp, hook, args ). */
 	public $scheduled_events = array();
+
+	/** Controllable get_current_user_id() stub for offer_locked()'s dispatched_by stamp. */
+	public $current_user_id = 7;
 }
 
 function splm_waitlist_lifecycle_test_state() {
@@ -138,6 +141,14 @@ function wp_date( $format, $timestamp = null ) { // phpcs:ignore
 function wp_schedule_single_event( $timestamp, $hook, $args = array() ) { // phpcs:ignore
 	splm_waitlist_lifecycle_test_state()->scheduled_events[] = array( $timestamp, $hook, $args );
 	return true;
+}
+
+function get_current_user_id() {
+	return splm_waitlist_lifecycle_test_state()->current_user_id;
+}
+
+function get_userdata( $user_id ) {
+	return (object) array( 'display_name' => 'Convener ' . (int) $user_id );
 }
 
 class WP_Error {
@@ -378,6 +389,10 @@ assert_test( 'Sam Player' === $row['name'], 'the name is carried through' );
 assert_test( 'player@example.com' === $row['email'], 'the email is lowercased so matching is case-insensitive' );
 assert_test( ! isset( $row['claim_token'] ), 'a queued row carries no token' );
 assert_test( ! isset( $row['expires_at'] ), 'a queued row carries no deadline' );
+assert_test( '' === $row['restrictions'], 'an omitted restrictions note defaults to empty' );
+
+$restricted = $w::build_row( facts( array( 'restrictions' => '  Wants Team X  ' ) ) );
+assert_test( 'Wants Team X' === $restricted['restrictions'], 'a supplied restrictions note is carried through, sanitized' );
 
 echo "\n=== build_row(): the declining cases ===\n\n";
 
@@ -528,6 +543,8 @@ assert_test( isset( $updates['offered_at'] ), 'the offer time is stamped' );
 assert_test( abs( strtotime( $updates['offered_at'] . ' UTC' ) - time() ) <= 1, 'the offer time is within a second of now' );
 assert_test( 1 === preg_match( '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $updates['offered_at'] ), 'the offer time is a UTC MySQL datetime string' );
 assert_test( null === $updates['resolved_order_id'], 'a fresh offer clears any resolved order from a previous cycle' );
+assert_test( 0 === $updates['dispatched_by'], 'dispatched_by defaults to 0 when omitted, so the direct pure-function tests above are unaffected' );
+assert_test( 9 === $o::offer_updates( $token_a, $expiry, 9 )['dispatched_by'], 'dispatched_by is stored when given explicitly' );
 
 echo "\n=== unwind_updates() ===\n\n";
 
@@ -641,6 +658,7 @@ assert_test( is_array( $offer_result ) && true === $offer_result['success'], 'of
 assert_test( 70 === $offer_result['id'], 'the response echoes the row id' );
 assert_test( 1 === count( $wpdb->update_calls ), 'exactly one write records the offer' );
 assert_test( 'offered' === ( $wpdb->update_calls[0]['data']['status'] ?? null ), 'the write moves the row to offered' );
+assert_test( 7 === ( $wpdb->update_calls[0]['data']['dispatched_by'] ?? null ), 'the write stamps the dispatching convener' );
 assert_test( 1 === count( $state->scheduled_events ), 'exactly one expiry event is scheduled' );
 assert_test( 1 === count( $state->mail ), 'only the entrant offer email is sent when no shared notification address is configured' );
 assert_test( 'newplayer@example.com' === $state->mail[0][0], 'the entrant is the recipient of their own offer email' );
@@ -669,6 +687,7 @@ assert_test( 2 === count( $state->mail ), 'both the entrant email and the shared
 assert_test( 'another@example.com' === $state->mail[0][0], 'the entrant email goes out first, to the entrant' );
 assert_test( 'ops@example.test' === $state->mail[1][0], 'the shared notification goes to the configured address' );
 assert_test( false !== strpos( $state->mail[1][1], 'Waitlist offer sent' ), 'the shared notification carries the dispatch label' );
+assert_test( false !== strpos( $state->mail[1][2], 'Dispatched by: Convener 7' ), 'the shared notification names the dispatching convener' );
 
 SPAT_Lock::$force_lock_held = true; // restore: nothing later in this file should see a runnable lock.
 $state->option_overrides    = array(); // restore to unconfigured for everything after.
@@ -722,6 +741,19 @@ assert_test( 'S2026' === $shaped['season'], 'the season is exposed' );
 assert_test( 'offered' === $shaped['status'], 'the status is exposed' );
 assert_test( '2026-09-04 12:00:00' === $shaped['expires_at'], 'the UTC deadline is exposed for the client to localise' );
 assert_test( true === $shaped['has_target'], 'a row with a target reports has_target true' );
+assert_test( 4321 === $shaped['source_order_id'], 'the waitlist (originating) order id is exposed' );
+assert_test( null === $shaped['resolved_order_id'], 'a null resolved_order_id passes through as null, not 0' );
+assert_test( '' === $shaped['dispatched_by_name'], 'a row never offered (no dispatched_by property) reports an empty dispatcher name' );
+assert_test( '' === $shaped['restrictions'], 'a row with no restrictions property reports an empty string' );
+
+$dispatched_row                  = clone $response_row;
+$dispatched_row->dispatched_by   = 7;
+$dispatched_row->resolved_order_id = 9001;
+$dispatched_row->restrictions     = 'Wants to play with Jane Doe';
+$dispatched_shaped                = $r::row_to_response( $dispatched_row );
+assert_test( 'Convener 7' === $dispatched_shaped['dispatched_by_name'], 'a dispatched row resolves the convener\'s display name' );
+assert_test( 9001 === $dispatched_shaped['resolved_order_id'], 'a non-null resolved_order_id is exposed as an int' );
+assert_test( 'Wants to play with Jane Doe' === $dispatched_shaped['restrictions'], 'the restrictions note is exposed verbatim' );
 
 // The token must never reach the dashboard. Anyone who can read the queue
 // could otherwise claim any spot on someone else's behalf, and the dashboard
@@ -891,6 +923,53 @@ $target_write_failed = $rest->set_target( new WP_REST_Request( array( 'id' => 34
 assert_test( is_wp_error( $target_write_failed ), 'set_target() reports a failed write rather than pretending to succeed' );
 assert_test( 'splm_waitlist_write_failed' === $target_write_failed->get_error_code(), 'the write-failure refusal carries its own error code' );
 assert_test( 500 === $target_write_failed->get_error_data()['status'], 'the write-failure refusal is a 500' );
+
+echo "\n=== set_restrictions(): a free-text note, editable on any row ===\n\n";
+
+// Branch 1: the row does not exist.
+$wpdb->rows          = array();
+$wpdb->update_calls  = array();
+$wpdb->update_return = true;
+
+$restrictions_not_found = $rest->set_restrictions( new WP_REST_Request( array( 'id' => 999, 'restrictions' => 'Wants Team X' ) ) );
+assert_test( is_wp_error( $restrictions_not_found ), 'set_restrictions() refuses an unknown row' );
+assert_test( 'splm_waitlist_not_found' === $restrictions_not_found->get_error_code(), 'the not-found refusal carries its own error code' );
+assert_test( 404 === $restrictions_not_found->get_error_data()['status'], 'the not-found refusal is a 404' );
+
+// Branch 2: succeeds even on a live offer -- unlike set_target(), there is no
+// claim link or email content this could invalidate.
+$wpdb->rows = array( 60 => (object) array( 'id' => 60, 'status' => 'offered', 'restrictions' => '' ) );
+
+$restrictions_success = $rest->set_restrictions( new WP_REST_Request( array( 'id' => 60, 'restrictions' => '  Wants Team X  ' ) ) );
+assert_test( is_array( $restrictions_success ) && true === $restrictions_success['success'], 'set_restrictions() succeeds on a live offer' );
+assert_test( 'Wants Team X' === $restrictions_success['restrictions'], 'the response echoes the trimmed note' );
+assert_test( 'Wants Team X' === ( $wpdb->update_calls[0]['data']['restrictions'] ?? null ), 'the update writes the trimmed note' );
+
+// Branch 3: an empty submission clears the note.
+$wpdb->rows         = array( 61 => (object) array( 'id' => 61, 'status' => 'queued', 'restrictions' => 'old note' ) );
+$wpdb->update_calls = array();
+
+$restrictions_cleared = $rest->set_restrictions( new WP_REST_Request( array( 'id' => 61, 'restrictions' => '' ) ) );
+assert_test( is_array( $restrictions_cleared ) && '' === $restrictions_cleared['restrictions'], 'an empty submission clears the note' );
+
+// Branch 4: a note past the varchar(191) column length is refused rather
+// than silently truncated by MySQL.
+$wpdb->rows = array( 62 => (object) array( 'id' => 62, 'status' => 'queued', 'restrictions' => '' ) );
+
+$restrictions_too_long = $rest->set_restrictions( new WP_REST_Request( array( 'id' => 62, 'restrictions' => str_repeat( 'x', 192 ) ) ) );
+assert_test( is_wp_error( $restrictions_too_long ), 'a note longer than the column refuses rather than truncating' );
+assert_test( 'splm_waitlist_restrictions_too_long' === $restrictions_too_long->get_error_code(), 'the too-long refusal carries its own error code' );
+assert_test( 400 === $restrictions_too_long->get_error_data()['status'], 'the too-long refusal is a 400' );
+
+// Branch 5: the database write itself fails.
+$wpdb->rows          = array( 63 => (object) array( 'id' => 63, 'status' => 'queued', 'restrictions' => '' ) );
+$wpdb->update_return = false;
+
+$restrictions_write_failed = $rest->set_restrictions( new WP_REST_Request( array( 'id' => 63, 'restrictions' => 'note' ) ) );
+assert_test( is_wp_error( $restrictions_write_failed ), 'set_restrictions() reports a failed write rather than pretending to succeed' );
+assert_test( 'splm_waitlist_write_failed' === $restrictions_write_failed->get_error_code(), 'the write-failure refusal carries its own error code' );
+assert_test( 500 === $restrictions_write_failed->get_error_data()['status'], 'the write-failure refusal is a 500' );
+$wpdb->update_return = true;
 
 echo "\n=== update_if_status(): a transition yields to a claim that lands first ===\n\n";
 

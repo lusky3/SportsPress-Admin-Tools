@@ -31,7 +31,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class SPLM_Waitlist_Database {
 
-	const DB_VERSION     = '1.0.0';
+	// 1.1.0 adds dispatched_by and restrictions -- both dbDelta ADD COLUMN,
+	// safe on an existing table with live rows (see create_table()).
+	const DB_VERSION     = '1.1.0';
 	const VERSION_OPTION = 'splm_waitlist_db_version';
 
 	const STATUS_QUEUED    = 'queued';
@@ -142,6 +144,8 @@ class SPLM_Waitlist_Database {
 			offered_at datetime NULL DEFAULT NULL,
 			expires_at datetime NULL DEFAULT NULL,
 			resolved_order_id bigint(20) unsigned NULL DEFAULT NULL,
+			dispatched_by bigint(20) unsigned NOT NULL DEFAULT 0,
+			restrictions varchar(191) NOT NULL DEFAULT '',
 			created_at datetime NOT NULL,
 			updated_at datetime NULL DEFAULT NULL,
 			PRIMARY KEY (id),

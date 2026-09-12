@@ -61,6 +61,7 @@ class SPLM_Waitlist_REST {
 		$this->add_route( 'POST', '/waitlist/(?P<id>\d+)/offer', array( $this, 'offer_spot' ), self::offer_args() );
 		$this->add_route( 'POST', '/waitlist/(?P<id>\d+)/cancel', array( $this, 'cancel_offer' ), self::id_only_args() );
 		$this->add_route( 'POST', '/waitlist/(?P<id>\d+)/target', array( $this, 'set_target' ), self::target_args() );
+		$this->add_route( 'POST', '/waitlist/(?P<id>\d+)/restrictions', array( $this, 'set_restrictions' ), self::restrictions_args() );
 		$this->add_route( 'POST', '/waitlist/gate', array( $this, 'toggle_gate' ), self::gate_args() );
 	}
 
@@ -218,6 +219,11 @@ class SPLM_Waitlist_REST {
 				'validate_callback' => 'rest_validate_request_arg',
 				'sanitize_callback' => 'absint',
 			),
+			'restrictions'      => array(
+				'required'          => false,
+				'type'              => 'string',
+				'sanitize_callback' => 'sanitize_text_field',
+			),
 		);
 	}
 
@@ -284,6 +290,28 @@ class SPLM_Waitlist_REST {
 				'type'              => 'integer',
 				'validate_callback' => 'rest_validate_request_arg',
 				'sanitize_callback' => 'absint',
+			),
+		);
+	}
+
+	/**
+	 * Arg definitions for POST /waitlist/{id}/restrictions.
+	 *
+	 * @return array
+	 */
+	private static function restrictions_args(): array {
+		return array(
+			// Same reasoning as the offer/cancel/target routes' 'id' above:
+			// the route regex already constrains this to digits only.
+			'id'           => array(
+				'required'          => true,
+				'type'              => 'integer',
+				'sanitize_callback' => 'absint',
+			),
+			'restrictions' => array(
+				'required'          => false,
+				'type'              => 'string',
+				'sanitize_callback' => 'sanitize_text_field',
 			),
 		);
 	}
@@ -415,8 +443,26 @@ class SPLM_Waitlist_REST {
 			'offered_at'          => $row->offered_at ? (string) $row->offered_at : null,
 			'expires_at'          => $row->expires_at ? (string) $row->expires_at : null,
 			'resolved_order_id'   => $row->resolved_order_id ? (int) $row->resolved_order_id : null,
+			'dispatched_by_name'  => self::dispatcher_name( (int) ( $row->dispatched_by ?? 0 ) ),
+			'restrictions'        => (string) ( $row->restrictions ?? '' ),
 			'created_at'          => (string) $row->created_at,
 		);
+	}
+
+	/**
+	 * Display name of the convener who dispatched this row's offer, or ''
+	 * when it was never offered (dispatched_by is 0) or the user account is
+	 * gone.
+	 *
+	 * @param int $user_id dispatched_by column value.
+	 * @return string
+	 */
+	private static function dispatcher_name( int $user_id ): string {
+		if ( $user_id <= 0 ) {
+			return '';
+		}
+		$user = get_userdata( $user_id );
+		return $user ? (string) $user->display_name : '';
 	}
 
 	/**
@@ -480,11 +526,12 @@ class SPLM_Waitlist_REST {
 	 * @param string $email    Lower-cased, already-validated email.
 	 * @param string $season   Season code.
 	 * @param string $position 'player' or 'goalie'.
-	 * @param int    $target   Candidate target_product_id.
-	 * @param string $name     Display name.
+	 * @param int    $target       Candidate target_product_id.
+	 * @param string $name         Display name.
+	 * @param string $restrictions Optional free-text restrictions note.
 	 * @return array|WP_Error
 	 */
-	private static function validate_new_entry( string $email, string $season, string $position, int $target, string $name ) {
+	private static function validate_new_entry( string $email, string $season, string $position, int $target, string $name, string $restrictions = '' ) {
 		// I4: every other WooCommerce touch in this file is guarded. This one
 		// was not: enabling the module with WooCommerce deactivated fatalled
 		// this route on an undefined function. 503 rather than 400 — the
@@ -525,6 +572,7 @@ class SPLM_Waitlist_REST {
 				'user_id'           => 0,
 				'order_id'          => 0,
 				'has_active'        => false,
+				'restrictions'      => $restrictions,
 			)
 		);
 
@@ -553,7 +601,8 @@ class SPLM_Waitlist_REST {
 			(string) $request->get_param( 'season' ),
 			(string) $request->get_param( 'position' ),
 			(int) $request->get_param( 'target_product_id' ),
-			(string) $request->get_param( 'name' )
+			(string) $request->get_param( 'name' ),
+			(string) $request->get_param( 'restrictions' )
 		);
 
 		if ( is_wp_error( $row ) ) {
@@ -605,6 +654,16 @@ class SPLM_Waitlist_REST {
 	 */
 	public function set_target( $request ) {
 		return SPLM_Waitlist_Offer::set_target( (int) $request->get_param( 'id' ), (int) $request->get_param( 'target_product_id' ) );
+	}
+
+	/**
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return array|WP_Error
+	 */
+	public function set_restrictions( $request ) {
+		return SPLM_Waitlist_Offer::set_restrictions( (int) $request->get_param( 'id' ), (string) $request->get_param( 'restrictions' ) );
 	}
 
 	/**
