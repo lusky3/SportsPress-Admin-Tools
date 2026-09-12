@@ -125,28 +125,30 @@ function DeadlineCell( { row } ) {
 // Cancel/Remove is available to everything except a finished row.
 function RowActions( { row, canOffer, canCancel, busy, onOffer, onCancel } ) {
 	return (
-		<td className="splm-waitlist__actions">
-			{ canOffer && (
-				<button
-					type="button"
-					className="splm-btn splm-btn--small"
-					disabled={ busy || ! row.has_target }
-					title={ row.has_target ? '' : 'This entry has no registration product paired.' }
-					onClick={ onOffer }
-				>
-					{ row.status === 'expired' ? 'Re-offer' : 'Offer' }
-				</button>
-			) }
-			{ canCancel && (
-				<button
-					type="button"
-					className="splm-btn splm-btn--small splm-btn--danger"
-					disabled={ busy }
-					onClick={ onCancel }
-				>
-					{ row.status === 'offered' ? 'Cancel offer' : 'Remove' }
-				</button>
-			) }
+		<td>
+			<div className="splm-waitlist__actions">
+				{ canOffer && (
+					<button
+						type="button"
+						className="splm-btn splm-btn--small"
+						disabled={ busy || ! row.has_target }
+						title={ row.has_target ? '' : 'This entry has no registration product paired.' }
+						onClick={ onOffer }
+					>
+						{ row.status === 'expired' ? 'Re-offer' : 'Offer' }
+					</button>
+				) }
+				{ canCancel && (
+					<button
+						type="button"
+						className="splm-btn splm-btn--small splm-btn--danger"
+						disabled={ busy }
+						onClick={ onCancel }
+					>
+						{ row.status === 'offered' ? 'Cancel offer' : 'Remove' }
+					</button>
+				) }
+			</div>
 		</td>
 	);
 }
