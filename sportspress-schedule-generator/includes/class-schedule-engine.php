@@ -199,6 +199,10 @@ class SPSG_Schedule_Engine {
 	private function generate_matchups( $config ) {
 		$this->log( 'Generating matchups' );
 
+		if ( ! empty( $config->is_postseason ) ) {
+			return $this->generate_postseason_matchups( $config );
+		}
+
 		// Inject placeholder teams if generic teams are enabled
 		if ( ! empty( $config->generic_teams['enabled'] ) ) {
 			$injection_info = SPSG_Placeholder_Team_Manager::inject_into_config( $config );
@@ -227,6 +231,36 @@ class SPSG_Schedule_Engine {
 		}
 
 		$this->log( sprintf( 'Generated %d matchups', count( $object_matchups ) ) );
+
+		return $object_matchups;
+	}
+
+	/**
+	 * Postseason counterpart to generate_matchups(): builds the
+	 * cross-round-robin-then-bracket structure from
+	 * SPSG_Postseason_Matchup_Builder instead of the generic round-robin/
+	 * custom generator, and skips validate_matchups() -- the pairing math
+	 * it would re-check is already covered by SPSG_Postseason_Pairing's own
+	 * tests.
+	 *
+	 * @param SPSG_Schedule_Configuration $config Postseason configuration.
+	 * @return array|WP_Error Array of matchup stdClass objects, or an error
+	 *                          (e.g. an odd division size slipped past config
+	 *                          validation).
+	 */
+	private function generate_postseason_matchups( $config ) {
+		try {
+			$matchups = SPSG_Postseason_Matchup_Builder::build( $config );
+		} catch ( InvalidArgumentException $e ) {
+			return new WP_Error( 'postseason_matchup_error', $e->getMessage() );
+		}
+
+		$object_matchups = array();
+		foreach ( $matchups as $matchup ) {
+			$object_matchups[] = (object) $matchup;
+		}
+
+		$this->log( sprintf( 'Generated %d postseason matchups', count( $object_matchups ) ) );
 
 		return $object_matchups;
 	}
