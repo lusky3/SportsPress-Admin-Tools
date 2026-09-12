@@ -433,6 +433,12 @@ pc_assert(
 	'with no season_start at all, season_end stays empty rather than computing garbage'
 );
 
+$built_malformed_start = $manager->build_postseason_config_data( $source, array( 'season_start' => 'not a real date' ) );
+pc_assert(
+	'' === $built_malformed_start['season_end'],
+	'a malformed season_start (not parseable as a date) fails safely to an empty season_end, rather than an uncaught exception'
+);
+
 echo "\n=== SPSG_Configuration_Manager::create_postseason_configuration(): end to end ===\n\n";
 
 $state = pc_test_state();
