@@ -330,6 +330,57 @@ pc_assert(
 	'a valid postseason config (even division, round_robin_weeks within range) passes validation entirely'
 );
 
+$championship_day_not_playing_day = new SPSG_Schedule_Configuration(
+	array_merge(
+		pc_valid_regular_season_fields(),
+		array(
+			'is_postseason'     => true,
+			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D', 'E', 'F' ) ) ),
+			'round_robin_weeks' => 3,
+			'championship_day'  => array( 'day' => 'saturday' ), // NOT in playing_days (only 'friday')
+		)
+	)
+);
+$result = $championship_day_not_playing_day->validate();
+pc_assert(
+	is_wp_error( $result ) && isset( $result->data['errors']['championship_day'] ),
+	'a championship_day not among the league\'s playing_days fails validation with a clear error, instead of silently producing an unschedulable config'
+);
+
+$consolation_day_not_playing_day = new SPSG_Schedule_Configuration(
+	array_merge(
+		pc_valid_regular_season_fields(),
+		array(
+			'is_postseason'     => true,
+			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D', 'E', 'F' ) ) ),
+			'round_robin_weeks' => 3,
+			'consolation_day'   => 'saturday', // NOT in playing_days (only 'friday')
+		)
+	)
+);
+$result = $consolation_day_not_playing_day->validate();
+pc_assert(
+	is_wp_error( $result ) && isset( $result->data['errors']['consolation_day'] ),
+	'a consolation_day not among the league\'s playing_days fails validation with a clear error'
+);
+
+$championship_day_not_set_yet = new SPSG_Schedule_Configuration(
+	array_merge(
+		pc_valid_regular_season_fields(),
+		array(
+			'is_postseason'     => true,
+			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D', 'E', 'F' ) ) ),
+			'round_robin_weeks' => 3,
+			// championship_day/consolation_day left at their schema defaults (empty) -- nothing to validate yet.
+		)
+	)
+);
+$result = $championship_day_not_set_yet->validate();
+pc_assert(
+	true === $result,
+	'when championship_day/consolation_day are not set yet, there is nothing to validate against playing_days'
+);
+
 echo "\n=== SPSG_Configuration_Manager::build_postseason_config_data(): pure transformation ===\n\n";
 
 $manager = new SPSG_Configuration_Manager();

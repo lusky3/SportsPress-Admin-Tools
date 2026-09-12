@@ -228,6 +228,33 @@ class SPSG_Configuration_Validator {
 				return;
 			}
 		}
+
+		$this->validate_postseason_day( $errors, 'championship_day', $this->config->championship_day['day'] ?? '' );
+		$this->validate_postseason_day( $errors, 'consolation_day', $this->config->consolation_day );
+	}
+
+	/**
+	 * Whether one postseason day setting (championship_day's day, or
+	 * consolation_day) is among the configuration's own playing_days --
+	 * both allocator constraints that read it are hard, so a day the
+	 * league never actually plays on would otherwise produce an
+	 * unschedulable config with no clear error pointing at why.
+	 *
+	 * @param array  $errors Accumulator, keyed by field name.
+	 * @param string $key    Error key to set ('championship_day' or 'consolation_day').
+	 * @param string $day    The configured day, or '' if not set yet.
+	 */
+	private function validate_postseason_day( &$errors, $key, $day ) {
+		if ( '' === $day || in_array( $day, $this->config->playing_days, true ) ) {
+			return;
+		}
+
+		$errors[ $key ] = sprintf(
+			/* translators: 1: the configured day, 2: comma-separated list of the league's actual playing days */
+			__( '"%1$s" is not one of this league\'s playing days (%2$s).', 'sportspress-schedule-generator' ),
+			ucfirst( $day ),
+			implode( ', ', array_map( 'ucfirst', $this->config->playing_days ) )
+		);
 	}
 
 	/**
