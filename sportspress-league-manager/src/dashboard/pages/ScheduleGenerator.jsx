@@ -475,7 +475,7 @@ export default function ScheduleGenerator() {
 											<tr>
 												<td colSpan={5} style={{background:'var(--splm-surface-alt)',padding:'0.75rem'}}>
 													<h4 style={{marginTop:0}}>Create Postseason Configuration from "{c.name}"</h4>
-													<p className="splm-muted" style={{marginTop:0}}>Copies divisions, venues, playing days, and time slots from this configuration. After creating it, use "Mint Placeholders" to generate Seed/RR-Seed placeholder teams for each division.</p>
+													<p className="splm-muted" style={{marginTop:0}}>Copies divisions, venues, playing days, and time slots from this configuration. Seed/RR-Seed placeholder teams for each division are minted automatically the first time a schedule is generated for it.</p>
 													<div style={{display:'flex',gap:'0.75rem',flexWrap:'wrap',alignItems:'flex-end'}}>
 														<label style={{display:'flex',flexDirection:'column',fontSize:'0.85em'}}>
 															Round robin weeks
