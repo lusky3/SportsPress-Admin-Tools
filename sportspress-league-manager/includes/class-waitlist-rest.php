@@ -887,13 +887,14 @@ class SPLM_Waitlist_REST {
 	/**
 	 * One active waitlist row -> the shape the FreeScout module renders.
 	 * offered_at/expires_at are only meaningful once an offer exists;
-	 * queued and claimed rows carry both as null. There is no queue-rank
+	 * queued and claimed rows carry both as null. There is no queue-RANK
 	 * field: nothing in this codebase computes or stores one (see the
 	 * "Correction made during implementation planning" note in the
-	 * 2026-09-11 design spec).
+	 * 2026-09-11 design spec). `position` here is a different, unrelated
+	 * column — player/goalie — not a rank.
 	 *
 	 * @param object $row A row from SPLM_Waitlist_Database::find_active_for_email().
-	 * @return array{season:string,status:string,offered_at:?string,expires_at:?string}
+	 * @return array{season:string,status:string,position:string,created_at:string,offered_at:?string,expires_at:?string}
 	 */
 	private static function shape_customer_status_entry( $row ): array {
 		$status  = (string) $row->status;
@@ -901,6 +902,8 @@ class SPLM_Waitlist_REST {
 		return array(
 			'season'     => (string) $row->season,
 			'status'     => $status,
+			'position'   => (string) $row->position,
+			'created_at' => (string) self::to_iso8601( $row->created_at ),
 			'offered_at' => $offered ? self::to_iso8601( $row->offered_at ) : null,
 			'expires_at' => $offered ? self::to_iso8601( $row->expires_at ) : null,
 		);

@@ -156,6 +156,8 @@ function splm_waitlist_row( array $overrides = array() ) {
 		array(
 			'season'     => 'S2026',
 			'status'     => 'queued',
+			'position'   => 'player',
+			'created_at' => '2026-08-15 09:30:00',
 			'offered_at' => null,
 			'expires_at' => null,
 		),
@@ -244,6 +246,8 @@ SPLM_Waitlist_Database::$rows = array(
 		array(
 			'season'     => 'W2026-27',
 			'status'     => 'offered',
+			'position'   => 'goalie',
+			'created_at' => '2026-07-01 08:00:00',
 			'offered_at' => '2026-09-10 14:00:00',
 			'expires_at' => '2026-09-12 14:00:00',
 		)
@@ -266,10 +270,12 @@ $offered = $data['entries'][0];
 assert_test( 'offered' === $offered['status'] && 'W2026-27' === $offered['season'], 'offered entry carries its season and status' );
 assert_test( '2026-09-10T14:00:00Z' === $offered['offered_at'], 'offered_at is ISO-8601 UTC' );
 assert_test( '2026-09-12T14:00:00Z' === $offered['expires_at'], 'expires_at is ISO-8601 UTC' );
-assert_test( ! array_key_exists( 'position', $offered ), 'no position field — there is no queue-rank concept in this codebase to expose' );
+assert_test( 'goalie' === $offered['position'], 'position is passed through from the row (player/goalie — not a queue rank)' );
+assert_test( '2026-07-01T08:00:00Z' === $offered['created_at'], 'created_at is ISO-8601 UTC, unlike offered_at/expires_at it is never null' );
 
 $queued = $data['entries'][1];
 assert_test( null === $queued['offered_at'] && null === $queued['expires_at'], 'a queued entry has no offer dates' );
+assert_test( 'player' === $queued['position'] && null !== $queued['created_at'], 'a queued entry still carries position and created_at' );
 
 $claimed = $data['entries'][2];
 assert_test( null === $claimed['offered_at'] && null === $claimed['expires_at'], 'a claimed entry has no offer dates either' );

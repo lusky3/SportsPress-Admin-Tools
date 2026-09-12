@@ -283,6 +283,23 @@ class SPLM_Admin {
 		);
 
 		$this->add_field( SPLM_Waitlist_REST::SECRET_OPTION, __( 'FreeScout Shared Secret', 'sportspress-league-manager' ), array( $this, 'render_freescout_secret_field' ), 'splm_freescout_section' );
+
+		add_settings_section(
+			'splm_waitlist_notify_section',
+			__( 'Waitlist Notifications', 'sportspress-league-manager' ),
+			function () {
+				echo '<p>' . esc_html__( 'An optional address copied on every waitlist status change — offer sent, claimed, expired, withdrawn or removed. Point this at a FreeScout mailbox so each change becomes a ticket, or any other inbox your team watches.', 'sportspress-league-manager' ) . '</p>';
+			},
+			'splm_backend_settings'
+		);
+
+		register_setting(
+			'splm_backend_settings',
+			SPLM_Waitlist_Notify::OPTION,
+			array( 'sanitize_callback' => array( __CLASS__, 'sanitize_waitlist_notify_email' ) )
+		);
+
+		$this->add_field( SPLM_Waitlist_Notify::OPTION, __( 'Notification Email', 'sportspress-league-manager' ), array( $this, 'render_waitlist_notify_email_field' ), 'splm_waitlist_notify_section' );
 	}
 
 	private function add_field( $id, $title, $callback, $section = 'splm_backend_section' ) {
@@ -740,5 +757,48 @@ class SPLM_Admin {
 			wp_send_json_error( array( 'message' => __( 'Permission denied.', 'sportspress-league-manager' ) ), 403 );
 		}
 		wp_send_json_success( array( 'secret' => get_option( SPLM_Waitlist_REST::SECRET_OPTION, '' ) ) );
+	}
+
+	/**
+	 * Validates the shared waitlist notification address.
+	 *
+	 * Empty is valid — it is how notifications are disabled — but a
+	 * non-empty submission that is not a real address is rejected rather
+	 * than stored: silently saving a typo would look configured while
+	 * quietly sending nowhere. Mirrors sanitize_freescout_secret()'s
+	 * non-string guard, for the same reason: options.php can submit null
+	 * for a field absent from the POST.
+	 *
+	 * @param mixed $submitted Raw submitted value.
+	 * @return string
+	 */
+	public static function sanitize_waitlist_notify_email( $submitted ): string {
+		if ( ! is_string( $submitted ) ) {
+			return (string) get_option( SPLM_Waitlist_Notify::OPTION, '' );
+		}
+
+		$submitted = trim( $submitted );
+		if ( '' === $submitted ) {
+			return '';
+		}
+
+		if ( ! is_email( $submitted ) ) {
+			add_settings_error(
+				SPLM_Waitlist_Notify::OPTION,
+				'splm_waitlist_notify_email_invalid',
+				__( 'Enter a valid email address, or leave this blank to disable waitlist notifications.', 'sportspress-league-manager' )
+			);
+			return (string) get_option( SPLM_Waitlist_Notify::OPTION, '' );
+		}
+
+		return sanitize_email( $submitted );
+	}
+
+	/**
+	 * Renders the shared waitlist notification address field.
+	 */
+	public function render_waitlist_notify_email_field() {
+		echo '<input type="email" name="' . esc_attr( SPLM_Waitlist_Notify::OPTION ) . '" value="' . esc_attr( get_option( SPLM_Waitlist_Notify::OPTION, '' ) ) . '" class="regular-text" />';
+		echo '<p class="description">' . esc_html__( 'Leave blank to disable. When set, every waitlist offer, claim, expiry, withdrawal and removal sends a copy here.', 'sportspress-league-manager' ) . '</p>';
 	}
 }
