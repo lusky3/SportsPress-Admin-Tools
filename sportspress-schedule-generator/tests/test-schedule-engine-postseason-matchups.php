@@ -40,6 +40,7 @@ class WP_Error {
 		$this->message = $message;
 	}
 	public function get_error_message() { return $this->message; }
+	public function get_error_code() { return $this->code; }
 }
 function is_wp_error( $thing ) { return $thing instanceof WP_Error; }
 
@@ -116,6 +117,23 @@ echo "\n=== generate_matchups(): the generic matchup generator is never touched 
 // fatal with "Call to undefined method stdClass::generate()". Reaching
 // this assertion at all is the proof it didn't.
 sepm_assert( true, 'no fatal error calling the (deliberately method-less) generic matchup generator stand-in' );
+
+echo "\n=== generate_matchups(): SPSG_Postseason_Matchup_Builder's InvalidArgumentException becomes a WP_Error ===\n\n";
+
+// An odd division size (3 teams) is not skipped by build_division()'s
+// team-count < 2 guard, so it reaches SPSG_Postseason_Pairing::cross_round_robin(),
+// which throws InvalidArgumentException for a non-even division_size --
+// exercising generate_postseason_matchups()'s try/catch conversion to WP_Error.
+$odd_config = sepm_config(
+	true,
+	array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C' ) ) ),
+	1
+);
+
+$odd_result = $generate_matchups->invoke( $engine, $odd_config );
+
+sepm_assert( is_wp_error( $odd_result ), 'an odd division size (3 teams) produces a WP_Error instead of a fatal or an exception' );
+sepm_assert( 'postseason_matchup_error' === $odd_result->get_error_code(), 'the WP_Error carries the postseason_matchup_error code' );
 
 echo "\n=== Test Summary ===\n";
 echo "Passed: $passed\n";
