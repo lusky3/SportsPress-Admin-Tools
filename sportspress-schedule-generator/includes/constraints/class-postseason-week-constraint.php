@@ -50,10 +50,9 @@ class SPSG_Postseason_Week_Constraint extends SPSG_Abstract_Constraint {
 		}
 
 		$final_week_start = self::final_week_start( $config );
-		$game_date         = new DateTime( $game->date );
 
 		if ( null !== SPSG_Postseason_Bracket_Detector::final_week_info( $game ) ) {
-			if ( $game_date < $final_week_start ) {
+			if ( $game->date < $final_week_start ) {
 				return new WP_Error(
 					'postseason_week_position',
 					__( 'Championship/Consolation games must be scheduled in the postseason\'s final week.', 'sportspress-schedule-generator' )
@@ -63,7 +62,7 @@ class SPSG_Postseason_Week_Constraint extends SPSG_Abstract_Constraint {
 		}
 
 		if ( null !== SPSG_Postseason_Bracket_Detector::cross_round_robin_division( $game ) ) {
-			if ( $game_date >= $final_week_start ) {
+			if ( $game->date >= $final_week_start ) {
 				return new WP_Error(
 					'postseason_week_position',
 					__( 'Round-robin games must be scheduled before the postseason\'s final week.', 'sportspress-schedule-generator' )
@@ -75,17 +74,26 @@ class SPSG_Postseason_Week_Constraint extends SPSG_Abstract_Constraint {
 	}
 
 	/**
-	 * The first date of the postseason's final (Championship/Consolation)
-	 * week -- a rolling 7-day window ending at season_end. Matches
-	 * SPSG_Configuration_Manager::postseason_season_end()'s own formula
-	 * (round_robin_weeks calendar weeks, then a final week of exactly 7 days).
+	 * The first date (as a 'Y-m-d' string) of the postseason's final
+	 * (Championship/Consolation) week -- a rolling 7-day window ending at
+	 * season_end. Matches SPSG_Configuration_Manager::postseason_season_end()'s
+	 * own formula (round_robin_weeks calendar weeks, then a final week of
+	 * exactly 7 days). Returns a string (not a DateTime) so the hot
+	 * allocator loop compares plain 'Y-m-d' strings (which sort correctly
+	 * lexicographically) instead of constructing a DateTime per candidate
+	 * slot -- and so this method works whether $config->season_end is
+	 * itself a DateTime object (the real SPSG_Schedule_Configuration shape)
+	 * or a plain string (as some lighter-weight callers/tests use),
+	 * matching the same instanceof-guard idiom already used in
+	 * SPSG_Slot_Allocator and SPSG_Constraint_Manager for this exact
+	 * dual-shape field.
 	 *
 	 * @param SPSG_Schedule_Configuration $config Postseason configuration.
-	 * @return DateTime
+	 * @return string 'Y-m-d' date string.
 	 */
 	private static function final_week_start( $config ) {
-		$start = new DateTime( $config->season_end );
-		$start->modify( '-6 days' );
-		return $start;
+		$end = $config->season_end instanceof DateTime ? clone $config->season_end : new DateTime( $config->season_end );
+		$end->modify( '-6 days' );
+		return $end->format( 'Y-m-d' );
 	}
 }

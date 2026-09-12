@@ -635,10 +635,14 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 	 * @return string 'Y-m-d' date string, or '' if $season_start is empty.
 	 */
 	private static function postseason_season_end( $season_start, $round_robin_weeks ) {
-		if ( '' === $season_start ) {
+		if ( empty( $season_start ) ) {
 			return '';
 		}
-		$end = new DateTime( $season_start );
+		try {
+			$end = new DateTime( $season_start );
+		} catch ( Exception $e ) {
+			return '';
+		}
 		$end->modify( '+' . ( 7 * ( $round_robin_weeks + 1 ) - 1 ) . ' days' );
 		return $end->format( 'Y-m-d' );
 	}

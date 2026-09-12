@@ -66,7 +66,7 @@ function pwc_assert( $cond, $msg ) {
 function pwc_config( $is_postseason = true, $season_end = '2027-01-28' ) {
 	$config              = new stdClass();
 	$config->is_postseason = $is_postseason;
-	$config->season_end    = $season_end;
+	$config->season_end    = ( '' === $season_end ) ? '' : new DateTime( $season_end );
 	return $config;
 }
 
@@ -119,6 +119,20 @@ $regular_game = pwc_game( 'Toronto Maple Leafs', 'Ottawa Senators', '2027-01-01'
 pwc_assert(
 	true === $constraint->validate( $regular_game, array(), $config ),
 	'a game between two already-resolved real teams is not a postseason placeholder matchup -- no-op'
+);
+
+echo "\n=== SPSG_Postseason_Week_Constraint: season_end may also be a plain string (some callers use this shape) ===\n\n";
+
+$string_season_end_config = new stdClass();
+$string_season_end_config->is_postseason = true;
+$string_season_end_config->season_end    = '2027-01-28'; // plain string, not a DateTime object
+pwc_assert(
+	true === $constraint->validate( pwc_game( 'Div 1 RR-Seed 1', 'Div 1 RR-Seed 2', '2027-01-24' ), array(), $string_season_end_config ),
+	'a Championship game inside the final week passes when season_end is a plain string'
+);
+pwc_assert(
+	is_wp_error( $constraint->validate( pwc_game( 'Div 1 Seed 1', 'Div 1 Seed 6', '2027-01-24' ), array(), $string_season_end_config ) ),
+	'a round-robin game scheduled into the final week still fails when season_end is a plain string'
 );
 
 echo "\n=== Test Summary ===\n";
