@@ -131,8 +131,14 @@ class SPSG_Postseason_Matchup_Builder {
 	 * @return array
 	 */
 	private static function matchup( $home, $away, $division ) {
-		$home_team = (object) array( 'id' => $home, 'name' => $home );
-		$away_team = (object) array( 'id' => $away, 'name' => $away );
+		$home_team = (object) array(
+			'id' => $home,
+			'name' => $home,
+		);
+		$away_team = (object) array(
+			'id' => $away,
+			'name' => $away,
+		);
 		return array(
 			'team_a' => $home_team,
 			'team_b' => $away_team,
