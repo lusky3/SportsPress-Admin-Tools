@@ -314,6 +314,15 @@ class SPAT_Admin {
 				},
 			)
 		);
+		register_setting(
+			'spat_general_settings',
+			'spat_admin_bar_link_enabled',
+			array(
+				'sanitize_callback' => function ( $value ) {
+					return $value === '1' ? '1' : '0';
+				},
+			)
+		);
 
 		// Child plugin settings will be registered by their respective admin classes
 
@@ -369,6 +378,14 @@ class SPAT_Admin {
 			'spat_use_select2',
 			__( 'Enhanced Dropdowns (Slim Select)', 'sportspress-admin-tools' ),
 			array( $this, 'select2_setting_callback' ),
+			'spat_general_settings',
+			'spat_settings_section'
+		);
+
+		add_settings_field(
+			'spat_admin_bar_link_enabled',
+			__( 'Admin Bar Link', 'sportspress-admin-tools' ),
+			array( $this, 'admin_bar_link_setting_callback' ),
 			'spat_general_settings',
 			'spat_settings_section'
 		);
@@ -461,6 +478,43 @@ class SPAT_Admin {
 		$enabled = get_option( 'spat_use_select2', '0' );
 		echo '<input type="checkbox" name="spat_use_select2" value="1" ' . checked( $enabled, '1', false ) . '>';
 		echo '<p class="description">' . esc_html__( 'Use enhanced Slim Select dropdowns with search functionality throughout the plugin. Requires page refresh to take effect.', 'sportspress-admin-tools' ) . '</p>';
+	}
+
+	public function admin_bar_link_setting_callback() {
+		$enabled = get_option( 'spat_admin_bar_link_enabled', '0' );
+		echo '<input type="checkbox" name="spat_admin_bar_link_enabled" value="1" ' . checked( $enabled, '1', false ) . '>';
+		echo '<p class="description">' . esc_html__( 'Add a link to this settings page in the WordPress admin bar (the top toolbar), visible on both the front-end and admin screens.', 'sportspress-admin-tools' ) . '</p>';
+	}
+
+	/**
+	 * admin_bar_menu callback: adds a node linking to this settings page.
+	 *
+	 * Registered unconditionally from the main plugin file's init() (not
+	 * inside init_admin(), which only runs is_admin()) -- the toolbar this
+	 * hook contributes to renders on the front-end too, so the hook must fire
+	 * there as well. Gated at runtime instead: the option controls whether it
+	 * does anything, and the capability check is manage_options because
+	 * that's the capability add_options_page() itself gates this same page
+	 * behind.
+	 *
+	 * @param WP_Admin_Bar $wp_admin_bar Admin bar instance.
+	 * @return void
+	 */
+	public static function add_admin_bar_node( $wp_admin_bar ) {
+		if ( '1' !== get_option( 'spat_admin_bar_link_enabled', '0' ) ) {
+			return;
+		}
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
+		$wp_admin_bar->add_node(
+			array(
+				'id'    => 'spat-settings',
+				'title' => __( 'Admin Tools', 'sportspress-admin-tools' ),
+				'href'  => admin_url( 'options-general.php?page=sportspress-admin-tools' ),
+			)
+		);
 	}
 
 	public function debug_section_callback() {
