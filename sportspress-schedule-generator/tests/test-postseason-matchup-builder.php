@@ -123,14 +123,14 @@ pmb_assert( 2 === $rr_seed_matchups, 'exactly 2 RR-Seed-stage (final week) match
 
 echo "\n=== build(): the final week's RR-Seed 1 vs RR-Seed 2 pairing is the Championship game ===\n\n";
 
-$championship_found = false;
+$championship_count = 0;
 foreach ( $matchups as $matchup ) {
 	$info = SPSG_Postseason_Bracket_Detector::final_week_info( (object) $matchup );
 	if ( null !== $info && $info['is_championship'] ) {
-		$championship_found = true;
+		$championship_count++;
 	}
 }
-pmb_assert( $championship_found, 'exactly one generated matchup is detected as the Championship game' );
+pmb_assert( 1 === $championship_count, 'exactly one generated matchup is detected as the Championship game' );
 
 echo "\n=== build(): divisions with fewer than 2 teams, or no name, are skipped ===\n\n";
 
@@ -174,6 +174,54 @@ foreach ( $two_division_matchups as $matchup ) {
 	}
 }
 pmb_assert( 4 === $div1_count && 4 === $div2_count, 'each division\'s matchups stay scoped to that division' );
+
+echo "\n=== build(): round_robin_weeks > 1 produces the correct cross-round-robin + final-week counts ===\n\n";
+
+SPSG_Placeholder_Team_Manager::$create_calls = array();
+
+// 6 teams supports up to division_size/2 = 3 cross round-robin weeks; use 2.
+$multi_week_config = pmb_config(
+	'config_playoffs_4',
+	array( array( 'name' => 'Div 4', 'teams' => array( 'A', 'B', 'C', 'D', 'E', 'F' ) ) ),
+	2
+);
+
+$multi_week_matchups = SPSG_Postseason_Matchup_Builder::build( $multi_week_config );
+
+// 6 teams / 2 = 3 pairs per cross round-robin week; 2 weeks + 1 final week = (2 + 1) * 3 = 9 matchups.
+pmb_assert( 9 === count( $multi_week_matchups ), 'a 6-team division over 2 round-robin weeks produces 9 matchups ((weeks + 1) * team_count/2)' );
+
+$multi_week_seed_matchups = 0;
+$multi_week_rr_seed_matchups = 0;
+foreach ( $multi_week_matchups as $matchup ) {
+	$home = SPSG_Postseason_Seed_Resolver::parse_seed_placeholder_name( $matchup['home_team']->name );
+	if ( SPSG_Postseason_Seed_Resolver::SEED_STAGE === $home['stage'] ) {
+		$multi_week_seed_matchups++;
+	} else {
+		$multi_week_rr_seed_matchups++;
+	}
+}
+pmb_assert( 6 === $multi_week_seed_matchups, 'the 2 cross-round-robin weeks together contribute 6 Seed-stage matchups (2 weeks * 3 pairs)' );
+pmb_assert( 3 === $multi_week_rr_seed_matchups, 'the final week still contributes 3 RR-Seed-stage matchups (team_count/2)' );
+
+echo "\n=== build(): an object-shaped division entry (stdClass instead of array) ===\n\n";
+
+SPSG_Placeholder_Team_Manager::$create_calls = array();
+
+$object_division_config = pmb_config(
+	'config_playoffs_5',
+	array( (object) array( 'name' => 'Div 3', 'teams' => array( 'A', 'B', 'C', 'D' ) ) ),
+	1
+);
+
+$object_division_matchups = SPSG_Postseason_Matchup_Builder::build( $object_division_config );
+
+// Same 4-team, 1-week shape as the first scenario: 2 cross-round-robin + 2 final-week = 4 matchups.
+pmb_assert( 4 === count( $object_division_matchups ), 'an object-shaped division entry still produces the correct matchup count (4)' );
+
+foreach ( $object_division_matchups as $matchup ) {
+	pmb_assert( 'Div 3' === $matchup['division']->name, 'the object-shaped division\'s name is carried through on every matchup' );
+}
 
 echo "\n=== Test Summary ===\n";
 echo "Passed: $passed\n";
