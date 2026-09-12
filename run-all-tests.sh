@@ -71,6 +71,7 @@ run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-config-name-and-
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-admin-config-id-resolution.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-venue-date-overrides.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-placeholder-team-import.php"
+run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-placeholder-team-idempotency.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-postseason-pairing.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-postseason-config.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-postseason-seed-resolver.php"
