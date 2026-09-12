@@ -138,11 +138,56 @@ export default function ScheduleGenerator() {
 	const [toast,setToast] = useState(null); // UX-7/in-app feedback {message,type}
 	const [presetOpen,setPresetOpen] = useState(false); // UX-6
 	const presetRef = useRef(null);
+	// Postseason (phase 6): create-from-source panel + per-division placeholder minting
+	const [postseasonPanelId,setPostseasonPanelId] = useState(null);
+	const [postseasonForm,setPostseasonForm] = useState({round_robin_weeks:1,championship_day:{day:'saturday',start:'',end:''},consolation_day:'sunday'});
+	const [postseasonBusy,setPostseasonBusy] = useState(false);
+	const [mintingId,setMintingId] = useState(null);
 
 	const loadConfigs = useCallback(() => {
 		setLoading(true);
 		spsg.listConfigs().then(setConfigs).catch(()=>setError('Failed to load configs')).finally(()=>setLoading(false));
 	}, []);
+
+	// Postseason (phase 6): create a postseason configuration from a saved
+	// regular-season one, copying its divisions/venues/playing_days/time_slots.
+	const doCreatePostseason = async (sourceId) => {
+		setPostseasonBusy(true);
+		try {
+			await spsg.createPostseasonConfig(sourceId, postseasonForm);
+			setToast({message:'Postseason configuration created.',type:'success'});
+			setPostseasonPanelId(null);
+			loadConfigs();
+		} catch (e) {
+			setToast({message:'Failed to create postseason configuration: '+(e?.message||'unknown error'),type:'error'});
+		} finally {
+			setPostseasonBusy(false);
+		}
+	};
+
+	// Postseason (phase 6): mint "Div Seed N"/"Div RR-Seed N" placeholder teams
+	// for every division in a postseason config. Minted placeholders show up
+	// like any other placeholder team once a schedule is generated against
+	// them -- the existing "Needs Assignment" step (below) replaces them with
+	// real teams once standings determine who each seed actually is.
+	const doMintPlaceholders = async (configId) => {
+		setMintingId(configId);
+		try {
+			const full = await spsg.getConfig(configId);
+			let total = 0;
+			for (const div of full.divisions||[]) {
+				const teamCount = (div.teams||[]).length;
+				if (!div.name || teamCount < 1) continue;
+				const minted = await spsg.mintPostseasonPlaceholders(configId, div.name, teamCount);
+				total += Object.keys(minted?.seed||{}).length + Object.keys(minted?.rr_seed||{}).length;
+			}
+			setToast({message:`Minted ${total} placeholder team(s). Assign real teams from the Needs Assignment step once a schedule is generated.`,type:'success'});
+		} catch (e) {
+			setToast({message:'Failed to mint placeholders: '+(e?.message||'unknown error'),type:'error'});
+		} finally {
+			setMintingId(null);
+		}
+	};
 
 	useEffect(() => {
 		loadConfigs();
@@ -408,9 +453,13 @@ export default function ScheduleGenerator() {
 										<Fragment key={c.id}>
 										<tr>
 											{/* Gap #4: inline rename */}
-											<td><input defaultValue={c.name} aria-label={`Rename configuration ${c.name}`} style={{border:'none',background:'transparent',width:'100%',padding:0}}
-												onBlur={async e=>{ if(e.target.value!==c.name){await spsg.updateConfig(c.id,{name:e.target.value});loadConfigs();} }}
-												onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}}/></td>
+											<td>
+												<input defaultValue={c.name} aria-label={`Rename configuration ${c.name}`} style={{border:'none',background:'transparent',width:'100%',padding:0}}
+													onBlur={async e=>{ if(e.target.value!==c.name){await spsg.updateConfig(c.id,{name:e.target.value});loadConfigs();} }}
+													onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}}/>
+												{/* Phase 6: postseason badge */}
+												{c.is_postseason&&<span className="splm-badge" title="Postseason configuration">🏆 Postseason</span>}
+											</td>
 											<td>{fmtDate(c.updated_at)}</td><td>{c.division_count}</td><td>{c.team_count}</td>
 											<td style={f}>
 												<button className="splm-btn" onClick={()=>{
@@ -438,8 +487,66 @@ export default function ScheduleGenerator() {
 													const h = await spsg.getHistory(c.id).catch(()=>[]);
 													setHistoryData(h); setHistoryId(c.id);
 												}}>⏱</button>
+												{/* Phase 6: postseason actions */}
+												{!c.is_postseason&&(
+													<button className="splm-btn" title="Create postseason configuration from this one" aria-label={`Create postseason configuration from ${c.name}`} onClick={()=>{
+														setPostseasonPanelId(postseasonPanelId===c.id?null:c.id);
+													}}>🏆 Playoffs</button>
+												)}
+												{c.is_postseason&&(
+													<button className="splm-btn" disabled={mintingId===c.id} title="Mint Seed/RR-Seed placeholder teams for every division" onClick={()=>doMintPlaceholders(c.id)}>
+														{mintingId===c.id?'Minting…':'Mint Placeholders'}
+													</button>
+												)}
 											</td>
 										</tr>
+										{/* Inline postseason-creation panel */}
+										{postseasonPanelId===c.id&&(
+											<tr>
+												<td colSpan={5} style={{background:'var(--splm-surface-alt)',padding:'0.75rem'}}>
+													<h4 style={{marginTop:0}}>Create Postseason Configuration from "{c.name}"</h4>
+													<p className="splm-muted" style={{marginTop:0}}>Copies divisions, venues, playing days, and time slots from this configuration. After creating it, use "Mint Placeholders" to generate Seed/RR-Seed placeholder teams for each division.</p>
+													<div style={{display:'flex',gap:'0.75rem',flexWrap:'wrap',alignItems:'flex-end'}}>
+														<label style={{display:'flex',flexDirection:'column',fontSize:'0.85em'}}>
+															Round robin weeks
+															<input type="number" min={1} className="splm-select" style={{width:100}}
+																value={postseasonForm.round_robin_weeks}
+																onChange={e=>setPostseasonForm(p=>({...p,round_robin_weeks:Math.max(1,parseInt(e.target.value,10)||1)}))}/>
+														</label>
+														<label style={{display:'flex',flexDirection:'column',fontSize:'0.85em'}}>
+															Championship day
+															<select className="splm-select" value={postseasonForm.championship_day.day}
+																onChange={e=>setPostseasonForm(p=>({...p,championship_day:{...p.championship_day,day:e.target.value}}))}>
+																{DAYS.map(d=><option key={d} value={d}>{DL[d]}</option>)}
+															</select>
+														</label>
+														<label style={{display:'flex',flexDirection:'column',fontSize:'0.85em'}}>
+															Championship window start
+															<input type="time" className="splm-select" value={postseasonForm.championship_day.start}
+																onChange={e=>setPostseasonForm(p=>({...p,championship_day:{...p.championship_day,start:e.target.value}}))}/>
+														</label>
+														<label style={{display:'flex',flexDirection:'column',fontSize:'0.85em'}}>
+															Championship window end
+															<input type="time" className="splm-select" value={postseasonForm.championship_day.end}
+																onChange={e=>setPostseasonForm(p=>({...p,championship_day:{...p.championship_day,end:e.target.value}}))}/>
+														</label>
+														<label style={{display:'flex',flexDirection:'column',fontSize:'0.85em'}}>
+															Consolation day
+															<select className="splm-select" value={postseasonForm.consolation_day}
+																onChange={e=>setPostseasonForm(p=>({...p,consolation_day:e.target.value}))}>
+																{DAYS.map(d=><option key={d} value={d}>{DL[d]}</option>)}
+															</select>
+														</label>
+													</div>
+													<div style={{marginTop:'0.75rem',display:'flex',gap:'0.5rem'}}>
+														<button className="splm-btn splm-btn--primary" disabled={postseasonBusy} onClick={()=>doCreatePostseason(c.id)}>
+															{postseasonBusy?'Creating…':'Create'}
+														</button>
+														<button className="splm-btn" onClick={()=>setPostseasonPanelId(null)}>Cancel</button>
+													</div>
+												</td>
+											</tr>
+										)}
 										{/* Inline history panel */}
 										{historyId===c.id&&(
 											<tr>

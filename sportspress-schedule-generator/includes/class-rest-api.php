@@ -133,6 +133,51 @@ class SPSG_REST_API {
 				)
 			)
 		);
+		// Postseason: create a postseason configuration from a regular-season one
+		register_rest_route(
+			$ns,
+			'/configs/(?P<id>[\w-]+)/postseason',
+			array_merge(
+				$perm,
+				array(
+					'methods' => 'POST',
+					'callback' => array( $this, 'spsg_create_postseason_config' ),
+					'args' => $id_args,
+				)
+			)
+		);
+		// Postseason: mint one division's Seed/RR-Seed placeholder teams
+		register_rest_route(
+			$ns,
+			'/configs/(?P<id>[\w-]+)/postseason/placeholders',
+			array_merge(
+				$perm,
+				array(
+					'methods' => 'POST',
+					'callback' => array( $this, 'spsg_mint_postseason_placeholders' ),
+					'args' => array_merge(
+						$id_args,
+						array(
+							'division' => $this->required_string_arg(),
+							'team_count' => $this->required_positive_int_arg(),
+						)
+					),
+				)
+			)
+		);
+		// Postseason: resolve seed placeholders to real teams from a supplied ranking
+		register_rest_route(
+			$ns,
+			'/configs/(?P<id>[\w-]+)/postseason/resolve-seeds',
+			array_merge(
+				$perm,
+				array(
+					'methods' => 'POST',
+					'callback' => array( $this, 'spsg_resolve_postseason_seeds' ),
+					'args' => $id_args,
+				)
+			)
+		);
 		register_rest_route(
 			$ns,
 			'/configs/(?P<id>[\w-]+)/placeholders',
@@ -498,6 +543,20 @@ class SPSG_REST_API {
 	 * (schedule_id, config_id) -- kept in one place instead of repeating the
 	 * same sanitize/validate pair at each register_rest_route() call.
 	 */
+	/**
+	 * Arg schema shared by every route param that must be a positive integer
+	 * (team_count, and the id/replacement_id params above) -- kept in one
+	 * place for the same reason as required_string_arg().
+	 */
+	private function required_positive_int_arg() {
+		return array(
+			'required' => true,
+			'sanitize_callback' => 'absint',
+			'validate_callback' => function ( $val ) {
+				return is_numeric( $val ) && (int) $val > 0; },
+		);
+	}
+
 	private function required_string_arg() {
 		return array(
 			'required' => true,
@@ -693,6 +752,7 @@ class SPSG_REST_API {
 				'updated_at' => $meta['modified'],
 				'division_count' => count( $divs ),
 				'team_count' => $tc,
+				'is_postseason' => ! empty( $raw[ $id ]['is_postseason'] ),
 			);
 		}
 		return rest_ensure_response( spsg_rest_list_response( $out ) );
@@ -778,6 +838,84 @@ class SPSG_REST_API {
 		$config['name'] = $request->get_param( 'name' ) ?: ( ( $config['name'] ?? 'Unnamed' ) . ' (Copy)' );
 		$new_id = $this->save_draft( $config );
 		return rest_ensure_response( array( 'id' => $new_id ) );
+	}
+
+	// --- Postseason ---
+
+	/** Create a postseason configuration from a regular-season one. */
+	public function spsg_create_postseason_config( $request ) {
+		$overrides = (array) $request->get_json_params();
+		$new_id = $this->cm()->create_postseason_configuration( $request['id'], $overrides );
+		return is_wp_error( $new_id ) ? $new_id : rest_ensure_response( array( 'id' => $new_id ) );
+	}
+
+	/**
+	 * Mint one division's Seed/RR-Seed placeholder teams for a postseason
+	 * configuration.
+	 *
+	 * @param WP_REST_Request $request Request carrying the config id, division, and team_count.
+	 * @return WP_REST_Response|WP_Error
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	public function spsg_mint_postseason_placeholders( $request ) {
+		$config = $this->postseason_config( $request['id'] );
+		if ( is_wp_error( $config ) ) {
+			return $config;
+		}
+
+		$minted = SPSG_Postseason_Seed_Resolver::mint_division_placeholders(
+			$request->get_param( 'division' ),
+			(int) $request->get_param( 'team_count' ),
+			$request['id']
+		);
+		return rest_ensure_response( $minted );
+	}
+
+	/**
+	 * Resolve a postseason configuration's seed placeholders to real teams,
+	 * given a ranking the caller already computed (this class never
+	 * computes standings itself).
+	 *
+	 * @param WP_REST_Request $request Request carrying the config id, placeholder_ids, and ranked_team_ids.
+	 * @return WP_REST_Response|WP_Error
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	public function spsg_resolve_postseason_seeds( $request ) {
+		$config = $this->postseason_config( $request['id'] );
+		if ( is_wp_error( $config ) ) {
+			return $config;
+		}
+
+		$placeholder_ids = $request->get_param( 'placeholder_ids' );
+		$ranked_team_ids = $request->get_param( 'ranked_team_ids' );
+
+		if ( ! is_array( $placeholder_ids ) || ! is_array( $ranked_team_ids ) ) {
+			return new WP_Error( 'invalid_data', 'placeholder_ids and ranked_team_ids must both be provided as objects.', array( 'status' => 400 ) );
+		}
+
+		return rest_ensure_response( SPSG_Postseason_Seed_Resolver::resolve_seeds( $placeholder_ids, $ranked_team_ids ) );
+	}
+
+	/**
+	 * Load a postseason configuration by id, straight from storage (not
+	 * cm()->load(), which silently falls back to "most recently modified"
+	 * for an unknown id -- exactly wrong for a route scoped to one specific
+	 * config).
+	 *
+	 * @param string $id Configuration id.
+	 * @return array|WP_Error Raw configuration data, or an error if not found / not a postseason config.
+	 */
+	private function postseason_config( $id ) {
+		$configs = get_option( 'spsg_configurations', array() );
+		if ( ! isset( $configs[ $id ] ) ) {
+			return new WP_Error( 'not_found', 'Config not found.', array( 'status' => 404 ) );
+		}
+		if ( empty( $configs[ $id ]['is_postseason'] ) ) {
+			return new WP_Error( 'not_postseason', 'This configuration is not a postseason configuration.', array( 'status' => 400 ) );
+		}
+		return $configs[ $id ];
 	}
 
 	public function spsg_validate_config( $request ) {
