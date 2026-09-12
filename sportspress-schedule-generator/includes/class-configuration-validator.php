@@ -232,6 +232,7 @@ class SPSG_Configuration_Validator {
 		$this->validate_postseason_day( $errors, 'championship_day', $this->config->championship_day['day'] ?? '' );
 		$this->validate_postseason_day( $errors, 'consolation_day', $this->config->consolation_day );
 		$this->validate_postseason_final_week_capacity( $errors );
+		$this->validate_postseason_season_span( $errors );
 	}
 
 	/**
@@ -265,6 +266,38 @@ class SPSG_Configuration_Validator {
 
 		if ( '' !== $this->config->consolation_day && $consolation_games > 0 ) {
 			$this->check_final_week_capacity( $errors, 'consolation_day', $this->config->consolation_day, $consolation_games, null );
+		}
+	}
+
+	/**
+	 * Whether season_end still equals exactly (round_robin_weeks + 1)
+	 * calendar weeks after season_start -- the invariant
+	 * SPSG_Configuration_Manager::postseason_season_end() establishes at
+	 * CREATION time (season_start + 7*(round_robin_weeks+1)-1 days) and
+	 * SPSG_Postseason_Week_Constraint::final_week_start() assumes still
+	 * holds at GENERATION time. Nothing stops an admin editing
+	 * season_start, season_end, or round_robin_weeks independently
+	 * afterward through the normal config editor -- this catches that
+	 * before it becomes a confusing scheduling failure.
+	 *
+	 * @param array $errors Accumulator, keyed by field name.
+	 */
+	private function validate_postseason_season_span( &$errors ) {
+		if ( empty( $this->config->season_start ) || empty( $this->config->season_end ) ) {
+			return; // validate_dates() already requires both; nothing new to check on an incomplete config.
+		}
+
+		$expected_end = clone $this->config->season_start;
+		$expected_end->modify( '+' . ( 7 * ( $this->config->round_robin_weeks + 1 ) - 1 ) . ' days' );
+
+		if ( $expected_end->format( 'Y-m-d' ) !== $this->config->season_end->format( 'Y-m-d' ) ) {
+			$errors['season_end'] = sprintf(
+				/* translators: 1: round_robin_weeks, 2: the season_end this implies, 3: the season_end actually configured */
+				__( 'For %1$d round robin week(s), season_end must be %2$s (season_start + %1$d+1 weeks) -- got %3$s. Editing season_start, season_end, or round_robin_weeks independently can break this; recreate the postseason configuration instead.', 'sportspress-schedule-generator' ),
+				$this->config->round_robin_weeks,
+				$expected_end->format( 'Y-m-d' ),
+				$this->config->season_end->format( 'Y-m-d' )
+			);
 		}
 	}
 
