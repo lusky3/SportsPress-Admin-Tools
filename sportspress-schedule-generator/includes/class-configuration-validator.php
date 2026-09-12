@@ -316,6 +316,10 @@ class SPSG_Configuration_Validator {
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function check_final_week_capacity( &$errors, $error_key, $day_name, $games_needed, $time_window ) {
+		if ( isset( $errors[ $error_key ] ) ) {
+			return; // Already flagged as not a playing day -- don't clobber with a confusing capacity message.
+		}
+
 		$date      = $this->final_week_date_for_day( $day_name );
 		$available = SPSG_Schedule_Helper::count_slots_on_date( $this->config, $date, $time_window );
 
