@@ -146,7 +146,7 @@ class SPSG_REST_API {
 				)
 			)
 		);
-		// Postseason: mint one division's Seed/RR-Seed placeholder teams
+		// Postseason: mint every division's Seed/RR-Seed placeholder teams
 		register_rest_route(
 			$ns,
 			'/configs/(?P<id>[\w-]+)/postseason/placeholders',
@@ -155,13 +155,7 @@ class SPSG_REST_API {
 				array(
 					'methods' => 'POST',
 					'callback' => array( $this, 'spsg_mint_postseason_placeholders' ),
-					'args' => array_merge(
-						$id_args,
-						array(
-							'division' => $this->required_string_arg(),
-							'team_count' => $this->required_positive_int_arg(),
-						)
-					),
+					'args' => $id_args,
 				)
 			)
 		);
@@ -200,19 +194,10 @@ class SPSG_REST_API {
 					'methods' => 'POST',
 					'callback' => array( $this, 'spsg_replace_placeholder' ),
 					'args' => array(
-						'id' => array(
-							'sanitize_callback' => 'absint',
-							'validate_callback' => function ( $val ) {
-								return is_numeric( $val ) && (int) $val > 0; },
-						),
+						'id' => $this->required_positive_int_arg(),
 						// M-4: declare the body params the handler reads so the REST
 						// framework sanitizes/validates them instead of relying on inline casts.
-						'replacement_id' => array(
-							'required' => true,
-							'sanitize_callback' => 'absint',
-							'validate_callback' => function ( $val ) {
-								return is_numeric( $val ) && (int) $val > 0; },
-						),
+						'replacement_id' => $this->required_positive_int_arg(),
 						'delete' => array(
 							'default' => true,
 							'sanitize_callback' => 'rest_sanitize_boolean',
@@ -850,11 +835,13 @@ class SPSG_REST_API {
 	}
 
 	/**
-	 * Mint one division's Seed/RR-Seed placeholder teams for a postseason
-	 * configuration.
+	 * Mint every division's Seed/RR-Seed placeholder teams for a postseason
+	 * configuration, reading division names/team counts straight off the
+	 * configuration itself -- the caller never needs to know a config's own
+	 * division shape to mint its placeholders.
 	 *
-	 * @param WP_REST_Request $request Request carrying the config id, division, and team_count.
-	 * @return WP_REST_Response|WP_Error
+	 * @param WP_REST_Request $request Request carrying the config id.
+	 * @return WP_REST_Response|WP_Error Division name => mint_division_placeholders() result.
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
@@ -864,11 +851,15 @@ class SPSG_REST_API {
 			return $config;
 		}
 
-		$minted = SPSG_Postseason_Seed_Resolver::mint_division_placeholders(
-			$request->get_param( 'division' ),
-			(int) $request->get_param( 'team_count' ),
-			$request['id']
-		);
+		$minted = array();
+		foreach ( (array) ( $config['divisions'] ?? array() ) as $division ) {
+			$name = is_array( $division ) ? (string) ( $division['name'] ?? '' ) : '';
+			$team_count = is_array( $division ) ? count( (array) ( $division['teams'] ?? array() ) ) : 0;
+			if ( '' === $name || $team_count < 1 ) {
+				continue;
+			}
+			$minted[ $name ] = SPSG_Postseason_Seed_Resolver::mint_division_placeholders( $name, $team_count, $request['id'] );
+		}
 		return rest_ensure_response( $minted );
 	}
 

@@ -25,7 +25,11 @@ define( 'SPSG_PLUGIN_PATH', dirname( __FILE__ ) . '/../' );
 
 function rest_ensure_response( $data ) { return $data; } // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
 function add_action() { return true; } // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
-function __( $s, $d = null ) { return $s; } // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
+
+/**
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
+function __( $s, $d = null ) { return $s; }
 
 class WP_Error {
 	public $code;
@@ -82,12 +86,21 @@ class RAP_Mock_Request implements ArrayAccess {
  */
 class SPSG_Placeholder_Team_Manager {
 	public static $next_id = 900;
+	/**
+	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+	 */
 	public static function create_placeholder_team( $team_name, $config_id = '', $division = '' ) {
 		return self::$next_id++;
 	}
+	/**
+	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+	 */
 	public static function is_placeholder( $team_id ) {
 		return true;
 	}
+	/**
+	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+	 */
 	public static function replace_team( $placeholder_id, $replacement_id, $delete_placeholder = true ) {
 		return array( 'events_updated' => 0, 'placeholder_status' => 'trashed', 'errors' => array() );
 	}
@@ -124,26 +137,38 @@ rap_assert(
 
 echo "\n=== postseason_config() guard (shared by the placeholder/resolve-seeds routes) ===\n\n";
 
-$result = $api->spsg_mint_postseason_placeholders( new RAP_Mock_Request( array( 'id' => 'nonexistent', 'division' => 'Div 1', 'team_count' => 4 ) ) );
+$result = $api->spsg_mint_postseason_placeholders( new RAP_Mock_Request( array( 'id' => 'nonexistent' ) ) );
 rap_assert( is_wp_error( $result ) && 'not_found' === $result->get_error_code(), 'unknown config id -> not_found error' );
 
 global $rap_test_options;
 $rap_test_options['spsg_configurations'] = array(
 	'config_regular'   => array( 'id' => 'config_regular', 'is_postseason' => false ),
-	'config_playoffs'  => array( 'id' => 'config_playoffs', 'is_postseason' => true ),
+	'config_playoffs'  => array(
+		'id' => 'config_playoffs',
+		'is_postseason' => true,
+		'divisions' => array(
+			array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C' ) ),
+			array( 'name' => '', 'teams' => array( 'X', 'Y' ) ), // no name -- skipped
+			array( 'name' => 'Div 2', 'teams' => array() ), // no teams -- skipped
+		),
+	),
 );
 
-$result = $api->spsg_mint_postseason_placeholders( new RAP_Mock_Request( array( 'id' => 'config_regular', 'division' => 'Div 1', 'team_count' => 4 ) ) );
+$result = $api->spsg_mint_postseason_placeholders( new RAP_Mock_Request( array( 'id' => 'config_regular' ) ) );
 rap_assert(
 	is_wp_error( $result ) && 'not_postseason' === $result->get_error_code(),
 	'a regular-season config id -> not_postseason error, even though it exists'
 );
 
-echo "\n=== spsg_mint_postseason_placeholders(): delegates to SPSG_Postseason_Seed_Resolver::mint_division_placeholders() ===\n\n";
+echo "\n=== spsg_mint_postseason_placeholders(): reads divisions off the config itself, delegates to SPSG_Postseason_Seed_Resolver::mint_division_placeholders() per division ===\n\n";
 
-$result = $api->spsg_mint_postseason_placeholders( new RAP_Mock_Request( array( 'id' => 'config_playoffs', 'division' => 'Div 1', 'team_count' => 3 ) ) );
+$result = $api->spsg_mint_postseason_placeholders( new RAP_Mock_Request( array( 'id' => 'config_playoffs' ) ) );
 rap_assert(
-	3 === count( $result['seed'] ) && 3 === count( $result['rr_seed'] ),
+	array( 'Div 1' ) === array_keys( $result ),
+	'only the one division with both a name and teams is minted -- the unnamed and empty ones are skipped'
+);
+rap_assert(
+	3 === count( $result['Div 1']['seed'] ) && 3 === count( $result['Div 1']['rr_seed'] ),
 	'mints 3 Seed + 3 RR-Seed placeholders for a 3-team division, via the real resolver'
 );
 

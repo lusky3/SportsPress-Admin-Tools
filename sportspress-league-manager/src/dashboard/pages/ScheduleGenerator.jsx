@@ -166,21 +166,16 @@ export default function ScheduleGenerator() {
 	};
 
 	// Postseason (phase 6): mint "Div Seed N"/"Div RR-Seed N" placeholder teams
-	// for every division in a postseason config. Minted placeholders show up
+	// for every division in a postseason config (the server reads division
+	// names/team counts off the config itself). Minted placeholders show up
 	// like any other placeholder team once a schedule is generated against
 	// them -- the existing "Needs Assignment" step (below) replaces them with
 	// real teams once standings determine who each seed actually is.
 	const doMintPlaceholders = async (configId) => {
 		setMintingId(configId);
 		try {
-			const full = await spsg.getConfig(configId);
-			let total = 0;
-			for (const div of full.divisions||[]) {
-				const teamCount = (div.teams||[]).length;
-				if (!div.name || teamCount < 1) continue;
-				const minted = await spsg.mintPostseasonPlaceholders(configId, div.name, teamCount);
-				total += Object.keys(minted?.seed||{}).length + Object.keys(minted?.rr_seed||{}).length;
-			}
+			const minted = await spsg.mintPostseasonPlaceholders(configId);
+			const total = Object.values(minted||{}).reduce((sum,m)=>sum+Object.keys(m?.seed||{}).length+Object.keys(m?.rr_seed||{}).length,0);
 			setToast({message:`Minted ${total} placeholder team(s). Assign real teams from the Needs Assignment step once a schedule is generated.`,type:'success'});
 		} catch (e) {
 			setToast({message:'Failed to mint placeholders: '+(e?.message||'unknown error'),type:'error'});
@@ -517,7 +512,10 @@ export default function ScheduleGenerator() {
 															Championship day
 															<select className="splm-select" value={postseasonForm.championship_day.day}
 																onChange={e=>setPostseasonForm(p=>({...p,championship_day:{...p.championship_day,day:e.target.value}}))}>
-																{DAYS.map(d=><option key={d} value={d}>{DL[d]}</option>)}
+																{DAYS.map(d=>(
+																	// eslint-disable-next-line security/detect-object-injection -- d is always one of the fixed DAYS values, never user input
+																	<option key={d} value={d}>{DL[d]}</option>
+																))}
 															</select>
 														</label>
 														<label style={{display:'flex',flexDirection:'column',fontSize:'0.85em'}}>
@@ -534,7 +532,10 @@ export default function ScheduleGenerator() {
 															Consolation day
 															<select className="splm-select" value={postseasonForm.consolation_day}
 																onChange={e=>setPostseasonForm(p=>({...p,consolation_day:e.target.value}))}>
-																{DAYS.map(d=><option key={d} value={d}>{DL[d]}</option>)}
+																{DAYS.map(d=>(
+																	// eslint-disable-next-line security/detect-object-injection -- d is always one of the fixed DAYS values, never user input
+																	<option key={d} value={d}>{DL[d]}</option>
+																))}
 															</select>
 														</label>
 													</div>
