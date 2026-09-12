@@ -319,6 +319,9 @@ $valid_postseason = new SPSG_Schedule_Configuration(
 		pc_valid_regular_season_fields(),
 		array(
 			'is_postseason'     => true,
+			'season_start'      => '2026-10-01',
+			'season_end'        => '2026-10-28', // season_start + 7*(3+1)-1 = 27 days
+			'time_slots'        => array( 'friday' => array( '18:00', '19:00', '20:00', '21:00' ) ), // plenty of slots for the 9 games needed
 			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D', 'E', 'F' ) ) ), // half = 3
 			'round_robin_weeks' => 3,
 		)
@@ -330,11 +333,167 @@ pc_assert(
 	'a valid postseason config (even division, round_robin_weeks within range) passes validation entirely'
 );
 
+echo "\n=== SPSG_Schedule_Configuration::validate(): postseason final-week capacity ===\n\n";
+
+// season_start 2027-01-01 is a Friday; round_robin_weeks=1 -> season_end = start + 13 days = 2027-01-14.
+// The final (trailing 7-day) week is 2027-01-08..2027-01-14. Within it, Friday = 2027-01-08, Sunday = 2027-01-10.
+$capacity_ok = new SPSG_Schedule_Configuration(
+	array_merge(
+		pc_valid_regular_season_fields(),
+		array(
+			'is_postseason'     => true,
+			'season_start'      => '2027-01-01',
+			'season_end'        => '2027-01-14',
+			'round_robin_weeks' => 1,
+			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D' ) ) ), // 4 teams: 1 championship game, 1 consolation game
+			'playing_days'      => array( 'friday', 'sunday' ),
+			'venues'            => array( array( 'id' => 'v1', 'name' => 'Rink 1' ) ),
+			'time_slots'        => array(
+				'friday' => array( '18:00', '19:00', '20:00' ),
+				'sunday' => array( '10:00', '11:00' ),
+			),
+			'championship_day'  => array( 'day' => 'friday', 'start' => '18:45', 'end' => '21:00' ), // 19:00, 20:00 qualify -- 2 available, 1 needed
+			'consolation_day'   => 'sunday', // 2 available, 1 needed
+		)
+	)
+);
+$result = $capacity_ok->validate();
+pc_assert( true === $result, 'enough capacity on both the championship and consolation dates -- passes' );
+
+$consolation_capacity_short = new SPSG_Schedule_Configuration(
+	array_merge(
+		pc_valid_regular_season_fields(),
+		array(
+			'is_postseason'     => true,
+			'season_start'      => '2027-01-01',
+			'season_end'        => '2027-01-14',
+			'round_robin_weeks' => 1,
+			// 2 divisions of 4 teams: 2 championship games, 2 consolation games.
+			'divisions'         => array(
+				array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D' ) ),
+				array( 'name' => 'Div 2', 'teams' => array( 'E', 'F', 'G', 'H' ) ),
+			),
+			'playing_days'      => array( 'friday', 'sunday' ),
+			'venues'            => array( array( 'id' => 'v1', 'name' => 'Rink 1' ) ),
+			'time_slots'        => array(
+				'friday' => array( '18:00', '19:00', '20:00' ), // window keeps 2 -- enough for 2 championship games
+				'sunday' => array( '10:00' ), // only 1 slot -- NOT enough for 2 consolation games
+			),
+			'championship_day'  => array( 'day' => 'friday', 'start' => '18:45', 'end' => '21:00' ),
+			'consolation_day'   => 'sunday',
+		)
+	)
+);
+$result = $consolation_capacity_short->validate();
+pc_assert(
+	is_wp_error( $result ) && isset( $result->data['errors']['consolation_day'] ),
+	'not enough consolation-day capacity for the number of consolation games needed -- fails with a consolation_day error'
+);
+
+$championship_capacity_short = new SPSG_Schedule_Configuration(
+	array_merge(
+		pc_valid_regular_season_fields(),
+		array(
+			'is_postseason'     => true,
+			'season_start'      => '2027-01-01',
+			'season_end'        => '2027-01-14',
+			'round_robin_weeks' => 1,
+			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D' ) ) ), // 1 championship game, 1 consolation game
+			'playing_days'      => array( 'friday', 'sunday' ),
+			'venues'            => array( array( 'id' => 'v1', 'name' => 'Rink 1' ) ),
+			'time_slots'        => array(
+				'friday' => array( '18:00' ), // only 18:00 -- the 19:00-20:00 window keeps ZERO of it
+				'sunday' => array( '10:00', '11:00', '12:00', '13:00', '14:00' ), // plenty for consolation
+			),
+			'championship_day'  => array( 'day' => 'friday', 'start' => '19:00', 'end' => '20:00' ),
+			'consolation_day'   => 'sunday',
+		)
+	)
+);
+$result = $championship_capacity_short->validate();
+pc_assert(
+	is_wp_error( $result ) && isset( $result->data['errors']['championship_day'] ),
+	'the championship time window excludes every configured slot on that date -- fails with a championship_day error'
+);
+
+$championship_date_blacked_out = new SPSG_Schedule_Configuration(
+	array_merge(
+		pc_valid_regular_season_fields(),
+		array(
+			'is_postseason'     => true,
+			'season_start'      => '2027-01-01',
+			'season_end'        => '2027-01-14',
+			'round_robin_weeks' => 1,
+			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D' ) ) ),
+			'playing_days'      => array( 'friday', 'sunday' ),
+			'venues'            => array( array( 'id' => 'v1', 'name' => 'Rink 1' ) ),
+			'time_slots'        => array(
+				'friday' => array( '18:00', '19:00', '20:00' ),
+				'sunday' => array( '10:00', '11:00' ),
+			),
+			'championship_day'  => array( 'day' => 'friday', 'start' => '18:45', 'end' => '21:00' ),
+			'consolation_day'   => 'sunday',
+			'blackout_dates'    => array( '2027-01-08' ), // the Friday within the final week -- Championship's own date
+		)
+	)
+);
+$result = $championship_date_blacked_out->validate();
+pc_assert(
+	is_wp_error( $result ) && isset( $result->data['errors']['championship_day'] ),
+	'the championship date is a GLOBAL blackout date -- capacity check must catch this, not just venue-level blackouts'
+);
+
+echo "\n=== SPSG_Schedule_Configuration::validate(): postseason season-date invariant ===\n\n";
+
+// Same shape as Task 2's "capacity_ok" fixture (season_start 2027-01-01,
+// round_robin_weeks=1 -> season_end MUST be 2027-01-14), reused here so
+// this check's own tests aren't confounded by a capacity failure.
+function pc_postseason_span_fields( $season_end ) {
+	return array_merge(
+		pc_valid_regular_season_fields(),
+		array(
+			'is_postseason'     => true,
+			'season_start'      => '2027-01-01',
+			'season_end'        => $season_end,
+			'round_robin_weeks' => 1,
+			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D' ) ) ),
+			'playing_days'      => array( 'friday', 'sunday' ),
+			'venues'            => array( array( 'id' => 'v1', 'name' => 'Rink 1' ) ),
+			'time_slots'        => array(
+				'friday' => array( '18:00', '19:00', '20:00' ),
+				'sunday' => array( '10:00', '11:00' ),
+			),
+			'championship_day'  => array( 'day' => 'friday', 'start' => '18:45', 'end' => '21:00' ),
+			'consolation_day'   => 'sunday',
+		)
+	);
+}
+
+$span_correct = new SPSG_Schedule_Configuration( pc_postseason_span_fields( '2027-01-14' ) );
+$result        = $span_correct->validate();
+pc_assert( true === $result, 'season_end matching the round_robin_weeks formula exactly -- passes' );
+
+$span_edited_shorter = new SPSG_Schedule_Configuration( pc_postseason_span_fields( '2027-01-10' ) ); // shortened by 4 days after creation
+$result               = $span_edited_shorter->validate();
+pc_assert(
+	is_wp_error( $result ) && isset( $result->data['errors']['season_end'] ),
+	'season_end shortened after creation (no longer matching round_robin_weeks) -- fails with a season_end error'
+);
+
+$span_edited_longer = new SPSG_Schedule_Configuration( pc_postseason_span_fields( '2027-01-20' ) ); // lengthened after creation
+$result               = $span_edited_longer->validate();
+pc_assert(
+	is_wp_error( $result ) && isset( $result->data['errors']['season_end'] ),
+	'season_end lengthened after creation (no longer matching round_robin_weeks) -- also fails'
+);
+
 $championship_day_not_playing_day = new SPSG_Schedule_Configuration(
 	array_merge(
 		pc_valid_regular_season_fields(),
 		array(
 			'is_postseason'     => true,
+			'season_start'      => '2026-10-01',
+			'season_end'        => '2026-10-28', // season_start + 7*(3+1)-1 = 27 days
 			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D', 'E', 'F' ) ) ),
 			'round_robin_weeks' => 3,
 			'championship_day'  => array( 'day' => 'saturday' ), // NOT in playing_days (only 'friday')
@@ -346,12 +505,18 @@ pc_assert(
 	is_wp_error( $result ) && isset( $result->data['errors']['championship_day'] ),
 	'a championship_day not among the league\'s playing_days fails validation with a clear error, instead of silently producing an unschedulable config'
 );
+pc_assert(
+	is_wp_error( $result ) && false !== strpos( $result->data['errors']['championship_day'], "not one of this league's playing days" ),
+	'championship_day not-a-playing-day error message is NOT clobbered by the capacity check'
+);
 
 $consolation_day_not_playing_day = new SPSG_Schedule_Configuration(
 	array_merge(
 		pc_valid_regular_season_fields(),
 		array(
 			'is_postseason'     => true,
+			'season_start'      => '2026-10-01',
+			'season_end'        => '2026-10-28', // season_start + 7*(3+1)-1 = 27 days
 			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D', 'E', 'F' ) ) ),
 			'round_robin_weeks' => 3,
 			'consolation_day'   => 'saturday', // NOT in playing_days (only 'friday')
@@ -363,12 +528,19 @@ pc_assert(
 	is_wp_error( $result ) && isset( $result->data['errors']['consolation_day'] ),
 	'a consolation_day not among the league\'s playing_days fails validation with a clear error'
 );
+pc_assert(
+	is_wp_error( $result ) && false !== strpos( $result->data['errors']['consolation_day'], "not one of this league's playing days" ),
+	'consolation_day not-a-playing-day error message is NOT clobbered by the capacity check'
+);
 
 $championship_day_not_set_yet = new SPSG_Schedule_Configuration(
 	array_merge(
 		pc_valid_regular_season_fields(),
 		array(
 			'is_postseason'     => true,
+			'season_start'      => '2026-10-01',
+			'season_end'        => '2026-10-28', // season_start + 7*(3+1)-1 = 27 days
+			'time_slots'        => array( 'friday' => array( '18:00', '19:00', '20:00', '21:00' ) ), // plenty of slots for the 9 games needed
 			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D', 'E', 'F' ) ) ),
 			'round_robin_weeks' => 3,
 			// championship_day/consolation_day left at their schema defaults (empty) -- nothing to validate yet.

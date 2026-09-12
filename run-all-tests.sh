@@ -58,6 +58,7 @@ run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-validate-cache-b
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-engine-correctness.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-export-and-safety.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-venue-slot-grid.php"
+run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-schedule-helper-slots-on-date.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-day-balance.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-season-pacing.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-team-name-resolution.php"

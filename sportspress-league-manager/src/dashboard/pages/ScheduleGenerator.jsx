@@ -142,6 +142,7 @@ export default function ScheduleGenerator() {
 	const [postseasonPanelId,setPostseasonPanelId] = useState(null);
 	const [postseasonForm,setPostseasonForm] = useState({season_start:'',round_robin_weeks:1,championship_day:{day:'saturday',start:'18:45',end:'21:00'},consolation_day:'sunday'});
 	const [postseasonBusy,setPostseasonBusy] = useState(false);
+	const [postseasonPlayingDays,setPostseasonPlayingDays] = useState(DAYS);
 
 	const loadConfigs = useCallback(() => {
 		setLoading(true);
@@ -158,7 +159,14 @@ export default function ScheduleGenerator() {
 			setPostseasonPanelId(null);
 			loadConfigs();
 		} catch (e) {
-			setToast({message:'Failed to create postseason configuration: '+(e?.message||'unknown error'),type:'error'});
+			// The validator returns a WP_Error carrying {errors: {field: message}}
+			// in its data -- surface those specific messages when present,
+			// falling back to the generic one if the shape isn't what's expected.
+			const fieldErrors = e?.data?.errors;
+			const detail = fieldErrors && typeof fieldErrors === 'object' && Object.keys(fieldErrors).length
+				? Object.values(fieldErrors).join(' ')
+				: (e?.message || 'unknown error');
+			setToast({message:'Failed to create postseason configuration: '+detail,type:'error'});
 		} finally {
 			setPostseasonBusy(false);
 		}
@@ -464,8 +472,17 @@ export default function ScheduleGenerator() {
 												}}>⏱</button>
 												{/* Phase 6: postseason actions */}
 												{!c.is_postseason&&(
-													<button className="splm-btn" title="Create postseason configuration from this one" aria-label={`Create postseason configuration from ${c.name}`} onClick={()=>{
-														setPostseasonPanelId(postseasonPanelId===c.id?null:c.id);
+													<button className="splm-btn" title="Create postseason configuration from this one" aria-label={`Create postseason configuration from ${c.name}`} onClick={async()=>{
+														if (postseasonPanelId===c.id) { setPostseasonPanelId(null); return; }
+														setPostseasonPanelId(c.id);
+														const source = await spsg.getConfig(c.id).catch(()=>null);
+														const days = (source?.playing_days?.length) ? source.playing_days : DAYS;
+														setPostseasonPlayingDays(days);
+														setPostseasonForm(p=>({
+															...p,
+															championship_day:{...p.championship_day,day:days.includes(p.championship_day.day)?p.championship_day.day:days[0]},
+															consolation_day:days.includes(p.consolation_day)?p.consolation_day:(days[1]||days[0]),
+														}));
 													}}>🏆 Playoffs</button>
 												)}
 											</td>
@@ -493,7 +510,7 @@ export default function ScheduleGenerator() {
 															Championship day
 															<select className="splm-select" value={postseasonForm.championship_day.day}
 																onChange={e=>setPostseasonForm(p=>({...p,championship_day:{...p.championship_day,day:e.target.value}}))}>
-																{DAYS.map(d=>(
+																{postseasonPlayingDays.map(d=>(
 																	// eslint-disable-next-line security/detect-object-injection -- d is always one of the fixed DAYS values, never user input
 																	<option key={d} value={d}>{DL[d]}</option>
 																))}
@@ -513,7 +530,7 @@ export default function ScheduleGenerator() {
 															Consolation day
 															<select className="splm-select" value={postseasonForm.consolation_day}
 																onChange={e=>setPostseasonForm(p=>({...p,consolation_day:e.target.value}))}>
-																{DAYS.map(d=>(
+																{postseasonPlayingDays.map(d=>(
 																	// eslint-disable-next-line security/detect-object-injection -- d is always one of the fixed DAYS values, never user input
 																	<option key={d} value={d}>{DL[d]}</option>
 																))}

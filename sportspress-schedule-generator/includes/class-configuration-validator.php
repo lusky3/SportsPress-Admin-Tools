@@ -231,6 +231,163 @@ class SPSG_Configuration_Validator {
 
 		$this->validate_postseason_day( $errors, 'championship_day', $this->config->championship_day['day'] ?? '' );
 		$this->validate_postseason_day( $errors, 'consolation_day', $this->config->consolation_day );
+		$this->validate_postseason_season_span( $errors );
+		if ( isset( $errors['season_end'] ) ) {
+			return; // The final-week date is undefined until the span is fixed.
+		}
+		$this->validate_postseason_final_week_capacity( $errors );
+	}
+
+	/**
+	 * Whether the final week (the trailing 7 days of season_end) has
+	 * enough available (venue, time-slot) capacity for every division's
+	 * Championship game (on championship_day, within its time window) and
+	 * every division's Consolation game (on consolation_day, no window).
+	 * Both are single, specific calendar dates -- SPSG_Postseason_Week_Constraint
+	 * pins every division's final-week games onto that same one week, so a
+	 * bracket with several divisions can outgrow what a single date
+	 * offers, which otherwise only surfaces later as a generic
+	 * "allocation_failed" error.
+	 *
+	 * @param array $errors Accumulator, keyed by field name.
+	 */
+	private function validate_postseason_final_week_capacity( &$errors ) {
+		if ( empty( $this->config->season_end ) ) {
+			return; // Nothing to check yet.
+		}
+
+		list( $championship_games, $consolation_games ) = $this->postseason_final_week_game_counts();
+
+		if ( 0 === $championship_games ) {
+			return; // No divisions with enough teams to need a final week at all.
+		}
+
+		$championship_day = $this->config->championship_day['day'] ?? '';
+		if ( '' !== $championship_day ) {
+			$this->check_final_week_capacity( $errors, 'championship_day', $championship_day, $championship_games, $this->championship_time_window() );
+		}
+
+		if ( '' !== $this->config->consolation_day && $consolation_games > 0 ) {
+			$this->check_final_week_capacity( $errors, 'consolation_day', $this->config->consolation_day, $consolation_games, null );
+		}
+	}
+
+	/**
+	 * Whether season_end still equals exactly (round_robin_weeks + 1)
+	 * calendar weeks after season_start -- the invariant
+	 * SPSG_Configuration_Manager::postseason_season_end() establishes at
+	 * CREATION time (season_start + 7*(round_robin_weeks+1)-1 days) and
+	 * SPSG_Postseason_Week_Constraint::final_week_start() assumes still
+	 * holds at GENERATION time. Nothing stops an admin editing
+	 * season_start, season_end, or round_robin_weeks independently
+	 * afterward through the normal config editor -- this catches that
+	 * before it becomes a confusing scheduling failure.
+	 *
+	 * @param array $errors Accumulator, keyed by field name.
+	 */
+	private function validate_postseason_season_span( &$errors ) {
+		if ( empty( $this->config->season_start ) || empty( $this->config->season_end ) ) {
+			return; // validate_dates() already requires both; nothing new to check on an incomplete config.
+		}
+
+		$expected_end = clone $this->config->season_start;
+		$expected_end->modify( '+' . ( 7 * ( $this->config->round_robin_weeks + 1 ) - 1 ) . ' days' );
+
+		if ( $expected_end->format( 'Y-m-d' ) !== $this->config->season_end->format( 'Y-m-d' ) ) {
+			$errors['season_end'] = sprintf(
+				/* translators: 1: round_robin_weeks, 2: the season_end this implies, 3: the season_end actually configured */
+				__( 'For %1$d round robin week(s), season_end must be %2$s (season_start + %1$d+1 weeks) -- got %3$s. Editing season_start, season_end, or round_robin_weeks independently can break this; recreate the postseason configuration instead.', 'sportspress-schedule-generator' ),
+				$this->config->round_robin_weeks,
+				$expected_end->format( 'Y-m-d' ),
+				$this->config->season_end->format( 'Y-m-d' )
+			);
+		}
+	}
+
+	/**
+	 * Total Championship and Consolation games the final week needs across
+	 * all divisions (one Championship game per division with at least 2
+	 * teams; every other final-week pairing in that division is
+	 * Consolation).
+	 *
+	 * @return array{0: int, 1: int} [championship_games, consolation_games].
+	 */
+	private function postseason_final_week_game_counts() {
+		$championship_games = 0;
+		$consolation_games  = 0;
+
+		foreach ( $this->config->divisions as $division ) {
+			$team_count = count( $division['teams'] ?? array() );
+			if ( $team_count < 2 ) {
+				continue;
+			}
+			++$championship_games;
+			$consolation_games += (int) ( $team_count / 2 ) - 1;
+		}
+
+		return array( $championship_games, $consolation_games );
+	}
+
+	/**
+	 * The configured Championship time window, or null if either bound is unset.
+	 *
+	 * @return array{0: string, 1: string}|null
+	 */
+	private function championship_time_window() {
+		$start = $this->config->championship_day['start'] ?? '';
+		$end   = $this->config->championship_day['end'] ?? '';
+		return ( '' !== $start && '' !== $end ) ? array( $start, $end ) : null;
+	}
+
+	/**
+	 * Whether one final-week day (Championship or Consolation) has enough
+	 * slot capacity for the games it needs, recording an error if not.
+	 *
+	 * @param array      $errors       Accumulator, keyed by field name.
+	 * @param string     $error_key    'championship_day' or 'consolation_day'.
+	 * @param string     $day_name     The configured day (e.g. 'saturday').
+	 * @param int        $games_needed Number of games that must fit on this date.
+	 * @param array|null $time_window  [start, end] to restrict counted slots to, or null.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private function check_final_week_capacity( &$errors, $error_key, $day_name, $games_needed, $time_window ) {
+		if ( isset( $errors[ $error_key ] ) ) {
+			return; // Already flagged as not a playing day -- don't clobber with a confusing capacity message.
+		}
+
+		$date      = $this->final_week_date_for_day( $day_name );
+		$available = SPSG_Schedule_Helper::count_slots_on_date( $this->config, $date, $time_window );
+
+		if ( $available < $games_needed ) {
+			$errors[ $error_key ] = sprintf(
+				/* translators: 1: the specific date, 2: available slot count, 3: games needed */
+				__( 'Only %2$d slot(s) are available on %1$s, but %3$d final-week game(s) need to be scheduled there.', 'sportspress-schedule-generator' ),
+				$date,
+				$available,
+				$games_needed
+			);
+		}
+	}
+
+	/**
+	 * The single calendar date within the final (trailing 7-day) week that
+	 * falls on $day_name -- matches SPSG_Postseason_Week_Constraint's own
+	 * final_week_start() window exactly (the 7 days ending at season_end),
+	 * so this is always exactly one date, never zero or more than one.
+	 *
+	 * @param string $day_name Lowercase day name (e.g. 'saturday').
+	 * @return string 'Y-m-d' date.
+	 */
+	private function final_week_date_for_day( $day_name ) {
+		$cursor = clone $this->config->season_end;
+		for ( $i = 0; $i < 7; $i++ ) {
+			if ( strtolower( $cursor->format( 'l' ) ) === $day_name ) {
+				return $cursor->format( 'Y-m-d' );
+			}
+			$cursor->modify( '-1 day' );
+		}
+		return $this->config->season_end->format( 'Y-m-d' ); // Unreachable given a valid day name; defensive fallback.
 	}
 
 	/**
