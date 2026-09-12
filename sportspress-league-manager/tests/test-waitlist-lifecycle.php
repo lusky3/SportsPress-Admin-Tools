@@ -123,7 +123,9 @@ function get_post_meta( $post_id, $key = '', $single = false ) { // phpcs:ignore
 	return splm_waitlist_lifecycle_test_state()->post_meta[ $post_id ][ $key ] ?? '';
 }
 
-function wp_mail( $to, $subject, $body, $headers = array() ) { // phpcs:ignore
+// $headers is never read by this stub -- dropped entirely rather than
+// declared as an ignored formal parameter.
+function wp_mail( $to, $subject, $body ) { // phpcs:ignore
 	$state         = splm_waitlist_lifecycle_test_state();
 	$state->mail[] = array( $to, $subject, $body );
 	return $state->mail_succeeds;

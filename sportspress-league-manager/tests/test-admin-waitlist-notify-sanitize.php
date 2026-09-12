@@ -15,7 +15,9 @@ define( 'ABSPATH', __DIR__ . '/' );
 $mock_options = array();
 $settings_errors = array();
 
-function __( $text, $domain = 'default' ) { // phpcs:ignore
+// $domain is never read by this stub -- dropped entirely rather than
+// declared as an ignored formal parameter.
+function __( $text ) { // phpcs:ignore
 	return $text;
 }
 function get_option( $key, $default = '' ) {
@@ -26,7 +28,10 @@ function add_settings_error( $setting, $code, $message, $type = 'error' ) { // p
 	global $settings_errors;
 	$settings_errors[] = array( $setting, $code, $message, $type );
 }
-function add_action( $hook = '', $cb = null ) {} // phpcs:ignore
+// Neither $hook nor $cb is read -- this harness only needs add_action() to be
+// callable and a no-op -- so both are dropped entirely rather than declared
+// as ignored formal parameters.
+function add_action() {} // phpcs:ignore
 
 // Standard-library-shaped stubs: real WordPress functions with real-enough
 // behaviour that the sanitize callback under test is exercised honestly.

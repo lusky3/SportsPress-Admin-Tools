@@ -259,7 +259,9 @@ function get_option( $name, $default = false ) {
 	return array_key_exists( $name, $overrides ) ? $overrides[ $name ] : $default;
 }
 
-function wp_mail( $to, $subject, $body, $headers = array() ) { // phpcs:ignore
+// $headers is never read by this stub -- dropped entirely rather than
+// declared as an ignored formal parameter.
+function wp_mail( $to, $subject, $body ) { // phpcs:ignore
 	$state         = splm_tieback_test_state();
 	$state->mail[] = array( $to, $subject, $body );
 	return $state->mail_succeeds;

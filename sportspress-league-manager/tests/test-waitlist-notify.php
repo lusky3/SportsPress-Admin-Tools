@@ -37,7 +37,9 @@ function splm_notify_test_state() {
 	return $state;
 }
 
-function __( $text, $domain = '' ) { // phpcs:ignore
+// $domain is never read by this stub -- dropped entirely rather than
+// declared as an ignored formal parameter.
+function __( $text ) { // phpcs:ignore
 	return $text;
 }
 
@@ -46,7 +48,9 @@ function get_option( $name, $default = false ) {
 	return array_key_exists( $name, $options ) ? $options[ $name ] : $default;
 }
 
-function wp_mail( $to, $subject, $body, $headers = array() ) { // phpcs:ignore
+// $headers is never read by this stub -- dropped entirely rather than
+// declared as an ignored formal parameter.
+function wp_mail( $to, $subject, $body ) { // phpcs:ignore
 	splm_notify_test_state()->mail[] = array( $to, $subject, $body );
 	return splm_notify_test_state()->mail_succeeds;
 }

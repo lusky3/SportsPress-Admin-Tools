@@ -104,21 +104,32 @@ class SPLM_Waitlist_Notify {
 		$lines = array(
 			$label . '.',
 			'',
-			sprintf( '%1$s: %2$s', __( 'Name', 'sportspress-league-manager' ), $row->name ? $row->name : __( '(none)', 'sportspress-league-manager' ) ),
-			sprintf( '%1$s: %2$s', __( 'Email', 'sportspress-league-manager' ), $row->email ),
-			sprintf( '%1$s: %2$s', __( 'Season', 'sportspress-league-manager' ), $row->season ),
-			sprintf( '%1$s: %2$s', __( 'Position', 'sportspress-league-manager' ), $row->position ),
-			sprintf( '%1$s: %2$d', __( 'Waitlist entry ID', 'sportspress-league-manager' ), (int) $row->id ),
+			self::line( __( 'Name', 'sportspress-league-manager' ), $row->name ? $row->name : __( '(none)', 'sportspress-league-manager' ) ),
+			self::line( __( 'Email', 'sportspress-league-manager' ), $row->email ),
+			self::line( __( 'Season', 'sportspress-league-manager' ), $row->season ),
+			self::line( __( 'Position', 'sportspress-league-manager' ), $row->position ),
+			self::line( __( 'Waitlist entry ID', 'sportspress-league-manager' ), (int) $row->id ),
 		);
 
 		if ( self::EVENT_OFFER_DISPATCHED === $event && ! empty( $context['expires_at'] ) ) {
-			$lines[] = sprintf( '%1$s: %2$s', __( 'Claim deadline (UTC)', 'sportspress-league-manager' ), $context['expires_at'] );
+			$lines[] = self::line( __( 'Claim deadline (UTC)', 'sportspress-league-manager' ), $context['expires_at'] );
 		}
 
 		if ( self::EVENT_OFFER_CLAIMED === $event && ! empty( $context['order_id'] ) ) {
-			$lines[] = sprintf( '%1$s: %2$d', __( 'Order ID', 'sportspress-league-manager' ), (int) $context['order_id'] );
+			$lines[] = self::line( __( 'Order ID', 'sportspress-league-manager' ), (int) $context['order_id'] );
 		}
 
 		return implode( "\n", $lines ) . "\n";
+	}
+
+	/**
+	 * One "Label: value" line of the notification body.
+	 *
+	 * @param string     $label Field label, already translated.
+	 * @param string|int $value Field value.
+	 * @return string
+	 */
+	private static function line( string $label, $value ): string {
+		return sprintf( '%1$s: %2$s', $label, $value );
 	}
 }
