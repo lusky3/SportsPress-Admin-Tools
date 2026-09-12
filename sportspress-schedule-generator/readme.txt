@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.1.1
+Stable tag: 1.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -58,6 +58,22 @@ The plugin validates configuration feasibility before generation and provides sp
 Yes. The import dialog lets you choose conflict resolution (skip or overwrite), event status, league, and season. Import runs in chunks with progress tracking.
 
 == Changelog ==
+
+= 1.3.0 =
+* New: postseason/playoffs bracket generation. Configure a round-robin count, a Championship/Consolation day, and a "prime time" window, and the generator builds the full cross-round-robin-into-bracket structure automatically -- seeding real teams in from season standings once the round-robin weeks conclude, and pinning the Championship/Consolation week to the trailing week of the postseason's own dates (a hard constraint, verified against your actual venue/time-slot capacity before you can save the configuration).
+* New: schedules can be saved as a draft and revisited before importing, with a change-history view of what each save changed; the React dashboard now has full parity with the classic admin page for draft handling.
+* New: date-specific venue time overrides (e.g. a holiday date with a shortened window at one arena), a warning when a fully-available week still leaves a team unplayed, and a preference for scheduling teams that share a restricted resource on the same day rather than spreading them across the week.
+* Fixed: a hidden 15-minute buffer was silently halving venue slot capacity in feasibility checks.
+* Fixed: same-week team double-headers weren't hard-blocked -- every team now plays once per week whenever the arena is available both configured days, with a double-header only as a last resort.
+* Fixed: per-team day-balance could drift 20-30 points off the configured day split (e.g. a 70/30 Friday/Sunday season) even though no single team was ever fully monopolized to one day.
+* Fixed: a venue's explicit "no slots this day" setting was incorrectly falling back to the global time-slot grid instead of staying empty, generating games on days that venue never actually has open.
+* Fixed: a configuration authored directly via the REST API (bare team IDs, no dedicated "create" UI existed yet) failed to resolve those IDs to real team names on load.
+* Fixed: Configuration Name wasn't loaded or saved correctly, so "Save" silently created a duplicate configuration instead of updating the existing one, and the load dropdown went stale.
+* Fixed: custom Day Weights were being dropped on save by a double-sanitize bug.
+* Fixed: "Generic Teams" could leave one team a game short of its target whenever a division's real roster was already an odd number at or above the configured per-division target.
+* Fixed: the Placeholder Teams tab never populated, so importing a generated schedule that used placeholder teams into SportsPress never actually worked.
+* Fixed: the compact XLSX export showed the wrong day of week for every game, and the detailed export's Week column was empty.
+* Fixed: the schedule preview didn't show Time, wasn't sorted by date/time by default, and had no way to group rows by arena.
 
 = 1.1.1 =
 * Fix: the parent-plugin requirement now uses WordPress's own `Requires Plugins` header instead of a made-up `Depends:` header that WordPress never actually read -- this plugin now shows up correctly in the parent's "Required by" list and gets native activation-order enforcement, not just this plugin's own runtime check.
