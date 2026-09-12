@@ -288,6 +288,14 @@ class SportsPress_Schedule_Generator {
 				'category' => 'scheduling',
 			)
 		);
+
+		SPSG_Constraint_Registry::register(
+			'SPSG_Postseason_Week_Constraint',
+			array(
+				'description' => 'Pins postseason Championship/Consolation games to the final week, and round-robin games to before it',
+				'category' => 'scheduling',
+			)
+		);
 	}
 }
 

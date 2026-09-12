@@ -126,6 +126,24 @@ bd_assert(
 	'team references given as objects or arrays (not just plain strings) are handled identically to strings'
 );
 
+echo "\n=== cross_round_robin_division(): identifies a Seed-stage (round-robin) matchup ===\n\n";
+
+$round_robin_match = SPSG_Postseason_Bracket_Detector::cross_round_robin_division( bd_game( 'Div 1 Seed 2', 'Div 1 Seed 5' ) );
+bd_assert( 'Div 1' === $round_robin_match, 'a same-division Seed-vs-Seed matchup returns its division name' );
+
+bd_assert(
+	null === SPSG_Postseason_Bracket_Detector::cross_round_robin_division( bd_game( 'Div 1 RR-Seed 1', 'Div 1 RR-Seed 2' ) ),
+	'an RR-Seed (final-week) matchup is NOT a cross-round-robin matchup'
+);
+bd_assert(
+	null === SPSG_Postseason_Bracket_Detector::cross_round_robin_division( bd_game( 'Div 1 Seed 1', 'Div 2 Seed 2' ) ),
+	'Seed placeholders from different divisions never play each other -- not a cross-round-robin matchup'
+);
+bd_assert(
+	null === SPSG_Postseason_Bracket_Detector::cross_round_robin_division( bd_game( 'Toronto Maple Leafs', 'Ottawa Senators' ) ),
+	'a game between two already-resolved real teams is not a cross-round-robin matchup'
+);
+
 echo "\n=== Test Summary ===\n";
 echo "Passed: $passed\n";
 echo "Failed: $failed\n";
