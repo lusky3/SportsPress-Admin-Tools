@@ -852,15 +852,29 @@ class SPSG_REST_API {
 		}
 
 		$minted = array();
-		foreach ( (array) ( $config['divisions'] ?? array() ) as $division ) {
-			$name = is_array( $division ) ? (string) ( $division['name'] ?? '' ) : '';
-			$team_count = is_array( $division ) ? count( (array) ( $division['teams'] ?? array() ) ) : 0;
+		foreach ( (array) ( isset( $config['divisions'] ) ? $config['divisions'] : array() ) as $division ) {
+			list( $name, $team_count ) = self::division_shape( $division );
 			if ( '' === $name || $team_count < 1 ) {
 				continue;
 			}
 			$minted[ $name ] = SPSG_Postseason_Seed_Resolver::mint_division_placeholders( $name, $team_count, $request['id'] );
 		}
 		return rest_ensure_response( $minted );
+	}
+
+	/**
+	 * One division's name and team count, however it's shaped (or absent).
+	 *
+	 * @param mixed $division A single entry from a configuration's divisions array.
+	 * @return array{0: string, 1: int} [name, team_count] -- '' / 0 if $division isn't a usable array.
+	 */
+	private static function division_shape( $division ) {
+		if ( ! is_array( $division ) ) {
+			return array( '', 0 );
+		}
+		$name = isset( $division['name'] ) ? (string) $division['name'] : '';
+		$team_count = isset( $division['teams'] ) ? count( (array) $division['teams'] ) : 0;
+		return array( $name, $team_count );
 	}
 
 	/**
