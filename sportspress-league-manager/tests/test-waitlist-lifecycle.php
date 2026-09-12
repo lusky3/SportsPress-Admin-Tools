@@ -54,6 +54,11 @@ function sanitize_text_field( $text ) {
  * matching the default of false the original signature declared.
  */
 function get_option() { // phpcs:ignore
+	$name      = func_get_arg( 0 );
+	$overrides = splm_waitlist_lifecycle_test_state()->option_overrides;
+	if ( array_key_exists( $name, $overrides ) ) {
+		return $overrides[ $name ];
+	}
 	return func_num_args() > 1 ? func_get_arg( 1 ) : false;
 }
 
@@ -84,6 +89,23 @@ class SPLM_Waitlist_Lifecycle_Test_State {
 	 * "no such product" return.
 	 */
 	public $wc_products = array();
+
+	/**
+	 * Option name => value, consulted by get_option() BEFORE its blanket
+	 * default-return fallback. Empty by default, so every option this file
+	 * never sets (which is most of them) keeps the exact behaviour the
+	 * blanket fallback always gave.
+	 */
+	public $option_overrides = array();
+
+	/** Each wp_mail() call as array( to, subject, body ). */
+	public $mail = array();
+
+	/** Whether wp_mail() should report success. */
+	public $mail_succeeds = true;
+
+	/** Each wp_schedule_single_event() call as array( timestamp, hook, args ). */
+	public $scheduled_events = array();
 }
 
 function splm_waitlist_lifecycle_test_state() {
@@ -99,6 +121,23 @@ function splm_waitlist_lifecycle_test_state() {
  */
 function get_post_meta( $post_id, $key = '', $single = false ) { // phpcs:ignore
 	return splm_waitlist_lifecycle_test_state()->post_meta[ $post_id ][ $key ] ?? '';
+}
+
+// $headers is never read by this stub -- dropped entirely rather than
+// declared as an ignored formal parameter.
+function wp_mail( $to, $subject, $body ) { // phpcs:ignore
+	$state         = splm_waitlist_lifecycle_test_state();
+	$state->mail[] = array( $to, $subject, $body );
+	return $state->mail_succeeds;
+}
+
+function wp_date( $format, $timestamp = null ) { // phpcs:ignore
+	return gmdate( $format, null === $timestamp ? time() : $timestamp );
+}
+
+function wp_schedule_single_event( $timestamp, $hook, $args = array() ) { // phpcs:ignore
+	splm_waitlist_lifecycle_test_state()->scheduled_events[] = array( $timestamp, $hook, $args );
+	return true;
 }
 
 class WP_Error {
@@ -270,6 +309,7 @@ global $wpdb;
 $wpdb = new Fake_WPDB();
 
 require_once __DIR__ . '/../includes/class-waitlist-database.php';
+require_once __DIR__ . '/../includes/class-waitlist-notify.php';
 require_once __DIR__ . '/../includes/class-waitlist.php';
 require_once __DIR__ . '/../includes/class-waitlist-claim.php';
 require_once __DIR__ . '/../includes/class-waitlist-offer.php';
@@ -531,26 +571,38 @@ echo "\n=== offer(): a held lock maps to 409 ===\n\n";
 if ( ! class_exists( 'SPAT_Lock' ) ) {
 	class SPAT_Lock { // phpcs:ignore
 		/**
-		 * $key and $ttl_seconds are unused here (this fake simulates a lock
-		 * that is already held, so it never gets far enough to need them),
-		 * and ordinarily that would be fixed the same way as every other
-		 * stub in this file: drop them and read $callback positionally with
-		 * func_get_arg(). That does not work here -- $callback carries a
-		 * `callable` type hint core's real SPAT_Lock::with() declares, and
-		 * func_get_arg() always returns an untyped value, so converting
-		 * would silently drop the one piece of real type-checking this fake
-		 * still performs on its own signature. $key and $ttl_seconds cannot
-		 * be dropped either without leaving one: PHP formal parameters are a
-		 * contiguous prefix, so keeping $callback declared (and typed) at
-		 * its real 3rd position requires $key and $ttl_seconds to also be
-		 * formally declared at positions 1 and 2. Suppressed here, not
-		 * fixed, because it is the one case in this task where the fix
-		 * would cost the exact thing the test double exists to preserve.
+		 * Defaults to "already held" (true), preserving every existing test
+		 * in this file that never touches this flag: offer()'s only
+		 * coverage before the notify feature was the held-lock 409 mapping.
+		 * A test exercising the real offer_locked() success path sets this
+		 * to false first so with() actually runs its callback, then
+		 * restores it so later code is unaffected.
+		 */
+		public static $force_lock_held = true;
+
+		/**
+		 * $key and $ttl_seconds are unused here, and ordinarily that would be
+		 * fixed the same way as every other stub in this file: drop them and
+		 * read $callback positionally with func_get_arg(). That does not
+		 * work here -- $callback carries a `callable` type hint core's real
+		 * SPAT_Lock::with() declares, and func_get_arg() always returns an
+		 * untyped value, so converting would silently drop the one piece of
+		 * real type-checking this fake still performs on its own signature.
+		 * $key and $ttl_seconds cannot be dropped either without leaving
+		 * one: PHP formal parameters are a contiguous prefix, so keeping
+		 * $callback declared (and typed) at its real 3rd position requires
+		 * $key and $ttl_seconds to also be formally declared at positions 1
+		 * and 2. Suppressed here, not fixed, because it is the one case in
+		 * this task where the fix would cost the exact thing the test
+		 * double exists to preserve.
 		 *
 		 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
 		 */
 		public static function with( $key, $ttl_seconds, callable $callback ) { // phpcs:ignore
-			return false;
+			if ( self::$force_lock_held ) {
+				return false;
+			}
+			return $callback();
 		}
 	}
 }
@@ -559,6 +611,67 @@ $locked = $o::offer( 1, 48 );
 assert_test( is_wp_error( $locked ), 'offer() reports a held lock as an error rather than a fatal or a silent no-op' );
 assert_test( 'splm_waitlist_locked' === $locked->get_error_code(), 'the held-lock refusal carries its own error code' );
 assert_test( 409 === $locked->get_error_data()['status'], 'the held-lock refusal is a 409' );
+
+echo "\n=== offer(): the success path (offer_locked()), and its shared notification ===\n\n";
+
+$state = splm_waitlist_lifecycle_test_state();
+SPAT_Lock::$force_lock_held = false;
+
+$wpdb->rows               = array(
+	70 => (object) array(
+		'id'                => 70,
+		'status'            => 'queued',
+		'target_product_id' => 11,
+		'name'              => 'New Player',
+		'email'             => 'newplayer@example.com',
+		'season'            => 'S2027',
+		'position'          => 'player',
+		'claim_token'       => null,
+	),
+);
+$wpdb->update_calls        = array();
+$state->mail               = array();
+$state->mail_succeeds      = true;
+$state->scheduled_events   = array();
+$state->option_overrides   = array();
+
+$offer_result = $o::offer( 70, 24 );
+
+assert_test( is_array( $offer_result ) && true === $offer_result['success'], 'offer() succeeds when the lock is available and the row is offerable' );
+assert_test( 70 === $offer_result['id'], 'the response echoes the row id' );
+assert_test( 1 === count( $wpdb->update_calls ), 'exactly one write records the offer' );
+assert_test( 'offered' === ( $wpdb->update_calls[0]['data']['status'] ?? null ), 'the write moves the row to offered' );
+assert_test( 1 === count( $state->scheduled_events ), 'exactly one expiry event is scheduled' );
+assert_test( 1 === count( $state->mail ), 'only the entrant offer email is sent when no shared notification address is configured' );
+assert_test( 'newplayer@example.com' === $state->mail[0][0], 'the entrant is the recipient of their own offer email' );
+
+$wpdb->rows               = array(
+	71 => (object) array(
+		'id'                => 71,
+		'status'            => 'queued',
+		'target_product_id' => 11,
+		'name'              => 'Another Player',
+		'email'             => 'another@example.com',
+		'season'            => 'S2027',
+		'position'          => 'goalie',
+		'claim_token'       => null,
+	),
+);
+$wpdb->update_calls  = array();
+$state->mail         = array();
+$state->scheduled_events = array();
+$state->option_overrides = array( SPLM_Waitlist_Notify::OPTION => 'ops@example.test' );
+
+$offer_result2 = $o::offer( 71, 24 );
+
+assert_test( is_array( $offer_result2 ) && true === $offer_result2['success'], 'offer() still succeeds with a shared notification address configured' );
+assert_test( 2 === count( $state->mail ), 'both the entrant email and the shared notification are sent' );
+assert_test( 'another@example.com' === $state->mail[0][0], 'the entrant email goes out first, to the entrant' );
+assert_test( 'ops@example.test' === $state->mail[1][0], 'the shared notification goes to the configured address' );
+assert_test( false !== strpos( $state->mail[1][1], 'Waitlist offer sent' ), 'the shared notification carries the dispatch label' );
+
+SPAT_Lock::$force_lock_held = true; // restore: nothing later in this file should see a runnable lock.
+$state->option_overrides    = array(); // restore to unconfigured for everything after.
 
 echo "\n=== REST arg validation ===\n\n";
 
@@ -840,9 +953,58 @@ assert_test( 901 === $wpdb->rows[50]->resolved_order_id, '  and so does the orde
 // Uncontended, the same call still works.
 $wpdb->rows          = array( 51 => (object) array( 'id' => 51, 'status' => 'offered', 'claim_token' => str_repeat( 'b', 64 ) ) );
 $wpdb->before_update = null;
+$state               = splm_waitlist_lifecycle_test_state();
+$state->mail         = array();
 $result              = $O::cancel( 51 );
 assert_test( ! is_wp_error( $result ), 'an uncontended cancellation still succeeds' );
 assert_test( 'queued' === $wpdb->rows[51]->status, '  and returns the player to the queue' );
+assert_test( array() === $state->mail, '  and sends no shared notification when nothing is configured' );
+
+echo "\n=== cancel(): the shared notification, when configured ===\n\n";
+
+// Withdrawing a live offer back to the queue.
+$wpdb->rows = array(
+	52 => (object) array(
+		'id'          => 52,
+		'status'      => 'offered',
+		'claim_token' => str_repeat( 'c', 64 ),
+		'name'        => 'Withdrawn Player',
+		'email'       => 'withdrawn@example.com',
+		'season'      => 'S2027',
+		'position'    => 'player',
+	),
+);
+$state->mail             = array();
+$state->option_overrides = array( SPLM_Waitlist_Notify::OPTION => 'ops@example.test' );
+
+$withdraw_result = $O::cancel( 52 );
+
+assert_test( ! is_wp_error( $withdraw_result ), 'withdrawing an offer with notifications configured still succeeds' );
+assert_test( 1 === count( $state->mail ), 'withdrawing an offer sends exactly one shared notification' );
+assert_test( 'ops@example.test' === $state->mail[0][0], 'the notification goes to the configured address' );
+assert_test( false !== strpos( $state->mail[0][1], 'Waitlist offer withdrawn' ), 'a withdrawal is labelled distinctly from an outright removal' );
+
+// Removing a queued entry outright.
+$wpdb->rows = array(
+	53 => (object) array(
+		'id'          => 53,
+		'status'      => 'queued',
+		'claim_token' => null,
+		'name'        => 'Removed Player',
+		'email'       => 'removed@example.com',
+		'season'      => 'S2027',
+		'position'    => 'goalie',
+	),
+);
+$state->mail = array();
+
+$remove_result = $O::cancel( 53 );
+
+assert_test( ! is_wp_error( $remove_result ), 'removing a queued entry with notifications configured still succeeds' );
+assert_test( 1 === count( $state->mail ), 'removing an entry sends exactly one shared notification' );
+assert_test( false !== strpos( $state->mail[0][1], 'Waitlist entry removed' ), 'removal is labelled distinctly from a withdrawal' );
+
+$state->option_overrides = array(); // restore to unconfigured for everything after.
 
 echo "\n=== a replaced offer is not expired by the one it replaced ===\n\n";
 

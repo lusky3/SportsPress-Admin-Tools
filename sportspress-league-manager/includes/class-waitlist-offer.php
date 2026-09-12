@@ -245,6 +245,10 @@ class SPLM_Waitlist_Offer {
 			return self::unwind_unsent_offer( $id, $token );
 		}
 
+		// Best-effort: nobody is waiting on this one, unlike the entrant's
+		// own email above, so its outcome never changes what offer() returns.
+		SPLM_Waitlist_Notify::send( $row, SPLM_Waitlist_Notify::EVENT_OFFER_DISPATCHED, array( 'expires_at' => $expiry['expires_at'] ) );
+
 		return array(
 			'success'    => true,
 			'id'         => $id,
@@ -525,6 +529,16 @@ class SPLM_Waitlist_Offer {
 				array( 'status' => 500 )
 			);
 		}
+
+		// Best-effort, and on $row as read at the top of this method: it is
+		// only used to compose the notification, not to decide anything, so
+		// the pre-write status/email/name are exactly what a reader wants.
+		SPLM_Waitlist_Notify::send(
+			$row,
+			SPLM_Waitlist_Database::STATUS_QUEUED === $next_status
+				? SPLM_Waitlist_Notify::EVENT_OFFER_WITHDRAWN
+				: SPLM_Waitlist_Notify::EVENT_ENTRY_REMOVED
+		);
 
 		return array(
 			'success' => true,

@@ -631,5 +631,10 @@ class SPLM_Waitlist {
 				)
 			);
 		}
+
+		// Best-effort, on $match as resolved above: nobody is waiting on
+		// this, so its outcome never affects how this order-completed
+		// handler behaves.
+		SPLM_Waitlist_Notify::send( $match, SPLM_Waitlist_Notify::EVENT_OFFER_CLAIMED, array( 'order_id' => $order_id ) );
 	}
 }
