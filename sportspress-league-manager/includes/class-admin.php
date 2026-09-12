@@ -36,6 +36,7 @@ class SPLM_Admin {
 		add_action( 'spat_admin_page_tabs', array( $this, 'add_spat_tab' ) );
 		add_action( 'spat_admin_page_content', array( $this, 'add_spat_content' ) );
 		add_action( 'spat_admin_init_settings', array( $this, 'register_spat_settings' ) );
+		add_action( 'wp_ajax_splm_reveal_freescout_secret', array( $this, 'ajax_reveal_freescout_secret' ) );
 	}
 
 	/**
@@ -256,10 +257,27 @@ class SPLM_Admin {
 		$this->add_field( SPLM_Discipline_Notice::OPTION_MODE_WARNING, __( 'Warning Notices', 'sportspress-league-manager' ), array( $this, 'render_notice_mode_warning_field' ) );
 		$this->add_field( SPLM_Discipline_Notice::OPTION_MODE_SUSPENSION, __( 'Suspension Notices', 'sportspress-league-manager' ), array( $this, 'render_notice_mode_suspension_field' ) );
 		$this->add_field( 'splm_discipline_notice_cc', __( 'Notice Copies To', 'sportspress-league-manager' ), array( $this, 'render_notice_cc_field' ) );
+
+		add_settings_section(
+			'splm_freescout_section',
+			__( 'FreeScout Integration', 'sportspress-league-manager' ),
+			function () {
+				echo '<p>' . esc_html__( "Shared secret for the FreeScout waitlist-status module. Configure the same value in the FreeScout module's settings.", 'sportspress-league-manager' ) . '</p>';
+			},
+			'splm_backend_settings'
+		);
+
+		register_setting(
+			'splm_backend_settings',
+			SPLM_Waitlist_REST::SECRET_OPTION,
+			array( 'sanitize_callback' => array( __CLASS__, 'sanitize_freescout_secret' ) )
+		);
+
+		$this->add_field( SPLM_Waitlist_REST::SECRET_OPTION, __( 'FreeScout Shared Secret', 'sportspress-league-manager' ), array( $this, 'render_freescout_secret_field' ), 'splm_freescout_section' );
 	}
 
-	private function add_field( $id, $title, $callback ) {
-		add_settings_field( $id, $title, $callback, 'splm_backend_settings', 'splm_backend_section' );
+	private function add_field( $id, $title, $callback, $section = 'splm_backend_section' ) {
+		add_settings_field( $id, $title, $callback, 'splm_backend_settings', $section );
 	}
 
 	public function render_default_season_field() {
@@ -583,5 +601,88 @@ class SPLM_Admin {
 		}
 
 		return $count;
+	}
+
+	/**
+	 * Preserves the stored secret when the admin submits the masked
+	 * placeholder unchanged (register_setting()'s sanitize_callback only
+	 * ever sees the new value, not the old one, so "unchanged" has to be
+	 * detected from the submitted value's shape — mirrors
+	 * sportspress-etransfer-automation's identical masking check).
+	 *
+	 * @param mixed $submitted Raw submitted value.
+	 * @return string
+	 */
+	public static function sanitize_freescout_secret( $submitted ): string {
+		// Non-string submissions (e.g. options.php's null for an absent field) preserve the stored secret
+		if ( ! is_string( $submitted ) ) {
+			return (string) get_option( SPLM_Waitlist_REST::SECRET_OPTION, '' );
+		}
+		$submitted = trim( $submitted );
+		$is_masked = ( '' !== $submitted && preg_match( '/^(?:\xE2\x80\xA2)+$/', $submitted ) );
+		if ( $is_masked ) {
+			return (string) get_option( SPLM_Waitlist_REST::SECRET_OPTION, '' );
+		}
+		if ( strlen( $submitted ) < 32 ) {
+			add_settings_error( SPLM_Waitlist_REST::SECRET_OPTION, 'splm_secret_too_short', __( 'FreeScout shared secret must be at least 32 characters long.', 'sportspress-league-manager' ) );
+			return (string) get_option( SPLM_Waitlist_REST::SECRET_OPTION, '' );
+		}
+		return $submitted;
+	}
+
+	/**
+	 * Renders the masked secret field plus its "Reveal" button, mirroring
+	 * sportspress-etransfer-automation's ajax_reveal_webhook_secret() UX.
+	 */
+	public function render_freescout_secret_field() {
+		$secret = get_option( SPLM_Waitlist_REST::SECRET_OPTION, '' );
+		if ( '' === $secret ) {
+			$secret = wp_generate_password( 32, false );
+			update_option( SPLM_Waitlist_REST::SECRET_OPTION, $secret );
+		}
+		$masked       = str_repeat( "\xE2\x80\xA2", 16 );
+		$can_reveal   = current_user_can( 'manage_options' );
+		$reveal_nonce = $can_reveal ? wp_create_nonce( 'splm_reveal_freescout_secret' ) : '';
+		echo '<input type="text" id="splm_freescout_secret" name="' . esc_attr( SPLM_Waitlist_REST::SECRET_OPTION ) . '" value="' . esc_attr( $masked ) . '" class="regular-text code" autocomplete="off" />';
+		if ( $can_reveal ) {
+			?>
+			<button type="button" class="button" id="splm-reveal-freescout-secret" data-nonce="<?php echo esc_attr( $reveal_nonce ); ?>"><?php esc_html_e( 'Reveal', 'sportspress-league-manager' ); ?></button>
+			<script>
+			(function(){
+				var btn = document.getElementById('splm-reveal-freescout-secret');
+				if (!btn) return;
+				btn.addEventListener('click', function(){
+					var field = document.getElementById('splm_freescout_secret');
+					var data = new FormData();
+					data.append('action', 'splm_reveal_freescout_secret');
+					data.append('nonce', btn.getAttribute('data-nonce'));
+					fetch(ajaxurl, { method: 'POST', credentials: 'same-origin', body: data })
+						.then(function(r){ return r.json(); })
+						.then(function(res){
+							if (res && res.success && res.data && typeof res.data.secret === 'string') {
+								field.type = 'text';
+								field.value = res.data.secret;
+								btn.disabled = true;
+							}
+						});
+				});
+			})();
+			</script>
+			<?php
+		}
+		echo '<p class="description">' . esc_html__( 'HMAC SHA256 signing secret shared with the FreeScout module. Minimum 32 characters. Leave bullets in place to keep the existing secret.', 'sportspress-league-manager' ) . '</p>';
+	}
+
+	/**
+	 * AJAX endpoint to reveal the FreeScout secret. Gated on
+	 * manage_options + nonce, mirroring
+	 * sportspress-etransfer-automation's ajax_reveal_webhook_secret().
+	 */
+	public function ajax_reveal_freescout_secret() {
+		check_ajax_referer( 'splm_reveal_freescout_secret', 'nonce' );
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Permission denied.', 'sportspress-league-manager' ) ), 403 );
+		}
+		wp_send_json_success( array( 'secret' => get_option( SPLM_Waitlist_REST::SECRET_OPTION, '' ) ) );
 	}
 }
