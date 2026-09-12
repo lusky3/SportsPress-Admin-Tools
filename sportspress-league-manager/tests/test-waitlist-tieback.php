@@ -39,6 +39,19 @@ class SPLM_Tieback_Test_State {
 	 * handle_order_completed().
 	 */
 	public $orders = array();
+
+	/**
+	 * Option name => value, consulted by get_option() so a test can turn on
+	 * the shared waitlist notification address. Empty by default, matching
+	 * every existing test's assumption that nothing is configured.
+	 */
+	public $option_overrides = array();
+
+	/** Each wp_mail() call as array( to, subject, body ). */
+	public $mail = array();
+
+	/** Whether wp_mail() should report success. */
+	public $mail_succeeds = true;
 }
 
 function splm_tieback_test_state() {
@@ -241,6 +254,17 @@ function wc_get_order( $order_id ) {
 	return isset( $orders[ $order_id ] ) ? $orders[ $order_id ] : false;
 }
 
+function get_option( $name, $default = false ) {
+	$overrides = splm_tieback_test_state()->option_overrides;
+	return array_key_exists( $name, $overrides ) ? $overrides[ $name ] : $default;
+}
+
+function wp_mail( $to, $subject, $body, $headers = array() ) { // phpcs:ignore
+	$state         = splm_tieback_test_state();
+	$state->mail[] = array( $to, $subject, $body );
+	return $state->mail_succeeds;
+}
+
 // Neither $hook nor $args is read -- this harness only needs
 // wp_clear_scheduled_hook() to be callable and always succeed -- so both are
 // dropped entirely rather than declared as ignored formal parameters.
@@ -293,6 +317,7 @@ if ( ! class_exists( 'SPAT_Logger' ) ) {
 }
 
 require_once __DIR__ . '/../includes/class-waitlist-database.php';
+require_once __DIR__ . '/../includes/class-waitlist-notify.php';
 require_once __DIR__ . '/../includes/class-waitlist.php';
 require_once __DIR__ . '/../includes/class-waitlist-claim.php';
 require_once __DIR__ . '/../includes/class-waitlist-expiry.php';
@@ -325,6 +350,9 @@ function row( array $overrides = array() ) {
 			'email'             => 'player@example.com',
 			'user_id'           => 0,
 			'claim_token'       => str_repeat( 'a', 64 ),
+			'name'              => 'Test Player',
+			'season'            => 'S2026',
+			'position'          => 'player',
 		),
 		$overrides
 	);
@@ -435,6 +463,8 @@ function reset_waitlist_order_fakes() {
 	$wpdb->update_calls = array();
 	SPAT_Logger::$calls = array();
 	splm_tieback_test_state()->orders = array();
+	splm_tieback_test_state()->mail = array();
+	splm_tieback_test_state()->option_overrides = array();
 }
 
 /**
@@ -488,6 +518,33 @@ assert_test( 1 === count( $token_info ), 'a successful claim logs exactly one in
 assert_test( false !== strpos( $token_info[0]['message'] ?? '', 'matched_by=token' ), 'the log records the token path, not the fallback' );
 assert_test( false !== strpos( $token_info[0]['message'] ?? '', 'waitlist_id=20' ), 'the log names the matched waitlist id' );
 assert_test( false !== strpos( $token_info[0]['message'] ?? '', 'order_id=500' ), 'the log names the fulfilling order id' );
+assert_test( array() === splm_tieback_test_state()->mail, 'a claim with no shared notification address configured sends nothing' );
+
+echo "\n=== handle_order_completed(): the shared notification, when configured ===\n\n";
+
+reset_waitlist_order_fakes();
+splm_tieback_test_state()->option_overrides = array( SPLM_Waitlist_Notify::OPTION => 'ops@example.test' );
+
+$notify_claim_row          = row( array( 'id' => 25, 'email' => 'queued@example.com' ) );
+$notify_claim_token        = str_repeat( '5', 64 );
+$wpdb->rows[ $notify_claim_token ] = $notify_claim_row;
+
+$notify_claim_item = new Fake_Order_Item();
+$notify_claim_item->add_meta_data( $c::CART_META_KEY, $notify_claim_token, true );
+$notify_claim_item->set_product( new Fake_WC_Product( 11 ) );
+
+$notify_claim_order                     = new Fake_WC_Order( 510, 'someone-else@example.com', 0, array( $notify_claim_item ) );
+splm_tieback_test_state()->orders[510]  = $notify_claim_order;
+
+$wl->handle_order_completed( 510 );
+
+$claim_mail = splm_tieback_test_state()->mail;
+assert_test( 1 === count( $claim_mail ), 'a claim with a shared notification address configured sends exactly one notification' );
+assert_test( 'ops@example.test' === ( $claim_mail[0][0] ?? null ), 'the notification goes to the configured address' );
+assert_test( false !== strpos( $claim_mail[0][1] ?? '', 'Waitlist spot claimed' ), 'the notification carries the claim label' );
+assert_test( false !== strpos( $claim_mail[0][2] ?? '', 'Order ID: 510' ), 'the notification carries the fulfilling order id' );
+
+splm_tieback_test_state()->option_overrides = array(); // restore to unconfigured for everything after.
 
 echo "\n=== handle_order_completed(): a claim survives the offer's own expiry, predicate-level (C1) ===\n\n";
 
@@ -593,6 +650,7 @@ assert_test(
 	$realistic_token === $realistic_row->claim_token,
 	'the token SURVIVES expire_offer() -- nulling it here is exactly what made the row unfindable by its own token once cron/sweep() ran (C1)'
 );
+assert_test( array() === splm_tieback_test_state()->mail, 'the expiry sends no shared notification when nothing is configured' );
 
 $wpdb->update_calls = array(); // isolate step 2's write from expire_offer()'s own write above.
 
@@ -622,6 +680,46 @@ assert_test( 1 === count( $realistic_info ), 'the realistic late claim logs exac
 assert_test( false !== strpos( $realistic_info[0]['message'] ?? '', 'matched_by=token' ), 'matched_by reports the token path, end to end (C1)' );
 assert_test( false !== strpos( $realistic_info[0]['message'] ?? '', 'waitlist_id=24' ), 'the log names the matched waitlist id (C1)' );
 assert_test( false !== strpos( $realistic_info[0]['message'] ?? '', 'order_id=505' ), 'the log names the fulfilling order id (C1)' );
+
+echo "\n=== expire_offer(): the shared notification, when configured ===\n\n";
+
+reset_waitlist_order_fakes();
+splm_tieback_test_state()->option_overrides = array( SPLM_Waitlist_Notify::OPTION => 'ops@example.test' );
+
+$notify_expiry_row = row(
+	array(
+		'id'         => 26,
+		'status'     => 'offered',
+		'expires_at' => gmdate( 'Y-m-d H:i:s', time() - 60 ), // already past due
+	)
+);
+$wpdb->rows[26] = $notify_expiry_row;
+
+$notify_expired = $x::expire_offer( 26 );
+
+assert_test( true === $notify_expired, 'expire_offer() still expires the row when notifications are configured' );
+$expiry_mail = splm_tieback_test_state()->mail;
+assert_test( 1 === count( $expiry_mail ), 'expiring a row with a shared notification address configured sends exactly one notification' );
+assert_test( 'ops@example.test' === ( $expiry_mail[0][0] ?? null ), 'the notification goes to the configured address' );
+assert_test( false !== strpos( $expiry_mail[0][1] ?? '', 'Waitlist offer expired' ), 'the notification carries the expiry label' );
+
+// A row that is not actually past due is not expired, and must not notify either.
+$notify_not_due_row = row(
+	array(
+		'id'         => 27,
+		'status'     => 'offered',
+		'expires_at' => gmdate( 'Y-m-d H:i:s', time() + 3600 ),
+	)
+);
+$wpdb->rows[27] = $notify_not_due_row;
+splm_tieback_test_state()->mail = array();
+
+$not_expired = $x::expire_offer( 27 );
+
+assert_test( false === $not_expired, 'a row not yet past due is not expired' );
+assert_test( array() === splm_tieback_test_state()->mail, 'a row that was not actually expired sends no notification' );
+
+splm_tieback_test_state()->option_overrides = array(); // restore to unconfigured for everything after.
 
 echo "\n=== handle_order_completed(): a failed write is not misreported as success ===\n\n";
 

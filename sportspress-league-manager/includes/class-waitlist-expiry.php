@@ -119,7 +119,7 @@ class SPLM_Waitlist_Expiry {
 		// evening. An id-only write would stamp `expired` over a claim and
 		// leave a paid player recorded as having lost their spot, with
 		// resolved_order_id still pointing at their order.
-		return SPLM_Waitlist_Database::update_if_status(
+		$expired = SPLM_Waitlist_Database::update_if_status(
 			(int) $id,
 			(string) $row->status,
 			array(
@@ -131,6 +131,15 @@ class SPLM_Waitlist_Expiry {
 			// would expire an invitation sent moments earlier.
 			null !== $row->claim_token ? (string) $row->claim_token : null
 		);
+
+		// Best-effort, on the row as read at the top of this method: nothing
+		// downstream is waiting on this, and this handler runs unattended, so
+		// its own failure must never turn a real expiry into a false report.
+		if ( $expired ) {
+			SPLM_Waitlist_Notify::send( $row, SPLM_Waitlist_Notify::EVENT_OFFER_EXPIRED );
+		}
+
+		return $expired;
 	}
 
 	/**
