@@ -231,8 +231,11 @@ class SPSG_Configuration_Validator {
 
 		$this->validate_postseason_day( $errors, 'championship_day', $this->config->championship_day['day'] ?? '' );
 		$this->validate_postseason_day( $errors, 'consolation_day', $this->config->consolation_day );
-		$this->validate_postseason_final_week_capacity( $errors );
 		$this->validate_postseason_season_span( $errors );
+		if ( isset( $errors['season_end'] ) ) {
+			return; // The final-week date is undefined until the span is fixed.
+		}
+		$this->validate_postseason_final_week_capacity( $errors );
 	}
 
 	/**

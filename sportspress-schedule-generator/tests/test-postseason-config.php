@@ -416,6 +416,33 @@ pc_assert(
 	'the championship time window excludes every configured slot on that date -- fails with a championship_day error'
 );
 
+$championship_date_blacked_out = new SPSG_Schedule_Configuration(
+	array_merge(
+		pc_valid_regular_season_fields(),
+		array(
+			'is_postseason'     => true,
+			'season_start'      => '2027-01-01',
+			'season_end'        => '2027-01-14',
+			'round_robin_weeks' => 1,
+			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D' ) ) ),
+			'playing_days'      => array( 'friday', 'sunday' ),
+			'venues'            => array( array( 'id' => 'v1', 'name' => 'Rink 1' ) ),
+			'time_slots'        => array(
+				'friday' => array( '18:00', '19:00', '20:00' ),
+				'sunday' => array( '10:00', '11:00' ),
+			),
+			'championship_day'  => array( 'day' => 'friday', 'start' => '18:45', 'end' => '21:00' ),
+			'consolation_day'   => 'sunday',
+			'blackout_dates'    => array( '2027-01-08' ), // the Friday within the final week -- Championship's own date
+		)
+	)
+);
+$result = $championship_date_blacked_out->validate();
+pc_assert(
+	is_wp_error( $result ) && isset( $result->data['errors']['championship_day'] ),
+	'the championship date is a GLOBAL blackout date -- capacity check must catch this, not just venue-level blackouts'
+);
+
 echo "\n=== SPSG_Schedule_Configuration::validate(): postseason season-date invariant ===\n\n";
 
 // Same shape as Task 2's "capacity_ok" fixture (season_start 2027-01-01,
@@ -478,6 +505,10 @@ pc_assert(
 	is_wp_error( $result ) && isset( $result->data['errors']['championship_day'] ),
 	'a championship_day not among the league\'s playing_days fails validation with a clear error, instead of silently producing an unschedulable config'
 );
+pc_assert(
+	is_wp_error( $result ) && false !== strpos( $result->data['errors']['championship_day'], "not one of this league's playing days" ),
+	'championship_day not-a-playing-day error message is NOT clobbered by the capacity check'
+);
 
 $consolation_day_not_playing_day = new SPSG_Schedule_Configuration(
 	array_merge(
@@ -496,6 +527,10 @@ $result = $consolation_day_not_playing_day->validate();
 pc_assert(
 	is_wp_error( $result ) && isset( $result->data['errors']['consolation_day'] ),
 	'a consolation_day not among the league\'s playing_days fails validation with a clear error'
+);
+pc_assert(
+	is_wp_error( $result ) && false !== strpos( $result->data['errors']['consolation_day'], "not one of this league's playing days" ),
+	'consolation_day not-a-playing-day error message is NOT clobbered by the capacity check'
 );
 
 $championship_day_not_set_yet = new SPSG_Schedule_Configuration(

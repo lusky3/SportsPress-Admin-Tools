@@ -696,30 +696,54 @@ class SPSG_Schedule_Helper {
 	 * @return int Available slot count on $date.
 	 */
 	public static function count_slots_on_date( $config, $date, $time_window = null ) {
+		if ( in_array( $date, $config->blackout_dates ?? array(), true ) ) {
+			return 0;
+		}
+
 		$day_name = strtolower( ( new DateTime( $date ) )->format( 'l' ) );
 		$venues   = $config->venues ?? array();
 		$slots    = 0;
 
 		foreach ( $venues as $venue ) {
-			$venue_id = self::extract_id( $venue );
-
-			if ( self::is_venue_blacked_out( $venue_id, $date, $config ) ) {
-				continue;
-			}
-
-			$venue_slots = self::resolve_venue_slots( $venue_id, $date, $day_name, $config );
-			if ( ! is_array( $venue_slots ) ) {
-				continue;
-			}
-
-			foreach ( $venue_slots as $time_slot ) {
-				if ( null === $time_window || ( $time_slot >= $time_window[0] && $time_slot <= $time_window[1] ) ) {
-					$slots++;
-				}
-			}
+			$slots += self::count_venue_slots_on_date( $venue, $date, $day_name, $config, $time_window );
 		}
 
 		return $slots;
+	}
+
+	/**
+	 * Slot count one venue contributes on one date, honouring its own
+	 * blackout and an optional time-window restriction. Extracted from
+	 * {@see count_slots_on_date()} so that method's own branching stays low.
+	 *
+	 * @param mixed      $venue       Venue entity (object, array, or string).
+	 * @param string     $date        'Y-m-d' date to count slots on.
+	 * @param string     $day_name    Lowercase day name for $date.
+	 * @param object     $config      Schedule configuration.
+	 * @param array|null $time_window [start, end] 'HH:MM' strings to restrict
+	 *                                 counted slots to, or null for no restriction.
+	 * @return int Slot count contributed by this venue.
+	 */
+	private static function count_venue_slots_on_date( $venue, $date, $day_name, $config, $time_window ) {
+		$venue_id = self::extract_id( $venue );
+
+		if ( self::is_venue_blacked_out( $venue_id, $date, $config ) ) {
+			return 0;
+		}
+
+		$venue_slots = self::resolve_venue_slots( $venue_id, $date, $day_name, $config );
+		if ( ! is_array( $venue_slots ) ) {
+			return 0;
+		}
+
+		$count = 0;
+		foreach ( $venue_slots as $time_slot ) {
+			if ( null === $time_window || ( $time_slot >= $time_window[0] && $time_slot <= $time_window[1] ) ) {
+				$count++;
+			}
+		}
+
+		return $count;
 	}
 
 	/**

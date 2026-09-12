@@ -37,13 +37,14 @@ function csod_assert( $cond, $msg ) {
  * A minimal config stand-in carrying only the properties
  * count_slots_on_date()'s cascade actually reads.
  */
-function csod_config( $venues, $time_slots, $venue_timeslots = array(), $venue_blackout_dates = array() ) {
+function csod_config( $venues, $time_slots, $venue_timeslots = array(), $venue_blackout_dates = array(), $blackout_dates = array() ) {
 	$config                          = new stdClass();
 	$config->venues                  = $venues;
 	$config->time_slots              = $time_slots;
 	$config->venue_timeslots         = $venue_timeslots;
 	$config->venue_blackout_dates    = $venue_blackout_dates;
 	$config->venue_date_availability = array();
+	$config->blackout_dates          = $blackout_dates;
 	return $config;
 }
 
@@ -93,6 +94,18 @@ echo "\n=== count_slots_on_date(): a day with no configured slots at all counts 
 
 $empty_day = csod_config( array( array( 'id' => 'v1', 'name' => 'Rink 1' ) ), array() );
 csod_assert( 0 === SPSG_Schedule_Helper::count_slots_on_date( $empty_day, '2027-01-23' ), 'no time_slots configured for this weekday -- zero' );
+
+echo "\n=== count_slots_on_date(): a GLOBAL blackout date returns zero regardless of venue/slot config ===\n\n";
+
+$globally_blacked_out = csod_config(
+	array( array( 'id' => 'v1', 'name' => 'Rink 1' ), array( 'id' => 'v2', 'name' => 'Rink 2' ) ),
+	array( 'saturday' => array( '18:00', '19:00', '20:00' ) )
+);
+$globally_blacked_out->blackout_dates = array( '2027-01-23' );
+csod_assert(
+	0 === SPSG_Schedule_Helper::count_slots_on_date( $globally_blacked_out, '2027-01-23' ),
+	'a date in the global blackout_dates list returns 0 slots even with venues/slots configured'
+);
 
 echo "\n=== Test Summary ===\n";
 echo "Passed: $passed\n";
