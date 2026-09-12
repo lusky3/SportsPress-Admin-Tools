@@ -30,6 +30,9 @@ define( 'SPSG_PLUGIN_PATH', dirname( __FILE__ ) . '/../' );
  */
 function __( $s, $d = null ) { return $s; }
 function get_current_user_id() { return 1; }
+/**
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
 function get_option( $name, $default = false ) { return $default; }
 
 class WP_Error {
@@ -51,9 +54,15 @@ function is_wp_error( $thing ) { return $thing instanceof WP_Error; }
  */
 class SPSG_Placeholder_Team_Manager {
 	public static $next_id = 800;
+	/**
+	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+	 */
 	public static function create_placeholder_team( $team_name, $config_id = '', $division = '' ) {
 		return self::$next_id++;
 	}
+	/**
+	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+	 */
 	public static function is_placeholder( $team_id ) {
 		return true;
 	}

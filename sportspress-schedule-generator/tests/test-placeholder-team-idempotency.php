@@ -53,25 +53,38 @@ function update_post_meta( $post_id, $key, $value ) {
  * query shape without a real database.
  */
 function get_posts( $args ) {
-	global $ptmi_posts, $ptmi_meta;
+	global $ptmi_posts;
 	$matches = array();
 	foreach ( $ptmi_posts as $id => $post ) {
-		if ( isset( $args['title'] ) && $post->post_title !== $args['title'] ) {
-			continue;
-		}
-		$meta_ok = true;
-		foreach ( (array) ( $args['meta_query'] ?? array() ) as $clause ) {
-			if ( ( $ptmi_meta[ $id ][ $clause['key'] ] ?? null ) !== $clause['value'] ) {
-				$meta_ok = false;
-				break;
-			}
-		}
-		if ( $meta_ok ) {
+		if ( ptmi_post_matches( $id, $post, $args ) ) {
 			$matches[] = $post;
 		}
 	}
-	$limit = $args['posts_per_page'] ?? count( $matches );
+	$limit = isset( $args['posts_per_page'] ) ? $args['posts_per_page'] : count( $matches );
 	return array_slice( $matches, 0, $limit );
+}
+
+/**
+ * Whether one in-memory post satisfies a get_posts() query's title and
+ * meta_query clauses (AND logic).
+ *
+ * @param int      $id   Post id, used to look up its meta.
+ * @param stdClass $post Post object being tested.
+ * @param array    $args get_posts() query args.
+ * @return bool
+ */
+function ptmi_post_matches( $id, $post, $args ) {
+	if ( isset( $args['title'] ) && $post->post_title !== $args['title'] ) {
+		return false;
+	}
+	global $ptmi_meta;
+	foreach ( (array) ( isset( $args['meta_query'] ) ? $args['meta_query'] : array() ) as $clause ) {
+		$value = isset( $ptmi_meta[ $id ][ $clause['key'] ] ) ? $ptmi_meta[ $id ][ $clause['key'] ] : null;
+		if ( $value !== $clause['value'] ) {
+			return false;
+		}
+	}
+	return true;
 }
 
 require_once SPSG_PLUGIN_PATH . 'includes/class-placeholder-team-manager.php';

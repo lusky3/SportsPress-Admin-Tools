@@ -247,6 +247,8 @@ class SPSG_Schedule_Engine {
 	 * @return array|WP_Error Array of matchup stdClass objects, or an error
 	 *                          (e.g. an odd division size slipped past config
 	 *                          validation).
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function generate_postseason_matchups( $config ) {
 		try {

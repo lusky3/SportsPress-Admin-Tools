@@ -44,6 +44,9 @@ class SPSG_Placeholder_Team_Manager {
 		self::$create_calls[] = array( 'name' => $team_name, 'config_id' => $config_id, 'division' => $division );
 		return self::$next_id++;
 	}
+	/**
+	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+	 */
 	public static function is_placeholder( $team_id ) {
 		return true;
 	}
