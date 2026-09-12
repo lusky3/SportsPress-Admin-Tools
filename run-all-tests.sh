@@ -79,6 +79,7 @@ run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-postseason-brack
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-postseason-matchup-builder.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-schedule-engine-postseason-matchups.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-postseason-day-constraints.php"
+run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-postseason-week-constraint.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-rest-api-postseason.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-overlap-avoid-same-day-bonus.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-incomplete-week-detection.php"

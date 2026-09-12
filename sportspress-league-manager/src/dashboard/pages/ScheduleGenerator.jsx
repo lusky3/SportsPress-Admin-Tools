@@ -140,7 +140,7 @@ export default function ScheduleGenerator() {
 	const presetRef = useRef(null);
 	// Postseason (phase 6): create-from-source panel + per-division placeholder minting
 	const [postseasonPanelId,setPostseasonPanelId] = useState(null);
-	const [postseasonForm,setPostseasonForm] = useState({round_robin_weeks:1,championship_day:{day:'saturday',start:'',end:''},consolation_day:'sunday'});
+	const [postseasonForm,setPostseasonForm] = useState({season_start:'',round_robin_weeks:1,championship_day:{day:'saturday',start:'18:45',end:'21:00'},consolation_day:'sunday'});
 	const [postseasonBusy,setPostseasonBusy] = useState(false);
 
 	const loadConfigs = useCallback(() => {
@@ -478,6 +478,12 @@ export default function ScheduleGenerator() {
 													<p className="splm-muted" style={{marginTop:0}}>Copies divisions, venues, playing days, and time slots from this configuration. Seed/RR-Seed placeholder teams for each division are minted automatically the first time a schedule is generated for it.</p>
 													<div style={{display:'flex',gap:'0.75rem',flexWrap:'wrap',alignItems:'flex-end'}}>
 														<label style={{display:'flex',flexDirection:'column',fontSize:'0.85em'}}>
+															Postseason start date
+															<input type="date" className="splm-select"
+																value={postseasonForm.season_start}
+																onChange={e=>setPostseasonForm(p=>({...p,season_start:e.target.value}))}/>
+														</label>
+														<label style={{display:'flex',flexDirection:'column',fontSize:'0.85em'}}>
 															Round robin weeks
 															<input type="number" min={1} className="splm-select" style={{width:100}}
 																value={postseasonForm.round_robin_weeks}
@@ -515,7 +521,7 @@ export default function ScheduleGenerator() {
 														</label>
 													</div>
 													<div style={{marginTop:'0.75rem',display:'flex',gap:'0.5rem'}}>
-														<button className="splm-btn splm-btn--primary" disabled={postseasonBusy} onClick={()=>doCreatePostseason(c.id)}>
+														<button className="splm-btn splm-btn--primary" disabled={postseasonBusy||!postseasonForm.season_start} onClick={()=>doCreatePostseason(c.id)}>
 															{postseasonBusy?'Creating…':'Create'}
 														</button>
 														<button className="splm-btn" onClick={()=>setPostseasonPanelId(null)}>Cancel</button>

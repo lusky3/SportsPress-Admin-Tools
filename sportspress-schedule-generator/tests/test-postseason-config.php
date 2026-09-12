@@ -330,6 +330,57 @@ pc_assert(
 	'a valid postseason config (even division, round_robin_weeks within range) passes validation entirely'
 );
 
+$championship_day_not_playing_day = new SPSG_Schedule_Configuration(
+	array_merge(
+		pc_valid_regular_season_fields(),
+		array(
+			'is_postseason'     => true,
+			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D', 'E', 'F' ) ) ),
+			'round_robin_weeks' => 3,
+			'championship_day'  => array( 'day' => 'saturday' ), // NOT in playing_days (only 'friday')
+		)
+	)
+);
+$result = $championship_day_not_playing_day->validate();
+pc_assert(
+	is_wp_error( $result ) && isset( $result->data['errors']['championship_day'] ),
+	'a championship_day not among the league\'s playing_days fails validation with a clear error, instead of silently producing an unschedulable config'
+);
+
+$consolation_day_not_playing_day = new SPSG_Schedule_Configuration(
+	array_merge(
+		pc_valid_regular_season_fields(),
+		array(
+			'is_postseason'     => true,
+			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D', 'E', 'F' ) ) ),
+			'round_robin_weeks' => 3,
+			'consolation_day'   => 'saturday', // NOT in playing_days (only 'friday')
+		)
+	)
+);
+$result = $consolation_day_not_playing_day->validate();
+pc_assert(
+	is_wp_error( $result ) && isset( $result->data['errors']['consolation_day'] ),
+	'a consolation_day not among the league\'s playing_days fails validation with a clear error'
+);
+
+$championship_day_not_set_yet = new SPSG_Schedule_Configuration(
+	array_merge(
+		pc_valid_regular_season_fields(),
+		array(
+			'is_postseason'     => true,
+			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D', 'E', 'F' ) ) ),
+			'round_robin_weeks' => 3,
+			// championship_day/consolation_day left at their schema defaults (empty) -- nothing to validate yet.
+		)
+	)
+);
+$result = $championship_day_not_set_yet->validate();
+pc_assert(
+	true === $result,
+	'when championship_day/consolation_day are not set yet, there is nothing to validate against playing_days'
+);
+
 echo "\n=== SPSG_Configuration_Manager::build_postseason_config_data(): pure transformation ===\n\n";
 
 $manager = new SPSG_Configuration_Manager();
@@ -358,7 +409,7 @@ $built_with_overrides = $manager->build_postseason_config_data(
 	array(
 		'name'                         => 'Custom Bracket Name',
 		'season_start'                 => '2027-02-01',
-		'season_end'                   => '2027-03-01',
+		'season_end'                   => '2027-03-01', // deliberately wrong -- must be ignored, season_end is always computed
 		'postseason_source_season_id'  => 674,
 		'round_robin_weeks'            => 4,
 		'championship_day'             => array( 'day' => 'friday' ),
@@ -368,9 +419,25 @@ $built_with_overrides = $manager->build_postseason_config_data(
 );
 pc_assert( 'Custom Bracket Name' === $built_with_overrides['name'], 'an explicit name override wins over the "<source> Playoffs" default' );
 pc_assert( '2027-02-01' === $built_with_overrides['season_start'], 'season_start override applied' );
+pc_assert(
+	'2027-03-07' === $built_with_overrides['season_end'],
+	'season_end is ALWAYS computed as season_start + (round_robin_weeks + 1) calendar weeks (4+1=5 weeks = 34 days after 2027-02-01), never the passed-in override'
+);
 pc_assert( 674 === $built_with_overrides['postseason_source_season_id'], 'postseason_source_season_id override applied' );
 pc_assert( 4 === $built_with_overrides['round_robin_weeks'], 'round_robin_weeks override applied' );
 pc_assert( 'automatic' === $built_with_overrides['seed_resolution_mode'], 'seed_resolution_mode override applied' );
+
+$built_no_start = $manager->build_postseason_config_data( $source );
+pc_assert(
+	'' === $built_no_start['season_end'],
+	'with no season_start at all, season_end stays empty rather than computing garbage'
+);
+
+$built_malformed_start = $manager->build_postseason_config_data( $source, array( 'season_start' => 'not a real date' ) );
+pc_assert(
+	'' === $built_malformed_start['season_end'],
+	'a malformed season_start (not parseable as a date) fails safely to an empty season_end, rather than an uncaught exception'
+);
 
 echo "\n=== SPSG_Configuration_Manager::create_postseason_configuration(): end to end ===\n\n";
 

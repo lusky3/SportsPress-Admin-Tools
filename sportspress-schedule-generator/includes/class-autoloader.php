@@ -82,6 +82,7 @@ class SPSG_Autoloader {
 			'SPSG_Team_Restriction_Constraint' => $base_path . 'constraints/class-team-restriction-constraint.php',
 			'SPSG_Division_Grouping_Constraint' => $base_path . 'constraints/class-division-grouping-constraint.php',
 			'SPSG_Postseason_Day_Constraint' => $base_path . 'constraints/class-postseason-day-constraint.php',
+			'SPSG_Postseason_Week_Constraint' => $base_path . 'constraints/class-postseason-week-constraint.php',
 			'SPSG_Championship_Time_Window_Constraint' => $base_path . 'constraints/class-championship-time-window-constraint.php',
 
 			// Export classes

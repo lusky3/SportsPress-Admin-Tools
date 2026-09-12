@@ -38,14 +38,9 @@ class SPSG_Postseason_Bracket_Detector {
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public static function final_week_info( $game ) {
-		$home = SPSG_Postseason_Seed_Resolver::parse_seed_placeholder_name(
-			self::team_label( $game->home_team ?? null )
-		);
-		$away = SPSG_Postseason_Seed_Resolver::parse_seed_placeholder_name(
-			self::team_label( $game->away_team ?? null )
-		);
+		list( $home, $away ) = self::parsed_teams( $game );
 
-		if ( ! self::is_matching_rr_seed_pair( $home, $away ) ) {
+		if ( ! self::is_matching_stage_pair( $home, $away, SPSG_Postseason_Seed_Resolver::RR_SEED_STAGE ) ) {
 			return null;
 		}
 
@@ -59,18 +54,57 @@ class SPSG_Postseason_Bracket_Detector {
 	}
 
 	/**
-	 * Whether two parsed placeholder names are both RR-Seed placeholders
-	 * for the same division -- i.e. this is a final-week game at all.
+	 * Whether $game is a cross-round-robin (Seed-stage) postseason matchup,
+	 * and if so, which division it belongs to.
 	 *
-	 * @param array|null $home Parsed placeholder name for the home team, or null.
-	 * @param array|null $away Parsed placeholder name for the away team, or null.
+	 * @param object $game A game with home_team/away_team properties (string,
+	 *                      object, or array -- see team_label()).
+	 * @return string|null Division name, or null if $game isn't a same-division
+	 *              Seed-stage matchup at all.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	public static function cross_round_robin_division( $game ) {
+		list( $home, $away ) = self::parsed_teams( $game );
+
+		if ( ! self::is_matching_stage_pair( $home, $away, SPSG_Postseason_Seed_Resolver::SEED_STAGE ) ) {
+			return null;
+		}
+
+		return $home['division'];
+	}
+
+	/**
+	 * Both teams' parsed placeholder names, or null for either side that
+	 * doesn't parse as one at all.
+	 *
+	 * @param object $game A game with home_team/away_team properties.
+	 * @return array{0: array|null, 1: array|null} [home, away].
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function parsed_teams( $game ) {
+		return array(
+			SPSG_Postseason_Seed_Resolver::parse_seed_placeholder_name( self::team_label( $game->home_team ?? null ) ),
+			SPSG_Postseason_Seed_Resolver::parse_seed_placeholder_name( self::team_label( $game->away_team ?? null ) ),
+		);
+	}
+
+	/**
+	 * Whether two parsed placeholder names are both the same stage
+	 * (Seed or RR-Seed) for the same division -- i.e. this is a
+	 * same-division, same-stage postseason matchup at all.
+	 *
+	 * @param array|null $home  Parsed placeholder name for the home team, or null.
+	 * @param array|null $away  Parsed placeholder name for the away team, or null.
+	 * @param string     $stage SPSG_Postseason_Seed_Resolver::SEED_STAGE or ::RR_SEED_STAGE.
 	 * @return bool
 	 */
-	private static function is_matching_rr_seed_pair( $home, $away ) {
+	private static function is_matching_stage_pair( $home, $away, $stage ) {
 		if ( null === $home || null === $away ) {
 			return false;
 		}
-		if ( SPSG_Postseason_Seed_Resolver::RR_SEED_STAGE !== $home['stage'] || SPSG_Postseason_Seed_Resolver::RR_SEED_STAGE !== $away['stage'] ) {
+		if ( $stage !== $home['stage'] || $stage !== $away['stage'] ) {
 			return false;
 		}
 		return $home['division'] === $away['division'];

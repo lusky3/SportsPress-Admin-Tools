@@ -590,11 +590,18 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 	public function build_postseason_config_data( array $source, array $overrides = array() ) {
 		$round_robin_weeks = (int) self::value( $overrides, 'round_robin_weeks', 3 );
 		$default_name      = self::value( $source, 'name', '' ) . ' Playoffs';
+		$season_start       = self::value( $overrides, 'season_start', '' );
 
 		return array(
 			'name'                        => self::value( $overrides, 'name', $default_name ),
-			'season_start'                => self::value( $overrides, 'season_start', '' ),
-			'season_end'                  => self::value( $overrides, 'season_end', '' ),
+			'season_start'                => $season_start,
+			// Always computed, never independently settable: the new
+			// SPSG_Postseason_Week_Constraint measures "the final week" as
+			// the trailing 7 days of season_end, and assumes the
+			// round_robin_weeks exactly fill the time before it. Any
+			// season_end override is deliberately ignored so that
+			// invariant can never be violated by a caller.
+			'season_end'                  => self::postseason_season_end( $season_start, $round_robin_weeks ),
 			'divisions'                   => self::value( $source, 'divisions', array() ),
 			'venues'                      => self::value( $source, 'venues', array() ), // reuses the regular season's venues
 			'playing_days'                => self::value( $source, 'playing_days', array() ),
@@ -614,6 +621,30 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 			'consolation_day'             => self::value( $overrides, 'consolation_day', '' ),
 			'seed_resolution_mode'        => self::value( $overrides, 'seed_resolution_mode', 'manual' ),
 		);
+	}
+
+	/**
+	 * A postseason bracket's own season_end -- always exactly
+	 * ($round_robin_weeks + 1) calendar weeks after $season_start (the
+	 * round-robin weeks, plus the final Championship/Consolation week).
+	 * SPSG_Postseason_Week_Constraint measures its "final week" window
+	 * against this same computation, so the two must always agree.
+	 *
+	 * @param string $season_start 'Y-m-d' date string, or '' if not yet set.
+	 * @param int    $round_robin_weeks Number of cross-round-robin weeks.
+	 * @return string 'Y-m-d' date string, or '' if $season_start is empty.
+	 */
+	private static function postseason_season_end( $season_start, $round_robin_weeks ) {
+		if ( empty( $season_start ) ) {
+			return '';
+		}
+		try {
+			$end = new DateTime( $season_start );
+		} catch ( Exception $e ) {
+			return '';
+		}
+		$end->modify( '+' . ( 7 * ( $round_robin_weeks + 1 ) - 1 ) . ' days' );
+		return $end->format( 'Y-m-d' );
 	}
 
 	/**
