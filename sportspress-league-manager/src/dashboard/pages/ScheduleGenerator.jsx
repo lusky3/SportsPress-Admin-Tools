@@ -142,7 +142,6 @@ export default function ScheduleGenerator() {
 	const [postseasonPanelId,setPostseasonPanelId] = useState(null);
 	const [postseasonForm,setPostseasonForm] = useState({round_robin_weeks:1,championship_day:{day:'saturday',start:'',end:''},consolation_day:'sunday'});
 	const [postseasonBusy,setPostseasonBusy] = useState(false);
-	const [mintingId,setMintingId] = useState(null);
 
 	const loadConfigs = useCallback(() => {
 		setLoading(true);
@@ -162,25 +161,6 @@ export default function ScheduleGenerator() {
 			setToast({message:'Failed to create postseason configuration: '+(e?.message||'unknown error'),type:'error'});
 		} finally {
 			setPostseasonBusy(false);
-		}
-	};
-
-	// Postseason (phase 6): mint "Div Seed N"/"Div RR-Seed N" placeholder teams
-	// for every division in a postseason config (the server reads division
-	// names/team counts off the config itself). Minted placeholders show up
-	// like any other placeholder team once a schedule is generated against
-	// them -- the existing "Needs Assignment" step (below) replaces them with
-	// real teams once standings determine who each seed actually is.
-	const doMintPlaceholders = async (configId) => {
-		setMintingId(configId);
-		try {
-			const minted = await spsg.mintPostseasonPlaceholders(configId);
-			const total = Object.values(minted||{}).reduce((sum,m)=>sum+Object.keys(m?.seed||{}).length+Object.keys(m?.rr_seed||{}).length,0);
-			setToast({message:`Minted ${total} placeholder team(s). Assign real teams from the Needs Assignment step once a schedule is generated.`,type:'success'});
-		} catch (e) {
-			setToast({message:'Failed to mint placeholders: '+(e?.message||'unknown error'),type:'error'});
-		} finally {
-			setMintingId(null);
 		}
 	};
 
@@ -487,11 +467,6 @@ export default function ScheduleGenerator() {
 													<button className="splm-btn" title="Create postseason configuration from this one" aria-label={`Create postseason configuration from ${c.name}`} onClick={()=>{
 														setPostseasonPanelId(postseasonPanelId===c.id?null:c.id);
 													}}>🏆 Playoffs</button>
-												)}
-												{c.is_postseason&&(
-													<button className="splm-btn" disabled={mintingId===c.id} title="Mint Seed/RR-Seed placeholder teams for every division" onClick={()=>doMintPlaceholders(c.id)}>
-														{mintingId===c.id?'Minting…':'Mint Placeholders'}
-													</button>
 												)}
 											</td>
 										</tr>
