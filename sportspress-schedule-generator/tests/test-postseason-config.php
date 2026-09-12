@@ -330,6 +330,89 @@ pc_assert(
 	'a valid postseason config (even division, round_robin_weeks within range) passes validation entirely'
 );
 
+echo "\n=== SPSG_Schedule_Configuration::validate(): postseason final-week capacity ===\n\n";
+
+// season_start 2027-01-01 is a Friday; round_robin_weeks=1 -> season_end = start + 13 days = 2027-01-14.
+// The final (trailing 7-day) week is 2027-01-08..2027-01-14. Within it, Friday = 2027-01-08, Sunday = 2027-01-10.
+$capacity_ok = new SPSG_Schedule_Configuration(
+	array_merge(
+		pc_valid_regular_season_fields(),
+		array(
+			'is_postseason'     => true,
+			'season_start'      => '2027-01-01',
+			'season_end'        => '2027-01-14',
+			'round_robin_weeks' => 1,
+			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D' ) ) ), // 4 teams: 1 championship game, 1 consolation game
+			'playing_days'      => array( 'friday', 'sunday' ),
+			'venues'            => array( array( 'id' => 'v1', 'name' => 'Rink 1' ) ),
+			'time_slots'        => array(
+				'friday' => array( '18:00', '19:00', '20:00' ),
+				'sunday' => array( '10:00', '11:00' ),
+			),
+			'championship_day'  => array( 'day' => 'friday', 'start' => '18:45', 'end' => '21:00' ), // 19:00, 20:00 qualify -- 2 available, 1 needed
+			'consolation_day'   => 'sunday', // 2 available, 1 needed
+		)
+	)
+);
+$result = $capacity_ok->validate();
+pc_assert( true === $result, 'enough capacity on both the championship and consolation dates -- passes' );
+
+$consolation_capacity_short = new SPSG_Schedule_Configuration(
+	array_merge(
+		pc_valid_regular_season_fields(),
+		array(
+			'is_postseason'     => true,
+			'season_start'      => '2027-01-01',
+			'season_end'        => '2027-01-14',
+			'round_robin_weeks' => 1,
+			// 2 divisions of 4 teams: 2 championship games, 2 consolation games.
+			'divisions'         => array(
+				array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D' ) ),
+				array( 'name' => 'Div 2', 'teams' => array( 'E', 'F', 'G', 'H' ) ),
+			),
+			'playing_days'      => array( 'friday', 'sunday' ),
+			'venues'            => array( array( 'id' => 'v1', 'name' => 'Rink 1' ) ),
+			'time_slots'        => array(
+				'friday' => array( '18:00', '19:00', '20:00' ), // window keeps 2 -- enough for 2 championship games
+				'sunday' => array( '10:00' ), // only 1 slot -- NOT enough for 2 consolation games
+			),
+			'championship_day'  => array( 'day' => 'friday', 'start' => '18:45', 'end' => '21:00' ),
+			'consolation_day'   => 'sunday',
+		)
+	)
+);
+$result = $consolation_capacity_short->validate();
+pc_assert(
+	is_wp_error( $result ) && isset( $result->data['errors']['consolation_day'] ),
+	'not enough consolation-day capacity for the number of consolation games needed -- fails with a consolation_day error'
+);
+
+$championship_capacity_short = new SPSG_Schedule_Configuration(
+	array_merge(
+		pc_valid_regular_season_fields(),
+		array(
+			'is_postseason'     => true,
+			'season_start'      => '2027-01-01',
+			'season_end'        => '2027-01-14',
+			'round_robin_weeks' => 1,
+			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D' ) ) ), // 1 championship game, 1 consolation game
+			'playing_days'      => array( 'friday', 'sunday' ),
+			'venues'            => array( array( 'id' => 'v1', 'name' => 'Rink 1' ) ),
+			'time_slots'        => array(
+				'friday' => array( '18:00' ), // only 18:00 -- the 19:00-20:00 window keeps ZERO of it
+				'sunday' => array( '10:00', '11:00', '12:00', '13:00', '14:00' ), // plenty for consolation
+			),
+			'championship_day'  => array( 'day' => 'friday', 'start' => '19:00', 'end' => '20:00' ),
+			'consolation_day'   => 'sunday',
+		)
+	)
+);
+$result = $championship_capacity_short->validate();
+pc_assert(
+	is_wp_error( $result ) && isset( $result->data['errors']['championship_day'] ),
+	'the championship time window excludes every configured slot on that date -- fails with a championship_day error'
+);
+
 $championship_day_not_playing_day = new SPSG_Schedule_Configuration(
 	array_merge(
 		pc_valid_regular_season_fields(),
