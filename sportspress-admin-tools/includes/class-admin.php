@@ -338,56 +338,31 @@ class SPAT_Admin {
 			'spat_general_settings'
 		);
 
-		add_settings_field(
-			'child_plugins_status',
-			__( 'Registered Child Plugins', 'sportspress-admin-tools' ),
-			array( $this, 'child_plugins_status_callback' ),
-			'spat_general_settings',
-			'spat_child_plugins_section'
-		);
-
-		add_settings_field(
-			'spat_remove_data_on_uninstall',
-			__( 'Remove Data on Uninstall', 'sportspress-admin-tools' ),
-			array( $this, 'remove_data_setting_callback' ),
-			'spat_general_settings',
-			'spat_settings_section'
-		);
-
-		add_settings_field(
-			'spat_use_select2',
-			__( 'Enhanced Dropdowns (Slim Select)', 'sportspress-admin-tools' ),
-			array( $this, 'select2_setting_callback' ),
-			'spat_general_settings',
-			'spat_settings_section'
-		);
-
-		add_settings_field(
-			'spat_admin_bar_link_enabled',
-			__( 'Admin Bar Link', 'sportspress-admin-tools' ),
-			array( $this, 'admin_bar_link_setting_callback' ),
-			'spat_general_settings',
-			'spat_settings_section'
-		);
-
-		add_settings_field(
-			'spat_debug_show_sensitive',
-			__( 'Show Sensitive Information in Debug Logs', 'sportspress-admin-tools' ),
-			array( $this, 'debug_sensitive_callback' ),
-			'spat_general_settings',
-			'spat_debug_section'
-		);
-
-		add_settings_field(
-			'spat_debug_verbose_logging',
-			__( 'Verbose Debug Logging', 'sportspress-admin-tools' ),
-			array( $this, 'debug_verbose_callback' ),
-			'spat_general_settings',
-			'spat_debug_section'
-		);
+		$this->add_settings_field_row( 'child_plugins_status', __( 'Registered Child Plugins', 'sportspress-admin-tools' ), array( $this, 'child_plugins_status_callback' ), 'spat_child_plugins_section' );
+		$this->add_settings_field_row( 'spat_remove_data_on_uninstall', __( 'Remove Data on Uninstall', 'sportspress-admin-tools' ), array( $this, 'remove_data_setting_callback' ), 'spat_settings_section' );
+		$this->add_settings_field_row( 'spat_use_select2', __( 'Enhanced Dropdowns (Slim Select)', 'sportspress-admin-tools' ), array( $this, 'select2_setting_callback' ), 'spat_settings_section' );
+		$this->add_settings_field_row( 'spat_admin_bar_link_enabled', __( 'Admin Bar Link', 'sportspress-admin-tools' ), array( $this, 'admin_bar_link_setting_callback' ), 'spat_settings_section' );
+		$this->add_settings_field_row( 'spat_debug_show_sensitive', __( 'Show Sensitive Information in Debug Logs', 'sportspress-admin-tools' ), array( $this, 'debug_sensitive_callback' ), 'spat_debug_section' );
+		$this->add_settings_field_row( 'spat_debug_verbose_logging', __( 'Verbose Debug Logging', 'sportspress-admin-tools' ), array( $this, 'debug_verbose_callback' ), 'spat_debug_section' );
 
 		// Allow child plugins to register their own settings
 		do_action( 'spat_admin_init_settings' );
+	}
+
+	/**
+	 * add_settings_field() for a plain field on this screen's one
+	 * settings page -- only the id/label/callback/section vary between
+	 * the six calls above, so this is what stops a seventh field from
+	 * becoming a seventh near-identical five-line block.
+	 *
+	 * @param string   $id       Option name.
+	 * @param string   $label    Field label.
+	 * @param callable $callback Render callback.
+	 * @param string   $section  Settings section id.
+	 * @return void
+	 */
+	private function add_settings_field_row( $id, $label, $callback, $section ) {
+		add_settings_field( $id, $label, $callback, 'spat_general_settings', $section );
 	}
 
 	/**
