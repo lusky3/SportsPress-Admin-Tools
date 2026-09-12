@@ -479,9 +479,15 @@ class SPSG_Schedule_Helper {
 			}
 		}
 
-		// Priority 2: Venue-specific timeslots for this day
-		if ( ! empty( $config->venue_timeslots[ $venue_id ][ $day_name ] ) ) {
-			return $config->venue_timeslots[ $venue_id ][ $day_name ];
+		// Priority 2: Venue-specific timeslots for this day. A day the admin UI
+		// left unchecked saves as an explicit empty array -- "this venue doesn't
+		// play this day" -- which must win over Priority 3 below rather than be
+		// treated as "no per-venue override configured" just because `[]` is
+		// falsy. Only a venue with no per-venue timeslots entry AT ALL for this
+		// day (the key itself absent) falls through to the global default.
+		$venue_days = isset( $config->venue_timeslots[ $venue_id ] ) ? $config->venue_timeslots[ $venue_id ] : array();
+		if ( array_key_exists( $day_name, $venue_days ) ) {
+			return $venue_days[ $day_name ];
 		}
 
 		// Priority 3: Global time slots for this day
