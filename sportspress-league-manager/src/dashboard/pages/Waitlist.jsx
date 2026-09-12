@@ -256,6 +256,62 @@ function ColumnsToggle( { visible, onToggle } ) {
 	);
 }
 
+// Status column: the status badge, plus the inline target-pairing control
+// when the row has none. Split out of WaitlistRow so COLUMN_RENDERERS below
+// can address it the same way as every other column.
+function StatusCell( { row, targetInput, settingTargetId, onTargetInputChange, onSetTarget } ) {
+	return (
+		<>
+			<span className={ `splm-waitlist__status splm-waitlist__status--${ row.status }` }>
+				{ row.status }
+			</span>
+			{ ! row.has_target && (
+				<TargetPairingNotice
+					row={ row }
+					value={ targetInput }
+					disabled={ settingTargetId === row.id }
+					onChange={ ( e ) => onTargetInputChange( row.id, e.target.value ) }
+					onSet={ () => onSetTarget( row ) }
+				/>
+			) }
+		</>
+	);
+}
+
+// One render function per column, keyed by COLUMN_DEFS' key, so WaitlistRow
+// below is a single lookup + map instead of an 11-way switch. `ctx` carries
+// the per-row callback props a handful of columns need (status, restrictions);
+// most columns only need `row` itself.
+const COLUMN_RENDERERS = {
+	created_at: ( row ) => formatLocal( row.created_at ),
+	name: ( row ) => row.name || '—',
+	email: ( row ) => row.email,
+	season: ( row ) => row.season,
+	position: ( row ) => row.position,
+	status: ( row, ctx ) => (
+		<StatusCell
+			row={ row }
+			targetInput={ ctx.targetInput }
+			settingTargetId={ ctx.settingTargetId }
+			onTargetInputChange={ ctx.onTargetInputChange }
+			onSetTarget={ ctx.onSetTarget }
+		/>
+	),
+	deadline: ( row ) => <DeadlineCell row={ row } />,
+	dispatched_by: ( row ) => row.dispatched_by_name || '—',
+	waitlist_order: ( row ) => <OrderLink orderId={ row.source_order_id } />,
+	paid_order: ( row ) => <OrderLink orderId={ row.resolved_order_id } />,
+	restrictions: ( row, ctx ) => (
+		<RestrictionsCell
+			row={ row }
+			value={ ctx.restrictionsInput ?? row.restrictions ?? '' }
+			saving={ ctx.savingRestrictionsId === row.id }
+			onChange={ ctx.onRestrictionsInputChange }
+			onSave={ ctx.onSaveRestrictions }
+		/>
+	),
+};
+
 // Row actions: Offer/Re-offer is only available to queued/expired rows and is
 // disabled (with an explanatory title) until a target product is paired;
 // Cancel/Remove is available to everything except a finished row.
@@ -311,63 +367,16 @@ function WaitlistRow( {
 	const canOffer = row.status === 'queued' || row.status === 'expired';
 	const canCancel = row.status !== 'claimed' && row.status !== 'cancelled';
 
-	const cellFor = ( key ) => {
-		switch ( key ) {
-			case 'created_at':
-				return <td key={ key }>{ formatLocal( row.created_at ) }</td>;
-			case 'name':
-				return <td key={ key }>{ row.name || '—' }</td>;
-			case 'email':
-				return <td key={ key }>{ row.email }</td>;
-			case 'season':
-				return <td key={ key }>{ row.season }</td>;
-			case 'position':
-				return <td key={ key }>{ row.position }</td>;
-			case 'status':
-				return (
-					<td key={ key }>
-						<span className={ `splm-waitlist__status splm-waitlist__status--${ row.status }` }>
-							{ row.status }
-						</span>
-						{ ! row.has_target && (
-							<TargetPairingNotice
-								row={ row }
-								value={ targetInput }
-								disabled={ settingTargetId === row.id }
-								onChange={ ( e ) => onTargetInputChange( row.id, e.target.value ) }
-								onSet={ () => onSetTarget( row ) }
-							/>
-						) }
-					</td>
-				);
-			case 'deadline':
-				return <td key={ key }><DeadlineCell row={ row } /></td>;
-			case 'dispatched_by':
-				return <td key={ key }>{ row.dispatched_by_name || '—' }</td>;
-			case 'waitlist_order':
-				return <td key={ key }><OrderLink orderId={ row.source_order_id } /></td>;
-			case 'paid_order':
-				return <td key={ key }><OrderLink orderId={ row.resolved_order_id } /></td>;
-			case 'restrictions':
-				return (
-					<td key={ key }>
-						<RestrictionsCell
-							row={ row }
-							value={ restrictionsInput ?? row.restrictions ?? '' }
-							saving={ savingRestrictionsId === row.id }
-							onChange={ onRestrictionsInputChange }
-							onSave={ onSaveRestrictions }
-						/>
-					</td>
-				);
-			default:
-				return null;
-		}
-	};
+	// Only the columns above that actually need more than `row` read from
+	// this; harmless to build unconditionally since it's a handful of prop
+	// references, not new work.
+	const ctx = { targetInput, settingTargetId, onTargetInputChange, onSetTarget, restrictionsInput, savingRestrictionsId, onRestrictionsInputChange, onSaveRestrictions };
 
 	return (
 		<tr>
-			{ visibleColumns.map( cellFor ) }
+			{ visibleColumns.map( ( key ) => (
+				<td key={ key }>{ COLUMN_RENDERERS[ key ]?.( row, ctx ) }</td>
+			) ) }
 			<RowActions
 				row={ row }
 				canOffer={ canOffer }
@@ -531,7 +540,209 @@ function AddEntryForm( { form, adding, onFieldChange, onSubmit } ) {
 	);
 }
 
-export default function Waitlist() {
+// Column visibility + its localStorage persistence, split out of Waitlist()
+// purely to keep that function's own body short — nothing here is reused
+// elsewhere.
+function useVisibleColumns() {
+	const [ visibleColumns, setVisibleColumns ] = useState( loadVisibleColumns );
+
+	const toggleColumn = ( key ) => {
+		setVisibleColumns( ( prev ) => {
+			const next = prev.includes( key ) ? prev.filter( ( k ) => k !== key ) : [ ...prev, key ];
+			// Re-derive from COLUMN_DEFS order regardless of toggle order, so
+			// header and row rendering (which both iterate visibleColumns
+			// directly) never disagree on column order.
+			const ordered = COLUMN_DEFS.filter( ( c ) => next.includes( c.key ) ).map( ( c ) => c.key );
+			saveVisibleColumns( ordered );
+			return ordered;
+		} );
+	};
+
+	return [ visibleColumns, toggleColumn ];
+}
+
+// The restrictions note's per-row draft + in-flight save state, same reason
+// as useVisibleColumns above.
+function useRestrictionsEditor( { setError, setNotice, load } ) {
+	const [ inputs, setInputs ] = useState( {} );
+	const [ savingId, setSavingId ] = useState( 0 );
+
+	const onChange = ( id, value ) => {
+		setInputs( ( prev ) => ( { ...prev, [ id ]: value } ) );
+	};
+
+	const onSave = ( row ) => {
+		const value = inputs[ row.id ] ?? row.restrictions ?? '';
+		setSavingId( row.id );
+		setError( '' );
+		setNotice( '' );
+		setWaitlistRestrictions( row.id, value )
+			.then( () => {
+				setNotice( 'Restrictions note saved.' );
+				load();
+			} )
+			.catch( ( e ) => setError( e?.message || 'Could not save the restrictions note.' ) )
+			.finally( () => setSavingId( 0 ) );
+	};
+
+	return { inputs, savingId, onChange, onSave };
+}
+
+// The four row actions that talk to the waitlist REST endpoints directly
+// (offer/cancel/set-target, plus the target input's own draft state) --
+// split out of Waitlist() purely to keep that function's own body short.
+function useWaitlistRowActions( { setBusyId, setError, setNotice, setWarnings, load } ) {
+	const [ targetInputs, setTargetInputs ] = useState( {} );
+	const [ settingTargetId, setSettingTargetId ] = useState( 0 );
+
+	const handleOffer = ( row ) => {
+		const input = window.prompt(
+			`Offer this spot to ${ row.name || row.email }? This emails them a real claim link. Claim window in hours:`,
+			String( DEFAULT_HOURS )
+		);
+		if ( input === null ) {
+			return;
+		}
+		const hours = Number( input );
+		if ( ! Number.isInteger( hours ) || hours < MIN_HOURS || hours > MAX_HOURS ) {
+			setError( `The claim window must be a whole number of hours between ${ MIN_HOURS } and ${ MAX_HOURS }.` );
+			return;
+		}
+
+		setBusyId( row.id );
+		setError( '' );
+		setNotice( '' );
+		setWarnings( [] );
+		offerWaitlistSpot( row.id, hours )
+			.then( ( res ) => {
+				setNotice( `Offer sent. It expires ${ formatLocal( res.expires_at ) }.` );
+				setWarnings( res.warnings || [] );
+				load();
+			} )
+			.catch( ( e ) => setError( e?.message || 'Could not send the offer.' ) )
+			.finally( () => setBusyId( 0 ) );
+	};
+
+	const handleCancel = ( row ) => {
+		const label = row.status === 'offered' ? 'Cancel this offer?' : 'Remove this entry from the queue?';
+		// Matches every other bulk/irreversible action in this dashboard.
+		if ( ! window.confirm( label ) ) {
+			return;
+		}
+		setBusyId( row.id );
+		setError( '' );
+		cancelWaitlistEntry( row.id )
+			.then( () => load() )
+			.catch( ( e ) => setError( e?.message || 'Could not cancel.' ) )
+			.finally( () => setBusyId( 0 ) );
+	};
+
+	// I1: pair a queued/expired row with a registration product in place,
+	// instead of the only prior path (Remove + re-Add), which loses the
+	// row's source order and original queue position.
+	const handleSetTarget = ( row ) => {
+		const raw = targetInputs[ row.id ];
+		const targetProductId = Number( raw );
+		if ( ! raw || ! Number.isInteger( targetProductId ) || targetProductId <= 0 ) {
+			setError( 'Enter a valid registration product ID.' );
+			return;
+		}
+		setSettingTargetId( row.id );
+		setError( '' );
+		setNotice( '' );
+		setWaitlistTarget( row.id, targetProductId )
+			.then( () => {
+				setNotice( 'Registration product set.' );
+				setTargetInputs( ( prev ) =>
+					Object.fromEntries(
+						Object.entries( prev ).filter( ( [ key ] ) => key !== String( row.id ) )
+					)
+				);
+				load();
+			} )
+			.catch( ( e ) => setError( e?.message || 'Could not set the registration product.' ) )
+			.finally( () => setSettingTargetId( 0 ) );
+	};
+
+	const handleTargetInputChange = ( id, value ) => {
+		setTargetInputs( ( prev ) => ( { ...prev, [ id ]: value } ) );
+	};
+
+	return {
+		targetInputs,
+		settingTargetId,
+		handleOffer,
+		handleCancel,
+		handleSetTarget,
+		handleTargetInputChange,
+	};
+}
+
+// The loading/empty/table states for the queue itself, split out of
+// Waitlist() purely to keep that function's own body short.
+function WaitlistTable( {
+	loading,
+	rows,
+	visibleColumns,
+	targetInputs,
+	settingTargetId,
+	restrictionsEditor,
+	busyId,
+	onTargetInputChange,
+	onSetTarget,
+	onOffer,
+	onCancel,
+} ) {
+	if ( loading ) {
+		return <div className="splm-loading">Loading…</div>;
+	}
+	if ( rows.length === 0 ) {
+		return <p className="splm-empty">Nobody is on the waitlist for this filter.</p>;
+	}
+
+	return (
+		<div className="splm-table-wrapper">
+			<table className="splm-table splm-waitlist__table">
+				<thead>
+					<tr>
+						{ visibleColumns.map( ( key ) => (
+							<th scope="col" key={ key }>
+								{ COLUMN_DEFS.find( ( c ) => c.key === key )?.label }
+							</th>
+						) ) }
+						<th scope="col">Actions</th>
+					</tr>
+				</thead>
+				<tbody>
+					{ rows.map( ( row ) => (
+						<WaitlistRow
+							key={ row.id }
+							row={ row }
+							visibleColumns={ visibleColumns }
+							targetInput={ targetInputs[ row.id ] ?? '' }
+							settingTargetId={ settingTargetId }
+							restrictionsInput={ restrictionsEditor.inputs[ row.id ] }
+							savingRestrictionsId={ restrictionsEditor.savingId }
+							busyId={ busyId }
+							onTargetInputChange={ onTargetInputChange }
+							onSetTarget={ onSetTarget }
+							onRestrictionsInputChange={ restrictionsEditor.onChange }
+							onSaveRestrictions={ restrictionsEditor.onSave }
+							onOffer={ onOffer }
+							onCancel={ onCancel }
+						/>
+					) ) }
+				</tbody>
+			</table>
+		</div>
+	);
+}
+
+// The queue itself: rows, loading/error/notice/warnings, the season/position/
+// status filters, the Season access panel's gate state, and the debounced
+// load() that ties them together. Split out of Waitlist() purely to keep
+// that function's own body short.
+function useWaitlistData() {
 	const [ rows, setRows ] = useState( [] );
 	const [ loading, setLoading ] = useState( true );
 	const [ error, setError ] = useState( '' );
@@ -545,17 +756,6 @@ export default function Waitlist() {
 	const [ position, setPosition ] = useState( '' );
 	const [ status, setStatus ] = useState( '' );
 	const [ gates, setGates ] = useState( {} );
-	const [ busyId, setBusyId ] = useState( 0 );
-	const [ adding, setAdding ] = useState( false );
-	const [ form, setForm ] = useState( { name: '', email: '', season: '', position: 'player', target_product_id: '', restrictions: '' } );
-	// I1: per-row draft value for the inline "set a target product" control,
-	// keyed by row id, plus which row's Set button is mid-request.
-	const [ targetInputs, setTargetInputs ] = useState( {} );
-	const [ settingTargetId, setSettingTargetId ] = useState( 0 );
-	// Same shape as targetInputs above, for the inline restrictions note.
-	const [ restrictionsInputs, setRestrictionsInputs ] = useState( {} );
-	const [ savingRestrictionsId, setSavingRestrictionsId ] = useState( 0 );
-	const [ visibleColumns, setVisibleColumns ] = useState( loadVisibleColumns );
 
 	// Debounce the season box (300ms) into the value used for fetching.
 	useEffect( () => {
@@ -604,138 +804,31 @@ export default function Waitlist() {
 		return cleanup;
 	}, [ load ] );
 
-	// Target products for the Season access panel, derived from the rows on
-	// screen so the panel always describes what the convener is looking at.
-	const targets = useMemo( () => {
-		const seen = new Map();
-		rows.forEach( ( row ) => {
-			if ( row.target_product_id > 0 && ! seen.has( row.target_product_id ) ) {
-				seen.set( row.target_product_id, { id: row.target_product_id, season: row.season, position: row.position } );
-			}
-		} );
-		return Array.from( seen.values() );
-	}, [ rows ] );
+	return {
+		rows,
+		loading,
+		error, setError,
+		notice, setNotice,
+		warnings, setWarnings,
+		seasonInput, setSeasonInput,
+		position, setPosition,
+		status, setStatus,
+		gates, setGates,
+		load,
+	};
+}
 
-	const handleOffer = ( row ) => {
-		const input = window.prompt(
-			`Offer this spot to ${ row.name || row.email }? This emails them a real claim link. Claim window in hours:`,
-			String( DEFAULT_HOURS )
-		);
-		if ( input === null ) {
-			return;
-		}
-		const hours = Number( input );
-		if ( ! Number.isInteger( hours ) || hours < MIN_HOURS || hours > MAX_HOURS ) {
-			setError( `The claim window must be a whole number of hours between ${ MIN_HOURS } and ${ MAX_HOURS }.` );
-			return;
-		}
+// The manual "Add to waitlist" form's own state + submit handler, same
+// reason as the other extracted hooks above.
+function useAddEntryForm( { setError, setNotice, load } ) {
+	const [ adding, setAdding ] = useState( false );
+	const [ form, setForm ] = useState( { name: '', email: '', season: '', position: 'player', target_product_id: '', restrictions: '' } );
 
-		setBusyId( row.id );
-		setError( '' );
-		setNotice( '' );
-		setWarnings( [] );
-		offerWaitlistSpot( row.id, hours )
-			.then( ( res ) => {
-				setNotice( `Offer sent. It expires ${ formatLocal( res.expires_at ) }.` );
-				setWarnings( res.warnings || [] );
-				load();
-			} )
-			.catch( ( e ) => setError( e?.message || 'Could not send the offer.' ) )
-			.finally( () => setBusyId( 0 ) );
+	const handleFieldChange = ( field, value ) => {
+		setForm( { ...form, [ field ]: value } );
 	};
 
-	const handleCancel = ( row ) => {
-		const label = row.status === 'offered' ? 'Cancel this offer?' : 'Remove this entry from the queue?';
-		// Matches every other bulk/irreversible action in this dashboard.
-		if ( ! window.confirm( label ) ) {
-			return;
-		}
-		setBusyId( row.id );
-		setError( '' );
-		cancelWaitlistEntry( row.id )
-			.then( () => load() )
-			.catch( ( e ) => setError( e?.message || 'Could not cancel.' ) )
-			.finally( () => setBusyId( 0 ) );
-	};
-
-	const handleGate = ( productId, gated ) => {
-		const label = gated
-			? 'Gate this product? The public will no longer be able to buy it without an offer.'
-			: 'Un-gate this product? Anyone will be able to buy it again.';
-		if ( ! window.confirm( label ) ) {
-			return;
-		}
-		setError( '' );
-		setWaitlistGate( productId, gated )
-			.then( ( res ) => {
-				setGates( ( prev ) => ( { ...prev, [ productId ]: res.gated } ) );
-				setNotice( res.gated ? 'Product gated.' : 'Product un-gated.' );
-			} )
-			.catch( ( e ) => setError( e?.message || 'Could not change gating.' ) );
-	};
-
-	// I1: pair a queued/expired row with a registration product in place,
-	// instead of the only prior path (Remove + re-Add), which loses the
-	// row's source order and original queue position.
-	const handleSetTarget = ( row ) => {
-		const raw = targetInputs[ row.id ];
-		const targetProductId = Number( raw );
-		if ( ! raw || ! Number.isInteger( targetProductId ) || targetProductId <= 0 ) {
-			setError( 'Enter a valid registration product ID.' );
-			return;
-		}
-		setSettingTargetId( row.id );
-		setError( '' );
-		setNotice( '' );
-		setWaitlistTarget( row.id, targetProductId )
-			.then( () => {
-				setNotice( 'Registration product set.' );
-				setTargetInputs( ( prev ) =>
-					Object.fromEntries(
-						Object.entries( prev ).filter( ( [ key ] ) => key !== String( row.id ) )
-					)
-				);
-				load();
-			} )
-			.catch( ( e ) => setError( e?.message || 'Could not set the registration product.' ) )
-			.finally( () => setSettingTargetId( 0 ) );
-	};
-
-	const handleTargetInputChange = ( id, value ) => {
-		setTargetInputs( ( prev ) => ( { ...prev, [ id ]: value } ) );
-	};
-
-	const handleRestrictionsInputChange = ( id, value ) => {
-		setRestrictionsInputs( ( prev ) => ( { ...prev, [ id ]: value } ) );
-	};
-
-	const handleSaveRestrictions = ( row ) => {
-		const value = restrictionsInputs[ row.id ] ?? row.restrictions ?? '';
-		setSavingRestrictionsId( row.id );
-		setError( '' );
-		setNotice( '' );
-		setWaitlistRestrictions( row.id, value )
-			.then( () => {
-				setNotice( 'Restrictions note saved.' );
-				load();
-			} )
-			.catch( ( e ) => setError( e?.message || 'Could not save the restrictions note.' ) )
-			.finally( () => setSavingRestrictionsId( 0 ) );
-	};
-
-	const handleToggleColumn = ( key ) => {
-		setVisibleColumns( ( prev ) => {
-			const next = prev.includes( key ) ? prev.filter( ( k ) => k !== key ) : [ ...prev, key ];
-			// Re-derive from COLUMN_DEFS order regardless of toggle order, so
-			// header and row rendering (which both iterate visibleColumns
-			// directly) never disagree on column order.
-			const ordered = COLUMN_DEFS.filter( ( c ) => next.includes( c.key ) ).map( ( c ) => c.key );
-			saveVisibleColumns( ordered );
-			return ordered;
-		} );
-	};
-
-	const handleAdd = ( event ) => {
+	const handleSubmit = ( event ) => {
 		event.preventDefault();
 		setAdding( true );
 		setError( '' );
@@ -749,80 +842,88 @@ export default function Waitlist() {
 			.finally( () => setAdding( false ) );
 	};
 
-	const handleFormFieldChange = ( field, value ) => {
-		setForm( { ...form, [ field ]: value } );
+	return { form, adding, handleFieldChange, handleSubmit };
+}
+
+export default function Waitlist() {
+	const wl = useWaitlistData();
+	const [ busyId, setBusyId ] = useState( 0 );
+	const addForm = useAddEntryForm( { setError: wl.setError, setNotice: wl.setNotice, load: wl.load } );
+	const [ visibleColumns, toggleColumn ] = useVisibleColumns();
+	const restrictionsEditor = useRestrictionsEditor( { setError: wl.setError, setNotice: wl.setNotice, load: wl.load } );
+	const rowActions = useWaitlistRowActions( { setBusyId, setError: wl.setError, setNotice: wl.setNotice, setWarnings: wl.setWarnings, load: wl.load } );
+
+	// Target products for the Season access panel, derived from the rows on
+	// screen so the panel always describes what the convener is looking at.
+	const targets = useMemo( () => {
+		const seen = new Map();
+		wl.rows.forEach( ( row ) => {
+			if ( row.target_product_id > 0 && ! seen.has( row.target_product_id ) ) {
+				seen.set( row.target_product_id, { id: row.target_product_id, season: row.season, position: row.position } );
+			}
+		} );
+		return Array.from( seen.values() );
+	}, [ wl.rows ] );
+
+	const handleGate = ( productId, gated ) => {
+		const label = gated
+			? 'Gate this product? The public will no longer be able to buy it without an offer.'
+			: 'Un-gate this product? Anyone will be able to buy it again.';
+		if ( ! window.confirm( label ) ) {
+			return;
+		}
+		wl.setError( '' );
+		setWaitlistGate( productId, gated )
+			.then( ( res ) => {
+				wl.setGates( ( prev ) => ( { ...prev, [ productId ]: res.gated } ) );
+				wl.setNotice( res.gated ? 'Product gated.' : 'Product un-gated.' );
+			} )
+			.catch( ( e ) => wl.setError( e?.message || 'Could not change gating.' ) );
 	};
 
 	return (
 		<div className="splm-waitlist">
 			<h2>Waitlist <HelpLink topic="waitlist" /></h2>
 
-			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
-			{ notice && <div className="splm-alert splm-alert--success" role="status">{ notice }</div> }
-			{ warnings.map( ( w ) => (
+			{ wl.error && <div className="splm-alert splm-alert--warning" role="alert">{ wl.error }</div> }
+			{ wl.notice && <div className="splm-alert splm-alert--success" role="status">{ wl.notice }</div> }
+			{ wl.warnings.map( ( w ) => (
 				<div key={ w.code } className="splm-alert splm-alert--warning" role="alert">{ w.message }</div>
 			) ) }
 
-			<SeasonAccessPanel targets={ targets } gates={ gates } onGate={ handleGate } />
+			<SeasonAccessPanel targets={ targets } gates={ wl.gates } onGate={ handleGate } />
 
 			<div className="splm-waitlist__toolbar">
 				<Filters
-					seasonInput={ seasonInput }
-					onSeasonInputChange={ setSeasonInput }
-					position={ position }
-					onPositionChange={ setPosition }
-					status={ status }
-					onStatusChange={ setStatus }
+					seasonInput={ wl.seasonInput }
+					onSeasonInputChange={ wl.setSeasonInput }
+					position={ wl.position }
+					onPositionChange={ wl.setPosition }
+					status={ wl.status }
+					onStatusChange={ wl.setStatus }
 				/>
-				<ColumnsToggle visible={ visibleColumns } onToggle={ handleToggleColumn } />
+				<ColumnsToggle visible={ visibleColumns } onToggle={ toggleColumn } />
 			</div>
 
-			{ loading && <div className="splm-loading">Loading…</div> }
-
-			{ ! loading && rows.length === 0 && <p className="splm-empty">Nobody is on the waitlist for this filter.</p> }
-
-			{ ! loading && rows.length > 0 && (
-				<div className="splm-table-wrapper">
-					<table className="splm-table splm-waitlist__table">
-						<thead>
-							<tr>
-								{ visibleColumns.map( ( key ) => (
-									<th scope="col" key={ key }>
-										{ COLUMN_DEFS.find( ( c ) => c.key === key )?.label }
-									</th>
-								) ) }
-								<th scope="col">Actions</th>
-							</tr>
-						</thead>
-						<tbody>
-							{ rows.map( ( row ) => (
-								<WaitlistRow
-									key={ row.id }
-									row={ row }
-									visibleColumns={ visibleColumns }
-									targetInput={ targetInputs[ row.id ] ?? '' }
-									settingTargetId={ settingTargetId }
-									restrictionsInput={ restrictionsInputs[ row.id ] }
-									savingRestrictionsId={ savingRestrictionsId }
-									busyId={ busyId }
-									onTargetInputChange={ handleTargetInputChange }
-									onSetTarget={ handleSetTarget }
-									onRestrictionsInputChange={ handleRestrictionsInputChange }
-									onSaveRestrictions={ handleSaveRestrictions }
-									onOffer={ handleOffer }
-									onCancel={ handleCancel }
-								/>
-							) ) }
-						</tbody>
-					</table>
-				</div>
-			) }
+			<WaitlistTable
+				loading={ wl.loading }
+				rows={ wl.rows }
+				visibleColumns={ visibleColumns }
+				targetInputs={ rowActions.targetInputs }
+				settingTargetId={ rowActions.settingTargetId }
+				restrictionsEditor={ restrictionsEditor }
+				busyId={ busyId }
+				onTargetInputChange={ rowActions.handleTargetInputChange }
+				onSetTarget={ rowActions.handleSetTarget }
+				onOffer={ rowActions.handleOffer }
+				onCancel={ rowActions.handleCancel }
+			/>
 
 			<AddEntryForm
-				form={ form }
-				adding={ adding }
-				onFieldChange={ handleFormFieldChange }
-				onSubmit={ handleAdd }
+				form={ addForm.form }
+				adding={ addForm.adding }
+				onFieldChange={ addForm.handleFieldChange }
+				onSubmit={ addForm.handleSubmit }
 			/>
 		</div>
 	);

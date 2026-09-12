@@ -641,6 +641,8 @@ class SPLM_Waitlist_Offer {
 	 * set_target(), there is no claim link or email content that this could
 	 * invalidate underneath a player.
 	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
 	 * @param int    $id           Row id.
 	 * @param string $restrictions Free-text note; '' clears it.
 	 * @return array|WP_Error
