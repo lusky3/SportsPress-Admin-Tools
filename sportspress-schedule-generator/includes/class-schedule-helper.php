@@ -683,6 +683,46 @@ class SPSG_Schedule_Helper {
 	}
 
 	/**
+	 * Available (venue, time-slot) capacity on ONE specific date -- the
+	 * same per-venue cascade count_available_slots() sums across a whole
+	 * season, scoped to a single day. Used by the postseason final-week
+	 * capacity check, where every division's Championship/Consolation game
+	 * for that week lands on exactly one shared calendar date.
+	 *
+	 * @param object     $config      Schedule configuration.
+	 * @param string     $date        'Y-m-d' date to count slots on.
+	 * @param array|null $time_window [start, end] 'HH:MM' strings to restrict
+	 *                                 counted slots to, or null for no restriction.
+	 * @return int Available slot count on $date.
+	 */
+	public static function count_slots_on_date( $config, $date, $time_window = null ) {
+		$day_name = strtolower( ( new DateTime( $date ) )->format( 'l' ) );
+		$venues   = $config->venues ?? array();
+		$slots    = 0;
+
+		foreach ( $venues as $venue ) {
+			$venue_id = self::extract_id( $venue );
+
+			if ( self::is_venue_blacked_out( $venue_id, $date, $config ) ) {
+				continue;
+			}
+
+			$venue_slots = self::resolve_venue_slots( $venue_id, $date, $day_name, $config );
+			if ( ! is_array( $venue_slots ) ) {
+				continue;
+			}
+
+			foreach ( $venue_slots as $time_slot ) {
+				if ( null === $time_window || ( $time_slot >= $time_window[0] && $time_slot <= $time_window[1] ) ) {
+					$slots++;
+				}
+			}
+		}
+
+		return $slots;
+	}
+
+	/**
 	 * Count playing days in a date range that have at least one resolvable
 	 * slot across all venues. Respects global and venue blackouts.
 	 *
