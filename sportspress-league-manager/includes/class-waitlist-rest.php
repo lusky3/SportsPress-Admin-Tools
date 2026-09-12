@@ -881,7 +881,7 @@ class SPLM_Waitlist_REST {
 		if ( '' === $ip ) {
 			$ip = 'unknown';
 		}
-		return substr( md5( $ip ), 0, 12 );
+		return substr( hash( 'sha256', $ip ), 0, 12 );
 	}
 
 	/**
