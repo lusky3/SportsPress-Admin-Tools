@@ -101,19 +101,27 @@ class SPLM_Waitlist_Offer {
 	 * from a previous cycle, and leaving it would make the new offer look
 	 * already fulfilled.
 	 *
+	 * dispatched_by is taken as a parameter rather than read here via
+	 * get_current_user_id(), so this stays a pure column-payload builder --
+	 * every other value it writes is already a parameter or a deterministic
+	 * helper call, and the existing direct offer_updates() tests can keep
+	 * asserting on it without stubbing the current user.
+	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
-	 * @param string $token  Claim token.
-	 * @param array  $expiry Output of SPLM_Waitlist_Database::expiry_from_hours().
+	 * @param string $token         Claim token.
+	 * @param array  $expiry        Output of SPLM_Waitlist_Database::expiry_from_hours().
+	 * @param int    $dispatched_by WP user id of the convener making this offer.
 	 * @return array
 	 */
-	public static function offer_updates( $token, array $expiry ): array {
+	public static function offer_updates( $token, array $expiry, $dispatched_by = 0 ): array {
 		return array(
 			'status'            => SPLM_Waitlist_Database::STATUS_OFFERED,
 			'claim_token'       => (string) $token,
 			'offered_at'        => SPLM_Waitlist_Database::now(),
 			'expires_at'        => (string) $expiry['expires_at'],
 			'resolved_order_id' => null,
+			'dispatched_by'     => (int) $dispatched_by,
 		);
 	}
 
@@ -214,8 +222,9 @@ class SPLM_Waitlist_Offer {
 		// two events pending and the older one would fire at the old deadline.
 		wp_clear_scheduled_hook( SPLM_Waitlist_Expiry::EXPIRE_HOOK, array( $id ) );
 
-		$token  = SPLM_Waitlist_Claim::generate_token();
-		$expiry = SPLM_Waitlist_Database::expiry_from_hours( $hours );
+		$token         = SPLM_Waitlist_Claim::generate_token();
+		$expiry        = SPLM_Waitlist_Database::expiry_from_hours( $hours );
+		$dispatched_by = get_current_user_id();
 
 		// The lock above serialises offers against each other; it does not
 		// serialise them against an order completing, which is unlocked by
@@ -226,7 +235,7 @@ class SPLM_Waitlist_Offer {
 		if ( ! SPLM_Waitlist_Database::update_if_status(
 			$id,
 			$row->status,
-			self::offer_updates( $token, $expiry ),
+			self::offer_updates( $token, $expiry, $dispatched_by ),
 			null !== $row->claim_token ? (string) $row->claim_token : null
 		) ) {
 			return new WP_Error( 'splm_waitlist_write_failed', __( 'Could not record the offer.', 'sportspress-league-manager' ), array( 'status' => 500 ) );
@@ -238,8 +247,10 @@ class SPLM_Waitlist_Offer {
 		// is already on $row, and the deadline is $expiry['expires_at'] in
 		// hand. A re-fetch here could return null for a row deleted between
 		// the update above and this point, and every consumer below would
-		// then dereference null unguarded.
-		$row->expires_at = $expiry['expires_at'];
+		// then dereference null unguarded. dispatched_by is set here for the
+		// same reason: the notify call below reads it straight off $row.
+		$row->expires_at    = $expiry['expires_at'];
+		$row->dispatched_by = $dispatched_by;
 
 		if ( ! self::send_offer_email( $row, $token ) ) {
 			return self::unwind_unsent_offer( $id, $token );
@@ -618,6 +629,54 @@ class SPLM_Waitlist_Offer {
 			'id'                => $id,
 			'target_product_id' => $target_product_id,
 			'target_gated'      => class_exists( 'SPLM_Waitlist_Gate' ) ? SPLM_Waitlist_Gate::is_gated( $target_product_id ) : false,
+		);
+	}
+
+	/**
+	 * Set (or clear) a row's restrictions note.
+	 *
+	 * Purely informational -- a free-text reminder for the convener (e.g. "wants
+	 * Team X" or "play with Jane Doe"). Nothing in the offer or matching flow
+	 * reads it back. Allowed on any row, including a live offer: unlike
+	 * set_target(), there is no claim link or email content that this could
+	 * invalidate underneath a player.
+	 *
+	 * @param int    $id           Row id.
+	 * @param string $restrictions Free-text note; '' clears it.
+	 * @return array|WP_Error
+	 */
+	public static function set_restrictions( $id, $restrictions ) {
+		$id = (int) $id;
+
+		$row = SPLM_Waitlist_Database::get( $id );
+		if ( ! $row ) {
+			return new WP_Error( 'splm_waitlist_not_found', __( 'Waitlist entry not found.', 'sportspress-league-manager' ), array( 'status' => 404 ) );
+		}
+
+		$restrictions = trim( sanitize_text_field( (string) $restrictions ) );
+
+		// Matches the varchar(191) column: refusing here gives a clear error
+		// instead of MySQL silently truncating the stored value.
+		if ( mb_strlen( $restrictions ) > 191 ) {
+			return new WP_Error(
+				'splm_waitlist_restrictions_too_long',
+				__( 'Restrictions note must be 191 characters or fewer.', 'sportspress-league-manager' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		if ( ! SPLM_Waitlist_Database::update( $id, array( 'restrictions' => $restrictions ) ) ) {
+			return new WP_Error(
+				'splm_waitlist_write_failed',
+				__( 'Could not save the restrictions note.', 'sportspress-league-manager' ),
+				array( 'status' => 500 )
+			);
+		}
+
+		return array(
+			'success'      => true,
+			'id'           => $id,
+			'restrictions' => $restrictions,
 		);
 	}
 }

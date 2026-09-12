@@ -6,8 +6,62 @@ import {
 	cancelWaitlistEntry,
 	setWaitlistGate,
 	setWaitlistTarget,
+	setWaitlistRestrictions,
 } from '../lib/api';
 import HelpLink from '../components/HelpLink';
+
+// The current columns stay the default view; the four new ones (added
+// alongside dispatcher tracking and the restrictions note) start hidden so
+// nobody's table changes shape until they ask for it. Order here is the
+// order columns render in, both header and row — a single source of truth
+// so the two can never drift apart.
+const COLUMN_DEFS = [
+	{ key: 'created_at', label: 'Joined', default: true },
+	{ key: 'name', label: 'Name', default: true },
+	{ key: 'email', label: 'Email', default: true },
+	{ key: 'season', label: 'Season', default: true },
+	{ key: 'position', label: 'Position', default: true },
+	{ key: 'status', label: 'Status', default: true },
+	{ key: 'deadline', label: 'Deadline', default: true },
+	{ key: 'dispatched_by', label: 'Dispatched By', default: false },
+	{ key: 'waitlist_order', label: 'Waitlist Order', default: false },
+	{ key: 'paid_order', label: 'Paid Order', default: false },
+	{ key: 'restrictions', label: 'Restrictions', default: false },
+];
+
+const COLUMNS_STORAGE_KEY = 'splm_waitlist_visible_columns';
+
+// Per-browser only (not per-user/server-side) by design — this is a display
+// preference, not data. Falls back to the default set on anything storage
+// throws at us (private browsing, disabled storage) or any malformed/stale
+// value from an older version of this column list.
+function loadVisibleColumns() {
+	try {
+		const raw = window.localStorage.getItem( COLUMNS_STORAGE_KEY );
+		if ( raw ) {
+			const parsed = JSON.parse( raw );
+			if ( Array.isArray( parsed ) ) {
+				const known = new Set( COLUMN_DEFS.map( ( c ) => c.key ) );
+				const filtered = parsed.filter( ( k ) => known.has( k ) );
+				if ( filtered.length > 0 ) {
+					return filtered;
+				}
+			}
+		}
+	} catch ( e ) {
+		// Fall through to the default set below.
+	}
+	return COLUMN_DEFS.filter( ( c ) => c.default ).map( ( c ) => c.key );
+}
+
+function saveVisibleColumns( keys ) {
+	try {
+		window.localStorage.setItem( COLUMNS_STORAGE_KEY, JSON.stringify( keys ) );
+	} catch ( e ) {
+		// Best-effort only; the toggle still works for the rest of this
+		// session even when storage is unavailable.
+	}
+}
 
 // M3: mirrors SPLM_Waitlist::DEFAULT_HOURS/MIN_HOURS/MAX_HOURS, localized via
 // splmDashboard.waitlistHours so the two copies of these bounds cannot drift.
@@ -120,6 +174,88 @@ function DeadlineCell( { row } ) {
 	);
 }
 
+// Waitlist Order / Paid Order columns: a plain order id with no order to open
+// isn't useful on its own, so link straight to the order edit screen a
+// convener would otherwise navigate to by hand.
+function OrderLink( { orderId } ) {
+	if ( ! orderId ) {
+		return '—';
+	}
+	const adminUrl = ( window.splmDashboard && window.splmDashboard.adminUrl ) || '/wp-admin/';
+	return (
+		<a href={ `${ adminUrl }post.php?post=${ orderId }&action=edit` } target="_blank" rel="noopener noreferrer">
+			#{ orderId }
+		</a>
+	);
+}
+
+// Restrictions column: a free-text convener note ("wants Team X", "play with
+// Jane Doe"), purely informational -- nothing here or on the server acts on
+// it. Editable in place rather than through a separate dialog, matching
+// TargetPairingNotice's inline shape.
+function RestrictionsCell( { row, value, saving, onChange, onSave } ) {
+	const inputId = `splm-waitlist-restrictions-${ row.id }`;
+	const who = row.name || row.email;
+
+	return (
+		<span className="splm-waitlist__restrictions">
+			<label htmlFor={ inputId } className="screen-reader-text">
+				{ `Restrictions note for ${ who }` }
+			</label>
+			<input
+				id={ inputId }
+				type="text"
+				className="splm-select splm-waitlist__restrictions-input"
+				placeholder="e.g. play with Jane Doe"
+				value={ value }
+				onChange={ ( e ) => onChange( row.id, e.target.value ) }
+			/>
+			<button
+				type="button"
+				className="splm-btn splm-btn--small"
+				disabled={ saving }
+				aria-label={ `Save restrictions note for ${ who }` }
+				onClick={ () => onSave( row ) }
+			>
+				{ saving ? 'Saving…' : 'Save' }
+			</button>
+		</span>
+	);
+}
+
+// "Columns" popover: one checkbox per COLUMN_DEFS entry. Actions has no entry
+// here -- it is never optional, so there is nothing to toggle.
+function ColumnsToggle( { visible, onToggle } ) {
+	const [ open, setOpen ] = useState( false );
+
+	return (
+		<div className="splm-waitlist__columns-toggle">
+			<button
+				type="button"
+				className="splm-btn splm-btn--small"
+				aria-expanded={ open }
+				onClick={ () => setOpen( ( o ) => ! o ) }
+			>
+				Columns
+			</button>
+			{ open && (
+				<div className="splm-waitlist__columns-menu" role="menu">
+					{ COLUMN_DEFS.map( ( col ) => (
+						<label key={ col.key } className="splm-waitlist__columns-item">
+							<input
+								type="checkbox"
+								checked={ visible.includes( col.key ) }
+								onChange={ () => onToggle( col.key ) }
+							/>
+							{ col.label }
+						</label>
+					) ) }
+				</div>
+			) }
+		</div>
+	);
+}
+
 // Row actions: Offer/Re-offer is only available to queued/expired rows and is
 // disabled (with an explanatory title) until a target product is paired;
 // Cancel/Remove is available to everything except a finished row.
@@ -153,36 +289,85 @@ function RowActions( { row, canOffer, canCancel, busy, onOffer, onCancel } ) {
 	);
 }
 
-// One queue row: joined/name/email/season/position, status (plus the inline
-// target-pairing control when the row has none), deadline, and actions. Knows
-// how to render itself and delegates back to the handlers it's given — all
-// the data-fetching and mutation logic stays in Waitlist.
-function WaitlistRow( { row, targetInput, settingTargetId, busyId, onTargetInputChange, onSetTarget, onOffer, onCancel } ) {
+// One queue row: whichever columns are currently visible, in COLUMN_DEFS
+// order, plus Actions which is never optional. Knows how to render itself
+// and delegates back to the handlers it's given — all the data-fetching and
+// mutation logic stays in Waitlist.
+function WaitlistRow( {
+	row,
+	visibleColumns,
+	targetInput,
+	settingTargetId,
+	restrictionsInput,
+	savingRestrictionsId,
+	busyId,
+	onTargetInputChange,
+	onSetTarget,
+	onRestrictionsInputChange,
+	onSaveRestrictions,
+	onOffer,
+	onCancel,
+} ) {
 	const canOffer = row.status === 'queued' || row.status === 'expired';
 	const canCancel = row.status !== 'claimed' && row.status !== 'cancelled';
 
+	const cellFor = ( key ) => {
+		switch ( key ) {
+			case 'created_at':
+				return <td key={ key }>{ formatLocal( row.created_at ) }</td>;
+			case 'name':
+				return <td key={ key }>{ row.name || '—' }</td>;
+			case 'email':
+				return <td key={ key }>{ row.email }</td>;
+			case 'season':
+				return <td key={ key }>{ row.season }</td>;
+			case 'position':
+				return <td key={ key }>{ row.position }</td>;
+			case 'status':
+				return (
+					<td key={ key }>
+						<span className={ `splm-waitlist__status splm-waitlist__status--${ row.status }` }>
+							{ row.status }
+						</span>
+						{ ! row.has_target && (
+							<TargetPairingNotice
+								row={ row }
+								value={ targetInput }
+								disabled={ settingTargetId === row.id }
+								onChange={ ( e ) => onTargetInputChange( row.id, e.target.value ) }
+								onSet={ () => onSetTarget( row ) }
+							/>
+						) }
+					</td>
+				);
+			case 'deadline':
+				return <td key={ key }><DeadlineCell row={ row } /></td>;
+			case 'dispatched_by':
+				return <td key={ key }>{ row.dispatched_by_name || '—' }</td>;
+			case 'waitlist_order':
+				return <td key={ key }><OrderLink orderId={ row.source_order_id } /></td>;
+			case 'paid_order':
+				return <td key={ key }><OrderLink orderId={ row.resolved_order_id } /></td>;
+			case 'restrictions':
+				return (
+					<td key={ key }>
+						<RestrictionsCell
+							row={ row }
+							value={ restrictionsInput ?? row.restrictions ?? '' }
+							saving={ savingRestrictionsId === row.id }
+							onChange={ onRestrictionsInputChange }
+							onSave={ onSaveRestrictions }
+						/>
+					</td>
+				);
+			default:
+				return null;
+		}
+	};
+
 	return (
 		<tr>
-			<td>{ formatLocal( row.created_at ) }</td>
-			<td>{ row.name || '—' }</td>
-			<td>{ row.email }</td>
-			<td>{ row.season }</td>
-			<td>{ row.position }</td>
-			<td>
-				<span className={ `splm-waitlist__status splm-waitlist__status--${ row.status }` }>
-					{ row.status }
-				</span>
-				{ ! row.has_target && (
-					<TargetPairingNotice
-						row={ row }
-						value={ targetInput }
-						disabled={ settingTargetId === row.id }
-						onChange={ ( e ) => onTargetInputChange( row.id, e.target.value ) }
-						onSet={ () => onSetTarget( row ) }
-					/>
-				) }
-			</td>
-			<td><DeadlineCell row={ row } /></td>
+			{ visibleColumns.map( cellFor ) }
 			<RowActions
 				row={ row }
 				canOffer={ canOffer }
@@ -328,6 +513,16 @@ function AddEntryForm( { form, adding, onFieldChange, onSubmit } ) {
 						onChange={ ( e ) => onFieldChange( 'target_product_id', e.target.value ) }
 					/>
 				</label>
+				<label>
+					<span className="splm-waitlist__filter-label">Restrictions (optional)</span>
+					<input
+						type="text"
+						className="splm-select"
+						placeholder="e.g. play with Jane Doe"
+						value={ form.restrictions }
+						onChange={ ( e ) => onFieldChange( 'restrictions', e.target.value ) }
+					/>
+				</label>
 				<button type="submit" className="splm-btn splm-btn--primary" disabled={ adding }>
 					{ adding ? 'Adding…' : 'Add' }
 				</button>
@@ -352,11 +547,15 @@ export default function Waitlist() {
 	const [ gates, setGates ] = useState( {} );
 	const [ busyId, setBusyId ] = useState( 0 );
 	const [ adding, setAdding ] = useState( false );
-	const [ form, setForm ] = useState( { name: '', email: '', season: '', position: 'player', target_product_id: '' } );
+	const [ form, setForm ] = useState( { name: '', email: '', season: '', position: 'player', target_product_id: '', restrictions: '' } );
 	// I1: per-row draft value for the inline "set a target product" control,
 	// keyed by row id, plus which row's Set button is mid-request.
 	const [ targetInputs, setTargetInputs ] = useState( {} );
 	const [ settingTargetId, setSettingTargetId ] = useState( 0 );
+	// Same shape as targetInputs above, for the inline restrictions note.
+	const [ restrictionsInputs, setRestrictionsInputs ] = useState( {} );
+	const [ savingRestrictionsId, setSavingRestrictionsId ] = useState( 0 );
+	const [ visibleColumns, setVisibleColumns ] = useState( loadVisibleColumns );
 
 	// Debounce the season box (300ms) into the value used for fetching.
 	useEffect( () => {
@@ -506,13 +705,43 @@ export default function Waitlist() {
 		setTargetInputs( ( prev ) => ( { ...prev, [ id ]: value } ) );
 	};
 
+	const handleRestrictionsInputChange = ( id, value ) => {
+		setRestrictionsInputs( ( prev ) => ( { ...prev, [ id ]: value } ) );
+	};
+
+	const handleSaveRestrictions = ( row ) => {
+		const value = restrictionsInputs[ row.id ] ?? row.restrictions ?? '';
+		setSavingRestrictionsId( row.id );
+		setError( '' );
+		setNotice( '' );
+		setWaitlistRestrictions( row.id, value )
+			.then( () => {
+				setNotice( 'Restrictions note saved.' );
+				load();
+			} )
+			.catch( ( e ) => setError( e?.message || 'Could not save the restrictions note.' ) )
+			.finally( () => setSavingRestrictionsId( 0 ) );
+	};
+
+	const handleToggleColumn = ( key ) => {
+		setVisibleColumns( ( prev ) => {
+			const next = prev.includes( key ) ? prev.filter( ( k ) => k !== key ) : [ ...prev, key ];
+			// Re-derive from COLUMN_DEFS order regardless of toggle order, so
+			// header and row rendering (which both iterate visibleColumns
+			// directly) never disagree on column order.
+			const ordered = COLUMN_DEFS.filter( ( c ) => next.includes( c.key ) ).map( ( c ) => c.key );
+			saveVisibleColumns( ordered );
+			return ordered;
+		} );
+	};
+
 	const handleAdd = ( event ) => {
 		event.preventDefault();
 		setAdding( true );
 		setError( '' );
 		addWaitlistEntry( { ...form, target_product_id: Number( form.target_product_id ) } )
 			.then( () => {
-				setForm( { name: '', email: '', season: '', position: 'player', target_product_id: '' } );
+				setForm( { name: '', email: '', season: '', position: 'player', target_product_id: '', restrictions: '' } );
 				setNotice( 'Entry added to the queue.' );
 				load();
 			} )
@@ -536,14 +765,17 @@ export default function Waitlist() {
 
 			<SeasonAccessPanel targets={ targets } gates={ gates } onGate={ handleGate } />
 
-			<Filters
-				seasonInput={ seasonInput }
-				onSeasonInputChange={ setSeasonInput }
-				position={ position }
-				onPositionChange={ setPosition }
-				status={ status }
-				onStatusChange={ setStatus }
-			/>
+			<div className="splm-waitlist__toolbar">
+				<Filters
+					seasonInput={ seasonInput }
+					onSeasonInputChange={ setSeasonInput }
+					position={ position }
+					onPositionChange={ setPosition }
+					status={ status }
+					onStatusChange={ setStatus }
+				/>
+				<ColumnsToggle visible={ visibleColumns } onToggle={ handleToggleColumn } />
+			</div>
 
 			{ loading && <div className="splm-loading">Loading…</div> }
 
@@ -554,13 +786,11 @@ export default function Waitlist() {
 					<table className="splm-table splm-waitlist__table">
 						<thead>
 							<tr>
-								<th scope="col">Joined</th>
-								<th scope="col">Name</th>
-								<th scope="col">Email</th>
-								<th scope="col">Season</th>
-								<th scope="col">Position</th>
-								<th scope="col">Status</th>
-								<th scope="col">Deadline</th>
+								{ visibleColumns.map( ( key ) => (
+									<th scope="col" key={ key }>
+										{ COLUMN_DEFS.find( ( c ) => c.key === key )?.label }
+									</th>
+								) ) }
 								<th scope="col">Actions</th>
 							</tr>
 						</thead>
@@ -569,11 +799,16 @@ export default function Waitlist() {
 								<WaitlistRow
 									key={ row.id }
 									row={ row }
+									visibleColumns={ visibleColumns }
 									targetInput={ targetInputs[ row.id ] ?? '' }
 									settingTargetId={ settingTargetId }
+									restrictionsInput={ restrictionsInputs[ row.id ] }
+									savingRestrictionsId={ savingRestrictionsId }
 									busyId={ busyId }
 									onTargetInputChange={ handleTargetInputChange }
 									onSetTarget={ handleSetTarget }
+									onRestrictionsInputChange={ handleRestrictionsInputChange }
+									onSaveRestrictions={ handleSaveRestrictions }
 									onOffer={ handleOffer }
 									onCancel={ handleCancel }
 								/>

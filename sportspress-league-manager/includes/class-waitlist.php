@@ -133,6 +133,7 @@ class SPLM_Waitlist {
 			'email'             => '',
 			'user_id'           => 0,
 			'order_id'          => 0,
+			'restrictions'      => '',
 		);
 
 		foreach ( $defaults as $key => $default ) {
@@ -208,6 +209,7 @@ class SPLM_Waitlist {
 			'user_id'             => (int) $facts['user_id'],
 			'source_order_id'     => (int) $facts['order_id'],
 			'status'              => SPLM_Waitlist_Database::STATUS_QUEUED,
+			'restrictions'        => sanitize_text_field( (string) $facts['restrictions'] ),
 		);
 	}
 
