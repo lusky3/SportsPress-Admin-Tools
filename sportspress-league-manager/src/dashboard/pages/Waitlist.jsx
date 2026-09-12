@@ -282,13 +282,20 @@ function StatusCell( { row, targetInput, settingTargetId, onTargetInputChange, o
 // below is a single lookup + map instead of an 11-way switch. `ctx` carries
 // the per-row callback props a handful of columns need (status, restrictions);
 // most columns only need `row` itself.
-const COLUMN_RENDERERS = {
-	created_at: ( row ) => formatLocal( row.created_at ),
-	name: ( row ) => row.name || '—',
-	email: ( row ) => row.email,
-	season: ( row ) => row.season,
-	position: ( row ) => row.position,
-	status: ( row, ctx ) => (
+// A Map, not a plain object: a computed `obj[ key ]` lookup on a plain
+// object is exactly the pattern eslint-plugin-security's
+// detect-object-injection rule flags (bracket access on an object keyed by
+// a variable reads as a potential prototype-pollution sink to static
+// analysis, even though `key` here can only ever be one of COLUMN_DEFS' own
+// keys). Map.get() isn't property access at all, so the rule has nothing to
+// flag, and the lookup stays exactly as simple.
+const COLUMN_RENDERERS = new Map( [
+	[ 'created_at', ( row ) => formatLocal( row.created_at ) ],
+	[ 'name', ( row ) => row.name || '—' ],
+	[ 'email', ( row ) => row.email ],
+	[ 'season', ( row ) => row.season ],
+	[ 'position', ( row ) => row.position ],
+	[ 'status', ( row, ctx ) => (
 		<StatusCell
 			row={ row }
 			targetInput={ ctx.targetInput }
@@ -296,12 +303,12 @@ const COLUMN_RENDERERS = {
 			onTargetInputChange={ ctx.onTargetInputChange }
 			onSetTarget={ ctx.onSetTarget }
 		/>
-	),
-	deadline: ( row ) => <DeadlineCell row={ row } />,
-	dispatched_by: ( row ) => row.dispatched_by_name || '—',
-	waitlist_order: ( row ) => <OrderLink orderId={ row.source_order_id } />,
-	paid_order: ( row ) => <OrderLink orderId={ row.resolved_order_id } />,
-	restrictions: ( row, ctx ) => (
+	) ],
+	[ 'deadline', ( row ) => <DeadlineCell row={ row } /> ],
+	[ 'dispatched_by', ( row ) => row.dispatched_by_name || '—' ],
+	[ 'waitlist_order', ( row ) => <OrderLink orderId={ row.source_order_id } /> ],
+	[ 'paid_order', ( row ) => <OrderLink orderId={ row.resolved_order_id } /> ],
+	[ 'restrictions', ( row, ctx ) => (
 		<RestrictionsCell
 			row={ row }
 			value={ ctx.restrictionsInput ?? row.restrictions ?? '' }
@@ -309,8 +316,8 @@ const COLUMN_RENDERERS = {
 			onChange={ ctx.onRestrictionsInputChange }
 			onSave={ ctx.onSaveRestrictions }
 		/>
-	),
-};
+	) ],
+] );
 
 // Row actions: Offer/Re-offer is only available to queued/expired rows and is
 // disabled (with an explanatory title) until a target product is paired;
@@ -375,7 +382,7 @@ function WaitlistRow( {
 	return (
 		<tr>
 			{ visibleColumns.map( ( key ) => (
-				<td key={ key }>{ COLUMN_RENDERERS[ key ]?.( row, ctx ) }</td>
+				<td key={ key }>{ COLUMN_RENDERERS.get( key )?.( row, ctx ) }</td>
 			) ) }
 			<RowActions
 				row={ row }
