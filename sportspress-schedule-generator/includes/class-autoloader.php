@@ -99,6 +99,7 @@ class SPSG_Autoloader {
 			'SPSG_Postseason_Pairing' => $base_path . 'class-postseason-pairing.php',
 			'SPSG_Postseason_Seed_Resolver' => $base_path . 'class-postseason-seed-resolver.php',
 			'SPSG_Postseason_Bracket_Detector' => $base_path . 'class-postseason-bracket-detector.php',
+			'SPSG_Postseason_Matchup_Builder' => $base_path . 'class-postseason-matchup-builder.php',
 
 			// Data models
 			'SPSG_Game' => $base_path . 'models/class-game.php',

@@ -272,6 +272,22 @@ class SportsPress_Schedule_Generator {
 				'category' => 'optimization',
 			)
 		);
+
+		SPSG_Constraint_Registry::register(
+			'SPSG_Postseason_Day_Constraint',
+			array(
+				'description' => 'Carves out a specific day of the week for postseason Championship/Consolation games',
+				'category' => 'scheduling',
+			)
+		);
+
+		SPSG_Constraint_Registry::register(
+			'SPSG_Championship_Time_Window_Constraint',
+			array(
+				'description' => 'Restricts postseason Championship games to a configured time window',
+				'category' => 'scheduling',
+			)
+		);
 	}
 }
 

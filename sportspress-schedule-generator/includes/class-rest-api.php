@@ -113,7 +113,6 @@ class SPSG_REST_API {
 		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/validate', $this->config_id_post_route( $perm, $id_args, 'spsg_validate_config' ) );
 		// Postseason
 		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/postseason', $this->config_id_post_route( $perm, $id_args, 'spsg_create_postseason_config' ) );
-		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/postseason/placeholders', $this->config_id_post_route( $perm, $id_args, 'spsg_mint_postseason_placeholders' ) );
 		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/postseason/resolve-seeds', $this->config_id_post_route( $perm, $id_args, 'spsg_resolve_postseason_seeds' ) );
 		register_rest_route(
 			$ns,
@@ -798,49 +797,6 @@ class SPSG_REST_API {
 		$overrides = (array) $request->get_json_params();
 		$new_id = $this->cm()->create_postseason_configuration( $request['id'], $overrides );
 		return is_wp_error( $new_id ) ? $new_id : rest_ensure_response( array( 'id' => $new_id ) );
-	}
-
-	/**
-	 * Mint every division's Seed/RR-Seed placeholder teams for a postseason
-	 * configuration, reading division names/team counts straight off the
-	 * configuration itself -- the caller never needs to know a config's own
-	 * division shape to mint its placeholders.
-	 *
-	 * @param WP_REST_Request $request Request carrying the config id.
-	 * @return WP_REST_Response|WP_Error Division name => mint_division_placeholders() result.
-	 *
-	 * @SuppressWarnings(PHPMD.StaticAccess)
-	 */
-	public function spsg_mint_postseason_placeholders( $request ) {
-		$config = $this->postseason_config( $request['id'] );
-		if ( is_wp_error( $config ) ) {
-			return $config;
-		}
-
-		$minted = array();
-		foreach ( (array) ( isset( $config['divisions'] ) ? $config['divisions'] : array() ) as $division ) {
-			list( $name, $team_count ) = self::division_shape( $division );
-			if ( '' === $name || $team_count < 1 ) {
-				continue;
-			}
-			$minted[ $name ] = SPSG_Postseason_Seed_Resolver::mint_division_placeholders( $name, $team_count, $request['id'] );
-		}
-		return rest_ensure_response( $minted );
-	}
-
-	/**
-	 * One division's name and team count, however it's shaped (or absent).
-	 *
-	 * @param mixed $division A single entry from a configuration's divisions array.
-	 * @return array{0: string, 1: int} [name, team_count] -- '' / 0 if $division isn't a usable array.
-	 */
-	private static function division_shape( $division ) {
-		if ( ! is_array( $division ) ) {
-			return array( '', 0 );
-		}
-		$name = isset( $division['name'] ) ? (string) $division['name'] : '';
-		$team_count = isset( $division['teams'] ) ? count( (array) $division['teams'] ) : 0;
-		return array( $name, $team_count );
 	}
 
 	/**

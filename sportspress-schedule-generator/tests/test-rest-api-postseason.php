@@ -1,15 +1,22 @@
 <?php
 /**
- * Test: REST API postseason routes (phase 6) -- spsg_create_postseason_config(),
- * spsg_mint_postseason_placeholders(), spsg_resolve_postseason_seeds(), and the
- * postseason_config() guard the latter two share.
+ * Test: REST API postseason routes -- spsg_create_postseason_config() and
+ * spsg_resolve_postseason_seeds(), and the postseason_config() guard they
+ * share.
  *
  * The underlying business logic (SPSG_Configuration_Manager::create_postseason_configuration(),
- * SPSG_Postseason_Seed_Resolver::mint_division_placeholders()/resolve_seeds()) is already fully
- * tested in test-postseason-config.php and test-postseason-seed-resolver.php; this file covers
- * only what these REST wrappers add on top -- delegation, the not_found/not_postseason guard,
- * and malformed-body rejection -- matching test-rest-api-draft-store.php's own scoping (see its
- * header comment for the same reasoning).
+ * SPSG_Postseason_Seed_Resolver::resolve_seeds()) is already fully tested in
+ * test-postseason-config.php and test-postseason-seed-resolver.php; this file
+ * covers only what these REST wrappers add on top -- delegation, the
+ * not_found/not_postseason guard, and malformed-body rejection -- matching
+ * test-rest-api-draft-store.php's own scoping (see its header comment for the
+ * same reasoning).
+ *
+ * The mint-placeholders route this file previously also covered was removed:
+ * SPSG_Postseason_Matchup_Builder (phase 7) now ensures placeholders exist
+ * automatically and idempotently as a side effect of schedule generation, so
+ * a separate manual REST trigger for the same operation was a redundant
+ * second path to the same result.
  *
  * Standalone -- bootstraps minimal WP mocks then loads classes directly. Since the one
  * create_postseason_config() case tested here (unknown source id) returns before
@@ -80,18 +87,11 @@ class RAP_Mock_Request implements ArrayAccess {
 /**
  * Test double for SPSG_Placeholder_Team_Manager -- same static-method
  * signatures as the real class (matches test-postseason-seed-resolver.php's
- * own double), simplified since this file only needs the resolver's
+ * own double), simplified since this file only needs resolve_seeds()'s
  * REST-level delegation, not its own idempotency/failure-handling behavior
  * (already covered in test-postseason-seed-resolver.php).
  */
 class SPSG_Placeholder_Team_Manager {
-	public static $next_id = 900;
-	/**
-	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
-	 */
-	public static function create_placeholder_team( $team_name, $config_id = '', $division = '' ) {
-		return self::$next_id++;
-	}
 	/**
 	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
 	 */
@@ -135,41 +135,20 @@ rap_assert(
 	'unknown source config id -> config_not_found error, passed straight through'
 );
 
-echo "\n=== postseason_config() guard (shared by the placeholder/resolve-seeds routes) ===\n\n";
-
-$result = $api->spsg_mint_postseason_placeholders( new RAP_Mock_Request( array( 'id' => 'nonexistent' ) ) );
-rap_assert( is_wp_error( $result ) && 'not_found' === $result->get_error_code(), 'unknown config id -> not_found error' );
+echo "\n=== postseason_config() guard (shared by resolve-seeds) ===\n\n";
 
 global $rap_test_options;
 $rap_test_options['spsg_configurations'] = array(
 	'config_regular'   => array( 'id' => 'config_regular', 'is_postseason' => false ),
-	'config_playoffs'  => array(
-		'id' => 'config_playoffs',
-		'is_postseason' => true,
-		'divisions' => array(
-			array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C' ) ),
-			array( 'name' => '', 'teams' => array( 'X', 'Y' ) ), // no name -- skipped
-			array( 'name' => 'Div 2', 'teams' => array() ), // no teams -- skipped
-		),
-	),
+	'config_playoffs'  => array( 'id' => 'config_playoffs', 'is_postseason' => true ),
 );
 
-$result = $api->spsg_mint_postseason_placeholders( new RAP_Mock_Request( array( 'id' => 'config_regular' ) ) );
+$result = $api->spsg_resolve_postseason_seeds(
+	new RAP_Mock_Request( array( 'id' => 'config_regular', 'placeholder_ids' => array(), 'ranked_team_ids' => array() ) )
+);
 rap_assert(
 	is_wp_error( $result ) && 'not_postseason' === $result->get_error_code(),
 	'a regular-season config id -> not_postseason error, even though it exists'
-);
-
-echo "\n=== spsg_mint_postseason_placeholders(): reads divisions off the config itself, delegates to SPSG_Postseason_Seed_Resolver::mint_division_placeholders() per division ===\n\n";
-
-$result = $api->spsg_mint_postseason_placeholders( new RAP_Mock_Request( array( 'id' => 'config_playoffs' ) ) );
-rap_assert(
-	array( 'Div 1' ) === array_keys( $result ),
-	'only the one division with both a name and teams is minted -- the unnamed and empty ones are skipped'
-);
-rap_assert(
-	3 === count( $result['Div 1']['seed'] ) && 3 === count( $result['Div 1']['rr_seed'] ),
-	'mints 3 Seed + 3 RR-Seed placeholders for a 3-team division, via the real resolver'
 );
 
 echo "\n=== spsg_resolve_postseason_seeds(): delegates to SPSG_Postseason_Seed_Resolver::resolve_seeds() ===\n\n";

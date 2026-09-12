@@ -277,8 +277,6 @@ export const spsg = {
 	applyVenueCsv: ( schedules, venueMapping, configId ) => apiFetch( { path: '/spsg/v1/venue-csv/apply', method: 'POST', data: { schedules, venue_mapping: venueMapping, config_id: configId } } ),
 	createPostseasonConfig: ( sourceConfigId, overrides = {} ) =>
 		apiFetch( { path: `/spsg/v1/configs/${ sourceConfigId }/postseason`, method: 'POST', data: overrides } ),
-	mintPostseasonPlaceholders: ( configId ) =>
-		apiFetch( { path: `/spsg/v1/configs/${ configId }/postseason/placeholders`, method: 'POST' } ),
 	resolvePostseasonSeeds: ( configId, placeholderIds, rankedTeamIds ) =>
 		apiFetch( { path: `/spsg/v1/configs/${ configId }/postseason/resolve-seeds`, method: 'POST', data: { placeholder_ids: placeholderIds, ranked_team_ids: rankedTeamIds } } ),
 };

@@ -154,6 +154,11 @@ class SPSG_Placeholder_Team_Manager {
 	 * @return int|WP_Error The created team post ID or error
 	 */
 	public static function create_placeholder_team( $team_name, $config_id = '', $division = '' ) {
+		$existing_id = self::find_existing_placeholder( $team_name, $config_id );
+		if ( null !== $existing_id ) {
+			return $existing_id;
+		}
+
 		$team_id = wp_insert_post(
 			array(
 				'post_type'   => 'sp_team',
@@ -179,6 +184,43 @@ class SPSG_Placeholder_Team_Manager {
 		}
 
 		return $team_id;
+	}
+
+	/**
+	 * An existing placeholder team already minted with this exact name for
+	 * this config, if one exists -- so create_placeholder_team() is safe to
+	 * call repeatedly (e.g. once per "Generate" click) without accumulating
+	 * duplicate sp_team posts.
+	 *
+	 * @param string $team_name Team name to look up.
+	 * @param string $config_id Schedule configuration id the team was minted for.
+	 * @return int|null Existing team post id, or null if none found.
+	 */
+	private static function find_existing_placeholder( $team_name, $config_id ) {
+		if ( '' === $config_id ) {
+			return null; // Nothing to scope the lookup to -- always mint fresh.
+		}
+
+		$posts = get_posts(
+			array(
+				'post_type'      => 'sp_team',
+				'post_status'    => 'publish',
+				'title'          => $team_name,
+				'posts_per_page' => 1,
+				'meta_query'     => array(
+					array(
+						'key'   => self::CONFIG_META_KEY,
+						'value' => $config_id,
+					),
+					array(
+						'key'   => self::PLACEHOLDER_META_KEY,
+						'value' => '1',
+					),
+				),
+			)
+		);
+
+		return empty( $posts ) ? null : (int) $posts[0]->ID;
 	}
 
 	/**
