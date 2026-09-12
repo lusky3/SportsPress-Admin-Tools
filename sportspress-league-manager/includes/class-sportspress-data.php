@@ -117,7 +117,7 @@ class SPLM_SportsPress_Data {
 	 * pass, its digest and notices, and their settings-page previews) should
 	 * treat as current.
 	 *
-	 * splm_default_season is a convener-set OVERRIDE, and 0 on that option is
+	 * The splm_default_season option is a convener-set OVERRIDE, and 0 on it is
 	 * not "unconfigured" -- it is its own labelled choice, "Use SportsPress
 	 * current season" (see class-admin.php's render_default_season_field()).
 	 * Every one of these features must therefore fall back to sportspress_season
