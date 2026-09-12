@@ -43,6 +43,363 @@ class SPSG_Schedule_Helper {
 	}
 
 	/**
+	 * Build a date => sequential season-week-number map from a schedule.
+	 *
+	 * Games are grouped by real calendar week (Monday-Sunday, ISO-8601), so a
+	 * league playing e.g. Friday and Sunday both land under the same week
+	 * number. Weeks are then numbered 1, 2, 3... in true chronological
+	 * order -- "Week 1 of the season", not the ISO week-of-year number,
+	 * which would reset at each calendar year boundary (this plugin's
+	 * seasons routinely cross one) and mean nothing to an admin reading an
+	 * export.
+	 *
+	 * Numbering by the order dates first appear in `$schedule` (rather than
+	 * sorting) would seem equivalent, since a generated schedule is *mostly*
+	 * date-ordered, but isn't reliably so -- the slot allocator can place a
+	 * later matchup before an earlier one depending on how the search
+	 * proceeds, and did so on a real 272-game season, ending up with e.g.
+	 * "Week 3 — October 25" printed before "Week 4 — October 18". Grouping
+	 * dates into real weeks first, then sorting those week keys (an ISO
+	 * year + zero-padded ISO week number sorts correctly as a plain string)
+	 * before assigning sequential numbers avoids depending on the input
+	 * order at all.
+	 *
+	 * Shared by the CSV and XLSX exporters so a game reports the same week
+	 * number in either format -- neither a plain game object nor array ever
+	 * carries a week_number of its own (see {@see SPSG_Slot_Allocator::create_game()}),
+	 * so without this, an exported "Week" column has nothing to show at all.
+	 *
+	 * @param array $schedule Array of game objects/arrays, each carrying a `date`.
+	 * @return array<string,int> Date (Y-m-d) => week number.
+	 */
+	public static function build_week_number_map( $schedule ) {
+		$dates_by_key = self::group_dates_by_real_week( $schedule );
+		ksort( $dates_by_key );
+
+		$week_by_date = array();
+		$week_num     = 1;
+		foreach ( $dates_by_key as $dates_in_week ) {
+			foreach ( $dates_in_week as $date ) {
+				$week_by_date[ $date ] = $week_num;
+			}
+			++$week_num;
+		}
+
+		return $week_by_date;
+	}
+
+	/**
+	 * Group a schedule's distinct dates by real calendar week.
+	 *
+	 * @param array $schedule Array of game objects/arrays, each carrying a `date`.
+	 * @return array<string,array<string,string>> ISO week key => set of dates (as a value=>value map, to dedupe).
+	 */
+	public static function group_dates_by_real_week( $schedule ) {
+		$dates_by_key = array();
+
+		foreach ( (array) $schedule as $game ) {
+			$date = self::extract_game_date( $game );
+			$key  = '' !== $date ? self::iso_week_key( $date ) : null;
+
+			if ( null === $key ) {
+				continue;
+			}
+
+			$dates_by_key[ $key ][ $date ] = $date;
+		}
+
+		return $dates_by_key;
+	}
+
+	/**
+	 * Read a game object/array's `date` field.
+	 *
+	 * @param array|object $game Game object or array.
+	 * @return string Date in Y-m-d format, or '' if absent.
+	 */
+	private static function extract_game_date( $game ) {
+		return is_array( $game ) ? ( $game['date'] ?? '' ) : ( $game->date ?? '' );
+	}
+
+	/**
+	 * Build a key identifying the real (Mon-Sun) calendar week a date falls
+	 * in, stable across a season that crosses a year boundary.
+	 *
+	 * Combines the ISO week-numbering year (`o`) with the ISO week number
+	 * (`W`) rather than the plain calendar year (`Y`): a date in the last
+	 * days of December can belong to ISO week 1 of the *following* year (and
+	 * the reverse in early January), so `Y-W` alone can collide two
+	 * unrelated weeks onto the same key right at the boundary this plugin's
+	 * seasons commonly cross.
+	 *
+	 * @param string $date Date in Y-m-d format.
+	 * @return string|null Stable per-week key, or null if $date doesn't parse.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	public static function iso_week_key( $date ) {
+		$dt = DateTime::createFromFormat( 'Y-m-d', $date );
+		return $dt ? $dt->format( 'o-W' ) : null;
+	}
+
+	/**
+	 * Resolve the calendar dates a real (Mon-Sun) week falls on for each of
+	 * the season's configured playing days, restricted to dates within
+	 * [season_start, season_end].
+	 *
+	 * A week clipped by the season boundary (e.g. the season starts on a
+	 * Sunday, so that first real week has no Friday in-season) returns fewer
+	 * entries than `count($config->playing_days)` -- callers use that to
+	 * treat a boundary week as inherently partial.
+	 *
+	 * @param string $week_key ISO week key, as produced by {@see iso_week_key()} ("o-W").
+	 * @param object $config   Schedule configuration.
+	 * @return array<int,array{date:string,day_name:string}> One entry per in-season playing day that week.
+	 */
+	public static function get_week_playing_dates( $week_key, $config ) {
+		$monday = self::week_monday( $week_key );
+		if ( null === $monday ) {
+			return array();
+		}
+
+		$dates = array();
+		foreach ( range( 0, 6 ) as $offset ) {
+			$entry = self::playing_date_for_offset( $monday, $offset, $config );
+			if ( null !== $entry ) {
+				$dates[] = $entry;
+			}
+		}
+
+		return $dates;
+	}
+
+	/**
+	 * Resolve an ISO week key ("o-W") to that week's Monday, fixed at
+	 * midnight.
+	 *
+	 * Fixed at midnight because `new DateTime()` with no args defaults to
+	 * the CURRENT wall-clock time, which would otherwise push a date
+	 * matching season_end (also midnight) past it in a `>` comparison
+	 * whenever the real-world time of day isn't exactly 00:00:00.
+	 *
+	 * @param string $week_key ISO week key ("o-W").
+	 * @return DateTime|null
+	 */
+	private static function week_monday( $week_key ) {
+		$parts = explode( '-', $week_key );
+		if ( 2 !== count( $parts ) ) {
+			return null;
+		}
+
+		$monday = new DateTime( 'midnight' );
+		$monday->setISODate( (int) $parts[0], (int) $parts[1] );
+		return $monday;
+	}
+
+	/**
+	 * Resolve the single calendar date $offset days after $monday, or null
+	 * if it isn't one of the season's configured playing days in-season.
+	 *
+	 * @param DateTime $monday A week's Monday, at midnight.
+	 * @param int      $offset Days after Monday (0-6).
+	 * @param object   $config Schedule configuration.
+	 * @return array{date:string,day_name:string}|null
+	 */
+	private static function playing_date_for_offset( $monday, $offset, $config ) {
+		$day = ( clone $monday )->add( new DateInterval( "P{$offset}D" ) );
+		$day_name = strtolower( $day->format( 'l' ) );
+
+		if ( ! self::is_configured_playing_day( $day_name, $config ) ) {
+			return null;
+		}
+
+		$day_str = $day->format( 'Y-m-d' );
+		if ( ! self::is_date_in_season( $day_str, $config ) ) {
+			return null;
+		}
+
+		return array(
+			'date' => $day_str,
+			'day_name' => $day_name,
+		);
+	}
+
+	/**
+	 * Whether $day_name is one of the config's configured playing days.
+	 *
+	 * @param string $day_name Lowercase day name.
+	 * @param object $config   Schedule configuration.
+	 * @return bool
+	 */
+	private static function is_configured_playing_day( $day_name, $config ) {
+		$playing_days = $config->playing_days ?? array();
+		return in_array( $day_name, $playing_days, true );
+	}
+
+	/**
+	 * Whether $date (Y-m-d) falls within the config's [season_start, season_end],
+	 * treating either bound as open-ended when absent.
+	 *
+	 * @param string $date   Date in YYYY-MM-DD format.
+	 * @param object $config Schedule configuration.
+	 * @return bool
+	 */
+	private static function is_date_in_season( $date, $config ) {
+		if ( ! self::is_on_or_after_season_start( $date, $config ) ) {
+			return false;
+		}
+		return self::is_on_or_before_season_end( $date, $config );
+	}
+
+	/**
+	 * @param string $date   Date in YYYY-MM-DD format.
+	 * @param object $config Schedule configuration.
+	 * @return bool
+	 */
+	private static function is_on_or_after_season_start( $date, $config ) {
+		$season_start = $config->season_start ?? null;
+		if ( ! ( $season_start instanceof DateTime ) ) {
+			return true;
+		}
+		return $date >= $season_start->format( 'Y-m-d' );
+	}
+
+	/**
+	 * @param string $date   Date in YYYY-MM-DD format.
+	 * @param object $config Schedule configuration.
+	 * @return bool
+	 */
+	private static function is_on_or_before_season_end( $date, $config ) {
+		$season_end = $config->season_end ?? null;
+		if ( ! ( $season_end instanceof DateTime ) ) {
+			return true;
+		}
+		return $date <= $season_end->format( 'Y-m-d' );
+	}
+
+	/**
+	 * Whether a (date, day) has no active blackout or date-specific override
+	 * for ANY venue -- i.e. the normal, unmodified schedule applies. A venue
+	 * whose date-specific window merely repeats the normal hours still
+	 * counts as "modified": the operator explicitly carved out that date, and
+	 * a week-completeness check should not assume it behaves like any other.
+	 *
+	 * @param string $date     Date in YYYY-MM-DD format.
+	 * @param object $config   Schedule configuration.
+	 * @return bool
+	 */
+	public static function is_date_unmodified( $date, $config ) {
+		if ( in_array( $date, (array) ( $config->blackout_dates ?? array() ), true ) ) {
+			return false;
+		}
+
+		foreach ( (array) ( $config->venues ?? array() ) as $venue ) {
+			if ( ! self::venue_is_unmodified_on( $venue, $date, $config ) ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Whether a single venue has no blackout or date-specific override active
+	 * on $date. Split out of {@see is_date_unmodified()} so that method's own
+	 * branching stays low.
+	 *
+	 * @param mixed  $venue  Venue entity (object, array, or string).
+	 * @param string $date   Date in YYYY-MM-DD format.
+	 * @param object $config Schedule configuration.
+	 * @return bool
+	 */
+	private static function venue_is_unmodified_on( $venue, $date, $config ) {
+		$venue_id = self::extract_id( $venue );
+		return ! self::is_venue_blacked_out( $venue_id, $date, $config )
+			&& ! self::has_date_specific_override( $venue_id, $date, $config );
+	}
+
+	/**
+	 * Whether $venue_id carries a `venue_date_availability` range covering $date.
+	 *
+	 * @param int|string $venue_id Venue identifier.
+	 * @param string     $date     Date in YYYY-MM-DD format.
+	 * @param object     $config   Schedule configuration.
+	 * @return bool
+	 */
+	private static function has_date_specific_override( $venue_id, $date, $config ) {
+		if ( empty( $config->venue_date_availability[ $venue_id ] ) ) {
+			return false;
+		}
+
+		foreach ( $config->venue_date_availability[ $venue_id ] as $range ) {
+			if ( $date >= $range['start_date'] && $date <= $range['end_date'] ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Enumerate every real (Mon-Sun) calendar week the season's date range
+	 * touches, regardless of whether any games were actually scheduled in
+	 * it -- so a week where a whole division went silent still gets
+	 * evaluated for completeness rather than being invisible to the check
+	 * because no games happen to reference it.
+	 *
+	 * @param object $config Schedule configuration.
+	 * @return array<int,string> ISO week keys ("o-W"), season order.
+	 */
+	public static function get_season_week_keys( $config ) {
+		if ( ! ( $config->season_start instanceof DateTime ) || ! ( $config->season_end instanceof DateTime ) ) {
+			return array();
+		}
+
+		$keys = array();
+		$current = clone $config->season_start;
+		while ( $current <= $config->season_end ) {
+			$key = self::iso_week_key( $current->format( 'Y-m-d' ) );
+			if ( null !== $key ) {
+				$keys[ $key ] = $key;
+			}
+			$current->add( new DateInterval( 'P1D' ) );
+		}
+
+		return array_values( $keys );
+	}
+
+	/**
+	 * Whether a real calendar week is "complete": every one of the season's
+	 * configured playing days falls in-season that week, and none of them
+	 * carries a blackout or date-specific override on any venue. Only a
+	 * complete week is a fair basis for expecting every team to play exactly
+	 * once -- see {@see SPSG_Statistics_Calculator::detect_incomplete_weeks()}.
+	 *
+	 * @param string $week_key ISO week key ("o-W").
+	 * @param object $config   Schedule configuration.
+	 * @return bool
+	 */
+	public static function is_week_complete( $week_key, $config ) {
+		$playing_days = $config->playing_days ?? array();
+		if ( empty( $playing_days ) ) {
+			return false;
+		}
+
+		$week_dates = self::get_week_playing_dates( $week_key, $config );
+		if ( count( $week_dates ) !== count( $playing_days ) ) {
+			return false;
+		}
+
+		foreach ( $week_dates as $entry ) {
+			if ( ! self::is_date_unmodified( $entry['date'], $config ) ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
 	 * Resolve the time slots available for a (venue, date, day_name) tuple,
 	 * respecting the priority cascade:
 	 *   1. Date-specific availability windows (venue_date_availability)
@@ -122,9 +479,15 @@ class SPSG_Schedule_Helper {
 			}
 		}
 
-		// Priority 2: Venue-specific timeslots for this day
-		if ( ! empty( $config->venue_timeslots[ $venue_id ][ $day_name ] ) ) {
-			return $config->venue_timeslots[ $venue_id ][ $day_name ];
+		// Priority 2: Venue-specific timeslots for this day. A day the admin UI
+		// left unchecked saves as an explicit empty array -- "this venue doesn't
+		// play this day" -- which must win over Priority 3 below rather than be
+		// treated as "no per-venue override configured" just because `[]` is
+		// falsy. Only a venue with no per-venue timeslots entry AT ALL for this
+		// day (the key itself absent) falls through to the global default.
+		$venue_days = isset( $config->venue_timeslots[ $venue_id ] ) ? $config->venue_timeslots[ $venue_id ] : array();
+		if ( array_key_exists( $day_name, $venue_days ) ) {
+			return $venue_days[ $day_name ];
 		}
 
 		// Priority 3: Global time slots for this day
@@ -133,6 +496,119 @@ class SPSG_Schedule_Helper {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Resolve the target share of games for each playing day.
+	 *
+	 * `distribution_rules.day_ratios` is what the sanitizer derives from the
+	 * admin form's day_weights input. `day_balance` is the documented property
+	 * (docs/CONFIGURATION-PROPERTIES.md), what every preset ships and what the
+	 * REST generate path writes from the global day-weights option. An explicit
+	 * `day_ratios` wins when both are present; with neither, every playing day
+	 * gets an equal share.
+	 *
+	 * Shares are normalised so weights (3:1) and ratios (0.75 / 0.25) mean the
+	 * same thing. A playing day the rule leaves out gets a 0 share: that is
+	 * what the REST path produces for a zero-weight day, and keeping the
+	 * even-split default for it would make the shares sum to more than 1.
+	 *
+	 * Shared by the distribution constraint (per-team day balance) and the slot
+	 * allocator (per-date load targets) so the two cannot disagree about what
+	 * the operator asked for.
+	 *
+	 * @param object $config Schedule configuration.
+	 * @return array<string,float> day name => share in [0, 1], one entry per playing day.
+	 */
+	public static function resolve_day_ratios( $config ) {
+		$playing_days = (array) ( $config->playing_days ?? array() );
+
+		$source = self::day_share_source( (array) ( $config->distribution_rules ?? array() ) );
+		$shares = self::sanitize_day_shares( $source, $playing_days );
+		$total  = array_sum( $shares );
+
+		return $total > 0
+			? self::normalize_day_shares( $playing_days, $shares, $total )
+			: self::even_split_ratios( $playing_days );
+	}
+
+	/**
+	 * Scale validated day shares to sum to 1, filling in a 0 share for any
+	 * playing day the configured rule left out.
+	 *
+	 * @param array               $playing_days Playing day names.
+	 * @param array<string,float> $shares       Validated day => share (see {@see sanitize_day_shares()}).
+	 * @param float               $total        Sum of $shares, already known to be > 0.
+	 * @return array<string,float> day name => normalised share.
+	 */
+	private static function normalize_day_shares( $playing_days, $shares, $total ) {
+		$ratios = array();
+
+		foreach ( $playing_days as $day ) {
+			$ratios[ $day ] = isset( $shares[ $day ] ) ? $shares[ $day ] / $total : 0.0;
+		}
+
+		return $ratios;
+	}
+
+	/**
+	 * Equal share for every playing day (the fallback resolve_day_ratios()
+	 * returns when no day rule is configured, or is left in place for any day
+	 * a configured rule doesn't override).
+	 *
+	 * @param array $playing_days Playing day names.
+	 * @return array<string,float> day name => equal share.
+	 */
+	private static function even_split_ratios( $playing_days ) {
+		$default_ratio = count( $playing_days ) > 0 ? 1.0 / count( $playing_days ) : 0.0;
+		$ratios        = array();
+
+		foreach ( $playing_days as $day ) {
+			$ratios[ $day ] = $default_ratio;
+		}
+
+		return $ratios;
+	}
+
+	/**
+	 * Pick which distribution-rules key holds the configured day shares.
+	 * `day_ratios` (the admin form's derived value) wins when present;
+	 * `day_balance` (the documented property) otherwise.
+	 *
+	 * @param array $rules Configuration's distribution_rules.
+	 * @return array Raw day => share source, or empty when neither is set.
+	 */
+	private static function day_share_source( $rules ) {
+		if ( ! empty( $rules['day_ratios'] ) && is_array( $rules['day_ratios'] ) ) {
+			return $rules['day_ratios'];
+		}
+		if ( ! empty( $rules['day_balance'] ) && is_array( $rules['day_balance'] ) ) {
+			return $rules['day_balance'];
+		}
+		return array();
+	}
+
+	/**
+	 * Keep only entries that name an actual playing day and carry a
+	 * non-negative numeric share.
+	 *
+	 * @param array $source       Raw day => share source.
+	 * @param array $playing_days Playing day names.
+	 * @return array<string,float> Validated day => share.
+	 */
+	private static function sanitize_day_shares( $source, $playing_days ) {
+		$shares = array();
+
+		foreach ( $source as $day => $share ) {
+			if ( ! in_array( $day, $playing_days, true ) || ! is_numeric( $share ) ) {
+				continue;
+			}
+			if ( (float) $share >= 0 ) {
+				$shares[ $day ] = (float) $share;
+			}
+		}
+
+		return $shares;
 	}
 
 	/**
@@ -210,6 +686,70 @@ class SPSG_Schedule_Helper {
 		}
 
 		return $slots;
+	}
+
+	/**
+	 * Available (venue, time-slot) capacity on ONE specific date -- the
+	 * same per-venue cascade count_available_slots() sums across a whole
+	 * season, scoped to a single day. Used by the postseason final-week
+	 * capacity check, where every division's Championship/Consolation game
+	 * for that week lands on exactly one shared calendar date.
+	 *
+	 * @param object     $config      Schedule configuration.
+	 * @param string     $date        'Y-m-d' date to count slots on.
+	 * @param array|null $time_window [start, end] 'HH:MM' strings to restrict
+	 *                                 counted slots to, or null for no restriction.
+	 * @return int Available slot count on $date.
+	 */
+	public static function count_slots_on_date( $config, $date, $time_window = null ) {
+		if ( in_array( $date, $config->blackout_dates ?? array(), true ) ) {
+			return 0;
+		}
+
+		$day_name = strtolower( ( new DateTime( $date ) )->format( 'l' ) );
+		$venues   = $config->venues ?? array();
+		$slots    = 0;
+
+		foreach ( $venues as $venue ) {
+			$slots += self::count_venue_slots_on_date( $venue, $date, $day_name, $config, $time_window );
+		}
+
+		return $slots;
+	}
+
+	/**
+	 * Slot count one venue contributes on one date, honouring its own
+	 * blackout and an optional time-window restriction. Extracted from
+	 * {@see count_slots_on_date()} so that method's own branching stays low.
+	 *
+	 * @param mixed      $venue       Venue entity (object, array, or string).
+	 * @param string     $date        'Y-m-d' date to count slots on.
+	 * @param string     $day_name    Lowercase day name for $date.
+	 * @param object     $config      Schedule configuration.
+	 * @param array|null $time_window [start, end] 'HH:MM' strings to restrict
+	 *                                 counted slots to, or null for no restriction.
+	 * @return int Slot count contributed by this venue.
+	 */
+	private static function count_venue_slots_on_date( $venue, $date, $day_name, $config, $time_window ) {
+		$venue_id = self::extract_id( $venue );
+
+		if ( self::is_venue_blacked_out( $venue_id, $date, $config ) ) {
+			return 0;
+		}
+
+		$venue_slots = self::resolve_venue_slots( $venue_id, $date, $day_name, $config );
+		if ( ! is_array( $venue_slots ) ) {
+			return 0;
+		}
+
+		$count = 0;
+		foreach ( $venue_slots as $time_slot ) {
+			if ( null === $time_window || ( $time_slot >= $time_window[0] && $time_slot <= $time_window[1] ) ) {
+				$count++;
+			}
+		}
+
+		return $count;
 	}
 
 	/**

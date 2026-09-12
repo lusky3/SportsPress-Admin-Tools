@@ -4,6 +4,8 @@
  * @author Cody (lusky3)
  */
 
+/* global spsgData, ajaxurl */
+
 (function($) {
     'use strict';
     
@@ -100,6 +102,7 @@
             $('#spsg-export-xlsx').on('click', function() { SPSG.exportSchedule('xlsx'); });
             $('#spsg-cancel-generation').on('click', this.cancelGeneration.bind(this));
             $('#spsg-clone-config').on('click', this.cloneConfiguration.bind(this));
+            $('#spsg-discard-draft').on('click', this.discardDraft.bind(this));
         },
         
         checkConfigurationStatus: function() {
@@ -221,7 +224,40 @@
                 }
             });
         },
-        
+
+        discardDraft: function() {
+            var self = this;
+            var configId = $('#spsg-discard-draft').data('config-id') || $('#spsg-config-selector').val() || '';
+
+            if (!confirm('Discard this draft schedule? This cannot be undone.')) {
+                return;
+            }
+
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'spsg_discard_draft',
+                    spsg_nonce: spsgData.nonces.discard_draft,
+                    config_id: configId
+                },
+                beforeSend: function() {
+                    self.showMessage('info', 'Discarding draft...');
+                },
+                success: function(response) {
+                    if (response.success) {
+                        window.location.reload();
+                    } else {
+                        var errorMsg = response.data.message || response.data || 'Failed to discard draft';
+                        self.showMessage('error', errorMsg);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    self.showMessage('error', 'Discard request failed: ' + error);
+                }
+            });
+        },
+
         generateSchedule: function() {
             var self = this;
             
@@ -363,8 +399,22 @@
                     $th.addClass('spsg-sorted-desc');
                     self.sortTable(sortBy, 'desc');
                 }
+
+                // A manual column sort overrides "Group Arenas" until it's
+                // re-checked -- the two are alternate views of date order,
+                // not composable with each other.
+                $('#spsg-group-arenas').prop('checked', false);
             });
-            
+
+            $('#spsg-group-arenas').on('change', function() {
+                self.applyDefaultSort();
+            });
+
+            // Default view: chronological by date/time (grouped by arena
+            // instead, if that box is already checked), not whatever order
+            // the schedule array happened to generate in.
+            this.applyDefaultSort();
+
             // Bind action buttons
             $('#spsg-generate-new').off('click').on('click', function() {
                 if (confirm('Generate a new schedule? This will replace the current schedule.')) {
@@ -625,7 +675,20 @@
                 }
             });
         },
-        
+
+        /**
+         * Apply the default (non-manual-column-click) sort: chronological by
+         * date/time, or grouped by arena within each date when "Group
+         * Arenas" is checked. Marks the Date header's arrow to match, since
+         * both views are still date-ascending overall.
+         */
+        applyDefaultSort: function() {
+            var grouped = $('#spsg-group-arenas').is(':checked');
+            $('.spsg-sortable').removeClass('spsg-sorted-asc spsg-sorted-desc');
+            $('.spsg-sortable[data-sort="date"]').addClass('spsg-sorted-asc');
+            this.sortTable(grouped ? 'date-grouped' : 'date', 'asc');
+        },
+
         sortTable: function(sortBy, direction) {
             var $tbody = $('#spsg-schedule-table tbody');
             var rows = $tbody.find('tr').get();
@@ -637,6 +700,15 @@
                     case 'date':
                         aVal = $(a).data('date') + ' ' + $(a).data('time');
                         bVal = $(b).data('date') + ' ' + $(b).data('time');
+                        break;
+                    case 'date-grouped':
+                        // "Group Arenas": same chronological date order, but
+                        // every game at a given venue sits together within
+                        // that date instead of interleaving by time alone.
+                        // Plain dataset reads (not jQuery's $(el).data()) --
+                        // a and b are raw elements here, not selector input.
+                        aVal = a.dataset.date + ' ' + a.dataset.venue + ' ' + a.dataset.time;
+                        bVal = b.dataset.date + ' ' + b.dataset.venue + ' ' + b.dataset.time;
                         break;
                     case 'time':
                         aVal = $(a).data('time');

@@ -97,6 +97,9 @@ class SportsPress_League_Manager {
 		// Capabilities managed by SportsPress core (manage_sportspress).
 	}
 
+	/**
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
 	public function init() {
 		if ( ! $this->check_parent_plugin() ) {
 			return;
@@ -104,6 +107,17 @@ class SportsPress_League_Manager {
 
 		require_once SPLM_PLUGIN_PATH . 'includes/class-autoloader.php';
 		SPLM_Autoloader::init();
+
+		SPLM_Standings::register_hooks();
+		// This plugin's own init() runs on 'plugins_loaded' (see the
+		// add_action() in __construct()), which always fires before
+		// WordPress's real 'init' hook -- and SportsPress registers the
+		// sp_column post type on 'init' at priority 5. Calling
+		// maybe_ensure_pim_column() directly here would make its own
+		// post_type_exists( 'sp_column' ) guard permanently false, so it is
+		// deferred onto 'init' (after SportsPress's priority-5 registration)
+		// instead. Guarded there: skips entirely once the column exists.
+		add_action( 'init', array( 'SPLM_Standings', 'maybe_ensure_pim_column' ), 20 );
 
 		// Register modules with parent.
 		SPAT_Plugin_Manager::register_plugin(

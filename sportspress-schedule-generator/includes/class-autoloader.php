@@ -74,12 +74,16 @@ class SPSG_Autoloader {
 			'SPSG_Error_Handler' => $base_path . 'class-error-handler.php',
 			'SPSG_Statistics_Calculator' => $base_path . 'class-statistics-calculator.php',
 			'SPSG_Schedule_Helper' => $base_path . 'class-schedule-helper.php',
+			'SPSG_Schedule_Draft_Store' => $base_path . 'class-schedule-draft-store.php',
 
 			// Constraint classes
 			'SPSG_Blackout_Constraint' => $base_path . 'constraints/class-blackout-constraint.php',
 			'SPSG_Distribution_Constraint' => $base_path . 'constraints/class-distribution-constraint.php',
 			'SPSG_Team_Restriction_Constraint' => $base_path . 'constraints/class-team-restriction-constraint.php',
 			'SPSG_Division_Grouping_Constraint' => $base_path . 'constraints/class-division-grouping-constraint.php',
+			'SPSG_Postseason_Day_Constraint' => $base_path . 'constraints/class-postseason-day-constraint.php',
+			'SPSG_Postseason_Week_Constraint' => $base_path . 'constraints/class-postseason-week-constraint.php',
+			'SPSG_Championship_Time_Window_Constraint' => $base_path . 'constraints/class-championship-time-window-constraint.php',
 
 			// Export classes
 			'SPSG_Export_Manager' => $base_path . 'class-export-manager.php',
@@ -91,6 +95,12 @@ class SPSG_Autoloader {
 
 			// Placeholder team management
 			'SPSG_Placeholder_Team_Manager' => $base_path . 'class-placeholder-team-manager.php',
+
+			// Postseason
+			'SPSG_Postseason_Pairing' => $base_path . 'class-postseason-pairing.php',
+			'SPSG_Postseason_Seed_Resolver' => $base_path . 'class-postseason-seed-resolver.php',
+			'SPSG_Postseason_Bracket_Detector' => $base_path . 'class-postseason-bracket-detector.php',
+			'SPSG_Postseason_Matchup_Builder' => $base_path . 'class-postseason-matchup-builder.php',
 
 			// Data models
 			'SPSG_Game' => $base_path . 'models/class-game.php',

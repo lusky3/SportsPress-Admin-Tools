@@ -40,6 +40,72 @@ class SPSG_Sports_Press_Integration {
 	}
 
 	/**
+	 * Resolve a stored team reference to a display name.
+	 *
+	 * A division's `teams` entries are normally plain name strings — typed
+	 * by hand, or embedded by the "Load from SportsPress" picker, which
+	 * writes the team's real name at the time it was added. But a
+	 * configuration can also be authored with a bare SportsPress `sp_team`
+	 * post ID in that same slot (e.g. written directly through the REST API
+	 * rather than through the picker), in which case the numeric string has
+	 * no display meaning of its own — every consumer that shows or matches
+	 * it (the admin form, the generated schedule, the SportsPress import's
+	 * name lookup) would otherwise show/match the raw ID instead of the
+	 * team's actual name.
+	 *
+	 * Only ever resolves an ID that names a real, published `sp_team` post;
+	 * anything else (including a literal name that happens to be numeric)
+	 * is returned unchanged.
+	 *
+	 * @param mixed $team_id_or_name Whatever is stored for this team slot.
+	 * @return mixed The real SportsPress team title when $team_id_or_name is
+	 *               a published sp_team post ID; otherwise the input as given.
+	 */
+	public static function resolve_team_name( $team_id_or_name ) {
+		if ( ! self::looks_like_team_id( $team_id_or_name ) ) {
+			return $team_id_or_name;
+		}
+
+		$post = self::published_team_post( (int) $team_id_or_name );
+
+		return $post ? $post->post_title : $team_id_or_name;
+	}
+
+	/**
+	 * Whether a stored team-slot value is shaped like a SportsPress post ID
+	 * (a bare digit string), as opposed to a literal team name.
+	 *
+	 * @param mixed $value Whatever is stored for this team slot.
+	 * @return bool
+	 */
+	private static function looks_like_team_id( $value ) {
+		if ( ! is_string( $value ) && ! is_int( $value ) ) {
+			return false;
+		}
+		return ctype_digit( (string) $value );
+	}
+
+	/**
+	 * Fetch a published sp_team post by ID, or null if it doesn't resolve to
+	 * one (missing, wrong post type, or not published).
+	 *
+	 * @param int $id Candidate post ID.
+	 * @return WP_Post|null
+	 */
+	private static function published_team_post( $id ) {
+		if ( ! self::is_sportspress_active() || ! function_exists( 'get_post' ) ) {
+			return null;
+		}
+
+		$post = get_post( $id );
+		if ( ! $post || 'sp_team' !== $post->post_type || 'publish' !== $post->post_status ) {
+			return null;
+		}
+
+		return $post;
+	}
+
+	/**
 	 * Get all SportsPress teams
 	 */
 	public static function get_teams( $args = array() ) {
@@ -283,6 +349,78 @@ class SPSG_Sports_Press_Integration {
 	}
 
 	/**
+	 * Find or create the postseason's child sp_season term under a regular
+	 * season -- e.g. "W2026-27 Playoffs" as a child of "W2026-27". `sp_season`
+	 * is registered hierarchical, so this is a plain wp_insert_term() with
+	 * `parent` set (design notes kept locally, not in this repo).
+	 *
+	 * Idempotent: a second call for the same parent + name returns the
+	 * existing child term's id rather than creating a duplicate.
+	 *
+	 * @param int    $parent_season_id sp_season term id of the regular season.
+	 * @param string $child_name       Child term name. Defaults to the
+	 *                                  parent's own name + " Playoffs".
+	 * @return int|WP_Error Child term id, or WP_Error if the parent doesn't
+	 *                        exist or the term couldn't be created.
+	 */
+	public static function create_child_season( $parent_season_id, $child_name = null ) {
+		if ( ! self::is_sportspress_active() ) {
+			return new WP_Error( 'sportspress_inactive', __( 'SportsPress is not active.', 'sportspress-schedule-generator' ) );
+		}
+
+		$parent = get_term( $parent_season_id, 'sp_season' );
+		if ( ! $parent || is_wp_error( $parent ) ) {
+			return new WP_Error( 'parent_season_not_found', __( 'Parent season not found.', 'sportspress-schedule-generator' ) );
+		}
+
+		if ( null === $child_name ) {
+			$child_name = $parent->name . ' Playoffs';
+		}
+
+		$existing = self::find_child_season( $parent_season_id, $child_name );
+		if ( $existing ) {
+			return $existing;
+		}
+
+		$inserted = wp_insert_term( $child_name, 'sp_season', array( 'parent' => $parent_season_id ) );
+		if ( is_wp_error( $inserted ) ) {
+			return $inserted;
+		}
+
+		return (int) $inserted['term_id'];
+	}
+
+	/**
+	 * A direct child of $parent_season_id named $child_name, if one already
+	 * exists.
+	 *
+	 * @param int    $parent_season_id sp_season term id of the parent season.
+	 * @param string $child_name Child term name to look for.
+	 * @return int|null Existing child term id, or null.
+	 */
+	private static function find_child_season( $parent_season_id, $child_name ) {
+		$children = get_terms(
+			array(
+				'taxonomy'   => 'sp_season',
+				'parent'     => $parent_season_id,
+				'hide_empty' => false,
+			)
+		);
+
+		if ( is_wp_error( $children ) ) {
+			return null;
+		}
+
+		foreach ( $children as $child ) {
+			if ( $child->name === $child_name ) {
+				return (int) $child->term_id;
+			}
+		}
+
+		return null;
+	}
+
+	/**
 	 * Get league structure for division mapping
 	 */
 	public static function get_league_structure( $league_id ) {
@@ -346,6 +484,24 @@ class SPSG_Sports_Press_Integration {
 	}
 
 	/**
+	 * Set an event's home/away teams the way SportsPress actually stores
+	 * them: one `sp_team` post meta ROW per team id (add_post_meta, never a
+	 * single row holding a serialized array) -- `sp_team` is a post type on
+	 * this install, not a taxonomy, and this is the shape
+	 * SPSG_Placeholder_Team_Manager::find_events_with_team()/
+	 * update_event_team() already query and update against.
+	 *
+	 * @param int        $event_id Event post ID.
+	 * @param int|string $home_team_id Home team's sp_team post ID.
+	 * @param int|string $away_team_id Away team's sp_team post ID.
+	 */
+	private static function set_event_teams( $event_id, $home_team_id, $away_team_id ) {
+		delete_post_meta( $event_id, 'sp_team' );
+		add_post_meta( $event_id, 'sp_team', $home_team_id );
+		add_post_meta( $event_id, 'sp_team', $away_team_id );
+	}
+
+	/**
 	 * Create SportsPress event from game
 	 */
 	public static function create_event_from_game( $game ) {
@@ -378,9 +534,15 @@ class SPSG_Sports_Press_Integration {
 			update_post_meta( $event_id, 'sp_venue', $game->venue->id );
 		}
 
-		// Set teams
-		$teams = array( $game->home_team->id, $game->away_team->id );
-		wp_set_object_terms( $event_id, $teams, 'sp_team' );
+		// Set teams. `sp_team` is a post type, not a taxonomy -- SportsPress
+		// stores an event's teams as one `sp_team` POST META ROW PER TEAM
+		// (add_post_meta, not update_post_meta with a serialized array); see
+		// SPSG_Placeholder_Team_Manager::update_event_team()/
+		// find_events_with_team(), which already read/write it that way.
+		// wp_set_object_terms() against a nonexistent 'sp_team' taxonomy
+		// always returned a silently-ignored WP_Error, so no event this
+		// plugin created ever actually had its teams set.
+		self::set_event_teams( $event_id, $game->home_team->id, $game->away_team->id );
 
 		// Set league/division
 		if ( isset( $game->division->id ) ) {
@@ -499,8 +661,7 @@ class SPSG_Sports_Press_Integration {
 		}
 
 		// Update teams
-		$teams = array( $game->home_team->id, $game->away_team->id );
-		wp_set_object_terms( $event_id, $teams, 'sp_team' );
+		self::set_event_teams( $event_id, $game->home_team->id, $game->away_team->id );
 
 		// Update league/division
 		if ( isset( $game->division->id ) ) {

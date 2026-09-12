@@ -33,7 +33,11 @@ class SPSG_Configuration_Sanitizer {
 		$sanitized = array();
 
 		// Sanitize metadata fields (id, name, timestamps)
-		if ( isset( $data['id'] ) ) {
+		// An empty string (the admin form's hidden "id" field on a brand-new,
+		// never-saved configuration) must be treated the same as an absent
+		// key -- `isset()` alone is true for '', which would make the save
+		// path think a real (blank) id was submitted and skip generating one.
+		if ( ! empty( $data['id'] ) ) {
 			$sanitized['id'] = sanitize_text_field( $data['id'] );
 		}
 		if ( isset( $data['name'] ) ) {
@@ -83,7 +87,73 @@ class SPSG_Configuration_Sanitizer {
 		// Sanitize generic teams configuration
 		$sanitized['generic_teams'] = $this->sanitize_generic_teams( $data );
 
+		// Sanitize postseason fields
+		$sanitized = array_merge( $sanitized, $this->sanitize_postseason_fields( $data ) );
+
 		return $sanitized;
+	}
+
+	/**
+	 * Sanitize the postseason-only fields (schema added alongside the
+	 * postseason/playoffs design's phase 3 -- design notes kept locally, not
+	 * in this repo). Split out of sanitize() purely to keep that method's
+	 * own length down; these fields have no other coupling to the rest of
+	 * sanitize()'s work.
+	 *
+	 * @param array $data Raw configuration data.
+	 * @return array Sanitized postseason fields, keyed the same as $data.
+	 */
+	private function sanitize_postseason_fields( $data ) {
+		return array(
+			'is_postseason' => ! empty( $data['is_postseason'] ),
+			'postseason_source_config_id' => sanitize_text_field( self::value( $data, 'postseason_source_config_id', '' ) ),
+			'postseason_source_season_id' => absint( self::value( $data, 'postseason_source_season_id', 0 ) ),
+			'postseason_season_id' => absint( self::value( $data, 'postseason_season_id', 0 ) ),
+			'round_robin_weeks' => max( 1, absint( self::value( $data, 'round_robin_weeks', 3 ) ) ),
+			'championship_day' => $this->sanitize_day_window( self::value( $data, 'championship_day', array() ) ),
+			'consolation_day' => sanitize_text_field( self::value( $data, 'consolation_day', '' ) ),
+			'seed_resolution_mode' => $this->sanitize_seed_resolution_mode( self::value( $data, 'seed_resolution_mode', 'manual' ) ),
+		);
+	}
+
+	/**
+	 * $arr[$key] if present, else $default. A named helper rather than `??`
+	 * repeated inline -- see the identical helper (and its rationale) in
+	 * SPSG_Configuration_Manager::value().
+	 *
+	 * @param array  $arr     Source array.
+	 * @param string $key     Key to read.
+	 * @param mixed  $default Value to use when the key is absent.
+	 * @return mixed
+	 */
+	private static function value( array $arr, $key, $default ) {
+		return array_key_exists( $key, $arr ) ? $arr[ $key ] : $default;
+	}
+
+	/**
+	 * Sanitize a day-of-week + time-window setting (championship_day).
+	 *
+	 * @param array $day_window Raw array( 'day', 'start', 'end' ).
+	 * @return array Sanitized array( 'day', 'start', 'end' ), each '' if absent.
+	 */
+	private function sanitize_day_window( $day_window ) {
+		$day_window = (array) $day_window;
+		return array(
+			'day'   => sanitize_text_field( $day_window['day'] ?? '' ),
+			'start' => sanitize_text_field( $day_window['start'] ?? '' ),
+			'end'   => sanitize_text_field( $day_window['end'] ?? '' ),
+		);
+	}
+
+	/**
+	 * Sanitize seed_resolution_mode to one of its two valid values.
+	 *
+	 * @param string $mode Raw mode.
+	 * @return string 'manual' or 'automatic'.
+	 */
+	private function sanitize_seed_resolution_mode( $mode ) {
+		$mode = sanitize_text_field( $mode );
+		return 'automatic' === $mode ? 'automatic' : 'manual';
 	}
 
 	/**
@@ -155,6 +225,19 @@ class SPSG_Configuration_Sanitizer {
 				}
 				$sanitized['day_ratios'] = $day_ratios;
 			}
+		} elseif ( isset( $rules['day_ratios'] ) && is_array( $rules['day_ratios'] ) ) {
+			// SPSG_Configuration_Manager::save() sanitizes its input a second
+			// time (every caller already sanitizes $_POST before calling
+			// save(), which then sanitizes again itself) -- an
+			// already-sanitized distribution_rules carries `day_ratios`, the
+			// ONE-WAY result of the branch above, not the raw `day_weights`
+			// form field it came from. Without this branch, the second pass
+			// saw no `day_weights` key and silently discarded the ratios
+			// entirely, so every real Save of a custom day-weight split
+			// (e.g. 70/30) reverted to an even split the moment it hit the
+			// database, even though validation and the first sanitize pass
+			// both saw the correct value.
+			$sanitized['day_ratios'] = array_map( 'floatval', $rules['day_ratios'] );
 		}
 
 		return $sanitized;
@@ -271,12 +354,22 @@ class SPSG_Configuration_Sanitizer {
 
 	/**
 	 * Sanitize venue date availability
+	 *
+	 * Accepts either shape: the admin form's Venues & Times tab submits one
+	 * freeform textarea string per venue (see
+	 * {@see parse_venue_date_availability_text()} for the line format); the
+	 * CSV-import and REST paths already build structured
+	 * `[{start_date, end_date, time_slots}, ...]` arrays directly.
 	 */
 	private function sanitize_venue_date_availability( $venue_date_availability ) {
 		$sanitized = array();
 		foreach ( (array) $venue_date_availability as $venue_id => $date_ranges ) {
 			$venue_id = sanitize_text_field( $venue_id );
 			$sanitized[ $venue_id ] = array();
+
+			if ( is_string( $date_ranges ) ) {
+				$date_ranges = $this->parse_venue_date_availability_text( $date_ranges );
+			}
 
 			foreach ( (array) $date_ranges as $range ) {
 				$start_date = sanitize_text_field( $range['start_date'] ?? '' );
@@ -296,6 +389,52 @@ class SPSG_Configuration_Sanitizer {
 			}
 		}
 		return $sanitized;
+	}
+
+	/**
+	 * Parse the Venues & Times tab's freeform "date override" textarea into
+	 * the structured range shape {@see sanitize_venue_date_availability()}
+	 * validates.
+	 *
+	 * One override per line: `DATE = TIME, TIME, ...` for a single date, or
+	 * `DATE to DATE = TIME, TIME, ...` for a range (the shape a CSV-imported
+	 * week already produces, so re-saving after an edit round-trips it
+	 * without loss). `=` rather than `:` separates the date from the times
+	 * so the split can't be confused by the colon inside "16:00".
+	 *
+	 * @param string $text Raw textarea contents.
+	 * @return array Array of `{start_date, end_date, time_slots}` (still raw,
+	 *               unvalidated strings -- the caller's existing validation
+	 *               loop sanitizes and checks them the same as any other
+	 *               source).
+	 */
+	private function parse_venue_date_availability_text( $text ) {
+		$ranges = array();
+
+		foreach ( preg_split( '/[\r\n]+/', (string) $text, -1, PREG_SPLIT_NO_EMPTY ) as $line ) {
+			if ( false === strpos( $line, '=' ) ) {
+				continue;
+			}
+
+			list( $date_part, $times_part ) = array_map( 'trim', explode( '=', $line, 2 ) );
+
+			if ( ! preg_match( '/^(\d{4}-\d{2}-\d{2})(?:\s+to\s+(\d{4}-\d{2}-\d{2}))?$/i', $date_part, $m ) ) {
+				continue;
+			}
+
+			$times = array_filter( array_map( 'trim', explode( ',', $times_part ) ) );
+			if ( empty( $times ) ) {
+				continue;
+			}
+
+			$ranges[] = array(
+				'start_date' => $m[1],
+				'end_date' => $m[2] ?? $m[1],
+				'time_slots' => array_values( $times ),
+			);
+		}
+
+		return $ranges;
 	}
 
 	/**

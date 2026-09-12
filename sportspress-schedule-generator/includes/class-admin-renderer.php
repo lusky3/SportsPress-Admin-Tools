@@ -44,9 +44,9 @@ class SPSG_Admin_Renderer {
 				<select id="spsg-config-selector" class="regular-text">
 					<option value=""><?php esc_html_e( 'Current Configuration', 'sportspress-schedule-generator' ); ?></option>
 					<?php
-					$saved_configs = get_option( 'spsg_configurations', array() );
+					$saved_configs = $this->config_manager->get_all_configurations();
 					foreach ( $saved_configs as $config_id => $config_info ) {
-						echo '<option value="' . esc_attr( $config_id ) . '">' . esc_html( $config_info['name'] ) . ' (' . esc_html( $config_info['modified'] ) . ')</option>';
+						echo '<option value="' . esc_attr( $config_id ) . '" ' . selected( $config->id ?? '', $config_id, false ) . '>' . esc_html( $config_info['name'] ) . ' (' . esc_html( $config_info['modified'] ) . ')</option>';
 					}
 					?>
 				</select>
@@ -75,6 +75,8 @@ class SPSG_Admin_Renderer {
 		</div>
 
 		<?php $this->render_import_preview_modal(); ?>
+
+		<input type="hidden" name="id" id="spsg-config-id" value="<?php echo esc_attr( $config->id ?? '' ); ?>" />
 
 		<table class="form-table">
 			<tr>
@@ -622,10 +624,10 @@ class SPSG_Admin_Renderer {
 				<?php
 				if ( ! empty( $config->venues ) ) {
 					foreach ( $config->venues as $index => $venue ) {
-						$this->render_venue_row( $venue, $index );
+						$this->render_venue_row( $venue, $index, $config );
 					}
 				} else {
-					$this->render_venue_row( array(), 0 );
+					$this->render_venue_row( array(), 0, $config );
 				}
 				?>
 			</div>
@@ -640,10 +642,30 @@ class SPSG_Admin_Renderer {
 
 	/**
 	 * Render venue row
+	 *
+	 * Per-venue time slots and blackout dates are stored on the configuration
+	 * as `$config->venue_timeslots[$venue_id]` / `$config->venue_blackout_dates[$venue_id]`
+	 * (top-level, keyed by venue ID) -- NOT nested inside the venue's own
+	 * array entry. This used to read `$venue['timeslots']` /
+	 * `$venue['blackout_dates']` instead, keys that are never populated
+	 * anywhere the config is loaded from storage, so a saved venue's days
+	 * always rendered as unchecked with empty time-slot boxes regardless of
+	 * what was actually configured and saved.
+	 *
+	 * @param array                            $venue  Venue data (name, id).
+	 * @param int                              $index  Venue's position in the form.
+	 * @param SPSG_Schedule_Configuration|null $config Full configuration, to resolve the
+	 *                                                 venue's saved per-day slots/blackouts.
+	 *                                                 Omitted only for a brand-new venue row
+	 *                                                 with nothing saved yet.
 	 */
-	public function render_venue_row( $venue, $index ) {
+	public function render_venue_row( $venue, $index, $config = null ) {
 		$venue_id = $venue['id'] ?? 'venue_' . $index;
-		$days = array( 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday' );
+		$venue_timeslots_by_day = self::resolve_venue_timeslots_for_row( $venue, $venue_id, $config );
+		$venue_blackouts        = self::resolve_venue_blackouts_for_row( $venue, $venue_id, $config );
+		$venue_date_overrides   = self::format_venue_date_availability_lines(
+			self::resolve_venue_date_availability_for_row( $venue_id, $config )
+		);
 		?>
 		<div class="spsg-venue-row" data-index="<?php echo esc_attr( $index ); ?>">
 			<table class="form-table">
@@ -659,20 +681,7 @@ class SPSG_Admin_Renderer {
 					<th scope="row"><?php esc_html_e( 'Available Days & Times', 'sportspress-schedule-generator' ); ?></th>
 					<td>
 						<div class="spsg-venue-timeslots">
-							<?php
-							foreach ( $days as $day ) :
-								$venue_timeslots = $venue['timeslots'][ $day ] ?? array();
-								?>
-							<div class="spsg-venue-day-timeslots">
-								<label>
-									<input type="checkbox" class="spsg-venue-day-toggle" data-day="<?php echo esc_attr( $day ); ?>" <?php checked( ! empty( $venue_timeslots ) ); ?> />
-									<strong><?php echo esc_html( ucfirst( $day ) ); ?></strong>
-								</label>
-								<div class="spsg-venue-day-times" style="<?php echo empty( $venue_timeslots ) ? 'display:none;' : ''; ?>">
-									<textarea name="venue_timeslots[<?php echo esc_attr( $venue_id ); ?>][<?php echo esc_attr( $day ); ?>]" rows="2" class="regular-text" placeholder="<?php esc_html_e( 'Enter times (e.g., 19:00, 20:00)', 'sportspress-schedule-generator' ); ?>"><?php echo esc_textarea( is_array( $venue_timeslots ) ? implode( "\n", $venue_timeslots ) : '' ); ?></textarea>
-								</div>
-							</div>
-							<?php endforeach; ?>
+							<?php $this->render_venue_day_timeslot_rows( $venue_id, $venue_timeslots_by_day ); ?>
 						</div>
 						<p class="description"><?php esc_html_e( 'Select which days and times this venue is available. Leave unchecked if venue is available all configured times.', 'sportspress-schedule-generator' ); ?></p>
 					</td>
@@ -682,16 +691,139 @@ class SPSG_Admin_Renderer {
 					<td>
 						<textarea name="venue_blackout_dates[<?php echo esc_attr( $venue_id ); ?>]" rows="3" class="large-text" placeholder="<?php esc_html_e( 'Enter dates when this venue is unavailable (e.g., 2024-01-15, 2024-02-20)', 'sportspress-schedule-generator' ); ?>">
 						<?php
-						$venue_blackouts = $venue['blackout_dates'] ?? array();
 						echo esc_textarea( is_array( $venue_blackouts ) ? implode( "\n", $venue_blackouts ) : $venue_blackouts );
 						?>
 						</textarea>
 						<p class="description"><?php esc_html_e( 'Specific dates when this venue is unavailable. Enter one date per line in YYYY-MM-DD format. This is useful when a venue is temporarily closed or unavailable on specific days.', 'sportspress-schedule-generator' ); ?></p>
 					</td>
 				</tr>
+				<tr>
+					<th scope="row"><label for="spsg-venue-date-availability-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Date-Specific Time Overrides', 'sportspress-schedule-generator' ); ?></label></th>
+					<td>
+						<textarea id="spsg-venue-date-availability-<?php echo esc_attr( $index ); ?>" name="venue_date_availability[<?php echo esc_attr( $venue_id ); ?>]" rows="3" class="large-text" placeholder="<?php esc_attr_e( '2026-12-27 = 16:00, 17:00, 18:00', 'sportspress-schedule-generator' ); ?>"><?php echo esc_textarea( $venue_date_overrides ); ?></textarea>
+						<p class="description">
+							<?php esc_html_e( 'Override this venue\'s available times for specific dates -- e.g. a shortened holiday slot. One override per line: "YYYY-MM-DD = TIME, TIME" for a single date, or "YYYY-MM-DD to YYYY-MM-DD = TIME, TIME" for a range. Takes priority over Available Days & Times for any date it covers.', 'sportspress-schedule-generator' ); ?>
+						</p>
+					</td>
+				</tr>
 			</table>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Resolve a venue's saved per-day time slots for the Venues & Times tab.
+	 *
+	 * Prefers the configuration's top-level `venue_timeslots[$venue_id]`
+	 * (where a saved config actually keeps this); falls back to the venue
+	 * array's own `timeslots` key when no configuration is given or it has
+	 * nothing for this venue -- the shape a brand-new, not-yet-saved venue
+	 * row uses.
+	 *
+	 * @param array                            $venue    Venue data.
+	 * @param string                           $venue_id Resolved venue ID.
+	 * @param SPSG_Schedule_Configuration|null $config   Full configuration, if available.
+	 * @return array Day name => time slots.
+	 */
+	private static function resolve_venue_timeslots_for_row( $venue, $venue_id, $config ) {
+		if ( $config && ! empty( $config->venue_timeslots[ $venue_id ] ) ) {
+			return $config->venue_timeslots[ $venue_id ];
+		}
+		return $venue['timeslots'] ?? array();
+	}
+
+	/**
+	 * Resolve a venue's saved blackout dates for the Venues & Times tab. Same
+	 * config-first, venue-array-fallback resolution as
+	 * {@see resolve_venue_timeslots_for_row()}.
+	 *
+	 * @param array                            $venue    Venue data.
+	 * @param string                           $venue_id Resolved venue ID.
+	 * @param SPSG_Schedule_Configuration|null $config   Full configuration, if available.
+	 * @return array Blackout dates.
+	 */
+	private static function resolve_venue_blackouts_for_row( $venue, $venue_id, $config ) {
+		if ( $config && ! empty( $config->venue_blackout_dates[ $venue_id ] ) ) {
+			return $config->venue_blackout_dates[ $venue_id ];
+		}
+		return $venue['blackout_dates'] ?? array();
+	}
+
+	/**
+	 * Resolve a venue's saved date-specific time-slot override ranges for
+	 * the Venues & Times tab. Unlike timeslots/blackouts there is no legacy
+	 * venue-array key to fall back to -- this field never had a form control
+	 * before, so a brand-new row simply has none yet.
+	 *
+	 * @param string                           $venue_id Resolved venue ID.
+	 * @param SPSG_Schedule_Configuration|null $config   Full configuration, if available.
+	 * @return array Array of `{start_date, end_date, time_slots}` ranges.
+	 */
+	private static function resolve_venue_date_availability_for_row( $venue_id, $config ) {
+		if ( $config && ! empty( $config->venue_date_availability[ $venue_id ] ) ) {
+			return $config->venue_date_availability[ $venue_id ];
+		}
+		return array();
+	}
+
+	/**
+	 * Format saved date-availability ranges back into the textarea's
+	 * "DATE[ to DATE] = TIME, TIME" line format -- the inverse of
+	 * SPSG_Configuration_Sanitizer::parse_venue_date_availability_text(), so
+	 * a range imported via CSV (always a multi-day week) round-trips as one
+	 * readable, directly-editable line instead of being silently dropped.
+	 *
+	 * @param array $ranges Array of `{start_date, end_date, time_slots}` ranges.
+	 * @return string Textarea contents, one range per line.
+	 */
+	private static function format_venue_date_availability_lines( $ranges ) {
+		$lines = array();
+		foreach ( (array) $ranges as $range ) {
+			$lines[] = self::format_venue_date_availability_line( $range );
+		}
+		return implode( "\n", $lines );
+	}
+
+	/**
+	 * Format a single date-availability range into one "DATE[ to DATE] =
+	 * TIME, TIME" line. Split out of {@see format_venue_date_availability_lines()}
+	 * purely to keep that loop's own complexity low.
+	 *
+	 * @param array $range A single `{start_date, end_date, time_slots}` range.
+	 * @return string One formatted line.
+	 */
+	private static function format_venue_date_availability_line( $range ) {
+		$start = $range['start_date'] ?? '';
+		$end   = $range['end_date'] ?? $start;
+		$times = implode( ', ', (array) ( $range['time_slots'] ?? array() ) );
+		$date_part = ( $start === $end ) ? $start : "$start to $end";
+		return "$date_part = $times";
+	}
+
+	/**
+	 * Render one venue's per-day "Available Days & Times" checkbox + textarea
+	 * rows.
+	 *
+	 * @param string $venue_id               Resolved venue ID.
+	 * @param array  $venue_timeslots_by_day Day name => time slots, as resolved by
+	 *                                       {@see resolve_venue_timeslots_for_row()}.
+	 */
+	private function render_venue_day_timeslot_rows( $venue_id, $venue_timeslots_by_day ) {
+		$days = array( 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday' );
+		foreach ( $days as $day ) :
+			$venue_timeslots = $venue_timeslots_by_day[ $day ] ?? array();
+			?>
+		<div class="spsg-venue-day-timeslots">
+			<label>
+				<input type="checkbox" class="spsg-venue-day-toggle" data-day="<?php echo esc_attr( $day ); ?>" <?php checked( ! empty( $venue_timeslots ) ); ?> />
+				<strong><?php echo esc_html( ucfirst( $day ) ); ?></strong>
+			</label>
+			<div class="spsg-venue-day-times" style="<?php echo empty( $venue_timeslots ) ? 'display:none;' : ''; ?>">
+				<textarea name="venue_timeslots[<?php echo esc_attr( $venue_id ); ?>][<?php echo esc_attr( $day ); ?>]" rows="2" class="regular-text" placeholder="<?php esc_html_e( 'Enter times (e.g., 19:00, 20:00)', 'sportspress-schedule-generator' ); ?>"><?php echo esc_textarea( is_array( $venue_timeslots ) ? implode( "\n", $venue_timeslots ) : '' ); ?></textarea>
+			</div>
+		</div>
+			<?php
+		endforeach;
 	}
 
 	/**
@@ -728,7 +860,10 @@ class SPSG_Admin_Renderer {
 							<?php
 							$days = array( 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday' );
 							$selected_days = $config->playing_days ?: array();
-							$day_ratios = $config->distribution_rules['day_ratios'] ?? array();
+							// Form-saved configs carry day_ratios; presets, imports and the
+							// REST path carry the documented day_balance. Show whichever is
+							// set so the form does not silently display an even split.
+							$day_ratios = $config->distribution_rules['day_ratios'] ?? $config->distribution_rules['day_balance'] ?? array();
 
 							foreach ( $days as $day ) {
 								if ( in_array( $day, $selected_days ) ) {
@@ -942,11 +1077,14 @@ class SPSG_Admin_Renderer {
 
 	/**
 	 * Render generate tab
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function render_generate_tab( $config ) {
-		$schedule_id = get_transient( 'spsg_last_schedule_id_' . get_current_user_id() );
-		$schedule = $schedule_id ? get_transient( 'spsg_schedule_' . $schedule_id ) : null;
-		$stats = $schedule_id ? get_transient( 'spsg_schedule_stats_' . $schedule_id ) : null;
+		$draft = SPSG_Schedule_Draft_Store::get( $config->id );
+		$schedule_id = $draft['schedule_id'] ?? null;
+		$schedule = $draft['schedule'] ?? null;
+		$stats = $draft['stats'] ?? null;
 
 		?>
 		<div class="spsg-generate-section">
@@ -987,6 +1125,7 @@ class SPSG_Admin_Renderer {
 			<?php $this->render_progress_indicator(); ?>
 
 			<?php if ( $schedule && ! empty( $schedule ) ) : ?>
+				<?php $this->render_draft_notice( $draft, $config->id ); ?>
 				<?php $this->render_schedule_preview( $schedule, $stats, $schedule_id ); ?>
 			<?php else : ?>
 				<div id="spsg-schedule-preview-placeholder"></div>
@@ -996,6 +1135,32 @@ class SPSG_Admin_Renderer {
 		</div>
 
 		<?php $this->render_import_dialog(); ?>
+		<?php
+	}
+
+	/**
+	 * Render the "this is a saved draft" notice above the schedule preview,
+	 * with a button to discard it without importing.
+	 *
+	 * @param array  $draft     Output of SPSG_Schedule_Draft_Store::get().
+	 * @param string $config_id Configuration id the draft belongs to.
+	 */
+	private function render_draft_notice( $draft, $config_id ) {
+		?>
+		<div class="spsg-draft-notice notice notice-info inline">
+			<p>
+				<?php
+				printf(
+					/* translators: %s: date/time the draft was generated */
+					esc_html__( 'This is a saved draft, generated %s. It stays here until you import it to SportsPress or discard it -- editing settings above does not change it until you generate again.', 'sportspress-schedule-generator' ),
+					esc_html( $draft['generated_at'] ?? '' )
+				);
+				?>
+				<button type="button" class="button" id="spsg-discard-draft" data-config-id="<?php echo esc_attr( $config_id ); ?>">
+					<?php esc_html_e( 'Discard Draft', 'sportspress-schedule-generator' ); ?>
+				</button>
+			</p>
+		</div>
 		<?php
 	}
 
@@ -1229,6 +1394,10 @@ class SPSG_Admin_Renderer {
 				<input type="date" id="spsg-filter-date-from" class="spsg-filter" placeholder="<?php esc_attr_e( 'From Date', 'sportspress-schedule-generator' ); ?>" />
 				<input type="date" id="spsg-filter-date-to" class="spsg-filter" placeholder="<?php esc_attr_e( 'To Date', 'sportspress-schedule-generator' ); ?>" />
 				<button type="button" class="button" id="spsg-clear-filters"><?php esc_html_e( 'Clear Filters', 'sportspress-schedule-generator' ); ?></button>
+				<label class="spsg-group-arenas-toggle">
+					<input type="checkbox" id="spsg-group-arenas" />
+					<?php esc_html_e( 'Group Arenas', 'sportspress-schedule-generator' ); ?>
+				</label>
 			</div>
 
 			<!-- Schedule Table -->
@@ -1260,9 +1429,9 @@ class SPSG_Admin_Renderer {
 							data-away-team="<?php echo esc_attr( $game['away_team']['name'] ?? '' ); ?>"
 							data-venue="<?php echo esc_attr( $game['venue']['name'] ?? '' ); ?>"
 							data-date="<?php echo esc_attr( $game['date'] ?? '' ); ?>"
-							data-time="<?php echo esc_attr( $game['time'] ?? '' ); ?>">
+							data-time="<?php echo esc_attr( $game['time_slot'] ?? '' ); ?>">
 							<td><?php echo esc_html( date( 'M j, Y', strtotime( $game['date'] ) ) ); ?></td>
-							<td><?php echo esc_html( $game['time'] ); ?></td>
+							<td><?php echo esc_html( $game['time_slot'] ?? '' ); ?></td>
 							<td><?php echo esc_html( $game['home_team']['name'] ?? '' ); ?></td>
 							<td><?php echo esc_html( $game['away_team']['name'] ?? '' ); ?></td>
 							<td><?php echo esc_html( $game['venue']['name'] ?? '' ); ?></td>

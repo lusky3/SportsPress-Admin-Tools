@@ -271,9 +271,14 @@ export const spsg = {
 	exportXlsx: ( scheduleId, configId, style = 'detailed' ) => apiFetch( { path: '/spsg/v1/export/xlsx', method: 'POST', data: { schedule_id: scheduleId, config_id: configId, style } } ),
 	publish: ( scheduleId, seasonId, leagueId, offset = 0, limit = 50, opts = {} ) =>
 		apiFetch( { path: '/spsg/v1/publish', method: 'POST', data: { schedule_id: scheduleId, season_id: seasonId, league_id: leagueId, offset, limit, ...opts } } ),
+	discardDraft: ( configId ) => apiFetch( { path: `/spsg/v1/configs/${ configId }/draft`, method: 'DELETE' } ),
 	getDistributionSettings: () => apiFetch( { path: '/spsg/v1/settings/distribution' } ),
 	parseVenueCsv: ( formData ) => apiFetch( { path: '/spsg/v1/venue-csv/parse', method: 'POST', body: formData } ),
 	applyVenueCsv: ( schedules, venueMapping, configId ) => apiFetch( { path: '/spsg/v1/venue-csv/apply', method: 'POST', data: { schedules, venue_mapping: venueMapping, config_id: configId } } ),
+	createPostseasonConfig: ( sourceConfigId, overrides = {} ) =>
+		apiFetch( { path: `/spsg/v1/configs/${ sourceConfigId }/postseason`, method: 'POST', data: overrides } ),
+	resolvePostseasonSeeds: ( configId, placeholderIds, rankedTeamIds ) =>
+		apiFetch( { path: `/spsg/v1/configs/${ configId }/postseason/resolve-seeds`, method: 'POST', data: { placeholder_ids: placeholderIds, ranked_team_ids: rankedTeamIds } } ),
 };
 
 // --- Dashboard gap features ---

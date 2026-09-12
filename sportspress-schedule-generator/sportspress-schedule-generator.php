@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SportsPress Schedule Generator (Child Plugin)
  * Description: Child plugin for SportsPress Admin Tools - League Schedule Generator
- * Version: 1.1.1
+ * Version: 1.3.0
  * Author: Cody (lusky3)
  * Text Domain: sportspress-schedule-generator
  * License: GPL v2 or later
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'SPSG_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPSG_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPSG_VERSION', '1.1.1' );
+define( 'SPSG_VERSION', '1.3.0' );
 
 // Native WordPress updates, served from this repository's releases.
 //
@@ -240,36 +240,31 @@ class SportsPress_Schedule_Generator {
 	 * Register constraint classes
 	 */
 	private function register_constraints() {
-		// Register core constraints
-		SPSG_Constraint_Registry::register(
-			'SPSG_Blackout_Constraint',
-			array(
-				'description' => 'Prevents scheduling on blackout dates and manages makeup games',
-				'category' => 'scheduling',
-			)
-		);
+		$this->register_constraint( 'SPSG_Blackout_Constraint', 'Prevents scheduling on blackout dates and manages makeup games', 'scheduling' );
+		$this->register_constraint( 'SPSG_Distribution_Constraint', 'Manages fair distribution of games across days and time slots', 'optimization' );
+		$this->register_constraint( 'SPSG_Team_Restriction_Constraint', 'Manages team-specific scheduling restrictions', 'restrictions' );
+		$this->register_constraint( 'SPSG_Division_Grouping_Constraint', 'Optimizes consecutive time slots for division games', 'optimization' );
+		$this->register_constraint( 'SPSG_Postseason_Day_Constraint', 'Carves out a specific day of the week for postseason Championship/Consolation games', 'scheduling' );
+		$this->register_constraint( 'SPSG_Championship_Time_Window_Constraint', 'Restricts postseason Championship games to a configured time window', 'scheduling' );
+		$this->register_constraint( 'SPSG_Postseason_Week_Constraint', 'Pins postseason Championship/Consolation games to the final week, and round-robin games to before it', 'scheduling' );
+	}
 
+	/**
+	 * One constraint's registration -- extracted so register_constraints()
+	 * doesn't repeat the same array-literal shape once per constraint
+	 * (seven copies tripped SonarCloud's duplicated-lines gate once the
+	 * postseason constraints reached three).
+	 *
+	 * @param string $class_name  Constraint class name.
+	 * @param string $description Human-readable description.
+	 * @param string $category    Constraint category.
+	 */
+	private function register_constraint( $class_name, $description, $category ) {
 		SPSG_Constraint_Registry::register(
-			'SPSG_Distribution_Constraint',
+			$class_name,
 			array(
-				'description' => 'Manages fair distribution of games across days and time slots',
-				'category' => 'optimization',
-			)
-		);
-
-		SPSG_Constraint_Registry::register(
-			'SPSG_Team_Restriction_Constraint',
-			array(
-				'description' => 'Manages team-specific scheduling restrictions',
-				'category' => 'restrictions',
-			)
-		);
-
-		SPSG_Constraint_Registry::register(
-			'SPSG_Division_Grouping_Constraint',
-			array(
-				'description' => 'Optimizes consecutive time slots for division games',
-				'category' => 'optimization',
+				'description' => $description,
+				'category' => $category,
 			)
 		);
 	}

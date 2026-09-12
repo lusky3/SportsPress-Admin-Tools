@@ -17,6 +17,24 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 
 
 	/**
+	 * Cost charged per game of deviation between a team's running day split
+	 * (e.g. Friday vs Sunday) and the configured target ratio.
+	 *
+	 * Raised from 10.0: at that weight, a typical 1-2 game deviation (cost
+	 * 10-20) was small next to SPSG_Slot_Allocator's other soft-cost terms
+	 * (PACING_COST_PER_DATE=20/date of distance, DATE_LOAD_COST up to ~60),
+	 * so day balance rarely won a close call -- individual teams stayed
+	 * clear of a 100/0 monopoly (nothing else pushes that hard toward one
+	 * day) but still drifted well off the operator's configured split
+	 * (observed 29%-88% Friday on a real 32-team, 70/30-configured season).
+	 * 40.0 puts a 1-2 game deviation on par with those other terms so it can
+	 * actually compete for a close placement decision, while staying below
+	 * SAME_DATE_TEAM_PENALTY (250) and PREFERRED_VENUE_BONUS (1000) so a
+	 * clearly better choice on those fronts still wins.
+	 */
+	const DAY_BALANCE_COST_PER_GAME_DEVIATION = 40.0;
+
+	/**
 	 * Initialize constraint
 	 */
 	protected function init() {
@@ -169,40 +187,30 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 
 	/**
 	 * Get target day distribution ratios from config
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function get_target_day_ratios( $config ) {
-		// Default to equal distribution if not specified
-		$default_ratio = 1.0 / count( $config->playing_days );
-		$ratios = array();
-
-		foreach ( $config->playing_days as $day ) {
-			$ratios[ $day ] = $default_ratio;
-		}
-
-		// Apply custom ratios if specified in config
-		if ( isset( $config->distribution_rules['day_ratios'] ) ) {
-			foreach ( $config->distribution_rules['day_ratios'] as $day => $ratio ) {
-				if ( in_array( $day, $config->playing_days ) ) {
-					$ratios[ $day ] = $ratio;
-				}
-			}
-		}
-
-		return $ratios;
+		// This used to read only `distribution_rules.day_ratios`, so for a
+		// configuration authored any way other than the admin form (presets,
+		// imports, the REST generate path, which all write the documented
+		// `day_balance`) the operator's split was ignored and an even split
+		// assumed. The resolution now lives in the helper so the slot allocator's
+		// per-date load targets use exactly the same shares.
+		return SPSG_Schedule_Helper::resolve_day_ratios( $config );
 	}
 
 	/**
 	 * Calculate cost for team's day distribution
 	 */
 	private function calculate_team_day_cost( $game_day, $current_distribution, $target_ratios ) {
-		// Guard against missing day in $target_ratios (e.g. when distribution_rules
-		// don't include every playing day) — without this, PHP raises an undefined-index
-		// notice and the cost calculation poisons the soft-constraint sum.
-		$ratio = $target_ratios[ $game_day ] ?? 0;
-		if ( 0 === $ratio ) {
-			// Surface the misconfiguration so operators can fix their
-			// distribution_rules; otherwise this silently zeros the cost for
-			// any day not listed in the ratios map.
+		// A day absent from $target_ratios is not a playing day at all (the
+		// ratios map is built from playing_days). Surface the misconfiguration
+		// rather than raising an undefined-index notice. A day that IS present
+		// with a 0 share is different: it is a day the operator wants empty, so
+		// it must fall through to the deviation maths below (target 0, every
+		// game on it is pure deviation) instead of being treated as free.
+		if ( ! array_key_exists( $game_day, $target_ratios ) ) {
 			if ( class_exists( 'SPAT_Logger' ) ) {
 				SPAT_Logger::warn(
 					'distribution',
@@ -212,6 +220,7 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 			}
 			return 0.0;
 		}
+		$ratio = (float) $target_ratios[ $game_day ];
 
 		$total_games = array_sum( $current_distribution ) + 1; // +1 for the new game
 		$target_games_for_day = $total_games * $ratio;
@@ -221,7 +230,7 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 		$deviation = abs( $current_games_for_day - $target_games_for_day );
 
 		// Convert deviation to cost (higher deviation = higher cost)
-		return $deviation * 10.0; // Scale factor for cost
+		return $deviation * self::DAY_BALANCE_COST_PER_GAME_DEVIATION;
 	}
 
 	/**

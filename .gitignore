@@ -81,6 +81,7 @@ BRAINSTORM-REPORT.md
 .agents/
 ruvector.db
 skills-lock.json
+.codacy/
 
 # Raw per-suite coverage snapshots from run-coverage.sh. The merged report
 # lands in coverage/, already ignored above.

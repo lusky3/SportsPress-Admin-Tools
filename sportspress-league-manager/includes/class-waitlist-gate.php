@@ -20,6 +20,24 @@
  *
  * So the gate sits on the purchase itself, where discovery stops mattering.
  *
+ * REPURCHASE GUARD. Holding an entitlement is not proof this is the FIRST
+ * purchase of it: the WooCommerce session (seed_entitlement()/grant()) and
+ * the waitlist row's own status both keep a claimed product purchasable
+ * right up until an order reaches `completed`, not merely `processing` —
+ * see SPLM_Waitlist::mark_claimed(). A committed but not-yet-completed
+ * order (the common case for these $0-to-modest, non-shippable
+ * registration products, which routinely sit in Processing for days) is
+ * therefore invisible to both mechanisms, and a second, independent
+ * checkout for the same claim token sails through with no resistance. This
+ * is what caused a real customer to be charged twice via two separate
+ * PayPal transactions for one claimed offer. filter_is_purchasable() closes
+ * that gap by additionally checking, only once an entitlement has already
+ * been found, whether an order already carries the responsible token in a
+ * non-terminal-failure status — see SPLM_Waitlist_Claim::has_open_order().
+ * It is defense in depth, not a fix for the double submission itself: two
+ * requests racing to be first can both reach this check before either has
+ * committed an order to the database.
+ *
  * IT FAILS OPEN. Disabling the module or deactivating the plugin unhooks this
  * filter and every gated product becomes publicly purchasable again — the
  * meta is inert without the code that reads it. That is the right default: a
@@ -498,7 +516,72 @@ class SPLM_Waitlist_Gate {
 			|| self::entitles( $ids, $gate_id )
 			|| self::product_from_request_token() === $gate_id;
 
+		// Repurchase guard, defense in depth against the same claim token
+		// buying a second, independent order. Extracted to its own method
+		// (rather than inlined here) purely to keep this function's own
+		// branch count out of the complexity gate — see that method's
+		// docblock for the failure mode this closes and the one it
+		// deliberately does not (a same-instant double-click racing to be
+		// first).
+		$entitled = self::without_repurchase( $entitled, $product_id, $gate_id );
+
 		return self::decide( true, true, $is_manager, $entitled );
+	}
+
+	/**
+	 * Downgrades an otherwise-entitled visitor to unentitled when an order
+	 * already carries the responsible claim token in a non-terminal-failure
+	 * status.
+	 *
+	 * Only worth asking at all once something has already said "entitled",
+	 * since that is the only population this can ever flip — an
+	 * unentitled visitor is refused regardless, with no query. See
+	 * SPLM_Waitlist_Claim::has_open_order()'s docblock for what this closes.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param bool $entitled   Whatever filter_is_purchasable() decided so far.
+	 * @param int  $product_id Product's own id.
+	 * @param int  $gate_id    The id its gate (and any entitlement) is keyed on.
+	 * @return bool
+	 */
+	private static function without_repurchase( bool $entitled, int $product_id, int $gate_id ): bool {
+		if ( ! $entitled ) {
+			return false;
+		}
+
+		$token = self::responsible_claim_token( $product_id, $gate_id );
+		return ! ( '' !== $token && SPLM_Waitlist_Claim::has_open_order( $token ) );
+	}
+
+	/**
+	 * Which single token is behind a product's current entitlement, if any.
+	 *
+	 * The filter_is_purchasable() three-way OR only answers "is SOME token
+	 * live for this product" — the repurchase guard needs the actual token
+	 * string to look an existing order up by, so this re-derives which of
+	 * the three sources it was, in the same priority order: the session
+	 * entry keyed on the gate id, then on the product's own id (the two
+	 * differ for a variation), then the raw request token.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param int $product_id Product's own id.
+	 * @param int $gate_id    The id its gate (and any entitlement) is keyed on.
+	 * @return string The responsible token, or '' if none of the three
+	 *                sources actually apply (should not happen when the
+	 *                caller has already established $entitled is true).
+	 */
+	private static function responsible_claim_token( int $product_id, int $gate_id ): string {
+		$map = self::session_map();
+		foreach ( array( $gate_id, $product_id ) as $id ) {
+			if ( isset( $map[ $id ] ) && self::resolve_token( $map[ $id ] ) === $gate_id ) {
+				return $map[ $id ];
+			}
+		}
+
+		$claim = self::request_claim();
+		return ( $claim['product_id'] === $gate_id ) ? $claim['token'] : '';
 	}
 
 	/**

@@ -20,6 +20,22 @@ class SPSG_Schedule_Configuration {
 
 
 	/**
+	 * Saved configuration id (empty for a configuration that has never been
+	 * saved). Never touched by SPSG_Configuration_Validator -- this is
+	 * storage identity, not something a schedule can be valid or invalid on.
+	 *
+	 * @var string
+	 */
+	public $id;
+
+	/**
+	 * Configuration name, as entered on the Basic Configuration tab.
+	 *
+	 * @var string
+	 */
+	public $name;
+
+	/**
 	 * Season start date
 	 *
 	 * @var DateTime
@@ -161,6 +177,75 @@ class SPSG_Schedule_Configuration {
 	public $generic_teams;
 
 	/**
+	 * Whether this configuration is a postseason bracket (as opposed to a
+	 * regular-season schedule). See docs/superpowers/specs (kept locally,
+	 * not in this repo) for the postseason/playoffs design.
+	 *
+	 * @var bool
+	 */
+	public $is_postseason;
+
+	/**
+	 * The regular-season SPSG_Schedule_Configuration id this postseason
+	 * configuration's divisions/venues were copied from, if any -- empty for
+	 * a regular-season configuration. Provenance only; the copy is a
+	 * snapshot, freely edited afterward (e.g. re-grouped into custom pools).
+	 *
+	 * @var string
+	 */
+	public $postseason_source_config_id;
+
+	/**
+	 * The regular season's sp_season term id -- the season initial seeding
+	 * is computed from. 0 for a regular-season configuration.
+	 *
+	 * @var int
+	 */
+	public $postseason_source_season_id;
+
+	/**
+	 * This postseason bracket's own (child) sp_season term id, once created.
+	 * 0 until the child season has been created.
+	 *
+	 * @var int
+	 */
+	public $postseason_season_id;
+
+	/**
+	 * Number of cross round-robin weeks before the final
+	 * (championship/consolation) week. Meaningless outside a postseason
+	 * configuration.
+	 *
+	 * @var int
+	 */
+	public $round_robin_weeks;
+
+	/**
+	 * Day-of-week + time window every division's Championship game must land
+	 * on, e.g. array( 'day' => 'friday', 'start' => '18:00', 'end' => '21:00' ).
+	 *
+	 * @var array
+	 */
+	public $championship_day;
+
+	/**
+	 * Day of week every division's Consolation game must land on (no time
+	 * restriction).
+	 *
+	 * @var string
+	 */
+	public $consolation_day;
+
+	/**
+	 * 'manual' (an admin action resolves seed placeholders) or 'automatic'
+	 * (resolved as soon as every game in the relevant range has a completed
+	 * score).
+	 *
+	 * @var string
+	 */
+	public $seed_resolution_mode;
+
+	/**
 	 * Non-blocking warnings from the most recent validate() call (H18).
 	 *
 	 * @var array
@@ -175,14 +260,36 @@ class SPSG_Schedule_Configuration {
 	}
 
 	/**
+	 * Set storage identity fields (id, name) from raw config data.
+	 *
+	 * Kept separate from the rest of load_from_array(): these are never
+	 * defaulted from $defaults and never round-tripped through the
+	 * DateTime/array coercion the rest of that method does. An empty string
+	 * (not unset) is the correct value for a configuration that has never
+	 * been saved: it's what a brand-new admin form's hidden id field
+	 * submits, and what save() checks for to decide whether to mint a new
+	 * id.
+	 *
+	 * @param array $data Raw configuration data.
+	 */
+	private function load_identity_fields( $data ) {
+		$this->id = isset( $data['id'] ) ? (string) $data['id'] : '';
+		$this->name = isset( $data['name'] ) ? (string) $data['name'] : '';
+	}
+
+	/**
 	 * Load configuration from array
 	 */
 	public function load_from_array( $data ) {
+		$this->load_identity_fields( $data );
+
 		$defaults = array(
 			'games_per_team' => 0,
 			'match_length' => 60,
 			'matchup_style' => 'double_round_robin',
 			'timezone' => wp_timezone_string(),
+			'round_robin_weeks' => 3,
+			'seed_resolution_mode' => 'manual',
 		);
 
 		$array_fields = array(
@@ -200,6 +307,7 @@ class SPSG_Schedule_Configuration {
 			'home_away_preferences',
 			'inter_division_games',
 			'generic_teams',
+			'championship_day',
 		);
 
 		// Load date fields with error handling
@@ -227,12 +335,99 @@ class SPSG_Schedule_Configuration {
 			$this->$field = isset( $data[ $field ] ) ? (array) $data[ $field ] : array();
 		}
 
+		$this->load_postseason_fields( $data, $defaults );
+
 		// H17: normalize legacy `*_avoidance` restriction keys on every load, not
 		// just on import. Configurations stored before the rename kept rendering
 		// their overlap / back-to-back groups in the admin UI (which reads both
 		// spellings) while SPSG_Team_Restriction_Constraint only ever looks at the
 		// canonical `*_avoid` keys — so shared-player protection was silently off.
 		$this->team_restrictions = self::normalize_team_restrictions( $this->team_restrictions );
+
+		$this->resolve_team_display_names();
+	}
+
+	/**
+	 * Load the postseason-only fields (schema added alongside the
+	 * postseason/playoffs design's phase 3 -- design notes kept locally, not
+	 * in this repo). Split out of load_from_array() purely to keep that
+	 * method's own complexity down; these fields have no other coupling to
+	 * the rest of load_from_array()'s work.
+	 *
+	 * @param array $data     Raw configuration data.
+	 * @param array $defaults This load's resolved defaults (round_robin_weeks,
+	 *                         seed_resolution_mode).
+	 */
+	private function load_postseason_fields( $data, $defaults ) {
+		$this->is_postseason               = ! empty( $data['is_postseason'] );
+		$this->postseason_source_config_id = (string) self::value( $data, 'postseason_source_config_id', '' );
+		$this->postseason_source_season_id = (int) self::value( $data, 'postseason_source_season_id', 0 );
+		$this->postseason_season_id        = (int) self::value( $data, 'postseason_season_id', 0 );
+		$this->round_robin_weeks           = (int) self::value( $data, 'round_robin_weeks', $defaults['round_robin_weeks'] );
+		$this->consolation_day             = (string) self::value( $data, 'consolation_day', '' );
+		$this->seed_resolution_mode        = self::value( $data, 'seed_resolution_mode', $defaults['seed_resolution_mode'] );
+	}
+
+	/**
+	 * $arr[$key] if present, else $default. A named helper rather than `??`
+	 * repeated inline -- see the identical helper (and its rationale) in
+	 * SPSG_Configuration_Manager::value().
+	 *
+	 * @param array  $arr     Source array.
+	 * @param string $key     Key to read.
+	 * @param mixed  $default Value to use when the key is absent.
+	 * @return mixed
+	 */
+	private static function value( array $arr, $key, $default ) {
+		return array_key_exists( $key, $arr ) ? $arr[ $key ] : $default;
+	}
+
+	/**
+	 * Resolve any bare SportsPress team-ID entries in divisions[].teams to
+	 * their real team name, in place.
+	 *
+	 * A division's teams are normally plain name strings (typed by hand, or
+	 * embedded by the "Load from SportsPress" picker, which writes the real
+	 * name at the time a team is added). A configuration authored directly
+	 * through the REST API (bypassing that picker) can instead store a bare
+	 * `sp_team` post ID in that slot. Nothing downstream ever looked such an
+	 * ID up, so the admin form, the generated schedule, and the SportsPress
+	 * import's by-name matching all showed/matched on the raw ID instead of
+	 * the team's real name.
+	 *
+	 * Runs on every load so the fix applies immediately without a one-time
+	 * migration; an admin Save afterward persists the resolved names like any
+	 * other edit. No-ops entirely outside a full WordPress/SportsPress
+	 * runtime (see {@see SPSG_Sports_Press_Integration::resolve_team_name()}).
+	 */
+	private function resolve_team_display_names() {
+		if ( empty( $this->divisions ) || ! class_exists( 'SPSG_Sports_Press_Integration' ) ) {
+			return;
+		}
+
+		foreach ( $this->divisions as &$division ) {
+			self::resolve_division_team_names( $division );
+		}
+		unset( $division );
+	}
+
+	/**
+	 * Resolve one division's team entries in place.
+	 *
+	 * @param array $division Division data (by reference).
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function resolve_division_team_names( &$division ) {
+		if ( empty( $division['teams'] ) || ! is_array( $division['teams'] ) ) {
+			return;
+		}
+		foreach ( $division['teams'] as &$team ) {
+			if ( is_string( $team ) || is_int( $team ) ) {
+				$team = SPSG_Sports_Press_Integration::resolve_team_name( $team );
+			}
+		}
+		unset( $team );
 	}
 
 	/**
@@ -274,6 +469,8 @@ class SPSG_Schedule_Configuration {
 	 */
 	public function to_array() {
 		return array(
+			'id' => $this->id,
+			'name' => $this->name,
 			'season_start' => $this->season_start ? $this->season_start->format( 'Y-m-d' ) : '',
 			'season_end' => $this->season_end ? $this->season_end->format( 'Y-m-d' ) : '',
 			'games_per_team' => $this->games_per_team,
@@ -294,6 +491,14 @@ class SPSG_Schedule_Configuration {
 			'home_away_preferences' => $this->home_away_preferences,
 			'inter_division_games' => $this->inter_division_games,
 			'generic_teams' => $this->generic_teams,
+			'is_postseason' => $this->is_postseason,
+			'postseason_source_config_id' => $this->postseason_source_config_id,
+			'postseason_source_season_id' => $this->postseason_source_season_id,
+			'postseason_season_id' => $this->postseason_season_id,
+			'round_robin_weeks' => $this->round_robin_weeks,
+			'championship_day' => $this->championship_day,
+			'consolation_day' => $this->consolation_day,
+			'seed_resolution_mode' => $this->seed_resolution_mode,
 		);
 	}
 

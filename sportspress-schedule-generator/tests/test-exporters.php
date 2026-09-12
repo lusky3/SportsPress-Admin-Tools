@@ -74,6 +74,7 @@ if ( ! interface_exists( 'SPSG_Exporter_Interface' ) ) {
 		public function supports_formatting();
 	}
 }
+require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-helper.php';
 require_once SPSG_PLUGIN_PATH . 'includes/exporters/class-csv-exporter.php';
 require_once SPSG_PLUGIN_PATH . 'includes/exporters/class-xlsx-exporter.php';
 

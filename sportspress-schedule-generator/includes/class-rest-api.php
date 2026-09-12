@@ -109,30 +109,11 @@ class SPSG_REST_API {
 				),
 			)
 		);
-		register_rest_route(
-			$ns,
-			'/configs/(?P<id>[\w-]+)/clone',
-			array_merge(
-				$perm,
-				array(
-					'methods' => 'POST',
-					'callback' => array( $this, 'spsg_clone_config' ),
-					'args' => $id_args,
-				)
-			)
-		);
-		register_rest_route(
-			$ns,
-			'/configs/(?P<id>[\w-]+)/validate',
-			array_merge(
-				$perm,
-				array(
-					'methods' => 'POST',
-					'callback' => array( $this, 'spsg_validate_config' ),
-					'args' => $id_args,
-				)
-			)
-		);
+		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/clone', $this->config_id_post_route( $perm, $id_args, 'spsg_clone_config' ) );
+		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/validate', $this->config_id_post_route( $perm, $id_args, 'spsg_validate_config' ) );
+		// Postseason
+		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/postseason', $this->config_id_post_route( $perm, $id_args, 'spsg_create_postseason_config' ) );
+		register_rest_route( $ns, '/configs/(?P<id>[\w-]+)/postseason/resolve-seeds', $this->config_id_post_route( $perm, $id_args, 'spsg_resolve_postseason_seeds' ) );
 		register_rest_route(
 			$ns,
 			'/configs/(?P<id>[\w-]+)/placeholders',
@@ -155,19 +136,10 @@ class SPSG_REST_API {
 					'methods' => 'POST',
 					'callback' => array( $this, 'spsg_replace_placeholder' ),
 					'args' => array(
-						'id' => array(
-							'sanitize_callback' => 'absint',
-							'validate_callback' => function ( $val ) {
-								return is_numeric( $val ) && (int) $val > 0; },
-						),
+						'id' => $this->required_positive_int_arg(),
 						// M-4: declare the body params the handler reads so the REST
 						// framework sanitizes/validates them instead of relying on inline casts.
-						'replacement_id' => array(
-							'required' => true,
-							'sanitize_callback' => 'absint',
-							'validate_callback' => function ( $val ) {
-								return is_numeric( $val ) && (int) $val > 0; },
-						),
+						'replacement_id' => $this->required_positive_int_arg(),
 						'delete' => array(
 							'default' => true,
 							'sanitize_callback' => 'rest_sanitize_boolean',
@@ -293,12 +265,7 @@ class SPSG_REST_API {
 					'methods' => 'POST',
 					'callback' => array( $this, 'spsg_generate' ),
 					'args' => array(
-						'config_id' => array(
-							'required' => true,
-							'sanitize_callback' => 'sanitize_text_field',
-							'validate_callback' => function ( $val ) {
-								return is_string( $val ) && strlen( $val ) > 0; },
-						),
+						'config_id' => $this->required_string_arg(),
 					),
 				)
 			)
@@ -340,11 +307,14 @@ class SPSG_REST_API {
 					// declarative pattern used elsewhere instead of relying solely on
 					// inline casts in the handler.
 					'args' => array(
-						'schedule_id' => array(
-							'required' => true,
+						'schedule_id' => $this->required_string_arg(),
+						// Needed only to discard that configuration's saved draft once
+						// a real (non-dry-run) publish finishes every chunk -- see
+						// SPSG_Schedule_Draft_Store. Optional so an older client that
+						// doesn't send it simply skips the auto-discard.
+						'config_id' => array(
+							'default' => '',
 							'sanitize_callback' => 'sanitize_text_field',
-							'validate_callback' => function ( $val ) {
-								return is_string( $val ) && strlen( $val ) > 0; },
 						),
 						'season_id' => array(
 							'default' => 0,
@@ -384,6 +354,19 @@ class SPSG_REST_API {
 				)
 			)
 		);
+		// Discard a configuration's saved draft without publishing it.
+		register_rest_route(
+			$ns,
+			'/configs/(?P<id>[\w-]+)/draft',
+			array_merge(
+				$perm,
+				array(
+					'methods' => 'DELETE',
+					'callback' => array( $this, 'spsg_discard_draft' ),
+					'args' => $id_args,
+				)
+			)
+		);
 		// Export
 		register_rest_route(
 			$ns,
@@ -394,18 +377,8 @@ class SPSG_REST_API {
 					'methods' => 'POST',
 					'callback' => array( $this, 'spsg_export_xlsx' ),
 					'args' => array(
-						'schedule_id' => array(
-							'required' => true,
-							'sanitize_callback' => 'sanitize_text_field',
-							'validate_callback' => function ( $val ) {
-								return is_string( $val ) && strlen( $val ) > 0; },
-						),
-						'config_id' => array(
-							'required' => true,
-							'sanitize_callback' => 'sanitize_text_field',
-							'validate_callback' => function ( $val ) {
-								return is_string( $val ) && strlen( $val ) > 0; },
-						),
+						'schedule_id' => $this->required_string_arg(),
+						'config_id' => $this->required_string_arg(),
 						'filters' => array(
 							'required' => false,
 							'validate_callback' => function ( $val ) {
@@ -431,18 +404,8 @@ class SPSG_REST_API {
 					'methods' => 'POST',
 					'callback' => array( $this, 'spsg_export_csv' ),
 					'args' => array(
-						'schedule_id' => array(
-							'required' => true,
-							'sanitize_callback' => 'sanitize_text_field',
-							'validate_callback' => function ( $val ) {
-								return is_string( $val ) && strlen( $val ) > 0; },
-						),
-						'config_id' => array(
-							'required' => true,
-							'sanitize_callback' => 'sanitize_text_field',
-							'validate_callback' => function ( $val ) {
-								return is_string( $val ) && strlen( $val ) > 0; },
-						),
+						'schedule_id' => $this->required_string_arg(),
+						'config_id' => $this->required_string_arg(),
 						'filters' => array(
 							'required' => false,
 							'validate_callback' => function ( $val ) {
@@ -473,12 +436,7 @@ class SPSG_REST_API {
 					'methods' => 'POST',
 					'callback' => array( $this, 'spsg_venue_csv_apply' ),
 					'args' => array(
-						'config_id' => array(
-							'required' => true,
-							'sanitize_callback' => 'sanitize_text_field',
-							'validate_callback' => function ( $val ) {
-								return is_string( $val ) && strlen( $val ) > 0; },
-						),
+						'config_id' => $this->required_string_arg(),
 						'schedules' => array(
 							'required' => true,
 							'validate_callback' => function ( $val ) {
@@ -504,6 +462,57 @@ class SPSG_REST_API {
 					'callback' => array( $this, 'spsg_get_distribution_settings' ),
 				)
 			)
+		);
+	}
+
+	/**
+	 * The route definition shared by every config-scoped POST endpoint whose
+	 * only arg is the config id (clone, validate, and the postseason routes
+	 * all share this exact shape) -- extracted so register_routes() doesn't
+	 * repeat this same array literal at each call site, which is itself what
+	 * tripped a code-duplication check on this file.
+	 *
+	 * @param array  $perm     The shared permission_callback array.
+	 * @param array  $id_args  The shared config-id arg schema.
+	 * @param string $callback Name of the method on $this to call.
+	 * @return array
+	 */
+	private function config_id_post_route( $perm, $id_args, $callback ) {
+		return array_merge(
+			$perm,
+			array(
+				'methods' => 'POST',
+				'callback' => array( $this, $callback ),
+				'args' => $id_args,
+			)
+		);
+	}
+
+	/**
+	 * Arg schema shared by every route param that must be a positive integer
+	 * (team_count, and the id/replacement_id params above) -- kept in one
+	 * place for the same reason as required_string_arg().
+	 */
+	private function required_positive_int_arg() {
+		return array(
+			'required' => true,
+			'sanitize_callback' => 'absint',
+			'validate_callback' => function ( $val ) {
+				return is_numeric( $val ) && (int) $val > 0; },
+		);
+	}
+
+	/**
+	 * Arg schema shared by every route param that must be a non-empty string
+	 * (schedule_id, config_id) -- kept in one place instead of repeating the
+	 * same sanitize/validate pair at each register_rest_route() call.
+	 */
+	private function required_string_arg() {
+		return array(
+			'required' => true,
+			'sanitize_callback' => 'sanitize_text_field',
+			'validate_callback' => function ( $val ) {
+				return is_string( $val ) && strlen( $val ) > 0; },
 		);
 	}
 
@@ -693,6 +702,7 @@ class SPSG_REST_API {
 				'updated_at' => $meta['modified'],
 				'division_count' => count( $divs ),
 				'team_count' => $tc,
+				'is_postseason' => ! empty( $raw[ $id ]['is_postseason'] ),
 			);
 		}
 		return rest_ensure_response( spsg_rest_list_response( $out ) );
@@ -778,6 +788,61 @@ class SPSG_REST_API {
 		$config['name'] = $request->get_param( 'name' ) ?: ( ( $config['name'] ?? 'Unnamed' ) . ' (Copy)' );
 		$new_id = $this->save_draft( $config );
 		return rest_ensure_response( array( 'id' => $new_id ) );
+	}
+
+	// --- Postseason ---
+
+	/** Create a postseason configuration from a regular-season one. */
+	public function spsg_create_postseason_config( $request ) {
+		$overrides = (array) $request->get_json_params();
+		$new_id = $this->cm()->create_postseason_configuration( $request['id'], $overrides );
+		return is_wp_error( $new_id ) ? $new_id : rest_ensure_response( array( 'id' => $new_id ) );
+	}
+
+	/**
+	 * Resolve a postseason configuration's seed placeholders to real teams,
+	 * given a ranking the caller already computed (this class never
+	 * computes standings itself).
+	 *
+	 * @param WP_REST_Request $request Request carrying the config id, placeholder_ids, and ranked_team_ids.
+	 * @return WP_REST_Response|WP_Error
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	public function spsg_resolve_postseason_seeds( $request ) {
+		$config = $this->postseason_config( $request['id'] );
+		if ( is_wp_error( $config ) ) {
+			return $config;
+		}
+
+		$placeholder_ids = $request->get_param( 'placeholder_ids' );
+		$ranked_team_ids = $request->get_param( 'ranked_team_ids' );
+
+		if ( ! is_array( $placeholder_ids ) || ! is_array( $ranked_team_ids ) ) {
+			return new WP_Error( 'invalid_data', 'placeholder_ids and ranked_team_ids must both be provided as objects.', array( 'status' => 400 ) );
+		}
+
+		return rest_ensure_response( SPSG_Postseason_Seed_Resolver::resolve_seeds( $placeholder_ids, $ranked_team_ids ) );
+	}
+
+	/**
+	 * Load a postseason configuration by id, straight from storage (not
+	 * cm()->load(), which silently falls back to "most recently modified"
+	 * for an unknown id -- exactly wrong for a route scoped to one specific
+	 * config).
+	 *
+	 * @param string $id Configuration id.
+	 * @return array|WP_Error Raw configuration data, or an error if not found / not a postseason config.
+	 */
+	private function postseason_config( $id ) {
+		$configs = get_option( 'spsg_configurations', array() );
+		if ( ! isset( $configs[ $id ] ) ) {
+			return new WP_Error( 'not_found', 'Config not found.', array( 'status' => 404 ) );
+		}
+		if ( empty( $configs[ $id ]['is_postseason'] ) ) {
+			return new WP_Error( 'not_postseason', 'This configuration is not a postseason configuration.', array( 'status' => 400 ) );
+		}
+		return $configs[ $id ];
 	}
 
 	public function spsg_validate_config( $request ) {
@@ -1028,8 +1093,11 @@ class SPSG_REST_API {
 		return $filters;
 	}
 
+	/**
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
 	public function spsg_export_xlsx( $request ) {
-		$schedule = get_transient( 'spsg_schedule_' . $request->get_param( 'schedule_id' ) );
+		$schedule = SPSG_Schedule_Draft_Store::get_schedule_by_id( $request->get_param( 'schedule_id' ) );
 		if ( ! $schedule ) {
 			return new WP_Error( 'schedule_not_found', 'Schedule not found or expired.', array( 'status' => 404 ) );
 		}
@@ -1049,8 +1117,11 @@ class SPSG_REST_API {
 		return rest_ensure_response( $this->export_download_response( $result ) );
 	}
 
+	/**
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
 	public function spsg_export_csv( $request ) {
-		$schedule = get_transient( 'spsg_schedule_' . $request->get_param( 'schedule_id' ) );
+		$schedule = SPSG_Schedule_Draft_Store::get_schedule_by_id( $request->get_param( 'schedule_id' ) );
 		if ( ! $schedule ) {
 			return new WP_Error( 'schedule_not_found', 'Schedule not found or expired.', array( 'status' => 404 ) );
 		}
@@ -1274,6 +1345,8 @@ class SPSG_REST_API {
 	 * does write the progress/cancel transients); they are inert with respect to
 	 * this REST /generate call. The response always carries `status => complete`
 	 * on success so callers know the result is final, not a poll handle.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function spsg_generate( $request ) {
 		$config = $this->cm()->load( $request->get_param( 'config_id' ) );
@@ -1317,8 +1390,6 @@ class SPSG_REST_API {
 		if ( is_wp_error( $result ) ) {
 			return $result;
 		}
-		$sid = 'sched_' . bin2hex( random_bytes( 8 ) );
-		set_transient( 'spsg_schedule_' . $sid, $result['schedule'], HOUR_IN_SECONDS );
 		// Format games for the React UI
 		$games = array_map(
 			function ( $g ) {
@@ -1342,7 +1413,14 @@ class SPSG_REST_API {
 			$result['schedule']
 		);
 		// Rich statistics via SPSG_Statistics_Calculator
-		$rich_stats = ( new SPSG_Statistics_Calculator() )->calculate( $result['schedule'] );
+		$rich_stats = ( new SPSG_Statistics_Calculator() )->calculate( $result['schedule'], $config );
+
+		// Persist as this configuration's current draft -- replaces any
+		// earlier draft for the same configuration -- so it survives across
+		// page loads until explicitly imported or discarded, matching the
+		// classic admin page's behaviour (SPSG_Schedule_Draft_Store).
+		$sid = SPSG_Schedule_Draft_Store::save( $config->id, $result['schedule'], $rich_stats );
+
 		return rest_ensure_response(
 			array(
 				'schedule_id' => $sid,
@@ -1416,9 +1494,13 @@ class SPSG_REST_API {
 
 	// --- Publish ---
 
-	/** Publish a generated schedule to SportsPress events. */
+	/**
+	 * Publish a generated schedule to SportsPress events.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
 	public function spsg_publish( $request ) {
-		$schedule = get_transient( 'spsg_schedule_' . $request->get_param( 'schedule_id' ) );
+		$schedule = SPSG_Schedule_Draft_Store::get_schedule_by_id( $request->get_param( 'schedule_id' ) );
 		if ( ! $schedule ) {
 			return new WP_Error( 'schedule_not_found', 'Schedule not found or expired.', array( 'status' => 404 ) );
 		}
@@ -1440,6 +1522,9 @@ class SPSG_REST_API {
 		if ( is_wp_error( $result ) ) {
 			return $result;
 		}
+		$remaining = max( 0, count( $schedule ) - $offset - $limit );
+		$this->discard_draft_if_publish_finished( $remaining, $dry, $request->get_param( 'config_id' ) );
+
 		return rest_ensure_response(
 			array(
 				'imported'   => $result['imported'] ?? 0,
@@ -1449,8 +1534,45 @@ class SPSG_REST_API {
 				'total'      => count( $schedule ),
 				'offset'     => $offset,
 				'limit'      => $limit,
-				'remaining'  => max( 0, count( $schedule ) - $offset - $limit ),
+				'remaining'  => $remaining,
 			)
 		);
+	}
+
+	/**
+	 * Discard a configuration's current draft schedule without publishing it.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	public function spsg_discard_draft( $request ) {
+		SPSG_Schedule_Draft_Store::delete( $request['id'] );
+		return rest_ensure_response( array( 'discarded' => true ) );
+	}
+
+	/**
+	 * The draft's job is done once a real (non-dry-run) publish finishes
+	 * importing every chunk -- discard it so a later Generate tab visit
+	 * doesn't keep offering to re-publish (or re-export) a schedule that's
+	 * now live in SportsPress. Mirrors
+	 * SPSG_Schedule_Generator::discard_draft_if_import_finished() for the
+	 * classic admin-ajax path.
+	 *
+	 * @param int    $remaining Games left to publish after this chunk.
+	 * @param bool   $dry_run   Whether this was a dry run.
+	 * @param string $config_id Configuration id, or '' if the client didn't send one.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private function discard_draft_if_publish_finished( $remaining, $dry_run, $config_id ) {
+		if ( $remaining > 0 ) {
+			return;
+		}
+		if ( $dry_run ) {
+			return;
+		}
+		if ( empty( $config_id ) ) {
+			return;
+		}
+		SPSG_Schedule_Draft_Store::delete( $config_id );
 	}
 }

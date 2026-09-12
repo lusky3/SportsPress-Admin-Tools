@@ -121,6 +121,7 @@ export default function ScheduleGenerator() {
 	const [validation,setValidation] = useState(null);
 	const [generating,setGenerating] = useState(false);
 	const [schedule,setSchedule] = useState(null);
+	const [discarding,setDiscarding] = useState(false);
 	const [divF,setDivF] = useState('');
 	const [previewFilters,setPreviewFilters] = useState({}); // #8: team/venue/date filters
 	const [pubProg,setPubProg] = useState(null);
@@ -137,11 +138,39 @@ export default function ScheduleGenerator() {
 	const [toast,setToast] = useState(null); // UX-7/in-app feedback {message,type}
 	const [presetOpen,setPresetOpen] = useState(false); // UX-6
 	const presetRef = useRef(null);
+	// Postseason (phase 6): create-from-source panel + per-division placeholder minting
+	const [postseasonPanelId,setPostseasonPanelId] = useState(null);
+	const [postseasonForm,setPostseasonForm] = useState({season_start:'',round_robin_weeks:1,championship_day:{day:'saturday',start:'18:45',end:'21:00'},consolation_day:'sunday'});
+	const [postseasonBusy,setPostseasonBusy] = useState(false);
+	const [postseasonPlayingDays,setPostseasonPlayingDays] = useState(DAYS);
 
 	const loadConfigs = useCallback(() => {
 		setLoading(true);
 		spsg.listConfigs().then(setConfigs).catch(()=>setError('Failed to load configs')).finally(()=>setLoading(false));
 	}, []);
+
+	// Postseason (phase 6): create a postseason configuration from a saved
+	// regular-season one, copying its divisions/venues/playing_days/time_slots.
+	const doCreatePostseason = async (sourceId) => {
+		setPostseasonBusy(true);
+		try {
+			await spsg.createPostseasonConfig(sourceId, postseasonForm);
+			setToast({message:'Postseason configuration created.',type:'success'});
+			setPostseasonPanelId(null);
+			loadConfigs();
+		} catch (e) {
+			// The validator returns a WP_Error carrying {errors: {field: message}}
+			// in its data -- surface those specific messages when present,
+			// falling back to the generic one if the shape isn't what's expected.
+			const fieldErrors = e?.data?.errors;
+			const detail = fieldErrors && typeof fieldErrors === 'object' && Object.keys(fieldErrors).length
+				? Object.values(fieldErrors).join(' ')
+				: (e?.message || 'unknown error');
+			setToast({message:'Failed to create postseason configuration: '+detail,type:'error'});
+		} finally {
+			setPostseasonBusy(false);
+		}
+	};
 
 	useEffect(() => {
 		loadConfigs();
@@ -269,7 +298,7 @@ export default function ScheduleGenerator() {
 			let maxIter = 1000;
 			while (true) {
 				if (--maxIter <= 0) { setError('Publish loop exceeded maximum iterations'); break; }
-				const r = await spsg.publish(schedule.id,pubSeason,pubLeague,off,50,pubOpts);
+				const r = await spsg.publish(schedule.id,pubSeason,pubLeague,off,50,{...pubOpts,config_id:configId});
 				totalImported += r.imported||0;
 				off += 50;
 				setPubProg({imported:totalImported,total:r.total||schedule.games?.length||0,dry_run:pubOpts.dry_run,skipped:r.skipped||0});
@@ -407,9 +436,13 @@ export default function ScheduleGenerator() {
 										<Fragment key={c.id}>
 										<tr>
 											{/* Gap #4: inline rename */}
-											<td><input defaultValue={c.name} aria-label={`Rename configuration ${c.name}`} style={{border:'none',background:'transparent',width:'100%',padding:0}}
-												onBlur={async e=>{ if(e.target.value!==c.name){await spsg.updateConfig(c.id,{name:e.target.value});loadConfigs();} }}
-												onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}}/></td>
+											<td>
+												<input defaultValue={c.name} aria-label={`Rename configuration ${c.name}`} style={{border:'none',background:'transparent',width:'100%',padding:0}}
+													onBlur={async e=>{ if(e.target.value!==c.name){await spsg.updateConfig(c.id,{name:e.target.value});loadConfigs();} }}
+													onKeyDown={e=>{if(e.key==='Enter')e.target.blur();}}/>
+												{/* Phase 6: postseason badge */}
+												{c.is_postseason&&<span className="splm-badge" title="Postseason configuration">🏆 Postseason</span>}
+											</td>
 											<td>{fmtDate(c.updated_at)}</td><td>{c.division_count}</td><td>{c.team_count}</td>
 											<td style={f}>
 												<button className="splm-btn" onClick={()=>{
@@ -419,9 +452,11 @@ export default function ScheduleGenerator() {
 														if (saved) { setSchedule(saved); setStep(4); } else { setStep(1); }
 													});
 												}}>{configsWithDrafts.has(c.id) ? 'Resume' : 'Load'}</button>
-												{/* #11: clear draft */}
+												{/* #11: clear draft -- also discards the server-side saved
+												draft (SPSG_Schedule_Draft_Store), not just this browser's
+												local copy, so it stays cleared on Resume from elsewhere. */}
 												{configsWithDrafts.has(c.id) && (
-													<button className="splm-btn" title="Clear saved schedule draft" onClick={e=>{e.stopPropagation();try{sessionStorage.removeItem(`spsg_sched_${c.id}`);}catch{}loadConfigs();}}>✕ Draft</button>
+													<button className="splm-btn" title="Clear saved schedule draft" onClick={async e=>{e.stopPropagation();try{sessionStorage.removeItem(`spsg_sched_${c.id}`);}catch{}await spsg.discardDraft(c.id).catch(()=>undefined);loadConfigs();}}>✕ Draft</button>
 												)}
 												<button className="splm-btn splm-btn--danger" aria-label={`Delete ${c.name}`} onClick={()=>{ if(window.confirm(`Delete "${c.name}"?`)) spsg.deleteConfig(c.id).then(loadConfigs); }}>✕</button>
 												<button className="splm-btn" title="Export JSON" aria-label={`Export ${c.name} as JSON`} onClick={async()=>{
@@ -435,8 +470,82 @@ export default function ScheduleGenerator() {
 													const h = await spsg.getHistory(c.id).catch(()=>[]);
 													setHistoryData(h); setHistoryId(c.id);
 												}}>⏱</button>
+												{/* Phase 6: postseason actions */}
+												{!c.is_postseason&&(
+													<button className="splm-btn" title="Create postseason configuration from this one" aria-label={`Create postseason configuration from ${c.name}`} onClick={async()=>{
+														if (postseasonPanelId===c.id) { setPostseasonPanelId(null); return; }
+														setPostseasonPanelId(c.id);
+														const source = await spsg.getConfig(c.id).catch(()=>null);
+														const days = (source?.playing_days?.length) ? source.playing_days : DAYS;
+														setPostseasonPlayingDays(days);
+														setPostseasonForm(p=>({
+															...p,
+															championship_day:{...p.championship_day,day:days.includes(p.championship_day.day)?p.championship_day.day:days[0]},
+															consolation_day:days.includes(p.consolation_day)?p.consolation_day:(days[1]||days[0]),
+														}));
+													}}>🏆 Playoffs</button>
+												)}
 											</td>
 										</tr>
+										{/* Inline postseason-creation panel */}
+										{postseasonPanelId===c.id&&(
+											<tr>
+												<td colSpan={5} style={{background:'var(--splm-surface-alt)',padding:'0.75rem'}}>
+													<h4 style={{marginTop:0}}>Create Postseason Configuration from "{c.name}"</h4>
+													<p className="splm-muted" style={{marginTop:0}}>Copies divisions, venues, playing days, and time slots from this configuration. Seed/RR-Seed placeholder teams for each division are minted automatically the first time a schedule is generated for it.</p>
+													<div style={{display:'flex',gap:'0.75rem',flexWrap:'wrap',alignItems:'flex-end'}}>
+														<label style={{display:'flex',flexDirection:'column',fontSize:'0.85em'}}>
+															Postseason start date
+															<input type="date" className="splm-select"
+																value={postseasonForm.season_start}
+																onChange={e=>setPostseasonForm(p=>({...p,season_start:e.target.value}))}/>
+														</label>
+														<label style={{display:'flex',flexDirection:'column',fontSize:'0.85em'}}>
+															Round robin weeks
+															<input type="number" min={1} className="splm-select" style={{width:100}}
+																value={postseasonForm.round_robin_weeks}
+																onChange={e=>setPostseasonForm(p=>({...p,round_robin_weeks:Math.max(1,parseInt(e.target.value,10)||1)}))}/>
+														</label>
+														<label style={{display:'flex',flexDirection:'column',fontSize:'0.85em'}}>
+															Championship day
+															<select className="splm-select" value={postseasonForm.championship_day.day}
+																onChange={e=>setPostseasonForm(p=>({...p,championship_day:{...p.championship_day,day:e.target.value}}))}>
+																{postseasonPlayingDays.map(d=>(
+																	// eslint-disable-next-line security/detect-object-injection -- d is always one of the fixed DAYS values, never user input
+																	<option key={d} value={d}>{DL[d]}</option>
+																))}
+															</select>
+														</label>
+														<label style={{display:'flex',flexDirection:'column',fontSize:'0.85em'}}>
+															Championship window start
+															<input type="time" className="splm-select" value={postseasonForm.championship_day.start}
+																onChange={e=>setPostseasonForm(p=>({...p,championship_day:{...p.championship_day,start:e.target.value}}))}/>
+														</label>
+														<label style={{display:'flex',flexDirection:'column',fontSize:'0.85em'}}>
+															Championship window end
+															<input type="time" className="splm-select" value={postseasonForm.championship_day.end}
+																onChange={e=>setPostseasonForm(p=>({...p,championship_day:{...p.championship_day,end:e.target.value}}))}/>
+														</label>
+														<label style={{display:'flex',flexDirection:'column',fontSize:'0.85em'}}>
+															Consolation day
+															<select className="splm-select" value={postseasonForm.consolation_day}
+																onChange={e=>setPostseasonForm(p=>({...p,consolation_day:e.target.value}))}>
+																{postseasonPlayingDays.map(d=>(
+																	// eslint-disable-next-line security/detect-object-injection -- d is always one of the fixed DAYS values, never user input
+																	<option key={d} value={d}>{DL[d]}</option>
+																))}
+															</select>
+														</label>
+													</div>
+													<div style={{marginTop:'0.75rem',display:'flex',gap:'0.5rem'}}>
+														<button className="splm-btn splm-btn--primary" disabled={postseasonBusy||!postseasonForm.season_start} onClick={()=>doCreatePostseason(c.id)}>
+															{postseasonBusy?'Creating…':'Create'}
+														</button>
+														<button className="splm-btn" onClick={()=>setPostseasonPanelId(null)}>Cancel</button>
+													</div>
+												</td>
+											</tr>
+										)}
 										{/* Inline history panel */}
 										{historyId===c.id&&(
 											<tr>
@@ -1092,6 +1201,13 @@ export default function ScheduleGenerator() {
 						<button className="splm-btn" onClick={()=>go(0)}>← All Configs</button>
 						<button className="splm-btn" onClick={()=>go(1)}>← Edit Settings</button>
 						<button className="splm-btn" onClick={()=>{setSchedule(null);setValidation(null);setStep(3);}}>Regenerate</button>
+						<button className="splm-btn" disabled={discarding} onClick={async()=>{
+							if (!window.confirm('Discard this draft schedule? This cannot be undone.')) return;
+							setDiscarding(true);
+							try { sessionStorage.removeItem(`spsg_sched_${configId}`); } catch {}
+							await spsg.discardDraft(configId).catch(()=>undefined);
+							setDiscarding(false); setSchedule(null); setValidation(null); go(0);
+						}}>{discarding?'Discarding…':'Discard Draft'}</button>
 					</div>
 				</div>
 			)}
