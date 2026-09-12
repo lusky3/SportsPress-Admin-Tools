@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SportsPress League Manager (Child Plugin)
  * Description: Child plugin for SportsPress Admin Tools - League Manager modules
- * Version: 1.1.1
+ * Version: 1.2.0
  * Author: Cody (lusky3)
  * Text Domain: sportspress-league-manager
  * License: GPL v2 or later
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'SPLM_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPLM_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPLM_VERSION', '1.1.2' );
+define( 'SPLM_VERSION', '1.2.0' );
 
 // Native WordPress updates, served from this repository's releases.
 //

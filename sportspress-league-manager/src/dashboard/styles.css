@@ -226,6 +226,7 @@
 .splm-help-section code { background: var(--splm-surface-muted); color: var(--splm-text); padding: 0.05rem 0.3rem; border-radius: 3px; font-size: 0.85em; }
 .splm-help-section--flash { animation: splm-help-flash 1.6s ease-out; }
 @keyframes splm-help-flash { 0% { background: var(--splm-primary-tint); } 100% { background: transparent; } }
+.splm-help-screenshot { display: block; max-width: 100%; height: auto; margin: 0.6rem 0 1rem; border: 1px solid var(--splm-border); border-radius: 6px; }
 
 /* Layout */
 /* UI-2/UI-3/UX-21: drop the magic-number full-viewport min-height. flex:1 lets

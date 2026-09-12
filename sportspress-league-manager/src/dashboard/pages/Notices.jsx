@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from '@wordpress/element';
 import { fetchNotices, releaseNotice, discardNotice, serveNotice } from '../lib/api';
+import HelpLink from '../components/HelpLink';
 
 // Timestamps arrive as UTC 'Y-m-d H:i:s'. Date can't parse that shape reliably
 // across browsers, so normalise it to ISO with an explicit Z before parsing —
@@ -205,10 +206,7 @@ export default function Notices( { season } ) {
 
 	return (
 		<div className="splm-notices">
-			{ /* No HelpLink: Help.jsx's SECTIONS has no 'discipline' entry, so the
-			     link would navigate to Help and then no-op looking for
-			     #help-discipline. Add a Help section first if one is wanted. */ }
-			<h2>Discipline Notices</h2>
+			<h2>Discipline Notices <HelpLink topic="notices" /></h2>
 
 			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
 			{ notice && <div className="splm-alert splm-alert--success" role="status">{ notice }</div> }
