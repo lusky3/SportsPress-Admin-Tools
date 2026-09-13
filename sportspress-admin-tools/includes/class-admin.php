@@ -281,38 +281,27 @@ class SPAT_Admin {
 		register_setting(
 			'spat_general_settings',
 			'spat_remove_data_on_uninstall',
-			array(
-				'sanitize_callback' => function ( $value ) {
-					return $value === '1' ? '1' : '0';
-				},
-			)
+			array( 'sanitize_callback' => array( __CLASS__, 'sanitize_checkbox_flag' ) )
 		);
 		register_setting(
 			'spat_general_settings',
 			'spat_use_select2',
-			array(
-				'sanitize_callback' => function ( $value ) {
-					return $value === '1' ? '1' : '0';
-				},
-			)
+			array( 'sanitize_callback' => array( __CLASS__, 'sanitize_checkbox_flag' ) )
 		);
 		register_setting(
 			'spat_general_settings',
 			'spat_debug_show_sensitive',
-			array(
-				'sanitize_callback' => function ( $value ) {
-					return $value === '1' ? '1' : '0';
-				},
-			)
+			array( 'sanitize_callback' => array( __CLASS__, 'sanitize_checkbox_flag' ) )
 		);
 		register_setting(
 			'spat_general_settings',
 			'spat_debug_verbose_logging',
-			array(
-				'sanitize_callback' => function ( $value ) {
-					return $value === '1' ? '1' : '0';
-				},
-			)
+			array( 'sanitize_callback' => array( __CLASS__, 'sanitize_checkbox_flag' ) )
+		);
+		register_setting(
+			'spat_general_settings',
+			'spat_admin_bar_link_enabled',
+			array( 'sanitize_callback' => array( __CLASS__, 'sanitize_checkbox_flag' ) )
 		);
 
 		// Child plugin settings will be registered by their respective admin classes
@@ -349,48 +338,44 @@ class SPAT_Admin {
 			'spat_general_settings'
 		);
 
-		add_settings_field(
-			'child_plugins_status',
-			__( 'Registered Child Plugins', 'sportspress-admin-tools' ),
-			array( $this, 'child_plugins_status_callback' ),
-			'spat_general_settings',
-			'spat_child_plugins_section'
-		);
-
-		add_settings_field(
-			'spat_remove_data_on_uninstall',
-			__( 'Remove Data on Uninstall', 'sportspress-admin-tools' ),
-			array( $this, 'remove_data_setting_callback' ),
-			'spat_general_settings',
-			'spat_settings_section'
-		);
-
-		add_settings_field(
-			'spat_use_select2',
-			__( 'Enhanced Dropdowns (Slim Select)', 'sportspress-admin-tools' ),
-			array( $this, 'select2_setting_callback' ),
-			'spat_general_settings',
-			'spat_settings_section'
-		);
-
-		add_settings_field(
-			'spat_debug_show_sensitive',
-			__( 'Show Sensitive Information in Debug Logs', 'sportspress-admin-tools' ),
-			array( $this, 'debug_sensitive_callback' ),
-			'spat_general_settings',
-			'spat_debug_section'
-		);
-
-		add_settings_field(
-			'spat_debug_verbose_logging',
-			__( 'Verbose Debug Logging', 'sportspress-admin-tools' ),
-			array( $this, 'debug_verbose_callback' ),
-			'spat_general_settings',
-			'spat_debug_section'
-		);
+		$this->add_settings_field_row( 'child_plugins_status', __( 'Registered Child Plugins', 'sportspress-admin-tools' ), array( $this, 'child_plugins_status_callback' ), 'spat_child_plugins_section' );
+		$this->add_settings_field_row( 'spat_remove_data_on_uninstall', __( 'Remove Data on Uninstall', 'sportspress-admin-tools' ), array( $this, 'remove_data_setting_callback' ), 'spat_settings_section' );
+		$this->add_settings_field_row( 'spat_use_select2', __( 'Enhanced Dropdowns (Slim Select)', 'sportspress-admin-tools' ), array( $this, 'select2_setting_callback' ), 'spat_settings_section' );
+		$this->add_settings_field_row( 'spat_admin_bar_link_enabled', __( 'Admin Bar Link', 'sportspress-admin-tools' ), array( $this, 'admin_bar_link_setting_callback' ), 'spat_settings_section' );
+		$this->add_settings_field_row( 'spat_debug_show_sensitive', __( 'Show Sensitive Information in Debug Logs', 'sportspress-admin-tools' ), array( $this, 'debug_sensitive_callback' ), 'spat_debug_section' );
+		$this->add_settings_field_row( 'spat_debug_verbose_logging', __( 'Verbose Debug Logging', 'sportspress-admin-tools' ), array( $this, 'debug_verbose_callback' ), 'spat_debug_section' );
 
 		// Allow child plugins to register their own settings
 		do_action( 'spat_admin_init_settings' );
+	}
+
+	/**
+	 * add_settings_field() for a plain field on this screen's one
+	 * settings page -- only the id/label/callback/section vary between
+	 * the six calls above, so this is what stops a seventh field from
+	 * becoming a seventh near-identical five-line block.
+	 *
+	 * @param string   $id       Option name.
+	 * @param string   $label    Field label.
+	 * @param callable $callback Render callback.
+	 * @param string   $section  Settings section id.
+	 * @return void
+	 */
+	private function add_settings_field_row( $id, $label, $callback, $section ) {
+		add_settings_field( $id, $label, $callback, 'spat_general_settings', $section );
+	}
+
+	/**
+	 * Shared sanitize_callback for every plain on/off checkbox setting on
+	 * this screen: coerces the raw submitted value to a canonical '1' or
+	 * '0'. Extracted so five near-identical inline closures don't keep
+	 * growing with each new checkbox this screen gains.
+	 *
+	 * @param mixed $value Raw submitted value.
+	 * @return string
+	 */
+	public static function sanitize_checkbox_flag( $value ): string {
+		return '1' === $value ? '1' : '0';
 	}
 
 	public function modules_section_callback() {
@@ -461,6 +446,43 @@ class SPAT_Admin {
 		$enabled = get_option( 'spat_use_select2', '0' );
 		echo '<input type="checkbox" name="spat_use_select2" value="1" ' . checked( $enabled, '1', false ) . '>';
 		echo '<p class="description">' . esc_html__( 'Use enhanced Slim Select dropdowns with search functionality throughout the plugin. Requires page refresh to take effect.', 'sportspress-admin-tools' ) . '</p>';
+	}
+
+	public function admin_bar_link_setting_callback() {
+		$enabled = get_option( 'spat_admin_bar_link_enabled', '0' );
+		echo '<input type="checkbox" name="spat_admin_bar_link_enabled" value="1" ' . checked( $enabled, '1', false ) . '>';
+		echo '<p class="description">' . esc_html__( 'Add a link to this settings page in the WordPress admin bar (the top toolbar), visible on both the front-end and admin screens.', 'sportspress-admin-tools' ) . '</p>';
+	}
+
+	/**
+	 * admin_bar_menu callback: adds a node linking to this settings page.
+	 *
+	 * Registered unconditionally from the main plugin file's init() (not
+	 * inside init_admin(), which only runs is_admin()) -- the toolbar this
+	 * hook contributes to renders on the front-end too, so the hook must fire
+	 * there as well. Gated at runtime instead: the option controls whether it
+	 * does anything, and the capability check is manage_options because
+	 * that's the capability add_options_page() itself gates this same page
+	 * behind.
+	 *
+	 * @param WP_Admin_Bar $wp_admin_bar Admin bar instance.
+	 * @return void
+	 */
+	public static function add_admin_bar_node( $wp_admin_bar ) {
+		if ( '1' !== get_option( 'spat_admin_bar_link_enabled', '0' ) ) {
+			return;
+		}
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
+		$wp_admin_bar->add_node(
+			array(
+				'id'    => 'spat-settings',
+				'title' => __( 'Admin Tools', 'sportspress-admin-tools' ),
+				'href'  => admin_url( 'options-general.php?page=sportspress-admin-tools' ),
+			)
+		);
 	}
 
 	public function debug_section_callback() {

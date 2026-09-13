@@ -297,6 +297,18 @@ class SportsPress_League_Manager {
 			new SPLM_Admin();
 		}
 
+		// Admin bar link to the dashboard: registered unconditionally (not
+		// inside the is_admin() branch above) because the admin bar itself
+		// renders on the front-end as well as admin screens. SPLM_Admin is
+		// already in SPLM_Autoloader's class map, so referencing it
+		// statically here resolves lazily the first time the hook actually
+		// fires; what it does is gated entirely by its own option, read
+		// inside the callback. Scoped to the dashboard module specifically,
+		// like the rest of this method's per-module checks below.
+		if ( in_array( 'league_manager_dashboard', $enabled, true ) ) {
+			add_action( 'admin_bar_menu', array( 'SPLM_Admin', 'add_admin_bar_node' ), 100 );
+		}
+
 		// Player notes needs to load on frontend too (for player profile display).
 		if ( in_array( 'league_player_notes', $enabled, true ) ) {
 			new SPLM_Player_Notes();

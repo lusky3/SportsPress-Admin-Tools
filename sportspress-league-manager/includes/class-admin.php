@@ -188,6 +188,14 @@ class SPLM_Admin {
 					return $v ? '1' : '0'; },
 			)
 		);
+		register_setting(
+			'splm_backend_settings',
+			'splm_admin_bar_link_enabled',
+			array(
+				'sanitize_callback' => function ( $v ) {
+					return $v ? '1' : '0'; },
+			)
+		);
 		register_setting( 'splm_backend_settings', 'splm_roster_max_upload_kb', array( 'sanitize_callback' => 'absint' ) );
 		register_setting(
 			'splm_backend_settings',
@@ -242,6 +250,7 @@ class SPLM_Admin {
 		$this->add_field( 'splm_default_season', __( 'Season Override', 'sportspress-league-manager' ), array( $this, 'render_default_season_field' ) );
 		$this->add_field( 'splm_fee_source', __( 'Fee Integration Source', 'sportspress-league-manager' ), array( $this, 'render_fee_source_field' ) );
 		$this->add_field( 'splm_debug_logging', __( 'Debug Logging', 'sportspress-league-manager' ), array( $this, 'render_debug_logging_field' ) );
+		$this->add_field( 'splm_admin_bar_link_enabled', __( 'Admin Bar Link', 'sportspress-league-manager' ), array( $this, 'render_admin_bar_link_field' ) );
 		$this->add_field( 'splm_roster_max_upload_kb', __( 'Roster Upload Max Size (KB)', 'sportspress-league-manager' ), array( $this, 'render_roster_max_upload_field' ) );
 		$this->add_field( 'splm_comparison_stat_keys', __( 'Team Comparison Stats', 'sportspress-league-manager' ), array( $this, 'render_comparison_stat_keys_field' ) );
 		$this->add_field( 'splm_report_stat_keys', __( 'Season Report Leader Categories', 'sportspress-league-manager' ), array( $this, 'render_report_stat_keys_field' ) );
@@ -328,6 +337,53 @@ class SPLM_Admin {
 
 	public function render_debug_logging_field() {
 		echo '<input type="checkbox" name="splm_debug_logging" value="1" ' . checked( get_option( 'splm_debug_logging', '0' ), '1', false ) . '/>';
+	}
+
+	public function render_admin_bar_link_field() {
+		echo '<input type="checkbox" name="splm_admin_bar_link_enabled" value="1" ' . checked( get_option( 'splm_admin_bar_link_enabled', '0' ), '1', false ) . '/>';
+		echo '<p class="description">' . esc_html__( 'Add a Dashboard link to the WordPress admin bar (the top toolbar), visible on both the front-end and admin screens.', 'sportspress-league-manager' ) . '</p>';
+	}
+
+	/**
+	 * admin_bar_menu callback: adds a node linking to the League Manager
+	 * dashboard page.
+	 *
+	 * Registered from load_enabled_modules() unconditionally on is_admin()
+	 * (unlike `new SPLM_Admin()` a few lines above it there) -- the admin bar
+	 * this contributes to renders on the front-end too. Gated at runtime
+	 * instead: the option controls whether it does anything, and
+	 * can_manage() is the same capability gate add_admin_menu() uses for the
+	 * dashboard's own menu entry. The URL is resolved via ensure_page(), not
+	 * a hardcoded /league-dashboard/, for the same reason
+	 * render_redirect_page() above does: the page can legitimately be
+	 * renamed, and a stale link would send a convener to a 404 from the one
+	 * place meant to get them there reliably.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param WP_Admin_Bar $wp_admin_bar Admin bar instance.
+	 * @return void
+	 */
+	public static function add_admin_bar_node( $wp_admin_bar ) {
+		if ( '1' !== get_option( 'splm_admin_bar_link_enabled', '0' ) ) {
+			return;
+		}
+		if ( ! SPLM_Capabilities::can_manage() ) {
+			return;
+		}
+
+		$page_id = SPLM_Dashboard_Frontend::ensure_page();
+		if ( ! $page_id ) {
+			return;
+		}
+
+		$wp_admin_bar->add_node(
+			array(
+				'id'    => 'splm-dashboard',
+				'title' => __( 'League Dashboard', 'sportspress-league-manager' ),
+				'href'  => get_permalink( $page_id ),
+			)
+		);
 	}
 
 	public function render_roster_max_upload_field() {

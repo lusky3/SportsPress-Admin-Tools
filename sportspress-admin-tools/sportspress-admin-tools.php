@@ -75,6 +75,7 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 	class SportsPressAdminTools {
 
 		private static array $autoload_map = array(
+			'SPAT_Admin'             => 'includes/class-admin.php',
 			'SPAT_Text_Helper'       => 'includes/class-text-helper.php',
 			'SPAT_Logger'            => 'includes/class-logger.php',
 			'SPAT_Lock'              => 'includes/class-lock.php',
@@ -123,6 +124,15 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 			// GDPR privacy exporters and erasers — loaded unconditionally
 			require_once SPAT_PLUGIN_PATH . 'includes/class-privacy.php';
 			new SPAT_Privacy();
+
+			// Admin bar link to the settings page: registered unconditionally
+			// because the admin bar itself renders on the front-end as well as
+			// admin screens, unlike init_admin() below. SPAT_Admin is only
+			// instantiated under is_admin(), so this references the class
+			// statically -- the autoload_map entry above resolves it lazily
+			// the first time the hook actually fires. What it does is gated
+			// entirely by the option, read inside the callback.
+			add_action( 'admin_bar_menu', array( 'SPAT_Admin', 'add_admin_bar_node' ) );
 
 			// Initialize admin
 			if ( is_admin() ) {
