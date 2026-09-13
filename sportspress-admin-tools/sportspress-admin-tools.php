@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SportsPress Admin Tools
  * Description: Administrative tools for SportsPress
- * Version: 1.0.5
+ * Version: 1.1.0
  * Author: Cody (lusky3)
  * Text Domain: sportspress-admin-tools
  * Requires at least: 5.0
@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // Define plugin constants
 define( 'SPAT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPAT_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPAT_VERSION', '1.0.5' );
+define( 'SPAT_VERSION', '1.1.0' );
 
 // Native WordPress updates, served from this repository's releases.
 //
