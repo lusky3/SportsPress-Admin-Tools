@@ -100,6 +100,8 @@ class SPLM_Discipline_Notice_Recipients {
 	 * a notice's purpose is served by reaching the player, and silently copying
 	 * the site admin on a player's disciplinary mail is a privacy surprise.
 	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
 	 * @param int $season_id Season the notice belongs to.
 	 * @param int $team_id   The player's attributed team.
 	 * @return array De-duplicated addresses.
@@ -111,7 +113,7 @@ class SPLM_Discipline_Notice_Recipients {
 		// past season the captain of record may be a different person than the
 		// one who was captain when the minutes were earned. Copy the captain
 		// only while the notice's season is the one the pass runs against.
-		if ( $season_id === absint( get_option( 'splm_default_season', 0 ) ) ) {
+		if ( $season_id === SPLM_SportsPress_Data::default_season_id() ) {
 			$captain = self::captain_email( $team_id );
 			if ( $captain ) {
 				$out[] = $captain;

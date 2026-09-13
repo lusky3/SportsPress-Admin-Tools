@@ -16,6 +16,8 @@ class SPLM_Health_Checker {
 	/**
 	 * Run all health checks.
 	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
 	 * @return array[] Each item has 'severity', 'message', and 'action' keys.
 	 */
 	public static function run(): array {
@@ -122,9 +124,7 @@ class SPLM_Health_Checker {
 		}
 
 		// Check current/default season is set.
-		$default_season = get_option( 'splm_default_season', '' );
-		$sp_season      = get_option( 'sportspress_season', '' );
-		if ( empty( $default_season ) && empty( $sp_season ) && ! is_wp_error( $seasons ) && ! empty( $seasons ) ) {
+		if ( ! SPLM_SportsPress_Data::default_season_id() && ! is_wp_error( $seasons ) && ! empty( $seasons ) ) {
 			$issues[] = array(
 				'severity' => 'info',
 				'message'  => __( 'No current season is set in SportsPress or League Manager.', 'sportspress-league-manager' ),

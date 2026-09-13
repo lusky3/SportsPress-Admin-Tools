@@ -57,7 +57,7 @@ class SPLM_Discipline_Notice_Admin {
 		// usually trying to find out what it already sent. Withholding the
 		// audit trail is the one thing this surface must not do.
 		$readonly  = ! SPLM_REST_API::module_enabled( 'league_discipline' );
-		$season_id = (int) get_option( 'splm_default_season', 0 );
+		$season_id = SPLM_SportsPress_Data::default_season_id();
 
 		if ( $readonly ) {
 			echo '<div class="notice notice-warning inline"><p>' . esc_html__( 'The Penalty Discipline module is disabled. No notices are being evaluated and no action can be taken here; the rows below are history.', 'sportspress-league-manager' ) . '</p></div>';
@@ -66,7 +66,7 @@ class SPLM_Discipline_Notice_Admin {
 		$this->render_diagnostics( $season_id );
 
 		if ( ! $season_id ) {
-			echo '<p>' . esc_html__( 'No default season is set, so the evaluation pass does nothing. Set a Season Override on the League Manager tab.', 'sportspress-league-manager' ) . '</p></div>';
+			echo '<p>' . esc_html__( 'No current season is set in SportsPress or League Manager, so the evaluation pass does nothing. Set a current season in SportsPress, or override it on the League Manager tab.', 'sportspress-league-manager' ) . '</p></div>';
 			return;
 		}
 

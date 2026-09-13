@@ -132,6 +132,7 @@ assert_test(
 echo "\n=== Testing SPLM_Health_Checker ===\n\n";
 // ═══════════════════════════════════════════════════════════════════════════
 
+require_once dirname(__FILE__) . '/../includes/class-sportspress-data.php';
 require_once dirname(__FILE__) . '/../includes/class-health-checker.php';
 
 // Note: the "SportsPress not active → critical issue" path was previously
@@ -205,6 +206,28 @@ assert_test(
 assert_test(
     strpos($issues[0]['message'], 'properly configured') !== false,
     'All good → message says properly configured'
+);
+
+// Test: no League Manager override, but SportsPress core's own current
+// season IS set -- must not be reported as "no season", since 0 on
+// splm_default_season is its own labelled choice ("Use SportsPress current
+// season"), not "unconfigured". This is the exact bug a real site hit: the
+// discipline queue claimed no season was set while SportsPress plainly had
+// one configured.
+reset_mocks();
+$mock_terms['sp_league'] = array('league1');
+$mock_terms['sp_season'] = array('season1');
+$mock_posts['sp_team'] = array('team1');
+$mock_posts['sp_team_unassigned'] = array();
+$mock_options['sportspress_season'] = '7';
+
+$issues = SPLM_Health_Checker::run();
+$season_issue = array_filter($issues, function($i) {
+    return strpos($i['message'], 'No current season') !== false;
+});
+assert_test(
+    empty($season_issue),
+    'SportsPress core\'s own current season satisfies the check even with no League Manager override'
 );
 
 // ═══════════════════════════════════════════════════════════════════════════

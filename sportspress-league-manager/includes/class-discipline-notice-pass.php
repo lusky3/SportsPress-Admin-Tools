@@ -138,7 +138,7 @@ class SPLM_Discipline_Notice_Pass {
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public static function run_locked(): int {
-		$season_id = (int) get_option( 'splm_default_season', 0 );
+		$season_id = SPLM_SportsPress_Data::default_season_id();
 		if ( ! $season_id ) {
 			return 0;
 		}

@@ -88,6 +88,7 @@ function absint( $v ) {
 	return abs( (int) $v );
 }
 
+require_once __DIR__ . '/../includes/class-sportspress-data.php';
 require_once __DIR__ . '/../includes/class-discipline-notice-recipients.php';
 
 $passed = 0;
@@ -193,6 +194,24 @@ assert_test(
 	in_array( 'board@example.test', $historical, true ),
 	'the board is still copied for a past season'
 );
+
+echo "\n=== the captain is still copied via SportsPress core's own current season, with no League Manager override ===\n\n";
+
+// Regression: 0/absent on splm_default_season is its own labelled choice
+// ("Use SportsPress current season"), not "unconfigured" -- bcc_for() must
+// fall back to sportspress_season, exactly like the digest and the pass
+// itself, or the captain silently never gets copied on any site that
+// leaves the override unset.
+unset( $state->options['splm_default_season'] );
+$state->options['sportspress_season'] = 500;
+
+$sp_fallback = $r::bcc_for( 500, 200 );
+assert_test(
+	in_array( 'direct@example.test', $sp_fallback, true ),
+	'the captain is copied when the season matches SportsPress core\'s current season, with no override configured'
+);
+
+$state->options['splm_default_season'] = 500;
 
 echo "\n=== no admin_email fallback ===\n\n";
 

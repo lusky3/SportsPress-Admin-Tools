@@ -633,7 +633,7 @@ class SPLM_Admin {
 			return $cache;
 		}
 
-		$season_id = (int) get_option( 'splm_default_season', 0 );
+		$season_id = SPLM_SportsPress_Data::default_season_id();
 		$players   = $season_id
 			? SPLM_Player_Stats_Aggregator::for_season( $season_id, array( 'include_playoffs' => true ) )
 			: array();
