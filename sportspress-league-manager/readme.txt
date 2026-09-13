@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.2.0
+Stable tag: 1.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,6 +48,14 @@ WooCommerce is optional. Without it, fee tracking can be configured for manual e
 CSV files with `Team` and `Name` columns (both required). Each row maps a player Name to a Team; rows missing either value are skipped.
 
 == Changelog ==
+
+= 1.3.0 =
+* New: waitlist status changes (offer sent, claimed, expired, withdrawn, entry removed) can notify a shared address -- point it at a FreeScout mailbox to turn each change into a ticket the whole team sees, or any other inbox your team watches. Off by default.
+* New: the waitlist dashboard's columns are now adjustable via a "Columns" control; the current columns stay the default view. Four new opt-in columns: Dispatched By (which convener sent the offer), Waitlist Order and Paid Order (each linking straight to the WooCommerce order edit screen), and Restrictions (a free-text note for a team or play-with-a-friend preference, editable in place).
+* New: an opt-in "Admin Bar Link" setting adds a League Dashboard link to the WordPress admin bar, visible on the front-end as well as admin screens. Off by default.
+* New: the FreeScout customer-status endpoint now also reports each waitlist entry's position (player/goalie) and join date.
+* Fix: a waitlist row with neither an Offer nor a Cancel button (a claimed or cancelled entry) no longer breaks the table's divider-line alignment.
+* Fix: the discipline queue, its evaluation pass, weekly digest, and notice recipients now fall back to SportsPress's own current-season setting when no League Manager season override is configured. Previously they silently treated that override's own labelled default ("Use SportsPress current season") as "unconfigured" and did nothing -- warnings and suspensions never evaluated, and the discipline queue wrongly reported no season set at all.
 
 = 1.2.0 =
 * New: the dashboard's Help page now shows a real screenshot of each section alongside its written instructions, so a league manager can see what a control looks like before hunting for it on the page.

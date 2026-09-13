@@ -4,7 +4,7 @@ Tags: sportspress, automation, sports
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 8.1
-Stable tag: 1.0.5
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -31,6 +31,9 @@ Each child plugin registers with this parent and loads only when its module is e
 2. Activate the plugin through the 'Plugins' screen in WordPress
 
 == Changelog ==
+
+= 1.1.0 =
+* New: an opt-in "Admin Bar Link" setting adds a link to this settings page in the WordPress admin bar (the top toolbar), visible on the front-end as well as admin screens. Off by default.
 
 = 1.0.5 =
 * New: these plugins now update themselves. WordPress shows an update on the Plugins screen when a release adds one, with the usual "View details" and one-click install, sourced from the project's GitHub releases rather than the plugin directory.
