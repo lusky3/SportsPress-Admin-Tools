@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.3.0
+Stable tag: 1.3.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -58,6 +58,9 @@ The plugin validates configuration feasibility before generation and provides sp
 Yes. The import dialog lets you choose conflict resolution (skip or overwrite), event status, league, and season. Import runs in chunks with progress tracking.
 
 == Changelog ==
+
+= 1.3.1 =
+* Fix: the classic WP Admin "Schedule Generator" page had no postseason/playoffs options at all -- the feature only ever reached the League Manager React dashboard. The classic page's Basic Configuration tab now has a "Create Postseason Configuration" action (round-robin weeks, Championship day/time-window, Consolation day) for turning a saved regular-season configuration into a postseason one, and editable Postseason Settings for revisiting those values on a postseason configuration afterward. Postseason configurations are also marked with a 🏆 in the configuration dropdown.
 
 = 1.3.0 =
 * New: postseason/playoffs bracket generation. Configure a round-robin count, a Championship/Consolation day, and a "prime time" window, and the generator builds the full cross-round-robin-into-bracket structure automatically -- seeding real teams in from season standings once the round-robin weeks conclude, and pinning the Championship/Consolation week to the trailing week of the postseason's own dates (a hard constraint, verified against your actual venue/time-slot capacity before you can save the configuration).

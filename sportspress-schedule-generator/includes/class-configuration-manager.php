@@ -300,6 +300,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 				'modified' => $config['modified'] ?? '',
 				'season_start' => $config['season_start'] ?? '',
 				'season_end' => $config['season_end'] ?? '',
+				'is_postseason' => ! empty( $config['is_postseason'] ),
 			);
 		}
 

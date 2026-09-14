@@ -56,6 +56,7 @@ class SPSG_Admin_Ajax {
 		add_action( 'wp_ajax_spsg_upload_venue_csv', array( $this, 'ajax_upload_venue_csv' ) );
 		add_action( 'wp_ajax_spsg_import_venue_schedule', array( $this, 'ajax_import_venue_schedule' ) );
 		add_action( 'wp_ajax_spsg_clone_config', array( $this, 'ajax_clone_config' ) );
+		add_action( 'wp_ajax_spsg_create_postseason_config', array( $this, 'ajax_create_postseason_config' ) );
 		add_action( 'wp_ajax_spsg_preview_import', array( $this, 'ajax_preview_import' ) );
 		add_action( 'wp_ajax_spsg_get_export_formats', array( $this, 'ajax_get_export_formats' ) );
 		add_action( 'wp_ajax_spsg_clear_change_history', array( $this, 'ajax_clear_change_history' ) );
@@ -367,6 +368,50 @@ class SPSG_Admin_Ajax {
 		wp_send_json_success(
 			array(
 				'message' => __( 'Configuration cloned successfully', 'sportspress-schedule-generator' ),
+				'new_config_id' => $new_config_id,
+			)
+		);
+	}
+
+	/**
+	 * AJAX handler for creating a postseason configuration from a saved
+	 * regular-season one -- the classic-page equivalent of the React
+	 * dashboard's "🏆 Playoffs" action, both wrapping the same
+	 * SPSG_Configuration_Manager::create_postseason_configuration().
+	 */
+	public function ajax_create_postseason_config() {
+		check_ajax_referer( 'spsg_create_postseason_config', 'spsg_nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( __( 'Insufficient permissions', 'sportspress-schedule-generator' ) );
+		}
+
+		$config_id = sanitize_text_field( wp_unslash( $_POST['config_id'] ?? '' ) );
+		if ( empty( $config_id ) ) {
+			wp_send_json_error( __( 'No configuration ID provided', 'sportspress-schedule-generator' ) );
+		}
+
+		$championship_day = (array) wp_unslash( $_POST['championship_day'] ?? array() );
+		$overrides = array(
+			'season_start' => sanitize_text_field( wp_unslash( $_POST['season_start'] ?? '' ) ),
+			'round_robin_weeks' => absint( wp_unslash( $_POST['round_robin_weeks'] ?? 3 ) ),
+			'championship_day' => array(
+				'day'   => sanitize_text_field( $championship_day['day'] ?? '' ),
+				'start' => sanitize_text_field( $championship_day['start'] ?? '' ),
+				'end'   => sanitize_text_field( $championship_day['end'] ?? '' ),
+			),
+			'consolation_day' => sanitize_text_field( wp_unslash( $_POST['consolation_day'] ?? '' ) ),
+		);
+
+		$new_config_id = $this->config_manager->create_postseason_configuration( $config_id, $overrides );
+
+		if ( is_wp_error( $new_config_id ) ) {
+			wp_send_json_error( $new_config_id->get_error_message() );
+		}
+
+		wp_send_json_success(
+			array(
+				'message' => __( 'Postseason configuration created successfully', 'sportspress-schedule-generator' ),
 				'new_config_id' => $new_config_id,
 			)
 		);

@@ -103,6 +103,9 @@
             $('#spsg-cancel-generation').on('click', this.cancelGeneration.bind(this));
             $('#spsg-clone-config').on('click', this.cloneConfiguration.bind(this));
             $('#spsg-discard-draft').on('click', this.discardDraft.bind(this));
+            $('#spsg-create-postseason').on('click', this.togglePostseasonPanel.bind(this));
+            $('#spsg-postseason-cancel').on('click', this.togglePostseasonPanel.bind(this));
+            $('#spsg-postseason-submit').on('click', this.createPostseasonConfig.bind(this));
         },
         
         checkConfigurationStatus: function() {
@@ -221,6 +224,57 @@
                 error: function(xhr, status, error) {
                     // Show error message on failure
                     self.showMessage('error', 'Clone request failed: ' + error);
+                }
+            });
+        },
+
+        togglePostseasonPanel: function() {
+            $('#spsg-postseason-panel').toggle();
+        },
+
+        createPostseasonConfig: function() {
+            var self = this;
+            var configId = $('#spsg-config-selector').val() || $('#spsg-config-id').val();
+
+            if (!configId) {
+                this.showMessage('error', 'Please select or save a configuration first');
+                return;
+            }
+
+            var data = {
+                action: 'spsg_create_postseason_config',
+                spsg_nonce: spsgData.nonces.create_postseason_config,
+                config_id: configId,
+                season_start: $('#spsg-postseason-season-start').val(),
+                round_robin_weeks: $('#spsg-postseason-rrw').val(),
+                championship_day: {
+                    day: $('#spsg-postseason-champ-day').val(),
+                    start: $('#spsg-postseason-champ-start').val(),
+                    end: $('#spsg-postseason-champ-end').val()
+                },
+                consolation_day: $('#spsg-postseason-consolation-day').val()
+            };
+
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: data,
+                beforeSend: function() {
+                    self.showMessage('info', 'Creating postseason configuration...');
+                },
+                success: function(response) {
+                    if (response.success) {
+                        self.showMessage('success', response.data.message);
+                        setTimeout(function() {
+                            window.location.href = '?page=spsg-schedule-generator&config_id=' + response.data.new_config_id;
+                        }, 1000);
+                    } else {
+                        var errorMsg = response.data.message || response.data || 'Failed to create postseason configuration';
+                        self.showMessage('error', errorMsg);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    self.showMessage('error', 'Request failed: ' + error);
                 }
             });
         },
