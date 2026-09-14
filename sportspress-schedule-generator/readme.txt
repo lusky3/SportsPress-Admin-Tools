@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.3.2
+Stable tag: 1.3.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -58,6 +58,10 @@ The plugin validates configuration feasibility before generation and provides sp
 Yes. The import dialog lets you choose conflict resolution (skip or overwrite), event status, league, and season. Import runs in chunks with progress tracking.
 
 == Changelog ==
+
+= 1.3.3 =
+* Fix: pressing "Create" on the classic admin page's postseason panel appeared to do nothing when the configuration failed validation -- the error was written to a message area that lives in the (hidden, inactive) Generate Schedule tab, only becoming visible once you happened to switch to it. The panel now has its own visible status area.
+* Fix: that validation failure also only ever showed the generic "Configuration validation failed", with no indication of what to actually fix. The specific reason (e.g. "Division 4 has an odd number of teams; postseason brackets require an even division size") is now shown -- postseason brackets require every division to have an even number of teams, since the bracket pairs teams up.
 
 = 1.3.2 =
 * Fix: a postseason configuration no longer asks for its own separate "Season Start" date. A postseason bracket is the tail end of the same season the source configuration already describes, so its start date is now always derived automatically as the day after the source's Season End -- both the classic admin page and the React dashboard show the resulting date range instead of asking for one.

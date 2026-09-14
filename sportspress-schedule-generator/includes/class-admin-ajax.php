@@ -445,7 +445,19 @@ class SPSG_Admin_Ajax {
 		);
 
 		if ( is_wp_error( $new_config_id ) ) {
-			wp_send_json_error( $new_config_id->get_error_message() );
+			// Same shape as ajax_validate_config()'s error response: the
+			// WP_Error's own message is generic ("Configuration validation
+			// failed"), the actual per-field detail (e.g. which division is
+			// the problem) lives in its data. Without field_errors here, an
+			// operator sees only the generic message with no way to tell
+			// what to fix.
+			wp_send_json_error(
+				array(
+					'message' => $new_config_id->get_error_message(),
+					'errors' => $new_config_id->get_error_messages(),
+					'field_errors' => $new_config_id->get_error_data() ?? array(),
+				)
+			);
 		}
 
 		wp_send_json_success(

@@ -231,6 +231,7 @@
 
         togglePostseasonPanel: function() {
             $('#spsg-postseason-panel').toggle();
+            $('#spsg-postseason-message').empty();
             this.updatePostseasonDatePreview();
         },
 
@@ -257,12 +258,30 @@
             $preview.text('This bracket will run ' + fmt(start) + ' to ' + fmt(end) + '.');
         },
 
+        // #spsg-messages lives inside the Generate Schedule tab's markup, so
+        // it's hidden while this panel is open on the Basic Configuration
+        // tab -- a message written only there is invisible until the
+        // operator happens to switch tabs (H: reported as "nothing happened"
+        // after pressing Create, with the real error only found later on
+        // the Generate Schedule page). Write here instead, where the panel
+        // that triggered the action is actually visible.
+        showPostseasonMessage: function(type, message) {
+            var $container = $('#spsg-postseason-message');
+            var $msg = $('<div class="notice notice-' + type + ' is-dismissible"></div>');
+            var parts = String(message).split(/<br\s*\/?>/i);
+            for (var i = 0; i < parts.length; i++) {
+                if (i > 0) $msg.append('<br>');
+                $msg.append($('<p></p>').text(parts[i]));
+            }
+            $container.empty().append($msg);
+        },
+
         createPostseasonConfig: function() {
             var self = this;
             var configId = $('#spsg-config-selector').val() || $('#spsg-config-id').val();
 
             if (!configId) {
-                this.showMessage('error', 'Please select or save a configuration first');
+                this.showPostseasonMessage('error', 'Please select or save a configuration first');
                 return;
             }
 
@@ -284,21 +303,32 @@
                 type: 'POST',
                 data: data,
                 beforeSend: function() {
-                    self.showMessage('info', 'Creating postseason configuration...');
+                    self.showPostseasonMessage('info', 'Creating postseason configuration...');
                 },
                 success: function(response) {
                     if (response.success) {
-                        self.showMessage('success', response.data.message);
+                        self.showPostseasonMessage('success', response.data.message);
                         setTimeout(function() {
                             window.location.href = '?page=spsg-schedule-generator&config_id=' + response.data.new_config_id;
                         }, 1000);
                     } else {
-                        var errorMsg = response.data.message || response.data || 'Failed to create postseason configuration';
-                        self.showMessage('error', errorMsg);
+                        var errData = response.data || {};
+                        var msg = errData.message || 'Failed to create postseason configuration';
+                        if (errData.errors && errData.errors.length) {
+                            var unique = errData.errors.filter(function(e) { return e !== msg; });
+                            if (unique.length) msg += '<br>' + unique.join('<br>');
+                        }
+                        if (errData.field_errors && errData.field_errors.errors) {
+                            var details = errData.field_errors.errors;
+                            for (var key in details) {
+                                if (details.hasOwnProperty(key)) msg += '<br>' + details[key];
+                            }
+                        }
+                        self.showPostseasonMessage('error', msg);
                     }
                 },
                 error: function(xhr, status, error) {
-                    self.showMessage('error', 'Request failed: ' + error);
+                    self.showPostseasonMessage('error', 'Request failed: ' + error);
                 }
             });
         },

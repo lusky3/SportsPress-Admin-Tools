@@ -117,6 +117,13 @@ class SPSG_Admin_Renderer {
 				</table>
 				<button type="button" class="button button-primary" id="spsg-postseason-submit"><?php esc_html_e( 'Create', 'sportspress-schedule-generator' ); ?></button>
 				<button type="button" class="button" id="spsg-postseason-cancel"><?php esc_html_e( 'Cancel', 'sportspress-schedule-generator' ); ?></button>
+				<!--
+				Deliberately separate from #spsg-messages (which lives inside
+				the Generate Schedule tab's markup, hidden while this panel is
+				open on the Basic Configuration tab -- a message written only
+				there is invisible until the operator happens to switch tabs).
+				-->
+				<div id="spsg-postseason-message" style="margin-top: 10px;"></div>
 			</div>
 			<?php endif; ?>
 
