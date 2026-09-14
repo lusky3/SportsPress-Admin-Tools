@@ -105,10 +105,10 @@ class SPSG_Admin_Renderer {
 					<tr>
 						<th scope="row"><?php esc_html_e( 'Championship Day', 'sportspress-schedule-generator' ); ?></th>
 						<td>
-							<select id="spsg-postseason-champ-day"><?php echo $this->render_day_options( 'saturday' ); ?></select>
-							<input type="time" id="spsg-postseason-champ-start" value="18:45" />
+							<select id="spsg-postseason-champ-day" aria-label="<?php esc_attr_e( 'Championship day of week', 'sportspress-schedule-generator' ); ?>"><?php echo $this->render_day_options( 'saturday' ); ?></select>
+							<input type="time" id="spsg-postseason-champ-start" value="18:45" aria-label="<?php esc_attr_e( 'Championship window start time', 'sportspress-schedule-generator' ); ?>" />
 							<?php esc_html_e( 'to', 'sportspress-schedule-generator' ); ?>
-							<input type="time" id="spsg-postseason-champ-end" value="21:00" />
+							<input type="time" id="spsg-postseason-champ-end" value="21:00" aria-label="<?php esc_attr_e( 'Championship window end time', 'sportspress-schedule-generator' ); ?>" />
 						</td>
 					</tr>
 					<tr>
@@ -195,25 +195,25 @@ class SPSG_Admin_Renderer {
 		<input type="hidden" name="seed_resolution_mode" value="<?php echo esc_attr( $config->seed_resolution_mode ?? 'manual' ); ?>" />
 		<table class="form-table">
 			<tr>
-				<th scope="row"><?php esc_html_e( 'Round Robin Weeks', 'sportspress-schedule-generator' ); ?></th>
+				<th scope="row"><label for="spsg-postseason-settings-rrw"><?php esc_html_e( 'Round Robin Weeks', 'sportspress-schedule-generator' ); ?></label></th>
 				<td>
-					<input type="number" name="round_robin_weeks" value="<?php echo esc_attr( $config->round_robin_weeks ?? 3 ); ?>" min="1" class="small-text" />
+					<input type="number" name="round_robin_weeks" id="spsg-postseason-settings-rrw" value="<?php echo esc_attr( $config->round_robin_weeks ?? 3 ); ?>" min="1" class="small-text" />
 					<p class="description"><?php esc_html_e( 'Number of cross round-robin weeks before the Championship/Consolation week. Must stay consistent with Season End and Games Per Team above (Season End = Season Start + (weeks + 1) x 7 days; Games Per Team = weeks + 1) or saving will fail validation.', 'sportspress-schedule-generator' ); ?></p>
 				</td>
 			</tr>
 			<tr>
 				<th scope="row"><?php esc_html_e( 'Championship Day', 'sportspress-schedule-generator' ); ?></th>
 				<td>
-					<select name="championship_day[day]"><?php echo $this->render_day_options( $config->championship_day['day'] ?? 'saturday' ); ?></select>
-					<input type="time" name="championship_day[start]" value="<?php echo esc_attr( $config->championship_day['start'] ?? '' ); ?>" />
+					<select name="championship_day[day]" aria-label="<?php esc_attr_e( 'Championship day of week', 'sportspress-schedule-generator' ); ?>"><?php echo $this->render_day_options( $config->championship_day['day'] ?? 'saturday' ); ?></select>
+					<input type="time" name="championship_day[start]" value="<?php echo esc_attr( $config->championship_day['start'] ?? '' ); ?>" aria-label="<?php esc_attr_e( 'Championship window start time', 'sportspress-schedule-generator' ); ?>" />
 					<?php esc_html_e( 'to', 'sportspress-schedule-generator' ); ?>
-					<input type="time" name="championship_day[end]" value="<?php echo esc_attr( $config->championship_day['end'] ?? '' ); ?>" />
+					<input type="time" name="championship_day[end]" value="<?php echo esc_attr( $config->championship_day['end'] ?? '' ); ?>" aria-label="<?php esc_attr_e( 'Championship window end time', 'sportspress-schedule-generator' ); ?>" />
 				</td>
 			</tr>
 			<tr>
-				<th scope="row"><?php esc_html_e( 'Consolation Day', 'sportspress-schedule-generator' ); ?></th>
+				<th scope="row"><label for="spsg-postseason-settings-consolation-day"><?php esc_html_e( 'Consolation Day', 'sportspress-schedule-generator' ); ?></label></th>
 				<td>
-					<select name="consolation_day"><?php echo $this->render_day_options( $config->consolation_day ?? 'sunday' ); ?></select>
+					<select name="consolation_day" id="spsg-postseason-settings-consolation-day"><?php echo $this->render_day_options( $config->consolation_day ?? 'sunday' ); ?></select>
 				</td>
 			</tr>
 		</table>

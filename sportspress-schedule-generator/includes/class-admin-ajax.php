@@ -374,10 +374,37 @@ class SPSG_Admin_Ajax {
 	}
 
 	/**
+	 * Build the create_postseason_configuration() overrides array from the
+	 * raw request. Split out of ajax_create_postseason_config() purely to
+	 * keep that method's own complexity down (S138-style extraction, same
+	 * convention as SPSG_Admin_Renderer's per-tab render methods).
+	 *
+	 * @return array Sanitized overrides, shaped for create_postseason_configuration().
+	 *
+	 * @SuppressWarnings(PHPMD.Superglobals)
+	 */
+	private function postseason_overrides_from_request() {
+		$championship_day = (array) wp_unslash( $_POST['championship_day'] ?? array() );
+
+		return array(
+			'season_start' => sanitize_text_field( wp_unslash( $_POST['season_start'] ?? '' ) ),
+			'round_robin_weeks' => absint( wp_unslash( $_POST['round_robin_weeks'] ?? 3 ) ),
+			'championship_day' => array(
+				'day'   => sanitize_text_field( $championship_day['day'] ?? '' ),
+				'start' => sanitize_text_field( $championship_day['start'] ?? '' ),
+				'end'   => sanitize_text_field( $championship_day['end'] ?? '' ),
+			),
+			'consolation_day' => sanitize_text_field( wp_unslash( $_POST['consolation_day'] ?? '' ) ),
+		);
+	}
+
+	/**
 	 * AJAX handler for creating a postseason configuration from a saved
 	 * regular-season one -- the classic-page equivalent of the React
 	 * dashboard's "🏆 Playoffs" action, both wrapping the same
 	 * SPSG_Configuration_Manager::create_postseason_configuration().
+	 *
+	 * @SuppressWarnings(PHPMD.Superglobals)
 	 */
 	public function ajax_create_postseason_config() {
 		check_ajax_referer( 'spsg_create_postseason_config', 'spsg_nonce' );
@@ -391,19 +418,10 @@ class SPSG_Admin_Ajax {
 			wp_send_json_error( __( 'No configuration ID provided', 'sportspress-schedule-generator' ) );
 		}
 
-		$championship_day = (array) wp_unslash( $_POST['championship_day'] ?? array() );
-		$overrides = array(
-			'season_start' => sanitize_text_field( wp_unslash( $_POST['season_start'] ?? '' ) ),
-			'round_robin_weeks' => absint( wp_unslash( $_POST['round_robin_weeks'] ?? 3 ) ),
-			'championship_day' => array(
-				'day'   => sanitize_text_field( $championship_day['day'] ?? '' ),
-				'start' => sanitize_text_field( $championship_day['start'] ?? '' ),
-				'end'   => sanitize_text_field( $championship_day['end'] ?? '' ),
-			),
-			'consolation_day' => sanitize_text_field( wp_unslash( $_POST['consolation_day'] ?? '' ) ),
+		$new_config_id = $this->config_manager->create_postseason_configuration(
+			$config_id,
+			$this->postseason_overrides_from_request()
 		);
-
-		$new_config_id = $this->config_manager->create_postseason_configuration( $config_id, $overrides );
 
 		if ( is_wp_error( $new_config_id ) ) {
 			wp_send_json_error( $new_config_id->get_error_message() );

@@ -84,12 +84,18 @@ function update_option( $name, $value, $autoload = null ) {
 	return true;
 }
 
+/**
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
 function check_ajax_referer( $action, $arg = false ) {
 	$state = cpa_test_state();
 	$state->referer_checks[] = $action;
 	return true;
 }
 
+/**
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
 function current_user_can( $capability ) {
 	return cpa_test_state()->can_manage_options;
 }
@@ -161,6 +167,8 @@ function cpa_assert( $condition, $message ) {
  * Runs ajax_create_postseason_config() and returns its response payload,
  * whatever the outcome -- mirrors calling the real endpoint and reading
  * back its JSON body, without the process actually exiting.
+ *
+ * @SuppressWarnings(PHPMD.Superglobals)
  */
 function cpa_run( $manager, $post ) {
 	$_POST = $post;
