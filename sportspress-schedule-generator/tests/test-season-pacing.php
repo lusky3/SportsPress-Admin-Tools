@@ -220,7 +220,16 @@ if ( sp_assert( ! is_wp_error( $schedule ), 'allocation succeeds' . ( is_wp_erro
 
 	$s = sp_summarise( $schedule, $all_dates );
 	sp_assert( 0 === $s['double_headers'], 'no team plays twice on one date (' . $s['double_headers'] . ' double-headers)' );
-	sp_assert( $s['dates_used'] >= 16, 'games use at least 16 of the 20 dates (' . $s['dates_used'] . ')' );
+	// Round-based allocation plays the division as a unit: a 6-team
+	// division with 10 games each is 10 full rounds of 3 games, so exactly 10
+	// of the 20 dates carry games -- evenly spaced (see the gap check below),
+	// not the first 10. This used to assert >= 16 dates, which was the old
+	// game-by-game pass scattering 1-2 games a night; the point of the check
+	// (games are paced across the whole season, not front-loaded) is now
+	// carried by the last-date and max-gap assertions.
+	sp_assert( 10 === $s['dates_used'], 'games use exactly 10 of the 20 dates, one full 3-game round each (' . $s['dates_used'] . ')' );
+	$per_date = array_count_values( array_map( function ( $g ) { return $g->date; }, $schedule ) );
+	sp_assert( array( 3 => 10 ) === array_count_values( $per_date ), 'every date used carries a complete round of 3 games (' . json_encode( array_count_values( $per_date ) ) . ')' );
 	sp_assert( $s['last_date'] >= '2027-01-29', 'the season is used to its end (last game ' . $s['last_date'] . ')' );
 	// 10 games over 20 dates is a game every 2 dates; allow twice that.
 	sp_assert( $s['max_gap'] <= 4, 'no team waits more than 4 playing dates between games (worst ' . $s['max_gap'] . ')' );

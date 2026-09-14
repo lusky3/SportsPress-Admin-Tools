@@ -12,15 +12,18 @@
  * -- fixed matchup order, every slot tried in turn -- burned its budget
  * permuting time slots under a doomed week choice.
  *
- * Covers the three changes that fix it in SPSG_Slot_Allocator:
- *  - breaks_week_feasibility(): a candidate that leaves some team with more
- *    games than open weeks, or a week with more must-play teams than
- *    places, or too little week capacity for the games left, is rejected
- *    before it is ever scored;
+ * Covers the changes that fix it in SPSG_Slot_Allocator:
+ *  - round_based_allocate(): an intra-division season is built rounds
+ *    first -- each division's matchups split into full rounds, divisions
+ *    assigned to weeks (a short week takes the divisions that sat out the
+ *    previous short week), then each week's games placed into its slots;
+ *  - breaks_week_feasibility(): in the game-by-game passes, a candidate that
+ *    leaves some team with more games than open weeks, or a week with more
+ *    must-play teams than places, or too little week capacity for the games
+ *    left, is rejected before it is ever scored;
  *  - backtrack_recursive() places the matchup with the fewest open weeks
- *    first instead of walking the list in order;
- *  - rank_candidate_slots() branches on one slot per date, since which DATE
- *    a game lands on is the decision that interacts with every other game.
+ *    first and branches on one slot per date, since which DATE a game lands
+ *    on is the decision that interacts with every other game.
  *
  * Standalone -- bootstraps WP mocks then loads classes directly, matching
  * test-engine-correctness.php.
@@ -281,6 +284,95 @@ foreach ( $schedule as $game ) {
 	$schedule_by_date[ $game->date ][] = $game;
 }
 zs_assert( 0 === $violations, 'no placed game violates a hard constraint on re-validation (overlap-avoid pairs, blackouts)' );
+
+echo "\n=== The real 23-week regular season: full weeks stay full, short weeks rotate ===\n\n";
+
+// Same league over its real regular season, Sept 25 2026 - Feb 28 2027 at
+// 17 games each: 23 weeks, 18 of them full (16 slots) and 5 shortened by
+// blackout dates (Oct 9/11, Oct 23/25, Dec 25/27 with a 3-slot Sunday,
+// Jan 1/3, Jan 15/17). 319 slots for 272 games, so 47 stay empty -- the
+// point is WHERE: with 18 full weeks and 17 rounds, every division must sit
+// out some full weeks, and those idle weeks must be spread so no week
+// collapses, while a short week is filled by the divisions the previous
+// short week couldn't take.
+$season_config = new SPSG_Schedule_Configuration(
+	array_merge(
+		$config->to_array(),
+		array(
+			'season_end'              => '2027-02-28',
+			'games_per_team'          => 17,
+			'blackout_dates'          => array( '2026-10-11', '2026-10-23', '2026-12-25', '2027-01-01', '2027-01-15' ),
+			'venue_date_availability' => array(
+				'black' => array( array( 'start_date' => '2026-12-27', 'end_date' => '2026-12-27', 'time_slots' => array( '16:00', '17:00', '18:00' ) ) ),
+			),
+		)
+	)
+);
+$season_cm     = new SPSG_Constraint_Manager();
+$season_slots  = ( new SPSG_Slot_Allocator( $season_cm ) )->generate_available_slots( $season_config );
+zs_assert( 319 === count( $season_slots ), 'the real season exposes 319 slots (' . count( $season_slots ) . ')' );
+
+$season_result = ( new SPSG_Schedule_Engine( $season_cm ) )->generate_schedule( $season_config );
+if ( zs_assert( ! is_wp_error( $season_result ) && 272 === count( $season_result['schedule'] ), 'all 272 games are placed' ) ) {
+	$slots_per_week = array();
+	foreach ( $season_slots as $slot ) {
+		$week                    = SPSG_Schedule_Helper::iso_week_key( $slot->date );
+		$slots_per_week[ $week ] = ( $slots_per_week[ $week ] ?? 0 ) + 1;
+	}
+	$games_per_week = array();
+	$teams_per_week = array();
+	$season_teams   = array();
+	$season_totals  = array();
+	foreach ( $season_result['schedule'] as $game ) {
+		$week                    = SPSG_Schedule_Helper::iso_week_key( $game->date );
+		$games_per_week[ $week ] = ( $games_per_week[ $week ] ?? 0 ) + 1;
+		foreach ( array( zs_name( $game->home_team ), zs_name( $game->away_team ) ) as $team ) {
+			$teams_per_week[ $week ][ $team ] = ( $teams_per_week[ $week ][ $team ] ?? 0 ) + 1;
+			$season_teams[ $team ]            = true;
+			$season_totals[ $team ]           = ( $season_totals[ $team ] ?? 0 ) + 1;
+		}
+	}
+	zs_assert( array( 17 => 32 ) === array_count_values( $season_totals ), 'every team gets exactly 17 games' );
+
+	$short_weeks     = array();
+	$short_unfilled  = 0;
+	$thinnest_full   = PHP_INT_MAX;
+	$double_headers  = 0;
+	foreach ( $slots_per_week as $week => $slots ) {
+		$games = $games_per_week[ $week ] ?? 0;
+		if ( $slots < 16 ) {
+			$short_weeks[]   = $week;
+			$short_unfilled += $slots - $games;
+		} else {
+			$thinnest_full = min( $thinnest_full, $games );
+		}
+		foreach ( $teams_per_week[ $week ] ?? array() as $count ) {
+			if ( $count > 1 ) {
+				$double_headers++;
+			}
+		}
+	}
+	zs_assert( 0 === $double_headers, 'no team plays twice in one week' );
+	zs_assert( 0 === $short_unfilled, 'every shortened week is filled to its capacity (' . $short_unfilled . ' short-week slots empty)' );
+	zs_assert(
+		$thinnest_full >= 12,
+		'no full week has more than one division idle -- the thinnest full week still carries ' . $thinnest_full . ' of 16 games'
+	);
+
+	// Rotation: every team that sat out one short week plays in the next.
+	$rotation_ok = true;
+	$all_teams   = array_keys( $season_teams );
+	for ( $i = 0; $i < count( $short_weeks ) - 1; $i++ ) {
+		$sat_out     = array_diff( $all_teams, array_keys( $teams_per_week[ $short_weeks[ $i ] ] ?? array() ) );
+		$played_next = array_keys( $teams_per_week[ $short_weeks[ $i + 1 ] ] ?? array() );
+		$places_next = 2 * $slots_per_week[ $short_weeks[ $i + 1 ] ];
+		$rotated     = count( array_intersect( $sat_out, $played_next ) );
+		if ( $rotated < min( count( $sat_out ), $places_next ) ) {
+			$rotation_ok = false;
+		}
+	}
+	zs_assert( $rotation_ok, 'the teams a short week could not take are the ones the next short week does (' . count( $short_weeks ) . ' short weeks)' );
+}
 
 echo "\n=== Seasons with slack are unaffected: the pruning never rejects a placement that could have completed ===\n\n";
 
