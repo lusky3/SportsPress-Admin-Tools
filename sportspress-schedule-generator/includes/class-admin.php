@@ -435,6 +435,7 @@ class SPSG_Admin {
 					'upload_venue_csv' => wp_create_nonce( 'spsg_upload_venue_csv' ),
 					'import_venue_schedule' => wp_create_nonce( 'spsg_import_venue_schedule' ),
 					'clone_config' => wp_create_nonce( 'spsg_clone_config' ),
+					'create_postseason_config' => wp_create_nonce( 'spsg_create_postseason_config' ),
 					'preview_import' => wp_create_nonce( 'spsg_preview_import' ),
 					'get_export_formats' => wp_create_nonce( 'spsg_get_export_formats' ),
 					'clear_change_history' => wp_create_nonce( 'spsg_clear_change_history' ),

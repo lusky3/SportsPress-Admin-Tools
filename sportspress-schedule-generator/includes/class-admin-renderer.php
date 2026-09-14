@@ -34,6 +34,26 @@ class SPSG_Admin_Renderer {
 	}
 
 	/**
+	 * Render <option> elements for the seven days of the week, used by both
+	 * the postseason creation panel and the postseason settings fields.
+	 * Always the full week regardless of the configuration's own
+	 * playing_days -- a Championship/Consolation day is often deliberately
+	 * NOT one of the regular season's playing days (e.g. a Saturday finale
+	 * for a weekday league).
+	 *
+	 * @param string $selected_day Currently selected day value.
+	 * @return string HTML <option> elements.
+	 */
+	private function render_day_options( $selected_day ) {
+		$days = array( 'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday' );
+		$html = '';
+		foreach ( $days as $day ) {
+			$html .= '<option value="' . esc_attr( $day ) . '" ' . selected( $selected_day, $day, false ) . '>' . esc_html( ucfirst( $day ) ) . '</option>';
+		}
+		return $html;
+	}
+
+	/**
 	 * Render basic configuration tab
 	 */
 	public function render_basic_config_tab( $config ) {
@@ -46,7 +66,11 @@ class SPSG_Admin_Renderer {
 					<?php
 					$saved_configs = $this->config_manager->get_all_configurations();
 					foreach ( $saved_configs as $config_id => $config_info ) {
-						echo '<option value="' . esc_attr( $config_id ) . '" ' . selected( $config->id ?? '', $config_id, false ) . '>' . esc_html( $config_info['name'] ) . ' (' . esc_html( $config_info['modified'] ) . ')</option>';
+						$label = $config_info['name'] . ' (' . $config_info['modified'] . ')';
+						if ( ! empty( $config_info['is_postseason'] ) ) {
+							$label = '🏆 ' . $label;
+						}
+						echo '<option value="' . esc_attr( $config_id ) . '" ' . selected( $config->id ?? '', $config_id, false ) . '>' . esc_html( $label ) . '</option>';
 					}
 					?>
 				</select>
@@ -61,6 +85,41 @@ class SPSG_Admin_Renderer {
 				<button type="button" class="button" id="spsg-import-config"><?php esc_html_e( 'Import Configuration', 'sportspress-schedule-generator' ); ?></button>
 				<input type="file" id="spsg-import-config-file" accept=".json" style="display: none;" />
 			</div>
+
+			<?php if ( ! empty( $config->id ) && empty( $config->is_postseason ) ) : ?>
+			<div class="spsg-config-actions" style="margin-top: 10px;">
+				<button type="button" class="button" id="spsg-create-postseason"><?php esc_html_e( 'Create Postseason Configuration', 'sportspress-schedule-generator' ); ?></button>
+			</div>
+			<div id="spsg-postseason-panel" style="display: none; margin-top: 10px; padding: 10px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px;">
+				<h4><?php esc_html_e( 'Create Postseason Configuration', 'sportspress-schedule-generator' ); ?></h4>
+				<p class="description"><?php esc_html_e( 'Creates a new configuration derived from this one: a cross round-robin followed by a Championship/Consolation week, seeded from season standings once the round-robin weeks conclude.', 'sportspress-schedule-generator' ); ?></p>
+				<table class="form-table">
+					<tr>
+						<th scope="row"><label for="spsg-postseason-season-start"><?php esc_html_e( 'Season Start', 'sportspress-schedule-generator' ); ?></label></th>
+						<td><input type="date" id="spsg-postseason-season-start" /></td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="spsg-postseason-rrw"><?php esc_html_e( 'Round Robin Weeks', 'sportspress-schedule-generator' ); ?></label></th>
+						<td><input type="number" id="spsg-postseason-rrw" min="1" value="3" class="small-text" /></td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Championship Day', 'sportspress-schedule-generator' ); ?></th>
+						<td>
+							<select id="spsg-postseason-champ-day" aria-label="<?php esc_attr_e( 'Championship day of week', 'sportspress-schedule-generator' ); ?>"><?php echo $this->render_day_options( 'saturday' ); ?></select>
+							<input type="time" id="spsg-postseason-champ-start" value="18:45" aria-label="<?php esc_attr_e( 'Championship window start time', 'sportspress-schedule-generator' ); ?>" />
+							<?php esc_html_e( 'to', 'sportspress-schedule-generator' ); ?>
+							<input type="time" id="spsg-postseason-champ-end" value="21:00" aria-label="<?php esc_attr_e( 'Championship window end time', 'sportspress-schedule-generator' ); ?>" />
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="spsg-postseason-consolation-day"><?php esc_html_e( 'Consolation Day', 'sportspress-schedule-generator' ); ?></label></th>
+						<td><select id="spsg-postseason-consolation-day"><?php echo $this->render_day_options( 'sunday' ); ?></select></td>
+					</tr>
+				</table>
+				<button type="button" class="button button-primary" id="spsg-postseason-submit"><?php esc_html_e( 'Create', 'sportspress-schedule-generator' ); ?></button>
+				<button type="button" class="button" id="spsg-postseason-cancel"><?php esc_html_e( 'Cancel', 'sportspress-schedule-generator' ); ?></button>
+			</div>
+			<?php endif; ?>
 
 			<?php if ( get_option( 'spsg_enable_change_tracking', '1' ) === '1' && ! empty( $config->id ) ) : ?>
 			<div class="spsg-change-history" style="margin-top: 20px;">
@@ -127,6 +186,38 @@ class SPSG_Admin_Renderer {
 				</td>
 			</tr>
 		</table>
+
+		<?php if ( ! empty( $config->is_postseason ) ) : ?>
+		<h3><?php esc_html_e( 'Postseason Settings', 'sportspress-schedule-generator' ); ?> 🏆</h3>
+		<input type="hidden" name="is_postseason" value="1" />
+		<input type="hidden" name="postseason_source_config_id" value="<?php echo esc_attr( $config->postseason_source_config_id ?? '' ); ?>" />
+		<input type="hidden" name="postseason_source_season_id" value="<?php echo esc_attr( $config->postseason_source_season_id ?? 0 ); ?>" />
+		<input type="hidden" name="seed_resolution_mode" value="<?php echo esc_attr( $config->seed_resolution_mode ?? 'manual' ); ?>" />
+		<table class="form-table">
+			<tr>
+				<th scope="row"><label for="spsg-postseason-settings-rrw"><?php esc_html_e( 'Round Robin Weeks', 'sportspress-schedule-generator' ); ?></label></th>
+				<td>
+					<input type="number" name="round_robin_weeks" id="spsg-postseason-settings-rrw" value="<?php echo esc_attr( $config->round_robin_weeks ?? 3 ); ?>" min="1" class="small-text" />
+					<p class="description"><?php esc_html_e( 'Number of cross round-robin weeks before the Championship/Consolation week. Must stay consistent with Season End and Games Per Team above (Season End = Season Start + (weeks + 1) x 7 days; Games Per Team = weeks + 1) or saving will fail validation.', 'sportspress-schedule-generator' ); ?></p>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row"><?php esc_html_e( 'Championship Day', 'sportspress-schedule-generator' ); ?></th>
+				<td>
+					<select name="championship_day[day]" aria-label="<?php esc_attr_e( 'Championship day of week', 'sportspress-schedule-generator' ); ?>"><?php echo $this->render_day_options( $config->championship_day['day'] ?? 'saturday' ); ?></select>
+					<input type="time" name="championship_day[start]" value="<?php echo esc_attr( $config->championship_day['start'] ?? '' ); ?>" aria-label="<?php esc_attr_e( 'Championship window start time', 'sportspress-schedule-generator' ); ?>" />
+					<?php esc_html_e( 'to', 'sportspress-schedule-generator' ); ?>
+					<input type="time" name="championship_day[end]" value="<?php echo esc_attr( $config->championship_day['end'] ?? '' ); ?>" aria-label="<?php esc_attr_e( 'Championship window end time', 'sportspress-schedule-generator' ); ?>" />
+				</td>
+			</tr>
+			<tr>
+				<th scope="row"><label for="spsg-postseason-settings-consolation-day"><?php esc_html_e( 'Consolation Day', 'sportspress-schedule-generator' ); ?></label></th>
+				<td>
+					<select name="consolation_day" id="spsg-postseason-settings-consolation-day"><?php echo $this->render_day_options( $config->consolation_day ?? 'sunday' ); ?></select>
+				</td>
+			</tr>
+		</table>
+		<?php endif; ?>
 
 		<h3><?php esc_html_e( 'Quick Start', 'sportspress-schedule-generator' ); ?></h3>
 		<table class="form-table">

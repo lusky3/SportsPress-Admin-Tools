@@ -56,6 +56,7 @@ class SPSG_Admin_Ajax {
 		add_action( 'wp_ajax_spsg_upload_venue_csv', array( $this, 'ajax_upload_venue_csv' ) );
 		add_action( 'wp_ajax_spsg_import_venue_schedule', array( $this, 'ajax_import_venue_schedule' ) );
 		add_action( 'wp_ajax_spsg_clone_config', array( $this, 'ajax_clone_config' ) );
+		add_action( 'wp_ajax_spsg_create_postseason_config', array( $this, 'ajax_create_postseason_config' ) );
 		add_action( 'wp_ajax_spsg_preview_import', array( $this, 'ajax_preview_import' ) );
 		add_action( 'wp_ajax_spsg_get_export_formats', array( $this, 'ajax_get_export_formats' ) );
 		add_action( 'wp_ajax_spsg_clear_change_history', array( $this, 'ajax_clear_change_history' ) );
@@ -367,6 +368,86 @@ class SPSG_Admin_Ajax {
 		wp_send_json_success(
 			array(
 				'message' => __( 'Configuration cloned successfully', 'sportspress-schedule-generator' ),
+				'new_config_id' => $new_config_id,
+			)
+		);
+	}
+
+	/**
+	 * $arr[$key] if present, else $default -- avoids repeated `??` against
+	 * $_POST, which Codacy's bundled lizard (older than the one used to spot
+	 * check locally; see codacy-lizard-stale in project memory) appears to
+	 * badly over-count inside array literals. Same helper name/shape as the
+	 * existing SPSG_Configuration_Sanitizer::value() and
+	 * SPSG_Configuration_Manager::value().
+	 *
+	 * @param array  $arr     Source array.
+	 * @param string $key     Key to read.
+	 * @param mixed  $default Value to use when the key is absent.
+	 * @return mixed
+	 */
+	private static function value( array $arr, $key, $default ) {
+		return array_key_exists( $key, $arr ) ? $arr[ $key ] : $default;
+	}
+
+	/**
+	 * Build the create_postseason_configuration() overrides array from the
+	 * raw request. Split out of ajax_create_postseason_config() purely to
+	 * keep that method's own complexity down (S138-style extraction, same
+	 * convention as SPSG_Admin_Renderer's per-tab render methods).
+	 *
+	 * @return array Sanitized overrides, shaped for create_postseason_configuration().
+	 *
+	 * @SuppressWarnings(PHPMD.Superglobals)
+	 */
+	private function postseason_overrides_from_request() {
+		$post = wp_unslash( $_POST ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- caller runs check_ajax_referer() before this.
+		$championship_day = (array) self::value( $post, 'championship_day', array() );
+
+		return array(
+			'season_start' => sanitize_text_field( self::value( $post, 'season_start', '' ) ),
+			'round_robin_weeks' => absint( self::value( $post, 'round_robin_weeks', 3 ) ),
+			'championship_day' => array(
+				'day'   => sanitize_text_field( self::value( $championship_day, 'day', '' ) ),
+				'start' => sanitize_text_field( self::value( $championship_day, 'start', '' ) ),
+				'end'   => sanitize_text_field( self::value( $championship_day, 'end', '' ) ),
+			),
+			'consolation_day' => sanitize_text_field( self::value( $post, 'consolation_day', '' ) ),
+		);
+	}
+
+	/**
+	 * AJAX handler for creating a postseason configuration from a saved
+	 * regular-season one -- the classic-page equivalent of the React
+	 * dashboard's "🏆 Playoffs" action, both wrapping the same
+	 * SPSG_Configuration_Manager::create_postseason_configuration().
+	 *
+	 * @SuppressWarnings(PHPMD.Superglobals)
+	 */
+	public function ajax_create_postseason_config() {
+		check_ajax_referer( 'spsg_create_postseason_config', 'spsg_nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( __( 'Insufficient permissions', 'sportspress-schedule-generator' ) );
+		}
+
+		$config_id = sanitize_text_field( wp_unslash( $_POST['config_id'] ?? '' ) );
+		if ( empty( $config_id ) ) {
+			wp_send_json_error( __( 'No configuration ID provided', 'sportspress-schedule-generator' ) );
+		}
+
+		$new_config_id = $this->config_manager->create_postseason_configuration(
+			$config_id,
+			$this->postseason_overrides_from_request()
+		);
+
+		if ( is_wp_error( $new_config_id ) ) {
+			wp_send_json_error( $new_config_id->get_error_message() );
+		}
+
+		wp_send_json_success(
+			array(
+				'message' => __( 'Postseason configuration created successfully', 'sportspress-schedule-generator' ),
 				'new_config_id' => $new_config_id,
 			)
 		);
