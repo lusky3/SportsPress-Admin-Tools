@@ -94,7 +94,13 @@ export default {
       // to WordPress, where it can auto-complete a WooCommerce order.
       if (!isFromSafeDomain(message.from, env)) {
         console.log('Rejected email from unsafe envelope domain:', message.from);
-        message.setReject('Not from a safe sender domain');
+        // H4-equivalent for the domain gate itself: an unrecognized-but-real
+        // forwarder envelope (e.g. an operator's mail host rotating through
+        // MTA hostnames not yet added to SAFE_DOMAINS) must still reach a
+        // human archival copy before the message is permanently destroyed.
+        // Only a message nobody could archive gets bounced.
+        await forwardCopy(message, env, state);
+        rejectAsLastResort(message, state, 'Not from a safe sender domain');
         return;
       }
 
