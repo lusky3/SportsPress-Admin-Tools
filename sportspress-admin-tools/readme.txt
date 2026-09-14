@@ -4,7 +4,7 @@ Tags: sportspress, automation, sports
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 8.1
-Stable tag: 1.1.0
+Stable tag: 1.1.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -31,6 +31,9 @@ Each child plugin registers with this parent and loads only when its module is e
 2. Activate the plugin through the 'Plugins' screen in WordPress
 
 == Changelog ==
+
+= 1.1.1 =
+* Fix: the admin bar link no longer pushes the WordPress logo/home link over. It registered on the same hook priority WordPress uses for its own default toolbar items but ran first, inserting itself ahead of them; it now runs after all of them, appearing to their right (matching where the League Manager plugin's admin bar link already sits).
 
 = 1.1.0 =
 * New: an opt-in "Admin Bar Link" setting adds a link to this settings page in the WordPress admin bar (the top toolbar), visible on the front-end as well as admin screens. Off by default.
