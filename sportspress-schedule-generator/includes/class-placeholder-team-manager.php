@@ -97,6 +97,38 @@ class SPSG_Placeholder_Team_Manager {
 	}
 
 	/**
+	 * How many teams a division will actually have once generic placeholder
+	 * teams are injected -- i.e. what inject_into_config() below would
+	 * produce, without mutating anything. Real team count alone
+	 * undercounts a division that generic_teams would pad out (e.g. 7 real
+	 * teams against a per_division target of 6 still gets one placeholder,
+	 * per generate_placeholder_names()'s own odd-parity fixup), so any
+	 * caller that needs to know a division's EVENTUAL team count --
+	 * postseason validation included -- must go through this rather than
+	 * counting $division['teams'] directly.
+	 *
+	 * @param array $division     One division's raw data.
+	 * @param array $generic_teams Configuration's generic_teams setting.
+	 * @return int Effective team count (real + generic, if any would be added).
+	 */
+	public static function effective_team_count( array $division, array $generic_teams ) {
+		$teams = self::value( $division, 'teams', array() );
+
+		if ( empty( $generic_teams['enabled'] ) ) {
+			return count( $teams );
+		}
+
+		$placeholders = self::generate_placeholder_names(
+			$teams,
+			intval( self::value( $generic_teams, 'per_division', 8 ) ),
+			sanitize_text_field( self::value( $generic_teams, 'prefix', 'Team' ) ),
+			self::value( $division, 'name', '' )
+		);
+
+		return count( $teams ) + count( $placeholders );
+	}
+
+	/**
 	 * Inject placeholder teams into configuration divisions
 	 *
 	 * Modifies the config's divisions array in-place, adding placeholder
@@ -653,5 +685,22 @@ class SPSG_Placeholder_Team_Manager {
 		}
 
 		return $teams;
+	}
+
+	/**
+	 * $arr[$key] if present, else $default. Same helper name/shape as the
+	 * existing SPSG_Configuration_Sanitizer::value() and
+	 * SPSG_Configuration_Manager::value() -- avoids repeated `??` here,
+	 * which Codacy's bundled lizard (older than the one used to spot check
+	 * locally; see codacy-lizard-stale in project memory) appears to badly
+	 * over-count.
+	 *
+	 * @param array  $arr     Source array.
+	 * @param string $key     Key to read.
+	 * @param mixed  $default Value to use when the key is absent.
+	 * @return mixed
+	 */
+	private static function value( array $arr, $key, $default ) {
+		return array_key_exists( $key, $arr ) ? $arr[ $key ] : $default;
 	}
 }

@@ -251,6 +251,18 @@ class SPSG_Schedule_Engine {
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function generate_postseason_matchups( $config ) {
+		// Same injection the regular-season path runs (generate_matchups()
+		// above), just missing here until now: a postseason division whose
+		// real roster is short of an even count (e.g. 7 real teams against
+		// a generic_teams target of 6, which still gets one placeholder --
+		// see SPSG_Placeholder_Team_Manager::generate_placeholder_names()'s
+		// own odd-parity fixup) was previously left exactly as stored, so
+		// SPSG_Postseason_Matchup_Builder::build() below threw on the odd
+		// count regardless of what config validation had already accepted.
+		if ( ! empty( $config->generic_teams['enabled'] ) ) {
+			SPSG_Placeholder_Team_Manager::inject_into_config( $config );
+		}
+
 		try {
 			$matchups = SPSG_Postseason_Matchup_Builder::build( $config );
 		} catch ( InvalidArgumentException $e ) {

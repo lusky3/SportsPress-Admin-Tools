@@ -231,6 +231,7 @@
 
         togglePostseasonPanel: function() {
             $('#spsg-postseason-panel').toggle();
+            $('#spsg-postseason-message').empty();
             this.updatePostseasonDatePreview();
         },
 
@@ -257,12 +258,42 @@
             $preview.text('This bracket will run ' + fmt(start) + ' to ' + fmt(end) + '.');
         },
 
+        // #spsg-messages lives inside the Generate Schedule tab's markup, so
+        // it's hidden while this panel is open on the Basic Configuration
+        // tab -- a message written only there is invisible until the
+        // operator happens to switch tabs (H: reported as "nothing happened"
+        // after pressing Create, with the real error only found later on
+        // the Generate Schedule page). Write here instead, where the panel
+        // that triggered the action is actually visible.
+        // `lines` is a plain string or an array of plain strings -- never
+        // markup. Built with raw DOM APIs (createElement/textContent)
+        // rather than jQuery's HTML-string constructor, so no value here is
+        // ever treated as HTML by anything, caller included.
+        showPostseasonMessage: function(type, lines) {
+            var container = document.getElementById('spsg-postseason-message');
+            if (!container) return;
+            while (container.firstChild) container.removeChild(container.firstChild);
+
+            var div = document.createElement('div');
+            div.className = 'notice notice-' + type + ' is-dismissible';
+
+            var messageLines = Array.isArray(lines) ? lines : [ lines ];
+            messageLines.forEach(function(line, i) {
+                if (i > 0) div.appendChild(document.createElement('br'));
+                var p = document.createElement('p');
+                p.textContent = String(line);
+                div.appendChild(p);
+            });
+
+            container.appendChild(div);
+        },
+
         createPostseasonConfig: function() {
             var self = this;
             var configId = $('#spsg-config-selector').val() || $('#spsg-config-id').val();
 
             if (!configId) {
-                this.showMessage('error', 'Please select or save a configuration first');
+                this.showPostseasonMessage('error', 'Please select or save a configuration first');
                 return;
             }
 
@@ -284,21 +315,40 @@
                 type: 'POST',
                 data: data,
                 beforeSend: function() {
-                    self.showMessage('info', 'Creating postseason configuration...');
+                    self.showPostseasonMessage('info', 'Creating postseason configuration...');
                 },
                 success: function(response) {
                     if (response.success) {
-                        self.showMessage('success', response.data.message);
+                        self.showPostseasonMessage('success', response.data.message);
                         setTimeout(function() {
                             window.location.href = '?page=spsg-schedule-generator&config_id=' + response.data.new_config_id;
                         }, 1000);
                     } else {
-                        var errorMsg = response.data.message || response.data || 'Failed to create postseason configuration';
-                        self.showMessage('error', errorMsg);
+                        var errData = response.data || {};
+                        var mainMessage = errData.message || 'Failed to create postseason configuration';
+                        // Kept as an array of plain-text lines all the way to
+                        // showPostseasonMessage() -- never joined into a
+                        // single '<br>'-delimited string, so no value
+                        // crossing this function boundary is ever markup.
+                        var lines = [ mainMessage ];
+                        if (errData.errors && errData.errors.length) {
+                            errData.errors
+                                .filter(function(e) { return e !== mainMessage; })
+                                .forEach(function(e) { lines.push(e); });
+                        }
+                        if (errData.field_errors && errData.field_errors.errors) {
+                            // Object.values(), not a for-in/bracket-access
+                            // loop -- the field name itself is never used to
+                            // index back into the object.
+                            Object.values(errData.field_errors.errors).forEach(function(detail) {
+                                lines.push(detail);
+                            });
+                        }
+                        self.showPostseasonMessage('error', lines);
                     }
                 },
                 error: function(xhr, status, error) {
-                    self.showMessage('error', 'Request failed: ' + error);
+                    self.showPostseasonMessage('error', 'Request failed: ' + error);
                 }
             });
         },

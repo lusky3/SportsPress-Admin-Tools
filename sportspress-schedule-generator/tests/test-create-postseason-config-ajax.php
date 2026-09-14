@@ -131,18 +131,23 @@ function is_wp_error( $thing ) {
 class WP_Error {
 	private $code;
 	private $message;
-	public function __construct( $code = '', $message = '' ) {
+	private $data;
+	public function __construct( $code = '', $message = '', $data = null ) {
 		$this->code = $code;
 		$this->message = $message;
+		$this->data = $data;
 	}
 	public function get_error_code() { return $this->code; }
 	public function get_error_message() { return $this->message; }
+	public function get_error_messages() { return array( $this->message ); }
+	public function get_error_data() { return $this->data; }
 }
 
 require_once SPSG_PLUGIN_PATH . 'includes/interfaces/interface-configuration.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-configuration.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-configuration-sanitizer.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-helper.php';
+require_once SPSG_PLUGIN_PATH . 'includes/class-placeholder-team-manager.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-configuration-validator.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-error-handler.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-configuration-manager.php';
@@ -208,7 +213,7 @@ cpa_assert(
 $response = cpa_run( $manager, array( 'config_id' => 'config_does_not_exist' ) );
 cpa_assert( false === $response['success'], 'an unknown config_id gets a failure response' );
 cpa_assert(
-	false !== strpos( $response['data'], 'Source configuration not found' ),
+	is_array( $response['data'] ) && false !== strpos( $response['data']['message'], 'Source configuration not found' ),
 	'...surfacing SPSG_Configuration_Manager::create_postseason_configuration()\'s own WP_Error message'
 );
 
@@ -268,6 +273,53 @@ cpa_assert(
 cpa_assert(
 	isset( $stored['config_regular123'] ) && 2 === count( $stored ),
 	'the original source configuration is untouched, sitting alongside the new one'
+);
+
+echo "\n=== ajax_create_postseason_config(): validation failure surfaces the real reason ===\n\n";
+
+// Reproduces a real report: creating a postseason config from a source with
+// an odd-sized division failed with only "Configuration validation failed"
+// and no indication why -- the detailed per-field error was silently
+// dropped, and the message was written to a page element hidden on the tab
+// the operator was actually on. This covers the first half (the response
+// now carries the real reason); the hidden-element bug is a template/JS fix,
+// not something this PHP-only harness can exercise.
+$state->options['spsg_configurations']['config_odd_division'] = array(
+	'id'           => 'config_odd_division',
+	'name'         => 'Has An Odd Division',
+	'divisions'    => array( array( 'id' => 'd1', 'name' => 'Division 4', 'teams' => array( 'A', 'B', 'C', 'D', 'E', 'F', 'G' ) ) ), // 7 teams, odd
+	'venues'       => array( array( 'id' => 'v1', 'name' => 'Rink 1', 'capacity' => 4, 'available_days' => array( 'friday', 'sunday' ) ) ),
+	'playing_days' => array( 'friday', 'sunday' ),
+	'time_slots'   => array(
+		'friday' => array( '18:00', '19:00', '20:00' ),
+		'sunday' => array( '10:00', '11:00', '12:00' ),
+	),
+	'timezone'     => 'America/Toronto',
+	'season_end'   => '2027-01-31',
+	'created'      => '2026-08-01 00:00:00',
+	'modified'     => '2026-08-01 00:00:00',
+);
+
+$response = cpa_run(
+	$manager,
+	array(
+		'config_id' => 'config_odd_division',
+		'round_robin_weeks' => '3',
+		'championship_day' => array( 'day' => 'sunday', 'start' => '10:00', 'end' => '12:00' ),
+		'consolation_day' => 'friday',
+	)
+);
+
+cpa_assert( false === $response['success'], 'a source config with an odd-sized division fails' );
+cpa_assert(
+	is_array( $response['data'] ) && 'Configuration validation failed' === $response['data']['message'],
+	'the top-level message is still the generic one (matches the validator\'s own WP_Error message)'
+);
+cpa_assert(
+	isset( $response['data']['field_errors']['errors']['round_robin_weeks'] )
+		&& false !== strpos( $response['data']['field_errors']['errors']['round_robin_weeks'], 'Division 4' )
+		&& false !== strpos( $response['data']['field_errors']['errors']['round_robin_weeks'], 'odd number of teams' ),
+	'...but field_errors now carries the actual, actionable reason -- previously discarded entirely'
 );
 
 echo "\n=== Results ===\n";

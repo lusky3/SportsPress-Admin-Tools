@@ -612,6 +612,14 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 			'playing_days'                => self::value( $source, 'playing_days', array() ),
 			'time_slots'                  => self::value( $source, 'time_slots', array() ),
 			'timezone'                    => self::value( $source, 'timezone', '' ),
+			// Same roster-filling policy as the source season, not
+			// independently settable here: a division short of the source's
+			// own generic_teams target still gets a placeholder teammate at
+			// generation time (SPSG_Placeholder_Team_Manager's odd-parity
+			// fixup), and both validation (postseason_division_error()) and
+			// generation (SPSG_Schedule_Engine::generate_postseason_matchups())
+			// need to agree on that with the source, not silently drop it.
+			'generic_teams'               => self::value( $source, 'generic_teams', array( 'enabled' => false ) ),
 			'matchup_style'               => 'custom',
 			// The cross round-robin weeks plus the final (championship/
 			// consolation) week -- every team's real total game count for

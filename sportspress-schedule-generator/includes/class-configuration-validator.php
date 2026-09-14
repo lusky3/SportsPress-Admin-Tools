@@ -420,9 +420,16 @@ class SPSG_Configuration_Validator {
 	 *
 	 * @param array $division One division's raw data.
 	 * @return string|null Error message, or null if the division is fine.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function postseason_division_error( array $division ) {
-		$team_count = count( $division['teams'] ?? array() );
+		// Not the raw team list: a division short of an even count still
+		// gets a generic placeholder teammate at generation time when
+		// generic_teams is enabled (SPSG_Placeholder_Team_Manager's own
+		// odd-parity fixup) -- counting only real teams here would reject a
+		// division the actual bracket build will happily accept.
+		$team_count = SPSG_Placeholder_Team_Manager::effective_team_count( $division, $this->config->generic_teams ?? array() );
 		$name       = $division['name'] ?? __( 'Unnamed', 'sportspress-schedule-generator' );
 
 		if ( 0 !== $team_count % 2 ) {
