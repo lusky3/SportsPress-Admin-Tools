@@ -84,13 +84,13 @@ $constraint = new SPSG_Postseason_Week_Constraint();
 echo "=== SPSG_Postseason_Week_Constraint: Championship/Consolation games ===\n\n";
 
 // Final week is the trailing 7 days of season_end (2027-01-28): 2027-01-22..2027-01-28.
-$final_in_window = pwc_game( 'Div 1 RR-Seed 1', 'Div 1 RR-Seed 2', '2027-01-24' );
+$final_in_window = pwc_game( 'Div 1 Championship A', 'Div 1 Championship B', '2027-01-24' );
 pwc_assert( true === $constraint->validate( $final_in_window, array(), $config ), 'a Championship game inside the final week passes' );
 
-$final_too_early = pwc_game( 'Div 1 RR-Seed 1', 'Div 1 RR-Seed 2', '2027-01-14' );
+$final_too_early = pwc_game( 'Div 1 Championship A', 'Div 1 Championship B', '2027-01-14' );
 pwc_assert( is_wp_error( $constraint->validate( $final_too_early, array(), $config ) ), 'a Championship game scheduled before the final week fails' );
 
-$consolation_in_window = pwc_game( 'Div 1 RR-Seed 3', 'Div 1 RR-Seed 4', '2027-01-28' );
+$consolation_in_window = pwc_game( 'Div 1 Consolation 1 A', 'Div 1 Consolation 1 B', '2027-01-28' );
 pwc_assert( true === $constraint->validate( $consolation_in_window, array(), $config ), 'a Consolation game on season_end itself (last day of the final week) passes' );
 
 echo "\n=== SPSG_Postseason_Week_Constraint: cross-round-robin games ===\n\n";
@@ -127,7 +127,7 @@ $string_season_end_config = new stdClass();
 $string_season_end_config->is_postseason = true;
 $string_season_end_config->season_end    = '2027-01-28'; // plain string, not a DateTime object
 pwc_assert(
-	true === $constraint->validate( pwc_game( 'Div 1 RR-Seed 1', 'Div 1 RR-Seed 2', '2027-01-24' ), array(), $string_season_end_config ),
+	true === $constraint->validate( pwc_game( 'Div 1 Championship A', 'Div 1 Championship B', '2027-01-24' ), array(), $string_season_end_config ),
 	'a Championship game inside the final week passes when season_end is a plain string'
 );
 pwc_assert(

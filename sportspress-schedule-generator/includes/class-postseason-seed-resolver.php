@@ -31,7 +31,13 @@ class SPSG_Postseason_Seed_Resolver {
 
 	/**
 	 * Placeholder name prefix used for the final (championship/consolation)
-	 * week, resolved from the round-robin weeks' own standings.
+	 * week, resolved from the round-robin weeks' own standings. An internal
+	 * stage tag only -- see final_week_placeholder_name() for what actually
+	 * gets displayed/stored, which reads "Championship"/"Consolation N" to
+	 * match the config's own championship_day/consolation_day terminology
+	 * instead of a bare seed number (H, 2026-09-14: operators found
+	 * "RR-Seed 1" confusing precisely because the config already calls
+	 * these games Championship/Consolation).
 	 */
 	const RR_SEED_STAGE = 'RR-Seed';
 
@@ -39,9 +45,14 @@ class SPSG_Postseason_Seed_Resolver {
 	 * Placeholder team names for one division's one stage (Seed or RR-Seed),
 	 * in seed order 1..$team_count.
 	 *
-	 * Pure function -- no WordPress calls, no persistence. Names follow the
-	 * design's own convention exactly: "Div 1 Seed 1" .. "Div 1 Seed N", or
-	 * "Div 1 RR-Seed 1" .. "Div 1 RR-Seed N".
+	 * Pure function -- no WordPress calls, no persistence. SEED_STAGE names
+	 * follow the design's own original convention ("Div 1 Seed 1" ..
+	 * "Div 1 Seed N"); RR_SEED_STAGE names read
+	 * "Div 1 Championship A"/"Div 1 Championship B" for seeds 1-2 (the
+	 * Championship pairing, by SPSG_Postseason_Pairing::final_week_pairs()'s
+	 * own construction) and "Div 1 Consolation 1 A"/"...1 B",
+	 * "Div 1 Consolation 2 A"/"...2 B", etc. for every pairing after that --
+	 * see final_week_placeholder_name().
 	 *
 	 * @param string $division_name Division name, e.g. "Div 1".
 	 * @param int    $team_count    Number of seeds to name (N).
@@ -60,10 +71,31 @@ class SPSG_Postseason_Seed_Resolver {
 
 		$names = array();
 		for ( $seed = 1; $seed <= $team_count; $seed++ ) {
-			$names[ $seed ] = trim( sprintf( '%s %s %d', $division_name, $stage, $seed ) );
+			$names[ $seed ] = self::RR_SEED_STAGE === $stage
+				? self::final_week_placeholder_name( $division_name, $seed )
+				: trim( sprintf( '%s %s %d', $division_name, $stage, $seed ) );
 		}
 
 		return $names;
+	}
+
+	/**
+	 * One final-week placeholder name from its seed number: seeds 1/2 are
+	 * the Championship pairing's two sides, seeds 3/4 are Consolation 1's,
+	 * seeds 5/6 are Consolation 2's, and so on -- see
+	 * SPSG_Postseason_Pairing::final_week_pairs() for why pairing k is
+	 * always (2k+1, 2k+2).
+	 *
+	 * @param string $division_name Division name, e.g. "Div 1".
+	 * @param int    $seed          1-indexed seed number.
+	 * @return string
+	 */
+	private static function final_week_placeholder_name( $division_name, $seed ) {
+		$pair_index = intdiv( $seed - 1, 2 );
+		$side       = ( 1 === $seed % 2 ) ? 'A' : 'B';
+		$label      = 0 === $pair_index ? 'Championship' : ( 'Consolation ' . $pair_index );
+
+		return trim( sprintf( '%s %s %s', $division_name, $label, $side ) );
 	}
 
 	/**
@@ -79,20 +111,48 @@ class SPSG_Postseason_Seed_Resolver {
 	 *
 	 * @param string $name Team name to parse.
 	 * @return array{division: string, stage: string, seed: int}|null Null if
-	 *              $name doesn't match the "<division> <Seed|RR-Seed> <n>"
-	 *              pattern at all.
+	 *              $name doesn't match either stage's pattern at all. `stage`
+	 *              is always exactly self::SEED_STAGE or self::RR_SEED_STAGE
+	 *              regardless of which naming this parsed -- every caller
+	 *              (SPSG_Postseason_Bracket_Detector included) compares
+	 *              against those constants, never the literal name text.
 	 */
 	public static function parse_seed_placeholder_name( $name ) {
-		$pattern = '/^(.+?)\s+(' . preg_quote( self::SEED_STAGE, '/' ) . '|' . preg_quote( self::RR_SEED_STAGE, '/' ) . ')\s+(\d+)$/';
+		$trimmed = trim( (string) $name );
 
-		if ( ! preg_match( $pattern, trim( (string) $name ), $matches ) ) {
+		$seed_pattern = '/^(.+?)\s+' . preg_quote( self::SEED_STAGE, '/' ) . '\s+(\d+)$/';
+		if ( preg_match( $seed_pattern, $trimmed, $matches ) ) {
+			return array(
+				'division' => $matches[1],
+				'stage'    => self::SEED_STAGE,
+				'seed'     => (int) $matches[2],
+			);
+		}
+
+		return self::parse_final_week_placeholder_name( $trimmed );
+	}
+
+	/**
+	 * parse_seed_placeholder_name()'s RR_SEED_STAGE half: reconstructs the
+	 * same seed number final_week_placeholder_name() derived it from,
+	 * exactly reversing that method's pair_index/side split.
+	 *
+	 * @param string $trimmed Already-trimmed team name to parse.
+	 * @return array{division: string, stage: string, seed: int}|null
+	 */
+	private static function parse_final_week_placeholder_name( $trimmed ) {
+		$pattern = '/^(.+?)\s+(Championship|Consolation\s+(\d+))\s+([AB])$/';
+		if ( ! preg_match( $pattern, $trimmed, $matches ) ) {
 			return null;
 		}
 
+		$pair_index = '' === $matches[3] ? 0 : (int) $matches[3];
+		$seed       = ( $pair_index * 2 ) + ( 'A' === $matches[4] ? 1 : 2 );
+
 		return array(
 			'division' => $matches[1],
-			'stage'    => $matches[2],
-			'seed'     => (int) $matches[3],
+			'stage'    => self::RR_SEED_STAGE,
+			'seed'     => $seed,
 		);
 	}
 

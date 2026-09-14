@@ -60,10 +60,10 @@ foreach ( array( SPSG_Postseason_Seed_Resolver::SEED_STAGE, SPSG_Postseason_Seed
 	}
 }
 
-$multiword = SPSG_Postseason_Seed_Resolver::parse_seed_placeholder_name( 'Div 1 North RR-Seed 10' );
+$multiword = SPSG_Postseason_Seed_Resolver::parse_seed_placeholder_name( 'Div 1 North Consolation 4 B' );
 bd_assert(
 	null !== $multiword && 'Div 1 North' === $multiword['division'] && SPSG_Postseason_Seed_Resolver::RR_SEED_STAGE === $multiword['stage'] && 10 === $multiword['seed'],
-	'a multi-word division name (e.g. "Div 1 North") parses correctly, and a two-digit seed is not truncated'
+	'a multi-word division name (e.g. "Div 1 North") parses correctly, and a two-digit seed (Consolation 4 B = seed 10) is reconstructed correctly'
 );
 
 echo "\n=== parse_seed_placeholder_name(): non-placeholder names return null ===\n\n";
@@ -74,26 +74,26 @@ bd_assert( null === SPSG_Postseason_Seed_Resolver::parse_seed_placeholder_name( 
 bd_assert( null === SPSG_Postseason_Seed_Resolver::parse_seed_placeholder_name( '' ), 'an empty name returns null' );
 bd_assert( null === SPSG_Postseason_Seed_Resolver::parse_seed_placeholder_name( null ), 'a null name returns null' );
 
-echo "\n=== final_week_info(): identifies the Championship game (RR-Seed 1 vs RR-Seed 2, same division) ===\n\n";
+echo "\n=== final_week_info(): identifies the Championship game (Championship A vs Championship B, same division) ===\n\n";
 
-$championship = SPSG_Postseason_Bracket_Detector::final_week_info( bd_game( 'Div 1 RR-Seed 1', 'Div 1 RR-Seed 2' ) );
+$championship = SPSG_Postseason_Bracket_Detector::final_week_info( bd_game( 'Div 1 Championship A', 'Div 1 Championship B' ) );
 bd_assert(
 	null !== $championship && 'Div 1' === $championship['division'] && true === $championship['is_championship'],
-	'RR-Seed 1 vs RR-Seed 2 in the same division is the Championship game'
+	'Championship A vs Championship B in the same division is the Championship game'
 );
 
-$championship_reversed = SPSG_Postseason_Bracket_Detector::final_week_info( bd_game( 'Div 1 RR-Seed 2', 'Div 1 RR-Seed 1' ) );
+$championship_reversed = SPSG_Postseason_Bracket_Detector::final_week_info( bd_game( 'Div 1 Championship B', 'Div 1 Championship A' ) );
 bd_assert(
 	null !== $championship_reversed && true === $championship_reversed['is_championship'],
 	'home/away order does not matter -- {1,2} is the Championship pairing either way'
 );
 
-echo "\n=== final_week_info(): any other same-division RR-Seed pairing is Consolation ===\n\n";
+echo "\n=== final_week_info(): any other same-division pairing is Consolation ===\n\n";
 
-$consolation = SPSG_Postseason_Bracket_Detector::final_week_info( bd_game( 'Div 1 RR-Seed 3', 'Div 1 RR-Seed 4' ) );
+$consolation = SPSG_Postseason_Bracket_Detector::final_week_info( bd_game( 'Div 1 Consolation 1 A', 'Div 1 Consolation 1 B' ) );
 bd_assert(
 	null !== $consolation && 'Div 1' === $consolation['division'] && false === $consolation['is_championship'],
-	'RR-Seed 3 vs RR-Seed 4 is Consolation, not Championship'
+	'Consolation 1 A vs Consolation 1 B is Consolation, not Championship'
 );
 
 echo "\n=== final_week_info(): non-final-week games return null ===\n\n";
@@ -103,7 +103,7 @@ bd_assert(
 	'a cross-round-robin (Seed, not RR-Seed) game is not a final-week matchup'
 );
 bd_assert(
-	null === SPSG_Postseason_Bracket_Detector::final_week_info( bd_game( 'Div 1 RR-Seed 1', 'Div 2 RR-Seed 2' ) ),
+	null === SPSG_Postseason_Bracket_Detector::final_week_info( bd_game( 'Div 1 Championship A', 'Div 2 Championship B' ) ),
 	'RR-Seed placeholders from different divisions never play each other -- not a final-week matchup'
 );
 bd_assert(
@@ -111,15 +111,15 @@ bd_assert(
 	'a game between two already-resolved real teams is not a final-week matchup (seed resolution already ran)'
 );
 bd_assert(
-	null === SPSG_Postseason_Bracket_Detector::final_week_info( bd_game( 'Div 1 RR-Seed 1', 'Toronto Maple Leafs' ) ),
+	null === SPSG_Postseason_Bracket_Detector::final_week_info( bd_game( 'Div 1 Championship A', 'Toronto Maple Leafs' ) ),
 	'a game with only one placeholder side (partially resolved) is not a final-week matchup'
 );
 
 echo "\n=== final_week_info(): team references in object/array shape are handled ===\n\n";
 
 $object_shaped_game            = new stdClass();
-$object_shaped_game->home_team = (object) array( 'name' => 'Div 1 RR-Seed 1' );
-$object_shaped_game->away_team = array( 'name' => 'Div 1 RR-Seed 2' );
+$object_shaped_game->home_team = (object) array( 'name' => 'Div 1 Championship A' );
+$object_shaped_game->away_team = array( 'name' => 'Div 1 Championship B' );
 $object_result                 = SPSG_Postseason_Bracket_Detector::final_week_info( $object_shaped_game );
 bd_assert(
 	null !== $object_result && true === $object_result['is_championship'],
@@ -132,7 +132,7 @@ $round_robin_match = SPSG_Postseason_Bracket_Detector::cross_round_robin_divisio
 bd_assert( 'Div 1' === $round_robin_match, 'a same-division Seed-vs-Seed matchup returns its division name' );
 
 bd_assert(
-	null === SPSG_Postseason_Bracket_Detector::cross_round_robin_division( bd_game( 'Div 1 RR-Seed 1', 'Div 1 RR-Seed 2' ) ),
+	null === SPSG_Postseason_Bracket_Detector::cross_round_robin_division( bd_game( 'Div 1 Championship A', 'Div 1 Championship B' ) ),
 	'an RR-Seed (final-week) matchup is NOT a cross-round-robin matchup'
 );
 bd_assert(
