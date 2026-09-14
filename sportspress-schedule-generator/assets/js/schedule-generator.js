@@ -267,7 +267,11 @@
         // that triggered the action is actually visible.
         showPostseasonMessage: function(type, message) {
             var $container = $('#spsg-postseason-message');
-            var $msg = $('<div class="notice notice-' + type + ' is-dismissible"></div>');
+            // No user-supplied value ever reaches the HTML template passed to
+            // $() -- `type` is fixed to a small, hardcoded set of internal
+            // literals ('error'/'success'/'info'); adding it via addClass()
+            // instead of string-building the tag keeps that true structurally.
+            var $msg = $('<div class="notice is-dismissible"></div>').addClass('notice-' + type);
             var parts = String(message).split(/<br\s*\/?>/i);
             for (var i = 0; i < parts.length; i++) {
                 if (i > 0) $msg.append('<br>');
@@ -313,18 +317,26 @@
                         }, 1000);
                     } else {
                         var errData = response.data || {};
-                        var msg = errData.message || 'Failed to create postseason configuration';
+                        var mainMessage = errData.message || 'Failed to create postseason configuration';
+                        // Collected as plain-text lines and joined exactly
+                        // once at the end, rather than accumulated with `+=`
+                        // -- no intermediate variable ever holds a mix of
+                        // plain text and '<br>' markup.
+                        var lines = [ mainMessage ];
                         if (errData.errors && errData.errors.length) {
-                            var unique = errData.errors.filter(function(e) { return e !== msg; });
-                            if (unique.length) msg += '<br>' + unique.join('<br>');
+                            errData.errors
+                                .filter(function(e) { return e !== mainMessage; })
+                                .forEach(function(e) { lines.push(e); });
                         }
                         if (errData.field_errors && errData.field_errors.errors) {
-                            var details = errData.field_errors.errors;
-                            for (var key in details) {
-                                if (details.hasOwnProperty(key)) msg += '<br>' + details[key];
-                            }
+                            // Object.values(), not a for-in/bracket-access
+                            // loop -- the field name itself is never used to
+                            // index back into the object.
+                            Object.values(errData.field_errors.errors).forEach(function(detail) {
+                                lines.push(detail);
+                            });
                         }
-                        self.showPostseasonMessage('error', msg);
+                        self.showPostseasonMessage('error', lines.join('<br>'));
                     }
                 },
                 error: function(xhr, status, error) {
