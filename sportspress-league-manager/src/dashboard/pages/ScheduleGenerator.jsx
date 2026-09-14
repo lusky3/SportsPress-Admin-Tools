@@ -20,6 +20,21 @@ const blank = () => ({
 });
 const mkId = p => `${p}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
 
+// Mirrors SPSG_Configuration_Manager::build_postseason_config_data(): the
+// bracket always starts the day after the source season's own season_end,
+// and runs (round_robin_weeks + 1) calendar weeks. Display-only -- the
+// server independently derives and validates the real dates.
+function postseasonDateRange(sourceSeasonEnd, roundRobinWeeks) {
+	if (!sourceSeasonEnd || !roundRobinWeeks || roundRobinWeeks < 1) return null;
+	const start = new Date(`${sourceSeasonEnd}T00:00:00`);
+	if (Number.isNaN(start.getTime())) return null;
+	start.setDate(start.getDate() + 1);
+	const end = new Date(start);
+	end.setDate(end.getDate() + (7 * (roundRobinWeeks + 1) - 1));
+	const fmt = d => d.toISOString().slice(0, 10);
+	return { start: fmt(start), end: fmt(end) };
+}
+
 function Tbd({name}) {
 	if (!name) return null;
 	return typeof name === 'string' && name.startsWith('TBD')
@@ -140,9 +155,13 @@ export default function ScheduleGenerator() {
 	const presetRef = useRef(null);
 	// Postseason (phase 6): create-from-source panel + per-division placeholder minting
 	const [postseasonPanelId,setPostseasonPanelId] = useState(null);
-	const [postseasonForm,setPostseasonForm] = useState({season_start:'',round_robin_weeks:1,championship_day:{day:'saturday',start:'18:45',end:'21:00'},consolation_day:'sunday'});
+	const [postseasonForm,setPostseasonForm] = useState({round_robin_weeks:1,championship_day:{day:'saturday',start:'18:45',end:'21:00'},consolation_day:'sunday'});
 	const [postseasonBusy,setPostseasonBusy] = useState(false);
 	const [postseasonPlayingDays,setPostseasonPlayingDays] = useState(DAYS);
+	// The bracket always starts the day after the source config's own
+	// season_end -- there is no separate date to pick (see build_postseason_config_data()).
+	// Kept only to show what that works out to; the server independently derives and validates it.
+	const [postseasonSourceSeasonEnd,setPostseasonSourceSeasonEnd] = useState('');
 
 	const loadConfigs = useCallback(() => {
 		setLoading(true);
@@ -478,6 +497,7 @@ export default function ScheduleGenerator() {
 														const source = await spsg.getConfig(c.id).catch(()=>null);
 														const days = (source?.playing_days?.length) ? source.playing_days : DAYS;
 														setPostseasonPlayingDays(days);
+														setPostseasonSourceSeasonEnd(source?.season_end||'');
 														setPostseasonForm(p=>({
 															...p,
 															championship_day:{...p.championship_day,day:days.includes(p.championship_day.day)?p.championship_day.day:days[0]},
@@ -492,14 +512,8 @@ export default function ScheduleGenerator() {
 											<tr>
 												<td colSpan={5} style={{background:'var(--splm-surface-alt)',padding:'0.75rem'}}>
 													<h4 style={{marginTop:0}}>Create Postseason Configuration from "{c.name}"</h4>
-													<p className="splm-muted" style={{marginTop:0}}>Copies divisions, venues, playing days, and time slots from this configuration. Seed/RR-Seed placeholder teams for each division are minted automatically the first time a schedule is generated for it.</p>
+													<p className="splm-muted" style={{marginTop:0}}>Copies divisions, venues, playing days, and time slots from this configuration. Seed/RR-Seed placeholder teams for each division are minted automatically the first time a schedule is generated for it. It always starts the day after this configuration's own Season End -- there is no separate date to set.</p>
 													<div style={{display:'flex',gap:'0.75rem',flexWrap:'wrap',alignItems:'flex-end'}}>
-														<label style={{display:'flex',flexDirection:'column',fontSize:'0.85em'}}>
-															Postseason start date
-															<input type="date" className="splm-select"
-																value={postseasonForm.season_start}
-																onChange={e=>setPostseasonForm(p=>({...p,season_start:e.target.value}))}/>
-														</label>
 														<label style={{display:'flex',flexDirection:'column',fontSize:'0.85em'}}>
 															Round robin weeks
 															<input type="number" min={1} className="splm-select" style={{width:100}}
@@ -537,8 +551,14 @@ export default function ScheduleGenerator() {
 															</select>
 														</label>
 													</div>
+													{(() => {
+														const range = postseasonDateRange(postseasonSourceSeasonEnd, postseasonForm.round_robin_weeks);
+														return range ? (
+															<p className="splm-muted" style={{marginTop:'0.5rem',marginBottom:0}}>This bracket will run {range.start} to {range.end}.</p>
+														) : null;
+													})()}
 													<div style={{marginTop:'0.75rem',display:'flex',gap:'0.5rem'}}>
-														<button className="splm-btn splm-btn--primary" disabled={postseasonBusy||!postseasonForm.season_start} onClick={()=>doCreatePostseason(c.id)}>
+														<button className="splm-btn splm-btn--primary" disabled={postseasonBusy} onClick={()=>doCreatePostseason(c.id)}>
 															{postseasonBusy?'Creating…':'Create'}
 														</button>
 														<button className="splm-btn" onClick={()=>setPostseasonPanelId(null)}>Cancel</button>

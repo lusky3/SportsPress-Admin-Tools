@@ -106,6 +106,7 @@
             $('#spsg-create-postseason').on('click', this.togglePostseasonPanel.bind(this));
             $('#spsg-postseason-cancel').on('click', this.togglePostseasonPanel.bind(this));
             $('#spsg-postseason-submit').on('click', this.createPostseasonConfig.bind(this));
+            $('#spsg-postseason-rrw').on('input', this.updatePostseasonDatePreview.bind(this));
         },
         
         checkConfigurationStatus: function() {
@@ -230,6 +231,30 @@
 
         togglePostseasonPanel: function() {
             $('#spsg-postseason-panel').toggle();
+            this.updatePostseasonDatePreview();
+        },
+
+        // The bracket always starts the day after this configuration's own
+        // Season End -- there is no separate date to pick, so show what
+        // that works out to instead of asking for one. Pure display: the
+        // server independently derives and validates the real dates.
+        updatePostseasonDatePreview: function() {
+            var seasonEnd = $('input[name="season_end"]').val();
+            var weeks = parseInt($('#spsg-postseason-rrw').val(), 10) || 0;
+            var $preview = $('#spsg-postseason-date-preview');
+
+            if (!seasonEnd || weeks < 1) {
+                $preview.text('');
+                return;
+            }
+
+            var start = new Date(seasonEnd + 'T00:00:00');
+            start.setDate(start.getDate() + 1);
+            var end = new Date(start);
+            end.setDate(end.getDate() + (7 * (weeks + 1) - 1));
+
+            var fmt = function(d) { return d.toISOString().slice(0, 10); };
+            $preview.text('This bracket will run ' + fmt(start) + ' to ' + fmt(end) + '.');
         },
 
         createPostseasonConfig: function() {
@@ -245,7 +270,6 @@
                 action: 'spsg_create_postseason_config',
                 spsg_nonce: spsgData.nonces.create_postseason_config,
                 config_id: configId,
-                season_start: $('#spsg-postseason-season-start').val(),
                 round_robin_weeks: $('#spsg-postseason-rrw').val(),
                 championship_day: {
                     day: $('#spsg-postseason-champ-day').val(),

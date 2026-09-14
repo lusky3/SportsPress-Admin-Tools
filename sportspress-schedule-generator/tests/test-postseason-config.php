@@ -558,11 +558,12 @@ echo "\n=== SPSG_Configuration_Manager::build_postseason_config_data(): pure tra
 $manager = new SPSG_Configuration_Manager();
 
 $source = array(
-	'id'        => 'config_regular123',
-	'name'      => 'W2026-27',
-	'divisions' => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D' ) ) ),
-	'venues'    => array( array( 'id' => 'v1', 'name' => 'Rink 1' ) ),
-	'timezone'  => 'America/Toronto',
+	'id'         => 'config_regular123',
+	'name'       => 'W2026-27',
+	'divisions'  => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D' ) ) ),
+	'venues'     => array( array( 'id' => 'v1', 'name' => 'Rink 1' ) ),
+	'timezone'   => 'America/Toronto',
+	'season_end' => '2027-01-31',
 );
 
 $built = $manager->build_postseason_config_data( $source );
@@ -575,12 +576,16 @@ pc_assert( 3 === $built['round_robin_weeks'], 'round_robin_weeks defaults to 3 w
 pc_assert( 'manual' === $built['seed_resolution_mode'], 'seed_resolution_mode defaults to "manual"' );
 pc_assert( 4 === $built['games_per_team'], 'games_per_team is round_robin_weeks + 1 (the final week)' );
 pc_assert( 'custom' === $built['matchup_style'], 'matchup_style is always "custom" for a postseason config' );
+pc_assert(
+	'2027-02-01' === $built['season_start'],
+	'season_start is derived as the day after the source config\'s own season_end (2027-01-31), never a separate input'
+);
 
 $built_with_overrides = $manager->build_postseason_config_data(
 	$source,
 	array(
 		'name'                         => 'Custom Bracket Name',
-		'season_start'                 => '2027-02-01',
+		'season_start'                 => '2099-01-01', // deliberately wrong -- must be ignored, season_start is always derived from the source's season_end
 		'season_end'                   => '2027-03-01', // deliberately wrong -- must be ignored, season_end is always computed
 		'postseason_source_season_id'  => 674,
 		'round_robin_weeks'            => 4,
@@ -590,7 +595,10 @@ $built_with_overrides = $manager->build_postseason_config_data(
 	)
 );
 pc_assert( 'Custom Bracket Name' === $built_with_overrides['name'], 'an explicit name override wins over the "<source> Playoffs" default' );
-pc_assert( '2027-02-01' === $built_with_overrides['season_start'], 'season_start override applied' );
+pc_assert(
+	'2027-02-01' === $built_with_overrides['season_start'],
+	'a season_start override is ignored -- still derived from the source\'s season_end'
+);
 pc_assert(
 	'2027-03-07' === $built_with_overrides['season_end'],
 	'season_end is ALWAYS computed as season_start + (round_robin_weeks + 1) calendar weeks (4+1=5 weeks = 34 days after 2027-02-01), never the passed-in override'
@@ -599,16 +607,20 @@ pc_assert( 674 === $built_with_overrides['postseason_source_season_id'], 'postse
 pc_assert( 4 === $built_with_overrides['round_robin_weeks'], 'round_robin_weeks override applied' );
 pc_assert( 'automatic' === $built_with_overrides['seed_resolution_mode'], 'seed_resolution_mode override applied' );
 
-$built_no_start = $manager->build_postseason_config_data( $source );
+$source_no_season_end = $source;
+unset( $source_no_season_end['season_end'] );
+$built_no_source_end = $manager->build_postseason_config_data( $source_no_season_end );
 pc_assert(
-	'' === $built_no_start['season_end'],
-	'with no season_start at all, season_end stays empty rather than computing garbage'
+	'' === $built_no_source_end['season_start'] && '' === $built_no_source_end['season_end'],
+	'with no season_end on the source at all, season_start (and therefore season_end) stays empty rather than computing garbage'
 );
 
-$built_malformed_start = $manager->build_postseason_config_data( $source, array( 'season_start' => 'not a real date' ) );
+$source_malformed_end = $source;
+$source_malformed_end['season_end'] = 'not a real date';
+$built_malformed_source_end = $manager->build_postseason_config_data( $source_malformed_end );
 pc_assert(
-	'' === $built_malformed_start['season_end'],
-	'a malformed season_start (not parseable as a date) fails safely to an empty season_end, rather than an uncaught exception'
+	'' === $built_malformed_source_end['season_start'] && '' === $built_malformed_source_end['season_end'],
+	'a malformed source season_end (not parseable as a date) fails safely to an empty season_start/season_end, rather than an uncaught exception'
 );
 
 echo "\n=== SPSG_Configuration_Manager::create_postseason_configuration(): end to end ===\n\n";
@@ -632,6 +644,7 @@ $state->options['spsg_configurations'] = array(
 			'sunday' => array( '10:00', '11:00', '12:00' ),
 		),
 		'timezone'     => 'America/Toronto',
+		'season_end'   => '2027-01-31',
 		'created'      => '2026-08-01 00:00:00',
 		'modified'     => '2026-08-01 00:00:00',
 	),
@@ -643,13 +656,7 @@ pc_assert(
 	'an unknown source_config_id fails loudly with a WP_Error, rather than silently falling back to some other configuration'
 );
 
-$new_id = $manager->create_postseason_configuration(
-	'config_regular123',
-	array(
-		'season_start' => '2027-02-01',
-		'season_end'   => '2027-03-01',
-	)
-);
+$new_id = $manager->create_postseason_configuration( 'config_regular123' );
 pc_assert( is_string( $new_id ) && '' !== $new_id, 'creates and saves a new configuration, returning its id' );
 
 $stored = $state->options['spsg_configurations'];
