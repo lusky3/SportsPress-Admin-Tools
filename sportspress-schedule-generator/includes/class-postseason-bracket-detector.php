@@ -5,14 +5,16 @@
  *
  * A game is identifiable as the final week's Championship or Consolation
  * matchup purely from its two teams' placeholder names -- both teams are
- * the same division's "RR-Seed" placeholders (see
- * SPSG_Postseason_Seed_Resolver), and per
- * SPSG_Postseason_Pairing::final_week_pairs()'s own construction ("new-1 vs
- * new-2 (Championship), new-3 vs new-4, ... (Consolation)"), the pairing of
- * RR-Seed 1 with RR-Seed 2 always IS the Championship game, regardless of
- * which real teams those seeds go on to resolve to. This only holds before
- * seed resolution swaps the placeholders for real teams -- exactly the
- * window these constraints need to govern, since the design's own
+ * the same division's RR_SEED_STAGE placeholders (see
+ * SPSG_Postseason_Seed_Resolver, whose seed_placeholder_names() renders
+ * these as "<division> Championship A"/"...B" for seeds 1-2 and
+ * "<division> Consolation <k> A"/"...B" for every pairing after that), and
+ * per SPSG_Postseason_Pairing::final_week_pairs()'s own construction
+ * ("new-1 vs new-2 (Championship), new-3 vs new-4, ... (Consolation)"), the
+ * pairing of seed 1 with seed 2 always IS the Championship game, regardless
+ * of which real teams those seeds go on to resolve to. This only holds
+ * before seed resolution swaps the placeholders for real teams -- exactly
+ * the window these constraints need to govern, since the design's own
  * day/time/venue structure is meant to be locked in ahead of that.
  *
  * @author Cody (lusky3)

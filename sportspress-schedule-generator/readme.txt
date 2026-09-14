@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.3.3
+Stable tag: 1.3.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -59,7 +59,8 @@ Yes. The import dialog lets you choose conflict resolution (skip or overwrite), 
 
 == Changelog ==
 
-= 1.3.3 =
+= 1.3.4 =
+* Fix: the postseason final week's placeholder team names read "Division 1 RR-Seed 1", "Division 1 RR-Seed 2", etc. -- confusing on top of already being an internal seed number, since the same configuration already calls these games "Championship" and "Consolation" (the Championship Day/Consolation Day settings). They now read "Division 1 Championship A"/"...B" for the Championship pairing, and "Division 1 Consolation 1 A"/"...B", "Division 1 Consolation 2 A"/"...B", etc. for every pairing after that. Cross round-robin week placeholder names ("Division 1 Seed 1"..."N") are unchanged.
 * Fix: pressing "Create" on the classic admin page's postseason panel appeared to do nothing when the configuration failed validation -- the error was written to a message area that lives in the (hidden, inactive) Generate Schedule tab, only becoming visible once you happened to switch to it. The panel now has its own visible status area.
 * Fix: that validation failure also only ever showed the generic "Configuration validation failed", with no indication of what to actually fix. The specific reason (e.g. "Division 4 has an odd number of teams; postseason brackets require an even division size") is now shown.
 * Fix: a postseason configuration copied from a source with a Generic Teams roster-filling policy enabled dropped that setting entirely, so a division whose real team count was odd but relied on a generic placeholder teammate to round out to an even number (the same fixup the regular season already applies) was wrongly rejected as unsupported, and would have failed again at schedule-generation time regardless. Postseason creation and generation now both account for the generic placeholder the same way the regular season does.

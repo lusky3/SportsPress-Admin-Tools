@@ -131,8 +131,21 @@ sr_assert(
 
 $rr_names = SPSG_Postseason_Seed_Resolver::seed_placeholder_names( 'Div 1', 2, SPSG_Postseason_Seed_Resolver::RR_SEED_STAGE );
 sr_assert(
-	array( 1 => 'Div 1 RR-Seed 1', 2 => 'Div 1 RR-Seed 2' ) === $rr_names,
-	'RR-Seed stage names follow "<division> RR-Seed <n>" exactly'
+	array( 1 => 'Div 1 Championship A', 2 => 'Div 1 Championship B' ) === $rr_names,
+	'RR-Seed stage names for a 2-team final week (just the Championship pairing) read "<division> Championship <A|B>"'
+);
+
+$rr_names_larger = SPSG_Postseason_Seed_Resolver::seed_placeholder_names( 'Div 1', 6, SPSG_Postseason_Seed_Resolver::RR_SEED_STAGE );
+sr_assert(
+	array(
+		1 => 'Div 1 Championship A',
+		2 => 'Div 1 Championship B',
+		3 => 'Div 1 Consolation 1 A',
+		4 => 'Div 1 Consolation 1 B',
+		5 => 'Div 1 Consolation 2 A',
+		6 => 'Div 1 Consolation 2 B',
+	) === $rr_names_larger,
+	'RR-Seed stage names for a 6-team final week: only the top pair is Championship, every pair after is Consolation <k> numbered from 1'
 );
 
 $threw = false;

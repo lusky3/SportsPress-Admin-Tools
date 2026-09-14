@@ -90,8 +90,8 @@ $full_config = dc_config(
 	'Sunday'
 );
 
-$championship_game = dc_game( 'Div 1 RR-Seed 1', 'Div 1 RR-Seed 2', '2026-10-03' ); // a Saturday
-$consolation_game   = dc_game( 'Div 1 RR-Seed 3', 'Div 1 RR-Seed 4', '2026-10-04' ); // a Sunday
+$championship_game = dc_game( 'Div 1 Championship A', 'Div 1 Championship B', '2026-10-03' ); // a Saturday
+$consolation_game   = dc_game( 'Div 1 Consolation 1 A', 'Div 1 Consolation 1 B', '2026-10-04' ); // a Sunday
 $regular_game       = dc_game( 'Toronto Maple Leafs', 'Ottawa Senators', '2026-10-05' ); // a Monday
 
 echo "=== SPSG_Postseason_Day_Constraint ===\n\n";
@@ -107,11 +107,11 @@ dc_assert(
 	'a Consolation game on the configured Consolation day passes'
 );
 
-$wrong_day_championship = dc_game( 'Div 1 RR-Seed 1', 'Div 1 RR-Seed 2', '2026-10-05' ); // Monday, not Saturday
+$wrong_day_championship = dc_game( 'Div 1 Championship A', 'Div 1 Championship B', '2026-10-05' ); // Monday, not Saturday
 $result                 = $day_constraint->validate( $wrong_day_championship, array(), $full_config );
 dc_assert( is_wp_error( $result ), 'a Championship game NOT on the configured day fails' );
 
-$wrong_day_consolation = dc_game( 'Div 1 RR-Seed 3', 'Div 1 RR-Seed 4', '2026-10-03' ); // Saturday, not Sunday
+$wrong_day_consolation = dc_game( 'Div 1 Consolation 1 A', 'Div 1 Consolation 1 B', '2026-10-03' ); // Saturday, not Sunday
 dc_assert(
 	is_wp_error( $day_constraint->validate( $wrong_day_consolation, array(), $full_config ) ),
 	'a Consolation game NOT on the configured day fails'
@@ -138,19 +138,19 @@ echo "\n=== SPSG_Championship_Time_Window_Constraint ===\n\n";
 
 $time_constraint = new SPSG_Championship_Time_Window_Constraint();
 
-$championship_in_window = dc_game( 'Div 1 RR-Seed 1', 'Div 1 RR-Seed 2', '2026-10-03', '12:00' );
+$championship_in_window = dc_game( 'Div 1 Championship A', 'Div 1 Championship B', '2026-10-03', '12:00' );
 dc_assert(
 	true === $time_constraint->validate( $championship_in_window, array(), $full_config ),
 	'a Championship game inside the configured window passes'
 );
 
-$championship_out_of_window = dc_game( 'Div 1 RR-Seed 1', 'Div 1 RR-Seed 2', '2026-10-03', '18:00' );
+$championship_out_of_window = dc_game( 'Div 1 Championship A', 'Div 1 Championship B', '2026-10-03', '18:00' );
 dc_assert(
 	is_wp_error( $time_constraint->validate( $championship_out_of_window, array(), $full_config ) ),
 	'a Championship game outside the configured window fails'
 );
 
-$consolation_out_of_window = dc_game( 'Div 1 RR-Seed 3', 'Div 1 RR-Seed 4', '2026-10-04', '18:00' );
+$consolation_out_of_window = dc_game( 'Div 1 Consolation 1 A', 'Div 1 Consolation 1 B', '2026-10-04', '18:00' );
 dc_assert(
 	true === $time_constraint->validate( $consolation_out_of_window, array(), $full_config ),
 	'the time window does NOT apply to Consolation games, however late they are scheduled'
