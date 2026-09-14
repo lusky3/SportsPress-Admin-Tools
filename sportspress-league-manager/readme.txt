@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.3.0
+Stable tag: 1.3.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,6 +48,9 @@ WooCommerce is optional. Without it, fee tracking can be configured for manual e
 CSV files with `Team` and `Name` columns (both required). Each row maps a player Name to a Team; rows missing either value are skipped.
 
 == Changelog ==
+
+= 1.3.1 =
+* Fix: the "Create Postseason Configuration" panel on the Schedule Generator dashboard no longer asks for a separate Postseason start date. It's the tail end of the same season the source configuration already describes, so the start date is now always derived automatically from the source's own Season End, with the resulting date range shown instead of asking for one.
 
 = 1.3.0 =
 * New: waitlist status changes (offer sent, claimed, expired, withdrawn, entry removed) can notify a shared address -- point it at a FreeScout mailbox to turn each change into a ticket the whole team sees, or any other inbox your team watches. Off by default.

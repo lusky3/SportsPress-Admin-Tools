@@ -92,15 +92,14 @@ class SPSG_Admin_Renderer {
 			</div>
 			<div id="spsg-postseason-panel" style="display: none; margin-top: 10px; padding: 10px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px;">
 				<h4><?php esc_html_e( 'Create Postseason Configuration', 'sportspress-schedule-generator' ); ?></h4>
-				<p class="description"><?php esc_html_e( 'Creates a new configuration derived from this one: a cross round-robin followed by a Championship/Consolation week, seeded from season standings once the round-robin weeks conclude.', 'sportspress-schedule-generator' ); ?></p>
+				<p class="description"><?php esc_html_e( 'Creates a new configuration derived from this one: a cross round-robin followed by a Championship/Consolation week, seeded from season standings once the round-robin weeks conclude. It always starts the day after this configuration\'s own Season End -- there is no separate date to set.', 'sportspress-schedule-generator' ); ?></p>
 				<table class="form-table">
 					<tr>
-						<th scope="row"><label for="spsg-postseason-season-start"><?php esc_html_e( 'Season Start', 'sportspress-schedule-generator' ); ?></label></th>
-						<td><input type="date" id="spsg-postseason-season-start" /></td>
-					</tr>
-					<tr>
 						<th scope="row"><label for="spsg-postseason-rrw"><?php esc_html_e( 'Round Robin Weeks', 'sportspress-schedule-generator' ); ?></label></th>
-						<td><input type="number" id="spsg-postseason-rrw" min="1" value="3" class="small-text" /></td>
+						<td>
+							<input type="number" id="spsg-postseason-rrw" min="1" value="3" class="small-text" />
+							<p class="description" id="spsg-postseason-date-preview"></p>
+						</td>
 					</tr>
 					<tr>
 						<th scope="row"><?php esc_html_e( 'Championship Day', 'sportspress-schedule-generator' ); ?></th>

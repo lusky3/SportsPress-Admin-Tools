@@ -226,6 +226,7 @@ $state->options['spsg_configurations'] = array(
 			'sunday' => array( '10:00', '11:00', '12:00' ),
 		),
 		'timezone'     => 'America/Toronto',
+		'season_end'   => '2027-01-31',
 		'created'      => '2026-08-01 00:00:00',
 		'modified'     => '2026-08-01 00:00:00',
 	),
@@ -235,7 +236,6 @@ $response = cpa_run(
 	$manager,
 	array(
 		'config_id' => 'config_regular123',
-		'season_start' => '2027-02-01',
 		'round_robin_weeks' => '3',
 		// The source config's venue only has slots on friday/sunday (its own
 		// playing_days) -- championship/consolation must land on one of
@@ -254,6 +254,10 @@ $stored = $state->options['spsg_configurations'];
 
 cpa_assert( isset( $stored[ $new_id ] ), 'the new postseason configuration was actually persisted' );
 cpa_assert( true === $stored[ $new_id ]['is_postseason'], 'the stored configuration is marked is_postseason' );
+cpa_assert(
+	'2027-02-01' === $stored[ $new_id ]['season_start'],
+	'season_start is derived from the source config\'s own season_end (2027-01-31), not something the request supplies'
+);
 cpa_assert( 3 === $stored[ $new_id ]['round_robin_weeks'], 'round_robin_weeks was passed through from the request' );
 cpa_assert( 'sunday' === $stored[ $new_id ]['championship_day']['day'], 'championship_day was passed through from the request' );
 cpa_assert( 'friday' === $stored[ $new_id ]['consolation_day'], 'consolation_day was passed through from the request' );

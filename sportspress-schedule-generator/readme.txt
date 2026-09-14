@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.3.1
+Stable tag: 1.3.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -58,6 +58,9 @@ The plugin validates configuration feasibility before generation and provides sp
 Yes. The import dialog lets you choose conflict resolution (skip or overwrite), event status, league, and season. Import runs in chunks with progress tracking.
 
 == Changelog ==
+
+= 1.3.2 =
+* Fix: a postseason configuration no longer asks for its own separate "Season Start" date. A postseason bracket is the tail end of the same season the source configuration already describes, so its start date is now always derived automatically as the day after the source's Season End -- both the classic admin page and the React dashboard show the resulting date range instead of asking for one.
 
 = 1.3.1 =
 * Fix: the classic WP Admin "Schedule Generator" page had no postseason/playoffs options at all -- the feature only ever reached the League Manager React dashboard. The classic page's Basic Configuration tab now has a "Create Postseason Configuration" action (round-robin weeks, Championship day/time-window, Consolation day) for turning a saved regular-season configuration into a postseason one, and editable Postseason Settings for revisiting those values on a postseason configuration afterward. Postseason configurations are also marked with a 🏆 in the configuration dropdown.

@@ -404,8 +404,11 @@ class SPSG_Admin_Ajax {
 		$post = wp_unslash( $_POST ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- caller runs check_ajax_referer() before this.
 		$championship_day = (array) self::value( $post, 'championship_day', array() );
 
+		// No season_start here: SPSG_Configuration_Manager::build_postseason_config_data()
+		// always derives it as the day after the source configuration's own
+		// season_end -- a postseason bracket is the tail of the SAME season,
+		// not a separate span an operator picks.
 		return array(
-			'season_start' => sanitize_text_field( self::value( $post, 'season_start', '' ) ),
 			'round_robin_weeks' => absint( self::value( $post, 'round_robin_weeks', 3 ) ),
 			'championship_day' => array(
 				'day'   => sanitize_text_field( self::value( $championship_day, 'day', '' ) ),

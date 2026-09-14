@@ -579,19 +579,23 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 	 *
 	 * @param array $source    Source configuration's raw array (e.g. as read
 	 *                          from storage, or SPSG_Schedule_Configuration::to_array()).
-	 * @param array $overrides Any of: name, season_start, season_end,
-	 *                          postseason_source_season_id, round_robin_weeks,
-	 *                          championship_day, consolation_day,
-	 *                          seed_resolution_mode. Divisions, venues,
-	 *                          playing_days and time_slots always come from
-	 *                          $source (not overridable here) -- edit the
-	 *                          saved result afterward like any other config.
+	 * @param array $overrides Any of: name, postseason_source_season_id,
+	 *                          round_robin_weeks, championship_day,
+	 *                          consolation_day, seed_resolution_mode.
+	 *                          Divisions, venues, playing_days and time_slots
+	 *                          always come from $source (not overridable
+	 *                          here) -- edit the saved result afterward like
+	 *                          any other config.
 	 * @return array Raw configuration data, ready for sanitize()/save().
 	 */
 	public function build_postseason_config_data( array $source, array $overrides = array() ) {
 		$round_robin_weeks = (int) self::value( $overrides, 'round_robin_weeks', 3 );
 		$default_name      = self::value( $source, 'name', '' ) . ' Playoffs';
-		$season_start       = self::value( $overrides, 'season_start', '' );
+		// Never independently settable, same reasoning as season_end below:
+		// a postseason bracket is the tail end of the SAME season the source
+		// configuration already describes, not a separate span an operator
+		// picks. It starts the day after the source season's own season_end.
+		$season_start = self::postseason_season_start( self::value( $source, 'season_end', '' ) );
 
 		return array(
 			'name'                        => self::value( $overrides, 'name', $default_name ),
@@ -622,6 +626,31 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 			'consolation_day'             => self::value( $overrides, 'consolation_day', '' ),
 			'seed_resolution_mode'        => self::value( $overrides, 'seed_resolution_mode', 'manual' ),
 		);
+	}
+
+	/**
+	 * A postseason bracket's own season_start -- always the day after the
+	 * source (regular-season) configuration's own season_end. There is
+	 * deliberately no independent input for this: given a season_start and
+	 * season_end already on the source configuration, and a round-robin week
+	 * count, the bracket's position is fully determined -- asking an
+	 * operator to re-enter a date here only invited it to disagree with the
+	 * source season it is supposed to immediately follow.
+	 *
+	 * @param string $source_season_end Source configuration's 'Y-m-d' season_end, or '' if not yet set.
+	 * @return string 'Y-m-d' date string, or '' if $source_season_end is empty/unparseable.
+	 */
+	private static function postseason_season_start( $source_season_end ) {
+		if ( empty( $source_season_end ) ) {
+			return '';
+		}
+		try {
+			$start = new DateTime( $source_season_end );
+		} catch ( Exception $e ) {
+			return '';
+		}
+		$start->modify( '+1 day' );
+		return $start->format( 'Y-m-d' );
 	}
 
 	/**
