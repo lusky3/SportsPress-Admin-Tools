@@ -951,28 +951,66 @@ class SPSG_Slot_Allocator {
 			return null;
 		}
 
-		$priority = array_fill_keys( $rotate_in, true );
-		usort(
-			$willing,
-			function ( $a, $b ) use ( $owed, $priority ) {
-				$rotate = (int) isset( $priority[ $b ] ) <=> (int) isset( $priority[ $a ] );
-				return 0 !== $rotate ? $rotate : $owed[ $b ] <=> $owed[ $a ];
-			}
+		$playing = array_merge(
+			$playing,
+			$this->best_fitting_subset( $willing, $divisions, $capacity - $used, $allowed - count( $playing ), array_fill_keys( $rotate_in, true ), $owed )
 		);
-		foreach ( $willing as $key ) {
-			if ( count( $playing ) >= $allowed ) {
-				break;
-			}
-			if ( $used + $divisions[ $key ]['size'] <= $capacity ) {
-				$used     += $divisions[ $key ]['size'];
-				$playing[] = $key;
-			}
-		}
 
 		foreach ( $playing as $key ) {
 			$owed[ $key ] -= 1.0;
 		}
 		return $playing;
+	}
+
+	/**
+	 * The subset of $candidates (at most $max_count of them, total size at
+	 * most $room) that fills the most of $room; ties go to the subset with
+	 * more divisions owed a short week, then to the one owed the most games.
+	 *
+	 * Enumerated outright -- a league has a handful of divisions -- because
+	 * a greedy fill picks wrong in exactly the case that matters: a 4-slot
+	 * night must take the 8-team division (4 games), not a 6-team one (3),
+	 * or the season no longer closes.
+	 *
+	 * @param string[]            $candidates Division keys in a stable order.
+	 * @param array               $divisions  Output of {@see rounds_by_division()}.
+	 * @param int                 $room       Slots left in the week.
+	 * @param int                 $max_count  Most divisions to admit.
+	 * @param array<string,true>  $priority   Divisions owed a short week.
+	 * @param array<string,float> $owed       Games owed per division.
+	 * @return string[]
+	 */
+	private function best_fitting_subset( $candidates, $divisions, $room, $max_count, $priority, $owed ) {
+		$best       = array();
+		$best_score = null;
+		$n          = count( $candidates );
+
+		for ( $mask = 1; $mask < ( 1 << $n ); $mask++ ) {
+			$subset = array();
+			$size   = 0;
+			$rotate = 0;
+			$due    = 0.0;
+			for ( $i = 0; $i < $n; $i++ ) {
+				if ( ! ( $mask & ( 1 << $i ) ) ) {
+					continue;
+				}
+				$key     = $candidates[ $i ];
+				$size   += $divisions[ $key ]['size'];
+				$rotate += isset( $priority[ $key ] ) ? 1 : 0;
+				$due    += $owed[ $key ];
+				$subset[] = $key;
+			}
+			if ( $size > $room || count( $subset ) > $max_count ) {
+				continue;
+			}
+			$score = array( $size, $rotate, $due );
+			if ( null === $best_score || $score > $best_score ) {
+				$best       = $subset;
+				$best_score = $score;
+			}
+		}
+
+		return $best;
 	}
 
 	/**

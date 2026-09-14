@@ -374,6 +374,56 @@ if ( zs_assert( ! is_wp_error( $season_result ) && 272 === count( $season_result
 	zs_assert( $rotation_ok, 'the teams a short week could not take are the ones the next short week does (' . count( $short_weeks ) . ' short weeks)' );
 }
 
+echo "\n=== The convenor's model: 20 games, shortened weeks pair into 'split weeks', zero slack ===\n\n";
+
+// Same calendar at 20 regular-season games with Dec 27 at its real 4 slots
+// (4:00-7:00 PM, last start 7:00). Now 18 full weeks (288) plus two split
+// weeks that each add up to one full round of play -- Oct 9 (10) + Oct 25
+// (6), and Dec 27 (4) + Jan 3 (6) + Jan 17 (6) -- for exactly 320 slots
+// and 320 games. Zero slack across five divisions of unequal size, so the
+// planner must put the 8-team division on the 4-slot night and pair the
+// 6-team divisions everywhere else; a greedy fill picks wrong here.
+$split_config = new SPSG_Schedule_Configuration(
+	array_merge(
+		$season_config->to_array(),
+		array(
+			'games_per_team'          => 20,
+			'venue_date_availability' => array(
+				'black' => array( array( 'start_date' => '2026-12-27', 'end_date' => '2026-12-27', 'time_slots' => array( '16:00', '17:00', '18:00', '19:00' ) ) ),
+			),
+		)
+	)
+);
+$split_cm    = new SPSG_Constraint_Manager();
+$split_slots = ( new SPSG_Slot_Allocator( $split_cm ) )->generate_available_slots( $split_config );
+zs_assert( 320 === count( $split_slots ), 'the season exposes exactly 320 slots (' . count( $split_slots ) . ')' );
+
+$split_result = ( new SPSG_Schedule_Engine( $split_cm ) )->generate_schedule( $split_config );
+if ( zs_assert( ! is_wp_error( $split_result ) && 320 === count( $split_result['schedule'] ), 'all 320 games are placed -- every slot of the season is used' . ( is_wp_error( $split_result ) ? ' -- got: ' . $split_result->get_error_message() : '' ) ) ) {
+	$split_totals  = array();
+	$split_by_date = array();
+	foreach ( $split_result['schedule'] as $game ) {
+		foreach ( array( zs_name( $game->home_team ), zs_name( $game->away_team ) ) as $team ) {
+			$split_totals[ $team ] = ( $split_totals[ $team ] ?? 0 ) + 1;
+		}
+		$division                                 = is_object( $game->division ) ? $game->division->name : $game->division['name'];
+		$split_by_date[ $game->date ][ $division ] = ( $split_by_date[ $game->date ][ $division ] ?? 0 ) + 1;
+	}
+	zs_assert( array( 20 => 32 ) === array_count_values( $split_totals ), 'every team gets exactly 20 games' );
+	zs_assert(
+		array( 'D4' => 4 ) === ( $split_by_date['2026-12-27'] ?? array() ),
+		'the 4-slot Dec 27 night is exactly the 8-team division\'s round -- got ' . json_encode( $split_by_date['2026-12-27'] ?? array() )
+	);
+	$oct_9  = array_keys( $split_by_date['2026-10-09'] ?? array() );
+	$oct_25 = array_keys( $split_by_date['2026-10-25'] ?? array() );
+	sort( $oct_9 );
+	sort( $oct_25 );
+	zs_assert(
+		empty( array_intersect( $oct_9, $oct_25 ) ) && 5 === count( $oct_9 ) + count( $oct_25 ),
+		'Oct 9 and Oct 25 together take every division exactly once (a split week) -- ' . json_encode( $oct_9 ) . ' + ' . json_encode( $oct_25 )
+	);
+}
+
 echo "\n=== Seasons with slack are unaffected: the pruning never rejects a placement that could have completed ===\n\n";
 
 // Same season one week longer (Nov 1 adds a 6-slot Sunday): 70 slots for
