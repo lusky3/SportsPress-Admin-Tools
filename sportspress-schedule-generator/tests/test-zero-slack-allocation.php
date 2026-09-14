@@ -61,34 +61,43 @@ if ( ! function_exists( 'wp_timezone_string' ) ) {
 if ( ! function_exists( 'wp_timezone' ) ) {
 	function wp_timezone() { return new DateTimeZone( 'America/Toronto' ); }
 }
+// The stubs below take only the parameters they use (PHP accepts the
+// extra arguments WordPress callers pass).
 if ( ! function_exists( 'current_time' ) ) {
-	function current_time( $type = 'mysql' ) { return gmdate( 'Y-m-d H:i:s' ); }
+	function current_time() { return gmdate( 'Y-m-d H:i:s' ); }
 }
 if ( ! function_exists( 'get_current_user_id' ) ) {
 	function get_current_user_id() { return 1; }
 }
 if ( ! function_exists( 'do_action' ) ) {
-	function do_action( $tag ) {}
+	function do_action() {}
 }
-$GLOBALS['spsg_test_transients'] = array();
-$GLOBALS['spsg_test_cache']      = array();
+/**
+ * In-memory stand-in for the transient and object-cache stores.
+ *
+ * @return array Reference to the store: ['transients' => [...], 'cache' => [...]].
+ */
+function &zs_store() {
+	static $store = array( 'transients' => array(), 'cache' => array() );
+	return $store;
+}
 if ( ! function_exists( 'set_transient' ) ) {
-	function set_transient( $k, $v, $t = 0 ) { $GLOBALS['spsg_test_transients'][ $k ] = $v; return true; }
+	function set_transient( $k, $v ) { $s = &zs_store(); $s['transients'][ $k ] = $v; return true; }
 }
 if ( ! function_exists( 'get_transient' ) ) {
-	function get_transient( $k ) { return $GLOBALS['spsg_test_transients'][ $k ] ?? false; }
+	function get_transient( $k ) { $s = &zs_store(); return isset( $s['transients'][ $k ] ) ? $s['transients'][ $k ] : false; }
 }
 if ( ! function_exists( 'delete_transient' ) ) {
-	function delete_transient( $k ) { unset( $GLOBALS['spsg_test_transients'][ $k ] ); return true; }
+	function delete_transient( $k ) { $s = &zs_store(); unset( $s['transients'][ $k ] ); return true; }
 }
 if ( ! function_exists( 'wp_cache_set' ) ) {
-	function wp_cache_set( $k, $v, $g = '', $t = 0 ) { $GLOBALS['spsg_test_cache'][ $g ][ $k ] = $v; return true; }
+	function wp_cache_set( $k, $v, $g = '' ) { $s = &zs_store(); $s['cache'][ $g ][ $k ] = $v; return true; }
 }
 if ( ! function_exists( 'wp_cache_get' ) ) {
-	function wp_cache_get( $k, $g = '' ) { return $GLOBALS['spsg_test_cache'][ $g ][ $k ] ?? false; }
+	function wp_cache_get( $k, $g = '' ) { $s = &zs_store(); return isset( $s['cache'][ $g ][ $k ] ) ? $s['cache'][ $g ][ $k ] : false; }
 }
 if ( ! function_exists( 'wp_cache_delete' ) ) {
-	function wp_cache_delete( $k, $g = '' ) { unset( $GLOBALS['spsg_test_cache'][ $g ][ $k ] ); return true; }
+	function wp_cache_delete( $k, $g = '' ) { $s = &zs_store(); unset( $s['cache'][ $g ][ $k ] ); return true; }
 }
 if ( ! class_exists( 'WP_Error' ) ) {
 	class WP_Error {

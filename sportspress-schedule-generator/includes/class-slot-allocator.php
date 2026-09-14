@@ -115,6 +115,19 @@ class SPSG_Slot_Allocator {
 	private $dates_by_week = array();
 
 	/**
+	 * The progress / cancellation / timeout callbacks of the current
+	 * backtracking run, so the recursion doesn't have to thread them
+	 * through every call.
+	 *
+	 * @var array{progress: callable|null, cancel: callable|null, timeout: callable|null}
+	 */
+	private $search_callbacks = array(
+		'progress' => null,
+		'cancel'   => null,
+		'timeout'  => null,
+	);
+
+	/**
 	 * Count of games with soft constraint violations
 	 */
 	private $constraint_violations = 0;
@@ -378,16 +391,7 @@ class SPSG_Slot_Allocator {
 		$this->sorted_slot_dates = array_keys( $this->slots_by_date );
 		sort( $this->sorted_slot_dates );
 
-		$this->week_of_date  = array();
-		$this->dates_by_week = array();
-		foreach ( $this->sorted_slot_dates as $date ) {
-			$week = SPSG_Schedule_Helper::iso_week_key( $date );
-			if ( null === $week ) {
-				continue;
-			}
-			$this->week_of_date[ $date ]    = $week;
-			$this->dates_by_week[ $week ][] = $date;
-		}
+		$this->index_weeks();
 
 		$this->date_target_load = $this->build_date_target_load( $matchups, $config );
 
@@ -559,12 +563,7 @@ class SPSG_Slot_Allocator {
 		$schedule_by_date = array();
 
 		foreach ( $plan as $week => $games ) {
-			if ( $cancellation_callback && call_user_func( $cancellation_callback ) ) {
-				$this->was_cancelled = true;
-				return false;
-			}
-			if ( $timeout_callback && call_user_func( $timeout_callback ) ) {
-				$this->was_timed_out = true;
+			if ( $this->search_interrupted( $cancellation_callback, $timeout_callback ) ) {
 				return false;
 			}
 
@@ -574,25 +573,47 @@ class SPSG_Slot_Allocator {
 				return false;
 			}
 
-			foreach ( $placed as $game ) {
-				$same_day_games = array_filter(
-					$schedule_by_date[ $game->date ],
-					function ( $existing ) use ( $game ) {
-						return $existing->id !== $game->id;
-					}
-				);
-				if ( $this->constraint_manager->calculate_violation_cost( $game, $same_day_games, $config, $schedule_by_date ) > 0 ) {
-					$this->constraint_violations++;
-				}
-				$schedule[] = $game;
-			}
-
+			$this->record_placed_games( $placed, $schedule, $schedule_by_date, $config );
 			if ( $progress_callback ) {
 				call_user_func( $progress_callback, count( $schedule ) );
 			}
 		}
 
 		return $schedule;
+	}
+
+	/**
+	 * Whether the user cancelled or the engine timed out; records which.
+	 */
+	private function search_interrupted( $cancellation_callback, $timeout_callback ) {
+		if ( $cancellation_callback && call_user_func( $cancellation_callback ) ) {
+			$this->was_cancelled = true;
+			return true;
+		}
+		if ( $timeout_callback && call_user_func( $timeout_callback ) ) {
+			$this->was_timed_out = true;
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Append a week's placed games to the schedule, counting soft-constraint
+	 * violations the same way {@see greedy_allocate()} does.
+	 */
+	private function record_placed_games( $placed, &$schedule, $schedule_by_date, $config ) {
+		foreach ( $placed as $game ) {
+			$same_day_games = array_filter(
+				$schedule_by_date[ $game->date ],
+				function ( $existing ) use ( $game ) {
+					return $existing->id !== $game->id;
+				}
+			);
+			if ( $this->constraint_manager->calculate_violation_cost( $game, $same_day_games, $config, $schedule_by_date ) > 0 ) {
+				$this->constraint_violations++;
+			}
+			$schedule[] = $game;
+		}
 	}
 
 	/**
@@ -604,6 +625,42 @@ class SPSG_Slot_Allocator {
 	 *         intra-division or some division doesn't decompose.
 	 */
 	private function rounds_by_division( $matchups ) {
+		$split = $this->split_final_week_matchups( $matchups );
+		if ( null === $split ) {
+			return null;
+		}
+		list( $by_division, $final_week ) = $split;
+
+		$divisions = array();
+		foreach ( $by_division as $key => $division_matchups ) {
+			$rounds = $this->decompose_into_rounds( $division_matchups );
+			if ( null === $rounds ) {
+				$this->log( sprintf( 'Round-based allocation: division %s does not split into full rounds', $key ) );
+				return null;
+			}
+			$rounds = $this->with_final_round( $rounds, $final_week, $key );
+			if ( null === $rounds ) {
+				return null;
+			}
+			$divisions[ $key ] = array(
+				'size'   => count( $rounds[0] ),
+				'rounds' => $rounds,
+			);
+		}
+
+		return $divisions;
+	}
+
+	/**
+	 * Group matchups by division, keeping a postseason's Championship /
+	 * Consolation games apart from the round-robin ones.
+	 *
+	 * @return array{0: array<string,object[]>, 1: array<string,object[]>}|null
+	 *         [round-robin by division, final-week by division]; null when any
+	 *         matchup is inter-division or a final-week game belongs to a
+	 *         division with no round-robin games.
+	 */
+	private function split_final_week_matchups( $matchups ) {
 		$by_division = array();
 		$final_week  = array();
 		foreach ( $matchups as $matchup ) {
@@ -620,35 +677,30 @@ class SPSG_Slot_Allocator {
 		if ( array_diff_key( $final_week, $by_division ) ) {
 			return null;
 		}
+		return array( $by_division, $final_week );
+	}
 
-		$divisions = array();
-		foreach ( $by_division as $key => $division_matchups ) {
-			$rounds = $this->decompose_into_rounds( $division_matchups );
-			if ( null === $rounds ) {
-				$this->log( sprintf( 'Round-based allocation: division %s does not split into full rounds', $key ) );
-				return null;
-			}
-			// A postseason's Championship/Consolation games are between a
-			// different set of placeholder teams from its round-robin seeds,
-			// so they can't take part in the decomposition above -- but they
-			// are one full round of the division by construction, and must be
-			// the LAST one it plays (SPSG_Postseason_Week_Constraint pins them
-			// to the final week). plan_division_weeks() consumes rounds from
-			// the end of the list, so it goes in front.
-			if ( ! empty( $final_week[ $key ] ) ) {
-				if ( count( $final_week[ $key ] ) !== count( $rounds[0] ) ) {
-					$this->log( sprintf( 'Round-based allocation: division %s final week is not a full round', $key ) );
-					return null;
-				}
-				array_unshift( $rounds, $final_week[ $key ] );
-			}
-			$divisions[ $key ] = array(
-				'size'   => count( $rounds[0] ),
-				'rounds' => $rounds,
-			);
+	/**
+	 * A postseason's Championship/Consolation games are between a different
+	 * set of placeholder teams from its round-robin seeds, so they can't take
+	 * part in the decomposition -- but they are one full round of the
+	 * division by construction, and must be the LAST one it plays
+	 * (SPSG_Postseason_Week_Constraint pins them to the final week).
+	 * plan_division_weeks() consumes rounds from the end of the list, so
+	 * they go in front.
+	 *
+	 * @return array<int,object[]>|null Rounds, or null if the final-week set isn't a full round.
+	 */
+	private function with_final_round( $rounds, $final_week, $key ) {
+		if ( empty( $final_week[ $key ] ) ) {
+			return $rounds;
 		}
-
-		return $divisions;
+		if ( count( $final_week[ $key ] ) !== count( $rounds[0] ) ) {
+			$this->log( sprintf( 'Round-based allocation: division %s final week is not a full round', $key ) );
+			return null;
+		}
+		array_unshift( $rounds, $final_week[ $key ] );
+		return $rounds;
 	}
 
 	/**
@@ -729,24 +781,39 @@ class SPSG_Slot_Allocator {
 		}
 		$count = count( $matchings );
 		for ( $i = $from; $i < $count; $i++ ) {
-			foreach ( $matchings[ $i ] as $pair ) {
-				if ( ( $remaining[ $pair ] ?? 0 ) <= 0 ) {
-					continue 2;
-				}
+			if ( ! $this->matching_available( $matchings[ $i ], $remaining ) ) {
+				continue;
 			}
-			foreach ( $matchings[ $i ] as $pair ) {
-				$remaining[ $pair ]--;
-			}
+			$this->adjust_pairs( $remaining, $matchings[ $i ], -1 );
 			$chosen[] = $matchings[ $i ];
 			if ( $this->pick_rounds( $matchings, $remaining, $needed - 1, $i, $chosen ) ) {
 				return true;
 			}
 			array_pop( $chosen );
-			foreach ( $matchings[ $i ] as $pair ) {
-				$remaining[ $pair ]++;
-			}
+			$this->adjust_pairs( $remaining, $matchings[ $i ], 1 );
 		}
 		return false;
+	}
+
+	/**
+	 * Whether every pair of a matching still has a matchup to place.
+	 */
+	private function matching_available( $matching, $remaining ) {
+		foreach ( $matching as $pair ) {
+			if ( empty( $remaining[ $pair ] ) ) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Add $delta to each of the matching's pair counts.
+	 */
+	private function adjust_pairs( &$remaining, $matching, $delta ) {
+		foreach ( $matching as $pair ) {
+			$remaining[ $pair ] += $delta;
+		}
 	}
 
 	/**
@@ -814,54 +881,73 @@ class SPSG_Slot_Allocator {
 		}
 		list( $max_count, $idle_per_full_week ) = $this->week_idle_plan( $divisions, $weeks, $capacity, $fits_from );
 
-		$left = array();
-		$owed = array();
-		foreach ( $divisions as $key => $division ) {
-			$left[ $key ] = count( $division['rounds'] );
-			$owed[ $key ] = 0.0;
-		}
+		$left = array_map( 'count', array_column( $divisions, 'rounds' ) );
+		$left = array_combine( array_keys( $divisions ), $left );
+		$owed = array_fill_keys( array_keys( $divisions ), 0.0 );
 
 		$plan            = array();
 		$idle_balance    = 0.0;
 		$last_short_idle = array();
 		foreach ( $weeks as $index => $week ) {
-			$allowed   = $max_count[ $week ];
-			$full_week = $allowed === count( $divisions );
-			if ( $full_week ) {
-				$idle_balance += $idle_per_full_week;
-				if ( $idle_balance >= 1.0 ) {
-					$idle_balance -= 1.0;
-					$allowed--;
-				}
-			}
+			$full_week = $max_count[ $week ] === count( $divisions );
+			$allowed   = $this->allowed_this_week( $max_count[ $week ], $full_week, $idle_per_full_week, $idle_balance );
+			$rotate_in = $full_week ? array() : $last_short_idle;
 
-			$playing = $this->divisions_for_week(
-				$divisions,
-				$capacity[ $week ],
-				$index,
-				$fits_from,
-				$left,
-				$owed,
-				$allowed,
-				$full_week ? array() : $last_short_idle
-			);
+			$playing = $this->divisions_for_week( $divisions, $capacity[ $week ], $index, $fits_from, $left, $owed, $allowed, $rotate_in );
 			if ( null === $playing ) {
 				return null;
 			}
 			if ( ! $full_week ) {
 				$last_short_idle = array_values( array_diff( array_keys( $divisions ), $playing ) );
 			}
-
-			$plan[ $week ] = array();
-			foreach ( $playing as $key ) {
-				$left[ $key ]--;
-				foreach ( $divisions[ $key ]['rounds'][ $left[ $key ] ] as $matchup ) {
-					$plan[ $week ][] = $matchup;
-				}
-			}
+			$plan[ $week ] = $this->take_rounds( $divisions, $playing, $left );
 		}
 
-		return array_sum( $left ) === 0 ? $plan : null;
+		if ( array_sum( $left ) !== 0 ) {
+			return null;
+		}
+		return $plan;
+	}
+
+	/**
+	 * How many divisions may play this week: everyone that fits, less one in
+	 * a full week whenever the spare-idle cadence says so.
+	 *
+	 * @param int   $max_count          Divisions the week can hold at once.
+	 * @param bool  $full_week          Whether that is every division.
+	 * @param float $idle_per_full_week Spare idle division-weeks to spend per full week.
+	 * @param float $idle_balance       Running cadence balance (updated).
+	 * @return int
+	 */
+	private function allowed_this_week( $max_count, $full_week, $idle_per_full_week, &$idle_balance ) {
+		if ( ! $full_week ) {
+			return $max_count;
+		}
+		$idle_balance += $idle_per_full_week;
+		if ( $idle_balance < 1.0 ) {
+			return $max_count;
+		}
+		$idle_balance -= 1.0;
+		return $max_count - 1;
+	}
+
+	/**
+	 * Pop the next round of each playing division into one week's game list.
+	 *
+	 * @param array             $divisions Output of {@see rounds_by_division()}.
+	 * @param string[]          $playing   Division keys playing this week.
+	 * @param array<string,int> $left      Rounds left per division (updated).
+	 * @return object[]
+	 */
+	private function take_rounds( $divisions, $playing, &$left ) {
+		$games = array();
+		foreach ( $playing as $key ) {
+			$left[ $key ]--;
+			foreach ( $divisions[ $key ]['rounds'][ $left[ $key ] ] as $matchup ) {
+				$games[] = $matchup;
+			}
+		}
+		return $games;
 	}
 
 	/**
@@ -911,16 +997,7 @@ class SPSG_Slot_Allocator {
 					$sizes[] = $division['size'];
 				}
 			}
-			sort( $sizes );
-			$count = 0;
-			$used  = 0;
-			foreach ( $sizes as $size ) {
-				if ( $used + $size > $capacity[ $week ] ) {
-					break;
-				}
-				$used += $size;
-				$count++;
-			}
+			$count              = $this->divisions_at_once( $sizes, $capacity[ $week ] );
 			$max_count[ $week ] = $count;
 			$forced_idle       += count( $sizes ) - $count;
 			if ( $count === count( $divisions ) ) {
@@ -934,7 +1011,28 @@ class SPSG_Slot_Allocator {
 		}
 		$spare_idle = max( 0, $spare_idle - $forced_idle );
 
-		return array( $max_count, $full_weeks > 0 ? $spare_idle / $full_weeks : 0.0 );
+		if ( 0 === $full_weeks ) {
+			return array( $max_count, 0.0 );
+		}
+		return array( $max_count, $spare_idle / $full_weeks );
+	}
+
+	/**
+	 * How many of the given round sizes fit into $capacity together,
+	 * smallest first.
+	 */
+	private function divisions_at_once( $sizes, $capacity ) {
+		sort( $sizes );
+		$count = 0;
+		$used  = 0;
+		foreach ( $sizes as $size ) {
+			if ( $used + $size > $capacity ) {
+				break;
+			}
+			$used += $size;
+			$count++;
+		}
+		return $count;
 	}
 
 	/**
@@ -1015,35 +1113,56 @@ class SPSG_Slot_Allocator {
 	 */
 	private function best_fitting_subset( $candidates, $divisions, $room, $max_count, $priority, $owed ) {
 		$best       = array();
-		$best_score = null;
-		$n          = count( $candidates );
+		$best_score = array( -1, -1, -INF );
+		$masks      = 1 << count( $candidates );
 
-		for ( $mask = 1; $mask < ( 1 << $n ); $mask++ ) {
-			$subset = array();
-			$size   = 0;
-			$rotate = 0;
-			$due    = 0.0;
-			for ( $i = 0; $i < $n; $i++ ) {
-				if ( ! ( $mask & ( 1 << $i ) ) ) {
-					continue;
-				}
-				$key     = $candidates[ $i ];
-				$size   += $divisions[ $key ]['size'];
-				$rotate += isset( $priority[ $key ] ) ? 1 : 0;
-				$due    += $owed[ $key ];
-				$subset[] = $key;
-			}
-			if ( $size > $room || count( $subset ) > $max_count ) {
+		for ( $mask = 1; $mask < $masks; $mask++ ) {
+			$subset = $this->subset_for_mask( $mask, $candidates );
+			if ( count( $subset ) > $max_count ) {
 				continue;
 			}
-			$score = array( $size, $rotate, $due );
-			if ( null === $best_score || $score > $best_score ) {
+			$score = $this->subset_score( $subset, $divisions, $priority, $owed );
+			if ( $score[0] > $room ) {
+				continue;
+			}
+			if ( $score > $best_score ) {
 				$best       = $subset;
 				$best_score = $score;
 			}
 		}
 
 		return $best;
+	}
+
+	/**
+	 * The candidates selected by a bitmask.
+	 */
+	private function subset_for_mask( $mask, $candidates ) {
+		$subset = array();
+		foreach ( $candidates as $i => $key ) {
+			if ( $mask & ( 1 << $i ) ) {
+				$subset[] = $key;
+			}
+		}
+		return $subset;
+	}
+
+	/**
+	 * [total round size, divisions owed a short week, total games owed] --
+	 * compared lexicographically, larger is better.
+	 */
+	private function subset_score( $subset, $divisions, $priority, $owed ) {
+		$size   = 0;
+		$rotate = 0;
+		$due    = 0.0;
+		foreach ( $subset as $key ) {
+			$size += $divisions[ $key ]['size'];
+			$due  += $owed[ $key ];
+			if ( isset( $priority[ $key ] ) ) {
+				$rotate++;
+			}
+		}
+		return array( $size, $rotate, $due );
 	}
 
 	/**
@@ -1073,21 +1192,13 @@ class SPSG_Slot_Allocator {
 			return true;
 		}
 
-		$pick       = null;
-		$pick_slots = null;
-		foreach ( $games as $position => $matchup ) {
-			$slots = $this->valid_week_slots( $matchup, $dates, $used_slots, $schedule_by_date, $config, null === $pick_slots ? PHP_INT_MAX : count( $pick_slots ) );
-			if ( empty( $slots ) ) {
-				return false;
-			}
-			if ( null === $pick_slots || count( $slots ) < count( $pick_slots ) ) {
-				$pick       = $position;
-				$pick_slots = $slots;
-			}
+		$pick = $this->most_constrained_week_game( $games, $dates, $used_slots, $schedule_by_date, $config );
+		if ( null === $pick ) {
+			return false;
 		}
-
-		$matchup = $games[ $pick ];
-		unset( $games[ $pick ] );
+		list( $position, $pick_slots ) = $pick;
+		$matchup                       = $games[ $position ];
+		unset( $games[ $position ] );
 
 		foreach ( $pick_slots as $slot ) {
 			$slot_key = $this->get_slot_key( $slot );
@@ -1110,6 +1221,44 @@ class SPSG_Slot_Allocator {
 	}
 
 	/**
+	 * The game in the week with the fewest valid slots, with those slots
+	 * cheapest first; null when some game has none (a dead end).
+	 *
+	 * @return array{0: int, 1: object[]}|null [position in $games, its valid slots].
+	 */
+	private function most_constrained_week_game( $games, $dates, $used_slots, $schedule_by_date, $config ) {
+		$pick       = null;
+		$pick_slots = array();
+		$limit      = PHP_INT_MAX;
+		foreach ( $games as $position => $matchup ) {
+			$slots = $this->valid_week_slots( $matchup, $dates, $used_slots, $schedule_by_date, $config, $limit );
+			if ( empty( $slots ) ) {
+				return null;
+			}
+			if ( count( $slots ) < $limit ) {
+				$pick       = $position;
+				$pick_slots = $slots;
+				$limit      = count( $slots );
+			}
+		}
+		return array( $pick, $pick_slots );
+	}
+
+	/**
+	 * The home team's preferred venue id, when one is configured.
+	 */
+	private function preferred_venue_for( $matchup, $config ) {
+		if ( empty( $config->home_away_preferences ) ) {
+			return null;
+		}
+		$home_id = $this->extract_id( $matchup->home_team );
+		if ( ! isset( $config->home_away_preferences[ $home_id ] ) ) {
+			return null;
+		}
+		return $config->home_away_preferences[ $home_id ];
+	}
+
+	/**
 	 * A matchup's valid slots on the given dates, cheapest first. Stops
 	 * collecting once $limit valid slots are found (the caller only needs to
 	 * know it isn't the most constrained game).
@@ -1117,8 +1266,7 @@ class SPSG_Slot_Allocator {
 	 * @return object[]
 	 */
 	private function valid_week_slots( $matchup, $dates, $used_slots, $schedule_by_date, $config, $limit ) {
-		$home_id            = $this->extract_id( $matchup->home_team );
-		$preferred_venue_id = empty( $config->home_away_preferences ) ? null : ( $config->home_away_preferences[ $home_id ] ?? null );
+		$preferred_venue_id = $this->preferred_venue_for( $matchup, $config );
 
 		$scored = array();
 		foreach ( $dates as $date ) {
@@ -1394,8 +1542,13 @@ class SPSG_Slot_Allocator {
 			'team_placed' => array(),
 			'free'        => $this->free_slots_by_week( array() ),
 		);
+		$this->search_callbacks = array(
+			'progress' => $progress_callback,
+			'cancel'   => $cancellation_callback,
+			'timeout'  => $timeout_callback,
+		);
 
-		$result = $this->backtrack_recursive( $matchups, array_keys( $matchups ), $state, $schedule, $used_slots, $schedule_by_date, $config, 0, $progress_callback, $cancellation_callback, $timeout_callback );
+		$result = $this->backtrack_recursive( $matchups, array_keys( $matchups ), $state, $schedule, $used_slots, $schedule_by_date, $config, 0 );
 
 		if ( $this->backtrack_budget_exhausted ) {
 			$this->log( 'Backtracking gave up: node budget exhausted' );
@@ -1424,16 +1577,16 @@ class SPSG_Slot_Allocator {
 	 * @param int[] $remaining Indexes into $matchups not yet placed.
 	 * @param array $state     See {@see backtrack_allocate()}.
 	 */
-	private function backtrack_recursive( $matchups, $remaining, &$state, &$schedule, &$used_slots, &$schedule_by_date, $config, $depth, $progress_callback = null, $cancellation_callback = null, $timeout_callback = null ) {
-		if ( $this->backtrack_must_stop( $depth, $cancellation_callback, $timeout_callback ) ) {
+	private function backtrack_recursive( $matchups, $remaining, &$state, &$schedule, &$used_slots, &$schedule_by_date, $config, $depth ) {
+		if ( $this->backtrack_must_stop( $depth ) ) {
 			return false;
 		}
 		if ( empty( $remaining ) ) {
 			return true;
 		}
 
-		if ( $progress_callback && $depth % 10 === 0 ) {
-			call_user_func( $progress_callback, $depth );
+		if ( $this->search_callbacks['progress'] && $depth % 10 === 0 ) {
+			call_user_func( $this->search_callbacks['progress'], $depth );
 		}
 
 		$pick = $this->most_constrained_matchup( $matchups, $remaining, $state );
@@ -1449,7 +1602,7 @@ class SPSG_Slot_Allocator {
 			$game     = $this->create_game( $matchup, $slot, $config );
 			$this->push_backtrack_game( $game, $slot_key, $state, $schedule, $used_slots, $schedule_by_date );
 
-			if ( $this->backtrack_recursive( $matchups, $remaining, $state, $schedule, $used_slots, $schedule_by_date, $config, $depth + 1, $progress_callback, $cancellation_callback, $timeout_callback ) ) {
+			if ( $this->backtrack_recursive( $matchups, $remaining, $state, $schedule, $used_slots, $schedule_by_date, $config, $depth + 1 ) ) {
 				return true;
 			}
 
@@ -1464,13 +1617,8 @@ class SPSG_Slot_Allocator {
 	 * cancelled, the engine timed out, the depth guard tripped, or (M53) the
 	 * node budget is spent.
 	 */
-	private function backtrack_must_stop( $depth, $cancellation_callback, $timeout_callback ) {
-		if ( $cancellation_callback && call_user_func( $cancellation_callback ) ) {
-			$this->was_cancelled = true;
-			return true;
-		}
-		if ( $timeout_callback && call_user_func( $timeout_callback ) ) {
-			$this->was_timed_out = true;
+	private function backtrack_must_stop( $depth ) {
+		if ( $this->search_interrupted( $this->search_callbacks['cancel'], $this->search_callbacks['timeout'] ) ) {
 			return true;
 		}
 		if ( $depth > $this->max_backtrack_depth ) {
@@ -1561,23 +1709,13 @@ class SPSG_Slot_Allocator {
 	 * @return object[] Slots, best first.
 	 */
 	private function rank_candidate_slots( $matchup, $used_slots, $schedule_by_date, $state, $config ) {
-		$home_id = $this->extract_id( $matchup->home_team );
+		$preferred_venue_id = $this->preferred_venue_for( $matchup, $config );
+		$pacing             = $this->pacing_cost_by_date( $matchup, $state, $config );
+		$ranked             = array();
 
-		$preferred_venue_id = null;
-		if ( ! empty( $config->home_away_preferences ) ) {
-			$preferred_venue_id = $config->home_away_preferences[ $home_id ] ?? null;
-		}
-
-		$pacing     = $this->pacing_cost_by_date( $matchup, $state, $config );
-		$open_weeks = array_fill_keys( $this->open_weeks_for( $matchup, $state ), true );
-		$ranked     = array();
-
-		foreach ( $this->sorted_slot_dates as $date ) {
-			if ( empty( $open_weeks[ $this->week_of_date[ $date ] ?? '' ] ) ) {
-				continue;
-			}
+		foreach ( $this->dates_in_weeks( $this->open_weeks_for( $matchup, $state ) ) as $date ) {
 			foreach ( $this->score_free_slots_on_date( $matchup, $date, $used_slots, $schedule_by_date, $config, $preferred_venue_id ) as $entry ) {
-				$entry['cost'] += $pacing[ $date ] ?? 0.0;
+				$entry['cost'] += $pacing[ $date ];
 				$ranked[]       = $entry;
 			}
 			if ( $this->backtrack_budget_exhausted ) {
@@ -1687,17 +1825,7 @@ class SPSG_Slot_Allocator {
 		$schedule[]                        = $game;
 		$used_slots[ $slot_key ]           = true;
 		$schedule_by_date[ $game->date ][] = $game;
-
-		$week = $this->week_of_date[ $game->date ] ?? null;
-		if ( null !== $week ) {
-			$state['free'][ $week ]--;
-		}
-		foreach ( array( $this->extract_id( $game->home_team ), $this->extract_id( $game->away_team ) ) as $team_id ) {
-			$state['team_placed'][ $team_id ] = ( $state['team_placed'][ $team_id ] ?? 0 ) + 1;
-			if ( null !== $week ) {
-				$state['team_weeks'][ $team_id ][ $week ] = ( $state['team_weeks'][ $team_id ][ $week ] ?? 0 ) + 1;
-			}
-		}
+		$this->adjust_week_state( $state, $game, 1 );
 	}
 
 	/**
@@ -1707,17 +1835,39 @@ class SPSG_Slot_Allocator {
 		array_pop( $schedule );
 		unset( $used_slots[ $slot_key ] );
 		array_pop( $schedule_by_date[ $game->date ] );
+		$this->adjust_week_state( $state, $game, -1 );
+	}
 
-		$week = $this->week_of_date[ $game->date ] ?? null;
-		if ( null !== $week ) {
-			$state['free'][ $week ]++;
+	/**
+	 * Add or remove one game's worth of the search state's week counters.
+	 * Every game's date came from {@see $slots_by_date}, so it has a week.
+	 */
+	private function adjust_week_state( &$state, $game, $delta ) {
+		$week                    = $this->week_of_date[ $game->date ];
+		$state['free'][ $week ] -= $delta;
+		foreach ( $this->game_team_ids( $game ) as $team_id ) {
+			$this->bump( $state['team_placed'], $team_id, $delta );
+			$this->bump( $state['team_weeks'][ $team_id ], $week, $delta );
 		}
-		foreach ( array( $this->extract_id( $game->home_team ), $this->extract_id( $game->away_team ) ) as $team_id ) {
-			$state['team_placed'][ $team_id ]--;
-			if ( null !== $week ) {
-				$state['team_weeks'][ $team_id ][ $week ]--;
-			}
+	}
+
+	/**
+	 * Both team ids of a game.
+	 *
+	 * @return string[]
+	 */
+	private function game_team_ids( $game ) {
+		return array( $this->extract_id( $game->home_team ), $this->extract_id( $game->away_team ) );
+	}
+
+	/**
+	 * $counters[$key] += $delta, creating the entry at zero if missing.
+	 */
+	private function bump( &$counters, $key, $delta ) {
+		if ( ! isset( $counters[ $key ] ) ) {
+			$counters[ $key ] = 0;
 		}
+		$counters[ $key ] += $delta;
 	}
 
 	/**
@@ -2417,26 +2567,40 @@ class SPSG_Slot_Allocator {
 	 * @return bool
 	 */
 	private function breaks_week_feasibility( $slot_date, $home_team_id, $away_team_id, $schedule_by_date ) {
-		if ( $this->allow_same_week_doubleheader || empty( $this->week_of_date ) || empty( $this->team_total_games ) ) {
+		if ( ! $this->week_feasibility_applies( $slot_date ) ) {
 			return false;
 		}
-		$slot_week = $this->week_of_date[ $slot_date ] ?? null;
-		if ( null === $slot_week ) {
-			return false;
-		}
+		$slot_week = $this->week_of_date[ $slot_date ];
 
 		$free = $this->free_slots_by_week( $schedule_by_date );
 		$free[ $slot_week ]--;
 
 		list( $placed, $weeks_played ) = $this->team_placement_state( $schedule_by_date );
 		foreach ( array( $home_team_id, $away_team_id ) as $team_id ) {
-			$placed[ $team_id ]                     = ( $placed[ $team_id ] ?? 0 ) + 1;
+			$this->bump( $placed, $team_id, 1 );
 			$weeks_played[ $team_id ][ $slot_week ] = true;
 		}
 
 		$demand = $this->team_week_demand( $free, $placed, $weeks_played );
+		if ( null === $demand ) {
+			return true;
+		}
+		return ! $this->week_capacity_holds( $free, $demand );
+	}
 
-		return null === $demand || ! $this->week_capacity_holds( $free, $demand );
+	/**
+	 * The counting check only holds under the strict same-week rule, and
+	 * only once {@see allocate()} has built the week indexes (a direct
+	 * {@see is_slot_valid()} caller may not have) for a date that has one.
+	 */
+	private function week_feasibility_applies( $slot_date ) {
+		if ( $this->allow_same_week_doubleheader ) {
+			return false;
+		}
+		if ( empty( $this->team_total_games ) ) {
+			return false;
+		}
+		return isset( $this->week_of_date[ $slot_date ] );
 	}
 
 	/**
@@ -2453,15 +2617,17 @@ class SPSG_Slot_Allocator {
 		$open_teams_by_week = array();
 		$slack_by_team      = array();
 		$remaining          = 0;
+		$weeks_with_room    = array_keys( array_filter( $free ) );
 
 		foreach ( $this->team_total_games as $team_id => $total ) {
-			$left = $total - ( $placed[ $team_id ] ?? 0 );
+			$this->bump( $placed, $team_id, 0 );
+			$left = $total - $placed[ $team_id ];
 			if ( $left <= 0 ) {
 				continue;
 			}
 			$open = 0;
-			foreach ( $free as $week => $free_slots ) {
-				if ( $free_slots > 0 && empty( $weeks_played[ $team_id ][ $week ] ) ) {
+			foreach ( $weeks_with_room as $week ) {
+				if ( empty( $weeks_played[ $team_id ][ $week ] ) ) {
 					$open++;
 					$open_teams_by_week[ $week ][] = $team_id;
 				}
@@ -2537,17 +2703,51 @@ class SPSG_Slot_Allocator {
 		$placed       = array();
 		$weeks_played = array();
 		foreach ( $schedule_by_date as $date => $games ) {
-			$week = $this->week_of_date[ $date ] ?? null;
+			$week = $this->week_of_date[ $date ];
 			foreach ( $games as $game ) {
-				foreach ( array( $this->extract_id( $game->home_team ), $this->extract_id( $game->away_team ) ) as $team_id ) {
-					$placed[ $team_id ] = ( $placed[ $team_id ] ?? 0 ) + 1;
-					if ( null !== $week ) {
-						$weeks_played[ $team_id ][ $week ] = true;
-					}
+				foreach ( $this->game_team_ids( $game ) as $team_id ) {
+					$this->bump( $placed, $team_id, 1 );
+					$weeks_played[ $team_id ][ $week ] = true;
 				}
 			}
 		}
 		return array( $placed, $weeks_played );
+	}
+
+	/**
+	 * ISO week key of every date with slots, and the dates of each week.
+	 * Built once per {@see allocate()} run.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private function index_weeks() {
+		$this->week_of_date  = array();
+		$this->dates_by_week = array();
+		foreach ( $this->sorted_slot_dates as $date ) {
+			$week = SPSG_Schedule_Helper::iso_week_key( $date );
+			if ( null === $week ) {
+				continue;
+			}
+			$this->week_of_date[ $date ]    = $week;
+			$this->dates_by_week[ $week ][] = $date;
+		}
+	}
+
+	/**
+	 * The dates of the given weeks, in chronological order.
+	 *
+	 * @param string[] $weeks Week keys.
+	 * @return string[]
+	 */
+	private function dates_in_weeks( $weeks ) {
+		$dates = array();
+		foreach ( $weeks as $week ) {
+			foreach ( $this->dates_by_week[ $week ] as $date ) {
+				$dates[] = $date;
+			}
+		}
+		sort( $dates );
+		return $dates;
 	}
 
 	/**
