@@ -605,11 +605,20 @@ class SPSG_Slot_Allocator {
 	 */
 	private function rounds_by_division( $matchups ) {
 		$by_division = array();
+		$final_week  = array();
 		foreach ( $matchups as $matchup ) {
 			if ( ! empty( $matchup->is_inter_division ) ) {
 				return null;
 			}
-			$by_division[ $this->division_key( $matchup->division ) ][] = $matchup;
+			$key = $this->division_key( $matchup->division );
+			if ( $this->is_final_week_matchup( $matchup ) ) {
+				$final_week[ $key ][] = $matchup;
+			} else {
+				$by_division[ $key ][] = $matchup;
+			}
+		}
+		if ( array_diff_key( $final_week, $by_division ) ) {
+			return null;
 		}
 
 		$divisions = array();
@@ -619,6 +628,20 @@ class SPSG_Slot_Allocator {
 				$this->log( sprintf( 'Round-based allocation: division %s does not split into full rounds', $key ) );
 				return null;
 			}
+			// A postseason's Championship/Consolation games are between a
+			// different set of placeholder teams from its round-robin seeds,
+			// so they can't take part in the decomposition above -- but they
+			// are one full round of the division by construction, and must be
+			// the LAST one it plays (SPSG_Postseason_Week_Constraint pins them
+			// to the final week). plan_division_weeks() consumes rounds from
+			// the end of the list, so it goes in front.
+			if ( ! empty( $final_week[ $key ] ) ) {
+				if ( count( $final_week[ $key ] ) !== count( $rounds[0] ) ) {
+					$this->log( sprintf( 'Round-based allocation: division %s final week is not a full round', $key ) );
+					return null;
+				}
+				array_unshift( $rounds, $final_week[ $key ] );
+			}
 			$divisions[ $key ] = array(
 				'size'   => count( $rounds[0] ),
 				'rounds' => $rounds,
@@ -626,6 +649,16 @@ class SPSG_Slot_Allocator {
 		}
 
 		return $divisions;
+	}
+
+	/**
+	 * Whether a matchup is a postseason Championship/Consolation game.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private function is_final_week_matchup( $matchup ) {
+		return class_exists( 'SPSG_Postseason_Bracket_Detector' )
+			&& null !== SPSG_Postseason_Bracket_Detector::final_week_info( $matchup );
 	}
 
 	/**

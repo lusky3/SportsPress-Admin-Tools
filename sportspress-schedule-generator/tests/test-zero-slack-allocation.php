@@ -424,6 +424,81 @@ if ( zs_assert( ! is_wp_error( $split_result ) && 320 === count( $split_result['
 	);
 }
 
+echo "\n=== The postseason: 3 cross round-robin weeks + a Championship/Consolation week, zero slack ===\n\n";
+
+// The postseason built from that season: Mar 1-28 2027, four full weeks, 64
+// games for 64 slots. Its Championship/Consolation games are between a
+// different set of placeholder teams from the round-robin seeds and are
+// pinned to the final week (SPSG_Postseason_Week_Constraint), with the
+// Championship games on Friday (SPSG_Postseason_Day_Constraint) -- so the
+// round-based pass has to treat them as each division's LAST round rather
+// than decompose them together with the seeds' games.
+require_once SPSG_PLUGIN_PATH . 'includes/class-placeholder-team-manager.php';
+require_once SPSG_PLUGIN_PATH . 'includes/class-postseason-seed-resolver.php';
+require_once SPSG_PLUGIN_PATH . 'includes/class-postseason-pairing.php';
+require_once SPSG_PLUGIN_PATH . 'includes/class-postseason-bracket-detector.php';
+require_once SPSG_PLUGIN_PATH . 'includes/class-postseason-matchup-builder.php';
+require_once SPSG_PLUGIN_PATH . 'includes/constraints/class-postseason-week-constraint.php';
+require_once SPSG_PLUGIN_PATH . 'includes/constraints/class-postseason-day-constraint.php';
+SPSG_Constraint_Registry::register( 'SPSG_Postseason_Week_Constraint' );
+SPSG_Constraint_Registry::register( 'SPSG_Postseason_Day_Constraint' );
+// Placeholder teams are minted as posts; none of that matters here.
+if ( ! function_exists( 'wp_insert_post' ) ) {
+	function wp_insert_post( $args, $wp_error = false ) { static $next = 900000; return ++$next; }
+}
+if ( ! function_exists( 'update_post_meta' ) ) {
+	function update_post_meta( $id, $key, $value ) { return true; }
+}
+if ( ! function_exists( 'get_posts' ) ) {
+	function get_posts( $args = array() ) { return array(); }
+}
+if ( ! function_exists( 'sanitize_text_field' ) ) {
+	function sanitize_text_field( $s ) { return trim( (string) $s ); }
+}
+if ( ! function_exists( 'sanitize_title' ) ) {
+	function sanitize_title( $s ) { return strtolower( preg_replace( '/[^a-z0-9]+/i', '-', (string) $s ) ); }
+}
+
+$playoff_config = new SPSG_Schedule_Configuration(
+	array_merge(
+		$config->to_array(),
+		array(
+			'id'                => 'config_playoffs',
+			'season_start'      => '2027-03-01',
+			'season_end'        => '2027-03-28',
+			'blackout_dates'    => array(),
+			'is_postseason'     => true,
+			'round_robin_weeks' => 3,
+			'championship_day'  => array( 'day' => 'friday', 'start' => '18:45', 'end' => '21:00' ),
+			'consolation_day'   => '',
+		)
+	)
+);
+$playoff_cm = new SPSG_Constraint_Manager();
+zs_assert( 64 === count( ( new SPSG_Slot_Allocator( $playoff_cm ) )->generate_available_slots( $playoff_config ) ), 'the postseason exposes exactly 64 slots' );
+$playoff_result = ( new SPSG_Schedule_Engine( $playoff_cm ) )->generate_schedule( $playoff_config );
+if ( zs_assert( ! is_wp_error( $playoff_result ) && 64 === count( $playoff_result['schedule'] ), 'all 64 postseason games are placed' . ( is_wp_error( $playoff_result ) ? ' -- got: ' . $playoff_result->get_error_message() : '' ) ) ) {
+	$final_week_games = 0;
+	$misplaced        = 0;
+	$champ_days       = array();
+	foreach ( $playoff_result['schedule'] as $game ) {
+		$final = SPSG_Postseason_Bracket_Detector::final_week_info( $game );
+		if ( null !== $final ) {
+			$final_week_games++;
+			if ( $game->date < '2027-03-22' ) {
+				$misplaced++;
+			}
+			if ( $final['is_championship'] ) {
+				$champ_days[ $game->date ] = ( $champ_days[ $game->date ] ?? 0 ) + 1;
+			}
+		} elseif ( $game->date >= '2027-03-22' ) {
+			$misplaced++;
+		}
+	}
+	zs_assert( 16 === $final_week_games && 0 === $misplaced, 'all 16 Championship/Consolation games land in the final week and no round-robin game does (' . $misplaced . ' misplaced)' );
+	zs_assert( array( '2027-03-26' => 5 ) === $champ_days, 'every division\'s Championship game is on Friday Mar 26 -- got ' . json_encode( $champ_days ) );
+}
+
 echo "\n=== Seasons with slack are unaffected: the pruning never rejects a placement that could have completed ===\n\n";
 
 // Same season one week longer (Nov 1 adds a 6-slot Sunday): 70 slots for
