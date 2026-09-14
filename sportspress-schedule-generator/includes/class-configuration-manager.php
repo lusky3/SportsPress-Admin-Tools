@@ -612,6 +612,35 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 			'playing_days'                => self::value( $source, 'playing_days', array() ),
 			'time_slots'                  => self::value( $source, 'time_slots', array() ),
 			'timezone'                    => self::value( $source, 'timezone', '' ),
+			// Same physical constraints as the source season -- the SAME
+			// venues on the SAME nights, just a later phase of it -- so
+			// these carry over exactly like divisions/venues/time_slots
+			// above. Previously silently dropped to whatever
+			// SPSG_Schedule_Configuration defaults to (e.g. a venue with
+			// its own narrower per-night hours, like a second rink running
+			// 15 minutes off the main grid, would wrongly fall back to the
+			// GLOBAL time_slots for the postseason bracket instead of its
+			// own real hours).
+			'venue_timeslots'             => self::value( $source, 'venue_timeslots', array() ),
+			'venue_blackout_dates'        => self::value( $source, 'venue_blackout_dates', array() ),
+			'venue_date_availability'     => self::value( $source, 'venue_date_availability', array() ),
+			'match_length'                => self::value( $source, 'match_length', 60 ),
+			'team_restrictions'           => self::value( $source, 'team_restrictions', array() ),
+			'division_grouping'           => self::value( $source, 'division_grouping', array() ),
+			// distribution_rules as a whole (day_balance, time_slot_balance,
+			// home_away_balance, day_ratios) -- a postseason bracket should
+			// balance Friday/Sunday the same way the operator already asked
+			// the regular season to, not silently revert to an even split.
+			'distribution_rules'         => self::value( $source, 'distribution_rules', array() ),
+			// Only the source's blackout dates that actually fall inside
+			// THIS bracket's own [season_start, season_end] -- copying the
+			// full list verbatim would include the regular season's own
+			// blackout dates (which are, by construction, never inside the
+			// postseason's date range) and trip
+			// SPSG_Configuration_Validator::validate_blackout_dates_range()'s
+			// hard "blackout date is outside the season range" error on
+			// every single postseason configuration.
+			'blackout_dates'              => self::postseason_blackout_dates( $source, $season_start, $round_robin_weeks ),
 			// Same roster-filling policy as the source season, not
 			// independently settable here: a division short of the source's
 			// own generic_teams target still gets a placeholder teammate at
@@ -683,6 +712,48 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 		}
 		$end->modify( '+' . ( 7 * ( $round_robin_weeks + 1 ) - 1 ) . ' days' );
 		return $end->format( 'Y-m-d' );
+	}
+
+	/**
+	 * The source config's blackout dates, filtered to only the ones that
+	 * actually fall inside this bracket's own [season_start, season_end] --
+	 * see build_postseason_config_data()'s own comment for why filtering
+	 * (rather than copying verbatim, or dropping entirely) is the correct
+	 * behaviour.
+	 *
+	 * @param array  $source            Source configuration's raw array.
+	 * @param string $season_start      This bracket's own computed season_start ('Y-m-d' or '').
+	 * @param int    $round_robin_weeks Number of cross-round-robin weeks.
+	 * @return array Filtered blackout dates, still 'Y-m-d' strings.
+	 */
+	private static function postseason_blackout_dates( array $source, $season_start, $round_robin_weeks ) {
+		$blackout_dates = self::value( $source, 'blackout_dates', array() );
+		$season_end = self::postseason_season_end( $season_start, $round_robin_weeks );
+
+		if ( empty( $blackout_dates ) || empty( $season_start ) || empty( $season_end ) ) {
+			return array();
+		}
+
+		try {
+			$start = new DateTime( $season_start );
+			$end   = new DateTime( $season_end );
+		} catch ( Exception $e ) {
+			return array();
+		}
+
+		return array_values(
+			array_filter(
+				$blackout_dates,
+				function ( $blackout ) use ( $start, $end ) {
+					try {
+						$date = new DateTime( $blackout );
+					} catch ( Exception $e ) {
+						return false;
+					}
+					return $date >= $start && $date <= $end;
+				}
+			)
+		);
 	}
 
 	/**

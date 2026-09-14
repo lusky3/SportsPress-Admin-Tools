@@ -694,23 +694,36 @@ class SPSG_Configuration_Validator {
 	 * — it was previously returned as a WP_Error, which the generate path treats
 	 * as a hard validation failure, so a perfectly schedulable season was refused
 	 * with a warning-worded message.
+	 *
+	 * H (2026-09-14): the hard-error line here used to be 80% of raw
+	 * capacity (a 20% buffer meant to absorb real-world constraint
+	 * friction -- day-balance, double-headers, division grouping), while
+	 * SPSG_Constraint_Manager::check_feasibility() -- the check that
+	 * actually gates real generation, computing $total_games_needed and
+	 * $total_slots_available identically -- has never applied any buffer
+	 * at all, only refusing when the raw slot count is actually exceeded.
+	 * A real season at 82.4% raw utilization was refused HERE while
+	 * generating perfectly cleanly through the real allocator (272 games,
+	 * zero issues), proving the buffer's assumed friction doesn't hold in
+	 * general. The hard error now matches check_feasibility() exactly (no
+	 * buffer) so the two gates can no longer disagree about whether a
+	 * config is actually generatable; the old 80% error line becomes the
+	 * "tight" warning line instead of being dropped, so operators still
+	 * get a heads-up before they're right at the edge.
 	 */
 	private function check_capacity_thresholds( $total_games_needed, $total_slots_available ) {
-		$effective_capacity = $total_slots_available * 0.8;
-
-		if ( $total_games_needed > $effective_capacity ) {
+		if ( $total_games_needed > $total_slots_available ) {
 			return new WP_Error(
 				'insufficient_capacity',
 				sprintf(
-					__( 'Insufficient time slots: Need %1$d games but only %2$d effective slots available (%3$.0f slots with 20%% buffer for constraints). Suggestions: Add more time slots, extend season, reduce games per team, or remove blackout dates.', 'sportspress-schedule-generator' ),
+					__( 'Insufficient time slots: Need %1$d games but only %2$d slots available. Suggestions: Add more time slots, extend season, reduce games per team, or remove blackout dates.', 'sportspress-schedule-generator' ),
 					$total_games_needed,
-					floor( $effective_capacity ),
 					$total_slots_available
 				)
 			);
 		}
 
-		if ( $total_games_needed > ( $total_slots_available * 0.7 ) ) {
+		if ( $total_games_needed > ( $total_slots_available * 0.8 ) ) {
 			$this->warnings['tight_capacity'] = sprintf(
 				__( 'Warning: Schedule capacity is tight. Need %1$d games with only %2$d slots available. Consider adding more time slots or extending the season for better scheduling flexibility.', 'sportspress-schedule-generator' ),
 				$total_games_needed,

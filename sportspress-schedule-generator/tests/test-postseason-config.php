@@ -613,6 +613,16 @@ $source = array(
 	'timezone'   => 'America/Toronto',
 	'season_end' => '2027-01-31',
 	'generic_teams' => array( 'enabled' => true, 'per_division' => 6, 'prefix' => 'Team' ),
+	'venue_timeslots' => array( 'v1' => array( 'friday' => array( '19:00' ) ) ),
+	'venue_blackout_dates' => array( 'v1' => array( '2027-02-10' ) ),
+	'venue_date_availability' => array( 'v1' => array( array( 'start_date' => '2027-02-14', 'end_date' => '2027-02-14', 'time_slots' => array( '19:00' ) ) ) ),
+	'match_length' => 50,
+	'team_restrictions' => array( 'back_to_back_avoid' => array( array( 'teams' => array( 'A', 'B' ) ) ) ),
+	'division_grouping' => array( 'enabled' => true, 'priority' => 3 ),
+	'distribution_rules' => array( 'day_balance' => array(), 'time_slot_balance' => true, 'home_away_balance' => true, 'day_ratios' => array( 'friday' => 0.6, 'sunday' => 0.4 ) ),
+	// One before, one inside, one after the postseason's own computed
+	// [2027-02-01, 2027-02-28] window (round_robin_weeks defaults to 3).
+	'blackout_dates' => array( '2027-01-15', '2027-02-14', '2027-03-01' ),
 );
 
 $built = $manager->build_postseason_config_data( $source );
@@ -632,6 +642,35 @@ pc_assert( 'custom' === $built['matchup_style'], 'matchup_style is always "custo
 pc_assert(
 	'2027-02-01' === $built['season_start'],
 	'season_start is derived as the day after the source config\'s own season_end (2027-01-31), never a separate input'
+);
+pc_assert(
+	$source['venue_timeslots'] === $built['venue_timeslots'],
+	'venue_timeslots copies the source\'s per-venue time grid -- previously dropped entirely, silently falling back to schema defaults for a postseason bracket'
+);
+pc_assert(
+	$source['venue_blackout_dates'] === $built['venue_blackout_dates'],
+	'venue_blackout_dates copies the source\'s per-venue blackout dates'
+);
+pc_assert(
+	$source['venue_date_availability'] === $built['venue_date_availability'],
+	'venue_date_availability copies the source\'s date-specific venue overrides'
+);
+pc_assert( 50 === $built['match_length'], 'match_length copies the source\'s match length' );
+pc_assert(
+	$source['team_restrictions'] === $built['team_restrictions'],
+	'team_restrictions copies the source\'s back-to-back/overlap rules -- previously dropped, silently disabling them for the postseason bracket'
+);
+pc_assert(
+	$source['division_grouping'] === $built['division_grouping'],
+	'division_grouping copies the source\'s division-grouping settings'
+);
+pc_assert(
+	$source['distribution_rules']['day_ratios'] === $built['distribution_rules']['day_ratios'],
+	'distribution_rules (including day_ratios, the per-team day-split preference) copies the source\'s settings -- previously dropped entirely'
+);
+pc_assert(
+	array( '2027-02-14' ) === $built['blackout_dates'],
+	'blackout_dates keeps only the source dates that fall inside the postseason\'s own [season_start, season_end] window (2027-01-15 and 2027-03-01 are dropped as out of range) -- a verbatim copy would trip validate_blackout_dates_range() on every postseason config, since the source\'s own blackout dates are, by construction, almost always outside the postseason\'s window'
 );
 
 $built_with_overrides = $manager->build_postseason_config_data(
