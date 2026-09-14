@@ -101,6 +101,20 @@ class SPSG_Slot_Allocator {
 	private $venue_capacity_by_date = array();
 
 	/**
+	 * ISO week key ("o-W") of every date in {@see $slots_by_date}, and the
+	 * reverse index. Built once per allocation run for
+	 * {@see breaks_week_feasibility()}.
+	 *
+	 * @var array<string,string> date => week key
+	 */
+	private $week_of_date = array();
+
+	/**
+	 * @var array<string,string[]> week key => dates with slots that week
+	 */
+	private $dates_by_week = array();
+
+	/**
 	 * Count of games with soft constraint violations
 	 */
 	private $constraint_violations = 0;
@@ -363,6 +377,17 @@ class SPSG_Slot_Allocator {
 		}
 		$this->sorted_slot_dates = array_keys( $this->slots_by_date );
 		sort( $this->sorted_slot_dates );
+
+		$this->week_of_date  = array();
+		$this->dates_by_week = array();
+		foreach ( $this->sorted_slot_dates as $date ) {
+			$week = SPSG_Schedule_Helper::iso_week_key( $date );
+			if ( null === $week ) {
+				continue;
+			}
+			$this->week_of_date[ $date ]    = $week;
+			$this->dates_by_week[ $week ][] = $date;
+		}
 
 		$this->date_target_load = $this->build_date_target_load( $matchups, $config );
 
@@ -704,7 +729,16 @@ class SPSG_Slot_Allocator {
 		);
 		$this->backtrack_budget_exhausted = false;
 
-		$result = $this->backtrack_recursive( $matchups, 0, $schedule, $used_slots, $schedule_by_date, $config, 0, $progress_callback, $cancellation_callback, $timeout_callback );
+		// Incrementally maintained view of the search state, so choosing the
+		// next matchup and its candidate weeks is O(teams x weeks) per node
+		// instead of a rescan of the schedule.
+		$state = array(
+			'team_weeks'  => array(),
+			'team_placed' => array(),
+			'free'        => $this->free_slots_by_week( array() ),
+		);
+
+		$result = $this->backtrack_recursive( $matchups, array_keys( $matchups ), $state, $schedule, $used_slots, $schedule_by_date, $config, 0, $progress_callback, $cancellation_callback, $timeout_callback );
 
 		if ( $this->backtrack_budget_exhausted ) {
 			$this->log( 'Backtracking gave up: node budget exhausted' );
@@ -714,80 +748,319 @@ class SPSG_Slot_Allocator {
 	}
 
 	/**
-	 * Recursive backtracking helper
+	 * Recursive backtracking helper.
+	 *
+	 * Places the most constrained remaining matchup first -- the one with the
+	 * fewest weeks both its teams are still free in -- and tries its candidate
+	 * slots cheapest first. This used to walk the matchup list in its original
+	 * (division-grouped) order and every slot in chronological order, which
+	 * made the search blind in exactly the case it exists for: a season sized
+	 * close to its slot count, where the games with only one possible week
+	 * left sit at the END of the list behind dozens of flexible ones. The
+	 * depth-first search then burned its whole budget re-shuffling flexible
+	 * games while the doomed choice sat far up the stack. Picking the tightest
+	 * matchup next means a dead end (a matchup with no open week at all) is
+	 * found the moment it's created, not after the rest of the list has been
+	 * tried against it.
+	 *
+	 * @param array $matchups  All matchups, by original index.
+	 * @param int[] $remaining Indexes into $matchups not yet placed.
+	 * @param array $state     See {@see backtrack_allocate()}.
 	 */
-	private function backtrack_recursive( $matchups, $index, &$schedule, &$used_slots, &$schedule_by_date, $config, $depth, $progress_callback = null, $cancellation_callback = null, $timeout_callback = null ) {
-		if ( $cancellation_callback && call_user_func( $cancellation_callback ) ) {
-			$this->was_cancelled = true;
+	private function backtrack_recursive( $matchups, $remaining, &$state, &$schedule, &$used_slots, &$schedule_by_date, $config, $depth, $progress_callback = null, $cancellation_callback = null, $timeout_callback = null ) {
+		if ( $this->backtrack_must_stop( $depth, $cancellation_callback, $timeout_callback ) ) {
 			return false;
 		}
-		if ( $timeout_callback && call_user_func( $timeout_callback ) ) {
-			$this->was_timed_out = true;
-			return false;
-		}
-		if ( $depth > $this->max_backtrack_depth ) {
-			return false;
-		}
-		if ( $index >= count( $matchups ) ) {
+		if ( empty( $remaining ) ) {
 			return true;
 		}
 
-		// M53: fail fast once the search budget is spent.
-		if ( $this->backtrack_budget <= 0 ) {
-			$this->backtrack_budget_exhausted = true;
+		if ( $progress_callback && $depth % 10 === 0 ) {
+			call_user_func( $progress_callback, $depth );
+		}
+
+		$pick = $this->most_constrained_matchup( $matchups, $remaining, $state );
+		if ( null === $pick ) {
 			return false;
 		}
+		$matchup = $matchups[ $remaining[ $pick ] ];
+		unset( $remaining[ $pick ] );
+		$remaining = array_values( $remaining );
 
-		if ( $progress_callback && $index % 10 === 0 ) {
-			call_user_func( $progress_callback, $index );
-		}
-
-		$matchup = $matchups[ $index ];
-
-		foreach ( $this->available_slots as $slot ) {
+		foreach ( $this->rank_candidate_slots( $matchup, $used_slots, $schedule_by_date, $state, $config ) as $slot ) {
 			$slot_key = $this->get_slot_key( $slot );
+			$game     = $this->create_game( $matchup, $slot, $config );
+			$this->push_backtrack_game( $game, $slot_key, $state, $schedule, $used_slots, $schedule_by_date );
 
-			if ( isset( $used_slots[ $slot_key ] ) ) {
-				continue;
-			}
-
-			// M53: charge budget only for slots that reach real constraint
-			// validation. Skipping an already-used slot above is an O(1) hash
-			// lookup, not the search work this budget is meant to bound —
-			// charging it anyway made the budget scale with total slot COUNT
-			// rather than remaining search effort. As a season fills up, most
-			// of $available_slots is already used, so a large slot list could
-			// exhaust the budget almost entirely on cheap skips before any
-			// real backtracking happened — worse, adding MORE slots made this
-			// effect stronger, the opposite of what more real capacity should
-			// do. Independent of {@see backtrack_allocate()}'s budget-sizing
-			// fix above: that scales how much budget is granted, this scales
-			// what each visit actually costs.
-			if ( --$this->backtrack_budget <= 0 ) {
-				$this->backtrack_budget_exhausted = true;
-				return false;
-			}
-
-			if ( ! $this->is_slot_valid( $matchup, $slot, $schedule_by_date, $config ) ) {
-				continue;
-			}
-
-			$game = $this->create_game( $matchup, $slot, $config );
-			$schedule[] = $game;
-			$used_slots[ $slot_key ] = true;
-			$schedule_by_date[ $game->date ][] = $game;
-
-			if ( $this->backtrack_recursive( $matchups, $index + 1, $schedule, $used_slots, $schedule_by_date, $config, $depth + 1, $progress_callback, $cancellation_callback, $timeout_callback ) ) {
+			if ( $this->backtrack_recursive( $matchups, $remaining, $state, $schedule, $used_slots, $schedule_by_date, $config, $depth + 1, $progress_callback, $cancellation_callback, $timeout_callback ) ) {
 				return true;
 			}
 
-			// Backtrack
-			array_pop( $schedule );
-			unset( $used_slots[ $slot_key ] );
-			array_pop( $schedule_by_date[ $game->date ] );
+			$this->pop_backtrack_game( $game, $slot_key, $state, $schedule, $used_slots, $schedule_by_date );
 		}
 
 		return false;
+	}
+
+	/**
+	 * Whether the backtracking search has to give up at this node: the user
+	 * cancelled, the engine timed out, the depth guard tripped, or (M53) the
+	 * node budget is spent.
+	 */
+	private function backtrack_must_stop( $depth, $cancellation_callback, $timeout_callback ) {
+		if ( $cancellation_callback && call_user_func( $cancellation_callback ) ) {
+			$this->was_cancelled = true;
+			return true;
+		}
+		if ( $timeout_callback && call_user_func( $timeout_callback ) ) {
+			$this->was_timed_out = true;
+			return true;
+		}
+		if ( $depth > $this->max_backtrack_depth ) {
+			return true;
+		}
+		if ( $this->backtrack_budget <= 0 ) {
+			$this->backtrack_budget_exhausted = true;
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Position in $remaining of the matchup with the fewest open weeks, or
+	 * null when some remaining matchup has none (a dead end). Earlier
+	 * position wins ties, preserving the original order where nothing
+	 * distinguishes two matchups.
+	 *
+	 * @param array $matchups  All matchups, by original index.
+	 * @param int[] $remaining Indexes into $matchups not yet placed.
+	 * @param array $state     Search state (see {@see backtrack_allocate()}).
+	 * @return int|null
+	 */
+	private function most_constrained_matchup( $matchups, $remaining, $state ) {
+		$pick      = null;
+		$pick_open = null;
+
+		foreach ( $remaining as $position => $index ) {
+			$open = count( $this->open_weeks_for( $matchups[ $index ], $state ) );
+			if ( 0 === $open ) {
+				return null;
+			}
+			if ( null === $pick_open || $open < $pick_open ) {
+				$pick      = $position;
+				$pick_open = $open;
+				if ( 1 === $open ) {
+					break;
+				}
+			}
+		}
+
+		return $pick;
+	}
+
+	/**
+	 * Weeks that still have a free slot and that neither team of the matchup
+	 * plays in yet. Once the same-week rule is relaxed every week with room
+	 * qualifies.
+	 *
+	 * @param object $matchup Matchup object.
+	 * @param array  $state   Search state (see {@see backtrack_allocate()}).
+	 * @return string[] Week keys.
+	 */
+	private function open_weeks_for( $matchup, $state ) {
+		$home_id = $this->extract_id( $matchup->home_team );
+		$away_id = $this->extract_id( $matchup->away_team );
+		$weeks   = array();
+
+		foreach ( $state['free'] as $week => $free_slots ) {
+			if ( $free_slots <= 0 ) {
+				continue;
+			}
+			if ( ! $this->allow_same_week_doubleheader
+				&& ( ! empty( $state['team_weeks'][ $home_id ][ $week ] ) || ! empty( $state['team_weeks'][ $away_id ][ $week ] ) ) ) {
+				continue;
+			}
+			$weeks[] = $week;
+		}
+
+		return $weeks;
+	}
+
+	/**
+	 * The matchup's valid slots in its open weeks, cheapest first -- the same
+	 * scoring {@see find_best_slot()} uses, so a backtracked schedule keeps
+	 * the greedy pass's placement quality rather than falling back to
+	 * first-fit.
+	 *
+	 * Charges {@see $backtrack_budget} per slot validated; returns whatever
+	 * was ranked so far once it runs out (the caller checks the exhausted
+	 * flag before recursing further).
+	 *
+	 * @param object $matchup          Matchup object.
+	 * @param array  $used_slots       Slot keys already taken.
+	 * @param array  $schedule_by_date Schedule indexed by date.
+	 * @param array  $state            Search state (see {@see backtrack_allocate()}).
+	 * @param object $config           Schedule configuration.
+	 * @return object[] Slots, best first.
+	 */
+	private function rank_candidate_slots( $matchup, $used_slots, $schedule_by_date, $state, $config ) {
+		$home_id = $this->extract_id( $matchup->home_team );
+
+		$preferred_venue_id = null;
+		if ( ! empty( $config->home_away_preferences ) ) {
+			$preferred_venue_id = $config->home_away_preferences[ $home_id ] ?? null;
+		}
+
+		$pacing     = $this->pacing_cost_by_date( $matchup, $state, $config );
+		$open_weeks = array_fill_keys( $this->open_weeks_for( $matchup, $state ), true );
+		$ranked     = array();
+
+		foreach ( $this->sorted_slot_dates as $date ) {
+			if ( empty( $open_weeks[ $this->week_of_date[ $date ] ?? '' ] ) ) {
+				continue;
+			}
+			foreach ( $this->score_free_slots_on_date( $matchup, $date, $used_slots, $schedule_by_date, $config, $preferred_venue_id ) as $entry ) {
+				$entry['cost'] += $pacing[ $date ] ?? 0.0;
+				$ranked[]       = $entry;
+			}
+			if ( $this->backtrack_budget_exhausted ) {
+				break;
+			}
+		}
+
+		usort(
+			$ranked,
+			function ( $a, $b ) {
+				return $a['cost'] <=> $b['cost'];
+			}
+		);
+
+		return $this->cheapest_slot_per_date( $ranked );
+	}
+
+	/**
+	 * {@see find_best_slot()}'s pacing term for every date, keyed by date.
+	 *
+	 * @param object $matchup Matchup object.
+	 * @param array  $state   Search state (see {@see backtrack_allocate()}).
+	 * @param object $config  Schedule configuration.
+	 * @return array<string,float>
+	 */
+	private function pacing_cost_by_date( $matchup, $state, $config ) {
+		$home_id = $this->extract_id( $matchup->home_team );
+		$away_id = $this->extract_id( $matchup->away_team );
+		$placed  = array(
+			$home_id => (int) ( $state['team_placed'][ $home_id ] ?? 0 ),
+			$away_id => (int) ( $state['team_placed'][ $away_id ] ?? 0 ),
+		);
+
+		$pacing = array();
+		foreach ( $this->order_dates_by_pace( $this->sorted_slot_dates, $placed, $config ) as $entry ) {
+			$pacing[ $entry['date'] ] = $entry['distance'] * self::PACING_COST_PER_DATE;
+		}
+		return $pacing;
+	}
+
+	/**
+	 * Every unused, valid slot on $date with its soft-constraint cost.
+	 * Charges {@see $backtrack_budget} per slot validated and stops early,
+	 * flagging exhaustion, when it runs out.
+	 *
+	 * @return array<int,array{slot: object, cost: float}>
+	 */
+	private function score_free_slots_on_date( $matchup, $date, $used_slots, $schedule_by_date, $config, $preferred_venue_id ) {
+		$scored = array();
+
+		foreach ( $this->slots_by_date[ $date ] as $slot ) {
+			if ( isset( $used_slots[ $this->get_slot_key( $slot ) ] ) ) {
+				continue;
+			}
+			if ( --$this->backtrack_budget <= 0 ) {
+				$this->backtrack_budget_exhausted = true;
+				break;
+			}
+			$game = $this->create_game( $matchup, $slot, $config );
+			if ( ! $this->is_slot_valid( $matchup, $slot, $schedule_by_date, $config, $game ) ) {
+				continue;
+			}
+			$scored[] = array(
+				'slot' => $slot,
+				'cost' => $this->calculate_slot_cost( $game, $slot, $schedule_by_date, $config, $preferred_venue_id ),
+			);
+		}
+
+		return $scored;
+	}
+
+	/**
+	 * One candidate per date: the cheapest valid slot on it.
+	 *
+	 * Which DATE a game lands on is the decision that interacts with every
+	 * other game (through the same-week rule and week capacity); which of
+	 * that date's remaining slots it takes is interchangeable for that
+	 * purpose. Branching over every slot made the search re-try a doomed
+	 * date choice once per slot permutation below it -- 16 slots a week
+	 * meant a wrong week was revisited 16 x 15 x 14 ... times before the
+	 * search ever moved the game to a different week, and a 64-game season
+	 * that this pass solves in about a second would not finish in five
+	 * minutes. The cost is that a later game blocked on this date only by a
+	 * time-of-day rule (an overlap-avoid pair, a back-to-back rule) is not
+	 * rescued by moving THIS game to another time on the same date; that
+	 * needs a date already full enough to have no other slot clear of the
+	 * conflict, and the relaxed retry in allocate() remains the fallback.
+	 *
+	 * @param array<int,array{slot: object, cost: float}> $ranked Cheapest first.
+	 * @return object[] Slots, still cheapest first.
+	 */
+	private function cheapest_slot_per_date( $ranked ) {
+		$by_date = array();
+		foreach ( $ranked as $entry ) {
+			$date = $entry['slot']->date;
+			if ( ! isset( $by_date[ $date ] ) ) {
+				$by_date[ $date ] = $entry['slot'];
+			}
+		}
+		return array_values( $by_date );
+	}
+
+	/**
+	 * Record a placed game in every structure the backtracking search keeps.
+	 */
+	private function push_backtrack_game( $game, $slot_key, &$state, &$schedule, &$used_slots, &$schedule_by_date ) {
+		$schedule[]                        = $game;
+		$used_slots[ $slot_key ]           = true;
+		$schedule_by_date[ $game->date ][] = $game;
+
+		$week = $this->week_of_date[ $game->date ] ?? null;
+		if ( null !== $week ) {
+			$state['free'][ $week ]--;
+		}
+		foreach ( array( $this->extract_id( $game->home_team ), $this->extract_id( $game->away_team ) ) as $team_id ) {
+			$state['team_placed'][ $team_id ] = ( $state['team_placed'][ $team_id ] ?? 0 ) + 1;
+			if ( null !== $week ) {
+				$state['team_weeks'][ $team_id ][ $week ] = ( $state['team_weeks'][ $team_id ][ $week ] ?? 0 ) + 1;
+			}
+		}
+	}
+
+	/**
+	 * Exact inverse of {@see push_backtrack_game()}.
+	 */
+	private function pop_backtrack_game( $game, $slot_key, &$state, &$schedule, &$used_slots, &$schedule_by_date ) {
+		array_pop( $schedule );
+		unset( $used_slots[ $slot_key ] );
+		array_pop( $schedule_by_date[ $game->date ] );
+
+		$week = $this->week_of_date[ $game->date ] ?? null;
+		if ( null !== $week ) {
+			$state['free'][ $week ]++;
+		}
+		foreach ( array( $this->extract_id( $game->home_team ), $this->extract_id( $game->away_team ) ) as $team_id ) {
+			$state['team_placed'][ $team_id ]--;
+			if ( null !== $week ) {
+				$state['team_weeks'][ $team_id ][ $week ]--;
+			}
+		}
 	}
 
 	/**
@@ -1409,6 +1682,11 @@ class SPSG_Slot_Allocator {
 			return false;
 		}
 
+		if ( $this->breaks_week_feasibility( $slot->date, $home_team_id, $away_team_id, $schedule_by_date ) ) {
+			$this->same_week_doubleheader_blocked = true;
+			return false;
+		}
+
 		// Validate with constraint manager - reuse pre-created game or create one.
 		// Forward the full date-indexed schedule so cross-day soft constraints
 		// (distribution) score the whole run, not just same-day games.
@@ -1444,6 +1722,175 @@ class SPSG_Slot_Allocator {
 		}
 		$this->same_week_doubleheader_blocked = true;
 		return true;
+	}
+
+	/**
+	 * Whether placing $home_team_id vs $away_team_id on $slot_date would leave
+	 * the rest of the matchup list impossible to place under the same-week
+	 * rule -- i.e. this candidate is a dead end the search should not enter.
+	 *
+	 * The same-week rule makes every team's remaining games compete for
+	 * distinct weeks, which turns allocation into a counting problem the
+	 * per-slot checks above can't see. Three necessary conditions, evaluated
+	 * on the state AFTER the hypothetical placement:
+	 *
+	 *  1. A team with N games left needs N distinct weeks it hasn't played in
+	 *     that still have a free slot.
+	 *  2. A team with exactly as many open weeks as games left must play in
+	 *     every one of them, so a week can't have more such "must-play" teams
+	 *     than it has team places (2 per free slot).
+	 *  3. Each week can host at most min(free slots, open teams / 2) more
+	 *     games, and those per-week ceilings must add up to at least the
+	 *     games still unplaced.
+	 *
+	 * Without this, a season sized to exactly its slot count (e.g. 64 games
+	 * into 64 slots over 5 weeks, two of them short weeks) failed outright:
+	 * greedy spent the short weeks on teams that could afford to skip a full
+	 * week, leaving teams that couldn't with nowhere to go, and backtracking
+	 * exhausted its budget before unwinding far enough. Each condition only
+	 * ever rejects a placement that could not have led to a complete
+	 * schedule, so seasons with real slack are unaffected. Skipped entirely
+	 * once the relaxed retry allows same-week double-headers, since the
+	 * premise (one game per team per week) no longer holds.
+	 *
+	 * @param string $slot_date        Candidate slot's date (Y-m-d).
+	 * @param string $home_team_id     Candidate home team id.
+	 * @param string $away_team_id     Candidate away team id.
+	 * @param array  $schedule_by_date Schedule indexed by date.
+	 * @return bool
+	 */
+	private function breaks_week_feasibility( $slot_date, $home_team_id, $away_team_id, $schedule_by_date ) {
+		if ( $this->allow_same_week_doubleheader || empty( $this->week_of_date ) || empty( $this->team_total_games ) ) {
+			return false;
+		}
+		$slot_week = $this->week_of_date[ $slot_date ] ?? null;
+		if ( null === $slot_week ) {
+			return false;
+		}
+
+		$free = $this->free_slots_by_week( $schedule_by_date );
+		$free[ $slot_week ]--;
+
+		list( $placed, $weeks_played ) = $this->team_placement_state( $schedule_by_date );
+		foreach ( array( $home_team_id, $away_team_id ) as $team_id ) {
+			$placed[ $team_id ]                     = ( $placed[ $team_id ] ?? 0 ) + 1;
+			$weeks_played[ $team_id ][ $slot_week ] = true;
+		}
+
+		$demand = $this->team_week_demand( $free, $placed, $weeks_played );
+
+		return null === $demand || ! $this->week_capacity_holds( $free, $demand );
+	}
+
+	/**
+	 * Condition 1 of {@see breaks_week_feasibility()}, plus the per-team /
+	 * per-week bookkeeping conditions 2 and 3 need.
+	 *
+	 * @param array<string,int>                $free         Free slots per week.
+	 * @param array<string,int>                $placed       Games placed per team.
+	 * @param array<string,array<string,true>> $weeks_played Weeks each team plays in.
+	 * @return array{open_teams_by_week: array<string,string[]>, slack_by_team: array<string,int>, remaining_games: float}|null
+	 *         Null when some team has more games left than open weeks.
+	 */
+	private function team_week_demand( $free, $placed, $weeks_played ) {
+		$open_teams_by_week = array();
+		$slack_by_team      = array();
+		$remaining          = 0;
+
+		foreach ( $this->team_total_games as $team_id => $total ) {
+			$left = $total - ( $placed[ $team_id ] ?? 0 );
+			if ( $left <= 0 ) {
+				continue;
+			}
+			$open = 0;
+			foreach ( $free as $week => $free_slots ) {
+				if ( $free_slots > 0 && empty( $weeks_played[ $team_id ][ $week ] ) ) {
+					$open++;
+					$open_teams_by_week[ $week ][] = $team_id;
+				}
+			}
+			if ( $left > $open ) {
+				return null;
+			}
+			$slack_by_team[ $team_id ] = $open - $left;
+			$remaining                += $left;
+		}
+
+		return array(
+			'open_teams_by_week' => $open_teams_by_week,
+			'slack_by_team'      => $slack_by_team,
+			'remaining_games'    => $remaining / 2,
+		);
+	}
+
+	/**
+	 * Conditions 2 and 3 of {@see breaks_week_feasibility()}.
+	 *
+	 * @param array<string,int> $free   Free slots per week.
+	 * @param array             $demand Output of {@see team_week_demand()}.
+	 * @return bool
+	 */
+	private function week_capacity_holds( $free, $demand ) {
+		$capacity = 0;
+
+		foreach ( $free as $week => $free_slots ) {
+			if ( $free_slots <= 0 ) {
+				continue;
+			}
+			$open      = $demand['open_teams_by_week'][ $week ] ?? array();
+			$must_play = 0;
+			foreach ( $open as $team_id ) {
+				if ( 0 === $demand['slack_by_team'][ $team_id ] ) {
+					$must_play++;
+				}
+			}
+			if ( $must_play > 2 * $free_slots ) {
+				return false;
+			}
+			$capacity += min( $free_slots, intdiv( count( $open ), 2 ) );
+		}
+
+		return $demand['remaining_games'] <= $capacity;
+	}
+
+	/**
+	 * Free (unused) slot count per week for the given schedule state.
+	 *
+	 * @param array $schedule_by_date Schedule indexed by date.
+	 * @return array<string,int> week key => free slots
+	 */
+	private function free_slots_by_week( $schedule_by_date ) {
+		$free = array();
+		foreach ( $this->dates_by_week as $week => $dates ) {
+			$free[ $week ] = 0;
+			foreach ( $dates as $date ) {
+				$free[ $week ] += count( $this->slots_by_date[ $date ] ) - count( $schedule_by_date[ $date ] ?? array() );
+			}
+		}
+		return $free;
+	}
+
+	/**
+	 * Games placed per team and the weeks each team already plays in.
+	 *
+	 * @param array $schedule_by_date Schedule indexed by date.
+	 * @return array{0: array<string,int>, 1: array<string,array<string,true>>}
+	 */
+	private function team_placement_state( $schedule_by_date ) {
+		$placed       = array();
+		$weeks_played = array();
+		foreach ( $schedule_by_date as $date => $games ) {
+			$week = $this->week_of_date[ $date ] ?? null;
+			foreach ( $games as $game ) {
+				foreach ( array( $this->extract_id( $game->home_team ), $this->extract_id( $game->away_team ) ) as $team_id ) {
+					$placed[ $team_id ] = ( $placed[ $team_id ] ?? 0 ) + 1;
+					if ( null !== $week ) {
+						$weeks_played[ $team_id ][ $week ] = true;
+					}
+				}
+			}
+		}
+		return array( $placed, $weeks_played );
 	}
 
 	/**

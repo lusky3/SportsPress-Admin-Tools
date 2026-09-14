@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.3.6
+Stable tag: 1.3.7
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -58,6 +58,9 @@ The plugin validates configuration feasibility before generation and provides sp
 Yes. The import dialog lets you choose conflict resolution (skip or overwrite), event status, league, and season. Import runs in chunks with progress tracking.
 
 == Changelog ==
+
+= 1.3.7 =
+* Fix: a season sized to exactly its available slot count (e.g. 32 teams x 4 games = 64 games into 64 slots over five weeks, two of them shortened by blackout dates) failed with "Could not allocate all games" even though the feasibility check passed and a complete schedule existed. Under the one-game-per-team-per-week rule a team with N games left needs N distinct weeks it hasn't played in, and a full week can only be filled by teams that haven't played in it yet -- the allocator had no notion of that, so it spent the short weeks on teams that could afford to skip a full week and then had nowhere to put the ones that couldn't. Placement now rejects any slot that would leave the rest of the season impossible to complete, the backtracking search places the most constrained matchup first instead of walking the list in order, and it branches on which date a game goes on rather than re-trying every time slot under a doomed week choice (which is what made the old search run out of budget). Verified on the real 64-game case: every slot filled, every team at exactly 4, no double-headers, no restriction violations. Seasons with spare capacity are unaffected.
 
 = 1.3.6 =
 * Fix: saving a regular-season configuration could be rejected as "insufficient capacity" (a hard error) at a games-per-team/season-length combination that would actually generate a schedule cleanly. The save-time check and the generate-time feasibility check compute games-needed and slots-available identically, but the save-time check additionally required staying under 80% of raw capacity while generation itself only required not exceeding 100% -- so a configuration could fail to save even though it was fully feasible. The 80% line is now a warning (shown as "capacity is tight"), and the hard error only fires when games needed actually exceed slots available, matching what generation itself allows.
