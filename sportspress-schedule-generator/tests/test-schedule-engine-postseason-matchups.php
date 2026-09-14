@@ -54,6 +54,7 @@ function is_wp_error( $thing ) { return $thing instanceof WP_Error; }
  */
 class SPSG_Placeholder_Team_Manager {
 	public static $next_id = 800;
+	public static $inject_into_config_calls = 0;
 	/**
 	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
 	 */
@@ -65,6 +66,25 @@ class SPSG_Placeholder_Team_Manager {
 	 */
 	public static function is_placeholder( $team_id ) {
 		return true;
+	}
+	/**
+	 * Minimal stand-in for the real class's odd-parity fixup (see its own
+	 * docblock): pads a division up to an even count, adding one extra team
+	 * even when the real count already meets/exceeds the target, if that
+	 * would otherwise leave an odd number.
+	 */
+	public static function inject_into_config( $config ) {
+		self::$inject_into_config_calls++;
+		$generic = $config->generic_teams;
+		if ( empty( $generic['enabled'] ) ) {
+			return array();
+		}
+		foreach ( $config->divisions as &$division ) {
+			if ( 0 !== count( $division['teams'] ) % 2 ) {
+				$division['teams'][] = 'Team ' . ( $division['name'] ?? '' ) . ' 1';
+			}
+		}
+		return array();
 	}
 }
 
@@ -143,6 +163,32 @@ $odd_result = $generate_matchups->invoke( $engine, $odd_config );
 
 sepm_assert( is_wp_error( $odd_result ), 'an odd division size (3 teams) produces a WP_Error instead of a fatal or an exception' );
 sepm_assert( 'postseason_matchup_error' === $odd_result->get_error_code(), 'the WP_Error carries the postseason_matchup_error code' );
+
+echo "\n=== generate_matchups(): a real-but-odd division with generic_teams enabled gets padded before building ===\n\n";
+
+// Reproduces a real report: 3 real teams (odd) with generic_teams enabled
+// should get one placeholder injected (same as the regular-season path
+// already did), THEN build successfully -- not throw, and not require the
+// config to already be even before this method ever runs.
+$padded_config = sepm_config(
+	true,
+	array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C' ) ) ),
+	1
+);
+$padded_config->generic_teams = array( 'enabled' => true, 'per_division' => 2, 'prefix' => 'Team' );
+
+SPSG_Placeholder_Team_Manager::$inject_into_config_calls = 0;
+$padded_result = $generate_matchups->invoke( $engine, $padded_config );
+
+sepm_assert(
+	1 === SPSG_Placeholder_Team_Manager::$inject_into_config_calls,
+	'inject_into_config() is now called for a postseason config with generic_teams enabled (previously never called at all on this path)'
+);
+sepm_assert(
+	! is_wp_error( $padded_result ),
+	'the now-even division (3 real + 1 injected placeholder) builds successfully instead of failing on the pre-injection odd count'
+);
+sepm_assert( 4 === count( $padded_result ), 'produces the 4 matchups the builder computes for a 4-team division over 1 round-robin week' );
 
 echo "\n=== Test Summary ===\n";
 echo "Passed: $passed\n";

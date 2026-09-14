@@ -147,6 +147,7 @@ require_once SPSG_PLUGIN_PATH . 'includes/interfaces/interface-configuration.php
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-configuration.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-configuration-sanitizer.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-helper.php';
+require_once SPSG_PLUGIN_PATH . 'includes/class-placeholder-team-manager.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-configuration-validator.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-error-handler.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-configuration-manager.php';

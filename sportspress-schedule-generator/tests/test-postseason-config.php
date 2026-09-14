@@ -163,6 +163,7 @@ require_once SPSG_PLUGIN_PATH . 'includes/class-sportspress-integration.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-configuration.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-configuration-sanitizer.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-helper.php';
+require_once SPSG_PLUGIN_PATH . 'includes/class-placeholder-team-manager.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-configuration-validator.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-error-handler.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-configuration-manager.php';
@@ -331,6 +332,53 @@ $result = $valid_postseason->validate();
 pc_assert(
 	true === $result,
 	'a valid postseason config (even division, round_robin_weeks within range) passes validation entirely'
+);
+
+echo "\n=== SPSG_Schedule_Configuration::validate(): odd division + generic_teams ===\n\n";
+
+// Reproduces a real report: a division with 7 real teams (odd) was rejected
+// outright as "postseason brackets require an even division size", even
+// though the operator's generic_teams setting (per_division: 6, well under
+// 7) already meant a generic placeholder teammate would be injected at
+// generation time -- SPSG_Placeholder_Team_Manager::generate_placeholder_names()'s
+// own odd-parity fixup, which fires even when the real roster already
+// meets or exceeds the target. Validation must agree with what generation
+// will actually build, not just count real teams.
+$odd_division_fields = array(
+	'season_start'      => '2027-01-01', // Friday; round_robin_weeks=1 -> final week 2027-01-08..14
+	'season_end'        => '2027-01-14',
+	'round_robin_weeks' => 1,
+	'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D', 'E', 'F', 'G' ) ) ), // 7 real teams
+	'playing_days'      => array( 'friday', 'sunday' ),
+	'venues'            => array( array( 'id' => 'v1', 'name' => 'Rink 1' ) ),
+	'time_slots'        => array(
+		'friday' => array( '18:00', '19:00', '20:00' ),
+		'sunday' => array( '10:00', '11:00', '12:00', '13:00' ),
+	),
+	'championship_day'  => array( 'day' => 'friday', 'start' => '18:45', 'end' => '21:00' ),
+	'consolation_day'   => 'sunday',
+);
+
+$odd_no_generic = new SPSG_Schedule_Configuration(
+	array_merge( pc_valid_regular_season_fields(), array( 'is_postseason' => true ), $odd_division_fields )
+);
+$result = $odd_no_generic->validate();
+pc_assert(
+	is_wp_error( $result ) && false !== strpos( $result->data['errors']['round_robin_weeks'], 'odd number of teams' ),
+	'7 real teams with generic_teams disabled (or unset) -- genuinely odd, correctly rejected'
+);
+
+$odd_with_generic = new SPSG_Schedule_Configuration(
+	array_merge(
+		pc_valid_regular_season_fields(),
+		array( 'is_postseason' => true, 'generic_teams' => array( 'enabled' => true, 'per_division' => 6, 'prefix' => 'Team' ) ),
+		$odd_division_fields
+	)
+);
+$result = $odd_with_generic->validate();
+pc_assert(
+	true === $result,
+	'the SAME 7 real teams, but generic_teams enabled (per_division 6, already below 7) -- a placeholder will be injected at generation time, so this now passes'
 );
 
 echo "\n=== SPSG_Schedule_Configuration::validate(): postseason final-week capacity ===\n\n";
@@ -564,11 +612,16 @@ $source = array(
 	'venues'     => array( array( 'id' => 'v1', 'name' => 'Rink 1' ) ),
 	'timezone'   => 'America/Toronto',
 	'season_end' => '2027-01-31',
+	'generic_teams' => array( 'enabled' => true, 'per_division' => 6, 'prefix' => 'Team' ),
 );
 
 $built = $manager->build_postseason_config_data( $source );
 pc_assert( 'W2026-27 Playoffs' === $built['name'], 'name defaults to "<source name> Playoffs"' );
 pc_assert( $source['divisions'] === $built['divisions'], 'divisions default to an exact copy of the source\'s divisions' );
+pc_assert(
+	$source['generic_teams'] === $built['generic_teams'],
+	'generic_teams copies the source\'s roster-filling policy -- previously dropped entirely, silently disabling the odd-parity fixup for any postseason division'
+);
 pc_assert( $source['venues'] === $built['venues'], 'venues default to a copy of the source\'s venues (reuses the regular season\'s venues)' );
 pc_assert( true === $built['is_postseason'], 'is_postseason is always true on the built data' );
 pc_assert( 'config_regular123' === $built['postseason_source_config_id'], 'postseason_source_config_id points back at the source config' );
@@ -669,6 +722,45 @@ pc_assert(
 pc_assert(
 	isset( $stored['config_regular123'] ) && 2 === count( $stored ),
 	'the original source configuration is untouched, and now sits alongside the new one'
+);
+
+echo "\n=== SPSG_Configuration_Manager::create_postseason_configuration(): end to end, real reported scenario ===\n\n";
+
+// The exact shape of a real report: a source division with 7 real teams
+// (odd) and generic_teams enabled (per_division 6, already below 7 -- pure
+// odd-parity fixup, not target-based padding) previously failed outright
+// with "Configuration validation failed" and no indication why. Both the
+// generic_teams copy into build_postseason_config_data() and the
+// validator's use of the effective (post-injection) team count are needed
+// for this to succeed -- either alone leaves this failing.
+$state->options['spsg_configurations']['config_odd_with_generic'] = array(
+	'id'            => 'config_odd_with_generic',
+	'name'          => 'winter_2026-28_v1',
+	'divisions'     => array( array( 'id' => 'd1', 'name' => 'Division 4', 'teams' => array( 'A', 'B', 'C', 'D', 'E', 'F', 'G' ) ) ), // 7 teams, odd
+	'venues'        => array( array( 'id' => 'v1', 'name' => 'Rink 1', 'capacity' => 4, 'available_days' => array( 'friday', 'sunday' ) ) ),
+	'playing_days'  => array( 'friday', 'sunday' ),
+	'time_slots'    => array(
+		'friday' => array( '18:00', '19:00', '20:00' ),
+		'sunday' => array( '10:00', '11:00', '12:00', '13:00' ),
+	),
+	'timezone'      => 'America/Toronto',
+	'season_end'    => '2027-01-31',
+	'generic_teams' => array( 'enabled' => true, 'per_division' => 6, 'prefix' => 'Team' ),
+	'created'       => '2026-08-01 00:00:00',
+	'modified'      => '2026-08-01 00:00:00',
+);
+
+$odd_new_id = $manager->create_postseason_configuration(
+	'config_odd_with_generic',
+	array(
+		'round_robin_weeks' => 1,
+		'championship_day'  => array( 'day' => 'sunday', 'start' => '10:00', 'end' => '13:00' ),
+		'consolation_day'   => 'friday',
+	)
+);
+pc_assert(
+	is_string( $odd_new_id ) && '' !== $odd_new_id,
+	'a 7-team division with generic_teams enabled now creates successfully, instead of failing validation'
 );
 
 echo "\n=== SPSG_Sports_Press_Integration::create_child_season() ===\n\n";
