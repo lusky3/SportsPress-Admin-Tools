@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.3.6
+Stable tag: 1.3.7
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -58,6 +58,9 @@ The plugin validates configuration feasibility before generation and provides sp
 Yes. The import dialog lets you choose conflict resolution (skip or overwrite), event status, league, and season. Import runs in chunks with progress tracking.
 
 == Changelog ==
+
+= 1.3.7 =
+* Fix: a season whose games exactly (or nearly) filled its available slots failed with "Could not allocate all games" even though the feasibility check passed and a complete schedule existed -- e.g. 32 teams x 4 games into 64 slots over five weeks, or the full 32-team, 17-game regular season into 17 full weeks. The allocator placed games one at a time and had no notion of the structure the one-game-per-team-per-week rule imposes: each week a division either plays a full round (every one of its teams once) or sits out, a short week (a blackout on one of its days) can only take some divisions, and a season with more weeks than rounds has to spread each division's idle weeks. It now builds that structure directly: each division's matchups are split into full rounds, divisions are assigned to weeks (a week with room for everyone takes everyone; a short week takes the divisions that sat out the previous short week; spare idle weeks are spread one per week so no week collapses), and only then are each week's games placed into that week's slots with all the usual venue, day-balance and restriction scoring. On the real season that means every shortened week is filled to capacity, every full week carries either all 32 teams or all but one division (13 of 16 games), no team ever plays twice in a week, and a season sized exactly to its slots fills every one of them. The game-by-game search that runs when a season doesn't have this shape (inter-division games, or divisions whose matchups don't form full rounds) was also fixed to detect a dead end as soon as it is created, place the most constrained game first, and branch on dates rather than time slots, so it no longer exhausts its budget re-trying equivalent slots.
 
 = 1.3.6 =
 * Fix: saving a regular-season configuration could be rejected as "insufficient capacity" (a hard error) at a games-per-team/season-length combination that would actually generate a schedule cleanly. The save-time check and the generate-time feasibility check compute games-needed and slots-available identically, but the save-time check additionally required staying under 80% of raw capacity while generation itself only required not exceeding 100% -- so a configuration could fail to save even though it was fully feasible. The 80% line is now a warning (shown as "capacity is tight"), and the hard error only fires when games needed actually exceed slots available, matching what generation itself allows.
