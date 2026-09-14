@@ -265,19 +265,27 @@
         // after pressing Create, with the real error only found later on
         // the Generate Schedule page). Write here instead, where the panel
         // that triggered the action is actually visible.
-        showPostseasonMessage: function(type, message) {
-            var $container = $('#spsg-postseason-message');
-            // No user-supplied value ever reaches the HTML template passed to
-            // $() -- `type` is fixed to a small, hardcoded set of internal
-            // literals ('error'/'success'/'info'); adding it via addClass()
-            // instead of string-building the tag keeps that true structurally.
-            var $msg = $('<div class="notice is-dismissible"></div>').addClass('notice-' + type);
-            var parts = String(message).split(/<br\s*\/?>/i);
-            for (var i = 0; i < parts.length; i++) {
-                if (i > 0) $msg.append('<br>');
-                $msg.append($('<p></p>').text(parts[i]));
-            }
-            $container.empty().append($msg);
+        // `lines` is a plain string or an array of plain strings -- never
+        // markup. Built with raw DOM APIs (createElement/textContent)
+        // rather than jQuery's HTML-string constructor, so no value here is
+        // ever treated as HTML by anything, caller included.
+        showPostseasonMessage: function(type, lines) {
+            var container = document.getElementById('spsg-postseason-message');
+            if (!container) return;
+            while (container.firstChild) container.removeChild(container.firstChild);
+
+            var div = document.createElement('div');
+            div.className = 'notice notice-' + type + ' is-dismissible';
+
+            var messageLines = Array.isArray(lines) ? lines : [ lines ];
+            messageLines.forEach(function(line, i) {
+                if (i > 0) div.appendChild(document.createElement('br'));
+                var p = document.createElement('p');
+                p.textContent = String(line);
+                div.appendChild(p);
+            });
+
+            container.appendChild(div);
         },
 
         createPostseasonConfig: function() {
@@ -318,10 +326,10 @@
                     } else {
                         var errData = response.data || {};
                         var mainMessage = errData.message || 'Failed to create postseason configuration';
-                        // Collected as plain-text lines and joined exactly
-                        // once at the end, rather than accumulated with `+=`
-                        // -- no intermediate variable ever holds a mix of
-                        // plain text and '<br>' markup.
+                        // Kept as an array of plain-text lines all the way to
+                        // showPostseasonMessage() -- never joined into a
+                        // single '<br>'-delimited string, so no value
+                        // crossing this function boundary is ever markup.
                         var lines = [ mainMessage ];
                         if (errData.errors && errData.errors.length) {
                             errData.errors
@@ -336,7 +344,7 @@
                                 lines.push(detail);
                             });
                         }
-                        self.showPostseasonMessage('error', lines.join('<br>'));
+                        self.showPostseasonMessage('error', lines);
                     }
                 },
                 error: function(xhr, status, error) {
