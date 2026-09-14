@@ -1114,8 +1114,9 @@ class SPSG_Slot_Allocator {
 	private function best_fitting_subset( $candidates, $divisions, $room, $max_count, $priority, $owed ) {
 		$best       = array();
 		$best_score = array( -1, -1, -INF );
+		$masks      = 1 << count( $candidates );
 
-		for ( $mask = 1; $mask < ( 1 << count( $candidates ) ); $mask++ ) {
+		for ( $mask = 1; $mask < $masks; $mask++ ) {
 			$subset = $this->subset_for_mask( $mask, $candidates );
 			if ( count( $subset ) > $max_count ) {
 				continue;
