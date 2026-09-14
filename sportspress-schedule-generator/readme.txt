@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.3.4
+Stable tag: 1.3.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -58,6 +58,9 @@ The plugin validates configuration feasibility before generation and provides sp
 Yes. The import dialog lets you choose conflict resolution (skip or overwrite), event status, league, and season. Import runs in chunks with progress tracking.
 
 == Changelog ==
+
+= 1.3.5 =
+* Fix: with two venues, the first-listed one was reliably filled to capacity every week while the second sat mostly unused (some weeks 0 games, others a handful, no pattern). The slot allocator's cost function had no venue-specific term at all, so a slot at either venue on the same date scored identically -- ties always fell to whichever venue was listed first. It now costs more to add a game to a venue that's already fuller (relative to its own capacity that day) than to one with room, so both venues get used as they fill rather than one being exhausted before the other is ever touched. Verified against a real 272-game season: the second venue's average weekly Friday usage went from 30% to 55%, with zero weeks at 0% (previously 6 of 23).
 
 = 1.3.4 =
 * Fix: the postseason final week's placeholder team names read "Division 1 RR-Seed 1", "Division 1 RR-Seed 2", etc. -- confusing on top of already being an internal seed number, since the same configuration already calls these games "Championship" and "Consolation" (the Championship Day/Consolation Day settings). They now read "Division 1 Championship A"/"...B" for the Championship pairing, and "Division 1 Consolation 1 A"/"...B", "Division 1 Consolation 2 A"/"...B", etc. for every pairing after that. Cross round-robin week placeholder names ("Division 1 Seed 1"..."N") are unchanged.

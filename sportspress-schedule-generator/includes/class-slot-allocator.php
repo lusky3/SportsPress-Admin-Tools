@@ -92,6 +92,15 @@ class SPSG_Slot_Allocator {
 	private $sorted_slot_dates = array();
 
 	/**
+	 * Each date's per-venue slot count: [date][venue_id] => slot count. Built
+	 * once alongside {@see $slots_by_date}, read by {@see calculate_slot_cost()}
+	 * for {@see VENUE_LOAD_COST}.
+	 *
+	 * @var array<string,array<string,int>>
+	 */
+	private $venue_capacity_by_date = array();
+
+	/**
 	 * Count of games with soft constraint violations
 	 */
 	private $constraint_violations = 0;
@@ -188,6 +197,38 @@ class SPSG_Slot_Allocator {
 	 * a date past its target quickly loses to any neighbour with room.
 	 */
 	const DATE_LOAD_COST = 60.0;
+
+	/**
+	 * Cost charged for how full a candidate VENUE already is on the candidate
+	 * date, relative to that venue's own slot capacity that day (2026-09-14,
+	 * H: an operator with two venues found one always filled to capacity
+	 * before the other's slots were ever touched -- e.g. a 5-Friday-slot
+	 * primary venue and a 5-Friday-slot secondary got 0-5 games some weeks
+	 * and a full 5 others, purely because the first venue happened to be
+	 * listed first in the configuration). Without this term nothing
+	 * distinguishes a slot at an already-busy venue from one at an empty
+	 * venue on the same date -- they cost the same, so ties always fall to
+	 * whichever venue's slots were generated first (get_available_venues_for_date()'s
+	 * iteration order over $config->venues), regardless of load.
+	 *
+	 * Ratio, not raw capacity, matching DATE_LOAD_COST's own reasoning:
+	 * measuring against capacity would pull games toward whichever venue has
+	 * more slots that day rather than balancing what each venue already has
+	 * relative to its OWN capacity. A venue below its own capacity stays
+	 * cheap; one already near full quickly loses to a lightly loaded venue on
+	 * the same date. Deliberately independent of DATE_LOAD_COST/day-balance --
+	 * this only ever compares venues against themselves, never against the
+	 * date's overall target, so it cannot fight the day-ratio tuning.
+	 *
+	 * Only ever consulted via calculate_slot_cost(), which only
+	 * find_best_slot() calls, which only greedy_allocate() calls --
+	 * backtrack_allocate()'s own search (the fallback when greedy fails)
+	 * is a separate, simpler first-fit scan with no cost function of any
+	 * kind, venue balance included. A season that needs the backtracking
+	 * fallback does not get this term's benefit; that scan is its own,
+	 * pre-existing, separate concern.
+	 */
+	const VENUE_LOAD_COST = 60.0;
 
 	/**
 	 * Target number of games per playing date, keyed by date. Built in
@@ -310,10 +351,15 @@ class SPSG_Slot_Allocator {
 		// Generate available slots
 		$this->available_slots = $this->generate_available_slots( $config );
 
-		// Build a date → slots index for fast chronological lookups.
+		// Build a date → slots index for fast chronological lookups, and each
+		// date's per-venue slot count for VENUE_LOAD_COST.
 		$this->slots_by_date = array();
+		$this->venue_capacity_by_date = array();
 		foreach ( $this->available_slots as $slot ) {
 			$this->slots_by_date[ $slot->date ][] = $slot;
+			$venue_id = $this->extract_id( $slot->venue );
+			$this->venue_capacity_by_date[ $slot->date ][ $venue_id ] =
+				( $this->venue_capacity_by_date[ $slot->date ][ $venue_id ] ?? 0 ) + 1;
 		}
 		$this->sorted_slot_dates = array_keys( $this->slots_by_date );
 		sort( $this->sorted_slot_dates );
@@ -1075,6 +1121,8 @@ class SPSG_Slot_Allocator {
 			}
 		}
 
+		$cost += $this->venue_load_cost( $slot, $same_day_games );
+
 		// A configured home-venue preference outweighs the soft terms, matching
 		// the previous behaviour of returning a preferred-venue slot on sight.
 		if ( $preferred_venue_id && $this->extract_id( $slot->venue ) === $preferred_venue_id ) {
@@ -1084,6 +1132,33 @@ class SPSG_Slot_Allocator {
 		$cost -= $this->overlap_avoid_same_day_bonus( $game, $same_day_games, $config );
 
 		return $cost;
+	}
+
+	/**
+	 * VENUE_LOAD_COST: how full $slot's own venue already is on $slot's date,
+	 * relative to that venue's own slot capacity that day -- see the
+	 * constant's docblock for why ratio-against-self, not raw count or
+	 * against another venue's capacity.
+	 *
+	 * @param object $slot           Candidate slot (date, venue).
+	 * @param array  $same_day_games Games already scheduled on $slot's date.
+	 * @return float Cost to add (0.0 when the venue's capacity for this date is unknown/zero).
+	 */
+	private function venue_load_cost( $slot, $same_day_games ) {
+		$venue_id = $this->extract_id( $slot->venue );
+		$capacity = $this->venue_capacity_by_date[ $slot->date ][ $venue_id ] ?? 0;
+		if ( $capacity <= 0 ) {
+			return 0.0;
+		}
+
+		$games_at_venue = 0;
+		foreach ( $same_day_games as $existing_game ) {
+			if ( $this->extract_id( $existing_game->venue ) === $venue_id ) {
+				$games_at_venue++;
+			}
+		}
+
+		return self::VENUE_LOAD_COST * pow( $games_at_venue / $capacity, 2 );
 	}
 
 	/**
