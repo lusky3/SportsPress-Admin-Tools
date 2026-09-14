@@ -442,14 +442,24 @@ require_once SPSG_PLUGIN_PATH . 'includes/constraints/class-postseason-week-cons
 require_once SPSG_PLUGIN_PATH . 'includes/constraints/class-postseason-day-constraint.php';
 SPSG_Constraint_Registry::register( 'SPSG_Postseason_Week_Constraint' );
 SPSG_Constraint_Registry::register( 'SPSG_Postseason_Day_Constraint' );
-// Placeholder teams are minted as posts; none of that matters here.
+// Placeholder teams are minted as posts; none of that matters here. The
+// stubs mirror the WordPress signatures; unused arguments are deliberate.
 if ( ! function_exists( 'wp_insert_post' ) ) {
+	/**
+	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+	 */
 	function wp_insert_post( $args, $wp_error = false ) { static $next = 900000; return ++$next; }
 }
 if ( ! function_exists( 'update_post_meta' ) ) {
+	/**
+	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+	 */
 	function update_post_meta( $id, $key, $value ) { return true; }
 }
 if ( ! function_exists( 'get_posts' ) ) {
+	/**
+	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+	 */
 	function get_posts( $args = array() ) { return array(); }
 }
 if ( ! function_exists( 'sanitize_text_field' ) ) {
