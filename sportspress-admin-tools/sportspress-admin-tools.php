@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SportsPress Admin Tools
  * Description: Administrative tools for SportsPress
- * Version: 1.1.0
+ * Version: 1.1.1
  * Author: Cody (lusky3)
  * Text Domain: sportspress-admin-tools
  * Requires at least: 5.0
@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // Define plugin constants
 define( 'SPAT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPAT_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPAT_VERSION', '1.1.0' );
+define( 'SPAT_VERSION', '1.1.1' );
 
 // Native WordPress updates, served from this repository's releases.
 //
@@ -132,7 +132,18 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 			// statically -- the autoload_map entry above resolves it lazily
 			// the first time the hook actually fires. What it does is gated
 			// entirely by the option, read inside the callback.
-			add_action( 'admin_bar_menu', array( 'SPAT_Admin', 'add_admin_bar_node' ) );
+			//
+			// Priority 100: WordPress registers its own default admin bar nodes
+			// (the WP logo, site name, updates, comments, etc.) on this same
+			// 'admin_bar_menu' hook at priorities up to 80, but does so from
+			// WP_Admin_Bar::add_menus(), which runs immediately before the hook
+			// fires -- late enough in the request that our own priority-10
+			// registration here (added much earlier, during plugins_loaded) would
+			// otherwise run FIRST among same-priority callbacks and add our node
+			// ahead of the WP logo, pushing it over. A priority higher than every
+			// core root-default registration puts our node after all of them
+			// instead, matching the League Manager plugin's own admin bar node.
+			add_action( 'admin_bar_menu', array( 'SPAT_Admin', 'add_admin_bar_node' ), 100 );
 
 			// Initialize admin
 			if ( is_admin() ) {
