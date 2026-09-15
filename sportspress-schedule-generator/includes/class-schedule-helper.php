@@ -905,11 +905,7 @@ class SPSG_Schedule_Helper {
 		if ( $games_total <= 0 || empty( $supply ) ) {
 			return $ratios;
 		}
-		$caps = array();
-		foreach ( $ratios as $day => $share ) {
-			$caps[ $day ] = min( 1.0, ( $supply[ $day ] ?? 0 ) / $games_total );
-		}
-
+		$caps   = self::day_share_caps( array_keys( $ratios ), $supply, $games_total );
 		$target = $ratios;
 		$open   = array_keys( $ratios );
 		for ( $pass = count( $ratios ); $pass > 0; $pass-- ) {
@@ -921,6 +917,24 @@ class SPSG_Schedule_Helper {
 			$open = $still;
 		}
 		return $target;
+	}
+
+	/**
+	 * The largest share of a team's games each day could carry: that day's
+	 * slots per game to schedule, at most 1.
+	 *
+	 * @param string[]          $days        Day names.
+	 * @param array<string,int> $supply      Day => slots available in the season.
+	 * @param int               $games_total Games to schedule (> 0).
+	 * @return array<string,float>
+	 */
+	private static function day_share_caps( $days, $supply, $games_total ) {
+		$caps = array();
+		foreach ( $days as $day ) {
+			$slots        = isset( $supply[ $day ] ) ? $supply[ $day ] : 0;
+			$caps[ $day ] = min( 1.0, $slots / $games_total );
+		}
+		return $caps;
 	}
 
 	/**

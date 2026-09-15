@@ -450,10 +450,13 @@ if ( zs_assert( ! is_wp_error( $split_result ) && 320 === count( $split_result['
 	foreach ( $split_result['schedule'] as $game ) {
 		$position = SPSG_Schedule_Helper::night_position( $game->time_slot, $timeline[ $game->date ] );
 		foreach ( array( zs_name( $game->home_team ), zs_name( $game->away_team ) ) as $team ) {
-			$fairness[ $team ]['sunday'] = ( $fairness[ $team ]['sunday'] ?? 0 ) + ( 'sunday' === $game->day ? 1 : 0 );
-			$fairness[ $team ][ $position['bucket'] ] = ( $fairness[ $team ][ $position['bucket'] ] ?? 0 ) + 1;
-			$fairness[ $team ]['first'] = ( $fairness[ $team ]['first'] ?? 0 ) + ( $position['first'] ? 1 : 0 );
-			$fairness[ $team ]['last']  = ( $fairness[ $team ]['last'] ?? 0 ) + ( $position['last'] ? 1 : 0 );
+			if ( ! isset( $fairness[ $team ] ) ) {
+				$fairness[ $team ] = array( 'sunday' => 0, 'early' => 0, 'mid' => 0, 'late' => 0, 'first' => 0, 'last' => 0 );
+			}
+			$fairness[ $team ]['sunday'] += 'sunday' === $game->day ? 1 : 0;
+			$fairness[ $team ][ $position['bucket'] ]++;
+			$fairness[ $team ]['first'] += $position['first'] ? 1 : 0;
+			$fairness[ $team ]['last']  += $position['last'] ? 1 : 0;
 		}
 		$hours    = SPSG_Schedule_Helper::hour_index_map( $timeline[ $game->date ] );
 		$division = is_object( $game->division ) ? $game->division->name : $game->division['name'];
@@ -464,8 +467,8 @@ if ( zs_assert( ! is_wp_error( $split_result ) && 320 === count( $split_result['
 		max( $sundays ) - min( $sundays ) <= 4,
 		sprintf( 'Sundays are shared out: every team has between %d and %d of them (spread <= 4; was 6-18)', min( $sundays ), max( $sundays ) )
 	);
-	$early = max( array_map( function ( $f ) { return $f['early'] ?? 0; }, $fairness ) );
-	$late  = max( array_map( function ( $f ) { return $f['late'] ?? 0; }, $fairness ) );
+	$early = max( array_column( $fairness, 'early' ) );
+	$late  = max( array_column( $fairness, 'late' ) );
 	zs_assert( $early <= 9 && $late <= 9, sprintf( 'no team has more than 9 of its 20 games in the early or late third of the night (max early %d, max late %d; was 15 and 14)', $early, $late ) );
 	$first = max( array_column( $fairness, 'first' ) );
 	$last  = max( array_column( $fairness, 'last' ) );

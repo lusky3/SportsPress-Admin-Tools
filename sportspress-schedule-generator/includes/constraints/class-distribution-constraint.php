@@ -115,21 +115,43 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 		$total  = 0;
 		foreach ( $slots_by_date as $date => $slots ) {
 			foreach ( $slots as $slot ) {
-				$day                         = $slot->day ?? strtolower( gmdate( 'l', strtotime( $date ) ) );
-				$this->supply_by_day[ $day ] = ( $this->supply_by_day[ $day ] ?? 0 ) + 1;
+				$this->tally_supply_day( $slot, $date );
+				$this->tally_night_position( SPSG_Schedule_Helper::night_position( $slot->time_slot, $this->timeline[ $date ] ), $counts );
 				$total++;
-				$position = SPSG_Schedule_Helper::night_position( $slot->time_slot, $this->timeline[ $date ] );
-				if ( 'mid' !== $position['bucket'] ) {
-					$counts[ $position['bucket'] ]++;
-				}
-				$counts['first'] += $position['first'] ? 1 : 0;
-				$counts['last']  += $position['last'] ? 1 : 0;
 			}
 		}
 
 		$this->night_share = array();
 		foreach ( $counts as $key => $count ) {
 			$this->night_share[ $key ] = $total > 0 ? $count / $total : 0.0;
+		}
+	}
+
+	/**
+	 * Count one supply slot against its day of the week.
+	 */
+	private function tally_supply_day( $slot, $date ) {
+		$day                         = isset( $slot->day ) ? $slot->day : strtolower( gmdate( 'l', strtotime( $date ) ) );
+		$this->supply_by_day[ $day ] = ( isset( $this->supply_by_day[ $day ] ) ? $this->supply_by_day[ $day ] : 0 ) + 1;
+	}
+
+	/**
+	 * Count one slot's night position into the early/late/first/last tallies.
+	 *
+	 * @param array|null $position Output of SPSG_Schedule_Helper::night_position().
+	 * @param array      $counts   Tallies (updated).
+	 */
+	private function tally_night_position( $position, &$counts ) {
+		if ( null === $position ) {
+			return;
+		}
+		if ( 'mid' !== $position['bucket'] ) {
+			$counts[ $position['bucket'] ]++;
+		}
+		foreach ( array( 'first', 'last' ) as $edge ) {
+			if ( $position[ $edge ] ) {
+				$counts[ $edge ]++;
+			}
 		}
 	}
 
