@@ -197,6 +197,20 @@ class SPSG_Slot_Allocator {
 	const MAX_SLOT_CANDIDATES = 15;
 
 	/**
+	 * A game with this many valid slots or fewer in its week is placed before
+	 * anything else, whatever division it belongs to (see week_pick_rank()).
+	 */
+	const WEEK_URGENT_SLOTS = 2;
+
+	/**
+	 * Most passes of pairwise slot swaps to run over a placed week (see
+	 * improve_week_by_swaps()). Each pass only keeps swaps that strictly
+	 * lower the week's soft cost, so it converges; four passes is plenty
+	 * for a 16-game week and bounds the work.
+	 */
+	const WEEK_SWAP_ROUNDS = 4;
+
+	/**
 	 * Cost charged per playing date between a candidate slot and the matchup's
 	 * pace target. The k-th of a team's T games belongs roughly k/T of the way
 	 * through the season; this term keeps the pick near that point when the
@@ -392,6 +406,11 @@ class SPSG_Slot_Allocator {
 		sort( $this->sorted_slot_dates );
 
 		$this->index_weeks();
+
+		// Let the soft constraints measure fairness against the real supply.
+		if ( method_exists( $this->constraint_manager, 'set_slot_supply' ) ) {
+			$this->constraint_manager->set_slot_supply( $this->slots_by_date, count( $matchups ) );
+		}
 
 		$this->date_target_load = $this->build_date_target_load( $matchups, $config );
 
@@ -1181,7 +1200,112 @@ class SPSG_Slot_Allocator {
 		if ( ! $this->place_week_recursive( $games, $dates, $used_slots, $schedule_by_date, $config, $placed ) ) {
 			return null;
 		}
-		return $placed;
+		$this->improve_week_by_swaps( $placed, $schedule_by_date, $config );
+		return array_column( $placed, 'game' );
+	}
+
+	/**
+	 * Polish a placed week by swapping pairs of games between their slots
+	 * whenever both games stay valid and the pair's soft cost drops.
+	 *
+	 * Greedy placement hands the last games of a week whatever slots are
+	 * left, so one team can end up with the late slot week after week even
+	 * though the cost function objected every time. Swapping after the fact
+	 * recovers most of that. Only ever within the week: swapping across
+	 * weeks would move teams between rounds and undo the one-game-a-week
+	 * structure the plan built.
+	 *
+	 * @param array $placed           Entries of ['game', 'matchup', 'slot'] (updated in place).
+	 * @param array $schedule_by_date Schedule indexed by date (updated in place).
+	 * @param object $config          Schedule configuration.
+	 */
+	private function improve_week_by_swaps( &$placed, &$schedule_by_date, $config ) {
+		$count = count( $placed );
+		for ( $round = 0; $round < self::WEEK_SWAP_ROUNDS; $round++ ) {
+			$improved = false;
+			for ( $i = 0; $i < $count; $i++ ) {
+				for ( $j = $i + 1; $j < $count; $j++ ) {
+					if ( $this->try_swap( $placed[ $i ], $placed[ $j ], $schedule_by_date, $config ) ) {
+						$improved = true;
+					}
+				}
+			}
+			if ( ! $improved ) {
+				break;
+			}
+		}
+	}
+
+	/**
+	 * Swap two placed games' slots if that is valid and cheaper.
+	 *
+	 * @return bool Whether the swap was made.
+	 */
+	private function try_swap( &$first, &$second, &$schedule_by_date, $config ) {
+		$this->remove_game( $schedule_by_date, $first['game'] );
+		$this->remove_game( $schedule_by_date, $second['game'] );
+
+		$current = $this->pair_placement( $first['matchup'], $first['slot'], $second['matchup'], $second['slot'], $schedule_by_date, $config );
+		$swapped = $this->pair_placement( $first['matchup'], $second['slot'], $second['matchup'], $first['slot'], $schedule_by_date, $config );
+
+		$swap = null !== $swapped && ( null === $current || $swapped['cost'] < $current['cost'] - 0.001 );
+		if ( $swap ) {
+			$first  = array( 'game' => $swapped['a'], 'matchup' => $first['matchup'], 'slot' => $second['slot'] );
+			$second = array( 'game' => $swapped['b'], 'matchup' => $second['matchup'], 'slot' => $first['slot'] === $second['slot'] ? $first['slot'] : $this->slot_of( $swapped['b'] ) );
+		}
+		$schedule_by_date[ $first['game']->date ][]  = $first['game'];
+		$schedule_by_date[ $second['game']->date ][] = $second['game'];
+		return $swap;
+	}
+
+	/**
+	 * Cost of placing $matchup_a in $slot_a and then $matchup_b in $slot_b
+	 * against the schedule as it stands, or null if either is invalid.
+	 * Leaves $schedule_by_date as it found it.
+	 *
+	 * @return array{cost: float, a: object, b: object}|null
+	 */
+	private function pair_placement( $matchup_a, $slot_a, $matchup_b, $slot_b, &$schedule_by_date, $config ) {
+		$game_a = $this->create_game( $matchup_a, $slot_a, $config );
+		if ( ! $this->is_slot_valid( $matchup_a, $slot_a, $schedule_by_date, $config, $game_a ) ) {
+			return null;
+		}
+		$cost = $this->calculate_slot_cost( $game_a, $slot_a, $schedule_by_date, $config, $this->preferred_venue_for( $matchup_a, $config ) );
+
+		$schedule_by_date[ $slot_a->date ][] = $game_a;
+		$game_b = $this->create_game( $matchup_b, $slot_b, $config );
+		$valid  = $this->is_slot_valid( $matchup_b, $slot_b, $schedule_by_date, $config, $game_b );
+		if ( $valid ) {
+			$cost += $this->calculate_slot_cost( $game_b, $slot_b, $schedule_by_date, $config, $this->preferred_venue_for( $matchup_b, $config ) );
+		}
+		$this->remove_game( $schedule_by_date, $game_a );
+
+		return $valid ? array( 'cost' => $cost, 'a' => $game_a, 'b' => $game_b ) : null;
+	}
+
+	/**
+	 * Drop one game (by id) from the date-indexed schedule.
+	 */
+	private function remove_game( &$schedule_by_date, $game ) {
+		$kept = array();
+		foreach ( $schedule_by_date[ $game->date ] ?? array() as $existing ) {
+			if ( $existing->id !== $game->id ) {
+				$kept[] = $existing;
+			}
+		}
+		$schedule_by_date[ $game->date ] = $kept;
+	}
+
+	/**
+	 * The slot object a placed game occupies.
+	 */
+	private function slot_of( $game ) {
+		foreach ( $this->slots_by_date[ $game->date ] ?? array() as $slot ) {
+			if ( $slot->time_slot === $game->time_slot && $this->extract_id( $slot->venue ) === $this->extract_id( $game->venue ) ) {
+				return $slot;
+			}
+		}
+		return null;
 	}
 
 	/**
@@ -1206,7 +1330,11 @@ class SPSG_Slot_Allocator {
 
 			$used_slots[ $slot_key ]           = true;
 			$schedule_by_date[ $game->date ][] = $game;
-			$placed[]                          = $game;
+			$placed[]                          = array(
+				'game'    => $game,
+				'matchup' => $matchup,
+				'slot'    => $slot,
+			);
 
 			if ( $this->place_week_recursive( $games, $dates, $used_slots, $schedule_by_date, $config, $placed ) ) {
 				return true;
@@ -1221,27 +1349,63 @@ class SPSG_Slot_Allocator {
 	}
 
 	/**
-	 * The game in the week with the fewest valid slots, with those slots
-	 * cheapest first; null when some game has none (a dead end).
+	 * The next game to place in the week, with its valid slots cheapest
+	 * first; null when some game has none (a dead end).
+	 *
+	 * Urgent games (two or fewer valid slots) go first regardless. Otherwise
+	 * a game whose division already has a game down this week goes ahead of
+	 * one that would start a new group -- placing a division's round back to
+	 * back is what lets the grouping cost stack its games on one night --
+	 * and ties fall to the game with the fewest valid slots.
 	 *
 	 * @return array{0: int, 1: object[]}|null [position in $games, its valid slots].
 	 */
 	private function most_constrained_week_game( $games, $dates, $used_slots, $schedule_by_date, $config ) {
+		$continuing = $this->divisions_placed_on( $dates, $schedule_by_date );
 		$pick       = null;
 		$pick_slots = array();
-		$limit      = PHP_INT_MAX;
+		$best       = null;
 		foreach ( $games as $position => $matchup ) {
-			$slots = $this->valid_week_slots( $matchup, $dates, $used_slots, $schedule_by_date, $config, $limit );
+			$slots = $this->valid_week_slots( $matchup, $dates, $used_slots, $schedule_by_date, $config, PHP_INT_MAX );
 			if ( empty( $slots ) ) {
 				return null;
 			}
-			if ( count( $slots ) < $limit ) {
+			$rank = $this->week_pick_rank( $matchup, count( $slots ), $continuing );
+			if ( null === $best || $rank < $best ) {
 				$pick       = $position;
 				$pick_slots = $slots;
-				$limit      = count( $slots );
+				$best       = $rank;
 			}
 		}
 		return array( $pick, $pick_slots );
+	}
+
+	/**
+	 * Sort key for {@see most_constrained_week_game()}; lower places first.
+	 *
+	 * @return array{0: int, 1: int} [urgency class, valid slot count].
+	 */
+	private function week_pick_rank( $matchup, $slot_count, $continuing ) {
+		if ( $slot_count <= self::WEEK_URGENT_SLOTS ) {
+			return array( 0, $slot_count );
+		}
+		$continues = isset( $continuing[ $this->division_key( $matchup->division ) ] );
+		return array( $continues ? 1 : 2, $slot_count );
+	}
+
+	/**
+	 * The divisions that already have a game on any of the given dates.
+	 *
+	 * @return array<string,true>
+	 */
+	private function divisions_placed_on( $dates, $schedule_by_date ) {
+		$keys = array();
+		foreach ( $dates as $date ) {
+			foreach ( $schedule_by_date[ $date ] ?? array() as $game ) {
+				$keys[ $this->division_key( $game->division ) ] = true;
+			}
+		}
+		return $keys;
 	}
 
 	/**
