@@ -505,7 +505,9 @@ button.splm-stat-tile:focus-visible { outline: 2px solid var(--splm-focus); outl
 /* A1: form-control borders use --splm-border-strong (>=3:1). */
 .splm-modal input[type="date"],
 .splm-modal input[type="time"],
-.splm-modal input[type="text"] { width: 100%; padding: 0.5rem; border: 1px solid var(--splm-border-strong); border-radius: 4px; }
+.splm-modal input[type="text"],
+.splm-modal input[type="number"] { width: 100%; padding: 0.5rem; border: 1px solid var(--splm-border-strong); border-radius: 4px; }
+.splm-modal p { margin: 0.5rem 0; }
 .splm-checkbox { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem; }
 .splm-checkbox input { width: auto; }
 .splm-modal__actions { display: flex; gap: 0.5rem; margin-top: 1.25rem; }
