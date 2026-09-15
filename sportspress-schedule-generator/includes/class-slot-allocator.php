@@ -1215,9 +1215,9 @@ class SPSG_Slot_Allocator {
 	 * weeks would move teams between rounds and undo the one-game-a-week
 	 * structure the plan built.
 	 *
-	 * @param array $placed           Entries of ['game', 'matchup', 'slot'] (updated in place).
-	 * @param array $schedule_by_date Schedule indexed by date (updated in place).
-	 * @param object $config          Schedule configuration.
+	 * @param array  $placed           Entries of ['game', 'matchup', 'slot'] (updated in place).
+	 * @param array  $schedule_by_date Schedule indexed by date (updated in place).
+	 * @param object $config           Schedule configuration.
 	 */
 	private function improve_week_by_swaps( &$placed, &$schedule_by_date, $config ) {
 		$count = count( $placed );
@@ -1250,8 +1250,16 @@ class SPSG_Slot_Allocator {
 
 		$swap = null !== $swapped && ( null === $current || $swapped['cost'] < $current['cost'] - 0.001 );
 		if ( $swap ) {
-			$first  = array( 'game' => $swapped['a'], 'matchup' => $first['matchup'], 'slot' => $second['slot'] );
-			$second = array( 'game' => $swapped['b'], 'matchup' => $second['matchup'], 'slot' => $first['slot'] === $second['slot'] ? $first['slot'] : $this->slot_of( $swapped['b'] ) );
+			$first  = array(
+				'game'    => $swapped['a'],
+				'matchup' => $first['matchup'],
+				'slot'    => $second['slot'],
+			);
+			$second = array(
+				'game'    => $swapped['b'],
+				'matchup' => $second['matchup'],
+				'slot'    => $this->slot_of( $swapped['b'] ),
+			);
 		}
 		$schedule_by_date[ $first['game']->date ][]  = $first['game'];
 		$schedule_by_date[ $second['game']->date ][] = $second['game'];
@@ -1280,7 +1288,14 @@ class SPSG_Slot_Allocator {
 		}
 		$this->remove_game( $schedule_by_date, $game_a );
 
-		return $valid ? array( 'cost' => $cost, 'a' => $game_a, 'b' => $game_b ) : null;
+		if ( ! $valid ) {
+			return null;
+		}
+		return array(
+			'cost' => $cost,
+			'a'    => $game_a,
+			'b'    => $game_b,
+		);
 	}
 
 	/**

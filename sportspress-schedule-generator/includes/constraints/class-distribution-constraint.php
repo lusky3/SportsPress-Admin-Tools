@@ -106,7 +106,12 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 		$this->games_total   = (int) $games_total;
 		$this->supply_by_day = array();
 
-		$counts = array( 'early' => 0, 'late' => 0, 'first' => 0, 'last' => 0 );
+		$counts = array(
+			'early' => 0,
+			'late'  => 0,
+			'first' => 0,
+			'last'  => 0,
+		);
 		$total  = 0;
 		foreach ( $slots_by_date as $date => $slots ) {
 			foreach ( $slots as $slot ) {
@@ -296,7 +301,14 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function team_night_counts( $team_id, $schedule ) {
-		$counts = array( 'games' => 0, 'early' => 0, 'mid' => 0, 'late' => 0, 'first' => 0, 'last' => 0 );
+		$counts = array(
+			'games' => 0,
+			'early' => 0,
+			'mid'   => 0,
+			'late'  => 0,
+			'first' => 0,
+			'last'  => 0,
+		);
 		foreach ( $schedule as $existing ) {
 			if ( $this->get_team_id( $existing->home_team ) !== $team_id && $this->get_team_id( $existing->away_team ) !== $team_id ) {
 				continue;
