@@ -42,10 +42,60 @@ class SPSG_Division_Grouping_Constraint extends SPSG_Abstract_Constraint {
 	}
 
 	/**
+	 * Cost per hour of separation between a game and the nearest game of
+	 * its own division already on that night, beyond the adjacent hour.
+	 * Measured on the night's timeline across every venue: a 19:00 game on
+	 * one pad and an 18:45 game on the other are the same hour to the people
+	 * in the building. Kept below the distribution constraint's fairness
+	 * terms (40-60 per game) so grouping never buys a worse night for a team.
+	 */
+	const DISTANCE_COST_PER_HOUR = 30.0;
+
+	/** Hours of separation past which the distance cost stops growing. */
+	const DISTANCE_CAP_HOURS = 4;
+
+	/**
+	 * Cost for a division's first game on a night. Identical for every slot
+	 * of a night the division isn't on yet, so it never steers a division's
+	 * first game; it only makes its second and third prefer the night the
+	 * first landed on over starting a second group elsewhere.
+	 */
+	const NEW_NIGHT_COST = 40.0;
+
+	/**
+	 * Cost for wedging a game between two games of another division that
+	 * were one hour apart -- splitting a group that was about to close.
+	 */
+	const DISRUPTION_COST = 30.0;
+
+	/**
+	 * Season slot supply, set by {@see set_slot_supply()}; date => sorted
+	 * distinct start times. Falls back to the configured venue slots (or the
+	 * night's own games) when scoring outside an allocation run.
+	 *
+	 * @var array<string,string[]>
+	 */
+	private $timeline = array();
+
+	/**
+	 * Learn the season's slot supply so nights can be scored on one shared
+	 * timeline across venues.
+	 *
+	 * @param array<string,object[]> $slots_by_date Date => slot objects.
+	 * @param int                    $games_total   Games to schedule (unused here).
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+	 */
+	public function set_slot_supply( $slots_by_date, $games_total ) {
+		$this->timeline = SPSG_Schedule_Helper::timeline_from_slots( $slots_by_date );
+	}
+
+	/**
 	 * Validate division grouping (always allows, but calculates cost)
 	 */
 	public function validate( $game, $schedule, $config ) {
-		// This is an optimization constraint, so we always allow the game
+		// Division grouping is an optimization constraint, so we always allow
 		// but calculate the cost for grouping optimization
 		return true;
 	}
@@ -54,263 +104,144 @@ class SPSG_Division_Grouping_Constraint extends SPSG_Abstract_Constraint {
 	 * Calculate violation cost for division grouping
 	 */
 	public function get_violation_cost( $game, $schedule, $config ) {
-		if ( ! isset( $config->division_grouping ) || ! $config->division_grouping['enabled'] ) {
+		if ( empty( $config->division_grouping['enabled'] ) ) {
 			return 0.0; // No cost if grouping is disabled
 		}
 
-		$grouping_cost = $this->calculate_grouping_cost( $game, $schedule, $config );
-		$venue_cost = $this->calculate_venue_efficiency_cost( $game, $schedule, $config );
-
-		return $grouping_cost + $venue_cost;
+		return $this->calculate_grouping_cost( $game, $schedule, $config );
 	}
 
 	/**
-	 * Calculate cost for division grouping optimization
+	 * How far this slot sits from the division's other games that night,
+	 * plus whether it splits another division's run. Distances are in hours
+	 * of the evening ({@see SPSG_Schedule_Helper::hour_index_map()}), so the
+	 * other pad at the same hour is distance 0.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function calculate_grouping_cost( $game, $schedule, $config ) {
-		$game_date = $game->date;
-		$game_time_slot = $game->time_slot;
-		$game_division = self::entity_id( $game->division );
-		$game_venue = self::entity_id( $game->venue );
-
-		// Get all games on the same date and venue
-		$same_date_venue_games = $this->get_games_by_date_and_venue( $game_date, $game_venue, $schedule );
-
-		// Calculate grouping benefit/cost
-		$grouping_benefit = $this->calculate_division_grouping_benefit(
-			$game_division,
-			$game_time_slot,
-			$same_date_venue_games,
-			$config
-		);
-
-		// Convert benefit to cost (higher benefit = lower cost)
-		$max_benefit = 100.0;
-		return $max_benefit - $grouping_benefit;
-	}
-
-	/**
-	 * Calculate venue efficiency cost
-	 */
-	private function calculate_venue_efficiency_cost( $game, $schedule, $config ) {
-		$game_date = $game->date;
-		$game_venue = self::entity_id( $game->venue );
-
-		// Get venue utilization for the date
-		$venue_games = $this->get_games_by_date_and_venue( $game_date, $game_venue, $schedule );
-		$venue_capacity = $this->get_venue_time_slot_capacity( $game_date, $config, $game_venue );
-
-		$utilization_rate = count( $venue_games ) / max( $venue_capacity, 1 );
-
-		// Prefer higher venue utilization (lower cost for better utilization)
-		if ( $utilization_rate > 0.8 ) {
-			return 0.0; // Good utilization
-		} elseif ( $utilization_rate > 0.5 ) {
-			return 10.0; // Moderate cost
-		} else {
-			return 25.0; // Higher cost for low utilization
+		$night = $this->games_on_date( $game->date, $schedule );
+		$hours = SPSG_Schedule_Helper::hour_index_map( $this->night_timeline( $game->date, $night, $config ) );
+		if ( ! isset( $hours[ $game->time_slot ] ) ) {
+			return 0.0;
 		}
-	}
+		$index = $hours[ $game->time_slot ];
 
-	/**
-	 * Calculate division grouping benefit
-	 */
-	private function calculate_division_grouping_benefit( $division_id, $time_slot, $existing_games, $config ) {
-		$benefit = 0.0;
-
-		// Get time slots for the date
-		$time_slots = $this->extract_time_slots_from_games( $existing_games, $config );
-		$current_slot_index = array_search( $time_slot, $time_slots );
-
-		if ( $current_slot_index === false ) {
-			return $benefit;
-		}
-
-		// Check adjacent time slots for same division games
-		$adjacent_slots = $this->get_adjacent_time_slots( $current_slot_index, $time_slots );
-
-		foreach ( $existing_games as $existing_game ) {
-			if ( in_array( $existing_game->time_slot, $adjacent_slots ) &&
-			self::entity_id( $existing_game->division ) === $division_id ) {
-				$benefit += 50.0; // High benefit for adjacent same-division games
+		$division = self::division_key( $game->division );
+		$own      = array();
+		$others   = array();
+		foreach ( $night as $existing ) {
+			if ( ! isset( $hours[ $existing->time_slot ] ) ) {
+				continue;
+			}
+			$hour = $hours[ $existing->time_slot ];
+			$key = self::division_key( $existing->division );
+			if ( $key === $division ) {
+				$own[] = $hour;
+			} else {
+				$others[ $key ][] = $hour;
 			}
 		}
 
-		// Check for division clustering (multiple games from same division)
-		$division_games_count = $this->count_division_games( $division_id, $existing_games );
-		if ( $division_games_count > 0 ) {
-			$benefit += $division_games_count * 20.0; // Benefit for division clustering
-		}
-
-		// Penalty for breaking up other division groups
-		$disruption_penalty = $this->calculate_disruption_penalty( $division_id, $time_slot, $existing_games, $time_slots );
-		$benefit -= $disruption_penalty;
-
-		return max( 0.0, $benefit );
+		$cost = empty( $own ) ? self::NEW_NIGHT_COST : $this->distance_cost( $index, $own );
+		return $cost + $this->disruption_cost( $index, $others );
 	}
 
 	/**
-	 * Get games by date and venue
+	 * Cost for the hours between $index and the nearest of $hours, beyond
+	 * the adjacent hour (which is free).
+	 *
+	 * @param int   $index Hour index of the candidate slot.
+	 * @param int[] $hours Hour indexes of the division's games that night.
+	 * @return float
 	 */
-	private function get_games_by_date_and_venue( $date, $venue_id, $schedule ) {
-		$games = array();
+	private function distance_cost( $index, $hours ) {
+		$nearest = PHP_INT_MAX;
+		foreach ( $hours as $hour ) {
+			$nearest = min( $nearest, abs( $hour - $index ) );
+		}
+		$gap = min( self::DISTANCE_CAP_HOURS, max( 0, $nearest - 1 ) );
+		return self::DISTANCE_COST_PER_HOUR * $gap;
+	}
 
+	/**
+	 * {@see DISRUPTION_COST} for each other division with games exactly two
+	 * hours apart that this slot would land between.
+	 *
+	 * @param int                 $index  Hour index of the candidate slot.
+	 * @param array<string,int[]> $others Division => hour indexes of its games that night.
+	 * @return float
+	 */
+	private function disruption_cost( $index, $others ) {
+		$cost = 0.0;
+		foreach ( $others as $hours ) {
+			$set = array_fill_keys( $hours, true );
+			if ( isset( $set[ $index - 1 ], $set[ $index + 1 ] ) ) {
+				$cost += self::DISRUPTION_COST;
+			}
+		}
+		return $cost;
+	}
+
+	/**
+	 * The games already scheduled on $date, whatever venue they are at.
+	 */
+	private function games_on_date( $date, $schedule ) {
+		$games = array();
 		foreach ( $schedule as $game ) {
-			if ( $game->date === $date && self::entity_id( $game->venue ) === $venue_id ) {
+			if ( $game->date === $date ) {
 				$games[] = $game;
 			}
 		}
-
 		return $games;
 	}
 
 	/**
-	 * Extract time slots from games and sort them
+	 * The night's timeline: the season supply when known, else every
+	 * configured venue's slots for that date, else the start times of the
+	 * games already on it.
+	 *
+	 * @return string[] Sorted distinct "HH:MM" start times.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
-	private function extract_time_slots_from_games( $games, $config ) {
-		$slots = array();
-
-		foreach ( $games as $game ) {
-			$slots[] = $game->time_slot;
+	private function night_timeline( $date, $night, $config ) {
+		if ( isset( $this->timeline[ $date ] ) ) {
+			return $this->timeline[ $date ];
 		}
 
-		// Get the day from first game to get proper slot ordering. Resolve the
-		// slot list cascade-aware so per-venue / per-date overrides are honored.
-		if ( ! empty( $games ) ) {
-			$game_date = $games[0]->date;
-			$game_day  = strtolower( ( new DateTime( $game_date ) )->format( 'l' ) );
-			$venue_id  = isset( $games[0]->venue_id ) ? $games[0]->venue_id : ( isset( $games[0]->venue ) ? SPSG_Schedule_Helper::extract_id( $games[0]->venue ) : 0 );
-			$ordered_slots = SPSG_Schedule_Helper::resolve_venue_slots( $venue_id, $game_date, $game_day, $config );
-			if ( ! empty( $ordered_slots ) ) {
-				// Use config ordering
-				$slots = array_intersect( $ordered_slots, array_unique( $slots ) );
+		$times = array();
+		$day   = strtolower( ( new DateTime( $date ) )->format( 'l' ) );
+		foreach ( (array) ( $config->venues ?? array() ) as $venue ) {
+			$slots = SPSG_Schedule_Helper::resolve_venue_slots( self::entity_id( $venue ), $date, $day, $config );
+			foreach ( (array) $slots as $time ) {
+				$times[ $time ] = true;
 			}
 		}
-
-		return array_unique( $slots );
+		if ( empty( $times ) ) {
+			foreach ( $night as $game ) {
+				$times[ $game->time_slot ] = true;
+			}
+		}
+		$times = array_keys( $times );
+		sort( $times );
+		return $times;
 	}
 
 	/**
-	 * Get adjacent time slots
+	 * Grouping key for a division: its id, or its name when the id is empty
+	 * (divisions authored in the admin store `'id' => ''`, which would fold
+	 * every division into one).
 	 */
-	private function get_adjacent_time_slots( $current_index, $time_slots ) {
-		$adjacent = array();
-
-		if ( $current_index > 0 ) {
-			$adjacent[] = $time_slots[ $current_index - 1 ];
+	private static function division_key( $division ) {
+		$id = (string) self::entity_id( $division );
+		if ( '' !== $id ) {
+			return $id;
 		}
-		if ( $current_index < count( $time_slots ) - 1 ) {
-			$adjacent[] = $time_slots[ $current_index + 1 ];
+		if ( is_object( $division ) ) {
+			return (string) ( $division->name ?? '' );
 		}
-
-		return $adjacent;
-	}
-
-	/**
-	 * Count games from specific division
-	 */
-	private function count_division_games( $division_id, $games ) {
-		$count = 0;
-
-		foreach ( $games as $game ) {
-			if ( self::entity_id( $game->division ) === $division_id ) {
-				$count++;
-			}
-		}
-
-		return $count;
-	}
-
-	/**
-	 * Calculate penalty for disrupting existing division groups
-	 */
-	private function calculate_disruption_penalty( $division_id, $time_slot, $existing_games, $time_slots ) {
-		$penalty = 0.0;
-		$current_slot_index = array_search( $time_slot, $time_slots );
-
-		if ( $current_slot_index === false ) {
-			return $penalty;
-		}
-
-		// Check if inserting this division game breaks up consecutive games from other divisions
-		$adjacent_slots = $this->get_adjacent_time_slots( $current_slot_index, $time_slots );
-
-		foreach ( $adjacent_slots as $adjacent_slot ) {
-			$adjacent_games = array_filter(
-				$existing_games,
-				function ( $game ) use ( $adjacent_slot ) {
-					return $game->time_slot === $adjacent_slot;
-				}
-			);
-
-			foreach ( $adjacent_games as $adjacent_game ) {
-				$adjacent_division_id = self::entity_id( $adjacent_game->division );
-				if ( $adjacent_division_id !== $division_id &&
-				$this->breaks_consecutive_sequence( $adjacent_division_id, $time_slot, $existing_games, $time_slots ) ) {
-					$penalty += 30.0;
-				}
-			}
-		}
-
-		return $penalty;
-	}
-
-	/**
-	 * Check if placing a game breaks a consecutive sequence
-	 */
-	private function breaks_consecutive_sequence( $other_division_id, $new_time_slot, $existing_games, $time_slots ) {
-		$new_slot_index = array_search( $new_time_slot, $time_slots );
-
-		// Get all games from the other division
-		$other_division_games = array_filter(
-			$existing_games,
-			function ( $game ) use ( $other_division_id ) {
-				return self::entity_id( $game->division ) === $other_division_id;
-			}
-		);
-
-		if ( count( $other_division_games ) < 2 ) {
-			return false; // Can't break a sequence with less than 2 games
-		}
-
-		// Check if the new slot would be inserted between consecutive games from other division
-		$other_division_slots = array();
-		foreach ( $other_division_games as $game ) {
-			$slot_index = array_search( $game->time_slot, $time_slots );
-			if ( $slot_index !== false ) {
-				$other_division_slots[] = $slot_index;
-			}
-		}
-
-		sort( $other_division_slots );
-
-		// Check if new slot index falls between consecutive slots
-		for ( $i = 0; $i < count( $other_division_slots ) - 1; $i++ ) {
-			if ( $new_slot_index > $other_division_slots[ $i ] &&
-			$new_slot_index < $other_division_slots[ $i + 1 ] &&
-			$other_division_slots[ $i + 1 ] - $other_division_slots[ $i ] === 2 ) {
-				return true; // Breaks consecutive sequence
-			}
-		}
-
-		return false;
-	}
-
-	/**
-	 * Get venue time slot capacity for a date
-	 */
-	private function get_venue_time_slot_capacity( $date, $config, $venue_id = 0 ) {
-		$game_day = strtolower( ( new DateTime( $date ) )->format( 'l' ) );
-
-		// Resolve cascade-aware so per-venue / per-date slot overrides are
-		// reflected in the capacity used for venue-utilization scoring.
-		$day_time_slots = SPSG_Schedule_Helper::resolve_venue_slots( $venue_id, $date, $game_day, $config );
-
-		if ( ! empty( $day_time_slots ) ) {
-			return count( $day_time_slots );
-		}
-
-		return 1; // Default capacity
+		return (string) ( is_array( $division ) ? ( $division['name'] ?? '' ) : $division );
 	}
 
 	/**

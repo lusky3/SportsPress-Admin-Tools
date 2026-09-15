@@ -48,6 +48,23 @@ class SPSG_Constraint_Manager {
 	}
 
 	/**
+	 * Tell every constraint that wants to know what the season's slot supply
+	 * looks like -- the allocator calls this once its slot grid exists -- so
+	 * fairness targets can be measured against what is actually on offer
+	 * rather than against a configured share the supply can't deliver.
+	 *
+	 * @param array<string,object[]> $slots_by_date Date => slot objects.
+	 * @param int                    $games_total   Games to schedule.
+	 */
+	public function set_slot_supply( $slots_by_date, $games_total ) {
+		foreach ( $this->constraints as $constraint ) {
+			if ( method_exists( $constraint, 'set_slot_supply' ) ) {
+				$constraint->set_slot_supply( $slots_by_date, $games_total );
+			}
+		}
+	}
+
+	/**
 	 * Get all constraints sorted by priority
 	 */
 	public function get_constraints() {
