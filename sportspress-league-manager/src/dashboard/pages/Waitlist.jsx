@@ -992,16 +992,17 @@ function WaitlistConfirmModal( { modal, onCancel, onConfirmOffer, onConfirmCance
 }
 
 // A yes/no dialog with no fields of its own -- Cancel/Remove and Gate/Un-gate.
+// <dialog> is used (with the `open` attribute, no showModal()) rather than a
+// plain div with role="dialog": it is natively the right element for this,
+// so it needs no ARIA role/attributes to be recognised as one. There is
+// deliberately no click-outside-the-panel-to-dismiss handler on the
+// overlay -- that would put a click (and, to stay accessible, a matching key)
+// listener on a plain, non-interactive div; the explicit Cancel button is
+// the only way to dismiss, same as it always was.
 function ConfirmDialog( { title, confirmLabel, danger, onConfirm, onCancel } ) {
 	return (
-		<div className="splm-modal-overlay" onClick={ onCancel }>
-			<div
-				className="splm-modal"
-				role="dialog"
-				aria-modal="true"
-				aria-label={ title }
-				onClick={ ( e ) => e.stopPropagation() }
-			>
+		<div className="splm-modal-overlay">
+			<dialog open className="splm-modal" aria-label={ title }>
 				<h3>{ title }</h3>
 				<div className="splm-modal__actions">
 					<button
@@ -1015,7 +1016,7 @@ function ConfirmDialog( { title, confirmLabel, danger, onConfirm, onCancel } ) {
 						Cancel
 					</button>
 				</div>
-			</div>
+			</dialog>
 		</div>
 	);
 }
@@ -1034,41 +1035,36 @@ function OfferDialog( { row, onCancel, onConfirm } ) {
 	};
 
 	return (
-		<div className="splm-modal-overlay" onClick={ onCancel }>
-			<form
-				className="splm-modal"
-				role="dialog"
-				aria-modal="true"
-				aria-label="Offer this spot"
-				onClick={ ( e ) => e.stopPropagation() }
-				onSubmit={ handleSubmit }
-			>
-				<h3>Offer this spot</h3>
-				<p>
-					Offer this spot to { row.name || row.email }? This emails them a real claim
-					link.
-				</p>
-				<label>
-					Claim window in hours
-					<input
-						type="number"
-						min={ MIN_HOURS }
-						max={ MAX_HOURS }
-						step="1"
-						required
-						value={ hours }
-						onChange={ ( e ) => setHours( e.target.value ) }
-					/>
-				</label>
-				<div className="splm-modal__actions">
-					<button type="submit" className="splm-btn splm-btn--primary">
-						Send offer
-					</button>
-					<button type="button" className="splm-btn" onClick={ onCancel }>
-						Cancel
-					</button>
-				</div>
-			</form>
+		<div className="splm-modal-overlay">
+			<dialog open className="splm-modal" aria-label="Offer this spot">
+				<form onSubmit={ handleSubmit }>
+					<h3>Offer this spot</h3>
+					<p>
+						Offer this spot to { row.name || row.email }? This emails them a real
+						claim link.
+					</p>
+					<label>
+						<span>Claim window in hours</span>
+						<input
+							type="number"
+							min={ MIN_HOURS }
+							max={ MAX_HOURS }
+							step="1"
+							required
+							value={ hours }
+							onChange={ ( e ) => setHours( e.target.value ) }
+						/>
+					</label>
+					<div className="splm-modal__actions">
+						<button type="submit" className="splm-btn splm-btn--primary">
+							Send offer
+						</button>
+						<button type="button" className="splm-btn" onClick={ onCancel }>
+							Cancel
+						</button>
+					</div>
+				</form>
+			</dialog>
 		</div>
 	);
 }
