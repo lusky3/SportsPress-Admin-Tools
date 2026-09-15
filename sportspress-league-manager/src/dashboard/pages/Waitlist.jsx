@@ -598,24 +598,28 @@ function useRestrictionsEditor( { setError, setNotice, load } ) {
 // The four row actions that talk to the waitlist REST endpoints directly
 // (offer/cancel/set-target, plus the target input's own draft state) --
 // split out of Waitlist() purely to keep that function's own body short.
-function useWaitlistRowActions( { setBusyId, setError, setNotice, setWarnings, load } ) {
+function useWaitlistRowActions( { setBusyId, setError, setNotice, setWarnings, load, setConfirmModal } ) {
 	const [ targetInputs, setTargetInputs ] = useState( {} );
 	const [ settingTargetId, setSettingTargetId ] = useState( 0 );
 
+	// A native window.prompt() blocks on the browser's own dialog, which some
+	// mobile/embedded browsers silently suppress after a page has shown a few
+	// dialogs in quick succession -- the call then returns null exactly as if
+	// the user had cancelled, with no error and no request ever sent. Opening
+	// an in-page modal instead keeps this entirely inside React, so it can't
+	// be swallowed by the browser and a failed submission always surfaces a
+	// visible error.
 	const handleOffer = ( row ) => {
-		const input = window.prompt(
-			`Offer this spot to ${ row.name || row.email }? This emails them a real claim link. Claim window in hours:`,
-			String( DEFAULT_HOURS )
-		);
-		if ( input === null ) {
-			return;
-		}
-		const hours = Number( input );
+		setConfirmModal( { kind: 'offer', row } );
+	};
+
+	const confirmOffer = ( row, hours ) => {
 		if ( ! Number.isInteger( hours ) || hours < MIN_HOURS || hours > MAX_HOURS ) {
 			setError( `The claim window must be a whole number of hours between ${ MIN_HOURS } and ${ MAX_HOURS }.` );
 			return;
 		}
 
+		setConfirmModal( null );
 		setBusyId( row.id );
 		setError( '' );
 		setNotice( '' );
@@ -631,11 +635,11 @@ function useWaitlistRowActions( { setBusyId, setError, setNotice, setWarnings, l
 	};
 
 	const handleCancel = ( row ) => {
-		const label = row.status === 'offered' ? 'Cancel this offer?' : 'Remove this entry from the queue?';
-		// Matches every other bulk/irreversible action in this dashboard.
-		if ( ! window.confirm( label ) ) {
-			return;
-		}
+		setConfirmModal( { kind: 'cancel', row } );
+	};
+
+	const confirmCancel = ( row ) => {
+		setConfirmModal( null );
 		setBusyId( row.id );
 		setError( '' );
 		cancelWaitlistEntry( row.id )
@@ -679,7 +683,9 @@ function useWaitlistRowActions( { setBusyId, setError, setNotice, setWarnings, l
 		targetInputs,
 		settingTargetId,
 		handleOffer,
+		confirmOffer,
 		handleCancel,
+		confirmCancel,
 		handleSetTarget,
 		handleTargetInputChange,
 	};
@@ -855,10 +861,15 @@ function useAddEntryForm( { setError, setNotice, load } ) {
 export default function Waitlist() {
 	const wl = useWaitlistData();
 	const [ busyId, setBusyId ] = useState( 0 );
+	// Discriminated on `kind`: 'offer' (row), 'cancel' (row) or 'gate'
+	// (productId, gated) -- see the ConfirmModal render below. One piece of
+	// state for all three native-dialog replacements keeps exactly one
+	// modal on screen at a time, matching how every other dialog is native.
+	const [ confirmModal, setConfirmModal ] = useState( null );
 	const addForm = useAddEntryForm( { setError: wl.setError, setNotice: wl.setNotice, load: wl.load } );
 	const [ visibleColumns, toggleColumn ] = useVisibleColumns();
 	const restrictionsEditor = useRestrictionsEditor( { setError: wl.setError, setNotice: wl.setNotice, load: wl.load } );
-	const rowActions = useWaitlistRowActions( { setBusyId, setError: wl.setError, setNotice: wl.setNotice, setWarnings: wl.setWarnings, load: wl.load } );
+	const rowActions = useWaitlistRowActions( { setBusyId, setError: wl.setError, setNotice: wl.setNotice, setWarnings: wl.setWarnings, load: wl.load, setConfirmModal } );
 
 	// Target products for the Season access panel, derived from the rows on
 	// screen so the panel always describes what the convener is looking at.
@@ -873,12 +884,11 @@ export default function Waitlist() {
 	}, [ wl.rows ] );
 
 	const handleGate = ( productId, gated ) => {
-		const label = gated
-			? 'Gate this product? The public will no longer be able to buy it without an offer.'
-			: 'Un-gate this product? Anyone will be able to buy it again.';
-		if ( ! window.confirm( label ) ) {
-			return;
-		}
+		setConfirmModal( { kind: 'gate', productId, gated } );
+	};
+
+	const confirmGate = ( productId, gated ) => {
+		setConfirmModal( null );
 		wl.setError( '' );
 		setWaitlistGate( productId, gated )
 			.then( ( res ) => {
@@ -932,6 +942,129 @@ export default function Waitlist() {
 				onFieldChange={ addForm.handleFieldChange }
 				onSubmit={ addForm.handleSubmit }
 			/>
+
+			{ confirmModal && (
+				<WaitlistConfirmModal
+					modal={ confirmModal }
+					onCancel={ () => setConfirmModal( null ) }
+					onConfirmOffer={ rowActions.confirmOffer }
+					onConfirmCancel={ rowActions.confirmCancel }
+					onConfirmGate={ confirmGate }
+				/>
+			) }
+		</div>
+	);
+}
+
+// The one modal on screen at a time for Offer/Re-offer (needs the claim-window
+// input), Cancel/Remove and Gate/Un-gate -- see the `confirmModal` state above
+// for why these three share one component instead of three separate ones.
+function WaitlistConfirmModal( { modal, onCancel, onConfirmOffer, onConfirmCancel, onConfirmGate } ) {
+	if ( 'offer' === modal.kind ) {
+		return (
+			<OfferDialog row={ modal.row } onCancel={ onCancel } onConfirm={ onConfirmOffer } />
+		);
+	}
+
+	if ( 'cancel' === modal.kind ) {
+		const isOffered = 'offered' === modal.row.status;
+		return (
+			<ConfirmDialog
+				title={ isOffered ? 'Cancel this offer?' : 'Remove this entry from the queue?' }
+				confirmLabel={ isOffered ? 'Cancel offer' : 'Remove' }
+				danger
+				onCancel={ onCancel }
+				onConfirm={ () => onConfirmCancel( modal.row ) }
+			/>
+		);
+	}
+
+	return (
+		<ConfirmDialog
+			title={ modal.gated
+				? 'Gate this product? The public will no longer be able to buy it without an offer.'
+				: 'Un-gate this product? Anyone will be able to buy it again.' }
+			confirmLabel={ modal.gated ? 'Gate' : 'Un-gate' }
+			onCancel={ onCancel }
+			onConfirm={ () => onConfirmGate( modal.productId, modal.gated ) }
+		/>
+	);
+}
+
+// A yes/no dialog with no fields of its own -- Cancel/Remove and Gate/Un-gate.
+// <dialog> is used (with the `open` attribute, no showModal()) rather than a
+// plain div with role="dialog": it is natively the right element for this,
+// so it needs no ARIA role/attributes to be recognised as one. There is
+// deliberately no click-outside-the-panel-to-dismiss handler on the
+// overlay -- that would put a click (and, to stay accessible, a matching key)
+// listener on a plain, non-interactive div; the explicit Cancel button is
+// the only way to dismiss, same as it always was.
+function ConfirmDialog( { title, confirmLabel, danger, onConfirm, onCancel } ) {
+	return (
+		<div className="splm-modal-overlay">
+			<dialog open className="splm-modal" aria-label={ title }>
+				<h3>{ title }</h3>
+				<div className="splm-modal__actions">
+					<button
+						type="button"
+						className={ `splm-btn ${ danger ? 'splm-btn--danger' : 'splm-btn--primary' }` }
+						onClick={ onConfirm }
+					>
+						{ confirmLabel }
+					</button>
+					<button type="button" className="splm-btn" onClick={ onCancel }>
+						Cancel
+					</button>
+				</div>
+			</dialog>
+		</div>
+	);
+}
+
+// Offer/Re-offer's dialog: the only one of the three that also collects a
+// value (the claim-window hours), so it is its own small form rather than a
+// ConfirmDialog. min/max/required give native, in-page validation before
+// onSubmit ever fires; onConfirm re-checks the same bounds as a safety net
+// for a browser that doesn't enforce them.
+function OfferDialog( { row, onCancel, onConfirm } ) {
+	const [ hours, setHours ] = useState( String( DEFAULT_HOURS ) );
+
+	const handleSubmit = ( e ) => {
+		e.preventDefault();
+		onConfirm( row, Number( hours ) );
+	};
+
+	return (
+		<div className="splm-modal-overlay">
+			<dialog open className="splm-modal" aria-label="Offer this spot">
+				<form onSubmit={ handleSubmit }>
+					<h3>Offer this spot</h3>
+					<p>
+						Offer this spot to { row.name || row.email }? This emails them a real
+						claim link.
+					</p>
+					<label>
+						<span>Claim window in hours</span>
+						<input
+							type="number"
+							min={ MIN_HOURS }
+							max={ MAX_HOURS }
+							step="1"
+							required
+							value={ hours }
+							onChange={ ( e ) => setHours( e.target.value ) }
+						/>
+					</label>
+					<div className="splm-modal__actions">
+						<button type="submit" className="splm-btn splm-btn--primary">
+							Send offer
+						</button>
+						<button type="button" className="splm-btn" onClick={ onCancel }>
+							Cancel
+						</button>
+					</div>
+				</form>
+			</dialog>
 		</div>
 	);
 }

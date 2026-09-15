@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.3.1
+Stable tag: 1.3.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,6 +48,12 @@ WooCommerce is optional. Without it, fee tracking can be configured for manual e
 CSV files with `Team` and `Name` columns (both required). Each row maps a player Name to a Team; rows missing either value are skipped.
 
 == Changelog ==
+
+= 1.3.2 =
+* Fix: the Waitlist page's Offer/Re-offer, Cancel/Remove and Gate/Un-gate actions used the browser's native prompt()/confirm() dialogs. Some browsers silently suppress a native dialog after a page has shown a few of them in a row -- the call then returns as if the person had clicked Cancel, with no error and no request ever sent, which is exactly what "the Re-offer button doesn't do anything" looks like from the outside. All three now use an in-page dialog instead, so the action can no longer be silently dropped and a real failure always shows an error.
+
+= 1.3.3 =
+* Fix: the in-page dialogs added in 1.3.2 used a plain `<div role="dialog">` for the panel and a click-outside-to-dismiss handler on the backdrop, both of which are accessibility anti-patterns (a non-interactive element wired up as if it were interactive). The panel is now a real `<dialog>` element, and dismissing is via the explicit Cancel button only.
 
 = 1.3.1 =
 * Fix: the "Create Postseason Configuration" panel on the Schedule Generator dashboard no longer asks for a separate Postseason start date. It's the tail end of the same season the source configuration already describes, so the start date is now always derived automatically from the source's own Season End, with the resulting date range shown instead of asking for one.
