@@ -899,16 +899,27 @@ class SPSG_Statistics_Calculator {
 	 * @return array{teams:array{0:string,1:string},shared_nights:int,min_gap_minutes:?int}
 	 */
 	private function restricted_pair_report( $a_id, $b_id, $games_by_team_date, $names ) {
-		$a_dates = $games_by_team_date[ $a_id ] ?? array();
-		$b_dates = $games_by_team_date[ $b_id ] ?? array();
-
-		list( $shared_nights, $min_gap ) = $this->shared_night_gaps( $a_dates, $b_dates );
+		list( $shared_nights, $min_gap ) = $this->shared_night_gaps(
+			$games_by_team_date[ $a_id ] ?? array(),
+			$games_by_team_date[ $b_id ] ?? array()
+		);
 
 		return array(
-			'teams' => array( $names[ $a_id ] ?? $a_id, $names[ $b_id ] ?? $b_id ),
+			'teams' => array( $this->resolve_team_label( $a_id, $names ), $this->resolve_team_label( $b_id, $names ) ),
 			'shared_nights' => $shared_nights,
 			'min_gap_minutes' => $min_gap,
 		);
+	}
+
+	/**
+	 * A team's display name, or its id when it has none on record.
+	 *
+	 * @param string               $team_id Team id.
+	 * @param array<string,string> $names   Team id => display name.
+	 * @return string
+	 */
+	private function resolve_team_label( $team_id, $names ) {
+		return $names[ $team_id ] ?? $team_id;
 	}
 
 	/**

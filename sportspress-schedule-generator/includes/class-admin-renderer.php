@@ -1851,12 +1851,23 @@ class SPSG_Admin_Renderer {
 	 * @param array $team Night-position entry (team_name, early, mid, late, first, last).
 	 */
 	private function render_night_position_row( $team ) {
-		echo '<tr><td>' . esc_html( $team['team_name'] ?? '' ) . '</td>'
-			. '<td>' . esc_html( $team['early'] ?? 0 ) . '</td>'
-			. '<td>' . esc_html( $team['mid'] ?? 0 ) . '</td>'
-			. '<td>' . esc_html( $team['late'] ?? 0 ) . '</td>'
-			. '<td>' . esc_html( $team['first'] ?? 0 ) . '</td>'
-			. '<td>' . esc_html( $team['last'] ?? 0 ) . '</td></tr>';
+		echo '<tr><td>' . esc_html( $this->stat_field( $team, 'team_name', '' ) ) . '</td>';
+		foreach ( array( 'early', 'mid', 'late', 'first', 'last' ) as $field ) {
+			echo '<td>' . esc_html( $this->stat_field( $team, $field, 0 ) ) . '</td>';
+		}
+		echo '</tr>';
+	}
+
+	/**
+	 * One field from a stats row, or a default when it isn't set.
+	 *
+	 * @param array  $row     Stats row (e.g. one team's night-position entry).
+	 * @param string $field   Field name.
+	 * @param mixed  $default Value to use when the field is absent.
+	 * @return mixed
+	 */
+	private function stat_field( $row, $field, $default ) {
+		return $row[ $field ] ?? $default;
 	}
 
 	/**
