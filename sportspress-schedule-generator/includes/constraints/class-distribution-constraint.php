@@ -404,6 +404,45 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 	}
 
 	/**
+	 * How many games behind (positive) its day-balance target a team
+	 * currently is for one specific day, given games placed so far. Zero or
+	 * negative means the team is on or ahead of target for that day.
+	 *
+	 * Exposed for {@see SPSG_Slot_Allocator::week_pick_rank()}: the
+	 * DAY_BALANCE_COST_PER_GAME_DEVIATION cost this constraint charges only
+	 * ranks slots that are still open when a matchup's turn comes to be
+	 * placed within its week. It has no say in *which* matchups get first
+	 * claim on that week's slots -- that's decided earlier, by which
+	 * division's matchup the allocator picks first. This deficit lets the
+	 * allocator fold day-balance into THAT decision too, so a team genuinely
+	 * behind on Fridays (or Sundays) can jump the queue instead of losing
+	 * every week to whichever division happens to place first.
+	 *
+	 * @param string   $team_id  Team id.
+	 * @param object[] $schedule Games placed so far (flat list).
+	 * @param object   $config   Schedule configuration.
+	 * @param string   $day      Day name (e.g. 'friday').
+	 * @return float
+	 */
+	public function team_day_deficit( $team_id, $schedule, $config, $day ) {
+		$target_ratios = $this->get_target_day_ratios( $config );
+		if ( ! array_key_exists( $day, $target_ratios ) ) {
+			return 0.0;
+		}
+
+		$distribution = $this->get_team_day_distribution( $team_id, $schedule );
+		$total_games  = array_sum( $distribution );
+		if ( 0 === $total_games ) {
+			return 0.0;
+		}
+
+		$target_games_for_day  = $total_games * (float) $target_ratios[ $day ];
+		$current_games_for_day = $distribution[ $day ] ?? 0;
+
+		return $target_games_for_day - $current_games_for_day;
+	}
+
+	/**
 	 * Calculate cost for team's day distribution
 	 */
 	private function calculate_team_day_cost( $game_day, $current_distribution, $target_ratios ) {
