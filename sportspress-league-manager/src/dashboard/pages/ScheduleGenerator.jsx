@@ -18,6 +18,20 @@ const blank = () => ({
 	generic_teams:{enabled:false,per_division:0,prefix:'Team'},
 	advanced:{b2b_pairs:[],overlap_pairs:[],inter_division:{},venue_prefs:{}},
 });
+// A config loaded from the server can predate a field blank() now defaults --
+// `advanced` in particular, added after configs like the real in-use season
+// were first saved. setCfg(loaded) used to replace the whole state with
+// whatever came back verbatim, so cfg.advanced was simply undefined for any
+// such config and the very first read of cfg.advanced.b2b_pairs (the Rinks &
+// Times step's restrictions section) threw, blanking the entire wizard.
+// Every server-loaded config now goes through this so an old config gets the
+// current defaults for whatever it doesn't have, without losing any of its
+// own real data.
+const normalizeCfg = loaded => ({
+	...blank(),
+	...loaded,
+	advanced: { ...blank().advanced, ...(loaded?.advanced||{}) },
+});
 const mkId = p => `${p}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
 
 // Mirrors SPSG_Configuration_Manager::build_postseason_config_data(): the
@@ -363,7 +377,7 @@ export default function ScheduleGenerator() {
 			const cfg_data = importPreview.data;
 			const r = await spsg.createConfig({...cfg_data, name: (cfg_data.name||'Imported')+' (Imported)'});
 			const loaded = await spsg.getConfig(r.id);
-			setCfg(loaded); setConfigId(r.id);
+			setCfg(normalizeCfg(loaded)); setConfigId(r.id);
 			loadConfigs(); setError(''); setImportPreview(null); setStep(1);
 		} catch { setError('Import failed'); }
 	};
@@ -466,7 +480,7 @@ export default function ScheduleGenerator() {
 											<td style={f}>
 												<button className="splm-btn" onClick={()=>{
 													const saved = (() => { try { return JSON.parse(sessionStorage.getItem(`spsg_sched_${c.id}`)||'null'); } catch { return null; } })();
-													spsg.getConfig(c.id).then(d=>{setCfg(d);setConfigId(c.id);
+													spsg.getConfig(c.id).then(d=>{setCfg(normalizeCfg(d));setConfigId(c.id);
 														// Gap #3: resume if saved schedule exists
 														if (saved) { setSchedule(saved); setStep(4); } else { setStep(1); }
 													});
@@ -608,7 +622,7 @@ export default function ScheduleGenerator() {
 									// Fix #1/#9: clone returns {id}, must load full config separately
 									const cloned = await spsg.cloneConfig(c.id,`${c.name} (copy)`);
 									const full = await spsg.getConfig(cloned.id);
-									setCfg(full); setConfigId(cloned.id); setStep(1);
+									setCfg(normalizeCfg(full)); setConfigId(cloned.id); setStep(1);
 								} catch { setError('Clone failed'); }
 							}}>Start from {configs[0]?.name}</button>
 						)}
@@ -1124,6 +1138,64 @@ export default function ScheduleGenerator() {
 											<thead><tr><th>Venue</th><th>Games</th></tr></thead>
 											<tbody>{Object.values(schedule.rich_stats.venue_utilization).map((v,i)=>(
 												<tr key={i}><td>{v.name}</td><td>{v.games}</td></tr>
+											))}</tbody>
+										</table>
+									</div>
+								)}
+								{/* Day Balance Per Team -- whatever playing days actually appear, in calendar order */}
+								{schedule.rich_stats.day_balance_per_team&&Object.keys(schedule.rich_stats.day_balance_per_team).length>0&&(()=>{
+									const DAY_ORDER=['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+									const rows=Object.values(schedule.rich_stats.day_balance_per_team);
+									const days=DAY_ORDER.filter(d=>rows.some(r=>(r.days||{})[d]>0));
+									return (
+										<div>
+											<h5 style={{marginBottom:'0.5rem'}}>Day Balance Per Team</h5>
+											<table className="splm-table" style={{fontSize:'0.85em'}}>
+												<thead><tr><th>Team</th>{days.map(d=><th key={d}>{d[0].toUpperCase()+d.slice(1)}</th>)}</tr></thead>
+												<tbody>{rows.map((t,i)=>(
+													<tr key={i}><td>{t.team_name}</td>{days.map(d=><td key={d}>{t.days?.[d]||0}</td>)}</tr>
+												))}</tbody>
+											</table>
+										</div>
+									);
+								})()}
+								{/* Time of Night Per Team */}
+								{schedule.rich_stats.night_position_per_team&&Object.keys(schedule.rich_stats.night_position_per_team).length>0&&(
+									<div>
+										<h5 style={{marginBottom:'0.5rem'}}>Time of Night Per Team</h5>
+										<table className="splm-table" style={{fontSize:'0.85em'}}>
+											<thead><tr><th>Team</th><th>Early</th><th>Mid</th><th>Late</th><th>First</th><th>Last</th></tr></thead>
+											<tbody>{Object.values(schedule.rich_stats.night_position_per_team).map((t,i)=>(
+												<tr key={i}><td>{t.team_name}</td><td>{t.early}</td><td>{t.mid}</td><td>{t.late}</td><td>{t.first}</td><td>{t.last}</td></tr>
+											))}</tbody>
+										</table>
+									</div>
+								)}
+								{/* Division Grouping */}
+								{schedule.rich_stats.division_grouping?.per_division&&Object.keys(schedule.rich_stats.division_grouping.per_division).length>0&&(
+									<div>
+										<h5 style={{marginBottom:'0.5rem'}}>
+											Division Grouping
+											{schedule.rich_stats.division_grouping.overall_percent!=null&&(
+												<span style={{fontWeight:400}}> ({schedule.rich_stats.division_grouping.overall_percent}% overall)</span>
+											)}
+										</h5>
+										<table className="splm-table" style={{fontSize:'0.85em'}}>
+											<thead><tr><th>Division</th><th>Grouped</th></tr></thead>
+											<tbody>{Object.values(schedule.rich_stats.division_grouping.per_division).map((d,i)=>(
+												<tr key={i}><td>{d.name}</td><td>{d.percent==null?'—':`${d.percent}%`}</td></tr>
+											))}</tbody>
+										</table>
+									</div>
+								)}
+								{/* Restricted Team Pairs */}
+								{schedule.rich_stats.restricted_pairs?.length>0&&(
+									<div>
+										<h5 style={{marginBottom:'0.5rem'}}>Restricted Team Pairs</h5>
+										<table className="splm-table" style={{fontSize:'0.85em'}}>
+											<thead><tr><th>Teams</th><th>Shared Nights</th><th>Smallest Gap</th></tr></thead>
+											<tbody>{schedule.rich_stats.restricted_pairs.map((p,i)=>(
+												<tr key={i}><td>{(p.teams||[]).join(' vs. ')}</td><td>{p.shared_nights}</td><td>{p.min_gap_minutes==null?'never shares a night':`${p.min_gap_minutes} minutes`}</td></tr>
 											))}</tbody>
 										</table>
 									</div>

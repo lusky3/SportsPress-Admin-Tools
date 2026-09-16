@@ -92,6 +92,7 @@ run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-no-same-week-dou
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-schedule-draft-store.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-schedule-draft-integration.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-rest-api-draft-store.php"
+run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-statistics-calculator-balance.php"
 run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-events-import.php"
 run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-notifications.php"
 run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-rollover-teams.php"

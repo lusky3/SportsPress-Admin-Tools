@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.3.3
+Stable tag: 1.3.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,6 +48,12 @@ WooCommerce is optional. Without it, fee tracking can be configured for manual e
 CSV files with `Team` and `Name` columns (both required). Each row maps a player Name to a Team; rows missing either value are skipped.
 
 == Changelog ==
+
+= 1.3.5 =
+* Fix: loading a real, already-in-use schedule configuration that predated the "Advanced" restrictions section (back-to-back/overlap pairs, inter-division limits, venue preferences) crashed the entire Schedule Generator wizard blank as soon as its Rinks & Times step rendered -- cfg.advanced was simply undefined for such a config, and the very first read of it threw. Every config loaded from the server is now normalized against the current defaults, so an older config gets today's shape for whatever it's missing without losing any of its own data.
+
+= 1.3.4 =
+* New: the Schedule Generator's Detailed Statistics panel now shows four more balance tables alongside Home/Away Balance and Venue Utilization -- Day Balance Per Team, Time of Night Per Team, Division Grouping, and Restricted Team Pairs. Reads the new fields the schedule-generator plugin's statistics calculator (1.3.8+) reports; older schedule-generator versions simply don't populate them, so the new cards are absent rather than empty.
 
 = 1.3.2 =
 * Fix: the Waitlist page's Offer/Re-offer, Cancel/Remove and Gate/Un-gate actions used the browser's native prompt()/confirm() dialogs. Some browsers silently suppress a native dialog after a page has shown a few of them in a row -- the call then returns as if the person had clicked Cancel, with no error and no request ever sent, which is exactly what "the Re-offer button doesn't do anything" looks like from the outside. All three now use an in-page dialog instead, so the action can no longer be silently dropped and a real failure always shows an error.
