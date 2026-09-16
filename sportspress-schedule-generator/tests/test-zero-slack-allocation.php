@@ -431,6 +431,68 @@ if ( zs_assert( ! is_wp_error( $split_result ) && 320 === count( $split_result['
 		empty( array_intersect( $oct_9, $oct_25 ) ) && 5 === count( $oct_9 ) + count( $oct_25 ),
 		'Oct 9 and Oct 25 together take every division exactly once (a split week) -- ' . json_encode( $oct_9 ) . ' + ' . json_encode( $oct_25 )
 	);
+
+	// Fairness over the season. Sunday holds 6 of every 16 slots, so the
+	// only reachable average is 7.5 Sundays a team; a 70/30 configured
+	// preference used to leave the teams that hit 14/6 first with exactly
+	// that and dump 16-18 Sundays on the rest. Time of night is scored on
+	// one timeline per night across both pads: the early and late thirds,
+	// and the very first/last start, must be shared out rather than land on
+	// the same teams (one team had 14 of 20 games in the late third).
+	$slots_by_date = array();
+	foreach ( $split_slots as $slot ) {
+		$slots_by_date[ $slot->date ][] = $slot;
+	}
+	$timeline = SPSG_Schedule_Helper::timeline_from_slots( $slots_by_date );
+	$fairness = array();
+	$grouped  = array( 'ok' => 0, 'n' => 0 );
+	$by_night = array();
+	foreach ( $split_result['schedule'] as $game ) {
+		$position = SPSG_Schedule_Helper::night_position( $game->time_slot, $timeline[ $game->date ] );
+		foreach ( array( zs_name( $game->home_team ), zs_name( $game->away_team ) ) as $team ) {
+			if ( ! isset( $fairness[ $team ] ) ) {
+				$fairness[ $team ] = array( 'sunday' => 0, 'early' => 0, 'mid' => 0, 'late' => 0, 'first' => 0, 'last' => 0 );
+			}
+			$fairness[ $team ]['sunday'] += 'sunday' === $game->day ? 1 : 0;
+			$fairness[ $team ][ $position['bucket'] ]++;
+			$fairness[ $team ]['first'] += $position['first'] ? 1 : 0;
+			$fairness[ $team ]['last']  += $position['last'] ? 1 : 0;
+		}
+		$hours    = SPSG_Schedule_Helper::hour_index_map( $timeline[ $game->date ] );
+		$division = is_object( $game->division ) ? $game->division->name : $game->division['name'];
+		$by_night[ $game->date ][ $division ][] = $hours[ $game->time_slot ];
+	}
+	$sundays = array_column( $fairness, 'sunday' );
+	zs_assert(
+		max( $sundays ) - min( $sundays ) <= 4,
+		sprintf( 'Sundays are shared out: every team has between %d and %d of them (spread <= 4; was 6-18)', min( $sundays ), max( $sundays ) )
+	);
+	$early = max( array_column( $fairness, 'early' ) );
+	$late  = max( array_column( $fairness, 'late' ) );
+	zs_assert( $early <= 9 && $late <= 9, sprintf( 'no team has more than 9 of its 20 games in the early or late third of the night (max early %d, max late %d; was 15 and 14)', $early, $late ) );
+	$first = max( array_column( $fairness, 'first' ) );
+	$last  = max( array_column( $fairness, 'last' ) );
+	zs_assert( $first <= 4 && $last <= 5, sprintf( 'no team is stuck with the first or last start of the night (max first %d, max last %d; was 8 and 8)', $first, $last ) );
+
+	// Grouping: of the games whose division has more than one game that
+	// night, how many have a same-division game within an hour on either pad.
+	foreach ( $by_night as $divisions ) {
+		foreach ( $divisions as $hours ) {
+			if ( count( $hours ) < 2 ) {
+				continue;
+			}
+			foreach ( $hours as $i => $hour ) {
+				$grouped['n']++;
+				foreach ( $hours as $j => $other ) {
+					if ( $i !== $j && abs( $hour - $other ) <= 1 ) {
+						$grouped['ok']++;
+						break;
+					}
+				}
+			}
+		}
+	}
+	zs_assert( $grouped['ok'] >= 0.8 * $grouped['n'], sprintf( 'a division\'s games on a night sit within an hour of each other %d%% of the time (>= 80%%; was 70%%)', round( 100 * $grouped['ok'] / max( 1, $grouped['n'] ) ) ) );
 }
 
 echo "\n=== The postseason: 3 cross round-robin weeks + a Championship/Consolation week, zero slack ===\n\n";
