@@ -1773,24 +1773,42 @@ class SPSG_Admin_Renderer {
 							<thead>
 								<tr>
 									<th><?php esc_html_e( 'Team', 'sportspress-schedule-generator' ); ?></th>
-									<?php foreach ( $days as $day ) : ?>
-									<th><?php echo esc_html( ucfirst( $day ) ); ?></th>
-									<?php endforeach; ?>
+									<?php $this->render_day_balance_header_cells( $days ); ?>
 								</tr>
 							</thead>
 							<tbody>
 								<?php foreach ( $stats['day_balance_per_team'] as $team ) : ?>
-								<tr>
-									<td><?php echo esc_html( $team['team_name'] ?? '' ); ?></td>
-									<?php foreach ( $days as $day ) : ?>
-									<td><?php echo esc_html( $team['days'][ $day ] ?? 0 ); ?></td>
-									<?php endforeach; ?>
-								</tr>
+									<?php $this->render_day_balance_row( $team, $days ); ?>
 								<?php endforeach; ?>
 							</tbody>
 						</table>
 					</div>
 		<?php
+	}
+
+	/**
+	 * The day-name header cells for {@see render_day_balance_per_team_table()}.
+	 *
+	 * @param string[] $days Day keys, in the order to display.
+	 */
+	private function render_day_balance_header_cells( $days ) {
+		foreach ( $days as $day ) {
+			echo '<th>' . esc_html( ucfirst( $day ) ) . '</th>';
+		}
+	}
+
+	/**
+	 * One team's row for {@see render_day_balance_per_team_table()}.
+	 *
+	 * @param array    $team Day-balance entry (team_name, days).
+	 * @param string[] $days Day keys, in the order to display.
+	 */
+	private function render_day_balance_row( $team, $days ) {
+		echo '<tr><td>' . esc_html( $team['team_name'] ?? '' ) . '</td>';
+		foreach ( $days as $day ) {
+			echo '<td>' . esc_html( $team['days'][ $day ] ?? 0 ) . '</td>';
+		}
+		echo '</tr>';
 	}
 
 	/**
@@ -1819,19 +1837,26 @@ class SPSG_Admin_Renderer {
 							</thead>
 							<tbody>
 								<?php foreach ( $stats['night_position_per_team'] as $team ) : ?>
-								<tr>
-									<td><?php echo esc_html( $team['team_name'] ?? '' ); ?></td>
-									<td><?php echo esc_html( $team['early'] ?? 0 ); ?></td>
-									<td><?php echo esc_html( $team['mid'] ?? 0 ); ?></td>
-									<td><?php echo esc_html( $team['late'] ?? 0 ); ?></td>
-									<td><?php echo esc_html( $team['first'] ?? 0 ); ?></td>
-									<td><?php echo esc_html( $team['last'] ?? 0 ); ?></td>
-								</tr>
+									<?php $this->render_night_position_row( $team ); ?>
 								<?php endforeach; ?>
 							</tbody>
 						</table>
 					</div>
 		<?php
+	}
+
+	/**
+	 * One team's row for {@see render_night_position_per_team_table()}.
+	 *
+	 * @param array $team Night-position entry (team_name, early, mid, late, first, last).
+	 */
+	private function render_night_position_row( $team ) {
+		echo '<tr><td>' . esc_html( $team['team_name'] ?? '' ) . '</td>'
+			. '<td>' . esc_html( $team['early'] ?? 0 ) . '</td>'
+			. '<td>' . esc_html( $team['mid'] ?? 0 ) . '</td>'
+			. '<td>' . esc_html( $team['late'] ?? 0 ) . '</td>'
+			. '<td>' . esc_html( $team['first'] ?? 0 ) . '</td>'
+			. '<td>' . esc_html( $team['last'] ?? 0 ) . '</td></tr>';
 	}
 
 	/**
@@ -1846,12 +1871,7 @@ class SPSG_Admin_Renderer {
 		}
 		?>
 					<div class="spsg-stat-section">
-						<h4>
-							<?php esc_html_e( 'Division Grouping', 'sportspress-schedule-generator' ); ?>
-							<?php if ( null !== $stats['division_grouping']['overall_percent'] ) : ?>
-								(<?php echo esc_html( $stats['division_grouping']['overall_percent'] ); ?>% <?php esc_html_e( 'overall', 'sportspress-schedule-generator' ); ?>)
-							<?php endif; ?>
-						</h4>
+						<h4><?php esc_html_e( 'Division Grouping', 'sportspress-schedule-generator' ); ?> <?php $this->render_division_grouping_overall( $stats['division_grouping']['overall_percent'] ); ?></h4>
 						<table class="widefat">
 							<thead>
 								<tr>
@@ -1861,15 +1881,37 @@ class SPSG_Admin_Renderer {
 							</thead>
 							<tbody>
 								<?php foreach ( $stats['division_grouping']['per_division'] as $division ) : ?>
-								<tr>
-									<td><?php echo esc_html( $division['name'] ?? '' ); ?></td>
-									<td><?php echo null === ( $division['percent'] ?? null ) ? '&#8212;' : esc_html( $division['percent'] ) . '%'; ?></td>
-								</tr>
+									<?php $this->render_division_grouping_row( $division ); ?>
 								<?php endforeach; ?>
 							</tbody>
 						</table>
 					</div>
 		<?php
+	}
+
+	/**
+	 * The "(NN% overall)" suffix in {@see render_division_grouping_table()}'s
+	 * heading, or nothing when there is no overall figure to show.
+	 *
+	 * @param float|null $overall_percent Season-wide grouping percentage.
+	 */
+	private function render_division_grouping_overall( $overall_percent ) {
+		if ( null === $overall_percent ) {
+			return;
+		}
+		echo '(' . esc_html( $overall_percent ) . '% ' . esc_html__( 'overall', 'sportspress-schedule-generator' ) . ')';
+	}
+
+	/**
+	 * One division's row for {@see render_division_grouping_table()}.
+	 *
+	 * @param array $division Grouping entry (name, percent).
+	 */
+	private function render_division_grouping_row( $division ) {
+		$percent = $division['percent'] ?? null;
+		echo '<tr><td>' . esc_html( $division['name'] ?? '' ) . '</td><td>'
+			. ( null === $percent ? '&#8212;' : esc_html( $percent ) . '%' )
+			. '</td></tr>';
 	}
 
 	/**
@@ -1895,23 +1937,37 @@ class SPSG_Admin_Renderer {
 							</thead>
 							<tbody>
 								<?php foreach ( $stats['restricted_pairs'] as $pair ) : ?>
-								<tr>
-									<td><?php echo esc_html( implode( ' vs. ', $pair['teams'] ?? array() ) ); ?></td>
-									<td><?php echo esc_html( $pair['shared_nights'] ?? 0 ); ?></td>
-									<td>
-										<?php
-										echo null === ( $pair['min_gap_minutes'] ?? null )
-											? esc_html__( 'never shares a night', 'sportspress-schedule-generator' )
-											/* translators: %d: number of minutes. */
-											: esc_html( sprintf( __( '%d minutes', 'sportspress-schedule-generator' ), $pair['min_gap_minutes'] ) );
-										?>
-									</td>
-								</tr>
+									<?php $this->render_restricted_pair_row( $pair ); ?>
 								<?php endforeach; ?>
 							</tbody>
 						</table>
 					</div>
 		<?php
+	}
+
+	/**
+	 * The "Smallest Gap" cell's text for {@see render_restricted_pair_row()}.
+	 *
+	 * @param int|null $min_gap_minutes Smallest gap in minutes, or null if the pair never shares a night.
+	 * @return string Escaped HTML.
+	 */
+	private function restricted_pair_gap_text( $min_gap_minutes ) {
+		if ( null === $min_gap_minutes ) {
+			return esc_html__( 'never shares a night', 'sportspress-schedule-generator' );
+		}
+		/* translators: %d: number of minutes. */
+		return esc_html( sprintf( __( '%d minutes', 'sportspress-schedule-generator' ), $min_gap_minutes ) );
+	}
+
+	/**
+	 * One pair's row for {@see render_restricted_pairs_table()}.
+	 *
+	 * @param array $pair Restricted-pair entry (teams, shared_nights, min_gap_minutes).
+	 */
+	private function render_restricted_pair_row( $pair ) {
+		echo '<tr><td>' . esc_html( implode( ' vs. ', $pair['teams'] ?? array() ) ) . '</td>'
+			. '<td>' . esc_html( $pair['shared_nights'] ?? 0 ) . '</td>'
+			. '<td>' . $this->restricted_pair_gap_text( $pair['min_gap_minutes'] ?? null ) . '</td></tr>';
 	}
 
 	/**

@@ -27,7 +27,9 @@ define( 'ABSPATH', dirname( __FILE__ ) . '/' );
 define( 'SPSG_PLUGIN_PATH', dirname( __FILE__ ) . '/../' );
 
 if ( ! function_exists( '__' ) ) {
-	function __( $text, $domain = null ) {
+	// $domain is never read by this stub -- dropped entirely rather than
+	// declared as an ignored formal parameter.
+	function __( $text ) {
 		return $text;
 	}
 }

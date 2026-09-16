@@ -1142,18 +1142,23 @@ export default function ScheduleGenerator() {
 										</table>
 									</div>
 								)}
-								{/* Day Balance Per Team -- whatever playing days actually appear, in calendar order */}
+								{/* Day Balance Per Team -- whatever playing days actually appear, in
+								    calendar order. Reads each team's day counts via a Map (built once
+								    per row from Object.entries) rather than obj[day] bracket notation,
+								    which a generic-object-injection lint rule flags even though `day`
+								    only ever comes from the fixed DAY_ORDER list below, never from
+								    user input. */}
 								{schedule.rich_stats.day_balance_per_team&&Object.keys(schedule.rich_stats.day_balance_per_team).length>0&&(()=>{
 									const DAY_ORDER=['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
-									const rows=Object.values(schedule.rich_stats.day_balance_per_team);
-									const days=DAY_ORDER.filter(d=>rows.some(r=>(r.days||{})[d]>0));
+									const rows=Object.values(schedule.rich_stats.day_balance_per_team).map(t=>({team_name:t.team_name,days:new Map(Object.entries(t.days||{}))}));
+									const days=DAY_ORDER.filter(d=>rows.some(r=>(r.days.get(d)||0)>0));
 									return (
 										<div>
 											<h5 style={{marginBottom:'0.5rem'}}>Day Balance Per Team</h5>
 											<table className="splm-table" style={{fontSize:'0.85em'}}>
 												<thead><tr><th>Team</th>{days.map(d=><th key={d}>{d[0].toUpperCase()+d.slice(1)}</th>)}</tr></thead>
 												<tbody>{rows.map((t,i)=>(
-													<tr key={i}><td>{t.team_name}</td>{days.map(d=><td key={d}>{t.days?.[d]||0}</td>)}</tr>
+													<tr key={i}><td>{t.team_name}</td>{days.map(d=><td key={d}>{t.days.get(d)||0}</td>)}</tr>
 												))}</tbody>
 											</table>
 										</div>

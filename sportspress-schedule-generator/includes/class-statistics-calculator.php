@@ -864,16 +864,28 @@ class SPSG_Statistics_Calculator {
 		foreach ( array( 'overlap_avoid', 'back_to_back_avoid' ) as $rule_key ) {
 			foreach ( (array) ( $team_restrictions[ $rule_key ] ?? array() ) as $restriction ) {
 				$teams = array_values( (array) ( $restriction['teams'] ?? array() ) );
-				$team_count = count( $teams );
-				for ( $i = 0; $i < $team_count; $i++ ) {
-					for ( $j = $i + 1; $j < $team_count; $j++ ) {
-						$key = $this->pair_key( $teams[ $i ], $teams[ $j ] );
-						$pairs[ $key ] = array( $teams[ $i ], $teams[ $j ] );
-					}
-				}
+				$this->add_team_pairs( $pairs, $teams );
 			}
 		}
 		return array_values( $pairs );
+	}
+
+	/**
+	 * Every 2-combination of $teams, added into $pairs keyed by
+	 * {@see pair_key()} so the same pair named by more than one rule is
+	 * only counted once.
+	 *
+	 * @param array    $pairs Accumulated pair-key => [team id, team id] map (updated).
+	 * @param string[] $teams One restriction's team ids.
+	 */
+	private function add_team_pairs( &$pairs, $teams ) {
+		$team_count = count( $teams );
+		for ( $i = 0; $i < $team_count; $i++ ) {
+			for ( $j = $i + 1; $j < $team_count; $j++ ) {
+				$key = $this->pair_key( $teams[ $i ], $teams[ $j ] );
+				$pairs[ $key ] = array( $teams[ $i ], $teams[ $j ] );
+			}
+		}
 	}
 
 	/**
@@ -889,11 +901,29 @@ class SPSG_Statistics_Calculator {
 	private function restricted_pair_report( $a_id, $b_id, $games_by_team_date, $names ) {
 		$a_dates = $games_by_team_date[ $a_id ] ?? array();
 		$b_dates = $games_by_team_date[ $b_id ] ?? array();
-		$shared_dates = array_intersect_key( $a_dates, $b_dates );
 
+		list( $shared_nights, $min_gap ) = $this->shared_night_gaps( $a_dates, $b_dates );
+
+		return array(
+			'teams' => array( $names[ $a_id ] ?? $a_id, $names[ $b_id ] ?? $b_id ),
+			'shared_nights' => $shared_nights,
+			'min_gap_minutes' => $min_gap,
+		);
+	}
+
+	/**
+	 * Across every date both teams play, how many of their games share a
+	 * date (one each is normal -- neither team plays twice a night) and the
+	 * smallest gap in minutes between any such pair of starts.
+	 *
+	 * @param array<string,object[]> $a_dates One team's games, by date.
+	 * @param array<string,object[]> $b_dates The other team's games, by date.
+	 * @return array{0:int,1:?int} [shared nights, smallest gap in minutes (null if never shared)].
+	 */
+	private function shared_night_gaps( $a_dates, $b_dates ) {
 		$shared_nights = 0;
 		$min_gap = null;
-		foreach ( $shared_dates as $date => $unused_games ) {
+		foreach ( array_keys( array_intersect_key( $a_dates, $b_dates ) ) as $date ) {
 			foreach ( $a_dates[ $date ] as $game_a ) {
 				foreach ( $b_dates[ $date ] as $game_b ) {
 					++$shared_nights;
@@ -902,12 +932,7 @@ class SPSG_Statistics_Calculator {
 				}
 			}
 		}
-
-		return array(
-			'teams' => array( $names[ $a_id ] ?? $a_id, $names[ $b_id ] ?? $b_id ),
-			'shared_nights' => $shared_nights,
-			'min_gap_minutes' => $min_gap,
-		);
+		return array( $shared_nights, $min_gap );
 	}
 
 	/**
