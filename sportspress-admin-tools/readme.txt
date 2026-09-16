@@ -4,7 +4,7 @@ Tags: sportspress, automation, sports
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 8.1
-Stable tag: 1.1.1
+Stable tag: 1.1.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -31,6 +31,9 @@ Each child plugin registers with this parent and loads only when its module is e
 2. Activate the plugin through the 'Plugins' screen in WordPress
 
 == Changelog ==
+
+= 1.1.2 =
+* Fix: the admin bar link sat in the toolbar's left-hand group (with the WordPress logo and site name), which on a front-end page with few other toolbar items still reads as "stuck in the far left corner" even after the 1.1.1 fix. It now sits in the right-hand group instead (the same one "Howdy, {user}" and the search icon live in), clearly separated from the logo by the toolbar's empty middle. Also added a hockey stick-and-puck glyph in front of the "Admin Tools" label.
 
 = 1.1.1 =
 * Fix: the admin bar link no longer pushes the WordPress logo/home link over. It registered on the same hook priority WordPress uses for its own default toolbar items but ran first, inserting itself ahead of them; it now runs after all of them, appearing to their right (matching where the League Manager plugin's admin bar link already sits).

@@ -465,6 +465,19 @@ class SPAT_Admin {
 	 * that's the capability add_options_page() itself gates this same page
 	 * behind.
 	 *
+	 * `parent => top-secondary` puts the node in the admin bar's right-hand
+	 * group (the same one "Howdy, {user}" and the search icon live in)
+	 * instead of the left-hand group the WP logo/site-name occupy. On a
+	 * quiet front-end toolbar the left group can be just the logo and site
+	 * name, so a node merely appended after them (its previous placement)
+	 * still reads as "stuck to the far left" -- the right group puts it
+	 * across the toolbar's empty middle instead, clearly separated from the
+	 * logo. Registering late (priority 100 -- see the hook registration in
+	 * the main plugin file) means "my-account" and "search" are already in
+	 * that group by the time this node is added, and being float:right, a
+	 * later-added sibling renders to the LEFT of them -- i.e. this node
+	 * lands just left of "Howdy", not squeezed against it.
+	 *
 	 * @param WP_Admin_Bar $wp_admin_bar Admin bar instance.
 	 * @return void
 	 */
@@ -478,9 +491,14 @@ class SPAT_Admin {
 
 		$wp_admin_bar->add_node(
 			array(
-				'id'    => 'spat-settings',
-				'title' => __( 'Admin Tools', 'sportspress-admin-tools' ),
-				'href'  => admin_url( 'options-general.php?page=sportspress-admin-tools' ),
+				'id'     => 'spat-settings',
+				'parent' => 'top-secondary',
+				// The hockey-stick-and-puck glyph, not a dashicon: this node
+				// renders on the front-end toolbar too, where dashicons are
+				// not guaranteed to be enqueued, and a real Unicode
+				// character needs no extra asset either way.
+				'title'  => '🏒 ' . __( 'Admin Tools', 'sportspress-admin-tools' ),
+				'href'   => admin_url( 'options-general.php?page=sportspress-admin-tools' ),
 			)
 		);
 	}

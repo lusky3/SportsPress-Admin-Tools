@@ -811,4 +811,170 @@ class SPSG_Schedule_Helper {
 
 		return $count;
 	}
+
+	/**
+	 * The distinct start times on each date, sorted, across every venue --
+	 * one timeline per night, so a 19:00 game on one pad and an 18:45 game
+	 * on the other are the same hour of the evening to the people in it.
+	 *
+	 * @param array<string,object[]> $slots_by_date Date => slot objects (->time_slot).
+	 * @return array<string,string[]> Date => sorted distinct "HH:MM" start times.
+	 */
+	public static function timeline_from_slots( $slots_by_date ) {
+		$timeline = array();
+		foreach ( $slots_by_date as $date => $slots ) {
+			$times = array();
+			foreach ( $slots as $slot ) {
+				$times[ $slot->time_slot ] = true;
+			}
+			$times = array_keys( $times );
+			sort( $times );
+			$timeline[ $date ] = $times;
+		}
+		return $timeline;
+	}
+
+	/**
+	 * Which third of its night a start time falls in -- 'early', 'mid' or
+	 * 'late' -- and whether it is the night's very first or very last start.
+	 *
+	 * @param string   $time_slot Start time "HH:MM".
+	 * @param string[] $timeline  The night's sorted distinct start times.
+	 * @return array{bucket:string,first:bool,last:bool}|null Null when the time isn't on the timeline.
+	 */
+	public static function night_position( $time_slot, $timeline ) {
+		$index = array_search( $time_slot, $timeline, true );
+		if ( false === $index ) {
+			return null;
+		}
+		$last  = count( $timeline ) - 1;
+		$third = $last / 3;
+
+		$bucket = 'mid';
+		if ( $index < $third ) {
+			$bucket = 'early';
+		} elseif ( $index > 2 * $third ) {
+			$bucket = 'late';
+		}
+		return array(
+			'bucket' => $bucket,
+			'first'  => 0 === $index,
+			'last'   => $index === $last,
+		);
+	}
+
+	/**
+	 * Group a night's start times into hours: consecutive starts closer than
+	 * $gap_minutes apart share an index. Two pads staggered by fifteen
+	 * minutes (18:45 and 19:00) are one hour of the evening, not two.
+	 *
+	 * @param string[] $timeline    Sorted distinct "HH:MM" start times.
+	 * @param int      $gap_minutes Starts closer than this merge (default 30).
+	 * @return array<string,int> Start time => hour index, from 0.
+	 */
+	public static function hour_index_map( $timeline, $gap_minutes = 30 ) {
+		$map      = array();
+		$index    = -1;
+		$previous = null;
+		foreach ( $timeline as $time ) {
+			$minutes = (int) substr( $time, 0, 2 ) * 60 + (int) substr( $time, 3, 2 );
+			if ( null === $previous || $minutes - $previous >= $gap_minutes ) {
+				$index++;
+			}
+			$map[ $time ] = $index;
+			$previous     = $minutes;
+		}
+		return $map;
+	}
+
+	/**
+	 * Cap the configured day shares at what the season's slot supply can
+	 * actually give every team, handing the excess to the days that still
+	 * have room. With no spare slots this is exactly the supply's own split
+	 * (a 70/30 preference cannot be met when Friday holds 62.5% of the
+	 * slots -- the teams that reach 70% first simply push the leftover
+	 * Sundays onto everyone else); with slack the operator's split holds
+	 * wherever the supply can honour it.
+	 *
+	 * @param array<string,float> $ratios      Configured day => share (sums to 1).
+	 * @param array<string,int>   $supply      Day => slots available in the season.
+	 * @param int                 $games_total Games to schedule.
+	 * @return array<string,float> Day => achievable share.
+	 */
+	public static function feasible_day_ratios( $ratios, $supply, $games_total ) {
+		if ( $games_total <= 0 || empty( $supply ) ) {
+			return $ratios;
+		}
+		$caps   = self::day_share_caps( array_keys( $ratios ), $supply, $games_total );
+		$target = $ratios;
+		$open   = array_keys( $ratios );
+		for ( $pass = count( $ratios ); $pass > 0; $pass-- ) {
+			list( $excess, $still ) = self::cap_day_shares( $target, $caps, $open );
+			if ( $excess <= 0.0 || empty( $still ) ) {
+				break;
+			}
+			self::spread_day_share( $target, $ratios, $still, $excess );
+			$open = $still;
+		}
+		return $target;
+	}
+
+	/**
+	 * The largest share of a team's games each day could carry: that day's
+	 * slots per game to schedule, at most 1.
+	 *
+	 * @param string[]          $days        Day names.
+	 * @param array<string,int> $supply      Day => slots available in the season.
+	 * @param int               $games_total Games to schedule (> 0).
+	 * @return array<string,float>
+	 */
+	private static function day_share_caps( $days, $supply, $games_total ) {
+		$caps = array();
+		foreach ( $days as $day ) {
+			$slots        = isset( $supply[ $day ] ) ? $supply[ $day ] : 0;
+			$caps[ $day ] = min( 1.0, $slots / $games_total );
+		}
+		return $caps;
+	}
+
+	/**
+	 * Clamp each of $days' shares to its cap.
+	 *
+	 * @param array<string,float> $target Day => share being built (updated).
+	 * @param array<string,float> $caps   Day => most the supply can give.
+	 * @param string[]            $days   Days not yet capped.
+	 * @return array{0: float, 1: string[]} [share removed by capping, days still under their cap].
+	 */
+	private static function cap_day_shares( &$target, $caps, $days ) {
+		$excess = 0.0;
+		$still  = array();
+		foreach ( $days as $day ) {
+			if ( $target[ $day ] > $caps[ $day ] ) {
+				$excess        += $target[ $day ] - $caps[ $day ];
+				$target[ $day ] = $caps[ $day ];
+			} else {
+				$still[] = $day;
+			}
+		}
+		return array( $excess, $still );
+	}
+
+	/**
+	 * Add $excess to the $days in proportion to their configured shares
+	 * (evenly when those are all zero).
+	 *
+	 * @param array<string,float> $target Day => share being built (updated).
+	 * @param array<string,float> $ratios Configured day => share.
+	 * @param string[]            $days   Days still below their cap.
+	 * @param float               $excess Share to hand out.
+	 */
+	private static function spread_day_share( &$target, $ratios, $days, $excess ) {
+		$weight = 0.0;
+		foreach ( $days as $day ) {
+			$weight += $ratios[ $day ];
+		}
+		foreach ( $days as $day ) {
+			$target[ $day ] += $weight > 0 ? $excess * $ratios[ $day ] / $weight : $excess / count( $days );
+		}
+	}
 }

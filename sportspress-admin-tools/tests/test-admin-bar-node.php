@@ -129,6 +129,18 @@ assert_test(
     'https://example.test/wp-admin/options-general.php?page=sportspress-admin-tools' === ($bar->nodes[0]['href'] ?? null),
     'the node links to the settings page'
 );
+assert_test(
+    'top-secondary' === ($bar->nodes[0]['parent'] ?? null),
+    'the node is parented to the right-hand top-secondary group, not the left-hand root group'
+);
+assert_test(
+    str_starts_with((string) ($bar->nodes[0]['title'] ?? ''), '🏒'),
+    'the title is prefixed with the hockey stick-and-puck glyph'
+);
+assert_test(
+    false !== strpos((string) ($bar->nodes[0]['title'] ?? ''), 'Admin Tools'),
+    'the title still reads "Admin Tools" after the glyph'
+);
 
 echo "\n=== sanitize_checkbox_flag() ===\n\n";
 
