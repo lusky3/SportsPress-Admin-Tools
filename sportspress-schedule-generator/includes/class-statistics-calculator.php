@@ -39,6 +39,10 @@ class SPSG_Statistics_Calculator {
 			'venue_utilization' => $this->calculate_venue_utilization( $schedule ),
 			'time_slot_distribution' => $this->calculate_time_slot_distribution( $schedule ),
 			'day_distribution' => $this->calculate_day_distribution( $schedule ),
+			'day_balance_per_team' => $this->calculate_day_balance_per_team( $schedule ),
+			'night_position_per_team' => $this->calculate_night_position_per_team( $schedule ),
+			'division_grouping' => $this->calculate_division_grouping( $schedule ),
+			'restricted_pairs' => $this->calculate_restricted_pairs( $schedule, $config ),
 			'divisions' => $this->calculate_division_stats( $schedule ),
 			'inter_division_games' => $this->count_inter_division_games( $schedule ),
 		);
@@ -500,6 +504,470 @@ class SPSG_Statistics_Calculator {
 	}
 
 	/**
+	 * Per-team count of games on each day of the week actually used.
+	 *
+	 * Mirrors {@see calculate_home_away_balance()}'s shape (one row per team,
+	 * keyed by team id) but for day-of-week instead of home/away, so the
+	 * existing "no games" guard and table-rendering pattern both carry over
+	 * unchanged. Not hardcoded to Friday/Sunday: whatever days actually
+	 * appear in the schedule become keys, so this reads correctly for any
+	 * league's playing-day configuration.
+	 *
+	 * @param array $schedule Array of SPSG_Game objects.
+	 * @return array<string,array{team_name:string,days:array<string,int>}>
+	 */
+	private function calculate_day_balance_per_team( $schedule ) {
+		$balance = array();
+
+		foreach ( $schedule as $game ) {
+			$day = isset( $game->day ) ? $game->day : strtolower( gmdate( 'l', strtotime( $game->date ) ) );
+
+			foreach ( array( $game->home_team, $game->away_team ) as $team ) {
+				if ( ! isset( $balance[ $team->id ] ) ) {
+					$balance[ $team->id ] = array(
+						'team_name' => $team->name,
+						'days' => array(),
+					);
+				}
+				$balance[ $team->id ]['days'][ $day ] = ( $balance[ $team->id ]['days'][ $day ] ?? 0 ) + 1;
+			}
+		}
+
+		return $balance;
+	}
+
+	/**
+	 * Per-team count of early/middle/late-third starts and how often a team
+	 * gets the very first or very last start of a night.
+	 *
+	 * The timeline for each date is built directly from the games actually
+	 * played on it (not the season's full slot grid -- this reports what
+	 * happened, not what was available), reusing the exact helpers
+	 * {@see SPSG_Slot_Allocator}'s soft-cost scoring uses so these numbers
+	 * agree with the allocator's own idea of "early/mid/late".
+	 *
+	 * @param array $schedule Array of SPSG_Game objects.
+	 * @return array<string,array{team_name:string,early:int,mid:int,late:int,first:int,last:int}>
+	 */
+	private function calculate_night_position_per_team( $schedule ) {
+		$timeline = $this->build_night_timeline( $schedule );
+
+		$result = array();
+		foreach ( $schedule as $game ) {
+			if ( ! isset( $timeline[ $game->date ] ) ) {
+				continue;
+			}
+			$position = $this->night_position( $game->time_slot, $timeline[ $game->date ] );
+			if ( null === $position ) {
+				continue;
+			}
+			foreach ( array( $game->home_team, $game->away_team ) as $team ) {
+				if ( ! isset( $result[ $team->id ] ) ) {
+					$result[ $team->id ] = array(
+						'team_name' => $team->name,
+						'early' => 0,
+						'mid' => 0,
+						'late' => 0,
+						'first' => 0,
+						'last' => 0,
+					);
+				}
+				++$result[ $team->id ][ $position['bucket'] ];
+				if ( $position['first'] ) {
+					++$result[ $team->id ]['first'];
+				}
+				if ( $position['last'] ) {
+					++$result[ $team->id ]['last'];
+				}
+			}
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Share of a division's games that land within an hour of another game
+	 * from that same division on the same night, overall and per division.
+	 *
+	 * A division with fewer than two games on a given night contributes
+	 * nothing to either figure for that night -- there is no other game of
+	 * its own for it to be near or far from.
+	 *
+	 * @param array $schedule Array of SPSG_Game objects.
+	 * @return array{overall_percent:?float,per_division:array<string,array{name:string,percent:?float}>}
+	 */
+	private function calculate_division_grouping( $schedule ) {
+		$by_date = array();
+		foreach ( $schedule as $game ) {
+			$by_date[ $game->date ][] = $game;
+		}
+		$timeline = $this->build_night_timeline( $schedule );
+
+		$totals = array(
+			'overall_ok' => 0,
+			'overall_n' => 0,
+			'per_division' => array(),
+		);
+		foreach ( $by_date as $date => $games ) {
+			if ( empty( $timeline[ $date ] ) ) {
+				continue;
+			}
+			$totals = $this->accumulate_division_grouping( $games, $this->hour_index_map( $timeline[ $date ] ), $totals );
+		}
+
+		return $this->format_division_grouping_result( $totals );
+	}
+
+	/**
+	 * Fold one date's games into the running division-grouping totals.
+	 *
+	 * @param object[]          $games  One date's games.
+	 * @param array<string,int> $hours  Output of {@see hour_index_map()} for that date.
+	 * @param array             $totals Running totals (overall_ok, overall_n, per_division), as built by
+	 *                                  {@see calculate_division_grouping()}.
+	 * @return array The same shape, with this date's games folded in.
+	 */
+	private function accumulate_division_grouping( $games, $hours, $totals ) {
+		$hours_by_division = $this->group_hours_by_division( $games, $hours );
+
+		foreach ( $hours_by_division as $div_id => $division ) {
+			if ( count( $division['hours'] ) < 2 ) {
+				continue;
+			}
+			if ( ! isset( $totals['per_division'][ $div_id ] ) ) {
+				$totals['per_division'][ $div_id ] = array(
+					'name' => $division['name'],
+					'ok' => 0,
+					'n' => 0,
+				);
+			}
+			list( $ok, $n ) = $this->count_grouped_hours( $division['hours'] );
+			$totals['per_division'][ $div_id ]['ok'] += $ok;
+			$totals['per_division'][ $div_id ]['n'] += $n;
+			$totals['overall_ok'] += $ok;
+			$totals['overall_n'] += $n;
+		}
+
+		return $totals;
+	}
+
+	/**
+	 * Turn the running totals from {@see accumulate_division_grouping()}
+	 * into the public `division_grouping` stat shape.
+	 *
+	 * @param array $totals Running totals (overall_ok, overall_n, per_division).
+	 * @return array{overall_percent:?float,per_division:array<string,array{name:string,percent:?float}>}
+	 */
+	private function format_division_grouping_result( $totals ) {
+		$result = array(
+			'overall_percent' => $totals['overall_n'] > 0 ? round( 100 * $totals['overall_ok'] / $totals['overall_n'], 1 ) : null,
+			'per_division' => array(),
+		);
+		foreach ( $totals['per_division'] as $div_id => $division ) {
+			$result['per_division'][ $div_id ] = array(
+				'name' => $division['name'],
+				'percent' => $division['n'] > 0 ? round( 100 * $division['ok'] / $division['n'], 1 ) : null,
+			);
+		}
+		return $result;
+	}
+
+	/**
+	 * The distinct start times actually used on each date, sorted -- one
+	 * timeline per night across every venue, so a 19:00 game on one pad and
+	 * an 18:45 game on the other are the same hour of the evening to the
+	 * people in it. Built from the games that were actually placed, not the
+	 * season's configured slot grid: this reports what happened.
+	 *
+	 * @param array $schedule Array of SPSG_Game objects.
+	 * @return array<string,string[]> Date => sorted distinct "HH:MM" start times.
+	 */
+	private function build_night_timeline( $schedule ) {
+		$times_by_date = array();
+		foreach ( $schedule as $game ) {
+			$times_by_date[ $game->date ][ $game->time_slot ] = true;
+		}
+		$timeline = array();
+		foreach ( $times_by_date as $date => $times ) {
+			$times = array_keys( $times );
+			sort( $times );
+			$timeline[ $date ] = $times;
+		}
+		return $timeline;
+	}
+
+	/**
+	 * Which third of its night a start time falls in -- 'early', 'mid' or
+	 * 'late' -- and whether it is the night's very first or very last start.
+	 *
+	 * @param string   $time_slot Start time "HH:MM".
+	 * @param string[] $timeline  The night's sorted distinct start times.
+	 * @return array{bucket:string,first:bool,last:bool}|null Null when the time isn't on the timeline.
+	 */
+	private function night_position( $time_slot, $timeline ) {
+		$index = array_search( $time_slot, $timeline, true );
+		if ( false === $index ) {
+			return null;
+		}
+		$last = count( $timeline ) - 1;
+		$third = $last / 3;
+
+		$bucket = 'mid';
+		if ( $index < $third ) {
+			$bucket = 'early';
+		} elseif ( $index > 2 * $third ) {
+			$bucket = 'late';
+		}
+		return array(
+			'bucket' => $bucket,
+			'first' => 0 === $index,
+			'last' => $index === $last,
+		);
+	}
+
+	/**
+	 * Group a night's start times into hours: consecutive starts closer than
+	 * 30 minutes apart share an index. Two pads staggered by fifteen minutes
+	 * (18:45 and 19:00) are one hour of the evening, not two.
+	 *
+	 * @param string[] $timeline Sorted distinct "HH:MM" start times.
+	 * @return array<string,int> Start time => hour index, from 0.
+	 */
+	private function hour_index_map( $timeline ) {
+		$map = array();
+		$index = -1;
+		$previous = null;
+		foreach ( $timeline as $time ) {
+			$minutes = ( (int) substr( $time, 0, 2 ) ) * 60 + ( (int) substr( $time, 3, 2 ) );
+			if ( null === $previous || $minutes - $previous >= 30 ) {
+				++$index;
+			}
+			$map[ $time ] = $index;
+			$previous = $minutes;
+		}
+		return $map;
+	}
+
+	/**
+	 * One night's games, grouped by division id with each game's hour index.
+	 *
+	 * @param object[]          $games One date's games.
+	 * @param array<string,int> $hours Output of {@see SPSG_Schedule_Helper::hour_index_map()} for that date.
+	 * @return array<string,array{name:string,hours:int[]}>
+	 */
+	private function group_hours_by_division( $games, $hours ) {
+		$by_division = array();
+		foreach ( $games as $game ) {
+			if ( ! isset( $hours[ $game->time_slot ] ) ) {
+				continue;
+			}
+			$div_id = $this->division_key( $game->division );
+			if ( ! isset( $by_division[ $div_id ] ) ) {
+				$by_division[ $div_id ] = array(
+					'name' => $game->division->name,
+					'hours' => array(),
+				);
+			}
+			$by_division[ $div_id ]['hours'][] = $hours[ $game->time_slot ];
+		}
+		return $by_division;
+	}
+
+	/**
+	 * Grouping key for a division: its id, or its name when the id is empty
+	 * (divisions authored in the admin store `'id' => ''`, which would
+	 * otherwise fold every division into one).
+	 *
+	 * @param object $division Division entity.
+	 * @return string
+	 */
+	private function division_key( $division ) {
+		$id = (string) ( $division->id ?? '' );
+		return '' !== $id ? $id : (string) ( $division->name ?? '' );
+	}
+
+	/**
+	 * Of a division's games one night, how many sit within one hour of
+	 * another of its own games that night.
+	 *
+	 * @param int[] $hours Hour indexes of one division's games on one date.
+	 * @return array{0:int,1:int} [games within an hour of another, total games].
+	 */
+	private function count_grouped_hours( $hours ) {
+		$ok = 0;
+		foreach ( $hours as $i => $hour ) {
+			foreach ( $hours as $j => $other ) {
+				if ( $i !== $j && abs( $hour - $other ) <= 1 ) {
+					++$ok;
+					break;
+				}
+			}
+		}
+		return array( $ok, count( $hours ) );
+	}
+
+	/**
+	 * For each configured overlap/back-to-back restricted pair: how many
+	 * nights both teams play, and the smallest gap between them across
+	 * those nights.
+	 *
+	 * Reports the fact (how close do these two teams actually get) rather
+	 * than re-deriving a pass/fail verdict: the allocator's own hard
+	 * constraint (see SPSG_Team_Restriction_Constraint) already has the
+	 * exact per-rule window math (overlap_avoid's buffer window vs.
+	 * back_to_back_avoid's end-to-start gap, evaluated per game as it is
+	 * placed) -- duplicating that here as a boolean would risk a false
+	 * "violation" from a subtly different threshold, which is worse than
+	 * not reporting one at all.
+	 *
+	 * @param array                            $schedule Array of SPSG_Game objects.
+	 * @param SPSG_Schedule_Configuration|null $config   Schedule configuration.
+	 * @return array<int,array{teams:array{0:string,1:string},shared_nights:int,min_gap_minutes:?int}>
+	 */
+	private function calculate_restricted_pairs( $schedule, $config ) {
+		if ( ! $config || empty( $config->team_restrictions ) ) {
+			return array();
+		}
+
+		$pairs = $this->restricted_team_pairs( $config->team_restrictions );
+		if ( empty( $pairs ) ) {
+			return array();
+		}
+
+		$games_by_team_date = array();
+		$names = array();
+		foreach ( $schedule as $game ) {
+			foreach ( array( $game->home_team, $game->away_team ) as $team ) {
+				$games_by_team_date[ $team->id ][ $game->date ][] = $game;
+				$names[ $team->id ] = $team->name;
+			}
+		}
+
+		$result = array();
+		foreach ( $pairs as $pair ) {
+			list( $a_id, $b_id ) = $pair;
+			$result[] = $this->restricted_pair_report( $a_id, $b_id, $games_by_team_date, $names );
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Every distinct team-id pair named by an overlap_avoid or
+	 * back_to_back_avoid rule, deduplicated.
+	 *
+	 * @param array $team_restrictions Configuration's team_restrictions array.
+	 * @return array<int,array{0:string,1:string}>
+	 */
+	private function restricted_team_pairs( $team_restrictions ) {
+		$pairs = array();
+		foreach ( array( 'overlap_avoid', 'back_to_back_avoid' ) as $rule_key ) {
+			foreach ( (array) ( $team_restrictions[ $rule_key ] ?? array() ) as $restriction ) {
+				$teams = array_values( (array) ( $restriction['teams'] ?? array() ) );
+				$this->add_team_pairs( $pairs, $teams );
+			}
+		}
+		return array_values( $pairs );
+	}
+
+	/**
+	 * Every 2-combination of $teams, added into $pairs keyed by
+	 * {@see pair_key()} so the same pair named by more than one rule is
+	 * only counted once.
+	 *
+	 * @param array    $pairs Accumulated pair-key => [team id, team id] map (updated).
+	 * @param string[] $teams One restriction's team ids.
+	 */
+	private function add_team_pairs( &$pairs, $teams ) {
+		$team_count = count( $teams );
+		for ( $i = 0; $i < $team_count; $i++ ) {
+			for ( $j = $i + 1; $j < $team_count; $j++ ) {
+				$key = $this->pair_key( $teams[ $i ], $teams[ $j ] );
+				$pairs[ $key ] = array( $teams[ $i ], $teams[ $j ] );
+			}
+		}
+	}
+
+	/**
+	 * One restricted pair's report: shared nights and the smallest gap
+	 * between their start times across those nights.
+	 *
+	 * @param string                               $a_id               First team id.
+	 * @param string                               $b_id               Second team id.
+	 * @param array<string,array<string,object[]>> $games_by_team_date Team id => date => games.
+	 * @param array<string,string>                 $names              Team id => display name.
+	 * @return array{teams:array{0:string,1:string},shared_nights:int,min_gap_minutes:?int}
+	 */
+	private function restricted_pair_report( $a_id, $b_id, $games_by_team_date, $names ) {
+		list( $shared_nights, $min_gap ) = $this->shared_night_gaps(
+			$games_by_team_date[ $a_id ] ?? array(),
+			$games_by_team_date[ $b_id ] ?? array()
+		);
+
+		return array(
+			'teams' => array( $this->resolve_team_label( $a_id, $names ), $this->resolve_team_label( $b_id, $names ) ),
+			'shared_nights' => $shared_nights,
+			'min_gap_minutes' => $min_gap,
+		);
+	}
+
+	/**
+	 * A team's display name, or its id when it has none on record.
+	 *
+	 * @param string               $team_id Team id.
+	 * @param array<string,string> $names   Team id => display name.
+	 * @return string
+	 */
+	private function resolve_team_label( $team_id, $names ) {
+		return $names[ $team_id ] ?? $team_id;
+	}
+
+	/**
+	 * Across every date both teams play, how many of their games share a
+	 * date (one each is normal -- neither team plays twice a night) and the
+	 * smallest gap in minutes between any such pair of starts.
+	 *
+	 * @param array<string,object[]> $a_dates One team's games, by date.
+	 * @param array<string,object[]> $b_dates The other team's games, by date.
+	 * @return array{0:int,1:?int} [shared nights, smallest gap in minutes (null if never shared)].
+	 */
+	private function shared_night_gaps( $a_dates, $b_dates ) {
+		$shared_nights = 0;
+		$min_gap = null;
+		foreach ( array_keys( array_intersect_key( $a_dates, $b_dates ) ) as $date ) {
+			foreach ( $a_dates[ $date ] as $game_a ) {
+				foreach ( $b_dates[ $date ] as $game_b ) {
+					++$shared_nights;
+					$gap = abs( $this->time_to_minutes( $game_a->time_slot ) - $this->time_to_minutes( $game_b->time_slot ) );
+					$min_gap = null === $min_gap ? $gap : min( $min_gap, $gap );
+				}
+			}
+		}
+		return array( $shared_nights, $min_gap );
+	}
+
+	/**
+	 * "HH:MM" to minutes past midnight.
+	 *
+	 * @param string $time_slot Start time.
+	 * @return int
+	 */
+	private function time_to_minutes( $time_slot ) {
+		return ( (int) substr( $time_slot, 0, 2 ) ) * 60 + ( (int) substr( $time_slot, 3, 2 ) );
+	}
+
+	/**
+	 * Order-independent key for a pair of team ids.
+	 *
+	 * @param string $a First team id.
+	 * @param string $b Second team id.
+	 * @return string
+	 */
+	private function pair_key( $a, $b ) {
+		return $a < $b ? $a . '|' . $b : $b . '|' . $a;
+	}
+
+	/**
 	 * Calculate division statistics
 	 *
 	 * @param array $schedule Array of SPSG_Game objects
@@ -593,11 +1061,26 @@ class SPSG_Statistics_Calculator {
 	 * @return array Array of imbalance issues with severity
 	 */
 	private function detect_imbalances( $stats ) {
-		$issues = array();
+		return array_merge(
+			$this->detect_games_per_team_variance( $stats ),
+			$this->detect_home_away_imbalance( $stats ),
+			$this->detect_venue_utilization_imbalance( $stats ),
+			$this->detect_division_grouping_imbalance( $stats )
+		);
+	}
 
-		// Detect games per team variance (flag if > 1 game difference)
-		if ( $stats['games_per_team']['max'] - $stats['games_per_team']['min'] > 1 ) {
-			$issues[] = array(
+	/**
+	 * Flag a >1-game spread between the fewest and most games any team plays.
+	 *
+	 * @param array $stats Calculated statistics.
+	 * @return array Zero or one imbalance issue.
+	 */
+	private function detect_games_per_team_variance( $stats ) {
+		if ( $stats['games_per_team']['max'] - $stats['games_per_team']['min'] <= 1 ) {
+			return array();
+		}
+		return array(
+			array(
 				'type' => 'games_per_team_variance',
 				'severity' => 'warning',
 				'message' => sprintf(
@@ -611,70 +1094,121 @@ class SPSG_Statistics_Calculator {
 					'max' => $stats['games_per_team']['max'],
 					'difference' => $stats['games_per_team']['max'] - $stats['games_per_team']['min'],
 				),
-			);
-		}
+			),
+		);
+	}
 
-		// Detect home/away imbalance (flag if difference > 2)
+	/**
+	 * Flag any team whose home/away split differs by more than 2 games.
+	 *
+	 * @param array $stats Calculated statistics.
+	 * @return array Imbalance issues, one per affected team.
+	 */
+	private function detect_home_away_imbalance( $stats ) {
+		$issues = array();
 		foreach ( $stats['home_away_balance'] as $team_id => $balance ) {
 			$difference = abs( $balance['home'] - $balance['away'] );
-
-			if ( $difference > 2 ) {
-				$issues[] = array(
-					'type' => 'home_away_imbalance',
-					'severity' => 'warning',
-					'message' => sprintf(
-						__( 'Home/away imbalance for %1$s: home=%2$d, away=%3$d (difference: %4$d)', 'sportspress-schedule-generator' ),
-						$balance['team_name'],
-						$balance['home'],
-						$balance['away'],
-						$difference
-					),
-					'details' => array(
-						'team_id' => $team_id,
-						'team_name' => $balance['team_name'],
-						'home' => $balance['home'],
-						'away' => $balance['away'],
-						'difference' => $difference,
-					),
-				);
+			if ( $difference <= 2 ) {
+				continue;
 			}
+			$issues[] = array(
+				'type' => 'home_away_imbalance',
+				'severity' => 'warning',
+				'message' => sprintf(
+					__( 'Home/away imbalance for %1$s: home=%2$d, away=%3$d (difference: %4$d)', 'sportspress-schedule-generator' ),
+					$balance['team_name'],
+					$balance['home'],
+					$balance['away'],
+					$difference
+				),
+				'details' => array(
+					'team_id' => $team_id,
+					'team_name' => $balance['team_name'],
+					'home' => $balance['home'],
+					'away' => $balance['away'],
+					'difference' => $difference,
+				),
+			);
+		}
+		return $issues;
+	}
+
+	/**
+	 * Flag any venue whose game count is more than 20% off the average
+	 * across venues.
+	 *
+	 * @param array $stats Calculated statistics.
+	 * @return array Imbalance issues, one per affected venue.
+	 */
+	private function detect_venue_utilization_imbalance( $stats ) {
+		if ( empty( $stats['venue_utilization'] ) ) {
+			return array();
 		}
 
-		// Detect venue over/under utilization (flag if > 20% variance from average)
-		if ( ! empty( $stats['venue_utilization'] ) ) {
-			$venue_counts = array_column( $stats['venue_utilization'], 'games' );
-			$avg_utilization = array_sum( $venue_counts ) / count( $venue_counts );
-			$threshold = $avg_utilization * 0.20; // 20% variance threshold
-
-			foreach ( $stats['venue_utilization'] as $venue_id => $venue_data ) {
-				$variance = abs( $venue_data['games'] - $avg_utilization );
-
-				if ( $avg_utilization > 0 ) {
-					$variance_percent = ( $variance / $avg_utilization ) * 100;
-
-					if ( $variance > $threshold ) {
-						$issues[] = array(
-							'type' => 'venue_utilization_imbalance',
-							'severity' => 'info',
-							'message' => sprintf(
-								__( 'Venue utilization imbalance for %1$s: %2$d games (%3$.1f%% variance from average)', 'sportspress-schedule-generator' ),
-								$venue_data['name'],
-								$venue_data['games'],
-								$variance_percent
-							),
-							'details' => array(
-								'venue_id' => $venue_id,
-								'venue_name' => $venue_data['name'],
-								'games' => $venue_data['games'],
-								'average' => round( $avg_utilization, 2 ),
-								'variance_percent' => round( $variance_percent, 2 ),
-							),
-						);
-					}
-				}
-			}
+		$venue_counts = array_column( $stats['venue_utilization'], 'games' );
+		$avg_utilization = array_sum( $venue_counts ) / count( $venue_counts );
+		if ( $avg_utilization <= 0 ) {
+			return array();
 		}
+		$threshold = $avg_utilization * 0.20; // 20% variance threshold
 
+		$issues = array();
+		foreach ( $stats['venue_utilization'] as $venue_id => $venue_data ) {
+			$variance = abs( $venue_data['games'] - $avg_utilization );
+			if ( $variance <= $threshold ) {
+				continue;
+			}
+			$variance_percent = ( $variance / $avg_utilization ) * 100;
+			$issues[] = array(
+				'type' => 'venue_utilization_imbalance',
+				'severity' => 'info',
+				'message' => sprintf(
+					__( 'Venue utilization imbalance for %1$s: %2$d games (%3$.1f%% variance from average)', 'sportspress-schedule-generator' ),
+					$venue_data['name'],
+					$venue_data['games'],
+					$variance_percent
+				),
+				'details' => array(
+					'venue_id' => $venue_id,
+					'venue_name' => $venue_data['name'],
+					'games' => $venue_data['games'],
+					'average' => round( $avg_utilization, 2 ),
+					'variance_percent' => round( $variance_percent, 2 ),
+				),
+			);
+		}
+		return $issues;
+	}
+
+	/**
+	 * Flag a division whose games rarely land near each other on a shared
+	 * night -- below 60% is a real scattering, not the normal spread a
+	 * division with few multi-game nights will show.
+	 *
+	 * @param array $stats Calculated statistics.
+	 * @return array Imbalance issues, one per affected division.
+	 */
+	private function detect_division_grouping_imbalance( $stats ) {
+		$issues = array();
+		foreach ( $stats['division_grouping']['per_division'] ?? array() as $div_id => $division ) {
+			if ( null === $division['percent'] || $division['percent'] >= 60.0 ) {
+				continue;
+			}
+			$issues[] = array(
+				'type' => 'division_grouping_low',
+				'severity' => 'info',
+				'message' => sprintf(
+					__( '%1$s: only %2$s%% of its games land within an hour of another of its own games on the same night', 'sportspress-schedule-generator' ),
+					$division['name'],
+					$division['percent']
+				),
+				'details' => array(
+					'division_id' => $div_id,
+					'division_name' => $division['name'],
+					'percent' => $division['percent'],
+				),
+			);
+		}
 		return $issues;
 	}
 
@@ -696,6 +1230,13 @@ class SPSG_Statistics_Calculator {
 			'venue_utilization' => array(),
 			'time_slot_distribution' => array(),
 			'day_distribution' => array(),
+			'day_balance_per_team' => array(),
+			'night_position_per_team' => array(),
+			'division_grouping' => array(
+				'overall_percent' => null,
+				'per_division' => array(),
+			),
+			'restricted_pairs' => array(),
 			'divisions' => array(),
 			'inter_division_games' => 0,
 			'imbalances' => array(),

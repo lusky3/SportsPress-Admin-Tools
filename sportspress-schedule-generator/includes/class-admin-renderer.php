@@ -1634,6 +1634,7 @@ class SPSG_Admin_Renderer {
 					$this->render_home_away_balance_table( $stats );
 					$this->render_stats_simple_table( 'time_slot_distribution', $stats, __( 'Time Slot Distribution', 'sportspress-schedule-generator' ), __( 'Time Slot', 'sportspress-schedule-generator' ), __( 'Games', 'sportspress-schedule-generator' ) );
 					$this->render_stats_simple_table( 'day_distribution', $stats, __( 'Day Distribution', 'sportspress-schedule-generator' ), __( 'Day', 'sportspress-schedule-generator' ), __( 'Games', 'sportspress-schedule-generator' ) );
+					$this->render_balance_stats( $stats );
 					?>
 				</div>
 				<?php $this->render_imbalances_panel( $stats ); ?>
@@ -1718,6 +1719,266 @@ class SPSG_Admin_Renderer {
 						</table>
 					</div>
 		<?php
+	}
+
+	/**
+	 * The four balance/restriction tables added alongside the day/time-slot
+	 * distribution tables -- grouped behind one call so the already-large
+	 * {@see render_preview_stats()} only grows by one line for all four,
+	 * not four.
+	 *
+	 * @param array $stats Calculated statistics.
+	 */
+	private function render_balance_stats( $stats ) {
+		$this->render_day_balance_per_team_table( $stats );
+		$this->render_night_position_per_team_table( $stats );
+		$this->render_division_grouping_table( $stats );
+		$this->render_restricted_pairs_table( $stats );
+	}
+
+	/**
+	 * Every day-of-week key that appears in $stats['day_balance_per_team'],
+	 * in calendar order (Monday first) so the columns read the way a
+	 * schedule does, whatever subset of days this league actually plays.
+	 *
+	 * @param array $stats Calculated statistics.
+	 * @return string[] Day keys (lowercase, e.g. "friday").
+	 */
+	private function day_balance_columns( $stats ) {
+		$canonical = array( 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday' );
+		$seen = array();
+		foreach ( $stats['day_balance_per_team'] ?? array() as $team ) {
+			foreach ( array_keys( $team['days'] ?? array() ) as $day ) {
+				$seen[ $day ] = true;
+			}
+		}
+		return array_values( array_intersect( $canonical, array_keys( $seen ) ) );
+	}
+
+	/**
+	 * Render each team's per-day game count -- Friday vs. Sunday, or
+	 * whatever days this league actually plays.
+	 *
+	 * @param array $stats Calculated statistics.
+	 */
+	private function render_day_balance_per_team_table( $stats ) {
+		if ( empty( $stats['day_balance_per_team'] ) ) {
+			return;
+		}
+		$days = $this->day_balance_columns( $stats );
+		?>
+					<div class="spsg-stat-section">
+						<h4><?php esc_html_e( 'Day Balance Per Team', 'sportspress-schedule-generator' ); ?></h4>
+						<table class="widefat">
+							<thead>
+								<tr>
+									<th><?php esc_html_e( 'Team', 'sportspress-schedule-generator' ); ?></th>
+									<?php $this->render_day_balance_header_cells( $days ); ?>
+								</tr>
+							</thead>
+							<tbody>
+								<?php foreach ( $stats['day_balance_per_team'] as $team ) : ?>
+									<?php $this->render_day_balance_row( $team, $days ); ?>
+								<?php endforeach; ?>
+							</tbody>
+						</table>
+					</div>
+		<?php
+	}
+
+	/**
+	 * The day-name header cells for {@see render_day_balance_per_team_table()}.
+	 *
+	 * @param string[] $days Day keys, in the order to display.
+	 */
+	private function render_day_balance_header_cells( $days ) {
+		foreach ( $days as $day ) {
+			echo '<th>' . esc_html( ucfirst( $day ) ) . '</th>';
+		}
+	}
+
+	/**
+	 * One team's row for {@see render_day_balance_per_team_table()}.
+	 *
+	 * @param array    $team Day-balance entry (team_name, days).
+	 * @param string[] $days Day keys, in the order to display.
+	 */
+	private function render_day_balance_row( $team, $days ) {
+		echo '<tr><td>' . esc_html( $team['team_name'] ?? '' ) . '</td>';
+		foreach ( $days as $day ) {
+			echo '<td>' . esc_html( $team['days'][ $day ] ?? 0 ) . '</td>';
+		}
+		echo '</tr>';
+	}
+
+	/**
+	 * Render each team's early/middle/late-third start counts, and how
+	 * often they get the very first or very last start of a night.
+	 *
+	 * @param array $stats Calculated statistics.
+	 */
+	private function render_night_position_per_team_table( $stats ) {
+		if ( empty( $stats['night_position_per_team'] ) ) {
+			return;
+		}
+		?>
+					<div class="spsg-stat-section">
+						<h4><?php esc_html_e( 'Time of Night Per Team', 'sportspress-schedule-generator' ); ?></h4>
+						<table class="widefat">
+							<thead>
+								<tr>
+									<th><?php esc_html_e( 'Team', 'sportspress-schedule-generator' ); ?></th>
+									<th><?php esc_html_e( 'Early', 'sportspress-schedule-generator' ); ?></th>
+									<th><?php esc_html_e( 'Mid', 'sportspress-schedule-generator' ); ?></th>
+									<th><?php esc_html_e( 'Late', 'sportspress-schedule-generator' ); ?></th>
+									<th><?php esc_html_e( 'First Start', 'sportspress-schedule-generator' ); ?></th>
+									<th><?php esc_html_e( 'Last Start', 'sportspress-schedule-generator' ); ?></th>
+								</tr>
+							</thead>
+							<tbody>
+								<?php foreach ( $stats['night_position_per_team'] as $team ) : ?>
+									<?php $this->render_night_position_row( $team ); ?>
+								<?php endforeach; ?>
+							</tbody>
+						</table>
+					</div>
+		<?php
+	}
+
+	/**
+	 * One team's row for {@see render_night_position_per_team_table()}.
+	 *
+	 * @param array $team Night-position entry (team_name, early, mid, late, first, last).
+	 */
+	private function render_night_position_row( $team ) {
+		echo '<tr><td>' . esc_html( $this->stat_field( $team, 'team_name', '' ) ) . '</td>';
+		foreach ( array( 'early', 'mid', 'late', 'first', 'last' ) as $field ) {
+			echo '<td>' . esc_html( $this->stat_field( $team, $field, 0 ) ) . '</td>';
+		}
+		echo '</tr>';
+	}
+
+	/**
+	 * One field from a stats row, or a default when it isn't set.
+	 *
+	 * @param array  $row     Stats row (e.g. one team's night-position entry).
+	 * @param string $field   Field name.
+	 * @param mixed  $default Value to use when the field is absent.
+	 * @return mixed
+	 */
+	private function stat_field( $row, $field, $default ) {
+		return $row[ $field ] ?? $default;
+	}
+
+	/**
+	 * Render each division's grouping percentage -- how often its games
+	 * land within an hour of another of its own games on the same night.
+	 *
+	 * @param array $stats Calculated statistics.
+	 */
+	private function render_division_grouping_table( $stats ) {
+		if ( empty( $stats['division_grouping']['per_division'] ) ) {
+			return;
+		}
+		?>
+					<div class="spsg-stat-section">
+						<h4><?php esc_html_e( 'Division Grouping', 'sportspress-schedule-generator' ); ?> <?php $this->render_division_grouping_overall( $stats['division_grouping']['overall_percent'] ); ?></h4>
+						<table class="widefat">
+							<thead>
+								<tr>
+									<th><?php esc_html_e( 'Division', 'sportspress-schedule-generator' ); ?></th>
+									<th><?php esc_html_e( 'Grouped', 'sportspress-schedule-generator' ); ?></th>
+								</tr>
+							</thead>
+							<tbody>
+								<?php foreach ( $stats['division_grouping']['per_division'] as $division ) : ?>
+									<?php $this->render_division_grouping_row( $division ); ?>
+								<?php endforeach; ?>
+							</tbody>
+						</table>
+					</div>
+		<?php
+	}
+
+	/**
+	 * The "(NN% overall)" suffix in {@see render_division_grouping_table()}'s
+	 * heading, or nothing when there is no overall figure to show.
+	 *
+	 * @param float|null $overall_percent Season-wide grouping percentage.
+	 */
+	private function render_division_grouping_overall( $overall_percent ) {
+		if ( null === $overall_percent ) {
+			return;
+		}
+		echo '(' . esc_html( $overall_percent ) . '% ' . esc_html__( 'overall', 'sportspress-schedule-generator' ) . ')';
+	}
+
+	/**
+	 * One division's row for {@see render_division_grouping_table()}.
+	 *
+	 * @param array $division Grouping entry (name, percent).
+	 */
+	private function render_division_grouping_row( $division ) {
+		$percent = $division['percent'] ?? null;
+		echo '<tr><td>' . esc_html( $division['name'] ?? '' ) . '</td><td>'
+			. ( null === $percent ? '&#8212;' : esc_html( $percent ) . '%' )
+			. '</td></tr>';
+	}
+
+	/**
+	 * Render each configured overlap/back-to-back restricted pair: how
+	 * many nights they share, and the smallest gap between them.
+	 *
+	 * @param array $stats Calculated statistics.
+	 */
+	private function render_restricted_pairs_table( $stats ) {
+		if ( empty( $stats['restricted_pairs'] ) ) {
+			return;
+		}
+		?>
+					<div class="spsg-stat-section">
+						<h4><?php esc_html_e( 'Restricted Team Pairs', 'sportspress-schedule-generator' ); ?></h4>
+						<table class="widefat">
+							<thead>
+								<tr>
+									<th><?php esc_html_e( 'Teams', 'sportspress-schedule-generator' ); ?></th>
+									<th><?php esc_html_e( 'Shared Nights', 'sportspress-schedule-generator' ); ?></th>
+									<th><?php esc_html_e( 'Smallest Gap', 'sportspress-schedule-generator' ); ?></th>
+								</tr>
+							</thead>
+							<tbody>
+								<?php foreach ( $stats['restricted_pairs'] as $pair ) : ?>
+									<?php $this->render_restricted_pair_row( $pair ); ?>
+								<?php endforeach; ?>
+							</tbody>
+						</table>
+					</div>
+		<?php
+	}
+
+	/**
+	 * The "Smallest Gap" cell's text for {@see render_restricted_pair_row()}.
+	 *
+	 * @param int|null $min_gap_minutes Smallest gap in minutes, or null if the pair never shares a night.
+	 * @return string Escaped HTML.
+	 */
+	private function restricted_pair_gap_text( $min_gap_minutes ) {
+		if ( null === $min_gap_minutes ) {
+			return esc_html__( 'never shares a night', 'sportspress-schedule-generator' );
+		}
+		/* translators: %d: number of minutes. */
+		return esc_html( sprintf( __( '%d minutes', 'sportspress-schedule-generator' ), $min_gap_minutes ) );
+	}
+
+	/**
+	 * One pair's row for {@see render_restricted_pairs_table()}.
+	 *
+	 * @param array $pair Restricted-pair entry (teams, shared_nights, min_gap_minutes).
+	 */
+	private function render_restricted_pair_row( $pair ) {
+		echo '<tr><td>' . esc_html( implode( ' vs. ', $pair['teams'] ?? array() ) ) . '</td>'
+			. '<td>' . esc_html( $pair['shared_nights'] ?? 0 ) . '</td>'
+			. '<td>' . $this->restricted_pair_gap_text( $pair['min_gap_minutes'] ?? null ) . '</td></tr>';
 	}
 
 	/**
