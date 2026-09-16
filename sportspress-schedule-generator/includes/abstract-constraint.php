@@ -76,6 +76,25 @@ abstract class SPSG_Abstract_Constraint implements SPSG_Constraint_Interface {
 	}
 
 	/**
+	 * Whether this constraint needs the full, season-so-far schedule rather
+	 * than just the candidate slot's same-day games. False by default: most
+	 * constraints (blackout, team restrictions, division grouping) only ever
+	 * need to reason about one day at a time. Override to return true for a
+	 * constraint that measures something cumulative across the whole season
+	 * (day-of-week balance; a per-team day cap) -- see
+	 * SPSG_Constraint_Manager::validate_game()/calculate_violation_cost(),
+	 * which flatten and forward the full schedule only to constraints that
+	 * opt in here, since doing that for every constraint would cost an O(n)
+	 * flatten-and-hash per candidate slot for constraints that never look at
+	 * it.
+	 *
+	 * @return bool
+	 */
+	public function wants_full_schedule() {
+		return false;
+	}
+
+	/**
 	 * Per-request memoization for validate() results.
 	 *
 	 * Keyed by spl_object_hash( $constraint ) . '-' . $game_id . '-' . $schedule_hash,
@@ -171,12 +190,15 @@ abstract class SPSG_Abstract_Constraint implements SPSG_Constraint_Interface {
 		// hard constraints. Soft/optimization constraints override
 		// get_violation_cost() and never touch the cache, so priming them just
 		// burns an O(n) hash_schedule_slice() on an entry that is never read.
-		// The only constraint handed the full flattened schedule is the soft
-		// Distribution constraint, so this is exactly where the O(n^2) came from.
-		// Skipping non-hard constraints removes that cost without changing any
-		// observable result — hard constraints (small same-day slices) still
-		// memoize, and the SG-1 slice-hash key still guarantees correctness under
-		// backtracking.
+		// Distribution (soft) and any hard constraint that opts into
+		// wants_full_schedule() (e.g. a per-team day cap) are the only ones
+		// handed the full flattened schedule, and that's exactly where an
+		// O(n^2) blowup would come from if this were primed for every
+		// constraint regardless of type. Skipping non-hard constraints removes
+		// that cost without changing any observable result — hard constraints
+		// (same-day slices, or a full-schedule slice for one that opted in)
+		// still memoize, and the SG-1 slice-hash key still guarantees
+		// correctness under backtracking.
 		if ( 'hard' !== $constraint->get_type() ) {
 			return;
 		}

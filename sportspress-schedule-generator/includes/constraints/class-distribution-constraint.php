@@ -91,6 +91,14 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 	}
 
 	/**
+	 * @return bool Always true: day/time-slot balance is measured over the
+	 *              whole season, not one day at a time.
+	 */
+	public function wants_full_schedule() {
+		return true;
+	}
+
+	/**
 	 * Learn the season's slot supply: which days carry how many slots, and
 	 * what share of all slots are early/late/first/last starts. Both fairness
 	 * targets below are measured against these rather than against ideals

@@ -107,11 +107,11 @@ class SPSG_Constraint_Manager {
 		$violations = array();
 
 		foreach ( $this->get_constraints() as $constraint ) {
-			// Forward the appropriate schedule slice based on constraint name.
-			// Distribution is the only constraint that must see cross-day data
-			// to compute fair day / time-slot ratios.
+			// Forward the appropriate schedule slice: only a constraint that
+			// opts in via wants_full_schedule() (cross-day fairness measures
+			// like Distribution, or a per-team day cap) needs cross-day data.
 			$schedule_for_constraint = $schedule;
-			if ( $full_schedule_by_date !== null && $constraint instanceof SPSG_Distribution_Constraint ) {
+			if ( $full_schedule_by_date !== null && $constraint->wants_full_schedule() ) {
 				$schedule_for_constraint = self::flatten_schedule( $full_schedule_by_date );
 			}
 
@@ -156,7 +156,7 @@ class SPSG_Constraint_Manager {
 
 		foreach ( $this->get_constraints() as $constraint ) {
 			$schedule_for_constraint = $schedule;
-			if ( $full_schedule_by_date !== null && $constraint instanceof SPSG_Distribution_Constraint ) {
+			if ( $full_schedule_by_date !== null && $constraint->wants_full_schedule() ) {
 				$schedule_for_constraint = self::flatten_schedule( $full_schedule_by_date );
 			}
 

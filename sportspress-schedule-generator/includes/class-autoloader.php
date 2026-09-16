@@ -78,6 +78,7 @@ class SPSG_Autoloader {
 
 			// Constraint classes
 			'SPSG_Blackout_Constraint' => $base_path . 'constraints/class-blackout-constraint.php',
+			'SPSG_Day_Cap_Constraint' => $base_path . 'constraints/class-day-cap-constraint.php',
 			'SPSG_Distribution_Constraint' => $base_path . 'constraints/class-distribution-constraint.php',
 			'SPSG_Team_Restriction_Constraint' => $base_path . 'constraints/class-team-restriction-constraint.php',
 			'SPSG_Division_Grouping_Constraint' => $base_path . 'constraints/class-division-grouping-constraint.php',
