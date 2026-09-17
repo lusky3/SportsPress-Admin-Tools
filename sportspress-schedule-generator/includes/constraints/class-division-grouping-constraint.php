@@ -69,6 +69,20 @@ class SPSG_Division_Grouping_Constraint extends SPSG_Abstract_Constraint {
 	const DISRUPTION_COST = 30.0;
 
 	/**
+	 * Scales a base cost constant by its Advanced Settings multiplier
+	 * (spsg_weight_{$option_key}, 0.0-2.0, default 1.0). Reads 1.0 -- no
+	 * change -- until a convener opts into Advanced weight tuning and moves a
+	 * slider, so existing schedules are unaffected by default.
+	 *
+	 * @param float  $base       The constant's own declared (100%) value.
+	 * @param string $option_key Suffix of the `spsg_weight_{$option_key}` option.
+	 * @return float
+	 */
+	private function weighted( $base, $option_key ) {
+		return $base * (float) get_option( "spsg_weight_{$option_key}", 1.0 );
+	}
+
+	/**
 	 * Season slot supply, set by {@see set_slot_supply()}; date => sorted
 	 * distinct start times. Falls back to the configured venue slots (or the
 	 * night's own games) when scoring outside an allocation run.
@@ -143,7 +157,7 @@ class SPSG_Division_Grouping_Constraint extends SPSG_Abstract_Constraint {
 			}
 		}
 
-		$cost = empty( $own ) ? self::NEW_NIGHT_COST : $this->distance_cost( $index, $own );
+		$cost = empty( $own ) ? $this->weighted( self::NEW_NIGHT_COST, 'division_distance' ) : $this->distance_cost( $index, $own );
 		return $cost + $this->disruption_cost( $index, $others );
 	}
 
@@ -161,7 +175,7 @@ class SPSG_Division_Grouping_Constraint extends SPSG_Abstract_Constraint {
 			$nearest = min( $nearest, abs( $hour - $index ) );
 		}
 		$gap = min( self::DISTANCE_CAP_HOURS, max( 0, $nearest - 1 ) );
-		return self::DISTANCE_COST_PER_HOUR * $gap;
+		return $this->weighted( self::DISTANCE_COST_PER_HOUR, 'division_distance' ) * $gap;
 	}
 
 	/**
@@ -177,7 +191,7 @@ class SPSG_Division_Grouping_Constraint extends SPSG_Abstract_Constraint {
 		foreach ( $others as $hours ) {
 			$set = array_fill_keys( $hours, true );
 			if ( isset( $set[ $index - 1 ], $set[ $index + 1 ] ) ) {
-				$cost += self::DISRUPTION_COST;
+				$cost += $this->weighted( self::DISRUPTION_COST, 'division_disruption' );
 			}
 		}
 		return $cost;
