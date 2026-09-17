@@ -1260,13 +1260,7 @@ jQuery(document).ready(function($) {
 	 * method existed, so a team's forward pointer stayed on last season's
 	 * record after every rollover.
 	 *
-	 * An existing value is removed in two cases: it is a dangling reference to
-	 * a post that no longer exists (deleted/trashed -- unambiguously stale,
-	 * whatever it once was), or it can be positively identified as a different
-	 * season's record (it carries an `sp_season` term and none of those terms
-	 * are in $season_ids). A value with no season term at all — e.g. a
-	 * non-seasonal list this rollover doesn't know about — is left alone
-	 * rather than guessed at.
+	 * Staleness is decided per existing value by {@see is_stale_team_pointer()}.
 	 *
 	 * @param int    $team_id    Team post ID.
 	 * @param string $meta_key   'sp_list' or 'sp_table'.
@@ -1278,24 +1272,7 @@ jQuery(document).ready(function($) {
 		$current    = array_map( 'intval', (array) get_post_meta( $team_id, $meta_key, false ) );
 
 		foreach ( $current as $existing_id ) {
-			if ( $existing_id === (int) $new_id ) {
-				continue;
-			}
-
-			// A dangling reference to a deleted/trashed post is unambiguously
-			// stale -- unlike "no season term", there is no legitimate record
-			// this could still be, so it is removed regardless of season data.
-			if ( ! get_post( $existing_id ) ) {
-				delete_post_meta( $team_id, $meta_key, $existing_id );
-				continue;
-			}
-
-			$terms = wp_get_object_terms( $existing_id, 'sp_season', array( 'fields' => 'ids' ) );
-			if ( is_wp_error( $terms ) || empty( $terms ) ) {
-				continue; // Not identifiably seasonal -- leave it alone.
-			}
-
-			if ( ! array_intersect( array_map( 'intval', $terms ), $season_ids ) ) {
+			if ( $existing_id !== (int) $new_id && $this->is_stale_team_pointer( $existing_id, $season_ids ) ) {
 				delete_post_meta( $team_id, $meta_key, $existing_id );
 			}
 		}
@@ -1303,6 +1280,41 @@ jQuery(document).ready(function($) {
 		if ( ! in_array( (int) $new_id, $current, true ) ) {
 			add_post_meta( $team_id, $meta_key, (int) $new_id );
 		}
+	}
+
+	/**
+	 * Whether an existing sp_list/sp_table value on a team is safe to remove.
+	 *
+	 * True for a reference to a deleted OR trashed post -- unlike "no season
+	 * term", there is no legitimate record this could still be, so it's
+	 * removed regardless of season data. get_post_status() rather than
+	 * get_post() is what makes trashed posts count here: get_post() still
+	 * returns a WP_Post for a trashed post, so relying on it alone would let a
+	 * trashed roster/table fall through to the season-term check and
+	 * potentially survive.
+	 *
+	 * Otherwise true only when the record can be positively identified as
+	 * belonging to a different season (it carries an `sp_season` term and
+	 * none of those terms are in $season_ids). A value with no season term at
+	 * all -- e.g. a non-seasonal list this rollover doesn't know about -- is
+	 * left alone rather than guessed at.
+	 *
+	 * @param int   $existing_id Post ID currently in the team's meta.
+	 * @param int[] $season_ids  Every season term this rollover run considers current.
+	 * @return bool
+	 */
+	private function is_stale_team_pointer( $existing_id, array $season_ids ) {
+		$status = get_post_status( $existing_id );
+		if ( false === $status || 'trash' === $status ) {
+			return true;
+		}
+
+		$terms = wp_get_object_terms( $existing_id, 'sp_season', array( 'fields' => 'ids' ) );
+		if ( is_wp_error( $terms ) || empty( $terms ) ) {
+			return false; // Not identifiably seasonal -- leave it alone.
+		}
+
+		return ! array_intersect( array_map( 'intval', $terms ), $season_ids );
 	}
 
 	/**
