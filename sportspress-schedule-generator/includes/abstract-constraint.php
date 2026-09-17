@@ -285,12 +285,13 @@ abstract class SPSG_Abstract_Constraint implements SPSG_Constraint_Interface {
 		if ( is_string( $team ) ) {
 			return $team;
 		}
-		if ( is_array( $team ) ) {
-			return (string) ( $team['name'] ?? $team['id'] ?? '' );
-		}
-		if ( is_object( $team ) ) {
-			return (string) ( $team->name ?? $team->id ?? '' );
-		}
-		return '';
+
+		// Object and array forms differ only in access syntax; casting an
+		// object to an array (its public properties become string keys)
+		// lets both go through one fallback chain instead of two near-
+		// identical branches.
+		$data = is_array( $team ) ? $team : (array) $team;
+
+		return (string) ( $data['name'] ?? $data['id'] ?? '' );
 	}
 }

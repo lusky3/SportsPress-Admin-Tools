@@ -1503,15 +1503,15 @@ class SPSG_Slot_Allocator {
 		if ( $slot_count <= self::WEEK_URGENT_SLOTS ) {
 			return array( 0, $slot_count );
 		}
+
 		$continues = isset( $continuing[ $this->division_key( $matchup->division ) ] );
-		if ( $continues ) {
-			return array( 1, $slot_count );
-		}
-		$deficit = $this->matchup_day_deficit( $matchup, $dates, $flat_schedule, $config );
-		if ( $deficit >= self::DAY_DEFICIT_URGENCY_THRESHOLD ) {
-			return array( 1, $slot_count );
-		}
-		return array( 2, $slot_count );
+		// Skip the deficit scan (a schedule-wide search) once $continues
+		// already decided the tier -- it can only raise urgency further, and
+		// $continues alone already earns tier 1.
+		$deficit = $continues ? 0.0 : $this->matchup_day_deficit( $matchup, $dates, $flat_schedule, $config );
+		$tier    = ( $continues || $deficit >= self::DAY_DEFICIT_URGENCY_THRESHOLD ) ? 1 : 2;
+
+		return array( $tier, $slot_count );
 	}
 
 	/**

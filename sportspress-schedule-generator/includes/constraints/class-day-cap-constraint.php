@@ -63,16 +63,40 @@ class SPSG_Day_Cap_Constraint extends SPSG_Abstract_Constraint {
 	 */
 	public function validate( $game, $schedule, $config ) {
 		$caps = $config->distribution_rules['day_hard_cap'] ?? array();
-		if ( empty( $caps ) ) {
+		$day  = $this->game_day( $game );
+		if ( empty( $caps ) || ! isset( $caps[ $day ] ) ) {
 			return true;
 		}
 
-		$day = $this->game_day( $game );
-		if ( ! isset( $caps[ $day ] ) ) {
+		$cap           = (int) $caps[ $day ];
+		$team_over_cap = $this->first_team_over_cap( $game, $day, $cap, $schedule );
+		if ( null === $team_over_cap ) {
 			return true;
 		}
-		$cap = (int) $caps[ $day ];
 
+		return new WP_Error(
+			'day_hard_cap_exceeded',
+			sprintf(
+				/* translators: 1: team name, 2: day of the week, 3: configured cap */
+				__( '%1$s would exceed its %2$s cap of %3$d games.', 'sportspress-schedule-generator' ),
+				$this->get_team_label( $team_over_cap ),
+				ucfirst( $day ),
+				$cap
+			)
+		);
+	}
+
+	/**
+	 * The first of the game's two teams that a placement would push past
+	 * $cap for $day, or null if neither would be.
+	 *
+	 * @param object $game     Candidate game.
+	 * @param string $day      Day name.
+	 * @param int    $cap      Configured cap for that day.
+	 * @param array  $schedule Full season-so-far schedule (flat list).
+	 * @return object|array|null The over-cap team (as given on $game), or null.
+	 */
+	private function first_team_over_cap( $game, $day, $cap, $schedule ) {
 		foreach ( array( $game->home_team, $game->away_team ) as $team ) {
 			$team_id = $this->get_team_id( $team );
 			$count   = $this->team_day_count( $team_id, $day, $schedule );
@@ -80,20 +104,10 @@ class SPSG_Day_Cap_Constraint extends SPSG_Abstract_Constraint {
 			// +1: $game itself is the candidate being validated, not yet in
 			// $schedule.
 			if ( $count + 1 > $cap ) {
-				return new WP_Error(
-					'day_hard_cap_exceeded',
-					sprintf(
-						/* translators: 1: team name, 2: day of the week, 3: configured cap */
-						__( '%1$s would exceed its %2$s cap of %3$d games.', 'sportspress-schedule-generator' ),
-						$this->get_team_label( $team ),
-						ucfirst( $day ),
-						$cap
-					)
-				);
+				return $team;
 			}
 		}
-
-		return true;
+		return null;
 	}
 
 	/**
