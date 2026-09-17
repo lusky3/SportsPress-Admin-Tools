@@ -241,6 +241,7 @@ class SportsPress_Schedule_Generator {
 	 */
 	private function register_constraints() {
 		$this->register_constraint( 'SPSG_Blackout_Constraint', 'Prevents scheduling on blackout dates and manages makeup games', 'scheduling' );
+		$this->register_constraint( 'SPSG_Day_Cap_Constraint', 'Hard per-team cap on games played on a given day of the week, when configured', 'restrictions' );
 		$this->register_constraint( 'SPSG_Distribution_Constraint', 'Manages fair distribution of games across days and time slots', 'optimization' );
 		$this->register_constraint( 'SPSG_Team_Restriction_Constraint', 'Manages team-specific scheduling restrictions', 'restrictions' );
 		$this->register_constraint( 'SPSG_Division_Grouping_Constraint', 'Optimizes consecutive time slots for division games', 'optimization' );

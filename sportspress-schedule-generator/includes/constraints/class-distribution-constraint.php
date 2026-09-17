@@ -91,6 +91,14 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 	}
 
 	/**
+	 * @return bool Always true: day/time-slot balance is measured over the
+	 *              whole season, not one day at a time.
+	 */
+	public function wants_full_schedule() {
+		return true;
+	}
+
+	/**
 	 * Learn the season's slot supply: which days carry how many slots, and
 	 * what share of all slots are early/late/first/last starts. Both fairness
 	 * targets below are measured against these rather than against ideals
@@ -180,25 +188,6 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 		}
 
 		return true; // Soft constraint always allows, but with cost
-	}
-
-	/**
-	 * Resolve a human-readable label for a team given as array, object or string.
-	 *
-	 * @param mixed $team Team entity.
-	 * @return string Team name (falls back to the ID, then an empty string).
-	 */
-	private function get_team_label( $team ) {
-		if ( is_string( $team ) ) {
-			return $team;
-		}
-		if ( is_object( $team ) ) {
-			return (string) ( $team->name ?? $team->id ?? '' );
-		}
-		if ( is_array( $team ) ) {
-			return (string) ( $team['name'] ?? $team['id'] ?? '' );
-		}
-		return '';
 	}
 
 	/**
@@ -401,6 +390,45 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 		// Against a known supply, aim for what every team can actually get
 		// (see SPSG_Schedule_Helper::feasible_day_ratios()).
 		return SPSG_Schedule_Helper::feasible_day_ratios( $ratios, $this->supply_by_day, $this->games_total );
+	}
+
+	/**
+	 * How many games behind (positive) its day-balance target a team
+	 * currently is for one specific day, given games placed so far. Zero or
+	 * negative means the team is on or ahead of target for that day.
+	 *
+	 * Exposed for {@see SPSG_Slot_Allocator::week_pick_rank()}: the
+	 * DAY_BALANCE_COST_PER_GAME_DEVIATION cost this constraint charges only
+	 * ranks slots that are still open when a matchup's turn comes to be
+	 * placed within its week. It has no say in *which* matchups get first
+	 * claim on that week's slots -- that's decided earlier, by which
+	 * division's matchup the allocator picks first. This deficit lets the
+	 * allocator fold day-balance into THAT decision too, so a team genuinely
+	 * behind on Fridays (or Sundays) can jump the queue instead of losing
+	 * every week to whichever division happens to place first.
+	 *
+	 * @param string   $team_id  Team id.
+	 * @param object[] $schedule Games placed so far (flat list).
+	 * @param object   $config   Schedule configuration.
+	 * @param string   $day      Day name (e.g. 'friday').
+	 * @return float
+	 */
+	public function team_day_deficit( $team_id, $schedule, $config, $day ) {
+		$target_ratios = $this->get_target_day_ratios( $config );
+		if ( ! array_key_exists( $day, $target_ratios ) ) {
+			return 0.0;
+		}
+
+		$distribution = $this->get_team_day_distribution( $team_id, $schedule );
+		$total_games  = array_sum( $distribution );
+		if ( 0 === $total_games ) {
+			return 0.0;
+		}
+
+		$target_games_for_day  = $total_games * (float) $target_ratios[ $day ];
+		$current_games_for_day = $distribution[ $day ] ?? 0;
+
+		return $target_games_for_day - $current_games_for_day;
 	}
 
 	/**
