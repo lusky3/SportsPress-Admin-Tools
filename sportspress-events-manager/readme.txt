@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.1.1
+Stable tag: 1.1.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,6 +45,9 @@ They are automatically created as SportsPress posts/terms during import.
 No. The rollover creates new season terms and updates team assignments. Preview your teams before executing and use the archive option carefully.
 
 == Changelog ==
+
+= 1.1.2 =
+* Fix: the season rollover kept a team's roster/table pointer (a separate, forward-pointing meta field the team itself carries -- distinct from the roster/table's own record of which team it belongs to) stuck on the prior season after every rollover. It now repoints both to the newly created roster/table and clears any stale or deleted/trashed prior value.
 
 = 1.1.1 =
 * Fix: readme.txt now carries the same `Requires Plugins` header the plugin file already declared, so the parent-plugin requirement shows consistently everywhere it's read from.
