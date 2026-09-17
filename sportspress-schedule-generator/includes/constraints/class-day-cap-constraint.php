@@ -128,25 +128,4 @@ class SPSG_Day_Cap_Constraint extends SPSG_Abstract_Constraint {
 		}
 		return $count;
 	}
-
-	/**
-	 * Resolve a human-readable label for a team given as array, object or
-	 * string -- same defensive resolution as SPSG_Distribution_Constraint's
-	 * own get_team_label().
-	 *
-	 * @param mixed $team Team entity.
-	 * @return string
-	 */
-	private function get_team_label( $team ) {
-		if ( is_string( $team ) ) {
-			return $team;
-		}
-		if ( is_object( $team ) ) {
-			return (string) ( $team->name ?? $team->id ?? '' );
-		}
-		if ( is_array( $team ) ) {
-			return (string) ( $team['name'] ?? $team['id'] ?? '' );
-		}
-		return '';
-	}
 }

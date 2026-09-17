@@ -271,4 +271,26 @@ abstract class SPSG_Abstract_Constraint implements SPSG_Constraint_Interface {
 	protected function get_venue_name( $venue ) {
 		return is_array( $venue ) ? $venue['name'] : $venue->name;
 	}
+
+	/**
+	 * Resolve a human-readable label for a team given as array, object or
+	 * string. Shared by any constraint that names a team in a log message or
+	 * a validation error (e.g. Distribution, Day Cap) so the same defensive
+	 * fallback chain (name, then id, then empty) lives in one place.
+	 *
+	 * @param mixed $team Team entity.
+	 * @return string
+	 */
+	protected function get_team_label( $team ) {
+		if ( is_string( $team ) ) {
+			return $team;
+		}
+		if ( is_array( $team ) ) {
+			return (string) ( $team['name'] ?? $team['id'] ?? '' );
+		}
+		if ( is_object( $team ) ) {
+			return (string) ( $team->name ?? $team->id ?? '' );
+		}
+		return '';
+	}
 }

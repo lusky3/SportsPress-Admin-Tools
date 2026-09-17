@@ -191,25 +191,6 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 	}
 
 	/**
-	 * Resolve a human-readable label for a team given as array, object or string.
-	 *
-	 * @param mixed $team Team entity.
-	 * @return string Team name (falls back to the ID, then an empty string).
-	 */
-	private function get_team_label( $team ) {
-		if ( is_string( $team ) ) {
-			return $team;
-		}
-		if ( is_object( $team ) ) {
-			return (string) ( $team->name ?? $team->id ?? '' );
-		}
-		if ( is_array( $team ) ) {
-			return (string) ( $team['name'] ?? $team['id'] ?? '' );
-		}
-		return '';
-	}
-
-	/**
 	 * Calculate violation cost for distribution imbalance
 	 */
 	public function get_violation_cost( $game, $schedule, $config ) {
