@@ -64,6 +64,7 @@ run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-zero-slack-alloc
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-night-and-day-helpers.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-schedule-helper-slots-on-date.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-day-balance.php"
+run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-distribution-constraint-weighted.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-season-pacing.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-team-name-resolution.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-team-name-resolution-noop.php"

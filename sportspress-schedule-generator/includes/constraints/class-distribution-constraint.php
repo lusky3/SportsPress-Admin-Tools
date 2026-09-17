@@ -63,6 +63,20 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 	const TIME_OF_NIGHT_TOLERANCE_GAMES = 1.0;
 
 	/**
+	 * Scales a base cost constant by its Advanced Settings multiplier
+	 * (spsg_weight_{$option_key}, 0.0-2.0, default 1.0). Reads 1.0 -- no
+	 * change -- until a convener opts into Advanced weight tuning and moves a
+	 * slider, so existing schedules are unaffected by default.
+	 *
+	 * @param float  $base       The constant's own declared (100%) value.
+	 * @param string $option_key Suffix of the `spsg_weight_{$option_key}` option.
+	 * @return float
+	 */
+	private function weighted( $base, $option_key ) {
+		return $base * (float) get_option( "spsg_weight_{$option_key}", 1.0 );
+	}
+
+	/**
 	 * Season slot supply, set by {@see set_slot_supply()} once the allocator
 	 * has built its slot grid. Empty when scoring outside an allocation run,
 	 * in which case the configured day shares and the older per-start-time
@@ -237,6 +251,10 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 	 * Calculate cost for time slot distribution imbalance
 	 */
 	private function calculate_time_slot_distribution_cost( $game, $schedule, $config ) {
+		if ( ! ( $config->distribution_rules['time_slot_balance'] ?? true ) ) {
+			return 0.0;
+		}
+
 		if ( ! empty( $this->timeline ) ) {
 			return $this->calculate_time_of_night_cost( $game, $schedule );
 		}
@@ -292,12 +310,12 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 
 		if ( 'mid' !== $position['bucket'] ) {
 			$over  = ( $counts[ $position['bucket'] ] + 1 ) - $games * $this->night_share[ $position['bucket'] ];
-			$cost += max( 0.0, $over - self::TIME_OF_NIGHT_TOLERANCE_GAMES ) * self::TIME_OF_NIGHT_COST_PER_GAME;
+			$cost += max( 0.0, $over - self::TIME_OF_NIGHT_TOLERANCE_GAMES ) * $this->weighted( self::TIME_OF_NIGHT_COST_PER_GAME, 'time_of_night' );
 		}
 		foreach ( array( 'first', 'last' ) as $edge ) {
 			if ( $position[ $edge ] ) {
 				$over  = ( $counts[ $edge ] + 1 ) - $games * $this->night_share[ $edge ];
-				$cost += max( 0.0, $over - self::TIME_OF_NIGHT_TOLERANCE_GAMES ) * self::EXTREME_SLOT_COST_PER_GAME;
+				$cost += max( 0.0, $over - self::TIME_OF_NIGHT_TOLERANCE_GAMES ) * $this->weighted( self::EXTREME_SLOT_COST_PER_GAME, 'time_of_night' );
 			}
 		}
 		return $cost;
@@ -461,7 +479,7 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 		$deviation = abs( $current_games_for_day - $target_games_for_day );
 
 		// Convert deviation to cost (higher deviation = higher cost)
-		return $deviation * self::DAY_BALANCE_COST_PER_GAME_DEVIATION;
+		return $deviation * $this->weighted( self::DAY_BALANCE_COST_PER_GAME_DEVIATION, 'day_balance' );
 	}
 
 	/**
