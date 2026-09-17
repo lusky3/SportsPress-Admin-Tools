@@ -520,7 +520,23 @@ button.splm-stat-tile:focus-visible { outline: 2px solid var(--splm-focus); outl
 .splm-modal input[type="date"],
 .splm-modal input[type="time"],
 .splm-modal input[type="text"],
-.splm-modal input[type="number"] { width: 100%; padding: 0.5rem; border: 1px solid var(--splm-border-strong); border-radius: 4px; }
+.splm-modal input[type="number"],
+.splm-modal textarea {
+	width: 100%;
+	padding: 0.5rem;
+	border: 1px solid var(--splm-border-strong);
+	border-radius: 4px;
+	/* A <textarea> was never covered by this rule until now, so it rendered
+	   at its browser-default intrinsic size (~152x47px) and, being narrow,
+	   sat inline next to the label's <span> instead of wrapping below it --
+	   the single-line inputs above only look "stacked" because their
+	   width:100% forces them onto their own line the same way this now does.
+	   border-box keeps the declared 100% width from overflowing once padding
+	   and the border are added on top, matching the other form controls. */
+	box-sizing: border-box;
+	font-family: inherit;
+	resize: vertical;
+}
 .splm-modal p { margin: 0.5rem 0; }
 .splm-checkbox { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem; }
 .splm-checkbox input { width: auto; }

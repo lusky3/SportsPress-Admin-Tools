@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.3.6
+Stable tag: 1.3.7
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,6 +48,9 @@ WooCommerce is optional. Without it, fee tracking can be configured for manual e
 CSV files with `Team` and `Name` columns (both required). Each row maps a player Name to a Team; rows missing either value are skipped.
 
 == Changelog ==
+
+= 1.3.7 =
+* Fix: the offer message textarea added in 1.3.6 was never covered by the modal's form-control styling, so it rendered at its tiny browser-default size and sat inline next to its own label instead of below it. It now matches the claim-window field: full modal width, same padding, label stacked above.
 
 = 1.3.6 =
 * New: waitlist notifications can now be turned off entirely (a master switch) or narrowed to only the categories you want (offer sent, claimed, expired, withdrawn, removed) -- both default to "everything on" so upgrading changes nothing until you visit Settings.
