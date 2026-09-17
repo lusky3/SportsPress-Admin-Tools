@@ -253,9 +253,15 @@ class SPLM_Waitlist_REST {
 			// Length is validated by SPLM_Waitlist_Offer::validate_offer_message()
 			// itself, matching how the 'restrictions' arg leaves its own length
 			// check to set_restrictions() rather than duplicating it here.
+			// validate_callback is required despite the declared 'string' type:
+			// per the 'target_product_id' note above, a sanitize_callback with
+			// no validate_callback suppresses core's own type check, so a
+			// non-string message would reach sanitize_textarea_field()
+			// unvalidated instead of being rejected with a 400.
 			'message' => array(
 				'required'          => false,
 				'type'              => 'string',
+				'validate_callback' => 'rest_validate_request_arg',
 				'sanitize_callback' => 'sanitize_textarea_field',
 			),
 		);

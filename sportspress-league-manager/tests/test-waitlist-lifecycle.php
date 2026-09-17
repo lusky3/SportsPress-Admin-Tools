@@ -575,6 +575,7 @@ assert_test( 'queued' === $unwind['status'], 'unwinding returns the row to queue
 assert_test( null === $unwind['claim_token'], 'unwinding clears the token so the dead link cannot be used' );
 assert_test( null === $unwind['expires_at'], 'unwinding clears the deadline' );
 assert_test( null === $unwind['offered_at'], 'unwinding clears the offer time' );
+assert_test( '' === $unwind['offer_message'], 'unwinding clears the offer message -- unlike dispatched_by, this is customer-facing content nobody actually received' );
 
 echo "\n=== claim_url() ===\n\n";
 

@@ -171,7 +171,10 @@ class SPLM_Waitlist_Offer {
 	 *
 	 * Used when the notification email fails to send. The person keeps their
 	 * place in the queue and the token is cleared so the link that was never
-	 * delivered cannot later be used.
+	 * delivered cannot later be used. offer_message is cleared for the same
+	 * reason: unlike dispatched_by (just "who last acted", harmless if
+	 * stale), this is customer-facing content -- leaving it would show a
+	 * queued row's message as if it had actually reached someone.
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
@@ -179,10 +182,11 @@ class SPLM_Waitlist_Offer {
 	 */
 	public static function unwind_updates(): array {
 		return array(
-			'status'      => SPLM_Waitlist_Database::STATUS_QUEUED,
-			'claim_token' => null,
-			'offered_at'  => null,
-			'expires_at'  => null,
+			'status'        => SPLM_Waitlist_Database::STATUS_QUEUED,
+			'claim_token'   => null,
+			'offered_at'    => null,
+			'expires_at'    => null,
+			'offer_message' => '',
 		);
 	}
 
