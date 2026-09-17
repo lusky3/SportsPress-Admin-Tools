@@ -13,7 +13,7 @@ on:
       - '**/package.json'
       - '**/package-lock.json'
       # Policy files decide what the scan suppresses; editing one must re-run it.
-      - '**/.snyk'
+      - '**/osv-scanner.toml'
       - '.github/workflows/security-scan.yml'
   pull_request:
     branches: [main]
@@ -27,7 +27,7 @@ on:
       - '**/package.json'
       - '**/package-lock.json'
       # Policy files decide what the scan suppresses; editing one must re-run it.
-      - '**/.snyk'
+      - '**/osv-scanner.toml'
       - '.github/workflows/security-scan.yml'
   schedule:
     - cron: "0 0 * * 0" # Run weekly on Sundays (full scan regardless of paths)
@@ -42,67 +42,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  snyk-code:
-    runs-on: ubuntu-latest
-    # Hoisted to job level so the steps below can test whether it is set.
-    # GitHub does NOT expose Actions secrets to workflows triggered by
-    # Dependabot pull requests — those runs read the separate *Dependabot*
-    # secrets store, which is empty here. Without the guards below, every
-    # Dependabot PR fails these steps with "Authentication error (SNYK-0005)",
-    # which looks like a vulnerability finding and is not one.
-    #
-    # BETTER FIX, needs a repo admin: add SNYK_TOKEN under
-    # Settings -> Secrets and variables -> Dependabot. Then these steps run on
-    # dependency PRs too — which is where an SCA scan is most valuable — and
-    # the guards become inert rather than load-bearing.
-    env:
-      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+  # Replaces the former snyk-code job (Snyk Code SAST + Snyk SCA against the
+  # league-manager npm tree). Snyk Code SAST is dropped without replacement --
+  # CodeQL, Semgrep and Codacy already cover that role in this repo's other
+  # workflows. The SCA role moves to OSV-Scanner: free, no API token or
+  # quota, so unlike Snyk it doesn't skip on Dependabot PRs (no Actions
+  # secrets available there) and doesn't run out of monthly test budget.
+  #
+  # Two jobs, not one, because OSV-Scanner ships this as two purpose-built
+  # reusable workflows: the "-pr" variant diffs against the target branch and
+  # only fails on vulnerabilities the PR newly introduces; the plain variant
+  # does a full scan and uploads SARIF to the Security > Code Scanning tab,
+  # which needs `security-events: write` and only makes sense outside a PR
+  # diff. This mirrors Snyk's old push/PR/weekly-cron coverage without
+  # forcing one workflow to do both jobs.
+  osv-scanner-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      actions: read
+      security-events: write
+      contents: read
+    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@a345acffa64b0eaede81a3d9aae6141214d9c8fc" # v2.6.0
+    with:
+      scan-args: |-
+        --lockfile=./sportspress-league-manager/package-lock.json
 
-      # snyk/actions is a monorepo; the root SHA is not a runnable action.
-      # snyk/actions/node@<sha> is the right shape for both SAST (code test)
-      # and SCA (test). We use a single language entry point and switch
-      # behavior via the `command` arg.
-      - name: Run Snyk Code (SAST)
-        if: env.SNYK_TOKEN != ''
-        uses: snyk/actions/node@9adf32b1121593767fc3c057af55b55db032dc04 # v1.0.0
-        with:
-          command: code test
-          args: --severity-threshold=high
-
-      # Snyk SCA (`test`) resolves the dependency graph from node_modules, so the
-      # tree must be installed first — otherwise it errors with SNYK-CLI-0000
-      # "Missing node_modules folder".
-      - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '24'
-
-      - name: Install league-manager dependencies
-        working-directory: sportspress-league-manager
-        run: npm ci
-
-      - name: Run Snyk SCA against the league-manager npm tree
-        if: env.SNYK_TOKEN != ''
-        uses: snyk/actions/node@9adf32b1121593767fc3c057af55b55db032dc04 # v1.0.0
-        with:
-          command: test
-          args: --severity-threshold=high --file=sportspress-league-manager/package.json
-
-      # A skipped scan must not read as a clean scan. Without this the job goes
-      # green having tested nothing, which is more dangerous than the auth
-      # failure it replaces: green is what people trust.
-      - name: Warn when Snyk was skipped
-        if: env.SNYK_TOKEN == ''
-        run: |
-          echo "::warning title=Snyk did not run::SNYK_TOKEN is unavailable, so \
-          neither the SAST nor the SCA scan ran for this event. Dependabot pull \
-          requests cannot read Actions secrets. This branch is still covered by \
-          the push-to-main run and the weekly cron, and npm-audit ran normally. \
-          To scan dependency PRs at PR time, add SNYK_TOKEN under Settings -> \
-          Secrets and variables -> Dependabot."
+  osv-scanner-scheduled:
+    if: github.event_name != 'pull_request'
+    permissions:
+      actions: read
+      security-events: write
+      contents: read
+    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@a345acffa64b0eaede81a3d9aae6141214d9c8fc" # v2.6.0
+    with:
+      scan-args: |-
+        --lockfile=./sportspress-league-manager/package-lock.json
 
   npm-audit:
     runs-on: ubuntu-latest

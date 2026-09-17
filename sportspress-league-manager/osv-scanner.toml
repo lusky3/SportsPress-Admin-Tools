@@ -1,0 +1,37 @@
+# OSV-Scanner config — https://google.github.io/osv-scanner/configuration/
+#
+# OSV-Scanner discovers this file the same way Snyk's own policy file
+# (formerly sportspress-league-manager/.snyk, now removed) did: it looks for
+# `osv-scanner.toml` in the SAME DIRECTORY as the lockfile being scanned, and
+# does not walk up or propagate to child directories. Keep this file next to
+# package-lock.json, not at the repo root.
+#
+# Every entry MUST carry an `ignoreUntil` date. An ignore that never lapses is
+# a decision nobody revisits; a dated one forces the question again on a known
+# day. When an entry expires the scan turns red again -- that is the point,
+# and the fix is to re-evaluate, not to extend it reflexively.
+
+[[IgnoredVulns]]
+id = "GHSA-vwc7-r8mq-g2x9" # aka CVE-2026-76845; was SNYK-JS-ADMZIP-19276676 under the old Snyk policy
+ignoreUntil = 2026-12-03
+reason = """
+Symlink Attack in adm-zip@0.6.0, reachable only through @wordpress/scripts
+(wp-env). No upgrade or patch exists at any released version, so this cannot
+be resolved by bumping a dependency.
+
+Not shipped: adm-zip is dev-only (dev: true in package-lock.json), and
+.distignore strips /node_modules, package.json and package-lock.json from the
+packaged plugin -- the distributed artifact is the compiled build/ bundle. The
+production dependency set is three @dnd-kit packages, which is why the
+production-only npm-audit job passes while this scan does not.
+
+Not exploitable here: the attack requires an attacker-controlled symlink
+already planted inside the extraction directory before extraction runs.
+adm-zip is invoked by wp-env against archives it downloads from
+WordPress.org during local environment setup, never against user-supplied
+input, and never at runtime on a WordPress site.
+
+Revisit on expiry: check whether @wordpress/scripts has moved off adm-zip or
+a patched release exists. If neither, re-date this entry with a fresh
+assessment rather than removing the expiry.
+"""
