@@ -76,6 +76,7 @@ run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-day-weights-idem
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-schedule-preview-time-column.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-config-name-and-id.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-admin-config-id-resolution.php"
+run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-admin-weight-sliders.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-create-postseason-config-ajax.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-venue-date-overrides.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-placeholder-team-import.php"
