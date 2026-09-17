@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.3.5
+Stable tag: 1.3.6
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,6 +48,10 @@ WooCommerce is optional. Without it, fee tracking can be configured for manual e
 CSV files with `Team` and `Name` columns (both required). Each row maps a player Name to a Team; rows missing either value are skipped.
 
 == Changelog ==
+
+= 1.3.6 =
+* New: waitlist notifications can now be turned off entirely (a master switch) or narrowed to only the categories you want (offer sent, claimed, expired, withdrawn, removed) -- both default to "everything on" so upgrading changes nothing until you visit Settings.
+* New: an offer can carry an optional message, included in both the entrant's claim email and the internal notification, and shown as an "Offer Message" column (hidden by default, like Dispatched By and Restrictions) in the Waitlist table.
 
 = 1.3.5 =
 * Fix: loading a real, already-in-use schedule configuration that predated the "Advanced" restrictions section (back-to-back/overlap pairs, inter-division limits, venue preferences) crashed the entire Schedule Generator wizard blank as soon as its Rinks & Times step rendered -- cfg.advanced was simply undefined for such a config, and the very first read of it threw. Every config loaded from the server is now normalized against the current defaults, so an older config gets today's shape for whatever it's missing without losing any of its own data.

@@ -238,6 +238,79 @@ assert_test( false !== strpos( $state->mail[0][2], 'Dispatched by: (unknown user
 
 $state->options = array();
 
+echo "\n=== send(): the master on/off switch ===\n\n";
+
+// Absent (the state every install starts in, upgraded or fresh) reads as
+// enabled -- this class already sent on every event before the switch
+// existed, and upgrading must not go silent without an admin choosing that.
+$state->options = array( SPLM_Waitlist_Notify::OPTION => 'ops@example.test' );
+$state->mail     = array();
+assert_test( true === $n::send( notify_row(), $n::EVENT_OFFER_CLAIMED ), 'with the switch option entirely absent, send() still sends (backward-compatible default)' );
+
+$state->options = array(
+	SPLM_Waitlist_Notify::OPTION         => 'ops@example.test',
+	SPLM_Waitlist_Notify::OPTION_ENABLED => 0,
+);
+$state->mail     = array();
+assert_test( false === $n::send( notify_row(), $n::EVENT_OFFER_CLAIMED ), 'the master switch off no-ops even with a valid address configured' );
+assert_test( array() === $state->mail, 'wp_mail() is never called while the master switch is off' );
+
+$state->options = array(
+	SPLM_Waitlist_Notify::OPTION         => 'ops@example.test',
+	SPLM_Waitlist_Notify::OPTION_ENABLED => 1,
+);
+$state->mail     = array();
+assert_test( true === $n::send( notify_row(), $n::EVENT_OFFER_CLAIMED ), 'the master switch explicitly on sends normally' );
+
+echo "\n=== send(): the per-category toggle ===\n\n";
+
+$state->options = array( SPLM_Waitlist_Notify::OPTION => 'ops@example.test' );
+$state->mail     = array();
+assert_test( true === $n::send( notify_row(), $n::EVENT_OFFER_WITHDRAWN ), 'with the events option entirely absent, every event still sends (backward-compatible default)' );
+
+$state->options = array(
+	SPLM_Waitlist_Notify::OPTION        => 'ops@example.test',
+	SPLM_Waitlist_Notify::OPTION_EVENTS => array( $n::EVENT_OFFER_CLAIMED, $n::EVENT_OFFER_EXPIRED ),
+);
+
+$state->mail = array();
+assert_test( true === $n::send( notify_row(), $n::EVENT_OFFER_CLAIMED ), 'an event present in the enabled list sends' );
+
+$state->mail = array();
+assert_test( false === $n::send( notify_row(), $n::EVENT_OFFER_DISPATCHED ), 'an event absent from the enabled list no-ops' );
+assert_test( array() === $state->mail, 'wp_mail() is never called for a disabled category' );
+
+$state->options = array(
+	SPLM_Waitlist_Notify::OPTION        => 'ops@example.test',
+	SPLM_Waitlist_Notify::OPTION_EVENTS => array(),
+);
+$state->mail     = array();
+assert_test( false === $n::send( notify_row(), $n::EVENT_OFFER_CLAIMED ), 'an explicitly empty enabled-events list (every category unchecked) silences everything' );
+
+$state->options = array();
+
+echo "\n=== send(): the offer message line ===\n\n";
+
+$state->options = array( SPLM_Waitlist_Notify::OPTION => 'ops@example.test' );
+
+$state->mail = array();
+$n::send( notify_row(), $n::EVENT_OFFER_DISPATCHED );
+assert_test( false === strpos( $state->mail[0][2], 'Offer message' ), 'a row with no offer_message property carries no message line' );
+
+$state->mail = array();
+$n::send( notify_row( array( 'offer_message' => '' ) ), $n::EVENT_OFFER_DISPATCHED );
+assert_test( false === strpos( $state->mail[0][2], 'Offer message' ), 'an empty offer_message carries no message line' );
+
+$state->mail = array();
+$n::send( notify_row( array( 'offer_message' => 'See you at the rink!' ) ), $n::EVENT_OFFER_DISPATCHED );
+assert_test( false !== strpos( $state->mail[0][2], 'Offer message: See you at the rink!' ), 'a non-empty offer_message is included on the dispatch event' );
+
+$state->mail = array();
+$n::send( notify_row( array( 'offer_message' => 'See you at the rink!' ) ), $n::EVENT_OFFER_CLAIMED, array( 'order_id' => 1 ) );
+assert_test( false !== strpos( $state->mail[0][2], 'Offer message: See you at the rink!' ), 'the message persists on later events too, same as dispatched_by' );
+
+$state->options = array();
+
 echo "\n";
 echo "Passed: {$passed}\n";
 echo "Failed: {$failed}\n";

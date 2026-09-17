@@ -243,12 +243,20 @@ class SPLM_Waitlist_REST {
 				'type'              => 'integer',
 				'sanitize_callback' => 'absint',
 			),
-			'hours' => array(
+			'hours'   => array(
 				'required'          => false,
 				'type'              => 'integer',
 				'default'           => SPLM_Waitlist_Offer::DEFAULT_HOURS,
 				'validate_callback' => array( __CLASS__, 'validate_hours' ),
 				'sanitize_callback' => 'absint',
+			),
+			// Length is validated by SPLM_Waitlist_Offer::validate_offer_message()
+			// itself, matching how the 'restrictions' arg leaves its own length
+			// check to set_restrictions() rather than duplicating it here.
+			'message' => array(
+				'required'          => false,
+				'type'              => 'string',
+				'sanitize_callback' => 'sanitize_textarea_field',
 			),
 		);
 	}
@@ -445,6 +453,7 @@ class SPLM_Waitlist_REST {
 			'resolved_order_id'   => $row->resolved_order_id ? (int) $row->resolved_order_id : null,
 			'dispatched_by_name'  => self::dispatcher_name( (int) ( $row->dispatched_by ?? 0 ) ),
 			'restrictions'        => (string) ( $row->restrictions ?? '' ),
+			'offer_message'       => (string) ( $row->offer_message ?? '' ),
 			'created_at'          => (string) $row->created_at,
 		);
 	}
@@ -627,7 +636,7 @@ class SPLM_Waitlist_REST {
 	 * @return array|WP_Error
 	 */
 	public function offer_spot( $request ) {
-		return SPLM_Waitlist_Offer::offer( (int) $request->get_param( 'id' ), $request->get_param( 'hours' ) );
+		return SPLM_Waitlist_Offer::offer( (int) $request->get_param( 'id' ), $request->get_param( 'hours' ), $request->get_param( 'message' ) );
 	}
 
 	/**

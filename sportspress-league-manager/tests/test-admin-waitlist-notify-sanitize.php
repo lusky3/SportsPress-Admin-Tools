@@ -41,9 +41,18 @@ function is_email( $email ) {
 function sanitize_email( $email ) { // phpcs:ignore
 	return strtolower( trim( (string) $email ) );
 }
+function sanitize_key( $key ) { // phpcs:ignore
+	return preg_replace( '/[^a-z0-9_\-]/', '', strtolower( (string) $key ) );
+}
 
 class SPLM_Waitlist_Notify {
-	const OPTION = 'splm_waitlist_notify_email';
+	const OPTION         = 'splm_waitlist_notify_email';
+	const OPTION_ENABLED = 'splm_waitlist_notify_enabled';
+	const OPTION_EVENTS  = 'splm_waitlist_notify_events';
+
+	public static function all_events(): array {
+		return array( 'offer_dispatched', 'offer_claimed', 'offer_expired', 'offer_withdrawn', 'entry_removed' );
+	}
 }
 
 $passed = 0;
@@ -99,6 +108,35 @@ assert_test(
 	'a non-string submission preserves the stored address rather than wiping it'
 );
 assert_test( array() === $settings_errors, 'a non-string submission raises no settings error, mirroring the FreeScout secret\'s own guard' );
+
+echo "\n=== sanitize_waitlist_notify_events() ===\n\n";
+
+assert_test(
+	array() === SPLM_Admin::sanitize_waitlist_notify_events( null ),
+	'every checkbox unchecked (options.php passes null) is stored as an empty array, not the full default set'
+);
+
+assert_test(
+	array() === SPLM_Admin::sanitize_waitlist_notify_events( 'offer_claimed' ),
+	'a non-array submission (a stray scalar) is treated the same as none checked'
+);
+
+$events = SPLM_Admin::sanitize_waitlist_notify_events( array( 'offer_claimed', 'offer_expired' ) );
+assert_test(
+	array( 'offer_claimed', 'offer_expired' ) === $events,
+	'a submission of valid event keys is kept, in order'
+);
+
+$events = SPLM_Admin::sanitize_waitlist_notify_events( array( 'offer_claimed', 'not_a_real_event', 'DROP TABLE' ) );
+assert_test(
+	array( 'offer_claimed' ) === $events,
+	'an unrecognised key is dropped rather than stored, so a malformed request cannot inject an arbitrary event name'
+);
+
+assert_test(
+	array() === SPLM_Admin::sanitize_waitlist_notify_events( array() ),
+	'an explicitly empty array submission is stored as empty, same as null'
+);
 
 echo "\n";
 echo "Passed: {$passed}\n";
