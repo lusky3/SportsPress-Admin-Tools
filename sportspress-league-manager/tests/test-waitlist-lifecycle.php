@@ -45,6 +45,10 @@ function sanitize_text_field( $text ) {
 	return trim( (string) $text );
 }
 
+function sanitize_textarea_field( $text ) { // phpcs:ignore
+	return trim( (string) $text );
+}
+
 /**
  * $name (core's 1st positional arg) is never consulted by this stub -- every
  * caller in this harness gets its default back unconditionally -- so it is
@@ -545,6 +549,24 @@ assert_test( 1 === preg_match( '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $updat
 assert_test( null === $updates['resolved_order_id'], 'a fresh offer clears any resolved order from a previous cycle' );
 assert_test( 0 === $updates['dispatched_by'], 'dispatched_by defaults to 0 when omitted, so the direct pure-function tests above are unaffected' );
 assert_test( 9 === $o::offer_updates( $token_a, $expiry, 9 )['dispatched_by'], 'dispatched_by is stored when given explicitly' );
+assert_test( '' === $updates['offer_message'], 'offer_message defaults to empty when omitted' );
+assert_test( 'See you there!' === $o::offer_updates( $token_a, $expiry, 9, 'See you there!' )['offer_message'], 'offer_message is stored when given explicitly' );
+
+echo "\n=== validate_offer_message() ===\n\n";
+
+assert_test( '' === $o::validate_offer_message( null ), 'null (omitted) validates to an empty string' );
+assert_test( '' === $o::validate_offer_message( '' ), 'an empty string validates to an empty string' );
+assert_test( 'Hello there' === $o::validate_offer_message( '  Hello there  ' ), 'a message is trimmed' );
+
+$max_length = $o::MAX_OFFER_MESSAGE_LENGTH;
+$at_limit   = str_repeat( 'a', $max_length );
+$over_limit = str_repeat( 'a', $max_length + 1 );
+assert_test( $at_limit === $o::validate_offer_message( $at_limit ), 'a message exactly at the length limit is accepted' );
+
+$too_long = $o::validate_offer_message( $over_limit );
+assert_test( is_wp_error( $too_long ), 'a message over the length limit is refused' );
+assert_test( 'splm_waitlist_offer_message_too_long' === $too_long->get_error_code(), 'the refusal carries its own error code' );
+assert_test( 400 === $too_long->get_error_data()['status'], 'the refusal is a 400' );
 
 echo "\n=== unwind_updates() ===\n\n";
 
@@ -553,6 +575,7 @@ assert_test( 'queued' === $unwind['status'], 'unwinding returns the row to queue
 assert_test( null === $unwind['claim_token'], 'unwinding clears the token so the dead link cannot be used' );
 assert_test( null === $unwind['expires_at'], 'unwinding clears the deadline' );
 assert_test( null === $unwind['offered_at'], 'unwinding clears the offer time' );
+assert_test( '' === $unwind['offer_message'], 'unwinding clears the offer message -- unlike dispatched_by, this is customer-facing content nobody actually received' );
 
 echo "\n=== claim_url() ===\n\n";
 
@@ -689,6 +712,35 @@ assert_test( 'ops@example.test' === $state->mail[1][0], 'the shared notification
 assert_test( false !== strpos( $state->mail[1][1], 'Waitlist offer sent' ), 'the shared notification carries the dispatch label' );
 assert_test( false !== strpos( $state->mail[1][2], 'Dispatched by: Convener 7' ), 'the shared notification names the dispatching convener' );
 
+$wpdb->rows              = array(
+	72 => (object) array(
+		'id'                => 72,
+		'status'            => 'queued',
+		'target_product_id' => 11,
+		'name'              => 'Third Player',
+		'email'             => 'third@example.com',
+		'season'            => 'S2027',
+		'position'          => 'player',
+		'claim_token'       => null,
+	),
+);
+$wpdb->update_calls      = array();
+$state->mail             = array();
+$state->scheduled_events = array();
+$state->option_overrides = array( SPLM_Waitlist_Notify::OPTION => 'ops@example.test' );
+
+$offer_result3 = $o::offer( 72, 24, '  See you at the rink!  ' );
+
+assert_test( is_array( $offer_result3 ) && true === $offer_result3['success'], 'offer() succeeds with an optional message supplied' );
+assert_test( 'See you at the rink!' === ( $wpdb->update_calls[0]['data']['offer_message'] ?? null ), 'the trimmed message is written to the row' );
+assert_test( false !== strpos( $state->mail[0][2], 'A message from the league:' ), 'the entrant email includes the message heading' );
+assert_test( false !== strpos( $state->mail[0][2], 'See you at the rink!' ), 'the entrant email includes the message text' );
+assert_test( false !== strpos( $state->mail[1][2], 'Offer message: See you at the rink!' ), 'the shared notification includes the message too' );
+
+$offer_message_too_long = $o::offer( 72, 24, str_repeat( 'x', $o::MAX_OFFER_MESSAGE_LENGTH + 1 ) );
+assert_test( is_wp_error( $offer_message_too_long ), 'offer() refuses an over-length message before touching the lock or the database' );
+assert_test( 'splm_waitlist_offer_message_too_long' === $offer_message_too_long->get_error_code(), 'the refusal carries validate_offer_message()\'s own error code' );
+
 SPAT_Lock::$force_lock_held = true; // restore: nothing later in this file should see a runnable lock.
 $state->option_overrides    = array(); // restore to unconfigured for everything after.
 
@@ -745,15 +797,18 @@ assert_test( 4321 === $shaped['source_order_id'], 'the waitlist (originating) or
 assert_test( null === $shaped['resolved_order_id'], 'a null resolved_order_id passes through as null, not 0' );
 assert_test( '' === $shaped['dispatched_by_name'], 'a row never offered (no dispatched_by property) reports an empty dispatcher name' );
 assert_test( '' === $shaped['restrictions'], 'a row with no restrictions property reports an empty string' );
+assert_test( '' === $shaped['offer_message'], 'a row with no offer_message property reports an empty string' );
 
-$dispatched_row                  = clone $response_row;
-$dispatched_row->dispatched_by   = 7;
+$dispatched_row                    = clone $response_row;
+$dispatched_row->dispatched_by     = 7;
 $dispatched_row->resolved_order_id = 9001;
-$dispatched_row->restrictions     = 'Wants to play with Jane Doe';
-$dispatched_shaped                = $r::row_to_response( $dispatched_row );
+$dispatched_row->restrictions      = 'Wants to play with Jane Doe';
+$dispatched_row->offer_message     = 'See you at the rink!';
+$dispatched_shaped                 = $r::row_to_response( $dispatched_row );
 assert_test( 'Convener 7' === $dispatched_shaped['dispatched_by_name'], 'a dispatched row resolves the convener\'s display name' );
 assert_test( 9001 === $dispatched_shaped['resolved_order_id'], 'a non-null resolved_order_id is exposed as an int' );
 assert_test( 'Wants to play with Jane Doe' === $dispatched_shaped['restrictions'], 'the restrictions note is exposed verbatim' );
+assert_test( 'See you at the rink!' === $dispatched_shaped['offer_message'], 'the offer message is exposed verbatim' );
 
 // The token must never reach the dashboard. Anyone who can read the queue
 // could otherwise claim any spot on someone else's behalf, and the dashboard

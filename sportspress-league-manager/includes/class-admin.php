@@ -298,8 +298,26 @@ class SPLM_Admin {
 			SPLM_Waitlist_Notify::OPTION,
 			array( 'sanitize_callback' => array( __CLASS__, 'sanitize_waitlist_notify_email' ) )
 		);
+		register_setting(
+			'splm_backend_settings',
+			SPLM_Waitlist_Notify::OPTION_ENABLED,
+			array(
+				'sanitize_callback' => 'absint',
+				'default'           => 1,
+			)
+		);
+		register_setting(
+			'splm_backend_settings',
+			SPLM_Waitlist_Notify::OPTION_EVENTS,
+			array(
+				'sanitize_callback' => array( __CLASS__, 'sanitize_waitlist_notify_events' ),
+				'default'           => SPLM_Waitlist_Notify::all_events(),
+			)
+		);
 
+		$this->add_field( SPLM_Waitlist_Notify::OPTION_ENABLED, __( 'Enable Notifications', 'sportspress-league-manager' ), array( $this, 'render_waitlist_notify_enabled_field' ), 'splm_waitlist_notify_section' );
 		$this->add_field( SPLM_Waitlist_Notify::OPTION, __( 'Notification Email', 'sportspress-league-manager' ), array( $this, 'render_waitlist_notify_email_field' ), 'splm_waitlist_notify_section' );
+		$this->add_field( SPLM_Waitlist_Notify::OPTION_EVENTS, __( 'Categories', 'sportspress-league-manager' ), array( $this, 'render_waitlist_notify_events_field' ), 'splm_waitlist_notify_section' );
 	}
 
 	private function add_field( $id, $title, $callback, $section = 'splm_backend_section' ) {
@@ -795,10 +813,59 @@ class SPLM_Admin {
 	}
 
 	/**
+	 * Sanitize the waitlist notification category checkboxes.
+	 *
+	 * A submission with every box unchecked arrives here as null, per
+	 * options.php's "absent from POST" handling noted above add_field() --
+	 * that is a deliberate "send nothing", not an error, so it returns an
+	 * empty array rather than falling back to "every category".
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param mixed $submitted Raw POSTed value.
+	 * @return string[]
+	 */
+	public static function sanitize_waitlist_notify_events( $submitted ): array {
+		if ( ! is_array( $submitted ) ) {
+			return array();
+		}
+
+		return array_values( array_intersect( array_map( 'sanitize_key', $submitted ), SPLM_Waitlist_Notify::all_events() ) );
+	}
+
+	/**
 	 * Renders the shared waitlist notification address field.
 	 */
 	public function render_waitlist_notify_email_field() {
 		echo '<input type="email" name="' . esc_attr( SPLM_Waitlist_Notify::OPTION ) . '" value="' . esc_attr( get_option( SPLM_Waitlist_Notify::OPTION, '' ) ) . '" class="regular-text" />';
 		echo '<p class="description">' . esc_html__( 'Leave blank to disable. When set, every waitlist offer, claim, expiry, withdrawal and removal sends a copy here.', 'sportspress-league-manager' ) . '</p>';
+	}
+
+	/**
+	 * Master on/off switch for waitlist notifications, independent of which
+	 * categories below are checked.
+	 */
+	public function render_waitlist_notify_enabled_field() {
+		echo '<input type="checkbox" name="' . esc_attr( SPLM_Waitlist_Notify::OPTION_ENABLED ) . '" value="1" ' . checked( (int) get_option( SPLM_Waitlist_Notify::OPTION_ENABLED, 1 ), 1, false ) . '/>';
+		echo '<p class="description">' . esc_html__( 'Turning this off silences every waitlist notification below, regardless of which categories are checked.', 'sportspress-league-manager' ) . '</p>';
+	}
+
+	/**
+	 * Per-category checkboxes: which waitlist status changes send a copy to
+	 * the address above. Defaults to every category checked so upgrading
+	 * never silently turns off a live install's notifications -- see
+	 * SPLM_Waitlist_Notify::OPTION_EVENTS.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	public function render_waitlist_notify_events_field() {
+		$selected = get_option( SPLM_Waitlist_Notify::OPTION_EVENTS, SPLM_Waitlist_Notify::all_events() );
+		$selected = is_array( $selected ) ? $selected : array();
+
+		foreach ( SPLM_Waitlist_Notify::labels() as $event => $label ) {
+			echo '<label style="display:block;"><input type="checkbox" name="' . esc_attr( SPLM_Waitlist_Notify::OPTION_EVENTS ) . '[]" value="' . esc_attr( $event ) . '" '
+				. checked( in_array( $event, $selected, true ), true, false ) . '/> ' . esc_html( $label ) . '</label>';
+		}
+		echo '<p class="description">' . esc_html__( 'Which status changes send a copy. Unchecking all of them is the same as turning off the switch above.', 'sportspress-league-manager' ) . '</p>';
 	}
 }

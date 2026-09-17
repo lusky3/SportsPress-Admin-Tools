@@ -42,6 +42,45 @@ class SPLM_Waitlist_Offer {
 	const MAX_HOURS     = 720;
 
 	/**
+	 * Matches the offer_message varchar(500) column: refusing a longer
+	 * message here gives a clear error instead of MySQL silently truncating
+	 * the stored value, matching set_restrictions()'s own precedent.
+	 */
+	const MAX_OFFER_MESSAGE_LENGTH = 500;
+
+	/**
+	 * Validate and sanitize an optional message to include with an offer.
+	 *
+	 * Uses sanitize_textarea_field(), not sanitize_text_field(): unlike the
+	 * single-line restrictions note, this is entrant-facing prose the
+	 * convener may reasonably want to break into more than one line.
+	 *
+	 * @param mixed $message Raw request value, or null/'' for none.
+	 * @return string|WP_Error '' when omitted or blank.
+	 */
+	public static function validate_offer_message( $message ) {
+		if ( null === $message ) {
+			return '';
+		}
+
+		$message = trim( sanitize_textarea_field( (string) $message ) );
+
+		if ( mb_strlen( $message ) > self::MAX_OFFER_MESSAGE_LENGTH ) {
+			return new WP_Error(
+				'splm_waitlist_offer_message_too_long',
+				sprintf(
+					/* translators: %d: maximum character count. */
+					__( 'The offer message must be %d characters or fewer.', 'sportspress-league-manager' ),
+					self::MAX_OFFER_MESSAGE_LENGTH
+				),
+				array( 'status' => 400 )
+			);
+		}
+
+		return $message;
+	}
+
+	/**
 	 * Validate a requested offer window.
 	 *
 	 * @param mixed $hours Requested hours, or null for the default.
@@ -112,9 +151,10 @@ class SPLM_Waitlist_Offer {
 	 * @param string $token         Claim token.
 	 * @param array  $expiry        Output of SPLM_Waitlist_Database::expiry_from_hours().
 	 * @param int    $dispatched_by WP user id of the convener making this offer.
+	 * @param string $offer_message Optional message to include with the offer; '' for none.
 	 * @return array
 	 */
-	public static function offer_updates( $token, array $expiry, $dispatched_by = 0 ): array {
+	public static function offer_updates( $token, array $expiry, $dispatched_by = 0, $offer_message = '' ): array {
 		return array(
 			'status'            => SPLM_Waitlist_Database::STATUS_OFFERED,
 			'claim_token'       => (string) $token,
@@ -122,6 +162,7 @@ class SPLM_Waitlist_Offer {
 			'expires_at'        => (string) $expiry['expires_at'],
 			'resolved_order_id' => null,
 			'dispatched_by'     => (int) $dispatched_by,
+			'offer_message'     => (string) $offer_message,
 		);
 	}
 
@@ -130,7 +171,10 @@ class SPLM_Waitlist_Offer {
 	 *
 	 * Used when the notification email fails to send. The person keeps their
 	 * place in the queue and the token is cleared so the link that was never
-	 * delivered cannot later be used.
+	 * delivered cannot later be used. offer_message is cleared for the same
+	 * reason: unlike dispatched_by (just "who last acted", harmless if
+	 * stale), this is customer-facing content -- leaving it would show a
+	 * queued row's message as if it had actually reached someone.
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
@@ -138,10 +182,11 @@ class SPLM_Waitlist_Offer {
 	 */
 	public static function unwind_updates(): array {
 		return array(
-			'status'      => SPLM_Waitlist_Database::STATUS_QUEUED,
-			'claim_token' => null,
-			'offered_at'  => null,
-			'expires_at'  => null,
+			'status'        => SPLM_Waitlist_Database::STATUS_QUEUED,
+			'claim_token'   => null,
+			'offered_at'    => null,
+			'expires_at'    => null,
+			'offer_message' => '',
 		);
 	}
 
@@ -150,14 +195,20 @@ class SPLM_Waitlist_Offer {
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
-	 * @param int   $id    Row id.
-	 * @param mixed $hours Requested window, or null for the default.
+	 * @param int   $id      Row id.
+	 * @param mixed $hours   Requested window, or null for the default.
+	 * @param mixed $message Optional message to include with the offer, or null/'' for none.
 	 * @return array|WP_Error
 	 */
-	public static function offer( $id, $hours = null ) {
+	public static function offer( $id, $hours = null, $message = null ) {
 		$hours = self::validate_hours( $hours );
 		if ( is_wp_error( $hours ) ) {
 			return $hours;
+		}
+
+		$message = self::validate_offer_message( $message );
+		if ( is_wp_error( $message ) ) {
+			return $message;
 		}
 
 		$id = (int) $id;
@@ -186,8 +237,8 @@ class SPLM_Waitlist_Offer {
 		$result = SPAT_Lock::with(
 			'splm_waitlist_offer_' . $id,
 			60,
-			static function () use ( $id, $hours ) {
-				return self::offer_locked( $id, $hours );
+			static function () use ( $id, $hours, $message ) {
+				return self::offer_locked( $id, $hours, $message );
 			}
 		);
 
@@ -207,11 +258,12 @@ class SPLM_Waitlist_Offer {
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
-	 * @param int $id    Row id.
-	 * @param int $hours Validated window.
+	 * @param int    $id      Row id.
+	 * @param int    $hours   Validated window.
+	 * @param string $message Validated, sanitized offer message; '' for none.
 	 * @return array|WP_Error
 	 */
-	private static function offer_locked( $id, $hours ) {
+	private static function offer_locked( $id, $hours, $message = '' ) {
 		$row = self::offerable_row( $id );
 		if ( is_wp_error( $row ) ) {
 			return $row;
@@ -235,7 +287,7 @@ class SPLM_Waitlist_Offer {
 		if ( ! SPLM_Waitlist_Database::update_if_status(
 			$id,
 			$row->status,
-			self::offer_updates( $token, $expiry, $dispatched_by ),
+			self::offer_updates( $token, $expiry, $dispatched_by, $message ),
 			null !== $row->claim_token ? (string) $row->claim_token : null
 		) ) {
 			return new WP_Error( 'splm_waitlist_write_failed', __( 'Could not record the offer.', 'sportspress-league-manager' ), array( 'status' => 500 ) );
@@ -247,10 +299,12 @@ class SPLM_Waitlist_Offer {
 		// is already on $row, and the deadline is $expiry['expires_at'] in
 		// hand. A re-fetch here could return null for a row deleted between
 		// the update above and this point, and every consumer below would
-		// then dereference null unguarded. dispatched_by is set here for the
-		// same reason: the notify call below reads it straight off $row.
+		// then dereference null unguarded. dispatched_by and offer_message are
+		// set here for the same reason: the notify call below reads both
+		// straight off $row.
 		$row->expires_at    = $expiry['expires_at'];
 		$row->dispatched_by = $dispatched_by;
+		$row->offer_message = $message;
 
 		if ( ! self::send_offer_email( $row, $token ) ) {
 			return self::unwind_unsent_offer( $id, $token );
@@ -429,6 +483,15 @@ class SPLM_Waitlist_Offer {
 			$deadline,
 			SPLM_Waitlist_Claim::claim_url( $token )
 		);
+
+		$offer_message = isset( $row->offer_message ) ? trim( (string) $row->offer_message ) : '';
+		if ( '' !== $offer_message ) {
+			$body .= "\n" . sprintf(
+				/* translators: %s: personalized message from the convener. */
+				__( "A message from the league:\n\n%s\n", 'sportspress-league-manager' ),
+				$offer_message
+			);
+		}
 
 		$sent = wp_mail( $row->email, $subject, $body );
 

@@ -419,8 +419,8 @@ export function addWaitlistEntry( entry ) {
 	return apiFetch( { path: '/splm/v1/waitlist', method: 'POST', data: entry } );
 }
 
-export function offerWaitlistSpot( id, hours ) {
-	return apiFetch( { path: `/splm/v1/waitlist/${ id }/offer`, method: 'POST', data: { hours } } );
+export function offerWaitlistSpot( id, hours, message = '' ) {
+	return apiFetch( { path: `/splm/v1/waitlist/${ id }/offer`, method: 'POST', data: { hours, message } } );
 }
 
 export function cancelWaitlistEntry( id ) {

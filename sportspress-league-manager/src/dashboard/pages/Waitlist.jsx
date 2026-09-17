@@ -27,6 +27,7 @@ const COLUMN_DEFS = [
 	{ key: 'waitlist_order', label: 'Waitlist Order', default: false },
 	{ key: 'paid_order', label: 'Paid Order', default: false },
 	{ key: 'restrictions', label: 'Restrictions', default: false },
+	{ key: 'offer_message', label: 'Offer Message', default: false },
 ];
 
 const COLUMNS_STORAGE_KEY = 'splm_waitlist_visible_columns';
@@ -71,6 +72,12 @@ const HOURS_CONFIG = ( window.splmDashboard && window.splmDashboard.waitlistHour
 const DEFAULT_HOURS = HOURS_CONFIG.default || 48;
 const MIN_HOURS = HOURS_CONFIG.min || 1;
 const MAX_HOURS = HOURS_CONFIG.max || 720;
+
+// Mirrors SPLM_Waitlist_Offer::MAX_OFFER_MESSAGE_LENGTH. Not localized like
+// the hours bounds above: this is only a UX nicety (stop the admin typing
+// past the limit), not the actual enforcement -- validate_offer_message()
+// on the server is what rejects an over-length message either way.
+const MAX_OFFER_MESSAGE_LENGTH = 500;
 
 // Deadlines arrive as UTC 'Y-m-d H:i:s'. Date can't parse that shape reliably
 // across browsers, so normalise it to ISO with an explicit Z before parsing —
@@ -317,6 +324,11 @@ const COLUMN_RENDERERS = new Map( [
 			onSave={ ctx.onSaveRestrictions }
 		/>
 	) ],
+	// Read-only, unlike restrictions: this is what was actually sent in a
+	// specific offer email, not a note an admin can revise after the fact --
+	// editing it here would look like it changes what the entrant already
+	// received.
+	[ 'offer_message', ( row ) => row.offer_message || '—' ],
 ] );
 
 // Row actions: Offer/Re-offer is only available to queued/expired rows and is
@@ -613,7 +625,7 @@ function useWaitlistRowActions( { setBusyId, setError, setNotice, setWarnings, l
 		setConfirmModal( { kind: 'offer', row } );
 	};
 
-	const confirmOffer = ( row, hours ) => {
+	const confirmOffer = ( row, hours, message = '' ) => {
 		if ( ! Number.isInteger( hours ) || hours < MIN_HOURS || hours > MAX_HOURS ) {
 			setError( `The claim window must be a whole number of hours between ${ MIN_HOURS } and ${ MAX_HOURS }.` );
 			return;
@@ -624,7 +636,7 @@ function useWaitlistRowActions( { setBusyId, setError, setNotice, setWarnings, l
 		setError( '' );
 		setNotice( '' );
 		setWarnings( [] );
-		offerWaitlistSpot( row.id, hours )
+		offerWaitlistSpot( row.id, hours, message )
 			.then( ( res ) => {
 				setNotice( `Offer sent. It expires ${ formatLocal( res.expires_at ) }.` );
 				setWarnings( res.warnings || [] );
@@ -1028,10 +1040,11 @@ function ConfirmDialog( { title, confirmLabel, danger, onConfirm, onCancel } ) {
 // for a browser that doesn't enforce them.
 function OfferDialog( { row, onCancel, onConfirm } ) {
 	const [ hours, setHours ] = useState( String( DEFAULT_HOURS ) );
+	const [ message, setMessage ] = useState( '' );
 
 	const handleSubmit = ( e ) => {
 		e.preventDefault();
-		onConfirm( row, Number( hours ) );
+		onConfirm( row, Number( hours ), message );
 	};
 
 	return (
@@ -1053,6 +1066,16 @@ function OfferDialog( { row, onCancel, onConfirm } ) {
 							required
 							value={ hours }
 							onChange={ ( e ) => setHours( e.target.value ) }
+						/>
+					</label>
+					<label>
+						<span>Message (optional)</span>
+						<textarea
+							rows={ 3 }
+							maxLength={ MAX_OFFER_MESSAGE_LENGTH }
+							value={ message }
+							placeholder="Included in the offer email the entrant receives."
+							onChange={ ( e ) => setMessage( e.target.value ) }
 						/>
 					</label>
 					<div className="splm-modal__actions">
