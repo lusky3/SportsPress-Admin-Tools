@@ -650,7 +650,14 @@ class SPSG_Slot_Allocator {
 					return $existing->id !== $game->id;
 				}
 			);
-			if ( $this->constraint_manager->calculate_violation_cost( $game, $same_day_games, $config, $schedule_by_date ) > 0 ) {
+			// $schedule_by_date already holds every game the whole week placed,
+			// $game included -- a full-schedule constraint (Distribution, Day
+			// Cap) would otherwise count $game twice: once inside the flattened
+			// full schedule, once again as the explicit candidate argument.
+			// Swap in the same-day slice with $game excluded for this one date.
+			$schedule_without_game                = $schedule_by_date;
+			$schedule_without_game[ $game->date ] = $same_day_games;
+			if ( $this->constraint_manager->calculate_violation_cost( $game, $same_day_games, $config, $schedule_without_game ) > 0 ) {
 				$this->constraint_violations++;
 			}
 			$schedule[] = $game;
@@ -1408,7 +1415,7 @@ class SPSG_Slot_Allocator {
 			if ( empty( $slots ) ) {
 				return null;
 			}
-			$rank = $this->week_pick_rank( $matchup, count( $slots ), $continuing, $dates, $flat_schedule, $config );
+			$rank = $this->week_pick_rank( $matchup, $slots, $continuing, $flat_schedule, $config );
 			if ( null === $best || $rank < $best ) {
 				$pick       = $position;
 				$pick_slots = $slots;
@@ -1455,23 +1462,31 @@ class SPSG_Slot_Allocator {
 	/**
 	 * Games behind its own day-balance target (see
 	 * SPSG_Distribution_Constraint::team_day_deficit()) the more-behind of a
-	 * matchup's two teams is, for whichever of this week's days that team is
-	 * furthest behind on. 0.0 when no Distribution Constraint is registered.
+	 * matchup's two teams is, for whichever day this matchup could actually be
+	 * placed on that team is furthest behind on. 0.0 when no Distribution
+	 * Constraint is registered.
+	 *
+	 * Scoped to $slots -- the matchup's own valid slots -- rather than every
+	 * date the week covers: a day the week has but this matchup has no open
+	 * slot on (already full, or blocked by a hard restriction) can't actually
+	 * take this placement, so a deficit on that day must not earn priority it
+	 * can't spend.
 	 *
 	 * @param object   $matchup       Matchup.
-	 * @param string[] $dates         This week's dates.
+	 * @param object[] $slots         This matchup's own valid slots (from
+	 *                                {@see valid_week_slots()}).
 	 * @param object[] $flat_schedule Schedule so far, as a flat list.
 	 * @param object   $config        Schedule configuration.
 	 * @return float
 	 */
-	private function matchup_day_deficit( $matchup, $dates, $flat_schedule, $config ) {
+	private function matchup_day_deficit( $matchup, $slots, $flat_schedule, $config ) {
 		if ( null === $this->distribution_constraint ) {
 			return 0.0;
 		}
 
 		$days = array();
-		foreach ( $dates as $date ) {
-			$days[ strtolower( gmdate( 'l', strtotime( $date ) ) ) ] = true;
+		foreach ( $slots as $slot ) {
+			$days[ strtolower( gmdate( 'l', strtotime( $slot->date ) ) ) ] = true;
 		}
 
 		$deficit = 0.0;
@@ -1497,9 +1512,15 @@ class SPSG_Slot_Allocator {
 	 * raising that cost's weight 25x changed nothing because it never got a
 	 * vote in this decision).
 	 *
+	 * @param object   $matchup       Matchup.
+	 * @param object[] $slots         This matchup's own valid slots.
+	 * @param array    $continuing    Output of {@see divisions_placed_on()}.
+	 * @param object[] $flat_schedule Schedule so far, as a flat list.
+	 * @param object   $config        Schedule configuration.
 	 * @return array{0: int, 1: int} [urgency class, valid slot count].
 	 */
-	private function week_pick_rank( $matchup, $slot_count, $continuing, $dates, $flat_schedule, $config ) {
+	private function week_pick_rank( $matchup, $slots, $continuing, $flat_schedule, $config ) {
+		$slot_count = count( $slots );
 		if ( $slot_count <= self::WEEK_URGENT_SLOTS ) {
 			return array( 0, $slot_count );
 		}
@@ -1508,7 +1529,7 @@ class SPSG_Slot_Allocator {
 		// Skip the deficit scan (a schedule-wide search) once $continues
 		// already decided the tier -- it can only raise urgency further, and
 		// $continues alone already earns tier 1.
-		$deficit = $continues ? 0.0 : $this->matchup_day_deficit( $matchup, $dates, $flat_schedule, $config );
+		$deficit = $continues ? 0.0 : $this->matchup_day_deficit( $matchup, $slots, $flat_schedule, $config );
 		$tier    = ( $continues || $deficit >= self::DAY_DEFICIT_URGENCY_THRESHOLD ) ? 1 : 2;
 
 		return array( $tier, $slot_count );
