@@ -808,6 +808,19 @@ jQuery(document).ready(function($) {
 			foreach ( $season_ids as $season_id ) {
 				$stamped = $this->stamp_table_membership( $league_id, (int) $season_id, $team_ids );
 
+				// Regular and playoff tables are separate sp_table posts (unlike
+				// rosters, which carry both terms on one post), so a team can
+				// legitimately end up with two current pointers here. Passing the
+				// full $season_ids -- not just this iteration's $season_id -- as
+				// the "acceptable" set is what stops the playoff table's repoint
+				// pass from deleting the regular table's pointer this loop just
+				// added, and vice versa.
+				foreach ( $stamped as $table_id ) {
+					foreach ( $team_ids as $team_id ) {
+						$this->repoint_team_pointer( (int) $team_id, 'sp_table', (int) $table_id, $season_ids );
+					}
+				}
+
 				$tables[ (int) $season_id ] = array_merge( $tables[ (int) $season_id ], $stamped );
 			}
 		}
@@ -1205,7 +1218,9 @@ jQuery(document).ready(function($) {
 		// Already present: make sure it carries the playoff term too, since the
 		// playoff child may have been added after the roster was first created.
 		if ( ! empty( $existing_list_ids ) ) {
-			wp_set_object_terms( (int) $existing_list_ids[0], $season_ids, 'sp_season' );
+			$list_id = (int) $existing_list_ids[0];
+			wp_set_object_terms( $list_id, $season_ids, 'sp_season' );
+			$this->repoint_team_pointer( $team->ID, 'sp_list', $list_id, $season_ids );
 
 			return false;
 		}
@@ -1225,8 +1240,69 @@ jQuery(document).ready(function($) {
 		update_post_meta( $list_id, 'sp_team', $team->ID );
 		wp_set_object_terms( $list_id, $season_ids, 'sp_season' );
 		wp_set_object_terms( $list_id, array( $league_id ), 'sp_league' );
+		$this->repoint_team_pointer( $team->ID, 'sp_list', (int) $list_id, $season_ids );
 
 		return true;
+	}
+
+	/**
+	 * Point a team's own forward pointer at a record just resolved for this
+	 * rollover, dropping any of the team's existing values for that meta key
+	 * that belong to a different season.
+	 *
+	 * SportsPress keeps two independent relationships between a team and its
+	 * roster/table: the record itself carries `sp_team` (used for standings
+	 * membership and roster tagging, handled elsewhere in this class), and the
+	 * team carries its OWN `sp_list`/`sp_table` meta — multi-value, per the
+	 * `sp_team` post type's data model — which is what player-tools' captain
+	 * lookup and core's team-page templates read to find "this team's current
+	 * roster/table". Only the reverse direction was maintained before this
+	 * method existed, so a team's forward pointer stayed on last season's
+	 * record after every rollover.
+	 *
+	 * An existing value is removed in two cases: it is a dangling reference to
+	 * a post that no longer exists (deleted/trashed -- unambiguously stale,
+	 * whatever it once was), or it can be positively identified as a different
+	 * season's record (it carries an `sp_season` term and none of those terms
+	 * are in $season_ids). A value with no season term at all — e.g. a
+	 * non-seasonal list this rollover doesn't know about — is left alone
+	 * rather than guessed at.
+	 *
+	 * @param int    $team_id    Team post ID.
+	 * @param string $meta_key   'sp_list' or 'sp_table'.
+	 * @param int    $new_id     The record just resolved/created this run.
+	 * @param int[]  $season_ids Every season term this rollover run considers current.
+	 */
+	private function repoint_team_pointer( $team_id, $meta_key, $new_id, array $season_ids ) {
+		$season_ids = array_map( 'intval', $season_ids );
+		$current    = array_map( 'intval', (array) get_post_meta( $team_id, $meta_key, false ) );
+
+		foreach ( $current as $existing_id ) {
+			if ( $existing_id === (int) $new_id ) {
+				continue;
+			}
+
+			// A dangling reference to a deleted/trashed post is unambiguously
+			// stale -- unlike "no season term", there is no legitimate record
+			// this could still be, so it is removed regardless of season data.
+			if ( ! get_post( $existing_id ) ) {
+				delete_post_meta( $team_id, $meta_key, $existing_id );
+				continue;
+			}
+
+			$terms = wp_get_object_terms( $existing_id, 'sp_season', array( 'fields' => 'ids' ) );
+			if ( is_wp_error( $terms ) || empty( $terms ) ) {
+				continue; // Not identifiably seasonal -- leave it alone.
+			}
+
+			if ( ! array_intersect( array_map( 'intval', $terms ), $season_ids ) ) {
+				delete_post_meta( $team_id, $meta_key, $existing_id );
+			}
+		}
+
+		if ( ! in_array( (int) $new_id, $current, true ) ) {
+			add_post_meta( $team_id, $meta_key, (int) $new_id );
+		}
 	}
 
 	/**
