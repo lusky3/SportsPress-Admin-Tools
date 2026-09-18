@@ -152,7 +152,7 @@ class SPSG_Admin {
 				submit_button( __( 'Save Backend Settings', 'sportspress-schedule-generator' ) );
 				?>
 			</form>
-			<form action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="post">
+			<form id="spsg-weights-reset-form" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="post">
 				<?php wp_nonce_field( 'spsg_reset_weights', 'spsg_reset_weights_nonce' ); ?>
 				<input type="hidden" name="action" value="spsg_reset_weights">
 				<?php submit_button( __( 'Reset Balance Weights to Defaults', 'sportspress-schedule-generator' ), 'secondary' ); ?>
@@ -182,7 +182,7 @@ class SPSG_Admin {
 
 		add_settings_section(
 			'spsg_weights_section',
-			__( 'Balance Weights (Advanced)', 'sportspress-schedule-generator' ),
+			'',
 			array( $this, 'weights_section_callback' ),
 			'spsg_backend_settings'
 		);
@@ -358,6 +358,9 @@ class SPSG_Admin {
 	 * @return float
 	 */
 	public function sanitize_weight_multiplier( $value ) {
+		if ( ! is_numeric( $value ) ) {
+			return 1.0;
+		}
 		$percent = (int) round( (float) $value / 10 ) * 10;
 		$percent = max( 0, min( 200, $percent ) );
 		return $percent / 100.0;
@@ -370,7 +373,7 @@ class SPSG_Admin {
 	 */
 	private function reset_weight_options() {
 		foreach ( array_keys( self::weight_sliders() ) as $key ) {
-			update_option( "spsg_weight_{$key}", 1.0 );
+			delete_option( "spsg_weight_{$key}" );
 		}
 	}
 
@@ -419,10 +422,15 @@ class SPSG_Admin {
 	}
 
 	/**
-	 * "Balance Weights (Advanced)" section description, plus the inline
-	 * show/hide (Advanced checkbox), gray-out (Balance Time Slots checkbox
-	 * vs. the Time-of-Night slider -- see class-distribution-constraint.php's
-	 * time_slot_balance gate), and live percentage readout script.
+	 * "Balance Weights (Advanced)" section heading/description (the section
+	 * itself is registered with an empty title so WordPress doesn't print
+	 * its own auto-generated <h2>), plus the inline show/hide of the WHOLE
+	 * section -- heading, description, the settings-fields <table> WordPress
+	 * renders immediately after this callback returns, and the "Reset
+	 * Balance Weights to Defaults" form -- driven by the Advanced checkbox,
+	 * gray-out (Balance Time Slots checkbox vs. the Time-of-Night slider --
+	 * see class-distribution-constraint.php's time_slot_balance gate), and
+	 * live percentage readout script.
 	 *
 	 * Uses CSS (opacity/pointer-events) rather than the disabled attribute
 	 * to gray out the Time-of-Night slider: a disabled field is left out of
@@ -431,7 +439,11 @@ class SPSG_Admin {
 	 * silently erase the saved value on every unrelated settings save.
 	 */
 	public function weights_section_callback() {
+		echo '<div id="spsg-weights-intro">';
+		echo '<h2>' . esc_html__( 'Balance Weights (Advanced)', 'sportspress-schedule-generator' ) . '</h2>';
 		echo '<p>' . esc_html__( 'Fine-tune how strongly the schedule generator favors each kind of balance. 100% is the algorithm\'s own built-in weight; 0% turns a category off entirely. Enable Advanced above to reveal these sliders.', 'sportspress-schedule-generator' ) . '</p>';
+		echo '</div>';
+		echo '<div id="spsg-weights-table-marker" style="display:none;"></div>';
 		?>
 		<style>
 			.spsg-weight-disabled { opacity: 0.5; pointer-events: none; }
@@ -449,6 +461,16 @@ class SPSG_Admin {
 				var advanced = document.getElementById( 'spsg_advanced_weights_enabled' );
 				var timeSlots = document.getElementById( 'spsg_balance_time_slots' );
 				var show = !! ( advanced && advanced.checked );
+
+				var intro = document.getElementById( 'spsg-weights-intro' );
+				if ( intro ) { intro.style.display = show ? '' : 'none'; }
+
+				var marker = document.getElementById( 'spsg-weights-table-marker' );
+				var table = marker ? marker.nextElementSibling : null;
+				if ( table ) { table.style.display = show ? '' : 'none'; }
+
+				var resetForm = document.getElementById( 'spsg-weights-reset-form' );
+				if ( resetForm ) { resetForm.style.display = show ? '' : 'none'; }
 
 				WEIGHT_KEYS.forEach( function ( key ) {
 					var row = rowFor( 'spsg_weight_' + key );

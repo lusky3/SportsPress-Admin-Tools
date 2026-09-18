@@ -53,6 +53,12 @@ if ( ! function_exists( 'update_option' ) ) {
 		return true;
 	}
 }
+if ( ! function_exists( 'delete_option' ) ) {
+	function delete_option( $name ) {
+		unset( $GLOBALS['awc_test_options'][ $name ] );
+		return true;
+	}
+}
 if ( ! function_exists( 'add_action' ) ) {
 	function add_action() {}
 }
@@ -112,7 +118,7 @@ awc_assert( 2.0 === $admin->sanitize_weight_multiplier( 200 ), '200 sanitizes to
 awc_assert( 2.0 === $admin->sanitize_weight_multiplier( 500 ), 'an out-of-range 500 clamps down to 2.0' );
 awc_assert( 0.0 === $admin->sanitize_weight_multiplier( -50 ), 'a negative value clamps up to 0.0' );
 awc_assert( 1.2 === $admin->sanitize_weight_multiplier( 123 ), '123 rounds down to the nearest 10%-step value, 1.2' );
-awc_assert( 0.0 === $admin->sanitize_weight_multiplier( 'not-a-number' ), 'a non-numeric value sanitizes to 0.0, not a fatal error' );
+awc_assert( 1.0 === $admin->sanitize_weight_multiplier( 'not-a-number' ), 'a non-numeric value sanitizes to the safe default 1.0 (unchanged), not 0.0 (silently disabled), and not a fatal error' );
 
 echo "\n=== Testing weight_slider_callback() renders the current value ===\n\n";
 
@@ -138,8 +144,14 @@ $reset = new ReflectionMethod( 'SPSG_Admin', 'reset_weight_options' );
 $reset->setAccessible( true );
 $reset->invoke( $admin );
 
-awc_assert( 1.0 === $GLOBALS['awc_test_options']['spsg_weight_day_balance'], 'reset puts day_balance back to 1.0' );
-awc_assert( 1.0 === $GLOBALS['awc_test_options']['spsg_weight_overlap_avoidance'], 'reset puts overlap_avoidance back to 1.0' );
+awc_assert(
+	1.0 === (float) get_option( 'spsg_weight_day_balance', 1.0 ),
+	'reset deletes day_balance so get_option() falls back to its documented 1.0 default'
+);
+awc_assert(
+	1.0 === (float) get_option( 'spsg_weight_overlap_avoidance', 1.0 ),
+	'reset deletes overlap_avoidance so get_option() falls back to its documented 1.0 default'
+);
 awc_assert(
 	1 === $GLOBALS['awc_test_options']['spsg_advanced_weights_enabled'],
 	'reset does NOT touch spsg_advanced_weights_enabled -- the section stays visible for further tuning'
