@@ -190,21 +190,13 @@ class SPSG_Slot_Allocator {
 	private $same_week_doubleheader_blocked = false;
 
 	/**
-	 * Maximum number of valid candidate slots scored per matchup.
-	 *
-	 * Candidates are gathered from the dates closest to the matchup's pace
-	 * target outwards (see {@see find_best_slot()}), so this bounds the cost
-	 * evaluation to the N placeable slots nearest the point in the season where
-	 * the game belongs; within that window the lowest-cost slot wins (H14).
-	 *
-	 * The window used to be walked chronologically from the season start. Once
-	 * a division's early dates were occupied, both teams of every remaining
-	 * matchup already played on every date inside the window, so the
-	 * double-header penalty had nowhere to steer and the game landed on an
-	 * early date anyway: a real 272-game season came out with 124 team
-	 * double-headers packed into 31 of 49 dates with the last two months empty.
+	 * Playing dates scored per matchup, visited from the pace target outwards
+	 * with every valid slot on each scored. Capping by slot instead let one
+	 * date with many free slots crowd every other date out of the window, so
+	 * the cross-date terms -- day balance, date load, pacing -- never compared
+	 * real alternatives.
 	 */
-	const MAX_SLOT_CANDIDATES = 15;
+	const MAX_CANDIDATE_DATES = 5;
 
 	/**
 	 * A game with this many valid slots or fewer in its week is placed before
@@ -2217,9 +2209,9 @@ class SPSG_Slot_Allocator {
 	/**
 	 * Find best available slot for matchup
 	 *
-	 * Uses date-indexed schedule for O(1) conflict checks and caps
-	 * cost evaluation at {@see MAX_SLOT_CANDIDATES} valid slots for
-	 * performance.
+	 * Uses date-indexed schedule for O(1) conflict checks and scores every
+	 * valid slot on the {@see MAX_CANDIDATE_DATES} placeable dates nearest
+	 * the pace target.
 	 *
 	 * H14: this used to return the first valid slot outright, which meant the
 	 * soft (distribution) and optimization (division grouping) constraints never
@@ -2292,9 +2284,9 @@ class SPSG_Slot_Allocator {
 		// Pass 1: dates neither team plays on. Pass 2 (double-headers) only
 		// runs when pass 1 found nothing placeable at all.
 		foreach ( array( false, true ) as $allow_busy ) {
-			$best_slot          = null;
-			$best_cost          = null;
-			$candidates_checked = 0;
+			$best_slot    = null;
+			$best_cost    = null;
+			$dates_scored = 0;
 
 			foreach ( $ordered_dates as $entry ) {
 				$date = $entry['date'];
@@ -2302,7 +2294,8 @@ class SPSG_Slot_Allocator {
 					continue;
 				}
 
-				$pacing_cost = $entry['distance'] * $this->weighted( self::PACING_COST_PER_DATE, 'season_pacing' );
+				$pacing_cost        = $entry['distance'] * $this->weighted( self::PACING_COST_PER_DATE, 'season_pacing' );
+				$date_had_candidate = false;
 
 				foreach ( $this->slots_by_date[ $date ] ?? array() as $slot ) {
 					$slot_key = $this->get_slot_key( $slot );
@@ -2318,17 +2311,17 @@ class SPSG_Slot_Allocator {
 						continue;
 					}
 
-					$cost = $this->calculate_slot_cost( $game, $slot, $schedule_by_date, $config, $preferred_venue_id ) + $pacing_cost;
+					$date_had_candidate = true;
+					$cost               = $this->calculate_slot_cost( $game, $slot, $schedule_by_date, $config, $preferred_venue_id ) + $pacing_cost;
 
 					if ( null === $best_cost || $cost < $best_cost ) {
 						$best_cost = $cost;
 						$best_slot = $slot;
 					}
+				}
 
-					$candidates_checked++;
-					if ( $candidates_checked >= self::MAX_SLOT_CANDIDATES ) {
-						break 2;
-					}
+				if ( $date_had_candidate && ++$dates_scored >= self::MAX_CANDIDATE_DATES ) {
+					break;
 				}
 			}
 

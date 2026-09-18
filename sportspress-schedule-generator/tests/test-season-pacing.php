@@ -3,11 +3,11 @@
  * Test: games are paced across the whole season and teams do not play twice
  * on one date while other dates have room.
  *
- * SPSG_Slot_Allocator::find_best_slot() used to gather the first
- * MAX_SLOT_CANDIDATES valid slots in chronological order and pick the
- * cheapest of those. Once a division's early dates were occupied, both teams
- * of every remaining matchup already played on every date inside that short
- * window, so the double-header penalty had nowhere to steer and the game
+ * SPSG_Slot_Allocator::find_best_slot() used to gather the first fifteen
+ * valid slots in chronological order and pick the cheapest of those. Once a
+ * division's early dates were occupied, both teams of every remaining
+ * matchup already played on every date inside that short window, so the
+ * double-header penalty had nowhere to steer and the game
  * landed on an early date anyway. A real 272-game season came out with 124
  * team double-headers packed into 31 of 49 dates, leaving the last two months
  * empty.
