@@ -255,7 +255,13 @@ abstract class SPSG_Abstract_Constraint implements SPSG_Constraint_Interface {
 	 * Helper to safely get team ID from object or array
 	 */
 	protected function get_team_id( $team ) {
-		return is_array( $team ) ? $team['id'] : $team->id;
+		if ( is_string( $team ) ) {
+			return $team;
+		}
+		if ( is_array( $team ) ) {
+			return $team['id'] ?? $team['name'] ?? '';
+		}
+		return $team->id ?? $team->name ?? '';
 	}
 
 	/**

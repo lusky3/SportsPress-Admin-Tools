@@ -327,8 +327,8 @@ foreach ( $matchups as $m ) {
 	// After assign_home_away the team_a/team_b → home_team/away_team mapping;
 	// canonicalise by sorting IDs.
 	$ids = array(
-		$m['home_team']['id'] ?? ( is_object( $m['home_team'] ) ? $m['home_team']->id : '' ),
-		$m['away_team']['id'] ?? ( is_object( $m['away_team'] ) ? $m['away_team']->id : '' ),
+		is_object( $m['home_team'] ) ? $m['home_team']->id : ( $m['home_team']['id'] ?? '' ),
+		is_object( $m['away_team'] ) ? $m['away_team']->id : ( $m['away_team']['id'] ?? '' ),
 	);
 	sort( $ids );
 	$k                  = $ids[0] . '|' . $ids[1];

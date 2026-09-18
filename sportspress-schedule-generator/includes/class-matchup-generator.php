@@ -79,19 +79,7 @@ class SPSG_Matchup_Generator {
 			return $matchups;
 		}
 
-		// Normalize string teams to objects with id and name properties
-		$teams = array_map(
-			function ( $team ) {
-				if ( is_string( $team ) ) {
-					  return (object) array(
-						  'id' => $team,
-						  'name' => $team,
-					  );
-				}
-				return $team;
-			},
-			$teams
-		);
+		$teams = $this->normalize_teams( $teams );
 
 		switch ( $style ) {
 			case 'single_round_robin':
@@ -120,6 +108,28 @@ class SPSG_Matchup_Generator {
 		}
 
 		return $matchups;
+	}
+
+	/**
+	 * Every team as an {id,name} object. Configurations authored in the admin
+	 * store teams as bare name strings; arrays come from imports and presets.
+	 *
+	 * @param array $teams Team entries (string, array or object).
+	 * @return object[]
+	 */
+	private function normalize_teams( array $teams ) {
+		return array_map(
+			function ( $team ) {
+				if ( is_string( $team ) ) {
+					return (object) array(
+						'id'   => $team,
+						'name' => $team,
+					);
+				}
+				return is_array( $team ) ? (object) $team : $team;
+			},
+			$teams
+		);
 	}
 
 	/**
@@ -486,8 +496,8 @@ class SPSG_Matchup_Generator {
 	 */
 	private function generate_inter_division_pair_matchups( $div_a, $div_b, $total_games ) {
 		$matchups = array();
-		$teams_a = $div_a['teams'] ?? array();
-		$teams_b = $div_b['teams'] ?? array();
+		$teams_a = $this->normalize_teams( $div_a['teams'] ?? array() );
+		$teams_b = $this->normalize_teams( $div_b['teams'] ?? array() );
 
 		if ( empty( $teams_a ) || empty( $teams_b ) ) {
 			return $matchups;
