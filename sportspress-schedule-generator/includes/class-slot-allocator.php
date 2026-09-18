@@ -816,7 +816,7 @@ class SPSG_Slot_Allocator {
 		}
 
 		$rounds = array();
-		foreach ( $chosen as $matching ) {
+		foreach ( $this->order_by_leg( $chosen ) as $matching ) {
 			$round = array();
 			foreach ( $matching as $pair ) {
 				$round[] = array_pop( $by_pair[ $pair ] );
@@ -824,6 +824,27 @@ class SPSG_Slot_Allocator {
 			$rounds[] = $round;
 		}
 		return $rounds;
+	}
+
+	/**
+	 * Repeated matchings regrouped by occurrence: every first meeting, then
+	 * every second meeting, and so on, so a pairing's legs are a whole
+	 * rotation apart. pick_rounds() emits repeats adjacently.
+	 *
+	 * @param array<int,string[]> $chosen Matchings in pick order.
+	 * @return array<int,string[]>
+	 */
+	private function order_by_leg( $chosen ) {
+		$occurrence = array();
+		$legs       = array();
+		foreach ( $chosen as $matching ) {
+			$key                = implode( ',', $matching );
+			$leg                = $occurrence[ $key ] ?? 0;
+			$occurrence[ $key ] = $leg + 1;
+			$legs[ $leg ][]     = $matching;
+		}
+		ksort( $legs );
+		return empty( $legs ) ? array() : array_merge( ...$legs );
 	}
 
 	/**
