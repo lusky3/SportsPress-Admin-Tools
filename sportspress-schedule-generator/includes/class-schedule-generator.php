@@ -156,10 +156,10 @@ class SPSG_Schedule_Generator {
 
 		// Merge the engine's own stats in. LOW (2026-08): this read
 		// $result['generation_time'], a key generate_schedule() never returns —
-		// the timing (and the constraint-violation / makeup counters) live under
+		// the timing (and the constraint-violation counters) live under
 		// $result['stats'], so the reported generation time was always missing.
 		if ( ! empty( $result['stats'] ) && is_array( $result['stats'] ) ) {
-			foreach ( array( 'generation_time', 'constraint_violations', 'makeup_games', 'matchup_warnings' ) as $key ) {
+			foreach ( array( 'generation_time', 'constraint_violations', 'matchup_warnings' ) as $key ) {
 				if ( isset( $result['stats'][ $key ] ) ) {
 					$stats[ $key ] = $result['stats'][ $key ];
 				}

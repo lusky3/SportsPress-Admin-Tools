@@ -657,8 +657,19 @@ SPSG_Schedule_Generator
 - Verification documents (archived in `tests/` directory)
 - Planning documents (archived in `docs/archive/` directory)
 
+### Removed: makeup-game scheduling (1.3.10)
+
+`SPSG_Blackout_Constraint` used to track games that fell on blackout dates and
+`SPSG_Schedule_Engine::handle_makeup_games()` re-scheduled them on alternative
+days. Blackout dates are excluded before any slot exists, so that path never ran
+and `stats['makeup_games']` was always 0. The code was removed rather than wired
+to a new source of demand. To revive it, start from the last revision that carried
+it: `git show 8d5cbd6:sportspress-schedule-generator/includes/constraints/class-blackout-constraint.php`
+and `…/includes/class-schedule-engine.php` (`handle_makeup_games`). The
+`is_makeup`/`original_date` game fields and the exporters' Makeup columns were kept.
+
 ---
 
-**Last Updated:** April 2026  
+**Last Updated:** September 2026  
 **Document Version:** 1.0  
 **Status:** Current and Maintained

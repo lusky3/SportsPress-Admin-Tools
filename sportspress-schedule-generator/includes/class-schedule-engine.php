@@ -171,16 +171,6 @@ class SPSG_Schedule_Engine {
 			return $result;
 		}
 
-		// Check cancellation before makeup games
-		if ( $this->is_cancelled() ) {
-			$this->clear_progress();
-			return new WP_Error( 'generation_cancelled', $cancelled_message );
-		}
-
-		// Handle makeup games
-		$this->update_progress( 'validation', 90, __( 'Handling makeup games...', 'sportspress-schedule-generator' ) );
-		$this->handle_makeup_games( $config );
-
 		$this->stats['generation_time'] = microtime( true ) - $this->generation_start_time;
 		$this->log( sprintf( 'Schedule generation completed in %.2f seconds', $this->stats['generation_time'] ) );
 
@@ -593,30 +583,6 @@ class SPSG_Schedule_Engine {
 		return true;
 	}
 
-
-
-	/**
-	 * Handle makeup games from blackout constraints
-	 */
-	private function handle_makeup_games( $config ) {
-		// Get blackout constraint if available
-		$constraints = $this->constraint_manager->get_constraints();
-		$blackout_constraint = null;
-
-		foreach ( $constraints as $constraint ) {
-			if ( $constraint instanceof SPSG_Blackout_Constraint ) {
-				$blackout_constraint = $constraint;
-				break;
-			}
-		}
-
-		if ( $blackout_constraint ) {
-			$makeup_games = $blackout_constraint->schedule_makeup_games( $this->current_schedule, $config );
-			$this->current_schedule = array_merge( $this->current_schedule, $makeup_games );
-			$this->stats['makeup_games'] = count( $makeup_games );
-		}
-	}
-
 	/**
 	 * Initialize statistics
 	 */
@@ -624,7 +590,6 @@ class SPSG_Schedule_Engine {
 		$this->stats = array(
 			'games_scheduled' => 0,
 			'failed_games' => 0,
-			'makeup_games' => 0,
 			'generation_time' => 0,
 			'constraint_violations' => 0,
 		);
