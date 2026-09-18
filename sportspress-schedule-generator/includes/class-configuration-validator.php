@@ -634,6 +634,9 @@ class SPSG_Configuration_Validator {
 	 * SPSG_Schedule_Helper::count_available_slots() reuses the allocator's own
 	 * cascade (venue_date_availability → venue_timeslots → time_slots) including
 	 * global and per-venue blackouts, so validation and allocation agree.
+	 *
+	 * Demand is what the matchup format will generate, not games_per_team, which
+	 * is only advisory for the round-robin styles.
 	 */
 	private function validate_resource_capacity() {
 		$total_teams = $this->count_total_teams();
@@ -642,14 +645,7 @@ class SPSG_Configuration_Validator {
 			return true;
 		}
 
-		$total_games_needed = ( $total_teams * $this->config->games_per_team ) / 2;
-
-		if ( $this->count_weekly_slots() === 0 ) {
-			return new WP_Error(
-				'insufficient_timeslots',
-				__( 'No time slots configured for the selected playing days. Please add time slots.', 'sportspress-schedule-generator' )
-			);
-		}
+		$total_games_needed = SPSG_Schedule_Helper::expected_total_games( $this->config );
 
 		$total_slots_available = SPSG_Schedule_Helper::count_available_slots( $this->config );
 
@@ -672,19 +668,6 @@ class SPSG_Configuration_Validator {
 			$total += count( $division['teams'] ?? array() );
 		}
 		return $total;
-	}
-
-	/**
-	 * Count available time slots per week
-	 */
-	private function count_weekly_slots() {
-		$slots = 0;
-		foreach ( $this->config->playing_days as $day ) {
-			if ( isset( $this->config->time_slots[ $day ] ) ) {
-				$slots += count( $this->config->time_slots[ $day ] );
-			}
-		}
-		return $slots;
 	}
 
 	/**

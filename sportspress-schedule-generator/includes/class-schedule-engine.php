@@ -289,16 +289,13 @@ class SPSG_Schedule_Engine {
 	private function validate_matchups( $matchups, $config ) {
 		$team_games = $this->count_team_games( $matchups );
 
-		// For custom matchup style, accept any count up to games_per_team.
-		// For round-robin styles the achievable count is dictated by the division
-		// size and the inter-division split, NOT by games_per_team — see
-		// build_round_robin_expectations().
+		// Round-robin counts are dictated by the format; see SPSG_Schedule_Helper::expected_team_game_range().
 		$expected_games = $config->games_per_team;
 		$is_custom = ( $config->matchup_style === 'custom' );
 		$errors = array();
 		$warnings = array();
 
-		$rr_expectations = $is_custom ? array() : $this->build_round_robin_expectations( $config );
+		$rr_expectations = $is_custom ? array() : SPSG_Schedule_Helper::expected_team_game_range( $config );
 
 		foreach ( $team_games as $team_id => $game_count ) {
 			if ( ! $is_custom ) {
@@ -402,80 +399,6 @@ class SPSG_Schedule_Engine {
 		}
 
 		return true;
-	}
-
-	/**
-	 * Compute the achievable games-per-team range for round-robin styles.
-	 *
-	 * Intra-division play is exact: every team meets each of its division-mates
-	 * once per leg, i.e. `(division_size - 1) * legs` games.
-	 *
-	 * Inter-division play is not. `inter_division_games` configures a TOTAL per
-	 * division pair, which SPSG_Matchup_Generator spreads as evenly as it can
-	 * across the teams on each side. When the total isn't divisible by a
-	 * division's size, some teams necessarily get one more game than others —
-	 * hence a range rather than a single number.
-	 *
-	 * @param SPSG_Schedule_Configuration $config Configuration.
-	 * @return array team_id => array{min:int,max:int}
-	 */
-	private function build_round_robin_expectations( $config ) {
-		$legs = ( 'single_round_robin' === $config->matchup_style ) ? 1 : 2;
-
-		$division_sizes = array();
-		$team_division  = array();
-
-		foreach ( $config->divisions as $division ) {
-			$division_id = $division['id'] ?? '';
-			$teams       = $division['teams'] ?? array();
-
-			$division_sizes[ $division_id ] = count( $teams );
-
-			foreach ( $teams as $team ) {
-				$team_division[ $this->extract_team_id( $team ) ] = $division_id;
-			}
-		}
-
-		// Per-division inter-division allowances, accumulated over every
-		// configured pair that involves the division.
-		$inter_min = array();
-		$inter_max = array();
-
-		foreach ( (array) $config->inter_division_games as $pair_key => $game_count ) {
-			$game_count = (int) $game_count;
-			if ( $game_count <= 0 ) {
-				continue;
-			}
-
-			$parts = explode( ':', (string) $pair_key );
-			if ( count( $parts ) !== 2 ) {
-				continue;
-			}
-
-			foreach ( $parts as $division_id ) {
-				$size = $division_sizes[ $division_id ] ?? 0;
-				if ( $size <= 0 ) {
-					continue;
-				}
-
-				$inter_min[ $division_id ] = ( $inter_min[ $division_id ] ?? 0 ) + (int) floor( $game_count / $size );
-				$inter_max[ $division_id ] = ( $inter_max[ $division_id ] ?? 0 ) + (int) ceil( $game_count / $size );
-			}
-		}
-
-		$expectations = array();
-
-		foreach ( $team_division as $team_id => $division_id ) {
-			$size  = $division_sizes[ $division_id ] ?? 0;
-			$intra = $size >= 2 ? ( $size - 1 ) * $legs : 0;
-
-			$expectations[ $team_id ] = array(
-				'min' => $intra + ( $inter_min[ $division_id ] ?? 0 ),
-				'max' => $intra + ( $inter_max[ $division_id ] ?? 0 ),
-			);
-		}
-
-		return $expectations;
 	}
 
 	/**

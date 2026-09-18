@@ -306,17 +306,10 @@ class SPSG_Constraint_Manager {
 	 * Calculate total games needed from configuration
 	 *
 	 * @param SPSG_Schedule_Configuration $config Configuration
-	 * @return int Total games needed
+	 * @return int Games the matchup format will generate
 	 */
 	private function calculate_total_games_needed( $config ) {
-		$total_teams = 0;
-		foreach ( $config->divisions as $division ) {
-			$teams = is_object( $division ) ? $division->teams : $division['teams'];
-			$total_teams += count( $teams );
-		}
-
-		// Each game involves 2 teams
-		return ( $total_teams * $config->games_per_team ) / 2;
+		return SPSG_Schedule_Helper::expected_total_games( $config );
 	}
 
 	/**

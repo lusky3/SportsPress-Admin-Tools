@@ -101,6 +101,7 @@ run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-statistics-calcu
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-inter-division-string-teams.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-inter-division-sizing.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-configuration-manager-find.php"
+run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-format-derived-demand.php"
 run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-events-import.php"
 run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-notifications.php"
 run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-rollover-teams.php"

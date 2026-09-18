@@ -977,4 +977,116 @@ class SPSG_Schedule_Helper {
 			$target[ $day ] += $weight > 0 ? $excess * $ratios[ $day ] / $weight : $excess / count( $days );
 		}
 	}
+
+	/**
+	 * Games each team will actually play, as a [min, max] range keyed by team
+	 * id. Intra-division play is exact for the round-robin styles; a division's
+	 * share of an inter-division pair total spreads over its teams as
+	 * floor..ceil. The custom style targets games_per_team for every team.
+	 *
+	 * @param object $config Schedule configuration.
+	 * @return array<string,array{min:int,max:int}>
+	 */
+	public static function expected_team_game_range( $config ) {
+		$style = $config->matchup_style ?? 'double_round_robin';
+		$legs  = ( 'single_round_robin' === $style ) ? 1 : 2;
+
+		$division_sizes = array();
+		$team_division  = array();
+		foreach ( (array) ( $config->divisions ?? array() ) as $division ) {
+			$division_id = is_object( $division ) ? (string) ( $division->id ?? '' ) : (string) ( $division['id'] ?? '' );
+			$teams       = is_object( $division ) ? (array) ( $division->teams ?? array() ) : (array) ( $division['teams'] ?? array() );
+
+			$division_sizes[ $division_id ] = count( $teams );
+			foreach ( $teams as $team ) {
+				$team_division[ self::extract_id( $team ) ] = $division_id;
+			}
+		}
+
+		if ( 'custom' === $style ) {
+			$target = (int) ( $config->games_per_team ?? 0 );
+			$range  = array();
+			foreach ( $team_division as $team_id => $division_id ) {
+				$range[ $team_id ] = array(
+					'min' => $target,
+					'max' => $target,
+				);
+			}
+			return $range;
+		}
+
+		$inter_min = array();
+		$inter_max = array();
+		foreach ( (array) ( $config->inter_division_games ?? array() ) as $pair_key => $game_count ) {
+			$game_count = (int) $game_count;
+			$parts      = explode( ':', (string) $pair_key );
+			if ( $game_count <= 0 || 2 !== count( $parts ) ) {
+				continue;
+			}
+			foreach ( $parts as $division_id ) {
+				$size = $division_sizes[ $division_id ] ?? 0;
+				if ( $size <= 0 ) {
+					continue;
+				}
+				$inter_min[ $division_id ] = ( $inter_min[ $division_id ] ?? 0 ) + (int) floor( $game_count / $size );
+				$inter_max[ $division_id ] = ( $inter_max[ $division_id ] ?? 0 ) + (int) ceil( $game_count / $size );
+			}
+		}
+
+		$range = array();
+		foreach ( $team_division as $team_id => $division_id ) {
+			$size  = $division_sizes[ $division_id ] ?? 0;
+			$intra = $size >= 2 ? ( $size - 1 ) * $legs : 0;
+
+			$range[ $team_id ] = array(
+				'min' => $intra + ( $inter_min[ $division_id ] ?? 0 ),
+				'max' => $intra + ( $inter_max[ $division_id ] ?? 0 ),
+			);
+		}
+
+		return $range;
+	}
+
+	/**
+	 * Total games the configuration will generate: exact for the round-robin
+	 * styles (every intra-division pairing per leg plus every configured
+	 * inter-division total between two real divisions), teams x games_per_team
+	 * / 2 for the custom style where games_per_team is the binding target.
+	 *
+	 * @param object $config Schedule configuration.
+	 * @return int
+	 */
+	public static function expected_total_games( $config ) {
+		$style       = $config->matchup_style ?? 'double_round_robin';
+		$total_teams = 0;
+		$intra_pairs = 0;
+		$sizes       = array();
+
+		foreach ( (array) ( $config->divisions ?? array() ) as $division ) {
+			$division_id = is_object( $division ) ? (string) ( $division->id ?? '' ) : (string) ( $division['id'] ?? '' );
+			$size        = count( is_object( $division ) ? (array) ( $division->teams ?? array() ) : (array) ( $division['teams'] ?? array() ) );
+
+			$sizes[ $division_id ] = $size;
+			$total_teams          += $size;
+			if ( $size >= 2 ) {
+				$intra_pairs += intdiv( $size * ( $size - 1 ), 2 );
+			}
+		}
+
+		if ( 'custom' === $style ) {
+			return (int) ceil( $total_teams * (int) ( $config->games_per_team ?? 0 ) / 2 );
+		}
+
+		$legs  = ( 'single_round_robin' === $style ) ? 1 : 2;
+		$inter = 0;
+		foreach ( (array) ( $config->inter_division_games ?? array() ) as $pair_key => $game_count ) {
+			$parts = explode( ':', (string) $pair_key );
+			if ( 2 !== count( $parts ) || ( $sizes[ $parts[0] ] ?? 0 ) < 1 || ( $sizes[ $parts[1] ] ?? 0 ) < 1 ) {
+				continue;
+			}
+			$inter += max( 0, (int) $game_count );
+		}
+
+		return $intra_pairs * $legs + $inter;
+	}
 }
