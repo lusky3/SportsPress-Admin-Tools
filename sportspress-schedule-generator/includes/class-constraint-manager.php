@@ -109,7 +109,7 @@ class SPSG_Constraint_Manager {
 		foreach ( $this->get_constraints() as $constraint ) {
 			// Forward the appropriate schedule slice: only a constraint that
 			// opts in via wants_full_schedule() (cross-day fairness measures
-			// like Distribution, or a per-team day cap) needs cross-day data.
+			// like Distribution) needs cross-day data.
 			// method_exists() guards a constraint that implements only
 			// SPSG_Constraint_Interface directly rather than extending
 			// SPSG_Abstract_Constraint -- the interface itself doesn't declare
