@@ -996,8 +996,10 @@ class SPSG_Slot_Allocator {
 	}
 
 	/**
-	 * How many divisions may play this week: everyone that fits, less one in
-	 * a full week whenever the spare-idle cadence says so.
+	 * How many divisions may play this week: everyone that fits, less however
+	 * many whole spare idle division-weeks the cadence has banked -- all of
+	 * them if it has banked that many, so surplus never piles up at the end
+	 * of the season.
 	 *
 	 * @param int   $max_count          Divisions the week can hold at once.
 	 * @param bool  $full_week          Whether that is every division.
@@ -1010,11 +1012,9 @@ class SPSG_Slot_Allocator {
 			return $max_count;
 		}
 		$idle_balance += $idle_per_full_week;
-		if ( $idle_balance < 1.0 ) {
-			return $max_count;
-		}
-		$idle_balance -= 1.0;
-		return $max_count - 1;
+		$spend         = min( $max_count, (int) floor( $idle_balance ) );
+		$idle_balance -= $spend;
+		return $max_count - $spend;
 	}
 
 	/**
