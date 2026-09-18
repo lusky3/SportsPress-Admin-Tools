@@ -527,6 +527,27 @@ class SPSG_REST_API {
 		return $this->config_manager;
 	}
 
+	/**
+	 * The configuration a request names, or a 404 WP_Error. config_id is a
+	 * required argument on every route that calls this, so there is no
+	 * fallback to "most recently modified".
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @param string          $param   Parameter carrying the configuration id.
+	 * @return SPSG_Schedule_Configuration|WP_Error
+	 */
+	private function config_from_request( $request, $param ) {
+		$config = $this->cm()->find( (string) $request->get_param( $param ) );
+		if ( null === $config ) {
+			return new WP_Error(
+				'not_found',
+				__( 'Config not found.', 'sportspress-schedule-generator' ),
+				array( 'status' => 404 )
+			);
+		}
+		return $config;
+	}
+
 	// Intentionally bypasses full validation to allow partial/draft saves from the wizard.
 	// Only sanitization is applied; full validation happens at generate time.
 	private function save_draft( $data ) {
@@ -846,7 +867,7 @@ class SPSG_REST_API {
 	}
 
 	public function spsg_validate_config( $request ) {
-		$config = $this->cm()->load( $request['id'] );
+		$config = $this->config_from_request( $request, 'id' );
 		if ( is_wp_error( $config ) ) {
 			return $config;
 		}
@@ -1101,7 +1122,7 @@ class SPSG_REST_API {
 		if ( ! $schedule ) {
 			return new WP_Error( 'schedule_not_found', 'Schedule not found or expired.', array( 'status' => 404 ) );
 		}
-		$config = $this->cm()->load( $request->get_param( 'config_id' ) );
+		$config = $this->config_from_request( $request, 'config_id' );
 		// SG-2: bail on a failed config load before handing it to the exporter
 		// (mirrors the guard in spsg_generate()); otherwise a WP_Error flows into
 		// export() as if it were a valid configuration.
@@ -1125,7 +1146,7 @@ class SPSG_REST_API {
 		if ( ! $schedule ) {
 			return new WP_Error( 'schedule_not_found', 'Schedule not found or expired.', array( 'status' => 404 ) );
 		}
-		$config = $this->cm()->load( $request->get_param( 'config_id' ) );
+		$config = $this->config_from_request( $request, 'config_id' );
 		if ( is_wp_error( $config ) ) {
 			return $config;
 		}
@@ -1349,7 +1370,7 @@ class SPSG_REST_API {
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function spsg_generate( $request ) {
-		$config = $this->cm()->load( $request->get_param( 'config_id' ) );
+		$config = $this->config_from_request( $request, 'config_id' );
 		if ( is_wp_error( $config ) ) {
 			return $config;
 		}

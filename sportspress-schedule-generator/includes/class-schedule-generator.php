@@ -105,11 +105,10 @@ class SPSG_Schedule_Generator {
 			@set_time_limit( $max_time );
 		}
 
-		// Load current configuration
-		$config = $this->config_manager->get_current();
+		$config = $this->resolve_posted_config();
 
 		if ( ! $config ) {
-			wp_send_json_error( __( 'No configuration found. Please configure the schedule first.', 'sportspress-schedule-generator' ) );
+			wp_send_json_error( __( 'Configuration not found. Reload the page and try again.', 'sportspress-schedule-generator' ) );
 			return;
 		}
 
@@ -284,8 +283,11 @@ class SPSG_Schedule_Generator {
 		$filters = $this->read_export_filters();
 
 		try {
-			// Load configuration for export context
-			$config = $this->config_manager->get_current();
+			$config = $this->resolve_posted_config();
+			if ( ! $config ) {
+				wp_send_json_error( __( 'Configuration not found. Reload the page and try again.', 'sportspress-schedule-generator' ) );
+				return;
+			}
 
 			// Export schedule using Export Manager with filters
 			$result = $this->export_manager->export( $schedule, $config, $format, $filters, $xlsx_style );
@@ -478,6 +480,21 @@ class SPSG_Schedule_Generator {
 	}
 
 	/**
+	 * The configuration the admin page posted (its hidden #spsg-config-id), or
+	 * null when that id no longer exists. An empty id -- an unsaved
+	 * configuration -- keeps the manager's current one.
+	 *
+	 * @return SPSG_Schedule_Configuration|null
+	 */
+	private function resolve_posted_config() {
+		$config_id = sanitize_text_field( wp_unslash( $_POST['config_id'] ?? '' ) );
+		if ( '' === $config_id ) {
+			return $this->config_manager->get_current();
+		}
+		return $this->config_manager->find( $config_id );
+	}
+
+	/**
 	 * Load configuration for validation from POST data or saved config
 	 *
 	 * @return SPSG_Schedule_Configuration|null Config object, or null if error response was sent
@@ -493,8 +510,7 @@ class SPSG_Schedule_Generator {
 			return new SPSG_Schedule_Configuration( $config_data );
 		}
 
-		// Standalone validate: load saved config from DB.
-		$config = $this->config_manager->get_current();
+		$config = $this->resolve_posted_config();
 		if ( ! $config || ! $config->season_start ) {
 			return null;
 		}

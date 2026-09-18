@@ -286,6 +286,25 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 	}
 
 	/**
+	 * Exactly the requested configuration, or null when no configuration has
+	 * that id. Unlike {@see load()} this never substitutes another one.
+	 *
+	 * @param string $config_id Configuration id.
+	 * @return SPSG_Schedule_Configuration|null
+	 */
+	public function find( $config_id ) {
+		$config_id = (string) $config_id;
+		if ( '' === $config_id ) {
+			return null;
+		}
+		$configurations = get_option( self::OPTION_NAME, array() );
+		if ( ! isset( $configurations[ $config_id ] ) ) {
+			return null;
+		}
+		return new SPSG_Schedule_Configuration( $configurations[ $config_id ] );
+	}
+
+	/**
 	 * Get all saved configurations
 	 */
 	public function get_all_configurations() {
