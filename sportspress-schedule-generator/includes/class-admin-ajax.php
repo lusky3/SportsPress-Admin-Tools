@@ -43,7 +43,6 @@ class SPSG_Admin_Ajax {
 		// Note: spsg_validate_config is registered in SPSG_Schedule_Generator (includes feasibility checking)
 		add_action( 'wp_ajax_spsg_import_league', array( $this, 'ajax_import_league' ) );
 		add_action( 'wp_ajax_spsg_save_imported_league', array( $this, 'ajax_save_imported_league' ) );
-		add_action( 'wp_ajax_spsg_import_venues', array( $this, 'ajax_import_venues' ) );
 		add_action( 'wp_ajax_spsg_get_available_venues', array( $this, 'ajax_get_available_venues' ) );
 		add_action( 'wp_ajax_spsg_delete_config', array( $this, 'ajax_delete_config' ) );
 		add_action( 'wp_ajax_spsg_load_sp_teams', array( $this, 'ajax_load_sp_teams' ) );
@@ -297,21 +296,6 @@ class SPSG_Admin_Ajax {
 				'count' => count( $venues ),
 			)
 		);
-	}
-
-	/**
-	 * AJAX handler for importing SportsPress venues (legacy)
-	 */
-	public function ajax_import_venues() {
-		check_ajax_referer( 'spsg_import_venues', 'spsg_nonce' );
-
-		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_send_json_error( __( 'Insufficient permissions', 'sportspress-schedule-generator' ) );
-		}
-
-		$venues = SPSG_Sports_Press_Integration::get_venues();
-
-		wp_send_json_success( array( 'venues' => $venues ) );
 	}
 
 	/**

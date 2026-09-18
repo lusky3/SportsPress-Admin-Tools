@@ -591,10 +591,10 @@ class SPSG_Admin {
 	public function schedule_generator_page() {
 		if ( isset( $_POST['spsg_action'] ) ) {
 			if ( ! current_user_can( 'manage_options' ) ) {
-				wp_die( __( 'You do not have permission.', 'sportspress-schedule-generator' ) );
+				wp_die( esc_html__( 'You do not have permission.', 'sportspress-schedule-generator' ) );
 			}
 			if ( ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['spsg_nonce'] ?? '' ) ), 'spsg_admin_action' ) ) {
-				wp_die( __( 'Security check failed.', 'sportspress-schedule-generator' ) );
+				wp_die( esc_html__( 'Security check failed.', 'sportspress-schedule-generator' ) );
 			}
 			$this->handle_form_submission();
 		}

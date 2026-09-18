@@ -102,7 +102,7 @@ class SPSG_Schedule_Generator {
 		// Extend execution time for schedule generation.
 		$max_time = absint( get_option( 'spsg_max_generation_time', 300 ) );
 		if ( function_exists( 'set_time_limit' ) ) {
-			@set_time_limit( $max_time );
+			@set_time_limit( $max_time ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- disabled by some hosts.
 		}
 
 		$config = $this->resolve_posted_config();

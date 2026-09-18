@@ -50,6 +50,9 @@ if ( ! function_exists( 'esc_html' ) ) {
 if ( ! function_exists( 'esc_attr' ) ) {
 	function esc_attr( $s ) { return htmlspecialchars( (string) $s, ENT_QUOTES ); }
 }
+if ( ! function_exists( 'wp_date' ) ) {
+	function wp_date( $f, $t = null ) { return gmdate( $f, $t ?? time() ); }
+}
 
 require_once SPSG_PLUGIN_PATH . 'includes/class-admin-renderer.php';
 

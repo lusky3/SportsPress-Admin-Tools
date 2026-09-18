@@ -246,6 +246,6 @@ class SPSG_Error_Handler {
 		// Keep only last 50 errors
 		$error_log = array_slice( $error_log, 0, 50 );
 
-		update_option( 'spsg_error_log', $error_log );
+		update_option( 'spsg_error_log', $error_log, false );
 	}
 }

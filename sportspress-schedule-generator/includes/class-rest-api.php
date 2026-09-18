@@ -553,7 +553,7 @@ class SPSG_REST_API {
 	private function save_draft( $data ) {
 		// Basic structural validation: ensure data is an array with expected top-level keys
 		if ( ! is_array( $data ) ) {
-			return new WP_Error( 'invalid_data', 'Configuration data must be an array.', array( 'status' => 400 ) );
+			return new WP_Error( 'invalid_data', __( 'Configuration data must be an array.', 'sportspress-schedule-generator' ), array( 'status' => 400 ) );
 		}
 		$required_keys = array( 'name' );
 		foreach ( $required_keys as $key ) {
@@ -571,7 +571,7 @@ class SPSG_REST_API {
 		// lock SPSG_Configuration_Manager::save() uses.
 		$lock_handle = SPSG_Configuration_Manager::acquire_write_lock();
 		if ( false === $lock_handle ) {
-			return new WP_Error( 'spsg_save_in_progress', 'Another save is in progress. Please retry in a moment.', array( 'status' => 409 ) );
+			return new WP_Error( 'spsg_save_in_progress', __( 'Another save is in progress. Please retry in a moment.', 'sportspress-schedule-generator' ), array( 'status' => 409 ) );
 		}
 
 		try {
@@ -733,7 +733,7 @@ class SPSG_REST_API {
 	public function spsg_get_config( $request ) {
 		$configs = get_option( 'spsg_configurations', array() );
 		if ( ! isset( $configs[ $request['id'] ] ) ) {
-			return new WP_Error( 'not_found', 'Config not found.', array( 'status' => 404 ) );
+			return new WP_Error( 'not_found', __( 'Config not found.', 'sportspress-schedule-generator' ), array( 'status' => 404 ) );
 		}
 		$c = $this->cm()->load( $request['id'] );
 		$data = $c->to_array();
@@ -802,7 +802,7 @@ class SPSG_REST_API {
 	public function spsg_clone_config( $request ) {
 		$configs = get_option( 'spsg_configurations', array() );
 		if ( ! isset( $configs[ $request['id'] ] ) ) {
-			return new WP_Error( 'not_found', 'Config not found.', array( 'status' => 404 ) );
+			return new WP_Error( 'not_found', __( 'Config not found.', 'sportspress-schedule-generator' ), array( 'status' => 404 ) );
 		}
 		$config = $configs[ $request['id'] ];
 		unset( $config['id'], $config['created'], $config['modified'] );
@@ -858,10 +858,10 @@ class SPSG_REST_API {
 	private function postseason_config( $id ) {
 		$configs = get_option( 'spsg_configurations', array() );
 		if ( ! isset( $configs[ $id ] ) ) {
-			return new WP_Error( 'not_found', 'Config not found.', array( 'status' => 404 ) );
+			return new WP_Error( 'not_found', __( 'Config not found.', 'sportspress-schedule-generator' ), array( 'status' => 404 ) );
 		}
 		if ( empty( $configs[ $id ]['is_postseason'] ) ) {
-			return new WP_Error( 'not_postseason', 'This configuration is not a postseason configuration.', array( 'status' => 400 ) );
+			return new WP_Error( 'not_postseason', __( 'This configuration is not a postseason configuration.', 'sportspress-schedule-generator' ), array( 'status' => 400 ) );
 		}
 		return $configs[ $id ];
 	}
@@ -918,7 +918,7 @@ class SPSG_REST_API {
 		// Expects multipart/form-data with 'csv' file
 		$files = $request->get_file_params();
 		if ( empty( $files['csv']['tmp_name'] ) ) {
-			return new WP_Error( 'no_file', 'No CSV file uploaded.', array( 'status' => 400 ) );
+			return new WP_Error( 'no_file', __( 'No CSV file uploaded.', 'sportspress-schedule-generator' ), array( 'status' => 400 ) );
 		}
 		$file = $files['csv'];
 
@@ -926,11 +926,11 @@ class SPSG_REST_API {
 		// crafted paths that would otherwise let an attacker read arbitrary
 		// server files via parse_csv(). Mirrors the AJAX upload guard.
 		if ( empty( $file['tmp_name'] ) || ! is_uploaded_file( $file['tmp_name'] ) ) {
-			return new WP_Error( 'invalid_upload', 'Invalid upload.', array( 'status' => 400 ) );
+			return new WP_Error( 'invalid_upload', __( 'Invalid upload.', 'sportspress-schedule-generator' ), array( 'status' => 400 ) );
 		}
 
 		if ( $file['size'] > 1048576 ) {
-			return new WP_Error( 'file_too_large', 'CSV file must be under 1MB.', array( 'status' => 400 ) );
+			return new WP_Error( 'file_too_large', __( 'CSV file must be under 1MB.', 'sportspress-schedule-generator' ), array( 'status' => 400 ) );
 		}
 		// LOW (2026-08): this was disjunctive — a `.csv` filename alone satisfied
 		// it, so the finfo sniff could be bypassed by renaming any file. The AJAX
@@ -938,13 +938,13 @@ class SPSG_REST_API {
 		$allowed_types = array( 'text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel' );
 
 		if ( ! str_ends_with( strtolower( $file['name'] ), '.csv' ) ) {
-			return new WP_Error( 'invalid_file_type', 'File must be a CSV.', array( 'status' => 400 ) );
+			return new WP_Error( 'invalid_file_type', __( 'File must be a CSV.', 'sportspress-schedule-generator' ), array( 'status' => 400 ) );
 		}
 
 		$finfo = new finfo( FILEINFO_MIME_TYPE );
 		$mime  = $finfo->file( $file['tmp_name'] );
 		if ( ! in_array( $mime, $allowed_types, true ) ) {
-			return new WP_Error( 'invalid_file_type', 'File must be a CSV.', array( 'status' => 400 ) );
+			return new WP_Error( 'invalid_file_type', __( 'File must be a CSV.', 'sportspress-schedule-generator' ), array( 'status' => 400 ) );
 		}
 		$schedules = SPSG_Venue_Schedule_Importer::parse_csv( $files['csv']['tmp_name'] );
 		if ( is_wp_error( $schedules ) ) {
@@ -1029,14 +1029,14 @@ class SPSG_REST_API {
 		// M43: lock the shared configurations blob around this read-modify-write.
 		$lock_handle = SPSG_Configuration_Manager::acquire_write_lock();
 		if ( false === $lock_handle ) {
-			return new WP_Error( 'spsg_save_in_progress', 'Another save is in progress. Please retry in a moment.', array( 'status' => 409 ) );
+			return new WP_Error( 'spsg_save_in_progress', __( 'Another save is in progress. Please retry in a moment.', 'sportspress-schedule-generator' ), array( 'status' => 409 ) );
 		}
 
 		try {
 			// Merge into config's venue_date_availability
 			$configs = get_option( SPSG_Configuration_Manager::OPTION_NAME, array() );
 			if ( ! isset( $configs[ $config_id ] ) ) {
-				return new WP_Error( 'not_found', 'Config not found.', array( 'status' => 404 ) );
+				return new WP_Error( 'not_found', __( 'Config not found.', 'sportspress-schedule-generator' ), array( 'status' => 404 ) );
 			}
 			$existing = $configs[ $config_id ]['venue_date_availability'] ?? array();
 			foreach ( $availability as $vid => $ranges ) {
@@ -1120,7 +1120,7 @@ class SPSG_REST_API {
 	public function spsg_export_xlsx( $request ) {
 		$schedule = SPSG_Schedule_Draft_Store::get_schedule_by_id( $request->get_param( 'schedule_id' ) );
 		if ( ! $schedule ) {
-			return new WP_Error( 'schedule_not_found', 'Schedule not found or expired.', array( 'status' => 404 ) );
+			return new WP_Error( 'schedule_not_found', __( 'Schedule not found or expired.', 'sportspress-schedule-generator' ), array( 'status' => 404 ) );
 		}
 		$config = $this->config_from_request( $request, 'config_id' );
 		// SG-2: bail on a failed config load before handing it to the exporter
@@ -1144,7 +1144,7 @@ class SPSG_REST_API {
 	public function spsg_export_csv( $request ) {
 		$schedule = SPSG_Schedule_Draft_Store::get_schedule_by_id( $request->get_param( 'schedule_id' ) );
 		if ( ! $schedule ) {
-			return new WP_Error( 'schedule_not_found', 'Schedule not found or expired.', array( 'status' => 404 ) );
+			return new WP_Error( 'schedule_not_found', __( 'Schedule not found or expired.', 'sportspress-schedule-generator' ), array( 'status' => 404 ) );
 		}
 		$config = $this->config_from_request( $request, 'config_id' );
 		if ( is_wp_error( $config ) ) {
@@ -1505,7 +1505,7 @@ class SPSG_REST_API {
 	public function spsg_publish( $request ) {
 		$schedule = SPSG_Schedule_Draft_Store::get_schedule_by_id( $request->get_param( 'schedule_id' ) );
 		if ( ! $schedule ) {
-			return new WP_Error( 'schedule_not_found', 'Schedule not found or expired.', array( 'status' => 404 ) );
+			return new WP_Error( 'schedule_not_found', __( 'Schedule not found or expired.', 'sportspress-schedule-generator' ), array( 'status' => 404 ) );
 		}
 		$offset = (int) ( $request->get_param( 'offset' ) ?? 0 );
 		$limit  = min( 200, max( 1, (int) ( $request->get_param( 'limit' ) ?? 50 ) ) );

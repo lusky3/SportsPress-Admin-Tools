@@ -422,7 +422,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 		unset( $migrated_config['id'] );
 		unset( $migrated_config['created'] );
 		unset( $migrated_config['modified'] );
-		$migrated_config['name'] = ( $migrated_config['name'] ?? 'Imported Configuration' ) . ' (Imported)';
+		$migrated_config['name'] = ( $migrated_config['name'] ?? 'Imported Configuration' ) . __( ' (Imported)', 'sportspress-schedule-generator' );
 
 		// Validate before saving
 		$validation = $this->validate( $migrated_config );
@@ -831,7 +831,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 			unset( $config['id'] );
 			unset( $config['created'] );
 			unset( $config['modified'] );
-			$config['name'] = $new_name ?: ( $config['name'] ?? 'Unnamed' ) . ' (Copy)';
+			$config['name'] = $new_name ?: ( $config['name'] ?? __( 'Unnamed', 'sportspress-schedule-generator' ) ) . __( ' (Copy)', 'sportspress-schedule-generator' );
 
 			// save() now returns the new ID on success
 			return $this->save( $config );
@@ -913,7 +913,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 		// Keep only last 10 changes per configuration
 		$changes[ $config_id ] = array_slice( $changes[ $config_id ], 0, 10 );
 
-		update_option( 'spsg_configuration_changes', $changes );
+		update_option( 'spsg_configuration_changes', $changes, false );
 	}
 
 	/**
@@ -1029,7 +1029,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 
 		if ( isset( $changes[ $config_id ] ) ) {
 			unset( $changes[ $config_id ] );
-			return update_option( 'spsg_configuration_changes', $changes );
+			return update_option( 'spsg_configuration_changes', $changes, false );
 		}
 
 		return false;
