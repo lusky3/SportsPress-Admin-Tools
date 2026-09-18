@@ -120,6 +120,61 @@ _assert( min( $totals ) >= 5, 'no team is more than one game under games_per_tea
 $result = ( new SPSG_Schedule_Engine() )->generate_schedule( $config );
 _assert( ! is_wp_error( $result ), 'engine generates the custom + inter-division season' . ( is_wp_error( $result ) ? ' (' . $result->get_error_code() . ')' : '' ) );
 
+echo "\n=== A2: odd division sizes still hit games_per_team per team ===\n\n";
+
+$odd_cases = array(
+	array( 4, 2, 3, 1 ),
+	array( 12, 3, 3, 2 ),
+	array( 10, 5, 4, 6 ),
+);
+foreach ( $odd_cases as $case ) {
+	list( $gpt, $na, $nb, $inter ) = $case;
+	$label  = "gpt=$gpt na=$na nb=$nb inter=$inter";
+	$config = ids_config( 'custom', $gpt, $na, $nb, $inter );
+	_assert( true === ( new SPSG_Configuration_Validator( $config ) )->validate(), "validator accepts custom + inter-division ($label)" );
+
+	$matchups = ( new SPSG_Matchup_Generator() )->generate( $config );
+	$totals   = team_counts( $matchups, false );
+	_assert( max( $totals ) <= $gpt, "no team exceeds games_per_team ($label, max " . max( $totals ) . ')' );
+	_assert( min( $totals ) >= $gpt - 1, "no team is more than one game under games_per_team ($label, min " . min( $totals ) . ')' );
+
+	if ( 12 === $gpt && 3 === $na && 3 === $nb && 2 === $inter ) {
+		$result = ( new SPSG_Schedule_Engine() )->generate_schedule( $config );
+		_assert( ! is_wp_error( $result ), "engine generates the custom + inter-division season ($label)" . ( is_wp_error( $result ) ? ' (' . $result->get_error_code() . ')' : '' ) );
+	}
+}
+
+echo "\n=== A2: sweep of custom + inter-division sizing across validator-accepted configs ===\n\n";
+
+$accepted   = 0;
+$overcounts = 0;
+$deficits   = 0;
+for ( $na = 2; $na <= 6; $na++ ) {
+	for ( $nb = 2; $nb <= 6; $nb++ ) {
+		for ( $gpt = 4; $gpt <= 10; $gpt++ ) {
+			for ( $inter = 1; $inter <= 8; $inter++ ) {
+				$config = ids_config( 'custom', $gpt, $na, $nb, $inter );
+				if ( true !== ( new SPSG_Configuration_Validator( $config ) )->validate() ) {
+					continue;
+				}
+				$accepted++;
+
+				$matchups = ( new SPSG_Matchup_Generator() )->generate( $config );
+				$totals   = team_counts( $matchups, false );
+				foreach ( $totals as $count ) {
+					if ( $count > $gpt ) {
+						$overcounts++;
+					} elseif ( $count < $gpt - 1 ) {
+						$deficits++;
+					}
+				}
+			}
+		}
+	}
+}
+_assert( 0 === $overcounts, "no team ever exceeds games_per_team across $accepted accepted configs ($overcounts overcounts)" );
+_assert( 0 === $deficits, "no team ever falls more than one game short across $accepted accepted configs ($deficits deficits)" );
+
 echo "\n=== A4: inter-division per-team counts stay within floor/ceil(total/size) ===\n\n";
 
 $violations = 0;

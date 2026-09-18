@@ -784,6 +784,9 @@ class SPSG_Slot_Allocator {
 	 * matchings for 6 teams, 105 for 8, 945 for 10); above 12 teams the
 	 * matching list is too large and the division is declined.
 	 *
+	 * The returned rounds are ordered leg by leg via {@see order_by_leg()}:
+	 * every pairing's first meeting comes before any pairing's second.
+	 *
 	 * @param object[] $matchups This division's matchups.
 	 * @return array<int,object[]>|null Rounds, or null when no decomposition exists.
 	 */

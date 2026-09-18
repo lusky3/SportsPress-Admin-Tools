@@ -108,7 +108,7 @@ class SPSG_Schedule_Generator {
 		$config = $this->resolve_posted_config();
 
 		if ( ! $config ) {
-			wp_send_json_error( __( 'Configuration not found. Reload the page and try again.', 'sportspress-schedule-generator' ) );
+			wp_send_json_error( __( 'Save the configuration before generating a schedule.', 'sportspress-schedule-generator' ) );
 			return;
 		}
 
@@ -481,16 +481,14 @@ class SPSG_Schedule_Generator {
 
 	/**
 	 * The configuration the admin page posted (its hidden #spsg-config-id), or
-	 * null when that id no longer exists. An empty id -- an unsaved
-	 * configuration -- keeps the manager's current one.
+	 * null when that id no longer exists. An empty id means the admin is
+	 * working on an unsaved configuration, which also resolves to null --
+	 * `find()` never substitutes another one.
 	 *
 	 * @return SPSG_Schedule_Configuration|null
 	 */
 	private function resolve_posted_config() {
 		$config_id = sanitize_text_field( wp_unslash( $_POST['config_id'] ?? '' ) );
-		if ( '' === $config_id ) {
-			return $this->config_manager->get_current();
-		}
 		return $this->config_manager->find( $config_id );
 	}
 

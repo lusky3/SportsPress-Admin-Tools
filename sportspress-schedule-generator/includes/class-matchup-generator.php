@@ -30,28 +30,34 @@ class SPSG_Matchup_Generator {
 	 * @return array Array of matchup objects
 	 */
 	public function generate( $config ) {
-		$matchups             = array();
 		$this->matchup_counts = array();
 		$inter_config         = ! empty( $config->inter_division_games ) ? (array) $config->inter_division_games : array();
-		$inter_share          = ( 'custom' === $config->matchup_style )
-			? $this->inter_division_share( $config->divisions, $inter_config )
-			: array();
 
+		// Inter-division games are generated first so each team's actual
+		// inter-division count is known before sizing its intra-division
+		// target -- a division average under- or over-counts whenever the
+		// division size doesn't divide evenly into the pair totals.
+		$inter_matchups = array();
+		$inter_counts   = array();
+		if ( ! empty( $inter_config ) ) {
+			$inter_matchups = $this->generate_inter_division_matchups( $config->divisions, $inter_config );
+			$inter_counts   = $this->count_team_games( $inter_matchups );
+		}
+
+		$intra_matchups = array();
 		foreach ( $config->divisions as $division ) {
-			$division_id       = $division['id'] ?? '';
-			$intra_target      = max( 0, (int) $config->games_per_team - ( $inter_share[ $division_id ] ?? 0 ) );
 			$division_matchups = $this->generate_division_matchups(
 				$division,
 				$config->matchup_style,
-				$intra_target
+				$config->games_per_team,
+				$inter_counts
 			);
-			$matchups          = array_merge( $matchups, $division_matchups );
+			$intra_matchups    = array_merge( $intra_matchups, $division_matchups );
 		}
 
-		if ( ! empty( $inter_config ) ) {
-			$inter_matchups = $this->generate_inter_division_matchups( $config->divisions, $inter_config );
-			$matchups       = array_merge( $matchups, $inter_matchups );
-		}
+		// Keep intra-division matchups first, inter-division after: the
+		// allocator's greedy placement is order-sensitive.
+		$matchups = array_merge( $intra_matchups, $inter_matchups );
 
 		// Home/away are designations only, not venue assignments.
 		return $this->assign_home_away(
@@ -62,45 +68,37 @@ class SPSG_Matchup_Generator {
 	}
 
 	/**
-	 * Inter-division games each division's teams will carry, per division id:
-	 * the ceiling share of every configured pair total the division is part of.
+	 * Team id => games played, tallied from a matchup list's team_a/team_b.
+	 * Used right after generation, before home/away is assigned, so those
+	 * are the populated fields (home_team/away_team are still null).
 	 *
-	 * @param array $divisions            Division entries.
-	 * @param array $inter_division_config Pair key ("a:b") => total games.
+	 * @param array $matchups Matchup arrays.
 	 * @return array<string,int>
 	 */
-	private function inter_division_share( $divisions, $inter_division_config ) {
-		$sizes = array();
-		foreach ( $divisions as $division ) {
-			$sizes[ $division['id'] ?? '' ] = count( $division['teams'] ?? array() );
-		}
-
-		$share = array();
-		foreach ( $inter_division_config as $pair_key => $total ) {
-			$total = (int) $total;
-			$parts = explode( ':', (string) $pair_key );
-			if ( $total <= 0 || 2 !== count( $parts ) ) {
-				continue;
-			}
-			foreach ( $parts as $division_id ) {
-				$size = $sizes[ $division_id ] ?? 0;
-				if ( $size > 0 ) {
-					$share[ $division_id ] = ( $share[ $division_id ] ?? 0 ) + (int) ceil( $total / $size );
+	private function count_team_games( array $matchups ) {
+		$counts = array();
+		foreach ( $matchups as $matchup ) {
+			foreach ( array( 'team_a', 'team_b' ) as $key ) {
+				if ( empty( $matchup[ $key ] ) ) {
+					continue;
 				}
+				$team_id            = $this->get_team_id( $matchup[ $key ] );
+				$counts[ $team_id ] = ( $counts[ $team_id ] ?? 0 ) + 1;
 			}
 		}
-		return $share;
+		return $counts;
 	}
 
 	/**
 	 * Generate matchups for single division
 	 *
-	 * @param array  $division Division data
-	 * @param string $style Matchup style (single_round_robin, double_round_robin, custom)
-	 * @param int    $games_per_team Total games per team
+	 * @param array             $division     Division data
+	 * @param string            $style        Matchup style (single_round_robin, double_round_robin, custom)
+	 * @param int               $games_per_team Total games per team
+	 * @param array<string,int> $inter_counts Team id => inter-division games already assigned. Ignored by the round-robin styles.
 	 * @return array Array of matchup objects
 	 */
-	private function generate_division_matchups( $division, $style, $games_per_team ) {
+	private function generate_division_matchups( $division, $style, $games_per_team, $inter_counts = array() ) {
 		$teams = $division['teams'] ?? array();
 		$matchups = array();
 
@@ -120,8 +118,14 @@ class SPSG_Matchup_Generator {
 				break;
 
 			case 'custom':
-				// Generate enough matchups to meet games_per_team
-				$matchups = $this->custom_matchups( $teams, $games_per_team );
+				// Each team's intra-division target is games_per_team minus
+				// its own actual inter-division count, not a divisional share.
+				$targets = array();
+				foreach ( $teams as $team ) {
+					$team_id             = $this->get_team_id( $team );
+					$targets[ $team_id ] = max( 0, (int) $games_per_team - ( $inter_counts[ $team_id ] ?? 0 ) );
+				}
+				$matchups = $this->custom_matchups( $teams, $targets );
 				break;
 
 			default:
@@ -260,13 +264,13 @@ class SPSG_Matchup_Generator {
 	/**
 	 * Custom matchup generation
 	 *
-	 * Generates matchups to meet a specific games_per_team target
+	 * Generates matchups to meet each team's individual games target.
 	 *
-	 * @param array $teams Array of team data
-	 * @param int   $games_per_team Target games per team
+	 * @param array             $teams   Array of team data.
+	 * @param array<string,int> $targets Team id => games to generate.
 	 * @return array Array of matchup arrays
 	 */
-	private function custom_matchups( $teams, $games_per_team ) {
+	private function custom_matchups( $teams, array $targets ) {
 		$matchups   = array();
 		$team_count = count( $teams );
 
@@ -283,8 +287,8 @@ class SPSG_Matchup_Generator {
 			$teams_by_id[ $tid ] = $team;
 		}
 
-		$total_matchups_needed = ( $team_count * $games_per_team ) / 2;
-		$max_matchups_per_pair = max( 2, ceil( $games_per_team / ( $team_count - 1 ) ) );
+		$total_matchups_needed = intdiv( array_sum( $targets ), 2 );
+		$max_matchups_per_pair = max( 2, (int) ceil( max( $targets ?: array( 0 ) ) / max( 1, $team_count - 1 ) ) );
 
 		// Incremental selection: rather than re-sorting all teams + scanning
 		// every pair on each iteration (the original O(M^2 * n^2)), keep team
@@ -297,11 +301,11 @@ class SPSG_Matchup_Generator {
 		while ( count( $matchups ) < $total_matchups_needed && $attempts < $max_attempts ) {
 			$attempts++;
 
-			$pair_ids = $this->pick_next_custom_pair( $team_games, $games_per_team, $max_matchups_per_pair );
+			$pair_ids = $this->pick_next_custom_pair( $team_games, $targets, $max_matchups_per_pair );
 
 			if ( ! $pair_ids ) {
 				// Relax the pair cap: any two teams that still need games.
-				$pair_ids = $this->pick_next_custom_pair( $team_games, $games_per_team, PHP_INT_MAX );
+				$pair_ids = $this->pick_next_custom_pair( $team_games, $targets, PHP_INT_MAX );
 			}
 
 			if ( ! $pair_ids ) {
@@ -327,35 +331,41 @@ class SPSG_Matchup_Generator {
 	/**
 	 * Pick the next (team_a_id, team_b_id) pair for custom matchups.
 	 *
-	 * Selects the team with the lowest game count that still needs games,
-	 * then pairs it with the lowest-count team whose pair count is still
-	 * below `$pair_cap`. Returns null if no valid pair exists.
+	 * Selects the team with the most remaining need (target minus games so
+	 * far) that still needs games, then pairs it with the highest-remaining
+	 * team whose pair count is still below `$pair_cap`. With a uniform
+	 * target this is the same order as fewest-games-first; sorting on raw
+	 * game count instead of remaining need would starve a team whose target
+	 * is higher than its division-mates' once they hit theirs. Returns null
+	 * if no valid pair exists.
 	 *
-	 * @param array $team_games Map of team_id => games scheduled.
-	 * @param int   $games_per_team Target per team.
-	 * @param int   $pair_cap   Maximum allowed matchups per pair.
+	 * @param array             $team_games Map of team_id => games scheduled.
+	 * @param array<string,int> $targets    Team id => games to generate.
+	 * @param int               $pair_cap   Maximum allowed matchups per pair.
 	 * @return array|null [team_a_id, team_b_id] or null.
 	 */
-	private function pick_next_custom_pair( $team_games, $games_per_team, $pair_cap ) {
-		// Sort team IDs by games ascending (single O(n log n) per call).
+	private function pick_next_custom_pair( $team_games, $targets, $pair_cap ) {
+		// Sort team IDs by remaining need descending (single O(n log n) per call).
 		$ids = array_keys( $team_games );
 		usort(
 			$ids,
-			function ( $a, $b ) use ( $team_games ) {
-				return $team_games[ $a ] - $team_games[ $b ];
+			function ( $a, $b ) use ( $team_games, $targets ) {
+				$remaining_a = ( $targets[ $a ] ?? 0 ) - $team_games[ $a ];
+				$remaining_b = ( $targets[ $b ] ?? 0 ) - $team_games[ $b ];
+				return $remaining_b - $remaining_a;
 			}
 		);
 
 		$n = count( $ids );
 		for ( $i = 0; $i < $n; $i++ ) {
 			$id_a = $ids[ $i ];
-			if ( $team_games[ $id_a ] >= $games_per_team ) {
+			if ( $team_games[ $id_a ] >= ( $targets[ $id_a ] ?? 0 ) ) {
 				continue;
 			}
 
 			for ( $j = $i + 1; $j < $n; $j++ ) {
 				$id_b = $ids[ $j ];
-				if ( $team_games[ $id_b ] >= $games_per_team ) {
+				if ( $team_games[ $id_b ] >= ( $targets[ $id_b ] ?? 0 ) ) {
 					continue;
 				}
 

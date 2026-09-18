@@ -358,7 +358,7 @@ if ( is_wp_error( $schedule ) ) {
 			$min_week_gap = min( $min_week_gap, $weeks[ $i ] - $weeks[ $i - 1 ] );
 		}
 	}
-	ec_assert( $min_week_gap >= 5, 'H15: rematches are a full rotation (5 playing weeks) apart (min gap ' . $min_week_gap . ' weeks)' );
+	ec_assert( PHP_INT_MAX !== $min_week_gap && $min_week_gap >= 5, 'H15: rematches are a full rotation (5 playing weeks) apart (min gap ' . $min_week_gap . ' weeks)' );
 
 	// Round interleaving happens in the matchup generator itself — assert it
 	// there too so the guard survives a change in allocation strategy.
