@@ -65,6 +65,17 @@ swc_assert(
 	'scales the real PREFERRED_VENUE_BONUS constant, not just a test literal'
 );
 
+$GLOBALS['swc_test_options'] = array( 'spsg_weight_double_header' => 0.0 );
+swc_assert(
+	0.0 === $weighted->invoke( $allocator, SPSG_Slot_Allocator::SAME_DATE_TEAM_PENALTY, 'double_header' ),
+	'the double-header penalty has its own multiplier'
+);
+$GLOBALS['swc_test_options'] = array( 'spsg_weight_overlap_avoidance' => 0.0 );
+swc_assert(
+	SPSG_Slot_Allocator::SAME_DATE_TEAM_PENALTY === $weighted->invoke( $allocator, SPSG_Slot_Allocator::SAME_DATE_TEAM_PENALTY, 'double_header' ),
+	'zeroing the overlap-avoidance multiplier no longer touches the double-header penalty'
+);
+
 echo "\n=== Results ===\n";
 echo "Passed: $passed\n";
 echo "Failed: $failed\n";

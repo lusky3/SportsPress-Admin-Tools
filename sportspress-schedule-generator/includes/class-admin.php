@@ -325,7 +325,7 @@ class SPSG_Admin {
 	}
 
 	/**
-	 * The 8 Advanced-tuning weight sliders, in the fixed order the settings
+	 * The 9 Advanced-tuning weight sliders, in the fixed order the settings
 	 * page renders them. Single source of truth for register_spat_settings(),
 	 * weight_slider_callback(), and reset_weight_options() -- SPSG_Slot_Allocator,
 	 * SPSG_Distribution_Constraint, and SPSG_Division_Grouping_Constraint read
@@ -343,7 +343,8 @@ class SPSG_Admin {
 			'preferred_venue'     => array( 'label' => __( 'Preferred Venue Priority', 'sportspress-schedule-generator' ) ),
 			'division_distance'   => array( 'label' => __( 'Division Grouping (Distance)', 'sportspress-schedule-generator' ) ),
 			'division_disruption' => array( 'label' => __( 'Division Grouping (Disruption)', 'sportspress-schedule-generator' ) ),
-			'overlap_avoidance'   => array( 'label' => __( 'Restricted-Pair / Overlap Avoidance', 'sportspress-schedule-generator' ) ),
+			'overlap_avoidance'   => array( 'label' => __( 'Restricted-Pair Same-Day Bonus', 'sportspress-schedule-generator' ) ),
+			'double_header'       => array( 'label' => __( 'Double-Header Avoidance', 'sportspress-schedule-generator' ) ),
 		);
 	}
 
@@ -498,7 +499,7 @@ class SPSG_Admin {
 		</style>
 		<script>
 		( function () {
-			var WEIGHT_KEYS = [ 'day_balance', 'time_of_night', 'season_pacing', 'venue_utilization', 'preferred_venue', 'division_distance', 'division_disruption', 'overlap_avoidance' ];
+			var WEIGHT_KEYS = [ 'day_balance', 'time_of_night', 'season_pacing', 'venue_utilization', 'preferred_venue', 'division_distance', 'division_disruption', 'overlap_avoidance', 'double_header' ];
 
 			function rowFor( id ) {
 				var el = document.getElementById( id );

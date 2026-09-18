@@ -317,7 +317,9 @@ class SPSG_Slot_Allocator {
 	 * tell "twice this Friday" apart from "once each of two Fridays"; without
 	 * this term nothing discourages double-headers (H14). Scaled above the
 	 * division-grouping terms so packing a venue never justifies making a team
-	 * play twice in one night, but below the preferred-venue credit.
+	 * play twice in one night, but below the preferred-venue credit. Scaled by
+	 * the Double-Header Avoidance slider; the restricted-pair bonus below has
+	 * its own.
 	 */
 	const SAME_DATE_TEAM_PENALTY = 250.0;
 
@@ -2503,7 +2505,7 @@ class SPSG_Slot_Allocator {
 
 			foreach ( $same_day_games as $existing_game ) {
 				if ( $this->has_team_conflict( $existing_game, $home_team_id, $away_team_id ) ) {
-					$cost += $this->weighted( self::SAME_DATE_TEAM_PENALTY, 'overlap_avoidance' );
+					$cost += $this->weighted( self::SAME_DATE_TEAM_PENALTY, 'double_header' );
 				}
 			}
 		}

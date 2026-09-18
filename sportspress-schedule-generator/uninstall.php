@@ -38,6 +38,7 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 		'spsg_weight_division_distance',
 		'spsg_weight_division_disruption',
 		'spsg_weight_overlap_avoidance',
+		'spsg_weight_double_header',
 	);
 
 	foreach ( $options as $option ) {

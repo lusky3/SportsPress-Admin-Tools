@@ -157,6 +157,20 @@ awc_assert(
 	'reset does NOT touch spsg_advanced_weights_enabled -- the section stays visible for further tuning'
 );
 
+echo "\n=== weight_sliders() carries the double-header slider ===\n\n";
+$sliders_method = new ReflectionMethod( 'SPSG_Admin', 'weight_sliders' );
+$sliders_method->setAccessible( true );
+$sliders = $sliders_method->invoke( null );
+awc_assert( 9 === count( $sliders ), 'nine sliders are defined (' . count( $sliders ) . ')' );
+awc_assert( isset( $sliders['double_header'] ), 'double_header is one of them' );
+awc_assert( isset( $sliders['overlap_avoidance'] ), 'overlap_avoidance is still one of them' );
+
+$GLOBALS['awc_test_options'] = array( 'spsg_advanced_weights_enabled' => 1, 'spsg_weight_double_header' => 0.3 );
+$reset_method = new ReflectionMethod( 'SPSG_Admin', 'reset_weight_options' );
+$reset_method->setAccessible( true );
+$reset_method->invoke( $admin );
+awc_assert( ! isset( $GLOBALS['awc_test_options']['spsg_weight_double_header'] ), 'reset clears the double-header multiplier too' );
+
 echo "\n=== Results ===\n";
 echo "Passed: $passed\n";
 echo "Failed: $failed\n";
