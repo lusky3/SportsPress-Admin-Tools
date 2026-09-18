@@ -443,6 +443,19 @@ class SPSG_Admin {
 		echo '<h2>' . esc_html__( 'Balance Weights (Advanced)', 'sportspress-schedule-generator' ) . '</h2>';
 		echo '<p>' . esc_html__( 'Fine-tune how strongly the schedule generator favors each kind of balance. 100% is the algorithm\'s own built-in weight; 0% turns a category off entirely. Enable Advanced above to reveal these sliders.', 'sportspress-schedule-generator' ) . '</p>';
 		echo '</div>';
+		$this->render_weights_section_script();
+		echo '<div id="spsg-weights-table-marker" style="display:none;"></div>';
+	}
+
+	/**
+	 * Inline CSS/JS for the Balance Weights section: whole-section show/hide
+	 * (Advanced checkbox), Time-of-Night gray-out (Balance Time Slots
+	 * checkbox), and live percentage readout on each slider's `input` event.
+	 * Split out of {@see weights_section_callback()} as its own method --
+	 * a distinct concern (client-side behavior vs. the section's own
+	 * markup), and keeps that method's own line count down.
+	 */
+	private function render_weights_section_script() {
 		?>
 		<style>
 			.spsg-weight-disabled { opacity: 0.5; pointer-events: none; }
@@ -499,7 +512,6 @@ class SPSG_Admin {
 		} )();
 		</script>
 		<?php
-		echo '<div id="spsg-weights-table-marker" style="display:none;"></div>';
 	}
 
 	/**
