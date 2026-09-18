@@ -896,7 +896,7 @@ class SPSG_Statistics_Calculator {
 	 * @param string                               $b_id               Second team id.
 	 * @param array<string,array<string,object[]>> $games_by_team_date Team id => date => games.
 	 * @param array<string,string>                 $names              Team id => display name.
-	 * @return array{teams:array{0:string,1:string},shared_nights:int,min_gap_minutes:?int}
+	 * @return array{teams:array{0:string,1:string},shared_nights:int,min_gap_minutes:?int} teams, count of shared nights, min_gap_minutes in minutes (null when the pair never shared a night or no shared night had parseable start times).
 	 */
 	private function restricted_pair_report( $a_id, $b_id, $games_by_team_date, $names ) {
 		list( $shared_nights, $min_gap ) = $this->shared_night_gaps(
@@ -941,7 +941,7 @@ class SPSG_Statistics_Calculator {
 					$minutes_a = SPSG_Schedule_Helper::time_to_minutes( $game_a->time_slot );
 					$minutes_b = SPSG_Schedule_Helper::time_to_minutes( $game_b->time_slot );
 					if ( null === $minutes_a || null === $minutes_b ) {
-						continue; // Unparseable slot -- same as a night these two never actually shared.
+						continue; // Unparseable slot: the night still counts as shared; only its gap is unknown.
 					}
 					$gap = abs( $minutes_a - $minutes_b );
 					$min_gap = null === $min_gap ? $gap : min( $min_gap, $gap );

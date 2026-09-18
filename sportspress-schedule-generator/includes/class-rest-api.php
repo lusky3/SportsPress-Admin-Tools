@@ -806,7 +806,7 @@ class SPSG_REST_API {
 		}
 		$config = $configs[ $request['id'] ];
 		unset( $config['id'], $config['created'], $config['modified'] );
-		$config['name'] = $request->get_param( 'name' ) ?: ( ( $config['name'] ?? 'Unnamed' ) . ' (Copy)' );
+		$config['name'] = $request->get_param( 'name' ) ?: sprintf( /* translators: %s: configuration name */ __( '%s (Copy)', 'sportspress-schedule-generator' ), $config['name'] ?? __( 'Unnamed', 'sportspress-schedule-generator' ) );
 		$new_id = $this->save_draft( $config );
 		return rest_ensure_response( array( 'id' => $new_id ) );
 	}

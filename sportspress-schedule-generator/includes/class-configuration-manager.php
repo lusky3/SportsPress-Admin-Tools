@@ -422,7 +422,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 		unset( $migrated_config['id'] );
 		unset( $migrated_config['created'] );
 		unset( $migrated_config['modified'] );
-		$migrated_config['name'] = ( $migrated_config['name'] ?? 'Imported Configuration' ) . __( ' (Imported)', 'sportspress-schedule-generator' );
+		$migrated_config['name'] = sprintf( /* translators: %s: configuration name */ __( '%s (Imported)', 'sportspress-schedule-generator' ), $migrated_config['name'] ?? __( 'Imported Configuration', 'sportspress-schedule-generator' ) );
 
 		// Validate before saving
 		$validation = $this->validate( $migrated_config );
@@ -835,7 +835,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 			unset( $config['id'] );
 			unset( $config['created'] );
 			unset( $config['modified'] );
-			$config['name'] = $new_name ?: ( $config['name'] ?? __( 'Unnamed', 'sportspress-schedule-generator' ) ) . __( ' (Copy)', 'sportspress-schedule-generator' );
+			$config['name'] = $new_name ?: sprintf( /* translators: %s: configuration name */ __( '%s (Copy)', 'sportspress-schedule-generator' ), $config['name'] ?? __( 'Unnamed', 'sportspress-schedule-generator' ) );
 
 			// save() now returns the new ID on success
 			return $this->save( $config );

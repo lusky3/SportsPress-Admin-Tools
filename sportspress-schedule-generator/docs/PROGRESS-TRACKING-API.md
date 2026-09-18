@@ -200,7 +200,7 @@ function spsg_ajax_get_progress() {
 add_action('wp_ajax_spsg_cancel_generation', 'spsg_ajax_cancel_generation');
 
 function spsg_ajax_cancel_generation() {
-    check_ajax_referer('spsg_cancel_generation', 'nonce');
+    check_ajax_referer('spsg_cancel_generation', 'spsg_nonce');
     
     if (!current_user_can('manage_options')) {
         wp_send_json_error('Insufficient permissions');
