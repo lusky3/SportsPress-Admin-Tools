@@ -107,6 +107,7 @@ run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-greedy-candidate
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-custom-opponent-variety.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-time-window-minutes.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-backend-settings-sanitize.php"
+run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-upgrader.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-sportspress-importer.php"
 run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-events-import.php"
 run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-notifications.php"

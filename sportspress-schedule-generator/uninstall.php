@@ -48,7 +48,9 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 	global $wpdb;
 
 	// Drafts, draft pointers, placeholder-cleanup cursors and anything else
-	// the plugin ever stored under its prefix, plus its transients.
+	// the plugin ever stored under its prefix, plus its transients. This
+	// pattern-based sweep also covers 'spsg_version' (SPSG_Upgrader), so it
+	// needs no entry of its own in the $options list above.
 	$wpdb->query(
 		$wpdb->prepare(
 			"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s",

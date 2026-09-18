@@ -75,10 +75,11 @@ Yes. The import dialog lets you choose conflict resolution (skip or overwrite), 
 * Fix: form input is unslashed before saving (names with apostrophes no longer gain backslashes); backend settings are clamped server-side; SportsPress import only trusts real venue ids; venue-schedule CSV import writes to the configuration on screen.
 * Removed: the never-configurable Day Cap constraint and the unused legacy venue-import endpoint.
 * Maintenance: plugin uninstall removes drafts, weights and placeholder teams; assorted escaping and translation fixes.
-* New: a ninth Advanced slider, "Double-Header Avoidance", controls how strongly a team is kept from playing twice on one date; the former "Restricted-Pair / Overlap Avoidance" slider is now "Restricted-Pair Same-Day Bonus" and covers only that bonus.
-* Fix: a postseason bracket's dates now start on the Monday after the regular season ends, so its round-robin and final weeks line up with the scheduler's Mon-Sun weeks and get the same rounds-first placement as the regular season; a bracket whose start date is not a Monday is rejected by validation with a message to recreate it.
+* New: a ninth Advanced slider, "Double-Header Avoidance", controls how strongly a team is kept from playing twice on one date; the former "Restricted-Pair / Overlap Avoidance" slider is now "Restricted-Pair Same-Day Bonus" and covers only that bonus. An existing Overlap Avoidance value is copied to the new slider on upgrade.
+* Fix: a postseason bracket's dates now start on the Monday after the regular season ends, so its round-robin and final weeks line up with the scheduler's Mon-Sun weeks and get the same rounds-first placement as the regular season; existing postseason configurations are moved forward to the next Monday automatically on upgrade (their end date follows); a bracket whose dates are later edited off a Monday is rejected by validation.
 * Fix: postseason Championship, Consolation and cross-round-robin games are identified by an explicit stage marker rather than by pattern-matching team names, so a real team called e.g. "Hawks Seed 7" is never mistaken for a placeholder.
 * Fix: saving a configuration in the classic admin now redirects after saving, so refreshing the page no longer re-submits the form; the Advanced-weights settings script and style are enqueued as plugin assets.
+* Fix: the classic admin no longer reports "Configuration saved successfully" when the database write failed.
 * Removed: the makeup-game scheduling code, which could never run (blackout dates are excluded before any slot exists). The Makeup export columns remain; the code is recoverable from the repository history as noted in docs/DEVELOPMENT-HISTORY.md.
 
 = 1.3.9 =

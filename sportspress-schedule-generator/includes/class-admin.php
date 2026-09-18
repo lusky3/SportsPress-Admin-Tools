@@ -462,13 +462,16 @@ class SPSG_Admin {
 	/**
 	 * "Balance Weights (Advanced)" section heading/description (the section
 	 * itself is registered with an empty title so WordPress doesn't print
-	 * its own auto-generated <h2>), plus the inline show/hide of the WHOLE
+	 * its own auto-generated <h2>). The inline show/hide of the WHOLE
 	 * section -- heading, description, the settings-fields <table> WordPress
 	 * renders immediately after this callback returns, and the "Reset
 	 * Balance Weights to Defaults" form -- driven by the Advanced checkbox,
-	 * gray-out (Balance Time Slots checkbox vs. the Time-of-Night slider --
-	 * see class-distribution-constraint.php's time_slot_balance gate), and
-	 * live percentage readout script.
+	 * plus the gray-out (Balance Time Slots checkbox vs. the Time-of-Night
+	 * slider -- see class-distribution-constraint.php's time_slot_balance
+	 * gate) and the live percentage readout, now live in
+	 * assets/js/settings-weights.js (enqueued as the 'spsg-settings-weights'
+	 * script); the gray-out rule itself is the '.spsg-weight-disabled' class
+	 * in assets/css/admin.css.
 	 *
 	 * Uses CSS (opacity/pointer-events) rather than the disabled attribute
 	 * to gray out the Time-of-Night slider: a disabled field is left out of
@@ -858,6 +861,8 @@ class SPSG_Admin {
 
 			if ( is_wp_error( $result ) ) {
 				add_settings_error( 'spsg_messages', 'spsg_error', $result->get_error_message(), 'error' );
+			} elseif ( false === $result ) {
+				add_settings_error( 'spsg_messages', 'spsg_error', __( 'The configuration could not be saved. Please try again.', 'sportspress-schedule-generator' ), 'error' );
 			} else {
 				add_settings_error( 'spsg_messages', 'spsg_success', __( 'Configuration saved successfully', 'sportspress-schedule-generator' ), 'updated' );
 			}

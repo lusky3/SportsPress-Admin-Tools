@@ -164,6 +164,10 @@ class SportsPress_Schedule_Generator {
 			// Load error handler
 			require_once SPSG_PLUGIN_PATH . 'includes/class-error-handler.php';
 
+			// One-shot per-version upgrades (postseason Monday alignment, slider carry-over).
+			require_once SPSG_PLUGIN_PATH . 'includes/class-upgrader.php';
+			SPSG_Upgrader::maybe_upgrade();
+
 			// Register constraints
 			$this->register_constraints();
 
@@ -240,7 +244,7 @@ class SportsPress_Schedule_Generator {
 	 * Register constraint classes
 	 */
 	private function register_constraints() {
-		$this->register_constraint( 'SPSG_Blackout_Constraint', 'Prevents scheduling on blackout dates and manages makeup games', 'scheduling' );
+		$this->register_constraint( 'SPSG_Blackout_Constraint', 'Prevents scheduling on blackout dates', 'scheduling' );
 		$this->register_constraint( 'SPSG_Distribution_Constraint', 'Manages fair distribution of games across days and time slots', 'optimization' );
 		$this->register_constraint( 'SPSG_Team_Restriction_Constraint', 'Manages team-specific scheduling restrictions', 'restrictions' );
 		$this->register_constraint( 'SPSG_Division_Grouping_Constraint', 'Optimizes consecutive time slots for division games', 'optimization' );

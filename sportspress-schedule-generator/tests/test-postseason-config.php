@@ -544,8 +544,8 @@ $championship_day_not_playing_day = new SPSG_Schedule_Configuration(
 		pc_valid_regular_season_fields(),
 		array(
 			'is_postseason'     => true,
-			'season_start'      => '2026-10-01',
-			'season_end'        => '2026-10-28', // season_start + 7*(3+1)-1 = 27 days
+			'season_start'      => '2026-10-05',
+			'season_end'        => '2026-11-01', // season_start + 7*(3+1)-1 = 27 days
 			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D', 'E', 'F' ) ) ),
 			'round_robin_weeks' => 3,
 			'championship_day'  => array( 'day' => 'saturday' ), // NOT in playing_days (only 'friday')
@@ -567,8 +567,8 @@ $consolation_day_not_playing_day = new SPSG_Schedule_Configuration(
 		pc_valid_regular_season_fields(),
 		array(
 			'is_postseason'     => true,
-			'season_start'      => '2026-10-01',
-			'season_end'        => '2026-10-28', // season_start + 7*(3+1)-1 = 27 days
+			'season_start'      => '2026-10-05',
+			'season_end'        => '2026-11-01', // season_start + 7*(3+1)-1 = 27 days
 			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D', 'E', 'F' ) ) ),
 			'round_robin_weeks' => 3,
 			'consolation_day'   => 'saturday', // NOT in playing_days (only 'friday')
@@ -810,6 +810,77 @@ $odd_new_id = $manager->create_postseason_configuration(
 pc_assert(
 	is_string( $odd_new_id ) && '' !== $odd_new_id,
 	'a 7-team division with generic_teams enabled now creates successfully, instead of failing validation'
+);
+
+echo "\n=== SPSG_Configuration_Manager::align_postseason_weeks() ===\n\n";
+
+$state->options = array();
+$state->options['spsg_configurations'] = array(
+	// (a) A postseason bracket created under 1.3.9: starts the day after
+	// the source season's own season_end (2026-10-01, a Thursday), which
+	// validate_postseason_season_span() now rejects as a season_start --
+	// this must be moved forward to the next Monday.
+	'config_needs_alignment' => array(
+		'id'                => 'config_needs_alignment',
+		'name'              => 'W2026-27 Playoffs',
+		'is_postseason'     => true,
+		'season_start'      => '2026-10-01',
+		'season_end'        => '2026-10-28',
+		'round_robin_weeks' => 3,
+		'created'           => '2026-08-01 00:00:00',
+		'modified'          => '2026-08-01 00:00:00',
+	),
+	// (b) Already on a Monday -- must be left alone.
+	'config_already_aligned' => array(
+		'id'                => 'config_already_aligned',
+		'name'              => 'Already Aligned Playoffs',
+		'is_postseason'     => true,
+		'season_start'      => '2026-10-05',
+		'season_end'        => '2026-11-01',
+		'round_robin_weeks' => 3,
+		'created'           => '2026-08-01 00:00:00',
+		'modified'          => '2026-08-01 00:00:00',
+	),
+	// (c) A regular (non-postseason) configuration, also starting on a
+	// non-Monday -- align_postseason_weeks() only ever touches
+	// is_postseason configurations.
+	'config_regular_untouched' => array(
+		'id'           => 'config_regular_untouched',
+		'name'         => 'W2026-27',
+		'season_start' => '2026-10-01',
+		'season_end'   => '2027-03-01',
+		'created'      => '2026-08-01 00:00:00',
+		'modified'     => '2026-08-01 00:00:00',
+	),
+);
+
+$aligned_count = SPSG_Configuration_Manager::align_postseason_weeks();
+pc_assert( 1 === $aligned_count, 'align_postseason_weeks() reports exactly one configuration changed' );
+
+$aligned_configs = $state->options['spsg_configurations'];
+pc_assert(
+	'2026-10-05' === $aligned_configs['config_needs_alignment']['season_start'],
+	'the mid-week postseason bracket is moved forward to the next Monday'
+);
+pc_assert(
+	'2026-11-01' === $aligned_configs['config_needs_alignment']['season_end'],
+	'season_end is recomputed from the new season_start with postseason_season_end()\'s own formula'
+);
+pc_assert(
+	'2026-10-05' === $aligned_configs['config_already_aligned']['season_start']
+		&& '2026-11-01' === $aligned_configs['config_already_aligned']['season_end'],
+	'a postseason bracket already on a Monday is left unchanged'
+);
+pc_assert(
+	'2026-10-01' === $aligned_configs['config_regular_untouched']['season_start'],
+	'a regular (non-postseason) configuration is never touched'
+);
+
+$second_call_count = SPSG_Configuration_Manager::align_postseason_weeks();
+pc_assert( 0 === $second_call_count, 'a second call reports zero configurations changed -- idempotent' );
+pc_assert(
+	$aligned_configs === $state->options['spsg_configurations'],
+	'a second call leaves the stored configurations byte-for-byte unchanged'
 );
 
 echo "\n=== SPSG_Sports_Press_Integration::create_child_season() ===\n\n";

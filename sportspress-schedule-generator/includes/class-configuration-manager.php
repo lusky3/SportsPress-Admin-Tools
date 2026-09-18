@@ -613,7 +613,8 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 		// Never independently settable, same reasoning as season_end below:
 		// a postseason bracket is the tail end of the SAME season the source
 		// configuration already describes, not a separate span an operator
-		// picks. It starts the day after the source season's own season_end.
+		// picks. It starts on the Monday on or after the day after the
+		// source season's own season_end.
 		$season_start = self::postseason_season_start( self::value( $source, 'season_end', '' ) );
 
 		return array(
@@ -682,6 +683,42 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 			'consolation_day'             => self::value( $overrides, 'consolation_day', '' ),
 			'seed_resolution_mode'        => self::value( $overrides, 'seed_resolution_mode', 'manual' ),
 		);
+	}
+
+	/**
+	 * One-shot upgrade: move every postseason configuration whose season_start
+	 * is not a Monday forward to the next Monday and recompute its season_end
+	 * with postseason_season_end(), so the bracket keeps satisfying
+	 * validate_postseason_season_span() after 1.3.10. Idempotent.
+	 *
+	 * @return int Number of configurations rewritten.
+	 */
+	public static function align_postseason_weeks() {
+		$configurations = get_option( self::OPTION_NAME, array() );
+		$changed = 0;
+		foreach ( $configurations as $id => $config ) {
+			if ( empty( $config['is_postseason'] ) || empty( $config['season_start'] ) ) {
+				continue;
+			}
+			try {
+				$start = new DateTime( $config['season_start'] );
+			} catch ( Exception $e ) {
+				continue;
+			}
+			if ( 1 === (int) $start->format( 'N' ) ) {
+				continue;
+			}
+			$start->modify( 'next monday' );
+			$season_start = $start->format( 'Y-m-d' );
+			$configurations[ $id ]['season_start'] = $season_start;
+			$configurations[ $id ]['season_end']   = self::postseason_season_end( $season_start, (int) ( $config['round_robin_weeks'] ?? 3 ) );
+			$configurations[ $id ]['modified']     = current_time( 'mysql' );
+			++$changed;
+		}
+		if ( $changed > 0 ) {
+			update_option( self::OPTION_NAME, $configurations, 'no' );
+		}
+		return $changed;
 	}
 
 	/**
