@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.3.9
+Stable tag: 1.3.10
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -58,6 +58,13 @@ The plugin validates configuration feasibility before generation and provides sp
 Yes. The import dialog lets you choose conflict resolution (skip or overwrite), event status, league, and season. Import runs in chunks with progress tracking.
 
 == Changelog ==
+
+= 1.3.10 =
+* Fix: in a double round-robin the two meetings of every pair were scheduled in consecutive weeks. They are now a full rotation apart, as the matchup order always intended.
+* Fix: "Custom" matchup style combined with inter-division games passed validation but could never generate ("Team has 7 games but expected 6"). Inter-division games now count toward each team's games-per-team total.
+* Fix: inter-division games are spread so every team in a division plays the same number (within one), which the generator's own count check requires; some division sizes previously failed generation after a clean validation.
+* Fix: inter-division games now carry full team records, so team restrictions apply to them, statistics count them, and SportsPress import recognizes their teams.
+* Fix: Generate, Validate and Export now act on the configuration shown on the page. Previously they used whichever configuration was saved most recently, and the REST API silently substituted another configuration when the requested one did not exist (it now returns 404).
 
 = 1.3.9 =
 * New: an opt-in "Advanced" section in Settings > SportsPress Admin Tools > Schedule Generator exposes 8 sliders to fine-tune how strongly the algorithm favors each kind of balance (day/Sunday split, time-of-night, season pacing, venue utilization, preferred-venue priority, division grouping, and restricted-pair avoidance), each 0-200% of the algorithm's own built-in weight, with a one-click reset to defaults. Off by default -- an install that never visits Advanced schedules exactly as it did before.
