@@ -363,19 +363,28 @@ class SPSG_Matchup_Generator {
 				continue;
 			}
 
+			$best_partner = null;
+			$best_used    = null;
 			for ( $j = $i + 1; $j < $n; $j++ ) {
 				$id_b = $ids[ $j ];
 				if ( $team_games[ $id_b ] >= ( $targets[ $id_b ] ?? 0 ) ) {
 					continue;
 				}
 
-				$pair_key  = $this->get_pair_key( $id_a, $id_b );
-				$pair_used = $this->matchup_counts[ $pair_key ] ?? 0;
+				$pair_used = $this->matchup_counts[ $this->get_pair_key( $id_a, $id_b ) ] ?? 0;
 				if ( $pair_used >= $pair_cap ) {
 					continue;
 				}
+				// Least-played pairing first, so a team rotates opponents instead
+				// of replaying its last one; ties keep the neediest partner.
+				if ( null === $best_used || $pair_used < $best_used ) {
+					$best_used    = $pair_used;
+					$best_partner = $id_b;
+				}
+			}
 
-				return array( $id_a, $id_b );
+			if ( null !== $best_partner ) {
+				return array( $id_a, $best_partner );
 			}
 		}
 

@@ -1309,15 +1309,16 @@ class SPSG_Slot_Allocator {
 
 		$swap = null !== $swapped && ( null === $current || $swapped['cost'] < $current['cost'] - 0.001 );
 		if ( $swap ) {
-			$first  = array(
+			$first_slot = $first['slot'];
+			$first      = array(
 				'game'    => $swapped['a'],
 				'matchup' => $first['matchup'],
 				'slot'    => $second['slot'],
 			);
-			$second = array(
+			$second     = array(
 				'game'    => $swapped['b'],
 				'matchup' => $second['matchup'],
-				'slot'    => $this->slot_of( $swapped['b'] ),
+				'slot'    => $first_slot,
 			);
 		}
 		$schedule_by_date[ $first['game']->date ][]  = $first['game'];
@@ -1368,18 +1369,6 @@ class SPSG_Slot_Allocator {
 			}
 		}
 		$schedule_by_date[ $game->date ] = $kept;
-	}
-
-	/**
-	 * The slot object a placed game occupies.
-	 */
-	private function slot_of( $game ) {
-		foreach ( $this->slots_by_date[ $game->date ] ?? array() as $slot ) {
-			if ( $slot->time_slot === $game->time_slot && $this->extract_id( $slot->venue ) === $this->extract_id( $game->venue ) ) {
-				return $slot;
-			}
-		}
-		return null;
 	}
 
 	/**

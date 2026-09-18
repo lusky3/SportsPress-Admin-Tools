@@ -63,6 +63,14 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 	const TIME_OF_NIGHT_TOLERANCE_GAMES = 1.0;
 
 	/**
+	 * Cost per game of deviation from an even spread over a day's start times,
+	 * used only when no slot supply has been set (scoring outside an
+	 * allocation run). The extreme tier applies past half the ideal share.
+	 */
+	const CLUSTERING_COST_PER_GAME         = 5.0;
+	const EXTREME_CLUSTERING_COST_PER_GAME = 15.0;
+
+	/**
 	 * Scales a base cost constant by its Advanced Settings multiplier
 	 * (spsg_weight_{$option_key}, 0.0-2.0, default 1.0). Reads 1.0 -- no
 	 * change -- until a convener opts into Advanced weight tuning and moves a
@@ -501,10 +509,10 @@ class SPSG_Distribution_Constraint extends SPSG_Abstract_Constraint {
 
 		// Higher cost for extreme clustering
 		if ( $deviation > $ideal_per_slot * 0.5 ) {
-			return $deviation * 15.0; // Higher penalty for clustering
+			return $deviation * $this->weighted( self::EXTREME_CLUSTERING_COST_PER_GAME, 'time_of_night' );
 		}
 
-		return $deviation * 5.0;
+		return $deviation * $this->weighted( self::CLUSTERING_COST_PER_GAME, 'time_of_night' );
 	}
 
 	/**

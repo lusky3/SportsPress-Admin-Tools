@@ -868,34 +868,27 @@ class SPSG_Schedule_Engine {
 	}
 
 	/**
-	 * Set cancellation flag
-	 * Called externally via AJAX handler
+	 * Flag a user's in-flight generation for cancellation. Written to both the
+	 * transient and the object cache so the engine, polling from another
+	 * request, sees it whichever it reads first.
+	 *
+	 * @param int $user_id User whose generation to cancel.
 	 */
-	public function cancel_generation() {
-		// Prefer the cached copy so we don't clobber in-flight progress that
-		// hasn't been persisted to the transient yet.
-		$progress = wp_cache_get( $this->progress_transient_key, 'spsg_progress' );
-		if ( false === $progress ) {
-			$progress = get_transient( $this->progress_transient_key );
-		}
+	public static function request_cancel( $user_id ) {
+		$cancel_key   = 'spsg_cancel_generation_' . (int) $user_id;
+		$progress_key = 'spsg_generation_progress_' . (int) $user_id;
 
-		// If progress hasn't been initialized yet (cancel arrived before the
-		// engine wrote anything), write a minimal progress object so the cancel
-		// flag is observable by is_cancelled() once generation starts.
-		if ( $progress === false ) {
-			$progress = array(
-				'status'    => 'cancelled',
-				'cancelled' => true,
-				'message'   => __( 'Cancelling generation...', 'sportspress-schedule-generator' ),
-			);
-		} else {
+		set_transient( $cancel_key, true, 300 );
+		wp_cache_set( $cancel_key, true, 'spsg_progress', HOUR_IN_SECONDS );
+
+		$progress = get_transient( $progress_key );
+		if ( is_array( $progress ) ) {
 			$progress['cancelled'] = true;
+			$progress['status']    = 'cancelled';
 			$progress['message']   = __( 'Cancelling generation...', 'sportspress-schedule-generator' );
+			set_transient( $progress_key, $progress, HOUR_IN_SECONDS );
+			wp_cache_set( $progress_key, $progress, 'spsg_progress', HOUR_IN_SECONDS );
 		}
-		set_transient( $this->progress_transient_key, $progress, HOUR_IN_SECONDS );
-		wp_cache_set( $this->progress_transient_key, $progress, 'spsg_progress', HOUR_IN_SECONDS );
-
-		$this->log( 'Generation cancellation requested' );
 	}
 
 	/**

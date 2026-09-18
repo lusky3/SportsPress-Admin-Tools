@@ -64,7 +64,7 @@ echo "\n";
 
 // Test 3: Cancellation flag
 echo "Test 3: Cancellation support\n";
-$engine->cancel_generation();
+SPSG_Schedule_Engine::request_cancel( get_current_user_id() );
 $progress = get_transient($transient_key);
 
 if ($progress && isset($progress['cancelled']) && $progress['cancelled'] === true) {
