@@ -47,6 +47,17 @@ function bd_game( $home_team, $away_team ) {
 	return $game;
 }
 
+/**
+ * Build a plain game object carrying an explicit postseason flag.
+ */
+function bd_postseason_game( $stage, $division, $seed_a, $seed_b ) {
+	$game             = new stdClass();
+	$game->home_team  = 'ignored';
+	$game->away_team  = 'ignored';
+	$game->postseason = array( 'stage' => $stage, 'division' => $division, 'seeds' => array( $seed_a, $seed_b ) );
+	return $game;
+}
+
 echo "=== parse_seed_placeholder_name(): round-trips seed_placeholder_names() ===\n\n";
 
 foreach ( array( SPSG_Postseason_Seed_Resolver::SEED_STAGE, SPSG_Postseason_Seed_Resolver::RR_SEED_STAGE ) as $stage ) {
@@ -74,75 +85,31 @@ bd_assert( null === SPSG_Postseason_Seed_Resolver::parse_seed_placeholder_name( 
 bd_assert( null === SPSG_Postseason_Seed_Resolver::parse_seed_placeholder_name( '' ), 'an empty name returns null' );
 bd_assert( null === SPSG_Postseason_Seed_Resolver::parse_seed_placeholder_name( null ), 'a null name returns null' );
 
-echo "\n=== final_week_info(): identifies the Championship game (Championship A vs Championship B, same division) ===\n\n";
+echo "\n=== final_week_info(): reads the explicit postseason flag ===\n\n";
+$rr = SPSG_Postseason_Seed_Resolver::RR_SEED_STAGE;
+$sd = SPSG_Postseason_Seed_Resolver::SEED_STAGE;
 
-$championship = SPSG_Postseason_Bracket_Detector::final_week_info( bd_game( 'Div 1 Championship A', 'Div 1 Championship B' ) );
-bd_assert(
-	null !== $championship && 'Div 1' === $championship['division'] && true === $championship['is_championship'],
-	'Championship A vs Championship B in the same division is the Championship game'
-);
+$championship = SPSG_Postseason_Bracket_Detector::final_week_info( bd_postseason_game( $rr, 'Div 1', 1, 2 ) );
+bd_assert( null !== $championship && true === $championship['is_championship'] && 'Div 1' === $championship['division'], 'RR-Seed seeds {1,2} is the Championship game' );
+$reversed = SPSG_Postseason_Bracket_Detector::final_week_info( bd_postseason_game( $rr, 'Div 1', 2, 1 ) );
+bd_assert( null !== $reversed && true === $reversed['is_championship'], 'seed order does not matter' );
+$consolation = SPSG_Postseason_Bracket_Detector::final_week_info( bd_postseason_game( $rr, 'Div 1', 3, 4 ) );
+bd_assert( null !== $consolation && false === $consolation['is_championship'], 'any other RR-Seed pairing is Consolation' );
+bd_assert( null === SPSG_Postseason_Bracket_Detector::final_week_info( bd_postseason_game( $sd, 'Div 1', 1, 2 ) ), 'a Seed-stage (cross round-robin) game is not a final-week matchup' );
+bd_assert( 'Div 1' === SPSG_Postseason_Bracket_Detector::cross_round_robin_division( bd_postseason_game( $sd, 'Div 1', 1, 6 ) ), 'cross_round_robin_division() reads the Seed stage' );
+bd_assert( null === SPSG_Postseason_Bracket_Detector::cross_round_robin_division( bd_postseason_game( $rr, 'Div 1', 1, 2 ) ), 'cross_round_robin_division() is null for the final week' );
 
-$championship_reversed = SPSG_Postseason_Bracket_Detector::final_week_info( bd_game( 'Div 1 Championship B', 'Div 1 Championship A' ) );
-bd_assert(
-	null !== $championship_reversed && true === $championship_reversed['is_championship'],
-	'home/away order does not matter -- {1,2} is the Championship pairing either way'
-);
+echo "\n=== games without the flag are never postseason, whatever their names ===\n\n";
+bd_assert( null === SPSG_Postseason_Bracket_Detector::final_week_info( bd_game( 'Div 1 Championship A', 'Div 1 Championship B' ) ), 'placeholder-looking names alone no longer make a Championship game' );
+bd_assert( null === SPSG_Postseason_Bracket_Detector::cross_round_robin_division( bd_game( 'Div 1 Seed 1', 'Div 1 Seed 2' ) ), 'placeholder-looking names alone no longer make a cross-round-robin game' );
+bd_assert( null === SPSG_Postseason_Bracket_Detector::final_week_info( bd_game( 'Toronto Maple Leafs', 'Ottawa Senators' ) ), 'a regular game is null' );
 
-echo "\n=== final_week_info(): any other same-division pairing is Consolation ===\n\n";
-
-$consolation = SPSG_Postseason_Bracket_Detector::final_week_info( bd_game( 'Div 1 Consolation 1 A', 'Div 1 Consolation 1 B' ) );
-bd_assert(
-	null !== $consolation && 'Div 1' === $consolation['division'] && false === $consolation['is_championship'],
-	'Consolation 1 A vs Consolation 1 B is Consolation, not Championship'
-);
-
-echo "\n=== final_week_info(): non-final-week games return null ===\n\n";
-
-bd_assert(
-	null === SPSG_Postseason_Bracket_Detector::final_week_info( bd_game( 'Div 1 Seed 1', 'Div 1 Seed 2' ) ),
-	'a cross-round-robin (Seed, not RR-Seed) game is not a final-week matchup'
-);
-bd_assert(
-	null === SPSG_Postseason_Bracket_Detector::final_week_info( bd_game( 'Div 1 Championship A', 'Div 2 Championship B' ) ),
-	'RR-Seed placeholders from different divisions never play each other -- not a final-week matchup'
-);
-bd_assert(
-	null === SPSG_Postseason_Bracket_Detector::final_week_info( bd_game( 'Toronto Maple Leafs', 'Ottawa Senators' ) ),
-	'a game between two already-resolved real teams is not a final-week matchup (seed resolution already ran)'
-);
-bd_assert(
-	null === SPSG_Postseason_Bracket_Detector::final_week_info( bd_game( 'Div 1 Championship A', 'Toronto Maple Leafs' ) ),
-	'a game with only one placeholder side (partially resolved) is not a final-week matchup'
-);
-
-echo "\n=== final_week_info(): team references in object/array shape are handled ===\n\n";
-
-$object_shaped_game            = new stdClass();
-$object_shaped_game->home_team = (object) array( 'name' => 'Div 1 Championship A' );
-$object_shaped_game->away_team = array( 'name' => 'Div 1 Championship B' );
-$object_result                 = SPSG_Postseason_Bracket_Detector::final_week_info( $object_shaped_game );
-bd_assert(
-	null !== $object_result && true === $object_result['is_championship'],
-	'team references given as objects or arrays (not just plain strings) are handled identically to strings'
-);
-
-echo "\n=== cross_round_robin_division(): identifies a Seed-stage (round-robin) matchup ===\n\n";
-
-$round_robin_match = SPSG_Postseason_Bracket_Detector::cross_round_robin_division( bd_game( 'Div 1 Seed 2', 'Div 1 Seed 5' ) );
-bd_assert( 'Div 1' === $round_robin_match, 'a same-division Seed-vs-Seed matchup returns its division name' );
-
-bd_assert(
-	null === SPSG_Postseason_Bracket_Detector::cross_round_robin_division( bd_game( 'Div 1 Championship A', 'Div 1 Championship B' ) ),
-	'an RR-Seed (final-week) matchup is NOT a cross-round-robin matchup'
-);
-bd_assert(
-	null === SPSG_Postseason_Bracket_Detector::cross_round_robin_division( bd_game( 'Div 1 Seed 1', 'Div 2 Seed 2' ) ),
-	'Seed placeholders from different divisions never play each other -- not a cross-round-robin matchup'
-);
-bd_assert(
-	null === SPSG_Postseason_Bracket_Detector::cross_round_robin_division( bd_game( 'Toronto Maple Leafs', 'Ottawa Senators' ) ),
-	'a game between two already-resolved real teams is not a cross-round-robin matchup'
-);
+$array_flag             = new stdClass();
+$array_flag->home_team  = 'x';
+$array_flag->away_team  = 'y';
+$array_flag->postseason = (object) array( 'stage' => $rr, 'division' => 'Div 2', 'seeds' => array( '1', '2' ) );
+$info = SPSG_Postseason_Bracket_Detector::final_week_info( $array_flag );
+bd_assert( null !== $info && true === $info['is_championship'] && 'Div 2' === $info['division'], 'an object-shaped flag with string seeds is read too (drafts round-trip through JSON)' );
 
 echo "\n=== Test Summary ===\n";
 echo "Passed: $passed\n";

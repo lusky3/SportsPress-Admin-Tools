@@ -1,21 +1,13 @@
 <?php
 /**
  * Postseason bracket-stage detection, shared by the postseason allocator
- * constraints (day carve-out, championship time window).
- *
- * A game is identifiable as the final week's Championship or Consolation
- * matchup purely from its two teams' placeholder names -- both teams are
- * the same division's RR_SEED_STAGE placeholders (see
- * SPSG_Postseason_Seed_Resolver, whose seed_placeholder_names() renders
- * these as "<division> Championship A"/"...B" for seeds 1-2 and
- * "<division> Consolation <k> A"/"...B" for every pairing after that), and
- * per SPSG_Postseason_Pairing::final_week_pairs()'s own construction
- * ("new-1 vs new-2 (Championship), new-3 vs new-4, ... (Consolation)"), the
- * pairing of seed 1 with seed 2 always IS the Championship game, regardless
- * of which real teams those seeds go on to resolve to. This only holds
- * before seed resolution swaps the placeholders for real teams -- exactly
- * the window these constraints need to govern, since the design's own
- * day/time/venue structure is meant to be locked in ahead of that.
+ * constraints (day carve-out, championship time window) and the rounds-first
+ * planner. A postseason matchup carries an explicit `postseason` flag
+ * ({stage, division, seeds}) stamped by SPSG_Postseason_Matchup_Builder and
+ * copied onto its game by SPSG_Slot_Allocator::create_game(); per
+ * SPSG_Postseason_Pairing::final_week_pairs() the seeds {1, 2} pairing is
+ * always the Championship game. Games without the flag are never postseason,
+ * whatever their teams are called.
  *
  * @author Cody (lusky3)
  */
@@ -31,26 +23,22 @@ class SPSG_Postseason_Bracket_Detector {
 	 * Whether $game is a final-week postseason matchup, and if so, whether
 	 * it's the Championship game or a Consolation one.
 	 *
-	 * @param object $game A game with home_team/away_team properties (string,
-	 *                      object, or array -- see team_label()).
-	 * @return array{division: string, is_championship: bool}|null Null if
-	 *              $game isn't a final-week (RR-Seed vs RR-Seed, same
-	 *              division) matchup at all.
+	 * @param object $game Game or matchup carrying a `postseason` flag.
+	 * @return array{division: string, is_championship: bool}|null
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public static function final_week_info( $game ) {
-		list( $home, $away ) = self::parsed_teams( $game );
-
-		if ( ! self::is_matching_stage_pair( $home, $away, SPSG_Postseason_Seed_Resolver::RR_SEED_STAGE ) ) {
+		$postseason = self::postseason_of( $game );
+		if ( null === $postseason || SPSG_Postseason_Seed_Resolver::RR_SEED_STAGE !== $postseason['stage'] ) {
 			return null;
 		}
 
-		$seeds = array( $home['seed'], $away['seed'] );
+		$seeds = $postseason['seeds'];
 		sort( $seeds );
 
 		return array(
-			'division'        => $home['division'],
+			'division'        => $postseason['division'],
 			'is_championship' => array( 1, 2 ) === $seeds,
 		);
 	}
@@ -59,92 +47,50 @@ class SPSG_Postseason_Bracket_Detector {
 	 * Whether $game is a cross-round-robin (Seed-stage) postseason matchup,
 	 * and if so, which division it belongs to.
 	 *
-	 * @param object $game A game with home_team/away_team properties (string,
-	 *                      object, or array -- see team_label()).
-	 * @return string|null Division name, or null if $game isn't a same-division
-	 *              Seed-stage matchup at all.
+	 * @param object $game Game or matchup carrying a `postseason` flag.
+	 * @return string|null
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public static function cross_round_robin_division( $game ) {
-		list( $home, $away ) = self::parsed_teams( $game );
-
-		if ( ! self::is_matching_stage_pair( $home, $away, SPSG_Postseason_Seed_Resolver::SEED_STAGE ) ) {
+		$postseason = self::postseason_of( $game );
+		if ( null === $postseason || SPSG_Postseason_Seed_Resolver::SEED_STAGE !== $postseason['stage'] ) {
 			return null;
 		}
-
-		return $home['division'];
+		return $postseason['division'];
 	}
 
 	/**
-	 * Both teams' parsed placeholder names, or null for either side that
-	 * doesn't parse as one at all.
+	 * The `postseason` flag of a game or matchup, normalised to
+	 * {stage: string, division: string, seeds: int[2]}, or null when absent
+	 * or malformed. Accepts array or object shapes: drafts round-trip through
+	 * JSON and matchups are cast to objects by the engine.
 	 *
-	 * @param object $game A game with home_team/away_team properties.
-	 * @return array{0: array|null, 1: array|null} [home, away].
-	 *
-	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 * @param mixed $game Game or matchup.
+	 * @return array{stage:string,division:string,seeds:array{0:int,1:int}}|null
 	 */
-	private static function parsed_teams( $game ) {
+	private static function postseason_of( $game ) {
+		if ( is_object( $game ) ) {
+			$raw = $game->postseason ?? null;
+		} elseif ( is_array( $game ) ) {
+			$raw = $game['postseason'] ?? null;
+		} else {
+			return null;
+		}
+		if ( is_object( $raw ) ) {
+			$raw = (array) $raw;
+		}
+		if ( ! is_array( $raw ) || empty( $raw['stage'] ) || ! isset( $raw['division'], $raw['seeds'] ) ) {
+			return null;
+		}
+		$seeds = array_values( (array) $raw['seeds'] );
+		if ( 2 !== count( $seeds ) ) {
+			return null;
+		}
 		return array(
-			SPSG_Postseason_Seed_Resolver::parse_seed_placeholder_name( self::team_label( $game->home_team ?? null ) ),
-			SPSG_Postseason_Seed_Resolver::parse_seed_placeholder_name( self::team_label( $game->away_team ?? null ) ),
+			'stage'    => (string) $raw['stage'],
+			'division' => (string) $raw['division'],
+			'seeds'    => array( (int) $seeds[0], (int) $seeds[1] ),
 		);
-	}
-
-	/**
-	 * Whether two parsed placeholder names are both the same stage
-	 * (Seed or RR-Seed) for the same division -- i.e. this is a
-	 * same-division, same-stage postseason matchup at all.
-	 *
-	 * @param array|null $home  Parsed placeholder name for the home team, or null.
-	 * @param array|null $away  Parsed placeholder name for the away team, or null.
-	 * @param string     $stage SPSG_Postseason_Seed_Resolver::SEED_STAGE or ::RR_SEED_STAGE.
-	 * @return bool
-	 */
-	private static function is_matching_stage_pair( $home, $away, $stage ) {
-		if ( null === $home || null === $away ) {
-			return false;
-		}
-		if ( $stage !== $home['stage'] || $stage !== $away['stage'] ) {
-			return false;
-		}
-		return $home['division'] === $away['division'];
-	}
-
-	/**
-	 * A team reference's display name, whatever shape it arrives in --
-	 * schedule generation carries teams as plain name strings, objects, or
-	 * arrays depending on how far a game is through the pipeline.
-	 *
-	 * @param mixed $team Team reference to render a display name for.
-	 * @return string
-	 */
-	private static function team_label( $team ) {
-		if ( is_string( $team ) ) {
-			return $team;
-		}
-
-		$name = self::field( $team, 'name' );
-
-		return '' !== $name ? (string) $name : (string) self::field( $team, 'id' );
-	}
-
-	/**
-	 * One field of a team reference given as an object or array, or '' when
-	 * absent or $entity is neither shape.
-	 *
-	 * @param mixed  $entity Team reference (object, array, or anything else).
-	 * @param string $key    Field name to read.
-	 * @return mixed
-	 */
-	private static function field( $entity, $key ) {
-		if ( is_array( $entity ) ) {
-			return $entity[ $key ] ?? '';
-		}
-		if ( is_object( $entity ) ) {
-			return $entity->$key ?? '';
-		}
-		return '';
 	}
 }

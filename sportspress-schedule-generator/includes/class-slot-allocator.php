@@ -2732,6 +2732,7 @@ class SPSG_Slot_Allocator {
 			'venue'             => is_array( $slot->venue ) ? (object) $slot->venue : $slot->venue,
 			'division'          => $matchup->division,
 			'is_inter_division' => $matchup->is_inter_division ?? false,
+			'postseason'        => $matchup->postseason ?? null,
 			'is_makeup'         => false,
 		);
 	}

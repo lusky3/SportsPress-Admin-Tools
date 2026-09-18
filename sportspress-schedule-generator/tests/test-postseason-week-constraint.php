@@ -71,11 +71,22 @@ function pwc_config( $is_postseason = true, $season_end = '2027-01-28' ) {
 }
 
 function pwc_game( $home_team, $away_team, $date ) {
-	$game            = new stdClass();
-	$game->home_team = $home_team;
-	$game->away_team = $away_team;
-	$game->date      = $date;
+	$game             = new stdClass();
+	$game->home_team  = $home_team;
+	$game->away_team  = $away_team;
+	$game->date       = $date;
+	$game->postseason = pwc_postseason_from_names( $home_team, $away_team );
 	return $game;
+}
+
+/** The flag SPSG_Postseason_Matchup_Builder would stamp on this pairing, or null for non-placeholder names. */
+function pwc_postseason_from_names( $home, $away ) {
+	$h = SPSG_Postseason_Seed_Resolver::parse_seed_placeholder_name( $home );
+	$a = SPSG_Postseason_Seed_Resolver::parse_seed_placeholder_name( $away );
+	if ( null === $h || null === $a || $h['stage'] !== $a['stage'] || $h['division'] !== $a['division'] ) {
+		return null;
+	}
+	return array( 'stage' => $h['stage'], 'division' => $h['division'], 'seeds' => array( $h['seed'], $a['seed'] ) );
 }
 
 $config = pwc_config();

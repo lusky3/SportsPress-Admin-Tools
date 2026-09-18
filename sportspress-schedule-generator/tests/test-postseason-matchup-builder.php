@@ -113,6 +113,9 @@ foreach ( $matchups as $matchup ) {
 		'every matchup\'s team names round-trip to valid "Div 1" placeholder names'
 	);
 	pmb_assert( $home['stage'] === $away['stage'], 'both teams in a matchup are the same stage (never Seed vs RR-Seed)' );
+	pmb_assert( isset( $matchup['postseason']['stage'], $matchup['postseason']['division'], $matchup['postseason']['seeds'] ), 'every matchup carries the postseason flag' );
+	pmb_assert( $matchup['postseason']['stage'] === $home['stage'] && 'Div 1' === $matchup['postseason']['division'], 'the flag agrees with the placeholder names' );
+	pmb_assert( array( $home['seed'], $away['seed'] ) === $matchup['postseason']['seeds'], 'the flag carries both seeds in home/away order' );
 	if ( SPSG_Postseason_Seed_Resolver::SEED_STAGE === $home['stage'] ) {
 		$seed_matchups++;
 	} else {

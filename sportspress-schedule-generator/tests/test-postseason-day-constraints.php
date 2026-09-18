@@ -78,12 +78,23 @@ function dc_config( $is_postseason, $championship_day = array(), $consolation_da
  * $date must be a day this constraint's DateTime::format('l') call can parse.
  */
 function dc_game( $home_team, $away_team, $date = '', $time_slot = '' ) {
-	$game            = new stdClass();
-	$game->home_team = $home_team;
-	$game->away_team = $away_team;
-	$game->date      = $date;
-	$game->time_slot = $time_slot;
+	$game             = new stdClass();
+	$game->home_team  = $home_team;
+	$game->away_team  = $away_team;
+	$game->date       = $date;
+	$game->time_slot  = $time_slot;
+	$game->postseason = dc_postseason_from_names( $home_team, $away_team );
 	return $game;
+}
+
+/** The flag SPSG_Postseason_Matchup_Builder would stamp on this pairing, or null for non-placeholder names. */
+function dc_postseason_from_names( $home, $away ) {
+	$h = SPSG_Postseason_Seed_Resolver::parse_seed_placeholder_name( $home );
+	$a = SPSG_Postseason_Seed_Resolver::parse_seed_placeholder_name( $away );
+	if ( null === $h || null === $a || $h['stage'] !== $a['stage'] || $h['division'] !== $a['division'] ) {
+		return null;
+	}
+	return array( 'stage' => $h['stage'], 'division' => $h['division'], 'seeds' => array( $h['seed'], $a['seed'] ) );
 }
 
 $full_config = dc_config(

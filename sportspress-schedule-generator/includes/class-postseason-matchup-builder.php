@@ -73,13 +73,17 @@ class SPSG_Postseason_Matchup_Builder {
 		$cross_round_robin_matchups = self::week_matchups(
 			SPSG_Postseason_Pairing::cross_round_robin( $team_count, (int) $config->round_robin_weeks ),
 			SPSG_Postseason_Seed_Resolver::seed_placeholder_names( $name, $team_count, SPSG_Postseason_Seed_Resolver::SEED_STAGE ),
-			$division_object
+			$division_object,
+			SPSG_Postseason_Seed_Resolver::SEED_STAGE,
+			$name
 		);
 
 		$final_week_matchups = self::week_matchups(
 			array( SPSG_Postseason_Pairing::final_week_pairs( range( 1, $team_count ) ) ),
 			SPSG_Postseason_Seed_Resolver::seed_placeholder_names( $name, $team_count, SPSG_Postseason_Seed_Resolver::RR_SEED_STAGE ),
-			$division_object
+			$division_object,
+			SPSG_Postseason_Seed_Resolver::RR_SEED_STAGE,
+			$name
 		);
 
 		return array_merge( $cross_round_robin_matchups, $final_week_matchups );
@@ -92,13 +96,24 @@ class SPSG_Postseason_Matchup_Builder {
 	 * @param array  $weeks           List of weeks, each a list of [int, int] seed pairs.
 	 * @param array  $seed_names      Seed number => placeholder name.
 	 * @param object $division_object Division, as an object.
+	 * @param string $stage           SPSG_Postseason_Seed_Resolver::SEED_STAGE or ::RR_SEED_STAGE.
+	 * @param string $division_name   Division name, for the postseason flag.
 	 * @return array
 	 */
-	private static function week_matchups( $weeks, $seed_names, $division_object ) {
+	private static function week_matchups( $weeks, $seed_names, $division_object, $stage, $division_name ) {
 		$matchups = array();
 		foreach ( $weeks as $week ) {
 			foreach ( $week as $pair ) {
-				$matchups[] = self::matchup( $seed_names[ $pair[0] ], $seed_names[ $pair[1] ], $division_object );
+				$matchups[] = self::matchup(
+					$seed_names[ $pair[0] ],
+					$seed_names[ $pair[1] ],
+					$division_object,
+					array(
+						'stage'    => $stage,
+						'division' => $division_name,
+						'seeds'    => array( (int) $pair[0], (int) $pair[1] ),
+					)
+				);
 			}
 		}
 		return $matchups;
@@ -125,12 +140,13 @@ class SPSG_Postseason_Matchup_Builder {
 	/**
 	 * One matchup array, in the same shape SPSG_Matchup_Generator produces.
 	 *
-	 * @param string $home     Home team's placeholder name.
-	 * @param string $away     Away team's placeholder name.
-	 * @param object $division Division object this matchup belongs to.
+	 * @param string $home        Home team's placeholder name.
+	 * @param string $away        Away team's placeholder name.
+	 * @param object $division    Division object this matchup belongs to.
+	 * @param array{stage:string,division:string,seeds:array{0:int,1:int}} $postseason Explicit bracket-stage flag.
 	 * @return array
 	 */
-	private static function matchup( $home, $away, $division ) {
+	private static function matchup( $home, $away, $division, $postseason ) {
 		$home_team = (object) array(
 			'id' => $home,
 			'name' => $home,
@@ -146,6 +162,7 @@ class SPSG_Postseason_Matchup_Builder {
 			'away_team' => $away_team,
 			'division' => $division,
 			'is_inter_division' => false,
+			'postseason' => $postseason,
 		);
 	}
 }
