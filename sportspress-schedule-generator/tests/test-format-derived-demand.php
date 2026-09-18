@@ -39,9 +39,11 @@ if ( ! class_exists( 'WP_Error' ) ) {
 	}
 }
 if ( ! function_exists( 'is_wp_error' ) ) { function is_wp_error( $t ) { return $t instanceof WP_Error; } }
+if ( ! function_exists( 'sanitize_text_field' ) ) { function sanitize_text_field( $s ) { return trim( (string) $s ); } }
 
 require_once SPSG_PLUGIN_PATH . 'includes/interfaces/interface-constraint.php';
 require_once SPSG_PLUGIN_PATH . 'includes/abstract-constraint.php';
+require_once SPSG_PLUGIN_PATH . 'includes/class-placeholder-team-manager.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-helper.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-configuration.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-configuration-validator.php';
@@ -134,6 +136,16 @@ echo "\n=== venue-only time slots are not rejected as \"no time slots\" ===\n\n"
 $venue_only = fdd_config( array( 'matchup_style' => 'single_round_robin', 'games_per_team' => 5, 'time_slots' => array(), 'venue_timeslots' => array( 'v1' => array( 'friday' => array( '19:00', '20:15', '21:30' ) ) ), 'divisions' => array( array( 'id' => 'divA', 'name' => 'A', 'teams' => fdd_teams( 'a', 6 ) ) ) ) );
 $validation = ( new SPSG_Configuration_Validator( $venue_only ) )->validate();
 _assert( ! ( is_wp_error( $validation ) && isset( $validation->get_error_data()['errors']['resource_capacity'] ) ), 'per-venue slots satisfy the capacity check' . ( is_wp_error( $validation ) ? ' (' . json_encode( $validation->get_error_data() ) . ')' : '' ) );
+
+echo "\n=== placeholder-padded divisions are sized after padding ===\n\n";
+$padded = fdd_config( array(
+	'matchup_style'  => 'double_round_robin',
+	'games_per_team' => 14,
+	'divisions'      => array( array( 'id' => 'divA', 'name' => 'A', 'teams' => fdd_teams( 'a', 4 ) ) ),
+	'generic_teams'  => array( 'enabled' => true, 'per_division' => 8 ),
+) );
+_assert( 56 === SPSG_Schedule_Helper::expected_total_games( $padded ), '4 real teams padded to 8: double RR needs 56 games (' . SPSG_Schedule_Helper::expected_total_games( $padded ) . ')' );
+_assert( array( 'min' => 14, 'max' => 14 ) === SPSG_Schedule_Helper::expected_team_game_range( $padded )['a1'], 'each stored team plays 14 against the padded division' );
 
 echo "\n=== Results ===\nPassed: $passed\nFailed: $failed\n";
 exit( $failed === 0 ? 0 : 1 );

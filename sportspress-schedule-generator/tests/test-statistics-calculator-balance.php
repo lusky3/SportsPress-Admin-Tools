@@ -41,6 +41,7 @@ if ( ! function_exists( 'wp_timezone' ) ) {
 }
 
 require_once SPSG_PLUGIN_PATH . 'includes/class-statistics-calculator.php';
+require_once SPSG_PLUGIN_PATH . 'includes/class-placeholder-team-manager.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-helper.php';
 require_once SPSG_PLUGIN_PATH . 'includes/models/class-game.php';
 

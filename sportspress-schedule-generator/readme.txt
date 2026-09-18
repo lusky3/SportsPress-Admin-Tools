@@ -68,7 +68,7 @@ Yes. The import dialog lets you choose conflict resolution (skip or overwrite), 
 * Fix: validation and the pre-generation feasibility check now count the games the chosen format actually produces. Round-robin seasons whose "games per team" was set higher than the format needs were wrongly blocked as "not enough time slots".
 * Fix: a season with more weeks than rounds now spreads every division's games across the whole season; two-division seasons previously finished up to a third early.
 * Fix: the game-by-game scheduler now compares the nearest playing dates when placing a game instead of only the first slots of one date, so day balance can move a game between a Friday and a Sunday.
-* Fix: "Custom" matchup style rotates opponents; a team no longer plays the same opponent in consecutive games.
+* Fix: "Custom" matchup style rotates opponents; a team no longer replays its previous opponent while other opponents are still available.
 * Fix: postseason Championship time windows compare times numerically, so "9:00" is treated the same as "09:00"; postseason day names are normalised on save; the final-week capacity check counts placeholder-padded teams.
 * Fix: the settings-page "Balance time slots" and "Balance home/away" toggles now apply to REST-driven generation even when no day weights are set.
 * Fix: venue-utilization warnings compare each venue against its own slot capacity, matching how the scheduler balances venues.

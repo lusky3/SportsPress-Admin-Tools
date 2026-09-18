@@ -17,6 +17,7 @@
 define( 'ABSPATH', dirname( __FILE__ ) . '/' );
 define( 'SPSG_PLUGIN_PATH', dirname( __FILE__ ) . '/../' );
 
+require_once SPSG_PLUGIN_PATH . 'includes/class-placeholder-team-manager.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-helper.php';
 
 $passed = 0;

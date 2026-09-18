@@ -78,6 +78,7 @@ class SPSG_Admin_Ajax {
 	 * @return SPSG_Schedule_Configuration|null
 	 */
 	private function resolve_posted_config() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- every caller runs check_ajax_referer() first.
 		return $this->config_manager->find( sanitize_text_field( wp_unslash( $_POST['config_id'] ?? '' ) ) );
 	}
 

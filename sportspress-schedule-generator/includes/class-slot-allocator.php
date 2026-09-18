@@ -3179,8 +3179,7 @@ class SPSG_Slot_Allocator {
 	 * @return int Minutes
 	 */
 	private function time_to_minutes( $time ) {
-		$parts = explode( ':', $time );
-		return intval( $parts[0] ) * 60 + intval( $parts[1] );
+		return (int) SPSG_Schedule_Helper::time_to_minutes( $time );
 	}
 
 	/**

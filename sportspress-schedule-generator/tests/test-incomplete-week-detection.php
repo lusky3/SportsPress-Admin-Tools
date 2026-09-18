@@ -28,6 +28,7 @@ function esc_html_e( $s ) { echo $s; } // phpcs:ignore Squiz.Commenting.Function
 // reaches count_available_slots_by_venue() for venue-utilization imbalances.
 function wp_timezone() { return new DateTimeZone( 'America/Toronto' ); } // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
 
+require_once SPSG_PLUGIN_PATH . 'includes/class-placeholder-team-manager.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-helper.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-statistics-calculator.php';
 

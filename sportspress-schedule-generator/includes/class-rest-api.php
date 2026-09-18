@@ -1383,8 +1383,6 @@ class SPSG_REST_API {
 		if ( function_exists( 'set_time_limit' ) ) {
 			@set_time_limit( $max_time ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- disabled by some hosts.
 		}
-		// The settings-page balance toggles and day weights only reach the
-		// engine on this path; apply the toggles whether or not weights are set.
 		$rules = array(
 			'time_slot_balance' => (bool) get_option( 'spsg_balance_time_slots', 1 ),
 			'home_away_balance' => (bool) get_option( 'spsg_balance_home_away', 1 ),
@@ -1404,6 +1402,8 @@ class SPSG_REST_API {
 				$rules['day_balance'] = $day_balance;
 			}
 		}
+		// The React UI's controls are the settings-page toggles, so they win here;
+		// the classic admin's per-configuration checkboxes govern AJAX generation.
 		$config->distribution_rules = array_merge( $config->distribution_rules ?: array(), $rules );
 		$result = ( new SPSG_Schedule_Engine() )->generate_schedule( $config );
 		if ( is_wp_error( $result ) ) {

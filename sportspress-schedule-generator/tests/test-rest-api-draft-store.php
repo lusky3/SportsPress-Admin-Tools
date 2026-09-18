@@ -77,6 +77,7 @@ class RDS_Mock_Request implements ArrayAccess {
 
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-draft-store.php';
 require_once SPSG_PLUGIN_PATH . 'includes/interfaces/interface-configuration.php';
+require_once SPSG_PLUGIN_PATH . 'includes/class-placeholder-team-manager.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-helper.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-configuration.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-configuration-manager.php';

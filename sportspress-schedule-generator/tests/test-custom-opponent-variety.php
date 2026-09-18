@@ -23,6 +23,7 @@ if ( ! class_exists( 'WP_Error' ) ) {
 }
 if ( ! function_exists( 'is_wp_error' ) ) { function is_wp_error( $t ) { return $t instanceof WP_Error; } }
 
+require_once SPSG_PLUGIN_PATH . 'includes/class-placeholder-team-manager.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-helper.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-configuration.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-matchup-generator.php';

@@ -1002,6 +1002,7 @@ class SPSG_Schedule_Helper {
 	 *
 	 * @param object $config Schedule configuration.
 	 * @return array<string,array{min:int,max:int}>
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public static function expected_team_game_range( $config ) {
 		$style = $config->matchup_style ?? 'double_round_robin';
@@ -1009,11 +1010,20 @@ class SPSG_Schedule_Helper {
 
 		$division_sizes = array();
 		$team_division  = array();
+		$generic_teams  = (array) ( $config->generic_teams ?? array() );
 		foreach ( (array) ( $config->divisions ?? array() ) as $division ) {
 			$division_id = is_object( $division ) ? (string) ( $division->id ?? '' ) : (string) ( $division['id'] ?? '' );
 			$teams       = is_object( $division ) ? (array) ( $division->teams ?? array() ) : (array) ( $division['teams'] ?? array() );
 
-			$division_sizes[ $division_id ] = count( $teams );
+			// Ranges are per stored team, but the range itself must reflect the
+			// division size after placeholder padding, since that's who each
+			// stored team actually plays against.
+			$size = SPSG_Placeholder_Team_Manager::effective_team_count(
+				(array) $division,
+				$generic_teams
+			);
+
+			$division_sizes[ $division_id ] = $size;
 			foreach ( $teams as $team ) {
 				$team_division[ self::extract_id( $team ) ] = $division_id;
 			}
@@ -1071,16 +1081,24 @@ class SPSG_Schedule_Helper {
 	 *
 	 * @param object $config Schedule configuration.
 	 * @return int
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public static function expected_total_games( $config ) {
-		$style       = $config->matchup_style ?? 'double_round_robin';
-		$total_teams = 0;
-		$intra_pairs = 0;
-		$sizes       = array();
+		$style         = $config->matchup_style ?? 'double_round_robin';
+		$total_teams   = 0;
+		$intra_pairs   = 0;
+		$sizes         = array();
+		$generic_teams = (array) ( $config->generic_teams ?? array() );
 
 		foreach ( (array) ( $config->divisions ?? array() ) as $division ) {
 			$division_id = is_object( $division ) ? (string) ( $division->id ?? '' ) : (string) ( $division['id'] ?? '' );
-			$size        = count( is_object( $division ) ? (array) ( $division->teams ?? array() ) : (array) ( $division['teams'] ?? array() ) );
+
+			// generate_matchups() pads each division with generic teams before
+			// generating, so demand must be counted against that padded size.
+			$size = SPSG_Placeholder_Team_Manager::effective_team_count(
+				(array) $division,
+				$generic_teams
+			);
 
 			$sizes[ $division_id ] = $size;
 			$total_teams          += $size;

@@ -29,6 +29,7 @@ if ( ! function_exists( 'is_wp_error' ) ) { function is_wp_error( $t ) { return 
 
 require_once SPSG_PLUGIN_PATH . 'includes/interfaces/interface-constraint.php';
 require_once SPSG_PLUGIN_PATH . 'includes/abstract-constraint.php';
+require_once SPSG_PLUGIN_PATH . 'includes/class-placeholder-team-manager.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-helper.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-configuration.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-matchup-generator.php';

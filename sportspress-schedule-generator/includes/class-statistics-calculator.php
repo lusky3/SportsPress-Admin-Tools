@@ -938,22 +938,17 @@ class SPSG_Statistics_Calculator {
 			foreach ( $a_dates[ $date ] as $game_a ) {
 				foreach ( $b_dates[ $date ] as $game_b ) {
 					++$shared_nights;
-					$gap = abs( $this->time_to_minutes( $game_a->time_slot ) - $this->time_to_minutes( $game_b->time_slot ) );
+					$minutes_a = SPSG_Schedule_Helper::time_to_minutes( $game_a->time_slot );
+					$minutes_b = SPSG_Schedule_Helper::time_to_minutes( $game_b->time_slot );
+					if ( null === $minutes_a || null === $minutes_b ) {
+						continue; // Unparseable slot -- same as a night these two never actually shared.
+					}
+					$gap = abs( $minutes_a - $minutes_b );
 					$min_gap = null === $min_gap ? $gap : min( $min_gap, $gap );
 				}
 			}
 		}
 		return array( $shared_nights, $min_gap );
-	}
-
-	/**
-	 * "HH:MM" to minutes past midnight.
-	 *
-	 * @param string $time_slot Start time.
-	 * @return int
-	 */
-	private function time_to_minutes( $time_slot ) {
-		return ( (int) substr( $time_slot, 0, 2 ) ) * 60 + ( (int) substr( $time_slot, 3, 2 ) );
 	}
 
 	/**
@@ -1152,11 +1147,22 @@ class SPSG_Statistics_Calculator {
 			return array();
 		}
 
-		$capacity = ( $config && ! empty( $config->venues ) ) ? SPSG_Schedule_Helper::count_available_slots_by_venue( $config ) : array();
-		$measure  = array();
+		$capacity     = ( $config && ! empty( $config->venues ) ) ? SPSG_Schedule_Helper::count_available_slots_by_venue( $config ) : array();
+		$use_capacity = ! empty( $capacity );
+		foreach ( $stats['venue_utilization'] as $venue_id => $venue_data ) {
+			if ( (int) ( $capacity[ $venue_id ] ?? 0 ) <= 0 ) {
+				$use_capacity = false;
+				break;
+			}
+		}
+
+		// A venue with no positive capacity entry can't be compared on the same
+		// footing as the others, so fall back to raw game counts across the board
+		// rather than mixing units (games/slot for some venues, games for others).
+		$measure = array();
 		foreach ( $stats['venue_utilization'] as $venue_id => $venue_data ) {
 			$slots                = (int) ( $capacity[ $venue_id ] ?? 0 );
-			$measure[ $venue_id ] = ( $capacity && $slots > 0 ) ? $venue_data['games'] / $slots : (float) $venue_data['games'];
+			$measure[ $venue_id ] = $use_capacity ? $venue_data['games'] / $slots : (float) $venue_data['games'];
 		}
 
 		$average = array_sum( $measure ) / count( $measure );
@@ -1176,7 +1182,7 @@ class SPSG_Statistics_Calculator {
 			$issues[]         = array(
 				'type'     => 'venue_utilization_imbalance',
 				'severity' => 'info',
-				'message'  => $slots > 0
+				'message'  => $use_capacity
 					? sprintf(
 						/* translators: 1: venue name, 2: games, 3: slots, 4: percent variance */
 						__( 'Venue utilization imbalance for %1$s: %2$d of %3$d slots used (%4$.1f%% variance from average utilization)', 'sportspress-schedule-generator' ),
@@ -1196,7 +1202,7 @@ class SPSG_Statistics_Calculator {
 					'venue_id'         => $venue_id,
 					'venue_name'       => $venue_data['name'],
 					'games'            => $venue_data['games'],
-					'slots'            => $slots,
+					'slots'            => $use_capacity ? $slots : 0,
 					'average'          => round( $average, 4 ),
 					'variance_percent' => round( $variance_percent, 2 ),
 				),

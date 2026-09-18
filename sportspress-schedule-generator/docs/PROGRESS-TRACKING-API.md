@@ -49,17 +49,16 @@ if ($progress !== false) {
 }
 ```
 
-#### `cancel_generation()`
+#### `SPSG_Schedule_Engine::request_cancel($user_id)`
 
-Cancels an in-progress generation.
+Requests cancellation of that user's in-progress generation.
 
 **Returns:** `void`
 
 **Example:**
 
 ```php
-$engine = new SPSG_Schedule_Engine();
-$engine->cancel_generation();
+SPSG_Schedule_Engine::request_cancel(get_current_user_id());
 ```
 
 **Notes:**
@@ -207,9 +206,7 @@ function spsg_ajax_cancel_generation() {
         wp_send_json_error('Insufficient permissions');
     }
     
-    $engine = new SPSG_Schedule_Engine();
-    $engine->cancel_generation();
-    
+    SPSG_Schedule_Engine::request_cancel(get_current_user_id());
     wp_send_json_success('Generation cancelled');
 }
 ```
