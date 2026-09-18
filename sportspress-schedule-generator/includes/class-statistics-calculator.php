@@ -48,7 +48,7 @@ class SPSG_Statistics_Calculator {
 		);
 
 		// Add imbalance detection
-		$stats['imbalances'] = $this->detect_imbalances( $stats );
+		$stats['imbalances'] = $this->detect_imbalances( $stats, $config );
 
 		if ( $config ) {
 			$stats['imbalances'] = array_merge(
@@ -1057,14 +1057,15 @@ class SPSG_Statistics_Calculator {
 	/**
 	 * Detect imbalances in the schedule
 	 *
-	 * @param array $stats Calculated statistics
+	 * @param array       $stats  Calculated statistics
+	 * @param object|null $config Schedule configuration, when available.
 	 * @return array Array of imbalance issues with severity
 	 */
-	private function detect_imbalances( $stats ) {
+	private function detect_imbalances( $stats, $config = null ) {
 		return array_merge(
 			$this->detect_games_per_team_variance( $stats ),
 			$this->detect_home_away_imbalance( $stats ),
-			$this->detect_venue_utilization_imbalance( $stats ),
+			$this->detect_venue_utilization_imbalance( $stats, $config ),
 			$this->detect_division_grouping_imbalance( $stats )
 		);
 	}
@@ -1134,45 +1135,69 @@ class SPSG_Statistics_Calculator {
 	}
 
 	/**
-	 * Flag any venue whose game count is more than 20% off the average
-	 * across venues.
+	 * Flag any venue whose utilization -- games against its own slot capacity
+	 * when the configuration is known, raw game count otherwise -- is more than
+	 * 20% off the average across venues. The allocator balances each venue
+	 * against its own capacity, so a 10-slot rink is meant to carry twice a
+	 * 5-slot rink's games.
 	 *
-	 * @param array $stats Calculated statistics.
+	 * @param array       $stats  Calculated statistics.
+	 * @param object|null $config Schedule configuration, when available.
 	 * @return array Imbalance issues, one per affected venue.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
-	private function detect_venue_utilization_imbalance( $stats ) {
+	private function detect_venue_utilization_imbalance( $stats, $config = null ) {
 		if ( empty( $stats['venue_utilization'] ) ) {
 			return array();
 		}
 
-		$venue_counts = array_column( $stats['venue_utilization'], 'games' );
-		$avg_utilization = array_sum( $venue_counts ) / count( $venue_counts );
-		if ( $avg_utilization <= 0 ) {
+		$capacity = ( $config && ! empty( $config->venues ) ) ? SPSG_Schedule_Helper::count_available_slots_by_venue( $config ) : array();
+		$measure  = array();
+		foreach ( $stats['venue_utilization'] as $venue_id => $venue_data ) {
+			$slots                = (int) ( $capacity[ $venue_id ] ?? 0 );
+			$measure[ $venue_id ] = ( $capacity && $slots > 0 ) ? $venue_data['games'] / $slots : (float) $venue_data['games'];
+		}
+
+		$average = array_sum( $measure ) / count( $measure );
+		if ( $average <= 0 ) {
 			return array();
 		}
-		$threshold = $avg_utilization * 0.20; // 20% variance threshold
+		$threshold = $average * 0.20;
 
 		$issues = array();
 		foreach ( $stats['venue_utilization'] as $venue_id => $venue_data ) {
-			$variance = abs( $venue_data['games'] - $avg_utilization );
+			$variance = abs( $measure[ $venue_id ] - $average );
 			if ( $variance <= $threshold ) {
 				continue;
 			}
-			$variance_percent = ( $variance / $avg_utilization ) * 100;
-			$issues[] = array(
-				'type' => 'venue_utilization_imbalance',
+			$variance_percent = ( $variance / $average ) * 100;
+			$slots            = (int) ( $capacity[ $venue_id ] ?? 0 );
+			$issues[]         = array(
+				'type'     => 'venue_utilization_imbalance',
 				'severity' => 'info',
-				'message' => sprintf(
-					__( 'Venue utilization imbalance for %1$s: %2$d games (%3$.1f%% variance from average)', 'sportspress-schedule-generator' ),
-					$venue_data['name'],
-					$venue_data['games'],
-					$variance_percent
-				),
-				'details' => array(
-					'venue_id' => $venue_id,
-					'venue_name' => $venue_data['name'],
-					'games' => $venue_data['games'],
-					'average' => round( $avg_utilization, 2 ),
+				'message'  => $slots > 0
+					? sprintf(
+						/* translators: 1: venue name, 2: games, 3: slots, 4: percent variance */
+						__( 'Venue utilization imbalance for %1$s: %2$d of %3$d slots used (%4$.1f%% variance from average utilization)', 'sportspress-schedule-generator' ),
+						$venue_data['name'],
+						$venue_data['games'],
+						$slots,
+						$variance_percent
+					)
+					: sprintf(
+						/* translators: 1: venue name, 2: games, 3: percent variance */
+						__( 'Venue utilization imbalance for %1$s: %2$d games (%3$.1f%% variance from average)', 'sportspress-schedule-generator' ),
+						$venue_data['name'],
+						$venue_data['games'],
+						$variance_percent
+					),
+				'details'  => array(
+					'venue_id'         => $venue_id,
+					'venue_name'       => $venue_data['name'],
+					'games'            => $venue_data['games'],
+					'slots'            => $slots,
+					'average'          => round( $average, 4 ),
 					'variance_percent' => round( $variance_percent, 2 ),
 				),
 			);

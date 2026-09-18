@@ -1383,13 +1383,17 @@ class SPSG_REST_API {
 		if ( function_exists( 'set_time_limit' ) ) {
 			@set_time_limit( $max_time ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- disabled by some hosts.
 		}
-		// Apply admin-configured distribution rules if set
-		$day_weights = get_option( 'spsg_day_weights', array() );
-		$active_weights = array_filter( $day_weights, fn( $w ) => $w > 0 );
+		// The settings-page balance toggles and day weights only reach the
+		// engine on this path; apply the toggles whether or not weights are set.
+		$rules = array(
+			'time_slot_balance' => (bool) get_option( 'spsg_balance_time_slots', 1 ),
+			'home_away_balance' => (bool) get_option( 'spsg_balance_home_away', 1 ),
+		);
+		$day_weights    = get_option( 'spsg_day_weights', array() );
+		$active_weights = array_filter( (array) $day_weights, fn( $w ) => $w > 0 );
 		if ( ! empty( $active_weights ) ) {
-			$total = array_sum( $active_weights );
-			$normalized = array_map( fn( $w ) => round( $w / $total, 4 ), $active_weights );
-			// Only apply weights for days that are in the config's playing_days
+			$total       = array_sum( $active_weights );
+			$normalized  = array_map( fn( $w ) => round( $w / $total, 4 ), $active_weights );
 			$day_balance = array();
 			foreach ( $config->playing_days as $day ) {
 				if ( isset( $normalized[ $day ] ) ) {
@@ -1397,16 +1401,10 @@ class SPSG_REST_API {
 				}
 			}
 			if ( ! empty( $day_balance ) ) {
-				$config->distribution_rules = array_merge(
-					$config->distribution_rules ?: array(),
-					array(
-						'day_balance'       => $day_balance,
-						'time_slot_balance' => (bool) get_option( 'spsg_balance_time_slots', 1 ),
-						'home_away_balance' => (bool) get_option( 'spsg_balance_home_away', 1 ),
-					)
-				);
+				$rules['day_balance'] = $day_balance;
 			}
 		}
+		$config->distribution_rules = array_merge( $config->distribution_rules ?: array(), $rules );
 		$result = ( new SPSG_Schedule_Engine() )->generate_schedule( $config );
 		if ( is_wp_error( $result ) ) {
 			return $result;

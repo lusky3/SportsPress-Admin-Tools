@@ -636,8 +636,19 @@ class SPSG_Schedule_Helper {
 	 * @return int Total slot count.
 	 */
 	public static function count_available_slots( $config ) {
-		$slots = 0;
+		return (int) array_sum( self::count_available_slots_by_venue( $config ) );
+	}
 
+	/**
+	 * Available slots per venue over the season, through the same cascade the
+	 * allocator uses (date availability → venue timeslots → global slots),
+	 * honouring global and venue blackouts. Every configured venue is present,
+	 * 0 when it offers nothing.
+	 *
+	 * @param object $config Schedule configuration.
+	 * @return array<string,int> venue id => slots.
+	 */
+	public static function count_available_slots_by_venue( $config ) {
 		$tz = ! empty( $config->timezone ) ? new DateTimeZone( $config->timezone ) : wp_timezone();
 
 		$season_start = $config->season_start instanceof DateTime
@@ -651,6 +662,11 @@ class SPSG_Schedule_Helper {
 		$blackout_dates = $config->blackout_dates ?? array();
 		$playing_days   = $config->playing_days ?? array();
 		$venues         = $config->venues ?? array();
+
+		$slots = array();
+		foreach ( $venues as $venue ) {
+			$slots[ self::extract_id( $venue ) ] = 0;
+		}
 
 		$current_date = clone $season_start;
 
@@ -678,7 +694,7 @@ class SPSG_Schedule_Helper {
 				$venue_slots = self::resolve_venue_slots( $venue_id, $date_str, $day_name, $config );
 
 				if ( ! empty( $venue_slots ) ) {
-					$slots += count( $venue_slots );
+					$slots[ $venue_id ] += count( $venue_slots );
 				}
 			}
 

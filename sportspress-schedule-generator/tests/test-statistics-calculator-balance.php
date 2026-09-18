@@ -33,8 +33,15 @@ if ( ! function_exists( '__' ) ) {
 		return $text;
 	}
 }
+if ( ! function_exists( 'wp_timezone' ) ) {
+	// The capacity fixture below leaves $config->timezone unset.
+	function wp_timezone() {
+		return new DateTimeZone( 'America/Toronto' );
+	}
+}
 
 require_once SPSG_PLUGIN_PATH . 'includes/class-statistics-calculator.php';
+require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-helper.php';
 require_once SPSG_PLUGIN_PATH . 'includes/models/class-game.php';
 
 $passed = 0;
@@ -259,6 +266,39 @@ tsb_assert( array() === $empty_stats['day_balance_per_team'], 'day_balance_per_t
 tsb_assert( array() === $empty_stats['night_position_per_team'], 'night_position_per_team is empty for an empty schedule' );
 tsb_assert( null === $empty_stats['division_grouping']['overall_percent'], 'division_grouping.overall_percent is null (not 0 or NAN) for an empty schedule' );
 tsb_assert( array() === $empty_stats['restricted_pairs'], 'restricted_pairs is empty for an empty schedule' );
+
+echo "\nVenue utilization is judged against each venue's own capacity\n";
+$cap_config = (object) array(
+	'team_restrictions' => array(),
+);
+$cap_config->venues          = array( array( 'id' => 'big', 'name' => 'Big Rink' ), array( 'id' => 'small', 'name' => 'Small Rink' ) );
+$cap_config->playing_days    = array( 'friday' );
+$cap_config->time_slots      = array();
+$cap_config->venue_timeslots = array(
+	'big'   => array( 'friday' => array( '17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00', '17:30', '18:30', '19:30' ) ),
+	'small' => array( 'friday' => array( '18:00', '19:00', '20:00', '21:00', '22:00' ) ),
+);
+$cap_config->season_start = new DateTime( '2026-09-04' );
+$cap_config->season_end   = new DateTime( '2026-09-04' );
+$cap_schedule = array();
+foreach ( array( '17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00', '17:30' ) as $i => $t ) {
+	$g = tsb_game( '2026-09-04', $t, tsb_team( 'h' . $i, 'H' . $i ), tsb_team( 'a' . $i, 'A' . $i ), tsb_division( 'd1', 'D1' ) );
+	$g->venue = (object) array( 'id' => 'big', 'name' => 'Big Rink' );
+	$cap_schedule[] = $g;
+}
+foreach ( array( '18:00', '19:00', '20:00', '21:00' ) as $i => $t ) {
+	$g = tsb_game( '2026-09-04', $t, tsb_team( 'x' . $i, 'X' . $i ), tsb_team( 'y' . $i, 'Y' . $i ), tsb_division( 'd1', 'D1' ) );
+	$g->venue = (object) array( 'id' => 'small', 'name' => 'Small Rink' );
+	$cap_schedule[] = $g;
+}
+$cap_stats  = ( new SPSG_Statistics_Calculator() )->calculate( $cap_schedule, $cap_config );
+$venue_flag = array_filter( $cap_stats['imbalances'], function ( $issue ) { return 'venue_utilization_imbalance' === $issue['type']; } );
+tsb_assert( empty( $venue_flag ), '8 of 10 and 4 of 5 slots (both 80%) is not flagged as a venue imbalance (' . count( $venue_flag ) . ' issues)' );
+
+$cap_schedule_skewed = array_slice( $cap_schedule, 0, 9 ); // big 8/10, small 1/5
+$cap_stats  = ( new SPSG_Statistics_Calculator() )->calculate( $cap_schedule_skewed, $cap_config );
+$venue_flag = array_filter( $cap_stats['imbalances'], function ( $issue ) { return 'venue_utilization_imbalance' === $issue['type']; } );
+tsb_assert( ! empty( $venue_flag ), '80% vs 20% utilization IS flagged' );
 
 echo "\n";
 echo "Passed: $passed\n";
