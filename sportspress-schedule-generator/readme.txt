@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.3.8
+Stable tag: 1.3.9
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -58,6 +58,10 @@ The plugin validates configuration feasibility before generation and provides sp
 Yes. The import dialog lets you choose conflict resolution (skip or overwrite), event status, league, and season. Import runs in chunks with progress tracking.
 
 == Changelog ==
+
+= 1.3.9 =
+* New: an opt-in "Advanced" section in Settings > SportsPress Admin Tools > Schedule Generator exposes 8 sliders to fine-tune how strongly the algorithm favors each kind of balance (day/Sunday split, time-of-night, season pacing, venue utilization, preferred-venue priority, division grouping, and restricted-pair avoidance), each 0-200% of the algorithm's own built-in weight, with a one-click reset to defaults. Off by default -- an install that never visits Advanced schedules exactly as it did before.
+* Fix: the "Balance Time Slots" setting was saved and shown as a checkbox but the algorithm never actually read it, so turning it off changed nothing. It now genuinely disables time-of-night balancing when unchecked.
 
 = 1.3.8 =
 * New: the generated schedule's Detailed Statistics now report the balances a real season review kept computing by hand -- each team's Friday-vs-Sunday (or whatever playing days are configured) split, early/middle/late-third start counts plus first-and-last-of-the-night counts, each division's grouping percentage (how often its games land within an hour of another of its own that night), and every configured overlap/back-to-back restricted pair's shared nights and smallest gap. A division whose grouping percentage drops below 60% is now flagged as an imbalance, the same way an uneven games-per-team or home/away split already was.
