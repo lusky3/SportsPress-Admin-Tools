@@ -443,7 +443,6 @@ class SPSG_Admin {
 		echo '<h2>' . esc_html__( 'Balance Weights (Advanced)', 'sportspress-schedule-generator' ) . '</h2>';
 		echo '<p>' . esc_html__( 'Fine-tune how strongly the schedule generator favors each kind of balance. 100% is the algorithm\'s own built-in weight; 0% turns a category off entirely. Enable Advanced above to reveal these sliders.', 'sportspress-schedule-generator' ) . '</p>';
 		echo '</div>';
-		echo '<div id="spsg-weights-table-marker" style="display:none;"></div>';
 		?>
 		<style>
 			.spsg-weight-disabled { opacity: 0.5; pointer-events: none; }
@@ -500,6 +499,7 @@ class SPSG_Admin {
 		} )();
 		</script>
 		<?php
+		echo '<div id="spsg-weights-table-marker" style="display:none;"></div>';
 	}
 
 	/**
