@@ -23,6 +23,10 @@
 define( 'ABSPATH', dirname( __FILE__ ) . '/' );
 define( 'SPSG_PLUGIN_PATH', dirname( __FILE__ ) . '/../' );
 
+function get_option( $name, $default = false ) {
+	return $default;
+}
+
 require_once SPSG_PLUGIN_PATH . 'includes/class-slot-allocator.php';
 
 $passed = 0;

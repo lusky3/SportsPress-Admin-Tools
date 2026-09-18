@@ -59,6 +59,7 @@ class SPSG_Admin {
 		add_action( 'spat_admin_page_tabs', array( $this, 'add_spat_tab' ) );
 		add_action( 'spat_admin_page_content', array( $this, 'add_spat_content' ) );
 		add_action( 'spat_admin_init_settings', array( $this, 'register_spat_settings' ) );
+		add_action( 'admin_post_spsg_reset_weights', array( $this, 'handle_reset_weights' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ) );
 	}
 
@@ -151,6 +152,11 @@ class SPSG_Admin {
 				submit_button( __( 'Save Backend Settings', 'sportspress-schedule-generator' ) );
 				?>
 			</form>
+			<form id="spsg-weights-reset-form" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="post">
+				<?php wp_nonce_field( 'spsg_reset_weights', 'spsg_reset_weights_nonce' ); ?>
+				<input type="hidden" name="action" value="spsg_reset_weights">
+				<?php submit_button( __( 'Reset Balance Weights to Defaults', 'sportspress-schedule-generator' ), 'secondary' ); ?>
+			</form>
 		</div>
 		<?php
 	}
@@ -171,6 +177,13 @@ class SPSG_Admin {
 			__( 'Default Distribution Rules', 'sportspress-schedule-generator' ),
 			function () {
 				echo '<p>' . esc_html__( 'These defaults apply to all new schedule configurations. Individual configs can override them.', 'sportspress-schedule-generator' ) . '</p>'; },
+			'spsg_backend_settings'
+		);
+
+		add_settings_section(
+			'spsg_weights_section',
+			'',
+			array( $this, 'weights_section_callback' ),
 			'spsg_backend_settings'
 		);
 
@@ -197,6 +210,14 @@ class SPSG_Admin {
 		);
 		register_setting( 'spsg_backend_settings', 'spsg_balance_time_slots', array( 'sanitize_callback' => 'absint' ) );
 		register_setting( 'spsg_backend_settings', 'spsg_balance_home_away', array( 'sanitize_callback' => 'absint' ) );
+		register_setting( 'spsg_backend_settings', 'spsg_advanced_weights_enabled', array( 'sanitize_callback' => 'absint' ) );
+		foreach ( array_keys( self::weight_sliders() ) as $key ) {
+			register_setting(
+				'spsg_backend_settings',
+				"spsg_weight_{$key}",
+				array( 'sanitize_callback' => array( $this, 'sanitize_weight_multiplier' ) )
+			);
+		}
 
 		add_settings_field( 'spsg_max_generation_time', __( 'Maximum Generation Time (seconds)', 'sportspress-schedule-generator' ), array( $this, 'max_generation_time_callback' ), 'spsg_backend_settings', 'spsg_backend_section' );
 		add_settings_field( 'spsg_enable_debug_logging', __( 'Enable Debug Logging', 'sportspress-schedule-generator' ), array( $this, 'debug_logging_callback' ), 'spsg_backend_settings', 'spsg_backend_section' );
@@ -206,6 +227,18 @@ class SPSG_Admin {
 		add_settings_field( 'spsg_day_weights', __( 'Day Weight Distribution', 'sportspress-schedule-generator' ), array( $this, 'day_weights_callback' ), 'spsg_backend_settings', 'spsg_distribution_section' );
 		add_settings_field( 'spsg_balance_time_slots', __( 'Balance Time Slots', 'sportspress-schedule-generator' ), array( $this, 'balance_time_slots_callback' ), 'spsg_backend_settings', 'spsg_distribution_section' );
 		add_settings_field( 'spsg_balance_home_away', __( 'Balance Home/Away', 'sportspress-schedule-generator' ), array( $this, 'balance_home_away_callback' ), 'spsg_backend_settings', 'spsg_distribution_section' );
+
+		add_settings_field( 'spsg_advanced_weights_enabled', __( 'Advanced', 'sportspress-schedule-generator' ), array( $this, 'advanced_weights_enabled_callback' ), 'spsg_backend_settings', 'spsg_distribution_section' );
+		foreach ( self::weight_sliders() as $key => $meta ) {
+			add_settings_field(
+				"spsg_weight_{$key}",
+				$meta['label'],
+				array( $this, 'weight_slider_callback' ),
+				'spsg_backend_settings',
+				'spsg_weights_section',
+				array( 'key' => $key )
+			);
+		}
 	}
 
 	/**
@@ -281,7 +314,7 @@ class SPSG_Admin {
 
 	public function balance_time_slots_callback() {
 		$val = get_option( 'spsg_balance_time_slots', 1 );
-		echo '<input type="checkbox" name="spsg_balance_time_slots" value="1"' . checked( 1, $val, false ) . '/>';
+		echo '<input type="checkbox" id="spsg_balance_time_slots" name="spsg_balance_time_slots" value="1"' . checked( 1, $val, false ) . '/>';
 		echo '<p class="description">' . esc_html__( 'Distribute games evenly across available time slots.', 'sportspress-schedule-generator' ) . '</p>';
 	}
 
@@ -289,6 +322,196 @@ class SPSG_Admin {
 		$val = get_option( 'spsg_balance_home_away', 1 );
 		echo '<input type="checkbox" name="spsg_balance_home_away" value="1"' . checked( 1, $val, false ) . '/>';
 		echo '<p class="description">' . esc_html__( 'Ensure each team plays roughly equal home and away games.', 'sportspress-schedule-generator' ) . '</p>';
+	}
+
+	/**
+	 * The 8 Advanced-tuning weight sliders, in the fixed order the settings
+	 * page renders them. Single source of truth for register_spat_settings(),
+	 * weight_slider_callback(), and reset_weight_options() -- SPSG_Slot_Allocator,
+	 * SPSG_Distribution_Constraint, and SPSG_Division_Grouping_Constraint read
+	 * the same option-key strings directly via get_option(), independently of
+	 * this map.
+	 *
+	 * @return array<string,array{label:string}>
+	 */
+	private static function weight_sliders() {
+		return array(
+			'day_balance'         => array( 'label' => __( 'Day & Sunday Balance', 'sportspress-schedule-generator' ) ),
+			'time_of_night'       => array( 'label' => __( 'Time-of-Night Balance', 'sportspress-schedule-generator' ) ),
+			'season_pacing'       => array( 'label' => __( 'Season Pacing', 'sportspress-schedule-generator' ) ),
+			'venue_utilization'   => array( 'label' => __( 'Venue Utilization', 'sportspress-schedule-generator' ) ),
+			'preferred_venue'     => array( 'label' => __( 'Preferred Venue Priority', 'sportspress-schedule-generator' ) ),
+			'division_distance'   => array( 'label' => __( 'Division Grouping (Distance)', 'sportspress-schedule-generator' ) ),
+			'division_disruption' => array( 'label' => __( 'Division Grouping (Disruption)', 'sportspress-schedule-generator' ) ),
+			'overlap_avoidance'   => array( 'label' => __( 'Restricted-Pair / Overlap Avoidance', 'sportspress-schedule-generator' ) ),
+		);
+	}
+
+	/**
+	 * Sanitize callback for every spsg_weight_* option. Input arrives as the
+	 * slider's own 0-200 percent; stored as a 0.0-2.0 float multiplier,
+	 * rounded to the nearest 10%-step and clamped to the slider's own range
+	 * so a directly-posted out-of-range or garbage value can't reach the
+	 * algorithm classes' weighted() multiplication.
+	 *
+	 * @param mixed $value Raw posted value (expected: 0-200 numeric string/int).
+	 * @return float
+	 */
+	public function sanitize_weight_multiplier( $value ) {
+		if ( ! is_numeric( $value ) ) {
+			return 1.0;
+		}
+		$percent = (int) round( (float) $value / 10 ) * 10;
+		$percent = max( 0, min( 200, $percent ) );
+		return $percent / 100.0;
+	}
+
+	/**
+	 * Resets every Advanced balance-weight multiplier back to 1.0 (100%, the
+	 * algorithm's own built-in constants). Leaves spsg_advanced_weights_enabled
+	 * untouched so the section stays visible for further tuning.
+	 */
+	private function reset_weight_options() {
+		foreach ( array_keys( self::weight_sliders() ) as $key ) {
+			delete_option( "spsg_weight_{$key}" );
+		}
+	}
+
+	/**
+	 * admin_post_spsg_reset_weights handler for the "Reset Balance Weights to
+	 * Defaults" button. A separate form/endpoint from the Settings API save:
+	 * a nested <form> inside the options.php settings form isn't valid HTML,
+	 * and options.php has no concept of resetting one field group on its own.
+	 */
+	public function handle_reset_weights() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You do not have permission.', 'sportspress-schedule-generator' ) );
+		}
+		if ( ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['spsg_reset_weights_nonce'] ?? '' ) ), 'spsg_reset_weights' ) ) {
+			wp_die( esc_html__( 'Security check failed.', 'sportspress-schedule-generator' ) );
+		}
+
+		$this->reset_weight_options();
+
+		wp_safe_redirect( wp_get_referer() ? wp_get_referer() : admin_url() );
+		exit;
+	}
+
+	/**
+	 * "Advanced" master checkbox -- reveals the Balance Weights sliders.
+	 */
+	public function advanced_weights_enabled_callback() {
+		$val = get_option( 'spsg_advanced_weights_enabled', 0 );
+		echo '<input type="checkbox" id="spsg_advanced_weights_enabled" name="spsg_advanced_weights_enabled" value="1"' . checked( 1, $val, false ) . '/>';
+		echo '<p class="description">' . esc_html__( 'Show sliders to fine-tune the algorithm\'s balance weights below.', 'sportspress-schedule-generator' ) . '</p>';
+	}
+
+	/**
+	 * One Balance Weights slider. $args['key'] is one of self::weight_sliders()'s
+	 * keys, passed through add_settings_field()'s 6th argument.
+	 *
+	 * @param array $args { @type string $key }
+	 */
+	public function weight_slider_callback( $args ) {
+		$key     = $args['key'];
+		$option  = "spsg_weight_{$key}";
+		$value   = (float) get_option( $option, 1.0 );
+		$percent = (int) round( $value * 100 );
+		echo '<input type="range" class="spsg-weight-slider" id="' . esc_attr( $option ) . '" name="' . esc_attr( $option ) . '" min="0" max="200" step="10" value="' . esc_attr( $percent ) . '" />';
+		echo ' <span class="spsg-weight-value">' . esc_html( $percent ) . '%</span>';
+	}
+
+	/**
+	 * "Balance Weights (Advanced)" section heading/description (the section
+	 * itself is registered with an empty title so WordPress doesn't print
+	 * its own auto-generated <h2>), plus the inline show/hide of the WHOLE
+	 * section -- heading, description, the settings-fields <table> WordPress
+	 * renders immediately after this callback returns, and the "Reset
+	 * Balance Weights to Defaults" form -- driven by the Advanced checkbox,
+	 * gray-out (Balance Time Slots checkbox vs. the Time-of-Night slider --
+	 * see class-distribution-constraint.php's time_slot_balance gate), and
+	 * live percentage readout script.
+	 *
+	 * Uses CSS (opacity/pointer-events) rather than the disabled attribute
+	 * to gray out the Time-of-Night slider: a disabled field is left out of
+	 * the form's POST entirely, and options.php writes null over any
+	 * registered option missing from a submitted group -- disabling it would
+	 * silently erase the saved value on every unrelated settings save.
+	 */
+	public function weights_section_callback() {
+		echo '<div id="spsg-weights-intro">';
+		echo '<h2>' . esc_html__( 'Balance Weights (Advanced)', 'sportspress-schedule-generator' ) . '</h2>';
+		echo '<p>' . esc_html__( 'Fine-tune how strongly the schedule generator favors each kind of balance. 100% is the algorithm\'s own built-in weight; 0% turns a category off entirely. Enable Advanced above to reveal these sliders.', 'sportspress-schedule-generator' ) . '</p>';
+		echo '</div>';
+		$this->render_weights_section_script();
+		echo '<div id="spsg-weights-table-marker" style="display:none;"></div>';
+	}
+
+	/**
+	 * Inline CSS/JS for the Balance Weights section: whole-section show/hide
+	 * (Advanced checkbox), Time-of-Night gray-out (Balance Time Slots
+	 * checkbox), and live percentage readout on each slider's `input` event.
+	 * Split out of {@see weights_section_callback()} as its own method --
+	 * a distinct concern (client-side behavior vs. the section's own
+	 * markup), and keeps that method's own line count down.
+	 */
+	private function render_weights_section_script() {
+		?>
+		<style>
+			.spsg-weight-disabled { opacity: 0.5; pointer-events: none; }
+		</style>
+		<script>
+		( function () {
+			var WEIGHT_KEYS = [ 'day_balance', 'time_of_night', 'season_pacing', 'venue_utilization', 'preferred_venue', 'division_distance', 'division_disruption', 'overlap_avoidance' ];
+
+			function rowFor( id ) {
+				var el = document.getElementById( id );
+				return el ? el.closest( 'tr' ) : null;
+			}
+
+			function sync() {
+				var advanced = document.getElementById( 'spsg_advanced_weights_enabled' );
+				var timeSlots = document.getElementById( 'spsg_balance_time_slots' );
+				var show = !! ( advanced && advanced.checked );
+
+				var intro = document.getElementById( 'spsg-weights-intro' );
+				if ( intro ) { intro.style.display = show ? '' : 'none'; }
+
+				var marker = document.getElementById( 'spsg-weights-table-marker' );
+				var table = marker ? marker.nextElementSibling : null;
+				if ( table ) { table.style.display = show ? '' : 'none'; }
+
+				var resetForm = document.getElementById( 'spsg-weights-reset-form' );
+				if ( resetForm ) { resetForm.style.display = show ? '' : 'none'; }
+
+				WEIGHT_KEYS.forEach( function ( key ) {
+					var row = rowFor( 'spsg_weight_' + key );
+					if ( row ) { row.style.display = show ? '' : 'none'; }
+				} );
+
+				var nightSlider = document.getElementById( 'spsg_weight_time_of_night' );
+				if ( nightSlider && timeSlots ) {
+					nightSlider.classList.toggle( 'spsg-weight-disabled', ! timeSlots.checked );
+				}
+			}
+
+			document.addEventListener( 'DOMContentLoaded', function () {
+				var advanced = document.getElementById( 'spsg_advanced_weights_enabled' );
+				var timeSlots = document.getElementById( 'spsg_balance_time_slots' );
+				if ( advanced ) { advanced.addEventListener( 'change', sync ); }
+				if ( timeSlots ) { timeSlots.addEventListener( 'change', sync ); }
+				sync();
+
+				document.querySelectorAll( '.spsg-weight-slider' ).forEach( function ( slider ) {
+					slider.addEventListener( 'input', function () {
+						var out = slider.nextElementSibling;
+						if ( out ) { out.textContent = slider.value + '%'; }
+					} );
+				} );
+			} );
+		} )();
+		</script>
+		<?php
 	}
 
 	/**

@@ -347,6 +347,20 @@ class SPSG_Slot_Allocator {
 	const OVERLAP_AVOID_SAME_DAY_BONUS = 120.0;
 
 	/**
+	 * Scales a base cost/bonus constant by its Advanced Settings multiplier
+	 * (spsg_weight_{$option_key}, 0.0-2.0, default 1.0). Reads 1.0 -- no
+	 * change -- until a convener opts into Advanced weight tuning and moves a
+	 * slider, so existing schedules are unaffected by default.
+	 *
+	 * @param float  $base       The constant's own declared (100%) value.
+	 * @param string $option_key Suffix of the `spsg_weight_{$option_key}` option.
+	 * @return float
+	 */
+	private function weighted( $base, $option_key ) {
+		return $base * (float) get_option( "spsg_weight_{$option_key}", 1.0 );
+	}
+
+	/**
 	 * Set true when greedy_allocate() / backtrack_allocate() exited because
 	 * of a user-initiated cancellation rather than a genuine "cannot place
 	 * this matchup" failure. The caller uses this to skip the backtracking
@@ -2057,7 +2071,7 @@ class SPSG_Slot_Allocator {
 
 		$pacing = array();
 		foreach ( $this->order_dates_by_pace( $this->sorted_slot_dates, $placed, $config ) as $entry ) {
-			$pacing[ $entry['date'] ] = $entry['distance'] * self::PACING_COST_PER_DATE;
+			$pacing[ $entry['date'] ] = $entry['distance'] * $this->weighted( self::PACING_COST_PER_DATE, 'season_pacing' );
 		}
 		return $pacing;
 	}
@@ -2264,7 +2278,7 @@ class SPSG_Slot_Allocator {
 					continue;
 				}
 
-				$pacing_cost = $entry['distance'] * self::PACING_COST_PER_DATE;
+				$pacing_cost = $entry['distance'] * $this->weighted( self::PACING_COST_PER_DATE, 'season_pacing' );
 
 				foreach ( $this->slots_by_date[ $date ] ?? array() as $slot ) {
 					$slot_key = $this->get_slot_key( $slot );
@@ -2483,7 +2497,7 @@ class SPSG_Slot_Allocator {
 
 			foreach ( $same_day_games as $existing_game ) {
 				if ( $this->has_team_conflict( $existing_game, $home_team_id, $away_team_id ) ) {
-					$cost += self::SAME_DATE_TEAM_PENALTY;
+					$cost += $this->weighted( self::SAME_DATE_TEAM_PENALTY, 'overlap_avoidance' );
 				}
 			}
 		}
@@ -2496,13 +2510,14 @@ class SPSG_Slot_Allocator {
 			$games_on_date = count( $same_day_games );
 			if ( array_key_exists( $slot->date, $this->date_target_load ) ) {
 				$target = $this->date_target_load[ $slot->date ];
-				$cost  += $target > 0
-					? self::DATE_LOAD_COST * pow( $games_on_date / $target, 2 )
-					: self::DATE_LOAD_COST * pow( 2 + $games_on_date, 2 );
+				$date_load_cost = $this->weighted( self::DATE_LOAD_COST, 'season_pacing' );
+				$cost          += $target > 0
+					? $date_load_cost * pow( $games_on_date / $target, 2 )
+					: $date_load_cost * pow( 2 + $games_on_date, 2 );
 			} else {
 				$date_capacity = count( $this->slots_by_date[ $slot->date ] ?? array() );
 				if ( $date_capacity > 0 ) {
-					$cost += self::DATE_LOAD_COST * pow( $games_on_date / $date_capacity, 2 );
+					$cost += $this->weighted( self::DATE_LOAD_COST, 'season_pacing' ) * pow( $games_on_date / $date_capacity, 2 );
 				}
 			}
 		}
@@ -2512,7 +2527,7 @@ class SPSG_Slot_Allocator {
 		// A configured home-venue preference outweighs the soft terms, matching
 		// the previous behaviour of returning a preferred-venue slot on sight.
 		if ( $preferred_venue_id && $this->extract_id( $slot->venue ) === $preferred_venue_id ) {
-			$cost -= self::PREFERRED_VENUE_BONUS;
+			$cost -= $this->weighted( self::PREFERRED_VENUE_BONUS, 'preferred_venue' );
 		}
 
 		$cost -= $this->overlap_avoid_same_day_bonus( $game, $same_day_games, $config );
@@ -2544,7 +2559,7 @@ class SPSG_Slot_Allocator {
 			}
 		}
 
-		return self::VENUE_LOAD_COST * pow( $games_at_venue / $capacity, 2 );
+		return $this->weighted( self::VENUE_LOAD_COST, 'venue_utilization' ) * pow( $games_at_venue / $capacity, 2 );
 	}
 
 	/**
@@ -2576,7 +2591,7 @@ class SPSG_Slot_Allocator {
 
 			$partner_teams = array_diff( $restricted_teams, $this_teams );
 			if ( $this->partner_already_playing( $same_day_games, $partner_teams ) ) {
-				$bonus += self::OVERLAP_AVOID_SAME_DAY_BONUS;
+				$bonus += $this->weighted( self::OVERLAP_AVOID_SAME_DAY_BONUS, 'overlap_avoidance' );
 			}
 		}
 
