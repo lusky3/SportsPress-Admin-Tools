@@ -73,6 +73,16 @@ class SPSG_Admin_Ajax {
 	}
 
 	/**
+	 * The configuration the admin page posted (its hidden #spsg-config-id),
+	 * or null when it is unsaved or no longer exists.
+	 *
+	 * @return SPSG_Schedule_Configuration|null
+	 */
+	private function resolve_posted_config() {
+		return $this->config_manager->find( sanitize_text_field( wp_unslash( $_POST['config_id'] ?? '' ) ) );
+	}
+
+	/**
 	 * AJAX handler for saving configuration
 	 */
 	public function ajax_save_config() {
@@ -82,7 +92,7 @@ class SPSG_Admin_Ajax {
 			wp_send_json_error( __( 'Insufficient permissions', 'sportspress-schedule-generator' ) );
 		}
 
-		$config_data = $this->sanitize_form_data( $_POST );
+		$config_data = $this->sanitize_form_data( wp_unslash( $_POST ) );
 		$result = $this->config_manager->save( $config_data );
 
 		if ( is_wp_error( $result ) ) {
@@ -130,7 +140,7 @@ class SPSG_Admin_Ajax {
 			wp_send_json_error( __( 'Insufficient permissions', 'sportspress-schedule-generator' ) );
 		}
 
-		$league_id = intval( $_POST['league_id'] );
+		$league_id = absint( wp_unslash( $_POST['league_id'] ?? 0 ) );
 		if ( ! $league_id ) {
 			wp_send_json_error( __( 'Invalid league ID', 'sportspress-schedule-generator' ) );
 		}
@@ -872,7 +882,11 @@ class SPSG_Admin_Ajax {
 
 		$csv_venues = SPSG_Venue_Schedule_Importer::get_unique_venues( $schedules );
 
-		$config = $this->config_manager->get_current();
+		$config = $this->resolve_posted_config();
+		if ( ! $config ) {
+			wp_send_json_error( __( 'Save the configuration before importing a venue schedule.', 'sportspress-schedule-generator' ) );
+			return;
+		}
 		$existing_venues = $config->venues ?? array();
 
 		if ( class_exists( 'SPSG_Sports_Press_Integration' ) ) {
@@ -914,7 +928,11 @@ class SPSG_Admin_Ajax {
 			wp_send_json_error( __( 'No schedule data provided', 'sportspress-schedule-generator' ) );
 		}
 
-		$config = $this->config_manager->get_current();
+		$config = $this->resolve_posted_config();
+		if ( ! $config ) {
+			wp_send_json_error( __( 'Save the configuration before importing a venue schedule.', 'sportspress-schedule-generator' ) );
+			return;
+		}
 		$config_data = $config->to_array();
 
 		$venue_id_map = $venue_mapping;

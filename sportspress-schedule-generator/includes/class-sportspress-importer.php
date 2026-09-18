@@ -489,9 +489,9 @@ class SPSG_Sports_Press_Importer {
 				'missing_venue_name',
 				__( 'Game is missing venue name.', 'sportspress-schedule-generator' )
 			);
-		} elseif ( isset( $game->venue->id ) ) {
-			// Check if ID is already set
-			$result = array( 'venue_id' => $game->venue->id );
+		} elseif ( isset( $game->venue->id ) && is_numeric( $game->venue->id ) && term_exists( (int) $game->venue->id, 'sp_venue' ) ) {
+			// Configuration venue ids are generated strings; only a real term id may skip the name lookup.
+			$result = array( 'venue_id' => (int) $game->venue->id );
 		} else {
 			// Look up venue by name
 			$venue = $this->find_venue_by_name( $venue_name );

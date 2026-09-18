@@ -504,7 +504,7 @@ class SPSG_Schedule_Generator {
 
 		if ( $has_form_data ) {
 			$sanitizer   = new SPSG_Configuration_Sanitizer();
-			$config_data = $sanitizer->sanitize( $_POST );
+			$config_data = $sanitizer->sanitize( wp_unslash( $_POST ) );
 			return new SPSG_Schedule_Configuration( $config_data );
 		}
 

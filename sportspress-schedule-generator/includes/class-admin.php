@@ -187,10 +187,10 @@ class SPSG_Admin {
 			'spsg_backend_settings'
 		);
 
-		register_setting( 'spsg_backend_settings', 'spsg_max_generation_time' );
-		register_setting( 'spsg_backend_settings', 'spsg_enable_debug_logging' );
-		register_setting( 'spsg_backend_settings', 'spsg_default_timezone' );
-		register_setting( 'spsg_backend_settings', 'spsg_enable_change_tracking' );
+		register_setting( 'spsg_backend_settings', 'spsg_max_generation_time', array( 'sanitize_callback' => array( __CLASS__, 'sanitize_max_generation_time' ) ) );
+		register_setting( 'spsg_backend_settings', 'spsg_enable_debug_logging', array( 'sanitize_callback' => array( __CLASS__, 'sanitize_flag' ) ) );
+		register_setting( 'spsg_backend_settings', 'spsg_default_timezone', array( 'sanitize_callback' => array( __CLASS__, 'sanitize_timezone' ) ) );
+		register_setting( 'spsg_backend_settings', 'spsg_enable_change_tracking', array( 'sanitize_callback' => array( __CLASS__, 'sanitize_flag' ) ) );
 		register_setting(
 			'spsg_backend_settings',
 			'spsg_day_weights',
@@ -364,6 +364,42 @@ class SPSG_Admin {
 		$percent = (int) round( (float) $value / 10 ) * 10;
 		$percent = max( 0, min( 200, $percent ) );
 		return $percent / 100.0;
+	}
+
+	/**
+	 * Generation time limit in seconds, 60-3600; the form's min/max alone is
+	 * no defence against a direct POST.
+	 *
+	 * @param mixed $value Submitted value.
+	 * @return int
+	 */
+	public static function sanitize_max_generation_time( $value ) {
+		return max( 60, min( 3600, absint( $value ) ) );
+	}
+
+	/**
+	 * A checkbox setting stored as '1' or '0', the form the readers compare against.
+	 *
+	 * @param mixed $value Submitted value.
+	 * @return string
+	 */
+	public static function sanitize_flag( $value ) {
+		return ( ! empty( $value ) && '0' !== (string) $value ) ? '1' : '0';
+	}
+
+	/**
+	 * A timezone identifier PHP knows, '' for "use the site default", else
+	 * the site timezone.
+	 *
+	 * @param mixed $value Submitted value.
+	 * @return string
+	 */
+	public static function sanitize_timezone( $value ) {
+		$value = sanitize_text_field( (string) $value );
+		if ( '' === $value ) {
+			return '';
+		}
+		return in_array( $value, timezone_identifiers_list(), true ) ? $value : wp_timezone_string();
 	}
 
 	/**
@@ -847,7 +883,7 @@ class SPSG_Admin {
 		$action = sanitize_text_field( wp_unslash( $_POST['spsg_action'] ) );
 
 		if ( $action === 'save_config' ) {
-			$config_data = $this->sanitize_form_data( $_POST );
+			$config_data = $this->sanitize_form_data( wp_unslash( $_POST ) );
 			$result = $this->get_config_manager()->save( $config_data );
 
 			if ( is_wp_error( $result ) ) {
