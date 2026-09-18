@@ -685,8 +685,9 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 	}
 
 	/**
-	 * A postseason bracket's own season_start -- always the day after the
-	 * source (regular-season) configuration's own season_end. There is
+	 * A postseason bracket's own season_start: the Monday on or after the day
+	 * following the source configuration's season_end, so the bracket's
+	 * weeks line up with the scheduler's Mon-Sun weeks. There is
 	 * deliberately no independent input for this: given a season_start and
 	 * season_end already on the source configuration, and a round-robin week
 	 * count, the bracket's position is fully determined -- asking an
@@ -706,6 +707,9 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 			return '';
 		}
 		$start->modify( '+1 day' );
+		if ( 1 !== (int) $start->format( 'N' ) ) {
+			$start->modify( 'next monday' );
+		}
 		return $start->format( 'Y-m-d' );
 	}
 

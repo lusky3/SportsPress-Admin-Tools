@@ -290,6 +290,14 @@ class SPSG_Configuration_Validator {
 			return; // validate_dates() already requires both; nothing new to check on an incomplete config.
 		}
 
+		if ( 1 !== (int) $this->config->season_start->format( 'N' ) ) {
+			$errors['season_start'] = sprintf(
+				/* translators: %s: the configured season_start */
+				__( 'A postseason season_start must be a Monday so its weeks match the schedule\'s Mon–Sun weeks -- got %s. Recreate the postseason configuration instead of editing the dates.', 'sportspress-schedule-generator' ),
+				$this->config->season_start->format( 'Y-m-d' )
+			);
+		}
+
 		$expected_end = clone $this->config->season_start;
 		$expected_end->modify( '+' . ( 7 * ( $this->config->round_robin_weeks + 1 ) - 1 ) . ' days' );
 
