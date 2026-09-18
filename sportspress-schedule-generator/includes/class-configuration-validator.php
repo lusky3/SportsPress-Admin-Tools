@@ -311,13 +311,15 @@ class SPSG_Configuration_Validator {
 	 * Consolation).
 	 *
 	 * @return array{0: int, 1: int} [championship_games, consolation_games].
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function postseason_final_week_game_counts() {
 		$championship_games = 0;
 		$consolation_games  = 0;
 
 		foreach ( $this->config->divisions as $division ) {
-			$team_count = count( $division['teams'] ?? array() );
+			$team_count = SPSG_Placeholder_Team_Manager::effective_team_count( (array) $division, (array) ( $this->config->generic_teams ?? array() ) );
 			if ( $team_count < 2 ) {
 				continue;
 			}

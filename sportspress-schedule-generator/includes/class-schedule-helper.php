@@ -744,7 +744,7 @@ class SPSG_Schedule_Helper {
 
 		$count = 0;
 		foreach ( $venue_slots as $time_slot ) {
-			if ( null === $time_window || ( $time_slot >= $time_window[0] && $time_slot <= $time_window[1] ) ) {
+			if ( null === $time_window || self::slot_within_window( $time_slot, $time_window[0], $time_window[1] ) ) {
 				$count++;
 			}
 		}
@@ -1088,5 +1088,42 @@ class SPSG_Schedule_Helper {
 		}
 
 		return $intra_pairs * $legs + $inter;
+	}
+
+	/**
+	 * Minutes since midnight for an "H:MM" / "HH:MM" slot or a numeric minute
+	 * offset; null when unparseable. Slots are only sanitize_text_field()'d, so
+	 * "9:00" and "09:00" must compare equal.
+	 *
+	 * @param mixed $slot Slot value.
+	 * @return int|null
+	 */
+	public static function time_to_minutes( $slot ) {
+		if ( is_numeric( $slot ) ) {
+			return (int) $slot;
+		}
+		if ( ! is_string( $slot ) || false === strpos( $slot, ':' ) ) {
+			return null;
+		}
+		$parts = explode( ':', $slot );
+		return ( (int) $parts[0] ) * 60 + (int) ( $parts[1] ?? 0 );
+	}
+
+	/**
+	 * Whether $slot falls inside [$start, $end] inclusive, compared in minutes.
+	 *
+	 * @param mixed $slot  Slot value.
+	 * @param mixed $start Window start.
+	 * @param mixed $end   Window end.
+	 * @return bool False when any value is unparseable.
+	 */
+	public static function slot_within_window( $slot, $start, $end ) {
+		$minutes = self::time_to_minutes( $slot );
+		$from    = self::time_to_minutes( $start );
+		$to      = self::time_to_minutes( $end );
+		if ( null === $minutes || null === $from || null === $to ) {
+			return false;
+		}
+		return $minutes >= $from && $minutes <= $to;
 	}
 }

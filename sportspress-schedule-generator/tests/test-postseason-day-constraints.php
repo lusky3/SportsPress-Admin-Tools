@@ -45,6 +45,7 @@ require_once SPSG_PLUGIN_PATH . 'includes/class-postseason-seed-resolver.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-postseason-bracket-detector.php';
 require_once SPSG_PLUGIN_PATH . 'includes/constraints/class-postseason-day-constraint.php';
 require_once SPSG_PLUGIN_PATH . 'includes/constraints/class-championship-time-window-constraint.php';
+require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-helper.php';
 
 $passed = 0;
 $failed = 0;
