@@ -426,6 +426,17 @@ class SPSG_Matchup_Generator {
 	private function generate_inter_division_matchups( $divisions, $inter_division_config ) {
 		$matchups = array();
 
+		// Shared across every pair below (not reset per pair) so that a
+		// division playing more than one inter-division pair (e.g. both
+		// divA:divB and divA:divC) keeps spreading ITS OWN teams' games
+		// evenly across all of them. A per-pair-local tally can't see a
+		// team's games from an earlier pair, and find_balanced_inter_division_pair()'s
+		// tie-break always prefers the first team in iteration order, so
+		// without this a team appearing in multiple pairs can be picked
+		// first every time -- leaving a division-mate with zero games
+		// instead of merely one game short.
+		$team_games = array();
+
 		foreach ( $inter_division_config as $division_pair => $game_count ) {
 			if ( $game_count <= 0 ) {
 				continue;
@@ -443,7 +454,7 @@ class SPSG_Matchup_Generator {
 				continue;
 			}
 
-			$pair_matchups = $this->generate_inter_division_pair_matchups( $div_a, $div_b, $game_count );
+			$pair_matchups = $this->generate_inter_division_pair_matchups( $div_a, $div_b, $game_count, $team_games );
 			$matchups = array_merge( $matchups, $pair_matchups );
 		}
 
@@ -465,12 +476,15 @@ class SPSG_Matchup_Generator {
 	/**
 	 * Generate matchups between two divisions
 	 *
-	 * @param array $div_a First division
-	 * @param array $div_b Second division
-	 * @param int   $total_games Total games between divisions
+	 * @param array             $div_a       First division.
+	 * @param array             $div_b       Second division.
+	 * @param int               $total_games Total games between divisions.
+	 * @param array<string,int> $team_games  Team id => inter-division games so far,
+	 *                                       across every pair this division takes part
+	 *                                       in (mutated in place; not reset here).
 	 * @return array Array of matchup objects
 	 */
-	private function generate_inter_division_pair_matchups( $div_a, $div_b, $total_games ) {
+	private function generate_inter_division_pair_matchups( $div_a, $div_b, $total_games, array &$team_games ) {
 		$matchups = array();
 		$teams_a = $this->normalize_teams( $div_a['teams'] ?? array() );
 		$teams_b = $this->normalize_teams( $div_b['teams'] ?? array() );
@@ -479,15 +493,17 @@ class SPSG_Matchup_Generator {
 			return $matchups;
 		}
 
-		// Track games per team to ensure fair distribution
-		$team_games = array();
+		// Seed any team not already carried over from an earlier pair; never
+		// reset one that is (that would erase this division's games from a
+		// previous pair and re-trigger the imbalance this parameter exists
+		// to prevent).
 		foreach ( $teams_a as $team ) {
 			$team_id = $this->get_team_id( $team );
-			$team_games[ $team_id ] = 0;
+			$team_games[ $team_id ] = $team_games[ $team_id ] ?? 0;
 		}
 		foreach ( $teams_b as $team ) {
 			$team_id = $this->get_team_id( $team );
-			$team_games[ $team_id ] = 0;
+			$team_games[ $team_id ] = $team_games[ $team_id ] ?? 0;
 		}
 
 		// Track pair counts so we can spread inter-division games across
