@@ -28,18 +28,29 @@ class SPSG_Upgrader {
 	/**
 	 * Run every pending upgrade once per plugin version. Idempotent; safe
 	 * to call on every request.
+	 *
+	 * If the postseason alignment can't get the configurations write lock
+	 * (a save() is in progress), the version marker is deliberately NOT
+	 * written, so the whole migration -- including the slider carry-over,
+	 * cheap as it is -- retries on the next request instead of leaving the
+	 * postseason alignment permanently skipped for this site.
 	 */
 	public static function maybe_upgrade() {
 		if ( get_option( self::VERSION_OPTION ) === SPSG_VERSION ) {
 			return;
 		}
-		self::align_postseason_weeks();
+		$aligned = self::align_postseason_weeks();
+		if ( false === $aligned ) {
+			return;
+		}
 		self::carry_over_overlap_weight();
 		update_option( self::VERSION_OPTION, SPSG_VERSION, 'no' );
 	}
 
 	/**
-	 * @return int Number of configurations changed.
+	 * @return int|false Number of configurations changed, or false if the
+	 *                    write lock was unavailable (see
+	 *                    {@see SPSG_Configuration_Manager::align_postseason_weeks()}).
 	 */
 	public static function align_postseason_weeks() {
 		return SPSG_Configuration_Manager::align_postseason_weeks();

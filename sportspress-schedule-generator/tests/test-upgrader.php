@@ -45,6 +45,20 @@ function update_option( $name, $value, $autoload = null ) {
 	return true;
 }
 
+// align_postseason_weeks() takes SPSG_Configuration_Manager's shared write
+// lock (SPAT_Lock isn't loaded here, so it falls back to these) before
+// touching the configurations option -- see tests/test-postseason-config.php
+// for the lock-contention and blackout-date-filtering coverage itself.
+/**
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
+function wp_cache_add( $key, $value, $group = '', $ttl = 0 ) { return true; }
+
+/**
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
+function wp_cache_delete( $key, $group = '' ) { return true; }
+
 require_once SPSG_PLUGIN_PATH . 'includes/interfaces/interface-configuration.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-configuration-manager.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-upgrader.php';

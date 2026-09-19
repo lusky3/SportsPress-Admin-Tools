@@ -689,35 +689,60 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 	 * One-shot upgrade: move every postseason configuration whose season_start
 	 * is not a Monday forward to the next Monday and recompute its season_end
 	 * with postseason_season_end(), so the bracket keeps satisfying
-	 * validate_postseason_season_span() after 1.3.10. Idempotent.
+	 * validate_postseason_season_span() after 1.3.10. Also re-filters
+	 * blackout_dates against the shifted window: a date that fell inside the
+	 * ORIGINAL [season_start, season_end] can land before the new season_start
+	 * once it moves forward, and an unfiltered leftover there would fail
+	 * validate_blackout_dates_range() right after this "fix" ran. Idempotent.
 	 *
-	 * @return int Number of configurations rewritten.
+	 * Takes the same write lock save()/delete() use, since this reads and
+	 * rewrites the whole configurations blob: without it, a save() landing
+	 * between this method's read and its update_option() would be silently
+	 * discarded by this method's stale copy of the blob.
+	 *
+	 * @return int|false Number of configurations rewritten, or false if the
+	 *                    write lock could not be acquired (nothing was
+	 *                    touched; the caller should not advance its version
+	 *                    marker, so this runs again on a later request).
 	 */
 	public static function align_postseason_weeks() {
-		$configurations = get_option( self::OPTION_NAME, array() );
-		$changed = 0;
-		foreach ( $configurations as $id => $config ) {
-			if ( empty( $config['is_postseason'] ) || empty( $config['season_start'] ) ) {
-				continue;
-			}
-			try {
-				$start = new DateTime( $config['season_start'] );
-			} catch ( Exception $e ) {
-				continue;
-			}
-			if ( 1 === (int) $start->format( 'N' ) ) {
-				continue;
-			}
-			$start->modify( 'next monday' );
-			$season_start = $start->format( 'Y-m-d' );
-			$configurations[ $id ]['season_start'] = $season_start;
-			$configurations[ $id ]['season_end']   = self::postseason_season_end( $season_start, (int) ( $config['round_robin_weeks'] ?? 3 ) );
-			$configurations[ $id ]['modified']     = current_time( 'mysql' );
-			++$changed;
+		$lock_handle = self::acquire_write_lock();
+		if ( false === $lock_handle ) {
+			return false;
 		}
-		if ( $changed > 0 ) {
-			update_option( self::OPTION_NAME, $configurations, 'no' );
+
+		try {
+			$configurations = get_option( self::OPTION_NAME, array() );
+			$changed = 0;
+			foreach ( $configurations as $id => $config ) {
+				if ( empty( $config['is_postseason'] ) || empty( $config['season_start'] ) ) {
+					continue;
+				}
+				try {
+					$start = new DateTime( $config['season_start'] );
+				} catch ( Exception $e ) {
+					continue;
+				}
+				if ( 1 === (int) $start->format( 'N' ) ) {
+					continue;
+				}
+				$start->modify( 'next monday' );
+				$season_start      = $start->format( 'Y-m-d' );
+				$round_robin_weeks = (int) ( $config['round_robin_weeks'] ?? 3 );
+
+				$configurations[ $id ]['season_start']   = $season_start;
+				$configurations[ $id ]['season_end']     = self::postseason_season_end( $season_start, $round_robin_weeks );
+				$configurations[ $id ]['blackout_dates'] = self::postseason_blackout_dates( $config, $season_start, $round_robin_weeks );
+				$configurations[ $id ]['modified']       = current_time( 'mysql' );
+				++$changed;
+			}
+			if ( $changed > 0 ) {
+				update_option( self::OPTION_NAME, $configurations, 'no' );
+			}
+		} finally {
+			self::release_write_lock( $lock_handle );
 		}
+
 		return $changed;
 	}
 

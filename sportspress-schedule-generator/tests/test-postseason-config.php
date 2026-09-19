@@ -883,6 +883,44 @@ pc_assert(
 	'a second call leaves the stored configurations byte-for-byte unchanged'
 );
 
+echo "\n=== align_postseason_weeks() re-filters blackout_dates against the shifted window ===\n\n";
+
+$state->options = array();
+$state->options['spsg_configurations'] = array(
+	'config_blackout_needs_refilter' => array(
+		'id'                => 'config_blackout_needs_refilter',
+		'name'              => 'W2026-27 Playoffs',
+		'is_postseason'     => true,
+		'season_start'      => '2026-10-01', // Thursday; moves to 2026-10-05.
+		'season_end'        => '2026-10-28',
+		'round_robin_weeks' => 3,
+		'blackout_dates'    => array(
+			// Falls in the 4 days the shift skips over (Oct 1-4) -- must be
+			// dropped, or validate_blackout_dates_range() rejects the
+			// migrated config for a date now before its own season_start.
+			'2026-10-02',
+			// Still inside the new [2026-10-05, 2026-11-01] window -- must
+			// survive the re-filter.
+			'2026-10-12',
+			// Was inside the ORIGINAL window but past the new end (the end
+			// also moves forward by the same 4 days) -- stays inside the
+			// new window too, since the whole span just translates; kept
+			// here only to document that both dates land inside the new
+			// range, not to exercise a drop.
+			'2026-10-26',
+		),
+		'created'           => '2026-08-01 00:00:00',
+		'modified'          => '2026-08-01 00:00:00',
+	),
+);
+
+SPSG_Configuration_Manager::align_postseason_weeks();
+$refiltered = $state->options['spsg_configurations']['config_blackout_needs_refilter'];
+pc_assert(
+	array( '2026-10-12', '2026-10-26' ) === $refiltered['blackout_dates'],
+	'a blackout date pushed outside the shifted season by the Monday alignment is dropped, and dates still inside the new window survive'
+);
+
 echo "\n=== SPSG_Sports_Press_Integration::create_child_season() ===\n\n";
 
 $state->terms = array();
