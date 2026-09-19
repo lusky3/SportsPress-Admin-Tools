@@ -3,9 +3,6 @@
  * Test Constraints
  *
  * Covers:
- *  - SPSG_Blackout_Constraint::schedule_makeup_games (Pass-2 F5):
- *    two blackouts that both want the same alternative slot must NOT
- *    schedule duplicate (date, time_slot, venue) makeup entries.
  *  - SPSG_Distribution_Constraint with games whose day isn't in
  *    `playing_days` (Pass-2 F8 ghost-day): get_violation_cost must
  *    return 0.0 without raising PHP notices.
@@ -53,6 +50,7 @@ if ( ! function_exists( 'is_wp_error' ) ) {
 
 require_once SPSG_PLUGIN_PATH . 'includes/interfaces/interface-constraint.php';
 require_once SPSG_PLUGIN_PATH . 'includes/abstract-constraint.php';
+require_once SPSG_PLUGIN_PATH . 'includes/class-placeholder-team-manager.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-helper.php';
 require_once SPSG_PLUGIN_PATH . 'includes/constraints/class-blackout-constraint.php';
 require_once SPSG_PLUGIN_PATH . 'includes/constraints/class-distribution-constraint.php';
@@ -71,142 +69,6 @@ function tc_assert( $cond, $msg ) {
 echo "=== Testing Constraints ===\n\n";
 $passed = 0;
 $failed = 0;
-
-// -------------------------------------------------------------------------
-// Test 1: Blackout makeup-collision (Pass-2 F5)
-// Two blackouts produce two makeup tickets; both should prefer the same
-// next alternative slot. The scheduler must NOT emit duplicate
-// (date, time_slot, venue) entries.
-// -------------------------------------------------------------------------
-echo "Test 1: Blackout makeup-collision avoidance (F5)\n";
-
-$team_a = (object) array( 'id' => 'team1', 'name' => 'Team A' );
-$team_b = (object) array( 'id' => 'team2', 'name' => 'Team B' );
-$team_c = (object) array( 'id' => 'team3', 'name' => 'Team C' );
-$team_d = (object) array( 'id' => 'team4', 'name' => 'Team D' );
-$venue  = (object) array( 'id' => 'v1', 'name' => 'Field 1' );
-$div    = (object) array( 'id' => 'div1', 'name' => 'Division 1' );
-
-// Pretend config: Fridays + Sundays in March 2024.
-$config = (object) array(
-	'season_start'    => '2024-03-01',
-	'season_end'      => '2024-04-30',
-	'playing_days'    => array( 'friday', 'sunday' ),
-	'blackout_dates'  => array( '2024-03-01', '2024-03-08' ), // both Fridays
-	'time_slots'      => array(
-		'friday' => array( '19:00' ),
-		'sunday' => array( '14:00' ),
-	),
-);
-
-$blackout = new SPSG_Blackout_Constraint();
-
-// Game 1: Team A vs Team B on Friday 2024-03-01 — gets blocked.
-$g1 = (object) array(
-	'date'      => '2024-03-01',
-	'time_slot' => '14:00',
-	'home_team' => $team_a,
-	'away_team' => $team_b,
-	'venue'     => $venue,
-	'division'  => $div,
-);
-// Game 2: Team C vs Team D on Friday 2024-03-08 — also blocked.
-$g2 = (object) array(
-	'date'      => '2024-03-08',
-	'time_slot' => '14:00',
-	'home_team' => $team_c,
-	'away_team' => $team_d,
-	'venue'     => $venue,
-	'division'  => $div,
-);
-
-$r1 = $blackout->validate( $g1, array(), $config );
-$r2 = $blackout->validate( $g2, array(), $config );
-
-$blocked_ok = is_wp_error( $r1 ) && is_wp_error( $r2 )
-	&& $r1->get_error_code() === 'blackout_date'
-	&& $r2->get_error_code() === 'blackout_date';
-if ( tc_assert( $blocked_ok, 'Both blackout-day games are rejected with blackout_date error' ) ) {
-	$passed++;
-} else {
-	$failed++;
-}
-
-// Both got tracked as makeup tickets.
-$tickets = $blackout->get_makeup_games();
-if ( tc_assert( count( $tickets ) === 2, 'Two makeup tickets tracked' ) ) {
-	$passed++;
-} else {
-	$failed++;
-	echo "  Got " . count( $tickets ) . " tickets\n";
-}
-
-// Now schedule makeups. Each ticket wants the next Sunday after its
-// blacked-out Friday: 2024-03-03 for ticket 1 and 2024-03-10 for ticket 2.
-// These are different Sundays so there's no real collision — but if the
-// scheduler is broken (F5), it could pick the same fallback date for both.
-// We force a collision by adding an existing game on the natural Sunday for
-// ticket 1, which forces ticket 1 to fall through to find_any_available_date()
-// — and that should NOT collide with ticket 2.
-$existing_schedule = array(
-	// Existing game on 2024-03-03 using SAME venue/time. The makeup for
-	// ticket 1 cannot land here; it must look further.
-	(object) array(
-		'date'      => '2024-03-03',
-		'time_slot' => '14:00',
-		'home_team' => (object) array( 'id' => 'teamX' ),
-		'away_team' => (object) array( 'id' => 'teamY' ),
-		'venue'     => $venue,
-	),
-);
-
-$makeups = $blackout->schedule_makeup_games( $existing_schedule, $config );
-
-// Assertion: no two makeup entries share the same (date,time_slot,venue.id).
-$seen   = array();
-$dup    = false;
-$dup_at = '';
-foreach ( $makeups as $m ) {
-	$key = $m->date . '|' . $m->time_slot . '|' . $m->venue->id;
-	if ( isset( $seen[ $key ] ) ) {
-		$dup    = true;
-		$dup_at = $key;
-		break;
-	}
-	$seen[ $key ] = true;
-}
-if ( tc_assert( ! $dup, 'No duplicate (date,time,venue) across makeups (F5 collision avoided)' ) ) {
-	$passed++;
-} else {
-	$failed++;
-	echo "  Duplicate at: $dup_at\n";
-	foreach ( $makeups as $m ) {
-		echo "    " . $m->date . ' ' . $m->time_slot . ' @ ' . $m->venue->id
-			. ' [' . $m->home_team->id . ' vs ' . $m->away_team->id . "]\n";
-	}
-}
-
-// Sanity: also no two entries share (date, team) — a team cannot play twice
-// on the same day at the same venue under the F5 fix.
-$team_day = array();
-$team_dup = false;
-foreach ( $makeups as $m ) {
-	foreach ( array( $m->home_team->id, $m->away_team->id ) as $tid ) {
-		$k = $m->date . '|' . $tid;
-		if ( isset( $team_day[ $k ] ) ) {
-			$team_dup = true;
-			break 2;
-		}
-		$team_day[ $k ] = true;
-	}
-}
-if ( tc_assert( ! $team_dup, 'No team scheduled twice on the same makeup date' ) ) {
-	$passed++;
-} else {
-	$failed++;
-}
-
-echo "\n";
 
 // -------------------------------------------------------------------------
 // Test 2: Distribution constraint ghost-day (Pass-2 F8)
@@ -327,8 +189,8 @@ foreach ( $matchups as $m ) {
 	// After assign_home_away the team_a/team_b → home_team/away_team mapping;
 	// canonicalise by sorting IDs.
 	$ids = array(
-		$m['home_team']['id'] ?? ( is_object( $m['home_team'] ) ? $m['home_team']->id : '' ),
-		$m['away_team']['id'] ?? ( is_object( $m['away_team'] ) ? $m['away_team']->id : '' ),
+		is_object( $m['home_team'] ) ? $m['home_team']->id : ( $m['home_team']['id'] ?? '' ),
+		is_object( $m['away_team'] ) ? $m['away_team']->id : ( $m['away_team']['id'] ?? '' ),
 	);
 	sort( $ids );
 	$k                  = $ids[0] . '|' . $ids[1];

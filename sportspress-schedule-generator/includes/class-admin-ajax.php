@@ -43,7 +43,6 @@ class SPSG_Admin_Ajax {
 		// Note: spsg_validate_config is registered in SPSG_Schedule_Generator (includes feasibility checking)
 		add_action( 'wp_ajax_spsg_import_league', array( $this, 'ajax_import_league' ) );
 		add_action( 'wp_ajax_spsg_save_imported_league', array( $this, 'ajax_save_imported_league' ) );
-		add_action( 'wp_ajax_spsg_import_venues', array( $this, 'ajax_import_venues' ) );
 		add_action( 'wp_ajax_spsg_get_available_venues', array( $this, 'ajax_get_available_venues' ) );
 		add_action( 'wp_ajax_spsg_delete_config', array( $this, 'ajax_delete_config' ) );
 		add_action( 'wp_ajax_spsg_load_sp_teams', array( $this, 'ajax_load_sp_teams' ) );
@@ -73,6 +72,17 @@ class SPSG_Admin_Ajax {
 	}
 
 	/**
+	 * The configuration the admin page posted (its hidden #spsg-config-id),
+	 * or null when it is unsaved or no longer exists.
+	 *
+	 * @return SPSG_Schedule_Configuration|null
+	 */
+	private function resolve_posted_config() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- every caller runs check_ajax_referer() first.
+		return $this->config_manager->find( sanitize_text_field( wp_unslash( $_POST['config_id'] ?? '' ) ) );
+	}
+
+	/**
 	 * AJAX handler for saving configuration
 	 */
 	public function ajax_save_config() {
@@ -82,7 +92,7 @@ class SPSG_Admin_Ajax {
 			wp_send_json_error( __( 'Insufficient permissions', 'sportspress-schedule-generator' ) );
 		}
 
-		$config_data = $this->sanitize_form_data( $_POST );
+		$config_data = $this->sanitize_form_data( wp_unslash( $_POST ) );
 		$result = $this->config_manager->save( $config_data );
 
 		if ( is_wp_error( $result ) ) {
@@ -130,7 +140,7 @@ class SPSG_Admin_Ajax {
 			wp_send_json_error( __( 'Insufficient permissions', 'sportspress-schedule-generator' ) );
 		}
 
-		$league_id = intval( $_POST['league_id'] );
+		$league_id = absint( wp_unslash( $_POST['league_id'] ?? 0 ) );
 		if ( ! $league_id ) {
 			wp_send_json_error( __( 'Invalid league ID', 'sportspress-schedule-generator' ) );
 		}
@@ -287,21 +297,6 @@ class SPSG_Admin_Ajax {
 				'count' => count( $venues ),
 			)
 		);
-	}
-
-	/**
-	 * AJAX handler for importing SportsPress venues (legacy)
-	 */
-	public function ajax_import_venues() {
-		check_ajax_referer( 'spsg_import_venues', 'spsg_nonce' );
-
-		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_send_json_error( __( 'Insufficient permissions', 'sportspress-schedule-generator' ) );
-		}
-
-		$venues = SPSG_Sports_Press_Integration::get_venues();
-
-		wp_send_json_success( array( 'venues' => $venues ) );
 	}
 
 	/**
@@ -721,25 +716,10 @@ class SPSG_Admin_Ajax {
 
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( __( 'Insufficient permissions', 'sportspress-schedule-generator' ) );
+			return;
 		}
 
-		$user_id = get_current_user_id();
-		$cancel_key = 'spsg_cancel_generation_' . $user_id;
-		$progress_key = 'spsg_generation_progress_' . $user_id;
-
-		// Set the dedicated cancel flag in BOTH the transient and the object
-		// cache to avoid a race where the engine reads a stale cached copy and
-		// misses the cancellation request.
-		set_transient( $cancel_key, true, 300 );
-		wp_cache_set( $cancel_key, true, 'spsg_progress', HOUR_IN_SECONDS );
-
-		$progress = get_transient( $progress_key );
-		if ( $progress ) {
-			$progress['cancelled'] = true;
-			$progress['status'] = 'cancelled';
-			set_transient( $progress_key, $progress, HOUR_IN_SECONDS );
-			wp_cache_set( $progress_key, $progress, 'spsg_progress', HOUR_IN_SECONDS );
-		}
+		SPSG_Schedule_Engine::request_cancel( get_current_user_id() );
 
 		wp_send_json_success(
 			array(
@@ -887,7 +867,11 @@ class SPSG_Admin_Ajax {
 
 		$csv_venues = SPSG_Venue_Schedule_Importer::get_unique_venues( $schedules );
 
-		$config = $this->config_manager->get_current();
+		$config = $this->resolve_posted_config();
+		if ( ! $config ) {
+			wp_send_json_error( __( 'Save the configuration before importing a venue schedule.', 'sportspress-schedule-generator' ) );
+			return;
+		}
 		$existing_venues = $config->venues ?? array();
 
 		if ( class_exists( 'SPSG_Sports_Press_Integration' ) ) {
@@ -929,7 +913,11 @@ class SPSG_Admin_Ajax {
 			wp_send_json_error( __( 'No schedule data provided', 'sportspress-schedule-generator' ) );
 		}
 
-		$config = $this->config_manager->get_current();
+		$config = $this->resolve_posted_config();
+		if ( ! $config ) {
+			wp_send_json_error( __( 'Save the configuration before importing a venue schedule.', 'sportspress-schedule-generator' ) );
+			return;
+		}
 		$config_data = $config->to_array();
 
 		$venue_id_map = $venue_mapping;

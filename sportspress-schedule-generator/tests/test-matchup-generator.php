@@ -115,8 +115,8 @@ if (test_assert(count($matchups) === $expected_matchups, "Should generate $expec
 // Verify each team plays 3 games
 $team_games = array();
 foreach ($matchups as $matchup) {
-    $home_id = $matchup['home_team']['id'];
-    $away_id = $matchup['away_team']['id'];
+    $home_id = $matchup['home_team']->id;
+    $away_id = $matchup['away_team']->id;
     $team_games[$home_id] = ($team_games[$home_id] ?? 0) + 1;
     $team_games[$away_id] = ($team_games[$away_id] ?? 0) + 1;
 }
@@ -150,8 +150,8 @@ if (test_assert(count($matchups) === $expected_matchups, "Should generate $expec
 // Verify each team plays 6 games
 $team_games = array();
 foreach ($matchups as $matchup) {
-    $home_id = $matchup['home_team']['id'];
-    $away_id = $matchup['away_team']['id'];
+    $home_id = $matchup['home_team']->id;
+    $away_id = $matchup['away_team']->id;
     $team_games[$home_id] = ($team_games[$home_id] ?? 0) + 1;
     $team_games[$away_id] = ($team_games[$away_id] ?? 0) + 1;
 }
@@ -171,8 +171,8 @@ if (test_assert($all_correct, "Each team should play exactly 6 games")) {
 // Verify home/away swap for double round-robin
 $matchup_pairs = array();
 foreach ($matchups as $matchup) {
-    $id_a = $matchup['home_team']['id'];
-    $id_b = $matchup['away_team']['id'];
+    $id_a = $matchup['home_team']->id;
+    $id_b = $matchup['away_team']->id;
     $pair_key = $id_a < $id_b ? "$id_a:$id_b" : "$id_b:$id_a";
     
     if (!isset($matchup_pairs[$pair_key])) {
@@ -214,8 +214,8 @@ if (test_assert(count($matchups) === $expected_matchups, "Should generate $expec
 // Verify each team plays 8 games
 $team_games = array();
 foreach ($matchups as $matchup) {
-    $home_id = $matchup['home_team']['id'];
-    $away_id = $matchup['away_team']['id'];
+    $home_id = $matchup['home_team']->id;
+    $away_id = $matchup['away_team']->id;
     $team_games[$home_id] = ($team_games[$home_id] ?? 0) + 1;
     $team_games[$away_id] = ($team_games[$away_id] ?? 0) + 1;
 }
@@ -303,8 +303,8 @@ $matchups = $generator->generate($config);
 $home_counts = array();
 $away_counts = array();
 foreach ($matchups as $matchup) {
-    $home_id = $matchup['home_team']['id'];
-    $away_id = $matchup['away_team']['id'];
+    $home_id = $matchup['home_team']->id;
+    $away_id = $matchup['away_team']->id;
     $home_counts[$home_id] = ($home_counts[$home_id] ?? 0) + 1;
     $away_counts[$away_id] = ($away_counts[$away_id] ?? 0) + 1;
 }
@@ -342,6 +342,7 @@ if (!class_exists('SPSG_Constraint_Manager')) {
         public function calculate_violation_cost($game, $schedule, $config, $full = null) { return 0.0; }
     }
 }
+require_once SPSG_PLUGIN_PATH . 'includes/class-placeholder-team-manager.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-helper.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-slot-allocator.php';
 

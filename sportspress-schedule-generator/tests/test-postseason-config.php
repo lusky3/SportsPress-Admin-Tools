@@ -320,8 +320,8 @@ $valid_postseason = new SPSG_Schedule_Configuration(
 		pc_valid_regular_season_fields(),
 		array(
 			'is_postseason'     => true,
-			'season_start'      => '2026-10-01',
-			'season_end'        => '2026-10-28', // season_start + 7*(3+1)-1 = 27 days
+			'season_start'      => '2026-10-05',
+			'season_end'        => '2026-11-01', // season_start + 7*(3+1)-1 = 27 days
 			'time_slots'        => array( 'friday' => array( '18:00', '19:00', '20:00', '21:00' ) ), // plenty of slots for the 9 games needed
 			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D', 'E', 'F' ) ) ), // half = 3
 			'round_robin_weeks' => 3,
@@ -345,8 +345,8 @@ echo "\n=== SPSG_Schedule_Configuration::validate(): odd division + generic_team
 // meets or exceeds the target. Validation must agree with what generation
 // will actually build, not just count real teams.
 $odd_division_fields = array(
-	'season_start'      => '2027-01-01', // Friday; round_robin_weeks=1 -> final week 2027-01-08..14
-	'season_end'        => '2027-01-14',
+	'season_start'      => '2027-01-04', // Monday; round_robin_weeks=1 -> final week 2027-01-11..17
+	'season_end'        => '2027-01-17',
 	'round_robin_weeks' => 1,
 	'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D', 'E', 'F', 'G' ) ) ), // 7 real teams
 	'playing_days'      => array( 'friday', 'sunday' ),
@@ -383,15 +383,15 @@ pc_assert(
 
 echo "\n=== SPSG_Schedule_Configuration::validate(): postseason final-week capacity ===\n\n";
 
-// season_start 2027-01-01 is a Friday; round_robin_weeks=1 -> season_end = start + 13 days = 2027-01-14.
-// The final (trailing 7-day) week is 2027-01-08..2027-01-14. Within it, Friday = 2027-01-08, Sunday = 2027-01-10.
+// season_start 2027-01-04 is a Monday; round_robin_weeks=1 -> season_end = start + 13 days = 2027-01-17.
+// The final (trailing 7-day) week is 2027-01-11..2027-01-17. Within it, Friday = 2027-01-15, Sunday = 2027-01-17.
 $capacity_ok = new SPSG_Schedule_Configuration(
 	array_merge(
 		pc_valid_regular_season_fields(),
 		array(
 			'is_postseason'     => true,
-			'season_start'      => '2027-01-01',
-			'season_end'        => '2027-01-14',
+			'season_start'      => '2027-01-04',
+			'season_end'        => '2027-01-17',
 			'round_robin_weeks' => 1,
 			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D' ) ) ), // 4 teams: 1 championship game, 1 consolation game
 			'playing_days'      => array( 'friday', 'sunday' ),
@@ -413,8 +413,8 @@ $consolation_capacity_short = new SPSG_Schedule_Configuration(
 		pc_valid_regular_season_fields(),
 		array(
 			'is_postseason'     => true,
-			'season_start'      => '2027-01-01',
-			'season_end'        => '2027-01-14',
+			'season_start'      => '2027-01-04',
+			'season_end'        => '2027-01-17',
 			'round_robin_weeks' => 1,
 			// 2 divisions of 4 teams: 2 championship games, 2 consolation games.
 			'divisions'         => array(
@@ -443,8 +443,8 @@ $championship_capacity_short = new SPSG_Schedule_Configuration(
 		pc_valid_regular_season_fields(),
 		array(
 			'is_postseason'     => true,
-			'season_start'      => '2027-01-01',
-			'season_end'        => '2027-01-14',
+			'season_start'      => '2027-01-04',
+			'season_end'        => '2027-01-17',
 			'round_robin_weeks' => 1,
 			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D' ) ) ), // 1 championship game, 1 consolation game
 			'playing_days'      => array( 'friday', 'sunday' ),
@@ -469,8 +469,8 @@ $championship_date_blacked_out = new SPSG_Schedule_Configuration(
 		pc_valid_regular_season_fields(),
 		array(
 			'is_postseason'     => true,
-			'season_start'      => '2027-01-01',
-			'season_end'        => '2027-01-14',
+			'season_start'      => '2027-01-04',
+			'season_end'        => '2027-01-17',
 			'round_robin_weeks' => 1,
 			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D' ) ) ),
 			'playing_days'      => array( 'friday', 'sunday' ),
@@ -481,7 +481,7 @@ $championship_date_blacked_out = new SPSG_Schedule_Configuration(
 			),
 			'championship_day'  => array( 'day' => 'friday', 'start' => '18:45', 'end' => '21:00' ),
 			'consolation_day'   => 'sunday',
-			'blackout_dates'    => array( '2027-01-08' ), // the Friday within the final week -- Championship's own date
+			'blackout_dates'    => array( '2027-01-15' ), // the Friday within the final week -- Championship's own date
 		)
 	)
 );
@@ -493,15 +493,15 @@ pc_assert(
 
 echo "\n=== SPSG_Schedule_Configuration::validate(): postseason season-date invariant ===\n\n";
 
-// Same shape as Task 2's "capacity_ok" fixture (season_start 2027-01-01,
-// round_robin_weeks=1 -> season_end MUST be 2027-01-14), reused here so
+// Same shape as Task 2's "capacity_ok" fixture (season_start 2027-01-04,
+// round_robin_weeks=1 -> season_end MUST be 2027-01-17), reused here so
 // this check's own tests aren't confounded by a capacity failure.
 function pc_postseason_span_fields( $season_end ) {
 	return array_merge(
 		pc_valid_regular_season_fields(),
 		array(
 			'is_postseason'     => true,
-			'season_start'      => '2027-01-01',
+			'season_start'      => '2027-01-04',
 			'season_end'        => $season_end,
 			'round_robin_weeks' => 1,
 			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D' ) ) ),
@@ -517,31 +517,35 @@ function pc_postseason_span_fields( $season_end ) {
 	);
 }
 
-$span_correct = new SPSG_Schedule_Configuration( pc_postseason_span_fields( '2027-01-14' ) );
+$span_correct = new SPSG_Schedule_Configuration( pc_postseason_span_fields( '2027-01-17' ) );
 $result        = $span_correct->validate();
 pc_assert( true === $result, 'season_end matching the round_robin_weeks formula exactly -- passes' );
 
-$span_edited_shorter = new SPSG_Schedule_Configuration( pc_postseason_span_fields( '2027-01-10' ) ); // shortened by 4 days after creation
+$span_edited_shorter = new SPSG_Schedule_Configuration( pc_postseason_span_fields( '2027-01-13' ) ); // shortened by 4 days after creation
 $result               = $span_edited_shorter->validate();
 pc_assert(
 	is_wp_error( $result ) && isset( $result->data['errors']['season_end'] ),
 	'season_end shortened after creation (no longer matching round_robin_weeks) -- fails with a season_end error'
 );
 
-$span_edited_longer = new SPSG_Schedule_Configuration( pc_postseason_span_fields( '2027-01-20' ) ); // lengthened after creation
+$span_edited_longer = new SPSG_Schedule_Configuration( pc_postseason_span_fields( '2027-01-23' ) ); // lengthened after creation
 $result               = $span_edited_longer->validate();
 pc_assert(
 	is_wp_error( $result ) && isset( $result->data['errors']['season_end'] ),
 	'season_end lengthened after creation (no longer matching round_robin_weeks) -- also fails'
 );
 
+$not_monday = new SPSG_Schedule_Configuration( array_merge( pc_postseason_span_fields( '2027-01-14' ), array( 'season_start' => '2027-01-01' ) ) ); // a Friday, span still consistent
+$result     = $not_monday->validate();
+pc_assert( is_wp_error( $result ) && isset( $result->data['errors']['season_start'] ), 'a postseason season_start that is not a Monday fails with a season_start error' );
+
 $championship_day_not_playing_day = new SPSG_Schedule_Configuration(
 	array_merge(
 		pc_valid_regular_season_fields(),
 		array(
 			'is_postseason'     => true,
-			'season_start'      => '2026-10-01',
-			'season_end'        => '2026-10-28', // season_start + 7*(3+1)-1 = 27 days
+			'season_start'      => '2026-10-05',
+			'season_end'        => '2026-11-01', // season_start + 7*(3+1)-1 = 27 days
 			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D', 'E', 'F' ) ) ),
 			'round_robin_weeks' => 3,
 			'championship_day'  => array( 'day' => 'saturday' ), // NOT in playing_days (only 'friday')
@@ -563,8 +567,8 @@ $consolation_day_not_playing_day = new SPSG_Schedule_Configuration(
 		pc_valid_regular_season_fields(),
 		array(
 			'is_postseason'     => true,
-			'season_start'      => '2026-10-01',
-			'season_end'        => '2026-10-28', // season_start + 7*(3+1)-1 = 27 days
+			'season_start'      => '2026-10-05',
+			'season_end'        => '2026-11-01', // season_start + 7*(3+1)-1 = 27 days
 			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D', 'E', 'F' ) ) ),
 			'round_robin_weeks' => 3,
 			'consolation_day'   => 'saturday', // NOT in playing_days (only 'friday')
@@ -586,8 +590,8 @@ $championship_day_not_set_yet = new SPSG_Schedule_Configuration(
 		pc_valid_regular_season_fields(),
 		array(
 			'is_postseason'     => true,
-			'season_start'      => '2026-10-01',
-			'season_end'        => '2026-10-28', // season_start + 7*(3+1)-1 = 27 days
+			'season_start'      => '2026-10-05',
+			'season_end'        => '2026-11-01', // season_start + 7*(3+1)-1 = 27 days
 			'time_slots'        => array( 'friday' => array( '18:00', '19:00', '20:00', '21:00' ) ), // plenty of slots for the 9 games needed
 			'divisions'         => array( array( 'name' => 'Div 1', 'teams' => array( 'A', 'B', 'C', 'D', 'E', 'F' ) ) ),
 			'round_robin_weeks' => 3,
@@ -641,8 +645,14 @@ pc_assert( 4 === $built['games_per_team'], 'games_per_team is round_robin_weeks 
 pc_assert( 'custom' === $built['matchup_style'], 'matchup_style is always "custom" for a postseason config' );
 pc_assert(
 	'2027-02-01' === $built['season_start'],
-	'season_start is derived as the day after the source config\'s own season_end (2027-01-31), never a separate input'
+	'season_start is the Monday on/after the source season_end (2027-01-31 is a Sunday, so 2027-02-01)'
 );
+
+$midweek_source = $source;
+$midweek_source['season_end'] = '2027-02-03'; // a Wednesday
+$built_midweek  = $manager->build_postseason_config_data( $midweek_source );
+pc_assert( '2027-02-08' === $built_midweek['season_start'], 'a mid-week source season_end snaps forward to the next Monday (' . $built_midweek['season_start'] . ')' );
+pc_assert( '2027-03-07' === $built_midweek['season_end'], 'season_end is then start + 7*(3+1)-1 days, a Sunday (' . $built_midweek['season_end'] . ')' );
 pc_assert(
 	$source['venue_timeslots'] === $built['venue_timeslots'],
 	'venue_timeslots copies the source\'s per-venue time grid -- previously dropped entirely, silently falling back to schema defaults for a postseason bracket'
@@ -800,6 +810,115 @@ $odd_new_id = $manager->create_postseason_configuration(
 pc_assert(
 	is_string( $odd_new_id ) && '' !== $odd_new_id,
 	'a 7-team division with generic_teams enabled now creates successfully, instead of failing validation'
+);
+
+echo "\n=== SPSG_Configuration_Manager::align_postseason_weeks() ===\n\n";
+
+$state->options = array();
+$state->options['spsg_configurations'] = array(
+	// (a) A postseason bracket created under 1.3.9: starts the day after
+	// the source season's own season_end (2026-10-01, a Thursday), which
+	// validate_postseason_season_span() now rejects as a season_start --
+	// this must be moved forward to the next Monday.
+	'config_needs_alignment' => array(
+		'id'                => 'config_needs_alignment',
+		'name'              => 'W2026-27 Playoffs',
+		'is_postseason'     => true,
+		'season_start'      => '2026-10-01',
+		'season_end'        => '2026-10-28',
+		'round_robin_weeks' => 3,
+		'created'           => '2026-08-01 00:00:00',
+		'modified'          => '2026-08-01 00:00:00',
+	),
+	// (b) Already on a Monday -- must be left alone.
+	'config_already_aligned' => array(
+		'id'                => 'config_already_aligned',
+		'name'              => 'Already Aligned Playoffs',
+		'is_postseason'     => true,
+		'season_start'      => '2026-10-05',
+		'season_end'        => '2026-11-01',
+		'round_robin_weeks' => 3,
+		'created'           => '2026-08-01 00:00:00',
+		'modified'          => '2026-08-01 00:00:00',
+	),
+	// (c) A regular (non-postseason) configuration, also starting on a
+	// non-Monday -- align_postseason_weeks() only ever touches
+	// is_postseason configurations.
+	'config_regular_untouched' => array(
+		'id'           => 'config_regular_untouched',
+		'name'         => 'W2026-27',
+		'season_start' => '2026-10-01',
+		'season_end'   => '2027-03-01',
+		'created'      => '2026-08-01 00:00:00',
+		'modified'     => '2026-08-01 00:00:00',
+	),
+);
+
+$aligned_count = SPSG_Configuration_Manager::align_postseason_weeks();
+pc_assert( 1 === $aligned_count, 'align_postseason_weeks() reports exactly one configuration changed' );
+
+$aligned_configs = $state->options['spsg_configurations'];
+pc_assert(
+	'2026-10-05' === $aligned_configs['config_needs_alignment']['season_start'],
+	'the mid-week postseason bracket is moved forward to the next Monday'
+);
+pc_assert(
+	'2026-11-01' === $aligned_configs['config_needs_alignment']['season_end'],
+	'season_end is recomputed from the new season_start with postseason_season_end()\'s own formula'
+);
+pc_assert(
+	'2026-10-05' === $aligned_configs['config_already_aligned']['season_start']
+		&& '2026-11-01' === $aligned_configs['config_already_aligned']['season_end'],
+	'a postseason bracket already on a Monday is left unchanged'
+);
+pc_assert(
+	'2026-10-01' === $aligned_configs['config_regular_untouched']['season_start'],
+	'a regular (non-postseason) configuration is never touched'
+);
+
+$second_call_count = SPSG_Configuration_Manager::align_postseason_weeks();
+pc_assert( 0 === $second_call_count, 'a second call reports zero configurations changed -- idempotent' );
+pc_assert(
+	$aligned_configs === $state->options['spsg_configurations'],
+	'a second call leaves the stored configurations byte-for-byte unchanged'
+);
+
+echo "\n=== align_postseason_weeks() re-filters blackout_dates against the shifted window ===\n\n";
+
+$state->options = array();
+$state->options['spsg_configurations'] = array(
+	'config_blackout_needs_refilter' => array(
+		'id'                => 'config_blackout_needs_refilter',
+		'name'              => 'W2026-27 Playoffs',
+		'is_postseason'     => true,
+		'season_start'      => '2026-10-01', // Thursday; moves to 2026-10-05.
+		'season_end'        => '2026-10-28',
+		'round_robin_weeks' => 3,
+		'blackout_dates'    => array(
+			// Falls in the 4 days the shift skips over (Oct 1-4) -- must be
+			// dropped, or validate_blackout_dates_range() rejects the
+			// migrated config for a date now before its own season_start.
+			'2026-10-02',
+			// Still inside the new [2026-10-05, 2026-11-01] window -- must
+			// survive the re-filter.
+			'2026-10-12',
+			// Was inside the ORIGINAL window but past the new end (the end
+			// also moves forward by the same 4 days) -- stays inside the
+			// new window too, since the whole span just translates; kept
+			// here only to document that both dates land inside the new
+			// range, not to exercise a drop.
+			'2026-10-26',
+		),
+		'created'           => '2026-08-01 00:00:00',
+		'modified'          => '2026-08-01 00:00:00',
+	),
+);
+
+SPSG_Configuration_Manager::align_postseason_weeks();
+$refiltered = $state->options['spsg_configurations']['config_blackout_needs_refilter'];
+pc_assert(
+	array( '2026-10-12', '2026-10-26' ) === $refiltered['blackout_dates'],
+	'a blackout date pushed outside the shifted season by the Monday alignment is dropped, and dates still inside the new window survive'
 );
 
 echo "\n=== SPSG_Sports_Press_Integration::create_child_season() ===\n\n";

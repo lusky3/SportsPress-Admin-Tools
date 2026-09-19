@@ -109,7 +109,7 @@ class SPSG_Constraint_Manager {
 		foreach ( $this->get_constraints() as $constraint ) {
 			// Forward the appropriate schedule slice: only a constraint that
 			// opts in via wants_full_schedule() (cross-day fairness measures
-			// like Distribution, or a per-team day cap) needs cross-day data.
+			// like Distribution) needs cross-day data.
 			// method_exists() guards a constraint that implements only
 			// SPSG_Constraint_Interface directly rather than extending
 			// SPSG_Abstract_Constraint -- the interface itself doesn't declare
@@ -306,17 +306,10 @@ class SPSG_Constraint_Manager {
 	 * Calculate total games needed from configuration
 	 *
 	 * @param SPSG_Schedule_Configuration $config Configuration
-	 * @return int Total games needed
+	 * @return int Games the matchup format will generate
 	 */
 	private function calculate_total_games_needed( $config ) {
-		$total_teams = 0;
-		foreach ( $config->divisions as $division ) {
-			$teams = is_object( $division ) ? $division->teams : $division['teams'];
-			$total_teams += count( $teams );
-		}
-
-		// Each game involves 2 teams
-		return ( $total_teams * $config->games_per_team ) / 2;
+		return SPSG_Schedule_Helper::expected_total_games( $config );
 	}
 
 	/**

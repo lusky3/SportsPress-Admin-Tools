@@ -125,7 +125,8 @@
                 type: 'POST',
                 data: {
                     action: 'spsg_validate_config',
-                    spsg_nonce: spsgData.nonces.validate_config
+                    spsg_nonce: spsgData.nonces.validate_config,
+                    config_id: $('#spsg-config-id').val() || ''
                 },
                 beforeSend: function() {
                     self.showMessage('info', 'Validating configuration...');
@@ -404,7 +405,8 @@
                 type: 'POST',
                 data: {
                     action: 'spsg_generate_schedule',
-                    spsg_nonce: spsgData.nonces.generate_schedule
+                    spsg_nonce: spsgData.nonces.generate_schedule,
+                    config_id: $('#spsg-config-id').val() || ''
                 },
                 beforeSend: function() {
                     $('#spsg-generate-schedule').prop('disabled', true).text('Generating...');
@@ -468,6 +470,7 @@
                     action: 'spsg_export_schedule',
                     spsg_nonce: spsgData.nonces.export_schedule,
                     schedule_id: scheduleId,
+                    config_id: $('#spsg-config-id').val() || '',
                     format: format,
                     xlsx_style: $('#spsg-xlsx-style').val() || 'compact',
                     division: filters.division,

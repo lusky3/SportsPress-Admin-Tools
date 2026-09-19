@@ -37,6 +37,7 @@ if ( ! class_exists( 'WP_Error' ) ) {
 		}
 		public function get_error_code() { return $this->code; }
 		public function get_error_message() { return $this->message; }
+		public function get_error_data() { return $this->data; }
 	}
 }
 function is_wp_error( $t ) { return $t instanceof WP_Error; } // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
@@ -57,6 +58,7 @@ function delete_option( $name ) { // phpcs:ignore Squiz.Commenting.FunctionComme
 	return true;
 }
 function current_time() { return '2026-09-10 12:00:00'; } // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
+function wp_timezone_string() { return 'America/Toronto'; } // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
 
 /** Minimal stand-in for WP_REST_Request: get_param() plus array access for path params. */
 class RDS_Mock_Request implements ArrayAccess {
@@ -74,6 +76,11 @@ class RDS_Mock_Request implements ArrayAccess {
 }
 
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-draft-store.php';
+require_once SPSG_PLUGIN_PATH . 'includes/interfaces/interface-configuration.php';
+require_once SPSG_PLUGIN_PATH . 'includes/class-placeholder-team-manager.php';
+require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-helper.php';
+require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-configuration.php';
+require_once SPSG_PLUGIN_PATH . 'includes/class-configuration-manager.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-rest-api.php';
 
 $passed = 0;
@@ -136,6 +143,17 @@ SPSG_Schedule_Draft_Store::save( 'config_2', $schedule, array() );
 $response = $api->spsg_discard_draft( new RDS_Mock_Request( array( 'id' => 'config_2' ) ) );
 rds_assert( true === ( $response['discarded'] ?? false ), 'spsg_discard_draft() responds discarded=true' );
 rds_assert( null === SPSG_Schedule_Draft_Store::get( 'config_2' ), 'spsg_discard_draft() actually removed the draft' );
+
+echo "\n=== spsg_generate()/spsg_export_csv(): config_id must resolve via find(), never a fallback ===\n\n";
+
+$existing_schedule_id = SPSG_Schedule_Draft_Store::save( 'config_3', $schedule, array() );
+
+$result = $api->spsg_generate( new RDS_Mock_Request( array( 'config_id' => 'no-such-config' ) ) );
+rds_assert( is_wp_error( $result ) && 'not_found' === $result->get_error_code(), 'spsg_generate(): unknown config_id returns WP_Error not_found (got ' . ( is_wp_error( $result ) ? $result->get_error_code() : gettype( $result ) ) . ')' );
+rds_assert( is_wp_error( $result ) && 404 === ( $result->get_error_data()['status'] ?? null ), 'spsg_generate(): unknown config_id carries HTTP 404' );
+
+$result = $api->spsg_export_csv( new RDS_Mock_Request( array( 'schedule_id' => $existing_schedule_id, 'config_id' => 'no-such-config' ) ) );
+rds_assert( is_wp_error( $result ) && 'not_found' === $result->get_error_code(), 'spsg_export_csv(): unknown config_id returns WP_Error not_found' );
 
 echo "\n=== Results ===\n";
 echo "Passed: $passed\n";

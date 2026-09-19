@@ -1322,3 +1322,5 @@ body.spsg-modal-open {
 .spsg-field-pulse {
     animation: spsg-field-pulse 0.4s ease-in-out 3;
 }
+
+.spsg-weight-disabled { opacity: 0.5; pointer-events: none; }

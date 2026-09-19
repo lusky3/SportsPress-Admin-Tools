@@ -100,6 +100,7 @@ if ( ! function_exists( 'is_wp_error' ) ) {
 
 require_once SPSG_PLUGIN_PATH . 'includes/interfaces/interface-constraint.php';
 require_once SPSG_PLUGIN_PATH . 'includes/abstract-constraint.php';
+require_once SPSG_PLUGIN_PATH . 'includes/class-placeholder-team-manager.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-helper.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-configuration.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-configuration-validator.php';
@@ -334,6 +335,31 @@ if ( is_wp_error( $schedule ) ) {
 	ec_assert( $pairs > 0, 'H15: schedule contains rematches to check (' . $pairs . ' pairs)' );
 	ec_assert( 0 === $same_date, 'H15: no pair meets twice on the same date (' . $same_date . ' same-date rematches)' );
 	ec_assert( $min_gap >= 7, 'H15: rematches are at least a week apart (min gap ' . $min_gap . ' days)' );
+
+	// A pair's two meetings must be a full rotation apart: with 6 teams a
+	// rotation is 5 rounds, i.e. at least 5 of the weeks the season uses.
+	$week_index = array();
+	foreach ( $schedule as $g ) {
+		$week_index[ SPSG_Schedule_Helper::iso_week_key( $g->date ) ] = true;
+	}
+	$week_keys = array_keys( $week_index );
+	sort( $week_keys );
+	$week_index = array_flip( $week_keys );
+
+	$min_week_gap = PHP_INT_MAX;
+	foreach ( $pair_dates as $dates ) {
+		$weeks = array_map(
+			function ( $d ) use ( $week_index ) {
+				return $week_index[ SPSG_Schedule_Helper::iso_week_key( $d ) ];
+			},
+			$dates
+		);
+		sort( $weeks );
+		for ( $i = 1; $i < count( $weeks ); $i++ ) {
+			$min_week_gap = min( $min_week_gap, $weeks[ $i ] - $weeks[ $i - 1 ] );
+		}
+	}
+	ec_assert( PHP_INT_MAX !== $min_week_gap && $min_week_gap >= 5, 'H15: rematches are a full rotation (5 playing weeks) apart (min gap ' . $min_week_gap . ' weeks)' );
 
 	// Round interleaving happens in the matchup generator itself — assert it
 	// there too so the guard survives a change in allocation strategy.

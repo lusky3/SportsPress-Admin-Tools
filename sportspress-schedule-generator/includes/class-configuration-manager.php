@@ -286,6 +286,25 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 	}
 
 	/**
+	 * Exactly the requested configuration, or null when no configuration has
+	 * that id. Unlike {@see load()} this never substitutes another one.
+	 *
+	 * @param string $config_id Configuration id.
+	 * @return SPSG_Schedule_Configuration|null
+	 */
+	public function find( $config_id ) {
+		$config_id = (string) $config_id;
+		if ( '' === $config_id ) {
+			return null;
+		}
+		$configurations = get_option( self::OPTION_NAME, array() );
+		if ( ! isset( $configurations[ $config_id ] ) ) {
+			return null;
+		}
+		return new SPSG_Schedule_Configuration( $configurations[ $config_id ] );
+	}
+
+	/**
 	 * Get all saved configurations
 	 */
 	public function get_all_configurations() {
@@ -403,7 +422,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 		unset( $migrated_config['id'] );
 		unset( $migrated_config['created'] );
 		unset( $migrated_config['modified'] );
-		$migrated_config['name'] = ( $migrated_config['name'] ?? 'Imported Configuration' ) . ' (Imported)';
+		$migrated_config['name'] = sprintf( /* translators: %s: configuration name */ __( '%s (Imported)', 'sportspress-schedule-generator' ), $migrated_config['name'] ?? __( 'Imported Configuration', 'sportspress-schedule-generator' ) );
 
 		// Validate before saving
 		$validation = $this->validate( $migrated_config );
@@ -594,7 +613,8 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 		// Never independently settable, same reasoning as season_end below:
 		// a postseason bracket is the tail end of the SAME season the source
 		// configuration already describes, not a separate span an operator
-		// picks. It starts the day after the source season's own season_end.
+		// picks. It starts on the Monday on or after the day after the
+		// source season's own season_end.
 		$season_start = self::postseason_season_start( self::value( $source, 'season_end', '' ) );
 
 		return array(
@@ -666,8 +686,70 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 	}
 
 	/**
-	 * A postseason bracket's own season_start -- always the day after the
-	 * source (regular-season) configuration's own season_end. There is
+	 * One-shot upgrade: move every postseason configuration whose season_start
+	 * is not a Monday forward to the next Monday and recompute its season_end
+	 * with postseason_season_end(), so the bracket keeps satisfying
+	 * validate_postseason_season_span() after 1.3.10. Also re-filters
+	 * blackout_dates against the shifted window: a date that fell inside the
+	 * ORIGINAL [season_start, season_end] can land before the new season_start
+	 * once it moves forward, and an unfiltered leftover there would fail
+	 * validate_blackout_dates_range() right after this "fix" ran. Idempotent.
+	 *
+	 * Takes the same write lock save()/delete() use, since this reads and
+	 * rewrites the whole configurations blob: without it, a save() landing
+	 * between this method's read and its update_option() would be silently
+	 * discarded by this method's stale copy of the blob.
+	 *
+	 * @return int|false Number of configurations rewritten, or false if the
+	 *                    write lock could not be acquired (nothing was
+	 *                    touched; the caller should not advance its version
+	 *                    marker, so this runs again on a later request).
+	 */
+	public static function align_postseason_weeks() {
+		$lock_handle = self::acquire_write_lock();
+		if ( false === $lock_handle ) {
+			return false;
+		}
+
+		try {
+			$configurations = get_option( self::OPTION_NAME, array() );
+			$changed = 0;
+			foreach ( $configurations as $id => $config ) {
+				if ( empty( $config['is_postseason'] ) || empty( $config['season_start'] ) ) {
+					continue;
+				}
+				try {
+					$start = new DateTime( $config['season_start'] );
+				} catch ( Exception $e ) {
+					continue;
+				}
+				if ( 1 === (int) $start->format( 'N' ) ) {
+					continue;
+				}
+				$start->modify( 'next monday' );
+				$season_start      = $start->format( 'Y-m-d' );
+				$round_robin_weeks = (int) ( $config['round_robin_weeks'] ?? 3 );
+
+				$configurations[ $id ]['season_start']   = $season_start;
+				$configurations[ $id ]['season_end']     = self::postseason_season_end( $season_start, $round_robin_weeks );
+				$configurations[ $id ]['blackout_dates'] = self::postseason_blackout_dates( $config, $season_start, $round_robin_weeks );
+				$configurations[ $id ]['modified']       = current_time( 'mysql' );
+				++$changed;
+			}
+			if ( $changed > 0 ) {
+				update_option( self::OPTION_NAME, $configurations, 'no' );
+			}
+		} finally {
+			self::release_write_lock( $lock_handle );
+		}
+
+		return $changed;
+	}
+
+	/**
+	 * A postseason bracket's own season_start: the Monday on or after the day
+	 * following the source configuration's season_end, so the bracket's
+	 * weeks line up with the scheduler's Mon-Sun weeks. There is
 	 * deliberately no independent input for this: given a season_start and
 	 * season_end already on the source configuration, and a round-robin week
 	 * count, the bracket's position is fully determined -- asking an
@@ -687,6 +769,9 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 			return '';
 		}
 		$start->modify( '+1 day' );
+		if ( 1 !== (int) $start->format( 'N' ) ) {
+			$start->modify( 'next monday' );
+		}
 		return $start->format( 'Y-m-d' );
 	}
 
@@ -812,7 +897,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 			unset( $config['id'] );
 			unset( $config['created'] );
 			unset( $config['modified'] );
-			$config['name'] = $new_name ?: ( $config['name'] ?? 'Unnamed' ) . ' (Copy)';
+			$config['name'] = $new_name ?: sprintf( /* translators: %s: configuration name */ __( '%s (Copy)', 'sportspress-schedule-generator' ), $config['name'] ?? __( 'Unnamed', 'sportspress-schedule-generator' ) );
 
 			// save() now returns the new ID on success
 			return $this->save( $config );
@@ -894,7 +979,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 		// Keep only last 10 changes per configuration
 		$changes[ $config_id ] = array_slice( $changes[ $config_id ], 0, 10 );
 
-		update_option( 'spsg_configuration_changes', $changes );
+		update_option( 'spsg_configuration_changes', $changes, false );
 	}
 
 	/**
@@ -1010,7 +1095,7 @@ class SPSG_Configuration_Manager implements SPSG_Configuration_Interface {
 
 		if ( isset( $changes[ $config_id ] ) ) {
 			unset( $changes[ $config_id ] );
-			return update_option( 'spsg_configuration_changes', $changes );
+			return update_option( 'spsg_configuration_changes', $changes, false );
 		}
 
 		return false;

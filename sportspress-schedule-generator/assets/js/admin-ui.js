@@ -376,6 +376,7 @@
         var formData = new FormData();
         formData.append('action', 'spsg_upload_venue_csv');
         formData.append('spsg_nonce', sgNonces.upload_venue_csv);
+        formData.append('config_id', $('#spsg-config-id').val() || '');
         formData.append('csv_file', fileInput.files[0]);
 
         var $btn = $(this);
@@ -519,6 +520,7 @@
                 data: {
                     action: 'spsg_import_venue_schedule',
                     spsg_nonce: sgNonces.import_venue_schedule,
+                    config_id: $('#spsg-config-id').val() || '',
                     schedules: schedules,
                     venue_mapping: venueMapping,
                     new_venues: newVenues

@@ -111,7 +111,7 @@ class SPSG_Configuration_Sanitizer {
 			'postseason_season_id' => absint( self::value( $data, 'postseason_season_id', 0 ) ),
 			'round_robin_weeks' => max( 1, absint( self::value( $data, 'round_robin_weeks', 3 ) ) ),
 			'championship_day' => $this->sanitize_day_window( self::value( $data, 'championship_day', array() ) ),
-			'consolation_day' => sanitize_text_field( self::value( $data, 'consolation_day', '' ) ),
+			'consolation_day' => strtolower( sanitize_text_field( self::value( $data, 'consolation_day', '' ) ) ),
 			'seed_resolution_mode' => $this->sanitize_seed_resolution_mode( self::value( $data, 'seed_resolution_mode', 'manual' ) ),
 		);
 	}
@@ -139,7 +139,7 @@ class SPSG_Configuration_Sanitizer {
 	private function sanitize_day_window( $day_window ) {
 		$day_window = (array) $day_window;
 		return array(
-			'day'   => sanitize_text_field( $day_window['day'] ?? '' ),
+			'day'   => strtolower( sanitize_text_field( $day_window['day'] ?? '' ) ),
 			'start' => sanitize_text_field( $day_window['start'] ?? '' ),
 			'end'   => sanitize_text_field( $day_window['end'] ?? '' ),
 		);

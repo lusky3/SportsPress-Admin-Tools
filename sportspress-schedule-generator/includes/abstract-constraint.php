@@ -81,7 +81,7 @@ abstract class SPSG_Abstract_Constraint implements SPSG_Constraint_Interface {
 	 * constraints (blackout, team restrictions, division grouping) only ever
 	 * need to reason about one day at a time. Override to return true for a
 	 * constraint that measures something cumulative across the whole season
-	 * (day-of-week balance; a per-team day cap) -- see
+	 * (day-of-week balance) -- see
 	 * SPSG_Constraint_Manager::validate_game()/calculate_violation_cost(),
 	 * which flatten and forward the full schedule only to constraints that
 	 * opt in here, since doing that for every constraint would cost an O(n)
@@ -191,7 +191,7 @@ abstract class SPSG_Abstract_Constraint implements SPSG_Constraint_Interface {
 		// get_violation_cost() and never touch the cache, so priming them just
 		// burns an O(n) hash_schedule_slice() on an entry that is never read.
 		// Distribution (soft) and any hard constraint that opts into
-		// wants_full_schedule() (e.g. a per-team day cap) are the only ones
+		// wants_full_schedule() are the only ones
 		// handed the full flattened schedule, and that's exactly where an
 		// O(n^2) blowup would come from if this were primed for every
 		// constraint regardless of type. Skipping non-hard constraints removes
@@ -255,7 +255,13 @@ abstract class SPSG_Abstract_Constraint implements SPSG_Constraint_Interface {
 	 * Helper to safely get team ID from object or array
 	 */
 	protected function get_team_id( $team ) {
-		return is_array( $team ) ? $team['id'] : $team->id;
+		if ( is_string( $team ) ) {
+			return $team;
+		}
+		if ( is_array( $team ) ) {
+			return $team['id'] ?? $team['name'] ?? '';
+		}
+		return $team->id ?? $team->name ?? '';
 	}
 
 	/**

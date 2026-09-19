@@ -190,21 +190,13 @@ class SPSG_Slot_Allocator {
 	private $same_week_doubleheader_blocked = false;
 
 	/**
-	 * Maximum number of valid candidate slots scored per matchup.
-	 *
-	 * Candidates are gathered from the dates closest to the matchup's pace
-	 * target outwards (see {@see find_best_slot()}), so this bounds the cost
-	 * evaluation to the N placeable slots nearest the point in the season where
-	 * the game belongs; within that window the lowest-cost slot wins (H14).
-	 *
-	 * The window used to be walked chronologically from the season start. Once
-	 * a division's early dates were occupied, both teams of every remaining
-	 * matchup already played on every date inside the window, so the
-	 * double-header penalty had nowhere to steer and the game landed on an
-	 * early date anyway: a real 272-game season came out with 124 team
-	 * double-headers packed into 31 of 49 dates with the last two months empty.
+	 * Playing dates scored per matchup, visited from the pace target outwards
+	 * with every valid slot on each scored. Capping by slot instead let one
+	 * date with many free slots crowd every other date out of the window, so
+	 * the cross-date terms -- day balance, date load, pacing -- never compared
+	 * real alternatives.
 	 */
-	const MAX_SLOT_CANDIDATES = 15;
+	const MAX_CANDIDATE_DATES = 5;
 
 	/**
 	 * A game with this many valid slots or fewer in its week is placed before
@@ -325,7 +317,9 @@ class SPSG_Slot_Allocator {
 	 * tell "twice this Friday" apart from "once each of two Fridays"; without
 	 * this term nothing discourages double-headers (H14). Scaled above the
 	 * division-grouping terms so packing a venue never justifies making a team
-	 * play twice in one night, but below the preferred-venue credit.
+	 * play twice in one night, but below the preferred-venue credit. Scaled by
+	 * the Double-Header Avoidance slider; the restricted-pair bonus below has
+	 * its own.
 	 */
 	const SAME_DATE_TEAM_PENALTY = 250.0;
 
@@ -784,6 +778,9 @@ class SPSG_Slot_Allocator {
 	 * matchings for 6 teams, 105 for 8, 945 for 10); above 12 teams the
 	 * matching list is too large and the division is declined.
 	 *
+	 * The returned rounds are ordered leg by leg via {@see order_by_leg()}:
+	 * every pairing's first meeting comes before any pairing's second.
+	 *
 	 * @param object[] $matchups This division's matchups.
 	 * @return array<int,object[]>|null Rounds, or null when no decomposition exists.
 	 */
@@ -816,7 +813,7 @@ class SPSG_Slot_Allocator {
 		}
 
 		$rounds = array();
-		foreach ( $chosen as $matching ) {
+		foreach ( $this->order_by_leg( $chosen ) as $matching ) {
 			$round = array();
 			foreach ( $matching as $pair ) {
 				$round[] = array_pop( $by_pair[ $pair ] );
@@ -824,6 +821,27 @@ class SPSG_Slot_Allocator {
 			$rounds[] = $round;
 		}
 		return $rounds;
+	}
+
+	/**
+	 * Repeated matchings regrouped by occurrence: every first meeting, then
+	 * every second meeting, and so on, so a pairing's legs are a whole
+	 * rotation apart. pick_rounds() emits repeats adjacently.
+	 *
+	 * @param array<int,string[]> $chosen Matchings in pick order.
+	 * @return array<int,string[]>
+	 */
+	private function order_by_leg( $chosen ) {
+		$occurrence = array();
+		$legs       = array();
+		foreach ( $chosen as $matching ) {
+			$key                = implode( ',', $matching );
+			$leg                = $occurrence[ $key ] ?? 0;
+			$occurrence[ $key ] = $leg + 1;
+			$legs[ $leg ][]     = $matching;
+		}
+		ksort( $legs );
+		return empty( $legs ) ? array() : array_merge( ...$legs );
 	}
 
 	/**
@@ -972,8 +990,10 @@ class SPSG_Slot_Allocator {
 	}
 
 	/**
-	 * How many divisions may play this week: everyone that fits, less one in
-	 * a full week whenever the spare-idle cadence says so.
+	 * How many divisions may play this week: everyone that fits, less however
+	 * many whole spare idle division-weeks the cadence has banked -- all of
+	 * them if it has banked that many, so surplus never piles up at the end
+	 * of the season.
 	 *
 	 * @param int   $max_count          Divisions the week can hold at once.
 	 * @param bool  $full_week          Whether that is every division.
@@ -986,11 +1006,9 @@ class SPSG_Slot_Allocator {
 			return $max_count;
 		}
 		$idle_balance += $idle_per_full_week;
-		if ( $idle_balance < 1.0 ) {
-			return $max_count;
-		}
-		$idle_balance -= 1.0;
-		return $max_count - 1;
+		$spend         = min( $max_count, (int) floor( $idle_balance ) );
+		$idle_balance -= $spend;
+		return $max_count - $spend;
 	}
 
 	/**
@@ -1293,15 +1311,16 @@ class SPSG_Slot_Allocator {
 
 		$swap = null !== $swapped && ( null === $current || $swapped['cost'] < $current['cost'] - 0.001 );
 		if ( $swap ) {
-			$first  = array(
+			$first_slot = $first['slot'];
+			$first      = array(
 				'game'    => $swapped['a'],
 				'matchup' => $first['matchup'],
 				'slot'    => $second['slot'],
 			);
-			$second = array(
+			$second     = array(
 				'game'    => $swapped['b'],
 				'matchup' => $second['matchup'],
-				'slot'    => $this->slot_of( $swapped['b'] ),
+				'slot'    => $first_slot,
 			);
 		}
 		$schedule_by_date[ $first['game']->date ][]  = $first['game'];
@@ -1352,18 +1371,6 @@ class SPSG_Slot_Allocator {
 			}
 		}
 		$schedule_by_date[ $game->date ] = $kept;
-	}
-
-	/**
-	 * The slot object a placed game occupies.
-	 */
-	private function slot_of( $game ) {
-		foreach ( $this->slots_by_date[ $game->date ] ?? array() as $slot ) {
-			if ( $slot->time_slot === $game->time_slot && $this->extract_id( $slot->venue ) === $this->extract_id( $game->venue ) ) {
-				return $slot;
-			}
-		}
-		return null;
 	}
 
 	/**
@@ -2193,9 +2200,9 @@ class SPSG_Slot_Allocator {
 	/**
 	 * Find best available slot for matchup
 	 *
-	 * Uses date-indexed schedule for O(1) conflict checks and caps
-	 * cost evaluation at {@see MAX_SLOT_CANDIDATES} valid slots for
-	 * performance.
+	 * Uses date-indexed schedule for O(1) conflict checks and scores every
+	 * valid slot on the {@see MAX_CANDIDATE_DATES} placeable dates nearest
+	 * the pace target.
 	 *
 	 * H14: this used to return the first valid slot outright, which meant the
 	 * soft (distribution) and optimization (division grouping) constraints never
@@ -2268,9 +2275,9 @@ class SPSG_Slot_Allocator {
 		// Pass 1: dates neither team plays on. Pass 2 (double-headers) only
 		// runs when pass 1 found nothing placeable at all.
 		foreach ( array( false, true ) as $allow_busy ) {
-			$best_slot          = null;
-			$best_cost          = null;
-			$candidates_checked = 0;
+			$best_slot    = null;
+			$best_cost    = null;
+			$dates_scored = 0;
 
 			foreach ( $ordered_dates as $entry ) {
 				$date = $entry['date'];
@@ -2278,7 +2285,8 @@ class SPSG_Slot_Allocator {
 					continue;
 				}
 
-				$pacing_cost = $entry['distance'] * $this->weighted( self::PACING_COST_PER_DATE, 'season_pacing' );
+				$pacing_cost        = $entry['distance'] * $this->weighted( self::PACING_COST_PER_DATE, 'season_pacing' );
+				$date_had_candidate = false;
 
 				foreach ( $this->slots_by_date[ $date ] ?? array() as $slot ) {
 					$slot_key = $this->get_slot_key( $slot );
@@ -2294,17 +2302,17 @@ class SPSG_Slot_Allocator {
 						continue;
 					}
 
-					$cost = $this->calculate_slot_cost( $game, $slot, $schedule_by_date, $config, $preferred_venue_id ) + $pacing_cost;
+					$date_had_candidate = true;
+					$cost               = $this->calculate_slot_cost( $game, $slot, $schedule_by_date, $config, $preferred_venue_id ) + $pacing_cost;
 
 					if ( null === $best_cost || $cost < $best_cost ) {
 						$best_cost = $cost;
 						$best_slot = $slot;
 					}
+				}
 
-					$candidates_checked++;
-					if ( $candidates_checked >= self::MAX_SLOT_CANDIDATES ) {
-						break 2;
-					}
+				if ( $date_had_candidate && ++$dates_scored >= self::MAX_CANDIDATE_DATES ) {
+					break;
 				}
 			}
 
@@ -2497,7 +2505,7 @@ class SPSG_Slot_Allocator {
 
 			foreach ( $same_day_games as $existing_game ) {
 				if ( $this->has_team_conflict( $existing_game, $home_team_id, $away_team_id ) ) {
-					$cost += $this->weighted( self::SAME_DATE_TEAM_PENALTY, 'overlap_avoidance' );
+					$cost += $this->weighted( self::SAME_DATE_TEAM_PENALTY, 'double_header' );
 				}
 			}
 		}
@@ -2724,6 +2732,7 @@ class SPSG_Slot_Allocator {
 			'venue'             => is_array( $slot->venue ) ? (object) $slot->venue : $slot->venue,
 			'division'          => $matchup->division,
 			'is_inter_division' => $matchup->is_inter_division ?? false,
+			'postseason'        => $matchup->postseason ?? null,
 			'is_makeup'         => false,
 		);
 	}
@@ -3173,8 +3182,7 @@ class SPSG_Slot_Allocator {
 	 * @return int Minutes
 	 */
 	private function time_to_minutes( $time ) {
-		$parts = explode( ':', $time );
-		return intval( $parts[0] ) * 60 + intval( $parts[1] );
+		return (int) SPSG_Schedule_Helper::time_to_minutes( $time );
 	}
 
 	/**

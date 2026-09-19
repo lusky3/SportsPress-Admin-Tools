@@ -1194,15 +1194,15 @@ class SPSG_Admin_Renderer {
 					<li>
 					<?php
 					printf(
-						__( 'Season: %1$s to %2$s', 'sportspress-schedule-generator' ),
-						$config->season_start ? $config->season_start->format( 'Y-m-d' ) : __( 'Not set', 'sportspress-schedule-generator' ),
-						$config->season_end ? $config->season_end->format( 'Y-m-d' ) : __( 'Not set', 'sportspress-schedule-generator' )
+						esc_html__( 'Season: %1$s to %2$s', 'sportspress-schedule-generator' ),
+						esc_html( $config->season_start ? $config->season_start->format( 'Y-m-d' ) : __( 'Not set', 'sportspress-schedule-generator' ) ),
+						esc_html( $config->season_end ? $config->season_end->format( 'Y-m-d' ) : __( 'Not set', 'sportspress-schedule-generator' ) )
 					);
 					?>
 		</li>
-					<li><?php printf( __( 'Games per team: %d', 'sportspress-schedule-generator' ), $config->games_per_team ); ?></li>
-					<li><?php printf( __( 'Divisions: %d', 'sportspress-schedule-generator' ), count( $config->divisions ?: array() ) ); ?></li>
-					<li><?php printf( __( 'Venues: %d', 'sportspress-schedule-generator' ), count( $config->venues ?: array() ) ); ?></li>
+					<li><?php printf( esc_html__( 'Games per team: %d', 'sportspress-schedule-generator' ), $config->games_per_team ); ?></li>
+					<li><?php printf( esc_html__( 'Divisions: %d', 'sportspress-schedule-generator' ), count( $config->divisions ?: array() ) ); ?></li>
+					<li><?php printf( esc_html__( 'Venues: %d', 'sportspress-schedule-generator' ), count( $config->venues ?: array() ) ); ?></li>
 					<li><?php printf( esc_html__( 'Playing days: %s', 'sportspress-schedule-generator' ), esc_html( implode( ', ', $config->playing_days ?: array() ) ) ); ?></li>
 				</ul>
 			</div>
@@ -1527,7 +1527,7 @@ class SPSG_Admin_Renderer {
 							data-venue="<?php echo esc_attr( $game['venue']['name'] ?? '' ); ?>"
 							data-date="<?php echo esc_attr( $game['date'] ?? '' ); ?>"
 							data-time="<?php echo esc_attr( $game['time_slot'] ?? '' ); ?>">
-							<td><?php echo esc_html( date( 'M j, Y', strtotime( $game['date'] ) ) ); ?></td>
+							<td><?php echo esc_html( wp_date( 'M j, Y', strtotime( $game['date'] ) ) ); ?></td>
 							<td><?php echo esc_html( $game['time_slot'] ?? '' ); ?></td>
 							<td><?php echo esc_html( $game['home_team']['name'] ?? '' ); ?></td>
 							<td><?php echo esc_html( $game['away_team']['name'] ?? '' ); ?></td>

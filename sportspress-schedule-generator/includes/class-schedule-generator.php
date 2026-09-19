@@ -102,14 +102,13 @@ class SPSG_Schedule_Generator {
 		// Extend execution time for schedule generation.
 		$max_time = absint( get_option( 'spsg_max_generation_time', 300 ) );
 		if ( function_exists( 'set_time_limit' ) ) {
-			@set_time_limit( $max_time );
+			@set_time_limit( $max_time ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- disabled by some hosts.
 		}
 
-		// Load current configuration
-		$config = $this->config_manager->get_current();
+		$config = $this->resolve_posted_config();
 
 		if ( ! $config ) {
-			wp_send_json_error( __( 'No configuration found. Please configure the schedule first.', 'sportspress-schedule-generator' ) );
+			wp_send_json_error( __( 'Save the configuration before generating a schedule.', 'sportspress-schedule-generator' ) );
 			return;
 		}
 
@@ -157,10 +156,10 @@ class SPSG_Schedule_Generator {
 
 		// Merge the engine's own stats in. LOW (2026-08): this read
 		// $result['generation_time'], a key generate_schedule() never returns —
-		// the timing (and the constraint-violation / makeup counters) live under
+		// the timing (and the constraint-violation counters) live under
 		// $result['stats'], so the reported generation time was always missing.
 		if ( ! empty( $result['stats'] ) && is_array( $result['stats'] ) ) {
-			foreach ( array( 'generation_time', 'constraint_violations', 'makeup_games', 'matchup_warnings' ) as $key ) {
+			foreach ( array( 'generation_time', 'constraint_violations', 'matchup_warnings' ) as $key ) {
 				if ( isset( $result['stats'][ $key ] ) ) {
 					$stats[ $key ] = $result['stats'][ $key ];
 				}
@@ -284,8 +283,11 @@ class SPSG_Schedule_Generator {
 		$filters = $this->read_export_filters();
 
 		try {
-			// Load configuration for export context
-			$config = $this->config_manager->get_current();
+			$config = $this->resolve_posted_config();
+			if ( ! $config ) {
+				wp_send_json_error( __( 'Configuration not found. Reload the page and try again.', 'sportspress-schedule-generator' ) );
+				return;
+			}
 
 			// Export schedule using Export Manager with filters
 			$result = $this->export_manager->export( $schedule, $config, $format, $filters, $xlsx_style );
@@ -478,6 +480,19 @@ class SPSG_Schedule_Generator {
 	}
 
 	/**
+	 * The configuration the admin page posted (its hidden #spsg-config-id), or
+	 * null when that id no longer exists. An empty id means the admin is
+	 * working on an unsaved configuration, which also resolves to null --
+	 * `find()` never substitutes another one.
+	 *
+	 * @return SPSG_Schedule_Configuration|null
+	 */
+	private function resolve_posted_config() {
+		$config_id = sanitize_text_field( wp_unslash( $_POST['config_id'] ?? '' ) );
+		return $this->config_manager->find( $config_id );
+	}
+
+	/**
 	 * Load configuration for validation from POST data or saved config
 	 *
 	 * @return SPSG_Schedule_Configuration|null Config object, or null if error response was sent
@@ -489,12 +504,11 @@ class SPSG_Schedule_Generator {
 
 		if ( $has_form_data ) {
 			$sanitizer   = new SPSG_Configuration_Sanitizer();
-			$config_data = $sanitizer->sanitize( $_POST );
+			$config_data = $sanitizer->sanitize( wp_unslash( $_POST ) );
 			return new SPSG_Schedule_Configuration( $config_data );
 		}
 
-		// Standalone validate: load saved config from DB.
-		$config = $this->config_manager->get_current();
+		$config = $this->resolve_posted_config();
 		if ( ! $config || ! $config->season_start ) {
 			return null;
 		}

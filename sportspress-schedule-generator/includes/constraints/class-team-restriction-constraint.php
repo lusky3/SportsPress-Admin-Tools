@@ -202,7 +202,7 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint {
 		// against games that were nowhere near each other. Adjacency is now
 		// defined in minutes: two games are back-to-back when the gap between the
 		// end of one and the start of the other is smaller than one match length.
-		$game_start = $this->slot_to_minutes( $game->time_slot );
+		$game_start = SPSG_Schedule_Helper::time_to_minutes( $game->time_slot );
 		if ( null === $game_start ) {
 			return $violations;
 		}
@@ -221,7 +221,7 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint {
 				continue;
 			}
 
-			$existing_start = $this->slot_to_minutes( $existing_game->time_slot );
+			$existing_start = SPSG_Schedule_Helper::time_to_minutes( $existing_game->time_slot );
 			if ( null === $existing_start ) {
 				continue;
 			}
@@ -251,30 +251,6 @@ class SPSG_Team_Restriction_Constraint extends SPSG_Abstract_Constraint {
 
 		return $violations;
 	}
-
-	/**
-	 * Convert a slot value to minutes since midnight.
-	 *
-	 * Accepts "HH:MM" strings as well as numeric minute offsets.
-	 *
-	 * @param mixed $slot Slot value.
-	 * @return int|null Minutes since midnight, or null when unparseable.
-	 */
-	private function slot_to_minutes( $slot ) {
-		if ( is_numeric( $slot ) ) {
-			return (int) $slot;
-		}
-
-		if ( ! is_string( $slot ) || false === strpos( $slot, ':' ) ) {
-			return null;
-		}
-
-		$parts = explode( ':', $slot );
-
-		return ( (int) $parts[0] ) * 60 + ( (int) ( $parts[1] ?? 0 ) );
-	}
-
-
 
 	/**
 	 * Find games that violate buffer time restrictions

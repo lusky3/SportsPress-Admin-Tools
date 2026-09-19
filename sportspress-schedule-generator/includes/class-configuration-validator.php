@@ -290,6 +290,14 @@ class SPSG_Configuration_Validator {
 			return; // validate_dates() already requires both; nothing new to check on an incomplete config.
 		}
 
+		if ( 1 !== (int) $this->config->season_start->format( 'N' ) ) {
+			$errors['season_start'] = sprintf(
+				/* translators: %s: the configured season_start */
+				__( 'A postseason season_start must be a Monday so its weeks match the schedule\'s Mon–Sun weeks -- got %s. Recreate the postseason configuration instead of editing the dates.', 'sportspress-schedule-generator' ),
+				$this->config->season_start->format( 'Y-m-d' )
+			);
+		}
+
 		$expected_end = clone $this->config->season_start;
 		$expected_end->modify( '+' . ( 7 * ( $this->config->round_robin_weeks + 1 ) - 1 ) . ' days' );
 
@@ -311,13 +319,15 @@ class SPSG_Configuration_Validator {
 	 * Consolation).
 	 *
 	 * @return array{0: int, 1: int} [championship_games, consolation_games].
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function postseason_final_week_game_counts() {
 		$championship_games = 0;
 		$consolation_games  = 0;
 
 		foreach ( $this->config->divisions as $division ) {
-			$team_count = count( $division['teams'] ?? array() );
+			$team_count = SPSG_Placeholder_Team_Manager::effective_team_count( (array) $division, (array) ( $this->config->generic_teams ?? array() ) );
 			if ( $team_count < 2 ) {
 				continue;
 			}
@@ -634,6 +644,9 @@ class SPSG_Configuration_Validator {
 	 * SPSG_Schedule_Helper::count_available_slots() reuses the allocator's own
 	 * cascade (venue_date_availability → venue_timeslots → time_slots) including
 	 * global and per-venue blackouts, so validation and allocation agree.
+	 *
+	 * Demand is what the matchup format will generate, not games_per_team, which
+	 * is only advisory for the round-robin styles.
 	 */
 	private function validate_resource_capacity() {
 		$total_teams = $this->count_total_teams();
@@ -642,14 +655,7 @@ class SPSG_Configuration_Validator {
 			return true;
 		}
 
-		$total_games_needed = ( $total_teams * $this->config->games_per_team ) / 2;
-
-		if ( $this->count_weekly_slots() === 0 ) {
-			return new WP_Error(
-				'insufficient_timeslots',
-				__( 'No time slots configured for the selected playing days. Please add time slots.', 'sportspress-schedule-generator' )
-			);
-		}
+		$total_games_needed = SPSG_Schedule_Helper::expected_total_games( $this->config );
 
 		$total_slots_available = SPSG_Schedule_Helper::count_available_slots( $this->config );
 
@@ -672,19 +678,6 @@ class SPSG_Configuration_Validator {
 			$total += count( $division['teams'] ?? array() );
 		}
 		return $total;
-	}
-
-	/**
-	 * Count available time slots per week
-	 */
-	private function count_weekly_slots() {
-		$slots = 0;
-		foreach ( $this->config->playing_days as $day ) {
-			if ( isset( $this->config->time_slots[ $day ] ) ) {
-				$slots += count( $this->config->time_slots[ $day ] );
-			}
-		}
-		return $slots;
 	}
 
 	/**

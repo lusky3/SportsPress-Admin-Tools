@@ -130,7 +130,7 @@ echo "=== SportsPress Importer Test ===\n\n";
 
 // Test 1: Class exists
 echo "Test 1: Class exists... ";
-if (class_exists('SPSG_SportsPress_Importer')) {
+if (class_exists('SPSG_Sports_Press_Importer')) {
     echo "✓ PASS\n";
 } else {
     echo "✗ FAIL\n";
@@ -140,7 +140,7 @@ if (class_exists('SPSG_SportsPress_Importer')) {
 // Test 2: Can instantiate
 echo "Test 2: Can instantiate... ";
 try {
-    $importer = new SPSG_SportsPress_Importer();
+    $importer = new SPSG_Sports_Press_Importer();
     echo "✓ PASS\n";
 } catch (Exception $e) {
     echo "✗ FAIL: " . $e->getMessage() . "\n";
@@ -191,7 +191,7 @@ if (is_wp_error($result)) {
 
 // Test 6: Check conflict detection method exists
 echo "Test 6: Conflict detection method exists... ";
-$reflection = new ReflectionClass('SPSG_SportsPress_Importer');
+$reflection = new ReflectionClass('SPSG_Sports_Press_Importer');
 if ($reflection->hasMethod('check_conflicts')) {
     echo "✓ PASS\n";
 } else {
@@ -275,6 +275,50 @@ if (is_wp_error($result)) {
         echo "✗ FAIL: Invalid results structure\n";
         exit(1);
     }
+}
+
+// Test 13: a configuration venue id (non-numeric) must not be passed through as
+// an sp_venue term id, AND the name-based fallback it forces must actually find
+// the real venue term -- not just fail open into a WP_Error, which would also
+// (wrongly) satisfy "not the generated id".
+echo "Test 13: Generated string venue id falls back to the real term by name... ";
+if (!function_exists('term_exists')) {
+    function term_exists($term, $taxonomy = '') {
+        return (42 === (int) $term) ? array('term_id' => 42) : null;
+    }
+}
+if (!class_exists('SportsPress')) {
+    class SportsPress {}
+}
+if (!function_exists('get_terms')) {
+    function get_terms($args = array()) {
+        return array((object) array('term_id' => 42, 'name' => 'Arena 1', 'slug' => 'arena-1'));
+    }
+}
+if (!function_exists('get_term_meta')) {
+    function get_term_meta($term_id, $key = '', $single = false) {
+        return '';
+    }
+}
+$map_venue = $reflection->getMethod('map_venue');
+$map_venue->setAccessible(true);
+$string_id_result = $map_venue->invoke($importer, (object) array('venue' => (object) array('id' => 'venue_arena-1_1726000000', 'name' => 'Arena 1')));
+if (is_array($string_id_result) && 42 === ($string_id_result['venue_id'] ?? null)) {
+    echo "✓ PASS\n";
+} else {
+    $got = is_wp_error($string_id_result) ? 'WP_Error: ' . $string_id_result->get_error_code() : json_encode($string_id_result);
+    echo "✗ FAIL: expected venue_id 42 (looked up by name \"Arena 1\"), got $got\n";
+    exit(1);
+}
+
+// Test 14: an existing numeric term id is honoured directly
+echo "Test 14: Existing numeric term id is honoured directly... ";
+$real_id_result = $map_venue->invoke($importer, (object) array('venue' => (object) array('id' => 42, 'name' => 'Arena 1')));
+if (is_array($real_id_result) && 42 === $real_id_result['venue_id']) {
+    echo "✓ PASS\n";
+} else {
+    echo "✗ FAIL: an existing numeric term id was not honoured\n";
+    exit(1);
 }
 
 echo "\n=== All Tests Passed ===\n";

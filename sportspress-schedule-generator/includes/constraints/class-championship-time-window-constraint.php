@@ -51,7 +51,7 @@ class SPSG_Championship_Time_Window_Constraint extends SPSG_Abstract_Constraint 
 
 		list( $start, $end ) = $window;
 
-		if ( $game->time_slot < $start || $game->time_slot > $end ) {
+		if ( ! SPSG_Schedule_Helper::slot_within_window( $game->time_slot, $start, $end ) ) {
 			return new WP_Error(
 				'championship_time_window',
 				sprintf(

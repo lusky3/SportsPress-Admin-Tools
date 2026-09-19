@@ -636,8 +636,19 @@ class SPSG_Schedule_Helper {
 	 * @return int Total slot count.
 	 */
 	public static function count_available_slots( $config ) {
-		$slots = 0;
+		return (int) array_sum( self::count_available_slots_by_venue( $config ) );
+	}
 
+	/**
+	 * Available slots per venue over the season, through the same cascade the
+	 * allocator uses (date availability → venue timeslots → global slots),
+	 * honouring global and venue blackouts. Every configured venue is present,
+	 * 0 when it offers nothing.
+	 *
+	 * @param object $config Schedule configuration.
+	 * @return array<string,int> venue id => slots.
+	 */
+	public static function count_available_slots_by_venue( $config ) {
 		$tz = ! empty( $config->timezone ) ? new DateTimeZone( $config->timezone ) : wp_timezone();
 
 		$season_start = $config->season_start instanceof DateTime
@@ -651,6 +662,11 @@ class SPSG_Schedule_Helper {
 		$blackout_dates = $config->blackout_dates ?? array();
 		$playing_days   = $config->playing_days ?? array();
 		$venues         = $config->venues ?? array();
+
+		$slots = array();
+		foreach ( $venues as $venue ) {
+			$slots[ self::extract_id( $venue ) ] = 0;
+		}
 
 		$current_date = clone $season_start;
 
@@ -678,7 +694,7 @@ class SPSG_Schedule_Helper {
 				$venue_slots = self::resolve_venue_slots( $venue_id, $date_str, $day_name, $config );
 
 				if ( ! empty( $venue_slots ) ) {
-					$slots += count( $venue_slots );
+					$slots[ $venue_id ] += count( $venue_slots );
 				}
 			}
 
@@ -744,7 +760,7 @@ class SPSG_Schedule_Helper {
 
 		$count = 0;
 		foreach ( $venue_slots as $time_slot ) {
-			if ( null === $time_window || ( $time_slot >= $time_window[0] && $time_slot <= $time_window[1] ) ) {
+			if ( null === $time_window || self::slot_within_window( $time_slot, $time_window[0], $time_window[1] ) ) {
 				$count++;
 			}
 		}
@@ -976,5 +992,186 @@ class SPSG_Schedule_Helper {
 		foreach ( $days as $day ) {
 			$target[ $day ] += $weight > 0 ? $excess * $ratios[ $day ] / $weight : $excess / count( $days );
 		}
+	}
+
+	/**
+	 * Games each team will actually play, as a [min, max] range keyed by team
+	 * id. Intra-division play is exact for the round-robin styles; a division's
+	 * share of an inter-division pair total spreads over its teams as
+	 * floor..ceil. The custom style targets games_per_team for every team.
+	 *
+	 * @param object $config Schedule configuration.
+	 * @return array<string,array{min:int,max:int}>
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	public static function expected_team_game_range( $config ) {
+		$style = $config->matchup_style ?? 'double_round_robin';
+		$legs  = ( 'single_round_robin' === $style ) ? 1 : 2;
+
+		$division_sizes = array();
+		$team_division  = array();
+		$generic_teams  = (array) ( $config->generic_teams ?? array() );
+		foreach ( (array) ( $config->divisions ?? array() ) as $division ) {
+			$division_id = is_object( $division ) ? (string) ( $division->id ?? '' ) : (string) ( $division['id'] ?? '' );
+			$teams       = is_object( $division ) ? (array) ( $division->teams ?? array() ) : (array) ( $division['teams'] ?? array() );
+
+			// Ranges are per stored team, but the range itself must reflect the
+			// division size after placeholder padding, since that's who each
+			// stored team actually plays against.
+			$size = SPSG_Placeholder_Team_Manager::effective_team_count(
+				(array) $division,
+				$generic_teams
+			);
+
+			$division_sizes[ $division_id ] = $size;
+			foreach ( $teams as $team ) {
+				$team_division[ self::extract_id( $team ) ] = $division_id;
+			}
+		}
+
+		if ( 'custom' === $style ) {
+			$target = (int) ( $config->games_per_team ?? 0 );
+			$range  = array();
+			foreach ( $team_division as $team_id => $division_id ) {
+				$range[ $team_id ] = array(
+					'min' => $target,
+					'max' => $target,
+				);
+			}
+			return $range;
+		}
+
+		$inter_min = array();
+		$inter_max = array();
+		foreach ( (array) ( $config->inter_division_games ?? array() ) as $pair_key => $game_count ) {
+			$game_count = (int) $game_count;
+			$parts      = explode( ':', (string) $pair_key );
+			if ( $game_count <= 0 || 2 !== count( $parts ) ) {
+				continue;
+			}
+			foreach ( $parts as $division_id ) {
+				$size = $division_sizes[ $division_id ] ?? 0;
+				if ( $size <= 0 ) {
+					continue;
+				}
+				$inter_min[ $division_id ] = ( $inter_min[ $division_id ] ?? 0 ) + (int) floor( $game_count / $size );
+				$inter_max[ $division_id ] = ( $inter_max[ $division_id ] ?? 0 ) + (int) ceil( $game_count / $size );
+			}
+		}
+
+		$range = array();
+		foreach ( $team_division as $team_id => $division_id ) {
+			$size  = $division_sizes[ $division_id ] ?? 0;
+			$intra = $size >= 2 ? ( $size - 1 ) * $legs : 0;
+
+			$range[ $team_id ] = array(
+				'min' => $intra + ( $inter_min[ $division_id ] ?? 0 ),
+				'max' => $intra + ( $inter_max[ $division_id ] ?? 0 ),
+			);
+		}
+
+		return $range;
+	}
+
+	/**
+	 * Total games the configuration will generate: exact for the round-robin
+	 * styles (every intra-division pairing per leg plus every configured
+	 * inter-division total between two real divisions), teams x games_per_team
+	 * / 2 for the custom style where games_per_team is the binding target.
+	 *
+	 * @param object $config Schedule configuration.
+	 * @return int
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	public static function expected_total_games( $config ) {
+		$style         = $config->matchup_style ?? 'double_round_robin';
+		$total_teams   = 0;
+		$intra_pairs   = 0;
+		$sizes         = array();
+		$generic_teams = (array) ( $config->generic_teams ?? array() );
+
+		foreach ( (array) ( $config->divisions ?? array() ) as $division ) {
+			$division_id = is_object( $division ) ? (string) ( $division->id ?? '' ) : (string) ( $division['id'] ?? '' );
+
+			// generate_matchups() pads each division with generic teams before
+			// generating, so demand must be counted against that padded size.
+			$size = SPSG_Placeholder_Team_Manager::effective_team_count(
+				(array) $division,
+				$generic_teams
+			);
+
+			$sizes[ $division_id ] = $size;
+			$total_teams          += $size;
+			if ( $size >= 2 ) {
+				$intra_pairs += intdiv( $size * ( $size - 1 ), 2 );
+			}
+		}
+
+		if ( 'custom' === $style ) {
+			return (int) ceil( $total_teams * (int) ( $config->games_per_team ?? 0 ) / 2 );
+		}
+
+		$legs  = ( 'single_round_robin' === $style ) ? 1 : 2;
+		$inter = 0;
+		foreach ( (array) ( $config->inter_division_games ?? array() ) as $pair_key => $game_count ) {
+			$parts = explode( ':', (string) $pair_key );
+			if ( 2 !== count( $parts ) || ( $sizes[ $parts[0] ] ?? 0 ) < 1 || ( $sizes[ $parts[1] ] ?? 0 ) < 1 ) {
+				continue;
+			}
+			$inter += max( 0, (int) $game_count );
+		}
+
+		return $intra_pairs * $legs + $inter;
+	}
+
+	/**
+	 * Minutes since midnight for an "H:MM" / "HH:MM" slot or a numeric minute
+	 * offset; null when unparseable. Slots are only sanitize_text_field()'d, so
+	 * "9:00" and "09:00" must compare equal -- but an admin-typed value like
+	 * "9:99" or "25:00" is a clock string in SHAPE only, and treating it as a
+	 * valid one produces a numeric minute count that silently compares as if
+	 * it meant something (e.g. slot_within_window() accepting or rejecting
+	 * games against a window nobody actually configured). Hours outside
+	 * 0-23 or minutes outside 0-59 are rejected the same as a value with no
+	 * colon at all.
+	 *
+	 * @param mixed $slot Slot value.
+	 * @return int|null
+	 */
+	public static function time_to_minutes( $slot ) {
+		if ( is_numeric( $slot ) ) {
+			return (int) $slot;
+		}
+		if ( ! is_string( $slot ) || false === strpos( $slot, ':' ) ) {
+			return null;
+		}
+		$parts = explode( ':', $slot );
+		if ( ! ctype_digit( $parts[0] ) || ! ctype_digit( $parts[1] ?? '' ) ) {
+			return null;
+		}
+		$hours   = (int) $parts[0];
+		$minutes = (int) $parts[1];
+		if ( $hours < 0 || $hours > 23 || $minutes < 0 || $minutes > 59 ) {
+			return null;
+		}
+		return $hours * 60 + $minutes;
+	}
+
+	/**
+	 * Whether $slot falls inside [$start, $end] inclusive, compared in minutes.
+	 *
+	 * @param mixed $slot  Slot value.
+	 * @param mixed $start Window start.
+	 * @param mixed $end   Window end.
+	 * @return bool False when any value is unparseable.
+	 */
+	public static function slot_within_window( $slot, $start, $end ) {
+		$minutes = self::time_to_minutes( $slot );
+		$from    = self::time_to_minutes( $start );
+		$to      = self::time_to_minutes( $end );
+		if ( null === $minutes || null === $from || null === $to ) {
+			return false;
+		}
+		return $minutes >= $from && $minutes <= $to;
 	}
 }

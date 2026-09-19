@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SportsPress Schedule Generator (Child Plugin)
  * Description: Child plugin for SportsPress Admin Tools - League Schedule Generator
- * Version: 1.3.9
+ * Version: 1.3.10
  * Author: Cody (lusky3)
  * Text Domain: sportspress-schedule-generator
  * License: GPL v2 or later
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'SPSG_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPSG_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPSG_VERSION', '1.3.9' );
+define( 'SPSG_VERSION', '1.3.10' );
 
 // Native WordPress updates, served from this repository's releases.
 //
@@ -164,6 +164,10 @@ class SportsPress_Schedule_Generator {
 			// Load error handler
 			require_once SPSG_PLUGIN_PATH . 'includes/class-error-handler.php';
 
+			// One-shot per-version upgrades (postseason Monday alignment, slider carry-over).
+			require_once SPSG_PLUGIN_PATH . 'includes/class-upgrader.php';
+			SPSG_Upgrader::maybe_upgrade();
+
 			// Register constraints
 			$this->register_constraints();
 
@@ -240,8 +244,7 @@ class SportsPress_Schedule_Generator {
 	 * Register constraint classes
 	 */
 	private function register_constraints() {
-		$this->register_constraint( 'SPSG_Blackout_Constraint', 'Prevents scheduling on blackout dates and manages makeup games', 'scheduling' );
-		$this->register_constraint( 'SPSG_Day_Cap_Constraint', 'Hard per-team cap on games played on a given day of the week, when configured', 'restrictions' );
+		$this->register_constraint( 'SPSG_Blackout_Constraint', 'Prevents scheduling on blackout dates', 'scheduling' );
 		$this->register_constraint( 'SPSG_Distribution_Constraint', 'Manages fair distribution of games across days and time slots', 'optimization' );
 		$this->register_constraint( 'SPSG_Team_Restriction_Constraint', 'Manages team-specific scheduling restrictions', 'restrictions' );
 		$this->register_constraint( 'SPSG_Division_Grouping_Constraint', 'Optimizes consecutive time slots for division games', 'optimization' );

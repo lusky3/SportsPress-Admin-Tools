@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.3.9
+Stable tag: 1.3.10
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -58,6 +58,29 @@ The plugin validates configuration feasibility before generation and provides sp
 Yes. The import dialog lets you choose conflict resolution (skip or overwrite), event status, league, and season. Import runs in chunks with progress tracking.
 
 == Changelog ==
+
+= 1.3.10 =
+* Fix: in a double round-robin the two meetings of every pair were scheduled in consecutive weeks. They are now a full rotation apart, as the matchup order always intended.
+* Fix: "Custom" matchup style combined with inter-division games passed validation but could never generate ("Team has 7 games but expected 6"). Inter-division games now count toward each team's games-per-team total.
+* Fix: inter-division games are spread so every team in a division plays the same number (within one), which the generator's own count check requires; some division sizes previously failed generation after a clean validation.
+* Fix: inter-division games now carry full team records, so team restrictions apply to them, statistics count them, and SportsPress import recognizes their teams.
+* Fix: Generate, Validate and Export now act on the configuration shown on the page. Previously they used whichever configuration was saved most recently, and the REST API silently substituted another configuration when the requested one did not exist (it now returns 404). An unsaved configuration must be saved before it can be generated, validated or exported.
+* Fix: validation and the pre-generation feasibility check now count the games the chosen format actually produces. Round-robin seasons whose "games per team" was set higher than the format needs were wrongly blocked as "not enough time slots".
+* Fix: a season with more weeks than rounds now spreads every division's games across the whole season; two-division seasons previously finished up to a third early.
+* Fix: the game-by-game scheduler now compares the nearest playing dates when placing a game instead of only the first slots of one date, so day balance can move a game between a Friday and a Sunday.
+* Fix: "Custom" matchup style rotates opponents; a team no longer replays its previous opponent while other opponents are still available.
+* Fix: postseason Championship time windows compare times numerically, so "9:00" is treated the same as "09:00"; postseason day names are normalised on save; the final-week capacity check counts placeholder-padded teams.
+* Fix: the settings-page "Balance time slots" and "Balance home/away" toggles now apply to REST-driven generation even when no day weights are set.
+* Fix: venue-utilization warnings compare each venue against its own slot capacity, matching how the scheduler balances venues.
+* Fix: form input is unslashed before saving (names with apostrophes no longer gain backslashes); backend settings are clamped server-side; SportsPress import only trusts real venue ids; venue-schedule CSV import writes to the configuration on screen.
+* Removed: the never-configurable Day Cap constraint and the unused legacy venue-import endpoint.
+* Maintenance: plugin uninstall removes drafts, weights and placeholder teams; assorted escaping and translation fixes.
+* New: a ninth Advanced slider, "Double-Header Avoidance", controls how strongly a team is kept from playing twice on one date; the former "Restricted-Pair / Overlap Avoidance" slider is now "Restricted-Pair Same-Day Bonus" and covers only that bonus. An existing Overlap Avoidance value is copied to the new slider on upgrade.
+* Fix: a postseason bracket's dates now start on the Monday after the regular season ends, so its round-robin and final weeks line up with the scheduler's Mon-Sun weeks and get the same rounds-first placement as the regular season; existing postseason configurations are moved forward to the next Monday automatically on upgrade (their end date follows); a bracket whose dates are later edited off a Monday is rejected by validation.
+* Fix: postseason Championship, Consolation and cross-round-robin games are identified by an explicit stage marker rather than by pattern-matching team names, so a real team called e.g. "Hawks Seed 7" is never mistaken for a placeholder.
+* Fix: saving a configuration in the classic admin now redirects after saving, so refreshing the page no longer re-submits the form; the Advanced-weights settings script and style are enqueued as plugin assets.
+* Fix: the classic admin no longer reports "Configuration saved successfully" when the database write failed.
+* Removed: the makeup-game scheduling code, which could never run (blackout dates are excluded before any slot exists). The Makeup export columns remain; the code is recoverable from the repository history as noted in docs/DEVELOPMENT-HISTORY.md.
 
 = 1.3.9 =
 * New: an opt-in "Advanced" section in Settings > SportsPress Admin Tools > Schedule Generator exposes 8 sliders to fine-tune how strongly the algorithm favors each kind of balance (day/Sunday split, time-of-night, season pacing, venue utilization, preferred-venue priority, division grouping, and restricted-pair avoidance), each 0-200% of the algorithm's own built-in weight, with a one-click reset to defaults. Off by default -- an install that never visits Advanced schedules exactly as it did before.

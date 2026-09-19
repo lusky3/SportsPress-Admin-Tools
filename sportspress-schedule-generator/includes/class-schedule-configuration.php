@@ -337,6 +337,14 @@ class SPSG_Schedule_Configuration {
 
 		$this->load_postseason_fields( $data, $defaults );
 
+		// Configurations saved before playing_days were required lowercase can
+		// carry e.g. "Saturday"; normalize on every load so they still pass
+		// validate_postseason_day()'s comparison against playing_days.
+		$this->consolation_day = strtolower( (string) $this->consolation_day );
+		if ( ! empty( $this->championship_day['day'] ) ) {
+			$this->championship_day['day'] = strtolower( (string) $this->championship_day['day'] );
+		}
+
 		// H17: normalize legacy `*_avoidance` restriction keys on every load, not
 		// just on import. Configurations stored before the rename kept rendering
 		// their overlap / back-to-back groups in the admin UI (which reads both

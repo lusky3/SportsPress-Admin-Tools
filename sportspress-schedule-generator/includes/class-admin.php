@@ -61,6 +61,7 @@ class SPSG_Admin {
 		add_action( 'spat_admin_init_settings', array( $this, 'register_spat_settings' ) );
 		add_action( 'admin_post_spsg_reset_weights', array( $this, 'handle_reset_weights' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ) );
+		add_action( 'admin_init', array( $this, 'handle_config_form_post' ) );
 	}
 
 	/**
@@ -187,10 +188,10 @@ class SPSG_Admin {
 			'spsg_backend_settings'
 		);
 
-		register_setting( 'spsg_backend_settings', 'spsg_max_generation_time' );
-		register_setting( 'spsg_backend_settings', 'spsg_enable_debug_logging' );
-		register_setting( 'spsg_backend_settings', 'spsg_default_timezone' );
-		register_setting( 'spsg_backend_settings', 'spsg_enable_change_tracking' );
+		register_setting( 'spsg_backend_settings', 'spsg_max_generation_time', array( 'sanitize_callback' => array( __CLASS__, 'sanitize_max_generation_time' ) ) );
+		register_setting( 'spsg_backend_settings', 'spsg_enable_debug_logging', array( 'sanitize_callback' => array( __CLASS__, 'sanitize_flag' ) ) );
+		register_setting( 'spsg_backend_settings', 'spsg_default_timezone', array( 'sanitize_callback' => array( __CLASS__, 'sanitize_timezone' ) ) );
+		register_setting( 'spsg_backend_settings', 'spsg_enable_change_tracking', array( 'sanitize_callback' => array( __CLASS__, 'sanitize_flag' ) ) );
 		register_setting(
 			'spsg_backend_settings',
 			'spsg_day_weights',
@@ -325,7 +326,7 @@ class SPSG_Admin {
 	}
 
 	/**
-	 * The 8 Advanced-tuning weight sliders, in the fixed order the settings
+	 * The 9 Advanced-tuning weight sliders, in the fixed order the settings
 	 * page renders them. Single source of truth for register_spat_settings(),
 	 * weight_slider_callback(), and reset_weight_options() -- SPSG_Slot_Allocator,
 	 * SPSG_Distribution_Constraint, and SPSG_Division_Grouping_Constraint read
@@ -343,7 +344,8 @@ class SPSG_Admin {
 			'preferred_venue'     => array( 'label' => __( 'Preferred Venue Priority', 'sportspress-schedule-generator' ) ),
 			'division_distance'   => array( 'label' => __( 'Division Grouping (Distance)', 'sportspress-schedule-generator' ) ),
 			'division_disruption' => array( 'label' => __( 'Division Grouping (Disruption)', 'sportspress-schedule-generator' ) ),
-			'overlap_avoidance'   => array( 'label' => __( 'Restricted-Pair / Overlap Avoidance', 'sportspress-schedule-generator' ) ),
+			'overlap_avoidance'   => array( 'label' => __( 'Restricted-Pair Same-Day Bonus', 'sportspress-schedule-generator' ) ),
+			'double_header'       => array( 'label' => __( 'Double-Header Avoidance', 'sportspress-schedule-generator' ) ),
 		);
 	}
 
@@ -364,6 +366,42 @@ class SPSG_Admin {
 		$percent = (int) round( (float) $value / 10 ) * 10;
 		$percent = max( 0, min( 200, $percent ) );
 		return $percent / 100.0;
+	}
+
+	/**
+	 * Generation time limit in seconds, 60-3600; the form's min/max alone is
+	 * no defence against a direct POST.
+	 *
+	 * @param mixed $value Submitted value.
+	 * @return int
+	 */
+	public static function sanitize_max_generation_time( $value ) {
+		return max( 60, min( 3600, absint( $value ) ) );
+	}
+
+	/**
+	 * A checkbox setting stored as '1' or '0', the form the readers compare against.
+	 *
+	 * @param mixed $value Submitted value.
+	 * @return string
+	 */
+	public static function sanitize_flag( $value ) {
+		return ( ! empty( $value ) && '0' !== (string) $value ) ? '1' : '0';
+	}
+
+	/**
+	 * A timezone identifier PHP knows, '' for "use the site default", else
+	 * the site timezone.
+	 *
+	 * @param mixed $value Submitted value.
+	 * @return string
+	 */
+	public static function sanitize_timezone( $value ) {
+		$value = sanitize_text_field( (string) $value );
+		if ( '' === $value ) {
+			return '';
+		}
+		return in_array( $value, timezone_identifiers_list(), true ) ? $value : wp_timezone_string();
 	}
 
 	/**
@@ -424,13 +462,16 @@ class SPSG_Admin {
 	/**
 	 * "Balance Weights (Advanced)" section heading/description (the section
 	 * itself is registered with an empty title so WordPress doesn't print
-	 * its own auto-generated <h2>), plus the inline show/hide of the WHOLE
+	 * its own auto-generated <h2>). The inline show/hide of the WHOLE
 	 * section -- heading, description, the settings-fields <table> WordPress
 	 * renders immediately after this callback returns, and the "Reset
 	 * Balance Weights to Defaults" form -- driven by the Advanced checkbox,
-	 * gray-out (Balance Time Slots checkbox vs. the Time-of-Night slider --
-	 * see class-distribution-constraint.php's time_slot_balance gate), and
-	 * live percentage readout script.
+	 * plus the gray-out (Balance Time Slots checkbox vs. the Time-of-Night
+	 * slider -- see class-distribution-constraint.php's time_slot_balance
+	 * gate) and the live percentage readout, now live in
+	 * assets/js/settings-weights.js (enqueued as the 'spsg-settings-weights'
+	 * script); the gray-out rule itself is the '.spsg-weight-disabled' class
+	 * in assets/css/admin.css.
 	 *
 	 * Uses CSS (opacity/pointer-events) rather than the disabled attribute
 	 * to gray out the Time-of-Night slider: a disabled field is left out of
@@ -443,75 +484,7 @@ class SPSG_Admin {
 		echo '<h2>' . esc_html__( 'Balance Weights (Advanced)', 'sportspress-schedule-generator' ) . '</h2>';
 		echo '<p>' . esc_html__( 'Fine-tune how strongly the schedule generator favors each kind of balance. 100% is the algorithm\'s own built-in weight; 0% turns a category off entirely. Enable Advanced above to reveal these sliders.', 'sportspress-schedule-generator' ) . '</p>';
 		echo '</div>';
-		$this->render_weights_section_script();
 		echo '<div id="spsg-weights-table-marker" style="display:none;"></div>';
-	}
-
-	/**
-	 * Inline CSS/JS for the Balance Weights section: whole-section show/hide
-	 * (Advanced checkbox), Time-of-Night gray-out (Balance Time Slots
-	 * checkbox), and live percentage readout on each slider's `input` event.
-	 * Split out of {@see weights_section_callback()} as its own method --
-	 * a distinct concern (client-side behavior vs. the section's own
-	 * markup), and keeps that method's own line count down.
-	 */
-	private function render_weights_section_script() {
-		?>
-		<style>
-			.spsg-weight-disabled { opacity: 0.5; pointer-events: none; }
-		</style>
-		<script>
-		( function () {
-			var WEIGHT_KEYS = [ 'day_balance', 'time_of_night', 'season_pacing', 'venue_utilization', 'preferred_venue', 'division_distance', 'division_disruption', 'overlap_avoidance' ];
-
-			function rowFor( id ) {
-				var el = document.getElementById( id );
-				return el ? el.closest( 'tr' ) : null;
-			}
-
-			function sync() {
-				var advanced = document.getElementById( 'spsg_advanced_weights_enabled' );
-				var timeSlots = document.getElementById( 'spsg_balance_time_slots' );
-				var show = !! ( advanced && advanced.checked );
-
-				var intro = document.getElementById( 'spsg-weights-intro' );
-				if ( intro ) { intro.style.display = show ? '' : 'none'; }
-
-				var marker = document.getElementById( 'spsg-weights-table-marker' );
-				var table = marker ? marker.nextElementSibling : null;
-				if ( table ) { table.style.display = show ? '' : 'none'; }
-
-				var resetForm = document.getElementById( 'spsg-weights-reset-form' );
-				if ( resetForm ) { resetForm.style.display = show ? '' : 'none'; }
-
-				WEIGHT_KEYS.forEach( function ( key ) {
-					var row = rowFor( 'spsg_weight_' + key );
-					if ( row ) { row.style.display = show ? '' : 'none'; }
-				} );
-
-				var nightSlider = document.getElementById( 'spsg_weight_time_of_night' );
-				if ( nightSlider && timeSlots ) {
-					nightSlider.classList.toggle( 'spsg-weight-disabled', ! timeSlots.checked );
-				}
-			}
-
-			document.addEventListener( 'DOMContentLoaded', function () {
-				var advanced = document.getElementById( 'spsg_advanced_weights_enabled' );
-				var timeSlots = document.getElementById( 'spsg_balance_time_slots' );
-				if ( advanced ) { advanced.addEventListener( 'change', sync ); }
-				if ( timeSlots ) { timeSlots.addEventListener( 'change', sync ); }
-				sync();
-
-				document.querySelectorAll( '.spsg-weight-slider' ).forEach( function ( slider ) {
-					slider.addEventListener( 'input', function () {
-						var out = slider.nextElementSibling;
-						if ( out ) { out.textContent = slider.value + '%'; }
-					} );
-				} );
-			} );
-		} )();
-		</script>
-		<?php
 	}
 
 	/**
@@ -550,23 +523,49 @@ class SPSG_Admin {
 	}
 
 	/**
+	 * Handle the classic configuration form before any output so the save
+	 * can redirect; a refresh then reloads the page instead of re-posting.
+	 */
+	public function handle_config_form_post() {
+		if ( ! isset( $_POST['spsg_action'] ) ) {
+			return;
+		}
+		if ( 'spsg-schedule-generator' !== sanitize_text_field( wp_unslash( $_GET['page'] ?? '' ) ) ) {
+			return;
+		}
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You do not have permission.', 'sportspress-schedule-generator' ) );
+		}
+		if ( ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['spsg_nonce'] ?? '' ) ), 'spsg_admin_action' ) ) {
+			wp_die( esc_html__( 'Security check failed.', 'sportspress-schedule-generator' ) );
+		}
+
+		$this->handle_form_submission();
+		set_transient( 'settings_errors', get_settings_errors(), 30 );
+
+		$config_id = (string) ( $this->get_config_manager()->get_current()->id ?? '' );
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'             => 'spsg-schedule-generator',
+					'config_id'        => $config_id,
+					'settings-updated' => 'true',
+				),
+				admin_url( 'admin.php' )
+			)
+		);
+		exit;
+	}
+
+	/**
 	 * Main schedule generator page
 	 */
 	public function schedule_generator_page() {
-		if ( isset( $_POST['spsg_action'] ) ) {
-			if ( ! current_user_can( 'manage_options' ) ) {
-				wp_die( __( 'You do not have permission.', 'sportspress-schedule-generator' ) );
-			}
-			if ( ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['spsg_nonce'] ?? '' ) ), 'spsg_admin_action' ) ) {
-				wp_die( __( 'Security check failed.', 'sportspress-schedule-generator' ) );
-			}
-			$this->handle_form_submission();
-		}
-
 		$current_config = $this->resolve_current_config( self::resolve_requested_config_id( $_GET, $_POST ) );
 		?>
 		<div class="wrap">
 			<h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
+			<?php settings_errors( 'spsg_messages' ); ?>
 
 			<nav class="nav-tab-wrapper spsg-nav-tabs">
 				<a href="#basic-config" class="nav-tab nav-tab-active"><?php esc_html_e( 'Basic Configuration', 'sportspress-schedule-generator' ); ?></a>
@@ -635,6 +634,16 @@ class SPSG_Admin {
 			array(),
 			SPSG_VERSION
 		);
+
+		if ( isset( $_GET['page'] ) && 'sportspress-admin-tools' === sanitize_text_field( wp_unslash( $_GET['page'] ) ) ) {
+			wp_enqueue_script(
+				'spsg-settings-weights',
+				plugins_url( 'assets/js/settings-weights.js', __DIR__ ),
+				array(),
+				SPSG_VERSION,
+				true
+			);
+		}
 
 		wp_localize_script(
 			'spsg-schedule-generator',
@@ -847,17 +856,17 @@ class SPSG_Admin {
 		$action = sanitize_text_field( wp_unslash( $_POST['spsg_action'] ) );
 
 		if ( $action === 'save_config' ) {
-			$config_data = $this->sanitize_form_data( $_POST );
+			$config_data = $this->sanitize_form_data( wp_unslash( $_POST ) );
 			$result = $this->get_config_manager()->save( $config_data );
 
 			if ( is_wp_error( $result ) ) {
 				add_settings_error( 'spsg_messages', 'spsg_error', $result->get_error_message(), 'error' );
+			} elseif ( false === $result ) {
+				add_settings_error( 'spsg_messages', 'spsg_error', __( 'The configuration could not be saved. Please try again.', 'sportspress-schedule-generator' ), 'error' );
 			} else {
 				add_settings_error( 'spsg_messages', 'spsg_success', __( 'Configuration saved successfully', 'sportspress-schedule-generator' ), 'updated' );
 			}
 		}
-
-		settings_errors( 'spsg_messages' );
 	}
 
 	/**

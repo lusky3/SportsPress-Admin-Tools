@@ -171,16 +171,6 @@ class SPSG_Schedule_Engine {
 			return $result;
 		}
 
-		// Check cancellation before makeup games
-		if ( $this->is_cancelled() ) {
-			$this->clear_progress();
-			return new WP_Error( 'generation_cancelled', $cancelled_message );
-		}
-
-		// Handle makeup games
-		$this->update_progress( 'validation', 90, __( 'Handling makeup games...', 'sportspress-schedule-generator' ) );
-		$this->handle_makeup_games( $config );
-
 		$this->stats['generation_time'] = microtime( true ) - $this->generation_start_time;
 		$this->log( sprintf( 'Schedule generation completed in %.2f seconds', $this->stats['generation_time'] ) );
 
@@ -289,16 +279,13 @@ class SPSG_Schedule_Engine {
 	private function validate_matchups( $matchups, $config ) {
 		$team_games = $this->count_team_games( $matchups );
 
-		// For custom matchup style, accept any count up to games_per_team.
-		// For round-robin styles the achievable count is dictated by the division
-		// size and the inter-division split, NOT by games_per_team — see
-		// build_round_robin_expectations().
+		// Round-robin counts are dictated by the format; see SPSG_Schedule_Helper::expected_team_game_range().
 		$expected_games = $config->games_per_team;
 		$is_custom = ( $config->matchup_style === 'custom' );
 		$errors = array();
 		$warnings = array();
 
-		$rr_expectations = $is_custom ? array() : $this->build_round_robin_expectations( $config );
+		$rr_expectations = $is_custom ? array() : SPSG_Schedule_Helper::expected_team_game_range( $config );
 
 		foreach ( $team_games as $team_id => $game_count ) {
 			if ( ! $is_custom ) {
@@ -402,80 +389,6 @@ class SPSG_Schedule_Engine {
 		}
 
 		return true;
-	}
-
-	/**
-	 * Compute the achievable games-per-team range for round-robin styles.
-	 *
-	 * Intra-division play is exact: every team meets each of its division-mates
-	 * once per leg, i.e. `(division_size - 1) * legs` games.
-	 *
-	 * Inter-division play is not. `inter_division_games` configures a TOTAL per
-	 * division pair, which SPSG_Matchup_Generator spreads as evenly as it can
-	 * across the teams on each side. When the total isn't divisible by a
-	 * division's size, some teams necessarily get one more game than others —
-	 * hence a range rather than a single number.
-	 *
-	 * @param SPSG_Schedule_Configuration $config Configuration.
-	 * @return array team_id => array{min:int,max:int}
-	 */
-	private function build_round_robin_expectations( $config ) {
-		$legs = ( 'single_round_robin' === $config->matchup_style ) ? 1 : 2;
-
-		$division_sizes = array();
-		$team_division  = array();
-
-		foreach ( $config->divisions as $division ) {
-			$division_id = $division['id'] ?? '';
-			$teams       = $division['teams'] ?? array();
-
-			$division_sizes[ $division_id ] = count( $teams );
-
-			foreach ( $teams as $team ) {
-				$team_division[ $this->extract_team_id( $team ) ] = $division_id;
-			}
-		}
-
-		// Per-division inter-division allowances, accumulated over every
-		// configured pair that involves the division.
-		$inter_min = array();
-		$inter_max = array();
-
-		foreach ( (array) $config->inter_division_games as $pair_key => $game_count ) {
-			$game_count = (int) $game_count;
-			if ( $game_count <= 0 ) {
-				continue;
-			}
-
-			$parts = explode( ':', (string) $pair_key );
-			if ( count( $parts ) !== 2 ) {
-				continue;
-			}
-
-			foreach ( $parts as $division_id ) {
-				$size = $division_sizes[ $division_id ] ?? 0;
-				if ( $size <= 0 ) {
-					continue;
-				}
-
-				$inter_min[ $division_id ] = ( $inter_min[ $division_id ] ?? 0 ) + (int) floor( $game_count / $size );
-				$inter_max[ $division_id ] = ( $inter_max[ $division_id ] ?? 0 ) + (int) ceil( $game_count / $size );
-			}
-		}
-
-		$expectations = array();
-
-		foreach ( $team_division as $team_id => $division_id ) {
-			$size  = $division_sizes[ $division_id ] ?? 0;
-			$intra = $size >= 2 ? ( $size - 1 ) * $legs : 0;
-
-			$expectations[ $team_id ] = array(
-				'min' => $intra + ( $inter_min[ $division_id ] ?? 0 ),
-				'max' => $intra + ( $inter_max[ $division_id ] ?? 0 ),
-			);
-		}
-
-		return $expectations;
 	}
 
 	/**
@@ -670,30 +583,6 @@ class SPSG_Schedule_Engine {
 		return true;
 	}
 
-
-
-	/**
-	 * Handle makeup games from blackout constraints
-	 */
-	private function handle_makeup_games( $config ) {
-		// Get blackout constraint if available
-		$constraints = $this->constraint_manager->get_constraints();
-		$blackout_constraint = null;
-
-		foreach ( $constraints as $constraint ) {
-			if ( $constraint instanceof SPSG_Blackout_Constraint ) {
-				$blackout_constraint = $constraint;
-				break;
-			}
-		}
-
-		if ( $blackout_constraint ) {
-			$makeup_games = $blackout_constraint->schedule_makeup_games( $this->current_schedule, $config );
-			$this->current_schedule = array_merge( $this->current_schedule, $makeup_games );
-			$this->stats['makeup_games'] = count( $makeup_games );
-		}
-	}
-
 	/**
 	 * Initialize statistics
 	 */
@@ -701,7 +590,6 @@ class SPSG_Schedule_Engine {
 		$this->stats = array(
 			'games_scheduled' => 0,
 			'failed_games' => 0,
-			'makeup_games' => 0,
 			'generation_time' => 0,
 			'constraint_violations' => 0,
 		);
@@ -945,34 +833,27 @@ class SPSG_Schedule_Engine {
 	}
 
 	/**
-	 * Set cancellation flag
-	 * Called externally via AJAX handler
+	 * Flag a user's in-flight generation for cancellation. Written to both the
+	 * transient and the object cache so the engine, polling from another
+	 * request, sees it whichever it reads first.
+	 *
+	 * @param int $user_id User whose generation to cancel.
 	 */
-	public function cancel_generation() {
-		// Prefer the cached copy so we don't clobber in-flight progress that
-		// hasn't been persisted to the transient yet.
-		$progress = wp_cache_get( $this->progress_transient_key, 'spsg_progress' );
-		if ( false === $progress ) {
-			$progress = get_transient( $this->progress_transient_key );
-		}
+	public static function request_cancel( $user_id ) {
+		$cancel_key   = 'spsg_cancel_generation_' . (int) $user_id;
+		$progress_key = 'spsg_generation_progress_' . (int) $user_id;
 
-		// If progress hasn't been initialized yet (cancel arrived before the
-		// engine wrote anything), write a minimal progress object so the cancel
-		// flag is observable by is_cancelled() once generation starts.
-		if ( $progress === false ) {
-			$progress = array(
-				'status'    => 'cancelled',
-				'cancelled' => true,
-				'message'   => __( 'Cancelling generation...', 'sportspress-schedule-generator' ),
-			);
-		} else {
+		set_transient( $cancel_key, true, 300 );
+		wp_cache_set( $cancel_key, true, 'spsg_progress', HOUR_IN_SECONDS );
+
+		$progress = get_transient( $progress_key );
+		if ( is_array( $progress ) ) {
 			$progress['cancelled'] = true;
+			$progress['status']    = 'cancelled';
 			$progress['message']   = __( 'Cancelling generation...', 'sportspress-schedule-generator' );
+			set_transient( $progress_key, $progress, HOUR_IN_SECONDS );
+			wp_cache_set( $progress_key, $progress, 'spsg_progress', HOUR_IN_SECONDS );
 		}
-		set_transient( $this->progress_transient_key, $progress, HOUR_IN_SECONDS );
-		wp_cache_set( $this->progress_transient_key, $progress, 'spsg_progress', HOUR_IN_SECONDS );
-
-		$this->log( 'Generation cancellation requested' );
 	}
 
 	/**

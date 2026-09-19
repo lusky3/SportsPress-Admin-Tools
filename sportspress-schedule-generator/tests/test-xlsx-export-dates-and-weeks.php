@@ -105,6 +105,7 @@ if ( ! interface_exists( 'SPSG_Exporter_Interface' ) ) {
 	}
 }
 
+require_once SPSG_PLUGIN_PATH . 'includes/class-placeholder-team-manager.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-helper.php';
 require_once SPSG_PLUGIN_PATH . 'includes/exporters/class-xlsx-exporter.php';
 require_once SPSG_PLUGIN_PATH . 'includes/exporters/class-csv-exporter.php';

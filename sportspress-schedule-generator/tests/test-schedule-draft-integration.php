@@ -30,6 +30,7 @@ function esc_html_e( $s ) { echo htmlspecialchars( $s, ENT_QUOTES ); } // phpcs:
 function esc_attr_e( $s ) { echo htmlspecialchars( $s, ENT_QUOTES ); } // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
 function esc_html( $s ) { return htmlspecialchars( (string) $s, ENT_QUOTES ); } // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
 function esc_attr( $s ) { return htmlspecialchars( (string) $s, ENT_QUOTES ); } // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
+function wp_date( $f, $t = null ) { return gmdate( $f, $t ?? time() ); } // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
 function sanitize_text_field( $s ) { return is_string( $s ) ? trim( strip_tags( $s ) ) : ''; } // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
 function wp_unslash( $v ) { return is_array( $v ) ? array_map( 'wp_unslash', $v ) : stripslashes( (string) $v ); } // phpcs:ignore Squiz.Commenting.FunctionComment.Missing
 function current_time() { return '2026-09-10 12:00:00'; } // phpcs:ignore Squiz.Commenting.FunctionComment.Missing

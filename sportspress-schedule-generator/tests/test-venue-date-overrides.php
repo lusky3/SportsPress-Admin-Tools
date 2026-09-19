@@ -80,6 +80,7 @@ if ( ! function_exists( 'checked' ) ) {
 require_once SPSG_PLUGIN_PATH . 'includes/class-configuration-sanitizer.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-sportspress-integration.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-configuration.php';
+require_once SPSG_PLUGIN_PATH . 'includes/class-placeholder-team-manager.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-schedule-helper.php';
 require_once SPSG_PLUGIN_PATH . 'includes/class-admin-renderer.php';
 
