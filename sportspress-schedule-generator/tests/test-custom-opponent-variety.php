@@ -72,7 +72,13 @@ function cov_repeats( $matchups ) {
 echo "=== custom-style opponent rotation ===\n\n";
 foreach ( array( array( 4, 6 ), array( 6, 10 ), array( 8, 12 ), array( 5, 8 ) ) as list( $n, $gpt ) ) {
 	$matchups = ( new SPSG_Matchup_Generator() )->generate( cov_config( $n, $gpt ) );
-	$counts   = array();
+	// Seed every configured team at 0 first: a team generation omits
+	// entirely (as opposed to merely under-scheduling) must still show up
+	// as a min()/max() failure below, not silently drop out of $counts.
+	$counts = array();
+	for ( $i = 1; $i <= $n; $i++ ) {
+		$counts[ 'a' . $i ] = 0;
+	}
 	foreach ( $matchups as $m ) {
 		foreach ( array( $m['home_team'], $m['away_team'] ) as $t ) {
 			$id = SPSG_Schedule_Helper::extract_id( $t );

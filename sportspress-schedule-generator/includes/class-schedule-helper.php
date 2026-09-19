@@ -1127,7 +1127,13 @@ class SPSG_Schedule_Helper {
 	/**
 	 * Minutes since midnight for an "H:MM" / "HH:MM" slot or a numeric minute
 	 * offset; null when unparseable. Slots are only sanitize_text_field()'d, so
-	 * "9:00" and "09:00" must compare equal.
+	 * "9:00" and "09:00" must compare equal -- but an admin-typed value like
+	 * "9:99" or "25:00" is a clock string in SHAPE only, and treating it as a
+	 * valid one produces a numeric minute count that silently compares as if
+	 * it meant something (e.g. slot_within_window() accepting or rejecting
+	 * games against a window nobody actually configured). Hours outside
+	 * 0-23 or minutes outside 0-59 are rejected the same as a value with no
+	 * colon at all.
 	 *
 	 * @param mixed $slot Slot value.
 	 * @return int|null
@@ -1140,7 +1146,15 @@ class SPSG_Schedule_Helper {
 			return null;
 		}
 		$parts = explode( ':', $slot );
-		return ( (int) $parts[0] ) * 60 + (int) ( $parts[1] ?? 0 );
+		if ( ! ctype_digit( $parts[0] ) || ! ctype_digit( $parts[1] ?? '' ) ) {
+			return null;
+		}
+		$hours   = (int) $parts[0];
+		$minutes = (int) $parts[1];
+		if ( $hours < 0 || $hours > 23 || $minutes < 0 || $minutes > 59 ) {
+			return null;
+		}
+		return $hours * 60 + $minutes;
 	}
 
 	/**

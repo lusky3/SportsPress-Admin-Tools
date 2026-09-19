@@ -140,9 +140,9 @@ class SPSG_Postseason_Matchup_Builder {
 	/**
 	 * One matchup array, in the same shape SPSG_Matchup_Generator produces.
 	 *
-	 * @param string $home        Home team's placeholder name.
-	 * @param string $away        Away team's placeholder name.
-	 * @param object $division    Division object this matchup belongs to.
+	 * @param string                                                       $home        Home team's placeholder name.
+	 * @param string                                                       $away        Away team's placeholder name.
+	 * @param object                                                       $division    Division object this matchup belongs to.
 	 * @param array{stage:string,division:string,seeds:array{0:int,1:int}} $postseason Explicit bracket-stage flag.
 	 * @return array
 	 */

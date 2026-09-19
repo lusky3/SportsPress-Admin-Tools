@@ -121,6 +121,17 @@ _assert( true === SPSG_Schedule_Helper::slot_within_window( '12:00', '08:00', '1
 _assert( false === SPSG_Schedule_Helper::slot_within_window( '12:30', '08:00', '12:00' ), '"12:30" is outside' );
 _assert( false === SPSG_Schedule_Helper::slot_within_window( 'noon', '08:00', '12:00' ), 'unparseable is outside' );
 
+// A clock string in shape only -- an out-of-range hour or minute must not
+// silently produce a numeric minute count that then compares as if it
+// meant something.
+_assert( null === SPSG_Schedule_Helper::time_to_minutes( '9:99' ), '"9:99" (invalid minute) is null, not 639' );
+_assert( null === SPSG_Schedule_Helper::time_to_minutes( '25:00' ), '"25:00" (invalid hour) is null, not 1500' );
+_assert( null === SPSG_Schedule_Helper::time_to_minutes( '-1:00' ), 'a negative hour is null' );
+_assert( null === SPSG_Schedule_Helper::time_to_minutes( '9:-5' ), 'a negative minute is null' );
+_assert( 0 === SPSG_Schedule_Helper::time_to_minutes( '0:00' ), '"0:00" (midnight, the lower boundary) is still 0 minutes' );
+_assert( 1439 === SPSG_Schedule_Helper::time_to_minutes( '23:59' ), '"23:59" (the upper boundary) is still 1439 minutes' );
+_assert( false === SPSG_Schedule_Helper::slot_within_window( '25:00', '08:00', '12:00' ), 'an invalid hour is treated as outside any window, not coerced into one' );
+
 echo "\n=== the Championship window accepts an unpadded slot ===\n\n";
 $window_config = dc_config( true, array( 'day' => 'saturday', 'start' => '08:00', 'end' => '12:00' ), 'sunday' );
 $constraint    = new SPSG_Championship_Time_Window_Constraint();

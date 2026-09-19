@@ -24,7 +24,11 @@ if ( ! function_exists( 'current_time' ) ) { function current_time( $t = 'mysql'
 if ( ! function_exists( 'get_current_user_id' ) ) { function get_current_user_id() { return 1; } }
 if ( ! function_exists( 'do_action' ) ) { function do_action() {} }
 if ( ! function_exists( 'apply_filters' ) ) { function apply_filters( $t, $v ) { return $v; } }
-if ( ! function_exists( 'wp_generate_password' ) ) { function wp_generate_password( $l = 12 ) { return substr( md5( (string) mt_rand() ), 0, $l ); } }
+// bin2hex(random_bytes()) rather than md5(mt_rand()): this stub only needs
+// an $l-character-ish unique string for test fixture ids, but a weak-crypto
+// scanner can't tell that from a real password generator, so it uses a
+// real CSPRNG source instead of tripping that check for no behavioural gain.
+if ( ! function_exists( 'wp_generate_password' ) ) { function wp_generate_password( $l = 12 ) { return substr( bin2hex( random_bytes( max( 1, (int) ceil( $l / 2 ) ) ) ), 0, $l ); } }
 if ( ! class_exists( 'WP_Error' ) ) {
 	class WP_Error {
 		public $code; public $message; public $data;

@@ -82,6 +82,10 @@ BRAINSTORM-REPORT.md
 ruvector.db
 skills-lock.json
 .codacy/
+# Working notes/plans/ledgers from the superpowers subagent-driven-development
+# skill -- session scratch space, not part of the plugin source. (Previously
+# assumed already ignored; a git add -A on 2026-09-18 proved otherwise.)
+.superpowers/
 
 # Raw per-suite coverage snapshots from run-coverage.sh. The merged report
 # lands in coverage/, already ignored above.

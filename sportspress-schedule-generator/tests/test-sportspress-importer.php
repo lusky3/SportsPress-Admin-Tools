@@ -277,20 +277,37 @@ if (is_wp_error($result)) {
     }
 }
 
-// Test 13: a configuration venue id (non-numeric) must not be passed through as a term id
-echo "Test 13: Generated string venue id is not trusted as a term id... ";
+// Test 13: a configuration venue id (non-numeric) must not be passed through as
+// an sp_venue term id, AND the name-based fallback it forces must actually find
+// the real venue term -- not just fail open into a WP_Error, which would also
+// (wrongly) satisfy "not the generated id".
+echo "Test 13: Generated string venue id falls back to the real term by name... ";
 if (!function_exists('term_exists')) {
     function term_exists($term, $taxonomy = '') {
         return (42 === (int) $term) ? array('term_id' => 42) : null;
     }
 }
+if (!class_exists('SportsPress')) {
+    class SportsPress {}
+}
+if (!function_exists('get_terms')) {
+    function get_terms($args = array()) {
+        return array((object) array('term_id' => 42, 'name' => 'Arena 1', 'slug' => 'arena-1'));
+    }
+}
+if (!function_exists('get_term_meta')) {
+    function get_term_meta($term_id, $key = '', $single = false) {
+        return '';
+    }
+}
 $map_venue = $reflection->getMethod('map_venue');
 $map_venue->setAccessible(true);
 $string_id_result = $map_venue->invoke($importer, (object) array('venue' => (object) array('id' => 'venue_arena-1_1726000000', 'name' => 'Arena 1')));
-if (!(is_array($string_id_result) && 'venue_arena-1_1726000000' === ($string_id_result['venue_id'] ?? null))) {
+if (is_array($string_id_result) && 42 === ($string_id_result['venue_id'] ?? null)) {
     echo "✓ PASS\n";
 } else {
-    echo "✗ FAIL: a generated string venue id was used as an sp_venue term id\n";
+    $got = is_wp_error($string_id_result) ? 'WP_Error: ' . $string_id_result->get_error_code() : json_encode($string_id_result);
+    echo "✗ FAIL: expected venue_id 42 (looked up by name \"Arena 1\"), got $got\n";
     exit(1);
 }
 
