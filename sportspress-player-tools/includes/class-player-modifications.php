@@ -29,6 +29,13 @@ class SPT_Player_Modifications {
 
 		// PT3/F3: surface invalid-email feedback after save_email_meta() rejects a write.
 		add_action( 'admin_notices', array( $this, 'maybe_render_email_invalid_notice' ) );
+
+		// PT-7: warn (without blocking) when the Title being typed for an sp_player
+		// matches an existing published player, before the record is created —
+		// admin_footer-{$hook_suffix} scopes this to exactly post.php/post-new.php,
+		// same idea as save_email_meta()'s post-type-specific save_post_sp_player.
+		add_action( 'admin_footer-post.php', array( $this, 'render_duplicate_name_check_script' ) );
+		add_action( 'admin_footer-post-new.php', array( $this, 'render_duplicate_name_check_script' ) );
 	}
 
 	public function add_email_meta_box() {
@@ -99,6 +106,85 @@ class SPT_Player_Modifications {
 		echo '<div class="notice notice-warning is-dismissible"><p>' .
 			esc_html__( 'The email address you entered for this player was invalid and was not saved.', 'sportspress-player-tools' ) .
 			'</p></div>';
+	}
+
+	/**
+	 * PT-7: print the inline script that checks the Title field, on blur,
+	 * against SPPT_REST_API::check_duplicate_player_name() and shows an
+	 * inline (non-blocking) notice when another published player already has
+	 * that exact name. Hooked from admin_footer-post.php/post-new.php, so it
+	 * only ever prints on those two admin pages; bails further if the post
+	 * type isn't sp_player.
+	 */
+	public function render_duplicate_name_check_script() {
+		$screen = get_current_screen();
+		if ( ! $screen || 'sp_player' !== $screen->post_type ) {
+			return;
+		}
+		if ( ! current_user_can( 'edit_posts' ) ) {
+			return;
+		}
+
+		$rest_url = esc_url_raw( rest_url( 'splm/v1/players/check-duplicate-name' ) );
+		$nonce    = wp_create_nonce( 'wp_rest' );
+		?>
+		<script>
+		jQuery( function ( $ ) {
+			var restUrl = <?php echo wp_json_encode( $rest_url ); ?>;
+			var nonce   = <?php echo wp_json_encode( $nonce ); ?>;
+			var $title  = $( '#title' );
+			if ( ! $title.length ) {
+				return;
+			}
+
+			var $notice = $(
+				'<div class="notice notice-warning inline spt-duplicate-name-warning" style="display:none;margin-top:8px;"><p></p></div>'
+			);
+			$title.after( $notice );
+
+			function checkDuplicate() {
+				var name = $.trim( $title.val() );
+				if ( ! name ) {
+					$notice.hide();
+					return;
+				}
+				var postId = $( '#post_ID' ).val() || 0;
+
+				$.ajax( {
+					url: restUrl,
+					method: 'GET',
+					data: { name: name, exclude: postId },
+					beforeSend: function ( xhr ) {
+						xhr.setRequestHeader( 'X-WP-Nonce', nonce );
+					}
+				} ).done( function ( response ) {
+					if ( response && response.duplicate ) {
+						$notice.find( 'p' ).empty().text(
+							<?php echo wp_json_encode( __( 'A player named', 'sportspress-player-tools' ) ); ?> +
+							' "' + response.name + '" ' +
+							<?php echo wp_json_encode( __( 'already exists.', 'sportspress-player-tools' ) ); ?> + ' '
+						).append(
+							$( '<a>', {
+								href: response.edit_link,
+								text: <?php echo wp_json_encode( __( 'View existing player', 'sportspress-player-tools' ) ); ?>
+							} )
+						);
+						$notice.show();
+					} else {
+						$notice.hide();
+					}
+				} ).fail( function () {
+					// Silently do nothing on a REST error -- this is an advisory
+					// check, not something that should ever block or alarm the
+					// editor over a network hiccup.
+					$notice.hide();
+				} );
+			}
+
+			$title.on( 'blur', checkDuplicate );
+		} );
+		</script>
+		<?php
 	}
 
 	public function add_captain_meta_box() {
