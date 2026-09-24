@@ -47,6 +47,9 @@ class SportsPress_Player_Registration {
 	/** @var SPPR_Admin|null */
 	private $admin;
 
+	/** @var SPPR_Prorated_Pricing|null */
+	private $prorated_pricing;
+
 	public function __construct() {
 		// Ownership capability guard, loaded ABOVE every gate below on purpose.
 		// Registration persists post_author on player records, so the guard has to
@@ -111,11 +114,37 @@ class SportsPress_Player_Registration {
 			)
 		);
 
+		// A separate, independently-toggled module: this changes real prices
+		// customers pay, so it stays off even when player_registration itself
+		// is enabled, until an admin deliberately opts in.
+		SPAT_Plugin_Manager::register_plugin(
+			'prorated_late_registration',
+			array(
+				'name' => 'Prorated Late Registration Pricing',
+				'description' => 'Automatically discounts a "Late Registration"-tagged product as the season\'s remaining games decrease',
+				'parent_module' => 'prorated_late_registration',
+				'version' => SPPR_VERSION,
+				'file' => __FILE__,
+			)
+		);
+
 		// Load functionality if parent module is enabled
 		$enabled_modules = get_option( 'spat_enabled_modules', array() );
 		if ( in_array( 'player_registration', $enabled_modules, true ) ) {
 			$this->load_functionality();
 		}
+		if ( in_array( 'prorated_late_registration', $enabled_modules, true ) ) {
+			$this->load_prorated_pricing();
+		}
+	}
+
+	private function load_prorated_pricing() {
+		if ( ! class_exists( 'WooCommerce' ) ) {
+			add_action( 'admin_notices', array( $this, 'woocommerce_missing_notice' ) );
+			return;
+		}
+		require_once SPPR_PLUGIN_PATH . 'includes/class-prorated-pricing.php';
+		$this->prorated_pricing = new SPPR_Prorated_Pricing();
 	}
 
 	private function load_functionality() {
