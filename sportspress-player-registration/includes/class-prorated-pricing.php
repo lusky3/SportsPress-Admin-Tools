@@ -188,6 +188,17 @@ class SPPR_Prorated_Pricing {
 	 * generation sets it directly (game date + time slot) rather than a
 	 * separate meta key.
 	 *
+	 * Queried post_status is ('publish', 'future'), not just 'publish':
+	 * WordPress silently downgrades a post inserted with post_status
+	 * 'publish' but a post_date in the future to 'future' instead (only
+	 * flipping it to 'publish' itself once that date arrives, via its own
+	 * publish cron) -- confirmed live on staging, where a schedule
+	 * generated ahead of time left most of the season's own events sitting
+	 * as 'future' for months. Excluding that status would make total_dates
+	 * collapse to only whatever has already been played, undercounting
+	 * both the total and (for a season still in progress) the remaining
+	 * count it most needs to be right for.
+	 *
 	 * @param int $term_id sp_season term id (the REGULAR season, not its
 	 *                      "... Playoffs" child).
 	 * @return string[] Sorted-by-nothing-in-particular list of 'Y-m-d' dates.
@@ -196,7 +207,7 @@ class SPPR_Prorated_Pricing {
 		$ids = get_posts(
 			array(
 				'post_type'              => 'sp_event',
-				'post_status'            => 'publish',
+				'post_status'            => array( 'publish', 'future' ),
 				'posts_per_page'         => -1,
 				'fields'                 => 'ids',
 				'no_found_rows'          => true,

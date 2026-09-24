@@ -78,8 +78,21 @@ if ( ! function_exists( 'get_term_by' ) ) {
 	}
 }
 
+$GLOBALS['pp_test_get_posts_calls'] = array();
+
 if ( ! function_exists( 'get_posts' ) ) {
+	// Models the ONE piece of real WordPress behaviour this class depends
+	// on getting right: a post inserted with post_date in the future is
+	// silently downgraded to post_status 'future' (confirmed live on
+	// staging), not 'publish', until its own date arrives. Each fixture
+	// date's status is derived the same way real WP would produce it, and
+	// only returned when the caller's post_status arg actually includes
+	// that status -- so a regression back to 'post_status' => 'publish'
+	// alone would silently drop every not-yet-elapsed date again, exactly
+	// as it did for real.
 	function get_posts( $args ) {
+		$GLOBALS['pp_test_get_posts_calls'][] = $args;
+
 		$term_id = null;
 		foreach ( (array) ( $args['tax_query'] ?? array() ) as $clause ) {
 			if ( ( $clause['taxonomy'] ?? '' ) === 'sp_season' ) {
@@ -89,9 +102,17 @@ if ( ! function_exists( 'get_posts' ) ) {
 		if ( null === $term_id || empty( $GLOBALS['pp_test_event_dates'][ $term_id ] ) ) {
 			return array();
 		}
-		// One fake post id per date is enough: the class only reads
-		// get_post_field('post_date', $id) back out, keyed 1:1 here.
-		return array_keys( $GLOBALS['pp_test_event_dates'][ $term_id ] );
+
+		$wanted_statuses = (array) ( $args['post_status'] ?? array( 'publish' ) );
+		$today           = $GLOBALS['pp_test_today'];
+		$ids             = array();
+		foreach ( $GLOBALS['pp_test_event_dates'][ $term_id ] as $id => $date ) {
+			$status = ( $date >= $today ) ? 'future' : 'publish';
+			if ( in_array( $status, $wanted_statuses, true ) ) {
+				$ids[] = $id;
+			}
+		}
+		return $ids;
 	}
 }
 
@@ -213,6 +234,31 @@ $GLOBALS['pp_test_product_tags'][506] = array( 'Waitlist' );
 $GLOBALS['pp_test_titles'][506]       = 'W2026-27 Player Registration';
 $waitlist = new PP_Fake_Product( 506, '180.00' );
 pp_assert( '180.00' === $pricing->filter_price( '180.00', $waitlist ), 'the Waitlist tag alone does not trigger prorated pricing' );
+
+echo "\n=== Regression guard: not-yet-elapsed games must not be silently dropped ===\n\n";
+// Confirmed live on staging: WordPress downgrades a future-dated post from
+// 'publish' to 'future' at insert time. A query for post_status 'publish'
+// only would find the 15 elapsed dates from the worked example above but
+// none of the 3 still ahead, undercounting both total and remaining and
+// making the discount far too aggressive. Assert the class actually asks
+// for both statuses, not just the one that happens to work once a season
+// is already fully in the past. A fresh, never-queried season/product pair,
+// so the per-day proration cache can't mask the get_posts() call.
+$GLOBALS['pp_test_product_tags'][507] = array( 'Late Registration' );
+$GLOBALS['pp_test_titles'][507]       = 'S2028 Player Registration - Late';
+pp_seed_season( 'S2028', 1004, array( '2026-11-01', '2026-11-22' ) ); // one elapsed, one remaining
+$fresh_product = new PP_Fake_Product( 507, '100.00' );
+
+$GLOBALS['pp_test_get_posts_calls'] = array();
+$pricing->filter_price( '100.00', $fresh_product );
+$call = end( $GLOBALS['pp_test_get_posts_calls'] );
+pp_assert( false !== $call, 'get_posts() was actually called for a never-before-seen season (not served from cache)' );
+$statuses = (array) ( $call['post_status'] ?? array() );
+sort( $statuses );
+pp_assert(
+	array( 'future', 'publish' ) === $statuses,
+	"queries for both 'publish' and 'future' post_status, not 'publish' alone (got " . implode( ',', $statuses ) . ')'
+);
 
 echo "\n=== Results ===\nPassed: $passed\nFailed: $failed\n";
 exit( $failed === 0 ? 0 : 1 );
