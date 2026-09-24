@@ -47,6 +47,7 @@ run_test "$SCRIPT_DIR/sportspress-etransfer-automation/tests/test-etransfer-auto
 run_test "$SCRIPT_DIR/sportspress-etransfer-automation/tests/test-webhook-routing.php"
 run_test "$SCRIPT_DIR/sportspress-player-registration/tests/test-registration-logic.php"
 run_test "$SCRIPT_DIR/sportspress-player-registration/tests/test-player-matching.php"
+run_test "$SCRIPT_DIR/sportspress-player-registration/tests/test-prorated-pricing.php"
 run_test "$SCRIPT_DIR/sportspress-player-tools/tests/test-batch-list-creator.php"
 run_test "$SCRIPT_DIR/sportspress-player-tools/tests/test-player-skill-level.php"
 run_test "$SCRIPT_DIR/sportspress-player-tools/tests/test-email-sync.php"
