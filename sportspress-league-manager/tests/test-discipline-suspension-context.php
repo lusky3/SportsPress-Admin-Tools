@@ -47,7 +47,17 @@ function get_term( $id ) {
 	return 5 === (int) $id ? (object) array( 'name' => 'Winter &amp; Spring' ) : null;
 }
 
+function get_post_type( $id ) {
+	return 32 === (int) $id ? 'page' : 'sp_event';
+}
+
 function get_post( $id ) {
+	if ( 32 === (int) $id ) {
+		return (object) array(
+			'post_title' => 'Not an event',
+			'post_date'  => '2026-10-04 10:00:00',
+		);
+	}
 	return 31 === (int) $id ? (object) array(
 		'post_title' => 'Red &amp; Blue vs Green',
 		'post_date'  => '2026-10-03 21:15:00',
@@ -192,6 +202,19 @@ check( 'extra prior_games', $extra['prior_games'], 2 );
 check( 'extra team_names', $extra['team_names'], array( 'Red & Blue' ) );
 check( 'extra remaining overrides', $extra['remaining'], 4 );
 check( 'extra keys last', array_slice( array_keys( $extra ), -2 ), array( 'prior_games', 'team_names' ) );
+
+// decode is public: callers decode team titles for team_names.
+check( 'decode public', SPLM_Discipline_Suspension_Context::decode( 'Red &amp; Blue' ), 'Red & Blue' );
+
+// An id that is not an sp_event yields no label.
+$page = SPLM_Discipline_Suspension_Context::for_row( make_row( array( 'incident_event_id' => 32 ) ) );
+check( 'non-event incident label empty', $page['incident_label'], '' );
+
+// incident_note / note passed via $extra never surface.
+$leak = SPLM_Discipline_Suspension_Context::for_row( make_row(), array( 'incident_note' => 'LEAK1', 'note' => 'LEAK2', 'remaining' => 2 ) );
+check( 'extra incident_note dropped', array_key_exists( 'incident_note', $leak ), false );
+check( 'extra note dropped', array_key_exists( 'note', $leak ), false );
+check( 'other extras kept', $leak['remaining'], 2 );
 
 echo "\n$total checks, $failures failures\n";
 exit( $failures ? 1 : 0 );

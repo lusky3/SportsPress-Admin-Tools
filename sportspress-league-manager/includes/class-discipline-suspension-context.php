@@ -142,6 +142,9 @@ class SPLM_Discipline_Suspension_Context {
 			'contact'          => self::contact(),
 		);
 
+		// The private note must never ride in through the caller's extras.
+		unset( $extra['incident_note'], $extra['note'] );
+
 		return array_merge( $ctx, $extra );
 	}
 
@@ -151,7 +154,7 @@ class SPLM_Discipline_Suspension_Context {
 	 * @param string $value Possibly entity-encoded string.
 	 * @return string
 	 */
-	private static function decode( string $value ): string {
+	public static function decode( string $value ): string {
 		return wp_specialchars_decode( $value, ENT_QUOTES );
 	}
 
@@ -178,7 +181,7 @@ class SPLM_Discipline_Suspension_Context {
 	 * @return string
 	 */
 	private static function incident_label( int $event_id ): string {
-		$event = $event_id > 0 ? get_post( $event_id ) : null;
+		$event = ( $event_id > 0 && 'sp_event' === get_post_type( $event_id ) ) ? get_post( $event_id ) : null;
 
 		if ( ! $event ) {
 			return '';
