@@ -89,7 +89,9 @@ class SPLM_Discipline_Suspension_Context {
 	 * @return string
 	 */
 	public static function rulebook_url(): string {
-		return (string) get_option( 'splm_discipline_rulebook_url', self::DEFAULT_RULEBOOK_URL );
+		$saved = (string) get_option( 'splm_discipline_rulebook_url', '' );
+
+		return '' === $saved ? self::DEFAULT_RULEBOOK_URL : $saved;
 	}
 
 	/**
@@ -98,7 +100,40 @@ class SPLM_Discipline_Suspension_Context {
 	 * @return string
 	 */
 	public static function rulebook_rev(): string {
-		return (string) get_option( 'splm_discipline_rulebook_rev', self::DEFAULT_RULEBOOK_REV );
+		$saved = (string) get_option( 'splm_discipline_rulebook_rev', '' );
+
+		return '' === $saved ? self::DEFAULT_RULEBOOK_REV : $saved;
+	}
+
+	/**
+	 * Sanitise the rulebook URL setting. Untyped: options.php hands a callback
+	 * null when the field is absent from the POST.
+	 *
+	 * @param mixed $raw Raw value.
+	 * @return string http(s) URL, or '' (meaning "use the default").
+	 */
+	public static function sanitize_rulebook_url( $raw ): string {
+		if ( ! is_scalar( $raw ) ) {
+			return '';
+		}
+
+		$url = trim( (string) $raw );
+
+		return preg_match( '#^https?://#i', $url ) ? esc_url_raw( $url, array( 'http', 'https' ) ) : '';
+	}
+
+	/**
+	 * Sanitise the rulebook revision label setting. Untyped, as above.
+	 *
+	 * @param mixed $raw Raw value.
+	 * @return string At most 40 characters, or '' (meaning "use the default").
+	 */
+	public static function sanitize_rulebook_rev( $raw ): string {
+		if ( ! is_scalar( $raw ) ) {
+			return '';
+		}
+
+		return substr( sanitize_text_field( (string) $raw ), 0, 40 );
 	}
 
 	/**

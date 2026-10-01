@@ -61,6 +61,13 @@ class SportsPress_League_Manager {
 	 */
 	private $infraction_rest;
 
+	/**
+	 * The Discipline Rules tab (admin only; constructor registers hooks).
+	 *
+	 * @var SPLM_Discipline_Infraction_Admin|null
+	 */
+	private $infraction_admin;
+
 	public function __construct() {
 		register_activation_hook( __FILE__, array( $this, 'check_activation_requirements' ) );
 		register_deactivation_hook( __FILE__, array( $this, 'deactivate' ) );
@@ -260,6 +267,7 @@ class SportsPress_League_Manager {
 		new SPLM_Discipline_Notice_Privacy();
 		if ( is_admin() ) {
 			new SPLM_Discipline_Notice_Admin();
+			$this->infraction_admin = new SPLM_Discipline_Infraction_Admin();
 		}
 
 		// The pass is scheduled whenever either mode is on, and cleared when

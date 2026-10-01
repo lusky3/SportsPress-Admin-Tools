@@ -246,6 +246,8 @@ class SPLM_Admin {
 			)
 		);
 		register_setting( 'splm_backend_settings', 'splm_discipline_notice_cc', array( 'sanitize_callback' => 'sanitize_text_field' ) );
+		register_setting( 'splm_backend_settings', 'splm_discipline_rulebook_url', array( 'sanitize_callback' => array( 'SPLM_Discipline_Suspension_Context', 'sanitize_rulebook_url' ) ) );
+		register_setting( 'splm_backend_settings', 'splm_discipline_rulebook_rev', array( 'sanitize_callback' => array( 'SPLM_Discipline_Suspension_Context', 'sanitize_rulebook_rev' ) ) );
 
 		$this->add_field( 'splm_default_season', __( 'Season Override', 'sportspress-league-manager' ), array( $this, 'render_default_season_field' ) );
 		$this->add_field( 'splm_fee_source', __( 'Fee Integration Source', 'sportspress-league-manager' ), array( $this, 'render_fee_source_field' ) );
@@ -257,7 +259,7 @@ class SPLM_Admin {
 		$this->add_field( 'splm_report_leader_count', __( 'Leaders Per Category', 'sportspress-league-manager' ), array( $this, 'render_report_leader_count_field' ) );
 		$this->add_field( 'splm_discipline_window_weeks', __( 'Penalty Window (weeks)', 'sportspress-league-manager' ), array( $this, 'render_discipline_window_field' ) );
 		$this->add_field( 'splm_discipline_tiers', __( 'Penalty Thresholds', 'sportspress-league-manager' ), array( $this, 'render_discipline_tiers_field' ) );
-		// These six must have fields: options.php writes null over every option
+		// Every option registered above must have a field: options.php writes null over every option
 		// registered in a submitted group that is absent from the POST, so a
 		// registered-but-unrendered option is wiped on every save of this tab.
 		$this->add_field( 'splm_discipline_digest_enabled', __( 'Penalty Digest Email', 'sportspress-league-manager' ), array( $this, 'render_discipline_digest_enabled_field' ) );
@@ -266,6 +268,8 @@ class SPLM_Admin {
 		$this->add_field( SPLM_Discipline_Notice::OPTION_MODE_WARNING, __( 'Warning Notices', 'sportspress-league-manager' ), array( $this, 'render_notice_mode_warning_field' ) );
 		$this->add_field( SPLM_Discipline_Notice::OPTION_MODE_SUSPENSION, __( 'Suspension Notices', 'sportspress-league-manager' ), array( $this, 'render_notice_mode_suspension_field' ) );
 		$this->add_field( 'splm_discipline_notice_cc', __( 'Notice Copies To', 'sportspress-league-manager' ), array( $this, 'render_notice_cc_field' ) );
+		$this->add_field( 'splm_discipline_rulebook_url', __( 'Rulebook Link', 'sportspress-league-manager' ), array( $this, 'render_rulebook_url_field' ) );
+		$this->add_field( 'splm_discipline_rulebook_rev', __( 'Rulebook Revision', 'sportspress-league-manager' ), array( $this, 'render_rulebook_rev_field' ) );
 
 		add_settings_section(
 			'splm_freescout_section',
@@ -626,6 +630,26 @@ class SPLM_Admin {
 	public function render_notice_cc_field() {
 		echo '<input type="text" class="regular-text" name="splm_discipline_notice_cc" value="' . esc_attr( get_option( 'splm_discipline_notice_cc', '' ) ) . '"/>';
 		echo '<p class="description">' . esc_html__( 'Comma-separated. Copied by Bcc on every notice, in addition to the digest recipients and the player’s captain. Leave blank to copy nobody extra.', 'sportspress-league-manager' ) . '</p>';
+	}
+
+	/**
+	 * Rulebook link cited in suspension emails.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	public function render_rulebook_url_field() {
+		echo '<input type="url" class="large-text" name="splm_discipline_rulebook_url" value="' . esc_attr( get_option( 'splm_discipline_rulebook_url', '' ) ) . '" placeholder="' . esc_attr( SPLM_Discipline_Suspension_Context::DEFAULT_RULEBOOK_URL ) . '"/>';
+		echo '<p class="description">' . esc_html__( 'Cited in every suspension email. Leave blank to use the built-in default.', 'sportspress-league-manager' ) . '</p>';
+	}
+
+	/**
+	 * Rulebook revision label cited in suspension emails.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	public function render_rulebook_rev_field() {
+		echo '<input type="text" class="regular-text" maxlength="40" name="splm_discipline_rulebook_rev" value="' . esc_attr( get_option( 'splm_discipline_rulebook_rev', '' ) ) . '" placeholder="' . esc_attr( SPLM_Discipline_Suspension_Context::DEFAULT_RULEBOOK_REV ) . '"/>';
+		echo '<p class="description">' . esc_html__( 'Cited in every suspension email. Leave blank to use the built-in default.', 'sportspress-league-manager' ) . '</p>';
 	}
 
 	/**
