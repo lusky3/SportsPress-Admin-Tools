@@ -1372,3 +1372,114 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: var(--splm-text); }
 	gap: 1rem;
 	align-items: flex-end;
 }
+
+/* ==========================================================================
+   Discipline (manual suspensions): player picker, issue modal, status badges.
+   Everything resolves through the --splm-* tokens above, so dark mode is
+   inherited; status is always conveyed by badge TEXT, never colour alone.
+   ========================================================================== */
+
+/* Player picker */
+.splm-player-picker label { display: block; margin: 0.75rem 0 0.25rem; font-size: 0.85rem; font-weight: 500; }
+.splm-player-picker__input {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 0.5rem;
+	border: 1px solid var(--splm-border-strong);
+	border-radius: 6px;
+	background: var(--splm-surface);
+	color: var(--splm-text);
+	font-family: inherit;
+	font-size: 0.85rem;
+}
+.splm-player-picker__status { margin: 0.25rem 0; font-size: 0.8rem; color: var(--splm-muted); }
+.splm-player-picker__results {
+	list-style: none;
+	margin: 0.25rem 0 0;
+	padding: 0;
+	max-height: 240px;
+	overflow-y: auto;
+	border: 1px solid var(--splm-border);
+	border-radius: 6px;
+	background: var(--splm-surface);
+}
+.splm-player-picker__results button {
+	display: block;
+	width: 100%;
+	padding: 0.5rem 0.75rem;
+	border: none;
+	background: none;
+	color: var(--splm-text);
+	text-align: left;
+	cursor: pointer;
+	font-size: 0.85rem;
+}
+.splm-player-picker__results button:hover { background: var(--splm-surface-muted); }
+
+/* Issue modal */
+.splm-modal--wide { max-width: 640px; }
+.splm-discipline-form .splm-select,
+.splm-discipline-form .splm-textarea { margin-bottom: 0.25rem; }
+.splm-discipline-form input[type="number"] { max-width: 8rem; }
+.splm-discipline-form__hint { margin: 0.25rem 0; font-size: 0.8rem; color: var(--splm-text-secondary); }
+.splm-discipline-muted { color: var(--splm-muted); font-size: 0.85rem; }
+
+.splm-discipline-preview {
+	margin-top: 1rem;
+	padding: 0.75rem 1rem;
+	border: 1px solid var(--splm-border);
+	border-radius: 6px;
+	background: var(--splm-surface-alt);
+}
+.splm-discipline-preview h4 { margin: 0 0 0.5rem; font-size: 0.9rem; color: var(--splm-text); }
+.splm-discipline-preview__result { font-weight: 600; }
+.splm-discipline-preview__error { color: var(--splm-danger-text-strong); font-size: 0.85rem; }
+
+.splm-discipline-warnings { list-style: none; margin: 0.5rem 0; padding: 0; }
+.splm-discipline-warning {
+	margin: 0.35rem 0;
+	padding: 0.5rem 0.75rem;
+	border-radius: 6px;
+	font-size: 0.85rem;
+	background: var(--splm-warning-bg);
+	border: 1px solid var(--splm-warning-border);
+	color: var(--splm-warning-text);
+}
+.splm-discipline-warning--blocking {
+	background: var(--splm-danger-tint);
+	border-color: var(--splm-danger);
+	color: var(--splm-danger-text-strong);
+}
+.splm-discipline-warning--info {
+	background: var(--splm-primary-tint);
+	border-color: var(--splm-primary-border);
+	color: var(--splm-text);
+}
+
+.splm-discipline-recipients { margin: 0.25rem 0 0.5rem; padding-left: 1.1rem; font-size: 0.85rem; color: var(--splm-text); }
+.splm-discipline-details { margin: 0.5rem 0; font-size: 0.85rem; }
+.splm-discipline-details summary { cursor: pointer; color: var(--splm-primary); }
+pre.splm-discipline-email {
+	margin: 0.5rem 0 0;
+	padding: 0.5rem 0.75rem;
+	max-height: 14rem;
+	overflow: auto;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	border: 1px solid var(--splm-border);
+	border-radius: 6px;
+	background: var(--splm-surface);
+	color: var(--splm-text);
+	font-family: inherit;
+	font-size: 0.8rem;
+}
+
+/* Notice status badges (extend .splm-badge). Pairs reuse existing tokens that
+   already have AA-checked dark values. */
+.splm-badge--pending { background: var(--splm-warning-bg); color: var(--splm-warning-text); }
+.splm-badge--sent { background: var(--splm-success-bg); color: var(--splm-success-text); }
+.splm-badge--failed { background: var(--splm-danger-bg); color: var(--splm-danger-text); }
+.splm-badge--served { background: var(--splm-primary-tint); color: var(--splm-primary); box-shadow: inset 0 0 0 1px var(--splm-primary-border); }
+.splm-badge--discarded { background: var(--splm-surface-muted); color: var(--splm-text-secondary); }
+.splm-badge--revoked { background: var(--splm-danger-tint); color: var(--splm-danger-text); box-shadow: inset 0 0 0 1px var(--splm-danger-border); }
+.splm-badge--baseline { background: transparent; color: var(--splm-text-secondary); box-shadow: inset 0 0 0 1px var(--splm-border); }
