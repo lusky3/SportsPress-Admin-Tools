@@ -28,9 +28,12 @@ if ( ! defined( 'ABSPATH' ) ) {
  * the small helpers that keep each method inside the complexity limit.
  * ExcessiveClassComplexity: the sum of many small, individually simple
  * methods; no single method is complex.
+ * CouplingBetweenObjects: REST glue coordinating the gate, data, eligibility,
+ * mail and context classes.
  *
  * @SuppressWarnings(PHPMD.TooManyMethods)
  * @SuppressWarnings(PHPMD.ExcessiveClassComplexity)
+ * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
  */
 class SPLM_Discipline_Suspension_REST {
 
@@ -418,6 +421,8 @@ class SPLM_Discipline_Suspension_REST {
 	 * @param int      $season_id Season.
 	 * @param object[] $existing  Existing rows.
 	 * @return bool
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private static function has_prior_suspension( int $season_id, array $existing ): bool {
 		foreach ( SPLM_Discipline_Suspension::in_force_rows( $existing ) as $row ) {

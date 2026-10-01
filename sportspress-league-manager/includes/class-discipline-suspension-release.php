@@ -12,6 +12,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * TooManyMethods: small pure helpers, one concern each; splitting would
+ * scatter one rule.
+ *
+ * @SuppressWarnings(PHPMD.TooManyMethods)
+ */
 class SPLM_Discipline_Suspension_Release {
 
 	/**

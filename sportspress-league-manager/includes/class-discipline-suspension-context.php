@@ -14,6 +14,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * TooManyMethods: small pure helpers, one concern each; splitting would
+ * scatter one rule.
+ *
+ * @SuppressWarnings(PHPMD.TooManyMethods)
+ */
 class SPLM_Discipline_Suspension_Context {
 
 	const DEFAULT_RULEBOOK_URL = 'https://www.rookiehockey.ca/wp-content/uploads/2024/10/RuleBook-Rev20241009.pdf';

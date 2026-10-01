@@ -12,6 +12,10 @@ define( 'ABSPATH', __DIR__ );
 /**
  * Mutable harness state (a class rather than $GLOBALS; see
  * test-discipline-notice-recipients.php).
+ *
+ * TooManyFields: test fixture state holder.
+ *
+ * @SuppressWarnings(PHPMD.TooManyFields)
  */
 class SPLM_Susp_Rest_Test_State {
 	public $options    = array();
@@ -212,8 +216,9 @@ class SPLM_Discipline_Notice_Database {
 	public static function now() {
 		return '2026-10-01 12:00:00';
 	}
-	public static function for_player( $player_id, $include_baseline = false ) {
+	public static function for_player() {
 		splm_susp_state()->calls[] = 'for_player';
+		$include_baseline = isset( func_get_args()[1] ) && func_get_args()[1];
 		return $include_baseline ? array_merge( splm_susp_state()->history, array( (object) array( 'id' => 99, 'status' => 'baseline', 'consequence' => 'none', 'season_id' => 5 ) ) ) : splm_susp_state()->history;
 	}
 	public static function find( $id ) {
