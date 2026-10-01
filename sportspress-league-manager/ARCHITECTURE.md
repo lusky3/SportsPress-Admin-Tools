@@ -307,6 +307,22 @@ Each feature is a separate module ID registered with `SPAT_Plugin_Manager`. The 
 
 Admins toggle these in **Settings → SportsPress Admin Tools → Modules**. The plugin's `load_enabled_modules()` only instantiates classes for enabled modules — matching the pattern in `sportspress-player-tools.php`.
 
+### 7.1 Manual suspensions (`league_discipline`)
+
+Conveners issue suspensions by hand; they share the `splm_discipline_notice` history with the automatic penalty notices (`source` = `auto` | `manual`).
+
+| Piece | Where |
+|-------|-------|
+| Infraction catalogue (seeded from the rulebook §5.10 chart, soft-retired via `active`) | `splm_discipline_infraction` table, `SPLM_Discipline_Infraction`, REST `splm/v1/discipline/infractions`, admin tab `SPLM_Discipline_Infraction_Admin` |
+| Rulebook link and revision cited in emails | options `splm_discipline_rulebook_url` / `_rev` (`SPLM_Discipline_Suspension_Context`) |
+| Issue / preview / release / decide / amend / revoke / recalculate / history | `SPLM_Discipline_Suspension_REST` and `_Actions`, gated by `manage_sportspress` |
+| Next eligible game (the (N+1)th upcoming game across all the player's season teams) | `SPLM_Discipline_Eligibility` |
+| Emails (player, captain with forfeit line, correction) | `SPLM_Discipline_Suspension_Body`; the incident note is never in the allow-listed context |
+| Read-only record on the player screen | `SPLM_Discipline_Player_Metabox` |
+| Weekly reminders (overdue eligible date not yet served; indefinite awaiting a decision) | `SPLM_Discipline_Digest_Reminders`, called from `SPLM_Discipline_Digest::run()` |
+
+Rules worth keeping: manual notices are append-only (decide/amend/revoke insert a child row via `parent_id`; superseded rows are "replaced" and can no longer be acted on); follow-ups run under `SPAT_Lock`; teams come from the season roster (`sp_leagues`), never `sp_current_team`; REST sanitize/validate callbacks receive three arguments, so use userland functions, not PHP internals such as `intval`.
+
 ---
 
 ## 8. Data Access Layer
