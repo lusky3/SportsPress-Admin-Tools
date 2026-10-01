@@ -66,6 +66,7 @@ class SPLM_Discipline_Suspension_REST {
 				'methods'             => 'GET',
 				'callback'            => array( $this, 'get_infractions' ),
 				'permission_callback' => $gate,
+				'args'                => self::infractions_args(),
 			)
 		);
 
@@ -151,6 +152,23 @@ class SPLM_Discipline_Suspension_REST {
 				)
 			);
 		}
+	}
+
+	/**
+	 * Args for the infractions list: retired rows are opt-in.
+	 *
+	 * @return array
+	 */
+	private static function infractions_args(): array {
+		return array(
+			'include_inactive' => array(
+				'required'          => false,
+				'type'              => 'boolean',
+				'default'           => false,
+				'validate_callback' => 'rest_validate_request_arg',
+				'sanitize_callback' => 'rest_sanitize_boolean',
+			),
+		);
 	}
 
 	/**
@@ -275,22 +293,17 @@ class SPLM_Discipline_Suspension_REST {
 	/**
 	 * GET /discipline/infractions
 	 *
+	 * Active rows only, unless include_inactive is set (the admin editor).
+	 *
+	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
-	public function get_infractions() {
+	public function get_infractions( $request ) {
 		$items = array();
-		foreach ( SPLM_Discipline_Infraction::all() as $row ) {
-			$items[] = array(
-				'id'            => (int) $row->id,
-				'rule_ref'      => (string) $row->rule_ref,
-				'title'         => (string) $row->title,
-				'rule_text'     => (string) $row->rule_text,
-				'outcome'       => (string) $row->outcome,
-				'default_games' => (int) $row->default_games,
-				'needs_review'  => (int) $row->needs_review,
-			);
+		foreach ( SPLM_Discipline_Infraction::all( ! $request->get_param( 'include_inactive' ) ) as $row ) {
+			$items[] = SPLM_Discipline_Infraction_REST::to_response( $row );
 		}
 
 		return new WP_REST_Response( splm_rest_list_response( $items ), 200 );

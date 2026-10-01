@@ -89,8 +89,8 @@ class SPLM_Discipline_Infraction {
 		$games   = min( self::MAX_GAMES, absint( $raw['default_games'] ?? 0 ) );
 
 		return array(
-			'rule_ref'      => substr( sanitize_text_field( (string) ( $raw['rule_ref'] ?? '' ) ), 0, 20 ),
-			'title'         => substr( sanitize_text_field( (string) ( $raw['title'] ?? '' ) ), 0, 120 ),
+			'rule_ref'      => mb_substr( sanitize_text_field( (string) ( $raw['rule_ref'] ?? '' ) ), 0, 20 ),
+			'title'         => mb_substr( sanitize_text_field( (string) ( $raw['title'] ?? '' ) ), 0, 120 ),
 			'rule_text'     => sanitize_textarea_field( (string) ( $raw['rule_text'] ?? '' ) ),
 			'outcome'       => $outcome,
 			'default_games' => self::OUTCOME_INDEFINITE === $outcome ? 0 : $games,
@@ -285,5 +285,66 @@ class SPLM_Discipline_Infraction {
 		global $wpdb;
 		$table = self::table_name();
 		return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $id ) ); // phpcs:ignore WordPress.DB
+	}
+
+	/**
+	 * Column formats for insert()/update(), in editable-column order.
+	 *
+	 * @return string[]
+	 */
+	private static function column_formats(): array {
+		return array( '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d' );
+	}
+
+	/**
+	 * Insert a new infraction. A blank sort_order goes to the end of the list.
+	 * Notices are never touched: they carry their own snapshot.
+	 *
+	 * @param array $raw Raw row (see sanitize_row()).
+	 * @return int New id, or 0 when the title is empty or the insert failed.
+	 */
+	public static function insert_row( array $raw ): int {
+		global $wpdb;
+
+		$row = self::sanitize_row( $raw );
+		if ( '' === $row['title'] ) {
+			return 0;
+		}
+
+		$table = self::table_name();
+		if ( 0 === $row['sort_order'] ) {
+			// sort_order is a smallint: stay inside it however long the list grows.
+			$row['sort_order'] = min( 32767, (int) $wpdb->get_var( "SELECT COALESCE( MAX( sort_order ), 0 ) FROM {$table}" ) + 10 ); // phpcs:ignore WordPress.DB
+		}
+
+		$ok = $wpdb->insert( $table, $row, self::column_formats() ); // phpcs:ignore WordPress.DB
+
+		return $ok ? (int) $wpdb->insert_id : 0;
+	}
+
+	/**
+	 * Update an infraction. Incoming keys are merged over the stored row first,
+	 * so a partial update (just `active`, say) does not reset other columns.
+	 *
+	 * @param int   $id  Row id.
+	 * @param array $raw Raw (possibly partial) row.
+	 * @return bool False when the row is missing, the title would be empty, or the write failed.
+	 */
+	public static function update_row( int $id, array $raw ): bool {
+		global $wpdb;
+
+		$existing = $id > 0 ? self::find( $id ) : null;
+		if ( ! $existing ) {
+			return false;
+		}
+
+		$row = self::sanitize_row( array_merge( (array) $existing, $raw ) );
+		if ( '' === $row['title'] ) {
+			return false;
+		}
+
+		$result = $wpdb->update( self::table_name(), $row, array( 'id' => $id ), self::column_formats(), array( '%d' ) ); // phpcs:ignore WordPress.DB
+
+		return false !== $result;
 	}
 }

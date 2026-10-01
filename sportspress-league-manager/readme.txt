@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.5.0
+Stable tag: 1.6.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,6 +48,12 @@ WooCommerce is optional. Without it, fee tracking can be configured for manual e
 CSV files with `Team` and `Name` columns (both required). Each row maps a player Name to a Team; rows missing either value are skipped.
 
 == Changelog ==
+
+= 1.6.0 =
+* New: settings for the rulebook link and revision cited in suspension emails.
+* New: an editable Discipline Rules tab for the infraction list -- add, edit and retire. Edits never rewrite notices already sent.
+* New: a read-only discipline record box on the player edit screen for conveners.
+* New: infraction create and update REST routes.
 
 = 1.5.0 =
 * New: issue-suspension modal with a live preview of the player and captain emails.

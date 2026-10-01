@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SportsPress League Manager (Child Plugin)
  * Description: Child plugin for SportsPress Admin Tools - League Manager modules
- * Version: 1.5.0
+ * Version: 1.6.0
  * Author: Cody (lusky3)
  * Text Domain: sportspress-league-manager
  * License: GPL v2 or later
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'SPLM_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPLM_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPLM_VERSION', '1.5.0' );
+define( 'SPLM_VERSION', '1.6.0' );
 
 // Native WordPress updates, served from this repository's releases.
 //
@@ -53,6 +53,27 @@ class SportsPress_League_Manager {
 	 * @var SPLM_Discipline_Suspension_REST|null
 	 */
 	private $suspension_rest;
+
+	/**
+	 * The infraction create/update REST handler (constructor registers hooks).
+	 *
+	 * @var SPLM_Discipline_Infraction_REST|null
+	 */
+	private $infraction_rest;
+
+	/**
+	 * The Discipline Rules tab (admin only; constructor registers hooks).
+	 *
+	 * @var SPLM_Discipline_Infraction_Admin|null
+	 */
+	private $infraction_admin;
+
+	/**
+	 * The read-only discipline record box on the player screen (admin only).
+	 *
+	 * @var SPLM_Discipline_Player_Metabox|null
+	 */
+	private $player_metabox;
 
 	public function __construct() {
 		register_activation_hook( __FILE__, array( $this, 'check_activation_requirements' ) );
@@ -249,9 +270,12 @@ class SportsPress_League_Manager {
 		new SPLM_Discipline_Notice_Pass();
 		new SPLM_Discipline_Notice_REST();
 		$this->suspension_rest = new SPLM_Discipline_Suspension_REST();
+		$this->infraction_rest = new SPLM_Discipline_Infraction_REST();
 		new SPLM_Discipline_Notice_Privacy();
 		if ( is_admin() ) {
 			new SPLM_Discipline_Notice_Admin();
+			$this->infraction_admin = new SPLM_Discipline_Infraction_Admin();
+			$this->player_metabox   = new SPLM_Discipline_Player_Metabox();
 		}
 
 		// The pass is scheduled whenever either mode is on, and cleared when
