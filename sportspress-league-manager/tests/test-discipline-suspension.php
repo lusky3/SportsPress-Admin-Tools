@@ -11,6 +11,8 @@ function _n( $s, $p, $n ) { return 1 === (int) $n ? $s : $p; } // phpcs:ignore
 function absint( $v ) { return abs( (int) $v ); }
 
 require_once __DIR__ . '/../includes/class-discipline-notice-database.php';
+require_once __DIR__ . '/../includes/class-discipline-infraction.php';
+require_once __DIR__ . '/../includes/class-discipline-infraction.php';
 require_once __DIR__ . '/../includes/class-discipline-suspension.php';
 
 $passed = 0;
@@ -135,6 +137,32 @@ $plan = $s::plan_captain_mail(
 	array()
 );
 assert_test( 2 === count( $plan ) && 'a@example.com' === $plan[0]['email'] && 'b@example.com' === $plan[1]['email'], 'two different captains give two entries' );
+
+echo "\n=== deliver() guards ===\n\n";
+foreach ( array( 'pending' => true, 'failed' => true, 'sent' => false, 'revoked' => false, 'discarded' => false, 'baseline' => false, '' => false ) as $st => $want ) {
+	assert_test( $want === $s::can_deliver( $st ), "can_deliver('{$st}') is " . ( $want ? 'true' : 'false' ) );
+}
+assert_test( array( 'b@x.test' ) === $s::bcc_without( array( 'A@X.test', 'b@x.test' ), 'a@x.TEST' ), 'bcc_without removes the player case-insensitively' );
+assert_test( array( 'a@x.test', 'b@x.test' ) === $s::bcc_without( array( 'a@x.test', 'b@x.test' ), 'c@x.test' ), 'bcc_without keeps others, reindexed' );
+assert_test( array() === $s::bcc_without( array(), 'a@x.test' ), 'bcc_without on empty list' );
+
+$row = $s::build_row( array( 'player_id' => 9, 'season_id' => 4, 'games' => 500 ), $inf, $elig );
+assert_test( SPLM_Discipline_Infraction::MAX_GAMES === $row['games'], 'convener games override clamped to MAX_GAMES' );
+$row = $s::build_row( array( 'player_id' => 9, 'season_id' => 4, 'games' => 20 ), $inf, $elig );
+assert_test( 20 === $row['games'], 'games at the cap is unchanged' );
+
+echo "\n=== deliver() guards ===\n\n";
+foreach ( array( 'pending' => true, 'failed' => true, 'sent' => false, 'revoked' => false, 'discarded' => false, 'baseline' => false, '' => false ) as $st => $want ) {
+	assert_test( $want === $s::can_deliver( $st ), "can_deliver('{$st}') is " . ( $want ? 'true' : 'false' ) );
+}
+assert_test( array( 'b@x.test' ) === $s::bcc_without( array( 'A@X.test', 'b@x.test' ), 'a@x.TEST' ), 'bcc_without removes the player case-insensitively' );
+assert_test( array( 'a@x.test', 'b@x.test' ) === $s::bcc_without( array( 'a@x.test', 'b@x.test' ), 'c@x.test' ), 'bcc_without keeps others, reindexed' );
+assert_test( array() === $s::bcc_without( array(), 'a@x.test' ), 'bcc_without on empty list' );
+
+$row = $s::build_row( array( 'player_id' => 9, 'season_id' => 4, 'games' => 500 ), $inf, $elig );
+assert_test( SPLM_Discipline_Infraction::MAX_GAMES === $row['games'], 'convener games override clamped to MAX_GAMES' );
+$row = $s::build_row( array( 'player_id' => 9, 'season_id' => 4, 'games' => 20 ), $inf, $elig );
+assert_test( 20 === $row['games'], 'games at the cap is unchanged' );
 
 echo "\nPassed: {$passed}  Failed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );
