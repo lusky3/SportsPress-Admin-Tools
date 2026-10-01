@@ -1,23 +1,7 @@
 import { useCallback, useEffect, useState } from '@wordpress/element';
 import { fetchNotices, releaseNotice, discardNotice, serveNotice } from '../lib/api';
 import HelpLink from '../components/HelpLink';
-
-// Timestamps arrive as UTC 'Y-m-d H:i:s'. Date can't parse that shape reliably
-// across browsers, so normalise it to ISO with an explicit Z before parsing —
-// without the Z it would be read as local time, which is the same four-to-five
-// hour error the server side guards against.
-function parseUtc( value ) {
-	if ( ! value ) {
-		return null;
-	}
-	const parsed = new Date( value.replace( ' ', 'T' ) + 'Z' );
-	return Number.isNaN( parsed.getTime() ) ? null : parsed;
-}
-
-function formatLocal( value ) {
-	const date = parseUtc( value );
-	return date ? date.toLocaleString() : '—';
-}
+import { formatLocal } from '../lib/time';
 
 // Conveners get plain language, never the stored vocabulary. 'baseline' in
 // particular means "recorded so we don't mail them retroactively", which is
