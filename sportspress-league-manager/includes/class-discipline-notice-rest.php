@@ -67,6 +67,19 @@ class SPLM_Discipline_Notice_REST {
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function can_manage() {
+		return self::gate();
+	}
+
+	/**
+	 * The gate itself, static so other discipline REST classes can use it as a
+	 * permission_callback without constructing this class (its constructor
+	 * registers hooks).
+	 *
+	 * @return true|WP_Error
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	public static function gate() {
 		if ( ! SPLM_REST_API::module_enabled( 'league_discipline' ) ) {
 			return new WP_Error( 'module_disabled', __( 'Penalty discipline is not enabled.', 'sportspress-league-manager' ), array( 'status' => 503 ) );
 		}

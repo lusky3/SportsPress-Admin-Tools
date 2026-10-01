@@ -240,6 +240,7 @@ class SportsPress_League_Manager {
 		// absent: they hook nothing.
 		new SPLM_Discipline_Notice_Pass();
 		new SPLM_Discipline_Notice_REST();
+		new SPLM_Discipline_Suspension_REST();
 		new SPLM_Discipline_Notice_Privacy();
 		if ( is_admin() ) {
 			new SPLM_Discipline_Notice_Admin();
