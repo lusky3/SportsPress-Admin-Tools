@@ -31,6 +31,8 @@ class SPLM_Susp_Rest_Test_State {
 	public $mails      = array();
 	public $mail_ok    = true;
 	public $season     = 5;
+	public $calls      = array();
+	public $busy_prefix = '';
 	public $failures   = 0;
 	public $total      = 0;
 }
@@ -68,6 +70,7 @@ function sanitize_textarea_field( $v ) {
 	return trim( (string) $v );
 }
 function wp_mail( $to, $subject, $body ) {
+	splm_susp_state()->calls[] = 'mail:' . $to;
 	splm_susp_state()->mails[] = array(
 		'to'      => $to,
 		'subject' => $subject,
@@ -111,6 +114,7 @@ function get_the_title( $id ) {
 		11 => 'Jane Doe',
 		21 => 'Red &amp; Blue',
 		22 => 'Green',
+		23 => str_repeat( 'x', 300 ),
 	);
 	return $titles[ (int) $id ] ?? '';
 }
@@ -200,6 +204,7 @@ class SPLM_Discipline_Notice_Database {
 		return '2026-10-01 12:00:00';
 	}
 	public static function for_player( $player_id, $include_baseline = false ) {
+		splm_susp_state()->calls[] = 'for_player';
 		return $include_baseline ? array_merge( splm_susp_state()->history, array( (object) array( 'id' => 99, 'status' => 'baseline', 'consequence' => 'none', 'season_id' => 5 ) ) ) : splm_susp_state()->history;
 	}
 	public static function find( $id ) {
@@ -210,6 +215,7 @@ class SPLM_Discipline_Notice_Database {
 		if ( ! $state->writable ) {
 			throw new RuntimeException( 'preview must not insert' );
 		}
+		$state->calls[]    = 'insert';
 		$state->inserted[] = $row;
 		if ( ! $state->next_id ) {
 			return 0;
@@ -233,7 +239,9 @@ class SPAT_Lock {
 	public static function with( $key, $ttl, $fn ) {
 		$state          = splm_susp_state();
 		$state->locks[] = array( $key, $ttl );
-		return $state->lock_busy ? false : $fn();
+		$state->calls[] = 'lock:' . $key;
+		$busy           = $state->lock_busy || ( '' !== $state->busy_prefix && 0 === strpos( $key, $state->busy_prefix ) );
+		return $busy ? false : $fn();
 	}
 }
 class SPLM_Discipline_Infraction {
@@ -588,6 +596,8 @@ function reset_create() {
 	$state->lock_busy  = false;
 	$state->mails      = array();
 	$state->mail_ok    = true;
+	$state->calls      = array();
+	$state->busy_prefix = '';
 	$state->season     = 5;
 	$state->history    = array();
 	$state->player_ok  = true;
@@ -696,6 +706,60 @@ splm_susp_state()->mail_ok = false;
 splm_susp_state()->rows[2] = build_manual_row( 'manual', 2 );
 $err = $rest::release_row( splm_susp_state()->rows[2] );
 check( 'release_row failure carries last_error', array( $err->code, $err->data['status'], $err->message ), array( 'splm_notice_send_failed', 500, 'wp_mail() rejected the message.' ) );
+
+// Retired infractions are treated as unknown.
+splm_susp_state()->infraction[4] = inf( array( 'id' => 4, 'active' => '0' ) );
+splm_susp_state()->infraction[5] = inf( array( 'id' => 5, 'active' => '1' ) );
+$bad = $instance->preview( preview_request( array( 'infraction' => 4 ) ) );
+check( 'preview rejects a retired infraction', array( $bad instanceof WP_Error, $bad->code ), array( true, 'invalid_infraction' ) );
+check( 'preview accepts an active infraction', $instance->preview( preview_request( array( 'infraction' => 5 ) ) )->status, 200 );
+$bad = $instance->create( create_request( array( 'infraction' => 4 ) ) );
+check( 'create rejects a retired infraction', array( $bad->code, $bad->data['status'] ), array( 'invalid_infraction', 400 ) );
+
+// Pure release helpers.
+check( 'prior_games from the parent of an amended row', $rest::prior_games_extra( 'manual-amended', (object) array( 'games' => 4 ) ), array( 'prior_games' => 4 ) );
+check( 'no prior_games for other scopes', array( $rest::prior_games_extra( 'manual', (object) array( 'games' => 4 ) ), $rest::prior_games_extra( 'manual-decided', (object) array( 'games' => 4 ) ) ), array( array(), array() ) );
+check( 'no prior_games without a parent', $rest::prior_games_extra( 'manual-amended', null ), array() );
+check( 'decided counts from today', $rest::release_after_date( 'manual-decided', '2026-09-01', '2026-10-01' ), '2026-10-01' );
+check( 'amended counts from the incident date', $rest::release_after_date( 'manual-amended', '2026-09-01', '2026-10-01' ), '2026-09-01' );
+check( 'issued counts from the incident date', $rest::release_after_date( 'manual', '2026-09-01', '2026-10-01' ), '2026-09-01' );
+
+// Create ordering: exact call sequence.
+reset_create();
+$instance->create( create_request() );
+check(
+	'send order: player lock, re-read, insert, notice lock, mails',
+	splm_susp_state()->calls,
+	array( 'lock:splm_discipline_suspension_11', 'for_player', 'insert', 'lock:splm_discipline_notice_100', 'mail:jane@example.com', 'mail:cap@example.com' )
+);
+reset_create();
+$instance->create( create_request( array( 'mode' => 'draft' ) ) );
+check( 'draft order: no notice lock, no mail', splm_susp_state()->calls, array( 'lock:splm_discipline_suspension_11', 'for_player', 'insert' ) );
+reset_create();
+splm_susp_state()->busy_prefix = 'splm_discipline_notice_';
+$busy = $instance->create( create_request() );
+check( 'busy notice lock is a 409 and nothing is mailed', array( $busy->code, $busy->data['status'], splm_susp_state()->mails ), array( 'splm_notice_busy', 409, array() ) );
+
+// Length limits.
+check( 'incident_note arg maxLength 2000', $create_args['incident_note']['maxLength'], 2000 );
+reset_create();
+$instance->create( create_request( array( 'mode' => 'draft', 'incident_note' => str_repeat( 'é', 2500 ) ) ) );
+check( 'stored note truncated to 2000 characters', mb_strlen( splm_susp_state()->inserted[0]['incident_note'] ), 2000 );
+reset_create();
+splm_susp_state()->teams = array( 23 );
+$instance->create( create_request( array( 'mode' => 'draft' ) ) );
+check( 'team snapshot truncated to 200', strlen( splm_susp_state()->inserted[0]['team'] ), 200 );
+
+// A retried amendment still knows the length it replaced.
+reset_create();
+splm_susp_state()->rows[8]        = build_manual_row( 'manual', 8 );
+splm_susp_state()->rows[8]->games = 4;
+splm_susp_state()->rows[9]        = build_manual_row( 'manual-amended', 9 );
+splm_susp_state()->rows[9]->games = 2;
+splm_susp_state()->rows[9]->parent_id = 8;
+$rest::release_row( splm_susp_state()->rows[9] );
+check( 'retried amend body says changed from 4 to 2', 1 === preg_match( '/from 4 to 2|4.{0,40}2/s', splm_susp_state()->mails[0]['body'] ), true );
+check( 'retried amend body is not the plain length line', false === strpos( splm_susp_state()->mails[0]['body'], 'Length: 2 games.' ), true );
 
 // Structural: the preview path never writes or locks.
 $source = file_get_contents( dirname( __DIR__ ) . '/includes/class-discipline-suspension-rest.php' );

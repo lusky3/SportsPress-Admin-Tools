@@ -25,6 +25,10 @@ class SPLM_Discipline_Suspension_REST {
 
 	const REST_NAMESPACE = 'splm/v1';
 
+	// Private note limit, and the team snapshot column's width (varchar(200)).
+	const NOTE_MAX = 2000;
+	const TEAM_MAX = 200;
+
 	public function __construct() {
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 	}
@@ -132,6 +136,7 @@ class SPLM_Discipline_Suspension_REST {
 				'incident_note' => array(
 					'required'          => false,
 					'type'              => 'string',
+					'maxLength'         => self::NOTE_MAX,
 					'validate_callback' => 'rest_validate_request_arg',
 					'sanitize_callback' => 'sanitize_textarea_field',
 				),
@@ -388,7 +393,7 @@ class SPLM_Discipline_Suspension_REST {
 	 */
 	public function preview( $request ) {
 		$input      = self::preview_input( $request );
-		$infraction = SPLM_Discipline_Infraction::find( $input['infraction_id'] );
+		$infraction = self::active_infraction( $input['infraction_id'] );
 
 		if ( 'sp_player' !== get_post_type( $input['player_id'] ) ) {
 			return new WP_Error( 'invalid_player', __( 'That player does not exist.', 'sportspress-league-manager' ), array( 'status' => 400 ) );
@@ -567,6 +572,21 @@ class SPLM_Discipline_Suspension_REST {
 	}
 
 	/**
+	 * An infraction a convener may issue: one that exists and is active. A
+	 * retired infraction stays readable elsewhere but is never issuable.
+	 *
+	 * @param int $id Infraction id.
+	 * @return object|null
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function active_infraction( int $id ): ?object {
+		$infraction = SPLM_Discipline_Infraction::find( $id );
+
+		return ( $infraction && 0 !== (int) ( $infraction->active ?? 1 ) ) ? $infraction : null;
+	}
+
+	/**
 	 * First reason a create request cannot proceed, or ''. Pure; the order is
 	 * the contract (cheapest and most specific check first).
 	 *
@@ -620,7 +640,7 @@ class SPLM_Discipline_Suspension_REST {
 	 */
 	public function create( $request ) {
 		$input      = self::create_input( $request );
-		$infraction = SPLM_Discipline_Infraction::find( $input['infraction_id'] );
+		$infraction = self::active_infraction( $input['infraction_id'] );
 		$event_ok   = 0 === $input['incident_event_id'] || 'sp_event' === get_post_type( $input['incident_event_id'] );
 		$error      = self::create_error( $event_ok, 'sp_player' === get_post_type( $input['player_id'] ), $infraction, $input['season_id'] );
 
@@ -658,7 +678,7 @@ class SPLM_Discipline_Suspension_REST {
 		return array_merge(
 			self::preview_input( $request ),
 			array(
-				'incident_note' => sanitize_textarea_field( (string) $request->get_param( 'incident_note' ) ),
+				'incident_note' => mb_substr( sanitize_textarea_field( (string) $request->get_param( 'incident_note' ) ), 0, self::NOTE_MAX ),
 				'mode'          => 'draft' === (string) $request->get_param( 'mode' ) ? 'draft' : 'send',
 			)
 		);
@@ -695,7 +715,7 @@ class SPLM_Discipline_Suspension_REST {
 				self::row_input( $input ),
 				array(
 					'incident_note' => $input['incident_note'],
-					'team'          => $names,
+					'team'          => mb_substr( $names, 0, self::TEAM_MAX ),
 					'division'      => '',
 				)
 			),
@@ -723,11 +743,11 @@ class SPLM_Discipline_Suspension_REST {
 	 * @param int    $remaining Games the schedule cannot cover.
 	 * @param string $names     Decoded, comma-joined team titles.
 	 * @param string $mode      send|draft.
-	 * @return WP_REST_Response
+	 * @return WP_REST_Response|WP_Error
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
-	private static function finish_create( int $id, array $row, int $remaining, string $names, string $mode ): WP_REST_Response {
+	private static function finish_create( int $id, array $row, int $remaining, string $names, string $mode ) {
 		$stored   = (object) array_merge( $row, array( 'id' => $id ) );
 		$delivery = array(
 			'sent'     => false,
@@ -735,14 +755,25 @@ class SPLM_Discipline_Suspension_REST {
 		);
 
 		if ( 'send' === $mode ) {
-			$ctx      = SPLM_Discipline_Suspension_Context::for_row(
+			$ctx = SPLM_Discipline_Suspension_Context::for_row(
 				$stored,
 				array(
 					'remaining'  => $remaining,
 					'team_names' => $names,
 				)
 			);
-			$delivery = SPLM_Discipline_Suspension::deliver( $id, $ctx, 'issued' );
+			// deliver() requires the per-notice lock (its documented contract), so
+			// a Release click in the queue cannot double-send the new pending row.
+			$delivery = SPAT_Lock::with(
+				'splm_discipline_notice_' . $id,
+				60,
+				static function () use ( $id, $ctx ) {
+					return SPLM_Discipline_Suspension::deliver( $id, $ctx, 'issued' );
+				}
+			);
+			if ( false === $delivery ) {
+				return new WP_Error( 'splm_notice_busy', __( 'That notice is already being released.', 'sportspress-league-manager' ), array( 'status' => 409 ) );
+			}
 		}
 
 		$fresh = SPLM_Discipline_Notice_Database::find( $id );
@@ -788,7 +819,9 @@ class SPLM_Discipline_Suspension_REST {
 
 	/**
 	 * Context extras for a release: the schedule shortfall is recomputed (it
-	 * may have changed since the draft) but only for a games outcome.
+	 * may have changed since the draft) but only for a games outcome, and an
+	 * amendment carries the length it replaced so a retry still reads
+	 * "changed from X to Y".
 	 *
 	 * @param object $row Manual notice row.
 	 * @return array
@@ -796,19 +829,71 @@ class SPLM_Discipline_Suspension_REST {
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private static function release_extra( object $row ): array {
+		$scope = (string) ( $row->scope ?? '' );
 		$extra = array( 'team_names' => (string) $row->team );
+		$extra = array_merge( $extra, self::prior_games_extra( $scope, self::parent_of( $row ) ) );
 
 		if ( 'games' === (string) $row->outcome ) {
 			$elig = SPLM_Discipline_Eligibility::next_eligible(
 				(int) $row->player_id,
 				(int) $row->season_id,
-				self::after_date( (int) ( $row->incident_event_id ?? 0 ) ),
+				self::release_after_date( $scope, self::after_date( (int) ( $row->incident_event_id ?? 0 ) ), current_time( 'Y-m-d' ) ),
 				(int) $row->games
 			);
+
 			$extra['remaining'] = (int) ( $elig['remaining'] ?? 0 );
 		}
 
 		return $extra;
+	}
+
+	/**
+	 * The parent of an amended row, or null.
+	 *
+	 * @param object $row Manual notice row.
+	 * @return object|null
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function parent_of( object $row ): ?object {
+		$parent_id = (int) ( $row->parent_id ?? 0 );
+		if ( 'manual-amended' !== (string) ( $row->scope ?? '' ) || $parent_id <= 0 ) {
+			return null;
+		}
+
+		$parent = SPLM_Discipline_Notice_Database::find( $parent_id );
+
+		return $parent ? $parent : null;
+	}
+
+	/**
+	 * The prior_games context key for an amended row. Pure.
+	 *
+	 * @param string      $scope  Row scope.
+	 * @param object|null $parent Parent row (amended rows only).
+	 * @return array Empty, or array( 'prior_games' => int ).
+	 */
+	public static function prior_games_extra( string $scope, ?object $parent ): array {
+		if ( 'manual-amended' !== $scope || null === $parent ) {
+			return array();
+		}
+
+		return array( 'prior_games' => (int) $parent->games );
+	}
+
+	/**
+	 * Date games are counted from when a row is released. Must match how the
+	 * decide / amend routes compute the child's eligible_on: a decision counts
+	 * from today (an indefinite suspension's games start at the decision);
+	 * issued and amended rows count from the incident. Pure.
+	 *
+	 * @param string $scope         Row scope.
+	 * @param string $incident_date 'Y-m-d' of the incident match, or today when none.
+	 * @param string $today         'Y-m-d' local today.
+	 * @return string
+	 */
+	public static function release_after_date( string $scope, string $incident_date, string $today ): string {
+		return 'manual-decided' === $scope ? $today : $incident_date;
 	}
 
 	/**
