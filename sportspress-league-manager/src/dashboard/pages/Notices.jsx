@@ -226,13 +226,22 @@ export default function Notices( { season } ) {
 		( page.querySelector( '.splm-alert' ) || headingRef.current )?.focus();
 	}, [ focusTick ] );
 
-	const run = ( row, fn, successText ) => {
+	const run = ( row, fn, successText, warnVerb ) => {
 		setBusyId( row.id );
 		setError( '' );
 		setNotice( '' );
 		let failure = '';
 		fn( row.id )
-			.then( () => setNotice( successText ) )
+			.then( ( res ) => {
+				// A released manual notice also mails the captains: a missed one is
+				// a warning, not a success. Automatic responses carry no captains.
+				const warning = warnVerb ? captainWarning( { status: 'sent', captains_notified: res?.captains }, warnVerb ) : '';
+				if ( warning ) {
+					failure = warning;
+				} else {
+					setNotice( successText );
+				}
+			} )
 			.catch( ( e ) => { failure = e?.message || 'That did not work.'; } )
 			.finally( () => {
 				// Reload either way: a failed send leaves the row 'failed' and a
@@ -247,8 +256,8 @@ export default function Notices( { season } ) {
 
 	// Every action here asks first; the dialog closes before the request runs
 	// and the row's own controls are disabled via busyId while it does.
-	const ask = ( row, fn, message, successText, confirmLabel, danger = false ) =>
-		setConfirm( { row, fn, message, successText, confirmLabel, danger } );
+	const ask = ( row, fn, message, successText, confirmLabel, danger = false, warnVerb = '' ) =>
+		setConfirm( { row, fn, message, successText, confirmLabel, danger, warnVerb } );
 
 	const handleRelease = ( row ) =>
 		ask(
@@ -256,7 +265,9 @@ export default function Notices( { season } ) {
 			releaseNotice,
 			releaseMessage( row, row.player ),
 			'Notice sent.',
-			row.status === 'failed' ? 'Try again' : 'Release'
+			row.status === 'failed' ? 'Try again' : 'Release',
+			false,
+			'Sent'
 		);
 
 	const handleDiscard = ( row ) =>
@@ -277,7 +288,7 @@ export default function Notices( { season } ) {
 	const doConfirm = () => {
 		const c = confirm;
 		setConfirm( null );
-		run( c.row, c.fn, c.successText );
+		run( c.row, c.fn, c.successText, c.warnVerb );
 	};
 
 	const closePick = useCallback( () => setPicking( false ), [] );

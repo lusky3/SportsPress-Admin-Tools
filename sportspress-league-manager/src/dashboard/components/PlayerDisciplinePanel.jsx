@@ -356,7 +356,12 @@ export default function PlayerDisciplinePanel( { player, season, onClose, notify
 			notify( `Saved, but the email could not be sent${ res.notice.last_error ? `: ${ res.notice.last_error }` : '.' }`, 'error' );
 		} else {
 			// decide/amend/revoke mail the captains too: say so if one was missed.
-			const missed = [ 'decide', 'amend', 'revoke' ].includes( key ) && ! draftRevoke ? captainWarning( res?.notice, 'Saved' ) : '';
+			let missed = '';
+			if ( key === 'release' ) {
+				missed = captainWarning( { status: 'sent', captains_notified: res?.captains }, 'Sent' );
+			} else if ( [ 'decide', 'amend', 'revoke' ].includes( key ) && ! draftRevoke ) {
+				missed = captainWarning( res?.notice, 'Saved' );
+			}
 			if ( missed ) {
 				setIssueError( missed );
 				notify( missed, 'error' );
@@ -373,6 +378,7 @@ export default function PlayerDisciplinePanel( { player, season, onClose, notify
 		busyRef.current = true;
 		setBusyId( row.id );
 		setRowError( row.id, '' );
+		setIssueError( '' );
 		return ACTIONS[ key ].call( row, arg ).then( ( res ) => {
 			announce( row, key, arg, res );
 			return true;

@@ -836,7 +836,16 @@ check( 'insert failure is a 500', array( $bad->code, $bad->data['status'], splm_
 reset_create();
 splm_susp_state()->rows[1] = build_manual_row( 'manual-amended', 1 );
 $ok = $release::release_row( splm_susp_state()->rows[1] );
-check( 'release_row success shape', array( $ok->status, $ok->data ), array( 200, array( 'success' => true, 'id' => 1, 'status' => 'sent' ) ) );
+check( 'release_row success shape keeps success/id/status', array( $ok->status, $ok->data['success'], $ok->data['id'], $ok->data['status'] ), array( 200, true, 1, 'sent' ) );
+check( 'release_row success carries the captain delivery list', array_key_exists( 'captains', $ok->data ) && is_array( $ok->data['captains'] ), true );
+check( 'release_row captain list reports who was and was not notified', array_column( $ok->data['captains'], 'sent', 'email' ), array( 'cap@example.com' => true, '' => false ) );
+foreach ( $ok->data['captains'] ?? array() as $line ) {
+	check( 'each captain line has team/email/sent', isset( $line['team'], $line['sent'] ) && array_key_exists( 'email', $line ), true );
+}
+$auto_src = file_get_contents( dirname( __DIR__ ) . '/includes/class-discipline-notice-rest.php' );
+$auto_from = strpos( $auto_src, 'private function release_automatic' );
+$auto_code = substr( $auto_src, $auto_from, strpos( $auto_src, '/**', $auto_from ) - $auto_from );
+check( 'automatic release response is untouched (no captains key)', false === strpos( $auto_code, 'captains' ), true );
 check( 'release_row used the amended kind in the subject', splm_susp_state()->mails[0]['subject'], 'Updated suspension notice — Winter' );
 $again = $release::release_row( splm_susp_state()->rows[1] );
 check( 'release_row on a sent row is a 409', array( $again->code, $again->data['status'] ), array( 'splm_notice_not_releasable', 409 ) );
