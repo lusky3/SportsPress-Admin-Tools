@@ -91,5 +91,24 @@ assert_test( false !== strpos( $r, 'no longer' ), 'revoke says the suspension no
 $d = $b::body( 'player', array_merge( $i_ctx, array( 'kind' => 'decided', 'outcome' => 'games', 'games' => 4, 'eligible_label' => 'Nov 3 — Wolves vs Owls' ) ) );
 assert_test( false !== strpos( $d, '4 games' ) && false !== strpos( $d, 'Nov 3' ), 'decision states the games and the date' );
 
+echo "\n=== captain audience-specific wording ===\n\n";
+$ca_i = $b::body( 'captain', array_merge( $i_ctx, array() ) );
+assert_test( false !== strpos( $ca_i, 'Alex Doe' ), 'captain indefinite contains player name' );
+assert_test( false !== strpos( $ca_i, 'remains suspended' ), 'captain indefinite says remains suspended' );
+assert_test( false === strpos( $ca_i, 'You remain suspended' ), 'captain indefinite does NOT contain "You remain suspended"' );
+assert_test( false === strpos( $ca_i, 'your next scheduled game' ), 'captain indefinite does NOT contain "your next scheduled game"' );
+
+$ca_s = $b::body( 'captain', $s_ctx );
+assert_test( false === strpos( $ca_s, 'your next scheduled game' ), 'captain shortage does NOT contain "your next scheduled game"' );
+assert_test( false !== strpos( $ca_s, "player's next scheduled game" ), 'captain shortage says "player\'s next scheduled game"' );
+
+$ca_all = $b::body( 'captain', $ctx );
+assert_test( false === strpos( $ca_all, 'every team you are on' ), 'captain all-play does NOT contain "you are on"' );
+assert_test( false !== strpos( $ca_all, 'every team the player is on' ), 'captain all-play contains "every team the player is on"' );
+
+echo "\n=== player indefinite regression ===\n\n";
+$p_i = $b::body( 'player', $i_ctx );
+assert_test( false !== strpos( $p_i, 'You remain suspended' ), 'player indefinite contains "You remain suspended"' );
+
 echo "\nPassed: {$passed}  Failed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );

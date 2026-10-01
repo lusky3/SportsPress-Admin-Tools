@@ -60,12 +60,12 @@ class SPLM_Discipline_Suspension_Body {
 			$lines[] = self::infraction_block( $ctx );
 			$lines[] = self::length_sentence( $kind, $ctx );
 
-			$eligibility = self::eligibility_sentence( $ctx );
+			$eligibility = self::eligibility_sentence( $audience, $ctx );
 			if ( '' !== $eligibility ) {
 				$lines[] = $eligibility;
 			}
 
-			$lines[] = __( 'A suspension applies to ALL league play — every team you are on, on any night — and a regular-season suspension carries into the playoffs.', 'sportspress-league-manager' );
+			$lines[] = self::all_play_sentence( $audience, $ctx );
 
 			if ( 'captain' === $audience ) {
 				$lines[] = __( "It is the team captain's responsibility to make sure a suspended player does not play. A team that plays a suspended player forfeits the game, and the player is removed from the league without refund.", 'sportspress-league-manager' );
@@ -162,18 +162,27 @@ class SPLM_Discipline_Suspension_Body {
 	}
 
 	/**
-	 * Next-eligible-game sentence. Never invents a date.
+	 * Next-eligible-game sentence. Never invents a date. Audience-aware.
 	 *
-	 * @param array $ctx Context.
+	 * @param string $audience player|captain.
+	 * @param array  $ctx      Context.
 	 * @return string
 	 */
-	private static function eligibility_sentence( array $ctx ): string {
+	private static function eligibility_sentence( string $audience, array $ctx ): string {
 		if ( 'indefinite' === ( $ctx['outcome'] ?? '' ) ) {
+			if ( 'captain' === $audience ) {
+				$player = (string) ( $ctx['player_name'] ?? '' );
+				/* translators: %s: player name. */
+				return sprintf( __( '%s remains suspended from all league play until the review is complete. You will be told the outcome.', 'sportspress-league-manager' ), $player );
+			}
 			return __( 'You remain suspended from all league play until the review is complete. You will be told the outcome.', 'sportspress-league-manager' );
 		}
 
 		$label = (string) ( $ctx['eligible_label'] ?? '' );
 		if ( '' === $label ) {
+			if ( 'captain' === $audience ) {
+				return __( "The remaining games will be served at the player's next scheduled game.", 'sportspress-league-manager' );
+			}
 			return __( 'The remaining games will be served at your next scheduled game.', 'sportspress-league-manager' );
 		}
 
@@ -186,6 +195,20 @@ class SPLM_Discipline_Suspension_Body {
 		return ! empty( $ctx['projected'] )
 			? $sentence . ' ' . __( "(projected, if the schedule doesn't change)", 'sportspress-league-manager' )
 			: $sentence;
+	}
+
+	/**
+	 * All-play scope sentence. Audience-aware.
+	 *
+	 * @param string $audience player|captain.
+	 * @param array  $ctx      Context.
+	 * @return string
+	 */
+	private static function all_play_sentence( string $audience, array $ctx ): string {
+		if ( 'captain' === $audience ) {
+			return __( 'A suspension applies to ALL league play — every team the player is on, on any night — and a regular-season suspension carries into the playoffs.', 'sportspress-league-manager' );
+		}
+		return __( 'A suspension applies to ALL league play — every team you are on, on any night — and a regular-season suspension carries into the playoffs.', 'sportspress-league-manager' );
 	}
 
 	/**
