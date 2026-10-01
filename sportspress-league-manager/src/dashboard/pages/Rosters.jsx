@@ -3,6 +3,7 @@ import HelpLink from '../components/HelpLink';
 import { fetchTeams, fetchRosterDetails, fetchNotes, fetchNoteCounts, addNote, deleteNote, movePlayer, updatePlayer, updatePlayerMetadata, setCaptain, removePlayer, importRoster, calculateSkills, bulkUploadRoster, bulkProcessRoster } from '../lib/api';
 import Toast from '../components/Toast';
 import useFocusTrap from '../components/useFocusTrap';
+import PlayerDisciplinePanel from '../components/PlayerDisciplinePanel';
 import Icon from '../components/icons';
 
 // M25: every write path on this page fired a bare .then() — a rejected request
@@ -406,6 +407,7 @@ export default function Rosters( { season } ) {
 	const [ roster, setRoster ] = useState( [] );
 	const [ loading, setLoading ] = useState( false );
 	const [ notesPlayer, setNotesPlayer ] = useState( null );
+	const [ disciplinePlayer, setDisciplinePlayer ] = useState( null );
 	const [ noteCounts, setNoteCounts ] = useState( {} );
 	const [ movePlayerData, setMovePlayerData ] = useState( null );
 	const [ toast, setToast ] = useState( null ); // UI-13: { message, type }
@@ -459,6 +461,10 @@ export default function Rosters( { season } ) {
 	const notify = useCallback( ( message, type = 'error' ) => {
 		setToast( { message, type } );
 	}, [] );
+
+	const closeDiscipline = useCallback( () => setDisciplinePlayer( null ), [] );
+	// Convener-only, fail-open like Leaders.jsx; the server gate is the real check.
+	const canDiscipline = window.splmDashboard?.modules?.discipline !== false && window.splmDashboard?.capabilities?.canManage !== false;
 
 	const reload = () => {
 		if ( selectedTeam ) {
@@ -614,6 +620,13 @@ export default function Rosters( { season } ) {
 												onClick={ () => setNotesPlayer( player ) }
 												aria-label={ noteCounts[ player.id ] ? `Notes (${ noteCounts[ player.id ] } on file)` : 'Notes' }
 											>Notes{ noteCounts[ player.id ] ? ` (${ noteCounts[ player.id ] })` : '' }</button>
+											{ canDiscipline && (
+												<button
+													className="splm-btn splm-btn--small"
+													onClick={ () => setDisciplinePlayer( player ) }
+													aria-label={ `Discipline for ${ player.name }` }
+												>Discipline</button>
+											) }
 											<button className="splm-btn splm-btn--small" onClick={ () => setMovePlayerData( player ) }>Move</button>
 											<button className="splm-btn splm-btn--small splm-btn--danger" onClick={ () => {
 												if ( window.confirm( `Remove ${ player.name } from this roster?` ) ) {
@@ -640,6 +653,10 @@ export default function Rosters( { season } ) {
 						fetchNoteCounts( roster.map( ( p ) => p.id ) ).then( setNoteCounts );
 					} }
 				/>
+			) }
+
+			{ disciplinePlayer && (
+				<PlayerDisciplinePanel player={ disciplinePlayer } season={ season } notify={ notify } onClose={ closeDiscipline } />
 			) }
 
 			{ movePlayerData && (
