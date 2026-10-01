@@ -76,42 +76,7 @@ class SPLM_Discipline_Notice_Privacy {
 				'group_label'       => __( 'Disciplinary Notices', 'sportspress-league-manager' ),
 				'group_description' => __( 'Penalty-threshold warnings and suspensions issued to this player.', 'sportspress-league-manager' ),
 				'item_id'           => 'splm-notice-' . (int) $row->id,
-				'data'              => array(
-					array(
-						'name'  => __( 'Recorded', 'sportspress-league-manager' ),
-						'value' => $row->created_at,
-					),
-					array(
-						'name'  => __( 'Threshold', 'sportspress-league-manager' ),
-						'value' => $row->tier_key,
-					),
-					array(
-						'name'  => __( 'Consequence', 'sportspress-league-manager' ),
-						'value' => 'suspend' === $row->consequence
-							? sprintf(
-								/* translators: %d: number of games. */
-								_n( 'Suspension — %d game', 'Suspension — %d games', (int) $row->games, 'sportspress-league-manager' ),
-								(int) $row->games
-							)
-							: __( 'Warning', 'sportspress-league-manager' ),
-					),
-					array(
-						'name'  => __( 'Penalty minutes at the time', 'sportspress-league-manager' ),
-						'value' => (int) $row->value_at_fire,
-					),
-					array(
-						'name'  => __( 'Status', 'sportspress-league-manager' ),
-						'value' => $row->status,
-					),
-					array(
-						'name'  => __( 'Sent to', 'sportspress-league-manager' ),
-						'value' => $row->recipient,
-					),
-					array(
-						'name'  => __( 'Sent at', 'sportspress-league-manager' ),
-						'value' => $row->sent_at,
-					),
-				),
+				'data'              => self::export_fields( $row ),
 			);
 		}
 
@@ -178,8 +143,9 @@ class SPLM_Discipline_Notice_Privacy {
 		$batch_ids = array_slice( $player_ids, $offset, self::BATCH_SIZE );
 		$removed   = 0;
 
-		$table    = SPLM_Discipline_Notice_Database::table_name();
-		$redacted = __( 'Redacted', 'sportspress-league-manager' );
+		$table = SPLM_Discipline_Notice_Database::table_name();
+
+		list( $set_sql, $set_values ) = self::erase_set_clause();
 
 		foreach ( $batch_ids as $player_id ) {
 			$count = (int) $wpdb->get_var( // phpcs:ignore WordPress.DB
@@ -196,9 +162,8 @@ class SPLM_Discipline_Notice_Privacy {
 			$wpdb->query( // phpcs:ignore WordPress.DB
 				$wpdb->prepare(
 					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not a value.
-					"UPDATE {$table} SET recipient = %s, bcc = NULL, note = NULL, player_id = 0 WHERE player_id = %d",
-					$redacted,
-					(int) $player_id
+					"UPDATE {$table} SET {$set_sql} WHERE player_id = %d",
+					array_merge( $set_values, array( (int) $player_id ) )
 				)
 			);
 
@@ -219,6 +184,128 @@ class SPLM_Discipline_Notice_Privacy {
 		}
 
 		return $this->erase_result( $removed, 0, $messages, $done );
+	}
+
+	/**
+	 * The label/value pairs exported for one notice row.
+	 *
+	 * The incident_note (convener-only text) and captains_notified (third-party
+	 * addresses) columns are deliberately never exported. The original fields keep
+	 * their order; the manual-suspension fields are appended and only when set.
+	 *
+	 * @param object $row Notice row.
+	 * @return array
+	 */
+	public static function export_fields( object $row ): array {
+		$fields = array(
+			array(
+				'name'  => __( 'Recorded', 'sportspress-league-manager' ),
+				'value' => $row->created_at,
+			),
+			array(
+				'name'  => __( 'Threshold', 'sportspress-league-manager' ),
+				'value' => $row->tier_key,
+			),
+			array(
+				'name'  => __( 'Consequence', 'sportspress-league-manager' ),
+				'value' => self::consequence_label( $row ),
+			),
+			array(
+				'name'  => __( 'Penalty minutes at the time', 'sportspress-league-manager' ),
+				'value' => (int) $row->value_at_fire,
+			),
+			array(
+				'name'  => __( 'Status', 'sportspress-league-manager' ),
+				'value' => $row->status,
+			),
+			array(
+				'name'  => __( 'Sent to', 'sportspress-league-manager' ),
+				'value' => $row->recipient,
+			),
+			array(
+				'name'  => __( 'Sent at', 'sportspress-league-manager' ),
+				'value' => $row->sent_at,
+			),
+		);
+
+		$optional = array(
+			__( 'Infraction', 'sportspress-league-manager' )              => 'infraction_title',
+			__( 'Rule', 'sportspress-league-manager' )                    => 'rule_ref',
+			__( 'Outcome', 'sportspress-league-manager' )                 => 'outcome',
+			__( 'Projected eligible date', 'sportspress-league-manager' ) => 'eligible_on',
+		);
+		foreach ( $optional as $label => $column ) {
+			if ( isset( $row->$column ) && '' !== (string) $row->$column ) {
+				$fields[] = array(
+					'name'  => $label,
+					'value' => $row->$column,
+				);
+			}
+		}
+
+		return $fields;
+	}
+
+	/**
+	 * Human label for a row's consequence.
+	 *
+	 * @param object $row Notice row.
+	 * @return string
+	 */
+	private static function consequence_label( object $row ): string {
+		if ( 'suspend' !== $row->consequence ) {
+			return __( 'Warning', 'sportspress-league-manager' );
+		}
+
+		return sprintf(
+			/* translators: %d: number of games. */
+			_n( 'Suspension — %d game', 'Suspension — %d games', (int) $row->games, 'sportspress-league-manager' ),
+			(int) $row->games
+		);
+	}
+
+	/**
+	 * Column => value map applied when a person's notices are anonymised.
+	 *
+	 * A null value clears the column. The incident_note and captains_notified are cleared
+	 * because they hold convener-only text and third-party addresses; the
+	 * rulebook columns (rule_ref, infraction_title, rule_text) are not personal
+	 * and stay, as do id/status/created_at and the other audit columns.
+	 *
+	 * @return array
+	 */
+	public static function erase_assignments(): array {
+		return array(
+			'recipient'         => __( 'Redacted', 'sportspress-league-manager' ),
+			'bcc'               => null,
+			'note'              => null,
+			'incident_note'     => null,
+			'captains_notified' => null,
+			'player_id'         => 0,
+		);
+	}
+
+	/**
+	 * The SET clause and its bound values for the anonymising UPDATE.
+	 *
+	 * Column names come from erase_assignments() (constants, never input);
+	 * values always travel through prepare() placeholders, or a NULL literal.
+	 *
+	 * @return array array( string $set_sql, array $values ).
+	 */
+	private static function erase_set_clause(): array {
+		$parts  = array();
+		$values = array();
+		foreach ( self::erase_assignments() as $column => $value ) {
+			if ( null === $value ) {
+				$parts[] = "{$column} = NULL";
+			} else {
+				$parts[]  = $column . ' = ' . ( is_int( $value ) ? '%d' : '%s' );
+				$values[] = $value;
+			}
+		}
+
+		return array( implode( ', ', $parts ), $values );
 	}
 
 	/**
