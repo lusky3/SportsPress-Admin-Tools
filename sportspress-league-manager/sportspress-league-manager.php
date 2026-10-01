@@ -54,6 +54,13 @@ class SportsPress_League_Manager {
 	 */
 	private $suspension_rest;
 
+	/**
+	 * The infraction create/update REST handler (constructor registers hooks).
+	 *
+	 * @var SPLM_Discipline_Infraction_REST|null
+	 */
+	private $infraction_rest;
+
 	public function __construct() {
 		register_activation_hook( __FILE__, array( $this, 'check_activation_requirements' ) );
 		register_deactivation_hook( __FILE__, array( $this, 'deactivate' ) );
@@ -249,6 +256,7 @@ class SportsPress_League_Manager {
 		new SPLM_Discipline_Notice_Pass();
 		new SPLM_Discipline_Notice_REST();
 		$this->suspension_rest = new SPLM_Discipline_Suspension_REST();
+		$this->infraction_rest = new SPLM_Discipline_Infraction_REST();
 		new SPLM_Discipline_Notice_Privacy();
 		if ( is_admin() ) {
 			new SPLM_Discipline_Notice_Admin();

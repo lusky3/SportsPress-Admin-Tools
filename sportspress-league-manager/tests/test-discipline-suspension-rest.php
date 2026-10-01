@@ -293,7 +293,7 @@ class SPAT_Lock {
 class SPLM_Discipline_Infraction {
 	const MAX_GAMES = 20;
 	public static function all() {
-		return array(
+		$rows = array(
 			(object) array(
 				'id'            => '3',
 				'rule_ref'      => '6.5',
@@ -303,8 +303,22 @@ class SPLM_Discipline_Infraction {
 				'default_games' => '3',
 				'needs_review'  => '1',
 				'active'        => '1',
+				'sort_order'    => '30',
+			),
+			(object) array(
+				'id'            => '4',
+				'rule_ref'      => '',
+				'title'         => 'Retired',
+				'rule_text'     => '',
+				'outcome'       => 'games',
+				'default_games' => '1',
+				'needs_review'  => '0',
+				'active'        => '0',
+				'sort_order'    => '40',
 			),
 		);
+		$active_only = func_num_args() ? (bool) func_get_arg( 0 ) : true;
+		return $active_only ? array( $rows[0] ) : $rows;
 	}
 	public static function find( $id ) {
 		return splm_susp_state()->infraction[ (int) $id ] ?? null;
@@ -350,6 +364,7 @@ require_once dirname( __DIR__ ) . '/includes/class-discipline-captain-mail.php';
 require_once dirname( __DIR__ ) . '/includes/class-discipline-suspension.php';
 require_once dirname( __DIR__ ) . '/includes/class-discipline-suspension-body.php';
 require_once dirname( __DIR__ ) . '/includes/class-discipline-suspension-context.php';
+require_once dirname( __DIR__ ) . '/includes/class-discipline-infraction-rest.php';
 require_once dirname( __DIR__ ) . '/includes/class-discipline-suspension-rest.php';
 require_once dirname( __DIR__ ) . '/includes/class-discipline-suspension-actions.php';
 require_once dirname( __DIR__ ) . '/includes/class-discipline-suspension-release.php';
@@ -563,7 +578,7 @@ check( 'preview games 0-20', array( $prev_args['games']['minimum'], $prev_args['
 check( 'preview season/incident optional', array( $prev_args['season']['required'], $prev_args['incident_event']['required'] ), array( false, false ) );
 
 // Infractions handler.
-$res = $instance->get_infractions();
+$res = $instance->get_infractions( new WP_REST_Request( array() ) );
 check( 'infractions status', $res->status, 200 );
 check(
 	'infractions shape',
@@ -576,10 +591,16 @@ check(
 			'rule_text'     => 'No fighting.',
 			'outcome'       => 'games',
 			'default_games' => 3,
-			'needs_review'  => 1,
+			'needs_review'  => true,
+			'active'        => true,
+			'sort_order'    => 30,
 		),
 	)
 );
+$all_res = $instance->get_infractions( new WP_REST_Request( array( 'include_inactive' => true ) ) );
+check( 'include_inactive returns retired rows too', array_column( $all_res->data['data'], 'active', 'id' ), array( 3 => true, 4 => false ) );
+$inf_args = $routes['/discipline/infractions']['args'];
+check( 'include_inactive arg boolean default false', array( $inf_args['include_inactive']['type'], $inf_args['include_inactive']['default'] ), array( 'boolean', false ) );
 check( 'infractions total', $res->data['total'], 1 );
 
 // History handler.
