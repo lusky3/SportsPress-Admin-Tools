@@ -338,9 +338,13 @@ class SPLM_Discipline_Suspension_REST {
 			(bool) $request->get_param( 'include_baseline' )
 		);
 
-		$items = array();
+		$replaced = SPLM_Discipline_Notice_Database::replaced_ids( array_map( static fn( $r ) => (int) $r->id, $rows ) );
+		$items    = array();
 		foreach ( $rows as $row ) {
-			$items[] = SPLM_Discipline_Notice_REST::row_to_response( $row, true );
+			$items[] = array_merge(
+				SPLM_Discipline_Notice_REST::row_to_response( $row, true ),
+				array( 'replaced' => in_array( (int) $row->id, $replaced, true ) )
+			);
 		}
 
 		$body            = splm_rest_list_response( $items );

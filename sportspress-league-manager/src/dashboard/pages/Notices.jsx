@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from '@wordpress/element';
+import { useCallback, useEffect, useRef, useState } from '@wordpress/element';
 import { fetchNotices, releaseNotice, discardNotice, serveNotice } from '../lib/api';
 import HelpLink from '../components/HelpLink';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -158,6 +158,10 @@ export default function Notices( { season } ) {
 	const [ picking, setPicking ] = useState( false );
 	const [ issuePlayer, setIssuePlayer ] = useState( null );
 	const [ managePlayer, setManagePlayer ] = useState( null );
+	const [ refreshing, setRefreshing ] = useState( false );
+	const [ focusTick, setFocusTick ] = useState( 0 );
+	const pageRef = useRef( null );
+	const headingRef = useRef( null );
 
 	const canManage = canUseDiscipline();
 	const replaced = replacedIds( rows );
@@ -165,9 +169,15 @@ export default function Notices( { season } ) {
 	// cancelled guards against a slower earlier request (e.g. from a filter
 	// change that has since been superseded) overwriting the table with stale
 	// data after a later request resolves first — same pattern as Waitlist.jsx.
-	const load = useCallback( () => {
+	// `silent` is a reload after a change: the rows stay on screen (aria-busy)
+	// rather than the table unmounting, which would drop keyboard focus.
+	const load = useCallback( ( silent = false ) => {
 		let cancelled = false;
-		setLoading( true );
+		if ( silent ) {
+			setRefreshing( true );
+		} else {
+			setLoading( true );
+		}
 		setError( '' );
 		fetchNotices( { season, status } )
 			.then( ( res ) => {
@@ -175,11 +185,19 @@ export default function Notices( { season } ) {
 				setRows( res.data );
 				setTotal( res.total );
 				setLoading( false );
+				if ( silent ) {
+					setRefreshing( false );
+					setFocusTick( ( t ) => t + 1 );
+				}
 			} )
 			.catch( ( e ) => {
 				if ( cancelled ) return;
 				setError( e?.message || 'Could not load the notice queue.' );
 				setLoading( false );
+				if ( silent ) {
+					setRefreshing( false );
+					setFocusTick( ( t ) => t + 1 );
+				}
 			} );
 		return () => { cancelled = true; };
 	}, [ season, status ] );
@@ -189,6 +207,19 @@ export default function Notices( { season } ) {
 		return cleanup;
 	}, [ load ] );
 
+	// After a change settles, the control that had focus may be gone or
+	// disabled and the browser drops focus to <body>. Hand it to the result
+	// message, else the heading. Never on the initial load or a filter change
+	// (focusTick is only bumped by changes), and never when focus is still
+	// somewhere on the page (e.g. an open dialog).
+	useEffect( () => {
+		if ( focusTick === 0 ) return;
+		const page = pageRef.current;
+		const active = document.activeElement;
+		if ( ! page || ( active && active !== document.body && page.contains( active ) ) ) return;
+		( page.querySelector( '.splm-alert' ) || headingRef.current )?.focus();
+	}, [ focusTick ] );
+
 	const run = ( row, fn, successText ) => {
 		setBusyId( row.id );
 		setError( '' );
@@ -196,10 +227,13 @@ export default function Notices( { season } ) {
 		fn( row.id )
 			.then( () => {
 				setNotice( successText );
-				load();
+				load( true );
 			} )
 			.catch( ( e ) => setError( e?.message || 'That did not work.' ) )
-			.finally( () => setBusyId( 0 ) );
+			.finally( () => {
+				setBusyId( 0 );
+				setFocusTick( ( t ) => t + 1 );
+			} );
 	};
 
 	// Every action here asks first; the dialog closes before the request runs
@@ -244,7 +278,7 @@ export default function Notices( { season } ) {
 	}, [] );
 	const closeIssue = useCallback( () => setIssuePlayer( null ), [] );
 	const issueDone = useCallback( ( n ) => {
-		load();
+		load( true );
 		if ( ! n ) return;
 		setNotice( '' );
 		if ( n.status === 'failed' ) {
@@ -257,7 +291,7 @@ export default function Notices( { season } ) {
 	const openManage = ( row ) => setManagePlayer( { id: row.player_id, name: row.player } );
 	const closeManage = useCallback( () => {
 		setManagePlayer( null );
-		load();
+		load( true );
 	}, [ load ] );
 	// The panel reports into the page's own alert regions instead of a toast.
 	const manageNotify = useCallback( ( message, type ) => {
@@ -269,9 +303,9 @@ export default function Notices( { season } ) {
 	}, [] );
 
 	return (
-		<div className="splm-notices">
+		<div className="splm-notices" ref={ pageRef }>
 			<div className="splm-notices__header">
-				<h2>Discipline Notices <HelpLink topic="notices" /></h2>
+				<h2 ref={ headingRef } tabIndex={ -1 }>Discipline Notices <HelpLink topic="notices" /></h2>
 				{ canManage && (
 					<button type="button" className="splm-btn splm-btn--primary" onClick={ () => setPicking( true ) }>
 						Issue suspension
@@ -279,8 +313,8 @@ export default function Notices( { season } ) {
 				) }
 			</div>
 
-			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
-			{ notice && <div className="splm-alert splm-alert--success" role="status">{ notice }</div> }
+			{ error && <div className="splm-alert splm-alert--warning" role="alert" tabIndex={ -1 }>{ error }</div> }
+			{ notice && <div className="splm-alert splm-alert--success" role="status" tabIndex={ -1 }>{ notice }</div> }
 
 			<Filters status={ status } onStatusChange={ setStatus } />
 
@@ -295,7 +329,7 @@ export default function Notices( { season } ) {
 			) }
 
 			{ ! loading && rows.length > 0 && (
-				<div className="splm-table-wrapper">
+				<div className="splm-table-wrapper" aria-busy={ refreshing }>
 					<table className="splm-table splm-notices__table">
 						<thead>
 							<tr>

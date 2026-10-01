@@ -77,10 +77,15 @@ export function kindLabel( row ) {
 
 // A row is replaced when another row in the list has parent_id === row.id and
 // that child is not discarded (a discarded child never took effect, so the
-// parent stays live). Returns a Set of replaced ids.
+// parent stays live). The server also flags `replaced: true` on each row, which
+// stays correct under a status filter or pagination where the child may not be
+// in the list; the result is the union of both. Returns a Set of replaced ids.
 export function replacedIds( rows ) {
 	const replaced = new Set();
 	( rows || [] ).forEach( ( row ) => {
+		if ( row.replaced === true ) {
+			replaced.add( row.id );
+		}
 		if ( row.parent_id && row.status !== 'discarded' ) {
 			replaced.add( row.parent_id );
 		}
@@ -97,17 +102,18 @@ const isSuspend = ( row ) => row.consequence === 'suspend';
 const inStatus = ( row, ...statuses ) => statuses.includes( row.status );
 
 // Action keys a row supports, in a stable order. Mirrors the REST routes:
-//  release/discard  POST /discipline/notices/{id}/release|discard  (pending|failed)
+//  release/discard  POST /discipline/notices/{id}/release|discard  (pending|failed, not replaced)
 //  serve            POST /discipline/notices/{id}/serve            (sent suspension, not replaced)
 //  decide           POST .../suspensions/{id}/decide  (splm_suspension_not_decidable)
 //  amend            POST .../suspensions/{id}/amend   (splm_suspension_not_amendable)
 //  revoke           POST .../suspensions/{id}/revoke  (splm_suspension_not_revocable)
 //  recalculate      POST .../suspensions/{id}/recalculate (splm_suspension_not_recalculable)
-// Automatic rows only ever get release/discard/serve.
+// Automatic rows only ever get release/discard/serve. A replaced row offers
+// nothing: the newest notice in its chain is the live one.
 export function availableActions( row, replaced ) {
 	const live = isLive( row, replaced );
 	const manual = isManual( row );
-	const actionable = inStatus( row, 'pending', 'failed' );
+	const actionable = inStatus( row, 'pending', 'failed' ) && live;
 	const suspend = isSuspend( row );
 	const flags = {
 		release: actionable,

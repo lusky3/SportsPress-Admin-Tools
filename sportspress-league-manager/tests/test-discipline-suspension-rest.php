@@ -227,6 +227,18 @@ class SPLM_Discipline_Notice_Database {
 	public static function find( $id ) {
 		return splm_susp_state()->rows[ (int) $id ] ?? null;
 	}
+	public static function replaced_ids( array $ids ) {
+		$state          = splm_susp_state();
+		$state->calls[] = 'replaced_ids';
+		$out            = array();
+		foreach ( $state->history as $row ) {
+			$parent = (int) ( $row->parent_id ?? 0 );
+			if ( $parent && in_array( $parent, $ids, true ) && 'discarded' !== (string) $row->status ) {
+				$out[] = $parent;
+			}
+		}
+		return array_values( array_unique( $out ) );
+	}
 	public static function children_of( $parent_id ) {
 		$state          = splm_susp_state();
 		$state->calls[] = 'children_of';
@@ -577,10 +589,15 @@ check( 'empty history summary', $hres->data['summary'], 'No disciplinary record.
 check( 'empty history paging', array( $hres->data['total'], $hres->data['page'], $hres->data['total_pages'] ), array( 0, 1, 0 ) );
 splm_susp_state()->history = array( row() );
 $hres = $instance->get_history( new WP_REST_Request( array( 'player' => 11 ) ) );
-check( 'history rows include note for managers', $hres->data['data'], array( array( 'id' => 1, 'status' => 'sent', 'include_note' => true ) ) );
+check( 'history rows include note for managers', $hres->data['data'], array( array( 'id' => 1, 'status' => 'sent', 'include_note' => true, 'replaced' => false ) ) );
 check( 'history summary counts the suspension', 0 === strpos( $hres->data['summary'], '1 suspension (2 games)' ), true );
 $hres = $instance->get_history( new WP_REST_Request( array( 'player' => 11, 'include_baseline' => true ) ) );
 check( 'baseline rows only when asked', count( $hres->data['data'] ), 2 );
+splm_susp_state()->history = array( row( array( 'id' => 3, 'parent_id' => 2 ) ), row( array( 'id' => 2, 'parent_id' => 1 ) ), row( array( 'id' => 1 ) ), row( array( 'id' => 8, 'parent_id' => 7, 'status' => 'discarded' ) ), row( array( 'id' => 7 ) ) );
+splm_susp_state()->calls = array();
+$hres = $instance->get_history( new WP_REST_Request( array( 'player' => 11 ) ) );
+check( 'history flags replaced rows (live child), not the newest or a discarded-child parent', array_column( $hres->data['data'], 'replaced', 'id' ), array( 3 => false, 2 => true, 1 => true, 8 => false, 7 => false ) );
+check( 'replaced set computed once per response', count( array_keys( splm_susp_state()->calls, 'replaced_ids', true ) ), 1 );
 splm_susp_state()->history = array();
 
 // Player-games handler.
