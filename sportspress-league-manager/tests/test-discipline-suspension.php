@@ -80,17 +80,38 @@ assert_test( null === $row['eligible_on'], 'schedule shortage leaves eligible_on
 
 echo "\n=== is_duplicate() ===\n\n";
 $existing = array(
-	(object) array( 'player_id' => 9, 'infraction_id' => 5, 'incident_event_id' => 70, 'status' => 'sent', 'created_at' => '2026-10-07 10:00:00', 'source' => 'manual' ),
+	(object) array( 'player_id' => 9, 'infraction_id' => 5, 'incident_event_id' => 70, 'status' => 'sent', 'consequence' => 'suspend', 'created_at' => '2026-10-07 10:00:00', 'source' => 'manual' ),
 );
 assert_test( $s::is_duplicate( $existing, 9, 5, 70, '2026-10-07' ), 'same player + infraction + incident match is a duplicate' );
 assert_test( ! $s::is_duplicate( $existing, 9, 5, 71, '2026-10-07' ), 'different incident match is not a duplicate' );
 assert_test( ! $s::is_duplicate( $existing, 9, 6, 70, '2026-10-07' ), 'different infraction is not a duplicate' );
 assert_test( ! $s::is_duplicate( $existing, 10, 5, 70, '2026-10-07' ), 'different player is not a duplicate' );
-$revoked = array( (object) array( 'player_id' => 9, 'infraction_id' => 5, 'incident_event_id' => 70, 'status' => 'revoked', 'created_at' => '2026-10-07 10:00:00', 'source' => 'manual' ) );
+$revoked = array( (object) array( 'player_id' => 9, 'infraction_id' => 5, 'incident_event_id' => 70, 'status' => 'revoked', 'consequence' => 'suspend', 'created_at' => '2026-10-07 10:00:00', 'source' => 'manual' ) );
 assert_test( ! $s::is_duplicate( $revoked, 9, 5, 70, '2026-10-07' ), 'a revoked notice does not block re-issuing' );
-$nomatch = array( (object) array( 'player_id' => 9, 'infraction_id' => 5, 'incident_event_id' => 0, 'status' => 'sent', 'created_at' => '2026-10-07 10:00:00', 'source' => 'manual' ) );
+$nomatch = array( (object) array( 'player_id' => 9, 'infraction_id' => 5, 'incident_event_id' => 0, 'status' => 'sent', 'consequence' => 'suspend', 'created_at' => '2026-10-07 10:00:00', 'source' => 'manual' ) );
 assert_test( $s::is_duplicate( $nomatch, 9, 5, 0, '2026-10-07' ), 'no incident match: same player + infraction + same day is a duplicate' );
 assert_test( ! $s::is_duplicate( $nomatch, 9, 5, 0, '2026-10-08' ), 'no incident match: a later day is not' );
+
+echo "\n=== in_force_rows(): replaced and withdrawn rows are not in force ===\n\n";
+function splm_f_row( $id, $parent, $status, $consequence = 'suspend' ) {
+	return (object) array( 'id' => $id, 'parent_id' => $parent, 'player_id' => 9, 'infraction_id' => 5, 'incident_event_id' => 70, 'status' => $status, 'consequence' => $consequence, 'created_at' => '2026-10-07 10:00:00', 'source' => 'manual' );
+}
+function splm_f_ids( $rows ) {
+	return array_map( static function ( $r ) { return $r->id; }, array_values( $rows ) );
+}
+$revoked_chain = array( splm_f_row( 1, 0, 'revoked' ), splm_f_row( 2, 1, 'sent', 'none' ) );
+assert_test( array() === $s::in_force_rows( $revoked_chain ), 'a revoked suspension and its correction row leave nothing in force' );
+assert_test( ! $s::is_duplicate( $revoked_chain, 9, 5, 70, '2026-10-07' ), 're-issuing after a revoke is not a duplicate' );
+$live_chain = array( splm_f_row( 1, 0, 'sent' ), splm_f_row( 2, 1, 'sent' ) );
+assert_test( array( 2 ) === splm_f_ids( $s::in_force_rows( $live_chain ) ), 'a live amended chain counts exactly the newest row' );
+assert_test( $s::is_duplicate( $live_chain, 9, 5, 70, '2026-10-07' ), 'a live amended chain still blocks a duplicate' );
+$revoked_tip = array( splm_f_row( 1, 0, 'sent' ), splm_f_row( 2, 1, 'revoked' ), splm_f_row( 3, 2, 'sent', 'none' ) );
+assert_test( array() === $s::in_force_rows( $revoked_tip ), 'an amended chain whose newest row was revoked has nothing in force' );
+assert_test( ! $s::is_duplicate( $revoked_tip, 9, 5, 70, '2026-10-07' ), 'no duplicate after revoking the tip of a chain' );
+assert_test( array( 1 ) === splm_f_ids( $s::in_force_rows( array( splm_f_row( 1, 0, 'sent' ), splm_f_row( 2, 1, 'discarded' ) ) ) ), 'a discarded child does not replace its parent' );
+assert_test( array( 1 ) === splm_f_ids( $s::in_force_rows( array( splm_f_row( 1, 0, 'pending' ) ) ) ), 'a pending draft is in force (it blocks a duplicate)' );
+assert_test( array() === $s::in_force_rows( array( splm_f_row( 1, 0, 'baseline' ), splm_f_row( 2, 0, 'discarded' ), splm_f_row( 3, 0, 'sent', 'warn' ) ) ), 'baseline, discarded and non-suspension rows are never in force' );
+assert_test( array( 4 ) === splm_f_ids( $s::in_force_rows( array_merge( $revoked_chain, array( splm_f_row( 4, 0, 'sent' ) ) ) ) ), 'a later live suspension stays in force beside a revoked one' );
 
 echo "\n=== summary_line() ===\n\n";
 $rows = array(
@@ -150,6 +171,85 @@ $row = $s::build_row( array( 'player_id' => 9, 'season_id' => 4, 'games' => 500 
 assert_test( SPLM_Discipline_Infraction::MAX_GAMES === $row['games'], 'convener games override clamped to MAX_GAMES' );
 $row = $s::build_row( array( 'player_id' => 9, 'season_id' => 4, 'games' => 20 ), $inf, $elig );
 assert_test( 20 === $row['games'], 'games at the cap is unchanged' );
+
+echo "\n=== summary_line() supersession ===\n\n";
+function splm_sum_row( $id, $parent, $consequence, $games, $status = 'sent' ) {
+	return (object) array( 'id' => $id, 'parent_id' => $parent, 'status' => $status, 'consequence' => $consequence, 'games' => $games, 'season_id' => 4 );
+}
+$line = $s::summary_line( array( splm_sum_row( 1, 0, 'suspend', 2 ), splm_sum_row( 2, 1, 'suspend', 3 ) ) );
+assert_test( false !== strpos( $line, '1 suspension (3 games)' ), 'amended suspension counts once at its latest length' );
+$line = $s::summary_line( array( splm_sum_row( 1, 0, 'suspend', 0 ), splm_sum_row( 2, 1, 'suspend', 4 ) ) );
+assert_test( false !== strpos( $line, '1 suspension (4 games)' ), 'decided indefinite counts once at the decided length' );
+$line = $s::summary_line( array( splm_sum_row( 1, 0, 'suspend', 3, 'revoked' ), splm_sum_row( 2, 1, 'none', 0 ) ) );
+assert_test( 'No disciplinary record.' === $line, 'a revoke chain counts zero' );
+$line = $s::summary_line( array( splm_sum_row( 1, 0, 'suspend', 3 ), splm_sum_row( 2, 1, 'suspend', 5, 'discarded' ) ) );
+assert_test( '1 suspension (3 games), 0 warnings, across 1 season.' === $line, 'a discarded amend leaves the parent standing' );
+$line = $s::summary_line( array( splm_sum_row( 1, 0, 'suspend', 2 ), splm_sum_row( 2, 1, 'suspend', 3, 'failed' ) ) );
+assert_test( false !== strpos( $line, '1 suspension (3 games)' ), 'a failed child still supersedes its parent' );
+$line = $s::summary_line( array( (object) array( 'status' => 'sent', 'consequence' => 'suspend', 'games' => 2, 'season_id' => 4 ) ) );
+assert_test( false !== strpos( $line, '1 suspension (2 games)' ), 'rows without id/parent_id still count' );
+
+echo "\n=== row_to_response() shaping ===\n\n";
+function get_the_title( $id ) { return 'Player ' . $id; } // phpcs:ignore
+require_once __DIR__ . '/../includes/class-discipline-notice-rest.php';
+$legacy = (object) array(
+	'id' => 1, 'player_id' => 9, 'season_id' => 4, 'tier_key' => 't', 'ack_key' => 'a', 'scope' => 'season', 'severity' => 'warn',
+	'consequence' => 'warn', 'games' => 0, 'value_at_fire' => 5, 'season_at_fire' => 5, 'team' => 'W', 'division' => 'D',
+	'status' => 'sent', 'recipient' => '', 'recipient_via' => '', 'bcc' => '', 'sent_at' => '', 'served_at' => '',
+	'released_by' => 0, 'last_error' => '', 'note' => '', 'created_at' => '',
+);
+$rest = 'SPLM_Discipline_Notice_REST';
+$out  = $rest::row_to_response( $legacy );
+assert_test( 'auto' === $out['source'] && 'games' === $out['outcome'] && 0 === $out['infraction_id'] && 0 === $out['parent_id'], 'legacy row gets defaults' );
+assert_test( '' === $out['eligible_on'] && array() === $out['captains_notified'] && 0 === $out['incident_event_id'], 'legacy row: empty eligible_on, captains, event' );
+assert_test( ! array_key_exists( 'incident_note', $out ), 'legacy row has no incident_note' );
+$new = clone $legacy;
+foreach ( array( 'source' => 'manual', 'infraction_id' => '5', 'rule_ref' => '6.5', 'infraction_title' => 'Fighting', 'rule_text' => 'RT', 'outcome' => 'games', 'incident_event_id' => '77', 'incident_note' => 'private', 'parent_id' => '2', 'eligible_on' => null, 'captains_notified' => '[{"team":"W","sent":true}]' ) as $k => $v ) {
+	$new->$k = $v;
+}
+$out = $rest::row_to_response( $new );
+assert_test( 'manual' === $out['source'] && 5 === $out['infraction_id'] && '6.5' === $out['rule_ref'] && 77 === $out['incident_event_id'] && 2 === $out['parent_id'], 'new row fields shaped and cast' );
+assert_test( ! array_key_exists( 'incident_note', $out ), 'incident_note withheld by default' );
+assert_test( '' === $out['eligible_on'], 'null eligible_on becomes empty string' );
+assert_test( array( array( 'team' => 'W', 'sent' => true ) ) === $out['captains_notified'], 'captains_notified JSON decoded' );
+$out = $rest::row_to_response( $new, true );
+assert_test( 'private' === $out['incident_note'], 'incident_note present when requested' );
+$new->captains_notified = 'not json';
+assert_test( array() === $rest::row_to_response( $new )['captains_notified'], 'invalid captains_notified JSON becomes []' );
+
+echo "\n=== build_child_row() ===\n\n";
+$parent = (object) array(
+	'id' => 40, 'player_id' => 9, 'season_id' => 4, 'severity' => 'critical', 'ack_key' => 'manual:5', 'team' => 'Wolves', 'division' => '',
+	'infraction_id' => 5, 'rule_ref' => '6.5', 'infraction_title' => 'Fighting', 'rule_text' => 'RT', 'outcome' => 'games',
+	'incident_event_id' => 70, 'incident_note' => 'private', 'games' => 3, 'eligible_on' => '2026-10-27',
+);
+$dec = $s::build_child_row( $parent, 'decided', array( 'games' => 4, 'eligible_on' => '2026-11-03 21:00:00' ) );
+assert_test( 'manual-decided' === $dec['scope'] && 40 === $dec['parent_id'] && 'manual' === $dec['source'] && 'manual' === $dec['tier_key'], 'decided: scope, parent, source, tier_key' );
+assert_test( 'manual:5' === $dec['ack_key'] && 'critical' === $dec['severity'] && 9 === $dec['player_id'] && 4 === $dec['season_id'], 'decided: ack_key, severity, player and season copied' );
+assert_test( 'games' === $dec['outcome'] && 4 === $dec['games'] && 'suspend' === $dec['consequence'] && 'pending' === $dec['status'], 'decided: games outcome, 4 games, suspend, pending' );
+assert_test( '2026-11-03' === $dec['eligible_on'], 'decided: eligible_on trimmed to the date' );
+assert_test( 5 === $dec['infraction_id'] && '6.5' === $dec['rule_ref'] && 'Fighting' === $dec['infraction_title'] && 'RT' === $dec['rule_text'] && 70 === $dec['incident_event_id'] && 'Wolves' === $dec['team'], 'decided: snapshot and incident reference copied' );
+assert_test( '' === $dec['incident_note'], 'decided: the parent private note is not duplicated onto the child' );
+$ind_parent = clone $parent;
+$ind_parent->outcome = 'indefinite';
+$ind_parent->games   = 0;
+assert_test( 'games' === $s::build_child_row( $ind_parent, 'decided', array( 'games' => 2 ) )['outcome'], 'decided: an indefinite parent becomes a games outcome' );
+assert_test( 1 === $s::build_child_row( $parent, 'decided', array( 'games' => 0 ) )['games'], 'decided: games clamped up to 1' );
+assert_test( 20 === $s::build_child_row( $parent, 'decided', array( 'games' => 99 ) )['games'], 'decided: games clamped down to 20' );
+assert_test( null === $s::build_child_row( $parent, 'decided', array( 'games' => 2 ) )['eligible_on'], 'decided: no eligible_on field gives null' );
+
+$amd = $s::build_child_row( $parent, 'amended', array( 'games' => 6, 'eligible_on' => '2026-11-10' ) );
+assert_test( 'manual-amended' === $amd['scope'] && 6 === $amd['games'] && 'games' === $amd['outcome'] && 'suspend' === $amd['consequence'] && 'pending' === $amd['status'], 'amended: scope, games, outcome, suspend, pending' );
+assert_test( '2026-11-10' === $amd['eligible_on'], 'amended: eligible_on from fields' );
+assert_test( 0 === $s::build_child_row( $parent, 'amended', array( 'games' => -3 ) )['games'], 'amended: games may be clamped down to 0' );
+assert_test( 20 === $s::build_child_row( $parent, 'amended', array( 'games' => 500 ) )['games'], 'amended: games clamped to 20' );
+
+$rev = $s::build_child_row( $parent, 'revoked', array() );
+assert_test( 'manual-revoked' === $rev['scope'] && 'none' === $rev['consequence'] && 0 === $rev['games'] && null === $rev['eligible_on'], 'revoked: scope, consequence none, 0 games, no eligible_on' );
+assert_test( 'pending' === $rev['status'], 'revoked: pending by default' );
+assert_test( 'pending' === $s::build_child_row( $parent, 'revoked', array( 'notify' => true ) )['status'], 'revoked: notify=true stays pending' );
+assert_test( 'discarded' === $s::build_child_row( $parent, 'revoked', array( 'notify' => false ) )['status'], 'revoked: notify=false is stored discarded' );
+assert_test( 40 === $rev['parent_id'] && 'games' === $rev['outcome'] && 70 === $rev['incident_event_id'], 'revoked: parent link and snapshot copied' );
 
 echo "\nPassed: {$passed}  Failed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );

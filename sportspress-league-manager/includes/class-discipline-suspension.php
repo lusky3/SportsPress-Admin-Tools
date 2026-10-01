@@ -17,6 +17,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * ExcessiveClassComplexity: row building, duplicate detection, summary and
+ * delivery in one place; each method is small and the pure ones are tested
+ * branch by branch, so the class total is the only thing that trips the rule.
+ *
+ * @SuppressWarnings(PHPMD.ExcessiveClassComplexity)
+ */
 class SPLM_Discipline_Suspension {
 
 	/**
@@ -30,9 +37,11 @@ class SPLM_Discipline_Suspension {
 	 */
 	public static function build_row( array $in, $infraction, array $elig ): array {
 		$indefinite = 'indefinite' === (string) $infraction->outcome;
-		$games      = $indefinite
-			? 0
-			: ( isset( $in['games'] ) && '' !== $in['games'] && null !== $in['games'] ? min( SPLM_Discipline_Infraction::MAX_GAMES, absint( $in['games'] ) ) : (int) $infraction->default_games );
+		$games      = 0;
+		if ( ! $indefinite ) {
+			$has_override = isset( $in['games'] ) && '' !== $in['games'];
+			$games        = $has_override ? min( SPLM_Discipline_Infraction::MAX_GAMES, absint( $in['games'] ) ) : (int) $infraction->default_games;
+		}
 
 		$eligible_on = ( ! $indefinite && ! empty( $elig['date'] ) ) ? substr( (string) $elig['date'], 0, 10 ) : null;
 
@@ -62,6 +71,96 @@ class SPLM_Discipline_Suspension {
 	}
 
 	/**
+	 * Build the follow-up row for a decide / amend / revoke. Pure.
+	 *
+	 * The parent is never edited once sent; the child carries the new state and
+	 * points back through parent_id. The parent's private incident note stays on
+	 * the parent.
+	 *
+	 * @param object $parent Parent notice row.
+	 * @param string $kind   decided|amended|revoked.
+	 * @param array  $fields Keys: games, eligible_on, notify (revoked only).
+	 * @return array Row for SPLM_Discipline_Notice_Database::insert().
+	 */
+	public static function build_child_row( object $parent, string $kind, array $fields ): array {
+		$specific = 'revoked' === $kind
+			? self::revoked_fields( $parent, $fields )
+			: self::resumed_fields( $parent, $kind, $fields );
+
+		return array_merge( self::child_base( $parent, $kind ), $specific );
+	}
+
+	/**
+	 * Columns every child row copies from its parent.
+	 *
+	 * @param object $parent Parent notice row.
+	 * @param string $kind   decided|amended|revoked.
+	 * @return array
+	 */
+	private static function child_base( object $parent, string $kind ): array {
+		return array(
+			'player_id'         => (int) $parent->player_id,
+			'season_id'         => (int) $parent->season_id,
+			'tier_key'          => 'manual',
+			'ack_key'           => (string) $parent->ack_key,
+			'scope'             => 'manual-' . $kind,
+			'severity'          => (string) $parent->severity,
+			'team'              => (string) $parent->team,
+			'division'          => (string) $parent->division,
+			'source'            => 'manual',
+			'infraction_id'     => (int) $parent->infraction_id,
+			'rule_ref'          => (string) $parent->rule_ref,
+			'infraction_title'  => (string) $parent->infraction_title,
+			'rule_text'         => (string) $parent->rule_text,
+			'incident_event_id' => (int) $parent->incident_event_id,
+			'incident_note'     => '',
+			'parent_id'         => (int) $parent->id,
+		);
+	}
+
+	/**
+	 * Outcome columns for a decided or amended child.
+	 *
+	 * A decision always ends up a games suspension; an amendment keeps the
+	 * parent's outcome and may shorten to 0 games.
+	 *
+	 * @param object $parent Parent notice row.
+	 * @param string $kind   decided|amended.
+	 * @param array  $fields Keys: games, eligible_on.
+	 * @return array
+	 */
+	private static function resumed_fields( object $parent, string $kind, array $fields ): array {
+		$decided     = 'decided' === $kind;
+		$eligible_on = empty( $fields['eligible_on'] ) ? null : substr( (string) $fields['eligible_on'], 0, 10 );
+
+		return array(
+			'outcome'     => $decided ? 'games' : (string) $parent->outcome,
+			'games'       => max( $decided ? 1 : 0, min( SPLM_Discipline_Infraction::MAX_GAMES, (int) ( $fields['games'] ?? 0 ) ) ),
+			'consequence' => 'suspend',
+			'eligible_on' => $eligible_on,
+			'status'      => 'pending',
+		);
+	}
+
+	/**
+	 * Outcome columns for a revocation's correction row: it carries no
+	 * consequence, so it never counts as a suspension or warning.
+	 *
+	 * @param object $parent Parent notice row.
+	 * @param array  $fields Key: notify (false stores the row discarded, no mail).
+	 * @return array
+	 */
+	private static function revoked_fields( object $parent, array $fields ): array {
+		return array(
+			'outcome'     => (string) $parent->outcome,
+			'games'       => 0,
+			'consequence' => 'none',
+			'eligible_on' => null,
+			'status'      => false === ( $fields['notify'] ?? true ) ? 'discarded' : 'pending',
+		);
+	}
+
+	/**
 	 * Whether issuing this would duplicate an existing manual notice.
 	 *
 	 * Same player + infraction + incident match; with no incident match, the
@@ -77,16 +176,58 @@ class SPLM_Discipline_Suspension {
 	 * @return bool
 	 */
 	public static function is_duplicate( array $existing, int $player_id, int $infraction_id, int $incident_event_id, string $today ): bool {
-		foreach ( $existing as $row ) {
-			if ( self::row_blocks_reissue( $row, $player_id, $infraction_id, $incident_event_id, $today ) ) {
-				return true;
-			}
-		}
-		return false;
+		return null !== self::duplicate_row( $existing, $player_id, $infraction_id, $incident_event_id, $today );
 	}
 
 	/**
-	 * Whether one existing row blocks re-issuing the same notice.
+	 * The in-force row an attempt would duplicate, or null. Same rules as
+	 * is_duplicate().
+	 *
+	 * @param object[] $existing          The player's existing rows.
+	 * @param int      $player_id         Player.
+	 * @param int      $infraction_id     Infraction.
+	 * @param int      $incident_event_id Incident match (0 = none).
+	 * @param string   $today             UTC 'Y-m-d' of the attempt.
+	 * @return object|null
+	 */
+	public static function duplicate_row( array $existing, int $player_id, int $infraction_id, int $incident_event_id, string $today ): ?object {
+		foreach ( self::in_force_rows( $existing ) as $row ) {
+			if ( self::row_blocks_reissue( $row, $player_id, $infraction_id, $incident_event_id, $today ) ) {
+				return $row;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * The manual suspensions still in force: not replaced by a newer
+	 * non-discarded row (amend, decide, revoke), not revoked or discarded, not
+	 * baseline, and actually a suspension (a revoke's correction row is not).
+	 * Pending and failed drafts count: they are the convener's open work.
+	 *
+	 * @param object[] $rows The player's rows.
+	 * @return object[] Rows in force, original order.
+	 */
+	public static function in_force_rows( array $rows ): array {
+		$superseded = self::superseded_ids( $rows );
+		$out        = array();
+
+		foreach ( $rows as $row ) {
+			if ( in_array( (string) ( $row->status ?? '' ), array( 'baseline', 'revoked', 'discarded' ), true ) ) {
+				continue;
+			}
+			if ( 'suspend' !== (string) ( $row->consequence ?? '' ) || isset( $row->id, $superseded[ (int) $row->id ] ) ) {
+				continue;
+			}
+			$out[] = $row;
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Whether one in-force row blocks re-issuing the same notice.
 	 *
 	 * @param object $row               Existing notice row.
 	 * @param int    $player_id         Player.
@@ -96,7 +237,7 @@ class SPLM_Discipline_Suspension {
 	 * @return bool
 	 */
 	private static function row_blocks_reissue( $row, int $player_id, int $infraction_id, int $incident_event_id, string $today ): bool {
-		if ( 'manual' !== (string) ( $row->source ?? '' ) || in_array( (string) $row->status, array( 'revoked', 'discarded' ), true ) ) {
+		if ( 'manual' !== (string) ( $row->source ?? '' ) ) {
 			return false;
 		}
 		if ( (int) $row->player_id !== $player_id || (int) $row->infraction_id !== $infraction_id || (int) $row->incident_event_id !== $incident_event_id ) {
@@ -120,9 +261,14 @@ class SPLM_Discipline_Suspension {
 		$games       = 0;
 		$warnings    = 0;
 		$seasons     = array();
+		$superseded  = self::superseded_ids( $rows );
 
 		foreach ( $rows as $row ) {
 			if ( in_array( (string) $row->status, array( 'baseline', 'revoked', 'discarded' ), true ) ) {
+				continue;
+			}
+			// An amended or decided notice is replaced by its child row.
+			if ( isset( $row->id, $superseded[ (int) $row->id ] ) ) {
 				continue;
 			}
 			if ( 'suspend' === (string) $row->consequence ) {
@@ -155,6 +301,24 @@ class SPLM_Discipline_Suspension {
 			/* translators: %d: number of seasons. */
 			sprintf( _n( '%d season', '%d seasons', count( $seasons ), 'sportspress-league-manager' ), count( $seasons ) )
 		);
+	}
+
+	/**
+	 * Ids of rows that are the parent of another, non-discarded row.
+	 *
+	 * @param object[] $rows Notice rows; fixtures may lack parent_id.
+	 * @return array<int,true> Set keyed by parent id.
+	 */
+	private static function superseded_ids( array $rows ): array {
+		$ids = array();
+		foreach ( $rows as $row ) {
+			$parent = isset( $row->parent_id ) ? (int) $row->parent_id : 0;
+			// A discarded child never took effect, so its parent still stands.
+			if ( $parent > 0 && 'discarded' !== (string) ( $row->status ?? '' ) ) {
+				$ids[ $parent ] = true;
+			}
+		}
+		return $ids;
 	}
 
 	/**
@@ -199,6 +363,21 @@ class SPLM_Discipline_Suspension {
 	 */
 	public static function bcc_without( array $bcc, string $email ): array {
 		return SPLM_Discipline_Captain_Mail::bcc_without( $bcc, $email );
+	}
+
+	/**
+	 * The convener Bcc list a delivery uses (the player is never Bcc'd on their
+	 * own mail). The preview calls this too, so it cannot misreport who is
+	 * covered by the Bcc.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param int    $season_id    Season term id.
+	 * @param string $player_email The player's address ('' when none).
+	 * @return string[]
+	 */
+	public static function delivery_bcc( int $season_id, string $player_email ): array {
+		return self::bcc_without( SPLM_Discipline_Notice_Recipients::bcc_for( $season_id, 0 ), $player_email );
 	}
 
 	/**
@@ -250,7 +429,7 @@ class SPLM_Discipline_Suspension {
 		}
 
 		$player  = SPLM_Discipline_Notice_Recipients::player_email( (int) $row->player_id );
-		$bcc     = self::bcc_without( SPLM_Discipline_Notice_Recipients::bcc_for( (int) $row->season_id, 0 ), $player['email'] );
+		$bcc     = self::delivery_bcc( (int) $row->season_id, $player['email'] );
 		$subject = SPLM_Discipline_Suspension_Body::subject( $kind, (string) ( $ctx['season_name'] ?? '' ) );
 		$ctx['kind'] = $kind;
 

@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.4.0
+Stable tag: 1.4.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,6 +48,11 @@ WooCommerce is optional. Without it, fee tracking can be configured for manual e
 CSV files with `Team` and `Name` columns (both required). Each row maps a player Name to a Team; rows missing either value are skipped.
 
 == Changelog ==
+
+= 1.4.1 =
+* New (REST only -- no admin UI yet): manual suspension routes to issue, preview, release, decide, amend, revoke, recalculate and read the history of a suspension.
+* Fixed: manual notices no longer affect the automatic penalty queue.
+* New: the privacy export and eraser cover the new manual-suspension fields.
 
 = 1.4.0 =
 * New (foundation only -- no UI or routes ship in this version): an editable infraction list, seeded from the ARL rulebook section 5.10 chart.
