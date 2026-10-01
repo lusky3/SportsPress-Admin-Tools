@@ -121,9 +121,12 @@ class SPLM_Discipline_Eligibility {
 				array(
 					'post_type'      => 'sp_event',
 					'post_status'    => array( 'publish', 'future' ),
+					// Postponed/cancelled are excluded in the query, so this cap is safe.
 					'posts_per_page' => $games + 5,
-					'orderby'        => 'date',
-					'order'          => 'ASC',
+					'orderby'        => array(
+						'date' => 'ASC',
+						'ID'   => 'ASC',
+					),
 					'date_query'     => array(
 						array(
 							'after'     => $after_date . ' 23:59:59',
@@ -155,13 +158,11 @@ class SPLM_Discipline_Eligibility {
 			);
 
 			foreach ( (array) $ids as $event_id ) {
-				if ( self::is_unplayed( (int) $event_id ) ) {
-					$events[] = array(
-						'id'      => (int) $event_id,
-						'date'    => (string) get_post_field( 'post_date', $event_id ),
-						'team_id' => (int) $team_id,
-					);
-				}
+				$events[] = array(
+					'id'      => (int) $event_id,
+					'date'    => (string) get_post_field( 'post_date', $event_id ),
+					'team_id' => (int) $team_id,
+				);
 			}
 		}
 
