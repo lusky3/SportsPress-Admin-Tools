@@ -12,6 +12,7 @@ function absint( $v ) { return abs( (int) $v ); }
 
 require_once __DIR__ . '/../includes/class-discipline-notice-database.php';
 require_once __DIR__ . '/../includes/class-discipline-infraction.php';
+require_once __DIR__ . '/../includes/class-discipline-captain-mail.php';
 require_once __DIR__ . '/../includes/class-discipline-suspension.php';
 
 $passed = 0;

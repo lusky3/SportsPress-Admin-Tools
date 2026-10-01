@@ -78,24 +78,31 @@ class SPLM_Discipline_Suspension {
 	 */
 	public static function is_duplicate( array $existing, int $player_id, int $infraction_id, int $incident_event_id, string $today ): bool {
 		foreach ( $existing as $row ) {
-			if ( 'manual' !== (string) ( $row->source ?? '' ) ) {
-				continue;
+			if ( self::row_blocks_reissue( $row, $player_id, $infraction_id, $incident_event_id, $today ) ) {
+				return true;
 			}
-			if ( in_array( (string) $row->status, array( 'revoked', 'discarded' ), true ) ) {
-				continue;
-			}
-			if ( (int) $row->player_id !== $player_id || (int) $row->infraction_id !== $infraction_id ) {
-				continue;
-			}
-			if ( (int) $row->incident_event_id !== $incident_event_id ) {
-				continue;
-			}
-			if ( 0 === $incident_event_id && substr( (string) $row->created_at, 0, 10 ) !== $today ) {
-				continue;
-			}
-			return true;
 		}
 		return false;
+	}
+
+	/**
+	 * Whether one existing row blocks re-issuing the same notice.
+	 *
+	 * @param object $row               Existing notice row.
+	 * @param int    $player_id         Player.
+	 * @param int    $infraction_id     Infraction.
+	 * @param int    $incident_event_id Incident match (0 = none).
+	 * @param string $today             UTC 'Y-m-d' of the attempt.
+	 * @return bool
+	 */
+	private static function row_blocks_reissue( $row, int $player_id, int $infraction_id, int $incident_event_id, string $today ): bool {
+		if ( 'manual' !== (string) ( $row->source ?? '' ) || in_array( (string) $row->status, array( 'revoked', 'discarded' ), true ) ) {
+			return false;
+		}
+		if ( (int) $row->player_id !== $player_id || (int) $row->infraction_id !== $infraction_id || (int) $row->incident_event_id !== $incident_event_id ) {
+			return false;
+		}
+		return 0 !== $incident_event_id || substr( (string) $row->created_at, 0, 10 ) === $today;
 	}
 
 	/**
@@ -172,48 +179,26 @@ class SPLM_Discipline_Suspension {
 	}
 
 	/**
-	 * Decide which captain mails are needed.
-	 *
-	 * One entry per distinct (case-insensitive) address, listing every team that
-	 * address captains; addresses already receiving the notice as the player or
-	 * as a Bcc are flagged via covered_by. An empty address stays its own entry
-	 * per team so it records as not notified.
+	 * Decide which captain mails are needed. Delegates to the captain-mail class.
 	 *
 	 * @param array[]  $captains     Each: team_id, team, email.
 	 * @param string   $player_email Player's address.
 	 * @param string[] $bcc          Convener Bcc addresses.
-	 * @return array[] Each: array( 'email' => string, 'teams' => string[], 'covered_by' => ''|'player'|'bcc' ).
+	 * @return array[] See SPLM_Discipline_Captain_Mail::plan().
 	 */
 	public static function plan_captain_mail( array $captains, string $player_email, array $bcc ): array {
-		$player_key = strtolower( $player_email );
-		$bcc_keys   = array_map( 'strtolower', $bcc );
-		$plan       = array();
-		$index      = array();
+		return SPLM_Discipline_Captain_Mail::plan( $captains, $player_email, $bcc );
+	}
 
-		foreach ( $captains as $cap ) {
-			$email = (string) $cap['email'];
-			$key   = strtolower( $email );
-			if ( '' !== $key && isset( $index[ $key ] ) ) {
-				$plan[ $index[ $key ] ]['teams'][] = (string) $cap['team'];
-				continue;
-			}
-			$covered = '';
-			if ( '' !== $key && $key === $player_key ) {
-				$covered = 'player';
-			} elseif ( '' !== $key && in_array( $key, $bcc_keys, true ) ) {
-				$covered = 'bcc';
-			}
-			$plan[] = array(
-				'email'      => $email,
-				'teams'      => array( (string) $cap['team'] ),
-				'covered_by' => $covered,
-			);
-			if ( '' !== $key ) {
-				$index[ $key ] = count( $plan ) - 1;
-			}
-		}
-
-		return $plan;
+	/**
+	 * Remove an address from a Bcc list, case-insensitively. Delegates.
+	 *
+	 * @param string[] $bcc   Bcc addresses.
+	 * @param string   $email Address to remove (the player's).
+	 * @return string[] Reindexed.
+	 */
+	public static function bcc_without( array $bcc, string $email ): array {
+		return SPLM_Discipline_Captain_Mail::bcc_without( $bcc, $email );
 	}
 
 	/**
@@ -225,25 +210,6 @@ class SPLM_Discipline_Suspension {
 	 */
 	public static function can_deliver( string $status ): bool {
 		return in_array( $status, array( 'pending', 'failed' ), true );
-	}
-
-	/**
-	 * Remove an address from a Bcc list, case-insensitively. Pure.
-	 *
-	 * @param string[] $bcc   Bcc addresses.
-	 * @param string   $email Address to remove (the player's).
-	 * @return string[] Reindexed.
-	 */
-	public static function bcc_without( array $bcc, string $email ): array {
-		$key = strtolower( $email );
-		return array_values(
-			array_filter(
-				$bcc,
-				static function ( $addr ) use ( $key ) {
-					return strtolower( (string) $addr ) !== $key;
-				}
-			)
-		);
 	}
 
 	/**
@@ -283,7 +249,6 @@ class SPLM_Discipline_Suspension {
 			);
 		}
 
-		$db      = 'SPLM_Discipline_Notice_Database';
 		$player  = SPLM_Discipline_Notice_Recipients::player_email( (int) $row->player_id );
 		$bcc     = self::bcc_without( SPLM_Discipline_Notice_Recipients::bcc_for( (int) $row->season_id, 0 ), $player['email'] );
 		$subject = SPLM_Discipline_Suspension_Body::subject( $kind, (string) ( $ctx['season_name'] ?? '' ) );
@@ -292,26 +257,59 @@ class SPLM_Discipline_Suspension {
 		$plan = self::plan_captain_mail( self::captain_recipients( (int) $row->player_id, (int) $row->season_id ), $player['email'], $bcc );
 
 		if ( '' === $player['email'] ) {
-			$db::update(
-				$notice_id,
-				array(
-					'status'            => $db::STATUS_FAILED,
-					'recipient_via'     => '',
-					'released_by'       => get_current_user_id(),
-					'last_error'        => __( 'No email address on file for this player.', 'sportspress-league-manager' ),
-					'captains_notified' => wp_json_encode( self::captain_lines( $plan ) ),
-				)
-			);
+			self::fail_no_player_email( $notice_id, $plan );
 			return array(
 				'sent'     => false,
 				'captains' => array(),
 			);
 		}
 
+		$sent     = self::send_player_mail( $notice_id, $player, $bcc, $subject, $ctx );
+		$captains = SPLM_Discipline_Captain_Mail::send( $plan, $sent, $subject, $ctx );
+
+		SPLM_Discipline_Notice_Database::update( $notice_id, array( 'captains_notified' => wp_json_encode( $captains ) ) );
+
+		return array(
+			'sent'     => $sent,
+			'captains' => $captains,
+		);
+	}
+
+	/**
+	 * Record that the player has no address; captains are listed as skipped.
+	 *
+	 * @param int     $notice_id Row id.
+	 * @param array[] $plan      Result of plan_captain_mail().
+	 * @return void
+	 */
+	private static function fail_no_player_email( int $notice_id, array $plan ): void {
+		SPLM_Discipline_Notice_Database::update(
+			$notice_id,
+			array(
+				'status'            => SPLM_Discipline_Notice_Database::STATUS_FAILED,
+				'recipient_via'     => '',
+				'released_by'       => get_current_user_id(),
+				'last_error'        => __( 'No email address on file for this player.', 'sportspress-league-manager' ),
+				'captains_notified' => wp_json_encode( SPLM_Discipline_Captain_Mail::skipped_lines( $plan ) ),
+			)
+		);
+	}
+
+	/**
+	 * Mail the player and persist the outcome immediately, before any captain mail.
+	 *
+	 * @param int      $notice_id Row id.
+	 * @param array    $player    Result of player_email(): email, via.
+	 * @param string[] $bcc       Bcc addresses (player already removed).
+	 * @param string   $subject   Subject.
+	 * @param array    $ctx       Body context.
+	 * @return bool Whether wp_mail() accepted the message.
+	 */
+	private static function send_player_mail( int $notice_id, array $player, array $bcc, string $subject, array $ctx ): bool {
+		$db      = 'SPLM_Discipline_Notice_Database';
 		$headers = $bcc ? array( 'Bcc: ' . implode( ', ', $bcc ) ) : array();
 		$sent    = wp_mail( $player['email'], $subject, SPLM_Discipline_Suspension_Body::body( 'player', $ctx ), $headers );
 
-		// Persist the player's outcome before any captain mail.
 		$db::update(
 			$notice_id,
 			array(
@@ -325,56 +323,6 @@ class SPLM_Discipline_Suspension {
 			)
 		);
 
-		$captains = array();
-		foreach ( $plan as $entry ) {
-			$ok = false;
-			if ( $sent && '' === $entry['covered_by'] && '' !== $entry['email'] ) {
-				$ok = (bool) wp_mail(
-					$entry['email'],
-					$subject,
-					SPLM_Discipline_Suspension_Body::body( 'captain', array_merge( $ctx, array( 'team_names' => implode( ', ', $entry['teams'] ) ) ) )
-				);
-			} elseif ( $sent && '' !== $entry['covered_by'] ) {
-				$ok = true;
-			}
-			foreach ( $entry['teams'] as $team ) {
-				$line = array(
-					'team'  => $team,
-					'email' => $entry['email'],
-					'sent'  => $ok,
-				);
-				if ( $sent && '' !== $entry['covered_by'] ) {
-					$line['note'] = 'player' === $entry['covered_by'] ? 'covered by player copy' : 'covered by Bcc copy';
-				}
-				$captains[] = $line;
-			}
-		}
-
-		$db::update( $notice_id, array( 'captains_notified' => wp_json_encode( $captains ) ) );
-
-		return array(
-			'sent'     => $sent,
-			'captains' => $captains,
-		);
-	}
-
-	/**
-	 * Flatten a captain-mail plan to history lines, all marked not sent.
-	 *
-	 * @param array[] $plan Result of plan_captain_mail().
-	 * @return array[] Each: array( 'team', 'email', 'sent' => false ).
-	 */
-	private static function captain_lines( array $plan ): array {
-		$lines = array();
-		foreach ( $plan as $entry ) {
-			foreach ( $entry['teams'] as $team ) {
-				$lines[] = array(
-					'team'  => $team,
-					'email' => $entry['email'],
-					'sent'  => false,
-				);
-			}
-		}
-		return $lines;
+		return (bool) $sent;
 	}
 }
