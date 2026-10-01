@@ -73,6 +73,8 @@ $GLOBALS['t_dates']     = array();
 $GLOBALS['t_get_posts'] = array();
 function absint( $v ) { return abs( (int) $v ); }
 function current_time( $f ) { return '2026-10-01'; }
+$GLOBALS['t_team_posts'] = array( 7, 11, 12, 115100, 107678, 115093 );
+function get_post_type( $id ) { return in_array( (int) $id, $GLOBALS['t_team_posts'], true ) ? 'sp_team' : false; }
 function get_post_meta( $id, $key, $single = false ) { return $GLOBALS['t_meta'][ $id ][ $key ] ?? array(); }
 function get_posts( $args ) {
 	$GLOBALS['t_get_posts'][] = $args;
@@ -99,6 +101,28 @@ assert_test( array( 7 ) === $e::player_team_ids( 7, 99 ), 'season 99: its own te
 assert_test( array() === $e::player_team_ids( 7, 55 ), 'season with no mapping: no teams, no sp_current_team fallback' );
 assert_test( array() === $e::player_team_ids( 7, 98 ), 'zero team id ignored' );
 assert_test( array() === $e::player_team_ids( 99, 100 ), 'player with no sp_leagues meta: no teams' );
+
+echo "\n=== player_team_ids(): real-data shape ===\n\n";
+$GLOBALS['t_meta'] = array(
+	66 => array(
+		'sp_current_team' => array( 9 ),
+		'sp_leagues'      => array(
+			'0' => array( 666 => 1 ),
+			'6' => array( 666 => 115100, 640 => 107678 ),
+			'7' => array( 666 => -1, 654 => 115093 ),
+			'2' => array( 666 => 0 ),
+		),
+	),
+);
+assert_test( array( 115100 ) === $e::player_team_ids( 66, 666 ), 'season 666: marker 1, -1 and 0 ignored; exactly the real team' );
+assert_test( array( 107678 ) === $e::player_team_ids( 66, 640 ), 'season 640' );
+assert_test( array( 115093 ) === $e::player_team_ids( 66, 654 ), 'season 654' );
+$GLOBALS['t_team_posts'][] = 1;
+assert_test( array( 115100 ) === $e::player_team_ids( 66, 666 ), 'league key 0 is skipped even if post 1 were a team' );
+array_pop( $GLOBALS['t_team_posts'] );
+$GLOBALS['t_team_posts'] = array( 107678 );
+assert_test( array() === $e::player_team_ids( 66, 666 ), 'an id that is not an sp_team post is dropped' );
+$GLOBALS['t_team_posts'] = array( 7, 11, 12, 115100, 107678, 115093 );
 
 echo "\n=== next_eligible() ===\n\n";
 

@@ -83,7 +83,8 @@ class SPLM_Discipline_Eligibility {
 	 * Season-scoped via the roster mapping sp_leagues[league][season] => team
 	 * (the same source Rosters and the stats aggregator use). sp_current_team is
 	 * NOT season-scoped and is deliberately not consulted: a wrong team is worse
-	 * than none. A player in two leagues/divisions in one season yields two teams.
+	 * than none. League key 0 ("no league" marker) and any id that is not an
+	 * sp_team post are skipped. A player in two leagues/divisions in one season yields two teams.
 	 *
 	 * @param int $player_id Player post id.
 	 * @param int $season_id Season term id.
@@ -95,9 +96,15 @@ class SPLM_Discipline_Eligibility {
 			return array();
 		}
 		$ids = array();
-		foreach ( $leagues as $season_map ) {
-			if ( is_array( $season_map ) && ! empty( $season_map[ $season_id ] ) ) {
-				$ids[] = absint( $season_map[ $season_id ] );
+		foreach ( $leagues as $league_id => $season_map ) {
+			// League key 0 is SportsPress's "no league" marker (values like 1), not a team.
+			if ( (int) $league_id <= 0 || ! is_array( $season_map ) || empty( $season_map[ $season_id ] ) ) {
+				continue;
+			}
+			$team_id = (int) $season_map[ $season_id ];
+			// Defence in depth: only a real team post counts (-1 = not on a team).
+			if ( $team_id > 0 && 'sp_team' === get_post_type( $team_id ) ) {
+				$ids[] = $team_id;
 			}
 		}
 		return array_values( array_unique( array_filter( $ids ) ) );
@@ -142,7 +149,7 @@ class SPLM_Discipline_Eligibility {
 					'post_type'      => 'sp_event',
 					'post_status'    => array( 'publish', 'future' ),
 					// Postponed/cancelled are excluded in the query, so this cap is safe;
-						// +6 = the games sat plus the eligible one, with slack.
+					// +6 = the games sat plus the eligible one, with slack.
 					'posts_per_page' => $games + 6,
 					'orderby'        => array(
 						'date' => 'ASC',
