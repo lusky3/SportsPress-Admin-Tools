@@ -1490,3 +1490,57 @@ pre.splm-discipline-email {
 .splm-badge--discarded { background: var(--splm-surface-muted); color: var(--splm-text-secondary); }
 .splm-badge--revoked { background: var(--splm-danger-tint); color: var(--splm-danger-text); box-shadow: inset 0 0 0 1px var(--splm-danger-border); }
 .splm-badge--baseline { background: transparent; color: var(--splm-text-secondary); box-shadow: inset 0 0 0 1px var(--splm-border); }
+
+/* Per-player discipline history panel */
+.splm-discipline-history__toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin: 0.75rem 0; }
+.splm-discipline-history__toolbar label { font-size: 0.85rem; color: var(--splm-text); }
+.splm-discipline-history__summary { margin: 0.5rem 0; font-size: 0.9rem; font-weight: 600; color: var(--splm-text); }
+.splm-discipline-history { max-height: 55vh; overflow-y: auto; }
+.splm-discipline-history__season h4 { margin: 1rem 0 0.5rem; font-size: 0.9rem; color: var(--splm-text); }
+.splm-discipline-history__list { list-style: none; margin: 0; padding: 0; }
+.splm-discipline-history__row {
+	margin: 0 0 0.5rem;
+	padding: 0.6rem 0.75rem;
+	border: 1px solid var(--splm-border);
+	border-radius: 6px;
+	background: var(--splm-surface);
+	color: var(--splm-text);
+}
+.splm-discipline-history__row--replaced {
+	border-style: dashed;
+	background: var(--splm-surface-muted);
+	color: var(--splm-text-secondary);
+}
+.splm-discipline-history__head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.splm-discipline-history__meta { margin: 0.25rem 0; font-size: 0.8rem; color: var(--splm-text-secondary); }
+.splm-discipline-history__private-note {
+	margin: 0.35rem 0;
+	padding: 0.35rem 0.6rem;
+	border-left: 3px solid var(--splm-primary-border);
+	background: var(--splm-surface-alt);
+	color: var(--splm-text);
+	font-size: 0.85rem;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.splm-discipline-history__error { margin: 0.35rem 0; font-size: 0.85rem; color: var(--splm-danger-text-strong); }
+.splm-discipline-history__actions { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.5rem; }
+.splm-discipline-history__editor {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+	margin-top: 0.5rem;
+	padding: 0.5rem 0.75rem;
+	border: 1px solid var(--splm-border);
+	border-radius: 6px;
+	background: var(--splm-surface-alt);
+}
+.splm-discipline-history__editor input[type="number"] {
+	max-width: 6rem;
+	background: var(--splm-surface);
+	color: var(--splm-text);
+}
+.splm-discipline-history__confirm-text { flex-basis: 100%; margin: 0; font-size: 0.85rem; }
+.splm-discipline-history__check { flex-basis: 100%; font-size: 0.85rem; }
+.splm-discipline-history .splm-alert { margin: 0.5rem 0 0; }

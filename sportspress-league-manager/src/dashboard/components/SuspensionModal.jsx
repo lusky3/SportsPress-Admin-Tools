@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from '@wordpress/element';
 import { fetchInfractions, fetchPlayerGames, previewSuspension, createSuspension } from '../lib/api';
 import { formatDate } from '../lib/time';
 import useFocusTrap from './useFocusTrap';
+import useUid from './useUid';
 
 // Issue-suspension dialog: the convener picks an infraction, sees a live
 // preview of the consequence and the emails, then sends or saves a draft.
@@ -29,10 +30,6 @@ import useFocusTrap from './useFocusTrap';
 const NOTE_MAX = 2000;
 const GAMES_MAX = 20;
 const PREVIEW_DEBOUNCE_MS = 400;
-
-// Module-level counter: stable unique ids per instance without randomness
-// during render.
-let modalCount = 0;
 
 function describeWarning( code, duplicateOf ) {
 	if ( code === 'no_player_email' ) {
@@ -164,12 +161,7 @@ function submitErrorMessage( err ) {
 }
 
 export default function SuspensionModal( { player, season, onClose, onDone } ) {
-	const idRef = useRef( null );
-	if ( idRef.current === null ) {
-		modalCount += 1;
-		idRef.current = `splm-susp-${ modalCount }`;
-	}
-	const uid = idRef.current;
+	const uid = useUid( 'splm-susp' );
 
 	const [ infractions, setInfractions ] = useState( null ); // null = loading
 	const [ infractionsError, setInfractionsError ] = useState( '' );
