@@ -174,16 +174,58 @@ class SPLM_Discipline_Suspension {
 	 * @return bool
 	 */
 	public static function is_duplicate( array $existing, int $player_id, int $infraction_id, int $incident_event_id, string $today ): bool {
-		foreach ( $existing as $row ) {
-			if ( self::row_blocks_reissue( $row, $player_id, $infraction_id, $incident_event_id, $today ) ) {
-				return true;
-			}
-		}
-		return false;
+		return null !== self::duplicate_row( $existing, $player_id, $infraction_id, $incident_event_id, $today );
 	}
 
 	/**
-	 * Whether one existing row blocks re-issuing the same notice.
+	 * The in-force row an attempt would duplicate, or null. Same rules as
+	 * is_duplicate().
+	 *
+	 * @param object[] $existing          The player's existing rows.
+	 * @param int      $player_id         Player.
+	 * @param int      $infraction_id     Infraction.
+	 * @param int      $incident_event_id Incident match (0 = none).
+	 * @param string   $today             UTC 'Y-m-d' of the attempt.
+	 * @return object|null
+	 */
+	public static function duplicate_row( array $existing, int $player_id, int $infraction_id, int $incident_event_id, string $today ): ?object {
+		foreach ( self::in_force_rows( $existing ) as $row ) {
+			if ( self::row_blocks_reissue( $row, $player_id, $infraction_id, $incident_event_id, $today ) ) {
+				return $row;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * The manual suspensions still in force: not replaced by a newer
+	 * non-discarded row (amend, decide, revoke), not revoked or discarded, not
+	 * baseline, and actually a suspension (a revoke's correction row is not).
+	 * Pending and failed drafts count: they are the convener's open work.
+	 *
+	 * @param object[] $rows The player's rows.
+	 * @return object[] Rows in force, original order.
+	 */
+	public static function in_force_rows( array $rows ): array {
+		$superseded = self::superseded_ids( $rows );
+		$out        = array();
+
+		foreach ( $rows as $row ) {
+			if ( in_array( (string) ( $row->status ?? '' ), array( 'baseline', 'revoked', 'discarded' ), true ) ) {
+				continue;
+			}
+			if ( 'suspend' !== (string) ( $row->consequence ?? '' ) || isset( $row->id, $superseded[ (int) $row->id ] ) ) {
+				continue;
+			}
+			$out[] = $row;
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Whether one in-force row blocks re-issuing the same notice.
 	 *
 	 * @param object $row               Existing notice row.
 	 * @param int    $player_id         Player.
@@ -193,7 +235,7 @@ class SPLM_Discipline_Suspension {
 	 * @return bool
 	 */
 	private static function row_blocks_reissue( $row, int $player_id, int $infraction_id, int $incident_event_id, string $today ): bool {
-		if ( 'manual' !== (string) ( $row->source ?? '' ) || in_array( (string) $row->status, array( 'revoked', 'discarded' ), true ) ) {
+		if ( 'manual' !== (string) ( $row->source ?? '' ) ) {
 			return false;
 		}
 		if ( (int) $row->player_id !== $player_id || (int) $row->infraction_id !== $infraction_id || (int) $row->incident_event_id !== $incident_event_id ) {

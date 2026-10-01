@@ -465,6 +465,19 @@ check( 'no prior warning: other season', $rest::plan_preview( in(), inf(), elig(
 check( 'no prior warning: automatic row', $rest::plan_preview( in(), inf(), elig(), $good_email, $caps_ok, array( row( array( 'source' => 'auto' ) ) ), $today )['warnings'], array() );
 check( 'no prior warning: a warn row', $rest::plan_preview( in(), inf(), elig(), $good_email, $caps_ok, array( row( array( 'consequence' => 'warn' ) ) ), $today )['warnings'], array() );
 
+// Revoked and replaced rows are not in force: no prior-suspension warning, no duplicate.
+$rev_root  = row( array( 'id' => 1, 'infraction_id' => 3, 'incident_event_id' => 31, 'status' => 'revoked' ) );
+$rev_corr  = row( array( 'id' => 2, 'parent_id' => 1, 'infraction_id' => 3, 'incident_event_id' => 31, 'status' => 'sent', 'consequence' => 'none' ) );
+$revoked_p = $rest::plan_preview( in( array( 'incident_event_id' => 31 ) ), inf(), elig(), $good_email, $caps_ok, array( $rev_corr, $rev_root ), $today );
+check( 'revoked suspension: no prior-suspension warning and no duplicate', array( $revoked_p['warnings'], $revoked_p['duplicate_of'] ), array( array(), 0 ) );
+$chain_a   = row( array( 'id' => 1, 'infraction_id' => 3, 'incident_event_id' => 31, 'status' => 'sent' ) );
+$chain_b   = row( array( 'id' => 2, 'parent_id' => 1, 'infraction_id' => 3, 'incident_event_id' => 31, 'status' => 'revoked' ) );
+$chain_c   = row( array( 'id' => 3, 'parent_id' => 2, 'infraction_id' => 3, 'incident_event_id' => 31, 'status' => 'sent', 'consequence' => 'none' ) );
+$tip_gone  = $rest::plan_preview( in( array( 'incident_event_id' => 31 ) ), inf(), elig(), $good_email, $caps_ok, array( $chain_c, $chain_b, $chain_a ), $today );
+check( 'amended chain with the tip revoked: nothing in force', array( $tip_gone['warnings'], $tip_gone['duplicate_of'] ), array( array(), 0 ) );
+$chain_live = $rest::plan_preview( in( array( 'incident_event_id' => 31 ) ), inf(), elig(), $good_email, $caps_ok, array( row( array( 'id' => 2, 'parent_id' => 1, 'infraction_id' => 3, 'incident_event_id' => 31, 'status' => 'sent' ) ), $chain_a ), $today );
+check( 'live amended chain: warns once and the newest row is the duplicate', array( $chain_live['warnings'], $chain_live['duplicate_of'] ), array( array( 'prior_suspension_this_season', 'duplicate' ), 2 ) );
+
 $dup = $rest::plan_preview( in( array( 'incident_event_id' => 31 ) ), inf(), elig(), $good_email, $caps_ok, array( row( array( 'id' => 42, 'infraction_id' => 3, 'incident_event_id' => 31, 'status' => 'pending' ) ) ), $today );
 check( 'duplicate warning', in_array( 'duplicate', $dup['warnings'], true ), true );
 check( 'duplicate_of is the existing id', $dup['duplicate_of'], 42 );

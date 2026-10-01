@@ -80,17 +80,38 @@ assert_test( null === $row['eligible_on'], 'schedule shortage leaves eligible_on
 
 echo "\n=== is_duplicate() ===\n\n";
 $existing = array(
-	(object) array( 'player_id' => 9, 'infraction_id' => 5, 'incident_event_id' => 70, 'status' => 'sent', 'created_at' => '2026-10-07 10:00:00', 'source' => 'manual' ),
+	(object) array( 'player_id' => 9, 'infraction_id' => 5, 'incident_event_id' => 70, 'status' => 'sent', 'consequence' => 'suspend', 'created_at' => '2026-10-07 10:00:00', 'source' => 'manual' ),
 );
 assert_test( $s::is_duplicate( $existing, 9, 5, 70, '2026-10-07' ), 'same player + infraction + incident match is a duplicate' );
 assert_test( ! $s::is_duplicate( $existing, 9, 5, 71, '2026-10-07' ), 'different incident match is not a duplicate' );
 assert_test( ! $s::is_duplicate( $existing, 9, 6, 70, '2026-10-07' ), 'different infraction is not a duplicate' );
 assert_test( ! $s::is_duplicate( $existing, 10, 5, 70, '2026-10-07' ), 'different player is not a duplicate' );
-$revoked = array( (object) array( 'player_id' => 9, 'infraction_id' => 5, 'incident_event_id' => 70, 'status' => 'revoked', 'created_at' => '2026-10-07 10:00:00', 'source' => 'manual' ) );
+$revoked = array( (object) array( 'player_id' => 9, 'infraction_id' => 5, 'incident_event_id' => 70, 'status' => 'revoked', 'consequence' => 'suspend', 'created_at' => '2026-10-07 10:00:00', 'source' => 'manual' ) );
 assert_test( ! $s::is_duplicate( $revoked, 9, 5, 70, '2026-10-07' ), 'a revoked notice does not block re-issuing' );
-$nomatch = array( (object) array( 'player_id' => 9, 'infraction_id' => 5, 'incident_event_id' => 0, 'status' => 'sent', 'created_at' => '2026-10-07 10:00:00', 'source' => 'manual' ) );
+$nomatch = array( (object) array( 'player_id' => 9, 'infraction_id' => 5, 'incident_event_id' => 0, 'status' => 'sent', 'consequence' => 'suspend', 'created_at' => '2026-10-07 10:00:00', 'source' => 'manual' ) );
 assert_test( $s::is_duplicate( $nomatch, 9, 5, 0, '2026-10-07' ), 'no incident match: same player + infraction + same day is a duplicate' );
 assert_test( ! $s::is_duplicate( $nomatch, 9, 5, 0, '2026-10-08' ), 'no incident match: a later day is not' );
+
+echo "\n=== in_force_rows(): replaced and withdrawn rows are not in force ===\n\n";
+function splm_f_row( $id, $parent, $status, $consequence = 'suspend' ) {
+	return (object) array( 'id' => $id, 'parent_id' => $parent, 'player_id' => 9, 'infraction_id' => 5, 'incident_event_id' => 70, 'status' => $status, 'consequence' => $consequence, 'created_at' => '2026-10-07 10:00:00', 'source' => 'manual' );
+}
+function splm_f_ids( $rows ) {
+	return array_map( static function ( $r ) { return $r->id; }, array_values( $rows ) );
+}
+$revoked_chain = array( splm_f_row( 1, 0, 'revoked' ), splm_f_row( 2, 1, 'sent', 'none' ) );
+assert_test( array() === $s::in_force_rows( $revoked_chain ), 'a revoked suspension and its correction row leave nothing in force' );
+assert_test( ! $s::is_duplicate( $revoked_chain, 9, 5, 70, '2026-10-07' ), 're-issuing after a revoke is not a duplicate' );
+$live_chain = array( splm_f_row( 1, 0, 'sent' ), splm_f_row( 2, 1, 'sent' ) );
+assert_test( array( 2 ) === splm_f_ids( $s::in_force_rows( $live_chain ) ), 'a live amended chain counts exactly the newest row' );
+assert_test( $s::is_duplicate( $live_chain, 9, 5, 70, '2026-10-07' ), 'a live amended chain still blocks a duplicate' );
+$revoked_tip = array( splm_f_row( 1, 0, 'sent' ), splm_f_row( 2, 1, 'revoked' ), splm_f_row( 3, 2, 'sent', 'none' ) );
+assert_test( array() === $s::in_force_rows( $revoked_tip ), 'an amended chain whose newest row was revoked has nothing in force' );
+assert_test( ! $s::is_duplicate( $revoked_tip, 9, 5, 70, '2026-10-07' ), 'no duplicate after revoking the tip of a chain' );
+assert_test( array( 1 ) === splm_f_ids( $s::in_force_rows( array( splm_f_row( 1, 0, 'sent' ), splm_f_row( 2, 1, 'discarded' ) ) ) ), 'a discarded child does not replace its parent' );
+assert_test( array( 1 ) === splm_f_ids( $s::in_force_rows( array( splm_f_row( 1, 0, 'pending' ) ) ) ), 'a pending draft is in force (it blocks a duplicate)' );
+assert_test( array() === $s::in_force_rows( array( splm_f_row( 1, 0, 'baseline' ), splm_f_row( 2, 0, 'discarded' ), splm_f_row( 3, 0, 'sent', 'warn' ) ) ), 'baseline, discarded and non-suspension rows are never in force' );
+assert_test( array( 4 ) === splm_f_ids( $s::in_force_rows( array_merge( $revoked_chain, array( splm_f_row( 4, 0, 'sent' ) ) ) ) ), 'a later live suspension stays in force beside a revoked one' );
 
 echo "\n=== summary_line() ===\n\n";
 $rows = array(

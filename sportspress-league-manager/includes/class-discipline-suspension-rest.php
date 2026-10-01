@@ -354,19 +354,15 @@ class SPLM_Discipline_Suspension_REST {
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private static function duplicate_of( array $input, array $existing_rows, string $today ): int {
-		foreach ( $existing_rows as $row ) {
-			if ( SPLM_Discipline_Suspension::is_duplicate(
-				array( $row ),
-				(int) ( $input['player_id'] ?? 0 ),
-				(int) ( $input['infraction_id'] ?? 0 ),
-				(int) ( $input['incident_event_id'] ?? 0 ),
-				$today
-			) ) {
-				return (int) ( $row->id ?? 0 );
-			}
-		}
+		$row = SPLM_Discipline_Suspension::duplicate_row(
+			$existing_rows,
+			(int) ( $input['player_id'] ?? 0 ),
+			(int) ( $input['infraction_id'] ?? 0 ),
+			(int) ( $input['incident_event_id'] ?? 0 ),
+			$today
+		);
 
-		return 0;
+		return null === $row ? 0 : (int) ( $row->id ?? 0 );
 	}
 
 	/**
@@ -416,15 +412,15 @@ class SPLM_Discipline_Suspension_REST {
 	}
 
 	/**
-	 * Whether the player already has a live manual suspension this season.
-	 * Revoked, discarded and baseline rows never counted as one.
+	 * Whether the player already has a manual suspension in force this season.
+	 * Revoked, discarded, baseline and replaced rows never count as one.
 	 *
 	 * @param int      $season_id Season.
 	 * @param object[] $existing  Existing rows.
 	 * @return bool
 	 */
 	private static function has_prior_suspension( int $season_id, array $existing ): bool {
-		foreach ( $existing as $row ) {
+		foreach ( SPLM_Discipline_Suspension::in_force_rows( $existing ) as $row ) {
 			if ( 'manual' === (string) ( $row->source ?? '' )
 				&& 'suspend' === (string) $row->consequence
 				&& (int) $row->season_id === $season_id
