@@ -249,6 +249,23 @@ class SPLM_Discipline_Notice_REST {
 			);
 		}
 
+		if ( 'manual' === (string) ( $row->source ?? 'auto' ) ) {
+			return SPLM_Discipline_Suspension_REST::release_row( $row );
+		}
+
+		return $this->release_automatic( $row );
+	}
+
+	/**
+	 * Send an automatic notice (the original release body, unchanged).
+	 *
+	 * @param object $row Notice row, already known to be pending or failed.
+	 * @return WP_REST_Response|WP_Error
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private function release_automatic( $row ) {
+		$id        = (int) $row->id;
 		$player_id = (int) $row->player_id;
 		$season_id = (int) $row->season_id;
 

@@ -719,6 +719,15 @@ foreach ( array( 'finish_create', 'release_row', 'release_extra', 'release_respo
 check( 'create_locked copies the note only into the row input', 2 === substr_count( method_source( 'SPLM_Discipline_Suspension_REST', 'create_locked' ), 'incident_note' ), true );
 check( 'for_row names incident_note only inside its unset guard', false === strpos( preg_replace( '/unset\([^;]*\);/', '', method_source( 'SPLM_Discipline_Suspension_Context', 'for_row' ) ), 'incident_note' ), true );
 
+// Structural: the notice release route hands manual rows to release_row()
+// after its releasable-status check, before the automatic send.
+$notice_src = file_get_contents( dirname( __DIR__ ) . '/includes/class-discipline-notice-rest.php' );
+$status_pos = strpos( $notice_src, "'splm_notice_not_releasable'" );
+$branch_pos = strpos( $notice_src, "'manual' === (string) ( \$row->source ?? 'auto' )" );
+$hand_off   = strpos( $notice_src, 'SPLM_Discipline_Suspension_REST::release_row( $row )' );
+$auto_pos   = strpos( $notice_src, 'SPLM_Discipline_Notice_Mail::send(' );
+check( 'release_locked branches on manual after the status check and before the automatic send', false !== $status_pos && $status_pos < $branch_pos && $branch_pos < $hand_off && $hand_off < $auto_pos, true );
+
 $state = splm_susp_state();
 echo "\n{$state->total} checks, {$state->failures} failures\n";
 exit( $state->failures ? 1 : 0 );
