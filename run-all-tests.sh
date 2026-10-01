@@ -131,6 +131,7 @@ run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-discipline-notice-bo
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-discipline-notice-mode.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-discipline-infractions.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-discipline-suspension.php"
+run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-discipline-eligibility.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-league-table-rows.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-season-audit.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-waitlist-time.php"
