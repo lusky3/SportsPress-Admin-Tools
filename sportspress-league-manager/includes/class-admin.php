@@ -268,8 +268,8 @@ class SPLM_Admin {
 		$this->add_field( SPLM_Discipline_Notice::OPTION_MODE_WARNING, __( 'Warning Notices', 'sportspress-league-manager' ), array( $this, 'render_notice_mode_warning_field' ) );
 		$this->add_field( SPLM_Discipline_Notice::OPTION_MODE_SUSPENSION, __( 'Suspension Notices', 'sportspress-league-manager' ), array( $this, 'render_notice_mode_suspension_field' ) );
 		$this->add_field( 'splm_discipline_notice_cc', __( 'Notice Copies To', 'sportspress-league-manager' ), array( $this, 'render_notice_cc_field' ) );
-		$this->add_field( 'splm_discipline_rulebook_url', __( 'Rulebook Link', 'sportspress-league-manager' ), array( $this, 'render_rulebook_url_field' ) );
-		$this->add_field( 'splm_discipline_rulebook_rev', __( 'Rulebook Revision', 'sportspress-league-manager' ), array( $this, 'render_rulebook_rev_field' ) );
+		$this->add_field( 'splm_discipline_rulebook_url', __( 'Rulebook Link', 'sportspress-league-manager' ), array( $this, 'render_rulebook_url_field' ), 'splm_backend_section', array( 'label_for' => 'splm_discipline_rulebook_url' ) );
+		$this->add_field( 'splm_discipline_rulebook_rev', __( 'Rulebook Revision', 'sportspress-league-manager' ), array( $this, 'render_rulebook_rev_field' ), 'splm_backend_section', array( 'label_for' => 'splm_discipline_rulebook_rev' ) );
 
 		add_settings_section(
 			'splm_freescout_section',
@@ -324,8 +324,8 @@ class SPLM_Admin {
 		$this->add_field( SPLM_Waitlist_Notify::OPTION_EVENTS, __( 'Categories', 'sportspress-league-manager' ), array( $this, 'render_waitlist_notify_events_field' ), 'splm_waitlist_notify_section' );
 	}
 
-	private function add_field( $id, $title, $callback, $section = 'splm_backend_section' ) {
-		add_settings_field( $id, $title, $callback, 'splm_backend_settings', $section );
+	private function add_field( $id, $title, $callback, $section = 'splm_backend_section', $args = array() ) {
+		add_settings_field( $id, $title, $callback, 'splm_backend_settings', $section, $args );
 	}
 
 	public function render_default_season_field() {
@@ -638,7 +638,7 @@ class SPLM_Admin {
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function render_rulebook_url_field() {
-		echo '<input type="url" class="large-text" name="splm_discipline_rulebook_url" value="' . esc_attr( get_option( 'splm_discipline_rulebook_url', '' ) ) . '" placeholder="' . esc_attr( SPLM_Discipline_Suspension_Context::DEFAULT_RULEBOOK_URL ) . '"/>';
+		echo '<input type="url" class="large-text" id="splm_discipline_rulebook_url" name="splm_discipline_rulebook_url" value="' . esc_attr( get_option( 'splm_discipline_rulebook_url', '' ) ) . '" placeholder="' . esc_attr( SPLM_Discipline_Suspension_Context::DEFAULT_RULEBOOK_URL ) . '"/>';
 		echo '<p class="description">' . esc_html__( 'Cited in every suspension email. Leave blank to use the built-in default.', 'sportspress-league-manager' ) . '</p>';
 	}
 
@@ -648,7 +648,7 @@ class SPLM_Admin {
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function render_rulebook_rev_field() {
-		echo '<input type="text" class="regular-text" maxlength="40" name="splm_discipline_rulebook_rev" value="' . esc_attr( get_option( 'splm_discipline_rulebook_rev', '' ) ) . '" placeholder="' . esc_attr( SPLM_Discipline_Suspension_Context::DEFAULT_RULEBOOK_REV ) . '"/>';
+		echo '<input type="text" class="regular-text" maxlength="40" id="splm_discipline_rulebook_rev" name="splm_discipline_rulebook_rev" value="' . esc_attr( get_option( 'splm_discipline_rulebook_rev', '' ) ) . '" placeholder="' . esc_attr( SPLM_Discipline_Suspension_Context::DEFAULT_RULEBOOK_REV ) . '"/>';
 		echo '<p class="description">' . esc_html__( 'Cited in every suspension email. Leave blank to use the built-in default.', 'sportspress-league-manager' ) . '</p>';
 	}
 

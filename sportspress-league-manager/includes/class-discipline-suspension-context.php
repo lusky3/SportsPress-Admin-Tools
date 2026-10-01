@@ -133,7 +133,7 @@ class SPLM_Discipline_Suspension_Context {
 			return '';
 		}
 
-		return substr( sanitize_text_field( (string) $raw ), 0, 40 );
+		return mb_substr( sanitize_text_field( (string) $raw ), 0, 40 );
 	}
 
 	/**

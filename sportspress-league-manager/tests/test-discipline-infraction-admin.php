@@ -38,7 +38,6 @@ function has( $haystack, $needle ) {
 	return false !== strpos( $haystack, $needle );
 }
 
-function add_action() {}
 function __( $text ) {
 	return $text;
 }
@@ -138,6 +137,9 @@ check( 'schemeless text is rejected', $ctx::sanitize_rulebook_url( 'example.com/
 
 echo "\n=== sanitize_rulebook_rev() ===\n\n";
 check( 'null is empty', $ctx::sanitize_rulebook_rev( null ), '' );
+$accented = $ctx::sanitize_rulebook_rev( str_repeat( 'é', 45 ) );
+check( 'multibyte truncation keeps valid UTF-8', 1 === preg_match( '//u', $accented ), true );
+check( 'multibyte truncation keeps 40 characters', mb_strlen( $accented ), 40 );
 check( 'array is empty', $ctx::sanitize_rulebook_rev( array( 'x' ) ), '' );
 check( 'plain label kept', $ctx::sanitize_rulebook_rev( 'Rev 20251001' ), 'Rev 20251001' );
 check( 'markup stripped', $ctx::sanitize_rulebook_rev( '<b>Rev 2</b>' ), 'Rev 2' );
