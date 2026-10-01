@@ -58,6 +58,16 @@ class SPLM_Discipline_Suspension_Body {
 
 		if ( 'revoked' !== $kind ) {
 			$lines[] = self::infraction_block( $ctx );
+
+			// A 0-game outcome (ejection / game misconduct) is over with the
+			// game: nothing is served later, so no eligibility, scope or
+			// forfeit wording applies.
+			if ( self::is_balance_of_game( $kind, $ctx ) ) {
+				$lines[] = self::balance_of_game_sentence( $audience );
+				$lines[] = self::footer( $ctx );
+				return implode( "\n\n", array_filter( $lines, 'strlen' ) );
+			}
+
 			$lines[] = self::length_sentence( $kind, $ctx );
 
 			$eligibility = self::eligibility_sentence( $audience, $ctx );
@@ -75,6 +85,31 @@ class SPLM_Discipline_Suspension_Body {
 		$lines[] = self::footer( $ctx );
 
 		return implode( "\n\n", array_filter( $lines, 'strlen' ) );
+	}
+
+	/**
+	 * Whether this is a newly issued suspension of zero games.
+	 *
+	 * @param string $kind Notice kind.
+	 * @param array  $ctx  Context.
+	 * @return bool
+	 */
+	private static function is_balance_of_game( string $kind, array $ctx ): bool {
+		return 'issued' === $kind
+			&& 'indefinite' !== ( $ctx['outcome'] ?? '' )
+			&& 0 === (int) ( $ctx['games'] ?? 0 );
+	}
+
+	/**
+	 * Length sentence for a 0-game suspension. Audience-aware.
+	 *
+	 * @param string $audience player|captain.
+	 * @return string
+	 */
+	private static function balance_of_game_sentence( string $audience ): string {
+		return 'captain' === $audience
+			? __( 'The suspension is for the balance of the game; no further games.', 'sportspress-league-manager' )
+			: __( 'Length: balance of the game — no further games.', 'sportspress-league-manager' );
 	}
 
 	/**

@@ -110,5 +110,23 @@ echo "\n=== player indefinite regression ===\n\n";
 $p_i = $b::body( 'player', $i_ctx );
 assert_test( false !== strpos( $p_i, 'You remain suspended' ), 'player indefinite contains "You remain suspended"' );
 
+echo "\n=== zero-game suspensions ===\n\n";
+$z_ctx = array_merge( $ctx, array( 'games' => 0, 'eligible_label' => '', 'projected' => false ) );
+$zp    = $b::body( 'player', $z_ctx );
+assert_test( false !== strpos( $zp, 'Length: balance of the game' ) && false !== strpos( $zp, 'no further games' ), 'player 0 games: balance-of-the-game length' );
+assert_test( false === strpos( $zp, '0 games' ) && false === strpos( $zp, 'remaining games' ) && false === strpos( $zp, 'Next eligible' ) && false === strpos( $zp, 'next scheduled game' ), 'player 0 games: no 0 games / eligibility sentences' );
+assert_test( false === strpos( $zp, 'ALL league play' ), 'player 0 games: no all-play sentence' );
+assert_test( false !== strpos( $zp, 'Fighting (first offence)' ) && false !== strpos( $zp, 'Rev 20241009' ), 'player 0 games: infraction and footer remain' );
+$zc = $b::body( 'captain', $z_ctx );
+assert_test( false !== strpos( $zc, 'balance of the game; no further games' ) && false === strpos( $zc, 'Length: balance' ), 'captain 0 games: third-person balance-of-the-game' );
+assert_test( false === strpos( $zc, '0 games' ) && false === strpos( $zc, 'remaining games' ) && false === strpos( $zc, "player's next scheduled game" ) && false === strpos( $zc, 'ALL league play' ), 'captain 0 games: no eligibility or all-play sentences' );
+assert_test( false === strpos( $zc, 'forfeits the game' ), 'captain 0 games: no forfeit line' );
+
+echo "\n=== 1+ game wording regression ===\n\n";
+$one = $b::body( 'player', array_merge( $ctx, array( 'games' => 1 ) ) );
+assert_test( false !== strpos( $one, 'Length: 1 game.' ) && false !== strpos( $one, 'Next eligible game:' ) && false !== strpos( $one, 'ALL league play' ), '1 game: length, eligibility and all-play unchanged' );
+$oc = $b::body( 'captain', array_merge( $ctx, array( 'games' => 1 ) ) );
+assert_test( false !== strpos( $oc, 'forfeits the game' ), '1 game captain: forfeit line unchanged' );
+
 echo "\nPassed: {$passed}  Failed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );
