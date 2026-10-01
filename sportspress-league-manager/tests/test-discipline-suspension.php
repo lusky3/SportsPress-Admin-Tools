@@ -33,6 +33,28 @@ $s = 'SPLM_Discipline_Suspension';
 $inf = (object) array( 'id' => 5, 'rule_ref' => '6.5', 'title' => 'Fighting (first offence)', 'rule_text' => 'Rule text', 'outcome' => 'games', 'default_games' => 3 );
 $elig = array( 'date' => '2026-10-27 21:00:00', 'event_id' => 77, 'team_id' => 11, 'remaining' => 0 );
 
+echo "\n=== schema ===\n\n";
+$cols = array( 'source', 'infraction_id', 'rule_ref', 'infraction_title', 'rule_text', 'outcome', 'incident_event_id', 'incident_note', 'parent_id', 'eligible_on', 'captains_notified' );
+assert_test( $cols === $db::required_columns(), 'required_columns lists exactly the 11 manual-suspension columns' );
+$sql = $db::create_sql( 'wp_splm_discipline_notice', 'DEFAULT CHARSET=utf8mb4' );
+foreach ( $cols as $col ) {
+	assert_test( false !== strpos( $sql, "\t\t\t{$col} " ), "CREATE TABLE defines {$col}" );
+}
+assert_test( false !== strpos( $sql, 'PRIMARY KEY  (id)' ), 'two-space PRIMARY KEY for dbDelta' );
+assert_test( false !== strpos( $sql, 'KEY parent (parent_id)' ) && false !== strpos( $sql, 'KEY source_status (source, status)' ), 'new indexes present' );
+assert_test( 0 === strpos( $sql, 'CREATE TABLE wp_splm_discipline_notice (' ) && false !== strpos( $sql, 'DEFAULT CHARSET=utf8mb4;' ), 'table name and charset interpolated' );
+
+class T_Wpdb { public $prefix = 'wp_'; public $cols = array(); public function get_col( $q ) { return $this->cols; } }
+$wpdb = new T_Wpdb();
+$wpdb->cols = array( 'id', 'player_id' );
+assert_test( $cols === $db::missing_columns(), 'missing_columns: old table lacks all 11' );
+$wpdb->cols = array_merge( array( 'id' ), array_diff( $cols, array( 'eligible_on' ) ) );
+assert_test( array( 'eligible_on' ) === $db::missing_columns(), 'missing_columns names just the absent one' );
+$wpdb->cols = array_merge( array( 'id' ), $cols );
+assert_test( array() === $db::missing_columns(), 'missing_columns empty when all present' );
+$wpdb->cols = array();
+assert_test( $cols === $db::missing_columns(), 'unreadable table: all reported missing' );
+
 echo "\n=== build_row() ===\n\n";
 $row = $s::build_row( array( 'player_id' => 9, 'season_id' => 4, 'incident_event_id' => 70, 'incident_note' => 'private', 'team' => 'Wolves', 'division' => 'A' ), $inf, $elig );
 assert_test( 'manual' === $row['source'], 'source is manual' );

@@ -128,7 +128,23 @@ class SPLM_Discipline_Notice_Database {
 		$table   = self::table_name();
 		$charset = $wpdb->get_charset_collate();
 
-		$sql = "CREATE TABLE {$table} (
+		$sql = self::create_sql( $table, $charset );
+
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta( $sql );
+
+		return self::table_exists();
+	}
+
+	/**
+	 * The dbDelta statement. Pure, so the schema is testable without a database.
+	 *
+	 * @param string $table   Table name.
+	 * @param string $charset Charset/collate clause.
+	 * @return string
+	 */
+	public static function create_sql( string $table, string $charset ): string {
+		return "CREATE TABLE {$table} (
 			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 			player_id bigint(20) unsigned NOT NULL,
 			season_id bigint(20) unsigned NOT NULL,
@@ -169,11 +185,42 @@ class SPLM_Discipline_Notice_Database {
 			KEY parent (parent_id),
 			KEY source_status (source, status)
 		) {$charset};";
+	}
 
-		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-		dbDelta( $sql );
+	/**
+	 * The columns the manual-suspension feature added.
+	 *
+	 * @return string[]
+	 */
+	public static function required_columns(): array {
+		return array(
+			'source',
+			'infraction_id',
+			'rule_ref',
+			'infraction_title',
+			'rule_text',
+			'outcome',
+			'incident_event_id',
+			'incident_note',
+			'parent_id',
+			'eligible_on',
+			'captains_notified',
+		);
+	}
 
-		return self::table_exists();
+	/**
+	 * Required columns the live table lacks. When the table cannot be read,
+	 * every column counts as missing.
+	 *
+	 * @return string[]
+	 */
+	public static function missing_columns(): array {
+		global $wpdb;
+		$found = $wpdb->get_col( 'SHOW COLUMNS FROM ' . self::table_name() ); // phpcs:ignore WordPress.DB
+		if ( ! is_array( $found ) || ! $found ) {
+			return self::required_columns();
+		}
+		return array_values( array_diff( self::required_columns(), $found ) );
 	}
 
 	/**
@@ -197,8 +244,17 @@ class SPLM_Discipline_Notice_Database {
 			return;
 		}
 
-		if ( self::create_table() ) {
+		if ( ! self::create_table() ) {
+			return;
+		}
+
+		// dbDelta can fail silently on an ALTER; do not record the version
+		// (and stop retrying) until every new column is really there.
+		$missing = self::missing_columns();
+		if ( ! $missing ) {
 			update_option( self::VERSION_OPTION, self::DB_VERSION );
+		} elseif ( class_exists( 'SPAT_Logger' ) ) {
+			SPAT_Logger::error( 'discipline', 'Notice table migration incomplete; missing columns: ' . implode( ', ', $missing ) );
 		}
 	}
 
