@@ -53,5 +53,12 @@ $tie = array( $ev( 9, '2026-10-06 20:00:00', 11 ), $ev( 4, '2026-10-06 20:00:00'
 $r = $e::pick_nth( $tie, 1 );
 assert_test( 4 === $r['event_id'], 'same start time breaks the tie on lowest event id' );
 
+echo "\n=== normalize_after_date() ===\n\n";
+
+assert_test( '2026-10-06' === $e::normalize_after_date( '2026-10-06', '2000-01-01' ), 'a well-shaped date passes through' );
+assert_test( '2000-01-01' === $e::normalize_after_date( 'abc', '2000-01-01' ), 'garbage falls back' );
+assert_test( '2000-01-01' === $e::normalize_after_date( '', '2000-01-01' ), 'empty string falls back' );
+assert_test( '2000-01-01' === $e::normalize_after_date( '2026-1-5', '2000-01-01' ), 'unpadded date falls back' );
+
 echo "\nPassed: {$passed}  Failed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );

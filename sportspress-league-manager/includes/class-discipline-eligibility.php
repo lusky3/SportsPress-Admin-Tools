@@ -85,6 +85,17 @@ class SPLM_Discipline_Eligibility {
 	}
 
 	/**
+	 * Accept only a Y-m-d shaped boundary date. Pure — fallback is passed in.
+	 *
+	 * @param string $date     Candidate date.
+	 * @param string $fallback Used when $date is not Y-m-d shaped.
+	 * @return string
+	 */
+	public static function normalize_after_date( string $date, string $fallback ): string {
+		return 1 === preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) ? $date : $fallback;
+	}
+
+	/**
 	 * Project the Nth game the player will sit, across all their teams.
 	 *
 	 * 'publish' AND 'future' — a fixture dated ahead is stored as 'future'.
@@ -102,6 +113,8 @@ class SPLM_Discipline_Eligibility {
 			return self::pick_nth( array(), $games );
 		}
 
+		$after_date = self::normalize_after_date( $after_date, current_time( 'Y-m-d' ) );
+
 		$events = array();
 		foreach ( $teams as $team_id ) {
 			$ids = get_posts(
@@ -118,9 +131,23 @@ class SPLM_Discipline_Eligibility {
 						),
 					),
 					'meta_query'     => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+						'relation' => 'AND',
 						array(
 							'key'   => 'sp_team',
 							'value' => $team_id,
+						),
+						// A postponed or cancelled fixture does not use up a suspension game.
+						array(
+							'relation' => 'OR',
+							array(
+								'key'     => 'sp_status',
+								'value'   => array( 'postponed', 'cancelled' ),
+								'compare' => 'NOT IN',
+							),
+							array(
+								'key'     => 'sp_status',
+								'compare' => 'NOT EXISTS',
+							),
 						),
 					),
 					'fields'         => 'ids',
@@ -139,20 +166,5 @@ class SPLM_Discipline_Eligibility {
 		}
 
 		return self::pick_nth( $events, $games );
-	}
-
-	/**
-	 * Whether an event is still to be played.
-	 *
-	 * A postponed or cancelled fixture does not use up a suspension game.
-	 * SportsPress records this in sp_status ('ok' | 'tbd' | 'postponed' |
-	 * 'cancelled').
-	 *
-	 * @param int $event_id Event post id.
-	 * @return bool
-	 */
-	private static function is_unplayed( int $event_id ): bool {
-		$status = (string) get_post_meta( $event_id, 'sp_status', true );
-		return ! in_array( $status, array( 'postponed', 'cancelled' ), true );
 	}
 }
