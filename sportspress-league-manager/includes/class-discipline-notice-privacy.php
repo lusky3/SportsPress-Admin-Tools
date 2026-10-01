@@ -101,8 +101,6 @@ class SPLM_Discipline_Notice_Privacy {
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function erase( $email_address, $page = 1 ) {
-		global $wpdb;
-
 		$messages = array();
 
 		if ( ! SPLM_Discipline_Notice_Database::table_exists() ) {
@@ -141,13 +139,52 @@ class SPLM_Discipline_Notice_Privacy {
 
 		$offset    = ( max( 1, (int) $page ) - 1 ) * self::BATCH_SIZE;
 		$batch_ids = array_slice( $player_ids, $offset, self::BATCH_SIZE );
-		$removed   = 0;
 
-		$table = SPLM_Discipline_Notice_Database::table_name();
+		$removed = self::anonymise_players( $batch_ids );
+
+		$done = ( $offset + self::BATCH_SIZE ) >= count( $player_ids );
+		if ( $done ) {
+			delete_transient( $transient_key );
+		}
+
+		return $this->erase_result( $removed, 0, self::erase_messages( $removed ), $done );
+	}
+
+	/**
+	 * The eraser's summary messages.
+	 *
+	 * @param int $removed Notices anonymised in this batch.
+	 * @return array
+	 */
+	private static function erase_messages( int $removed ): array {
+		if ( ! $removed ) {
+			return array();
+		}
+
+		return array(
+			sprintf(
+				/* translators: %d: number of notices anonymized. */
+				_n( 'Anonymized %d disciplinary notice.', 'Anonymized %d disciplinary notices.', $removed, 'sportspress-league-manager' ),
+				$removed
+			),
+		);
+	}
+
+	/**
+	 * Anonymise every notice row belonging to the given players.
+	 *
+	 * @param array $player_ids Player ids.
+	 * @return int Rows anonymised.
+	 */
+	private static function anonymise_players( array $player_ids ): int {
+		global $wpdb;
+
+		$table   = SPLM_Discipline_Notice_Database::table_name();
+		$removed = 0;
 
 		list( $set_sql, $set_values ) = self::erase_set_clause();
 
-		foreach ( $batch_ids as $player_id ) {
+		foreach ( $player_ids as $player_id ) {
 			$count = (int) $wpdb->get_var( // phpcs:ignore WordPress.DB
 				$wpdb->prepare(
 					"SELECT COUNT(*) FROM {$table} WHERE player_id = %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not a value.
@@ -170,20 +207,7 @@ class SPLM_Discipline_Notice_Privacy {
 			$removed += $count;
 		}
 
-		if ( $removed ) {
-			$messages[] = sprintf(
-				/* translators: %d: number of notices anonymized. */
-				_n( 'Anonymized %d disciplinary notice.', 'Anonymized %d disciplinary notices.', $removed, 'sportspress-league-manager' ),
-				$removed
-			);
-		}
-
-		$done = ( $offset + self::BATCH_SIZE ) >= count( $player_ids );
-		if ( $done ) {
-			delete_transient( $transient_key );
-		}
-
-		return $this->erase_result( $removed, 0, $messages, $done );
+		return $removed;
 	}
 
 	/**
@@ -293,7 +317,7 @@ class SPLM_Discipline_Notice_Privacy {
 	 *
 	 * @return array array( string $set_sql, array $values ).
 	 */
-	private static function erase_set_clause(): array {
+	public static function erase_set_clause(): array {
 		$parts  = array();
 		$values = array();
 		foreach ( self::erase_assignments() as $column => $value ) {

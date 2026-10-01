@@ -108,6 +108,20 @@ $flat     = wp_json_encode_stub( $exported );
 SPLM_Privacy_Test_Harness::check( ! in_array( 'incident_note', splm_privacy_labels( $exported ), true ) && ! in_array( 'captains_notified', splm_privacy_labels( $exported ), true ), 'no incident_note / captains_notified label' );
 SPLM_Privacy_Test_Harness::check( false === strpos( $flat, 'convener-only text' ) && false === strpos( $flat, 'cap@example.com' ), 'hostile row values never exported' );
 
+echo "Legacy rows (new columns absent)\n";
+$legacy = splm_privacy_row();
+unset( $legacy->infraction_title, $legacy->rule_ref, $legacy->outcome, $legacy->eligible_on );
+$legacy_labels = splm_privacy_labels( SPLM_Discipline_Notice_Privacy::export_fields( $legacy ) );
+SPLM_Privacy_Test_Harness::check( $base_labels === $legacy_labels, 'legacy row exports only the original seven fields, no notices' );
+SPLM_Privacy_Test_Harness::check( array() === array_intersect( array( 'Infraction', 'Rule', 'Outcome', 'Projected eligible date' ), $legacy_labels ), 'legacy row has none of the new labels' );
+
+echo "Erase SET clause\n";
+list( $set_sql, $set_values ) = SPLM_Discipline_Notice_Privacy::erase_set_clause();
+SPLM_Privacy_Test_Harness::check( false !== strpos( $set_sql, 'incident_note = NULL' ), 'incident_note = NULL literal' );
+SPLM_Privacy_Test_Harness::check( false !== strpos( $set_sql, 'captains_notified = NULL' ), 'captains_notified = NULL literal' );
+SPLM_Privacy_Test_Harness::check( preg_match_all( '/%[sd]/', $set_sql ) === count( $set_values ), 'placeholder count equals value count' );
+SPLM_Privacy_Test_Harness::check( false === strpos( $set_sql, 'bcc = %' ) && false === strpos( $set_sql, 'note = %' ), 'NULL columns are literals, not placeholders' );
+
 function wp_json_encode_stub( $data ) {
 	return json_encode( $data );
 }
