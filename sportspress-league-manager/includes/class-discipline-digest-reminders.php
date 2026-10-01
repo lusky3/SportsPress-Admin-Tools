@@ -91,9 +91,9 @@ class SPLM_Discipline_Digest_Reminders {
 
 		$table = SPLM_Discipline_Notice_Database::table_name();
 		// incident_note and note are deliberately not selected.
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not a value.
 		$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB
 			$wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not a value.
 				"SELECT id, player_id, status, source, scope, outcome, consequence, infraction_title, eligible_on, sent_at, created_at
 				 FROM {$table}
 				 WHERE season_id = %d AND status = %s AND ( eligible_on IS NOT NULL OR ( source = %s AND outcome = %s ) )
@@ -104,6 +104,7 @@ class SPLM_Discipline_Digest_Reminders {
 				'indefinite'
 			)
 		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		return is_array( $rows ) ? $rows : array();
 	}
