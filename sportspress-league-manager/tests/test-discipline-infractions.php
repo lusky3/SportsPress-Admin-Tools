@@ -59,5 +59,14 @@ assert_test( true === $i::needs_upgrade( '0.9', true ), 'older stored version: u
 assert_test( true === $i::needs_upgrade( '1.0.0', false ), 'table missing despite version: upgrade' );
 assert_test( true === $i::needs_upgrade( false, false ), 'unset option (false) and no table: upgrade' );
 
+echo "\n=== seed_plan() / version recording ===\n\n";
+assert_test( 'skip-flagged' === $i::seed_plan( true, 0 ), 'flag set: skip, even with no rows' );
+assert_test( 'skip-flagged' === $i::seed_plan( true, 5 ), 'flag set with rows: skip' );
+assert_test( 'mark-seeded' === $i::seed_plan( false, 3 ), 'rows exist without the flag: mark seeded, never overwrite' );
+assert_test( 'insert' === $i::seed_plan( false, 0 ), 'no flag, no rows: insert' );
+assert_test( true === $i::should_record_version( true, true ), 'version recorded when table exists and seeded' );
+assert_test( false === $i::should_record_version( true, false ), 'version NOT recorded when seeding failed' );
+assert_test( false === $i::should_record_version( false, true ), 'version NOT recorded when table missing' );
+
 echo "\nPassed: {$passed}  Failed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );

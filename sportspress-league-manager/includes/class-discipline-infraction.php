@@ -24,6 +24,7 @@ class SPLM_Discipline_Infraction {
 	const OUTCOME_INDEFINITE = 'indefinite';
 	const MAX_GAMES          = 20;
 	const SEEDED_OPTION      = 'splm_discipline_infractions_seeded';
+	const SEED_LOCK_OPTION   = 'splm_discipline_infraction_seed_lock';
 	const DB_VERSION         = '1.0.0';
 	const VERSION_OPTION     = 'splm_discipline_infraction_db_version';
 
@@ -142,9 +143,34 @@ class SPLM_Discipline_Infraction {
 	}
 
 	/**
+	 * Whether the stored schema version may be recorded. Pure.
+	 *
+	 * @param bool $table_exists Whether the table is present.
+	 * @param bool $seeded       Whether the chart seeded completely.
+	 * @return bool
+	 */
+	public static function should_record_version( bool $table_exists, bool $seeded ): bool {
+		return $table_exists && $seeded;
+	}
+
+	/**
+	 * What seeding should do. Pure.
+	 *
+	 * @param bool $seeded_flag   SEEDED_OPTION is set.
+	 * @param int  $existing_rows Rows already in the table.
+	 * @return string 'skip-flagged' | 'mark-seeded' | 'insert'.
+	 */
+	public static function seed_plan( bool $seeded_flag, int $existing_rows ): string {
+		if ( $seeded_flag ) {
+			return 'skip-flagged';
+		}
+		return $existing_rows > 0 ? 'mark-seeded' : 'insert';
+	}
+
+	/**
 	 * Create/seed on first run or after a version bump; a no-op otherwise, so
-	 * dbDelta does not run on every request. The version is recorded only after
-	 * the table is confirmed present.
+	 * dbDelta does not run on every request. The version is recorded only once
+	 * the table exists AND seeding completed, so a failed seed is retried.
 	 *
 	 * @return void
 	 */
@@ -159,34 +185,81 @@ class SPLM_Discipline_Infraction {
 
 		if ( self::create_table() ) {
 			self::seed_if_empty();
-			update_option( self::VERSION_OPTION, self::DB_VERSION );
+			if ( self::should_record_version( true, (bool) get_option( self::SEEDED_OPTION ) ) ) {
+				update_option( self::VERSION_OPTION, self::DB_VERSION );
+			}
 		}
 	}
 
 	/**
-	 * Seed the chart once. Idempotent: gated on an option, so a convener who
-	 * deletes or edits a seeded row is never overwritten on a later upgrade.
+	 * Take the seed lock atomically; a lock older than five minutes is stale
+	 * and is cleared once.
 	 *
-	 * @return int Rows inserted (0 when already seeded).
+	 * @return bool True when this caller holds the lock.
+	 */
+	private static function acquire_seed_lock(): bool {
+		if ( add_option( self::SEED_LOCK_OPTION, time(), '', 'no' ) ) {
+			return true;
+		}
+		if ( time() - (int) get_option( self::SEED_LOCK_OPTION ) > 300 ) {
+			delete_option( self::SEED_LOCK_OPTION );
+			return (bool) add_option( self::SEED_LOCK_OPTION, time(), '', 'no' );
+		}
+		return false;
+	}
+
+	/**
+	 * Seed the chart once, all or nothing. A convener's existing rows are never
+	 * overwritten: rows present without the flag just set the flag. If any
+	 * insert fails the rows from this run are removed and the flag stays unset,
+	 * so a later upgrade retries.
+	 *
+	 * @return int Rows inserted (0 when skipped or failed).
 	 */
 	public static function seed_if_empty(): int {
 		global $wpdb;
 
-		if ( get_option( self::SEEDED_OPTION ) ) {
+		if ( get_option( self::SEEDED_OPTION ) || ! self::acquire_seed_lock() ) {
 			return 0;
 		}
 
 		$count = 0;
-		foreach ( self::seed_rows() as $row ) {
-			if ( false !== $wpdb->insert( self::table_name(), $row ) ) { // phpcs:ignore WordPress.DB
-				++$count;
+		try {
+			$table = self::table_name();
+			$plan  = self::seed_plan( (bool) get_option( self::SEEDED_OPTION ), (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" ) ); // phpcs:ignore WordPress.DB
+			if ( 'mark-seeded' === $plan ) {
+				update_option( self::SEEDED_OPTION, 1 );
+			} elseif ( 'insert' === $plan ) {
+				$count = self::insert_seed_rows( $table );
 			}
-		}
-
-		if ( $count > 0 ) {
-			update_option( self::SEEDED_OPTION, 1 );
+		} finally {
+			delete_option( self::SEED_LOCK_OPTION );
 		}
 		return $count;
+	}
+
+	/**
+	 * Insert every seed row; on any failure delete this run's rows.
+	 *
+	 * @param string $table Table name.
+	 * @return int Rows inserted, 0 after a rollback.
+	 */
+	private static function insert_seed_rows( string $table ): int {
+		global $wpdb;
+
+		$inserted = array();
+		foreach ( self::seed_rows() as $row ) {
+			if ( false === $wpdb->insert( $table, $row ) ) { // phpcs:ignore WordPress.DB
+				foreach ( $inserted as $id ) {
+					$wpdb->delete( $table, array( 'id' => $id ) ); // phpcs:ignore WordPress.DB
+				}
+				return 0;
+			}
+			$inserted[] = (int) $wpdb->insert_id;
+		}
+
+		update_option( self::SEEDED_OPTION, 1 );
+		return count( $inserted );
 	}
 
 	/**
