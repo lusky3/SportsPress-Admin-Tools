@@ -3,8 +3,8 @@
  * When a suspended player is next eligible to play.
  *
  * A rulebook suspension (§5.10) covers ALL league play — every team the player
- * is on, any night, regular season into playoffs. So "the Nth game" is counted
- * across the union of those teams' schedules, not one team's.
+ * is on, any night, regular season into playoffs. So games are counted across
+ * the union of those teams' schedules, not one team's.
  *
  * The result is a PROJECTION made at issue time. The stored fact is the number
  * of games owed; this only turns it into a date for the email, which says "if
@@ -20,7 +20,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 class SPLM_Discipline_Eligibility {
 
 	/**
-	 * Pick the Nth event from a set. Pure — no WordPress calls.
+	 * Pick the first game the player MAY play after sitting $n games. Pure — no
+	 * WordPress calls.
+	 *
+	 * That is the (N+1)th unique upcoming event: the first N are the games they
+	 * sit. With N or fewer events no game can be named, so the date is null and
+	 * 'remaining' is the games owed that have no scheduled game to be served in.
 	 *
 	 * @param array $events Each: array( 'id' => int, 'date' => 'Y-m-d H:i:s', 'team_id' => int ).
 	 * @param int   $n      Games owed.
@@ -56,12 +61,13 @@ class SPLM_Discipline_Eligibility {
 			}
 		);
 
-		if ( count( $unique ) < $n ) {
-			$none['remaining'] = $n - count( $unique );
+		// remaining = games owed with no scheduled game to be served in.
+		$none['remaining'] = max( 0, $n - count( $unique ) );
+		if ( count( $unique ) <= $n ) {
 			return $none;
 		}
 
-		$hit = $unique[ $n - 1 ];
+		$hit = $unique[ $n ];
 
 		return array(
 			'date'      => (string) $hit['date'],
@@ -96,7 +102,7 @@ class SPLM_Discipline_Eligibility {
 	}
 
 	/**
-	 * Project the Nth game the player will sit, across all their teams.
+	 * Project the first game the player may play after serving $games, across all their teams.
 	 *
 	 * 'publish' AND 'future' — a fixture dated ahead is stored as 'future'.
 	 * Dates compare against post_date (site-local), so the boundary is a
@@ -121,8 +127,9 @@ class SPLM_Discipline_Eligibility {
 				array(
 					'post_type'      => 'sp_event',
 					'post_status'    => array( 'publish', 'future' ),
-					// Postponed/cancelled are excluded in the query, so this cap is safe.
-					'posts_per_page' => $games + 5,
+					// Postponed/cancelled are excluded in the query, so this cap is safe;
+						// +6 = the games sat plus the eligible one, with slack.
+					'posts_per_page' => $games + 6,
 					'orderby'        => array(
 						'date' => 'ASC',
 						'ID'   => 'ASC',
