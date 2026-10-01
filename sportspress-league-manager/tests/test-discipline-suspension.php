@@ -84,5 +84,35 @@ assert_test( 'No disciplinary record.' === $s::summary_line( array() ), 'empty h
 $one = array( (object) array( 'consequence' => 'suspend', 'games' => 1, 'season_id' => 1, 'status' => 'sent' ) );
 assert_test( '1 suspension (1 game), 0 warnings, across 1 season.' === $s::summary_line( $one ), 'singular forms' );
 
+echo "\n=== plan_captain_mail() ===\n\n";
+$plan = $s::plan_captain_mail(
+	array(
+		array( 'team_id' => 1, 'team' => 'Wolves', 'email' => 'Cap@Example.com' ),
+		array( 'team_id' => 2, 'team' => 'Bears', 'email' => 'cap@example.com' ),
+	),
+	'player@example.com',
+	array()
+);
+assert_test( 1 === count( $plan ) && array( 'Wolves', 'Bears' ) === $plan[0]['teams'] && '' === $plan[0]['covered_by'], 'same captain on two teams gets one entry listing both teams' );
+
+$plan = $s::plan_captain_mail( array( array( 'team_id' => 1, 'team' => 'Wolves', 'email' => 'Player@Example.com' ) ), 'player@example.com', array() );
+assert_test( 'player' === $plan[0]['covered_by'], 'captain who is the player (different case) is covered by the player copy' );
+
+$plan = $s::plan_captain_mail( array( array( 'team_id' => 1, 'team' => 'Wolves', 'email' => 'conv@example.com' ) ), 'player@example.com', array( 'Conv@Example.com' ) );
+assert_test( 'bcc' === $plan[0]['covered_by'], 'captain in the Bcc list is covered by the Bcc copy' );
+
+$plan = $s::plan_captain_mail( array( array( 'team_id' => 1, 'team' => 'Wolves', 'email' => '' ) ), 'player@example.com', array() );
+assert_test( 1 === count( $plan ) && '' === $plan[0]['email'] && '' === $plan[0]['covered_by'] && array( 'Wolves' ) === $plan[0]['teams'], 'captain with no address is kept, uncovered, so it records as not notified' );
+
+$plan = $s::plan_captain_mail(
+	array(
+		array( 'team_id' => 1, 'team' => 'Wolves', 'email' => 'a@example.com' ),
+		array( 'team_id' => 2, 'team' => 'Bears', 'email' => 'b@example.com' ),
+	),
+	'player@example.com',
+	array()
+);
+assert_test( 2 === count( $plan ) && 'a@example.com' === $plan[0]['email'] && 'b@example.com' === $plan[1]['email'], 'two different captains give two entries' );
+
 echo "\nPassed: {$passed}  Failed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );

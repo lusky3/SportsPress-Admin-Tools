@@ -171,6 +171,51 @@ class SPLM_Discipline_Suspension {
 	}
 
 	/**
+	 * Decide which captain mails are needed.
+	 *
+	 * One entry per distinct (case-insensitive) address, listing every team that
+	 * address captains; addresses already receiving the notice as the player or
+	 * as a Bcc are flagged via covered_by. An empty address stays its own entry
+	 * per team so it records as not notified.
+	 *
+	 * @param array[]  $captains     Each: team_id, team, email.
+	 * @param string   $player_email Player's address.
+	 * @param string[] $bcc          Convener Bcc addresses.
+	 * @return array[] Each: array( 'email' => string, 'teams' => string[], 'covered_by' => ''|'player'|'bcc' ).
+	 */
+	public static function plan_captain_mail( array $captains, string $player_email, array $bcc ): array {
+		$player_key = strtolower( $player_email );
+		$bcc_keys   = array_map( 'strtolower', $bcc );
+		$plan       = array();
+		$index      = array();
+
+		foreach ( $captains as $cap ) {
+			$email = (string) $cap['email'];
+			$key   = strtolower( $email );
+			if ( '' !== $key && isset( $index[ $key ] ) ) {
+				$plan[ $index[ $key ] ]['teams'][] = (string) $cap['team'];
+				continue;
+			}
+			$covered = '';
+			if ( '' !== $key && $key === $player_key ) {
+				$covered = 'player';
+			} elseif ( '' !== $key && in_array( $key, $bcc_keys, true ) ) {
+				$covered = 'bcc';
+			}
+			$plan[] = array(
+				'email'      => $email,
+				'teams'      => array( (string) $cap['team'] ),
+				'covered_by' => $covered,
+			);
+			if ( '' !== $key ) {
+				$index[ $key ] = count( $plan ) - 1;
+			}
+		}
+
+		return $plan;
+	}
+
+	/**
 	 * Send the player's email (To:, convener Bcc:) and each captain's own copy.
 	 *
 	 * The player's outcome decides the row's status, exactly like the automatic
@@ -218,20 +263,28 @@ class SPLM_Discipline_Suspension {
 		$sent    = wp_mail( $player['email'], $subject, SPLM_Discipline_Suspension_Body::body( 'player', $ctx ), $headers );
 
 		$captains = array();
-		foreach ( self::captain_recipients( (int) $row->player_id ) as $cap ) {
+		foreach ( self::plan_captain_mail( self::captain_recipients( (int) $row->player_id ), $player['email'], $bcc ) as $entry ) {
 			$ok = false;
-			if ( '' !== $cap['email'] && $cap['email'] !== $player['email'] ) {
+			if ( $sent && '' === $entry['covered_by'] && '' !== $entry['email'] ) {
 				$ok = (bool) wp_mail(
-					$cap['email'],
+					$entry['email'],
 					$subject,
-					SPLM_Discipline_Suspension_Body::body( 'captain', array_merge( $ctx, array( 'team_names' => $cap['team'] ) ) )
+					SPLM_Discipline_Suspension_Body::body( 'captain', array_merge( $ctx, array( 'team_names' => implode( ', ', $entry['teams'] ) ) ) )
 				);
+			} elseif ( $sent && '' !== $entry['covered_by'] ) {
+				$ok = true;
 			}
-			$captains[] = array(
-				'team'  => $cap['team'],
-				'email' => $cap['email'],
-				'sent'  => $ok,
-			);
+			foreach ( $entry['teams'] as $team ) {
+				$line = array(
+					'team'  => $team,
+					'email' => $entry['email'],
+					'sent'  => $ok,
+				);
+				if ( $sent && '' !== $entry['covered_by'] ) {
+					$line['note'] = 'player' === $entry['covered_by'] ? 'covered by player copy' : 'covered by Bcc copy';
+				}
+				$captains[] = $line;
+			}
 		}
 
 		$db::update(
