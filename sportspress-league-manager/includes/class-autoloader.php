@@ -44,6 +44,7 @@ class SPLM_Autoloader {
 			'SPLM_Discipline_Database'   => $base . 'class-discipline-database.php',
 			'SPLM_Discipline_Digest'     => $base . 'class-discipline-digest.php',
 			'SPLM_Discipline_Eligibility' => $base . 'class-discipline-eligibility.php',
+			'SPLM_Discipline_Incident_Games' => $base . 'class-discipline-incident-games.php',
 			'SPLM_Discipline_Infraction' => $base . 'class-discipline-infraction.php',
 			'SPLM_Discipline_Captain_Mail' => $base . 'class-discipline-captain-mail.php',
 			'SPLM_Discipline_Suspension' => $base . 'class-discipline-suspension.php',

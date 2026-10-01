@@ -44,6 +44,8 @@ class SPLM_Susp_Rest_Test_State {
 	public $elig_args  = array();
 	public $fail_update = array();
 	public $bcc_args   = array();
+	public $game_args  = array();
+	public $games      = array();
 }
 
 function splm_susp_state() {
@@ -305,6 +307,12 @@ class SPLM_Discipline_Eligibility {
 		return splm_susp_state()->teams;
 	}
 }
+class SPLM_Discipline_Incident_Games {
+	public static function for_player() {
+		splm_susp_state()->game_args[] = func_get_args();
+		return splm_susp_state()->games;
+	}
+}
 class SPLM_Discipline_Notice_Recipients {
 	public static function player_email() {
 		return splm_susp_state()->email;
@@ -509,6 +517,7 @@ check(
 		'/discipline/history',
 		'/discipline/suspensions/preview',
 		'/discipline/suspensions',
+		'/discipline/player-games',
 		'/discipline/suspensions/(?P<id>\\d+)/decide',
 		'/discipline/suspensions/(?P<id>\\d+)/amend',
 		'/discipline/suspensions/(?P<id>\\d+)/revoke',
@@ -529,6 +538,12 @@ check( 'preview POST', $routes['/discipline/suspensions/preview']['methods'], 'P
 $hist_args = $routes['/discipline/history']['args'];
 check( 'history player required min 1', array( $hist_args['player']['required'], $hist_args['player']['minimum'] ), array( true, 1 ) );
 check( 'include_baseline boolean default false', array( $hist_args['include_baseline']['type'], $hist_args['include_baseline']['default'] ), array( 'boolean', false ) );
+check( 'player-games GET', $routes['/discipline/player-games']['methods'], 'GET' );
+$games_args = $routes['/discipline/player-games']['args'];
+check( 'player-games args', array_keys( $games_args ), array( 'player', 'season', 'limit' ) );
+check( 'player-games player required min 1', array( $games_args['player']['required'], $games_args['player']['minimum'] ), array( true, 1 ) );
+check( 'player-games season optional, no registered default', array( $games_args['season']['required'], isset( $games_args['season']['default'] ) ), array( false, false ) );
+check( 'player-games limit default 40, 1-100', array( $games_args['limit']['default'], $games_args['limit']['minimum'], $games_args['limit']['maximum'] ), array( 40, 1, 100 ) );
 $prev_args = $routes['/discipline/suspensions/preview']['args'];
 check( 'preview args', array_keys( $prev_args ), array( 'player', 'infraction', 'season', 'incident_event', 'games' ) );
 check( 'preview player/infraction required', array( $prev_args['player']['required'], $prev_args['infraction']['required'] ), array( true, true ) );
@@ -567,6 +582,21 @@ check( 'history summary counts the suspension', 0 === strpos( $hres->data['summa
 $hres = $instance->get_history( new WP_REST_Request( array( 'player' => 11, 'include_baseline' => true ) ) );
 check( 'baseline rows only when asked', count( $hres->data['data'] ), 2 );
 splm_susp_state()->history = array();
+
+// Player-games handler.
+$gres = $instance->get_player_games( new WP_REST_Request( array( 'player' => 12, 'limit' => 40 ) ) );
+check( 'player-games rejects a non-player', array( $gres->code, $gres->data['status'] ), array( 'invalid_player', 400 ) );
+$gres = $instance->get_player_games( new WP_REST_Request( array( 'player' => 11, 'season' => 99, 'limit' => 40 ) ) );
+check( 'player-games rejects an unknown season', array( $gres->code, $gres->data['status'] ), array( 'invalid_season', 400 ) );
+check( 'player-games 400s query nothing', splm_susp_state()->game_args, array() );
+splm_susp_state()->games = array( array( 'id' => 31, 'title' => 'Red vs Green', 'date' => '2026-09-27', 'label' => 'Red vs Green' ) );
+$gres = $instance->get_player_games( new WP_REST_Request( array( 'player' => 11, 'season' => 5, 'limit' => 25 ) ) );
+check( 'player-games success shape', array( $gres->status, $gres->data['data'], $gres->data['total'], $gres->data['page'], $gres->data['total_pages'] ), array( 200, splm_susp_state()->games, 1, 1, 1 ) );
+check( 'player-games passes player, season and limit', splm_susp_state()->game_args, array( array( 11, 5, 25 ) ) );
+$gres = $instance->get_player_games( new WP_REST_Request( array( 'player' => 11, 'limit' => 40 ) ) );
+check( 'player-games season defaults at request time', splm_susp_state()->game_args[1], array( 11, 5, 40 ) );
+splm_susp_state()->games     = array();
+splm_susp_state()->game_args = array();
 
 // Preview handler.
 splm_susp_state()->infraction = array( 3 => inf() );

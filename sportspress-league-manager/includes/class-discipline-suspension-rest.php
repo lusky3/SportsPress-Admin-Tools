@@ -102,7 +102,27 @@ class SPLM_Discipline_Suspension_REST {
 			)
 		);
 
+		$this->register_games_route( $gate );
 		$this->register_action_routes( $gate );
+	}
+
+	/**
+	 * The incident-match picker route.
+	 *
+	 * @param array $gate Permission callback.
+	 * @return void
+	 */
+	private function register_games_route( array $gate ): void {
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/discipline/player-games',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_player_games' ),
+				'permission_callback' => $gate,
+				'args'                => self::player_games_args(),
+			)
+		);
 	}
 
 	/**
@@ -236,6 +256,23 @@ class SPLM_Discipline_Suspension_REST {
 	}
 
 	/**
+	 * Args for the incident-match picker route. The season has no registered
+	 * default: it is resolved at request time like the other routes.
+	 *
+	 * @return array
+	 */
+	private static function player_games_args(): array {
+		$limit            = self::int_arg( false, 1, 100 );
+		$limit['default'] = 40;
+
+		return array(
+			'player' => self::int_arg( true, 1 ),
+			'season' => self::int_arg( false, 1 ),
+			'limit'  => $limit,
+		);
+	}
+
+	/**
 	 * GET /discipline/infractions
 	 *
 	 * @return WP_REST_Response
@@ -257,6 +294,34 @@ class SPLM_Discipline_Suspension_REST {
 		}
 
 		return new WP_REST_Response( splm_rest_list_response( $items ), 200 );
+	}
+
+	/**
+	 * GET /discipline/player-games
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	public function get_player_games( $request ) {
+		$player_id = absint( $request->get_param( 'player' ) );
+		$season_id = absint( $request->get_param( 'season' ) );
+		if ( 0 === $season_id ) {
+			$season_id = SPLM_SportsPress_Data::default_season_id();
+		}
+
+		if ( 'sp_player' !== get_post_type( $player_id ) ) {
+			return self::create_wp_error( 'invalid_player' );
+		}
+		if ( 0 === self::valid_season_id( $season_id ) ) {
+			return self::create_wp_error( 'invalid_season' );
+		}
+
+		$items = SPLM_Discipline_Incident_Games::for_player( $player_id, $season_id, absint( $request->get_param( 'limit' ) ) );
+		$count = count( $items );
+
+		return new WP_REST_Response( splm_rest_list_response( $items, $count, 1, $count ), 200 );
 	}
 
 	/**
