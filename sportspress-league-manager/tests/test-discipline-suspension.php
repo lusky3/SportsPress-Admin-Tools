@@ -28,5 +28,61 @@ assert_test( in_array( 'revoked', $db::STATUSES, true ), 'revoked is a valid sta
 assert_test( 'manual' === $db::SOURCE_MANUAL && 'auto' === $db::SOURCE_AUTO, 'source constants exist' );
 assert_test( '1.1.0' === $db::DB_VERSION, 'DB_VERSION bumped so maybe_upgrade() re-runs dbDelta' );
 
+$s = 'SPLM_Discipline_Suspension';
+
+$inf = (object) array( 'id' => 5, 'rule_ref' => '6.5', 'title' => 'Fighting (first offence)', 'rule_text' => 'Rule text', 'outcome' => 'games', 'default_games' => 3 );
+$elig = array( 'date' => '2026-10-27 21:00:00', 'event_id' => 77, 'team_id' => 11, 'remaining' => 0 );
+
+echo "\n=== build_row() ===\n\n";
+$row = $s::build_row( array( 'player_id' => 9, 'season_id' => 4, 'incident_event_id' => 70, 'incident_note' => 'private', 'team' => 'Wolves', 'division' => 'A' ), $inf, $elig );
+assert_test( 'manual' === $row['source'], 'source is manual' );
+assert_test( 'suspend' === $row['consequence'] && 3 === $row['games'], 'default games come from the infraction' );
+assert_test( 'games' === $row['outcome'], 'outcome copied' );
+assert_test( '2026-10-27' === $row['eligible_on'], 'eligible_on is the date part of the projection' );
+assert_test( '6.5' === $row['rule_ref'] && 'Fighting (first offence)' === $row['infraction_title'] && 'Rule text' === $row['rule_text'], 'infraction text is snapshotted onto the row' );
+assert_test( 'private' === $row['incident_note'], 'incident note stored on the row' );
+assert_test( 'pending' === $row['status'], 'new rows start pending (draft) — sending is a separate step' );
+assert_test( 70 === $row['incident_event_id'], 'incident match is recorded as a reference' );
+
+$row = $s::build_row( array( 'player_id' => 9, 'season_id' => 4, 'games' => 5 ), $inf, $elig );
+assert_test( 5 === $row['games'], 'convener override of length wins over the default' );
+
+$ind = (object) array_merge( (array) $inf, array( 'outcome' => 'indefinite', 'default_games' => 0 ) );
+$row = $s::build_row( array( 'player_id' => 9, 'season_id' => 4, 'games' => 4 ), $ind, array( 'date' => null, 'event_id' => 0, 'team_id' => 0, 'remaining' => 0 ) );
+assert_test( 0 === $row['games'] && null === $row['eligible_on'], 'indefinite: games forced to 0 and no eligible date' );
+
+$row = $s::build_row( array( 'player_id' => 9, 'season_id' => 4 ), $inf, array( 'date' => null, 'event_id' => 0, 'team_id' => 0, 'remaining' => 2 ) );
+assert_test( null === $row['eligible_on'], 'schedule shortage leaves eligible_on null' );
+
+echo "\n=== is_duplicate() ===\n\n";
+$existing = array(
+	(object) array( 'player_id' => 9, 'infraction_id' => 5, 'incident_event_id' => 70, 'status' => 'sent', 'created_at' => '2026-10-07 10:00:00', 'source' => 'manual' ),
+);
+assert_test( $s::is_duplicate( $existing, 9, 5, 70, '2026-10-07' ), 'same player + infraction + incident match is a duplicate' );
+assert_test( ! $s::is_duplicate( $existing, 9, 5, 71, '2026-10-07' ), 'different incident match is not a duplicate' );
+assert_test( ! $s::is_duplicate( $existing, 9, 6, 70, '2026-10-07' ), 'different infraction is not a duplicate' );
+assert_test( ! $s::is_duplicate( $existing, 10, 5, 70, '2026-10-07' ), 'different player is not a duplicate' );
+$revoked = array( (object) array( 'player_id' => 9, 'infraction_id' => 5, 'incident_event_id' => 70, 'status' => 'revoked', 'created_at' => '2026-10-07 10:00:00', 'source' => 'manual' ) );
+assert_test( ! $s::is_duplicate( $revoked, 9, 5, 70, '2026-10-07' ), 'a revoked notice does not block re-issuing' );
+$nomatch = array( (object) array( 'player_id' => 9, 'infraction_id' => 5, 'incident_event_id' => 0, 'status' => 'sent', 'created_at' => '2026-10-07 10:00:00', 'source' => 'manual' ) );
+assert_test( $s::is_duplicate( $nomatch, 9, 5, 0, '2026-10-07' ), 'no incident match: same player + infraction + same day is a duplicate' );
+assert_test( ! $s::is_duplicate( $nomatch, 9, 5, 0, '2026-10-08' ), 'no incident match: a later day is not' );
+
+echo "\n=== summary_line() ===\n\n";
+$rows = array(
+	(object) array( 'consequence' => 'suspend', 'games' => 2, 'season_id' => 1, 'status' => 'sent' ),
+	(object) array( 'consequence' => 'suspend', 'games' => 2, 'season_id' => 2, 'status' => 'served' ),
+	(object) array( 'consequence' => 'suspend', 'games' => 0, 'season_id' => 2, 'status' => 'sent' ),
+	(object) array( 'consequence' => 'warn', 'games' => 0, 'season_id' => 2, 'status' => 'sent' ),
+	(object) array( 'consequence' => 'warn', 'games' => 0, 'season_id' => 2, 'status' => 'sent' ),
+	(object) array( 'consequence' => 'suspend', 'games' => 9, 'season_id' => 2, 'status' => 'baseline' ),
+	(object) array( 'consequence' => 'suspend', 'games' => 9, 'season_id' => 2, 'status' => 'revoked' ),
+	(object) array( 'consequence' => 'warn', 'games' => 0, 'season_id' => 2, 'status' => 'discarded' ),
+);
+assert_test( '3 suspensions (4 games), 2 warnings, across 2 seasons.' === $s::summary_line( $rows ), 'counts issued suspensions/games/warnings; ignores baseline, revoked and discarded' );
+assert_test( 'No disciplinary record.' === $s::summary_line( array() ), 'empty history reads as no record' );
+$one = array( (object) array( 'consequence' => 'suspend', 'games' => 1, 'season_id' => 1, 'status' => 'sent' ) );
+assert_test( '1 suspension (1 game), 0 warnings, across 1 season.' === $s::summary_line( $one ), 'singular forms' );
+
 echo "\nPassed: {$passed}  Failed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );
