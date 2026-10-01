@@ -12,7 +12,7 @@ export default function useFocusTrap( onClose ) {
 		const node = ref.current;
 		if ( ! node ) return undefined;
 		const previouslyFocused = document.activeElement;
-		const selector = 'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
+		const selector = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 		const focusables = () => Array.from( node.querySelectorAll( selector ) ).filter( ( el ) => el.offsetParent !== null || el === document.activeElement );
 		// Move focus into the dialog.
 		const first = focusables()[ 0 ];

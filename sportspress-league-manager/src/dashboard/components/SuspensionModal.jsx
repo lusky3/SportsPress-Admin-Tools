@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from '@wordpress/element';
+import { useState, useEffect, useRef, useCallback } from '@wordpress/element';
 import { fetchInfractions, fetchPlayerGames, previewSuspension, createSuspension } from '../lib/api';
 import { formatDate } from '../lib/time';
 import useFocusTrap from './useFocusTrap';
@@ -7,18 +7,24 @@ import useFocusTrap from './useFocusTrap';
 // preview of the consequence and the emails, then sends or saves a draft.
 //
 // CONTRACT (focus trap): the PARENT must pass a `useCallback`-memoised
-// `onClose`. useFocusTrap's effect depends on that function's identity, so an
-// inline arrow would re-run it on every render and keep yanking focus back to
-// the first field (and restore it to the trigger). Inside this component
-// `onClose` is handed to the hook as-is — never wrap it in a fresh arrow.
+// `onClose`. useFocusTrap's effect depends on the identity of the function it
+// receives; this component derives a stable `requestClose` from `onClose`
+// (useCallback on [ onClose ]), so an inline-arrow `onClose` would still re-run
+// the trap on every render and keep yanking focus back to the first field (and
+// restore it to the trigger). Never hand the hook a fresh arrow.
 //
 // Props: { player: { id, name }, season, onClose, onDone( notice | null ) }.
 // `season` may be falsy; the param is then omitted and the server falls back
-// to the default season. onDone( notice ) fires after a create (including a
-// failed send, whose row exists — check notice.status === 'failed'); it fires
-// with null after a busy-lock 409 so the parent refreshes (the write may have
-// happened). On success the modal then closes itself; after a failed send it
-// stays open so the convener can read the error.
+// to the default season.
+// onDone contract:
+//  - successful create (sent, or draft saved): onDone( notice ), then onClose().
+//  - FAILED send (201, notice.status === 'failed'): the row exists but the
+//    email did not go. The modal stays open showing the error; onDone( notice )
+//    fires only when the convener closes it. Parents: if notice.status ===
+//    'failed', refresh but do NOT show a success toast.
+//  - busy-lock 409 or a request that never completed (network/timeout): the
+//    write may have happened, so onDone( null ) fires — refresh the data.
+// Escape, overlay click and Cancel are ignored while a create is in flight.
 
 const NOTE_MAX = 2000;
 const GAMES_MAX = 20;
@@ -55,11 +61,11 @@ function Warnings( { warnings, duplicateOf } ) {
 	if ( ! warnings.length ) return null;
 	return (
 		<ul className="splm-discipline-warnings">
-			{ warnings.map( ( code ) => {
+			{ warnings.map( ( code, index ) => {
 				const { level, text } = describeWarning( code, duplicateOf );
 				const cls = level === 'notice' ? '' : ` splm-discipline-warning--${ level }`;
 				return (
-					<li key={ code } className={ `splm-discipline-warning${ cls }` }>
+					<li key={ `${ code }-${ index }` } className={ `splm-discipline-warning${ cls }` }>
 						<strong>{ PREFIX[ level ] }</strong> { text }
 					</li>
 				);
@@ -84,6 +90,11 @@ function eligibilityText( data ) {
 	return 'Not enough scheduled games to name a next eligible game yet.';
 }
 
+const COVERED_BY = {
+	player: 'covered by the player copy — no separate captain email',
+	bcc: 'covered by the convener (Bcc) copy — no separate captain email',
+};
+
 function Recipients( { data } ) {
 	const email = data.player_email || {};
 	const captains = Array.isArray( data.captains ) ? data.captains : [];
@@ -95,22 +106,30 @@ function Recipients( { data } ) {
 					? <>{ email.email }{ email.via ? ` (via ${ email.via })` : '' }</>
 					: 'no email on file' }
 			</li>
-			{ captains.map( ( c ) => (
-				<li key={ `${ c.team }-${ c.email || '' }` }>
+			{ captains.map( ( c, index ) => (
+				<li key={ `${ c.team }-${ c.email || '' }-${ index }` }>
 					<strong>Captain, { c.team }:</strong>{ ' ' }
 					{ c.email ? c.email : 'no email on file — not notified' }
-					{ c.email && c.covered_by && ` (also receives the ${ c.covered_by === 'player' ? 'player' : 'convener' } copy)` }
+					{ c.email && c.covered_by && ` (${ COVERED_BY[ c.covered_by ] || 'covered by another copy' })` }
 				</li>
 			) ) }
 		</ul>
 	);
 }
 
-function PreviewBody( { data } ) {
+// Short summary: the only part announced by the live region.
+function PreviewSummary( { data } ) {
 	return (
 		<>
 			<p className="splm-discipline-preview__result">{ eligibilityText( data ) }</p>
 			<Warnings warnings={ Array.isArray( data.warnings ) ? data.warnings : [] } duplicateOf={ data.duplicate_of } />
+		</>
+	);
+}
+
+function PreviewDetails( { data } ) {
+	return (
+		<>
 			<h4>Who will be emailed</h4>
 			<Recipients data={ data } />
 			<details className="splm-discipline-details">
@@ -130,14 +149,17 @@ function submitErrorMessage( err ) {
 	switch ( err?.code ) {
 		case 'splm_suspension_duplicate': {
 			const id = err.data?.duplicate_of;
-			return `Already issued${ id ? ` — notice #${ id }` : '' }. Nothing was sent again.`;
+			return `Already issued${ id ? ` — notice #${ id }` : '' }. Open the player\u2019s Discipline panel to manage it.`;
 		}
 		case 'splm_notice_busy':
 			return 'Another update is in progress — refresh before retrying.';
 		case 'splm_no_lock':
 			return 'Cannot send safely right now. Wait a moment and try again.';
 		default:
-			return err?.message || 'Something went wrong';
+			if ( ! err?.code || err.code === 'fetch_error' ) {
+				return 'The request did not complete — refresh the list before retrying; the notice may already exist.';
+			}
+			return err.message || 'Something went wrong';
 	}
 }
 
@@ -167,10 +189,17 @@ export default function SuspensionModal( { player, season, onClose, onDone } ) {
 	const [ submitting, setSubmitting ] = useState( false );
 	const [ submitError, setSubmitError ] = useState( '' );
 	const [ failedNotice, setFailedNotice ] = useState( null );
+	const [ duplicateOf, setDuplicateOf ] = useState( null );
 
 	const seqRef = useRef( 0 );
 	const submittingRef = useRef( false );
 	const mountedRef = useRef( true );
+	const failedRef = useRef( null );
+	const onDoneRef = useRef( onDone );
+	const overlayDownRef = useRef( false );
+	const closeBtnRef = useRef( null );
+	const errorRef = useRef( null );
+	useEffect( () => { onDoneRef.current = onDone; } );
 	useEffect( () => {
 		mountedRef.current = true;
 		return () => { mountedRef.current = false; };
@@ -225,8 +254,9 @@ export default function SuspensionModal( { player, season, onClose, onDone } ) {
 		}
 		let cancelled = false;
 		const seq = ++seqRef.current;
-		setPreview( { status: 'loading' } );
+		setPreview( { status: 'pending' } );
 		const timer = setTimeout( () => {
+			setPreview( { status: 'loading' } );
 			previewSuspension( JSON.parse( key ) ).then( ( data ) => {
 				if ( cancelled || seq !== seqRef.current ) return;
 				setPreview( { status: 'ok', data } );
@@ -246,14 +276,14 @@ export default function SuspensionModal( { player, season, onClose, onDone } ) {
 	const warnings = effective && Array.isArray( effective.warnings ) ? effective.warnings : [];
 	const blocked = warnings.indexOf( 'duplicate' ) !== -1;
 	const noEmail = warnings.indexOf( 'no_player_email' ) !== -1;
-	const locked = submitting || failedNotice !== null;
+	const locked = submitting || failedNotice !== null || duplicateOf !== null;
 	const sendDisabled = locked || ! effective || blocked || noEmail;
 	const draftDisabled = locked || ! effective || blocked;
 
 	const onPickInfraction = ( value ) => {
 		setInfractionId( value );
 		const next = ( infractions || [] ).find( ( i ) => String( i.id ) === value );
-		setGameCount( next && next.outcome === 'games' ? String( next.default_games ) : '' );
+		setGameCount( next && next.outcome === 'games' ? String( next.default_games ?? '' ) : '' );
 	};
 
 	const submit = ( mode ) => {
@@ -266,7 +296,9 @@ export default function SuspensionModal( { player, season, onClose, onDone } ) {
 			const notice = res?.notice || null;
 			if ( res && res.sent === false && notice && notice.status === 'failed' ) {
 				// The row exists as failed; keep the dialog open to show why.
-				if ( onDone ) onDone( notice );
+				// onDone( notice ) fires when the convener closes it.
+				failedRef.current = notice;
+				if ( ! mountedRef.current && onDone ) onDone( notice );
 				if ( mountedRef.current ) {
 					setSubmitting( false );
 					setFailedNotice( notice );
@@ -280,23 +312,45 @@ export default function SuspensionModal( { player, season, onClose, onDone } ) {
 			}
 		} ).catch( ( err ) => {
 			submittingRef.current = false;
-			// A busy lock means the write may or may not have happened.
-			if ( err?.code === 'splm_notice_busy' && onDone ) onDone( null );
+			// A busy lock or a request that never completed means the write may
+			// or may not have happened: have the parent refresh.
+			const unknownOutcome = err?.code === 'splm_notice_busy' || ! err?.code || err.code === 'fetch_error';
+			if ( unknownOutcome && onDone ) onDone( null );
 			if ( mountedRef.current ) {
+				if ( err?.code === 'splm_suspension_duplicate' ) setDuplicateOf( err.data?.duplicate_of || 0 );
 				setSubmitting( false );
 				setSubmitError( submitErrorMessage( err ) );
 			}
 		} );
 	};
 
-	// Passed as-is: see the CONTRACT note above.
-	const trapRef = useFocusTrap( onClose );
+	// Ignored mid-submit so the convener never closes on an in-flight create.
+	// After a failed send, closing hands the failed notice to the parent.
+	const requestClose = useCallback( () => {
+		if ( submittingRef.current ) return;
+		if ( failedRef.current && onDoneRef.current ) {
+			const failed = failedRef.current;
+			failedRef.current = null;
+			onDoneRef.current( failed );
+		}
+		onClose();
+	}, [ onClose ] );
+	const trapRef = useFocusTrap( requestClose );
+
+	// Keep focus inside the dialog when the focused button disables or vanishes.
+	useEffect( () => {
+		if ( failedNotice && closeBtnRef.current ) closeBtnRef.current.focus();
+	}, [ failedNotice ] );
+	useEffect( () => {
+		if ( submitError && errorRef.current ) errorRef.current.focus();
+	}, [ submitError ] );
 
 	const ids = {
 		title: `${ uid }-title`,
 		infraction: `${ uid }-infraction`,
 		infractionHint: `${ uid }-infraction-hint`,
 		games: `${ uid }-games`,
+		gamesHint: `${ uid }-games-hint`,
 		incident: `${ uid }-incident`,
 		note: `${ uid }-note`,
 		noteHelp: `${ uid }-note-help`,
@@ -311,7 +365,7 @@ export default function SuspensionModal( { player, season, onClose, onDone } ) {
 	} else if ( isGames && ! gamesValid ) {
 		previewContent = <p className="splm-discipline-muted">{ `Enter a length between 0 and ${ GAMES_MAX } games to see the preview.` }</p>;
 	} else if ( preview.status === 'ok' ) {
-		previewContent = <PreviewBody data={ preview.data } />;
+		previewContent = <PreviewSummary data={ preview.data } />;
 	} else if ( preview.status === 'error' ) {
 		previewContent = (
 			<p className="splm-discipline-preview__error">
@@ -319,18 +373,33 @@ export default function SuspensionModal( { player, season, onClose, onDone } ) {
 				{ ! effective && ' Sending is disabled until a preview loads — change a field to retry.' }
 			</p>
 		);
-	} else {
+	} else if ( preview.status === 'loading' ) {
 		previewContent = <p className="splm-discipline-muted">Updating preview…</p>;
+	} else {
+		// Debounce pending: shown below, outside the live region, so it is not
+		// announced for every keystroke.
+		previewContent = null;
 	}
+	const paramsReady = infraction && ( ! isGames || gamesValid );
 
 	return (
-		<div className="splm-modal-overlay" onClick={ onClose } ref={ trapRef } tabIndex={ -1 }>
+		<div
+			className="splm-modal-overlay"
+			onMouseDown={ ( e ) => { overlayDownRef.current = e.target === e.currentTarget; } }
+			onClick={ ( e ) => {
+				// Close only when the press AND the release were on the overlay,
+				// so dragging a text selection out of a field keeps the dialog.
+				if ( e.target === e.currentTarget && overlayDownRef.current ) requestClose();
+				overlayDownRef.current = false;
+			} }
+			ref={ trapRef }
+			tabIndex={ -1 }
+		>
 			<div
 				className="splm-modal splm-modal--wide"
 				role="dialog"
 				aria-modal="true"
 				aria-labelledby={ ids.title }
-				onClick={ ( e ) => e.stopPropagation() }
 			>
 				<h3 id={ ids.title }>Issue a suspension — { player.name }</h3>
 
@@ -373,7 +442,9 @@ export default function SuspensionModal( { player, season, onClose, onDone } ) {
 								onChange={ ( e ) => setGameCount( e.target.value ) }
 								disabled={ locked }
 								aria-invalid={ ! gamesValid }
+								aria-describedby={ ids.gamesHint }
 							/>
+							<p id={ ids.gamesHint } className="splm-discipline-form__hint">0–{ GAMES_MAX } games</p>
 						</>
 					) }
 					{ infraction && ! isGames && (
@@ -391,7 +462,7 @@ export default function SuspensionModal( { player, season, onClose, onDone } ) {
 						<option value="">No match / not during a game</option>
 						{ ( games || [] ).map( ( g ) => (
 							<option key={ g.id } value={ g.id }>
-								{ g.title }{ formatDate( ( g.date || '' ).slice( 0, 10 ) ) ? ` — ${ formatDate( ( g.date || '' ).slice( 0, 10 ) ) }` : '' }
+								{ g.label || `${ g.title }${ formatDate( ( g.date || '' ).slice( 0, 10 ) ) ? ` — ${ formatDate( ( g.date || '' ).slice( 0, 10 ) ) }` : '' }` }
 							</option>
 						) ) }
 					</select>
@@ -414,12 +485,14 @@ export default function SuspensionModal( { player, season, onClose, onDone } ) {
 					</p>
 				</form>
 
-				<div className="splm-discipline-preview" aria-live="polite">
+				<div className="splm-discipline-preview" aria-busy={ preview.status === 'pending' || preview.status === 'loading' }>
 					<h4>Preview</h4>
-					{ previewContent }
+					<div aria-live="polite">{ previewContent }</div>
+					{ paramsReady && preview.status === 'pending' && <p className="splm-discipline-muted">Updating preview…</p> }
+					{ paramsReady && preview.status === 'ok' && <PreviewDetails data={ preview.data } /> }
 				</div>
 
-				{ submitError && <div className="splm-alert splm-alert--error" role="alert">{ submitError }</div> }
+				{ submitError && <div className="splm-alert splm-alert--error" role="alert" tabIndex={ -1 } ref={ errorRef }>{ submitError }</div> }
 				{ failedNotice && (
 					<div className="splm-alert splm-alert--error" role="alert">
 						<span>
@@ -431,14 +504,14 @@ export default function SuspensionModal( { player, season, onClose, onDone } ) {
 
 				<div className="splm-modal__actions">
 					{ failedNotice ? (
-						<button type="button" className="splm-btn splm-btn--primary" onClick={ onClose }>Close</button>
+						<button type="button" className="splm-btn splm-btn--primary" onClick={ requestClose } ref={ closeBtnRef }>Close</button>
 					) : (
 						<>
 							<button type="button" className="splm-btn splm-btn--primary" onClick={ () => submit( 'send' ) } disabled={ sendDisabled }>
 								{ submitting ? 'Working…' : 'Send now' }
 							</button>
 							<button type="button" className="splm-btn" onClick={ () => submit( 'draft' ) } disabled={ draftDisabled }>Save draft</button>
-							<button type="button" className="splm-btn" onClick={ onClose } disabled={ submitting }>Cancel</button>
+							<button type="button" className="splm-btn" onClick={ requestClose } disabled={ submitting }>Cancel</button>
 						</>
 					) }
 				</div>

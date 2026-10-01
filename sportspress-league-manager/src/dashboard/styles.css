@@ -1418,6 +1418,13 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: var(--splm-text); }
 
 /* Issue modal */
 .splm-modal--wide { max-width: 640px; }
+.splm-discipline-form input,
+.splm-discipline-form select,
+.splm-discipline-form textarea {
+	/* Explicit token colours: host-theme input styles must not bleed in. */
+	background: var(--splm-surface);
+	color: var(--splm-text);
+}
 .splm-discipline-form .splm-select,
 .splm-discipline-form .splm-textarea { margin-bottom: 0.25rem; }
 .splm-discipline-form input[type="number"] { max-width: 8rem; }
