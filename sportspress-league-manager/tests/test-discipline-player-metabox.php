@@ -50,6 +50,9 @@ function esc_html( $text ) {
 	return htmlspecialchars( (string) $text, ENT_QUOTES );
 }
 function add_action() {}
+function esc_attr__( $text ) {
+	return htmlspecialchars( $text, ENT_QUOTES );
+}
 function esc_html__( $text ) {
 	return htmlspecialchars( $text, ENT_QUOTES );
 }
@@ -77,6 +80,7 @@ function add_meta_box( $id, $title, $callback, $screen, $context, $priority ) {
 require_once dirname( __DIR__ ) . '/includes/class-capabilities.php';
 require_once dirname( __DIR__ ) . '/includes/class-discipline-notice-labels.php';
 require_once dirname( __DIR__ ) . '/includes/class-discipline-notice-rest.php';
+require_once dirname( __DIR__ ) . '/includes/class-discipline-suspension.php';
 require_once dirname( __DIR__ ) . '/includes/class-discipline-player-metabox.php';
 
 $box = 'SPLM_Discipline_Player_Metabox';
@@ -172,6 +176,20 @@ $replaced = $box::render_rows_html( array( splm_metabox_row(), splm_metabox_row(
 check( 'replaced row is classed', substr_count( $replaced, 'splm-disc-replaced' ), 1 );
 check( 'replaced row says Replaced', has( $replaced, '<td>Sent (Replaced)</td>' ), true );
 check( 'the other row is untouched', substr_count( $replaced, 'Replaced' ), 1 );
+
+check( 'table is labelled', has( $replaced, '<table class="widefat striped" aria-label="Discipline record">' ), true );
+
+$source = (string) file_get_contents( dirname( __DIR__ ) . '/includes/class-discipline-player-metabox.php' );
+check( 'replaced rows dim to .7, not .55', has( $source, '.splm-disc-replaced{opacity:.7}' ) && ! has( $source, 'opacity:.55' ), true );
+
+echo "\n=== summary_html() ===\n\n";
+$none = 'No disciplinary record.';
+$help = 'All notices below are withdrawn, discarded, replaced or only on record.';
+check( 'no rows shows the summary only', $box::summary_html( array() ), '<p>' . $none . '</p>' );
+$withdrawn = $box::summary_html( array( splm_metabox_row( array( 'status' => 'revoked' ) ) ) );
+check( 'rows but nothing in force keeps the summary', has( $withdrawn, '<p>' . $none . '</p>' ), true );
+check( 'rows but nothing in force adds the muted explanation', has( $withdrawn, '<p class="description">' . $help . '</p>' ), true );
+check( 'in-force rows get no explanation', has( $box::summary_html( array( splm_metabox_row() ) ), 'withdrawn, discarded' ), false );
 
 $legacy = (object) array(
 	'id'             => 9,

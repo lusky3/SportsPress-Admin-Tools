@@ -69,12 +69,31 @@ class SPLM_Discipline_Player_Metabox {
 		$rows     = SPLM_Discipline_Notice_Database::for_player( (int) $post->ID, false );
 		$replaced = SPLM_Discipline_Notice_Database::replaced_ids( array_map( static fn( $row ) => (int) $row->id, $rows ) );
 
-		echo '<style>.splm-disc-replaced{opacity:.55}.splm-disc-note td{padding-top:0}</style>';
-		echo '<p>' . esc_html( SPLM_Discipline_Suspension::summary_line( $rows ) ) . '</p>';
+		echo '<style>.splm-disc-replaced{opacity:.7}.splm-disc-note td{padding-top:0}</style>';
+		echo self::summary_html( $rows ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside.
 		if ( $rows ) {
 			echo self::render_rows_html( $rows, $replaced ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside.
 		}
 		self::echo_dashboard_link();
+	}
+
+	/**
+	 * The summary line; when notices exist but none is in force, a muted
+	 * sentence explains why the table is not empty.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param object[] $rows Notice rows.
+	 * @return string HTML, escaped.
+	 */
+	public static function summary_html( array $rows ): string {
+		$summary = SPLM_Discipline_Suspension::summary_line( $rows );
+		$html    = '<p>' . esc_html( $summary ) . '</p>';
+		if ( $rows && __( 'No disciplinary record.', 'sportspress-league-manager' ) === $summary ) {
+			$html .= '<p class="description">' . esc_html__( 'All notices below are withdrawn, discarded, replaced or only on record.', 'sportspress-league-manager' ) . '</p>';
+		}
+
+		return $html;
 	}
 
 	/**
@@ -119,7 +138,7 @@ class SPLM_Discipline_Player_Metabox {
 			$body .= self::row_html( $row, in_array( (int) $row->id, $replaced_ids, true ) );
 		}
 
-		return '<table class="widefat striped"><thead><tr>' . $head . '</tr></thead><tbody>' . $body . '</tbody></table>';
+		return '<table class="widefat striped" aria-label="' . esc_attr__( 'Discipline record', 'sportspress-league-manager' ) . '"><thead><tr>' . $head . '</tr></thead><tbody>' . $body . '</tbody></table>';
 	}
 
 	/**
