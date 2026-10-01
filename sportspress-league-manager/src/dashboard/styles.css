@@ -1544,3 +1544,8 @@ pre.splm-discipline-email {
 .splm-discipline-history__confirm-text { flex-basis: 100%; margin: 0; font-size: 0.85rem; }
 .splm-discipline-history__check { flex-basis: 100%; font-size: 0.85rem; }
 .splm-discipline-history .splm-alert { margin: 0.5rem 0 0; }
+
+/* Notices page: heading row with the Issue suspension button */
+.splm-notices__header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.5rem; }
+.splm-notices__header h2 { margin: 0; }
+.splm-notices__kind { display: block; font-size: 0.75rem; }
