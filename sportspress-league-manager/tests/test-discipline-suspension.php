@@ -151,5 +151,46 @@ assert_test( SPLM_Discipline_Infraction::MAX_GAMES === $row['games'], 'convener 
 $row = $s::build_row( array( 'player_id' => 9, 'season_id' => 4, 'games' => 20 ), $inf, $elig );
 assert_test( 20 === $row['games'], 'games at the cap is unchanged' );
 
+echo "\n=== summary_line() supersession ===\n\n";
+function splm_sum_row( $id, $parent, $consequence, $games, $status = 'sent' ) {
+	return (object) array( 'id' => $id, 'parent_id' => $parent, 'status' => $status, 'consequence' => $consequence, 'games' => $games, 'season_id' => 4 );
+}
+$line = $s::summary_line( array( splm_sum_row( 1, 0, 'suspend', 2 ), splm_sum_row( 2, 1, 'suspend', 3 ) ) );
+assert_test( false !== strpos( $line, '1 suspension (3 games)' ), 'amended suspension counts once at its latest length' );
+$line = $s::summary_line( array( splm_sum_row( 1, 0, 'suspend', 0 ), splm_sum_row( 2, 1, 'suspend', 4 ) ) );
+assert_test( false !== strpos( $line, '1 suspension (4 games)' ), 'decided indefinite counts once at the decided length' );
+$line = $s::summary_line( array( splm_sum_row( 1, 0, 'suspend', 3, 'revoked' ), splm_sum_row( 2, 1, 'none', 0 ) ) );
+assert_test( 'No disciplinary record.' === $line, 'a revoke chain counts zero' );
+$line = $s::summary_line( array( (object) array( 'status' => 'sent', 'consequence' => 'suspend', 'games' => 2, 'season_id' => 4 ) ) );
+assert_test( false !== strpos( $line, '1 suspension (2 games)' ), 'rows without id/parent_id still count' );
+
+echo "\n=== row_to_response() shaping ===\n\n";
+function get_the_title( $id ) { return 'Player ' . $id; } // phpcs:ignore
+require_once __DIR__ . '/../includes/class-discipline-notice-rest.php';
+$legacy = (object) array(
+	'id' => 1, 'player_id' => 9, 'season_id' => 4, 'tier_key' => 't', 'ack_key' => 'a', 'scope' => 'season', 'severity' => 'warn',
+	'consequence' => 'warn', 'games' => 0, 'value_at_fire' => 5, 'season_at_fire' => 5, 'team' => 'W', 'division' => 'D',
+	'status' => 'sent', 'recipient' => '', 'recipient_via' => '', 'bcc' => '', 'sent_at' => '', 'served_at' => '',
+	'released_by' => 0, 'last_error' => '', 'note' => '', 'created_at' => '',
+);
+$rest = 'SPLM_Discipline_Notice_REST';
+$out  = $rest::row_to_response( $legacy );
+assert_test( 'auto' === $out['source'] && 'games' === $out['outcome'] && 0 === $out['infraction_id'] && 0 === $out['parent_id'], 'legacy row gets defaults' );
+assert_test( '' === $out['eligible_on'] && array() === $out['captains_notified'] && 0 === $out['incident_event_id'], 'legacy row: empty eligible_on, captains, event' );
+assert_test( ! array_key_exists( 'incident_note', $out ), 'legacy row has no incident_note' );
+$new = clone $legacy;
+foreach ( array( 'source' => 'manual', 'infraction_id' => '5', 'rule_ref' => '6.5', 'infraction_title' => 'Fighting', 'rule_text' => 'RT', 'outcome' => 'games', 'incident_event_id' => '77', 'incident_note' => 'private', 'parent_id' => '2', 'eligible_on' => null, 'captains_notified' => '[{"team":"W","sent":true}]' ) as $k => $v ) {
+	$new->$k = $v;
+}
+$out = $rest::row_to_response( $new );
+assert_test( 'manual' === $out['source'] && 5 === $out['infraction_id'] && '6.5' === $out['rule_ref'] && 77 === $out['incident_event_id'] && 2 === $out['parent_id'], 'new row fields shaped and cast' );
+assert_test( ! array_key_exists( 'incident_note', $out ), 'incident_note withheld by default' );
+assert_test( '' === $out['eligible_on'], 'null eligible_on becomes empty string' );
+assert_test( array( array( 'team' => 'W', 'sent' => true ) ) === $out['captains_notified'], 'captains_notified JSON decoded' );
+$out = $rest::row_to_response( $new, true );
+assert_test( 'private' === $out['incident_note'], 'incident_note present when requested' );
+$new->captains_notified = 'not json';
+assert_test( array() === $rest::row_to_response( $new )['captains_notified'], 'invalid captains_notified JSON becomes []' );
+
 echo "\nPassed: {$passed}  Failed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );

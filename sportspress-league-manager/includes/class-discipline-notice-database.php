@@ -402,7 +402,7 @@ class SPLM_Discipline_Notice_Database {
 			$wpdb->prepare(
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not a value; cannot use a placeholder.
 				"SELECT * FROM {$table}
-				 WHERE player_id = %d AND season_id = %d AND status IN ( %s, %s )
+				 WHERE player_id = %d AND season_id = %d AND source = 'auto' AND status IN ( %s, %s )
 				 ORDER BY id DESC
 				 LIMIT 1",
 				$player_id,
@@ -437,13 +437,46 @@ class SPLM_Discipline_Notice_Database {
 			$wpdb->prepare(
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not a value; cannot use a placeholder.
 				"SELECT id FROM {$table}
-				 WHERE player_id = %d AND season_id = %d AND consequence = 'suspend'
+				 WHERE player_id = %d AND season_id = %d AND source = 'auto' AND consequence = 'suspend'
 				   AND status IN ( 'pending', 'sent', 'served' )
 				 LIMIT 1",
 				$player_id,
 				$season_id
 			)
 		);
+	}
+
+	/**
+	 * Every notice for a player, across seasons, newest first.
+	 *
+	 * @param int  $player_id        Player post id.
+	 * @param bool $include_baseline Include baseline rows (never mailed).
+	 * @return object[] Up to 200 rows; empty when the table is missing or the id is invalid.
+	 */
+	public static function for_player( int $player_id, bool $include_baseline = false ): array {
+		global $wpdb;
+
+		if ( $player_id <= 0 || ! self::table_exists() ) {
+			return array();
+		}
+
+		// A fixed literal fragment (no input), chosen before the single prepare():
+		// a %s placeholder would quote it into a string and break the SQL.
+		$filter = $include_baseline ? '' : "AND status <> 'baseline'";
+		$table  = self::table_name();
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name and a fixed literal fragment, not values.
+		$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB
+			$wpdb->prepare(
+				"SELECT * FROM {$table}
+				 WHERE player_id = %d {$filter}
+				 ORDER BY id DESC
+				 LIMIT 200",
+				$player_id
+			)
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		return is_array( $rows ) ? $rows : array();
 	}
 
 	/**

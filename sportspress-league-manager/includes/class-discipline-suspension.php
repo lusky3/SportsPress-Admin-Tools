@@ -120,9 +120,14 @@ class SPLM_Discipline_Suspension {
 		$games       = 0;
 		$warnings    = 0;
 		$seasons     = array();
+		$superseded  = self::superseded_ids( $rows );
 
 		foreach ( $rows as $row ) {
 			if ( in_array( (string) $row->status, array( 'baseline', 'revoked', 'discarded' ), true ) ) {
+				continue;
+			}
+			// An amended or decided notice is replaced by its child row.
+			if ( isset( $row->id, $superseded[ (int) $row->id ] ) ) {
 				continue;
 			}
 			if ( 'suspend' === (string) $row->consequence ) {
@@ -155,6 +160,23 @@ class SPLM_Discipline_Suspension {
 			/* translators: %d: number of seasons. */
 			sprintf( _n( '%d season', '%d seasons', count( $seasons ), 'sportspress-league-manager' ), count( $seasons ) )
 		);
+	}
+
+	/**
+	 * Ids of rows that are the parent of another row.
+	 *
+	 * @param object[] $rows Notice rows; fixtures may lack parent_id.
+	 * @return array<int,true> Set keyed by parent id.
+	 */
+	private static function superseded_ids( array $rows ): array {
+		$ids = array();
+		foreach ( $rows as $row ) {
+			$parent = isset( $row->parent_id ) ? (int) $row->parent_id : 0;
+			if ( $parent > 0 ) {
+				$ids[ $parent ] = true;
+			}
+		}
+		return $ids;
 	}
 
 	/**

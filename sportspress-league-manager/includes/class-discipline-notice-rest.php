@@ -166,7 +166,7 @@ class SPLM_Discipline_Notice_REST {
 
 		$items = array();
 		foreach ( $result['rows'] as $row ) {
-			$items[] = self::row_to_response( $row );
+			$items[] = self::row_to_response( $row, SPLM_Capabilities::can_manage() );
 		}
 
 		return new WP_REST_Response(
@@ -405,12 +405,24 @@ class SPLM_Discipline_Notice_REST {
 	 * The React page shows a subset; the technical tab shows all of it. One
 	 * shape means the two views cannot disagree about what a row says.
 	 *
-	 * @param object $row Database row.
+	 * @param object $row          Database row.
+	 * @param bool   $include_note Include the private incident note (managers only).
 	 * @return array
 	 */
-	public static function row_to_response( $row ): array {
+	public static function row_to_response( $row, bool $include_note = false ): array {
 		$player_id = (int) $row->player_id;
 
+		return array_merge( self::base_fields( $row, $player_id ), self::manual_fields( $row, $include_note ) );
+	}
+
+	/**
+	 * Fields every notice row carries, automatic or manual.
+	 *
+	 * @param object $row       Database row.
+	 * @param int    $player_id Player post id.
+	 * @return array
+	 */
+	private static function base_fields( $row, int $player_id ): array {
 		return array(
 			'id'            => (int) $row->id,
 			'player_id'     => $player_id,
@@ -439,6 +451,36 @@ class SPLM_Discipline_Notice_REST {
 			'note'          => (string) $row->note,
 			'created_at'    => (string) $row->created_at,
 		);
+	}
+
+	/**
+	 * Manual-suspension fields; every read tolerates a legacy row lacking them.
+	 *
+	 * @param object $row          Database row.
+	 * @param bool   $include_note Include the private incident note (managers only).
+	 * @return array
+	 */
+	private static function manual_fields( $row, bool $include_note ): array {
+		$captains = json_decode( (string) ( $row->captains_notified ?? '' ), true );
+
+		$fields = array(
+			'source'            => (string) ( $row->source ?? 'auto' ),
+			'infraction_id'     => (int) ( $row->infraction_id ?? 0 ),
+			'rule_ref'          => (string) ( $row->rule_ref ?? '' ),
+			'infraction_title'  => (string) ( $row->infraction_title ?? '' ),
+			'rule_text'         => (string) ( $row->rule_text ?? '' ),
+			'outcome'           => (string) ( $row->outcome ?? 'games' ),
+			'incident_event_id' => (int) ( $row->incident_event_id ?? 0 ),
+			'parent_id'         => (int) ( $row->parent_id ?? 0 ),
+			'eligible_on'       => (string) ( $row->eligible_on ?? '' ),
+			'captains_notified' => is_array( $captains ) ? $captains : array(),
+		);
+
+		if ( $include_note ) {
+			$fields['incident_note'] = (string) ( $row->incident_note ?? '' );
+		}
+
+		return $fields;
 	}
 
 	/**
