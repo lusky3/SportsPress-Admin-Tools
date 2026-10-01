@@ -36,7 +36,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPLM_Discipline_Notice_Database {
 
-	const DB_VERSION     = '1.0.0';
+	const DB_VERSION     = '1.1.0';
 	const VERSION_OPTION = 'splm_discipline_notice_db_version';
 
 	/** Recorded, never mailed: the value a player was already at when notices were switched on. */
@@ -52,6 +52,12 @@ class SPLM_Discipline_Notice_Database {
 	/** A suspension a convener has marked served. */
 	const STATUS_SERVED = 'served';
 
+	/** A manual suspension a convener withdrew. History is append-only: revoke, never delete. */
+	const STATUS_REVOKED = 'revoked';
+
+	const SOURCE_AUTO   = 'auto';
+	const SOURCE_MANUAL = 'manual';
+
 	const STATUSES = array(
 		self::STATUS_BASELINE,
 		self::STATUS_PENDING,
@@ -59,6 +65,7 @@ class SPLM_Discipline_Notice_Database {
 		self::STATUS_FAILED,
 		self::STATUS_DISCARDED,
 		self::STATUS_SERVED,
+		self::STATUS_REVOKED,
 	);
 
 	/**
@@ -106,6 +113,14 @@ class SPLM_Discipline_Notice_Database {
 	 * on read. That is cheaper (no per-row aggregator call) and more accurate:
 	 * it records who the player was playing for when the minutes were earned.
 	 *
+	 * Manual suspensions (source = 'manual') share this table with automatic
+	 * notices. They carry the infraction snapshot (infraction_id, rule_ref,
+	 * infraction_title, rule_text, outcome), the incident (incident_event_id,
+	 * incident_note), eligible_on for date-based outcomes and captains_notified.
+	 * parent_id links a row to the row it supersedes. Rows are append-only: a
+	 * change is a new row pointing at its parent, and a withdrawal sets status
+	 * to 'revoked'; nothing is deleted. Existing rows default to source = 'auto'.
+	 *
 	 * @return bool True when the table is present afterwards.
 	 */
 	public static function create_table(): bool {
@@ -136,10 +151,23 @@ class SPLM_Discipline_Notice_Database {
 			released_by bigint(20) unsigned NOT NULL DEFAULT 0,
 			last_error varchar(255) NOT NULL DEFAULT '',
 			note text NULL,
+			source varchar(10) NOT NULL DEFAULT 'auto',
+			infraction_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			rule_ref varchar(20) NOT NULL DEFAULT '',
+			infraction_title varchar(120) NOT NULL DEFAULT '',
+			rule_text text NULL,
+			outcome varchar(20) NOT NULL DEFAULT 'games',
+			incident_event_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			incident_note text NULL,
+			parent_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			eligible_on date NULL,
+			captains_notified text NULL,
 			created_at datetime NOT NULL,
-			PRIMARY KEY (id),
+			PRIMARY KEY  (id),
 			KEY player_season_tier (player_id, season_id, tier_key),
-			KEY season_status (season_id, status)
+			KEY season_status (season_id, status),
+			KEY parent (parent_id),
+			KEY source_status (source, status)
 		) {$charset};";
 
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';

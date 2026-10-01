@@ -221,6 +221,9 @@ class SportsPress_League_Manager {
 	private function load_discipline_module() {
 		SPLM_Discipline_Database::maybe_upgrade();
 		SPLM_Discipline_Notice_Database::maybe_upgrade();
+		if ( SPLM_Discipline_Infraction::create_table() ) {
+			SPLM_Discipline_Infraction::seed_if_empty();
+		}
 
 		new SPLM_Discipline_Digest();
 		if ( get_option( 'splm_discipline_digest_enabled' ) ) {
@@ -270,6 +273,7 @@ class SportsPress_League_Manager {
 			'spat_health_dashboard_tables',
 			function ( $tables ) {
 				$tables[] = SPLM_Discipline_Notice_Database::table_name();
+				$tables[] = SPLM_Discipline_Infraction::table_name();
 				return $tables;
 			}
 		);
