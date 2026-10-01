@@ -22,6 +22,15 @@ class SPLM_Susp_Rest_Test_State {
 	public $elig       = array();
 	public $email      = array();
 	public $teams      = array();
+	public $writable   = false;
+	public $rows       = array();
+	public $inserted   = array();
+	public $next_id    = 100;
+	public $locks      = array();
+	public $lock_busy  = false;
+	public $mails      = array();
+	public $mail_ok    = true;
+	public $season     = 5;
 	public $failures   = 0;
 	public $total      = 0;
 }
@@ -54,6 +63,23 @@ function _n( $single, $plural, $n ) {
 }
 function absint( $v ) {
 	return abs( (int) $v );
+}
+function sanitize_textarea_field( $v ) {
+	return trim( (string) $v );
+}
+function wp_mail( $to, $subject, $body ) {
+	splm_susp_state()->mails[] = array(
+		'to'      => $to,
+		'subject' => $subject,
+		'body'    => $body,
+	);
+	return splm_susp_state()->mail_ok;
+}
+function wp_json_encode( $v ) {
+	return json_encode( $v );
+}
+function get_current_user_id() {
+	return 7;
 }
 function register_rest_route( $ns, $route, $args ) {
 	splm_susp_state()->routes[ $route ] = array_merge( array( 'ns' => $ns ), $args );
@@ -124,9 +150,11 @@ function splm_rest_list_response( array $items, $total = null ) {
 
 class WP_Error {
 	public $code;
+	public $message;
 	public $data;
 	public function __construct( $code = '', $message = '', $data = array() ) {
-		$this->code = $code;
+		$this->code    = $code;
+		$this->message = $message;
 		$this->data = $data;
 	}
 }
@@ -159,20 +187,53 @@ class SPLM_Discipline_Notice_REST {
 	}
 	public static function row_to_response( $row, $include_note = false ) {
 		return array(
-			'id'            => (int) $row->id,
-			'include_note'  => $include_note,
+			'id'           => (int) $row->id,
+			'status'       => (string) ( $row->status ?? '' ),
+			'include_note' => $include_note,
 		);
 	}
 }
 class SPLM_Discipline_Notice_Database {
+	const STATUS_SENT   = 'sent';
+	const STATUS_FAILED = 'failed';
+	public static function now() {
+		return '2026-10-01 12:00:00';
+	}
 	public static function for_player( $player_id, $include_baseline = false ) {
 		return $include_baseline ? array_merge( splm_susp_state()->history, array( (object) array( 'id' => 99, 'status' => 'baseline', 'consequence' => 'none', 'season_id' => 5 ) ) ) : splm_susp_state()->history;
 	}
-	public static function insert() {
-		throw new RuntimeException( 'preview must not insert' );
+	public static function find( $id ) {
+		return splm_susp_state()->rows[ (int) $id ] ?? null;
 	}
-	public static function update() {
-		throw new RuntimeException( 'preview must not update' );
+	public static function insert( array $row ) {
+		$state = splm_susp_state();
+		if ( ! $state->writable ) {
+			throw new RuntimeException( 'preview must not insert' );
+		}
+		$state->inserted[] = $row;
+		if ( ! $state->next_id ) {
+			return 0;
+		}
+		$id                 = $state->next_id++;
+		$state->rows[ $id ] = (object) array_merge( $row, array( 'id' => $id, 'created_at' => '2026-10-01 12:00:00' ) );
+		return $id;
+	}
+	public static function update( $id, array $fields ) {
+		$state = splm_susp_state();
+		if ( ! $state->writable ) {
+			throw new RuntimeException( 'preview must not update' );
+		}
+		foreach ( $fields as $key => $value ) {
+			$state->rows[ (int) $id ]->$key = $value;
+		}
+		return true;
+	}
+}
+class SPAT_Lock {
+	public static function with( $key, $ttl, $fn ) {
+		$state          = splm_susp_state();
+		$state->locks[] = array( $key, $ttl );
+		return $state->lock_busy ? false : $fn();
 	}
 }
 class SPLM_Discipline_Infraction {
@@ -216,7 +277,7 @@ class SPLM_Discipline_Notice_Recipients {
 }
 class SPLM_SportsPress_Data {
 	public static function default_season_id() {
-		return 5;
+		return splm_susp_state()->season;
 	}
 }
 
@@ -376,7 +437,7 @@ check( 'no duplicate on another day', $not_dup['duplicate_of'], 0 );
 $instance = new SPLM_Discipline_Suspension_REST();
 $instance->register_routes();
 $routes = splm_susp_state()->routes;
-check( 'route list', array_keys( $routes ), array( '/discipline/infractions', '/discipline/history', '/discipline/suspensions/preview' ) );
+check( 'route list', array_keys( $routes ), array( '/discipline/infractions', '/discipline/history', '/discipline/suspensions/preview', '/discipline/suspensions' ) );
 foreach ( $routes as $path => $def ) {
 	check( "namespace $path", $def['ns'], 'splm/v1' );
 	check( "permission is the static gate $path", $def['permission_callback'], array( 'SPLM_Discipline_Notice_REST', 'gate' ) );
@@ -424,7 +485,7 @@ check( 'empty history summary', $hres->data['summary'], 'No disciplinary record.
 check( 'empty history paging', array( $hres->data['total'], $hres->data['page'], $hres->data['total_pages'] ), array( 0, 1, 0 ) );
 splm_susp_state()->history = array( row() );
 $hres = $instance->get_history( new WP_REST_Request( array( 'player' => 11 ) ) );
-check( 'history rows include note for managers', $hres->data['data'], array( array( 'id' => 1, 'include_note' => true ) ) );
+check( 'history rows include note for managers', $hres->data['data'], array( array( 'id' => 1, 'status' => 'sent', 'include_note' => true ) ) );
 check( 'history summary counts the suspension', 0 === strpos( $hres->data['summary'], '1 suspension (2 games)' ), true );
 $hres = $instance->get_history( new WP_REST_Request( array( 'player' => 11, 'include_baseline' => true ) ) );
 check( 'baseline rows only when asked', count( $hres->data['data'] ), 2 );
@@ -493,6 +554,149 @@ splm_susp_state()->infraction = array( 3 => inf( array( 'outcome' => 'indefinite
 $indef = $instance->preview( preview_request( array( 'games' => 8 ) ) );
 check( 'indefinite preview ignores games', array( $indef->data['games'], $indef->data['eligible_on'], $indef->data['outcome'] ), array( 0, null, 'indefinite' ) );
 
+// Create route registration.
+check( 'create POST', $routes['/discipline/suspensions']['methods'], 'POST' );
+$create_args = $routes['/discipline/suspensions']['args'];
+check( 'create args', array_keys( $create_args ), array( 'player', 'infraction', 'season', 'incident_event', 'games', 'incident_note', 'mode' ) );
+check( 'create player/infraction required', array( $create_args['player']['required'], $create_args['infraction']['required'] ), array( true, true ) );
+check( 'create games 0-20', array( $create_args['games']['minimum'], $create_args['games']['maximum'] ), array( 0, 20 ) );
+check( 'incident_note sanitised as a textarea', $create_args['incident_note']['sanitize_callback'], 'sanitize_textarea_field' );
+check( 'mode enum send|draft default send', array( $create_args['mode']['enum'], $create_args['mode']['default'] ), array( array( 'send', 'draft' ), 'send' ) );
+
+// create_error: pure validation order.
+check( 'valid create has no error', $rest::create_error( true, true, inf(), 5 ), '' );
+check( 'event checked first', $rest::create_error( false, false, null, 0 ), 'invalid_incident_event' );
+check( 'player second', $rest::create_error( true, false, null, 0 ), 'invalid_player' );
+check( 'infraction third', $rest::create_error( true, true, null, 0 ), 'invalid_infraction' );
+check( 'season last', $rest::create_error( true, true, inf(), 0 ), 'invalid_season' );
+
+// release_kind: scope to kind.
+foreach ( array( 'manual' => 'issued', 'manual-decided' => 'decided', 'manual-amended' => 'amended', 'manual-revoked' => 'revoked', 'season' => 'issued' ) as $scope => $kind ) {
+	check( "release_kind $scope", $rest::release_kind( (object) array( 'scope' => $scope ) ), $kind );
+}
+
+function create_request( $over = array() ) {
+	return new WP_REST_Request( array_merge( array( 'player' => 11, 'infraction' => 3, 'incident_note' => 'SECRET-NOTE' ), $over ) );
+}
+function reset_create() {
+	$state             = splm_susp_state();
+	$state->writable   = true;
+	$state->rows       = array();
+	$state->inserted   = array();
+	$state->next_id    = 100;
+	$state->locks      = array();
+	$state->lock_busy  = false;
+	$state->mails      = array();
+	$state->mail_ok    = true;
+	$state->season     = 5;
+	$state->history    = array();
+	$state->player_ok  = true;
+	$state->infraction = array( 3 => inf() );
+	$state->elig       = elig();
+	$state->email      = array( 'email' => 'jane@example.com', 'via' => 'spt_email' );
+	$state->teams      = array( 21, 22 );
+}
+function build_manual_row( $scope, $id ) {
+	return (object) array(
+		'id'                => $id,
+		'player_id'         => 11,
+		'season_id'         => 5,
+		'scope'             => $scope,
+		'consequence'       => 'suspend',
+		'games'             => 3,
+		'outcome'           => 'games',
+		'status'            => 'pending',
+		'source'            => 'manual',
+		'rule_ref'          => '6.5',
+		'infraction_title'  => 'Fighting',
+		'rule_text'         => 'No fighting.',
+		'incident_event_id' => 0,
+		'incident_note'     => 'SECRET-NOTE',
+		'eligible_on'       => '2026-10-17',
+		'team'              => 'Red',
+	);
+}
+
+// Create handler: validation.
+reset_create();
+$bad = $instance->create( create_request( array( 'incident_event' => 99 ) ) );
+check( 'non-event incident is a 400 and takes no lock', array( $bad->code, $bad->data['status'], splm_susp_state()->locks ), array( 'invalid_incident_event', 400, array() ) );
+splm_susp_state()->player_ok = false;
+$bad = $instance->create( create_request() );
+check( 'create: unknown player', array( $bad->code, $bad->data['status'] ), array( 'invalid_player', 400 ) );
+splm_susp_state()->player_ok = true;
+$bad = $instance->create( create_request( array( 'infraction' => 404 ) ) );
+check( 'create: unknown infraction', array( $bad->code, $bad->data['status'] ), array( 'invalid_infraction', 400 ) );
+splm_susp_state()->season = 0;
+$bad = $instance->create( create_request() );
+check( 'create: no season', array( $bad->code, $bad->data['status'], splm_susp_state()->inserted ), array( 'invalid_season', 400, array() ) );
+splm_susp_state()->season = 5;
+
+splm_susp_state()->lock_busy = true;
+$bad = $instance->create( create_request() );
+check( 'create: busy lock is a 409', array( $bad->code, $bad->data['status'], splm_susp_state()->locks ), array( 'splm_notice_busy', 409, array( array( 'splm_discipline_suspension_11', 60 ) ) ) );
+check( 'nothing inserted while busy', splm_susp_state()->inserted, array() );
+splm_susp_state()->lock_busy = false;
+
+// Duplicate, read inside the lock.
+splm_susp_state()->history = array( row( array( 'id' => 42, 'infraction_id' => 3, 'incident_event_id' => 31, 'status' => 'pending' ) ) );
+$dup = $instance->create( create_request( array( 'incident_event' => 31 ) ) );
+check( 'duplicate is a 409 naming the existing row', array( $dup->code, $dup->data['status'], $dup->data['duplicate_of'] ), array( 'splm_suspension_duplicate', 409, 42 ) );
+check( 'duplicate inserts and mails nothing', array( splm_susp_state()->inserted, splm_susp_state()->mails ), array( array(), array() ) );
+
+// Draft.
+reset_create();
+$draft = $instance->create( create_request( array( 'mode' => 'draft', 'games' => 4 ) ) );
+check( 'draft is a 201', $draft->status, 201 );
+check( 'draft: not sent, no captains, no mail', array( $draft->data['sent'], $draft->data['captains'], splm_susp_state()->mails ), array( false, array(), array() ) );
+check( 'draft: notice is fresh and shown with the note', $draft->data['notice'], array( 'id' => 100, 'status' => 'pending', 'include_note' => true ) );
+$saved = splm_susp_state()->inserted[0];
+check( 'draft row: manual, pending, 4 games', array( $saved['source'], $saved['status'], $saved['games'], $saved['infraction_id'] ), array( 'manual', 'pending', 4, 3 ) );
+check( 'draft row: team snapshot decoded and joined, no division', array( $saved['team'], $saved['division'] ), array( 'Red & Blue, Green', '' ) );
+check( 'draft row: note stored on the row', $saved['incident_note'], 'SECRET-NOTE' );
+check( 'draft row: season defaulted', $saved['season_id'], 5 );
+check( 'draft takes the per-player lock', splm_susp_state()->locks, array( array( 'splm_discipline_suspension_11', 60 ) ) );
+
+// Send.
+reset_create();
+$sent = $instance->create( create_request( array( 'incident_event' => 31 ) ) );
+check( 'send is a 201 and sent', array( $sent->status, $sent->data['sent'] ), array( 201, true ) );
+check( 'send: row is sent when re-read', $sent->data['notice']['status'], 'sent' );
+check( 'send: player and one captain mailed', count( splm_susp_state()->mails ), 2 );
+check( 'send: subject is the issued subject', splm_susp_state()->mails[0]['subject'], 'Suspension notice — Winter' );
+$leak = false;
+foreach ( splm_susp_state()->mails as $mail ) {
+	$leak = $leak || false !== strpos( $mail['subject'] . $mail['body'], 'SECRET-NOTE' );
+}
+check( 'the incident note is in no email', $leak, false );
+check( 'send: incident label comes from the event', false !== strpos( splm_susp_state()->mails[0]['body'], 'Red vs Green' ), true );
+
+// A failed send is still a 201 the modal can read.
+reset_create();
+splm_susp_state()->mail_ok = false;
+$failed = $instance->create( create_request() );
+check( 'failed send is still a 201', array( $failed->status, $failed->data['sent'], $failed->data['notice']['status'] ), array( 201, false, 'failed' ) );
+
+// Insert failure.
+reset_create();
+splm_susp_state()->next_id = 0;
+$bad = $instance->create( create_request() );
+check( 'insert failure is a 500', array( $bad->code, $bad->data['status'], splm_susp_state()->mails ), array( 'splm_notice_write_failed', 500, array() ) );
+
+// release_row (the manual branch of the notice release route).
+reset_create();
+splm_susp_state()->rows[1] = build_manual_row( 'manual-amended', 1 );
+$ok = $rest::release_row( splm_susp_state()->rows[1] );
+check( 'release_row success shape', array( $ok->status, $ok->data ), array( 200, array( 'success' => true, 'id' => 1, 'status' => 'sent' ) ) );
+check( 'release_row used the amended kind in the subject', splm_susp_state()->mails[0]['subject'], 'Updated suspension notice — Winter' );
+$again = $rest::release_row( splm_susp_state()->rows[1] );
+check( 'release_row on a sent row is a 409', array( $again->code, $again->data['status'] ), array( 'splm_notice_not_releasable', 409 ) );
+check( 'release_row did not re-mail', count( splm_susp_state()->mails ), 2 );
+splm_susp_state()->mail_ok = false;
+splm_susp_state()->rows[2] = build_manual_row( 'manual', 2 );
+$err = $rest::release_row( splm_susp_state()->rows[2] );
+check( 'release_row failure carries last_error', array( $err->code, $err->data['status'], $err->message ), array( 'splm_notice_send_failed', 500, 'wp_mail() rejected the message.' ) );
+
 // Structural: the preview path never writes or locks.
 $source = file_get_contents( dirname( __DIR__ ) . '/includes/class-discipline-suspension-rest.php' );
 foreach ( array( 'preview', 'preview_input', 'gather_facts', 'after_date', 'preview_response', 'row_input', 'team_names', 'captain_summary', 'plan_preview', 'duplicate_of', 'contact_warnings', 'history_warnings', 'has_prior_suspension', 'resolve_games', 'get_history', 'get_infractions' ) as $name ) {
@@ -501,6 +705,19 @@ foreach ( array( 'preview', 'preview_input', 'gather_facts', 'after_date', 'prev
 	$code  = implode( "\n", $lines );
 	check( "$name makes no write or lock calls", 1 === preg_match( '/::(insert|update|delete)\s*\(|SPAT_Lock|update_option|wp_insert|wp_mail|set_transient/', $code ), false );
 }
+
+// Structural: incident_note never reaches an email-building path.
+function method_source( $class, $name ) {
+	$ref   = new ReflectionMethod( $class, $name );
+	$lines = file( $ref->getFileName() );
+	$code  = implode( '', array_slice( $lines, $ref->getStartLine() - 1, $ref->getEndLine() - $ref->getStartLine() + 1 ) );
+	return preg_replace( '/^\s*(\*|\/\/|\/\*).*$/m', '', $code );
+}
+foreach ( array( 'finish_create', 'release_row', 'release_extra', 'release_response', 'preview_response', 'team_names' ) as $name ) {
+	check( "$name never mentions incident_note", false === strpos( method_source( 'SPLM_Discipline_Suspension_REST', $name ), 'incident_note' ), true );
+}
+check( 'create_locked copies the note only into the row input', 2 === substr_count( method_source( 'SPLM_Discipline_Suspension_REST', 'create_locked' ), 'incident_note' ), true );
+check( 'for_row names incident_note only inside its unset guard', false === strpos( preg_replace( '/unset\([^;]*\);/', '', method_source( 'SPLM_Discipline_Suspension_Context', 'for_row' ) ), 'incident_note' ), true );
 
 $state = splm_susp_state();
 echo "\n{$state->total} checks, {$state->failures} failures\n";

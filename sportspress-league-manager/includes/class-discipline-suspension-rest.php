@@ -1,7 +1,7 @@
 <?php
 /**
  * REST routes for manually issued suspensions: infractions, a player's
- * history and a write-free preview.
+ * history, a write-free preview, and issuing one.
  *
  * The preview answers "what would happen if I issued this?" — eligibility
  * date, who would be mailed, what the emails would say, and which warnings
@@ -11,7 +11,7 @@
  *
  * @author Cody (lusky3)
  *
- * Three routes with their args blocks, plus the pure planner and the small
+ * The routes with their args blocks, plus the pure planner and the small
  * helpers that keep each method inside the complexity limit.
  *
  * @SuppressWarnings(PHPMD.TooManyMethods)
@@ -72,6 +72,17 @@ class SPLM_Discipline_Suspension_REST {
 				'args'                => self::preview_args(),
 			)
 		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/discipline/suspensions',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'create' ),
+				'permission_callback' => $gate,
+				'args'                => self::create_args(),
+			)
+		);
 	}
 
 	/**
@@ -105,6 +116,34 @@ class SPLM_Discipline_Suspension_REST {
 			'season'         => self::int_arg( false, 0 ),
 			'incident_event' => self::int_arg( false, 0 ),
 			'games'          => self::int_arg( false, 0, SPLM_Discipline_Infraction::MAX_GAMES ),
+		);
+	}
+
+	/**
+	 * Args for the create route: the preview's, plus the private note and the
+	 * send/draft switch.
+	 *
+	 * @return array
+	 */
+	private static function create_args(): array {
+		return array_merge(
+			self::preview_args(),
+			array(
+				'incident_note' => array(
+					'required'          => false,
+					'type'              => 'string',
+					'validate_callback' => 'rest_validate_request_arg',
+					'sanitize_callback' => 'sanitize_textarea_field',
+				),
+				'mode'          => array(
+					'required'          => false,
+					'type'              => 'string',
+					'enum'              => array( 'send', 'draft' ),
+					'default'           => 'send',
+					'validate_callback' => 'rest_validate_request_arg',
+					'sanitize_callback' => 'sanitize_key',
+				),
+			)
 		);
 	}
 
@@ -525,5 +564,284 @@ class SPLM_Discipline_Suspension_REST {
 		}
 
 		return $out;
+	}
+
+	/**
+	 * First reason a create request cannot proceed, or ''. Pure; the order is
+	 * the contract (cheapest and most specific check first).
+	 *
+	 * @param bool        $event_ok   Incident event is absent or an sp_event.
+	 * @param bool        $player_ok  Player post is an sp_player.
+	 * @param object|null $infraction Infraction row, null when unknown.
+	 * @param int         $season_id  Resolved season (0 when none could be found).
+	 * @return string Error code.
+	 */
+	public static function create_error( bool $event_ok, bool $player_ok, ?object $infraction, int $season_id ): string {
+		if ( ! $event_ok ) {
+			return 'invalid_incident_event';
+		}
+		if ( ! $player_ok ) {
+			return 'invalid_player';
+		}
+		if ( null === $infraction ) {
+			return 'invalid_infraction';
+		}
+
+		return $season_id > 0 ? '' : 'invalid_season';
+	}
+
+	/**
+	 * A 400 for one of create_error()'s codes.
+	 *
+	 * @param string $code Error code.
+	 * @return WP_Error
+	 */
+	private static function create_wp_error( string $code ): WP_Error {
+		$messages = array(
+			'invalid_incident_event' => __( 'The incident must be a match.', 'sportspress-league-manager' ),
+			'invalid_player'         => __( 'That player does not exist.', 'sportspress-league-manager' ),
+			'invalid_infraction'     => __( 'That infraction does not exist.', 'sportspress-league-manager' ),
+			'invalid_season'         => __( 'No season could be determined.', 'sportspress-league-manager' ),
+		);
+
+		return new WP_Error( $code, $messages[ $code ] ?? '', array( 'status' => 400 ) );
+	}
+
+	/**
+	 * POST /discipline/suspensions
+	 *
+	 * Issues a suspension: validates, then inserts and (for mode=send) mails
+	 * under a per-player lock so a double-click cannot create two.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	public function create( $request ) {
+		$input      = self::create_input( $request );
+		$infraction = SPLM_Discipline_Infraction::find( $input['infraction_id'] );
+		$event_ok   = 0 === $input['incident_event_id'] || 'sp_event' === get_post_type( $input['incident_event_id'] );
+		$error      = self::create_error( $event_ok, 'sp_player' === get_post_type( $input['player_id'] ), $infraction, $input['season_id'] );
+
+		if ( '' !== $error ) {
+			return self::create_wp_error( $error );
+		}
+		if ( ! class_exists( 'SPAT_Lock' ) ) {
+			return new WP_Error( 'splm_no_lock', __( 'Cannot issue safely without the parent plugin’s lock.', 'sportspress-league-manager' ), array( 'status' => 503 ) );
+		}
+
+		$result = SPAT_Lock::with(
+			'splm_discipline_suspension_' . $input['player_id'],
+			60,
+			static function () use ( $input, $infraction ) {
+				return self::create_locked( $input, $infraction );
+			}
+		);
+
+		if ( false === $result ) {
+			return new WP_Error( 'splm_notice_busy', __( 'That player is already being processed.', 'sportspress-league-manager' ), array( 'status' => 409 ) );
+		}
+
+		return $result;
+	}
+
+	/**
+	 * The preview's input plus the private note and the send/draft mode.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return array
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function create_input( $request ): array {
+		return array_merge(
+			self::preview_input( $request ),
+			array(
+				'incident_note' => sanitize_textarea_field( (string) $request->get_param( 'incident_note' ) ),
+				'mode'          => 'draft' === (string) $request->get_param( 'mode' ) ? 'draft' : 'send',
+			)
+		);
+	}
+
+	/**
+	 * The create body, already holding the player lock. The facts (including
+	 * the player's existing rows) are read here, not before the lock.
+	 *
+	 * @param array  $input      create_input() result.
+	 * @param object $infraction Infraction row.
+	 * @return WP_REST_Response|WP_Error
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function create_locked( array $input, $infraction ) {
+		$facts = self::gather_facts( $input, $infraction );
+		$plan  = self::plan_preview( $input, $infraction, $facts['elig'], $facts['player_email'], $facts['captains'], $facts['existing'], gmdate( 'Y-m-d' ) );
+
+		if ( $plan['duplicate_of'] > 0 ) {
+			return new WP_Error(
+				'splm_suspension_duplicate',
+				__( 'That suspension has already been issued.', 'sportspress-league-manager' ),
+				array(
+					'status'       => 409,
+					'duplicate_of' => $plan['duplicate_of'],
+				)
+			);
+		}
+
+		$names = self::team_names( $facts['captains'] );
+		$row   = SPLM_Discipline_Suspension::build_row(
+			array_merge(
+				self::row_input( $input ),
+				array(
+					'incident_note' => $input['incident_note'],
+					'team'          => $names,
+					'division'      => '',
+				)
+			),
+			$infraction,
+			$facts['elig']
+		);
+		// The plan already decided whether a date is projected (never for 0 games).
+		$row['eligible_on'] = $plan['eligible_on'];
+
+		$id = SPLM_Discipline_Notice_Database::insert( $row );
+		if ( $id <= 0 ) {
+			return new WP_Error( 'splm_notice_write_failed', __( 'Could not save the suspension.', 'sportspress-league-manager' ), array( 'status' => 500 ) );
+		}
+
+		return self::finish_create( $id, $row, $plan['remaining'], $names, $input['mode'] );
+	}
+
+	/**
+	 * Mail a freshly inserted row (mode=send) and build the 201 response. A
+	 * failed send is still a 201: the row exists, and notice.status plus
+	 * last_error tell the modal what happened.
+	 *
+	 * @param int    $id        New row id.
+	 * @param array  $row       The inserted row.
+	 * @param int    $remaining Games the schedule cannot cover.
+	 * @param string $names     Decoded, comma-joined team titles.
+	 * @param string $mode      send|draft.
+	 * @return WP_REST_Response
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function finish_create( int $id, array $row, int $remaining, string $names, string $mode ): WP_REST_Response {
+		$stored   = (object) array_merge( $row, array( 'id' => $id ) );
+		$delivery = array(
+			'sent'     => false,
+			'captains' => array(),
+		);
+
+		if ( 'send' === $mode ) {
+			$ctx      = SPLM_Discipline_Suspension_Context::for_row(
+				$stored,
+				array(
+					'remaining'  => $remaining,
+					'team_names' => $names,
+				)
+			);
+			$delivery = SPLM_Discipline_Suspension::deliver( $id, $ctx, 'issued' );
+		}
+
+		$fresh = SPLM_Discipline_Notice_Database::find( $id );
+
+		return new WP_REST_Response(
+			array(
+				'notice'   => SPLM_Discipline_Notice_REST::row_to_response( $fresh ? $fresh : $stored, true ),
+				'sent'     => (bool) $delivery['sent'],
+				'captains' => $delivery['captains'],
+			),
+			201
+		);
+	}
+
+	/**
+	 * Notice kind a stored manual row is mailed as. Pure.
+	 *
+	 * @param object $row Notice row.
+	 * @return string issued|decided|amended|revoked.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	public static function release_kind( object $row ): string {
+		return SPLM_Discipline_Suspension_Context::kind_for_scope( (string) ( $row->scope ?? '' ) );
+	}
+
+	/**
+	 * Release (send or retry) a manual row. Called by the notice release route
+	 * while it holds that notice's lock.
+	 *
+	 * @param object $row Manual notice row, status already checked pending/failed.
+	 * @return WP_REST_Response|WP_Error Same shapes as the automatic release.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	public static function release_row( object $row ) {
+		$id     = (int) $row->id;
+		$ctx    = SPLM_Discipline_Suspension_Context::for_row( $row, self::release_extra( $row ) );
+		$result = SPLM_Discipline_Suspension::deliver( $id, $ctx, self::release_kind( $row ) );
+
+		return self::release_response( $id, $result );
+	}
+
+	/**
+	 * Context extras for a release: the schedule shortfall is recomputed (it
+	 * may have changed since the draft) but only for a games outcome.
+	 *
+	 * @param object $row Manual notice row.
+	 * @return array
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function release_extra( object $row ): array {
+		$extra = array( 'team_names' => (string) $row->team );
+
+		if ( 'games' === (string) $row->outcome ) {
+			$elig = SPLM_Discipline_Eligibility::next_eligible(
+				(int) $row->player_id,
+				(int) $row->season_id,
+				self::after_date( (int) ( $row->incident_event_id ?? 0 ) ),
+				(int) $row->games
+			);
+			$extra['remaining'] = (int) ( $elig['remaining'] ?? 0 );
+		}
+
+		return $extra;
+	}
+
+	/**
+	 * Map a deliver() result onto the notice release route's responses.
+	 *
+	 * @param int   $id     Notice id.
+	 * @param array $result SPLM_Discipline_Suspension::deliver() result.
+	 * @return WP_REST_Response|WP_Error
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function release_response( int $id, array $result ) {
+		if ( 'status' === ( $result['skipped'] ?? '' ) ) {
+			return new WP_Error( 'splm_notice_not_releasable', __( 'Only a pending or failed notice can be released.', 'sportspress-league-manager' ), array( 'status' => 409 ) );
+		}
+
+		if ( ! $result['sent'] ) {
+			$fresh = SPLM_Discipline_Notice_Database::find( $id );
+
+			return new WP_Error(
+				'splm_notice_send_failed',
+				$fresh && $fresh->last_error ? (string) $fresh->last_error : __( 'The notice could not be sent.', 'sportspress-league-manager' ),
+				array( 'status' => 500 )
+			);
+		}
+
+		return new WP_REST_Response(
+			array(
+				'success' => true,
+				'id'      => $id,
+				'status'  => SPLM_Discipline_Notice_Database::STATUS_SENT,
+			),
+			200
+		);
 	}
 }
