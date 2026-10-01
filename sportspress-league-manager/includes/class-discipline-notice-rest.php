@@ -181,7 +181,7 @@ class SPLM_Discipline_Notice_REST {
 		$items    = array();
 		foreach ( $result['rows'] as $row ) {
 			$items[] = array_merge(
-				self::row_to_response( $row, SPLM_Capabilities::can_manage() ),
+				self::row_to_response( $row, false ),
 				array( 'replaced' => in_array( (int) $row->id, $replaced, true ) )
 			);
 		}

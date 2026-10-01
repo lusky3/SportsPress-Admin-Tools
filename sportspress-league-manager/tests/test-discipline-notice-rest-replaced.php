@@ -110,7 +110,7 @@ function nrow( $id, $over = array() ) {
 			'severity' => '', 'consequence' => 'suspend', 'games' => 2, 'value_at_fire' => 0, 'season_at_fire' => 0,
 			'team' => '', 'division' => '', 'status' => 'sent', 'recipient' => '', 'recipient_via' => '', 'bcc' => '',
 			'sent_at' => '', 'served_at' => '', 'released_by' => 0, 'last_error' => '', 'note' => '', 'created_at' => '',
-			'source' => 'manual',
+			'source' => 'manual', 'incident_note' => 'private ref note',
 		),
 		$over
 	);
@@ -126,6 +126,8 @@ $flags                     = array_column( $res->data['data'], 'replaced', 'id' 
 assert_test( array( 30 => false, 20 => true, 10 => false ) === $flags, 'replaced is true only for the parent with a live child' );
 assert_test( 1 === count( SPLM_Fake_State::$ids_seen ) && array( 30, 20, 10 ) === SPLM_Fake_State::$ids_seen[0], 'the set is computed once for all row ids' );
 assert_test( isset( $res->data['data'][0]['parent_id'] ), 'row_to_response fields are kept' );
+assert_test( ! array_key_exists( 'incident_note', $res->data['data'][0] ), 'the list route never returns the private incident note, even to managers' );
+assert_test( SPLM_Discipline_Notice_REST::row_to_response( SPLM_Fake_State::$rows[0], true )['incident_note'] === 'private ref note', 'row_to_response still includes the note when asked (history route)' );
 
 echo "\n=== serve refuses a replaced row ===\n\n";
 SPLM_Fake_State::$updated = array();
