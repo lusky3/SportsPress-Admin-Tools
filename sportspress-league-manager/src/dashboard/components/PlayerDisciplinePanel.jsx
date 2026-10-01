@@ -77,6 +77,7 @@ function groupBySeason( rows ) {
 
 function GamesEditor( { uid, label, min, initial, busy, onConfirm, onCancel } ) {
 	const [ value, setValue ] = useState( initial );
+	const [ touched, setTouched ] = useState( false );
 	const inputRef = useRef( null );
 	useEffect( () => { if ( inputRef.current ) inputRef.current.focus(); }, [] );
 	const n = value === '' ? NaN : Number( value );
@@ -88,6 +89,7 @@ function GamesEditor( { uid, label, min, initial, busy, onConfirm, onCancel } ) 
 			onSubmit={ ( e ) => {
 				e.preventDefault();
 				if ( valid && ! busy ) onConfirm( n );
+				else setTouched( true );
 			} }
 		>
 			<label htmlFor={ `${ uid }-games` }>{ label }</label>
@@ -101,7 +103,8 @@ function GamesEditor( { uid, label, min, initial, busy, onConfirm, onCancel } ) 
 				value={ value }
 				onChange={ ( e ) => setValue( e.target.value ) }
 				disabled={ busy }
-				aria-invalid={ ! valid }
+				onBlur={ () => setTouched( true ) }
+				aria-invalid={ ! valid && ( touched || value !== '' ) }
 				aria-describedby={ `${ uid }-games-hint` }
 			/>
 			<span id={ `${ uid }-games-hint` } className="splm-discipline-form__hint">{ min }–{ GAMES_MAX } games</span>
@@ -134,8 +137,15 @@ function ConfirmInline( { uid, message, confirmLabel, danger, busy, onConfirm, o
 	);
 }
 
-function RevokeConfirm( { uid, name, busy, onConfirm, onCancel } ) {
+function RevokeConfirm( { uid, name, draft, busy, onConfirm, onCancel } ) {
 	const [ email, setEmail ] = useState( true );
+	// A pending/failed draft was never sent: the server just discards it and
+	// mails nothing, so no correction checkbox.
+	if ( draft ) {
+		return (
+			<ConfirmInline uid={ uid } message="Discard this draft? Nothing was sent." confirmLabel="Discard draft" danger busy={ busy } onConfirm={ () => onConfirm( false ) } onCancel={ onCancel } />
+		);
+	}
 	return (
 		<ConfirmInline
 			uid={ uid }
@@ -154,8 +164,14 @@ function RevokeConfirm( { uid, name, busy, onConfirm, onCancel } ) {
 	);
 }
 
-function RowEditor( { uid, row, mode, busy, onRun, onCancel } ) {
-	const name = row.player || '';
+function releaseMessage( row, name ) {
+	if ( row.source === 'manual' ) {
+		return `Email ${ name }, and copy the team captain(s) and convener, to tell them: ${ consequenceLabel( row ) }?`;
+	}
+	return `Email ${ name } to tell them: ${ consequenceLabel( row ) }?`;
+}
+
+function RowEditor( { uid, row, mode, busy, playerName: name, onRun, onCancel } ) {
 	if ( mode === 'decide' ) {
 		return <DecideEditor uid={ uid } initial="" busy={ busy } onConfirm={ ( n ) => onRun( row, 'decide', n ) } onCancel={ onCancel } />;
 	}
@@ -163,13 +179,13 @@ function RowEditor( { uid, row, mode, busy, onRun, onCancel } ) {
 		return <AmendEditor uid={ uid } initial={ String( row.games ?? '' ) } busy={ busy } onConfirm={ ( n ) => onRun( row, 'amend', n ) } onCancel={ onCancel } />;
 	}
 	if ( mode === 'revoke' ) {
-		return <RevokeConfirm uid={ uid } name={ name } busy={ busy } onConfirm={ ( email ) => onRun( row, 'revoke', email ) } onCancel={ onCancel } />;
+		return <RevokeConfirm uid={ uid } name={ name } draft={ row.status !== 'sent' } busy={ busy } onConfirm={ ( email ) => onRun( row, 'revoke', email ) } onCancel={ onCancel } />;
 	}
 	const release = mode === 'release';
 	return (
 		<ConfirmInline
 			uid={ uid }
-			message={ release ? `Email ${ name } to tell them: ${ consequenceLabel( row ) }?` : `Discard this notice? ${ name } will not be told.` }
+			message={ release ? releaseMessage( row, name ) : `Discard this notice? ${ name } will not be told.` }
 			confirmLabel={ release ? 'Release' : 'Discard' }
 			danger={ ! release }
 			busy={ busy }
@@ -179,7 +195,7 @@ function RowEditor( { uid, row, mode, busy, onRun, onCancel } ) {
 	);
 }
 
-function RowActions( { row, actions, busy, btnRefs, onEdit, onRun } ) {
+function RowActions( { row, actions, busy, onEdit, onRun } ) {
 	return (
 		<div className="splm-discipline-history__actions">
 			{ actions.map( ( key ) => {
@@ -190,7 +206,7 @@ function RowActions( { row, actions, busy, btnRefs, onEdit, onRun } ) {
 						type="button"
 						className="splm-btn splm-btn--small"
 						disabled={ busy }
-						ref={ ( el ) => { btnRefs.current[ key ] = el; } }
+						data-action={ key }
 						aria-label={ `${ label } — ${ consequenceLabel( row ) }, ${ formatLocal( row.sent_at || row.created_at ) }` }
 						onClick={ () => ( NEEDS_INPUT.includes( key ) ? onEdit( row.id, key ) : onRun( row, key ) ) }
 					>{ label }</button>
@@ -219,40 +235,29 @@ function RowDetails( { row } ) {
 				<p className="splm-discipline-history__private-note"><strong>Private note (conveners only):</strong> { row.incident_note }</p>
 			) }
 			{ row.status === 'failed' && row.last_error && (
-				<p className="splm-discipline-history__error" role="alert">Could not send: { row.last_error }</p>
+				<p className="splm-discipline-history__error">Could not send: { row.last_error }</p>
 			) }
 		</>
 	);
 }
 
-function DisciplineRow( { uid, row, replacedSet, busy, mode, error, onEdit, onRun, onCancel } ) {
-	const rowRef = useRef( null );
-	const btnRefs = useRef( {} );
-	const lastMode = useRef( null );
+function DisciplineRow( { uid, row, replacedSet, busy, mode, error, playerName, onEdit, onRun, onCancel } ) {
 	const replaced = replacedSet.has( row.id );
 	const actions = availableActions( row, replacedSet );
-
-	// Put focus back on the action that opened the editor (or on the row if
-	// that button is gone after the reload).
-	useEffect( () => {
-		if ( mode === null && lastMode.current ) {
-			const btn = btnRefs.current[ lastMode.current ];
-			( btn || rowRef.current )?.focus();
-		}
-		lastMode.current = mode;
-	}, [ mode ] );
-
+	// The <li> is a programmatic focus target (tabIndex -1, stable id, keyed by
+	// row id so it survives reloads): the panel parks focus here after a
+	// mutation settles, because the clicked button is disabled/removed.
 	return (
 		<li
-			ref={ rowRef }
+			id={ uid }
 			tabIndex={ -1 }
 			className={ `splm-discipline-history__row${ replaced ? ' splm-discipline-history__row--replaced' : '' }` }
 			aria-busy={ busy }
 		>
 			<RowDetails row={ row } />
 			{ replaced && <p className="splm-discipline-history__meta"><em>Replaced by a later notice</em></p> }
-			{ actions.length > 0 && <RowActions row={ row } actions={ actions } busy={ busy } btnRefs={ btnRefs } onEdit={ onEdit } onRun={ onRun } /> }
-			{ mode && ! replaced && <RowEditor uid={ uid } row={ row } mode={ mode } busy={ busy } onRun={ onRun } onCancel={ onCancel } /> }
+			{ actions.length > 0 && <RowActions row={ row } actions={ actions } busy={ busy } onEdit={ onEdit } onRun={ onRun } /> }
+			{ mode && ! replaced && <RowEditor uid={ uid } row={ row } mode={ mode } busy={ busy } playerName={ playerName } onRun={ onRun } onCancel={ onCancel } /> }
 			{ error && <div className="splm-alert splm-alert--error" role="alert">{ error }</div> }
 		</li>
 	);
@@ -281,36 +286,41 @@ function SeasonGroup( { uid, group, replaced, busyId, editing, errors, handlers 
 	);
 }
 
-// Loads the history; every change to the inputs (or a `tick` bump after a
-// mutation) cancels the previous request, and the sequence counter drops any
-// answer that is not the newest.
+// Loads the history. `load()` is also the imperative reload used after a
+// mutation and resolves (never rejects) once the answer has been applied or
+// dropped. The sequence counter drops any answer that is not the newest, and
+// `aliveRef` drops answers after unmount (the cancelled guard).
 function useDisciplineData( playerId, includeBaseline ) {
 	const [ data, setData ] = useState( null ); // null = loading
 	const [ loadError, setLoadError ] = useState( '' );
-	const [ tick, setTick ] = useState( 0 );
 	const seqRef = useRef( 0 );
+	const aliveRef = useRef( true );
+	const baselineRef = useRef( includeBaseline );
+	baselineRef.current = includeBaseline;
 	useEffect( () => {
-		let cancelled = false;
+		aliveRef.current = true;
+		return () => { aliveRef.current = false; };
+	}, [] );
+	const load = useCallback( () => {
 		const seq = ++seqRef.current;
-		fetchDiscipline( playerId, includeBaseline ).then( ( res ) => {
-			if ( cancelled || seq !== seqRef.current ) return;
+		return fetchDiscipline( playerId, baselineRef.current ).then( ( res ) => {
+			if ( ! aliveRef.current || seq !== seqRef.current ) return;
 			setData( res );
 			setLoadError( '' );
-		} ).catch( ( err ) => {
-			if ( cancelled || seq !== seqRef.current ) return;
+		}, ( err ) => {
+			if ( ! aliveRef.current || seq !== seqRef.current ) return;
 			setLoadError( err?.message || 'Could not load the disciplinary record.' );
 			setData( ( prev ) => prev || { rows: [], summary: '' } );
 		} );
-		return () => { cancelled = true; };
-	}, [ playerId, includeBaseline, tick ] );
-	const refresh = useCallback( () => setTick( ( t ) => t + 1 ), [] );
-	return { data, setData, loadError, refresh };
+	}, [ playerId ] );
+	useEffect( () => { load(); }, [ load, includeBaseline ] );
+	return { data, setData, loadError, reload: load };
 }
 
 export default function PlayerDisciplinePanel( { player, season, onClose, notify } ) {
 	const uid = useUid( 'splm-disc' );
 	const [ includeBaseline, setIncludeBaseline ] = useState( false );
-	const { data, setData, loadError, refresh } = useDisciplineData( player.id, includeBaseline );
+	const { data, setData, loadError, reload } = useDisciplineData( player.id, includeBaseline );
 	const [ busyId, setBusyId ] = useState( 0 );
 	const [ editing, setEditing ] = useState( null ); // { id, mode }
 	const [ errors, setErrors ] = useState( {} );
@@ -324,6 +334,8 @@ export default function PlayerDisciplinePanel( { player, season, onClose, notify
 	const overlayDownRef = useRef( false );
 	const issueBtnRef = useRef( null );
 	const wasIssuing = useRef( false );
+	const pendingFocusRef = useRef( 0 ); // row id to park focus on once idle
+	const restoreRef = useRef( null ); // { id, mode } of an editor the user cancelled
 	useEffect( () => {
 		mountedRef.current = true;
 		return () => { mountedRef.current = false; };
@@ -334,49 +346,74 @@ export default function PlayerDisciplinePanel( { player, season, onClose, notify
 		setErrors( ( prev ) => ( { ...prev, [ id ]: message } ) );
 	}, [] );
 
+	const announce = useCallback( ( row, key, arg, res ) => {
+		const draftRevoke = key === 'revoke' && row.status !== 'sent';
+		const emailFailed = key === 'revoke' && arg === true && ! draftRevoke && res && res.sent === false;
+		if ( emailFailed ) {
+			notify( 'Withdrawn, but the correction email could not be sent.', 'error' );
+		} else if ( res && res.notice && res.notice.status === 'failed' ) {
+			notify( `Saved, but the email could not be sent${ res.notice.last_error ? `: ${ res.notice.last_error }` : '.' }`, 'error' );
+		} else {
+			notify( draftRevoke ? 'Draft discarded' : ACTIONS[ key ].done, 'success' );
+		}
+	}, [ notify ] );
+
+	// The row stays busy until the reload has landed, so a quick second click
+	// cannot hit a stale row.
 	const runAction = useCallback( ( row, key, arg ) => {
 		if ( busyRef.current ) return Promise.resolve( false );
 		busyRef.current = true;
 		setBusyId( row.id );
 		setRowError( row.id, '' );
 		return ACTIONS[ key ].call( row, arg ).then( ( res ) => {
-			const failed = res && res.notice && res.notice.status === 'failed';
-			if ( failed ) notify( `Saved, but the email could not be sent${ res.notice.last_error ? `: ${ res.notice.last_error }` : '.' }`, 'error' );
-			else notify( ACTIONS[ key ].done, 'success' );
+			announce( row, key, arg, res );
 			return true;
 		}, ( err ) => {
 			if ( mountedRef.current ) setRowError( row.id, mutationError( err ) );
 			return false;
 		} ).then( ( ok ) => {
-			busyRef.current = false;
-			if ( mountedRef.current ) {
-				setBusyId( 0 );
-				if ( ok ) setEditing( null );
-				refresh();
+			if ( ! mountedRef.current ) {
+				busyRef.current = false;
+				return ok;
 			}
-			return ok;
+			// Only close this row's own editor (another row's may be open).
+			if ( ok ) setEditing( ( cur ) => ( cur && cur.id === row.id ? null : cur ) );
+			return reload().then( () => {
+				busyRef.current = false;
+				if ( mountedRef.current ) {
+					pendingFocusRef.current = row.id;
+					setBusyId( 0 );
+				}
+				return ok;
+			} );
 		} );
-	}, [ notify, refresh, setRowError ] );
+	}, [ announce, reload, setRowError ] );
 
 	const openEditor = useCallback( ( id, mode ) => {
 		if ( busyRef.current ) return;
 		setRowError( id, '' );
 		setEditing( { id, mode } );
 	}, [ setRowError ] );
-	const cancelEditor = useCallback( () => {
-		if ( ! busyRef.current ) setEditing( null );
+	// User-initiated close of an editor (Cancel / Escape): remember which
+	// action button to give focus back to.
+	const closeEditorByUser = useCallback( () => {
+		restoreRef.current = editingRef.current;
+		setEditing( null );
 	}, [] );
+	const cancelEditor = useCallback( () => {
+		if ( ! busyRef.current ) closeEditorByUser();
+	}, [ closeEditorByUser ] );
 
 	// Ignored mid-mutation and while the issue dialog is open; with an inline
 	// editor open Escape closes that first.
 	const requestClose = useCallback( () => {
 		if ( busyRef.current || issuingRef.current ) return;
 		if ( editingRef.current ) {
-			setEditing( null );
+			closeEditorByUser();
 			return;
 		}
 		onClose();
-	}, [ onClose ] );
+	}, [ onClose, closeEditorByUser ] );
 	const trapRef = useFocusTrap( requestClose );
 	// The Close button always closes the dialog (Escape peels off an editor first).
 	const closeDialog = () => {
@@ -390,6 +427,32 @@ export default function PlayerDisciplinePanel( { player, season, onClose, notify
 		wasIssuing.current = issuing;
 	}, [ issuing ] );
 
+	// Focus management. (1) A cancelled editor returns focus to the button that
+	// opened it - and only that: nothing happens when `editing` merely moved to
+	// another row. (2) After a mutation settles, park focus on the row (the
+	// clicked control was disabled or removed). (3) Safety net: if focus is on
+	// <body> or outside the dialog after a render, bring it back to the dialog so
+	// Escape and the Tab trap keep working.
+	useEffect( () => {
+		const root = trapRef.current;
+		if ( ! root || editing || ! restoreRef.current ) return;
+		const { id, mode } = restoreRef.current;
+		restoreRef.current = null;
+		const btn = root.querySelector( `#${ uid }-r${ id } [data-action="${ mode }"]` );
+		( btn || root.querySelector( `#${ uid }-r${ id }` ) )?.focus();
+	}, [ editing, trapRef, uid ] );
+	useEffect( () => {
+		const root = trapRef.current;
+		if ( ! root || busyId !== 0 || issuingRef.current ) return;
+		if ( pendingFocusRef.current ) {
+			const target = root.querySelector( `#${ uid }-r${ pendingFocusRef.current }` );
+			pendingFocusRef.current = 0;
+			( target || root ).focus();
+		}
+		const active = document.activeElement;
+		if ( ! active || active === document.body || ! root.contains( active ) ) root.focus();
+	}, [ busyId, data, trapRef, uid ] );
+
 	const openIssue = () => {
 		issuingRef.current = true;
 		setIssueError( '' );
@@ -402,7 +465,7 @@ export default function PlayerDisciplinePanel( { player, season, onClose, notify
 	// See SuspensionModal's onDone contract: always refresh; a failed notice is
 	// an error, never a success toast; null means "outcome unknown".
 	const handleIssueDone = useCallback( ( notice ) => {
-		refresh();
+		reload();
 		if ( ! notice ) return;
 		if ( notice.status === 'failed' ) {
 			const msg = `The suspension was recorded but the email could not be sent${ notice.last_error ? `: ${ notice.last_error }` : '.' } It is in the Notices queue, where you can retry it.`;
@@ -411,7 +474,7 @@ export default function PlayerDisciplinePanel( { player, season, onClose, notify
 			return;
 		}
 		notify( notice.status === 'pending' ? 'Draft saved' : 'Suspension recorded', 'success' );
-	}, [ refresh, notify ] );
+	}, [ reload, notify ] );
 
 	const toggleBaseline = ( e ) => {
 		setEditing( null );
@@ -422,7 +485,7 @@ export default function PlayerDisciplinePanel( { player, season, onClose, notify
 	const rows = data ? data.rows : [];
 	const replaced = replacedIds( rows );
 	const titleId = `${ uid }-title`;
-	const handlers = { onEdit: openEditor, onRun: runAction, onCancel: cancelEditor };
+	const handlers = { onEdit: openEditor, onRun: runAction, onCancel: cancelEditor, playerName: player.name };
 
 	return (
 		<>
