@@ -874,7 +874,7 @@ class SPLM_Discipline_Suspension_REST {
 			$elig = SPLM_Discipline_Eligibility::next_eligible(
 				(int) $row->player_id,
 				(int) $row->season_id,
-				self::release_after_date( $scope, self::after_date( (int) ( $row->incident_event_id ?? 0 ) ), current_time( 'Y-m-d' ) ),
+				self::count_from( $row ),
 				(int) $row->games
 			);
 
@@ -919,18 +919,58 @@ class SPLM_Discipline_Suspension_REST {
 	}
 
 	/**
-	 * Date games are counted from when a row is released. Must match how the
-	 * decide / amend routes compute the child's eligible_on: a decision counts
-	 * from today (an indefinite suspension's games start at the decision);
-	 * issued and amended rows count from the incident. Pure.
+	 * Date a row's games are counted from. Must match how decide, amend and
+	 * recalculate compute eligible_on, so a retried release agrees with it: a
+	 * decision counts from the day it was made (an indefinite suspension's games
+	 * start then); issued and amended rows count from the incident. Pure.
 	 *
-	 * @param string $scope         Row scope.
-	 * @param string $incident_date 'Y-m-d' of the incident match, or today when none.
-	 * @param string $today         'Y-m-d' local today.
+	 * @param string $scope         Scope of the anchor row (see count_from()).
+	 * @param string $incident_date 'Y-m-d' of the incident match, or '' when none.
+	 * @param string $decision_date 'Y-m-d' (site-local) the decision row was created, or ''.
+	 * @param string $today         'Y-m-d' local today, the fallback for a missing date.
 	 * @return string
 	 */
-	public static function release_after_date( string $scope, string $incident_date, string $today ): string {
-		return 'manual-decided' === $scope ? $today : $incident_date;
+	public static function count_from_date( string $scope, string $incident_date, string $decision_date, string $today ): string {
+		$date = 'manual-decided' === $scope ? $decision_date : $incident_date;
+
+		return '' === $date ? $today : $date;
+	}
+
+	/**
+	 * The count-from date for a stored row. An amendment counts from wherever
+	 * the row it replaced did, so the chain is followed back to its anchor.
+	 *
+	 * @param object $row Manual notice row.
+	 * @return string 'Y-m-d'.
+	 */
+	public static function count_from( object $row ): string {
+		$anchor  = self::anchor_row( $row );
+		$created = (string) ( $anchor->created_at ?? '' );
+
+		return self::count_from_date(
+			(string) ( $anchor->scope ?? '' ),
+			self::after_date( (int) ( $anchor->incident_event_id ?? 0 ) ),
+			'' === $created ? '' : get_date_from_gmt( $created, 'Y-m-d' ),
+			current_time( 'Y-m-d' )
+		);
+	}
+
+	/**
+	 * The first row of an amendment chain (the row itself when not amended).
+	 *
+	 * @param object $row Manual notice row.
+	 * @return object
+	 */
+	private static function anchor_row( object $row ): object {
+		for ( $hops = 0; $hops < 10; $hops++ ) {
+			$parent = self::parent_of( $row );
+			if ( null === $parent ) {
+				break;
+			}
+			$row = $parent;
+		}
+
+		return $row;
 	}
 
 	/**

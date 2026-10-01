@@ -29,7 +29,12 @@ class SPLM_Discipline_Suspension_Actions {
 			return 'splm_notice_not_found';
 		}
 
-		return 'manual' === (string) ( $parent->source ?? 'auto' ) ? '' : 'splm_suspension_not_manual';
+		if ( 'manual' !== (string) ( $parent->source ?? 'auto' ) ) {
+			return 'splm_suspension_not_manual';
+		}
+
+		// A revoke's correction row has consequence 'none' and is not a suspension.
+		return 'suspend' === (string) ( $parent->consequence ?? '' ) ? '' : 'splm_suspension_not_a_suspension';
 	}
 
 	/**
@@ -78,25 +83,31 @@ class SPLM_Discipline_Suspension_Actions {
 	 * Whether this parent may be revoked (pending and failed drafts are
 	 * discarded instead, a sent notice is revoked). Pure.
 	 *
-	 * @param object|null $parent Parent row.
+	 * @param object|null $parent    Parent row.
+	 * @param bool        $has_child A non-discarded child exists (revoke the newest row instead).
 	 * @return string Error code, or ''.
 	 */
-	public static function revoke_error( ?object $parent ): string {
+	public static function revoke_error( ?object $parent, bool $has_child ): string {
 		$error = self::parent_error( $parent );
 		if ( '' !== $error ) {
 			return $error;
 		}
 
-		return in_array( (string) $parent->status, array( 'pending', 'failed', 'sent' ), true ) ? '' : 'splm_suspension_not_revocable';
+		if ( ! in_array( (string) $parent->status, array( 'pending', 'failed', 'sent' ), true ) ) {
+			return 'splm_suspension_not_revocable';
+		}
+
+		return $has_child ? 'splm_suspension_superseded' : '';
 	}
 
 	/**
 	 * Whether this parent's eligibility date may be recomputed. Pure.
 	 *
-	 * @param object|null $parent Parent row.
+	 * @param object|null $parent    Parent row.
+	 * @param bool        $has_child A non-discarded child exists (recalculate the newest row instead).
 	 * @return string Error code, or ''.
 	 */
-	public static function recalculate_error( ?object $parent ): string {
+	public static function recalculate_error( ?object $parent, bool $has_child ): string {
 		$error = self::parent_error( $parent );
 		if ( '' !== $error ) {
 			return $error;
@@ -105,25 +116,7 @@ class SPLM_Discipline_Suspension_Actions {
 			return 'splm_suspension_not_recalculable';
 		}
 
-		return '';
-	}
-
-	/**
-	 * Whether a non-discarded child of a parent exists. A discarded child never
-	 * took effect. Pure.
-	 *
-	 * @param object[] $rows      The player's rows.
-	 * @param int      $parent_id Parent id.
-	 * @return bool
-	 */
-	public static function live_child_exists( array $rows, int $parent_id ): bool {
-		foreach ( $rows as $row ) {
-			if ( (int) ( $row->parent_id ?? 0 ) === $parent_id && 'discarded' !== (string) ( $row->status ?? '' ) ) {
-				return true;
-			}
-		}
-
-		return false;
+		return $has_child ? 'splm_suspension_superseded' : '';
 	}
 
 	/**
@@ -142,6 +135,8 @@ class SPLM_Discipline_Suspension_Actions {
 			'splm_suspension_unchanged'       => __( 'That is already the suspension’s length.', 'sportspress-league-manager' ),
 			'splm_suspension_already_amended' => __( 'That suspension has already been amended.', 'sportspress-league-manager' ),
 			'splm_suspension_not_revocable'   => __( 'Only a draft or sent suspension can be revoked.', 'sportspress-league-manager' ),
+			'splm_suspension_superseded'      => __( 'That notice has been replaced by a newer one; use the newest notice instead.', 'sportspress-league-manager' ),
+			'splm_suspension_not_a_suspension' => __( 'That notice is not a suspension.', 'sportspress-league-manager' ),
 			'splm_suspension_not_recalculable' => __( 'Only a pending or sent suspension with a set length can be recalculated.', 'sportspress-league-manager' ),
 		);
 		$statuses = array(
@@ -216,7 +211,7 @@ class SPLM_Discipline_Suspension_Actions {
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private static function has_live_child( ?object $parent ): bool {
-		return null !== $parent && self::live_child_exists( SPLM_Discipline_Notice_Database::for_player( (int) $parent->player_id, false ), (int) $parent->id );
+		return null !== $parent && array() !== SPLM_Discipline_Notice_Database::children_of( (int) $parent->id );
 	}
 
 	/**
@@ -393,8 +388,8 @@ class SPLM_Discipline_Suspension_Actions {
 	}
 
 	/**
-	 * The amend body, holding the parent's lock. Games count from the incident
-	 * date, as they did for the suspension being replaced.
+	 * The amend body, holding the parent's lock. Games count from wherever the
+	 * suspension being replaced counted from (see SPLM_Discipline_Suspension_REST::count_from()).
 	 *
 	 * @param int $id    Parent id.
 	 * @param int $games New length (0 allowed).
@@ -409,7 +404,7 @@ class SPLM_Discipline_Suspension_Actions {
 			return self::action_error( $error );
 		}
 
-		$elig  = self::eligibility_for( $parent, SPLM_Discipline_Suspension_REST::after_date( (int) ( $parent->incident_event_id ?? 0 ) ), $games );
+		$elig  = self::eligibility_for( $parent, SPLM_Discipline_Suspension_REST::count_from( $parent ), $games );
 		$child = SPLM_Discipline_Suspension::build_child_row(
 			$parent,
 			'amended',
@@ -424,6 +419,8 @@ class SPLM_Discipline_Suspension_Actions {
 
 	/**
 	 * POST /discipline/suspensions/{id}/revoke
+	 *
+	 * Returns the revoked (or discarded) PARENT row, not the correction row.
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
@@ -453,13 +450,15 @@ class SPLM_Discipline_Suspension_Actions {
 	 */
 	private static function revoke_locked( int $id, bool $notify ) {
 		$parent = self::find_parent( $id );
-		$error  = self::revoke_error( $parent );
+		$error  = self::revoke_error( $parent, self::has_live_child( $parent ) );
 		if ( '' !== $error ) {
 			return self::action_error( $error );
 		}
 
 		if ( 'sent' !== (string) $parent->status ) {
-			SPLM_Discipline_Notice_Database::update( $id, array( 'status' => 'discarded' ) );
+			if ( ! SPLM_Discipline_Notice_Database::update( $id, array( 'status' => 'discarded' ) ) ) {
+				return self::write_failed();
+			}
 
 			return self::action_response( $id, self::no_delivery() );
 		}
@@ -485,7 +484,12 @@ class SPLM_Discipline_Suspension_Actions {
 			return self::write_failed();
 		}
 
-		SPLM_Discipline_Notice_Database::update( $parent_id, array( 'status' => 'revoked' ) );
+		if ( ! SPLM_Discipline_Notice_Database::update( $parent_id, array( 'status' => 'revoked' ) ) ) {
+			// The parent still stands, so the correction must not take effect or be mailed.
+			SPLM_Discipline_Notice_Database::update( $child_id, array( 'status' => 'discarded' ) );
+
+			return self::write_failed();
+		}
 
 		$delivery = $notify ? self::deliver_child( $child_id, $child, 'revoked', array() ) : self::no_delivery();
 
@@ -520,13 +524,15 @@ class SPLM_Discipline_Suspension_Actions {
 	 */
 	private static function recalculate_locked( int $id ) {
 		$parent = self::find_parent( $id );
-		$error  = self::recalculate_error( $parent );
+		$error  = self::recalculate_error( $parent, self::has_live_child( $parent ) );
 		if ( '' !== $error ) {
 			return self::action_error( $error );
 		}
 
-		$elig = self::eligibility_for( $parent, SPLM_Discipline_Suspension_REST::after_date( (int) ( $parent->incident_event_id ?? 0 ) ), (int) $parent->games );
-		SPLM_Discipline_Notice_Database::update( $id, array( 'eligible_on' => $elig['eligible_on'] ) );
+		$elig = self::eligibility_for( $parent, SPLM_Discipline_Suspension_REST::count_from( $parent ), (int) $parent->games );
+		if ( ! SPLM_Discipline_Notice_Database::update( $id, array( 'eligible_on' => $elig['eligible_on'] ) ) ) {
+			return self::write_failed();
+		}
 
 		return self::action_response( $id, self::no_delivery() );
 	}

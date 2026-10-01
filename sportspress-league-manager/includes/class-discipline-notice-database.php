@@ -480,6 +480,35 @@ class SPLM_Discipline_Notice_Database {
 	}
 
 	/**
+	 * Live children of a notice: rows that supersede it and were not discarded.
+	 *
+	 * @param int $parent_id Parent notice id.
+	 * @return object[] Up to 20 rows, oldest first; empty when the table is missing or the id is invalid.
+	 */
+	public static function children_of( int $parent_id ): array {
+		global $wpdb;
+
+		if ( $parent_id <= 0 || ! self::table_exists() ) {
+			return array();
+		}
+
+		$table = self::table_name();
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not a value.
+		$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB
+			$wpdb->prepare(
+				"SELECT * FROM {$table}
+				 WHERE parent_id = %d AND status <> 'discarded'
+				 ORDER BY id ASC
+				 LIMIT 20",
+				$parent_id
+			)
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		return is_array( $rows ) ? $rows : array();
+	}
+
+	/**
 	 * Paginated rows for the queue surfaces.
 	 *
 	 * @param array $filters  Accepts 'season' (int) and 'status' (string).

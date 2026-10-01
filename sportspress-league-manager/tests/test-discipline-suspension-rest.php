@@ -38,6 +38,7 @@ class SPLM_Susp_Rest_Test_State {
 	public $writes     = array();
 	public $updates    = array();
 	public $elig_args  = array();
+	public $fail_update = array();
 }
 
 function splm_susp_state() {
@@ -124,6 +125,10 @@ function get_the_title( $id ) {
 }
 function get_term( $id ) {
 	return 5 === (int) $id ? (object) array( 'name' => 'Winter' ) : null;
+}
+function get_date_from_gmt( $date ) {
+	// A fixed UTC-5 site, so a late-evening UTC time lands on the previous local day.
+	return gmdate( 'Y-m-d', strtotime( $date . ' UTC' ) - 5 * 3600 );
 }
 function current_time() {
 	return '2026-10-01';
@@ -214,6 +219,17 @@ class SPLM_Discipline_Notice_Database {
 	public static function find( $id ) {
 		return splm_susp_state()->rows[ (int) $id ] ?? null;
 	}
+	public static function children_of( $parent_id ) {
+		$state          = splm_susp_state();
+		$state->calls[] = 'children_of';
+		$out            = array();
+		foreach ( array_merge( $state->history, $state->rows ) as $row ) {
+			if ( (int) ( $row->parent_id ?? 0 ) === (int) $parent_id && 'discarded' !== (string) ( $row->status ?? '' ) ) {
+				$out[] = $row;
+			}
+		}
+		return $out;
+	}
 	public static function insert( array $row ) {
 		$state = splm_susp_state();
 		if ( ! $state->writable ) {
@@ -233,6 +249,9 @@ class SPLM_Discipline_Notice_Database {
 		$state = splm_susp_state();
 		if ( ! $state->writable ) {
 			throw new RuntimeException( 'preview must not update' );
+		}
+		if ( in_array( (int) $id, $state->fail_update, true ) ) {
+			return false;
 		}
 		$state->writes[]  = 'update:' . $id . ':' . implode( ',', array_keys( $fields ) );
 		$state->updates[] = array( (int) $id, $fields );
@@ -624,6 +643,7 @@ function reset_create() {
 	$state->writes     = array();
 	$state->updates    = array();
 	$state->elig_args  = array();
+	$state->fail_update = array();
 	$state->busy_prefix = '';
 	$state->season     = 5;
 	$state->history    = array();
@@ -655,6 +675,7 @@ function build_manual_row( $scope, $id ) {
 		'ack_key'           => 'manual:3',
 		'severity'          => 'high',
 		'infraction_id'     => 3,
+		'created_at'        => '2026-09-20 15:00:00',
 	);
 }
 
@@ -751,9 +772,20 @@ check( 'create rejects a retired infraction', array( $bad->code, $bad->data['sta
 check( 'prior_games from the parent of an amended row', $rest::prior_games_extra( 'manual-amended', (object) array( 'games' => 4 ) ), array( 'prior_games' => 4 ) );
 check( 'no prior_games for other scopes', array( $rest::prior_games_extra( 'manual', (object) array( 'games' => 4 ) ), $rest::prior_games_extra( 'manual-decided', (object) array( 'games' => 4 ) ) ), array( array(), array() ) );
 check( 'no prior_games without a parent', $rest::prior_games_extra( 'manual-amended', null ), array() );
-check( 'decided counts from today', $rest::release_after_date( 'manual-decided', '2026-09-01', '2026-10-01' ), '2026-10-01' );
-check( 'amended counts from the incident date', $rest::release_after_date( 'manual-amended', '2026-09-01', '2026-10-01' ), '2026-09-01' );
-check( 'issued counts from the incident date', $rest::release_after_date( 'manual', '2026-09-01', '2026-10-01' ), '2026-09-01' );
+check( 'decided counts from the decision date', $rest::count_from_date( 'manual-decided', '2026-09-01', '2026-09-20', '2026-10-01' ), '2026-09-20' );
+check( 'decided without a decision date counts from today', $rest::count_from_date( 'manual-decided', '2026-09-01', '', '2026-10-01' ), '2026-10-01' );
+check( 'amended counts from the incident date', $rest::count_from_date( 'manual-amended', '2026-09-01', '2026-09-20', '2026-10-01' ), '2026-09-01' );
+check( 'issued counts from the incident date', $rest::count_from_date( 'manual', '2026-09-01', '2026-09-20', '2026-10-01' ), '2026-09-01' );
+check( 'issued without an incident counts from today', $rest::count_from_date( 'manual', '', '2026-09-20', '2026-10-01' ), '2026-10-01' );
+splm_susp_state()->rows[20]            = build_manual_row( 'manual-decided', 20 );
+splm_susp_state()->rows[20]->created_at = '2026-10-02 02:00:00';
+splm_susp_state()->rows[21]            = build_manual_row( 'manual-amended', 21 );
+splm_susp_state()->rows[21]->parent_id = 20;
+splm_susp_state()->rows[22]            = build_manual_row( 'manual', 22 );
+splm_susp_state()->rows[22]->incident_event_id = 31;
+check( 'a decided row counts from its decision date in site-local time', $rest::count_from( splm_susp_state()->rows[20] ), '2026-10-01' );
+check( 'an amended decision keeps the decision date', $rest::count_from( splm_susp_state()->rows[21] ), '2026-10-01' );
+check( 'an issued row counts from its incident', $rest::count_from( splm_susp_state()->rows[22] ), '2026-10-03' );
 
 // Create ordering: exact call sequence.
 reset_create();
@@ -875,46 +907,48 @@ check( 'amend unchanged', $actions::amend_error( parent_row(), 3, false ), 'splm
 check( 'amend already amended', $actions::amend_error( parent_row(), 1, true ), 'splm_suspension_already_amended' );
 check( 'amend unchanged beats already amended', $actions::amend_error( parent_row(), 3, true ), 'splm_suspension_unchanged' );
 
-check( 'revoke missing', $actions::revoke_error( null ), 'splm_notice_not_found' );
-check( 'revoke not manual', $actions::revoke_error( parent_row( array( 'source' => 'auto' ) ) ), 'splm_suspension_not_manual' );
+check( 'revoke missing', $actions::revoke_error( null, false ), 'splm_notice_not_found' );
+check( 'revoke not manual', $actions::revoke_error( parent_row( array( 'source' => 'auto' ) ), false ), 'splm_suspension_not_manual' );
 foreach ( array( 'pending', 'failed', 'sent' ) as $status ) {
-	check( "revoke $status ok", $actions::revoke_error( parent_row( array( 'status' => $status ) ) ), '' );
+	check( "revoke $status ok", $actions::revoke_error( parent_row( array( 'status' => $status ) ), false ), '' );
 }
 foreach ( array( 'revoked', 'discarded', 'served', 'baseline' ) as $status ) {
-	check( "revoke $status not revocable", $actions::revoke_error( parent_row( array( 'status' => $status ) ) ), 'splm_suspension_not_revocable' );
+	check( "revoke $status not revocable", $actions::revoke_error( parent_row( array( 'status' => $status ) ), false ), 'splm_suspension_not_revocable' );
 }
 
-check( 'recalc missing', $actions::recalculate_error( null ), 'splm_notice_not_found' );
-check( 'recalc not manual', $actions::recalculate_error( parent_row( array( 'source' => 'auto' ) ) ), 'splm_suspension_not_manual' );
-check( 'recalc indefinite not recalculable', $actions::recalculate_error( parent_row( array( 'outcome' => 'indefinite' ) ) ), 'splm_suspension_not_recalculable' );
+check( 'recalc missing', $actions::recalculate_error( null, false ), 'splm_notice_not_found' );
+check( 'recalc not manual', $actions::recalculate_error( parent_row( array( 'source' => 'auto' ) ), false ), 'splm_suspension_not_manual' );
+check( 'recalc indefinite not recalculable', $actions::recalculate_error( parent_row( array( 'outcome' => 'indefinite' ) ), false ), 'splm_suspension_not_recalculable' );
 foreach ( array( 'pending', 'sent' ) as $status ) {
-	check( "recalc $status ok", $actions::recalculate_error( parent_row( array( 'status' => $status ) ) ), '' );
+	check( "recalc $status ok", $actions::recalculate_error( parent_row( array( 'status' => $status ) ), false ), '' );
 }
 foreach ( array( 'failed', 'served', 'revoked', 'discarded' ) as $status ) {
-	check( "recalc $status not recalculable", $actions::recalculate_error( parent_row( array( 'status' => $status ) ) ), 'splm_suspension_not_recalculable' );
+	check( "recalc $status not recalculable", $actions::recalculate_error( parent_row( array( 'status' => $status ) ), false ), 'splm_suspension_not_recalculable' );
 }
 
-check(
-	'live child detection',
-	array(
-		$actions::live_child_exists( array( (object) array( 'parent_id' => 1, 'status' => 'sent' ) ), 1 ),
-		$actions::live_child_exists( array( (object) array( 'parent_id' => 1, 'status' => 'pending' ) ), 1 ),
-		$actions::live_child_exists( array( (object) array( 'parent_id' => 1, 'status' => 'discarded' ) ), 1 ),
-		$actions::live_child_exists( array( (object) array( 'parent_id' => 2, 'status' => 'sent' ) ), 1 ),
-		$actions::live_child_exists( array( (object) array( 'id' => 5, 'status' => 'sent' ) ), 1 ),
-		$actions::live_child_exists( array(), 1 ),
-	),
-	array( true, true, false, false, false, false )
-);
+check( 'revoke of a superseded row', $actions::revoke_error( parent_row(), true ), 'splm_suspension_superseded' );
+check( 'revoke not revocable beats superseded', $actions::revoke_error( parent_row( array( 'status' => 'revoked' ) ), true ), 'splm_suspension_not_revocable' );
+check( 'recalc of a superseded row', $actions::recalculate_error( parent_row(), true ), 'splm_suspension_superseded' );
+check( 'recalc not recalculable beats superseded', $actions::recalculate_error( parent_row( array( 'status' => 'failed' ) ), true ), 'splm_suspension_not_recalculable' );
+$correction = parent_row( array( 'scope' => 'manual-revoked', 'consequence' => 'none' ) );
+check( 'a correction row is not a suspension', $actions::parent_error( $correction ), 'splm_suspension_not_a_suspension' );
+check( 'not manual beats not a suspension', $actions::parent_error( parent_row( array( 'source' => 'auto', 'consequence' => 'none' ) ) ), 'splm_suspension_not_manual' );
+foreach ( array( 'games', 'indefinite' ) as $outcome ) {
+	$corr = parent_row( array( 'scope' => 'manual-revoked', 'consequence' => 'none', 'outcome' => $outcome ) );
+	check( "decide rejects a correction row ($outcome)", $actions::decide_error( $corr, false ), 'splm_suspension_not_a_suspension' );
+	check( "amend rejects a correction row ($outcome)", $actions::amend_error( $corr, 1, false ), 'splm_suspension_not_a_suspension' );
+	check( "revoke rejects a correction row ($outcome)", $actions::revoke_error( $corr, false ), 'splm_suspension_not_a_suspension' );
+	check( "recalculate rejects a correction row ($outcome)", $actions::recalculate_error( $corr, false ), 'splm_suspension_not_a_suspension' );
+}
 check(
 	'action error statuses',
 	array_map(
 		static function ( $code ) use ( $actions ) {
 			return $actions::action_error( $code )->data['status'];
 		},
-		array( 'splm_notice_not_found', 'splm_suspension_unchanged', 'splm_suspension_not_manual', 'splm_suspension_already_decided' )
+		array( 'splm_notice_not_found', 'splm_suspension_unchanged', 'splm_suspension_not_manual', 'splm_suspension_already_decided', 'splm_suspension_superseded', 'splm_suspension_not_a_suspension' )
 	),
-	array( 404, 400, 409, 409 )
+	array( 404, 400, 409, 409, 409, 409 )
 );
 
 function action_request( $over = array() ) {
@@ -939,7 +973,7 @@ check( 'decide uses the decided subject', splm_susp_state()->mails[0]['subject']
 check(
 	'decide order: parent lock, child check, insert, child lock, mails',
 	splm_susp_state()->calls,
-	array( 'lock:splm_discipline_notice_1', 'for_player', 'insert', 'lock:splm_discipline_notice_100', 'mail:jane@example.com', 'mail:cap@example.com' )
+	array( 'lock:splm_discipline_notice_1', 'children_of', 'insert', 'lock:splm_discipline_notice_100', 'mail:jane@example.com', 'mail:cap@example.com' )
 );
 
 reset_action();
@@ -973,7 +1007,7 @@ $child = splm_susp_state()->inserted[0];
 check( 'amend child row', array( $child['scope'], $child['parent_id'], $child['games'], $child['outcome'], $child['eligible_on'] ), array( 'manual-amended', 1, 2, 'games', '2026-10-17' ) );
 check( 'amend counts from the incident date', splm_susp_state()->elig_args, array( array( 11, 5, '2026-10-03', 2 ) ) );
 check( 'amend body says changed from 3 games to 2 games', false !== strpos( splm_susp_state()->mails[0]['body'], 'changed from 3 games to 2 games' ), true );
-check( 'amend order', splm_susp_state()->calls, array( 'lock:splm_discipline_notice_1', 'for_player', 'insert', 'lock:splm_discipline_notice_100', 'mail:jane@example.com', 'mail:cap@example.com' ) );
+check( 'amend order', splm_susp_state()->calls, array( 'lock:splm_discipline_notice_1', 'children_of', 'insert', 'lock:splm_discipline_notice_100', 'mail:jane@example.com', 'mail:cap@example.com' ) );
 reset_action();
 $actions::amend( action_request( array( 'id' => 1, 'games' => 1 ) ) );
 check( 'amend without an incident counts from today', splm_susp_state()->elig_args[0][2], '2026-10-01' );
@@ -997,7 +1031,8 @@ reset_action();
 $res = $actions::revoke( action_request( array( 'id' => 1, 'notify' => true ) ) );
 check( 'revoke sent: 200, sent, parent shown revoked', array( $res->status, $res->data['sent'], $res->data['notice'] ), array( 200, true, array( 'id' => 1, 'status' => 'revoked', 'include_note' => true ) ) );
 check( 'revoke writes child, then parent, then mail', array_slice( splm_susp_state()->writes, 0, 3 ), array( 'insert', 'update:1:status', 'mail:jane@example.com' ) );
-check( 'revoke lock order', array_slice( splm_susp_state()->calls, 0, 3 ), array( 'lock:splm_discipline_notice_1', 'insert', 'lock:splm_discipline_notice_100' ) );
+check( 'revoke full call order: parent lock, child check, insert, child lock, player and captain mail', splm_susp_state()->calls, array( 'lock:splm_discipline_notice_1', 'children_of', 'insert', 'lock:splm_discipline_notice_100', 'mail:jane@example.com', 'mail:cap@example.com' ) );
+check( 'revoke full write order', splm_susp_state()->writes, array( 'insert', 'update:1:status', 'mail:jane@example.com', 'update:100:status,sent_at,recipient,recipient_via,bcc,released_by,last_error', 'mail:cap@example.com', 'update:100:captains_notified' ) );
 $child = splm_susp_state()->inserted[0];
 check( 'revoke child row', array( $child['scope'], $child['parent_id'], $child['consequence'], $child['games'], $child['status'] ), array( 'manual-revoked', 1, 'none', 0, 'pending' ) );
 check( 'revoke child ends sent', splm_susp_state()->rows[100]->status, 'sent' );
@@ -1005,7 +1040,7 @@ check( 'revoke child ends sent', splm_susp_state()->rows[100]->status, 'sent' );
 reset_action();
 $res = $actions::revoke( action_request( array( 'id' => 1, 'notify' => false ) ) );
 check( 'revoke notify=false: no mail, child discarded', array( $res->status, $res->data['sent'], $res->data['captains'], splm_susp_state()->mails, splm_susp_state()->inserted[0]['status'] ), array( 200, false, array(), array(), 'discarded' ) );
-check( 'revoke notify=false: parent revoked, no notice lock', array( splm_susp_state()->rows[1]->status, splm_susp_state()->calls ), array( 'revoked', array( 'lock:splm_discipline_notice_1', 'insert' ) ) );
+check( 'revoke notify=false: parent revoked, no notice lock', array( splm_susp_state()->rows[1]->status, splm_susp_state()->calls ), array( 'revoked', array( 'lock:splm_discipline_notice_1', 'children_of', 'insert' ) ) );
 
 foreach ( array( 'pending', 'failed' ) as $status ) {
 	reset_action();
@@ -1043,18 +1078,107 @@ check( 'recalculate a failed row is a 409', $actions::recalculate( action_reques
 splm_susp_state()->busy_prefix = 'splm_discipline_notice_';
 check( 'recalculate busy lock is a 409', $actions::recalculate( action_request( array( 'id' => 1 ) ) )->code, 'splm_notice_busy' );
 
+// Chains: only the newest row of a chain can be revoked or recalculated.
+reset_action();
+$actions::amend( action_request( array( 'id' => 1, 'games' => 2 ) ) );
+$before = count( splm_susp_state()->writes );
+$sup    = $actions::revoke( action_request( array( 'id' => 1 ) ) );
+check( 'revoke of an amended parent is a 409', array( $sup->code, $sup->data['status'], count( splm_susp_state()->writes ) ), array( 'splm_suspension_superseded', 409, $before ) );
+$sup = $actions::recalculate( action_request( array( 'id' => 1 ) ) );
+check( 'recalculate of an amended parent is a 409', $sup->code, 'splm_suspension_superseded' );
+$ok = $actions::revoke( action_request( array( 'id' => 100 ) ) );
+check( 'revoking the newest row works', array( $ok->status, $ok->data['notice']['id'], $ok->data['notice']['status'], splm_susp_state()->inserted[1]['scope'], splm_susp_state()->inserted[1]['parent_id'] ), array( 200, 100, 'revoked', 'manual-revoked', 100 ) );
+
+reset_action();
+splm_susp_state()->rows[1]->outcome = 'indefinite';
+splm_susp_state()->rows[1]->games   = 0;
+$actions::decide( action_request( array( 'id' => 1, 'games' => 3 ) ) );
+$sup = $actions::revoke( action_request( array( 'id' => 1 ) ) );
+check( 'revoke of a decided parent is a 409', array( $sup->code, $sup->data['status'] ), array( 'splm_suspension_superseded', 409 ) );
+check( 'revoking the decided child works', $actions::revoke( action_request( array( 'id' => 100 ) ) )->status, 200 );
+
+// A revoke's correction row is never acted on as a suspension.
+foreach ( array( 'games', 'indefinite' ) as $outcome ) {
+	reset_action();
+	splm_susp_state()->rows[5]          = build_manual_row( 'manual-revoked', 5 );
+	splm_susp_state()->rows[5]->status  = 'sent';
+	splm_susp_state()->rows[5]->consequence = 'none';
+	splm_susp_state()->rows[5]->outcome = $outcome;
+	$results = array(
+		$actions::decide( action_request( array( 'id' => 5, 'games' => 2 ) ) )->code,
+		$actions::amend( action_request( array( 'id' => 5, 'games' => 1 ) ) )->code,
+		$actions::revoke( action_request( array( 'id' => 5 ) ) )->code,
+		$actions::recalculate( action_request( array( 'id' => 5 ) ) )->code,
+	);
+	check( "every action rejects a correction row ($outcome)", array( $results, splm_susp_state()->inserted, splm_susp_state()->updates ), array( array_fill( 0, 4, 'splm_suspension_not_a_suspension' ), array(), array() ) );
+}
+
+// A failed child still blocks; a discarded one does not.
+reset_action();
+splm_susp_state()->rows[1]->outcome = 'indefinite';
+splm_susp_state()->history          = array( (object) array( 'id' => 50, 'parent_id' => 1, 'status' => 'failed' ) );
+check( 'a failed child blocks a second decision', $actions::decide( action_request( array( 'id' => 1, 'games' => 2 ) ) )->code, 'splm_suspension_already_decided' );
+reset_action();
+splm_susp_state()->history = array( (object) array( 'id' => 50, 'parent_id' => 1, 'status' => 'failed' ) );
+check( 'a failed child blocks an amend', $actions::amend( action_request( array( 'id' => 1, 'games' => 1 ) ) )->code, 'splm_suspension_already_amended' );
+reset_action();
+splm_susp_state()->history = array( (object) array( 'id' => 50, 'parent_id' => 1, 'status' => 'discarded' ) );
+check( 'a discarded child does not block an amend', $actions::amend( action_request( array( 'id' => 1, 'games' => 1 ) ) )->status, 200 );
+
+// Decided rows count from the decision date, in site-local time.
+reset_action();
+splm_susp_state()->rows[1]                    = parent_row( array( 'scope' => 'manual-decided', 'incident_event_id' => 31, 'created_at' => '2026-09-20 15:00:00' ) );
+splm_susp_state()->rows[1]->eligible_on       = '2026-10-17';
+$actions::recalculate( action_request( array( 'id' => 1 ) ) );
+check( 'recalculate of a decided row counts from the decision, not the incident', splm_susp_state()->elig_args[0][2], '2026-09-20' );
+reset_action();
+splm_susp_state()->rows[1] = parent_row( array( 'scope' => 'manual-decided', 'incident_event_id' => 31, 'created_at' => '2026-09-20 15:00:00' ) );
+$actions::amend( action_request( array( 'id' => 1, 'games' => 1 ) ) );
+check( 'amend of a decided row counts from the decision date', splm_susp_state()->elig_args[0][2], '2026-09-20' );
+reset_action();
+splm_susp_state()->rows[1] = parent_row( array( 'scope' => 'manual-decided', 'incident_event_id' => 31, 'created_at' => '2026-09-20 15:00:00' ) );
+$rest::release_row( (object) array_merge( (array) splm_susp_state()->rows[1], array( 'status' => 'pending' ) ) );
+check( 'a retried release of a decided row counts from the decision date', splm_susp_state()->elig_args[0][2], '2026-09-20' );
+reset_action();
+splm_susp_state()->rows[20]            = build_manual_row( 'manual-decided', 20 );
+splm_susp_state()->rows[21]            = build_manual_row( 'manual-amended', 21 );
+splm_susp_state()->rows[21]->parent_id = 20;
+splm_susp_state()->rows[21]->status    = 'pending';
+splm_susp_state()->rows[21]->incident_event_id = 31;
+$rest::release_row( splm_susp_state()->rows[21] );
+check( 'an amended decision releases from the decision date', splm_susp_state()->elig_args[0][2], '2026-09-20' );
+reset_action();
+splm_susp_state()->rows[1]->outcome = 'indefinite';
+$actions::decide( action_request( array( 'id' => 1, 'games' => 2 ) ) );
+check( 'a new decision counts from today (decision date is today)', splm_susp_state()->elig_args[0][2], '2026-10-01' );
+
+// A parent update that fails after the child insert discards the child and sends nothing.
+reset_action();
+splm_susp_state()->fail_update = array( 1 );
+$bad = $actions::revoke( action_request( array( 'id' => 1 ) ) );
+check( 'revoke: parent update failure is a 500, child discarded, nothing mailed', array( $bad->code, $bad->data['status'], splm_susp_state()->rows[100]->status, splm_susp_state()->mails ), array( 'splm_notice_write_failed', 500, 'discarded', array() ) );
+reset_action();
+splm_susp_state()->rows[1]->status = 'pending';
+splm_susp_state()->fail_update     = array( 1 );
+$bad = $actions::revoke( action_request( array( 'id' => 1 ) ) );
+check( 'revoke of a draft: update failure is a 500', array( $bad->code, $bad->data['status'], splm_susp_state()->rows[1]->status ), array( 'splm_notice_write_failed', 500, 'pending' ) );
+reset_action();
+splm_susp_state()->fail_update = array( 1 );
+$bad = $actions::recalculate( action_request( array( 'id' => 1 ) ) );
+check( 'recalculate: update failure is a 500', array( $bad->code, $bad->data['status'] ), array( 'splm_notice_write_failed', 500 ) );
+
 // No incident_note in any mail built by the action routes.
 reset_action();
 splm_susp_state()->rows[1]->incident_event_id = 31;
 $actions::amend( action_request( array( 'id' => 1, 'games' => 2 ) ) );
-$actions::revoke( action_request( array( 'id' => 1 ) ) );
+$actions::revoke( action_request( array( 'id' => 100 ) ) );
 $leak = false;
 foreach ( splm_susp_state()->mails as $mail ) {
 	$leak = $leak || false !== strpos( $mail['subject'] . $mail['body'], 'SECRET-NOTE' );
 }
-check( 'the action mails were sent', count( splm_susp_state()->mails ) > 0, true );
+check( 'the action mails were sent (amend, then the revoke of its child)', count( splm_susp_state()->mails ), 4 );
 check( 'the incident note is in no action mail', $leak, false );
-foreach ( array( 'decide', 'amend', 'revoke', 'recalculate', 'decide_locked', 'amend_locked', 'revoke_locked', 'recalculate_locked', 'issue_child', 'deliver_child', 'action_response' ) as $name ) {
+foreach ( array( 'decide', 'amend', 'revoke', 'recalculate', 'revoke_sent', 'decide_locked', 'amend_locked', 'revoke_locked', 'recalculate_locked', 'issue_child', 'deliver_child', 'action_response' ) as $name ) {
 	check( "$name never mentions incident_note", false === strpos( method_source( 'SPLM_Discipline_Suspension_Actions', $name ), 'incident_note' ), true );
 }
 

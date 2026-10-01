@@ -85,5 +85,18 @@ $wpdb = new Splm_Scope_Wpdb();
 assert_test( array() === $db::for_player( 0 ) && array() === $wpdb->queries, 'player 0 returns [] and runs no query' );
 assert_test( array() === $db::for_player( -4 ) && array() === $wpdb->queries, 'negative player returns [] and runs no query' );
 
+echo "\n=== children_of() ===\n\n";
+$wpdb = new Splm_Scope_Wpdb();
+$out  = $db::children_of( 9 );
+$sql  = $wpdb->queries[0];
+assert_test( array() === $out, 'children_of returns an array' );
+assert_test( false !== strpos( $sql, 'parent_id = 9' ), 'children_of filters on the parent id' );
+assert_test( false !== strpos( $sql, "status <> 'discarded'" ), 'children_of skips discarded rows' );
+assert_test( false !== strpos( $sql, 'ORDER BY id ASC' ) && false !== strpos( $sql, 'LIMIT 20' ), 'children_of orders by id and caps at 20' );
+assert_test( 1 === count( $wpdb->queries ), 'children_of runs a single query' );
+$wpdb = new Splm_Scope_Wpdb();
+assert_test( array() === $db::children_of( 0 ) && array() === $wpdb->queries, 'parent 0 returns [] and runs no query' );
+assert_test( array() === $db::children_of( -2 ) && array() === $wpdb->queries, 'negative parent returns [] and runs no query' );
+
 echo "\nPassed: {$passed}  Failed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );
