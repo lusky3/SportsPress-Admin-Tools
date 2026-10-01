@@ -142,33 +142,48 @@ function PreviewDetails( { data } ) {
 			<details className="splm-discipline-details">
 				<summary>Email to the player</summary>
 				{ data.player_subject && <p><strong>Subject:</strong> { data.player_subject }</p> }
-				<pre className="splm-discipline-email" tabIndex={ 0 } aria-label="Email text to the player">{ data.player_body }</pre>
+				<pre className="splm-discipline-email" role="textbox" aria-readonly="true" aria-multiline="true" tabIndex={ 0 } aria-label="Email text to the player">{ data.player_body }</pre>
 			</details>
 			<details className="splm-discipline-details">
 				<summary>Email to captains</summary>
-				<pre className="splm-discipline-email" tabIndex={ 0 } aria-label="Email text to captains">{ data.captain_body }</pre>
+				<pre className="splm-discipline-email" role="textbox" aria-readonly="true" aria-multiline="true" tabIndex={ 0 } aria-label="Email text to captains">{ data.captain_body }</pre>
 			</details>
 		</>
 	);
 }
 
-function submitErrorMessage( err ) {
-	switch ( err?.code ) {
-		case 'splm_suspension_duplicate': {
-			const id = err.data?.duplicate_of;
-			return `Already issued${ id ? ` — notice #${ id }` : '' }. Open the player\u2019s Discipline panel to manage it.`;
-		}
-		case 'splm_notice_busy':
-			return 'Another update is in progress — refresh before retrying.';
-		case 'splm_no_lock':
-			return 'Cannot send safely right now. Wait a moment and try again.';
-		default:
-			if ( ! err?.code || err.code === 'fetch_error' ) {
-				return 'The request did not complete — refresh the list before retrying; the notice may already exist.';
-			}
-			return err.message || 'Something went wrong';
-	}
+const SUBMIT_MESSAGES = {
+	splm_notice_busy: 'Another update is in progress — refresh before retrying.',
+	splm_no_lock: 'Cannot send safely right now. Wait a moment and try again.',
+};
+
+function duplicateMessage( err ) {
+	const id = err.data?.duplicate_of;
+	return `Already issued${ id ? ` — notice #${ id }` : '' }. Open the player\u2019s Discipline panel to manage it.`;
 }
+
+// A busy lock or a request that never completed: the write may or may not have
+// happened, so the parent must refresh.
+function isUnknownOutcome( err ) {
+	return err?.code === 'splm_notice_busy' || ! err?.code || err.code === 'fetch_error';
+}
+
+function submitErrorMessage( err ) {
+	const code = err?.code;
+	if ( code === 'splm_suspension_duplicate' ) {
+		return duplicateMessage( err );
+	}
+	if ( SUBMIT_MESSAGES[ code ] ) {
+		return SUBMIT_MESSAGES[ code ];
+	}
+	if ( ! code || code === 'fetch_error' ) {
+		return 'The request did not complete — refresh the list before retrying; the notice may already exist.';
+	}
+	return err.message || 'Something went wrong';
+}
+
+// A 201 whose email did not go: the row exists as failed.
+const isFailedSend = ( res, notice ) => !! res && res.sent === false && !! notice && notice.status === 'failed';
 
 export default function SuspensionModal( { player, season, onClose, onDone } ) {
 	const uid = useUid( 'splm-susp' );
@@ -236,7 +251,7 @@ export default function SuspensionModal( { player, season, onClose, onDone } ) {
 
 	const infraction = ( infractions || [] ).find( ( i ) => String( i.id ) === infractionId ) || null;
 	const isGames = infraction ? infraction.outcome === 'games' : false;
-	const gameNumber = gameCount === '' ? NaN : Number( gameCount );
+	const gameNumber = gameCount === '' ? Number.NaN : Number( gameCount );
 	const gamesValid = Number.isInteger( gameNumber ) && gameNumber >= 0 && gameNumber <= GAMES_MAX;
 
 	let params = null;
@@ -290,42 +305,47 @@ export default function SuspensionModal( { player, season, onClose, onDone } ) {
 		setGameCount( next && next.outcome === 'games' ? String( next.default_games ?? '' ) : '' );
 	};
 
+	// The row exists as failed: keep the dialog open to show why. onDone( notice )
+	// fires when the convener closes it (or now, if already unmounted).
+	const handleFailedSend = ( notice ) => {
+		failedRef.current = notice;
+		if ( ! mountedRef.current ) {
+			if ( onDone ) onDone( notice );
+			return;
+		}
+		setSubmitting( false );
+		setFailedNotice( notice );
+	};
+
+	const finishCreate = ( res ) => {
+		submittingRef.current = false;
+		const notice = res?.notice || null;
+		if ( isFailedSend( res, notice ) ) {
+			handleFailedSend( notice );
+			return;
+		}
+		if ( onDone ) onDone( notice );
+		if ( mountedRef.current ) {
+			setSubmitting( false );
+			onClose();
+		}
+	};
+
+	const failCreate = ( err ) => {
+		submittingRef.current = false;
+		if ( isUnknownOutcome( err ) && onDone ) onDone( null );
+		if ( ! mountedRef.current ) return;
+		if ( err?.code === 'splm_suspension_duplicate' ) setDuplicateOf( err.data?.duplicate_of || 0 );
+		setSubmitting( false );
+		setSubmitError( submitErrorMessage( err ) );
+	};
+
 	const submit = ( mode ) => {
 		if ( ! params || submittingRef.current ) return;
 		submittingRef.current = true;
 		setSubmitting( true );
 		setSubmitError( '' );
-		createSuspension( { ...params, incident_note: note.trim(), mode } ).then( ( res ) => {
-			submittingRef.current = false;
-			const notice = res?.notice || null;
-			if ( res && res.sent === false && notice && notice.status === 'failed' ) {
-				// The row exists as failed; keep the dialog open to show why.
-				// onDone( notice ) fires when the convener closes it.
-				failedRef.current = notice;
-				if ( ! mountedRef.current && onDone ) onDone( notice );
-				if ( mountedRef.current ) {
-					setSubmitting( false );
-					setFailedNotice( notice );
-				}
-				return;
-			}
-			if ( onDone ) onDone( notice );
-			if ( mountedRef.current ) {
-				setSubmitting( false );
-				onClose();
-			}
-		} ).catch( ( err ) => {
-			submittingRef.current = false;
-			// A busy lock or a request that never completed means the write may
-			// or may not have happened: have the parent refresh.
-			const unknownOutcome = err?.code === 'splm_notice_busy' || ! err?.code || err.code === 'fetch_error';
-			if ( unknownOutcome && onDone ) onDone( null );
-			if ( mountedRef.current ) {
-				if ( err?.code === 'splm_suspension_duplicate' ) setDuplicateOf( err.data?.duplicate_of || 0 );
-				setSubmitting( false );
-				setSubmitError( submitErrorMessage( err ) );
-			}
-		} );
+		createSuspension( { ...params, incident_note: note.trim(), mode } ).then( finishCreate ).catch( failCreate );
 	};
 
 	// Ignored mid-submit so the convener never closes on an in-flight create.
@@ -350,7 +370,7 @@ export default function SuspensionModal( { player, season, onClose, onDone } ) {
 		const untouched = ! active || active === document.body || active === trapRef.current
 			|| ( active === noteRef.current && note === '' );
 		if ( untouched && infractionRef.current ) infractionRef.current.focus();
-		// eslint-disable-next-line react-hooks/exhaustive-deps -- run once when the list arrives
+		// Deliberately keyed on the list arriving only, not on later note edits.
 	}, [ infractions ] );
 
 	// Keep focus inside the dialog when the focused button disables or vanishes.
@@ -401,6 +421,7 @@ export default function SuspensionModal( { player, season, onClose, onDone } ) {
 	return (
 		<div
 			className="splm-modal-overlay"
+			role="presentation"
 			onMouseDown={ ( e ) => { overlayDownRef.current = e.target === e.currentTarget; } }
 			onClick={ ( e ) => {
 				// Close only when the press AND the release were on the overlay,

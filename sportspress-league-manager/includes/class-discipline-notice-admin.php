@@ -291,6 +291,7 @@ class SPLM_Discipline_Notice_Admin {
 	 * docs/superpowers/plans/2026-09-02-registration-waitlist-followups.md.
 	 *
 	 * @SuppressWarnings(PHPMD.NPathComplexity)
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function render_row( array $row, bool $readonly ): void {
 		$em = '—';

@@ -101,38 +101,41 @@ export function isLive( row, replaced = new Set() ) {
 const isSuspend = ( row ) => row.consequence === 'suspend';
 const inStatus = ( row, ...statuses ) => statuses.includes( row.status );
 
-// Action keys a row supports, in a stable order. Mirrors the REST routes:
-//  release/discard  POST /discipline/notices/{id}/release|discard  (pending|failed, not replaced)
-//  serve            POST /discipline/notices/{id}/serve            (sent suspension, not replaced)
-//  decide           POST .../suspensions/{id}/decide  (splm_suspension_not_decidable)
-//  amend            POST .../suspensions/{id}/amend   (splm_suspension_not_amendable)
-//  revoke           POST .../suspensions/{id}/revoke  (splm_suspension_not_revocable)
-//  recalculate      POST .../suspensions/{id}/recalculate (splm_suspension_not_recalculable)
-// Automatic rows only ever get release/discard/serve. A replaced row offers
-// nothing: the newest notice in its chain is the live one.
+// The unfinished states a notice can still be released or discarded from
+// (SPLM_Discipline_Notice_REST release/discard: pending|failed).
+const isUnsent = ( row ) => inStatus( row, 'pending', 'failed' );
+
+// Action keys a row supports, with the server rule each predicate mirrors.
+// Order is the display order. A replaced row offers nothing (checked once in
+// availableActions): the newest notice in its chain is the live one. Automatic
+// rows only ever match release/discard/serve (the rest require a manual row).
+const ACTION_RULES = [
+	// POST /discipline/notices/{id}/release (pending|failed)
+	[ 'release', isUnsent ],
+	// POST /discipline/notices/{id}/discard (pending|failed)
+	[ 'discard', isUnsent ],
+	// POST /discipline/notices/{id}/serve: a sent suspension. An indefinite one
+	// has no length to serve; the convener decides one first and the decided
+	// child row is then served.
+	[ 'serve', ( row ) => inStatus( row, 'sent' ) && isSuspend( row ) && row.outcome !== 'indefinite' ],
+	// POST .../suspensions/{id}/decide (splm_suspension_not_decidable)
+	[ 'decide', ( row ) => isManual( row ) && isSuspend( row ) && row.outcome === 'indefinite' && inStatus( row, 'sent', 'served' ) ],
+	// POST .../suspensions/{id}/amend (splm_suspension_not_amendable)
+	[
+		'amend',
+		( row ) => isManual( row ) && isSuspend( row ) && row.outcome === 'games' && inStatus( row, 'sent' ) && row.scope !== 'manual-revoked',
+	],
+	// POST .../suspensions/{id}/revoke (splm_suspension_not_revocable)
+	[ 'revoke', ( row ) => isManual( row ) && isSuspend( row ) && inStatus( row, 'sent', 'pending', 'failed' ) ],
+	// POST .../suspensions/{id}/recalculate (splm_suspension_not_recalculable)
+	[ 'recalculate', ( row ) => isManual( row ) && isSuspend( row ) && row.outcome === 'games' && inStatus( row, 'pending', 'sent' ) ],
+];
+
 export function availableActions( row, replaced ) {
-	const live = isLive( row, replaced );
-	const manual = isManual( row );
-	const actionable = inStatus( row, 'pending', 'failed' ) && live;
-	const suspend = isSuspend( row );
-	const flags = {
-		release: actionable,
-		discard: actionable,
-		// An indefinite suspension has no length to serve; the convener decides
-		// one first and the decided child row is then served.
-		serve: inStatus( row, 'sent' ) && suspend && live && row.outcome !== 'indefinite',
-		decide: manual && row.outcome === 'indefinite' && inStatus( row, 'sent', 'served' ) && live && suspend,
-		amend:
-			manual &&
-			row.outcome === 'games' &&
-			inStatus( row, 'sent' ) &&
-			suspend &&
-			live &&
-			row.scope !== 'manual-revoked',
-		revoke: manual && suspend && inStatus( row, 'sent', 'pending', 'failed' ) && live,
-		recalculate: manual && row.outcome === 'games' && suspend && inStatus( row, 'pending', 'sent' ) && live,
-	};
-	return Object.keys( flags ).filter( ( key ) => flags[ key ] );
+	if ( ! isLive( row, replaced ) ) {
+		return [];
+	}
+	return ACTION_RULES.filter( ( [ , applies ] ) => applies( row ) ).map( ( [ key ] ) => key );
 }
 
 // Decoded captains_notified lines of a notice: [ { team, email, sent, note? } ].

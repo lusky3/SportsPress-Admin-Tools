@@ -11,42 +11,22 @@ const DEBOUNCE_MS = 300;
 // during render.
 let pickerCount = 0;
 
-export default function PlayerPicker( { onSelect, label = 'Find a player', autoFocus = false, id } ) {
-	const idRef = useRef( null );
-	if ( idRef.current === null ) {
-		pickerCount += 1;
-		idRef.current = id || `splm-player-picker-${ pickerCount }`;
-	}
-	const inputId = idRef.current;
-	const statusId = `${ inputId }-status`;
-
-	const [ query, setQuery ] = useState( '' );
-	const [ results, setResults ] = useState( [] );
-	const [ loading, setLoading ] = useState( false );
-	const [ failed, setFailed ] = useState( false );
-
-	const term = query.trim();
+// Debounced, cancel-safe search. Below the minimum length it is idle.
+function usePlayerSearch( term ) {
+	const [ state, setState ] = useState( { results: [], loading: false, failed: false } );
 
 	useEffect( () => {
 		if ( term.length < MIN_CHARS ) {
-			setResults( [] );
-			setLoading( false );
-			setFailed( false );
+			setState( { results: [], loading: false, failed: false } );
 			return undefined;
 		}
 		let cancelled = false;
-		setLoading( true );
-		setFailed( false );
+		setState( ( prev ) => ( { ...prev, loading: true, failed: false } ) );
 		const timer = setTimeout( () => {
 			searchPlayers( term ).then( ( found ) => {
-				if ( cancelled ) return;
-				setResults( found );
-				setLoading( false );
+				if ( ! cancelled ) setState( { results: found, loading: false, failed: false } );
 			} ).catch( () => {
-				if ( cancelled ) return;
-				setResults( [] );
-				setFailed( true );
-				setLoading( false );
+				if ( ! cancelled ) setState( { results: [], loading: false, failed: true } );
 			} );
 		}, DEBOUNCE_MS );
 		return () => {
@@ -55,31 +35,54 @@ export default function PlayerPicker( { onSelect, label = 'Find a player', autoF
 		};
 	}, [ term ] );
 
-	let status;
-	if ( term.length < MIN_CHARS ) {
-		status = `Type at least ${ MIN_CHARS } letters`;
-	} else if ( loading ) {
-		status = 'Searching…';
-	} else if ( failed ) {
-		status = 'Search failed — try again';
-	} else if ( results.length === 0 ) {
-		status = 'No players found';
-	} else {
-		status = results.length === 1 ? '1 player found' : `${ results.length } players found`;
+	return state;
+}
+
+function statusText( term, { results, loading, failed } ) {
+	if ( term.length < MIN_CHARS ) return `Type at least ${ MIN_CHARS } letters`;
+	if ( loading ) return 'Searching…';
+	if ( failed ) return 'Search failed — try again';
+	if ( results.length === 0 ) return 'No players found';
+	return results.length === 1 ? '1 player found' : `${ results.length } players found`;
+}
+
+function usePickerId( id ) {
+	const idRef = useRef( null );
+	if ( idRef.current === null ) {
+		pickerCount += 1;
+		idRef.current = id || `splm-player-picker-${ pickerCount }`;
 	}
+	return idRef.current;
+}
+
+export default function PlayerPicker( { onSelect, label = 'Find a player', autoFocus = false, id } ) {
+	const inputId = usePickerId( id );
+	const statusId = `${ inputId }-status`;
+	const inputRef = useRef( null );
+
+	const [ query, setQuery ] = useState( '' );
+	const term = query.trim();
+	const search = usePlayerSearch( term );
+	const { results, loading } = search;
+	const status = statusText( term, search );
+
+	// Focus on mount when asked (the autoFocus attribute is avoided on purpose).
+	useEffect( () => {
+		if ( autoFocus ) inputRef.current?.focus();
+	}, [ autoFocus ] );
 
 	return (
 		<div className="splm-player-picker">
 			<label htmlFor={ inputId }>{ label }</label>
 			<input
 				id={ inputId }
+				ref={ inputRef }
 				type="search"
 				className="splm-player-picker__input"
 				value={ query }
 				onChange={ ( e ) => setQuery( e.target.value ) }
 				aria-describedby={ statusId }
 				autoComplete="off"
-				autoFocus={ autoFocus }
 			/>
 			<p id={ statusId } className="splm-player-picker__status" aria-live="polite">{ status }</p>
 			{ ! loading && results.length > 0 && (

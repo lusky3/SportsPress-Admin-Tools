@@ -28,10 +28,12 @@ function splm_rest_list_response( array $items, $total = null ) {
 }
 class WP_Error {
 	public $code;
+	public $message;
 	public $data;
 	public function __construct( $code = '', $message = '', $data = array() ) {
-		$this->code = $code;
-		$this->data = $data;
+		$this->code    = $code;
+		$this->message = $message;
+		$this->data    = $data;
 	}
 }
 class WP_REST_Response {
@@ -57,12 +59,23 @@ class SPLM_Capabilities {
 	}
 }
 
-/** Mutable fixture state for the fake gateway below. */
+/**
+ * Mutable fixture state for the fake gateway below. Instance properties behind
+ * a function-static getter: PHPMD flags Class::$prop[...] subscripts.
+ */
 class SPLM_Fake_State {
-	public static $rows     = array();
-	public static $children = array();
-	public static $updated  = array();
-	public static $ids_seen = array();
+	public $rows     = array();
+	public $children = array();
+	public $updated  = array();
+	public $ids_seen = array();
+}
+
+function splm_fake_state() {
+	static $state = null;
+	if ( null === $state ) {
+		$state = new SPLM_Fake_State();
+	}
+	return $state;
 }
 
 class SPLM_Discipline_Notice_Database {
@@ -72,20 +85,20 @@ class SPLM_Discipline_Notice_Database {
 		return '2026-10-01 12:00:00';
 	}
 	public static function query() {
-		return array( 'rows' => SPLM_Fake_State::$rows, 'total' => count( SPLM_Fake_State::$rows ) );
+		return array( 'rows' => splm_fake_state()->rows, 'total' => count( splm_fake_state()->rows ) );
 	}
 	public static function replaced_ids( array $ids ) {
-		SPLM_Fake_State::$ids_seen[] = $ids;
+		splm_fake_state()->ids_seen[] = $ids;
 		$out = array();
 		foreach ( $ids as $id ) {
-			if ( ! empty( SPLM_Fake_State::$children[ $id ] ) ) {
+			if ( ! empty( splm_fake_state()->children[ $id ] ) ) {
 				$out[] = $id;
 			}
 		}
 		return $out;
 	}
 	public static function find( $id ) {
-		foreach ( SPLM_Fake_State::$rows as $row ) {
+		foreach ( splm_fake_state()->rows as $row ) {
 			if ( (int) $row->id === (int) $id ) {
 				return $row;
 			}
@@ -93,10 +106,10 @@ class SPLM_Discipline_Notice_Database {
 		return null;
 	}
 	public static function children_of( $id ) {
-		return SPLM_Fake_State::$children[ $id ] ?? array();
+		return splm_fake_state()->children[ $id ] ?? array();
 	}
 	public static function update( $id, array $fields ) {
-		SPLM_Fake_State::$updated[] = array( $id, $fields );
+		splm_fake_state()->updated[] = array( $id, $fields );
 		return true;
 	}
 }
@@ -119,23 +132,23 @@ function nrow( $id, $over = array() ) {
 $rest = new SPLM_Discipline_Notice_REST();
 
 echo "\n=== get_notices flags replaced rows ===\n\n";
-SPLM_Fake_State::$rows     = array( nrow( 30 ), nrow( 20 ), nrow( 10, array( 'source' => 'auto' ) ) );
-SPLM_Fake_State::$children = array( 20 => array( nrow( 30 ) ) );
+splm_fake_state()->rows     = array( nrow( 30 ), nrow( 20 ), nrow( 10, array( 'source' => 'auto' ) ) );
+splm_fake_state()->children = array( 20 => array( nrow( 30 ) ) );
 $res                       = $rest->get_notices( new WP_REST_Request( array( 'status' => 'sent' ) ) );
 $flags                     = array_column( $res->data['data'], 'replaced', 'id' );
 assert_test( array( 30 => false, 20 => true, 10 => false ) === $flags, 'replaced is true only for the parent with a live child' );
-assert_test( 1 === count( SPLM_Fake_State::$ids_seen ) && array( 30, 20, 10 ) === SPLM_Fake_State::$ids_seen[0], 'the set is computed once for all row ids' );
+assert_test( 1 === count( splm_fake_state()->ids_seen ) && array( 30, 20, 10 ) === splm_fake_state()->ids_seen[0], 'the set is computed once for all row ids' );
 assert_test( isset( $res->data['data'][0]['parent_id'] ), 'row_to_response fields are kept' );
 assert_test( ! array_key_exists( 'incident_note', $res->data['data'][0] ), 'the list route never returns the private incident note, even to managers' );
-assert_test( SPLM_Discipline_Notice_REST::row_to_response( SPLM_Fake_State::$rows[0], true )['incident_note'] === 'private ref note', 'row_to_response still includes the note when asked (history route)' );
+assert_test( SPLM_Discipline_Notice_REST::row_to_response( splm_fake_state()->rows[0], true )['incident_note'] === 'private ref note', 'row_to_response still includes the note when asked (history route)' );
 
 echo "\n=== serve refuses a replaced row ===\n\n";
-SPLM_Fake_State::$updated = array();
+splm_fake_state()->updated = array();
 $out                      = $rest->serve( new WP_REST_Request( array( 'id' => 20 ) ) );
 assert_test( $out instanceof WP_Error && 'splm_notice_replaced' === $out->code && 409 === $out->data['status'], 'replaced row: 409 splm_notice_replaced' );
-assert_test( array() === SPLM_Fake_State::$updated, 'nothing is written for a replaced row' );
+assert_test( array() === splm_fake_state()->updated, 'nothing is written for a replaced row' );
 $out = $rest->serve( new WP_REST_Request( array( 'id' => 30 ) ) );
-assert_test( $out instanceof WP_REST_Response && 200 === $out->status && 1 === count( SPLM_Fake_State::$updated ), 'live row is served' );
+assert_test( $out instanceof WP_REST_Response && 200 === $out->status && 1 === count( splm_fake_state()->updated ), 'live row is served' );
 $out = $rest->serve( new WP_REST_Request( array( 'id' => 10 ) ) );
 assert_test( $out instanceof WP_REST_Response && 200 === $out->status, 'automatic row (no children) is served as before' );
 

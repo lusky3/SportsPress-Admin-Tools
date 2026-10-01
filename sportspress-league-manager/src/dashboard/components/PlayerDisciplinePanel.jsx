@@ -80,7 +80,7 @@ function GamesEditor( { uid, label, min, initial, busy, onConfirm, onCancel } ) 
 	const [ touched, setTouched ] = useState( false );
 	const inputRef = useRef( null );
 	useEffect( () => { if ( inputRef.current ) inputRef.current.focus(); }, [] );
-	const n = value === '' ? NaN : Number( value );
+	const n = value === '' ? Number.NaN : Number( value );
 	const valid = Number.isInteger( n ) && n >= min && n <= GAMES_MAX;
 	return (
 		<form
@@ -318,6 +318,20 @@ function useDisciplineData( playerId, includeBaseline ) {
 	return { data, setData, loadError, reload: load };
 }
 
+// What to tell the convener after the issue dialog reports back: null means
+// "outcome unknown" (refresh only); a failed send or a missed captain is an
+// error, never a success.
+function issueDoneOutcome( notice ) {
+	if ( ! notice ) return null;
+	if ( notice.status === 'failed' ) {
+		const why = notice.last_error ? `: ${ notice.last_error }` : '.';
+		return { kind: 'error', message: `The suspension was recorded but the email could not be sent${ why } It is in the Notices queue, where you can retry it.` };
+	}
+	const warning = captainWarning( notice );
+	if ( warning ) return { kind: 'error', message: warning };
+	return { kind: 'success', message: notice.status === 'pending' ? 'Draft saved' : 'Suspension recorded' };
+}
+
 export default function PlayerDisciplinePanel( { player, season, onClose, notify } ) {
 	const uid = useUid( 'splm-disc' );
 	const [ includeBaseline, setIncludeBaseline ] = useState( false );
@@ -480,20 +494,10 @@ export default function PlayerDisciplinePanel( { player, season, onClose, notify
 	// an error, never a success toast; null means "outcome unknown".
 	const handleIssueDone = useCallback( ( notice ) => {
 		reload();
-		if ( ! notice ) return;
-		if ( notice.status === 'failed' ) {
-			const msg = `The suspension was recorded but the email could not be sent${ notice.last_error ? `: ${ notice.last_error }` : '.' } It is in the Notices queue, where you can retry it.`;
-			setIssueError( msg );
-			notify( msg, 'error' );
-			return;
-		}
-		const warning = captainWarning( notice );
-		if ( warning ) {
-			setIssueError( warning );
-			notify( warning, 'error' );
-			return;
-		}
-		notify( notice.status === 'pending' ? 'Draft saved' : 'Suspension recorded', 'success' );
+		const outcome = issueDoneOutcome( notice );
+		if ( ! outcome ) return;
+		if ( outcome.kind === 'error' ) setIssueError( outcome.message );
+		notify( outcome.message, outcome.kind );
 	}, [ reload, notify ] );
 
 	const toggleBaseline = ( e ) => {
@@ -511,6 +515,7 @@ export default function PlayerDisciplinePanel( { player, season, onClose, notify
 		<>
 			<div
 				className="splm-modal-overlay"
+				role="presentation"
 				onMouseDown={ ( e ) => { overlayDownRef.current = e.target === e.currentTarget; } }
 				onClick={ ( e ) => {
 					if ( e.target === e.currentTarget && overlayDownRef.current ) requestClose();
