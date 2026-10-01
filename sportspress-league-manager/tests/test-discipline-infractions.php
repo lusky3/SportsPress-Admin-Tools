@@ -51,5 +51,13 @@ assert_test( 0 === $r['default_games'], 'indefinite forces games to 0' );
 $r = $i::sanitize_row( null );
 assert_test( '' === $r['title'], 'null input yields an empty row, not a fatal' );
 
+echo "\n=== maybe_upgrade gate ===\n\n";
+assert_test( '1.0.0' === $i::DB_VERSION && 'splm_discipline_infraction_db_version' === $i::VERSION_OPTION, 'DB_VERSION and option name' );
+assert_test( false === $i::needs_upgrade( '1.0.0', true ), 'current version + table present: no upgrade' );
+assert_test( true === $i::needs_upgrade( '', true ), 'no stored version: upgrade' );
+assert_test( true === $i::needs_upgrade( '0.9', true ), 'older stored version: upgrade' );
+assert_test( true === $i::needs_upgrade( '1.0.0', false ), 'table missing despite version: upgrade' );
+assert_test( true === $i::needs_upgrade( false, false ), 'unset option (false) and no table: upgrade' );
+
 echo "\nPassed: {$passed}  Failed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );

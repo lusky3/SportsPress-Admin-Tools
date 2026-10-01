@@ -24,6 +24,8 @@ class SPLM_Discipline_Infraction {
 	const OUTCOME_INDEFINITE = 'indefinite';
 	const MAX_GAMES          = 20;
 	const SEEDED_OPTION      = 'splm_discipline_infractions_seeded';
+	const DB_VERSION         = '1.0.0';
+	const VERSION_OPTION     = 'splm_discipline_infraction_db_version';
 
 	/**
 	 * Table name.
@@ -126,6 +128,39 @@ class SPLM_Discipline_Infraction {
 		dbDelta( $sql );
 
 		return $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table; // phpcs:ignore WordPress.DB
+	}
+
+	/**
+	 * Whether the schema step needs to run. Pure.
+	 *
+	 * @param mixed $stored       Stored version option (false/'' when unset).
+	 * @param bool  $table_exists Whether the table is present.
+	 * @return bool
+	 */
+	public static function needs_upgrade( $stored, bool $table_exists ): bool {
+		return ! $table_exists || self::DB_VERSION !== $stored;
+	}
+
+	/**
+	 * Create/seed on first run or after a version bump; a no-op otherwise, so
+	 * dbDelta does not run on every request. The version is recorded only after
+	 * the table is confirmed present.
+	 *
+	 * @return void
+	 */
+	public static function maybe_upgrade(): void {
+		global $wpdb;
+		$table  = self::table_name();
+		$exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table; // phpcs:ignore WordPress.DB
+
+		if ( ! self::needs_upgrade( get_option( self::VERSION_OPTION ), $exists ) ) {
+			return;
+		}
+
+		if ( self::create_table() ) {
+			self::seed_if_empty();
+			update_option( self::VERSION_OPTION, self::DB_VERSION );
+		}
 	}
 
 	/**
