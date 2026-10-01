@@ -366,6 +366,21 @@ class SPLM_Discipline_Suspension {
 	}
 
 	/**
+	 * The convener Bcc list a delivery uses (the player is never Bcc'd on their
+	 * own mail). The preview calls this too, so it cannot misreport who is
+	 * covered by the Bcc.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param int    $season_id    Season term id.
+	 * @param string $player_email The player's address ('' when none).
+	 * @return string[]
+	 */
+	public static function delivery_bcc( int $season_id, string $player_email ): array {
+		return self::bcc_without( SPLM_Discipline_Notice_Recipients::bcc_for( $season_id, 0 ), $player_email );
+	}
+
+	/**
 	 * Whether a notice in this status may be mailed. Only pending and failed
 	 * rows: a sent row must never be re-mailed.
 	 *
@@ -414,7 +429,7 @@ class SPLM_Discipline_Suspension {
 		}
 
 		$player  = SPLM_Discipline_Notice_Recipients::player_email( (int) $row->player_id );
-		$bcc     = self::bcc_without( SPLM_Discipline_Notice_Recipients::bcc_for( (int) $row->season_id, 0 ), $player['email'] );
+		$bcc     = self::delivery_bcc( (int) $row->season_id, $player['email'] );
 		$subject = SPLM_Discipline_Suspension_Body::subject( $kind, (string) ( $ctx['season_name'] ?? '' ) );
 		$ctx['kind'] = $kind;
 

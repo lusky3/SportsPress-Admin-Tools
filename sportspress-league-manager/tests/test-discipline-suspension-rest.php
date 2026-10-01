@@ -43,6 +43,7 @@ class SPLM_Susp_Rest_Test_State {
 	public $updates    = array();
 	public $elig_args  = array();
 	public $fail_update = array();
+	public $bcc_args   = array();
 }
 
 function splm_susp_state() {
@@ -312,7 +313,11 @@ class SPLM_Discipline_Notice_Recipients {
 		return 21 === (int) $team_id ? 'cap@example.com' : '';
 	}
 	public static function bcc_for() {
-		return array( 'conv@example.com' );
+		// Mimics the real current-season behaviour: a non-zero team id adds that
+		// team's captain to the Bcc list.
+		$args = func_get_args();
+		splm_susp_state()->bcc_args[] = $args;
+		return ( (int) ( $args[1] ?? 0 ) ) ? array( 'conv@example.com', 'cap@example.com' ) : array( 'conv@example.com' );
 	}
 }
 class SPLM_SportsPress_Data {
@@ -333,6 +338,7 @@ $actions = 'SPLM_Discipline_Suspension_Actions';
 $release = 'SPLM_Discipline_Suspension_Release';
 
 $rest = 'SPLM_Discipline_Suspension_REST';
+$rest_suspension = 'SPLM_Discipline_Suspension';
 
 function inf( $over = array() ) {
 	return (object) array_merge(
@@ -600,6 +606,16 @@ check( 'player subject', $body['player_subject'], 'Suspension notice — Winter'
 check( 'player body mentions the player', false !== strpos( $body['player_body'], 'Jane Doe' ), true );
 check( 'captain body mentions the player', false !== strpos( $body['captain_body'], 'Jane Doe' ), true );
 check( 'preview never leaks a note key', array_key_exists( 'incident_note', $body ), false );
+
+// Preview and delivery agree on who is covered by the Bcc.
+splm_susp_state()->bcc_args = array();
+$parity   = $instance->preview( preview_request() );
+$delivery = $rest_suspension::plan_captain_mail( $rest_suspension::captain_recipients( 11, 5 ), 'jane@example.com', $rest_suspension::delivery_bcc( 5, 'jane@example.com' ) );
+check( 'preview covered_by matches plan_captain_mail on the delivery Bcc', array_column( $parity->data['captains'], 'covered_by' ), array_map( static function ( $entry ) { return (string) $entry['covered_by']; }, $delivery ) );
+check( 'a captain is not reported as Bcc-covered by the preview', $parity->data['captains'][0]['covered_by'], '' );
+check( 'the preview asks bcc_for for the convener list (team 0)', splm_susp_state()->bcc_args[0], array( 5, 0 ) );
+check( 'delivery_bcc removes the player case-insensitively', $rest_suspension::delivery_bcc( 5, 'CONV@example.com' ), array() );
+check( 'delivery_bcc keeps the convener when the player is someone else', $rest_suspension::delivery_bcc( 5, 'jane@example.com' ), array( 'conv@example.com' ) );
 
 // A captain who is also the player is already covered by the player's mail.
 splm_susp_state()->email = array(

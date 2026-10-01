@@ -504,14 +504,13 @@ class SPLM_Discipline_Suspension_REST {
 		$player = $input['player_id'];
 		$season = $input['season_id'];
 		$games  = self::resolve_games( $infraction, $input['games'] );
-		$caps   = SPLM_Discipline_Suspension::captain_recipients( $player, $season );
-		$first  = $caps ? (int) $caps[0]['team_id'] : 0;
+		$email  = SPLM_Discipline_Notice_Recipients::player_email( $player );
 
 		return array(
 			'elig'         => SPLM_Discipline_Eligibility::next_eligible( $player, $season, self::after_date( $input['incident_event_id'] ), $games ),
-			'player_email' => SPLM_Discipline_Notice_Recipients::player_email( $player ),
-			'captains'     => $caps,
-			'bcc'          => $first ? SPLM_Discipline_Notice_Recipients::bcc_for( $season, $first ) : array(),
+			'player_email' => $email,
+			'captains'     => SPLM_Discipline_Suspension::captain_recipients( $player, $season ),
+			'bcc'          => SPLM_Discipline_Suspension::delivery_bcc( $season, (string) $email['email'] ),
 			'existing'     => SPLM_Discipline_Notice_Database::for_player( $player, false ),
 		);
 	}
