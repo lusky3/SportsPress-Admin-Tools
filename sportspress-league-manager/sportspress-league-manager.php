@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SportsPress League Manager (Child Plugin)
  * Description: Child plugin for SportsPress Admin Tools - League Manager modules
- * Version: 1.4.0
+ * Version: 1.4.1
  * Author: Cody (lusky3)
  * Text Domain: sportspress-league-manager
  * License: GPL v2 or later
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'SPLM_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPLM_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPLM_VERSION', '1.4.0' );
+define( 'SPLM_VERSION', '1.4.1' );
 
 // Native WordPress updates, served from this repository's releases.
 //
@@ -230,12 +230,12 @@ class SportsPress_League_Manager {
 			SPLM_Discipline_Digest::unschedule();
 		}
 
-		// Four constructors, because the notice feature's hooks belong to
-		// four concerns: the pass answers the scheduled event, the REST
-		// class registers the routes both queue surfaces call, the admin
-		// class contributes the technical tab, and the privacy class
-		// registers the GDPR exporter and eraser. Drop any one of these
-		// lines and its hooks silently never register.
+		// Each constructor below registers its own hooks, because the notice
+		// feature's hooks belong to separate concerns: the pass answers the
+		// scheduled event, the REST classes register the routes the queue
+		// surfaces call, the admin class contributes the technical tab, and
+		// the privacy class registers the GDPR exporter and eraser. Drop any
+		// one of these lines and its hooks silently never register.
 		// SPLM_Discipline_Notice, _Mail and _Recipients are deliberately
 		// absent: they hook nothing.
 		new SPLM_Discipline_Notice_Pass();
