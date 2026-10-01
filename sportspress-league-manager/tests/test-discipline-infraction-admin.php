@@ -161,6 +161,13 @@ splm_inf_admin_state()->options = array(
 check( 'saved URL wins', $ctx::rulebook_url(), 'https://example.com/new.pdf' );
 check( 'saved rev wins', $ctx::rulebook_rev(), 'Rev 2' );
 
+// Source-level guards for the panel markup and the inline script.
+$admin_src = file_get_contents( dirname( __DIR__ ) . '/includes/class-discipline-infraction-admin.php' );
+check( 'panel heading is an h2, not an h3', false !== strpos( $admin_src, "'<h2>' . esc_html__( 'Discipline Rules'" ) && false === strpos( $admin_src, '<h3>' ), true );
+check( 'wording textarea has a minimum width', false !== strpos( $admin_src, 'textarea{width:100%;min-width:220px}' ), true );
+check( 'error text is tag-stripped with a generic fallback', false !== strpos( $admin_src, "replace( /<[^>]*>/g, '' ).trim()" ) && false !== strpos( $admin_src, '( plain( text ) || messages.failed )' ), true );
+check( 'switching to indefinite zeroes the games input', false !== strpos( $admin_src, 'if ( games.disabled ) { games.value = 0; }' ), true );
+
 $state = splm_inf_admin_state();
 echo "\n{$state->total} checks, {$state->failures} failures\n";
 exit( $state->failures > 0 ? 1 : 0 );

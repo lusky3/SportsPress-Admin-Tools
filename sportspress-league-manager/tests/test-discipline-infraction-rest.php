@@ -388,6 +388,8 @@ check(
 	)
 );
 
+check( 'sanitize_sort keeps negatives and clamps', array( SPLM_Discipline_Infraction_REST::sanitize_sort( '-7' ), SPLM_Discipline_Infraction_REST::sanitize_sort( 99999 ), SPLM_Discipline_Infraction_REST::sanitize_sort( -99999 ), SPLM_Discipline_Infraction_REST::sanitize_sort( 'x', 1, 'p' ) ), array( -7, 32767, -32768, 0 ) );
+
 $state = splm_inf_state();
 echo "\n{$state->total} checks, {$state->failures} failures\n";
 exit( $state->failures > 0 ? 1 : 0 );

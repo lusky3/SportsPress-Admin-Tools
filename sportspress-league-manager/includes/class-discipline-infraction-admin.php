@@ -75,7 +75,8 @@ class SPLM_Discipline_Infraction_Admin {
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function render_intro(): void {
-		echo '<h3>' . esc_html__( 'Discipline Rules', 'sportspress-league-manager' ) . '</h3>';
+		echo '<style>#splm-infraction-table{table-layout:auto}#splm-infraction-table td{vertical-align:top}#splm-infraction-table textarea{width:100%;min-width:220px}</style>';
+		echo '<h2>' . esc_html__( 'Discipline Rules', 'sportspress-league-manager' ) . '</h2>';
 		printf(
 			'<p>%s <strong>%s</strong>. <span class="description">%s</span></p>',
 			esc_html__( 'Suspension emails currently cite the rulebook revision', 'sportspress-league-manager' ),
@@ -403,11 +404,6 @@ class SPLM_Discipline_Infraction_Admin {
 				}
 			}
 
-			function say( row, kind, text ) {
-				row.querySelector( '.splm-inf-status' ).textContent = kind === 'ok' ? text : '';
-				row.querySelector( '.splm-inf-error' ).textContent = kind === 'err' ? text : '';
-			}
-
 		<?php
 	}
 
@@ -418,6 +414,16 @@ class SPLM_Discipline_Infraction_Admin {
 	 */
 	private function script_request_js(): void {
 		?>
+			// Server messages can carry markup (a critical-error body): show plain text only.
+			function plain( text ) {
+				return String( text || '' ).replace( /<[^>]*>/g, '' ).trim();
+			}
+
+			function say( row, kind, text ) {
+				row.querySelector( '.splm-inf-status' ).textContent = kind === 'ok' ? text : '';
+				row.querySelector( '.splm-inf-error' ).textContent = kind === 'err' ? ( plain( text ) || messages.failed ) : '';
+			}
+
 			function send( url, data ) {
 				return fetch( url, {
 					method: 'POST',
@@ -491,7 +497,9 @@ class SPLM_Discipline_Infraction_Admin {
 			// Default games means nothing for an indefinite outcome.
 			table.addEventListener( 'change', function ( event ) {
 				if ( event.target.getAttribute( 'data-field' ) === 'outcome' ) {
-					field( event.target.closest( 'tr' ), 'default_games' ).disabled = event.target.value === 'indefinite';
+					var games = field( event.target.closest( 'tr' ), 'default_games' );
+					games.disabled = event.target.value === 'indefinite';
+					if ( games.disabled ) { games.value = 0; }
 				}
 			} );
 		<?php

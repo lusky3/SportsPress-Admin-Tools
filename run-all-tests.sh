@@ -141,6 +141,7 @@ run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-discipline-notice-pr
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-discipline-incident-games.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-discipline-notice-labels.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-discipline-infraction-rest.php"
+run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-rest-callback-arity.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-discipline-infraction-admin.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-discipline-player-metabox.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-league-table-rows.php"

@@ -136,9 +136,21 @@ class SPLM_Discipline_Infraction_REST {
 				'minimum'           => -32768,
 				'maximum'           => 32767,
 				'validate_callback' => 'rest_validate_request_arg',
-				'sanitize_callback' => 'intval',
+				'sanitize_callback' => array( __CLASS__, 'sanitize_sort' ),
 			),
 		);
+	}
+
+	/**
+	 * sort_order sanitiser. A userland method, not 'intval': WordPress passes
+	 * REST sanitize callbacks three arguments and internal PHP functions throw
+	 * ArgumentCountError on extras.
+	 *
+	 * @param mixed $value Raw value.
+	 * @return int Clamped to the smallint column range.
+	 */
+	public static function sanitize_sort( $value ): int {
+		return max( -32768, min( 32767, (int) $value ) );
 	}
 
 	/**
