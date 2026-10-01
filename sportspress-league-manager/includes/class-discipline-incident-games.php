@@ -39,7 +39,7 @@ class SPLM_Discipline_Incident_Games {
 		$today    = current_time( 'Y-m-d' );
 		$per_team = array();
 		foreach ( $teams as $team_id ) {
-			$per_team[] = self::team_events( (int) $team_id, $today, $limit );
+			$per_team[] = self::team_events( (int) $team_id, $season_id, $today, $limit );
 		}
 
 		$items = array();
@@ -81,13 +81,14 @@ class SPLM_Discipline_Incident_Games {
 	 * One team's events up to today, as { id, title, date } with the raw
 	 * site-local post_date.
 	 *
-	 * @param int    $team_id Team post id.
-	 * @param string $today   Local 'Y-m-d'.
-	 * @param int    $limit   Cap.
+	 * @param int    $team_id   Team post id.
+	 * @param int    $season_id Season term id.
+	 * @param string $today     Local 'Y-m-d'.
+	 * @param int    $limit     Cap.
 	 * @return array[]
 	 */
-	private static function team_events( int $team_id, string $today, int $limit ): array {
-		$ids = get_posts( self::query_args( $team_id, $today, $limit ) );
+	private static function team_events( int $team_id, int $season_id, string $today, int $limit ): array {
+		$ids = get_posts( self::query_args( $team_id, $season_id, $today, $limit ) );
 
 		$events = array();
 		foreach ( (array) $ids as $event_id ) {
@@ -132,12 +133,13 @@ class SPLM_Discipline_Incident_Games {
 	 * 'future'. Postponed and cancelled fixtures are excluded in the query,
 	 * the same way the eligibility query does.
 	 *
-	 * @param int    $team_id Team post id.
-	 * @param string $today   Local 'Y-m-d'.
-	 * @param int    $limit   Cap.
+	 * @param int    $team_id   Team post id.
+	 * @param int    $season_id Season term id; teams persist across seasons.
+	 * @param string $today     Local 'Y-m-d'.
+	 * @param int    $limit     Cap.
 	 * @return array get_posts() args.
 	 */
-	private static function query_args( int $team_id, string $today, int $limit ): array {
+	private static function query_args( int $team_id, int $season_id, string $today, int $limit ): array {
 		return array(
 			'post_type'      => 'sp_event',
 			'post_status'    => array( 'publish', 'future' ),
@@ -150,6 +152,14 @@ class SPLM_Discipline_Incident_Games {
 				array(
 					'before'    => $today . ' 23:59:59',
 					'inclusive' => true,
+				),
+			),
+			'tax_query'      => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
+				array(
+					'taxonomy'         => 'sp_season',
+					'field'            => 'term_id',
+					'terms'            => $season_id,
+					'include_children' => false,
 				),
 			),
 			'meta_query'     => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query

@@ -126,6 +126,18 @@ check( 'post type', $q['post_type'], 'sp_event' );
 check( 'status publish and future', $q['post_status'], array( 'publish', 'future' ) );
 check( 'per-team cap is the limit', $q['posts_per_page'], 40 );
 check( 'ids only', $q['fields'], 'ids' );
+check(
+	'query is scoped to the season',
+	$q['tax_query'] ?? null,
+	array(
+		array(
+			'taxonomy'         => 'sp_season',
+			'field'            => 'term_id',
+			'terms'            => 5,
+			'include_children' => false,
+		),
+	)
+);
 check( 'orderby date then id desc', $q['orderby'], array( 'date' => 'DESC', 'ID' => 'DESC' ) );
 check( 'date_query up to end of today inclusive', $q['date_query'], array( array( 'before' => '2026-10-01 23:59:59', 'inclusive' => true ) ) );
 check(
