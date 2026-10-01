@@ -46,6 +46,14 @@ define( 'SPLM_REQUIRED_CONTRACT', '1.1.0' );
 
 class SportsPress_League_Manager {
 
+	/**
+	 * The manual-suspension REST handler. Its constructor registers the hooks;
+	 * keeping the reference makes the instance explicit.
+	 *
+	 * @var SPLM_Discipline_Suspension_REST|null
+	 */
+	private $suspension_rest;
+
 	public function __construct() {
 		register_activation_hook( __FILE__, array( $this, 'check_activation_requirements' ) );
 		register_deactivation_hook( __FILE__, array( $this, 'deactivate' ) );
@@ -240,7 +248,7 @@ class SportsPress_League_Manager {
 		// absent: they hook nothing.
 		new SPLM_Discipline_Notice_Pass();
 		new SPLM_Discipline_Notice_REST();
-		new SPLM_Discipline_Suspension_REST();
+		$this->suspension_rest = new SPLM_Discipline_Suspension_REST();
 		new SPLM_Discipline_Notice_Privacy();
 		if ( is_admin() ) {
 			new SPLM_Discipline_Notice_Admin();

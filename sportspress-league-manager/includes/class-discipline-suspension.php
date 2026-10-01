@@ -37,9 +37,11 @@ class SPLM_Discipline_Suspension {
 	 */
 	public static function build_row( array $in, $infraction, array $elig ): array {
 		$indefinite = 'indefinite' === (string) $infraction->outcome;
-		$games      = $indefinite
-			? 0
-			: ( isset( $in['games'] ) && '' !== $in['games'] && null !== $in['games'] ? min( SPLM_Discipline_Infraction::MAX_GAMES, absint( $in['games'] ) ) : (int) $infraction->default_games );
+		$games      = 0;
+		if ( ! $indefinite ) {
+			$has_override = isset( $in['games'] ) && '' !== $in['games'];
+			$games        = $has_override ? min( SPLM_Discipline_Infraction::MAX_GAMES, absint( $in['games'] ) ) : (int) $infraction->default_games;
+		}
 
 		$eligible_on = ( ! $indefinite && ! empty( $elig['date'] ) ) ? substr( (string) $elig['date'], 0, 10 ) : null;
 
