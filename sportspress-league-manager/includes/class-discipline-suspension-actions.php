@@ -389,7 +389,7 @@ class SPLM_Discipline_Suspension_Actions {
 
 	/**
 	 * The amend body, holding the parent's lock. Games count from wherever the
-	 * suspension being replaced counted from (see SPLM_Discipline_Suspension_REST::count_from()).
+	 * suspension being replaced counted from (see SPLM_Discipline_Suspension_Release::count_from()).
 	 *
 	 * @param int $id    Parent id.
 	 * @param int $games New length (0 allowed).
@@ -404,7 +404,7 @@ class SPLM_Discipline_Suspension_Actions {
 			return self::action_error( $error );
 		}
 
-		$elig  = self::eligibility_for( $parent, SPLM_Discipline_Suspension_REST::count_from( $parent ), $games );
+		$elig  = self::eligibility_for( $parent, SPLM_Discipline_Suspension_Release::count_from( $parent ), $games );
 		$child = SPLM_Discipline_Suspension::build_child_row(
 			$parent,
 			'amended',
@@ -414,7 +414,7 @@ class SPLM_Discipline_Suspension_Actions {
 			)
 		);
 
-		return self::issue_child( $child, 'amended', array_merge( array( 'remaining' => $elig['remaining'] ), SPLM_Discipline_Suspension_REST::prior_games_extra( 'manual-amended', $parent ) ) );
+		return self::issue_child( $child, 'amended', array_merge( array( 'remaining' => $elig['remaining'] ), SPLM_Discipline_Suspension_Release::prior_games_extra( 'manual-amended', $parent ) ) );
 	}
 
 	/**
@@ -529,7 +529,7 @@ class SPLM_Discipline_Suspension_Actions {
 			return self::action_error( $error );
 		}
 
-		$elig = self::eligibility_for( $parent, SPLM_Discipline_Suspension_REST::count_from( $parent ), (int) $parent->games );
+		$elig = self::eligibility_for( $parent, SPLM_Discipline_Suspension_Release::count_from( $parent ), (int) $parent->games );
 		if ( ! SPLM_Discipline_Notice_Database::update( $id, array( 'eligible_on' => $elig['eligible_on'] ) ) ) {
 			return self::write_failed();
 		}

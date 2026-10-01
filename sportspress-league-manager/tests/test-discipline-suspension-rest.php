@@ -322,8 +322,10 @@ require_once dirname( __DIR__ ) . '/includes/class-discipline-suspension-body.ph
 require_once dirname( __DIR__ ) . '/includes/class-discipline-suspension-context.php';
 require_once dirname( __DIR__ ) . '/includes/class-discipline-suspension-rest.php';
 require_once dirname( __DIR__ ) . '/includes/class-discipline-suspension-actions.php';
+require_once dirname( __DIR__ ) . '/includes/class-discipline-suspension-release.php';
 
 $actions = 'SPLM_Discipline_Suspension_Actions';
+$release = 'SPLM_Discipline_Suspension_Release';
 
 $rest = 'SPLM_Discipline_Suspension_REST';
 
@@ -623,7 +625,7 @@ check( 'season last', $rest::create_error( true, true, inf(), 0 ), 'invalid_seas
 
 // release_kind: scope to kind.
 foreach ( array( 'manual' => 'issued', 'manual-decided' => 'decided', 'manual-amended' => 'amended', 'manual-revoked' => 'revoked', 'season' => 'issued' ) as $scope => $kind ) {
-	check( "release_kind $scope", $rest::release_kind( (object) array( 'scope' => $scope ) ), $kind );
+	check( "release_kind $scope", $release::release_kind( (object) array( 'scope' => $scope ) ), $kind );
 }
 
 function create_request( $over = array() ) {
@@ -748,15 +750,15 @@ check( 'insert failure is a 500', array( $bad->code, $bad->data['status'], splm_
 // release_row (the manual branch of the notice release route).
 reset_create();
 splm_susp_state()->rows[1] = build_manual_row( 'manual-amended', 1 );
-$ok = $rest::release_row( splm_susp_state()->rows[1] );
+$ok = $release::release_row( splm_susp_state()->rows[1] );
 check( 'release_row success shape', array( $ok->status, $ok->data ), array( 200, array( 'success' => true, 'id' => 1, 'status' => 'sent' ) ) );
 check( 'release_row used the amended kind in the subject', splm_susp_state()->mails[0]['subject'], 'Updated suspension notice — Winter' );
-$again = $rest::release_row( splm_susp_state()->rows[1] );
+$again = $release::release_row( splm_susp_state()->rows[1] );
 check( 'release_row on a sent row is a 409', array( $again->code, $again->data['status'] ), array( 'splm_notice_not_releasable', 409 ) );
 check( 'release_row did not re-mail', count( splm_susp_state()->mails ), 2 );
 splm_susp_state()->mail_ok = false;
 splm_susp_state()->rows[2] = build_manual_row( 'manual', 2 );
-$err = $rest::release_row( splm_susp_state()->rows[2] );
+$err = $release::release_row( splm_susp_state()->rows[2] );
 check( 'release_row failure carries last_error', array( $err->code, $err->data['status'], $err->message ), array( 'splm_notice_send_failed', 500, 'wp_mail() rejected the message.' ) );
 
 // Retired infractions are treated as unknown.
@@ -769,23 +771,23 @@ $bad = $instance->create( create_request( array( 'infraction' => 4 ) ) );
 check( 'create rejects a retired infraction', array( $bad->code, $bad->data['status'] ), array( 'invalid_infraction', 400 ) );
 
 // Pure release helpers.
-check( 'prior_games from the parent of an amended row', $rest::prior_games_extra( 'manual-amended', (object) array( 'games' => 4 ) ), array( 'prior_games' => 4 ) );
-check( 'no prior_games for other scopes', array( $rest::prior_games_extra( 'manual', (object) array( 'games' => 4 ) ), $rest::prior_games_extra( 'manual-decided', (object) array( 'games' => 4 ) ) ), array( array(), array() ) );
-check( 'no prior_games without a parent', $rest::prior_games_extra( 'manual-amended', null ), array() );
-check( 'decided counts from the decision date', $rest::count_from_date( 'manual-decided', '2026-09-01', '2026-09-20', '2026-10-01' ), '2026-09-20' );
-check( 'decided without a decision date counts from today', $rest::count_from_date( 'manual-decided', '2026-09-01', '', '2026-10-01' ), '2026-10-01' );
-check( 'amended counts from the incident date', $rest::count_from_date( 'manual-amended', '2026-09-01', '2026-09-20', '2026-10-01' ), '2026-09-01' );
-check( 'issued counts from the incident date', $rest::count_from_date( 'manual', '2026-09-01', '2026-09-20', '2026-10-01' ), '2026-09-01' );
-check( 'issued without an incident counts from today', $rest::count_from_date( 'manual', '', '2026-09-20', '2026-10-01' ), '2026-10-01' );
+check( 'prior_games from the parent of an amended row', $release::prior_games_extra( 'manual-amended', (object) array( 'games' => 4 ) ), array( 'prior_games' => 4 ) );
+check( 'no prior_games for other scopes', array( $release::prior_games_extra( 'manual', (object) array( 'games' => 4 ) ), $release::prior_games_extra( 'manual-decided', (object) array( 'games' => 4 ) ) ), array( array(), array() ) );
+check( 'no prior_games without a parent', $release::prior_games_extra( 'manual-amended', null ), array() );
+check( 'decided counts from the decision date', $release::count_from_date( 'manual-decided', '2026-09-01', '2026-09-20', '2026-10-01' ), '2026-09-20' );
+check( 'decided without a decision date counts from today', $release::count_from_date( 'manual-decided', '2026-09-01', '', '2026-10-01' ), '2026-10-01' );
+check( 'amended counts from the incident date', $release::count_from_date( 'manual-amended', '2026-09-01', '2026-09-20', '2026-10-01' ), '2026-09-01' );
+check( 'issued counts from the incident date', $release::count_from_date( 'manual', '2026-09-01', '2026-09-20', '2026-10-01' ), '2026-09-01' );
+check( 'issued without an incident counts from today', $release::count_from_date( 'manual', '', '2026-09-20', '2026-10-01' ), '2026-10-01' );
 splm_susp_state()->rows[20]            = build_manual_row( 'manual-decided', 20 );
 splm_susp_state()->rows[20]->created_at = '2026-10-02 02:00:00';
 splm_susp_state()->rows[21]            = build_manual_row( 'manual-amended', 21 );
 splm_susp_state()->rows[21]->parent_id = 20;
 splm_susp_state()->rows[22]            = build_manual_row( 'manual', 22 );
 splm_susp_state()->rows[22]->incident_event_id = 31;
-check( 'a decided row counts from its decision date in site-local time', $rest::count_from( splm_susp_state()->rows[20] ), '2026-10-01' );
-check( 'an amended decision keeps the decision date', $rest::count_from( splm_susp_state()->rows[21] ), '2026-10-01' );
-check( 'an issued row counts from its incident', $rest::count_from( splm_susp_state()->rows[22] ), '2026-10-03' );
+check( 'a decided row counts from its decision date in site-local time', $release::count_from( splm_susp_state()->rows[20] ), '2026-10-01' );
+check( 'an amended decision keeps the decision date', $release::count_from( splm_susp_state()->rows[21] ), '2026-10-01' );
+check( 'an issued row counts from its incident', $release::count_from( splm_susp_state()->rows[22] ), '2026-10-03' );
 
 // Create ordering: exact call sequence.
 reset_create();
@@ -820,7 +822,7 @@ splm_susp_state()->rows[8]->games = 4;
 splm_susp_state()->rows[9]        = build_manual_row( 'manual-amended', 9 );
 splm_susp_state()->rows[9]->games = 2;
 splm_susp_state()->rows[9]->parent_id = 8;
-$rest::release_row( splm_susp_state()->rows[9] );
+$release::release_row( splm_susp_state()->rows[9] );
 check( 'retried amend body says changed from 4 games to 2 games', false !== strpos( splm_susp_state()->mails[0]['body'], 'changed from 4 games to 2 games' ), true );
 check( 'retried amend body is not the plain length line', false === strpos( splm_susp_state()->mails[0]['body'], 'Length: 2 games.' ), true );
 
@@ -840,8 +842,11 @@ function method_source( $class, $name ) {
 	$code  = implode( '', array_slice( $lines, $ref->getStartLine() - 1, $ref->getEndLine() - $ref->getStartLine() + 1 ) );
 	return preg_replace( '/^\s*(\*|\/\/|\/\*).*$/m', '', $code );
 }
-foreach ( array( 'finish_create', 'release_row', 'release_extra', 'release_response', 'preview_response', 'team_names' ) as $name ) {
+foreach ( array( 'finish_create', 'preview_response', 'team_names' ) as $name ) {
 	check( "$name never mentions incident_note", false === strpos( method_source( 'SPLM_Discipline_Suspension_REST', $name ), 'incident_note' ), true );
+}
+foreach ( array( 'release_row', 'release_extra', 'release_response' ) as $name ) {
+	check( "$name never mentions incident_note", false === strpos( method_source( 'SPLM_Discipline_Suspension_Release', $name ), 'incident_note' ), true );
 }
 check( 'create_locked copies the note only into the row input', 2 === substr_count( method_source( 'SPLM_Discipline_Suspension_REST', 'create_locked' ), 'incident_note' ), true );
 check( 'for_row names incident_note only inside its unset guard', false === strpos( preg_replace( '/unset\([^;]*\);/', '', method_source( 'SPLM_Discipline_Suspension_Context', 'for_row' ) ), 'incident_note' ), true );
@@ -851,7 +856,7 @@ check( 'for_row names incident_note only inside its unset guard', false === strp
 $notice_src = file_get_contents( dirname( __DIR__ ) . '/includes/class-discipline-notice-rest.php' );
 $status_pos = strpos( $notice_src, "'splm_notice_not_releasable'" );
 $branch_pos = strpos( $notice_src, "'manual' === (string) ( \$row->source ?? 'auto' )" );
-$hand_off   = strpos( $notice_src, 'SPLM_Discipline_Suspension_REST::release_row( $row )' );
+$hand_off   = strpos( $notice_src, 'SPLM_Discipline_Suspension_Release::release_row( $row )' );
 $auto_pos   = strpos( $notice_src, 'SPLM_Discipline_Notice_Mail::send(' );
 check( 'release_locked branches on manual after the status check and before the automatic send', false !== $status_pos && $status_pos < $branch_pos && $branch_pos < $hand_off && $hand_off < $auto_pos, true );
 
@@ -1137,7 +1142,7 @@ $actions::amend( action_request( array( 'id' => 1, 'games' => 1 ) ) );
 check( 'amend of a decided row counts from the decision date', splm_susp_state()->elig_args[0][2], '2026-09-20' );
 reset_action();
 splm_susp_state()->rows[1] = parent_row( array( 'scope' => 'manual-decided', 'incident_event_id' => 31, 'created_at' => '2026-09-20 15:00:00' ) );
-$rest::release_row( (object) array_merge( (array) splm_susp_state()->rows[1], array( 'status' => 'pending' ) ) );
+$release::release_row( (object) array_merge( (array) splm_susp_state()->rows[1], array( 'status' => 'pending' ) ) );
 check( 'a retried release of a decided row counts from the decision date', splm_susp_state()->elig_args[0][2], '2026-09-20' );
 reset_action();
 splm_susp_state()->rows[20]            = build_manual_row( 'manual-decided', 20 );
@@ -1145,7 +1150,7 @@ splm_susp_state()->rows[21]            = build_manual_row( 'manual-amended', 21 
 splm_susp_state()->rows[21]->parent_id = 20;
 splm_susp_state()->rows[21]->status    = 'pending';
 splm_susp_state()->rows[21]->incident_event_id = 31;
-$rest::release_row( splm_susp_state()->rows[21] );
+$release::release_row( splm_susp_state()->rows[21] );
 check( 'an amended decision releases from the decision date', splm_susp_state()->elig_args[0][2], '2026-09-20' );
 reset_action();
 splm_susp_state()->rows[1]->outcome = 'indefinite';

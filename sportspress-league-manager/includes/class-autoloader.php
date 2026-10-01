@@ -50,6 +50,7 @@ class SPLM_Autoloader {
 			'SPLM_Discipline_Suspension_Actions' => $base . 'class-discipline-suspension-actions.php',
 			'SPLM_Discipline_Suspension_Body' => $base . 'class-discipline-suspension-body.php',
 			'SPLM_Discipline_Suspension_Context' => $base . 'class-discipline-suspension-context.php',
+			'SPLM_Discipline_Suspension_Release' => $base . 'class-discipline-suspension-release.php',
 			'SPLM_Discipline_Suspension_REST' => $base . 'class-discipline-suspension-rest.php',
 			'SPLM_Discipline_Notice'            => $base . 'class-discipline-notice.php',
 			'SPLM_Discipline_Notice_Baseline'   => $base . 'class-discipline-notice-baseline.php',

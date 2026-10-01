@@ -250,7 +250,7 @@ class SPLM_Discipline_Notice_REST {
 		}
 
 		if ( 'manual' === (string) ( $row->source ?? 'auto' ) ) {
-			return SPLM_Discipline_Suspension_REST::release_row( $row );
+			return SPLM_Discipline_Suspension_Release::release_row( $row );
 		}
 
 		return $this->release_automatic( $row );
