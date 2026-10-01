@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.6.1
+Stable tag: 1.6.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -52,6 +52,8 @@ CSV files with `Team` and `Name` columns (both required). Each row maps a player
 Conveners can issue a suspension from the Notices page (Issue suspension) or from a player's Discipline panel on Rosters. Pick an infraction, the incident and the game count; the modal previews the player and captain emails before anything is sent.
 
 * The infraction list and the rulebook link and revision cited in emails are managed under Settings → League Manager (Discipline Rules tab). On a new infraction, a Sort order of 0 means "place it at the end".
+* A player's Edit screen shows a read-only "Discipline record (conveners only)" box with every notice, outcome and eligible date, plus the private incident note.
+* Retiring an infraction stops it being offered for new suspensions; notices already issued keep the wording they were sent with.
 * Revoking a suspension sends a correction email unless you choose to skip it.
 * The captain copy includes a forfeit line; the player copy does not.
 * The incident note is private to conveners. It is never emailed and never appears in the weekly digest.
@@ -59,6 +61,9 @@ Conveners can issue a suspension from the Notices page (Issue suspension) or fro
 * Discipline history starts empty. Suspensions issued before this feature are not backfilled.
 
 == Changelog ==
+
+= 1.6.2 =
+* Docs: the in-dashboard Help page now covers the Discipline Rules tab, the rulebook fields, the player-screen discipline box and the digest reminders; the readme and architecture notes describe the player-screen box and retired infractions.
 
 = 1.6.1 =
 * New: the weekly penalty digest now lists suspensions past their eligible date that are not yet marked served, and indefinite suspensions still awaiting a decision. A week with only reminders still sends; a fully quiet week still does not.
