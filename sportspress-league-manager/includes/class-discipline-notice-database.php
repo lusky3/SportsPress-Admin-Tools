@@ -509,6 +509,38 @@ class SPLM_Discipline_Notice_Database {
 	}
 
 	/**
+	 * Which of the given notice ids have been replaced: the subset with at least
+	 * one non-discarded child row. One query for the whole set, so a list
+	 * response can flag every row without an N+1.
+	 *
+	 * @param int[] $ids Notice ids.
+	 * @return int[] Replaced ids (subset of the valid input); empty when none, the input has no valid id, or the table is missing.
+	 */
+	public static function replaced_ids( array $ids ): array {
+		global $wpdb;
+
+		$ids = array_values( array_unique( array_filter( array_map( 'intval', $ids ), static fn( $id ) => $id > 0 ) ) );
+
+		if ( empty( $ids ) || ! self::table_exists() ) {
+			return array();
+		}
+
+		$table        = self::table_name();
+		$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name and placeholder list, not values.
+		$parents = $wpdb->get_col( // phpcs:ignore WordPress.DB
+			$wpdb->prepare(
+				"SELECT DISTINCT parent_id FROM {$table}
+				 WHERE parent_id IN ({$placeholders}) AND status <> 'discarded'",
+				$ids
+			)
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+		return is_array( $parents ) ? array_map( 'intval', $parents ) : array();
+	}
+
+	/**
 	 * Paginated rows for the queue surfaces.
 	 *
 	 * @param array $filters  Accepts 'season' (int) and 'status' (string).

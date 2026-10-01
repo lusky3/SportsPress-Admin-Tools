@@ -177,9 +177,13 @@ class SPLM_Discipline_Notice_REST {
 			$per_page
 		);
 
-		$items = array();
+		$replaced = SPLM_Discipline_Notice_Database::replaced_ids( array_map( static fn( $r ) => (int) $r->id, $result['rows'] ) );
+		$items    = array();
 		foreach ( $result['rows'] as $row ) {
-			$items[] = self::row_to_response( $row, SPLM_Capabilities::can_manage() );
+			$items[] = array_merge(
+				self::row_to_response( $row, false ),
+				array( 'replaced' => in_array( (int) $row->id, $replaced, true ) )
+			);
 		}
 
 		return new WP_REST_Response(
@@ -386,20 +390,9 @@ class SPLM_Discipline_Notice_REST {
 			return new WP_Error( 'splm_notice_not_found', __( 'Notice not found.', 'sportspress-league-manager' ), array( 'status' => 404 ) );
 		}
 
-		if ( 'suspend' !== (string) $row->consequence ) {
-			return new WP_Error(
-				'splm_notice_not_a_suspension',
-				__( 'Only a suspension can be marked served.', 'sportspress-league-manager' ),
-				array( 'status' => 409 )
-			);
-		}
-
-		if ( SPLM_Discipline_Notice_Database::STATUS_SENT !== (string) $row->status ) {
-			return new WP_Error(
-				'splm_notice_not_sent',
-				__( 'A suspension can only be marked served once the player has been told.', 'sportspress-league-manager' ),
-				array( 'status' => 409 )
-			);
+		$blocked = self::serve_blocker( $row );
+		if ( $blocked ) {
+			return $blocked;
 		}
 
 		$fields = array(
@@ -427,6 +420,43 @@ class SPLM_Discipline_Notice_REST {
 			),
 			200
 		);
+	}
+
+	/**
+	 * Why a row cannot be marked served, or null when it can.
+	 *
+	 * @param object $row Notice row.
+	 * @return WP_Error|null
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function serve_blocker( $row ) {
+		if ( 'suspend' !== (string) $row->consequence ) {
+			return new WP_Error(
+				'splm_notice_not_a_suspension',
+				__( 'Only a suspension can be marked served.', 'sportspress-league-manager' ),
+				array( 'status' => 409 )
+			);
+		}
+
+		if ( SPLM_Discipline_Notice_Database::STATUS_SENT !== (string) $row->status ) {
+			return new WP_Error(
+				'splm_notice_not_sent',
+				__( 'A suspension can only be marked served once the player has been told.', 'sportspress-league-manager' ),
+				array( 'status' => 409 )
+			);
+		}
+
+		// An amended or revoked parent is superseded; only the newest row is live.
+		if ( array() !== SPLM_Discipline_Notice_Database::children_of( (int) $row->id ) ) {
+			return new WP_Error(
+				'splm_notice_replaced',
+				__( 'This notice has been replaced by a later one — act on the newest notice.', 'sportspress-league-manager' ),
+				array( 'status' => 409 )
+			);
+		}
+
+		return null;
 	}
 
 	/**

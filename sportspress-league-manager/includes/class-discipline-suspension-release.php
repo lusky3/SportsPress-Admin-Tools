@@ -253,9 +253,11 @@ class SPLM_Discipline_Suspension_Release {
 
 		return new WP_REST_Response(
 			array(
-				'success' => true,
-				'id'      => $id,
-				'status'  => SPLM_Discipline_Notice_Database::STATUS_SENT,
+				'success'  => true,
+				'id'       => $id,
+				'status'   => SPLM_Discipline_Notice_Database::STATUS_SENT,
+				// Per-captain delivery, so the UI can warn about a missed one.
+				'captains' => isset( $result['captains'] ) && is_array( $result['captains'] ) ? $result['captains'] : array(),
 			),
 			200
 		);

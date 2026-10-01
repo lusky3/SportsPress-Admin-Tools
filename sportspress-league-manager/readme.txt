@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.4.1
+Stable tag: 1.5.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,6 +48,14 @@ WooCommerce is optional. Without it, fee tracking can be configured for manual e
 CSV files with `Team` and `Name` columns (both required). Each row maps a player Name to a Team; rows missing either value are skipped.
 
 == Changelog ==
+
+= 1.5.0 =
+* New: issue-suspension modal with a live preview of the player and captain emails.
+* New: per-player Discipline panel on Rosters -- history, release, discard, mark served, decide, amend, revoke and recalculate.
+* New: the Notices page labels and handles manual and withdrawn notices, and has an Issue suspension button. Replaced notices can no longer be acted on, and in-page confirmations replace native dialogs.
+* New: the WP-admin queue labels manual notices, and Release all shown no longer includes manual drafts.
+* New: incident-match picker route.
+* Fixed: the server flags replaced notices and the serve route refuses them.
 
 = 1.4.1 =
 * New (REST only -- no admin UI yet): manual suspension routes to issue, preview, release, decide, amend, revoke, recalculate and read the history of a suspension.

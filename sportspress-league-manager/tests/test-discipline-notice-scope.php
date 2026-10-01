@@ -14,7 +14,12 @@ class Splm_Scope_Wpdb {
 	public $prefix  = 'wp_';
 	public $queries = array();
 
+	public $col_result = array();
+
 	public function prepare( $sql, ...$args ) {
+		if ( 1 === count( $args ) && is_array( $args[0] ) ) {
+			$args = $args[0];
+		}
 		$i = 0;
 		return preg_replace_callback(
 			'/%[ds]/',
@@ -37,6 +42,11 @@ class Splm_Scope_Wpdb {
 	public function get_row( $sql ) {
 		$this->queries[] = $sql;
 		return null;
+	}
+
+	public function get_col( $sql ) {
+		$this->queries[] = $sql;
+		return $this->col_result;
 	}
 
 	public function get_results( $sql ) {
@@ -84,6 +94,22 @@ assert_test( false === strpos( $wpdb->queries[0], 'baseline' ), 'baseline includ
 $wpdb = new Splm_Scope_Wpdb();
 assert_test( array() === $db::for_player( 0 ) && array() === $wpdb->queries, 'player 0 returns [] and runs no query' );
 assert_test( array() === $db::for_player( -4 ) && array() === $wpdb->queries, 'negative player returns [] and runs no query' );
+
+echo "\n=== replaced_ids() ===\n\n";
+$wpdb             = new Splm_Scope_Wpdb();
+$wpdb->col_result = array( '4', '9' );
+$out              = $db::replaced_ids( array( 4, 9, '9', 12, 0, -3, 'x' ) );
+$sql              = $wpdb->queries[0];
+assert_test( array( 4, 9 ) === $out, 'replaced_ids maps the parent ids to ints' );
+assert_test( 1 === count( $wpdb->queries ), 'replaced_ids runs a single query' );
+assert_test( false !== strpos( $sql, 'parent_id IN (4,9,12)' ), 'ids are de-duplicated, positive-only, one placeholder each' );
+assert_test( false !== strpos( $sql, "status <> 'discarded'" ), 'discarded children do not count' );
+assert_test( false !== strpos( $sql, 'SELECT DISTINCT parent_id' ), 'selects distinct parent ids' );
+$wpdb = new Splm_Scope_Wpdb();
+assert_test( array() === $db::replaced_ids( array() ) && array() === $wpdb->queries, 'empty input returns [] with no query' );
+assert_test( array() === $db::replaced_ids( array( 0, -1, 'abc' ) ) && array() === $wpdb->queries, 'no valid ids returns [] with no query' );
+$wpdb->col_result = null;
+assert_test( array() === $db::replaced_ids( array( 5 ) ), 'a non-array result is treated as none' );
 
 echo "\n=== children_of() ===\n\n";
 $wpdb = new Splm_Scope_Wpdb();
