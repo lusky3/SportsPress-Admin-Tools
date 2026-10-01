@@ -21,6 +21,17 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * REST routes for issuing and inspecting manual suspensions.
+ *
+ * TooManyMethods: the routes with their args blocks, plus the pure planner and
+ * the small helpers that keep each method inside the complexity limit.
+ * ExcessiveClassComplexity: the sum of many small, individually simple
+ * methods; no single method is complex.
+ *
+ * @SuppressWarnings(PHPMD.TooManyMethods)
+ * @SuppressWarnings(PHPMD.ExcessiveClassComplexity)
+ */
 class SPLM_Discipline_Suspension_REST {
 
 	const REST_NAMESPACE = 'splm/v1';
@@ -444,6 +455,10 @@ class SPLM_Discipline_Suspension_REST {
 			return new WP_Error( 'invalid_player', __( 'That player does not exist.', 'sportspress-league-manager' ), array( 'status' => 400 ) );
 		}
 
+		if ( 0 === self::valid_season_id( $input['season_id'] ) ) {
+			return self::create_wp_error( 'invalid_season' );
+		}
+
 		$facts = self::gather_facts( $input, $infraction );
 		$plan  = self::plan_preview( $input, $infraction, $facts['elig'], $facts['player_email'], $facts['captains'], $facts['existing'], gmdate( 'Y-m-d' ) );
 
@@ -656,6 +671,22 @@ class SPLM_Discipline_Suspension_REST {
 	}
 
 	/**
+	 * The season id when it is a real sp_season term, else 0.
+	 *
+	 * @param int $season_id Season term id (0 when none could be found).
+	 * @return int
+	 */
+	private static function valid_season_id( int $season_id ): int {
+		if ( $season_id <= 0 ) {
+			return 0;
+		}
+
+		$term = get_term( $season_id, 'sp_season' );
+
+		return ( $term && ! is_wp_error( $term ) ) ? $season_id : 0;
+	}
+
+	/**
 	 * A 400 for one of create_error()'s codes.
 	 *
 	 * @param string $code Error code.
@@ -687,7 +718,7 @@ class SPLM_Discipline_Suspension_REST {
 		$input      = self::create_input( $request );
 		$infraction = self::active_infraction( $input['infraction_id'] );
 		$event_ok   = 0 === $input['incident_event_id'] || 'sp_event' === get_post_type( $input['incident_event_id'] );
-		$error      = self::create_error( $event_ok, 'sp_player' === get_post_type( $input['player_id'] ), $infraction, $input['season_id'] );
+		$error      = self::create_error( $event_ok, 'sp_player' === get_post_type( $input['player_id'] ), $infraction, self::valid_season_id( $input['season_id'] ) );
 
 		if ( '' !== $error ) {
 			return self::create_wp_error( $error );

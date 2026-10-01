@@ -16,6 +16,17 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * Decide, amend, revoke and recalculate a manual suspension.
+ *
+ * TooManyMethods: each action is a handler, a locked body, and small helpers
+ * that keep every method inside the complexity limit.
+ * ExcessiveClassComplexity: the sum of those small, individually simple
+ * planners and handlers; no single method is complex.
+ *
+ * @SuppressWarnings(PHPMD.TooManyMethods)
+ * @SuppressWarnings(PHPMD.ExcessiveClassComplexity)
+ */
 class SPLM_Discipline_Suspension_Actions {
 
 	/**
@@ -154,6 +165,8 @@ class SPLM_Discipline_Suspension_Actions {
 	 * @param int      $id Notice id.
 	 * @param callable $fn Callback.
 	 * @return mixed
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public static function with_notice_lock( int $id, callable $fn ) {
 		if ( ! class_exists( 'SPAT_Lock' ) ) {

@@ -93,6 +93,13 @@ SPLM_Privacy_Test_Harness::check( array_slice( $labels, 7 ) === array( 'Infracti
 $by_label = array_column( $fields, 'value', 'name' );
 SPLM_Privacy_Test_Harness::check( 'Fighting' === $by_label['Infraction'] && '5.10.1' === $by_label['Rule'] && 'suspended' === $by_label['Outcome'] && '2026-10-15' === $by_label['Projected eligible date'], 'new fields carry the row values' );
 
+$consequence = static function ( $value ) {
+	return array_column( SPLM_Discipline_Notice_Privacy::export_fields( splm_privacy_row( array( 'consequence' => $value ) ) ), 'value', 'name' )['Consequence'];
+};
+SPLM_Privacy_Test_Harness::check( 'Correction (notice withdrawn)' === $consequence( 'none' ), 'a correction row is labelled a correction, not a warning' );
+SPLM_Privacy_Test_Harness::check( 'Warning' === $consequence( 'warn' ), 'a warn row stays a warning' );
+SPLM_Privacy_Test_Harness::check( 0 === strpos( $consequence( 'suspend' ), 'Suspension' ), 'a suspend row stays a suspension' );
+
 $partial = splm_privacy_labels( SPLM_Discipline_Notice_Privacy::export_fields( splm_privacy_row( array( 'rule_ref' => '5.10.1' ) ) ) );
 SPLM_Privacy_Test_Harness::check( in_array( 'Rule', $partial, true ) && ! in_array( 'Infraction', $partial, true ), 'only non-empty new fields appear' );
 

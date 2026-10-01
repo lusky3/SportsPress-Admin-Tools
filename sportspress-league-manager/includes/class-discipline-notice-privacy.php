@@ -175,6 +175,8 @@ class SPLM_Discipline_Notice_Privacy {
 	 *
 	 * @param array $player_ids Player ids.
 	 * @return int Rows anonymised.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private static function anonymise_players( array $player_ids ): int {
 		global $wpdb;
@@ -277,6 +279,9 @@ class SPLM_Discipline_Notice_Privacy {
 	 * @return string
 	 */
 	private static function consequence_label( object $row ): string {
+		if ( 'none' === $row->consequence ) {
+			return __( 'Correction (notice withdrawn)', 'sportspress-league-manager' );
+		}
 		if ( 'suspend' !== $row->consequence ) {
 			return __( 'Warning', 'sportspress-league-manager' );
 		}

@@ -695,6 +695,10 @@ splm_susp_state()->season = 0;
 $bad = $instance->create( create_request() );
 check( 'create: no season', array( $bad->code, $bad->data['status'], splm_susp_state()->inserted ), array( 'invalid_season', 400, array() ) );
 splm_susp_state()->season = 5;
+$bad = $instance->create( create_request( array( 'season' => 99 ) ) );
+check( 'create: season that is not an sp_season term', array( $bad->code, $bad->data['status'], splm_susp_state()->inserted ), array( 'invalid_season', 400, array() ) );
+$bad = $instance->preview( preview_request( array( 'season' => 99 ) ) );
+check( 'preview: season that is not an sp_season term', array( $bad->code, $bad->data['status'] ), array( 'invalid_season', 400 ) );
 
 splm_susp_state()->lock_busy = true;
 $bad = $instance->create( create_request() );

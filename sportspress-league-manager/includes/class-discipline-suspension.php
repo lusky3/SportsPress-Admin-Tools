@@ -17,6 +17,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * ExcessiveClassComplexity: row building, duplicate detection, summary and
+ * delivery in one place; each method is small and the pure ones are tested
+ * branch by branch, so the class total is the only thing that trips the rule.
+ *
+ * @SuppressWarnings(PHPMD.ExcessiveClassComplexity)
+ */
 class SPLM_Discipline_Suspension {
 
 	/**
