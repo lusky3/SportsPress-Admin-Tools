@@ -75,7 +75,7 @@ class SPLM_Discipline_Suspension_Body {
 				$lines[] = $eligibility;
 			}
 
-			$lines[] = self::all_play_sentence( $audience, $ctx );
+			$lines[] = self::all_play_sentence( $audience );
 
 			if ( 'captain' === $audience ) {
 				$lines[] = __( "It is the team captain's responsibility to make sure a suspended player does not play. A team that plays a suspended player forfeits the game, and the player is removed from the league without refund.", 'sportspress-league-manager' );
@@ -236,10 +236,9 @@ class SPLM_Discipline_Suspension_Body {
 	 * All-play scope sentence. Audience-aware.
 	 *
 	 * @param string $audience player|captain.
-	 * @param array  $ctx      Context.
 	 * @return string
 	 */
-	private static function all_play_sentence( string $audience, array $ctx ): string {
+	private static function all_play_sentence( string $audience ): string {
 		if ( 'captain' === $audience ) {
 			return __( 'A suspension applies to ALL league play — every team the player is on, on any night — and a regular-season suspension carries into the playoffs.', 'sportspress-league-manager' );
 		}

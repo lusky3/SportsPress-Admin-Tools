@@ -237,6 +237,8 @@ class SPLM_Discipline_Notice_Database {
 	/**
 	 * Create the table on first run or after a version bump.
 	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
 	 * @return void
 	 */
 	public static function maybe_upgrade(): void {

@@ -144,46 +144,7 @@ class SPLM_Discipline_Eligibility {
 
 		$events = array();
 		foreach ( $teams as $team_id ) {
-			$ids = get_posts(
-				array(
-					'post_type'      => 'sp_event',
-					'post_status'    => array( 'publish', 'future' ),
-					// Postponed/cancelled are excluded in the query, so this cap is safe;
-					// +6 = the games sat plus the eligible one, with slack.
-					'posts_per_page' => $games + 6,
-					'orderby'        => array(
-						'date' => 'ASC',
-						'ID'   => 'ASC',
-					),
-					'date_query'     => array(
-						array(
-							'after'     => $after_date . ' 23:59:59',
-							'inclusive' => false,
-						),
-					),
-					'meta_query'     => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
-						'relation' => 'AND',
-						array(
-							'key'   => 'sp_team',
-							'value' => $team_id,
-						),
-						// A postponed or cancelled fixture does not use up a suspension game.
-						array(
-							'relation' => 'OR',
-							array(
-								'key'     => 'sp_status',
-								'value'   => array( 'postponed', 'cancelled' ),
-								'compare' => 'NOT IN',
-							),
-							array(
-								'key'     => 'sp_status',
-								'compare' => 'NOT EXISTS',
-							),
-						),
-					),
-					'fields'         => 'ids',
-				)
-			);
+			$ids = get_posts( self::event_query_args( (int) $team_id, $after_date, $games ) );
 
 			foreach ( (array) $ids as $event_id ) {
 				$events[] = array(
@@ -195,5 +156,54 @@ class SPLM_Discipline_Eligibility {
 		}
 
 		return self::pick_nth( $events, $games );
+	}
+
+	/**
+	 * Query args for one team's upcoming events.
+	 *
+	 * @param int    $team_id    Team post id.
+	 * @param string $after_date Local 'Y-m-d' boundary.
+	 * @param int    $games      Games owed.
+	 * @return array get_posts() args.
+	 */
+	private static function event_query_args( int $team_id, string $after_date, int $games ): array {
+		return array(
+			'post_type'      => 'sp_event',
+			'post_status'    => array( 'publish', 'future' ),
+			// Postponed/cancelled are excluded in the query, so this cap is safe;
+			// +6 = the games sat plus the eligible one, with slack.
+			'posts_per_page' => $games + 6,
+			'orderby'        => array(
+				'date' => 'ASC',
+				'ID'   => 'ASC',
+			),
+			'date_query'     => array(
+				array(
+					'after'     => $after_date . ' 23:59:59',
+					'inclusive' => false,
+				),
+			),
+			'meta_query'     => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+				'relation' => 'AND',
+				array(
+					'key'   => 'sp_team',
+					'value' => $team_id,
+				),
+				// A postponed or cancelled fixture does not use up a suspension game.
+				array(
+					'relation' => 'OR',
+					array(
+						'key'     => 'sp_status',
+						'value'   => array( 'postponed', 'cancelled' ),
+						'compare' => 'NOT IN',
+					),
+					array(
+						'key'     => 'sp_status',
+						'compare' => 'NOT EXISTS',
+					),
+				),
+			),
+			'fields'         => 'ids',
+		);
 	}
 }
