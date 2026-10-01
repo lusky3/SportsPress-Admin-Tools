@@ -43,6 +43,7 @@ class SPLM_Autoloader {
 			'SPLM_Dashboard_Frontend'    => $base . 'class-dashboard-frontend.php',
 			'SPLM_Discipline_Database'   => $base . 'class-discipline-database.php',
 			'SPLM_Discipline_Digest'     => $base . 'class-discipline-digest.php',
+			'SPLM_Discipline_Digest_Reminders' => $base . 'class-discipline-digest-reminders.php',
 			'SPLM_Discipline_Eligibility' => $base . 'class-discipline-eligibility.php',
 			'SPLM_Discipline_Incident_Games' => $base . 'class-discipline-incident-games.php',
 			'SPLM_Discipline_Infraction' => $base . 'class-discipline-infraction.php',
