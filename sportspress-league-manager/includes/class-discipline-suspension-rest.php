@@ -518,6 +518,19 @@ class SPLM_Discipline_Suspension_REST {
 	 * @return string 'Y-m-d'.
 	 */
 	public static function after_date( int $event_id ): string {
+		$date = self::incident_date( $event_id );
+
+		return '' === $date ? current_time( 'Y-m-d' ) : $date;
+	}
+
+	/**
+	 * The local date of a valid incident match, or '' when there is none (no
+	 * id, not an sp_event any more, or trashed).
+	 *
+	 * @param int $event_id Incident event id (0 for none).
+	 * @return string 'Y-m-d' or ''.
+	 */
+	public static function incident_date( int $event_id ): string {
 		if ( $event_id > 0 && 'sp_event' === get_post_type( $event_id ) ) {
 			$event = get_post( $event_id );
 			if ( $event && ! empty( $event->post_date ) ) {
@@ -525,7 +538,7 @@ class SPLM_Discipline_Suspension_REST {
 			}
 		}
 
-		return current_time( 'Y-m-d' );
+		return '';
 	}
 
 	/**

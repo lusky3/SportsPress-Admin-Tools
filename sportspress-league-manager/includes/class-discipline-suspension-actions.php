@@ -228,26 +228,6 @@ class SPLM_Discipline_Suspension_Actions {
 	}
 
 	/**
-	 * Eligibility date and schedule shortfall for a games count. A 0-game
-	 * suspension carries no date.
-	 *
-	 * @param object $parent Parent row (player and season).
-	 * @param string $after  Local 'Y-m-d' games count from.
-	 * @param int    $games  Games.
-	 * @return array eligible_on (string|null), remaining (int).
-	 *
-	 * @SuppressWarnings(PHPMD.StaticAccess)
-	 */
-	private static function eligibility_for( object $parent, string $after, int $games ): array {
-		$elig = SPLM_Discipline_Eligibility::next_eligible( (int) $parent->player_id, (int) $parent->season_id, $after, $games );
-
-		return array(
-			'eligible_on' => ( $games > 0 && ! empty( $elig['date'] ) ) ? substr( (string) $elig['date'], 0, 10 ) : null,
-			'remaining'   => (int) ( $elig['remaining'] ?? 0 ),
-		);
-	}
-
-	/**
 	 * A delivery result for an action that mailed nothing.
 	 *
 	 * @return array
@@ -369,7 +349,7 @@ class SPLM_Discipline_Suspension_Actions {
 			return self::action_error( $error );
 		}
 
-		$elig  = self::eligibility_for( $parent, current_time( 'Y-m-d' ), $games );
+		$elig  = SPLM_Discipline_Suspension_Release::eligibility_for( $parent, current_time( 'Y-m-d' ), $games );
 		$child = SPLM_Discipline_Suspension::build_child_row(
 			$parent,
 			'decided',
@@ -417,7 +397,7 @@ class SPLM_Discipline_Suspension_Actions {
 			return self::action_error( $error );
 		}
 
-		$elig  = self::eligibility_for( $parent, SPLM_Discipline_Suspension_Release::count_from( $parent ), $games );
+		$elig  = SPLM_Discipline_Suspension_Release::eligibility_for( $parent, SPLM_Discipline_Suspension_Release::count_from( $parent ), $games );
 		$child = SPLM_Discipline_Suspension::build_child_row(
 			$parent,
 			'amended',
@@ -542,7 +522,7 @@ class SPLM_Discipline_Suspension_Actions {
 			return self::action_error( $error );
 		}
 
-		$elig = self::eligibility_for( $parent, SPLM_Discipline_Suspension_Release::count_from( $parent ), (int) $parent->games );
+		$elig = SPLM_Discipline_Suspension_Release::eligibility_for( $parent, SPLM_Discipline_Suspension_Release::count_from( $parent ), (int) $parent->games );
 		if ( ! SPLM_Discipline_Notice_Database::update( $id, array( 'eligible_on' => $elig['eligible_on'] ) ) ) {
 			return self::write_failed();
 		}

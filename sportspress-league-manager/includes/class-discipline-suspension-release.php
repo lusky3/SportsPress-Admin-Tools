@@ -36,38 +36,77 @@ class SPLM_Discipline_Suspension_Release {
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public static function release_row( object $row ) {
-		$id     = (int) $row->id;
-		$ctx    = SPLM_Discipline_Suspension_Context::for_row( $row, self::release_extra( $row ) );
+		$id   = (int) $row->id;
+		$elig = self::release_eligibility( $row );
+
+		// The stored date is refreshed first, so the email and the row agree.
+		if ( null !== $elig ) {
+			if ( ! SPLM_Discipline_Notice_Database::update( $id, array( 'eligible_on' => $elig['eligible_on'] ) ) ) {
+				return new WP_Error( 'splm_notice_write_failed', __( 'Could not save the suspension.', 'sportspress-league-manager' ), array( 'status' => 500 ) );
+			}
+			$row              = clone $row;
+			$row->eligible_on = $elig['eligible_on'];
+		}
+
+		$ctx    = SPLM_Discipline_Suspension_Context::for_row( $row, self::release_extra( $row, $elig ) );
 		$result = SPLM_Discipline_Suspension::deliver( $id, $ctx, self::release_kind( $row ) );
 
 		return self::release_response( $id, $result );
 	}
 
 	/**
-	 * Context extras for a release: the schedule shortfall is recomputed (it
-	 * may have changed since the draft) but only for a games outcome, and an
-	 * amendment carries the length it replaced so a retry still reads
-	 * "changed from X to Y".
+	 * Eligibility recomputed at release time (the schedule may have changed
+	 * since the draft), for a games outcome only.
 	 *
 	 * @param object $row Manual notice row.
+	 * @return array|null eligible_on, remaining; null for an indefinite outcome.
+	 */
+	private static function release_eligibility( object $row ): ?array {
+		if ( 'games' !== (string) $row->outcome ) {
+			return null;
+		}
+
+		return self::eligibility_for( $row, self::count_from( $row, true ), (int) $row->games );
+	}
+
+	/**
+	 * Eligibility date and schedule shortfall for a games count. A 0-game
+	 * suspension carries no date.
+	 *
+	 * @param object $row   Notice row (player and season).
+	 * @param string $after Local 'Y-m-d' games count from.
+	 * @param int    $games Games.
+	 * @return array eligible_on (string|null), remaining (int).
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	public static function eligibility_for( object $row, string $after, int $games ): array {
+		$elig = SPLM_Discipline_Eligibility::next_eligible( (int) $row->player_id, (int) $row->season_id, $after, $games );
+
+		return array(
+			'eligible_on' => ( $games > 0 && ! empty( $elig['date'] ) ) ? substr( (string) $elig['date'], 0, 10 ) : null,
+			'remaining'   => (int) ( $elig['remaining'] ?? 0 ),
+		);
+	}
+
+	/**
+	 * Context extras for a release: the team names, the schedule shortfall, and
+	 * for an amendment the length it replaced so a retry still reads "changed
+	 * from X to Y".
+	 *
+	 * @param object     $row  Manual notice row.
+	 * @param array|null $elig release_eligibility() result.
 	 * @return array
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
-	private static function release_extra( object $row ): array {
+	private static function release_extra( object $row, ?array $elig ): array {
 		$scope = (string) ( $row->scope ?? '' );
 		$extra = array( 'team_names' => (string) $row->team );
 		$extra = array_merge( $extra, self::prior_games_extra( $scope, self::parent_of( $row ) ) );
 
-		if ( 'games' === (string) $row->outcome ) {
-			$elig = SPLM_Discipline_Eligibility::next_eligible(
-				(int) $row->player_id,
-				(int) $row->season_id,
-				self::count_from( $row ),
-				(int) $row->games
-			);
-
-			$extra['remaining'] = (int) ( $elig['remaining'] ?? 0 );
+		if ( null !== $elig ) {
+			$extra['remaining'] = $elig['remaining'];
 		}
 
 		return $extra;
@@ -108,19 +147,23 @@ class SPLM_Discipline_Suspension_Release {
 	}
 
 	/**
-	 * Date a row's games are counted from. Must match how decide, amend and
-	 * recalculate compute eligible_on, so a retried release agrees with it: a
-	 * decision counts from the day it was made (an indefinite suspension's games
-	 * start then); issued and amended rows count from the incident. Pure.
+	 * Date a row's games are counted from. Must match how decide, amend,
+	 * recalculate and release compute eligible_on. A decision counts from the
+	 * day it was made (an indefinite suspension's games start then); issued and
+	 * amended rows count from the incident, or, when there is no valid incident,
+	 * from the day the root suspension was issued, so amending or recalculating
+	 * later never moves the start forward. Pure.
 	 *
 	 * @param string $scope         Scope of the anchor row (see count_from()).
 	 * @param string $incident_date 'Y-m-d' of the incident match, or '' when none.
 	 * @param string $decision_date 'Y-m-d' (site-local) the decision row was created, or ''.
+	 * @param string $issued_date   'Y-m-d' (site-local) the root suspension was sent (else created), or ''.
 	 * @param string $today         'Y-m-d' local today, the fallback for a missing date.
 	 * @return string
 	 */
-	public static function count_from_date( string $scope, string $incident_date, string $decision_date, string $today ): string {
-		$date = 'manual-decided' === $scope ? $decision_date : $incident_date;
+	public static function count_from_date( string $scope, string $incident_date, string $decision_date, string $issued_date, string $today ): string {
+		$issued = '' !== $incident_date ? $incident_date : $issued_date;
+		$date   = 'manual-decided' === $scope ? $decision_date : $issued;
 
 		return '' === $date ? $today : $date;
 	}
@@ -129,19 +172,35 @@ class SPLM_Discipline_Suspension_Release {
 	 * The count-from date for a stored row. An amendment counts from wherever
 	 * the row it replaced did, so the chain is followed back to its anchor.
 	 *
-	 * @param object $row Manual notice row.
+	 * @param object $row         Manual notice row.
+	 * @param bool   $issuing_now The row is being released now: an unsent root has no
+	 *                            issued date yet, so it counts from today.
 	 * @return string 'Y-m-d'.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
-	public static function count_from( object $row ): string {
+	public static function count_from( object $row, bool $issuing_now = false ): string {
 		$anchor  = self::anchor_row( $row );
-		$created = (string) ( $anchor->created_at ?? '' );
+		$created = self::local_date( (string) ( $anchor->created_at ?? '' ) );
+		$sent    = self::local_date( (string) ( $anchor->sent_at ?? '' ) );
 
 		return self::count_from_date(
 			(string) ( $anchor->scope ?? '' ),
-			SPLM_Discipline_Suspension_REST::after_date( (int) ( $anchor->incident_event_id ?? 0 ) ),
-			'' === $created ? '' : get_date_from_gmt( $created, 'Y-m-d' ),
+			SPLM_Discipline_Suspension_REST::incident_date( (int) ( $anchor->incident_event_id ?? 0 ) ),
+			$created,
+			'' !== $sent || $issuing_now ? $sent : $created,
 			current_time( 'Y-m-d' )
 		);
+	}
+
+	/**
+	 * A stored UTC datetime as the site-local 'Y-m-d', or '' when empty.
+	 *
+	 * @param string $gmt 'Y-m-d H:i:s' in UTC.
+	 * @return string
+	 */
+	private static function local_date( string $gmt ): string {
+		return '' === $gmt ? '' : get_date_from_gmt( $gmt, 'Y-m-d' );
 	}
 
 	/**

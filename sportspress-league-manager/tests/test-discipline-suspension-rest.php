@@ -791,11 +791,11 @@ check( 'create rejects a retired infraction', array( $bad->code, $bad->data['sta
 check( 'prior_games from the parent of an amended row', $release::prior_games_extra( 'manual-amended', (object) array( 'games' => 4 ) ), array( 'prior_games' => 4 ) );
 check( 'no prior_games for other scopes', array( $release::prior_games_extra( 'manual', (object) array( 'games' => 4 ) ), $release::prior_games_extra( 'manual-decided', (object) array( 'games' => 4 ) ) ), array( array(), array() ) );
 check( 'no prior_games without a parent', $release::prior_games_extra( 'manual-amended', null ), array() );
-check( 'decided counts from the decision date', $release::count_from_date( 'manual-decided', '2026-09-01', '2026-09-20', '2026-10-01' ), '2026-09-20' );
-check( 'decided without a decision date counts from today', $release::count_from_date( 'manual-decided', '2026-09-01', '', '2026-10-01' ), '2026-10-01' );
-check( 'amended counts from the incident date', $release::count_from_date( 'manual-amended', '2026-09-01', '2026-09-20', '2026-10-01' ), '2026-09-01' );
-check( 'issued counts from the incident date', $release::count_from_date( 'manual', '2026-09-01', '2026-09-20', '2026-10-01' ), '2026-09-01' );
-check( 'issued without an incident counts from today', $release::count_from_date( 'manual', '', '2026-09-20', '2026-10-01' ), '2026-10-01' );
+check( 'decided counts from the decision date', $release::count_from_date( 'manual-decided', '2026-09-01', '2026-09-20', '', '2026-10-01' ), '2026-09-20' );
+check( 'decided without a decision date counts from today', $release::count_from_date( 'manual-decided', '2026-09-01', '', '', '2026-10-01' ), '2026-10-01' );
+check( 'amended counts from the incident date', $release::count_from_date( 'manual-amended', '2026-09-01', '2026-09-20', '', '2026-10-01' ), '2026-09-01' );
+check( 'issued counts from the incident date', $release::count_from_date( 'manual', '2026-09-01', '2026-09-20', '', '2026-10-01' ), '2026-09-01' );
+check( 'issued without an incident counts from today', $release::count_from_date( 'manual', '', '2026-09-20', '', '2026-10-01' ), '2026-10-01' );
 splm_susp_state()->rows[20]            = build_manual_row( 'manual-decided', 20 );
 splm_susp_state()->rows[20]->created_at = '2026-10-02 02:00:00';
 splm_susp_state()->rows[21]            = build_manual_row( 'manual-amended', 21 );
@@ -1032,7 +1032,7 @@ check( 'amend body says changed from 3 games to 2 games', false !== strpos( splm
 check( 'amend order', splm_susp_state()->calls, array( 'lock:splm_discipline_notice_1', 'children_of', 'insert', 'lock:splm_discipline_notice_100', 'mail:jane@example.com', 'mail:cap@example.com' ) );
 reset_action();
 $actions::amend( action_request( array( 'id' => 1, 'games' => 1 ) ) );
-check( 'amend without an incident counts from today', splm_susp_state()->elig_args[0][2], '2026-10-01' );
+check( 'amend without an incident counts from the issued date (created_at when never sent), not today', splm_susp_state()->elig_args[0][2], '2026-09-20' );
 reset_action();
 $res = $actions::amend( action_request( array( 'id' => 1, 'games' => 0 ) ) );
 check( 'amend to 0 games stores no eligibility date', array( $res->status, splm_susp_state()->inserted[0]['games'], splm_susp_state()->inserted[0]['eligible_on'] ), array( 200, 0, null ) );
@@ -1188,6 +1188,73 @@ reset_action();
 splm_susp_state()->fail_update = array( 1 );
 $bad = $actions::recalculate( action_request( array( 'id' => 1 ) ) );
 check( 'recalculate: update failure is a 500', array( $bad->code, $bad->data['status'] ), array( 'splm_notice_write_failed', 500 ) );
+
+// A no-incident suspension keeps the date it was issued on, however often it is amended or recalculated.
+function noinc_parent( $over = array() ) {
+	return parent_row( array_merge( array( 'incident_event_id' => 0, 'sent_at' => '2026-09-12 14:00:00', 'created_at' => '2026-09-12 13:00:00' ), $over ) );
+}
+check( 'pure: no incident counts from the issued date', $release::count_from_date( 'manual', '', '', '2026-09-12', '2026-10-01' ), '2026-09-12' );
+check( 'pure: the incident date wins over the issued date', $release::count_from_date( 'manual', '2026-09-01', '', '2026-09-12', '2026-10-01' ), '2026-09-01' );
+check( 'pure: amended without an incident counts from the issued date', $release::count_from_date( 'manual-amended', '', '', '2026-09-12', '2026-10-01' ), '2026-09-12' );
+check( 'pure: nothing known counts from today', $release::count_from_date( 'manual', '', '', '', '2026-10-01' ), '2026-10-01' );
+check( 'pure: a decision ignores the issued date', $release::count_from_date( 'manual-decided', '', '2026-09-20', '2026-09-12', '2026-10-01' ), '2026-09-20' );
+
+reset_action();
+splm_susp_state()->rows[1] = noinc_parent();
+$actions::amend( action_request( array( 'id' => 1, 'games' => 2 ) ) );
+check( 'amend 19 days later keeps the original count-from date', splm_susp_state()->elig_args[0][2], '2026-09-12' );
+
+reset_action();
+splm_susp_state()->rows[1] = noinc_parent();
+$actions::recalculate( action_request( array( 'id' => 1 ) ) );
+$actions::recalculate( action_request( array( 'id' => 1 ) ) );
+check( 'repeated recalculate does not drift', array( splm_susp_state()->elig_args[0][2], splm_susp_state()->elig_args[1][2] ), array( '2026-09-12', '2026-09-12' ) );
+
+reset_action();
+splm_susp_state()->rows[1] = noinc_parent( array( 'incident_event_id' => 99 ) );
+$actions::recalculate( action_request( array( 'id' => 1 ) ) );
+check( 'a trashed or invalid incident event behaves like no incident', splm_susp_state()->elig_args[0][2], '2026-09-12' );
+
+reset_action();
+splm_susp_state()->rows[1] = noinc_parent( array( 'sent_at' => null ) );
+$actions::recalculate( action_request( array( 'id' => 1 ) ) );
+check( 'without sent_at the created_at date is used', splm_susp_state()->elig_args[0][2], '2026-09-12' );
+
+reset_action();
+splm_susp_state()->rows[1] = noinc_parent( array( 'incident_event_id' => 31 ) );
+$actions::recalculate( action_request( array( 'id' => 1 ) ) );
+check( 'a valid incident still counts from the incident date', splm_susp_state()->elig_args[0][2], '2026-10-03' );
+
+reset_action();
+splm_susp_state()->rows[1]                    = noinc_parent();
+splm_susp_state()->rows[2]                    = parent_row( array( 'id' => 2, 'scope' => 'manual-amended', 'parent_id' => 1, 'incident_event_id' => 0, 'sent_at' => '2026-09-25 10:00:00', 'created_at' => '2026-09-25 09:00:00' ) );
+$actions::recalculate( action_request( array( 'id' => 2 ) ) );
+check( 'an amended row follows the chain to the root issued row', splm_susp_state()->elig_args[0][2], '2026-09-12' );
+
+// Releasing a draft recomputes eligible_on first, and the email carries the same date.
+reset_action();
+splm_susp_state()->rows[7]                = build_manual_row( 'manual', 7 );
+splm_susp_state()->rows[7]->eligible_on   = '2026-01-01';
+splm_susp_state()->rows[7]->created_at    = '2026-09-12 13:00:00';
+splm_susp_state()->rows[7]->incident_event_id = 0;
+$res = $release::release_row( splm_susp_state()->rows[7] );
+check( 'a no-incident draft counts from today at release', splm_susp_state()->elig_args[0][2], '2026-10-01' );
+check( 'release persists only eligible_on, before any mail', array( splm_susp_state()->writes[0], splm_susp_state()->updates[0] ), array( 'update:7:eligible_on', array( 7, array( 'eligible_on' => '2026-10-17' ) ) ) );
+check( 'the email carries the recomputed date, not the stale one', array( false !== strpos( splm_susp_state()->mails[0]['body'], '2026-10-17' ), false === strpos( splm_susp_state()->mails[0]['body'], '2026-01-01' ) ), array( true, true ) );
+check( 'release still succeeds', $res->status, 200 );
+
+reset_action();
+splm_susp_state()->rows[7]       = build_manual_row( 'manual', 7 );
+splm_susp_state()->fail_update   = array( 7 );
+$bad = $release::release_row( splm_susp_state()->rows[7] );
+check( 'a failed eligibility write is a 500 and nothing is mailed', array( $bad->code, $bad->data['status'], splm_susp_state()->mails ), array( 'splm_notice_write_failed', 500, array() ) );
+
+reset_action();
+splm_susp_state()->rows[7]          = build_manual_row( 'manual', 7 );
+splm_susp_state()->rows[7]->outcome = 'indefinite';
+splm_susp_state()->rows[7]->games   = 0;
+$release::release_row( splm_susp_state()->rows[7] );
+check( 'an indefinite draft computes and writes no eligibility', array( splm_susp_state()->elig_args, in_array( 'update:7:eligible_on', splm_susp_state()->writes, true ) ), array( array(), false ) );
 
 // No incident_note in any mail built by the action routes.
 reset_action();
