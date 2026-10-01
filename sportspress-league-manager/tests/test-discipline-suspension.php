@@ -196,5 +196,39 @@ assert_test( 'private' === $out['incident_note'], 'incident_note present when re
 $new->captains_notified = 'not json';
 assert_test( array() === $rest::row_to_response( $new )['captains_notified'], 'invalid captains_notified JSON becomes []' );
 
+echo "\n=== build_child_row() ===\n\n";
+$parent = (object) array(
+	'id' => 40, 'player_id' => 9, 'season_id' => 4, 'severity' => 'critical', 'ack_key' => 'manual:5', 'team' => 'Wolves', 'division' => '',
+	'infraction_id' => 5, 'rule_ref' => '6.5', 'infraction_title' => 'Fighting', 'rule_text' => 'RT', 'outcome' => 'games',
+	'incident_event_id' => 70, 'incident_note' => 'private', 'games' => 3, 'eligible_on' => '2026-10-27',
+);
+$dec = $s::build_child_row( $parent, 'decided', array( 'games' => 4, 'eligible_on' => '2026-11-03 21:00:00' ) );
+assert_test( 'manual-decided' === $dec['scope'] && 40 === $dec['parent_id'] && 'manual' === $dec['source'] && 'manual' === $dec['tier_key'], 'decided: scope, parent, source, tier_key' );
+assert_test( 'manual:5' === $dec['ack_key'] && 'critical' === $dec['severity'] && 9 === $dec['player_id'] && 4 === $dec['season_id'], 'decided: ack_key, severity, player and season copied' );
+assert_test( 'games' === $dec['outcome'] && 4 === $dec['games'] && 'suspend' === $dec['consequence'] && 'pending' === $dec['status'], 'decided: games outcome, 4 games, suspend, pending' );
+assert_test( '2026-11-03' === $dec['eligible_on'], 'decided: eligible_on trimmed to the date' );
+assert_test( 5 === $dec['infraction_id'] && '6.5' === $dec['rule_ref'] && 'Fighting' === $dec['infraction_title'] && 'RT' === $dec['rule_text'] && 70 === $dec['incident_event_id'] && 'Wolves' === $dec['team'], 'decided: snapshot and incident reference copied' );
+assert_test( '' === $dec['incident_note'], 'decided: the parent private note is not duplicated onto the child' );
+$ind_parent = clone $parent;
+$ind_parent->outcome = 'indefinite';
+$ind_parent->games   = 0;
+assert_test( 'games' === $s::build_child_row( $ind_parent, 'decided', array( 'games' => 2 ) )['outcome'], 'decided: an indefinite parent becomes a games outcome' );
+assert_test( 1 === $s::build_child_row( $parent, 'decided', array( 'games' => 0 ) )['games'], 'decided: games clamped up to 1' );
+assert_test( 20 === $s::build_child_row( $parent, 'decided', array( 'games' => 99 ) )['games'], 'decided: games clamped down to 20' );
+assert_test( null === $s::build_child_row( $parent, 'decided', array( 'games' => 2 ) )['eligible_on'], 'decided: no eligible_on field gives null' );
+
+$amd = $s::build_child_row( $parent, 'amended', array( 'games' => 6, 'eligible_on' => '2026-11-10' ) );
+assert_test( 'manual-amended' === $amd['scope'] && 6 === $amd['games'] && 'games' === $amd['outcome'] && 'suspend' === $amd['consequence'] && 'pending' === $amd['status'], 'amended: scope, games, outcome, suspend, pending' );
+assert_test( '2026-11-10' === $amd['eligible_on'], 'amended: eligible_on from fields' );
+assert_test( 0 === $s::build_child_row( $parent, 'amended', array( 'games' => -3 ) )['games'], 'amended: games may be clamped down to 0' );
+assert_test( 20 === $s::build_child_row( $parent, 'amended', array( 'games' => 500 ) )['games'], 'amended: games clamped to 20' );
+
+$rev = $s::build_child_row( $parent, 'revoked', array() );
+assert_test( 'manual-revoked' === $rev['scope'] && 'none' === $rev['consequence'] && 0 === $rev['games'] && null === $rev['eligible_on'], 'revoked: scope, consequence none, 0 games, no eligible_on' );
+assert_test( 'pending' === $rev['status'], 'revoked: pending by default' );
+assert_test( 'pending' === $s::build_child_row( $parent, 'revoked', array( 'notify' => true ) )['status'], 'revoked: notify=true stays pending' );
+assert_test( 'discarded' === $s::build_child_row( $parent, 'revoked', array( 'notify' => false ) )['status'], 'revoked: notify=false is stored discarded' );
+assert_test( 40 === $rev['parent_id'] && 'games' === $rev['outcome'] && 70 === $rev['incident_event_id'], 'revoked: parent link and snapshot copied' );
+
 echo "\nPassed: {$passed}  Failed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );

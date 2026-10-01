@@ -62,6 +62,96 @@ class SPLM_Discipline_Suspension {
 	}
 
 	/**
+	 * Build the follow-up row for a decide / amend / revoke. Pure.
+	 *
+	 * The parent is never edited once sent; the child carries the new state and
+	 * points back through parent_id. The parent's private incident note stays on
+	 * the parent.
+	 *
+	 * @param object $parent Parent notice row.
+	 * @param string $kind   decided|amended|revoked.
+	 * @param array  $fields Keys: games, eligible_on, notify (revoked only).
+	 * @return array Row for SPLM_Discipline_Notice_Database::insert().
+	 */
+	public static function build_child_row( object $parent, string $kind, array $fields ): array {
+		$specific = 'revoked' === $kind
+			? self::revoked_fields( $parent, $fields )
+			: self::resumed_fields( $parent, $kind, $fields );
+
+		return array_merge( self::child_base( $parent, $kind ), $specific );
+	}
+
+	/**
+	 * Columns every child row copies from its parent.
+	 *
+	 * @param object $parent Parent notice row.
+	 * @param string $kind   decided|amended|revoked.
+	 * @return array
+	 */
+	private static function child_base( object $parent, string $kind ): array {
+		return array(
+			'player_id'         => (int) $parent->player_id,
+			'season_id'         => (int) $parent->season_id,
+			'tier_key'          => 'manual',
+			'ack_key'           => (string) $parent->ack_key,
+			'scope'             => 'manual-' . $kind,
+			'severity'          => (string) $parent->severity,
+			'team'              => (string) $parent->team,
+			'division'          => (string) $parent->division,
+			'source'            => 'manual',
+			'infraction_id'     => (int) $parent->infraction_id,
+			'rule_ref'          => (string) $parent->rule_ref,
+			'infraction_title'  => (string) $parent->infraction_title,
+			'rule_text'         => (string) $parent->rule_text,
+			'incident_event_id' => (int) $parent->incident_event_id,
+			'incident_note'     => '',
+			'parent_id'         => (int) $parent->id,
+		);
+	}
+
+	/**
+	 * Outcome columns for a decided or amended child.
+	 *
+	 * A decision always ends up a games suspension; an amendment keeps the
+	 * parent's outcome and may shorten to 0 games.
+	 *
+	 * @param object $parent Parent notice row.
+	 * @param string $kind   decided|amended.
+	 * @param array  $fields Keys: games, eligible_on.
+	 * @return array
+	 */
+	private static function resumed_fields( object $parent, string $kind, array $fields ): array {
+		$decided     = 'decided' === $kind;
+		$eligible_on = empty( $fields['eligible_on'] ) ? null : substr( (string) $fields['eligible_on'], 0, 10 );
+
+		return array(
+			'outcome'     => $decided ? 'games' : (string) $parent->outcome,
+			'games'       => max( $decided ? 1 : 0, min( SPLM_Discipline_Infraction::MAX_GAMES, (int) ( $fields['games'] ?? 0 ) ) ),
+			'consequence' => 'suspend',
+			'eligible_on' => $eligible_on,
+			'status'      => 'pending',
+		);
+	}
+
+	/**
+	 * Outcome columns for a revocation's correction row: it carries no
+	 * consequence, so it never counts as a suspension or warning.
+	 *
+	 * @param object $parent Parent notice row.
+	 * @param array  $fields Key: notify (false stores the row discarded, no mail).
+	 * @return array
+	 */
+	private static function revoked_fields( object $parent, array $fields ): array {
+		return array(
+			'outcome'     => (string) $parent->outcome,
+			'games'       => 0,
+			'consequence' => 'none',
+			'eligible_on' => null,
+			'status'      => false === ( $fields['notify'] ?? true ) ? 'discarded' : 'pending',
+		);
+	}
+
+	/**
 	 * Whether issuing this would duplicate an existing manual notice.
 	 *
 	 * Same player + infraction + incident match; with no incident match, the
