@@ -442,7 +442,7 @@ export default function SuspensionModal( { player, season, onClose, onDone } ) {
 
 				{ infractionsError && <div className="splm-alert splm-alert--error" role="alert">{ infractionsError }</div> }
 				{ loadingInfractions && <p role="status" className="splm-discipline-muted">Loading infractions…</p> }
-				{ noInfractions && <p className="splm-discipline-muted">No infractions are configured yet.</p> }
+				{ noInfractions && <p className="splm-discipline-muted">No active infractions. An administrator can add or re-activate them under Settings → SportsPress Admin Tools → League Manager → Discipline Rules.</p> }
 
 				<form className="splm-discipline-form" onSubmit={ ( e ) => e.preventDefault() } noValidate>
 					<label htmlFor={ ids.infraction }>Infraction</label>

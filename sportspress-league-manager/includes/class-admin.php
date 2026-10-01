@@ -250,23 +250,23 @@ class SPLM_Admin {
 		register_setting( 'splm_backend_settings', 'splm_discipline_rulebook_rev', array( 'sanitize_callback' => array( 'SPLM_Discipline_Suspension_Context', 'sanitize_rulebook_rev' ) ) );
 
 		$this->add_field( 'splm_default_season', __( 'Season Override', 'sportspress-league-manager' ), array( $this, 'render_default_season_field' ) );
-		$this->add_field( 'splm_fee_source', __( 'Fee Integration Source', 'sportspress-league-manager' ), array( $this, 'render_fee_source_field' ) );
+		$this->add_field( 'splm_fee_source', __( 'Fee Integration Source', 'sportspress-league-manager' ), array( $this, 'render_fee_source_field' ), 'splm_backend_section', array( 'label_for' => '' ) );
 		$this->add_field( 'splm_debug_logging', __( 'Debug Logging', 'sportspress-league-manager' ), array( $this, 'render_debug_logging_field' ) );
 		$this->add_field( 'splm_admin_bar_link_enabled', __( 'Admin Bar Link', 'sportspress-league-manager' ), array( $this, 'render_admin_bar_link_field' ) );
 		$this->add_field( 'splm_roster_max_upload_kb', __( 'Roster Upload Max Size (KB)', 'sportspress-league-manager' ), array( $this, 'render_roster_max_upload_field' ) );
-		$this->add_field( 'splm_comparison_stat_keys', __( 'Team Comparison Stats', 'sportspress-league-manager' ), array( $this, 'render_comparison_stat_keys_field' ) );
-		$this->add_field( 'splm_report_stat_keys', __( 'Season Report Leader Categories', 'sportspress-league-manager' ), array( $this, 'render_report_stat_keys_field' ) );
+		$this->add_field( 'splm_comparison_stat_keys', __( 'Team Comparison Stats', 'sportspress-league-manager' ), array( $this, 'render_comparison_stat_keys_field' ), 'splm_backend_section', array( 'label_for' => '' ) );
+		$this->add_field( 'splm_report_stat_keys', __( 'Season Report Leader Categories', 'sportspress-league-manager' ), array( $this, 'render_report_stat_keys_field' ), 'splm_backend_section', array( 'label_for' => '' ) );
 		$this->add_field( 'splm_report_leader_count', __( 'Leaders Per Category', 'sportspress-league-manager' ), array( $this, 'render_report_leader_count_field' ) );
 		$this->add_field( 'splm_discipline_window_weeks', __( 'Penalty Window (weeks)', 'sportspress-league-manager' ), array( $this, 'render_discipline_window_field' ) );
-		$this->add_field( 'splm_discipline_tiers', __( 'Penalty Thresholds', 'sportspress-league-manager' ), array( $this, 'render_discipline_tiers_field' ) );
+		$this->add_field( 'splm_discipline_tiers', __( 'Penalty Thresholds', 'sportspress-league-manager' ), array( $this, 'render_discipline_tiers_field' ), 'splm_backend_section', array( 'label_for' => '' ) );
 		// Every option registered above must have a field: options.php writes null over every option
 		// registered in a submitted group that is absent from the POST, so a
 		// registered-but-unrendered option is wiped on every save of this tab.
 		$this->add_field( 'splm_discipline_digest_enabled', __( 'Penalty Digest Email', 'sportspress-league-manager' ), array( $this, 'render_discipline_digest_enabled_field' ) );
 		$this->add_field( 'splm_discipline_digest_recipients', __( 'Digest Recipients', 'sportspress-league-manager' ), array( $this, 'render_discipline_digest_recipients_field' ) );
 		$this->add_field( 'splm_discipline_digest_day', __( 'Digest Day', 'sportspress-league-manager' ), array( $this, 'render_discipline_digest_day_field' ) );
-		$this->add_field( SPLM_Discipline_Notice::OPTION_MODE_WARNING, __( 'Warning Notices', 'sportspress-league-manager' ), array( $this, 'render_notice_mode_warning_field' ) );
-		$this->add_field( SPLM_Discipline_Notice::OPTION_MODE_SUSPENSION, __( 'Suspension Notices', 'sportspress-league-manager' ), array( $this, 'render_notice_mode_suspension_field' ) );
+		$this->add_field( SPLM_Discipline_Notice::OPTION_MODE_WARNING, __( 'Warning Notices', 'sportspress-league-manager' ), array( $this, 'render_notice_mode_warning_field' ), 'splm_backend_section', array( 'label_for' => '' ) );
+		$this->add_field( SPLM_Discipline_Notice::OPTION_MODE_SUSPENSION, __( 'Suspension Notices', 'sportspress-league-manager' ), array( $this, 'render_notice_mode_suspension_field' ), 'splm_backend_section', array( 'label_for' => '' ) );
 		$this->add_field( 'splm_discipline_notice_cc', __( 'Notice Copies To', 'sportspress-league-manager' ), array( $this, 'render_notice_cc_field' ) );
 		$this->add_field( 'splm_discipline_rulebook_url', __( 'Rulebook Link', 'sportspress-league-manager' ), array( $this, 'render_rulebook_url_field' ), 'splm_backend_section', array( 'label_for' => 'splm_discipline_rulebook_url' ) );
 		$this->add_field( 'splm_discipline_rulebook_rev', __( 'Rulebook Revision', 'sportspress-league-manager' ), array( $this, 'render_rulebook_rev_field' ), 'splm_backend_section', array( 'label_for' => 'splm_discipline_rulebook_rev' ) );
@@ -321,10 +321,14 @@ class SPLM_Admin {
 
 		$this->add_field( SPLM_Waitlist_Notify::OPTION_ENABLED, __( 'Enable Notifications', 'sportspress-league-manager' ), array( $this, 'render_waitlist_notify_enabled_field' ), 'splm_waitlist_notify_section' );
 		$this->add_field( SPLM_Waitlist_Notify::OPTION, __( 'Notification Email', 'sportspress-league-manager' ), array( $this, 'render_waitlist_notify_email_field' ), 'splm_waitlist_notify_section' );
-		$this->add_field( SPLM_Waitlist_Notify::OPTION_EVENTS, __( 'Categories', 'sportspress-league-manager' ), array( $this, 'render_waitlist_notify_events_field' ), 'splm_waitlist_notify_section' );
+		$this->add_field( SPLM_Waitlist_Notify::OPTION_EVENTS, __( 'Categories', 'sportspress-league-manager' ), array( $this, 'render_waitlist_notify_events_field' ), 'splm_waitlist_notify_section', array( 'label_for' => '' ) );
 	}
 
 	private function add_field( $id, $title, $callback, $section = 'splm_backend_section', $args = array() ) {
+		// A single control is labelled by its row title; a grouped control (radios, checkbox lists, tables) passes 'label_for' => '' and carries its own fieldset legend or aria-labels.
+		if ( ! isset( $args['label_for'] ) ) {
+			$args['label_for'] = $id;
+		}
 		add_settings_field( $id, $title, $callback, 'splm_backend_settings', $section, $args );
 	}
 
@@ -336,7 +340,7 @@ class SPLM_Admin {
 				'hide_empty' => false,
 			)
 		);
-		echo '<select name="splm_default_season">';
+		echo '<select id="splm_default_season" name="splm_default_season">';
 		echo '<option value="0">' . esc_html__( 'Use SportsPress current season', 'sportspress-league-manager' ) . '</option>';
 		if ( ! is_wp_error( $seasons ) ) {
 			foreach ( $seasons as $s ) {
@@ -348,6 +352,7 @@ class SPLM_Admin {
 
 	public function render_fee_source_field() {
 		$current = get_option( 'splm_fee_source', 'none' );
+		echo '<fieldset><legend class="screen-reader-text">' . esc_html__( 'Fee Integration Source', 'sportspress-league-manager' ) . '</legend>';
 		foreach ( array(
 			'woocommerce' => 'WooCommerce',
 			'manual' => 'Manual',
@@ -355,14 +360,15 @@ class SPLM_Admin {
 		) as $v => $l ) {
 			echo '<label style="margin-right:15px"><input type="radio" name="splm_fee_source" value="' . esc_attr( $v ) . '" ' . checked( $current, $v, false ) . '/> ' . esc_html( $l ) . '</label>';
 		}
+		echo '</fieldset>';
 	}
 
 	public function render_debug_logging_field() {
-		echo '<input type="checkbox" name="splm_debug_logging" value="1" ' . checked( get_option( 'splm_debug_logging', '0' ), '1', false ) . '/>';
+		echo '<input type="checkbox" id="splm_debug_logging" name="splm_debug_logging" value="1" ' . checked( get_option( 'splm_debug_logging', '0' ), '1', false ) . '/>';
 	}
 
 	public function render_admin_bar_link_field() {
-		echo '<input type="checkbox" name="splm_admin_bar_link_enabled" value="1" ' . checked( get_option( 'splm_admin_bar_link_enabled', '0' ), '1', false ) . '/>';
+		echo '<input type="checkbox" id="splm_admin_bar_link_enabled" name="splm_admin_bar_link_enabled" value="1" ' . checked( get_option( 'splm_admin_bar_link_enabled', '0' ), '1', false ) . '/>';
 		echo '<p class="description">' . esc_html__( 'Add a Dashboard link to the WordPress admin bar (the top toolbar), visible on both the front-end and admin screens.', 'sportspress-league-manager' ) . '</p>';
 	}
 
@@ -409,26 +415,26 @@ class SPLM_Admin {
 	}
 
 	public function render_roster_max_upload_field() {
-		echo '<input type="number" name="splm_roster_max_upload_kb" value="' . esc_attr( get_option( 'splm_roster_max_upload_kb', 512 ) ) . '" min="1" max="10240"/>';
+		echo '<input type="number" id="splm_roster_max_upload_kb" name="splm_roster_max_upload_kb" value="' . esc_attr( get_option( 'splm_roster_max_upload_kb', 512 ) ) . '" min="1" max="10240"/>';
 	}
 
 	public function render_comparison_stat_keys_field() {
 		$selected = get_option( 'splm_comparison_stat_keys', array( 'pim' ) );
-		$this->render_stat_checkboxes( 'splm_comparison_stat_keys', $selected );
+		$this->render_stat_checkboxes( 'splm_comparison_stat_keys', $selected, __( 'Team Comparison Stats', 'sportspress-league-manager' ) );
 		echo '<p class="description">' . esc_html__( 'Performance stats shown in team comparison view. Default: PIM.', 'sportspress-league-manager' ) . '</p>';
 	}
 
 	public function render_report_stat_keys_field() {
 		$selected = get_option( 'splm_report_stat_keys', array( 'p', 'g', 'a', 'pim', 'gaa' ) );
-		$this->render_stat_checkboxes( 'splm_report_stat_keys', $selected );
+		$this->render_stat_checkboxes( 'splm_report_stat_keys', $selected, __( 'Season Report Leader Categories', 'sportspress-league-manager' ) );
 		echo '<p class="description">' . esc_html__( 'Leader categories in season summary report. Default: P, G, A, PIM, GAA.', 'sportspress-league-manager' ) . '</p>';
 	}
 
 	public function render_report_leader_count_field() {
-		echo '<input type="number" name="splm_report_leader_count" value="' . esc_attr( get_option( 'splm_report_leader_count', 10 ) ) . '" min="1" max="50"/>';
+		echo '<input type="number" id="splm_report_leader_count" name="splm_report_leader_count" value="' . esc_attr( get_option( 'splm_report_leader_count', 10 ) ) . '" min="1" max="50"/>';
 	}
 
-	private function render_stat_checkboxes( $name, $selected ) {
+	private function render_stat_checkboxes( $name, $selected, $legend ) {
 		$perf  = get_posts(
 			array(
 				'post_type' => 'sp_performance',
@@ -452,18 +458,20 @@ class SPLM_Admin {
 			return;
 		}
 
+		echo '<fieldset><legend class="screen-reader-text">' . esc_html( $legend ) . '</legend>';
 		foreach ( $all as $item ) {
 			$slug    = $item->post_name;
 			$checked = in_array( $slug, $selected, true ) ? ' checked' : '';
 			echo '<label style="margin-right:12px"><input type="checkbox" name="' . esc_attr( $name ) . '[]" value="' . esc_attr( $slug ) . '"' . $checked . '/> ' . esc_html( $item->post_title ) . '</label>';
 		}
+		echo '</fieldset>';
 	}
 
 	/**
 	 * Rolling-window length in weeks.
 	 */
 	public function render_discipline_window_field() {
-		echo '<input type="number" name="splm_discipline_window_weeks" value="' . esc_attr( get_option( 'splm_discipline_window_weeks', 4 ) ) . '" min="1" max="52"/>';
+		echo '<input type="number" id="splm_discipline_window_weeks" name="splm_discipline_window_weeks" value="' . esc_attr( get_option( 'splm_discipline_window_weeks', 4 ) ) . '" min="1" max="52"/>';
 		echo '<p class="description">' . esc_html__( 'How many recent calendar weeks the rolling penalty window covers. Includes the current week.', 'sportspress-league-manager' ) . '</p>';
 	}
 
@@ -495,7 +503,10 @@ class SPLM_Admin {
 		foreach ( $tiers as $i => $tier ) {
 			$count = $this->preview_flag_count( $tier );
 
-			$consequence_select = '<select name="splm_discipline_tiers[' . (int) $i . '][consequence]">';
+			/* translators: 1: tier name, 2: field name. */
+			$aria = static fn( string $field ): string => esc_attr( sprintf( __( '%1$s: %2$s', 'sportspress-league-manager' ), $tier['key'], $field ) );
+
+			$consequence_select = '<select aria-label="' . $aria( __( 'Consequence', 'sportspress-league-manager' ) ) . '" name="splm_discipline_tiers[' . (int) $i . '][consequence]">';
 			foreach ( $consequence_labels as $value => $label ) {
 				$consequence_select .= '<option value="' . esc_attr( $value ) . '" '
 					. selected( (string) $tier['consequence'], $value, false ) . '>' . esc_html( $label ) . '</option>';
@@ -505,9 +516,9 @@ class SPLM_Admin {
 			printf(
 				'<tr><td>%1$s<input type="hidden" name="splm_discipline_tiers[%2$d][key]" value="%3$s"/><input type="hidden" name="splm_discipline_tiers[%2$d][severity]" value="%4$s"/></td>'
 					. '<td>%5$s<input type="hidden" name="splm_discipline_tiers[%2$d][scope]" value="%6$s"/></td>'
-					. '<td><input type="number" min="1" max="200" name="splm_discipline_tiers[%2$d][minutes]" value="%7$d"/></td>'
+					. '<td><input type="number" min="1" max="200" aria-label="%12$s" name="splm_discipline_tiers[%2$d][minutes]" value="%7$d"/></td>'
 					. '<td>%8$s</td>'
-					. '<td><input type="number" min="0" max="%9$d" name="splm_discipline_tiers[%2$d][games]" value="%10$d"/></td>'
+					. '<td><input type="number" min="0" max="%9$d" aria-label="%13$s" name="splm_discipline_tiers[%2$d][games]" value="%10$d"/></td>'
 					. '<td>%11$s</td></tr>',
 				esc_html( $tier['key'] ),
 				(int) $i,
@@ -524,7 +535,9 @@ class SPLM_Admin {
 						? __( '—', 'sportspress-league-manager' )
 						/* translators: %d: number of players. */
 						: sprintf( _n( '%d player', '%d players', $count, 'sportspress-league-manager' ), $count )
-				)
+				),
+				$aria( __( 'Minutes', 'sportspress-league-manager' ) ),
+				$aria( __( 'Games', 'sportspress-league-manager' ) )
 			);
 		}
 
@@ -536,7 +549,7 @@ class SPLM_Admin {
 	 * Opt-in switch for the weekly digest email.
 	 */
 	public function render_discipline_digest_enabled_field() {
-		echo '<input type="checkbox" name="splm_discipline_digest_enabled" value="1" ' . checked( (int) get_option( 'splm_discipline_digest_enabled' ), 1, false ) . '/>';
+		echo '<input type="checkbox" id="splm_discipline_digest_enabled" name="splm_discipline_digest_enabled" value="1" ' . checked( (int) get_option( 'splm_discipline_digest_enabled' ), 1, false ) . '/>';
 		echo '<p class="description">' . esc_html__( 'Send a weekly email listing every player over a penalty threshold. Turning this on starts sending mail; leaving it off sends nothing.', 'sportspress-league-manager' ) . '</p>';
 	}
 
@@ -544,7 +557,7 @@ class SPLM_Admin {
 	 * Who the weekly digest goes to.
 	 */
 	public function render_discipline_digest_recipients_field() {
-		echo '<input type="text" class="regular-text" name="splm_discipline_digest_recipients" value="' . esc_attr( get_option( 'splm_discipline_digest_recipients', '' ) ) . '"/>';
+		echo '<input type="text" class="regular-text" id="splm_discipline_digest_recipients" name="splm_discipline_digest_recipients" value="' . esc_attr( get_option( 'splm_discipline_digest_recipients', '' ) ) . '"/>';
 		echo '<p class="description">' . esc_html__( 'Comma-separated email addresses. When empty, the digest goes to the site admin email.', 'sportspress-league-manager' ) . '</p>';
 	}
 
@@ -564,7 +577,7 @@ class SPLM_Admin {
 
 		$current = (string) get_option( 'splm_discipline_digest_day', 'monday' );
 
-		echo '<select name="splm_discipline_digest_day">';
+		echo '<select id="splm_discipline_digest_day" name="splm_discipline_digest_day">';
 		foreach ( $days as $value => $label ) {
 			echo '<option value="' . esc_attr( $value ) . '" ' . selected( $current, $value, false ) . '>' . esc_html( $label ) . '</option>';
 		}
@@ -581,7 +594,7 @@ class SPLM_Admin {
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
-	private function render_notice_mode( string $option, string $description ): void {
+	private function render_notice_mode( string $option, string $description, string $legend ): void {
 		$labels = array(
 			SPLM_Discipline_Notice::MODE_DISABLED  => __( 'Disabled — record nothing, send nothing', 'sportspress-league-manager' ),
 			SPLM_Discipline_Notice::MODE_QUEUED    => __( 'Queued — hold for release in the dashboard', 'sportspress-league-manager' ),
@@ -590,7 +603,7 @@ class SPLM_Admin {
 
 		$current = SPLM_Discipline_Notice::sanitize_mode( get_option( $option, SPLM_Discipline_Notice::MODE_DISABLED ) );
 
-		echo '<fieldset>';
+		echo '<fieldset><legend class="screen-reader-text">' . esc_html( $legend ) . '</legend>';
 		foreach ( $labels as $value => $label ) {
 			printf(
 				'<label style="display:block"><input type="radio" name="%1$s" value="%2$s" %3$s/> %4$s</label>',
@@ -610,7 +623,8 @@ class SPLM_Admin {
 	public function render_notice_mode_warning_field() {
 		$this->render_notice_mode(
 			SPLM_Discipline_Notice::OPTION_MODE_WARNING,
-			__( 'What happens when a player crosses a threshold whose consequence is a warning. Off by default; turning this on starts mailing players.', 'sportspress-league-manager' )
+			__( 'What happens when a player crosses a threshold whose consequence is a warning. Off by default; turning this on starts mailing players.', 'sportspress-league-manager' ),
+			__( 'Warning Notices', 'sportspress-league-manager' )
 		);
 	}
 
@@ -620,7 +634,8 @@ class SPLM_Admin {
 	public function render_notice_mode_suspension_field() {
 		$this->render_notice_mode(
 			SPLM_Discipline_Notice::OPTION_MODE_SUSPENSION,
-			__( 'What happens when a player crosses a threshold whose consequence is a suspension. Queued is recommended: a score sheet that overstates penalty minutes would otherwise suspend a player before anyone reviews it.', 'sportspress-league-manager' )
+			__( 'What happens when a player crosses a threshold whose consequence is a suspension. Queued is recommended: a score sheet that overstates penalty minutes would otherwise suspend a player before anyone reviews it.', 'sportspress-league-manager' ),
+			__( 'Suspension Notices', 'sportspress-league-manager' )
 		);
 	}
 
@@ -628,7 +643,7 @@ class SPLM_Admin {
 	 * Extra addresses copied on every released notice.
 	 */
 	public function render_notice_cc_field() {
-		echo '<input type="text" class="regular-text" name="splm_discipline_notice_cc" value="' . esc_attr( get_option( 'splm_discipline_notice_cc', '' ) ) . '"/>';
+		echo '<input type="text" class="regular-text" id="splm_discipline_notice_cc" name="splm_discipline_notice_cc" value="' . esc_attr( get_option( 'splm_discipline_notice_cc', '' ) ) . '"/>';
 		echo '<p class="description">' . esc_html__( 'Comma-separated. Copied by Bcc on every notice, in addition to the digest recipients and the player’s captain. Leave blank to copy nobody extra.', 'sportspress-league-manager' ) . '</p>';
 	}
 
@@ -861,7 +876,7 @@ class SPLM_Admin {
 	 * Renders the shared waitlist notification address field.
 	 */
 	public function render_waitlist_notify_email_field() {
-		echo '<input type="email" name="' . esc_attr( SPLM_Waitlist_Notify::OPTION ) . '" value="' . esc_attr( get_option( SPLM_Waitlist_Notify::OPTION, '' ) ) . '" class="regular-text" />';
+		echo '<input type="email" id="' . esc_attr( SPLM_Waitlist_Notify::OPTION ) . '" name="' . esc_attr( SPLM_Waitlist_Notify::OPTION ) . '" value="' . esc_attr( get_option( SPLM_Waitlist_Notify::OPTION, '' ) ) . '" class="regular-text" />';
 		echo '<p class="description">' . esc_html__( 'Leave blank to disable. When set, every waitlist offer, claim, expiry, withdrawal and removal sends a copy here.', 'sportspress-league-manager' ) . '</p>';
 	}
 
@@ -870,7 +885,7 @@ class SPLM_Admin {
 	 * categories below are checked.
 	 */
 	public function render_waitlist_notify_enabled_field() {
-		echo '<input type="checkbox" name="' . esc_attr( SPLM_Waitlist_Notify::OPTION_ENABLED ) . '" value="1" ' . checked( (int) get_option( SPLM_Waitlist_Notify::OPTION_ENABLED, 1 ), 1, false ) . '/>';
+		echo '<input type="checkbox" id="' . esc_attr( SPLM_Waitlist_Notify::OPTION_ENABLED ) . '" name="' . esc_attr( SPLM_Waitlist_Notify::OPTION_ENABLED ) . '" value="1" ' . checked( (int) get_option( SPLM_Waitlist_Notify::OPTION_ENABLED, 1 ), 1, false ) . '/>';
 		echo '<p class="description">' . esc_html__( 'Turning this off silences every waitlist notification below, regardless of which categories are checked.', 'sportspress-league-manager' ) . '</p>';
 	}
 
@@ -886,10 +901,12 @@ class SPLM_Admin {
 		$selected = get_option( SPLM_Waitlist_Notify::OPTION_EVENTS, SPLM_Waitlist_Notify::all_events() );
 		$selected = is_array( $selected ) ? $selected : array();
 
+		echo '<fieldset><legend class="screen-reader-text">' . esc_html__( 'Categories', 'sportspress-league-manager' ) . '</legend>';
 		foreach ( SPLM_Waitlist_Notify::labels() as $event => $label ) {
 			echo '<label style="display:block;"><input type="checkbox" name="' . esc_attr( SPLM_Waitlist_Notify::OPTION_EVENTS ) . '[]" value="' . esc_attr( $event ) . '" '
 				. checked( in_array( $event, $selected, true ), true, false ) . '/> ' . esc_html( $label ) . '</label>';
 		}
+		echo '</fieldset>';
 		echo '<p class="description">' . esc_html__( 'Which status changes send a copy. Unchecking all of them is the same as turning off the switch above.', 'sportspress-league-manager' ) . '</p>';
 	}
 }

@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.6.2
+Stable tag: 1.6.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -61,6 +61,10 @@ Conveners can issue a suspension from the Notices page (Issue suspension) or fro
 * Discipline history starts empty. Suspensions issued before this feature are not backfilled.
 
 == Changelog ==
+
+= 1.6.3 =
+* Accessibility: every League Manager settings field is now programmatically labelled (row labels point at their controls; radio and checkbox groups have legends; threshold table inputs name their tier).
+* Fix: the issue-suspension modal now says where to add or re-activate infractions when none are active.
 
 = 1.6.2 =
 * Docs: the in-dashboard Help page now covers the Discipline Rules tab, the rulebook fields, the player-screen discipline box and the digest reminders; the readme and architecture notes describe the player-screen box and retired infractions.
