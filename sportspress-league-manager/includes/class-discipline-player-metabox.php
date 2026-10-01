@@ -69,7 +69,7 @@ class SPLM_Discipline_Player_Metabox {
 		$rows     = SPLM_Discipline_Notice_Database::for_player( (int) $post->ID, false );
 		$replaced = SPLM_Discipline_Notice_Database::replaced_ids( array_map( static fn( $row ) => (int) $row->id, $rows ) );
 
-		echo '<style>.splm-disc-replaced{background:#f6f7f7;color:#50575e;border-left:3px dashed #8c8f94}.splm-disc-note td{padding-top:0}</style>';
+		echo '<style>.splm-disc-replaced td{background:#f6f7f7;color:#50575e;font-style:italic}.splm-disc-replaced td:first-child{border-left:3px dashed #8c8f94}.splm-disc-note td{padding-top:0}</style>';
 		echo self::summary_html( $rows ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside.
 		if ( $rows ) {
 			echo self::render_rows_html( $rows, $replaced ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside.

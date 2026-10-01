@@ -89,8 +89,8 @@ class SPLM_Discipline_Infraction {
 		$games   = min( self::MAX_GAMES, absint( $raw['default_games'] ?? 0 ) );
 
 		return array(
-			'rule_ref'      => substr( sanitize_text_field( (string) ( $raw['rule_ref'] ?? '' ) ), 0, 20 ),
-			'title'         => substr( sanitize_text_field( (string) ( $raw['title'] ?? '' ) ), 0, 120 ),
+			'rule_ref'      => mb_substr( sanitize_text_field( (string) ( $raw['rule_ref'] ?? '' ) ), 0, 20 ),
+			'title'         => mb_substr( sanitize_text_field( (string) ( $raw['title'] ?? '' ) ), 0, 120 ),
 			'rule_text'     => sanitize_textarea_field( (string) ( $raw['rule_text'] ?? '' ) ),
 			'outcome'       => $outcome,
 			'default_games' => self::OUTCOME_INDEFINITE === $outcome ? 0 : $games,

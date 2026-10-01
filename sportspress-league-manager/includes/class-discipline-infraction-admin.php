@@ -75,7 +75,7 @@ class SPLM_Discipline_Infraction_Admin {
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function render_intro(): void {
-		echo '<style>#splm-infraction-table{table-layout:auto}#splm-infraction-table td{vertical-align:top}#splm-infraction-table textarea{width:100%;min-width:220px}</style>';
+		echo '<style>#splm-infraction-table{table-layout:fixed;width:100%}#splm-infraction-table input[type=text],#splm-infraction-table select{max-width:100%}#splm-infraction-table td{vertical-align:top}#splm-infraction-table textarea{width:100%;min-width:220px}</style>';
 		echo '<h2>' . esc_html__( 'Discipline Rules', 'sportspress-league-manager' ) . '</h2>';
 		printf(
 			'<p>%s <strong>%s</strong>. <span class="description">%s</span></p>',
@@ -478,6 +478,7 @@ class SPLM_Discipline_Infraction_Admin {
 						if ( isAdd ) {
 							say( appendRow( result.body.infraction ), 'ok', messages.added );
 							resetBlank( row );
+							say( row, 'ok', messages.added );
 							return;
 						}
 						fill( row, result.body.infraction );

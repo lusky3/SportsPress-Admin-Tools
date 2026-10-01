@@ -180,7 +180,7 @@ check( 'the other row is untouched', substr_count( $replaced, 'Replaced' ), 1 );
 check( 'table is labelled', has( $replaced, '<table class="widefat striped" aria-label="Discipline record">' ), true );
 
 $source = (string) file_get_contents( dirname( __DIR__ ) . '/includes/class-discipline-player-metabox.php' );
-check( 'replaced rows use an AA-safe muted style, not opacity', has( $source, '.splm-disc-replaced{background:#f6f7f7;color:#50575e;border-left:3px dashed #8c8f94}' ) && ! has( $source, 'opacity' ), true );
+check( 'replaced rows use an AA-safe muted style, not opacity', has( $source, '.splm-disc-replaced td{background:#f6f7f7;color:#50575e;font-style:italic}' ) && ! has( $source, 'opacity' ), true );
 
 echo "\n=== summary_html() ===\n\n";
 $none = 'No disciplinary record.';

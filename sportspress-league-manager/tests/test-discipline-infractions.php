@@ -48,6 +48,8 @@ $r = $i::sanitize_row( array( 'title' => 'T', 'outcome' => 'games', 'default_gam
 assert_test( 20 === $r['default_games'], 'games clamped to MAX_GAMES' );
 $r = $i::sanitize_row( array( 'title' => 'T', 'outcome' => 'indefinite', 'default_games' => 4 ) );
 assert_test( 0 === $r['default_games'], 'indefinite forces games to 0' );
+$r = $i::sanitize_row( array( 'title' => str_repeat( 'é', 130 ), 'rule_ref' => str_repeat( '§', 30 ) ) );
+assert_test( 120 === mb_strlen( $r['title'] ) && 20 === mb_strlen( $r['rule_ref'] ), 'title and rule_ref truncate by characters, not bytes' );
 $r = $i::sanitize_row( null );
 assert_test( '' === $r['title'], 'null input yields an empty row, not a fatal' );
 
