@@ -46,7 +46,7 @@ assert_test( false !== strpos( $sql, 'PRIMARY KEY  (id)' ), 'two-space PRIMARY K
 assert_test( false !== strpos( $sql, 'KEY parent (parent_id)' ) && false !== strpos( $sql, 'KEY source_status (source, status)' ), 'new indexes present' );
 assert_test( 0 === strpos( $sql, 'CREATE TABLE wp_splm_discipline_notice (' ) && false !== strpos( $sql, 'DEFAULT CHARSET=utf8mb4;' ), 'table name and charset interpolated' );
 
-class T_Wpdb { public $prefix = 'wp_'; public $cols = array(); public function get_col( $q ) { return $this->cols; } }
+class T_Wpdb { public $prefix = 'wp_'; public $cols = array(); public function get_col() { return $this->cols; } }
 $wpdb = new T_Wpdb();
 $wpdb->cols = array( 'id', 'player_id' );
 assert_test( $cols === $db::missing_columns(), 'missing_columns: old table lacks all 11' );

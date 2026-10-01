@@ -66,26 +66,47 @@ assert_test( '2000-01-01' === $e::normalize_after_date( '', '2000-01-01' ), 'emp
 assert_test( '2000-01-01' === $e::normalize_after_date( '2026-1-5', '2000-01-01' ), 'unpadded date falls back' );
 
 
-// WP stubs for next_eligible(); a recorder lets the tests inspect the query.
-$GLOBALS['t_meta']      = array();
-$GLOBALS['t_posts']     = array();
-$GLOBALS['t_dates']     = array();
-$GLOBALS['t_get_posts'] = array();
-function absint( $v ) { return abs( (int) $v ); }
-function current_time( $f ) { return '2026-10-01'; }
-$GLOBALS['t_team_posts'] = array( 7, 11, 12, 115100, 107678, 115093 );
-function get_post_type( $id ) { return in_array( (int) $id, $GLOBALS['t_team_posts'], true ) ? 'sp_team' : false; }
-function get_post_meta( $id, $key, $single = false ) { return $GLOBALS['t_meta'][ $id ][ $key ] ?? array(); }
-function get_posts( $args ) {
-	$GLOBALS['t_get_posts'][] = $args;
-	$team = $args['meta_query'][0]['value'];
-	return $GLOBALS['t_posts'][ $team ] ?? array();
+/**
+ * Stub state. A class held in a function-static rather than a superglobal, because
+ * Codacy PHPMD flags superglobal use.
+ */
+class SPLM_Elig_Test_State {
+	/** post_id => array( meta_key => value ). */
+	public $meta = array();
+	/** team_id => event ids. */
+	public $posts = array();
+	/** event_id => post_date. */
+	public $dates = array();
+	/** Recorded get_posts() args. */
+	public $get_posts = array();
+	/** Ids that are sp_team posts. */
+	public $team_posts = array();
 }
-function get_post_field( $field, $id ) { return $GLOBALS['t_dates'][ $id ] ?? ''; }
+
+function splm_elig_state() {
+	static $state = null;
+	if ( null === $state ) {
+		$state = new SPLM_Elig_Test_State();
+	}
+	return $state;
+}
+
+// WP stubs for next_eligible(); a recorder lets the tests inspect the query.
+function absint( $v ) { return abs( (int) $v ); }
+function current_time() { return '2026-10-01'; }
+splm_elig_state()->team_posts = array( 7, 11, 12, 115100, 107678, 115093 );
+function get_post_type( $id ) { return in_array( (int) $id, splm_elig_state()->team_posts, true ) ? 'sp_team' : false; }
+function get_post_meta( $id, $key ) { return splm_elig_state()->meta[ $id ][ $key ] ?? array(); }
+function get_posts( $args ) {
+	splm_elig_state()->get_posts[] = $args;
+	$team = $args['meta_query'][0]['value'];
+	return splm_elig_state()->posts[ $team ] ?? array();
+}
+function get_post_field() { return splm_elig_state()->dates[ func_get_arg( 1 ) ] ?? ''; }
 
 echo "\n=== player_team_ids() ===\n\n";
 
-$GLOBALS['t_meta'] = array(
+splm_elig_state()->meta = array(
 	7 => array(
 		'sp_current_team' => array( 9 ),
 		'sp_leagues'      => array(
@@ -103,7 +124,7 @@ assert_test( array() === $e::player_team_ids( 7, 98 ), 'zero team id ignored' );
 assert_test( array() === $e::player_team_ids( 99, 100 ), 'player with no sp_leagues meta: no teams' );
 
 echo "\n=== player_team_ids(): real-data shape ===\n\n";
-$GLOBALS['t_meta'] = array(
+splm_elig_state()->meta = array(
 	66 => array(
 		'sp_current_team' => array( 9 ),
 		'sp_leagues'      => array(
@@ -117,27 +138,28 @@ $GLOBALS['t_meta'] = array(
 assert_test( array( 115100 ) === $e::player_team_ids( 66, 666 ), 'season 666: marker 1, -1 and 0 ignored; exactly the real team' );
 assert_test( array( 107678 ) === $e::player_team_ids( 66, 640 ), 'season 640' );
 assert_test( array( 115093 ) === $e::player_team_ids( 66, 654 ), 'season 654' );
-$GLOBALS['t_team_posts'][] = 1;
+splm_elig_state()->team_posts[] = 1;
 assert_test( array( 115100 ) === $e::player_team_ids( 66, 666 ), 'league key 0 is skipped even if post 1 were a team' );
-array_pop( $GLOBALS['t_team_posts'] );
-$GLOBALS['t_team_posts'] = array( 107678 );
+$elig_state = splm_elig_state();
+array_pop( $elig_state->team_posts );
+splm_elig_state()->team_posts = array( 107678 );
 assert_test( array() === $e::player_team_ids( 66, 666 ), 'an id that is not an sp_team post is dropped' );
-$GLOBALS['t_team_posts'] = array( 7, 11, 12, 115100, 107678, 115093 );
+splm_elig_state()->team_posts = array( 7, 11, 12, 115100, 107678, 115093 );
 
 echo "\n=== next_eligible() ===\n\n";
 
-$GLOBALS['t_meta']  = array( 7 => array( 'sp_leagues' => array( 5 => array( 100 => 11 ) ) ) );
-$GLOBALS['t_posts'] = array( 11 => array( 101, 102 ) );
-$GLOBALS['t_dates'] = array( 101 => '2026-10-06 20:00:00', 102 => '2026-10-13 20:00:00' );
+splm_elig_state()->meta  = array( 7 => array( 'sp_leagues' => array( 5 => array( 100 => 11 ) ) ) );
+splm_elig_state()->posts = array( 11 => array( 101, 102 ) );
+splm_elig_state()->dates = array( 101 => '2026-10-06 20:00:00', 102 => '2026-10-13 20:00:00' );
 $r = $e::next_eligible( 7, 100, '2026-10-01', 1 );
 assert_test( 102 === $r['event_id'] && '2026-10-13 20:00:00' === $r['date'] && 11 === $r['team_id'], 'off-by-one gone: 1 game owed, events [d1,d2] -> eligible is d2, not d1' );
-$GLOBALS['t_get_posts'] = array();
+splm_elig_state()->get_posts = array();
 $r = $e::next_eligible( 7, 100, '2026-10-01', 2 );
 assert_test( null === $r['date'] && 0 === $r['remaining'], '2 games owed, only 2 events: nothing named to play' );
-$GLOBALS['t_get_posts'] = array();
+splm_elig_state()->get_posts = array();
 $e::next_eligible( 7, 100, '2026-10-01', 2 );
 
-$q = $GLOBALS['t_get_posts'][0];
+$q = splm_elig_state()->get_posts[0];
 assert_test( array( 'publish', 'future' ) === $q['post_status'], 'query covers publish and future' );
 assert_test( array( 'date' => 'ASC', 'ID' => 'ASC' ) === $q['orderby'] && ! isset( $q['order'] ), 'orderby is date then ID, no separate order' );
 assert_test( 8 === $q['posts_per_page'], 'posts_per_page is games + 6 (one more than the games owed, for the eligible game)' );
@@ -150,20 +172,20 @@ assert_test(
 	'nested OR excludes postponed/cancelled in the query, allows a missing sp_status'
 );
 
-$GLOBALS['t_get_posts'] = array();
-$GLOBALS['t_meta']      = array( 8 => array( 'sp_leagues' => array( 5 => array( 100 => 11 ), 6 => array( 100 => 12 ) ) ) );
-$GLOBALS['t_posts']     = array( 11 => array( 101, 102 ), 12 => array( 102, 103 ) );
-$GLOBALS['t_dates']     = array( 101 => '2026-10-06 20:00:00', 102 => '2026-10-13 20:00:00', 103 => '2026-10-20 20:00:00' );
+splm_elig_state()->get_posts = array();
+splm_elig_state()->meta      = array( 8 => array( 'sp_leagues' => array( 5 => array( 100 => 11 ), 6 => array( 100 => 12 ) ) ) );
+splm_elig_state()->posts     = array( 11 => array( 101, 102 ), 12 => array( 102, 103 ) );
+splm_elig_state()->dates     = array( 101 => '2026-10-06 20:00:00', 102 => '2026-10-13 20:00:00', 103 => '2026-10-20 20:00:00' );
 $r = $e::next_eligible( 8, 100, '2026-10-01', 2 );
 assert_test( 103 === $r['event_id'] && 0 === $r['remaining'], 'overlapping event across two teams counts once' );
 
-$GLOBALS['t_get_posts'] = array();
+splm_elig_state()->get_posts = array();
 $r = $e::next_eligible( 99, 100, '2026-10-01', 2 );
-assert_test( null === $r['date'] && 2 === $r['remaining'] && ! $GLOBALS['t_get_posts'], 'no teams: null date, no query' );
+assert_test( null === $r['date'] && 2 === $r['remaining'] && ! splm_elig_state()->get_posts, 'no teams: null date, no query' );
 $r = $e::next_eligible( 7, 55, '2026-10-01', 2 );
-assert_test( null === $r['date'] && 2 === $r['remaining'] && ! $GLOBALS['t_get_posts'], 'no teams for that season (only sp_current_team elsewhere): no get_posts call' );
+assert_test( null === $r['date'] && 2 === $r['remaining'] && ! splm_elig_state()->get_posts, 'no teams for that season (only sp_current_team elsewhere): no get_posts call' );
 $r = $e::next_eligible( 8, 100, '2026-10-01', 0 );
-assert_test( null === $r['date'] && 0 === $r['remaining'] && ! $GLOBALS['t_get_posts'], 'zero games: null date, no query' );
+assert_test( null === $r['date'] && 0 === $r['remaining'] && ! splm_elig_state()->get_posts, 'zero games: null date, no query' );
 
 echo "\nPassed: {$passed}  Failed: {$failed}\n";
 exit( $failed > 0 ? 1 : 0 );
