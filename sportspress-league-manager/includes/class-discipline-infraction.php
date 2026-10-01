@@ -313,7 +313,8 @@ class SPLM_Discipline_Infraction {
 
 		$table = self::table_name();
 		if ( 0 === $row['sort_order'] ) {
-			$row['sort_order'] = (int) $wpdb->get_var( "SELECT COALESCE( MAX( sort_order ), 0 ) FROM {$table}" ) + 10; // phpcs:ignore WordPress.DB
+			// sort_order is a smallint: stay inside it however long the list grows.
+			$row['sort_order'] = min( 32767, (int) $wpdb->get_var( "SELECT COALESCE( MAX( sort_order ), 0 ) FROM {$table}" ) + 10 ); // phpcs:ignore WordPress.DB
 		}
 
 		$ok = $wpdb->insert( $table, $row, self::column_formats() ); // phpcs:ignore WordPress.DB

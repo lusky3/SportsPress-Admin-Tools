@@ -188,6 +188,15 @@ class SPLM_Discipline_Infraction_REST {
 	}
 
 	/**
+	 * 500 for a failed write.
+	 *
+	 * @return WP_Error
+	 */
+	private static function write_error(): WP_Error {
+		return new WP_Error( 'splm_infraction_write_failed', __( 'Could not save the infraction.', 'sportspress-league-manager' ), array( 'status' => 500 ) );
+	}
+
+	/**
 	 * POST /discipline/infractions
 	 *
 	 * @param WP_REST_Request $request Request.
@@ -196,9 +205,14 @@ class SPLM_Discipline_Infraction_REST {
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function create( $request ) {
-		$id = SPLM_Discipline_Infraction::insert_row( self::sent_fields( $request ) );
-		if ( $id <= 0 ) {
+		$fields = self::sent_fields( $request );
+		if ( '' === SPLM_Discipline_Infraction::sanitize_row( $fields )['title'] ) {
 			return self::title_error();
+		}
+
+		$id = SPLM_Discipline_Infraction::insert_row( $fields );
+		if ( $id <= 0 ) {
+			return self::write_error();
 		}
 
 		return new WP_REST_Response( array( 'infraction' => self::to_response( SPLM_Discipline_Infraction::find( $id ) ) ), 201 );
@@ -225,7 +239,7 @@ class SPLM_Discipline_Infraction_REST {
 			return self::title_error();
 		}
 		if ( ! SPLM_Discipline_Infraction::update_row( $id, $fields ) ) {
-			return new WP_Error( 'splm_infraction_write_failed', __( 'Could not save the infraction.', 'sportspress-league-manager' ), array( 'status' => 500 ) );
+			return self::write_error();
 		}
 
 		return new WP_REST_Response( array( 'infraction' => self::to_response( SPLM_Discipline_Infraction::find( $id ) ) ), 200 );

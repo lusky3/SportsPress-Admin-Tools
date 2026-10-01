@@ -192,6 +192,11 @@ check( 'sort_order lookup is a single MAX query', 1 === count( $wpdb->queries ) 
 check( 'active defaults to 1', $data['active'], 1 );
 
 $wpdb           = fresh_db();
+$wpdb->max_sort = 32767;
+$inf::insert_row( array( 'title' => 'Top of the range' ) );
+check( 'auto sort_order is clamped to the smallint maximum', $wpdb->inserts[0][1]['sort_order'], 32767 );
+
+$wpdb           = fresh_db();
 $wpdb->max_sort = 70;
 $inf::insert_row(
 	array(
@@ -300,6 +305,12 @@ check(
 );
 $bad = $rest->create( new WP_REST_Request( array( 'title' => '  ' ) ) );
 check( 'empty title is a 400 invalid_title', array( $bad->code, $bad->data['status'] ), array( 'invalid_title', 400 ) );
+$wpdb       = fresh_db();
+$wpdb->fail = true;
+$dbfail     = $rest->create( new WP_REST_Request( array( 'title' => 'Slashing' ) ) );
+check( 'a DB failure on create is 500 splm_infraction_write_failed', array( $dbfail->code, $dbfail->data['status'] ), array( 'splm_infraction_write_failed', 500 ) );
+$blank = $rest->create( new WP_REST_Request( array( 'title' => '<b></b>' ) ) );
+check( 'markup-only title stays 400 even when the DB is failing', array( $blank->code, $blank->data['status'] ), array( 'invalid_title', 400 ) );
 
 echo "\n=== update handler ===\n\n";
 $wpdb = fresh_db( array( seed_row() ) );
