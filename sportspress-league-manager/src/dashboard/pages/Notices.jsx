@@ -8,7 +8,7 @@ import SuspensionModal from '../components/SuspensionModal';
 import useFocusTrap from '../components/useFocusTrap';
 import useUid from '../components/useUid';
 import { formatLocal } from '../lib/time';
-import { STATUS_LABELS, consequenceLabel, penaltyLabel, kindLabel, replacedIds, availableActions } from '../lib/discipline';
+import { STATUS_LABELS, consequenceLabel, penaltyLabel, kindLabel, replacedIds, availableActions, releaseMessage, captainWarning } from '../lib/discipline';
 
 // Fail-open like Leaders.jsx; the server gate is the real enforcement.
 const canUseDiscipline = () =>
@@ -162,6 +162,9 @@ export default function Notices( { season } ) {
 	const [ focusTick, setFocusTick ] = useState( 0 );
 	const pageRef = useRef( null );
 	const headingRef = useRef( null );
+	const issueBtnRef = useRef( null );
+	const refocusIssueRef = useRef( false );
+	const seqRef = useRef( 0 );
 
 	const canManage = canUseDiscipline();
 	const replaced = replacedIds( rows );
@@ -173,6 +176,9 @@ export default function Notices( { season } ) {
 	// rather than the table unmounting, which would drop keyboard focus.
 	const load = useCallback( ( silent = false ) => {
 		let cancelled = false;
+		// Only the newest request may apply its answer, so a slower stale
+		// response (e.g. from before a filter change) never overwrites it.
+		const seq = ++seqRef.current;
 		if ( silent ) {
 			setRefreshing( true );
 		} else {
@@ -181,21 +187,21 @@ export default function Notices( { season } ) {
 		setError( '' );
 		fetchNotices( { season, status } )
 			.then( ( res ) => {
-				if ( cancelled ) return;
+				if ( cancelled || seq !== seqRef.current ) return;
 				setRows( res.data );
 				setTotal( res.total );
 				setLoading( false );
+				setRefreshing( false );
 				if ( silent ) {
-					setRefreshing( false );
 					setFocusTick( ( t ) => t + 1 );
 				}
 			} )
 			.catch( ( e ) => {
-				if ( cancelled ) return;
+				if ( cancelled || seq !== seqRef.current ) return;
 				setError( e?.message || 'Could not load the notice queue.' );
 				setLoading( false );
+				setRefreshing( false );
 				if ( silent ) {
-					setRefreshing( false );
 					setFocusTick( ( t ) => t + 1 );
 				}
 			} );
@@ -224,13 +230,16 @@ export default function Notices( { season } ) {
 		setBusyId( row.id );
 		setError( '' );
 		setNotice( '' );
+		let failure = '';
 		fn( row.id )
-			.then( () => {
-				setNotice( successText );
-				load( true );
-			} )
-			.catch( ( e ) => setError( e?.message || 'That did not work.' ) )
+			.then( () => setNotice( successText ) )
+			.catch( ( e ) => { failure = e?.message || 'That did not work.'; } )
 			.finally( () => {
+				// Reload either way: a failed send leaves the row 'failed' and a
+				// busy 409 may still have written, so the list must not go stale.
+				// load() clears the error, so set it afterwards.
+				load( true );
+				if ( failure ) setError( failure );
 				setBusyId( 0 );
 				setFocusTick( ( t ) => t + 1 );
 			} );
@@ -245,7 +254,7 @@ export default function Notices( { season } ) {
 		ask(
 			row,
 			releaseNotice,
-			`Email ${ row.player } to tell them: ${ consequenceLabel( row ) }?`,
+			releaseMessage( row, row.player ),
 			'Notice sent.',
 			row.status === 'failed' ? 'Try again' : 'Release'
 		);
@@ -276,13 +285,28 @@ export default function Notices( { season } ) {
 		setPicking( false );
 		setIssuePlayer( { id: p.id, name: p.name } );
 	}, [] );
-	const closeIssue = useCallback( () => setIssuePlayer( null ), [] );
+	const closeIssue = useCallback( () => {
+		refocusIssueRef.current = true;
+		setIssuePlayer( null );
+	}, [] );
+	// The picker dialog that led here is gone, so the trap cannot restore focus
+	// to it: hand it to the Issue button (or the heading) once the modal closes.
+	useEffect( () => {
+		if ( issuePlayer || ! refocusIssueRef.current ) return;
+		refocusIssueRef.current = false;
+		( issueBtnRef.current || headingRef.current )?.focus();
+	}, [ issuePlayer ] );
 	const issueDone = useCallback( ( n ) => {
 		load( true );
 		if ( ! n ) return;
 		setNotice( '' );
 		if ( n.status === 'failed' ) {
 			setError( n.last_error || 'The email could not be sent.' );
+			return;
+		}
+		const warning = captainWarning( n );
+		if ( warning ) {
+			setError( warning );
 			return;
 		}
 		setNotice( n.status === 'pending' ? 'Draft saved.' : 'Suspension recorded.' );
@@ -307,7 +331,7 @@ export default function Notices( { season } ) {
 			<div className="splm-notices__header">
 				<h2 ref={ headingRef } tabIndex={ -1 }>Discipline Notices <HelpLink topic="notices" /></h2>
 				{ canManage && (
-					<button type="button" className="splm-btn splm-btn--primary" onClick={ () => setPicking( true ) }>
+					<button type="button" className="splm-btn splm-btn--primary" ref={ issueBtnRef } onClick={ () => setPicking( true ) }>
 						Issue suspension
 					</button>
 				) }

@@ -71,12 +71,22 @@ function Warnings( { warnings, duplicateOf } ) {
 	);
 }
 
+// Today as a local 'YYYY-MM-DD' string, comparable with eligible_on.
+function todayLocal() {
+	const d = new Date();
+	const pad = ( n ) => String( n ).padStart( 2, '0' );
+	return `${ d.getFullYear() }-${ pad( d.getMonth() + 1 ) }-${ pad( d.getDate() ) }`;
+}
+
 function eligibilityText( data ) {
 	if ( data.outcome === 'indefinite' ) {
 		return 'Suspended until you decide a length. You can set one later from the player’s Discipline panel.';
 	}
 	if ( data.games === 0 ) {
 		return 'Balance of the game only — no further games are missed.';
+	}
+	if ( data.eligible_on && data.eligible_on < todayLocal() ) {
+		return `Next eligible game: ${ formatDate( data.eligible_on ) }. That date has already passed — games played since the incident count toward the suspension, so check whether it has already been served.`;
 	}
 	if ( data.eligible_on ) {
 		return `Next eligible game: ${ formatDate( data.eligible_on ) } (projected, if the schedule doesn’t change).`;
@@ -132,11 +142,11 @@ function PreviewDetails( { data } ) {
 			<details className="splm-discipline-details">
 				<summary>Email to the player</summary>
 				{ data.player_subject && <p><strong>Subject:</strong> { data.player_subject }</p> }
-				<pre className="splm-discipline-email">{ data.player_body }</pre>
+				<pre className="splm-discipline-email" tabIndex={ 0 } aria-label="Email text to the player">{ data.player_body }</pre>
 			</details>
 			<details className="splm-discipline-details">
 				<summary>Email to captains</summary>
-				<pre className="splm-discipline-email">{ data.captain_body }</pre>
+				<pre className="splm-discipline-email" tabIndex={ 0 } aria-label="Email text to captains">{ data.captain_body }</pre>
 			</details>
 		</>
 	);
@@ -191,6 +201,8 @@ export default function SuspensionModal( { player, season, onClose, onDone } ) {
 	const overlayDownRef = useRef( false );
 	const closeBtnRef = useRef( null );
 	const errorRef = useRef( null );
+	const infractionRef = useRef( null );
+	const noteRef = useRef( null );
 	useEffect( () => { onDoneRef.current = onDone; } );
 	useEffect( () => {
 		mountedRef.current = true;
@@ -329,6 +341,18 @@ export default function SuspensionModal( { player, season, onClose, onDone } ) {
 	}, [ onClose ] );
 	const trapRef = useFocusTrap( requestClose );
 
+	// Both selects start disabled, so the trap's first-focusable lands on the
+	// note. Once the infractions are in, move to the Infraction select unless
+	// the user has deliberately gone elsewhere.
+	useEffect( () => {
+		if ( infractions === null || ! infractions.length ) return;
+		const active = document.activeElement;
+		const untouched = ! active || active === document.body || active === trapRef.current
+			|| ( active === noteRef.current && note === '' );
+		if ( untouched && infractionRef.current ) infractionRef.current.focus();
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- run once when the list arrives
+	}, [ infractions ] );
+
 	// Keep focus inside the dialog when the focused button disables or vanishes.
 	useEffect( () => {
 		if ( failedNotice && closeBtnRef.current ) closeBtnRef.current.focus();
@@ -384,10 +408,10 @@ export default function SuspensionModal( { player, season, onClose, onDone } ) {
 				if ( e.target === e.currentTarget && overlayDownRef.current ) requestClose();
 				overlayDownRef.current = false;
 			} }
-			ref={ trapRef }
-			tabIndex={ -1 }
 		>
 			<div
+				ref={ trapRef }
+				tabIndex={ -1 }
 				className="splm-modal splm-modal--wide"
 				role="dialog"
 				aria-modal="true"
@@ -403,6 +427,7 @@ export default function SuspensionModal( { player, season, onClose, onDone } ) {
 					<label htmlFor={ ids.infraction }>Infraction</label>
 					<select
 						id={ ids.infraction }
+						ref={ infractionRef }
 						className="splm-select"
 						value={ infractionId }
 						onChange={ ( e ) => onPickInfraction( e.target.value ) }
@@ -464,6 +489,7 @@ export default function SuspensionModal( { player, season, onClose, onDone } ) {
 					<label htmlFor={ ids.note }>Incident note (private, never emailed)</label>
 					<textarea
 						id={ ids.note }
+						ref={ noteRef }
 						className="splm-textarea"
 						rows={ 3 }
 						maxLength={ NOTE_MAX }

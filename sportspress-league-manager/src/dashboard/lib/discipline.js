@@ -134,3 +134,58 @@ export function availableActions( row, replaced ) {
 	};
 	return Object.keys( flags ).filter( ( key ) => flags[ key ] );
 }
+
+// Decoded captains_notified lines of a notice: [ { team, email, sent, note? } ].
+// The REST row decodes the JSON already; tolerate a raw string or null anyway.
+export function captainLines( notice ) {
+	let list = notice?.captains_notified;
+	if ( typeof list === 'string' ) {
+		try {
+			list = JSON.parse( list );
+		} catch ( e ) {
+			list = [];
+		}
+	}
+	return Array.isArray( list ) ? list.filter( ( c ) => c && typeof c === 'object' ) : [];
+}
+
+// Captains whose copy did not go out: [ { team, email } ].
+export function captainsNotNotified( notice ) {
+	return captainLines( notice )
+		.filter( ( c ) => c.sent === false )
+		.map( ( c ) => ( { team: c.team || 'A team', email: c.email || '' } ) );
+}
+
+const notNotifiedReason = ( email ) => ( email ? 'email could not be sent' : 'no email on file' );
+
+// Plain-text delivery state for one captain line (no colour-only meaning).
+export function captainStatusText( line ) {
+	const team = line.team || 'A team';
+	if ( line.sent === false ) {
+		return `${ team } — not notified (${ notNotifiedReason( line.email ) })`;
+	}
+	return `${ team } — notified${ line.note ? ` (${ line.note })` : '' }`;
+}
+
+// Visible warning for a saved notice whose captains were not all told, or ''.
+// A draft has not been mailed to anyone yet, so it never warns.
+export function captainWarning( notice, verb = 'Recorded' ) {
+	if ( ! notice || notice.status === 'pending' ) {
+		return '';
+	}
+	const missed = captainsNotNotified( notice );
+	if ( ! missed.length ) {
+		return '';
+	}
+	const who = missed.map( ( c ) => `${ c.team } (${ notNotifiedReason( c.email ) })` ).join( ', ' );
+	return `${ verb }, but these captains were not notified: ${ who }. Tell them another way — a team that plays a suspended player forfeits.`;
+}
+
+// Confirmation text before releasing a notice. Manual notices also copy the
+// team captains and convener, so the wording says so.
+export function releaseMessage( row, name ) {
+	if ( isManual( row ) ) {
+		return `Email ${ name }, and copy the team captain(s) and convener, to tell them: ${ consequenceLabel( row ) }?`;
+	}
+	return `Email ${ name } to tell them: ${ consequenceLabel( row ) }?`;
+}

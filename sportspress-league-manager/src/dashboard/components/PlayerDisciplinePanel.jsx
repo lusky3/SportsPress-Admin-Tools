@@ -9,7 +9,7 @@ import {
 	revokeSuspension,
 	recalculateSuspension,
 } from '../lib/api';
-import { STATUS_LABELS, consequenceLabel, penaltyLabel, kindLabel, replacedIds, availableActions } from '../lib/discipline';
+import { STATUS_LABELS, consequenceLabel, penaltyLabel, kindLabel, replacedIds, availableActions, captainLines, captainStatusText, captainWarning, releaseMessage } from '../lib/discipline';
 import { formatLocal, formatDate } from '../lib/time';
 import useFocusTrap from './useFocusTrap';
 import useUid from './useUid';
@@ -164,13 +164,6 @@ function RevokeConfirm( { uid, name, draft, busy, onConfirm, onCancel } ) {
 	);
 }
 
-function releaseMessage( row, name ) {
-	if ( row.source === 'manual' ) {
-		return `Email ${ name }, and copy the team captain(s) and convener, to tell them: ${ consequenceLabel( row ) }?`;
-	}
-	return `Email ${ name } to tell them: ${ consequenceLabel( row ) }?`;
-}
-
 function RowEditor( { uid, row, mode, busy, playerName: name, onRun, onCancel } ) {
 	if ( mode === 'decide' ) {
 		return <DecideEditor uid={ uid } initial="" busy={ busy } onConfirm={ ( n ) => onRun( row, 'decide', n ) } onCancel={ onCancel } />;
@@ -216,10 +209,15 @@ function RowActions( { row, actions, busy, onEdit, onRun } ) {
 	);
 }
 
-function RowDetails( { row } ) {
+// The projected date only means something for a live, unfinished suspension.
+const showEligible = ( row, replaced ) =>
+	! replaced && row.consequence === 'suspend' && [ 'pending', 'sent', 'failed' ].includes( row.status );
+
+function RowDetails( { row, replaced } ) {
 	const when = formatLocal( row.sent_at || row.created_at );
 	const manual = row.source === 'manual';
-	const eligible = formatDate( row.eligible_on );
+	const eligible = showEligible( row, replaced ) ? formatDate( row.eligible_on ) : '';
+	const captains = manual ? captainLines( row ) : [];
 	const team = [ row.team, row.division ].filter( Boolean ).join( ' — ' );
 	return (
 		<>
@@ -231,6 +229,9 @@ function RowDetails( { row } ) {
 				{ when } · { penaltyLabel( row ) }{ manual ? ` · ${ kindLabel( row ) }` : '' }{ team ? ` · ${ team }` : '' }
 			</p>
 			{ eligible && <p className="splm-discipline-history__meta">Next eligible game: { eligible }, projected</p> }
+			{ captains.length > 0 && (
+				<p className="splm-discipline-history__meta">Captains: { captains.map( captainStatusText ).join( '; ' ) }</p>
+			) }
 			{ manual && row.incident_note && (
 				<p className="splm-discipline-history__private-note"><strong>Private note (conveners only):</strong> { row.incident_note }</p>
 			) }
@@ -254,7 +255,7 @@ function DisciplineRow( { uid, row, replacedSet, busy, mode, error, playerName, 
 			className={ `splm-discipline-history__row${ replaced ? ' splm-discipline-history__row--replaced' : '' }` }
 			aria-busy={ busy }
 		>
-			<RowDetails row={ row } />
+			<RowDetails row={ row } replaced={ replaced } />
 			{ replaced && <p className="splm-discipline-history__meta"><em>Replaced by a later notice</em></p> }
 			{ actions.length > 0 && <RowActions row={ row } actions={ actions } busy={ busy } onEdit={ onEdit } onRun={ onRun } /> }
 			{ mode && ! replaced && <RowEditor uid={ uid } row={ row } mode={ mode } busy={ busy } playerName={ playerName } onRun={ onRun } onCancel={ onCancel } /> }
@@ -354,7 +355,14 @@ export default function PlayerDisciplinePanel( { player, season, onClose, notify
 		} else if ( res && res.notice && res.notice.status === 'failed' ) {
 			notify( `Saved, but the email could not be sent${ res.notice.last_error ? `: ${ res.notice.last_error }` : '.' }`, 'error' );
 		} else {
-			notify( draftRevoke ? 'Draft discarded' : ACTIONS[ key ].done, 'success' );
+			// decide/amend/revoke mail the captains too: say so if one was missed.
+			const missed = [ 'decide', 'amend', 'revoke' ].includes( key ) && ! draftRevoke ? captainWarning( res?.notice, 'Saved' ) : '';
+			if ( missed ) {
+				setIssueError( missed );
+				notify( missed, 'error' );
+			} else {
+				notify( draftRevoke ? 'Draft discarded' : ACTIONS[ key ].done, 'success' );
+			}
 		}
 	}, [ notify ] );
 
@@ -473,6 +481,12 @@ export default function PlayerDisciplinePanel( { player, season, onClose, notify
 			notify( msg, 'error' );
 			return;
 		}
+		const warning = captainWarning( notice );
+		if ( warning ) {
+			setIssueError( warning );
+			notify( warning, 'error' );
+			return;
+		}
 		notify( notice.status === 'pending' ? 'Draft saved' : 'Suspension recorded', 'success' );
 	}, [ reload, notify ] );
 
@@ -496,10 +510,8 @@ export default function PlayerDisciplinePanel( { player, season, onClose, notify
 					if ( e.target === e.currentTarget && overlayDownRef.current ) requestClose();
 					overlayDownRef.current = false;
 				} }
-				ref={ trapRef }
-				tabIndex={ -1 }
 			>
-				<div className="splm-modal splm-modal--wide" role="dialog" aria-modal="true" aria-labelledby={ titleId }>
+				<div ref={ trapRef } tabIndex={ -1 } className="splm-modal splm-modal--wide" role="dialog" aria-modal="true" aria-labelledby={ titleId }>
 					<h3 id={ titleId }>Discipline — { player.name }</h3>
 					<div className="splm-discipline-history__toolbar">
 						<button type="button" className="splm-btn splm-btn--primary" ref={ issueBtnRef } onClick={ openIssue } disabled={ busyId !== 0 }>Issue suspension</button>
