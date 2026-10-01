@@ -81,18 +81,37 @@ function get_posts( $args ) {
 }
 function get_post_field( $field, $id ) { return $GLOBALS['t_dates'][ $id ] ?? ''; }
 
+echo "\n=== player_team_ids() ===\n\n";
+
+$GLOBALS['t_meta'] = array(
+	7 => array(
+		'sp_current_team' => array( 9 ),
+		'sp_leagues'      => array(
+			5 => array( 100 => 11, 99 => 7 ),
+			6 => array( 100 => 12 ),
+			8 => array( 100 => 0, 98 => 0 ),
+			4 => array( 100 => 11 ),
+		),
+	),
+);
+assert_test( array( 11, 12 ) === $e::player_team_ids( 7, 100 ), 'season 100: season-scoped teams, deduped, ignoring sp_current_team and zeros' );
+assert_test( array( 7 ) === $e::player_team_ids( 7, 99 ), 'season 99: its own team' );
+assert_test( array() === $e::player_team_ids( 7, 55 ), 'season with no mapping: no teams, no sp_current_team fallback' );
+assert_test( array() === $e::player_team_ids( 7, 98 ), 'zero team id ignored' );
+assert_test( array() === $e::player_team_ids( 99, 100 ), 'player with no sp_leagues meta: no teams' );
+
 echo "\n=== next_eligible() ===\n\n";
 
-$GLOBALS['t_meta']  = array( 7 => array( 'sp_current_team' => array( 11 ) ) );
+$GLOBALS['t_meta']  = array( 7 => array( 'sp_leagues' => array( 5 => array( 100 => 11 ) ) ) );
 $GLOBALS['t_posts'] = array( 11 => array( 101, 102 ) );
 $GLOBALS['t_dates'] = array( 101 => '2026-10-06 20:00:00', 102 => '2026-10-13 20:00:00' );
-$r = $e::next_eligible( 7, '2026-10-01', 1 );
+$r = $e::next_eligible( 7, 100, '2026-10-01', 1 );
 assert_test( 102 === $r['event_id'] && '2026-10-13 20:00:00' === $r['date'] && 11 === $r['team_id'], 'off-by-one gone: 1 game owed, events [d1,d2] -> eligible is d2, not d1' );
 $GLOBALS['t_get_posts'] = array();
-$r = $e::next_eligible( 7, '2026-10-01', 2 );
+$r = $e::next_eligible( 7, 100, '2026-10-01', 2 );
 assert_test( null === $r['date'] && 0 === $r['remaining'], '2 games owed, only 2 events: nothing named to play' );
 $GLOBALS['t_get_posts'] = array();
-$e::next_eligible( 7, '2026-10-01', 2 );
+$e::next_eligible( 7, 100, '2026-10-01', 2 );
 
 $q = $GLOBALS['t_get_posts'][0];
 assert_test( array( 'publish', 'future' ) === $q['post_status'], 'query covers publish and future' );
@@ -108,16 +127,18 @@ assert_test(
 );
 
 $GLOBALS['t_get_posts'] = array();
-$GLOBALS['t_meta']      = array( 8 => array( 'sp_current_team' => array( 11, 12 ) ) );
+$GLOBALS['t_meta']      = array( 8 => array( 'sp_leagues' => array( 5 => array( 100 => 11 ), 6 => array( 100 => 12 ) ) ) );
 $GLOBALS['t_posts']     = array( 11 => array( 101, 102 ), 12 => array( 102, 103 ) );
 $GLOBALS['t_dates']     = array( 101 => '2026-10-06 20:00:00', 102 => '2026-10-13 20:00:00', 103 => '2026-10-20 20:00:00' );
-$r = $e::next_eligible( 8, '2026-10-01', 2 );
+$r = $e::next_eligible( 8, 100, '2026-10-01', 2 );
 assert_test( 103 === $r['event_id'] && 0 === $r['remaining'], 'overlapping event across two teams counts once' );
 
 $GLOBALS['t_get_posts'] = array();
-$r = $e::next_eligible( 99, '2026-10-01', 2 );
+$r = $e::next_eligible( 99, 100, '2026-10-01', 2 );
 assert_test( null === $r['date'] && 2 === $r['remaining'] && ! $GLOBALS['t_get_posts'], 'no teams: null date, no query' );
-$r = $e::next_eligible( 8, '2026-10-01', 0 );
+$r = $e::next_eligible( 7, 55, '2026-10-01', 2 );
+assert_test( null === $r['date'] && 2 === $r['remaining'] && ! $GLOBALS['t_get_posts'], 'no teams for that season (only sp_current_team elsewhere): no get_posts call' );
+$r = $e::next_eligible( 8, 100, '2026-10-01', 0 );
 assert_test( null === $r['date'] && 0 === $r['remaining'] && ! $GLOBALS['t_get_posts'], 'zero games: null date, no query' );
 
 echo "\nPassed: {$passed}  Failed: {$failed}\n";

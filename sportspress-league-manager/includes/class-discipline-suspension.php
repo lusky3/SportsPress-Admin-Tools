@@ -151,16 +151,17 @@ class SPLM_Discipline_Suspension {
 	}
 
 	/**
-	 * Captains of every team the player is on.
+	 * Captains of every team the player is rostered on this season.
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
 	 * @param int $player_id Player post id.
+	 * @param int $season_id Season term id.
 	 * @return array[] Each: array( 'team_id' => int, 'team' => string, 'email' => string ). 'email' may be ''.
 	 */
-	public static function captain_recipients( int $player_id ): array {
+	public static function captain_recipients( int $player_id, int $season_id ): array {
 		$out = array();
-		foreach ( SPLM_Discipline_Eligibility::player_team_ids( $player_id ) as $team_id ) {
+		foreach ( SPLM_Discipline_Eligibility::player_team_ids( $player_id, $season_id ) as $team_id ) {
 			$out[] = array(
 				'team_id' => $team_id,
 				'team'    => get_the_title( $team_id ),
@@ -263,7 +264,7 @@ class SPLM_Discipline_Suspension {
 		$sent    = wp_mail( $player['email'], $subject, SPLM_Discipline_Suspension_Body::body( 'player', $ctx ), $headers );
 
 		$captains = array();
-		foreach ( self::plan_captain_mail( self::captain_recipients( (int) $row->player_id ), $player['email'], $bcc ) as $entry ) {
+		foreach ( self::plan_captain_mail( self::captain_recipients( (int) $row->player_id, (int) $row->season_id ), $player['email'], $bcc ) as $entry ) {
 			$ok = false;
 			if ( $sent && '' === $entry['covered_by'] && '' !== $entry['email'] ) {
 				$ok = (bool) wp_mail(

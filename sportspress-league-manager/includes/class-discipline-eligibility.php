@@ -78,15 +78,28 @@ class SPLM_Discipline_Eligibility {
 	}
 
 	/**
-	 * Every team the player is currently on.
+	 * Every team the player is rostered on for a season.
 	 *
-	 * SportsPress stores one sp_current_team meta row per team.
+	 * Season-scoped via the roster mapping sp_leagues[league][season] => team
+	 * (the same source Rosters and the stats aggregator use). sp_current_team is
+	 * NOT season-scoped and is deliberately not consulted: a wrong team is worse
+	 * than none. A player in two leagues/divisions in one season yields two teams.
 	 *
 	 * @param int $player_id Player post id.
+	 * @param int $season_id Season term id.
 	 * @return int[]
 	 */
-	public static function player_team_ids( int $player_id ): array {
-		$ids = array_map( 'absint', (array) get_post_meta( $player_id, 'sp_current_team', false ) );
+	public static function player_team_ids( int $player_id, int $season_id ): array {
+		$leagues = get_post_meta( $player_id, 'sp_leagues', true );
+		if ( ! is_array( $leagues ) ) {
+			return array();
+		}
+		$ids = array();
+		foreach ( $leagues as $season_map ) {
+			if ( is_array( $season_map ) && ! empty( $season_map[ $season_id ] ) ) {
+				$ids[] = absint( $season_map[ $season_id ] );
+			}
+		}
 		return array_values( array_unique( array_filter( $ids ) ) );
 	}
 
@@ -109,12 +122,13 @@ class SPLM_Discipline_Eligibility {
 	 * local Y-m-d, matching SPLM_Discipline_Notice_Mail::next_game_label().
 	 *
 	 * @param int    $player_id  Player post id.
+	 * @param int    $season_id  Season term id (teams are resolved for this season).
 	 * @param string $after_date Local 'Y-m-d'; only events strictly after it count.
 	 * @param int    $games      Games owed.
 	 * @return array Same shape as pick_nth().
 	 */
-	public static function next_eligible( int $player_id, string $after_date, int $games ): array {
-		$teams = self::player_team_ids( $player_id );
+	public static function next_eligible( int $player_id, int $season_id, string $after_date, int $games ): array {
+		$teams = self::player_team_ids( $player_id, $season_id );
 		if ( ! $teams || $games <= 0 ) {
 			return self::pick_nth( array(), $games );
 		}
