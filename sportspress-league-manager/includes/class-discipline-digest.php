@@ -96,10 +96,11 @@ class SPLM_Discipline_Digest {
 					return false;
 				}
 
-				$rows = SPLM_Leaders_REST::build_watch( $season_id );
+				$rows      = SPLM_Leaders_REST::build_watch( $season_id );
+				$reminders = SPLM_Discipline_Digest_Reminders::load( $season_id );
 				// A quiet week sends nothing. A digest that arrives every week
 				// saying "nothing to report" trains people to filter it.
-				if ( ! $rows ) {
+				if ( ! $rows && ! SPLM_Discipline_Digest_Reminders::has_any( $reminders ) ) {
 					return false;
 				}
 
@@ -113,7 +114,7 @@ class SPLM_Discipline_Digest {
 						__( 'Penalty watch — %s', 'sportspress-league-manager' ),
 						$name
 					),
-					self::build_body( $rows, $name ),
+					self::build_body( $rows, $name, $reminders ),
 					array( 'Content-Type: text/html; charset=UTF-8' )
 				);
 			}
@@ -138,9 +139,23 @@ class SPLM_Discipline_Digest {
 	 *
 	 * @param array  $rows        Watch rows.
 	 * @param string $season_name Season name.
+	 * @param array  $reminders   Optional SPLM_Discipline_Digest_Reminders::load() result.
 	 * @return string
 	 */
-	public static function build_body( array $rows, string $season_name ): string {
+	public static function build_body( array $rows, string $season_name, array $reminders = array() ): string {
+		$out = $rows ? self::watch_section( $rows, $season_name ) : '';
+
+		return $out . SPLM_Discipline_Digest_Reminders::render( $reminders );
+	}
+
+	/**
+	 * The penalty-watch table and its framing text.
+	 *
+	 * @param array  $rows        Watch rows.
+	 * @param string $season_name Season name.
+	 * @return string
+	 */
+	private static function watch_section( array $rows, string $season_name ): string {
 		$out  = '<p>' . sprintf(
 			/* translators: 1: number of players, 2: season name. */
 			esc_html__( '%1$d player(s) are over a penalty threshold in %2$s.', 'sportspress-league-manager' ),
