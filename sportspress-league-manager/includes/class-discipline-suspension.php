@@ -163,7 +163,7 @@ class SPLM_Discipline_Suspension {
 	}
 
 	/**
-	 * Ids of rows that are the parent of another row.
+	 * Ids of rows that are the parent of another, non-discarded row.
 	 *
 	 * @param object[] $rows Notice rows; fixtures may lack parent_id.
 	 * @return array<int,true> Set keyed by parent id.
@@ -172,7 +172,8 @@ class SPLM_Discipline_Suspension {
 		$ids = array();
 		foreach ( $rows as $row ) {
 			$parent = isset( $row->parent_id ) ? (int) $row->parent_id : 0;
-			if ( $parent > 0 ) {
+			// A discarded child never took effect, so its parent still stands.
+			if ( $parent > 0 && 'discarded' !== (string) ( $row->status ?? '' ) ) {
 				$ids[ $parent ] = true;
 			}
 		}

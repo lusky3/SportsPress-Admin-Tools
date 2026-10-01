@@ -161,6 +161,10 @@ $line = $s::summary_line( array( splm_sum_row( 1, 0, 'suspend', 0 ), splm_sum_ro
 assert_test( false !== strpos( $line, '1 suspension (4 games)' ), 'decided indefinite counts once at the decided length' );
 $line = $s::summary_line( array( splm_sum_row( 1, 0, 'suspend', 3, 'revoked' ), splm_sum_row( 2, 1, 'none', 0 ) ) );
 assert_test( 'No disciplinary record.' === $line, 'a revoke chain counts zero' );
+$line = $s::summary_line( array( splm_sum_row( 1, 0, 'suspend', 3 ), splm_sum_row( 2, 1, 'suspend', 5, 'discarded' ) ) );
+assert_test( '1 suspension (3 games), 0 warnings, across 1 season.' === $line, 'a discarded amend leaves the parent standing' );
+$line = $s::summary_line( array( splm_sum_row( 1, 0, 'suspend', 2 ), splm_sum_row( 2, 1, 'suspend', 3, 'failed' ) ) );
+assert_test( false !== strpos( $line, '1 suspension (3 games)' ), 'a failed child still supersedes its parent' );
 $line = $s::summary_line( array( (object) array( 'status' => 'sent', 'consequence' => 'suspend', 'games' => 2, 'season_id' => 4 ) ) );
 assert_test( false !== strpos( $line, '1 suspension (2 games)' ), 'rows without id/parent_id still count' );
 
