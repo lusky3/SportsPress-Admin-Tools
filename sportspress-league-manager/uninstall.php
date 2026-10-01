@@ -46,6 +46,7 @@ $wpdb->query(
 $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}splm_player_notes" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}splm_discipline_ack" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}splm_discipline_notice" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}splm_discipline_infraction" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}splm_waitlist" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 // wp_unschedule_hook(), NOT wp_clear_scheduled_hook() (the pattern this

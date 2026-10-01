@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.3.7
+Stable tag: 1.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,6 +48,12 @@ WooCommerce is optional. Without it, fee tracking can be configured for manual e
 CSV files with `Team` and `Name` columns (both required). Each row maps a player Name to a Team; rows missing either value are skipped.
 
 == Changelog ==
+
+= 1.4.0 =
+* New (foundation only -- no UI or routes ship in this version): an editable infraction list, seeded from the ARL rulebook section 5.10 chart.
+* New: the discipline notice table gains manual-suspension columns and a `revoked` status (schema 1.1.0, runs automatically on update).
+* New: next-eligible-game projection across all of a player's teams, skipping postponed and cancelled fixtures.
+* New: suspension email wording for the player and for captains.
 
 = 1.3.7 =
 * Fix: the offer message textarea added in 1.3.6 was never covered by the modal's form-control styling, so it rendered at its tiny browser-default size and sat inline next to its own label instead of below it. It now matches the claim-window field: full modal width, same padding, label stacked above.

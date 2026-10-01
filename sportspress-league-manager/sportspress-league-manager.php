@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SportsPress League Manager (Child Plugin)
  * Description: Child plugin for SportsPress Admin Tools - League Manager modules
- * Version: 1.3.7
+ * Version: 1.4.0
  * Author: Cody (lusky3)
  * Text Domain: sportspress-league-manager
  * License: GPL v2 or later
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'SPLM_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPLM_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPLM_VERSION', '1.3.7' );
+define( 'SPLM_VERSION', '1.4.0' );
 
 // Native WordPress updates, served from this repository's releases.
 //
@@ -221,6 +221,7 @@ class SportsPress_League_Manager {
 	private function load_discipline_module() {
 		SPLM_Discipline_Database::maybe_upgrade();
 		SPLM_Discipline_Notice_Database::maybe_upgrade();
+		SPLM_Discipline_Infraction::maybe_upgrade();
 
 		new SPLM_Discipline_Digest();
 		if ( get_option( 'splm_discipline_digest_enabled' ) ) {
@@ -270,6 +271,7 @@ class SportsPress_League_Manager {
 			'spat_health_dashboard_tables',
 			function ( $tables ) {
 				$tables[] = SPLM_Discipline_Notice_Database::table_name();
+				$tables[] = SPLM_Discipline_Infraction::table_name();
 				return $tables;
 			}
 		);
