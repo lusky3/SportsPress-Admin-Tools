@@ -47,6 +47,7 @@ class SPLM_Autoloader {
 			'SPLM_Discipline_Incident_Games' => $base . 'class-discipline-incident-games.php',
 			'SPLM_Discipline_Infraction' => $base . 'class-discipline-infraction.php',
 			'SPLM_Discipline_Infraction_Admin' => $base . 'class-discipline-infraction-admin.php',
+			'SPLM_Discipline_Player_Metabox' => $base . 'class-discipline-player-metabox.php',
 			'SPLM_Discipline_Infraction_REST' => $base . 'class-discipline-infraction-rest.php',
 			'SPLM_Discipline_Captain_Mail' => $base . 'class-discipline-captain-mail.php',
 			'SPLM_Discipline_Suspension' => $base . 'class-discipline-suspension.php',
