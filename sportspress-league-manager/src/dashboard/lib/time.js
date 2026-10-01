@@ -22,6 +22,12 @@ export function formatDate( ymd ) {
 	if ( ! match ) {
 		return '';
 	}
-	const date = new Date( Number( match[ 1 ] ), Number( match[ 2 ] ) - 1, Number( match[ 3 ] ) );
-	return Number.isNaN( date.getTime() ) ? '' : date.toLocaleDateString();
+	const month = Number( match[ 2 ] ) - 1;
+	const day = Number( match[ 3 ] );
+	const date = new Date( Number( match[ 1 ] ), month, day );
+	// Reject impossible dates that Date would roll over (2026-02-30 -> Mar 2).
+	if ( date.getMonth() !== month || date.getDate() !== day ) {
+		return '';
+	}
+	return date.toLocaleDateString();
 }

@@ -29,11 +29,14 @@ export function consequenceLabel( row ) {
 		}
 		return 'Warning';
 	}
-	if ( row.outcome === 'indefinite' ) {
-		return 'Suspension — indefinite (pending review)';
-	}
+	// Must precede the indefinite check: a revoke correction row copies its
+	// parent's outcome (revoked_fields() in the PHP service), so revoking an
+	// indefinite suspension yields outcome 'indefinite' + consequence 'none'.
 	if ( row.consequence === 'none' ) {
 		return 'Correction — notice withdrawn';
+	}
+	if ( row.outcome === 'indefinite' ) {
+		return 'Suspension — indefinite (pending review)';
 	}
 	if ( row.consequence === 'suspend' && row.games === 0 ) {
 		return 'Balance of the game';
@@ -86,7 +89,7 @@ export function replacedIds( rows ) {
 }
 
 // Live = still the effective row of its chain (not replaced).
-export function isLive( row, replaced ) {
+export function isLive( row, replaced = new Set() ) {
 	return ! replaced.has( row.id );
 }
 
@@ -109,7 +112,9 @@ export function availableActions( row, replaced ) {
 	const flags = {
 		release: actionable,
 		discard: actionable,
-		serve: inStatus( row, 'sent' ) && suspend && live,
+		// An indefinite suspension has no length to serve; the convener decides
+		// one first and the decided child row is then served.
+		serve: inStatus( row, 'sent' ) && suspend && live && row.outcome !== 'indefinite',
 		decide: manual && row.outcome === 'indefinite' && inStatus( row, 'sent', 'served' ) && live && suspend,
 		amend:
 			manual &&
