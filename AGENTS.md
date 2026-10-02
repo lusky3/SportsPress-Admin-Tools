@@ -191,6 +191,7 @@ Player→team link: `sp_current_team` post meta on `sp_player`.
 
 - Local sandbox lives at `../sportspress-sandbox` (separate repo). The Makefile fails fast if absent.
 - A staging environment exists at `tikal.lusk.ee:8080` with full production data. Production is `sonic.lusk.ee` — treat as **read-only**. Detailed access/credentials are kept out of version control in the local, gitignored `.agents/ops/staging-environment.md`.
+- **SSH to staging goes over Tailscale: run `ssh tikal`** (also `scp tikal:…` / `rsync … tikal:…`). Never `ssh -p 8022 root@tikal.lusk.ee`: that is the public-internet break-glass route and prints a warning banner. The tailnet name is `tikal.tailnet-fea3.ts.net` (`100.95.77.120`). The staging web ports (8080/8443) are likewise reachable only via Cloudflare, the tailnet, the lusk.ee fleet, or the owner's `bypass.lusk.casa` address — a plain `curl` to the origin from anywhere else times out.
 - Outgoing email is disabled on staging via mu-plugin.
 
 ## Specs
