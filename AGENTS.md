@@ -214,3 +214,30 @@ Delivered work whose specs have been removed (kept here as a short record):
 - **Season Setup page + division-assignment wizard** — 4-step drag-and-drop (`@dnd-kit`) team/division assignment; `POST /season/create`, `GET /teams/with-divisions`.
 - **Schedule Generator** phases 2 (configuration manager, presets, change history) & 3 (matchup generation, slot allocator, statistics, SportsPress import, progress/cancel) — fully shipped. Deliberately descoped: PDF report export, drag-and-drop post-generation editing, interactive conflict-resolution chooser.
 - **Schedule Generator UI enhancements** — config clone, import preview modal, export filters, statistics panel, format detection. Outstanding items were QA/accessibility/docs process only (see `specs/spsg-qa-audit/`), not missing features.
+
+## Codebase Discovery (codebase-memory-mcp)
+
+This project uses `codebase-memory-mcp` to maintain a knowledge graph of the codebase.
+**Prefer MCP graph tools over grep/glob/file-search for code discovery, except where the fallbacks below apply.**
+
+### Priority Order
+1. `search_graph` — find functions, classes, routes, variables by pattern.
+2. `trace_path` — trace who calls a function or what it calls.
+3. `get_code_snippet` — read specific function/class source code without reading the whole file.
+4. `check_index_coverage` — validate candidate paths and missed ranges before claiming a feature doesn't exist.
+5. `query_graph` — run Cypher queries for complex structural patterns.
+6. `get_architecture` — get a high-level project summary.
+
+### When to Fall Back to grep/glob
+- Searching for string literals, error messages, UI text, or config values.
+- Searching non-code files (Dockerfiles, shell scripts, configs, markdown).
+- When the MCP coverage check reports that a file/range was excluded or skipped.
+
+### Subagent Protocol
+Do not assume subagents inherit MCP tool access. 
+Before spawning a subagent, query the graph in the parent agent. Pass the exact qualified symbols, paths, and call-chain findings in the delegated task context so the subagent can immediately start working rather than re-discovering the codebase.
+
+### Examples
+- Find a handler: `search_graph(name_pattern=".*OrderHandler.*")`
+- Who calls it: `trace_path(function_name="OrderHandler", direction="inbound")`
+- Read source: `get_code_snippet(qualified_name="pkg/orders.OrderHandler")`
