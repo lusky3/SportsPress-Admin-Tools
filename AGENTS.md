@@ -218,7 +218,7 @@ Delivered work whose specs have been removed (kept here as a short record):
 ## Codebase Discovery (codebase-memory-mcp)
 
 This project uses `codebase-memory-mcp` to maintain a knowledge graph of the codebase.
-**ALWAYS prefer MCP graph tools over grep/glob/file-search for code discovery.**
+**Prefer MCP graph tools over grep/glob/file-search for code discovery, except where the fallbacks below apply.**
 
 ### Priority Order
 1. `search_graph` — find functions, classes, routes, variables by pattern.
