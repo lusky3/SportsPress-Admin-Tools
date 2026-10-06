@@ -190,7 +190,7 @@ Player→team link: `sp_current_team` post meta on `sp_player`.
 ## Sandbox / Staging Notes
 
 - Local sandbox lives at `../sportspress-sandbox` (separate repo). The Makefile fails fast if absent.
-- A staging environment exists at `tikal.lusk.ee:8080` with full production data. Production is `sonic.lusk.ee` — treat as **read-only**. Detailed access/credentials are kept out of version control in the local, gitignored `.agents/ops/staging-environment.md`.
+- A staging environment exists with full production data; production is **read-only**. Hostnames, access routes and credentials are kept out of version control in the local, gitignored `.agents/ops/staging-environment.md` — do not commit infrastructure details (hosts, IPs, ports, tailnet names) to tracked files.
 - Outgoing email is disabled on staging via mu-plugin.
 
 ## Specs
