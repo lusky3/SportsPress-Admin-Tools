@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.1.1
+Stable tag: 1.1.2
 License: GPLv2 or later
 
 Automatically creates SportsPress player records from WooCommerce registration orders.
@@ -40,6 +40,9 @@ SportsPress Player Registration automatically creates SportsPress player records
 4. Configure automatic creation and role assignment in settings
 
 == Changelog ==
+
+= 1.1.2 =
+* Add: placeholder plugin icon, shown in the Plugins and Updates screens in place of the generic one.
 
 = 1.1.1 =
 * Fix: the parent-plugin requirement now uses WordPress's own `Requires Plugins` header instead of a made-up `Depends:` header that WordPress never actually read -- this plugin now shows up correctly in the parent's "Required by" list and gets native activation-order enforcement, not just this plugin's own runtime check.

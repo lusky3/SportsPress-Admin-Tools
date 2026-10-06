@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.1.2
+Stable tag: 1.1.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -49,6 +49,9 @@ Payments are matched to on-hold WooCommerce orders by: (1) an order number in th
 Unmatched payments appear in WooCommerce → e-Transfer Webhooks where you can manually match them to orders or hide false positives.
 
 == Changelog ==
+
+= 1.1.3 =
+* Add: placeholder plugin icon, shown in the Plugins and Updates screens in place of the generic one.
 
 = 1.1.2 =
 * Fix: the Cloudflare Worker's envelope-sender allowlist check now archives a copy to `FORWARD_EMAIL` before rejecting an unrecognized forwarder domain, the same safety net already used for a failed webhook delivery. Previously, an email from a forwarder envelope not yet listed in `SAFE_DOMAINS` was bounced immediately with no archival copy and no way for anyone to notice -- a real payment notification arriving through an unlisted forwarder hostname (e.g. a mail host that rotates its outbound server name) was silently and permanently lost.

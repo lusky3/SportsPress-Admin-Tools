@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.3.10
+Stable tag: 1.3.11
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -58,6 +58,9 @@ The plugin validates configuration feasibility before generation and provides sp
 Yes. The import dialog lets you choose conflict resolution (skip or overwrite), event status, league, and season. Import runs in chunks with progress tracking.
 
 == Changelog ==
+
+= 1.3.11 =
+* Add: placeholder plugin icon, shown in the Plugins and Updates screens in place of the generic one.
 
 = 1.3.10 =
 * Fix: in a double round-robin the two meetings of every pair were scheduled in consecutive weeks. They are now a full rotation apart, as the matchup order always intended.
