@@ -1,7 +1,7 @@
 # SPSG Functional Smoke Test Results
 
 **Date:** 2026-04-26  
-**Staging:** http://tikal.lusk.ee:8080  
+**Staging:** staging (see local `.agents/ops/` notes)  
 **Plugin version:** sportspress-schedule-generator (v1.1.0-rc3)
 
 ---
@@ -203,7 +203,7 @@ The password `ykQR 5C0V 3bkx 2Rnq 7sMi 0Iqf` does not authenticate against the s
 
 ## Environment Notes
 
-- Staging URL: http://tikal.lusk.ee:8080 (redirects to https://tikal.lusk.ee:8443)
+- Staging URL: staging (see local `.agents/ops/` notes)
 - WordPress 6.9.4, PHP 8.3, MariaDB 11.4
 - Plugin loaded correctly, parent plugin (SPAT) present
 - `is_admin()` is false in WP-CLI context — admin-only hooks not testable via CLI
