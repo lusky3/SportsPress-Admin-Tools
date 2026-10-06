@@ -213,6 +213,7 @@ class SPAT_Updater {
 
 			$installed = self::installed_version( $basename );
 			$offer     = self::update_for( $slug, $installed );
+			$icons     = self::icons_for( $basename );
 
 			if ( null === $offer ) {
 				// Listing it as up to date is what puts the auto-update toggle
@@ -225,13 +226,44 @@ class SPAT_Updater {
 					'url'         => 'https://github.com/' . SPAT_Updater_Release::REPO,
 					'package'     => '',
 				);
+				if ( $icons ) {
+					$transient->no_update[ $basename ]->icons = $icons;
+				}
 				continue;
 			}
 
+			if ( $icons ) {
+				$offer['icons'] = $icons;
+			}
 			$transient->response[ $basename ] = (object) $offer;
 		}
 
 		return $transient;
+	}
+
+	/**
+	 * Icons a plugin ships, in the shape the Plugins and Updates screens read.
+	 *
+	 * WordPress shows a generic placeholder for any plugin whose update entry
+	 * carries no `icons`. They are served from the installed copy, so they need
+	 * no network and cannot go stale; a size that is not on disk is left out
+	 * rather than advertised, since a 404 in the list is worse than the
+	 * placeholder.
+	 *
+	 * @param string $basename Plugin basename.
+	 * @return array<string,string> Keys `1x`/`2x` => URL; empty if none ship.
+	 */
+	public static function icons_for( string $basename ): array {
+		$icons = array();
+		foreach ( array(
+			'1x' => 'icon-128x128.png',
+			'2x' => 'icon-256x256.png',
+		) as $key => $file ) {
+			if ( is_readable( WP_PLUGIN_DIR . '/' . dirname( $basename ) . '/assets/' . $file ) ) {
+				$icons[ $key ] = plugins_url( 'assets/' . $file, WP_PLUGIN_DIR . '/' . $basename );
+			}
+		}
+		return $icons;
 	}
 
 	/**

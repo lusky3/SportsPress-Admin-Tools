@@ -28,6 +28,9 @@ function add_action() {}
 function plugin_basename( $file ) {
 	return ltrim( str_replace( __DIR__ . '/plugins/', '', $file ), '/' );
 }
+function plugins_url( $path = '', $plugin = '' ) {
+	return 'https://example.test/wp-content/plugins/' . basename( dirname( $plugin ) ) . '/' . ltrim( $path, '/' );
+}
 function home_url( $path = '' ) {
 	return 'https://example.test' . $path;
 }
@@ -388,6 +391,51 @@ assert_test( is_object( $info ) && false === strpos( $info->sections['changelog'
 
 $untouched = SPAT_Updater::filter_plugin_details( false, 'plugin_information', (object) array( 'slug' => 'some-other-plugin' ) );
 assert_test( false === $untouched, 'another plugin\'s details request is left alone' );
+
+echo "\n=== plugin icons ===\n\n";
+
+$tools_basename = 'sportspress-player-tools/sportspress-player-tools.php';
+$icon_dir       = WP_PLUGIN_DIR . '/sportspress-player-tools/assets';
+$had_plugins    = is_dir( WP_PLUGIN_DIR );
+
+assert_test( array() === SPAT_Updater::icons_for( $tools_basename ), 'a plugin that ships no icons advertises none' );
+
+mkdir( $icon_dir, 0777, true );
+touch( $icon_dir . '/icon-128x128.png' );
+$one = SPAT_Updater::icons_for( $tools_basename );
+assert_test( array( '1x' ) === array_keys( $one ), 'only a size that is on disk is advertised' );
+
+touch( $icon_dir . '/icon-256x256.png' );
+$both = SPAT_Updater::icons_for( $tools_basename );
+assert_test( 'https://example.test/wp-content/plugins/sportspress-player-tools/assets/icon-256x256.png' === ( $both['2x'] ?? '' ), 'both sizes resolve to URLs inside the installed plugin' );
+
+spat_updater_reset();
+spat_updater_fixture(
+	array(
+		'versions'  => array( $tools_basename => '1.1.0' ),
+		'responses' => spat_test_release( 'v1.2.0', array( 'sportspress-player-tools' => '1.2.0' ) ),
+	)
+);
+$out = spat_test_check();
+assert_test( isset( $out->response[ $tools_basename ]->icons['1x'] ), 'an available update carries the icons' );
+
+spat_updater_reset();
+spat_updater_fixture(
+	array(
+		'versions'  => array( $tools_basename => '1.2.0' ),
+		'responses' => spat_test_release( 'v1.2.0', array( 'sportspress-player-tools' => '1.2.0' ) ),
+	)
+);
+$out = spat_test_check();
+assert_test( isset( $out->no_update[ $tools_basename ]->icons['2x'] ), 'an up-to-date plugin carries the icons too' );
+
+unlink( $icon_dir . '/icon-128x128.png' );
+unlink( $icon_dir . '/icon-256x256.png' );
+rmdir( $icon_dir );
+rmdir( WP_PLUGIN_DIR . '/sportspress-player-tools' );
+if ( ! $had_plugins ) {
+	rmdir( WP_PLUGIN_DIR );
+}
 
 echo "\n=== a manifest does not get to choose which files land where ===\n\n";
 
