@@ -394,18 +394,15 @@ assert_test( false === $untouched, 'another plugin\'s details request is left al
 
 echo "\n=== plugin icons ===\n\n";
 
+// Fixtures live in tests/plugins/ (WP_PLUGIN_DIR): empty icon files for two
+// plugins, none for a third. Committed rather than created and deleted per run.
 $tools_basename = 'sportspress-player-tools/sportspress-player-tools.php';
-$icon_dir       = WP_PLUGIN_DIR . '/sportspress-player-tools/assets';
-$had_plugins    = is_dir( WP_PLUGIN_DIR );
 
-assert_test( array() === SPAT_Updater::icons_for( $tools_basename ), 'a plugin that ships no icons advertises none' );
+assert_test( array() === SPAT_Updater::icons_for( 'sportspress-admin-tools/sportspress-admin-tools.php' ), 'a plugin that ships no icons advertises none' );
 
-mkdir( $icon_dir, 0777, true );
-touch( $icon_dir . '/icon-128x128.png' );
-$one = SPAT_Updater::icons_for( $tools_basename );
+$one = SPAT_Updater::icons_for( 'sportspress-etransfer-automation/sportspress-etransfer-automation.php' );
 assert_test( array( '1x' ) === array_keys( $one ), 'only a size that is on disk is advertised' );
 
-touch( $icon_dir . '/icon-256x256.png' );
 $both = SPAT_Updater::icons_for( $tools_basename );
 assert_test( 'https://example.test/wp-content/plugins/sportspress-player-tools/assets/icon-256x256.png' === ( $both['2x'] ?? '' ), 'both sizes resolve to URLs inside the installed plugin' );
 
@@ -428,14 +425,6 @@ spat_updater_fixture(
 );
 $out = spat_test_check();
 assert_test( isset( $out->no_update[ $tools_basename ]->icons['2x'] ), 'an up-to-date plugin carries the icons too' );
-
-unlink( $icon_dir . '/icon-128x128.png' );
-unlink( $icon_dir . '/icon-256x256.png' );
-rmdir( $icon_dir );
-rmdir( WP_PLUGIN_DIR . '/sportspress-player-tools' );
-if ( ! $had_plugins ) {
-	rmdir( WP_PLUGIN_DIR );
-}
 
 echo "\n=== a manifest does not get to choose which files land where ===\n\n";
 
