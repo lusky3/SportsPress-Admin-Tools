@@ -38,7 +38,7 @@ run_node_test() {
     local file="$1"
     local rel="${file#$SCRIPT_DIR/}"
 
-    if [ -n "${SPAT_LIST_TESTS:-}" ]; then
+    if [[ -n "${SPAT_LIST_TESTS:-}" ]]; then
         return 0
     fi
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

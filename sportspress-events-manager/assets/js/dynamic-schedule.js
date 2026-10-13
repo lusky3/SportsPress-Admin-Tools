@@ -118,6 +118,47 @@
     return;
   }
 
+  // Same initialisation SportsPress runs on page load (assets/js/sportspress.js),
+  // scoped to the replaced content. SportsPress exposes no function for it.
+  function initTables($, $scope) {
+    var strings = global.localized_strings || { previous: 'Previous', next: 'Next' };
+    $scope.find('.sp-scrollable-table').wrap($('<div>').addClass('sp-scrollable-table-wrapper'));
+    if (!$.fn.dataTable) return;
+    $scope.find('.sp-data-table').each(function () {
+      var $t = $(this);
+      var sortable = $t.hasClass('sp-sortable-table');
+      var paginated = $t.hasClass('sp-paginated-table');
+      var rows = parseInt($t.attr('data-sp-rows'), 10);
+      if (isNaN(rows)) rows = 10;
+      if ($t.find('tbody tr').length <= rows) paginated = false;
+      if (!sortable && !paginated) return;
+      $t.dataTable({
+        order: [],
+        autoWidth: false,
+        searching: false,
+        info: false,
+        paging: paginated,
+        lengthChange: false,
+        pagingType: 'simple_numbers',
+        pageLength: rows,
+        ordering: sortable,
+        language: {
+          aria: { sortAscending: '', sortDescending: '' },
+          paginate: { previous: strings.previous, next: strings.next }
+        },
+        columnDefs: [{ type: 'num-fmt', targets: ['.data-number', '.data-rank'] }]
+      });
+    });
+  }
+
+  // values: write the four params; null: clear them (Reset).
+  function writeUrl(values) {
+    if (!global.history || !global.history.pushState) return;
+    var url = new URL(global.location.href);
+    Logic.writeParams(url.searchParams, values);
+    global.history.pushState({}, '', url);
+  }
+
   function init($) {
     var D = global.spemSchedule || {};
     var $wraps = $('.arl-schedule-wrap');
@@ -155,53 +196,17 @@
       $select.val(Logic.pickValue(options, wanted, 'all'));
     }
 
-    // Same initialisation SportsPress runs on page load (assets/js/sportspress.js),
-    // scoped to the replaced content. SportsPress exposes no function for it.
-    function initTables($scope) {
-      var strings = global.localized_strings || { previous: 'Previous', next: 'Next' };
-      $scope.find('.sp-scrollable-table').wrap('<div class="sp-scrollable-table-wrapper"></div>');
-      if (!$.fn.dataTable) return;
-      $scope.find('.sp-data-table').each(function () {
-        var $t = $(this);
-        var sortable = $t.hasClass('sp-sortable-table');
-        var paginated = $t.hasClass('sp-paginated-table');
-        var rows = parseInt($t.attr('data-sp-rows'), 10);
-        if (isNaN(rows)) rows = 10;
-        if ($t.find('tbody tr').length <= rows) paginated = false;
-        if (!sortable && !paginated) return;
-        $t.dataTable({
-          order: [],
-          autoWidth: false,
-          searching: false,
-          info: false,
-          paging: paginated,
-          lengthChange: false,
-          pagingType: 'simple_numbers',
-          pageLength: rows,
-          ordering: sortable,
-          language: {
-            aria: { sortAscending: '', sortDescending: '' },
-            paginate: { previous: strings.previous, next: strings.next }
-          },
-          columnDefs: [{ type: 'num-fmt', targets: ['.data-number', '.data-rank'] }]
-        });
-      });
-    }
-
     function showError($wrap) {
       $wrap.find('.arl-schedule-error').remove();
-      var $err = $('<div class="arl-schedule-error" role="alert"></div>');
-      $err.append(document.createTextNode('Failed to load schedule. '));
-      $('<a>').attr('href', global.location.href).text('Reload the page').appendTo($err);
-      $err.insertBefore($wrap.find('.arl-schedule-content'));
-    }
-
-    // values: write the four params; null: clear them (Reset).
-    function writeUrl(values) {
-      if (!global.history || !global.history.pushState) return;
-      var url = new URL(global.location.href);
-      Logic.writeParams(url.searchParams, values);
-      global.history.pushState({}, '', url);
+      var err = document.createElement('div');
+      var link = document.createElement('a');
+      err.className = 'arl-schedule-error';
+      err.setAttribute('role', 'alert');
+      link.href = global.location.href;
+      link.textContent = 'Reload the page';
+      err.appendChild(document.createTextNode('Failed to load schedule. '));
+      err.appendChild(link);
+      $(err).insertBefore($wrap.find('.arl-schedule-content'));
     }
 
     // Apply a successful response: all four selected values come from the
@@ -215,7 +220,7 @@
       rebuildSelect($team, Logic.buildOptions(data.teams, 'id', $team.find('option').first().text()), sel.team);
       writeSelects($wrap, sel);
       $content.html(data.html);
-      initTables($content);
+      initTables($, $content);
     }
 
     function isValidResponse(res) {
@@ -291,8 +296,11 @@
     function applySafely($wrap, data) {
       var $selects = $wrap.find('.arl-schedule-select');
       var $content = $wrap.find('.arl-schedule-content');
-      var snap = $selects.map(function () { return $(this).html(); }).get();
-      var chosen = $selects.map(function () { return $(this).val(); }).get();
+      var snap = $selects.map(function () {
+        var $s = $(this);
+        var options = $s.find('option').map(function () { return { value: this.value, text: this.text }; }).get();
+        return { $select: $s, options: options, chosen: $s.val() };
+      }).get();
       var applied = $wrap.data('applied');
       var list = $content.html();
       try {
@@ -301,7 +309,7 @@
       } catch (e) {
         // .html() does not capture the selection, and applyResponse has already
         // overwritten the applied values: put all of it back.
-        $selects.each(function (i) { $(this).html(snap[i]).val(chosen[i]); });
+        snap.forEach(function (s) { rebuildSelect(s.$select, s.options, s.chosen); });
         $wrap.data('applied', applied);
         $content.html(list);
         return false;
@@ -362,7 +370,7 @@
       });
     }
 
-    $(global).on('popstate', function () {
+    global.addEventListener('popstate', function () {
       var values = Logic.valuesFromParams(new URLSearchParams(global.location.search), primaryDefaults);
       load($primary, values, { push: false });
     });

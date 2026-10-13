@@ -20,6 +20,7 @@ $GLOBALS['stub_shortcode_html'] = '';
  * Stub mirroring the WordPress signature; the unused argument is deliberate.
  *
  * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ * @SuppressWarnings(PHPMD.Superglobals)
  */
 function get_post_meta( $id, $key = '', $single = false ) { // phpcs:ignore
 	$value = $GLOBALS['stub_meta'][ $id ][ $key ] ?? null;
@@ -33,6 +34,7 @@ function get_post_meta( $id, $key = '', $single = false ) { // phpcs:ignore
  * Stub for get_the_terms(): objects with a term_id, or false.
  *
  * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ * @SuppressWarnings(PHPMD.Superglobals)
  */
 function get_the_terms( $id, $taxonomy ) { // phpcs:ignore
 	$ids = $GLOBALS['stub_terms'][ $id ][ $taxonomy ] ?? array();
@@ -43,6 +45,7 @@ function get_the_terms( $id, $taxonomy ) { // phpcs:ignore
  * Stub for get_term_by(): slugs listed in stub_terms['slug'].
  *
  * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ * @SuppressWarnings(PHPMD.Superglobals)
  */
 function get_term_by( $field, $value, $taxonomy ) { // phpcs:ignore
 	$id = $GLOBALS['stub_terms']['slug'][ $taxonomy ][ $value ] ?? null;
@@ -53,11 +56,15 @@ function get_term_by( $field, $value, $taxonomy ) { // phpcs:ignore
  * Stub for get_term(): known numeric ids listed in stub_terms['id'].
  *
  * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ * @SuppressWarnings(PHPMD.Superglobals)
  */
 function get_term( $id, $taxonomy ) { // phpcs:ignore
 	return in_array( $id, $GLOBALS['stub_terms']['id'][ $taxonomy ] ?? array(), true ) ? (object) array( 'term_id' => $id ) : null;
 }
 
+/**
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
 function is_wp_error( $thing ) { // phpcs:ignore
 	return false;
 }
@@ -70,6 +77,9 @@ function absint( $value ) {
 	return abs( (int) $value );
 }
 
+/**
+ * @SuppressWarnings(PHPMD.Superglobals)
+ */
 function get_post_type( $id ) {
 	return $GLOBALS['stub_types'][ $id ] ?? false;
 }
@@ -78,6 +88,7 @@ $GLOBALS['stub_options'] = array();
 
 /**
  * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ * @SuppressWarnings(PHPMD.Superglobals)
  */
 function get_option( $name, $fallback = false ) { // phpcs:ignore
 	return $GLOBALS['stub_options'][ $name ] ?? $fallback;
@@ -87,6 +98,9 @@ function get_the_title( $id ) {
 	return 'Calendar ' . $id;
 }
 
+/**
+ * @SuppressWarnings(PHPMD.Superglobals)
+ */
 function get_post_status( $id ) {
 	return $GLOBALS['stub_status'][ $id ] ?? false;
 }
@@ -106,6 +120,7 @@ function esc_html( $text ) {
  * Stub: SportsPress output for an event list, as set by the test.
  *
  * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ * @SuppressWarnings(PHPMD.Superglobals)
  */
 function do_shortcode( $text ) { // phpcs:ignore
 	return $GLOBALS['stub_shortcode_html'];
@@ -118,6 +133,9 @@ function has_shortcode( $content, $tag ) { // phpcs:ignore
 	return false !== strpos( $content, '[' . $tag );
 }
 
+/**
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
 function add_shortcode( $tag, $callback ) { // phpcs:ignore
 }
 

@@ -25,6 +25,7 @@ $GLOBALS['stub_cache_del']  = array();
 
 /**
  * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ * @SuppressWarnings(PHPMD.Superglobals)
  */
 function add_shortcode( $tag, $callback ) { // phpcs:ignore
 	$GLOBALS['stub_shortcodes'][ $tag ] = $callback;
@@ -32,6 +33,7 @@ function add_shortcode( $tag, $callback ) { // phpcs:ignore
 
 /**
  * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ * @SuppressWarnings(PHPMD.Superglobals)
  */
 function add_action( $hook, $callback, $priority = 10, $args = 1 ) { // phpcs:ignore
 	$GLOBALS['stub_hooks'][ $hook ][] = $callback;
@@ -39,6 +41,7 @@ function add_action( $hook, $callback, $priority = 10, $args = 1 ) { // phpcs:ig
 
 /**
  * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ * @SuppressWarnings(PHPMD.Superglobals)
  */
 function remove_action( $hook, $callback, $priority = 10 ) { // phpcs:ignore
 	$GLOBALS['stub_hooks'][ $hook ] = array_values(
@@ -69,12 +72,16 @@ function wp_json_encode( $data ) {
 	return json_encode( $data );
 }
 
+/**
+ * @SuppressWarnings(PHPMD.Superglobals)
+ */
 function get_option( $name, $fallback = false ) {
 	return $GLOBALS['stub_options'][ $name ] ?? $fallback;
 }
 
 /**
  * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ * @SuppressWarnings(PHPMD.Superglobals)
  */
 function add_option( $name, $value = '', $deprecated = '', $autoload = null ) { // phpcs:ignore
 	if ( ! isset( $GLOBALS['stub_options'][ $name ] ) ) {
@@ -84,17 +91,22 @@ function add_option( $name, $value = '', $deprecated = '', $autoload = null ) { 
 
 /**
  * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ * @SuppressWarnings(PHPMD.Superglobals)
  */
 function wp_cache_delete( $key, $group = '' ) { // phpcs:ignore
 	$GLOBALS['stub_cache_del'][] = $group . ':' . $key;
 }
 
+/**
+ * @SuppressWarnings(PHPMD.Superglobals)
+ */
 function get_transient( $key ) {
 	return $GLOBALS['stub_transients'][ $key ] ?? false;
 }
 
 /**
  * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ * @SuppressWarnings(PHPMD.Superglobals)
  */
 function set_transient( $key, $value, $ttl = 0 ) { // phpcs:ignore
 	$GLOBALS['stub_transients'][ $key ] = $value;
@@ -105,6 +117,7 @@ function set_transient( $key, $value, $ttl = 0 ) { // phpcs:ignore
  * Stub for SportsPress's [event_list]: one row, or, when stub_rows_total is
  * set, that many rows truncated to the number="N" attribute as the template
  * does.
+ * @SuppressWarnings(PHPMD.Superglobals)
  */
 function do_shortcode( $text ) {
 	$GLOBALS['stub_rendered'][] = $text;
@@ -113,16 +126,23 @@ function do_shortcode( $text ) {
 	return '<table><tbody>' . str_repeat( '<tr class="sp-row sp-post"><td>game</td></tr>', min( $total, $limit ) ) . '</tbody></table>';
 }
 
+/**
+ * @SuppressWarnings(PHPMD.Superglobals)
+ */
 function get_post_type( $id ) {
 	return $GLOBALS['stub_types'][ $id ] ?? false;
 }
 
+/**
+ * @SuppressWarnings(PHPMD.Superglobals)
+ */
 function get_post_status( $id ) {
 	return $GLOBALS['stub_status'][ $id ] ?? false;
 }
 
 /**
  * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ * @SuppressWarnings(PHPMD.Superglobals)
  */
 function get_post_meta( $id, $key = '', $single = false ) { // phpcs:ignore
 	$value = $GLOBALS['stub_meta'][ $id ][ $key ] ?? null;
@@ -132,6 +152,9 @@ function get_post_meta( $id, $key = '', $single = false ) { // phpcs:ignore
 	return null === $value ? array() : (array) $value;
 }
 
+/**
+ * @SuppressWarnings(PHPMD.Superglobals)
+ */
 function get_the_terms( $id, $taxonomy ) {
 	$ids = $GLOBALS['stub_terms'][ $id ][ $taxonomy ] ?? array();
 	return $ids ? array_map( fn( $t ) => (object) array( 'term_id' => $t ), $ids ) : false;
@@ -139,6 +162,7 @@ function get_the_terms( $id, $taxonomy ) {
 
 /**
  * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ * @SuppressWarnings(PHPMD.Superglobals)
  */
 function get_term_by( $field, $value, $taxonomy ) { // phpcs:ignore
 	$id = $GLOBALS['stub_terms']['slug'][ $taxonomy ][ $value ] ?? null;
@@ -149,6 +173,9 @@ function get_term_by( $field, $value, $taxonomy ) { // phpcs:ignore
 	) : false;
 }
 
+/**
+ * @SuppressWarnings(PHPMD.Superglobals)
+ */
 function get_term( $id, $taxonomy ) {
 	$slugs = array_flip( $GLOBALS['stub_terms']['slug'][ $taxonomy ] ?? array() );
 	return isset( $slugs[ $id ] ) ? (object) array(
@@ -197,6 +224,7 @@ function wp_send_json_error( $data = null ) {
 
 /**
  * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ * @SuppressWarnings(PHPMD.Superglobals)
  */
 function check_ajax_referer( $action, $field ) { // phpcs:ignore
 	$GLOBALS['stub_nonce_checked'][] = $action . '|' . $field;
@@ -220,6 +248,7 @@ function sanitize_text_field( $value ) {
 
 /**
  * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ * @SuppressWarnings(PHPMD.Superglobals)
  */
 function remove_query_arg( $keys ) { // phpcs:ignore
 	$GLOBALS['stub_removed_args'] = $keys;
@@ -228,6 +257,7 @@ function remove_query_arg( $keys ) { // phpcs:ignore
 
 /**
  * Filter stub: a value set in stub_filters wins.
+ * @SuppressWarnings(PHPMD.Superglobals)
  */
 function apply_filters( $tag, $value ) {
 	return $GLOBALS['stub_filters'][ $tag ] ?? $value;
@@ -241,6 +271,7 @@ function get_the_title( $id ) {
  * Season terms, newest first, from stub_season_terms.
  *
  * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ * @SuppressWarnings(PHPMD.Superglobals)
  */
 function get_terms( $args ) { // phpcs:ignore
 	return $GLOBALS['stub_season_terms'];
@@ -654,6 +685,7 @@ $GLOBALS['stub_meta'][202]         = array( 'sp_number' => '10', 'sp_status' => 
 
 /**
  * Render a shortcode with a clean cache; returns [ html, last [event_list] text ].
+ * @SuppressWarnings(PHPMD.Superglobals)
  */
 function render_block( $atts ) {
 	$GLOBALS['stub_transients'] = array();
@@ -675,6 +707,7 @@ function signed_fields( $html ) {
 
 /**
  * Run the AJAX handler with $_POST and a clean cache; returns the response.
+ * @SuppressWarnings(PHPMD.Superglobals)
  */
 function run_ajax( array $post ) {
 	$GLOBALS['stub_transients'] = array();
