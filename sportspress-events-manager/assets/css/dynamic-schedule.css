@@ -1,0 +1,15 @@
+/* Dynamic Schedule */
+.arl-schedule-wrap { max-width: 100%; box-sizing: border-box; }
+.arl-schedule-wrap *, .arl-schedule-wrap *::before, .arl-schedule-wrap *::after { box-sizing: border-box; }
+.arl-schedule-filters { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 20px; padding: 12px 16px; background: rgba(128, 128, 128, 0.12); border: 1px solid rgba(128, 128, 128, 0.3); border-radius: 4px; color: inherit; }
+.arl-schedule-filter { display: flex; flex-direction: column; gap: 4px; flex: 1 1 140px; min-width: 0; }
+.arl-schedule-filter label { font-weight: 600; }
+.arl-schedule-select { width: 100%; max-width: 100%; padding: 6px 10px; border: 1px solid #ccc; border-radius: 3px; font-size: 14px; }
+.arl-schedule-reset { flex: 0 0 auto; padding: 6px 4px; }
+.arl-schedule-select:focus-visible, .arl-schedule-reset:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.arl-schedule-content { transition: opacity 0.2s; overflow-x: auto; }
+.arl-schedule-content.arl-schedule-loading { opacity: 0.5; pointer-events: none; }
+.arl-schedule-empty { color: inherit; opacity: 0.75; font-style: italic; padding: 20px 0; }
+.arl-schedule-error { margin-bottom: 12px; padding: 8px 16px; border: 1px solid #ccc; border-radius: 3px; }
+@media (prefers-reduced-motion: reduce) { .arl-schedule-content { transition: none; } }
+@media (max-width: 480px) { .arl-schedule-filter { flex-basis: 100%; } }

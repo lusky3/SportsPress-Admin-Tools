@@ -1372,3 +1372,180 @@ h2 { font-size: 1.3rem; margin-bottom: 1rem; color: var(--splm-text); }
 	gap: 1rem;
 	align-items: flex-end;
 }
+
+/* ==========================================================================
+   Discipline (manual suspensions): player picker, issue modal, status badges.
+   Everything resolves through the --splm-* tokens above, so dark mode is
+   inherited; status is always conveyed by badge TEXT, never colour alone.
+   ========================================================================== */
+
+/* Player picker */
+.splm-player-picker label { display: block; margin: 0.75rem 0 0.25rem; font-size: 0.85rem; font-weight: 500; }
+.splm-player-picker__input {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 0.5rem;
+	border: 1px solid var(--splm-border-strong);
+	border-radius: 6px;
+	background: var(--splm-surface);
+	color: var(--splm-text);
+	font-family: inherit;
+	font-size: 0.85rem;
+}
+.splm-player-picker__status { margin: 0.25rem 0; font-size: 0.8rem; color: var(--splm-muted); }
+.splm-player-picker__results {
+	list-style: none;
+	margin: 0.25rem 0 0;
+	padding: 0;
+	max-height: 240px;
+	overflow-y: auto;
+	border: 1px solid var(--splm-border);
+	border-radius: 6px;
+	background: var(--splm-surface);
+}
+.splm-player-picker__results button {
+	display: block;
+	width: 100%;
+	padding: 0.5rem 0.75rem;
+	border: none;
+	background: none;
+	color: var(--splm-text);
+	text-align: left;
+	cursor: pointer;
+	font-size: 0.85rem;
+}
+.splm-player-picker__results button:hover { background: var(--splm-surface-muted); }
+
+/* Issue modal */
+.splm-modal--wide { max-width: 640px; }
+.splm-discipline-form input,
+.splm-discipline-form select,
+.splm-discipline-form textarea {
+	/* Explicit token colours: host-theme input styles must not bleed in. */
+	background: var(--splm-surface);
+	color: var(--splm-text);
+}
+.splm-discipline-form .splm-select,
+.splm-discipline-form .splm-textarea { margin-bottom: 0.25rem; }
+.splm-discipline-form input[type="number"] { max-width: 8rem; }
+.splm-discipline-form__hint { margin: 0.25rem 0; font-size: 0.8rem; color: var(--splm-text-secondary); }
+.splm-discipline-muted { color: var(--splm-muted); font-size: 0.85rem; }
+
+.splm-discipline-preview {
+	margin-top: 1rem;
+	padding: 0.75rem 1rem;
+	border: 1px solid var(--splm-border);
+	border-radius: 6px;
+	background: var(--splm-surface-alt);
+}
+.splm-discipline-preview h4 { margin: 0 0 0.5rem; font-size: 0.9rem; color: var(--splm-text); }
+.splm-discipline-preview__result { font-weight: 600; }
+.splm-discipline-preview__error { color: var(--splm-danger-text-strong); font-size: 0.85rem; }
+
+.splm-discipline-warnings { list-style: none; margin: 0.5rem 0; padding: 0; }
+.splm-discipline-warning {
+	margin: 0.35rem 0;
+	padding: 0.5rem 0.75rem;
+	border-radius: 6px;
+	font-size: 0.85rem;
+	background: var(--splm-warning-bg);
+	border: 1px solid var(--splm-warning-border);
+	color: var(--splm-warning-text);
+}
+.splm-discipline-warning--blocking {
+	background: var(--splm-danger-tint);
+	border-color: var(--splm-danger);
+	color: var(--splm-danger-text-strong);
+}
+.splm-discipline-warning--info {
+	background: var(--splm-primary-tint);
+	border-color: var(--splm-primary-border);
+	color: var(--splm-text);
+}
+
+.splm-discipline-recipients { margin: 0.25rem 0 0.5rem; padding-left: 1.1rem; font-size: 0.85rem; color: var(--splm-text); }
+.splm-discipline-details { margin: 0.5rem 0; font-size: 0.85rem; }
+.splm-discipline-details summary { cursor: pointer; color: var(--splm-primary); }
+pre.splm-discipline-email {
+	margin: 0.5rem 0 0;
+	padding: 0.5rem 0.75rem;
+	max-height: 14rem;
+	overflow: auto;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	border: 1px solid var(--splm-border);
+	border-radius: 6px;
+	background: var(--splm-surface);
+	color: var(--splm-text);
+	font-family: inherit;
+	font-size: 0.8rem;
+}
+
+/* Notice status badges (extend .splm-badge). Pairs reuse existing tokens that
+   already have AA-checked dark values. */
+.splm-badge--pending { background: var(--splm-warning-bg); color: var(--splm-warning-text); }
+.splm-badge--sent { background: var(--splm-success-bg); color: var(--splm-success-text); }
+.splm-badge--failed { background: var(--splm-danger-bg); color: var(--splm-danger-text); }
+.splm-badge--served { background: var(--splm-primary-tint); color: var(--splm-primary); box-shadow: inset 0 0 0 1px var(--splm-primary-border); }
+.splm-badge--discarded { background: var(--splm-surface-muted); color: var(--splm-text-secondary); }
+.splm-badge--revoked { background: var(--splm-danger-tint); color: var(--splm-danger-text); box-shadow: inset 0 0 0 1px var(--splm-danger-border); }
+.splm-badge--baseline { background: transparent; color: var(--splm-text-secondary); box-shadow: inset 0 0 0 1px var(--splm-border); }
+
+/* Per-player discipline history panel */
+.splm-discipline-history__toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin: 0.75rem 0; }
+.splm-discipline-history__toolbar label { font-size: 0.85rem; color: var(--splm-text); }
+.splm-discipline-history__summary { margin: 0.5rem 0; font-size: 0.9rem; font-weight: 600; color: var(--splm-text); }
+.splm-discipline-history { max-height: 55vh; overflow-y: auto; }
+.splm-discipline-history__season h4 { margin: 1rem 0 0.5rem; font-size: 0.9rem; color: var(--splm-text); }
+.splm-discipline-history__list { list-style: none; margin: 0; padding: 0; }
+.splm-discipline-history__row {
+	margin: 0 0 0.5rem;
+	padding: 0.6rem 0.75rem;
+	border: 1px solid var(--splm-border);
+	border-radius: 6px;
+	background: var(--splm-surface);
+	color: var(--splm-text);
+}
+.splm-discipline-history__row--replaced {
+	border-style: dashed;
+	background: var(--splm-surface-muted);
+	color: var(--splm-text-secondary);
+}
+.splm-discipline-history__head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.splm-discipline-history__meta { margin: 0.25rem 0; font-size: 0.8rem; color: var(--splm-text-secondary); }
+.splm-discipline-history__private-note {
+	margin: 0.35rem 0;
+	padding: 0.35rem 0.6rem;
+	border-left: 3px solid var(--splm-primary-border);
+	background: var(--splm-surface-alt);
+	color: var(--splm-text);
+	font-size: 0.85rem;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.splm-discipline-history__error { margin: 0.35rem 0; font-size: 0.85rem; color: var(--splm-danger-text-strong); }
+.splm-discipline-history__actions { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.5rem; }
+.splm-discipline-history__editor {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+	margin-top: 0.5rem;
+	padding: 0.5rem 0.75rem;
+	border: 1px solid var(--splm-border);
+	border-radius: 6px;
+	background: var(--splm-surface-alt);
+}
+.splm-discipline-history__editor input[type="number"] {
+	max-width: 6rem;
+	background: var(--splm-surface);
+	color: var(--splm-text);
+}
+.splm-discipline-history__confirm-text { flex-basis: 100%; margin: 0; font-size: 0.85rem; }
+.splm-discipline-history__check { flex-basis: 100%; font-size: 0.85rem; }
+.splm-discipline-history .splm-alert { margin: 0.5rem 0 0; }
+
+/* Notices page: heading row with the Issue suspension button */
+.splm-notices__header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.5rem; }
+.splm-notices__header h2 { margin: 0; }
+.splm-notices__kind { display: block; font-size: 0.75rem; }

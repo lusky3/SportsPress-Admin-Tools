@@ -1,42 +1,19 @@
-import { useCallback, useEffect, useState } from '@wordpress/element';
+import { useCallback, useEffect, useRef, useState } from '@wordpress/element';
 import { fetchNotices, releaseNotice, discardNotice, serveNotice } from '../lib/api';
 import HelpLink from '../components/HelpLink';
+import ConfirmDialog from '../components/ConfirmDialog';
+import PlayerPicker from '../components/PlayerPicker';
+import PlayerDisciplinePanel from '../components/PlayerDisciplinePanel';
+import SuspensionModal from '../components/SuspensionModal';
+import useFocusTrap from '../components/useFocusTrap';
+import useUid from '../components/useUid';
+import { formatLocal } from '../lib/time';
+import { STATUS_LABELS, consequenceLabel, penaltyLabel, kindLabel, replacedIds, availableActions, releaseMessage, captainWarning } from '../lib/discipline';
 
-// Timestamps arrive as UTC 'Y-m-d H:i:s'. Date can't parse that shape reliably
-// across browsers, so normalise it to ISO with an explicit Z before parsing —
-// without the Z it would be read as local time, which is the same four-to-five
-// hour error the server side guards against.
-function parseUtc( value ) {
-	if ( ! value ) {
-		return null;
-	}
-	const parsed = new Date( value.replace( ' ', 'T' ) + 'Z' );
-	return Number.isNaN( parsed.getTime() ) ? null : parsed;
-}
-
-function formatLocal( value ) {
-	const date = parseUtc( value );
-	return date ? date.toLocaleString() : '—';
-}
-
-// Conveners get plain language, never the stored vocabulary. 'baseline' in
-// particular means "recorded so we don't mail them retroactively", which is
-// not a phrase anyone should have to decode from a status badge.
-const STATUS_LABELS = {
-	baseline: 'On record',
-	pending: 'Waiting for you',
-	sent: 'Sent',
-	failed: 'Could not send',
-	discarded: 'Discarded',
-	served: 'Served',
-};
-
-function consequenceLabel( row ) {
-	if ( row.consequence === 'suspend' ) {
-		return row.games === 1 ? 'Suspension — 1 game' : `Suspension — ${ row.games } games`;
-	}
-	return 'Warning';
-}
+// Fail-open like Leaders.jsx; the server gate is the real enforcement.
+const canUseDiscipline = () =>
+	window.splmDashboard?.modules?.discipline !== false
+	&& window.splmDashboard?.capabilities?.canManage !== false;
 
 function Problem( { row } ) {
 	if ( row.status !== 'failed' ) {
@@ -54,17 +31,18 @@ function Problem( { row } ) {
 	);
 }
 
-function RowActions( { row, busy, onRelease, onDiscard, onServe } ) {
-	const actionable = row.status === 'pending' || row.status === 'failed';
-	const servable = row.status === 'sent' && row.consequence === 'suspend';
+function RowActions( { row, replaced, busy, canManage, onRelease, onDiscard, onServe, onManage } ) {
+	const actions = availableActions( row, replaced );
+	const isReplaced = replaced.has( row.id );
+	const manageable = canManage && row.source === 'manual';
 
-	if ( ! actionable && ! servable ) {
+	if ( actions.length === 0 && ! isReplaced && ! manageable ) {
 		return <td />;
 	}
 
 	return (
 		<td>
-			{ actionable && (
+			{ ( actions.includes( 'release' ) || actions.includes( 'discard' ) ) && (
 				<>
 					<button type="button" className="splm-btn" disabled={ busy } onClick={ () => onRelease( row ) }>
 						{ row.status === 'failed' ? 'Try again' : 'Release' }
@@ -74,29 +52,37 @@ function RowActions( { row, busy, onRelease, onDiscard, onServe } ) {
 					</button>
 				</>
 			) }
-			{ servable && (
+			{ actions.includes( 'serve' ) && (
 				<button type="button" className="splm-btn" disabled={ busy } onClick={ () => onServe( row ) }>
 					Mark served
 				</button>
+			) }
+			{ isReplaced && <p className="splm-muted">Replaced by a later notice</p> }
+			{ manageable && (
+				<>
+					{ ' ' }
+					<button
+						type="button"
+						className="splm-btn splm-btn--small"
+						aria-label={ `Manage suspensions for ${ row.player }` }
+						onClick={ () => onManage( row ) }
+					>
+						Manage
+					</button>
+				</>
 			) }
 		</td>
 	);
 }
 
-// Which accumulation crossed the line. A convener seeing "8 PIM" needs to know
-// whether that is a season total or a recent-window one, or the number looks
-// wrong next to a player whose season total is far higher.
-function penaltyLabel( row ) {
-	if ( row.scope === 'window' ) {
-		return `${ row.value_at_fire } PIM in the recent window`;
-	}
-	return `${ row.value_at_fire } PIM this season`;
-}
-
-function NoticeRow( { row, busy, onRelease, onDiscard, onServe } ) {
+function NoticeRow( { row, replaced, busy, canManage, onRelease, onDiscard, onServe, onManage } ) {
+	const manual = row.source === 'manual';
 	return (
 		<tr>
-			<td>{ row.player || '—' }</td>
+			<td>
+				{ row.player || '—' }
+				{ manual && <small className="splm-muted splm-notices__kind">{ kindLabel( row ) }</small> }
+			</td>
 			<td>{ row.team || '—' }</td>
 			<td>{ row.division || '—' }</td>
 			<td>{ penaltyLabel( row ) }</td>
@@ -108,7 +94,16 @@ function NoticeRow( { row, busy, onRelease, onDiscard, onServe } ) {
 				<Problem row={ row } />
 			</td>
 			<td>{ formatLocal( row.sent_at || row.created_at ) }</td>
-			<RowActions row={ row } busy={ busy } onRelease={ onRelease } onDiscard={ onDiscard } onServe={ onServe } />
+			<RowActions
+				row={ row }
+				replaced={ replaced }
+				busy={ busy }
+				canManage={ canManage }
+				onRelease={ onRelease }
+				onDiscard={ onDiscard }
+				onServe={ onServe }
+				onManage={ onManage }
+			/>
 		</tr>
 	);
 }
@@ -124,9 +119,29 @@ function Filters( { status, onStatusChange } ) {
 					<option value="sent">Sent</option>
 					<option value="served">Served</option>
 					<option value="discarded">Discarded</option>
+					<option value="revoked">Withdrawn</option>
+					<option value="baseline">On record</option>
 					<option value="">Everything</option>
 				</select>
 			</label>
+		</div>
+	);
+}
+
+// First step of "Issue suspension": pick the player. Selecting one hands over
+// to SuspensionModal (the page swaps this dialog for that one).
+function PlayerPickDialog( { onSelect, onClose } ) {
+	const titleId = useUid( 'splm-issue-pick' );
+	const trapRef = useFocusTrap( onClose );
+	return (
+		<div className="splm-modal-overlay">
+			<div ref={ trapRef } className="splm-modal" role="dialog" aria-modal="true" aria-labelledby={ titleId } tabIndex={ -1 }>
+				<h3 id={ titleId }>Issue a suspension</h3>
+				<PlayerPicker label="Find the player (at least 3 letters)" onSelect={ onSelect } autoFocus />
+				<div className="splm-modal__actions">
+					<button type="button" className="splm-btn" onClick={ onClose }>Cancel</button>
+				</div>
+			</div>
 		</div>
 	);
 }
@@ -139,25 +154,56 @@ export default function Notices( { season } ) {
 	const [ notice, setNotice ] = useState( '' );
 	const [ status, setStatus ] = useState( 'pending' );
 	const [ busyId, setBusyId ] = useState( 0 );
+	const [ confirm, setConfirm ] = useState( null );
+	const [ picking, setPicking ] = useState( false );
+	const [ issuePlayer, setIssuePlayer ] = useState( null );
+	const [ managePlayer, setManagePlayer ] = useState( null );
+	const [ refreshing, setRefreshing ] = useState( false );
+	const [ focusTick, setFocusTick ] = useState( 0 );
+	const pageRef = useRef( null );
+	const headingRef = useRef( null );
+	const issueBtnRef = useRef( null );
+	const refocusIssueRef = useRef( false );
+	const seqRef = useRef( 0 );
+
+	const canManage = canUseDiscipline();
+	const replaced = replacedIds( rows );
 
 	// cancelled guards against a slower earlier request (e.g. from a filter
 	// change that has since been superseded) overwriting the table with stale
 	// data after a later request resolves first — same pattern as Waitlist.jsx.
-	const load = useCallback( () => {
+	// `silent` is a reload after a change: the rows stay on screen (aria-busy)
+	// rather than the table unmounting, which would drop keyboard focus.
+	const load = useCallback( ( silent = false ) => {
 		let cancelled = false;
-		setLoading( true );
+		// Only the newest request may apply its answer, so a slower stale
+		// response (e.g. from before a filter change) never overwrites it.
+		const seq = ++seqRef.current;
+		if ( silent ) {
+			setRefreshing( true );
+		} else {
+			setLoading( true );
+		}
 		setError( '' );
 		fetchNotices( { season, status } )
 			.then( ( res ) => {
-				if ( cancelled ) return;
+				if ( cancelled || seq !== seqRef.current ) return;
 				setRows( res.data );
 				setTotal( res.total );
 				setLoading( false );
+				setRefreshing( false );
+				if ( silent ) {
+					setFocusTick( ( t ) => t + 1 );
+				}
 			} )
 			.catch( ( e ) => {
-				if ( cancelled ) return;
+				if ( cancelled || seq !== seqRef.current ) return;
 				setError( e?.message || 'Could not load the notice queue.' );
 				setLoading( false );
+				setRefreshing( false );
+				if ( silent ) {
+					setFocusTick( ( t ) => t + 1 );
+				}
 			} );
 		return () => { cancelled = true; };
 	}, [ season, status ] );
@@ -167,49 +213,143 @@ export default function Notices( { season } ) {
 		return cleanup;
 	}, [ load ] );
 
-	const act = ( row, fn, confirmText, successText ) => {
-		if ( confirmText && ! window.confirm( confirmText ) ) {
-			return;
-		}
+	// After a change settles, the control that had focus may be gone or
+	// disabled and the browser drops focus to <body>. Hand it to the result
+	// message, else the heading. Never on the initial load or a filter change
+	// (focusTick is only bumped by changes), and never when focus is still
+	// somewhere on the page (e.g. an open dialog).
+	useEffect( () => {
+		if ( focusTick === 0 ) return;
+		const page = pageRef.current;
+		const active = document.activeElement;
+		if ( ! page || ( active && active !== document.body && page.contains( active ) ) ) return;
+		( page.querySelector( '.splm-alert' ) || headingRef.current )?.focus();
+	}, [ focusTick ] );
+
+	const run = ( row, fn, successText, warnVerb ) => {
 		setBusyId( row.id );
 		setError( '' );
 		setNotice( '' );
+		let failure = '';
 		fn( row.id )
-			.then( () => {
-				setNotice( successText );
-				load();
+			.then( ( res ) => {
+				// A released manual notice also mails the captains: a missed one is
+				// a warning, not a success. Automatic responses carry no captains.
+				const warning = warnVerb ? captainWarning( { status: 'sent', captains_notified: res?.captains }, warnVerb ) : '';
+				if ( warning ) {
+					failure = warning;
+				} else {
+					setNotice( successText );
+				}
 			} )
-			.catch( ( e ) => setError( e?.message || 'That did not work.' ) )
-			.finally( () => setBusyId( 0 ) );
+			.catch( ( e ) => { failure = e?.message || 'That did not work.'; } )
+			.finally( () => {
+				// Reload either way: a failed send leaves the row 'failed' and a
+				// busy 409 may still have written, so the list must not go stale.
+				// load() clears the error, so set it afterwards.
+				load( true );
+				if ( failure ) setError( failure );
+				setBusyId( 0 );
+				setFocusTick( ( t ) => t + 1 );
+			} );
 	};
 
+	// Every action here asks first; the dialog closes before the request runs
+	// and the row's own controls are disabled via busyId while it does.
+	const ask = ( row, fn, message, successText, confirmLabel, danger = false, warnVerb = '' ) =>
+		setConfirm( { row, fn, message, successText, confirmLabel, danger, warnVerb } );
+
 	const handleRelease = ( row ) =>
-		act(
+		ask(
 			row,
 			releaseNotice,
-			`Email ${ row.player } to tell them: ${ consequenceLabel( row ) }?`,
-			'Notice sent.'
+			releaseMessage( row, row.player ),
+			'Notice sent.',
+			row.status === 'failed' ? 'Try again' : 'Release',
+			false,
+			'Sent'
 		);
 
 	const handleDiscard = ( row ) =>
-		act( row, discardNotice, `Discard this notice? ${ row.player } will not be told.`, 'Notice discarded.' );
+		ask( row, discardNotice, `Discard this notice? ${ row.player } will not be told.`, 'Notice discarded.', 'Discard', true );
 
 	// serve() is a one-way sent -> served transition with no un-serve route on
 	// the server, so it confirms like every other irreversible action here.
 	const handleServe = ( row ) =>
-		act(
+		ask(
 			row,
 			serveNotice,
 			`Mark ${ row.player }'s suspension as served? This cannot be undone.`,
-			'Suspension marked served.'
+			'Suspension marked served.',
+			'Mark served'
 		);
 
-	return (
-		<div className="splm-notices">
-			<h2>Discipline Notices <HelpLink topic="notices" /></h2>
+	const cancelConfirm = useCallback( () => setConfirm( null ), [] );
+	const doConfirm = () => {
+		const c = confirm;
+		setConfirm( null );
+		run( c.row, c.fn, c.successText, c.warnVerb );
+	};
 
-			{ error && <div className="splm-alert splm-alert--warning" role="alert">{ error }</div> }
-			{ notice && <div className="splm-alert splm-alert--success" role="status">{ notice }</div> }
+	const closePick = useCallback( () => setPicking( false ), [] );
+	const pickPlayer = useCallback( ( p ) => {
+		setPicking( false );
+		setIssuePlayer( { id: p.id, name: p.name } );
+	}, [] );
+	const closeIssue = useCallback( () => {
+		refocusIssueRef.current = true;
+		setIssuePlayer( null );
+	}, [] );
+	// The picker dialog that led here is gone, so the trap cannot restore focus
+	// to it: hand it to the Issue button (or the heading) once the modal closes.
+	useEffect( () => {
+		if ( issuePlayer || ! refocusIssueRef.current ) return;
+		refocusIssueRef.current = false;
+		( issueBtnRef.current || headingRef.current )?.focus();
+	}, [ issuePlayer ] );
+	const issueDone = useCallback( ( n ) => {
+		load( true );
+		if ( ! n ) return;
+		setNotice( '' );
+		if ( n.status === 'failed' ) {
+			setError( n.last_error || 'The email could not be sent.' );
+			return;
+		}
+		const warning = captainWarning( n );
+		if ( warning ) {
+			setError( warning );
+			return;
+		}
+		setNotice( n.status === 'pending' ? 'Draft saved.' : 'Suspension recorded.' );
+	}, [ load ] );
+
+	const openManage = ( row ) => setManagePlayer( { id: row.player_id, name: row.player } );
+	const closeManage = useCallback( () => {
+		setManagePlayer( null );
+		load( true );
+	}, [ load ] );
+	// The panel reports into the page's own alert regions instead of a toast.
+	const manageNotify = useCallback( ( message, type ) => {
+		if ( type === 'error' ) {
+			setError( message );
+		} else {
+			setNotice( message );
+		}
+	}, [] );
+
+	return (
+		<div className="splm-notices" ref={ pageRef }>
+			<div className="splm-notices__header">
+				<h2 ref={ headingRef } tabIndex={ -1 }>Discipline Notices <HelpLink topic="notices" /></h2>
+				{ canManage && (
+					<button type="button" className="splm-btn splm-btn--primary" ref={ issueBtnRef } onClick={ () => setPicking( true ) }>
+						Issue suspension
+					</button>
+				) }
+			</div>
+
+			{ error && <div className="splm-alert splm-alert--warning" role="alert" tabIndex={ -1 }>{ error }</div> }
+			{ notice && <div className="splm-alert splm-alert--success" role="status" tabIndex={ -1 }>{ notice }</div> }
 
 			<Filters status={ status } onStatusChange={ setStatus } />
 
@@ -224,7 +364,7 @@ export default function Notices( { season } ) {
 			) }
 
 			{ ! loading && rows.length > 0 && (
-				<div className="splm-table-wrapper">
+				<div className="splm-table-wrapper" aria-busy={ refreshing }>
 					<table className="splm-table splm-notices__table">
 						<thead>
 							<tr>
@@ -243,10 +383,13 @@ export default function Notices( { season } ) {
 								<NoticeRow
 									key={ row.id }
 									row={ row }
+									replaced={ replaced }
 									busy={ busyId === row.id }
+									canManage={ canManage }
 									onRelease={ handleRelease }
 									onDiscard={ handleDiscard }
 									onServe={ handleServe }
+									onManage={ openManage }
 								/>
 							) ) }
 						</tbody>
@@ -258,6 +401,23 @@ export default function Notices( { season } ) {
 						</p>
 					) }
 				</div>
+			) }
+
+			{ confirm && (
+				<ConfirmDialog
+					message={ confirm.message }
+					confirmLabel={ confirm.confirmLabel }
+					danger={ confirm.danger }
+					onConfirm={ doConfirm }
+					onCancel={ cancelConfirm }
+				/>
+			) }
+			{ picking && <PlayerPickDialog onSelect={ pickPlayer } onClose={ closePick } /> }
+			{ issuePlayer && (
+				<SuspensionModal player={ issuePlayer } season={ season } onClose={ closeIssue } onDone={ issueDone } />
+			) }
+			{ managePlayer && (
+				<PlayerDisciplinePanel player={ managePlayer } season={ season } onClose={ closeManage } notify={ manageNotify } />
 			) }
 		</div>
 	);

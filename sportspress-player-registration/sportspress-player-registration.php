@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SportsPress Player Registration (Child Plugin)
  * Description: Child plugin for SportsPress Admin Tools - Player Registration module
- * Version: 1.1.1
+ * Version: 1.1.2
  * Author: Cody (lusky3)
  * Text Domain: sportspress-player-registration
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'SPPR_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPPR_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPPR_VERSION', '1.1.1' );
+define( 'SPPR_VERSION', '1.1.2' );
 
 // Native WordPress updates, served from this repository's releases.
 //

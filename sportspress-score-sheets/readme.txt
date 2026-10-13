@@ -4,7 +4,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.0.0
+Stable tag: 1.0.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -29,6 +29,9 @@ When using a hosted recognition provider (e.g. Claude), the uploaded image is tr
 3. Under **Score Sheets → Settings**, choose a recognition provider and add its API key.
 
 == Changelog ==
+
+= 1.0.1 =
+* Add: placeholder plugin icon, shown in the Plugins and Updates screens in place of the generic one.
 
 = 1.0.0 =
 * New: this plugin now updates itself through the normal WordPress Plugins screen, sourced from the project's GitHub releases.

@@ -233,7 +233,7 @@ class SPLM_Discipline_Notice_Admin {
 		$actionable = 0;
 		foreach ( $result['rows'] as $raw ) {
 			$row = SPLM_Discipline_Notice_REST::row_to_response( $raw );
-			if ( in_array( $row['status'], array( 'pending', 'failed' ), true ) ) {
+			if ( SPLM_Discipline_Notice_Labels::is_bulk_releasable( $row ) ) {
 				++$actionable;
 			}
 			$this->render_row( $row, $readonly );
@@ -291,6 +291,7 @@ class SPLM_Discipline_Notice_Admin {
 	 * docs/superpowers/plans/2026-09-02-registration-waitlist-followups.md.
 	 *
 	 * @SuppressWarnings(PHPMD.NPathComplexity)
+	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	private function render_row( array $row, bool $readonly ): void {
 		$em = '—';
@@ -301,9 +302,10 @@ class SPLM_Discipline_Notice_Admin {
 			esc_html( $row['team'] ? $row['team'] : $em )
 				. '<br/><span class="description">' . esc_html( $row['division'] ? $row['division'] : $em ) . '</span>',
 			'<code>' . (int) $row['season_id'] . '</code>',
-			'<code>' . esc_html( $row['tier_key'] ) . '</code><br/><code>' . esc_html( $row['ack_key'] ) . '</code>',
-			esc_html( $row['consequence'] ) . ( $row['games'] ? esc_html( ' (' . (int) $row['games'] . ')' ) : '' ),
-			(int) $row['value_at_fire'] . ' / ' . (int) $row['season_at_fire'],
+			'<code>' . esc_html( $row['tier_key'] ) . '</code><br/><code>' . esc_html( $row['ack_key'] ) . '</code>'
+				. $this->manual_caption( $row ),
+			esc_html( SPLM_Discipline_Notice_Labels::consequence_text( $row ) ),
+			esc_html( SPLM_Discipline_Notice_Labels::penalty_text( $row ) ),
 			'<code>' . esc_html( $row['status'] ) . '</code>',
 			esc_html( $row['recipient'] ? $row['recipient'] : $em )
 				. '<br/><code>' . esc_html( $row['recipient_via'] ) . '</code>',
@@ -317,6 +319,25 @@ class SPLM_Discipline_Notice_Admin {
 
 		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- every cell escapes its own content above.
 		echo '<tr><td>' . implode( '</td><td>', $cells ) . '</td></tr>';
+	}
+
+	/**
+	 * The kind and infraction line under the tier cell; '' for automatic rows.
+	 *
+	 * @param array $row Response-shaped row.
+	 * @return string
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private function manual_caption( array $row ): string {
+		$kind = SPLM_Discipline_Notice_Labels::kind_label( $row );
+		if ( '' === $kind ) {
+			return '';
+		}
+
+		$parts = array_filter( array( $kind, SPLM_Discipline_Notice_Labels::infraction_text( $row ) ) );
+
+		return '<br/><span class="description">' . esc_html( implode( ' · ', $parts ) ) . '</span>';
 	}
 
 	/**
@@ -346,15 +367,20 @@ class SPLM_Discipline_Notice_Admin {
 	 */
 	private function row_buttons( array $row ): string {
 		$buttons = '';
+		// Manual drafts are released one at a time: the extra class keeps them
+		// out of the bulk selector in render_script().
+		$class = 'manual' === ( $row['source'] ?? 'auto' ) ? 'splm-notice-action splm-notice-action--single' : 'splm-notice-action';
 
 		if ( in_array( $row['status'], array( 'pending', 'failed' ), true ) ) {
 			$buttons .= sprintf(
-				'<button type="button" class="button splm-notice-action" data-action="release" data-id="%d">%s</button> ',
+				'<button type="button" class="button %s" data-action="release" data-id="%d">%s</button> ',
+				$class,
 				(int) $row['id'],
 				esc_html__( 'Release', 'sportspress-league-manager' )
 			);
 			$buttons .= sprintf(
-				'<button type="button" class="button splm-notice-action" data-action="discard" data-id="%d">%s</button>',
+				'<button type="button" class="button %s" data-action="discard" data-id="%d">%s</button>',
+				$class,
 				(int) $row['id'],
 				esc_html__( 'Discard', 'sportspress-league-manager' )
 			);
@@ -428,7 +454,7 @@ class SPLM_Discipline_Notice_Admin {
 				button.addEventListener( 'click', function () {
 					var action = button.getAttribute( 'data-action' );
 					var ids = Array.prototype.map.call(
-						document.querySelectorAll( '.splm-notice-action[data-action="' + action + '"]' ),
+						document.querySelectorAll( '.splm-notice-action[data-action="' + action + '"]:not(.splm-notice-action--single)' ),
 						function ( el ) { return el.getAttribute( 'data-id' ); }
 					);
 					if ( ! ids.length || ! window.confirm( action + ' ' + ids.length + ' notice(s)?' ) ) {

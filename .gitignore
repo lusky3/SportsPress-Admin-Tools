@@ -90,3 +90,7 @@ skills-lock.json
 # Raw per-suite coverage snapshots from run-coverage.sh. The merged report
 # lands in coverage/, already ignored above.
 /.coverage-raw/
+
+# Local code-intelligence tooling caches (codebase-memory-mcp, Serena)
+/.codebase-memory/
+/.serena/
