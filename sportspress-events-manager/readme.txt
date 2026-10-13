@@ -49,6 +49,7 @@ No. The rollover creates new season terms and updates team assignments. Preview 
 
 = 1.1.4 =
 * Add: `[arl_schedule]` shortcode — a filterable schedule (season, division, team, show) built on a SportsPress Calendar.
+* Fix: the filter bars on `[arl_schedule]` and `[arl_standings]` no longer use a fixed light background, so their labels stay readable on themes with a dark mode.
 
 = 1.1.3 =
 * Add: placeholder plugin icon, shown in the Plugins and Updates screens in place of the generic one.
