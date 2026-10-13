@@ -241,11 +241,15 @@
 
       xhr.done(function (res) {
         if ($wrap.data('seq') !== seq) return;
-        if (!isValidResponse(res) || !applySafely($wrap, res.data)) {
-          fail($wrap, opts.onFail);
-          return;
+        try {
+          if (!isValidResponse(res) || !applySafely($wrap, res.data)) {
+            fail($wrap, opts.onFail);
+            return;
+          }
+          if (pushHistory !== false && $wrap.is($primary)) writeUrl(clearUrl ? null : res.data.selected);
+        } finally {
+          $content.removeClass('arl-schedule-loading').removeAttr('aria-busy');
         }
-        if (pushHistory !== false && $wrap.is($primary)) writeUrl(clearUrl ? null : res.data.selected);
       }).fail(function (jqxhr, status) {
         if (status === 'abort' || $wrap.data('seq') !== seq) return;
         fail($wrap, opts.onFail);
@@ -273,12 +277,17 @@
       var $selects = $wrap.find('.arl-schedule-select');
       var $content = $wrap.find('.arl-schedule-content');
       var snap = $selects.map(function () { return $(this).html(); }).get();
+      var chosen = $selects.map(function () { return $(this).val(); }).get();
+      var applied = $wrap.data('applied');
       var list = $content.html();
       try {
         applyResponse($wrap, data);
         return true;
       } catch (e) {
-        $selects.each(function (i) { $(this).html(snap[i]); });
+        // .html() does not capture the selection, and applyResponse has already
+        // overwritten the applied values: put all of it back.
+        $selects.each(function (i) { $(this).html(snap[i]).val(chosen[i]); });
+        $wrap.data('applied', applied);
         $content.html(list);
         return false;
       }
