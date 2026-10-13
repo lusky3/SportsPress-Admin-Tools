@@ -101,9 +101,16 @@ function set_transient( $key, $value, $ttl = 0 ) { // phpcs:ignore
 	$GLOBALS['stub_ttl'][ $key ]        = $ttl;
 }
 
+/**
+ * Stub for SportsPress's [event_list]: one row, or, when stub_rows_total is
+ * set, that many rows truncated to the number="N" attribute as the template
+ * does.
+ */
 function do_shortcode( $text ) {
 	$GLOBALS['stub_rendered'][] = $text;
-	return '<table><tbody><tr class="sp-row sp-post"><td>game</td></tr></tbody></table>';
+	$total = $GLOBALS['stub_rows_total'] ?? 1;
+	$limit = preg_match( '/number="(-?[0-9]+)"/', $text, $m ) && (int) $m[1] > 0 ? (int) $m[1] : $total;
+	return '<table><tbody>' . str_repeat( '<tr class="sp-row sp-post"><td>game</td></tr>', min( $total, $limit ) ) . '</tbody></table>';
 }
 
 function get_post_type( $id ) {
@@ -215,7 +222,15 @@ function sanitize_text_field( $value ) {
  * @SuppressWarnings(PHPMD.UnusedFormalParameter)
  */
 function remove_query_arg( $keys ) { // phpcs:ignore
+	$GLOBALS['stub_removed_args'] = $keys;
 	return '/schedule/';
+}
+
+/**
+ * Filter stub: a value set in stub_filters wins.
+ */
+function apply_filters( $tag, $value ) {
+	return $GLOBALS['stub_filters'][ $tag ] ?? $value;
 }
 
 function get_the_title( $id ) {
@@ -403,7 +418,8 @@ assert_test( '7' === $out['team'] && 'w2026-27' === $out['season'], 'a team chan
 assert_test( '5' === $out['number'] && 'event,time' === $out['columns'] && ! isset( $out['status'] ), 'a team change keeps the signed attributes and the window' );
 $out = call_private( 'request_args', $atts, $defaults, array( 'season' => 'w2025-26', 'status' => 'all' ) + $defaults );
 assert_test( 'w2025-26' === $out['season'] && 'any' === $out['status'], "season passes through; status 'all' becomes SportsPress 'any'" );
-assert_test( '' === $out['number'] && '' === $out['date'] && '' === $out['date_from'] && 'event,time' === $out['columns'], 'a season change blocks the window and number but keeps columns' );
+assert_test( '' === $out['date'] && '' === $out['date_from'] && 'event,time' === $out['columns'], 'a season change blocks the date window but keeps columns' );
+assert_test( '5' === $out['number'], 'a season change keeps the number limit' );
 assert_test( ! isset( $out['league'] ), 'a league equal to its default is not a visitor choice' );
 $out = call_private( 'request_args', $atts, array( 'league' => 'd5' ) + $defaults, array( 'league' => 'all' ) + $defaults );
 assert_test( '' === $out['league'], "'all' over a defaulted division clears it" );
@@ -412,7 +428,50 @@ assert_test( ! isset( $out['season'] ), "with 'All seasons' no season is injecte
 $out = call_private( 'request_args', array( 'season' => 'w2025-26-playoffs' ) + $atts, array( 'season' => 'w2025-26' ) + $defaults, array( 'season' => 'w2025-26', 'team' => '7' ) + $defaults );
 assert_test( 'w2025-26-playoffs' === $out['season'], 'a season attribute is not replaced by its group' );
 $out = call_private( 'request_args', $atts, $defaults, array( 'status' => 'results' ) + $defaults );
-assert_test( 'publish' === $out['status'] && '' === $out['number'], 'a status change maps results->publish and blocks the window' );
+assert_test( 'publish' === $out['status'] && '' === $out['date'] && '5' === $out['number'], 'a status change maps results->publish, blocks the window, keeps number' );
+
+$plain = array( 'id' => '124' );
+assert_test( ! isset( call_private( 'request_args', $plain, $defaults, $defaults )['number'] ), 'the unchanged (initial) view is not capped' );
+assert_test( '500' === call_private( 'request_args', $plain, $defaults, array( 'status' => 'all' ) + $defaults )['number'], 'a visitor change with no number limit is capped at 500 rows' );
+$GLOBALS['stub_filters']['spem_schedule_max_rows'] = 50;
+assert_test( '50' === call_private( 'request_args', $plain, $defaults, array( 'team' => '7' ) + $defaults )['number'], 'the cap is filterable (spem_schedule_max_rows)' );
+$GLOBALS['stub_filters']                            = array();
+$GLOBALS['stub_meta'][124]['sp_number']             = '10';
+assert_test( '10' === call_private( 'request_args', $plain, $defaults, array( 'team' => '7' ) + $defaults )['number'], "the Calendar's own number limit is kept" );
+$GLOBALS['stub_meta'][124]['sp_number'] = '-1';
+assert_test( '500' === call_private( 'request_args', $plain, $defaults, array( 'team' => '7' ) + $defaults )['number'], 'a Calendar number of -1 counts as unlimited and is capped' );
+unset( $GLOBALS['stub_meta'][124] );
+
+echo "\n=== adjust_query() ===\n\n";
+
+/**
+ * Minimal WP_Query stand-in.
+ */
+class Stub_Query {
+	public $vars;
+
+	public function __construct( $vars ) {
+		$this->vars = $vars;
+	}
+
+	public function get( $key ) {
+		return $this->vars[ $key ] ?? '';
+	}
+
+	public function set( $key, $value ) {
+		$this->vars[ $key ] = $value;
+	}
+}
+$q = new Stub_Query( array( 'post_type' => 'sp_event', 'posts_per_page' => -1, 'tax_query' => array( array( 'taxonomy' => 'sp_season', 'terms' => array( 29 ) ) ) ) );
+call_private( 'adjust_query', $q, array( 29, 30 ), 500 );
+assert_test( 500 === $q->vars['posts_per_page'], 'an unlimited event query is limited to the row cap' );
+assert_test( array( 29, 30 ) === $q->vars['tax_query'][0]['terms'], 'and its season clause is still widened' );
+$q = new Stub_Query( array( 'post_type' => 'sp_event', 'posts_per_page' => 4 ) );
+call_private( 'adjust_query', $q, array(), 500 );
+assert_test( 4 === $q->vars['posts_per_page'], 'an explicit posts_per_page is left alone' );
+$q = new Stub_Query( array( 'post_type' => 'sp_team', 'posts_per_page' => -1 ) );
+call_private( 'adjust_query', $q, array(), 500 );
+assert_test( -1 === $q->vars['posts_per_page'], 'other post types are left alone' );
 
 echo "\n=== prepare_attributes() ===\n\n";
 
@@ -646,6 +705,15 @@ assert_test( '[event_list season="29"]' === $rendered, 'no id -> the current/new
 assert_test( false === strpos( $html, 'All seasons' ), "no id -> no 'All seasons'" );
 assert_test( array() === ( $GLOBALS['stub_hooks']['pre_get_posts'] ?? array() ), 'the playoff widening hook is removed after rendering' );
 
+// D3: Reset removes exactly the URL params the JS writes.
+assert_test( array( 'season', 'division', 'team', 'show' ) === $GLOBALS['stub_removed_args'], 'Reset href removes season, division, team and show' );
+
+// D6: an id that is not a published Calendar renders only the notice.
+foreach ( array( '999999', 'abc' ) as $bad_id ) {
+	list( $html, ) = render_block( array( 'id' => $bad_id ) );
+	assert_test( '<p class="arl-schedule-empty">Calendar not found.</p>' === $html, "id {$bad_id}: only the notice, no filter bar" );
+}
+
 // Finding 1: the signed attributes come back and still apply.
 list( $html, $rendered ) = render_block( array( 'id' => '202', 'columns' => 'event,time', 'status' => 'all' ) );
 $signed = signed_fields( $html );
@@ -672,6 +740,8 @@ $r = run_ajax( array( 'team' => '7 OR 1=1' ) + $signed );
 assert_test( ! $r->success && array() === $GLOBALS['stub_transients'], 'a crafted team is rejected before any transient is written' );
 $r = run_ajax( array( 'season' => 'all' ) + $signed );
 assert_test( ! $r->success && array() === $GLOBALS['stub_transients'], "season 'all' is rejected when the Calendar has a season" );
+$r = run_ajax( array( 'season' => 'w2026-27-playoffs' ) + $signed );
+assert_test( ! $r->success && array() === $GLOBALS['stub_transients'], 'a playoff season slug is rejected (base seasons only)' );
 $r = run_ajax( array( 'team' => array( '7' ) ) + $signed );
 assert_test( ! $r->success, 'a non-scalar field is rejected' );
 set_error_handler( function ( $no, $msg ) { throw new ErrorException( $msg, 0, $no ); } ); // phpcs:ignore
@@ -688,6 +758,17 @@ $r = run_ajax( $cal201 + array( 'season' => 'all', 'team' => '8' ) );
 assert_test( $r->success && false === strpos( end( $GLOBALS['stub_rendered'] ), 'season=' ), "season 'all' is accepted for a season-less Calendar and adds no season" );
 $r = run_ajax( $cal201 + array( 'season' => 'w2025-26' ) );
 assert_test( $r->success && false !== strpos( end( $GLOBALS['stub_rendered'] ), 'season="20"' ), 'choosing a concrete season filters to it' );
+
+// D1: a Show change on a season-less Calendar is bounded.
+$GLOBALS['stub_rows_total'] = 6000;
+list( $html, $rendered )    = render_block( array( 'id' => '201' ) );
+assert_test( 6000 === substr_count( $html, '<tr class="sp-row' ), 'the initial no-flags view is not capped (Calendar exactly)' );
+$r    = run_ajax( $cal201 + array( 'season' => 'all', 'status' => 'results' ) );
+$rows = substr_count( $r->data['html'], '<tr class="sp-row' );
+echo "  (6000 matching games -> {$rows} rows rendered)\n";
+assert_test( $r->success && 500 === $rows, 'a 6000-row result is capped to 500 rows on a visitor Show change' );
+assert_test( false !== strpos( end( $GLOBALS['stub_rendered'] ), 'number="500"' ), 'the cap reaches [event_list] as number="500"' );
+unset( $GLOBALS['stub_rows_total'] );
 
 // Finding 2: an unsent division keeps the Calendar's, and is reset when the season has none.
 $r = run_ajax( $cal202 + array( 'team' => '7' ) );

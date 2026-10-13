@@ -79,20 +79,19 @@ assert_test( '9' === $merged['team'], 'visitor value overrides attribute value' 
 echo "\n=== drop_initial_only() ===\n\n";
 
 $args = array(
-	'number' => '5',
-	'status' => 'future',
+	'number'    => '5',
+	'status'    => 'future',
+	'date'      => 'range',
+	'date_from' => '2026-01-01',
 );
+$out  = SPEM_Schedule_Args::drop_initial_only( $args, array( 'season' => 'w2025-26' ) );
+assert_test( ! isset( $out['date'] ) && ! isset( $out['date_from'] ), 'a visitor season drops the date window' );
+assert_test( '5' === $out['number'], 'a visitor season keeps the number limit' );
+$out = SPEM_Schedule_Args::drop_initial_only( $args, array( 'status' => 'all' ) );
+assert_test( ! isset( $out['date'] ) && '5' === $out['number'], 'a visitor status drops the window, keeps number' );
 assert_test(
-	! isset( SPEM_Schedule_Args::drop_initial_only( $args, array( 'season' => 'w2025-26' ) )['number'] ),
-	'a visitor season drops number'
-);
-assert_test(
-	! isset( SPEM_Schedule_Args::drop_initial_only( $args, array( 'status' => 'all' ) )['number'] ),
-	'a visitor status drops number'
-);
-assert_test(
-	'5' === SPEM_Schedule_Args::drop_initial_only( $args, array( 'team' => '7' ) )['number'],
-	'a visitor team keeps number'
+	$args === SPEM_Schedule_Args::drop_initial_only( $args, array( 'team' => '7' ) ),
+	'a visitor team keeps everything'
 );
 
 echo "\n=== cache_key() ===\n\n";

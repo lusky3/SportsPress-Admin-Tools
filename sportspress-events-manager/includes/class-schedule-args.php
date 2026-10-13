@@ -39,7 +39,9 @@ class SPEM_Schedule_Args {
 	);
 
 	/**
-	 * Keys that only make sense for the initial, unfiltered view.
+	 * Keys that only make sense for the initial, unfiltered view: the date
+	 * window. The number limit is kept on visitor changes (it bounds the
+	 * list when the window is gone).
 	 */
 	const INITIAL_ONLY_KEYS = array(
 		'date',
@@ -48,7 +50,6 @@ class SPEM_Schedule_Args {
 		'date_past',
 		'date_future',
 		'date_relative',
-		'number',
 	);
 
 	/**
@@ -118,7 +119,7 @@ class SPEM_Schedule_Args {
 	}
 
 	/**
-	 * Remove initial-view-only keys once the visitor has chosen a season or status.
+	 * Remove the date window once the visitor has chosen a season or status.
 	 *
 	 * @param array $args    Merged arguments.
 	 * @param array $visitor Visitor choices.

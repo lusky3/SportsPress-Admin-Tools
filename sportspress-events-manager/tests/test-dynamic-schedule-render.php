@@ -74,6 +74,19 @@ function get_post_type( $id ) {
 	return $GLOBALS['stub_types'][ $id ] ?? false;
 }
 
+$GLOBALS['stub_options'] = array();
+
+/**
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
+function get_option( $name, $fallback = false ) { // phpcs:ignore
+	return $GLOBALS['stub_options'][ $name ] ?? $fallback;
+}
+
+function get_the_title( $id ) {
+	return 'Calendar ' . $id;
+}
+
 function get_post_status( $id ) {
 	return $GLOBALS['stub_status'][ $id ] ?? false;
 }
@@ -221,6 +234,20 @@ assert_test( false !== strpos( SPEM_Dynamic_Schedule::build_event_list_shortcode
 $GLOBALS['stub_meta'][5]['sp_date_past'] = '';
 $out = call_private( 'detach_calendar_settings', 5, array() );
 assert_test( ! isset( $out['date_past'] ), 'an empty-string past stays unset' );
+
+echo "\n=== detached title (caption) ===\n\n";
+
+$GLOBALS['stub_meta'][6] = array( 'sp_caption' => 'Current (Auto Gen)' );
+$out                     = call_private( 'detach_calendar_settings', 6, array( 'team' => '7' ) );
+assert_test( 'Current (Auto Gen)' === ( $out['title'] ?? null ), "the detached list keeps the Calendar's caption as its title" );
+$GLOBALS['stub_meta'][6] = array();
+$out                     = call_private( 'detach_calendar_settings', 6, array( 'team' => '7' ) );
+assert_test( 'Calendar 6' === ( $out['title'] ?? null ), 'without a caption the Calendar post title is used' );
+$GLOBALS['stub_options']['sportspress_event_list_show_title'] = 'no';
+$out = call_private( 'detach_calendar_settings', 6, array( 'team' => '7' ) );
+assert_test( ! isset( $out['title'] ), 'no title when SportsPress hides event list titles' );
+$GLOBALS['stub_options'] = array();
+assert_test( 'Kept' === call_private( 'detach_calendar_settings', 6, array( 'title' => 'Kept' ) )['title'], 'an explicit title argument wins' );
 
 echo "\n=== resolve_term_values() ===\n\n";
 

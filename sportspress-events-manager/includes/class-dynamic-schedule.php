@@ -52,6 +52,17 @@ class SPEM_Dynamic_Schedule {
 	const POST_FIELDS = array( 'atts', 'sig', 'season', 'league', 'team', 'status' );
 
 	/**
+	 * Row cap for visitor-driven (AJAX) renders that have no number limit;
+	 * filterable via spem_schedule_max_rows. The initial view is not capped.
+	 */
+	const MAX_AJAX_ROWS = 500;
+
+	/**
+	 * Query parameters the front end writes for shareable links.
+	 */
+	const URL_PARAMS = array( 'season', 'division', 'team', 'show' );
+
+	/**
 	 * Longest accepted data-atts blob (base64), checked before decoding.
 	 */
 	const MAX_ATTS_LENGTH = 4096;
@@ -136,7 +147,8 @@ class SPEM_Dynamic_Schedule {
 	 *
 	 * With an id and no attributes the list is the Calendar's own, exactly
 	 * (id route). Without an id the default season is applied so the list
-	 * matches the Season dropdown.
+	 * matches the Season dropdown. An id that is not a published Calendar
+	 * gives only the "Calendar not found." notice (no filter bar).
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
@@ -144,7 +156,10 @@ class SPEM_Dynamic_Schedule {
 	 * @return string HTML.
 	 */
 	public function render_shortcode( $atts ): string {
-		$atts         = SPEM_Schedule_Args::normalize_atts( (array) $atts );
+		$atts = SPEM_Schedule_Args::normalize_atts( (array) $atts );
+		if ( isset( $atts['id'] ) && ! $this->is_published_calendar( absint( $atts['id'] ) ) ) {
+			return $this->notice( __( 'Calendar not found.', 'sportspress-events-manager' ) );
+		}
 		$defaults     = $this->effective_defaults( $atts );
 		$view         = $this->initial_view( $atts, $defaults );
 		$view['html'] = $this->get_cached_html( $this->initial_args( $atts, $defaults ) );
@@ -346,10 +361,23 @@ class SPEM_Dynamic_Schedule {
 	private function existence_checks(): array {
 		return array(
 			'calendar' => fn( $id ) => $this->is_published_calendar( (int) $id ),
-			'season'   => fn( $slug ) => $this->slug_exists( (string) $slug, 'sp_season' ),
+			'season'   => fn( $slug ) => $this->is_base_season( (string) $slug ),
 			'league'   => fn( $slug ) => $this->slug_exists( (string) $slug, 'sp_league' ),
 			'team'     => fn( $id ) => 'sp_team' === get_post_type( (int) $id ) && 'publish' === get_post_status( (int) $id ),
 		);
+	}
+
+	/**
+	 * Whether a slug is a base (non-playoff) season, as listed in the Season
+	 * dropdown. Checked without the cached season list so a rejected request
+	 * writes no transient.
+	 *
+	 * @param string $slug Slug.
+	 * @return bool
+	 */
+	private function is_base_season( string $slug ): bool {
+		$term = get_term_by( 'slug', $slug, 'sp_season' );
+		return $term && ! is_wp_error( $term ) && ! self::is_playoff_name( (string) $term->name );
 	}
 
 	/**
@@ -391,8 +419,9 @@ class SPEM_Dynamic_Schedule {
 	 * and means SportsPress 'any' for status. Without a visitor season the
 	 * effective season is a base value, so a Calendar with several seasons
 	 * stays on the one the dropdown shows. Once Season or Show differs from
-	 * its default, the date window and number limit are blocked with
-	 * explicit '' values so the detached route cannot copy them back.
+	 * its default, the date window is blocked with explicit '' values so the
+	 * detached route cannot copy it back; the number limit is kept and, when
+	 * there is none, capped (cap_rows()).
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
@@ -410,10 +439,44 @@ class SPEM_Dynamic_Schedule {
 			$visitor['status'] = (string) SPEM_Schedule_Args::normalize_status( $visitor['status'] );
 		}
 		$args = SPEM_Schedule_Args::merge( $this->with_season( $atts, $effective['season'] ), $visitor );
-		if ( ! isset( $visitor['season'] ) && ! isset( $visitor['status'] ) ) {
-			return $args;
+		if ( isset( $visitor['season'] ) || isset( $visitor['status'] ) ) {
+			$args = SPEM_Schedule_Args::drop_initial_only( $args, $visitor ) + array_fill_keys( SPEM_Schedule_Args::INITIAL_ONLY_KEYS, '' );
 		}
-		return SPEM_Schedule_Args::drop_initial_only( $args, $visitor ) + array_fill_keys( SPEM_Schedule_Args::INITIAL_ONLY_KEYS, '' );
+		return $this->cap_rows( $args );
+	}
+
+	/**
+	 * Make the number limit explicit on a visitor-driven render: the
+	 * attribute, else the Calendar's own, else the row cap. Without it a
+	 * dropped date window on a Calendar with no season would render every
+	 * game ever played.
+	 *
+	 * @param array $args Arguments.
+	 * @return array
+	 */
+	private function cap_rows( array $args ): array {
+		$number         = (int) ( $args['number'] ?? $this->calendar_number( absint( $args['id'] ?? 0 ) ) );
+		$args['number'] = (string) ( $number > 0 ? $number : self::max_rows() );
+		return $args;
+	}
+
+	/**
+	 * The Calendar's number limit (0 for none, unlimited or no Calendar).
+	 *
+	 * @param int $calendar_id Calendar id.
+	 * @return int
+	 */
+	private function calendar_number( int $calendar_id ): int {
+		return $calendar_id ? max( 0, (int) get_post_meta( $calendar_id, 'sp_number', true ) ) : 0;
+	}
+
+	/**
+	 * The row cap for visitor-driven renders.
+	 *
+	 * @return int
+	 */
+	private static function max_rows(): int {
+		return max( 1, (int) apply_filters( 'spem_schedule_max_rows', self::MAX_AJAX_ROWS ) );
 	}
 
 	/**
@@ -588,7 +651,7 @@ class SPEM_Dynamic_Schedule {
 			'seasons'   => $this->season_options( $defaults['season'] ),
 			'leagues'   => $this->with_league( $this->get_leagues_for_season( $defaults['season'] ), $league ),
 			'teams'     => $this->with_team( $this->get_teams_for( $defaults['season'], $league ), $defaults['team'] ),
-			'reset_url' => remove_query_arg( array( 'season', 'league', 'team', 'status' ) ),
+			'reset_url' => remove_query_arg( self::URL_PARAMS ),
 			'suffix'    => self::$instances > 1 ? '-' . self::$instances : '',
 		);
 	}
@@ -759,11 +822,14 @@ class SPEM_Dynamic_Schedule {
 	}
 
 	/**
-	 * Render, adding a base season's playoff games to the same list.
+	 * Render, adding a base season's playoff games to the same list and
+	 * bounding the event query by the number limit.
 	 *
 	 * SportsPress's season attribute takes one term id (SP_Calendar::data()
-	 * wraps it in a one-element array), so a short-lived pre_get_posts hook
-	 * adds the playoff term to the sp_season clause of the event query.
+	 * wraps it in a one-element array), and without a Calendar id its query
+	 * fetches every match (posts_per_page -1) before the template trims to
+	 * number. A short-lived pre_get_posts hook adds the playoff term to the
+	 * sp_season clause and applies the limit to the query itself.
 	 *
 	 * @param array $args Arguments.
 	 * @return string
@@ -771,32 +837,41 @@ class SPEM_Dynamic_Schedule {
 	private function render_with_playoffs( array $args ): string {
 		$season = (string) ( $args['season'] ?? '' );
 		$ids    = '' === $season ? array() : $this->season_term_ids( $season, true );
-		if ( count( $ids ) < 2 ) {
+		$ids    = count( $ids ) > 1 ? $ids : array();
+		$limit  = max( 0, (int) ( $args['number'] ?? 0 ) );
+		if ( ! $ids && ! $limit ) {
 			return $this->render_games( $args );
 		}
-		$widen = static function ( $query ) use ( $ids ) {
-			self::widen_query( $query, $ids );
+		$hook = static function ( $query ) use ( $ids, $limit ) {
+			self::adjust_query( $query, $ids, $limit );
 		};
-		add_action( 'pre_get_posts', $widen );
+		add_action( 'pre_get_posts', $hook );
 		try {
 			return $this->render_games( $args );
 		} finally {
-			remove_action( 'pre_get_posts', $widen );
+			remove_action( 'pre_get_posts', $hook );
 		}
 	}
 
 	/**
-	 * pre_get_posts body: widen an sp_event query's season clause.
+	 * pre_get_posts body for an sp_event query: limit an unlimited query to
+	 * $limit rows and widen its season clause to the group's terms. The
+	 * template trims to the same number in the same order, so the output is
+	 * unchanged.
 	 *
 	 * @param object $query WP_Query.
-	 * @param int[]  $ids   Season group term ids.
+	 * @param int[]  $ids   Season group term ids (empty for none).
+	 * @param int    $limit Row limit (0 for none).
 	 */
-	private static function widen_query( $query, array $ids ): void {
+	private static function adjust_query( $query, array $ids, int $limit ): void {
 		if ( 'sp_event' !== $query->get( 'post_type' ) ) {
 			return;
 		}
+		if ( $limit && -1 === (int) $query->get( 'posts_per_page' ) ) {
+			$query->set( 'posts_per_page', $limit );
+		}
 		$tax = $query->get( 'tax_query' );
-		if ( is_array( $tax ) ) {
+		if ( $ids && is_array( $tax ) ) {
 			$query->set( 'tax_query', self::widen_season_clauses( $tax, $ids ) );
 		}
 	}
@@ -1340,6 +1415,7 @@ class SPEM_Dynamic_Schedule {
 			'format'  => get_post_meta( $calendar_id, 'sp_event_format', true ),
 			'day'     => get_post_meta( $calendar_id, 'sp_day', true ),
 			'columns' => is_array( $cols ) ? implode( ',', $cols ) : '',
+			'title'   => $this->calendar_title( $calendar_id ),
 		) + $this->calendar_date_settings( $calendar_id, $date );
 
 		foreach ( array(
@@ -1359,6 +1435,22 @@ class SPEM_Dynamic_Schedule {
 
 		// Arguments win; anything they leave unset falls back to the Calendar.
 		return $args + array_map( 'strval', array_filter( $own, array( $this, 'is_set_value' ), ARRAY_FILTER_USE_BOTH ) );
+	}
+
+	/**
+	 * The heading SportsPress would show for the Calendar: its caption, else
+	 * its title; '' when SportsPress hides event list titles (an explicit
+	 * title attribute is always shown, so it must not be passed then).
+	 *
+	 * @param int $calendar_id Calendar post id.
+	 * @return string
+	 */
+	private function calendar_title( $calendar_id ): string {
+		if ( 'yes' !== get_option( 'sportspress_event_list_show_title', 'yes' ) ) {
+			return '';
+		}
+		$caption = (string) get_post_meta( $calendar_id, 'sp_caption', true );
+		return '' !== $caption ? $caption : (string) get_the_title( $calendar_id );
 	}
 
 	/**
