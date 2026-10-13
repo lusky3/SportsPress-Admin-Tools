@@ -137,6 +137,9 @@ class SportsPress_Events_Manager {
 		if ( in_array( 'events_management', $enabled_modules ) ) {
 			require_once SPEM_PLUGIN_PATH . 'includes/class-events-management.php';
 			new SPEM_Events_Management();
+			require_once SPEM_PLUGIN_PATH . 'includes/class-schedule-args.php';
+			require_once SPEM_PLUGIN_PATH . 'includes/class-dynamic-schedule.php';
+			new SPEM_Dynamic_Schedule();
 		}
 
 		if ( in_array( 'league_table_generator', $enabled_modules ) ) {

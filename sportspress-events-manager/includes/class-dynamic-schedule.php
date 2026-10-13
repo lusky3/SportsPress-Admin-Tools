@@ -12,6 +12,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * The [arl_schedule] shortcode, its AJAX handler and its cache.
+ *
+ * One cohesive feature; the pure helpers are static so they can be tested
+ * without WordPress, which is why the method count is high.
+ *
+ * @SuppressWarnings(PHPMD.TooManyMethods)
+ * @SuppressWarnings(PHPMD.ExcessiveClassComplexity)
+ */
 class SPEM_Dynamic_Schedule {
 
 	/**
@@ -20,6 +29,936 @@ class SPEM_Dynamic_Schedule {
 	 * this file does not depend on WordPress's constants.
 	 */
 	const SCHEDULE_CACHE_TTL = 300;
+
+	/**
+	 * Option holding the cache namespace version; bumped by flush_cache().
+	 */
+	const CACHE_VERSION_OPTION = 'spem_schedule_cache_version';
+
+	/**
+	 * Hooks after which cached schedules and dropdown lists are stale.
+	 */
+	const FLUSH_HOOKS = array( 'save_post_sp_event', 'save_post_sp_calendar', 'edited_sp_season', 'edited_sp_league' );
+
+	/**
+	 * POST fields the AJAX handler reads, in validation order.
+	 */
+	const REQUEST_KEYS = array( 'calendar', 'season', 'league', 'team', 'status' );
+
+	/**
+	 * Values of the Show dropdown.
+	 */
+	const DROPDOWN_STATUSES = array( 'all', 'upcoming', 'results' );
+
+	/**
+	 * Shape of a term slug a request may carry (checked before any lookup).
+	 */
+	const SLUG_PATTERN = '/^[a-z0-9_-]{1,200}$/';
+
+	/**
+	 * Shape of a post id a request may carry.
+	 */
+	const ID_PATTERN = '/^[1-9][0-9]{0,19}$/';
+
+	/**
+	 * How many [arl_schedule] blocks this request has rendered; later ones
+	 * get suffixed element ids so labels stay unique.
+	 *
+	 * @var int
+	 */
+	private static $instances = 0;
+
+	/**
+	 * Grouped seasons, memoised for the request.
+	 *
+	 * @var array|null
+	 */
+	private $seasons = null;
+
+	public function __construct() {
+		add_shortcode( 'arl_schedule', array( $this, 'render_shortcode' ) );
+		add_action( 'wp_ajax_spem_get_schedule', array( $this, 'ajax_get_schedule' ) );
+		add_action( 'wp_ajax_nopriv_spem_get_schedule', array( $this, 'ajax_get_schedule' ) );
+		foreach ( self::FLUSH_HOOKS as $hook ) {
+			add_action( $hook, array( $this, 'flush_cache' ) );
+		}
+	}
+
+	/**
+	 * Render the [arl_schedule] shortcode: filter bar plus the initial list.
+	 *
+	 * The initial view applies the Calendar's settings and the attributes,
+	 * including the date window and number limit.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param array|string $atts Shortcode attributes.
+	 * @return string HTML.
+	 */
+	public function render_shortcode( $atts ): string {
+		$args         = $this->base_args( SPEM_Schedule_Args::normalize_atts( (array) $atts ) );
+		$view         = $this->initial_view( $args );
+		$view['html'] = $this->get_cached_html( $args );
+		return $this->filter_bar_markup( $view );
+	}
+
+	/**
+	 * AJAX handler: the refiltered list plus the dependent dropdown options.
+	 *
+	 * Public on purpose (wp_ajax_nopriv): it only reads published schedule
+	 * data, like [arl_standings]. Every parameter is validated against real
+	 * data before it can reach a cache key.
+	 */
+	public function ajax_get_schedule(): void {
+		check_ajax_referer( 'spem_schedule_nonce', '_ajax_nonce' );
+
+		$request = self::validate_request( $this->read_post(), $this->existence_checks() );
+		if ( false === $request ) {
+			wp_send_json_error( array( 'message' => __( 'Invalid request.', 'sportspress-events-manager' ) ) );
+			return;
+		}
+
+		wp_send_json_success( $this->ajax_payload( $request ) );
+	}
+
+	/**
+	 * Build the AJAX response for a validated request.
+	 *
+	 * The dependent lists come first: a division or team with no games in
+	 * the chosen season is reset to "All" before rendering, so the list and
+	 * the dropdowns agree. 'selected' reports the league and team actually
+	 * applied ('all' when reset or not sent).
+	 *
+	 * @param array $request Output of validate_request().
+	 * @return array { html, leagues, teams, selected }
+	 */
+	private function ajax_payload( array $request ): array {
+		$season  = $request['season'] ?? $this->default_season( array( 'id' => $request['calendar'] ?? '' ) );
+		$leagues = $this->get_leagues_for_season( $season );
+		$request = self::reset_unlisted( $request, 'league', array_column( $leagues, 'slug' ) );
+		$league  = ( $request['league'] ?? 'all' ) === 'all' ? '' : $request['league'];
+		$teams   = $this->get_teams_for( $season, $league );
+		$request = self::reset_unlisted( $request, 'team', array_map( 'strval', array_column( $teams, 'id' ) ) );
+
+		return array(
+			'html'     => $this->get_cached_html( $this->request_args( $request ) ),
+			'leagues'  => $leagues,
+			'teams'    => $teams,
+			'selected' => array(
+				'league' => $request['league'] ?? 'all',
+				'team'   => $request['team'] ?? 'all',
+			),
+		);
+	}
+
+	/**
+	 * Reset a sent league or team that is not among the options to 'all'.
+	 *
+	 * @param array    $request Validated request.
+	 * @param string   $key     league|team.
+	 * @param string[] $allowed Option values for the chosen season.
+	 * @return array
+	 */
+	public static function reset_unlisted( array $request, string $key, array $allowed ): array {
+		$value = $request[ $key ] ?? 'all';
+		if ( 'all' !== $value && ! in_array( (string) $value, $allowed, true ) ) {
+			$request[ $key ] = 'all';
+		}
+		return $request;
+	}
+
+	/**
+	 * Check a request against the allowed shapes and real data.
+	 *
+	 * Empty fields (and calendar '0') count as not sent. 'all' is kept for
+	 * league, team and status; season has no "All". Any other value must
+	 * match its pattern and pass the existence check for its key; a missing
+	 * check fails closed.
+	 *
+	 * @param array $post   Unslashed, sanitised request fields.
+	 * @param array $exists Callables keyed calendar|season|league|team,
+	 *                      each taking the value and returning bool.
+	 * @return array|false The accepted fields, or false when any is invalid.
+	 */
+	public static function validate_request( array $post, array $exists ): array|false {
+		$out = array();
+		foreach ( self::REQUEST_KEYS as $key ) {
+			$value = $post[ $key ] ?? '';
+			if ( ! is_scalar( $value ) ) {
+				return false;
+			}
+			$value = trim( (string) $value );
+			if ( self::is_unsent( $key, $value ) ) {
+				continue;
+			}
+			if ( ! self::is_valid_value( $key, $value, $exists ) ) {
+				return false;
+			}
+			$out[ $key ] = $value;
+		}
+		return $out;
+	}
+
+	/**
+	 * Whether a request field counts as not sent.
+	 *
+	 * @param string $key   Field.
+	 * @param string $value Trimmed value.
+	 * @return bool
+	 */
+	private static function is_unsent( string $key, string $value ): bool {
+		return '' === $value || ( 'calendar' === $key && '0' === $value );
+	}
+
+	/**
+	 * Whether one request value is acceptable.
+	 *
+	 * @param string $key    Field.
+	 * @param string $value  Trimmed value.
+	 * @param array  $exists Existence checks.
+	 * @return bool
+	 */
+	private static function is_valid_value( string $key, string $value, array $exists ): bool {
+		if ( 'status' === $key ) {
+			return in_array( $value, self::DROPDOWN_STATUSES, true );
+		}
+		if ( 'all' === $value ) {
+			return in_array( $key, array( 'league', 'team' ), true );
+		}
+		$pattern = in_array( $key, array( 'calendar', 'team' ), true ) ? self::ID_PATTERN : self::SLUG_PATTERN;
+		if ( ! preg_match( $pattern, $value ) || ! isset( $exists[ $key ] ) ) {
+			return false;
+		}
+		return (bool) call_user_func( $exists[ $key ], $value );
+	}
+
+	/**
+	 * The real-data checks validate_request() runs.
+	 *
+	 * @return array
+	 */
+	private function existence_checks(): array {
+		return array(
+			'calendar' => fn( $id ) => $this->is_published_calendar( (int) $id ),
+			'season'   => fn( $slug ) => $this->slug_exists( (string) $slug, 'sp_season' ),
+			'league'   => fn( $slug ) => $this->slug_exists( (string) $slug, 'sp_league' ),
+			'team'     => fn( $id ) => 'sp_team' === get_post_type( (int) $id ) && 'publish' === get_post_status( (int) $id ),
+		);
+	}
+
+	/**
+	 * Whether a term slug exists in a taxonomy.
+	 *
+	 * @param string $slug     Slug.
+	 * @param string $taxonomy Taxonomy.
+	 * @return bool
+	 */
+	private function slug_exists( string $slug, string $taxonomy ): bool {
+		$term = get_term_by( 'slug', $slug, $taxonomy );
+		return $term && ! is_wp_error( $term );
+	}
+
+	/**
+	 * The request fields, unslashed and sanitised. The nonce is checked by
+	 * ajax_get_schedule() before this runs.
+	 *
+	 * @SuppressWarnings(PHPMD.Superglobals)
+	 *
+	 * @return array
+	 */
+	private function read_post(): array {
+		$post = array();
+		foreach ( self::REQUEST_KEYS as $key ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- nonce checked by the caller; sanitised on the next line.
+			$raw          = isset( $_POST[ $key ] ) ? wp_unslash( $_POST[ $key ] ) : '';
+			$post[ $key ] = is_scalar( $raw ) ? sanitize_text_field( (string) $raw ) : array();
+		}
+		return $post;
+	}
+
+	/**
+	 * Turn a validated request into [event_list] arguments.
+	 *
+	 * Visitor choices override the Calendar. A visitor 'all' clears league or
+	 * team, and means SportsPress 'any' for status. Once the visitor has sent
+	 * a season or status, the Calendar's date window and number limit are
+	 * blocked with explicit '' values so the detached route cannot copy them.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param array $request Output of validate_request().
+	 * @return array
+	 */
+	private function request_args( array $request ): array {
+		$visitor = array_intersect_key( $request, array_flip( SPEM_Schedule_Args::VISITOR_KEYS ) );
+		if ( isset( $visitor['status'] ) ) {
+			$visitor['status'] = (string) SPEM_Schedule_Args::normalize_status( $visitor['status'] );
+		}
+		$base = isset( $request['calendar'] ) ? array( 'id' => $request['calendar'] ) : array();
+		$args = SPEM_Schedule_Args::merge( $this->base_args( $base ), $visitor );
+		if ( ! isset( $visitor['season'] ) && ! isset( $visitor['status'] ) ) {
+			return $args;
+		}
+		return SPEM_Schedule_Args::drop_initial_only( $args, $visitor ) + array_fill_keys( SPEM_Schedule_Args::INITIAL_ONLY_KEYS, '' );
+	}
+
+	/**
+	 * Add the default season when neither an attribute nor the Calendar sets
+	 * one, so the list matches the Season dropdown (which has no "All").
+	 *
+	 * @param array $args Normalised arguments.
+	 * @return array
+	 */
+	private function base_args( array $args ): array {
+		if ( ! empty( $args['season'] ) || $this->calendar_season_ids( absint( $args['id'] ?? 0 ) ) ) {
+			return $args;
+		}
+		$season = $this->default_season( $args );
+		if ( '' !== $season ) {
+			$args['season'] = $season;
+		}
+		return $args;
+	}
+
+	/**
+	 * The Calendar's season term ids (including an auto term), newest first.
+	 *
+	 * @param int $calendar_id Calendar id, 0 for none.
+	 * @return string[]
+	 */
+	private function calendar_season_ids( int $calendar_id ): array {
+		if ( ! $calendar_id ) {
+			return array();
+		}
+		$ids = array_map( 'intval', $this->single_term_ids( $calendar_id, 'sp_season' ) );
+		rsort( $ids );
+		return array_map( 'strval', $ids );
+	}
+
+	/**
+	 * Season dropdown default: attribute, else the Calendar's season, else
+	 * the site's current season, else the newest.
+	 *
+	 * @param array $args Arguments (id and season are read).
+	 * @return string Base season slug, or '' when there are no seasons.
+	 */
+	private function default_season( array $args ): string {
+		$candidates = array_merge(
+			array( (string) ( $args['season'] ?? '' ) ),
+			$this->calendar_season_ids( absint( $args['id'] ?? 0 ) ),
+			array( (string) get_option( 'spem_current_season_id', '' ) )
+		);
+		return self::pick_season( $this->get_grouped_seasons(), $candidates );
+	}
+
+	/**
+	 * Division dropdown default: attribute, else the Calendar's single
+	 * league, else 'all'.
+	 *
+	 * @param array $args        Arguments.
+	 * @param int   $calendar_id Calendar id.
+	 * @return string League slug or 'all'.
+	 */
+	private function default_league( array $args, int $calendar_id ): string {
+		$value = (string) ( $args['league'] ?? '' );
+		if ( '' === $value && $calendar_id ) {
+			$ids   = $this->single_term_ids( $calendar_id, 'sp_league' );
+			$value = 1 === count( $ids ) ? (string) reset( $ids ) : '';
+		}
+		$term = '' === $value ? null : $this->find_term( $value, 'sp_league' );
+		return $term ? (string) $term->slug : 'all';
+	}
+
+	/**
+	 * Team dropdown default: attribute, else the Calendar's single team,
+	 * else 'all'.
+	 *
+	 * @param array $args        Arguments.
+	 * @param int   $calendar_id Calendar id.
+	 * @return string Team id or 'all'.
+	 */
+	private function default_team( array $args, int $calendar_id ): string {
+		$team = (string) ( $args['team'] ?? '' );
+		if ( '' === $team && $calendar_id ) {
+			$team = $this->calendar_single_team( $calendar_id );
+		}
+		return ctype_digit( $team ) && '0' !== $team ? $team : 'all';
+	}
+
+	/**
+	 * Show dropdown default: attribute, else the Calendar's status.
+	 *
+	 * @param array $args        Arguments.
+	 * @param int   $calendar_id Calendar id.
+	 * @return string all|upcoming|results.
+	 */
+	private function default_status( array $args, int $calendar_id ): string {
+		$status = (string) ( $args['status'] ?? '' );
+		if ( '' === $status && $calendar_id ) {
+			$status = (string) get_post_meta( $calendar_id, 'sp_status', true );
+		}
+		return self::to_dropdown_status( $status );
+	}
+
+	/**
+	 * Map a SportsPress status to a Show dropdown value.
+	 *
+	 * @param string $status any|future|publish (anything else counts as any).
+	 * @return string all|upcoming|results.
+	 */
+	public static function to_dropdown_status( string $status ): string {
+		$map = array(
+			'future'  => 'upcoming',
+			'publish' => 'results',
+		);
+		return $map[ $status ] ?? 'all';
+	}
+
+	/**
+	 * Everything the filter bar needs for the initial render.
+	 *
+	 * @param array $args Arguments of the initial view.
+	 * @return array
+	 */
+	private function initial_view( array $args ): array {
+		$calendar = absint( $args['id'] ?? 0 );
+		$defaults = array(
+			'season' => $this->default_season( $args ),
+			'league' => $this->default_league( $args, $calendar ),
+			'team'   => $this->default_team( $args, $calendar ),
+			'status' => $this->default_status( $args, $calendar ),
+		);
+		$league   = 'all' === $defaults['league'] ? '' : $defaults['league'];
+		++self::$instances;
+
+		return array(
+			'calendar'  => $calendar ? (string) $calendar : '',
+			'defaults'  => $defaults,
+			'seasons'   => $this->get_grouped_seasons(),
+			'leagues'   => $this->with_league( $this->get_leagues_for_season( $defaults['season'] ), $league ),
+			'teams'     => $this->with_team( $this->get_teams_for( $defaults['season'], $league ), $defaults['team'] ),
+			'reset_url' => remove_query_arg( array( 'season', 'league', 'team', 'status' ) ),
+			'suffix'    => self::$instances > 1 ? '-' . self::$instances : '',
+		);
+	}
+
+	/**
+	 * Make sure the default league is selectable even when it has no games
+	 * in the default season, so the dropdown matches the list shown.
+	 *
+	 * @param array  $leagues Options [ { slug, name } ].
+	 * @param string $slug    Default league slug, '' for all.
+	 * @return array
+	 */
+	private function with_league( array $leagues, string $slug ): array {
+		if ( '' === $slug || in_array( $slug, array_column( $leagues, 'slug' ), true ) ) {
+			return $leagues;
+		}
+		$term      = $this->find_term( $slug, 'sp_league' );
+		$leagues[] = array(
+			'slug' => $slug,
+			'name' => $term ? $term->name : $slug,
+		);
+		return $leagues;
+	}
+
+	/**
+	 * Make sure the default team is selectable (see with_league()).
+	 *
+	 * @param array  $teams Options [ { id, name } ].
+	 * @param string $team  Default team id or 'all'.
+	 * @return array
+	 */
+	private function with_team( array $teams, string $team ): array {
+		if ( 'all' === $team || in_array( (int) $team, array_column( $teams, 'id' ), true ) ) {
+			return $teams;
+		}
+		$teams[] = array(
+			'id'   => (int) $team,
+			'name' => get_the_title( (int) $team ),
+		);
+		return $teams;
+	}
+
+	/**
+	 * The wrapper, filter bar and content region.
+	 *
+	 * @param array $view Output of initial_view() plus 'html'.
+	 * @return string
+	 */
+	private function filter_bar_markup( array $view ): string {
+		$suffix   = $view['suffix'];
+		$defaults = $view['defaults'];
+
+		$filters = $this->select_markup( 'season', $suffix, __( 'Season', 'sportspress-events-manager' ), array_column( $view['seasons'], 'label', 'slug' ), $defaults['season'] )
+			. $this->select_markup( 'league', $suffix, __( 'Division', 'sportspress-events-manager' ), array( 'all' => __( 'All divisions', 'sportspress-events-manager' ) ) + array_column( $view['leagues'], 'name', 'slug' ), $defaults['league'] )
+			. $this->select_markup( 'team', $suffix, __( 'Team', 'sportspress-events-manager' ), array( 'all' => __( 'All teams', 'sportspress-events-manager' ) ) + array_column( $view['teams'], 'name', 'id' ), $defaults['team'] )
+			. $this->select_markup( 'status', $suffix, __( 'Show', 'sportspress-events-manager' ), $this->status_options(), $defaults['status'] );
+
+		// Trust boundary: $view['html'] is SportsPress's own [event_list]
+		// output (it escapes its own markup) or our escaped notice paragraph,
+		// built from validated arguments. It must not be re-escaped.
+		return '<div class="arl-schedule-wrap" data-calendar="' . esc_attr( $view['calendar'] ) . '" data-defaults=\'' . esc_attr( wp_json_encode( $defaults ) ) . '\'>'
+			. '<div class="arl-schedule-filters">' . $filters
+			. '<a class="arl-schedule-reset" href="' . esc_url( $view['reset_url'] ) . '">' . esc_html( __( 'Reset', 'sportspress-events-manager' ) ) . '</a>'
+			. '</div>'
+			. '<div class="arl-schedule-content" aria-live="polite">' . $view['html'] . '</div>'
+			. '</div>';
+	}
+
+	/**
+	 * Show dropdown options.
+	 *
+	 * @return array value => label.
+	 */
+	private function status_options(): array {
+		return array(
+			'all'      => __( 'All games', 'sportspress-events-manager' ),
+			'upcoming' => __( 'Upcoming', 'sportspress-events-manager' ),
+			'results'  => __( 'Results', 'sportspress-events-manager' ),
+		);
+	}
+
+	/**
+	 * One labelled select.
+	 *
+	 * @param string $key      Filter name (also the POST field).
+	 * @param string $suffix   Id suffix for a second block on the page.
+	 * @param string $label    Visible label.
+	 * @param array  $options  value => label.
+	 * @param string $selected Selected value.
+	 * @return string
+	 */
+	private function select_markup( string $key, string $suffix, string $label, array $options, string $selected ): string {
+		$id   = 'arl-schedule-' . $key . $suffix;
+		$html = '';
+		foreach ( $options as $value => $text ) {
+			$html .= '<option value="' . esc_attr( $value ) . '"' . ( (string) $value === $selected ? ' selected' : '' ) . '>' . esc_html( $text ) . '</option>';
+		}
+		return '<div class="arl-schedule-filter">'
+			. '<label for="' . esc_attr( $id ) . '">' . esc_html( $label ) . '</label>'
+			. '<select id="' . esc_attr( $id ) . '" class="arl-schedule-select" data-filter="' . esc_attr( $key ) . '">' . $html . '</select>'
+			. '</div>';
+	}
+
+	/**
+	 * Flush every cached schedule and dropdown list.
+	 *
+	 * Same approach as SPEM_Dynamic_Standings::flush_standings_cache(): bump
+	 * a version atomically in SQL so concurrent flushes both count; old keys
+	 * become unreachable and expire on their own TTL.
+	 */
+	public function flush_cache(): void {
+		global $wpdb;
+
+		add_option( self::CACHE_VERSION_OPTION, 1, '', false );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery -- atomic increment, no caching needed.
+		$wpdb->query(
+			"UPDATE {$wpdb->options}
+			SET option_value = option_value + 1
+			WHERE option_name = 'spem_schedule_cache_version'"
+		);
+
+		wp_cache_delete( self::CACHE_VERSION_OPTION, 'options' );
+	}
+
+	/**
+	 * Rendered list HTML for validated arguments, via the transient cache.
+	 *
+	 * Callers reached from a request MUST pass arguments built from
+	 * validate_request() output, so only real values form cache keys.
+	 *
+	 * @param array $args Arguments.
+	 * @return string
+	 */
+	private function get_cached_html( array $args ): string {
+		return (string) $this->remember( $args + array( '_kind' => 'html' ), fn() => $this->render_with_playoffs( $args ) );
+	}
+
+	/**
+	 * Read a value from the versioned transient cache, building it on a miss.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param array    $parts Key parts (validated values only).
+	 * @param callable $build Builds the value.
+	 * @return mixed
+	 */
+	private function remember( array $parts, callable $build ) {
+		$key   = SPEM_Schedule_Args::cache_key( (int) get_option( self::CACHE_VERSION_OPTION, 1 ), $parts );
+		$value = get_transient( $key );
+		if ( false === $value ) {
+			$value = $build();
+			set_transient( $key, $value, self::SCHEDULE_CACHE_TTL );
+		}
+		return $value;
+	}
+
+	/**
+	 * Render, adding a base season's playoff games to the same list.
+	 *
+	 * SportsPress's season attribute takes one term id (SP_Calendar::data()
+	 * wraps it in a one-element array), so a short-lived pre_get_posts hook
+	 * adds the playoff term to the sp_season clause of the event query.
+	 *
+	 * @param array $args Arguments.
+	 * @return string
+	 */
+	private function render_with_playoffs( array $args ): string {
+		$season = (string) ( $args['season'] ?? '' );
+		$ids    = '' === $season ? array() : $this->season_term_ids( $season, true );
+		if ( count( $ids ) < 2 ) {
+			return $this->render_games( $args );
+		}
+		$widen = static function ( $query ) use ( $ids ) {
+			self::widen_query( $query, $ids );
+		};
+		add_action( 'pre_get_posts', $widen );
+		try {
+			return $this->render_games( $args );
+		} finally {
+			remove_action( 'pre_get_posts', $widen );
+		}
+	}
+
+	/**
+	 * pre_get_posts body: widen an sp_event query's season clause.
+	 *
+	 * @param object $query WP_Query.
+	 * @param int[]  $ids   Season group term ids.
+	 */
+	private static function widen_query( $query, array $ids ): void {
+		if ( 'sp_event' !== $query->get( 'post_type' ) ) {
+			return;
+		}
+		$tax = $query->get( 'tax_query' );
+		if ( is_array( $tax ) ) {
+			$query->set( 'tax_query', self::widen_season_clauses( $tax, $ids ) );
+		}
+	}
+
+	/**
+	 * Add the group's term ids to any sp_season clause that names one of them.
+	 *
+	 * @param array $tax_query Tax query.
+	 * @param int[] $ids       Season group term ids.
+	 * @return array
+	 */
+	public static function widen_season_clauses( array $tax_query, array $ids ): array {
+		foreach ( $tax_query as $index => $clause ) {
+			if ( ! is_array( $clause ) || 'sp_season' !== ( $clause['taxonomy'] ?? '' ) ) {
+				continue;
+			}
+			$terms = array_map( 'intval', (array) ( $clause['terms'] ?? array() ) );
+			if ( array_intersect( $terms, $ids ) ) {
+				$tax_query[ $index ]['terms'] = array_values( array_unique( array_merge( $terms, $ids ) ) );
+			}
+		}
+		return $tax_query;
+	}
+
+	/**
+	 * Term ids of a season value. A base season (slug or base term id) gives
+	 * its whole group, playoffs included; any other real term gives itself.
+	 *
+	 * @param string $season     Season slug or term id.
+	 * @param bool   $group_only Only return a group (no single-term fallback).
+	 * @return int[]
+	 */
+	private function season_term_ids( string $season, bool $group_only = false ): array {
+		foreach ( $this->get_grouped_seasons() as $group ) {
+			if ( $group['slug'] === $season || (string) $group['term_ids'][0] === $season ) {
+				return $group['term_ids'];
+			}
+		}
+		$term = $group_only ? null : $this->find_term( $season, 'sp_season' );
+		return $term ? array( (int) $term->term_id ) : array();
+	}
+
+	/**
+	 * Seasons for the dropdown, grouped and newest first, limited to those
+	 * with at least one event (any status). Cached.
+	 *
+	 * @return array [ { slug, label, term_ids } ]
+	 */
+	private function get_grouped_seasons(): array {
+		if ( null === $this->seasons ) {
+			$this->seasons = (array) $this->remember( array( '_kind' => 'seasons' ), fn() => $this->build_grouped_seasons() );
+		}
+		return $this->seasons;
+	}
+
+	/**
+	 * Uncached body of get_grouped_seasons().
+	 *
+	 * @return array
+	 */
+	private function build_grouped_seasons(): array {
+		$terms = get_terms(
+			array(
+				'taxonomy'   => 'sp_season',
+				'hide_empty' => false,
+				'orderby'    => 'term_id',
+				'order'      => 'DESC',
+			)
+		);
+		if ( is_wp_error( $terms ) || empty( $terms ) ) {
+			return array();
+		}
+		return self::group_seasons( $terms, $this->season_ids_with_events() );
+	}
+
+	/**
+	 * Group season terms: "X" and "X Playoffs" become one entry under X.
+	 * Same rule as SPEM_Dynamic_Standings (name contains "Playoff", slug
+	 * minus a -playoffs suffix is the base). A group is kept when any of its
+	 * terms has events.
+	 *
+	 * @param object[] $terms       Terms (term_id, slug, name), newest first.
+	 * @param int[]    $with_events Term ids that have at least one event.
+	 * @return array [ { slug, label, term_ids } ]
+	 */
+	public static function group_seasons( array $terms, array $with_events ): array {
+		$playoffs = self::playoff_ids_by_base( $terms );
+		$groups   = array();
+		foreach ( $terms as $term ) {
+			if ( self::is_playoff_name( $term->name ) ) {
+				continue;
+			}
+			$ids = array_merge( array( (int) $term->term_id ), $playoffs[ $term->slug ] ?? array() );
+			if ( array_intersect( $ids, $with_events ) ) {
+				$groups[] = array(
+					'slug'     => $term->slug,
+					'label'    => $term->name,
+					'term_ids' => $ids,
+				);
+			}
+		}
+		return $groups;
+	}
+
+	/**
+	 * Playoff term ids keyed by their base slug.
+	 *
+	 * @param object[] $terms Terms.
+	 * @return array
+	 */
+	private static function playoff_ids_by_base( array $terms ): array {
+		$map = array();
+		foreach ( $terms as $term ) {
+			$base = self::base_slug( $term->slug );
+			if ( self::is_playoff_name( $term->name ) && $base !== $term->slug ) {
+				$map[ $base ][] = (int) $term->term_id;
+			}
+		}
+		return $map;
+	}
+
+	/**
+	 * Pick the first candidate that names a season group.
+	 *
+	 * @param array $groups     Output of group_seasons().
+	 * @param array $candidates Slugs or term ids, in priority order.
+	 * @return string Group slug; the newest group when none match; '' when
+	 *                there are no groups.
+	 */
+	public static function pick_season( array $groups, array $candidates ): string {
+		foreach ( $candidates as $candidate ) {
+			foreach ( $groups as $group ) {
+				if ( self::group_matches( $group, (string) $candidate ) ) {
+					return $group['slug'];
+				}
+			}
+		}
+		return $groups[0]['slug'] ?? '';
+	}
+
+	/**
+	 * Whether a slug or term id belongs to a season group.
+	 *
+	 * @param array  $group Group.
+	 * @param string $value Slug or term id.
+	 * @return bool
+	 */
+	private static function group_matches( array $group, string $value ): bool {
+		if ( '' === $value ) {
+			return false;
+		}
+		if ( ctype_digit( $value ) ) {
+			return in_array( (int) $value, $group['term_ids'], true );
+		}
+		return $group['slug'] === self::base_slug( $value );
+	}
+
+	/**
+	 * Whether a season name is a playoff season.
+	 *
+	 * @param string $name Term name.
+	 * @return bool
+	 */
+	private static function is_playoff_name( string $name ): bool {
+		return false !== stripos( $name, 'Playoff' );
+	}
+
+	/**
+	 * A season slug without its playoff suffix (as in standings).
+	 *
+	 * @param string $slug Slug.
+	 * @return string
+	 */
+	private static function base_slug( string $slug ): string {
+		return (string) preg_replace( '/-?playoffs?$/i', '', $slug );
+	}
+
+	/**
+	 * Season term ids that have at least one published or scheduled event.
+	 * One set-based query.
+	 *
+	 * @return int[]
+	 */
+	private function season_ids_with_events(): array {
+		global $wpdb;
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery -- one set-based lookup; the caller caches the result.
+		$ids = $wpdb->get_col(
+			"SELECT DISTINCT tt.term_id
+			FROM {$wpdb->term_relationships} tr
+			INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'sp_season'
+			INNER JOIN {$wpdb->posts} p ON p.ID = tr.object_id
+			WHERE p.post_type = 'sp_event' AND p.post_status IN ( 'publish', 'future' )"
+		);
+		return array_map( 'absint', (array) $ids );
+	}
+
+	/**
+	 * Divisions with events in a season (any status), by name. Cached.
+	 *
+	 * @param string $season Season slug.
+	 * @return array [ { slug, name } ]
+	 */
+	private function get_leagues_for_season( string $season ): array {
+		return (array) $this->remember(
+			array(
+				'_kind'  => 'leagues',
+				'season' => $season,
+			),
+			fn() => $this->query_leagues( $this->season_term_ids( $season ) )
+		);
+	}
+
+	/**
+	 * Teams with events in a season, optionally within one division, by
+	 * name. Cached.
+	 *
+	 * @param string $season Season slug.
+	 * @param string $league League slug, '' for all.
+	 * @return array [ { id, name } ]
+	 */
+	private function get_teams_for( string $season, string $league ): array {
+		return (array) $this->remember(
+			array(
+				'_kind'  => 'teams',
+				'season' => $season,
+				'league' => $league,
+			),
+			fn() => $this->query_teams( $this->season_term_ids( $season ), $this->league_term_id( $league ) )
+		);
+	}
+
+	/**
+	 * Term id of a league slug, 0 for '' or unknown.
+	 *
+	 * @param string $league Slug.
+	 * @return int
+	 */
+	private function league_term_id( string $league ): int {
+		$term = '' === $league ? null : $this->find_term( $league, 'sp_league' );
+		return $term ? (int) $term->term_id : 0;
+	}
+
+	/**
+	 * SQL condition: p is a published or scheduled event in one of N seasons.
+	 * Leaves N %d placeholders for the season ids.
+	 *
+	 * @param int $count Number of season ids.
+	 * @return string
+	 */
+	private function event_in_seasons_sql( int $count ): string {
+		global $wpdb;
+		$in = implode( ',', array_fill( 0, $count, '%d' ) );
+		return "p.post_type = 'sp_event' AND p.post_status IN ( 'publish', 'future' )
+			AND EXISTS ( SELECT 1 FROM {$wpdb->term_relationships} sr
+				INNER JOIN {$wpdb->term_taxonomy} st ON st.term_taxonomy_id = sr.term_taxonomy_id
+				WHERE sr.object_id = p.ID AND st.taxonomy = 'sp_season' AND st.term_id IN ( {$in} ) )";
+	}
+
+	/**
+	 * One query: divisions attached to events in the given seasons.
+	 *
+	 * @param int[] $season_ids Season term ids.
+	 * @return array
+	 */
+	private function query_leagues( array $season_ids ): array {
+		if ( empty( $season_ids ) ) {
+			return array();
+		}
+		global $wpdb;
+		$sql = "SELECT DISTINCT t.slug, t.name
+			FROM {$wpdb->terms} t
+			INNER JOIN {$wpdb->term_taxonomy} lt ON lt.term_id = t.term_id AND lt.taxonomy = 'sp_league'
+			INNER JOIN {$wpdb->term_relationships} lr ON lr.term_taxonomy_id = lt.term_taxonomy_id
+			INNER JOIN {$wpdb->posts} p ON p.ID = lr.object_id
+			WHERE " . $this->event_in_seasons_sql( count( $season_ids ) ) . '
+			ORDER BY t.name ASC';
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared -- placeholders built above; cached by the caller.
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, ...$season_ids ), ARRAY_A );
+		return array_map(
+			fn( $row ) => array(
+				'slug' => (string) $row['slug'],
+				'name' => (string) $row['name'],
+			),
+			(array) $rows
+		);
+	}
+
+	/**
+	 * One query: published teams named in the sp_team meta of events in the
+	 * given seasons (teams are post meta, not a taxonomy), optionally only
+	 * events in one division.
+	 *
+	 * @param int[] $season_ids Season term ids.
+	 * @param int   $league_id  League term id, 0 for all.
+	 * @return array
+	 */
+	private function query_teams( array $season_ids, int $league_id ): array {
+		if ( empty( $season_ids ) ) {
+			return array();
+		}
+		global $wpdb;
+		$params = $season_ids;
+		$league = '';
+		if ( $league_id ) {
+			$league   = " AND EXISTS ( SELECT 1 FROM {$wpdb->term_relationships} lr
+				INNER JOIN {$wpdb->term_taxonomy} lt ON lt.term_taxonomy_id = lr.term_taxonomy_id
+				WHERE lr.object_id = p.ID AND lt.taxonomy = 'sp_league' AND lt.term_id = %d )";
+			$params[] = $league_id;
+		}
+		$sql = "SELECT DISTINCT team.ID AS id, team.post_title AS name
+			FROM {$wpdb->posts} p
+			INNER JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key = 'sp_team'
+			INNER JOIN {$wpdb->posts} team ON team.ID = CAST( pm.meta_value AS UNSIGNED ) AND team.post_type = 'sp_team' AND team.post_status = 'publish'
+			WHERE " . $this->event_in_seasons_sql( count( $season_ids ) ) . $league . '
+			ORDER BY team.post_title ASC';
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared -- placeholders built above; cached by the caller.
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, ...$params ), ARRAY_A );
+		return array_map(
+			fn( $row ) => array(
+				'id'   => (int) $row['id'],
+				'name' => (string) $row['name'],
+			),
+			(array) $rows
+		);
+	}
 
 	/**
 	 * Keys that, when present in the arguments (even as '' meaning "All"),
@@ -66,7 +1005,8 @@ class SPEM_Dynamic_Schedule {
 	 * cleared, and a visitor's "All divisions" could not widen it.
 	 *
 	 * Chosen route: when the arguments mention league, season or team at all
-	 * (a value or '' for "All"), render WITHOUT id and pass the Calendar's
+	 * (a value or '' for "All"), or clear any other key with '' (the visitor
+	 * dropping the Calendar's date window), render WITHOUT id and pass the Calendar's
 	 * other settings explicitly (detach_calendar_settings()), skipping any
 	 * field the arguments already decide. Otherwise keep the id so the
 	 * Calendar is honoured exactly, including settings that cannot be passed
@@ -109,7 +1049,7 @@ class SPEM_Dynamic_Schedule {
 	 * @return array|null Attributes for [event_list], or null for no match.
 	 */
 	private function prepare_attributes( $calendar_id, array $args ) {
-		if ( ! array_intersect( self::DETACH_KEYS, array_keys( $args ) ) ) {
+		if ( ! array_intersect( self::DETACH_KEYS, array_keys( $args ) ) && ! in_array( '', $args, true ) ) {
 			return $calendar_id ? array( 'id' => $calendar_id ) + $args : $args;
 		}
 		$args = $this->resolve_term_values( $args );

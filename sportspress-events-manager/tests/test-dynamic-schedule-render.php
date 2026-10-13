@@ -13,6 +13,8 @@ define( 'ABSPATH', __DIR__ );
 $GLOBALS['stub_meta']  = array();
 $GLOBALS['stub_terms'] = array();
 $GLOBALS['stub_types'] = array();
+$GLOBALS['stub_status'] = array();
+$GLOBALS['stub_shortcode_html'] = '';
 
 /**
  * Stub mirroring the WordPress signature; the unused argument is deliberate.
@@ -70,6 +72,42 @@ function absint( $value ) {
 
 function get_post_type( $id ) {
 	return $GLOBALS['stub_types'][ $id ] ?? false;
+}
+
+function get_post_status( $id ) {
+	return $GLOBALS['stub_status'][ $id ] ?? false;
+}
+
+/**
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
+function __( $text, $domain = '' ) { // phpcs:ignore
+	return $text;
+}
+
+function esc_html( $text ) {
+	return htmlspecialchars( (string) $text, ENT_QUOTES );
+}
+
+/**
+ * Stub: SportsPress output for an event list, as set by the test.
+ *
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
+function do_shortcode( $text ) { // phpcs:ignore
+	return $GLOBALS['stub_shortcode_html'];
+}
+
+/**
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
+function add_shortcode( $tag, $callback ) { // phpcs:ignore
+}
+
+/**
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
+function add_action( $hook, $callback, $priority = 10, $args = 1 ) { // phpcs:ignore
 }
 
 require_once __DIR__ . '/../includes/class-schedule-args.php';
@@ -194,6 +232,20 @@ assert_test( array( 'season' => '', 'league' => '', 'team' => '' ) === $out, "''
 assert_test( null === call_private( 'resolve_term_values', array( 'season' => 'nope' ) ), 'an unknown season slug returns null' );
 assert_test( null === call_private( 'resolve_term_values', array( 'league' => '99' ) ), 'an unknown league id returns null' );
 assert_test( null === call_private( 'resolve_term_values', array( 'team' => '8' ) ), 'a team id that is not an sp_team returns null' );
+
+echo "\n=== render_games() ===\n\n";
+
+$GLOBALS['stub_shortcode_html'] = '<table class="sp-event-list"><thead><tr><th>Event</th></tr></thead><tbody></tbody></table>';
+assert_test(
+	'<p class="arl-schedule-empty">No games match these filters.</p>' === call_private( 'render_games', array( 'status' => 'any' ) ),
+	'zero rows -> the empty-message paragraph, not an empty table'
+);
+$GLOBALS['stub_shortcode_html'] = '<table><tbody><tr class="sp-row sp-post alternate"><td>A v B</td></tr></tbody></table>';
+assert_test( $GLOBALS['stub_shortcode_html'] === call_private( 'render_games', array( 'status' => 'any' ) ), 'rows -> SportsPress output unchanged' );
+assert_test(
+	'<p class="arl-schedule-empty">Calendar not found.</p>' === call_private( 'render_games', array( 'id' => '999' ) ),
+	'an id that is not a published sp_calendar -> Calendar not found.'
+);
 
 echo "\n=== Results ===\n\n";
 echo "Passed: {$passed}\nFailed: {$failed}\n";
