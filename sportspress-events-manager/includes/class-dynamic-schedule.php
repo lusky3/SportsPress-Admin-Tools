@@ -90,9 +90,45 @@ class SPEM_Dynamic_Schedule {
 		add_shortcode( 'arl_schedule', array( $this, 'render_shortcode' ) );
 		add_action( 'wp_ajax_spem_get_schedule', array( $this, 'ajax_get_schedule' ) );
 		add_action( 'wp_ajax_nopriv_spem_get_schedule', array( $this, 'ajax_get_schedule' ) );
+		add_action( 'wp_enqueue_scripts', array( $this, 'maybe_enqueue' ) );
 		foreach ( self::FLUSH_HOOKS as $hook ) {
 			add_action( $hook, array( $this, 'flush_cache' ) );
 		}
+	}
+
+	/**
+	 * Whether a page's content uses [arl_schedule] (and so needs the assets).
+	 *
+	 * @param string $content Post content.
+	 * @return bool
+	 */
+	public static function content_needs_assets( string $content ): bool {
+		return has_shortcode( $content, 'arl_schedule' );
+	}
+
+	/**
+	 * Enqueue the filtering script and styles only on pages that use the
+	 * shortcode. The nonce is the one the AJAX handler checks.
+	 */
+	public function maybe_enqueue(): void {
+		global $post;
+		if ( ! is_a( $post, 'WP_Post' ) || ! self::content_needs_assets( (string) $post->post_content ) ) {
+			return;
+		}
+
+		// plugin_dir_url( __DIR__ ) is the plugin root (see SPEM_Dynamic_Standings).
+		$plugin_url = plugin_dir_url( __DIR__ );
+
+		wp_enqueue_script( 'spem-dynamic-schedule', $plugin_url . 'assets/js/dynamic-schedule.js', array( 'jquery' ), SPEM_VERSION, true );
+		wp_localize_script(
+			'spem-dynamic-schedule',
+			'spemSchedule',
+			array(
+				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+				'nonce'   => wp_create_nonce( 'spem_schedule_nonce' ),
+			)
+		);
+		wp_enqueue_style( 'spem-dynamic-schedule', $plugin_url . 'assets/css/dynamic-schedule.css', array(), SPEM_VERSION );
 	}
 
 	/**

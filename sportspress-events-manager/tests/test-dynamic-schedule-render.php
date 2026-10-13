@@ -101,6 +101,10 @@ function do_shortcode( $text ) { // phpcs:ignore
 /**
  * @SuppressWarnings(PHPMD.UnusedFormalParameter)
  */
+function has_shortcode( $content, $tag ) { // phpcs:ignore
+	return false !== strpos( $content, '[' . $tag );
+}
+
 function add_shortcode( $tag, $callback ) { // phpcs:ignore
 }
 
@@ -246,6 +250,13 @@ assert_test(
 	'<p class="arl-schedule-empty">Calendar not found.</p>' === call_private( 'render_games', array( 'id' => '999' ) ),
 	'an id that is not a published sp_calendar -> Calendar not found.'
 );
+
+echo "\n=== content_needs_assets() ===\n\n";
+
+assert_test( true === SPEM_Dynamic_Schedule::content_needs_assets( 'Intro [arl_schedule] outro' ), 'bare shortcode -> assets needed' );
+assert_test( true === SPEM_Dynamic_Schedule::content_needs_assets( '[arl_schedule id="12" status="upcoming"]' ), 'shortcode with attributes -> assets needed' );
+assert_test( false === SPEM_Dynamic_Schedule::content_needs_assets( '[arl_standings] and [event_list]' ), 'other shortcodes -> no assets' );
+assert_test( false === SPEM_Dynamic_Schedule::content_needs_assets( '' ), 'empty content -> no assets' );
 
 echo "\n=== Results ===\n\n";
 echo "Passed: {$passed}\nFailed: {$failed}\n";
