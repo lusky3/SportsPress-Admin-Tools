@@ -5,3 +5,13 @@
 # hand-written or hand-edited.
 exclude_paths:
   - "composer.lock"
+
+# PHP Mess Detector's Superglobals and UnusedFormalParameter rules fire on
+# every standalone test's WordPress stubs (they share state through $GLOBALS
+# and must match WordPress's own function signatures), and the tests are never
+# shipped. Excluded for PMD only, so Semgrep, ESLint and the rest still scan
+# test code.
+engines:
+  phpmd:
+    exclude_paths:
+      - "**/tests/**"
