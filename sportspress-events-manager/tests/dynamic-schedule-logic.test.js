@@ -14,3 +14,36 @@ assert.deepStrictEqual(o,[{value:'all',text:'All teams'},{value:'5',text:'<b>A</
 assert.strictEqual(L.buildOptions(null,'id','All')[0].value,'all');
 assert.strictEqual(L.pickValue(o,5,'all'),'5'); assert.strictEqual(L.pickValue(o,9,'all'),'all');
 console.log('logic ok');
+
+// sanitizeUrlValues: invalid shared links must not break the page.
+{
+  const rendered = { season: 'w26', league: 'all', team: 'all', status: 'all' };
+  const opts = { season: ['w26', 'w25'], league: ['all', 'd1'], team: ['all', '5'], status: ['all', 'upcoming', 'results'] };
+  const run = (qs) => L.sanitizeUrlValues(new URLSearchParams(qs), rendered, opts);
+
+  let r = run('?season=bogus');
+  assert.deepStrictEqual(r.values, rendered);
+  assert.deepStrictEqual(r.ignored, ['season']);
+  assert(L.sameValues(r.values, rendered), 'nothing differs -> no request');
+
+  r = run('?season=w26&division=d1&show=upcoming');
+  assert.deepStrictEqual(r.values, { season: 'w26', league: 'd1', team: 'all', status: 'upcoming' });
+  assert.deepStrictEqual(r.ignored, []);
+
+  r = run('?show=nope&team=9&division=d1');
+  assert.deepStrictEqual(r.values, { season: 'w26', league: 'd1', team: 'all', status: 'all' });
+  assert.deepStrictEqual(r.ignored, ['team', 'show']);
+
+  // A different (valid) season: dependent values pass through for the server.
+  r = run('?season=w25&division=old-div&team=77');
+  assert.deepStrictEqual(r.values, { season: 'w25', league: 'old-div', team: '77', status: 'all' });
+  assert.deepStrictEqual(r.ignored, []);
+
+  // Bogus season: its dependants are still checked against the rendered options.
+  r = run('?season=bogus&division=old-div');
+  assert.deepStrictEqual(r.values, rendered);
+  assert.deepStrictEqual(r.ignored, ['season', 'division']);
+
+  assert.deepStrictEqual(run('?x=1').ignored, []);
+  console.log('sanitizeUrlValues ok');
+}

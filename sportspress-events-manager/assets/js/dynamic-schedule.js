@@ -65,6 +65,27 @@
       return out;
     },
 
+    // Values from URL params that the page can honour. A param is accepted
+    // when its value is one of the dropdown's existing options
+    // (optionValues[key] = array of strings). Division and Team options depend
+    // on Season, so once an accepted Season differs from the rendered one
+    // they are accepted unchecked (the server rebuilds them and validates).
+    // Returns {values, ignored: [URL param names that were dropped]}.
+    sanitizeUrlValues: function (params, base, optionValues) {
+      var values = {};
+      var ignored = [];
+      var seasonMoved = false;
+      FIELDS.forEach(function (f) {
+        var v = params.get(f.param);
+        var dependent = f.key === 'league' || f.key === 'team';
+        var ok = !!v && ((optionValues[f.key] || []).indexOf(v) !== -1 || (dependent && seasonMoved));
+        values[f.key] = ok ? v : base[f.key];
+        if (v && !ok) ignored.push(f.param);
+        if (f.key === 'season' && ok && v !== String(base.season)) seasonMoved = true;
+      });
+      return { values: values, ignored: ignored };
+    },
+
     // The wanted value if it is one of the options, else `fallback`.
     pickValue: function (options, wanted, fallback) {
       var found = options.some(function (o) {
@@ -186,12 +207,16 @@
       return res && res.success && res.data && typeof res.data.html === 'string' && res.data.selected;
     }
 
-    // `values` are the four wire values to request. pushHistory defaults to
+    // `values` are the four wire values to request. opts.push defaults to
     // true; it must be false when the load was itself triggered by popstate
     // (pushing there truncates the forward stack) or when the URL already
-    // holds these values (initial load). clearUrl removes the four params
-    // (Reset). Only the primary block touches the URL.
-    function load($wrap, values, pushHistory, clearUrl) {
+    // holds these values (initial load). opts.clearUrl removes the four params
+    // (Reset). opts.onFail replaces the error state (initial load falls back
+    // to the rendered list). Only the primary block touches the URL.
+    function load($wrap, values, opts) {
+      opts = opts || {};
+      var pushHistory = opts.push;
+      var clearUrl = opts.clearUrl;
       var $content = $wrap.find('.arl-schedule-content');
       var seq = ($wrap.data('seq') || 0) + 1;
       var prev = $wrap.data('xhr');
@@ -216,15 +241,14 @@
 
       xhr.done(function (res) {
         if ($wrap.data('seq') !== seq) return;
-        if (!isValidResponse(res)) {
-          fail($wrap);
+        if (!isValidResponse(res) || !applySafely($wrap, res.data)) {
+          fail($wrap, opts.onFail);
           return;
         }
-        applyResponse($wrap, res.data);
         if (pushHistory !== false && $wrap.is($primary)) writeUrl(clearUrl ? null : res.data.selected);
       }).fail(function (jqxhr, status) {
         if (status === 'abort' || $wrap.data('seq') !== seq) return;
-        fail($wrap);
+        fail($wrap, opts.onFail);
       }).always(function () {
         if ($wrap.data('seq') !== seq) return;
         $content.removeClass('arl-schedule-loading').removeAttr('aria-busy');
@@ -233,9 +257,31 @@
 
     // Any failure (expired nonce, 403, success:false, bad payload): keep the
     // previous list, put the dropdowns back to what the list shows.
-    function fail($wrap) {
+    function fail($wrap, onFail) {
       writeSelectsKeepOptions($wrap);
-      showError($wrap);
+      if (onFail) {
+        onFail();
+      } else {
+        showError($wrap);
+      }
+    }
+
+    // applyResponse, undone if it throws part-way (selects and list restored
+    // from a snapshot). Returns false on failure so the caller takes the
+    // normal failure path.
+    function applySafely($wrap, data) {
+      var $selects = $wrap.find('.arl-schedule-select');
+      var $content = $wrap.find('.arl-schedule-content');
+      var snap = $selects.map(function () { return $(this).html(); }).get();
+      var list = $content.html();
+      try {
+        applyResponse($wrap, data);
+        return true;
+      } catch (e) {
+        $selects.each(function (i) { $(this).html(snap[i]); });
+        $content.html(list);
+        return false;
+      }
     }
 
     function writeSelectsKeepOptions($wrap) {
@@ -250,28 +296,47 @@
       $wrap.data('applied', readSelects($wrap));
 
       $wrap.on('change', '.arl-schedule-select', function () {
-        load($wrap, readSelects($wrap));
+        load($wrap, readSelects($wrap), {});
       });
 
       $wrap.on('click', '.arl-schedule-reset', function (e) {
         e.preventDefault();
-        load($wrap, $.extend({}, $wrap.data('defaults-values')), true, true);
+        load($wrap, $.extend({}, $wrap.data('defaults-values')), { clearUrl: true });
       });
     });
 
     // Shareable links: the first block only.
     var primaryDefaults = $primary.data('defaults-values');
     var params = new URLSearchParams(global.location.search);
-    var initial = Logic.valuesFromParams(params, $primary.data('applied'));
-    if (Logic.hasFilterParams(params) && !Logic.sameValues(initial, $primary.data('applied'))) {
+    var rendered = $primary.data('applied');
+    var optionValues = {};
+    FIELDS.forEach(function (f) {
+      optionValues[f.key] = selectFor($primary, f.key).find('option').map(function () { return this.value; }).get();
+    });
+    var clean = Logic.sanitizeUrlValues(params, rendered, optionValues);
+
+    // Drop ignored params from the URL without adding a history entry.
+    function replaceUrl(names) {
+      if (!names.length || !global.history || !global.history.replaceState) return;
+      var url = new URL(global.location.href);
+      names.forEach(function (n) { url.searchParams.delete(n); });
+      global.history.replaceState({}, '', url);
+    }
+    replaceUrl(clean.ignored);
+
+    if (!Logic.sameValues(clean.values, rendered)) {
       // Straight to the server: the rendered Division/Team options may not
       // contain the URL's values, so they cannot be set on the selects first.
-      load($primary, initial, false);
+      // If the server declines, keep the rendered list and defaults.
+      load($primary, clean.values, {
+        push: false,
+        onFail: function () { replaceUrl(FIELDS.map(function (f) { return f.param; })); }
+      });
     }
 
     $(global).on('popstate', function () {
       var values = Logic.valuesFromParams(new URLSearchParams(global.location.search), primaryDefaults);
-      load($primary, values, false);
+      load($primary, values, { push: false });
     });
   }
 
