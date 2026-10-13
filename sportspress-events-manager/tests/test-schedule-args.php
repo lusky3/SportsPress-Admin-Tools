@@ -125,6 +125,8 @@ assert_test( SPEM_Schedule_Args::cache_key( 2, $a ) !== SPEM_Schedule_Args::cach
 $a['team'] = '8';
 assert_test( SPEM_Schedule_Args::cache_key( 2, $a ) !== SPEM_Schedule_Args::cache_key( 2, $b ), 'a value change changes the cache key' );
 assert_test( 0 === strpos( SPEM_Schedule_Args::cache_key( 2, $b ), 'spem_schedule_v2_' ), 'cache key carries the version prefix' );
+assert_test( 1 === preg_match( '/^spem_schedule_v2_[0-9a-f]{64}$/', SPEM_Schedule_Args::cache_key( 2, $b ) ), 'cache key is the prefix plus a sha256 hex digest' );
+assert_test( strlen( SPEM_Schedule_Args::cache_key( 2, $b ) ) < 172, 'cache key fits the transient name limit' );
 
 echo "\n=== is_allowed_visitor_key() ===\n\n";
 

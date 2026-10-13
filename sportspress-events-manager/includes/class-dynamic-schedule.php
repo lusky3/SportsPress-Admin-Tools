@@ -103,6 +103,22 @@ class SPEM_Dynamic_Schedule {
 	 */
 	private $seasons = null;
 
+	/**
+	 * Create the single instance (registering its hooks) and return it.
+	 *
+	 * @return self
+	 */
+	public static function boot() {
+		static $instance = null;
+		if ( null === $instance ) {
+			$instance = new self();
+		}
+		return $instance;
+	}
+
+	/**
+	 * Register the shortcode, the AJAX handlers and the cache-flush hooks.
+	 */
 	public function __construct() {
 		add_shortcode( 'arl_schedule', array( $this, 'render_shortcode' ) );
 		add_action( 'wp_ajax_spem_get_schedule', array( $this, 'ajax_get_schedule' ) );
@@ -1491,7 +1507,7 @@ class SPEM_Dynamic_Schedule {
 		}
 
 		// Arguments win; anything they leave unset falls back to the Calendar.
-		return $args + array_map( 'strval', array_filter( $own, array( $this, 'is_set_value' ), ARRAY_FILTER_USE_BOTH ) );
+		return $args + array_map( 'strval', array_filter( $own, static fn( $value, $key ) => self::is_set_value( $value, $key ), ARRAY_FILTER_USE_BOTH ) );
 	}
 
 	/**
@@ -1523,7 +1539,7 @@ class SPEM_Dynamic_Schedule {
 	 * @param string $key   Attribute name.
 	 * @return bool
 	 */
-	private function is_set_value( $value, $key ) {
+	private static function is_set_value( $value, $key ) {
 		if ( in_array( $key, array( 'date_past', 'date_future' ), true ) ) {
 			return '' !== (string) $value;
 		}

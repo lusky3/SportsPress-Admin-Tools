@@ -181,7 +181,7 @@ class SPEM_Schedule_Args {
 	 */
 	public static function cache_key( $version, $args ) {
 		ksort( $args );
-		return 'spem_schedule_v' . $version . '_' . md5( serialize( $args ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize
+		return 'spem_schedule_v' . $version . '_' . hash( 'sha256', serialize( $args ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize
 	}
 
 	/**
