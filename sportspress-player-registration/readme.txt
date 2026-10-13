@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.1.2
+Stable tag: 1.2.0
 License: GPLv2 or later
 
 Automatically creates SportsPress player records from WooCommerce registration orders.
@@ -40,6 +40,9 @@ SportsPress Player Registration automatically creates SportsPress player records
 4. Configure automatic creation and role assignment in settings
 
 == Changelog ==
+
+= 1.2.0 =
+* New: prorated late-registration pricing (opt-in module, off by default). A product tagged `Late Registration` is priced at its regular price x (remaining game dates / total game dates) for its season, counted from the real schedule; playoffs are excluded, a season with no schedule yet is never discounted, and a finished season floors at one game's worth.
 
 = 1.1.2 =
 * Add: placeholder plugin icon, shown in the Plugins and Updates screens in place of the generic one.

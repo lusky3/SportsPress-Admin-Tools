@@ -260,5 +260,24 @@ pp_assert(
 	"queries for both 'publish' and 'future' post_status, not 'publish' alone (got " . implode( ',', $statuses ) . ')'
 );
 
+echo "\n=== Edge branches ===\n\n";
+pp_assert( 'x' === $pricing->filter_price( 'x', null ), 'a non-object product is passed through unchanged' );
+pp_assert( 'y' === $pricing->filter_sale_price( 'y', 'not-a-product' ), 'a non-object product never gets a sale price' );
+
+$GLOBALS['pp_test_product_tags'][508] = array( 'Late Registration' );
+$GLOBALS['pp_test_titles'][508]       = 'W2026-27 Player Registration - Late';
+$no_regular = new PP_Fake_Product( 508, '' );
+pp_assert( '' === $pricing->filter_price( '', $no_regular ), 'no regular price set: price returned as stored, nothing invented' );
+pp_assert( '9' === $pricing->filter_sale_price( '9', $no_regular ), 'no regular price set: sale slot left as stored' );
+
+$GLOBALS['pp_test_product_tags'][509] = array( 'Late Registration' );
+$GLOBALS['pp_test_titles'][509]       = 'S2099 Player Registration - Late'; // season code resolves, but no sp_season term exists
+$no_term = new PP_Fake_Product( 509, '120.00' );
+pp_assert( 120.0 === (float) $pricing->filter_price( '120.00', $no_term ), 'season code with no matching sp_season term: never discount blind' );
+
+$GLOBALS['pp_test_get_posts_calls'] = array();
+$pricing->filter_price( '180.00', $product );
+pp_assert( array() === $GLOBALS['pp_test_get_posts_calls'], 'a season already computed today is served from the transient, not re-queried' );
+
 echo "\n=== Results ===\nPassed: $passed\nFailed: $failed\n";
 exit( $failed === 0 ? 0 : 1 );

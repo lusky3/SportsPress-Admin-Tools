@@ -128,10 +128,9 @@ class SPPR_Prorated_Pricing {
 			return false;
 		}
 		$tags = wp_get_post_terms( $product->get_id(), 'product_tag', array( 'fields' => 'names' ) );
-		if ( ! is_array( $tags ) || ! in_array( self::LATE_REGISTRATION_TAG, $tags, true ) ) {
-			return false;
-		}
-		return null !== SPAT_Season::from_product( $product->get_id() );
+		return is_array( $tags )
+			&& in_array( self::LATE_REGISTRATION_TAG, $tags, true )
+			&& null !== SPAT_Season::from_product( $product->get_id() );
 	}
 
 	/**
@@ -139,7 +138,7 @@ class SPPR_Prorated_Pricing {
 	 * @return float
 	 */
 	private function proration_for_season( $season_code ) {
-		$cache_key = 'sppr_proration_' . md5( $season_code ) . '_' . current_time( 'Y-m-d' );
+		$cache_key = 'sppr_proration_' . hash( 'sha256', $season_code ) . '_' . current_time( 'Y-m-d' );
 		$cached    = get_transient( $cache_key );
 		if ( false !== $cached ) {
 			return (float) $cached;
