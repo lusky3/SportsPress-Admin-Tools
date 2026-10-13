@@ -22,6 +22,43 @@ class SPEM_Dynamic_Standings {
 	 */
 	const STANDINGS_CACHE_TTL = 300;
 
+	/**
+	 * Filter that returns true while a standings block is being rendered for
+	 * the shared cache.
+	 *
+	 * The cached HTML is served to every visitor, logged in or not, so a
+	 * template must not print anything that depends on who is viewing (for
+	 * example the viewer's own team row) while this is true:
+	 *
+	 *     if ( ! apply_filters( 'spem_standings_shared_render', false ) ) {
+	 *         // per-viewer markup
+	 *     }
+	 *
+	 * It is false everywhere else, including when this plugin is inactive, so
+	 * the same check is safe in any template. Add per-viewer markup on the
+	 * VIEWER_HTML_FILTER instead.
+	 */
+	const SHARED_RENDER_FILTER = 'spem_standings_shared_render';
+
+	/**
+	 * Filter applied to the standings HTML on every request, after the cache
+	 * read, for both the initial render and the AJAX filter switch. Use it to
+	 * add per-viewer markup (such as highlighting the viewer's own team) to
+	 * the viewer-neutral cached copy. Whatever it adds is never cached.
+	 *
+	 * Arguments: (string $html, string $season, string $type) where $season is
+	 * the base season slug and $type is 'regular' or 'playoff'.
+	 */
+	const VIEWER_HTML_FILTER = 'spem_standings_html';
+
+	/**
+	 * Row classes a theme adds for the current viewer. They are removed, with
+	 * the row's inline style, before the HTML is cached, so a theme that does
+	 * not check SHARED_RENDER_FILTER still cannot leak one viewer's rows to
+	 * another. bl-sp-row--mine is the Blueline theme's "your team" row.
+	 */
+	const VIEWER_ROW_CLASSES = array( 'bl-sp-row--mine' );
+
 	public function __construct() {
 		add_shortcode( 'arl_standings', array( $this, 'render_shortcode' ) );
 		add_action( 'wp_ajax_spem_get_standings', array( $this, 'ajax_get_standings' ) );
@@ -75,7 +112,10 @@ class SPEM_Dynamic_Standings {
 	 */
 	private function build_cache_key( $season, $type ) {
 		$version = (int) get_option( 'spem_standings_cache_version', 1 );
-		return 'spem_standings_v' . $version . '_' . md5( $season . '|' . $type );
+		// "shared" marks the viewer-neutral format; entries under the older
+		// spem_standings_v{N}_ keys may hold one viewer's markup and are
+		// never read again.
+		return 'spem_standings_shared_v' . $version . '_' . hash( 'sha256', $season . '|' . $type );
 	}
 
 	/**
@@ -232,6 +272,10 @@ class SPEM_Dynamic_Standings {
 	/**
 	 * Rendered standings HTML for a season+type, via the transient cache.
 	 *
+	 * The cached copy is shared by every visitor, so it is rendered and stored
+	 * viewer-neutral (see render_shared_standings_html()); per-viewer markup
+	 * is added afterwards, per request, through VIEWER_HTML_FILTER.
+	 *
 	 * Callers reached from a request parameter MUST validate the season slug
 	 * against a real sp_season term first (see ajax_get_standings) — otherwise
 	 * crafted slugs can fill the cache with arbitrary keys. The shortcode path
@@ -246,11 +290,73 @@ class SPEM_Dynamic_Standings {
 		$html      = get_transient( $cache_key );
 
 		if ( false === $html ) {
-			$html = $this->get_standings_html( $season, $type );
+			$html = $this->render_shared_standings_html( $season, $type );
 			set_transient( $cache_key, $html, self::STANDINGS_CACHE_TTL );
 		}
 
-		return $html;
+		return apply_filters( self::VIEWER_HTML_FILTER, $html, $season, $type );
+	}
+
+	/**
+	 * Render standings HTML that is safe to show to any visitor.
+	 *
+	 * SHARED_RENDER_FILTER is true for the duration of the render so templates
+	 * can leave out per-viewer markup, and any known per-viewer row markup a
+	 * template printed anyway is stripped from the result.
+	 *
+	 * @param string $season Season slug.
+	 * @param string $type   'regular' or 'playoff'.
+	 * @return string HTML.
+	 */
+	private function render_shared_standings_html( $season, $type ) {
+		add_filter( self::SHARED_RENDER_FILTER, '__return_true' );
+		try {
+			$html = $this->get_standings_html( $season, $type );
+		} finally {
+			remove_filter( self::SHARED_RENDER_FILTER, '__return_true' );
+		}
+
+		return self::strip_viewer_markup( $html );
+	}
+
+	/**
+	 * Remove per-viewer row markup from rendered standings HTML.
+	 *
+	 * On every <tr> whose class list contains one of VIEWER_ROW_CLASSES, that
+	 * class and the row's inline style attribute (where a theme puts the
+	 * viewer's team colours) are removed. Other rows are left untouched.
+	 *
+	 * @param string $html Rendered standings HTML.
+	 * @return string HTML.
+	 */
+	public static function strip_viewer_markup( $html ) {
+		return (string) preg_replace_callback( '/<tr\b[^>]*>/i', array( __CLASS__, 'strip_viewer_row' ), (string) $html );
+	}
+
+	/**
+	 * preg_replace_callback() callback for strip_viewer_markup(): one <tr> tag.
+	 *
+	 * @param string[] $tag_match The matched opening tag at index 0.
+	 * @return string The tag without per-viewer markup.
+	 */
+	private static function strip_viewer_row( $tag_match ) {
+		$tag = $tag_match[0];
+
+		if ( ! preg_match( '/\sclass=(["\'])(.*?)\1/i', $tag, $class_attr ) ) {
+			return $tag;
+		}
+
+		$classes = preg_split( '/\s+/', trim( $class_attr[2] ) );
+		$kept    = array_diff( $classes, self::VIEWER_ROW_CLASSES );
+
+		if ( count( $kept ) === count( $classes ) ) {
+			return $tag;
+		}
+
+		$quote = $class_attr[1];
+		$tag   = str_replace( $class_attr[0], ' class=' . $quote . implode( ' ', $kept ) . $quote, $tag );
+
+		return preg_replace( '/\sstyle=(["\']).*?\1/i', '', $tag );
 	}
 
 	/**

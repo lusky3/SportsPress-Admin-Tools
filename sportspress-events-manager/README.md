@@ -65,6 +65,11 @@ Frontend shortcode (`[arl_standings]`) that dynamically renders league tables wi
 
 **Access:** Add `[arl_standings]` shortcode to any page or post
 
+The rendered tables are cached for five minutes and that one copy is shown to every visitor, so it must not contain anything that depends on who is viewing. Two filters let a theme personalise the table safely:
+
+- `spem_standings_shared_render` returns `true` while the shared copy is being rendered. A league-table template should skip per-viewer markup (such as the viewer's own team row) when it does. As a safety net, the `bl-sp-row--mine` row class and that row's inline style are stripped before caching even if a template ignores the flag.
+- `spem_standings_html` (`$html`, `$season`, `$type`) runs on every request after the cache read, for the page load and the AJAX filter switch. Add per-viewer markup here; it is never cached.
+
 ### Dynamic Schedule
 
 Frontend shortcode (`[arl_schedule]`) that renders a SportsPress Calendar's games with Season, Division, Team and Show (All games / Upcoming / Results) dropdowns that refilter the list over AJAX. Requires the Events Management module.
