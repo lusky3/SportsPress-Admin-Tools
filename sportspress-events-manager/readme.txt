@@ -20,6 +20,7 @@ SportsPress Events Manager adds event and season management tools to SportsPress
 * **League Table Generator** *(coming soon)* - Create league tables with teams pre-populated from league and season filters. Not yet available; the module is a placeholder pending a future release.
 * **Season Rollover Wizard** - Guided workflow to transition teams between seasons. Creates new season, assigns teams, optionally creates calendars and rosters, archives old events.
 * **Dynamic Standings** - Frontend shortcode (`[arl_standings]`) with AJAX-powered season and type filtering for league tables.
+* **Dynamic Schedule** - Frontend shortcode (`[arl_schedule id="123"]`, or `calendar="123"`) that lists a Calendar's games with AJAX Season, Division, Team and Show filters. Attributes: `status` (all, upcoming, results), `season` and `division` slugs, `team` id, plus the `[event_list]` display options. The Calendar's date range and number limit apply to the initial view only; visitor-driven lists are capped at 500 games. Shareable links use the `season`, `division`, `team` and `show` URL parameters. Requires the Events Management module.
 * **Calendar Tools** - Bulk create missing calendars and reset all calendars to the current season.
 
 == Installation ==
