@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.1.4
+Stable tag: 1.1.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -46,6 +46,9 @@ They are automatically created as SportsPress posts/terms during import.
 No. The rollover creates new season terms and updates team assignments. Preview your teams before executing and use the archive option carefully.
 
 == Changelog ==
+
+= 1.1.5 =
+* Fix: `[arl_standings]` no longer shows one signed-in player's "your team" highlight to every visitor. The cached standings are now the same for everyone; themes can add per-visitor touches through the new `spem_standings_html` filter, and check `spem_standings_shared_render` to leave them out of the shared copy.
 
 = 1.1.4 =
 * Add: `[arl_schedule]` shortcode — a filterable schedule (season, division, team, show) built on a SportsPress Calendar.
