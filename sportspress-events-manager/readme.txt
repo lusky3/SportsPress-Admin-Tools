@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.1.3
+Stable tag: 1.1.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,6 +45,9 @@ They are automatically created as SportsPress posts/terms during import.
 No. The rollover creates new season terms and updates team assignments. Preview your teams before executing and use the archive option carefully.
 
 == Changelog ==
+
+= 1.1.4 =
+* Add: `[arl_schedule]` shortcode — a filterable schedule (season, division, team, show) built on a SportsPress Calendar.
 
 = 1.1.3 =
 * Add: placeholder plugin icon, shown in the Plugins and Updates screens in place of the generic one.
