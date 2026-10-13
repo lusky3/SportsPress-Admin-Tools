@@ -1246,14 +1246,44 @@ class SPEM_Dynamic_Schedule {
 			if ( ! is_scalar( $value ) ) {
 				continue;
 			}
-			$key   = preg_replace( '/[^a-z_]/', '', strtolower( (string) $key ) );
-			$value = preg_replace( '/[\x00-\x1F\x7F"\'\[\]<>]/', '', (string) $value );
+			$key   = (string) preg_replace( '/[^a-z_]/', '', strtolower( (string) $key ) );
+			$value = self::clean_value( $key, (string) $value );
 			if ( '' === $key || '' === trim( $value ) ) {
 				continue;
 			}
 			$parts[] = $key . '="' . trim( $value ) . '"';
 		}
 		return '[event_list' . ( $parts ? ' ' . implode( ' ', $parts ) : '' ) . ']';
+	}
+
+	/**
+	 * Make a value safe inside a double-quoted shortcode attribute.
+	 *
+	 * Every attribute loses control characters. The title is shown through
+	 * wp_kses_post() in the template, so its quote and brackets are encoded
+	 * (&quot; &#91; &#93; render as " [ ]; kses keeps them) and a backslash
+	 * becomes &#92; because shortcode_parse_atts() runs stripcslashes();
+	 * apostrophes, & and HTML are left for kses. Other attributes keep the
+	 * original rule: quotes, brackets and angle brackets are removed.
+	 *
+	 * @param string $key   Attribute name.
+	 * @param string $value Raw value.
+	 * @return string
+	 */
+	private static function clean_value( string $key, string $value ): string {
+		if ( 'title' !== $key ) {
+			return (string) preg_replace( '/[\x00-\x1F\x7F"\'\[\]<>]/', '', $value );
+		}
+		$value = (string) preg_replace( '/[\x00-\x1F\x7F]/', '', $value );
+		return strtr(
+			$value,
+			array(
+				'"'  => '&quot;',
+				'['  => '&#91;',
+				']'  => '&#93;',
+				'\\' => '&#92;',
+			)
+		);
 	}
 
 	/**

@@ -174,6 +174,16 @@ assert_test( 1 === preg_match( '/^\[event_list team="[^"\]]*"\]$/', $out ), 'a q
 $out = SPEM_Dynamic_Schedule::build_event_list_shortcode( array( 'columns' => 'event,time' ) );
 assert_test( '[event_list columns="event,time"]' === $out, 'commas in a value are kept' );
 
+// Title: encoded rather than stripped (rendered through wp_kses_post).
+assert_test( "[event_list title=\"Men's A\"]" === SPEM_Dynamic_Schedule::build_event_list_shortcode( array( 'title' => "Men's A" ) ), 'an apostrophe in the title is preserved' );
+$out = SPEM_Dynamic_Schedule::build_event_list_shortcode( array( 'title' => 'a"b]c[d', 'team' => '7' ) );
+assert_test( '[event_list title="a&quot;b&#93;c&#91;d" team="7"]' === $out, 'title " ] [ are encoded as &quot; &#93; &#91;' );
+assert_test( 1 === preg_match( '/^\[event_list title="[^"\]]*" team="7"\]$/', $out ), 'a quote or bracket in the title cannot break out of the attribute or the shortcode' );
+assert_test( '[event_list title="A & B <b>x</b>"]' === SPEM_Dynamic_Schedule::build_event_list_shortcode( array( 'title' => 'A & B <b>x</b>' ) ), 'title & and HTML are passed as is (kses handles them)' );
+assert_test( '[event_list title="C:&#92;n"]' === SPEM_Dynamic_Schedule::build_event_list_shortcode( array( 'title' => 'C:\\n' ) ), 'a backslash is encoded (shortcode parsing runs stripcslashes)' );
+assert_test( '[event_list title="ab"]' === SPEM_Dynamic_Schedule::build_event_list_shortcode( array( 'title' => "a\x01\nb" ) ), 'control characters are still stripped from the title' );
+assert_test( '[event_list team="Mens A" league="abc"]' === SPEM_Dynamic_Schedule::build_event_list_shortcode( array( 'team' => "Men's A", 'league' => 'a"b]c' ) ), 'other attributes keep the strip behaviour' );
+
 
 /**
  * Call a private method of SPEM_Dynamic_Schedule.
