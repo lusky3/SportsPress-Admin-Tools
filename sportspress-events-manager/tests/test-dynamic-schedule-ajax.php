@@ -419,7 +419,7 @@ assert_test( '5' === $out['number'] && 'event,time' === $out['columns'] && ! iss
 $out = call_private( 'request_args', $atts, $defaults, array( 'season' => 'w2025-26', 'status' => 'all' ) + $defaults );
 assert_test( 'w2025-26' === $out['season'] && 'any' === $out['status'], "season passes through; status 'all' becomes SportsPress 'any'" );
 assert_test( '' === $out['date'] && '' === $out['date_from'] && 'event,time' === $out['columns'], 'a season change blocks the date window but keeps columns' );
-assert_test( '5' === $out['number'], 'a season change keeps the number limit' );
+assert_test( '500' === $out['number'], 'a season change drops the Calendar number limit (initial view only); the row cap applies' );
 assert_test( ! isset( $out['league'] ), 'a league equal to its default is not a visitor choice' );
 $out = call_private( 'request_args', $atts, array( 'league' => 'd5' ) + $defaults, array( 'league' => 'all' ) + $defaults );
 assert_test( '' === $out['league'], "'all' over a defaulted division clears it" );
@@ -428,7 +428,7 @@ assert_test( ! isset( $out['season'] ), "with 'All seasons' no season is injecte
 $out = call_private( 'request_args', array( 'season' => 'w2025-26-playoffs' ) + $atts, array( 'season' => 'w2025-26' ) + $defaults, array( 'season' => 'w2025-26', 'team' => '7' ) + $defaults );
 assert_test( 'w2025-26-playoffs' === $out['season'], 'a season attribute is not replaced by its group' );
 $out = call_private( 'request_args', $atts, $defaults, array( 'status' => 'results' ) + $defaults );
-assert_test( 'publish' === $out['status'] && '' === $out['date'] && '5' === $out['number'], 'a status change maps results->publish, blocks the window, keeps number' );
+assert_test( 'publish' === $out['status'] && '' === $out['date'] && '500' === $out['number'], 'a status change maps results->publish, blocks the window and the number (capped)' );
 
 $plain = array( 'id' => '124' );
 assert_test( ! isset( call_private( 'request_args', $plain, $defaults, $defaults )['number'] ), 'the unchanged (initial) view is not capped' );
@@ -438,6 +438,7 @@ assert_test( '50' === call_private( 'request_args', $plain, $defaults, array( 't
 $GLOBALS['stub_filters']                            = array();
 $GLOBALS['stub_meta'][124]['sp_number']             = '10';
 assert_test( '10' === call_private( 'request_args', $plain, $defaults, array( 'team' => '7' ) + $defaults )['number'], "the Calendar's own number limit is kept" );
+assert_test( '500' === call_private( 'request_args', $plain, $defaults, array( 'season' => 'w2025-26' ) + $defaults )['number'], "a season change ignores the Calendar's number limit" );
 $GLOBALS['stub_meta'][124]['sp_number'] = '-1';
 assert_test( '500' === call_private( 'request_args', $plain, $defaults, array( 'team' => '7' ) + $defaults )['number'], 'a Calendar number of -1 counts as unlimited and is capped' );
 unset( $GLOBALS['stub_meta'][124] );
@@ -597,10 +598,11 @@ echo "\n=== verify_atts() ===\n\n";
 
 $json = json_encode( array( 'id' => '124', 'columns' => 'event' ) );
 $blob = base64_encode( $json );
-$sig  = hash_hmac( 'sha256', $json, 'k' );
+$sig  = hash_hmac( 'sha256', 'spem_schedule_atts|' . $json, 'k' );
 assert_test( array( 'id' => '124', 'columns' => 'event' ) === SPEM_Dynamic_Schedule::verify_atts( $blob, $sig, 'k' ), 'a valid signature returns the normalised attributes' );
 assert_test( null === SPEM_Dynamic_Schedule::verify_atts( $blob, $sig, 'other-key' ), 'a different key fails' );
 assert_test( null === SPEM_Dynamic_Schedule::verify_atts( base64_encode( json_encode( array( 'id' => '125' ) ) ), $sig, 'k' ), 'a changed blob fails' );
+assert_test( null === SPEM_Dynamic_Schedule::verify_atts( $blob, hash_hmac( 'sha256', $json, 'k' ), 'k' ), 'a signature over the bare JSON (no domain prefix) fails' );
 assert_test( null === SPEM_Dynamic_Schedule::verify_atts( $blob, 'zz', 'k' ), 'a malformed signature fails' );
 assert_test( null === SPEM_Dynamic_Schedule::verify_atts( str_repeat( 'A', 4097 ), $sig, 'k' ), 'an oversized blob fails before decoding' );
 assert_test( null === SPEM_Dynamic_Schedule::verify_atts( '', $sig, 'k' ), 'a missing blob fails' );
@@ -769,6 +771,53 @@ echo "  (6000 matching games -> {$rows} rows rendered)\n";
 assert_test( $r->success && 500 === $rows, 'a 6000-row result is capped to 500 rows on a visitor Show change' );
 assert_test( false !== strpos( end( $GLOBALS['stub_rendered'] ), 'number="500"' ), 'the cap reaches [event_list] as number="500"' );
 unset( $GLOBALS['stub_rows_total'] );
+
+// F4: hitting the row cap says so; under the cap there is no notice.
+$GLOBALS['stub_rows_total'] = 6000;
+$r = run_ajax( $cal201 + array( 'season' => 'all', 'status' => 'results' ) );
+assert_test( false !== strpos( $r->data['html'], 'Showing the first 500 games. Choose a season, division or team to narrow the list.' ), 'a capped visitor render appends the narrowing notice' );
+assert_test( strrpos( $r->data['html'], '</table>' ) < strpos( $r->data['html'], 'Showing the first' ), 'the notice follows the list' );
+$GLOBALS['stub_filters']['spem_schedule_max_rows'] = 50;
+$r = run_ajax( $cal201 + array( 'season' => 'all', 'status' => 'results' ) );
+assert_test( false !== strpos( $r->data['html'], 'Showing the first 50 games.' ), 'the notice uses the filtered cap' );
+$GLOBALS['stub_filters'] = array();
+$GLOBALS['stub_rows_total'] = 40;
+$r = run_ajax( $cal201 + array( 'season' => 'all', 'status' => 'results' ) );
+assert_test( false === strpos( $r->data['html'], 'Showing the first' ), 'under the cap there is no notice' );
+unset( $GLOBALS['stub_rows_total'] );
+$r = run_ajax( $cal202 + array( 'team' => '7' ) );
+assert_test( false === strpos( $r->data['html'], 'Showing the first' ), 'a Calendar number limit that is not the cap gives no notice' );
+
+// F5: [event_list] presentation attributes reach the shortcode on both routes.
+$extra = array(
+	'venue'          => '9',
+	'day'            => 'Sat',
+	'format'         => 'league',
+	'rows'           => '25',
+	'paginated'      => 'no',
+	'sortable'       => 'no',
+	'scrollable'     => 'no',
+	'responsive'     => 'yes',
+	'show_team_logo' => 'yes',
+	'link_events'    => 'no',
+	'link_teams'     => 'yes',
+	'link_venues'    => 'no',
+	'show_title'     => 'yes',
+	'title'          => 'My "Games" [x]',
+	'title_format'   => 'homeaway',
+	'time_format'    => 'separate',
+);
+list( , $id_route )       = render_block( array( 'id' => '202' ) + $extra );
+list( , $detached_route ) = render_block( array( 'id' => '202', 'season' => 'w2026-27' ) + $extra );
+assert_test( 0 === strpos( $id_route, '[event_list id="202"' ), 'the extras keep the plain id route' );
+assert_test( false !== strpos( $detached_route, 'season="29"' ) && false === strpos( $detached_route, 'id="202"' ), 'a season attribute takes the detached route' );
+foreach ( $extra as $key => $value ) {
+	$want = 'title' === $key ? 'title="My &quot;Games&quot; &#91;x&#93;"' : $key . '="' . $value . '"';
+	assert_test( false !== strpos( $id_route, $want ), "{$key} reaches [event_list] on the id route" );
+	assert_test( false !== strpos( $detached_route, $want ), "{$key} reaches [event_list] on the detached route" );
+}
+list( , $calendar_alias ) = render_block( array( 'calendar' => '202' ) );
+assert_test( '[event_list id="202"]' === $calendar_alias, 'calendar="202" behaves like id="202"' );
 
 // Finding 2: an unsent division keeps the Calendar's, and is reset when the season has none.
 $r = run_ajax( $cal202 + array( 'team' => '7' ) );

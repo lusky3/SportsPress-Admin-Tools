@@ -58,6 +58,12 @@ class SPEM_Dynamic_Schedule {
 	const MAX_AJAX_ROWS = 500;
 
 	/**
+	 * Domain prefix for the attribute signature, so the HMAC key (the nonce
+	 * salt) is never used over bare, attacker-comparable JSON.
+	 */
+	const SIGNATURE_CONTEXT = 'spem_schedule_atts|';
+
+	/**
 	 * Query parameters the front end writes for shareable links.
 	 */
 	const URL_PARAMS = array( 'season', 'division', 'team', 'show' );
@@ -212,7 +218,7 @@ class SPEM_Dynamic_Schedule {
 		$json = (string) wp_json_encode( $atts );
 		return array(
 			'atts' => base64_encode( $json ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- transport encoding of signed data.
-			'sig'  => hash_hmac( 'sha256', $json, wp_salt( 'nonce' ) ),
+			'sig'  => hash_hmac( 'sha256', self::SIGNATURE_CONTEXT . $json, wp_salt( 'nonce' ) ),
 		);
 	}
 
@@ -233,7 +239,7 @@ class SPEM_Dynamic_Schedule {
 			return null;
 		}
 		$json = base64_decode( $blob, true ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- transport encoding of signed data.
-		if ( false === $json || ! hash_equals( hash_hmac( 'sha256', $json, $key ), $sig ) ) {
+		if ( false === $json || ! hash_equals( hash_hmac( 'sha256', self::SIGNATURE_CONTEXT . $json, $key ), $sig ) ) {
 			return null;
 		}
 		$atts = json_decode( $json, true );
@@ -261,12 +267,32 @@ class SPEM_Dynamic_Schedule {
 		$teams     = $this->get_teams_for( $effective['season'], 'all' === $effective['league'] ? '' : $effective['league'] );
 		$effective = self::reset_unlisted( $effective, 'team', array_map( 'strval', array_column( $teams, 'id' ) ) );
 
+		$args = $this->request_args( $atts, $defaults, $effective );
+
 		return array(
-			'html'     => $this->get_cached_html( $this->request_args( $atts, $defaults, $effective ) ),
+			'html'     => $this->with_cap_notice( $this->get_cached_html( $args ), $args ),
 			'leagues'  => $leagues,
 			'teams'    => $teams,
 			'selected' => $effective,
 		);
+	}
+
+	/**
+	 * Append the narrowing hint when a visitor-driven list stopped at the
+	 * row cap. Added after caching, so the cached list stays reusable.
+	 *
+	 * @param string $html List HTML.
+	 * @param array  $args The arguments it was rendered with.
+	 * @return string
+	 */
+	private function with_cap_notice( string $html, array $args ): string {
+		$cap = self::max_rows();
+		if ( (int) ( $args['number'] ?? 0 ) !== $cap || substr_count( $html, '<tr class="sp-row' ) < $cap ) {
+			return $html;
+		}
+		/* translators: %d: the maximum number of games shown. */
+		$message = sprintf( __( 'Showing the first %d games. Choose a season, division or team to narrow the list.', 'sportspress-events-manager' ), $cap );
+		return $html . '<p class="arl-schedule-note">' . esc_html( $message ) . '</p>';
 	}
 
 	/**
@@ -419,9 +445,9 @@ class SPEM_Dynamic_Schedule {
 	 * and means SportsPress 'any' for status. Without a visitor season the
 	 * effective season is a base value, so a Calendar with several seasons
 	 * stays on the one the dropdown shows. Once Season or Show differs from
-	 * its default, the date window is blocked with explicit '' values so the
-	 * detached route cannot copy it back; the number limit is kept and, when
-	 * there is none, capped (cap_rows()).
+	 * its default, the date window and the number limit are blocked with
+	 * explicit '' values so the detached route cannot copy them back, and the
+	 * row cap applies (cap_rows()); a Division or Team change keeps both.
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
@@ -447,9 +473,10 @@ class SPEM_Dynamic_Schedule {
 
 	/**
 	 * Make the number limit explicit on a visitor-driven render: the
-	 * attribute, else the Calendar's own, else the row cap. Without it a
-	 * dropped date window on a Calendar with no season would render every
-	 * game ever played.
+	 * attribute, else the Calendar's own, else the row cap. A blocked ('')
+	 * limit (Season or Show changed) falls to the cap. Without it a dropped
+	 * date window on a Calendar with no season would render every game ever
+	 * played.
 	 *
 	 * @param array $args Arguments.
 	 * @return array

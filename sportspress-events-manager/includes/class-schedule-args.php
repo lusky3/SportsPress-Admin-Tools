@@ -36,14 +36,39 @@ class SPEM_Schedule_Args {
 		'number',
 		'order',
 		'columns',
+		'venue',
+		'day',
+		'format',
+		'rows',
+		'paginated',
+		'sortable',
+		'scrollable',
+		'responsive',
+		'show_team_logo',
+		'link_events',
+		'link_teams',
+		'link_venues',
+		'show_title',
+		'title',
+		'title_format',
+		'time_format',
+	);
+
+	/**
+	 * Attribute aliases.
+	 */
+	const ALIASES = array(
+		'division' => 'league',
+		'calendar' => 'id',
 	);
 
 	/**
 	 * Keys that only make sense for the initial, unfiltered view: the date
-	 * window. The number limit is kept on visitor changes (it bounds the
-	 * list when the window is gone).
+	 * window and the number limit. Both go once the visitor changes Season
+	 * or Show.
 	 */
 	const INITIAL_ONLY_KEYS = array(
+		'number',
 		'date',
 		'date_from',
 		'date_to',
@@ -77,18 +102,33 @@ class SPEM_Schedule_Args {
 	}
 
 	/**
-	 * Lower-case keys, alias division to league, normalise status, drop empties.
+	 * Lower-case the keys and fold aliases into their real key. The real key
+	 * wins when it has a non-empty value, whatever the attribute order.
+	 *
+	 * @param array $atts Raw shortcode attributes.
+	 * @return array
+	 */
+	private static function apply_aliases( array $atts ): array {
+		$atts = array_change_key_case( $atts, CASE_LOWER );
+		foreach ( self::ALIASES as $alias => $key ) {
+			if ( array_key_exists( $alias, $atts ) && '' === trim( is_scalar( $atts[ $key ] ?? null ) ? (string) $atts[ $key ] : '' ) ) {
+				$atts[ $key ] = $atts[ $alias ];
+			}
+			unset( $atts[ $alias ] );
+		}
+		return $atts;
+	}
+
+	/**
+	 * Lower-case keys, alias division to league and calendar to id (id wins),
+	 * normalise status, drop empties.
 	 *
 	 * @param array $atts Raw shortcode attributes.
 	 * @return array
 	 */
 	public static function normalize_atts( $atts ) {
 		$out = array();
-		foreach ( (array) $atts as $key => $value ) {
-			$key = strtolower( (string) $key );
-			if ( 'division' === $key ) {
-				$key = 'league';
-			}
+		foreach ( self::apply_aliases( (array) $atts ) as $key => $value ) {
 			if ( ! in_array( $key, self::KNOWN_KEYS, true ) || ! is_scalar( $value ) ) {
 				continue;
 			}

@@ -38,7 +38,7 @@ assert_test(
 		'id'     => '123',
 		'league' => 'd5',
 		'status' => 'any',
-	) === SPEM_Schedule_Args::normalize_atts(
+	) == SPEM_Schedule_Args::normalize_atts(
 		array(
 			'ID'       => '123',
 			'DIVISION' => 'd5',
@@ -60,6 +60,18 @@ assert_test(
 	array() === SPEM_Schedule_Args::normalize_atts( array( 'status' => 'bogus' ) ),
 	'an invalid status is dropped'
 );
+
+$out = SPEM_Schedule_Args::normalize_atts( array( 'calendar' => '123' ) );
+assert_test( array( 'id' => '123' ) === $out, 'calendar is an alias of id' );
+$out = SPEM_Schedule_Args::normalize_atts( array( 'id' => '5', 'calendar' => '123' ) );
+assert_test( array( 'id' => '5' ) === $out, 'id wins when both id and calendar are given' );
+$out = SPEM_Schedule_Args::normalize_atts( array( 'calendar' => '123', 'id' => '5' ) );
+assert_test( array( 'id' => '5' ) === $out, 'id wins regardless of attribute order' );
+$pass = array( 'venue', 'day', 'format', 'rows', 'paginated', 'sortable', 'scrollable', 'responsive', 'show_team_logo', 'link_events', 'link_teams', 'link_venues', 'show_title', 'title', 'title_format', 'time_format' );
+foreach ( $pass as $key ) {
+	assert_test( array( $key => 'x' ) === SPEM_Schedule_Args::normalize_atts( array( strtoupper( $key ) => ' x ' ) ), "{$key} is passed through as a scalar attribute" );
+}
+assert_test( array() === SPEM_Schedule_Args::normalize_atts( array( 'venue' => array( '1' ) ) ), 'a non-scalar pass-through value is dropped' );
 
 echo "\n=== merge() ===\n\n";
 
@@ -86,12 +98,16 @@ $args = array(
 );
 $out  = SPEM_Schedule_Args::drop_initial_only( $args, array( 'season' => 'w2025-26' ) );
 assert_test( ! isset( $out['date'] ) && ! isset( $out['date_from'] ), 'a visitor season drops the date window' );
-assert_test( '5' === $out['number'], 'a visitor season keeps the number limit' );
+assert_test( ! isset( $out['number'] ) && 'future' === $out['status'], 'a visitor season drops the number limit too (initial view only)' );
 $out = SPEM_Schedule_Args::drop_initial_only( $args, array( 'status' => 'all' ) );
-assert_test( ! isset( $out['date'] ) && '5' === $out['number'], 'a visitor status drops the window, keeps number' );
+assert_test( ! isset( $out['date'] ) && ! isset( $out['number'] ), 'a visitor status drops the window and the number' );
 assert_test(
 	$args === SPEM_Schedule_Args::drop_initial_only( $args, array( 'team' => '7' ) ),
-	'a visitor team keeps everything'
+	'a visitor team keeps everything, number included'
+);
+assert_test(
+	$args === SPEM_Schedule_Args::drop_initial_only( $args, array( 'league' => 'd1' ) ),
+	'a visitor division keeps everything, number included'
 );
 
 echo "\n=== cache_key() ===\n\n";
