@@ -72,40 +72,81 @@ class SPEM_Dynamic_Schedule {
 	 * Calendar is honoured exactly, including settings that cannot be passed
 	 * as attributes (several leagues or teams, players, order by match day).
 	 *
+	 * Known limit of the detached route (SportsPress has no filter to clear
+	 * Calendar values, and its attributes take a single id): a Calendar that
+	 * fixes SEVERAL leagues, seasons or teams is widened to all of them, and
+	 * the Calendar's players, order-by-match-day and title are dropped. The
+	 * route is only taken when a visitor or the shortcode sets league, season
+	 * or team, so the plain id route is unaffected.
+	 *
 	 * @param array $args Merged arguments; '' means the user chose "All".
 	 * @return string HTML.
 	 */
 	private function render_games( array $args ): string {
-		$empty = '<p class="arl-schedule-empty">' . esc_html__( 'No games match these filters.', 'sportspress-events-manager' ) . '</p>';
-
 		$calendar_id = isset( $args['id'] ) ? absint( $args['id'] ) : 0;
 		unset( $args['id'] );
 
-		if ( $calendar_id && ( 'sp_calendar' !== get_post_type( $calendar_id ) || 'publish' !== get_post_status( $calendar_id ) ) ) {
-			return '<p class="arl-schedule-empty">' . esc_html__( 'Calendar not found.', 'sportspress-events-manager' ) . '</p>';
+		if ( $calendar_id && ! $this->is_published_calendar( $calendar_id ) ) {
+			return $this->notice( __( 'Calendar not found.', 'sportspress-events-manager' ) );
 		}
 
-		$detach = (bool) array_intersect( self::DETACH_KEYS, array_keys( $args ) );
-
-		if ( $detach ) {
-			$args = $this->resolve_term_values( $args );
-			if ( null === $args ) {
-				return $empty; // A named season/division/team does not exist.
-			}
-			if ( $calendar_id ) {
-				$args = $this->detach_calendar_settings( $calendar_id, $args );
-			}
-		} elseif ( $calendar_id ) {
-			$args = array( 'id' => $calendar_id ) + $args;
+		$args = $this->prepare_attributes( $calendar_id, $args );
+		if ( null === $args ) {
+			return $this->notice( __( 'No games match these filters.', 'sportspress-events-manager' ) );
 		}
 
 		$html = do_shortcode( self::build_event_list_shortcode( $args ) );
 
 		// SportsPress prints an empty table body when nothing matches.
-		if ( false === strpos( $html, '<tr class="sp-row' ) ) {
-			return $empty;
+		return $this->has_rows( $html ) ? $html : $this->notice( __( 'No games match these filters.', 'sportspress-events-manager' ) );
+	}
+
+	/**
+	 * Choose between the id route and the detached route.
+	 *
+	 * @param int   $calendar_id Calendar id, 0 for none.
+	 * @param array $args        Arguments without id.
+	 * @return array|null Attributes for [event_list], or null for no match.
+	 */
+	private function prepare_attributes( $calendar_id, array $args ) {
+		if ( ! array_intersect( self::DETACH_KEYS, array_keys( $args ) ) ) {
+			return $calendar_id ? array( 'id' => $calendar_id ) + $args : $args;
 		}
-		return $html;
+		$args = $this->resolve_term_values( $args );
+		if ( null !== $args && $calendar_id ) {
+			$args = $this->detach_calendar_settings( $calendar_id, $args );
+		}
+		return $args;
+	}
+
+	/**
+	 * Whether the id is a published Calendar.
+	 *
+	 * @param int $calendar_id Post id.
+	 * @return bool
+	 */
+	private function is_published_calendar( $calendar_id ) {
+		return 'sp_calendar' === get_post_type( $calendar_id ) && 'publish' === get_post_status( $calendar_id );
+	}
+
+	/**
+	 * Whether SportsPress output contains at least one event row.
+	 *
+	 * @param string $html Event list HTML.
+	 * @return bool
+	 */
+	private function has_rows( $html ) {
+		return false !== strpos( $html, '<tr class="sp-row' );
+	}
+
+	/**
+	 * Wrap a message in the empty-state paragraph.
+	 *
+	 * @param string $message Already-translated text.
+	 * @return string
+	 */
+	private function notice( $message ) {
+		return '<p class="arl-schedule-empty">' . esc_html( $message ) . '</p>';
 	}
 
 	/**
@@ -123,10 +164,8 @@ class SPEM_Dynamic_Schedule {
 			if ( empty( $args[ $key ] ) ) {
 				continue;
 			}
-			$term = ctype_digit( (string) $args[ $key ] )
-				? get_term( (int) $args[ $key ], $taxonomy )
-				: get_term_by( 'slug', sanitize_title( $args[ $key ] ), $taxonomy );
-			if ( ! $term || is_wp_error( $term ) ) {
+			$term = $this->find_term( $args[ $key ], $taxonomy );
+			if ( ! $term ) {
 				return null;
 			}
 			$args[ $key ] = (string) $term->term_id;
@@ -135,6 +174,20 @@ class SPEM_Dynamic_Schedule {
 			return null;
 		}
 		return $args;
+	}
+
+	/**
+	 * Find a term by id or slug.
+	 *
+	 * @param string $value    Term id or slug.
+	 * @param string $taxonomy Taxonomy.
+	 * @return object|null
+	 */
+	private function find_term( $value, $taxonomy ) {
+		$term = ctype_digit( (string) $value )
+			? get_term( (int) $value, $taxonomy )
+			: get_term_by( 'slug', sanitize_title( $value ), $taxonomy );
+		return ( $term && ! is_wp_error( $term ) ) ? $term : null;
 	}
 
 	/**
@@ -148,66 +201,86 @@ class SPEM_Dynamic_Schedule {
 	 * @return array
 	 */
 	private function detach_calendar_settings( $calendar_id, array $args ) {
-		$status = get_post_meta( $calendar_id, 'sp_status', true );
-		$order  = get_post_meta( $calendar_id, 'sp_order', true );
-		$number = get_post_meta( $calendar_id, 'sp_number', true );
-		$date   = get_post_meta( $calendar_id, 'sp_date', true );
-		$format = get_post_meta( $calendar_id, 'sp_event_format', true );
-		$day    = get_post_meta( $calendar_id, 'sp_day', true );
-		$cols   = get_post_meta( $calendar_id, 'sp_columns', true );
+		$date = get_post_meta( $calendar_id, 'sp_date', true );
+		$cols = get_post_meta( $calendar_id, 'sp_columns', true );
+		$own  = array(
+			'status'  => get_post_meta( $calendar_id, 'sp_status', true ),
+			'order'   => get_post_meta( $calendar_id, 'sp_order', true ),
+			'number'  => get_post_meta( $calendar_id, 'sp_number', true ),
+			'date'    => $date,
+			'format'  => get_post_meta( $calendar_id, 'sp_event_format', true ),
+			'day'     => get_post_meta( $calendar_id, 'sp_day', true ),
+			'columns' => is_array( $cols ) ? implode( ',', $cols ) : '',
+		) + $this->calendar_date_settings( $calendar_id, $date );
 
-		$own = array(
-			'status' => $status ? $status : '',
-			'order'  => $order ? $order : '',
-			'number' => $number ? $number : '',
-			'date'   => $date ? $date : '',
-			'format' => $format ? $format : '',
-			'day'    => $day ? $day : '',
-		);
-		if ( 'range' === $date ) {
-			if ( get_post_meta( $calendar_id, 'sp_date_relative', true ) ) {
-				$own['date_relative'] = '1';
-				$own['date_past']     = (string) get_post_meta( $calendar_id, 'sp_date_past', true );
-				$own['date_future']   = (string) get_post_meta( $calendar_id, 'sp_date_future', true );
-			} else {
-				$own['date_from'] = (string) get_post_meta( $calendar_id, 'sp_date_from', true );
-				$own['date_to']   = (string) get_post_meta( $calendar_id, 'sp_date_to', true );
-			}
-		}
-		if ( is_array( $cols ) && $cols ) {
-			$own['columns'] = implode( ',', $cols );
-		}
-
-		$terms = array(
+		foreach ( array(
 			'league' => 'sp_league',
 			'season' => 'sp_season',
 			'venue'  => 'sp_venue',
-		);
-		foreach ( $terms as $key => $taxonomy ) {
-			if ( array_key_exists( $key, $args ) ) {
-				continue;
-			}
-			$ids = array();
-			foreach ( (array) get_the_terms( $calendar_id, $taxonomy ) as $term ) {
-				if ( $term instanceof WP_Term ) {
-					$ids[] = $term->term_id;
-				}
-			}
-			if ( function_exists( 'sp_add_auto_term' ) ) {
-				$ids = sp_add_auto_term( $ids, $calendar_id, $taxonomy );
-			}
-			if ( 1 === count( $ids ) ) {
+		) as $key => $taxonomy ) {
+			$ids = $this->single_term_ids( $calendar_id, $taxonomy );
+			if ( ! array_key_exists( $key, $args ) && 1 === count( $ids ) ) {
 				$own[ $key ] = (string) reset( $ids );
 			}
 		}
-		if ( ! array_key_exists( 'team', $args ) ) {
-			$teams = array_filter( get_post_meta( $calendar_id, 'sp_team', false ) );
-			if ( 1 === count( $teams ) ) {
-				$own['team'] = (string) reset( $teams );
-			}
+		$team = $this->calendar_single_team( $calendar_id );
+		if ( ! array_key_exists( 'team', $args ) && '' !== $team ) {
+			$own['team'] = $team;
 		}
 
 		// Arguments win; anything they leave unset falls back to the Calendar.
-		return $args + array_filter( $own, 'strlen' );
+		return $args + array_map( 'strval', array_filter( $own ) );
+	}
+
+	/**
+	 * The Calendar's date-range attributes (only when its date mode is range).
+	 *
+	 * @param int    $calendar_id Calendar post id.
+	 * @param string $date        The Calendar's date mode.
+	 * @return array
+	 */
+	private function calendar_date_settings( $calendar_id, $date ) {
+		if ( 'range' !== $date ) {
+			return array();
+		}
+		if ( get_post_meta( $calendar_id, 'sp_date_relative', true ) ) {
+			return array(
+				'date_relative' => '1',
+				'date_past'     => get_post_meta( $calendar_id, 'sp_date_past', true ),
+				'date_future'   => get_post_meta( $calendar_id, 'sp_date_future', true ),
+			);
+		}
+		return array(
+			'date_from' => get_post_meta( $calendar_id, 'sp_date_from', true ),
+			'date_to'   => get_post_meta( $calendar_id, 'sp_date_to', true ),
+		);
+	}
+
+	/**
+	 * The ids of a Calendar's terms in a taxonomy, including auto terms.
+	 *
+	 * @param int    $calendar_id Calendar post id.
+	 * @param string $taxonomy    Taxonomy.
+	 * @return array
+	 */
+	private function single_term_ids( $calendar_id, $taxonomy ) {
+		$ids = array();
+		foreach ( (array) get_the_terms( $calendar_id, $taxonomy ) as $term ) {
+			if ( is_object( $term ) && isset( $term->term_id ) ) {
+				$ids[] = $term->term_id;
+			}
+		}
+		return function_exists( 'sp_add_auto_term' ) ? sp_add_auto_term( $ids, $calendar_id, $taxonomy ) : $ids;
+	}
+
+	/**
+	 * The Calendar's team id when it fixes exactly one, else ''.
+	 *
+	 * @param int $calendar_id Calendar post id.
+	 * @return string
+	 */
+	private function calendar_single_team( $calendar_id ) {
+		$teams = array_filter( (array) get_post_meta( $calendar_id, 'sp_team', false ) );
+		return 1 === count( $teams ) ? (string) reset( $teams ) : '';
 	}
 }
