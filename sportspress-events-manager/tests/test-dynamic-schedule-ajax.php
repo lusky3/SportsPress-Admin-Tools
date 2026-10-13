@@ -167,15 +167,111 @@ function absint( $value ) {
 }
 
 /**
- * Records the SQL a flush runs.
+ * Thrown by the wp_send_json_* stubs so a handler test can read the payload.
+ */
+class Stub_JSON_Response extends Exception {
+	public $success = false;
+	public $data    = null;
+}
+
+function wp_send_json_success( $data = null ) {
+	$r          = new Stub_JSON_Response( 'json' );
+	$r->success = true;
+	$r->data    = $data;
+	throw $r;
+}
+
+function wp_send_json_error( $data = null ) {
+	$r          = new Stub_JSON_Response( 'json' );
+	$r->success = false;
+	$r->data    = $data;
+	throw $r;
+}
+
+/**
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
+function check_ajax_referer( $action, $field ) { // phpcs:ignore
+	$GLOBALS['stub_nonce_checked'][] = $action . '|' . $field;
+	return 1;
+}
+
+/**
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
+function wp_salt( $scheme = 'auth' ) { // phpcs:ignore
+	return 'test-salt';
+}
+
+function wp_unslash( $value ) {
+	return is_string( $value ) ? stripslashes( $value ) : $value;
+}
+
+function sanitize_text_field( $value ) {
+	return trim( strip_tags( (string) $value ) );
+}
+
+/**
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
+function remove_query_arg( $keys ) { // phpcs:ignore
+	return '/schedule/';
+}
+
+function get_the_title( $id ) {
+	return 'Team ' . $id;
+}
+
+/**
+ * Season terms, newest first, from stub_season_terms.
+ *
+ * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+ */
+function get_terms( $args ) { // phpcs:ignore
+	return $GLOBALS['stub_season_terms'];
+}
+
+/**
+ * Records the SQL a flush runs and answers the option-list queries from
+ * fixtures: league/team rows keyed by the first season id ('*' = every
+ * season, i.e. no placeholders).
  */
 class Stub_WPDB {
-	public $options = 'wp_options';
-	public $queries = array();
+	public $options            = 'wp_options';
+	public $terms              = 'wp_terms';
+	public $term_taxonomy      = 'wp_term_taxonomy';
+	public $term_relationships = 'wp_term_relationships';
+	public $posts              = 'wp_posts';
+	public $postmeta           = 'wp_postmeta';
+	public $queries            = array();
+	public $season_ids         = array();
+	public $leagues            = array();
+	public $teams              = array();
 
 	public function query( $sql ) {
 		$this->queries[] = $sql;
 		return 1;
+	}
+
+	/**
+	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+	 */
+	public function get_col( $sql ) { // phpcs:ignore
+		return $this->season_ids;
+	}
+
+	public function prepare( $sql, ...$args ) {
+		return $sql . '|' . implode( ',', $args );
+	}
+
+	/**
+	 * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+	 */
+	public function get_results( $query, $output = null ) { // phpcs:ignore
+		$parts = explode( '|', $query );
+		$first = isset( $parts[1] ) ? explode( ',', $parts[1] )[0] : '*';
+		$table = false !== strpos( $parts[0], 't.slug' ) ? $this->leagues : $this->teams;
+		return $table[ $first ] ?? array();
 	}
 }
 $GLOBALS['wpdb'] = new Stub_WPDB();
@@ -276,6 +372,8 @@ assert_test(
 );
 assert_test( false === SPEM_Dynamic_Schedule::validate_request( array( 'team' => '7' ), array() ), 'a missing existence check fails closed' );
 assert_test( array() === SPEM_Dynamic_Schedule::validate_request( array(), $exists ), 'an empty request is valid (Calendar defaults)' );
+assert_test( array( 'season' => 'all' ) === SPEM_Dynamic_Schedule::validate_request( array( 'season' => 'all' ), $exists, true ), "season 'all' is accepted only when the Calendar has no season" );
+assert_test( false === SPEM_Dynamic_Schedule::validate_request( array( 'calendar' => 'all' ), $exists, true ), "calendar is never 'all'" );
 
 echo "\n=== reset_unlisted() ===\n\n";
 
@@ -288,17 +386,32 @@ assert_test( 'all' === SPEM_Dynamic_Schedule::reset_unlisted( array( 'team' => '
 
 echo "\n=== request_args() ===\n\n";
 
-$GLOBALS['stub_terms'][123] = array( 'sp_season' => array( 12 ) );
-
-$out = call_private( 'request_args', array( 'calendar' => '123', 'team' => '7' ) );
-assert_test( array( 'id' => '123', 'team' => '7' ) === $out, 'a team-only change keeps the Calendar window (no blocking keys)' );
-
-$out = call_private( 'request_args', array( 'calendar' => '123', 'season' => 'w2025-26', 'league' => 'all', 'status' => 'all' ) );
-assert_test( 'w2025-26' === $out['season'] && '' === $out['league'], "season passes through, league 'all' becomes ''" );
-assert_test( 'any' === $out['status'], "status 'all' becomes SportsPress 'any', not cleared" );
-assert_test( array_key_exists( 'number', $out ) && '' === $out['number'] && '' === $out['date'] && '' === $out['date_from'], 'a season change blocks the Calendar date window and number' );
-
-$out = call_private( 'request_args', array( 'calendar' => '123', 'status' => 'results' ) );
+$defaults = array(
+	'season' => 'w2026-27',
+	'league' => 'all',
+	'team'   => 'all',
+	'status' => 'upcoming',
+);
+$atts     = array(
+	'id'      => '124',
+	'columns' => 'event,time',
+	'number'  => '5',
+);
+assert_test( $atts === call_private( 'request_args', $atts, $defaults, $defaults ), 'no change from the defaults (or Reset) -> exactly the initial arguments' );
+$out = call_private( 'request_args', $atts, $defaults, array( 'team' => '7' ) + $defaults );
+assert_test( '7' === $out['team'] && 'w2026-27' === $out['season'], 'a team change carries the effective season as a base value' );
+assert_test( '5' === $out['number'] && 'event,time' === $out['columns'] && ! isset( $out['status'] ), 'a team change keeps the signed attributes and the window' );
+$out = call_private( 'request_args', $atts, $defaults, array( 'season' => 'w2025-26', 'status' => 'all' ) + $defaults );
+assert_test( 'w2025-26' === $out['season'] && 'any' === $out['status'], "season passes through; status 'all' becomes SportsPress 'any'" );
+assert_test( '' === $out['number'] && '' === $out['date'] && '' === $out['date_from'] && 'event,time' === $out['columns'], 'a season change blocks the window and number but keeps columns' );
+assert_test( ! isset( $out['league'] ), 'a league equal to its default is not a visitor choice' );
+$out = call_private( 'request_args', $atts, array( 'league' => 'd5' ) + $defaults, array( 'league' => 'all' ) + $defaults );
+assert_test( '' === $out['league'], "'all' over a defaulted division clears it" );
+$out = call_private( 'request_args', $atts, array( 'season' => 'all' ) + $defaults, array( 'season' => 'all', 'team' => '7' ) + $defaults );
+assert_test( ! isset( $out['season'] ), "with 'All seasons' no season is injected" );
+$out = call_private( 'request_args', array( 'season' => 'w2025-26-playoffs' ) + $atts, array( 'season' => 'w2025-26' ) + $defaults, array( 'season' => 'w2025-26', 'team' => '7' ) + $defaults );
+assert_test( 'w2025-26-playoffs' === $out['season'], 'a season attribute is not replaced by its group' );
+$out = call_private( 'request_args', $atts, $defaults, array( 'status' => 'results' ) + $defaults );
 assert_test( 'publish' === $out['status'] && '' === $out['number'], 'a status change maps results->publish and blocks the window' );
 
 echo "\n=== prepare_attributes() ===\n\n";
@@ -362,7 +475,11 @@ $view = array(
 		'team'   => '7',
 		'status' => 'upcoming',
 	),
-	'seasons'   => $groups,
+	'seasons'   => array_column( $groups, 'label', 'slug' ),
+	'signed'    => array(
+		'atts' => 'W10=',
+		'sig'  => str_repeat( 'a', 64 ),
+	),
 	'leagues'   => array( array( 'slug' => 'd5', 'name' => 'Division <5>' ) ),
 	'teams'     => array( array( 'id' => 7, 'name' => 'Ice Hawks' ) ),
 	'reset_url' => '/schedule/',
@@ -389,6 +506,7 @@ $view['suffix'] = '-2';
 $html           = call_private( 'filter_bar_markup', $view );
 assert_test( false !== strpos( $html, 'id="arl-schedule-season-2"' ) && false !== strpos( $html, 'for="arl-schedule-season-2"' ), 'a second instance gets unique ids' );
 assert_test( false !== strpos( $html, 'data-filter="season"' ), 'selects carry data-filter for scoping' );
+assert_test( false !== strpos( $html, 'data-atts="W10=" data-sig="' . str_repeat( 'a', 64 ) . '">' ), 'wrapper carries the signed attributes' );
 
 echo "\n=== wiring, cache and flush ===\n\n";
 
@@ -415,6 +533,175 @@ $schedule->flush_cache();
 $sql = end( $GLOBALS['wpdb']->queries );
 assert_test( false !== strpos( $sql, 'option_value = option_value + 1' ) && false !== strpos( $sql, "'spem_schedule_cache_version'" ), 'flush increments the version atomically in SQL' );
 assert_test( in_array( 'options:spem_schedule_cache_version', $GLOBALS['stub_cache_del'], true ), 'flush busts the options cache' );
+
+echo "\n=== verify_atts() ===\n\n";
+
+$json = json_encode( array( 'id' => '124', 'columns' => 'event' ) );
+$blob = base64_encode( $json );
+$sig  = hash_hmac( 'sha256', $json, 'k' );
+assert_test( array( 'id' => '124', 'columns' => 'event' ) === SPEM_Dynamic_Schedule::verify_atts( $blob, $sig, 'k' ), 'a valid signature returns the normalised attributes' );
+assert_test( null === SPEM_Dynamic_Schedule::verify_atts( $blob, $sig, 'other-key' ), 'a different key fails' );
+assert_test( null === SPEM_Dynamic_Schedule::verify_atts( base64_encode( json_encode( array( 'id' => '125' ) ) ), $sig, 'k' ), 'a changed blob fails' );
+assert_test( null === SPEM_Dynamic_Schedule::verify_atts( $blob, 'zz', 'k' ), 'a malformed signature fails' );
+assert_test( null === SPEM_Dynamic_Schedule::verify_atts( str_repeat( 'A', 4097 ), $sig, 'k' ), 'an oversized blob fails before decoding' );
+assert_test( null === SPEM_Dynamic_Schedule::verify_atts( '', $sig, 'k' ), 'a missing blob fails' );
+
+echo "\n=== render_shortcode() and ajax_get_schedule() ===\n\n";
+
+// Fixtures: seasons W2026-27 (29, playoffs 30) and W2025-26 (20, playoffs 21);
+// divisions d5 (5) and d6 (6); teams 7 and 8.
+$GLOBALS['stub_season_terms'] = array(
+	(object) array( 'term_id' => 30, 'slug' => 'w2026-27-playoffs', 'name' => 'W2026-27 Playoffs' ),
+	(object) array( 'term_id' => 29, 'slug' => 'w2026-27', 'name' => 'W2026-27' ),
+	(object) array( 'term_id' => 21, 'slug' => 'w2025-26-playoffs', 'name' => 'W2025-26 Playoffs' ),
+	(object) array( 'term_id' => 20, 'slug' => 'w2025-26', 'name' => 'W2025-26' ),
+);
+$GLOBALS['stub_terms']['slug']['sp_season'] = array(
+	'w2026-27'          => 29,
+	'w2026-27-playoffs' => 30,
+	'w2025-26'          => 20,
+	'w2025-26-playoffs' => 21,
+);
+$GLOBALS['stub_terms']['slug']['sp_league'] = array(
+	'd5' => 5,
+	'd6' => 6,
+);
+$GLOBALS['wpdb']->season_ids = array( 29, 30, 20 );
+$GLOBALS['wpdb']->leagues    = array(
+	'29' => array( array( 'slug' => 'd5', 'name' => 'D5' ) ),
+	'20' => array( array( 'slug' => 'd6', 'name' => 'D6' ) ),
+	'*'  => array( array( 'slug' => 'd5', 'name' => 'D5' ), array( 'slug' => 'd6', 'name' => 'D6' ) ),
+);
+$GLOBALS['wpdb']->teams      = array(
+	'29' => array( array( 'id' => '7', 'name' => 'Hawks' ) ),
+	'20' => array( array( 'id' => '8', 'name' => 'Owls' ) ),
+	'*'  => array( array( 'id' => '7', 'name' => 'Hawks' ), array( 'id' => '8', 'name' => 'Owls' ) ),
+);
+foreach ( array( 201, 202, 203 ) as $cal ) {
+	$GLOBALS['stub_types'][ $cal ]  = 'sp_calendar';
+	$GLOBALS['stub_status'][ $cal ] = 'publish';
+}
+foreach ( array( 7, 8 ) as $team ) {
+	$GLOBALS['stub_types'][ $team ]  = 'sp_team';
+	$GLOBALS['stub_status'][ $team ] = 'publish';
+}
+$GLOBALS['stub_options']           = array();
+$GLOBALS['stub_terms'][201]        = array();                                          // No season.
+$GLOBALS['stub_terms'][202]        = array( 'sp_season' => array( 29 ), 'sp_league' => array( 5 ) );
+$GLOBALS['stub_terms'][203]        = array( 'sp_season' => array( 20, 29 ) );          // Several seasons.
+$GLOBALS['stub_meta'][202]         = array( 'sp_number' => '10', 'sp_status' => 'future' );
+
+/**
+ * Render a shortcode with a clean cache; returns [ html, last [event_list] text ].
+ */
+function render_block( $atts ) {
+	$GLOBALS['stub_transients'] = array();
+	$GLOBALS['stub_rendered']   = array();
+	$html                       = ( new SPEM_Dynamic_Schedule() )->render_shortcode( $atts );
+	return array( $html, end( $GLOBALS['stub_rendered'] ) );
+}
+
+/**
+ * Signed fields of a rendered block.
+ */
+function signed_fields( $html ) {
+	preg_match( '/data-atts="([^"]*)" data-sig="([^"]*)"/', $html, $m );
+	return array(
+		'atts' => html_entity_decode( $m[1] ),
+		'sig'  => $m[2],
+	);
+}
+
+/**
+ * Run the AJAX handler with $_POST and a clean cache; returns the response.
+ */
+function run_ajax( array $post ) {
+	$GLOBALS['stub_transients'] = array();
+	$GLOBALS['stub_rendered']   = array();
+	$_POST                      = $post;
+	try {
+		( new SPEM_Dynamic_Schedule() )->ajax_get_schedule();
+	} catch ( Stub_JSON_Response $r ) {
+		return $r;
+	}
+	return null;
+}
+
+// Finding 4: a Calendar with no season and no flags is rendered exactly.
+list( $html, $rendered ) = render_block( array( 'id' => '201' ) );
+assert_test( '[event_list id="201"]' === $rendered, 'no flags on a season-less Calendar -> id route, no season injected' );
+assert_test( false !== strpos( $html, '<option value="all" selected>All seasons</option>' ), "'All seasons' is offered and selected for a season-less Calendar" );
+assert_test( false !== strpos( $html, '&quot;season&quot;:&quot;all&quot;' ), "data-defaults season is 'all'" );
+assert_test( false !== strpos( $html, '<option value="d6">D6</option>' ), 'with All seasons the division list spans every season' );
+$cal201 = signed_fields( $html );
+
+list( $html, $rendered ) = render_block( array( 'id' => '202' ) );
+assert_test( '[event_list id="202"]' === $rendered, 'no flags on a Calendar with a season -> id route' );
+assert_test( false === strpos( $html, 'All seasons' ) && false !== strpos( $html, '<option value="w2026-27" selected>' ), "the Calendar's season is selected, no 'All seasons'" );
+assert_test( false !== strpos( $html, '<option value="d5" selected>D5</option>' ) && false !== strpos( $html, '<option value="upcoming" selected>' ), "the Calendar's division and status are the defaults" );
+$cal202 = signed_fields( $html );
+
+list( $html, $rendered ) = render_block( '' );
+assert_test( '[event_list season="29"]' === $rendered, 'no id -> the current/newest season is applied' );
+assert_test( false === strpos( $html, 'All seasons' ), "no id -> no 'All seasons'" );
+assert_test( array() === ( $GLOBALS['stub_hooks']['pre_get_posts'] ?? array() ), 'the playoff widening hook is removed after rendering' );
+
+// Finding 1: the signed attributes come back and still apply.
+list( $html, $rendered ) = render_block( array( 'id' => '202', 'columns' => 'event,time', 'status' => 'all' ) );
+$signed = signed_fields( $html );
+$r      = run_ajax( $signed + array( 'season' => 'w2026-27', 'league' => 'd5', 'team' => '7', 'status' => 'all' ) );
+$text   = end( $GLOBALS['stub_rendered'] );
+assert_test( $r && $r->success, 'a correctly signed request succeeds' );
+assert_test( in_array( 'spem_schedule_nonce|_ajax_nonce', $GLOBALS['stub_nonce_checked'], true ), 'the nonce is checked' );
+assert_test( false !== strpos( $text, 'columns="event,time"' ) && false !== strpos( $text, 'status="any"' ) && false !== strpos( $text, 'team="7"' ), 'shortcode attributes survive a team change (precedence kept)' );
+assert_test( false !== strpos( $text, 'number="10"' ), "a team change keeps the Calendar's number limit" );
+assert_test( array( 'season' => 'w2026-27', 'league' => 'd5', 'team' => '7', 'status' => 'all' ) === $r->data['selected'], 'selected reports every effective value' );
+assert_test( array( array( 'id' => 7, 'name' => 'Hawks' ) ) === $r->data['teams'] && array( array( 'slug' => 'd5', 'name' => 'D5' ) ) === $r->data['leagues'], 'dependent option lists are returned' );
+
+$r = run_ajax( $signed + array( 'season' => 'w2026-27', 'league' => 'd5', 'team' => 'all', 'status' => 'all' ) );
+assert_test( $r->success && false !== strpos( end( $GLOBALS['stub_rendered'] ), '[event_list id="202"' ), 'all four fields at their defaults (Reset) -> the initial id route again' );
+
+// Tampering and crafted values: rejected, nothing cached.
+$r = run_ajax( array( 'sig' => str_repeat( '0', 64 ) ) + $signed + array( 'team' => '7' ) );
+assert_test( $r && ! $r->success && array() === $GLOBALS['stub_transients'], 'a forged signature is rejected before any transient is written' );
+$r = run_ajax( array( 'atts' => base64_encode( '{"id":"203"}' ) ) + $signed );
+assert_test( ! $r->success && array() === $GLOBALS['stub_transients'], 'a swapped attribute blob is rejected' );
+$r = run_ajax( array( 'season' => 'nope' ) + $signed );
+assert_test( ! $r->success && array() === $GLOBALS['stub_transients'], 'a crafted season is rejected before any transient is written' );
+$r = run_ajax( array( 'team' => '7 OR 1=1' ) + $signed );
+assert_test( ! $r->success && array() === $GLOBALS['stub_transients'], 'a crafted team is rejected before any transient is written' );
+$r = run_ajax( array( 'season' => 'all' ) + $signed );
+assert_test( ! $r->success && array() === $GLOBALS['stub_transients'], "season 'all' is rejected when the Calendar has a season" );
+$r = run_ajax( array( 'team' => array( '7' ) ) + $signed );
+assert_test( ! $r->success, 'a non-scalar field is rejected' );
+set_error_handler( function ( $no, $msg ) { throw new ErrorException( $msg, 0, $no ); } ); // phpcs:ignore
+try {
+	$r = run_ajax( array( 'atts' => array( 'x' ), 'sig' => array( 'y' ) ) );
+	assert_test( ! $r->success, 'a non-scalar atts/sig is rejected without a PHP warning' );
+} catch ( ErrorException $e ) {
+	assert_test( false, 'a non-scalar atts/sig is rejected without a PHP warning (' . $e->getMessage() . ')' );
+}
+restore_error_handler();
+
+// Finding 4 (AJAX side): a season-less Calendar accepts 'all' and a concrete season.
+$r = run_ajax( $cal201 + array( 'season' => 'all', 'team' => '8' ) );
+assert_test( $r->success && false === strpos( end( $GLOBALS['stub_rendered'] ), 'season=' ), "season 'all' is accepted for a season-less Calendar and adds no season" );
+$r = run_ajax( $cal201 + array( 'season' => 'w2025-26' ) );
+assert_test( $r->success && false !== strpos( end( $GLOBALS['stub_rendered'] ), 'season="20"' ), 'choosing a concrete season filters to it' );
+
+// Finding 2: an unsent division keeps the Calendar's, and is reset when the season has none.
+$r = run_ajax( $cal202 + array( 'team' => '7' ) );
+assert_test( 'd5' === $r->data['selected']['league'], "an unsent division reports the Calendar's division, not 'all'" );
+$r    = run_ajax( $cal202 + array( 'season' => 'w2025-26' ) );
+$text = end( $GLOBALS['stub_rendered'] );
+assert_test( 'all' === $r->data['selected']['league'], "the Calendar's division with no games in the new season resets to 'all'" );
+assert_test( false === strpos( $text, 'league=' ) && false !== strpos( $text, 'season="20"' ), 'the reset division is cleared in the rendered list' );
+
+// Finding 3: a Calendar with several seasons stays on the shown season.
+list( $html, ) = render_block( array( 'id' => '203' ) );
+$r             = run_ajax( signed_fields( $html ) + array( 'team' => '7' ) );
+$text          = end( $GLOBALS['stub_rendered'] );
+assert_test( 'w2026-27' === $r->data['selected']['season'] && false !== strpos( $text, 'season="29"' ), 'a team-only change on a several-season Calendar keeps the default season' );
 
 echo "\n=== Results ===\n\n";
 echo "Passed: {$passed}\nFailed: {$failed}\n";
