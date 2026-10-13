@@ -1472,7 +1472,7 @@ class SPEM_Dynamic_Schedule {
 			'format'  => get_post_meta( $calendar_id, 'sp_event_format', true ),
 			'day'     => get_post_meta( $calendar_id, 'sp_day', true ),
 			'columns' => is_array( $cols ) ? implode( ',', $cols ) : '',
-			'title'   => $this->calendar_title( $calendar_id ),
+			'title'   => $this->calendar_title( $calendar_id, $args['show_title'] ?? null ),
 		) + $this->calendar_date_settings( $calendar_id, $date );
 
 		foreach ( array(
@@ -1497,13 +1497,18 @@ class SPEM_Dynamic_Schedule {
 	/**
 	 * The heading SportsPress would show for the Calendar: its caption, else
 	 * its title; '' when SportsPress hides event list titles (an explicit
-	 * title attribute is always shown, so it must not be passed then).
+	 * title attribute is always shown, so it must not be passed then). A
+	 * show_title attribute of 0, no or false hides it as well.
 	 *
-	 * @param int $calendar_id Calendar post id.
+	 * @param int        $calendar_id Calendar post id.
+	 * @param mixed|null $show_title  The show_title attribute, when given.
 	 * @return string
 	 */
-	private function calendar_title( $calendar_id ): string {
-		if ( 'yes' !== get_option( 'sportspress_event_list_show_title', 'yes' ) ) {
+	private function calendar_title( $calendar_id, $show_title = null ): string {
+		$hidden = null === $show_title
+			? 'yes' !== get_option( 'sportspress_event_list_show_title', 'yes' )
+			: in_array( strtolower( trim( (string) $show_title ) ), array( '0', 'no', 'false' ), true );
+		if ( $hidden ) {
 			return '';
 		}
 		$caption = (string) get_post_meta( $calendar_id, 'sp_caption', true );

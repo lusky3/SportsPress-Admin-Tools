@@ -257,6 +257,16 @@ $GLOBALS['stub_options']['sportspress_event_list_show_title'] = 'no';
 $out = call_private( 'detach_calendar_settings', 6, array( 'team' => '7' ) );
 assert_test( ! isset( $out['title'] ), 'no title when SportsPress hides event list titles' );
 $GLOBALS['stub_options'] = array();
+foreach ( array( '0', 'no', 'false' ) as $falsy ) {
+	$out = call_private( 'detach_calendar_settings', 6, array( 'team' => '7', 'show_title' => $falsy ) );
+	assert_test( ! isset( $out['title'] ), "show_title=\"{$falsy}\" injects no Calendar title on the detached route" );
+}
+$out = call_private( 'detach_calendar_settings', 6, array( 'team' => '7', 'show_title' => 'yes' ) );
+assert_test( 'Calendar 6' === ( $out['title'] ?? null ), 'show_title="yes" still injects the Calendar title' );
+$GLOBALS['stub_options']['sportspress_event_list_show_title'] = 'no';
+$out = call_private( 'detach_calendar_settings', 6, array( 'team' => '7', 'show_title' => 'yes' ) );
+assert_test( 'Calendar 6' === ( $out['title'] ?? null ), 'an explicit show_title="yes" overrides the site option' );
+$GLOBALS['stub_options'] = array();
 assert_test( 'Kept' === call_private( 'detach_calendar_settings', 6, array( 'title' => 'Kept' ) )['title'], 'an explicit title argument wins' );
 
 echo "\n=== resolve_term_values() ===\n\n";
