@@ -65,6 +65,15 @@
       return out;
     },
 
+    // Whether one URL value can be honoured: it is one of the dropdown's
+    // options, or a Division/Team value after the Season moved (those options
+    // depend on Season, so the server validates them instead).
+    isAccepted: function (field, value, optionValues, seasonMoved) {
+      if (!value) return false;
+      if ((optionValues[field.key] || []).indexOf(value) !== -1) return true;
+      return seasonMoved && (field.key === 'league' || field.key === 'team');
+    },
+
     // Values from URL params that the page can honour. A param is accepted
     // when its value is one of the dropdown's existing options
     // (optionValues[key] = array of strings). Division and Team options depend
@@ -77,13 +86,19 @@
       var seasonMoved = false;
       FIELDS.forEach(function (f) {
         var v = params.get(f.param);
-        var dependent = f.key === 'league' || f.key === 'team';
-        var ok = !!v && ((optionValues[f.key] || []).indexOf(v) !== -1 || (dependent && seasonMoved));
+        var ok = Logic.isAccepted(f, v, optionValues, seasonMoved);
         values[f.key] = ok ? v : base[f.key];
         if (v && !ok) ignored.push(f.param);
         if (f.key === 'season' && ok && v !== String(base.season)) seasonMoved = true;
       });
       return { values: values, ignored: ignored };
+    },
+
+    // Show after the visitor changes a dropdown. "Upcoming" has nothing in a
+    // past season, so moving the Season while it is set switches to "All
+    // games" rather than leaving an empty list.
+    statusAfterSeasonChange: function (prevStatus, seasonChanged) {
+      return seasonChanged && prevStatus === 'upcoming' ? 'all' : prevStatus;
     },
 
     // The wanted value if it is one of the options, else `fallback`.
@@ -305,7 +320,11 @@
       $wrap.data('applied', readSelects($wrap));
 
       $wrap.on('change', '.arl-schedule-select', function () {
-        load($wrap, readSelects($wrap), {});
+        var values = readSelects($wrap);
+        var seasonChanged = $(this).attr('data-filter') === 'season';
+        values.status = Logic.statusAfterSeasonChange(values.status, seasonChanged);
+        selectFor($wrap, 'status').val(values.status);
+        load($wrap, values, {});
       });
 
       $wrap.on('click', '.arl-schedule-reset', function (e) {

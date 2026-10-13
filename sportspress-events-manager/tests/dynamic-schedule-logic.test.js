@@ -47,3 +47,26 @@ console.log('logic ok');
   assert.deepStrictEqual(run('?x=1').ignored, []);
   console.log('sanitizeUrlValues ok');
 }
+
+// statusAfterSeasonChange: a past season must not inherit "Upcoming".
+{
+  assert.strictEqual(L.statusAfterSeasonChange('upcoming', true), 'all');
+  assert.strictEqual(L.statusAfterSeasonChange('upcoming', false), 'upcoming');
+  assert.strictEqual(L.statusAfterSeasonChange('results', true), 'results');
+  assert.strictEqual(L.statusAfterSeasonChange('all', true), 'all');
+  console.log('statusAfterSeasonChange ok');
+}
+
+// isAccepted: the per-field rule behind sanitizeUrlValues.
+{
+  const opts = { season: ['w26'], league: ['all', 'd1'], team: ['all'], status: ['all'] };
+  const f = (key) => L.FIELDS.find((x) => x.key === key);
+  assert(L.isAccepted(f('season'), 'w26', opts, false));
+  assert(!L.isAccepted(f('season'), 'zz', opts, true), 'season is never accepted unchecked');
+  assert(!L.isAccepted(f('league'), 'zz', opts, false));
+  assert(L.isAccepted(f('league'), 'zz', opts, true), 'dependent value after a season move');
+  assert(L.isAccepted(f('team'), '77', opts, true));
+  assert(!L.isAccepted(f('status'), 'nope', opts, true));
+  assert(!L.isAccepted(f('league'), '', opts, true), 'empty is not a value');
+  console.log('isAccepted ok');
+}
