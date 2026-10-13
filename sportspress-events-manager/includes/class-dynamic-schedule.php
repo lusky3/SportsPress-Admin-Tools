@@ -229,7 +229,22 @@ class SPEM_Dynamic_Schedule {
 		}
 
 		// Arguments win; anything they leave unset falls back to the Calendar.
-		return $args + array_map( 'strval', array_filter( $own ) );
+		return $args + array_map( 'strval', array_filter( $own, array( $this, 'is_set_value' ), ARRAY_FILTER_USE_BOTH ) );
+	}
+
+	/**
+	 * Whether a Calendar value counts as set. '0' and '' are unset, except
+	 * for the relative range's past/future days, where 0 is a real value.
+	 *
+	 * @param mixed  $value Meta value.
+	 * @param string $key   Attribute name.
+	 * @return bool
+	 */
+	private function is_set_value( $value, $key ) {
+		if ( in_array( $key, array( 'date_past', 'date_future' ), true ) ) {
+			return '' !== (string) $value;
+		}
+		return (bool) $value;
 	}
 
 	/**

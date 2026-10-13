@@ -171,6 +171,15 @@ $out = call_private( 'detach_calendar_settings', 5, array() );
 assert_test( ! isset( $out['status'] ), 'a zero status is treated as unset' );
 assert_test( '1' === $out['date_relative'] && '7' === $out['date_past'] && '14' === $out['date_future'] && ! isset( $out['date_from'] ), 'a relative range carries past and future' );
 
+$GLOBALS['stub_meta'][5]['sp_date_past']   = '0';
+$GLOBALS['stub_meta'][5]['sp_date_future'] = '0';
+$out = call_private( 'detach_calendar_settings', 5, array() );
+assert_test( '0' === ( $out['date_past'] ?? null ) && '0' === ( $out['date_future'] ?? null ), 'a relative range of 0 days is kept as date_past="0" / date_future="0"' );
+assert_test( false !== strpos( SPEM_Dynamic_Schedule::build_event_list_shortcode( $out ), 'date_past="0" date_future="0"' ), 'the 0 values reach the shortcode text' );
+$GLOBALS['stub_meta'][5]['sp_date_past'] = '';
+$out = call_private( 'detach_calendar_settings', 5, array() );
+assert_test( ! isset( $out['date_past'] ), 'an empty-string past stays unset' );
+
 echo "\n=== resolve_term_values() ===\n\n";
 
 $GLOBALS['stub_terms']['slug']['sp_season'] = array( 'w2025-26' => 12 );
