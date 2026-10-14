@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.3.7
+Stable tag: 1.6.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -47,7 +47,59 @@ WooCommerce is optional. Without it, fee tracking can be configured for manual e
 
 CSV files with `Team` and `Name` columns (both required). Each row maps a player Name to a Team; rows missing either value are skipped.
 
+= How do manual suspensions work? =
+
+Conveners can issue a suspension from the Notices page (Issue suspension) or from a player's Discipline panel on Rosters. Pick an infraction, the incident and the game count; the modal previews the player and captain emails before anything is sent.
+
+* The infraction list and the rulebook link and revision cited in emails are managed under Settings → League Manager (Discipline Rules tab). On a new infraction, a Sort order of 0 means "place it at the end".
+* A player's Edit screen shows a read-only "Discipline record (conveners only)" box with every notice, outcome and eligible date, plus the private incident note.
+* Retiring an infraction stops it being offered for new suspensions; notices already issued keep the wording they were sent with.
+* Revoking a suspension sends a correction email unless you choose to skip it.
+* The captain copy includes a forfeit line; the player copy does not.
+* The incident note is private to conveners. It is never emailed and never appears in the weekly digest.
+* The weekly penalty digest also reminds you of suspensions whose eligible date has passed but are not yet marked served, and of indefinite suspensions still awaiting a decision (25 rows per list, then a pointer to the Notices page). No extra schedule is involved.
+* Discipline history starts empty. Suspensions issued before this feature are not backfilled.
+
 == Changelog ==
+
+= 1.6.4 =
+* Add: placeholder plugin icon, shown in the Plugins and Updates screens in place of the generic one.
+
+= 1.6.3 =
+* Accessibility: every League Manager settings field is now programmatically labelled (row labels point at their controls; radio and checkbox groups have legends; threshold table inputs name their tier).
+* Fix: the issue-suspension modal now says where to add or re-activate infractions when none are active.
+
+= 1.6.2 =
+* Docs: the in-dashboard Help page now covers the Discipline Rules tab, the rulebook fields, the player-screen discipline box and the digest reminders; the readme and architecture notes describe the player-screen box and retired infractions.
+
+= 1.6.1 =
+* New: the weekly penalty digest now lists suspensions past their eligible date that are not yet marked served, and indefinite suspensions still awaiting a decision. A week with only reminders still sends; a fully quiet week still does not.
+* Docs: manual suspensions are described in this readme.
+
+= 1.6.0 =
+* New: settings for the rulebook link and revision cited in suspension emails.
+* New: an editable Discipline Rules tab for the infraction list -- add, edit and retire. Edits never rewrite notices already sent.
+* New: a read-only discipline record box on the player edit screen for conveners.
+* New: infraction create and update REST routes.
+
+= 1.5.0 =
+* New: issue-suspension modal with a live preview of the player and captain emails.
+* New: per-player Discipline panel on Rosters -- history, release, discard, mark served, decide, amend, revoke and recalculate.
+* New: the Notices page labels and handles manual and withdrawn notices, and has an Issue suspension button. Replaced notices can no longer be acted on, and in-page confirmations replace native dialogs.
+* New: the WP-admin queue labels manual notices, and Release all shown no longer includes manual drafts.
+* New: incident-match picker route.
+* Fixed: the server flags replaced notices and the serve route refuses them.
+
+= 1.4.1 =
+* New (REST only -- no admin UI yet): manual suspension routes to issue, preview, release, decide, amend, revoke, recalculate and read the history of a suspension.
+* Fixed: manual notices no longer affect the automatic penalty queue.
+* New: the privacy export and eraser cover the new manual-suspension fields.
+
+= 1.4.0 =
+* New (foundation only -- no UI or routes ship in this version): an editable infraction list, seeded from the ARL rulebook section 5.10 chart.
+* New: the discipline notice table gains manual-suspension columns and a `revoked` status (schema 1.1.0, runs automatically on update).
+* New: next-eligible-game projection across all of a player's teams, skipping postponed and cancelled fixtures.
+* New: suspension email wording for the player and for captains.
 
 = 1.3.7 =
 * Fix: the offer message textarea added in 1.3.6 was never covered by the modal's form-control styling, so it rendered at its tiny browser-default size and sat inline next to its own label instead of below it. It now matches the claim-window field: full modal width, same padding, label stacked above.

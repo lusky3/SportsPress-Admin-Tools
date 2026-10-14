@@ -1,49 +1,10 @@
-import { useState, useEffect, useRef, useCallback, memo } from '@wordpress/element';
+import { useState, useEffect, useCallback, memo } from '@wordpress/element';
 import HelpLink from '../components/HelpLink';
 import { fetchTeams, fetchRosterDetails, fetchNotes, fetchNoteCounts, addNote, deleteNote, movePlayer, updatePlayer, updatePlayerMetadata, setCaptain, removePlayer, importRoster, calculateSkills, bulkUploadRoster, bulkProcessRoster } from '../lib/api';
 import Toast from '../components/Toast';
+import useFocusTrap from '../components/useFocusTrap';
+import PlayerDisciplinePanel from '../components/PlayerDisciplinePanel';
 import Icon from '../components/icons';
-
-// UX-9: focus trap + focus move-in / restore-on-close for modal dialogs.
-// Returns a ref to attach to the dialog container.
-function useFocusTrap( onClose ) {
-	const ref = useRef( null );
-	useEffect( () => {
-		const node = ref.current;
-		if ( ! node ) return undefined;
-		const previouslyFocused = document.activeElement;
-		const selector = 'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
-		const focusables = () => Array.from( node.querySelectorAll( selector ) ).filter( ( el ) => el.offsetParent !== null || el === document.activeElement );
-		// Move focus into the dialog.
-		const first = focusables()[ 0 ];
-		( first || node ).focus();
-
-		const onKeyDown = ( e ) => {
-			if ( e.key === 'Escape' ) { onClose(); return; }
-			if ( e.key !== 'Tab' ) return;
-			const els = focusables();
-			if ( ! els.length ) { e.preventDefault(); return; }
-			const firstEl = els[ 0 ];
-			const lastEl = els[ els.length - 1 ];
-			if ( e.shiftKey && document.activeElement === firstEl ) {
-				e.preventDefault();
-				lastEl.focus();
-			} else if ( ! e.shiftKey && document.activeElement === lastEl ) {
-				e.preventDefault();
-				firstEl.focus();
-			}
-		};
-		node.addEventListener( 'keydown', onKeyDown );
-		return () => {
-			node.removeEventListener( 'keydown', onKeyDown );
-			// Restore focus to the trigger.
-			if ( previouslyFocused && typeof previouslyFocused.focus === 'function' ) {
-				previouslyFocused.focus();
-			}
-		};
-	}, [ onClose ] );
-	return ref;
-}
 
 // M25: every write path on this page fired a bare .then() — a rejected request
 // (403, 503 module gate, network drop, validation error) produced an unhandled
@@ -446,6 +407,7 @@ export default function Rosters( { season } ) {
 	const [ roster, setRoster ] = useState( [] );
 	const [ loading, setLoading ] = useState( false );
 	const [ notesPlayer, setNotesPlayer ] = useState( null );
+	const [ disciplinePlayer, setDisciplinePlayer ] = useState( null );
 	const [ noteCounts, setNoteCounts ] = useState( {} );
 	const [ movePlayerData, setMovePlayerData ] = useState( null );
 	const [ toast, setToast ] = useState( null ); // UI-13: { message, type }
@@ -499,6 +461,10 @@ export default function Rosters( { season } ) {
 	const notify = useCallback( ( message, type = 'error' ) => {
 		setToast( { message, type } );
 	}, [] );
+
+	const closeDiscipline = useCallback( () => setDisciplinePlayer( null ), [] );
+	// Convener-only, fail-open like Leaders.jsx; the server gate is the real check.
+	const canDiscipline = window.splmDashboard?.modules?.discipline !== false && window.splmDashboard?.capabilities?.canManage !== false;
 
 	const reload = () => {
 		if ( selectedTeam ) {
@@ -654,6 +620,13 @@ export default function Rosters( { season } ) {
 												onClick={ () => setNotesPlayer( player ) }
 												aria-label={ noteCounts[ player.id ] ? `Notes (${ noteCounts[ player.id ] } on file)` : 'Notes' }
 											>Notes{ noteCounts[ player.id ] ? ` (${ noteCounts[ player.id ] })` : '' }</button>
+											{ canDiscipline && (
+												<button
+													className="splm-btn splm-btn--small"
+													onClick={ () => setDisciplinePlayer( player ) }
+													aria-label={ `Discipline for ${ player.name }` }
+												>Discipline</button>
+											) }
 											<button className="splm-btn splm-btn--small" onClick={ () => setMovePlayerData( player ) }>Move</button>
 											<button className="splm-btn splm-btn--small splm-btn--danger" onClick={ () => {
 												if ( window.confirm( `Remove ${ player.name } from this roster?` ) ) {
@@ -680,6 +653,10 @@ export default function Rosters( { season } ) {
 						fetchNoteCounts( roster.map( ( p ) => p.id ) ).then( setNoteCounts );
 					} }
 				/>
+			) }
+
+			{ disciplinePlayer && (
+				<PlayerDisciplinePanel player={ disciplinePlayer } season={ season } notify={ notify } onClose={ closeDiscipline } />
 			) }
 
 			{ movePlayerData && (

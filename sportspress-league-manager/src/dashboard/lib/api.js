@@ -480,3 +480,53 @@ export function discardNotice( id ) {
 export function serveNotice( id ) {
 	return apiFetch( { path: `/splm/v1/discipline/notices/${ id }/serve`, method: 'POST' } );
 }
+
+// splm/v1 — manual suspensions. Errors are NOT swallowed: the api-fetch
+// rejection propagates so callers can read err.code / err.data (e.g. 409
+// splm_suspension_duplicate -> err.data.duplicate_of).
+const compact = ( params = {} ) =>
+	Object.fromEntries( Object.entries( params ).filter( ( [ , v ] ) => v !== '' && v != null ) );
+
+export function fetchInfractions() {
+	return apiFetch( { path: '/splm/v1/discipline/infractions' } ).then( unwrapList );
+}
+
+export function fetchDiscipline( playerId, includeBaseline = false ) {
+	const query = new URLSearchParams( {
+		player: playerId,
+		include_baseline: includeBaseline ? '1' : '0',
+	} ).toString();
+	return apiFetch( { path: `/splm/v1/discipline/history?${ query }` } ).then( ( res ) => ( {
+		rows: unwrapList( res ),
+		summary: typeof res?.summary === 'string' ? res.summary : '',
+	} ) );
+}
+
+export function fetchPlayerGames( playerId, season ) {
+	const query = new URLSearchParams( compact( { player: playerId, season } ) ).toString();
+	return apiFetch( { path: `/splm/v1/discipline/player-games?${ query }` } ).then( unwrapList );
+}
+
+export function previewSuspension( params ) {
+	return apiFetch( { path: '/splm/v1/discipline/suspensions/preview', method: 'POST', data: compact( params ) } );
+}
+
+export function createSuspension( params ) {
+	return apiFetch( { path: '/splm/v1/discipline/suspensions', method: 'POST', data: compact( params ) } );
+}
+
+export function decideSuspension( id, games ) {
+	return apiFetch( { path: `/splm/v1/discipline/suspensions/${ id }/decide`, method: 'POST', data: { games } } );
+}
+
+export function amendSuspension( id, games ) {
+	return apiFetch( { path: `/splm/v1/discipline/suspensions/${ id }/amend`, method: 'POST', data: { games } } );
+}
+
+export function revokeSuspension( id, notify = true ) {
+	return apiFetch( { path: `/splm/v1/discipline/suspensions/${ id }/revoke`, method: 'POST', data: { notify } } );
+}
+
+export function recalculateSuspension( id ) {
+	return apiFetch( { path: `/splm/v1/discipline/suspensions/${ id }/recalculate`, method: 'POST' } );
+}

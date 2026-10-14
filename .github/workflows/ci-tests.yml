@@ -85,6 +85,11 @@ jobs:
         with:
           node-version: '24'
 
+      # run-all-tests.sh runs in php-cli containers without node and skips
+      # its JS tests there, so the [arl_schedule] client logic runs here.
+      - name: Dynamic Schedule JS logic tests
+        run: node sportspress-events-manager/tests/dynamic-schedule-logic.test.js
+
       # The build/ bundle is committed to the repo, so it must stay in sync with
       # src/. First verify the artifacts exist, then fail if a rebuild produced
       # output that differs from what was committed (drift / tamper gate).

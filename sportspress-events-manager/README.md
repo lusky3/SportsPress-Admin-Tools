@@ -65,6 +65,24 @@ Frontend shortcode (`[arl_standings]`) that dynamically renders league tables wi
 
 **Access:** Add `[arl_standings]` shortcode to any page or post
 
+### Dynamic Schedule
+
+Frontend shortcode (`[arl_schedule]`) that renders a SportsPress Calendar's games with Season, Division, Team and Show (All games / Upcoming / Results) dropdowns that refilter the list over AJAX. Requires the Events Management module.
+
+```
+[arl_schedule id="123"]
+[arl_schedule calendar="123" status="upcoming" team="45"]
+[arl_schedule season="w2026-27" division="d1"]
+```
+
+- `id` (alias `calendar`): a published Calendar. Without it the newest season with games is used.
+- `status`: `all`, `upcoming` or `results`. `season` and `division` (alias `league`) take slugs; `team` takes a team id.
+- Other `[event_list]` options are passed through: `venue`, `day`, `format`, `rows`, `paginated`, `sortable`, `scrollable`, `responsive`, `show_team_logo`, `link_events`, `link_teams`, `link_venues`, `show_title`, `title`, `title_format`, `time_format`; `date*`, `number`, `order` and `columns` also work.
+- Precedence, lowest to highest: the Calendar's settings, the shortcode attributes, the visitor's dropdown choice.
+- The Calendar's date range and number limit apply to the initial view only; they are dropped once the visitor changes Season or Show. Changing Season while Show is "Upcoming" switches Show to "All games".
+- A visitor-driven list with no number limit is capped at 500 games (filter `spem_schedule_max_rows`), with a notice when the cap is reached. The initial view is not capped.
+- Shareable URL parameters: `season`, `division`, `team`, `show`. Only the first block on a page reads and writes the URL.
+
 ## Installation
 
 1. Install and activate SportsPress Admin Tools (parent plugin)

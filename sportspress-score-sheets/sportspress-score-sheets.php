@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SportsPress Score Sheets (Child Plugin)
  * Description: Child plugin for SportsPress Admin Tools - ingest photos of hand-filled score sheets, extract results via a pluggable recognition backend, review, and apply to SportsPress events.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Cody (lusky3)
  * Text Domain: sportspress-score-sheets
  * License: GPLv2 or later
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'SPSS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPSS_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPSS_VERSION', '1.0.0' );
+define( 'SPSS_VERSION', '1.0.1' );
 
 // Native WordPress updates, served from this repository's releases.
 //

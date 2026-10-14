@@ -1,0 +1,5 @@
+languages: [php]
+
+ls_specific_settings:
+  php:
+    ignore_vendor: true

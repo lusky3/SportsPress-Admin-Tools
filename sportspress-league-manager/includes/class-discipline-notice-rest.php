@@ -67,6 +67,19 @@ class SPLM_Discipline_Notice_REST {
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
 	public function can_manage() {
+		return self::gate();
+	}
+
+	/**
+	 * The gate itself, static so other discipline REST classes can use it as a
+	 * permission_callback without constructing this class (its constructor
+	 * registers hooks).
+	 *
+	 * @return true|WP_Error
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	public static function gate() {
 		if ( ! SPLM_REST_API::module_enabled( 'league_discipline' ) ) {
 			return new WP_Error( 'module_disabled', __( 'Penalty discipline is not enabled.', 'sportspress-league-manager' ), array( 'status' => 503 ) );
 		}
@@ -164,9 +177,13 @@ class SPLM_Discipline_Notice_REST {
 			$per_page
 		);
 
-		$items = array();
+		$replaced = SPLM_Discipline_Notice_Database::replaced_ids( array_map( static fn( $r ) => (int) $r->id, $result['rows'] ) );
+		$items    = array();
 		foreach ( $result['rows'] as $row ) {
-			$items[] = self::row_to_response( $row );
+			$items[] = array_merge(
+				self::row_to_response( $row, false ),
+				array( 'replaced' => in_array( (int) $row->id, $replaced, true ) )
+			);
 		}
 
 		return new WP_REST_Response(
@@ -236,6 +253,23 @@ class SPLM_Discipline_Notice_REST {
 			);
 		}
 
+		if ( 'manual' === (string) ( $row->source ?? 'auto' ) ) {
+			return SPLM_Discipline_Suspension_Release::release_row( $row );
+		}
+
+		return $this->release_automatic( $row );
+	}
+
+	/**
+	 * Send an automatic notice (the original release body, unchanged).
+	 *
+	 * @param object $row Notice row, already known to be pending or failed.
+	 * @return WP_REST_Response|WP_Error
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private function release_automatic( $row ) {
+		$id        = (int) $row->id;
 		$player_id = (int) $row->player_id;
 		$season_id = (int) $row->season_id;
 
@@ -356,20 +390,9 @@ class SPLM_Discipline_Notice_REST {
 			return new WP_Error( 'splm_notice_not_found', __( 'Notice not found.', 'sportspress-league-manager' ), array( 'status' => 404 ) );
 		}
 
-		if ( 'suspend' !== (string) $row->consequence ) {
-			return new WP_Error(
-				'splm_notice_not_a_suspension',
-				__( 'Only a suspension can be marked served.', 'sportspress-league-manager' ),
-				array( 'status' => 409 )
-			);
-		}
-
-		if ( SPLM_Discipline_Notice_Database::STATUS_SENT !== (string) $row->status ) {
-			return new WP_Error(
-				'splm_notice_not_sent',
-				__( 'A suspension can only be marked served once the player has been told.', 'sportspress-league-manager' ),
-				array( 'status' => 409 )
-			);
+		$blocked = self::serve_blocker( $row );
+		if ( $blocked ) {
+			return $blocked;
 		}
 
 		$fields = array(
@@ -400,17 +423,66 @@ class SPLM_Discipline_Notice_REST {
 	}
 
 	/**
+	 * Why a row cannot be marked served, or null when it can.
+	 *
+	 * @param object $row Notice row.
+	 * @return WP_Error|null
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 */
+	private static function serve_blocker( $row ) {
+		if ( 'suspend' !== (string) $row->consequence ) {
+			return new WP_Error(
+				'splm_notice_not_a_suspension',
+				__( 'Only a suspension can be marked served.', 'sportspress-league-manager' ),
+				array( 'status' => 409 )
+			);
+		}
+
+		if ( SPLM_Discipline_Notice_Database::STATUS_SENT !== (string) $row->status ) {
+			return new WP_Error(
+				'splm_notice_not_sent',
+				__( 'A suspension can only be marked served once the player has been told.', 'sportspress-league-manager' ),
+				array( 'status' => 409 )
+			);
+		}
+
+		// An amended or revoked parent is superseded; only the newest row is live.
+		if ( array() !== SPLM_Discipline_Notice_Database::children_of( (int) $row->id ) ) {
+			return new WP_Error(
+				'splm_notice_replaced',
+				__( 'This notice has been replaced by a later one — act on the newest notice.', 'sportspress-league-manager' ),
+				array( 'status' => 409 )
+			);
+		}
+
+		return null;
+	}
+
+	/**
 	 * The row shape both surfaces render.
 	 *
 	 * The React page shows a subset; the technical tab shows all of it. One
 	 * shape means the two views cannot disagree about what a row says.
 	 *
-	 * @param object $row Database row.
+	 * @param object $row          Database row.
+	 * @param bool   $include_note Include the private incident note (managers only).
 	 * @return array
 	 */
-	public static function row_to_response( $row ): array {
+	public static function row_to_response( $row, bool $include_note = false ): array {
 		$player_id = (int) $row->player_id;
 
+		return array_merge( self::base_fields( $row, $player_id ), self::manual_fields( $row, $include_note ) );
+	}
+
+	/**
+	 * Fields every notice row carries, automatic or manual.
+	 *
+	 * @param object $row       Database row.
+	 * @param int    $player_id Player post id.
+	 * @return array
+	 */
+	private static function base_fields( $row, int $player_id ): array {
 		return array(
 			'id'            => (int) $row->id,
 			'player_id'     => $player_id,
@@ -439,6 +511,36 @@ class SPLM_Discipline_Notice_REST {
 			'note'          => (string) $row->note,
 			'created_at'    => (string) $row->created_at,
 		);
+	}
+
+	/**
+	 * Manual-suspension fields; every read tolerates a legacy row lacking them.
+	 *
+	 * @param object $row          Database row.
+	 * @param bool   $include_note Include the private incident note (managers only).
+	 * @return array
+	 */
+	private static function manual_fields( $row, bool $include_note ): array {
+		$captains = json_decode( (string) ( $row->captains_notified ?? '' ), true );
+
+		$fields = array(
+			'source'            => (string) ( $row->source ?? 'auto' ),
+			'infraction_id'     => (int) ( $row->infraction_id ?? 0 ),
+			'rule_ref'          => (string) ( $row->rule_ref ?? '' ),
+			'infraction_title'  => (string) ( $row->infraction_title ?? '' ),
+			'rule_text'         => (string) ( $row->rule_text ?? '' ),
+			'outcome'           => (string) ( $row->outcome ?? 'games' ),
+			'incident_event_id' => (int) ( $row->incident_event_id ?? 0 ),
+			'parent_id'         => (int) ( $row->parent_id ?? 0 ),
+			'eligible_on'       => (string) ( $row->eligible_on ?? '' ),
+			'captains_notified' => is_array( $captains ) ? $captains : array(),
+		);
+
+		if ( $include_note ) {
+			$fields['incident_note'] = (string) ( $row->incident_note ?? '' );
+		}
+
+		return $fields;
 	}
 
 	/**
