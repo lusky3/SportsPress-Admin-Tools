@@ -260,6 +260,36 @@ class SPPT_REST_API {
 		// PT-2: the orphaned get_notes()/add_note() handlers that remained after the
 		// routes were unregistered have also been removed — they were never registered
 		// and never called by any sibling plugin.
+
+		// PT-7: backs the live duplicate-name warning on the sp_player edit screen
+		// (SPT_Player_Modifications::render_duplicate_name_check_script()). A plain
+		// read against players the current user can already edit, so it uses its own
+		// lighter permission check rather than check_roster_permission() (which gates
+		// on team-roster capabilities that don't apply here).
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/players/check-duplicate-name',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'check_duplicate_player_name' ),
+				'permission_callback' => array( $this, 'check_edit_players_permission' ),
+				'args'                => array(
+					'name'    => array(
+						'type'              => 'string',
+						'required'          => true,
+						'sanitize_callback' => 'sanitize_text_field',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+					'exclude' => array(
+						'type'              => 'integer',
+						'required'          => false,
+						'default'           => 0,
+						'sanitize_callback' => 'absint',
+						'validate_callback' => 'rest_validate_request_arg',
+					),
+				),
+			)
+		);
 	}
 
 	/**
@@ -968,5 +998,64 @@ class SPPT_REST_API {
 		if ( false === $inserted && get_option( 'spat_debug_verbose_logging', '0' ) === '1' ) {
 			error_log( 'SPT log_transfer_note: insert failed - ' . $wpdb->last_error );
 		}
+	}
+
+	/**
+	 * PT-7: anyone who can create/edit an sp_player at all may query for a name
+	 * collision among them — this is a read against the same resource they're
+	 * already editing, not a roster-management action, so it doesn't need
+	 * check_roster_permission()'s 'edit_others_sp_players'/'manage_options' gate.
+	 */
+	public function check_edit_players_permission() {
+		return current_user_can( 'edit_posts' );
+	}
+
+	/**
+	 * GET /players/check-duplicate-name — whether a published sp_player already
+	 * has this exact title (case-insensitive, per WordPress's default DB
+	 * collation — the same exact-title match the batch importer already uses
+	 * to de-dupe re-imported rows). Backs the live warning shown while typing a
+	 * player's name on the sp_player edit screen; 'exclude' is the post being
+	 * edited, so renaming a player to its own existing name isn't flagged.
+	 */
+	public function check_duplicate_player_name( $request ) {
+		$name    = trim( (string) $request->get_param( 'name' ) );
+		$exclude = absint( $request->get_param( 'exclude' ) );
+
+		if ( '' === $name ) {
+			return new WP_REST_Response( array( 'duplicate' => false ), 200 );
+		}
+
+		$args = array(
+			'post_type'              => 'sp_player',
+			'post_status'            => 'publish',
+			'title'                  => $name,
+			'posts_per_page'         => 1,
+			'fields'                 => 'ids',
+			'no_found_rows'          => true,
+			'update_post_meta_cache' => false,
+			'update_post_term_cache' => false,
+		);
+		if ( $exclude > 0 ) {
+			$args['post__not_in'] = array( $exclude );
+		}
+
+		$matches = get_posts( $args );
+
+		if ( empty( $matches ) ) {
+			return new WP_REST_Response( array( 'duplicate' => false ), 200 );
+		}
+
+		$match_id = (int) $matches[0];
+
+		return new WP_REST_Response(
+			array(
+				'duplicate' => true,
+				'player_id' => $match_id,
+				'name'      => get_the_title( $match_id ),
+				'edit_link' => get_edit_post_link( $match_id, 'raw' ),
+			),
+			200
+		);
 	}
 }

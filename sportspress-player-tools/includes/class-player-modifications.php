@@ -29,6 +29,11 @@ class SPT_Player_Modifications {
 
 		// PT3/F3: surface invalid-email feedback after save_email_meta() rejects a write.
 		add_action( 'admin_notices', array( $this, 'maybe_render_email_invalid_notice' ) );
+
+		// PT-7: warn (without blocking) when the Title being typed for an sp_player
+		// matches an existing published player, before the record is created.
+		// Enqueued only on the post edit screens, and only for sp_player.
+		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_duplicate_name_check' ) );
 	}
 
 	public function add_email_meta_box() {
@@ -99,6 +104,46 @@ class SPT_Player_Modifications {
 		echo '<div class="notice notice-warning is-dismissible"><p>' .
 			esc_html__( 'The email address you entered for this player was invalid and was not saved.', 'sportspress-player-tools' ) .
 			'</p></div>';
+	}
+
+	/**
+	 * PT-7: load the script that checks the Title field, on blur, against
+	 * SPPT_REST_API::check_duplicate_player_name() and shows an inline
+	 * (non-blocking) notice when another published player already has that
+	 * exact name. Only on the post edit screens, only for sp_player, and only
+	 * for users who can edit posts.
+	 *
+	 * @param string $hook_suffix Current admin page.
+	 */
+	public function enqueue_duplicate_name_check( $hook_suffix ) {
+		if ( ! in_array( $hook_suffix, array( 'post.php', 'post-new.php' ), true ) ) {
+			return;
+		}
+		$screen = get_current_screen();
+		if ( ! $screen || 'sp_player' !== $screen->post_type || ! current_user_can( 'edit_posts' ) ) {
+			return;
+		}
+
+		wp_enqueue_script(
+			'spt-duplicate-name-check',
+			SPT_PLUGIN_URL . 'assets/js/duplicate-name-check.js',
+			array( 'jquery' ),
+			SPT_VERSION,
+			true
+		);
+		wp_localize_script(
+			'spt-duplicate-name-check',
+			'sptDuplicateName',
+			array(
+				'restUrl' => esc_url_raw( rest_url( 'splm/v1/players/check-duplicate-name' ) ),
+				'nonce'   => wp_create_nonce( 'wp_rest' ),
+				'i18n'    => array(
+					'prefix' => __( 'A player named', 'sportspress-player-tools' ),
+					'suffix' => __( 'already exists.', 'sportspress-player-tools' ),
+					'link'   => __( 'View existing player', 'sportspress-player-tools' ),
+				),
+			)
+		);
 	}
 
 	public function add_captain_meta_box() {
