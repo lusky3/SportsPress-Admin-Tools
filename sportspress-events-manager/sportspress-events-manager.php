@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SportsPress Events Manager (Child Plugin)
  * Description: Child plugin for SportsPress Admin Tools - Events Management modules
- * Version: 1.1.3
+ * Version: 1.1.4
  * Author: Cody (lusky3)
  * Text Domain: sportspress-events-manager
  * License: GPL v2 or later
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 define( 'SPEM_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPEM_VERSION', '1.1.3' );
+define( 'SPEM_VERSION', '1.1.4' );
 
 // Native WordPress updates, served from this repository's releases.
 //
@@ -137,6 +137,9 @@ class SportsPress_Events_Manager {
 		if ( in_array( 'events_management', $enabled_modules ) ) {
 			require_once SPEM_PLUGIN_PATH . 'includes/class-events-management.php';
 			new SPEM_Events_Management();
+			require_once SPEM_PLUGIN_PATH . 'includes/class-schedule-args.php';
+			require_once SPEM_PLUGIN_PATH . 'includes/class-dynamic-schedule.php';
+			SPEM_Dynamic_Schedule::boot();
 		}
 
 		if ( in_array( 'league_table_generator', $enabled_modules ) ) {

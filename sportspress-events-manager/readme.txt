@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.1.3
+Stable tag: 1.1.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -20,6 +20,7 @@ SportsPress Events Manager adds event and season management tools to SportsPress
 * **League Table Generator** *(coming soon)* - Create league tables with teams pre-populated from league and season filters. Not yet available; the module is a placeholder pending a future release.
 * **Season Rollover Wizard** - Guided workflow to transition teams between seasons. Creates new season, assigns teams, optionally creates calendars and rosters, archives old events.
 * **Dynamic Standings** - Frontend shortcode (`[arl_standings]`) with AJAX-powered season and type filtering for league tables.
+* **Dynamic Schedule** - Frontend shortcode (`[arl_schedule id="123"]`, or `calendar="123"`) that lists a Calendar's games with AJAX Season, Division, Team and Show filters. Attributes: `status` (all, upcoming, results), `season` and `division` slugs, `team` id, plus the `[event_list]` display options. The Calendar's date range and number limit apply to the initial view only; visitor-driven lists are capped at 500 games. Shareable links use the `season`, `division`, `team` and `show` URL parameters. Requires the Events Management module.
 * **Calendar Tools** - Bulk create missing calendars and reset all calendars to the current season.
 
 == Installation ==
@@ -45,6 +46,10 @@ They are automatically created as SportsPress posts/terms during import.
 No. The rollover creates new season terms and updates team assignments. Preview your teams before executing and use the archive option carefully.
 
 == Changelog ==
+
+= 1.1.4 =
+* Add: `[arl_schedule]` shortcode — a filterable schedule (season, division, team, show) built on a SportsPress Calendar.
+* Fix: the filter bars on `[arl_schedule]` and `[arl_standings]` no longer use a fixed light background, so their labels stay readable on themes with a dark mode.
 
 = 1.1.3 =
 * Add: placeholder plugin icon, shown in the Plugins and Updates screens in place of the generic one.

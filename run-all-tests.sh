@@ -32,6 +32,33 @@ run_test() {
     echo ""
 }
 
+# Plain-node test for a front-end script. Not part of the PHP registry, so
+# list mode (run-coverage.sh) skips it; skipped with a notice if node is absent.
+run_node_test() {
+    local file="$1"
+    local rel="${file#$SCRIPT_DIR/}"
+
+    if [[ -n "${SPAT_LIST_TESTS:-}" ]]; then
+        return 0
+    fi
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Running: $rel"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    if ! command -v node >/dev/null 2>&1; then
+        echo "SKIP: node not installed"
+        echo ""
+        return 0
+    fi
+    if node "$file"; then
+        TOTAL_PASS=$((TOTAL_PASS + 1))
+    else
+        TOTAL_FAIL=$((TOTAL_FAIL + 1))
+        FAILED_FILES+=("$rel")
+    fi
+    echo ""
+}
+
 # Discover and run all standalone test files
 run_test "$SCRIPT_DIR/tests/test-release-guard.php"
 run_test "$SCRIPT_DIR/sportspress-admin-tools/tests/test-lock.php"
@@ -47,6 +74,7 @@ run_test "$SCRIPT_DIR/sportspress-etransfer-automation/tests/test-etransfer-auto
 run_test "$SCRIPT_DIR/sportspress-etransfer-automation/tests/test-webhook-routing.php"
 run_test "$SCRIPT_DIR/sportspress-player-registration/tests/test-registration-logic.php"
 run_test "$SCRIPT_DIR/sportspress-player-registration/tests/test-player-matching.php"
+run_test "$SCRIPT_DIR/sportspress-player-registration/tests/test-prorated-pricing.php"
 run_test "$SCRIPT_DIR/sportspress-player-tools/tests/test-batch-list-creator.php"
 run_test "$SCRIPT_DIR/sportspress-player-tools/tests/test-player-skill-level.php"
 run_test "$SCRIPT_DIR/sportspress-player-tools/tests/test-email-sync.php"
@@ -116,6 +144,9 @@ run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-notifications.php"
 run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-rollover-teams.php"
 run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-naming.php"
 run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-standings-pages.php"
+run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-schedule-args.php"
+run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-dynamic-schedule-render.php"
+run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-dynamic-schedule-ajax.php"
 run_test "$SCRIPT_DIR/sportspress-events-manager/tests/test-schedule-template.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-league-manager.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-sportspress-data-default-season.php"
@@ -174,6 +205,7 @@ run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-sheet-lifecycle.php"
 run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-rest-ingest.php"
 run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-ingest-retry-failed.php"
 run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-dashboard-rest.php"
+run_node_test "$SCRIPT_DIR/sportspress-events-manager/tests/dynamic-schedule-logic.test.js"
 
 # Nothing to summarise when the run was only a registry dump.
 if [ -n "${SPAT_LIST_TESTS:-}" ]; then
