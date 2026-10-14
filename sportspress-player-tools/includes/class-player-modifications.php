@@ -145,7 +145,8 @@ class SPT_Player_Modifications {
 			)
 		);
 	}
- function add_captain_meta_box() {
+
+	public function add_captain_meta_box() {
 		add_meta_box(
 			'spt_captain_selection',
 			__( 'Captain Selection', 'sportspress-player-tools' ),
