@@ -338,6 +338,12 @@ class SPEM_Dynamic_Standings {
 	 *
 	 * @param string[] $tag_match The matched opening tag at index 0.
 	 * @return string The tag without per-viewer markup.
+	 *
+	 * False positive: this is used as a preg_replace_callback() callable via
+	 * array( __CLASS__, 'strip_viewer_row' ), which PMD's static analysis
+	 * cannot see is a call site.
+	 *
+	 * @SuppressWarnings(PHPMD.UnusedPrivateMethod)
 	 */
 	private static function strip_viewer_row( $tag_match ) {
 		$tag = $tag_match[0];

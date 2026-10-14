@@ -445,7 +445,8 @@ assert_test( ! has_viewer_markup( implode( '', $GLOBALS['stub_transients'] ) ), 
 echo "\n=== Entries written before this fix are not served ===\n\n";
 
 reset_state( 'legacy' );
-$legacy_key                                = 'spem_standings_v1_' . md5( 'w2026-27|regular' );
+// The pre-1.1.5 key format: 'spem_standings_v{N}_' plus the md5 of 'season|type' ('w2026-27|regular').
+$legacy_key                                = 'spem_standings_v1_1390c025491159402b9c9cb4ee024ee4';
 $GLOBALS['stub_transients'][ $legacy_key ] = '<table><tr class="odd bl-sp-row--mine" style="--bl-team-primary: #100000;"><td>stale</td></tr></table>';
 $anon                                      = render_as( 0 );
 assert_test( false === strpos( $anon, 'stale' ) && ! has_viewer_markup( $anon ), 'a cache entry from the old key format is ignored' );
