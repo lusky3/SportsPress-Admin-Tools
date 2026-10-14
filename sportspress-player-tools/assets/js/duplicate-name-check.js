@@ -21,24 +21,32 @@
 			return;
 		}
 
-		var $notice = $(
-			'<div class="notice notice-warning inline spt-duplicate-name-warning" style="display:none;margin-top:8px;"><p></p></div>'
-		);
-		$title.after( $notice );
+		var noticeBox = document.createElement( 'div' );
+		noticeBox.className = 'notice notice-warning inline spt-duplicate-name-warning';
+		noticeBox.style.display = 'none';
+		noticeBox.style.marginTop = '8px';
+		var noticeText = document.createElement( 'p' );
+		noticeBox.appendChild( noticeText );
+		$title[ 0 ].insertAdjacentElement( 'afterend', noticeBox );
+
+		function hideNotice() {
+			noticeBox.style.display = 'none';
+		}
 
 		function showDuplicate( response ) {
-			$notice.find( 'p' ).empty().text(
-				config.i18n.prefix + ' "' + response.name + '" ' + config.i18n.suffix + ' '
-			).append(
-				$( '<a>', { href: response.edit_link, text: config.i18n.link } )
-			);
-			$notice.show();
+			var link = document.createElement( 'a' );
+			link.href = response.edit_link;
+			link.textContent = config.i18n.link;
+
+			noticeText.textContent = config.i18n.prefix + ' "' + response.name + '" ' + config.i18n.suffix + ' ';
+			noticeText.appendChild( link );
+			noticeBox.style.display = '';
 		}
 
 		function checkDuplicate() {
 			var name = $.trim( $title.val() );
 			if ( ! name ) {
-				$notice.hide();
+				hideNotice();
 				return;
 			}
 
@@ -53,10 +61,10 @@
 				if ( response && response.duplicate ) {
 					showDuplicate( response );
 				} else {
-					$notice.hide();
+					hideNotice();
 				}
 			} ).fail( function () {
-				$notice.hide();
+				hideNotice();
 			} );
 		}
 
