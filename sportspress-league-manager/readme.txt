@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.6.4
+Stable tag: 1.6.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -61,6 +61,9 @@ Conveners can issue a suspension from the Notices page (Issue suspension) or fro
 * Discipline history starts empty. Suspensions issued before this feature are not backfilled.
 
 == Changelog ==
+
+= 1.6.5 =
+* Maintenance: dashboard bundle rebuilt with the current build tooling. No change to how the dashboard looks or behaves; the version bump makes the browser fetch the refreshed script.
 
 = 1.6.4 =
 * Add: placeholder plugin icon, shown in the Plugins and Updates screens in place of the generic one.
