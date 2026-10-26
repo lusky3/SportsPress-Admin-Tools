@@ -327,10 +327,11 @@ $res = run_action( array( 'order_id' => 5107 ), false );
 assert_test( 'Still not registered: name rejected' === $res['summary'] && '' === $res['data']['marker'], 'name_rejected path unchanged' );
 
 echo "\n=== Real run: marker 1 but a failed outcome ===\n";
-// process_completed_order() marks an order '1' whenever no item hit a
-// multiple-players conflict, so season_not_detected / player_creation_failed
-// leave '1' behind. The outcome this run reported decides, not the marker.
-foreach ( array( 'season_not_detected', 'player_creation_failed', 'name_rejected', 'multiple_players_found_email_conflict', 'multiple_players_found_name_match_requires_email', 'failed' ) as $outcome ) {
+// Before player-registration 1.2.1, process_completed_order() marked an order
+// '1' whenever no item hit a multiple-players conflict, so season_not_detected
+// / player_creation_failed left '1' behind; a re-run of such a legacy order
+// can still see that. The outcome this run reported decides, not the marker.
+foreach ( array( 'season_not_detected', 'player_creation_failed', 'name_rejected', 'multiple_players_found_email_conflict', 'multiple_players_found_name_match_requires_email', 'failed', 'no_match' ) as $outcome ) {
 	fixture();
 	st()->logs[5107]   = 'player_created'; // Stale success row from an older run.
 	st()->script[5107] = array( '1', $outcome );
@@ -351,6 +352,15 @@ assert_test( 'Currently: not registered' === $res['changes'][2], 'marker 1 + sea
 st()->logs[5107] = 'player_found_by_email';
 $res = run_action( array( 'order_id' => 5107 ), true );
 assert_test( 'Currently: registered' === $res['changes'][2], 'marker 1 + success: "Currently: registered"' );
+st()->logs[5107] = 'no_match';
+$res = run_action( array( 'order_id' => 5107 ), true );
+assert_test( 'Currently: not registered' === $res['changes'][2] && 'Last outcome: no match' === $res['changes'][1], 'marker 1 + no_match: "Currently: not registered"' );
+
+echo "\n=== Real run: no_match (1.2.1 leaves the marker unset) ===\n";
+fixture();
+st()->script[5107] = array( '', 'no_match' );
+$res = run_action( array( 'order_id' => 5107 ), false );
+assert_test( 'Still not registered: no match' === $res['summary'] && array( 'marker' => '', 'outcome' => 'no_match' ) === $res['data'], 'no_match: still not registered' );
 
 echo "\n=== SPPR_Admin::rerun ===\n";
 fixture();

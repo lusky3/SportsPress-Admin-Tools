@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Release notes
+- **[player-registration]** main is at 1.2.1 (#237) and this branch's FreeScout changes to the plugin came after it, so the release must bump player-registration to 1.2.2 (header, `SPPR_VERSION`, readme stable tag and a `= 1.2.2 =` readme entry), not ship them under 1.2.1.
+
 ### Changed
 - **[etransfer]** A manual match (from the e-Transfer admin screen or from FreeScout) now fires `spat_payment_matched`, with `'manual' => true` in the 4th (context) argument. Before, only automatic matches fired it, so a site-level listener (mu-plugin or theme) will start seeing manual matches; check `$context['manual']` to skip them. The built-in admin notification still skips manual matches.
 - **[admin-tools]** FreeScout events: a lost or stuck send is now rescued within an hour by a new hourly `spat_freescout_events_rescue` cron event (added to existing installs automatically); the daily `spat_freescout_events_sweep` now only purges old rows. A send that died mid-flight counts as an attempt, so it gives up after the usual six instead of retrying forever.
@@ -19,6 +22,7 @@
 - **[admin-tools]** FreeScout events: turning events off (or clearing the URL or secret) no longer stops the daily purge of old sent and failed outbox rows; only the hourly rescue is unscheduled. A failed outbox row update is now logged.
 - **[admin-tools]** Uninstall with data removal now deletes the FreeScout shared secret (`spat_freescout_secret`) and the FreeScout idempotency and rate-limit transients.
 - **[admin-tools]** `SPAT_Player::ids_for_email()` returns only `sp_player` posts (staff posts carrying `sp_user` were included). A new `$live_only` argument also leaves out trashed and auto-draft players; the FreeScout customer lookup uses it, while the privacy exporter and eraser keep trashed players.
+- **[player-registration]** FreeScout: the `no_match` outcome (auto-create off, no player matched; new in 1.2.1) counts as a failure, so the attention list, the `player.rerun` preview and its result report such an order as not registered.
 - **[admin-tools]** FreeScout actions: an idempotency key is bound to the request it was first used for (the action, its params and the acting agent). Reusing it for a different request now gives 409 `spat_freescout_key_reused` instead of replaying the other request's stored result; the same request still replays.
 - **[etransfer]** Manual match (admin screen and FreeScout): when completing the order fails or throws (a PHP `Error` such as a `TypeError` included), the outcome now follows the order itself. If a fresh read shows the order completed — WooCommerce saves the status before its status hooks run, so a failing listener can throw afterwards — the match is kept, `spat_payment_matched` fires and the error is logged. Otherwise the e-Transfer goes back to the review list with "completion_failed", instead of an `Error` leaving it recorded as "Manually matched and processed successfully" against an order that was not completed.
 

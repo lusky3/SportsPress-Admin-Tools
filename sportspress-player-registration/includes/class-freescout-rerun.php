@@ -102,8 +102,9 @@ class SPPR_FreeScout_Rerun {
 			return $locked;
 		}
 		$last = self::last_outcome( $order_id );
-		// The marker is also '1' after season_not_detected or
-		// player_creation_failed, so the newest log row has a say too.
+		// Legacy orders (processed before player-registration 1.2.1) carry '1'
+		// even after season_not_detected or player_creation_failed, so the
+		// newest log row has a say too.
 		$current = '1' === (string) $order->get_meta( '_spr_processed' ) && SPPR_Registration_Outcome::is_success( $last );
 		return array(
 			'summary'          => sprintf( 'Re-run registration for order #%d', $order_id ),
@@ -130,8 +131,11 @@ class SPPR_FreeScout_Rerun {
 			return $result;
 		}
 
-		// The outcome this run reported decides: the marker is also '1' after
-		// season_not_detected or player_creation_failed. '' is a full success.
+		// Registered needs both a '1' marker and a success outcome. Since
+		// player-registration 1.2.1 a run sets '1' only when every item linked,
+		// so the two agree; the outcome check stays as a guard (before 1.2.1 the
+		// marker was also '1' after season_not_detected or
+		// player_creation_failed). '' is a full success.
 		$outcome    = $result['outcome'];
 		$registered = '1' === $result['marker'] && SPPR_Registration_Outcome::is_success( $outcome );
 		if ( '' === $outcome ) {

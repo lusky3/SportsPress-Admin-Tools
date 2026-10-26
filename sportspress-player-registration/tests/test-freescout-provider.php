@@ -289,8 +289,10 @@ foreach ( $GLOBALS['t_queries'] as $q ) {
 }
 assert_test( array() !== $GLOBALS['t_queries'] && ! $player_clause, 'orders only: no player IN clause' );
 
-// Marker '1' is also set when an item failed without a conflict
-// (season_not_detected, player_creation_failed): the newest log row decides.
+// Legacy orders (processed before player-registration 1.2.1) carry marker '1'
+// even when an item failed without a conflict (season_not_detected,
+// player_creation_failed, and before that an unmatched no-auto-create item):
+// the newest log row decides.
 $failure_outcomes = array(
 	'name_rejected',
 	'season_not_detected',
@@ -298,6 +300,7 @@ $failure_outcomes = array(
 	'multiple_players_found_email_conflict',
 	'multiple_players_found_name_match_requires_email',
 	'failed',
+	'no_match',
 );
 $GLOBALS['t_orders'] = array();
 $GLOBALS['t_logs']   = array();

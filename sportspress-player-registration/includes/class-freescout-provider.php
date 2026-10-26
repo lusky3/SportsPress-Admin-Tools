@@ -98,9 +98,9 @@ class SPPR_FreeScout_Provider {
 	/**
 	 * The completed registration orders that need a human, each with its
 	 * newest log action: no processed marker, or a marker of '1' whose newest
-	 * log row is a failure (the marker is also set after season_not_detected or
-	 * player_creation_failed). A '1' with no log rows (purged or erased) is
-	 * trusted.
+	 * log row is a failure (legacy orders processed before player-registration
+	 * 1.2.1 carry '1' even after season_not_detected or player_creation_failed).
+	 * A '1' with no log rows (purged or erased) is trusted.
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *

@@ -292,6 +292,16 @@ order_with( 20, array( 2, 2 ) );
 $reg->process_completed_order( 20 );
 assert_test( 1 === count( fired( 'spr_registration_outcome' ) ), 'two failing items: fires once' );
 
+// -- no_match (auto-create off, nobody matched) -------------------------------
+reset_state();
+$mock_options['spr_auto_create'] = '0';
+$order                           = order_with( 23, array( 1 ) );
+$reg->process_completed_order( 23 );
+unset( $mock_options['spr_auto_create'] );
+$f = fired( 'spr_registration_outcome' );
+assert_test( 1 === count( $f ) && array( 23, 'no_match' ) === array_slice( $f[0][1], 0, 2 ), 'no_match: fires once with no_match' );
+assert_test( '' === $order->get_meta( '_spr_processed' ), 'no_match: order is not marked processed' );
+
 // -- reversed ----------------------------------------------------------------
 reset_state();
 $order                         = order_with( 21, array( 1 ) );
@@ -304,6 +314,22 @@ reset_state();
 order_with( 22, array( 1 ) );
 $reg->handle_order_reversed( 22 );
 assert_test( array() === fired( 'spr_registration_reversed' ), 'reversed: not fired for an order that never registered' );
+
+// Partial success: no marker, but one item linked a player.
+reset_state();
+$order                               = order_with( 24, array( 1, 2 ) );
+$order->meta['_spr_processed_items'] = array( 0 => 55 );
+$reg->handle_order_reversed( 24 );
+$f = fired( 'spr_registration_reversed' );
+assert_test( 1 === count( $f ) && array( 24 ) === $f[0][1], 'reversed: fires for a partial success (linked item, no marker)' );
+
+// Every item failed: no marker and nothing linked.
+reset_state();
+$order = order_with( 25, array( 2 ) );
+$reg->process_completed_order( 25 );
+$actions = array();
+$reg->handle_order_reversed( 25 );
+assert_test( array() === fired( 'spr_registration_reversed' ), 'reversed: not fired when every item failed' );
 
 echo "\n=== Results ===\n";
 echo "Passed: $passed\n";
