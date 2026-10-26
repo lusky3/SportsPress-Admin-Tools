@@ -46,6 +46,9 @@ function get_term( $id, $tax ) {
 	return (object) array( 'name' => $GLOBALS['t_terms'][ $tax ][ $id ] );
 }
 function wp_get_post_terms( $id, $tax ) {
+	if ( isset( $GLOBALS['t_terms_error'][ $id ][ $tax ] ) ) {
+		return $GLOBALS['t_terms_error'][ $id ][ $tax ]; // E.g. a WP_Error stand-in.
+	}
 	$out = array();
 	foreach ( $GLOBALS['t_obj_terms'][ $id ][ $tax ] ?? array() as $name ) {
 		$out[] = (object) array( 'name' => $name );
@@ -318,6 +321,54 @@ echo "\n=== No current season ===\n";
 $GLOBALS['t_options']['sportspress_season'] = '0';
 $sec6 = SPT_FreeScout_Provider::player_section( array( 1 ), 'a@b.c' );
 assert_test( '' === $sec6['current_season'] && null === $sec6['players'][0]['next_game'], 'empty current_season, no current assignment' );
+
+// Characterization: pins build_player() edge cases so refactors cannot change
+// them unnoticed.
+echo "\n=== build_player(): field edge cases ===\n";
+$GLOBALS['t_options']['sportspress_season'] = '88';
+mk_post( 20, 'Zero Zero', 'sp_player' );
+$GLOBALS['t_meta'][20]                       = array(
+	'sp_number'       => '0',
+	'spt_skill_level' => '0',
+	'sp_user'         => '0',
+);
+$GLOBALS['t_terms_error'][20]['sp_position'] = new stdClass(); // Not an array, like a WP_Error.
+$p20 = SPT_FreeScout_Provider::player_section( array( 20 ), 'z@z.z' )['players'][0];
+assert_test(
+	array(
+		'id'             => 20,
+		'name'           => 'Zero Zero',
+		'number'         => '0',
+		'positions'      => array(),
+		'skill_level'    => '0',
+		'wp_user_linked' => false,
+		'assignments'    => array(),
+		'next_game'      => null,
+	) === $p20,
+	"'0' number/skill are kept, a non-array terms result gives no positions, exact keys"
+);
+mk_post( 21, 'False Meta', 'sp_player' );
+$GLOBALS['t_meta'][21]                      = array(
+	'sp_number'       => false,
+	'spt_skill_level' => false,
+	'sp_user'         => '4',
+);
+$GLOBALS['t_obj_terms'][21]['sp_position'] = array( 'Goalie', 'Defence' );
+$p21 = SPT_FreeScout_Provider::player_section( array( 21 ), 'f@f.f' )['players'][0];
+assert_test( null === $p21['number'] && null === $p21['skill_level'] && true === $p21['wp_user_linked'] && array( 'Goalie', 'Defence' ) === $p21['positions'], 'false meta is null; positions keep term order' );
+
+echo "\n=== build_player(): one current team in two divisions ===\n";
+$GLOBALS['t_posts'][7001]->post_date_gmt = gmdate( 'Y-m-d H:i:s', time() + 3 * 86400 );
+mk_post( 22, 'Same Team', 'sp_player' );
+$GLOBALS['t_meta'][22] = array(
+	'sp_leagues' => array(
+		21 => array( 88 => 501 ),
+		20 => array( 88 => 501 ),
+	),
+);
+$p22 = SPT_FreeScout_Provider::player_section( array( 22 ), 's@s.s' )['players'][0];
+assert_test( 2 === count( $p22['assignments'] ) && true === $p22['assignments'][0]['current'] && true === $p22['assignments'][1]['current'], 'both assignments are current' );
+assert_test( array( 501 ) === $GLOBALS['t_event_args']['meta_query'][0]['value'] && 7001 === $p22['next_game']['event_id'], 'the team is queried once for next_game' );
 
 echo "\n=== Results ===\n";
 echo "Passed: $passed\n";

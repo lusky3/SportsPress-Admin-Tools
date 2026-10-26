@@ -70,20 +70,67 @@ class SPT_FreeScout_Provider {
 		// The FreeScout lookup already asks the resolver for live sp_player ids;
 		// this re-check keeps the provider safe for any other caller (the
 		// resolver's default includes trashed players for privacy export/erasure).
-		if ( ! $post || 'sp_player' !== $post->post_type || in_array( $post->post_status, array( 'trash', 'auto-draft' ), true ) ) {
+		if ( ! self::is_live_player( $post ) ) {
 			return null;
 		}
 
-		$number = get_post_meta( $player_id, 'sp_number', true );
-		$skill  = get_post_meta( $player_id, 'spt_skill_level', true );
+		$number    = self::meta_or_null( $player_id, 'sp_number' );
+		$skill     = self::meta_or_null( $player_id, 'spt_skill_level' );
+		$positions = self::position_names( $player_id );
 
+		list( $assignments, $current_teams ) = self::assignments( $player_id, $current_season_id );
+
+		return array(
+			'id'             => $player_id,
+			'name'           => (string) $post->post_title,
+			'number'         => $number,
+			'positions'      => $positions,
+			'skill_level'    => $skill,
+			'wp_user_linked' => (int) get_post_meta( $player_id, 'sp_user', true ) > 0,
+			'assignments'    => $assignments,
+			'next_game'      => array() !== $current_teams ? self::next_game( array_values( $current_teams ) ) : null,
+		);
+	}
+
+	/**
+	 * Whether a post is an sp_player that is neither trashed nor an auto-draft.
+	 *
+	 * @param WP_Post|null $post Post.
+	 */
+	private static function is_live_player( $post ): bool {
+		return $post && 'sp_player' === $post->post_type && ! in_array( $post->post_status, array( 'trash', 'auto-draft' ), true );
+	}
+
+	/**
+	 * A single post meta value as a string, or null when empty ('' or false).
+	 */
+	private static function meta_or_null( int $post_id, string $key ): ?string {
+		$value = get_post_meta( $post_id, $key, true );
+		return ( '' === $value || false === $value ) ? null : (string) $value;
+	}
+
+	/**
+	 * @return string[] The player's sp_position term names.
+	 */
+	private static function position_names( int $player_id ): array {
 		$positions = array();
 		$pos_terms = wp_get_post_terms( $player_id, 'sp_position' );
 		$pos_terms = is_array( $pos_terms ) ? $pos_terms : array();
 		foreach ( $pos_terms as $pos_term ) {
 			$positions[] = (string) $pos_term->name;
 		}
+		return $positions;
+	}
 
+	/**
+	 * The player's season/division/team assignments, and the team ids of the
+	 * current season's ones (keyed by id, so each team appears once).
+	 *
+	 * @param int $player_id         Player post id.
+	 * @param int $current_season_id Current season term id (0 if none).
+	 * @return array{0: array[], 1: int[]}
+	 */
+	private static function assignments( int $player_id, int $current_season_id ): array {
 		$assignments   = array();
 		$current_teams = array();
 		foreach ( self::roster_entries( $player_id ) as $entry ) {
@@ -101,17 +148,7 @@ class SPT_FreeScout_Provider {
 				'captain'   => self::is_captain( $player_id, $entry['team_id'], $entry['season_id'], $is_current ),
 			);
 		}
-
-		return array(
-			'id'             => $player_id,
-			'name'           => (string) $post->post_title,
-			'number'         => ( '' === $number || false === $number ) ? null : (string) $number,
-			'positions'      => $positions,
-			'skill_level'    => ( '' === $skill || false === $skill ) ? null : (string) $skill,
-			'wp_user_linked' => (int) get_post_meta( $player_id, 'sp_user', true ) > 0,
-			'assignments'    => $assignments,
-			'next_game'      => array() !== $current_teams ? self::next_game( array_values( $current_teams ) ) : null,
-		);
+		return array( $assignments, $current_teams );
 	}
 
 	/**
