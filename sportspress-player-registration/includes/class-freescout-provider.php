@@ -96,11 +96,13 @@ class SPPR_FreeScout_Provider {
 	}
 
 	/**
-	 * The completed registration orders that need a human, each with its
-	 * newest log action: no processed marker, or a marker of '1' whose newest
-	 * log row is a failure (legacy orders processed before player-registration
-	 * 1.2.1 carry '1' even after season_not_detected or player_creation_failed).
-	 * A '1' with no log rows (purged or erased) is trusted.
+	 * The completed registration orders that need a human, each with the log
+	 * action SPPR_Registration_Outcome::shown() picks: no processed marker
+	 * (the newest failure row, so a partly registered order names what
+	 * failed), or a marker of '1' whose newest log row is a failure (legacy
+	 * orders processed before player-registration 1.2.1 carry '1' even after
+	 * season_not_detected or player_creation_failed). A '1' with no log rows
+	 * (purged or erased) is trusted.
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
@@ -112,18 +114,15 @@ class SPPR_FreeScout_Provider {
 			return array();
 		}
 
-		// Newest first, so the first row seen per order is its last action.
-		$last = array();
+		// Each order's log actions, newest first (the query's order).
+		$actions = array();
 		foreach ( self::query_logs( array_keys( $candidates ), array(), 0 ) as $row ) {
-			$key = (int) $row->order_id;
-			if ( ! isset( $last[ $key ] ) ) {
-				$last[ $key ] = (string) $row->action;
-			}
+			$actions[ (int) $row->order_id ][] = (string) $row->action;
 		}
 
 		$items = array();
 		foreach ( $candidates as $order_id => $marker ) {
-			$action = $last[ $order_id ] ?? '';
+			$action = SPPR_Registration_Outcome::shown( $actions[ $order_id ] ?? array(), (string) $marker );
 			if ( '1' === $marker && SPPR_Registration_Outcome::is_success( $action ) ) {
 				continue;
 			}

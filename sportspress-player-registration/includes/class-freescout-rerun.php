@@ -101,11 +101,13 @@ class SPPR_FreeScout_Rerun {
 		if ( $locked ) {
 			return $locked;
 		}
-		$last = self::last_outcome( $order_id );
-		// Legacy orders (processed before player-registration 1.2.1) carry '1'
-		// even after season_not_detected or player_creation_failed, so the
-		// newest log row has a say too.
-		$current = '1' === (string) $order->get_meta( '_spr_processed' ) && SPPR_Registration_Outcome::is_success( $last );
+		$marker = (string) $order->get_meta( '_spr_processed' );
+		// Same pick as the FreeScout attention list. Legacy orders (processed
+		// before player-registration 1.2.1) carry '1' even after
+		// season_not_detected or player_creation_failed, so with '1' the newest
+		// log row has a say too.
+		$last    = self::last_outcome( $order_id, $marker );
+		$current = '1' === $marker && SPPR_Registration_Outcome::is_success( $last );
 		return array(
 			'summary'          => sprintf( 'Re-run registration for order #%d', $order_id ),
 			'changes'          => array(
@@ -141,7 +143,7 @@ class SPPR_FreeScout_Rerun {
 		if ( '' === $outcome ) {
 			// Nothing reported: a full success (whose log row says how), or a
 			// run that never got going (another worker held the order).
-			$outcome = $registered ? self::last_outcome( $order_id ) : 'not_processed';
+			$outcome = $registered ? self::last_outcome( $order_id, '1' ) : 'not_processed';
 		}
 
 		return array(
@@ -156,19 +158,25 @@ class SPPR_FreeScout_Rerun {
 	}
 
 	/**
-	 * The newest registration log action for the order, or 'not_processed'.
+	 * The registration log action to show for the order, picked by
+	 * SPPR_Registration_Outcome::shown() (the newest row with marker '1', else
+	 * the newest failure), or 'not_processed' when there is none.
+	 *
+	 * @param int    $order_id Order id.
+	 * @param string $marker   The order's `_spr_processed` value.
 	 */
-	private static function last_outcome( int $order_id ): string {
+	private static function last_outcome( int $order_id, string $marker ): string {
 		global $wpdb;
 
-		$table  = $wpdb->prefix . 'spat_registration_logs';
-		$action = $wpdb->get_var(
+		$table   = $wpdb->prefix . 'spat_registration_logs';
+		$actions = $wpdb->get_col(
 			$wpdb->prepare(
-				"SELECT action FROM `{$table}` WHERE order_id = %d ORDER BY timestamp DESC, id DESC LIMIT 1", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is internal.
+				"SELECT action FROM `{$table}` WHERE order_id = %d ORDER BY timestamp DESC, id DESC", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is internal.
 				$order_id
 			)
 		);
-		return is_string( $action ) && '' !== $action ? $action : 'not_processed';
+		$action = SPPR_Registration_Outcome::shown( is_array( $actions ) ? $actions : array(), $marker );
+		return '' !== $action ? $action : 'not_processed';
 	}
 
 	/**

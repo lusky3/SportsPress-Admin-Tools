@@ -349,6 +349,38 @@ assert_test( '2026-09-03T14:02:00Z' === ( $at6[8000] ?? '' ), 'at converted from
 assert_test( '2026-01-15T15:02:00Z' === ( $at6[8001] ?? '' ), 'at converted from a non-UTC DB time zone (winter)' );
 $GLOBALS['t_db_tz'] = 'UTC';
 
+// A partly registered order (marker not '1'): the failing item was processed
+// first and the other item linked after it, so the newest row is a success.
+// The attention entry names the failure, not the success.
+$GLOBALS['t_orders'] = array(
+	new T_Order( 8100, 'completed', '' ),       // failure, then a success.
+	new T_Order( 8101, 'completed', '' ),       // two failures: the newest one.
+	new T_Order( 8102, 'completed', 'failed' ), // a throw (not logged) after a success row.
+);
+$GLOBALS['t_logs']   = array();
+add_log( 400, '2026-09-10 10:00:00', 8100, 0, 'season_not_detected' );
+add_log( 401, '2026-09-10 10:00:01', 8100, 57, 'player_found_by_email' );
+add_log( 402, '2026-09-10 10:00:00', 8101, 0, 'season_not_detected' );
+add_log( 403, '2026-09-11 10:00:00', 8101, 0, 'no_match' );
+add_log( 404, '2026-09-11 10:00:00', 8101, 58, 'player_created' );
+add_log( 405, '2026-09-10 10:00:00', 8102, 59, 'player_created' );
+$sec7 = SPPR_FreeScout_Provider::registration_section( array(), 'x@example.com' );
+$att7 = array();
+foreach ( $sec7['attention'] as $a ) {
+	$att7[ $a['order_id'] ] = $a['last_action'];
+}
+assert_test( 'season_not_detected' === ( $att7[8100] ?? '' ), 'partial order: attention shows the failure, not the newer success' );
+assert_test( 'no_match' === ( $att7[8101] ?? '' ), 'partial order: the newest failure row' );
+assert_test( 'player_created' === ( $att7[8102] ?? '' ), 'no failure row: falls back to the newest row' );
+
+echo "\n=== SPPR_Registration_Outcome::shown ===\n";
+$newest_first = array( 'player_created', 'season_not_detected', 'no_match' );
+assert_test( 'player_created' === SPPR_Registration_Outcome::shown( $newest_first, '1' ), "marker '1': the newest action" );
+assert_test( 'season_not_detected' === SPPR_Registration_Outcome::shown( $newest_first, '' ), 'no marker: the newest failure' );
+assert_test( 'season_not_detected' === SPPR_Registration_Outcome::shown( $newest_first, 'failed' ), "marker 'failed': the newest failure" );
+assert_test( 'player_created' === SPPR_Registration_Outcome::shown( array( 'player_created' ), '' ), 'no failure: the newest action' );
+assert_test( '' === SPPR_Registration_Outcome::shown( array(), '' ), "no rows: ''" );
+
 echo "\n=== SPPR_Registration_Outcome::is_success ===\n";
 foreach ( $failure_outcomes as $outcome ) {
 	assert_test( false === SPPR_Registration_Outcome::is_success( $outcome ), "{$outcome} is a failure" );

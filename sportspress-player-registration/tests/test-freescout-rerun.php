@@ -139,7 +139,13 @@ class Mock_WPDB {
 	}
 	public function get_var( $prepared ) {
 		st()->sql = $prepared[0];
-		return st()->logs[ $prepared[1][0] ] ?? null;
+		$rows     = (array) ( st()->logs[ $prepared[1][0] ] ?? array() );
+		return $rows[0] ?? null;
+	}
+	/** st()->logs[ order ] is the newest action, or a list of actions newest first. */
+	public function get_col( $prepared ) {
+		st()->sql = $prepared[0];
+		return array_values( (array) ( st()->logs[ $prepared[1][0] ] ?? array() ) );
 	}
 }
 $GLOBALS['wpdb'] = new Mock_WPDB();
@@ -268,7 +274,7 @@ assert_test(
 	array( 'Clears the registration marker on order #5107 and processes it again', 'Last outcome: multiple players found email conflict', 'Currently: not registered' ) === $res['changes'],
 	'changes: marker line, the newest log action with spaces, and the current state'
 );
-assert_test( false !== strpos( st()->sql, 'wp_spat_registration_logs' ) && false !== strpos( st()->sql, 'ORDER BY timestamp DESC, id DESC LIMIT 1' ), 'last outcome is the newest log row' );
+assert_test( false !== strpos( st()->sql, 'wp_spat_registration_logs' ) && false !== strpos( st()->sql, 'ORDER BY timestamp DESC, id DESC' ), 'log rows are read newest first' );
 assert_test( array() === st()->process && 'failed' === st()->orders[5107]->meta['_spr_processed'] && array() === st()->transients, 'dry run changes nothing and takes no lock' );
 st()->logs = array();
 $res = run_action( array( 'order_id' => '5107' ), true );
@@ -361,6 +367,21 @@ fixture();
 st()->script[5107] = array( '', 'no_match' );
 $res = run_action( array( 'order_id' => 5107 ), false );
 assert_test( 'Still not registered: no match' === $res['summary'] && array( 'marker' => '', 'outcome' => 'no_match' ) === $res['data'], 'no_match: still not registered' );
+
+echo "\n=== Dry run: partly registered order (same rule as the attention list) ===\n";
+fixture();
+st()->orders[5107]->meta['_spr_processed'] = '';
+st()->logs[5107]                           = array( 'player_found_by_email', 'season_not_detected' ); // Newest first.
+$res = run_action( array( 'order_id' => 5107 ), true );
+assert_test( 'Last outcome: season not detected' === $res['changes'][1] && 'Currently: not registered' === $res['changes'][2], 'no marker: last outcome is the newest failure, not the newer success' );
+st()->orders[5107]->meta['_spr_processed'] = '1';
+st()->logs[5107]                           = array( 'player_found_by_email', 'season_not_detected' );
+$res = run_action( array( 'order_id' => 5107 ), true );
+assert_test( 'Last outcome: player found by email' === $res['changes'][1] && 'Currently: registered' === $res['changes'][2], "marker '1': the newest row, as before" );
+st()->orders[5107]->meta['_spr_processed'] = '';
+st()->logs[5107]                           = array( 'player_created' );
+$res = run_action( array( 'order_id' => 5107 ), true );
+assert_test( 'Last outcome: player created' === $res['changes'][1], 'no failure row: the newest row' );
 
 echo "\n=== SPPR_Admin::rerun ===\n";
 fixture();
