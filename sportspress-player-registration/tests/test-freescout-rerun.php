@@ -197,6 +197,7 @@ class Mock_Bootstrap {
 }
 
 require_once dirname( __DIR__ ) . '/includes/class-admin.php';
+require_once dirname( __DIR__ ) . '/includes/class-registration-outcome.php';
 require_once dirname( __DIR__ ) . '/includes/class-freescout-rerun.php';
 
 /** The admin handler with the query-string read swapped for a fixed id. */
@@ -320,6 +321,36 @@ fixture();
 st()->script[5107] = array( '', '' ); // E.g. another worker held the processing lock.
 $res = run_action( array( 'order_id' => 5107 ), false );
 assert_test( 'Still not registered: not processed' === $res['summary'], 'no marker and no outcome: "not processed"' );
+fixture();
+st()->script[5107] = array( '', 'name_rejected' ); // name_rejected returns before any marker.
+$res = run_action( array( 'order_id' => 5107 ), false );
+assert_test( 'Still not registered: name rejected' === $res['summary'] && '' === $res['data']['marker'], 'name_rejected path unchanged' );
+
+echo "\n=== Real run: marker 1 but a failed outcome ===\n";
+// process_completed_order() marks an order '1' whenever no item hit a
+// multiple-players conflict, so season_not_detected / player_creation_failed
+// leave '1' behind. The outcome this run reported decides, not the marker.
+foreach ( array( 'season_not_detected', 'player_creation_failed', 'name_rejected', 'multiple_players_found_email_conflict', 'multiple_players_found_name_match_requires_email', 'failed' ) as $outcome ) {
+	fixture();
+	st()->logs[5107]   = 'player_created'; // Stale success row from an older run.
+	st()->script[5107] = array( '1', $outcome );
+	$res = run_action( array( 'order_id' => 5107 ), false );
+	assert_test(
+		'Still not registered: ' . str_replace( '_', ' ', $outcome ) === $res['summary']
+		&& array( 'marker' => '1', 'outcome' => $outcome ) === $res['data'],
+		"marker 1 + {$outcome}: still not registered"
+	);
+}
+
+echo "\n=== Dry run: marker 1 but a failed last outcome ===\n";
+fixture();
+st()->orders[5107]->meta['_spr_processed'] = '1';
+st()->logs[5107]                           = 'season_not_detected';
+$res = run_action( array( 'order_id' => 5107 ), true );
+assert_test( 'Currently: not registered' === $res['changes'][2], 'marker 1 + season_not_detected: "Currently: not registered"' );
+st()->logs[5107] = 'player_found_by_email';
+$res = run_action( array( 'order_id' => 5107 ), true );
+assert_test( 'Currently: registered' === $res['changes'][2], 'marker 1 + success: "Currently: registered"' );
 
 echo "\n=== SPPR_Admin::rerun ===\n";
 fixture();

@@ -51,13 +51,13 @@ class SPPR_FreeScout_Provider {
 			)
 		);
 
-		$order_ids = array();
-		$attention = array();
+		$order_ids  = array();
+		$candidates = array(); // order id => processed marker.
 		foreach ( (array) $orders as $order ) {
 			$order_id    = (int) $order->get_id();
 			$order_ids[] = $order_id;
-			if ( self::needs_attention( $order ) ) {
-				$attention[] = $order_id;
+			if ( self::is_completed_registration( $order ) ) {
+				$candidates[ $order_id ] = (string) $order->get_meta( '_spr_processed' );
 			}
 		}
 
@@ -76,41 +76,45 @@ class SPPR_FreeScout_Provider {
 
 		return array(
 			'entries'   => $entries,
-			'attention' => self::attention_items( $attention ),
+			'attention' => self::attention_items( $candidates ),
 		);
 	}
 
 	/**
-	 * A completed order that holds registration items but never got the
-	 * processed marker. process_completed_order() leaves orders without
-	 * registration items unmarked on purpose, so those are not failures.
+	 * A completed order that holds registration items. process_completed_order()
+	 * leaves orders without registration items unmarked on purpose, so those
+	 * are never failures.
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
 	 * @param WC_Order $order Order.
 	 * @return bool
 	 */
-	private static function needs_attention( $order ): bool {
-		if ( 'completed' !== $order->get_status() || '1' === (string) $order->get_meta( '_spr_processed' ) ) {
-			return false;
-		}
-		return array() !== SPPR_Player_Registration::get_registration_items( $order );
+	private static function is_completed_registration( $order ): bool {
+		return 'completed' === $order->get_status()
+			&& array() !== SPPR_Player_Registration::get_registration_items( $order );
 	}
 
 	/**
-	 * Pair each attention order with its newest log action.
+	 * The completed registration orders that need a human, each with its
+	 * newest log action: no processed marker, or a marker of '1' whose newest
+	 * log row is a failure (the marker is also set after season_not_detected or
+	 * player_creation_failed). A '1' with no log rows (purged or erased) is
+	 * trusted.
 	 *
-	 * @param int[] $order_ids Completed, unprocessed order ids.
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param array<int, string> $candidates Order id => processed marker.
 	 * @return array<int, array{order_id:int, last_action:string}>
 	 */
-	private static function attention_items( array $order_ids ): array {
-		if ( empty( $order_ids ) ) {
+	private static function attention_items( array $candidates ): array {
+		if ( empty( $candidates ) ) {
 			return array();
 		}
 
 		// Newest first, so the first row seen per order is its last action.
 		$last = array();
-		foreach ( self::query_logs( $order_ids, array(), 0 ) as $row ) {
+		foreach ( self::query_logs( array_keys( $candidates ), array(), 0 ) as $row ) {
 			$key = (int) $row->order_id;
 			if ( ! isset( $last[ $key ] ) ) {
 				$last[ $key ] = (string) $row->action;
@@ -118,8 +122,11 @@ class SPPR_FreeScout_Provider {
 		}
 
 		$items = array();
-		foreach ( $order_ids as $order_id ) {
+		foreach ( $candidates as $order_id => $marker ) {
 			$action = $last[ $order_id ] ?? '';
+			if ( '1' === $marker && SPPR_Registration_Outcome::is_success( $action ) ) {
+				continue;
+			}
 			$items[] = array(
 				'order_id'    => $order_id,
 				'last_action' => '' !== $action ? $action : 'not_processed',

@@ -71,12 +71,16 @@ class SPPR_FreeScout_Rerun {
 			if ( $locked ) {
 				return $locked;
 			}
+			$last = self::last_outcome( $order_id );
+			// The marker is also '1' after season_not_detected or
+			// player_creation_failed, so the newest log row has a say too.
+			$current = '1' === (string) $order->get_meta( '_spr_processed' ) && SPPR_Registration_Outcome::is_success( $last );
 			return array(
 				'summary'          => sprintf( 'Re-run registration for order #%d', $order_id ),
 				'changes'          => array(
 					$marker_line,
-					'Last outcome: ' . self::text( self::last_outcome( $order_id ) ),
-					'1' === (string) $order->get_meta( '_spr_processed' ) ? 'Currently: registered' : 'Currently: not registered',
+					'Last outcome: ' . self::text( $last ),
+					$current ? 'Currently: registered' : 'Currently: not registered',
 				),
 				'requires_confirm' => array(),
 				'data'             => array(),
@@ -88,8 +92,10 @@ class SPPR_FreeScout_Rerun {
 			return $result;
 		}
 
-		$registered = '1' === $result['marker'];
+		// The outcome this run reported decides: the marker is also '1' after
+		// season_not_detected or player_creation_failed. '' is a full success.
 		$outcome    = $result['outcome'];
+		$registered = '1' === $result['marker'] && SPPR_Registration_Outcome::is_success( $outcome );
 		if ( '' === $outcome ) {
 			// Nothing reported: a full success (whose log row says how), or a
 			// run that never got going (another worker held the order).

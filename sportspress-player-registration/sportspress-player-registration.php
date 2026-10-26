@@ -160,6 +160,7 @@ class SportsPress_Player_Registration {
 
 		$this->registration = new SPPR_Player_Registration();
 
+		require_once SPPR_PLUGIN_PATH . 'includes/class-registration-outcome.php';
 		require_once SPPR_PLUGIN_PATH . 'includes/class-freescout-provider.php';
 		SPPR_FreeScout_Provider::register();
 		require_once SPPR_PLUGIN_PATH . 'includes/class-freescout-rerun.php';

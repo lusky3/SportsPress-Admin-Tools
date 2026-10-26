@@ -148,6 +148,7 @@ class T_Wpdb {
 $GLOBALS['wpdb'] = new T_Wpdb();
 
 require_once dirname( __DIR__ ) . '/includes/class-player-registration.php';
+require_once dirname( __DIR__ ) . '/includes/class-registration-outcome.php';
 require_once dirname( __DIR__ ) . '/includes/class-freescout-provider.php';
 
 $passed = 0;
@@ -277,7 +278,61 @@ assert_test( 1 === count( $GLOBALS['t_queries'] ) && false === strpos( $GLOBALS[
 $GLOBALS['t_orders']  = array( new T_Order( 1, 'completed', '1' ) );
 $GLOBALS['t_queries'] = array();
 SPPR_FreeScout_Provider::registration_section( array(), 'x@example.com' );
-assert_test( 1 === count( $GLOBALS['t_queries'] ) && false === strpos( $GLOBALS['t_queries'][0], 'player_id IN' ), 'orders only: no player IN clause' );
+$player_clause = false;
+foreach ( $GLOBALS['t_queries'] as $q ) {
+	$player_clause = $player_clause || false !== strpos( $q, 'player_id IN' );
+}
+assert_test( array() !== $GLOBALS['t_queries'] && ! $player_clause, 'orders only: no player IN clause' );
+
+// Marker '1' is also set when an item failed without a conflict
+// (season_not_detected, player_creation_failed): the newest log row decides.
+$failure_outcomes = array(
+	'name_rejected',
+	'season_not_detected',
+	'player_creation_failed',
+	'multiple_players_found_email_conflict',
+	'multiple_players_found_name_match_requires_email',
+	'failed',
+);
+$GLOBALS['t_orders'] = array();
+$GLOBALS['t_logs']   = array();
+foreach ( $failure_outcomes as $i => $outcome ) {
+	$GLOBALS['t_orders'][] = new T_Order( 7000 + $i, 'completed', '1' );
+	add_log( 100 + $i, '2026-09-10 10:00:00', 7000 + $i, 0, $outcome );
+}
+$GLOBALS['t_orders'][] = new T_Order( 7100, 'completed', '1' ); // success.
+add_log( 200, '2026-09-10 10:00:00', 7100, 55, 'player_created' );
+$GLOBALS['t_orders'][] = new T_Order( 7101, 'completed', '1' ); // failed once, then registered.
+add_log( 201, '2026-09-09 10:00:00', 7101, 0, 'season_not_detected' );
+add_log( 202, '2026-09-10 10:00:00', 7101, 56, 'player_found_by_email' );
+$GLOBALS['t_orders'][] = new T_Order( 7102, 'completed', '1' ); // marker, logs purged.
+$GLOBALS['t_orders'][] = new T_Order( 7103, 'completed', '1', array( 301 ) ); // not a registration order.
+add_log( 203, '2026-09-10 10:00:00', 7103, 0, 'season_not_detected' );
+$GLOBALS['t_orders'][] = new T_Order( 7104, 'processing', '1' );
+add_log( 204, '2026-09-10 10:00:00', 7104, 0, 'season_not_detected' );
+
+$sec5 = SPPR_FreeScout_Provider::registration_section( array(), 'x@example.com' );
+$att5 = array();
+foreach ( $sec5['attention'] as $a ) {
+	$att5[ $a['order_id'] ] = $a['last_action'];
+}
+foreach ( $failure_outcomes as $i => $outcome ) {
+	assert_test( ( $att5[ 7000 + $i ] ?? '' ) === $outcome, "marker 1 but last outcome {$outcome}: in attention" );
+}
+assert_test( ! isset( $att5[7100] ), 'marker 1 with a success outcome: not in attention' );
+assert_test( ! isset( $att5[7101] ), 'marker 1, earlier failure, newest row a success: not in attention' );
+assert_test( ! isset( $att5[7102] ), 'marker 1 and no log rows (purged): trusted, not in attention' );
+assert_test( ! isset( $att5[7103] ), 'non-registration order never in attention' );
+assert_test( ! isset( $att5[7104] ), 'processing order never in attention' );
+assert_test( count( $failure_outcomes ) === count( $sec5['attention'] ), 'only the failed orders are in attention' );
+
+echo "\n=== SPPR_Registration_Outcome::is_success ===\n";
+foreach ( $failure_outcomes as $outcome ) {
+	assert_test( false === SPPR_Registration_Outcome::is_success( $outcome ), "{$outcome} is a failure" );
+}
+foreach ( array( '', 'player_created', 'player_found_by_email', 'player_found_by_name', 'player_found_by_normalized_name', 'player_found_by_name_and_email' ) as $outcome ) {
+	assert_test( true === SPPR_Registration_Outcome::is_success( $outcome ), "'{$outcome}' is a success" );
+}
 
 echo "\nPassed: $passed\n";
 echo "Failed: $failed\n";
