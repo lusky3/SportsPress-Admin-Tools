@@ -124,6 +124,30 @@ class WP_REST_Request {
 	}
 }
 
+/** In-memory stand-in for the atomic SPAT_Lock: one holder per key. */
+class SPAT_Lock {
+	public static $held     = array(); // key => handle.
+	public static $acquired = array(); // key, ttl.
+	public static $on_acquire = null;  // Runs after a successful claim (to simulate a racing finisher).
+	public static function acquire( $key, $ttl_seconds = 30 ) {
+		if ( isset( self::$held[ $key ] ) ) {
+			return false;
+		}
+		$handle             = 'h-' . count( self::$acquired );
+		self::$held[ $key ] = $handle;
+		self::$acquired[]   = array( $key, $ttl_seconds );
+		if ( is_callable( self::$on_acquire ) ) {
+			call_user_func( self::$on_acquire );
+		}
+		return $handle;
+	}
+	public static function release( $key, $handle = null ) {
+		if ( isset( self::$held[ $key ] ) && ( null === $handle || self::$held[ $key ] === $handle ) ) {
+			unset( self::$held[ $key ] );
+		}
+	}
+}
+
 class SPAT_Logger {
 	public static function error( $tag, $message, $context = array() ) {
 		$GLOBALS['spat_logged'][] = array( $tag, $message );
@@ -210,6 +234,11 @@ $GLOBALS['spat_filters']['spat_freescout_actions'][] = function ( $a ) {
 			if ( 'error' === $GLOBALS['handler_mode'] ) {
 				return new WP_Error( 'demo_conflict', 'Already matched.', array( 'status' => 409 ) );
 			}
+			if ( 'reenter' === $GLOBALS['handler_mode'] ) {
+				// A duplicate POST with the same key arrives while this one runs.
+				$GLOBALS['handler_mode'] = 'ok';
+				$GLOBALS['reentry']      = SPAT_FreeScout_Actions::dispatch( json_decode( action_body(), true ) );
+			}
 			if ( 'error_nostatus' === $GLOBALS['handler_mode'] ) {
 				return new WP_Error( 'demo_bad', 'Nope.' );
 			}
@@ -284,12 +313,47 @@ check(
 );
 check( 'defaults for requires_confirm and data', array() === $data['requires_confirm'] && array() === $data['data'] && false === $data['replayed'] && 'Did it' === $data['summary'] );
 check( 'stored 24 h under md5 key', DAY_IN_SECONDS === ( $GLOBALS['spat_ttls'][ 'spat_fs_idem_' . md5( 'key-0001-aaaa' ) ] ?? null ) );
+check( 'a real run claims the key with SPAT_Lock', array( array( 'fs_idem_' . md5( 'key-0001-aaaa' ), SPAT_FreeScout_Actions::RUN_LOCK_TTL ) ) === SPAT_Lock::$acquired );
+check( 'and releases it afterwards', array() === SPAT_Lock::$held );
 
 echo "idempotent replay\n";
 $res  = $rest->handle_action( signed_request( action_body(), $secret ) );
 $data = $res->get_data();
 check( 'replay returns stored response with replayed=true', true === $data['replayed'] && 'Did it' === $data['summary'] );
 check( 'handler not called twice', 1 === count( $GLOBALS['handler_calls'] ) );
+check( 'a replay takes no run lock', 1 === count( SPAT_Lock::$acquired ) );
+$res = $rest->handle_action( signed_request( action_body( array( 'actor' => array( 'email' => 'nocap@x.com' ) ) ), $secret ) );
+check( 'a stored key presented by a forbidden actor still gives 403', 'spat_freescout_actor_forbidden' === code_of( $res ) && 403 === status_of( $res ) );
+
+echo "concurrent runs with one key\n";
+$GLOBALS['spat_transients'] = array();
+$GLOBALS['handler_calls']   = array();
+SPAT_Lock::$held            = array();
+SPAT_Lock::$acquired        = array();
+$GLOBALS['handler_mode']    = 'reenter';
+$res                        = $rest->handle_action( signed_request( action_body(), $secret ) );
+$dup                        = $GLOBALS['reentry'] ?? null;
+check( 'the first run succeeds', ! is_wp_error( $res ) && 'Did it' === $res->get_data()['summary'] );
+check( 'a second run while the first holds the key gets 409 in_progress', 'spat_freescout_in_progress' === code_of( $dup ) && 409 === status_of( $dup ) );
+check( 'the handler ran once', 1 === count( $GLOBALS['handler_calls'] ) );
+check( 'the lock is released after the first run', array() === SPAT_Lock::$held );
+
+// The other run finished between our replay check and our claim: replay it.
+$GLOBALS['spat_transients'] = array();
+$GLOBALS['handler_calls']   = array();
+$GLOBALS['handler_mode']    = 'ok';
+SPAT_Lock::$on_acquire      = function () {
+	$GLOBALS['spat_transients'][ 'spat_fs_idem_' . md5( 'key-0001-aaaa' ) ] = array(
+		'success'  => true,
+		'replayed' => false,
+		'summary'  => 'Done by the other run',
+	);
+};
+$res = $rest->handle_action( signed_request( action_body(), $secret ) );
+SPAT_Lock::$on_acquire = null;
+check( 'a result stored while we waited for the claim is replayed', ! is_wp_error( $res ) && true === $res->get_data()['replayed'] && 'Done by the other run' === $res->get_data()['summary'] );
+check( 'and the handler does not run', array() === $GLOBALS['handler_calls'] );
+check( 'and the lock is released', array() === SPAT_Lock::$held );
 
 echo "dry run\n";
 $GLOBALS['spat_transients'] = array();
@@ -299,6 +363,10 @@ check( 'dry run passes dry_run=true', true === ( $GLOBALS['handler_calls'][0][1]
 check( 'dry run stores nothing', array() === idem_keys() );
 $rest->handle_action( signed_request( action_body( array( 'dry_run' => true ) ), $secret ) );
 check( 'dry run is never replayed', 2 === count( $GLOBALS['handler_calls'] ) );
+SPAT_Lock::$held = array( 'fs_idem_' . md5( 'key-0001-aaaa' ) => 'other' );
+$rest->handle_action( signed_request( action_body( array( 'dry_run' => true ) ), $secret ) );
+check( 'a dry run needs no claim (runs even while the key is held)', 3 === count( $GLOBALS['handler_calls'] ) );
+SPAT_Lock::$held = array();
 
 echo "handler failures\n";
 $GLOBALS['spat_transients'] = array();
@@ -309,6 +377,7 @@ check( 'fixed message', 'The action failed in WordPress. Check the SPAT logs.' =
 check( 'throw is logged', 1 === count( $GLOBALS['spat_logged'] ) );
 check( 'previous user restored after throw', 7 === $GLOBALS['spat_current'] );
 check( 'failure is not stored', array() === idem_keys() );
+check( 'the lock is released after a throw', array() === SPAT_Lock::$held );
 
 $GLOBALS['handler_mode'] = 'error';
 $res                     = $rest->handle_action( signed_request( action_body(), $secret ) );

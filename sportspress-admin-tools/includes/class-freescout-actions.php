@@ -19,6 +19,9 @@ class SPAT_FreeScout_Actions {
 	const IDEMPOTENCY_PREFIX = 'spat_fs_idem_';
 	const KEY_PATTERN        = '/^[A-Za-z0-9-]{8,64}$/';
 
+	/** Seconds a run holds its key before a crashed holder's claim can be taken over. */
+	const RUN_LOCK_TTL = 120;
+
 	/**
 	 * Run (or preview) an action as the FreeScout agent's WordPress user.
 	 *
@@ -60,14 +63,54 @@ class SPAT_FreeScout_Actions {
 		}
 
 		$transient = self::IDEMPOTENCY_PREFIX . md5( $key );
-		if ( ! $dry_run ) {
-			$stored = get_transient( $transient );
-			if ( is_array( $stored ) ) {
-				$stored['replayed'] = true;
-				return $stored;
-			}
+		if ( $dry_run ) {
+			return self::run( $entry, $params, $dry_run, $user, $email, $name, $feature, $action, $transient );
 		}
 
+		$stored = self::stored( $transient );
+		if ( null !== $stored ) {
+			return $stored;
+		}
+
+		// Claim the key atomically, so two concurrent runs with one key (a
+		// duplicate POST) cannot both reach the handler. SPAT_Lock uses a
+		// guarded INSERT; add_option() is not atomic on WP 6.4+.
+		$lock   = 'fs_idem_' . md5( $key );
+		$handle = SPAT_Lock::acquire( $lock, self::RUN_LOCK_TTL );
+		if ( false === $handle ) {
+			return new WP_Error( 'spat_freescout_in_progress', 'This action is already running. Wait a moment and check the result.', array( 'status' => 409 ) );
+		}
+		try {
+			// The other run may have finished between the check above and our claim.
+			$stored = self::stored( $transient );
+			if ( null !== $stored ) {
+				return $stored;
+			}
+			return self::run( $entry, $params, $dry_run, $user, $email, $name, $feature, $action, $transient );
+		} finally {
+			SPAT_Lock::release( $lock, $handle );
+		}
+	}
+
+	/**
+	 * The stored response for a key already run, marked as a replay, or null.
+	 */
+	private static function stored( string $transient ): ?array {
+		$stored = get_transient( $transient );
+		if ( ! is_array( $stored ) ) {
+			return null;
+		}
+		$stored['replayed'] = true;
+		return $stored;
+	}
+
+	/**
+	 * Call the handler as the actor and normalise its answer; a real run's
+	 * success is stored for replay.
+	 *
+	 * @return array|WP_Error
+	 */
+	private static function run( array $entry, array $params, bool $dry_run, $user, string $email, string $name, string $feature, string $action, string $transient ) {
 		$previous = get_current_user_id();
 		wp_set_current_user( $user->ID );
 		try {
