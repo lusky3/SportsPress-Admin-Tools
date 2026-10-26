@@ -50,4 +50,49 @@ class SPAT_Player {
 
 		return array_values( array_unique( $names ) );
 	}
+
+	/**
+	 * Player post IDs belonging to an email address, compared case-insensitively.
+	 *
+	 * Two strategies: the `spt_email` meta, then the `sp_user` of the WP user
+	 * with that email. Email case differs between systems (FreeScout keeps what
+	 * the customer typed), so neither side is trusted to be lower-case.
+	 *
+	 * @param string $email Email address.
+	 * @return int[] Unique player IDs, ascending.
+	 */
+	public static function ids_for_email( string $email ): array {
+		global $wpdb;
+
+		$ids = array();
+
+		$by_email = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT DISTINCT post_id FROM {$wpdb->postmeta}
+				 WHERE meta_key = 'spt_email' AND LOWER(meta_value) = %s",
+				strtolower( $email )
+			)
+		);
+		if ( $by_email ) {
+			$ids = array_map( 'intval', $by_email );
+		}
+
+		$user = get_user_by( 'email', $email );
+		if ( $user ) {
+			$by_user = $wpdb->get_col(
+				$wpdb->prepare(
+					"SELECT DISTINCT post_id FROM {$wpdb->postmeta}
+					 WHERE meta_key = 'sp_user' AND meta_value = %s",
+					(string) $user->ID
+				)
+			);
+			if ( $by_user ) {
+				$ids = array_merge( $ids, array_map( 'intval', $by_user ) );
+			}
+		}
+
+		$ids = array_values( array_unique( $ids ) );
+		sort( $ids );
+		return $ids;
+	}
 }

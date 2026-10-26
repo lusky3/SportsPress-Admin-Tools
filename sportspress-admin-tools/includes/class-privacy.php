@@ -61,40 +61,7 @@ class SPAT_Privacy {
 	 * @return int[] Array of player post IDs.
 	 */
 	private function get_player_ids_for_email( $email_address ) {
-		global $wpdb;
-
-		$player_ids = array();
-
-		// Players with spt_email meta matching the email.
-		$by_email = $wpdb->get_col(
-			$wpdb->prepare(
-				"SELECT DISTINCT post_id FROM {$wpdb->postmeta}
-			 WHERE meta_key = 'spt_email' AND meta_value = %s",
-				$email_address
-			)
-		);
-
-		if ( $by_email ) {
-			$player_ids = array_merge( $player_ids, array_map( 'intval', $by_email ) );
-		}
-
-		// Players linked via sp_user meta to a WP user with this email.
-		$user = get_user_by( 'email', $email_address );
-		if ( $user ) {
-			$by_user = $wpdb->get_col(
-				$wpdb->prepare(
-					"SELECT DISTINCT post_id FROM {$wpdb->postmeta}
-				 WHERE meta_key = 'sp_user' AND meta_value = %s",
-					$user->ID
-				)
-			);
-
-			if ( $by_user ) {
-				$player_ids = array_merge( $player_ids, array_map( 'intval', $by_user ) );
-			}
-		}
-
-		return array_unique( $player_ids );
+		return SPAT_Player::ids_for_email( (string) $email_address );
 	}
 
 	/**

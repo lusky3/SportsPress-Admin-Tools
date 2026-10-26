@@ -55,6 +55,43 @@ function get_post( $id ) {
 	return $state['posts'][ $id ] ?? null;
 }
 
+/**
+ * Minimal $wpdb: stores rows as array( post_id, meta_key, meta_value ) and
+ * answers the two get_col() queries SPAT_Player::ids_for_email() issues.
+ * A query only matches case-insensitively when it says LOWER(meta_value), as
+ * MySQL's default collation is not something this stub can lean on.
+ */
+class SPAT_Test_WPDB {
+	public $postmeta = 'wp_postmeta';
+	public $rows     = array();
+
+	public function prepare( $sql, ...$args ) {
+		foreach ( $args as $arg ) {
+			$sql = preg_replace( '/%[sd]/', "'" . addslashes( (string) $arg ) . "'", $sql, 1 );
+		}
+		return $sql;
+	}
+
+	public function get_col( $sql ) {
+		preg_match( "/meta_key = '([^']+)'/", $sql, $key );
+		preg_match( "/= '([^']*)'\s*\z/", trim( $sql ), $val );
+		$lower = false !== strpos( $sql, 'LOWER(meta_value)' );
+		$out   = array();
+		foreach ( $this->rows as $row ) {
+			$stored = $lower ? strtolower( $row[2] ) : $row[2];
+			if ( $row[1] === $key[1] && $stored === $val[1] ) {
+				$out[] = (string) $row[0];
+			}
+		}
+		return $out;
+	}
+}
+
+function get_user_by( $field, $value ) {
+	$users = $GLOBALS['spat_test_users'] ?? array();
+	return $users[ strtolower( $value ) ] ?? false;
+}
+
 require_once __DIR__ . '/../includes/class-player.php';
 
 $passed = 0;
@@ -109,6 +146,23 @@ assert_test( array( 'Ice Hawks', 'Rink Rats' ) === SPAT_Player::team_names( 606 
 
 // A player with no meta row at all, rather than an empty one.
 assert_test( array() === SPAT_Player::team_names( 999999 ), 'an unknown player yields an empty list' );
+
+echo "\n=== SPAT_Player::ids_for_email() ===\n\n";
+
+$wpdb       = new SPAT_Test_WPDB();
+$wpdb->rows = array(
+	array( 300, 'spt_email', 'jordan.smith@example.com' ),
+	array( 100, 'spt_email', 'jordan.smith@example.com' ),
+	array( 200, 'spt_email', 'other@example.com' ),
+	array( 400, 'sp_user', '7' ),
+	array( 100, 'sp_user', '7' ),
+);
+$GLOBALS['wpdb']            = $wpdb;
+$GLOBALS['spat_test_users'] = array( 'linked@example.com' => (object) array( 'ID' => 7 ) );
+
+assert_test( array( 100, 300 ) === SPAT_Player::ids_for_email( 'Jordan.Smith@Example.com' ), 'email lookup is case-insensitive and shared emails return every player, ascending' );
+assert_test( array() === SPAT_Player::ids_for_email( 'nobody@example.com' ), 'an unknown email yields an empty list' );
+assert_test( array( 100, 400 ) === SPAT_Player::ids_for_email( 'LINKED@example.com' ), 'players linked through the sp_user of the WP user are found, de-duplicated' );
 
 echo "\n";
 echo "Passed: {$passed}\n";
