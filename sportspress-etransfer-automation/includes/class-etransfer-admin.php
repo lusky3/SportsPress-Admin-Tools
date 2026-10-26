@@ -563,7 +563,7 @@ class SPET_ETransfer_Admin {
 	 * H5: take the same per-order lock the webhook path uses and re-read the
 	 * status inside it, so an admin match and an inbound e-Transfer (or two
 	 * admins matching different log rows to the same order) cannot both
-	 * complete it. A busy lock or an \Exception counts as not completed; the
+	 * complete it. A busy lock or any \Throwable counts as not completed; the
 	 * lock is released however the completion ends.
 	 *
 	 * @param int   $order_id WooCommerce order id.
@@ -580,7 +580,10 @@ class SPET_ETransfer_Admin {
 
 		try {
 			return self::complete_on_hold_order( $order_id, $checked );
-		} catch ( \Exception $e ) {
+		} catch ( \Throwable $e ) {
+			// \Throwable, not \Exception: an \Error (TypeError, a listener's
+			// fatal) must also count as not completed, so the caller rolls the
+			// optimistic claim back.
 			error_log( '[SPET] Manual match failed for order ' . intval( $order_id ) . ': ' . $e->getMessage() );
 			return false;
 		} finally {

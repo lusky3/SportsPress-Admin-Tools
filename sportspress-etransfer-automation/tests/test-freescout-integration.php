@@ -1046,22 +1046,23 @@ $order->throw_in = 'save';
 $r               = SPET_ETransfer_Admin::manual_match( 60, 5107 );
 check( 'an Exception still releases the lock', 'completion_failed' === code_of( $r ) && array( 'release', 5107, 'lock-1' ) === SPET_ETransfer_Automation::$log[1] );
 
-// Current behaviour, pinned so a refactor cannot change it silently: only
-// \Exception is caught, so an Error escapes; the lock is released but the
-// claim is NOT rolled back (reported as a possible bug, not fixed here).
+// An \Error (TypeError etc.) while completing is a failed completion too: it
+// must not leave the optimistic "processed successfully" claim standing.
 reset_lock();
 $order              = setup_match();
 $order->throw_in    = 'save';
 $order->throw_class = 'Error';
 $escaped            = null;
+$r                  = null;
 try {
-	SPET_ETransfer_Admin::manual_match( 60, 5107 );
+	$r = SPET_ETransfer_Admin::manual_match( 60, 5107 );
 } catch ( Error $e ) {
 	$escaped = $e->getMessage();
 }
-check( 'an Error escapes manual_match', 'boom in save' === $escaped );
+check( 'an Error does not escape manual_match', null === $escaped );
+check( 'an Error gives completion_failed 500', 'completion_failed' === code_of( $r ) && 500 === status_of( $r ) );
 check( 'the lock is still released', array( 'release', 5107, 'lock-1' ) === ( SPET_ETransfer_Automation::$log[1] ?? null ) );
-check( 'current behaviour: the claim stays (no rollback) and no hook fires', 5107 === (int) $wpdb->rows[60]->order_id && $claim_ok === $wpdb->rows[60]->result && array() === actions_named( 'spat_payment_matched' ) );
+check( 'the claim is rolled back and no hook fires', rolled_back() && array() === actions_named( 'spat_payment_matched' ) );
 
 echo "\nPassed: $passed\nFailed: $failed\n";
 exit( $failed > 0 ? 1 : 0 );
