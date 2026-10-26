@@ -399,5 +399,185 @@ check( 'query WP_Error passes through code, message and status', 'not_found' ===
 $res = $rest->handle_query( signed_request( '{"feature":"demo","query":"bad","params":{}}', $secret ) );
 check( 'query WP_Error without status defaults to 400', 'demo_bad' === code_of( $res ) && 400 === status_of( $res ) );
 
+// Characterization: pins dispatch()/query() branches and their precedence so
+// refactors of either cannot reorder the checks unnoticed.
+echo "dispatch validation and precedence\n";
+$GLOBALS['spat_transients'] = array();
+$GLOBALS['handler_calls']   = array();
+$GLOBALS['handler_mode']    = 'ok';
+SPAT_Lock::$held            = array();
+SPAT_Lock::$acquired        = array();
+function dispatch_with( array $over ) {
+	return SPAT_FreeScout_Actions::dispatch( array_merge( json_decode( action_body(), true ), $over ) );
+}
+function is_bad_request( $res, string $message ): bool {
+	return 'spat_freescout_bad_request' === code_of( $res ) && 400 === status_of( $res ) && $message === $res->get_error_message();
+}
+$need_fap = 'A feature, an action and params are required.';
+$need_key = 'A valid idempotency key is required.';
+$need_who = 'The acting agent\'s email is required.';
+check( 'missing feature gives 400', is_bad_request( dispatch_with( array( 'feature' => '' ) ), $need_fap ) );
+check( 'non-string feature gives 400', is_bad_request( dispatch_with( array( 'feature' => 5 ) ), $need_fap ) );
+check( 'missing action gives 400', is_bad_request( dispatch_with( array( 'action' => null ) ), $need_fap ) );
+check( 'non-array params gives 400', is_bad_request( dispatch_with( array( 'params' => 'x' ) ), $need_fap ) );
+check( 'feature check precedes the key check', is_bad_request( dispatch_with( array( 'feature' => '', 'idempotency_key' => 'bad' ) ), $need_fap ) );
+check( 'non-string key gives 400', is_bad_request( dispatch_with( array( 'idempotency_key' => 12345678 ) ), $need_key ) );
+check( 'key check precedes the email check', is_bad_request( dispatch_with( array( 'idempotency_key' => 'bad', 'actor' => array() ) ), $need_key ) );
+check( 'non-array actor gives 400', is_bad_request( dispatch_with( array( 'actor' => 'agent@x.com' ) ), $need_who ) );
+check( 'non-string email gives 400', is_bad_request( dispatch_with( array( 'actor' => array( 'email' => array( 'agent@x.com' ) ) ) ), $need_who ) );
+check( 'blank email gives 400', is_bad_request( dispatch_with( array( 'actor' => array( 'email' => '   ' ) ) ), $need_who ) );
+check( 'email check precedes the registry lookup', is_bad_request( dispatch_with( array( 'action' => 'nope', 'actor' => array() ) ), $need_who ) );
+$res = dispatch_with( array( 'action' => 'nope', 'actor' => array( 'email' => 'ghost@x.com' ) ) );
+check( 'unknown action precedes the actor lookup', 'spat_freescout_unknown_action' === code_of( $res ) && 'Unknown action.' === $res->get_error_message() );
+$res = dispatch_with( array( 'actor' => array( 'email' => 'ghost@x.com' ) ) );
+check( 'actor_unknown message names the email', 'No WordPress account for ghost@x.com' === $res->get_error_message() );
+$res = dispatch_with( array( 'actor' => array( 'email' => 'nocap@x.com' ) ) );
+check( 'actor_forbidden message', 'Your WordPress account is not allowed to do this.' === $res->get_error_message() );
+$res = dispatch_with( array( 'dry_run' => true, 'actor' => array( 'email' => 'nocap@x.com' ) ) );
+check( 'a dry run is still refused for a forbidden actor', 'spat_freescout_actor_forbidden' === code_of( $res ) && 403 === status_of( $res ) );
+check( 'no handler ran and no lock was taken', array() === $GLOBALS['handler_calls'] && array() === SPAT_Lock::$acquired );
+
+echo "dispatch registry entries\n";
+$GLOBALS['spat_filters']['spat_freescout_actions'][] = function ( $a ) {
+	$ok                    = $a['demo.go']['handler'];
+	$a['demo.nocap']       = array( 'handler' => $ok );
+	$a['demo.nohandler']   = array( 'capability' => 'manage_woocommerce' );
+	$a['demo.badhandler']  = array(
+		'capability' => 'manage_woocommerce',
+		'handler'    => 'no_such_function_anywhere',
+	);
+	$a['demo.notarray']    = 'demo_handler';
+	return $a;
+};
+foreach ( array( 'nocap', 'nohandler', 'badhandler', 'notarray' ) as $bad_entry ) {
+	$res = dispatch_with( array( 'action' => $bad_entry ) );
+	check( "entry $bad_entry gives 404 unknown_action", 'spat_freescout_unknown_action' === code_of( $res ) && 404 === status_of( $res ) );
+}
+array_pop( $GLOBALS['spat_filters']['spat_freescout_actions'] );
+$saved_filters = $GLOBALS['spat_filters']['spat_freescout_actions'];
+$GLOBALS['spat_filters']['spat_freescout_actions'] = array(
+	function () {
+		return 'not-an-array';
+	},
+);
+$res = dispatch_with( array() );
+check( 'a non-array registry gives 404 unknown_action', 'spat_freescout_unknown_action' === code_of( $res ) && 404 === status_of( $res ) );
+$GLOBALS['spat_filters']['spat_freescout_actions'] = $saved_filters;
+check( 'no handler ran for bad entries', array() === $GLOBALS['handler_calls'] );
+
+echo "dispatch actor normalisation and params default\n";
+$body = json_decode( action_body(), true );
+unset( $body['params'] );
+$body['actor'] = array(
+	'email' => '  AGENT@x.COM ',
+	'name'  => '  Cody  ',
+);
+$res = SPAT_FreeScout_Actions::dispatch( $body );
+check( 'email is trimmed and lowercased for the lookup', ! is_wp_error( $res ) && 42 === ( $GLOBALS['handler_calls'][0][2] ?? null ) );
+check( 'missing params default to an empty array; name is trimmed', array( array(), false, 42, array( 'email' => 'agent@x.com', 'name' => 'Cody' ) ) === array_slice( $GLOBALS['handler_calls'][0] ?? array(), 0, 4 ) );
+$GLOBALS['spat_transients'] = array();
+$GLOBALS['handler_calls']   = array();
+$res = dispatch_with( array( 'actor' => array( 'email' => 'agent@x.com', 'name' => 7 ) ) );
+check( 'a non-string name becomes empty', '' === ( $GLOBALS['handler_calls'][0][3]['name'] ?? null ) );
+
+echo "dispatch dry run and stored results\n";
+$GLOBALS['handler_calls'] = array();
+SPAT_Lock::$acquired      = array();
+$res = dispatch_with( array( 'dry_run' => 'yes' ) );
+check( 'a truthy dry_run is a dry run and ignores the stored result', true === ( $GLOBALS['handler_calls'][0][1] ?? null ) && false === $res['replayed'] && true === $res['dry_run'] );
+check( 'a dry run takes no lock', array() === SPAT_Lock::$acquired );
+$GLOBALS['spat_transients'][ 'spat_fs_idem_' . hash( 'sha256', 'idem-key-1' ) ] = 'junk';
+$GLOBALS['handler_calls'] = array();
+$res = dispatch_with( array() );
+check( 'a non-array stored value is not replayed; the handler runs', 1 === count( $GLOBALS['handler_calls'] ) && false === $res['replayed'] );
+check( 'and its success replaces the stored value', is_array( $GLOBALS['spat_transients'][ 'spat_fs_idem_' . hash( 'sha256', 'idem-key-1' ) ] ) );
+$res = dispatch_with( array() );
+check( 'a replay returns the stored array marked replayed', true === $res['replayed'] && 'Did it' === $res['summary'] );
+$res = dispatch_with( array( 'idempotency_key' => 'other-key-1' ) );
+check( 'another key is not replayed', false === $res['replayed'] );
+
+echo "dispatch lock release on a handler WP_Error\n";
+$GLOBALS['spat_transients'] = array();
+SPAT_Lock::$held            = array();
+SPAT_Lock::$acquired        = array();
+$GLOBALS['handler_mode']    = 'error';
+$res                        = dispatch_with( array() );
+check( 'handler WP_Error passes through', 'demo_conflict' === code_of( $res ) && 409 === status_of( $res ) );
+check( 'the key was claimed', 1 === count( SPAT_Lock::$acquired ) );
+check( 'and released after the WP_Error', array() === SPAT_Lock::$held );
+$GLOBALS['handler_mode'] = 'ok';
+SPAT_Lock::$held         = array( 'fs_idem_' . hash( 'sha256', 'idem-key-1' ) => 'other' );
+$res                     = dispatch_with( array() );
+check( 'a held key gives 409 with the fixed message', 'spat_freescout_in_progress' === code_of( $res ) && 'This action is already running. Wait a moment and check the result.' === $res->get_error_message() );
+check( 'and leaves the other holder\'s claim alone', array( 'fs_idem_' . hash( 'sha256', 'idem-key-1' ) => 'other' ) === SPAT_Lock::$held );
+SPAT_Lock::$held = array();
+
+echo "dispatch response normalisation\n";
+$GLOBALS['spat_transients'] = array();
+$GLOBALS['spat_filters']['spat_freescout_actions'][] = function ( $a ) {
+	$a['demo.shapes'] = array(
+		'capability' => 'manage_woocommerce',
+		'handler'    => function () {
+			return $GLOBALS['shape'];
+		},
+	);
+	return $a;
+};
+$GLOBALS['shape'] = 'not an array';
+$res              = dispatch_with( array( 'action' => 'shapes', 'idempotency_key' => 'shape-key-1' ) );
+check(
+	'a non-array result normalises to empty defaults',
+	array(
+		'success'          => true,
+		'dry_run'          => false,
+		'replayed'         => false,
+		'summary'          => '',
+		'changes'          => array(),
+		'requires_confirm' => array(),
+		'data'             => array(),
+	) === $res
+);
+$GLOBALS['shape'] = array(
+	'summary'          => 12,
+	'changes'          => array( 'x' => 'a', 'y' => 'b' ),
+	'requires_confirm' => 'confirm me',
+	'data'             => 'd',
+);
+$res = dispatch_with( array( 'action' => 'shapes', 'idempotency_key' => 'shape-key-2' ) );
+check( 'fields are cast and lists re-indexed', '12' === $res['summary'] && array( 'a', 'b' ) === $res['changes'] && array( 'confirm me' ) === $res['requires_confirm'] && array( 'd' ) === $res['data'] );
+array_pop( $GLOBALS['spat_filters']['spat_freescout_actions'] );
+
+echo "query characterization\n";
+$need_fqp = 'A feature, a query and params are required.';
+check( 'query without feature gives 400', is_bad_request( SPAT_FreeScout_Actions::query( array( 'query' => 'search', 'params' => array() ) ), $need_fqp ) );
+check( 'query with non-string query gives 400', is_bad_request( SPAT_FreeScout_Actions::query( array( 'feature' => 'demo', 'query' => 3, 'params' => array() ) ), $need_fqp ) );
+check( 'query with non-array params gives 400', is_bad_request( SPAT_FreeScout_Actions::query( array( 'feature' => 'demo', 'query' => 'search', 'params' => 'x' ) ), $need_fqp ) );
+$res = SPAT_FreeScout_Actions::query( array( 'feature' => 'demo', 'query' => 'search' ) );
+check( 'query params default to an empty array', array( 'results' => array( array( 'q' => '' ) ) ) === $res );
+$res = SPAT_FreeScout_Actions::query( array( 'feature' => 'demo', 'query' => 'nope', 'params' => array() ) );
+check( 'unknown query message', 'Unknown query.' === $res->get_error_message() );
+$GLOBALS['spat_filters']['spat_freescout_queries'][] = function ( $q ) {
+	$q['demo.throws'] = function () {
+		throw new RuntimeException( 'boom' );
+	};
+	$q['demo.scalar'] = function () {
+		return 'scalar';
+	};
+	return $q;
+};
+$GLOBALS['spat_logged'] = array();
+$res                    = SPAT_FreeScout_Actions::query( array( 'feature' => 'demo', 'query' => 'throws', 'params' => array() ) );
+check( 'a throwing query gives 500 query_failed', 'spat_freescout_query_failed' === code_of( $res ) && 500 === status_of( $res ) && 'The query failed in WordPress. Check the SPAT logs.' === $res->get_error_message() );
+check( 'and is logged with feature.query and the message', array( array( 'freescout', 'Query "demo.throws" failed: boom' ) ) === $GLOBALS['spat_logged'] );
+$res = SPAT_FreeScout_Actions::query( array( 'feature' => 'demo', 'query' => 'scalar', 'params' => array() ) );
+check( 'a non-array query result becomes empty results', array( 'results' => array() ) === $res );
+$GLOBALS['spat_filters']['spat_freescout_queries'] = array(
+	function () {
+		return 'not-an-array';
+	},
+);
+$res = SPAT_FreeScout_Actions::query( array( 'feature' => 'demo', 'query' => 'search', 'params' => array() ) );
+check( 'a non-array query registry gives 404', 'spat_freescout_unknown_query' === code_of( $res ) && 404 === status_of( $res ) );
+
 echo "\nPassed: $passed\nFailed: $failed\n";
 exit( $failed > 0 ? 1 : 0 );

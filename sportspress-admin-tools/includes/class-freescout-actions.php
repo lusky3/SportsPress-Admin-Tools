@@ -29,42 +29,26 @@ class SPAT_FreeScout_Actions {
 	 * @return array|WP_Error Normalised response.
 	 */
 	public static function dispatch( array $body ) {
-		$feature = isset( $body['feature'] ) && is_string( $body['feature'] ) ? $body['feature'] : '';
-		$action  = isset( $body['action'] ) && is_string( $body['action'] ) ? $body['action'] : '';
-		$params  = $body['params'] ?? array();
-		$key     = isset( $body['idempotency_key'] ) && is_string( $body['idempotency_key'] ) ? $body['idempotency_key'] : '';
-		$actor   = isset( $body['actor'] ) && is_array( $body['actor'] ) ? $body['actor'] : array();
-		$email   = isset( $actor['email'] ) && is_string( $actor['email'] ) ? strtolower( trim( $actor['email'] ) ) : '';
-		$name    = isset( $actor['name'] ) && is_string( $actor['name'] ) ? trim( $actor['name'] ) : '';
-		$dry_run = ! empty( $body['dry_run'] );
-
-		if ( '' === $feature || '' === $action || ! is_array( $params ) ) {
-			return self::bad_request( 'A feature, an action and params are required.' );
-		}
-		if ( 1 !== preg_match( self::KEY_PATTERN, $key ) ) {
-			return self::bad_request( 'A valid idempotency key is required.' );
-		}
-		if ( '' === $email ) {
-			return self::bad_request( 'The acting agent\'s email is required.' );
+		// Order matters: request shape, then the registry, then the actor and
+		// their capability, and only then idempotency (dry run, replay, claim).
+		$request = self::action_request( $body );
+		if ( is_wp_error( $request ) ) {
+			return $request;
 		}
 
-		$registry = apply_filters( 'spat_freescout_actions', array() );
-		$entry    = is_array( $registry ) ? ( $registry[ $feature . '.' . $action ] ?? null ) : null;
-		if ( ! is_array( $entry ) || empty( $entry['capability'] ) || empty( $entry['handler'] ) || ! is_callable( $entry['handler'] ) ) {
+		$entry = self::registered_action( $request['feature'], $request['action'] );
+		if ( null === $entry ) {
 			return new WP_Error( 'spat_freescout_unknown_action', 'Unknown action.', array( 'status' => 404 ) );
 		}
 
-		$user = get_user_by( 'email', $email );
-		if ( ! $user ) {
-			return new WP_Error( 'spat_freescout_actor_unknown', 'No WordPress account for ' . $email, array( 'status' => 403 ) );
-		}
-		if ( ! user_can( $user, (string) $entry['capability'] ) ) {
-			return new WP_Error( 'spat_freescout_actor_forbidden', 'Your WordPress account is not allowed to do this.', array( 'status' => 403 ) );
+		$user = self::authorized_actor( $request['email'], (string) $entry['capability'] );
+		if ( is_wp_error( $user ) ) {
+			return $user;
 		}
 
-		$transient = self::IDEMPOTENCY_PREFIX . hash( 'sha256', $key );
-		if ( $dry_run ) {
-			return self::run( $entry, $params, $dry_run, $user, $email, $name, $feature, $action, $transient );
+		$transient = self::IDEMPOTENCY_PREFIX . hash( 'sha256', $request['key'] );
+		if ( $request['dry_run'] ) {
+			return self::run( $entry, $request, $user, $transient );
 		}
 
 		$stored = self::stored( $transient );
@@ -72,24 +56,101 @@ class SPAT_FreeScout_Actions {
 			return $stored;
 		}
 
+		return self::claim_and_run( $entry, $request, $user, $transient );
+	}
+
+	/**
+	 * Read the action request fields from the body and validate them.
+	 *
+	 * @param array $body Decoded request body.
+	 * @return array|WP_Error The fields (feature, action, params, key, email, name, dry_run) or a 400.
+	 */
+	private static function action_request( array $body ) {
+		$actor   = isset( $body['actor'] ) && is_array( $body['actor'] ) ? $body['actor'] : array();
+		$request = array(
+			'feature' => self::string_field( $body, 'feature' ),
+			'action'  => self::string_field( $body, 'action' ),
+			'params'  => $body['params'] ?? array(),
+			'key'     => self::string_field( $body, 'idempotency_key' ),
+			'email'   => strtolower( trim( self::string_field( $actor, 'email' ) ) ),
+			'name'    => trim( self::string_field( $actor, 'name' ) ),
+			'dry_run' => ! empty( $body['dry_run'] ),
+		);
+
+		if ( '' === $request['feature'] || '' === $request['action'] || ! is_array( $request['params'] ) ) {
+			return self::bad_request( 'A feature, an action and params are required.' );
+		}
+		if ( 1 !== preg_match( self::KEY_PATTERN, $request['key'] ) ) {
+			return self::bad_request( 'A valid idempotency key is required.' );
+		}
+		if ( '' === $request['email'] ) {
+			return self::bad_request( 'The acting agent\'s email is required.' );
+		}
+		return $request;
+	}
+
+	/**
+	 * The registered entry for feature.action, or null when there is none or it
+	 * lacks a capability or a callable handler.
+	 */
+	private static function registered_action( string $feature, string $action ): ?array {
+		$registry = apply_filters( 'spat_freescout_actions', array() );
+		$entry    = is_array( $registry ) ? ( $registry[ $feature . '.' . $action ] ?? null ) : null;
+		if ( ! is_array( $entry ) || empty( $entry['capability'] ) || empty( $entry['handler'] ) || ! is_callable( $entry['handler'] ) ) {
+			return null;
+		}
+		return $entry;
+	}
+
+	/**
+	 * The WordPress user for the agent's email, if they hold the capability.
+	 *
+	 * @return WP_User|WP_Error
+	 */
+	private static function authorized_actor( string $email, string $capability ) {
+		$user = get_user_by( 'email', $email );
+		if ( ! $user ) {
+			return new WP_Error( 'spat_freescout_actor_unknown', 'No WordPress account for ' . $email, array( 'status' => 403 ) );
+		}
+		if ( ! user_can( $user, $capability ) ) {
+			return new WP_Error( 'spat_freescout_actor_forbidden', 'Your WordPress account is not allowed to do this.', array( 'status' => 403 ) );
+		}
+		return $user;
+	}
+
+	/**
+	 * Claim the key, then run the action unless another run stored a result
+	 * meanwhile. The claim is released however the run ends (result, WP_Error
+	 * or throw).
+	 *
+	 * @return array|WP_Error
+	 */
+	private static function claim_and_run( array $entry, array $request, $user, string $transient ) {
 		// Claim the key atomically, so two concurrent runs with one key (a
 		// duplicate POST) cannot both reach the handler. SPAT_Lock uses a
 		// guarded INSERT; add_option() is not atomic on WP 6.4+.
-		$lock   = 'fs_idem_' . hash( 'sha256', $key );
+		$lock   = 'fs_idem_' . hash( 'sha256', $request['key'] );
 		$handle = SPAT_Lock::acquire( $lock, self::RUN_LOCK_TTL );
 		if ( false === $handle ) {
 			return new WP_Error( 'spat_freescout_in_progress', 'This action is already running. Wait a moment and check the result.', array( 'status' => 409 ) );
 		}
 		try {
-			// The other run may have finished between the check above and our claim.
+			// The other run may have finished between the caller's check and our claim.
 			$stored = self::stored( $transient );
 			if ( null !== $stored ) {
 				return $stored;
 			}
-			return self::run( $entry, $params, $dry_run, $user, $email, $name, $feature, $action, $transient );
+			return self::run( $entry, $request, $user, $transient );
 		} finally {
 			SPAT_Lock::release( $lock, $handle );
 		}
+	}
+
+	/**
+	 * $source[ $key ] when it is a string, else ''.
+	 */
+	private static function string_field( array $source, string $key ): string {
+		return isset( $source[ $key ] ) && is_string( $source[ $key ] ) ? $source[ $key ] : '';
 	}
 
 	/**
@@ -108,24 +169,29 @@ class SPAT_FreeScout_Actions {
 	 * Call the handler as the actor and normalise its answer; a real run's
 	 * success is stored for replay.
 	 *
+	 * @param array  $entry     Registry entry (capability, handler).
+	 * @param array  $request   Validated fields from action_request().
+	 * @param mixed  $user      The actor's WP_User.
+	 * @param string $transient Idempotency transient name.
 	 * @return array|WP_Error
 	 */
-	private static function run( array $entry, array $params, bool $dry_run, $user, string $email, string $name, string $feature, string $action, string $transient ) {
+	private static function run( array $entry, array $request, $user, string $transient ) {
+		$dry_run  = $request['dry_run'];
 		$previous = get_current_user_id();
 		wp_set_current_user( $user->ID );
 		try {
 			$result = call_user_func(
 				$entry['handler'],
-				$params,
+				$request['params'],
 				$dry_run,
 				$user,
 				array(
-					'email' => $email,
-					'name'  => $name,
+					'email' => $request['email'],
+					'name'  => $request['name'],
 				)
 			);
 		} catch ( Throwable $e ) {
-			SPAT_Logger::error( 'freescout', sprintf( 'Action "%s.%s" failed: %s', $feature, $action, $e->getMessage() ) );
+			SPAT_Logger::error( 'freescout', sprintf( 'Action "%s.%s" failed: %s', $request['feature'], $request['action'], $e->getMessage() ) );
 			return new WP_Error( 'spat_freescout_action_failed', 'The action failed in WordPress. Check the SPAT logs.', array( 'status' => 500 ) );
 		} finally {
 			wp_set_current_user( $previous );
@@ -135,8 +201,23 @@ class SPAT_FreeScout_Actions {
 			return self::pass_through( $result );
 		}
 
-		$result   = is_array( $result ) ? $result : array();
-		$response = array(
+		$response = self::normalise( $result, $dry_run );
+		if ( ! $dry_run ) {
+			set_transient( $transient, $response, DAY_IN_SECONDS );
+		}
+
+		return $response;
+	}
+
+	/**
+	 * The response contract for a handler's (non-error) answer.
+	 *
+	 * @param mixed $result  Handler return value.
+	 * @param bool  $dry_run Whether this was a preview.
+	 */
+	private static function normalise( $result, bool $dry_run ): array {
+		$result = is_array( $result ) ? $result : array();
+		return array(
 			'success'          => true,
 			'dry_run'          => $dry_run,
 			'replayed'         => false,
@@ -145,11 +226,6 @@ class SPAT_FreeScout_Actions {
 			'requires_confirm' => array_values( (array) ( $result['requires_confirm'] ?? array() ) ),
 			'data'             => (array) ( $result['data'] ?? array() ),
 		);
-		if ( ! $dry_run ) {
-			set_transient( $transient, $response, DAY_IN_SECONDS );
-		}
-
-		return $response;
 	}
 
 	/**
