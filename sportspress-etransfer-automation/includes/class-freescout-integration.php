@@ -109,14 +109,16 @@ class SPET_FreeScout_Integration {
 	 * to 14 days after the order, nearest the order date first.
 	 *
 	 * Row timestamps are database-server time, read as UTC like the rest of the
-	 * payload.
+	 * payload. The query orders by distance from the order date in SQL, so the
+	 * candidate cap drops the farthest rows, not the oldest.
 	 */
 	private static function possible_matches( float $total, int $order_ts ): array {
 		$rows = SPET_Database::get_unmatched_logs_in_window(
 			$total,
 			gmdate( 'Y-m-d H:i:s', $order_ts - self::WINDOW_BEFORE ),
 			gmdate( 'Y-m-d H:i:s', $order_ts + self::WINDOW_AFTER ),
-			self::CANDIDATE_CAP
+			self::CANDIDATE_CAP,
+			gmdate( 'Y-m-d H:i:s', $order_ts )
 		);
 
 		$distance = array();

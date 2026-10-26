@@ -276,14 +276,24 @@ class SPET_Database {
 	 * @param string $from   Window start, 'Y-m-d H:i:s'.
 	 * @param string $to     Window end, 'Y-m-d H:i:s'.
 	 * @param int    $limit  Max rows.
+	 * @param string $center Optional 'Y-m-d H:i:s': return the rows nearest
+	 *                       this time first, so $limit keeps the nearest
+	 *                       rather than the newest. Default newest first.
 	 * @return array
 	 */
-	public static function get_unmatched_logs_in_window( $amount, $from, $to, $limit = 50 ) {
+	public static function get_unmatched_logs_in_window( $amount, $from, $to, $limit = 50, $center = '' ) {
 		global $wpdb;
 
 		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
 
 		list( $review_sql, $review_params ) = self::review_filter_sql();
+
+		$order_sql    = 'timestamp DESC, id DESC';
+		$order_params = array();
+		if ( '' !== (string) $center ) {
+			$order_sql    = 'ABS(TIMESTAMPDIFF(SECOND, timestamp, %s)) ASC, id DESC';
+			$order_params = array( (string) $center );
+		}
 
 		// amount is decimal(10,2), so a 0.0101 slack is "within a cent".
 		$sql = "SELECT id, timestamp, from_name, from_email, amount, reference_number
@@ -293,13 +303,15 @@ class SPET_Database {
 			AND $review_sql
 			AND amount >= %f AND amount <= %f
 			AND timestamp >= %s AND timestamp <= %s
-			ORDER BY timestamp DESC, id DESC
+			ORDER BY $order_sql
 			LIMIT %d";
 
 		$params = array_merge(
 			array( 'Hidden%' ),
 			$review_params,
-			array( (float) $amount - 0.0101, (float) $amount + 0.0101, (string) $from, (string) $to, intval( $limit ) )
+			array( (float) $amount - 0.0101, (float) $amount + 0.0101, (string) $from, (string) $to ),
+			$order_params,
+			array( intval( $limit ) )
 		);
 
 		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $params ) );

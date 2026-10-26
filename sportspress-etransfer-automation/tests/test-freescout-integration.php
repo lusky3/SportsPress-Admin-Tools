@@ -225,6 +225,13 @@ class Mock_WPDB {
 			}
 		}
 		if ( '' !== $order ) {
+			// ABS(TIMESTAMPDIFF(SECOND, timestamp, 'Y-m-d H:i:s')): distance from a
+			// point in time, emulated as a pseudo-column.
+			$center = null;
+			if ( preg_match( "/^ABS\\(TIMESTAMPDIFF\\(SECOND, timestamp, '([^']+)'\\)\\)/", $order, $m ) ) {
+				$center = strtotime( $m[1] . ' UTC' );
+				$order  = '__distance' . substr( $order, strlen( $m[0] ) );
+			}
 			$keys = array();
 			foreach ( explode( ',', $order ) as $k ) {
 				$bits   = preg_split( '/\s+/', trim( $k ) );
@@ -232,9 +239,13 @@ class Mock_WPDB {
 			}
 			usort(
 				$out,
-				function ( $a, $b ) use ( $keys ) {
+				function ( $a, $b ) use ( $keys, $center ) {
 					foreach ( $keys as $k ) {
-						$c = $a->{$k[0]} <=> $b->{$k[0]};
+						if ( '__distance' === $k[0] ) {
+							$c = abs( strtotime( $a->timestamp . ' UTC' ) - $center ) <=> abs( strtotime( $b->timestamp . ' UTC' ) - $center );
+						} else {
+							$c = $a->{$k[0]} <=> $b->{$k[0]};
+						}
 						if ( 0 !== $c ) {
 							return $k[1] ? -$c : $c;
 						}
@@ -788,6 +799,17 @@ check(
 $GLOBALS['wpdb']->rows = array_diff_key( $GLOBALS['wpdb']->rows, array_flip( array( 106, 107, 108, 109 ) ) );
 $o = SPET_FreeScout_Integration::etransfers_section( array(), 'pat@x.com' )['on_hold_orders'][0];
 check( 'window edges: -2d1h and +15d excluded, +13d23h included', array( 101, 103, 104 ) === array_column( $o['possible_matches'], 'log_id' ) );
+// A busy registration week: more same-amount transfers in the window than the
+// candidate cap, all newer than the nearest one. The nearest must still win.
+reset_state();
+$GLOBALS['orders'][5107] = new Mock_WC_Order( 5107, '325.00', 'on-hold', 'pat@x.com', $ts_order );
+add_log( 500, '2026-10-20 11:00:00', 'Near', 'n@x.com', '325.00', 'NEAR', null, $UNMATCHED ); // +1h.
+for ( $i = 0; $i < 60; $i++ ) {
+	add_log( 600 + $i, gmdate( 'Y-m-d H:i:s', strtotime( '2026-10-26 00:00:00 UTC' ) + $i * 3600 ), 'Other', 'o@x.com', '325.00', 'O' . $i, null, $UNMATCHED ); // +6d..+8d.
+}
+$o = SPET_FreeScout_Integration::etransfers_section( array(), 'pat@x.com' )['on_hold_orders'][0];
+check( 'more candidates than the cap: the nearest transfer is still first', 500 === ( $o['possible_matches'][0]['log_id'] ?? null ) );
+check( 'more candidates than the cap: then the next nearest', array( 500, 600, 601, 602, 603 ) === array_column( $o['possible_matches'], 'log_id' ) );
 
 // ---------------------------------------------------------------------------
 echo "query etransfers.search\n";
