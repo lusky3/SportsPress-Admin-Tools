@@ -105,6 +105,7 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 			require_once SPAT_PLUGIN_PATH . 'includes/class-plugin-manager.php';
 			require_once SPAT_PLUGIN_PATH . 'includes/class-signed-request.php';
 			require_once SPAT_PLUGIN_PATH . 'includes/class-freescout-rest.php';
+			require_once SPAT_PLUGIN_PATH . 'includes/class-freescout-actions.php';
 			( new SPAT_FreeScout_REST() )->register();
 
 			// Schema migration and one-time backfills are maintenance work that only

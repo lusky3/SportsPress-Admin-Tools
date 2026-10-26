@@ -31,6 +31,8 @@ class SPAT_FreeScout_REST {
 		foreach ( array(
 			'ping'     => 'handle_ping',
 			'customer' => 'handle_customer',
+			'action'   => 'handle_action',
+			'query'    => 'handle_query',
 		) as $route => $handler ) {
 			register_rest_route(
 				self::NS,
@@ -109,6 +111,44 @@ class SPAT_FreeScout_REST {
 			),
 			200
 		);
+	}
+
+	/**
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function handle_action( $request ) {
+		return $this->run_actions_call( $request, 'dispatch' );
+	}
+
+	/**
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function handle_query( $request ) {
+		return $this->run_actions_call( $request, 'query' );
+	}
+
+	/**
+	 * Guard, decode the body, then hand it to SPAT_FreeScout_Actions.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @param string          $method  SPAT_FreeScout_Actions method.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	private function run_actions_call( $request, string $method ) {
+		$guard = $this->guard( $request );
+		if ( is_wp_error( $guard ) ) {
+			return $guard;
+		}
+
+		$body = json_decode( (string) $request->get_body(), true );
+		if ( ! is_array( $body ) ) {
+			return new WP_Error( 'spat_freescout_bad_request', 'A JSON body is required.', array( 'status' => 400 ) );
+		}
+
+		$result = SPAT_FreeScout_Actions::$method( $body );
+		return is_wp_error( $result ) ? $result : new WP_REST_Response( $result, 200 );
 	}
 
 	/**
