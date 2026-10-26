@@ -7,7 +7,7 @@
     "start": "wp-scripts start src/dashboard/index.js --output-path=build"
   },
   "devDependencies": {
-    "@wordpress/scripts": "^36.1.0"
+    "@wordpress/scripts": "^37.0.0"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -24,7 +24,7 @@
     "linkify-it": ">=5.0.1",
     "markdown-it": ">=14.2.0",
     "@opentelemetry/core": ">=2.8.0",
-    "fast-uri": ">=4.1.4",
+    "fast-uri": ">=4.2.3",
     "webpack": ">=5.109.2",
     "webpack-dev-server": ">=5.2.6",
     "adm-zip": ">=0.5.16",
