@@ -395,14 +395,38 @@ class SPAT_Admin {
 
 	/**
 	 * sanitize_callback for the FreeScout shared secret. The field never
-	 * echoes the stored value, so a blank submission means "unchanged".
+	 * echoes the stored value, so a blank submission means "unchanged". A
+	 * secret shorter than the REST layer's minimum is refused with a notice
+	 * (the routes would answer 503 "not configured" for it) and the stored
+	 * secret is kept.
+	 *
+	 * Not sanitize_text_field(): it strips %xx sequences and tag-like text,
+	 * silently changing the secret so every signature fails. Not wp_unslash()
+	 * either: options.php has already unslashed the value, and a second pass
+	 * would drop backslashes that belong to the secret.
 	 *
 	 * @param mixed $value Raw submitted value.
 	 * @return string
 	 */
 	public static function sanitize_freescout_secret( $value ): string {
-		$value = is_string( $value ) ? trim( sanitize_text_field( $value ) ) : '';
-		return '' === $value ? (string) get_option( SPAT_FreeScout_REST::SECRET_OPTION, '' ) : $value;
+		$value = is_string( $value ) ? trim( $value ) : '';
+		$saved = (string) get_option( SPAT_FreeScout_REST::SECRET_OPTION, '' );
+		if ( '' === $value ) {
+			return $saved;
+		}
+		if ( strlen( $value ) < SPAT_FreeScout_REST::MIN_SECRET_LENGTH ) {
+			add_settings_error(
+				SPAT_FreeScout_REST::SECRET_OPTION,
+				'spat_freescout_secret_too_short',
+				sprintf(
+					/* translators: %d: minimum secret length. */
+					__( 'The FreeScout shared secret must be at least %d characters. The previous secret was kept.', 'sportspress-admin-tools' ),
+					SPAT_FreeScout_REST::MIN_SECRET_LENGTH
+				)
+			);
+			return $saved;
+		}
+		return $value;
 	}
 
 	public function freescout_section_callback() {

@@ -63,11 +63,14 @@ class SPT_FreeScout_Provider {
 	/**
 	 * @param int $player_id         Player post id.
 	 * @param int $current_season_id Current season term id (0 if none).
-	 * @return array|null Null when the post is gone.
+	 * @return array|null Null when the post is gone or isn't a live player.
 	 */
 	private static function build_player( int $player_id, int $current_season_id ) {
 		$post = get_post( $player_id );
-		if ( ! $post ) {
+		// The email resolver is deliberately unfiltered (privacy export/erasure
+		// must see everything), so it can hand over trashed duplicates and
+		// non-player posts carrying sp_user (staff). Only live players count here.
+		if ( ! $post || 'sp_player' !== $post->post_type || in_array( $post->post_status, array( 'trash', 'auto-draft' ), true ) ) {
 			return null;
 		}
 

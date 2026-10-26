@@ -3,8 +3,8 @@
  * FreeScout "registration" section provider.
  *
  * Supplies sections.registration of the FreeScout bridge's customer lookup: the
- * customer's registration log entries and paid orders that never produced a
- * registration.
+ * customer's registration log entries and paid registration orders that never
+ * produced a registration.
  *
  * @package SportsPress_Player_Registration
  */
@@ -56,7 +56,7 @@ class SPPR_FreeScout_Provider {
 		foreach ( (array) $orders as $order ) {
 			$order_id    = (int) $order->get_id();
 			$order_ids[] = $order_id;
-			if ( 'completed' === $order->get_status() && '1' !== (string) $order->get_meta( '_spr_processed' ) ) {
+			if ( self::needs_attention( $order ) ) {
 				$attention[] = $order_id;
 			}
 		}
@@ -78,6 +78,23 @@ class SPPR_FreeScout_Provider {
 			'entries'   => $entries,
 			'attention' => self::attention_items( $attention ),
 		);
+	}
+
+	/**
+	 * A completed order that holds registration items but never got the
+	 * processed marker. process_completed_order() leaves orders without
+	 * registration items unmarked on purpose, so those are not failures.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param WC_Order $order Order.
+	 * @return bool
+	 */
+	private static function needs_attention( $order ): bool {
+		if ( 'completed' !== $order->get_status() || '1' === (string) $order->get_meta( '_spr_processed' ) ) {
+			return false;
+		}
+		return array() !== SPPR_Player_Registration::get_registration_items( $order );
 	}
 
 	/**

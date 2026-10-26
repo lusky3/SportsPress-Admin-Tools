@@ -12,23 +12,78 @@ $GLOBALS['t_orders']     = array(); // list of order stubs.
 $GLOBALS['t_order_args'] = null;
 $GLOBALS['t_logs']       = array(); // rows: id, timestamp, order_id, player_id, season, position, action.
 $GLOBALS['t_queries']    = array();
+$GLOBALS['t_product_cats'] = array( // product id => product_cat names.
+	300 => array( 'Registration' ),
+	301 => array( 'Merchandise' ),
+);
 
 function add_filter( $tag, $cb ) {
 	$GLOBALS['t_filters'][ $tag ][] = $cb;
+}
+function add_action() {}
+function get_option( $key, $default = false ) {
+	return $default;
+}
+function apply_filters( $tag, $value ) {
+	return $value;
+}
+function wp_get_post_terms( $id, $taxonomy ) {
+	$out = array();
+	foreach ( 'product_cat' === $taxonomy ? ( $GLOBALS['t_product_cats'][ $id ] ?? array() ) : array() as $name ) {
+		$out[] = (object) array( 'name' => $name );
+	}
+	return $out;
 }
 function wc_get_orders( $args ) {
 	$GLOBALS['t_order_args'] = $args;
 	return $GLOBALS['t_orders'];
 }
 
+class T_Product {
+	public $id;
+	public function __construct( $id ) {
+		$this->id = $id;
+	}
+	public function get_type() {
+		return 'simple';
+	}
+	public function get_id() {
+		return $this->id;
+	}
+	public function get_parent_id() {
+		return 0;
+	}
+}
+class T_Item {
+	public $product;
+	public function __construct( $product_id ) {
+		$this->product = new T_Product( $product_id );
+	}
+	public function get_product() {
+		return $this->product;
+	}
+}
 class T_Order {
 	public $id;
 	public $status;
 	public $meta;
-	public function __construct( $id, $status, $meta = '' ) {
+	public $items;
+	/**
+	 * @param int[] $product_ids Line items; defaults to one registration product.
+	 */
+	public function __construct( $id, $status, $meta = '', $product_ids = array( 300 ) ) {
 		$this->id     = $id;
 		$this->status = $status;
 		$this->meta   = $meta;
+		$this->items  = array_map(
+			function ( $pid ) {
+				return new T_Item( $pid );
+			},
+			$product_ids
+		);
+	}
+	public function get_items() {
+		return $this->items;
 	}
 	public function get_id() {
 		return $this->id;
@@ -92,6 +147,7 @@ class T_Wpdb {
 }
 $GLOBALS['wpdb'] = new T_Wpdb();
 
+require_once dirname( __DIR__ ) . '/includes/class-player-registration.php';
 require_once dirname( __DIR__ ) . '/includes/class-freescout-provider.php';
 
 $passed = 0;
@@ -140,6 +196,8 @@ $GLOBALS['t_orders'] = array(
 	new T_Order( 5200, 'completed', '' ),       // no marker, name_rejected log.
 	new T_Order( 5300, 'processing', '' ),      // unpaid.
 	new T_Order( 5400, 'completed', '' ),       // no marker, no log.
+	new T_Order( 5500, 'completed', '', array( 301 ) ), // not a registration purchase: never marked.
+	new T_Order( 5600, 'completed', '', array() ),      // no line items at all.
 );
 add_log( 1, '2026-09-03 14:02:00', 4821, 109432, 'player_created' );
 add_log( 2, '2026-09-04 10:00:00', 5107, 0, 'multiple_players_found_email_conflict' );
@@ -189,7 +247,9 @@ assert_test( ! isset( $att[4821] ), 'processed OK order is not in attention' );
 assert_test( isset( $att[5107] ) && 'name_rejected' === $att[5107], 'failed order: attention with newest log action' );
 assert_test( isset( $att[5200] ) && 'name_rejected' === $att[5200], 'unmarked completed order with name_rejected log' );
 assert_test( ! isset( $att[5300] ), 'processing (unpaid) order never in attention' );
-assert_test( isset( $att[5400] ) && 'not_processed' === $att[5400], 'completed order with no log: not_processed' );
+assert_test( isset( $att[5400] ) && 'not_processed' === $att[5400], 'completed registration order with no marker and no log: not_processed' );
+assert_test( ! isset( $att[5500] ), 'completed non-registration order is not in attention' );
+assert_test( ! isset( $att[5600] ), 'completed order without line items is not in attention' );
 assert_test( 3 === count( $sec['attention'] ), 'exactly three attention items' );
 assert_test( array( 'order_id', 'last_action' ) === array_keys( $sec['attention'][0] ), 'attention shape' );
 

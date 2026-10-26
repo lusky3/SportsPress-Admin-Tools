@@ -276,6 +276,21 @@ echo "\n=== Multiple players ===\n";
 $sec5 = SPT_FreeScout_Provider::player_section( array( 1, 3, 999 ), 'fam@x.y' );
 assert_test( 2 === count( $sec5['players'] ) && 1 === $sec5['players'][0]['id'] && 3 === $sec5['players'][1]['id'], 'two ids -> two entries; missing post skipped' );
 
+echo "\n=== Only live sp_player posts ===\n";
+mk_post( 10, 'Jordan Smith', 'sp_player', 'trash' );     // trashed duplicate.
+mk_post( 11, 'Jordan Smith', 'sp_player', 'auto-draft' );
+mk_post( 12, 'Coach Smith', 'sp_staff' );                // staff carrying sp_user.
+mk_post( 13, 'Draft Smith', 'sp_player', 'draft' );
+$GLOBALS['t_meta'][12] = array( 'sp_user' => '9' );
+$live = SPT_FreeScout_Provider::player_section( array( 1, 10, 11, 12, 13 ), 'jordan.smith@example.com' );
+$ids  = array_map(
+	function ( $p ) {
+		return $p['id'];
+	},
+	$live['players']
+);
+assert_test( array( 1, 13 ) === $ids, 'trashed, auto-draft and non-sp_player posts are skipped; draft player kept' );
+
 echo "\n=== No current season ===\n";
 $GLOBALS['t_options']['sportspress_season'] = '0';
 $sec6 = SPT_FreeScout_Provider::player_section( array( 1 ), 'a@b.c' );

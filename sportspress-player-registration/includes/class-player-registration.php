@@ -51,7 +51,7 @@ class SPPR_Player_Registration {
 			return;
 		}
 
-		$registration_items = $this->get_registration_items( $order );
+		$registration_items = self::get_registration_items( $order );
 		if ( empty( $registration_items ) ) {
 			return;
 		}
@@ -236,12 +236,16 @@ class SPPR_Player_Registration {
 	/**
 	 * Registration line items on an order, with each product's season position.
 	 *
+	 * Public and static so other code that must agree on "is this a registration
+	 * order" (the FreeScout provider's attention list) shares this one test
+	 * instead of re-implementing it.
+	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
 	 * @param WC_Order $order Completed order.
 	 * @return array List of arrays with 'product_id' and 'position' keys.
 	 */
-	private function get_registration_items( $order ) {
+	public static function get_registration_items( $order ) {
 		$items = array();
 
 		foreach ( $order->get_items() as $item ) {
