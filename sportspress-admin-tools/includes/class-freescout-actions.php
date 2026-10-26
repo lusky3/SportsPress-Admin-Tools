@@ -89,9 +89,7 @@ class SPAT_FreeScout_Actions {
 		}
 
 		if ( is_wp_error( $result ) ) {
-			$data   = $result->get_error_data();
-			$status = is_array( $data ) && isset( $data['status'] ) ? (int) $data['status'] : 400;
-			return new WP_Error( $result->get_error_code(), $result->get_error_message(), array( 'status' => $status ) );
+			return self::pass_through( $result );
 		}
 
 		$result   = is_array( $result ) ? $result : array();
@@ -138,7 +136,21 @@ class SPAT_FreeScout_Actions {
 			return new WP_Error( 'spat_freescout_query_failed', 'The query failed in WordPress. Check the SPAT logs.', array( 'status' => 500 ) );
 		}
 
+		if ( is_wp_error( $results ) ) {
+			return self::pass_through( $results );
+		}
+
 		return array( 'results' => is_array( $results ) ? $results : array() );
+	}
+
+	/**
+	 * Hand a handler's error back with its code and message and a plain status
+	 * (400 when the handler gave none).
+	 */
+	private static function pass_through( WP_Error $error ): WP_Error {
+		$data   = $error->get_error_data();
+		$status = is_array( $data ) && isset( $data['status'] ) ? (int) $data['status'] : 400;
+		return new WP_Error( $error->get_error_code(), $error->get_error_message(), array( 'status' => $status ) );
 	}
 
 	private static function bad_request( string $message ): WP_Error {

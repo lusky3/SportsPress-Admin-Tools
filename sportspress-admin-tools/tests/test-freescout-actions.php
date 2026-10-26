@@ -226,6 +226,12 @@ $GLOBALS['spat_filters']['spat_freescout_queries'][] = function ( $q ) {
 	$q['demo.search'] = function ( array $params ) {
 		return array( array( 'q' => $params['q'] ?? '' ) );
 	};
+	$q['demo.missing'] = function ( array $params ) {
+		return new WP_Error( 'not_found', 'Order not found.', array( 'status' => 404 ) );
+	};
+	$q['demo.bad']     = function ( array $params ) {
+		return new WP_Error( 'demo_bad', 'Nope.' );
+	};
 	return $q;
 };
 
@@ -319,6 +325,10 @@ check( 'unknown query gives 404', 'spat_freescout_unknown_query' === code_of( $r
 $res = $rest->handle_query( signed_request( '{"feature":"demo","query":"search","params":{"q":"Pat"}}', $secret ) );
 check( 'known query returns {results}', ! is_wp_error( $res ) && array( 'results' => array( array( 'q' => 'Pat' ) ) ) === $res->get_data() );
 check( 'query does not switch user', 7 === $GLOBALS['spat_current'] );
+$res = $rest->handle_query( signed_request( '{"feature":"demo","query":"missing","params":{}}', $secret ) );
+check( 'query WP_Error passes through code, message and status', 'not_found' === code_of( $res ) && 'Order not found.' === $res->get_error_message() && 404 === status_of( $res ) );
+$res = $rest->handle_query( signed_request( '{"feature":"demo","query":"bad","params":{}}', $secret ) );
+check( 'query WP_Error without status defaults to 400', 'demo_bad' === code_of( $res ) && 400 === status_of( $res ) );
 
 echo "\nPassed: $passed\nFailed: $failed\n";
 exit( $failed > 0 ? 1 : 0 );

@@ -108,17 +108,18 @@ class SPET_ETransfer_Admin {
 			$log_id = intval( $_POST['log_index'] );
 			$order_id = intval( $_POST['order_id'] );
 			$force_mismatch = isset( $_POST['force_mismatch'] ) && $_POST['force_mismatch'] === '1';
-			$result = $this->process_manual_match( $log_id, $order_id, $force_mismatch );
-			if ( $result === true ) {
+			$result = self::manual_match( $log_id, $order_id, $force_mismatch );
+			if ( ! is_wp_error( $result ) ) {
 				echo '<div class="notice notice-success"><p>' . esc_html__( 'Manual match processed successfully!', 'sportspress-etransfer-automation' ) . '</p></div>';
-			} elseif ( is_array( $result ) && isset( $result['error'] ) && $result['error'] === 'amount_mismatch' ) {
+			} elseif ( $result->get_error_code() === 'amount_mismatch' ) {
+				$mismatch = $result->get_error_data();
 				// Render a confirm form requiring force=1
 				$mismatch_message = sprintf(
 					/* translators: 1: e-Transfer amount, 2: order ID, 3: order total */
 					__( 'Amount mismatch: e-Transfer was $%1$.2f but order #%2$d total is $%3$.2f. Confirm to proceed.', 'sportspress-etransfer-automation' ),
-					(float) $result['log_amount'],
+					(float) $mismatch['log_amount'],
 					(int) $order_id,
-					(float) $result['order_total']
+					(float) $mismatch['order_total']
 				);
 				echo '<div class="notice notice-warning"><p>' . esc_html( $mismatch_message ) . '</p>';
 				echo '<form method="post" style="margin-top:8px;">';
@@ -364,7 +365,16 @@ class SPET_ETransfer_Admin {
 		return admin_url( 'post.php?post=' . intval( $order_id ) . '&action=edit' );
 	}
 
-	private function process_manual_match( $log_id, $order_id, $force_mismatch = false ) {
+	/**
+	 * Read-only checks shared by the dry run and the real run: the log row
+	 * exists and is unmatched, the order exists and is on hold, and whether the
+	 * amounts differ. Writes nothing.
+	 *
+	 * @param int $log_id   Log row id.
+	 * @param int $order_id WooCommerce order id.
+	 * @return array|WP_Error array( log, order, mismatch, log_amount, order_total ).
+	 */
+	private static function validate_manual_match( $log_id, $order_id ) {
 		global $wpdb;
 		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
 
@@ -379,33 +389,89 @@ class SPET_ETransfer_Admin {
 			if ( get_option( 'spat_debug_verbose_logging', '0' ) === '1' ) {
 				error_log( 'SPAT: Database error fetching log - ' . $wpdb->last_error );
 			}
-			return false;
+			return new WP_Error( 'not_found', __( 'That e-Transfer was not found.', 'sportspress-etransfer-automation' ), array( 'status' => 404 ) );
 		}
 
 		// Refuse to re-process an already-matched log entry.
 		if ( ! empty( $log->order_id ) || ( isset( $log->result ) && strpos( $log->result, 'Manually matched' ) === 0 ) ) {
-			return false;
+			return new WP_Error( 'already_matched', __( 'That e-Transfer is already matched.', 'sportspress-etransfer-automation' ), array( 'status' => 409 ) );
 		}
 
 		$order = wc_get_order( $order_id );
 
-		if ( ! $order || $order->get_status() !== 'on-hold' ) {
-			return false;
+		if ( ! $order ) {
+			return new WP_Error( 'not_found', __( 'That order was not found.', 'sportspress-etransfer-automation' ), array( 'status' => 404 ) );
+		}
+		if ( $order->get_status() !== 'on-hold' ) {
+			return new WP_Error( 'order_not_on_hold', __( 'That order is no longer on hold.', 'sportspress-etransfer-automation' ), array( 'status' => 409 ) );
 		}
 
-		// Check for amount mismatch — require explicit force_mismatch confirmation.
-		// We compute the mismatch state here so we can gate the WHERE-claim, but
-		// defer any order side-effects (notes, transaction id, status flip) until
-		// AFTER the claim wins. Otherwise concurrent admin submissions can leak
-		// duplicate notes onto the order even when only one wins the claim.
 		$order_total = floatval( $order->get_total() );
-		$log_amount = floatval( $log->amount );
-		$has_mismatch = abs( $order_total - $log_amount ) > 0.01;
-		if ( $has_mismatch && ! $force_mismatch ) {
-			return array(
-				'error' => 'amount_mismatch',
-				'log_amount' => $log_amount,
-				'order_total' => $order_total,
+		$log_amount  = floatval( $log->amount );
+
+		return array(
+			'log'         => $log,
+			'order'       => $order,
+			'mismatch'    => abs( $order_total - $log_amount ) > 0.01,
+			'log_amount'  => $log_amount,
+			'order_total' => $order_total,
+		);
+	}
+
+	/**
+	 * Match an unmatched e-Transfer log row to an on-hold order and complete it.
+	 *
+	 * Used by the admin screen and the FreeScout bridge. A dry run validates and
+	 * reports (including a mismatch) but never writes.
+	 *
+	 * @param int  $log_id   Log row id.
+	 * @param int  $order_id WooCommerce order id.
+	 * @param bool $force    Proceed even when the amounts differ.
+	 * @param bool $dry_run  Validate only.
+	 * @return array|WP_Error array( log, order_id, mismatch, log_amount, order_total[, matched] ).
+	 *                        Codes: not_found 404, already_matched 409, order_not_on_hold 409,
+	 *                        amount_mismatch 409 (real run, no force), claim_lost 409, completion_failed 500.
+	 */
+	public static function manual_match( $log_id, $order_id, $force = false, $dry_run = false ) {
+		global $wpdb;
+
+		$log_id   = (int) $log_id;
+		$order_id = (int) $order_id;
+
+		$checked = self::validate_manual_match( $log_id, $order_id );
+		if ( is_wp_error( $checked ) ) {
+			return $checked;
+		}
+
+		$log          = $checked['log'];
+		$has_mismatch = $checked['mismatch'];
+		$log_amount   = $checked['log_amount'];
+		$order_total  = $checked['order_total'];
+		$summary      = array(
+			'log'         => $log,
+			'order_id'    => $order_id,
+			'mismatch'    => $has_mismatch,
+			'log_amount'  => number_format( $log_amount, 2, '.', '' ),
+			'order_total' => number_format( $order_total, 2, '.', '' ),
+		);
+
+		if ( $dry_run ) {
+			return $summary;
+		}
+
+		// A mismatch needs explicit confirmation. Order side-effects (notes,
+		// transaction id, status flip) are deferred until AFTER the claim wins,
+		// otherwise concurrent admin submissions can leak duplicate notes onto
+		// the order even when only one wins the claim.
+		if ( $has_mismatch && ! $force ) {
+			return new WP_Error(
+				'amount_mismatch',
+				sprintf( 'Amounts differ: e-Transfer $%s, order $%s', $summary['log_amount'], $summary['order_total'] ),
+				array(
+					'status'      => 409,
+					'log_amount'  => $log_amount,
+					'order_total' => $order_total,
+				)
 			);
 		}
 
@@ -430,12 +496,12 @@ class SPET_ETransfer_Admin {
 			if ( get_option( 'spat_debug_verbose_logging', '0' ) === '1' ) {
 				error_log( 'SPAT: Failed to update log entry - ' . $wpdb->last_error );
 			}
-			return false;
+			return new WP_Error( 'claim_lost', __( 'That e-Transfer could not be claimed. Try again.', 'sportspress-etransfer-automation' ), array( 'status' => 409 ) );
 		}
 
 		// Only touch the order when this request actually won the claim.
 		if ( (int) $wpdb->rows_affected !== 1 ) {
-			return false;
+			return new WP_Error( 'claim_lost', __( 'That e-Transfer was matched by someone else.', 'sportspress-etransfer-automation' ), array( 'status' => 409 ) );
 		}
 
 		// M6: the claim above is deliberately taken BEFORE the order side-effects
@@ -520,9 +586,10 @@ class SPET_ETransfer_Admin {
 					intval( $order_id )
 				)
 			);
-			return false;
+			return new WP_Error( 'completion_failed', __( 'The order could not be completed. The e-Transfer is back in the review list.', 'sportspress-etransfer-automation' ), array( 'status' => 500 ) );
 		}
 
-		return true;
+		$summary['matched'] = true;
+		return $summary;
 	}
 }

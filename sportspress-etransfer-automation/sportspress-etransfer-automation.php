@@ -139,6 +139,9 @@ class SportsPress_ETransfer_Automation {
 		new SPET_ETransfer_Automation();
 		new SPET_File_Downloads();
 
+		require_once SPET_PLUGIN_PATH . 'includes/class-freescout-integration.php';
+		SPET_FreeScout_Integration::register();
+
 		if ( is_admin() ) {
 			new SPET_Admin();
 			new SPET_ETransfer_Admin();

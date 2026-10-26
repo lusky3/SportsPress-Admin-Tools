@@ -76,6 +76,7 @@ run_test "$SCRIPT_DIR/sportspress-admin-tools/tests/test-admin-freescout-secret-
 run_test "$SCRIPT_DIR/sportspress-etransfer-automation/tests/test-name-matcher.php"
 run_test "$SCRIPT_DIR/sportspress-etransfer-automation/tests/test-etransfer-automation.php"
 run_test "$SCRIPT_DIR/sportspress-etransfer-automation/tests/test-webhook-routing.php"
+run_test "$SCRIPT_DIR/sportspress-etransfer-automation/tests/test-freescout-integration.php"
 run_test "$SCRIPT_DIR/sportspress-player-registration/tests/test-registration-logic.php"
 run_test "$SCRIPT_DIR/sportspress-player-registration/tests/test-player-matching.php"
 run_test "$SCRIPT_DIR/sportspress-player-registration/tests/test-prorated-pricing.php"
