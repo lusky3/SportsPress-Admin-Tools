@@ -162,6 +162,8 @@ class SportsPress_Player_Registration {
 
 		require_once SPPR_PLUGIN_PATH . 'includes/class-freescout-provider.php';
 		SPPR_FreeScout_Provider::register();
+		require_once SPPR_PLUGIN_PATH . 'includes/class-freescout-rerun.php';
+		SPPR_FreeScout_Rerun::register();
 
 		// Maintenance commands (e.g. the sp_user -> post_author backfill). The file
 		// declares nothing outside WP-CLI, but skip the include entirely on web

@@ -219,6 +219,8 @@ class SportsPress_Player_Tools {
 		if ( SPAT_Plugin_Manager::is_module_enabled( 'player_modifications' ) ) {
 			require_once SPT_PLUGIN_PATH . 'includes/class-freescout-provider.php';
 			SPT_FreeScout_Provider::register();
+			require_once SPT_PLUGIN_PATH . 'includes/class-freescout-player-actions.php';
+			SPT_FreeScout_Player_Actions::register();
 		}
 
 		$has_profile_pic = in_array( 'player_profile_picture', $enabled_modules, true ); // PT-11: strict.

@@ -291,6 +291,12 @@ $ids  = array_map(
 );
 assert_test( array( 1, 13 ) === $ids, 'trashed, auto-draft and non-sp_player posts are skipped; draft player kept' );
 
+echo "\n=== Email ===\n";
+$sec_email = SPT_FreeScout_Provider::player_section( array( 1 ), 'Jordan.Smith@Example.COM' );
+assert_test( 'jordan.smith@example.com' === $sec_email['email'], 'section carries the lower-cased request email' );
+$sec_none = SPT_FreeScout_Provider::player_section( array(), 'nobody@example.com' );
+assert_test( 'nobody@example.com' === $sec_none['email'] && array() === $sec_none['players'], 'email present even without players' );
+
 echo "\n=== No current season ===\n";
 $GLOBALS['t_options']['sportspress_season'] = '0';
 $sec6 = SPT_FreeScout_Provider::player_section( array( 1 ), 'a@b.c' );

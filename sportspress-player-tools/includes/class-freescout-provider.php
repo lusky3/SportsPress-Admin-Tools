@@ -34,12 +34,11 @@ class SPT_FreeScout_Provider {
 	 * Build sections.player.
 	 *
 	 * @param int[]  $player_ids Resolved player ids.
-	 * @param string $email      Lower-cased customer email (unused here).
+	 * @param string $email      Customer email; returned lower-cased so the
+	 *                           Player card can offer Change email.
 	 * @return array
 	 */
 	public static function player_section( array $player_ids, string $email ): array {
-		unset( $email );
-
 		$current_season_id = (int) get_option( 'sportspress_season' );
 		$current_name      = '';
 		if ( $current_season_id > 0 ) {
@@ -55,6 +54,7 @@ class SPT_FreeScout_Provider {
 		}
 
 		return array(
+			'email'          => strtolower( $email ),
 			'players'        => $players,
 			'current_season' => $current_name,
 		);
