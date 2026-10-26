@@ -103,6 +103,7 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 			// Load core classes needed everywhere
 			require_once SPAT_PLUGIN_PATH . 'includes/class-database.php';
 			require_once SPAT_PLUGIN_PATH . 'includes/class-plugin-manager.php';
+			require_once SPAT_PLUGIN_PATH . 'includes/class-signed-request.php';
 
 			// Schema migration and one-time backfills are maintenance work that only
 			// needs to happen where an operator or the scheduler can observe it.
