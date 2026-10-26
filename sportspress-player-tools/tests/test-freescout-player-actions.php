@@ -367,7 +367,7 @@ $res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'n
 assert_test( 'email_in_use' === err_code( $res ) && array() === st()->update_calls && 'Jordan@Example.com' === st()->meta[17]['spt_email'] && 0 === st()->orders[0]->saved, 'real run: refused before any write' );
 
 echo "\n=== Staff logins are protected ===\n";
-// Capability sets as registered by SportsPress 2.7.31 (sp_player), WooCommerce
+// Capability sets as registered by SportsPress 2.7.31 (sp_player, sp_staff), WooCommerce
 // 11.0.1 (customer) and WordPress core (subscriber).
 $role_caps  = array(
 	'sp_player'  => array(
@@ -393,6 +393,34 @@ $role_caps  = array(
 		'edit_published_sp_teams',
 		'assign_sp_team_terms',
 	),
+	'sp_staff'   => array(
+		'level_1',
+		'level_0',
+		'read',
+		'delete_posts',
+		'edit_posts',
+		'upload_files',
+		'edit_sp_staff',
+		'read_sp_staff',
+		'edit_sp_staffs',
+		'edit_published_sp_staffs',
+		'assign_sp_staff_terms',
+		'edit_sp_event',
+		'read_sp_event',
+		'edit_sp_events',
+		'edit_published_sp_events',
+		'assign_sp_event_terms',
+		'edit_sp_team',
+		'read_sp_team',
+		'edit_sp_teams',
+		'edit_published_sp_teams',
+		'assign_sp_team_terms',
+		'edit_sp_player',
+		'read_sp_player',
+		'edit_sp_players',
+		'edit_published_sp_players',
+		'assign_sp_player_terms',
+	),
 	'customer'   => array( 'read' ),
 	'subscriber' => array( 'read', 'level_0' ),
 );
@@ -416,6 +444,50 @@ foreach ( $staff_caps as $cap ) {
 	$res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'new@example.com' ), true );
 	assert_test( 'account_protected' === err_code( $res ), "sp_player plus $cap: account_protected" );
 }
+
+// Admin-capable and content-publishing caps: a custom role holding only one of
+// them is still staff.
+foreach ( array( 'manage_options', 'edit_users', 'create_users', 'delete_users', 'activate_plugins', 'publish_posts', 'edit_pages' ) as $cap ) {
+	fixture();
+	SPT_FreeScout_Player_Actions::register();
+	st()->users[12]->roles = array( 'custom' );
+	st()->users[12]->caps  = array( 'read', $cap );
+	$res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'new@example.com' ), false );
+	assert_test( 'account_protected' === err_code( $res ) && 409 === err_status( $res ), "custom role with only $cap: account_protected 409" );
+	assert_test( array() === st()->update_calls && 'Jordan@Example.com' === st()->meta[17]['spt_email'] && 0 === st()->orders[0]->saved, "custom role with only $cap: nothing written" );
+}
+
+// WordPress core author role, exactly as registered.
+fixture();
+SPT_FreeScout_Player_Actions::register();
+st()->users[12]->roles = array( 'author' );
+st()->users[12]->caps  = array( 'upload_files', 'edit_posts', 'edit_published_posts', 'publish_posts', 'read', 'level_2', 'level_1', 'level_0', 'delete_posts', 'delete_published_posts' );
+$res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'new@example.com' ), false );
+assert_test( 'account_protected' === err_code( $res ) && 409 === err_status( $res ), 'author role caps: account_protected 409' );
+assert_test( array() === st()->update_calls && 'Jordan@Example.com' === st()->meta[17]['spt_email'] && 0 === st()->orders[0]->saved, 'author: nothing written' );
+
+// No login holds the old email; the two players link to two logins and only
+// the second one is staff.
+fixture();
+SPT_FreeScout_Player_Actions::register();
+st()->users     = array(
+	70 => new WP_User( 70, 'parent', 'parent@example.com' ),
+	71 => new WP_User( 71, 'coach', 'coach@club.test', '', array( 'author' ), array( 'read', 'publish_posts' ) ),
+);
+st()->meta[17]  = array(
+	'spt_email' => 'Jordan@Example.com',
+	'sp_user'   => '70',
+);
+st()->meta[18]  = array(
+	'spt_email' => 'jordan@example.com',
+	'sp_user'   => '71',
+);
+$res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'new@example.com' ), false );
+assert_test( 'account_protected' === err_code( $res ) && 'coach is a staff account. Change its email in WordPress instead.' === $res->get_error_message(), 'two linked logins, only the second staff: account_protected names it' );
+assert_test(
+	array() === st()->update_calls && 'Jordan@Example.com' === st()->meta[17]['spt_email'] && 'jordan@example.com' === st()->meta[18]['spt_email'] && 0 === st()->orders[0]->saved && 0 === st()->orders[1]->saved,
+	'two linked logins, only the second staff: nothing written'
+);
 
 // SportsPress 2.7.31 sp_event_manager role, exactly as registered.
 fixture();
@@ -540,6 +612,15 @@ foreach ( array( 0, 1 ) as $i ) {
 assert_test( 'other@example.com' === st()->orders[2]->billing && 0 === st()->orders[2]->saved, 'unrelated order untouched' );
 assert_test( 'j.smith@example.com' === st()->orders[0]->spt_at_save, 'orders are written after the players' );
 assert_test( 'other@example.com' === st()->meta[30]['spt_email'], 'unrelated player untouched' );
+
+echo "\n=== Retry after a part-way order failure fails closed ===\n";
+// Simulate an order whose save failed: the login and players moved, one order
+// still carries the old address. The retry is refused rather than finishing.
+st()->orders[1]->billing = 'jordan@example.com';
+$saved                   = st()->orders[1]->saved;
+$res                     = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'j.smith@example.com' ), false );
+assert_test( 'email_in_use' === err_code( $res ) && 409 === err_status( $res ), 'retry after a moved login: email_in_use 409 (documented in apply())' );
+assert_test( 'jordan@example.com' === st()->orders[1]->billing && $saved === st()->orders[1]->saved, 'retry: the remaining order is left for WooCommerce' );
 
 echo "\n=== Real run: agent name fallback ===\n";
 fixture();

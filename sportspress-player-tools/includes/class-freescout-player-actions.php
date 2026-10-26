@@ -204,8 +204,12 @@ class SPT_FreeScout_Player_Actions {
 	 * Write the change. The login goes first, so a refusal there leaves
 	 * everything as it was; spt_email follows it, so it is the final word on
 	 * every player whatever a profile_update listener wrote in between. Orders
-	 * go last: if one fails part-way, the login and players already agree and
-	 * a retry (old → new again) still finds the remaining orders.
+	 * go last. If one fails part-way, the login and players already carry the
+	 * new address but some orders keep the old one. When a login was moved, a
+	 * retry (old → new again) does not finish the job: no login holds the old
+	 * email any more, so the login now holding the new one looks like another
+	 * account and the retry fails closed with email_in_use. Fix the remaining
+	 * orders' billing email in WooCommerce instead.
 	 *
 	 * @return true|WP_Error
 	 */
@@ -249,17 +253,38 @@ class SPT_FreeScout_Player_Actions {
 	}
 
 	/**
-	 * Whether a login is staff: editors and above, shop managers, user admins,
-	 * SportsPress league, team and event managers, super admins.
+	 * Whether a login is staff: authors and above, shop managers, user admins,
+	 * site admins, SportsPress league, team and event managers, super admins,
+	 * and any custom role holding one of the caps below.
 	 *
 	 * Not edit_posts: SportsPress's sp_player role carries it, and player
 	 * registration gives that role to every registering customer. None of the
-	 * caps below is in the sp_player, customer or subscriber roles.
+	 * caps below is in the sp_player or sp_staff roles (SportsPress 2.7.31),
+	 * customer (WooCommerce 11.0.1) or subscriber (WordPress core).
+	 *
+	 * Single-site assumption: user_can() answers for the current site only, so
+	 * on a multisite network a login that is staff on another site of the
+	 * network passes this check.
 	 *
 	 * @param WP_User $user Login.
 	 */
 	private static function is_staff( $user ): bool {
-		$staff_caps = array( 'edit_others_posts', 'manage_woocommerce', 'list_users', 'manage_sportspress', 'edit_others_sp_players', 'edit_others_sp_events', 'promote_users' );
+		$staff_caps = array(
+			'edit_others_posts',
+			'manage_woocommerce',
+			'list_users',
+			'manage_sportspress',
+			'edit_others_sp_players',
+			'edit_others_sp_events',
+			'promote_users',
+			'manage_options',
+			'edit_users',
+			'create_users',
+			'delete_users',
+			'activate_plugins',
+			'publish_posts',
+			'edit_pages',
+		);
 		foreach ( $staff_caps as $cap ) {
 			if ( user_can( $user, $cap ) ) {
 				return true;
