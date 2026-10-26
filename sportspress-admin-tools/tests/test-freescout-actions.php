@@ -665,6 +665,16 @@ check( 'a dry run with a used key still previews (dry runs never replay)', ! is_
 $res = dispatch_with( array( 'idempotency_key' => $reuse_key, 'params' => array( 'id' => 6 ), 'actor' => array( 'email' => 'nocap@x.com' ) ) );
 check( 'the capability check still comes first', 'spat_freescout_actor_forbidden' === code_of( $res ) );
 
+// Keys 1 and "01" compare equal under PHP's default sort, so their order
+// would follow the input; the fingerprint must not depend on it.
+$GLOBALS['spat_transients'] = array();
+$GLOBALS['handler_calls']   = array();
+$mixed_key                  = 'mixed-key-1';
+$res                        = dispatch_with( array( 'idempotency_key' => $mixed_key, 'params' => array( 1 => 'a', '01' => 'b' ) ) );
+check( 'params with keys 1 and "01": the first run succeeds', ! is_wp_error( $res ) && false === $res['replayed'] );
+$res = dispatch_with( array( 'idempotency_key' => $mixed_key, 'params' => array( '01' => 'b', 1 => 'a' ) ) );
+check( 'the same params in the other key order are replayed, not refused', ! is_wp_error( $res ) && true === $res['replayed'] && 1 === count( $GLOBALS['handler_calls'] ) );
+
 echo "idempotency key reused while waiting for the claim\n";
 $GLOBALS['spat_transients'] = array();
 $GLOBALS['handler_calls']   = array();

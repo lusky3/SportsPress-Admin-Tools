@@ -181,7 +181,9 @@ class SPAT_FreeScout_Actions {
 		if ( ! is_array( $value ) ) {
 			return $value;
 		}
-		ksort( $value );
+		// SORT_STRING: under the default flag, keys like 1 and "01" compare
+		// equal and keep their input order.
+		ksort( $value, SORT_STRING );
 		return array_map( array( __CLASS__, 'canonical' ), $value );
 	}
 
