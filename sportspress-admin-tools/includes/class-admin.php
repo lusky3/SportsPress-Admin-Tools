@@ -310,6 +310,17 @@ class SPAT_Admin {
 			array( 'sanitize_callback' => array( __CLASS__, 'sanitize_freescout_secret' ) )
 		);
 
+		register_setting(
+			'spat_general_settings',
+			SPAT_FreeScout_REST::EVENTS_URL_OPTION,
+			array( 'sanitize_callback' => array( __CLASS__, 'sanitize_freescout_events_url' ) )
+		);
+		register_setting(
+			'spat_general_settings',
+			SPAT_FreeScout_REST::EVENTS_ENABLED_OPTION,
+			array( 'sanitize_callback' => array( __CLASS__, 'sanitize_checkbox_flag' ) )
+		);
+
 		// Child plugin settings will be registered by their respective admin classes
 
 		add_settings_section(
@@ -359,6 +370,9 @@ class SPAT_Admin {
 		$this->add_settings_field_row( 'spat_debug_verbose_logging', __( 'Verbose Debug Logging', 'sportspress-admin-tools' ), array( $this, 'debug_verbose_callback' ), 'spat_debug_section' );
 
 		$this->add_settings_field_row( SPAT_FreeScout_REST::SECRET_OPTION, __( 'Shared Secret', 'sportspress-admin-tools' ), array( $this, 'freescout_secret_callback' ), 'spat_freescout_section' );
+		$this->add_settings_field_row( SPAT_FreeScout_REST::EVENTS_URL_OPTION, __( 'Events URL', 'sportspress-admin-tools' ), array( $this, 'freescout_events_url_callback' ), 'spat_freescout_section' );
+		$this->add_settings_field_row( SPAT_FreeScout_REST::EVENTS_ENABLED_OPTION, __( 'Send Events', 'sportspress-admin-tools' ), array( $this, 'freescout_events_enabled_callback' ), 'spat_freescout_section' );
+		$this->add_settings_field_row( 'spat_freescout_events_status', __( 'Events', 'sportspress-admin-tools' ), array( $this, 'freescout_events_status_callback' ), 'spat_freescout_section' );
 
 		// Allow child plugins to register their own settings
 		do_action( 'spat_admin_init_settings' );
@@ -427,6 +441,70 @@ class SPAT_Admin {
 			return $saved;
 		}
 		return $value;
+	}
+
+	/**
+	 * sanitize_callback for the FreeScout events URL. Blank clears it. Anything
+	 * that is not an http(s) URL is refused with a notice and the stored value
+	 * is kept.
+	 *
+	 * @param mixed $value Raw submitted value.
+	 * @return string
+	 */
+	public static function sanitize_freescout_events_url( $value ): string {
+		$value = is_string( $value ) ? trim( $value ) : '';
+		if ( '' === $value ) {
+			return '';
+		}
+		$url = esc_url_raw( $value, array( 'http', 'https' ) );
+		if ( '' === $url || ! preg_match( '#^https?://#i', $url ) ) {
+			add_settings_error(
+				SPAT_FreeScout_REST::EVENTS_URL_OPTION,
+				'spat_freescout_events_url_invalid',
+				__( 'The FreeScout events URL must start with https:// or http://. The previous URL was kept.', 'sportspress-admin-tools' )
+			);
+			return (string) get_option( SPAT_FreeScout_REST::EVENTS_URL_OPTION, '' );
+		}
+		return $url;
+	}
+
+	public function freescout_events_url_callback() {
+		printf(
+			'<input type="url" name="%1$s" value="%2$s" class="regular-text" placeholder="https://helpdesk.example.com/spatbridge/events">',
+			esc_attr( SPAT_FreeScout_REST::EVENTS_URL_OPTION ),
+			esc_attr( (string) get_option( SPAT_FreeScout_REST::EVENTS_URL_OPTION, '' ) )
+		);
+		echo '<p class="description">' . esc_html__( 'The bridge\'s events endpoint in FreeScout.', 'sportspress-admin-tools' ) . '</p>';
+	}
+
+	public function freescout_events_enabled_callback() {
+		printf(
+			'<label><input type="checkbox" name="%1$s" value="1"%2$s> %3$s</label>',
+			esc_attr( SPAT_FreeScout_REST::EVENTS_ENABLED_OPTION ),
+			checked( '1', (string) get_option( SPAT_FreeScout_REST::EVENTS_ENABLED_OPTION, '0' ), false ),
+			esc_html__( 'Send e-Transfer, registration and waitlist events to FreeScout. Needs the URL and shared secret above.', 'sportspress-admin-tools' )
+		);
+	}
+
+	public function freescout_events_status_callback() {
+		$status = SPAT_FreeScout_Events::status();
+		echo '<p>' . esc_html(
+			sprintf(
+				/* translators: 1: pending event count, 2: failed event count. */
+				__( 'Pending: %1$d. Failed: %2$d.', 'sportspress-admin-tools' ),
+				$status['pending'],
+				$status['failed']
+			)
+		) . '</p>';
+		if ( '' !== $status['last_error'] ) {
+			echo '<p class="description">' . esc_html(
+				sprintf(
+					/* translators: %s: the most recent delivery error. */
+					__( 'Last error: %s', 'sportspress-admin-tools' ),
+					$status['last_error']
+				)
+			) . '</p>';
+		}
 	}
 
 	public function freescout_section_callback() {

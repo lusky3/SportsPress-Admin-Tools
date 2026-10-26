@@ -15,6 +15,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 class SPAT_FreeScout_REST {
 
 	const SECRET_OPTION = 'spat_freescout_secret';
+
+	/** Endpoint WordPress POSTs events to, and the switch that turns sending on. */
+	const EVENTS_URL_OPTION     = 'spat_freescout_events_url';
+	const EVENTS_ENABLED_OPTION = 'spat_freescout_events_enabled';
 	const NS            = 'spat/v1';
 
 	/** Provider keys the bridge expects; one with no provider is reported as not_registered. */

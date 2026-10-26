@@ -115,6 +115,8 @@ class SPAT_Database {
 
 		dbDelta( $sql );
 
+		self::create_outbox_table();
+
 		// Verify the schema actually came up to spec before bumping the version
 		// marker. dbDelta silently swallows ALTER TABLE failures (e.g. UNIQUE KEY
 		// add against pre-existing duplicates), and without this check we would
@@ -125,6 +127,41 @@ class SPAT_Database {
 		} elseif ( class_exists( 'SPAT_Logger' ) ) {
 			SPAT_Logger::error( 'database', 'dbDelta did not produce the expected schema; spat_db_version left unset for retry.' );
 		}
+	}
+
+	/**
+	 * FreeScout event outbox. Separate from create_tables() so the dispatcher can
+	 * also create it lazily: the schema version follows the plugin version, so an
+	 * installed site would otherwise not get the table until its next release.
+	 * dbDelta is idempotent, which makes calling this twice harmless.
+	 */
+	public static function create_outbox_table() {
+		global $wpdb;
+
+		$table_name      = $wpdb->prefix . 'spat_freescout_outbox';
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// All datetimes are UTC. email is 191 so the column could be indexed on
+		// utf8mb4 without a prefix; status+next_attempt_at serves the sweep.
+		$sql = "CREATE TABLE $table_name (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            event_id char(36) NOT NULL,
+            type varchar(64) NOT NULL,
+            email varchar(191) NOT NULL DEFAULT '',
+            payload longtext NOT NULL,
+            status varchar(10) NOT NULL DEFAULT 'pending',
+            attempts tinyint(3) unsigned NOT NULL DEFAULT 0,
+            next_attempt_at datetime NOT NULL,
+            last_error varchar(255) NOT NULL DEFAULT '',
+            created_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY event_id (event_id),
+            KEY status_next (status, next_attempt_at)
+        ) $charset_collate;";
+
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta( $sql );
 	}
 
 	/**

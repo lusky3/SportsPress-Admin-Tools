@@ -107,6 +107,8 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 			require_once SPAT_PLUGIN_PATH . 'includes/class-freescout-rest.php';
 			require_once SPAT_PLUGIN_PATH . 'includes/class-freescout-actions.php';
 			( new SPAT_FreeScout_REST() )->register();
+			require_once SPAT_PLUGIN_PATH . 'includes/class-freescout-events.php';
+			( new SPAT_FreeScout_Events() )->register();
 
 			// Schema migration and one-time backfills are maintenance work that only
 			// needs to happen where an operator or the scheduler can observe it.

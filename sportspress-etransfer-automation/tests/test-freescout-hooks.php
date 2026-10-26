@@ -153,7 +153,14 @@ class Mock_WPDB {
 		return $query;
 	}
 
+	/** @var bool When true, insert() fails and leaves a stale insert_id. */
+	public $fail_inserts = false;
+
 	public function insert( $table, $data, $format = null ) {
+		if ( $this->fail_inserts ) {
+			$this->insert_id = 999;
+			return false;
+		}
 		$this->inserts[]  = $data;
 		$this->insert_id = ++$this->next_id;
 		return 1;
@@ -455,6 +462,19 @@ $u = actions_named( 'spat_payment_unmatched' );
 assert_test( 1 === count( $u ) && 'completion_failed' === $u[0][1][3]['reason'], 'a completion that fails fires unmatched once with reason=completion_failed' );
 assert_test( $wpdb->insert_id === $u[0][1][3]['log_id'] && 'park@example.com' === $u[0][1][3]['from_email'], 'completion_failed context carries the audit row id and payer email' );
 assert_test( array() === actions_named( 'spat_payment_matched' ), 'a failed completion does not fire matched' );
+
+// -- a failed audit insert reports log_id 0, never a stale insert_id ------
+reset_mocks();
+$wpdb->fail_inserts = true;
+post( $automation, 'CA1000010', '150.00', 'Nobody Here', 'nobody@example.com' );
+$u = actions_named( 'spat_payment_unmatched' );
+assert_test( 1 === count( $u ) && 0 === $u[0][1][3]['log_id'], 'a failed log insert gives unmatched log_id 0 (not the stale insert_id)' );
+reset_mocks();
+$mock_orders[204] = new Mock_WC_Order( 204, 150.00, 'on-hold', 'Dana', 'Lee', 'dana@example.com' );
+post( $automation, 'CA1000011', '150.00', 'Dana Lee', 'dana@example.com' );
+$m = actions_named( 'spat_payment_matched' );
+assert_test( 1 === count( $m ) && 0 === $m[0][1][3]['log_id'], 'a failed log insert gives matched log_id 0' );
+$wpdb->fail_inserts = false;
 
 // -- duplicates fire nothing -----------------------------------------------
 reset_mocks();

@@ -20,7 +20,7 @@ class SPAT_Notifications {
 		add_action( 'spat_admin_page_content', array( $this, 'render_tab_content' ) );
 
 		// Hook into child plugin events
-		add_action( 'spat_payment_matched', array( $this, 'notify_payment_matched' ), 10, 3 );
+		add_action( 'spat_payment_matched', array( $this, 'notify_payment_matched' ), 10, 4 );
 		add_action( 'spat_payment_unmatched', array( $this, 'notify_payment_unmatched' ), 10, 3 );
 		add_action( 'spat_player_registered', array( $this, 'notify_player_registered' ), 10, 3 );
 		add_action( 'spat_schedule_generated', array( $this, 'notify_schedule_generated' ), 10, 2 );
@@ -132,8 +132,13 @@ class SPAT_Notifications {
 	 * @param string $player_name Customer/player name
 	 * @param float  $amount      Payment amount
 	 * @param int    $order_id    WooCommerce order ID
+	 * @param array  $context     Optional. Match context; a manual match (an admin
+	 *                            did it) never notifies the admin.
 	 */
-	public function notify_payment_matched( $player_name, $amount, $order_id ) {
+	public function notify_payment_matched( $player_name, $amount, $order_id, $context = array() ) {
+		if ( ! empty( $context['manual'] ) ) {
+			return;
+		}
 		if ( ! $this->is_enabled( 'spat_notify_payment_matched' ) ) {
 			return;
 		}

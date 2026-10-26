@@ -20,6 +20,7 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 		'spat_registration_logs',
 		'spat_role_logs',
 		'spat_temp_data',
+		'spat_freescout_outbox',
 	);
 
 	foreach ( $tables as $table ) {
@@ -54,6 +55,10 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 		'spat_notify_payment_unmatched',
 		'spat_notify_player_registered',
 		'spat_notify_schedule_generated',
+		// FreeScout events.
+		'spat_freescout_events_url',
+		'spat_freescout_events_enabled',
+		'spat_freescout_outbox_ready',
 	);
 
 	// Remove options. delete_option returns false when the row was already absent — not an error worth logging.
