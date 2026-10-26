@@ -232,6 +232,8 @@ class SPPR_Admin {
 				$action_text = 'Multiple Players Found - Email Required';
 			} elseif ( $log->action === 'multiple_players_found_email_conflict' ) {
 				$action_text = 'Email Conflict - Manual Review Required';
+			} elseif ( $log->action === 'no_match' ) {
+				$action_text = 'No Matching Player (auto-create off)';
 			}
 
 			$order_id_safe  = absint( $log->order_id );

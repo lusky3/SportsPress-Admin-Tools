@@ -54,7 +54,8 @@ Product tags determine player position:
 All registration activity is logged with:
 
 - Timestamp, order ID, customer name, player ID, season, and action taken
-- Actions include: player_created, player_found_by_name, player_found_by_name_and_email, multiple_players_found
+- Actions include: player_created, player_found_by_name, player_found_by_name_and_email, multiple_players_found, no_match (auto-create off and nobody matched), season_not_detected, player_creation_failed
+- An order is marked registered only when every registration item linked a player; failed items are retried when the order is completed again or re-run, and items that already linked are skipped
 - Role assignments are logged separately
 
 Logs are viewable in Settings → SportsPress Admin Tools → Player Registration.

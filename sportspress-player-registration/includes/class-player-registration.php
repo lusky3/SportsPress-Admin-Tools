@@ -45,7 +45,8 @@ class SPPR_Player_Registration {
 			return;
 		}
 
-		// Skip if already done; 'failed' (and any *_conflict terminal state) falls through to retry.
+		// Skip if already done. 'failed' (a throw) and an unset marker (an item that
+		// did not link a player) fall through to retry.
 		$existing = $order->get_meta( '_spr_processed' );
 		if ( $existing === '1' ) {
 			return;
@@ -108,20 +109,39 @@ class SPPR_Player_Registration {
 		// Open the try IMMEDIATELY after the lock claims so the finally runs on
 		// every exit path (including throws during meta writes) and the locks are
 		// always released. The SPAT_Lock acquired above — not any meta marker — is
-		// the authoritative single-flight guard, so a single save at the end suffices.
+		// the authoritative single-flight guard. The per-item record is saved as
+		// each item links (or is found stale); the marker is saved once at the end.
 		try {
 			$customer_email = strtolower( sanitize_email( $order->get_billing_email() ) );
 			$user_id = $order->get_user_id();
 
+			// Items that already linked a player on an earlier attempt, keyed by
+			// order-item ID => player ID. They are skipped below, so a retry only
+			// re-processes the items that failed: no duplicate log rows, no second
+			// season assignment, no second spat_player_registered.
+			$linked_items = $this->get_linked_items( $order );
+
 			// Track resolved player(s) so the user role/link runs ONCE after the loop
-			// rather than once per item, and so we know whether any item hit a terminal
-			// *_conflict / requires_email state (which must NOT be marked processed).
+			// rather than once per item, and so we know whether any item failed (which
+			// must NOT be marked processed).
 			$resolved_player_id = 0;
-			$had_conflict = false;
+			$had_failure = false;
 
 			foreach ( $registration_items as $item ) {
+				if ( isset( $linked_items[ $item['item_id'] ] ) ) {
+					if ( $this->is_live_player( $linked_items[ $item['item_id'] ] ) ) {
+						continue;
+					}
+					// The recorded player was deleted, trashed or retired since: forget
+					// it and process the item again, so a retry or admin re-run can
+					// rematch or recreate the player instead of skipping it forever.
+					unset( $linked_items[ $item['item_id'] ] );
+					$this->save_linked_items( $order, $linked_items );
+				}
+
 				$season = $this->extract_season_from_product( $item['product_id'] );
 				if ( ! $season ) {
+					$had_failure = true;
 					SPPR_Database::log_registration_activity(
 						$order_id,
 						$customer_name,
@@ -155,13 +175,17 @@ class SPPR_Player_Registration {
 				if ( $result['player_id'] ) {
 					$resolved_player_id = $result['player_id'];
 					SPPR_Database::log_registration_activity( $order_id, $customer_name, $result['player_id'], $season, $item['position'], $result['action'], true );
-				} elseif ( ! empty( $result['action'] ) ) {
-					// No player linked but we still want a paper trail for terminal
-					// outcomes like multiple_players_found_email_conflict.
-					if ( $result['action'] === 'multiple_players_found_email_conflict'
-						|| $result['action'] === 'multiple_players_found_name_match_requires_email' ) {
-						$had_conflict = true;
-					}
+					// Saved straight away, not just by the final save, so a later item
+					// failing (or the request dying) cannot cost this one its record
+					// and get it registered twice on the retry.
+					$linked_items[ $item['item_id'] ] = (int) $result['player_id'];
+					$this->save_linked_items( $order, $linked_items );
+				} else {
+					// No player linked: season resolved but the player could not be
+					// (conflict, requires_email, creation failure, or no_match with
+					// auto-create off). Every one of these leaves the customer
+					// unregistered, so the order stays retryable, and gets a log row.
+					$had_failure = true;
 					SPPR_Database::log_registration_activity( $order_id, $customer_name, 0, $season, $item['position'], $result['action'] );
 					if ( '' === $failed_outcome ) {
 						$failed_outcome = (string) $result['action'];
@@ -169,6 +193,19 @@ class SPPR_Player_Registration {
 							'product_id' => (int) $item['product_id'],
 							'position'   => (string) $item['position'],
 						);
+					}
+				}
+			}
+
+			// Nothing linked on this pass but an earlier pass did: reuse the most
+			// recent recorded player that is still live, so the user link below still
+			// runs when an earlier attempt threw after linking (or the admin re-runs
+			// an order whose items are all linked). Never a deleted or trashed one.
+			if ( ! $resolved_player_id ) {
+				foreach ( array_reverse( $linked_items, true ) as $recorded_player_id ) {
+					if ( $this->is_live_player( $recorded_player_id ) ) {
+						$resolved_player_id = (int) $recorded_player_id;
+						break;
 					}
 				}
 			}
@@ -183,11 +220,17 @@ class SPPR_Player_Registration {
 				$this->link_user_to_player( $user_id, $resolved_player_id );
 			}
 
-			// Do NOT mark a terminal *_conflict / requires_email order as processed:
-			// a paying customer would be left silently unregistered with no resolution
-			// on re-run. Leaving the marker unset lets a corrected re-run resolve it.
-			if ( ! $had_conflict ) {
+			// Mark the order processed only when EVERY registration item linked a
+			// player. Any failure (season_not_detected, player_creation_failed,
+			// no_match, a *_conflict / requires_email) leaves the marker as it was:
+			// a paying customer would otherwise be left silently unregistered, the
+			// order would look successful, and re-completing it would never retry.
+			// The per-item record saved alongside keeps that retry to the failed
+			// items only.
+			if ( ! $had_failure ) {
 				$order->update_meta_data( '_spr_processed', '1' );
+			}
+			if ( ! $had_failure || ! empty( $linked_items ) ) {
 				$order->save();
 			}
 		} catch ( \Throwable $e ) {
@@ -249,9 +292,13 @@ class SPPR_Player_Registration {
 			return;
 		}
 		// Only log a reversal for orders that actually registered a player. Orders
-		// that never matched a registration product (or never finished processing)
-		// would otherwise spam the activity log with refund/cancel noise.
-		if ( $order->get_meta( '_spr_processed' ) !== '1' ) {
+		// that never matched a registration product, or whose every item failed,
+		// would otherwise log a reversal for a registration that never happened.
+		// At least one linked item is the test, not the order-level marker, so a
+		// partial success (marker unset, one item linked) still reverses. Orders
+		// marked '1' before the per-item record existed have no record and are
+		// still taken at their marker's word.
+		if ( empty( $this->get_linked_items( $order ) ) && $order->get_meta( '_spr_processed' ) !== '1' ) {
 			return;
 		}
 		$raw_name = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
@@ -264,6 +311,64 @@ class SPPR_Player_Registration {
 	}
 
 	/**
+	 * Registration items on this order that have already linked a player.
+	 *
+	 * Stored as order meta `_spr_processed_items`: order-item ID => player ID.
+	 * Absent on orders processed before this record existed.
+	 *
+	 * @param WC_Order $order Order.
+	 * @return array<int,int> Order-item ID => player ID.
+	 */
+	private function get_linked_items( $order ) {
+		$stored = $order->get_meta( '_spr_processed_items' );
+		if ( ! is_array( $stored ) ) {
+			return array();
+		}
+		$linked = array();
+		foreach ( $stored as $item_id => $player_id ) {
+			if ( (int) $player_id > 0 ) {
+				$linked[ (int) $item_id ] = (int) $player_id;
+			}
+		}
+		return $linked;
+	}
+
+	/**
+	 * Write the per-item record to the order and persist it now.
+	 *
+	 * Uses save_meta_data(), which writes only the order's meta, so it is cheap
+	 * enough to call per item. Falls back to a full save() for order objects
+	 * without it.
+	 *
+	 * @param WC_Order       $order  Order.
+	 * @param array<int,int> $linked Order-item ID => player ID.
+	 * @return void
+	 */
+	private function save_linked_items( $order, $linked ) {
+		$order->update_meta_data( '_spr_processed_items', $linked );
+		if ( method_exists( $order, 'save_meta_data' ) ) {
+			$order->save_meta_data();
+		} else {
+			$order->save();
+		}
+	}
+
+	/**
+	 * Whether a recorded player is still a live sp_player a registration can
+	 * stand on: it exists, is published, and is not tombstoned "(dup)".
+	 *
+	 * @param int $player_id Player post ID.
+	 * @return bool
+	 */
+	private function is_live_player( $player_id ) {
+		$post = get_post( (int) $player_id );
+		return $post
+			&& 'sp_player' === $post->post_type
+			&& 'publish' === $post->post_status
+			&& ! $this->is_tombstoned_player_title( $post->post_title );
+	}
+
+	/**
 	 * Registration line items on an order, with each product's season position.
 	 *
 	 * Public and static so other code that must agree on "is this a registration
@@ -273,12 +378,13 @@ class SPPR_Player_Registration {
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
 	 * @param WC_Order $order Completed order.
-	 * @return array List of arrays with 'product_id' and 'position' keys.
+	 * @return array List of arrays with 'item_id' (the order-item ID),
+	 *               'product_id' and 'position' keys.
 	 */
 	public static function get_registration_items( $order ) {
 		$items = array();
 
-		foreach ( $order->get_items() as $item ) {
+		foreach ( $order->get_items() as $item_id => $item ) {
 			$product = $item->get_product();
 			if ( ! $product ) {
 				continue;
@@ -307,6 +413,8 @@ class SPPR_Player_Registration {
 				: 'player';
 
 			$items[] = array(
+				// get_items() is keyed by order-item ID; prefer the item's own ID.
+				'item_id' => method_exists( $item, 'get_id' ) ? (int) $item->get_id() : (int) $item_id,
 				'product_id' => $lookup_id,
 				'position' => $position,
 			);
@@ -403,6 +511,14 @@ class SPPR_Player_Registration {
 
 				do_action( 'spat_player_registered', $customer_name, implode( ', ', SPAT_Player::team_names( $player_id ) ), $season );
 			}
+		} elseif ( ! $player_id ) {
+			// Auto-create is off and nobody matched. This used to come back with an
+			// empty action, so nothing was logged and the order looked registered.
+			// Report it as an explicit failure instead.
+			return array(
+				'player_id' => null,
+				'action' => 'no_match',
+			);
 		}
 
 		if ( $player_id && get_option( 'spr_auto_season', '1' ) === '1' ) {

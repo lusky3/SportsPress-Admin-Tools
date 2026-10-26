@@ -86,6 +86,7 @@ run_test "$SCRIPT_DIR/sportspress-player-registration/tests/test-freescout-hooks
 run_test "$SCRIPT_DIR/sportspress-player-registration/tests/test-freescout-rerun.php"
 run_test "$SCRIPT_DIR/sportspress-player-registration/tests/test-player-matching.php"
 run_test "$SCRIPT_DIR/sportspress-player-registration/tests/test-prorated-pricing.php"
+run_test "$SCRIPT_DIR/sportspress-player-registration/tests/test-processed-marker.php"
 run_test "$SCRIPT_DIR/sportspress-player-tools/tests/test-batch-list-creator.php"
 run_test "$SCRIPT_DIR/sportspress-player-tools/tests/test-player-skill-level.php"
 run_test "$SCRIPT_DIR/sportspress-player-tools/tests/test-email-sync.php"
