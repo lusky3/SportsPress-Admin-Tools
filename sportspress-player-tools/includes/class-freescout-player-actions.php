@@ -250,7 +250,7 @@ class SPT_FreeScout_Player_Actions {
 
 	/**
 	 * Whether a login is staff: editors and above, shop managers, user admins,
-	 * SportsPress league and team managers, super admins.
+	 * SportsPress league, team and event managers, super admins.
 	 *
 	 * Not edit_posts: SportsPress's sp_player role carries it, and player
 	 * registration gives that role to every registering customer. None of the
@@ -259,7 +259,7 @@ class SPT_FreeScout_Player_Actions {
 	 * @param WP_User $user Login.
 	 */
 	private static function is_staff( $user ): bool {
-		$staff_caps = array( 'edit_others_posts', 'manage_woocommerce', 'list_users', 'manage_sportspress', 'edit_others_sp_players', 'promote_users' );
+		$staff_caps = array( 'edit_others_posts', 'manage_woocommerce', 'list_users', 'manage_sportspress', 'edit_others_sp_players', 'edit_others_sp_events', 'promote_users' );
 		foreach ( $staff_caps as $cap ) {
 			if ( user_can( $user, $cap ) ) {
 				return true;

@@ -396,7 +396,7 @@ $role_caps  = array(
 	'customer'   => array( 'read' ),
 	'subscriber' => array( 'read', 'level_0' ),
 );
-$staff_caps = array( 'edit_others_posts', 'manage_woocommerce', 'list_users', 'manage_sportspress', 'edit_others_sp_players', 'promote_users' );
+$staff_caps = array( 'edit_others_posts', 'manage_woocommerce', 'list_users', 'manage_sportspress', 'edit_others_sp_players', 'edit_others_sp_events', 'promote_users' );
 foreach ( $staff_caps as $cap ) {
 	fixture();
 	SPT_FreeScout_Player_Actions::register();
@@ -416,6 +416,51 @@ foreach ( $staff_caps as $cap ) {
 	$res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'new@example.com' ), true );
 	assert_test( 'account_protected' === err_code( $res ), "sp_player plus $cap: account_protected" );
 }
+
+// SportsPress 2.7.31 sp_event_manager role, exactly as registered.
+fixture();
+SPT_FreeScout_Player_Actions::register();
+st()->users[12]->roles = array( 'sp_event_manager' );
+st()->users[12]->caps  = array(
+	'level_1',
+	'level_0',
+	'read',
+	'delete_posts',
+	'edit_posts',
+	'upload_files',
+	'manage_categories',
+	'edit_sp_event',
+	'read_sp_event',
+	'delete_sp_event',
+	'edit_sp_events',
+	'edit_others_sp_events',
+	'publish_sp_events',
+	'delete_sp_events',
+	'delete_published_sp_events',
+	'edit_published_sp_events',
+	'manage_sp_event_terms',
+	'edit_sp_event_terms',
+	'delete_sp_event_terms',
+	'assign_sp_event_terms',
+	'edit_sp_team',
+	'read_sp_team',
+	'edit_sp_teams',
+	'edit_published_sp_teams',
+	'assign_sp_team_terms',
+	'edit_sp_player',
+	'read_sp_player',
+	'edit_sp_players',
+	'edit_published_sp_players',
+	'assign_sp_player_terms',
+	'edit_sp_staff',
+	'read_sp_staff',
+	'edit_sp_staffs',
+	'edit_published_sp_staffs',
+	'assign_sp_staff_terms',
+);
+$res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'new@example.com' ), false );
+assert_test( 'account_protected' === err_code( $res ) && array() === st()->update_calls, 'sp_event_manager role caps: account_protected, nothing written' );
+
 fixture();
 SPT_FreeScout_Player_Actions::register();
 st()->super_admins = array( 12 );
