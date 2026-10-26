@@ -433,8 +433,6 @@ class SPET_ETransfer_Admin {
 	 *                        amount_mismatch 409 (real run, no force), claim_lost 409, completion_failed 500.
 	 */
 	public static function manual_match( $log_id, $order_id, $force = false, $dry_run = false ) {
-		global $wpdb;
-
 		$log_id   = (int) $log_id;
 		$order_id = (int) $order_id;
 
@@ -443,16 +441,13 @@ class SPET_ETransfer_Admin {
 			return $checked;
 		}
 
-		$log          = $checked['log'];
-		$has_mismatch = $checked['mismatch'];
-		$log_amount   = $checked['log_amount'];
-		$order_total  = $checked['order_total'];
-		$summary      = array(
+		$log     = $checked['log'];
+		$summary = array(
 			'log'         => $log,
 			'order_id'    => $order_id,
-			'mismatch'    => $has_mismatch,
-			'log_amount'  => number_format( $log_amount, 2, '.', '' ),
-			'order_total' => number_format( $order_total, 2, '.', '' ),
+			'mismatch'    => $checked['mismatch'],
+			'log_amount'  => number_format( $checked['log_amount'], 2, '.', '' ),
+			'order_total' => number_format( $checked['order_total'], 2, '.', '' ),
 		);
 
 		if ( $dry_run ) {
@@ -463,21 +458,76 @@ class SPET_ETransfer_Admin {
 		// transaction id, status flip) are deferred until AFTER the claim wins,
 		// otherwise concurrent admin submissions can leak duplicate notes onto
 		// the order even when only one wins the claim.
-		if ( $has_mismatch && ! $force ) {
-			return new WP_Error(
-				'amount_mismatch',
-				sprintf( 'Amounts differ: e-Transfer $%s, order $%s', $summary['log_amount'], $summary['order_total'] ),
-				array(
-					'status'      => 409,
-					'log_amount'  => $log_amount,
-					'order_total' => $order_total,
-				)
-			);
+		if ( $checked['mismatch'] && ! $force ) {
+			return self::mismatch_error( $summary, $checked );
 		}
 
-		// Conditionally claim the log row BEFORE touching the order. The WHERE
-		// clause ensures only ONE concurrent admin request wins; the other gets
-		// rows_affected = 0 and bails out without ever touching the order.
+		$claimed = self::claim_log( $log_id, $order_id );
+		if ( is_wp_error( $claimed ) ) {
+			return $claimed;
+		}
+
+		// M6: the claim is deliberately taken BEFORE the order side-effects (so
+		// two concurrent admins can't both stamp notes onto the order), but it
+		// writes "…processed successfully" optimistically. The completion is
+		// therefore verified, and the claim is rolled back if the order does not
+		// actually reach 'completed' — otherwise a post-claim failure leaves a
+		// permanently unfixable "success" row against an uncompleted order.
+		if ( ! self::complete_claimed_order( $order_id, $checked ) ) {
+			self::release_claim( $log_id, $order_id );
+			return new WP_Error( 'completion_failed', __( 'The order could not be completed. The e-Transfer is back in the review list.', 'sportspress-etransfer-automation' ), array( 'status' => 500 ) );
+		}
+
+		$summary['matched'] = true;
+
+		// Same event as an automatic match, flagged manual, so listeners (the
+		// admin notification, FreeScout events) see every completed match.
+		do_action(
+			'spat_payment_matched',
+			(string) $log->from_name,
+			$checked['log_amount'],
+			$order_id,
+			array(
+				'log_id'     => $log_id,
+				'from_email' => (string) $log->from_email,
+				'reference'  => (string) $log->reference_number,
+				'manual'     => true,
+			)
+		);
+
+		return $summary;
+	}
+
+	/**
+	 * amount_mismatch 409, carrying both amounts for the admin confirm form.
+	 *
+	 * @param array $summary manual_match() summary (formatted amounts).
+	 * @param array $checked validate_manual_match() result (float amounts).
+	 */
+	private static function mismatch_error( array $summary, array $checked ) {
+		return new WP_Error(
+			'amount_mismatch',
+			sprintf( 'Amounts differ: e-Transfer $%s, order $%s', $summary['log_amount'], $summary['order_total'] ),
+			array(
+				'status'      => 409,
+				'log_amount'  => $checked['log_amount'],
+				'order_total' => $checked['order_total'],
+			)
+		);
+	}
+
+	/**
+	 * Conditionally claim the log row BEFORE touching the order. The WHERE
+	 * clause ensures only ONE concurrent admin request wins; the other gets
+	 * rows_affected = 0 and bails out without ever touching the order.
+	 *
+	 * @param int $log_id   Log row id.
+	 * @param int $order_id WooCommerce order id.
+	 * @return true|WP_Error claim_lost 409 when the row was not claimed.
+	 */
+	private static function claim_log( $log_id, $order_id ) {
+		global $wpdb;
+
 		$claimed = $wpdb->query(
 			$wpdb->prepare(
 				"UPDATE `{$wpdb->prefix}spat_etransfer_logs`
@@ -504,108 +554,127 @@ class SPET_ETransfer_Admin {
 			return new WP_Error( 'claim_lost', __( 'That e-Transfer was matched by someone else.', 'sportspress-etransfer-automation' ), array( 'status' => 409 ) );
 		}
 
-		// M6: the claim above is deliberately taken BEFORE the order side-effects
-		// (so two concurrent admins can't both stamp notes onto the order), but it
-		// writes "…processed successfully" optimistically. Everything below is
-		// therefore verified, and the claim is rolled back if the order does not
-		// actually reach 'completed' — otherwise a post-claim failure leaves a
-		// permanently unfixable "success" row against an uncompleted order.
-		//
-		// H5: take the same per-order lock the webhook path uses and re-read the
-		// status inside it, so an admin match and an inbound e-Transfer (or two
-		// admins matching different log rows to the same order) cannot both
-		// complete it.
+		return true;
+	}
+
+	/**
+	 * Complete the claimed order under the per-order lock.
+	 *
+	 * H5: take the same per-order lock the webhook path uses and re-read the
+	 * status inside it, so an admin match and an inbound e-Transfer (or two
+	 * admins matching different log rows to the same order) cannot both
+	 * complete it. A busy lock or an \Exception counts as not completed; the
+	 * lock is released however the completion ends.
+	 *
+	 * @param int   $order_id WooCommerce order id.
+	 * @param array $checked  validate_manual_match() result.
+	 * @return bool Whether the order verifiably reached 'completed'.
+	 */
+	private static function complete_claimed_order( $order_id, array $checked ) {
 		$order_lock = class_exists( 'SPET_ETransfer_Automation' )
 			? SPET_ETransfer_Automation::acquire_order_lock( $order_id )
 			: true;
+		if ( false === $order_lock ) {
+			return false;
+		}
 
-		$completed = false;
-		if ( false !== $order_lock ) {
-			try {
-				clean_post_cache( $order_id );
-				wp_cache_delete( $order_id, 'orders' );
-				$order = wc_get_order( $order_id );
-
-				if ( $order && $order->has_status( 'on-hold' ) ) {
-					// Mismatch note (only the winner records this).
-					if ( $has_mismatch ) {
-						$order->add_order_note(
-							sprintf(
-								/* translators: 1: e-Transfer amount, 2: order total */
-								__( 'Amount mismatch: e-Transfer was $%1$.2f but order total is $%2$.2f. Manually confirmed by admin.', 'sportspress-etransfer-automation' ),
-								$log_amount,
-								$order_total
-							)
-						);
-					}
-
-					// Add transaction ID (reference number)
-					if ( ! empty( $log->reference_number ) ) {
-						$order->set_transaction_id( $log->reference_number );
-					}
-
-					// Add order note
-					$note = sprintf(
-						/* translators: 1: reference number, 2: amount */
-						__( 'e-Transfer payment processed manually from webhook log. Reference: %1$s, Amount: $%2$.2f', 'sportspress-etransfer-automation' ),
-						$log->reference_number ?: 'N/A',
-						$log->amount ?: 0
-					);
-					$order->add_order_note( $note );
-
-					// Update order status to completed
-					$status_ok = $order->update_status( 'completed', __( 'Payment confirmed via manual webhook match.', 'sportspress-etransfer-automation' ) );
-					$saved_id = $order->save();
-
-					$completed = ( false !== $status_ok && ! empty( $saved_id ) && $order->has_status( 'completed' ) );
-				}
-			} catch ( \Exception $e ) {
-				$completed = false;
-				error_log( '[SPET] Manual match failed for order ' . intval( $order_id ) . ': ' . $e->getMessage() );
-			} finally {
-				if ( class_exists( 'SPET_ETransfer_Automation' ) ) {
-					SPET_ETransfer_Automation::release_order_lock( $order_id, $order_lock );
-				}
+		try {
+			return self::complete_on_hold_order( $order_id, $checked );
+		} catch ( \Exception $e ) {
+			error_log( '[SPET] Manual match failed for order ' . intval( $order_id ) . ': ' . $e->getMessage() );
+			return false;
+		} finally {
+			if ( class_exists( 'SPET_ETransfer_Automation' ) ) {
+				SPET_ETransfer_Automation::release_order_lock( $order_id, $order_lock );
 			}
 		}
+	}
 
-		if ( ! $completed ) {
-			// Release the claim so the row returns to the review list and the
-			// admin can retry, and never leave a "success" result standing behind
-			// an order that was not completed.
-			$wpdb->query(
-				$wpdb->prepare(
-					"UPDATE `{$wpdb->prefix}spat_etransfer_logs`
-					SET order_id = NULL,
-						result = %s,
-						match_criteria = %s
-					WHERE id = %d AND order_id = %d",
-					SPET_Database::RESULT_MANUAL_MATCH_FAILED,
-					'Manual Match',
-					intval( $log_id ),
-					intval( $order_id )
-				)
-			);
-			return new WP_Error( 'completion_failed', __( 'The order could not be completed. The e-Transfer is back in the review list.', 'sportspress-etransfer-automation' ), array( 'status' => 500 ) );
+	/**
+	 * Re-read the order and, if it is still on hold, record the payment and
+	 * complete it.
+	 *
+	 * @param int   $order_id WooCommerce order id.
+	 * @param array $checked  validate_manual_match() result.
+	 * @return bool Whether the order verifiably reached 'completed'.
+	 */
+	private static function complete_on_hold_order( $order_id, array $checked ) {
+		clean_post_cache( $order_id );
+		wp_cache_delete( $order_id, 'orders' );
+		$order = wc_get_order( $order_id );
+		if ( ! $order || ! $order->has_status( 'on-hold' ) ) {
+			return false;
 		}
 
-		$summary['matched'] = true;
+		self::record_manual_payment( $order, $checked );
 
-		// Same event as an automatic match, flagged manual, so listeners (the
-		// admin notification, FreeScout events) see every completed match.
-		do_action(
-			'spat_payment_matched',
-			(string) $log->from_name,
-			$log_amount,
-			$order_id,
-			array(
-				'log_id'     => $log_id,
-				'from_email' => (string) $log->from_email,
-				'reference'  => (string) $log->reference_number,
-				'manual'     => true,
+		// Update order status to completed
+		$status_ok = $order->update_status( 'completed', __( 'Payment confirmed via manual webhook match.', 'sportspress-etransfer-automation' ) );
+		$saved_id  = $order->save();
+
+		return ( false !== $status_ok && ! empty( $saved_id ) && $order->has_status( 'completed' ) );
+	}
+
+	/**
+	 * The order notes and transaction id for a manual match (only the claim
+	 * winner gets here).
+	 *
+	 * @param WC_Order $order   On-hold order.
+	 * @param array    $checked validate_manual_match() result.
+	 */
+	private static function record_manual_payment( $order, array $checked ) {
+		$log = $checked['log'];
+
+		// Mismatch note (only the winner records this).
+		if ( $checked['mismatch'] ) {
+			$order->add_order_note(
+				sprintf(
+					/* translators: 1: e-Transfer amount, 2: order total */
+					__( 'Amount mismatch: e-Transfer was $%1$.2f but order total is $%2$.2f. Manually confirmed by admin.', 'sportspress-etransfer-automation' ),
+					$checked['log_amount'],
+					$checked['order_total']
+				)
+			);
+		}
+
+		// Add transaction ID (reference number)
+		if ( ! empty( $log->reference_number ) ) {
+			$order->set_transaction_id( $log->reference_number );
+		}
+
+		// Add order note
+		$note = sprintf(
+			/* translators: 1: reference number, 2: amount */
+			__( 'e-Transfer payment processed manually from webhook log. Reference: %1$s, Amount: $%2$.2f', 'sportspress-etransfer-automation' ),
+			$log->reference_number ?: 'N/A',
+			$log->amount ?: 0
+		);
+		$order->add_order_note( $note );
+	}
+
+	/**
+	 * Release the claim so the row returns to the review list and the admin
+	 * can retry, and never leave a "success" result standing behind an order
+	 * that was not completed.
+	 *
+	 * @param int $log_id   Log row id.
+	 * @param int $order_id WooCommerce order id.
+	 */
+	private static function release_claim( $log_id, $order_id ) {
+		global $wpdb;
+
+		$wpdb->query(
+			$wpdb->prepare(
+				"UPDATE `{$wpdb->prefix}spat_etransfer_logs`
+				SET order_id = NULL,
+					result = %s,
+					match_criteria = %s
+				WHERE id = %d AND order_id = %d",
+				SPET_Database::RESULT_MANUAL_MATCH_FAILED,
+				'Manual Match',
+				intval( $log_id ),
+				intval( $order_id )
 			)
 		);
-
-		return $summary;
 	}
 }

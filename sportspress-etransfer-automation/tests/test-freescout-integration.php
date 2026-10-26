@@ -128,6 +128,10 @@ class Mock_WPDB {
 	public $writes = 0;
 	/** @var bool Make the claim UPDATE affect no rows (lost race). */
 	public $lose_claim = false;
+	/** @var bool Make the next UPDATE fail outright (query() returns false). */
+	public $fail_query = false;
+	/** @var string[] Every UPDATE/INSERT statement, in order. */
+	public $queries = array();
 
 	public function prepare( $query, ...$args ) {
 		if ( 1 === count( $args ) && is_array( $args[0] ) ) {
@@ -166,6 +170,11 @@ class Mock_WPDB {
 
 	public function query( $query ) {
 		++$this->writes;
+		$this->queries[] = $query;
+		if ( $this->fail_query ) {
+			$this->fail_query = false;
+			return false;
+		}
 		if ( ! preg_match( '/SET\s+(.*?)\s+WHERE\s+(.*)$/s', $query, $m ) ) {
 			return false;
 		}
@@ -391,6 +400,23 @@ class Mock_WC_Order {
 	public $notes          = array();
 	public $saves          = 0;
 	public $fail_complete  = false;
+	/** @var array Writes in call order: array( method, args... ). */
+	public $calls = array();
+	/** @var mixed What save() returns (null: the order id). */
+	public $save_returns = null;
+	/** @var bool update_status() reports success but the status stays. */
+	public $status_sticks = true;
+	/** @var string|null Method that throws; @var string Exception class it throws. */
+	public $throw_in    = null;
+	public $throw_class = 'RuntimeException';
+
+	private function record( $method, ...$args ) {
+		$this->calls[] = array_merge( array( $method ), $args );
+		if ( $this->throw_in === $method ) {
+			$class = $this->throw_class;
+			throw new $class( 'boom in ' . $method );
+		}
+	}
 
 	public function __construct( $id, $total, $status = 'on-hold', $email = '', $created = 0, $first = 'Pat', $last = 'Smith' ) {
 		$this->id      = $id;
@@ -435,21 +461,27 @@ class Mock_WC_Order {
 		} : null;
 	}
 	public function set_transaction_id( $id ) {
+		$this->record( 'set_transaction_id', $id );
 		$this->transaction_id = $id;
 	}
 	public function add_order_note( $note, $is_customer_note = 0, $added_by_user = false ) {
+		$this->record( 'add_order_note', $note );
 		$this->notes[] = array( $note, $is_customer_note, $added_by_user );
 	}
 	public function update_status( $status, $note = '' ) {
+		$this->record( 'update_status', $status, $note );
 		if ( $this->fail_complete ) {
 			return false;
 		}
-		$this->status = $status;
+		if ( $this->status_sticks ) {
+			$this->status = $status;
+		}
 		return true;
 	}
 	public function save() {
+		$this->record( 'save' );
 		++$this->saves;
-		return $this->id;
+		return null === $this->save_returns ? $this->id : $this->save_returns;
 	}
 	public function get_edit_order_url() {
 		return 'http://x/order/' . $this->id;
@@ -533,6 +565,8 @@ function reset_state() {
 	$wpdb->rows       = array();
 	$wpdb->writes     = 0;
 	$wpdb->lose_claim = false;
+	$wpdb->fail_query = false;
+	$wpdb->queries    = array();
 	$GLOBALS['orders'] = array();
 }
 function actor_info() {
@@ -866,6 +900,168 @@ $r = $order_q( array( 'order_id' => 9999 ) );
 check( 'unknown order gives 404 not_found', 'not_found' === code_of( $r ) && 404 === status_of( $r ) );
 $r = $order_q( array() );
 check( 'missing order_id gives 404 not_found', 'not_found' === code_of( $r ) );
+
+// ---------------------------------------------------------------------------
+// Characterization: pins manual_match()'s write sequence and every failure
+// branch so refactors cannot reorder or drop a step unnoticed.
+$claim_ok  = 'Manually matched and processed successfully';
+$fail_note = 'The order could not be completed. The e-Transfer is back in the review list.';
+function setup_match( $amount = '325.00', $ref = 'CA60', $total = '325.00' ) {
+	global $UNMATCHED;
+	reset_state();
+	$GLOBALS['actions'] = array();
+	add_log( 60, '2026-10-21 14:02:00', 'Pat Smith', 'pat@x.com', $amount, $ref, null, $UNMATCHED );
+	$GLOBALS['orders'][5107] = new Mock_WC_Order( 5107, $total );
+	return $GLOBALS['orders'][5107];
+}
+function rolled_back( $id = 60 ) {
+	global $wpdb;
+	return null === $wpdb->rows[ $id ]->order_id && SPET_Database::RESULT_MANUAL_MATCH_FAILED === $wpdb->rows[ $id ]->result && 'Manual Match' === $wpdb->rows[ $id ]->match_criteria;
+}
+
+echo "manual_match characterization: success write sequence\n";
+$order = setup_match( '300.00', 'CA60', '325.00' );
+$r     = SPET_ETransfer_Admin::manual_match( '60', '5107', true );
+check(
+	'order writes in order: mismatch note, transaction id, payment note, status, save',
+	array(
+		array( 'add_order_note', 'Amount mismatch: e-Transfer was $300.00 but order total is $325.00. Manually confirmed by admin.' ),
+		array( 'set_transaction_id', 'CA60' ),
+		array( 'add_order_note', 'e-Transfer payment processed manually from webhook log. Reference: CA60, Amount: $300.00' ),
+		array( 'update_status', 'completed', 'Payment confirmed via manual webhook match.' ),
+		array( 'save' ),
+	) === $order->calls
+);
+check(
+	'string ids are cast; the summary has exactly the documented keys',
+	array( 'log', 'order_id', 'mismatch', 'log_amount', 'order_total', 'matched' ) === array_keys( $r ) && 5107 === $r['order_id'] && true === $r['mismatch'] && '300.00' === $r['log_amount'] && '325.00' === $r['order_total'] && true === $r['matched'] && 60 === (int) $r['log']->id
+);
+check( 'one claim UPDATE, no rollback', 1 === count( $wpdb->queries ) && false !== strpos( $wpdb->queries[0], 'AND (order_id IS NULL OR order_id = 0)' ) && $claim_ok === $wpdb->rows[60]->result );
+$fired = actions_named( 'spat_payment_matched' );
+check(
+	'hook args with an int order id and log id',
+	1 === count( $fired ) && array( 'Pat Smith', 300.0, 5107, array( 'log_id' => 60, 'from_email' => 'pat@x.com', 'reference' => 'CA60', 'manual' => true ) ) === $fired[0][1]
+);
+
+echo "manual_match characterization: no reference, no amount\n";
+$order = setup_match( '', '', '0' );
+$r     = SPET_ETransfer_Admin::manual_match( 60, 5107 );
+check( 'no transaction id is set without a reference', ! is_wp_error( $r ) && array() === array_values( array_filter( $order->calls, function ( $c ) { return 'set_transaction_id' === $c[0]; } ) ) );
+check( 'payment note falls back to N/A and $0.00', array( 'add_order_note', 'e-Transfer payment processed manually from webhook log. Reference: N/A, Amount: $0.00' ) === $order->calls[0] );
+check( 'no mismatch note when amounts agree', 3 === count( $order->calls ) );
+$fired = actions_named( 'spat_payment_matched' );
+check( 'hook casts name/email/reference to strings', array( 'Pat Smith', 0.0, 5107, array( 'log_id' => 60, 'from_email' => 'pat@x.com', 'reference' => '', 'manual' => true ) ) === $fired[0][1] );
+
+echo "manual_match characterization: claim failures\n";
+$order            = setup_match();
+$wpdb->fail_query = true;
+$r                = SPET_ETransfer_Admin::manual_match( 60, 5107 );
+check( 'a failed claim query gives 409 claim_lost "could not be claimed"', 'claim_lost' === code_of( $r ) && 409 === status_of( $r ) && 'That e-Transfer could not be claimed. Try again.' === $r->get_error_message() );
+check( 'and touches nothing else', 1 === $wpdb->writes && array() === $order->calls && array() === actions_named( 'spat_payment_matched' ) );
+$order            = setup_match();
+$wpdb->lose_claim = true;
+$r                = SPET_ETransfer_Admin::manual_match( 60, 5107 );
+check( 'a lost race gives 409 claim_lost "matched by someone else"', 'claim_lost' === code_of( $r ) && 'That e-Transfer was matched by someone else.' === $r->get_error_message() );
+check( 'and touches nothing else, nor fires the hook', 1 === $wpdb->writes && array() === $order->calls && array() === actions_named( 'spat_payment_matched' ) );
+$order = setup_match( '300.00' );
+$r     = SPET_ETransfer_Admin::manual_match( 60, 5107 );
+check( 'amount_mismatch message and data', 'Amounts differ: e-Transfer $300.00, order $325.00' === $r->get_error_message() && array( 'status' => 409, 'log_amount' => 300.0, 'order_total' => 325.0 ) === $r->get_error_data() );
+$r = SPET_ETransfer_Admin::manual_match( 60, 5107, true, true );
+check( 'a forced dry run still writes nothing', ! is_wp_error( $r ) && 0 === $wpdb->writes && ! isset( $r['matched'] ) );
+
+echo "manual_match characterization: completion failures roll the claim back\n";
+$order               = setup_match();
+$order->save_returns = 0;
+$r                   = SPET_ETransfer_Admin::manual_match( 60, 5107 );
+check( 'save returning nothing gives completion_failed', 'completion_failed' === code_of( $r ) && 500 === status_of( $r ) && $fail_note === $r->get_error_message() );
+check( 'and the claim is rolled back for this order only', rolled_back() && 2 === count( $wpdb->queries ) && false !== strpos( $wpdb->queries[1], 'AND order_id = 5107' ) );
+check( 'and no hook fires', array() === actions_named( 'spat_payment_matched' ) );
+$order                = setup_match();
+$order->status_sticks = false;
+$r                    = SPET_ETransfer_Admin::manual_match( 60, 5107 );
+check( 'a status that does not reach completed gives completion_failed', 'completion_failed' === code_of( $r ) && rolled_back() );
+$order           = setup_match();
+$order->throw_in = 'add_order_note';
+$r               = SPET_ETransfer_Admin::manual_match( 60, 5107 );
+check( 'an Exception while completing gives completion_failed', 'completion_failed' === code_of( $r ) && rolled_back() );
+check( 'and stops the remaining writes', array( 'set_transaction_id', 'add_order_note' ) === array_column( $order->calls, 0 ) );
+
+echo "manual_match characterization: per-order lock\n";
+if ( ! class_exists( 'SPET_ETransfer_Automation' ) ) {
+	// Declared here, not at the top, so the sections above run without it.
+	class SPET_ETransfer_Automation {
+		public static $handle     = 'lock-1';
+		public static $log        = array();
+		public static $on_acquire = null;
+		public static function acquire_order_lock( $order_id ) {
+			self::$log[] = array( 'acquire', $order_id );
+			if ( is_callable( self::$on_acquire ) ) {
+				call_user_func( self::$on_acquire );
+			}
+			return self::$handle;
+		}
+		public static function release_order_lock( $order_id, $handle ) {
+			self::$log[] = array( 'release', $order_id, $handle );
+		}
+	}
+}
+function reset_lock() {
+	SPET_ETransfer_Automation::$handle     = 'lock-1';
+	SPET_ETransfer_Automation::$log        = array();
+	SPET_ETransfer_Automation::$on_acquire = null;
+}
+
+reset_lock();
+$order = setup_match();
+$r     = SPET_ETransfer_Admin::manual_match( 60, 5107 );
+check( 'the order lock is taken and released with its handle', ! is_wp_error( $r ) && array( array( 'acquire', 5107 ), array( 'release', 5107, 'lock-1' ) ) === SPET_ETransfer_Automation::$log );
+
+reset_lock();
+SPET_ETransfer_Automation::$handle = false;
+$order                             = setup_match();
+$r                                 = SPET_ETransfer_Admin::manual_match( 60, 5107 );
+check( 'a busy order lock gives completion_failed and rolls back', 'completion_failed' === code_of( $r ) && rolled_back() );
+check( 'without the lock the order is untouched and nothing is released', array() === $order->calls && array( array( 'acquire', 5107 ) ) === SPET_ETransfer_Automation::$log );
+
+reset_lock();
+$order                                 = setup_match();
+SPET_ETransfer_Automation::$on_acquire = function () {
+	$GLOBALS['orders'][5107]->status = 'completed';
+};
+$r = SPET_ETransfer_Admin::manual_match( 60, 5107 );
+check( 'an order completed meanwhile (re-read inside the lock) gives completion_failed', 'completion_failed' === code_of( $r ) && rolled_back() && array() === $order->calls );
+check( 'and the lock is released', 2 === count( SPET_ETransfer_Automation::$log ) );
+
+reset_lock();
+setup_match();
+SPET_ETransfer_Automation::$on_acquire = function () {
+	unset( $GLOBALS['orders'][5107] );
+};
+$r = SPET_ETransfer_Admin::manual_match( 60, 5107 );
+check( 'an order gone on re-read gives completion_failed', 'completion_failed' === code_of( $r ) && rolled_back() );
+
+reset_lock();
+$order           = setup_match();
+$order->throw_in = 'save';
+$r               = SPET_ETransfer_Admin::manual_match( 60, 5107 );
+check( 'an Exception still releases the lock', 'completion_failed' === code_of( $r ) && array( 'release', 5107, 'lock-1' ) === SPET_ETransfer_Automation::$log[1] );
+
+// Current behaviour, pinned so a refactor cannot change it silently: only
+// \Exception is caught, so an Error escapes; the lock is released but the
+// claim is NOT rolled back (reported as a possible bug, not fixed here).
+reset_lock();
+$order              = setup_match();
+$order->throw_in    = 'save';
+$order->throw_class = 'Error';
+$escaped            = null;
+try {
+	SPET_ETransfer_Admin::manual_match( 60, 5107 );
+} catch ( Error $e ) {
+	$escaped = $e->getMessage();
+}
+check( 'an Error escapes manual_match', 'boom in save' === $escaped );
+check( 'the lock is still released', array( 'release', 5107, 'lock-1' ) === ( SPET_ETransfer_Automation::$log[1] ?? null ) );
+check( 'current behaviour: the claim stays (no rollback) and no hook fires', 5107 === (int) $wpdb->rows[60]->order_id && $claim_ok === $wpdb->rows[60]->result && array() === actions_named( 'spat_payment_matched' ) );
 
 echo "\nPassed: $passed\nFailed: $failed\n";
 exit( $failed > 0 ? 1 : 0 );
