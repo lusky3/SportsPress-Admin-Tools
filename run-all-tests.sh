@@ -84,6 +84,7 @@ run_test "$SCRIPT_DIR/sportspress-player-tools/tests/test-profile-picture-resolu
 run_test "$SCRIPT_DIR/sportspress-player-tools/tests/test-check-duplicate-player-name.php"
 run_test "$SCRIPT_DIR/sportspress-player-tools/tests/test-duplicate-name-enqueue.php"
 run_test "$SCRIPT_DIR/sportspress-player-tools/tests/test-freescout-provider.php"
+run_test "$SCRIPT_DIR/sportspress-player-registration/tests/test-freescout-provider.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-matchup-generator.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-exporters.php"
 run_test "$SCRIPT_DIR/sportspress-schedule-generator/tests/test-xlsx-export-dates-and-weeks.php"
