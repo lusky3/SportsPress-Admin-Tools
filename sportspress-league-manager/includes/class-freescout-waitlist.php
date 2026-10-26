@@ -182,9 +182,8 @@ class SPLM_FreeScout_Waitlist {
 		if ( is_wp_error( $row ) ) {
 			return $row;
 		}
-		$result = null;
 		if ( ! $dry_run ) {
-			$result = SPLM_Waitlist_Offer::cancel( (int) $row->id );
+			$result = SPLM_Waitlist_Offer::cancel( (int) $row->id, SPLM_Waitlist_Database::STATUS_OFFERED );
 			if ( is_wp_error( $result ) ) {
 				return $result;
 			}
@@ -192,12 +191,9 @@ class SPLM_FreeScout_Waitlist {
 
 		return array(
 			'summary'          => sprintf( 'Withdraw the offer to %s', self::who( $row ) ),
-			'changes'          => array_merge(
-				array(
-					'The entry goes back to the queue',
-					'The claim link stops working',
-				),
-				self::status_note( $result, SPLM_Waitlist_Database::STATUS_QUEUED )
+			'changes'          => array(
+				'The entry goes back to the queue',
+				'The claim link stops working',
 			),
 			'requires_confirm' => array(),
 			'data'             => array(),
@@ -220,9 +216,8 @@ class SPLM_FreeScout_Waitlist {
 		if ( is_wp_error( $row ) ) {
 			return $row;
 		}
-		$result = null;
 		if ( ! $dry_run ) {
-			$result = SPLM_Waitlist_Offer::cancel( (int) $row->id );
+			$result = SPLM_Waitlist_Offer::cancel( (int) $row->id, SPLM_Waitlist_Database::STATUS_QUEUED );
 			if ( is_wp_error( $result ) ) {
 				return $result;
 			}
@@ -230,10 +225,7 @@ class SPLM_FreeScout_Waitlist {
 
 		return array(
 			'summary'          => sprintf( 'Remove %1$s from the %2$s waitlist', self::who( $row ), $row->season ),
-			'changes'          => array_merge(
-				array( 'Marks the entry cancelled' ),
-				self::status_note( $result, SPLM_Waitlist_Database::STATUS_CANCELLED )
-			),
+			'changes'          => array( 'Marks the entry cancelled' ),
 			'requires_confirm' => array(),
 			'data'             => array(),
 		);
@@ -250,7 +242,7 @@ class SPLM_FreeScout_Waitlist {
 	 * @return array|WP_Error
 	 */
 	private static function withdraw_then_offer( array $input ) {
-		$cancelled = SPLM_Waitlist_Offer::cancel( $input['id'] );
+		$cancelled = SPLM_Waitlist_Offer::cancel( $input['id'], SPLM_Waitlist_Database::STATUS_OFFERED );
 		if ( is_wp_error( $cancelled ) ) {
 			return $cancelled;
 		}
@@ -272,7 +264,7 @@ class SPLM_FreeScout_Waitlist {
 		$retried = false;
 		if ( 'splm_waitlist_unwind_failed' === $offered->get_error_code() && self::is_own_fresh_offer( $row, $started ) ) {
 			$retried = true;
-			SPLM_Waitlist_Offer::cancel( $input['id'] );
+			SPLM_Waitlist_Offer::cancel( $input['id'], SPLM_Waitlist_Database::STATUS_OFFERED );
 			$row = SPLM_Waitlist_Database::get( $input['id'] );
 		}
 
@@ -323,21 +315,6 @@ class SPLM_FreeScout_Waitlist {
 			return 'The entry is now offered (by another offer); withdraw it before trying again.';
 		}
 		return sprintf( 'The entry is now %s.', $row->status );
-	}
-
-	/**
-	 * A note line when cancel() landed the entry somewhere other than expected,
-	 * i.e. it changed status between the preview check and the write.
-	 *
-	 * @param array|null $cancelled The cancel() result, null for a dry run.
-	 * @param string     $expected  Status the action expects.
-	 * @return string[] Zero or one line.
-	 */
-	public static function status_note( $cancelled, string $expected ): array {
-		if ( ! is_array( $cancelled ) || ( $cancelled['status'] ?? $expected ) === $expected ) {
-			return array();
-		}
-		return array( sprintf( 'Note: the entry changed status while this ran; it is now %s.', $cancelled['status'] ) );
 	}
 
 	/**
@@ -466,7 +443,8 @@ class SPLM_FreeScout_Waitlist {
 	}
 
 	/**
-	 * The deadline text: the stored one after a real run, projected otherwise.
+	 * The deadline text in the site's time zone: the stored one after a real
+	 * run, projected otherwise.
 	 *
 	 * @param int        $hours  Claim window.
 	 * @param array|null $result offer() result, null for a dry run.
@@ -480,7 +458,7 @@ class SPLM_FreeScout_Waitlist {
 				$timestamp = $stored;
 			}
 		}
-		return gmdate( 'M j, g:i A', $timestamp ) . ' UTC';
+		return wp_date( 'M j, g:i A T', $timestamp );
 	}
 
 	/**

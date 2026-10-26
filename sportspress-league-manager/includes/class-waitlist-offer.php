@@ -524,16 +524,30 @@ class SPLM_Waitlist_Offer {
 	/**
 	 * Cancel a live offer, or remove a queued entry from the queue.
 	 *
+	 * With $expected_status, the cancel only goes ahead while the entry is
+	 * still in that status. Without it the next status is decided from the
+	 * current one, so of two concurrent withdraws the second would find the
+	 * entry already queued and remove it (cancelled is terminal). Callers that
+	 * checked a status before calling pass it; the dashboard does not.
+	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
-	 * @param int $id Row id.
+	 * @param int         $id              Row id.
+	 * @param string|null $expected_status Status the caller saw, or null for any.
 	 * @return array|WP_Error
 	 */
-	public static function cancel( $id ) {
+	public static function cancel( $id, $expected_status = null ) {
 		$id  = (int) $id;
 		$row = SPLM_Waitlist_Database::get( $id );
 		if ( ! $row ) {
 			return new WP_Error( 'splm_waitlist_not_found', __( 'Waitlist entry not found.', 'sportspress-league-manager' ), array( 'status' => 404 ) );
+		}
+		if ( null !== $expected_status && (string) $expected_status !== (string) $row->status ) {
+			return new WP_Error(
+				'splm_waitlist_bad_status',
+				__( 'This entry changed while the page was open — reload the waitlist and try again.', 'sportspress-league-manager' ),
+				array( 'status' => 409 )
+			);
 		}
 		if ( SPLM_Waitlist_Database::STATUS_CLAIMED === $row->status ) {
 			return new WP_Error(

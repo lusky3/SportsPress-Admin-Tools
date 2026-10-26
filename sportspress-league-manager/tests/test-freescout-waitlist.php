@@ -57,7 +57,15 @@ function wp_mail( $to, $subject, $body ) { // phpcs:ignore
 	return $state->mail_succeeds;
 }
 function wp_date( $format, $timestamp = null ) { // phpcs:ignore
-	return gmdate( $format, null === $timestamp ? time() : $timestamp );
+	$date = new DateTime( '@' . ( null === $timestamp ? time() : $timestamp ) );
+	$date->setTimezone( new DateTimeZone( $GLOBALS['splm_fsw_site_tz'] ?? 'UTC' ) );
+	return $date->format( $format );
+}
+/** The deadline text as a Toronto site shows it. */
+function toronto( $timestamp ) { // phpcs:ignore
+	$date = new DateTime( '@' . $timestamp );
+	$date->setTimezone( new DateTimeZone( 'America/Toronto' ) );
+	return $date->format( 'M j, g:i A T' );
 }
 function rest_url( $path = '' ) { // phpcs:ignore
 	return 'https://example.test/wp-json/' . ltrim( (string) $path, '/' );
@@ -355,14 +363,16 @@ assert_test( array( 'entries' => array() ) === $f::waitlist_section( array(), 'n
 echo "\n=== waitlist.offer ===\n\n";
 
 put( array( entry() ) );
+$GLOBALS['splm_fsw_site_tz'] = 'America/Toronto';
 $r = $f::offer_action( array( 'entry_id' => 7 ), true, $actor, $info );
 assert_test( 'Offer S2026 (Goalie) to Sam Player' === $r['summary'], 'dry run summary' );
 assert_test( 'Emails an offer to sam@example.com with a claim link' === $r['changes'][0], 'dry run says it emails the player' );
-assert_test( 0 === strpos( $r['changes'][1], 'Deadline: ' ) && ' UTC' === substr( $r['changes'][1], -4 ), 'dry run deadline line, UTC' );
+assert_test( 'Deadline: ' . toronto( time() + 48 * 3600 ) === $r['changes'][1], 'dry run deadline line is in the site time zone' );
+assert_test( ' UTC' !== substr( $r['changes'][1], -4 ), 'and is not shown in UTC on a Toronto site' );
 assert_test( array() === $r['requires_confirm'], 'no confirmations' );
 assert_test( array() === $GLOBALS['wpdb']->update_calls && array() === splm_fsw_state()->mail, 'dry run writes nothing and sends nothing' );
 
-$expected = gmdate( 'M j, g:i A', time() + 72 * 3600 ) . ' UTC';
+$expected = toronto( time() + 72 * 3600 );
 $r        = $f::offer_action(
 	array(
 		'entry_id' => 7,
@@ -373,6 +383,7 @@ $r        = $f::offer_action(
 	$info
 );
 assert_test( 'Deadline: ' . $expected === $r['changes'][1], 'deadline reflects hours' );
+$GLOBALS['splm_fsw_site_tz'] = 'UTC';
 
 put( array( entry( array( 'name' => '' ) ) ) );
 $r = $f::offer_action( array( 'entry_id' => 7 ), true, $actor, $info );
@@ -632,28 +643,59 @@ $r = $f::offer_action(
 );
 assert_test( is_wp_error( $r ) && 'bad_message' === $r->code && 400 === $r->data['status'], 'an array message is bad_message, not coerced' );
 
-echo "\n=== status-flip note ===\n\n";
+echo "\n=== concurrent cancels ===\n\n";
 
-assert_test( array() === $f::status_note( null, 'queued' ), 'no note for a dry run' );
-assert_test( array() === $f::status_note( array( 'status' => 'queued' ), 'queued' ), 'no note when the status is as expected' );
-assert_test( array( 'Note: the entry changed status while this ran; it is now cancelled.' ) === $f::status_note( array( 'status' => 'cancelled' ), 'queued' ), 'a note when it differs' );
-
-// The entry goes queued behind the preview check: withdraw's cancel then removes it.
+// A second withdraw whose check saw the offer, after the first one already
+// returned the entry to the queue: refused, the entry is not pushed on to cancelled.
 put( array( entry( $offered ) ) );
 $GLOBALS['wpdb']->after_get = function () {
-	$GLOBALS['wpdb']->rows[7]->status = 'queued';
+	$GLOBALS['wpdb']->rows[7]->status      = 'queued';
+	$GLOBALS['wpdb']->rows[7]->claim_token = null;
 };
 $r = $f::withdraw_action( array( 'entry_id' => 7 ), false, $actor, $info );
-assert_test( ! is_wp_error( $r ) && 3 === count( $r['changes'] ) && false !== strpos( $r['changes'][2], 'it is now cancelled' ), 'withdraw: a raced status adds a note to changes' );
+assert_test( is_wp_error( $r ) && 'splm_waitlist_bad_status' === $r->code && 409 === $r->data['status'], 'withdraw racing another withdraw: clean 409 conflict' );
+assert_test( 'queued' === $GLOBALS['wpdb']->rows[7]->status && array() === $GLOBALS['wpdb']->update_calls, 'withdraw race: the entry stays queued, nothing written' );
 
-// The entry is offered behind remove's check: cancel withdraws it instead.
+// The entry was offered behind remove's check: refused, the offer stays live.
 put( array( entry() ) );
 $GLOBALS['wpdb']->after_get = function () {
 	$GLOBALS['wpdb']->rows[7]->status      = 'offered';
 	$GLOBALS['wpdb']->rows[7]->claim_token = 't';
 };
 $r = $f::remove_action( array( 'entry_id' => 7 ), false, $actor, $info );
-assert_test( ! is_wp_error( $r ) && 2 === count( $r['changes'] ) && false !== strpos( $r['changes'][1], 'it is now queued' ), 'remove: a raced status adds a note to changes' );
+assert_test( is_wp_error( $r ) && 'splm_waitlist_bad_status' === $r->code && 409 === $r->data['status'], 'remove racing an offer: clean 409 conflict' );
+assert_test( 'offered' === $GLOBALS['wpdb']->rows[7]->status && 't' === $GLOBALS['wpdb']->rows[7]->claim_token && array() === $GLOBALS['wpdb']->update_calls, 'remove race: the offer is left alone' );
+
+// Two removes: the second finds the entry already cancelled and is refused.
+put( array( entry() ) );
+$GLOBALS['wpdb']->after_get = function () {
+	$GLOBALS['wpdb']->rows[7]->status = 'cancelled';
+};
+$r = $f::remove_action( array( 'entry_id' => 7 ), false, $actor, $info );
+assert_test( is_wp_error( $r ) && 409 === $r->data['status'] && array() === $GLOBALS['wpdb']->update_calls, 'remove racing another remove: 409, no second write' );
+
+// Re-offer whose check saw the offer after another withdraw queued it: refused
+// before anything is withdrawn or sent.
+put( array( entry( $offered ) ) );
+$GLOBALS['wpdb']->after_get = function () {
+	$GLOBALS['wpdb']->rows[7]->status      = 'queued';
+	$GLOBALS['wpdb']->rows[7]->claim_token = null;
+};
+$r = $f::reoffer_action( array( 'entry_id' => 7 ), false, $actor, $info );
+assert_test( is_wp_error( $r ) && 'splm_waitlist_bad_status' === $r->code && 409 === $r->data['status'], 're-offer racing a withdraw: 409' );
+assert_test( 'queued' === $GLOBALS['wpdb']->rows[7]->status && array() === $GLOBALS['wpdb']->update_calls && array() === splm_fsw_state()->mail, 're-offer race: nothing written, nothing sent' );
+
+// The service itself: the expected status is optional, and the admin path
+// (no expected status) still decides from the current status.
+put( array( entry() ) );
+$r = SPLM_Waitlist_Offer::cancel( 7, 'offered' );
+assert_test( is_wp_error( $r ) && 'splm_waitlist_bad_status' === $r->code && 409 === $r->data['status'] && 'queued' === $GLOBALS['wpdb']->rows[7]->status, 'cancel( id, expected ) refuses when the status differs' );
+put( array( entry( $offered ) ) );
+$r = SPLM_Waitlist_Offer::cancel( 7, 'offered' );
+assert_test( ! is_wp_error( $r ) && 'queued' === $r['status'], 'cancel( id, expected ) proceeds when it matches' );
+put( array( entry() ) );
+$r = SPLM_Waitlist_Offer::cancel( 7 );
+assert_test( ! is_wp_error( $r ) && 'cancelled' === $r['status'], 'cancel( id ) without an expected status keeps its old behaviour' );
 
 echo "\n=== waitlist.withdraw ===\n\n";
 
