@@ -255,18 +255,25 @@ class SPLM_FreeScout_Waitlist {
 			return $cancelled;
 		}
 
+		$started = SPLM_Waitlist_Database::now();
 		$offered = SPLM_Waitlist_Offer::offer( $input['id'], $input['hours'], $input['message'] );
 		if ( ! is_wp_error( $offered ) ) {
 			return $offered;
 		}
 
-		// Retry only when this call's own offer was left stuck. After a
-		// "locked" or "no lock" error an offered row may be someone else's
-		// legitimate offer, which must not be withdrawn.
+		// Retry the cancel only for splm_waitlist_unwind_failed, and only when
+		// the re-read row is still offered, was dispatched by the current user
+		// and has an offered_at no earlier than this call's start. That makes
+		// it very likely this call's own stuck offer, not another convener's
+		// (the unwind also fails when a second offer replaced ours). It is a
+		// best-effort heuristic: the same user re-offering in another tab
+		// within the same second would pass it too.
+		$row     = SPLM_Waitlist_Database::get( $input['id'] );
 		$retried = false;
-		if ( 'splm_waitlist_unwind_failed' === $offered->get_error_code() ) {
+		if ( 'splm_waitlist_unwind_failed' === $offered->get_error_code() && self::is_own_fresh_offer( $row, $started ) ) {
 			$retried = true;
 			SPLM_Waitlist_Offer::cancel( $input['id'] );
+			$row = SPLM_Waitlist_Database::get( $input['id'] );
 		}
 
 		return new WP_Error(
@@ -274,10 +281,25 @@ class SPLM_FreeScout_Waitlist {
 			sprintf(
 				'The old offer was withdrawn but the new offer failed: %1$s. %2$s',
 				rtrim( $offered->get_error_message(), ". \t\n" ),
-				self::state_sentence( SPLM_Waitlist_Database::get( $input['id'] ), $retried )
+				self::state_sentence( $row, $retried )
 			),
 			array( 'status' => 500 )
 		);
+	}
+
+	/**
+	 * Whether a row looks like the offer this request just made.
+	 *
+	 * @param object|null $row     The entry as re-read.
+	 * @param string      $started UTC datetime taken before offer() ran.
+	 * @return bool
+	 */
+	private static function is_own_fresh_offer( $row, string $started ): bool {
+		return $row
+			&& SPLM_Waitlist_Database::STATUS_OFFERED === $row->status
+			&& (int) $row->dispatched_by === (int) get_current_user_id()
+			&& ! empty( $row->offered_at )
+			&& strtotime( $row->offered_at . ' UTC' ) >= strtotime( $started . ' UTC' );
 	}
 
 	/**
@@ -296,6 +318,9 @@ class SPLM_FreeScout_Waitlist {
 		}
 		if ( $retried && SPLM_Waitlist_Database::STATUS_OFFERED === $row->status ) {
 			return 'The entry is still marked offered; withdraw it before trying again.';
+		}
+		if ( SPLM_Waitlist_Database::STATUS_OFFERED === $row->status ) {
+			return 'The entry is now offered (by another offer); withdraw it before trying again.';
 		}
 		return sprintf( 'The entry is now %s.', $row->status );
 	}

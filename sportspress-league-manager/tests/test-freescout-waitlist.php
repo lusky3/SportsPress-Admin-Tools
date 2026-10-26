@@ -134,6 +134,8 @@ class Fake_WPDB {
 	public $update_calls = array();
 	/** 1-based update() call numbers that match no row (a failed write). */
 	public $fail_calls = array();
+	/** @var callable|null Runs when a write in fail_calls fails. */
+	public $fail_hook = null;
 	/** @var callable|null Fires once, after the next get_row() returns its snapshot. */
 	public $after_get = null;
 	private $last_args = array();
@@ -180,6 +182,9 @@ class Fake_WPDB {
 	public function update( $table, $data, $where ) { // phpcs:ignore
 		$this->update_calls[] = array( $data, $where );
 		if ( in_array( count( $this->update_calls ), $this->fail_calls, true ) ) {
+			if ( is_callable( $this->fail_hook ) ) {
+				call_user_func( $this->fail_hook );
+			}
 			return false;
 		}
 		$row = $this->rows[ $where['id'] ] ?? null;
@@ -249,6 +254,7 @@ function put( $rows ) {
 	$wpdb->update_calls = array();
 	$wpdb->fail_calls   = array();
 	$wpdb->after_get    = null;
+	$wpdb->fail_hook    = null;
 
 	splm_fsw_state()->lock_hook = null;
 	foreach ( $rows as $row ) {
@@ -565,7 +571,37 @@ $r = $f::reoffer_action( array( 'entry_id' => 7 ), false, $actor, $info );
 assert_test( is_wp_error( $r ) && 'reoffer_partial' === $r->code, 'locked: reoffer_partial' );
 assert_test( 1 === count( $GLOBALS['wpdb']->update_calls ), 'locked: no retry cancel (only the initial withdraw wrote)' );
 assert_test( 'offered' === $GLOBALS['wpdb']->rows[7]->status && 'theirs' === $GLOBALS['wpdb']->rows[7]->claim_token, 'locked: the other offer is untouched' );
-assert_test( false !== strpos( $r->message, 'The entry is now offered.' ) && false === strpos( $r->message, 'back in the queue' ), 'locked: honest state sentence' );
+assert_test( false !== strpos( $r->message, 'The entry is now offered' ) && false === strpos( $r->message, 'back in the queue' ), 'locked: honest state sentence' );
+assert_test( false !== strpos( $r->message, '(by another offer); withdraw it before trying again.' ), 'locked: says the offer is another one' );
+
+// Unwind failed because another convener's offer now holds the row: no retry.
+put( array( entry( $offered ) ) );
+splm_fsw_state()->mail_succeeds = false;
+$GLOBALS['wpdb']->fail_calls    = array( 3 );
+$GLOBALS['wpdb']->fail_hook     = function () {
+	$GLOBALS['wpdb']->rows[7]->dispatched_by = 99;
+	$GLOBALS['wpdb']->rows[7]->claim_token   = 'theirs';
+};
+$r = $f::reoffer_action( array( 'entry_id' => 7 ), false, $actor, $info );
+assert_test( is_wp_error( $r ) && 'reoffer_partial' === $r->code && 3 === count( $GLOBALS['wpdb']->update_calls ), 'unwind_failed, other user\'s offer: no retry cancel' );
+assert_test( 'offered' === $GLOBALS['wpdb']->rows[7]->status && 'theirs' === $GLOBALS['wpdb']->rows[7]->claim_token && 99 === $GLOBALS['wpdb']->rows[7]->dispatched_by, 'unwind_failed, other user\'s offer: left untouched' );
+assert_test( false !== strpos( $r->message, '(by another offer)' ), 'unwind_failed, other user\'s offer: honest message' );
+
+// Same user, but the offered row predates this call: not ours either.
+put( array( entry( $offered ) ) );
+splm_fsw_state()->mail_succeeds = false;
+$GLOBALS['wpdb']->fail_calls    = array( 3 );
+$GLOBALS['wpdb']->fail_hook     = function () {
+	$GLOBALS['wpdb']->rows[7]->offered_at = '2020-01-01 00:00:00';
+};
+$r = $f::reoffer_action( array( 'entry_id' => 7 ), false, $actor, $info );
+assert_test( is_wp_error( $r ) && 3 === count( $GLOBALS['wpdb']->update_calls ) && 'offered' === $GLOBALS['wpdb']->rows[7]->status, 'unwind_failed, stale offered_at: no retry cancel' );
+
+// A plain mail failure (unwound cleanly) never retries.
+put( array( entry( $offered ) ) );
+splm_fsw_state()->mail_succeeds = false;
+$r                              = $f::reoffer_action( array( 'entry_id' => 7 ), false, $actor, $info );
+assert_test( is_wp_error( $r ) && 3 === count( $GLOBALS['wpdb']->update_calls ), 'mail_failed: cancel, offer, unwind only; no retry' );
 
 // The entry is deleted, or claimed, behind the failed offer.
 put( array( entry( $offered ) ) );
