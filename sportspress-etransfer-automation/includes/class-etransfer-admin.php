@@ -507,7 +507,12 @@ class SPET_ETransfer_Admin {
 	private static function mismatch_error( array $summary, array $checked ) {
 		return new WP_Error(
 			'amount_mismatch',
-			sprintf( 'Amounts differ: e-Transfer $%s, order $%s', $summary['log_amount'], $summary['order_total'] ),
+			sprintf(
+				/* translators: 1: e-Transfer amount, 2: order total (both formatted, e.g. 325.00) */
+				__( 'Amounts differ: e-Transfer $%1$s, order $%2$s', 'sportspress-etransfer-automation' ),
+				$summary['log_amount'],
+				$summary['order_total']
+			),
 			array(
 				'status'      => 409,
 				'log_amount'  => $checked['log_amount'],

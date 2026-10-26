@@ -38,7 +38,11 @@ function add_filter( $tag, $cb ) {
 	$GLOBALS['filters'][ $tag ][] = $cb;
 }
 function __( $text, $domain = 'default' ) {
+	$GLOBALS['translated'][] = array( $text, $domain );
 	return $text;
+}
+function was_translated( $text ) {
+	return in_array( array( $text, 'sportspress-etransfer-automation' ), $GLOBALS['translated'] ?? array(), true );
 }
 function esc_html__( $text, $domain = 'default' ) {
 	return $text;
@@ -963,8 +967,10 @@ $wpdb->lose_claim = true;
 $r                = SPET_ETransfer_Admin::manual_match( 60, 5107 );
 check( 'a lost race gives 409 claim_lost "matched by someone else"', 'claim_lost' === code_of( $r ) && 'That e-Transfer was matched by someone else.' === $r->get_error_message() );
 check( 'and touches nothing else, nor fires the hook', 1 === $wpdb->writes && array() === $order->calls && array() === actions_named( 'spat_payment_matched' ) );
-$order = setup_match( '300.00' );
-$r     = SPET_ETransfer_Admin::manual_match( 60, 5107 );
+$order                 = setup_match( '300.00' );
+$GLOBALS['translated'] = array();
+$r                     = SPET_ETransfer_Admin::manual_match( 60, 5107 );
+check( 'the amount_mismatch message is translatable', was_translated( 'Amounts differ: e-Transfer $%1$s, order $%2$s' ) );
 check( 'amount_mismatch message and data', 'Amounts differ: e-Transfer $300.00, order $325.00' === $r->get_error_message() && array( 'status' => 409, 'log_amount' => 300.0, 'order_total' => 325.0 ) === $r->get_error_data() );
 $r = SPET_ETransfer_Admin::manual_match( 60, 5107, true, true );
 check( 'a forced dry run still writes nothing', ! is_wp_error( $r ) && 0 === $wpdb->writes && ! isset( $r['matched'] ) );
