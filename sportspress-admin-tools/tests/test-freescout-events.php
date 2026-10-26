@@ -16,6 +16,7 @@ $GLOBALS['t_actions']   = array();
 $GLOBALS['t_scheduled'] = array();
 $GLOBALS['t_recurring'] = array();
 $GLOBALS['t_cleared']   = array();
+$GLOBALS['t_unscheduled'] = array();
 $GLOBALS['t_spawned']   = 0;
 $GLOBALS['t_posts']     = array();
 $GLOBALS['t_response']  = array( 'response' => array( 'code' => 200 ) );
@@ -78,9 +79,23 @@ function wp_next_scheduled( $hook, $args = array() ) {
 	}
 	return false;
 }
+function wp_get_schedule( $hook, $args = array() ) {
+	return $GLOBALS['t_recurring'][ $hook ] ?? false;
+}
 function wp_clear_scheduled_hook( $hook ) {
 	$GLOBALS['t_cleared'][] = $hook;
 	unset( $GLOBALS['t_recurring'][ $hook ] );
+}
+function wp_unschedule_hook( $hook ) {
+	$GLOBALS['t_unscheduled'][] = $hook;
+	$GLOBALS['t_scheduled']     = array_values(
+		array_filter(
+			$GLOBALS['t_scheduled'],
+			function ( $e ) use ( $hook ) {
+				return $e[1] !== $hook;
+			}
+		)
+	);
 }
 function spawn_cron() {
 	++$GLOBALS['t_spawned'];
@@ -250,13 +265,21 @@ class Mock_WPDB {
 			}
 			return 0;
 		}
-		if ( preg_match( "/^UPDATE .* SET status = 'pending' WHERE status = 'sending' AND updated_at < '([^']*)'/", $query, $m ) ) {
+		// Stale 'sending' rows: give up on those out of attempts, hand back the rest.
+		if ( preg_match( "/^UPDATE .* SET status = '(failed|pending)', attempts = attempts \\+ 1, last_error = '([^']*)', updated_at = '([^']*)' WHERE status = 'sending' AND updated_at < '([^']*)'(?: AND attempts \\+ 1 >= (\\d+))?/", $query, $m ) ) {
 			$n = 0;
 			foreach ( $this->rows as $id => $r ) {
-				if ( 'sending' === $r['status'] && $r['updated_at'] < $m[1] ) {
-					$this->rows[ $id ]['status'] = 'pending';
-					++$n;
+				if ( 'sending' !== $r['status'] || $r['updated_at'] >= $m[4] ) {
+					continue;
 				}
+				if ( isset( $m[5] ) && $r['attempts'] + 1 < (int) $m[5] ) {
+					continue;
+				}
+				$this->rows[ $id ]['status']     = $m[1];
+				$this->rows[ $id ]['attempts']   = $r['attempts'] + 1;
+				$this->rows[ $id ]['last_error'] = $m[2];
+				$this->rows[ $id ]['updated_at'] = $m[3];
+				++$n;
 			}
 			return $n;
 		}
@@ -318,6 +341,7 @@ function reset_state() {
 	$GLOBALS['t_scheduled'] = array();
 	$GLOBALS['t_recurring'] = array();
 	$GLOBALS['t_cleared']   = array();
+	$GLOBALS['t_unscheduled'] = array();
 	$GLOBALS['t_spawned']   = 0;
 	$GLOBALS['t_posts']     = array();
 	$GLOBALS['t_response']  = array( 'response' => array( 'code' => 200 ) );
@@ -508,11 +532,12 @@ foreach ( array(
 ) as $label => $cfg ) {
 	reset_state();
 	configure( ...$cfg );
-	$GLOBALS['t_recurring']['spat_freescout_events_sweep'] = 'daily';
+	$GLOBALS['t_recurring']['spat_freescout_events_sweep']  = 'daily';
+	$GLOBALS['t_recurring']['spat_freescout_events_rescue'] = 'hourly';
 	new_events()->register();
 	$hooks = array_keys( $GLOBALS['t_actions'] );
-	assert_test( array( 'spat_freescout_send', 'spat_freescout_events_sweep' ) === $hooks, "$label: no listeners registered (cron callbacks only)" );
-	assert_test( array( 'spat_freescout_events_sweep' ) === $GLOBALS['t_cleared'], "$label: the daily sweep is unscheduled" );
+	assert_test( array( 'spat_freescout_send', 'spat_freescout_events_sweep', 'spat_freescout_events_rescue' ) === $hooks, "$label: no listeners registered (cron callbacks only)" );
+	assert_test( array( 'spat_freescout_events_sweep', 'spat_freescout_events_rescue' ) === $GLOBALS['t_cleared'], "$label: the daily sweep and hourly rescue are unscheduled" );
 }
 reset_state();
 new_events()->register();
@@ -521,7 +546,39 @@ foreach ( array( 'spat_payment_unmatched', 'spat_payment_matched', 'spr_registra
 	assert_test( in_array( $h, $hooks, true ), "configured: $h is listened to" );
 }
 assert_test( 4 === $GLOBALS['t_actions']['spat_payment_unmatched'][2], 'unmatched listener accepts the 4-arg form' );
-assert_test( 'daily' === ( $GLOBALS['t_recurring']['spat_freescout_events_sweep'] ?? '' ), 'configured: the sweep is scheduled daily' );
+assert_test( 'daily' === ( $GLOBALS['t_recurring']['spat_freescout_events_sweep'] ?? '' ), 'configured: the purge sweep is scheduled daily' );
+assert_test( 'hourly' === ( $GLOBALS['t_recurring']['spat_freescout_events_rescue'] ?? '' ), 'configured: the rescue is scheduled hourly' );
+assert_test( array() === $GLOBALS['t_cleared'], 'configured, fresh install: nothing is cleared' );
+
+echo "\n=== Cron schedule migration ===\n";
+// An install from before the rescue hook: only the daily sweep is scheduled.
+reset_state();
+$GLOBALS['t_recurring']['spat_freescout_events_sweep'] = 'daily';
+new_events()->register();
+assert_test( 'hourly' === ( $GLOBALS['t_recurring']['spat_freescout_events_rescue'] ?? '' ), 'daily-only install: the hourly rescue is added' );
+assert_test( 'daily' === $GLOBALS['t_recurring']['spat_freescout_events_sweep'] && ! in_array( 'spat_freescout_events_sweep', $GLOBALS['t_cleared'], true ), 'daily-only install: the daily sweep is kept' );
+// A rescue event on the wrong recurrence is replaced.
+reset_state();
+$GLOBALS['t_recurring']['spat_freescout_events_sweep']  = 'daily';
+$GLOBALS['t_recurring']['spat_freescout_events_rescue'] = 'daily';
+new_events()->register();
+assert_test( in_array( 'spat_freescout_events_rescue', $GLOBALS['t_cleared'], true ) && 'hourly' === $GLOBALS['t_recurring']['spat_freescout_events_rescue'], 'a rescue on the wrong recurrence is cleared and rescheduled hourly' );
+// Already right: left alone, so register() does not rewrite cron every request.
+reset_state();
+$GLOBALS['t_recurring']['spat_freescout_events_sweep']  = 'daily';
+$GLOBALS['t_recurring']['spat_freescout_events_rescue'] = 'hourly';
+new_events()->register();
+assert_test( array() === $GLOBALS['t_cleared'] && 'hourly' === $GLOBALS['t_recurring']['spat_freescout_events_rescue'], 'an hourly rescue already in place is left alone' );
+
+echo "\n=== unschedule_all (deactivation, uninstall) ===\n";
+reset_state();
+$GLOBALS['t_recurring']['spat_freescout_events_sweep']  = 'daily';
+$GLOBALS['t_recurring']['spat_freescout_events_rescue'] = 'hourly';
+wp_schedule_single_event( time(), 'spat_freescout_send', array( 'a' ) );
+wp_schedule_single_event( time() + 60, 'spat_freescout_send', array( 'b' ) );
+SPAT_FreeScout_Events::unschedule_all();
+assert_test( in_array( 'spat_freescout_events_sweep', $GLOBALS['t_cleared'], true ) && in_array( 'spat_freescout_events_rescue', $GLOBALS['t_cleared'], true ), 'clears the sweep and the rescue' );
+assert_test( array( 'spat_freescout_send' ) === $GLOBALS['t_unscheduled'] && array() === $GLOBALS['t_scheduled'], 'unschedules every queued send, whatever its args' );
 
 echo "\n=== Listener mapping ===\n";
 function fire( ...$args ) {
@@ -586,35 +643,61 @@ try {
 assert_test( ! $threw, 'listener failure is contained' );
 
 // ===========================================================================
-echo "\n=== Sweep ===\n";
+echo "\n=== Rescue (hourly) ===\n";
 reset_state();
 $ev  = new_events();
 $now = time();
-$mk  = function ( $id, $status, $next, $updated ) use ( $wpdb ) {
+$mk  = function ( $id, $status, $next, $updated, $attempts = 0 ) use ( $wpdb ) {
 	$wpdb->rows[ $id ] = array(
-		'event_id' => $id, 'type' => 't', 'email' => '', 'payload' => '{}', 'status' => $status, 'attempts' => 0,
+		'event_id' => $id, 'type' => 't', 'email' => '', 'payload' => '{}', 'status' => $status, 'attempts' => $attempts,
 		'next_attempt_at' => gmdate( 'Y-m-d H:i:s', $next ), 'last_error' => '', 'created_at' => gmdate( 'Y-m-d H:i:s', $updated ), 'updated_at' => gmdate( 'Y-m-d H:i:s', $updated ),
 	);
 };
 $mk( 'overdue', 'pending', $now - 600, $now - 600 );
 $mk( 'future', 'pending', $now + 3600, $now - 60 );
 $mk( 'already-queued', 'pending', $now - 600, $now - 600 );
-$mk( 'stale-sending', 'sending', $now - 4000, $now - 4000 );
+$mk( 'stale-sending', 'sending', $now - 4000, $now - 4000, 2 );
 $mk( 'fresh-sending', 'sending', $now - 30, $now - 30 );
+$mk( 'stale-last-try', 'sending', $now - 4000, $now - 4000, 5 );
+$mk( 'sent-old', 'sent', $now, $now - 31 * DAY_IN_SECONDS );
+$GLOBALS['t_scheduled'] = array();
+wp_schedule_single_event( $now + 5, 'spat_freescout_send', array( 'already-queued' ) );
+$ev->rescue();
+$scheduled_ids = array_map( function ( $e ) { return $e[2][0]; }, $GLOBALS['t_scheduled'] );
+assert_test( in_array( 'overdue', $scheduled_ids, true ), 'an orphaned pending row whose send event is missing is rescheduled' );
+assert_test( ! in_array( 'future', $scheduled_ids, true ), 'a not-yet-due pending row is not' );
+assert_test( 1 === count( array_keys( $scheduled_ids, 'already-queued', true ) ), 'a row that already has a send event is not scheduled twice' );
+assert_test( 'pending' === $wpdb->rows['stale-sending']['status'] && in_array( 'stale-sending', $scheduled_ids, true ), 'a long-stuck sending row is handed back and rescheduled' );
+assert_test( 3 === $wpdb->rows['stale-sending']['attempts'] && '' !== $wpdb->rows['stale-sending']['last_error'], 'handing back a stuck row counts an attempt and says why' );
+assert_test( 'sending' === $wpdb->rows['fresh-sending']['status'] && 0 === $wpdb->rows['fresh-sending']['attempts'], 'a recently claimed sending row is left alone' );
+assert_test( 'failed' === $wpdb->rows['stale-last-try']['status'] && 6 === $wpdb->rows['stale-last-try']['attempts'], 'a stuck row on its last attempt is marked failed' );
+assert_test( ! in_array( 'stale-last-try', $scheduled_ids, true ), 'and is not rescheduled' );
+assert_test( 1 === count( $GLOBALS['t_logged'] ), 'the give-up is logged' );
+assert_test( isset( $wpdb->rows['sent-old'] ), 'the rescue does not purge (that is the daily sweep)' );
+
+// A payload that kills its worker every time cannot loop forever.
+reset_state();
+$ev = new_events();
+$mk( 'crasher', 'pending', $now - 60, $now - 60 );
+$cycles = 0;
+while ( 'failed' !== $wpdb->rows['crasher']['status'] && $cycles < 20 ) {
+	// The worker claims the row and dies before writing anything back.
+	$wpdb->rows['crasher']['status']     = 'sending';
+	$wpdb->rows['crasher']['updated_at'] = gmdate( 'Y-m-d H:i:s', $now - 4000 );
+	$ev->rescue();
+	++$cycles;
+}
+assert_test( 'failed' === $wpdb->rows['crasher']['status'] && 6 === $wpdb->rows['crasher']['attempts'] && 6 === $cycles, 'a row that crashes every worker gives up after MAX_ATTEMPTS' );
+
+echo "\n=== Sweep (daily purge) ===\n";
+reset_state();
+$ev = new_events();
 $mk( 'sent-old', 'sent', $now, $now - 31 * DAY_IN_SECONDS );
 $mk( 'sent-new', 'sent', $now, $now - 29 * DAY_IN_SECONDS );
 $mk( 'failed-old', 'failed', $now, $now - 91 * DAY_IN_SECONDS );
 $mk( 'failed-new', 'failed', $now, $now - 89 * DAY_IN_SECONDS );
 $mk( 'pending-ancient', 'pending', $now + 3600, $now - 200 * DAY_IN_SECONDS );
-$GLOBALS['t_scheduled'] = array();
-wp_schedule_single_event( $now + 5, 'spat_freescout_send', array( 'already-queued' ) );
 $ev->sweep();
-$scheduled_ids = array_map( function ( $e ) { return $e[2][0]; }, $GLOBALS['t_scheduled'] );
-assert_test( in_array( 'overdue', $scheduled_ids, true ), 'an overdue pending row is rescheduled' );
-assert_test( ! in_array( 'future', $scheduled_ids, true ), 'a not-yet-due pending row is not' );
-assert_test( 1 === count( array_keys( $scheduled_ids, 'already-queued', true ) ), 'a row that already has a send event is not scheduled twice' );
-assert_test( 'pending' === $wpdb->rows['stale-sending']['status'] && in_array( 'stale-sending', $scheduled_ids, true ), 'a long-stuck sending row is handed back and rescheduled' );
-assert_test( 'sending' === $wpdb->rows['fresh-sending']['status'], 'a recently claimed sending row is left alone' );
 assert_test( ! isset( $wpdb->rows['sent-old'] ) && isset( $wpdb->rows['sent-new'] ), 'sent rows older than 30 days are purged' );
 assert_test( ! isset( $wpdb->rows['failed-old'] ) && isset( $wpdb->rows['failed-new'] ), 'failed rows older than 90 days are purged' );
 assert_test( isset( $wpdb->rows['pending-ancient'] ), 'pending rows are never purged' );

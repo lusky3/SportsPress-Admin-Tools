@@ -91,6 +91,7 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 			spl_autoload_register( array( __CLASS__, 'autoload' ) );
 			add_action( 'plugins_loaded', array( $this, 'init' ) );
 			register_activation_hook( __FILE__, array( $this, 'activate' ) );
+			register_deactivation_hook( __FILE__, array( $this, 'deactivate' ) );
 		}
 
 		public static function autoload( $class ): void {
@@ -249,6 +250,15 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 
 			// Note: child plugins should not depend on a parent-fired activation signal;
 			// they perform their own setup on their own activation hook.
+		}
+
+		/**
+		 * Stop the FreeScout cron events. Queued outbox rows are kept; the
+		 * rescue is scheduled again on the next load after reactivation.
+		 */
+		public function deactivate(): void {
+			require_once SPAT_PLUGIN_PATH . 'includes/class-freescout-events.php';
+			SPAT_FreeScout_Events::unschedule_all();
 		}
 	}
 

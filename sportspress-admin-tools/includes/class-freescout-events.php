@@ -17,8 +17,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPAT_FreeScout_Events {
 
-	const SEND_HOOK  = 'spat_freescout_send';
-	const SWEEP_HOOK = 'spat_freescout_events_sweep';
+	const SEND_HOOK   = 'spat_freescout_send';
+	const SWEEP_HOOK  = 'spat_freescout_events_sweep';
+	const RESCUE_HOOK = 'spat_freescout_events_rescue';
 
 	/** Option holding '1' once the outbox table is known to exist (cheap lazy check). */
 	const TABLE_READY_OPTION = 'spat_freescout_outbox_ready';
@@ -61,10 +62,13 @@ class SPAT_FreeScout_Events {
 	public function register(): void {
 		add_action( self::SEND_HOOK, array( $this, 'send' ), 10, 1 );
 		add_action( self::SWEEP_HOOK, array( $this, 'sweep' ) );
+		add_action( self::RESCUE_HOOK, array( $this, 'rescue' ) );
 
 		if ( ! self::is_active() ) {
-			if ( wp_next_scheduled( self::SWEEP_HOOK ) ) {
-				wp_clear_scheduled_hook( self::SWEEP_HOOK );
+			foreach ( array( self::SWEEP_HOOK, self::RESCUE_HOOK ) as $hook ) {
+				if ( wp_next_scheduled( $hook ) ) {
+					wp_clear_scheduled_hook( $hook );
+				}
 			}
 			return;
 		}
@@ -72,12 +76,31 @@ class SPAT_FreeScout_Events {
 		if ( ! wp_next_scheduled( self::SWEEP_HOOK ) ) {
 			wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', self::SWEEP_HOOK );
 		}
+		// Installs from before the rescue hook have none; one left on another
+		// recurrence is replaced so lost sends wait an hour at most.
+		if ( 'hourly' !== wp_get_schedule( self::RESCUE_HOOK ) ) {
+			if ( wp_next_scheduled( self::RESCUE_HOOK ) ) {
+				wp_clear_scheduled_hook( self::RESCUE_HOOK );
+			}
+			wp_schedule_event( time(), 'hourly', self::RESCUE_HOOK );
+		}
 
 		add_action( 'spat_payment_unmatched', array( $this, 'on_payment_unmatched' ), 10, 4 );
 		add_action( 'spat_payment_matched', array( $this, 'on_payment_matched' ), 10, 4 );
 		add_action( 'spr_registration_outcome', array( $this, 'on_registration_outcome' ), 10, 3 );
 		add_action( 'spr_registration_reversed', array( $this, 'on_registration_reversed' ), 10, 1 );
 		add_action( 'splm_waitlist_transition', array( $this, 'on_waitlist_transition' ), 10, 3 );
+	}
+
+	/**
+	 * Remove every FreeScout cron event: the sweep, the rescue and any queued
+	 * sends. For deactivation and uninstall; queued rows stay in the outbox and
+	 * register() schedules the rescue again on the next load, which picks them up.
+	 */
+	public static function unschedule_all(): void {
+		wp_clear_scheduled_hook( self::SWEEP_HOOK );
+		wp_clear_scheduled_hook( self::RESCUE_HOOK );
+		wp_unschedule_hook( self::SEND_HOOK );
 	}
 
 	/**
@@ -307,6 +330,11 @@ class SPAT_FreeScout_Events {
 	/**
 	 * Cron callback: deliver one event.
 	 *
+	 * Ignores the "Send Events" switch on purpose: unticking it stops new
+	 * events from being queued (no listeners) and stops the rescue, but a row
+	 * already queued, or a retry already scheduled, is still sent while the URL
+	 * and secret are set. Clear the URL to stop sending altogether.
+	 *
 	 * @param string $event_id Event id.
 	 */
 	public function send( $event_id ): void {
@@ -316,7 +344,7 @@ class SPAT_FreeScout_Events {
 		$url      = self::url();
 		$secret   = self::secret();
 		if ( '' === $event_id || '' === $url || '' === $secret || ! self::ensure_table() ) {
-			return; // Left pending; the sweep picks it up once configured.
+			return; // Left pending; the hourly rescue picks it up once configured.
 		}
 
 		$table = self::table();
@@ -458,13 +486,18 @@ class SPAT_FreeScout_Events {
 	}
 
 	// -----------------------------------------------------------------------
-	// Sweep
+	// Rescue (hourly) and sweep (daily)
 	// -----------------------------------------------------------------------
 
 	/**
-	 * Daily: rescue rows cron lost, then purge old ones.
+	 * Hourly: hand back rows a crashed worker left claimed, and reschedule due
+	 * rows whose send event cron lost (a dropped cron option write, a request
+	 * that exited mid-pass).
+	 *
+	 * A stale claim counts as an attempt, so a payload that kills its worker
+	 * every time still gives up after MAX_ATTEMPTS instead of looping.
 	 */
-	public function sweep(): void {
+	public function rescue(): void {
 		global $wpdb;
 
 		if ( ! self::ensure_table() ) {
@@ -472,14 +505,33 @@ class SPAT_FreeScout_Events {
 		}
 		$table = self::table();
 		$now   = time();
+		$stale = gmdate( 'Y-m-d H:i:s', $now - self::STALE_SENDING_SECONDS );
+		$error = 'Worker stopped mid-send';
 
-		// A worker that died mid-send leaves its row claimed; hand it back.
+		// Out of attempts first, so the hand-back below cannot match them.
+		$given_up = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE `{$table}` SET status = %s, attempts = attempts + 1, last_error = %s, updated_at = %s WHERE status = %s AND updated_at < %s AND attempts + 1 >= %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- internal table name.
+				self::STATUS_FAILED,
+				$error,
+				gmdate( 'Y-m-d H:i:s', $now ),
+				self::STATUS_SENDING,
+				$stale,
+				self::MAX_ATTEMPTS
+			)
+		);
+		if ( $given_up ) {
+			self::log_error( sprintf( '%d FreeScout event(s) failed permanently: %s on the last attempt.', (int) $given_up, $error ) );
+		}
+
 		$wpdb->query(
 			$wpdb->prepare(
-				"UPDATE `{$table}` SET status = %s WHERE status = %s AND updated_at < %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- internal table name.
+				"UPDATE `{$table}` SET status = %s, attempts = attempts + 1, last_error = %s, updated_at = %s WHERE status = %s AND updated_at < %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- internal table name.
 				self::STATUS_PENDING,
+				$error,
+				gmdate( 'Y-m-d H:i:s', $now ),
 				self::STATUS_SENDING,
-				gmdate( 'Y-m-d H:i:s', $now - self::STALE_SENDING_SECONDS )
+				$stale
 			)
 		);
 
@@ -495,6 +547,19 @@ class SPAT_FreeScout_Events {
 				wp_schedule_single_event( $now, self::SEND_HOOK, array( (string) $event_id ) );
 			}
 		}
+	}
+
+	/**
+	 * Daily: purge old sent and failed rows.
+	 */
+	public function sweep(): void {
+		global $wpdb;
+
+		if ( ! self::ensure_table() ) {
+			return;
+		}
+		$table = self::table();
+		$now   = time();
 
 		$wpdb->query(
 			$wpdb->prepare(
