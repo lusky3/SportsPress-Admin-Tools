@@ -67,7 +67,7 @@ class SPPR_FreeScout_Provider {
 		foreach ( self::query_logs( $order_ids, $player_ids, self::MAX_ENTRIES ) as $row ) {
 			$entries[] = array(
 				'order_id' => (int) $row->order_id,
-				'at'       => self::iso_utc( (string) $row->timestamp ),
+				'at'       => self::iso_utc( $row ),
 				'action'   => (string) $row->action,
 				'season'   => (string) $row->season,
 				'position' => (string) $row->position,
@@ -161,7 +161,7 @@ class SPPR_FreeScout_Provider {
 		}
 
 		$table = $wpdb->prefix . 'spat_registration_logs';
-		$sql   = "SELECT order_id, timestamp, action, season, position FROM `{$table}` WHERE " . implode( ' OR ', $clauses ) . ' ORDER BY timestamp DESC, id DESC';
+		$sql   = "SELECT order_id, timestamp, UNIX_TIMESTAMP(timestamp) AS timestamp_unix, action, season, position FROM `{$table}` WHERE " . implode( ' OR ', $clauses ) . ' ORDER BY timestamp DESC, id DESC';
 		if ( $limit > 0 ) {
 			$sql   .= ' LIMIT %d';
 			$args[] = $limit;
@@ -173,12 +173,24 @@ class SPPR_FreeScout_Provider {
 	}
 
 	/**
-	 * The log's `timestamp` column defaults to CURRENT_TIMESTAMP, i.e. the
-	 * database server clock, which the registration admin screens display
-	 * as-is. It is treated as UTC here.
+	 * A log row's time as ISO-8601 UTC.
+	 *
+	 * The `timestamp` column is a DATETIME defaulting to CURRENT_TIMESTAMP, so
+	 * it holds wall-clock time in the MySQL session time zone, not UTC.
+	 * query_logs() selects UNIX_TIMESTAMP(timestamp), which MySQL converts from
+	 * that zone (DST included) to epoch seconds. The bare string read as UTC is
+	 * only a fallback for a row without it.
+	 *
+	 * @param object $row Log row from query_logs().
+	 * @return string
 	 */
-	private static function iso_utc( string $mysql_datetime ): string {
-		$ts = strtotime( $mysql_datetime . ' UTC' );
+	private static function iso_utc( $row ): string {
+		$unix = isset( $row->timestamp_unix ) ? (int) $row->timestamp_unix : 0;
+		if ( $unix > 0 ) {
+			return gmdate( 'Y-m-d\TH:i:s\Z', $unix );
+		}
+		$mysql_datetime = (string) ( $row->timestamp ?? '' );
+		$ts             = '' === $mysql_datetime ? false : strtotime( $mysql_datetime . ' UTC' );
 		return false === $ts ? '' : gmdate( 'Y-m-d\TH:i:s\Z', $ts );
 	}
 }

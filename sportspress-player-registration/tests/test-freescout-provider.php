@@ -130,6 +130,10 @@ class T_Wpdb {
 		$rows = array();
 		foreach ( $GLOBALS['t_logs'] as $r ) {
 			if ( in_array( (int) $r['order_id'], $orders, true ) || in_array( (int) $r['player_id'], $players, true ) ) {
+				// UNIX_TIMESTAMP() reads a DATETIME in the session time zone.
+				if ( false !== strpos( $sql, 'UNIX_TIMESTAMP(timestamp) AS timestamp_unix' ) ) {
+					$r['timestamp_unix'] = ( new DateTime( $r['timestamp'], new DateTimeZone( $GLOBALS['t_db_tz'] ) ) )->getTimestamp();
+				}
 				$rows[] = (object) $r;
 			}
 		}
@@ -145,7 +149,8 @@ class T_Wpdb {
 		return $rows;
 	}
 }
-$GLOBALS['wpdb'] = new T_Wpdb();
+$GLOBALS['wpdb']     = new T_Wpdb();
+$GLOBALS['t_db_tz'] = 'UTC'; // MySQL session time zone the mock reads DATETIMEs in.
 
 require_once dirname( __DIR__ ) . '/includes/class-player-registration.php';
 require_once dirname( __DIR__ ) . '/includes/class-registration-outcome.php';
@@ -325,6 +330,21 @@ assert_test( ! isset( $att5[7102] ), 'marker 1 and no log rows (purged): trusted
 assert_test( ! isset( $att5[7103] ), 'non-registration order never in attention' );
 assert_test( ! isset( $att5[7104] ), 'processing order never in attention' );
 assert_test( count( $failure_outcomes ) === count( $sec5['attention'] ), 'only the failed orders are in attention' );
+
+// The log timestamp is CURRENT_TIMESTAMP in the MySQL session time zone, not UTC.
+$GLOBALS['t_orders'] = array();
+$GLOBALS['t_logs']   = array();
+$GLOBALS['t_db_tz']  = 'America/Toronto';
+add_log( 300, '2026-09-03 10:02:00', 8000, 900, 'player_created' ); // EDT, UTC-4.
+add_log( 301, '2026-01-15 10:02:00', 8001, 900, 'player_created' ); // EST, UTC-5.
+$sec6 = SPPR_FreeScout_Provider::registration_section( array( 900 ), 'x@example.com' );
+$at6  = array();
+foreach ( $sec6['entries'] as $e ) {
+	$at6[ $e['order_id'] ] = $e['at'];
+}
+assert_test( '2026-09-03T14:02:00Z' === ( $at6[8000] ?? '' ), 'at converted from a non-UTC DB time zone (summer)' );
+assert_test( '2026-01-15T15:02:00Z' === ( $at6[8001] ?? '' ), 'at converted from a non-UTC DB time zone (winter)' );
+$GLOBALS['t_db_tz'] = 'UTC';
 
 echo "\n=== SPPR_Registration_Outcome::is_success ===\n";
 foreach ( $failure_outcomes as $outcome ) {
