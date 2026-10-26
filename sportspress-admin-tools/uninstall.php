@@ -55,7 +55,8 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 		'spat_notify_payment_unmatched',
 		'spat_notify_player_registered',
 		'spat_notify_schedule_generated',
-		// FreeScout events.
+		// FreeScout bridge: the shared HMAC secret, and events.
+		'spat_freescout_secret',
 		'spat_freescout_events_url',
 		'spat_freescout_events_enabled',
 		'spat_freescout_outbox_ready',
@@ -89,6 +90,19 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 			'_transient_timeout_' . $wpdb->esc_like( 'spat_log_' ) . '%'
 		)
 	);
+
+	// FreeScout transients, keyed by hash: stored action responses for
+	// idempotency (spat_fs_idem_*, SPAT_FreeScout_Actions::IDEMPOTENCY_PREFIX)
+	// and the per-IP rate-limit buckets (spat_rl_freescout_*).
+	foreach ( array( 'spat_fs_idem_', 'spat_rl_freescout_' ) as $transient_prefix ) {
+		$wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+				'_transient_' . $wpdb->esc_like( $transient_prefix ) . '%',
+				'_transient_timeout_' . $wpdb->esc_like( $transient_prefix ) . '%'
+			)
+		);
+	}
 
 	// Named transients: health-dashboard caches and the dbDelta retry throttle.
 	delete_transient( 'spat_table_status' );

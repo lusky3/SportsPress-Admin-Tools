@@ -17,6 +17,7 @@
 - **[player-tools]** FreeScout player card: the next game is the earliest upcoming game of any of the player's current-season teams, not only the first team's.
 - **[etransfer]** FreeScout possible matches for an on-hold order are picked nearest the order date in SQL, so with more than 50 same-amount transfers in the window the nearest one is no longer dropped in favour of the newest.
 - **[admin-tools]** FreeScout events: turning events off (or clearing the URL or secret) no longer stops the daily purge of old sent and failed outbox rows; only the hourly rescue is unscheduled. A failed outbox row update is now logged.
+- **[admin-tools]** Uninstall with data removal now deletes the FreeScout shared secret (`spat_freescout_secret`) and the FreeScout idempotency and rate-limit transients.
 
 ## [1.1.0-rc3] - 2026-04-17
 
