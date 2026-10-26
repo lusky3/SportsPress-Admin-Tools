@@ -40,6 +40,8 @@ When adding a new child module, follow the bootstrap pattern in `sportspress-sch
 
 Every AJAX/REST handler must call both `check_ajax_referer()` and `current_user_can()` before doing work. See `phpcs.xml` — the WordPress security sniffs are excluded due to false-positive noise, so capability/nonce checks are enforced by review and `AUDIT-REPORT.md`, not by phpcs.
 
+Exception: the server-to-server `spat/v1/freescout/*` REST routes have no cookie session, so they use `permission_callback => '__return_true'` and authenticate in `SPAT_FreeScout_REST::guard()` (HMAC signature + timestamp window + rate limit); actions then check the mapped WordPress user's capability.
+
 ### Security checklist (every form submission / AJAX / REST handler)
 
 1. **Nonce** — `check_ajax_referer()` / `wp_verify_nonce()`. The nonce *field name* sent by JS must match the PHP check (a mismatch is a real bug — see `specs/spsg-qa-audit/`).
