@@ -58,12 +58,18 @@ function get_post( $id ) {
 /**
  * Minimal $wpdb: stores rows as array( post_id, meta_key, meta_value ) and
  * answers the two get_col() queries SPAT_Player::ids_for_email() issues.
- * A query only matches case-insensitively when it says LOWER(meta_value), as
+ * A query only matches case-insensitively when it says LOWER(...meta_value), as
  * MySQL's default collation is not something this stub can lean on.
+ *
+ * A query that joins $posts only sees meta of posts in $post_rows
+ * (id => array( post_type, post_status )), filtered by the post_type = and
+ * post_status NOT IN conditions it states.
  */
 class SPAT_Test_WPDB {
-	public $postmeta = 'wp_postmeta';
-	public $rows     = array();
+	public $postmeta  = 'wp_postmeta';
+	public $posts     = 'wp_posts';
+	public $rows      = array();
+	public $post_rows = array();
 
 	public function prepare( $sql, ...$args ) {
 		foreach ( $args as $arg ) {
@@ -75,13 +81,31 @@ class SPAT_Test_WPDB {
 	public function get_col( $sql ) {
 		preg_match( "/meta_key = '([^']+)'/", $sql, $key );
 		preg_match( "/= '([^']*)'\s*\z/", trim( $sql ), $val );
-		$lower = false !== strpos( $sql, 'LOWER(meta_value)' );
-		$out   = array();
+		$lower    = 1 === preg_match( '/LOWER\((\w+\.)?meta_value\)/', $sql );
+		$joined   = false !== strpos( $sql, $this->posts );
+		$type     = preg_match( "/post_type = '([^']+)'/", $sql, $t ) ? $t[1] : null;
+		$excluded = array();
+		if ( preg_match( '/post_status NOT IN \(([^)]*)\)/', $sql, $s ) ) {
+			$excluded = array_map(
+				function ( $v ) {
+					return trim( $v, " '" );
+				},
+				explode( ',', $s[1] )
+			);
+		}
+		$out = array();
 		foreach ( $this->rows as $row ) {
 			$stored = $lower ? strtolower( $row[2] ) : $row[2];
-			if ( $row[1] === $key[1] && $stored === $val[1] ) {
-				$out[] = (string) $row[0];
+			if ( $row[1] !== $key[1] || $stored !== $val[1] ) {
+				continue;
 			}
+			if ( $joined ) {
+				$post = $this->post_rows[ $row[0] ] ?? null;
+				if ( null === $post || ( null !== $type && $post[0] !== $type ) || in_array( $post[1], $excluded, true ) ) {
+					continue;
+				}
+			}
+			$out[] = (string) $row[0];
 		}
 		return $out;
 	}
@@ -156,13 +180,31 @@ $wpdb->rows = array(
 	array( 200, 'spt_email', 'other@example.com' ),
 	array( 400, 'sp_user', '7' ),
 	array( 100, 'sp_user', '7' ),
+	array( 500, 'sp_user', '7' ),                          // Staff post carrying sp_user.
+	array( 510, 'spt_email', 'jordan.smith@example.com' ), // Non-player post with the meta.
+	array( 600, 'spt_email', 'jordan.smith@example.com' ), // Trashed duplicate player.
+	array( 610, 'sp_user', '7' ),                          // Auto-draft player.
+	array( 620, 'spt_email', 'jordan.smith@example.com' ), // Draft player (not live-filtered).
+);
+$wpdb->post_rows = array(
+	100 => array( 'sp_player', 'publish' ),
+	200 => array( 'sp_player', 'publish' ),
+	300 => array( 'sp_player', 'publish' ),
+	400 => array( 'sp_player', 'publish' ),
+	500 => array( 'sp_staff', 'publish' ),
+	510 => array( 'post', 'publish' ),
+	600 => array( 'sp_player', 'trash' ),
+	610 => array( 'sp_player', 'auto-draft' ),
+	620 => array( 'sp_player', 'draft' ),
 );
 $GLOBALS['wpdb']            = $wpdb;
 $GLOBALS['spat_test_users'] = array( 'linked@example.com' => (object) array( 'ID' => 7 ) );
 
-assert_test( array( 100, 300 ) === SPAT_Player::ids_for_email( 'Jordan.Smith@Example.com' ), 'email lookup is case-insensitive and shared emails return every player, ascending' );
+assert_test( array( 100, 300, 600, 620 ) === SPAT_Player::ids_for_email( 'Jordan.Smith@Example.com' ), 'email lookup is case-insensitive and shared emails return every sp_player (any status), ascending' );
 assert_test( array() === SPAT_Player::ids_for_email( 'nobody@example.com' ), 'an unknown email yields an empty list' );
-assert_test( array( 100, 400 ) === SPAT_Player::ids_for_email( 'LINKED@example.com' ), 'players linked through the sp_user of the WP user are found, de-duplicated' );
+assert_test( array( 100, 400, 610 ) === SPAT_Player::ids_for_email( 'LINKED@example.com' ), 'players linked through the sp_user of the WP user are found, de-duplicated; staff posts are not' );
+assert_test( array( 100, 300, 620 ) === SPAT_Player::ids_for_email( 'jordan.smith@example.com', true ), 'live only: trashed players are left out, drafts kept' );
+assert_test( array( 100, 400 ) === SPAT_Player::ids_for_email( 'linked@example.com', true ), 'live only: auto-draft players are left out' );
 
 echo "\n";
 echo "Passed: {$passed}\n";

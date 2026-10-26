@@ -87,7 +87,8 @@ class SPAT_FreeScout_REST {
 		}
 		$email = strtolower( $email );
 
-		$player_ids = SPAT_Player::ids_for_email( $email );
+		// Live sp_player posts only, so every provider gets the same clean ids.
+		$player_ids = SPAT_Player::ids_for_email( $email, true );
 		$providers  = $this->providers();
 		$sections   = array();
 		$missing    = array();

@@ -103,7 +103,8 @@ class SPAT_Logger {
 }
 
 class SPAT_Player {
-	public static function ids_for_email( string $email ): array {
+	public static function ids_for_email( string $email, bool $live_only = false ): array {
+		$GLOBALS['spat_ids_live_only'] = $live_only;
 		return 'jordan.smith@example.com' === $email ? array( 109432 ) : array();
 	}
 }
@@ -198,6 +199,7 @@ $data = is_wp_error( $res ) ? array() : $res->get_data();
 check( '200 on valid request', ! is_wp_error( $res ) && 200 === $res->get_status() );
 check( 'email lower-cased', 'jordan.smith@example.com' === ( $data['email'] ?? '' ) );
 check( 'player_ids come from the resolver', array( 109432 ) === ( $data['player_ids'] ?? null ) );
+check( 'the resolver is asked for live sp_player ids only', true === ( $GLOBALS['spat_ids_live_only'] ?? null ) );
 check(
 	'provider data under sections, given ids and the lower-cased email',
 	array(

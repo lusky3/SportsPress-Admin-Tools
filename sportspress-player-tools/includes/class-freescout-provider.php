@@ -67,9 +67,9 @@ class SPT_FreeScout_Provider {
 	 */
 	private static function build_player( int $player_id, int $current_season_id ) {
 		$post = get_post( $player_id );
-		// The email resolver is deliberately unfiltered (privacy export/erasure
-		// must see everything), so it can hand over trashed duplicates and
-		// non-player posts carrying sp_user (staff). Only live players count here.
+		// The FreeScout lookup already asks the resolver for live sp_player ids;
+		// this re-check keeps the provider safe for any other caller (the
+		// resolver's default includes trashed players for privacy export/erasure).
 		if ( ! $post || 'sp_player' !== $post->post_type || in_array( $post->post_status, array( 'trash', 'auto-draft' ), true ) ) {
 			return null;
 		}
