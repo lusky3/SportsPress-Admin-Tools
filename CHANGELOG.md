@@ -14,6 +14,7 @@
 - **[league-manager]** FreeScout waitlist offer previews show the deadline in the site's time zone instead of UTC.
 - **[player-registration]** FreeScout: a completed registration order whose newest log row is a failure (`season_not_detected`, `player_creation_failed`, …) now shows in the attention list even though the order is marked processed, and `player.rerun` reports "Still not registered: <outcome>" for such a run instead of "Registered".
 - **[player-registration]** FreeScout: registration log times are converted from the database time zone to UTC (via `UNIX_TIMESTAMP()`), instead of being read as UTC, so they are right when MySQL does not run in UTC.
+- **[player-tools]** FreeScout player card: the next game is the earliest upcoming game of any of the player's current-season teams, not only the first team's.
 
 ## [1.1.0-rc3] - 2026-04-17
 

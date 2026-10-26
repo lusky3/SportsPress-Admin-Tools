@@ -72,14 +72,18 @@ function get_posts( $args ) {
 	}
 	// sp_event: emulate the query the args describe.
 	$GLOBALS['t_event_args'] = $args;
-	$team   = $args['meta_query'][0]['value'];
+	$teams  = array_map( 'intval', (array) $args['meta_query'][0]['value'] );
+	$is_in  = 'IN' === ( $args['meta_query'][0]['compare'] ?? '=' );
 	$after  = strtotime( $args['date_query'][0]['after'] . ' UTC' );
+	if ( ! $is_in && count( $teams ) > 1 ) {
+		return array(); // An array value without compare IN matches nothing useful.
+	}
 	$events = array();
 	foreach ( $GLOBALS['t_posts'] as $p ) {
 		if ( 'sp_event' !== $p->post_type || ! in_array( $p->post_status, $args['post_status'], true ) ) {
 			continue;
 		}
-		if ( ! in_array( $team, $GLOBALS['t_multi'][ $p->ID ]['sp_team'] ?? array(), true ) ) {
+		if ( array() === array_intersect( $teams, $GLOBALS['t_multi'][ $p->ID ]['sp_team'] ?? array() ) ) {
 			continue;
 		}
 		if ( strtotime( $p->post_date_gmt . ' UTC' ) < $after ) {
@@ -229,6 +233,19 @@ assert_test(
 	array( 'publish', 'future' ) === $GLOBALS['t_event_args']['post_status'] && 1 === $GLOBALS['t_event_args']['posts_per_page'] && 'ASC' === $GLOBALS['t_event_args']['order'],
 	'query includes publish+future, one row, ordered ASC'
 );
+// Player on two current-season teams (two divisions): the earliest game of
+// either team, not only the first team's.
+mk_post( 4, 'Two Teams', 'sp_player' );
+$GLOBALS['t_meta'][4] = array(
+	'sp_leagues' => array(
+		21 => array( 88 => 501 ), // Ducks: next game in 5 days (7001).
+		20 => array( 88 => 503 ), // Hawks: next game in 2 days (7003).
+	),
+);
+$two = SPT_FreeScout_Provider::player_section( array( 4 ), 'two@x.y' )['players'][0]['next_game'];
+assert_test( null !== $two && 7003 === $two['event_id'], 'two current teams: earliest game across both' );
+assert_test( null !== $two && 'Otters' === $two['opponent'], 'two current teams: opponent is the other side of that game' );
+assert_test( array( 501, 503 ) === $GLOBALS['t_event_args']['meta_query'][0]['value'] && 'IN' === ( $GLOBALS['t_event_args']['meta_query'][0]['compare'] ?? '' ), 'one query over all current teams (IN)' );
 $GLOBALS['t_multi'][7001]['sp_team'] = array( 501, 502 );
 unset( $GLOBALS['t_obj_terms'][7001]['sp_venue'] );
 $sec3 = SPT_FreeScout_Provider::player_section( array( 3 ), 'x@y.z' );

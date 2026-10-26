@@ -84,12 +84,12 @@ class SPT_FreeScout_Provider {
 			$positions[] = (string) $pos_term->name;
 		}
 
-		$assignments  = array();
-		$current_team = 0;
+		$assignments   = array();
+		$current_teams = array();
 		foreach ( self::roster_entries( $player_id ) as $entry ) {
 			$is_current = $current_season_id > 0 && $entry['season_id'] === $current_season_id;
-			if ( $is_current && 0 === $current_team ) {
-				$current_team = $entry['team_id'];
+			if ( $is_current ) {
+				$current_teams[ $entry['team_id'] ] = $entry['team_id'];
 			}
 			$assignments[] = array(
 				'season_id' => $entry['season_id'],
@@ -110,7 +110,7 @@ class SPT_FreeScout_Provider {
 			'skill_level'    => ( '' === $skill || false === $skill ) ? null : (string) $skill,
 			'wp_user_linked' => (int) get_post_meta( $player_id, 'sp_user', true ) > 0,
 			'assignments'    => $assignments,
-			'next_game'      => $current_team > 0 ? self::next_game( $current_team ) : null,
+			'next_game'      => array() !== $current_teams ? self::next_game( array_values( $current_teams ) ) : null,
 		);
 	}
 
@@ -194,12 +194,14 @@ class SPT_FreeScout_Provider {
 	}
 
 	/**
-	 * Earliest upcoming event for the team. Unplayed games are post_status
-	 * 'future', so both 'publish' and 'future' are queried.
+	 * Earliest upcoming event for any of the player's current-season teams (a
+	 * player can be on teams in more than one division). Unplayed games are
+	 * post_status 'future', so both 'publish' and 'future' are queried.
 	 *
+	 * @param int[] $team_ids Current-season team ids.
 	 * @return array|null
 	 */
-	private static function next_game( int $team_id ) {
+	private static function next_game( array $team_ids ) {
 		$events = get_posts(
 			array(
 				'post_type'      => 'sp_event',
@@ -216,8 +218,9 @@ class SPT_FreeScout_Provider {
 				),
 				'meta_query'     => array(
 					array(
-						'key'   => 'sp_team',
-						'value' => $team_id,
+						'key'     => 'sp_team',
+						'value'   => $team_ids,
+						'compare' => 'IN',
 					),
 				),
 			)
@@ -227,10 +230,20 @@ class SPT_FreeScout_Provider {
 		}
 		$event = $events[0];
 
+		// The player's side is the first of their teams in the game; the
+		// opponent is the first other team.
+		$event_teams = array_values( array_filter( array_map( 'intval', (array) get_post_meta( $event->ID, 'sp_team', false ) ) ) );
+		$own_team    = 0;
+		foreach ( $event_teams as $event_team ) {
+			if ( in_array( $event_team, $team_ids, true ) ) {
+				$own_team = $event_team;
+				break;
+			}
+		}
 		$opponent = '';
-		foreach ( (array) get_post_meta( $event->ID, 'sp_team', false ) as $other_id ) {
-			if ( (int) $other_id > 0 && (int) $other_id !== $team_id ) {
-				$opponent = (string) get_the_title( (int) $other_id );
+		foreach ( $event_teams as $other_id ) {
+			if ( $other_id !== $own_team ) {
+				$opponent = (string) get_the_title( $other_id );
 				break;
 			}
 		}
