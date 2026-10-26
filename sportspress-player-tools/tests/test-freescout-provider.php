@@ -64,7 +64,7 @@ function get_posts( $args ) {
 		$season = $args['tax_query'][0]['terms'];
 		$out    = array();
 		foreach ( $GLOBALS['t_lists'] as $id => $l ) {
-			if ( $l[0] === $team && $l[1] === $season ) {
+			if ( $l[0] === $team && $l[1] === $season && ( $l[2] ?? 'publish' ) === $args['post_status'] ) {
 				$out[] = $id;
 			}
 		}
@@ -157,6 +157,7 @@ $GLOBALS['t_lists'] = array(
 	9001 => array( 501, 88 ),
 	9002 => array( 503, 87 ),
 );
+$GLOBALS['t_meta'][501]['sp_list']      = 9001; // Active list of Ducks.
 $GLOBALS['t_meta'][9001]['spt_captain'] = 1;
 $GLOBALS['t_meta'][9002]['spt_captain'] = 2;
 
@@ -237,6 +238,39 @@ $GLOBALS['t_posts'][7001]->post_date_gmt = '2020-01-01 00:00:00';
 $GLOBALS['t_posts'][7002]->post_date_gmt = '2020-01-02 00:00:00';
 $sec4 = SPT_FreeScout_Provider::player_section( array( 3 ), 'x@y.z' );
 assert_test( null === $sec4['players'][0]['next_game'], 'next_game null when nothing upcoming' );
+
+echo "\n=== Captain: active list / drafts ===\n";
+// Extra published list for current Ducks season naming player 3, plus a draft naming player 3.
+$GLOBALS['t_lists'][9003]               = array( 501, 88, 'publish' );
+$GLOBALS['t_lists'][9004]               = array( 501, 88, 'draft' );
+$GLOBALS['t_meta'][9003]['spt_captain'] = 3;
+$GLOBALS['t_meta'][9004]['spt_captain'] = 3;
+$cap3 = SPT_FreeScout_Provider::player_section( array( 3 ), 'x@y.z' )['players'][0]['assignments'][0]['captain'];
+$cap1 = SPT_FreeScout_Provider::player_section( array( 1 ), 'x@y.z' )['players'][0]['assignments'];
+$cap1 = array_values(
+	array_filter(
+		$cap1,
+		function ( $a ) {
+			return $a['current'];
+		}
+	)
+)[0]['captain'];
+assert_test( false === $cap3, 'current: non-active published/draft lists do not make a captain' );
+assert_test( true === $cap1, 'current: only the team active sp_list decides' );
+$GLOBALS['t_lists'][9005]               = array( 503, 87, 'draft' );
+$GLOBALS['t_meta'][9005]['spt_captain'] = 1;
+$old1 = SPT_FreeScout_Provider::player_section( array( 1 ), 'x@y.z' )['players'][0]['assignments'];
+$old1 = array_values(
+	array_filter(
+		$old1,
+		function ( $a ) {
+			return ! $a['current'];
+		}
+	)
+)[0]['captain'];
+assert_test( false === $old1, 'past: draft list captain ignored' );
+$old2 = SPT_FreeScout_Provider::player_section( array( 2 ), 'x@y.z' )['players'][0]['assignments'][0]['captain'];
+assert_test( true === $old2, 'past: published season list still works' );
 
 echo "\n=== Multiple players ===\n";
 $sec5 = SPT_FreeScout_Provider::player_section( array( 1, 3, 999 ), 'fam@x.y' );

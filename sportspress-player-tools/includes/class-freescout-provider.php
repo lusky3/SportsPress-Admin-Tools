@@ -95,7 +95,7 @@ class SPT_FreeScout_Provider {
 				'team_id'   => $entry['team_id'],
 				'team'      => (string) get_the_title( $entry['team_id'] ),
 				'current'   => $is_current,
-				'captain'   => self::is_captain( $player_id, $entry['team_id'], $entry['season_id'] ),
+				'captain'   => self::is_captain( $player_id, $entry['team_id'], $entry['season_id'], $is_current ),
 			);
 		}
 
@@ -150,13 +150,22 @@ class SPT_FreeScout_Provider {
 	}
 
 	/**
-	 * Captain is stored as spt_captain on the team's sp_list for that season.
+	 * Captain is stored as spt_captain on a team's sp_list post.
+	 *
+	 * Current season: the team's active list (its `sp_list` meta), exactly as
+	 * the roster REST API and admin UI read it. Past seasons: published lists
+	 * for that team and season term.
 	 */
-	private static function is_captain( int $player_id, int $team_id, int $season_id ): bool {
+	private static function is_captain( int $player_id, int $team_id, int $season_id, bool $is_current ): bool {
+		if ( $is_current ) {
+			$active_list_id = (int) get_post_meta( $team_id, 'sp_list', true );
+			return $active_list_id > 0 && (int) get_post_meta( $active_list_id, 'spt_captain', true ) === $player_id;
+		}
+
 		$list_ids = get_posts(
 			array(
 				'post_type'      => 'sp_list',
-				'post_status'    => 'any',
+				'post_status'    => 'publish',
 				'posts_per_page' => 20,
 				'fields'         => 'ids',
 				'meta_query'     => array(
