@@ -16,6 +16,25 @@ function set_transient( $key, $value, $expiration = 0 ) {
 	$GLOBALS['spat_transients'][ $key ] = $value;
 	return true;
 }
+$GLOBALS['spat_ext_cache'] = false; // A persistent object cache is in use.
+$GLOBALS['spat_cache']     = array();
+function wp_using_ext_object_cache() {
+	return $GLOBALS['spat_ext_cache'];
+}
+function wp_cache_add( $key, $value, $group = '', $expire = 0 ) {
+	if ( isset( $GLOBALS['spat_cache'][ $group ][ $key ] ) ) {
+		return false;
+	}
+	$GLOBALS['spat_cache'][ $group ][ $key ] = $value;
+	return true;
+}
+function wp_cache_incr( $key, $offset = 1, $group = '' ) {
+	if ( ! isset( $GLOBALS['spat_cache'][ $group ][ $key ] ) ) {
+		return false;
+	}
+	$GLOBALS['spat_cache'][ $group ][ $key ] += $offset;
+	return $GLOBALS['spat_cache'][ $group ][ $key ];
+}
 function sanitize_text_field( $s ) {
 	return trim( (string) $s );
 }
@@ -101,6 +120,18 @@ check( 'call 4 limited', true === SPAT_Signed_Request::rate_limited( 't_', 3 ) )
 check( 'other prefix has own bucket', false === SPAT_Signed_Request::rate_limited( 'u_', 3 ) );
 $_SERVER['REMOTE_ADDR'] = '203.0.113.10';
 check( 'other IP has own bucket', false === SPAT_Signed_Request::rate_limited( 't_', 3 ) );
+
+echo "rate_limited with a persistent object cache\n";
+$GLOBALS['spat_ext_cache']  = true;
+$GLOBALS['spat_transients'] = array();
+$_SERVER['REMOTE_ADDR']     = '203.0.113.11';
+check( 'cache: call 1 allowed', false === SPAT_Signed_Request::rate_limited( 'c_', 3 ) );
+check( 'cache: call 2 allowed', false === SPAT_Signed_Request::rate_limited( 'c_', 3 ) );
+check( 'cache: call 3 allowed', false === SPAT_Signed_Request::rate_limited( 'c_', 3 ) );
+check( 'cache: call 4 limited', true === SPAT_Signed_Request::rate_limited( 'c_', 3 ) );
+$counts = array_values( $GLOBALS['spat_cache']['spat_rate_limit'] ?? array() );
+check( 'cache: counted with an atomic increment, no transient written', array( 4 ) === $counts && array() === $GLOBALS['spat_transients'] );
+$GLOBALS['spat_ext_cache'] = false;
 
 echo "\n$passed passed, $failed failed\n";
 exit( $failed > 0 ? 1 : 0 );

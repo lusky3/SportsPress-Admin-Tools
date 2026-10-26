@@ -53,9 +53,16 @@ final class SPAT_Signed_Request {
 	}
 
 	/**
-	 * Fixed-window, per-IP rate limit backed by transients.
+	 * Fixed-window, per-IP rate limit.
 	 *
 	 * Counts the current call, so the first call over $per_minute returns true.
+	 *
+	 * With a persistent object cache the count is an atomic wp_cache_incr().
+	 * Without one it falls back to a transient read-then-write, which is not
+	 * atomic: concurrent calls can each read the same count, so a burst of
+	 * parallel requests may get a few more through than $per_minute. That is
+	 * an accepted approximation; it only loosens the cap, and every request is
+	 * still HMAC-verified.
 	 *
 	 * @param string $bucket_prefix Distinguishes independent limiters.
 	 * @param int    $per_minute    Calls allowed per IP per minute.
@@ -64,7 +71,17 @@ final class SPAT_Signed_Request {
 	public static function rate_limited( string $bucket_prefix, int $per_minute ): bool {
 		$window = 60;
 		$bucket = $bucket_prefix . self::sender_key() . '_' . (int) floor( time() / $window );
-		$count  = (int) get_transient( $bucket ) + 1;
+
+		if ( function_exists( 'wp_using_ext_object_cache' ) && wp_using_ext_object_cache() ) {
+			wp_cache_add( $bucket, 0, 'spat_rate_limit', $window );
+			$count = wp_cache_incr( $bucket, 1, 'spat_rate_limit' );
+			if ( false !== $count ) {
+				return (int) $count > $per_minute;
+			}
+			// Evicted between add and incr: count with the transient below.
+		}
+
+		$count = (int) get_transient( $bucket ) + 1;
 		set_transient( $bucket, $count, $window );
 		return $count > $per_minute;
 	}
