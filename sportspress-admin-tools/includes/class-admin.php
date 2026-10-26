@@ -456,8 +456,10 @@ class SPAT_Admin {
 		if ( '' === $value ) {
 			return '';
 		}
-		$url = esc_url_raw( $value, array( 'http', 'https' ) );
-		if ( '' === $url || ! preg_match( '#^https?://#i', $url ) ) {
+		// Check the RAW value: esc_url_raw() prepends http:// to a scheme-less
+		// string, which would silently store a plaintext URL.
+		$url = preg_match( '#^https?://#i', $value ) ? esc_url_raw( $value, array( 'http', 'https' ) ) : '';
+		if ( '' === $url ) {
 			add_settings_error(
 				SPAT_FreeScout_REST::EVENTS_URL_OPTION,
 				'spat_freescout_events_url_invalid',

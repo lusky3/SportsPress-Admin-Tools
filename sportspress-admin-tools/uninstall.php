@@ -94,4 +94,8 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 	delete_transient( 'spat_table_status' );
 	delete_transient( 'spat_status_snapshot' );
 	delete_transient( 'spat_db_migrate_attempted' );
+
+	// FreeScout events: stop the sweep and any queued sends.
+	wp_clear_scheduled_hook( 'spat_freescout_events_sweep' );
+	wp_unschedule_hook( 'spat_freescout_send' );
 }

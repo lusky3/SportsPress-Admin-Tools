@@ -95,12 +95,20 @@ function sanitize_email( $email ) {
 	return (string) filter_var( (string) $email, FILTER_SANITIZE_EMAIL );
 }
 function esc_url_raw( $url, $protocols = null ) {
+	// Like the real one: a string with no scheme gets http:// prepended.
 	$url = trim( (string) $url );
+	if ( ! preg_match( '#^[a-z][a-z0-9+.-]*:#i', $url ) ) {
+		$url = 'http://' . $url;
+	}
 	$scheme = strtolower( (string) parse_url( $url, PHP_URL_SCHEME ) );
 	if ( null !== $protocols && ! in_array( $scheme, $protocols, true ) ) {
 		return '';
 	}
 	return $url;
+}
+function delete_option( $key ) {
+	unset( $GLOBALS['t_options'][ $key ] );
+	return true;
 }
 function add_settings_error( $setting, $code, $message, $type = 'error' ) {
 	$GLOBALS['t_errors'][] = compact( 'setting', 'code' );
@@ -158,6 +166,11 @@ class Mock_WPDB {
 	public $create_calls   = 0;
 	public $show_calls     = 0;
 	public $claim_override = null;
+	public $fail_insert    = false;
+
+	public function esc_like( $text ) {
+		return addcslashes( $text, '_%\\' );
+	}
 
 	public function prepare( $query, ...$args ) {
 		foreach ( $args as $arg ) {
@@ -167,6 +180,9 @@ class Mock_WPDB {
 		return $query;
 	}
 	public function insert( $table, $data, $format = null ) {
+		if ( $this->fail_insert ) {
+			return false;
+		}
 		$this->rows[ $data['event_id'] ] = $data;
 		return 1;
 	}
@@ -224,11 +240,11 @@ class Mock_WPDB {
 		return $out;
 	}
 	public function query( $query ) {
-		if ( preg_match( "/^UPDATE .* SET status = 'sending'.*event_id = '([^']*)' AND status = 'pending'/s", $query, $m ) ) {
+		if ( preg_match( "/^UPDATE .* SET status = 'sending'.*event_id = '([^']*)' AND status = 'pending' AND next_attempt_at <= '([^']*)'/s", $query, $m ) ) {
 			if ( null !== $this->claim_override ) {
 				return $this->claim_override;
 			}
-			if ( isset( $this->rows[ $m[1] ] ) && 'pending' === $this->rows[ $m[1] ]['status'] ) {
+			if ( isset( $this->rows[ $m[1] ] ) && 'pending' === $this->rows[ $m[1] ]['status'] && $this->rows[ $m[1] ]['next_attempt_at'] <= $m[2] ) {
 				$this->rows[ $m[1] ]['status'] = 'sending';
 				return 1;
 			}
@@ -297,6 +313,7 @@ function reset_state() {
 	$wpdb->create_calls   = 0;
 	$wpdb->show_calls     = 0;
 	$wpdb->claim_override = null;
+	$wpdb->fail_insert    = false;
 	$GLOBALS['t_actions']   = array();
 	$GLOBALS['t_scheduled'] = array();
 	$GLOBALS['t_recurring'] = array();
@@ -402,17 +419,20 @@ reset_state();
 $GLOBALS['t_response'] = array( 'response' => array( 'code' => 500 ) );
 $ev  = new_events();
 $id  = $ev->enqueue( 'etransfer.unmatched', 'p@example.com', array() );
-$expected = array( 60, 300, 1800, 7200 );
+$expected = array( 60, 300, 1800, 7200, 43200 );
 foreach ( $expected as $i => $delay ) {
 	$GLOBALS['t_scheduled'] = array();
+	$wpdb->rows[ $id ]['next_attempt_at'] = '2000-01-01 00:00:00'; // The retry is due.
 	$before = time();
 	$ev->send( $id );
 	$when = $GLOBALS['t_scheduled'][0][0] ?? 0;
 	assert_test( 'pending' === row_of( $id )['status'] && ( $i + 1 ) === row_of( $id )['attempts'] && $when >= $before + $delay && $when <= time() + $delay, 'failure ' . ( $i + 1 ) . ' backs off ' . $delay . 's' );
 }
+assert_test( 43200 === $expected[4], 'the 5th retry uses the 43200s step' );
 $GLOBALS['t_scheduled'] = array();
+$wpdb->rows[ $id ]['next_attempt_at'] = '2000-01-01 00:00:00';
 $ev->send( $id );
-assert_test( 'failed' === row_of( $id )['status'] && 5 === row_of( $id )['attempts'], 'the 5th failure becomes failed' );
+assert_test( 'failed' === row_of( $id )['status'] && 6 === row_of( $id )['attempts'], 'the 6th failure (1 try + 5 retries) becomes failed' );
 assert_test( array() === $GLOBALS['t_scheduled'], 'and is not rescheduled' );
 assert_test( 'HTTP 500' === row_of( $id )['last_error'], 'last_error says why' );
 assert_test( 1 === count( $GLOBALS['t_logged'] ) && 'freescout-events' === $GLOBALS['t_logged'][0][0], 'the give-up is logged via SPAT_Logger' );
@@ -460,8 +480,13 @@ $id = $ev->enqueue( 'etransfer.unmatched', '', array() );
 $GLOBALS['t_response'] = function () {
 	throw new RuntimeException( 'boom' );
 };
+$GLOBALS['t_scheduled'] = array();
 $ev->send( $id );
-assert_test( 'pending' === row_of( $id )['status'], 'an exception while sending hands the row back as pending' );
+assert_test( 'pending' === row_of( $id )['status'] && 1 === row_of( $id )['attempts'] && 0 === strpos( row_of( $id )['last_error'], 'Exception: boom' ), 'an exception while sending counts as an attempt and keeps the row pending' );
+assert_test( 1 === count( $GLOBALS['t_scheduled'] ), 'and reschedules it with backoff' );
+$posts = count( $GLOBALS['t_posts'] );
+$ev->send( $id );
+assert_test( $posts === count( $GLOBALS['t_posts'] ) && 'pending' === row_of( $id )['status'], 'a send run before next_attempt_at does not claim or send (no early resend)' );
 
 reset_state();
 $ev = new_events();
@@ -609,6 +634,15 @@ $GLOBALS['t_options'][ SPAT_FreeScout_Events::TABLE_READY_OPTION ] = '';
 assert_test( array( 'pending' => 0, 'failed' => 0, 'last_error' => '' ) === SPAT_FreeScout_Events::status(), 'status is all zeros while the table is not known to exist' );
 
 // ===========================================================================
+echo "\n=== Insert failure re-checks the table ===\n";
+reset_state();
+new_events()->enqueue( 'registration.reversed', '', array( 'order_id' => 1 ) );
+assert_test( '1' === get_option( SPAT_FreeScout_Events::TABLE_READY_OPTION ), 'ready option set after a good insert' );
+$wpdb->fail_insert = true;
+assert_test( '' === new_events()->enqueue( 'registration.reversed', '', array( 'order_id' => 2 ) ), 'a failed insert returns an empty id' );
+assert_test( false === get_option( SPAT_FreeScout_Events::TABLE_READY_OPTION ), 'and clears the ready option so the next call re-checks' );
+$wpdb->fail_insert = false;
+
 echo "\n=== Settings sanitisers ===\n";
 $old = 'https://old.example.com/spatbridge/events';
 $GLOBALS['t_options'][ SPAT_FreeScout_REST::EVENTS_URL_OPTION ] = $old;
@@ -618,11 +652,18 @@ assert_test( 'http://freescout-web/spatbridge/events' === SPAT_Admin::sanitize_f
 assert_test( array() === $GLOBALS['t_errors'], 'valid URLs raise no notice' );
 assert_test( '' === SPAT_Admin::sanitize_freescout_events_url( '' ), 'blank clears the URL' );
 assert_test( '' === SPAT_Admin::sanitize_freescout_events_url( null ), 'a non-string clears the URL' );
-foreach ( array( 'ftp://x.example.com/e', 'javascript:alert(1)', 'helpdesk.example.com/events' ) as $bad ) {
+assert_test( 'http://helpdesk.example.com/events' === esc_url_raw( 'helpdesk.example.com/events' ), 'sanity: the esc_url_raw mock prepends http:// like the real one' );
+foreach ( array( 'ftp://x.example.com/e', 'javascript:alert(1)', 'helpdesk.example.com/events', '//helpdesk.example.com/events' ) as $bad ) {
 	$GLOBALS['t_errors'] = array();
 	assert_test( $old === SPAT_Admin::sanitize_freescout_events_url( $bad ) && 1 === count( $GLOBALS['t_errors'] ), "'$bad' is refused, the stored URL kept, with a notice" );
 }
 assert_test( '1' === SPAT_Admin::sanitize_checkbox_flag( '1' ) && '0' === SPAT_Admin::sanitize_checkbox_flag( null ), 'the enabled checkbox coerces to 1/0' );
+
+echo "\n=== spawn_cron is skipped when WP-Cron is disabled ===\n";
+reset_state();
+define( 'DISABLE_WP_CRON', true );
+new_events()->enqueue( 'registration.reversed', '', array( 'order_id' => 9 ) );
+assert_test( 0 === $GLOBALS['t_spawned'], 'DISABLE_WP_CRON: no spawn_cron' );
 
 echo "\n=== Results ===\nPassed: $passed\nFailed: $failed\n";
 exit( $failed > 0 ? 1 : 0 );

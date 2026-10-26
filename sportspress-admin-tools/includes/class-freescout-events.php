@@ -28,7 +28,8 @@ class SPAT_FreeScout_Events {
 	const STATUS_SENT    = 'sent';
 	const STATUS_FAILED  = 'failed';
 
-	const MAX_ATTEMPTS = 5;
+	/** One try plus five retries, which uses every BACKOFF step (about 14.6 h in all). */
+	const MAX_ATTEMPTS = 6;
 
 	/** Seconds to wait after the Nth failed attempt (index N - 1). */
 	const BACKOFF = array( 60, 300, 1800, 7200, 43200 );
@@ -290,12 +291,15 @@ class SPAT_FreeScout_Events {
 			array( '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s' )
 		);
 		if ( ! $inserted ) {
+			delete_option( self::TABLE_READY_OPTION ); // Re-check the table next time.
 			self::log_error( 'Could not insert a FreeScout event into the outbox: ' . $type );
 			return '';
 		}
 
 		wp_schedule_single_event( time(), self::SEND_HOOK, array( $event_id ) );
-		spawn_cron();
+		if ( ! ( defined( 'ALTERNATE_WP_CRON' ) && ALTERNATE_WP_CRON ) && ! ( defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON ) ) {
+			spawn_cron();
+		}
 
 		return $event_id;
 	}
@@ -321,17 +325,19 @@ class SPAT_FreeScout_Events {
 		// sending, so an event is never posted twice by the cron path.
 		$claimed = $wpdb->query(
 			$wpdb->prepare(
-				"UPDATE `{$table}` SET status = %s, updated_at = %s WHERE event_id = %s AND status = %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- internal table name.
+				"UPDATE `{$table}` SET status = %s, updated_at = %s WHERE event_id = %s AND status = %s AND next_attempt_at <= %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- internal table name.
 				self::STATUS_SENDING,
 				gmdate( 'Y-m-d H:i:s' ),
 				$event_id,
-				self::STATUS_PENDING
+				self::STATUS_PENDING,
+				gmdate( 'Y-m-d H:i:s' )
 			)
 		);
 		if ( 1 !== (int) $claimed ) {
 			return;
 		}
 
+		$row = null;
 		try {
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- internal table name.
 			$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM `{$table}` WHERE event_id = %s", $event_id ) );
@@ -340,6 +346,12 @@ class SPAT_FreeScout_Events {
 			}
 			$this->deliver( $row, $url, $secret );
 		} catch ( \Throwable $e ) {
+			self::log_error( 'FreeScout event send aborted: ' . $e->getMessage() );
+			if ( $row ) {
+				// Counts as an attempt, so a deterministic throw still gives up.
+				$this->retry_or_fail( $row, 'Exception: ' . $e->getMessage() );
+				return;
+			}
 			// Hand the row back rather than stranding it as 'sending'.
 			$wpdb->update(
 				$table,
@@ -351,7 +363,6 @@ class SPAT_FreeScout_Events {
 				array( '%s', '%s' ),
 				array( '%s' )
 			);
-			self::log_error( 'FreeScout event send aborted: ' . $e->getMessage() );
 		}
 	}
 
@@ -522,7 +533,7 @@ class SPAT_FreeScout_Events {
 
 		$table  = self::table();
 		$exists = static function () use ( $wpdb, $table ) {
-			return $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table;
+			return $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) === $table;
 		};
 
 		if ( ! $exists() ) {
