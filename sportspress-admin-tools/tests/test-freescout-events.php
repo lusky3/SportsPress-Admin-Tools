@@ -182,6 +182,8 @@ class Mock_WPDB {
 	public $show_calls     = 0;
 	public $claim_override = null;
 	public $fail_insert    = false;
+	public $fail_update    = false;
+	public $last_error     = '';
 
 	public function esc_like( $text ) {
 		return addcslashes( $text, '_%\\' );
@@ -202,6 +204,10 @@ class Mock_WPDB {
 		return 1;
 	}
 	public function update( $table, $data, $where, $format = null, $where_format = null ) {
+		if ( $this->fail_update ) {
+			$this->last_error = 'Deadlock found';
+			return false;
+		}
 		$id = $where['event_id'];
 		if ( ! isset( $this->rows[ $id ] ) ) {
 			return 0;
@@ -337,6 +343,8 @@ function reset_state() {
 	$wpdb->show_calls     = 0;
 	$wpdb->claim_override = null;
 	$wpdb->fail_insert    = false;
+	$wpdb->fail_update    = false;
+	$wpdb->last_error     = '';
 	$GLOBALS['t_actions']   = array();
 	$GLOBALS['t_scheduled'] = array();
 	$GLOBALS['t_recurring'] = array();
@@ -468,6 +476,17 @@ $id = $ev->enqueue( 'etransfer.unmatched', '', array() );
 $ev->send( $id );
 assert_test( 255 === strlen( row_of( $id )['last_error'] ), 'last_error is cut to 255 chars' );
 
+reset_state();
+$ev = new_events();
+$id = $ev->enqueue( 'etransfer.unmatched', '', array() );
+$wpdb->fail_update = true;
+$ev->send( $id );
+assert_test(
+	1 === count( $GLOBALS['t_logged'] ) && 'freescout-events' === $GLOBALS['t_logged'][0][0]
+	&& false !== strpos( $GLOBALS['t_logged'][0][1], $id ) && false !== strpos( $GLOBALS['t_logged'][0][1], 'Deadlock found' ),
+	'a failed row update is logged with the event id and the DB error'
+);
+
 echo "\n=== Send: permanent failure and guards ===\n";
 reset_state();
 $GLOBALS['t_response'] = array( 'response' => array( 'code' => 400 ) );
@@ -537,7 +556,21 @@ foreach ( array(
 	new_events()->register();
 	$hooks = array_keys( $GLOBALS['t_actions'] );
 	assert_test( array( 'spat_freescout_send', 'spat_freescout_events_sweep', 'spat_freescout_events_rescue' ) === $hooks, "$label: no listeners registered (cron callbacks only)" );
-	assert_test( array( 'spat_freescout_events_sweep', 'spat_freescout_events_rescue' ) === $GLOBALS['t_cleared'], "$label: the daily sweep and hourly rescue are unscheduled" );
+	assert_test( array( 'spat_freescout_events_sweep', 'spat_freescout_events_rescue' ) === $GLOBALS['t_cleared'], "$label, no outbox table: the daily sweep and hourly rescue are unscheduled" );
+
+	// Once the outbox exists, old rows must still be purged while events are off.
+	reset_state();
+	configure( ...$cfg );
+	$GLOBALS['t_options']['spat_freescout_outbox_ready'] = '1';
+	$GLOBALS['t_recurring']['spat_freescout_events_sweep']  = 'daily';
+	$GLOBALS['t_recurring']['spat_freescout_events_rescue'] = 'hourly';
+	new_events()->register();
+	assert_test( array( 'spat_freescout_events_rescue' ) === $GLOBALS['t_cleared'] && 'daily' === ( $GLOBALS['t_recurring']['spat_freescout_events_sweep'] ?? '' ), "$label, outbox exists: only the rescue is unscheduled; the daily purge stays" );
+	reset_state();
+	configure( ...$cfg );
+	$GLOBALS['t_options']['spat_freescout_outbox_ready'] = '1';
+	new_events()->register();
+	assert_test( 'daily' === ( $GLOBALS['t_recurring']['spat_freescout_events_sweep'] ?? '' ) && ! isset( $GLOBALS['t_recurring']['spat_freescout_events_rescue'] ), "$label, outbox exists: a missing daily purge is scheduled, the rescue is not" );
 }
 reset_state();
 new_events()->register();

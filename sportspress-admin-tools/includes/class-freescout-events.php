@@ -64,17 +64,22 @@ class SPAT_FreeScout_Events {
 		add_action( self::SWEEP_HOOK, array( $this, 'sweep' ) );
 		add_action( self::RESCUE_HOOK, array( $this, 'rescue' ) );
 
-		if ( ! self::is_active() ) {
-			foreach ( array( self::SWEEP_HOOK, self::RESCUE_HOOK ) as $hook ) {
-				if ( wp_next_scheduled( $hook ) ) {
-					wp_clear_scheduled_hook( $hook );
-				}
-			}
-			return;
+		// The daily purge keeps running while events are off, so sent and failed
+		// rows still age out; it is only dropped when no outbox was ever created.
+		$purge = self::is_active() || '1' === (string) get_option( self::TABLE_READY_OPTION, '' );
+		if ( $purge && ! wp_next_scheduled( self::SWEEP_HOOK ) ) {
+			wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', self::SWEEP_HOOK );
+		} elseif ( ! $purge && wp_next_scheduled( self::SWEEP_HOOK ) ) {
+			wp_clear_scheduled_hook( self::SWEEP_HOOK );
 		}
 
-		if ( ! wp_next_scheduled( self::SWEEP_HOOK ) ) {
-			wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', self::SWEEP_HOOK );
+		if ( ! self::is_active() ) {
+			// Nothing can be sent, so nothing to rescue; register() schedules it
+			// again once events are configured, and it picks up queued rows.
+			if ( wp_next_scheduled( self::RESCUE_HOOK ) ) {
+				wp_clear_scheduled_hook( self::RESCUE_HOOK );
+			}
+			return;
 		}
 		// Installs from before the rescue hook have none; one left on another
 		// recurrence is replaced so lost sends wait an hour at most.
@@ -482,7 +487,11 @@ class SPAT_FreeScout_Events {
 		foreach ( $fields as $value ) {
 			$formats[] = is_int( $value ) ? '%d' : '%s';
 		}
-		$wpdb->update( self::table(), $fields, array( 'event_id' => $event_id ), $formats, array( '%s' ) );
+		// A lost write leaves the row 'sending'; the hourly rescue hands it back,
+		// so this is only logged.
+		if ( false === $wpdb->update( self::table(), $fields, array( 'event_id' => $event_id ), $formats, array( '%s' ) ) ) {
+			self::log_error( sprintf( 'Could not update FreeScout event %s: %s', $event_id, (string) $wpdb->last_error ) );
+		}
 	}
 
 	// -----------------------------------------------------------------------
