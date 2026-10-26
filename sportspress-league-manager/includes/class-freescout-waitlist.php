@@ -182,6 +182,7 @@ class SPLM_FreeScout_Waitlist {
 		if ( is_wp_error( $row ) ) {
 			return $row;
 		}
+		$result = null;
 		if ( ! $dry_run ) {
 			$result = SPLM_Waitlist_Offer::cancel( (int) $row->id );
 			if ( is_wp_error( $result ) ) {
@@ -191,9 +192,12 @@ class SPLM_FreeScout_Waitlist {
 
 		return array(
 			'summary'          => sprintf( 'Withdraw the offer to %s', self::who( $row ) ),
-			'changes'          => array(
-				'The entry goes back to the queue',
-				'The claim link stops working',
+			'changes'          => array_merge(
+				array(
+					'The entry goes back to the queue',
+					'The claim link stops working',
+				),
+				self::status_note( $result, SPLM_Waitlist_Database::STATUS_QUEUED )
 			),
 			'requires_confirm' => array(),
 			'data'             => array(),
@@ -216,6 +220,7 @@ class SPLM_FreeScout_Waitlist {
 		if ( is_wp_error( $row ) ) {
 			return $row;
 		}
+		$result = null;
 		if ( ! $dry_run ) {
 			$result = SPLM_Waitlist_Offer::cancel( (int) $row->id );
 			if ( is_wp_error( $result ) ) {
@@ -225,7 +230,10 @@ class SPLM_FreeScout_Waitlist {
 
 		return array(
 			'summary'          => sprintf( 'Remove %1$s from the %2$s waitlist', self::who( $row ), $row->season ),
-			'changes'          => array( 'Marks the entry cancelled' ),
+			'changes'          => array_merge(
+				array( 'Marks the entry cancelled' ),
+				self::status_note( $result, SPLM_Waitlist_Database::STATUS_CANCELLED )
+			),
 			'requires_confirm' => array(),
 			'data'             => array(),
 		);
@@ -252,11 +260,13 @@ class SPLM_FreeScout_Waitlist {
 			return $offered;
 		}
 
-		$now      = SPLM_Waitlist_Database::get( $input['id'] );
-		$in_queue = true;
-		if ( $now && SPLM_Waitlist_Database::STATUS_OFFERED === $now->status ) {
-			$retry    = SPLM_Waitlist_Offer::cancel( $input['id'] );
-			$in_queue = ! is_wp_error( $retry );
+		// Retry only when this call's own offer was left stuck. After a
+		// "locked" or "no lock" error an offered row may be someone else's
+		// legitimate offer, which must not be withdrawn.
+		$retried = false;
+		if ( 'splm_waitlist_unwind_failed' === $offered->get_error_code() ) {
+			$retried = true;
+			SPLM_Waitlist_Offer::cancel( $input['id'] );
 		}
 
 		return new WP_Error(
@@ -264,10 +274,45 @@ class SPLM_FreeScout_Waitlist {
 			sprintf(
 				'The old offer was withdrawn but the new offer failed: %1$s. %2$s',
 				rtrim( $offered->get_error_message(), ". \t\n" ),
-				$in_queue ? 'The entry is back in the queue.' : 'The entry is still marked offered; withdraw it before trying again.'
+				self::state_sentence( SPLM_Waitlist_Database::get( $input['id'] ), $retried )
 			),
 			array( 'status' => 500 )
 		);
+	}
+
+	/**
+	 * Honest description of where an entry ended up after a failed re-offer.
+	 *
+	 * @param object|null $row     The entry as re-read, null if it is gone.
+	 * @param bool        $retried Whether a second cancel was attempted.
+	 * @return string
+	 */
+	private static function state_sentence( $row, bool $retried ): string {
+		if ( ! $row ) {
+			return 'The entry no longer exists.';
+		}
+		if ( SPLM_Waitlist_Database::STATUS_QUEUED === $row->status ) {
+			return 'The entry is back in the queue.';
+		}
+		if ( $retried && SPLM_Waitlist_Database::STATUS_OFFERED === $row->status ) {
+			return 'The entry is still marked offered; withdraw it before trying again.';
+		}
+		return sprintf( 'The entry is now %s.', $row->status );
+	}
+
+	/**
+	 * A note line when cancel() landed the entry somewhere other than expected,
+	 * i.e. it changed status between the preview check and the write.
+	 *
+	 * @param array|null $cancelled The cancel() result, null for a dry run.
+	 * @param string     $expected  Status the action expects.
+	 * @return string[] Zero or one line.
+	 */
+	public static function status_note( $cancelled, string $expected ): array {
+		if ( ! is_array( $cancelled ) || ( $cancelled['status'] ?? $expected ) === $expected ) {
+			return array();
+		}
+		return array( sprintf( 'Note: the entry changed status while this ran; it is now %s.', $cancelled['status'] ) );
 	}
 
 	/**
@@ -293,7 +338,7 @@ class SPLM_FreeScout_Waitlist {
 
 		$raw = $params['message'] ?? null;
 		if ( null !== $raw && ! is_scalar( $raw ) ) {
-			$raw = '';
+			return new WP_Error( 'bad_message', 'The offer message must be plain text.', array( 'status' => 400 ) );
 		}
 		$message = SPLM_Waitlist_Offer::validate_offer_message( $raw );
 		if ( is_wp_error( $message ) ) {

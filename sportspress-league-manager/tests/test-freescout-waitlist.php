@@ -74,6 +74,7 @@ class SPLM_FSW_Test_State {
 	public $filters       = array();
 	public $mail          = array();
 	public $mail_succeeds = true;
+	public $lock_hook     = null;
 }
 
 function splm_fsw_state() {
@@ -87,6 +88,13 @@ function splm_fsw_state() {
 /** Runs the callback inline, like an uncontended SPAT_Lock. */
 class SPAT_Lock {
 	public static function with( $key, $ttl, $callback ) { // phpcs:ignore
+		$hook = splm_fsw_state()->lock_hook;
+		if ( is_callable( $hook ) ) {
+			// Another holder owns the lock: run its side effect, refuse this caller.
+			splm_fsw_state()->lock_hook = null;
+			$hook();
+			return false;
+		}
 		return $callback();
 	}
 }
@@ -124,7 +132,11 @@ class Fake_WPDB {
 	public $prefix       = 'wp_';
 	public $rows         = array();
 	public $update_calls = array();
-	private $last_args   = array();
+	/** 1-based update() call numbers that match no row (a failed write). */
+	public $fail_calls = array();
+	/** @var callable|null Fires once, after the next get_row() returns its snapshot. */
+	public $after_get = null;
+	private $last_args = array();
 
 	public function prepare( $query, ...$args ) { // phpcs:ignore
 		if ( 1 === count( $args ) && is_array( $args[0] ) ) {
@@ -136,7 +148,13 @@ class Fake_WPDB {
 
 	public function get_row() { // phpcs:ignore
 		$id = $this->last_args[0] ?? null;
-		return isset( $this->rows[ $id ] ) ? clone $this->rows[ $id ] : null;
+		$snapshot = isset( $this->rows[ $id ] ) ? clone $this->rows[ $id ] : null;
+		if ( is_callable( $this->after_get ) ) {
+			$hook            = $this->after_get;
+			$this->after_get = null;
+			$hook();
+		}
+		return $snapshot;
 	}
 
 	/** Emulates the email + status IN (...) ORDER BY season, id query. */
@@ -161,7 +179,10 @@ class Fake_WPDB {
 
 	public function update( $table, $data, $where ) { // phpcs:ignore
 		$this->update_calls[] = array( $data, $where );
-		$row                  = $this->rows[ $where['id'] ] ?? null;
+		if ( in_array( count( $this->update_calls ), $this->fail_calls, true ) ) {
+			return false;
+		}
+		$row = $this->rows[ $where['id'] ] ?? null;
 		if ( isset( $where['status'] ) && $row && (string) $row->status !== (string) $where['status'] ) {
 			return 0;
 		}
@@ -226,6 +247,10 @@ function put( $rows ) {
 	global $wpdb;
 	$wpdb->rows         = array();
 	$wpdb->update_calls = array();
+	$wpdb->fail_calls   = array();
+	$wpdb->after_get    = null;
+
+	splm_fsw_state()->lock_hook = null;
 	foreach ( $rows as $row ) {
 		$wpdb->rows[ $row->id ] = $row;
 	}
@@ -509,6 +534,90 @@ assert_test( is_wp_error( $r ) && 'reoffer_partial' === $r->code && 500 === $r->
 assert_test( 0 === strpos( $r->message, 'The old offer was withdrawn but the new offer failed: ' ) && ' The entry is back in the queue.' === substr( $r->message, -strlen( ' The entry is back in the queue.' ) ), 'message follows the contract' );
 assert_test( false !== strpos( $r->message, 'The offer email could not be sent' ), 'message carries the reason' );
 assert_test( 'queued' === $GLOBALS['wpdb']->rows[7]->status, 'the entry ends queued' );
+
+echo "\n=== reoffer: failure handling ===\n\n";
+
+$tail = ' The entry is back in the queue.';
+
+// Unwind failed (3rd write), the retry cancel (4th) succeeds.
+put( array( entry( $offered ) ) );
+splm_fsw_state()->mail_succeeds = false;
+$GLOBALS['wpdb']->fail_calls    = array( 3 );
+$r                              = $f::reoffer_action( array( 'entry_id' => 7 ), false, $actor, $info );
+assert_test( is_wp_error( $r ) && 'reoffer_partial' === $r->code && 4 === count( $GLOBALS['wpdb']->update_calls ), 'unwind_failed: one retry cancel is attempted' );
+assert_test( 'queued' === $GLOBALS['wpdb']->rows[7]->status && $tail === substr( $r->message, -strlen( $tail ) ), 'retry succeeded: back in the queue' );
+
+// Unwind and the retry both fail.
+put( array( entry( $offered ) ) );
+splm_fsw_state()->mail_succeeds = false;
+$GLOBALS['wpdb']->fail_calls    = array( 3, 4 );
+$r                              = $f::reoffer_action( array( 'entry_id' => 7 ), false, $actor, $info );
+assert_test( is_wp_error( $r ) && 'offered' === $GLOBALS['wpdb']->rows[7]->status, 'retry failed: the entry is still offered' );
+assert_test( false !== strpos( $r->message, 'The entry is still marked offered; withdraw it before trying again.' ) && false === strpos( $r->message, 'back in the queue' ), 'retry failed: says so, not "back in the queue"' );
+
+// A concurrent offer holds the lock: its offer must not be withdrawn.
+put( array( entry( $offered ) ) );
+splm_fsw_state()->lock_hook = function () {
+	$GLOBALS['wpdb']->rows[7]->status      = 'offered';
+	$GLOBALS['wpdb']->rows[7]->claim_token = 'theirs';
+};
+$r = $f::reoffer_action( array( 'entry_id' => 7 ), false, $actor, $info );
+assert_test( is_wp_error( $r ) && 'reoffer_partial' === $r->code, 'locked: reoffer_partial' );
+assert_test( 1 === count( $GLOBALS['wpdb']->update_calls ), 'locked: no retry cancel (only the initial withdraw wrote)' );
+assert_test( 'offered' === $GLOBALS['wpdb']->rows[7]->status && 'theirs' === $GLOBALS['wpdb']->rows[7]->claim_token, 'locked: the other offer is untouched' );
+assert_test( false !== strpos( $r->message, 'The entry is now offered.' ) && false === strpos( $r->message, 'back in the queue' ), 'locked: honest state sentence' );
+
+// The entry is deleted, or claimed, behind the failed offer.
+put( array( entry( $offered ) ) );
+splm_fsw_state()->lock_hook = function () {
+	unset( $GLOBALS['wpdb']->rows[7] );
+};
+$r = $f::reoffer_action( array( 'entry_id' => 7 ), false, $actor, $info );
+assert_test( is_wp_error( $r ) && false !== strpos( $r->message, 'The entry no longer exists.' ), 'deleted: says it no longer exists' );
+
+put( array( entry( $offered ) ) );
+splm_fsw_state()->lock_hook = function () {
+	$GLOBALS['wpdb']->rows[7]->status = 'claimed';
+};
+$r = $f::reoffer_action( array( 'entry_id' => 7 ), false, $actor, $info );
+assert_test( is_wp_error( $r ) && false !== strpos( $r->message, 'The entry is now claimed.' ) && false === strpos( $r->message, 'back in the queue' ), 'claimed: honest state sentence' );
+
+echo "\n=== non-scalar message ===\n\n";
+
+put( array( entry() ) );
+$r = $f::offer_action(
+	array(
+		'entry_id' => 7,
+		'message'  => array( 'x' ),
+	),
+	true,
+	$actor,
+	$info
+);
+assert_test( is_wp_error( $r ) && 'bad_message' === $r->code && 400 === $r->data['status'], 'an array message is bad_message, not coerced' );
+
+echo "\n=== status-flip note ===\n\n";
+
+assert_test( array() === $f::status_note( null, 'queued' ), 'no note for a dry run' );
+assert_test( array() === $f::status_note( array( 'status' => 'queued' ), 'queued' ), 'no note when the status is as expected' );
+assert_test( array( 'Note: the entry changed status while this ran; it is now cancelled.' ) === $f::status_note( array( 'status' => 'cancelled' ), 'queued' ), 'a note when it differs' );
+
+// The entry goes queued behind the preview check: withdraw's cancel then removes it.
+put( array( entry( $offered ) ) );
+$GLOBALS['wpdb']->after_get = function () {
+	$GLOBALS['wpdb']->rows[7]->status = 'queued';
+};
+$r = $f::withdraw_action( array( 'entry_id' => 7 ), false, $actor, $info );
+assert_test( ! is_wp_error( $r ) && 3 === count( $r['changes'] ) && false !== strpos( $r['changes'][2], 'it is now cancelled' ), 'withdraw: a raced status adds a note to changes' );
+
+// The entry is offered behind remove's check: cancel withdraws it instead.
+put( array( entry() ) );
+$GLOBALS['wpdb']->after_get = function () {
+	$GLOBALS['wpdb']->rows[7]->status      = 'offered';
+	$GLOBALS['wpdb']->rows[7]->claim_token = 't';
+};
+$r = $f::remove_action( array( 'entry_id' => 7 ), false, $actor, $info );
+assert_test( ! is_wp_error( $r ) && 2 === count( $r['changes'] ) && false !== strpos( $r['changes'][1], 'it is now queued' ), 'remove: a raced status adds a note to changes' );
 
 echo "\n=== waitlist.withdraw ===\n\n";
 
