@@ -29,6 +29,7 @@ class SPT_FSPA_State {
 	public $change_filter = null;  // send_email_change_email as seen inside wp_update_user.
 	public $pass_filter   = null;  // send_password_change_email as seen inside wp_update_user.
 	public $update_error  = false;
+	public $super_admins  = array(); // user ids.
 }
 
 function st() {
@@ -59,11 +60,15 @@ class WP_User {
 	public $user_login;
 	public $user_email;
 	public $display_name;
-	public function __construct( $id, $login, $email, $display = '' ) {
+	public $roles;
+	public $caps;
+	public function __construct( $id, $login, $email, $display = '', $roles = array( 'customer' ), $caps = array( 'read' ) ) {
 		$this->ID           = $id;
 		$this->user_login   = $login;
 		$this->user_email   = $email;
 		$this->display_name = $display;
+		$this->roles        = $roles;
+		$this->caps         = $caps;
 	}
 }
 function is_wp_error( $thing ) {
@@ -126,6 +131,15 @@ function update_user_meta( $id, $key, $value ) {
 	st()->user_meta[ $id ][ $key ] = $value;
 	return true;
 }
+function user_can( $user, $cap ) {
+	return in_array( $cap, $user->caps, true );
+}
+function is_super_admin( $id ) {
+	return in_array( $id, st()->super_admins, true );
+}
+function get_userdata( $id ) {
+	return st()->users[ $id ] ?? false;
+}
 function get_user_by( $field, $value ) {
 	foreach ( st()->users as $user ) {
 		if ( 'email' === $field && 0 === strcasecmp( $user->user_email, (string) $value ) ) {
@@ -162,6 +176,7 @@ class Mock_Order {
 	public $billing;
 	public $saved = 0;
 	public $notes = array();
+	public $spt_at_save = null; // Player 17's spt_email when this order was saved.
 	public function __construct( $id, $billing ) {
 		$this->id      = $id;
 		$this->billing = $billing;
@@ -174,6 +189,7 @@ class Mock_Order {
 	}
 	public function save() {
 		++$this->saved;
+		$this->spt_at_save = st()->meta[17]['spt_email'] ?? null;
 	}
 	public function add_order_note( $note, $is_customer = 0, $added_by_user = false ) {
 		$this->notes[] = array( $note, $is_customer, $added_by_user );
@@ -295,7 +311,7 @@ assert_test( 'Change email jordan@example.com → j.smith@example.com' === $res[
 $expected = array(
 	'Player #17 Jordan Smith: email → j.smith@example.com',
 	'Player #18 Jordan Smith Jr: email → j.smith@example.com',
-	'WordPress login of jordan (user #12): email → j.smith@example.com',
+	'WordPress login of jordan (user #12, customer): email → j.smith@example.com',
 	'This changes the address they log in with',
 	'2 WooCommerce orders: billing email → j.smith@example.com',
 );
@@ -339,6 +355,68 @@ assert_test( 'email_invalid' === err_code( $res ) && 400 === err_status( $res ),
 $res = run_action( array( 'old_email' => 'nobody@example.com', 'new_email' => 'new@example.com' ), true );
 assert_test( 'nothing_to_change' === err_code( $res ) && 404 === err_status( $res ), 'nothing_to_change 404 when nothing uses the old email' );
 
+echo "\n=== Two logins: old on A, new on B linked to an old-email player ===\n";
+fixture();
+SPT_FreeScout_Player_Actions::register();
+st()->users[60]         = new WP_User( 60, 'jordan2', 'new@example.com' );
+st()->meta[17]['sp_user'] = '60';
+$res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'new@example.com' ), true );
+assert_test( 'email_in_use' === err_code( $res ) && 409 === err_status( $res ), 'dry run: email_in_use 409 when both logins exist, even if B is linked' );
+assert_test( 'new@example.com already belongs to WordPress login #60. Merge the accounts in WordPress first.' === $res->get_error_message(), 'message names the other login and says to merge' );
+$res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'new@example.com' ), false );
+assert_test( 'email_in_use' === err_code( $res ) && array() === st()->update_calls && 'Jordan@Example.com' === st()->meta[17]['spt_email'] && 0 === st()->orders[0]->saved, 'real run: refused before any write' );
+
+echo "\n=== Staff logins are protected ===\n";
+$staff_cases = array(
+	'edit_posts'         => array( array( 'editor' ), array( 'read', 'edit_posts' ) ),
+	'manage_woocommerce' => array( array( 'shop_manager' ), array( 'read', 'manage_woocommerce' ) ),
+	'list_users'         => array( array( 'custom' ), array( 'read', 'list_users' ) ),
+	'manage_sportspress' => array( array( 'sp_league_manager' ), array( 'read', 'manage_sportspress' ) ),
+);
+foreach ( $staff_cases as $cap => $case ) {
+	fixture();
+	SPT_FreeScout_Player_Actions::register();
+	st()->users[12]->roles = $case[0];
+	st()->users[12]->caps  = $case[1];
+	$res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'new@example.com' ), false );
+	assert_test(
+		'account_protected' === err_code( $res ) && 409 === err_status( $res ) && 'jordan is a staff account. Change its email in WordPress instead.' === $res->get_error_message(),
+		"old-email login with $cap: account_protected 409"
+	);
+	assert_test( array() === st()->update_calls && 'Jordan@Example.com' === st()->meta[17]['spt_email'] && 0 === st()->orders[0]->saved, "$cap: nothing written" );
+}
+fixture();
+SPT_FreeScout_Player_Actions::register();
+st()->super_admins = array( 12 );
+$res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'new@example.com' ), true );
+assert_test( 'account_protected' === err_code( $res ), 'super admin: account_protected' );
+
+fixture();
+SPT_FreeScout_Player_Actions::register();
+// The old email is only on player 17's spt_email; its linked login is staff
+// under another address.
+st()->users[12]->user_email = 'coach@club.test';
+st()->users[12]->caps       = array( 'read', 'edit_posts' );
+st()->meta[17]['sp_user']   = '12';
+$res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'new@example.com' ), true );
+assert_test( 'account_protected' === err_code( $res ) && 409 === err_status( $res ), 'staff login linked through sp_user: account_protected' );
+
+foreach ( array( 'customer' => array( 'read' ), 'subscriber' => array( 'read' ) ) as $role => $caps ) {
+	fixture();
+	SPT_FreeScout_Player_Actions::register();
+	st()->users[12]->roles = array( $role );
+	st()->users[12]->caps  = $caps;
+	$res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'new@example.com' ), true );
+	assert_test( is_array( $res ) && in_array( "WordPress login of jordan (user #12, $role): email → new@example.com", $res['changes'], true ), "plain $role is allowed and the login line shows the role" );
+}
+
+echo "\n=== Trashed players are marked ===\n";
+fixture();
+SPT_FreeScout_Player_Actions::register();
+st()->posts[18]->post_status = 'trash';
+$res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'new@example.com' ), true );
+assert_test( 'Player #18 Jordan Smith Jr (trashed): email → new@example.com' === $res['changes'][1] && 'Player #17 Jordan Smith: email → new@example.com' === $res['changes'][0], 'trashed player line carries (trashed)' );
+
 echo "\n=== Allowed: new email already on the linked login ===\n";
 fixture();
 SPT_FreeScout_Player_Actions::register();
@@ -381,6 +459,7 @@ foreach ( array( 0, 1 ) as $i ) {
 	);
 }
 assert_test( 'other@example.com' === st()->orders[2]->billing && 0 === st()->orders[2]->saved, 'unrelated order untouched' );
+assert_test( 'j.smith@example.com' === st()->orders[0]->spt_at_save, 'orders are written after the players' );
 assert_test( 'other@example.com' === st()->meta[30]['spt_email'], 'unrelated player untouched' );
 
 echo "\n=== Real run: agent name fallback ===\n";

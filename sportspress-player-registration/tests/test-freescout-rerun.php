@@ -264,14 +264,17 @@ st()->logs[5107] = 'multiple_players_found_email_conflict';
 $res = run_action( array( 'order_id' => 5107 ), true );
 assert_test( is_array( $res ) && 'Re-run registration for order #5107' === $res['summary'], 'summary names the order' );
 assert_test(
-	array( 'Clears the registration marker on order #5107 and processes it again', 'Last outcome: multiple players found email conflict' ) === $res['changes'],
-	'changes: marker line and the newest log action with spaces'
+	array( 'Clears the registration marker on order #5107 and processes it again', 'Last outcome: multiple players found email conflict', 'Currently: not registered' ) === $res['changes'],
+	'changes: marker line, the newest log action with spaces, and the current state'
 );
 assert_test( false !== strpos( st()->sql, 'wp_spat_registration_logs' ) && false !== strpos( st()->sql, 'ORDER BY timestamp DESC, id DESC LIMIT 1' ), 'last outcome is the newest log row' );
 assert_test( array() === st()->process && 'failed' === st()->orders[5107]->meta['_spr_processed'] && array() === st()->transients, 'dry run changes nothing and takes no lock' );
 st()->logs = array();
 $res = run_action( array( 'order_id' => '5107' ), true );
 assert_test( 'Last outcome: not processed' === $res['changes'][1], 'no log rows: "not processed"' );
+st()->orders[5107]->meta['_spr_processed'] = '1';
+$res = run_action( array( 'order_id' => 5107 ), true );
+assert_test( 'Currently: registered' === $res['changes'][2], 'marker 1: "Currently: registered"' );
 
 echo "\n=== Refusals ===\n";
 fixture();

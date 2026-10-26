@@ -73,7 +73,11 @@ class SPPR_FreeScout_Rerun {
 			}
 			return array(
 				'summary'          => sprintf( 'Re-run registration for order #%d', $order_id ),
-				'changes'          => array( $marker_line, 'Last outcome: ' . self::text( self::last_outcome( $order_id ) ) ),
+				'changes'          => array(
+					$marker_line,
+					'Last outcome: ' . self::text( self::last_outcome( $order_id ) ),
+					'1' === (string) $order->get_meta( '_spr_processed' ) ? 'Currently: registered' : 'Currently: not registered',
+				),
 				'requires_confirm' => array(),
 				'data'             => array(),
 			);

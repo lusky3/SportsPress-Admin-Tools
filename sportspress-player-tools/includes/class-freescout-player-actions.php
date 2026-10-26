@@ -128,12 +128,33 @@ class SPT_FreeScout_Player_Actions {
 			return self::error( 'nothing_to_change', sprintf( 'Nothing in WordPress uses %s.', $old ), 404 );
 		}
 
-		// The new address may already sit on this customer's own login (one
-		// linked to their players); anyone else holding it is a different person.
-		if ( $user ) {
-			$linked[] = (int) $user->ID;
+		// The old address comes from a ticket sender, which can be spoofed, and
+		// the change notice is suppressed: never move a staff login this way,
+		// whether it is the old-email login or one linked to these players.
+		$logins = $user ? array( $user ) : array();
+		foreach ( array_unique( array_filter( $linked ) ) as $linked_id ) {
+			$linked_user = get_userdata( $linked_id );
+			if ( $linked_user ) {
+				$logins[] = $linked_user;
+			}
 		}
+		foreach ( $logins as $login ) {
+			if ( self::is_staff( $login ) ) {
+				return self::error( 'account_protected', sprintf( '%s is a staff account. Change its email in WordPress instead.', $login->user_login ), 409 );
+			}
+		}
+
 		$holder = get_user_by( 'email', $new );
+		if ( $holder && $user ) {
+			// Two logins: WordPress would refuse to give the old one this address.
+			return self::error(
+				'email_in_use',
+				sprintf( '%1$s already belongs to WordPress login #%2$d. Merge the accounts in WordPress first.', $new, $holder->ID ),
+				409
+			);
+		}
+		// Without an old-email login, the new address may already sit on the
+		// login linked to these players; anyone else holding it is a different person.
 		if ( $holder && ! in_array( (int) $holder->ID, $linked, true ) ) {
 			return self::error( 'email_in_use', sprintf( '%s already belongs to another WordPress account.', $new ), 409 );
 		}
@@ -158,10 +179,18 @@ class SPT_FreeScout_Player_Actions {
 	private static function describe( array $plan, string $new ): array {
 		$changes = array();
 		foreach ( $plan['players'] as $post ) {
-			$changes[] = sprintf( 'Player #%1$d %2$s: email → %3$s', $post->ID, $post->post_title, $new );
+			$trashed   = 'trash' === $post->post_status ? ' (trashed)' : '';
+			$changes[] = sprintf( 'Player #%1$d %2$s%3$s: email → %4$s', $post->ID, $post->post_title, $trashed, $new );
 		}
 		if ( $plan['user'] ) {
-			$changes[] = sprintf( 'WordPress login of %1$s (user #%2$d): email → %3$s', $plan['user']->user_login, $plan['user']->ID, $new );
+			$roles     = (array) $plan['user']->roles;
+			$changes[] = sprintf(
+				'WordPress login of %1$s (user #%2$d, %3$s): email → %4$s',
+				$plan['user']->user_login,
+				$plan['user']->ID,
+				empty( $roles ) ? 'no role' : implode( ', ', $roles ),
+				$new
+			);
 			$changes[] = 'This changes the address they log in with';
 		}
 		$count = count( $plan['orders'] );
@@ -173,8 +202,10 @@ class SPT_FreeScout_Player_Actions {
 
 	/**
 	 * Write the change. The login goes first, so a refusal there leaves
-	 * everything as it was; spt_email goes last, so it is the final word on
-	 * every player whatever a profile_update listener wrote in between.
+	 * everything as it was; spt_email follows it, so it is the final word on
+	 * every player whatever a profile_update listener wrote in between. Orders
+	 * go last: if one fails part-way, the login and players already agree and
+	 * a retry (old → new again) still finds the remaining orders.
 	 *
 	 * @return true|WP_Error
 	 */
@@ -203,6 +234,10 @@ class SPT_FreeScout_Player_Actions {
 			update_user_meta( (int) $plan['user']->ID, 'billing_email', $new );
 		}
 
+		foreach ( $plan['players'] as $post ) {
+			update_post_meta( (int) $post->ID, 'spt_email', $new );
+		}
+
 		$note = sprintf( 'Billing email changed from %1$s to %2$s from FreeScout by %3$s', $old, $new, $agent );
 		foreach ( $plan['orders'] as $order ) {
 			$order->set_billing_email( $new );
@@ -210,11 +245,22 @@ class SPT_FreeScout_Player_Actions {
 			$order->add_order_note( $note, 0, true );
 		}
 
-		foreach ( $plan['players'] as $post ) {
-			update_post_meta( (int) $post->ID, 'spt_email', $new );
-		}
-
 		return true;
+	}
+
+	/**
+	 * Whether a login is anyone but a plain customer: editors and above,
+	 * shop managers, user admins, SportsPress managers, super admins.
+	 *
+	 * @param WP_User $user Login.
+	 */
+	private static function is_staff( $user ): bool {
+		foreach ( array( 'edit_posts', 'manage_woocommerce', 'list_users', 'manage_sportspress' ) as $cap ) {
+			if ( user_can( $user, $cap ) ) {
+				return true;
+			}
+		}
+		return is_super_admin( (int) $user->ID );
 	}
 
 	private static function email_param( array $params, string $key ): string {
