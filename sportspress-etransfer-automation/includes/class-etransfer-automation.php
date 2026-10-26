@@ -316,8 +316,21 @@ class SPET_ETransfer_Automation {
 						)
 					);
 
-					// Fire notification for matched payment
-					do_action( 'spat_payment_matched', $payment_data['sender_name'], $payment_data['amount'], $order_id );
+					// Fire notification for matched payment. The 4th argument is
+					// extra context for listeners that want it (FreeScout events);
+					// 3-argument listeners are unaffected.
+					do_action(
+						'spat_payment_matched',
+						$payment_data['sender_name'],
+						$payment_data['amount'],
+						$order_id,
+						array(
+							'log_id'     => self::last_log_id(),
+							'from_email' => (string) $payment_data['customer_email'],
+							'reference'  => (string) $payment_data['reference_number'],
+							'manual'     => false,
+						)
+					);
 
 					return rest_ensure_response(
 						array(
@@ -350,7 +363,7 @@ class SPET_ETransfer_Automation {
 					)
 				);
 
-				do_action( 'spat_payment_unmatched', $payment_data['sender_name'], $payment_data['amount'], $payment_data['reference_number'] );
+				do_action( 'spat_payment_unmatched', $payment_data['sender_name'], $payment_data['amount'], $payment_data['reference_number'], $this->unmatched_context( $payment_data, 'completion_failed' ) );
 
 				return new WP_REST_Response(
 					array(
@@ -383,7 +396,7 @@ class SPET_ETransfer_Automation {
 			if ( $route_to_review ) {
 				// Fire unmatched notification — both amount mismatch and a name
 				// match lacking exact amount alignment require manual review.
-				do_action( 'spat_payment_unmatched', $payment_data['sender_name'], $payment_data['amount'], $payment_data['reference_number'] );
+				do_action( 'spat_payment_unmatched', $payment_data['sender_name'], $payment_data['amount'], $payment_data['reference_number'], $this->unmatched_context( $payment_data, 'review' ) );
 
 				// Mirrors the result-string ordering above: a name match needing
 				// review reports the name-specific outcome, everything else falls
@@ -406,7 +419,7 @@ class SPET_ETransfer_Automation {
 			}
 
 			// Fire notification for unmatched payment
-			do_action( 'spat_payment_unmatched', $payment_data['sender_name'], $payment_data['amount'], $payment_data['reference_number'] );
+			do_action( 'spat_payment_unmatched', $payment_data['sender_name'], $payment_data['amount'], $payment_data['reference_number'], $this->unmatched_context( $payment_data, 'no_match' ) );
 
 			return rest_ensure_response(
 				array(
@@ -423,6 +436,33 @@ class SPET_ETransfer_Automation {
 				wp_cache_delete( $lock_key, 'spet_locks' );
 			}
 		}
+	}
+
+	/**
+	 * Id of the row the most recent log_etransfer_activity() call inserted.
+	 *
+	 * Read immediately after that call. 0 when the insert failed.
+	 *
+	 * @return int
+	 */
+	private static function last_log_id() {
+		global $wpdb;
+		return isset( $wpdb->insert_id ) ? (int) $wpdb->insert_id : 0;
+	}
+
+	/**
+	 * Context passed as the 4th argument of spat_payment_unmatched.
+	 *
+	 * @param array  $payment_data Parsed payment.
+	 * @param string $reason       review | no_match | completion_failed.
+	 * @return array
+	 */
+	private function unmatched_context( $payment_data, $reason ) {
+		return array(
+			'log_id'     => self::last_log_id(),
+			'from_email' => (string) ( $payment_data['customer_email'] ?? '' ),
+			'reason'     => $reason,
+		);
 	}
 
 	/**

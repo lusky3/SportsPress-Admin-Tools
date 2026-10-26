@@ -11,6 +11,9 @@
 define( 'ABSPATH', __DIR__ );
 define( 'HOUR_IN_SECONDS', 3600 );
 
+// No-op stub: SPLM_Waitlist_Notify::send() fires splm_waitlist_transition first.
+function do_action() {} // phpcs:ignore
+
 /**
  * Stub mirroring the WordPress signature; the unused argument is deliberate.
  *

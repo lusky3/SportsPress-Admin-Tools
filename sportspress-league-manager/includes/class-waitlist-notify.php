@@ -111,6 +111,9 @@ class SPLM_Waitlist_Notify {
 	 * silences everything without touching the address or the per-category
 	 * choices an admin already made.
 	 *
+	 * Fires `splm_waitlist_transition( $row, $event, $context )` first, ahead
+	 * of all of those checks, so other listeners see every transition.
+	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
 	 * @param object $row     Waitlist row: needs id, name, email, season, position.
@@ -121,6 +124,11 @@ class SPLM_Waitlist_Notify {
 	 * @return bool Whether a notification was sent.
 	 */
 	public static function send( $row, string $event, array $context = array() ): bool {
+		// Transition hook for other listeners (the FreeScout bridge). First thing,
+		// before any early return: it must fire whether or not the admin has
+		// configured the notification address or enabled this event.
+		do_action( 'splm_waitlist_transition', $row, $event, $context );
+
 		if ( ! self::is_enabled() || ! self::event_enabled( $event ) ) {
 			return false;
 		}

@@ -22,11 +22,18 @@ define( 'DAY_IN_SECONDS', 86400 );
 // ---------------------------------------------------------------------------
 
 $GLOBALS['filters'] = array();
+$GLOBALS['actions'] = array();
 
 function get_option( $key, $default = false ) {
 	return $default;
 }
 function add_action() {}
+function do_action( $tag, ...$args ) {
+	$GLOBALS['actions'][] = array( $tag, $args );
+}
+function actions_named( $tag ) {
+	return array_values( array_filter( $GLOBALS['actions'], function ( $a ) use ( $tag ) { return $a[0] === $tag; } ) );
+}
 function add_filter( $tag, $cb ) {
 	$GLOBALS['filters'][ $tag ][] = $cb;
 }
@@ -553,6 +560,31 @@ $GLOBALS['orders'][5200] = new Mock_WC_Order( 5200, '325.00', 'processing' );
 $r = SPET_ETransfer_Admin::manual_match( 12, 5200 );
 check( 'order not on hold gives 409 order_not_on_hold', 'order_not_on_hold' === code_of( $r ) && 409 === status_of( $r ) );
 check( 'validation errors write nothing', 0 === $wpdb->writes );
+
+echo "manual_match: spat_payment_matched hook\n";
+$GLOBALS['actions'] = array();
+reset_state();
+add_log( 50, '2026-10-21 14:02:00', 'Pat Smith', 'pat@x.com', '325.00', 'CA50', null, $UNMATCHED );
+$GLOBALS['orders'][5107] = new Mock_WC_Order( 5107, '325.00' );
+SPET_ETransfer_Admin::manual_match( 50, 5107, false, true );
+check( 'dry run does not fire spat_payment_matched', array() === actions_named( 'spat_payment_matched' ) );
+$GLOBALS['orders'][5107]->fail_complete = true;
+SPET_ETransfer_Admin::manual_match( 50, 5107 );
+check( 'failed completion does not fire spat_payment_matched', array() === actions_named( 'spat_payment_matched' ) );
+$GLOBALS['orders'][5107]->fail_complete = false;
+$r = SPET_ETransfer_Admin::manual_match( 50, 5107 );
+$fired = actions_named( 'spat_payment_matched' );
+check( 'successful manual match fires spat_payment_matched once', ! is_wp_error( $r ) && 1 === count( $fired ) );
+check(
+	'manual match args are name, amount, order id and a manual context',
+	'Pat Smith' === $fired[0][1][0] && 325.0 === (float) $fired[0][1][1] && 5107 === $fired[0][1][2]
+	&& array(
+		'log_id'     => 50,
+		'from_email' => 'pat@x.com',
+		'reference'  => 'CA50',
+		'manual'     => true,
+	) === $fired[0][1][3]
+);
 
 echo "manual_match: amount mismatch\n";
 reset_state();

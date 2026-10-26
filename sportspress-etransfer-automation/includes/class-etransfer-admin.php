@@ -590,6 +590,22 @@ class SPET_ETransfer_Admin {
 		}
 
 		$summary['matched'] = true;
+
+		// Same event as an automatic match, flagged manual, so listeners (the
+		// admin notification, FreeScout events) see every completed match.
+		do_action(
+			'spat_payment_matched',
+			(string) $log->from_name,
+			$log_amount,
+			$order_id,
+			array(
+				'log_id'     => $log_id,
+				'from_email' => (string) $log->from_email,
+				'reference'  => (string) $log->reference_number,
+				'manual'     => true,
+			)
+		);
+
 		return $summary;
 	}
 }
