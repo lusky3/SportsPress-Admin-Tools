@@ -19,6 +19,7 @@
 - **[admin-tools]** FreeScout events: turning events off (or clearing the URL or secret) no longer stops the daily purge of old sent and failed outbox rows; only the hourly rescue is unscheduled. A failed outbox row update is now logged.
 - **[admin-tools]** Uninstall with data removal now deletes the FreeScout shared secret (`spat_freescout_secret`) and the FreeScout idempotency and rate-limit transients.
 - **[admin-tools]** `SPAT_Player::ids_for_email()` returns only `sp_player` posts (staff posts carrying `sp_user` were included). A new `$live_only` argument also leaves out trashed and auto-draft players; the FreeScout customer lookup uses it, while the privacy exporter and eraser keep trashed players.
+- **[admin-tools]** FreeScout actions: an idempotency key is bound to the request it was first used for (the action, its params and the acting agent). Reusing it for a different request now gives 409 `spat_freescout_key_reused` instead of replaying the other request's stored result; the same request still replays.
 - **[etransfer]** Manual match (admin screen and FreeScout): a PHP `Error` (such as a `TypeError` from a listener) while completing the order now counts as a failed completion. The e-Transfer goes back to the review list with "completion_failed" instead of staying recorded as "Manually matched and processed successfully" against an order that was not completed.
 
 ## [1.1.0-rc3] - 2026-04-17

@@ -41,6 +41,9 @@ function wp_unslash( $s ) {
 function __( $text, $domain = 'default' ) {
 	return $text;
 }
+function wp_json_encode( $data, $options = 0, $depth = 512 ) {
+	return json_encode( $data, $options, $depth );
+}
 function apply_filters( $tag, $value ) {
 	foreach ( $GLOBALS['spat_filters'][ $tag ] ?? array() as $cb ) {
 		$value = $cb( $value );
@@ -339,15 +342,14 @@ check( 'the handler ran once', 1 === count( $GLOBALS['handler_calls'] ) );
 check( 'the lock is released after the first run', array() === SPAT_Lock::$held );
 
 // The other run finished between our replay check and our claim: replay it.
+// Reuse the entry the run above stored for this same request.
+$other_run = $GLOBALS['spat_transients'][ 'spat_fs_idem_' . hash( 'sha256', 'idem-key-1' ) ];
+$other_run['response']['summary'] = 'Done by the other run';
 $GLOBALS['spat_transients'] = array();
 $GLOBALS['handler_calls']   = array();
 $GLOBALS['handler_mode']    = 'ok';
-SPAT_Lock::$on_acquire      = function () {
-	$GLOBALS['spat_transients'][ 'spat_fs_idem_' . hash( 'sha256', 'idem-key-1' ) ] = array(
-		'success'  => true,
-		'replayed' => false,
-		'summary'  => 'Done by the other run',
-	);
+SPAT_Lock::$on_acquire      = function () use ( $other_run ) {
+	$GLOBALS['spat_transients'][ 'spat_fs_idem_' . hash( 'sha256', 'idem-key-1' ) ] = $other_run;
 };
 $res = $rest->handle_action( signed_request( action_body(), $secret ) );
 SPAT_Lock::$on_acquire = null;
@@ -578,6 +580,112 @@ $GLOBALS['spat_filters']['spat_freescout_queries'] = array(
 );
 $res = SPAT_FreeScout_Actions::query( array( 'feature' => 'demo', 'query' => 'search', 'params' => array() ) );
 check( 'a non-array query registry gives 404', 'spat_freescout_unknown_query' === code_of( $res ) && 404 === status_of( $res ) );
+
+echo "idempotency key bound to its request\n";
+$GLOBALS['spat_users']['agent2@x.com'] = new WP_User( 44 );
+$GLOBALS['spat_caps'][44]             = array( 'manage_woocommerce' );
+$GLOBALS['spat_filters']['spat_freescout_actions'][] = function ( $a ) {
+	$a['demo.other'] = $a['demo.go'];
+	return $a;
+};
+$GLOBALS['spat_transients'] = array();
+$GLOBALS['handler_calls']   = array();
+$GLOBALS['handler_mode']    = 'ok';
+SPAT_Lock::$held            = array();
+SPAT_Lock::$acquired        = array();
+$reuse_key                  = 'reuse-key-1';
+$two_params                 = array(
+	'id'   => 5,
+	'note' => array(
+		'b' => 2,
+		'a' => 1,
+	),
+);
+$first = dispatch_with( array( 'idempotency_key' => $reuse_key, 'params' => $two_params ) );
+check( 'the first run succeeds', ! is_wp_error( $first ) && false === $first['replayed'] && 1 === count( $GLOBALS['handler_calls'] ) );
+$entry = $GLOBALS['spat_transients'][ 'spat_fs_idem_' . hash( 'sha256', $reuse_key ) ] ?? null;
+check( 'the store records what the key was used for next to the response', is_array( $entry ) && is_string( $entry['fingerprint'] ?? null ) && $first === ( $entry['response'] ?? null ) );
+
+$res = dispatch_with( array( 'idempotency_key' => $reuse_key, 'params' => $two_params ) );
+check( 'the same request is replayed', ! is_wp_error( $res ) && true === $res['replayed'] && 'Did it' === $res['summary'] );
+check( 'a replay has exactly the contract keys', array( 'success', 'dry_run', 'replayed', 'summary', 'changes', 'requires_confirm', 'data' ) === array_keys( $res ) );
+$res = dispatch_with(
+	array(
+		'idempotency_key' => $reuse_key,
+		'params'          => array(
+			'note' => array(
+				'a' => 1,
+				'b' => 2,
+			),
+			'id'   => 5,
+		),
+		'actor'           => array(
+			'email' => ' AGENT@x.com',
+			'name'  => 'Someone Else',
+		),
+	)
+);
+check( 'param key order, email case and the agent name do not matter', ! is_wp_error( $res ) && true === $res['replayed'] );
+check( 'no replay ran the handler', 1 === count( $GLOBALS['handler_calls'] ) );
+
+$reused = array(
+	'different params'  => array( 'params' => array( 'id' => 6 ) ),
+	'a different value' => array(
+		'params' => array(
+			'id'   => 5,
+			'note' => array(
+				'a' => 1,
+				'b' => 3,
+			),
+		),
+	),
+	'different action'  => array(
+		'action' => 'other',
+		'params' => $two_params,
+	),
+	'different actor'   => array(
+		'params' => $two_params,
+		'actor'  => array( 'email' => 'agent2@x.com' ),
+	),
+);
+foreach ( $reused as $what => $over ) {
+	$res = dispatch_with( array_merge( array( 'idempotency_key' => $reuse_key ), $over ) );
+	check(
+		"$what with a used key gives 409 key_reused",
+		'spat_freescout_key_reused' === code_of( $res ) && 409 === status_of( $res ) && 'This idempotency key was already used for a different request.' === $res->get_error_message()
+	);
+}
+check( 'a reused key never runs the handler', 1 === count( $GLOBALS['handler_calls'] ) );
+check( 'nor takes the run lock', 1 === count( SPAT_Lock::$acquired ) && array() === SPAT_Lock::$held );
+check( 'and leaves the stored entry alone', $entry === $GLOBALS['spat_transients'][ 'spat_fs_idem_' . hash( 'sha256', $reuse_key ) ] );
+
+$res = dispatch_with( array( 'idempotency_key' => $reuse_key, 'params' => array( 'id' => 6 ), 'dry_run' => true ) );
+check( 'a dry run with a used key still previews (dry runs never replay)', ! is_wp_error( $res ) && true === $res['dry_run'] && 2 === count( $GLOBALS['handler_calls'] ) );
+
+$res = dispatch_with( array( 'idempotency_key' => $reuse_key, 'params' => array( 'id' => 6 ), 'actor' => array( 'email' => 'nocap@x.com' ) ) );
+check( 'the capability check still comes first', 'spat_freescout_actor_forbidden' === code_of( $res ) );
+
+echo "idempotency key reused while waiting for the claim\n";
+$GLOBALS['spat_transients'] = array();
+$GLOBALS['handler_calls']   = array();
+SPAT_Lock::$on_acquire      = function () use ( $entry, $reuse_key ) {
+	$GLOBALS['spat_transients'][ 'spat_fs_idem_' . hash( 'sha256', $reuse_key ) ] = $entry;
+};
+$res                   = dispatch_with( array( 'idempotency_key' => $reuse_key, 'params' => array( 'id' => 7 ) ) );
+SPAT_Lock::$on_acquire = null;
+check( 'another request stored under the key meanwhile gives 409 key_reused', 'spat_freescout_key_reused' === code_of( $res ) && 409 === status_of( $res ) );
+check( 'the handler does not run and the lock is released', array() === $GLOBALS['handler_calls'] && array() === SPAT_Lock::$held );
+
+echo "idempotency entries without a fingerprint\n";
+$GLOBALS['spat_transients'] = array(
+	'spat_fs_idem_' . hash( 'sha256', $reuse_key ) => array(
+		'success'  => true,
+		'replayed' => false,
+		'summary'  => 'Unbound result',
+	),
+);
+$res = dispatch_with( array( 'idempotency_key' => $reuse_key, 'params' => $two_params ) );
+check( 'a stored array with no fingerprint is refused, not replayed or re-run', 'spat_freescout_key_reused' === code_of( $res ) && array() === $GLOBALS['handler_calls'] );
 
 echo "\nPassed: $passed\nFailed: $failed\n";
 exit( $failed > 0 ? 1 : 0 );

@@ -51,7 +51,7 @@ class SPAT_FreeScout_Actions {
 			return self::run( $entry, $request, $user, $transient );
 		}
 
-		$stored = self::stored( $transient );
+		$stored = self::stored( $transient, $request );
 		if ( null !== $stored ) {
 			return $stored;
 		}
@@ -136,7 +136,7 @@ class SPAT_FreeScout_Actions {
 		}
 		try {
 			// The other run may have finished between the caller's check and our claim.
-			$stored = self::stored( $transient );
+			$stored = self::stored( $transient, $request );
 			if ( null !== $stored ) {
 				return $stored;
 			}
@@ -154,15 +154,58 @@ class SPAT_FreeScout_Actions {
 	}
 
 	/**
-	 * The stored response for a key already run, marked as a replay, or null.
+	 * What a key was used for: the action, its params (key order ignored) and
+	 * the acting agent's email. The agent's display name does not count.
 	 */
-	private static function stored( string $transient ): ?array {
+	private static function fingerprint( array $request ): string {
+		return hash(
+			'sha256',
+			(string) wp_json_encode(
+				array(
+					$request['feature'] . '.' . $request['action'],
+					self::canonical( $request['params'] ),
+					$request['email'],
+				)
+			)
+		);
+	}
+
+	/**
+	 * The value with every array's keys sorted, recursively, so two params
+	 * arrays that differ only in key order encode the same.
+	 *
+	 * @param mixed $value Params or a nested value.
+	 * @return mixed
+	 */
+	private static function canonical( $value ) {
+		if ( ! is_array( $value ) ) {
+			return $value;
+		}
+		ksort( $value );
+		return array_map( array( __CLASS__, 'canonical' ), $value );
+	}
+
+	/**
+	 * For a key already run: its stored response marked as a replay, or a 409
+	 * when the key was used for a different request (or the entry does not say
+	 * what it was used for). Null when the key has not been run.
+	 *
+	 * @param string $transient Idempotency transient name.
+	 * @param array  $request   Validated fields from action_request().
+	 * @return array|WP_Error|null
+	 */
+	private static function stored( string $transient, array $request ) {
 		$stored = get_transient( $transient );
 		if ( ! is_array( $stored ) ) {
 			return null;
 		}
-		$stored['replayed'] = true;
-		return $stored;
+		if ( ! isset( $stored['fingerprint'], $stored['response'] ) || ! is_array( $stored['response'] )
+			|| ! hash_equals( (string) $stored['fingerprint'], self::fingerprint( $request ) ) ) {
+			return new WP_Error( 'spat_freescout_key_reused', 'This idempotency key was already used for a different request.', array( 'status' => 409 ) );
+		}
+		$response             = $stored['response'];
+		$response['replayed'] = true;
+		return $response;
 	}
 
 	/**
@@ -203,7 +246,17 @@ class SPAT_FreeScout_Actions {
 
 		$response = self::normalise( $result, $dry_run );
 		if ( ! $dry_run ) {
-			set_transient( $transient, $response, DAY_IN_SECONDS );
+			// Stored with what the key was used for, so a later request that
+			// reuses the key for something else is refused, not answered with
+			// this result.
+			set_transient(
+				$transient,
+				array(
+					'fingerprint' => self::fingerprint( $request ),
+					'response'    => $response,
+				),
+				DAY_IN_SECONDS
+			);
 		}
 
 		return $response;
