@@ -367,23 +367,54 @@ $res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'n
 assert_test( 'email_in_use' === err_code( $res ) && array() === st()->update_calls && 'Jordan@Example.com' === st()->meta[17]['spt_email'] && 0 === st()->orders[0]->saved, 'real run: refused before any write' );
 
 echo "\n=== Staff logins are protected ===\n";
-$staff_cases = array(
-	'edit_posts'         => array( array( 'editor' ), array( 'read', 'edit_posts' ) ),
-	'manage_woocommerce' => array( array( 'shop_manager' ), array( 'read', 'manage_woocommerce' ) ),
-	'list_users'         => array( array( 'custom' ), array( 'read', 'list_users' ) ),
-	'manage_sportspress' => array( array( 'sp_league_manager' ), array( 'read', 'manage_sportspress' ) ),
+// Capability sets as registered by SportsPress 2.7.31 (sp_player), WooCommerce
+// 11.0.1 (customer) and WordPress core (subscriber).
+$role_caps  = array(
+	'sp_player'  => array(
+		'level_1',
+		'level_0',
+		'read',
+		'delete_posts',
+		'edit_posts',
+		'upload_files',
+		'edit_sp_player',
+		'read_sp_player',
+		'edit_sp_players',
+		'edit_published_sp_players',
+		'assign_sp_player_terms',
+		'edit_sp_event',
+		'read_sp_event',
+		'edit_sp_events',
+		'edit_published_sp_events',
+		'assign_sp_event_terms',
+		'edit_sp_team',
+		'read_sp_team',
+		'edit_sp_teams',
+		'edit_published_sp_teams',
+		'assign_sp_team_terms',
+	),
+	'customer'   => array( 'read' ),
+	'subscriber' => array( 'read', 'level_0' ),
 );
-foreach ( $staff_cases as $cap => $case ) {
+$staff_caps = array( 'edit_others_posts', 'manage_woocommerce', 'list_users', 'manage_sportspress', 'edit_others_sp_players', 'promote_users' );
+foreach ( $staff_caps as $cap ) {
 	fixture();
 	SPT_FreeScout_Player_Actions::register();
-	st()->users[12]->roles = $case[0];
-	st()->users[12]->caps  = $case[1];
+	st()->users[12]->roles = array( 'custom' );
+	st()->users[12]->caps  = array( 'read', $cap );
 	$res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'new@example.com' ), false );
 	assert_test(
 		'account_protected' === err_code( $res ) && 409 === err_status( $res ) && 'jordan is a staff account. Change its email in WordPress instead.' === $res->get_error_message(),
 		"old-email login with $cap: account_protected 409"
 	);
 	assert_test( array() === st()->update_calls && 'Jordan@Example.com' === st()->meta[17]['spt_email'] && 0 === st()->orders[0]->saved, "$cap: nothing written" );
+
+	fixture();
+	SPT_FreeScout_Player_Actions::register();
+	st()->users[12]->roles = array( 'sp_player' );
+	st()->users[12]->caps  = array_merge( $role_caps['sp_player'], array( $cap ) );
+	$res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'new@example.com' ), true );
+	assert_test( 'account_protected' === err_code( $res ), "sp_player plus $cap: account_protected" );
 }
 fixture();
 SPT_FreeScout_Player_Actions::register();
@@ -396,18 +427,21 @@ SPT_FreeScout_Player_Actions::register();
 // The old email is only on player 17's spt_email; its linked login is staff
 // under another address.
 st()->users[12]->user_email = 'coach@club.test';
-st()->users[12]->caps       = array( 'read', 'edit_posts' );
+st()->users[12]->caps       = array( 'read', 'edit_others_posts' );
 st()->meta[17]['sp_user']   = '12';
 $res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'new@example.com' ), true );
 assert_test( 'account_protected' === err_code( $res ) && 409 === err_status( $res ), 'staff login linked through sp_user: account_protected' );
 
-foreach ( array( 'customer' => array( 'read' ), 'subscriber' => array( 'read' ) ) as $role => $caps ) {
+foreach ( $role_caps as $role => $caps ) {
 	fixture();
 	SPT_FreeScout_Player_Actions::register();
 	st()->users[12]->roles = array( $role );
 	st()->users[12]->caps  = $caps;
-	$res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'new@example.com' ), true );
-	assert_test( is_array( $res ) && in_array( "WordPress login of jordan (user #12, $role): email → new@example.com", $res['changes'], true ), "plain $role is allowed and the login line shows the role" );
+	$res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'new@example.com' ), false );
+	assert_test(
+		is_array( $res ) && in_array( "WordPress login of jordan (user #12, $role): email → new@example.com", $res['changes'], true ) && 'new@example.com' === st()->users[12]->user_email,
+		"$role with exactly its role caps is allowed (login line shows the role)"
+	);
 }
 
 echo "\n=== Trashed players are marked ===\n";
