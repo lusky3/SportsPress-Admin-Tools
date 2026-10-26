@@ -203,6 +203,7 @@ run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-waitlist-find-active
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-waitlist-customer-status-rest.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-waitlist-notify.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-freescout-hooks.php"
+run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-freescout-waitlist.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-admin-freescout-secret-sanitize.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-admin-waitlist-notify-sanitize.php"
 run_test "$SCRIPT_DIR/sportspress-league-manager/tests/test-admin-bar-node.php"

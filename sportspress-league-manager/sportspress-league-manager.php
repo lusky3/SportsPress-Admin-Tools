@@ -383,6 +383,7 @@ class SportsPress_League_Manager {
 			new SPLM_Waitlist_Expiry();
 			new SPLM_Waitlist_Gate();
 			new SPLM_Waitlist_REST();
+			SPLM_FreeScout_Waitlist::register();
 		}
 
 		// REST API and Dashboard Frontend load regardless of admin context.

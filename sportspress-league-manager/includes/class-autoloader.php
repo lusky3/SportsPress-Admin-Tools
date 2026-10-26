@@ -84,6 +84,7 @@ class SPLM_Autoloader {
 			'SPLM_Waitlist_Claim'        => $base . 'class-waitlist-claim.php',
 			'SPLM_Waitlist_Database'     => $base . 'class-waitlist-database.php',
 			'SPLM_Waitlist_Expiry'       => $base . 'class-waitlist-expiry.php',
+			'SPLM_FreeScout_Waitlist'    => $base . 'class-freescout-waitlist.php',
 			'SPLM_Waitlist_Gate'         => $base . 'class-waitlist-gate.php',
 			'SPLM_Waitlist_Matcher'      => $base . 'class-waitlist-matcher.php',
 			'SPLM_Waitlist_Notify'       => $base . 'class-waitlist-notify.php',

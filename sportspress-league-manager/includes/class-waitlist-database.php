@@ -405,6 +405,33 @@ class SPLM_Waitlist_Database {
 	}
 
 	/**
+	 * Every entry for an email whose status is one of $statuses.
+	 *
+	 * Unlike find_active_for_email(), the caller picks the statuses: the
+	 * FreeScout waitlist section needs `expired` (so it can be re-offered)
+	 * and still excludes `cancelled`.
+	 *
+	 * @param string   $email    Email address (case-insensitive).
+	 * @param string[] $statuses Statuses to include; empty returns nothing.
+	 * @return object[] Rows ordered by season, then id.
+	 */
+	public static function find_for_email_with_statuses( string $email, array $statuses ): array {
+		global $wpdb;
+		$statuses = array_values( array_intersect( $statuses, self::statuses() ) );
+		if ( array() === $statuses ) {
+			return array();
+		}
+		$placeholders = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
+		$rows         = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT * FROM ' . self::table_name() . ' WHERE email = %s AND status IN (' . $placeholders . ') ORDER BY season ASC, id ASC', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQLPlaceholders -- table name and a generated placeholder list; every value is bound.
+				array_merge( array( strtolower( $email ) ), $statuses )
+			)
+		);
+		return is_array( $rows ) ? $rows : array();
+	}
+
+	/**
 	 * The first row this order already produced for this waitlist product, at
 	 * any status.
 	 *
