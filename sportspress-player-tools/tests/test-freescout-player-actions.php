@@ -638,6 +638,102 @@ assert_test( 'update_failed' === err_code( $res ) && 500 === err_status( $res ),
 assert_test( 'Jordan@Example.com' === st()->meta[17]['spt_email'] && 0 === st()->orders[0]->saved && 'jordan@example.com' === st()->user_meta[12]['billing_email'], 'nothing else written when the login update fails' );
 assert_test( true === apply_filters( 'send_email_change_email', true ), 'suppression removed after a failed call' );
 
+// Characterization: pins plan()'s refusals, their messages and precedence.
+echo "\n=== plan(): refusal messages and precedence ===\n";
+$move = array(
+	'old_email' => 'jordan@example.com',
+	'new_email' => 'new@example.com',
+);
+
+fixture();
+SPT_FreeScout_Player_Actions::register();
+$res = run_action( array( 'old_email' => 'nobody@example.com', 'new_email' => 'new@example.com' ), true );
+assert_test( 'Nothing in WordPress uses nobody@example.com.' === $res->get_error_message(), 'nothing_to_change message names the old email' );
+
+// Only a non-player post (sp_staff) carries the old email, and it links to a
+// staff login: with no player, login or order there is nothing to change, and
+// that answer comes before the staff check.
+fixture();
+SPT_FreeScout_Player_Actions::register();
+st()->users     = array( 80 => new WP_User( 80, 'boss', 'boss@club.test', '', array( 'administrator' ), array( 'manage_options' ) ) );
+st()->meta      = array(
+	40 => array(
+		'spt_email' => 'jordan@example.com',
+		'sp_user'   => '80',
+	),
+);
+st()->orders    = array();
+$res = run_action( $move, true );
+assert_test( 'nothing_to_change' === err_code( $res ) && 404 === err_status( $res ), 'nothing_to_change precedes account_protected' );
+
+// Orders alone are enough to proceed.
+fixture();
+SPT_FreeScout_Player_Actions::register();
+st()->users = array();
+st()->meta  = array();
+$res        = run_action( $move, true );
+assert_test( is_array( $res ) && array( '2 WooCommerce orders: billing email → new@example.com' ) === $res['changes'] && array() === $res['data']['player_ids'] && 0 === $res['data']['user_id'], 'orders only: plan has just the orders' );
+
+// A player linked to a login that no longer exists, and a meta row whose post
+// is gone: both are skipped.
+fixture();
+SPT_FreeScout_Player_Actions::register();
+st()->meta[17]['sp_user'] = '999';
+st()->meta[90]            = array( 'spt_email' => 'jordan@example.com' );
+$res = run_action( $move, true );
+assert_test( is_array( $res ) && array( 17, 18 ) === $res['data']['player_ids'], 'missing linked login and missing post are skipped' );
+
+// Staff check precedes every email_in_use check.
+fixture();
+SPT_FreeScout_Player_Actions::register();
+st()->users[12]->caps = array( 'read', 'manage_options' );
+$res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'taken@example.com' ), true );
+assert_test( 'account_protected' === err_code( $res ), 'account_protected precedes email_in_use (login holder)' );
+$res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'other@example.com' ), true );
+assert_test( 'account_protected' === err_code( $res ), 'account_protected precedes email_in_use (player record)' );
+
+// The staff check covers a staff login linked to the players even when the
+// old-email login is not staff.
+fixture();
+SPT_FreeScout_Player_Actions::register();
+st()->users[81]           = new WP_User( 81, 'coach2', 'coach2@club.test', '', array( 'editor' ), array( 'read', 'edit_others_posts' ) );
+st()->meta[17]['sp_user'] = '81';
+$res = run_action( $move, true );
+assert_test( 'account_protected' === err_code( $res ) && 'coach2 is a staff account. Change its email in WordPress instead.' === $res->get_error_message(), 'old-email login plus a staff linked login: account_protected names the linked one' );
+
+// No old-email login: a holder of the new email who is not linked to these
+// players is another person.
+fixture();
+SPT_FreeScout_Player_Actions::register();
+unset( st()->users[12] );
+$res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'taken@example.com' ), true );
+assert_test(
+	'email_in_use' === err_code( $res ) && 409 === err_status( $res ) && 'taken@example.com already belongs to another WordPress account.' === $res->get_error_message(),
+	'no old-email login, unlinked holder: email_in_use (another account)'
+);
+
+// The login-holder conflict precedes the player-record conflict.
+fixture();
+SPT_FreeScout_Player_Actions::register();
+st()->meta[30]['spt_email'] = 'taken@example.com';
+$res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'taken@example.com' ), true );
+assert_test( 'taken@example.com already belongs to WordPress login #50. Merge the accounts in WordPress first.' === $res->get_error_message(), 'login conflict precedes player-record conflict' );
+
+fixture();
+SPT_FreeScout_Player_Actions::register();
+$res = run_action( array( 'old_email' => 'jordan@example.com', 'new_email' => 'other@example.com' ), true );
+assert_test( 'other@example.com is already used by another player record (#30).' === $res->get_error_message(), 'player-record conflict message names the record' );
+
+// No old-email login and the linked holder: another player holding the new
+// email that is neither in the old set nor linked to the holder conflicts.
+fixture();
+SPT_FreeScout_Player_Actions::register();
+st()->meta[17]['sp_user']   = '12';
+st()->users[12]->user_email = 'new@example.com';
+st()->meta[30]['spt_email'] = 'new@example.com';
+$res = run_action( $move, true );
+assert_test( 'email_in_use' === err_code( $res ) && 'new@example.com is already used by another player record (#30).' === $res->get_error_message(), 'linked holder allowed, but an unrelated player with the new email is not' );
+
 echo "\n=== Results ===\n";
 echo "Passed: $passed\n";
 echo "Failed: $failed\n";

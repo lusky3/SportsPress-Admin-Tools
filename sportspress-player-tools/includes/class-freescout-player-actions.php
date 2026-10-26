@@ -101,7 +101,41 @@ class SPT_FreeScout_Player_Actions {
 	 */
 	private static function plan( string $old, string $new ) {
 		$old_ids = SPAT_Player::ids_for_email( $old );
+		list( $players, $linked ) = self::old_records( $old_ids );
 
+		$user   = get_user_by( 'email', $old );
+		$user   = $user ? $user : null;
+		$orders = self::orders_for( $old );
+
+		// Refusals, in order: nothing to change, a staff login, then the new
+		// address already in use.
+		if ( empty( $players ) && null === $user && empty( $orders ) ) {
+			return self::error( 'nothing_to_change', sprintf( 'Nothing in WordPress uses %s.', $old ), 404 );
+		}
+		$protected = self::staff_refusal( $user, $linked );
+		if ( null !== $protected ) {
+			return $protected;
+		}
+		$conflict = self::email_conflict( $new, $user, $old_ids, $linked );
+		if ( null !== $conflict ) {
+			return $conflict;
+		}
+
+		return array(
+			'players' => $players,
+			'user'    => $user,
+			'orders'  => $orders,
+		);
+	}
+
+	/**
+	 * The sp_player posts among the old-email ids, and the login id each id
+	 * links to through sp_user (0 when none; non-player posts count too).
+	 *
+	 * @param int[] $old_ids Post ids found for the old email.
+	 * @return array{0: WP_Post[], 1: int[]}
+	 */
+	private static function old_records( array $old_ids ): array {
 		$players = array();
 		$linked  = array();
 		foreach ( $old_ids as $post_id ) {
@@ -111,26 +145,37 @@ class SPT_FreeScout_Player_Actions {
 				$players[] = $post;
 			}
 		}
+		return array( $players, $linked );
+	}
 
-		$user   = get_user_by( 'email', $old );
-		$user   = $user ? $user : null;
-		$orders = function_exists( 'wc_get_orders' )
-			? (array) wc_get_orders(
-				array(
-					'billing_email' => $old,
-					'limit'         => -1,
-					'return'        => 'objects',
-				)
-			)
-			: array();
-
-		if ( empty( $players ) && null === $user && empty( $orders ) ) {
-			return self::error( 'nothing_to_change', sprintf( 'Nothing in WordPress uses %s.', $old ), 404 );
+	/**
+	 * WooCommerce orders billed to the email (none without WooCommerce).
+	 *
+	 * @return WC_Order[]
+	 */
+	private static function orders_for( string $email ): array {
+		if ( ! function_exists( 'wc_get_orders' ) ) {
+			return array();
 		}
+		return (array) wc_get_orders(
+			array(
+				'billing_email' => $email,
+				'limit'         => -1,
+				'return'        => 'objects',
+			)
+		);
+	}
 
-		// The old address comes from a ticket sender, which can be spoofed, and
-		// the change notice is suppressed: never move a staff login this way,
-		// whether it is the old-email login or one linked to these players.
+	/**
+	 * The old address comes from a ticket sender, which can be spoofed, and
+	 * the change notice is suppressed: never move a staff login this way,
+	 * whether it is the old-email login or one linked to these players.
+	 *
+	 * @param WP_User|null $user   Old-email login.
+	 * @param int[]        $linked Login ids linked to the old-email posts.
+	 * @return WP_Error|null account_protected for the first staff login found.
+	 */
+	private static function staff_refusal( $user, array $linked ): ?WP_Error {
 		$logins = $user ? array( $user ) : array();
 		foreach ( array_unique( array_filter( $linked ) ) as $linked_id ) {
 			$linked_user = get_userdata( $linked_id );
@@ -143,7 +188,19 @@ class SPT_FreeScout_Player_Actions {
 				return self::error( 'account_protected', sprintf( '%s is a staff account. Change its email in WordPress instead.', $login->user_login ), 409 );
 			}
 		}
+		return null;
+	}
 
+	/**
+	 * email_in_use when the new address already belongs to someone else: a
+	 * second login, an unlinked login, or another player record.
+	 *
+	 * @param string       $new     New email.
+	 * @param WP_User|null $user    Old-email login.
+	 * @param int[]        $old_ids Post ids found for the old email.
+	 * @param int[]        $linked  Login ids linked to the old-email posts.
+	 */
+	private static function email_conflict( string $new, $user, array $old_ids, array $linked ): ?WP_Error {
 		$holder = get_user_by( 'email', $new );
 		if ( $holder && $user ) {
 			// Two logins: WordPress would refuse to give the old one this address.
@@ -159,18 +216,27 @@ class SPT_FreeScout_Player_Actions {
 			return self::error( 'email_in_use', sprintf( '%s already belongs to another WordPress account.', $new ), 409 );
 		}
 		foreach ( SPAT_Player::ids_for_email( $new ) as $post_id ) {
-			// Players reached through that same allowed login are theirs too.
-			if ( in_array( $post_id, $old_ids, true ) || ( $holder && (int) get_post_meta( $post_id, 'sp_user', true ) === (int) $holder->ID ) ) {
-				continue;
+			if ( ! self::is_own_player( $post_id, $old_ids, $holder ) ) {
+				return self::error( 'email_in_use', sprintf( '%1$s is already used by another player record (#%2$d).', $new, $post_id ), 409 );
 			}
-			return self::error( 'email_in_use', sprintf( '%1$s is already used by another player record (#%2$d).', $new, $post_id ), 409 );
 		}
+		return null;
+	}
 
-		return array(
-			'players' => $players,
-			'user'    => $user,
-			'orders'  => $orders,
-		);
+	/**
+	 * Whether a post found for the new email is one of the customer's own: in
+	 * the old-email set, or reached through the allowed login holding the new
+	 * address.
+	 *
+	 * @param int           $post_id Post found for the new email.
+	 * @param int[]         $old_ids Post ids found for the old email.
+	 * @param WP_User|false $holder  Login holding the new email, if any.
+	 */
+	private static function is_own_player( $post_id, array $old_ids, $holder ): bool {
+		if ( in_array( $post_id, $old_ids, true ) ) {
+			return true;
+		}
+		return $holder && (int) get_post_meta( $post_id, 'sp_user', true ) === (int) $holder->ID;
 	}
 
 	/**
