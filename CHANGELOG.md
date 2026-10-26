@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- **[etransfer]** A manual match (from the e-Transfer admin screen or from FreeScout) now fires `spat_payment_matched`, with `'manual' => true` in the 4th (context) argument. Before, only automatic matches fired it, so a site-level listener (mu-plugin or theme) will start seeing manual matches; check `$context['manual']` to skip them. The built-in admin notification still skips manual matches.
+- **[admin-tools]** FreeScout events: a lost or stuck send is now rescued within an hour by a new hourly `spat_freescout_events_rescue` cron event (added to existing installs automatically); the daily `spat_freescout_events_sweep` now only purges old rows. A send that died mid-flight counts as an attempt, so it gives up after the usual six instead of retrying forever.
+- **[admin-tools]** FreeScout events: the sweep, rescue and queued sends are unscheduled when the plugin is deactivated, and on uninstall whether or not data is removed.
+
+### Fixed
+- **[admin-tools]** FreeScout actions: two concurrent runs with the same idempotency key no longer both run; the second gets 409 "This action is already running".
+- **[player-tools]** FreeScout change-email refuses authors and any role with `manage_options`, `edit_users`, `create_users`, `delete_users`, `activate_plugins`, `publish_posts` or `edit_pages`, as it already did editors, shop managers and SportsPress managers.
+- **[league-manager]** FreeScout waitlist withdraw, remove and re-offer refuse with 409 when the entry changed since it was checked, instead of pushing an already-withdrawn entry on to cancelled.
+- **[league-manager]** FreeScout waitlist offer previews show the deadline in the site's time zone instead of UTC.
+
 ## [1.1.0-rc3] - 2026-04-17
 
 ### Changed
