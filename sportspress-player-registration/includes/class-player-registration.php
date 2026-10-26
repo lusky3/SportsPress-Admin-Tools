@@ -102,7 +102,8 @@ class SPPR_Player_Registration {
 		// Open the try IMMEDIATELY after the lock claims so the finally runs on
 		// every exit path (including throws during meta writes) and the locks are
 		// always released. The SPAT_Lock acquired above — not any meta marker — is
-		// the authoritative single-flight guard, so a single save at the end suffices.
+		// the authoritative single-flight guard. The per-item record is saved as
+		// each item links (or is found stale); the marker is saved once at the end.
 		try {
 			$customer_email = strtolower( sanitize_email( $order->get_billing_email() ) );
 			$user_id = $order->get_user_id();
@@ -121,7 +122,14 @@ class SPPR_Player_Registration {
 
 			foreach ( $registration_items as $item ) {
 				if ( isset( $linked_items[ $item['item_id'] ] ) ) {
-					continue;
+					if ( $this->is_live_player( $linked_items[ $item['item_id'] ] ) ) {
+						continue;
+					}
+					// The recorded player was deleted, trashed or retired since: forget
+					// it and process the item again, so a retry or admin re-run can
+					// rematch or recreate the player instead of skipping it forever.
+					unset( $linked_items[ $item['item_id'] ] );
+					$this->save_linked_items( $order, $linked_items );
 				}
 
 				$season = $this->extract_season_from_product( $item['product_id'] );
@@ -153,11 +161,11 @@ class SPPR_Player_Registration {
 				if ( $result['player_id'] ) {
 					$resolved_player_id = $result['player_id'];
 					SPPR_Database::log_registration_activity( $order_id, $customer_name, $result['player_id'], $season, $item['position'], $result['action'], true );
-					// Recorded on the order object straight away (saved below, or by the
-					// catch on a throw) so a later item failing cannot cost this one its
-					// record and get it registered twice on the retry.
+					// Saved straight away, not just by the final save, so a later item
+					// failing (or the request dying) cannot cost this one its record
+					// and get it registered twice on the retry.
 					$linked_items[ $item['item_id'] ] = (int) $result['player_id'];
-					$order->update_meta_data( '_spr_processed_items', $linked_items );
+					$this->save_linked_items( $order, $linked_items );
 				} else {
 					// No player linked: season resolved but the player could not be
 					// (conflict, requires_email, creation failure, or no_match with
@@ -168,11 +176,17 @@ class SPPR_Player_Registration {
 				}
 			}
 
-			// Nothing linked on this pass but an earlier pass did: reuse that player
-			// so the user link below still runs when an earlier attempt threw after
-			// linking (or the admin re-runs an order whose items are all linked).
-			if ( ! $resolved_player_id && ! empty( $linked_items ) ) {
-				$resolved_player_id = (int) end( $linked_items );
+			// Nothing linked on this pass but an earlier pass did: reuse the most
+			// recent recorded player that is still live, so the user link below still
+			// runs when an earlier attempt threw after linking (or the admin re-runs
+			// an order whose items are all linked). Never a deleted or trashed one.
+			if ( ! $resolved_player_id ) {
+				foreach ( array_reverse( $linked_items, true ) as $recorded_player_id ) {
+					if ( $this->is_live_player( $recorded_player_id ) ) {
+						$resolved_player_id = (int) $recorded_player_id;
+						break;
+					}
+				}
 			}
 
 			// Run role assignment / user link ONCE for the order using the resolved
@@ -287,6 +301,41 @@ class SPPR_Player_Registration {
 			}
 		}
 		return $linked;
+	}
+
+	/**
+	 * Write the per-item record to the order and persist it now.
+	 *
+	 * Uses save_meta_data(), which writes only the order's meta, so it is cheap
+	 * enough to call per item. Falls back to a full save() for order objects
+	 * without it.
+	 *
+	 * @param WC_Order       $order  Order.
+	 * @param array<int,int> $linked Order-item ID => player ID.
+	 * @return void
+	 */
+	private function save_linked_items( $order, $linked ) {
+		$order->update_meta_data( '_spr_processed_items', $linked );
+		if ( method_exists( $order, 'save_meta_data' ) ) {
+			$order->save_meta_data();
+		} else {
+			$order->save();
+		}
+	}
+
+	/**
+	 * Whether a recorded player is still a live sp_player a registration can
+	 * stand on: it exists, is published, and is not tombstoned "(dup)".
+	 *
+	 * @param int $player_id Player post ID.
+	 * @return bool
+	 */
+	private function is_live_player( $player_id ) {
+		$post = get_post( (int) $player_id );
+		return $post
+			&& 'sp_player' === $post->post_type
+			&& 'publish' === $post->post_status
+			&& ! $this->is_tombstoned_player_title( $post->post_title );
 	}
 
 	/**

@@ -529,6 +529,14 @@ assert_test( 1 === count( $season_sets ), 'partial fixed: season assigned once (
 assert_test( '1' === saved( 40, '_spr_processed' ), 'partial fixed: marker 1 is saved' );
 assert_test( array( 401, 402 ) === array_keys( saved_items( 40 ) ), 'partial fixed: both items saved' );
 
+// The record is persisted as each item links, not only by the final save:
+// a request that dies after linking must not cost the item its record.
+reset_state();
+$full_save_off = true;
+order_with( 41, array( 411 => 1, 412 => 2 ) );
+$reg->process_completed_order( 41 );
+assert_test( array( 411 ) === array_keys( saved_items( 41 ) ), 'record saved immediately: survives a lost final save' );
+
 // -- auto-create off and nobody matches: no_match ---------------------------
 echo "\n--- no_match ---\n";
 reset_state();
@@ -599,6 +607,89 @@ order_with( 81, array( 811 => 1 ), array( 'meta' => array( '_spr_processed' => '
 admin_rerun( $reg, 81 );
 assert_test( '1' === saved( 81, '_spr_processed' ), 're-run of a legacy order: marks 1' );
 assert_test( 1 === count( rows_for( 81, 'player_found_by_email' ) ), 're-run of a legacy order: re-processes its item' );
+
+// -- recorded player no longer live -----------------------------------------
+echo "\n--- recorded player gone ---\n";
+
+// Deleted: the item is processed again and a new player is created.
+reset_state();
+order_with(
+	82,
+	array( 821 => 1 ),
+	array(
+		'user' => 7,
+		'meta' => array(
+			'_spr_processed'       => '1',
+			'_spr_processed_items' => array( 821 => 321 ),
+		),
+	)
+);
+admin_rerun( $reg, 82 );
+$rows = rows_for( 82, 'player_created' );
+assert_test( 1 === count( $rows ), 'deleted player: the item is reprocessed and a player created' );
+assert_test( 1 === count( fired( 'spat_player_registered' ) ), 'deleted player: spat_player_registered fires' );
+$new_id = $rows ? $rows[0]['player_id'] : -1;
+assert_test( array( 821 => $new_id ) === saved_items( 82 ), 'deleted player: the record now points at the new player' );
+assert_test( '1' === saved( 82, '_spr_processed' ), 'deleted player: marker 1 once the item links again' );
+assert_test( array( array( $new_id, 7 ) ) === $sp_user_links, 'deleted player: user linked to the new player, never the deleted one' );
+
+// Trashed: same.
+reset_state();
+add_player( 321, 'Pat Smith', 'trash' );
+email_match( 55 );
+order_with(
+	83,
+	array( 831 => 1 ),
+	array(
+		'user' => 7,
+		'meta' => array( '_spr_processed_items' => array( 831 => 321 ) ),
+	)
+);
+admin_rerun( $reg, 83 );
+assert_test( 1 === count( rows_for( 83, 'player_found_by_email' ) ), 'trashed player: the item is reprocessed and rematched' );
+assert_test( array( 831 => 55 ) === saved_items( 83 ), 'trashed player: the record now points at the live match' );
+assert_test( array( array( 55, 7 ) ) === $sp_user_links, 'trashed player: user linked to the live match only' );
+
+// Retired with a "(dup)" tombstone: rematched to the live record.
+reset_state();
+add_player( 321, 'Pat Smith (dup)' );
+email_match( 55 );
+order_with( 84, array( 841 => 1 ), array( 'meta' => array( '_spr_processed_items' => array( 841 => 321 ) ) ) );
+admin_rerun( $reg, 84 );
+assert_test( array( 841 => 55 ) === saved_items( 84 ), 'tombstoned player: the record moves to the live record' );
+
+// Gone, and reprocessing fails: not marked, and the dead entry is dropped.
+reset_state();
+$insert_fails = true;
+order_with(
+	85,
+	array( 851 => 1 ),
+	array(
+		'user' => 7,
+		'meta' => array( '_spr_processed_items' => array( 851 => 321 ) ),
+	)
+);
+admin_rerun( $reg, 85 );
+assert_test( '' === saved( 85, '_spr_processed' ), 'deleted player, recreate fails: order NOT marked' );
+assert_test( array() === saved_items( 85 ), 'deleted player, recreate fails: the dead entry is dropped' );
+assert_test( array() === $sp_user_links, 'deleted player, recreate fails: no user link to the deleted player' );
+
+// Live: still skipped, and the user link uses it.
+reset_state();
+add_player( 321 );
+order_with(
+	86,
+	array( 861 => 1 ),
+	array(
+		'user' => 7,
+		'meta' => array( '_spr_processed_items' => array( 861 => 321 ) ),
+	)
+);
+$reg->process_completed_order( 86 );
+assert_test( array() === rows_for( 86 ), 'live recorded player: item skipped, no log rows' );
+assert_test( array() === fired( 'spat_player_registered' ), 'live recorded player: nothing fired' );
+assert_test( array( array( 321, 7 ) ) === $sp_user_links, 'live recorded player: user still linked to it' );
+assert_test( '1' === saved( 86, '_spr_processed' ), 'live recorded player: marker 1' );
 
 // -- exceptions -------------------------------------------------------------
 echo "\n--- exception ---\n";
