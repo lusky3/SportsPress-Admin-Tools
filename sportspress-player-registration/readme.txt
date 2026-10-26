@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.2.0
+Stable tag: 1.2.1
 License: GPLv2 or later
 
 Automatically creates SportsPress player records from WooCommerce registration orders.
@@ -40,6 +40,14 @@ SportsPress Player Registration automatically creates SportsPress player records
 4. Configure automatic creation and role assignment in settings
 
 == Changelog ==
+
+= 1.2.1 =
+* Fix: an order is marked registered only when every registration item on it linked a player. Orders whose items failed with season not detected or player creation failed used to be marked done anyway, so they looked successful and completing the order again never retried them. They now stay open (as name/email conflicts already did): completing the order again, or the "Re-run player registration" action, retries them.
+* Fix: a retry re-processes only the items that failed. Items that already linked a player are remembered on the order and skipped, so a retry writes no duplicate log rows and does not assign the season again.
+* Change: "Re-run player registration" now skips items already linked to a player that still exists, so re-running a fully registered order no longer re-logs it. If that player has since been deleted, trashed or marked "(dup)", the item is processed again: the player is rematched or recreated and the customer is linked to it.
+* Fix: with automatic player creation off, an order that matches no existing player now logs a `no_match` entry and stays open, instead of logging nothing and looking registered.
+* Fix: refunding or cancelling an order logs "registration reversed" only when at least one item on it actually linked a player. A partly registered order still logs it; an order where every item failed no longer does.
+* Orders already marked registered before this release are left as they are; there is no migration. Such an order whose items had in fact failed still looks registered, and a refund still logs a reversal for it. Use "Re-run player registration" on it to retry.
 
 = 1.2.0 =
 * New: prorated late-registration pricing (opt-in module, off by default). A product tagged `Late Registration` is priced at its regular price x (remaining game dates / total game dates) for its season, counted from the real schedule; playoffs are excluded, a season with no schedule yet is never discounted, and a finished season floors at one game's worth.
