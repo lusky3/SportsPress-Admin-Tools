@@ -235,15 +235,14 @@ class SPAT_FreeScout_Actions {
 	 * @return array|WP_Error `{results: [...]}`.
 	 */
 	public static function query( array $body ) {
-		$feature = isset( $body['feature'] ) && is_string( $body['feature'] ) ? $body['feature'] : '';
-		$query   = isset( $body['query'] ) && is_string( $body['query'] ) ? $body['query'] : '';
+		$feature = self::string_field( $body, 'feature' );
+		$query   = self::string_field( $body, 'query' );
 		$params  = $body['params'] ?? array();
 		if ( '' === $feature || '' === $query || ! is_array( $params ) ) {
 			return self::bad_request( 'A feature, a query and params are required.' );
 		}
 
-		$registry = apply_filters( 'spat_freescout_queries', array() );
-		$handler  = is_array( $registry ) ? ( $registry[ $feature . '.' . $query ] ?? null ) : null;
+		$handler = self::registered_query( $feature, $query );
 		if ( ! is_callable( $handler ) ) {
 			return new WP_Error( 'spat_freescout_unknown_query', 'Unknown query.', array( 'status' => 404 ) );
 		}
@@ -260,6 +259,16 @@ class SPAT_FreeScout_Actions {
 		}
 
 		return array( 'results' => is_array( $results ) ? $results : array() );
+	}
+
+	/**
+	 * The registered handler for feature.query (null when the registry has none).
+	 *
+	 * @return mixed
+	 */
+	private static function registered_query( string $feature, string $query ) {
+		$registry = apply_filters( 'spat_freescout_queries', array() );
+		return is_array( $registry ) ? ( $registry[ $feature . '.' . $query ] ?? null ) : null;
 	}
 
 	/**
