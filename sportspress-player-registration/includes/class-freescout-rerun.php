@@ -49,7 +49,28 @@ class SPPR_FreeScout_Rerun {
 		unset( $actor, $actor_info );
 
 		$order_id = isset( $params['order_id'] ) && is_numeric( $params['order_id'] ) ? (int) $params['order_id'] : 0;
-		$order    = $order_id > 0 ? wc_get_order( $order_id ) : false;
+		$order    = self::rerunnable_order( $order_id );
+		if ( is_wp_error( $order ) ) {
+			return $order;
+		}
+
+		$marker_line = sprintf( 'Clears the registration marker on order #%d and processes it again', $order_id );
+
+		if ( $dry_run ) {
+			return self::preview( $order_id, $order, $marker_line );
+		}
+		return self::run( $order_id, $marker_line );
+	}
+
+	/**
+	 * The order when it can be re-run: it exists, is completed and has
+	 * registration products (checked in that order).
+	 *
+	 * @param int $order_id Order id from the request (0 when invalid).
+	 * @return WC_Order|WP_Error
+	 */
+	private static function rerunnable_order( int $order_id ) {
+		$order = $order_id > 0 ? wc_get_order( $order_id ) : false;
 		if ( ! $order ) {
 			return self::error( 'not_found', sprintf( 'Order #%d was not found.', $order_id ), 404 );
 		}
@@ -63,30 +84,47 @@ class SPPR_FreeScout_Rerun {
 		if ( array() === SPPR_Player_Registration::get_registration_items( $order ) ) {
 			return self::error( 'no_registration_items', sprintf( 'Order #%d has no registration products.', $order_id ), 409 );
 		}
+		return $order;
+	}
 
-		$marker_line = sprintf( 'Clears the registration marker on order #%d and processes it again', $order_id );
-
-		if ( $dry_run ) {
-			$locked = SPPR_Admin::rerun_locked( $order_id );
-			if ( $locked ) {
-				return $locked;
-			}
-			$last = self::last_outcome( $order_id );
-			// The marker is also '1' after season_not_detected or
-			// player_creation_failed, so the newest log row has a say too.
-			$current = '1' === (string) $order->get_meta( '_spr_processed' ) && SPPR_Registration_Outcome::is_success( $last );
-			return array(
-				'summary'          => sprintf( 'Re-run registration for order #%d', $order_id ),
-				'changes'          => array(
-					$marker_line,
-					'Last outcome: ' . self::text( $last ),
-					$current ? 'Currently: registered' : 'Currently: not registered',
-				),
-				'requires_confirm' => array(),
-				'data'             => array(),
-			);
+	/**
+	 * Dry run: what a re-run would do and the order's current state. Writes
+	 * nothing.
+	 *
+	 * @param int      $order_id    Order id.
+	 * @param WC_Order $order       The order.
+	 * @param string   $marker_line Change line shared with the real run.
+	 * @return array|WP_Error
+	 */
+	private static function preview( int $order_id, $order, string $marker_line ) {
+		$locked = SPPR_Admin::rerun_locked( $order_id );
+		if ( $locked ) {
+			return $locked;
 		}
+		$last = self::last_outcome( $order_id );
+		// The marker is also '1' after season_not_detected or
+		// player_creation_failed, so the newest log row has a say too.
+		$current = '1' === (string) $order->get_meta( '_spr_processed' ) && SPPR_Registration_Outcome::is_success( $last );
+		return array(
+			'summary'          => sprintf( 'Re-run registration for order #%d', $order_id ),
+			'changes'          => array(
+				$marker_line,
+				'Last outcome: ' . self::text( $last ),
+				$current ? 'Currently: registered' : 'Currently: not registered',
+			),
+			'requires_confirm' => array(),
+			'data'             => array(),
+		);
+	}
 
+	/**
+	 * Real run through SPPR_Admin::rerun(), reported from this run's outcome.
+	 *
+	 * @param int    $order_id    Order id.
+	 * @param string $marker_line Change line shared with the dry run.
+	 * @return array|WP_Error
+	 */
+	private static function run( int $order_id, string $marker_line ) {
 		$result = SPPR_Admin::rerun( $order_id );
 		if ( is_wp_error( $result ) ) {
 			return $result;

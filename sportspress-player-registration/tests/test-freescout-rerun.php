@@ -400,6 +400,79 @@ fixture();
 st()->can = false;
 assert_test( 403 === admin_die( 5107 )[1] && array() === st()->process, 'admin: capability check unchanged' );
 
+// Characterization: pins rerun_action()'s messages, precedence and result
+// shapes so refactors cannot change them unnoticed.
+echo "\n=== rerun_action(): refusal messages and precedence ===\n";
+fixture();
+$res = run_action( array( 'order_id' => 999 ), true );
+assert_test( 'Order #999 was not found.' === $res->get_error_message(), 'not_found message names the order' );
+$res = run_action( array(), true );
+assert_test( 'not_found' === err_code( $res ) && 'Order #0 was not found.' === $res->get_error_message(), 'missing order_id: not_found for #0' );
+$res = run_action( array( 'order_id' => '-5' ), true );
+assert_test( 'not_found' === err_code( $res ) && 'Order #-5 was not found.' === $res->get_error_message(), 'negative order_id: not_found, keeps the sign' );
+$res = run_action( array( 'order_id' => array( 5107 ) ), true );
+assert_test( 'not_found' === err_code( $res ) && 'Order #0 was not found.' === $res->get_error_message(), 'non-scalar order_id: not_found for #0' );
+$res = run_action( array( 'order_id' => '5107.9' ), true );
+assert_test( is_array( $res ) && 'Re-run registration for order #5107' === $res['summary'], 'numeric string with decimals is cast to int' );
+$res = run_action( array( 'order_id' => 5108 ), true );
+assert_test( 'Order #5108 is processing. Only completed orders are registered.' === $res->get_error_message(), 'not_completed message names the status' );
+$res = run_action( array( 'order_id' => 5109 ), true );
+assert_test( 'Order #5109 has no registration products.' === $res->get_error_message(), 'no_registration_items message' );
+st()->transients['spr_rerun_lock_5108'] = 1;
+$res = run_action( array( 'order_id' => 5108 ), true );
+assert_test( 'not_completed' === err_code( $res ), 'not_completed precedes the lock check' );
+st()->orders[5110] = new Mock_Order( 5110, 'on-hold' );
+$res = run_action( array( 'order_id' => 5110 ), true );
+assert_test( 'not_completed' === err_code( $res ) && 'Order #5110 is on-hold. Only completed orders are registered.' === $res->get_error_message(), 'not_completed precedes the items check' );
+
+echo "\n=== rerun_action(): dry run result shape ===\n";
+fixture();
+st()->logs[5107] = 'player_created';
+$res = run_action( array( 'order_id' => 5107 ), true );
+assert_test(
+	array(
+		'summary'          => 'Re-run registration for order #5107',
+		'changes'          => array( 'Clears the registration marker on order #5107 and processes it again', 'Last outcome: player created', 'Currently: not registered' ),
+		'requires_confirm' => array(),
+		'data'             => array(),
+	) === $res,
+	'dry run: exact result (marker "failed" is not registered)'
+);
+fixture();
+st()->transients['spr_rerun_lock_5107'] = 1;
+$res = run_action( array( 'order_id' => 5107 ), true );
+assert_test( 'Registration for order #5107 is already being re-run. Try again in a few seconds.' === $res->get_error_message() && '' === st()->sql, 'dry run: lock refusal comes before the log lookup' );
+
+echo "\n=== rerun_action(): real run result shape ===\n";
+fixture();
+$res = run_action( array( 'order_id' => 5107 ), false );
+assert_test(
+	array(
+		'summary'          => 'Registered',
+		'changes'          => array( 'Clears the registration marker on order #5107 and processes it again' ),
+		'requires_confirm' => array(),
+		'data'             => array(
+			'marker'  => '1',
+			'outcome' => 'not_processed',
+		),
+	) === $res,
+	'registered with no reported outcome and no log row: outcome not_processed, still "Registered"'
+);
+fixture();
+st()->logs[5107]   = 'season_not_detected'; // Stale failure row; this run's outcome decides.
+st()->script[5107] = array( '1', 'player_found_by_email' );
+$res = run_action( array( 'order_id' => 5107 ), false );
+assert_test( 'Registered' === $res['summary'] && array( 'marker' => '1', 'outcome' => 'player_found_by_email' ) === $res['data'], 'a reported success outcome is kept as is' );
+fixture();
+st()->logs[5107]   = 'player_created';
+st()->script[5107] = array( 'failed', '' );
+$res = run_action( array( 'order_id' => 5107 ), false );
+assert_test( 'Still not registered: not processed' === $res['summary'] && array( 'marker' => 'failed', 'outcome' => 'not_processed' ) === $res['data'], 'marker failed and no outcome: not_processed (log row ignored)' );
+fixture();
+$GLOBALS['sportspress_player_registration'] = null;
+$res = run_action( array( 'order_id' => 5107 ), false );
+assert_test( 'not_initialized' === err_code( $res ) && 503 === err_status( $res ), 'a rerun() WP_Error is returned as is' );
+
 echo "\n=== Results ===\n";
 echo "Passed: $passed\n";
 echo "Failed: $failed\n";
