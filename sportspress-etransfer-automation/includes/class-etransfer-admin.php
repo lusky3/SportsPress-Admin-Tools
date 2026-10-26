@@ -568,8 +568,8 @@ class SPET_ETransfer_Admin {
 	 * H5: take the same per-order lock the webhook path uses and re-read the
 	 * status inside it, so an admin match and an inbound e-Transfer (or two
 	 * admins matching different log rows to the same order) cannot both
-	 * complete it. A busy lock or any \Throwable counts as not completed; the
-	 * lock is released however the completion ends.
+	 * complete it. A busy lock counts as not completed; the lock is released
+	 * however the completion ends.
 	 *
 	 * @param int   $order_id WooCommerce order id.
 	 * @param array $checked  validate_manual_match() result.
@@ -584,13 +584,7 @@ class SPET_ETransfer_Admin {
 		}
 
 		try {
-			return self::complete_on_hold_order( $order_id, $checked );
-		} catch ( \Throwable $e ) {
-			// \Throwable, not \Exception: an \Error (TypeError, a listener's
-			// fatal) must also count as not completed, so the caller rolls the
-			// optimistic claim back.
-			error_log( '[SPET] Manual match failed for order ' . intval( $order_id ) . ': ' . $e->getMessage() );
-			return false;
+			return self::complete_and_confirm( $order_id, $checked );
 		} finally {
 			if ( class_exists( 'SPET_ETransfer_Automation' ) ) {
 				SPET_ETransfer_Automation::release_order_lock( $order_id, $order_lock );
@@ -599,14 +593,69 @@ class SPET_ETransfer_Admin {
 	}
 
 	/**
-	 * Re-read the order and, if it is still on hold, record the payment and
-	 * complete it.
+	 * Complete the order; when that fails or throws after the status change
+	 * was attempted, decide from a fresh read of the order.
+	 *
+	 * WooCommerce's update_status() saves the new status and only then fires
+	 * the status hooks, catching just \Exception there. A listener's \Error (or
+	 * a save hook that makes update_status() report false) can therefore come
+	 * after the order is already completed. Rolling the claim back then would
+	 * send a paid e-Transfer back to the review list against a completed order,
+	 * where it could be matched to a second order. So once the status change
+	 * was attempted, the stored order decides: completed keeps the match.
+	 * Anything thrown before that (\Throwable, so an \Error too) is a failure.
 	 *
 	 * @param int   $order_id WooCommerce order id.
 	 * @param array $checked  validate_manual_match() result.
+	 * @return bool Whether the order is completed.
+	 */
+	private static function complete_and_confirm( $order_id, array $checked ) {
+		$status_attempted = false;
+		try {
+			if ( self::complete_on_hold_order( $order_id, $checked, $status_attempted ) ) {
+				return true;
+			}
+		} catch ( \Throwable $e ) {
+			error_log( '[SPET] Manual match failed for order ' . intval( $order_id ) . ': ' . $e->getMessage() );
+		}
+
+		if ( ! $status_attempted || ! self::is_completed_now( $order_id ) ) {
+			return false;
+		}
+		error_log( '[SPET] Manual match for order ' . intval( $order_id ) . ': the order is completed; keeping the match.' );
+		return true;
+	}
+
+	/**
+	 * Whether a fresh read of the order shows it completed. A read that fails
+	 * cannot show that, so it answers false.
+	 *
+	 * @param int $order_id WooCommerce order id.
+	 */
+	private static function is_completed_now( $order_id ) {
+		try {
+			clean_post_cache( $order_id );
+			wp_cache_delete( $order_id, 'orders' );
+			$order = wc_get_order( $order_id );
+			return $order && $order->has_status( 'completed' );
+		} catch ( \Throwable $e ) {
+			error_log( '[SPET] Manual match could not re-read order ' . intval( $order_id ) . ': ' . $e->getMessage() );
+			return false;
+		}
+	}
+
+	/**
+	 * Re-read the order and, if it is still on hold, record the payment and
+	 * complete it.
+	 *
+	 * @param int   $order_id         WooCommerce order id.
+	 * @param array $checked          validate_manual_match() result.
+	 * @param bool  $status_attempted Set to true just before the status change
+	 *                                (from then on the order may be completed
+	 *                                even if this fails or throws).
 	 * @return bool Whether the order verifiably reached 'completed'.
 	 */
-	private static function complete_on_hold_order( $order_id, array $checked ) {
+	private static function complete_on_hold_order( $order_id, array $checked, &$status_attempted ) {
 		clean_post_cache( $order_id );
 		wp_cache_delete( $order_id, 'orders' );
 		$order = wc_get_order( $order_id );
@@ -617,8 +666,9 @@ class SPET_ETransfer_Admin {
 		self::record_manual_payment( $order, $checked );
 
 		// Update order status to completed
-		$status_ok = $order->update_status( 'completed', __( 'Payment confirmed via manual webhook match.', 'sportspress-etransfer-automation' ) );
-		$saved_id  = $order->save();
+		$status_attempted = true;
+		$status_ok        = $order->update_status( 'completed', __( 'Payment confirmed via manual webhook match.', 'sportspress-etransfer-automation' ) );
+		$saved_id         = $order->save();
 
 		return ( false !== $status_ok && ! empty( $saved_id ) && $order->has_status( 'completed' ) );
 	}

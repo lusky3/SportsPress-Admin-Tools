@@ -472,7 +472,14 @@ class Mock_WC_Order {
 		$this->record( 'add_order_note', $note );
 		$this->notes[] = array( $note, $is_customer_note, $added_by_user );
 	}
+	/** @var string|null Throwable class update_status() throws AFTER saving the status (a status-hook listener failing). */
+	public $throw_after_status = null;
+	/** @var bool update_status() saves the status, then reports false (a save hook threw after the write). */
+	public $false_after_status = false;
+
 	public function update_status( $status, $note = '' ) {
+		// Like WooCommerce, update_status() saves: once it gets past the
+		// record() below, $status is what a fresh read sees.
 		$this->record( 'update_status', $status, $note );
 		if ( $this->fail_complete ) {
 			return false;
@@ -480,7 +487,11 @@ class Mock_WC_Order {
 		if ( $this->status_sticks ) {
 			$this->status = $status;
 		}
-		return true;
+		if ( null !== $this->throw_after_status ) {
+			$class = $this->throw_after_status;
+			throw new $class( 'listener failed after save' );
+		}
+		return ! $this->false_after_status;
 	}
 	public function save() {
 		$this->record( 'save' );
@@ -495,6 +506,10 @@ class Mock_WC_Order {
 $GLOBALS['orders'] = array();
 
 function wc_get_order( $id ) {
+	$GLOBALS['wc_get_order_calls'] = ( $GLOBALS['wc_get_order_calls'] ?? 0 ) + 1;
+	if ( isset( $GLOBALS['wc_get_order_throws_on'] ) && $GLOBALS['wc_get_order_calls'] === $GLOBALS['wc_get_order_throws_on'] ) {
+		throw new RuntimeException( 'order read failed' );
+	}
 	return $GLOBALS['orders'][ $id ] ?? false;
 }
 function wc_get_orders( $args = array() ) {
@@ -976,10 +991,10 @@ $r = SPET_ETransfer_Admin::manual_match( 60, 5107, true, true );
 check( 'a forced dry run still writes nothing', ! is_wp_error( $r ) && 0 === $wpdb->writes && ! isset( $r['matched'] ) );
 
 echo "manual_match characterization: completion failures roll the claim back\n";
-$order               = setup_match();
-$order->save_returns = 0;
-$r                   = SPET_ETransfer_Admin::manual_match( 60, 5107 );
-check( 'save returning nothing gives completion_failed', 'completion_failed' === code_of( $r ) && 500 === status_of( $r ) && $fail_note === $r->get_error_message() );
+$order                = setup_match();
+$order->fail_complete = true;
+$r                    = SPET_ETransfer_Admin::manual_match( 60, 5107 );
+check( 'a status update that saves nothing gives completion_failed', 'completion_failed' === code_of( $r ) && 500 === status_of( $r ) && $fail_note === $r->get_error_message() );
 check( 'and the claim is rolled back for this order only', rolled_back() && 2 === count( $wpdb->queries ) && false !== strpos( $wpdb->queries[1], 'AND order_id = 5107' ) );
 check( 'and no hook fires', array() === actions_named( 'spat_payment_matched' ) );
 $order                = setup_match();
@@ -1048,15 +1063,15 @@ check( 'an order gone on re-read gives completion_failed', 'completion_failed' =
 
 reset_lock();
 $order           = setup_match();
-$order->throw_in = 'save';
+$order->throw_in = 'update_status';
 $r               = SPET_ETransfer_Admin::manual_match( 60, 5107 );
-check( 'an Exception still releases the lock', 'completion_failed' === code_of( $r ) && array( 'release', 5107, 'lock-1' ) === SPET_ETransfer_Automation::$log[1] );
+check( 'an Exception before the status is saved still releases the lock', 'completion_failed' === code_of( $r ) && array( 'release', 5107, 'lock-1' ) === SPET_ETransfer_Automation::$log[1] );
 
-// An \Error (TypeError etc.) while completing is a failed completion too: it
-// must not leave the optimistic "processed successfully" claim standing.
+// An \Error (TypeError etc.) before the status is saved is a failed
+// completion too: it must not leave the optimistic claim standing.
 reset_lock();
 $order              = setup_match();
-$order->throw_in    = 'save';
+$order->throw_in    = 'update_status';
 $order->throw_class = 'Error';
 $escaped            = null;
 $r                  = null;
@@ -1069,6 +1084,62 @@ check( 'an Error does not escape manual_match', null === $escaped );
 check( 'an Error gives completion_failed 500', 'completion_failed' === code_of( $r ) && 500 === status_of( $r ) );
 check( 'the lock is still released', array( 'release', 5107, 'lock-1' ) === ( SPET_ETransfer_Automation::$log[1] ?? null ) );
 check( 'the claim is rolled back and no hook fires', rolled_back() && array() === actions_named( 'spat_payment_matched' ) );
+
+echo "manual_match: a failure after WooCommerce saved 'completed' keeps the match\n";
+// WooCommerce saves the status, then fires the status hooks; a listener's
+// \Error (or an Exception from a save hook) escapes update_status() after the
+// order is completed. Rolling the claim back then would send a paid e-Transfer
+// back for review against a completed order.
+function error_log_text() {
+	$file = ini_get( 'error_log' );
+	return is_string( $file ) && is_readable( $file ) ? (string) file_get_contents( $file ) : '';
+}
+function match_kept( $r ) {
+	global $wpdb, $claim_ok;
+	return ! is_wp_error( $r ) && true === $r['matched'] && 5107 === (int) $wpdb->rows[60]->order_id && $claim_ok === $wpdb->rows[60]->result && 1 === count( $wpdb->queries );
+}
+foreach ( array( 'Error', 'RuntimeException' ) as $thrown ) {
+	reset_lock();
+	$order                     = setup_match();
+	$order->throw_after_status = $thrown;
+	$log_before                = strlen( error_log_text() );
+	$r                         = SPET_ETransfer_Admin::manual_match( 60, 5107 );
+	check( "$thrown after the status was saved: the match is kept (no rollback)", match_kept( $r ) && 'completed' === $order->status );
+	check( "$thrown after the status was saved: spat_payment_matched fires once", 1 === count( actions_named( 'spat_payment_matched' ) ) );
+	check( "$thrown after the status was saved: the lock is released", array( 'release', 5107, 'lock-1' ) === ( SPET_ETransfer_Automation::$log[1] ?? null ) );
+	$logged = substr( error_log_text(), $log_before );
+	check( "$thrown after the status was saved: the error and the kept match are logged", false !== strpos( $logged, 'listener failed after save' ) && false !== strpos( $logged, 'completed; keeping the match' ) );
+	check( "$thrown after the status was saved: no extra order writes", array( 'set_transaction_id', 'add_order_note', 'update_status' ) === array_column( $order->calls, 0 ) );
+}
+
+reset_lock();
+$order                     = setup_match();
+$order->false_after_status = true;
+$r                         = SPET_ETransfer_Admin::manual_match( 60, 5107 );
+check( 'update_status() false but the order saved as completed: match kept, hook fires', match_kept( $r ) && 1 === count( actions_named( 'spat_payment_matched' ) ) );
+
+reset_lock();
+$order               = setup_match();
+$order->save_returns = 0;
+$r                   = SPET_ETransfer_Admin::manual_match( 60, 5107 );
+check( 'save() reporting nothing after the status was saved: match kept', match_kept( $r ) );
+
+reset_lock();
+$order                = setup_match();
+$order->status_sticks = false;
+$order->false_after_status = true;
+$r = SPET_ETransfer_Admin::manual_match( 60, 5107 );
+check( 'update_status() false and the order not completed: rolled back', 'completion_failed' === code_of( $r ) && rolled_back() && array() === actions_named( 'spat_payment_matched' ) );
+
+reset_lock();
+$order                             = setup_match();
+$order->throw_after_status         = 'Error';
+$GLOBALS['wc_get_order_calls']     = 0;
+$GLOBALS['wc_get_order_throws_on'] = 3; // validate, the read inside the lock, then the confirming read.
+$r                                 = SPET_ETransfer_Admin::manual_match( 60, 5107 );
+unset( $GLOBALS['wc_get_order_throws_on'] );
+check( 'a confirming read that fails: rolled back (cannot show completed)', 'completion_failed' === code_of( $r ) && rolled_back() );
+check( 'and the lock is still released', array( 'release', 5107, 'lock-1' ) === ( SPET_ETransfer_Automation::$log[1] ?? null ) );
 
 echo "\nPassed: $passed\nFailed: $failed\n";
 exit( $failed > 0 ? 1 : 0 );
