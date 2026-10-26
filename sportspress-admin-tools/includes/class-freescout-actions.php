@@ -62,7 +62,7 @@ class SPAT_FreeScout_Actions {
 			return new WP_Error( 'spat_freescout_actor_forbidden', 'Your WordPress account is not allowed to do this.', array( 'status' => 403 ) );
 		}
 
-		$transient = self::IDEMPOTENCY_PREFIX . md5( $key );
+		$transient = self::IDEMPOTENCY_PREFIX . hash( 'sha256', $key );
 		if ( $dry_run ) {
 			return self::run( $entry, $params, $dry_run, $user, $email, $name, $feature, $action, $transient );
 		}
@@ -75,7 +75,7 @@ class SPAT_FreeScout_Actions {
 		// Claim the key atomically, so two concurrent runs with one key (a
 		// duplicate POST) cannot both reach the handler. SPAT_Lock uses a
 		// guarded INSERT; add_option() is not atomic on WP 6.4+.
-		$lock   = 'fs_idem_' . md5( $key );
+		$lock   = 'fs_idem_' . hash( 'sha256', $key );
 		$handle = SPAT_Lock::acquire( $lock, self::RUN_LOCK_TTL );
 		if ( false === $handle ) {
 			return new WP_Error( 'spat_freescout_in_progress', 'This action is already running. Wait a moment and check the result.', array( 'status' => 409 ) );

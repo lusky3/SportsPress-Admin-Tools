@@ -201,7 +201,7 @@ function action_body( array $over = array() ): string {
 				'action'          => 'go',
 				'params'          => array( 'id' => 5 ),
 				'dry_run'         => false,
-				'idempotency_key' => 'key-0001-aaaa',
+				'idempotency_key' => 'idem-key-1',
 				'actor'           => array(
 					'email' => 'Agent@X.com',
 					'name'  => 'Cody',
@@ -312,8 +312,8 @@ check(
 	array( 'success', 'dry_run', 'replayed', 'summary', 'changes', 'requires_confirm', 'data' ) === array_keys( $data )
 );
 check( 'defaults for requires_confirm and data', array() === $data['requires_confirm'] && array() === $data['data'] && false === $data['replayed'] && 'Did it' === $data['summary'] );
-check( 'stored 24 h under md5 key', DAY_IN_SECONDS === ( $GLOBALS['spat_ttls'][ 'spat_fs_idem_' . md5( 'key-0001-aaaa' ) ] ?? null ) );
-check( 'a real run claims the key with SPAT_Lock', array( array( 'fs_idem_' . md5( 'key-0001-aaaa' ), SPAT_FreeScout_Actions::RUN_LOCK_TTL ) ) === SPAT_Lock::$acquired );
+check( 'stored 24 h under hashed key', DAY_IN_SECONDS === ( $GLOBALS['spat_ttls'][ 'spat_fs_idem_' . hash( 'sha256', 'idem-key-1' ) ] ?? null ) );
+check( 'a real run claims the key with SPAT_Lock', array( array( 'fs_idem_' . hash( 'sha256', 'idem-key-1' ), SPAT_FreeScout_Actions::RUN_LOCK_TTL ) ) === SPAT_Lock::$acquired );
 check( 'and releases it afterwards', array() === SPAT_Lock::$held );
 
 echo "idempotent replay\n";
@@ -343,7 +343,7 @@ $GLOBALS['spat_transients'] = array();
 $GLOBALS['handler_calls']   = array();
 $GLOBALS['handler_mode']    = 'ok';
 SPAT_Lock::$on_acquire      = function () {
-	$GLOBALS['spat_transients'][ 'spat_fs_idem_' . md5( 'key-0001-aaaa' ) ] = array(
+	$GLOBALS['spat_transients'][ 'spat_fs_idem_' . hash( 'sha256', 'idem-key-1' ) ] = array(
 		'success'  => true,
 		'replayed' => false,
 		'summary'  => 'Done by the other run',
@@ -363,7 +363,7 @@ check( 'dry run passes dry_run=true', true === ( $GLOBALS['handler_calls'][0][1]
 check( 'dry run stores nothing', array() === idem_keys() );
 $rest->handle_action( signed_request( action_body( array( 'dry_run' => true ) ), $secret ) );
 check( 'dry run is never replayed', 2 === count( $GLOBALS['handler_calls'] ) );
-SPAT_Lock::$held = array( 'fs_idem_' . md5( 'key-0001-aaaa' ) => 'other' );
+SPAT_Lock::$held = array( 'fs_idem_' . hash( 'sha256', 'idem-key-1' ) => 'other' );
 $rest->handle_action( signed_request( action_body( array( 'dry_run' => true ) ), $secret ) );
 check( 'a dry run needs no claim (runs even while the key is held)', 3 === count( $GLOBALS['handler_calls'] ) );
 SPAT_Lock::$held = array();

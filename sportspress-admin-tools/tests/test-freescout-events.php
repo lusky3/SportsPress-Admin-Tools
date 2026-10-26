@@ -318,7 +318,7 @@ function assert_test( $cond, $name ) {
 	}
 }
 
-const T_SECRET = '0123456789abcdef0123456789abcdef';
+define( 'T_SECRET', str_repeat( 'ab', 16 ) );
 const T_URL    = 'https://helpdesk.example.com/spatbridge/events';
 
 function configure( $enabled = '1', $url = T_URL, $secret = T_SECRET ) {
