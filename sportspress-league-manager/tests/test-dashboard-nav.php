@@ -52,6 +52,11 @@ class SPLM_REST_API {
 class WooCommerce {} // phpcs:ignore -- class_exists( 'WooCommerce' ) is true.
 class SportsPress {} // phpcs:ignore
 
+$GLOBALS['menu_calls'] = array( 'top' => array(), 'sub' => array() );
+function add_action( ...$args ) {} // phpcs:ignore
+function add_menu_page( ...$args ) { $GLOBALS['menu_calls']['top'][] = $args; }
+function add_submenu_page( ...$args ) { $GLOBALS['menu_calls']['sub'][] = $args; }
+
 class WP_Admin_Bar_Stub {
 	public $nodes = array();
 	public function add_node( $args ) { $this->nodes[] = $args; }
@@ -149,6 +154,48 @@ $low = array_column( SPLM_Dashboard_Frontend::nav_items( 'https://example.test/l
 nav_assert( ! in_array( 'scores', $low, true ) && ! in_array( 'health', $low, true ) && ! in_array( 'waitlist', $low, true ), 'a low-privilege user is not offered gated pages' );
 nav_assert( in_array( 'standings', $low, true ), 'but still gets the open ones' );
 
+echo "\n=== sidebar menu slugs and redirects ===\n\n";
+nav_assert( 'splm-dashboard' === SPLM_Dashboard_Frontend::menu_slug( 'dashboard' ), 'Dashboard keeps the original menu slug' );
+nav_assert( 'splm-dashboard-standings' === SPLM_Dashboard_Frontend::menu_slug( 'standings' ), 'other pages are splm-dashboard-<page>' );
+$home = 'https://example.test/league-dashboard/';
+nav_assert( $home === SPLM_Dashboard_Frontend::redirect_target( 'splm-dashboard', $home ), 'the menu item itself still goes to the dashboard home' );
+nav_assert( $home . '#/standings' === SPLM_Dashboard_Frontend::redirect_target( 'splm-dashboard-standings', $home ), 'a sub-item goes to its page' );
+nav_assert( $home . '#/schedule-gen' === SPLM_Dashboard_Frontend::redirect_target( 'splm-dashboard-schedule-gen', $home ), 'hyphenated page ids resolve too' );
+nav_assert( null === SPLM_Dashboard_Frontend::redirect_target( 'splm-dashboard-nope', $home ), 'an unknown sub-item slug is not ours (no redirect)' );
+nav_assert( null === SPLM_Dashboard_Frontend::redirect_target( 'sportspress-admin-tools', $home ), 'another plugin\'s page is not ours' );
+nav_assert( null === SPLM_Dashboard_Frontend::redirect_target( '', $home ), 'an empty page value is not ours' );
+$every = true;
+foreach ( $ALL as $pid ) {
+	$every = $every && null !== SPLM_Dashboard_Frontend::redirect_target( SPLM_Dashboard_Frontend::menu_slug( $pid ), $home );
+}
+nav_assert( $every, 'every page the menu can list has a working redirect' );
+
+echo "\n=== add_admin_menu() ===\n\n";
+$GLOBALS['nav_caps']       = array( 'edit_others_sp_events', 'edit_others_sp_players' );
+$GLOBALS['nav_can_manage'] = true;
+$GLOBALS['menu_calls']     = array( 'top' => array(), 'sub' => array() );
+( new SPLM_Admin() )->add_admin_menu();
+$top = $GLOBALS['menu_calls']['top'][0] ?? array();
+$sub = $GLOBALS['menu_calls']['sub'];
+nav_assert( 'splm-dashboard' === ( $top[3] ?? '' ) && 'League Manager' === ( $top[1] ?? '' ), 'the top-level League Manager menu is still registered under its slug' );
+nav_assert( count( $sub ) === count( SPLM_Dashboard_Frontend::visible_nav_labels() ), 'one sub-item per visible dashboard page' );
+nav_assert( 'splm-dashboard' === ( $sub[0][4] ?? '' ) && 'Dashboard' === ( $sub[0][2] ?? '' ), 'the first sub-item reuses the parent slug and reads Dashboard' );
+nav_assert( 'splm-dashboard' === ( $sub[1][0] ?? '' ), 'sub-items hang off the League Manager menu' );
+nav_assert( 'manage_sportspress' === ( $sub[1][3] ?? '' ), 'they need the same capability as the menu' );
+$slugs = array_column( $sub, 4 );
+nav_assert( count( $slugs ) === count( array_unique( $slugs ) ), 'no duplicate slugs' );
+
+$GLOBALS['nav_can_manage'] = false;
+$GLOBALS['menu_calls']     = array( 'top' => array(), 'sub' => array() );
+( new SPLM_Admin() )->add_admin_menu();
+nav_assert( 'do_not_allow' === ( $GLOBALS['menu_calls']['top'][0][2] ?? '' ), 'a user who cannot manage the league still gets the menu locked' );
+foreach ( $GLOBALS['menu_calls']['sub'] as $call ) {
+	if ( 'do_not_allow' !== $call[3] ) { nav_assert( false, 'sub-item ' . $call[4] . ' leaked a usable capability' ); }
+}
+nav_assert( true, 'and its sub-items carry the same locked capability' );
+$GLOBALS['nav_caps']       = array( 'edit_others_sp_events', 'edit_others_sp_players' );
+$GLOBALS['nav_can_manage'] = true;
+
 echo "\n=== the admin-bar node ===\n\n";
 $GLOBALS['nav_caps']       = array( 'edit_others_sp_events', 'edit_others_sp_players' );
 $GLOBALS['nav_can_manage'] = true;
@@ -158,6 +205,7 @@ SPLM_Admin::add_admin_bar_node( $bar );
 $ids = array_column( $bar->nodes, 'id' );
 nav_assert( 'splm-dashboard' === ( $bar->nodes[0]['id'] ?? '' ) && ! isset( $bar->nodes[0]['parent'] ), 'the League Dashboard entry is still the top-level node' );
 nav_assert( 'https://example.test/league-dashboard/' === ( $bar->nodes[0]['href'] ?? '' ), 'and still links to the dashboard home' );
+nav_assert( 'League Manager' === ( $bar->nodes[0]['title'] ?? '' ), 'it is labelled League Manager, matching the sidebar menu' );
 $children = array_values( array_filter( $bar->nodes, static function ( $n ) { return 'splm-dashboard' === ( $n['parent'] ?? '' ); } ) );
 nav_assert( count( $children ) === count( $bar->nodes ) - 1 && count( $children ) > 5, 'every other node is a child of it' );
 nav_assert( in_array( 'splm-dashboard-standings', $ids, true ), 'children are named splm-dashboard-<page>' );

@@ -160,6 +160,7 @@ SPLM_Admin::add_admin_bar_node( $bar );
 
 assert_test( 3 === count( $bar->nodes ), 'the top-level node plus one child per dashboard page is added when enabled, authorized, and the page resolves' );
 assert_test( 'splm-dashboard' === ( $bar->nodes[0]['id'] ?? null ), 'the node carries the expected id' );
+assert_test( 'League Manager' === ( $bar->nodes[0]['title'] ?? null ), 'it is labelled League Manager, matching the sidebar menu' );
 assert_test( ! isset( $bar->nodes[0]['parent'] ), 'it stays the top-level node' );
 assert_test(
 	'splm-dashboard' === ( $bar->nodes[1]['parent'] ?? null ) && 'splm-dashboard-standings' === ( $bar->nodes[1]['id'] ?? null ),

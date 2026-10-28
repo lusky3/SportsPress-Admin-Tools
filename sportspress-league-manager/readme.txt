@@ -63,7 +63,8 @@ Conveners can issue a suspension from the Notices page (Issue suspension) or fro
 == Changelog ==
 
 = 1.9.0 =
-* New: the League Dashboard link in the WordPress admin bar now drops down into the dashboard's pages (Schedule, Scores, Standings, Rosters, Payments, Waitlist and the rest), so you can jump straight to one from any admin or site screen. It lists only the pages you can open and the modules that are switched on, the same as the dashboard's own navigation.
+* New: the League Manager menu in the WordPress sidebar now opens out into the dashboard's pages (Schedule, Scores, Standings, Rosters, Payments, Waitlist and the rest), each taking you straight to that page.
+* New: the same list drops down from the admin bar entry, which is now labelled League Manager to match the sidebar (it was League Dashboard). Both list only the pages you can open and the modules that are switched on, the same as the dashboard's own navigation.
 
 = 1.8.0 =
 * Fix: the Waitlist page showed only the first 50 entries, hiding the rest of a longer queue. It is now paged, with Previous and Next buttons and a "Showing x-y of N" count; changing a filter starts again from page one.

@@ -36,6 +36,12 @@ class SPLM_Dashboard_Frontend {
 	const PAGE_OPT = 'splm_dashboard_page_id';
 
 	/**
+	 * The wp-admin menu slug. Each dashboard page's sub-menu item is this plus
+	 * '-<page id>' (the first, Dashboard, uses it bare).
+	 */
+	const MENU_SLUG = 'splm-dashboard';
+
+	/**
 	 * The dashboard page, created if this site has never had one.
 	 *
 	 * The dashboard is a page TEMPLATE, so it needs a page to be assigned to,
@@ -649,14 +655,11 @@ class SPLM_Dashboard_Frontend {
 	}
 
 	/**
-	 * The dashboard pages the current user can reach, each with its label and
-	 * a link that opens it directly (the page URL plus the #/route the React
-	 * app reads on load and on hashchange).
+	 * The labels of the dashboard pages the current user can reach, in order.
 	 *
-	 * @param string $dashboard_url Permalink of the dashboard page.
-	 * @return array<int,array{id:string,label:string,url:string}>
+	 * @return array<string,string> page id => label
 	 */
-	public static function nav_items( string $dashboard_url ): array {
+	public static function visible_nav_labels(): array {
 		$labels  = self::nav_labels();
 		$visible = self::visible_page_ids(
 			array_keys( $labels ),
@@ -665,14 +668,55 @@ class SPLM_Dashboard_Frontend {
 			self::modules_config()
 		);
 
+		return array_intersect_key( $labels, array_flip( $visible ) );
+	}
+
+	/**
+	 * The dashboard pages the current user can reach, each with its label and
+	 * a link that opens it directly (the page URL plus the #/route the React
+	 * app reads on load and on hashchange).
+	 *
+	 * @param string $dashboard_url Permalink of the dashboard page.
+	 * @return array<int,array{id:string,label:string,url:string}>
+	 */
+	public static function nav_items( string $dashboard_url ): array {
 		$items = array();
-		foreach ( $visible as $id ) {
+		foreach ( self::visible_nav_labels() as $id => $label ) {
 			$items[] = array(
 				'id'    => $id,
-				'label' => $labels[ $id ],
+				'label' => $label,
 				'url'   => $dashboard_url . '#/' . $id,
 			);
 		}
 		return $items;
+	}
+
+	/**
+	 * The wp-admin menu slug for a dashboard page's sub-menu item.
+	 *
+	 * @param string $page_id Dashboard page id.
+	 * @return string
+	 */
+	public static function menu_slug( string $page_id ): string {
+		return 'dashboard' === $page_id ? self::MENU_SLUG : self::MENU_SLUG . '-' . $page_id;
+	}
+
+	/**
+	 * Where a click on one of the League Manager menu items should land.
+	 *
+	 * @param string $menu_slug     The ?page= value from wp-admin.
+	 * @param string $dashboard_url Permalink of the dashboard page.
+	 * @return string|null The URL, or null when the slug is not one of ours.
+	 */
+	public static function redirect_target( string $menu_slug, string $dashboard_url ): ?string {
+		if ( self::MENU_SLUG === $menu_slug ) {
+			return $dashboard_url;
+		}
+		foreach ( array_keys( self::nav_labels() ) as $id ) {
+			if ( self::menu_slug( $id ) === $menu_slug ) {
+				return $dashboard_url . '#/' . $id;
+			}
+		}
+		return null;
 	}
 }
