@@ -63,7 +63,6 @@ class SPLM_Waitlist_REST {
 		$this->add_route( 'POST', '/waitlist/(?P<id>\d+)/target', array( $this, 'set_target' ), self::target_args() );
 		$this->add_route( 'POST', '/waitlist/(?P<id>\d+)/restrictions', array( $this, 'set_restrictions' ), self::restrictions_args() );
 		$this->add_route( 'POST', '/waitlist/gate', array( $this, 'toggle_gate' ), self::gate_args() );
-		$this->add_route( 'POST', '/waitlist/complete-orders', array( $this, 'complete_orders' ), array() );
 	}
 
 	/**
@@ -699,18 +698,6 @@ class SPLM_Waitlist_REST {
 			'product_id' => $product_id,
 			'gated'      => SPLM_Waitlist_Gate::is_gated( $product_id ),
 		);
-	}
-
-	/**
-	 * POST /waitlist/complete-orders -- complete the waitlist orders still in
-	 * Processing, one batch at a time, without emailing the customer.
-	 *
-	 * Called repeatedly by the dashboard until a batch completes nothing.
-	 *
-	 * @return array
-	 */
-	public function complete_orders() {
-		return SPLM_Waitlist_Order_Completion::complete_pending_source_orders();
 	}
 
 	/**

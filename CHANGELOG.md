@@ -11,7 +11,7 @@
 
 ### Added
 - **[league-manager]** The League Manager entry in the WordPress sidebar and the admin bar both open out into the React dashboard's pages, limited to the ones the user can open (the same rules as the dashboard navigation). The admin bar entry is renamed from League Dashboard to League Manager to match. `SPLM_Dashboard_Frontend::nav_items()` / `visible_nav_labels()` build the list; sidebar sub-items use the slug `splm-dashboard-<page>` and are resolved to the dashboard URL plus `#/<page>` by `redirect_target()`; `test-dashboard-nav.php` fails if the list drifts from `Layout.jsx` / `App.jsx`.
-- **[league-manager]** `POST /splm/v1/waitlist/complete-orders` and a "Complete waitlist orders" button on the Waitlist page complete the waitlist orders already in Processing, 25 per request, without emailing customers.
+- **[league-manager]** A "Complete Waitlist Orders" page under the League Manager menu in wp-admin (nonce-protected form, `manage_sportspress`) completes the waitlist orders already in Processing without emailing customers, within a 20-second budget per click, and shows how many are still waiting and how many it will leave alone.
 
 ## [1.8.0] - 2026-10-28
 

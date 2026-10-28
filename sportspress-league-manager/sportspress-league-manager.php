@@ -380,6 +380,9 @@ class SportsPress_League_Manager {
 			// SPLM_Waitlist_Offer is deliberately absent: it hooks nothing.
 			new SPLM_Waitlist();
 			SPLM_Waitlist_Order_Completion::boot();
+			if ( is_admin() ) {
+				SPLM_Waitlist_Orders_Admin::boot();
+			}
 			new SPLM_Waitlist_Claim();
 			new SPLM_Waitlist_Expiry();
 			new SPLM_Waitlist_Gate();

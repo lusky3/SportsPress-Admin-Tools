@@ -90,6 +90,7 @@ class SPLM_Autoloader {
 			'SPLM_Waitlist_Notify'       => $base . 'class-waitlist-notify.php',
 			'SPLM_Waitlist_Offer'        => $base . 'class-waitlist-offer.php',
 			'SPLM_Waitlist_Order_Completion' => $base . 'class-waitlist-order-completion.php',
+			'SPLM_Waitlist_Orders_Admin' => $base . 'class-waitlist-orders-admin.php',
 			'SPLM_Waitlist_REST'         => $base . 'class-waitlist-rest.php',
 		);
 	}
