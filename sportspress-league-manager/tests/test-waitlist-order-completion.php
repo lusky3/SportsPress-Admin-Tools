@@ -85,6 +85,8 @@ echo "=== wiring ===\n\n";
 oc_assert( 99 === ( $GLOBALS['hooks']['woocommerce_order_status_changed'] ?? null ), 'runs after the ingestion handler (priority 99)' );
 oc_assert( isset( $GLOBALS['hooks']['woocommerce_email_enabled_customer_completed_order'] ), 'registers the completed-email filter' );
 
+oc_assert( SPLM_Waitlist_Order_Completion::boot() === SPLM_Waitlist_Order_Completion::boot(), 'boot() returns one shared instance, so the hooks are added once' );
+
 echo "\n=== complete_source_order() ===\n\n";
 $o = order( 100, 'processing', array( 20 ) );
 oc_assert( true === SPLM_Waitlist_Order_Completion::complete_source_order( $o ), 'a pure waitlist order with its row recorded is completed' );

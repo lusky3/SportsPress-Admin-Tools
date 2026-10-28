@@ -369,6 +369,36 @@ class SPPR_Player_Registration {
 	}
 
 	/**
+	 * Whether a purchased product is a registration product.
+	 *
+	 * A waitlist product sits in the ordinary Registration category too, but
+	 * buying it only joins a queue: it must never register a player. League
+	 * Manager completes those orders once the entry is recorded, which would
+	 * otherwise run registration for everyone on the list.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param int        $lookup_id Product id categories are read from.
+	 * @param WC_Product $product   Purchased product.
+	 * @return bool
+	 */
+	private static function is_registration_product( $lookup_id, $product ) {
+		if ( class_exists( 'SPLM_Waitlist_Matcher' ) && SPLM_Waitlist_Matcher::is_waitlist_product( $lookup_id ) ) {
+			return false;
+		}
+
+		$keyword = get_option( 'spr_registration_keyword', 'registration' );
+		foreach ( wp_get_post_terms( $lookup_id, 'product_cat' ) as $category ) {
+			$matched = stripos( $category->name, $keyword ) !== false;
+			if ( apply_filters( 'spr_is_registration_category', $matched, $category, $product ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
 	 * Registration line items on an order, with each product's season position.
 	 *
 	 * Public and static so other code that must agree on "is this a registration
@@ -392,27 +422,7 @@ class SPPR_Player_Registration {
 
 			$lookup_id = $product->get_type() === 'variation' ? $product->get_parent_id() : $product->get_id();
 
-			// A waitlist product sits in the ordinary Registration category too,
-			// but buying it only joins a queue: it must never register a player.
-			// League Manager completes these orders once the entry is recorded,
-			// which would otherwise run registration for everyone on the list.
-			if ( class_exists( 'SPLM_Waitlist_Matcher' ) && SPLM_Waitlist_Matcher::is_waitlist_product( $lookup_id ) ) {
-				continue;
-			}
-
-			$categories = wp_get_post_terms( $lookup_id, 'product_cat' );
-			$is_registration = false;
-			$registration_keyword = get_option( 'spr_registration_keyword', 'registration' );
-
-			foreach ( $categories as $category ) {
-				$matched = stripos( $category->name, $registration_keyword ) !== false;
-				if ( apply_filters( 'spr_is_registration_category', $matched, $category, $product ) ) {
-					$is_registration = true;
-					break;
-				}
-			}
-
-			if ( ! $is_registration ) {
+			if ( ! self::is_registration_product( $lookup_id, $product ) ) {
 				continue;
 			}
 

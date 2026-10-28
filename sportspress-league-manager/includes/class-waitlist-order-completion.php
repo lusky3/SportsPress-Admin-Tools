@@ -39,6 +39,19 @@ class SPLM_Waitlist_Order_Completion {
 	 */
 	private static $suppress_email = false;
 
+	/**
+	 * Hook the class up once, however many times it is asked for.
+	 *
+	 * @return self
+	 */
+	public static function boot(): self {
+		static $instance = null;
+		if ( null === $instance ) {
+			$instance = new self();
+		}
+		return $instance;
+	}
+
 	public function __construct() {
 		// After SPLM_Waitlist::handle_order_status_changed() (priority 10) has
 		// written the row, and on a fresh order object rather than the one
@@ -56,7 +69,9 @@ class SPLM_Waitlist_Order_Completion {
 	 * @return void
 	 */
 	public function maybe_complete_after_join( $order_id, $from, $to ) {
-		if ( 'processing' !== $to || ! function_exists( 'wc_get_order' ) ) {
+		// WooCommerce only fires this on a real change, so $from === $to is a
+		// no-op transition and nothing to do.
+		if ( 'processing' !== $to || $from === $to || ! function_exists( 'wc_get_order' ) ) {
 			return;
 		}
 
@@ -95,30 +110,49 @@ class SPLM_Waitlist_Order_Completion {
 	 * @return bool
 	 */
 	public static function is_completable( $order ): bool {
-		if ( 'processing' !== $order->get_status() ) {
-			return false;
-		}
-
 		$items = $order->get_items();
-		if ( empty( $items ) ) {
+
+		return 'processing' === $order->get_status()
+			&& ! empty( $items )
+			&& self::all_items_recorded( (int) $order->get_id(), $items );
+	}
+
+	/**
+	 * Whether every line item is a waitlist product with a recorded entry.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param int   $order_id Order id.
+	 * @param array $items    Order line items.
+	 * @return bool
+	 */
+	private static function all_items_recorded( int $order_id, array $items ): bool {
+		foreach ( $items as $item ) {
+			if ( ! self::item_recorded( $order_id, $item ) ) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Whether one line item is a waitlist product whose entry was recorded.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param int    $order_id Order id.
+	 * @param object $item     Order line item.
+	 * @return bool
+	 */
+	private static function item_recorded( int $order_id, $item ): bool {
+		$product = $item->get_product();
+		if ( ! $product ) {
 			return false;
 		}
+		$lookup_id = $product->get_type() === 'variation' ? (int) $product->get_parent_id() : (int) $product->get_id();
 
-		foreach ( $items as $item ) {
-			$product = $item->get_product();
-			if ( ! $product ) {
-				return false;
-			}
-			$lookup_id = $product->get_type() === 'variation' ? (int) $product->get_parent_id() : (int) $product->get_id();
-			if ( ! SPLM_Waitlist_Matcher::is_waitlist_product( $lookup_id ) ) {
-				return false;
-			}
-			if ( ! SPLM_Waitlist_Database::find_by_source_order( (int) $order->get_id(), $lookup_id ) ) {
-				return false;
-			}
-		}
-
-		return true;
+		return SPLM_Waitlist_Matcher::is_waitlist_product( $lookup_id )
+			&& null !== SPLM_Waitlist_Database::find_by_source_order( $order_id, $lookup_id );
 	}
 
 	/**

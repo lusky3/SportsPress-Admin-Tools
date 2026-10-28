@@ -892,6 +892,16 @@ function useAddEntryForm( { setError, setNotice, load } ) {
 	return { form, adding, handleFieldChange, handleSubmit };
 }
 
+// The notice shown once "Complete waitlist orders" has finished.
+function completionMessage( done, skipped ) {
+	if ( done === 0 ) {
+		return 'No waitlist orders needed completing.';
+	}
+	const noun = done === 1 ? 'order' : 'orders';
+	const left = skipped > 0 ? ` ${ skipped } could not be completed and were left as they were.` : '';
+	return `Completed ${ done } waitlist ${ noun } without emailing the customers.${ left }`;
+}
+
 export default function Waitlist() {
 	const wl = useWaitlistData();
 	const [ busyId, setBusyId ] = useState( 0 );
@@ -938,11 +948,7 @@ export default function Waitlist() {
 				skipped = Number( res?.skipped ) || 0;
 				if ( ! res?.completed ) break;
 			}
-			wl.setNotice(
-				done > 0
-					? `Completed ${ done } waitlist order${ done === 1 ? '' : 's' } without emailing the customers.${ skipped ? ` ${ skipped } could not be completed and were left as they were.` : '' }`
-					: 'No waitlist orders needed completing.'
-			);
+			wl.setNotice( completionMessage( done, skipped ) );
 		} catch ( e ) {
 			wl.setError( e?.message || 'Could not complete the waitlist orders.' );
 		} finally {

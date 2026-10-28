@@ -379,7 +379,7 @@ class SportsPress_League_Manager {
 			// any one of these lines and its hooks silently never register.
 			// SPLM_Waitlist_Offer is deliberately absent: it hooks nothing.
 			new SPLM_Waitlist();
-			new SPLM_Waitlist_Order_Completion();
+			SPLM_Waitlist_Order_Completion::boot();
 			new SPLM_Waitlist_Claim();
 			new SPLM_Waitlist_Expiry();
 			new SPLM_Waitlist_Gate();
