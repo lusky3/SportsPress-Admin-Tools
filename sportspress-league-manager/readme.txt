@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.6.6
+Stable tag: 1.7.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -61,6 +61,11 @@ Conveners can issue a suspension from the Notices page (Issue suspension) or fro
 * Discipline history starts empty. Suspensions issued before this feature are not backfilled.
 
 == Changelog ==
+
+= 1.7.0 =
+* New: the FreeScout ticket sidebar shows a customer's waitlist entries (queued, offered, expired), and conveners can offer a spot (1–720 hours, optional message), re-offer, withdraw an offer or remove an entry from the ticket.
+* New: FreeScout gets an event when an offer is sent, expires or is claimed (new `splm_waitlist_transition` hook).
+* Change: offer deadlines in FreeScout previews are shown in the site's time zone. Withdrawing or removing an entry that changed in the meantime is refused instead of being applied twice.
 
 = 1.6.6 =
 * Fix: the dashboard's Scores page listed no unscored games. Games that had not been played carry blank result placeholders, and those were read as finished 0-0 games, so nothing counted as needing a score. Blank results are now treated as "no score entered".

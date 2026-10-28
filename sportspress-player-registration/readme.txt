@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.2.1
+Stable tag: 1.3.0
 License: GPLv2 or later
 
 Automatically creates SportsPress player records from WooCommerce registration orders.
@@ -40,6 +40,10 @@ SportsPress Player Registration automatically creates SportsPress player records
 4. Configure automatic creation and role assignment in settings
 
 == Changelog ==
+
+= 1.3.0 =
+* New: the FreeScout ticket sidebar shows the customer's registration history and flags paid registration orders that did not register, with the reason. An agent can re-run registration for such an order from the ticket.
+* New: `spr_registration_outcome` and `spr_registration_reversed` hooks; FreeScout gets an event when a registration is incomplete or reversed. `SPPR_Player_Registration::get_registration_items()` is now public static.
 
 = 1.2.1 =
 * Fix: an order is marked registered only when every registration item on it linked a player. Orders whose items failed with season not detected or player creation failed used to be marked done anyway, so they looked successful and completing the order again never retried them. They now stay open (as name/email conflicts already did): completing the order again, or the "Re-run player registration" action, retries them.

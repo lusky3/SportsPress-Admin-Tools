@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.5.0
+Stable tag: 1.6.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -42,6 +42,10 @@ CSV files must have "Team" and "Name" columns. Player names are automatically cl
 Yes. The batch list creator supports both "Create new" and "Update existing" modes. Update mode finds lists matching team and season, then replaces players.
 
 == Changelog ==
+
+= 1.6.0 =
+* New: the FreeScout ticket sidebar shows the customer's player card: team, division, number, position, skill level, captain, next game and WordPress account.
+* New: from FreeScout, change a player's email in one step: the player record, the WordPress login and the billing email on their orders. It is refused when the new address already belongs to someone else, and for staff and admin accounts.
 
 = 1.5.0 =
 * New: the Add New Player screen warns, without blocking, when the name you type already belongs to a published player, and links to that player. Renaming a player to their own current name is never flagged.

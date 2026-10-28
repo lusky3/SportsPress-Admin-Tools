@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.1.3
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -49,6 +49,11 @@ Payments are matched to on-hold WooCommerce orders by: (1) an order number in th
 Unmatched payments appear in WooCommerce → e-Transfer Webhooks where you can manually match them to orders or hide false positives.
 
 == Changelog ==
+
+= 1.2.0 =
+* New: the FreeScout ticket sidebar shows a customer's unmatched e-Transfers with their likely orders, and an agent can match one from the ticket (with an explicit confirmation when the amounts differ). It runs the same manual match as the admin screen.
+* Change: a manual match now fires `spat_payment_matched` with `'manual' => true` in its new context argument. Code listening on that hook will start seeing manual matches; check the flag to skip them. The admin email still skips manual matches.
+* Fix: if completing the order throws a PHP error during a manual match, the transfer no longer stays marked "matched" against an order that never completed. A match whose order did complete is kept.
 
 = 1.1.3 =
 * Add: placeholder plugin icon, shown in the Plugins and Updates screens in place of the generic one.
