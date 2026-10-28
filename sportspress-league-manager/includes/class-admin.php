@@ -40,7 +40,8 @@ class SPLM_Admin {
 	}
 
 	/**
-	 * Register a single menu entry that redirects to the React dashboard.
+	 * Register the League Manager menu: one entry that redirects to the React
+	 * dashboard, with a sub-item for each dashboard page.
 	 */
 	public function add_admin_menu() {
 		// Route the menu's capability check through SPLM_Capabilities so
@@ -55,6 +56,23 @@ class SPLM_Admin {
 			'dashicons-groups',
 			31
 		);
+
+		// One sub-item per dashboard page the user can open. Clicking one is
+		// handled by maybe_redirect_to_dashboard(), which sends them to the
+		// dashboard on that page. The page URL is deliberately not resolved here:
+		// that provisions the page, and this runs on every admin screen.
+		// Dashboard reuses the parent's slug, which also replaces the duplicate
+		// first item WordPress would otherwise add under the parent's own name.
+		foreach ( SPLM_Dashboard_Frontend::visible_nav_labels() as $id => $label ) {
+			add_submenu_page(
+				SPLM_Dashboard_Frontend::MENU_SLUG,
+				$label,
+				$label,
+				$cap,
+				SPLM_Dashboard_Frontend::menu_slug( $id ),
+				array( $this, 'render_redirect_page' )
+			);
+		}
 	}
 
 	/**
@@ -71,7 +89,8 @@ class SPLM_Admin {
 		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only redirect, no state change.
 		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
-		if ( 'splm-dashboard' !== $page ) {
+		// The menu item itself, or one of its dashboard-page sub-items.
+		if ( null === SPLM_Dashboard_Frontend::redirect_target( $page, '' ) ) {
 			return;
 		}
 		if ( ! SPLM_Capabilities::can_manage() ) {
@@ -95,8 +114,8 @@ class SPLM_Admin {
 		}
 
 		// The permalink, not a fixed path: the page can legitimately have been
-		// renamed, and following it beats guessing.
-		wp_safe_redirect( get_permalink( $page_id ) );
+		// renamed, and following it beats guessing. A sub-item adds #/<page>.
+		wp_safe_redirect( SPLM_Dashboard_Frontend::redirect_target( $page, get_permalink( $page_id ) ) );
 		exit;
 	}
 
@@ -388,6 +407,10 @@ class SPLM_Admin {
 	 * renamed, and a stale link would send a convener to a 404 from the one
 	 * place meant to get them there reliably.
 	 *
+	 * The node drops down into the dashboard's pages (see
+	 * SPLM_Dashboard_Frontend::nav_items()), limited to the ones this user can
+	 * actually open.
+	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
 	 * @param WP_Admin_Bar $wp_admin_bar Admin bar instance.
@@ -406,13 +429,29 @@ class SPLM_Admin {
 			return;
 		}
 
+		$dashboard_url = get_permalink( $page_id );
+
 		$wp_admin_bar->add_node(
 			array(
 				'id'    => 'splm-dashboard',
-				'title' => __( 'League Dashboard', 'sportspress-league-manager' ),
-				'href'  => get_permalink( $page_id ),
+				'title' => __( 'League Manager', 'sportspress-league-manager' ),
+				'href'  => $dashboard_url,
 			)
 		);
+
+		// One child per React dashboard page this user can reach, in the
+		// dashboard's own order. Each link carries the #/route the app reads on
+		// load and on hashchange, so it also works from the dashboard itself.
+		foreach ( SPLM_Dashboard_Frontend::nav_items( $dashboard_url ) as $item ) {
+			$wp_admin_bar->add_node(
+				array(
+					'id'     => 'splm-dashboard-' . $item['id'],
+					'parent' => 'splm-dashboard',
+					'title'  => $item['label'],
+					'href'   => $item['url'],
+				)
+			);
+		}
 	}
 
 	public function render_roster_max_upload_field() {
