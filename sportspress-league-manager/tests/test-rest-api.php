@@ -667,6 +667,27 @@ assert_test(
 	'M24: the enforced window matches the 24h limit advertised to the browser'
 );
 
+// ── Scores page: blank result placeholders are "not entered", never 0-0 ─────
+
+echo "\n=== team_main_result(): blank placeholders are not a 0-0 score ===\n\n";
+
+// Exactly what production holds for an unplayed W2026-27 game.
+$blank = array( 'goals' => '', 'goalstwo' => '' );
+assert_test( null === invoke_private( $api, 'team_main_result', array( $blank, 'goals' ) ), 'a blank goals value is not a score (null, not 0)' );
+assert_test( 0 === invoke_private( $api, 'team_main_result', array( array( 'goals' => '0' ), 'goals' ) ), 'a recorded "0" is a real 0' );
+assert_test( 0 === invoke_private( $api, 'team_main_result', array( array( 'goals' => 0 ), 'goals' ) ), 'a recorded integer 0 is a real 0' );
+assert_test( 4 === invoke_private( $api, 'team_main_result', array( array( 'goals' => '4' ), 'goals' ) ), 'a recorded "4" reads as 4' );
+assert_test( 3 === invoke_private( $api, 'team_main_result', array( array( 'gf' => '3' ), 'goals' ) ), 'the legacy gf key still reads when the main key is absent' );
+assert_test( 5 === invoke_private( $api, 'team_main_result', array( array( 'goals' => '5', 'gf' => '9' ), 'goals' ) ), 'the configured main key wins over gf' );
+assert_test( 2 === invoke_private( $api, 'team_main_result', array( array( 'goals' => '', 'gf' => '2' ), 'goals' ) ), 'a blank main key falls back to a real gf' );
+assert_test( null === invoke_private( $api, 'team_main_result', array( array(), 'goals' ) ), 'an empty team entry is not a score' );
+assert_test( null === invoke_private( $api, 'team_main_result', array( '', 'goals' ) ), 'a non-array team entry is not a score' );
+assert_test( null === invoke_private( $api, 'team_main_result', array( array( 'goals' => 'abc' ), 'goals' ) ), 'a non-numeric value is not a score' );
+
+echo "\n=== results_have_score(): agrees with team_main_result() on unplayed games ===\n\n";
+assert_test( false === invoke_private( $api, 'results_have_score', array( array( 11 => $blank, 12 => $blank ) ) ), 'both teams blank: game has no score' );
+assert_test( true === invoke_private( $api, 'results_have_score', array( array( 11 => array( 'goals' => '2', 'goalstwo' => '' ), 12 => $blank ) ) ), 'one recorded value: game has a score' );
+
 // ── Summary ─────────────────────────────────────────────────────────────────
 
 echo "\n=== Results ===\n";

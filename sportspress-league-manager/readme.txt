@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.6.5
+Stable tag: 1.6.6
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -61,6 +61,10 @@ Conveners can issue a suspension from the Notices page (Issue suspension) or fro
 * Discipline history starts empty. Suspensions issued before this feature are not backfilled.
 
 == Changelog ==
+
+= 1.6.6 =
+* Fix: the dashboard's Scores page listed no unscored games. Games that had not been played carry blank result placeholders, and those were read as finished 0-0 games, so nothing counted as needing a score. Blank results are now treated as "no score entered".
+* Fix: Team Comparison no longer counts unplayed games as 0-0 draws in the head-to-head record, and Health Checks now lists past games with blank results under "events without results".
 
 = 1.6.5 =
 * Maintenance: dashboard bundle rebuilt with the current build tooling. No change to how the dashboard looks or behaves; the version bump makes the browser fetch the refreshed script.
