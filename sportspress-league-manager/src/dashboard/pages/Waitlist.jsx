@@ -7,7 +7,6 @@ import {
 	setWaitlistGate,
 	setWaitlistTarget,
 	setWaitlistRestrictions,
-	completeWaitlistOrders,
 } from '../lib/api';
 import HelpLink from '../components/HelpLink';
 import Pager from '../components/Pager';
@@ -892,21 +891,11 @@ function useAddEntryForm( { setError, setNotice, load } ) {
 	return { form, adding, handleFieldChange, handleSubmit };
 }
 
-// The notice shown once "Complete waitlist orders" has finished.
-function completionMessage( done, skipped ) {
-	if ( done === 0 ) {
-		return 'No waitlist orders needed completing.';
-	}
-	const noun = done === 1 ? 'order' : 'orders';
-	const left = skipped > 0 ? ` ${ skipped } could not be completed and were left as they were.` : '';
-	return `Completed ${ done } waitlist ${ noun } without emailing the customers.${ left }`;
-}
-
 export default function Waitlist() {
 	const wl = useWaitlistData();
 	const [ busyId, setBusyId ] = useState( 0 );
-	// Discriminated on `kind`: 'offer' (row), 'cancel' (row), 'gate'
-	// (productId, gated) or 'complete-orders' -- see the ConfirmModal render below. One piece of
+	// Discriminated on `kind`: 'offer' (row), 'cancel' (row) or 'gate'
+	// (productId, gated) -- see the ConfirmModal render below. One piece of
 	// state for all three native-dialog replacements keeps exactly one
 	// modal on screen at a time, matching how every other dialog is native.
 	const [ confirmModal, setConfirmModal ] = useState( null );
@@ -929,31 +918,6 @@ export default function Waitlist() {
 
 	const handleGate = ( productId, gated ) => {
 		setConfirmModal( { kind: 'gate', productId, gated } );
-	};
-
-	// Completes every waitlist order still in Processing, a batch at a time,
-	// until a batch finds nothing left to complete (bounded, so a server that
-	// keeps answering can never loop this forever).
-	const [ completing, setCompleting ] = useState( false );
-	const confirmCompleteOrders = async () => {
-		setConfirmModal( null );
-		wl.setError( '' );
-		setCompleting( true );
-		let done = 0;
-		let skipped = 0;
-		try {
-			for ( let round = 0; round < 40; round++ ) {
-				const res = await completeWaitlistOrders();
-				done += Number( res?.completed ) || 0;
-				skipped = Number( res?.skipped ) || 0;
-				if ( ! res?.completed ) break;
-			}
-			wl.setNotice( completionMessage( done, skipped ) );
-		} catch ( e ) {
-			wl.setError( e?.message || 'Could not complete the waitlist orders.' );
-		} finally {
-			setCompleting( false );
-		}
 	};
 
 	const startIdx = wl.total === 0 ? 0 : ( wl.page - 1 ) * WAITLIST_PER_PAGE + 1;
@@ -992,14 +956,6 @@ export default function Waitlist() {
 					onStatusChange={ wl.setStatus }
 				/>
 				<ColumnsToggle visible={ visibleColumns } onToggle={ toggleColumn } />
-				<button
-					type="button"
-					className="splm-btn"
-					onClick={ () => setConfirmModal( { kind: 'complete-orders' } ) }
-					disabled={ completing }
-				>
-					{ completing ? 'Completing orders…' : 'Complete waitlist orders' }
-				</button>
 			</div>
 
 			<WaitlistTable
@@ -1043,7 +999,6 @@ export default function Waitlist() {
 					onConfirmOffer={ rowActions.confirmOffer }
 					onConfirmCancel={ rowActions.confirmCancel }
 					onConfirmGate={ confirmGate }
-					onConfirmCompleteOrders={ confirmCompleteOrders }
 				/>
 			) }
 		</div>
@@ -1053,22 +1008,10 @@ export default function Waitlist() {
 // The one modal on screen at a time for Offer/Re-offer (needs the claim-window
 // input), Cancel/Remove and Gate/Un-gate -- see the `confirmModal` state above
 // for why these three share one component instead of three separate ones.
-function WaitlistConfirmModal( { modal, onCancel, onConfirmOffer, onConfirmCancel, onConfirmGate, onConfirmCompleteOrders } ) {
+function WaitlistConfirmModal( { modal, onCancel, onConfirmOffer, onConfirmCancel, onConfirmGate } ) {
 	if ( 'offer' === modal.kind ) {
 		return (
 			<OfferDialog row={ modal.row } onCancel={ onCancel } onConfirm={ onConfirmOffer } />
-		);
-	}
-
-	if ( 'complete-orders' === modal.kind ) {
-		return (
-			<ConfirmDialog
-				title="Complete the original waitlist orders?"
-				body="Each order that put someone on the list moves from Processing to Completed. Customers are not emailed."
-				confirmLabel="Complete orders"
-				onCancel={ onCancel }
-				onConfirm={ onConfirmCompleteOrders }
-			/>
 		);
 	}
 
@@ -1105,12 +1048,11 @@ function WaitlistConfirmModal( { modal, onCancel, onConfirmOffer, onConfirmCance
 // overlay -- that would put a click (and, to stay accessible, a matching key)
 // listener on a plain, non-interactive div; the explicit Cancel button is
 // the only way to dismiss, same as it always was.
-function ConfirmDialog( { title, body, confirmLabel, danger, onConfirm, onCancel } ) {
+function ConfirmDialog( { title, confirmLabel, danger, onConfirm, onCancel } ) {
 	return (
 		<div className="splm-modal-overlay">
 			<dialog open className="splm-modal" aria-label={ title }>
 				<h3>{ title }</h3>
-				{ body && <p>{ body }</p> }
 				<div className="splm-modal__actions">
 					<button
 						type="button"

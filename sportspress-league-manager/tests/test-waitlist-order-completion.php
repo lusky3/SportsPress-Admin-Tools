@@ -163,5 +163,21 @@ oc_assert( 1 === $r['completed'], 'a second call finishes the rest' );
 $r = SPLM_Waitlist_Order_Completion::complete_pending_source_orders( 2 );
 oc_assert( 0 === $r['completed'], 'a third call completes nothing, which is how the dashboard knows to stop' );
 
+echo "\n=== pending_counts() ===\n\n";
+$GLOBALS['wc_orders'] = array(); $GLOBALS['rows'] = array();
+order( 401, 'processing', array( 20 ) );
+order( 402, 'processing', array( 20 ) );
+order( 403, 'processing', array( 20, 99 ) );       // mixed
+order( 404, 'processing', array( 20 ), false );    // entry never recorded
+order( 405, 'completed', array( 20 ) );            // already done: not counted
+$GLOBALS['source_ids'] = array( 401, 402, 403, 404, 405, 999 );
+$c = SPLM_Waitlist_Order_Completion::pending_counts();
+oc_assert( 2 === $c['completable'], 'counts the Processing orders that can be completed' );
+oc_assert( 2 === $c['other'], 'counts the Processing orders it would leave alone (mixed, or no entry)' );
+oc_assert( 'processing' === $GLOBALS['wc_orders'][401]->status, 'counting completes nothing' );
+$GLOBALS['source_ids'] = array();
+$c = SPLM_Waitlist_Order_Completion::pending_counts();
+oc_assert( 0 === $c['completable'] && 0 === $c['other'], 'no entries, no counts' );
+
 echo "\n=== Results ===\nPassed: $passed\nFailed: $failed\n";
 exit( $failed === 0 ? 0 : 1 );

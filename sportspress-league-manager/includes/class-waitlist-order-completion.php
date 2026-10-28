@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class SPLM_Waitlist_Order_Completion {
 
 	/**
-	 * Orders completed per backfill request, so one request stays short.
+	 * Orders completed per call, so one call stays short.
 	 */
 	const BATCH = 25;
 
@@ -182,6 +182,35 @@ class SPLM_Waitlist_Order_Completion {
 		} finally {
 			self::$suppress_email = false;
 		}
+	}
+
+	/**
+	 * How many waitlist orders are still in Processing: those that can be
+	 * completed, and those that cannot (a mixed cart, or an order whose entry
+	 * was never recorded), which are left alone.
+	 *
+	 * @return array { completable: int, other: int }
+	 */
+	public static function pending_counts(): array {
+		$completable = 0;
+		$other       = 0;
+
+		foreach ( SPLM_Waitlist_Database::source_order_ids() as $order_id ) {
+			$order = function_exists( 'wc_get_order' ) ? wc_get_order( $order_id ) : null;
+			if ( ! $order || 'processing' !== $order->get_status() ) {
+				continue;
+			}
+			if ( self::is_completable( $order ) ) {
+				$completable++;
+			} else {
+				$other++;
+			}
+		}
+
+		return array(
+			'completable' => $completable,
+			'other'       => $other,
+		);
 	}
 
 	/**
