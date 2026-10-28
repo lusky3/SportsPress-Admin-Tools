@@ -618,10 +618,10 @@ class SPLM_Dashboard_Frontend {
 	 * counts as present, the same fail-open rule the client uses; pages with no
 	 * rule (dashboard, schedule, standings, leaders, report, help...) always show.
 	 *
-	 * @param string[]            $page_ids All page ids, in order.
-	 * @param array<string,bool>  $caps     capabilities_config().
-	 * @param array<string,bool>  $deps     dependencies_config().
-	 * @param array<string,bool>  $modules  modules_config().
+	 * @param string[]           $page_ids All page ids, in order.
+	 * @param array<string,bool> $caps     capabilities_config().
+	 * @param array<string,bool> $deps     dependencies_config().
+	 * @param array<string,bool> $modules  modules_config().
 	 * @return string[]
 	 */
 	public static function visible_page_ids( array $page_ids, array $caps, array $deps, array $modules ): array {
