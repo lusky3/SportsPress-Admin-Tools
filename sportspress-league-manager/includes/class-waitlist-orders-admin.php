@@ -1,15 +1,17 @@
 <?php
 /**
- * The "Complete Waitlist Orders" admin page, under the League Manager menu.
+ * The "Complete Waitlist Orders" panel, in the League Manager tab of the main
+ * SPAT page (Settings > SportsPress Admin Tools).
  *
  * Orders that put someone on the waitlist used to sit in Processing forever;
  * SPLM_Waitlist_Order_Completion now completes new ones as they arrive. This
  * page does the same, once, for the ones already waiting, without emailing
  * the customers.
  *
- * It is a plain WordPress admin page (nonce-protected form, capability check)
- * rather than part of the React dashboard: it is a one-off maintenance action,
- * not something a convener needs in their daily view.
+ * Module admin UI lives in SPAT's tabs (see AGENTS.md), so this is a panel in
+ * the League Manager tab, not a page of its own and not part of the React
+ * dashboard: it is a one-off maintenance action, not something a convener
+ * needs in their daily view.
  *
  * @author Cody (lusky3)
  */
@@ -20,12 +22,20 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPLM_Waitlist_Orders_Admin {
 
-	const SLUG = 'splm-waitlist-orders';
+	/**
+	 * The SPAT settings page and the tab this panel lives in.
+	 */
+	const SPAT_PAGE = 'sportspress-admin-tools';
+
+	const SPAT_TAB = 'league-manager';
 
 	/**
-	 * Slug of the League Manager top-level menu (registered by SPLM_Admin).
+	 * Set once boot() has run, i.e. the waitlist module is on and this is an
+	 * admin request, so the panel only appears when the feature exists.
+	 *
+	 * @var bool
 	 */
-	const PARENT_SLUG = 'splm-dashboard';
+	private static $active = false;
 
 	const ACTION = 'splm_complete_waitlist_orders';
 
@@ -34,6 +44,11 @@ class SPLM_Waitlist_Orders_Admin {
 	 * inside PHP's time limit. Whatever is left is counted and can be run again.
 	 */
 	const TIME_BUDGET = 20;
+
+	/**
+	 * How long a run's result waits for the page to show it, in seconds.
+	 */
+	const RESULT_TTL = 120;
 
 	/**
 	 * Hook the page up once, however many times it is asked for.
@@ -45,23 +60,27 @@ class SPLM_Waitlist_Orders_Admin {
 		if ( null === $instance ) {
 			$instance = new self();
 		}
+		self::$active = true;
 		return $instance;
 	}
 
 	public function __construct() {
-		// After SPLM_Admin registers the League Manager menu (priority 10), so
-		// the parent exists and this lands at the end of its sub-menu.
-		add_action( 'admin_menu', array( $this, 'add_menu' ), 20 );
 		add_action( 'admin_post_' . self::ACTION, array( $this, 'handle_post' ) );
 	}
 
 	/**
-	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 * Where the panel is: the League Manager tab of the SPAT settings page.
+	 *
+	 * @return string
 	 */
-	public function add_menu() {
-		$cap   = SPLM_Capabilities::can_manage() ? 'manage_sportspress' : 'do_not_allow';
-		$title = __( 'Complete Waitlist Orders', 'sportspress-league-manager' );
-		add_submenu_page( self::PARENT_SLUG, $title, $title, $cap, self::SLUG, array( $this, 'render_page' ) );
+	public static function panel_url(): string {
+		return add_query_arg(
+			array(
+				'page' => self::SPAT_PAGE,
+				'tab'  => self::SPAT_TAB,
+			),
+			admin_url( 'options-general.php' )
+		);
 	}
 
 	/**
@@ -124,81 +143,93 @@ class SPLM_Waitlist_Orders_Admin {
 		}
 		check_admin_referer( self::ACTION );
 
-		$result = self::run();
+		// Hand the result to the page we are about to redirect to. A short-lived,
+		// per-user transient rather than query args: nothing in the URL can be
+		// edited to put a made-up result on screen.
+		set_transient( self::result_key(), self::run(), self::RESULT_TTL );
 
-		wp_safe_redirect(
-			add_query_arg(
-				array(
-					'page'      => self::SLUG,
-					'completed' => $result['completed'],
-					'ran'       => 1,
-				),
-				admin_url( 'admin.php' )
-			)
-		);
-		exit;
+		// No exit: admin-post.php runs nothing after this action returns.
+		wp_safe_redirect( self::panel_url() );
 	}
 
 	/**
+	 * Where the last run's result waits for the next page view.
+	 *
+	 * @return string
+	 */
+	private static function result_key(): string {
+		return 'splm_waitlist_orders_result_' . get_current_user_id();
+	}
+
+	/**
+	 * The last run's result, shown once: read, then forgotten.
+	 *
+	 * @return array|null { completed: int, remaining: int, other: int }
+	 */
+	private static function take_result(): ?array {
+		$result = get_transient( self::result_key() );
+		if ( false === $result ) {
+			return null;
+		}
+		delete_transient( self::result_key() );
+		return is_array( $result ) ? $result : null;
+	}
+
+	/**
+	 * Print the panel. Called from the League Manager tab; prints nothing when
+	 * the waitlist feature is off or the user cannot manage the league.
+	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
-	public function render_page() {
-		if ( ! SPLM_Capabilities::can_manage() ) {
-			wp_die( esc_html__( 'You are not allowed to see this page.', 'sportspress-league-manager' ), '', array( 'response' => 403 ) );
+	public static function render_panel() {
+		if ( ! self::$active || ! SPLM_Capabilities::can_manage() ) {
+			return;
 		}
 
 		$counts = SPLM_Waitlist_Order_Completion::pending_counts();
-		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- read-only display of the last run's result; no state change.
-		$ran       = isset( $_GET['ran'] );
-		$completed = isset( $_GET['completed'] ) ? absint( wp_unslash( $_GET['completed'] ) ) : 0;
-		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+		$result = self::take_result();
 		?>
-		<div class="wrap">
-			<h1><?php esc_html_e( 'Complete Waitlist Orders', 'sportspress-league-manager' ); ?></h1>
+		<div class="splm-waitlist-orders">
+			<h2><?php esc_html_e( 'Complete Waitlist Orders', 'sportspress-league-manager' ); ?></h2>
 
-			<?php if ( $ran ) : ?>
+			<?php if ( $result ) : ?>
 				<?php // A card in the page body, not a .notice: notice-collecting plugins remove .notice elements from the page. ?>
 				<div class="card" role="status">
-					<p><strong><?php echo esc_html( self::result_message( $completed, (int) $counts['completable'] ) ); ?></strong></p>
+					<p><strong><?php echo esc_html( self::result_message( (int) $result['completed'], (int) $result['remaining'] ) ); ?></strong></p>
 				</div>
 			<?php endif; ?>
 
 			<p><?php esc_html_e( 'Joining the waitlist is a purchase, and that order used to stay in Processing for good. New ones are now completed automatically once the entry is recorded. This completes the ones already waiting. Customers are not emailed, and nobody is registered as a player.', 'sportspress-league-manager' ); ?></p>
 
-			<p>
-				<strong>
-					<?php
-					echo esc_html(
-						sprintf(
-							/* translators: %d: number of orders. */
-							_n( '%d waitlist order is still in Processing and can be completed.', '%d waitlist orders are still in Processing and can be completed.', (int) $counts['completable'], 'sportspress-league-manager' ),
-							(int) $counts['completable']
-						)
-					);
-					?>
-				</strong>
-			</p>
-
+			<p><strong><?php echo esc_html( self::count_sentence( (int) $counts['completable'], false ) ); ?></strong></p>
 			<?php if ( $counts['other'] > 0 ) : ?>
-				<p class="description">
-					<?php
-					echo esc_html(
-						sprintf(
-							/* translators: %d: number of orders. */
-							_n( '%d other order in Processing is left alone: it mixes a waitlist product with something else, or its entry was not recorded.', '%d other orders in Processing are left alone: each mixes a waitlist product with something else, or its entry was not recorded.', (int) $counts['other'], 'sportspress-league-manager' ),
-							(int) $counts['other']
-						)
-					);
-					?>
-				</p>
+				<p class="description"><?php echo esc_html( self::count_sentence( (int) $counts['other'], true ) ); ?></p>
 			<?php endif; ?>
 
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<input type="hidden" name="action" value="<?php echo esc_attr( self::ACTION ); ?>" />
 				<?php wp_nonce_field( self::ACTION ); ?>
-				<?php submit_button( __( 'Complete waitlist orders', 'sportspress-league-manager' ), 'primary', 'submit', true, 0 === (int) $counts['completable'] ? array( 'disabled' => 'disabled' ) : array() ); ?>
+				<?php submit_button( __( 'Complete waitlist orders', 'sportspress-league-manager' ), 'secondary', 'submit', true, 0 === (int) $counts['completable'] ? array( 'disabled' => 'disabled' ) : array() ); ?>
 			</form>
 		</div>
 		<?php
+	}
+
+	/**
+	 * The count sentence under the explanation.
+	 *
+	 * @param int  $n         Number of orders.
+	 * @param bool $left_over True for the orders it will leave alone, false for
+	 *                        the ones it can complete.
+	 * @return string
+	 */
+	private static function count_sentence( int $n, bool $left_over ): string {
+		if ( $left_over ) {
+			/* translators: %d: number of orders. */
+			return sprintf( _n( '%d other order in Processing is left alone: it mixes a waitlist product with something else, or its entry was not recorded.', '%d other orders in Processing are left alone: each mixes a waitlist product with something else, or its entry was not recorded.', $n, 'sportspress-league-manager' ), $n );
+		}
+
+		/* translators: %d: number of orders. */
+		return sprintf( _n( '%d waitlist order is still in Processing and can be completed.', '%d waitlist orders are still in Processing and can be completed.', $n, 'sportspress-league-manager' ), $n );
 	}
 }
