@@ -201,9 +201,9 @@ class SPLM_Waitlist_Orders_Admin {
 
 			<p><?php esc_html_e( 'Joining the waitlist is a purchase, and that order used to stay in Processing for good. New ones are now completed automatically once the entry is recorded. This completes the ones already waiting. Customers are not emailed, and nobody is registered as a player.', 'sportspress-league-manager' ); ?></p>
 
-			<p><strong><?php echo esc_html( self::pending_sentence( (int) $counts['completable'] ) ); ?></strong></p>
+			<p><strong><?php echo esc_html( self::count_sentence( (int) $counts['completable'], false ) ); ?></strong></p>
 			<?php if ( $counts['other'] > 0 ) : ?>
-				<p class="description"><?php echo esc_html( self::other_sentence( (int) $counts['other'] ) ); ?></p>
+				<p class="description"><?php echo esc_html( self::count_sentence( (int) $counts['other'], true ) ); ?></p>
 			<?php endif; ?>
 
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
@@ -216,21 +216,20 @@ class SPLM_Waitlist_Orders_Admin {
 	}
 
 	/**
-	 * @param int $n Orders that can be completed.
+	 * The count sentence under the explanation.
+	 *
+	 * @param int  $n         Number of orders.
+	 * @param bool $left_over True for the orders it will leave alone, false for
+	 *                        the ones it can complete.
 	 * @return string
 	 */
-	private static function pending_sentence( int $n ): string {
+	private static function count_sentence( int $n, bool $left_over ): string {
+		if ( $left_over ) {
+			/* translators: %d: number of orders. */
+			return sprintf( _n( '%d other order in Processing is left alone: it mixes a waitlist product with something else, or its entry was not recorded.', '%d other orders in Processing are left alone: each mixes a waitlist product with something else, or its entry was not recorded.', $n, 'sportspress-league-manager' ), $n );
+		}
+
 		/* translators: %d: number of orders. */
 		return sprintf( _n( '%d waitlist order is still in Processing and can be completed.', '%d waitlist orders are still in Processing and can be completed.', $n, 'sportspress-league-manager' ), $n );
 	}
-
-	/**
-	 * @param int $n Orders left alone.
-	 * @return string
-	 */
-	private static function other_sentence( int $n ): string {
-		/* translators: %d: number of orders. */
-		return sprintf( _n( '%d other order in Processing is left alone: it mixes a waitlist product with something else, or its entry was not recorded.', '%d other orders in Processing are left alone: each mixes a waitlist product with something else, or its entry was not recorded.', $n, 'sportspress-league-manager' ), $n );
-	}
-
 }
