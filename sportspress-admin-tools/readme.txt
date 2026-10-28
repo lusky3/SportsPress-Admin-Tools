@@ -4,7 +4,7 @@ Tags: sportspress, automation, sports
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 8.1
-Stable tag: 1.1.3
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -31,6 +31,13 @@ Each child plugin registers with this parent and loads only when its module is e
 2. Activate the plugin through the 'Plugins' screen in WordPress
 
 == Changelog ==
+
+= 1.2.0 =
+* New: FreeScout bridge. A signed REST API (`spat/v1/freescout`) lets the FreeScout "ARL League" module show a customer's league details on a helpdesk ticket and act on them. Every action is previewed before it runs, runs as the agent's own WordPress account with that account's permissions, and is safe to retry.
+* New: league events (payments, registrations, waitlist offers) are sent to FreeScout in the background, retried for about 14 hours if FreeScout is down, and rescued hourly if a send is lost. Old sent and failed rows are purged after 30 and 90 days.
+* New: SPAT settings → FreeScout: shared secret, events URL and a "Send events" switch.
+* Change: the privacy data exporter and eraser match a customer's email regardless of letter case.
+* Uninstall with "remove data" also deletes the FreeScout secret and its temporary data. Deactivating the plugin stops the FreeScout background jobs.
 
 = 1.1.3 =
 * Add: placeholder plugin icons for all eight plugins. The updater now returns them for the Plugins and Updates screens, served from the installed copy, so the generic placeholder icon is gone.
