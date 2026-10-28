@@ -387,6 +387,10 @@ class SPLM_Admin {
 	 * renamed, and a stale link would send a convener to a 404 from the one
 	 * place meant to get them there reliably.
 	 *
+	 * The node drops down into the dashboard's pages (see
+	 * SPLM_Dashboard_Frontend::nav_items()), limited to the ones this user can
+	 * actually open.
+	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
 	 * @param WP_Admin_Bar $wp_admin_bar Admin bar instance.
@@ -405,13 +409,29 @@ class SPLM_Admin {
 			return;
 		}
 
+		$dashboard_url = get_permalink( $page_id );
+
 		$wp_admin_bar->add_node(
 			array(
 				'id'    => 'splm-dashboard',
 				'title' => __( 'League Dashboard', 'sportspress-league-manager' ),
-				'href'  => get_permalink( $page_id ),
+				'href'  => $dashboard_url,
 			)
 		);
+
+		// One child per React dashboard page this user can reach, in the
+		// dashboard's own order. Each link carries the #/route the app reads on
+		// load and on hashchange, so it also works from the dashboard itself.
+		foreach ( SPLM_Dashboard_Frontend::nav_items( $dashboard_url ) as $item ) {
+			$wp_admin_bar->add_node(
+				array(
+					'id'     => 'splm-dashboard-' . $item['id'],
+					'parent' => 'splm-dashboard',
+					'title'  => $item['label'],
+					'href'   => $item['url'],
+				)
+			);
+		}
 	}
 
 	public function render_roster_max_upload_field() {

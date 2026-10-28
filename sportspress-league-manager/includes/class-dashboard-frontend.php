@@ -477,14 +477,7 @@ class SPLM_Dashboard_Frontend {
 				// handlers (see SPLM_REST_API::module_enabled). Localized so the
 				// SPA hides a tab whose module is off instead of rendering one
 				// that 503s. Fail-open in the client, like `dependencies`.
-				'modules'         => array(
-					'dashboard'  => SPLM_REST_API::module_enabled( 'league_manager_dashboard' ),
-					'rosters'    => SPLM_REST_API::module_enabled( 'league_roster_management' ),
-					'fees'       => SPLM_REST_API::module_enabled( 'league_fee_tracking' ),
-					'notes'      => SPLM_REST_API::module_enabled( 'league_player_notes' ),
-					'discipline' => SPLM_REST_API::module_enabled( 'league_discipline' ),
-					'waitlist'   => SPLM_REST_API::module_enabled( 'league_waitlist' ),
-				),
+				'modules'         => self::modules_config(),
 				// M3: Waitlist.jsx previously hardcoded 48/1/720 as a second copy
 				// of SPLM_Waitlist_Offer's own bounds. Localized here so the two cannot
 				// drift; class_exists() falls back to the same defaults if the
@@ -496,47 +489,190 @@ class SPLM_Dashboard_Frontend {
 				),
 				// F7 — canonical capability flags routed through SPLM_Capabilities
 				// (kept alongside legacy granular flags for compatibility).
-				'capabilities'    => array(
-					'can_read'          => SPLM_Capabilities::can_read(),
-					'can_manage'        => SPLM_Capabilities::can_manage(),
-					'canManage'         => SPLM_Capabilities::can_manage(),
-					'canManageSchedule' => SPLM_Capabilities::can_manage(),
-					'canEnterScores'    => current_user_can( 'edit_others_sp_events' ),
-					'canManageRosters'  => current_user_can( 'edit_others_sp_players' ),
-					'canViewPayments'   => current_user_can( 'edit_others_sp_players' ) || SPLM_Capabilities::can_manage(),
-					'canViewHealth'     => SPLM_Capabilities::can_manage(),
-					// Score-sheet review writes event results/player stats; gate on the
-					// same capability the score-sheets REST enforces (manage_sportspress,
-					// the SportsPress management tier — NOT manage_options/full admin).
-					'canReviewScoreSheets' => SPLM_Capabilities::can_manage(),
-				),
+				'capabilities'    => self::capabilities_config(),
 				// Graceful degradation: these flags MUST mirror the exact class_exists
 				// guards in SPLM_REST_API::register_delegated_routes() (and the spsg/v1
 				// namespace the SPA calls directly) so the React view matches which
 				// endpoints actually exist. The SPA hides/disables features and shows
 				// an explain-notice for any module that is unavailable here.
-				'dependencies'    => array(
-					'sportspress'        => class_exists( 'SportsPress' ),
-					'woocommerce'        => class_exists( 'WooCommerce' ),
-					// M20: the Scores tab is shown on this flag, but the routes it
-					// calls (/games/{id}/score, /games/{id}/players, /scores/batch)
-					// need the events_management MODULE, not just the class — the
-					// SPEM class also loads for season_rollover alone. Testing
-					// class_exists here left the tab visible on a rollover-only
-					// install where every single-game save 404'd. Use the exact
-					// predicate that registers those routes.
-					'events_manager'     => SPLM_REST_API::scores_module_enabled(),
-					'player_tools'       => class_exists( 'SPPT_REST_API' ),
-					'schedule_generator' => class_exists( 'SPSG_REST_API' ),
-					// Score Sheets: mirror the sibling flags with a live class check so
-					// the SPA hides the Sheets tab whenever the plugin is inactive or
-					// removed. SPSS_Dashboard_REST is only defined when the plugin is
-					// active AND its module is enabled (it registers the spss/v1 routes),
-					// so this is true iff those endpoints actually exist — avoids a stale
-					// 'spat_enabled_modules' option leaving a tab that 404s.
-					'score_sheets'       => class_exists( 'SPSS_Dashboard_REST' ),
-				),
+				'dependencies'    => self::dependencies_config(),
 			)
 		);
+	}
+
+	/**
+	 * This plugin's own module toggles, as localized to the dashboard.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @return array<string,bool>
+	 */
+	public static function modules_config(): array {
+		return array(
+			'dashboard'  => SPLM_REST_API::module_enabled( 'league_manager_dashboard' ),
+			'rosters'    => SPLM_REST_API::module_enabled( 'league_roster_management' ),
+			'fees'       => SPLM_REST_API::module_enabled( 'league_fee_tracking' ),
+			'notes'      => SPLM_REST_API::module_enabled( 'league_player_notes' ),
+			'discipline' => SPLM_REST_API::module_enabled( 'league_discipline' ),
+			'waitlist'   => SPLM_REST_API::module_enabled( 'league_waitlist' ),
+		);
+	}
+
+	/**
+	 * Capability flags for the current user, as localized to the dashboard.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @return array<string,bool>
+	 */
+	public static function capabilities_config(): array {
+		return array(
+			'can_read'          => SPLM_Capabilities::can_read(),
+			'can_manage'        => SPLM_Capabilities::can_manage(),
+			'canManage'         => SPLM_Capabilities::can_manage(),
+			'canManageSchedule' => SPLM_Capabilities::can_manage(),
+			'canEnterScores'    => current_user_can( 'edit_others_sp_events' ),
+			'canManageRosters'  => current_user_can( 'edit_others_sp_players' ),
+			'canViewPayments'   => current_user_can( 'edit_others_sp_players' ) || SPLM_Capabilities::can_manage(),
+			'canViewHealth'     => SPLM_Capabilities::can_manage(),
+			// Score-sheet review writes event results/player stats; gate on the
+			// same capability the score-sheets REST enforces (manage_sportspress,
+			// the SportsPress management tier — NOT manage_options/full admin).
+			'canReviewScoreSheets' => SPLM_Capabilities::can_manage(),
+		);
+	}
+
+	/**
+	 * Which sibling features exist, as localized to the dashboard. These MUST
+	 * mirror the class_exists guards in SPLM_REST_API::register_delegated_routes().
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @return array<string,bool>
+	 */
+	public static function dependencies_config(): array {
+		return array(
+			'sportspress'        => class_exists( 'SportsPress' ),
+			'woocommerce'        => class_exists( 'WooCommerce' ),
+			// M20: the Scores tab is shown on this flag, but the routes it
+			// calls (/games/{id}/score, /games/{id}/players, /scores/batch)
+			// need the events_management MODULE, not just the class — the
+			// SPEM class also loads for season_rollover alone. Testing
+			// class_exists here left the tab visible on a rollover-only
+			// install where every single-game save 404'd. Use the exact
+			// predicate that registers those routes.
+			'events_manager'     => SPLM_REST_API::scores_module_enabled(),
+			'player_tools'       => class_exists( 'SPPT_REST_API' ),
+			'schedule_generator' => class_exists( 'SPSG_REST_API' ),
+			// Score Sheets: mirror the sibling flags with a live class check so
+			// the SPA hides the Sheets tab whenever the plugin is inactive or
+			// removed. SPSS_Dashboard_REST is only defined when the plugin is
+			// active AND its module is enabled (it registers the spss/v1 routes),
+			// so this is true iff those endpoints actually exist — avoids a stale
+			// 'spat_enabled_modules' option leaving a tab that 404s.
+			'score_sheets'       => class_exists( 'SPSS_Dashboard_REST' ),
+		);
+	}
+
+	/**
+	 * Every React dashboard page, in navigation order, with the label the
+	 * WordPress menus show. The ids are the hash routes in App.jsx's PAGES, and
+	 * test-dashboard-nav.php fails if this list drifts from Layout.jsx's
+	 * NAV_ITEMS.
+	 *
+	 * @return array<string,string> page id => label
+	 */
+	public static function nav_labels(): array {
+		return array(
+			'dashboard'     => __( 'Dashboard', 'sportspress-league-manager' ),
+			'schedule'      => __( 'Schedule', 'sportspress-league-manager' ),
+			'scores'        => __( 'Scores', 'sportspress-league-manager' ),
+			'score-sheets'  => __( 'Score Sheets', 'sportspress-league-manager' ),
+			'standings'     => __( 'Standings', 'sportspress-league-manager' ),
+			'rosters'       => __( 'Rosters', 'sportspress-league-manager' ),
+			'payments'      => __( 'Payments', 'sportspress-league-manager' ),
+			'waitlist'      => __( 'Waitlist', 'sportspress-league-manager' ),
+			'div-balance'   => __( 'Division Balance', 'sportspress-league-manager' ),
+			'team-compare'  => __( 'Team Comparison', 'sportspress-league-manager' ),
+			'leaders'       => __( 'Leaders', 'sportspress-league-manager' ),
+			'notices'       => __( 'Notices', 'sportspress-league-manager' ),
+			'season-report' => __( 'Season Report', 'sportspress-league-manager' ),
+			'season-setup'  => __( 'Season Setup', 'sportspress-league-manager' ),
+			'health'        => __( 'Health Checks', 'sportspress-league-manager' ),
+			'schedule-gen'  => __( 'Schedule Generator', 'sportspress-league-manager' ),
+			'help'          => __( 'Help', 'sportspress-league-manager' ),
+		);
+	}
+
+	/**
+	 * Which dashboard pages a user would actually see.
+	 *
+	 * Mirrors the `capMap` in Layout.jsx: a page is shown only when its
+	 * capability AND its backing dependency/module are present. A missing key
+	 * counts as present, the same fail-open rule the client uses; pages with no
+	 * rule (dashboard, schedule, standings, leaders, report, help...) always show.
+	 *
+	 * @param string[]            $page_ids All page ids, in order.
+	 * @param array<string,bool>  $caps     capabilities_config().
+	 * @param array<string,bool>  $deps     dependencies_config().
+	 * @param array<string,bool>  $modules  modules_config().
+	 * @return string[]
+	 */
+	public static function visible_page_ids( array $page_ids, array $caps, array $deps, array $modules ): array {
+		$dep = static function ( string $key ) use ( $deps ): bool {
+			return false !== ( $deps[ $key ] ?? true );
+		};
+		$mod = static function ( string $key ) use ( $modules ): bool {
+			return false !== ( $modules[ $key ] ?? true );
+		};
+
+		$rules = array(
+			'scores'       => ! empty( $caps['canEnterScores'] ) && $dep( 'events_manager' ),
+			'score-sheets' => ! empty( $caps['canReviewScoreSheets'] ) && $dep( 'score_sheets' ),
+			'rosters'      => ! empty( $caps['canManageRosters'] ) && $mod( 'rosters' ),
+			'payments'     => ! empty( $caps['canViewPayments'] ) && $dep( 'woocommerce' ) && $mod( 'fees' ),
+			'waitlist'     => ! empty( $caps['canManage'] ) && $dep( 'woocommerce' ) && $mod( 'waitlist' ),
+			'health'       => ! empty( $caps['canViewHealth'] ),
+			'schedule-gen' => ! empty( $caps['canManageSchedule'] ) && $dep( 'schedule_generator' ),
+			'season-setup' => ! empty( $caps['canManageSchedule'] ),
+			'notices'      => ! empty( $caps['canManage'] ) && $mod( 'discipline' ),
+		);
+
+		return array_values(
+			array_filter(
+				$page_ids,
+				static function ( string $id ) use ( $rules ): bool {
+					return ! array_key_exists( $id, $rules ) || $rules[ $id ];
+				}
+			)
+		);
+	}
+
+	/**
+	 * The dashboard pages the current user can reach, each with its label and
+	 * a link that opens it directly (the page URL plus the #/route the React
+	 * app reads on load and on hashchange).
+	 *
+	 * @param string $dashboard_url Permalink of the dashboard page.
+	 * @return array<int,array{id:string,label:string,url:string}>
+	 */
+	public static function nav_items( string $dashboard_url ): array {
+		$labels  = self::nav_labels();
+		$visible = self::visible_page_ids(
+			array_keys( $labels ),
+			self::capabilities_config(),
+			self::dependencies_config(),
+			self::modules_config()
+		);
+
+		$items = array();
+		foreach ( $visible as $id ) {
+			$items[] = array(
+				'id'    => $id,
+				'label' => $labels[ $id ],
+				'url'   => $dashboard_url . '#/' . $id,
+			);
+		}
+		return $items;
 	}
 }

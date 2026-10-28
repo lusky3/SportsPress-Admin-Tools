@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.8.0
+Stable tag: 1.9.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -61,6 +61,9 @@ Conveners can issue a suspension from the Notices page (Issue suspension) or fro
 * Discipline history starts empty. Suspensions issued before this feature are not backfilled.
 
 == Changelog ==
+
+= 1.9.0 =
+* New: the League Dashboard link in the WordPress admin bar now drops down into the dashboard's pages (Schedule, Scores, Standings, Rosters, Payments, Waitlist and the rest), so you can jump straight to one from any admin or site screen. It lists only the pages you can open and the modules that are switched on, the same as the dashboard's own navigation.
 
 = 1.8.0 =
 * Fix: the Waitlist page showed only the first 50 entries, hiding the rest of a longer queue. It is now paged, with Previous and Next buttons and a "Showing x-y of N" count; changing a filter starts again from page one.

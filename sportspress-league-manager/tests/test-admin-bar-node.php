@@ -64,6 +64,17 @@ class SPLM_Dashboard_Frontend {
 	public static function ensure_page() {
 		return splm_admin_bar_node_test_state()->page_id;
 	}
+
+	/**
+	 * Two fixed pages; which pages a user may see is covered by
+	 * test-dashboard-nav.php.
+	 */
+	public static function nav_items( $dashboard_url ) {
+		return array(
+			array( 'id' => 'standings', 'label' => 'Standings', 'url' => $dashboard_url . '#/standings' ),
+			array( 'id' => 'help', 'label' => 'Help', 'url' => $dashboard_url . '#/help' ),
+		);
+	}
 }
 
 /**
@@ -147,8 +158,17 @@ $bar               = new Fake_WP_Admin_Bar();
 
 SPLM_Admin::add_admin_bar_node( $bar );
 
-assert_test( 1 === count( $bar->nodes ), 'exactly one node is added when enabled, authorized, and the page resolves' );
+assert_test( 3 === count( $bar->nodes ), 'the top-level node plus one child per dashboard page is added when enabled, authorized, and the page resolves' );
 assert_test( 'splm-dashboard' === ( $bar->nodes[0]['id'] ?? null ), 'the node carries the expected id' );
+assert_test( ! isset( $bar->nodes[0]['parent'] ), 'it stays the top-level node' );
+assert_test(
+	'splm-dashboard' === ( $bar->nodes[1]['parent'] ?? null ) && 'splm-dashboard-standings' === ( $bar->nodes[1]['id'] ?? null ),
+	'each page is a child of it, named after the page'
+);
+assert_test(
+	'https://example.test/league-dashboard/#/help' === ( $bar->nodes[2]['href'] ?? null ),
+	'a child links straight to its React page'
+);
 assert_test(
 	'https://example.test/league-dashboard/' === ( $bar->nodes[0]['href'] ?? null ),
 	'the node links to the resolved page permalink, not a hardcoded path'

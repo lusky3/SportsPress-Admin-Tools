@@ -10,6 +10,7 @@
 - **[league-manager]** The order that puts someone on the waitlist is completed automatically once their entry is recorded (no customer email). Only orders made up entirely of waitlist products with a recorded entry are touched. Disable with the `splm_waitlist_auto_complete_orders` filter.
 
 ### Added
+- **[league-manager]** The League Dashboard entry in the WordPress admin bar drops down into the React dashboard's pages, limited to the ones the user can open (the same rules as the dashboard navigation). `SPLM_Dashboard_Frontend::nav_items()` builds the list; `test-dashboard-nav.php` fails if it drifts from `Layout.jsx` / `App.jsx`.
 - **[league-manager]** `POST /splm/v1/waitlist/complete-orders` and a "Complete waitlist orders" button on the Waitlist page complete the waitlist orders already in Processing, 25 per request, without emailing customers.
 
 ## [1.8.0] - 2026-10-28
