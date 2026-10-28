@@ -823,8 +823,8 @@ class SPLM_REST_API {
 				// Read the SP-configured main-result key (default 'goals') with
 				// a fall-back to the legacy 'gf' that batch writes used briefly.
 				$rkey        = function_exists( 'sp_get_main_result_option' ) ? (string) sp_get_main_result_option() : 'goals';
-				$home_score  = isset( $home_result[ $rkey ] ) ? (int) $home_result[ $rkey ] : ( isset( $home_result['gf'] ) ? (int) $home_result['gf'] : null );
-				$away_score  = isset( $away_result[ $rkey ] ) ? (int) $away_result[ $rkey ] : ( isset( $away_result['gf'] ) ? (int) $away_result['gf'] : null );
+				$home_score  = self::team_main_result( $home_result, $rkey );
+				$away_score  = self::team_main_result( $away_result, $rkey );
 			}
 
 			$games[] = array(
@@ -1936,7 +1936,7 @@ class SPLM_REST_API {
 		);
 		foreach ( $recent_past as $event_id ) {
 			$results = get_post_meta( $event_id, 'sp_results', true );
-			if ( empty( $results ) ) {
+			if ( ! is_array( $results ) || ! self::results_have_score( $results ) ) {
 				$issues['events_without_results'][] = array(
 					'id'    => $event_id,
 					'title' => splm_display_title( $event_id ),
@@ -4033,15 +4033,17 @@ class SPLM_REST_API {
 				continue;
 			}
 			$results = get_post_meta( $event_id, 'sp_results', true );
-			if ( ! is_array( $results ) ) {
+			// A game with only blank result rows has not been played; counting it
+			// would record a 0-0 draw for every unscored fixture.
+			if ( ! is_array( $results ) || ! self::results_have_score( $results ) ) {
 				continue;
 			}
 			// Read the configured SP main-result key (default 'goals') for
 			// consistency with the writer side; fall back to 'gf' for any
 			// historical rows written before the key alignment.
 			$rkey = function_exists( 'sp_get_main_result_option' ) ? (string) sp_get_main_result_option() : 'goals';
-			$a_gf = (int) ( $results[ $team_a_id ][ $rkey ] ?? $results[ $team_a_id ]['gf'] ?? 0 );
-			$b_gf = (int) ( $results[ $team_b_id ][ $rkey ] ?? $results[ $team_b_id ]['gf'] ?? 0 );
+			$a_gf = (int) self::team_main_result( $results[ $team_a_id ] ?? array(), $rkey );
+			$b_gf = (int) self::team_main_result( $results[ $team_b_id ] ?? array(), $rkey );
 			if ( $a_gf > $b_gf ) {
 				$h2h['a_wins']++;
 			} elseif ( $b_gf > $a_gf ) {
@@ -4533,6 +4535,30 @@ class SPLM_REST_API {
 			),
 			200
 		);
+	}
+
+	/**
+	 * One team's recorded main result for a game, or null when none is entered.
+	 *
+	 * SportsPress stores blank placeholders (e.g. goals => '') for a game that
+	 * has not been played, and casting '' with (int) turned every unscored game
+	 * into a finished 0-0, which hid it from the dashboard's Scores page.
+	 *
+	 * @param mixed  $team_result One team's entry from sp_results.
+	 * @param string $rkey        Main-result key (default 'goals').
+	 * @return int|null
+	 */
+	private static function team_main_result( $team_result, $rkey ) {
+		if ( ! is_array( $team_result ) ) {
+			return null;
+		}
+		// Fall back to the legacy 'gf' key that batch writes used briefly.
+		foreach ( array( $rkey, 'gf' ) as $key ) {
+			if ( isset( $team_result[ $key ] ) && '' !== $team_result[ $key ] && is_numeric( $team_result[ $key ] ) ) {
+				return (int) $team_result[ $key ];
+			}
+		}
+		return null;
 	}
 
 	/**
