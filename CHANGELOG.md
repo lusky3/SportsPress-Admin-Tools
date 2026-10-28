@@ -10,7 +10,7 @@
 - **[league-manager]** The order that puts someone on the waitlist is completed automatically once their entry is recorded (no customer email). Only orders made up entirely of waitlist products with a recorded entry are touched. Disable with the `splm_waitlist_auto_complete_orders` filter.
 
 ### Added
-- **[league-manager]** A "Complete Waitlist Orders" page under the League Manager menu in wp-admin (nonce-protected form, `manage_sportspress`) completes the waitlist orders already in Processing without emailing customers, within a 20-second budget per click, and shows how many are still waiting and how many it will leave alone.
+- **[league-manager]** A "Complete Waitlist Orders" section in the League Manager tab of the SPAT settings page (Settings > SportsPress Admin Tools; nonce-protected form, `manage_sportspress`) completes the waitlist orders already in Processing without emailing customers, within a 20-second budget per click, and shows how many are still waiting and how many it will leave alone. The result is handed over by a two-minute per-user transient, so nothing about it is in the URL.
 
 ## [1.8.0] - 2026-10-28
 

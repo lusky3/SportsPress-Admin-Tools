@@ -1,15 +1,17 @@
 <?php
 /**
- * The "Complete Waitlist Orders" admin page, under the League Manager menu.
+ * The "Complete Waitlist Orders" panel, in the League Manager tab of the main
+ * SPAT page (Settings > SportsPress Admin Tools).
  *
  * Orders that put someone on the waitlist used to sit in Processing forever;
  * SPLM_Waitlist_Order_Completion now completes new ones as they arrive. This
  * page does the same, once, for the ones already waiting, without emailing
  * the customers.
  *
- * It is a plain WordPress admin page (nonce-protected form, capability check)
- * rather than part of the React dashboard: it is a one-off maintenance action,
- * not something a convener needs in their daily view.
+ * Module admin UI lives in SPAT's tabs (see AGENTS.md), so this is a panel in
+ * the League Manager tab, not a page of its own and not part of the React
+ * dashboard: it is a one-off maintenance action, not something a convener
+ * needs in their daily view.
  *
  * @author Cody (lusky3)
  */
@@ -20,12 +22,20 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPLM_Waitlist_Orders_Admin {
 
-	const SLUG = 'splm-waitlist-orders';
+	/**
+	 * The SPAT settings page and the tab this panel lives in.
+	 */
+	const SPAT_PAGE = 'sportspress-admin-tools';
+
+	const SPAT_TAB = 'league-manager';
 
 	/**
-	 * Slug of the League Manager top-level menu (registered by SPLM_Admin).
+	 * Set once boot() has run, i.e. the waitlist module is on and this is an
+	 * admin request, so the panel only appears when the feature exists.
+	 *
+	 * @var bool
 	 */
-	const PARENT_SLUG = 'splm-dashboard';
+	private static $active = false;
 
 	const ACTION = 'splm_complete_waitlist_orders';
 
@@ -50,23 +60,27 @@ class SPLM_Waitlist_Orders_Admin {
 		if ( null === $instance ) {
 			$instance = new self();
 		}
+		self::$active = true;
 		return $instance;
 	}
 
 	public function __construct() {
-		// After SPLM_Admin registers the League Manager menu (priority 10), so
-		// the parent exists and this lands at the end of its sub-menu.
-		add_action( 'admin_menu', array( $this, 'add_menu' ), 20 );
 		add_action( 'admin_post_' . self::ACTION, array( $this, 'handle_post' ) );
 	}
 
 	/**
-	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 * Where the panel is: the League Manager tab of the SPAT settings page.
+	 *
+	 * @return string
 	 */
-	public function add_menu() {
-		$cap   = SPLM_Capabilities::can_manage() ? 'manage_sportspress' : 'do_not_allow';
-		$title = __( 'Complete Waitlist Orders', 'sportspress-league-manager' );
-		add_submenu_page( self::PARENT_SLUG, $title, $title, $cap, self::SLUG, array( $this, 'render_page' ) );
+	public static function panel_url(): string {
+		return add_query_arg(
+			array(
+				'page' => self::SPAT_PAGE,
+				'tab'  => self::SPAT_TAB,
+			),
+			admin_url( 'options-general.php' )
+		);
 	}
 
 	/**
@@ -135,7 +149,7 @@ class SPLM_Waitlist_Orders_Admin {
 		set_transient( self::result_key(), self::run(), self::RESULT_TTL );
 
 		// No exit: admin-post.php runs nothing after this action returns.
-		wp_safe_redirect( add_query_arg( 'page', self::SLUG, admin_url( 'admin.php' ) ) );
+		wp_safe_redirect( self::panel_url() );
 	}
 
 	/**
@@ -162,18 +176,21 @@ class SPLM_Waitlist_Orders_Admin {
 	}
 
 	/**
+	 * Print the panel. Called from the League Manager tab; prints nothing when
+	 * the waitlist feature is off or the user cannot manage the league.
+	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
-	public function render_page() {
-		if ( ! SPLM_Capabilities::can_manage() ) {
-			wp_die( esc_html__( 'You are not allowed to see this page.', 'sportspress-league-manager' ), '', array( 'response' => 403 ) );
+	public static function render_panel() {
+		if ( ! self::$active || ! SPLM_Capabilities::can_manage() ) {
+			return;
 		}
 
 		$counts = SPLM_Waitlist_Order_Completion::pending_counts();
 		$result = self::take_result();
 		?>
-		<div class="wrap">
-			<h1><?php esc_html_e( 'Complete Waitlist Orders', 'sportspress-league-manager' ); ?></h1>
+		<div class="splm-waitlist-orders">
+			<h2><?php esc_html_e( 'Complete Waitlist Orders', 'sportspress-league-manager' ); ?></h2>
 
 			<?php if ( $result ) : ?>
 				<?php // A card in the page body, not a .notice: notice-collecting plugins remove .notice elements from the page. ?>
@@ -192,7 +209,7 @@ class SPLM_Waitlist_Orders_Admin {
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<input type="hidden" name="action" value="<?php echo esc_attr( self::ACTION ); ?>" />
 				<?php wp_nonce_field( self::ACTION ); ?>
-				<?php submit_button( __( 'Complete waitlist orders', 'sportspress-league-manager' ), 'primary', 'submit', true, 0 === (int) $counts['completable'] ? array( 'disabled' => 'disabled' ) : array() ); ?>
+				<?php submit_button( __( 'Complete waitlist orders', 'sportspress-league-manager' ), 'secondary', 'submit', true, 0 === (int) $counts['completable'] ? array( 'disabled' => 'disabled' ) : array() ); ?>
 			</form>
 		</div>
 		<?php
