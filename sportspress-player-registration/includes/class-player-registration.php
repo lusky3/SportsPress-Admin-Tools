@@ -392,6 +392,14 @@ class SPPR_Player_Registration {
 
 			$lookup_id = $product->get_type() === 'variation' ? $product->get_parent_id() : $product->get_id();
 
+			// A waitlist product sits in the ordinary Registration category too,
+			// but buying it only joins a queue: it must never register a player.
+			// League Manager completes these orders once the entry is recorded,
+			// which would otherwise run registration for everyone on the list.
+			if ( class_exists( 'SPLM_Waitlist_Matcher' ) && SPLM_Waitlist_Matcher::is_waitlist_product( $lookup_id ) ) {
+				continue;
+			}
+
 			$categories = wp_get_post_terms( $lookup_id, 'product_cat' );
 			$is_registration = false;
 			$registration_keyword = get_option( 'spr_registration_keyword', 'registration' );

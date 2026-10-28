@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SportsPress League Manager (Child Plugin)
  * Description: Child plugin for SportsPress Admin Tools - League Manager modules
- * Version: 1.7.0
+ * Version: 1.8.0
  * Author: Cody (lusky3)
  * Text Domain: sportspress-league-manager
  * License: GPL v2 or later
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'SPLM_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPLM_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPLM_VERSION', '1.7.0' );
+define( 'SPLM_VERSION', '1.8.0' );
 
 // Native WordPress updates, served from this repository's releases.
 //
@@ -379,6 +379,7 @@ class SportsPress_League_Manager {
 			// any one of these lines and its hooks silently never register.
 			// SPLM_Waitlist_Offer is deliberately absent: it hooks nothing.
 			new SPLM_Waitlist();
+			new SPLM_Waitlist_Order_Completion();
 			new SPLM_Waitlist_Claim();
 			new SPLM_Waitlist_Expiry();
 			new SPLM_Waitlist_Gate();

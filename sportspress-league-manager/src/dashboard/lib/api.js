@@ -445,6 +445,13 @@ export function setWaitlistGate( productId, gated ) {
 }
 
 // Free-text convener note (e.g. a team/family preference); '' clears it.
+// Completes the waitlist orders still in Processing, one batch per call, with
+// no customer email. Resolves to { completed, skipped }; call again until
+// `completed` is 0.
+export function completeWaitlistOrders() {
+	return apiFetch( { path: '/splm/v1/waitlist/complete-orders', method: 'POST' } );
+}
+
 export function setWaitlistRestrictions( id, restrictions ) {
 	return apiFetch( {
 		path: `/splm/v1/waitlist/${ id }/restrictions`,

@@ -432,6 +432,19 @@ class SPLM_Waitlist_Database {
 	}
 
 	/**
+	 * Every distinct order id that created a waitlist row, oldest first.
+	 *
+	 * Manual entries (source_order_id = 0) have no order and are left out.
+	 *
+	 * @return int[]
+	 */
+	public static function source_order_ids(): array {
+		global $wpdb;
+		$ids = $wpdb->get_col( 'SELECT DISTINCT source_order_id FROM ' . self::table_name() . ' WHERE source_order_id > 0 ORDER BY source_order_id ASC' ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery -- table name, not a value; cannot use a placeholder.
+		return array_map( 'intval', (array) $ids );
+	}
+
+	/**
 	 * The first row this order already produced for this waitlist product, at
 	 * any status.
 	 *
