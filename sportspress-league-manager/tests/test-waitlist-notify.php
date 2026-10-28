@@ -40,6 +40,9 @@ function splm_notify_test_state() {
 	return $state;
 }
 
+// No-op stub: SPLM_Waitlist_Notify::send() fires splm_waitlist_transition first.
+function do_action() {} // phpcs:ignore
+
 // $domain is never read by this stub -- dropped entirely rather than
 // declared as an ignored formal parameter.
 function __( $text ) { // phpcs:ignore

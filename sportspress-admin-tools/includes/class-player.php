@@ -50,4 +50,62 @@ class SPAT_Player {
 
 		return array_values( array_unique( $names ) );
 	}
+
+	/**
+	 * Player post IDs belonging to an email address, compared case-insensitively.
+	 *
+	 * Two strategies: the `spt_email` meta, then the `sp_user` of the WP user
+	 * with that email. Email case differs between systems (FreeScout keeps what
+	 * the customer typed), so neither side is trusted to be lower-case.
+	 *
+	 * Only sp_player posts count: sp_user is also set on staff posts. Trashed
+	 * players are included by default because the privacy exporter and eraser
+	 * must reach every copy of a person's data; pass $live_only for the ids a
+	 * lookup should show (no trashed or auto-draft posts).
+	 *
+	 * @param string $email     Email address.
+	 * @param bool   $live_only Leave out trashed and auto-draft players.
+	 * @return int[] Unique player IDs, ascending.
+	 */
+	public static function ids_for_email( string $email, bool $live_only = false ): array {
+		global $wpdb;
+
+		$ids = array();
+
+		// Constant SQL: the status list is fixed, never input.
+		$posts_sql = "INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+			 WHERE p.post_type = 'sp_player'"
+			. ( $live_only ? " AND p.post_status NOT IN ('trash', 'auto-draft')" : '' );
+
+		$by_email = $wpdb->get_col(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names and a constant condition.
+				"SELECT DISTINCT pm.post_id FROM {$wpdb->postmeta} pm {$posts_sql}
+				 AND pm.meta_key = 'spt_email' AND LOWER(pm.meta_value) = %s",
+				strtolower( $email )
+			)
+		);
+		if ( $by_email ) {
+			$ids = array_map( 'intval', $by_email );
+		}
+
+		$user = get_user_by( 'email', $email );
+		if ( $user ) {
+			$by_user = $wpdb->get_col(
+				$wpdb->prepare(
+					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names and a constant condition.
+					"SELECT DISTINCT pm.post_id FROM {$wpdb->postmeta} pm {$posts_sql}
+					 AND pm.meta_key = 'sp_user' AND pm.meta_value = %s",
+					(string) $user->ID
+				)
+			);
+			if ( $by_user ) {
+				$ids = array_merge( $ids, array_map( 'intval', $by_user ) );
+			}
+		}
+
+		$ids = array_values( array_unique( $ids ) );
+		sort( $ids );
+		return $ids;
+	}
 }

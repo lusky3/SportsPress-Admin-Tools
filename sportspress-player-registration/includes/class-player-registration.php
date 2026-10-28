@@ -52,7 +52,7 @@ class SPPR_Player_Registration {
 			return;
 		}
 
-		$registration_items = $this->get_registration_items( $order );
+		$registration_items = self::get_registration_items( $order );
 		if ( empty( $registration_items ) ) {
 			return;
 		}
@@ -61,6 +61,7 @@ class SPPR_Player_Registration {
 		$customer_name = $this->validate_and_clean_name( $raw_name );
 		if ( ! $customer_name ) {
 			SPPR_Database::log_registration_activity( $order_id, $raw_name, 0, '', '', 'name_rejected' );
+			do_action( 'spr_registration_outcome', (int) $order_id, 'name_rejected', array() );
 			return;
 		}
 
@@ -98,6 +99,12 @@ class SPPR_Player_Registration {
 				usleep( 100000 ); // 100ms backoff before retrying a contended lock.
 			}
 		}
+
+		// Outcome reported through spr_registration_outcome, fired once after the
+		// locks are released (never from inside the try, so a throwing listener
+		// cannot flip a registered order to 'failed'). Empty on full success.
+		$failed_outcome = '';
+		$failed_context = array();
 
 		// Open the try IMMEDIATELY after the lock claims so the finally runs on
 		// every exit path (including throws during meta writes) and the locks are
@@ -143,6 +150,13 @@ class SPPR_Player_Registration {
 						$item['position'],
 						'season_not_detected'
 					);
+					if ( '' === $failed_outcome ) {
+						$failed_outcome = 'season_not_detected';
+						$failed_context = array(
+							'product_id' => (int) $item['product_id'],
+							'position'   => (string) $item['position'],
+						);
+					}
 					if ( class_exists( 'SPAT_Logger' ) && method_exists( 'SPAT_Logger', 'warn' ) ) {
 						$warn_context = array(
 							'order_id'   => $order_id,
@@ -173,6 +187,13 @@ class SPPR_Player_Registration {
 					// unregistered, so the order stays retryable, and gets a log row.
 					$had_failure = true;
 					SPPR_Database::log_registration_activity( $order_id, $customer_name, 0, $season, $item['position'], $result['action'] );
+					if ( '' === $failed_outcome ) {
+						$failed_outcome = (string) $result['action'];
+						$failed_context = array(
+							'product_id' => (int) $item['product_id'],
+							'position'   => (string) $item['position'],
+						);
+					}
 				}
 			}
 
@@ -213,6 +234,10 @@ class SPPR_Player_Registration {
 				$order->save();
 			}
 		} catch ( \Throwable $e ) {
+			// A throw anywhere in the try supersedes any item outcome recorded so
+			// far: the order is reported once, as 'failed'.
+			$failed_outcome = 'failed';
+			$failed_context = array();
 			// Surface failure for retry visibility — admin re-run action can clear flag.
 			$order->update_meta_data( '_spr_processed', 'failed' );
 			$order->save();
@@ -249,6 +274,10 @@ class SPPR_Player_Registration {
 				SPAT_Lock::release( $name_lock_key, $name_lock_handle );
 			}
 		}
+
+		if ( '' !== $failed_outcome ) {
+			do_action( 'spr_registration_outcome', (int) $order_id, $failed_outcome, $failed_context );
+		}
 	}
 
 	/**
@@ -278,6 +307,7 @@ class SPPR_Player_Registration {
 		// when it passes, otherwise a neutral placeholder rather than arbitrary input.
 		$customer_name = $cleaned ? $cleaned : '(unverified name)';
 		SPPR_Database::log_registration_activity( $order_id, $customer_name, 0, '', '', 'registration_reversed' );
+		do_action( 'spr_registration_reversed', (int) $order_id );
 	}
 
 	/**
@@ -341,13 +371,17 @@ class SPPR_Player_Registration {
 	/**
 	 * Registration line items on an order, with each product's season position.
 	 *
+	 * Public and static so other code that must agree on "is this a registration
+	 * order" (the FreeScout provider's attention list) shares this one test
+	 * instead of re-implementing it.
+	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
 	 * @param WC_Order $order Completed order.
 	 * @return array List of arrays with 'item_id' (the order-item ID),
 	 *               'product_id' and 'position' keys.
 	 */
-	private function get_registration_items( $order ) {
+	public static function get_registration_items( $order ) {
 		$items = array();
 
 		foreach ( $order->get_items() as $item_id => $item ) {

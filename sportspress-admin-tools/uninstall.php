@@ -20,6 +20,7 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 		'spat_registration_logs',
 		'spat_role_logs',
 		'spat_temp_data',
+		'spat_freescout_outbox',
 	);
 
 	foreach ( $tables as $table ) {
@@ -54,6 +55,11 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 		'spat_notify_payment_unmatched',
 		'spat_notify_player_registered',
 		'spat_notify_schedule_generated',
+		// FreeScout bridge: the shared HMAC secret, and events.
+		'spat_freescout_secret',
+		'spat_freescout_events_url',
+		'spat_freescout_events_enabled',
+		'spat_freescout_outbox_ready',
 	);
 
 	// Remove options. delete_option returns false when the row was already absent — not an error worth logging.
@@ -85,8 +91,26 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 		)
 	);
 
+	// FreeScout transients, keyed by hash: stored action responses for
+	// idempotency (spat_fs_idem_*, SPAT_FreeScout_Actions::IDEMPOTENCY_PREFIX)
+	// and the per-IP rate-limit buckets (spat_rl_freescout_*).
+	foreach ( array( 'spat_fs_idem_', 'spat_rl_freescout_' ) as $transient_prefix ) {
+		$wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+				'_transient_' . $wpdb->esc_like( $transient_prefix ) . '%',
+				'_transient_timeout_' . $wpdb->esc_like( $transient_prefix ) . '%'
+			)
+		);
+	}
+
 	// Named transients: health-dashboard caches and the dbDelta retry throttle.
 	delete_transient( 'spat_table_status' );
 	delete_transient( 'spat_status_snapshot' );
 	delete_transient( 'spat_db_migrate_attempted' );
 }
+
+// FreeScout events: stop the sweep, the rescue and any queued sends whether or
+// not data is removed, so no orphaned cron events outlive the plugin.
+require_once __DIR__ . '/includes/class-freescout-events.php';
+SPAT_FreeScout_Events::unschedule_all();

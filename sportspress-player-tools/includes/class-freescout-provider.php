@@ -1,0 +1,301 @@
+<?php
+/**
+ * FreeScout "player" section provider.
+ *
+ * Supplies sections.player of the FreeScout bridge's customer lookup: for each
+ * player id, identity details, season assignments and the next game.
+ *
+ * @package SportsPress_Player_Tools
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+class SPT_FreeScout_Provider {
+
+	/**
+	 * Register the provider with the parent's FreeScout REST layer.
+	 */
+	public static function register() {
+		add_filter( 'spat_freescout_providers', array( __CLASS__, 'add_provider' ) );
+	}
+
+	/**
+	 * @param array $providers Provider callables keyed by section name.
+	 * @return array
+	 */
+	public static function add_provider( $providers ) {
+		$providers['player'] = array( __CLASS__, 'player_section' );
+		return $providers;
+	}
+
+	/**
+	 * Build sections.player.
+	 *
+	 * @param int[]  $player_ids Resolved player ids.
+	 * @param string $email      Customer email; returned lower-cased so the
+	 *                           Player card can offer Change email.
+	 * @return array
+	 */
+	public static function player_section( array $player_ids, string $email ): array {
+		$current_season_id = (int) get_option( 'sportspress_season' );
+		$current_name      = '';
+		if ( $current_season_id > 0 ) {
+			$current_name = self::term_name( $current_season_id, 'sp_season' );
+		}
+
+		$players = array();
+		foreach ( $player_ids as $player_id ) {
+			$player = self::build_player( (int) $player_id, $current_season_id );
+			if ( null !== $player ) {
+				$players[] = $player;
+			}
+		}
+
+		return array(
+			'email'          => strtolower( $email ),
+			'players'        => $players,
+			'current_season' => $current_name,
+		);
+	}
+
+	/**
+	 * @param int $player_id         Player post id.
+	 * @param int $current_season_id Current season term id (0 if none).
+	 * @return array|null Null when the post is gone or isn't a live player.
+	 */
+	private static function build_player( int $player_id, int $current_season_id ) {
+		$post = get_post( $player_id );
+		// The FreeScout lookup already asks the resolver for live sp_player ids;
+		// this re-check keeps the provider safe for any other caller (the
+		// resolver's default includes trashed players for privacy export/erasure).
+		if ( ! self::is_live_player( $post ) ) {
+			return null;
+		}
+
+		$number    = self::meta_or_null( $player_id, 'sp_number' );
+		$skill     = self::meta_or_null( $player_id, 'spt_skill_level' );
+		$positions = self::position_names( $player_id );
+
+		list( $assignments, $current_teams ) = self::assignments( $player_id, $current_season_id );
+
+		return array(
+			'id'             => $player_id,
+			'name'           => (string) $post->post_title,
+			'number'         => $number,
+			'positions'      => $positions,
+			'skill_level'    => $skill,
+			'wp_user_linked' => (int) get_post_meta( $player_id, 'sp_user', true ) > 0,
+			'assignments'    => $assignments,
+			'next_game'      => array() !== $current_teams ? self::next_game( array_values( $current_teams ) ) : null,
+		);
+	}
+
+	/**
+	 * Whether a post is an sp_player that is neither trashed nor an auto-draft.
+	 *
+	 * @param WP_Post|null $post Post.
+	 */
+	private static function is_live_player( $post ): bool {
+		return $post && 'sp_player' === $post->post_type && ! in_array( $post->post_status, array( 'trash', 'auto-draft' ), true );
+	}
+
+	/**
+	 * A single post meta value as a string, or null when empty ('' or false).
+	 */
+	private static function meta_or_null( int $post_id, string $key ): ?string {
+		$value = get_post_meta( $post_id, $key, true );
+		return ( '' === $value || false === $value ) ? null : (string) $value;
+	}
+
+	/**
+	 * @return string[] The player's sp_position term names.
+	 */
+	private static function position_names( int $player_id ): array {
+		$positions = array();
+		$pos_terms = wp_get_post_terms( $player_id, 'sp_position' );
+		$pos_terms = is_array( $pos_terms ) ? $pos_terms : array();
+		foreach ( $pos_terms as $pos_term ) {
+			$positions[] = (string) $pos_term->name;
+		}
+		return $positions;
+	}
+
+	/**
+	 * The player's season/division/team assignments, and the team ids of the
+	 * current season's ones (keyed by id, so each team appears once).
+	 *
+	 * @param int $player_id         Player post id.
+	 * @param int $current_season_id Current season term id (0 if none).
+	 * @return array{0: array[], 1: int[]}
+	 */
+	private static function assignments( int $player_id, int $current_season_id ): array {
+		$assignments   = array();
+		$current_teams = array();
+		foreach ( self::roster_entries( $player_id ) as $entry ) {
+			$is_current = $current_season_id > 0 && $entry['season_id'] === $current_season_id;
+			if ( $is_current ) {
+				$current_teams[ $entry['team_id'] ] = $entry['team_id'];
+			}
+			$assignments[] = array(
+				'season_id' => $entry['season_id'],
+				'season'    => self::term_name( $entry['season_id'], 'sp_season' ),
+				'division'  => self::term_name( $entry['league_id'], 'sp_league' ),
+				'team_id'   => $entry['team_id'],
+				'team'      => (string) get_the_title( $entry['team_id'] ),
+				'current'   => $is_current,
+				'captain'   => self::is_captain( $player_id, $entry['team_id'], $entry['season_id'], $is_current ),
+			);
+		}
+		return array( $assignments, $current_teams );
+	}
+
+	/**
+	 * Flatten sp_leagues ([league => [season => team]]) into roster entries.
+	 *
+	 * League key 0 is SportsPress's "no league" marker and a team id <= 0 means
+	 * "not on a team"; both are skipped.
+	 *
+	 * @param int $player_id Player post id.
+	 * @return array<int, array{league_id:int, season_id:int, team_id:int}>
+	 */
+	private static function roster_entries( int $player_id ): array {
+		$leagues = get_post_meta( $player_id, 'sp_leagues', true );
+		if ( ! is_array( $leagues ) ) {
+			return array();
+		}
+		$out = array();
+		foreach ( $leagues as $league_id => $season_map ) {
+			if ( (int) $league_id <= 0 || ! is_array( $season_map ) ) {
+				continue;
+			}
+			foreach ( $season_map as $season_id => $team_id ) {
+				if ( (int) $season_id <= 0 || (int) $team_id <= 0 ) {
+					continue;
+				}
+				$out[] = array(
+					'league_id' => (int) $league_id,
+					'season_id' => (int) $season_id,
+					'team_id'   => (int) $team_id,
+				);
+			}
+		}
+		return $out;
+	}
+
+	private static function term_name( int $term_id, string $taxonomy ): string {
+		$term = get_term( $term_id, $taxonomy );
+		return ( $term && ! is_wp_error( $term ) ) ? (string) $term->name : '';
+	}
+
+	/**
+	 * Captain is stored as spt_captain on a team's sp_list post.
+	 *
+	 * Current season: the team's active list (its `sp_list` meta), exactly as
+	 * the roster REST API and admin UI read it. Past seasons: published lists
+	 * for that team and season term.
+	 */
+	private static function is_captain( int $player_id, int $team_id, int $season_id, bool $is_current ): bool {
+		if ( $is_current ) {
+			$active_list_id = (int) get_post_meta( $team_id, 'sp_list', true );
+			return $active_list_id > 0 && (int) get_post_meta( $active_list_id, 'spt_captain', true ) === $player_id;
+		}
+
+		$list_ids = get_posts(
+			array(
+				'post_type'      => 'sp_list',
+				'post_status'    => 'publish',
+				'posts_per_page' => 20,
+				'fields'         => 'ids',
+				'meta_query'     => array(
+					array(
+						'key'   => 'sp_team',
+						'value' => $team_id,
+					),
+				),
+				'tax_query'      => array(
+					array(
+						'taxonomy' => 'sp_season',
+						'terms'    => $season_id,
+					),
+				),
+			)
+		);
+		foreach ( (array) $list_ids as $list_id ) {
+			if ( (int) get_post_meta( (int) $list_id, 'spt_captain', true ) === $player_id ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Earliest upcoming event for any of the player's current-season teams (a
+	 * player can be on teams in more than one division). Unplayed games are
+	 * post_status 'future', so both 'publish' and 'future' are queried.
+	 *
+	 * @param int[] $team_ids Current-season team ids.
+	 * @return array|null
+	 */
+	private static function next_game( array $team_ids ) {
+		$events = get_posts(
+			array(
+				'post_type'      => 'sp_event',
+				'post_status'    => array( 'publish', 'future' ),
+				'posts_per_page' => 1,
+				'orderby'        => 'date',
+				'order'          => 'ASC',
+				'date_query'     => array(
+					array(
+						'after'     => gmdate( 'Y-m-d H:i:s' ),
+						'inclusive' => true,
+						'column'    => 'post_date_gmt',
+					),
+				),
+				'meta_query'     => array(
+					array(
+						'key'     => 'sp_team',
+						'value'   => $team_ids,
+						'compare' => 'IN',
+					),
+				),
+			)
+		);
+		if ( empty( $events ) ) {
+			return null;
+		}
+		$event = $events[0];
+
+		// The player's side is the first of their teams in the game; the
+		// opponent is the first other team.
+		$event_teams = array_values( array_filter( array_map( 'intval', (array) get_post_meta( $event->ID, 'sp_team', false ) ) ) );
+		$own_team    = 0;
+		foreach ( $event_teams as $event_team ) {
+			if ( in_array( $event_team, $team_ids, true ) ) {
+				$own_team = $event_team;
+				break;
+			}
+		}
+		$opponent = '';
+		foreach ( $event_teams as $other_id ) {
+			if ( $other_id !== $own_team ) {
+				$opponent = (string) get_the_title( $other_id );
+				break;
+			}
+		}
+
+		$venue       = '';
+		$venue_terms = wp_get_post_terms( $event->ID, 'sp_venue' );
+		if ( is_array( $venue_terms ) && ! empty( $venue_terms ) ) {
+			$venue = (string) $venue_terms[0]->name;
+		}
+
+		return array(
+			'event_id' => (int) $event->ID,
+			'start'    => wp_date( 'c', strtotime( $event->post_date_gmt . ' UTC' ) ),
+			'opponent' => $opponent,
+			'venue'    => $venue,
+		);
+	}
+}

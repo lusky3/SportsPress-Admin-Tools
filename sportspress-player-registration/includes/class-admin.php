@@ -11,6 +11,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPPR_Admin {
 
+	/** Transient prefix of the re-run double-click guard. */
+	const RERUN_LOCK_PREFIX = 'spr_rerun_lock_';
+
 	public function __construct() {
 		add_action( 'spat_admin_init_settings', array( $this, 'register_settings' ) );
 		add_action( 'spat_admin_page_tabs', array( $this, 'add_admin_tab' ) );
@@ -412,24 +415,89 @@ class SPPR_Admin {
 			wp_die( esc_html__( 'You do not have permission to do this.', 'sportspress-player-registration' ), '', array( 'response' => 403 ) );
 		}
 
-		$order_id = (int) filter_input( INPUT_GET, 'order_id', FILTER_VALIDATE_INT );
+		$order_id = $this->requested_order_id();
 		if ( $order_id <= 0 ) {
 			wp_die( esc_html__( 'Invalid order ID.', 'sportspress-player-registration' ), '', array( 'response' => 400 ) );
 		}
 
 		check_admin_referer( 'spr_rerun_registration_' . $order_id );
 
+		$result = self::rerun( $order_id );
+		// The admin screen keeps its own wording and statuses.
+		if ( is_wp_error( $result ) ) {
+			$code = $result->get_error_code();
+			if ( 'locked' === $code ) {
+				wp_die( esc_html__( 'Already processing, please refresh.', 'sportspress-player-registration' ), '', array( 'response' => 429 ) );
+			}
+			if ( 'not_found' === $code ) {
+				wp_die( esc_html__( 'Order not found.', 'sportspress-player-registration' ), '', array( 'response' => 404 ) );
+			}
+			wp_die( esc_html__( 'Plugin not fully initialized; please retry.', 'sportspress-player-registration' ), '', array( 'response' => 503 ) );
+		}
+
+		$redirect = wp_get_referer();
+		if ( ! $redirect ) {
+			// HPOS-aware orders list fallback when there is no referer.
+			$redirect = $this->orders_use_hpos()
+				? admin_url( 'admin.php?page=wc-orders' )
+				: admin_url( 'edit.php?post_type=shop_order' );
+		}
+		wp_safe_redirect( $redirect );
+		exit;
+	}
+
+	/**
+	 * The order id from the admin-post query string.
+	 *
+	 * @return int 0 when missing or not an integer.
+	 */
+	protected function requested_order_id(): int {
+		return (int) filter_input( INPUT_GET, 'order_id', FILTER_VALIDATE_INT );
+	}
+
+	/**
+	 * The "already being re-run" refusal, or null when the order is free.
+	 *
+	 * @param int $order_id Order ID.
+	 * @return WP_Error|null
+	 */
+	public static function rerun_locked( int $order_id ) {
+		if ( ! get_transient( self::RERUN_LOCK_PREFIX . $order_id ) ) {
+			return null;
+		}
+		return new WP_Error(
+			'locked',
+			sprintf( 'Registration for order #%d is already being re-run. Try again in a few seconds.', $order_id ),
+			array( 'status' => 409 )
+		);
+	}
+
+	/**
+	 * Re-run player registration for one order: take the double-click lock,
+	 * clear the processed marker and call the registration handler directly.
+	 *
+	 * Cookie-free (no nonce, no capability check): callers authorize first.
+	 * Used by the admin order action and the FreeScout player.rerun action.
+	 *
+	 * @param int $order_id Order ID.
+	 * @return array{marker: string, outcome: string}|WP_Error The marker after
+	 *         the run ('1', 'failed' or '') and the outcome this run reported
+	 *         through spr_registration_outcome ('' when none). Errors:
+	 *         locked, not_found, not_initialized.
+	 */
+	public static function rerun( int $order_id ) {
 		// Double-click guard: short-lived transient prevents two near-simultaneous
 		// re-runs from racing each other. Pairs with the wp_cache_add() claim in
 		// SPPR_Player_Registration::process_completed_order().
-		if ( get_transient( 'spr_rerun_lock_' . $order_id ) ) {
-			wp_die( esc_html__( 'Already processing, please refresh.', 'sportspress-player-registration' ), '', array( 'response' => 429 ) );
+		$locked = self::rerun_locked( $order_id );
+		if ( $locked ) {
+			return $locked;
 		}
-		set_transient( 'spr_rerun_lock_' . $order_id, 1, 10 );
+		set_transient( self::RERUN_LOCK_PREFIX . $order_id, 1, 10 );
 
 		$order = wc_get_order( $order_id );
 		if ( ! $order ) {
-			wp_die( esc_html__( 'Order not found.', 'sportspress-player-registration' ), '', array( 'response' => 404 ) );
+			return new WP_Error( 'not_found', sprintf( 'Order #%d was not found.', $order_id ), array( 'status' => 404 ) );
 		}
 
 		// Call the registration handler directly instead of re-firing
@@ -448,26 +516,35 @@ class SPPR_Admin {
 			// Refuse to fall back to re-firing the completed-order hook — that
 			// would notify every other listener (emails, inventory, etc.) for an
 			// admin re-run, which is explicitly not what this action is for.
-			wp_die(
-				esc_html__( 'Plugin not fully initialized; please retry.', 'sportspress-player-registration' ),
-				'',
-				array( 'response' => 503 )
+			return new WP_Error(
+				'not_initialized',
+				'Player registration is not fully initialized. Try again in a moment.',
+				array( 'status' => 503 )
 			);
 		}
 
 		$order->delete_meta_data( '_spr_processed' );
 		$order->save();
 
-		$registration->process_completed_order( $order_id );
-
-		$redirect = wp_get_referer();
-		if ( ! $redirect ) {
-			// HPOS-aware orders list fallback when there is no referer.
-			$redirect = $this->orders_use_hpos()
-				? admin_url( 'admin.php?page=wc-orders' )
-				: admin_url( 'edit.php?post_type=shop_order' );
+		// Hear what this run reports; the log table alone can't tell a fresh
+		// outcome from an older run's row.
+		$outcome = '';
+		$listen  = static function ( $outcome_order_id, $result ) use ( $order_id, &$outcome ) {
+			if ( (int) $outcome_order_id === $order_id ) {
+				$outcome = (string) $result;
+			}
+		};
+		add_action( 'spr_registration_outcome', $listen, 10, 2 );
+		try {
+			$registration->process_completed_order( $order_id );
+		} finally {
+			remove_action( 'spr_registration_outcome', $listen, 10 );
 		}
-		wp_safe_redirect( $redirect );
-		exit;
+
+		$order = wc_get_order( $order_id );
+		return array(
+			'marker'  => $order ? (string) $order->get_meta( '_spr_processed' ) : '',
+			'outcome' => $outcome,
+		);
 	}
 }

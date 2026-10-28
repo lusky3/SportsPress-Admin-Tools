@@ -1,0 +1,2 @@
+# Test fixture (fake 32-char hex HMAC secret) in an earlier commit of the FreeScout bridge PR; value was later built at runtime.
+ab229a564a43527780cd79123cb37e796f1b1da5:sportspress-admin-tools/tests/test-freescout-events.php:generic-api-key:282

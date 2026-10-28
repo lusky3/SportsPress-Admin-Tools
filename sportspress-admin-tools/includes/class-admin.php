@@ -304,6 +304,23 @@ class SPAT_Admin {
 			array( 'sanitize_callback' => array( __CLASS__, 'sanitize_checkbox_flag' ) )
 		);
 
+		register_setting(
+			'spat_general_settings',
+			SPAT_FreeScout_REST::SECRET_OPTION,
+			array( 'sanitize_callback' => array( __CLASS__, 'sanitize_freescout_secret' ) )
+		);
+
+		register_setting(
+			'spat_general_settings',
+			SPAT_FreeScout_REST::EVENTS_URL_OPTION,
+			array( 'sanitize_callback' => array( __CLASS__, 'sanitize_freescout_events_url' ) )
+		);
+		register_setting(
+			'spat_general_settings',
+			SPAT_FreeScout_REST::EVENTS_ENABLED_OPTION,
+			array( 'sanitize_callback' => array( __CLASS__, 'sanitize_checkbox_flag' ) )
+		);
+
 		// Child plugin settings will be registered by their respective admin classes
 
 		add_settings_section(
@@ -327,6 +344,13 @@ class SPAT_Admin {
 			'spat_general_settings'
 		);
 
+		add_settings_section(
+			'spat_freescout_section',
+			__( 'FreeScout', 'sportspress-admin-tools' ),
+			array( $this, 'freescout_section_callback' ),
+			'spat_general_settings'
+		);
+
 		// Dynamically add registered modules
 		$this->add_registered_module_fields();
 
@@ -344,6 +368,11 @@ class SPAT_Admin {
 		$this->add_settings_field_row( 'spat_admin_bar_link_enabled', __( 'Admin Bar Link', 'sportspress-admin-tools' ), array( $this, 'admin_bar_link_setting_callback' ), 'spat_settings_section' );
 		$this->add_settings_field_row( 'spat_debug_show_sensitive', __( 'Show Sensitive Information in Debug Logs', 'sportspress-admin-tools' ), array( $this, 'debug_sensitive_callback' ), 'spat_debug_section' );
 		$this->add_settings_field_row( 'spat_debug_verbose_logging', __( 'Verbose Debug Logging', 'sportspress-admin-tools' ), array( $this, 'debug_verbose_callback' ), 'spat_debug_section' );
+
+		$this->add_settings_field_row( SPAT_FreeScout_REST::SECRET_OPTION, __( 'Shared Secret', 'sportspress-admin-tools' ), array( $this, 'freescout_secret_callback' ), 'spat_freescout_section' );
+		$this->add_settings_field_row( SPAT_FreeScout_REST::EVENTS_URL_OPTION, __( 'Events URL', 'sportspress-admin-tools' ), array( $this, 'freescout_events_url_callback' ), 'spat_freescout_section' );
+		$this->add_settings_field_row( SPAT_FreeScout_REST::EVENTS_ENABLED_OPTION, __( 'Send Events', 'sportspress-admin-tools' ), array( $this, 'freescout_events_enabled_callback' ), 'spat_freescout_section' );
+		$this->add_settings_field_row( 'spat_freescout_events_status', __( 'Events', 'sportspress-admin-tools' ), array( $this, 'freescout_events_status_callback' ), 'spat_freescout_section' );
 
 		// Allow child plugins to register their own settings
 		do_action( 'spat_admin_init_settings' );
@@ -376,6 +405,122 @@ class SPAT_Admin {
 	 */
 	public static function sanitize_checkbox_flag( $value ): string {
 		return '1' === $value ? '1' : '0';
+	}
+
+	/**
+	 * sanitize_callback for the FreeScout shared secret. The field never
+	 * echoes the stored value, so a blank submission means "unchanged". A
+	 * secret shorter than the REST layer's minimum is refused with a notice
+	 * (the routes would answer 503 "not configured" for it) and the stored
+	 * secret is kept.
+	 *
+	 * Not sanitize_text_field(): it strips %xx sequences and tag-like text,
+	 * silently changing the secret so every signature fails. Not wp_unslash()
+	 * either: options.php has already unslashed the value, and a second pass
+	 * would drop backslashes that belong to the secret.
+	 *
+	 * @param mixed $value Raw submitted value.
+	 * @return string
+	 */
+	public static function sanitize_freescout_secret( $value ): string {
+		$value = is_string( $value ) ? trim( $value ) : '';
+		$saved = (string) get_option( SPAT_FreeScout_REST::SECRET_OPTION, '' );
+		if ( '' === $value ) {
+			return $saved;
+		}
+		if ( strlen( $value ) < SPAT_FreeScout_REST::MIN_SECRET_LENGTH ) {
+			add_settings_error(
+				SPAT_FreeScout_REST::SECRET_OPTION,
+				'spat_freescout_secret_too_short',
+				sprintf(
+					/* translators: %d: minimum secret length. */
+					__( 'The FreeScout shared secret must be at least %d characters. The previous secret was kept.', 'sportspress-admin-tools' ),
+					SPAT_FreeScout_REST::MIN_SECRET_LENGTH
+				)
+			);
+			return $saved;
+		}
+		return $value;
+	}
+
+	/**
+	 * sanitize_callback for the FreeScout events URL. Blank clears it. Anything
+	 * that is not an http(s) URL is refused with a notice and the stored value
+	 * is kept.
+	 *
+	 * @param mixed $value Raw submitted value.
+	 * @return string
+	 */
+	public static function sanitize_freescout_events_url( $value ): string {
+		$value = is_string( $value ) ? trim( $value ) : '';
+		if ( '' === $value ) {
+			return '';
+		}
+		// Check the RAW value: esc_url_raw() prepends http:// to a scheme-less
+		// string, which would silently store a plaintext URL.
+		$url = preg_match( '#^https?://#i', $value ) ? esc_url_raw( $value, array( 'http', 'https' ) ) : '';
+		if ( '' === $url ) {
+			add_settings_error(
+				SPAT_FreeScout_REST::EVENTS_URL_OPTION,
+				'spat_freescout_events_url_invalid',
+				__( 'The FreeScout events URL must start with https:// or http://. The previous URL was kept.', 'sportspress-admin-tools' )
+			);
+			return (string) get_option( SPAT_FreeScout_REST::EVENTS_URL_OPTION, '' );
+		}
+		return $url;
+	}
+
+	public function freescout_events_url_callback() {
+		printf(
+			'<input type="url" name="%1$s" value="%2$s" class="regular-text" placeholder="https://helpdesk.example.com/spatbridge/events">',
+			esc_attr( SPAT_FreeScout_REST::EVENTS_URL_OPTION ),
+			esc_attr( (string) get_option( SPAT_FreeScout_REST::EVENTS_URL_OPTION, '' ) )
+		);
+		echo '<p class="description">' . esc_html__( 'The bridge\'s events endpoint in FreeScout.', 'sportspress-admin-tools' ) . '</p>';
+	}
+
+	public function freescout_events_enabled_callback() {
+		printf(
+			'<label><input type="checkbox" name="%1$s" value="1"%2$s> %3$s</label>',
+			esc_attr( SPAT_FreeScout_REST::EVENTS_ENABLED_OPTION ),
+			checked( '1', (string) get_option( SPAT_FreeScout_REST::EVENTS_ENABLED_OPTION, '0' ), false ),
+			esc_html__( 'Send e-Transfer, registration and waitlist events to FreeScout. Needs the URL and shared secret above.', 'sportspress-admin-tools' )
+		);
+	}
+
+	public function freescout_events_status_callback() {
+		$status = SPAT_FreeScout_Events::status();
+		echo '<p>' . esc_html(
+			sprintf(
+				/* translators: 1: pending event count, 2: failed event count. */
+				__( 'Pending: %1$d. Failed: %2$d.', 'sportspress-admin-tools' ),
+				$status['pending'],
+				$status['failed']
+			)
+		) . '</p>';
+		if ( '' !== $status['last_error'] ) {
+			echo '<p class="description">' . esc_html(
+				sprintf(
+					/* translators: %s: the most recent delivery error. */
+					__( 'Last error: %s', 'sportspress-admin-tools' ),
+					$status['last_error']
+				)
+			) . '</p>';
+		}
+	}
+
+	public function freescout_section_callback() {
+		echo '<p>' . esc_html__( 'Lets the FreeScout SPAT bridge show league data in the ticket sidebar.', 'sportspress-admin-tools' ) . '</p>';
+	}
+
+	public function freescout_secret_callback() {
+		$is_set = '' !== (string) get_option( SPAT_FreeScout_REST::SECRET_OPTION, '' );
+		printf(
+			'<input type="password" name="%1$s" value="" class="regular-text" autocomplete="new-password" placeholder="%2$s">',
+			esc_attr( SPAT_FreeScout_REST::SECRET_OPTION ),
+			esc_attr( $is_set ? __( 'Secret is set; leave blank to keep it', 'sportspress-admin-tools' ) : '' )
+		);
+		echo '<p class="description">' . esc_html__( 'At least 32 characters. Enter the same value as the bridge\'s shared secret in FreeScout. Until one is set the FreeScout routes answer 503.', 'sportspress-admin-tools' ) . '</p>';
 	}
 
 	public function modules_section_callback() {
