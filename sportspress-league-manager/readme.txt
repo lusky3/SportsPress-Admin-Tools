@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.7.0
+Stable tag: 1.8.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -61,6 +61,11 @@ Conveners can issue a suspension from the Notices page (Issue suspension) or fro
 * Discipline history starts empty. Suspensions issued before this feature are not backfilled.
 
 == Changelog ==
+
+= 1.8.0 =
+* Fix: the Waitlist page showed only the first 50 entries, hiding the rest of a longer queue. It is now paged, with Previous and Next buttons and a "Showing x-y of N" count; changing a filter starts again from page one.
+* New: the order that puts someone on the waitlist is now completed automatically once their entry is recorded, instead of sitting in Processing. The customer is not sent an "order completed" email. Turn this off with the `splm_waitlist_auto_complete_orders` filter.
+* New: a "Complete Waitlist Orders" section in the League Manager tab of Settings > SportsPress Admin Tools does the same for orders already sitting in Processing, without emailing anyone and without registering anyone as a player. It shows how many are waiting, and orders that mix a waitlist product with anything else are left alone.
 
 = 1.7.0 =
 * New: the FreeScout ticket sidebar shows a customer's waitlist entries (queued, offered, expired), and conveners can offer a spot (1–720 hours, optional message), re-offer, withdraw an offer or remove an entry from the ticket.

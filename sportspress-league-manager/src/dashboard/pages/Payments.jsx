@@ -1,5 +1,6 @@
 import { useState, useEffect } from '@wordpress/element';
 import HelpLink from '../components/HelpLink';
+import Pager from '../components/Pager';
 import { fetchPayments, exportPaymentsAll } from '../lib/api';
 
 // M7: status values we ship CSS for. Anything else gets the "other" class
@@ -10,24 +11,6 @@ function statusClass( status ) {
 }
 
 const PER_PAGE = 50;
-
-function Pager( { page, totalPages, startIdx, endIdx, total, onPrev, onNext, atLastGuess } ) {
-	return (
-		<div className="splm-pager">
-			<button type="button" className="splm-btn" onClick={ onPrev } disabled={ page <= 1 }>Previous</button>
-			<span className="splm-pager__status" aria-live="polite">
-				Showing { startIdx }–{ endIdx } of { total }
-				{ totalPages > 1 ? ` (page ${ page } of ${ totalPages })` : '' }
-			</span>
-			<button
-				type="button"
-				className="splm-btn"
-				onClick={ onNext }
-				disabled={ totalPages ? page >= totalPages : atLastGuess }
-			>Next</button>
-		</div>
-	);
-}
 
 export default function Payments( { season } ) {
 	const [ payments, setPayments ] = useState( [] );

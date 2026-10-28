@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Fixed
+- **[league-manager]** The Waitlist page showed only the first 50 entries. It is now paged (Previous / Next with a "Showing x-y of N" count), and a filter change returns to page one. The Pager is now a shared dashboard component (Payments uses it too).
+- **[player-registration]** A waitlist product is never a registration item: it sits in the Registration category, so a completed waitlist order would have registered the person as a player.
+
+### Changed
+- **[league-manager]** The order that puts someone on the waitlist is completed automatically once their entry is recorded (no customer email). Only orders made up entirely of waitlist products with a recorded entry are touched. Disable with the `splm_waitlist_auto_complete_orders` filter.
+
+### Added
+- **[league-manager]** A "Complete Waitlist Orders" section in the League Manager tab of the SPAT settings page (Settings > SportsPress Admin Tools; nonce-protected form, `manage_sportspress`) completes the waitlist orders already in Processing without emailing customers, within a 20-second budget per click, and shows how many are still waiting and how many it will leave alone. The result is handed over by a two-minute per-user transient, so nothing about it is in the URL.
+
+## [1.8.0] - 2026-10-28
+
 ### Release notes
 - **[admin-tools, etransfer, league-manager, player-tools, player-registration]** Bump each plugin for this release (header, version constant, readme Stable tag and a readme changelog entry). Suggested: admin-tools 1.2.0, etransfer 1.2.0, league-manager 1.7.0, player-tools 1.6.0, player-registration 1.3.0 (must be above 1.2.1, already on main from #237).
 - **[admin-tools]** FreeScout bridge: set a shared secret (32+ characters) under SPAT settings → FreeScout, and the same secret in the FreeScout "ARL League" module. Events to FreeScout are off until an events URL is set and "Send events" is on.

@@ -146,6 +146,7 @@ class SPLM_Admin {
 				submit_button( __( 'Save League Manager Settings', 'sportspress-league-manager' ) );
 				?>
 			</form>
+			<?php SPLM_Waitlist_Orders_Admin::render_panel(); ?>
 		</div>
 		<?php
 	}

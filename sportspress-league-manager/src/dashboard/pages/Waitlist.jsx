@@ -9,6 +9,11 @@ import {
 	setWaitlistRestrictions,
 } from '../lib/api';
 import HelpLink from '../components/HelpLink';
+import Pager from '../components/Pager';
+
+// Rows per page. The server caps per_page at 100 and defaults to 50; asking
+// explicitly (and paging) is what keeps a long queue from being cut off.
+const WAITLIST_PER_PAGE = 50;
 
 // The current columns stay the default view; the four new ones (added
 // alongside dispatcher tracking and the restrictions note) start hidden so
@@ -781,10 +786,17 @@ function useWaitlistData() {
 	const [ position, setPosition ] = useState( '' );
 	const [ status, setStatus ] = useState( '' );
 	const [ gates, setGates ] = useState( {} );
+	const [ page, setPage ] = useState( 1 );
+	const [ total, setTotal ] = useState( 0 );
+	const [ totalPages, setTotalPages ] = useState( 0 );
+
+	// A different filter is a different list, so it starts on its first page.
+	const changePosition = useCallback( ( value ) => { setPosition( value ); setPage( 1 ); }, [] );
+	const changeStatus = useCallback( ( value ) => { setStatus( value ); setPage( 1 ); }, [] );
 
 	// Debounce the season box (300ms) into the value used for fetching.
 	useEffect( () => {
-		const t = setTimeout( () => setSeason( seasonInput.trim() ), 300 );
+		const t = setTimeout( () => { setSeason( seasonInput.trim() ); setPage( 1 ); }, 300 );
 		return () => clearTimeout( t );
 	}, [ seasonInput ] );
 
@@ -796,10 +808,18 @@ function useWaitlistData() {
 		let cancelled = false;
 		setLoading( true );
 		setError( '' );
-		fetchWaitlist( { season, position, status } )
+		fetchWaitlist( { season, position, status, page, per_page: WAITLIST_PER_PAGE } )
 			.then( ( res ) => {
 				if ( cancelled ) return;
+				// The last page can empty out (entries removed since it loaded);
+				// step back to the new last page instead of showing nothing.
+				if ( res.data.length === 0 && res.totalPages > 0 && page > res.totalPages ) {
+					setPage( res.totalPages );
+					return;
+				}
 				setRows( res.data );
+				setTotal( res.total );
+				setTotalPages( res.totalPages );
 				// Seed/refresh the Season access panel's gate state from the
 				// rows just fetched. target_gated is the server's live truth,
 				// so this keeps the panel honest on first render and every
@@ -822,7 +842,7 @@ function useWaitlistData() {
 				setLoading( false );
 			} );
 		return () => { cancelled = true; };
-	}, [ season, position, status ] );
+	}, [ season, position, status, page ] );
 
 	useEffect( () => {
 		const cleanup = load();
@@ -836,9 +856,10 @@ function useWaitlistData() {
 		notice, setNotice,
 		warnings, setWarnings,
 		seasonInput, setSeasonInput,
-		position, setPosition,
-		status, setStatus,
+		position, setPosition: changePosition,
+		status, setStatus: changeStatus,
 		gates, setGates,
+		page, setPage, total, totalPages,
 		load,
 	};
 }
@@ -899,6 +920,9 @@ export default function Waitlist() {
 		setConfirmModal( { kind: 'gate', productId, gated } );
 	};
 
+	const startIdx = wl.total === 0 ? 0 : ( wl.page - 1 ) * WAITLIST_PER_PAGE + 1;
+	const endIdx = Math.min( wl.page * WAITLIST_PER_PAGE, wl.total );
+
 	const confirmGate = ( productId, gated ) => {
 		setConfirmModal( null );
 		wl.setError( '' );
@@ -947,6 +971,19 @@ export default function Waitlist() {
 				onOffer={ rowActions.handleOffer }
 				onCancel={ rowActions.handleCancel }
 			/>
+
+			{ wl.rows.length > 0 && (
+				<Pager
+					page={ wl.page }
+					totalPages={ wl.totalPages }
+					startIdx={ startIdx }
+					endIdx={ endIdx }
+					total={ wl.total }
+					atLastGuess={ wl.rows.length < WAITLIST_PER_PAGE }
+					onPrev={ () => wl.setPage( ( p ) => Math.max( 1, p - 1 ) ) }
+					onNext={ () => wl.setPage( ( p ) => ( wl.totalPages ? Math.min( wl.totalPages, p + 1 ) : p + 1 ) ) }
+				/>
+			) }
 
 			<AddEntryForm
 				form={ addForm.form }
