@@ -35,6 +35,16 @@ function add_submenu_page( ...$args ) { $GLOBALS['menu_subs'][] = $args; }
 function wp_nonce_field( $action ) { echo '<input type="hidden" name="_wpnonce" value="nonce-' . $action . '" />'; }
 function submit_button( $text, $type, $name, $wrap, $attrs ) { echo '<input type="submit" value="' . $text . '"' . ( ! empty( $attrs['disabled'] ) ? ' disabled' : '' ) . ' />'; }
 function wp_die( $message = '', $title = '', $args = array() ) { throw new WPDie( 'wp_die:' . ( $args['response'] ?? '' ) ); }
+$GLOBALS['transients'] = array();
+$GLOBALS['redirects']  = array();
+$GLOBALS['referer_ok'] = true;
+function get_current_user_id() { return 7; }
+function get_transient( $k ) { return $GLOBALS['transients'][ $k ] ?? false; }
+function set_transient( $k, $v, $ttl = 0 ) { $GLOBALS['transients'][ $k ] = $v; return true; }
+function delete_transient( $k ) { unset( $GLOBALS['transients'][ $k ] ); return true; }
+function add_query_arg( $k, $v, $url ) { return $url . '?' . $k . '=' . $v; }
+function wp_safe_redirect( $url ) { $GLOBALS['redirects'][] = $url; return true; }
+function check_admin_referer( $action ) { if ( ! $GLOBALS['referer_ok'] ) { throw new WPDie( 'bad_nonce' ); } return 1; }
 function wc_get_order( $id ) { return $GLOBALS['wc_orders'][ $id ] ?? false; }
 
 class SPLM_Capabilities {
@@ -135,20 +145,32 @@ wa_assert( false !== strpos( $html, 'nonce-splm_complete_waitlist_orders' ), 'an
 wa_assert( false === strpos( $html, ' disabled' ), 'the button is enabled when there is work' );
 wa_assert( false === strpos( $html, 'role="status"' ), 'no result message before anything has run' );
 
-$GLOBALS['get'] = array( 'ran' => '1', 'completed' => '7' );
-$_GET = $GLOBALS['get'];
+$GLOBALS['transients']['splm_waitlist_orders_result_7'] = array( 'completed' => 7, 'remaining' => 0, 'other' => 1 );
 $html = page_html();
 wa_assert( false !== strpos( $html, 'Completed 7 waitlist orders' ), 'after a run, the page reports what was completed' );
 wa_assert( false !== strpos( $html, 'class="card" role="status"' ) && false === strpos( $html, 'class="notice' ), 'as a card in the page body, not a .notice that notice-collecting plugins remove' );
-$_GET = array( 'ran' => '1', 'completed' => '<script>alert(1)</script>' );
 $html = page_html();
-wa_assert( false === strpos( $html, '<script>' ), 'the completed count from the URL is treated as a number, never printed raw' );
-$_GET = array();
+wa_assert( false === strpos( $html, 'role="status"' ), 'the result is shown once, then forgotten' );
 
 $GLOBALS['source_ids'] = array();
 $html = page_html();
 wa_assert( false !== strpos( $html, ' disabled' ), 'with nothing to complete the button is disabled' );
 wa_assert( false !== strpos( $html, '0 waitlist orders are still in Processing' ), 'and the count reads 0' );
+
+echo "\n=== handle_post() ===\n\n";
+$GLOBALS['wc_orders'] = array(); $GLOBALS['rows'] = array(); $GLOBALS['transients'] = array();
+mk( 901, 'processing', array( 20 ) ); mk( 902, 'processing', array( 21 ) );
+$GLOBALS['source_ids'] = array( 901, 902 );
+( new SPLM_Waitlist_Orders_Admin() )->handle_post();
+$stored = $GLOBALS['transients']['splm_waitlist_orders_result_7'] ?? null;
+wa_assert( is_array( $stored ) && 2 === $stored['completed'], 'a post runs the completion and stores the result for the next page view' );
+wa_assert( 'completed' === $GLOBALS['wc_orders'][901]->status && 'completed' === $GLOBALS['wc_orders'][902]->status, 'the orders are completed' );
+wa_assert( array( 'https://example.test/wp-admin/admin.php?page=splm-waitlist-orders' ) === $GLOBALS['redirects'], 'then it redirects back to the page with nothing in the URL' );
+$GLOBALS['transients'] = array(); $GLOBALS['redirects'] = array(); $GLOBALS['referer_ok'] = false;
+$bad = false;
+try { ( new SPLM_Waitlist_Orders_Admin() )->handle_post(); } catch ( WPDie $e ) { $bad = ( 'bad_nonce' === $e->getMessage() ); }
+wa_assert( $bad && array() === $GLOBALS['redirects'] && array() === $GLOBALS['transients'], 'a post without a valid nonce does nothing' );
+$GLOBALS['referer_ok'] = true;
 
 $GLOBALS['can_manage'] = false;
 $denied = false;

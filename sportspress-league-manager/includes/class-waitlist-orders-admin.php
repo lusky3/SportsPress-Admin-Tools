@@ -36,6 +36,11 @@ class SPLM_Waitlist_Orders_Admin {
 	const TIME_BUDGET = 20;
 
 	/**
+	 * How long a run's result waits for the page to show it, in seconds.
+	 */
+	const RESULT_TTL = 120;
+
+	/**
 	 * Hook the page up once, however many times it is asked for.
 	 *
 	 * @return self
@@ -124,19 +129,36 @@ class SPLM_Waitlist_Orders_Admin {
 		}
 		check_admin_referer( self::ACTION );
 
-		$result = self::run();
+		// Hand the result to the page we are about to redirect to. A short-lived,
+		// per-user transient rather than query args: nothing in the URL can be
+		// edited to put a made-up result on screen.
+		set_transient( self::result_key(), self::run(), self::RESULT_TTL );
 
-		wp_safe_redirect(
-			add_query_arg(
-				array(
-					'page'      => self::SLUG,
-					'completed' => $result['completed'],
-					'ran'       => 1,
-				),
-				admin_url( 'admin.php' )
-			)
-		);
-		exit;
+		// No exit: admin-post.php runs nothing after this action returns.
+		wp_safe_redirect( add_query_arg( 'page', self::SLUG, admin_url( 'admin.php' ) ) );
+	}
+
+	/**
+	 * Where the last run's result waits for the next page view.
+	 *
+	 * @return string
+	 */
+	private static function result_key(): string {
+		return 'splm_waitlist_orders_result_' . get_current_user_id();
+	}
+
+	/**
+	 * The last run's result, shown once: read, then forgotten.
+	 *
+	 * @return array|null { completed: int, remaining: int, other: int }
+	 */
+	private static function take_result(): ?array {
+		$result = get_transient( self::result_key() );
+		if ( false === $result ) {
+			return null;
+		}
+		delete_transient( self::result_key() );
+		return is_array( $result ) ? $result : null;
 	}
 
 	/**
@@ -148,49 +170,23 @@ class SPLM_Waitlist_Orders_Admin {
 		}
 
 		$counts = SPLM_Waitlist_Order_Completion::pending_counts();
-		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- read-only display of the last run's result; no state change.
-		$ran       = isset( $_GET['ran'] );
-		$completed = isset( $_GET['completed'] ) ? absint( wp_unslash( $_GET['completed'] ) ) : 0;
-		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+		$result = self::take_result();
 		?>
 		<div class="wrap">
 			<h1><?php esc_html_e( 'Complete Waitlist Orders', 'sportspress-league-manager' ); ?></h1>
 
-			<?php if ( $ran ) : ?>
+			<?php if ( $result ) : ?>
 				<?php // A card in the page body, not a .notice: notice-collecting plugins remove .notice elements from the page. ?>
 				<div class="card" role="status">
-					<p><strong><?php echo esc_html( self::result_message( $completed, (int) $counts['completable'] ) ); ?></strong></p>
+					<p><strong><?php echo esc_html( self::result_message( (int) $result['completed'], (int) $result['remaining'] ) ); ?></strong></p>
 				</div>
 			<?php endif; ?>
 
 			<p><?php esc_html_e( 'Joining the waitlist is a purchase, and that order used to stay in Processing for good. New ones are now completed automatically once the entry is recorded. This completes the ones already waiting. Customers are not emailed, and nobody is registered as a player.', 'sportspress-league-manager' ); ?></p>
 
-			<p>
-				<strong>
-					<?php
-					echo esc_html(
-						sprintf(
-							/* translators: %d: number of orders. */
-							_n( '%d waitlist order is still in Processing and can be completed.', '%d waitlist orders are still in Processing and can be completed.', (int) $counts['completable'], 'sportspress-league-manager' ),
-							(int) $counts['completable']
-						)
-					);
-					?>
-				</strong>
-			</p>
-
+			<p><strong><?php echo esc_html( self::pending_sentence( (int) $counts['completable'] ) ); ?></strong></p>
 			<?php if ( $counts['other'] > 0 ) : ?>
-				<p class="description">
-					<?php
-					echo esc_html(
-						sprintf(
-							/* translators: %d: number of orders. */
-							_n( '%d other order in Processing is left alone: it mixes a waitlist product with something else, or its entry was not recorded.', '%d other orders in Processing are left alone: each mixes a waitlist product with something else, or its entry was not recorded.', (int) $counts['other'], 'sportspress-league-manager' ),
-							(int) $counts['other']
-						)
-					);
-					?>
-				</p>
+				<p class="description"><?php echo esc_html( self::other_sentence( (int) $counts['other'] ) ); ?></p>
 			<?php endif; ?>
 
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
@@ -201,4 +197,23 @@ class SPLM_Waitlist_Orders_Admin {
 		</div>
 		<?php
 	}
+
+	/**
+	 * @param int $n Orders that can be completed.
+	 * @return string
+	 */
+	private static function pending_sentence( int $n ): string {
+		/* translators: %d: number of orders. */
+		return sprintf( _n( '%d waitlist order is still in Processing and can be completed.', '%d waitlist orders are still in Processing and can be completed.', $n, 'sportspress-league-manager' ), $n );
+	}
+
+	/**
+	 * @param int $n Orders left alone.
+	 * @return string
+	 */
+	private static function other_sentence( int $n ): string {
+		/* translators: %d: number of orders. */
+		return sprintf( _n( '%d other order in Processing is left alone: it mixes a waitlist product with something else, or its entry was not recorded.', '%d other orders in Processing are left alone: each mixes a waitlist product with something else, or its entry was not recorded.', $n, 'sportspress-league-manager' ), $n );
+	}
+
 }
