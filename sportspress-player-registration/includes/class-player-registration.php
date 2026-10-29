@@ -11,6 +11,17 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPPR_Player_Registration {
 
+	/**
+	 * Match outcomes that stop registration for the item: a player with this
+	 * identity may exist, but the order cannot say which one (or it belongs to
+	 * someone else), so a human decides and re-runs.
+	 */
+	const TERMINAL_CONFLICTS = array(
+		'multiple_players_found_email_conflict',
+		'multiple_players_found_name_match_requires_email',
+		'player_found_by_name_identity_conflict',
+	);
+
 	public function __construct() {
 		add_action( 'woocommerce_order_status_completed', array( $this, 'process_completed_order' ) );
 		add_action( 'woocommerce_order_status_refunded', array( $this, 'handle_order_reversed' ) );
@@ -481,7 +492,7 @@ class SPPR_Player_Registration {
 		$player_id = $match['player_id'];
 		$action = $match['action'];
 
-		// Both conflict actions are terminal: an ambiguous match means a player with
+		// Conflict actions are terminal: an ambiguous match means a player with
 		// this identity already exists but we cannot tell WHICH one — likely a
 		// guest/user duplicate or two distinct people sharing a name. Do NOT
 		// auto-create a parallel record; surface the conflict for manual
@@ -493,9 +504,7 @@ class SPPR_Player_Registration {
 		// — the exact duplicate-manufacturing this lookup exists to prevent. It now
 		// stops here, and process_completed_order() already refuses to mark such an
 		// order processed so a human can resolve it and re-run.
-		if ( $action === 'multiple_players_found_email_conflict'
-			|| $action === 'multiple_players_found_name_match_requires_email'
-			|| $action === 'player_found_by_name_identity_conflict' ) {
+		if ( in_array( $action, self::TERMINAL_CONFLICTS, true ) ) {
 			return array(
 				'player_id' => 0,
 				'action' => $action,
@@ -517,13 +526,9 @@ class SPPR_Player_Registration {
 			);
 		}
 
-		// Auto-update is on (or we are about to create). Fill in a MISSING email
-		// only: a stored address is identity data, and overwriting it with this
-		// customer's is how one person's record took on another's email. A
-		// different stored email never gets here anyway (it is a conflict above).
-		if ( $player_id && $this->email_meta_enabled() && ! empty( $customer_email )
-			&& '' === (string) get_post_meta( $player_id, 'spt_email', true ) ) {
-			update_post_meta( $player_id, 'spt_email', strtolower( sanitize_email( $customer_email ) ) );
+		// Auto-update is on (or we are about to create).
+		if ( $player_id ) {
+			$this->fill_missing_email( $player_id, $customer_email );
 		}
 
 		// Create new player
@@ -558,6 +563,26 @@ class SPPR_Player_Registration {
 			'player_id' => $player_id,
 			'action' => $action,
 		);
+	}
+
+	/**
+	 * Store the customer's email on a matched player that has none.
+	 *
+	 * Only a MISSING email is filled in: a stored address is identity data, and
+	 * overwriting it with this customer's is how one person's record once took on
+	 * another's email. A different stored email never gets this far anyway (it is
+	 * a conflict).
+	 *
+	 * @param int    $player_id      Player post ID.
+	 * @param string $customer_email Billing email.
+	 * @return void
+	 */
+	private function fill_missing_email( $player_id, $customer_email ) {
+		if ( ! $this->email_meta_enabled() || empty( $customer_email )
+			|| '' !== (string) get_post_meta( $player_id, 'spt_email', true ) ) {
+			return;
+		}
+		update_post_meta( $player_id, 'spt_email', strtolower( sanitize_email( $customer_email ) ) );
 	}
 
 	/**
@@ -1118,29 +1143,27 @@ class SPPR_Player_Registration {
 	 * @return bool False when the link was refused.
 	 */
 	private function link_user_to_player( $user_id, $player_id ) {
-		$owner = ( new SPPR_Identity_Check() )->owner_user_id( $player_id );
-		if ( $owner > 0 && $owner !== (int) $user_id ) {
-			if ( class_exists( 'SPAT_Logger' ) && method_exists( 'SPAT_Logger', 'warn' ) ) {
-				SPAT_Logger::warn(
-					'player_registration',
-					'user link refused: the player already belongs to another account',
-					array(
-						'player_id' => (int) $player_id,
-						'user_id'   => (int) $user_id,
-						'owner_id'  => (int) $owner,
-					)
-				);
-			}
+		if ( $this->linked_to_another_account( $user_id, $player_id ) ) {
 			return false;
 		}
 
 		update_post_meta( $player_id, 'sp_user', $user_id );
 
 		$player = get_post( $player_id );
-		if ( ! $player || (int) $player->post_author === (int) $user_id ) {
-			return true;
+		if ( $player && (int) $player->post_author !== (int) $user_id ) {
+			$this->set_player_author( $user_id, $player_id );
 		}
+		return true;
+	}
 
+	/**
+	 * Make a user the post_author of their player record.
+	 *
+	 * @param int $user_id   WordPress user ID.
+	 * @param int $player_id Player post ID.
+	 * @return void
+	 */
+	private function set_player_author( $user_id, $player_id ) {
 		// wp_update_post(), never a raw UPDATE: authorship changes have to run the
 		// normal save path so caches, revisions and post-save listeners all see it.
 		$result = wp_update_post(
@@ -1160,6 +1183,32 @@ class SPPR_Player_Registration {
 				$context['error'] = $result->get_error_message();
 			}
 			SPAT_Logger::error( 'player_registration', 'Failed to set player post_author', $context );
+		}
+	}
+
+	/**
+	 * Whether a player is already linked (sp_user) to an account other than this
+	 * one. Logs the refusal when it is.
+	 *
+	 * @param int $user_id   WordPress user ID being linked.
+	 * @param int $player_id Player post ID.
+	 * @return bool
+	 */
+	private function linked_to_another_account( $user_id, $player_id ) {
+		$owner = ( new SPPR_Identity_Check() )->owner_user_id( $player_id );
+		if ( $owner <= 0 || $owner === (int) $user_id ) {
+			return false;
+		}
+		if ( class_exists( 'SPAT_Logger' ) && method_exists( 'SPAT_Logger', 'warn' ) ) {
+			SPAT_Logger::warn(
+				'player_registration',
+				'user link refused: the player already belongs to another account',
+				array(
+					'player_id' => (int) $player_id,
+					'user_id'   => (int) $user_id,
+					'owner_id'  => (int) $owner,
+				)
+			);
 		}
 		return true;
 	}

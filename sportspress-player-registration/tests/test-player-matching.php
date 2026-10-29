@@ -904,6 +904,21 @@ assert_test(
     "Audit: after an overwrite, the real owner's order is flagged and points at the wrong one"
 );
 
+$wpdb->queries = array();
+(new SPPR_Name_Match_Audit())->run(array(300, 301));
+$audit_sql = $wpdb->queries[0];
+assert_test(
+    strpos($audit_sql, 'player_id IN (') !== false
+        && strpos($audit_sql, "\x01300\x01") !== false && strpos($audit_sql, "\x01301\x01") !== false,
+    'Audit: player IDs narrow the scan to those records'
+);
+$wpdb->queries = array();
+(new SPPR_Name_Match_Audit())->run();
+assert_test(
+    strpos($wpdb->queries[0], 'player_id IN (') === false,
+    'Audit: no player IDs scans every record'
+);
+
 echo "\n=== Results ===\n";
 echo "Passed: $passed\n";
 echo "Failed: $failed\n";

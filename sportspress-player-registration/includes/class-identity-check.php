@@ -138,15 +138,11 @@ class SPPR_Identity_Check {
 	public function linked_order_ids( $player_id, $exclude_order_id = 0 ) {
 		global $wpdb;
 		$table = $wpdb->prefix . 'spat_registration_logs';
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is internal.
-		$ids = $wpdb->get_col(
-			$wpdb->prepare(
-				"SELECT DISTINCT order_id FROM `{$table}` WHERE player_id = %d AND links_to_order = 1 AND order_id <> %d ORDER BY order_id DESC LIMIT %d",
-				(int) $player_id,
-				(int) $exclude_order_id,
-				self::HISTORY_LIMIT
-			)
-		);
+		$sql   = "SELECT DISTINCT order_id FROM `{$table}` WHERE player_id = %d AND links_to_order = 1 AND order_id <> %d ORDER BY order_id DESC LIMIT %d";
+		$args  = array( (int) $player_id, (int) $exclude_order_id, self::HISTORY_LIMIT );
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table name is internal; every value is a placeholder.
+		$ids = $wpdb->get_col( $wpdb->prepare( $sql, $args ) );
 		return array_values( array_filter( array_map( 'intval', (array) $ids ) ) );
 	}
 
@@ -242,17 +238,27 @@ class SPPR_Identity_Check {
 	 * @return bool|null
 	 */
 	private static function same_customer( $first, $second ) {
-		$both_accounts = $first['customer_id'] > 0 && $second['customer_id'] > 0;
-		$both_emails   = '' !== $first['email'] && '' !== $second['email'];
+		$accounts = self::same_value( $first['customer_id'], $second['customer_id'] );
+		$emails   = self::same_value( $first['email'], $second['email'] );
 
-		if ( ( $both_accounts && $first['customer_id'] === $second['customer_id'] )
-			|| ( $both_emails && $first['email'] === $second['email'] ) ) {
+		if ( true === $accounts || true === $emails ) {
 			return true;
 		}
-		if ( $both_accounts || $both_emails ) {
-			return false;
+		return ( null === $accounts && null === $emails ) ? null : false;
+	}
+
+	/**
+	 * Compare two identifiers, either of which may be missing (0 or '').
+	 *
+	 * @param int|string $first  Identifier.
+	 * @param int|string $second Identifier.
+	 * @return bool|null Null when either is missing.
+	 */
+	private static function same_value( $first, $second ) {
+		if ( empty( $first ) || empty( $second ) ) {
+			return null;
 		}
-		return null;
+		return $first === $second;
 	}
 
 	/**

@@ -158,6 +158,9 @@ class SPPR_CLI {
 	 *
 	 * ## OPTIONS
 	 *
+	 * [<player-id>...]
+	 * : Only audit matches against these sp_player IDs. Default: all.
+	 *
 	 * [--format=<format>]
 	 * : Output format.
 	 * ---
@@ -171,17 +174,19 @@ class SPPR_CLI {
 	 * ## EXAMPLES
 	 *
 	 *     wp spr audit-name-matches
+	 *     wp spr audit-name-matches 103431
 	 *     wp spr audit-name-matches --format=csv > name-matches.csv
 	 *
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 *
-	 * @param array $args       Positional args (unused).
+	 * @param array $args       Player IDs to limit the audit to.
 	 * @param array $assoc_args Flags.
 	 * @return void
 	 */
 	public function audit_name_matches( $args, $assoc_args ) {
-		$format = isset( $assoc_args['format'] ) ? (string) $assoc_args['format'] : 'table';
-		$report = ( new SPPR_Name_Match_Audit() )->run();
+		$format     = isset( $assoc_args['format'] ) ? (string) $assoc_args['format'] : 'table';
+		$player_ids = array_values( array_filter( array_map( 'absint', (array) $args ) ) );
+		$report     = ( new SPPR_Name_Match_Audit() )->run( $player_ids );
 
 		if ( ! empty( $report['findings'] ) ) {
 			WP_CLI\Utils\format_items( $format, $report['findings'], array_keys( $report['findings'][0] ) );

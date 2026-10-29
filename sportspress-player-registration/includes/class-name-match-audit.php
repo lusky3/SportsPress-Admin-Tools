@@ -44,17 +44,18 @@ class SPPR_Name_Match_Audit {
 	/**
 	 * Judge every logged name-only match.
 	 *
+	 * @param int[] $player_ids Only matches against these players; empty for all.
 	 * @return array{scanned:int,skipped:int,findings:array<int,array<string,mixed>>}
 	 *         skipped counts rows whose order or player no longer exists.
 	 */
-	public function run() {
+	public function run( $player_ids = array() ) {
 		$report = array(
 			'scanned'  => 0,
 			'skipped'  => 0,
 			'findings' => array(),
 		);
 
-		foreach ( $this->log_rows() as $row ) {
+		foreach ( $this->log_rows( $player_ids ) as $row ) {
 			++$report['scanned'];
 			$finding = $this->audit_row( $row );
 			if ( null === $finding ) {
@@ -68,19 +69,22 @@ class SPPR_Name_Match_Audit {
 	}
 
 	/**
+	 * @param int[] $player_ids Only these players; empty for all.
 	 * @return object[] Log rows, oldest first.
 	 */
-	private function log_rows() {
+	private function log_rows( $player_ids ) {
 		global $wpdb;
-		$table        = $wpdb->prefix . 'spat_registration_logs';
-		$placeholders = implode( ',', array_fill( 0, count( self::ACTIONS ), '%s' ) );
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is internal, placeholders are %s literals.
-		$rows = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT id, timestamp, order_id, customer_name, player_id, action FROM `{$table}` WHERE player_id > 0 AND action IN ($placeholders) ORDER BY id ASC",
-				self::ACTIONS
-			)
-		);
+		$table = $wpdb->prefix . 'spat_registration_logs';
+		$args  = self::ACTIONS;
+		$where = 'player_id > 0 AND action IN (' . implode( ',', array_fill( 0, count( $args ), '%s' ) ) . ')';
+		if ( ! empty( $player_ids ) ) {
+			$where .= ' AND player_id IN (' . implode( ',', array_fill( 0, count( $player_ids ), '%d' ) ) . ')';
+			$args   = array_merge( $args, array_map( 'intval', $player_ids ) );
+		}
+		$sql = "SELECT id, timestamp, order_id, customer_name, player_id, action FROM `{$table}` WHERE {$where} ORDER BY id ASC";
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- table name is internal; every value is a placeholder.
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $args ) );
 		return (array) $rows;
 	}
 
