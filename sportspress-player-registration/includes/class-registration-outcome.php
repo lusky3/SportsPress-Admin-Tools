@@ -36,6 +36,7 @@ class SPPR_Registration_Outcome {
 		'player_creation_failed',
 		'multiple_players_found_email_conflict',
 		'multiple_players_found_name_match_requires_email',
+		'player_found_by_name_identity_conflict',
 		'failed',
 		'no_match',
 	);

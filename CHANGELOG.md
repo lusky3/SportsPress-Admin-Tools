@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Fixed
+- **[player-registration]** A name match is a candidate, not an identity: two different people with the same name could have one's order attached to the other's record, which then took on the wrong email and user link. A name-only match is now checked against the record's linked user (sp_user; post_author is not treated as identity), its stored email and the orders already linked to it (`wp_spat_registration_logs`). A contradiction is the terminal `player_found_by_name_identity_conflict` (nothing written, order left open for re-run). A match with nothing to confirm or contradict still registers, but is logged as `player_found_by_name_unverified` / `player_found_by_normalized_name_unverified`. Guests are judged by billing email.
+- **[player-registration]** Registration never overwrites identity data: a stored `spt_email` is only filled in when empty, and `link_user_to_player()` refuses a player that already belongs to another account (logged as `user_link_refused_identity_conflict`).
 - **[league-manager]** The Waitlist page showed only the first 50 entries. It is now paged (Previous / Next with a "Showing x-y of N" count), and a filter change returns to page one. The Pager is now a shared dashboard component (Payments uses it too).
 - **[player-registration]** A waitlist product is never a registration item: it sits in the Registration category, so a completed waitlist order would have registered the person as a player.
 
@@ -10,6 +12,7 @@
 - **[league-manager]** The order that puts someone on the waitlist is completed automatically once their entry is recorded (no customer email). Only orders made up entirely of waitlist products with a recorded entry are touched. Disable with the `splm_waitlist_auto_complete_orders` filter.
 
 ### Added
+- **[player-registration]** `wp spr audit-name-matches`: a read-only report that re-checks every logged `player_found_by_name` / `player_found_by_normalized_name` match against the current identity policy and lists those whose order contradicts the record's linked user, stored email or other linked orders (`[<player-id>...]` to narrow it, `--format=table|csv|json`).
 - **[league-manager]** The League Manager entry in the WordPress sidebar and the admin bar both open out into the React dashboard's pages, limited to the ones the user can open (the same rules as the dashboard navigation). The admin bar entry is renamed from League Dashboard to League Manager to match. `SPLM_Dashboard_Frontend::nav_items()` / `visible_nav_labels()` build the list; sidebar sub-items use the slug `splm-dashboard-<page>` and are resolved to the dashboard URL plus `#/<page>` by `redirect_target()`; `test-dashboard-nav.php` fails if the list drifts from `Layout.jsx` / `App.jsx`.
 - **[league-manager]** A "Complete Waitlist Orders" section in the League Manager tab of the SPAT settings page (Settings > SportsPress Admin Tools; nonce-protected form, `manage_sportspress`) completes the waitlist orders already in Processing without emailing customers, within a 20-second budget per click, and shows how many are still waiting and how many it will leave alone. The result is handed over by a two-minute per-user transient, so nothing about it is in the URL.
 

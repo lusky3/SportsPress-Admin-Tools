@@ -141,6 +141,71 @@ class SPPR_CLI {
 			sprintf( 'Dry run: %d player record(s) would be re-authored. Re-run with --write to apply.', $changed )
 		);
 	}
+
+	/**
+	 * Report past name-only matches that may have linked an order to the wrong person.
+	 *
+	 * Re-judges every registration logged as player_found_by_name or
+	 * player_found_by_normalized_name (and their _unverified forms) with the
+	 * current identity policy, and lists the ones where the order's customer or
+	 * billing email contradicts the player's linked user (sp_user), stored email
+	 * (spt_email) or the other orders linked to it.
+	 *
+	 * READ-ONLY: this changes nothing. It judges against the records as they are
+	 * now, so where a wrong match also overwrote the record's email and user link,
+	 * the flagged rows are usually the real owner's orders; other_orders names the
+	 * orders on the other side.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [<player-id>...]
+	 * : Only audit matches against these sp_player IDs. Default: all.
+	 *
+	 * [--format=<format>]
+	 * : Output format.
+	 * ---
+	 * default: table
+	 * options:
+	 *   - table
+	 *   - csv
+	 *   - json
+	 * ---
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp spr audit-name-matches
+	 *     wp spr audit-name-matches 103431
+	 *     wp spr audit-name-matches --format=csv > name-matches.csv
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param array $args       Player IDs to limit the audit to.
+	 * @param array $assoc_args Flags.
+	 * @return void
+	 */
+	public function audit_name_matches( $args, $assoc_args ) {
+		$format     = isset( $assoc_args['format'] ) ? (string) $assoc_args['format'] : 'table';
+		$player_ids = array_values( array_filter( array_map( 'absint', (array) $args ) ) );
+		$report     = ( new SPPR_Name_Match_Audit() )->run( $player_ids );
+
+		if ( ! empty( $report['findings'] ) ) {
+			WP_CLI\Utils\format_items( $format, $report['findings'], array_keys( $report['findings'][0] ) );
+		}
+
+		$summary = sprintf(
+			'Scanned %d name-only match(es): %d flagged, %d skipped (order or player no longer exists). Nothing was changed.',
+			$report['scanned'],
+			count( $report['findings'] ),
+			$report['skipped']
+		);
+		// Keep machine-readable output clean: the summary goes to STDERR there.
+		if ( 'table' === $format ) {
+			WP_CLI::log( $summary );
+			return;
+		}
+		fwrite( STDERR, $summary . "\n" );
+	}
 }
 
 WP_CLI::add_command( 'spr backfill-owners', array( new SPPR_CLI(), 'backfill_owners' ) );
+WP_CLI::add_command( 'spr audit-name-matches', array( new SPPR_CLI(), 'audit_name_matches' ) );

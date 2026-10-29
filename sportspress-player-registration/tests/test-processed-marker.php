@@ -126,8 +126,10 @@ function update_post_meta( $id, $key, $value ) {
 	}
 	return true;
 }
-function get_post_meta() {
-	return '';
+$post_meta = array(); // ID => key => value; only what a test sets.
+function get_post_meta( $id, $key = '', $single = false ) {
+	global $post_meta;
+	return isset( $post_meta[ (int) $id ][ $key ] ) ? $post_meta[ (int) $id ][ $key ] : '';
 }
 function get_terms( $args ) {
 	return array();
@@ -167,6 +169,12 @@ $users = array();
 function get_user_by( $field, $id ) {
 	global $users;
 	return isset( $users[ $id ] ) ? $users[ $id ] : false;
+}
+function get_userdata( $id ) {
+	return get_user_by( 'id', $id );
+}
+function user_can( $user_id, $cap ) {
+	return false;
 }
 class Mock_Roles {
 	public function is_role( $role ) {
@@ -241,6 +249,8 @@ class SPAT_Player {
 
 require_once dirname( __FILE__ ) . '/../../sportspress-admin-tools/includes/class-season.php';
 require_once dirname( __FILE__ ) . '/../includes/class-database.php';
+require_once dirname( __FILE__ ) . '/../includes/class-identity-check.php';
+require_once dirname( __FILE__ ) . '/../includes/class-registration-outcome.php';
 require_once dirname( __FILE__ ) . '/../includes/class-player-registration.php';
 
 class Mock_Product {
@@ -377,7 +387,8 @@ function admin_rerun( $reg, $id ) {
 	$reg->process_completed_order( $id );
 }
 function reset_state() {
-	global $actions, $mock_cache, $order_store, $wpdb, $log_rows, $role_rows, $season_sets, $insert_fails, $mock_options, $mock_titles, $sp_user_links, $posts, $users, $full_save_off;
+	global $actions, $mock_cache, $order_store, $wpdb, $log_rows, $role_rows, $season_sets, $insert_fails, $mock_options, $mock_titles, $sp_user_links, $posts, $users, $full_save_off, $post_meta;
+	$post_meta        = array();
 	$sp_user_links    = array();
 	$actions          = array();
 	$mock_cache       = array();
@@ -573,6 +584,33 @@ $reg->process_completed_order( 61 );
 assert_test( '' === saved( 61, '_spr_processed' ), 'requires_email: order NOT marked processed' );
 assert_test( 1 === count( rows_for( 61, 'multiple_players_found_name_match_requires_email' ) ), 'requires_email: logged' );
 assert_test( array() === fired( 'spat_player_registered' ), 'requires_email: no player created' );
+
+// A name match to a record that belongs to another account: player 65 is
+// linked to user 7; order 62's customer is user 8. Same order of events as the
+// "Steve Long" incident.
+reset_state();
+add_player( 65 );
+$post_meta[65]['sp_user'] = 7;
+$users[7]            = new Mock_User();
+$users[8]            = new Mock_User();
+$wpdb->like_rows     = array( (object) array( 'ID' => 65, 'post_title' => 'Pat Smith (C)' ) );
+order_with( 62, array( 621 => 1 ), array( 'user' => 8 ) );
+$reg->process_completed_order( 62 );
+assert_test( '' === saved( 62, '_spr_processed' ), 'identity conflict: order NOT marked processed' );
+assert_test( 1 === count( rows_for( 62, 'player_found_by_name_identity_conflict' ) ), 'identity conflict: logged' );
+assert_test( array() === saved_items( 62 ) && array() === $sp_user_links && array() === $season_sets, 'identity conflict: nothing linked, written or assigned' );
+assert_test(
+	1 === count( fired( 'spr_registration_outcome' ) ) && 'player_found_by_name_identity_conflict' === fired( 'spr_registration_outcome' )[0][1][1],
+	'identity conflict: reported as the outcome'
+);
+assert_test( ! SPPR_Registration_Outcome::is_success( 'player_found_by_name_identity_conflict' ), 'identity conflict: counted as a failure' );
+
+// An admin sorts the records out (the record really was user 8's) and re-runs.
+$post_meta[65]['sp_user'] = 8;
+clear_logs();
+admin_rerun( $reg, 62 );
+assert_test( '1' === saved( 62, '_spr_processed' ), 'identity conflict resolved: re-run registers the order' );
+assert_test( 1 === count( rows_for( 62, 'player_found_by_normalized_name' ) ), 'identity conflict resolved: the owner verifies the match' );
 
 // -- name_rejected never marks ---------------------------------------------
 echo "\n--- name_rejected ---\n";

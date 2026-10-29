@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.3.1
+Stable tag: 1.4.0
 License: GPLv2 or later
 
 Automatically creates SportsPress player records from WooCommerce registration orders.
@@ -40,6 +40,14 @@ SportsPress Player Registration automatically creates SportsPress player records
 4. Configure automatic creation and role assignment in settings
 
 == Changelog ==
+
+= 1.4.0 =
+* Fix: a name match is now a candidate, not an identity. Before it is accepted, the record is checked against what is already known about its owner: its linked user (sp_user), its stored email, and the orders already linked to it. Two different people with the same name could previously have one's order attached to the other's record, which then took on the wrong email and user link.
+* New: `player_found_by_name_identity_conflict`. The record belongs to a different account, has a different stored email, or has earlier orders from a different customer with nothing in this order to confirm it. Nothing is written and the order stays open for manual review and re-run, like the other conflicts.
+* New: a name match that nothing confirms or contradicts (a legacy record with no email, user link or past orders) still registers, but is logged as `player_found_by_name_unverified` / `player_found_by_normalized_name_unverified` so it can be audited.
+* Guest checkout is judged by billing email: against the owning account's email and the billing emails of earlier orders.
+* Fix: identity data is never overwritten. A stored email is only filled in when empty, and a player already linked to another account keeps its linked user and author. The refused link is logged as `user_link_refused_identity_conflict`.
+* New: `wp spr audit-name-matches` (read-only) re-checks every past name-only match and lists the ones where the order's customer contradicts the record's linked user, stored email or other linked orders. Pass player IDs to audit only those records; supports `--format=table|csv|json`.
 
 = 1.3.1 =
 * Fix: a waitlist product is never treated as a registration. It sits in the Registration category, so completing a waitlist order would have registered the person as a player while they were still waiting. Needed now that League Manager completes waitlist orders once the entry is recorded.
