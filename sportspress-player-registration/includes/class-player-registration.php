@@ -517,9 +517,7 @@ class SPPR_Player_Registration {
 			// players whenever auto-update was off, even if auto-season was on. Now an
 			// existing player still gets the season term when spr_auto_season is on.
 			// wp_set_object_terms() with append=true is idempotent, so re-runs are safe.
-			if ( get_option( 'spr_auto_season', '1' ) === '1' ) {
-				$this->add_season_to_player( $player_id, $season );
-			}
+			$this->maybe_add_season( $player_id, $season );
 			return array(
 				'player_id' => $player_id,
 				'action' => $action,
@@ -533,18 +531,9 @@ class SPPR_Player_Registration {
 
 		// Create new player
 		if ( ! $player_id && get_option( 'spr_auto_create', '1' ) === '1' ) {
-			$result = $this->create_new_player( $customer_name, $customer_email, $user_id );
+			$result = $this->create_registered_player( $customer_name, $customer_email, $user_id, $position, $season );
 			$player_id = $result['player_id'];
 			$action = $result['action'];
-
-			// Fire notification for newly created player
-			if ( $player_id && $action === 'player_created' ) {
-				// Apply the detected position (e.g. goalie) to the new player.
-				// Only on create so a re-run can't clobber an admin-set position.
-				$this->assign_position( $player_id, $position );
-
-				do_action( 'spat_player_registered', $customer_name, implode( ', ', SPAT_Player::team_names( $player_id ) ), $season );
-			}
 		} elseif ( ! $player_id ) {
 			// Auto-create is off and nobody matched. This used to come back with an
 			// empty action, so nothing was logged and the order looked registered.
@@ -555,14 +544,53 @@ class SPPR_Player_Registration {
 			);
 		}
 
-		if ( $player_id && get_option( 'spr_auto_season', '1' ) === '1' ) {
-			$this->add_season_to_player( $player_id, $season );
-		}
+		$this->maybe_add_season( $player_id, $season );
 
 		return array(
 			'player_id' => $player_id,
 			'action' => $action,
 		);
+	}
+
+	/**
+	 * Add the season to a player when automatic season assignment is on.
+	 *
+	 * @param int|null $player_id Player post ID (nothing happens without one).
+	 * @param string   $season    Season code.
+	 * @return void
+	 */
+	private function maybe_add_season( $player_id, $season ) {
+		if ( $player_id && get_option( 'spr_auto_season', '1' ) === '1' ) {
+			$this->add_season_to_player( $player_id, $season );
+		}
+	}
+
+	/**
+	 * Create the player for a registration nobody matched, apply the detected
+	 * position and announce it.
+	 *
+	 * @SuppressWarnings(PHPMD.StaticAccess)
+	 *
+	 * @param string $customer_name  Validated billing name.
+	 * @param string $customer_email Billing email.
+	 * @param int    $user_id        Customer user ID.
+	 * @param string $position       Detected position keyword.
+	 * @param string $season         Season code.
+	 * @return array{player_id:int|null,action:string} create_new_player() result.
+	 */
+	private function create_registered_player( $customer_name, $customer_email, $user_id, $position, $season ) {
+		$result = $this->create_new_player( $customer_name, $customer_email, $user_id );
+
+		// Fire notification for newly created player
+		if ( $result['player_id'] && $result['action'] === 'player_created' ) {
+			// Apply the detected position (e.g. goalie) to the new player.
+			// Only on create so a re-run can't clobber an admin-set position.
+			$this->assign_position( $result['player_id'], $position );
+
+			do_action( 'spat_player_registered', $customer_name, implode( ', ', SPAT_Player::team_names( $result['player_id'] ) ), $season );
+		}
+
+		return $result;
 	}
 
 	/**
