@@ -226,6 +226,14 @@ class SPPR_Admin {
 				$action_text = 'Found by Email';
 			} elseif ( $log->action === 'player_found_by_normalized_name' ) {
 				$action_text = 'Found by Name (suffix ignored)';
+			} elseif ( $log->action === 'player_found_by_name_unverified' ) {
+				$action_text = 'Found by Name (unverified)';
+			} elseif ( $log->action === 'player_found_by_normalized_name_unverified' ) {
+				$action_text = 'Found by Name, suffix ignored (unverified)';
+			} elseif ( $log->action === 'player_found_by_name_identity_conflict' ) {
+				$action_text = 'Name Match Belongs to Someone Else - Manual Review Required';
+			} elseif ( $log->action === 'user_link_refused_identity_conflict' ) {
+				$action_text = 'User Link Refused - Player Belongs to Another Account';
 			} elseif ( $log->action === 'player_created' ) {
 				$action_text = 'Created New Player';
 			} elseif ( $log->action === 'multiple_players_found_name_match_requires_email' ) {

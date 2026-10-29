@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SportsPress Player Registration (Child Plugin)
  * Description: Child plugin for SportsPress Admin Tools - Player Registration module
- * Version: 1.3.1
+ * Version: 1.4.0
  * Author: Cody (lusky3)
  * Text Domain: sportspress-player-registration
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'SPPR_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPPR_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPPR_VERSION', '1.3.1' );
+define( 'SPPR_VERSION', '1.4.0' );
 
 // Native WordPress updates, served from this repository's releases.
 //
@@ -155,6 +155,7 @@ class SportsPress_Player_Registration {
 		}
 
 		require_once SPPR_PLUGIN_PATH . 'includes/class-database.php';
+		require_once SPPR_PLUGIN_PATH . 'includes/class-identity-check.php';
 		require_once SPPR_PLUGIN_PATH . 'includes/class-player-registration.php';
 		require_once SPPR_PLUGIN_PATH . 'includes/class-admin.php';
 
@@ -170,6 +171,7 @@ class SportsPress_Player_Registration {
 		// declares nothing outside WP-CLI, but skip the include entirely on web
 		// requests so it never costs anything there.
 		if ( class_exists( 'WP_CLI' ) ) {
+			require_once SPPR_PLUGIN_PATH . 'includes/class-name-match-audit.php';
 			require_once SPPR_PLUGIN_PATH . 'includes/class-cli.php';
 		}
 

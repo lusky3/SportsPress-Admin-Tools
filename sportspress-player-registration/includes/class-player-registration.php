@@ -170,7 +170,7 @@ class SPPR_Player_Registration {
 					continue;
 				}
 
-				$result = $this->find_or_create_player( $customer_name, $season, $item['position'], $customer_email, $user_id );
+				$result = $this->find_or_create_player( $customer_name, $season, $item['position'], $customer_email, $user_id, $order_id );
 
 				if ( $result['player_id'] ) {
 					$resolved_player_id = $result['player_id'];
@@ -217,7 +217,12 @@ class SPPR_Player_Registration {
 				if ( get_option( 'spr_auto_role', '1' ) === '1' ) {
 					$this->assign_player_role( $user_id );
 				}
-				$this->link_user_to_player( $user_id, $resolved_player_id );
+				if ( ! $this->link_user_to_player( $user_id, $resolved_player_id ) ) {
+					// The record already belongs to another account. The registration
+					// stands (it was matched by email, or on a re-run), but the link is
+					// left alone and logged so an admin can see it.
+					SPPR_Database::log_registration_activity( $order_id, $customer_name, $resolved_player_id, '', '', 'user_link_refused_identity_conflict' );
+				}
 			}
 
 			// Mark the order processed only when EVERY registration item linked a
@@ -467,11 +472,12 @@ class SPPR_Player_Registration {
 	/**
 	 * @SuppressWarnings(PHPMD.StaticAccess)
 	 */
-	private function find_or_create_player( $customer_name, $season, $position, $customer_email = '', $user_id = 0 ) {
+	private function find_or_create_player( $customer_name, $season, $position, $customer_email = '', $user_id = 0, $order_id = 0 ) {
 		$player_id = null;
 		$action = '';
 
 		$match = $this->find_existing_player( $customer_name, $customer_email );
+		$match = $this->apply_identity_policy( $match, $customer_email, $user_id, $order_id );
 		$player_id = $match['player_id'];
 		$action = $match['action'];
 
@@ -488,7 +494,8 @@ class SPPR_Player_Registration {
 		// stops here, and process_completed_order() already refuses to mark such an
 		// order processed so a human can resolve it and re-run.
 		if ( $action === 'multiple_players_found_email_conflict'
-			|| $action === 'multiple_players_found_name_match_requires_email' ) {
+			|| $action === 'multiple_players_found_name_match_requires_email'
+			|| $action === 'player_found_by_name_identity_conflict' ) {
 			return array(
 				'player_id' => 0,
 				'action' => $action,
@@ -510,8 +517,12 @@ class SPPR_Player_Registration {
 			);
 		}
 
-		// Auto-update is on (or we are about to create) — safe to persist email metadata.
-		if ( $player_id && $this->email_meta_enabled() && ! empty( $customer_email ) ) {
+		// Auto-update is on (or we are about to create). Fill in a MISSING email
+		// only: a stored address is identity data, and overwriting it with this
+		// customer's is how one person's record took on another's email. A
+		// different stored email never gets here anyway (it is a conflict above).
+		if ( $player_id && $this->email_meta_enabled() && ! empty( $customer_email )
+			&& '' === (string) get_post_meta( $player_id, 'spt_email', true ) ) {
 			update_post_meta( $player_id, 'spt_email', strtolower( sanitize_email( $customer_email ) ) );
 		}
 
@@ -547,6 +558,59 @@ class SPPR_Player_Registration {
 			'player_id' => $player_id,
 			'action' => $action,
 		);
+	}
+
+	/**
+	 * Treat a name match as a candidate: check it against what the record already
+	 * says about its owner before accepting it.
+	 *
+	 * Only the two name-only actions are checked. An email match (or a name
+	 * match picked out by email) is already corroborated. A contradiction becomes
+	 * the terminal 'player_found_by_name_identity_conflict': nothing is written,
+	 * the order is not marked processed, and an admin re-runs it once the records
+	 * are sorted out. A match nothing can confirm or contradict still links, but
+	 * its action gains an '_unverified' suffix so it can be audited.
+	 *
+	 * @see SPPR_Identity_Check
+	 *
+	 * @param array  $match          find_existing_player() result.
+	 * @param string $customer_email Billing email.
+	 * @param int    $user_id        Customer user ID (0 for a guest).
+	 * @param int    $order_id       Order being processed.
+	 * @return array{player_id:int|null,action:string}
+	 */
+	private function apply_identity_policy( $match, $customer_email, $user_id, $order_id ) {
+		$name_only = array( 'player_found_by_name', 'player_found_by_normalized_name' );
+		if ( empty( $match['player_id'] ) || ! in_array( $match['action'], $name_only, true ) ) {
+			return $match;
+		}
+
+		$check  = new SPPR_Identity_Check( $this->email_meta_enabled() );
+		$result = $check->assess( (int) $match['player_id'], (int) $user_id, (string) $customer_email, (int) $order_id );
+
+		if ( SPPR_Identity_Check::CONFLICT === $result['verdict'] ) {
+			if ( class_exists( 'SPAT_Logger' ) && method_exists( 'SPAT_Logger', 'warn' ) ) {
+				SPAT_Logger::warn(
+					'player_registration',
+					'name match refused: the record belongs to someone else',
+					array(
+						'order_id'     => (int) $order_id,
+						'player_id'    => (int) $match['player_id'],
+						'reasons'      => implode( ',', $result['reasons'] ),
+						'other_orders' => implode( ',', $result['orders'] ),
+					)
+				);
+			}
+			return array(
+				'player_id' => 0,
+				'action' => 'player_found_by_name_identity_conflict',
+			);
+		}
+
+		if ( SPPR_Identity_Check::UNVERIFIED === $result['verdict'] ) {
+			$match['action'] .= '_unverified';
+		}
+		return $match;
 	}
 
 	/**
@@ -1043,16 +1107,38 @@ class SPPR_Player_Registration {
 	 * site opts in via spr_owner_can_edit. That guard is hooked from the main plugin
 	 * file, above the module gate, so it holds even when this class never loads.
 	 *
+	 * IDENTITY: a record already linked (sp_user) to a DIFFERENT existing account
+	 * is never re-pointed at this one: neither sp_user nor post_author changes,
+	 * the refusal is logged and false is returned. Without such a link the author
+	 * is only whoever created the record (on the live site mostly two old staff
+	 * accounts), so authorship is taken over as before.
+	 *
 	 * @param int $user_id   WordPress user ID.
 	 * @param int $player_id Player post ID.
-	 * @return void
+	 * @return bool False when the link was refused.
 	 */
 	private function link_user_to_player( $user_id, $player_id ) {
+		$owner = ( new SPPR_Identity_Check() )->owner_user_id( $player_id );
+		if ( $owner > 0 && $owner !== (int) $user_id ) {
+			if ( class_exists( 'SPAT_Logger' ) && method_exists( 'SPAT_Logger', 'warn' ) ) {
+				SPAT_Logger::warn(
+					'player_registration',
+					'user link refused: the player already belongs to another account',
+					array(
+						'player_id' => (int) $player_id,
+						'user_id'   => (int) $user_id,
+						'owner_id'  => (int) $owner,
+					)
+				);
+			}
+			return false;
+		}
+
 		update_post_meta( $player_id, 'sp_user', $user_id );
 
 		$player = get_post( $player_id );
 		if ( ! $player || (int) $player->post_author === (int) $user_id ) {
-			return;
+			return true;
 		}
 
 		// wp_update_post(), never a raw UPDATE: authorship changes have to run the
@@ -1075,6 +1161,7 @@ class SPPR_Player_Registration {
 			}
 			SPAT_Logger::error( 'player_registration', 'Failed to set player post_author', $context );
 		}
+		return true;
 	}
 
 	private function validate_and_clean_name( $name ) {
