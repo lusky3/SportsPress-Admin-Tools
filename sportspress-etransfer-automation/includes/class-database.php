@@ -201,26 +201,32 @@ class SPET_Database {
 	 * matched (order_id set) or waiting for review, never hidden. Rows that are
 	 * neither (e.g. duplicate-webhook audit rows) are left out.
 	 *
-	 * @param string $email Lower-cased sender email.
-	 * @param int    $limit Max rows.
+	 * @param string[] $emails Lower-cased sender emails; a row sent from any of them counts.
+	 * @param int      $limit  Max rows.
 	 * @return array Rows (id, timestamp, from_name, from_email, amount, reference_number, order_id), newest first.
 	 */
-	public static function get_customer_etransfer_logs( $email, $limit = 20 ) {
+	public static function get_customer_etransfer_logs( array $emails, $limit = 20 ) {
 		global $wpdb;
+
+		$emails = array_values( array_unique( array_map( 'strval', $emails ) ) );
+		if ( array() === $emails ) {
+			return array();
+		}
 
 		$table_name = $wpdb->prefix . 'spat_etransfer_logs';
 
 		list( $review_sql, $review_params ) = self::review_filter_sql();
 
-		$sql = "SELECT id, timestamp, from_name, from_email, amount, reference_number, order_id
+		$email_sql = implode( ', ', array_fill( 0, count( $emails ), '%s' ) );
+		$sql       = "SELECT id, timestamp, from_name, from_email, amount, reference_number, order_id
 			FROM $table_name
-			WHERE from_email = %s
+			WHERE from_email IN ($email_sql)
 			AND result NOT LIKE %s
 			AND (order_id > 0 OR ((order_id IS NULL OR order_id = 0) AND $review_sql))
 			ORDER BY timestamp DESC, id DESC
 			LIMIT %d";
 
-		$params = array_merge( array( (string) $email, 'Hidden%' ), $review_params, array( intval( $limit ) ) );
+		$params = array_merge( $emails, array( 'Hidden%' ), $review_params, array( intval( $limit ) ) );
 
 		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $params ) );
 		return is_array( $rows ) ? $rows : array();
