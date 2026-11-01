@@ -405,27 +405,30 @@ class SPLM_Waitlist_Database {
 	}
 
 	/**
-	 * Every entry for an email whose status is one of $statuses.
+	 * Every entry under any of the emails whose status is one of $statuses.
 	 *
 	 * Unlike find_active_for_email(), the caller picks the statuses: the
 	 * FreeScout waitlist section needs `expired` (so it can be re-offered)
-	 * and still excludes `cancelled`.
+	 * and still excludes `cancelled`. One query, so an entry is returned once
+	 * however many of the addresses it matches.
 	 *
-	 * @param string   $email    Email address (case-insensitive).
+	 * @param string[] $emails   Email addresses (case-insensitive); empty returns nothing.
 	 * @param string[] $statuses Statuses to include; empty returns nothing.
 	 * @return object[] Rows ordered by season, then id.
 	 */
-	public static function find_for_email_with_statuses( string $email, array $statuses ): array {
+	public static function find_for_emails_with_statuses( array $emails, array $statuses ): array {
 		global $wpdb;
+		$emails   = array_values( array_unique( array_map( 'strtolower', array_map( 'strval', $emails ) ) ) );
 		$statuses = array_values( array_intersect( $statuses, self::statuses() ) );
-		if ( array() === $statuses ) {
+		if ( array() === $emails || array() === $statuses ) {
 			return array();
 		}
-		$placeholders = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
-		$rows         = $wpdb->get_results(
+		$email_sql  = implode( ', ', array_fill( 0, count( $emails ), '%s' ) );
+		$status_sql = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
+		$rows       = $wpdb->get_results(
 			$wpdb->prepare(
-				'SELECT * FROM ' . self::table_name() . ' WHERE email = %s AND status IN (' . $placeholders . ') ORDER BY season ASC, id ASC', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQLPlaceholders -- table name and a generated placeholder list; every value is bound.
-				array_merge( array( strtolower( $email ) ), $statuses )
+				'SELECT * FROM ' . self::table_name() . ' WHERE email IN (' . $email_sql . ') AND status IN (' . $status_sql . ') ORDER BY season ASC, id ASC', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQLPlaceholders -- table name and generated placeholder lists; every value is bound.
+				array_merge( $emails, $statuses )
 			)
 		);
 		return is_array( $rows ) ? $rows : array();

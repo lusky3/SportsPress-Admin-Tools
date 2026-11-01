@@ -48,15 +48,19 @@ class SPLM_FreeScout_Waitlist {
 	/**
 	 * Build sections.waitlist.
 	 *
-	 * @param int[]  $player_ids Resolved player ids (unused).
-	 * @param string $email      Lower-cased customer email.
+	 * Entries under any of the customer's addresses, each once. Each names
+	 * the address and registrant it is under, since one customer's addresses
+	 * can hold entries for different people (a parent and a child).
+	 *
+	 * @param int[]    $player_ids Resolved player ids (unused).
+	 * @param string[] $emails     The customer's lower-cased addresses.
 	 * @return array
 	 */
-	public static function waitlist_section( array $player_ids, string $email ): array {
+	public static function waitlist_section( array $player_ids, array $emails ): array {
 		unset( $player_ids );
 
-		$rows = SPLM_Waitlist_Database::find_for_email_with_statuses(
-			$email,
+		$rows = SPLM_Waitlist_Database::find_for_emails_with_statuses(
+			$emails,
 			array(
 				SPLM_Waitlist_Database::STATUS_QUEUED,
 				SPLM_Waitlist_Database::STATUS_OFFERED,
@@ -76,6 +80,8 @@ class SPLM_FreeScout_Waitlist {
 				'offered_at' => self::iso( $row->offered_at ),
 				'expires_at' => self::iso( $row->expires_at ),
 				'has_target' => (int) $row->target_product_id > 0,
+				'email'      => (string) $row->email,
+				'name'       => (string) $row->name,
 			);
 		}
 
