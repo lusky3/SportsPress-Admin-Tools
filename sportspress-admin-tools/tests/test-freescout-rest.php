@@ -65,6 +65,9 @@ class WP_Error {
 	public function get_error_data() {
 		return $this->data;
 	}
+	public function get_error_message() {
+		return $this->message;
+	}
 }
 function is_wp_error( $thing ) {
 	return $thing instanceof WP_Error;
@@ -194,12 +197,15 @@ $bad_bodies = array(
 	'emails is an object'                    => '{"emails":{"main":"a@b.co"}}',
 	'empty list'                             => '{"emails":[]}',
 	'six distinct addresses'                 => '{"emails":["a1@b.co","a2@b.co","a3@b.co","a4@b.co","a5@b.co","a6@b.co"]}',
-	'an invalid address'                     => '{"emails":["a@b.co","not-an-email"]}',
-	'a non-string entry'                     => '{"emails":["a@b.co",42]}',
-	'a null entry'                           => '{"emails":[null]}',
-	'a nested list'                          => '{"emails":[["a@b.co"]]}',
-	'a blank entry'                          => '{"emails":["a@b.co","  "]}',
-	'an address sanitize_email would change' => '{"emails":["a b@c.co"]}',
+	'six distinct valid among invalid ones'  => '{"emails":["a1@b.co","x","a2@b.co","a3@b.co",7,"a4@b.co","a5@b.co","a6@b.co"]}',
+	'more than 50 entries'                   => '{"emails":[' . implode( ',', array_fill( 0, 51, '"a@b.co"' ) ) . ']}',
+	'an invalid primary'                     => '{"emails":["not-an-email","a@b.co"]}',
+	'a non-string primary'                   => '{"emails":[42,"a@b.co"]}',
+	'a null primary'                         => '{"emails":[null]}',
+	'a nested list as primary'               => '{"emails":[["a@b.co"]]}',
+	'a blank primary'                        => '{"emails":["  ","a@b.co"]}',
+	'a primary sanitize_email would change'  => '{"emails":["a b@c.co"]}',
+	'every entry invalid'                    => '{"emails":["x","y",false]}',
 );
 $GLOBALS['spat_ids_asked'] = array();
 foreach ( $bad_bodies as $label => $body ) {
@@ -207,9 +213,22 @@ foreach ( $bad_bodies as $label => $body ) {
 	check( "$label gives 400 bad_request", 'spat_freescout_bad_request' === code_of( $res ) && 400 === status_of( $res ) );
 }
 check( 'a refused request looks nobody up', array() === $GLOBALS['spat_ids_asked'] );
+$res = $rest->handle_customer( signed_request( '{"emails":["not-an-email"]}', $secret ) );
+check( 'a bad primary names index 0 only, never the value', is_wp_error( $res ) && false !== strpos( $res->get_error_message(), 'emails[0]' ) && false === strpos( $res->get_error_message(), 'not-an-email' ) );
 $res = $rest->handle_customer( signed_request( '{"emails":["a1@b.co","a2@b.co","a3@b.co","a4@b.co","a5@b.co","A1@B.co"," a2@b.co "]}', $secret ) );
 check( 'five distinct addresses after de-duplication are accepted', ! is_wp_error( $res ) && 200 === $res->get_status() );
 check( 'duplicates (any case, padded) are dropped, order kept', array( 'a1@b.co', 'a2@b.co', 'a3@b.co', 'a4@b.co', 'a5@b.co' ) === ( is_wp_error( $res ) ? null : ( $res->get_data()['emails'] ?? null ) ) );
+check( 'duplicates are not reported as ignored; ignored is an empty list', array() === ( is_wp_error( $res ) ? null : ( $res->get_data()['ignored'] ?? null ) ) );
+$res = $rest->handle_customer( signed_request( '{"emails":["Main@B.co","not-an-email",42,"  ",null,"Other@B.co","main@b.co","a b@c.co"]}', $secret ) );
+$got = is_wp_error( $res ) ? array() : $res->get_data();
+check( 'invalid secondary entries do not refuse the request', ! is_wp_error( $res ) && 200 === $res->get_status() );
+check( 'invalid secondary entries are skipped', array( 'main@b.co', 'other@b.co' ) === ( $got['emails'] ?? null ) );
+check( 'ignored lists the skipped entries by request index (not duplicates)', array( 1, 2, 3, 4, 7 ) === ( $got['ignored'] ?? null ) );
+$res = $rest->handle_customer( signed_request( '{"emails":["a1@b.co","x","a2@b.co","a3@b.co",7,"a4@b.co","a5@b.co"]}', $secret ) );
+check( 'the cap counts valid addresses only: five valid among invalid ones is accepted', ! is_wp_error( $res ) && array( 1, 4 ) === ( $res->get_data()['ignored'] ?? null ) );
+$GLOBALS['spat_ids_asked'] = array();
+$rest->handle_customer( signed_request( '{"emails":["solo@b.co","bad"]}', $secret ) );
+check( 'an ignored entry is never looked up', array( 'solo@b.co' ) === $GLOBALS['spat_ids_asked'] );
 
 echo "customer\n";
 $GLOBALS['spat_filters']['spat_freescout_providers'][] = function ( $providers ) {
