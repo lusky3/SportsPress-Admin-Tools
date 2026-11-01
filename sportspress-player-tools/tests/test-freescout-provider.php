@@ -16,6 +16,7 @@ $GLOBALS['t_obj_terms'] = array(); // id => taxonomy => list of names.
 $GLOBALS['t_lists']    = array();  // list id => array( team_id, season_id ).
 $GLOBALS['t_filters']  = array();
 $GLOBALS['t_event_args'] = null;
+$GLOBALS['t_users']      = array(); // user id => object (user_email).
 
 class WP_Error {}
 function is_wp_error( $t ) {
@@ -38,6 +39,9 @@ function get_post_meta( $id, $key, $single = false ) {
 		return $GLOBALS['t_multi'][ $id ][ $key ] ?? array();
 	}
 	return $GLOBALS['t_meta'][ $id ][ $key ] ?? '';
+}
+function get_userdata( $id ) {
+	return $GLOBALS['t_users'][ (int) $id ] ?? false;
 }
 function get_term( $id, $tax ) {
 	if ( ! isset( $GLOBALS['t_terms'][ $tax ][ $id ] ) ) {
@@ -193,7 +197,7 @@ function apply_providers( $p ) {
 assert_test( isset( $providers['player'] ) && is_callable( $providers['player'] ), 'registers providers[player]' );
 
 echo "\n=== Assignments ===\n";
-$sec = SPT_FreeScout_Provider::player_section( array( 1 ), 'jordan.smith@example.com' );
+$sec = SPT_FreeScout_Provider::player_section( array( 1 ), array( 'jordan.smith@example.com' ) );
 assert_test( 'W2025-26' === $sec['current_season'], 'current_season is the term name' );
 $p1 = $sec['players'][0];
 assert_test( 2 === count( $p1['assignments'] ), 'two assignments (junk/0-league entries skipped)' );
@@ -219,7 +223,7 @@ assert_test(
 );
 
 echo "\n=== Old season only ===\n";
-$sec2 = SPT_FreeScout_Provider::player_section( array( 2 ), 'a@b.c' );
+$sec2 = SPT_FreeScout_Provider::player_section( array( 2 ), array( 'a@b.c' ) );
 $p2   = $sec2['players'][0];
 assert_test( 1 === count( $p2['assignments'] ) && false === $p2['assignments'][0]['current'], 'no assignment is current' );
 assert_test( true === $p2['assignments'][0]['captain'], 'captain judged per its own season list' );
@@ -245,18 +249,18 @@ $GLOBALS['t_meta'][4] = array(
 		20 => array( 88 => 503 ), // Hawks: next game in 2 days (7003).
 	),
 );
-$two = SPT_FreeScout_Provider::player_section( array( 4 ), 'two@x.y' )['players'][0]['next_game'];
+$two = SPT_FreeScout_Provider::player_section( array( 4 ), array( 'two@x.y' ) )['players'][0]['next_game'];
 assert_test( null !== $two && 7003 === $two['event_id'], 'two current teams: earliest game across both' );
 assert_test( null !== $two && 'Otters' === $two['opponent'], 'two current teams: opponent is the other side of that game' );
 assert_test( array( 501, 503 ) === $GLOBALS['t_event_args']['meta_query'][0]['value'] && 'IN' === ( $GLOBALS['t_event_args']['meta_query'][0]['compare'] ?? '' ), 'one query over all current teams (IN)' );
 $GLOBALS['t_multi'][7001]['sp_team'] = array( 501, 502 );
 unset( $GLOBALS['t_obj_terms'][7001]['sp_venue'] );
-$sec3 = SPT_FreeScout_Provider::player_section( array( 3 ), 'x@y.z' );
+$sec3 = SPT_FreeScout_Provider::player_section( array( 3 ), array( 'x@y.z' ) );
 assert_test( '' === $sec3['players'][0]['next_game']['venue'], 'venue is empty string when none' );
 assert_test( false === $sec3['players'][0]['assignments'][0]['captain'], 'non-captain on a captained team list' );
 $GLOBALS['t_posts'][7001]->post_date_gmt = '2020-01-01 00:00:00';
 $GLOBALS['t_posts'][7002]->post_date_gmt = '2020-01-02 00:00:00';
-$sec4 = SPT_FreeScout_Provider::player_section( array( 3 ), 'x@y.z' );
+$sec4 = SPT_FreeScout_Provider::player_section( array( 3 ), array( 'x@y.z' ) );
 assert_test( null === $sec4['players'][0]['next_game'], 'next_game null when nothing upcoming' );
 
 echo "\n=== Captain: active list / drafts ===\n";
@@ -265,8 +269,8 @@ $GLOBALS['t_lists'][9003]               = array( 501, 88, 'publish' );
 $GLOBALS['t_lists'][9004]               = array( 501, 88, 'draft' );
 $GLOBALS['t_meta'][9003]['spt_captain'] = 3;
 $GLOBALS['t_meta'][9004]['spt_captain'] = 3;
-$cap3 = SPT_FreeScout_Provider::player_section( array( 3 ), 'x@y.z' )['players'][0]['assignments'][0]['captain'];
-$cap1 = SPT_FreeScout_Provider::player_section( array( 1 ), 'x@y.z' )['players'][0]['assignments'];
+$cap3 = SPT_FreeScout_Provider::player_section( array( 3 ), array( 'x@y.z' ) )['players'][0]['assignments'][0]['captain'];
+$cap1 = SPT_FreeScout_Provider::player_section( array( 1 ), array( 'x@y.z' ) )['players'][0]['assignments'];
 $cap1 = array_values(
 	array_filter(
 		$cap1,
@@ -279,7 +283,7 @@ assert_test( false === $cap3, 'current: non-active published/draft lists do not 
 assert_test( true === $cap1, 'current: only the team active sp_list decides' );
 $GLOBALS['t_lists'][9005]               = array( 503, 87, 'draft' );
 $GLOBALS['t_meta'][9005]['spt_captain'] = 1;
-$old1 = SPT_FreeScout_Provider::player_section( array( 1 ), 'x@y.z' )['players'][0]['assignments'];
+$old1 = SPT_FreeScout_Provider::player_section( array( 1 ), array( 'x@y.z' ) )['players'][0]['assignments'];
 $old1 = array_values(
 	array_filter(
 		$old1,
@@ -289,11 +293,11 @@ $old1 = array_values(
 	)
 )[0]['captain'];
 assert_test( false === $old1, 'past: draft list captain ignored' );
-$old2 = SPT_FreeScout_Provider::player_section( array( 2 ), 'x@y.z' )['players'][0]['assignments'][0]['captain'];
+$old2 = SPT_FreeScout_Provider::player_section( array( 2 ), array( 'x@y.z' ) )['players'][0]['assignments'][0]['captain'];
 assert_test( true === $old2, 'past: published season list still works' );
 
 echo "\n=== Multiple players ===\n";
-$sec5 = SPT_FreeScout_Provider::player_section( array( 1, 3, 999 ), 'fam@x.y' );
+$sec5 = SPT_FreeScout_Provider::player_section( array( 1, 3, 999 ), array( 'fam@x.y' ) );
 assert_test( 2 === count( $sec5['players'] ) && 1 === $sec5['players'][0]['id'] && 3 === $sec5['players'][1]['id'], 'two ids -> two entries; missing post skipped' );
 
 echo "\n=== Only live sp_player posts ===\n";
@@ -302,7 +306,7 @@ mk_post( 11, 'Jordan Smith', 'sp_player', 'auto-draft' );
 mk_post( 12, 'Coach Smith', 'sp_staff' );                // staff carrying sp_user.
 mk_post( 13, 'Draft Smith', 'sp_player', 'draft' );
 $GLOBALS['t_meta'][12] = array( 'sp_user' => '9' );
-$live = SPT_FreeScout_Provider::player_section( array( 1, 10, 11, 12, 13 ), 'jordan.smith@example.com' );
+$live = SPT_FreeScout_Provider::player_section( array( 1, 10, 11, 12, 13 ), array( 'jordan.smith@example.com' ) );
 $ids  = array_map(
 	function ( $p ) {
 		return $p['id'];
@@ -312,14 +316,39 @@ $ids  = array_map(
 assert_test( array( 1, 13 ) === $ids, 'trashed, auto-draft and non-sp_player posts are skipped; draft player kept' );
 
 echo "\n=== Email ===\n";
-$sec_email = SPT_FreeScout_Provider::player_section( array( 1 ), 'Jordan.Smith@Example.COM' );
+$sec_email = SPT_FreeScout_Provider::player_section( array( 1 ), array( 'Jordan.Smith@Example.COM' ) );
 assert_test( 'jordan.smith@example.com' === $sec_email['email'], 'section carries the lower-cased request email' );
-$sec_none = SPT_FreeScout_Provider::player_section( array(), 'nobody@example.com' );
+$sec_none = SPT_FreeScout_Provider::player_section( array(), array( 'nobody@example.com' ) );
 assert_test( 'nobody@example.com' === $sec_none['email'] && array() === $sec_none['players'], 'email present even without players' );
+
+echo "\n=== Several addresses ===\n";
+// Player 1 is found through its linked login (user 9), player 3 through its
+// own spt_email; each says which of the customer's addresses found it.
+$GLOBALS['t_users'][9]             = (object) array( 'user_email' => 'Jordan@Login.example' );
+$GLOBALS['t_meta'][3]['spt_email'] = 'Sam@Second.example';
+$multi = SPT_FreeScout_Provider::player_section( array( 1, 3 ), array( 'main@example.com', 'jordan@login.example', 'sam@second.example' ) );
+assert_test( 'main@example.com' === $multi['email'], 'section email is the primary (first) address' );
+$by_id = array();
+foreach ( $multi['players'] as $p ) {
+	$by_id[ $p['id'] ] = $p;
+}
+assert_test( 'jordan@login.example' === ( $by_id[1]['email'] ?? 'unset' ), 'a player found through its login carries that secondary address' );
+assert_test( 'sam@second.example' === ( $by_id[3]['email'] ?? 'unset' ), 'a player found through spt_email carries that secondary address' );
+$GLOBALS['t_meta'][1]['spt_email'] = 'jordan@login.example';
+$both = SPT_FreeScout_Provider::player_section( array( 1, 1 ), array( 'jordan@login.example', 'main@example.com' ) );
+assert_test( 1 === count( $both['players'] ), 'a player listed twice (found under two addresses) appears once' );
+assert_test( 'jordan@login.example' === $both['players'][0]['email'], 'spt_email and login on the same address: that address' );
+$GLOBALS['t_meta'][1]['spt_email'] = 'old@example.com';
+$login = SPT_FreeScout_Provider::player_section( array( 1 ), array( 'main@example.com', 'jordan@login.example' ) );
+assert_test( 'jordan@login.example' === $login['players'][0]['email'], 'spt_email not among the addresses: the login address' );
+$none = SPT_FreeScout_Provider::player_section( array( 1 ), array( 'main@example.com' ) );
+assert_test( null === $none['players'][0]['email'], 'neither spt_email nor the login is among the addresses: null' );
+unset( $GLOBALS['t_meta'][1]['spt_email'], $GLOBALS['t_meta'][3]['spt_email'] );
+$GLOBALS['t_users'] = array();
 
 echo "\n=== No current season ===\n";
 $GLOBALS['t_options']['sportspress_season'] = '0';
-$sec6 = SPT_FreeScout_Provider::player_section( array( 1 ), 'a@b.c' );
+$sec6 = SPT_FreeScout_Provider::player_section( array( 1 ), array( 'a@b.c' ) );
 assert_test( '' === $sec6['current_season'] && null === $sec6['players'][0]['next_game'], 'empty current_season, no current assignment' );
 
 // Characterization: pins build_player() edge cases so refactors cannot change
@@ -333,11 +362,12 @@ $GLOBALS['t_meta'][20]                       = array(
 	'sp_user'         => '0',
 );
 $GLOBALS['t_terms_error'][20]['sp_position'] = new stdClass(); // Not an array, like a WP_Error.
-$p20 = SPT_FreeScout_Provider::player_section( array( 20 ), 'z@z.z' )['players'][0];
+$p20 = SPT_FreeScout_Provider::player_section( array( 20 ), array( 'z@z.z' ) )['players'][0];
 assert_test(
 	array(
 		'id'             => 20,
 		'name'           => 'Zero Zero',
+		'email'          => null,
 		'number'         => '0',
 		'positions'      => array(),
 		'skill_level'    => '0',
@@ -354,7 +384,7 @@ $GLOBALS['t_meta'][21]                      = array(
 	'sp_user'         => '4',
 );
 $GLOBALS['t_obj_terms'][21]['sp_position'] = array( 'Goalie', 'Defence' );
-$p21 = SPT_FreeScout_Provider::player_section( array( 21 ), 'f@f.f' )['players'][0];
+$p21 = SPT_FreeScout_Provider::player_section( array( 21 ), array( 'f@f.f' ) )['players'][0];
 assert_test( null === $p21['number'] && null === $p21['skill_level'] && true === $p21['wp_user_linked'] && array( 'Goalie', 'Defence' ) === $p21['positions'], 'false meta is null; positions keep term order' );
 
 echo "\n=== build_player(): one current team in two divisions ===\n";
@@ -366,7 +396,7 @@ $GLOBALS['t_meta'][22] = array(
 		20 => array( 88 => 501 ),
 	),
 );
-$p22 = SPT_FreeScout_Provider::player_section( array( 22 ), 's@s.s' )['players'][0];
+$p22 = SPT_FreeScout_Provider::player_section( array( 22 ), array( 's@s.s' ) )['players'][0];
 assert_test( 2 === count( $p22['assignments'] ) && true === $p22['assignments'][0]['current'] && true === $p22['assignments'][1]['current'], 'both assignments are current' );
 assert_test( array( 501 ) === $GLOBALS['t_event_args']['meta_query'][0]['value'] && 7001 === $p22['next_game']['event_id'], 'the team is queried once for next_game' );
 

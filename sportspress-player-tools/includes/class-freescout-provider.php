@@ -33,12 +33,15 @@ class SPT_FreeScout_Provider {
 	/**
 	 * Build sections.player.
 	 *
-	 * @param int[]  $player_ids Resolved player ids.
-	 * @param string $email      Customer email; returned lower-cased so the
-	 *                           Player card can offer Change email.
+	 * @param int[]    $player_ids Resolved player ids (the union across $emails).
+	 * @param string[] $emails     The customer's lower-cased addresses, primary
+	 *                             first. The primary is returned as `email`;
+	 *                             each player carries the address it was found
+	 *                             under, for the Player card's Change email.
 	 * @return array
 	 */
-	public static function player_section( array $player_ids, string $email ): array {
+	public static function player_section( array $player_ids, array $emails ): array {
+		$emails            = array_map( 'strtolower', array_map( 'strval', $emails ) );
 		$current_season_id = (int) get_option( 'sportspress_season' );
 		$current_name      = '';
 		if ( $current_season_id > 0 ) {
@@ -46,26 +49,27 @@ class SPT_FreeScout_Provider {
 		}
 
 		$players = array();
-		foreach ( $player_ids as $player_id ) {
-			$player = self::build_player( (int) $player_id, $current_season_id );
+		foreach ( array_unique( array_map( 'intval', $player_ids ) ) as $player_id ) {
+			$player = self::build_player( $player_id, $current_season_id, $emails );
 			if ( null !== $player ) {
 				$players[] = $player;
 			}
 		}
 
 		return array(
-			'email'          => strtolower( $email ),
+			'email'          => $emails[0] ?? '',
 			'players'        => $players,
 			'current_season' => $current_name,
 		);
 	}
 
 	/**
-	 * @param int $player_id         Player post id.
-	 * @param int $current_season_id Current season term id (0 if none).
+	 * @param int      $player_id         Player post id.
+	 * @param int      $current_season_id Current season term id (0 if none).
+	 * @param string[] $emails            The customer's lower-cased addresses.
 	 * @return array|null Null when the post is gone or isn't a live player.
 	 */
-	private static function build_player( int $player_id, int $current_season_id ) {
+	private static function build_player( int $player_id, int $current_season_id, array $emails ) {
 		$post = get_post( $player_id );
 		// The FreeScout lookup already asks the resolver for live sp_player ids;
 		// this re-check keeps the provider safe for any other caller (the
@@ -83,6 +87,7 @@ class SPT_FreeScout_Provider {
 		return array(
 			'id'             => $player_id,
 			'name'           => (string) $post->post_title,
+			'email'          => self::matched_email( $player_id, $emails ),
 			'number'         => $number,
 			'positions'      => $positions,
 			'skill_level'    => $skill,
@@ -90,6 +95,25 @@ class SPT_FreeScout_Provider {
 			'assignments'    => $assignments,
 			'next_game'      => array() !== $current_teams ? self::next_game( array_values( $current_teams ) ) : null,
 		);
+	}
+
+	/**
+	 * Which of the customer's addresses found this player, by the same two
+	 * routes as SPAT_Player::ids_for_email(): its spt_email, else the email of
+	 * its linked login. Null when neither is one of them.
+	 *
+	 * @param int      $player_id Player post id.
+	 * @param string[] $emails    The customer's lower-cased addresses.
+	 */
+	private static function matched_email( int $player_id, array $emails ): ?string {
+		$own = strtolower( (string) get_post_meta( $player_id, 'spt_email', true ) );
+		if ( in_array( $own, $emails, true ) ) {
+			return $own;
+		}
+		$user_id = (int) get_post_meta( $player_id, 'sp_user', true );
+		$user    = $user_id > 0 ? get_userdata( $user_id ) : false;
+		$login   = $user ? strtolower( (string) $user->user_email ) : '';
+		return in_array( $login, $emails, true ) ? $login : null;
 	}
 
 	/**
