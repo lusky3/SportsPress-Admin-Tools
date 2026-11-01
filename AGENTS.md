@@ -42,6 +42,8 @@ Every AJAX/REST handler must call both `check_ajax_referer()` and `current_user_
 
 Exception: the server-to-server `spat/v1/freescout/*` REST routes have no cookie session, so they use `permission_callback => '__return_true'` and authenticate in `SPAT_FreeScout_REST::guard()` (HMAC signature + timestamp window + rate limit); actions then check the mapped WordPress user's capability.
 
+The `customer` route takes `{"emails": ["main@example.com", ...]}`: 1 to 5 addresses (primary first), lower-cased and de-duplicated, anything else a 400. Each `spat_freescout_providers` callable is called as `provider( int[] $player_ids, string[] $emails )`, where `$player_ids` is the union of the live players found under every address; a provider must cover every address and list each record once.
+
 ### Security checklist (every form submission / AJAX / REST handler)
 
 1. **Nonce** — `check_ajax_referer()` / `wp_verify_nonce()`. The nonce *field name* sent by JS must match the PHP check (a mismatch is a real bug — see `specs/spsg-qa-audit/`).

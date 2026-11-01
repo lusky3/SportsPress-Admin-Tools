@@ -24,6 +24,9 @@ class SPAT_FreeScout_REST {
 	/** Provider keys the bridge expects; one with no provider is reported as not_registered. */
 	const KNOWN_PROVIDERS = array( 'player', 'registration', 'etransfers', 'waitlist' );
 
+	/** Most distinct addresses one customer lookup may name. */
+	const MAX_EMAILS = 5;
+
 	/** Shortest secret accepted as "configured". */
 	const MIN_SECRET_LENGTH = 32;
 
@@ -71,6 +74,24 @@ class SPAT_FreeScout_REST {
 	}
 
 	/**
+	 * Look a customer up by every address FreeScout knows for them.
+	 *
+	 * Request body: {"emails": ["main@example.com", "other@example.com"]}, a
+	 * list of 1 to MAX_EMAILS addresses (the customer's main email, the other
+	 * emails on the customer record, the address the conversation came from).
+	 * Each is trimmed and lower-cased, duplicates are dropped with the order
+	 * kept (the first is the primary), and the request is refused with 400 if
+	 * the list is missing or empty, has an entry that is not a valid address,
+	 * or holds more than MAX_EMAILS distinct addresses.
+	 *
+	 * Response: {emails, player_ids, sections, missing}. player_ids is the
+	 * union of the live players found under each address, ascending. Each
+	 * provider is called as provider( int[] $player_ids, string[] $emails ).
+	 *
+	 * The rate limit stays one count per request: the bridge calls from one
+	 * server IP for every agent, so counting each address would starve the
+	 * sidebar, and only a holder of the shared secret can call at all.
+	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
 	 */
@@ -80,22 +101,26 @@ class SPAT_FreeScout_REST {
 			return $guard;
 		}
 
-		$body  = json_decode( (string) $request->get_body(), true );
-		$email = is_array( $body ) && isset( $body['email'] ) && is_string( $body['email'] ) ? trim( $body['email'] ) : '';
-		if ( '' === $email || ! is_email( $email ) ) {
-			return new WP_Error( 'spat_freescout_bad_request', 'A valid email is required.', array( 'status' => 400 ) );
+		$emails = self::read_emails( json_decode( (string) $request->get_body(), true ) );
+		if ( is_wp_error( $emails ) ) {
+			return $emails;
 		}
-		$email = strtolower( $email );
 
 		// Live sp_player posts only, so every provider gets the same clean ids.
-		$player_ids = SPAT_Player::ids_for_email( $email, true );
-		$providers  = $this->providers();
-		$sections   = array();
-		$missing    = array();
+		$player_ids = array();
+		foreach ( $emails as $email ) {
+			$player_ids = array_merge( $player_ids, SPAT_Player::ids_for_email( $email, true ) );
+		}
+		$player_ids = array_values( array_unique( $player_ids ) );
+		sort( $player_ids );
+
+		$providers = $this->providers();
+		$sections  = array();
+		$missing   = array();
 
 		foreach ( $providers as $key => $provider ) {
 			try {
-				$sections[ $key ] = call_user_func( $provider, $player_ids, $email );
+				$sections[ $key ] = call_user_func( $provider, $player_ids, $emails );
 			} catch ( Throwable $e ) {
 				SPAT_Logger::error( 'freescout', sprintf( 'Provider "%s" failed: %s', $key, $e->getMessage() ) );
 				$missing[ $key ] = 'error';
@@ -109,13 +134,48 @@ class SPAT_FreeScout_REST {
 
 		return new WP_REST_Response(
 			array(
-				'email'      => $email,
+				'emails'     => $emails,
 				'player_ids' => $player_ids,
 				'sections'   => $sections,
 				'missing'    => $missing,
 			),
 			200
 		);
+	}
+
+	/**
+	 * The customer's addresses from a decoded body: trimmed, lower-cased and
+	 * de-duplicated in order, or a 400 naming what is wrong.
+	 *
+	 * Strict: one bad entry refuses the whole request rather than being
+	 * dropped, so a bridge bug shows up instead of quietly narrowing a lookup.
+	 *
+	 * @param mixed $body Decoded JSON body.
+	 * @return string[]|WP_Error
+	 */
+	private static function read_emails( $body ) {
+		$list = is_array( $body ) && isset( $body['emails'] ) ? $body['emails'] : null;
+		if ( ! is_array( $list ) || array_values( $list ) !== $list || array() === $list ) {
+			return self::bad_request( sprintf( 'An "emails" list of 1 to %d addresses is required.', self::MAX_EMAILS ) );
+		}
+
+		$emails = array();
+		foreach ( $list as $index => $raw ) {
+			$email = is_string( $raw ) ? strtolower( trim( $raw ) ) : '';
+			if ( '' === $email || sanitize_email( $email ) !== $email || ! is_email( $email ) ) {
+				return self::bad_request( sprintf( 'emails[%d] is not a valid email address.', $index ) );
+			}
+			$emails[ $email ] = $email;
+		}
+
+		if ( count( $emails ) > self::MAX_EMAILS ) {
+			return self::bad_request( sprintf( 'At most %d distinct email addresses can be looked up at once.', self::MAX_EMAILS ) );
+		}
+		return array_values( $emails );
+	}
+
+	private static function bad_request( string $message ): WP_Error {
+		return new WP_Error( 'spat_freescout_bad_request', $message, array( 'status' => 400 ) );
 	}
 
 	/**

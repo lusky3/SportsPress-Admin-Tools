@@ -33,6 +33,10 @@ function wp_unslash( $s ) {
 function __( $text, $domain = 'default' ) {
 	return $text;
 }
+function sanitize_email( $email ) {
+	// Like WordPress: drop characters an address cannot hold.
+	return preg_replace( '/[^a-z0-9+_.@-]/i', '', (string) $email );
+}
 function is_email( $email ) {
 	return false !== filter_var( $email, FILTER_VALIDATE_EMAIL ) ? $email : false;
 }
@@ -103,9 +107,16 @@ class SPAT_Logger {
 }
 
 class SPAT_Player {
+	/** @var array<string, int[]> Lower-cased email => player ids. */
+	public static $fixture = array(
+		'jordan.smith@example.com' => array( 109432 ),
+		'jordan@work.example'      => array( 109432, 200 ),
+		'parent@example.com'       => array( 150 ),
+	);
 	public static function ids_for_email( string $email, bool $live_only = false ): array {
 		$GLOBALS['spat_ids_live_only'] = $live_only;
-		return 'jordan.smith@example.com' === $email ? array( 109432 ) : array();
+		$GLOBALS['spat_ids_asked'][]   = $email;
+		return self::$fixture[ $email ] ?? array();
 	}
 }
 
@@ -169,24 +180,44 @@ $GLOBALS['spat_options']['spat_freescout_secret'] = $secret;
 echo "authentication\n";
 $res = $rest->handle_ping( new WP_REST_Request( '{}', array() ) );
 check( 'unsigned gives 403 missing_timestamp', 'spat_freescout_missing_timestamp' === code_of( $res ) && 403 === status_of( $res ) );
-$res = $rest->handle_customer( signed_request( '{"email":"a@b.co"}', 'wrong-secret-wrong-secret-wrong-secret' ) );
+$res = $rest->handle_customer( signed_request( '{"emails":["a@b.co"]}', 'wrong-secret-wrong-secret-wrong-secret' ) );
 check( 'wrong secret gives 403 invalid_signature', 'spat_freescout_invalid_signature' === code_of( $res ) );
 $res = $rest->handle_ping( signed_request( '{}', $secret, (string) ( time() - 1000 ) ) );
 check( 'stale timestamp gives 403 request_expired', 'spat_freescout_request_expired' === code_of( $res ) );
 
 echo "body validation\n";
-foreach ( array( '{"email":"not-an-email"}', '{}', 'nope', '{"email":["a@b.co"]}' ) as $body ) {
+$bad_bodies = array(
+	'not JSON'                               => 'nope',
+	'no emails'                              => '{}',
+	'the old single email field'             => '{"email":"a@b.co"}',
+	'emails is a string'                     => '{"emails":"a@b.co"}',
+	'emails is an object'                    => '{"emails":{"main":"a@b.co"}}',
+	'empty list'                             => '{"emails":[]}',
+	'six distinct addresses'                 => '{"emails":["a1@b.co","a2@b.co","a3@b.co","a4@b.co","a5@b.co","a6@b.co"]}',
+	'an invalid address'                     => '{"emails":["a@b.co","not-an-email"]}',
+	'a non-string entry'                     => '{"emails":["a@b.co",42]}',
+	'a null entry'                           => '{"emails":[null]}',
+	'a nested list'                          => '{"emails":[["a@b.co"]]}',
+	'a blank entry'                          => '{"emails":["a@b.co","  "]}',
+	'an address sanitize_email would change' => '{"emails":["a b@c.co"]}',
+);
+$GLOBALS['spat_ids_asked'] = array();
+foreach ( $bad_bodies as $label => $body ) {
 	$res = $rest->handle_customer( signed_request( $body, $secret ) );
-	check( "bad body $body gives 400 bad_request", 'spat_freescout_bad_request' === code_of( $res ) && 400 === status_of( $res ) );
+	check( "$label gives 400 bad_request", 'spat_freescout_bad_request' === code_of( $res ) && 400 === status_of( $res ) );
 }
+check( 'a refused request looks nobody up', array() === $GLOBALS['spat_ids_asked'] );
+$res = $rest->handle_customer( signed_request( '{"emails":["a1@b.co","a2@b.co","a3@b.co","a4@b.co","a5@b.co","A1@B.co"," a2@b.co "]}', $secret ) );
+check( 'five distinct addresses after de-duplication are accepted', ! is_wp_error( $res ) && 200 === $res->get_status() );
+check( 'duplicates (any case, padded) are dropped, order kept', array( 'a1@b.co', 'a2@b.co', 'a3@b.co', 'a4@b.co', 'a5@b.co' ) === ( is_wp_error( $res ) ? null : ( $res->get_data()['emails'] ?? null ) ) );
 
 echo "customer\n";
 $GLOBALS['spat_filters']['spat_freescout_providers'][] = function ( $providers ) {
-	$providers['player']       = function ( array $ids, string $email ) {
+	$providers['player']       = function ( array $ids, array $emails ) {
 		return array(
-			'x'     => 1,
-			'email' => $email,
-			'ids'   => $ids,
+			'x'      => 1,
+			'emails' => $emails,
+			'ids'    => $ids,
 		);
 	};
 	$providers['registration'] = function () {
@@ -194,24 +225,47 @@ $GLOBALS['spat_filters']['spat_freescout_providers'][] = function ( $providers )
 	};
 	return $providers;
 };
-$res  = $rest->handle_customer( signed_request( '{"email":"Jordan.Smith@Example.com"}', $secret ) );
+$res  = $rest->handle_customer( signed_request( '{"emails":["Jordan.Smith@Example.com"]}', $secret ) );
 $data = is_wp_error( $res ) ? array() : $res->get_data();
 check( '200 on valid request', ! is_wp_error( $res ) && 200 === $res->get_status() );
-check( 'email lower-cased', 'jordan.smith@example.com' === ( $data['email'] ?? '' ) );
+check( 'emails lower-cased', array( 'jordan.smith@example.com' ) === ( $data['emails'] ?? null ) );
+check( 'the old single email response field is gone', ! array_key_exists( 'email', $data ) );
 check( 'player_ids come from the resolver', array( 109432 ) === ( $data['player_ids'] ?? null ) );
 check( 'the resolver is asked for live sp_player ids only', true === ( $GLOBALS['spat_ids_live_only'] ?? null ) );
 check(
-	'provider data under sections, given ids and the lower-cased email',
+	'provider data under sections, given ids and the lower-cased emails',
 	array(
-		'x'     => 1,
-		'email' => 'jordan.smith@example.com',
-		'ids'   => array( 109432 ),
+		'x'      => 1,
+		'emails' => array( 'jordan.smith@example.com' ),
+		'ids'    => array( 109432 ),
 	) === ( $data['sections']['player'] ?? null )
 );
 check( 'throwing provider is missing=error and absent from sections', 'error' === ( $data['missing']['registration'] ?? '' ) && ! isset( $data['sections']['registration'] ) );
 check( 'unregistered known keys are missing=not_registered', 'not_registered' === ( $data['missing']['etransfers'] ?? '' ) && 'not_registered' === ( $data['missing']['waitlist'] ?? '' ) );
 check( 'missing holds exactly the three problem keys', 3 === count( $data['missing'] ?? array() ) );
 check( 'throw is logged', 1 === count( $GLOBALS['spat_logged'] ) );
+
+echo "customer: several addresses\n";
+$GLOBALS['spat_ids_asked']     = array();
+$GLOBALS['spat_ids_live_only'] = null;
+$res  = $rest->handle_customer( signed_request( '{"emails":["Parent@Example.com","jordan@work.example","JORDAN.SMITH@example.com","nobody@example.com","parent@example.com"]}', $secret ) );
+$data = is_wp_error( $res ) ? array() : $res->get_data();
+$four = array( 'parent@example.com', 'jordan@work.example', 'jordan.smith@example.com', 'nobody@example.com' );
+check( 'every distinct address is looked up once, in order', $four === $GLOBALS['spat_ids_asked'] );
+check( 'live sp_player ids only for every address', true === $GLOBALS['spat_ids_live_only'] );
+check( 'player_ids are the union across addresses, de-duplicated, ascending', array( 150, 200, 109432 ) === ( $data['player_ids'] ?? null ) );
+check( 'emails echo the normalized list, primary first', $four === ( $data['emails'] ?? null ) );
+check(
+	'providers get the union ids and every address',
+	array(
+		'x'      => 1,
+		'emails' => $four,
+		'ids'    => array( 150, 200, 109432 ),
+	) === ( $data['sections']['player'] ?? null )
+);
+$res  = $rest->handle_customer( signed_request( '{"emails":["nobody@example.com","else@example.com"]}', $secret ) );
+$data = is_wp_error( $res ) ? array() : $res->get_data();
+check( 'addresses with no players give no ids', array() === ( $data['player_ids'] ?? null ) );
 
 echo "ping\n";
 $GLOBALS['spat_options']['spat_enabled_modules'] = array( 'player_registration', 'player_modifications' );
