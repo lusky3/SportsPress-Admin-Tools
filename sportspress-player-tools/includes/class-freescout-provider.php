@@ -41,7 +41,7 @@ class SPT_FreeScout_Provider {
 	 * @return array
 	 */
 	public static function player_section( array $player_ids, array $emails ): array {
-		$emails            = array_map( 'strtolower', array_map( 'strval', $emails ) );
+		$emails            = array_values( array_map( 'strtolower', array_map( 'strval', $emails ) ) );
 		$current_season_id = (int) get_option( 'sportspress_season' );
 		$current_name      = '';
 		if ( $current_season_id > 0 ) {
@@ -99,16 +99,19 @@ class SPT_FreeScout_Provider {
 
 	/**
 	 * Which of the customer's addresses found this player, by the same two
-	 * routes as SPAT_Player::ids_for_email(): its spt_email, else the email of
-	 * its linked login. Null when neither is one of them.
+	 * routes as SPAT_Player::ids_for_email(): any of its spt_email rows
+	 * (trimmed, like the database's PAD SPACE comparison), else the email of
+	 * its linked login. Null when none is one of them.
 	 *
 	 * @param int      $player_id Player post id.
 	 * @param string[] $emails    The customer's lower-cased addresses.
 	 */
 	private static function matched_email( int $player_id, array $emails ): ?string {
-		$own = strtolower( (string) get_post_meta( $player_id, 'spt_email', true ) );
-		if ( in_array( $own, $emails, true ) ) {
-			return $own;
+		foreach ( (array) get_post_meta( $player_id, 'spt_email', false ) as $value ) {
+			$own = strtolower( trim( (string) $value ) );
+			if ( in_array( $own, $emails, true ) ) {
+				return $own;
+			}
 		}
 		$user_id = (int) get_post_meta( $player_id, 'sp_user', true );
 		$user    = $user_id > 0 ? get_userdata( $user_id ) : false;

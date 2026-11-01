@@ -324,8 +324,13 @@ assert_test( 'nobody@example.com' === $sec_none['email'] && array() === $sec_non
 echo "\n=== Several addresses ===\n";
 // Player 1 is found through its linked login (user 9), player 3 through its
 // own spt_email; each says which of the customer's addresses found it.
-$GLOBALS['t_users'][9]             = (object) array( 'user_email' => 'Jordan@Login.example' );
-$GLOBALS['t_meta'][3]['spt_email'] = 'Sam@Second.example';
+/** spt_email rows of a player, as single (first row) and multi reads see them. */
+function set_spt_email( $id, array $values ) {
+	$GLOBALS['t_meta'][ $id ]['spt_email']  = $values[0] ?? '';
+	$GLOBALS['t_multi'][ $id ]['spt_email'] = $values;
+}
+$GLOBALS['t_users'][9] = (object) array( 'user_email' => 'Jordan@Login.example' );
+set_spt_email( 3, array( 'Sam@Second.example' ) );
 $multi = SPT_FreeScout_Provider::player_section( array( 1, 3 ), array( 'main@example.com', 'jordan@login.example', 'sam@second.example' ) );
 assert_test( 'main@example.com' === $multi['email'], 'section email is the primary (first) address' );
 $by_id = array();
@@ -334,16 +339,24 @@ foreach ( $multi['players'] as $p ) {
 }
 assert_test( 'jordan@login.example' === ( $by_id[1]['email'] ?? 'unset' ), 'a player found through its login carries that secondary address' );
 assert_test( 'sam@second.example' === ( $by_id[3]['email'] ?? 'unset' ), 'a player found through spt_email carries that secondary address' );
-$GLOBALS['t_meta'][1]['spt_email'] = 'jordan@login.example';
+set_spt_email( 1, array( 'jordan@login.example' ) );
 $both = SPT_FreeScout_Provider::player_section( array( 1, 1 ), array( 'jordan@login.example', 'main@example.com' ) );
 assert_test( 1 === count( $both['players'] ), 'a player listed twice (found under two addresses) appears once' );
 assert_test( 'jordan@login.example' === $both['players'][0]['email'], 'spt_email and login on the same address: that address' );
-$GLOBALS['t_meta'][1]['spt_email'] = 'old@example.com';
+set_spt_email( 1, array( 'old@example.com' ) );
 $login = SPT_FreeScout_Provider::player_section( array( 1 ), array( 'main@example.com', 'jordan@login.example' ) );
 assert_test( 'jordan@login.example' === $login['players'][0]['email'], 'spt_email not among the addresses: the login address' );
 $none = SPT_FreeScout_Provider::player_section( array( 1 ), array( 'main@example.com' ) );
 assert_test( null === $none['players'][0]['email'], 'neither spt_email nor the login is among the addresses: null' );
-unset( $GLOBALS['t_meta'][1]['spt_email'], $GLOBALS['t_meta'][3]['spt_email'] );
+set_spt_email( 3, array( ' Sam@Second.example  ' ) );
+$padded = SPT_FreeScout_Provider::player_section( array( 3 ), array( 'sam@second.example' ) );
+assert_test( 'sam@second.example' === $padded['players'][0]['email'], 'a padded spt_email still matches (trimmed)' );
+set_spt_email( 3, array( 'first@example.com', 'Second@Row.example' ) );
+$rows = SPT_FreeScout_Provider::player_section( array( 3 ), array( 'main@example.com', 'second@row.example' ) );
+assert_test( 'second@row.example' === $rows['players'][0]['email'], 'every spt_email row counts, not only the first' );
+$keyed = SPT_FreeScout_Provider::player_section( array( 3 ), array( 'p' => 'Keyed@Example.com', 'q' => 'second@row.example' ) );
+assert_test( 'keyed@example.com' === $keyed['email'], 'a keyed (non-list) address array still gives the primary as email' );
+unset( $GLOBALS['t_meta'][1]['spt_email'], $GLOBALS['t_meta'][3]['spt_email'], $GLOBALS['t_multi'][1]['spt_email'], $GLOBALS['t_multi'][3]['spt_email'] );
 $GLOBALS['t_users'] = array();
 
 echo "\n=== No current season ===\n";
