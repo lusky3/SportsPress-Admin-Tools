@@ -528,7 +528,9 @@ function wc_get_orders( $args = array() ) {
 		if ( isset( $args['status'] ) && $o->get_status() !== $args['status'] ) {
 			continue;
 		}
-		if ( isset( $args['billing_email'] ) && strcasecmp( $o->email, $args['billing_email'] ) !== 0 ) {
+		// An order whose email is '*' matches any address, so a test can make
+		// the same order come back for two different addresses.
+		if ( isset( $args['billing_email'] ) && '*' !== $o->email && strcasecmp( $o->email, $args['billing_email'] ) !== 0 ) {
 			continue;
 		}
 		$out[] = $o;
@@ -888,10 +890,14 @@ check( 'transfers: sent from any of the addresses, newest first', array( 2, 1, 4
 check( 'transfers: a transfer from neither address is left out', ! in_array( 3, array_column( $section['transfers'], 'log_id' ), true ) );
 check( 'transfers say which address sent them', 'Pat.Work@Y.com' === $section['transfers'][0]['from_email'] );
 check( 'on-hold orders: billed to any of the addresses, newest first', array( 5110, 5107 ) === array_column( $section['on_hold_orders'], 'order_id' ) );
-check( 'on-hold orders: possible matches are still by amount and date, nearest first', array( 1, 2, 3 ) ===array_column( $section['on_hold_orders'][1]['possible_matches'], 'log_id' ) );
+check( 'on-hold orders: possible matches are still by amount and date, nearest first', array( 1, 2, 3 ) === array_column( $section['on_hold_orders'][1]['possible_matches'], 'log_id' ) );
 $twice = SPET_FreeScout_Integration::etransfers_section( array(), array( 'pat@x.com', 'PAT@X.com' ) );
-check( 'a transfer matching two addresses appears once', array( 1 ) === array_column( $twice['transfers'], 'log_id' ) );
-check( 'an order matching two addresses appears once', array( 5107 ) === array_column( $twice['on_hold_orders'], 'order_id' ) );
+check( 'the same address twice (any case): the transfer is listed once', array( 1 ) === array_column( $twice['transfers'], 'log_id' ) );
+check( 'the same address twice (any case): the order is listed once', array( 5107 ) === array_column( $twice['on_hold_orders'], 'order_id' ) );
+$GLOBALS['orders'][5111] = new Mock_WC_Order( 5111, '60.00', 'on-hold', '*', $ts_order + 1800 ); // Returned for every address.
+$merged = array_column( SPET_FreeScout_Integration::etransfers_section( array(), array( 'pat@x.com', 'pat.work@y.com' ) )['on_hold_orders'], 'order_id' );
+check( 'an order returned for two different addresses is listed once', array( 5110, 5111, 5107 ) === $merged );
+unset( $GLOBALS['orders'][5111] );
 $none = SPET_FreeScout_Integration::etransfers_section( array(), array( 'nobody@example.com', 'else@example.com' ) );
 check( 'addresses with nothing give the empty shape', array( 'transfers' => array(), 'on_hold_orders' => array() ) === $none );
 reset_state();
