@@ -37,23 +37,17 @@ class SPPR_FreeScout_Provider {
 	/**
 	 * Build sections.registration.
 	 *
-	 * @param int[]  $player_ids Resolved player ids.
-	 * @param string $email      Lower-cased customer email.
+	 * Entries are the log rows of the orders billed to any of the customer's
+	 * addresses and of their players; attention covers those orders.
+	 *
+	 * @param int[]    $player_ids Resolved player ids (the union across $emails).
+	 * @param string[] $emails     The customer's lower-cased addresses.
 	 * @return array{entries: array, attention: array}
 	 */
-	public static function registration_section( array $player_ids, string $email ): array {
-		$orders = wc_get_orders(
-			array(
-				'billing_email' => $email,
-				'limit'         => self::MAX_ORDERS,
-				'orderby'       => 'date',
-				'order'         => 'DESC',
-			)
-		);
-
+	public static function registration_section( array $player_ids, array $emails ): array {
 		$order_ids  = array();
 		$candidates = array(); // order id => processed marker.
-		foreach ( (array) $orders as $order ) {
+		foreach ( self::orders_billed_to( $emails ) as $order ) {
 			$order_id    = (int) $order->get_id();
 			$order_ids[] = $order_id;
 			if ( self::is_completed_registration( $order ) ) {
@@ -78,6 +72,50 @@ class SPPR_FreeScout_Provider {
 			'entries'   => $entries,
 			'attention' => self::attention_items( $candidates ),
 		);
+	}
+
+	/**
+	 * The newest MAX_ORDERS orders billed to any of the addresses, each once.
+	 *
+	 * One query per address (at most five) rather than one with a list, so it
+	 * does not depend on how the order store handles an array billing_email.
+	 *
+	 * @param string[] $emails Addresses.
+	 * @return WC_Order[] Newest first.
+	 */
+	private static function orders_billed_to( array $emails ): array {
+		$orders = array();
+		foreach ( $emails as $email ) {
+			$found = wc_get_orders(
+				array(
+					'billing_email' => (string) $email,
+					'limit'         => self::MAX_ORDERS,
+					'orderby'       => 'date',
+					'order'         => 'DESC',
+				)
+			);
+			foreach ( (array) $found as $order ) {
+				$orders[ (int) $order->get_id() ] = $order;
+			}
+		}
+
+		$orders = array_values( $orders );
+		usort(
+			$orders,
+			function ( $a, $b ) {
+				return self::created_at( $b ) <=> self::created_at( $a );
+			}
+		);
+		return array_slice( $orders, 0, self::MAX_ORDERS );
+	}
+
+	/**
+	 * @param WC_Order $order Order.
+	 * @return int Creation timestamp, 0 when unknown.
+	 */
+	private static function created_at( $order ): int {
+		$created = $order->get_date_created();
+		return $created ? (int) $created->getTimestamp() : 0;
 	}
 
 	/**

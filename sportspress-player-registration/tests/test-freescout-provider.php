@@ -34,9 +34,20 @@ function wp_get_post_terms( $id, $taxonomy ) {
 	}
 	return $out;
 }
+/**
+ * Orders with no billing email set match any address, so the single-address
+ * fixtures below need not set one; orders that set one match only it.
+ */
 function wc_get_orders( $args ) {
-	$GLOBALS['t_order_args'] = $args;
-	return $GLOBALS['t_orders'];
+	$GLOBALS['t_order_args']    = $args;
+	$GLOBALS['t_order_calls'][] = $args;
+	$out = array();
+	foreach ( $GLOBALS['t_orders'] as $order ) {
+		if ( null === $order->billing || 0 === strcasecmp( $order->billing, (string) $args['billing_email'] ) ) {
+			$out[] = $order;
+		}
+	}
+	return array_slice( $out, 0, (int) $args['limit'] );
 }
 
 class T_Product {
@@ -68,13 +79,19 @@ class T_Order {
 	public $status;
 	public $meta;
 	public $items;
+	public $billing;
+	public $created;
 	/**
-	 * @param int[] $product_ids Line items; defaults to one registration product.
+	 * @param int[]       $product_ids Line items; defaults to one registration product.
+	 * @param string|null $billing     Billing email; null matches any address.
+	 * @param int         $created     Creation timestamp (0: unknown).
 	 */
-	public function __construct( $id, $status, $meta = '', $product_ids = array( 300 ) ) {
-		$this->id     = $id;
-		$this->status = $status;
-		$this->meta   = $meta;
+	public function __construct( $id, $status, $meta = '', $product_ids = array( 300 ), $billing = null, $created = 0 ) {
+		$this->id      = $id;
+		$this->status  = $status;
+		$this->meta    = $meta;
+		$this->billing = $billing;
+		$this->created = $created;
 		$this->items  = array_map(
 			function ( $pid ) {
 				return new T_Item( $pid );
@@ -93,6 +110,9 @@ class T_Order {
 	}
 	public function get_meta( $key ) {
 		return '_spr_processed' === $key ? $this->meta : '';
+	}
+	public function get_date_created() {
+		return $this->created ? new DateTime( '@' . $this->created ) : null;
 	}
 }
 
@@ -213,7 +233,7 @@ add_log( 5, '2026-09-07 10:00:00', 5300, 0, 'name_rejected' );
 add_log( 6, '2026-08-01 09:00:00', 9000, 777, 'player_found_by_email' ); // other email, linked by player.
 add_log( 7, '2026-08-02 09:00:00', 9001, 888, 'player_created' );        // unrelated.
 
-$sec = SPPR_FreeScout_Provider::registration_section( array( 777 ), 'jordan@example.com' );
+$sec = SPPR_FreeScout_Provider::registration_section( array( 777 ), array( 'jordan@example.com' ) );
 
 assert_test(
 	'jordan@example.com' === $GLOBALS['t_order_args']['billing_email'] && 20 === $GLOBALS['t_order_args']['limit']
@@ -264,25 +284,25 @@ $GLOBALS['t_logs'] = array();
 for ( $i = 1; $i <= 30; $i++ ) {
 	add_log( $i, sprintf( '2026-09-%02d 10:00:00', $i ), 4821, 0, 'player_created' );
 }
-$sec2 = SPPR_FreeScout_Provider::registration_section( array(), 'jordan@example.com' );
+$sec2 = SPPR_FreeScout_Provider::registration_section( array(), array( 'jordan@example.com' ) );
 assert_test( 20 === count( $sec2['entries'] ), 'entries capped at 20' );
 
 // Empty lists: no IN () emitted, no query when nothing to match.
 $GLOBALS['t_orders']  = array();
 $GLOBALS['t_queries'] = array();
-$sec3                 = SPPR_FreeScout_Provider::registration_section( array(), 'nobody@example.com' );
+$sec3                 = SPPR_FreeScout_Provider::registration_section( array(), array( 'nobody@example.com' ) );
 assert_test( array() === $sec3['entries'] && array() === $sec3['attention'] && array() === $GLOBALS['t_queries'], 'no orders and no players: empty section, no query' );
 
 $GLOBALS['t_logs']    = array();
 $GLOBALS['t_queries'] = array();
 add_log( 99, '2026-08-01 09:00:00', 1, 55, 'player_created' );
-$sec4 = SPPR_FreeScout_Provider::registration_section( array( 55 ), 'x@example.com' );
+$sec4 = SPPR_FreeScout_Provider::registration_section( array( 55 ), array( 'x@example.com' ) );
 assert_test( 1 === count( $sec4['entries'] ), 'players only: still found' );
 assert_test( 1 === count( $GLOBALS['t_queries'] ) && false === strpos( $GLOBALS['t_queries'][0], 'IN ()' ) && false === strpos( $GLOBALS['t_queries'][0], 'order_id IN' ), 'players only: no order IN clause' );
 
 $GLOBALS['t_orders']  = array( new T_Order( 1, 'completed', '1' ) );
 $GLOBALS['t_queries'] = array();
-SPPR_FreeScout_Provider::registration_section( array(), 'x@example.com' );
+SPPR_FreeScout_Provider::registration_section( array(), array( 'x@example.com' ) );
 $player_clause = false;
 foreach ( $GLOBALS['t_queries'] as $q ) {
 	$player_clause = $player_clause || false !== strpos( $q, 'player_id IN' );
@@ -319,7 +339,7 @@ add_log( 203, '2026-09-10 10:00:00', 7103, 0, 'season_not_detected' );
 $GLOBALS['t_orders'][] = new T_Order( 7104, 'processing', '1' );
 add_log( 204, '2026-09-10 10:00:00', 7104, 0, 'season_not_detected' );
 
-$sec5 = SPPR_FreeScout_Provider::registration_section( array(), 'x@example.com' );
+$sec5 = SPPR_FreeScout_Provider::registration_section( array(), array( 'x@example.com' ) );
 $att5 = array();
 foreach ( $sec5['attention'] as $a ) {
 	$att5[ $a['order_id'] ] = $a['last_action'];
@@ -340,7 +360,7 @@ $GLOBALS['t_logs']   = array();
 $GLOBALS['t_db_tz']  = 'America/Toronto';
 add_log( 300, '2026-09-03 10:02:00', 8000, 900, 'player_created' ); // EDT, UTC-4.
 add_log( 301, '2026-01-15 10:02:00', 8001, 900, 'player_created' ); // EST, UTC-5.
-$sec6 = SPPR_FreeScout_Provider::registration_section( array( 900 ), 'x@example.com' );
+$sec6 = SPPR_FreeScout_Provider::registration_section( array( 900 ), array( 'x@example.com' ) );
 $at6  = array();
 foreach ( $sec6['entries'] as $e ) {
 	$at6[ $e['order_id'] ] = $e['at'];
@@ -364,7 +384,7 @@ add_log( 402, '2026-09-10 10:00:00', 8101, 0, 'season_not_detected' );
 add_log( 403, '2026-09-11 10:00:00', 8101, 0, 'no_match' );
 add_log( 404, '2026-09-11 10:00:00', 8101, 58, 'player_created' );
 add_log( 405, '2026-09-10 10:00:00', 8102, 59, 'player_created' );
-$sec7 = SPPR_FreeScout_Provider::registration_section( array(), 'x@example.com' );
+$sec7 = SPPR_FreeScout_Provider::registration_section( array(), array( 'x@example.com' ) );
 $att7 = array();
 foreach ( $sec7['attention'] as $a ) {
 	$att7[ $a['order_id'] ] = $a['last_action'];
@@ -372,6 +392,55 @@ foreach ( $sec7['attention'] as $a ) {
 assert_test( 'season_not_detected' === ( $att7[8100] ?? '' ), 'partial order: attention shows the failure, not the newer success' );
 assert_test( 'no_match' === ( $att7[8101] ?? '' ), 'partial order: the newest failure row' );
 assert_test( 'player_created' === ( $att7[8102] ?? '' ), 'no failure row: falls back to the newest row' );
+
+echo "\n=== Several addresses ===\n";
+$GLOBALS['t_orders']      = array(
+	new T_Order( 6001, 'completed', '', array( 300 ), 'main@example.com', 1000 ),
+	new T_Order( 6002, 'completed', 'failed', array( 300 ), 'Second@Example.com', 2000 ),
+	new T_Order( 6003, 'completed', '', array( 300 ), 'stranger@example.com', 3000 ),
+	new T_Order( 6004, 'completed', '', array( 300 ), null, 4000 ), // matches either address.
+);
+$GLOBALS['t_logs']        = array();
+$GLOBALS['t_order_calls'] = array();
+add_log( 500, '2026-09-01 10:00:00', 6001, 0, 'name_rejected' );
+add_log( 501, '2026-09-02 10:00:00', 6002, 0, 'season_not_detected' );
+add_log( 502, '2026-09-03 10:00:00', 6003, 0, 'name_rejected' );
+add_log( 503, '2026-09-04 10:00:00', 9500, 555, 'player_created' ); // billed elsewhere, found by player.
+add_log( 504, '2026-09-05 10:00:00', 6004, 555, 'player_created' ); // matches by order and by player.
+$sec8 = SPPR_FreeScout_Provider::registration_section( array( 555 ), array( 'main@example.com', 'second@example.com' ) );
+assert_test(
+	array( 'main@example.com', 'second@example.com' ) === array_column( $GLOBALS['t_order_calls'], 'billing_email' ),
+	'orders are looked up for every address'
+);
+$entries8 = ids( $sec8['entries'] );
+assert_test( array( 6004, 9500, 6002, 6001 ) === $entries8, 'entries: orders billed to either address and the players\' logs, newest first, each once' );
+assert_test( ! in_array( 6003, $entries8, true ), 'entries: an order billed to neither address is left out' );
+$att8 = array_column( $sec8['attention'], 'last_action', 'order_id' );
+assert_test( 'season_not_detected' === ( $att8[6002] ?? '' ), 'attention: a failed order billed to the secondary address' );
+assert_test( 'name_rejected' === ( $att8[6001] ?? '' ), 'attention: a failed order billed to the primary address' );
+assert_test( ! isset( $att8[6003] ), 'attention: an order billed to neither address is left out' );
+assert_test( 3 === count( $sec8['attention'] ) && isset( $att8[6004] ), 'attention: an unmarked order found under both addresses is listed once' );
+$attention_ids = array_column( $sec8['attention'], 'order_id' );
+assert_test( count( $attention_ids ) === count( array_unique( $attention_ids ) ), 'attention: no order appears twice' );
+
+// More orders across the addresses than the cap: the newest 20 overall.
+$GLOBALS['t_orders'] = array();
+$GLOBALS['t_logs']   = array();
+for ( $i = 0; $i < 15; $i++ ) {
+	$GLOBALS['t_orders'][] = new T_Order( 7000 + $i, 'completed', '', array( 300 ), 'main@example.com', 10000 + 2 * $i );
+}
+for ( $i = 0; $i < 15; $i++ ) {
+	$GLOBALS['t_orders'][] = new T_Order( 7100 + $i, 'completed', '', array( 300 ), 'second@example.com', 10001 + 2 * $i );
+}
+$sec9  = SPPR_FreeScout_Provider::registration_section( array(), array( 'main@example.com', 'second@example.com' ) );
+$ids9  = array_column( $sec9['attention'], 'order_id' );
+$want9 = array();
+for ( $i = 14; $i >= 5; $i-- ) {
+	$want9[] = 7100 + $i;
+	$want9[] = 7000 + $i;
+}
+assert_test( 20 === count( $ids9 ), 'orders across addresses capped at 20' );
+assert_test( array() === array_diff( $want9, $ids9 ), 'the 20 kept are the newest across both addresses' );
 
 echo "\n=== SPPR_Registration_Outcome::shown ===\n";
 $newest_first = array( 'player_created', 'season_not_detected', 'no_match' );
