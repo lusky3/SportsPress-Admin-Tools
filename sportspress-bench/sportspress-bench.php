@@ -107,6 +107,13 @@ class SportsPress_Bench {
 		$loaded = true;
 
 		require_once SPBN_PLUGIN_PATH . 'includes/class-schema.php';
+		require_once SPBN_PLUGIN_PATH . 'includes/class-event-presenter.php';
+		require_once SPBN_PLUGIN_PATH . 'includes/class-roster-reader.php';
+		require_once SPBN_PLUGIN_PATH . 'includes/class-changes.php';
+		require_once SPBN_PLUGIN_PATH . 'includes/class-ical.php';
+
+		// Log reschedules, re-venues and cancellations as they are saved.
+		SPBN_Changes::register();
 
 		// Apply any additive schema upgrade for installs that predate the current
 		// DB version (idempotent no-op once versions match).

@@ -50,6 +50,16 @@ function spbn_reset() {
 	$GLOBALS['spbn_actions']    = array(); // tag => list of callbacks.
 	$GLOBALS['spbn_user_id']    = 0;
 	$GLOBALS['spbn_user_caps']  = array();
+	$GLOBALS['spbn_users']      = array(); // id => user object (ID, user_email, display_name).
+	$GLOBALS['spbn_user_meta']  = array(); // id => key => value.
+	$GLOBALS['spbn_fired']      = array(); // do_action calls: [ tag, args ].
+	$GLOBALS['spbn_mail']       = array(); // wp_mail calls.
+	$GLOBALS['spbn_mail_ok']    = true;
+	$GLOBALS['spbn_lock_calls'] = array(); // SPAT_Lock::with keys, in call order.
+	$GLOBALS['spbn_lock_held']  = false;   // true: the lock is held elsewhere.
+	$GLOBALS['spbn_lock_race']  = null;    // callable run after the lock is taken, before the callback.
+	$GLOBALS['spbn_meta_cache_primed'] = array();
+	$GLOBALS['spbn_user_queries']      = array();
 	$GLOBALS['wpdb']            = new SPBN_Test_WPDB();
 }
 
@@ -127,6 +137,9 @@ class SPBN_Test_WPDB {
 	public $queries         = array();
 	public $results_handler = null;
 	public $query_return    = 1;
+	public $inserts         = array(); // [ table, data, formats ].
+	public $insert_return   = 1;
+	public $insert_id       = 0;
 
 	public function get_charset_collate() {
 		return 'DEFAULT CHARACTER SET utf8mb4';
@@ -154,6 +167,26 @@ class SPBN_Test_WPDB {
 	public function query( $sql ) {
 		$this->queries[] = $sql;
 		return $this->query_return;
+	}
+
+	public function insert( $table, $data, $formats = null ) {
+		$this->inserts[] = array( $table, $data, $formats );
+		if ( false === $this->insert_return ) {
+			return false;
+		}
+		$this->insert_id = count( $this->inserts );
+		return 1;
+	}
+
+	public function get_col( $sql ) {
+		$this->queries[] = $sql;
+		return $this->results_handler ? (array) call_user_func( $this->results_handler, $sql ) : array();
+	}
+
+	public function get_row( $sql, $output = OBJECT ) {
+		$this->queries[] = $sql;
+		$rows            = $this->results_handler ? (array) call_user_func( $this->results_handler, $sql ) : array();
+		return $rows ? reset( $rows ) : null;
 	}
 
 	public function get_results( $sql, $output = OBJECT ) {
@@ -466,6 +499,194 @@ class WP_Query {
 
 function get_posts( $args = array() ) {
 	return spbn_query_posts( (array) $args );
+}
+
+/* ------------------------------------------------------------------------
+ * Actions that fire, post meta writes, user meta, users, mail, lock
+ * --------------------------------------------------------------------- */
+
+function do_action( $tag, ...$args ) {
+	$GLOBALS['spbn_fired'][] = array( $tag, $args );
+	foreach ( $GLOBALS['spbn_actions'][ $tag ] ?? array() as $callback ) {
+		call_user_func( $callback, ...$args );
+	}
+}
+
+/** Every do_action() call for a tag, as [ tag, args ] entries. */
+function spbn_fired( $tag ) {
+	return array_values(
+		array_filter(
+			$GLOBALS['spbn_fired'],
+			function ( $f ) use ( $tag ) {
+				return $f[0] === $tag;
+			}
+		)
+	);
+}
+
+function wp_slash( $value ) {
+	return is_array( $value ) ? array_map( 'wp_slash', $value ) : ( is_string( $value ) ? addslashes( $value ) : $value );
+}
+
+function get_post_type( $id ) {
+	$post = get_post( $id );
+	return $post ? $post->post_type : false;
+}
+
+function wp_is_post_autosave( $id ) {
+	return ! empty( $GLOBALS['spbn_meta'][ (int) $id ]['_test_autosave'] ) ? (int) $id : false;
+}
+
+function wp_is_post_revision( $id ) {
+	$post = get_post( $id );
+	return $post && 'revision' === $post->post_type ? 1 : false;
+}
+
+function wp_unslash( $value ) {
+	return is_array( $value ) ? array_map( 'wp_unslash', $value ) : ( is_string( $value ) ? stripslashes( $value ) : $value );
+}
+
+/** Like core, update_post_meta() unslashes what it is given. */
+function update_post_meta( $id, $key, $value ) {
+	$GLOBALS['spbn_meta'][ (int) $id ][ $key ] = array( wp_unslash( $value ) );
+	return true;
+}
+
+function update_meta_cache( $type, $ids ) {
+	$GLOBALS['spbn_meta_cache_primed'][] = array( $type, array_values( (array) $ids ) );
+	return array();
+}
+
+function get_user_meta( $user_id, $key = '', $single = false ) {
+	$value = $GLOBALS['spbn_user_meta'][ (int) $user_id ][ $key ] ?? '';
+	return $single ? $value : ( '' === $value ? array() : array( $value ) );
+}
+
+function update_user_meta( $user_id, $key, $value ) {
+	$GLOBALS['spbn_user_meta'][ (int) $user_id ][ $key ] = $value;
+	return true;
+}
+
+function delete_user_meta( $user_id, $key ) {
+	unset( $GLOBALS['spbn_user_meta'][ (int) $user_id ][ $key ] );
+	return true;
+}
+
+/** Register a user fixture. */
+function spbn_add_user( $id, $email = '', $name = '' ) {
+	$GLOBALS['spbn_users'][ $id ] = (object) array(
+		'ID'           => $id,
+		'user_email'   => '' === $email ? "user{$id}@example.test" : $email,
+		'display_name' => '' === $name ? "User {$id}" : $name,
+	);
+}
+
+function get_userdata( $id ) {
+	return $GLOBALS['spbn_users'][ (int) $id ] ?? false;
+}
+
+/**
+ * get_users() emulation: include, meta_key/meta_value (exact), meta_query LIKE
+ * clauses (substring of the serialised value), number, fields 'ID' or objects.
+ */
+function get_users( $args = array() ) {
+	$GLOBALS['spbn_user_queries'][] = $args;
+	$out                            = array();
+	foreach ( $GLOBALS['spbn_users'] as $id => $user ) {
+		if ( isset( $args['include'] ) && ! in_array( $id, array_map( 'intval', (array) $args['include'] ), true ) ) {
+			continue;
+		}
+		if ( isset( $args['meta_key'] ) ) {
+			$have = $GLOBALS['spbn_user_meta'][ $id ][ $args['meta_key'] ] ?? null;
+			// Like MySQL's default collation, the comparison ignores case.
+			if ( null === $have || 0 !== strcasecmp( (string) $have, (string) $args['meta_value'] ) ) {
+				continue;
+			}
+		}
+		foreach ( (array) ( $args['meta_query'] ?? array() ) as $clause ) {
+			if ( ! is_array( $clause ) || ! isset( $clause['key'] ) ) {
+				continue;
+			}
+			$have = $GLOBALS['spbn_user_meta'][ $id ][ $clause['key'] ] ?? null;
+			if ( null === $have ) {
+				continue 2;
+			}
+			$have = is_array( $have ) ? serialize( $have ) : (string) $have;
+			if ( 'LIKE' === ( $clause['compare'] ?? '=' ) ) {
+				if ( false === strpos( $have, (string) $clause['value'] ) ) {
+					continue 2;
+				}
+			} elseif ( $have !== (string) $clause['value'] ) {
+				continue 2;
+			}
+		}
+		$out[] = $user;
+	}
+	$number = (int) ( $args['number'] ?? -1 );
+	if ( $number > 0 ) {
+		$out = array_slice( $out, 0, $number );
+	}
+	if ( 'ID' === ( $args['fields'] ?? 'all' ) ) {
+		return array_map(
+			function ( $u ) {
+				return $u->ID;
+			},
+			$out
+		);
+	}
+	return $out;
+}
+
+function wp_generate_password( $length = 12, $special_chars = true, $extra_special_chars = false ) {
+	$chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+	$out   = '';
+	for ( $i = 0; $i < $length; $i++ ) {
+		$out .= $chars[ random_int( 0, strlen( $chars ) - 1 ) ];
+	}
+	return $out;
+}
+
+function home_url( $path = '' ) {
+	return 'https://arl.example.test' . $path;
+}
+
+function is_email( $email ) {
+	return false !== filter_var( $email, FILTER_VALIDATE_EMAIL ) ? $email : false;
+}
+
+function sanitize_email( $email ) {
+	return trim( (string) $email );
+}
+
+function wp_mail( $to, $subject, $message, $headers = '' ) {
+	$GLOBALS['spbn_mail'][] = array(
+		'to'      => $to,
+		'subject' => $subject,
+		'message' => $message,
+		'headers' => $headers,
+	);
+	return $GLOBALS['spbn_mail_ok'];
+}
+
+/**
+ * SPAT_Lock stand-in with the real contract: with() returns the callback's
+ * value, or false when the lock is already held. Tests flip
+ * $GLOBALS['spbn_lock_held'], or set spbn_lock_race to run code (a competing
+ * request) after the lock is taken and before the callback.
+ */
+if ( ! class_exists( 'SPAT_Lock' ) ) {
+	class SPAT_Lock {
+		public static function with( $key, $ttl_seconds, callable $callback ) {
+			$GLOBALS['spbn_lock_calls'][] = $key;
+			if ( $GLOBALS['spbn_lock_held'] ) {
+				return false;
+			}
+			if ( is_callable( $GLOBALS['spbn_lock_race'] ) ) {
+				call_user_func( $GLOBALS['spbn_lock_race'] );
+			}
+			return $callback();
+		}
+	}
 }
 
 spbn_reset();
