@@ -815,4 +815,22 @@ spbn_add_meta( 108, '_spem_cancelled', '1' );
 $night = spbn_data( SPBN_REST::ops_night( spbn_req( array( 'date' => '2099-11-04' ) ) ) );
 spbn_assert( array( 108, 101 ) === array_column( $night['data'], 'id' ) && 'cancelled' === $night['data'][0]['status'], 'the cancelled draft is listed (cancelled); the unfinished one is not' );
 
+echo "\n=== the answered player wins over the first player ===\n\n";
+
+$db = spbn_league();
+spbn_add_post( 56, 'sp_player', 'Pat Second' );
+spbn_add_meta( 56, 'sp_user', '7' );
+spbn_add_meta( 56, 'sp_current_team', '12' );
+$db->avail['101-56'] = array( 'event_id' => 101, 'player_id' => 56, 'team_id' => 12, 'status' => 'maybe', 'note' => 'late', 'updated_at' => '2026-11-01 12:00:00' );
+spbn_login( 7 );
+$g = spbn_data( SPBN_REST::game( spbn_req( array( 'id' => 101 ) ) ) );
+spbn_assert( 56 === $g['availability']['mine']['player_id'] && 'maybe' === $g['availability']['mine']['status'] && 'late' === $g['availability']['mine']['note'], 'two players on team 12, only the second answered: mine is the second, with its status' );
+spbn_assert( 'maybe' === $g['my_availability'], 'the game object my_availability is that answer' );
+$list = spbn_data( SPBN_REST::me_games() );
+spbn_assert( 'maybe' === array_column( $list['data'], 'my_availability', 'id' )[101], '/me/games agrees' );
+$res = SPBN_REST::put_availability( spbn_req( array( 'id' => 101, 'status' => 'out' ) ) );
+spbn_assert( 56 === spbn_data( $res )['availability']['player_id'] && 'out' === $db->avail['101-56']['status'] && ! isset( $db->avail['101-50'] ), 'a bare PUT updates the second player\'s row and does not create one for the first' );
+$g = spbn_data( SPBN_REST::game( spbn_req( array( 'id' => 101 ) ) ) );
+spbn_assert( 56 === $g['availability']['mine']['player_id'] && 'out' === $g['my_availability'], 'and the game screen follows it' );
+
 spbn_done();

@@ -810,7 +810,7 @@ class SPBN_REST {
 
 		// The same player a PUT without player_id would write for.
 		$mine      = null;
-		$my_player = self::default_player_on( $v, $team_id );
+		$my_player = self::default_player_on( $v, $team_id, $raw['id'] );
 		if ( $my_player > 0 ) {
 			$row  = $by_id[ $my_player ] ?? null;
 			$mine = array(
@@ -1020,7 +1020,7 @@ class SPBN_REST {
 	/** The viewer's own player on a team in this game, as [player, team]; [0, 0] when none. */
 	private static function own_player_on( array $v, array $raw ): array {
 		foreach ( $raw['team_ids'] as $team_id ) {
-			$player_id = self::default_player_on( $v, (int) $team_id );
+			$player_id = self::default_player_on( $v, (int) $team_id, $raw['id'] );
 			if ( $player_id > 0 ) {
 				return array( $player_id, (int) $team_id );
 			}
@@ -1028,9 +1028,24 @@ class SPBN_REST {
 		return array( 0, 0 );
 	}
 
-	/** The viewer's first linked player on a team, or 0: whose answer the game screen shows and a bare PUT writes. */
-	private static function default_player_on( array $v, int $team_id ): int {
-		return (int) ( $v['team_players'][ $team_id ][0] ?? 0 );
+	/**
+	 * The viewer's player on a team for a game, or 0: the one who already has an
+	 * answer for it, else the first linked player. The game screen shows this
+	 * player's answer and a bare PUT writes for them (the games list resolves
+	 * my_availability the same way: first player on the team with an answer).
+	 */
+	private static function default_player_on( array $v, int $team_id, int $event_id ): int {
+		$players = (array) ( $v['team_players'][ $team_id ] ?? array() );
+		if ( ! $players ) {
+			return 0;
+		}
+		$answered = array_column( self::side_rows( $event_id, $team_id ), 'player_id' );
+		foreach ( $players as $player_id ) {
+			if ( in_array( $player_id, $answered, true ) ) {
+				return (int) $player_id;
+			}
+		}
+		return (int) $players[0];
 	}
 
 	/** The team of this game a player is currently on, or 0. */
