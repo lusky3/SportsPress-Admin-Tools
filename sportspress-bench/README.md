@@ -56,9 +56,9 @@ Manager has cancelled it (its `_spem_cancelled` flag, which also drafts the post
 
 ## Calendar feed
 
-Each user has a private feed at `/bench/ical/<32-character token>.ics`. The Me tab shows it with a
-Subscribe button (`webcal://`), a Google Calendar link and a copy-link button. The feed lists the
-player's teams' current-season games and any game they have accepted as a spare. Reschedules change
+Each user has a private feed at `/bench/ical/<32-character token>`. A `.ics` suffix on the end is
+still accepted, so older subscriptions keep working. The Me tab shows it with a Subscribe button
+(`webcal://`), a Google Calendar link and a copy-link button. The feed lists the player's teams' current-season games and any game they have accepted as a spare. Reschedules change
 the event in place and raise its `SEQUENCE`; cancelled games are `STATUS:CANCELLED`. Games are 75
 minutes long unless a theme or plugin changes it with the `spbn_game_duration_minutes` filter.
 
@@ -129,6 +129,13 @@ When a saved game's start time, rink, teams or called-off state differs from wha
 it logs a change. The first save of a game never logs one, and neither do edits to games in the
 past. Games changed in the last 14 days show a "Changed" flag. This works for edits made in wp-admin
 and by Events Manager, not just through Bench.
+
+## Troubleshooting
+
+- `/bench/` returns 404: re-save **Settings, Permalinks** (see "Turning it on").
+- If your web server has rules that serve `.js`/`.webmanifest` files statically, Bench is unaffected
+  because its service worker and manifest URLs have no extension (`/bench/sw` and
+  `/bench/manifest`).
 
 ## Development
 
