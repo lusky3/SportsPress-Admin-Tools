@@ -31,7 +31,7 @@ jobs:
         with:
           node-version: '24'
 
-      # The six child plugins wp_die() on standalone activation because they
+      # The child plugins wp_die() on standalone activation because they
       # require the SPAT_Plugin_Manager parent. The wordpress/plugin-check-action
       # activates each plugin in isolation and can't pre-activate a dependency
       # that isn't on wordpress.org, so it fails for every child. Instead we run
@@ -48,6 +48,7 @@ jobs:
               "https://downloads.wordpress.org/plugin/plugin-check.latest-stable.zip"
             ],
             "mappings": {
+              "wp-content/plugins/sportspress-bench": "./sportspress-bench",
               "wp-content/plugins/sportspress-etransfer-automation": "./sportspress-etransfer-automation",
               "wp-content/plugins/sportspress-events-manager": "./sportspress-events-manager",
               "wp-content/plugins/sportspress-league-manager": "./sportspress-league-manager",
@@ -69,7 +70,7 @@ jobs:
       - name: Run Plugin Check on all suite plugins
         run: |
           set -uo pipefail
-          plugins="sportspress-admin-tools sportspress-etransfer-automation sportspress-events-manager sportspress-league-manager sportspress-player-registration sportspress-player-tools sportspress-schedule-generator sportspress-score-sheets"
+          plugins="sportspress-admin-tools sportspress-bench sportspress-etransfer-automation sportspress-events-manager sportspress-league-manager sportspress-player-registration sportspress-player-tools sportspress-schedule-generator sportspress-score-sheets"
           fail=0
           for p in $plugins; do
             echo "::group::Plugin Check: $p"

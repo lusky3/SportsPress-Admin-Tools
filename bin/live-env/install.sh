@@ -112,7 +112,7 @@ fi
 
 echo "== this repo's plugins, copied in (not symlinked, so build/ and every"
 echo "   vendored asset comes along -- matches bulk-plugin-installer-for-wordpress) =="
-for slug in sportspress-admin-tools sportspress-etransfer-automation sportspress-events-manager \
+for slug in sportspress-admin-tools sportspress-bench sportspress-etransfer-automation sportspress-events-manager \
             sportspress-league-manager sportspress-player-registration sportspress-player-tools \
             sportspress-schedule-generator sportspress-score-sheets; do
   rsync -a --exclude=.git "$REPO_ROOT/$slug/" "wp-content/plugins/$slug/"
@@ -124,7 +124,7 @@ done
 # WordPress's own undefined multi-plugin activation order.
 wp plugin activate sportspress-admin-tools --allow-root
 wp plugin activate \
-  sportspress-etransfer-automation sportspress-events-manager sportspress-league-manager \
+  sportspress-bench sportspress-etransfer-automation sportspress-events-manager sportspress-league-manager \
   sportspress-player-registration sportspress-player-tools sportspress-schedule-generator \
   sportspress-score-sheets \
   --allow-root

@@ -11,6 +11,15 @@ Namespaces in use:
   module comments in `class-rest-api.php`.
 - `spsg/v1` — `sportspress-schedule-generator`.
 - `spet/v1` — `sportspress-etransfer-automation` (webhook only).
+- `spss/v1` — `sportspress-score-sheets`: `/ingest` and `/twilio` (HMAC- and Twilio-signed
+  senders) plus the review-dashboard routes (`/sheets`, `/events`), gated by `manage_sportspress`.
+- `spat/v1` — `sportspress-admin-tools`: the `freescout/*` routes, which authenticate in
+  `SPAT_FreeScout_REST::guard()` (HMAC + timestamp window) rather than by cookie.
+- `spbn/v1` — `sportspress-bench`: the player-scoped API behind the `/bench/` app. Every route
+  requires a logged-in user, and cookie requests must send `X-WP-Nonce`; the `/ops/*` routes
+  additionally require `manage_sportspress`. Lists use the wrapped shape below, writes return
+  `{ "success": true, ... }`, and a full or closed spare call answers `409`. A logged-in user with no
+  linked player gets `GET /me` with `"linked": false` (200), not an error.
 
 ## Response shapes
 
