@@ -803,41 +803,52 @@ class SPBN_Spares {
 
 	/**
 	 * Teams with at least one event in the season (the same rule as
-	 * SPBN_Roster_Reader::teams_for_user), from one query.
+	 * SPBN_Roster_Reader::teams_for_user: publish/future events, and drafts
+	 * events-manager cancelled), from one SELECT DISTINCT over the sp_team meta
+	 * of the season term's events, without loading a season of events (about
+	 * 1,400). Cached for an hour per season and spbn_generation.
 	 *
 	 * @return array<int,true> Team id set.
 	 */
 	private static function season_team_set( int $season_id ): array {
+		global $wpdb;
+
 		if ( $season_id <= 0 ) {
 			return array();
 		}
-		$events = get_posts(
-			array(
-				'post_type'      => 'sp_event',
-				'post_status'    => array( 'publish', 'future', 'draft' ),
-				'posts_per_page' => -1,
-				'no_found_rows'  => true,
-				'tax_query'      => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query -- one season.
-					array(
-						'taxonomy'         => 'sp_season',
-						'field'            => 'term_id',
-						'terms'            => array( $season_id ),
-						'include_children' => false,
-					),
-				),
+		$key    = 'spbn_season_teams_' . $season_id . '_' . (int) get_option( 'spbn_generation', 0 );
+		$cached = get_transient( $key );
+		if ( is_array( $cached ) ) {
+			return $cached;
+		}
+
+		$team_ids = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT DISTINCT pm.meta_value FROM {$wpdb->postmeta} pm
+				INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+				INNER JOIN {$wpdb->term_relationships} tr ON tr.object_id = p.ID
+				INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
+				WHERE pm.meta_key = %s AND p.post_type = %s AND tt.taxonomy = %s AND tt.term_id = %d
+				AND ( p.post_status IN ('publish','future') OR ( p.post_status = 'draft' AND EXISTS (
+					SELECT 1 FROM {$wpdb->postmeta} x WHERE x.post_id = p.ID AND x.meta_key = %s AND x.meta_value = %s
+				) ) )",
+				'sp_team',
+				'sp_event',
+				'sp_season',
+				$season_id,
+				'_spem_cancelled',
+				'1'
 			)
 		);
-		update_meta_cache( 'post', self::ids_of( $events ) );
 
 		$set = array();
-		foreach ( $events as $event ) {
-			if ( 'draft' === $event->post_status && '1' !== (string) get_post_meta( $event->ID, '_spem_cancelled', true ) ) {
-				continue;
-			}
-			foreach ( (array) get_post_meta( $event->ID, 'sp_team', false ) as $team_id ) {
-				$set[ (int) $team_id ] = true;
+		foreach ( (array) $team_ids as $team_id ) {
+			$team_id = (int) $team_id;
+			if ( $team_id > 0 ) {
+				$set[ $team_id ] = true;
 			}
 		}
+		set_transient( $key, $set, HOUR_IN_SECONDS );
 		return $set;
 	}
 

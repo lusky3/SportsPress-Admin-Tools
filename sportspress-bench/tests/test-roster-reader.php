@@ -146,7 +146,9 @@ game( 205, '2026-12-03 20:00:00', array( 12, 31 ), SEASON, 'draft' );
 spbn_set_meta( 205, '_spem_cancelled', '1' );
 game( 206, '2026-12-10 20:00:00', array( 12, 31 ), SEASON, 'trash' );
 
+$GLOBALS['spbn_posts_primed'] = array();
 spbn_assert( array( 200, 201, 205 ) === $r->season_event_ids( array( 12 ), SEASON ), 'publish+future ascending by date; draft only when _spem_cancelled=1; other season/team/trash excluded' );
+spbn_assert( array( array( 200, 201, 204, 205 ) ) === $GLOBALS['spbn_posts_primed'], 'the matched ids are primed (posts, meta, terms) in one call before they are read' );
 spbn_assert( array( 200, 201, 205 ) === $r->season_event_ids( array( 12, 30 ), SEASON ), 'a game between two of my teams is listed once' );
 spbn_assert( array() === $r->season_event_ids( array(), SEASON ), 'no teams -> no events' );
 spbn_assert( array() === $r->season_event_ids( array( 12 ), 0 ), 'no season -> no events' );
@@ -322,8 +324,11 @@ spbn_set_terms( 301, 'sp_season', array( STALE => 'S49' ) );
 spbn_add_meta( 301, 'sp_player', '1003' );
 spbn_add_post( 1003, 'sp_player', 'Old Timer' );
 
+$GLOBALS['spbn_posts_primed'] = array();
 $roster = $r->roster( 12, SEASON );
 spbn_assert( array( 1001, 1002 ) === array_column( $roster, 'player_id' ), 'roster is the current-season list, placeholders and trashed players dropped' );
+$primed = $GLOBALS['spbn_posts_primed'];
+spbn_assert( 2 === count( $primed ) && in_array( 300, $primed[0], true ) && in_array( 1001, $primed[1], true ) && in_array( 1002, $primed[1], true ), 'the lists, then the players, are primed in bulk' );
 spbn_assert( 'Ann Skater' === $roster[0]['name'] && '9' === $roster[0]['number'] && array( 'Forward' ) === $roster[0]['positions'], 'name, number and positions' );
 spbn_assert( false === $roster[0]['is_captain'] && true === $roster[1]['is_captain'], 'is_captain from spt_captain on the list' );
 
@@ -383,8 +388,10 @@ spbn_set_terms( 2002, 'sp_position', array( 81 => 'Goalie' ) );
 player( 2003, 9, array( 12 ), 'Not On 30' );
 spbn_add_post( 2004, 'sp_player', 'Draft Guy', 'draft' );
 spbn_add_meta( 2004, 'sp_current_team', '30' );
+$GLOBALS['spbn_posts_primed'] = array();
 $fallback = $r->roster( 30, SEASON );
 spbn_assert( array( 2001, 2002 ) === array_column( $fallback, 'player_id' ), 'no list: fall back to published players whose sp_current_team includes the team' );
+spbn_assert( array( 2001, 2002 ) === end( $GLOBALS['spbn_posts_primed'] ), 'the fallback players are primed in bulk too' );
 spbn_assert( array( 'Goalie' ) === $fallback[1]['positions'] && false === $fallback[0]['is_captain'], 'fallback rows carry positions and no captain' );
 
 echo "\n=== team_summary ===\n\n";
@@ -406,8 +413,10 @@ spbn_add_meta( 502, 'sp_team', '30' );
 spbn_set_terms( 502, 'sp_season', array( STALE => 'S49' ) );
 spbn_set_terms( 502, 'sp_league', array( 92 => 'Division 1' ) );
 
+$GLOBALS['spbn_posts_primed'] = array();
 $summary = $r->team_summary( 12 );
 spbn_assert( array( 'id' => 12, 'name' => 'Ducks', 'logo' => 'https://x.test/ducks.png', 'division' => 'Division 2' ) === $summary, 'team_summary: id, raw name, logo, division from the current-season non-playoff table' );
+spbn_assert( array( array( 499, 500 ) ) === $GLOBALS['spbn_posts_primed'], 'the season\'s tables are primed in one call' );
 spbn_assert( '' === $r->team_summary( 31 )['division'] && '' === $r->team_summary( 31 )['logo'], 'unknown team: empty division and logo' );
 spbn_assert( 'Division 2' === $r->team_summary( 30 )['division'], 'a stale-season table does not decide the division' );
 

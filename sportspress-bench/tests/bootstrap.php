@@ -404,6 +404,13 @@ function wp_get_post_terms( $id, $taxonomy, $args = array() ) {
 	return $terms;
 }
 
+/** Like core: the cached terms, or false when the post has none. */
+function get_the_terms( $post, $taxonomy ) {
+	$id    = is_object( $post ) ? (int) $post->ID : (int) $post;
+	$terms = $GLOBALS['spbn_terms'][ $id ][ $taxonomy ] ?? array();
+	return $terms ? $terms : false;
+}
+
 function get_term_meta( $term_id, $key = '', $single = false ) {
 	return $GLOBALS['spbn_term_meta'][ (int) $term_id ][ $key ] ?? '';
 }

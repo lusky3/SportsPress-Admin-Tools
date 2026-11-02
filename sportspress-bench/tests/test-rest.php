@@ -221,6 +221,7 @@ function spbn_fake_bench_db() {
 		'next_call'  => 1,
 		'fail_avail' => false,
 		'race'       => null,    // callable run when a call is flipped to filled.
+		'changed'    => array(), // event ids with a change row in the last 14 days.
 	);
 	$db = $GLOBALS['wpdb'];
 
@@ -284,11 +285,11 @@ function spbn_fake_bench_db() {
 			}
 			return $out;
 		}
-		if ( false !== strpos( $sql, 'FROM wp_spbn_changes WHERE event_id' ) ) {
+		if ( false !== strpos( $sql, 'FROM wp_spbn_changes WHERE event_id = ' ) ) {
 			return '0';
 		}
-		if ( false !== strpos( $sql, 'FROM wp_spbn_changes' ) ) {
-			return array();
+		if ( preg_match( '/FROM wp_spbn_changes WHERE event_id IN \(([\d,]+)\)/', $sql, $m ) ) {
+			return array_values( array_intersect( array_map( 'strval', $s->changed ), explode( ',', $m[1] ) ) );
 		}
 		if ( preg_match( '/FROM wp_spbn_spare_calls WHERE id = (\d+)/', $sql, $m ) ) {
 			return isset( $s->calls[ (int) $m[1] ] ) ? array( array_map( 'strval', $s->calls[ (int) $m[1] ] ) ) : array();
@@ -988,6 +989,15 @@ spbn_event_at( 108, '2099-11-04 20:00:00', 'draft', array( 12, 8 ) );
 spbn_add_meta( 108, '_spem_cancelled', '1' );
 $night = spbn_data( SPBN_REST::ops_night( spbn_req( array( 'date' => '2099-11-04' ) ) ) );
 spbn_assert( array( 108, 101 ) === array_column( $night['data'], 'id' ) && 'cancelled' === $night['data'][0]['status'], 'the cancelled draft is listed (cancelled); the unfinished one is not' );
+
+echo "\n--- changed games are flagged; the night's games are primed in bulk ---\n\n";
+
+$db->changed                  = array( 108 );
+$GLOBALS['spbn_posts_primed'] = array();
+$night                        = spbn_data( SPBN_REST::ops_night( spbn_req( array( 'date' => '2099-11-04' ) ) ) );
+$flags                        = array_column( $night['data'], 'changed_recently', 'id' );
+spbn_assert( true === $flags[108] && false === $flags[101], 'a game changed in the last 14 days has changed_recently on the board' );
+spbn_assert( in_array( array( 101, 107, 108 ), array_map( function ( $ids ) { sort( $ids ); return $ids; }, $GLOBALS['spbn_posts_primed'] ), true ), 'the night\'s event ids are primed in one call' );
 
 echo "\n=== the answered player wins over the first player ===\n\n";
 

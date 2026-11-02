@@ -679,18 +679,22 @@ class SPBN_REST {
 			)
 		);
 
+		$ids = array_map( 'intval', (array) $ids );
+		SPBN_Roster_Reader::prime( $ids );
+		$changed = array_flip( SPBN_Changes::recent_event_ids( $ids ) );
+
 		$v     = array(
 			'user_id'   => get_current_user_id(),
 			'teams'     => array(),
 			'organizer' => true,
 		);
 		$games = array();
-		foreach ( (array) $ids as $event_id ) {
-			$raw = $reader->raw_event( (int) $event_id );
+		foreach ( $ids as $event_id ) {
+			$raw = $reader->raw_event( $event_id );
 			if ( null === $raw ) {
 				continue; // An unfinished draft.
 			}
-			$game  = SPBN_Event_Presenter::present( $raw, 0 );
+			$game  = SPBN_Event_Presenter::present( $raw, 0, array( 'changed_recently' => isset( $changed[ $event_id ] ) ) );
 			$sides = array();
 			foreach ( $raw['team_ids'] as $team_id ) {
 				$summary = self::side_summary( $reader, $raw, $team_id );

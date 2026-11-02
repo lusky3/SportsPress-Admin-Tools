@@ -209,10 +209,14 @@ class SPBN_Roster_Reader {
 			)
 		);
 
+		$ids = array_map( 'intval', (array) $ids );
+		// One round trip for the posts, their meta and terms; every caller reads them next.
+		self::prime( $ids );
+
 		$out = array();
-		foreach ( (array) $ids as $id ) {
-			$id = (int) $id;
-			if ( 'draft' === get_post_status( $id ) && ! self::is_spem_cancelled( $id ) ) {
+		foreach ( $ids as $id ) {
+			$post = get_post( $id );
+			if ( $post && 'draft' === $post->post_status && ! self::is_spem_cancelled( $id ) ) {
 				continue;
 			}
 			$out[] = $id;
@@ -351,6 +355,7 @@ class SPBN_Roster_Reader {
 
 		$lists = array_map( 'intval', (array) $lists );
 		sort( $lists );
+		self::prime( $lists );
 
 		$best_list  = 0;
 		$player_ids = array();
@@ -390,6 +395,7 @@ class SPBN_Roster_Reader {
 				)
 			);
 		}
+		self::prime( $player_ids );
 
 		$out = array();
 		foreach ( $player_ids as $player_id ) {
@@ -519,13 +525,27 @@ class SPBN_Roster_Reader {
 	}
 
 	/**
-	 * A post's terms, or none when the lookup fails (wp_get_post_terms returns
-	 * a WP_Error for an unregistered taxonomy).
+	 * Load posts, their meta and their terms in bulk (core skips ids already
+	 * cached), so the per-post reads that follow hit the cache.
+	 *
+	 * @param int[] $ids Post ids.
+	 */
+	public static function prime( array $ids ): void {
+		if ( $ids ) {
+			_prime_post_caches( $ids, true, true );
+		}
+	}
+
+	/**
+	 * A post's terms, or none when there are none or the lookup fails (a
+	 * WP_Error for an unregistered taxonomy). get_the_terms() reads the object
+	 * term cache that prime() fills, in the same name order as
+	 * wp_get_post_terms(), which always queries.
 	 *
 	 * @return object[]
 	 */
 	private static function terms( int $post_id, string $taxonomy ): array {
-		$terms = wp_get_post_terms( $post_id, $taxonomy );
+		$terms = get_the_terms( $post_id, $taxonomy );
 		return is_array( $terms ) ? array_values( $terms ) : array();
 	}
 
@@ -578,8 +598,9 @@ class SPBN_Roster_Reader {
 			)
 		);
 
-		foreach ( (array) $table_ids as $table_id ) {
-			$table_id = (int) $table_id;
+		$table_ids = array_map( 'intval', (array) $table_ids );
+		self::prime( $table_ids );
+		foreach ( $table_ids as $table_id ) {
 			if ( $this->is_playoff_table( $table_id ) ) {
 				continue;
 			}

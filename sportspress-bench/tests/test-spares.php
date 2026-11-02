@@ -475,9 +475,15 @@ $call                       = array( 'id' => 1, 'event_id' => 101, 'team_id' => 
 $GLOBALS['spbn_queries']    = array();
 $GLOBALS['spbn_user_queries'] = array();
 $GLOBALS['spbn_meta_cache_primed'] = array();
+$db                  = $GLOBALS['wpdb'];
+$db->results_handler = function ( $sql ) {
+	$teams = spbn_fixture_season_team_ids( $sql );
+	return null !== $teams ? $teams : array();
+};
 $ids = SPBN_Spares::pool_user_ids( 'skater', $call );
 sort( $ids );
 spbn_assert( array( 12, 13, 18 ) === $ids, 'eligible: free of a clash, registered, not on either team (busy, on-team, stale, no-player, wrong-position, opted-out all dropped)' );
+
 
 $by_type = array();
 foreach ( $GLOBALS['spbn_queries'] as $q ) {
@@ -509,6 +515,33 @@ $primed_types = array_map(
 );
 spbn_assert( in_array( 'post', $primed_types, true ) && in_array( 'user', $primed_types, true ), 'post meta and user meta are primed in bulk' );
 spbn_assert( 1 === count( $GLOBALS['spbn_user_queries'] ), 'one users query' );
+
+echo "\n--- the season's teams come from one DISTINCT query, cached ---\n\n";
+
+$season_loads = array_filter(
+	$GLOBALS['spbn_queries'],
+	function ( $q ) {
+		return 'sp_event' === $q['post_type'] && isset( $q['tax_query'] ) && ! isset( $q['date_query'] );
+	}
+);
+spbn_assert( array() === $season_loads, 'the season\'s events are not loaded to find its teams' );
+$team_sql = array_values(
+	array_filter(
+		$db->queries,
+		function ( $sql ) {
+			return false !== strpos( $sql, 'SELECT DISTINCT pm.meta_value' );
+		}
+	)
+);
+spbn_assert( 1 === count( $team_sql ), 'one SELECT DISTINCT for the season\'s team ids' );
+spbn_assert( false !== strpos( $team_sql[0], "pm.meta_key = 'sp_team'" ) && false !== strpos( $team_sql[0], 'tt.term_id = 3' ) && false !== strpos( $team_sql[0], "tt.taxonomy = 'sp_season'" ) && false !== strpos( $team_sql[0], "p.post_status IN ('publish','future')" ) && false !== strpos( $team_sql[0], "'_spem_cancelled'" ), 'sp_team meta of the season term\'s publish/future events (and cancelled drafts), joined in SQL' );
+spbn_assert( isset( $GLOBALS['spbn_transients']['spbn_season_teams_3_0'] ), 'cached in a transient keyed on season and spbn_generation' );
+SPBN_Spares::pool_user_ids( 'skater', $call );
+spbn_assert( 1 === count( array_filter( $db->queries, function ( $sql ) { return false !== strpos( $sql, 'SELECT DISTINCT pm.meta_value' ); } ) ), 'the next call reads the cache, not the database' );
+update_option( 'spbn_generation', 4 );
+SPBN_Spares::pool_user_ids( 'skater', $call );
+spbn_assert( 2 === count( array_filter( $db->queries, function ( $sql ) { return false !== strpos( $sql, 'SELECT DISTINCT pm.meta_value' ); } ) ) && isset( $GLOBALS['spbn_transients']['spbn_season_teams_3_4'] ), 'a logged change (new generation) reads it fresh' );
+delete_option( 'spbn_generation' );
 
 $none = SPBN_Spares::pool_user_ids( 'skater', array_merge( $call, array( 'event_id' => 104 ) ) );
 sort( $none );
