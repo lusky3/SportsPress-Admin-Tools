@@ -126,9 +126,9 @@ class SPAT_Health_Dashboard {
 				'name' => 'Score Sheets',
 				'module' => 'score_sheets',
 			),
-			'sportspress-bench/sportspress-bench.php' => array(
-				'name' => 'Bench',
-				'module' => 'bench',
+			'sportspress-player-app/sportspress-player-app.php' => array(
+				'name' => 'Player App',
+				'module' => 'player_app',
 			),
 		);
 

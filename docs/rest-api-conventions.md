@@ -15,7 +15,7 @@ Namespaces in use:
   senders) plus the review-dashboard routes (`/sheets`, `/events`), gated by `manage_sportspress`.
 - `spat/v1` — `sportspress-admin-tools`: the `freescout/*` routes, which authenticate in
   `SPAT_FreeScout_REST::guard()` (HMAC + timestamp window) rather than by cookie.
-- `spbn/v1` — `sportspress-bench`: the player-scoped API behind the `/bench/` app. Every route
+- `sppa/v1` — `sportspress-player-app`: the player-scoped API behind the Player App ("My ARL", at `/my-arl/` by default). Every route
   requires a logged-in user, and cookie requests must send `X-WP-Nonce`; the `/ops/*` routes
   additionally require `manage_sportspress`. Lists use the wrapped shape below, writes return
   `{ "success": true, ... }`, and a full or closed spare call answers `409`. A logged-in user with no

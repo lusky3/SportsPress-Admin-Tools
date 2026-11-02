@@ -25,7 +25,7 @@ function check( $condition, $message ) {
 
 $plugins = array(
 	'sportspress-admin-tools/sportspress-admin-tools.php',
-	'sportspress-bench/sportspress-bench.php',
+	'sportspress-player-app/sportspress-player-app.php',
 	'sportspress-etransfer-automation/sportspress-etransfer-automation.php',
 	'sportspress-events-manager/sportspress-events-manager.php',
 	'sportspress-league-manager/sportspress-league-manager.php',

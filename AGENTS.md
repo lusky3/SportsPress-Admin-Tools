@@ -16,7 +16,7 @@ A monorepo of nine independent WordPress plugins targeting SportsPress. One is t
 | `sportspress-schedule-generator/` | `SPSG_` | Round-robin scheduling with constraints, XLSX/CSV export |
 | `sportspress-league-manager/` | `SPLM_` | React/`@wordpress/scripts` admin SPA gated by `manage_sportspress` (see Capability Model) |
 | `sportspress-score-sheets/` | `SPSS_` | Photos of hand-filled score sheets → pluggable recognition → review → results applied to SportsPress events; `spss/v1` ingest endpoints |
-| `sportspress-bench/` | `SPBN_` | Installable player/game-night PWA at `/bench/` (Vite + React in `app/`, committed `build/`): schedule, availability, spare calls, calendar feed; `spbn/v1` REST API. See `sportspress-bench/README.md` |
+| `sportspress-player-app/` | `SPPA_` | Installable player/game-night PWA, "My ARL" by default, at `/my-arl/` (Vite + React in `app/`, committed `build/`): schedule, availability, spare calls, calendar feed; `sppa/v1` REST API. See `sportspress-player-app/README.md` |
 
 Each plugin has its own `readme.txt`, `uninstall.php`, and `tests/` directory.
 
@@ -120,10 +120,10 @@ npm run start     # watch mode
 
 Source lives in `src/dashboard/` (App.jsx, pages/, components/, lib/api.js). Page routes are keyed in `App.jsx`'s `PAGES` map.
 
-`sportspress-bench` (Vite + React + TypeScript, Node 20.19+; source in `app/`, output in `build/`):
+`sportspress-player-app` (Vite + React + TypeScript, Node 20.19+; source in `app/`, output in `build/`):
 
 ```bash
-cd sportspress-bench/app
+cd sportspress-player-app/app
 npm ci
 npm test          # Vitest
 npm run build     # tsc -b && vite build → ../build/ (commit the result)
@@ -144,7 +144,7 @@ Sandbox services when running: WordPress :8082, Playwright MCP :3002, Mailpit :8
 - **Class file naming**: `includes/class-{name}.php`, one class per file. The `WordPress.Files.FileName.InvalidClassFileName` sniff is excluded — do not "fix" filenames to match.
 - **DB table interpolation**: `WordPress.DB.PreparedSQL.InterpolatedNotPrepared` is excluded because table names cannot use `prepare()` placeholders. Parameterized values still must use `$wpdb->prepare()`.
 - **Debug logging**: gated by two flags — write `if ( get_option('spat_debug_verbose_logging', '0') === '1' ) { error_log(...); }` (and a plugin-local flag like `splm_debug_logging` where present). Do not unconditionally `error_log`.
-- **No build for most plugins**: PHP changes take effect on file save. The League Manager dashboard and the Bench app require `npm run build` before changes are visible.
+- **No build for most plugins**: PHP changes take effect on file save. The League Manager dashboard and the Player App require `npm run build` before changes are visible.
 - **Uninstall semantics**: each plugin's `uninstall.php` is gated by the parent `spat_remove_data_on_uninstall` option. Capabilities are dropped on deactivation; data only on uninstall when opted in.
 - **`SPLM_SportsPress_Data` rule**: query SportsPress data via WP core (`get_posts`, `get_terms`, `get_post_meta`) against SP CPTs/taxonomies. Do not call SportsPress's internal PHP functions — they are not a stable API.
 
@@ -228,7 +228,7 @@ Delivered work whose specs have been removed (kept here as a short record):
 - **Season Setup page + division-assignment wizard** — 4-step drag-and-drop (`@dnd-kit`) team/division assignment; `POST /season/create`, `GET /teams/with-divisions`.
 - **Schedule Generator** phases 2 (configuration manager, presets, change history) & 3 (matchup generation, slot allocator, statistics, SportsPress import, progress/cancel) — fully shipped. Deliberately descoped: PDF report export, drag-and-drop post-generation editing, interactive conflict-resolution chooser.
 - **Schedule Generator UI enhancements** — config clone, import preview modal, export filters, statistics panel, format detection. Outstanding items were QA/accessibility/docs process only (see `specs/spsg-qa-audit/`), not missing features.
-- **Bench** (`sportspress-bench/`) — installable player and game-night app at `/bench/`; supersedes the never-built `dashboard-gaps-player-portal` spec (a `sportspress-player-portal` plugin with WooCommerce My-Account tabs), whose spec directory is removed. The player-facing schedule lives in Bench, and the My Account pages stay in the Blueline theme.
+- **Player App** (`sportspress-player-app/`, module id `player_app`) — installable player and game-night app, shown to players as "My ARL" at `/my-arl/` by default (the `sppa_app_name` option and `sppa_base_path` filter change the name and URL base); supersedes the never-built `dashboard-gaps-player-portal` spec (a `sportspress-player-portal` plugin with WooCommerce My-Account tabs), whose spec directory is removed. The player-facing schedule lives in the Player App, and the My Account pages stay in the Blueline theme.
 
 ## Codebase Discovery (codebase-memory-mcp)
 

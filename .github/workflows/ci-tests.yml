@@ -15,11 +15,11 @@ on:
       - 'sportspress-league-manager/assets/**'
       - 'sportspress-league-manager/package.json'
       - 'sportspress-league-manager/package-lock.json'
-      # Bench's committed build/ must be in the filter for the same reason as
+      # Player App's committed build/ must be in the filter for the same reason as
       # League Manager's above: a change touching only the bundle would
       # otherwise skip the drift gate.
-      - 'sportspress-bench/app/**'
-      - 'sportspress-bench/build/**'
+      - 'sportspress-player-app/app/**'
+      - 'sportspress-player-app/build/**'
       - '.github/workflows/ci-tests.yml'
   pull_request:
     branches: [main]
@@ -31,8 +31,8 @@ on:
       - 'sportspress-league-manager/assets/**'
       - 'sportspress-league-manager/package.json'
       - 'sportspress-league-manager/package-lock.json'
-      - 'sportspress-bench/app/**'
-      - 'sportspress-bench/build/**'
+      - 'sportspress-player-app/app/**'
+      - 'sportspress-player-app/build/**'
       - '.github/workflows/ci-tests.yml'
 
 # Least-privilege default token: this workflow only needs to read the repo.
@@ -119,7 +119,7 @@ jobs:
             exit 1
           fi
 
-  bench-build:
+  player-app-build:
     runs-on: ubuntu-26.04
     steps:
       - name: Checkout Code
@@ -130,32 +130,32 @@ jobs:
         with:
           node-version: '24'
 
-      # Bench's build/ is committed (the PHP app shell serves it as-is), so it
+      # Player App's build/ is committed (the PHP app shell serves it as-is), so it
       # must stay in sync with app/. Tests first, then build, then verify the
       # artifacts the shell cannot run without, then the drift gate.
-      - name: Test and build the Bench app
-        working-directory: sportspress-bench/app
+      - name: Test and build the Player App
+        working-directory: sportspress-player-app/app
         run: |
           npm ci
           npm test
           npm run build
 
-      - name: Verify Bench build artifacts
+      - name: Verify Player App build artifacts
         run: |
-          for f in sportspress-bench/build/.vite/manifest.json sportspress-bench/build/sw.js; do
+          for f in sportspress-player-app/build/.vite/manifest.json sportspress-player-app/build/sw.js; do
             if [ ! -s "$f" ]; then
-              echo "::error::Expected build artifact $f was not produced by 'npm run build' in sportspress-bench/app."
+              echo "::error::Expected build artifact $f was not produced by 'npm run build' in sportspress-player-app/app."
               exit 1
             fi
           done
 
       # git diff alone misses new files, and hashed bundle names change on every
       # source change, so also fail on untracked files under build/.
-      - name: Fail if committed Bench bundle drifted from source
+      - name: Fail if committed Player App bundle drifted from source
         run: |
-          untracked="$(git ls-files --others --exclude-standard -- sportspress-bench/build/)"
-          if ! git diff --exit-code sportspress-bench/build/ || [ -n "$untracked" ]; then
+          untracked="$(git ls-files --others --exclude-standard -- sportspress-player-app/build/)"
+          if ! git diff --exit-code sportspress-player-app/build/ || [ -n "$untracked" ]; then
             [ -n "$untracked" ] && printf 'Untracked build output:\n%s\n' "$untracked"
-            echo "::error::Committed sportspress-bench/build/ is out of sync with app/. Run 'npm ci && npm run build' in sportspress-bench/app and commit the result."
+            echo "::error::Committed sportspress-player-app/build/ is out of sync with app/. Run 'npm ci && npm run build' in sportspress-player-app/app and commit the result."
             exit 1
           fi

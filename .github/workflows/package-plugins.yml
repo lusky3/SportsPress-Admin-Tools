@@ -115,19 +115,19 @@ jobs:
           done
           echo "League manager build/ bundle present in the release zip."
 
-      - name: Verify bench build is present in its zip
+      - name: Verify player-app build is present in its zip
         run: |
-          # Same regression guard for Bench: the PHP app shell serves the
+          # Same regression guard for the Player App: the PHP app shell serves the
           # committed build/, and the zip must never ship without the service
           # worker or the manifest that names the hashed entry.
           for f in build/sw.js build/.vite/manifest.json; do
-            if ! unzip -l dist/sportspress-bench.zip \
-                 | grep -q "sportspress-bench/$f"; then
-              echo "::error::sportspress-bench/$f is missing from the release zip."
+            if ! unzip -l dist/sportspress-player-app.zip \
+                 | grep -q "sportspress-player-app/$f"; then
+              echo "::error::sportspress-player-app/$f is missing from the release zip."
               exit 1
             fi
           done
-          echo "Bench build/ present in the release zip."
+          echo "Player App build/ present in the release zip."
 
       - name: Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3

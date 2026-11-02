@@ -48,7 +48,7 @@ jobs:
               "https://downloads.wordpress.org/plugin/plugin-check.latest-stable.zip"
             ],
             "mappings": {
-              "wp-content/plugins/sportspress-bench": "./sportspress-bench",
+              "wp-content/plugins/sportspress-player-app": "./sportspress-player-app",
               "wp-content/plugins/sportspress-etransfer-automation": "./sportspress-etransfer-automation",
               "wp-content/plugins/sportspress-events-manager": "./sportspress-events-manager",
               "wp-content/plugins/sportspress-league-manager": "./sportspress-league-manager",
@@ -67,12 +67,12 @@ jobs:
       # them), so we parse the CSV output and fail on any ERROR row. Warnings and
       # the i18n_usage check are excluded to match the previous configuration;
       # tests/ and docs/ are out of scope, and so are
-      # Bench's un-built app/ source and node_modules/ (its .distignore keeps
+      # Player App's un-built app/ source and node_modules/ (its .distignore keeps
       # them out of the zip; the committed build/ is what ships and is checked).
       - name: Run Plugin Check on all suite plugins
         run: |
           set -uo pipefail
-          plugins="sportspress-admin-tools sportspress-bench sportspress-etransfer-automation sportspress-events-manager sportspress-league-manager sportspress-player-registration sportspress-player-tools sportspress-schedule-generator sportspress-score-sheets"
+          plugins="sportspress-admin-tools sportspress-player-app sportspress-etransfer-automation sportspress-events-manager sportspress-league-manager sportspress-player-registration sportspress-player-tools sportspress-schedule-generator sportspress-score-sheets"
           fail=0
           for p in $plugins; do
             echo "::group::Plugin Check: $p"
