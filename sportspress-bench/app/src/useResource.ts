@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { ApiError, apiGetWithMeta } from './api';
 
 export interface Resource<T> {
@@ -12,59 +12,124 @@ export interface Resource<T> {
 	savedAt: Date | undefined;
 }
 
-interface Entry {
+/** Everything the app knows about one path. Replaced, never mutated, so it can be a store snapshot. */
+interface Slot {
 	data: unknown;
 	savedAt: Date | undefined;
-}
-
-/** Last good response per path, kept for the life of the page so a screen you come back to paints at once. */
-const cache = new Map<string, Entry>();
-
-/** Mounted hooks, so invalidate() can make them refetch. */
-const mounted = new Set<{ path: string; reload: () => void }>();
-
-/** The cached data for a path, if any. */
-export function getCached<T>( path: string ): T | undefined {
-	return cache.get( path )?.data as T | undefined;
-}
-
-/** Overwrite the cached data for a path (after a write the server confirmed). Mounted screens pick it up on their next load. */
-export function setCached<T>( path: string, data: T ): void {
-	cache.set( path, { data, savedAt: new Date() } );
-}
-
-/**
- * Forget cached paths (all, or those starting with `prefix`) and refetch any
- * mounted screen that shows one. Call after a write that changes what a list says.
- */
-export function invalidate( prefix = '' ): void {
-	for ( const path of [ ...cache.keys() ] ) {
-		if ( path.startsWith( prefix ) ) {
-			cache.delete( path );
-		}
-	}
-	for ( const entry of [ ...mounted ] ) {
-		if ( entry.path.startsWith( prefix ) ) {
-			entry.reload();
-		}
-	}
-}
-
-interface State {
-	path: string;
-	data: unknown;
 	error: ApiError | undefined;
 	loading: boolean;
-	savedAt: Date | undefined;
+	/** Changed since `data` was fetched (see invalidate); the data still shows until a fresh copy lands. */
+	stale: boolean;
+}
+
+/** What a path with no history looks like: nothing yet, first load pending. */
+const EMPTY: Slot = { data: undefined, savedAt: undefined, error: undefined, loading: true, stale: false };
+
+/** Last good response per path, kept for the life of the page so a screen you come back to paints at once. */
+const slots = new Map<string, Slot>();
+
+/** Per-path request counter: only the latest request for a path may write its slot. */
+const generations = new Map<string, number>();
+
+/** Paths with a request in flight, so two screens asking at once share one trip. */
+const pending = new Set<string>();
+
+/** How many mounted hooks watch each path. */
+const watchers = new Map<string, number>();
+
+const listeners = new Set<() => void>();
+
+function getSlot( path: string ): Slot {
+	return slots.get( path ) ?? EMPTY;
+}
+
+function setSlot( path: string, patch: Partial<Slot> ): void {
+	slots.set( path, { ...getSlot( path ), ...patch } );
+	for ( const listener of [ ...listeners ] ) {
+		listener();
+	}
+}
+
+function subscribe( listener: () => void ): () => void {
+	listeners.add( listener );
+	return () => {
+		listeners.delete( listener );
+	};
+}
+
+/** Start a new generation for a path; anything still in flight from an older one is now ignored. */
+function supersede( path: string ): number {
+	const next = ( generations.get( path ) ?? 0 ) + 1;
+	generations.set( path, next );
+	pending.delete( path );
+	return next;
 }
 
 function toApiError( error: unknown ): ApiError {
 	return error instanceof ApiError ? error : new ApiError( 0, 'unknown', error instanceof Error ? error.message : 'Something went wrong.' );
 }
 
-function seed( path: string ): State {
-	const hit = cache.get( path );
-	return { path, data: hit?.data, error: undefined, loading: true, savedAt: hit?.savedAt };
+/** Fetch a path. Unless `force`, join a request that is already on its way. */
+function load( path: string, force: boolean ): void {
+	if ( ! force && pending.has( path ) ) {
+		return;
+	}
+	const generation = supersede( path );
+	pending.add( path );
+	setSlot( path, { loading: true, error: undefined } );
+
+	apiGetWithMeta<unknown>( path ).then(
+		( result ) => {
+			if ( generations.get( path ) !== generation ) {
+				return; // a newer request (or an invalidate) owns this path now
+			}
+			pending.delete( path );
+			const savedAt = result.savedAt ?? ( result.fromCache ? undefined : new Date() );
+			setSlot( path, { data: result.data, savedAt, error: undefined, loading: false, stale: false } );
+		},
+		( error: unknown ) => {
+			if ( generations.get( path ) !== generation ) {
+				return;
+			}
+			pending.delete( path );
+			setSlot( path, { error: toApiError( error ), loading: false } );
+		}
+	);
+}
+
+/** The cached data for a path, if any. Stale data is still returned. */
+export function getCached<T>( path: string ): T | undefined {
+	return slots.get( path )?.data as T | undefined;
+}
+
+/** Whether the cached data for a path was invalidated and has not been refreshed yet. */
+export function isStale( path: string ): boolean {
+	return getSlot( path ).stale;
+}
+
+/** Store data the server just confirmed. Any request still in flight for the path is ignored, so it cannot overwrite this. */
+export function setCached<T>( path: string, data: T ): void {
+	supersede( path );
+	setSlot( path, { data, savedAt: new Date(), error: undefined, loading: false, stale: false } );
+}
+
+/**
+ * Mark cached paths (all, or those starting with `prefix`) stale and refetch the
+ * ones a mounted screen is showing. The old data stays on screen until the new
+ * response arrives; a response still in flight from before the invalidate is dropped.
+ * Call after a write that changes what a list says, e.g. `invalidate('/me/games')`.
+ */
+export function invalidate( prefix = '' ): void {
+	for ( const path of [ ...slots.keys() ] ) {
+		if ( ! path.startsWith( prefix ) ) {
+			continue;
+		}
+		supersede( path );
+		setSlot( path, { stale: true, loading: false } );
+		if ( ( watchers.get( path ) ?? 0 ) > 0 ) {
+			load( path, true );
+		}
+	}
 }
 
 /**
@@ -74,43 +139,38 @@ function seed( path: string ): State {
  * invalidate(), and when the browser comes back online.
  */
 export function useResource<T>( path: string ): Resource<T> {
-	const [ state, setState ] = useState<State>( () => seed( path ) );
-	const [ tick, setTick ] = useState( 0 );
-	const reload = useCallback( () => setTick( ( n ) => n + 1 ), [] );
+	const slot = useSyncExternalStore(
+		subscribe,
+		() => getSlot( path ),
+		() => EMPTY
+	);
 
 	useEffect( () => {
-		let live = true;
-		setState( seed( path ) );
-		apiGetWithMeta<T>( path ).then(
-			( result ) => {
-				const savedAt = result.savedAt ?? ( result.fromCache ? undefined : new Date() );
-				cache.set( path, { data: result.data, savedAt } );
-				if ( live ) {
-					setState( { path, data: result.data, error: undefined, loading: false, savedAt } );
-				}
-			},
-			( error: unknown ) => {
-				if ( live ) {
-					setState( ( previous ) => ( { ...previous, path, error: toApiError( error ), loading: false } ) );
-				}
+		watchers.set( path, ( watchers.get( path ) ?? 0 ) + 1 );
+		load( path, false );
+		const online = () => load( path, true );
+		window.addEventListener( 'online', online );
+		return () => {
+			window.removeEventListener( 'online', online );
+			const left = ( watchers.get( path ) ?? 1 ) - 1;
+			if ( left > 0 ) {
+				watchers.set( path, left );
+			} else {
+				watchers.delete( path );
 			}
-		);
-		return () => {
-			live = false;
 		};
-	}, [ path, tick ] );
+	}, [ path ] );
 
-	useEffect( () => {
-		const entry = { path, reload };
-		mounted.add( entry );
-		window.addEventListener( 'online', reload );
-		return () => {
-			mounted.delete( entry );
-			window.removeEventListener( 'online', reload );
-		};
-	}, [ path, reload ] );
+	const reload = useCallback( () => load( path, true ), [ path ] );
 
-	// For one render after the path changes, state still belongs to the old path.
-	const view = state.path === path ? state : seed( path );
-	return { data: view.data as T | undefined, error: view.error, loading: view.loading, reload, savedAt: view.savedAt };
+	return { data: slot.data as T | undefined, error: slot.error, loading: slot.loading, reload, savedAt: slot.savedAt };
+}
+
+/** Test helper: forget every cached path and request. */
+export function _resetResourcesForTests(): void {
+	slots.clear();
+	generations.clear();
+	pending.clear();
+	watchers.clear();
+	listeners.clear();
 }

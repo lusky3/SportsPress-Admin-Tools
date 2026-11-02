@@ -44,6 +44,8 @@ export default defineConfig({
 						options: {
 							cacheName: 'spbn-shell',
 							networkTimeoutSeconds: 4,
+							// Only a real 200 replaces the last good shell: never a login redirect or an error page.
+							cacheableResponse: { statuses: [ 200 ] },
 						},
 					},
 					{
@@ -56,6 +58,8 @@ export default defineConfig({
 							cacheName: 'spbn-api',
 							networkTimeoutSeconds: 4,
 							expiration: { maxEntries: 60, maxAgeSeconds: 7 * 24 * 60 * 60 },
+							// Same for the API: a 401/403/5xx never replaces the last good copy.
+							cacheableResponse: { statuses: [ 200 ] },
 							plugins: [
 								{
 									// Tell the page when it is looking at a saved copy.
