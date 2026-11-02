@@ -57,6 +57,12 @@
 	--notice-text: #5c3b00;
 	--offline-bg: var(--ink-mid);
 	--offline-text: var(--paper);
+	--error: #a3241d;
+	--hero-bg: var(--ink);
+	--hero-muted: #b4c4dc;
+	--row-bg: #ffffff;
+	--chip-line: rgb(19 35 67 / 35%);
+	--skeleton: rgb(19 35 67 / 8%);
 
 	/* Shape and rhythm */
 	--radius: 12px;
@@ -81,5 +87,10 @@
 		--notice-bg: #3a2c0b;
 		--notice-text: #ffe3a3;
 		--offline-bg: #1c3358;
+		--error: #ffb4ab;
+		--hero-bg: #1c3358;
+		--row-bg: var(--ink);
+		--chip-line: rgb(247 251 252 / 40%);
+		--skeleton: rgb(247 251 252 / 8%);
 	}
 }

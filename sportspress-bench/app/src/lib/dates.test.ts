@@ -39,6 +39,11 @@ describe( 'relativeDay', () => {
 		expect( relativeDay( '2026-11-08T20:00:00-05:00', new Date( '2026-11-04T12:00:00-05:00' ) ) ).toBe( 'Sunday' );
 	} );
 
+	it( 'says Tomorrow across the night the clocks go back', () => {
+		// 11 PM EDT on Oct 31; the game is 8 PM EST on Nov 1, 22 hours later but the next calendar day.
+		expect( relativeDay( '2026-11-01T20:00:00-05:00', new Date( '2026-10-31T23:00:00-04:00' ) ) ).toBe( 'Tomorrow' );
+	} );
+
 	it( 'does not throw on a game with no time yet', () => {
 		expect( relativeDay( '', now ) ).toBe( 'TBD' );
 	} );

@@ -7,15 +7,15 @@ interface OfflineBannerProps {
 	savedAt?: Date;
 }
 
-/** A slim bar that appears while the app is showing saved data: "Offline · showing what we saved at 7:42 PM". */
+/**
+ * A slim bar that appears while the app is showing saved data: "Offline · showing what we saved at 7:42 PM".
+ * The status region stays mounted and empty while online, so screen readers announce the text when it arrives.
+ */
 export function OfflineBanner( { savedAt }: OfflineBannerProps ) {
 	const offline = useSyncExternalStore( onOffline, isOffline, () => false );
-	if ( ! offline ) {
-		return null;
-	}
 	return (
-		<div className="offline-banner" role="status">
-			Offline · showing what we saved{ savedAt ? ` at ${ timeLabel( savedAt.toISOString() ) }` : '' }
+		<div className="offline-slot" role="status">
+			{ offline ? <p className="offline-banner">Offline · showing what we saved{ savedAt ? ` at ${ timeLabel( savedAt.toISOString() ) }` : '' }</p> : null }
 		</div>
 	);
 }

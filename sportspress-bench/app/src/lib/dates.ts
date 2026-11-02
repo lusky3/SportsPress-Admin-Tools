@@ -15,7 +15,7 @@ function formatter( tz: string, options: Intl.DateTimeFormatOptions ): Intl.Date
 
 /** Newer ICU puts a narrow no-break space before AM/PM; the app wants a plain one. */
 function plain( s: string ): string {
-	return s.replace( /[  ]/g, ' ' );
+	return s.replace( /[\u202f\u00a0]/g, ' ' );
 }
 
 function parse( iso: string ): Date | null {

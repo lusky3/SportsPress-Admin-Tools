@@ -5,12 +5,15 @@ import type { WpErrorBody } from './types';
 export class ApiError extends Error {
 	readonly status: number;
 	readonly code: string;
+	/** `data.reason` from the WP_Error, e.g. 'busy' on a 403 spbn_not_eligible. */
+	readonly reason: string;
 
-	constructor( status: number, code: string, message: string ) {
+	constructor( status: number, code: string, message: string, reason = '' ) {
 		super( message );
 		this.name = 'ApiError';
 		this.status = status;
 		this.code = code;
+		this.reason = reason;
 	}
 }
 
@@ -123,7 +126,7 @@ async function readError( response: Response ): Promise<ApiError> {
 	} catch {
 		// Not JSON (a proxy error page): fall back to the status.
 	}
-	return new ApiError( response.status, body.code || 'http_error', body.message || response.statusText || 'The request failed.' );
+	return new ApiError( response.status, body.code || 'http_error', body.message || response.statusText || 'The request failed.', body.data?.reason || '' );
 }
 
 interface Raw<T> {
@@ -149,7 +152,12 @@ async function once<T>( method: string, path: string, body: unknown, nonceValue:
 		throw await readError( response );
 	}
 	const text = await response.text();
-	return { data: ( text === '' ? undefined : JSON.parse( text ) ) as T, response };
+	try {
+		return { data: ( text === '' ? undefined : JSON.parse( text ) ) as T, response };
+	} catch {
+		// A 200 that is not JSON: a captive portal, a maintenance page, a PHP notice before the body.
+		throw new ApiError( response.status, 'bad_response', 'The server sent something we could not read.' );
+	}
 }
 
 async function request<T>( method: string, path: string, body?: unknown ): Promise<Raw<T>> {

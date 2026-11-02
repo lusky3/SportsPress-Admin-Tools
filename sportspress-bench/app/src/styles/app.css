@@ -61,8 +61,14 @@ svg {
 }
 
 .tab-bar :focus-visible,
-.offline-banner :focus-visible {
+.offline-banner :focus-visible,
+.hero :focus-visible {
 	outline-color: var(--focus-on-chrome);
+}
+
+/* The tab bar is flush with the screen edge; draw its ring inside the item so nothing clips it. */
+.tab-bar :focus-visible {
+	outline-offset: -5px;
 }
 
 /* Layout */
@@ -213,10 +219,14 @@ svg {
 
 /* Offline banner */
 
-.offline-banner {
+.offline-slot {
 	position: sticky;
 	top: 0;
 	z-index: 11;
+}
+
+.offline-banner {
+	margin: 0;
 	padding: 6px var(--gutter);
 	background: var(--offline-bg);
 	color: var(--offline-text);

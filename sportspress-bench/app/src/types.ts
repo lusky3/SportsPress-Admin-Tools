@@ -3,6 +3,11 @@
  * Timestamps are ISO 8601 with the league's UTC offset.
  */
 
+/**
+ * `tbd` is SportsPress's own event status "TBD" (`sp_status = 'tbd'`, time to be decided),
+ * which SPBN_Event_Presenter passes through; the game is still on, its time is not settled.
+ * `postponed` and `cancelled` mean called off (events-manager's `_spem_cancelled` reads as cancelled).
+ */
 export type GameStatus = 'ok' | 'postponed' | 'cancelled' | 'tbd';
 
 /** What a player can answer. A player who has not answered is `none` in lists. */
@@ -17,9 +22,15 @@ export interface TeamRef {
 	logo: string;
 }
 
+/** Every field may be ''. */
 export interface Venue {
+	/** Usually the pad: "Black", "Red", "Appleby 1". */
 	name: string;
+	/** The facility: "Wave Twin Rinks". */
+	rink: string;
 	address: string;
+	/** A Google Maps link. */
+	map_url: string;
 }
 
 export interface GameResult {

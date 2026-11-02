@@ -99,7 +99,7 @@ export default defineConfig({
 		sourcemap: false,
 	},
 	test: {
-		include: [ 'src/**/*.test.ts' ],
+		include: [ 'src/**/*.test.{ts,tsx}' ],
 		environment: 'node',
 	},
 });

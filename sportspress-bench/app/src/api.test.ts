@@ -167,10 +167,25 @@ describe( 'nonce refresh', () => {
 describe( 'apiSend', () => {
 	it( 'sends a JSON body with the method', async () => {
 		fetchMock.mockResolvedValueOnce( json( { success: true } ) );
+		await apiSend( 'PUT', '/games/9/availability', { status: 'in', note: '' } );
+		const init = fetchMock.mock.calls[ 0 ][ 1 ] as RequestInit;
+		expect( init.method ).toBe( 'PUT' );
+		expect( init.body ).toBe( '{"status":"in","note":""}' );
+		expect( new Headers( init.headers ).get( 'Content-Type' ) ).toBe( 'application/json' );
+	} );
+
+	it( 'sends no body or Content-Type when there is nothing to send', async () => {
+		fetchMock.mockResolvedValueOnce( json( { success: true } ) );
 		await apiSend( 'POST', '/spare-calls/4/accept' );
 		const init = fetchMock.mock.calls[ 0 ][ 1 ] as RequestInit;
 		expect( init.method ).toBe( 'POST' );
 		expect( init.body ).toBeUndefined();
+		expect( new Headers( init.headers ).has( 'Content-Type' ) ).toBe( false );
+	} );
+
+	it( 'turns a 2xx body that is not JSON into a bad_response ApiError', async () => {
+		fetchMock.mockResolvedValueOnce( text( '<html>Maintenance</html>', 200 ) );
+		await expect( apiGet( '/me' ) ).rejects.toMatchObject( { name: 'ApiError', status: 200, code: 'bad_response' } );
 	} );
 
 	it( 'surfaces a 409 as an ApiError', async () => {

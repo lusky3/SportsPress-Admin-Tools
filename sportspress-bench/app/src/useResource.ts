@@ -136,7 +136,7 @@ export function invalidate( prefix = '' ): void {
  * GET `path` from the REST API and keep the result in step with the screen.
  * Results are cached in memory by path; a cached copy shows straight away and
  * is refreshed behind it. Refetches when the path changes, on reload(), after
- * invalidate(), and when the browser comes back online.
+ * invalidate(), and when the browser comes back online. An empty path loads nothing.
  */
 export function useResource<T>( path: string ): Resource<T> {
 	const slot = useSyncExternalStore(
@@ -146,6 +146,9 @@ export function useResource<T>( path: string ): Resource<T> {
 	);
 
 	useEffect( () => {
+		if ( path === '' ) {
+			return; // nothing to load (e.g. a screen that waits on another resource)
+		}
 		watchers.set( path, ( watchers.get( path ) ?? 0 ) + 1 );
 		load( path, false );
 		const online = () => load( path, true );
@@ -161,9 +164,13 @@ export function useResource<T>( path: string ): Resource<T> {
 		};
 	}, [ path ] );
 
-	const reload = useCallback( () => load( path, true ), [ path ] );
+	const reload = useCallback( () => {
+		if ( path !== '' ) {
+			load( path, true );
+		}
+	}, [ path ] );
 
-	return { data: slot.data as T | undefined, error: slot.error, loading: slot.loading, reload, savedAt: slot.savedAt };
+	return { data: slot.data as T | undefined, error: slot.error, loading: path !== '' && slot.loading, reload, savedAt: slot.savedAt };
 }
 
 /** Test helper: forget every cached path and request. */

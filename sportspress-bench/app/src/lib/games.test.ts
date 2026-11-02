@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { Game } from '../types';
-import { countLabel, groupByMonth, isShort, nextGame } from './games';
+import { callLabel, countLabel, groupByMonth, isShort, nextGame, venueLine, venueShort } from './games';
 
 function game( id: number, start: string, extra: Partial<Game> = {} ): Game {
 	return {
 		id,
 		start,
 		status: 'ok',
-		venue: { name: 'Twin Rinks', address: '' },
+		venue: { name: 'Black', rink: 'Twin Rinks', address: '', map_url: '' },
 		team: { id: 12, name: 'Ducks', logo: '' },
 		opponent: { id: 7, name: 'Wolves', logo: '' },
 		is_home: true,
@@ -118,5 +118,30 @@ describe( 'countLabel', () => {
 
 	it( 'leaves out no reply when the list does not carry it', () => {
 		expect( countLabel( { in: 11, out: 2, maybe: 0 } ) ).toBe( '11 in · 2 out' );
+	} );
+} );
+
+describe( 'venue labels', () => {
+	const v = ( name: string, rink: string ) => ( { name, rink, address: '', map_url: '' } );
+
+	it( 'names the rink and the pad, adding "pad" only to a one-word pad name', () => {
+		expect( venueLine( v( 'Black', 'Wave Twin Rinks' ) ) ).toBe( 'Wave Twin Rinks · Black pad' );
+		expect( venueLine( v( 'Appleby 1', 'Appleby Ice Centre' ) ) ).toBe( 'Appleby Ice Centre · Appleby 1' );
+		expect( venueLine( v( 'Appleby 1', '' ) ) ).toBe( 'Appleby 1' );
+		expect( venueLine( v( '', 'Wave Twin Rinks' ) ) ).toBe( 'Wave Twin Rinks' );
+		expect( venueLine( v( '', '' ) ) ).toBe( '' );
+	} );
+
+	it( 'keeps the short form short', () => {
+		expect( venueShort( v( 'Black', 'Wave Twin Rinks' ) ) ).toBe( 'Wave Twin Rinks · Black' );
+		expect( venueShort( v( 'Rink B', 'Burlington Memorial Arena and Community Centre' ) ) ).toBe( 'Rink B' );
+		expect( venueShort( v( 'Appleby 1', '' ) ) ).toBe( 'Appleby 1' );
+	} );
+} );
+
+describe( 'callLabel', () => {
+	it( 'says who the team is looking for', () => {
+		expect( callLabel( { position: 'goalie', needed: 1 } ) ).toBe( 'Looking for 1 goalie' );
+		expect( callLabel( { position: 'skater', needed: 3 } ) ).toBe( 'Looking for 3 skaters' );
 	} );
 } );

@@ -1,4 +1,4 @@
-import type { Counts, Game } from '../types';
+import type { Counts, Game, SpareCall, Venue } from '../types';
 import { LEAGUE_TZ, monthKey, monthLabel } from './dates';
 
 const HOUR_MS = 3_600_000;
@@ -11,8 +11,37 @@ function startMs( game: Pick<Game, 'start'> ): number {
 	return new Date( game.start ).getTime();
 }
 
-function isCalledOff( game: Pick<Game, 'status'> ): boolean {
+export function isCalledOff( game: Pick<Game, 'status'> ): boolean {
 	return game.status === 'postponed' || game.status === 'cancelled';
+}
+
+/** The game has started (so it is history: show a score, not counts). A game with no time is never past. */
+export function isPast( game: Pick<Game, 'start'>, now: Date ): boolean {
+	return startMs( game ) <= now.getTime();
+}
+
+/** "Black" reads as "Black pad"; "Appleby 1" or "Rink B" stays as it is. */
+function pad( name: string ): string {
+	return /^[A-Za-z]+$/.test( name ) && ! /^(pad|rink|ice|arena)$/i.test( name ) ? `${ name } pad` : name;
+}
+
+/** Full venue line for a hero: "Wave Twin Rinks · Black pad"; the name alone when there is no rink. */
+export function venueLine( venue: Venue ): string {
+	if ( venue.rink && venue.name ) {
+		return `${ venue.rink } · ${ pad( venue.name ) }`;
+	}
+	return venue.rink || venue.name;
+}
+
+/** Venue for a list row: "Wave Twin Rinks · Black" when it fits, else the pad name alone. */
+export function venueShort( venue: Venue ): string {
+	const both = venue.rink && venue.name ? `${ venue.rink } · ${ venue.name }` : '';
+	return both && both.length <= 28 ? both : venue.name || venue.rink;
+}
+
+/** "Looking for 2 goalies". */
+export function callLabel( call: Pick<SpareCall, 'position' | 'needed'> ): string {
+	return `Looking for ${ call.needed } ${ call.position }${ call.needed === 1 ? '' : 's' }`;
 }
 
 /** Games grouped by month in the order they first appear, e.g. `{ key: '2026-11', label: 'November 2026' }`. */
