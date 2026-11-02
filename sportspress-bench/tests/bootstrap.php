@@ -62,6 +62,8 @@ function spbn_reset() {
 	$GLOBALS['spbn_transient_reads']   = array();
 	$GLOBALS['spbn_transient_writes']  = array();
 	$GLOBALS['spbn_meta_cache_primed'] = array();
+	$GLOBALS['spbn_posts_primed']      = array(); // _prime_post_caches / update_object_term_cache id lists.
+	$GLOBALS['spbn_cron']              = array(); // hook => [ time, recurrence ].
 	$GLOBALS['spbn_user_queries']      = array();
 	$GLOBALS['wpdb']            = new SPBN_Test_WPDB();
 }
@@ -141,6 +143,9 @@ class SPBN_Test_WPDB {
 	public $results_handler = null;
 	public $query_return    = 1;
 	public $posts           = 'wp_posts';
+	public $postmeta        = 'wp_postmeta';
+	public $term_relationships = 'wp_term_relationships';
+	public $term_taxonomy   = 'wp_term_taxonomy';
 	public $query_handler   = null; // callable( $sql ): affected rows, for stateful fakes.
 	public $inserts         = array(); // [ table, data, formats ].
 	public $insert_return   = 1;
@@ -276,6 +281,12 @@ function get_option( $key, $default = false ) {
 function update_option( $key, $value ) {
 	$GLOBALS['spbn_options'][ $key ] = $value;
 	return true;
+}
+
+function delete_option( $key ) {
+	$had = array_key_exists( $key, $GLOBALS['spbn_options'] );
+	unset( $GLOBALS['spbn_options'][ $key ] );
+	return $had;
 }
 
 function add_filter( $tag, $callback, $priority = 10, $args = 1 ) {
@@ -416,7 +427,14 @@ function get_post_datetime( $post = null, $field = 'date', $source = 'local' ) {
  * --------------------------------------------------------------------- */
 
 function spbn_meta_clause_matches( $post_id, array $clause ) {
-	$rows = $GLOBALS['spbn_meta'][ $post_id ][ $clause['key'] ] ?? array();
+	$rows    = $GLOBALS['spbn_meta'][ $post_id ][ $clause['key'] ] ?? array();
+	$compare = strtoupper( $clause['compare'] ?? '=' );
+	if ( 'NOT EXISTS' === $compare ) {
+		return array() === $rows;
+	}
+	if ( 'EXISTS' === $compare ) {
+		return array() !== $rows;
+	}
 	$want = array_map( 'strval', (array) ( $clause['value'] ?? array() ) );
 	foreach ( $rows as $row ) {
 		if ( in_array( (string) $row, $want, true ) ) {
@@ -571,6 +589,61 @@ function update_post_meta( $id, $key, $value ) {
 function update_meta_cache( $type, $ids ) {
 	$GLOBALS['spbn_meta_cache_primed'][] = array( $type, array_values( (array) $ids ) );
 	return array();
+}
+
+/** Core's post/meta/term cache primer; recorded so a suite can assert ids were primed in bulk. */
+function _prime_post_caches( $ids, $update_term_cache = true, $update_meta_cache = true ) {
+	$GLOBALS['spbn_posts_primed'][] = array_values( array_map( 'intval', (array) $ids ) );
+}
+
+function update_object_term_cache( $object_ids, $object_type ) {
+	$GLOBALS['spbn_posts_primed'][] = array_values( array_map( 'intval', (array) $object_ids ) );
+	return null;
+}
+
+/**
+ * The one SportsPress-shaped SQL the suites emulate from fixtures: the season's
+ * team ids (SELECT DISTINCT pm.meta_value ... sp_team ... sp_season term N),
+ * counting publish/future events and drafts flagged _spem_cancelled. Returns
+ * null for any other SQL, so a results handler can fall through.
+ */
+function spbn_fixture_season_team_ids( $sql ) {
+	if ( false === strpos( $sql, 'SELECT DISTINCT pm.meta_value' ) || ! preg_match( "/tt.term_id = (\d+)/", $sql, $m ) ) {
+		return null;
+	}
+	$out = array();
+	foreach ( $GLOBALS['spbn_posts'] as $post ) {
+		if ( 'sp_event' !== $post->post_type || ! spbn_tax_clause_matches( $post->ID, array( 'taxonomy' => 'sp_season', 'terms' => array( (int) $m[1] ) ) ) ) {
+			continue;
+		}
+		$cancelled = '1' === (string) ( $GLOBALS['spbn_meta'][ $post->ID ]['_spem_cancelled'][0] ?? '' );
+		if ( ! in_array( $post->post_status, array( 'publish', 'future' ), true ) && ! ( 'draft' === $post->post_status && $cancelled ) ) {
+			continue;
+		}
+		foreach ( $GLOBALS['spbn_meta'][ $post->ID ]['sp_team'] ?? array() as $team ) {
+			$out[ (string) $team ] = (string) $team;
+		}
+	}
+	return array_values( $out );
+}
+
+/* WP-Cron: scheduled events by hook. */
+function wp_next_scheduled( $hook, $args = array() ) {
+	return $GLOBALS['spbn_cron'][ $hook ]['time'] ?? false;
+}
+
+function wp_schedule_event( $timestamp, $recurrence, $hook, $args = array() ) {
+	$GLOBALS['spbn_cron'][ $hook ] = array(
+		'time'       => (int) $timestamp,
+		'recurrence' => $recurrence,
+	);
+	return true;
+}
+
+function wp_clear_scheduled_hook( $hook, $args = array() ) {
+	$had = isset( $GLOBALS['spbn_cron'][ $hook ] ) ? 1 : 0;
+	unset( $GLOBALS['spbn_cron'][ $hook ] );
+	return $had;
 }
 
 function get_user_meta( $user_id, $key = '', $single = false ) {

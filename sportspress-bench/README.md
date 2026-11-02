@@ -130,6 +130,12 @@ it logs a change. The first save of a game never logs one, and neither do edits 
 past. Games changed in the last 14 days show a "Changed" flag. This works for edits made in wp-admin
 and by Events Manager, not just through Bench.
 
+Games that were already on the schedule before Bench was turned on have nothing to compare against
+yet, so Bench records a baseline for every upcoming game (without logging a change): on activation,
+when the module is enabled, from a daily `spbn_baseline` cron job that stops once every upcoming
+game has one, and whenever a game without one is opened in the app or the feed. The first reschedule
+or cancellation of such a game is then logged like any other.
+
 ## Troubleshooting
 
 - `/bench/` returns 404: re-save **Settings, Permalinks** (see "Turning it on").

@@ -9,6 +9,10 @@
  * is logged only when a stored, non-empty fingerprint actually differs and the
  * game is still ahead. The first save of an event never logs.
  *
+ * Games that existed before the module was enabled are baselined (fingerprint
+ * stored, nothing logged) by baseline_upcoming(), run on activation, on enable
+ * and by a daily cron until none is left, and lazily when a game is read.
+ *
  * fingerprint() and should_log() are pure and unit-tested; on_save() and the
  * repository methods are thin WordPress wrappers.
  */
@@ -29,6 +33,15 @@ class SPBN_Changes {
 
 	/** Meta keys whose writes can change a fingerprint. */
 	const WATCHED_META = array( '_spem_cancelled', 'sp_status', 'sp_team' );
+
+	/** Daily cron that baselines upcoming games until none is left without a fingerprint. */
+	const BASELINE_HOOK = 'spbn_baseline';
+
+	/** Events baselined per batch. */
+	const BASELINE_LIMIT = 200;
+
+	/** Batches one cron run may take (10 x 200 covers a season). */
+	const BASELINE_BATCHES = 10;
 
 	/**
 	 * Posts being tracked right now (a listener that saves the event again must
@@ -58,6 +71,123 @@ class SPBN_Changes {
 		add_action( 'updated_post_meta', array( __CLASS__, 'on_meta' ), 10, 3 );
 		add_action( 'deleted_post_meta', array( __CLASS__, 'on_meta' ), 10, 3 );
 		add_action( 'shutdown', array( __CLASS__, 'flush_pending' ) );
+		add_action( self::BASELINE_HOOK, array( __CLASS__, 'run_baseline' ) );
+	}
+
+	/**
+	 * Store a baseline (fingerprint and snapshot, no change row, no
+	 * spbn_event_changed) for upcoming games that have none: publish/future
+	 * events, and drafts events-manager cancelled. Bench ships dark, so every
+	 * game scheduled before the module was enabled starts without one, and its
+	 * first reschedule would otherwise go unlogged. Soonest games first.
+	 *
+	 * @param int $limit Most events to baseline in this batch.
+	 * @return int Events baselined.
+	 */
+	public static function baseline_upcoming( int $limit = self::BASELINE_LIMIT ): int {
+		$limit = max( 1, $limit );
+		// raw_event() reads the start from post_date (site time), so "upcoming" does too.
+		$now  = ( new DateTimeImmutable( 'now', wp_timezone() ) )->format( 'Y-m-d H:i:s' );
+		$base = array(
+			'post_type'      => 'sp_event',
+			'orderby'        => 'date',
+			'order'          => 'ASC',
+			'fields'         => 'ids',
+			'no_found_rows'  => true,
+			'date_query'     => array(
+				array(
+					'column' => 'post_date',
+					'after'  => $now,
+				),
+			),
+		);
+		$no_fingerprint = array(
+			'key'     => self::FINGERPRINT_META,
+			'compare' => 'NOT EXISTS',
+		);
+
+		$ids = (array) get_posts(
+			$base + array(
+				'post_status'    => array( 'publish', 'future' ),
+				'posts_per_page' => $limit,
+				'meta_query'     => array( $no_fingerprint ), // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- a bounded batch.
+			)
+		);
+		if ( count( $ids ) < $limit ) {
+			$ids = array_merge(
+				$ids,
+				(array) get_posts(
+					$base + array(
+						'post_status'    => 'draft',
+						'posts_per_page' => $limit - count( $ids ),
+						'meta_query'     => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- a bounded batch.
+							array(
+								'key'   => '_spem_cancelled',
+								'value' => '1',
+							),
+							$no_fingerprint,
+						),
+					)
+				)
+			);
+		}
+		$ids = array_values( array_unique( array_map( 'intval', $ids ) ) );
+		if ( ! $ids ) {
+			return 0;
+		}
+		_prime_post_caches( $ids, true, true );
+
+		$reader = new SPBN_Roster_Reader();
+		$done   = 0;
+		foreach ( $ids as $post_id ) {
+			$raw = $reader->raw_event( $post_id );
+			if ( null !== $raw && self::store_baseline( $post_id, $raw ) ) {
+				++$done;
+			}
+		}
+		return $done;
+	}
+
+	/**
+	 * Baseline one batch now and, when more may be left, schedule the daily
+	 * cron to finish. Runs on activation and when the module is enabled.
+	 */
+	public static function start_baseline(): void {
+		if ( self::baseline_upcoming() >= self::BASELINE_LIMIT && ! wp_next_scheduled( self::BASELINE_HOOK ) ) {
+			wp_schedule_event( time() + 60, 'daily', self::BASELINE_HOOK );
+		}
+	}
+
+	/**
+	 * The spbn_baseline cron: baseline in batches, and unschedule once a batch
+	 * comes back short (nothing is left).
+	 */
+	public static function run_baseline(): void {
+		for ( $i = 0; $i < self::BASELINE_BATCHES; $i++ ) {
+			if ( self::baseline_upcoming() < self::BASELINE_LIMIT ) {
+				wp_clear_scheduled_hook( self::BASELINE_HOOK );
+				return;
+			}
+		}
+	}
+
+	/**
+	 * Store a baseline for a game that is being read and has none yet (cheap:
+	 * one meta read from the primed cache, a write only when missing). Never
+	 * overwrites a stored fingerprint, which would hide a real change.
+	 *
+	 * @param array $raw Raw event from SPBN_Roster_Reader::raw_event().
+	 */
+	public static function ensure_baseline( array $raw ): void {
+		$post_id = (int) ( $raw['id'] ?? 0 );
+		if ( $post_id <= 0 || isset( self::$running[ $post_id ] ) ) {
+			return;
+		}
+		$start = '' !== (string) ( $raw['start'] ?? '' ) ? strtotime( (string) $raw['start'] ) : false;
+		if ( false === $start || $start <= time() ) {
+			return;
+		}
+		self::store_baseline( $post_id, $raw );
 	}
 
 	/**
@@ -233,6 +363,20 @@ class SPBN_Changes {
 		update_option( self::GENERATION_OPTION, (int) get_option( self::GENERATION_OPTION, 0 ) + 1 );
 
 		do_action( 'spbn_event_changed', $post_id, $before, $after );
+	}
+
+	/**
+	 * Fingerprint and snapshot for an event with no stored fingerprint. Never
+	 * logs, bumps the generation or fires spbn_event_changed.
+	 *
+	 * @return bool Whether a baseline was written.
+	 */
+	private static function store_baseline( int $post_id, array $raw ): bool {
+		if ( '' !== (string) get_post_meta( $post_id, self::FINGERPRINT_META, true ) ) {
+			return false;
+		}
+		self::store( $post_id, self::fingerprint( $raw ), self::snapshot( $raw ) );
+		return true;
 	}
 
 	private static function store( int $post_id, string $fingerprint, array $snapshot ): void {

@@ -269,6 +269,7 @@ class SPBN_REST {
 		if ( null === $raw ) {
 			return self::not_found();
 		}
+		SPBN_Changes::ensure_baseline( $raw );
 
 		$spare_team = self::spare_team_for( $v['user_id'], $raw['id'] );
 		if ( ! SPBN_Access::can_view_game( $v['teams'], $raw['team_ids'], $v['organizer'], $spare_team > 0 ) ) {
@@ -721,6 +722,10 @@ class SPBN_REST {
 				return self::start_ts( $a['raw'] ) <=> self::start_ts( $b['raw'] );
 			}
 		);
+		// A game scheduled before Bench was enabled gets its baseline the first time it is read.
+		foreach ( $entries as $entry ) {
+			SPBN_Changes::ensure_baseline( $entry['raw'] );
+		}
 
 		self::$entries[ $user_id ] = $entries;
 		return $entries;

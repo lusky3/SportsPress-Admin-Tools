@@ -518,6 +518,10 @@ $g103 = $list['data'][0];
 spbn_assert( 3 === $g103['result']['for'] && 1 === $g103['result']['against'] && 'W' === $g103['result']['outcome'], 'a played game carries its result' );
 spbn_assert( null === $g103['my_availability'] && array( 'in' => 0, 'out' => 0, 'maybe' => 0 ) === $g103['counts'], 'a long-finished game has no availability and zero counts' );
 
+spbn_assert( 1 === preg_match( '/^[a-f0-9]{32}$/', get_post_meta( 101, '_spbn_fingerprint', true ) ), 'reading the games baselines an upcoming game that had no fingerprint' );
+spbn_assert( '' === get_post_meta( 103, '_spbn_fingerprint', true ), 'but not a game already played' );
+spbn_assert( array() === array_filter( $GLOBALS['wpdb']->inserts, function ( $i ) { return 'wp_spbn_changes' === $i[0]; } ), 'and logs no change' );
+
 spbn_seed_call( $db, array( 'event_id' => 101, 'team_id' => 12, 'position' => 'skater', 'needed' => 2 ) );
 spbn_accept_row( $db, 1, 11, 54 );
 spbn_login( 11 );
@@ -560,6 +564,11 @@ spbn_assert( ! is_wp_error( $res ) && 12 === $g['team']['id'] && true === $g['as
 spbn_assert( array() === $g['availability']['players'] && 2 === $g['availability']['counts']['in'], 'but gets counts only, not the teammate list' );
 spbn_assert( null === $g['availability']['mine'], 'a spare has no availability.mine' );
 spbn_assert( true === $g['spare_calls'][0]['accepted_by_me'], 'and sees they hold a place on the call' );
+
+unset( $GLOBALS['spbn_meta'][102]['_spbn_fingerprint'] );
+spbn_login( 12, true );
+SPBN_REST::game( spbn_req( array( 'id' => 102 ) ) );
+spbn_assert( 1 === preg_match( '/^[a-f0-9]{32}$/', get_post_meta( 102, '_spbn_fingerprint', true ) ), 'opening one game baselines it too' );
 
 spbn_login( 13 );
 spbn_assert( spbn_err( SPBN_REST::game( spbn_req( array( 'id' => 101 ) ) ), 'spbn_forbidden', 403 ), 'a player on neither team (not an accepted spare) gets 403 spbn_forbidden' );

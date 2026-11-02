@@ -294,6 +294,73 @@ spbn_assert( 1 === (int) get_option( 'spbn_generation', 0 ), 'and one generation
 $after = json_decode( spbn_rows()[0][1]['after_json'], true );
 spbn_assert( false !== strpos( $after['start'], '22:15:00' ) && array( 9, 12 ) === $after['teams'], 'the one row holds both changes' );
 
+echo "\n=== baseline_upcoming: games that predate Bench ===\n\n";
+
+// Event 101 was scheduled before Bench was enabled: it has no fingerprint.
+spbn_make_event();
+spbn_event_at( 102, date( 'Y-m-d', strtotime( '-3 days' ) ) . ' 21:45:00', 'publish', array( 12, 7 ) ); // past.
+spbn_event_at( 103, date( 'Y-m-d', strtotime( '+5 days' ) ) . ' 20:00:00', 'draft', array( 12, 7 ) );   // cancelled by events-manager.
+spbn_set_meta( 103, '_spem_cancelled', '1' );
+spbn_event_at( 104, date( 'Y-m-d', strtotime( '+6 days' ) ) . ' 20:00:00', 'draft', array( 12, 7 ) );   // unfinished draft.
+spbn_event_at( 105, date( 'Y-m-d', strtotime( '+7 days' ) ) . ' 20:00:00', 'future', array( 12, 7 ) );  // already tracked.
+spbn_set_meta( 105, '_spbn_fingerprint', 'keep-me' );
+SPBN_Changes::register();
+spbn_assert( ! empty( $GLOBALS['spbn_actions']['spbn_baseline'] ), 'register() hooks the spbn_baseline cron' );
+
+$n = SPBN_Changes::baseline_upcoming();
+spbn_assert( 2 === $n, 'baseline_upcoming stores a baseline for the two upcoming games without one (returns 2)' );
+spbn_assert( 1 === preg_match( '/^[a-f0-9]{32}$/', get_post_meta( 101, '_spbn_fingerprint', true ) ) && array( 7, 12 ) === get_post_meta( 101, '_spbn_snapshot', true )['teams'], 'an upcoming game gets a fingerprint and a snapshot' );
+spbn_assert( 1 === preg_match( '/^[a-f0-9]{32}$/', get_post_meta( 103, '_spbn_fingerprint', true ) ) && 'cancelled' === get_post_meta( 103, '_spbn_snapshot', true )['status'], 'so does an upcoming events-manager cancelled draft' );
+spbn_assert( '' === get_post_meta( 102, '_spbn_fingerprint', true ), 'a past game is left alone' );
+spbn_assert( '' === get_post_meta( 104, '_spbn_fingerprint', true ), 'an unfinished draft is left alone' );
+spbn_assert( 'keep-me' === get_post_meta( 105, '_spbn_fingerprint', true ), 'a game that already has a fingerprint keeps it' );
+spbn_assert( array() === spbn_rows() && array() === spbn_fired( 'spbn_event_changed' ) && false === get_option( 'spbn_generation', false ), 'the baseline logs no row, fires nothing and bumps nothing' );
+$primed = array_merge( array(), ...$GLOBALS['spbn_posts_primed'] );
+spbn_assert( in_array( 101, $primed, true ) && in_array( 103, $primed, true ), 'the batch primes its post caches in one go' );
+$q = $GLOBALS['spbn_queries'][0];
+spbn_assert( 'sp_event' === $q['post_type'] && 'ids' === $q['fields'] && 200 === $q['posts_per_page'] && 'NOT EXISTS' === $q['meta_query'][0]['compare'], 'an ids query for events with no fingerprint, 200 at a time' );
+spbn_assert( 0 === SPBN_Changes::baseline_upcoming(), 'running it again finds nothing left' );
+
+// The first reschedule of that game is now logged.
+$GLOBALS['spbn_posts'][101]->post_date = date( 'Y-m-d', strtotime( '+10 days' ) ) . ' 22:15:00';
+SPBN_Changes::on_save( 101 );
+spbn_assert( 1 === count( spbn_rows() ) && 1 === count( spbn_fired( 'spbn_event_changed' ) ), 'saved before activation, baselined, then rescheduled: exactly one change row' );
+$before = json_decode( spbn_rows()[0][1]['before_json'], true );
+spbn_assert( false !== strpos( $before['start'], '21:45:00' ), 'and "before" is the baselined start' );
+
+echo "\n--- batches, the cron and stopping when done ---\n\n";
+
+spbn_reset();
+spbn_add_post( 12, 'sp_team', 'Ducks' );
+spbn_add_post( 7, 'sp_team', 'Knights' );
+for ( $i = 0; $i < 205; $i++ ) {
+	spbn_event_at( 1000 + $i, date( 'Y-m-d', strtotime( '+' . ( 2 + $i ) . ' days' ) ) . ' 20:00:00', 'future', array( 12, 7 ) );
+}
+spbn_assert( 3 === SPBN_Changes::baseline_upcoming( 3 ), 'the batch size is the limit' );
+spbn_assert( '' !== get_post_meta( 1000, '_spbn_fingerprint', true ) && '' === get_post_meta( 1003, '_spbn_fingerprint', true ), 'soonest games first' );
+
+SPBN_Changes::start_baseline();
+spbn_assert( '' !== get_post_meta( 1202, '_spbn_fingerprint', true ) && '' === get_post_meta( 1203, '_spbn_fingerprint', true ), 'start_baseline runs one batch of 200 now' );
+spbn_assert( 'daily' === ( $GLOBALS['spbn_cron']['spbn_baseline']['recurrence'] ?? '' ), 'and, with games still left, schedules the daily spbn_baseline cron' );
+SPBN_Changes::run_baseline();
+spbn_assert( '' !== get_post_meta( 1204, '_spbn_fingerprint', true ), 'the cron baselines the rest' );
+spbn_assert( ! isset( $GLOBALS['spbn_cron']['spbn_baseline'] ), 'and stops rescheduling once nothing is left' );
+SPBN_Changes::start_baseline();
+spbn_assert( ! isset( $GLOBALS['spbn_cron']['spbn_baseline'] ), 'start_baseline with nothing left schedules nothing' );
+
+echo "\n--- lazily, when a game is read ---\n\n";
+
+spbn_make_event();
+$raw = ( new SPBN_Roster_Reader() )->raw_event( 101 );
+SPBN_Changes::ensure_baseline( $raw );
+spbn_assert( 1 === preg_match( '/^[a-f0-9]{32}$/', get_post_meta( 101, '_spbn_fingerprint', true ) ), 'ensure_baseline stores a missing fingerprint for an upcoming game' );
+spbn_set_meta( 101, '_spbn_fingerprint', 'stored' );
+SPBN_Changes::ensure_baseline( $raw );
+spbn_assert( 'stored' === get_post_meta( 101, '_spbn_fingerprint', true ), 'and never overwrites one (that would hide a change)' );
+spbn_event_at( 102, date( 'Y-m-d', strtotime( '-3 days' ) ) . ' 21:45:00', 'publish', array( 12, 7 ) );
+SPBN_Changes::ensure_baseline( ( new SPBN_Roster_Reader() )->raw_event( 102 ) );
+spbn_assert( '' === get_post_meta( 102, '_spbn_fingerprint', true ) && array() === spbn_rows(), 'a past game is not written; nothing is logged' );
+
 echo "\n=== recent_event_ids / count_for ===\n\n";
 
 spbn_reset();

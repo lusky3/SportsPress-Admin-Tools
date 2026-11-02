@@ -68,10 +68,65 @@ class SportsPress_Bench {
 			SPBN_App_Shell::add_rewrites();
 		}
 		flush_rewrite_rules();
+
+		// Games scheduled before Bench have no fingerprint; baseline them so their
+		// first reschedule or cancellation is logged.
+		if ( class_exists( 'SPAT_Plugin_Manager' ) && $this->module_enabled() ) {
+			$this->load_functionality();
+			SPBN_Changes::start_baseline();
+		}
 	}
 
+	/**
+	 * Leave no /bench/ routes behind: the rules were registered on init this
+	 * request, so take them out before flushing (a plain flush would store them
+	 * again). Forget the rewrite version so a later activation flushes, and stop
+	 * the baseline cron.
+	 */
 	public function deactivate() {
+		global $wp_rewrite;
+
+		if ( file_exists( SPBN_PLUGIN_PATH . 'includes/class-app-shell.php' ) ) {
+			require_once SPBN_PLUGIN_PATH . 'includes/class-app-shell.php';
+		}
+		if ( class_exists( 'SPBN_App_Shell' ) && is_object( $wp_rewrite ) && is_array( $wp_rewrite->extra_rules_top ?? null ) ) {
+			foreach ( array_keys( SPBN_App_Shell::rules() ) as $regex ) {
+				unset( $wp_rewrite->extra_rules_top[ $regex ] );
+			}
+		}
 		flush_rewrite_rules();
+		delete_option( 'spbn_rewrite_version' );
+		wp_clear_scheduled_hook( 'spbn_baseline' );
+	}
+
+	/**
+	 * The modules option changed (Settings, SportsPress Admin Tools). Turning
+	 * Bench on baselines upcoming games; turning it off stops the baseline cron.
+	 * The /bench/ rules are dropped by the first request that runs with the
+	 * module off (see init), since this request registered them already.
+	 *
+	 * @param mixed $old Previous value.
+	 * @param mixed $new New value.
+	 */
+	public function modules_changed( $old, $new ) {
+		$was = in_array( SPBN_MODULE_ID, (array) $old, true );
+		$now = in_array( SPBN_MODULE_ID, (array) $new, true );
+		if ( $now && ! $was ) {
+			$this->load_functionality();
+			SPBN_Changes::start_baseline();
+		} elseif ( $was && ! $now ) {
+			wp_clear_scheduled_hook( 'spbn_baseline' );
+		}
+	}
+
+	/**
+	 * The modules option was saved for the first time.
+	 *
+	 * @param string $option Option name.
+	 * @param mixed  $value  Its value.
+	 */
+	public function modules_added( $option, $value ) {
+		$this->modules_changed( array(), $value );
 	}
 
 	public function init() {
@@ -90,8 +145,17 @@ class SportsPress_Bench {
 			)
 		);
 
+		add_action( 'update_option_spat_enabled_modules', array( $this, 'modules_changed' ), 10, 2 );
+		add_action( 'add_option_spat_enabled_modules', array( $this, 'modules_added' ), 10, 2 );
+
 		if ( $this->module_enabled() ) {
 			$this->load_functionality();
+		} elseif ( false !== get_option( 'spbn_rewrite_version', false ) ) {
+			// The module was turned off: this request never registered the /bench/
+			// rules, so drop the stored set (WordPress rebuilds it without them on
+			// the next lookup). Once only: the version marker goes with it.
+			delete_option( 'rewrite_rules' );
+			delete_option( 'spbn_rewrite_version' );
 		}
 	}
 
