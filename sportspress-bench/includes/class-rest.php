@@ -528,8 +528,8 @@ class SPBN_REST {
 
 	/**
 	 * Store a new call unless the team already has an open one for this game and
-	 * position (409 spbn_call_exists, with that call in data) or the poster has
-	 * reached five calls in 24 hours (429 spbn_too_many_calls). Runs under the
+	 * position (409 spbn_call_exists, with that call in data) or the poster, not
+	 * an organizer, has reached five calls in 24 hours (429 spbn_too_many_calls). Runs under the
 	 * team-and-game lock.
 	 *
 	 * @return array|WP_Error The new call.
@@ -547,7 +547,8 @@ class SPBN_REST {
 				);
 			}
 		}
-		if ( SPBN_Spares::calls_created_since( $v['user_id'], time() - DAY_IN_SECONDS ) >= SPBN_Spares::DAILY_CALL_LIMIT ) {
+		// Organizers (conveners) may post many calls on a game night; players are limited.
+		if ( ! $v['organizer'] && SPBN_Spares::calls_created_since( $v['user_id'], time() - DAY_IN_SECONDS ) >= SPBN_Spares::DAILY_CALL_LIMIT ) {
 			return new WP_Error( 'spbn_too_many_calls', __( 'You have posted five spare calls in the last 24 hours. Please try again later.', 'sportspress-bench' ), array( 'status' => 429 ) );
 		}
 

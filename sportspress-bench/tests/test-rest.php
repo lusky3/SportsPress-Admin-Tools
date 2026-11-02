@@ -777,6 +777,11 @@ spbn_assert( array() === $GLOBALS['spbn_mail'], 'and mails nobody' );
 spbn_assert( 1 === preg_match( '/created_by = 7 AND created_at >= \'(\S+ \S+)\'/', implode( "\n", $GLOBALS['wpdb']->queries ), $m ) && abs( strtotime( $m[1] . ' UTC' ) - ( time() - 86400 ) ) < 5, 'the window is the last 24 hours (rolling)' );
 spbn_login( 8 );
 spbn_assert( 201 === SPBN_REST::create_call( spbn_req( array( 'id' => 108, 'position' => 'goalie', 'needed' => 1 ) ) )->get_status(), 'the limit is per person: a teammate can still post' );
+for ( $i = 0; $i < 5; $i++ ) {
+	spbn_seed_call( $db, array( 'event_id' => 102, 'team_id' => 9, 'created_by' => 12, 'status' => 'cancelled', 'created_at' => gmdate( 'Y-m-d H:i:s', time() - 600 ) ) );
+}
+spbn_login( 12, true );
+spbn_assert( 201 === SPBN_REST::create_call( spbn_req( array( 'id' => 108, 'position' => 'skater', 'needed' => 1 ) ) )->get_status(), 'an organizer is not limited: a sixth call in 24 hours goes out' );
 
 echo "\n--- notes are at most 140 characters ---\n\n";
 

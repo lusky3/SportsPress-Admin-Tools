@@ -732,7 +732,7 @@ spbn_assert( 2 === $sent, 'returns the number of spares emailed' );
 spbn_assert( false !== strpos( $sql, 'wp_spbn_spare_responses' ) && false !== strpos( $sql, "r.status = 'accepted'" ) && false !== strpos( $sql, 'c.event_id = 101' ) && false !== strpos( $sql, "c.status <> 'cancelled'" ), 'only users with an accepted response on a live call for that event' );
 spbn_assert( 1 === count( $GLOBALS['spbn_mail'] ), 'one BCC mail for the two spares' );
 $m = $GLOBALS['spbn_mail'][0];
-spbn_assert( "Your spare game changed: Ducks \u{00B7} Thu Nov 5, 9:45 PM" === $m['subject'], 'subject: "Your spare game changed: {team} · {Day Mon j, g:i A}" (the game as they agreed to it)' );
+spbn_assert( "Your spare game changed: Ducks \u{00B7} Thu Nov 5, 10:30 PM" === $m['subject'], 'subject: "Your spare game changed: {team} · {Day Mon j, g:i A}" with the NEW time (when the spare must show up)' );
 spbn_assert( false !== strpos( $m['message'], '9:45 PM' ) && false !== strpos( $m['message'], '10:30 PM' ) && false !== strpos( $m['message'], 'Rink B' ), 'the body shows what it was and what it is now' );
 spbn_assert( false !== strpos( $m['message'], '/bench/spares' ), 'and links the app' );
 $bcc = implode( ' ', (array) $m['headers'] );
@@ -740,7 +740,7 @@ spbn_assert( false !== strpos( $bcc, 'spare5@example.test' ) && false !== strpos
 
 $GLOBALS['spbn_mail'] = array();
 SPBN_Mailer::game_changed_for_spares( 101, $before, array_merge( $after, array( 'status' => 'cancelled' ) ) );
-spbn_assert( "Your spare game is cancelled: Ducks \u{00B7} Thu Nov 5, 9:45 PM" === $GLOBALS['spbn_mail'][0]['subject'], 'cancelled: "Your spare game is cancelled: {team} · {time}"' );
+spbn_assert( "Your spare game is cancelled: Ducks \u{00B7} Thu Nov 5, 9:45 PM" === $GLOBALS['spbn_mail'][0]['subject'], 'cancelled: "Your spare game is cancelled: {team} · {time}" with the original, listed time' );
 
 $GLOBALS['spbn_mail'] = array();
 SPBN_Mailer::game_changed_for_spares( 101, $before, array_merge( $after, array( 'status' => 'postponed' ) ) );
@@ -755,11 +755,11 @@ $db->results_handler  = function ( $sql ) {
 };
 spbn_assert( 2 === SPBN_Mailer::game_changed_for_spares( 101, $before, $after ) && 2 === count( $GLOBALS['spbn_mail'] ), 'spares for both teams: one mail per calling team' );
 $subjects = array_column( $GLOBALS['spbn_mail'], 'subject' );
-spbn_assert( in_array( "Your spare game changed: Ducks \u{00B7} Thu Nov 5, 9:45 PM", $subjects, true ) && in_array( "Your spare game changed: Knights of Ni \u{00B7} Thu Nov 5, 9:45 PM", $subjects, true ), 'each names the team that spare is playing for' );
+spbn_assert( in_array( "Your spare game changed: Ducks \u{00B7} Thu Nov 5, 10:30 PM", $subjects, true ) && in_array( "Your spare game changed: Knights of Ni \u{00B7} Thu Nov 5, 10:30 PM", $subjects, true ), 'each names the team that spare is playing for' );
 
 $GLOBALS['spbn_mail'] = array();
-SPBN_Mailer::game_changed_for_spares( 101, array( 'start' => '', 'venue' => '', 'teams' => array(), 'status' => '' ), $after );
-spbn_assert( "Your spare game changed: Ducks \u{00B7} Thu Nov 5, 10:30 PM" === $GLOBALS['spbn_mail'][0]['subject'], 'with no stored "before" time, the subject uses the new time' );
+SPBN_Mailer::game_changed_for_spares( 101, array( 'start' => '', 'venue' => '', 'teams' => array(), 'status' => '' ), array_merge( $after, array( 'status' => 'cancelled' ) ) );
+spbn_assert( "Your spare game is cancelled: Ducks \u{00B7} Thu Nov 5, 10:30 PM" === $GLOBALS['spbn_mail'][0]['subject'], 'cancelled with no stored "before" time: the subject falls back to the current time' );
 
 $GLOBALS['spbn_mail'] = array();
 $db->results_handler  = null;

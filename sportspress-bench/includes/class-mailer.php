@@ -197,9 +197,12 @@ class SPBN_Mailer {
 		$status    = (string) ( $after['status'] ?? 'ok' );
 		$cancelled = 'cancelled' === $status;
 		$body      = self::change_body( $status, $before, $after );
-		// The subject names the game as the spare agreed to it; the new time is in the body.
-		$start = (string) ( $before['start'] ?? '' );
-		$when  = self::when( '' !== $start ? $start : (string) ( $after['start'] ?? '' ) );
+		// A change names the new time (when the spare must show up); a cancellation
+		// names the time the game was listed for. Each falls back to the other.
+		$new   = (string) ( $after['start'] ?? '' );
+		$old   = (string) ( $before['start'] ?? '' );
+		$start = $cancelled ? ( '' !== $old ? $old : $new ) : ( '' !== $new ? $new : $old );
+		$when  = self::when( $start );
 
 		$sent = 0;
 		foreach ( $by_team as $team_id => $user_ids ) {

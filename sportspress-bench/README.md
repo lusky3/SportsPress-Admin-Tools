@@ -86,7 +86,8 @@ Every call emails the spare pool, so two limits keep it from being flooded:
   is still open is refused (`409 spbn_call_exists`, with the open call in the response); once it
   has filled or been cancelled, a new one can go out.
 - One person can post at most five calls in any 24 hours, counting calls that were later cancelled
-  (`429 spbn_too_many_calls`). The limit is per person, organizers included.
+  (`429 spbn_too_many_calls`). The limit is per person. Organizers (`manage_sportspress`) are not
+  limited, since a convener may post many calls on a game night.
 
 Who gets offered a call (all of these must hold):
 
@@ -124,7 +125,9 @@ team. A game changed in the last 14 days is flagged "Changed" on the board.
   - a spare call to eligible, opted-in players (game time, rink, opponent, the caller's note and a
     link to `/bench/spares`);
   - a "spare filled" note to the person who posted the call, naming the spare;
-  - a "Your spare game changed / is cancelled: {team} · {time}" note to accepted spares only.
+  - a "Your spare game changed / is cancelled: {team} · {time}" note to accepted spares only (a
+    change names the new time, when the spare must show up; a cancellation names the time the game
+    was listed for).
 
   Bench does not email teams about reschedules; Events Manager already does that. Pool and spare
   mail is sent in batches of 40 with the players on Bcc, so recipients cannot see one another. The
