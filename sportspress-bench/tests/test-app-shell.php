@@ -225,6 +225,23 @@ $res = SPBN_App_Shell::handle( 'app', 0, '' );
 spbn_assert( 302 === $res['status'] && 'https://arl.example.test/wp-login.php?redirect_to=' . rawurlencode( 'https://arl.example.test/bench/' ) === $res['redirect'], 'not logged in: redirect to wp-login with redirect_to /bench/' );
 spbn_assert( '' === ( $res['body'] ?? '' ), 'and no shell body' );
 
+echo "\n--- a deep link survives the login ---\n\n";
+
+$login_to = function ( $path ) {
+	return 'https://arl.example.test/wp-login.php?redirect_to=' . rawurlencode( 'https://arl.example.test' . $path );
+};
+$res = SPBN_App_Shell::handle( 'app', 0, '', '/bench/games/101' );
+spbn_assert( $login_to( '/bench/games/101' ) === $res['redirect'], 'not logged in on /bench/games/101: redirect_to is that page' );
+spbn_assert( $login_to( '/bench/spares' ) === SPBN_App_Shell::handle( 'app', 0, '', '/bench/spares?utm=x#y' )['redirect'], 'the query string and fragment are dropped' );
+spbn_assert( $login_to( '/bench/x' ) === SPBN_App_Shell::handle( 'app', 0, '', '//evil.example/bench/x' )['redirect'], 'a scheme-relative URI cannot change the host (redirect_to is always on this site)' );
+$unsafe = array( '/bench/../wp-admin/', '/wp-admin/', '/benchmark', '/bench/%2e%2e/x', '/bench//x', '/bench/<script>', "/bench/x\r\nLocation: y", "/bench/x\n", '' );
+$ok     = true;
+foreach ( $unsafe as $uri ) {
+	$ok = $ok && $login_to( '/bench/' ) === SPBN_App_Shell::handle( 'app', 0, '', $uri )['redirect'];
+}
+spbn_assert( $ok, 'anything that is not a plain /bench/ path (dot segments, other paths, encoded or doubled slashes, markup, line breaks, nothing) falls back to /bench/' );
+spbn_assert( '/bench/team/12' === SPBN_App_Shell::return_path( '/bench/team/12' ) && '/bench' === SPBN_App_Shell::return_path( '/bench' ), 'return_path keeps a plain /bench path as it is' );
+
 $res = SPBN_App_Shell::handle( 'app', 7, '' );
 spbn_assert( 200 === $res['status'] && true === $res['nocache'] && 0 === strpos( $res['headers']['Content-Type'], 'text/html' ), 'logged in: 200 html with no-cache headers' );
 spbn_assert( false !== strpos( $res['body'], 'Bench is not built' ), 'with no build the shell says so (the PWA is a later step)' );

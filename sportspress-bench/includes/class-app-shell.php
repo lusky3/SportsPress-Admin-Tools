@@ -109,7 +109,9 @@ class SPBN_App_Shell {
 		if ( '' === $route ) {
 			return;
 		}
-		$response = self::handle( $route, (int) get_current_user_id(), (string) get_query_var( self::TOKEN_VAR ) );
+		// Only used as a login return path, and only after return_path() has validated it.
+		$uri      = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( (string) $_SERVER['REQUEST_URI'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- validated by return_path().
+		$response = self::handle( $route, (int) get_current_user_id(), (string) get_query_var( self::TOKEN_VAR ), $uri );
 		if ( null === $response ) {
 			return;
 		}
@@ -135,12 +137,13 @@ class SPBN_App_Shell {
 	 * @param string $route           app|sw|manifest|ical.
 	 * @param int    $current_user_id The logged-in user, or 0.
 	 * @param string $token           The feed token (ical only).
+	 * @param string $request_uri     The requested URI (app only: where login returns to).
 	 * @return array|null Descriptor, or null for a route that is not ours.
 	 */
-	public static function handle( string $route, int $current_user_id, string $token ): ?array {
+	public static function handle( string $route, int $current_user_id, string $token, string $request_uri = '' ): ?array {
 		switch ( $route ) {
 			case 'app':
-				return self::app_response( $current_user_id );
+				return self::app_response( $current_user_id, $request_uri );
 			case 'sw':
 				return array(
 					'status'  => 200,
@@ -292,17 +295,41 @@ class SPBN_App_Shell {
 		);
 	}
 
+	/**
+	 * The app page to come back to after logging in: the request's path when it
+	 * is a plain /bench path (letters, digits, '-', '_' segments; no dot
+	 * segments, encoded characters, doubled slashes or anything else), else
+	 * /bench/. Query string and fragment are dropped. Always a path, so the
+	 * caller puts it on this site's own URL. Pure.
+	 */
+	public static function return_path( string $request_uri ): string {
+		// parse_url() turns control characters into '_'; refuse them outright instead.
+		if ( 1 === preg_match( '/[\x00-\x1f\x7f]/', $request_uri ) ) {
+			return '/bench/';
+		}
+		$path = wp_parse_url( $request_uri, PHP_URL_PATH );
+		$path = is_string( $path ) ? $path : '';
+
+		// A site installed in a subdirectory serves /bench/ under its home path.
+		$home = rtrim( (string) wp_parse_url( home_url( '/' ), PHP_URL_PATH ), '/' );
+		if ( '' !== $home && 0 === strpos( $path, $home . '/' ) ) {
+			$path = substr( $path, strlen( $home ) );
+		}
+
+		return 1 === preg_match( '#^/bench(?:/[A-Za-z0-9_-]+)*/?\z#', $path ) ? $path : '/bench/';
+	}
+
 	/* --------------------------------------------------------------------
 	 * Internals
 	 * ----------------------------------------------------------------- */
 
-	private static function app_response( int $user_id ): array {
+	private static function app_response( int $user_id, string $request_uri ): array {
 		if ( $user_id <= 0 ) {
 			return array(
 				'status'   => 302,
 				'headers'  => array(),
 				'body'     => '',
-				'redirect' => wp_login_url( home_url( '/bench/' ) ),
+				'redirect' => wp_login_url( home_url( self::return_path( $request_uri ) ) ),
 			);
 		}
 

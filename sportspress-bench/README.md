@@ -29,7 +29,9 @@ If `/bench/` returns a 404, go to **Settings, Permalinks** and click **Save Chan
 changing anything. That rebuilds the rewrite rules. Bench flushes them itself on activation and
 once per plugin version, but a permalink plugin or a host-level cache can leave stale rules.
 
-A visitor who is not logged in is sent to the WordPress login page and then back to `/bench/`. A
+A visitor who is not logged in is sent to the WordPress login page and then back to the Bench page
+they asked for (a link to a game or to `/bench/spares` from an email lands there), or to `/bench/`
+when the address is not a plain Bench path. A
 logged-in user with no linked player sees a short "we couldn't match your account to a player yet"
 card instead of an error. The app does not need any other setup: there are no Bench settings.
 
@@ -62,9 +64,11 @@ still accepted, so older subscriptions keep working. The Me tab shows it with a 
 the event in place and raise its `SEQUENCE`; cancelled games are `STATUS:CANCELLED`. Games are 75
 minutes long unless a theme or plugin changes it with the `spbn_game_duration_minutes` filter.
 
-- The feed is cached on the server for up to ten minutes, and the cache is cleared whenever a game
-  changes. How soon a phone shows the change is up to the calendar app: Apple Calendar and Outlook
-  poll every few hours, and Google Calendar can take a day.
+- The feed is cached on the server for up to ten minutes. A logged change to an upcoming game (a
+  new time, rink or opponent, or a postponement or cancellation; see "Changed games") clears the
+  cache at once. Anything else, such as a newly added game or an edit to a game already played,
+  shows up when the ten minutes are up. How soon a phone shows the change is up to the calendar
+  app: Apple Calendar and Outlook poll every few hours, and Google Calendar can take a day.
 - The token is the only credential. Anyone who has the link can read that player's schedule, so it
   should be treated like a password.
 - **Reset link** (Me tab) rotates the token. The old link stops working immediately (404) and the
@@ -105,8 +109,8 @@ spares are emailed.
 Users with the `manage_sportspress` capability (the same gate as the League Manager dashboard) see a
 **Tonight** tab. A date stepper lists that day's games with the time and rink, both sides'
 in / out / no-reply counts, goalies in, open spare calls and whether a result has been entered.
-Organizers can also open any game, see both sides' availability lists, and set a player's
-availability or post a spare call for a team.
+Organizers can also open any game, see both sides' availability lists, and post a spare call for a
+team. A game changed in the last 14 days is flagged "Changed" on the board.
 
 ## Privacy
 
@@ -131,7 +135,8 @@ availability or post a spare call for a team.
   address stops these batches from being sent.
 - **What is stored.** Availability, spare calls and responses, a log of game changes, each user's
   calendar token and spare preferences, and a fingerprint of each game used to detect changes.
-- **Uninstall.** Deactivating removes nothing. Deleting the plugin removes its data only if
+- **Uninstall.** Deactivating removes no data, only the `/bench/` routes and the scheduled
+  baseline job (turning the module off drops the routes too). Deleting the plugin removes its data only if
   **Remove Data on Uninstall** is on in SportsPress Admin Tools settings (the
   `spat_remove_data_on_uninstall` option). With it on, Bench drops its four tables, every `spbn_*`
   option and transient, the `spbn_ical_token` and `spbn_spare_prefs` user meta, and the
