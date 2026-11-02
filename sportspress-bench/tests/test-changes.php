@@ -249,6 +249,51 @@ SPBN_Changes::on_meta( 1, 101, '_spem_cancelled' );
 SPBN_Changes::flush_pending();
 spbn_assert( 1 === count( spbn_rows() ), 'a save and a meta write for the same change log it once (idempotent)' );
 
+echo "\n=== one check per request, after SportsPress has written the event ===\n\n";
+
+// (1) A brand-new event: save_post_sp_event fires first (no teams yet), then the
+// generic save_post writes sp_team. The baseline must hold the teams, not [].
+spbn_reset();
+$local = date( 'Y-m-d', strtotime( '+10 days' ) ) . ' 21:45:00';
+spbn_add_post( 101, 'sp_event', 'Event 101', 'future', array( 'post_date' => $local, 'post_date_gmt' => gmdate( 'Y-m-d H:i:s', strtotime( $local ) ) ) );
+spbn_add_post( 12, 'sp_team', 'Ducks' );
+spbn_add_post( 7, 'sp_team', 'Knights' );
+SPBN_Changes::register();
+do_action( 'save_post_sp_event', 101, $GLOBALS['spbn_posts'][101], false );
+spbn_assert( array() === spbn_rows() && '' === get_post_meta( 101, '_spbn_fingerprint', true ), 'the save hook alone checks nothing yet (no baseline from a team-less event)' );
+spbn_add_meta( 101, 'sp_team', '12' );
+do_action( 'added_post_meta', 1, 101, 'sp_team', '12' );
+spbn_add_meta( 101, 'sp_team', '7' );
+do_action( 'added_post_meta', 2, 101, 'sp_team', '7' );
+SPBN_Changes::flush_pending();
+spbn_assert( array() === spbn_rows() && array() === spbn_fired( 'spbn_event_changed' ), 'new event: no change row and no spbn_event_changed' );
+spbn_assert( false === get_option( 'spbn_generation', false ), 'new event: generation not bumped' );
+$snap = get_post_meta( 101, '_spbn_snapshot', true );
+spbn_assert( 1 === preg_match( '/^[a-f0-9]{32}$/', get_post_meta( 101, '_spbn_fingerprint', true ) ) && array( 7, 12 ) === $snap['teams'], 'new event: the stored baseline already has both teams' );
+
+// (2) An existing event: start moved and the teams rewritten in one request.
+spbn_make_event();
+SPBN_Changes::on_save( 101 );
+$GLOBALS['spbn_actions'] = array();
+SPBN_Changes::register();
+// Core has already saved the new start when save_post_sp_event fires; SportsPress writes sp_team after it.
+$GLOBALS['spbn_posts'][101]->post_date = date( 'Y-m-d', strtotime( '+10 days' ) ) . ' 22:15:00';
+do_action( 'save_post_sp_event', 101, $GLOBALS['spbn_posts'][101], true );
+unset( $GLOBALS['spbn_meta'][101]['sp_team'] );
+do_action( 'deleted_post_meta', array( 1 ), 101, 'sp_team', '' );
+spbn_add_post( 9, 'sp_team', 'Wizards' );
+spbn_add_meta( 101, 'sp_team', '12' );
+do_action( 'added_post_meta', 2, 101, 'sp_team', '12' );
+spbn_add_meta( 101, 'sp_team', '9' );
+do_action( 'added_post_meta', 3, 101, 'sp_team', '9' );
+spbn_assert( array() === spbn_rows(), 'edit: nothing is logged until the request ends' );
+SPBN_Changes::flush_pending();
+spbn_assert( 1 === count( spbn_rows() ), 'edit changing start and teams: exactly one change row' );
+spbn_assert( 1 === count( spbn_fired( 'spbn_event_changed' ) ), 'edit changing start and teams: exactly one spbn_event_changed' );
+spbn_assert( 1 === (int) get_option( 'spbn_generation', 0 ), 'and one generation bump' );
+$after = json_decode( spbn_rows()[0][1]['after_json'], true );
+spbn_assert( false !== strpos( $after['start'], '22:15:00' ) && array( 9, 12 ) === $after['teams'], 'the one row holds both changes' );
+
 echo "\n=== recent_event_ids / count_for ===\n\n";
 
 spbn_reset();

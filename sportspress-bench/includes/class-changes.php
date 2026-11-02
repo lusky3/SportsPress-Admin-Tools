@@ -46,12 +46,14 @@ class SPBN_Changes {
 	private static array $pending = array();
 
 	/**
-	 * Wire the hooks. Meta writes are queued rather than handled on the spot:
-	 * SportsPress rewrites sp_team one row at a time (delete, then add each), so
-	 * checking after every row would log the half-written states in between.
+	 * Wire the hooks. Saves and meta writes are queued, not handled on the spot,
+	 * and the event is checked once at shutdown. SportsPress writes sp_team and
+	 * sp_status on the generic save_post, which core fires after
+	 * save_post_sp_event, and rewrites sp_team one row at a time (delete, then
+	 * add each); checking earlier would baseline or log half-written states.
 	 */
 	public static function register(): void {
-		add_action( 'save_post_sp_event', array( __CLASS__, 'on_save' ), 99, 1 );
+		add_action( 'save_post_sp_event', array( __CLASS__, 'on_post_saved' ), 99, 1 );
 		add_action( 'added_post_meta', array( __CLASS__, 'on_meta' ), 10, 3 );
 		add_action( 'updated_post_meta', array( __CLASS__, 'on_meta' ), 10, 3 );
 		add_action( 'deleted_post_meta', array( __CLASS__, 'on_meta' ), 10, 3 );
@@ -98,6 +100,15 @@ class SPBN_Changes {
 	}
 
 	/**
+	 * save_post_sp_event hook: queue the event for the check at shutdown.
+	 */
+	public static function on_post_saved( int $post_id ): void {
+		if ( $post_id > 0 && 'sp_event' === get_post_type( $post_id ) ) {
+			self::$pending[ $post_id ] = true;
+		}
+	}
+
+	/**
 	 * Meta hook: queue the event for a check at shutdown when the key is one
 	 * that feeds the fingerprint.
 	 *
@@ -116,8 +127,10 @@ class SPBN_Changes {
 	}
 
 	/**
-	 * Check every queued event once. Idempotent with on_save(): the fingerprint
-	 * has already been brought up to date if a save got there first.
+	 * Check every queued event once, after everything the request wrote to it:
+	 * one fingerprint compare, so a save that moves the game and changes its
+	 * teams is one change row and one spbn_event_changed. Shutdown also fires
+	 * in WP-CLI and cron, which covers importers.
 	 */
 	public static function flush_pending(): void {
 		$ids           = array_keys( self::$pending );
