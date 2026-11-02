@@ -4,7 +4,8 @@
  * is filled, and accepted spares hearing that their game changed.
  *
  * Plain text, sent in-request. Pool and spare mails go out as BCC chunks so
- * nobody sees another player's address; the To address is the site admin's.
+ * nobody sees another player's address; the To address is bcc_to() (the
+ * spbn_mail_to option or noreply@ the site's host, then the spbn_mail_to filter).
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -168,29 +169,66 @@ class SPBN_Mailer {
 		global $wpdb;
 		$tables = SPBN_Schema::tables();
 
-		$user_ids = $wpdb->get_col(
+		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT DISTINCT r.user_id FROM {$tables['spare_responses']} r
+				"SELECT DISTINCT r.user_id, c.team_id FROM {$tables['spare_responses']} r
 				INNER JOIN {$tables['spare_calls']} c ON c.id = r.call_id
 				WHERE c.event_id = %d AND r.status = %s AND c.status <> %s
-				ORDER BY r.user_id ASC",
+				ORDER BY c.team_id ASC, r.user_id ASC",
 				$event_id,
 				'accepted',
 				'cancelled'
-			)
+			),
+			ARRAY_A
 		);
-		$emails   = self::emails_for( array_map( 'intval', (array) $user_ids ) );
-		if ( ! $emails ) {
-			return 0;
+
+		// One mail per calling team, so the subject can name the team they spare for.
+		$by_team = array();
+		$seen    = array();
+		foreach ( (array) $rows as $row ) {
+			$user_id = (int) ( $row['user_id'] ?? 0 );
+			$team_id = (int) ( $row['team_id'] ?? 0 );
+			if ( $user_id > 0 && ! isset( $seen[ $user_id ] ) ) {
+				$seen[ $user_id ]      = true;
+				$by_team[ $team_id ][] = $user_id;
+			}
 		}
 
 		$status    = (string) ( $after['status'] ?? 'ok' );
 		$cancelled = 'cancelled' === $status;
-		$subject   = $cancelled
-			? __( 'Your spare game is cancelled', 'sportspress-bench' )
-			: __( 'Your spare game changed', 'sportspress-bench' );
+		$body      = self::change_body( $status, $before, $after );
+		// The subject names the game as the spare agreed to it; the new time is in the body.
+		$start = (string) ( $before['start'] ?? '' );
+		$when  = self::when( '' !== $start ? $start : (string) ( $after['start'] ?? '' ) );
 
-		$lines = array();
+		$sent = 0;
+		foreach ( $by_team as $team_id => $user_ids ) {
+			$emails = self::emails_for( $user_ids );
+			if ( ! $emails ) {
+				continue;
+			}
+			$team    = $team_id > 0 ? get_post( $team_id ) : null;
+			$name    = $team ? self::one_line( (string) $team->post_title ) : '';
+			$subject = $cancelled
+				/* translators: 1: team name, 2: game date and time. */
+				? __( 'Your spare game is cancelled: %1$s · %2$s', 'sportspress-bench' )
+				/* translators: 1: team name, 2: game date and time. */
+				: __( 'Your spare game changed: %1$s · %2$s', 'sportspress-bench' );
+			$sent   += self::send_bcc( $emails, sprintf( $subject, $name, $when ), $body );
+		}
+		return $sent;
+	}
+
+	/**
+	 * What changed, as the body of a spare's change mail.
+	 *
+	 * @param string $status The normalised status now.
+	 * @param array  $before {start,venue,teams,status} before the change.
+	 * @param array  $after  {start,venue,teams,status} now.
+	 */
+	private static function change_body( string $status, array $before, array $after ): string {
+		$cancelled = 'cancelled' === $status;
+		$lines     = array();
 		if ( $cancelled ) {
 			$lines[] = __( 'The game you were going to spare in has been cancelled, so you are not needed.', 'sportspress-bench' );
 		} elseif ( 'postponed' === $status ) {
@@ -209,7 +247,7 @@ class SPBN_Mailer {
 		$lines[] = '';
 		$lines[] = home_url( '/bench/spares' );
 
-		return self::send_bcc( $emails, $subject, implode( "\n", $lines ) );
+		return implode( "\n", $lines );
 	}
 
 	/**
@@ -251,15 +289,33 @@ class SPBN_Mailer {
 	}
 
 	/**
-	 * One mail per chunk of 40, addressed to the site admin with everyone else
-	 * on BCC.
+	 * Where BCC mail is addressed: the spbn_mail_to option when it holds a valid
+	 * address, else noreply@ the site's host, passed through the spbn_mail_to
+	 * filter. Never the site admin, whose inbox would get a copy of every blast.
+	 * '' when the result is not a usable address.
+	 */
+	public static function bcc_to(): string {
+		$option  = trim( (string) get_option( 'spbn_mail_to', '' ) );
+		$host    = (string) wp_parse_url( home_url(), PHP_URL_HOST );
+		$default = '' !== $option && is_email( $option ) ? $option : ( '' !== $host ? 'noreply@' . $host : '' );
+
+		$to = trim( (string) apply_filters( 'spbn_mail_to', $default ) );
+		if ( '' === $to || 1 === preg_match( '/[\r\n,]/', $to ) || ! is_email( $to ) ) {
+			return '';
+		}
+		return $to;
+	}
+
+	/**
+	 * One mail per chunk of 40, addressed to bcc_to() with every recipient on
+	 * BCC.
 	 *
 	 * @param string[] $emails Recipients.
 	 * @return int Recipients in the mails that were accepted for delivery.
 	 */
 	private static function send_bcc( array $emails, string $subject, string $body ): int {
-		$to = (string) get_option( 'admin_email', '' );
-		if ( '' === $to || ! is_email( $to ) ) {
+		$to = self::bcc_to();
+		if ( '' === $to ) {
 			return 0;
 		}
 

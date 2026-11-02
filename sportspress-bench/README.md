@@ -120,11 +120,15 @@ availability or post a spare call for a team.
   - a spare call to eligible, opted-in players (game time, rink, opponent, the caller's note and a
     link to `/bench/spares`);
   - a "spare filled" note to the person who posted the call, naming the spare;
-  - a "your spare game changed / is cancelled" note to accepted spares only.
+  - a "Your spare game changed / is cancelled: {team} · {time}" note to accepted spares only.
 
-  Bench does not email teams about reschedules; Events Manager already does that. Pool mail is sent
-  in batches of 40 addressed to the site admin address (Settings, General) with the players on Bcc,
-  so recipients cannot see one another.
+  Bench does not email teams about reschedules; Events Manager already does that. Pool and spare
+  mail is sent in batches of 40 with the players on Bcc, so recipients cannot see one another. The
+  visible To address of those batches is `noreply@<your site's host>` by default, not the site admin,
+  whose inbox would otherwise get a copy of every blast. To use another address, set the
+  `spbn_mail_to` option (for example `wp option update spbn_mail_to league@example.com`) or return
+  one from the `spbn_mail_to` filter, which receives the default and has the last word. An invalid
+  address stops these batches from being sent.
 - **What is stored.** Availability, spare calls and responses, a log of game changes, each user's
   calendar token and spare preferences, and a fingerprint of each game used to detect changes.
 - **Uninstall.** Deactivating removes nothing. Deleting the plugin removes its data only if

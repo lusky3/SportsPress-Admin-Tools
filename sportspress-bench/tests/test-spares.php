@@ -627,7 +627,7 @@ $sent = SPBN_Mailer::call_posted( $call, $game, $ids );
 spbn_assert( 85 === $sent, 'call_posted returns the number of recipients mailed' );
 spbn_assert( 3 === count( $GLOBALS['spbn_mail'] ), '85 recipients go out as 3 mails (BCC chunks of 40)' );
 $m0 = $GLOBALS['spbn_mail'][0];
-spbn_assert( 'admin@arl.example.test' === $m0['to'], 'the To address is the site admin email' );
+spbn_assert( 'noreply@arl.example.test' === $m0['to'], 'the To address is a no-reply address on the site\'s host, not the site admin (whose inbox would get every blast)' );
 $bcc = array_values( array_filter( (array) $m0['headers'], function ( $h ) {
 	return 0 === stripos( $h, 'Bcc:' );
 } ) );
@@ -649,6 +649,34 @@ spbn_add_user( 4, 'ok@example.test' );
 spbn_assert( 1 === SPBN_Mailer::call_posted( $call, $game, array( 1, 2, 3, 4, 99 ) ), 'invalid, injected, duplicate and unknown addresses are skipped' );
 spbn_assert( 1 === count( $GLOBALS['spbn_mail'] ) && false === strpos( implode( "\n", (array) $GLOBALS['spbn_mail'][0]['headers'] ), 'victim' ), 'no header injection' );
 spbn_assert( 0 === SPBN_Mailer::call_posted( $call, $game, array() ) && 1 === count( $GLOBALS['spbn_mail'] ), 'no recipients: nothing sent' );
+
+echo "\n--- the To address: option, then filter ---\n\n";
+
+$GLOBALS['spbn_mail'] = array();
+update_option( 'spbn_mail_to', 'spares@arl.example.test' );
+SPBN_Mailer::call_posted( $call, $game, array( 1 ) );
+spbn_assert( 'spares@arl.example.test' === $GLOBALS['spbn_mail'][0]['to'], 'the spbn_mail_to option, when set, is the To address' );
+update_option( 'spbn_mail_to', 'not an address' );
+SPBN_Mailer::call_posted( $call, $game, array( 1 ) );
+spbn_assert( 'noreply@arl.example.test' === $GLOBALS['spbn_mail'][1]['to'], 'an invalid option falls back to the no-reply address' );
+add_filter(
+	'spbn_mail_to',
+	function ( $to ) {
+		return 'noreply@arl.example.test' === $to ? 'league@example.test' : $to;
+	}
+);
+SPBN_Mailer::call_posted( $call, $game, array( 1 ) );
+spbn_assert( 'league@example.test' === $GLOBALS['spbn_mail'][2]['to'], 'the spbn_mail_to filter gets the default and has the last word' );
+$GLOBALS['spbn_filters'] = array();
+add_filter(
+	'spbn_mail_to',
+	function () {
+		return "x@example.test\r\nBcc: victim@example.test";
+	}
+);
+spbn_assert( 0 === SPBN_Mailer::call_posted( $call, $game, array( 1 ) ) && 3 === count( $GLOBALS['spbn_mail'] ), 'a filter that returns a bad address sends nothing' );
+$GLOBALS['spbn_filters'] = array();
+delete_option( 'spbn_mail_to' );
 $GLOBALS['spbn_mail_ok'] = false;
 spbn_assert( 0 === SPBN_Mailer::call_posted( $call, $game, array( 1 ) ), 'a failed wp_mail counts as 0 sent' );
 $GLOBALS['spbn_mail_ok'] = true;
@@ -675,7 +703,7 @@ $sent = SPBN_Mailer::call_cancelled( $call, $game, array( 5, 6 ) );
 spbn_assert( 2 === $sent && 1 === count( $GLOBALS['spbn_mail'] ), 'call_cancelled: one BCC mail for two spares' );
 $m   = $GLOBALS['spbn_mail'][0];
 $bcc = implode( ' ', (array) $m['headers'] );
-spbn_assert( 'admin@arl.example.test' === $m['to'] && false !== strpos( $bcc, 'spare5@example.test' ) && false !== strpos( $bcc, 'spare6@example.test' ), 'To the admin address, both spares in BCC' );
+spbn_assert( 'noreply@arl.example.test' === $m['to'] && false !== strpos( $bcc, 'spare5@example.test' ) && false !== strpos( $bcc, 'spare6@example.test' ), 'To the no-reply address, both spares in BCC' );
 spbn_assert( 'Spare game cancelled: Ducks · Thu Nov 5, 9:45 PM' === $m['subject'], 'subject: "Spare game cancelled: {team} · {Day Mon j, g:i A}"' );
 spbn_assert( false !== strpos( $m['message'], 'no longer need a spare' ) && false !== strpos( $m['message'], '/bench/spares' ), 'the body says the team no longer needs a spare and links the app' );
 $GLOBALS['spbn_mail'] = array();
@@ -688,8 +716,13 @@ $db = $GLOBALS['wpdb'];
 update_option( 'admin_email', 'admin@arl.example.test' );
 spbn_add_user( 5, 'spare5@example.test' );
 spbn_add_user( 6, 'spare6@example.test' );
+spbn_add_post( 12, 'sp_team', 'Ducks' );
+spbn_add_post( 7, 'sp_team', 'Knights of Ni' );
 $db->results_handler = function ( $sql ) {
-	return array( '5', '6' );
+	return array(
+		array( 'user_id' => '5', 'team_id' => '12' ),
+		array( 'user_id' => '6', 'team_id' => '12' ),
+	);
 };
 $before = array( 'start' => '2026-11-05T21:45:00-05:00', 'venue' => 'Twin Rinks', 'teams' => array( 7, 12 ), 'status' => 'ok' );
 $after  = array( 'start' => '2026-11-05T22:30:00-05:00', 'venue' => 'Rink B', 'teams' => array( 7, 12 ), 'status' => 'ok' );
@@ -699,7 +732,7 @@ spbn_assert( 2 === $sent, 'returns the number of spares emailed' );
 spbn_assert( false !== strpos( $sql, 'wp_spbn_spare_responses' ) && false !== strpos( $sql, "r.status = 'accepted'" ) && false !== strpos( $sql, 'c.event_id = 101' ) && false !== strpos( $sql, "c.status <> 'cancelled'" ), 'only users with an accepted response on a live call for that event' );
 spbn_assert( 1 === count( $GLOBALS['spbn_mail'] ), 'one BCC mail for the two spares' );
 $m = $GLOBALS['spbn_mail'][0];
-spbn_assert( 'Your spare game changed' === $m['subject'], 'subject: "Your spare game changed"' );
+spbn_assert( "Your spare game changed: Ducks \u{00B7} Thu Nov 5, 9:45 PM" === $m['subject'], 'subject: "Your spare game changed: {team} · {Day Mon j, g:i A}" (the game as they agreed to it)' );
 spbn_assert( false !== strpos( $m['message'], '9:45 PM' ) && false !== strpos( $m['message'], '10:30 PM' ) && false !== strpos( $m['message'], 'Rink B' ), 'the body shows what it was and what it is now' );
 spbn_assert( false !== strpos( $m['message'], '/bench/spares' ), 'and links the app' );
 $bcc = implode( ' ', (array) $m['headers'] );
@@ -707,11 +740,26 @@ spbn_assert( false !== strpos( $bcc, 'spare5@example.test' ) && false !== strpos
 
 $GLOBALS['spbn_mail'] = array();
 SPBN_Mailer::game_changed_for_spares( 101, $before, array_merge( $after, array( 'status' => 'cancelled' ) ) );
-spbn_assert( 'Your spare game is cancelled' === $GLOBALS['spbn_mail'][0]['subject'], 'cancelled: "Your spare game is cancelled"' );
+spbn_assert( "Your spare game is cancelled: Ducks \u{00B7} Thu Nov 5, 9:45 PM" === $GLOBALS['spbn_mail'][0]['subject'], 'cancelled: "Your spare game is cancelled: {team} · {time}"' );
 
 $GLOBALS['spbn_mail'] = array();
 SPBN_Mailer::game_changed_for_spares( 101, $before, array_merge( $after, array( 'status' => 'postponed' ) ) );
-spbn_assert( 'Your spare game changed' === $GLOBALS['spbn_mail'][0]['subject'] && false !== stripos( $GLOBALS['spbn_mail'][0]['message'], 'postponed' ), 'postponed: "changed", and the body says postponed' );
+spbn_assert( 0 === strpos( $GLOBALS['spbn_mail'][0]['subject'], 'Your spare game changed: Ducks' ) && false !== stripos( $GLOBALS['spbn_mail'][0]['message'], 'postponed' ), 'postponed: "changed", and the body says postponed' );
+
+$GLOBALS['spbn_mail'] = array();
+$db->results_handler  = function ( $sql ) {
+	return array(
+		array( 'user_id' => '5', 'team_id' => '12' ),
+		array( 'user_id' => '6', 'team_id' => '7' ),
+	);
+};
+spbn_assert( 2 === SPBN_Mailer::game_changed_for_spares( 101, $before, $after ) && 2 === count( $GLOBALS['spbn_mail'] ), 'spares for both teams: one mail per calling team' );
+$subjects = array_column( $GLOBALS['spbn_mail'], 'subject' );
+spbn_assert( in_array( "Your spare game changed: Ducks \u{00B7} Thu Nov 5, 9:45 PM", $subjects, true ) && in_array( "Your spare game changed: Knights of Ni \u{00B7} Thu Nov 5, 9:45 PM", $subjects, true ), 'each names the team that spare is playing for' );
+
+$GLOBALS['spbn_mail'] = array();
+SPBN_Mailer::game_changed_for_spares( 101, array( 'start' => '', 'venue' => '', 'teams' => array(), 'status' => '' ), $after );
+spbn_assert( "Your spare game changed: Ducks \u{00B7} Thu Nov 5, 10:30 PM" === $GLOBALS['spbn_mail'][0]['subject'], 'with no stored "before" time, the subject uses the new time' );
 
 $GLOBALS['spbn_mail'] = array();
 $db->results_handler  = null;
