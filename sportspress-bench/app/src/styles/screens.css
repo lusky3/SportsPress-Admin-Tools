@@ -551,8 +551,10 @@
 	justify-content: space-between;
 	gap: 12px;
 	padding: 12px 12px 12px 14px;
+	border: 1px solid var(--line);
 	border-left: 4px solid var(--ice);
-	background: rgb(247 251 252 / 8%);
+	border-radius: 0 8px 8px 0;
+	background: var(--row-bg);
 }
 
 .call + .call {
@@ -560,7 +562,7 @@
 }
 
 .call--filled {
-	border-left-color: var(--hero-muted);
+	border-left-color: var(--steel);
 }
 
 .call__what {
@@ -568,9 +570,26 @@
 }
 
 .call__status,
-.call__note {
-	color: var(--hero-muted);
+.call__note,
+.call__when {
+	color: var(--text-muted);
 	font-size: 0.9375rem;
+}
+
+.hero .call {
+	border-color: transparent;
+	border-left-color: var(--ice);
+	background: rgb(247 251 252 / 8%);
+}
+
+.hero .call--filled {
+	border-left-color: var(--hero-muted);
+}
+
+.hero .call__status,
+.hero .call__note,
+.hero .call__when {
+	color: var(--hero-muted);
 }
 
 .call-form {
@@ -874,4 +893,462 @@
 	.hero {
 		padding: 26px 26px 28px;
 	}
+}
+
+/* Cards on paper (Me, Spares) */
+
+.card h2 {
+	font-size: 1.375rem;
+}
+
+.card > .actions {
+	margin-top: 14px;
+}
+
+.notice:empty {
+	padding: 0;
+	background: none;
+}
+
+.tip {
+	padding: 14px var(--gutter);
+	border: 1px dashed var(--steel);
+	border-radius: var(--radius);
+}
+
+.tip > * + * {
+	margin-top: 10px;
+}
+
+/* Me */
+
+.me h1 {
+	font-size: 2.25rem;
+	overflow-wrap: anywhere;
+}
+
+.me__num {
+	color: var(--link);
+	font-family: var(--font-display);
+	font-size: 1.75rem;
+	font-style: italic;
+	font-weight: 800;
+	line-height: 1;
+}
+
+.teams,
+.links {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.teams > li + li {
+	margin-top: 8px;
+}
+
+.team-link {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-height: 60px;
+	padding: 10px 14px;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	background: var(--row-bg);
+	color: var(--text);
+	text-decoration: none;
+}
+
+.team-link > span:last-child {
+	display: flex;
+	flex-direction: column;
+}
+
+.team-link__name {
+	font-weight: 700;
+}
+
+.team-link__div {
+	color: var(--text-muted);
+	font-size: 0.875rem;
+}
+
+.copy {
+	display: flex;
+	gap: 8px;
+}
+
+.copy input {
+	flex: 1 1 auto;
+	min-width: 0;
+	font-size: 0.875rem;
+}
+
+.links {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 24px;
+}
+
+.links a {
+	display: inline-flex;
+	align-items: center;
+	min-height: var(--tap);
+	font-weight: 600;
+}
+
+/* Team */
+
+.switch {
+	display: flex;
+	gap: 6px;
+	overflow-x: auto;
+	padding: 4px 6px;
+}
+
+.switch__opt {
+	display: inline-flex;
+	align-items: center;
+	min-height: var(--tap);
+	padding: 0 16px;
+	border: 2px solid var(--chip-line);
+	color: var(--text);
+	font-weight: 700;
+	text-decoration: none;
+	white-space: nowrap;
+	transform: skewX(-11deg);
+}
+
+.switch__opt[aria-current='page'] {
+	border-color: transparent;
+	background: var(--ink);
+	color: var(--paper);
+}
+
+.team-head {
+	display: grid;
+	grid-template-columns: auto 1fr auto;
+	align-items: center;
+	gap: 14px;
+}
+
+.team-head h1 {
+	font-size: 2rem;
+	overflow-wrap: anywhere;
+}
+
+.record {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	font-family: var(--font-display);
+	font-size: 1.75rem;
+	font-style: italic;
+	font-weight: 800;
+	line-height: 1;
+	font-variant-numeric: tabular-nums;
+}
+
+.record__key {
+	margin-top: 4px;
+	color: var(--text-muted);
+	font-size: 0.75rem;
+	letter-spacing: 0.08em;
+}
+
+.people--roster .person.is-me {
+	margin: 0 -10px;
+	padding-inline: 10px;
+	border-radius: 8px;
+	background: rgb(116 192 225 / 18%);
+}
+
+.badge-c {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	background: var(--ink);
+	color: var(--paper);
+	font-family: var(--font-display);
+	font-size: 0.9375rem;
+	font-style: italic;
+	font-weight: 800;
+	text-decoration: none;
+	transform: skewX(-11deg);
+}
+
+/* Spares */
+
+.prefs__row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+}
+
+.switch-btn {
+	position: relative;
+	flex: none;
+	width: 64px;
+	height: 36px;
+	padding: 0;
+	border: 2px solid var(--chip-line);
+	border-radius: 999px;
+	background: var(--line);
+	cursor: pointer;
+	transition: background-color 160ms ease;
+}
+
+.switch-btn__knob {
+	position: absolute;
+	top: 3px;
+	left: 3px;
+	width: 26px;
+	height: 26px;
+	border-radius: 50%;
+	background: var(--surface);
+	box-shadow: 0 1px 3px rgb(13 23 41 / 40%);
+	transition: transform 160ms ease;
+}
+
+.switch-btn[aria-checked='true'] {
+	border-color: transparent;
+	background: var(--ice);
+}
+
+.switch-btn[aria-checked='true'] .switch-btn__knob {
+	background: var(--ink-deep);
+	transform: translateX(28px);
+}
+
+.checks {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px 24px;
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+.checks legend {
+	width: 100%;
+	margin-bottom: 6px;
+	padding: 0;
+	font-weight: 600;
+}
+
+.check {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	min-height: var(--tap);
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.check input {
+	width: 22px;
+	height: 22px;
+	margin: 0;
+	accent-color: var(--ink);
+}
+
+.offers {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.offer {
+	padding: 14px 14px 16px;
+	border: 1px solid var(--line);
+	border-left: 4px solid var(--ice);
+	border-radius: 0 10px 10px 0;
+	background: var(--row-bg);
+}
+
+.offer + .offer {
+	margin-top: 10px;
+}
+
+.offer > * + * {
+	margin-top: 6px;
+}
+
+.offer > .btn-primary,
+.offer > .btn-quiet {
+	margin-top: 12px;
+	margin-left: 6px;
+}
+
+.offer__who {
+	font-family: var(--font-display);
+	font-size: 1.375rem;
+	font-style: italic;
+	font-weight: 800;
+	line-height: 1.15;
+	text-transform: uppercase;
+}
+
+.offer--mine {
+	border-left-color: var(--steel);
+}
+
+/* Tonight */
+
+.night-head {
+	display: grid;
+	grid-template-columns: var(--tap) 1fr var(--tap);
+	align-items: center;
+	gap: 8px;
+	text-align: center;
+}
+
+.stepper {
+	width: var(--tap);
+	height: var(--tap);
+	border: 2px solid var(--chip-line);
+	border-radius: 50%;
+	background: transparent;
+	color: var(--text);
+	font-size: 1.5rem;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.board {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.board__game {
+	padding: 14px;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	background: var(--row-bg);
+}
+
+.board__game + .board__game {
+	margin-top: 10px;
+}
+
+.board__game.is-off .board__sides {
+	opacity: 0.6;
+}
+
+.board__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 12px;
+}
+
+.board__time {
+	display: inline-flex;
+	align-items: center;
+	min-height: var(--tap);
+	font-family: var(--font-display);
+	font-size: 1.5rem;
+	font-style: italic;
+	font-weight: 800;
+}
+
+.board__venue {
+	color: var(--text-muted);
+	font-size: 0.875rem;
+}
+
+.board__sides {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 12px;
+	margin-top: 8px;
+}
+
+.side {
+	padding-top: 8px;
+	border-top: 2px solid var(--line);
+}
+
+.side__name {
+	font-weight: 700;
+	overflow-wrap: anywhere;
+}
+
+.side__counts,
+.side__goalies {
+	font-size: 0.875rem;
+	font-variant-numeric: tabular-nums;
+}
+
+.side__goalies .dots {
+	color: var(--steel);
+	letter-spacing: 2px;
+}
+
+.side__goalies.is-none {
+	color: var(--notice-text);
+	font-weight: 600;
+}
+
+.board__calls {
+	margin: 10px 0 0;
+	padding: 8px 12px;
+	border-left: 4px solid var(--ice);
+	list-style: none;
+	font-size: 0.875rem;
+	font-weight: 600;
+}
+
+.board__result {
+	margin-top: 10px;
+	font-size: 0.875rem;
+	font-weight: 600;
+}
+
+.board__result.is-missing {
+	color: var(--text-muted);
+	font-weight: 400;
+}
+
+/* Fixes from the 390px visual pass */
+
+.hero .btn-quiet {
+	border-color: rgb(247 251 252 / 40%);
+}
+
+.hero .crest--mono {
+	background: rgb(247 251 252 / 14%);
+}
+
+.prefs .checks {
+	margin-top: 12px;
+}
+
+.me > * + * {
+	margin-top: 6px;
+}
+
+.board__time {
+	color: var(--text);
+	text-decoration: none;
+}
+
+.board__time:hover {
+	text-decoration: underline;
+}
+
+/* Filled marks follow the button colours, so they flip to ice in the dark theme. */
+.switch__opt[aria-current='page'],
+.badge-c {
+	background: var(--btn-bg);
+	color: var(--btn-text);
+}
+
+.check input {
+	accent-color: var(--btn-bg);
 }

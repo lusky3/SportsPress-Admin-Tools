@@ -4,6 +4,10 @@ import './styles/tokens.css';
 import './styles/app.css';
 import './styles/screens.css';
 import { App } from './App';
+import { watchInstall } from './lib/install';
+
+// The install prompt fires once, early; hold it for the tip on Next and Me.
+watchInstall();
 
 createRoot( document.getElementById( 'root' ) as HTMLElement ).render(
 	<StrictMode>

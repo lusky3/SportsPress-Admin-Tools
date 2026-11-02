@@ -84,6 +84,24 @@ export function monthKey( iso: string, tz: string = LEAGUE_TZ ): string {
 	return `${ p.year }-${ String( p.month ).padStart( 2, '0' ) }`;
 }
 
+/** Today's date in the league timezone, "2026-11-04". */
+export function leagueDate( now: Date, tz: string = LEAGUE_TZ ): string {
+	const p = parts( now, tz );
+	return `${ p.year }-${ String( p.month ).padStart( 2, '0' ) }-${ String( p.day ).padStart( 2, '0' ) }`;
+}
+
+/** A "2026-11-04" date moved by whole days. */
+export function addDays( date: string, days: number ): string {
+	const [ y, m, d ] = date.split( '-' ).map( Number );
+	return new Date( Date.UTC( y, m - 1, d + days ) ).toISOString().slice( 0, 10 );
+}
+
+/** "Wednesday, November 4" for "2026-11-04". */
+export function longDate( date: string ): string {
+	const [ y, m, d ] = date.split( '-' ).map( Number );
+	return formatter( 'UTC', { weekday: 'long', month: 'long', day: 'numeric' } ).format( new Date( Date.UTC( y, m - 1, d ) ) );
+}
+
 /** "November 2026" for a month key; "Date to be announced" for "tbd". */
 export function monthLabel( key: string ): string {
 	const match = /^(\d{4})-(\d{2})$/.exec( key );

@@ -1,3 +1,5 @@
+import { boot } from '../boot';
+
 /**
  * Drop everything the service worker saved for offline use (the HTML shell and
  * the API responses). Call before following the sign-out link, so the next person
@@ -13,4 +15,10 @@ export async function clearOfflineData(): Promise<void> {
 	} catch {
 		// Storage can be blocked; signing out should not fail because of it.
 	}
+}
+
+/** Clear the saved copies, then follow WordPress's logout link. */
+export async function signOut(): Promise<void> {
+	await clearOfflineData();
+	window.location.assign( boot().logoutUrl );
 }

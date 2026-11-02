@@ -4,6 +4,7 @@ import { AvailabilityToggle } from '../components/AvailabilityToggle';
 import { CountBar } from '../components/CountBar';
 import { EmptyState } from '../components/EmptyState';
 import { GameHero, GameRow } from '../components/GameCard';
+import { InstallTip } from '../components/InstallTip';
 import { Problem, Skeleton } from '../components/Problem';
 import { CallForm, CallList } from '../components/SpareCalls';
 import { isCalledOff, isPast, isShort, nextGame } from '../lib/games';
@@ -117,7 +118,10 @@ export function Next( { me }: { me: Me } ) {
 	} else {
 		// Prefer the detail once it is here (it has goalies and the team's answers); the list row paints first.
 		const shown = game.data && game.data.id === next.id ? game.data : next;
-		const after = list.filter( ( g ) => g.id !== next.id && ! isPast( g, now ) )[ 0 ];
+		const after = nextGame(
+			list.filter( ( g ) => g.id !== next.id ),
+			now
+		);
 		body = (
 			<>
 				<GameHero game={ shown } now={ now } title="Next game">
@@ -139,6 +143,7 @@ export function Next( { me }: { me: Me } ) {
 		<section className="screen">
 			<h1 className="greeting">{ first ? `Hi, ${ first }` : 'Hi there' }</h1>
 			{ body }
+			<InstallTip />
 		</section>
 	);
 }

@@ -2,9 +2,21 @@ import { useId, useState } from 'react';
 import type { FormEvent } from 'react';
 import { apiSend } from '../api';
 import { errorText } from '../lib/errors';
-import { callLabel } from '../lib/games';
-import type { Position, SpareCall } from '../types';
+import { relativeDay, timeLabel } from '../lib/dates';
+import { callLabel, venueShort } from '../lib/games';
+import type { Game, Position, SpareCall, SpareCallWithGame } from '../types';
 import { TwoTap } from './TwoTap';
+
+/** "Tonight 9:45 PM · Wave Twin Rinks · Black" for a call shown away from its game. */
+export function GameLine( { game }: { game: Game } ) {
+	const where = venueShort( game.venue );
+	return (
+		<p className="call__when">
+			{ relativeDay( game.start, new Date() ) } { game.status === 'tbd' ? 'time TBD' : timeLabel( game.start ) }
+			{ where ? ` · ${ where }` : '' }
+		</p>
+	);
+}
 
 const NOTE_MAX = 140;
 
@@ -52,6 +64,7 @@ export function CallList( { calls, onCancelled }: CallListProps ) {
 				{ calls.map( ( call ) => (
 					<li key={ call.id } className={ `call call--${ call.status }` }>
 						<div>
+							{ 'game' in call ? <GameLine game={ ( call as SpareCallWithGame ).game } /> : null }
 							<p className="call__what">{ callLabel( call ) }</p>
 							<p className="call__status">{ callStatus( call ) }</p>
 							{ call.note ? <p className="call__note">“{ call.note }”</p> : null }
