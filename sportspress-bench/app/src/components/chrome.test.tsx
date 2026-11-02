@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { _resetApiForTests } from '../api';
 import { OfflineBanner } from './OfflineBanner';
 import { TabBar } from './TabBar';
+import { TwoTap } from './TwoTap';
 
 beforeEach( () => {
 	window.SPBN_BOOT = {
@@ -39,6 +40,22 @@ describe( 'TabBar', () => {
 		rerender( <TabBar current="/tonight" organizer /> );
 		expect( screen.queryByRole( 'link', { name: 'Team' } ) ).toBeNull();
 		expect( screen.getByRole( 'link', { name: 'Tonight' } ).getAttribute( 'aria-current' ) ).toBe( 'page' );
+	} );
+} );
+
+describe( 'TwoTap', () => {
+	it( 'announces the armed label in a polite live region and confirms on the second tap', () => {
+		const onConfirm = vi.fn();
+		render( <TwoTap label="Cancel call" confirm="Tap again to cancel" onConfirm={ onConfirm } /> );
+		const live = screen.getByRole( 'status' );
+		expect( live.getAttribute( 'aria-live' ) ).toBe( 'polite' );
+		expect( live.textContent ).toBe( '' );
+		fireEvent.click( screen.getByRole( 'button', { name: 'Cancel call' } ) );
+		expect( live.textContent ).toBe( 'Tap again to cancel' );
+		expect( onConfirm ).not.toHaveBeenCalled();
+		fireEvent.click( screen.getByRole( 'button', { name: 'Tap again to cancel' } ) );
+		expect( onConfirm ).toHaveBeenCalledTimes( 1 );
+		expect( live.textContent ).toBe( '' );
 	} );
 } );
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ApiError, apiSend } from '../api';
 import { EmptyState } from '../components/EmptyState';
 import { Problem, Skeleton } from '../components/Problem';
@@ -20,6 +20,12 @@ function needLine( call: SpareCallWithGame ): string {
 function Prefs( { initial }: { initial: SparePrefs } ) {
 	const [ prefs, setPrefs ] = useState( initial );
 	const [ error, setError ] = useState( '' );
+
+	// Follow the server when its copy changes (a refresh, or a change made on another device).
+	const serverKey = `${ initial.enabled }:${ initial.positions.join( ',' ) }`;
+	useEffect( () => {
+		setPrefs( initial ); // keyed on the value, not the object, so a refetch of the same prefs is a no-op
+	}, [ serverKey ] );
 
 	const save = async ( next: SparePrefs ) => {
 		const before = prefs;
@@ -84,17 +90,26 @@ export function Spares( { me }: { me: Me } ) {
 	const [ busy, setBusy ] = useState( 0 );
 	const [ errors, setErrors ] = useState<Record<number, string>>( {} );
 	const [ done, setDone ] = useState( '' );
+	// Shown above the list: the call it is about drops out of the list once refreshed.
+	const [ taken, setTaken ] = useState( '' );
 
 	const act = async ( call: SpareCallWithGame, action: 'accept' | 'withdraw' ) => {
 		setBusy( call.id );
-		setErrors( { ...errors, [ call.id ]: '' } );
+		setTaken( '' );
+		setErrors( ( prev ) => ( { ...prev, [ call.id ]: '' } ) );
 		try {
 			await apiSend( 'POST', `/spare-calls/${ call.id }/${ action }` );
 			setDone( action === 'accept' ? `You’re in for ${ call.game.team.name || 'the team' }. It’s on your schedule now. Thanks for helping out.` : 'Done. Your place is open for someone else.' );
 			invalidate( PATH );
 			invalidate( '/me/games' );
 		} catch ( e ) {
-			setErrors( { ...errors, [ call.id ]: errorText( e ) } );
+			setDone( '' );
+			if ( e instanceof ApiError && ( e.code === 'spbn_full' || e.code === 'spbn_closed' ) ) {
+				setTaken( errorText( e ) );
+				invalidate( PATH ); // the server no longer offers it
+			} else {
+				setErrors( ( prev ) => ( { ...prev, [ call.id ]: errorText( e ) } ) );
+			}
 		} finally {
 			setBusy( 0 );
 		}
@@ -116,6 +131,11 @@ export function Spares( { me }: { me: Me } ) {
 					<h2 id="open-h" className="kicker">
 						Teams looking for a spare
 					</h2>
+					{ taken ? (
+						<p className="inline-error" role="alert">
+							{ taken }
+						</p>
+					) : null }
 					{ data.open_calls.length ? (
 						<ul className="offers">
 							{ data.open_calls.map( ( call ) => (

@@ -24,34 +24,65 @@ interface AvailabilityToggleProps {
 export function AvailabilityToggle( { value, onChange, disabled = false, label = 'Are you playing?' }: AvailabilityToggleProps ) {
 	const [ shown, setShown ] = useState( value );
 	const [ error, setError ] = useState( '' );
+	const [ busy, setBusy ] = useState( false );
 	const buttons = useRef<Array<HTMLButtonElement | null>>( [] );
-	// The latest choice wins: an older save that fails late must not undo a newer one.
-	const attempt = useRef( 0 );
+	/*
+	 * Saves go one at a time, so the server sees them in order. A choice made while one is
+	 * in flight waits (only the latest waits) and is sent when it settles. `saved` is the last
+	 * value the server confirmed; a failure always goes back to it, so the toggle ends on what
+	 * the server holds.
+	 */
+	const saved = useRef( value );
+	const inFlight = useRef( false );
+	const queued = useRef<AvailabilityStatus | null>( null );
 
 	useEffect( () => {
-		setShown( value );
+		saved.current = value;
+		if ( ! inFlight.current ) {
+			setShown( value );
+		}
 	}, [ value ] );
 
-	const choose = async ( next: AvailabilityStatus ) => {
+	const send = async ( next: AvailabilityStatus ) => {
+		inFlight.current = true;
+		setBusy( true );
+		setError( '' );
+		let failure: unknown = null;
+		try {
+			await onChange( next );
+			saved.current = next;
+		} catch ( e ) {
+			failure = e ?? new Error( 'failed' );
+		}
+		inFlight.current = false;
+		const waiting = queued.current;
+		queued.current = null;
+		if ( waiting !== null && waiting !== saved.current ) {
+			void send( waiting );
+			return;
+		}
+		setBusy( false );
+		setShown( saved.current );
+		if ( failure ) {
+			setError(
+				failure instanceof ApiError && failure.code === 'spbn_locked'
+					? errorText( failure )
+					: `That didn’t save. ${ failure instanceof ApiError && failure.code === 'offline' ? 'Check your signal and try again.' : 'Try again.' }`
+			);
+		}
+	};
+
+	const choose = ( next: AvailabilityStatus ) => {
 		if ( disabled || next === shown ) {
 			return;
 		}
-		const before = shown;
-		const mine = ++attempt.current;
 		setShown( next );
 		setError( '' );
-		try {
-			await onChange( next );
-		} catch ( e ) {
-			if ( mine === attempt.current ) {
-				setShown( before );
-				setError(
-					e instanceof ApiError && e.code === 'spbn_locked'
-						? errorText( e )
-						: `That didn’t save. ${ e instanceof ApiError && e.code === 'offline' ? 'Check your signal and try again.' : 'Try again.' }`
-				);
-			}
+		if ( inFlight.current ) {
+			queued.current = next;
+			return;
 		}
+		void send( next );
 	};
 
 	const onKey = ( event: KeyboardEvent, index: number ) => {
@@ -62,13 +93,13 @@ export function AvailabilityToggle( { value, onChange, disabled = false, label =
 		event.preventDefault();
 		const to = ( index + step + OPTIONS.length ) % OPTIONS.length;
 		buttons.current[ to ]?.focus();
-		void choose( OPTIONS[ to ].value );
+		choose( OPTIONS[ to ].value );
 	};
 
 	const focusable = Math.max( 0, OPTIONS.findIndex( ( o ) => o.value === shown ) );
 	return (
 		<div className="toggle-wrap">
-			<div className="toggle" role="radiogroup" aria-label={ label } aria-disabled={ disabled || undefined }>
+			<div className="toggle" role="radiogroup" aria-label={ label } aria-disabled={ disabled || undefined } aria-busy={ busy || undefined }>
 				{ OPTIONS.map( ( option, i ) => (
 					<button
 						key={ option.value }
@@ -81,7 +112,7 @@ export function AvailabilityToggle( { value, onChange, disabled = false, label =
 						aria-checked={ shown === option.value }
 						tabIndex={ i === focusable ? 0 : -1 }
 						disabled={ disabled }
-						onClick={ () => void choose( option.value ) }
+						onClick={ () => choose( option.value ) }
 						onKeyDown={ ( e ) => onKey( e, i ) }
 					>
 						<span>{ option.label }</span>

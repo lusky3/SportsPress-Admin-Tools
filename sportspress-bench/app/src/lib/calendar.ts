@@ -1,3 +1,4 @@
+import { boot } from '../boot';
 import type { Game } from '../types';
 import { venueLine } from './games';
 
@@ -22,11 +23,44 @@ function esc( s: string ): string {
 	return s.replace( /[\\;,]/g, ( c ) => '\\' + c ).replace( /\r?\n/g, '\\n' );
 }
 
+const encoder = new TextEncoder();
+
+/** RFC 5545 folding, like the PHP feed: lines of at most 75 octets, continued with a leading space, never inside a character. */
+function fold( line: string ): string {
+	const out: string[] = [];
+	let current = '';
+	let size = 0;
+	for ( const ch of line ) {
+		const n = encoder.encode( ch ).length;
+		if ( size + n > 75 ) {
+			out.push( current );
+			current = ' ';
+			size = 1;
+		}
+		current += ch;
+		size += n;
+	}
+	out.push( current );
+	return out.join( '\r\n' );
+}
+
+/**
+ * The site's host from the REST root (the PHP feed's UID uses home_url's host), so the UID
+ * matches even when the app was opened under another name for the same site.
+ */
+function siteHost(): string {
+	try {
+		return new URL( boot().restRoot, window.location.href ).host;
+	} catch {
+		return window.location.host;
+	}
+}
+
 /**
  * A one-event .ics for "Add to calendar" on a game, as a data: URL. Its UID matches the feed's
  * (spbn-{event}-{team}@host), so a calendar that also subscribes keeps one copy. '' when the game has no time.
  */
-export function gameIcsHref( game: Game, host: string ): string {
+export function gameIcsHref( game: Game, host: string = siteHost() ): string {
 	const start = new Date( game.start );
 	if ( Number.isNaN( start.getTime() ) ) {
 		return '';
@@ -45,6 +79,8 @@ export function gameIcsHref( game: Game, host: string ): string {
 		where ? `LOCATION:${ esc( where ) }` : '',
 		'END:VEVENT',
 		'END:VCALENDAR',
-	].filter( Boolean );
+	]
+		.filter( Boolean )
+		.map( fold );
 	return 'data:text/calendar;charset=utf-8,' + encodeURIComponent( lines.join( '\r\n' ) + '\r\n' );
 }

@@ -172,6 +172,25 @@ describe( 'Next', () => {
 		await settle();
 		expect( screen.getByText( /no games coming up/i ) ).toBeTruthy();
 	} );
+
+	it( 'skips a called-off game for "After that"', async () => {
+		fakeApi( ( s ) =>
+			s.path === '/me/games'
+				? list( [
+						game(),
+						game( { id: 102, start: '2026-11-09T20:30:00-05:00', status: 'postponed', opponent: { id: 20, name: 'Called Off FC', logo: '' } } ),
+						game( { id: 103, start: '2026-11-11T20:30:00-05:00', opponent: { id: 21, name: 'Pucks Deluxe', logo: '' } } ),
+				  ] )
+				: s.path === '/games/101'
+				? { body: detail() }
+				: undefined
+		);
+		render( <Next me={ me() } /> );
+		await settle();
+		const after = screen.getByRole( 'region', { name: /after that/i } );
+		expect( after.textContent ).toContain( 'Pucks Deluxe' );
+		expect( after.textContent ).not.toContain( 'Called Off FC' );
+	} );
 } );
 
 describe( 'Schedule', () => {

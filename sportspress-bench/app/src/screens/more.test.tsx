@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { call, error, fakeApi, game, me } from '../test/fake';
 import type { SparesPayload } from '../types';
+import { invalidate } from '../useResource';
 
 vi.mock( '../lib/offline', () => ( { clearOfflineData: vi.fn( async () => {} ), signOut: vi.fn( async () => {} ) } ) );
 
@@ -47,11 +48,14 @@ function spares( over: Partial<SparesPayload> = {} ): SparesPayload {
 
 describe( 'Spares', () => {
 	it( 'lists an open call in plain words and says someone beat you to it on a 409', async () => {
+		let taken = false;
 		const sent = fakeApi( ( s ) => {
 			if ( s.path === '/spares' ) {
-				return { body: spares() };
+				// Once someone else has it, the server no longer offers it.
+				return { body: taken ? spares( { open_calls: [] } ) : spares() };
 			}
 			if ( s.path === '/spare-calls/900/accept' ) {
+				taken = true;
 				return error( 409, 'spbn_full', 'That spare call is already full.' );
 			}
 		} );
@@ -66,7 +70,59 @@ describe( 'Spares', () => {
 		} );
 		await settle();
 		expect( sent.some( ( s ) => s.method === 'POST' && s.path === '/spare-calls/900/accept' ) ).toBe( true );
-		expect( within( item ).getByRole( 'alert' ).textContent ).toMatch( /someone beat you to it/i );
+		expect( sent.filter( ( s ) => s.method === 'GET' && s.path === '/spares' ) ).toHaveLength( 2 );
+		expect( screen.getByRole( 'alert' ).textContent ).toMatch( /someone beat you to it/i );
+		expect( screen.queryByText( 'Ducks need a goalie' ) ).toBeNull();
+	} );
+
+	it( 'clears an earlier success message when a later action fails', async () => {
+		fakeApi( ( s ) => {
+			if ( s.path === '/spares' ) {
+				return {
+					body: spares( {
+						open_calls: [
+							{ ...call( { id: 901, is_creator: false, can_cancel: false } ), game: game( { team: { id: 12, name: 'Ducks', logo: '' } } ) },
+							{ ...call( { id: 902, is_creator: false, can_cancel: false } ), game: game( { id: 105, team: { id: 13, name: 'Geese', logo: '' } } ) },
+						],
+					} ),
+				};
+			}
+			if ( s.path === '/spare-calls/901/accept' ) {
+				return { body: { success: true, call: call( { id: 901 } ) } };
+			}
+			if ( s.path === '/spare-calls/902/accept' ) {
+				return error( 403, 'spbn_not_eligible', 'x', 'busy' );
+			}
+		} );
+		render( <Spares me={ me() } /> );
+		await settle();
+		const [ first, second ] = screen.getAllByRole( 'button', { name: /i.ll play/i } );
+		await act( async () => {
+			fireEvent.click( first );
+		} );
+		await settle();
+		expect( screen.getByText( /you.re in for ducks/i ) ).toBeTruthy();
+		await act( async () => {
+			fireEvent.click( second );
+		} );
+		await settle();
+		expect( screen.queryByText( /you.re in for/i ) ).toBeNull();
+		expect( screen.getByRole( 'alert' ).textContent ).toMatch( /too close/i );
+	} );
+
+	it( 'shows the server’s prefs again when they change elsewhere', async () => {
+		let prefs = { enabled: false, positions: [] as string[] };
+		fakeApi( ( s ) => ( s.path === '/spares' ? { body: spares( { prefs: prefs as SparesPayload['prefs'], open_calls: [] } ) } : undefined ) );
+		render( <Spares me={ me() } /> );
+		await settle();
+		expect( screen.getByRole( 'switch' ).getAttribute( 'aria-checked' ) ).toBe( 'false' );
+		prefs = { enabled: true, positions: [ 'goalie' ] };
+		await act( async () => {
+			invalidate( '/spares' );
+		} );
+		await settle();
+		expect( screen.getByRole( 'switch' ).getAttribute( 'aria-checked' ) ).toBe( 'true' );
+		expect( ( screen.getByRole( 'checkbox', { name: 'Goalie' } ) as HTMLInputElement ).checked ).toBe( true );
 	} );
 
 	it( 'explains a refusal in plain language, not as a sign-in problem', async () => {
@@ -90,12 +146,17 @@ describe( 'Spares', () => {
 
 	it( 'turns sparing on with skater picked, and rolls back with a message when the save fails', async () => {
 		let fail = false;
+		let stored: SparesPayload['prefs'] = { enabled: false, positions: [] };
 		const sent = fakeApi( ( s ) => {
 			if ( s.path === '/spares' ) {
-				return { body: spares( { prefs: { enabled: false, positions: [] }, open_calls: [] } ) };
+				return { body: spares( { prefs: stored, open_calls: [] } ) };
 			}
 			if ( s.path === '/spares/prefs' ) {
-				return fail ? error( 500, 'http_error', 'Oops' ) : { body: { success: true, ...( s.body as object ) } };
+				if ( fail ) {
+					return error( 500, 'http_error', 'Oops' );
+				}
+				stored = s.body as SparesPayload['prefs'];
+				return { body: { success: true, ...stored } };
 			}
 		} );
 		render( <Spares me={ me() } /> );
@@ -153,6 +214,46 @@ describe( 'Me', () => {
 		fakeApi( () => undefined );
 		render( <Me me={ me( { ical_url: 'https://example.test/bench/ical/abc.ics' } ) } /> );
 		expect( screen.getByRole( 'link', { name: /subscribe/i } ).getAttribute( 'href' ) ).toBe( 'webcal://example.test/bench/ical/abc.ics' );
+	} );
+
+	describe( 'Copy', () => {
+		const setClipboard = ( value: unknown ) => Object.defineProperty( navigator, 'clipboard', { value, configurable: true } );
+		afterEach( () => setClipboard( undefined ) );
+
+		it( 'copies the feed URL and says so', async () => {
+			const writeText = vi.fn( async () => {} );
+			setClipboard( { writeText } );
+			fakeApi( () => undefined );
+			render( <Me me={ me() } /> );
+			await act( async () => {
+				fireEvent.click( screen.getByRole( 'button', { name: 'Copy' } ) );
+			} );
+			expect( writeText ).toHaveBeenCalledWith( 'https://example.test/bench/ical/abc' );
+			expect( screen.getByText( 'Copied.' ) ).toBeTruthy();
+		} );
+
+		it.each( [
+			[ 'refused', () => ( { writeText: vi.fn( async () => Promise.reject( new Error( 'NotAllowedError' ) ) ) } ) ],
+			[ 'missing', () => undefined ],
+		] )( 'selects the link for a manual copy when the clipboard is %s', async ( _label, clipboard ) => {
+			setClipboard( clipboard() );
+			fakeApi( () => undefined );
+			render( <Me me={ me() } /> );
+			await act( async () => {
+				fireEvent.click( screen.getByRole( 'button', { name: 'Copy' } ) );
+			} );
+			const field = screen.getByLabelText( /calendar link/i ) as HTMLInputElement;
+			expect( document.activeElement ).toBe( field );
+			expect( [ field.selectionStart, field.selectionEnd ] ).toEqual( [ 0, field.value.length ] );
+			expect( screen.getByText( /^Selected/ ) ).toBeTruthy();
+		} );
+	} );
+
+	it( 'follows a new feed URL when /me changes', () => {
+		fakeApi( () => undefined );
+		const { rerender } = render( <Me me={ me() } /> );
+		rerender( <Me me={ me( { ical_url: 'https://example.test/bench/ical/new1' } ) } /> );
+		expect( screen.getByRole( 'link', { name: /subscribe/i } ).getAttribute( 'href' ) ).toBe( 'webcal://example.test/bench/ical/new1' );
 	} );
 
 	it( 'resets the link only on a second tap and shows the new one', async () => {

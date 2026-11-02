@@ -87,6 +87,87 @@ describe( 'AvailabilityToggle', () => {
 		expect( screen.getByRole( 'alert' ).textContent ).toMatch( /locked/i );
 	} );
 
+	describe( 'overlapping choices', () => {
+		/** onChange that hands back a promise per call, settled by the test. */
+		function deferred() {
+			const settle: Array<{ ok: () => void; fail: ( e: unknown ) => void }> = [];
+			const onChange = vi.fn(
+				( _value: string ) =>
+					new Promise<void>( ( ok, fail ) => {
+						settle.push( { ok: () => ok(), fail } );
+					} )
+			);
+			return { onChange, settle, sent: () => onChange.mock.calls.map( ( c ) => c[ 0 ] ) };
+		}
+		const pick = async ( name: string ) => {
+			await act( async () => {
+				fireEvent.click( screen.getByRole( 'radio', { name } ) );
+			} );
+		};
+		const run = async ( fn: () => void ) => {
+			await act( async () => {
+				fn();
+				await Promise.resolve();
+			} );
+		};
+
+		it( 'sends one save at a time and the waiting choice after it; ends on the saved value when the first failed', async () => {
+			const { onChange, settle, sent } = deferred();
+			render( <AvailabilityToggle value="in" onChange={ onChange } /> );
+			await pick( 'Out' ); // A in flight
+			await pick( 'Maybe' ); // B waits
+			expect( sent() ).toEqual( [ 'out' ] );
+			expect( screen.getByRole( 'radiogroup' ).getAttribute( 'aria-busy' ) ).toBe( 'true' );
+			expect( checked() ).toBe( 'Maybe' );
+			await run( () => settle[ 0 ].fail( new ApiError( 0, 'offline', 'No connection.' ) ) );
+			expect( sent() ).toEqual( [ 'out', 'maybe' ] );
+			await run( () => settle[ 1 ].ok() );
+			expect( checked() ).toBe( 'Maybe' );
+			expect( screen.queryByRole( 'alert' ) ).toBeNull();
+			expect( screen.getByRole( 'radiogroup' ).getAttribute( 'aria-busy' ) ).toBeNull();
+		} );
+
+		it( 'goes back to the last value the server took when the later save fails', async () => {
+			const { onChange, settle } = deferred();
+			render( <AvailabilityToggle value="in" onChange={ onChange } /> );
+			await pick( 'Out' );
+			await pick( 'Maybe' );
+			await run( () => settle[ 0 ].ok() ); // server now has Out
+			await run( () => settle[ 1 ].fail( new ApiError( 500, 'spbn_write_failed', 'x' ) ) );
+			expect( checked() ).toBe( 'Out' );
+			expect( screen.getByRole( 'alert' ).textContent ).toMatch( /didn.t save/i );
+		} );
+
+		it( 'goes back to the original when both fail', async () => {
+			const { onChange, settle } = deferred();
+			render( <AvailabilityToggle value="in" onChange={ onChange } /> );
+			await pick( 'Out' );
+			await pick( 'Maybe' );
+			await run( () => settle[ 0 ].fail( new Error( 'x' ) ) );
+			await run( () => settle[ 1 ].fail( new Error( 'y' ) ) );
+			expect( checked() ).toBe( 'In' );
+		} );
+
+		it( 'only sends the latest waiting choice, and none when it matches what was just saved', async () => {
+			const { onChange, settle, sent } = deferred();
+			render( <AvailabilityToggle value="in" onChange={ onChange } /> );
+			await pick( 'Out' );
+			await pick( 'Maybe' );
+			await pick( 'In' );
+			await run( () => settle[ 0 ].ok() );
+			expect( sent() ).toEqual( [ 'out', 'in' ] );
+			await run( () => settle[ 1 ].ok() );
+			expect( checked() ).toBe( 'In' );
+
+			await pick( 'Maybe' );
+			await pick( 'Out' );
+			await pick( 'Maybe' ); // back to the one in flight: nothing more to send
+			await run( () => settle[ 2 ].ok() );
+			expect( onChange ).toHaveBeenCalledTimes( 3 );
+			expect( checked() ).toBe( 'Maybe' );
+		} );
+	} );
+
 	it( 'does nothing when disabled', async () => {
 		const onChange = vi.fn();
 		render( <AvailabilityToggle value="in" onChange={ onChange } disabled /> );

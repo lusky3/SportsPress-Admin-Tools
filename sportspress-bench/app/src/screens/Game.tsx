@@ -68,7 +68,7 @@ export function Game( { id, me }: { id: string; me: Me } ) {
 			<Problem error={ game.error } reload={ game.reload } forbidden="This game isn’t one of your games, so it’s not shown here." missing="We couldn’t find that game. It may have been taken off the schedule." />
 		);
 	} else {
-		const ics = isPast( d, now ) || isCalledOff( d ) || d.status === 'tbd' ? '' : gameIcsHref( d, window.location.host );
+		const ics = isPast( d, now ) || isCalledOff( d ) || d.status === 'tbd' ? '' : gameIcsHref( d );
 		body = (
 			<>
 				<GameHero game={ d } now={ now } title={ d.as_spare ? 'Your spare game' : 'Game' }>

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiSend } from '../api';
 import { boot } from '../boot';
 import { Crest } from '../components/Crest';
@@ -16,6 +16,11 @@ function Calendar( { feed: initial }: { feed: string } ) {
 	const [ feed, setFeed ] = useState( initial );
 	const [ note, setNote ] = useState( '' );
 	const input = useRef<HTMLInputElement>( null );
+
+	// A refreshed /me (say, the link was reset on another device) wins.
+	useEffect( () => {
+		setFeed( initial );
+	}, [ initial ] );
 
 	const copy = async () => {
 		try {

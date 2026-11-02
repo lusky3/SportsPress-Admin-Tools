@@ -237,16 +237,34 @@
 	margin-top: 16px;
 }
 
-/* Two ice stripes cut at -11deg in the top corner: the league's mark on every ticket. */
+/*
+ * Two ice stripes cut at -11deg in the top corner: the league's mark on every ticket.
+ * They stay inside the eyebrow row (which keeps 90px clear on its right) and end above
+ * the day and time, and the content sits above them, so a long "TOMORROW 9:45 PM" that
+ * wraps at 360-430px never runs into them.
+ */
 .hero::before,
 .hero::after {
 	content: '';
 	position: absolute;
 	top: -10px;
-	height: 92px;
+	height: 54px;
 	background: var(--ice);
 	transform: skewX(-11deg);
 	pointer-events: none;
+	z-index: 0;
+}
+
+.hero > * {
+	position: relative;
+	z-index: 1;
+}
+
+@media (min-width: 560px) {
+	.hero::before,
+	.hero::after {
+		height: 60px;
+	}
 }
 
 .hero::before {
