@@ -344,8 +344,10 @@ class SPBN_REST {
 			return new WP_Error( 'spbn_locked', __( 'This game is over; answers are locked.', 'sportspress-bench' ), array( 'status' => 409 ) );
 		}
 
+		// No note in the request keeps the stored one; only an explicit note (even '') changes it.
+		$note = $request->get_param( 'note' );
 		try {
-			$row = SPBN_Availability::set( $raw['id'], $player_id, $team_id, $status, (string) $request->get_param( 'note' ), $v['user_id'] );
+			$row = SPBN_Availability::set( $raw['id'], $player_id, $team_id, $status, null === $note ? null : (string) $note, $v['user_id'] );
 		} catch ( InvalidArgumentException $e ) {
 			return new WP_Error( 'spbn_invalid_status', __( 'Status must be in, out or maybe.', 'sportspress-bench' ), array( 'status' => 400 ) );
 		} catch ( RuntimeException $e ) {
@@ -357,7 +359,7 @@ class SPBN_REST {
 			array(
 				'success'      => true,
 				'availability' => array_merge( $row, array( 'event_id' => $raw['id'] ) ),
-				'counts'       => self::side_summary( $v['reader'], $raw, $team_id ),
+				'counts'       => self::side_summary( $v['reader'], $raw, $team_id, $v['team_players'][ $team_id ] ?? array() ),
 			),
 			200
 		);
@@ -377,7 +379,9 @@ class SPBN_REST {
 		$reader = $v['reader'];
 		$season = $reader->season_id();
 		$roster = array();
-		foreach ( self::roster( $reader, $team_id ) as $member ) {
+		// The list can be hand-kept and miss a new registrant: the viewer's own players always show.
+		$members = self::with_players( self::roster( $reader, $team_id ), $v['team_players'][ $team_id ] ?? array() );
+		foreach ( $members as $member ) {
 			$roster[] = $member + array( 'is_me' => in_array( $member['player_id'], $v['players'], true ) );
 		}
 
@@ -748,7 +752,7 @@ class SPBN_REST {
 				'as_spare'         => $entry['as_spare'],
 			);
 			if ( self::start_ts( $raw ) >= $cutoff ) {
-				$summary         = self::side_summary( $v['reader'], $raw, $entry['team_id'] );
+				$summary         = self::side_summary( $v['reader'], $raw, $entry['team_id'], $v['team_players'][ $entry['team_id'] ] ?? array() );
 				$extra['counts'] = array_intersect_key( $summary, array_flip( array( 'in', 'out', 'maybe' ) ) );
 			}
 			if ( ! $entry['as_spare'] ) {
@@ -780,7 +784,7 @@ class SPBN_REST {
 		}
 		$players = array();
 		if ( $with_players ) {
-			foreach ( self::roster( $v['reader'], $team_id ) as $member ) {
+			foreach ( self::side_roster( $v['reader'], $raw, $team_id, $v['team_players'][ $team_id ] ?? array() ) as $member ) {
 				$row       = $by_id[ $member['player_id'] ] ?? null;
 				$status    = $row ? SPBN_Availability::validate_status( (string) $row['status'] ) : null;
 				$players[] = array(
@@ -824,7 +828,7 @@ class SPBN_REST {
 			'team_id'  => $team_id,
 			'mine'     => $mine,
 			'editable' => null !== $mine && SPBN_Availability::can_edit( self::start_ts( $raw ), time(), $v['organizer'] ),
-			'counts'   => self::side_summary( $v['reader'], $raw, $team_id ),
+			'counts'   => self::side_summary( $v['reader'], $raw, $team_id, $v['team_players'][ $team_id ] ?? array() ),
 			'players'  => $players,
 		);
 	}
@@ -833,12 +837,59 @@ class SPBN_REST {
 	 * Counts for one side: in/out/maybe/none/goalies_in/spares, with accepted
 	 * spares counted as in.
 	 */
-	private static function side_summary( SPBN_Roster_Reader $reader, array $raw, int $team_id ): array {
+	private static function side_summary( SPBN_Roster_Reader $reader, array $raw, int $team_id, array $own_players = array() ): array {
 		return SPBN_Availability::summarize(
 			self::side_rows( $raw['id'], $team_id ),
-			self::roster( $reader, $team_id ),
+			self::side_roster( $reader, $raw, $team_id, $own_players ),
 			self::side_spares( $raw['id'], $team_id )
 		);
+	}
+
+	/**
+	 * The people counted for one side of a game: the team's list plus whoever
+	 * answered for it, who was allowed to (their player is on the team now), plus
+	 * the viewer's own players. A hand-kept list often misses a new registrant,
+	 * and their answer must still count. Players on sp_current_team who neither
+	 * answered nor are the viewer are not added: that field accumulates across
+	 * seasons and would inflate the no-reply count.
+	 *
+	 * @param int[] $own_players The viewer's players on this team.
+	 */
+	private static function side_roster( SPBN_Roster_Reader $reader, array $raw, int $team_id, array $own_players = array() ): array {
+		$extra = $own_players;
+		foreach ( self::side_rows( $raw['id'], $team_id ) as $row ) {
+			if ( in_array( $team_id, $reader->current_team_ids( (int) $row['player_id'] ), true ) ) {
+				$extra[] = (int) $row['player_id'];
+			}
+		}
+		return self::with_players( self::roster( $reader, $team_id ), $extra );
+	}
+
+	/**
+	 * A roster plus any of the given players it lacks, as roster entries.
+	 *
+	 * @param array $roster     Roster entries.
+	 * @param int[] $player_ids Players to include.
+	 */
+	private static function with_players( array $roster, array $player_ids ): array {
+		$have = array_column( $roster, 'player_id' );
+		foreach ( $player_ids as $player_id ) {
+			$player_id = (int) $player_id;
+			$post      = get_post( $player_id );
+			if ( in_array( $player_id, $have, true ) || ! $post || 'sp_player' !== $post->post_type || 'trash' === $post->post_status ) {
+				continue;
+			}
+			$card     = self::player_card( $player_id );
+			$roster[] = array(
+				'player_id'  => $player_id,
+				'name'       => $card['name'],
+				'number'     => $card['number'],
+				'positions'  => $card['positions'],
+				'is_captain' => false,
+			);
+			$have[]   = $player_id;
+		}
+		return $roster;
 	}
 
 	private static function side_rows( int $event_id, int $team_id ): array {

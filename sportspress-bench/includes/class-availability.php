@@ -124,11 +124,14 @@ class SPBN_Availability {
 	 * a bad one to a 400; reaching here with one is a bug, so it throws rather
 	 * than writing nothing quietly.
 	 *
+	 * A null `$note` leaves an existing note as it is (a status tap does not
+	 * erase what the player wrote); a string, including '', replaces it.
+	 *
 	 * @return array{player_id:int,team_id:int,status:string,note:string,updated_at:string}
 	 * @throws InvalidArgumentException On an unknown status.
 	 * @throws RuntimeException         When the write fails.
 	 */
-	public static function set( int $event_id, int $player_id, int $team_id, string $status, string $note, int $by ): array {
+	public static function set( int $event_id, int $player_id, int $team_id, string $status, ?string $note, int $by ): array {
 		global $wpdb;
 
 		$clean_status = self::validate_status( $status );
@@ -136,15 +139,17 @@ class SPBN_Availability {
 			throw new InvalidArgumentException( 'Unknown availability status.' );
 		}
 
-		$clean_note = mb_substr( trim( sanitize_text_field( $note ) ), 0, self::NOTE_MAX );
+		$keep_note  = null === $note;
+		$clean_note = mb_substr( trim( sanitize_text_field( (string) $note ) ), 0, self::NOTE_MAX );
 		$now        = gmdate( 'Y-m-d H:i:s' );
 		$table      = SPBN_Schema::tables()['availability'];
+		$note_set   = $keep_note ? '' : 'note = VALUES(note), ';
 
 		$result = $wpdb->query(
 			$wpdb->prepare(
 				"INSERT INTO {$table} (event_id, player_id, team_id, status, note, updated_by, updated_at)
 				VALUES (%d,%d,%d,%s,%s,%d,%s)
-				ON DUPLICATE KEY UPDATE team_id = VALUES(team_id), status = VALUES(status), note = VALUES(note), updated_by = VALUES(updated_by), updated_at = VALUES(updated_at)",
+				ON DUPLICATE KEY UPDATE team_id = VALUES(team_id), status = VALUES(status), {$note_set}updated_by = VALUES(updated_by), updated_at = VALUES(updated_at)", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- a fixed fragment, no input.
 				$event_id,
 				$player_id,
 				$team_id,
@@ -156,6 +161,13 @@ class SPBN_Availability {
 		);
 		if ( false === $result ) {
 			throw new RuntimeException( 'Availability write failed.' );
+		}
+
+		if ( $keep_note ) {
+			// The stored note is what the row holds now (the new row's blank, or the old one kept).
+			$clean_note = (string) $wpdb->get_var(
+				$wpdb->prepare( "SELECT note FROM {$table} WHERE event_id = %d AND player_id = %d", $event_id, $player_id )
+			);
 		}
 
 		return array(

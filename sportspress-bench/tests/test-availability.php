@@ -110,6 +110,23 @@ spbn_assert( 140 === mb_strlen( $long['note'] ), 'note is capped at 140 characte
 $injection = SPBN_Availability::set( 101, 1001, 12, 'OUT', "it's <b>fine</b>", 7 );
 spbn_assert( "it's fine" === $injection['note'] && 'out' === $injection['status'], 'note is sanitised and the status normalised' );
 spbn_assert( false !== strpos( end( $db->queries ), "'it\\'s fine'" ), 'a quote in the note is escaped by prepare' );
+spbn_assert( false !== strpos( end( $db->queries ), 'note = VALUES(note)' ), 'a string note replaces the stored one on update' );
+
+SPBN_Availability::set( 101, 1001, 12, 'in', '', 7 );
+spbn_assert( false !== strpos( end( $db->queries ), 'note = VALUES(note)' ), 'an explicit empty note also replaces it' );
+$db->results_handler = function ( $sql ) {
+	return false !== strpos( $sql, 'SELECT note FROM wp_spbn_availability WHERE event_id = 101 AND player_id = 1001' ) ? 'Stored note' : null;
+};
+$kept = SPBN_Availability::set( 101, 1001, 12, 'out', null, 7 );
+$sql  = '';
+foreach ( $db->queries as $q ) {
+	if ( 0 === strpos( $q, 'INSERT INTO' ) ) {
+		$sql = $q;
+	}
+}
+spbn_assert( false !== strpos( $sql, "VALUES (101,1001,12,'out','',7," ) && false === strpos( $sql, 'note = VALUES(note)' ), 'a null note does not touch the stored note on update' );
+spbn_assert( 'Stored note' === $kept['note'] && 'out' === $kept['status'], 'and the returned row carries the note the row holds' );
+$db->results_handler = null;
 
 $count = count( $db->queries );
 $threw = false;

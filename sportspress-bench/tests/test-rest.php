@@ -184,6 +184,9 @@ function spbn_fake_bench_db() {
 	};
 
 	$db->results_handler = function ( $sql ) use ( $s, $accepted_count, $call_row ) {
+		if ( preg_match( '/SELECT note FROM wp_spbn_availability WHERE event_id = (\d+) AND player_id = (\d+)/', $sql, $m ) ) {
+			return $s->avail[ $m[1] . '-' . $m[2] ]['note'] ?? null;
+		}
 		if ( preg_match( '/FROM wp_spbn_availability WHERE event_id = (\d+)/', $sql, $m ) ) {
 			return array_values(
 				array_filter(
@@ -273,7 +276,13 @@ function spbn_fake_bench_db() {
 			if ( $s->fail_avail ) {
 				return false;
 			}
-			$s->avail[ $m[1] . '-' . $m[2] ] = array( 'event_id' => (int) $m[1], 'player_id' => (int) $m[2], 'team_id' => (int) $m[3], 'status' => $m[4], 'note' => stripslashes( $m[5] ), 'updated_at' => $m[7] );
+			$key  = $m[1] . '-' . $m[2];
+			$note = stripslashes( $m[5] );
+			// Like the real upsert: an existing row keeps its note unless the statement updates it.
+			if ( isset( $s->avail[ $key ] ) && false === strpos( $sql, 'note = VALUES(note)' ) ) {
+				$note = $s->avail[ $key ]['note'];
+			}
+			$s->avail[ $key ] = array( 'event_id' => (int) $m[1], 'player_id' => (int) $m[2], 'team_id' => (int) $m[3], 'status' => $m[4], 'note' => $note, 'updated_at' => $m[7] );
 			return 1;
 		}
 		if ( preg_match( "/^INSERT INTO wp_spbn_spare_responses .*VALUES \((\d+),(\d+),(\d+),'(\w+)'/s", $sql, $m ) ) {
@@ -849,5 +858,59 @@ spbn_assert( 'Wave Twin Rinks' === $list[101]['rink'], '/me/games carries the sa
 spbn_login( 12, true );
 $night = spbn_data( SPBN_REST::ops_night( spbn_req( array( 'date' => '2099-11-06' ) ) ) );
 spbn_assert( array( 'name' => 'Mainway Rink 2', 'rink' => '', 'address' => '', 'map_url' => '' ) === $night['data'][0]['venue'], '/ops/night: a venue with no settings has all keys, empty' );
+
+echo "\n=== answers from players missing off the hand-kept list still count ===\n\n";
+
+$db = spbn_league();
+foreach ( array( 57 => array( 'Rookie Off List', 14 ), 58 => array( 'Ghost Off List', 15 ) ) as $id => list( $name, $user ) ) {
+	spbn_add_post( $id, 'sp_player', $name );
+	spbn_add_meta( $id, 'sp_user', (string) $user );
+	spbn_add_meta( $id, 'sp_current_team', '12' );
+	spbn_add_user( $user, "u{$user}@example.test", $name );
+}
+// A row written for team 12 by a player who is not on team 12 now (stale) is not added.
+$db->avail['101-53'] = array( 'event_id' => 101, 'player_id' => 53, 'team_id' => 12, 'status' => 'in', 'note' => '', 'updated_at' => '2026-11-01 12:00:00' );
+
+spbn_login( 14 );
+$res = SPBN_REST::put_availability( spbn_req( array( 'id' => 101, 'status' => 'in' ) ) );
+spbn_assert( 57 === spbn_data( $res )['availability']['player_id'] && 1 === spbn_data( $res )['counts']['in'] && 2 === spbn_data( $res )['counts']['none'], 'the PUT response counts the off-list player: in 1, none 2 (the list\'s two; Ghost is not added)' );
+$g  = spbn_data( SPBN_REST::game( spbn_req( array( 'id' => 101 ) ) ) );
+$by = array_column( $g['availability']['players'], null, 'player_id' );
+spbn_assert( 'in' === $by[57]['status'] && 'Rookie Off List' === $by[57]['name'] && 1 === $g['availability']['counts']['in'] && 'in' === $g['availability']['mine']['status'], 'the player sees themselves in the list and in the counts' );
+spbn_assert( ! isset( $by[58] ) && ! isset( $by[53] ), 'a current-team player who did not answer is not added; a stale row is not either' );
+spbn_assert( 1 === $g['counts']['in'], 'game object counts agree' );
+
+spbn_login( 7 );
+$g  = spbn_data( SPBN_REST::game( spbn_req( array( 'id' => 101 ) ) ) );
+$by = array_column( $g['availability']['players'], null, 'player_id' );
+spbn_assert( isset( $by[57] ) && 'in' === $by[57]['status'] && ! isset( $by[58] ) && 1 === $g['availability']['counts']['in'] && 2 === $g['availability']['counts']['none'], 'a teammate sees the off-list answer in the list and counts (and no Ghost)' );
+$list = array_column( spbn_data( SPBN_REST::me_games() )['data'], 'counts', 'id' );
+spbn_assert( 1 === $list[101]['in'], '/me/games counts it too' );
+spbn_assert( array( 50, 52 ) === array_column( spbn_data( SPBN_REST::team( spbn_req( array( 'id' => 12 ) ) ) )['roster'], 'player_id' ), '/teams/{id} for someone else shows the list only' );
+spbn_login( 12, true );
+$night = spbn_data( SPBN_REST::ops_night( spbn_req( array( 'date' => '2099-11-04' ) ) ) );
+spbn_assert( 1 === $night['data'][0]['sides'][0]['counts']['in'] && 2 === $night['data'][0]['sides'][0]['counts']['none'], '/ops/night counts it as well' );
+
+spbn_login( 15 );
+$g  = spbn_data( SPBN_REST::game( spbn_req( array( 'id' => 101 ) ) ) );
+$by = array_column( $g['availability']['players'], null, 'player_id' );
+spbn_assert( isset( $by[58] ) && 'none' === $by[58]['status'], 'a viewer\'s own off-list player is listed (no reply)' );
+$team = spbn_data( SPBN_REST::team( spbn_req( array( 'id' => 12 ) ) ) );
+$me   = array_column( $team['roster'], 'is_me', 'player_id' );
+spbn_assert( array( 50, 52, 58 ) === array_column( $team['roster'], 'player_id' ) && true === $me[58] && false === $me[50], '/teams/{id}: the viewer\'s own off-list player appears with is_me, and not the other off-list player' );
+
+echo "\n=== a status change keeps the note ===\n\n";
+
+$db->avail['101-50'] = array( 'event_id' => 101, 'player_id' => 50, 'team_id' => 12, 'status' => 'in', 'note' => 'back at 9', 'updated_at' => '2026-11-01 12:00:00' );
+spbn_login( 7 );
+$res = SPBN_REST::put_availability( spbn_req( array( 'id' => 101, 'status' => 'out' ) ) );
+spbn_assert( 'out' === $db->avail['101-50']['status'] && 'back at 9' === $db->avail['101-50']['note'] && 'back at 9' === spbn_data( $res )['availability']['note'], 'a PUT without note changes the status and keeps the stored note' );
+$res = SPBN_REST::put_availability( spbn_req( array( 'id' => 101, 'status' => 'maybe', 'note' => 'new note' ) ) );
+spbn_assert( 'new note' === $db->avail['101-50']['note'] && 'new note' === spbn_data( $res )['availability']['note'], 'an explicit note replaces it' );
+$res = SPBN_REST::put_availability( spbn_req( array( 'id' => 101, 'status' => 'in', 'note' => '' ) ) );
+spbn_assert( '' === $db->avail['101-50']['note'] && '' === spbn_data( $res )['availability']['note'], 'an explicit empty note clears it' );
+spbn_login( 12, true );
+$res = SPBN_REST::put_availability( spbn_req( array( 'id' => 101, 'status' => 'out', 'player_id' => 52 ) ) );
+spbn_assert( '' === spbn_data( $res )['availability']['note'], 'a first answer with no note stores an empty note' );
 
 spbn_done();
