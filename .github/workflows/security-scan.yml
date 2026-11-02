@@ -66,6 +66,7 @@ jobs:
     with:
       scan-args: |-
         --lockfile=./sportspress-league-manager/package-lock.json
+        --lockfile=./sportspress-bench/app/package-lock.json
 
   osv-scanner-scheduled:
     if: github.event_name != 'pull_request'
@@ -77,6 +78,7 @@ jobs:
     with:
       scan-args: |-
         --lockfile=./sportspress-league-manager/package-lock.json
+        --lockfile=./sportspress-bench/app/package-lock.json
 
   npm-audit:
     runs-on: ubuntu-26.04
@@ -97,6 +99,15 @@ jobs:
       # they're released upstream.
       - name: Install dependencies and audit (production only)
         working-directory: sportspress-league-manager
+        run: |
+          npm ci
+          npm audit --omit=dev --audit-level=high
+
+      # Bench's PWA ships its built bundle, so production dependencies get the
+      # same gate as League Manager's. Dev tooling (vite, vitest, jsdom) never
+      # reaches users and is excluded the same way.
+      - name: Install Bench app dependencies and audit (production only)
+        working-directory: sportspress-bench/app
         run: |
           npm ci
           npm audit --omit=dev --audit-level=high
