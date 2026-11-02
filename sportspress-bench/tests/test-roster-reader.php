@@ -191,7 +191,7 @@ echo "\n=== raw_event ===\n\n";
 $r = league();
 game( 300, '2026-11-05 21:45:00', array( 12, 30 ) );
 spbn_set_terms( 300, 'sp_venue', array( 70 => 'Twin Rinks', 71 => 'Other Rink' ) );
-$GLOBALS['spbn_term_meta'][70]['sp_address'] = '1 Rink Rd';
+$GLOBALS['spbn_options']['taxonomy_70'] = array( 'sp_address' => ' 1 Rink Rd ', 'sp_latitude' => '', 'sp_longitude' => '' );
 spbn_set_meta( 300, 'sp_status', 'postponed' );
 spbn_set_meta( 12, '_test_thumbnail_url', 'https://x.test/ducks.png' );
 results( 300, '3', '2' );
@@ -200,7 +200,7 @@ spbn_assert( 300 === $raw['id'], 'raw_event id' );
 spbn_assert( '2026-11-05T21:45:00-05:00' === $raw['start'], 'start is ISO 8601 in site time with offset' );
 spbn_assert( 'postponed' === $raw['status'] && false === $raw['spem_cancelled'], 'status from sp_status; spem_cancelled false' );
 spbn_assert( array( 12, 30 ) === $raw['team_ids'], 'team_ids keep stored order (first = home)' );
-spbn_assert( array( 'name' => 'Twin Rinks', 'address' => '1 Rink Rd' ) === $raw['venue'], 'venue is the first sp_venue term, address from term meta' );
+spbn_assert( array( 'name' => 'Twin Rinks', 'rink' => '', 'address' => '1 Rink Rd', 'map_url' => 'https://www.google.com/maps/search/?api=1&query=1%20Rink%20Rd' ) === $raw['venue'], 'venue is the first sp_venue term, address (trimmed) from the taxonomy_{id} option, map link by address when there are no coordinates' );
 spbn_assert( array( 12 => 'Ducks', 30 => 'Knights of Ni' ) === $raw['team_names'], 'team names are raw post_title' );
 spbn_assert( array( 12 => 'https://x.test/ducks.png', 30 => '' ) === $raw['team_logos'], 'team logos by team id, empty when none' );
 spbn_assert( 'goals' === $raw['result_key'], 'result_key defaults to goals without SportsPress' );
@@ -215,7 +215,56 @@ spbn_set_meta( 301, '_spem_cancelled', '1' );
 $cancelled = $r->raw_event( 301 );
 spbn_assert( null !== $cancelled && true === $cancelled['spem_cancelled'], 'draft with _spem_cancelled=1 is a cancelled event' );
 spbn_assert( 'cancelled' === SPBN_Event_Presenter::present( $cancelled, 12 )['status'], 'and presents as cancelled' );
-spbn_assert( array( 'name' => '', 'address' => '' ) === $cancelled['venue'], 'no venue term -> empty name and address' );
+spbn_assert( array( 'name' => '', 'rink' => '', 'address' => '', 'map_url' => '' ) === $cancelled['venue'], 'no venue term -> empty name, rink, address and map link' );
+
+echo "\n--- venue settings (real SportsPress venues) ---\n\n";
+
+SPBN_Roster_Reader::flush_cache();
+game( 310, '2026-11-14 20:00:00', array( 12, 30 ) );
+spbn_set_terms( 310, 'sp_venue', array( 13 => 'Black' ) );
+$GLOBALS['spbn_term_store']['sp_venue'][13]->description = "Wave Twin Rinks\nThe Wave Twin Rinks (Black). A long description that goes on well past sixty characters.";
+$GLOBALS['spbn_options']['taxonomy_13']                  = array( 'sp_address' => '1179 Northside Rd, Burlington, ON L7M, Canada', 'sp_latitude' => '43.361123', 'sp_longitude' => '-79.804012' );
+$black = $r->raw_event( 310 )['venue'];
+spbn_assert( 'Black' === $black['name'] && 'Wave Twin Rinks' === $black['rink'], 'term 13 Black: rink is the first description line' );
+spbn_assert( '1179 Northside Rd, Burlington, ON L7M, Canada' === $black['address'], 'address is sp_address from the option' );
+spbn_assert( 'https://www.google.com/maps/search/?api=1&query=43.361123,-79.804012' === $black['map_url'], 'coordinates win for the map link' );
+
+game( 311, '2026-11-15 20:00:00', array( 12, 30 ) );
+spbn_set_terms( 311, 'sp_venue', array( 61 => 'Appleby 1' ) );
+$GLOBALS['spbn_term_store']['sp_venue'][61]->description = "<h2>APPLEBY ICE CENTRE</h2>\nRink 1 at the Appleby Ice Centre, with a long description following it here.";
+$appleby = $r->raw_event( 311 )['venue'];
+spbn_assert( 'APPLEBY ICE CENTRE' === $appleby['rink'], 'term 61 Appleby 1: tags stripped, case kept' );
+spbn_assert( '' === $appleby['address'] && '' === $appleby['map_url'], 'no option: empty address and no map link' );
+
+game( 312, '2026-11-16 20:00:00', array( 12, 30 ) );
+spbn_set_terms( 312, 'sp_venue', array( 661 => 'Mainway Rink 2' ) );
+$GLOBALS['spbn_options']['taxonomy_661'] = false;
+$mainway                                 = $r->raw_event( 312 )['venue'];
+spbn_assert( array( 'name' => 'Mainway Rink 2', 'rink' => '', 'address' => '', 'map_url' => '' ) === $mainway, 'term 661 Mainway Rink 2: no description, option false -> all empty' );
+
+echo "\n--- rink and map_url rules ---\n\n";
+
+spbn_assert( '' === SPBN_Roster_Reader::venue_rink( "Black\nsomething", 'black' ), 'a first line equal to the name (any case) is no rink' );
+spbn_assert( '' === SPBN_Roster_Reader::venue_rink( str_repeat( 'x', 61 ), 'Name' ), 'a first line over 60 characters is no rink' );
+spbn_assert( str_repeat( 'x', 60 ) === SPBN_Roster_Reader::venue_rink( str_repeat( 'x', 60 ), 'Name' ), 'exactly 60 characters is a rink' );
+spbn_assert( 'Rink & Co' === SPBN_Roster_Reader::venue_rink( '<p>Rink &amp; Co</p>', 'Name' ), 'entities are decoded' );
+spbn_assert( 'Second' === SPBN_Roster_Reader::venue_rink( "\n  \nSecond\nThird", 'Name' ), 'leading blank lines are skipped' );
+spbn_assert( '' === SPBN_Roster_Reader::venue_rink( '', 'Name' ), 'no description, no rink' );
+spbn_assert( 'https://www.google.com/maps/search/?api=1&query=43.3,-79.8' === SPBN_Roster_Reader::map_url( '43.3', '-79.8', 'ignored' ), 'both coordinates numeric: coordinates' );
+spbn_assert( 'https://www.google.com/maps/search/?api=1&query=1%20A%20St%2C%20X' === SPBN_Roster_Reader::map_url( '43.3', '', '1 A St, X' ), 'one coordinate missing: the address, url-encoded' );
+spbn_assert( 'https://www.google.com/maps/search/?api=1&query=1%20A%20St' === SPBN_Roster_Reader::map_url( 'abc', '-79.8', '1 A St' ), 'a non-numeric coordinate: the address' );
+spbn_assert( 'https://www.google.com/maps/search/?api=1&query=1%20A%20St' === SPBN_Roster_Reader::map_url( '143', '-79.8', '1 A St' ), 'an out-of-range latitude: the address' );
+spbn_assert( '' === SPBN_Roster_Reader::map_url( '', '', '' ), 'nothing known: no link' );
+
+echo "\n--- the option is read once per term per request ---\n\n";
+
+SPBN_Roster_Reader::flush_cache();
+$GLOBALS['spbn_options']['taxonomy_13'] = array( 'sp_address' => 'A' );
+$r->raw_event( 310 );
+$GLOBALS['spbn_options']['taxonomy_13'] = array( 'sp_address' => 'B' );
+spbn_assert( 'A' === $r->raw_event( 310 )['venue']['address'], 'a second read in the same request uses the memo' );
+SPBN_Roster_Reader::flush_cache();
+spbn_assert( 'B' === $r->raw_event( 310 )['venue']['address'], 'and flush_cache drops it' );
 spbn_assert( null === $r->raw_event( 12 ), 'a non-event post is not an event' );
 spbn_assert( null === $r->raw_event( 9999 ), 'a missing post is not an event' );
 game( 302, '2026-11-13 20:00:00', array( 12, 30 ), SEASON, 'trash' );

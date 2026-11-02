@@ -34,6 +34,13 @@ class SPBN_Roster_Reader {
 	private static ?int $season_memo = null;
 
 	/**
+	 * Per-request memo of venue(), by term id.
+	 *
+	 * @var array<int,array>
+	 */
+	private static array $venue_memo = array();
+
+	/**
 	 * Per-request cache of table_team_ids() for the current season.
 	 *
 	 * @var array<int,int[]>|null
@@ -46,6 +53,7 @@ class SPBN_Roster_Reader {
 	public static function flush_cache(): void {
 		self::$teams_cache = array();
 		self::$season_memo = null;
+		self::$venue_memo  = array();
 	}
 
 	/**
@@ -279,12 +287,13 @@ class SPBN_Roster_Reader {
 
 		$venue = array(
 			'name'    => '',
+			'rink'    => '',
 			'address' => '',
+			'map_url' => '',
 		);
 		$terms = self::terms( $event_id, 'sp_venue' );
 		if ( $terms ) {
-			$venue['name']    = (string) $terms[0]->name;
-			$venue['address'] = (string) get_term_meta( (int) $terms[0]->term_id, 'sp_address', true );
+			$venue = self::venue( $terms[0] );
 		}
 
 		$results = get_post_meta( $event_id, 'sp_results', true );
@@ -445,6 +454,68 @@ class SPBN_Roster_Reader {
 			++$record[ 'W' === $game['result']['outcome'] ? 'w' : ( 'L' === $game['result']['outcome'] ? 'l' : 't' ) ];
 		}
 		return $record;
+	}
+
+	/**
+	 * A venue term as {name, rink, address, map_url}. SportsPress keeps a venue's
+	 * address and coordinates in the option taxonomy_{term_id} (not term meta);
+	 * the rink is the first line of the term description. Read once per term per
+	 * request.
+	 *
+	 * @param object $term sp_venue term.
+	 * @return array{name:string,rink:string,address:string,map_url:string}
+	 */
+	private static function venue( $term ): array {
+		$term_id = (int) $term->term_id;
+		if ( ! isset( self::$venue_memo[ $term_id ] ) ) {
+			$settings = get_option( 'taxonomy_' . $term_id );
+			$settings = is_array( $settings ) ? $settings : array();
+			$name     = (string) $term->name;
+			$address  = self::setting( $settings, 'sp_address' );
+
+			self::$venue_memo[ $term_id ] = array(
+				'name'    => $name,
+				'rink'    => self::venue_rink( (string) ( $term->description ?? '' ), $name ),
+				'address' => $address,
+				'map_url' => self::map_url( self::setting( $settings, 'sp_latitude' ), self::setting( $settings, 'sp_longitude' ), $address ),
+			);
+		}
+		return self::$venue_memo[ $term_id ];
+	}
+
+	private static function setting( array $settings, string $key ): string {
+		return is_scalar( $settings[ $key ] ?? null ) ? trim( (string) $settings[ $key ] ) : '';
+	}
+
+	/**
+	 * The rink inside a venue: the first non-empty line of the description with
+	 * tags removed and entities decoded, when it is short (60 characters at most)
+	 * and not just the venue's own name. Case is kept as stored.
+	 */
+	public static function venue_rink( string $description, string $name ): string {
+		foreach ( (array) preg_split( '/\R/', $description ) as $line ) {
+			$line = trim( html_entity_decode( wp_strip_all_tags( (string) $line ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+			if ( '' === $line ) {
+				continue;
+			}
+			if ( mb_strlen( $line ) > 60 || 0 === strcasecmp( mb_strtolower( $line ), mb_strtolower( trim( $name ) ) ) ) {
+				return '';
+			}
+			return $line;
+		}
+		return '';
+	}
+
+	/**
+	 * A Google Maps link: the coordinates when both are valid numbers, else the
+	 * address, else nothing.
+	 */
+	public static function map_url( string $lat, string $lng, string $address ): string {
+		$base = 'https://www.google.com/maps/search/?api=1&query=';
+		if ( is_numeric( $lat ) && is_numeric( $lng ) && abs( (float) $lat ) <= 90 && abs( (float) $lng ) <= 180 ) {
+			return $base . $lat . ',' . $lng;
+		}
+		return '' !== $address ? $base . rawurlencode( $address ) : '';
 	}
 
 	/**

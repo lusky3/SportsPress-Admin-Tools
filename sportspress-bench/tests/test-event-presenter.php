@@ -19,7 +19,9 @@ function raw_event( array $over = array() ) {
 			'team_ids'        => array( 5, 9 ),
 			'venue'           => array(
 				'name'    => 'Twin Rinks',
+				'rink'    => 'Rink 2',
 				'address' => '1 Rink Rd',
+				'map_url' => 'https://www.google.com/maps/search/?api=1&query=1%20Rink%20Rd',
 			),
 			'results'         => array(),
 			'result_key'      => 'goals',
@@ -52,7 +54,8 @@ $org = SPBN_Event_Presenter::present( raw_event(), 0 );
 spbn_assert( 5 === $org['team']['id'] && true === $org['is_home'], 'viewer on neither side: home side is shown' );
 
 spbn_assert( 101 === $home['id'] && '2026-11-05T21:45:00-05:00' === $home['start'], 'id and start pass through' );
-spbn_assert( array( 'name' => 'Twin Rinks', 'address' => '1 Rink Rd' ) === $home['venue'], 'venue passes through' );
+spbn_assert( array( 'name' => 'Twin Rinks', 'rink' => 'Rink 2', 'address' => '1 Rink Rd', 'map_url' => 'https://www.google.com/maps/search/?api=1&query=1%20Rink%20Rd' ) === $home['venue'], 'venue passes through as {name, rink, address, map_url}' );
+spbn_assert( array( 'name' => 'Old', 'rink' => '', 'address' => '', 'map_url' => '' ) === SPBN_Event_Presenter::present( raw_event( array( 'venue' => array( 'name' => 'Old' ) ) ), 5 )['venue'], 'a raw venue without the newer keys still has the full shape' );
 
 $expected_keys = array( 'id', 'start', 'status', 'venue', 'team', 'opponent', 'is_home', 'result', 'changed_recently', 'my_availability', 'counts', 'as_spare' );
 $keys          = array_keys( $home );

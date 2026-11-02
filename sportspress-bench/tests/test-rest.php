@@ -833,4 +833,21 @@ spbn_assert( 56 === spbn_data( $res )['availability']['player_id'] && 'out' === 
 $g = spbn_data( SPBN_REST::game( spbn_req( array( 'id' => 101 ) ) ) );
 spbn_assert( 56 === $g['availability']['mine']['player_id'] && 'out' === $g['my_availability'], 'and the game screen follows it' );
 
+echo "\n=== venue shape in the API ===\n\n";
+
+$db = spbn_league();
+spbn_set_terms( 101, 'sp_venue', array( 13 => 'Black' ) );
+$GLOBALS['spbn_term_store']['sp_venue'][13]->description = "Wave Twin Rinks\nThe Wave Twin Rinks (Black). More text that is much longer than a rink name would ever be.";
+$GLOBALS['spbn_options']['taxonomy_13']                  = array( 'sp_address' => '1179 Northside Rd, Burlington, ON L7M, Canada', 'sp_latitude' => '43.361123', 'sp_longitude' => '-79.804012' );
+spbn_set_terms( 102, 'sp_venue', array( 661 => 'Mainway Rink 2' ) );
+$GLOBALS['spbn_options']['taxonomy_661'] = false;
+spbn_login( 7 );
+$g = spbn_data( SPBN_REST::game( spbn_req( array( 'id' => 101 ) ) ) );
+spbn_assert( array( 'name' => 'Black', 'rink' => 'Wave Twin Rinks', 'address' => '1179 Northside Rd, Burlington, ON L7M, Canada', 'map_url' => 'https://www.google.com/maps/search/?api=1&query=43.361123,-79.804012' ) === $g['venue'], 'GET /games/{id}: venue is {name, rink, address, map_url}' );
+$list = array_column( spbn_data( SPBN_REST::me_games() )['data'], 'venue', 'id' );
+spbn_assert( 'Wave Twin Rinks' === $list[101]['rink'], '/me/games carries the same venue' );
+spbn_login( 12, true );
+$night = spbn_data( SPBN_REST::ops_night( spbn_req( array( 'date' => '2099-11-06' ) ) ) );
+spbn_assert( array( 'name' => 'Mainway Rink 2', 'rink' => '', 'address' => '', 'map_url' => '' ) === $night['data'][0]['venue'], '/ops/night: a venue with no settings has all keys, empty' );
+
 spbn_done();

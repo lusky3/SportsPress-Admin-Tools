@@ -90,6 +90,16 @@ spbn_assert( '2' === $seq['SEQUENCE'], 'SEQUENCE:2 passes through' );
 $addr = spbn_event_props( SPBN_Ical::render( array( spbn_game( array( 'venue' => array( 'name' => 'Twin Rinks', 'address' => '1 Main St, Toronto' ) ) ) ), 'h', 'c' ) );
 spbn_assert( 'Twin Rinks\\, 1 Main St\\, Toronto' === $addr['LOCATION'], 'LOCATION adds the address, comma-escaped' );
 
+$full = spbn_event_props( SPBN_Ical::render( array( spbn_game( array( 'venue' => array( 'name' => 'Black', 'rink' => 'Wave Twin Rinks', 'address' => '1179 Northside Rd, Burlington, ON L7M, Canada', 'map_url' => 'https://www.google.com/maps/search/?api=1&query=43.361123,-79.804012' ) ) ) ), 'h', 'c' ) );
+spbn_assert( 'Wave Twin Rinks · Black\\, 1179 Northside Rd\\, Burlington\\, ON L7M\\, Canada' === $full['LOCATION'], 'LOCATION is "rink · name, address", escaped' );
+spbn_assert( '43.361123;-79.804012' === ( $full['GEO'] ?? '' ), 'GEO:lat;lng from the venue\'s coordinates' );
+
+$name_only = spbn_event_props( SPBN_Ical::render( array( spbn_game( array( 'venue' => array( 'name' => 'Mainway Rink 2', 'rink' => '', 'address' => '', 'map_url' => '' ) ) ) ), 'h', 'c' ) );
+spbn_assert( 'Mainway Rink 2' === $name_only['LOCATION'] && ! isset( $name_only['GEO'] ), 'empty rink and address are skipped; no GEO without coordinates' );
+
+$rink_only = spbn_event_props( SPBN_Ical::render( array( spbn_game( array( 'venue' => array( 'name' => 'Appleby 1', 'rink' => 'APPLEBY ICE CENTRE', 'address' => '', 'map_url' => 'https://www.google.com/maps/search/?api=1&query=1%20A%20St' ) ) ) ), 'h', 'c' ) );
+spbn_assert( 'APPLEBY ICE CENTRE · Appleby 1' === $rink_only['LOCATION'] && ! isset( $rink_only['GEO'] ), 'rink and name, an address-based map link gives no GEO' );
+
 $noven = spbn_event_props( SPBN_Ical::render( array( spbn_game( array( 'venue' => array( 'name' => '', 'address' => '' ) ) ) ), 'h', 'c' ) );
 spbn_assert( ! isset( $noven['LOCATION'] ), 'no venue: no LOCATION line' );
 

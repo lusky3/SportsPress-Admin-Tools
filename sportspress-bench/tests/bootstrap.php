@@ -311,6 +311,10 @@ function esc_html__( $text, $domain = 'default' ) {
 	return esc_html( $text );
 }
 
+function wp_strip_all_tags( $text ) {
+	return trim( strip_tags( (string) $text ) );
+}
+
 function sanitize_text_field( $text ) {
 	return trim( preg_replace( '/\s+/', ' ', strip_tags( (string) $text ) ) );
 }

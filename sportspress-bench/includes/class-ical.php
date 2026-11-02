@@ -149,15 +149,27 @@ class SPBN_Ical {
 			'SUMMARY:' . self::escape_text( self::summary( $game, $status ) ),
 		);
 
+		// "Rink · Venue, address", skipping what is empty.
 		$place = array_filter(
 			array(
+				trim( (string) ( $venue['rink'] ?? '' ) ),
 				trim( (string) ( $venue['name'] ?? '' ) ),
+			),
+			'strlen'
+		);
+		$where = array_filter(
+			array(
+				implode( ' · ', $place ),
 				trim( (string) ( $venue['address'] ?? '' ) ),
 			),
 			'strlen'
 		);
-		if ( $place ) {
-			$lines[] = 'LOCATION:' . self::escape_text( implode( ', ', $place ) );
+		if ( $where ) {
+			$lines[] = 'LOCATION:' . self::escape_text( implode( ', ', $where ) );
+		}
+		// The venue's map link carries its coordinates (query=lat,lng).
+		if ( 1 === preg_match( '/[?&]query=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/D', (string) ( $venue['map_url'] ?? '' ), $coords ) ) {
+			$lines[] = 'GEO:' . $coords[1] . ';' . $coords[2];
 		}
 
 		$lines[] = 'END:VEVENT';

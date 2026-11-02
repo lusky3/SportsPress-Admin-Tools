@@ -22,7 +22,7 @@ class SPBN_Event_Presenter {
 	 * One event as the game object.
 	 *
 	 * `$raw` is SPBN_Roster_Reader::raw_event(): id, start (ISO 8601), status
-	 * (sp_status), spem_cancelled, team_ids (first = home), venue{name,address},
+	 * (sp_status), spem_cancelled, team_ids (first = home), venue{name,rink,address,map_url},
 	 * results (sp_results), result_key, team_names and team_logos by team id.
 	 *
 	 * A viewer who is on neither side (an organizer) sees the home side as "team".
@@ -53,7 +53,9 @@ class SPBN_Event_Presenter {
 			'status'           => self::status( (string) ( $raw['status'] ?? '' ), true === ( $raw['spem_cancelled'] ?? false ) ),
 			'venue'            => array(
 				'name'    => (string) ( $venue['name'] ?? '' ),
+				'rink'    => (string) ( $venue['rink'] ?? '' ),
 				'address' => (string) ( $venue['address'] ?? '' ),
+				'map_url' => (string) ( $venue['map_url'] ?? '' ),
 			),
 			'team'             => array(
 				'id'   => $team_id,
