@@ -39,8 +39,11 @@ export function venueShort( venue: Venue ): string {
 	return both && both.length <= 28 ? both : venue.name || venue.rink;
 }
 
-/** "Looking for 2 goalies". */
-export function callLabel( call: Pick<SpareCall, 'position' | 'needed'> ): string {
+/** "Looking for 2 goalies"; "Spare found" once the call has filled. */
+export function callLabel( call: Pick<SpareCall, 'position' | 'needed'> & Partial<Pick<SpareCall, 'status'>> ): string {
+	if ( call.status === 'filled' ) {
+		return call.needed === 1 ? 'Spare found' : 'Spares found';
+	}
 	return `Looking for ${ call.needed } ${ call.position }${ call.needed === 1 ? '' : 's' }`;
 }
 

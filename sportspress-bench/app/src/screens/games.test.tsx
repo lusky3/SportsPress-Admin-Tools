@@ -160,6 +160,22 @@ describe( 'Next', () => {
 		expect( screen.queryByText( /looking for/i ) ).toBeNull();
 	} );
 
+	it( 'shows a filled call as found, with no Cancel', async () => {
+		fakeApi( ( s ) => {
+			if ( s.path === '/me/games' ) {
+				return list( [ game() ] );
+			}
+			if ( s.path === '/games/101' ) {
+				return { body: detail( { spare_calls: [ call( { status: 'filled', accepted: 1 } ) ] } ) };
+			}
+		} );
+		render( <Next me={ me() } /> );
+		await settle();
+		expect( screen.getByText( 'Spare found' ) ).toBeTruthy();
+		expect( screen.queryByText( /looking for/i ) ).toBeNull();
+		expect( screen.queryByRole( 'button', { name: 'Cancel call' } ) ).toBeNull();
+	} );
+
 	it( 'flags a changed game and says when there is nothing coming up', async () => {
 		fakeApi( ( s ) => ( s.path === '/me/games' ? list( [ game( { changed_recently: true } ) ] ) : s.path === '/games/101' ? { body: detail( { changed_recently: true } ) } : undefined ) );
 		const { unmount } = render( <Next me={ me() } /> );

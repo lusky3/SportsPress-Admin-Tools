@@ -10,6 +10,7 @@ const NOT_ELIGIBLE: Record<string, string> = {
 	past: 'That game has already started.',
 	called_off: 'That game is postponed or cancelled.',
 	no_player: 'Your account isn’t linked to a player yet.',
+	already_sparing: 'You’re already sparing in this game.',
 };
 
 /** One plain sentence for a failed write. `fallback` is used when there is nothing more specific to say. */

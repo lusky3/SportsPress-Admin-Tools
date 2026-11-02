@@ -143,5 +143,11 @@ describe( 'callLabel', () => {
 	it( 'says who the team is looking for', () => {
 		expect( callLabel( { position: 'goalie', needed: 1 } ) ).toBe( 'Looking for 1 goalie' );
 		expect( callLabel( { position: 'skater', needed: 3 } ) ).toBe( 'Looking for 3 skaters' );
+		expect( callLabel( { position: 'skater', needed: 3, status: 'open' } ) ).toBe( 'Looking for 3 skaters' );
+	} );
+
+	it( 'says the spare is found once the call has filled', () => {
+		expect( callLabel( { position: 'goalie', needed: 1, status: 'filled' } ) ).toBe( 'Spare found' );
+		expect( callLabel( { position: 'skater', needed: 2, status: 'filled' } ) ).toBe( 'Spares found' );
 	} );
 } );

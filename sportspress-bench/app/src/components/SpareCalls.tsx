@@ -37,7 +37,7 @@ interface CallListProps {
 	onCancelled: ( call: SpareCall ) => void;
 }
 
-/** The team's calls for a game, each with a two-tap cancel when this person may cancel it. */
+/** The team's calls for a game, each with a two-tap cancel while it is open and this person may cancel it. */
 export function CallList( { calls, onCancelled }: CallListProps ) {
 	const [ busy, setBusy ] = useState( 0 );
 	const [ error, setError ] = useState( '' );
@@ -69,7 +69,7 @@ export function CallList( { calls, onCancelled }: CallListProps ) {
 							<p className="call__status">{ callStatus( call ) }</p>
 							{ call.note ? <p className="call__note">“{ call.note }”</p> : null }
 						</div>
-						{ call.can_cancel && call.status !== 'cancelled' ? (
+						{ call.can_cancel && call.status === 'open' ? (
 							<TwoTap label="Cancel call" confirm="Tap again to cancel" disabled={ busy === call.id } onConfirm={ () => void cancel( call ) } />
 						) : null }
 					</li>

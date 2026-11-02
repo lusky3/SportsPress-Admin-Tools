@@ -110,6 +110,24 @@ describe( 'Spares', () => {
 		expect( screen.getByRole( 'alert' ).textContent ).toMatch( /too close/i );
 	} );
 
+	it( 'says so when the player already has a place in that game', async () => {
+		fakeApi( ( s ) => {
+			if ( s.path === '/spares' ) {
+				return { body: spares() };
+			}
+			if ( s.path === '/spare-calls/900/accept' ) {
+				return error( 403, 'spbn_not_eligible', 'You are already sparing in this game.', 'already_sparing' );
+			}
+		} );
+		render( <Spares me={ me() } /> );
+		await settle();
+		await act( async () => {
+			fireEvent.click( screen.getByRole( 'button', { name: /i.ll play/i } ) );
+		} );
+		await settle();
+		expect( screen.getByRole( 'alert' ).textContent ).toBe( 'You’re already sparing in this game.' );
+	} );
+
 	it( 'shows the server’s prefs again when they change elsewhere', async () => {
 		let prefs = { enabled: false, positions: [] as string[] };
 		fakeApi( ( s ) => ( s.path === '/spares' ? { body: spares( { prefs: prefs as SparesPayload['prefs'], open_calls: [] } ) } : undefined ) );
@@ -371,5 +389,20 @@ describe( 'Tonight', () => {
 		await settle();
 		expect( sent[ sent.length - 1 ].path ).toBe( '/ops/night?date=2026-11-05' );
 		expect( screen.getByRole( 'heading', { level: 1 } ).textContent ).toContain( 'Tomorrow' );
+	} );
+
+	it( 'flags a game changed recently', async () => {
+		fakeApi( ( s ) => {
+			if ( ! s.path.startsWith( '/ops/night' ) ) {
+				return undefined;
+			}
+			const body = night( s.path.slice( -10 ) );
+			body.data[ 0 ] = { ...body.data[ 0 ], changed_recently: true };
+			return { body };
+		} );
+		render( <Tonight /> );
+		await settle();
+		const item = screen.getByText( 'Knights of Ni' ).closest( 'li' ) as HTMLElement;
+		expect( within( item ).getByText( 'Changed' ) ).toBeTruthy();
 	} );
 } );
