@@ -233,6 +233,7 @@ run_test "$SCRIPT_DIR/sportspress-score-sheets/tests/test-dashboard-rest.php"
 run_test "$SCRIPT_DIR/sportspress-bench/tests/test-schema.php"
 run_test "$SCRIPT_DIR/sportspress-bench/tests/test-event-presenter.php"
 run_test "$SCRIPT_DIR/sportspress-bench/tests/test-roster-reader.php"
+run_test "$SCRIPT_DIR/sportspress-bench/tests/test-availability.php"
 run_node_test "$SCRIPT_DIR/sportspress-events-manager/tests/dynamic-schedule-logic.test.js"
 
 # Nothing to summarise when the run was only a registry dump.
