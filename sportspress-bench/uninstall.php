@@ -32,3 +32,7 @@ $wpdb->query( // phpcs:ignore WordPress.DB
 
 delete_metadata( 'user', 0, 'spbn_ical_token', '', true );
 delete_metadata( 'user', 0, 'spbn_spare_prefs', '', true );
+
+// Change-tracking meta on events.
+delete_post_meta_by_key( '_spbn_fingerprint' );
+delete_post_meta_by_key( '_spbn_snapshot' );

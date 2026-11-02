@@ -111,9 +111,14 @@ class SportsPress_Bench {
 		require_once SPBN_PLUGIN_PATH . 'includes/class-roster-reader.php';
 		require_once SPBN_PLUGIN_PATH . 'includes/class-changes.php';
 		require_once SPBN_PLUGIN_PATH . 'includes/class-ical.php';
+		require_once SPBN_PLUGIN_PATH . 'includes/class-spares.php';
+		require_once SPBN_PLUGIN_PATH . 'includes/class-mailer.php';
 
 		// Log reschedules, re-venues and cancellations as they are saved.
 		SPBN_Changes::register();
+
+		// Tell accepted spares when their game changes (the hook fires from the change log).
+		SPBN_Mailer::register();
 
 		// Apply any additive schema upgrade for installs that predate the current
 		// DB version (idempotent no-op once versions match).

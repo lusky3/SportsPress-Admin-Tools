@@ -137,6 +137,8 @@ class SPBN_Test_WPDB {
 	public $queries         = array();
 	public $results_handler = null;
 	public $query_return    = 1;
+	public $posts           = 'wp_posts';
+	public $query_handler   = null; // callable( $sql ): affected rows, for stateful fakes.
 	public $inserts         = array(); // [ table, data, formats ].
 	public $insert_return   = 1;
 	public $insert_id       = 0;
@@ -166,6 +168,9 @@ class SPBN_Test_WPDB {
 
 	public function query( $sql ) {
 		$this->queries[] = $sql;
+		if ( $this->query_handler ) {
+			return call_user_func( $this->query_handler, $sql );
+		}
 		return $this->query_return;
 	}
 
@@ -289,6 +294,10 @@ function apply_filters( $tag, $value, ...$args ) {
 
 function __( $text, $domain = 'default' ) {
 	return $text;
+}
+
+function _n( $single, $plural, $number, $domain = 'default' ) {
+	return 1 === (int) $number ? $single : $plural;
 }
 
 function esc_html( $text ) {

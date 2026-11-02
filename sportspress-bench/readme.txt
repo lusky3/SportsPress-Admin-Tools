@@ -25,3 +25,4 @@ Bench is inert until the "Bench" module is enabled under Settings, SportsPress A
 
 = 0.1.0 =
 * New: plugin scaffold, database schema, roster reader, event presenter and availability.
+* New: change log for moved or cancelled games, personal calendar feed, spare pool and spare calls with emails.
