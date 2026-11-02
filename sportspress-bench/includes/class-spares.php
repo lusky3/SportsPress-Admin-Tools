@@ -386,6 +386,43 @@ class SPBN_Spares {
 	}
 
 	/**
+	 * Spares who hold a place on a game, on calls that are still on, oldest
+	 * acceptance first. Each carries the call's team and position.
+	 *
+	 * @return array<int,array{user_id:int,player_id:int,call_id:int,team_id:int,position:string}>
+	 */
+	public static function accepted_for_event( int $event_id ): array {
+		global $wpdb;
+		$tables = SPBN_Schema::tables();
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT r.user_id, r.player_id, c.id AS call_id, c.team_id, c.position
+				FROM {$tables['spare_responses']} r
+				INNER JOIN {$tables['spare_calls']} c ON c.id = r.call_id
+				WHERE c.event_id = %d AND r.status = %s AND c.status <> %s
+				ORDER BY r.id ASC",
+				$event_id,
+				'accepted',
+				'cancelled'
+			),
+			ARRAY_A
+		);
+
+		$out = array();
+		foreach ( (array) $rows as $row ) {
+			$out[] = array(
+				'user_id'   => (int) ( $row['user_id'] ?? 0 ),
+				'player_id' => (int) ( $row['player_id'] ?? 0 ),
+				'call_id'   => (int) ( $row['call_id'] ?? 0 ),
+				'team_id'   => (int) ( $row['team_id'] ?? 0 ),
+				'position'  => (string) ( $row['position'] ?? '' ),
+			);
+		}
+		return $out;
+	}
+
+	/**
 	 * Users who have opted in to spare for a position, at most 300. With a call,
 	 * only those who could take that game right now (see eligibility()).
 	 *

@@ -113,6 +113,12 @@ class SportsPress_Bench {
 		require_once SPBN_PLUGIN_PATH . 'includes/class-ical.php';
 		require_once SPBN_PLUGIN_PATH . 'includes/class-spares.php';
 		require_once SPBN_PLUGIN_PATH . 'includes/class-mailer.php';
+		require_once SPBN_PLUGIN_PATH . 'includes/class-availability.php';
+		require_once SPBN_PLUGIN_PATH . 'includes/class-access.php';
+		require_once SPBN_PLUGIN_PATH . 'includes/class-rest.php';
+
+		// The spbn/v1 REST API.
+		SPBN_REST::register();
 
 		// Log reschedules, re-venues and cancellations as they are saved.
 		SPBN_Changes::register();

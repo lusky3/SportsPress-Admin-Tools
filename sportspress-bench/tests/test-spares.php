@@ -386,6 +386,17 @@ $sql  = end( $db->queries );
 spbn_assert( false !== strpos( $sql, 'r.user_id = 5' ) && false !== strpos( $sql, "r.status = 'accepted'" ) && false !== strpos( $sql, "c.status <> 'cancelled'" ), 'accepted_for_user: this user, accepted, call not cancelled' );
 spbn_assert( 2 === count( $mine ) && 1 === $mine[0]['id'], 'accepted_for_user returns calls' );
 
+$db->results_handler = function ( $sql ) {
+	return array(
+		array( 'user_id' => '5', 'player_id' => '50', 'call_id' => '1', 'team_id' => '12', 'position' => 'goalie' ),
+		array( 'user_id' => '6', 'player_id' => '60', 'call_id' => '2', 'team_id' => '7', 'position' => 'skater' ),
+	);
+};
+$spares = SPBN_Spares::accepted_for_event( 101 );
+$sql    = end( $db->queries );
+spbn_assert( false !== strpos( $sql, 'c.event_id = 101' ) && false !== strpos( $sql, "r.status = 'accepted'" ) && false !== strpos( $sql, "c.status <> 'cancelled'" ), 'accepted_for_event: this game, accepted, call not cancelled' );
+spbn_assert( 2 === count( $spares ) && 5 === $spares[0]['user_id'] && 50 === $spares[0]['player_id'] && 12 === $spares[0]['team_id'] && 'goalie' === $spares[0]['position'] && 2 === $spares[1]['call_id'], 'accepted_for_event returns user, player, call, team and position with ints cast' );
+
 echo "\n=== pool_user_ids ===\n\n";
 
 spbn_reset();

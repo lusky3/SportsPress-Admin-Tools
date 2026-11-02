@@ -237,6 +237,8 @@ run_test "$SCRIPT_DIR/sportspress-bench/tests/test-availability.php"
 run_test "$SCRIPT_DIR/sportspress-bench/tests/test-changes.php"
 run_test "$SCRIPT_DIR/sportspress-bench/tests/test-ical.php"
 run_test "$SCRIPT_DIR/sportspress-bench/tests/test-spares.php"
+run_test "$SCRIPT_DIR/sportspress-bench/tests/test-access.php"
+run_test "$SCRIPT_DIR/sportspress-bench/tests/test-rest.php"
 run_node_test "$SCRIPT_DIR/sportspress-events-manager/tests/dynamic-schedule-logic.test.js"
 
 # Nothing to summarise when the run was only a registry dump.
