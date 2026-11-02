@@ -115,6 +115,48 @@ class SPBN_Mailer {
 	}
 
 	/**
+	 * Tell spares who had accepted a call that the team no longer needs them.
+	 *
+	 * @param array $call     The cancelled call.
+	 * @param array $game     Game object from the calling team's point of view.
+	 * @param int[] $user_ids The spares who held a place.
+	 * @return int Recipients mailed.
+	 */
+	public static function call_cancelled( array $call, array $game, array $user_ids ): int {
+		$emails = self::emails_for( $user_ids );
+		if ( ! $emails ) {
+			return 0;
+		}
+
+		$team = self::team_name( $game );
+		$when = self::when( (string) ( $game['start'] ?? '' ) );
+		$body = implode(
+			"\n",
+			array(
+				sprintf(
+					/* translators: 1: team name, 2: game date and time. */
+					__( '%1$s no longer need a spare for their game on %2$s. You do not need to play.', 'sportspress-bench' ),
+					$team,
+					$when
+				),
+				'',
+				home_url( '/bench/spares' ),
+			)
+		);
+
+		return self::send_bcc(
+			$emails,
+			sprintf(
+				/* translators: 1: team name, 2: game date and time. */
+				__( 'Spare game cancelled: %1$s · %2$s', 'sportspress-bench' ),
+				$team,
+				$when
+			),
+			$body
+		);
+	}
+
+	/**
 	 * Tell the accepted spares of a game that it changed or was called off.
 	 *
 	 * @param int   $event_id Event id.

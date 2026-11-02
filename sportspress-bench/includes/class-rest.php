@@ -517,6 +517,12 @@ class SPBN_REST {
 		// A spare who already holds a place may tap again; everyone else is checked.
 		if ( ! in_array( $call['id'], self::held_ids( $v['user_id'] ), true ) ) {
 			$reason = self::eligibility_for( $v, $call, $raw );
+			if ( 'closed' === $reason ) {
+				// Full or cancelled is a conflict with the call's state, not a refusal of the person.
+				return 'filled' === $call['status']
+					? new WP_Error( 'spbn_full', __( 'That spare call is already full.', 'sportspress-bench' ), array( 'status' => 409 ) )
+					: new WP_Error( 'spbn_closed', __( 'That spare call is no longer open.', 'sportspress-bench' ), array( 'status' => 409 ) );
+			}
 			if ( '' !== $reason ) {
 				return new WP_Error( 'spbn_not_eligible', self::reason_message( $reason ), array( 'status' => 403, 'reason' => $reason ) );
 			}
@@ -568,8 +574,26 @@ class SPBN_REST {
 		if ( ! SPBN_Access::can_manage_call( $call, $v['teams'], $v['user_id'], $v['organizer'] ) ) {
 			return self::forbidden();
 		}
-		$result = 'cancelled' === $call['status'] ? array_merge( $call, array( 'accepted' => SPBN_Spares::accepted_count( $call['id'] ) ) ) : SPBN_Spares::cancel( $call['id'] );
-		return $result ? self::call_response( $result, $v ) : self::not_found( __( 'That spare call does not exist.', 'sportspress-bench' ) );
+		if ( 'cancelled' === $call['status'] ) {
+			return self::call_response( array_merge( $call, array( 'accepted' => SPBN_Spares::accepted_count( $call['id'] ) ) ), $v );
+		}
+
+		// Spares who already accepted are told, since the game drops off their list.
+		$spares = array();
+		foreach ( SPBN_Spares::accepted_for_event( $call['event_id'] ) as $spare ) {
+			if ( $spare['call_id'] === $call['id'] ) {
+				$spares[] = $spare['user_id'];
+			}
+		}
+		$result = SPBN_Spares::cancel( $call['id'] );
+		if ( ! $result ) {
+			return self::not_found( __( 'That spare call does not exist.', 'sportspress-bench' ) );
+		}
+		$raw = $spares ? $v['reader']->raw_event( $call['event_id'] ) : null;
+		if ( null !== $raw ) {
+			SPBN_Mailer::call_cancelled( $result, SPBN_Event_Presenter::present( $raw, $call['team_id'] ), $spares );
+		}
+		return self::call_response( $result, $v );
 	}
 
 	public static function ops_night( $request ) {
@@ -784,17 +808,16 @@ class SPBN_REST {
 			}
 		}
 
-		$mine = null;
-		foreach ( $v['team_players'][ $team_id ] ?? array() as $player_id ) {
-			$row  = $by_id[ $player_id ] ?? null;
+		// The same player a PUT without player_id would write for.
+		$mine      = null;
+		$my_player = self::default_player_on( $v, $team_id );
+		if ( $my_player > 0 ) {
+			$row  = $by_id[ $my_player ] ?? null;
 			$mine = array(
-				'player_id' => $player_id,
+				'player_id' => $my_player,
 				'status'    => $row ? SPBN_Availability::validate_status( (string) $row['status'] ) : null,
 				'note'      => $row ? (string) $row['note'] : '',
 			);
-			if ( $row ) {
-				break;
-			}
 		}
 
 		return array(
@@ -996,13 +1019,18 @@ class SPBN_REST {
 
 	/** The viewer's own player on a team in this game, as [player, team]; [0, 0] when none. */
 	private static function own_player_on( array $v, array $raw ): array {
-		foreach ( $v['players'] as $player_id ) {
-			$team_id = self::team_of_player( $v['reader'], $player_id, $raw );
-			if ( $team_id > 0 ) {
-				return array( $player_id, $team_id );
+		foreach ( $raw['team_ids'] as $team_id ) {
+			$player_id = self::default_player_on( $v, (int) $team_id );
+			if ( $player_id > 0 ) {
+				return array( $player_id, (int) $team_id );
 			}
 		}
 		return array( 0, 0 );
+	}
+
+	/** The viewer's first linked player on a team, or 0: whose answer the game screen shows and a bare PUT writes. */
+	private static function default_player_on( array $v, int $team_id ): int {
+		return (int) ( $v['team_players'][ $team_id ][0] ?? 0 );
 	}
 
 	/** The team of this game a player is currently on, or 0. */

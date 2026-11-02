@@ -587,6 +587,22 @@ spbn_assert( false !== strpos( $m['message'], 'Sam Spare' ), 'the body names the
 spbn_assert( false === SPBN_Mailer::call_filled( $call, $game, 999, 'Sam Spare' ), 'an unknown creator -> false, nothing sent' );
 spbn_assert( 1 === count( $GLOBALS['spbn_mail'] ), 'and no mail went out' );
 
+echo "\n=== mailer: call_cancelled ===\n\n";
+
+spbn_reset();
+update_option( 'admin_email', 'admin@arl.example.test' );
+spbn_add_user( 5, 'spare5@example.test', 'Spare Five' );
+spbn_add_user( 6, 'spare6@example.test', 'Spare Six' );
+$sent = SPBN_Mailer::call_cancelled( $call, $game, array( 5, 6 ) );
+spbn_assert( 2 === $sent && 1 === count( $GLOBALS['spbn_mail'] ), 'call_cancelled: one BCC mail for two spares' );
+$m   = $GLOBALS['spbn_mail'][0];
+$bcc = implode( ' ', (array) $m['headers'] );
+spbn_assert( 'admin@arl.example.test' === $m['to'] && false !== strpos( $bcc, 'spare5@example.test' ) && false !== strpos( $bcc, 'spare6@example.test' ), 'To the admin address, both spares in BCC' );
+spbn_assert( 'Spare game cancelled: Ducks · Thu Nov 5, 9:45 PM' === $m['subject'], 'subject: "Spare game cancelled: {team} · {Day Mon j, g:i A}"' );
+spbn_assert( false !== strpos( $m['message'], 'no longer need a spare' ) && false !== strpos( $m['message'], '/bench/spares' ), 'the body says the team no longer needs a spare and links the app' );
+$GLOBALS['spbn_mail'] = array();
+spbn_assert( 0 === SPBN_Mailer::call_cancelled( $call, $game, array() ) && 0 === SPBN_Mailer::call_cancelled( $call, $game, array( 999 ) ) && array() === $GLOBALS['spbn_mail'], 'no recipients: nothing sent' );
+
 echo "\n=== mailer: game_changed_for_spares ===\n\n";
 
 spbn_reset();

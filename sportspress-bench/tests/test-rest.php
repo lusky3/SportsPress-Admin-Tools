@@ -645,8 +645,11 @@ spbn_assert( false !== strpos( $GLOBALS['spbn_mail'][0]['message'], 'Sparky Bear
 
 spbn_login( 13 );
 $res = SPBN_REST::call_accept( spbn_req( array( 'id' => $c1 ) ) );
-spbn_assert( spbn_err( $res, 'spbn_not_eligible', 403 ) && 'closed' === $res->get_error_data()['reason'], 'a second spare is turned away: the call is closed (403 spbn_not_eligible, reason closed)' );
+spbn_assert( spbn_err( $res, 'spbn_full', 409 ), 'a second spare on a filled call gets 409 spbn_full (a conflict, not an auth failure)' );
 spbn_assert( 1 === count( $GLOBALS['spbn_mail'] ), 'and no second email goes out' );
+$cx = spbn_seed_call( $db, array( 'needed' => 1, 'status' => 'cancelled' ) );
+spbn_assert( spbn_err( SPBN_REST::call_accept( spbn_req( array( 'id' => $cx ) ) ), 'spbn_closed', 409 ), 'accepting a cancelled call is 409 spbn_closed' );
+spbn_assert( ! isset( $db->resp[ $cx . '-13' ] ), 'and writes nothing' );
 
 spbn_login( 11 );
 $res = SPBN_REST::call_accept( spbn_req( array( 'id' => $c1 ) ) );
@@ -730,6 +733,43 @@ $c3 = spbn_seed_call( $db, array( 'created_by' => 7 ) );
 spbn_login( 12, true );
 spbn_assert( 'cancelled' === spbn_data( SPBN_REST::call_cancel( spbn_req( array( 'id' => $c3 ) ) ) )['call']['status'], 'an organizer can cancel' );
 spbn_assert( spbn_err( SPBN_REST::call_cancel( spbn_req( array( 'id' => 999 ) ) ), 'spbn_not_found', 404 ), 'an unknown call is 404' );
+spbn_assert( array() === $GLOBALS['spbn_mail'], 'cancelling calls nobody had accepted sends no mail (including cancelling an already-cancelled call)' );
+
+echo "\n--- spares who had accepted are told ---\n\n";
+
+$c4 = spbn_seed_call( $db, array( 'created_by' => 7, 'needed' => 2, 'position' => 'skater' ) );
+spbn_accept_row( $db, $c4, 11, 54 );
+spbn_accept_row( $db, $c4, 13, 55 );
+spbn_login( 7 );
+$res = SPBN_REST::call_cancel( spbn_req( array( 'id' => $c4 ) ) );
+spbn_assert( ! is_wp_error( $res ) && 'cancelled' === $db->calls[ $c4 ]['status'], 'the call is cancelled' );
+spbn_assert( 1 === count( $GLOBALS['spbn_mail'] ), 'one mail goes out for two accepted spares' );
+$m   = $GLOBALS['spbn_mail'][0];
+$bcc = implode( ' ', (array) $m['headers'] );
+spbn_assert( false !== strpos( $bcc, 'sparky@example.test' ) && false !== strpos( $bcc, 'hawk@example.test' ), 'both accepted spares are in BCC' );
+spbn_assert( 0 === strpos( $m['subject'], 'Spare game cancelled: Ducks' ), 'with the cancelled-call subject for the calling team' );
+$GLOBALS['spbn_mail'] = array();
+SPBN_REST::call_cancel( spbn_req( array( 'id' => $c4 ) ) );
+spbn_assert( array() === $GLOBALS['spbn_mail'], 'cancelling it again sends nothing' );
+$c5 = spbn_seed_call( $db, array( 'created_by' => 7, 'needed' => 2 ) );
+spbn_accept_row( $db, $c5, 11, 54 );
+$db->resp[ $c5 . '-11' ]['status'] = 'withdrawn';
+SPBN_REST::call_cancel( spbn_req( array( 'id' => $c5 ) ) );
+spbn_assert( array() === $GLOBALS['spbn_mail'], 'a spare who had already withdrawn is not mailed' );
+
+echo "\n=== one player is used for both the game screen and a bare PUT ===\n\n";
+
+$db = spbn_league();
+spbn_add_post( 56, 'sp_player', 'Pat Second' );
+spbn_add_meta( 56, 'sp_user', '7' );
+spbn_add_meta( 56, 'sp_current_team', '12' );
+spbn_login( 7 );
+$g = spbn_data( SPBN_REST::game( spbn_req( array( 'id' => 101 ) ) ) );
+spbn_assert( 12 === $g['availability']['team_id'] && 50 === $g['availability']['mine']['player_id'], 'two players on one team, no answers yet: mine is the first (50)' );
+$res = SPBN_REST::put_availability( spbn_req( array( 'id' => 101, 'status' => 'in' ) ) );
+spbn_assert( 50 === spbn_data( $res )['availability']['player_id'] && isset( $db->avail['101-50'] ) && ! isset( $db->avail['101-56'] ), 'a PUT without player_id writes for that same player' );
+$g = spbn_data( SPBN_REST::game( spbn_req( array( 'id' => 101 ) ) ) );
+spbn_assert( 50 === $g['availability']['mine']['player_id'] && 'in' === $g['availability']['mine']['status'], 'and the game screen shows that answer' );
 
 echo "\n=== POST /me/ical-token/rotate ===\n\n";
 
