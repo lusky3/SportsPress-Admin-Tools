@@ -30,15 +30,33 @@ function register_rest_route( $namespace, $route, $args ) {
 	$GLOBALS['spbn_routes'][] = array( $namespace, $route, $args );
 }
 
+/**
+ * Mirrors core for the parts that bit us: get_param() is null for an absent
+ * key (isset semantics), has_param() is true for any present key including a
+ * route arg's `default`, which core fills in for absent args before the handler
+ * runs (see spbn_call()).
+ */
 class WP_REST_Request implements ArrayAccess {
-	public $params = array();
+	public $params   = array();
+	public $defaults = array();
 
 	public function __construct( array $params = array() ) {
 		$this->params = $params;
 	}
 
 	public function get_param( $key ) {
-		return $this->params[ $key ] ?? null;
+		if ( isset( $this->params[ $key ] ) ) {
+			return $this->params[ $key ];
+		}
+		return $this->defaults[ $key ] ?? null;
+	}
+
+	public function has_param( $key ) {
+		return array_key_exists( $key, $this->params ) || array_key_exists( $key, $this->defaults );
+	}
+
+	public function set_default_params( array $defaults ) {
+		$this->defaults = $defaults;
 	}
 
 	#[ReturnTypeWillChange]
@@ -64,6 +82,42 @@ class WP_REST_Request implements ArrayAccess {
 
 function spbn_req( array $params = array() ) {
 	return new WP_REST_Request( $params );
+}
+
+/**
+ * Call a handler the way core would: find its registered route, fill the
+ * `default` of every arg the request lacks, run validate_callback (a false is a
+ * 400 rest_invalid_param) and sanitize_callback on the args that are present,
+ * then call the handler.
+ */
+function spbn_call( $handler, array $params = array() ) {
+	if ( empty( $GLOBALS['spbn_routes'] ) ) {
+		SPBN_REST::register_routes();
+	}
+	$args = array();
+	foreach ( $GLOBALS['spbn_routes'] as $route ) {
+		if ( is_array( $route[2]['callback'] ) && $handler === $route[2]['callback'][1] ) {
+			$args = $route[2]['args'];
+			break;
+		}
+	}
+	$request  = new WP_REST_Request( $params );
+	$defaults = array();
+	foreach ( $args as $key => $arg ) {
+		if ( isset( $arg['default'] ) ) {
+			$defaults[ $key ] = $arg['default'];
+		}
+	}
+	$request->set_default_params( $defaults );
+	foreach ( $params as $key => $value ) {
+		if ( isset( $args[ $key ]['validate_callback'] ) && ! call_user_func( $args[ $key ]['validate_callback'], $value, $request, $key ) ) {
+			return new WP_Error( 'rest_invalid_param', "Invalid parameter(s): {$key}", array( 'status' => 400 ) );
+		}
+		if ( isset( $args[ $key ]['sanitize_callback'] ) ) {
+			$request->params[ $key ] = call_user_func( $args[ $key ]['sanitize_callback'], $value, $request, $key );
+		}
+	}
+	return call_user_func( array( 'SPBN_REST', $handler ), $request );
 }
 
 /** Log a user in (organizer when $organizer) and start the request from scratch. */
@@ -903,14 +957,24 @@ echo "\n=== a status change keeps the note ===\n\n";
 
 $db->avail['101-50'] = array( 'event_id' => 101, 'player_id' => 50, 'team_id' => 12, 'status' => 'in', 'note' => 'back at 9', 'updated_at' => '2026-11-01 12:00:00' );
 spbn_login( 7 );
-$res = SPBN_REST::put_availability( spbn_req( array( 'id' => 101, 'status' => 'out' ) ) );
+$res = spbn_call( 'put_availability', array( 'id' => 101, 'status' => 'out' ) );
 spbn_assert( 'out' === $db->avail['101-50']['status'] && 'back at 9' === $db->avail['101-50']['note'] && 'back at 9' === spbn_data( $res )['availability']['note'], 'a PUT without note changes the status and keeps the stored note' );
-$res = SPBN_REST::put_availability( spbn_req( array( 'id' => 101, 'status' => 'maybe', 'note' => 'new note' ) ) );
+$res = spbn_call( 'put_availability', array( 'id' => 101, 'status' => 'maybe', 'note' => 'new note' ) );
 spbn_assert( 'new note' === $db->avail['101-50']['note'] && 'new note' === spbn_data( $res )['availability']['note'], 'an explicit note replaces it' );
-$res = SPBN_REST::put_availability( spbn_req( array( 'id' => 101, 'status' => 'in', 'note' => '' ) ) );
+$res = spbn_call( 'put_availability', array( 'id' => 101, 'status' => 'in', 'note' => '' ) );
 spbn_assert( '' === $db->avail['101-50']['note'] && '' === spbn_data( $res )['availability']['note'], 'an explicit empty note clears it' );
 spbn_login( 12, true );
-$res = SPBN_REST::put_availability( spbn_req( array( 'id' => 101, 'status' => 'out', 'player_id' => 52 ) ) );
+$res = spbn_call( 'put_availability', array( 'id' => 101, 'status' => 'out', 'player_id' => 52 ) );
 spbn_assert( '' === spbn_data( $res )['availability']['note'], 'a first answer with no note stores an empty note' );
+
+foreach ( $GLOBALS['spbn_routes'] as $route ) {
+	if ( '/games/(?P<id>\d+)/availability' === $route[1] ) {
+		spbn_assert( ! array_key_exists( 'default', $route[2]['args']['note'] ), 'the availability note arg has no default (core would fill a missing note in with it)' );
+	}
+}
+$req = new WP_REST_Request( array( 'id' => 101, 'status' => 'in' ) );
+spbn_assert( null === $req->get_param( 'note' ) && false === $req->has_param( 'note' ), 'the request stub, like core, reports an absent param as null and not present' );
+$req->set_default_params( array( 'note' => '' ) );
+spbn_assert( true === $req->has_param( 'note' ) && '' === $req->get_param( 'note' ), 'and a route default makes it present, which is how a default hid the missing note' );
 
 spbn_done();

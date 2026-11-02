@@ -77,7 +77,7 @@ class SPBN_REST {
 				'note'      => array(
 					'type'              => 'string',
 					'maxLength'         => SPBN_Availability::NOTE_MAX,
-					'default'           => '',
+					// No 'default': core would fill a missing note in with it, and a status tap must keep the stored note.
 					'validate_callback' => array( __CLASS__, 'is_short_text' ),
 					'sanitize_callback' => 'sanitize_text_field',
 				),
@@ -345,7 +345,7 @@ class SPBN_REST {
 		}
 
 		// No note in the request keeps the stored one; only an explicit note (even '') changes it.
-		$note = $request->get_param( 'note' );
+		$note = $request->has_param( 'note' ) ? $request->get_param( 'note' ) : null;
 		try {
 			$row = SPBN_Availability::set( $raw['id'], $player_id, $team_id, $status, null === $note ? null : (string) $note, $v['user_id'] );
 		} catch ( InvalidArgumentException $e ) {
