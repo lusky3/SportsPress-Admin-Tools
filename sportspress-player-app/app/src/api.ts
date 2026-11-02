@@ -134,6 +134,17 @@ interface Raw<T> {
 	response: Response;
 }
 
+/*
+ * Demo seam. The demo build (npm run build:demo) sets VITE_DEMO and swaps the network for an
+ * in-memory server. In a normal build the constant is undefined, so this all folds away.
+ */
+let transport: typeof fetch | undefined;
+
+/** Demo only: answer every request with `send` instead of the network. */
+export function setTransport( send: typeof fetch | undefined ): void {
+	transport = send;
+}
+
 async function once<T>( method: string, path: string, body: unknown, nonceValue: string ): Promise<Raw<T>> {
 	const headers: Record<string, string> = { Accept: 'application/json', 'X-WP-Nonce': nonceValue };
 	const init: RequestInit = { method, credentials: 'same-origin', headers };
@@ -144,7 +155,7 @@ async function once<T>( method: string, path: string, body: unknown, nonceValue:
 
 	let response: Response;
 	try {
-		response = await fetch( urlFor( path ), init );
+		response = await ( import.meta.env.VITE_DEMO === '1' && transport ? transport : fetch )( urlFor( path ), init );
 	} catch {
 		throw new ApiError( 0, 'offline', 'No connection.' );
 	}

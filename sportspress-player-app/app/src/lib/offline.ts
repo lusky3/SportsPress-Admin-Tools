@@ -19,6 +19,11 @@ export async function clearOfflineData(): Promise<void> {
 
 /** Clear the saved copies, then follow WordPress's logout link. */
 export async function signOut(): Promise<void> {
+	if ( import.meta.env.VITE_DEMO === '1' ) {
+		// The demo has no session to end; its banner says so.
+		window.dispatchEvent( new Event( 'sppa:demo-signout' ) );
+		return;
+	}
 	await clearOfflineData();
 	window.location.assign( boot().logoutUrl );
 }

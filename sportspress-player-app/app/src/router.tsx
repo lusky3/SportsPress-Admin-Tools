@@ -20,6 +20,13 @@ export const ROUTES = [ '/', '/schedule', '/games/:id', '/team/:id', '/spares', 
 
 const NAVIGATE_EVENT = 'sppa:navigate';
 
+/** Demo only: the route lives in the #hash, because a sandboxed frame may not allow pushState. */
+const HASH = import.meta.env.VITE_DEMO === '1';
+
+function hashPath(): string {
+	return window.location.hash.replace( /^#/, '' ) || '/';
+}
+
 function decode( segment: string ): string {
 	try {
 		return decodeURIComponent( segment );
@@ -72,22 +79,33 @@ export function hrefFor( to: string, base: string ): string {
 }
 
 function subscribe( onChange: () => void ): () => void {
-	window.addEventListener( 'popstate', onChange );
+	window.addEventListener( HASH ? 'hashchange' : 'popstate', onChange );
 	window.addEventListener( NAVIGATE_EVENT, onChange );
 	return () => {
-		window.removeEventListener( 'popstate', onChange );
+		window.removeEventListener( HASH ? 'hashchange' : 'popstate', onChange );
 		window.removeEventListener( NAVIGATE_EVENT, onChange );
 	};
 }
 
 /** The current route; re-renders on navigate() and on the browser's back and forward. */
 export function useRoute(): Route {
-	const browserPath = useSyncExternalStore( subscribe, () => window.location.pathname, () => '/' );
+	const browserPath = useSyncExternalStore( subscribe, () => ( HASH ? hashPath() : window.location.pathname ), () => '/' );
 	return useMemo( () => matchRoute( browserPath, boot().appBase ), [ browserPath ] );
 }
 
 /** Go to an app path such as '/games/42'. */
 export function navigate( to: string, options: { replace?: boolean } = {} ): void {
+	if ( HASH ) {
+		if ( hashPath() !== to ) {
+			if ( options.replace ) {
+				window.location.replace( '#' + to );
+			} else {
+				window.location.hash = to;
+			}
+		}
+		window.scrollTo( 0, 0 );
+		return;
+	}
 	const href = hrefFor( to, boot().appBase );
 	if ( href !== window.location.pathname + window.location.search ) {
 		if ( options.replace ) {
@@ -115,5 +133,5 @@ export function Link( { to, onClick, ...rest }: LinkProps ) {
 		event.preventDefault();
 		navigate( to );
 	};
-	return <a { ...rest } href={ hrefFor( to, boot().appBase ) } onClick={ handle } />;
+	return <a { ...rest } href={ HASH ? '#' + to : hrefFor( to, boot().appBase ) } onClick={ handle } />;
 }
