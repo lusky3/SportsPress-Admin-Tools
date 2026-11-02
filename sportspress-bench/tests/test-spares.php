@@ -70,6 +70,9 @@ spbn_assert( 'not_registered' === SPBN_Spares::eligibility( spbn_ctx( array( 'us
 spbn_assert( 'called_off' === SPBN_Spares::eligibility( spbn_ctx( array( 'event_status' => 'cancelled', 'event_start' => 5 ) ) ), 'called_off outranks past' );
 spbn_assert( 'past' === SPBN_Spares::eligibility( spbn_ctx( array( 'event_start' => 5, 'call_status' => 'filled' ) ) ), 'past outranks closed' );
 spbn_assert( 'closed' === SPBN_Spares::eligibility( spbn_ctx( array( 'call_status' => 'filled', 'user_team_ids' => array( 12 ) ) ) ), 'closed outranks on_team' );
+spbn_assert( 'already_sparing' === SPBN_Spares::eligibility( spbn_ctx( array( 'already_sparing' => true ) ) ), 'a place on another call for this game -> already_sparing' );
+spbn_assert( 'closed' === SPBN_Spares::eligibility( spbn_ctx( array( 'already_sparing' => true, 'call_status' => 'filled' ) ) ), 'closed outranks already_sparing' );
+spbn_assert( 'already_sparing' === SPBN_Spares::eligibility( spbn_ctx( array( 'already_sparing' => true, 'user_team_ids' => array( 12 ) ) ) ), 'already_sparing outranks on_team' );
 
 spbn_assert( '' !== SPBN_Spares::eligibility( array() ), 'an empty context is never eligible' );
 
@@ -410,7 +413,7 @@ spbn_assert( array( 1, 2 ) === SPBN_Spares::pool_user_ids( 'skater' ), 'skater p
 spbn_assert( array( 2 ) === SPBN_Spares::pool_user_ids( 'goalie' ), 'goalie pool: only the goalie opt-in' );
 spbn_assert( array() === SPBN_Spares::pool_user_ids( 'defence' ), 'an unknown position has an empty pool' );
 $q = $GLOBALS['spbn_user_queries'][0];
-spbn_assert( 300 === $q['number'] && 'ID' === $q['fields'], 'the pool is capped at 300 ids' );
+spbn_assert( ! isset( $q['number'] ) && 'ID' === $q['fields'], 'every opted-in id is fetched (the cap comes after filtering)' );
 spbn_assert( 'spbn_spare_prefs' === $q['meta_query'][0]['key'] && 'LIKE' === $q['meta_query'][0]['compare'], 'the pool is a LIKE over the serialised prefs' );
 
 // A LIKE can over-match (e.g. malformed meta); the re-check against sanitize_prefs is exact.
@@ -525,6 +528,48 @@ spbn_event_at( 106, date( 'Y-m-d', strtotime( '-2 days' ) ) . ' 21:00:00', 'publ
 spbn_assert( array() === SPBN_Spares::pool_user_ids( 'skater', array_merge( $call, array( 'event_id' => 106 ) ) ), 'a game in the past has no pool' );
 spbn_assert( array() === SPBN_Spares::pool_user_ids( 'skater', array_merge( $call, array( 'status' => 'filled' ) ) ), 'a filled call has no pool' );
 spbn_assert( array() === SPBN_Spares::pool_user_ids( 'skater', array_merge( $call, array( 'event_id' => 9999 ) ) ), 'an unknown event has no pool' );
+
+echo "\n--- the 300 cap applies to people who qualify, chosen at random ---\n\n";
+
+spbn_reset();
+SPBN_Roster_Reader::flush_cache();
+update_option( 'sportspress_season', 3 );
+spbn_register_term( 3, 'sp_season', '2026-27' );
+spbn_event_at( 101, date( 'Y-m-d', strtotime( '+10 days' ) ) . ' 21:00:00', 'future', array( 12, 7 ) );
+spbn_event_at( 102, date( 'Y-m-d', strtotime( '+17 days' ) ) . ' 21:00:00', 'future', array( 20, 30 ) );
+foreach ( array( 101, 102 ) as $eid ) {
+	spbn_set_terms( $eid, 'sp_season', array( 3 => '2026-27' ) );
+}
+foreach ( array( 12, 7, 20, 30 ) as $tid ) {
+	spbn_add_post( $tid, 'sp_team', "Team {$tid}" );
+}
+// Users 1-40 (the lowest ids) play for the calling team, so none of them qualifies; 41-350 do (310 people).
+for ( $uid = 1; $uid <= 350; $uid++ ) {
+	spbn_add_user( $uid );
+	update_user_meta( $uid, 'spbn_spare_prefs', array( 'enabled' => true, 'positions' => array( 'skater' ) ) );
+	spbn_add_post( 10000 + $uid, 'sp_player', "Player {$uid}" );
+	spbn_add_meta( 10000 + $uid, 'sp_user', (string) $uid );
+	spbn_add_meta( 10000 + $uid, 'sp_current_team', $uid <= 40 ? '12' : '20' );
+}
+$GLOBALS['wpdb']->results_handler = function ( $sql ) {
+	$teams = spbn_fixture_season_team_ids( $sql );
+	return null !== $teams ? $teams : array();
+};
+$call = array( 'id' => 1, 'event_id' => 101, 'team_id' => 12, 'position' => 'skater', 'needed' => 1, 'status' => 'open' );
+$seen = array();
+$ok   = true;
+for ( $run = 0; $run < 5; $run++ ) {
+	$pool = SPBN_Spares::pool_user_ids( 'skater', $call );
+	$ok   = $ok && 300 === count( $pool ) && min( $pool ) > 40 && $pool === array_values( array_unique( $pool ) );
+	$seen = array_unique( array_merge( $seen, $pool ) );
+}
+spbn_assert( $ok, '350 opted in, the 40 lowest ids ineligible: each call reaches 300 eligible people and none of the ineligible' );
+spbn_assert( count( $seen ) > 300, 'and the 300 are drawn at random, so across calls nobody eligible is always left out' );
+$small = array( 41, 42, 43 );
+foreach ( range( 44, 350 ) as $uid ) {
+	update_user_meta( $uid, 'spbn_spare_prefs', array( 'enabled' => false, 'positions' => array( 'skater' ) ) );
+}
+spbn_assert( $small === SPBN_Spares::pool_user_ids( 'skater', $call ), 'a pool under the cap is everyone, in id order' );
 
 echo "\n=== mailer: call_posted ===\n\n";
 

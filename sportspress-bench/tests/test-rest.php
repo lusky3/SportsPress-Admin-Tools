@@ -237,7 +237,30 @@ function spbn_fake_bench_db() {
 		return array_map( 'strval', $call + array( 'accepted' => $accepted_count( $call['id'] ) ) );
 	};
 
+	// A posted call is kept, so later reads (duplicates, the daily count) see it.
+	$db->insert_handler = function ( $table, $data, $default_id ) use ( $s ) {
+		if ( 'wp_spbn_spare_calls' !== $table ) {
+			return $default_id;
+		}
+		$id              = $s->next_call++;
+		$s->calls[ $id ] = array( 'id' => $id ) + $data;
+		return $id;
+	};
+
 	$db->results_handler = function ( $sql ) use ( $s, $accepted_count, $call_row ) {
+		$season_teams = spbn_fixture_season_team_ids( $sql );
+		if ( null !== $season_teams ) {
+			return $season_teams;
+		}
+		if ( preg_match( "/SELECT COUNT\(\*\) FROM wp_spbn_spare_calls WHERE created_by = (\d+) AND created_at >= '([^']+)'/", $sql, $m ) ) {
+			$n = 0;
+			foreach ( $s->calls as $c ) {
+				if ( (int) $c['created_by'] === (int) $m[1] && strcmp( (string) $c['created_at'], $m[2] ) >= 0 ) {
+					++$n;
+				}
+			}
+			return (string) $n;
+		}
 		if ( preg_match( '/SELECT note FROM wp_spbn_availability WHERE event_id = (\d+) AND player_id = (\d+)/', $sql, $m ) ) {
 			return $s->avail[ $m[1] . '-' . $m[2] ]['note'] ?? null;
 		}
@@ -383,7 +406,7 @@ function spbn_seed_call( $s, array $over = array() ) {
 			'note'       => '',
 			'status'     => 'open',
 			'created_by' => 7,
-			'created_at' => '2026-11-01 12:00:00',
+			'created_at' => gmdate( 'Y-m-d H:i:s', time() - 2 * 86400 ), // Outside the 24-hour posting window.
 			'updated_at' => '2026-11-01 12:00:00',
 		),
 		$over
@@ -699,9 +722,69 @@ spbn_assert( spbn_err( SPBN_REST::create_call( spbn_req( array( 'id' => 101, 'po
 spbn_assert( spbn_err( SPBN_REST::create_call( spbn_req( array( 'id' => 101, 'position' => 'skater', 'needed' => 9 ) ) ), 'spbn_invalid_call', 400 ), 'a bad count (direct call) is 400' );
 spbn_assert( spbn_err( SPBN_REST::create_call( spbn_req( array( 'id' => 103, 'position' => 'skater', 'needed' => 1 ) ) ), 'spbn_closed', 409 ), 'a game already played cannot take a call (409)' );
 spbn_assert( spbn_err( SPBN_REST::create_call( spbn_req( array( 'id' => 999, 'position' => 'skater', 'needed' => 1 ) ) ), 'spbn_not_found', 404 ), 'an unknown game is 404' );
+foreach ( array_keys( $db->calls ) as $cid ) {
+	$db->calls[ $cid ]['status'] = 'cancelled'; // So the next post is not a duplicate.
+}
 $GLOBALS['wpdb']->insert_return = false;
 spbn_assert( spbn_err( SPBN_REST::create_call( spbn_req( array( 'id' => 101, 'position' => 'skater', 'needed' => 1 ) ) ), 'spbn_write_failed', 500 ), 'a failed insert is 500 spbn_write_failed' );
 $GLOBALS['wpdb']->insert_return = 1;
+
+echo "\n--- one open call per team, game and position ---\n\n";
+
+$db = spbn_league();
+spbn_login( 7 );
+$first = spbn_data( SPBN_REST::create_call( spbn_req( array( 'id' => 101, 'position' => 'goalie', 'needed' => 1 ) ) ) )['call'];
+$GLOBALS['spbn_mail'] = array();
+$inserts              = count( $GLOBALS['wpdb']->inserts );
+$res                  = SPBN_REST::create_call( spbn_req( array( 'id' => 101, 'position' => 'goalie', 'needed' => 2 ) ) );
+spbn_assert( spbn_err( $res, 'spbn_call_exists', 409 ), 'a second open goalie call for the same team and game is 409 spbn_call_exists' );
+spbn_assert( is_wp_error( $res ) && $first['id'] === ( $res->get_error_data()['call']['id'] ?? 0 ) && 'open' === $res->get_error_data()['call']['status'], 'with the existing call in data' );
+spbn_assert( $inserts === count( $GLOBALS['wpdb']->inserts ) && array() === $GLOBALS['spbn_mail'], 'and nothing is stored or mailed (no second blast)' );
+spbn_login( 8 );
+spbn_assert( spbn_err( SPBN_REST::create_call( spbn_req( array( 'id' => 101, 'position' => 'goalie', 'needed' => 1 ) ) ), 'spbn_call_exists', 409 ), 'a teammate gets the same 409' );
+spbn_login( 7 );
+spbn_assert( 201 === SPBN_REST::create_call( spbn_req( array( 'id' => 101, 'position' => 'skater', 'needed' => 1 ) ) )->get_status(), 'a skater call next to the goalie call is fine' );
+spbn_login( 9 );
+spbn_assert( 201 === SPBN_REST::create_call( spbn_req( array( 'id' => 101, 'team_id' => 7, 'position' => 'goalie', 'needed' => 1 ) ) )->get_status(), 'so is the other team\'s goalie call' );
+$db->calls[ $first['id'] ]['status'] = 'filled';
+spbn_login( 7 );
+spbn_assert( 201 === SPBN_REST::create_call( spbn_req( array( 'id' => 101, 'position' => 'goalie', 'needed' => 1 ) ) )->get_status(), 'once the first call has filled, a new one may go out' );
+$GLOBALS['spbn_lock_held'] = true;
+spbn_assert( spbn_err( SPBN_REST::create_call( spbn_req( array( 'id' => 101, 'position' => 'goalie', 'needed' => 1 ) ) ), 'spbn_lock', 409 ), 'a post racing another post for the same team and game is 409 spbn_lock' );
+$GLOBALS['spbn_lock_held'] = false;
+
+echo "\n--- at most five calls a day per person ---\n\n";
+
+$db = spbn_league();
+spbn_event_at( 107, '2099-12-01 20:00:00', 'future', array( 12, 9 ) );
+spbn_event_at( 108, '2099-12-08 20:00:00', 'future', array( 12, 8 ) );
+foreach ( array( 107, 108 ) as $eid ) {
+	spbn_set_terms( $eid, 'sp_season', array( 674 => '2026 Fall' ) );
+}
+spbn_seed_call( $db, array( 'event_id' => 102, 'team_id' => 9, 'created_by' => 7, 'status' => 'cancelled', 'created_at' => gmdate( 'Y-m-d H:i:s', time() - 3600 ) ) );
+spbn_seed_call( $db, array( 'event_id' => 102, 'team_id' => 9, 'created_by' => 7, 'status' => 'cancelled', 'created_at' => gmdate( 'Y-m-d H:i:s', time() - 25 * 3600 ) ) );
+spbn_login( 7 );
+$made = array();
+foreach ( array( array( 101, 'goalie' ), array( 101, 'skater' ), array( 107, 'goalie' ), array( 107, 'skater' ) ) as list( $eid, $pos ) ) {
+	$made[] = SPBN_REST::create_call( spbn_req( array( 'id' => $eid, 'position' => $pos, 'needed' => 1 ) ) )->get_status();
+}
+spbn_assert( array( 201, 201, 201, 201 ) === $made, 'four more calls in a day (five with the one from an hour ago, even though it was cancelled) all go out' );
+$GLOBALS['spbn_mail'] = array();
+$res                  = SPBN_REST::create_call( spbn_req( array( 'id' => 108, 'position' => 'goalie', 'needed' => 1 ) ) );
+spbn_assert( spbn_err( $res, 'spbn_too_many_calls', 429 ), 'the sixth within 24 hours is 429 spbn_too_many_calls' );
+spbn_assert( array() === $GLOBALS['spbn_mail'], 'and mails nobody' );
+spbn_assert( 1 === preg_match( '/created_by = 7 AND created_at >= \'(\S+ \S+)\'/', implode( "\n", $GLOBALS['wpdb']->queries ), $m ) && abs( strtotime( $m[1] . ' UTC' ) - ( time() - 86400 ) ) < 5, 'the window is the last 24 hours (rolling)' );
+spbn_login( 8 );
+spbn_assert( 201 === SPBN_REST::create_call( spbn_req( array( 'id' => 108, 'position' => 'goalie', 'needed' => 1 ) ) )->get_status(), 'the limit is per person: a teammate can still post' );
+
+echo "\n--- notes are at most 140 characters ---\n\n";
+
+$db = spbn_league();
+spbn_login( 7 );
+spbn_assert( spbn_err( spbn_call( 'create_call', array( 'id' => 101, 'position' => 'goalie', 'note' => str_repeat( 'x', 141 ) ) ), 'rest_invalid_param', 400 ), 'a 141-character call note is 400' );
+spbn_assert( 201 === spbn_call( 'create_call', array( 'id' => 101, 'position' => 'goalie', 'note' => str_repeat( 'x', 140 ) ) )->get_status(), 'a 140-character one is fine' );
+spbn_assert( spbn_err( spbn_call( 'put_availability', array( 'id' => 101, 'status' => 'in', 'note' => str_repeat( 'x', 141 ) ) ), 'rest_invalid_param', 400 ), 'a 141-character availability note is 400' );
+spbn_assert( ! is_wp_error( spbn_call( 'put_availability', array( 'id' => 101, 'status' => 'in', 'note' => str_repeat( 'é', 140 ) ) ) ), 'a 140-character one is fine (characters, not bytes)' );
 
 echo "\n=== accept ===\n\n";
 
@@ -752,6 +835,25 @@ $res = SPBN_REST::call_accept( spbn_req( array( 'id' => $c3 ) ) );
 spbn_assert( spbn_err( $res, 'spbn_not_eligible', 403 ) && 'busy' === $res->get_error_data()['reason'], 'a game of their own 90 minutes from the call\'s: reason busy' );
 spbn_assert( spbn_err( SPBN_REST::call_accept( spbn_req( array( 'id' => 999 ) ) ), 'spbn_not_found', 404 ), 'an unknown call is 404' );
 spbn_assert( ! isset( $db->resp[ $c3 . '-13' ] ), 'none of the refusals wrote a response' );
+
+echo "\n--- one place per spare per game ---\n\n";
+
+$db = spbn_league();
+$ca = spbn_seed_call( $db, array( 'event_id' => 101, 'team_id' => 12, 'needed' => 2, 'position' => 'skater' ) );
+$cb = spbn_seed_call( $db, array( 'event_id' => 101, 'team_id' => 7, 'needed' => 1, 'position' => 'skater', 'created_by' => 9 ) );
+spbn_login( 11 );
+spbn_assert( ! is_wp_error( SPBN_REST::call_accept( spbn_req( array( 'id' => $ca ) ) ) ), 'a spare takes a place for the Ducks' );
+$res = SPBN_REST::call_accept( spbn_req( array( 'id' => $cb ) ) );
+spbn_assert( spbn_err( $res, 'spbn_not_eligible', 403 ) && 'already_sparing' === ( $res->get_error_data()['reason'] ?? '' ), 'a second place in the same game (the other team\'s call) is 403, reason already_sparing' );
+spbn_assert( ! isset( $db->resp[ $cb . '-11' ] ), 'and writes nothing' );
+spbn_assert( 'You are already sparing in this game.' === $res->get_error_message(), 'with a plain message' );
+spbn_assert( array() === spbn_data( SPBN_REST::spares() )['open_calls'], 'and /spares does not offer that call' );
+spbn_assert( ! is_wp_error( SPBN_REST::call_accept( spbn_req( array( 'id' => $ca ) ) ) ), 'tapping their own place again is still harmless' );
+spbn_login( 9 );
+$GLOBALS['spbn_mail'] = array();
+SPBN_REST::create_call( spbn_req( array( 'id' => 101, 'team_id' => 7, 'position' => 'goalie', 'needed' => 1 ) ) );
+$bcc = implode( ' ', (array) ( $GLOBALS['spbn_mail'][0]['headers'] ?? array() ) );
+spbn_assert( false !== strpos( $bcc, 'hawk@example.test' ) && false === strpos( $bcc, 'sparky@example.test' ), 'a new call on that game is not mailed to someone already sparing in it' );
 
 echo "\n--- a cancel landing mid-accept (cancel() does not take the call lock) ---\n\n";
 

@@ -150,6 +150,7 @@ class SPBN_Test_WPDB {
 	public $inserts         = array(); // [ table, data, formats ].
 	public $insert_return   = 1;
 	public $insert_id       = 0;
+	public $insert_handler  = null; // callable( $table, $data, $default_id ): the new row's id.
 
 	public function get_charset_collate() {
 		return 'DEFAULT CHARACTER SET utf8mb4';
@@ -188,6 +189,10 @@ class SPBN_Test_WPDB {
 			return false;
 		}
 		$this->insert_id = count( $this->inserts );
+		if ( $this->insert_handler ) {
+			// A stateful fake may keep the row and choose its id.
+			$this->insert_id = (int) call_user_func( $this->insert_handler, $table, $data, $this->insert_id );
+		}
 		return 1;
 	}
 
@@ -213,6 +218,12 @@ class SPBN_Test_WPDB {
 	}
 }
 
+if ( ! defined( 'HOUR_IN_SECONDS' ) ) {
+	define( 'HOUR_IN_SECONDS', 3600 );
+}
+if ( ! defined( 'DAY_IN_SECONDS' ) ) {
+	define( 'DAY_IN_SECONDS', 86400 );
+}
 if ( ! defined( 'OBJECT' ) ) {
 	define( 'OBJECT', 'OBJECT' );
 }

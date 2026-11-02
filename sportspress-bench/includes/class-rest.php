@@ -78,7 +78,7 @@ class SPBN_REST {
 					'type'              => 'string',
 					'maxLength'         => SPBN_Availability::NOTE_MAX,
 					// No 'default': core would fill a missing note in with it, and a status tap must keep the stored note.
-					'validate_callback' => array( __CLASS__, 'is_short_text' ),
+					'validate_callback' => array( __CLASS__, 'is_note' ),
 					'sanitize_callback' => 'sanitize_text_field',
 				),
 				'player_id' => self::int_arg( false ),
@@ -130,7 +130,7 @@ class SPBN_REST {
 					'type'              => 'string',
 					'maxLength'         => SPBN_Spares::NOTE_MAX,
 					'default'           => '',
-					'validate_callback' => array( __CLASS__, 'is_short_text' ),
+					'validate_callback' => array( __CLASS__, 'is_call_note' ),
 					'sanitize_callback' => 'sanitize_text_field',
 				),
 			)
@@ -202,8 +202,14 @@ class SPBN_REST {
 		return null !== filter_var( $value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE );
 	}
 
-	public static function is_short_text( $value ): bool {
-		return is_string( $value ) && mb_strlen( $value ) <= 280;
+	/** An availability note: at most 140 characters, like the column and the app. */
+	public static function is_note( $value ): bool {
+		return is_string( $value ) && mb_strlen( $value ) <= SPBN_Availability::NOTE_MAX;
+	}
+
+	/** A spare call's note: at most 140 characters, like the column and the app. */
+	public static function is_call_note( $value ): bool {
+		return is_string( $value ) && mb_strlen( $value ) <= SPBN_Spares::NOTE_MAX;
 	}
 
 	public static function is_date( $value ): bool {
@@ -488,12 +494,21 @@ class SPBN_REST {
 			return new WP_Error( 'spbn_closed', __( 'That game is over or called off, so it cannot take a spare call.', 'sportspress-bench' ), array( 'status' => 409 ) );
 		}
 
-		try {
-			$call = SPBN_Spares::create_call( $raw['id'], $team_id, $position, $needed, (string) $request->get_param( 'note' ), $v['user_id'] );
-		} catch ( InvalidArgumentException $e ) {
-			return new WP_Error( 'spbn_invalid_call', __( 'A spare call needs a skater or goalie position and 1 to 3 players.', 'sportspress-bench' ), array( 'status' => 400 ) );
-		} catch ( RuntimeException $e ) {
-			return new WP_Error( 'spbn_write_failed', __( 'The spare call could not be saved. Please try again.', 'sportspress-bench' ), array( 'status' => 500 ) );
+		// Check for a duplicate and post under one lock per team and game, so two
+		// teammates tapping at once cannot both blast the pool.
+		$note = (string) $request->get_param( 'note' );
+		$call = SPAT_Lock::with(
+			'spbn_new_call_' . $raw['id'] . '_' . $team_id,
+			SPBN_Spares::LOCK_TTL_SECONDS,
+			function () use ( $v, $raw, $team_id, $position, $needed, $note ) {
+				return self::post_call( $v, $raw['id'], $team_id, $position, $needed, $note );
+			}
+		);
+		if ( false === $call ) {
+			return new WP_Error( 'spbn_lock', __( 'Someone else is posting a call for this team right now. Please try again.', 'sportspress-bench' ), array( 'status' => 409 ) );
+		}
+		if ( is_wp_error( $call ) ) {
+			return $call;
 		}
 
 		// Offer it to willing, eligible spares only (never the raw pool).
@@ -509,6 +524,40 @@ class SPBN_REST {
 			),
 			201
 		);
+	}
+
+	/**
+	 * Store a new call unless the team already has an open one for this game and
+	 * position (409 spbn_call_exists, with that call in data) or the poster has
+	 * reached five calls in 24 hours (429 spbn_too_many_calls). Runs under the
+	 * team-and-game lock.
+	 *
+	 * @return array|WP_Error The new call.
+	 */
+	private static function post_call( array $v, int $event_id, int $team_id, string $position, int $needed, string $note ) {
+		foreach ( SPBN_Spares::calls_for_event( $event_id ) as $existing ) {
+			if ( 'open' === $existing['status'] && $team_id === $existing['team_id'] && $position === $existing['position'] ) {
+				return new WP_Error(
+					'spbn_call_exists',
+					__( 'Your team already has an open call for that position in this game.', 'sportspress-bench' ),
+					array(
+						'status' => 409,
+						'call'   => self::call_out( $existing, $v ),
+					)
+				);
+			}
+		}
+		if ( SPBN_Spares::calls_created_since( $v['user_id'], time() - DAY_IN_SECONDS ) >= SPBN_Spares::DAILY_CALL_LIMIT ) {
+			return new WP_Error( 'spbn_too_many_calls', __( 'You have posted five spare calls in the last 24 hours. Please try again later.', 'sportspress-bench' ), array( 'status' => 429 ) );
+		}
+
+		try {
+			return SPBN_Spares::create_call( $event_id, $team_id, $position, $needed, $note, $v['user_id'] );
+		} catch ( InvalidArgumentException $e ) {
+			return new WP_Error( 'spbn_invalid_call', __( 'A spare call needs a skater or goalie position and 1 to 3 players.', 'sportspress-bench' ), array( 'status' => 400 ) );
+		} catch ( RuntimeException $e ) {
+			return new WP_Error( 'spbn_write_failed', __( 'The spare call could not be saved. Please try again.', 'sportspress-bench' ), array( 'status' => 500 ) );
+		}
 	}
 
 	public static function call_accept( $request ) {
@@ -935,6 +984,11 @@ class SPBN_REST {
 	 * the rule is SPBN_Spares::eligibility().
 	 */
 	private static function eligibility_for( array $v, array $call, array $raw ): string {
+		// One place per game: a place on another call for it (either team's) rules this one out.
+		$sparing = false;
+		foreach ( self::accepted_calls( $v['user_id'] ) as $held ) {
+			$sparing = $sparing || ( $held['event_id'] === $raw['id'] && $held['id'] !== $call['id'] );
+		}
 		$starts = array();
 		foreach ( self::entries_for_user( $v['reader'], $v['user_id'] ) as $entry ) {
 			// Like the pool's batch rule: called-off games and the call's own game do not make a spare busy.
@@ -954,21 +1008,23 @@ class SPBN_REST {
 				'call_status'     => $call['status'],
 				'event_status'    => SPBN_Event_Presenter::present( $raw, 0 )['status'],
 				'has_player'      => (bool) $v['players'],
+				'already_sparing' => $sparing,
 			)
 		);
 	}
 
 	private static function reason_message( string $reason ): string {
 		$messages = array(
-			'no_player'      => __( 'Your account is not linked to a player yet.', 'sportspress-bench' ),
-			'not_registered' => __( 'You need to be registered on a team this season to spare.', 'sportspress-bench' ),
-			'called_off'     => __( 'That game is postponed or cancelled.', 'sportspress-bench' ),
-			'past'           => __( 'That game has already started.', 'sportspress-bench' ),
-			'closed'         => __( 'That spare call is no longer open.', 'sportspress-bench' ),
-			'on_team'        => __( 'You play for one of the teams in this game.', 'sportspress-bench' ),
-			'not_opted_in'   => __( 'Turn on "I\'m happy to spare" first.', 'sportspress-bench' ),
-			'position'       => __( 'You have not offered to spare in that position.', 'sportspress-bench' ),
-			'busy'           => __( 'You have a game of your own too close to this one.', 'sportspress-bench' ),
+			'no_player'       => __( 'Your account is not linked to a player yet.', 'sportspress-bench' ),
+			'not_registered'  => __( 'You need to be registered on a team this season to spare.', 'sportspress-bench' ),
+			'called_off'      => __( 'That game is postponed or cancelled.', 'sportspress-bench' ),
+			'past'            => __( 'That game has already started.', 'sportspress-bench' ),
+			'closed'          => __( 'That spare call is no longer open.', 'sportspress-bench' ),
+			'already_sparing' => __( 'You are already sparing in this game.', 'sportspress-bench' ),
+			'on_team'         => __( 'You play for one of the teams in this game.', 'sportspress-bench' ),
+			'not_opted_in'    => __( 'Turn on "I\'m happy to spare" first.', 'sportspress-bench' ),
+			'position'        => __( 'You have not offered to spare in that position.', 'sportspress-bench' ),
+			'busy'            => __( 'You have a game of your own too close to this one.', 'sportspress-bench' ),
 		);
 		return $messages[ $reason ] ?? __( 'You cannot take that spare call.', 'sportspress-bench' );
 	}

@@ -76,15 +76,25 @@ A team that is short can post a spare call for a game: skater or goalie, 1 to 3 
 of up to 140 characters. Any player on the calling team, or any organizer, can post or cancel a call.
 Captains are not required, because most rosters have none set.
 
+Every call emails the spare pool, so two limits keep it from being flooded:
+
+- A team can have only one open call per game and position. Posting another skater call while one
+  is still open is refused (`409 spbn_call_exists`, with the open call in the response); once it
+  has filled or been cancelled, a new one can go out.
+- One person can post at most five calls in any 24 hours, counting calls that were later cancelled
+  (`429 spbn_too_many_calls`). The limit is per person, organizers included.
+
 Who gets offered a call (all of these must hold):
 
 - They opted in under Spares and picked that position.
 - They have at least one team in the current season (registered this season).
 - They are not on either team in that game.
 - None of their own games starts within 150 minutes either side of it.
+- They have not already taken a place on another call for the same game (one place per game).
 - The game is in the future and not called off, and the call is still open.
 
-Opted-in, eligible players are emailed (at most 300 per call). The first players to tap **I'll
+Opted-in, eligible players are emailed, at most 300 per call; when more than 300 qualify, 300 are
+picked at random each time, so nobody is always left out. The first players to tap **I'll
 play** fill the call, up to the number needed; a tap on a call that is already full or closed is refused. Accepted spares count in the team's In total (and in goalies in for a goalie call) and show
 in that team's list tagged as a spare. A spare can withdraw before the game, which re-opens a call
 that had filled. If a game with accepted spares is rescheduled, postponed or cancelled, only those

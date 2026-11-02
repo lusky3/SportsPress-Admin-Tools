@@ -34,6 +34,9 @@ class SPBN_Spares {
 
 	const LOCK_TTL_SECONDS = 10;
 
+	/** Calls one person may post in any rolling 24 hours (each one emails the pool). */
+	const DAILY_CALL_LIMIT = 5;
+
 	/* --------------------------------------------------------------------
 	 * Pure rules
 	 * ----------------------------------------------------------------- */
@@ -44,10 +47,12 @@ class SPBN_Spares {
 	 * `$ctx`: prefs{enabled,positions[]}, position (the call's), user_team_ids
 	 * (current-season teams; empty means not registered this season),
 	 * event_team_ids, event_start, own_game_starts (timestamps of the user's
-	 * other games), now, call_status, event_status (normalised) and has_player.
+	 * other games), now, call_status, event_status (normalised), has_player and
+	 * already_sparing (they hold a place on another call for this game).
 	 *
 	 * When several reasons hold, the first of: no_player, not_registered,
-	 * called_off, past, closed, on_team, not_opted_in, position, busy.
+	 * called_off, past, closed, already_sparing, on_team, not_opted_in,
+	 * position, busy.
 	 *
 	 * @param array $ctx Context.
 	 * @return string Reason code, or '' when eligible.
@@ -70,6 +75,9 @@ class SPBN_Spares {
 		}
 		if ( 'open' !== ( $ctx['call_status'] ?? '' ) ) {
 			return 'closed';
+		}
+		if ( ! empty( $ctx['already_sparing'] ) ) {
+			return 'already_sparing';
 		}
 		if ( array_intersect( $user_teams, array_map( 'intval', (array) ( $ctx['event_team_ids'] ?? array() ) ) ) ) {
 			return 'on_team';
@@ -211,6 +219,23 @@ class SPBN_Spares {
 			'created_at' => $now,
 			'updated_at' => $now,
 			'accepted'   => 0,
+		);
+	}
+
+	/**
+	 * Calls a user has posted since a time, whatever became of them (a call that
+	 * was cancelled still went out to the pool).
+	 */
+	public static function calls_created_since( int $user_id, int $since_ts ): int {
+		global $wpdb;
+		$calls = SPBN_Schema::tables()['spare_calls'];
+
+		return (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$calls} WHERE created_by = %d AND created_at >= %s",
+				$user_id,
+				gmdate( 'Y-m-d H:i:s', $since_ts )
+			)
 		);
 	}
 
@@ -423,17 +448,20 @@ class SPBN_Spares {
 	}
 
 	/**
-	 * Users who have opted in to spare for a position, at most 300. With a call,
-	 * only those who could take that game right now (see eligibility()).
+	 * Users who have opted in to spare for a position. With a call, only those
+	 * who could take that game right now (see eligibility()). At most 300: the
+	 * cap is applied last, to the people who qualify, and a larger set is
+	 * shuffled first so nobody is left out of every call.
 	 *
-	 * The call form is batched, never per user: one players query with
-	 * update_meta_cache(), one query for the season's events (which teams are
-	 * registered this season), and one for games within 150 minutes either side
-	 * of the call's game (who is busy). Eligibility itself is the pure rule.
+	 * The call form is batched, never per user: one users query for every
+	 * opt-in, one players query with update_meta_cache(), one query for the
+	 * season's teams (who is registered this season), one for games within 150
+	 * minutes either side of the call's game (who is busy) and one for spares
+	 * already in it. Eligibility itself is the pure rule.
 	 *
 	 * @param string     $position skater|goalie.
 	 * @param array|null $call     A call {event_id,status,...}, or null for the raw pool.
-	 * @return int[]
+	 * @return int[] Ascending.
 	 */
 	public static function pool_user_ids( string $position, ?array $call = null ): array {
 		if ( ! in_array( $position, self::POSITIONS, true ) ) {
@@ -456,7 +484,6 @@ class SPBN_Spares {
 				),
 				'orderby'    => 'ID',
 				'order'      => 'ASC',
-				'number'     => self::POOL_LIMIT,
 				'fields'     => 'ID',
 			)
 		);
@@ -475,10 +502,13 @@ class SPBN_Spares {
 			}
 		}
 
-		if ( null === $call ) {
-			return array_keys( $prefs_by_user );
+		$pool = null === $call ? array_keys( $prefs_by_user ) : self::eligible_among( $prefs_by_user, $position, $call );
+		if ( count( $pool ) > self::POOL_LIMIT ) {
+			shuffle( $pool );
+			$pool = array_slice( $pool, 0, self::POOL_LIMIT );
 		}
-		return self::eligible_among( $prefs_by_user, $position, $call );
+		sort( $pool );
+		return $pool;
 	}
 
 	/* --------------------------------------------------------------------
@@ -709,7 +739,7 @@ class SPBN_Spares {
 				array(
 					'post_type'      => 'sp_player',
 					'post_status'    => array( 'publish', 'draft', 'pending', 'private', 'future' ),
-					'posts_per_page' => 1000,
+					'posts_per_page' => -1, // Bounded by the IN list: every opted-in user's players, so none is cut off.
 					'fields'         => 'ids',
 					'no_found_rows'  => true,
 					'meta_query'     => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- bounded by the pool.
@@ -736,6 +766,7 @@ class SPBN_Spares {
 
 		$season_teams = self::season_team_set( $reader->season_id() );
 		$busy         = self::team_starts_near( $event_start, (int) $raw['id'] );
+		$sparing      = array_flip( array_column( self::accepted_for_event( (int) $raw['id'] ), 'user_id' ) );
 
 		$eligible = array();
 		foreach ( $prefs_by_user as $user_id => $prefs ) {
@@ -760,6 +791,7 @@ class SPBN_Spares {
 					'call_status'     => (string) $call['status'],
 					'event_status'    => $event_status,
 					'has_player'      => isset( $teams_by_user[ $user_id ] ),
+					'already_sparing' => isset( $sparing[ $user_id ] ),
 				)
 			);
 			if ( '' === $reason ) {
