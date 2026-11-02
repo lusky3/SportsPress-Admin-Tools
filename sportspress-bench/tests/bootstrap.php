@@ -44,6 +44,7 @@ function spbn_reset() {
 	$GLOBALS['spbn_meta']       = array(); // id => key => list of row values.
 	$GLOBALS['spbn_terms']      = array(); // id => taxonomy => list of term objects.
 	$GLOBALS['spbn_term_meta']  = array(); // term_id => key => value.
+	$GLOBALS['spbn_term_store'] = array(); // taxonomy => term_id => term object.
 	$GLOBALS['spbn_queries']    = array(); // WP_Query args, in call order.
 	$GLOBALS['spbn_filters']    = array(); // tag => list of callbacks.
 	$GLOBALS['spbn_actions']    = array(); // tag => list of callbacks.
@@ -77,15 +78,26 @@ function spbn_set_meta( $id, $key, $value ) {
 	$GLOBALS['spbn_meta'][ $id ][ $key ] = array( $value );
 }
 
-/** Set a post's terms for a taxonomy from [ term_id => name ]. */
-function spbn_set_terms( $id, $taxonomy, array $terms ) {
+/** Register a term so get_term() finds it. */
+function spbn_register_term( $term_id, $taxonomy, $name, $parent = 0 ) {
+	$term = (object) array(
+		'term_id' => (int) $term_id,
+		'name'    => $name,
+		'slug'    => strtolower( preg_replace( '/[^A-Za-z0-9]+/', '-', $name ) ),
+		'parent'  => (int) $parent,
+	);
+	$GLOBALS['spbn_term_store'][ $taxonomy ][ (int) $term_id ] = $term;
+	return $term;
+}
+
+/**
+ * Set a post's terms for a taxonomy from [ term_id => name ], registering each
+ * term. $parents maps term_id => parent term id (default 0).
+ */
+function spbn_set_terms( $id, $taxonomy, array $terms, array $parents = array() ) {
 	$out = array();
 	foreach ( $terms as $term_id => $name ) {
-		$out[] = (object) array(
-			'term_id' => (int) $term_id,
-			'name'    => $name,
-			'slug'    => strtolower( preg_replace( '/[^A-Za-z0-9]+/', '-', $name ) ),
-		);
+		$out[] = spbn_register_term( $term_id, $taxonomy, $name, $parents[ $term_id ] ?? 0 );
 	}
 	$GLOBALS['spbn_terms'][ $id ][ $taxonomy ] = $out;
 }
@@ -325,6 +337,10 @@ function get_term_meta( $term_id, $key = '', $single = false ) {
 	return $GLOBALS['spbn_term_meta'][ (int) $term_id ][ $key ] ?? '';
 }
 
+function get_term( $term_id, $taxonomy = '' ) {
+	return $GLOBALS['spbn_term_store'][ $taxonomy ][ (int) $term_id ] ?? null;
+}
+
 function wp_timezone() {
 	return new DateTimeZone( get_option( 'timezone_string', 'UTC' ) );
 }
@@ -344,7 +360,8 @@ function get_post_datetime( $post = null, $field = 'date', $source = 'local' ) {
  * WP_Query / get_posts emulation
  *
  * Understands post_type, post_status, meta_query (= and IN on any row of a
- * repeated key), tax_query (term_id membership), orderby date, posts_per_page
+ * repeated key), tax_query (term_id membership), date_query after/before on
+ * one column, orderby date, posts_per_page
  * and fields=ids. Every set of args is logged to $GLOBALS['spbn_queries'] so a
  * test can assert on the query a reader built.
  * --------------------------------------------------------------------- */
@@ -391,6 +408,18 @@ function spbn_query_posts( array $args ) {
 		}
 		foreach ( (array) ( $args['tax_query'] ?? array() ) as $clause ) {
 			if ( is_array( $clause ) && ! spbn_tax_clause_matches( $post->ID, $clause ) ) {
+				continue 2;
+			}
+		}
+		foreach ( (array) ( $args['date_query'] ?? array() ) as $clause ) {
+			if ( ! is_array( $clause ) ) {
+				continue;
+			}
+			$when = $post->{ $clause['column'] ?? 'post_date' };
+			if ( isset( $clause['after'] ) && strcmp( $when, $clause['after'] ) < 0 ) {
+				continue 2;
+			}
+			if ( isset( $clause['before'] ) && strcmp( $when, $clause['before'] ) >= 0 ) {
 				continue 2;
 			}
 		}

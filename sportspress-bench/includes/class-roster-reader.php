@@ -29,6 +29,11 @@ class SPBN_Roster_Reader {
 	private static array $teams_cache = array();
 
 	/**
+	 * Per-request memo of season_id(); null until first resolved.
+	 */
+	private static ?int $season_memo = null;
+
+	/**
 	 * Per-request cache of table_team_ids() for the current season.
 	 *
 	 * @var array<int,int[]>|null
@@ -40,6 +45,7 @@ class SPBN_Roster_Reader {
 	 */
 	public static function flush_cache(): void {
 		self::$teams_cache = array();
+		self::$season_memo = null;
 	}
 
 	/**
@@ -86,10 +92,69 @@ class SPBN_Roster_Reader {
 	}
 
 	/**
-	 * SportsPress's current season term id, or 0 when none is set.
+	 * The current season's sp_season term id, or 0 when there is none.
+	 *
+	 * SportsPress's "current season" option when it names a real term; otherwise
+	 * (unset, or a deleted term) the season of the earliest upcoming event, and
+	 * with nothing upcoming the most recent past one. Memoised per request.
 	 */
 	public function season_id(): int {
-		return (int) get_option( 'sportspress_season' );
+		if ( null === self::$season_memo ) {
+			$option            = (int) get_option( 'sportspress_season' );
+			self::$season_memo = ( $option > 0 && self::season_term_exists( $option ) ) ? $option : $this->event_season_id();
+		}
+		return self::$season_memo;
+	}
+
+	private static function season_term_exists( int $term_id ): bool {
+		$term = get_term( $term_id, 'sp_season' );
+		return is_object( $term ) && ! is_wp_error( $term );
+	}
+
+	/**
+	 * Season of the earliest upcoming publish/future event, else of the latest
+	 * past one. An event carrying several season terms (a season and its
+	 * Playoffs child) gives its top-level term.
+	 */
+	private function event_season_id(): int {
+		$now     = gmdate( 'Y-m-d H:i:s' );
+		$windows = array(
+			array(
+				'order' => 'ASC',
+				'range' => array( 'after' => $now ),
+			),
+			array(
+				'order' => 'DESC',
+				'range' => array( 'before' => $now ),
+			),
+		);
+		foreach ( $windows as $window ) {
+			$ids = get_posts(
+				array(
+					'post_type'      => 'sp_event',
+					'post_status'    => array( 'publish', 'future' ),
+					'posts_per_page' => 5,
+					'orderby'        => 'date',
+					'order'          => $window['order'],
+					'fields'         => 'ids',
+					'no_found_rows'  => true,
+					'date_query'     => array( array_merge( array( 'column' => 'post_date_gmt' ), $window['range'] ) ),
+				)
+			);
+			foreach ( (array) $ids as $event_id ) {
+				$terms = self::terms( (int) $event_id, 'sp_season' );
+				if ( ! $terms ) {
+					continue;
+				}
+				foreach ( $terms as $term ) {
+					if ( 0 === (int) $term->parent ) {
+						return (int) $term->term_id;
+					}
+				}
+				return (int) $terms[0]->term_id;
+			}
+		}
+		return 0;
 	}
 
 	/**
@@ -240,20 +305,22 @@ class SPBN_Roster_Reader {
 	}
 
 	/**
-	 * A team's roster for a season: its current-season sp_list, falling back to
-	 * the published players whose sp_current_team includes the team.
+	 * A team's roster for a season: its fullest current-season sp_list, falling
+	 * back to the published players whose sp_current_team includes the team when
+	 * no list stores any players.
+	 *
+	 * A team can have several lists in a season, and an auto-select list stores
+	 * no player rows, so the list with the most stored player ids is used (ties:
+	 * lowest post id). The captain is read from that list either way.
 	 *
 	 * @return array<int,array{player_id:int,name:string,number:string,positions:string[],is_captain:bool}>
 	 */
 	public function roster( int $team_id, int $season_id ): array {
-		$captain    = 0;
-		$player_ids = array();
-
 		$lists = get_posts(
 			array(
 				'post_type'      => 'sp_list',
 				'post_status'    => 'publish',
-				'posts_per_page' => 1,
+				'posts_per_page' => 20,
 				'fields'         => 'ids',
 				'no_found_rows'  => true,
 				'meta_query'     => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- one team.
@@ -273,16 +340,28 @@ class SPBN_Roster_Reader {
 			)
 		);
 
-		if ( $lists ) {
-			$list_id = (int) $lists[0];
-			$captain = (int) get_post_meta( $list_id, 'spt_captain', true );
+		$lists = array_map( 'intval', (array) $lists );
+		sort( $lists );
+
+		$best_list  = 0;
+		$player_ids = array();
+		foreach ( $lists as $list_id ) {
+			$stored = array();
 			foreach ( (array) get_post_meta( $list_id, 'sp_player', false ) as $row ) {
 				$id = is_scalar( $row ) ? absint( $row ) : 0;
-				if ( $id > 0 && ! in_array( $id, $player_ids, true ) ) {
-					$player_ids[] = $id;
+				if ( $id > 0 && ! in_array( $id, $stored, true ) ) {
+					$stored[] = $id;
 				}
 			}
-		} else {
+			// The lowest id is the starting point; only a strictly fuller list replaces it.
+			if ( 0 === $best_list || count( $stored ) > count( $player_ids ) ) {
+				$best_list  = $list_id;
+				$player_ids = $stored;
+			}
+		}
+		$captain = $best_list > 0 ? (int) get_post_meta( $best_list, 'spt_captain', true ) : 0;
+
+		if ( ! $player_ids ) {
 			$player_ids = array_map(
 				'intval',
 				(array) get_posts(

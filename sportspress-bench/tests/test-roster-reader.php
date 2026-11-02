@@ -17,6 +17,8 @@ function league() {
 	spbn_reset();
 	SPBN_Roster_Reader::flush_cache();
 	update_option( 'sportspress_season', '50' );
+	spbn_register_term( SEASON, 'sp_season', 'S50' );
+	spbn_register_term( STALE, 'sp_season', 'S49' );
 	spbn_add_post( 12, 'sp_team', 'Ducks' );
 	spbn_add_post( 30, 'sp_team', 'Knights of Ni' );
 	spbn_add_post( 40, 'sp_team', 'Draft Team', 'draft' );
@@ -60,9 +62,63 @@ spbn_assert( array() === $r->current_team_ids( 777 ), 'a player with no rows has
 
 echo "\n=== season_id ===\n\n";
 
-spbn_assert( 50 === $r->season_id(), 'season_id reads sportspress_season as int' );
+spbn_assert( 50 === $r->season_id(), 'season_id reads sportspress_season as int when the term exists' );
+
+// The option beats the events when it names a real season.
+$r = league();
+game( 600, '2099-01-03 20:00:00', array( 12, 30 ), 61 );
+spbn_assert( 50 === $r->season_id(), 'a valid option wins over any event season' );
+
+// Option unset -> season of the earliest upcoming event.
 spbn_reset();
-spbn_assert( 0 === ( new SPBN_Roster_Reader() )->season_id(), 'no sportspress_season option -> 0' );
+SPBN_Roster_Reader::flush_cache();
+$r = new SPBN_Roster_Reader();
+spbn_assert( 0 === $r->season_id(), 'no option and no events -> 0' );
+
+spbn_reset();
+SPBN_Roster_Reader::flush_cache();
+$r = new SPBN_Roster_Reader();
+game( 601, '2099-01-10 20:00:00', array( 12, 30 ), 60 );
+game( 602, '2099-01-03 20:00:00', array( 12, 30 ), 61, 'publish' );
+game( 603, '2098-12-01 20:00:00', array( 12, 30 ), 62, 'draft' );
+game( 604, '2001-03-01 20:00:00', array( 12, 30 ), 70, 'publish' );
+spbn_assert( 61 === $r->season_id(), 'option unset: season of the earliest upcoming publish/future event (drafts and past games ignored)' );
+
+$before = count( $GLOBALS['spbn_queries'] );
+$r->season_id();
+spbn_assert( count( $GLOBALS['spbn_queries'] ) === $before, 'the fallback is memoised for the request' );
+
+// Option pointing at a term that does not exist -> fallback.
+spbn_reset();
+SPBN_Roster_Reader::flush_cache();
+update_option( 'sportspress_season', '999' );
+$r = new SPBN_Roster_Reader();
+game( 601, '2099-01-10 20:00:00', array( 12, 30 ), 60 );
+spbn_assert( 60 === $r->season_id(), 'option naming a missing sp_season term falls back to the upcoming event season' );
+
+// Nothing upcoming -> most recent past event.
+spbn_reset();
+SPBN_Roster_Reader::flush_cache();
+$r = new SPBN_Roster_Reader();
+game( 610, '2001-03-01 20:00:00', array( 12, 30 ), 70, 'publish' );
+game( 611, '2001-09-01 20:00:00', array( 12, 30 ), 71, 'publish' );
+spbn_assert( 71 === $r->season_id(), 'nothing upcoming: season of the most recent past event' );
+
+// An event carrying several season terms: prefer the top-level one.
+spbn_reset();
+SPBN_Roster_Reader::flush_cache();
+$r = new SPBN_Roster_Reader();
+game( 620, '2099-01-03 20:00:00', array( 12, 30 ), 82 );
+spbn_set_terms( 620, 'sp_season', array( 82 => 'Playoffs', 81 => 'S81' ), array( 82 => 81 ) );
+spbn_assert( 81 === $r->season_id(), 'several season terms: the parent-0 term is preferred over its Playoffs child' );
+
+// An event with no season term is skipped in favour of the next one.
+spbn_reset();
+SPBN_Roster_Reader::flush_cache();
+$r = new SPBN_Roster_Reader();
+spbn_event_at( 630, '2099-01-01 20:00:00', 'future', array( 12, 30 ) );
+game( 631, '2099-01-02 20:00:00', array( 12, 30 ), 63 );
+spbn_assert( 63 === $r->season_id(), 'an upcoming event without a season term is skipped' );
 
 echo "\n=== player_ids_for_user ===\n\n";
 
@@ -203,6 +259,13 @@ spbn_set_meta( 1002, 'sp_number', '1' );
 spbn_set_terms( 1002, 'sp_position', array( 81 => 'Goalie' ) );
 spbn_add_post( 1099, 'sp_player', 'Gone', 'trash' );
 
+// A smaller list for the same team and season must not displace the fuller one.
+spbn_add_post( 302, 'sp_list', 'Ducks S50 (extra)' );
+spbn_add_meta( 302, 'sp_team', '12' );
+spbn_set_terms( 302, 'sp_season', array( SEASON => 'S50' ) );
+spbn_add_meta( 302, 'sp_player', '1001' );
+spbn_set_meta( 302, 'spt_captain', '1001' );
+
 // A list for another season must not leak in.
 spbn_add_post( 301, 'sp_list', 'Ducks S49' );
 spbn_add_meta( 301, 'sp_team', '12' );
@@ -218,7 +281,53 @@ spbn_assert( false === $roster[0]['is_captain'] && true === $roster[1]['is_capta
 $q = end( $GLOBALS['spbn_queries'] );
 spbn_assert( 'sp_list' === $q['post_type'] && 'sp_team' === $q['meta_query'][0]['key'] && false === $q['tax_query'][0]['include_children'], 'list query is sp_team meta + sp_season term without children' );
 
+// Several lists: the one with the most stored players wins, ties go to the lowest id.
+$r = league();
+foreach ( array( 311 => array( 1001, 1002 ), 310 => array( 1001 ) ) as $lid => $pids ) {
+	spbn_add_post( $lid, 'sp_list', "L{$lid}" );
+	spbn_add_meta( $lid, 'sp_team', '12' );
+	spbn_set_terms( $lid, 'sp_season', array( SEASON => 'S50' ) );
+	foreach ( $pids as $pid ) {
+		spbn_add_meta( $lid, 'sp_player', (string) $pid );
+	}
+}
+spbn_set_meta( 311, 'spt_captain', '1002' );
+spbn_set_meta( 310, 'spt_captain', '1001' );
+spbn_add_post( 1001, 'sp_player', 'Ann' );
+spbn_add_post( 1002, 'sp_player', 'Bea' );
+$several = $r->roster( 12, SEASON );
+spbn_assert( array( 1001, 1002 ) === array_column( $several, 'player_id' ), 'two lists: the larger one (higher post id) is used' );
+spbn_assert( array( false, true ) === array_column( $several, 'is_captain' ), 'captain comes from the chosen list' );
+
+$r = league();
+foreach ( array( 321 => 1002, 320 => 1001 ) as $lid => $pid ) {
+	spbn_add_post( $lid, 'sp_list', "L{$lid}" );
+	spbn_add_meta( $lid, 'sp_team', '12' );
+	spbn_set_terms( $lid, 'sp_season', array( SEASON => 'S50' ) );
+	spbn_add_meta( $lid, 'sp_player', (string) $pid );
+}
+spbn_add_post( 1001, 'sp_player', 'Ann' );
+spbn_add_post( 1002, 'sp_player', 'Bea' );
+spbn_assert( array( 1001 ) === array_column( $r->roster( 12, SEASON ), 'player_id' ), 'equal-sized lists: the lowest post id wins' );
+
+// A list with no stored player rows (e.g. auto-select) does not hide the team's players.
+$r = league();
+spbn_add_post( 330, 'sp_list', 'Auto list' );
+spbn_add_meta( 330, 'sp_team', '12' );
+spbn_set_terms( 330, 'sp_season', array( SEASON => 'S50' ) );
+spbn_add_meta( 330, 'sp_player', '0' );
+spbn_set_meta( 330, 'spt_captain', '2002' );
+player( 2002, 9, array( 12 ), 'Di Cap' );
+player( 2003, 9, array( 12 ), 'Ed Skater' );
+$empty_list = $r->roster( 12, SEASON );
+spbn_assert( array( 2002, 2003 ) === array_column( $empty_list, 'player_id' ), 'a list with no player rows falls back to the sp_current_team players' );
+spbn_assert( array( true, false ) === array_column( $empty_list, 'is_captain' ), 'fallback keeps the captain recorded on the team list' );
+
 // Fallback: team 30 has no list this season.
+$r = league();
+spbn_add_post( 300, 'sp_list', 'Other team list' );
+spbn_add_meta( 300, 'sp_team', '12' );
+spbn_set_terms( 300, 'sp_season', array( SEASON => 'S50' ) );
 player( 2001, 9, array( 30 ), 'Cy Fallback' );
 player( 2002, 9, array( 12, 30 ), 'Di Fallback' );
 spbn_set_terms( 2002, 'sp_position', array( 81 => 'Goalie' ) );
