@@ -50,27 +50,43 @@ class SPBN_App_Shell {
 	}
 
 	/**
-	 * The four /bench/ rules, specific first and the catch-all last (rules added
-	 * to the top keep their order).
+	 * The four /bench/ rules (regex => query), specific first and the catch-all
+	 * last (rules added to the top keep their order). The dynamic URLs have no
+	 * file extension on purpose: a web server's static-file location blocks
+	 * (".js", ".webmanifest") answer such paths themselves and never reach
+	 * WordPress. The feed also accepts the older ".ics" form.
+	 *
+	 * @return array<string,string>
 	 */
+	public static function rules(): array {
+		$var = 'index.php?' . self::QUERY_VAR . '=';
+		return array(
+			'^bench/ical/([A-Za-z0-9]{32})(?:\.ics)?/?$' => $var . 'ical&' . self::TOKEN_VAR . '=$matches[1]',
+			'^bench/sw/?$'                               => $var . 'sw',
+			'^bench/manifest/?$'                         => $var . 'manifest',
+			'^bench(?:/.*)?$'                            => $var . 'app',
+		);
+	}
+
 	public static function add_rewrites(): void {
-		add_rewrite_rule( '^bench/ical/([A-Za-z0-9]{32})\.ics$', 'index.php?' . self::QUERY_VAR . '=ical&' . self::TOKEN_VAR . '=$matches[1]', 'top' );
-		add_rewrite_rule( '^bench/sw\.js$', 'index.php?' . self::QUERY_VAR . '=sw', 'top' );
-		add_rewrite_rule( '^bench/manifest\.webmanifest$', 'index.php?' . self::QUERY_VAR . '=manifest', 'top' );
-		add_rewrite_rule( '^bench(?:/.*)?$', 'index.php?' . self::QUERY_VAR . '=app', 'top' );
+		foreach ( self::rules() as $regex => $query ) {
+			add_rewrite_rule( $regex, $query, 'top' );
+		}
 	}
 
 	/**
-	 * Flush the rules once per plugin version: an install that was updated, or
-	 * enabled without an activation hook, has no /bench/ rules until it does.
-	 * Soft flush (database rules only; no .htaccess write).
+	 * Flush the rules once per plugin version and rule set: an install that was
+	 * updated, enabled without an activation hook, or that predates a rule change
+	 * has no current /bench/ rules until it does. Soft flush (database rules
+	 * only; no .htaccess write).
 	 */
 	public static function maybe_flush_rewrites(): void {
-		if ( SPBN_VERSION === get_option( self::REWRITE_OPTION ) ) {
+		$signature = SPBN_VERSION . '-' . substr( md5( (string) wp_json_encode( self::rules() ) ), 0, 8 );
+		if ( get_option( self::REWRITE_OPTION ) === $signature ) {
 			return;
 		}
 		flush_rewrite_rules( false );
-		update_option( self::REWRITE_OPTION, SPBN_VERSION );
+		update_option( self::REWRITE_OPTION, $signature );
 	}
 
 	/**
@@ -129,7 +145,7 @@ class SPBN_App_Shell {
 				return array(
 					'status'  => 200,
 					'headers' => array(
-						'Content-Type'           => 'application/javascript',
+						'Content-Type'           => 'application/javascript; charset=utf-8',
 						'Service-Worker-Allowed' => '/bench/',
 						'Cache-Control'          => 'no-cache',
 						'X-Content-Type-Options' => 'nosniff',
@@ -140,7 +156,7 @@ class SPBN_App_Shell {
 				return array(
 					'status'  => 200,
 					'headers' => array(
-						'Content-Type'           => 'application/manifest+json; charset=utf-8',
+						'Content-Type'           => 'application/manifest+json',
 						'Cache-Control'          => 'no-cache',
 						'X-Content-Type-Options' => 'nosniff',
 					),
@@ -184,7 +200,7 @@ class SPBN_App_Shell {
 		$head[] = '<meta name="apple-mobile-web-app-capable" content="yes">';
 		$head[] = '<meta name="apple-mobile-web-app-title" content="Bench">';
 		$head[] = '<title>' . esc_html__( 'ARL Bench', 'sportspress-bench' ) . '</title>';
-		$head[] = '<link rel="manifest" href="/bench/manifest.webmanifest">';
+		$head[] = '<link rel="manifest" href="/bench/manifest">';
 		$head[] = '<link rel="apple-touch-icon" href="' . esc_url( $build . 'icons/icon-192.png' ) . '">';
 		foreach ( $styles as $css ) {
 			$head[] = '<link rel="stylesheet" href="' . esc_url( $build . $css ) . '">';

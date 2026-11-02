@@ -111,7 +111,7 @@ class SPBN_Ical {
 	}
 
 	public static function feed_url( string $token ): string {
-		return home_url( '/bench/ical/' . $token . '.ics' );
+		return home_url( '/bench/ical/' . $token );
 	}
 
 	private static function is_token( string $token ): bool {

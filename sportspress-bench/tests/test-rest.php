@@ -425,7 +425,7 @@ spbn_assert( true === $me['linked'] && 'Pat' === $me['user']['name'], 'linked us
 spbn_assert( array( 50, 51 ) === array_column( $me['players'], 'id' ) && array( 'Forward' ) === $me['players'][0]['positions'] && '9' === $me['players'][0]['number'], 'both linked players, with number and positions' );
 spbn_assert( array( 12, 7 ) === array_column( $me['teams'], 'id' ), 'teams: the stale last-season team is dropped' );
 spbn_assert( 'Ducks' === $me['teams'][0]['name'] && array( 'id', 'name', 'logo', 'division' ) === array_keys( $me['teams'][0] ), 'team summaries carry id, name, logo, division' );
-spbn_assert( 1 === preg_match( '#^https://arl\.example\.test/bench/ical/[A-Za-z0-9]{32}\.ics$#', $me['ical_url'] ), 'the feed URL has a 32-character token' );
+spbn_assert( 1 === preg_match( '#^https://arl\.example\.test/bench/ical/[A-Za-z0-9]{32}$#', $me['ical_url'] ), 'the feed URL has a 32-character token' );
 spbn_assert( array( 'enabled' => false, 'positions' => array( 'skater' ) ) === $me['spare_prefs'], 'default spare prefs: off, skater' );
 spbn_login( 12, true );
 spbn_assert( true === spbn_data( SPBN_REST::me() )['is_organizer'], 'an organizer sees is_organizer' );

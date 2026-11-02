@@ -223,6 +223,6 @@ update_user_meta( 6, 'spbn_ical_token', 'AbCdEfGhIjKlMnOpQrStUvWxYz012345' );
 spbn_assert( 0 === SPBN_Ical::user_for_token( 'abcdefghijklmnopqrstuvwxyz012345' ), 'tokens match case-sensitively' );
 spbn_assert( 6 === SPBN_Ical::user_for_token( 'AbCdEfGhIjKlMnOpQrStUvWxYz012345' ), 'the exact token matches' );
 
-spbn_assert( 'https://arl.example.test/bench/ical/' . $t2 . '.ics' === SPBN_Ical::feed_url( $t2 ), 'feed_url is home_url(/bench/ical/<token>.ics)' );
+spbn_assert( 'https://arl.example.test/bench/ical/' . $t2 === SPBN_Ical::feed_url( $t2 ), 'feed_url is the extensionless home_url(/bench/ical/<token>)' );
 
 spbn_done();

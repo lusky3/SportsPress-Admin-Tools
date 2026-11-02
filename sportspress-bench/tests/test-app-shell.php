@@ -100,7 +100,7 @@ spbn_assert( 0 === strpos( ltrim( $html ), '<!DOCTYPE html>' ), 'a full HTML doc
 spbn_assert( false !== strpos( $html, SPBN_PLUGIN_URL . 'build/assets/index-abc.js' ), 'the entry script URL carries the plugin build prefix' );
 spbn_assert( 1 === preg_match( '#<script type="module"[^>]*src="' . preg_quote( SPBN_PLUGIN_URL . 'build/assets/index-abc.js', '#' ) . '"#', $html ), 'the entry is a module script' );
 spbn_assert( 1 === preg_match( '#<link rel="stylesheet"[^>]*href="' . preg_quote( SPBN_PLUGIN_URL . 'build/assets/index-def.css', '#' ) . '"#', $html ), 'the entry css is a stylesheet link' );
-spbn_assert( false !== strpos( $html, '<link rel="manifest" href="/bench/manifest.webmanifest">' ), 'links the manifest' );
+spbn_assert( false !== strpos( $html, '<link rel="manifest" href="/bench/manifest">' ), 'links the extensionless manifest URL' );
 spbn_assert( 1 === preg_match( '#<meta name="theme-color" content="\#132343">#', $html ), 'theme-color meta' );
 spbn_assert( 1 === preg_match( '#<meta name="viewport" content="width=device-width, initial-scale=1#', $html ), 'viewport meta' );
 spbn_assert( false !== strpos( $html, '<script>window.SPBN_BOOT = ' ), 'boot data is a plain inline script' );
@@ -170,34 +170,53 @@ echo "\n=== add_rewrites / registration ===\n\n";
 SPBN_App_Shell::add_rewrites();
 $rules = array_column( $GLOBALS['spbn_rewrite_rules'], 1, 0 );
 spbn_assert( 4 === count( $GLOBALS['spbn_rewrite_rules'] ), 'four rewrite rules' );
-spbn_assert( 'index.php?spbn=ical&spbn_token=$matches[1]' === ( $rules['^bench/ical/([A-Za-z0-9]{32})\.ics$'] ?? '' ), 'the feed rule captures a 32-character token' );
-spbn_assert( 'index.php?spbn=sw' === ( $rules['^bench/sw\.js$'] ?? '' ), 'the service worker rule' );
-spbn_assert( 'index.php?spbn=manifest' === ( $rules['^bench/manifest\.webmanifest$'] ?? '' ), 'the manifest rule' );
+spbn_assert( 'index.php?spbn=ical&spbn_token=$matches[1]' === ( $rules['^bench/ical/([A-Za-z0-9]{32})(?:\.ics)?/?$'] ?? '' ), 'the feed rule captures a 32-character token, with or without .ics' );
+spbn_assert( 'index.php?spbn=sw' === ( $rules['^bench/sw/?$'] ?? '' ), 'the service worker rule is extensionless' );
+spbn_assert( 'index.php?spbn=manifest' === ( $rules['^bench/manifest/?$'] ?? '' ), 'the manifest rule is extensionless' );
 spbn_assert( 'index.php?spbn=app' === ( $rules['^bench(?:/.*)?$'] ?? '' ), 'the catch-all rule serves the app' );
 $order = array_column( $GLOBALS['spbn_rewrite_rules'], 0 );
 spbn_assert( '^bench(?:/.*)?$' === end( $order ), 'the catch-all is added last so the specific rules win' );
 spbn_assert( array( 'top' ) === array_values( array_unique( array_column( $GLOBALS['spbn_rewrite_rules'], 2 ) ) ), 'all four go to the top' );
-spbn_assert( 1 === preg_match( '#' . str_replace( '#', '\#', $order[0] ) . '#', 'bench/ical/' . str_repeat( 'a', 32 ) . '.ics' ), 'the feed regex matches a feed path' );
-spbn_assert( 0 === preg_match( '#' . $order[0] . '#', 'bench/ical/' . str_repeat( 'a', 31 ) . '.ics' ), 'and not a 31-character token' );
-spbn_assert( 0 === preg_match( '#' . $order[3] . '#', 'benchmark' ), 'the catch-all does not take /benchmark' );
-spbn_assert( 1 === preg_match( '#' . $order[3] . '#', 'bench/games/5' ) && 1 === preg_match( '#' . $order[3] . '#', 'bench' ) && 1 === preg_match( '#' . $order[3] . '#', 'bench/' ), 'but takes /bench, /bench/ and deep links' );
+spbn_assert( false === strpos( implode( ' ', $order ), 'webmanifest' ) && false === strpos( implode( ' ', $order ), 'sw\.js' ), 'no rule depends on a .js or .webmanifest URL' );
+
+/** The query of the first rule (in registration order) that matches a request path. */
+function spbn_route_of( $path ) {
+	foreach ( $GLOBALS['spbn_rewrite_rules'] as $rule ) {
+		if ( 1 === preg_match( '#' . str_replace( '#', '\#', $rule[0] ) . '#', $path ) ) {
+			return $rule[1];
+		}
+	}
+	return '';
+}
+$tok = str_repeat( 'a', 32 );
+spbn_assert( 'index.php?spbn=sw' === spbn_route_of( 'bench/sw' ) && 'index.php?spbn=sw' === spbn_route_of( 'bench/sw/' ), '/bench/sw and /bench/sw/ reach the service worker' );
+spbn_assert( 'index.php?spbn=manifest' === spbn_route_of( 'bench/manifest' ) && 'index.php?spbn=manifest' === spbn_route_of( 'bench/manifest/' ), '/bench/manifest reaches the manifest' );
+spbn_assert( 'index.php?spbn=ical&spbn_token=$matches[1]' === spbn_route_of( 'bench/ical/' . $tok ) && 'index.php?spbn=ical&spbn_token=$matches[1]' === spbn_route_of( 'bench/ical/' . $tok . '.ics' ) && 'index.php?spbn=ical&spbn_token=$matches[1]' === spbn_route_of( 'bench/ical/' . $tok . '/' ), 'the feed answers with or without .ics' );
+spbn_assert( 'index.php?spbn=app' === spbn_route_of( 'bench/ical/' . substr( $tok, 1 ) ), 'a 31-character token is not a feed (it falls to the app shell)' );
+spbn_assert( 1 === preg_match( '#' . str_replace( '#', '\#', $order[0] ) . '#', 'bench/ical/' . $tok . '.ics' ) && 0 === preg_match( '#' . str_replace( '#', '\#', $order[0] ) . '#', 'bench/ical/' . $tok . 'x' ), 'a 33rd character is not part of a token' );
+spbn_assert( 'index.php?spbn=app' === spbn_route_of( 'bench' ) && 'index.php?spbn=app' === spbn_route_of( 'bench/' ) && 'index.php?spbn=app' === spbn_route_of( 'bench/games/5' ), 'but /bench, /bench/ and deep links are the app' );
+spbn_assert( '' === spbn_route_of( 'benchmark' ), 'and /benchmark is nobody\'s' );
 
 spbn_assert( array( 'spbn', 'spbn_token', 'x' ) === SPBN_App_Shell::query_vars( array( 'x' ) ) || array( 'x', 'spbn', 'spbn_token' ) === SPBN_App_Shell::query_vars( array( 'x' ) ), 'query vars spbn and spbn_token are added' );
 
 SPBN_App_Shell::register();
 spbn_assert( ! empty( $GLOBALS['spbn_actions']['init'] ) && ! empty( $GLOBALS['spbn_actions']['template_redirect'] ) && ! empty( $GLOBALS['spbn_filters']['query_vars'] ), 'register() hooks init, template_redirect and query_vars' );
 
-echo "\n--- flush once on a version change ---\n\n";
+echo "\n--- flush once per version and rule set ---\n\n";
 
 $GLOBALS['spbn_flushes'] = 0;
 unset( $GLOBALS['spbn_options']['spbn_rewrite_version'] );
 SPBN_App_Shell::maybe_flush_rewrites();
-spbn_assert( 1 === $GLOBALS['spbn_flushes'] && SPBN_VERSION === get_option( 'spbn_rewrite_version' ), 'no stored version: flush once and store it' );
+$stored = get_option( 'spbn_rewrite_version' );
+spbn_assert( 1 === $GLOBALS['spbn_flushes'] && 1 === preg_match( '/^' . preg_quote( SPBN_VERSION, '/' ) . '-[0-9a-f]{8}$/', (string) $stored ), 'nothing stored: flush once and store version plus a hash of the rules' );
 SPBN_App_Shell::maybe_flush_rewrites();
-spbn_assert( 1 === $GLOBALS['spbn_flushes'], 'same version: no second flush' );
-update_option( 'spbn_rewrite_version', '0.0.1' );
+spbn_assert( 1 === $GLOBALS['spbn_flushes'], 'same version and rules: no second flush' );
+update_option( 'spbn_rewrite_version', SPBN_VERSION );
 SPBN_App_Shell::maybe_flush_rewrites();
-spbn_assert( 2 === $GLOBALS['spbn_flushes'] && SPBN_VERSION === get_option( 'spbn_rewrite_version' ), 'an older stored version flushes again' );
+spbn_assert( 2 === $GLOBALS['spbn_flushes'] && $stored === get_option( 'spbn_rewrite_version' ), 'an install that stored only the bare version (the earlier rules) flushes again, so the new rules take effect' );
+update_option( 'spbn_rewrite_version', '0.0.1-' . substr( $stored, -8 ) );
+SPBN_App_Shell::maybe_flush_rewrites();
+spbn_assert( 3 === $GLOBALS['spbn_flushes'], 'an older plugin version flushes again' );
 
 echo "\n=== handle: app ===\n\n";
 
@@ -231,7 +250,7 @@ $GLOBALS['spbn_filters'] = array();
 echo "\n=== handle: service worker and manifest ===\n\n";
 
 $res = SPBN_App_Shell::handle( 'sw', 0, '' );
-spbn_assert( 200 === $res['status'] && 'application/javascript' === $res['headers']['Content-Type'] && '/bench/' === $res['headers']['Service-Worker-Allowed'] && 'no-cache' === $res['headers']['Cache-Control'], 'sw: headers (works logged out)' );
+spbn_assert( 200 === $res['status'] && 'application/javascript; charset=utf-8' === $res['headers']['Content-Type'] && '/bench/' === $res['headers']['Service-Worker-Allowed'] && 'no-cache' === $res['headers']['Cache-Control'], 'sw: headers (works logged out)' );
 spbn_assert( "self.addEventListener('install',()=>self.skipWaiting());" === $res['body'], 'sw: no build/sw.js serves the no-op worker' );
 file_put_contents( $spbn_dir . 'build/sw.js', "p('__SPBN_BUILD_URL__assets/a.js');" );
 $res = SPBN_App_Shell::handle( 'sw', 0, '' );
@@ -239,7 +258,7 @@ spbn_assert( "p('" . SPBN_PLUGIN_URL . "build/assets/a.js');" === $res['body'], 
 spbn_assert( 'nosniff' === ( $res['headers']['X-Content-Type-Options'] ?? '' ), 'sw: nosniff' );
 
 $res = SPBN_App_Shell::handle( 'manifest', 0, '' );
-spbn_assert( 200 === $res['status'] && 0 === strpos( $res['headers']['Content-Type'], 'application/manifest+json' ), 'manifest: 200 with the manifest media type' );
+spbn_assert( 200 === $res['status'] && 'application/manifest+json' === $res['headers']['Content-Type'], 'manifest: 200 with the manifest media type' );
 spbn_assert( 'ARL Bench' === ( json_decode( $res['body'], true )['name'] ?? '' ), 'manifest: body is the JSON manifest' );
 
 spbn_assert( null === SPBN_App_Shell::handle( '', 0, '' ) && null === SPBN_App_Shell::handle( 'nope', 7, '' ), 'an unknown route is not handled (the request carries on)' );
@@ -288,6 +307,7 @@ $db->results_handler = function ( $sql ) {
 $res  = SPBN_App_Shell::handle( 'ical', 0, $token );
 $body = $res['body'];
 spbn_assert( 200 === $res['status'] && 'text/calendar; charset=utf-8' === $res['headers']['Content-Type'], 'feed: 200 text/calendar' );
+spbn_assert( 'inline; filename="arl-bench.ics"' === $res['headers']['Content-Disposition'], 'feed: inline with an arl-bench.ics filename (the URL has no extension)' );
 spbn_assert( 0 === strpos( $body, "BEGIN:VCALENDAR\r\n" ), 'feed: a VCALENDAR' );
 spbn_assert( 1 === substr_count( $body, 'UID:spbn-101-' ) && false !== strpos( $body, 'UID:spbn-101-12@arl.example.test' ), 'feed: a game between two of the user\'s own teams is listed once, from the home side' );
 spbn_assert( false !== strpos( $body, 'SEQUENCE:2' ), 'feed: SEQUENCE is the event\'s change-row count' );
