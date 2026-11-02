@@ -32,7 +32,7 @@ class SPBN_Schema {
 	/**
 	 * dbDelta-formatted CREATE TABLE statements, one per table.
 	 *
-	 * dbDelta is picky: one field per line, two spaces before the PRIMARY KEY
+	 * Note that dbDelta is picky: one field per line, two spaces before the PRIMARY KEY
 	 * column list, and KEY definitions named.
 	 *
 	 * @param string $prefix  Table prefix (e.g. `wp_`).

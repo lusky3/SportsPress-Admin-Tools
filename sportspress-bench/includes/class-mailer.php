@@ -169,6 +169,7 @@ class SPBN_Mailer {
 		global $wpdb;
 		$tables = SPBN_Schema::tables();
 
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names come from SPBN_Schema, not input; every value stays bound.
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT DISTINCT r.user_id, c.team_id FROM {$tables['spare_responses']} r
@@ -181,6 +182,7 @@ class SPBN_Mailer {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		// One mail per calling team, so the subject can name the team they spare for.
 		$by_team = array();
@@ -332,6 +334,9 @@ class SPBN_Mailer {
 	}
 
 	/**
+	 * @param string   $to            Recipient address.
+	 * @param string   $subject       Subject line.
+	 * @param string   $body          Plain-text body.
 	 * @param string[] $extra_headers Headers beyond the content type.
 	 */
 	private static function send( string $to, string $subject, string $body, array $extra_headers ): bool {

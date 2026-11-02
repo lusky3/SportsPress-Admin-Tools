@@ -154,9 +154,7 @@ class SPBN_REST {
 		);
 	}
 
-	/* --------------------------------------------------------------------
-	 * Permission and argument callbacks
-	 * ----------------------------------------------------------------- */
+	// ---- Permission and argument callbacks ----
 
 	public static function is_logged_in(): bool {
 		return is_user_logged_in();
@@ -219,9 +217,7 @@ class SPBN_REST {
 		return checkdate( (int) $m[2], (int) $m[3], (int) $m[1] );
 	}
 
-	/* --------------------------------------------------------------------
-	 * Handlers
-	 * ----------------------------------------------------------------- */
+	// ---- Handlers ----
 
 	public static function me() {
 		$v      = self::viewer();
@@ -579,7 +575,14 @@ class SPBN_REST {
 					: new WP_Error( 'spbn_closed', __( 'That spare call is no longer open.', 'sportspress-bench' ), array( 'status' => 409 ) );
 			}
 			if ( '' !== $reason ) {
-				return new WP_Error( 'spbn_not_eligible', self::reason_message( $reason ), array( 'status' => 403, 'reason' => $reason ) );
+				return new WP_Error(
+					'spbn_not_eligible',
+					self::reason_message( $reason ),
+					array(
+						'status' => 403,
+						'reason' => $reason,
+					)
+				);
 			}
 		}
 
@@ -727,9 +730,7 @@ class SPBN_REST {
 		return new WP_REST_Response( $data, 200 );
 	}
 
-	/* --------------------------------------------------------------------
-	 * Shared: the user's games
-	 * ----------------------------------------------------------------- */
+	// ---- Shared: the user's games ----
 
 	/**
 	 * The games a user sees, soonest first: their teams' current-season games
@@ -827,9 +828,7 @@ class SPBN_REST {
 		return $games;
 	}
 
-	/* --------------------------------------------------------------------
-	 * Shared: availability sides
-	 * ----------------------------------------------------------------- */
+	// ---- Shared: availability sides ----
 
 	/**
 	 * One side of a game for the game screen: counts always, the per-player
@@ -912,7 +911,10 @@ class SPBN_REST {
 	 * answered nor are the viewer are not added: that field accumulates across
 	 * seasons and would inflate the no-reply count.
 	 *
-	 * @param int[] $own_players The viewer's players on this team.
+	 * @param SPBN_Roster_Reader $reader Roster reader.
+	 * @param array              $raw     Raw event row.
+	 * @param int                $team_id Team id.
+	 * @param int[]              $own_players The viewer's players on this team.
 	 */
 	private static function side_roster( SPBN_Roster_Reader $reader, array $raw, int $team_id, array $own_players = array() ): array {
 		$extra = $own_players;
@@ -980,9 +982,7 @@ class SPBN_REST {
 		return self::$rosters[ $team_id ];
 	}
 
-	/* --------------------------------------------------------------------
-	 * Shared: spare calls
-	 * ----------------------------------------------------------------- */
+	// ---- Shared: spare calls ----
 
 	/**
 	 * Why the viewer cannot take a call ('' when they can). Gathers the facts;
@@ -1104,9 +1104,7 @@ class SPBN_REST {
 		return (int) ( $v['players'][0] ?? 0 );
 	}
 
-	/* --------------------------------------------------------------------
-	 * Small helpers
-	 * ----------------------------------------------------------------- */
+	// ---- Small helpers ----
 
 	/**
 	 * Who is asking: user, organizer flag, linked players, current-season teams

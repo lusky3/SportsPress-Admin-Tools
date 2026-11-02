@@ -2,7 +2,7 @@
 /**
  * The personal calendar feed: RFC 5545 rendering and per-user feed tokens.
  *
- * render() is pure (games in, text out) so the escaping, folding and timezone
+ * Rendering is pure (games in, text out) so the escaping, folding and timezone
  * rules are unit-tested; the token methods are thin user-meta wrappers.
  */
 

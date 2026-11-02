@@ -98,7 +98,7 @@ class SPBN_Availability {
 
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT player_id, team_id, status, note, updated_at FROM {$table} WHERE event_id = %d ORDER BY updated_at ASC",
+				"SELECT player_id, team_id, status, note, updated_at FROM {$table} WHERE event_id = %d ORDER BY updated_at ASC", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names come from SPBN_Schema, not input; every value stays bound.
 				$event_id
 			),
 			ARRAY_A
@@ -145,11 +145,12 @@ class SPBN_Availability {
 		$table      = SPBN_Schema::tables()['availability'];
 		$note_set   = $keep_note ? '' : 'note = VALUES(note), ';
 
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name from SPBN_Schema and a fixed $note_set fragment, no input; every value stays bound.
 		$result = $wpdb->query(
 			$wpdb->prepare(
 				"INSERT INTO {$table} (event_id, player_id, team_id, status, note, updated_by, updated_at)
 				VALUES (%d,%d,%d,%s,%s,%d,%s)
-				ON DUPLICATE KEY UPDATE team_id = VALUES(team_id), status = VALUES(status), {$note_set}updated_by = VALUES(updated_by), updated_at = VALUES(updated_at)", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- a fixed fragment, no input.
+				ON DUPLICATE KEY UPDATE team_id = VALUES(team_id), status = VALUES(status), {$note_set}updated_by = VALUES(updated_by), updated_at = VALUES(updated_at)",
 				$event_id,
 				$player_id,
 				$team_id,
@@ -159,6 +160,7 @@ class SPBN_Availability {
 				$now
 			)
 		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		if ( false === $result ) {
 			throw new RuntimeException( 'Availability write failed.' );
 		}
@@ -166,7 +168,7 @@ class SPBN_Availability {
 		if ( $keep_note ) {
 			// The stored note is what the row holds now (the new row's blank, or the old one kept).
 			$clean_note = (string) $wpdb->get_var(
-				$wpdb->prepare( "SELECT note FROM {$table} WHERE event_id = %d AND player_id = %d", $event_id, $player_id )
+				$wpdb->prepare( "SELECT note FROM {$table} WHERE event_id = %d AND player_id = %d", $event_id, $player_id ) // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names come from SPBN_Schema, not input; every value stays bound.
 			);
 		}
 
@@ -182,6 +184,7 @@ class SPBN_Availability {
 	/**
 	 * One player's answers across a set of games.
 	 *
+	 * @param int   $player_id Player id.
 	 * @param int[] $event_ids Event ids.
 	 * @return array<int,string> event id => status, only for games with an answer.
 	 */
@@ -197,7 +200,7 @@ class SPBN_Availability {
 
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT event_id, status FROM {$table} WHERE player_id = %d AND event_id IN ({$placeholders})", // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders
+				"SELECT event_id, status FROM {$table} WHERE player_id = %d AND event_id IN ({$placeholders})", // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names come from SPBN_Schema, not input; every value stays bound. The IN() list is literal %d placeholders.
 				array_merge( array( $player_id ), $event_ids )
 			),
 			ARRAY_A

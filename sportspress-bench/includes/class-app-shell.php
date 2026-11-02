@@ -206,14 +206,14 @@ class SPBN_App_Shell {
 		$head[] = '<link rel="manifest" href="/bench/manifest">';
 		$head[] = '<link rel="apple-touch-icon" href="' . esc_url( $build . 'icons/icon-192.png' ) . '">';
 		foreach ( $styles as $css ) {
-			$head[] = '<link rel="stylesheet" href="' . esc_url( $build . $css ) . '">';
+			$head[] = '<link rel="stylesheet" href="' . esc_url( $build . $css ) . '">'; // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedStylesheet -- standalone page, not a theme template; wp_enqueue_* never prints here.
 		}
 		foreach ( $preload as $file ) {
 			$head[] = '<link rel="modulepreload" href="' . esc_url( $build . $file ) . '">';
 		}
 		$head[] = '<script>window.SPBN_BOOT = ' . wp_json_encode( $boot, JSON_HEX_TAG | JSON_HEX_AMP ) . ';</script>';
 		foreach ( $scripts as $file ) {
-			$head[] = '<script type="module" crossorigin src="' . esc_url( $build . $file ) . '"></script>';
+			$head[] = '<script type="module" crossorigin src="' . esc_url( $build . $file ) . '"></script>'; // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- standalone page, not a theme template; wp_enqueue_* never prints here.
 		}
 
 		return "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n" . implode( "\n", $head ) . "\n</head>\n<body>\n"
@@ -319,9 +319,7 @@ class SPBN_App_Shell {
 		return 1 === preg_match( '#^/bench(?:/[A-Za-z0-9_-]+)*/?\z#', $path ) ? $path : '/bench/';
 	}
 
-	/* --------------------------------------------------------------------
-	 * Internals
-	 * ----------------------------------------------------------------- */
+	// ---- Internals ----
 
 	private static function app_response( int $user_id, string $request_uri ): array {
 		if ( $user_id <= 0 ) {

@@ -314,7 +314,7 @@ class SPBN_Changes {
 
 		$ids = $wpdb->get_col(
 			$wpdb->prepare(
-				"SELECT DISTINCT event_id FROM {$table} WHERE event_id IN ({$placeholders}) AND changed_at >= %s", // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders
+				"SELECT DISTINCT event_id FROM {$table} WHERE event_id IN ({$placeholders}) AND changed_at >= %s", // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names come from SPBN_Schema, not input; every value stays bound. The IN() list is literal %d placeholders.
 				array_merge( $event_ids, array( $cutoff ) )
 			)
 		);
@@ -329,7 +329,7 @@ class SPBN_Changes {
 		$table = SPBN_Schema::tables()['changes'];
 
 		return (int) $wpdb->get_var(
-			$wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE event_id = %d", $event_id )
+			$wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE event_id = %d", $event_id ) // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names come from SPBN_Schema, not input; every value stays bound.
 		);
 	}
 

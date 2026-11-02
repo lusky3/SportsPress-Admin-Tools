@@ -439,6 +439,7 @@ class SPBN_Roster_Reader {
 	 * W/L/T for a team across events, from the presenter's results. Unplayed and
 	 * called-off games do not count.
 	 *
+	 * @param int   $team_id   Team id.
 	 * @param int[] $event_ids Event ids.
 	 * @return array{w:int,l:int,t:int}
 	 */

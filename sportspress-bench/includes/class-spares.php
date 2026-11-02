@@ -37,9 +37,7 @@ class SPBN_Spares {
 	/** Calls one person may post in any rolling 24 hours (each one emails the pool). */
 	const DAILY_CALL_LIMIT = 5;
 
-	/* --------------------------------------------------------------------
-	 * Pure rules
-	 * ----------------------------------------------------------------- */
+	// ---- Pure rules ----
 
 	/**
 	 * Why a user cannot take a spare call, or '' when they can.
@@ -163,9 +161,7 @@ class SPBN_Spares {
 		);
 	}
 
-	/* --------------------------------------------------------------------
-	 * Repository
-	 * ----------------------------------------------------------------- */
+	// ---- Repository ----
 
 	/**
 	 * Create an open call. Callers validate first (position, 1-3 needed) and map
@@ -232,7 +228,7 @@ class SPBN_Spares {
 
 		return (int) $wpdb->get_var(
 			$wpdb->prepare(
-				"SELECT COUNT(*) FROM {$calls} WHERE created_by = %d AND created_at >= %s",
+				"SELECT COUNT(*) FROM {$calls} WHERE created_by = %d AND created_at >= %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names come from SPBN_Schema, not input; every value stays bound.
 				$user_id,
 				gmdate( 'Y-m-d H:i:s', $since_ts )
 			)
@@ -248,7 +244,7 @@ class SPBN_Spares {
 
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
-				"SELECT id, event_id, team_id, position, needed, note, status, created_by, created_at, updated_at FROM {$calls} WHERE id = %d",
+				"SELECT id, event_id, team_id, position, needed, note, status, created_by, created_at, updated_at FROM {$calls} WHERE id = %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names come from SPBN_Schema, not input; every value stays bound.
 				$id
 			),
 			ARRAY_A
@@ -267,7 +263,7 @@ class SPBN_Spares {
 
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				self::call_columns( $tables['spare_responses'] ) . " FROM {$tables['spare_calls']} c WHERE c.event_id = %d ORDER BY c.id ASC",
+				self::call_columns( $tables['spare_responses'] ) . " FROM {$tables['spare_calls']} c WHERE c.event_id = %d ORDER BY c.id ASC", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared -- table names come from SPBN_Schema, not input; every value stays bound. call_columns() is a fixed SELECT list.
 				'accepted',
 				$event_id
 			),
@@ -287,6 +283,7 @@ class SPBN_Spares {
 		$tables = SPBN_Schema::tables();
 		$limit  = (int) self::OPEN_CALL_LIMIT;
 
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared -- table names come from SPBN_Schema, not input; every value stays bound. call_columns() is a fixed SELECT list; $limit is an int constant.
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
 				self::call_columns( $tables['spare_responses'] ) . " FROM {$tables['spare_calls']} c
@@ -299,6 +296,7 @@ class SPBN_Spares {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		return array_map( array( __CLASS__, 'to_call' ), (array) $rows );
 	}
 
@@ -310,7 +308,7 @@ class SPBN_Spares {
 		$responses = SPBN_Schema::tables()['spare_responses'];
 
 		return (int) $wpdb->get_var(
-			$wpdb->prepare( "SELECT COUNT(*) FROM {$responses} WHERE call_id = %d AND status = %s", $call_id, 'accepted' )
+			$wpdb->prepare( "SELECT COUNT(*) FROM {$responses} WHERE call_id = %d AND status = %s", $call_id, 'accepted' ) // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names come from SPBN_Schema, not input; every value stays bound.
 		);
 	}
 
@@ -366,7 +364,7 @@ class SPBN_Spares {
 
 		$wpdb->query(
 			$wpdb->prepare(
-				"UPDATE {$calls} SET status = %s, updated_at = %s WHERE id = %d",
+				"UPDATE {$calls} SET status = %s, updated_at = %s WHERE id = %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names come from SPBN_Schema, not input; every value stays bound.
 				'cancelled',
 				gmdate( 'Y-m-d H:i:s' ),
 				$call_id
@@ -387,6 +385,7 @@ class SPBN_Spares {
 		global $wpdb;
 		$tables = SPBN_Schema::tables();
 
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names come from SPBN_Schema, not input; every value stays bound.
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT c.id, c.event_id, c.team_id, c.position, c.needed, c.note, c.status, c.created_by, c.created_at, c.updated_at, r.player_id
@@ -400,6 +399,7 @@ class SPBN_Spares {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		$out = array();
 		foreach ( (array) $rows as $row ) {
@@ -420,6 +420,7 @@ class SPBN_Spares {
 		global $wpdb;
 		$tables = SPBN_Schema::tables();
 
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names come from SPBN_Schema, not input; every value stays bound.
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT r.user_id, r.player_id, c.id AS call_id, c.team_id, c.position
@@ -433,6 +434,7 @@ class SPBN_Spares {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		$out = array();
 		foreach ( (array) $rows as $row ) {
@@ -511,9 +513,7 @@ class SPBN_Spares {
 		return $pool;
 	}
 
-	/* --------------------------------------------------------------------
-	 * Internals
-	 * ----------------------------------------------------------------- */
+	// ---- Internals ----
 
 	/**
 	 * @return array|WP_Error
@@ -529,7 +529,13 @@ class SPBN_Spares {
 
 		$count = self::accepted_count( $call_id );
 		if ( 'accepted' === self::response_status( $call_id, $user_id ) ) {
-			return array_merge( $call, array( 'accepted' => $count, 'filled_now' => false ) );
+			return array_merge(
+				$call,
+				array(
+					'accepted' => $count,
+					'filled_now' => false,
+				)
+			);
 		}
 
 		$verdict = self::apply_accept( $call, $count );
@@ -537,6 +543,7 @@ class SPBN_Spares {
 			return new WP_Error( 'spbn_full', __( 'That spare call is already full or closed.', 'sportspress-bench' ), array( 'status' => 409 ) );
 		}
 
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names come from SPBN_Schema, not input; every value stays bound.
 		$written = $wpdb->query(
 			$wpdb->prepare(
 				"INSERT INTO {$tables['spare_responses']} (call_id, user_id, player_id, status, created_at)
@@ -549,6 +556,7 @@ class SPBN_Spares {
 				gmdate( 'Y-m-d H:i:s' )
 			)
 		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		if ( false === $written ) {
 			return self::db_error();
 		}
@@ -585,7 +593,7 @@ class SPBN_Spares {
 
 		$changed = $wpdb->query(
 			$wpdb->prepare(
-				"UPDATE {$responses} SET status = %s WHERE call_id = %d AND user_id = %d AND status = %s",
+				"UPDATE {$responses} SET status = %s WHERE call_id = %d AND user_id = %d AND status = %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names come from SPBN_Schema, not input; every value stays bound.
 				'withdrawn',
 				$call_id,
 				$user_id,
@@ -630,7 +638,7 @@ class SPBN_Spares {
 
 		return $wpdb->query(
 			$wpdb->prepare(
-				"UPDATE {$calls} SET status = %s, updated_at = %s WHERE id = %d AND status = %s",
+				"UPDATE {$calls} SET status = %s, updated_at = %s WHERE id = %d AND status = %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names come from SPBN_Schema, not input; every value stays bound.
 				$to,
 				gmdate( 'Y-m-d H:i:s' ),
 				$call_id,
@@ -652,7 +660,7 @@ class SPBN_Spares {
 		$responses = SPBN_Schema::tables()['spare_responses'];
 
 		return (string) $wpdb->get_var(
-			$wpdb->prepare( "SELECT status FROM {$responses} WHERE call_id = %d AND user_id = %d", $call_id, $user_id )
+			$wpdb->prepare( "SELECT status FROM {$responses} WHERE call_id = %d AND user_id = %d", $call_id, $user_id ) // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names come from SPBN_Schema, not input; every value stays bound.
 		);
 	}
 
@@ -770,9 +778,16 @@ class SPBN_Spares {
 
 		$eligible = array();
 		foreach ( $prefs_by_user as $user_id => $prefs ) {
-			$user_teams = array_values( array_unique( array_filter( (array) ( $teams_by_user[ $user_id ] ?? array() ), function ( $team_id ) use ( $season_teams ) {
-				return isset( $season_teams[ $team_id ] );
-			} ) ) );
+			$user_teams = array_values(
+				array_unique(
+					array_filter(
+						(array) ( $teams_by_user[ $user_id ] ?? array() ),
+						function ( $team_id ) use ( $season_teams ) {
+							return isset( $season_teams[ $team_id ] );
+						}
+					)
+				)
+			);
 
 			$own_starts = array();
 			foreach ( $user_teams as $team_id ) {
