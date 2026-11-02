@@ -58,6 +58,9 @@ function spbn_reset() {
 	$GLOBALS['spbn_lock_calls'] = array(); // SPAT_Lock::with keys, in call order.
 	$GLOBALS['spbn_lock_held']  = false;   // true: the lock is held elsewhere.
 	$GLOBALS['spbn_lock_race']  = null;    // callable run after the lock is taken, before the callback.
+	$GLOBALS['spbn_transients']        = array();
+	$GLOBALS['spbn_transient_reads']   = array();
+	$GLOBALS['spbn_transient_writes']  = array();
 	$GLOBALS['spbn_meta_cache_primed'] = array();
 	$GLOBALS['spbn_user_queries']      = array();
 	$GLOBALS['wpdb']            = new SPBN_Test_WPDB();
@@ -675,6 +678,37 @@ function wp_mail( $to, $subject, $message, $headers = '' ) {
 		'headers' => $headers,
 	);
 	return $GLOBALS['spbn_mail_ok'];
+}
+
+/* ------------------------------------------------------------------------
+ * URLs, escaping and transients (app shell and REST)
+ * --------------------------------------------------------------------- */
+
+function esc_attr( $text ) {
+	return htmlspecialchars( (string) $text, ENT_QUOTES, 'UTF-8' );
+}
+
+function esc_url( $url ) {
+	return htmlspecialchars( (string) $url, ENT_QUOTES, 'UTF-8' );
+}
+
+function esc_url_raw( $url ) {
+	return (string) $url;
+}
+
+function wp_parse_url( $url, $component = -1 ) {
+	return parse_url( $url, $component );
+}
+
+function get_transient( $key ) {
+	$GLOBALS['spbn_transient_reads'][] = $key;
+	return $GLOBALS['spbn_transients'][ $key ] ?? false;
+}
+
+function set_transient( $key, $value, $ttl = 0 ) {
+	$GLOBALS['spbn_transient_writes'][] = array( $key, $ttl );
+	$GLOBALS['spbn_transients'][ $key ] = $value;
+	return true;
 }
 
 /**
