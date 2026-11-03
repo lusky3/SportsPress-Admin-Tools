@@ -65,6 +65,7 @@ function sppa_reset() {
 	$GLOBALS['sppa_posts_primed']      = array(); // _prime_post_caches / update_object_term_cache id lists.
 	$GLOBALS['sppa_cron']              = array(); // hook => [ time, recurrence ].
 	$GLOBALS['sppa_user_queries']      = array();
+	$GLOBALS['sppa_roles']             = array(); // role => SPPA_Test_Role.
 	$GLOBALS['wpdb']            = new SPPA_Test_WPDB();
 }
 
@@ -790,6 +791,39 @@ function wp_mail( $to, $subject, $message, $headers = '' ) {
 		'headers' => $headers,
 	);
 	return $GLOBALS['sppa_mail_ok'];
+}
+
+/* Roles: add_role / get_role / remove_role over $GLOBALS['sppa_roles']. */
+class SPPA_Test_Role {
+	public $name;
+	public $display_name;
+	public $capabilities;
+
+	public function __construct( $name, $display_name, array $capabilities ) {
+		$this->name         = $name;
+		$this->display_name = $display_name;
+		$this->capabilities = $capabilities;
+	}
+
+	public function add_cap( $cap, $grant = true ) {
+		$this->capabilities[ $cap ] = $grant;
+	}
+}
+
+function get_role( $role ) {
+	return $GLOBALS['sppa_roles'][ $role ] ?? null;
+}
+
+function add_role( $role, $display_name, $capabilities = array() ) {
+	if ( isset( $GLOBALS['sppa_roles'][ $role ] ) ) {
+		return null; // Like core: an existing role is not replaced.
+	}
+	$GLOBALS['sppa_roles'][ $role ] = new SPPA_Test_Role( $role, $display_name, (array) $capabilities );
+	return $GLOBALS['sppa_roles'][ $role ];
+}
+
+function remove_role( $role ) {
+	unset( $GLOBALS['sppa_roles'][ $role ] );
 }
 
 /* ------------------------------------------------------------------------

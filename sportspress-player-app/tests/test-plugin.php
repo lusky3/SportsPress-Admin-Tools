@@ -85,6 +85,16 @@ foreach ( $GLOBALS['sppa_hooks_registered']['activate'] as $cb ) {
 sppa_assert( 1 === preg_match( '/^[a-f0-9]{32}$/', get_post_meta( 101, '_sppa_fingerprint', true ) ), 'activating with the module on baselines an upcoming game that predates the Player App' );
 sppa_assert( array() === $GLOBALS['wpdb']->inserts, 'and logs no change for it' );
 sppa_assert( array() !== sppa_stored_rules(), 'activation stores the /my-arl/ rules' );
+sppa_assert( null !== get_role( 'sppa_timekeeper' ) && true === get_role( 'sppa_timekeeper' )->capabilities['sppa_keep_time'], 'activation adds the ARL Timekeeper role' );
+
+echo "\n=== the role is re-added after an upgrade ===\n\n";
+
+// Activation with the module on loaded the app, which hooked init.
+sppa_assert( in_array( array( 'SPPA_Access', 'maybe_install_role' ), $GLOBALS['sppa_actions']['init'] ?? array(), true ), 'with the module on, init checks the role version' );
+remove_role( 'sppa_timekeeper' );
+update_option( 'sppa_role_version', '0.0.1-old' );
+do_action( 'init' );
+sppa_assert( null !== get_role( 'sppa_timekeeper' ), 'and re-adds the role when the stored version is behind' );
 
 echo "\n=== enabling the module baselines ===\n\n";
 
@@ -141,5 +151,10 @@ sppa_assert( array() === sppa_stored_rules(), 'deactivating removes the /my-arl/
 sppa_assert( isset( get_option( 'rewrite_rules' )['^shop/?$'] ), 'and keeps everyone else\'s' );
 sppa_assert( false === get_option( 'sppa_rewrite_version', false ), 'and deletes sppa_rewrite_version (a later activation flushes again)' );
 sppa_assert( ! isset( $GLOBALS['sppa_cron']['sppa_baseline'] ), 'and clears the baseline cron' );
+SPPA_Access::install_role();
+foreach ( $GLOBALS['sppa_hooks_registered']['deactivate'] as $cb ) {
+	call_user_func( $cb );
+}
+sppa_assert( null !== get_role( 'sppa_timekeeper' ), 'deactivating keeps the ARL Timekeeper role (uninstall removes it)' );
 
 sppa_done();

@@ -8,6 +8,10 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 	exit;
 }
 
+// The timekeeper role grants only this plugin's capability, which nothing
+// checks once the plugin is gone; it goes whether or not data is kept.
+remove_role( 'sppa_timekeeper' );
+
 if ( ! get_option( 'spat_remove_data_on_uninstall', '0' ) ) {
 	return;
 }
