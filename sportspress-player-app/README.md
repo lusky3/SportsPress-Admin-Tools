@@ -5,11 +5,13 @@ The Player App is a child plugin of SportsPress Admin Tools. It serves a small i
 the URL are settings (see "Name and address"). A logged-in player sees their next game, their season schedule and
 their roster, says whether they are playing (In / Out / Maybe) for each game, and can call a spare
 when the team is short. Each player also gets a personal calendar feed that follows reschedules.
-Organizers get a "Tonight" board for game nights.
+Organizers get a "Tonight" board for game nights, and timekeepers can keep the score live from the
+bench (see "Live scorekeeping").
 
-The Player App only reads SportsPress data. It never edits games, scores or rosters. It stores its own data
-in four custom tables (availability, spare calls, spare responses, change log) plus a little user
-and post meta.
+The Player App reads SportsPress data and writes to it in one place only: when a timekeeper taps
+**Finish game**, the game's result and player G / A / PIM are written the way the score-sheet plugin
+writes them. It never edits games or rosters. It stores its own data in five custom tables
+(availability, spare calls, spare responses, change log, game log) plus a little user and post meta.
 
 ## Requirements
 
@@ -127,7 +129,74 @@ Users with the `manage_sportspress` capability (the same gate as the League Mana
 **Tonight** tab. A date stepper lists that day's games with the time and rink, both sides'
 in / out / no-reply counts, goalies in, open spare calls and whether a result has been entered.
 Organizers can also open any game, see both sides' availability lists, and post a spare call for a
-team. A game changed in the last 14 days is flagged "Changed" on the board.
+team. A game changed in the last 14 days is flagged "Changed" on the board. A game a timekeeper is logging shows
+its live or final score, with a "Needs review" count for serious penalties.
+
+## Live scorekeeping
+
+Timekeepers log a game as it happens on their phone: goals (scorer and up to two assists),
+penalties (player, offense, minutes) and periods, with a running score and an undo. Players in the
+game see the live score on their Game screen; organizers see it on Tonight.
+
+**Who keeps time.** Activating the plugin adds an **ARL Timekeeper** role with only `read` and the
+`sppa_keep_time` capability. Give it in **Users** to whoever sits at the bench; they do not need to
+be a linked player. Anyone with `edit_others_sp_events` or `manage_sportspress` can keep time too.
+The role is re-added once after an update that changes it, kept when the plugin is deactivated, and
+removed when the plugin is deleted.
+
+**The log.** Every tap is an entry in the `sppa_game_log` table, written first on the phone and sent
+when there is signal. Each entry carries an id made on the phone, so sending it twice stores it once,
+and two timekeepers on one game never lose each other's entries. Undo marks an entry voided (who and
+when are kept); nothing is deleted. The score and player totals are always worked out from the
+entries that are not voided. Periods 1 to 3 are regulation, 4 is overtime and 5 is the shootout: a
+shootout goal adds nothing to a player's goals, and the shootout winner gets one goal added to their
+score, as SportsPress records it. A player who is not on the team's list can be logged by jersey
+number; the goal still counts for the team but no player gets it.
+
+**Penalties.** The offense list is Minor (2), Double minor (4), Major (5), Misconduct (10), Game
+misconduct (10), Gross misconduct (10), Match (5), Fighting (5), Ejection (10) and Other (2), in
+minutes by default; a timekeeper can change the minutes (1 to 20). Game misconduct, gross
+misconduct, match, fighting and ejection are flagged for review and counted on Tonight. Nothing else
+happens: no discipline notice is created and nobody is emailed from a penalty. The Player App sends
+no email at all from live scorekeeping.
+
+**Finish game** writes the result to SportsPress: the score through SportsPress's own
+`SP_Event::update_main_results()` (win / loss / tie outcomes, the site's main result key), the
+`overtimeloss` outcome on a side that lost in overtime or a shootout, and each player's g / a / pim in
+the game's box score, overwriting rather than adding so finishing again gives the same numbers. A
+player who is not on the team (and is not an accepted spare for it) is skipped and listed in the
+response. It then fires `save_post_sp_event` and bumps `spem_standings_cache_version`, so standings
+and stats update as they do after a score sheet. Tied games are allowed.
+
+- If the game already has a result that the Player App did not write (a convener keyed it, or a score
+  sheet was applied), Finish stops with `sppa_result_exists` and shows that result; the timekeeper
+  must confirm to replace it.
+- Cancelled or postponed games cannot be logged or finished.
+- A finished game is closed to timekeepers. An organizer can **reopen** it: the SportsPress result
+  stays until the next Finish replaces it, without the confirmation, as long as nobody changed it in
+  between.
+
+Event meta: `_sppa_live` is `live` from the first entry and `final` after Finish; `_sppa_finalized`
+records the last Finish (who, when, the score and the players written).
+
+**Who sees what.** The live score, period and recent plays (goals, penalties, period changes) are
+visible to the two teams, accepted spares, organizers and timekeepers. Notes, review flags and who
+recorded an entry are for timekeepers and organizers only.
+
+**REST routes** (`sppa/v1`, cookie auth with the `X-WP-Nonce` header like every other route):
+
+| Route | Who |
+|---|---|
+| `GET /keep/night?date=` | timekeepers: the night's games with both rosters and the log summary |
+| `GET /games/{id}/log` | timekeepers: the full log, voided entries included, and the totals |
+| `POST /games/{id}/log` | timekeepers: up to 50 entries, each answered created, duplicate or rejected |
+| `POST /games/{id}/log/{uid}/void` | timekeepers (their own entries); organizers (any) |
+| `POST /games/{id}/finish` | timekeepers: `{"overwrite": true}` replaces a result someone else recorded |
+| `POST /games/{id}/reopen` | organizers |
+| `GET /games/{id}/live` | the game's players, accepted spares, organizers and timekeepers |
+
+`/me` adds `is_timekeeper`; `/me/games` and `/ops/night` rows add `live` (status, score, period, or
+null), and `/ops/night` rows add `needs_review_count`.
 
 ## Privacy
 
@@ -153,13 +222,16 @@ team. A game changed in the last 14 days is flagged "Changed" on the board.
   one from the `sppa_mail_to` filter, which receives the default and has the last word. An invalid
   address stops these batches from being sent.
 - **What is stored.** Availability, spare calls and responses, a log of game changes, each user's
-  calendar token and spare preferences, and a fingerprint of each game used to detect changes.
+  calendar token and spare preferences, a fingerprint of each game used to detect changes, and the
+  live scorekeeping log (entries with the timekeeper who recorded or voided them).
 - **Uninstall.** Deactivating removes no data, only the `/my-arl/` routes and the scheduled
   baseline job (turning the module off drops the routes too). Deleting the plugin removes its data only if
   **Remove Data on Uninstall** is on in SportsPress Admin Tools settings (the
-  `spat_remove_data_on_uninstall` option). With it on, the Player App drops its four tables, every `sppa_*`
+  `spat_remove_data_on_uninstall` option). With it on, the Player App drops its five tables, every `sppa_*`
   option and transient, the `sppa_ical_token` and `sppa_spare_prefs` user meta, and the
-  `_sppa_fingerprint` / `_sppa_snapshot` event meta. With it off, all of that is left in place.
+  `_sppa_fingerprint`, `_sppa_snapshot`, `_sppa_live` and `_sppa_finalized` event meta. With it off,
+  all of that is left in place. Results that Finish wrote to SportsPress always stay. The ARL
+  Timekeeper role is removed on delete either way.
 
 ## Changed games
 
