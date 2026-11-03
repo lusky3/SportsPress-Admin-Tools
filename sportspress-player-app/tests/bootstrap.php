@@ -190,8 +190,12 @@ class SPPA_Test_WPDB {
 		}
 		$this->insert_id = count( $this->inserts );
 		if ( $this->insert_handler ) {
-			// A stateful fake may keep the row and choose its id.
-			$this->insert_id = (int) call_user_func( $this->insert_handler, $table, $data, $this->insert_id );
+			// A stateful fake may keep the row and choose its id, or refuse it (false, like a unique key).
+			$id = call_user_func( $this->insert_handler, $table, $data, $this->insert_id );
+			if ( false === $id ) {
+				return false;
+			}
+			$this->insert_id = (int) $id;
 		}
 		return 1;
 	}
@@ -582,6 +586,15 @@ function sppa_fired( $tag ) {
 
 function wp_slash( $value ) {
 	return is_array( $value ) ? array_map( 'wp_slash', $value ) : ( is_string( $value ) ? addslashes( $value ) : $value );
+}
+
+function get_post_field( $field, $id ) {
+	$post = get_post( $id );
+	return $post && isset( $post->$field ) ? $post->$field : '';
+}
+
+function sanitize_key( $key ) {
+	return preg_replace( '/[^a-z0-9_\-]/', '', strtolower( (string) $key ) );
 }
 
 function get_post_type( $id ) {
