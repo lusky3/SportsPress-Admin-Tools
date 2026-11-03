@@ -7,13 +7,16 @@ export class ApiError extends Error {
 	readonly code: string;
 	/** `data.reason` from the WP_Error, e.g. 'busy' on a 403 sppa_not_eligible. */
 	readonly reason: string;
+	/** The WP_Error's `data`, e.g. `{ result: { home, away } }` on a 409 sppa_result_exists. */
+	readonly data: Record<string, unknown>;
 
-	constructor( status: number, code: string, message: string, reason = '' ) {
+	constructor( status: number, code: string, message: string, reason = '', data: Record<string, unknown> = {} ) {
 		super( message );
 		this.name = 'ApiError';
 		this.status = status;
 		this.code = code;
 		this.reason = reason;
+		this.data = data;
 	}
 }
 
@@ -126,7 +129,7 @@ async function readError( response: Response ): Promise<ApiError> {
 	} catch {
 		// Not JSON (a proxy error page): fall back to the status.
 	}
-	return new ApiError( response.status, body.code || 'http_error', body.message || response.statusText || 'The request failed.', body.data?.reason || '' );
+	return new ApiError( response.status, body.code || 'http_error', body.message || response.statusText || 'The request failed.', body.data?.reason || '', body.data ?? {} );
 }
 
 interface Raw<T> {
