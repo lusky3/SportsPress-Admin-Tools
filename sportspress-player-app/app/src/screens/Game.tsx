@@ -1,8 +1,9 @@
 import { CountBar } from '../components/CountBar';
 import { GameHero } from '../components/GameCard';
+import { LiveCard, useLive } from '../components/LiveCard';
 import { Problem, Skeleton } from '../components/Problem';
 import { gameIcsHref } from '../lib/calendar';
-import { isCalledOff, isPast } from '../lib/games';
+import { isCalledOff, isPast, liveWindow } from '../lib/games';
 import { Link } from '../router';
 import type { AvailabilityPlayer, Me, SideAvailability } from '../types';
 import { GameActions } from './Next';
@@ -59,6 +60,7 @@ export function Game( { id, me }: { id: string; me: Me } ) {
 	const game = useGame( Number( id ) || 0 );
 	const now = new Date();
 	const d = game.data && game.data.id === Number( id ) ? game.data : undefined;
+	const live = useLive( Number( id ), Boolean( d && liveWindow( d, now ) ) );
 
 	let body;
 	if ( ! d ) {
@@ -74,6 +76,7 @@ export function Game( { id, me }: { id: string; me: Me } ) {
 				<GameHero game={ d } now={ now } title={ d.as_spare ? 'Your spare game' : 'Game' }>
 					<GameActions game={ d } detail={ d } me={ me } now={ now } answer={ game.answer } addCall={ game.addCall } dropCall={ game.dropCall } alwaysOfferCall />
 				</GameHero>
+				<LiveCard live={ live } />
 				{ ics ? (
 					<a className="btn-link" href={ ics } download={ `arl-game-${ d.id }.ics` }>
 						Add this game to your calendar

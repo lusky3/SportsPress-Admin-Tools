@@ -5,7 +5,9 @@ import { CountBar } from '../components/CountBar';
 import { EmptyState } from '../components/EmptyState';
 import { GameHero, GameRow } from '../components/GameCard';
 import { InstallTip } from '../components/InstallTip';
+import { useLive } from '../components/LiveCard';
 import { Problem, Skeleton } from '../components/Problem';
+import { liveText } from '../lib/live';
 import { CallForm, CallList } from '../components/SpareCalls';
 import { isCalledOff, isPast, isShort, nextGame } from '../lib/games';
 import type { Game, GameDetail, Me, Paged } from '../types';
@@ -102,8 +104,12 @@ export function Next( { me }: { me: Me } ) {
 	const games = useResource<Paged<Game>>( me.linked ? '/me/games' : '' );
 	const now = new Date();
 	const list = games.data?.data ?? [];
-	const next = nextGame( list, now );
+	// A game being played right now (a timekeeper is logging it) takes the hero, with its score.
+	const playing = list.find( ( g ) => g.live?.status === 'live' && ! isCalledOff( g ) );
+	const next = playing ?? nextGame( list, now );
 	const game = useGame( next?.id ?? 0 );
+	const polled = useLive( playing?.id ?? 0, Boolean( playing ) );
+	const live = polled && polled.status !== 'none' ? { status: polled.status, score: polled.score, period: polled.period } : playing?.live;
 
 	if ( ! me.linked ) {
 		return <Unlinked />;
@@ -124,7 +130,8 @@ export function Next( { me }: { me: Me } ) {
 		);
 		body = (
 			<>
-				<GameHero game={ shown } now={ now } title="Next game">
+				<GameHero game={ shown } now={ now } title={ playing ? 'Playing now' : 'Next game' }>
+					{ live ? <p className="hero__live">{ liveText( live, ! shown.is_home ) }</p> : null }
 					<GameActions game={ shown } detail={ game.data?.id === next.id ? game.data : undefined } me={ me } now={ now } answer={ game.answer } addCall={ game.addCall } dropCall={ game.dropCall } />
 				</GameHero>
 				{ after ? (
