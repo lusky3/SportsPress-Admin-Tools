@@ -15,6 +15,9 @@ class SPPA_Game_Log_Store {
 
 	const LOCK_TTL_SECONDS = 10;
 
+	/** Finish and reopen run other plugins' save_post_sp_event hooks: a longer hold. */
+	const FINISH_LOCK_TTL_SECONDS = 30;
+
 	const COLUMNS = 'id, event_id, uid, type, team_id, period, clock, player_id, assist1_id, assist2_id, jersey, minutes, offense, flags, text, needs_review, recorded_by, recorded_at, voided_by, voided_at';
 
 	public static function table(): string {
@@ -25,12 +28,13 @@ class SPPA_Game_Log_Store {
 	/**
 	 * Run a critical section under the game's log lock.
 	 *
-	 * @param int      $event_id Game.
-	 * @param callable $callback Must do its own reads.
+	 * @param int      $event_id    Game.
+	 * @param callable $callback    Must do its own reads.
+	 * @param int      $ttl_seconds How long the lock may be held.
 	 * @return mixed|WP_Error The callback's value, or 409 sppa_log_locked when busy.
 	 */
-	public static function locked( int $event_id, callable $callback ) {
-		$result = SPAT_Lock::with( 'sppa_log_' . $event_id, self::LOCK_TTL_SECONDS, $callback );
+	public static function locked( int $event_id, callable $callback, int $ttl_seconds = self::LOCK_TTL_SECONDS ) {
+		$result = SPAT_Lock::with( 'sppa_log_' . $event_id, $ttl_seconds, $callback );
 		if ( false === $result ) {
 			return new WP_Error( 'sppa_log_locked', __( 'Someone else is updating this game right now. Please try again.', 'sportspress-player-app' ), array( 'status' => 409 ) );
 		}

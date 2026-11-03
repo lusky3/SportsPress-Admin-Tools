@@ -67,8 +67,7 @@ class SPPA_Result_Writer {
 
 		$existing = self::existing_result( $event_id, $team_ids );
 		$final    = self::finalized( $event_id );
-		$ours     = null !== $final && null !== $existing && $existing['home'] === $final['home'] && $existing['away'] === $final['away'];
-		if ( null !== $existing && ! $ours && ! $overwrite ) {
+		if ( null !== $existing && ! self::is_ours( $event_id, $team_ids, $existing, $final ) && ! $overwrite ) {
 			return new WP_Error(
 				'sppa_result_exists',
 				__( 'This game already has a result. Confirm to replace it.', 'sportspress-player-app' ),
@@ -107,22 +106,26 @@ class SPPA_Result_Writer {
 			update_post_meta( $event_id, 'sp_results', $results );
 		}
 
-		$skipped = array();
-		$written = self::apply_players( $event_id, $team_ids, (array) ( $derived['players'] ?? array() ), $extra_players, (array) ( $final['players'] ?? array() ), $skipped );
-
-		$finalized = array(
-			'by'      => (int) get_current_user_id(),
-			'at'      => gmdate( 'Y-m-d H:i:s' ),
-			'home'    => $score['home'],
-			'away'    => $score['away'],
-			'players' => $written,
-		);
-		update_post_meta( $event_id, self::FINAL_META, $finalized );
+		$merged = self::merge_players( $event_id, $team_ids, (array) ( $derived['players'] ?? array() ), $extra_players, (array) ( $final['players'] ?? array() ) );
+		update_post_meta( $event_id, 'sp_players', $merged['players'] );
 		update_post_meta( $event_id, self::LIVE_META, 'final' );
 
 		// SportsPress computes standings on read; nudge the caches other tools keep.
 		do_action( 'save_post_sp_event', $event_id, $post, true );
 		update_option( 'spem_standings_cache_version', (int) get_option( 'spem_standings_cache_version', 0 ) + 1 );
+
+		// Recorded after the hooks, so what they leave in sp_players is what "ours" means.
+		$written   = $merged['written'];
+		$skipped   = $merged['skipped'];
+		$finalized = array(
+			'by'         => (int) get_current_user_id(),
+			'at'         => gmdate( 'Y-m-d H:i:s' ),
+			'home'       => $score['home'],
+			'away'       => $score['away'],
+			'players'    => $written,
+			'stats_hash' => self::stats_hash( $event_id, $team_ids ),
+		);
+		update_post_meta( $event_id, self::FINAL_META, $finalized );
 
 		return array(
 			'event_id'        => $event_id,
@@ -154,6 +157,34 @@ class SPPA_Result_Writer {
 			update_post_meta( $event_id, self::FINAL_META, $final );
 		}
 		return array( 'status' => 'live' );
+	}
+
+	/**
+	 * Whether SportsPress holds exactly what a Finish of this log would write
+	 * (score and the box-score rows). False means the log changed since the last
+	 * Finish (an organizer added to a final game) or someone edited the result.
+	 *
+	 * @param int   $event_id      Game.
+	 * @param array $derived       SPPA_Game_Log::derive() output.
+	 * @param array $extra_players As for apply().
+	 */
+	public static function in_sync( int $event_id, array $derived, array $extra_players = array() ): bool {
+		$team_ids = self::team_ids( $event_id );
+		if ( count( $team_ids ) < 2 ) {
+			return true;
+		}
+		$existing = self::existing_result( $event_id, $team_ids );
+		$score    = array(
+			'home' => max( 0, (int) ( $derived['score'][ $team_ids[0] ] ?? 0 ) ),
+			'away' => max( 0, (int) ( $derived['score'][ $team_ids[1] ] ?? 0 ) ),
+		);
+		if ( $existing !== $score ) {
+			return false;
+		}
+		$final   = self::finalized( $event_id );
+		$current = get_post_meta( $event_id, 'sp_players', true );
+		$merged  = self::merge_players( $event_id, $team_ids, (array) ( $derived['players'] ?? array() ), $extra_players, (array) ( $final['players'] ?? array() ) );
+		return $merged['players'] == ( is_array( $current ) ? $current : array() ); // phpcs:ignore Universal.Operators.StrictComparisons.LooseEqual -- stored values may come back as numeric strings.
 	}
 
 	/** 'none' (nothing logged yet), 'live' or 'final'. */
@@ -192,10 +223,12 @@ class SPPA_Result_Writer {
 	}
 
 	/**
-	 * The recorded main result {home, away}, or null while either side is blank.
+	 * The recorded main result {home, away}, or null when both sides are blank.
+	 * A half-entered result (one side blank, shown as null) still counts.
 	 *
 	 * @param int   $event_id Game.
 	 * @param int[] $team_ids Home first.
+	 * @return array{home:int|null,away:int|null}|null
 	 */
 	public static function existing_result( int $event_id, array $team_ids ): ?array {
 		$results = get_post_meta( $event_id, 'sp_results', true );
@@ -204,25 +237,67 @@ class SPPA_Result_Writer {
 		$key     = '' === $key ? 'goals' : $key;
 		$home    = SPPA_Event_Presenter::main_result( $results[ (int) ( $team_ids[0] ?? 0 ) ] ?? null, $key );
 		$away    = SPPA_Event_Presenter::main_result( $results[ (int) ( $team_ids[1] ?? 0 ) ] ?? null, $key );
-		return null === $home || null === $away ? null : array(
+		return null === $home && null === $away ? null : array(
 			'home' => $home,
 			'away' => $away,
 		);
 	}
 
 	/**
-	 * Read-merge-write sp_players. Players the last Finish wrote who no longer
-	 * have stats (their entry was voided) are set back to zero.
+	 * Whether the recorded result is the one the last Finish wrote: same score,
+	 * and the box-score rows of both teams hash the same as right after it.
+	 *
+	 * @param int        $event_id Game.
+	 * @param int[]      $team_ids Home first.
+	 * @param array      $existing existing_result().
+	 * @param array|null $final    finalized().
+	 */
+	private static function is_ours( int $event_id, array $team_ids, array $existing, ?array $final ): bool {
+		return null !== $final
+			&& $existing['home'] === $final['home']
+			&& $existing['away'] === $final['away']
+			&& isset( $final['stats_hash'] )
+			&& self::stats_hash( $event_id, $team_ids ) === $final['stats_hash'];
+	}
+
+	/**
+	 * A fingerprint of the g/a/pim of every sp_players row of the game's teams.
+	 *
+	 * @param int   $event_id Game.
+	 * @param int[] $team_ids Home first.
+	 */
+	public static function stats_hash( int $event_id, array $team_ids ): string {
+		$players = get_post_meta( $event_id, 'sp_players', true );
+		$players = is_array( $players ) ? $players : array();
+		$rows    = array();
+		foreach ( $team_ids as $team_id ) {
+			$team = is_array( $players[ $team_id ] ?? null ) ? $players[ $team_id ] : array();
+			ksort( $team );
+			foreach ( $team as $player_id => $row ) {
+				$out = array( (int) $team_id, (int) $player_id );
+				foreach ( self::STATS as $slug ) {
+					$value = is_array( $row ) ? ( $row[ $slug ] ?? '' ) : '';
+					$out[] = '' === $value || null === $value ? null : (int) $value;
+				}
+				$rows[] = $out;
+			}
+		}
+		return md5( (string) wp_json_encode( $rows ) );
+	}
+
+	/**
+	 * sp_players with the log merged in (not saved). Players the last Finish
+	 * wrote who no longer have stats (their entry was voided) are set back to zero.
 	 *
 	 * @param int   $event_id      Game.
 	 * @param int[] $team_ids      Home first.
 	 * @param array $rows          team id => player id => {g,a,pim}.
 	 * @param array $extra_players team id => player ids allowed besides current players.
 	 * @param array $previous      team id => player ids the last Finish wrote.
-	 * @param array $skipped       Out: {player_id, team_id, reason} per refused row.
-	 * @return array team id => player ids written.
+	 * @return array{players:array,written:array,skipped:array}
 	 */
-	private static function apply_players( int $event_id, array $team_ids, array $rows, array $extra_players, array $previous, array &$skipped ): array {
+	private static function merge_players( int $event_id, array $team_ids, array $rows, array $extra_players, array $previous ): array {
+		$skipped = array();
 		$players = get_post_meta( $event_id, 'sp_players', true );
 		if ( ! is_array( $players ) ) {
 			$players = array();
@@ -283,8 +358,11 @@ class SPPA_Result_Writer {
 			}
 		}
 
-		update_post_meta( $event_id, 'sp_players', $players );
-		return $written;
+		return array(
+			'players' => $players,
+			'written' => $written,
+			'skipped' => $skipped,
+		);
 	}
 
 	/** Why a player's stats cannot be written for a team ('' when they can). */
@@ -328,7 +406,7 @@ class SPPA_Result_Writer {
 	}
 
 	/** @return int[] The event's teams, home first. */
-	private static function team_ids( int $event_id ): array {
+	public static function team_ids( int $event_id ): array {
 		$ids = array();
 		foreach ( (array) get_post_meta( $event_id, 'sp_team', false ) as $row ) {
 			$id = is_scalar( $row ) ? absint( $row ) : 0;

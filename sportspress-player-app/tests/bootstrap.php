@@ -56,6 +56,7 @@ function sppa_reset() {
 	$GLOBALS['sppa_mail']       = array(); // wp_mail calls.
 	$GLOBALS['sppa_mail_ok']    = true;
 	$GLOBALS['sppa_lock_calls'] = array(); // SPAT_Lock::with keys, in call order.
+	$GLOBALS['sppa_lock_ttls']  = array(); // and their TTLs.
 	$GLOBALS['sppa_lock_held']  = false;   // true: the lock is held elsewhere.
 	$GLOBALS['sppa_lock_race']  = null;    // callable run after the lock is taken, before the callback.
 	$GLOBALS['sppa_transients']        = array();
@@ -867,6 +868,7 @@ if ( ! class_exists( 'SPAT_Lock' ) ) {
 	class SPAT_Lock {
 		public static function with( $key, $ttl_seconds, callable $callback ) {
 			$GLOBALS['sppa_lock_calls'][] = $key;
+			$GLOBALS['sppa_lock_ttls'][]  = $ttl_seconds;
 			if ( $GLOBALS['sppa_lock_held'] ) {
 				return false;
 			}

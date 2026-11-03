@@ -151,6 +151,49 @@ SPPA_Result_Writer::reopen( 101, 12 );
 $out = SPPA_Result_Writer::apply( 101, sppa_derive( $game ), false );
 sppa_assert( is_wp_error( $out ) && 'sppa_result_exists' === $out->get_error_code(), 'a result changed by someone else after a finish is guarded again' );
 
+// A half-entered result (one side keyed, the other blank) is a result.
+sppa_writer_fixture();
+update_post_meta( 101, 'sp_results', array( 12 => array( 'goals' => '2' ), 7 => array( 'goals' => '' ) ) );
+$out = SPPA_Result_Writer::apply( 101, sppa_derive( $game ), false );
+sppa_assert( is_wp_error( $out ) && 'sppa_result_exists' === $out->get_error_code() && array( 'home' => 2, 'away' => null ) === $out->get_error_data()['result'], 'a half-entered result counts as existing; the blank side is null' );
+sppa_assert( array( 'home' => 2, 'away' => null ) === SPPA_Result_Writer::existing_result( 101, array( 12, 7 ) ), 'existing_result reports it the same way' );
+
+echo "\n=== ours means the same score AND the same box score ===\n\n";
+
+sppa_writer_fixture();
+SPPA_Result_Writer::apply( 101, sppa_derive( $game ), false );
+$final = SPPA_Result_Writer::finalized( 101 );
+sppa_assert( 1 === preg_match( '/^[a-f0-9]{32}$/', $final['stats_hash'] ) && SPPA_Result_Writer::stats_hash( 101, array( 12, 7 ) ) === $final['stats_hash'], '_sppa_finalized keeps a hash of the box score as written' );
+SPPA_Result_Writer::reopen( 101, 12 );
+sppa_assert( ! is_wp_error( SPPA_Result_Writer::apply( 101, sppa_derive( $game ), false ) ), 'reopen, nothing touched: Finish needs no overwrite' );
+SPPA_Result_Writer::reopen( 101, 12 );
+$players            = get_post_meta( 101, 'sp_players', true );
+$players[12][50]['g'] = 1; // A score sheet corrected Pat's goals; the score is the same.
+$players[12][52]['g'] = 1;
+update_post_meta( 101, 'sp_players', $players );
+$out = SPPA_Result_Writer::apply( 101, sppa_derive( $game ), false );
+sppa_assert( is_wp_error( $out ) && 'sppa_result_exists' === $out->get_error_code(), 'reopen, someone edits a player\'s goals with the same score: Finish is 409 sppa_result_exists' );
+sppa_assert( 1 === get_post_meta( 101, 'sp_players', true )[12][50]['g'], 'and their stats are not overwritten' );
+$players               = get_post_meta( 101, 'sp_players', true );
+$players[12][77]       = array( 'number' => '77', 'g' => 0 ); // A row added by someone else.
+$players[12][50]['g']  = 2;
+$players[12][52]['g']  = 0;
+update_post_meta( 101, 'sp_players', $players );
+sppa_assert( is_wp_error( SPPA_Result_Writer::apply( 101, sppa_derive( $game ), false ) ), 'a box-score row someone else added also makes it not ours' );
+
+echo "\n=== in_sync (needs_finish) ===\n\n";
+
+sppa_writer_fixture();
+SPPA_Result_Writer::apply( 101, sppa_derive( $game ), false );
+sppa_assert( true === SPPA_Result_Writer::in_sync( 101, sppa_derive( $game ) ), 'right after Finish, SportsPress holds what the log says' );
+$more = array_merge( $game, array( array( 'player_id' => 52, 'period' => 3 ) ) );
+sppa_assert( false === SPPA_Result_Writer::in_sync( 101, sppa_derive( $more ) ), 'a goal added to the log afterwards: out of sync' );
+$fewer = $game;
+unset( $fewer[3] ); // The penalty is voided: same score, different PIM.
+sppa_assert( false === SPPA_Result_Writer::in_sync( 101, sppa_derive( $fewer ) ), 'a voided penalty (same score): out of sync' );
+SPPA_Result_Writer::apply( 101, sppa_derive( $fewer ), false );
+sppa_assert( true === SPPA_Result_Writer::in_sync( 101, sppa_derive( $fewer ) ), 'and in sync again once finished again' );
+
 echo "\n=== called off, teams ===\n\n";
 
 sppa_writer_fixture();

@@ -28,6 +28,9 @@ class SPPA_REST {
 	/** Recent plays the player-facing live view lists. */
 	const LIVE_RECENT = 20;
 
+	/** A keeper may finish a game from this long before its listed start. */
+	const FINISH_EARLY_SECONDS = 900;
+
 	/** @var array<int,array> team id => roster, per request. */
 	private static array $rosters = array();
 
@@ -191,10 +194,11 @@ class SPPA_REST {
 	}
 
 	/**
-	 * The entries body of POST /games/{id}/log. The schema documents an entry;
-	 * the request-level check is structural (1-50 objects, each with a valid
-	 * uid) so every other problem is answered per entry ("rejected" with a
-	 * reason) and one bad entry never blocks a phone's outbox.
+	 * The entries body of POST /games/{id}/log. The items schema is
+	 * documentation only (the explicit sanitize_callback keeps core from
+	 * validating it); the request-level check is structural (1-50 objects, each
+	 * with a valid uid) so every other problem is answered per entry ("rejected"
+	 * with a reason) and one bad entry never blocks a phone's outbox.
 	 */
 	private static function entries_arg(): array {
 		$id = array(
@@ -261,6 +265,10 @@ class SPPA_REST {
 				),
 			),
 			'validate_callback' => array( __CLASS__, 'is_entries' ),
+			// Required: without its own sanitize_callback, core sanitizes a typed arg with
+			// rest_parse_request_arg, which validates the items schema above and would
+			// turn one bad entry into a 400 for the whole request.
+			'sanitize_callback' => array( __CLASS__, 'pass_through' ),
 		);
 	}
 
@@ -298,6 +306,16 @@ class SPPA_REST {
 			}
 		}
 		return true;
+	}
+
+	/**
+	 * Leave a value as sent; the handler validates it.
+	 *
+	 * @param mixed $value Raw value.
+	 * @return mixed
+	 */
+	public static function pass_through( $value ) {
+		return $value;
 	}
 
 	public static function to_bool( $value ): bool {
@@ -870,12 +888,13 @@ class SPPA_REST {
 
 		$games = array();
 		foreach ( $ids as $event_id ) {
-			$raw = $reader->raw_event( $event_id );
-			if ( null === $raw || count( $raw['team_ids'] ) < 2 || SPPA_Event_Presenter::is_called_off( SPPA_Event_Presenter::present( $raw, 0 )['status'] ) ) {
+			$raw  = $reader->raw_event( $event_id );
+			$game = null === $raw ? null : SPPA_Event_Presenter::present( $raw, 0 );
+			if ( null === $game || count( $raw['team_ids'] ) < 2 || SPPA_Event_Presenter::is_called_off( $game['status'] ) ) {
 				continue;
 			}
 			$rows    = $counts[ $event_id ] ?? array();
-			$games[] = self::keeper_game( $reader, $raw, self::live_summary( $raw, $rows ), self::review_count( $rows ) );
+			$games[] = self::keeper_game( $reader, $raw, self::live_summary( $raw, $rows ), self::review_count( $rows ), $game );
 		}
 
 		$data         = self::list_response( $games )->get_data();
@@ -900,18 +919,19 @@ class SPPA_REST {
 
 		return new WP_REST_Response(
 			array(
-				'game'       => self::keeper_game( $v['reader'], $raw, $live, $derived['needs_review'] ),
-				'status'     => $status,
-				'score'      => array(
+				'game'         => self::keeper_game( $v['reader'], $raw, $live, $derived['needs_review'] ),
+				'status'       => $status,
+				'score'        => array(
 					'home' => $derived['home'],
 					'away' => $derived['away'],
 				),
-				'period'     => $derived['period'],
-				'decided_in' => $derived['decided_in'],
-				'totals'     => self::totals_out( $derived, $names ),
-				'finalized'  => self::finalized_out( $raw['id'] ),
-				'can_reopen' => 'final' === $status && SPPA_Access::can_reopen( $v['organizer'] ),
-				'entries'    => self::entries_out( array_reverse( $all ), $raw, $names, $keeper ),
+				'period'       => $derived['period'],
+				'decided_in'   => $derived['decided_in'],
+				'totals'       => self::totals_out( $derived, $names ),
+				'finalized'    => self::finalized_out( $raw['id'] ),
+				'can_reopen'   => 'final' === $status && SPPA_Access::can_reopen( $v['organizer'] ),
+				'needs_finish' => 'final' === $status && ! SPPA_Result_Writer::in_sync( $raw['id'], $derived, self::keeper_rosters( $v['reader'], $raw ) ),
+				'entries'      => self::entries_out( array_reverse( $all ), $raw, $names, $keeper ),
 			),
 			200
 		);
@@ -1066,6 +1086,9 @@ class SPPA_REST {
 		if ( null === $raw ) {
 			return self::not_found();
 		}
+		if ( ! $v['organizer'] && self::start_ts( $raw ) > time() + self::FINISH_EARLY_SECONDS ) {
+			return new WP_Error( 'sppa_not_started', __( 'This game has not started yet.', 'sportspress-player-app' ), array( 'status' => 409 ) );
+		}
 		$event_id  = (int) $raw['id'];
 		$team_ids  = $raw['team_ids'];
 		$overwrite = (bool) $request->get_param( 'overwrite' );
@@ -1077,7 +1100,8 @@ class SPPA_REST {
 				$derived = SPPA_Game_Log::derive( SPPA_Game_Log_Store::active( $event_id ), $team_ids );
 				$written = SPPA_Result_Writer::apply( $event_id, $derived, $overwrite, $rosters );
 				return is_wp_error( $written ) ? $written : array( $derived, $written );
-			}
+			},
+			SPPA_Game_Log_Store::FINISH_LOCK_TTL_SECONDS
 		);
 		if ( is_wp_error( $out ) ) {
 			return $out;
@@ -1119,7 +1143,8 @@ class SPPA_REST {
 			$event_id,
 			function () use ( $event_id, $user_id ) {
 				return SPPA_Result_Writer::reopen( $event_id, $user_id );
-			}
+			},
+			SPPA_Game_Log_Store::FINISH_LOCK_TTL_SECONDS
 		);
 		if ( is_wp_error( $out ) ) {
 			return $out;
@@ -1182,10 +1207,12 @@ class SPPA_REST {
 
 	/**
 	 * A game as the keeper sees it: home and away with their pick lists, the
-	 * live summary and whether SportsPress already has a result.
+	 * live summary and whether SportsPress already has a result (a half-entered
+	 * one counts, with the blank side null, as Finish's overwrite guard sees it).
 	 */
-	private static function keeper_game( SPPA_Roster_Reader $reader, array $raw, ?array $live, int $review ): array {
-		$game  = SPPA_Event_Presenter::present( $raw, 0 );
+	private static function keeper_game( SPPA_Roster_Reader $reader, array $raw, ?array $live, int $review, ?array $game = null ): array {
+		$game   = $game ?? SPPA_Event_Presenter::present( $raw, 0 );
+		$result = SPPA_Result_Writer::existing_result( (int) $raw['id'], $raw['team_ids'] );
 		$sides = array();
 		$keys  = array(
 			'home' => 'team',
@@ -1203,11 +1230,8 @@ class SPPA_REST {
 			'away'               => $sides['away'],
 			'live'               => $live,
 			'needs_review_count' => $review,
-			'has_result'         => null !== $game['result'],
-			'result'             => null === $game['result'] ? null : array(
-				'home' => $game['result']['for'],
-				'away' => $game['result']['against'],
-			),
+			'has_result'         => null !== $result,
+			'result'             => $result,
 		);
 	}
 

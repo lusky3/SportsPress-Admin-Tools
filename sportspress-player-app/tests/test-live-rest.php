@@ -52,7 +52,9 @@ class SP_Event {
 	}
 }
 
-const SPPA_NIGHT = '2099-11-04';
+// Game 101 started ten minutes ago (a keeper may finish it); SPPA_NIGHT is its local date.
+define( 'SPPA_START', ( new DateTimeImmutable( '-10 minutes', new DateTimeZone( 'America/Toronto' ) ) )->format( 'Y-m-d H:i:00' ) );
+define( 'SPPA_NIGHT', substr( SPPA_START, 0, 10 ) );
 
 /**
  * Ducks (12: Pat 50 #9, Sam 52 #31) v Knights (7: Olive 53 #4, Kit 51 #1) on
@@ -95,8 +97,8 @@ function sppa_live_league() {
 			sppa_add_meta( $list, 'sp_player', (string) $member );
 		}
 	}
-	sppa_event_at( 101, SPPA_NIGHT . ' 21:45:00', 'future', array( 12, 7 ) );
-	sppa_event_at( 102, SPPA_NIGHT . ' 20:00:00', 'future', array( 9, 8 ) );
+	sppa_event_at( 101, SPPA_START, 'publish', array( 12, 7 ) );
+	sppa_event_at( 102, SPPA_START, 'publish', array( 9, 8 ) );
 	sppa_set_meta( 102, 'sp_status', 'cancelled' );
 	sppa_event_at( 103, '2099-11-06 20:00:00', 'future', array( 9, 8 ) );
 	sppa_event_at( 104, '2099-11-08 20:00:00', 'future', array( 7, 12 ) );
@@ -236,11 +238,39 @@ sppa_assert( 'created' === $data['results'][0]['status'] && array( 'home' => 2, 
 $data = sppa_data( sppa_post_log( array( array( 'uid' => 'g4-aaaaaaaa', 'type' => 'goal', 'team_id' => 99, 'period' => 1 ) ) ) );
 sppa_assert( 'duplicate' === $data['results'][0]['status'], 'an entry that no longer passes but is already stored is still a duplicate' );
 
+// Core sanitizes every typed arg against its schema unless the arg has its own
+// sanitize_callback: one bad entry must not turn the whole POST into a 400.
+$bad_entries = array(
+	'invalid_offense'  => array( 'uid' => 'bad-offense1', 'type' => 'penalty', 'team_id' => 7, 'period' => 1, 'player_id' => 53, 'offense' => 'slashing' ),
+	'invalid_period'   => sppa_goal( 'bad-period01', array( 'period' => 6 ) ),
+	'invalid_minutes'  => array( 'uid' => 'bad-minutes1', 'type' => 'penalty', 'team_id' => 7, 'period' => 1, 'player_id' => 53, 'offense' => 'minor', 'minutes' => 25 ),
+	'text_too_long'    => array( 'uid' => 'bad-text0001', 'type' => 'note', 'period' => 1, 'text' => str_repeat( 'x', 141 ) ),
+	'invalid_clock'    => sppa_goal( 'bad-clock001', array( 'clock' => '99:99' ) ),
+	'team_not_on_game' => sppa_goal( 'bad-team0001', array( 'team_id' => null ) ),
+);
+$n = 0;
+foreach ( $bad_entries as $reason => $bad ) {
+	$ok  = sppa_goal( sprintf( 'mixed-ok-%03d', ++$n ), array( 'player_id' => 52 ) );
+	$res = sppa_post_log( array( $ok, $bad ) );
+	sppa_assert(
+		! is_wp_error( $res ) && 200 === $res->get_status() && array( 'created', 'rejected' ) === array_column( sppa_data( $res )['results'], 'status' ) && $reason === sppa_data( $res )['results'][1]['reason'],
+		"a POST with a good entry and one with {$reason}: 200, the good one created, the bad one rejected ({$reason})"
+	);
+}
+$res = sppa_post_log( array( sppa_goal( 'mixed-ok-clk', array( 'player_id' => 52, 'clock' => '' ) ), array( 'uid' => 'bad-noperiod', 'type' => 'goal', 'team_id' => 12, 'player_id' => 50 ) ) );
+sppa_assert( ! is_wp_error( $res ) && array( 'created', 'rejected' ) === array_column( sppa_data( $res )['results'], 'status' ) && null === sppa_data( $res )['results'][0]['entry']['clock'] && 'invalid_period' === sppa_data( $res )['results'][1]['reason'], 'clock "" is accepted as no clock; a missing period is rejected per entry' );
+foreach ( array_keys( $log->rows ) as $id ) {
+	if ( 0 === strpos( $log->rows[ $id ]['uid'], 'mixed-ok-' ) ) {
+		unset( $log->rows[ $id ] ); // Keep the rest of the story's score as it was.
+	}
+}
+
 $GLOBALS['sppa_lock_held'] = true;
 sppa_assert( sppa_err( sppa_post_log( array( sppa_goal( 'g5-aaaaaaaa' ) ) ), 'sppa_log_locked', 409 ), 'a busy game lock is 409 sppa_log_locked' );
 $GLOBALS['sppa_lock_held'] = false;
 
 sppa_assert( sppa_err( sppa_post_log( array() ), 'rest_invalid_param', 400 ), 'no entries is 400' );
+sppa_assert( sppa_err( sppa_call( 'post_log', array( 'id' => 101 ) ), 'rest_missing_callback_param', 400 ), 'a body without entries is 400 rest_missing_callback_param (core\'s required check)' );
 $many = array();
 for ( $i = 0; $i < 51; $i++ ) {
 	$many[] = sppa_goal( sprintf( 'many-%04d', $i ) );
@@ -334,7 +364,10 @@ sppa_assert( 1 === get_post_meta( 101, 'sp_players', true )[7][55]['g'] && array
 sppa_assert( 20 === $data['finalized']['by']['id'] && 'Tess' === $data['finalized']['by']['name'] && 1 === $data['finalized']['home'] && 1 === preg_match( '/Z$/', $data['finalized']['at'] ), 'finalized: who, when (UTC ISO) and the score' );
 sppa_assert( 1 === $data['totals']['penalties'] && 2 === $data['totals']['goals'] && array( 50, 52, 53, 55 ) === array_column( $data['totals']['players'], 'player_id' ), 'the response carries the totals' );
 sppa_assert( 'final' === get_post_meta( 101, '_sppa_live', true ), 'the game is final' );
+$GLOBALS['sppa_lock_ttls'] = array();
 sppa_assert( 200 === sppa_call( 'finish_game', array( 'id' => 101 ) )->get_status(), 'finishing again needs no overwrite (it is our own result)' );
+sppa_assert( array( 30 ) === $GLOBALS['sppa_lock_ttls'], 'Finish holds the game lock for up to 30 s (other plugins\' save hooks run)' );
+sppa_assert( false === sppa_data( sppa_call( 'game_log', array( 'id' => 101 ) ) )['needs_finish'], 'needs_finish is false when SportsPress holds what the log says' );
 
 sppa_assert( sppa_err( sppa_post_log( array( sppa_goal( 'late-goal1' ) ) ), 'sppa_finalized', 409 ), 'a finished game takes no new entries from a keeper' );
 $data = sppa_data( sppa_post_log( array( sppa_goal( 'g3-aaaaaaaa', array( 'team_id' => 7, 'player_id' => 55, 'period' => 2 ) ) ) ) );
@@ -345,7 +378,21 @@ sppa_assert( false === array_column( $log_res['entries'], null, 'uid' )['g1-aaaa
 sppa_login( 12, true );
 $data = sppa_data( sppa_post_log( array( sppa_goal( 'late-goal2' ) ) ) );
 sppa_assert( 'created' === $data['results'][0]['status'] && 'final' === $data['live']['status'], 'an organizer may still add to a finished game (it stays final until finished again)' );
-sppa_assert( true === sppa_data( sppa_call( 'game_log', array( 'id' => 101 ) ) )['can_reopen'], 'an organizer sees can_reopen' );
+$org_log = sppa_data( sppa_call( 'game_log', array( 'id' => 101 ) ) );
+sppa_assert( true === $org_log['can_reopen'], 'an organizer sees can_reopen' );
+sppa_assert( true === $org_log['needs_finish'], 'needs_finish: the final game\'s log no longer matches SportsPress' );
+sppa_assert( 200 === sppa_call( 'finish_game', array( 'id' => 101 ) )->get_status() && false === sppa_data( sppa_call( 'game_log', array( 'id' => 101 ) ) )['needs_finish'], 'finishing again clears it' );
+sppa_keeper();
+$GLOBALS['sppa_lock_ttls'] = array();
+sppa_post_log( array( sppa_goal( 'ttl-check01' ) ) );
+sppa_assert( array( 10 ) === $GLOBALS['sppa_lock_ttls'], 'other log writes hold it for 10 s' );
+
+sppa_keeper();
+$res = sppa_call( 'finish_game', array( 'id' => 104 ) );
+sppa_assert( sppa_err( $res, 'sppa_not_started', 409 ), 'a keeper cannot finish a game that starts more than 15 minutes from now' );
+sppa_login( 12, true );
+sppa_assert( 200 === sppa_call( 'finish_game', array( 'id' => 104 ) )->get_status(), 'an organizer can' );
+sppa_login( 12, true );
 
 sppa_assert( sppa_err( sppa_call( 'finish_game', array( 'id' => 102 ) ), 'sppa_called_off', 409 ), 'a called-off game cannot be finished' );
 $GLOBALS['sppa_lock_held'] = true;
@@ -357,7 +404,7 @@ echo "\n=== POST /games/{id}/reopen ===\n\n";
 sppa_login( 12, true );
 $data = sppa_data( sppa_call( 'reopen_game', array( 'id' => 101 ) ) );
 sppa_assert( array( 'success' => true, 'status' => 'live' ) === $data && 'live' === get_post_meta( 101, '_sppa_live', true ), 'an organizer reopens: live again' );
-sppa_assert( 1 === get_post_meta( 101, 'sp_results', true )[12]['goals'], 'the SportsPress result stays' );
+sppa_assert( 2 === get_post_meta( 101, 'sp_results', true )[12]['goals'], 'the SportsPress result (the last finish, 2-1) stays' );
 sppa_keeper();
 sppa_assert( 'created' === sppa_data( sppa_post_log( array( sppa_goal( 'after-reopen' ) ) ) )['results'][0]['status'], 'keepers can log again' );
 $data = sppa_data( sppa_call( 'finish_game', array( 'id' => 101 ) ) );

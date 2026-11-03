@@ -170,11 +170,16 @@ and stats update as they do after a score sheet. Tied games are allowed.
 
 - If the game already has a result that the Player App did not write (a convener keyed it, or a score
   sheet was applied), Finish stops with `sppa_result_exists` and shows that result; the timekeeper
-  must confirm to replace it.
+  must confirm to replace it. A half-entered result counts, and so does a result whose score matches
+  the last Finish but whose player G / A / PIM were changed since.
+- A timekeeper cannot finish a game that starts more than 15 minutes from now (`sppa_not_started`);
+  organizers can.
 - Cancelled or postponed games cannot be logged or finished.
 - A finished game is closed to timekeepers. An organizer can **reopen** it: the SportsPress result
   stays until the next Finish replaces it, without the confirmation, as long as nobody changed it in
   between.
+- An organizer can still add entries to a finished game; the log then shows that it needs another
+  Finish to reach SportsPress.
 
 Event meta: `_sppa_live` is `live` from the first entry and `final` after Finish; `_sppa_finalized`
 records the last Finish (who, when, the score and the players written).
