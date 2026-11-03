@@ -6,6 +6,7 @@ import '../styles/screens.css';
 import './demo.css';
 import { App } from '../App';
 import { setTransport } from '../api';
+import { setOutbox } from '../lib/outbox';
 import { navigate } from '../router';
 import { _resetResourcesForTests as forgetEverything } from '../useResource';
 import { Banner } from './Banner';
@@ -31,11 +32,14 @@ window.SPPA_BOOT = {
 	siteName: 'ARL',
 };
 
+let server: ReturnType<typeof createDemoServer>;
+
 function start( persona: Persona ): void {
-	const server = createDemoServer( { persona } );
+	server = createDemoServer( { persona } );
 	setTransport( server.fetch );
 	forgetEverything(); // whatever the last person's screens had cached
-	navigate( persona === 'organizer' ? '/tonight' : '/', { replace: true } );
+	setOutbox(); // and anything the last timekeeper had waiting to sync
+	navigate( { organizer: '/tonight', keeper: '/keep', player: '/', spare: '/' }[ persona ], { replace: true } );
 }
 
 start( 'player' );
@@ -43,6 +47,7 @@ start( 'player' );
 function Demo() {
 	const [ persona, setPersona ] = useState<Persona>( 'player' );
 	const [ round, setRound ] = useState( 0 );
+	const [ offline, setOffline ] = useState( false );
 	return (
 		<>
 			<Banner
@@ -50,7 +55,15 @@ function Demo() {
 				onChange={ ( next ) => {
 					start( next );
 					setPersona( next );
+					setOffline( false );
 					setRound( round + 1 ); // a fresh App, so nothing of the last person lingers
+				} }
+				offline={ offline }
+				onOffline={ ( value ) => {
+					server.setOffline( value );
+					setOffline( value );
+					// Tell the app what a phone would: the outbox sends again on 'online'.
+					window.dispatchEvent( new Event( value ? 'offline' : 'online' ) );
 				} }
 			/>
 			<div className="demo-root">

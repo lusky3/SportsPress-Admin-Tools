@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { GameDetail, Me, Paged, Game, SparesPayload } from '../types';
+import type { GameDetail, GameLog, KeeperNight, Me, Paged, Game, PostLogResult, SparesPayload } from '../types';
 import { roster } from './league';
 import { createDemoServer } from './server';
 import type { Persona } from './server';
@@ -97,5 +97,62 @@ describe( 'demo server', () => {
 			roster( t ).forEach( ( p ) => names.add( p.name ) );
 		}
 		expect( names.size ).toBe( 105 );
+	} );
+} );
+
+describe( 'demo server: timekeeper', () => {
+	it( 'makes the timekeeper an unlinked keeper and lists today’s games with a half-played one', async () => {
+		const s = server( 'keeper' );
+		const me = ( await s.call<Me>( 'GET', '/me' ) ).body;
+		expect( me ).toMatchObject( { linked: false, teams: [], is_timekeeper: true, is_organizer: false } );
+		const night = ( await s.call<KeeperNight>( 'GET', '/keep/night?date=2026-11-04' ) ).body;
+		expect( night.data ).toHaveLength( 4 );
+		expect( night.data[ 0 ].live ).toEqual( { status: 'live', score: { home: 2, away: 1 }, period: 2 } );
+		expect( night.data[ 0 ].needs_review_count ).toBe( 2 );
+		expect( night.data[ 0 ].home.roster ).toHaveLength( 15 );
+		expect( ( await server( 'player' ).call( 'GET', '/keep/night' ) ).status ).toBe( 403 );
+	} );
+
+	it( 'logs, answers duplicates and rejections per entry, voids and finishes', async () => {
+		const s = server( 'keeper' );
+		const id = s.liveGame;
+		const log = ( await s.call<GameLog>( 'GET', `/games/${ id }/log` ) ).body;
+		const scorer = log.game.away.roster[ 0 ];
+		const goal = { uid: 'demo-0000-0001', type: 'goal', team_id: log.game.away.id, period: 2, player_id: scorer.player_id };
+		const bad = { uid: 'demo-0000-0002', type: 'goal', team_id: log.game.away.id, period: 2, player_id: log.game.home.roster[ 0 ].player_id };
+		const post = await s.call<PostLogResult>( 'POST', `/games/${ id }/log`, { entries: [ goal, bad ] } );
+		expect( post.body.results.map( ( r ) => [ r.status, r.reason ] ) ).toEqual( [ [ 'created', undefined ], [ 'rejected', 'player_not_on_team' ] ] );
+		expect( post.body.live?.score ).toEqual( { home: 2, away: 2 } );
+		const again = await s.call<PostLogResult>( 'POST', `/games/${ id }/log`, { entries: [ goal ] } );
+		expect( again.body.results[ 0 ].status ).toBe( 'duplicate' );
+
+		// Someone else's seeded entry cannot be voided by the keeper; their own can.
+		const others = log.entries.find( ( e ) => e.recorded_by?.name === 'Sam Okafor' );
+		expect( others?.can_void ).toBe( false );
+		const voided = await s.call<{ live: { score: { away: number } } }>( 'POST', `/games/${ id }/log/demo-0000-0001/void` );
+		expect( voided.body.live.score.away ).toBe( 1 );
+
+		const done = await s.call<{ score: { home: number; away: number } }>( 'POST', `/games/${ id }/finish`, {} );
+		expect( done.body.score ).toEqual( { home: 2, away: 1 } );
+		const late = await s.call<{ code: string }>( 'POST', `/games/${ id }/log`, { entries: [ { ...goal, uid: 'demo-0000-0003' } ] } );
+		expect( late.body.code ).toBe( 'sppa_finalized' );
+		const live = ( await s.call<{ status: string }>( 'GET', `/games/${ id }/live` ) ).body;
+		expect( live.status ).toBe( 'final' );
+	} );
+
+	it( 'asks before replacing a result someone else entered', async () => {
+		const s = server( 'keeper' );
+		const first = await s.call<{ code: string; data: { result: unknown } }>( 'POST', `/games/${ s.scoredGame }/finish`, {} );
+		expect( first.status ).toBe( 409 );
+		expect( first.body.data.result ).toEqual( { home: 3, away: 3 } );
+		expect( ( await s.call( 'POST', `/games/${ s.scoredGame }/finish`, { overwrite: true } ) ).status ).toBe( 200 );
+	} );
+
+	it( 'fails every request like fetch does while offline is simulated', async () => {
+		const s = server( 'keeper' );
+		s.setOffline( true );
+		await expect( s.fetch( '/demo-api/me' ) ).rejects.toThrow( TypeError );
+		s.setOffline( false );
+		expect( ( await s.fetch( '/demo-api/me' ) ).status ).toBe( 200 );
 	} );
 } );

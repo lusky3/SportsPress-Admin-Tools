@@ -15,6 +15,7 @@ import type {
 	NightGame,
 	NightPayload,
 	Position,
+	SavedResult,
 	SideAvailability,
 	SpareCall,
 	SparePrefs,
@@ -40,8 +41,9 @@ import {
 	team,
 } from './league';
 import type { Player, VenueKey } from './league';
+import { createKeeperLog } from './keeper';
 
-export type Persona = 'player' | 'spare' | 'organizer';
+export type Persona = 'player' | 'spare' | 'organizer' | 'keeper';
 
 export interface DemoOptions {
 	persona: Persona;
@@ -64,6 +66,8 @@ interface GameRec {
 	/** Home goals, away goals; set for games already played. */
 	score?: [ number, number ];
 	generic?: boolean;
+	/** A result someone already keyed in, so Finish asks to replace it. */
+	preset?: SavedResult;
 }
 
 interface CallRec {
@@ -125,7 +129,21 @@ export function createDemoServer( options: DemoOptions ) {
 	const me = playerAt( PERSONA_PLAYER[ persona ].team, PERSONA_PLAYER[ persona ].index );
 	const myTeam = me.team;
 	const isOrganizer = persona === 'organizer';
-	const userNames = { player: 'Jordan Pike', spare: 'Casey Marlow', organizer: 'Taylor Brandt' };
+	const isKeeper = isOrganizer || persona === 'keeper';
+	const userNames = { player: 'Jordan Pike', spare: 'Casey Marlow', organizer: 'Taylor Brandt', keeper: 'Robin Hale' };
+	const userId = 9000 + me.index + ( persona === 'keeper' ? 100 : 0 );
+	let offline = false;
+	const keeperLog = createKeeperLog( {
+		user: { id: userId, name: userNames[ persona ] },
+		organizer: isOrganizer,
+		now: clock,
+		onFinish: ( id, s ) => {
+			const g = rec( id );
+			if ( g ) {
+				g.score = [ s.home, s.away ];
+			}
+		},
+	} );
 
 	/* Games. */
 
@@ -152,6 +170,28 @@ export function createDemoServer( options: DemoOptions ) {
 
 	const started = ( rec: GameRec ) => Date.parse( rec.start ) <= clock().getTime();
 
+	/*
+	 * Live scorekeeping: the night's first game is half played (Kings 2, Cherry Pickers 1, into the
+	 * second period, a fighting major to review, one entry by another keeper); the second already has
+	 * a result keyed in by someone else, so Finish there asks to replace it.
+	 */
+	const seeded = (): void => {
+		// Today's night: the Keep time list and Tonight open on today.
+		const first = rec( nightId( today, 0 ) ) as GameRec;
+		const [ k, c ] = [ roster( KINGS ), roster( CHERRY ) ];
+		const other = { id: 9500, name: 'Sam Okafor' };
+		keeperLog.seed( first, [
+			{ type: 'goal', team_id: KINGS, period: 1, clock: '14:02', player_id: k[ 6 ].id, assist1_id: k[ 3 ].id, by: other },
+			{ type: 'penalty', team_id: CHERRY, period: 1, clock: '8:40', player_id: c[ 4 ].id, offense: 'minor' },
+			{ type: 'goal', team_id: CHERRY, period: 1, clock: '3:15', player_id: c[ 2 ].id, assist1_id: c[ 7 ].id, assist2_id: c[ 9 ].id },
+			{ type: 'period', period: 2 },
+			{ type: 'goal', team_id: KINGS, period: 2, clock: '16:30', player_id: k[ 1 ].id, flags: [ 'pp' ] },
+			{ type: 'penalty', team_id: KINGS, period: 2, clock: '12:05', player_id: k[ 8 ].id, offense: 'fighting' },
+			{ type: 'penalty', team_id: CHERRY, period: 2, clock: '12:05', player_id: c[ 5 ].id, offense: 'fighting' },
+		] );
+		( rec( nightId( today, 1 ) ) as GameRec ).preset = { home: 3, away: 3 };
+	};
+
 	/** Ids from nightId() are made up on demand, so the board works for any date. */
 	function rec( id: number ): GameRec | undefined {
 		const known = games.get( id );
@@ -175,6 +215,8 @@ export function createDemoServer( options: DemoOptions ) {
 		}
 		return g.generic && started( g ) ? [ 1 + ( hash( g.id ) % 6 ), hash( g.id + 1 ) % 6 ] : undefined;
 	}
+
+	seeded();
 
 	/* Answers. */
 
@@ -274,6 +316,7 @@ export function createDemoServer( options: DemoOptions ) {
 			my_availability: mine === 'none' ? null : mine,
 			counts: { in: c.in, out: c.out, maybe: c.maybe },
 			as_spare: asSpare,
+			live: keeperLog.summary( g ),
 		};
 	}
 
@@ -376,11 +419,54 @@ export function createDemoServer( options: DemoOptions ) {
 				...present( g, g.home ),
 				sides,
 				open_calls: calls.filter( ( c ) => c.event_id === g.id && c.status === 'open' ).map( callOut ),
-				has_result: scoreOf( g ) !== undefined,
+				// A game being kept live has no result until it is finished.
+				has_result: keeperLog.summary( g ) ? keeperLog.summary( g )?.status === 'final' : scoreOf( g ) !== undefined || Boolean( g.preset ),
+				needs_review_count: keeperLog.needsReview( g ),
 			};
 		} );
 		const body: NightPayload = { data: list, total: list.length, page: 1, total_pages: 1, date };
 		return { status: 200, body };
+	}
+
+	/** The same night's games for a timekeeper, with both rosters. */
+	function keepNight( date: string ): Reply {
+		if ( ! isKeeper ) {
+			return error( 403, 'rest_forbidden', 'Sorry, you are not allowed to do that.' );
+		}
+		if ( ! /^\d{4}-\d{2}-\d{2}$/.test( date ) ) {
+			return error( 400, 'rest_invalid_param', 'Invalid parameter(s): date' );
+		}
+		const list = NIGHT.map( ( _slot, i ) => {
+			const g = ( date === G && i === 3 ? rec( TONIGHT ) : rec( nightId( date, i ) ) ) as GameRec;
+			return { ...keeperLog.keeperGame( g ), venue: { ...VENUES[ g.venue ] } };
+		} );
+		return { status: 200, body: { data: list, total: list.length, page: 1, total_pages: 1, date } };
+	}
+
+	/** Keeper routes on one game; `live` is open to everyone in the demo. */
+	function keep( method: string, id: number, rest: string, body: Record<string, unknown> ): Reply | undefined {
+		const g = rec( id );
+		if ( ! g ) {
+			return NOT_FOUND();
+		}
+		if ( method === 'GET' && rest === '/live' ) {
+			return keeperLog.live( g );
+		}
+		if ( ! isKeeper ) {
+			return error( 403, 'rest_forbidden', 'Sorry, you are not allowed to do that.' );
+		}
+		if ( method === 'GET' && rest === '/log' ) {
+			return { status: 200, body: { ...( keeperLog.log( g ).body as object ), game: { ...keeperLog.keeperGame( g ), venue: { ...VENUES[ g.venue ] } } } };
+		}
+		if ( method !== 'POST' ) {
+			return undefined;
+		}
+		const v = /^\/log\/([A-Za-z0-9-]{8,36})\/void$/.exec( rest );
+		if ( v ) {
+			return keeperLog.voidEntry( g, v[ 1 ] );
+		}
+		const writes: Record<string, () => Reply> = { '/log': () => keeperLog.post( g, body ), '/finish': () => keeperLog.finish( g, body ), '/reopen': () => keeperLog.reopen( g ) };
+		return writes[ rest ]?.();
 	}
 
 	/* Writes. */
@@ -495,19 +581,27 @@ export function createDemoServer( options: DemoOptions ) {
 
 	function route( method: string, path: string, query: URLSearchParams, body: Record<string, unknown> ): Reply {
 		let m: RegExpExecArray | null;
+		if ( ( m = /^\/games\/(\d+)(\/(?:log|live|finish|reopen)(?:\/.*)?)$/.exec( path ) ) ) {
+			return keep( method, Number( m[ 1 ] ), m[ 2 ], body ) ?? NOT_FOUND();
+		}
 		if ( method === 'GET' ) {
 			if ( path === '/me' ) {
+				const linked = persona !== 'keeper';
 				const user: Me = {
-					user: { id: 9000 + me.index, name: userNames[ persona ] },
-					linked: true,
-					players: [ { id: me.id, name: me.name, number: me.number, positions: me.positions } ],
-					teams: [ { id: myTeam, name: team( myTeam ).name, logo: '', division: team( myTeam ).division } ],
+					user: { id: userId, name: userNames[ persona ] },
+					linked,
+					players: linked ? [ { id: me.id, name: me.name, number: me.number, positions: me.positions } ] : [],
+					teams: linked ? [ { id: myTeam, name: team( myTeam ).name, logo: '', division: team( myTeam ).division } ] : [],
 					season: SEASON,
 					is_organizer: isOrganizer,
+					is_timekeeper: isKeeper,
 					spare_prefs: prefs,
-					ical_url: feed,
+					ical_url: linked ? feed : '',
 				};
 				return { status: 200, body: user };
+			}
+			if ( path === '/keep/night' ) {
+				return keepNight( query.get( 'date' ) ?? today );
 			}
 			if ( path === '/me/games' ) {
 				const list = myGames();
@@ -571,9 +665,23 @@ export function createDemoServer( options: DemoOptions ) {
 		if ( latency > 0 ) {
 			await new Promise( ( resolve ) => setTimeout( resolve, latency ) );
 		}
+		if ( offline ) {
+			throw new TypeError( 'Failed to fetch' ); // what fetch does with no connection
+		}
 		const reply = route( ( init.method ?? 'GET' ).toUpperCase(), path, url.searchParams, body );
 		return new Response( JSON.stringify( reply.body ), { status: reply.status, headers: { 'Content-Type': 'application/json', Date: new Date().toUTCString() } } );
 	};
 
-	return { fetch: fetchLike as typeof fetch, tonight: TONIGHT, gameDay: G };
+	return {
+		fetch: fetchLike as typeof fetch,
+		tonight: TONIGHT,
+		gameDay: G,
+		/** The night's half-played game and the one that already has a result. */
+		liveGame: nightId( today, 0 ),
+		scoredGame: nightId( today, 1 ),
+		/** Simulate losing the connection: every request fails as fetch does offline. */
+		setOffline( value: boolean ) {
+			offline = value;
+		},
+	};
 }

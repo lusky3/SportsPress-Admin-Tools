@@ -59,7 +59,11 @@ export function Notice( { url }: { url: string } ) {
 						Some features are simulated or switched off. Nothing you tap is saved or sent,
 						no one is emailed, and reloading starts over.
 					</p>
-					<p>Use the bar at the top to see the app as a Player, a Spare or an Organizer.</p>
+					<p>
+						Use the bar at the top to see the app as a Player, a Spare, an Organizer or a Timekeeper.
+						Live game recording is simulated too: try a goal, a penalty, an undo and Finish, and
+						switch on “Simulate offline” to watch entries wait and then sync.
+					</p>
 					{ wide && (
 						<p className="demo-notice__wide">
 							<strong>It’s built for phones.</strong> For the real feel, open it on your

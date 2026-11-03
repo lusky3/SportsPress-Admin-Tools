@@ -92,8 +92,8 @@ export interface Player {
 	isCaptain: boolean;
 }
 
-/** The three people the demo can be, by their place on a roster. */
-export const PERSONA_PLAYER = { player: { team: DUCKS, index: 5 }, organizer: { team: DUCKS, index: 2 }, spare: { team: KINGS, index: 6 } } as const;
+/** The people the demo can be, by their place on a roster. The timekeeper is not a player: the slot is only a placeholder. */
+export const PERSONA_PLAYER = { player: { team: DUCKS, index: 5 }, organizer: { team: DUCKS, index: 2 }, spare: { team: KINGS, index: 6 }, keeper: { team: KINGS, index: 0 } } as const;
 
 /** Hand-picked members; everyone else is generated. */
 const NAMED: Record<string, { name: string; number: string; positions: string[] }> = {
