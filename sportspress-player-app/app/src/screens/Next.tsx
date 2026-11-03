@@ -9,7 +9,7 @@ import { useLive } from '../components/LiveCard';
 import { Problem, Skeleton } from '../components/Problem';
 import { liveText } from '../lib/live';
 import { CallForm, CallList } from '../components/SpareCalls';
-import { isCalledOff, isPast, isShort, nextGame } from '../lib/games';
+import { isCalledOff, isPast, isShort, liveWindow, nextGame } from '../lib/games';
 import type { Game, GameDetail, Me, Paged } from '../types';
 import { useResource } from '../useResource';
 import { useGame } from './useGame';
@@ -105,7 +105,8 @@ export function Next( { me }: { me: Me } ) {
 	const now = new Date();
 	const list = games.data?.data ?? [];
 	// A game being played right now (a timekeeper is logging it) takes the hero, with its score.
-	const playing = list.find( ( g ) => g.live?.status === 'live' && ! isCalledOff( g ) );
+	// Only inside the game's time window: a log nobody finished never hides the real next game.
+	const playing = list.find( ( g ) => g.live?.status === 'live' && liveWindow( g, now ) );
 	const next = playing ?? nextGame( list, now );
 	const game = useGame( next?.id ?? 0 );
 	const polled = useLive( playing?.id ?? 0, Boolean( playing ) );

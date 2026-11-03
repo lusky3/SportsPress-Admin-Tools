@@ -87,6 +87,42 @@ describe( 'live score for players', () => {
 		expect( polls() ).toBe( 3 ); // final: no more polling
 	} );
 
+	it( 'checks every 60 s while nothing is logged yet, inside the game window', async () => {
+		const sent = fakeApi( ( s ) => ( s.path === '/games/101' ? { body: detail() } : s.path === '/games/101/live' ? { body: live( { status: 'none', score: { home: 0, away: 0 }, period: 1, entries: [] } ) } : undefined ) );
+		const polls = () => sent.filter( ( s ) => s.path === '/games/101/live' ).length;
+		render( <Game id="101" me={ me() } /> );
+		await settle();
+		expect( screen.queryByRole( 'region', { name: /Live/ } ) ).toBeNull();
+		await tick( 15_000 );
+		expect( polls() ).toBe( 1 );
+		await tick( 45_000 );
+		expect( polls() ).toBe( 2 );
+	} );
+
+	it( 'shows nothing when the live score is not the viewer’s to see (403)', async () => {
+		fakeApi( ( s ) => ( s.path === '/games/101' ? { body: detail() } : s.path === '/games/101/live' ? { status: 403, body: { code: 'sppa_forbidden', message: 'No.', data: { status: 403 } } } : undefined ) );
+		render( <Game id="101" me={ me() } /> );
+		await settle();
+		expect( screen.getByRole( 'region', { name: 'Game' } ) ).toBeTruthy();
+		expect( screen.queryByRole( 'region', { name: /Live|Final/ } ) ).toBeNull();
+	} );
+
+	it( 'does not let an old game someone forgot to finish hide the real next game', async () => {
+		fakeApi( ( s ) => {
+			if ( s.path === '/me/games' ) {
+				const stale = game( { id: 90, start: '2026-11-01T21:45:00-05:00', live: { status: 'live', score: { home: 2, away: 1 }, period: 2 } } );
+				return { body: { data: [ stale, game( { id: 102, start: '2026-11-05T20:30:00-05:00' } ) ], total: 2, page: 1, total_pages: 1 } };
+			}
+			if ( s.path === '/games/102' ) {
+				return { body: detail( { id: 102, start: '2026-11-05T20:30:00-05:00' } ) };
+			}
+		} );
+		render( <Next me={ me() } /> );
+		await settle();
+		expect( screen.queryByRole( 'region', { name: 'Playing now' } ) ).toBeNull();
+		expect( screen.getByRole( 'region', { name: 'Next game' } ).textContent ).toContain( 'Tomorrow' );
+	} );
+
 	it( 'does not ask for a live score for a game days away', async () => {
 		vi.setSystemTime( new Date( '2026-11-01T12:00:00-05:00' ) );
 		const sent = fakeApi( ( s ) => ( s.path === '/games/101' ? { body: detail() } : undefined ) );

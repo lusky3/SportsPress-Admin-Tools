@@ -20,10 +20,13 @@ export function isPast( game: Pick<Game, 'start'>, now: Date ): boolean {
 	return startMs( game ) <= now.getTime();
 }
 
-/** Worth asking for a live score: the game is on, starts within 30 minutes or started in the last 6 hours, or the list says it is live. */
-export function liveWindow( game: Pick<Game, 'start' | 'status' | 'live'>, now: Date ): boolean {
+/**
+ * Worth asking for a live score: the game is on and starts within 30 minutes or started in the last
+ * 6 hours. A log someone left unfinished does not make an old game "live" for ever.
+ */
+export function liveWindow( game: Pick<Game, 'start' | 'status'>, now: Date ): boolean {
 	const ahead = startMs( game ) - now.getTime();
-	return ! isCalledOff( game ) && ( game.live?.status === 'live' || ( ahead < 0.5 * HOUR_MS && ahead > -6 * HOUR_MS ) );
+	return ! isCalledOff( game ) && ahead < 0.5 * HOUR_MS && ahead > -6 * HOUR_MS;
 }
 
 /** "Black" reads as "Black pad"; "Appleby 1" or "Rink B" stays as it is. */

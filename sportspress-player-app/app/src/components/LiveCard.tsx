@@ -4,26 +4,29 @@ import type { LiveView } from '../types';
 import { useResource } from '../useResource';
 
 export const LIVE_POLL_MS = 15_000;
+/** Before anything is logged: check now and then whether the timekeeper has started. */
+export const IDLE_POLL_MS = 60_000;
 
 /**
- * A game's live score. Loads once when `enabled`, then refreshes every 15 s only while the
- * game is live and the page is visible: it stops when the game is final or the tab is hidden,
- * and refreshes at once when the tab comes back. Refreshes go through the resource cache,
- * so an older answer still in flight never overwrites a newer one.
+ * A game's live score. Loads once when `enabled` (the caller passes true only inside the game's
+ * time window), then refreshes while the page is visible: every 15 s while live, every 60 s while
+ * nothing is logged yet, never once final. Hidden tab: paused, refreshed at once on return.
+ * Refreshes go through the resource cache, so an older answer in flight never overwrites a newer one.
  */
 export function useLive( id: number, enabled: boolean ) {
 	const live = useResource<LiveView>( enabled && id > 0 ? `/games/${ id }/live` : '' );
-	const polling = live.data?.event_id === id && live.data.status === 'live';
+	const status = live.data?.event_id === id ? live.data.status : undefined;
+	const every = status === 'live' ? LIVE_POLL_MS : status === 'none' ? IDLE_POLL_MS : 0;
 	const { reload } = live;
 
 	useEffect( () => {
-		if ( ! polling ) {
+		if ( ! every ) {
 			return;
 		}
 		let timer: ReturnType<typeof setInterval> | undefined;
 		const run = () => {
 			clearInterval( timer );
-			timer = document.visibilityState === 'visible' ? setInterval( reload, LIVE_POLL_MS ) : undefined;
+			timer = document.visibilityState === 'visible' ? setInterval( reload, every ) : undefined;
 		};
 		const change = () => {
 			if ( document.visibilityState === 'visible' ) {
@@ -37,7 +40,7 @@ export function useLive( id: number, enabled: boolean ) {
 			clearInterval( timer );
 			document.removeEventListener( 'visibilitychange', change );
 		};
-	}, [ polling, reload ] );
+	}, [ every, reload ] );
 
 	return live.data?.event_id === id ? live.data : undefined;
 }
