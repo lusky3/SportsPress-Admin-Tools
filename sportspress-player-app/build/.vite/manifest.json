@@ -1,11 +1,15 @@
 {
   "index.html": {
-    "file": "assets/index-DE3l4ISl.js",
+    "file": "assets/index-DUAA6TtV.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
+    "dynamicImports": [
+      "src/screens/Keep.tsx",
+      "src/screens/KeepGame.tsx"
+    ],
     "css": [
-      "assets/index-BpxpxS5k.css"
+      "assets/index-Dza7iLPR.css"
     ],
     "assets": [
       "assets/barlow-condensed-latin-800-italic-Cnej2eWp.woff2",
@@ -19,5 +23,23 @@
   "node_modules/@fontsource/barlow-condensed/files/barlow-condensed-latin-800-italic.woff2": {
     "file": "assets/barlow-condensed-latin-800-italic-Cnej2eWp.woff2",
     "src": "node_modules/@fontsource/barlow-condensed/files/barlow-condensed-latin-800-italic.woff2"
+  },
+  "src/screens/Keep.tsx": {
+    "file": "assets/Keep-OnjPI6aL.js",
+    "name": "Keep",
+    "src": "src/screens/Keep.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html"
+    ]
+  },
+  "src/screens/KeepGame.tsx": {
+    "file": "assets/KeepGame-BA9Vguyy.js",
+    "name": "KeepGame",
+    "src": "src/screens/KeepGame.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html"
+    ]
   }
 }
