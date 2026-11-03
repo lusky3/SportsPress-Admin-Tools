@@ -3,7 +3,7 @@ import { IDBDatabase, IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api';
 import type { EntryInput, KeeperEntry, PostLogResult } from '../types';
-import { BATCH, TIMEOUT_MS, backoff, createOutbox, uuid } from './outbox';
+import { BATCH, STORAGE_TIMEOUT_MS, TIMEOUT_MS, backoff, createOutbox, uuid } from './outbox';
 import type { VoidResult } from './outbox';
 
 type Send = ( gameId: number, entries: EntryInput[], signal: AbortSignal ) => Promise<PostLogResult>;
@@ -375,5 +375,78 @@ describe( 'outbox: storage', () => {
 		box.enqueue( 101, goal( 1 ) );
 		box.enqueue( 101, goal( 2 ) );
 		expect( persist ).toHaveBeenCalledTimes( 1 );
+	} );
+} );
+
+describe( 'outbox: fix round 3', () => {
+	it( 'sends what an earlier page stored as soon as it has loaded it, without waiting for the 20 s tick', async () => {
+		const first = createOutbox( { send: offline, idb } );
+		const uid = first.enqueue( 101, goal( 1 ) );
+		await settle();
+
+		vi.useFakeTimers( { toFake: [ 'setInterval', 'clearInterval' ] } ); // the tick can never fire here
+		const send = vi.fn<Send>( async ( _g, entries ) => ok( entries ) );
+		const reloaded = createOutbox( { send, idb } );
+		const stop = reloaded.start(); // starts before the stored queue has loaded
+		await settle();
+		expect( send ).toHaveBeenCalledTimes( 1 );
+		expect( send.mock.calls[ 0 ][ 1 ][ 0 ].uid ).toBe( uid );
+		expect( reloaded.getState().items ).toEqual( [] );
+		stop();
+	} );
+
+	it.each( [
+		[ 400, 'rest_invalid_param' ],
+		[ 404, 'sppa_not_found' ],
+	] )( 'never parks (or resends) a goal undone while its batch was out, when the batch is refused whole (%i)', async ( status, code ) => {
+		let refuse: ( e: unknown ) => void = () => {};
+		const send = vi.fn<Send>( () => new Promise<PostLogResult>( ( _r, reject ) => ( refuse = reject ) ) );
+		const sendVoid = vi.fn<SendVoid>( voided );
+		const box = createOutbox( { send, sendVoid, idb: null } );
+		const keep = box.enqueue( 101, goal( 1 ) );
+		const undone = box.enqueue( 101, goal( 2 ) );
+		await settle();
+		expect( box.discard( undone ) ).toBe( 'undoing' );
+		refuse( new ApiError( status, code, 'x' ) );
+		await settle();
+		expect( box.getState().rejected.map( ( r ) => r.entry.uid ) ).toEqual( [ keep ] );
+		expect( box.getState().items ).toEqual( [] );
+		box.retry( keep );
+		await settle();
+		expect( send.mock.calls.flatMap( ( c ) => c[ 1 ].map( ( e ) => e.uid ) ).filter( ( u ) => u === undone ) ).toHaveLength( 1 ); // only the original attempt
+		expect( sendVoid ).not.toHaveBeenCalled();
+	} );
+
+	it( 'carries on in memory, with the warning, when IndexedDB never answers', async () => {
+		vi.useFakeTimers( { toFake: [ 'setTimeout', 'clearTimeout', 'Date' ] } );
+		const silent = { open: () => ( {} as IDBOpenDBRequest ) } as unknown as IDBFactory; // no callback ever fires
+		const send = vi.fn<Send>( async ( _g, entries ) => ok( entries ) );
+		const box = createOutbox( { send, idb: silent } );
+		box.enqueue( 101, goal( 1 ) );
+		await vi.advanceTimersByTimeAsync( STORAGE_TIMEOUT_MS - 1 );
+		expect( send ).not.toHaveBeenCalled();
+		expect( box.getState().items[ 0 ].saving ).toBe( true );
+		await vi.advanceTimersByTimeAsync( 1 );
+		expect( box.getState().memoryOnly ).toBe( true );
+		expect( send ).toHaveBeenCalledTimes( 1 );
+		expect( box.getState().items ).toEqual( [] );
+	} );
+
+	it( 'carries on in memory, with the warning, when a storage write never completes', async () => {
+		const real = IDBDatabase.prototype.transaction;
+		vi.spyOn( IDBDatabase.prototype, 'transaction' ).mockImplementation( function ( this: IDBDatabase, ...args: Parameters<IDBDatabase[ 'transaction' ]> ) {
+			if ( args[ 1 ] === 'readwrite' ) {
+				return { objectStore: () => ( { put() {}, delete() {} } ) } as unknown as IDBTransaction; // never completes
+			}
+			return real.apply( this, args );
+		} );
+		const send = vi.fn<Send>( async ( _g, entries ) => ok( entries ) );
+		const box = createOutbox( { send, idb } );
+		await box.ready;
+		vi.useFakeTimers( { toFake: [ 'setTimeout', 'clearTimeout', 'Date' ] } );
+		box.enqueue( 101, goal( 1 ) );
+		await vi.advanceTimersByTimeAsync( STORAGE_TIMEOUT_MS );
+		expect( box.getState().memoryOnly ).toBe( true );
+		expect( send ).toHaveBeenCalledTimes( 1 );
 	} );
 } );

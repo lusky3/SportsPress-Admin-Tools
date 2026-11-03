@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
-import { createOutbox, setOutbox } from '../lib/outbox';
+import { createOutbox, mergeIntoLog, setOutbox } from '../lib/outbox';
 import { fakeApi, me } from '../test/fake';
 import type { Sent } from '../test/fake';
 import type { EntryInput, GameLog, KeeperEntry, KeeperGame } from '../types';
@@ -632,5 +632,46 @@ describe( 'game sheet: nothing tapped is lost, doubled or published half-done', 
 		expect( dialog.textContent ).toContain( 'Ducks 2 – Kings 0' );
 		expect( dialog.textContent ).toContain( '2 goals' );
 		expect( dialog.textContent ).toContain( 'Another keeper changed this log since you opened it' );
+	} );
+
+	it( 'still takes the Finish totals from the server when an acknowledgement lands during the reload', async () => {
+		fakeApi( () => undefined ); // boot and a clean cache
+		const answers: Array<( body: GameLog ) => void> = [];
+		let gets = 0;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn( ( _url: string, init: RequestInit = {} ) => {
+				if ( ( init.method ?? 'GET' ) !== 'GET' ) {
+					return Promise.reject( new TypeError( 'unused' ) );
+				}
+				gets++;
+				if ( gets === 1 ) {
+					return Promise.resolve( new Response( JSON.stringify( log() ), { status: 200 } ) );
+				}
+				return new Promise( ( resolve ) => answers.push( ( body ) => resolve( new Response( JSON.stringify( body ), { status: 200 } ) ) ) );
+			} )
+		);
+		sheet();
+		await settle();
+		fireEvent.click( screen.getByRole( 'button', { name: 'Finish game' } ) );
+		await settle();
+		const dialog = screen.getByRole( 'dialog' );
+		expect( dialog.getAttribute( 'aria-busy' ) ).toBe( 'true' );
+
+		// Another of this phone's entries is acknowledged while the reload is out.
+		await act( async () => {
+			mergeIntoLog( 101, [ entry( { uid: 'dddddddd-0000-4000-8000-000000000004', team_id: 7, side: 'away', player_id: 71, player_name: 'Kit Knight' } ) ], { status: 'live', score: { home: 1, away: 1 }, period: 1 } );
+		} );
+		expect( dialog.getAttribute( 'aria-busy' ) ).toBe( 'true' ); // still waiting for the server
+		expect( gets ).toBe( 3 ); // and asked again, after the acknowledgement
+
+		const server = log( { score: { home: 1, away: 1 }, totals: { ...log().totals, goals: 2, penalties: 1, pim: { home: 0, away: 2 } } } );
+		await act( async () => {
+			answers.forEach( ( a ) => a( server ) );
+		} );
+		await settle();
+		expect( dialog.getAttribute( 'aria-busy' ) ).toBeNull();
+		expect( dialog.textContent ).toContain( 'Ducks 1 – Kings 1' );
+		expect( dialog.textContent ).toContain( '2 goals · 1 penalty · 2 PIM' );
 	} );
 } );

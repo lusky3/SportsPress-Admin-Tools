@@ -1,7 +1,7 @@
 import { useMemo, useSyncExternalStore } from 'react';
 import { ApiError, apiSend } from '../api';
 import type { EntryInput, GameLog, KeeperEntry, LiveSummary, PostLogResult } from '../types';
-import { getCached, setCached } from '../useResource';
+import { getCached, patchCached } from '../useResource';
 
 /*
  * The timekeeper's outbox. The rule it keeps: a goal a timekeeper tapped is never silently lost,
@@ -58,6 +58,8 @@ export interface OutboxState {
 
 export const BATCH = 50;
 export const TIMEOUT_MS = 15_000;
+/** IndexedDB that has not answered in this long is treated as unavailable (some private modes never answer). */
+export const STORAGE_TIMEOUT_MS = 3_000;
 const TICK_MS = 20_000;
 const BACKOFF_MAX_MS = 30_000;
 
@@ -103,6 +105,23 @@ function all<T>( db: IDBDatabase, kind: Kind ): Promise<T[]> {
 		const req = db.transaction( kind ).objectStore( kind ).getAll();
 		req.onsuccess = () => resolve( req.result as T[] );
 		req.onerror = () => reject( req.error );
+	} );
+}
+
+/** `p`, or a rejection once `ms` pass without an answer. */
+function within<T>( p: Promise<T>, ms: number ): Promise<T> {
+	return new Promise( ( resolve, reject ) => {
+		const timer = setTimeout( () => reject( new Error( 'timeout' ) ), ms );
+		p.then(
+			( v ) => {
+				clearTimeout( timer );
+				resolve( v );
+			},
+			( e ) => {
+				clearTimeout( timer );
+				reject( e );
+			}
+		);
 	} );
 }
 
@@ -175,7 +194,8 @@ export function createOutbox( options: OutboxOptions = {} ) {
 
 	let db: Promise<IDBDatabase | null> = Promise.resolve( null );
 	if ( idb ) {
-		db = openDb( idb, options.dbName ?? 'sppa-outbox' ).catch( () => {
+		// A storage that never answers must not hold entries hostage: after 3 s, carry on in memory (with the warning).
+		db = within( openDb( idb, options.dbName ?? 'sppa-outbox' ), STORAGE_TIMEOUT_MS ).catch( () => {
 			set( { memoryOnly: true } );
 			return null;
 		} );
@@ -194,10 +214,13 @@ export function createOutbox( options: OutboxOptions = {} ) {
 			} else {
 				tx.objectStore( kind ).put( value, key );
 			}
-			await new Promise<void>( ( resolve, reject ) => {
-				tx.oncomplete = () => resolve();
-				tx.onerror = tx.onabort = () => reject( tx.error );
-			} );
+			await within(
+				new Promise<void>( ( resolve, reject ) => {
+					tx.oncomplete = () => resolve();
+					tx.onerror = tx.onabort = () => reject( tx.error );
+				} ),
+				STORAGE_TIMEOUT_MS
+			);
 			return true;
 		} catch {
 			set( { memoryOnly: true } );
@@ -222,7 +245,7 @@ export function createOutbox( options: OutboxOptions = {} ) {
 			if ( ! d ) {
 				return;
 			}
-			const [ items, rejected ] = await Promise.all( [ all<Queued>( d, 'queue' ), all<Rejected>( d, 'rejected' ) ] );
+			const [ items, rejected ] = await within( Promise.all( [ all<Queued>( d, 'queue' ), all<Rejected>( d, 'rejected' ) ] ), STORAGE_TIMEOUT_MS );
 			const known = new Set( state.items.map( ( i ) => i.entry.uid ) );
 			const loaded = items.filter( ( i ) => ! known.has( i.entry.uid ) ).sort( ( a, b ) => a.seq - b.seq );
 			const base = Math.max( 0, ...items.map( ( i ) => i.seq + 1 ) );
@@ -255,8 +278,11 @@ export function createOutbox( options: OutboxOptions = {} ) {
 	}
 
 	function park( items: Queued[], reason: string, whole: boolean ): void {
+		// Read each item as it is now: one the keeper undid (even while the request was out) is dropped,
+		// never parked, so "Try again" can never send a goal that was taken back.
+		const now = items.map( ( i ) => state.items.find( ( x ) => x.entry.uid === i.entry.uid ) ?? i );
 		remove( new Set( items.map( ( i ) => i.entry.uid ) ) );
-		const parked = items.map( ( i ) => ( { gameId: i.gameId, entry: i.entry, reason, ...( whole ? { whole } : {} ) } ) );
+		const parked = now.filter( ( i ) => ! i.undo && ! i.acked ).map( ( i ) => ( { gameId: i.gameId, entry: i.entry, reason, ...( whole ? { whole } : {} ) } ) );
 		set( { rejected: [ ...state.rejected, ...parked ] } );
 		parked.forEach( ( r ) => void write( 'rejected', r.entry.uid, r ) );
 	}
@@ -364,9 +390,11 @@ export function createOutbox( options: OutboxOptions = {} ) {
 		}
 	}
 
-	function flushAll( nudge = false ): Promise<void> {
+	/** Try every game with something waiting, once what an earlier page stored has been loaded. */
+	async function flushAll( nudge = false ): Promise<void> {
+		await ready;
 		const games = new Set( state.items.map( ( i ) => i.gameId ) );
-		return Promise.all( [ ...games ].map( ( g ) => flush( g, nudge ) ) ).then( () => undefined );
+		await Promise.all( [ ...games ].map( ( g ) => flush( g, nudge ) ) );
 	}
 
 	/**
@@ -494,7 +522,8 @@ export function mergeIntoLog( gameId: number, entries: KeeperEntry[], live: Live
 	const fresh = new Map( entries.map( ( e ) => [ e.uid, e ] ) );
 	const kept = cur.entries.map( ( e ) => fresh.get( e.uid ) ?? e );
 	const added = entries.filter( ( e ) => ! cur.entries.some( ( c ) => c.uid === e.uid ) ).reverse();
-	setCached( path, { ...cur, ...( live ?? {} ), entries: [ ...added, ...kept ] } );
+	// patch, not replace: a reload in flight (the Finish sheet's) must still land with the server's totals.
+	patchCached( path, { ...cur, ...( live ?? {} ), entries: [ ...added, ...kept ] } );
 }
 
 let shared: Outbox | undefined;
