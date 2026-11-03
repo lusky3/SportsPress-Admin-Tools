@@ -16,7 +16,7 @@ export interface Route {
 }
 
 /** Every screen. Anything else shows the home screen. */
-export const ROUTES = [ '/', '/schedule', '/games/:id', '/team/:id', '/spares', '/me', '/tonight' ] as const;
+export const ROUTES = [ '/', '/schedule', '/games/:id', '/team/:id', '/spares', '/me', '/tonight', '/keep', '/keep/:id' ] as const;
 
 const NAVIGATE_EVENT = 'sppa:navigate';
 
