@@ -9,6 +9,7 @@ import { setTransport } from '../api';
 import { navigate } from '../router';
 import { _resetResourcesForTests as forgetEverything } from '../useResource';
 import { Banner } from './Banner';
+import { Notice } from './Notice';
 import { createDemoServer } from './server';
 import type { Persona } from './server';
 
@@ -55,6 +56,7 @@ function Demo() {
 			<div className="demo-root">
 				<App key={ round } />
 			</div>
+			<Notice url={ window.location.host + window.location.pathname } />
 		</>
 	);
 }
