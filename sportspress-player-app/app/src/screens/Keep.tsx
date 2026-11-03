@@ -9,7 +9,7 @@ import { Link } from '../router';
 import type { KeeperNight } from '../types';
 import { useResource } from '../useResource';
 
-/** Keep time: the day's games a timekeeper can record, with where each one stands. */
+/** Score: the day's games a timekeeper can record, with where each one stands. */
 export function Keep() {
 	const day = useDay();
 	const night = useResource<KeeperNight>( `/keep/night?date=${ day.date }` );
@@ -17,7 +17,7 @@ export function Keep() {
 
 	let body;
 	if ( ! data ) {
-		body = night.loading ? <Skeleton /> : <Problem error={ night.error } reload={ night.reload } forbidden="Keeping time is for timekeepers and organizers." />;
+		body = night.loading ? <Skeleton /> : <Problem error={ night.error } reload={ night.reload } forbidden="Scoring games is for timekeepers and organizers." />;
 	} else if ( ! data.data.length ) {
 		body = <EmptyState message="No games to keep on this day." />;
 	} else {
@@ -51,7 +51,7 @@ export function Keep() {
 
 	return (
 		<section className="screen">
-			<p className="kicker">Keep time</p>
+			<p className="kicker">Score</p>
 			<DayStepper { ...day } />
 			{ body }
 		</section>

@@ -17,9 +17,9 @@ interface TabBarProps {
 	teamId?: number;
 	/** Adds the Tonight tab. */
 	organizer?: boolean;
-	/** Adds the Keep time tab (timekeepers and organizers). */
+	/** Adds the Score tab (live scorekeeping, for timekeepers and organizers). */
 	keeper?: boolean;
-	/** A timekeeper with no player: Keep time and Me only. */
+	/** A timekeeper with no player: Score and Me only. */
 	keeperOnly?: boolean;
 }
 
@@ -32,7 +32,7 @@ function Icon( { d }: { d: string } ) {
 }
 
 function tabsFor( { teamId, organizer, keeper, keeperOnly }: Omit<TabBarProps, 'current'> ): Tab[] {
-	const keep: Tab = { key: 'keep', label: 'Keep time', to: '/keep', matches: keeperOnly ? [ '/', '/keep', '/keep/:id' ] : [ '/keep', '/keep/:id' ], icon: <Icon d="M12 21a8 8 0 100-16 8 8 0 000 16zM12 9v4l2.5 2.5M10 2h4" /> };
+	const keep: Tab = { key: 'keep', label: 'Score', to: '/keep', matches: keeperOnly ? [ '/', '/keep', '/keep/:id' ] : [ '/keep', '/keep/:id' ], icon: <Icon d="M12 21a8 8 0 100-16 8 8 0 000 16zM12 9v4l2.5 2.5M10 2h4" /> };
 	const me: Tab = { key: 'me', label: 'Me', to: '/me', matches: [ '/me' ], icon: <Icon d="M12 12a4 4 0 100-8 4 4 0 000 8zM4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" /> };
 	if ( keeperOnly ) {
 		return [ keep, me ];
@@ -63,7 +63,7 @@ function tabsFor( { teamId, organizer, keeper, keeperOnly }: Omit<TabBarProps, '
 	return tabs;
 }
 
-/** Bottom tab bar, within thumb reach: Next, Schedule, Team, Spares, Me (Tonight for organizers, Keep time for timekeepers). */
+/** Bottom tab bar, within thumb reach: Next, Schedule, Team, Spares, Me (Tonight for organizers, Score for timekeepers). */
 export function TabBar( { current, ...who }: TabBarProps ) {
 	return (
 		<nav className="tab-bar" aria-label="Main">

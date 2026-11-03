@@ -1,0 +1,52 @@
+// @vitest-environment jsdom
+import { act, cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fakeApi, me } from './test/fake';
+
+/** Counts loads of the keeper chunk: a player must never download it. */
+const loaded = vi.hoisted( () => ( { keep: 0 } ) );
+vi.mock( './screens/KeepGame', () => {
+	loaded.keep++;
+	return { KeepGame: () => <p>sheet</p> };
+} );
+vi.mock( './screens/Keep', () => {
+	loaded.keep++;
+	return { Keep: () => <p>keeper list</p> };
+} );
+
+import { App } from './App';
+
+async function settle() {
+	for ( let i = 0; i < 10; i++ ) {
+		await act( async () => {
+			await Promise.resolve();
+		} );
+	}
+}
+
+afterEach( () => {
+	cleanup();
+	vi.unstubAllGlobals();
+	delete window.SPPA_BOOT;
+	window.history.pushState( null, '', '/' );
+} );
+
+describe( 'App routing', () => {
+	it( 'sends a player who follows a /keep/101 link to their home screen, without loading the scorekeeping chunk', async () => {
+		fakeApi( ( s ) => ( s.path === '/me' ? { body: me() } : s.path === '/me/games' ? { body: { data: [], total: 0, page: 1, total_pages: 1 } } : undefined ) );
+		window.history.pushState( null, '', '/my-arl/keep/101' );
+		render( <App /> );
+		await settle();
+		expect( screen.getByText( 'No games coming up. Your next one will show up here.' ) ).toBeTruthy();
+		expect( screen.queryByText( 'sheet' ) ).toBeNull();
+		expect( loaded.keep ).toBe( 0 );
+	} );
+
+	it( 'loads the sheet for a timekeeper on the same link', async () => {
+		fakeApi( ( s ) => ( s.path === '/me' ? { body: me( { is_timekeeper: true } ) } : undefined ) );
+		window.history.pushState( null, '', '/my-arl/keep/101' );
+		render( <App /> );
+		await settle();
+		expect( await screen.findByText( 'sheet' ) ).toBeTruthy();
+	} );
+} );

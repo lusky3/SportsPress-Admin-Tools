@@ -18,7 +18,7 @@ import { useResource } from './useResource';
 /*
  * The frame: offline banner, the current screen, the tab bar.
  *
- * Keep time (the list, the game sheet and the outbox) is only for timekeepers and organizers,
+ * Score (the timekeeper's list, the game sheet and the outbox) is only for timekeepers and organizers,
  * so it is a separate chunk loaded on first use. The service worker precaches every
  * assets/*.js file, so the chunk is there offline once the worker has installed.
  */
@@ -29,8 +29,11 @@ const KeepGame = lazy( () => import( './screens/KeepGame' ).then( ( m ) => ( { d
 /** May use Keep time (timekeepers and organizers). */
 const isKeeper = ( me: Me ) => Boolean( me.is_timekeeper || me.is_organizer );
 
-/** A timekeeper with no player of their own: Keep time and Me are their whole app. */
+/** A timekeeper with no player of their own: Score and Me are their whole app. */
 const keeperOnly = ( me: Me ) => ! me.linked && ! me.is_organizer && isKeeper( me );
+
+/** The only screens a timekeeper with no player can open; any other link takes them to their games. */
+const KEEPER_ROUTES = [ '/', '/me', '/keep', '/keep/:id' ];
 
 const home = ( me: Me ) => ( keeperOnly( me ) ? <Keep /> : <Next me={ me } /> );
 
@@ -63,6 +66,8 @@ export function App() {
 		body = <section className="screen">{ me.loading ? <Skeleton /> : <Problem error={ me.error } reload={ me.reload } /> }</section>;
 	} else if ( ! m.linked && ! isKeeper( m ) ) {
 		body = <Unlinked />;
+	} else if ( keeperOnly( m ) && ! KEEPER_ROUTES.includes( route.path ) ) {
+		body = home( m );
 	} else {
 		body = SCREENS[ route.path ]( route, m );
 	}

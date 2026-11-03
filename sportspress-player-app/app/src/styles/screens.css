@@ -1513,14 +1513,31 @@
 
 .rejected {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	justify-content: space-between;
-	gap: 12px;
+	gap: 8px 12px;
 	font-weight: 500;
 }
 
 .rejected .btn-quiet {
+	display: inline-flex;
+	align-items: center;
 	border-color: currentColor;
+	text-decoration: none;
+}
+
+.rejected__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.final-bar a {
+	display: inline-flex;
+	align-items: center;
+	min-height: var(--tap);
+	font-weight: 600;
 }
 
 /* Period: 1 · 2 · 3 · OT · SO. */
@@ -1835,7 +1852,7 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
-	min-height: 44px;
+	min-height: 48px;
 	padding: 0 12px;
 	border: 1px solid var(--chip-line);
 	border-radius: 8px;
