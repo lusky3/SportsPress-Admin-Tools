@@ -371,7 +371,8 @@ describe( 'game sheet', () => {
 				return { body: log( { entries: [ entry( { uid: 'bbbbbbbb-0000-4000-8000-000000000002', can_void: false, recorded_by: { id: 9, name: 'Other' } } ), entry() ] } ) };
 			}
 			if ( s.path.endsWith( '/void' ) ) {
-				return { body: { entry: entry( { voided: true, voided_by: { id: 5, name: 'Sam Lee' }, can_void: false } ), live: { status: 'live', score: { home: 0, away: 0 }, period: 1 } } };
+				// The other keeper's goal still counts: 1–0.
+				return { body: { entry: entry( { voided: true, voided_by: { id: 5, name: 'Sam Lee' }, can_void: false } ), live: { status: 'live', score: { home: 1, away: 0 }, period: 1 } } };
 			}
 		} );
 		render( <KeepGame id="101" me={ me( { is_timekeeper: true } ) } /> );
@@ -383,7 +384,7 @@ describe( 'game sheet', () => {
 		await settle();
 		expect( sent.some( ( s ) => s.path === '/games/101/log/aaaaaaaa-0000-4000-8000-000000000001/void' ) ).toBe( true );
 		expect( screen.getByText( /voided by Sam Lee/ ) ).toBeTruthy();
-		expect( screen.getByRole( 'group', { name: /Ducks 0, Kings 0/ } ) ).toBeTruthy();
+		expect( screen.getByRole( 'group', { name: /Ducks 1, Kings 0/ } ) ).toBeTruthy();
 	} );
 } );
 
@@ -439,6 +440,126 @@ describe( 'game sheet: another keeper’s unsent entries', () => {
 		render( <Keep /> );
 		await settle();
 		expect( screen.getByText( notice ) ).toBeTruthy();
+	} );
+} );
+
+describe( 'game sheet: two keepers on one game', () => {
+	const theirs = entry( { uid: 'eeeeeeee-0000-4000-8000-000000000005', team_id: 7, side: 'away', player_id: 72, player_name: 'Olive Opp', assist1_id: null, assist1_name: null, clock: '5:00', recorded_by: { id: 9, name: 'Other' }, can_void: false } );
+	const gets = ( sent: Sent[] ) => sent.filter( ( s ) => s.method === 'GET' && s.path === '/games/101/log' ).length;
+	const tick = async ( ms: number ) => {
+		await act( async () => {
+			await vi.advanceTimersByTimeAsync( ms );
+		} );
+		await settle();
+	};
+	const setVisibility = ( state: 'visible' | 'hidden' ) => {
+		Object.defineProperty( document, 'visibilityState', { value: state, configurable: true } );
+		document.dispatchEvent( new Event( 'visibilitychange' ) );
+	};
+
+	beforeEach( () => {
+		vi.useFakeTimers( { toFake: [ 'Date', 'setTimeout', 'clearTimeout' ] } );
+		vi.setSystemTime( new Date( '2026-11-04T12:00:00-05:00' ) );
+	} );
+
+	afterEach( () => {
+		setVisibility( 'visible' );
+	} );
+
+	async function ducksGoal() {
+		fireEvent.click( screen.getByRole( 'button', { name: 'Goal' } ) );
+		fireEvent.click( within( screen.getByRole( 'dialog' ) ).getByRole( 'button', { name: /Ducks/ } ) );
+		fireEvent.click( within( screen.getByRole( 'dialog' ) ).getByRole( 'button', { name: /17 Sam Lee/ } ) );
+		fireEvent.click( screen.getByRole( 'button', { name: 'Save goal' } ) );
+		await settle();
+	}
+
+	it( 'shows the other keeper’s goal without a tap, and keeps this phone’s waiting goal on the sheet, once', async () => {
+		let other = false;
+		const sent = fakeApi( ( s ) => {
+			if ( s.method === 'GET' ) {
+				return { body: other ? log( { score: { home: 1, away: 1 }, entries: [ theirs, entry() ] } ) : log() };
+			}
+			throw new TypeError( 'Failed to fetch' ); // this phone's POSTs do not get through
+		} );
+		render( <KeepGame id="101" me={ me( { is_timekeeper: true } ) } /> );
+		await settle();
+		await ducksGoal();
+		expect( screen.getByRole( 'group', { name: /Ducks 2, Kings 0/ } ) ).toBeTruthy();
+
+		other = true; // the other keeper logs a Kings goal on their phone
+		await tick( 10_000 );
+		expect( gets( sent ) ).toBe( 2 );
+		expect( screen.getByText( 'P1 · 5:00 · Goal — #4 Olive Opp' ) ).toBeTruthy();
+		expect( screen.getAllByText( /waiting to sync/ ) ).toHaveLength( 1 );
+		expect( screen.getByRole( 'group', { name: /Ducks 2, Kings 1/ } ) ).toBeTruthy();
+	} );
+
+	it( 'never moves the score backwards while this phone’s goal waits to send', async () => {
+		let posts = 0;
+		const ours = ( uid: string ) => entry( { uid, team_id: 7, side: 'away', player_id: 71, player_name: 'Kit Knight', assist1_id: null, assist1_name: null, clock: null } );
+		let acked = '';
+		fakeApi( ( s ) => {
+			if ( s.method === 'GET' ) {
+				return { body: acked ? log( { score: { home: 1, away: 2 }, entries: [ ours( acked ), theirs, entry() ] } ) : log() };
+			}
+			posts++;
+			if ( posts > 1 ) {
+				throw new TypeError( 'Failed to fetch' ); // the second goal waits
+			}
+			const e = ( s.body as { entries: EntryInput[] } ).entries[ 0 ];
+			acked = e.uid;
+			// The answer's live score counts the other keeper's goal, which this phone has not seen.
+			return { body: { results: [ { uid: e.uid, status: 'created', entry: ours( e.uid ) } ], live: { status: 'live', score: { home: 1, away: 2 }, period: 1 } } };
+		} );
+		render( <KeepGame id="101" me={ me( { is_timekeeper: true } ) } /> );
+		await settle();
+		fireEvent.click( screen.getByRole( 'button', { name: 'Goal' } ) );
+		fireEvent.click( within( screen.getByRole( 'dialog' ) ).getByRole( 'button', { name: /Kings/ } ) );
+		fireEvent.click( within( screen.getByRole( 'dialog' ) ).getByRole( 'button', { name: /17 Kit Knight/ } ) );
+		fireEvent.click( screen.getByRole( 'button', { name: 'Save goal' } ) );
+		await settle( 15 );
+		expect( screen.getByRole( 'group', { name: /Ducks 1, Kings 2/ } ) ).toBeTruthy();
+
+		await ducksGoal();
+		expect( screen.getByText( /waiting to sync/ ) ).toBeTruthy();
+		expect( screen.getByRole( 'group', { name: /Ducks 2, Kings 2/ } ) ).toBeTruthy();
+	} );
+
+	it( 'stops asking while the sheet is hidden, asks at once when it is shown again, and never asks for a final game', async () => {
+		const sent = fakeApi( () => ( { body: log() } ) );
+		render( <KeepGame id="101" me={ me( { is_timekeeper: true } ) } /> );
+		await settle();
+		await tick( 10_000 );
+		expect( gets( sent ) ).toBe( 2 );
+		setVisibility( 'hidden' );
+		await tick( 60_000 );
+		expect( gets( sent ) ).toBe( 2 );
+		await act( async () => setVisibility( 'visible' ) );
+		await settle();
+		expect( gets( sent ) ).toBe( 3 );
+
+		cleanup();
+		const final = fakeApi( () => ( { body: log( { status: 'final' } ) } ) );
+		render( <KeepGame id="101" me={ me( { is_timekeeper: true } ) } /> );
+		await settle();
+		await tick( 60_000 );
+		expect( gets( final ) ).toBe( 1 );
+	} );
+
+	it( 'backs off when the server fails, with one request out at a time', async () => {
+		let fail = false;
+		const sent = fakeApi( () => ( fail ? { status: 503, body: { code: 'http_error', message: 'Busy', data: { status: 503 } } } : { body: log() } ) );
+		render( <KeepGame id="101" me={ me( { is_timekeeper: true } ) } /> );
+		await settle();
+		fail = true;
+		await tick( 10_000 );
+		expect( gets( sent ) ).toBe( 2 );
+		await tick( 10_000 );
+		expect( gets( sent ) ).toBe( 2 ); // 20 s after a failure, not 10
+		await tick( 10_000 );
+		expect( gets( sent ) ).toBe( 3 );
+		expect( screen.getByRole( 'group', { name: /Ducks 1, Kings 0/ } ) ).toBeTruthy(); // the last good log stays
 	} );
 } );
 

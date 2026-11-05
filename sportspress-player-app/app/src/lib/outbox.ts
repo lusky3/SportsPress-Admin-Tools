@@ -1,8 +1,9 @@
 import { useMemo, useSyncExternalStore } from 'react';
 import { ApiError, apiSend } from '../api';
 import type { EntryInput, GameLog, KeeperEntry, LiveSummary, PostLogResult } from '../types';
-import { getCached, patchCached } from '../useResource';
+import { getCached, isWatched, patchCached, refresh } from '../useResource';
 import { currentUser, onUserChange } from './account';
+import { deriveScore } from './live';
 
 /*
  * The timekeeper's outbox. The rule it keeps: a goal a timekeeper tapped is never silently lost,
@@ -574,8 +575,15 @@ export function mergeIntoLog( gameId: number, entries: KeeperEntry[], live: Live
 	const fresh = new Map( entries.map( ( e ) => [ e.uid, e ] ) );
 	const kept = cur.entries.map( ( e ) => fresh.get( e.uid ) ?? e );
 	const added = entries.filter( ( e ) => ! cur.entries.some( ( c ) => c.uid === e.uid ) ).reverse();
+	const merged = [ ...added, ...kept ];
 	// patch, not replace: a reload in flight (the Finish sheet's) must still land with the server's totals.
-	patchCached( path, { ...cur, ...( live ?? {} ), entries: [ ...added, ...kept ] } );
+	patchCached( path, { ...cur, ...( live ?? {} ), entries: merged } );
+	// The server's score counts entries this sheet has not seen (another keeper's): fetch the whole
+	// log now, or a goal waiting here would be added to a score missing theirs and it would drop.
+	const derived = live ? deriveScore( merged, cur.game.home.id, cur.game.away.id ) : undefined;
+	if ( live && derived && ( derived.home !== live.score.home || derived.away !== live.score.away ) && isWatched( path ) ) {
+		void refresh( path );
+	}
 }
 
 let shared: Outbox | undefined;

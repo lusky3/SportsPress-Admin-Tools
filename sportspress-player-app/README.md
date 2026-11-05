@@ -158,6 +158,12 @@ on that phone, those entries are not sent, shown or counted from the new sign-in
 up Finish. They stay on the phone, and the Score list and game sheet say how many wait. They send
 when the timekeeper who made them signs in again.
 
+With two timekeepers on one game, an open game sheet fetches the full log every 10 seconds while it
+is on screen (at once when the phone comes back to it or gets a connection back), so the other
+timekeeper's entries show up without a tap. It stops while the sheet is hidden, offline or final,
+and waits longer after errors. Entries still waiting on this phone stay on the sheet and in the score
+until the server has them.
+
 **Penalties.** The offense list is Minor (2), Double minor (4), Major (5), Misconduct (10), Game
 misconduct (10), Gross misconduct (10), Match (5), Fighting (5), Ejection (10) and Other (2), in
 minutes by default; a timekeeper can change the minutes (1 to 20). Game misconduct, gross
