@@ -984,11 +984,9 @@ class SPPA_REST {
 		if ( null === $raw ) {
 			return self::not_found();
 		}
-		if ( SPPA_Event_Presenter::is_called_off( SPPA_Event_Presenter::present( $raw, 0 )['status'] ) ) {
-			return self::called_off();
-		}
-		if ( count( $raw['team_ids'] ) < 2 ) {
-			return new WP_Error( 'sppa_no_teams', __( 'This game does not have two teams.', 'sportspress-player-app' ), array( 'status' => 409 ) );
+		$refusal = self::log_refusal( $raw );
+		if ( $refusal ) {
+			return $refusal;
 		}
 
 		$event_id = (int) $raw['id'];
@@ -997,31 +995,9 @@ class SPPA_REST {
 			'rosters'   => self::keeper_rosters( $v['reader'], $raw ),
 			'finalized' => false, // Checked under the lock below.
 		);
-		$results  = array();
-		$valid    = array();
-		foreach ( array_values( (array) $request->get_param( 'entries' ) ) as $i => $in ) {
-			$in    = is_array( $in ) ? $in : array();
-			$check = SPPA_Game_Log::validate( $in, $ctx );
-			if ( $check['ok'] ) {
-				$valid[ $i ]   = $check['entry'];
-				$results[ $i ] = null;
-				continue;
-			}
-			// An entry stored earlier may no longer pass (a roster changed): it is still a duplicate.
-			$uid           = is_string( $in['uid'] ?? null ) ? $in['uid'] : '';
-			$stored        = self::is_uid( $uid ) ? SPPA_Game_Log_Store::find( $event_id, $uid ) : null;
-			$results[ $i ] = null === $stored
-				? array(
-					'uid'    => $uid,
-					'status' => 'rejected',
-					'reason' => $check['reason'],
-				)
-				: array(
-					'uid'    => $uid,
-					'status' => 'duplicate',
-					'entry'  => $stored,
-				);
-		}
+		$checked  = self::check_entries( $event_id, array_values( (array) $request->get_param( 'entries' ) ), $ctx );
+		$results  = $checked['results'];
+		$valid    = $checked['valid'];
 
 		// A finished game takes no new entries except from an organizer; resent ones are still acknowledged.
 		$organizer = $v['organizer'];
@@ -1030,15 +1006,7 @@ class SPPA_REST {
 			array_values( $valid ),
 			$v['user_id'],
 			function () use ( $event_id, $organizer, $valid ) {
-				if ( $organizer || ! SPPA_Result_Writer::is_final( $event_id ) ) {
-					return null;
-				}
-				foreach ( $valid as $entry ) {
-					if ( null === SPPA_Game_Log_Store::find( $event_id, $entry['uid'] ) ) {
-						return self::finalized_error();
-					}
-				}
-				return null;
+				return self::finalized_refusal( $event_id, $organizer, $valid );
 			}
 		);
 		if ( is_wp_error( $stored ) ) {
@@ -1053,7 +1021,72 @@ class SPPA_REST {
 		if ( $created ) {
 			SPPA_Result_Writer::mark_live( $event_id );
 		}
+		return self::log_response( $event_id, $raw, $v, $results );
+	}
 
+	/** Why a game takes no log entries (called off, not two teams), or null. */
+	private static function log_refusal( array $raw ): ?WP_Error {
+		if ( SPPA_Event_Presenter::is_called_off( SPPA_Event_Presenter::present( $raw, 0 )['status'] ) ) {
+			return self::called_off();
+		}
+		if ( count( $raw['team_ids'] ) < 2 ) {
+			return new WP_Error( 'sppa_no_teams', __( 'This game does not have two teams.', 'sportspress-player-app' ), array( 'status' => 409 ) );
+		}
+		return null;
+	}
+
+	/**
+	 * Validate the posted entries. A rejected entry that is already stored (a
+	 * roster changed since) is still a duplicate.
+	 *
+	 * @return array{valid:array,results:array} Valid entries and the per-entry answers (null for a valid one), by position.
+	 */
+	private static function check_entries( int $event_id, array $entries, array $ctx ): array {
+		$results = array();
+		$valid   = array();
+		foreach ( $entries as $i => $in ) {
+			$in    = is_array( $in ) ? $in : array();
+			$check = SPPA_Game_Log::validate( $in, $ctx );
+			if ( $check['ok'] ) {
+				$valid[ $i ]   = $check['entry'];
+				$results[ $i ] = null;
+				continue;
+			}
+			$uid           = is_string( $in['uid'] ?? null ) ? $in['uid'] : '';
+			$stored        = self::is_uid( $uid ) ? SPPA_Game_Log_Store::find( $event_id, $uid ) : null;
+			$results[ $i ] = null === $stored
+				? array(
+					'uid'    => $uid,
+					'status' => 'rejected',
+					'reason' => $check['reason'],
+				)
+				: array(
+					'uid'    => $uid,
+					'status' => 'duplicate',
+					'entry'  => $stored,
+				);
+		}
+		return array(
+			'valid'   => $valid,
+			'results' => $results,
+		);
+	}
+
+	/** The error for a new entry on a finished game from a non-organizer; null when allowed (resent entries are always fine). */
+	private static function finalized_refusal( int $event_id, bool $organizer, array $valid ): ?WP_Error {
+		if ( $organizer || ! SPPA_Result_Writer::is_final( $event_id ) ) {
+			return null;
+		}
+		foreach ( $valid as $entry ) {
+			if ( null === SPPA_Game_Log_Store::find( $event_id, $entry['uid'] ) ) {
+				return self::finalized_error();
+			}
+		}
+		return null;
+	}
+
+	/** The response of a log POST: every entry's answer and the live summary. */
+	private static function log_response( int $event_id, array $raw, array $v, array $results ): WP_REST_Response {
 		$all     = SPPA_Game_Log_Store::all( $event_id );
 		$derived = SPPA_Game_Log::derive( $all, $raw['team_ids'] );
 		$status  = self::log_status( $event_id, (bool) $all );
