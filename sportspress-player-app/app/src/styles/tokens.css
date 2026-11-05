@@ -1,0 +1,96 @@
+/*
+ * Blueline tokens. Light by default, dark under prefers-color-scheme.
+ *
+ * Palette rules: ink is the chrome and the text; accent-text is the only blue
+ * that may be text on light; steel is for strokes only; ice is a fill only and
+ * never text on a light surface (on the dark theme it is allowed as text).
+ */
+
+/* Latin subsets only: Barlow Condensed 800 italic for display, Inter variable for body. */
+@font-face {
+	font-family: 'Barlow Condensed';
+	font-style: italic;
+	font-weight: 800;
+	font-display: swap;
+	src: url('../../node_modules/@fontsource/barlow-condensed/files/barlow-condensed-latin-800-italic.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Inter Variable';
+	font-style: normal;
+	font-weight: 100 900;
+	font-display: swap;
+	src: url('../../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2-variations');
+}
+
+:root {
+	/* Brand */
+	--ink: #132343;
+	--ink-deep: #0d1729;
+	--ink-mid: #2e4a74;
+	--accent-text: #3f6e9d;
+	--steel: #5188b7;
+	--ice: #74c0e1;
+	--paper: #f7fbfc;
+
+	/* Type */
+	--font-display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+	--font-body: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+	/* Semantic, light */
+	--bg: var(--paper);
+	--surface: #ffffff;
+	--text: var(--ink);
+	--text-muted: var(--ink-mid);
+	--link: var(--accent-text);
+	--line: rgb(19 35 67 / 16%);
+	--stroke: var(--steel);
+	--chrome: var(--ink);
+	--chrome-text: var(--paper);
+	--chrome-muted: #b4c4dc;
+	--chrome-active: var(--ice);
+	--btn-bg: var(--ink);
+	--btn-text: var(--paper);
+	--focus: var(--ink-mid);
+	--focus-on-chrome: var(--ice);
+	--notice-bg: #fff3d6;
+	--notice-text: #5c3b00;
+	--offline-bg: var(--ink-mid);
+	--offline-text: var(--paper);
+	--error: #a3241d;
+	--hero-bg: var(--ink);
+	--hero-muted: #b4c4dc;
+	--row-bg: #ffffff;
+	--chip-line: rgb(19 35 67 / 35%);
+	--skeleton: rgb(19 35 67 / 8%);
+
+	/* Shape and rhythm */
+	--radius: 12px;
+	--gutter: 16px;
+	--tap: 44px;
+	--tab-bar-height: 64px;
+	--measure: 640px;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: var(--ink-deep);
+		--surface: var(--ink);
+		--text: var(--paper);
+		--text-muted: #a9bcd6;
+		--link: var(--ice);
+		--line: rgb(247 251 252 / 16%);
+		--chrome: var(--ink);
+		--btn-bg: var(--ice);
+		--btn-text: var(--ink-deep);
+		--focus: var(--ice);
+		--notice-bg: #3a2c0b;
+		--notice-text: #ffe3a3;
+		--offline-bg: #1c3358;
+		--error: #ffb4ab;
+		--hero-bg: #1c3358;
+		--row-bg: var(--ink);
+		--chip-line: rgb(247 251 252 / 40%);
+		--skeleton: rgb(247 251 252 / 8%);
+	}
+}

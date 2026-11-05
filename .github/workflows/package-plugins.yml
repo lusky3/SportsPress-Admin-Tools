@@ -86,7 +86,7 @@ jobs:
             fi
           done
 
-      # The in-plugin updater reads this. One release tag carries eight
+      # The in-plugin updater reads this. One release tag carries nine
       # independently-versioned plugins, so a plugin cannot learn its own
       # version from the tag it appears in — the manifest is where that
       # question is answered. Built from the same parsing the release guard
@@ -114,6 +114,20 @@ jobs:
             fi
           done
           echo "League manager build/ bundle present in the release zip."
+
+      - name: Verify player-app build is present in its zip
+        run: |
+          # Same regression guard for the Player App: the PHP app shell serves the
+          # committed build/, and the zip must never ship without the service
+          # worker or the manifest that names the hashed entry.
+          for f in build/sw.js build/.vite/manifest.json; do
+            if ! unzip -l dist/sportspress-player-app.zip \
+                 | grep -q "sportspress-player-app/$f"; then
+              echo "::error::sportspress-player-app/$f is missing from the release zip."
+              exit 1
+            fi
+          done
+          echo "Player App build/ present in the release zip."
 
       - name: Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3

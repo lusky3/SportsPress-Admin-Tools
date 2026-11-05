@@ -21,6 +21,14 @@ updates:
     commit-message:
       prefix: "deps"
 
+  - package-ecosystem: "npm"
+    directory: "/sportspress-player-app/app"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "deps"
+
   - package-ecosystem: "docker"
     directory: "/sportspress-schedule-generator/tests/docker"
     schedule:

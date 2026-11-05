@@ -1,0 +1,282 @@
+/*
+ * Demo chrome: the banner on top, and the few app rules that shift to make room for it.
+ * Brand tokens only; contrast: --paper on --ink is about 16:1, --ink on --ice about 8:1.
+ */
+
+:root {
+	--demo-banner: 52px;
+	--demo-top: calc(var(--demo-banner) + env(safe-area-inset-top, 0px));
+}
+
+html,
+body {
+	background: var(--bg);
+}
+
+.demo-root {
+	min-height: 100dvh;
+	padding-top: var(--demo-top);
+	background: var(--bg);
+}
+
+/* The banner covers the notch area, so the screens do not add it again. */
+.demo-root .screen {
+	padding-top: var(--gutter);
+}
+
+.demo-root .offline-slot {
+	top: var(--demo-top);
+}
+
+/* The demo cannot be installed. */
+.demo-root .tip {
+	display: none;
+}
+
+.demo-banner {
+	position: fixed;
+	inset: 0 0 auto 0;
+	z-index: 20;
+	box-sizing: border-box;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	flex-direction: column;
+	align-items: stretch;
+	justify-content: center;
+	gap: 0;
+	min-height: var(--demo-top);
+	padding: env(safe-area-inset-top, 0px) max(8px, env(safe-area-inset-right, 0px)) 0 max(10px, env(safe-area-inset-left, 0px));
+	background: var(--ink);
+	color: var(--paper);
+	border-bottom: 1px solid rgb(247 251 252 / 24%);
+	font-family: var(--font-body);
+}
+
+.demo-banner__main {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px;
+	min-height: 52px;
+}
+
+/* The timekeeper's bar has a second row: the offline switch. */
+html.demo-tall {
+	--demo-banner: 100px;
+}
+
+.demo-banner__row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	min-height: 48px;
+	border-top: 1px solid rgb(247 251 252 / 18%);
+	color: var(--chrome-muted);
+	font-size: 0.75rem;
+}
+
+.demo-banner__toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 44px;
+	padding: 0 4px;
+	border: 0;
+	background: none;
+	color: var(--paper);
+	font: inherit;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.demo-banner__knob {
+	position: relative;
+	width: 36px;
+	height: 20px;
+	border: 2px solid var(--chrome-muted);
+	border-radius: 999px;
+}
+
+.demo-banner__knob::after {
+	content: '';
+	position: absolute;
+	top: 2px;
+	left: 2px;
+	width: 12px;
+	height: 12px;
+	border-radius: 50%;
+	background: var(--chrome-muted);
+	transition: transform 120ms ease;
+}
+
+.demo-banner__toggle[aria-pressed='true'] .demo-banner__knob {
+	border-color: var(--ice);
+	background: var(--ice);
+}
+
+.demo-banner__toggle[aria-pressed='true'] .demo-banner__knob::after {
+	background: var(--ink);
+	transform: translateX(16px);
+}
+
+.demo-banner__toggle:focus-visible {
+	outline: 2px solid var(--ice);
+	outline-offset: 2px;
+}
+
+.demo-banner__label {
+	margin: 0;
+	min-width: 0;
+	font-size: 0.75rem;
+	line-height: 1.25;
+}
+
+.demo-banner__label strong {
+	display: block;
+	font-weight: 700;
+	letter-spacing: 0.02em;
+}
+
+.demo-banner__label span {
+	display: block;
+	color: var(--chrome-muted);
+	font-size: 0.6875rem;
+}
+
+.demo-banner__seg {
+	display: flex;
+	margin: 0;
+	padding: 0;
+	border: 1px solid rgb(247 251 252 / 45%);
+	border-radius: 10px;
+	overflow: hidden;
+}
+
+.demo-banner__opt {
+	box-sizing: border-box;
+	min-width: 44px;
+	min-height: 44px;
+	padding: 0 7px;
+	border: 0;
+	background: transparent;
+	color: var(--chrome-muted);
+	font: inherit;
+	font-size: 0.75rem;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.demo-banner__opt + .demo-banner__opt {
+	border-left: 1px solid rgb(247 251 252 / 45%);
+}
+
+.demo-banner__opt[aria-checked='true'] {
+	background: var(--ice);
+	color: var(--ink);
+}
+
+.demo-banner__opt:focus-visible {
+	outline: 2px solid var(--ice);
+	outline-offset: -4px;
+}
+
+.demo-banner__opt[aria-checked='true']:focus-visible {
+	outline-color: var(--ink);
+}
+
+/* First-visit notice: what this is, and on a wide screen, that it is built for a phone. */
+.demo-notice {
+	position: fixed;
+	inset: 0;
+	z-index: 40;
+	display: grid;
+	place-items: center;
+	padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+	background: rgb(13 23 41 / 72%);
+	overflow-y: auto;
+}
+
+.demo-notice__card {
+	box-sizing: border-box;
+	width: min(100%, 440px);
+	padding: 22px 20px 20px;
+	border-radius: 14px;
+	background: var(--bg);
+	color: var(--text);
+	box-shadow: 0 18px 50px rgb(0 0 0 / 35%);
+	font-family: var(--font-body);
+}
+
+.demo-notice__title {
+	margin: 0 0 10px;
+	font-family: var(--font-display);
+	font-style: italic;
+	font-weight: 800;
+	font-size: 1.75rem;
+	line-height: 1;
+	text-transform: uppercase;
+}
+
+.demo-notice__body p {
+	margin: 0 0 10px;
+	font-size: 0.9375rem;
+	line-height: 1.5;
+}
+
+.demo-notice__wide {
+	padding: 10px 12px;
+	border-left: 4px solid var(--ice);
+	border-radius: 6px;
+	background: rgb(116 192 225 / 16%);
+}
+
+.demo-notice__url {
+	font-weight: 700;
+	overflow-wrap: anywhere;
+}
+
+.demo-notice__ok {
+	box-sizing: border-box;
+	width: 100%;
+	min-height: 48px;
+	margin-top: 6px;
+	border: 0;
+	border-radius: 10px;
+	background: var(--ink);
+	color: var(--paper);
+	font: inherit;
+	font-weight: 700;
+	font-size: 1rem;
+	cursor: pointer;
+}
+
+.demo-notice__ok:focus-visible {
+	outline: 3px solid var(--ice);
+	outline-offset: 2px;
+}
+
+/* On a wide screen, show the app as a phone-sized column instead of stretching it. */
+@media (min-width: 640px) {
+	html,
+	body {
+		background: var(--ink);
+	}
+
+	.demo-root {
+		max-width: 430px;
+		margin: 0 auto;
+		box-shadow: 0 0 0 1px rgb(247 251 252 / 18%), 0 20px 60px rgb(0 0 0 / 45%);
+	}
+
+	.demo-banner,
+	.demo-root .tab-bar,
+	.demo-root .offline-slot {
+		left: calc(50% - 215px);
+		right: auto;
+		width: 430px;
+	}
+}

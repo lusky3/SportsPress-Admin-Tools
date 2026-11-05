@@ -1,0 +1,773 @@
+<?php
+/**
+ * Standalone tests for SPPA_Spares (rules, repository, pool) and SPPA_Mailer.
+ *
+ * Usage: php test-spares.php
+ */
+
+require __DIR__ . '/bootstrap.php';
+require_once dirname( __DIR__ ) . '/includes/class-schema.php';
+require_once dirname( __DIR__ ) . '/includes/class-event-presenter.php';
+require_once dirname( __DIR__ ) . '/includes/class-roster-reader.php';
+require_once dirname( __DIR__ ) . '/includes/class-spares.php';
+require_once dirname( __DIR__ ) . '/includes/class-app-shell.php';
+require_once dirname( __DIR__ ) . '/includes/class-mailer.php';
+
+date_default_timezone_set( 'America/Toronto' );
+
+/** A fully eligible context; each test overrides one field. */
+function sppa_ctx( array $over = array() ) {
+	$now = 1800000000;
+	return array_merge(
+		array(
+			'prefs'           => array( 'enabled' => true, 'positions' => array( 'skater', 'goalie' ) ),
+			'position'        => 'skater',
+			'user_team_ids'   => array( 3 ),
+			'event_team_ids'  => array( 12, 7 ),
+			'event_start'     => $now + 86400,
+			'own_game_starts' => array(),
+			'now'             => $now,
+			'call_status'     => 'open',
+			'event_status'    => 'ok',
+			'has_player'      => true,
+		),
+		$over
+	);
+}
+
+echo "\n=== eligibility: one reason at a time ===\n\n";
+
+$ctx = sppa_ctx();
+sppa_assert( '' === SPPA_Spares::eligibility( $ctx ), 'a fully eligible context returns the empty string' );
+sppa_assert( 'no_player' === SPPA_Spares::eligibility( sppa_ctx( array( 'has_player' => false ) ) ), 'no linked player -> no_player' );
+sppa_assert( 'not_registered' === SPPA_Spares::eligibility( sppa_ctx( array( 'user_team_ids' => array() ) ) ), 'no current-season team -> not_registered' );
+sppa_assert( 'called_off' === SPPA_Spares::eligibility( sppa_ctx( array( 'event_status' => 'cancelled' ) ) ), 'cancelled game -> called_off' );
+sppa_assert( 'called_off' === SPPA_Spares::eligibility( sppa_ctx( array( 'event_status' => 'postponed' ) ) ), 'postponed game -> called_off' );
+sppa_assert( 'past' === SPPA_Spares::eligibility( sppa_ctx( array( 'event_start' => 1800000000 - 1 ) ) ), 'started a second ago -> past' );
+sppa_assert( 'past' === SPPA_Spares::eligibility( sppa_ctx( array( 'event_start' => 1800000000 ) ) ), 'starting now -> past' );
+sppa_assert( 'closed' === SPPA_Spares::eligibility( sppa_ctx( array( 'call_status' => 'filled' ) ) ), 'filled call -> closed' );
+sppa_assert( 'closed' === SPPA_Spares::eligibility( sppa_ctx( array( 'call_status' => 'cancelled' ) ) ), 'cancelled call -> closed' );
+sppa_assert( 'on_team' === SPPA_Spares::eligibility( sppa_ctx( array( 'user_team_ids' => array( 3, 12 ) ) ) ), 'on one of the two teams -> on_team' );
+sppa_assert( 'on_team' === SPPA_Spares::eligibility( sppa_ctx( array( 'user_team_ids' => array( 7 ) ) ) ), 'on the other team -> on_team' );
+sppa_assert( 'not_opted_in' === SPPA_Spares::eligibility( sppa_ctx( array( 'prefs' => array( 'enabled' => false, 'positions' => array( 'skater' ) ) ) ) ), 'prefs disabled -> not_opted_in' );
+sppa_assert( 'position' === SPPA_Spares::eligibility( sppa_ctx( array( 'prefs' => array( 'enabled' => true, 'positions' => array( 'skater' ) ), 'position' => 'goalie' ) ) ), 'goalie call, skater-only prefs -> position' );
+sppa_assert( '' === SPPA_Spares::eligibility( sppa_ctx( array( 'prefs' => array( 'enabled' => true, 'positions' => array( 'goalie' ) ), 'position' => 'goalie' ) ) ), 'goalie call, goalie prefs -> eligible' );
+
+echo "\n--- busy window (150 minutes either side) ---\n\n";
+
+$start = 1800000000 + 86400;
+sppa_assert( 'busy' === SPPA_Spares::eligibility( sppa_ctx( array( 'own_game_starts' => array( $start + 149 * 60 ) ) ) ), 'own game 149 min after -> busy' );
+sppa_assert( '' === SPPA_Spares::eligibility( sppa_ctx( array( 'own_game_starts' => array( $start + 151 * 60 ) ) ) ), 'own game 151 min after -> eligible' );
+sppa_assert( 'busy' === SPPA_Spares::eligibility( sppa_ctx( array( 'own_game_starts' => array( $start - 149 * 60 ) ) ) ), 'own game 149 min before -> busy' );
+sppa_assert( '' === SPPA_Spares::eligibility( sppa_ctx( array( 'own_game_starts' => array( $start - 151 * 60 ) ) ) ), 'own game 151 min before -> eligible' );
+sppa_assert( 'busy' === SPPA_Spares::eligibility( sppa_ctx( array( 'own_game_starts' => array( $start + 150 * 60 ) ) ) ), 'exactly 150 min away is still busy' );
+sppa_assert( 'busy' === SPPA_Spares::eligibility( sppa_ctx( array( 'own_game_starts' => array( $start - 10 * 3600, $start + 60 ) ) ) ), 'one clash among several games -> busy' );
+sppa_assert( '' === SPPA_Spares::eligibility( sppa_ctx( array( 'own_game_starts' => array( $start - 7 * 86400, $start + 7 * 86400 ) ) ) ), 'games a week either side do not matter' );
+
+echo "\n--- precedence when several reasons hold ---\n\n";
+
+sppa_assert( 'no_player' === SPPA_Spares::eligibility( sppa_ctx( array( 'has_player' => false, 'user_team_ids' => array(), 'event_status' => 'cancelled' ) ) ), 'no_player outranks the rest' );
+sppa_assert( 'not_registered' === SPPA_Spares::eligibility( sppa_ctx( array( 'user_team_ids' => array(), 'event_status' => 'cancelled' ) ) ), 'not_registered outranks called_off' );
+sppa_assert( 'called_off' === SPPA_Spares::eligibility( sppa_ctx( array( 'event_status' => 'cancelled', 'event_start' => 5 ) ) ), 'called_off outranks past' );
+sppa_assert( 'past' === SPPA_Spares::eligibility( sppa_ctx( array( 'event_start' => 5, 'call_status' => 'filled' ) ) ), 'past outranks closed' );
+sppa_assert( 'closed' === SPPA_Spares::eligibility( sppa_ctx( array( 'call_status' => 'filled', 'user_team_ids' => array( 12 ) ) ) ), 'closed outranks on_team' );
+sppa_assert( 'already_sparing' === SPPA_Spares::eligibility( sppa_ctx( array( 'already_sparing' => true ) ) ), 'a place on another call for this game -> already_sparing' );
+sppa_assert( 'closed' === SPPA_Spares::eligibility( sppa_ctx( array( 'already_sparing' => true, 'call_status' => 'filled' ) ) ), 'closed outranks already_sparing' );
+sppa_assert( 'already_sparing' === SPPA_Spares::eligibility( sppa_ctx( array( 'already_sparing' => true, 'user_team_ids' => array( 12 ) ) ) ), 'already_sparing outranks on_team' );
+
+sppa_assert( '' !== SPPA_Spares::eligibility( array() ), 'an empty context is never eligible' );
+
+echo "\n=== apply_accept / apply_withdraw ===\n\n";
+
+$r = SPPA_Spares::apply_accept( array( 'needed' => 1, 'status' => 'open' ), 0 );
+sppa_assert( true === $r['ok'] && 'filled' === $r['new_status'] && null === $r['error'], 'needed 1, count 0 -> ok and filled' );
+$r = SPPA_Spares::apply_accept( array( 'needed' => 1, 'status' => 'open' ), 1 );
+sppa_assert( false === $r['ok'] && 'full' === $r['error'], 'needed 1, count 1 -> full' );
+$r = SPPA_Spares::apply_accept( array( 'needed' => 2, 'status' => 'open' ), 0 );
+sppa_assert( true === $r['ok'] && 'open' === $r['new_status'], 'needed 2, count 0 -> ok, still open' );
+$r = SPPA_Spares::apply_accept( array( 'needed' => 2, 'status' => 'open' ), 1 );
+sppa_assert( true === $r['ok'] && 'filled' === $r['new_status'], 'needed 2, count 1 -> ok, now filled' );
+$r = SPPA_Spares::apply_accept( array( 'needed' => 2, 'status' => 'open' ), 3 );
+sppa_assert( false === $r['ok'] && 'full' === $r['error'], 'count above needed -> full' );
+$r = SPPA_Spares::apply_accept( array( 'needed' => 3, 'status' => 'filled' ), 0 );
+sppa_assert( false === $r['ok'] && 'full' === $r['error'], 'a filled call refuses even at count 0' );
+$r = SPPA_Spares::apply_accept( array( 'needed' => 3, 'status' => 'cancelled' ), 0 );
+sppa_assert( false === $r['ok'] && 'full' === $r['error'], 'a cancelled call refuses' );
+sppa_assert( array( 'ok', 'new_status', 'error' ) === array_keys( SPPA_Spares::apply_accept( array( 'needed' => 1, 'status' => 'open' ), 0 ) ), 'apply_accept has exactly ok/new_status/error' );
+
+$r = SPPA_Spares::apply_withdraw( array( 'needed' => 1, 'status' => 'filled' ), 0 );
+sppa_assert( 'open' === $r['new_status'], 'withdraw from filled with 0 left -> open' );
+$r = SPPA_Spares::apply_withdraw( array( 'needed' => 2, 'status' => 'filled' ), 1 );
+sppa_assert( 'open' === $r['new_status'], 'withdraw from filled with 1 of 2 left -> open' );
+$r = SPPA_Spares::apply_withdraw( array( 'needed' => 2, 'status' => 'open' ), 1 );
+sppa_assert( 'open' === $r['new_status'], 'withdraw from an open call stays open' );
+$r = SPPA_Spares::apply_withdraw( array( 'needed' => 1, 'status' => 'cancelled' ), 0 );
+sppa_assert( 'cancelled' === $r['new_status'], 'a cancelled call stays cancelled' );
+$r = SPPA_Spares::apply_withdraw( array( 'needed' => 1, 'status' => 'filled' ), 1 );
+sppa_assert( 'filled' === $r['new_status'], 'still at needed after the withdraw: stays filled' );
+sppa_assert( array( 'new_status' ) === array_keys( SPPA_Spares::apply_withdraw( array( 'needed' => 1, 'status' => 'open' ), 0 ) ), 'apply_withdraw has exactly new_status' );
+
+echo "\n=== sanitize_prefs ===\n\n";
+
+sppa_assert( array( 'enabled' => true, 'positions' => array( 'skater' ) ) === SPPA_Spares::sanitize_prefs( array( 'enabled' => true, 'positions' => array( 'skater', 'defence' ) ) ), 'defence is dropped' );
+sppa_assert( array( 'enabled' => true, 'positions' => array( 'skater' ) ) === SPPA_Spares::sanitize_prefs( array( 'enabled' => true, 'positions' => array( 'defence' ) ) ), 'only unknown positions -> the default skater' );
+sppa_assert( array( 'enabled' => true, 'positions' => array( 'skater' ) ) === SPPA_Spares::sanitize_prefs( array( 'enabled' => true ) ), 'no positions -> skater' );
+sppa_assert( array( 'enabled' => false, 'positions' => array( 'skater' ) ) === SPPA_Spares::sanitize_prefs( null ), 'null -> disabled, skater' );
+sppa_assert( array( 'enabled' => false, 'positions' => array( 'skater' ) ) === SPPA_Spares::sanitize_prefs( 'garbage' ), 'a string -> disabled, skater' );
+sppa_assert( array( 'enabled' => false, 'positions' => array( 'skater' ) ) === SPPA_Spares::sanitize_prefs( array() ), 'empty array -> disabled, skater' );
+sppa_assert( array( 'enabled' => true, 'positions' => array( 'skater', 'goalie' ) ) === SPPA_Spares::sanitize_prefs( array( 'enabled' => '1', 'positions' => array( 'Goalie', ' skater ', 'goalie' ) ) ), 'case/space normalised, deduplicated, canonical order' );
+sppa_assert( false === SPPA_Spares::sanitize_prefs( array( 'enabled' => 'false', 'positions' => array( 'goalie' ) ) )['enabled'], "the string 'false' is off" );
+sppa_assert( true === SPPA_Spares::sanitize_prefs( array( 'enabled' => 'true' ) )['enabled'] && true === SPPA_Spares::sanitize_prefs( array( 'enabled' => 1 ) )['enabled'], "'true' and 1 are on" );
+sppa_assert( array( 'enabled', 'positions' ) === array_keys( SPPA_Spares::sanitize_prefs( array( 'enabled' => true, 'evil' => 'x' ) ) ), 'unknown keys are dropped' );
+sppa_assert( array( 'enabled' => true, 'positions' => array( 'goalie' ) ) === SPPA_Spares::sanitize_prefs( array( 'enabled' => true, 'positions' => 'goalie' ) ), 'a lone position string is accepted' );
+
+/* ------------------------------------------------------------------------
+ * Repository against a small stateful fake of the two spare tables.
+ * --------------------------------------------------------------------- */
+
+/** Install a fake DB; returns its state object (calls by id, responses by "call-user"). */
+function sppa_fake_db( array $calls ) {
+	$state        = (object) array( 'calls' => array(), 'resp' => array() );
+	foreach ( $calls as $c ) {
+		$state->calls[ $c['id'] ] = array_merge(
+			array(
+				'event_id'   => 101,
+				'team_id'    => 12,
+				'position'   => 'skater',
+				'needed'     => 1,
+				'note'       => '',
+				'status'     => 'open',
+				'created_by' => 4,
+				'created_at' => '2026-11-01 12:00:00',
+				'updated_at' => '2026-11-01 12:00:00',
+			),
+			$c
+		);
+	}
+	$accepted = function ( $call_id ) use ( $state ) {
+		$n = 0;
+		foreach ( $state->resp as $r ) {
+			if ( $r['call_id'] === $call_id && 'accepted' === $r['status'] ) {
+				++$n;
+			}
+		}
+		return $n;
+	};
+	$db                  = $GLOBALS['wpdb'];
+	$db->results_handler = function ( $sql ) use ( $state, $accepted ) {
+		if ( preg_match( '/FROM wp_sppa_spare_calls WHERE id = (\d+)/', $sql, $m ) ) {
+			return isset( $state->calls[ (int) $m[1] ] ) ? array( array_map( 'strval', $state->calls[ (int) $m[1] ] ) ) : array();
+		}
+		if ( preg_match( "/SELECT COUNT\(\*\) FROM wp_sppa_spare_responses WHERE call_id = (\d+) AND status = 'accepted'/", $sql, $m ) ) {
+			return (string) $accepted( (int) $m[1] );
+		}
+		if ( preg_match( '/SELECT status FROM wp_sppa_spare_responses WHERE call_id = (\d+) AND user_id = (\d+)/', $sql, $m ) ) {
+			return $state->resp[ $m[1] . '-' . $m[2] ]['status'] ?? null;
+		}
+		return array();
+	};
+	$db->query_handler   = function ( $sql ) use ( $state ) {
+		if ( preg_match( "/^INSERT INTO wp_sppa_spare_responses .*VALUES \((\d+),(\d+),(\d+),'(\w+)'/s", $sql, $m ) ) {
+			$state->resp[ $m[1] . '-' . $m[2] ] = array( 'call_id' => (int) $m[1], 'user_id' => (int) $m[2], 'player_id' => (int) $m[3], 'status' => $m[4] );
+			return 1;
+		}
+		if ( preg_match( "/^UPDATE wp_sppa_spare_calls SET status = '(\w+)', updated_at = '[^']*' WHERE id = (\d+) AND status = '(\w+)'/", $sql, $m ) ) {
+			if ( $state->calls[ (int) $m[2] ]['status'] === $m[3] ) {
+				$state->calls[ (int) $m[2] ]['status'] = $m[1];
+				return 1;
+			}
+			return 0;
+		}
+		if ( preg_match( "/^UPDATE wp_sppa_spare_calls SET status = '(\w+)', updated_at = '[^']*' WHERE id = (\d+)$/", $sql, $m ) ) {
+			if ( ! isset( $state->calls[ (int) $m[2] ] ) ) {
+				return 0;
+			}
+			$state->calls[ (int) $m[2] ]['status'] = $m[1];
+			return 1;
+		}
+		if ( preg_match( "/^UPDATE wp_sppa_spare_responses SET status = '(\w+)' WHERE call_id = (\d+) AND user_id = (\d+) AND status = '(\w+)'/", $sql, $m ) ) {
+			$key = $m[2] . '-' . $m[3];
+			if ( ( $state->resp[ $key ]['status'] ?? '' ) === $m[4] ) {
+				$state->resp[ $key ]['status'] = $m[1];
+				return 1;
+			}
+			return 0;
+		}
+		return 0;
+	};
+	return $state;
+}
+
+echo "\n=== create_call ===\n\n";
+
+sppa_reset();
+$db   = $GLOBALS['wpdb'];
+$call = SPPA_Spares::create_call( 101, 12, 'goalie', 2, '  Need a goalie, please  ', 4 );
+sppa_assert( 1 === count( $db->inserts ) && 'wp_sppa_spare_calls' === $db->inserts[0][0], 'create_call inserts one row into the calls table' );
+$row = $db->inserts[0][1];
+sppa_assert( 101 === $row['event_id'] && 12 === $row['team_id'] && 'goalie' === $row['position'] && 2 === $row['needed'] && 'open' === $row['status'] && 4 === $row['created_by'], 'row has the ids, position, needed, open status, creator' );
+sppa_assert( 'Need a goalie, please' === $row['note'], 'the note is trimmed' );
+sppa_assert( 1 === $call['id'] && 'open' === $call['status'] && 'goalie' === $call['position'] && 2 === $call['needed'] && 0 === $call['accepted'], 'create_call returns the call, open, with 0 accepted' );
+$long = SPPA_Spares::create_call( 101, 12, 'skater', 1, str_repeat( "\u{00e9}", 200 ), 4 );
+sppa_assert( 140 === mb_strlen( $db->inserts[1][1]['note'] ), 'the note is capped at 140 characters' );
+foreach ( array( array( 'defence', 1 ), array( 'skater', 0 ), array( 'skater', 4 ) ) as $bad ) {
+	$threw = false;
+	try {
+		SPPA_Spares::create_call( 101, 12, $bad[0], $bad[1], '', 4 );
+	} catch ( InvalidArgumentException $e ) {
+		$threw = true;
+	}
+	sppa_assert( $threw, "create_call rejects position '{$bad[0]}' needed {$bad[1]}" );
+}
+sppa_assert( 2 === count( $db->inserts ), 'and writes nothing for them' );
+$db->insert_return = false;
+$threw             = false;
+try {
+	SPPA_Spares::create_call( 101, 12, 'skater', 1, '', 4 );
+} catch ( RuntimeException $e ) {
+	$threw = true;
+}
+sppa_assert( $threw, 'a failed insert throws' );
+
+echo "\n=== get_call / accepted_count ===\n\n";
+
+sppa_reset();
+$state = sppa_fake_db( array( array( 'id' => 9, 'needed' => 2, 'note' => 'hi' ) ) );
+$c     = SPPA_Spares::get_call( 9 );
+sppa_assert( 9 === $c['id'] && 101 === $c['event_id'] && 12 === $c['team_id'] && 2 === $c['needed'] && 'open' === $c['status'] && 'hi' === $c['note'], 'get_call returns the call with ints cast' );
+sppa_assert( null === SPPA_Spares::get_call( 404 ), 'unknown call -> null' );
+sppa_assert( 0 === SPPA_Spares::accepted_count( 9 ), 'no responses -> 0 accepted' );
+$state->resp['9-5'] = array( 'call_id' => 9, 'user_id' => 5, 'player_id' => 50, 'status' => 'accepted' );
+$state->resp['9-6'] = array( 'call_id' => 9, 'user_id' => 6, 'player_id' => 60, 'status' => 'withdrawn' );
+sppa_assert( 1 === SPPA_Spares::accepted_count( 9 ), 'only accepted responses count' );
+
+echo "\n=== accept ===\n\n";
+
+sppa_reset();
+$state = sppa_fake_db( array( array( 'id' => 9, 'needed' => 1 ) ) );
+$res   = SPPA_Spares::accept( 9, 5, 50 );
+sppa_assert( is_array( $res ) && 'filled' === $res['status'] && 1 === $res['accepted'] && true === $res['filled_now'], 'the accept that fills a 1-needed call returns it filled' );
+sppa_assert( array( 'sppa_call_9' ) === $GLOBALS['sppa_lock_calls'], 'accept runs inside SPAT_Lock::with("sppa_call_<id>")' );
+sppa_assert( 'filled' === $state->calls[9]['status'] && 'accepted' === $state->resp['9-5']['status'], 'the call is filled and the response stored' );
+
+$res = SPPA_Spares::accept( 9, 6, 60 );
+sppa_assert( is_wp_error( $res ) && 'sppa_full' === $res->get_error_code() && 409 === $res->get_error_data()['status'], 'the second accept on a 1-needed call is a 409 sppa_full' );
+sppa_assert( ! isset( $state->resp['9-6'] ), 'and nothing is written for the loser' );
+
+$res = SPPA_Spares::accept( 9, 5, 50 );
+sppa_assert( is_array( $res ) && 'filled' === $res['status'] && false === $res['filled_now'] && 1 === $res['accepted'], 'the winner tapping again gets the same filled call back, not an error' );
+
+echo "\n--- exactly one winner when a rival lands between the caller's check and the lock ---\n\n";
+
+sppa_reset();
+$state                      = sppa_fake_db( array( array( 'id' => 12, 'needed' => 1 ) ) );
+$GLOBALS['sppa_lock_race']  = function () use ( $state ) {
+	// A rival's accepted row is already there, while the call's status still reads open:
+	// only a fresh count inside the lock can tell.
+	$state->resp['12-8'] = array( 'call_id' => 12, 'user_id' => 8, 'player_id' => 80, 'status' => 'accepted' );
+};
+$res = SPPA_Spares::accept( 12, 5, 50 );
+sppa_assert( is_wp_error( $res ) && 'sppa_full' === $res->get_error_code(), 'the count is re-read inside the lock: the late request gets 409' );
+$accepted = array_filter(
+	$state->resp,
+	function ( $r ) {
+		return 'accepted' === $r['status'];
+	}
+);
+sppa_assert( 1 === count( $accepted ), 'exactly one accepted row for the 1-needed call' );
+$GLOBALS['sppa_lock_race'] = null;
+
+echo "\n--- a stale 'open' status with a full count is still refused ---\n\n";
+
+sppa_reset();
+$state                  = sppa_fake_db( array( array( 'id' => 13, 'needed' => 1 ) ) );
+$state->resp['13-8']    = array( 'call_id' => 13, 'user_id' => 8, 'player_id' => 80, 'status' => 'accepted' );
+$res                    = SPPA_Spares::accept( 13, 5, 50 );
+sppa_assert( is_wp_error( $res ) && 'sppa_full' === $res->get_error_code(), 'count >= needed refuses even when the status column lags' );
+
+echo "\n--- two needed ---\n\n";
+
+sppa_reset();
+$state = sppa_fake_db( array( array( 'id' => 14, 'needed' => 2 ) ) );
+$a     = SPPA_Spares::accept( 14, 5, 50 );
+sppa_assert( is_array( $a ) && 'open' === $a['status'] && 1 === $a['accepted'] && false === $a['filled_now'], 'first of two: still open' );
+$b = SPPA_Spares::accept( 14, 6, 60 );
+sppa_assert( is_array( $b ) && 'filled' === $b['status'] && 2 === $b['accepted'] && true === $b['filled_now'], 'second of two fills it' );
+$c = SPPA_Spares::accept( 14, 7, 70 );
+sppa_assert( is_wp_error( $c ) && 409 === $c->get_error_data()['status'], 'a third is turned away' );
+
+echo "\n--- idempotence and edge cases ---\n\n";
+
+sppa_reset();
+$state = sppa_fake_db( array( array( 'id' => 15, 'needed' => 2 ) ) );
+SPPA_Spares::accept( 15, 5, 50 );
+$again = SPPA_Spares::accept( 15, 5, 50 );
+sppa_assert( is_array( $again ) && 1 === $again['accepted'] && false === $again['filled_now'], 'accepting twice does not add a second row (a double tap is harmless)' );
+
+$res = SPPA_Spares::accept( 999, 5, 50 );
+sppa_assert( is_wp_error( $res ) && 'sppa_not_found' === $res->get_error_code() && 404 === $res->get_error_data()['status'], 'unknown call -> 404' );
+
+$state->calls[15]['status'] = 'cancelled';
+$res                        = SPPA_Spares::accept( 15, 9, 90 );
+sppa_assert( is_wp_error( $res ) && 'sppa_full' === $res->get_error_code(), 'a cancelled call -> 409' );
+
+$GLOBALS['sppa_lock_held'] = true;
+$res                       = SPPA_Spares::accept( 15, 9, 90 );
+sppa_assert( is_wp_error( $res ) && 'sppa_lock' === $res->get_error_code() && 409 === $res->get_error_data()['status'], 'a lock held elsewhere -> 409 sppa_lock' );
+$GLOBALS['sppa_lock_held'] = false;
+
+echo "\n--- a withdrawn spare can accept again ---\n\n";
+
+sppa_reset();
+$state = sppa_fake_db( array( array( 'id' => 16, 'needed' => 1 ) ) );
+SPPA_Spares::accept( 16, 5, 50 );
+SPPA_Spares::withdraw( 16, 5 );
+$res = SPPA_Spares::accept( 16, 5, 50 );
+sppa_assert( is_array( $res ) && 'filled' === $res['status'] && 'accepted' === $state->resp['16-5']['status'], 'withdraw then accept again works (same row, back to accepted)' );
+
+echo "\n=== withdraw ===\n\n";
+
+sppa_reset();
+$state = sppa_fake_db( array( array( 'id' => 20, 'needed' => 1 ) ) );
+SPPA_Spares::accept( 20, 5, 50 );
+sppa_assert( 'filled' === $state->calls[20]['status'], 'precondition: call is filled' );
+$GLOBALS['sppa_lock_calls'] = array();
+$res                        = SPPA_Spares::withdraw( 20, 5 );
+sppa_assert( is_array( $res ) && 'open' === $res['status'] && 0 === $res['accepted'] && true === $res['reopened'], 'withdraw from a filled call re-opens it' );
+sppa_assert( array( 'sppa_call_20' ) === $GLOBALS['sppa_lock_calls'], 'withdraw takes the same lock as accept' );
+sppa_assert( 'withdrawn' === $state->resp['20-5']['status'] && 'open' === $state->calls[20]['status'], 'response withdrawn, call open' );
+$next = SPPA_Spares::accept( 20, 6, 60 );
+sppa_assert( is_array( $next ) && 'filled' === $next['status'], 'someone else can now take the re-opened call' );
+
+$res = SPPA_Spares::withdraw( 20, 5 );
+sppa_assert( is_wp_error( $res ) && 'sppa_not_accepted' === $res->get_error_code() && 404 === $res->get_error_data()['status'], 'withdrawing when you have no accepted response -> 404' );
+$res = SPPA_Spares::withdraw( 999, 5 );
+sppa_assert( is_wp_error( $res ) && 404 === $res->get_error_data()['status'], 'withdrawing from an unknown call -> 404' );
+
+$state->calls[20]['status'] = 'cancelled';
+$res                        = SPPA_Spares::withdraw( 20, 6 );
+sppa_assert( is_array( $res ) && 'cancelled' === $res['status'] && false === $res['reopened'], 'a cancelled call stays cancelled after a withdraw' );
+
+$GLOBALS['sppa_lock_held'] = true;
+$res                       = SPPA_Spares::withdraw( 20, 6 );
+sppa_assert( is_wp_error( $res ) && 'sppa_lock' === $res->get_error_code(), 'withdraw with the lock held elsewhere -> sppa_lock 409' );
+$GLOBALS['sppa_lock_held'] = false;
+
+echo "\n=== cancel ===\n\n";
+
+sppa_reset();
+$state = sppa_fake_db( array( array( 'id' => 30, 'needed' => 1 ) ) );
+$res   = SPPA_Spares::cancel( 30 );
+sppa_assert( 'cancelled' === $res['status'] && 'cancelled' === $state->calls[30]['status'], 'cancel marks the call cancelled and returns it' );
+$late = SPPA_Spares::accept( 30, 5, 50 );
+sppa_assert( is_wp_error( $late ) && 409 === $late->get_error_data()['status'], 'nobody can accept a cancelled call' );
+sppa_assert( array() === SPPA_Spares::cancel( 404 ), 'cancelling an unknown call returns an empty array' );
+
+echo "\n=== list queries ===\n\n";
+
+sppa_reset();
+$db                  = $GLOBALS['wpdb'];
+$db->results_handler = function ( $sql ) {
+	return array(
+		array( 'id' => '1', 'event_id' => '101', 'team_id' => '12', 'position' => 'goalie', 'needed' => '1', 'note' => '', 'status' => 'open', 'created_by' => '4', 'created_at' => '2026-11-01 12:00:00', 'updated_at' => '2026-11-01 12:00:00', 'accepted' => '0' ),
+		array( 'id' => '2', 'event_id' => '101', 'team_id' => '7', 'position' => 'skater', 'needed' => '2', 'note' => 'x', 'status' => 'filled', 'created_by' => '9', 'created_at' => '2026-11-01 12:00:00', 'updated_at' => '2026-11-01 12:00:00', 'accepted' => '2' ),
+	);
+};
+$calls = SPPA_Spares::calls_for_event( 101 );
+$sql   = end( $db->queries );
+sppa_assert( 2 === count( $calls ) && 1 === $calls[0]['id'] && 0 === $calls[0]['accepted'] && 2 === $calls[1]['accepted'] && 'filled' === $calls[1]['status'], 'calls_for_event returns normalised calls with their accepted counts' );
+sppa_assert( false !== strpos( $sql, 'WHERE c.event_id = 101' ), 'calls_for_event filters by prepared event id' );
+
+$calls = SPPA_Spares::open_calls();
+$sql   = end( $db->queries );
+sppa_assert( false !== strpos( $sql, "c.status = 'open'" ) && false !== strpos( $sql, 'wp_posts' ) && false !== strpos( $sql, 'post_date_gmt >' ), 'open_calls: open status, joined to posts for a future start' );
+sppa_assert( false !== strpos( $sql, "post_status IN ('publish','future')" ), 'open_calls skips drafts (cancelled games)' );
+sppa_assert( false !== strpos( $sql, 'LIMIT 100' ), 'open_calls is limited to 100' );
+sppa_assert( 1 === preg_match( "/post_date_gmt > '\d{4}-\d\d-\d\d \d\d:\d\d:\d\d'/", $sql ), 'with a UTC "now" cut-off' );
+
+$mine = SPPA_Spares::accepted_for_user( 5 );
+$sql  = end( $db->queries );
+sppa_assert( false !== strpos( $sql, 'r.user_id = 5' ) && false !== strpos( $sql, "r.status = 'accepted'" ) && false !== strpos( $sql, "c.status <> 'cancelled'" ), 'accepted_for_user: this user, accepted, call not cancelled' );
+sppa_assert( 2 === count( $mine ) && 1 === $mine[0]['id'], 'accepted_for_user returns calls' );
+
+$db->results_handler = function ( $sql ) {
+	return array(
+		array( 'user_id' => '5', 'player_id' => '50', 'call_id' => '1', 'team_id' => '12', 'position' => 'goalie' ),
+		array( 'user_id' => '6', 'player_id' => '60', 'call_id' => '2', 'team_id' => '7', 'position' => 'skater' ),
+	);
+};
+$spares = SPPA_Spares::accepted_for_event( 101 );
+$sql    = end( $db->queries );
+sppa_assert( false !== strpos( $sql, 'c.event_id = 101' ) && false !== strpos( $sql, "r.status = 'accepted'" ) && false !== strpos( $sql, "c.status <> 'cancelled'" ), 'accepted_for_event: this game, accepted, call not cancelled' );
+sppa_assert( 2 === count( $spares ) && 5 === $spares[0]['user_id'] && 50 === $spares[0]['player_id'] && 12 === $spares[0]['team_id'] && 'goalie' === $spares[0]['position'] && 2 === $spares[1]['call_id'], 'accepted_for_event returns user, player, call, team and position with ints cast' );
+
+echo "\n=== pool_user_ids ===\n\n";
+
+sppa_reset();
+sppa_add_user( 1 );
+sppa_add_user( 2 );
+sppa_add_user( 3 );
+update_user_meta( 1, 'sppa_spare_prefs', array( 'enabled' => true, 'positions' => array( 'skater' ) ) );
+update_user_meta( 2, 'sppa_spare_prefs', array( 'enabled' => true, 'positions' => array( 'skater', 'goalie' ) ) );
+update_user_meta( 3, 'sppa_spare_prefs', array( 'enabled' => false, 'positions' => array( 'skater', 'goalie' ) ) );
+sppa_assert( array( 1, 2 ) === SPPA_Spares::pool_user_ids( 'skater' ), 'skater pool: enabled users who take skater calls' );
+sppa_assert( array( 2 ) === SPPA_Spares::pool_user_ids( 'goalie' ), 'goalie pool: only the goalie opt-in' );
+sppa_assert( array() === SPPA_Spares::pool_user_ids( 'defence' ), 'an unknown position has an empty pool' );
+$q = $GLOBALS['sppa_user_queries'][0];
+sppa_assert( ! isset( $q['number'] ) && 'ID' === $q['fields'], 'every opted-in id is fetched (the cap comes after filtering)' );
+sppa_assert( 'sppa_spare_prefs' === $q['meta_query'][0]['key'] && 'LIKE' === $q['meta_query'][0]['compare'], 'the pool is a LIKE over the serialised prefs' );
+
+// A LIKE can over-match (e.g. malformed meta); the re-check against sanitize_prefs is exact.
+update_user_meta( 3, 'sppa_spare_prefs', 'a:2:{s:7:"enabled";b:1;s:9:"positions";s:8:"nonsense";}' );
+sppa_assert( array( 1, 2 ) === SPPA_Spares::pool_user_ids( 'skater' ), 'a user whose stored prefs do not really include the position is dropped' );
+
+echo "\n--- batched eligibility for one call ---\n\n";
+
+sppa_reset();
+SPPA_Roster_Reader::flush_cache();
+update_option( 'sportspress_season', 3 );
+sppa_register_term( 3, 'sp_season', '2026-27' );
+
+$future = strtotime( '+10 days' );
+$day    = date( 'Y-m-d', $future );
+// Call event 101 at 21:00 between teams 12 and 7.
+sppa_event_at( 101, "{$day} 21:00:00", 'future', array( 12, 7 ) );
+sppa_set_terms( 101, 'sp_season', array( 3 => '2026-27' ) );
+// Team 20 plays 120 min after, team 21 plays 160 min after, team 22 plays the next day.
+sppa_event_at( 102, "{$day} 23:00:00", 'future', array( 20, 30 ) );
+sppa_event_at( 103, "{$day} 23:40:00", 'future', array( 21, 30 ) );
+sppa_event_at( 104, date( 'Y-m-d', strtotime( '+11 days' ) ) . ' 21:00:00', 'future', array( 22, 30 ) );
+// A team whose only game is cancelled at the same time as the call must not make its players busy.
+sppa_event_at( 105, "{$day} 21:30:00", 'draft', array( 23, 30 ) );
+sppa_set_meta( 105, '_spem_cancelled', '1' );
+foreach ( array( 102, 103, 104, 105 ) as $eid ) {
+	sppa_set_terms( $eid, 'sp_season', array( 3 => '2026-27' ) );
+}
+foreach ( array( 12, 7, 20, 21, 22, 23, 30, 40 ) as $tid ) {
+	sppa_add_post( $tid, 'sp_team', "Team {$tid}" );
+}
+// Team 40 has no event this season (stale).
+$people = array(
+	// user => [ player, teams, prefs ].
+	11 => array( 1101, array( 20 ), array( 'enabled' => true, 'positions' => array( 'skater' ) ) ),  // busy (120 min).
+	12 => array( 1201, array( 21 ), array( 'enabled' => true, 'positions' => array( 'skater' ) ) ),  // free (160 min).
+	13 => array( 1301, array( 22 ), array( 'enabled' => true, 'positions' => array( 'skater' ) ) ),  // free (next day).
+	14 => array( 1401, array( 12 ), array( 'enabled' => true, 'positions' => array( 'skater' ) ) ),  // on the calling team.
+	15 => array( 1501, array( 7 ), array( 'enabled' => true, 'positions' => array( 'skater' ) ) ),   // on the other team.
+	16 => array( 1601, array( 40 ), array( 'enabled' => true, 'positions' => array( 'skater' ) ) ),  // stale team: not registered.
+	17 => array( 0, array(), array( 'enabled' => true, 'positions' => array( 'skater' ) ) ),          // no player.
+	18 => array( 1801, array( 23 ), array( 'enabled' => true, 'positions' => array( 'skater' ) ) ),  // only game was cancelled: free.
+	19 => array( 1901, array( 21 ), array( 'enabled' => true, 'positions' => array( 'goalie' ) ) ),  // wrong position (not in pool).
+	20 => array( 2001, array( 21 ), array( 'enabled' => false, 'positions' => array( 'skater' ) ) ), // not opted in.
+);
+foreach ( $people as $uid => $p ) {
+	sppa_add_user( $uid );
+	update_user_meta( $uid, 'sppa_spare_prefs', $p[2] );
+	if ( $p[0] ) {
+		sppa_add_post( $p[0], 'sp_player', "Player {$p[0]}" );
+		sppa_add_meta( $p[0], 'sp_user', (string) $uid );
+		foreach ( $p[1] as $tid ) {
+			sppa_add_meta( $p[0], 'sp_current_team', (string) $tid );
+		}
+	}
+}
+
+$call                       = array( 'id' => 1, 'event_id' => 101, 'team_id' => 12, 'position' => 'skater', 'needed' => 1, 'status' => 'open' );
+$GLOBALS['sppa_queries']    = array();
+$GLOBALS['sppa_user_queries'] = array();
+$GLOBALS['sppa_meta_cache_primed'] = array();
+$db                  = $GLOBALS['wpdb'];
+$db->results_handler = function ( $sql ) {
+	$teams = sppa_fixture_season_team_ids( $sql );
+	return null !== $teams ? $teams : array();
+};
+$ids = SPPA_Spares::pool_user_ids( 'skater', $call );
+sort( $ids );
+sppa_assert( array( 12, 13, 18 ) === $ids, 'eligible: free of a clash, registered, not on either team (busy, on-team, stale, no-player, wrong-position, opted-out all dropped)' );
+
+
+$by_type = array();
+foreach ( $GLOBALS['sppa_queries'] as $q ) {
+	$by_type[ $q['post_type'] ] = ( $by_type[ $q['post_type'] ] ?? 0 ) + 1;
+}
+sppa_assert( 1 === ( $by_type['sp_player'] ?? 0 ), 'one sp_player query for the whole pool' );
+$player_query = null;
+foreach ( $GLOBALS['sppa_queries'] as $q ) {
+	if ( 'sp_player' === $q['post_type'] ) {
+		$player_query = $q;
+	}
+}
+sppa_assert( 'sp_user' === $player_query['meta_query'][0]['key'] && 'IN' === $player_query['meta_query'][0]['compare'], 'that query is sp_user IN (pool)' );
+$windows = array_filter(
+	$GLOBALS['sppa_queries'],
+	function ( $q ) {
+		return 'sp_event' === $q['post_type'] && isset( $q['date_query'] );
+	}
+);
+sppa_assert( 1 === count( $windows ), 'one events query for the +/-150 minute window' );
+$w = reset( $windows );
+$span = strtotime( $w['date_query'][0]['before'] . ' UTC' ) - strtotime( $w['date_query'][0]['after'] . ' UTC' );
+sppa_assert( abs( $span - 300 * 60 ) <= 2, 'whose window is 300 minutes wide (150 either side)' );
+$primed_types = array_map(
+	function ( $p ) {
+		return $p[0];
+	},
+	$GLOBALS['sppa_meta_cache_primed']
+);
+sppa_assert( in_array( 'post', $primed_types, true ) && in_array( 'user', $primed_types, true ), 'post meta and user meta are primed in bulk' );
+sppa_assert( 1 === count( $GLOBALS['sppa_user_queries'] ), 'one users query' );
+
+echo "\n--- the season's teams come from one DISTINCT query, cached ---\n\n";
+
+$season_loads = array_filter(
+	$GLOBALS['sppa_queries'],
+	function ( $q ) {
+		return 'sp_event' === $q['post_type'] && isset( $q['tax_query'] ) && ! isset( $q['date_query'] );
+	}
+);
+sppa_assert( array() === $season_loads, 'the season\'s events are not loaded to find its teams' );
+$team_sql = array_values(
+	array_filter(
+		$db->queries,
+		function ( $sql ) {
+			return false !== strpos( $sql, 'SELECT DISTINCT pm.meta_value' );
+		}
+	)
+);
+sppa_assert( 1 === count( $team_sql ), 'one SELECT DISTINCT for the season\'s team ids' );
+sppa_assert( false !== strpos( $team_sql[0], "pm.meta_key = 'sp_team'" ) && false !== strpos( $team_sql[0], 'tt.term_id = 3' ) && false !== strpos( $team_sql[0], "tt.taxonomy = 'sp_season'" ) && false !== strpos( $team_sql[0], "p.post_status IN ('publish','future')" ) && false !== strpos( $team_sql[0], "'_spem_cancelled'" ), 'sp_team meta of the season term\'s publish/future events (and cancelled drafts), joined in SQL' );
+sppa_assert( isset( $GLOBALS['sppa_transients']['sppa_season_teams_3_0'] ), 'cached in a transient keyed on season and sppa_generation' );
+SPPA_Spares::pool_user_ids( 'skater', $call );
+sppa_assert( 1 === count( array_filter( $db->queries, function ( $sql ) { return false !== strpos( $sql, 'SELECT DISTINCT pm.meta_value' ); } ) ), 'the next call reads the cache, not the database' );
+update_option( 'sppa_generation', 4 );
+SPPA_Spares::pool_user_ids( 'skater', $call );
+sppa_assert( 2 === count( array_filter( $db->queries, function ( $sql ) { return false !== strpos( $sql, 'SELECT DISTINCT pm.meta_value' ); } ) ) && isset( $GLOBALS['sppa_transients']['sppa_season_teams_3_4'] ), 'a logged change (new generation) reads it fresh' );
+delete_option( 'sppa_generation' );
+
+$none = SPPA_Spares::pool_user_ids( 'skater', array_merge( $call, array( 'event_id' => 104 ) ) );
+sort( $none );
+sppa_assert( in_array( 11, $none, true ) && in_array( 12, $none, true ), 'a different event gives a different busy set (user 11 is free the next day)' );
+sppa_assert( ! in_array( 13, SPPA_Spares::pool_user_ids( 'skater', array_merge( $call, array( 'event_id' => 104 ) ) ), true ), 'and the clash moves with it (user 13 is busy then)' );
+
+// Called off or past events have no pool at all.
+$GLOBALS['sppa_posts'][101]->post_status = 'draft';
+sppa_set_meta( 101, '_spem_cancelled', '1' );
+sppa_assert( array() === SPPA_Spares::pool_user_ids( 'skater', $call ), 'a cancelled game has no pool' );
+unset( $GLOBALS['sppa_meta'][101]['_spem_cancelled'] );
+$GLOBALS['sppa_posts'][101]->post_status = 'future';
+sppa_set_meta( 101, 'sp_status', 'postponed' );
+sppa_assert( array() === SPPA_Spares::pool_user_ids( 'skater', $call ), 'a postponed game has no pool' );
+unset( $GLOBALS['sppa_meta'][101]['sp_status'] );
+sppa_event_at( 106, date( 'Y-m-d', strtotime( '-2 days' ) ) . ' 21:00:00', 'publish', array( 12, 7 ) );
+sppa_assert( array() === SPPA_Spares::pool_user_ids( 'skater', array_merge( $call, array( 'event_id' => 106 ) ) ), 'a game in the past has no pool' );
+sppa_assert( array() === SPPA_Spares::pool_user_ids( 'skater', array_merge( $call, array( 'status' => 'filled' ) ) ), 'a filled call has no pool' );
+sppa_assert( array() === SPPA_Spares::pool_user_ids( 'skater', array_merge( $call, array( 'event_id' => 9999 ) ) ), 'an unknown event has no pool' );
+
+echo "\n--- the 300 cap applies to people who qualify, chosen at random ---\n\n";
+
+sppa_reset();
+SPPA_Roster_Reader::flush_cache();
+update_option( 'sportspress_season', 3 );
+sppa_register_term( 3, 'sp_season', '2026-27' );
+sppa_event_at( 101, date( 'Y-m-d', strtotime( '+10 days' ) ) . ' 21:00:00', 'future', array( 12, 7 ) );
+sppa_event_at( 102, date( 'Y-m-d', strtotime( '+17 days' ) ) . ' 21:00:00', 'future', array( 20, 30 ) );
+foreach ( array( 101, 102 ) as $eid ) {
+	sppa_set_terms( $eid, 'sp_season', array( 3 => '2026-27' ) );
+}
+foreach ( array( 12, 7, 20, 30 ) as $tid ) {
+	sppa_add_post( $tid, 'sp_team', "Team {$tid}" );
+}
+// Users 1-40 (the lowest ids) play for the calling team, so none of them qualifies; 41-350 do (310 people).
+for ( $uid = 1; $uid <= 350; $uid++ ) {
+	sppa_add_user( $uid );
+	update_user_meta( $uid, 'sppa_spare_prefs', array( 'enabled' => true, 'positions' => array( 'skater' ) ) );
+	sppa_add_post( 10000 + $uid, 'sp_player', "Player {$uid}" );
+	sppa_add_meta( 10000 + $uid, 'sp_user', (string) $uid );
+	sppa_add_meta( 10000 + $uid, 'sp_current_team', $uid <= 40 ? '12' : '20' );
+}
+$GLOBALS['wpdb']->results_handler = function ( $sql ) {
+	$teams = sppa_fixture_season_team_ids( $sql );
+	return null !== $teams ? $teams : array();
+};
+$call = array( 'id' => 1, 'event_id' => 101, 'team_id' => 12, 'position' => 'skater', 'needed' => 1, 'status' => 'open' );
+$seen = array();
+$ok   = true;
+for ( $run = 0; $run < 5; $run++ ) {
+	$pool = SPPA_Spares::pool_user_ids( 'skater', $call );
+	$ok   = $ok && 300 === count( $pool ) && min( $pool ) > 40 && $pool === array_values( array_unique( $pool ) );
+	$seen = array_unique( array_merge( $seen, $pool ) );
+}
+sppa_assert( $ok, '350 opted in, the 40 lowest ids ineligible: each call reaches 300 eligible people and none of the ineligible' );
+sppa_assert( count( $seen ) > 300, 'and the 300 are drawn at random, so across calls nobody eligible is always left out' );
+$small = array( 41, 42, 43 );
+foreach ( range( 44, 350 ) as $uid ) {
+	update_user_meta( $uid, 'sppa_spare_prefs', array( 'enabled' => false, 'positions' => array( 'skater' ) ) );
+}
+sppa_assert( $small === SPPA_Spares::pool_user_ids( 'skater', $call ), 'a pool under the cap is everyone, in id order' );
+
+echo "\n=== mailer: call_posted ===\n\n";
+
+sppa_reset();
+update_option( 'admin_email', 'admin@arl.example.test' );
+$game = array(
+	'id'       => 101,
+	'start'    => '2026-11-05T21:45:00-05:00',
+	'status'   => 'ok',
+	'venue'    => array( 'name' => 'Twin Rinks', 'address' => '' ),
+	'team'     => array( 'id' => 12, 'name' => 'Ducks', 'logo' => '' ),
+	'opponent' => array( 'id' => 7, 'name' => 'Knights', 'logo' => '' ),
+	'is_home'  => true,
+);
+$call = array( 'id' => 1, 'event_id' => 101, 'team_id' => 12, 'position' => 'goalie', 'needed' => 1, 'note' => 'Please!', 'status' => 'open' );
+$ids  = array();
+for ( $i = 1; $i <= 85; $i++ ) {
+	sppa_add_user( $i );
+	$ids[] = $i;
+}
+$sent = SPPA_Mailer::call_posted( $call, $game, $ids );
+sppa_assert( 85 === $sent, 'call_posted returns the number of recipients mailed' );
+sppa_assert( 3 === count( $GLOBALS['sppa_mail'] ), '85 recipients go out as 3 mails (BCC chunks of 40)' );
+$m0 = $GLOBALS['sppa_mail'][0];
+sppa_assert( 'noreply@arl.example.test' === $m0['to'], 'the To address is a no-reply address on the site\'s host, not the site admin (whose inbox would get every blast)' );
+$bcc = array_values( array_filter( (array) $m0['headers'], function ( $h ) {
+	return 0 === stripos( $h, 'Bcc:' );
+} ) );
+sppa_assert( 1 === count( $bcc ) && 40 === count( explode( ',', substr( $bcc[0], 5 ) ) ), 'the first mail BCCs 40 people in one header' );
+sppa_assert( false !== strpos( $bcc[0], 'user1@example.test' ) && false === strpos( $bcc[0], 'user41@example.test,' ), 'in id order' );
+sppa_assert( "Spare needed: Ducks \u{00B7} Thu Nov 5, 9:45 PM" === $m0['subject'], 'subject: "Spare needed: {team} · {Day Mon j, g:i A}"' );
+sppa_assert( false !== strpos( $m0['message'], 'https://arl.example.test/my-arl/spares' ), 'the body links /my-arl/spares' );
+sppa_assert( false !== strpos( $m0['message'], 'goalie' ) && false !== strpos( $m0['message'], 'Twin Rinks' ) && false !== strpos( $m0['message'], 'Please!' ), 'the body names the position, rink and note' );
+sppa_assert( 5 === count( explode( ',', substr( array_values( array_filter( (array) $GLOBALS['sppa_mail'][2]['headers'], function ( $h ) {
+	return 0 === stripos( $h, 'Bcc:' );
+} ) )[0], 5 ) ) ), 'the last chunk holds the remaining 5' );
+
+sppa_reset();
+update_option( 'admin_email', 'admin@arl.example.test' );
+sppa_add_user( 1, 'ok@example.test' );
+sppa_add_user( 2, 'not-an-email' );
+sppa_add_user( 3, "evil@example.test\r\nBcc: victim@example.test" );
+sppa_add_user( 4, 'ok@example.test' );
+sppa_assert( 1 === SPPA_Mailer::call_posted( $call, $game, array( 1, 2, 3, 4, 99 ) ), 'invalid, injected, duplicate and unknown addresses are skipped' );
+sppa_assert( 1 === count( $GLOBALS['sppa_mail'] ) && false === strpos( implode( "\n", (array) $GLOBALS['sppa_mail'][0]['headers'] ), 'victim' ), 'no header injection' );
+sppa_assert( 0 === SPPA_Mailer::call_posted( $call, $game, array() ) && 1 === count( $GLOBALS['sppa_mail'] ), 'no recipients: nothing sent' );
+
+echo "\n--- the To address: option, then filter ---\n\n";
+
+$GLOBALS['sppa_mail'] = array();
+update_option( 'sppa_mail_to', 'spares@arl.example.test' );
+SPPA_Mailer::call_posted( $call, $game, array( 1 ) );
+sppa_assert( 'spares@arl.example.test' === $GLOBALS['sppa_mail'][0]['to'], 'the sppa_mail_to option, when set, is the To address' );
+update_option( 'sppa_mail_to', 'not an address' );
+SPPA_Mailer::call_posted( $call, $game, array( 1 ) );
+sppa_assert( 'noreply@arl.example.test' === $GLOBALS['sppa_mail'][1]['to'], 'an invalid option falls back to the no-reply address' );
+add_filter(
+	'sppa_mail_to',
+	function ( $to ) {
+		return 'noreply@arl.example.test' === $to ? 'league@example.test' : $to;
+	}
+);
+SPPA_Mailer::call_posted( $call, $game, array( 1 ) );
+sppa_assert( 'league@example.test' === $GLOBALS['sppa_mail'][2]['to'], 'the sppa_mail_to filter gets the default and has the last word' );
+$GLOBALS['sppa_filters'] = array();
+add_filter(
+	'sppa_mail_to',
+	function () {
+		return "x@example.test\r\nBcc: victim@example.test";
+	}
+);
+sppa_assert( 0 === SPPA_Mailer::call_posted( $call, $game, array( 1 ) ) && 3 === count( $GLOBALS['sppa_mail'] ), 'a filter that returns a bad address sends nothing' );
+$GLOBALS['sppa_filters'] = array();
+delete_option( 'sppa_mail_to' );
+$GLOBALS['sppa_mail_ok'] = false;
+sppa_assert( 0 === SPPA_Mailer::call_posted( $call, $game, array( 1 ) ), 'a failed wp_mail counts as 0 sent' );
+$GLOBALS['sppa_mail_ok'] = true;
+
+echo "\n=== mailer: call_filled ===\n\n";
+
+sppa_reset();
+sppa_add_user( 4, 'captain@example.test', 'Pat Captain' );
+sppa_assert( true === SPPA_Mailer::call_filled( $call, $game, 4, 'Sam Spare' ), 'call_filled mails the creator' );
+$m = $GLOBALS['sppa_mail'][0];
+sppa_assert( 'captain@example.test' === $m['to'], 'to the creator' );
+sppa_assert( false !== strpos( $m['subject'], 'Ducks' ) && false !== strpos( $m['subject'], 'Thu Nov 5, 9:45 PM' ), 'subject names the team and time' );
+sppa_assert( false !== strpos( $m['message'], 'Sam Spare' ), 'the body names the spare' );
+sppa_assert( false === SPPA_Mailer::call_filled( $call, $game, 999, 'Sam Spare' ), 'an unknown creator -> false, nothing sent' );
+sppa_assert( 1 === count( $GLOBALS['sppa_mail'] ), 'and no mail went out' );
+
+echo "\n=== mailer: call_cancelled ===\n\n";
+
+sppa_reset();
+update_option( 'admin_email', 'admin@arl.example.test' );
+sppa_add_user( 5, 'spare5@example.test', 'Spare Five' );
+sppa_add_user( 6, 'spare6@example.test', 'Spare Six' );
+$sent = SPPA_Mailer::call_cancelled( $call, $game, array( 5, 6 ) );
+sppa_assert( 2 === $sent && 1 === count( $GLOBALS['sppa_mail'] ), 'call_cancelled: one BCC mail for two spares' );
+$m   = $GLOBALS['sppa_mail'][0];
+$bcc = implode( ' ', (array) $m['headers'] );
+sppa_assert( 'noreply@arl.example.test' === $m['to'] && false !== strpos( $bcc, 'spare5@example.test' ) && false !== strpos( $bcc, 'spare6@example.test' ), 'To the no-reply address, both spares in BCC' );
+sppa_assert( 'Spare game cancelled: Ducks · Thu Nov 5, 9:45 PM' === $m['subject'], 'subject: "Spare game cancelled: {team} · {Day Mon j, g:i A}"' );
+sppa_assert( false !== strpos( $m['message'], 'no longer need a spare' ) && false !== strpos( $m['message'], '/my-arl/spares' ), 'the body says the team no longer needs a spare and links the app' );
+$GLOBALS['sppa_mail'] = array();
+sppa_assert( 0 === SPPA_Mailer::call_cancelled( $call, $game, array() ) && 0 === SPPA_Mailer::call_cancelled( $call, $game, array( 999 ) ) && array() === $GLOBALS['sppa_mail'], 'no recipients: nothing sent' );
+
+echo "\n=== mailer: game_changed_for_spares ===\n\n";
+
+sppa_reset();
+$db = $GLOBALS['wpdb'];
+update_option( 'admin_email', 'admin@arl.example.test' );
+sppa_add_user( 5, 'spare5@example.test' );
+sppa_add_user( 6, 'spare6@example.test' );
+sppa_add_post( 12, 'sp_team', 'Ducks' );
+sppa_add_post( 7, 'sp_team', 'Knights of Ni' );
+$db->results_handler = function ( $sql ) {
+	return array(
+		array( 'user_id' => '5', 'team_id' => '12' ),
+		array( 'user_id' => '6', 'team_id' => '12' ),
+	);
+};
+$before = array( 'start' => '2026-11-05T21:45:00-05:00', 'venue' => 'Twin Rinks', 'teams' => array( 7, 12 ), 'status' => 'ok' );
+$after  = array( 'start' => '2026-11-05T22:30:00-05:00', 'venue' => 'Rink B', 'teams' => array( 7, 12 ), 'status' => 'ok' );
+$sent   = SPPA_Mailer::game_changed_for_spares( 101, $before, $after );
+$sql    = end( $db->queries );
+sppa_assert( 2 === $sent, 'returns the number of spares emailed' );
+sppa_assert( false !== strpos( $sql, 'wp_sppa_spare_responses' ) && false !== strpos( $sql, "r.status = 'accepted'" ) && false !== strpos( $sql, 'c.event_id = 101' ) && false !== strpos( $sql, "c.status <> 'cancelled'" ), 'only users with an accepted response on a live call for that event' );
+sppa_assert( 1 === count( $GLOBALS['sppa_mail'] ), 'one BCC mail for the two spares' );
+$m = $GLOBALS['sppa_mail'][0];
+sppa_assert( "Your spare game changed: Ducks \u{00B7} Thu Nov 5, 10:30 PM" === $m['subject'], 'subject: "Your spare game changed: {team} · {Day Mon j, g:i A}" with the NEW time (when the spare must show up)' );
+sppa_assert( false !== strpos( $m['message'], '9:45 PM' ) && false !== strpos( $m['message'], '10:30 PM' ) && false !== strpos( $m['message'], 'Rink B' ), 'the body shows what it was and what it is now' );
+sppa_assert( false !== strpos( $m['message'], '/my-arl/spares' ), 'and links the app' );
+$bcc = implode( ' ', (array) $m['headers'] );
+sppa_assert( false !== strpos( $bcc, 'spare5@example.test' ) && false !== strpos( $bcc, 'spare6@example.test' ), 'both spares are BCC-ed' );
+
+$GLOBALS['sppa_mail'] = array();
+SPPA_Mailer::game_changed_for_spares( 101, $before, array_merge( $after, array( 'status' => 'cancelled' ) ) );
+sppa_assert( "Your spare game is cancelled: Ducks \u{00B7} Thu Nov 5, 9:45 PM" === $GLOBALS['sppa_mail'][0]['subject'], 'cancelled: "Your spare game is cancelled: {team} · {time}" with the original, listed time' );
+
+$GLOBALS['sppa_mail'] = array();
+SPPA_Mailer::game_changed_for_spares( 101, $before, array_merge( $after, array( 'status' => 'postponed' ) ) );
+sppa_assert( 0 === strpos( $GLOBALS['sppa_mail'][0]['subject'], 'Your spare game changed: Ducks' ) && false !== stripos( $GLOBALS['sppa_mail'][0]['message'], 'postponed' ), 'postponed: "changed", and the body says postponed' );
+
+$GLOBALS['sppa_mail'] = array();
+$db->results_handler  = function ( $sql ) {
+	return array(
+		array( 'user_id' => '5', 'team_id' => '12' ),
+		array( 'user_id' => '6', 'team_id' => '7' ),
+	);
+};
+sppa_assert( 2 === SPPA_Mailer::game_changed_for_spares( 101, $before, $after ) && 2 === count( $GLOBALS['sppa_mail'] ), 'spares for both teams: one mail per calling team' );
+$subjects = array_column( $GLOBALS['sppa_mail'], 'subject' );
+sppa_assert( in_array( "Your spare game changed: Ducks \u{00B7} Thu Nov 5, 10:30 PM", $subjects, true ) && in_array( "Your spare game changed: Knights of Ni \u{00B7} Thu Nov 5, 10:30 PM", $subjects, true ), 'each names the team that spare is playing for' );
+
+$GLOBALS['sppa_mail'] = array();
+SPPA_Mailer::game_changed_for_spares( 101, array( 'start' => '', 'venue' => '', 'teams' => array(), 'status' => '' ), array_merge( $after, array( 'status' => 'cancelled' ) ) );
+sppa_assert( "Your spare game is cancelled: Ducks \u{00B7} Thu Nov 5, 10:30 PM" === $GLOBALS['sppa_mail'][0]['subject'], 'cancelled with no stored "before" time: the subject falls back to the current time' );
+
+$GLOBALS['sppa_mail'] = array();
+$db->results_handler  = null;
+sppa_assert( 0 === SPPA_Mailer::game_changed_for_spares( 101, $before, $after ) && array() === $GLOBALS['sppa_mail'], 'no accepted spares: nobody is emailed' );
+
+sppa_reset();
+SPPA_Mailer::register();
+sppa_assert( ! empty( $GLOBALS['sppa_actions']['sppa_event_changed'] ), 'the mailer listens for sppa_event_changed' );
+
+sppa_done();

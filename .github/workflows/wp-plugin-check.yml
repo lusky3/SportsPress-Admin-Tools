@@ -31,7 +31,7 @@ jobs:
         with:
           node-version: '24'
 
-      # The six child plugins wp_die() on standalone activation because they
+      # The child plugins wp_die() on standalone activation because they
       # require the SPAT_Plugin_Manager parent. The wordpress/plugin-check-action
       # activates each plugin in isolation and can't pre-activate a dependency
       # that isn't on wordpress.org, so it fails for every child. Instead we run
@@ -48,6 +48,7 @@ jobs:
               "https://downloads.wordpress.org/plugin/plugin-check.latest-stable.zip"
             ],
             "mappings": {
+              "wp-content/plugins/sportspress-player-app": "./sportspress-player-app",
               "wp-content/plugins/sportspress-etransfer-automation": "./sportspress-etransfer-automation",
               "wp-content/plugins/sportspress-events-manager": "./sportspress-events-manager",
               "wp-content/plugins/sportspress-league-manager": "./sportspress-league-manager",
@@ -65,17 +66,19 @@ jobs:
       # `wp plugin check` always exits 0 (it reports findings, it doesn't gate on
       # them), so we parse the CSV output and fail on any ERROR row. Warnings and
       # the i18n_usage check are excluded to match the previous configuration;
-      # tests/ and docs/ are out of scope.
+      # tests/ and docs/ are out of scope, and so are
+      # Player App's un-built app/ source and node_modules/ (its .distignore keeps
+      # them out of the zip; the committed build/ is what ships and is checked).
       - name: Run Plugin Check on all suite plugins
         run: |
           set -uo pipefail
-          plugins="sportspress-admin-tools sportspress-etransfer-automation sportspress-events-manager sportspress-league-manager sportspress-player-registration sportspress-player-tools sportspress-schedule-generator sportspress-score-sheets"
+          plugins="sportspress-admin-tools sportspress-player-app sportspress-etransfer-automation sportspress-events-manager sportspress-league-manager sportspress-player-registration sportspress-player-tools sportspress-schedule-generator sportspress-score-sheets"
           fail=0
           for p in $plugins; do
             echo "::group::Plugin Check: $p"
             out=$(npx --yes @wordpress/env@11.12.0 run cli wp plugin check "$p" \
               --categories=general \
-              --exclude-directories=tests,docs \
+              --exclude-directories=tests,docs,app,node_modules \
               --ignore-warnings \
               --exclude-checks=i18n_usage \
               --format=csv 2>/dev/null)

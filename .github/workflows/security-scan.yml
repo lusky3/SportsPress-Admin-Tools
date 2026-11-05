@@ -58,14 +58,63 @@ jobs:
   # forcing one workflow to do both jobs.
   osv-scanner-pr:
     if: github.event_name == 'pull_request'
+    needs: osv-scan-plan
     permissions:
       actions: read
       security-events: write
       contents: read
     uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@b1d267aea5211fa648d9d442fa64b90dbdcbdd36" # v2.7.0
     with:
-      scan-args: |-
-        --lockfile=./sportspress-league-manager/package-lock.json
+      scan-args: ${{ needs.osv-scan-plan.outputs.scan-args }}
+
+  # The PR variant runs the same scan-args on the target branch and on the PR
+  # head, and fails the job when either scan cannot complete (deliberately:
+  # reporting "nothing new" off a scan that never ran is worse than a red
+  # check). A lockfile present on only one side makes OSV-Scanner exit with
+  # "failed to resolve path", so a PR that adds a brand-new lockfile (Player App's
+  # app) could never go green. This job hands the scanner only lockfiles that
+  # exist on BOTH sides. A lockfile with no base counterpart has nothing to
+  # diff against: once on main it is covered by the push/weekly full scan, and
+  # its production dependencies by the npm-audit job on the PR itself.
+  osv-scan-plan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    outputs:
+      scan-args: ${{ steps.plan.outputs.scan-args }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select lockfiles present on both the PR and its target branch
+        id: plan
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          # A failed fetch aborts here (set -e) rather than reading as "no lockfiles".
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          args=""
+          for lock in \
+            sportspress-league-manager/package-lock.json \
+            sportspress-player-app/app/package-lock.json; do
+            if [ -f "$lock" ] && git cat-file -e "$BASE_SHA:$lock" 2>/dev/null; then
+              args="${args}--lockfile=./${lock}"$'\n'
+            else
+              echo "::notice::Skipping $lock in the PR diff scan: not present on both the PR and its target branch."
+            fi
+          done
+          if [ -z "$args" ]; then
+            echo "::error::No lockfile is present on both the PR and its target branch; refusing to report a clean scan."
+            exit 1
+          fi
+          {
+            echo 'scan-args<<EOF'
+            printf '%s' "$args"
+            echo
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 
   osv-scanner-scheduled:
     if: github.event_name != 'pull_request'
@@ -77,6 +126,7 @@ jobs:
     with:
       scan-args: |-
         --lockfile=./sportspress-league-manager/package-lock.json
+        --lockfile=./sportspress-player-app/app/package-lock.json
 
   npm-audit:
     runs-on: ubuntu-26.04
@@ -97,6 +147,15 @@ jobs:
       # they're released upstream.
       - name: Install dependencies and audit (production only)
         working-directory: sportspress-league-manager
+        run: |
+          npm ci
+          npm audit --omit=dev --audit-level=high
+
+      # Player App's PWA ships its built bundle, so production dependencies get the
+      # same gate as League Manager's. Dev tooling (vite, vitest, jsdom) never
+      # reaches users and is excluded the same way.
+      - name: Install Player App dependencies and audit (production only)
+        working-directory: sportspress-player-app/app
         run: |
           npm ci
           npm audit --omit=dev --audit-level=high

@@ -15,6 +15,11 @@ on:
       - 'sportspress-league-manager/assets/**'
       - 'sportspress-league-manager/package.json'
       - 'sportspress-league-manager/package-lock.json'
+      # Player App's committed build/ must be in the filter for the same reason as
+      # League Manager's above: a change touching only the bundle would
+      # otherwise skip the drift gate.
+      - 'sportspress-player-app/app/**'
+      - 'sportspress-player-app/build/**'
       - '.github/workflows/ci-tests.yml'
   pull_request:
     branches: [main]
@@ -26,6 +31,8 @@ on:
       - 'sportspress-league-manager/assets/**'
       - 'sportspress-league-manager/package.json'
       - 'sportspress-league-manager/package-lock.json'
+      - 'sportspress-player-app/app/**'
+      - 'sportspress-player-app/build/**'
       - '.github/workflows/ci-tests.yml'
 
 # Least-privilege default token: this workflow only needs to read the repo.
@@ -109,5 +116,46 @@ jobs:
         run: |
           if ! git diff --exit-code sportspress-league-manager/build/; then
             echo "::error::Committed sportspress-league-manager/build/ is out of sync with src/. Run 'npm run build' in sportspress-league-manager and commit the result."
+            exit 1
+          fi
+
+  player-app-build:
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+
+      # Player App's build/ is committed (the PHP app shell serves it as-is), so it
+      # must stay in sync with app/. Tests first, then build, then verify the
+      # artifacts the shell cannot run without, then the drift gate.
+      - name: Test and build the Player App
+        working-directory: sportspress-player-app/app
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Verify Player App build artifacts
+        run: |
+          for f in sportspress-player-app/build/.vite/manifest.json sportspress-player-app/build/sw.js; do
+            if [ ! -s "$f" ]; then
+              echo "::error::Expected build artifact $f was not produced by 'npm run build' in sportspress-player-app/app."
+              exit 1
+            fi
+          done
+
+      # git diff alone misses new files, and hashed bundle names change on every
+      # source change, so also fail on untracked files under build/.
+      - name: Fail if committed Player App bundle drifted from source
+        run: |
+          untracked="$(git ls-files --others --exclude-standard -- sportspress-player-app/build/)"
+          if ! git diff --exit-code sportspress-player-app/build/ || [ -n "$untracked" ]; then
+            [ -n "$untracked" ] && printf 'Untracked build output:\n%s\n' "$untracked"
+            echo "::error::Committed sportspress-player-app/build/ is out of sync with app/. Run 'npm ci && npm run build' in sportspress-player-app/app and commit the result."
             exit 1
           fi

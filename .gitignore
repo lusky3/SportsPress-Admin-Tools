@@ -94,3 +94,6 @@ skills-lock.json
 # Local code-intelligence tooling caches (codebase-memory-mcp, Serena)
 /.codebase-memory/
 /.serena/
+
+# Clickable demo build output (npm run build:demo in sportspress-player-app/app)
+sportspress-player-app/app/demo-dist/

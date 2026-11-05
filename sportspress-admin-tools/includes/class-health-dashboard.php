@@ -126,6 +126,10 @@ class SPAT_Health_Dashboard {
 				'name' => 'Score Sheets',
 				'module' => 'score_sheets',
 			),
+			'sportspress-player-app/sportspress-player-app.php' => array(
+				'name' => 'Player App',
+				'module' => 'player_app',
+			),
 		);
 
 		$child_plugins = $this->merge_registered_plugins( $child_plugins );
