@@ -153,6 +153,11 @@ shootout goal adds nothing to a player's goals, and the shootout winner gets one
 score, as SportsPress records it. A player who is not on the team's list can be logged by jersey
 number; the goal still counts for the team but no player gets it.
 
+Entries waiting on a phone belong to the timekeeper who tapped them. If another timekeeper signs in
+on that phone, those entries are not sent, shown or counted from the new sign-in, and they do not hold
+up Finish. They stay on the phone, and the Score list and game sheet say how many wait. They send
+when the timekeeper who made them signs in again.
+
 **Penalties.** The offense list is Minor (2), Double minor (4), Major (5), Misconduct (10), Game
 misconduct (10), Gross misconduct (10), Match (5), Fighting (5), Ejection (10) and Other (2), in
 minutes by default; a timekeeper can change the minutes (1 to 20). Game misconduct, gross
@@ -236,7 +241,8 @@ null), and `/ops/night` rows add `needs_review_count`.
   server says the session has ended. The limit: if someone signs out through WordPress or My Account
   instead, their saved replies stay on the phone until the app is next opened with a connection.
   Opened offline before then, it can still show the last person's schedule and calendar link. Scores
-  a timekeeper has not sent yet are never deleted by this.
+  a timekeeper has not sent yet are never deleted by this. They stay with the timekeeper who
+  tapped them (see **The log**).
 - **Uninstall.** Deactivating removes no data, only the `/my-arl/` routes and the scheduled
   baseline job (turning the module off drops the routes too). Deleting the plugin removes its data only if
   **Remove Data on Uninstall** is on in SportsPress Admin Tools settings (the

@@ -6,6 +6,7 @@ import { boot } from '../boot';
 import { Crest } from '../components/Crest';
 import { Problem, Skeleton } from '../components/Problem';
 import { TwoTap } from '../components/TwoTap';
+import { UnsentElsewhere } from '../components/UnsentElsewhere';
 import { errorText } from '../lib/errors';
 import { isCalledOff } from '../lib/games';
 import { FLAGS, OFFENSES, byNumber, deriveScore, entryLine, matchRoster, normalizeClock, offense, periodLabel } from '../lib/live';
@@ -656,6 +657,7 @@ export function KeepGame( { id, me }: { id: string; me: Me } ) {
 				</div>
 			) : null }
 
+			<UnsentElsewhere />
 			{ out.memoryOnly ? <p className="notice">This phone isn’t saving entries to its storage. Keep this page open until everything syncs.</p> : null }
 			{ out.rejected.map( ( r ) => (
 				<div key={ r.entry.uid } className="notice rejected">

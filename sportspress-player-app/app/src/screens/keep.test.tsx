@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
+import { seenUser } from '../lib/account';
 import { createOutbox, mergeIntoLog, setOutbox } from '../lib/outbox';
 import { fakeApi, me } from '../test/fake';
 import type { Sent } from '../test/fake';
@@ -383,6 +384,61 @@ describe( 'game sheet', () => {
 		expect( sent.some( ( s ) => s.path === '/games/101/log/aaaaaaaa-0000-4000-8000-000000000001/void' ) ).toBe( true );
 		expect( screen.getByText( /voided by Sam Lee/ ) ).toBeTruthy();
 		expect( screen.getByRole( 'group', { name: /Ducks 0, Kings 0/ } ) ).toBeTruthy();
+	} );
+} );
+
+describe( 'game sheet: another keeper’s unsent entries', () => {
+	async function kingsGoal() {
+		fireEvent.click( screen.getByRole( 'button', { name: 'Goal' } ) );
+		fireEvent.click( within( screen.getByRole( 'dialog' ) ).getByRole( 'button', { name: /Kings/ } ) );
+		fireEvent.click( within( screen.getByRole( 'dialog' ) ).getByRole( 'button', { name: /17 Kit Knight/ } ) );
+		fireEvent.click( screen.getByRole( 'button', { name: 'Save goal' } ) );
+		await settle();
+	}
+
+	it( 'never sends keeper A’s waiting goal from keeper B’s session, says so on the sheet and the list, and sends B’s own', async () => {
+		let reachable = false;
+		const sent = fakeApi( ( s ) => {
+			if ( s.method === 'GET' && s.path === '/games/101/log' ) {
+				return { body: log() };
+			}
+			if ( s.method === 'GET' && s.path.startsWith( '/keep/night' ) ) {
+				return { body: { data: [ keeperGame() ], total: 1, page: 1, total_pages: 1, date: '2026-11-04' } };
+			}
+			if ( s.method === 'POST' ) {
+				if ( ! reachable ) {
+					throw new TypeError( 'Failed to fetch' );
+				}
+				return created( s );
+			}
+		} );
+		render( <KeepGame id="101" me={ me( { is_timekeeper: true } ) } /> );
+		await settle();
+		await kingsGoal(); // keeper A (user 5), offline
+		expect( screen.getByText( 'Offline · 1 waiting' ) ).toBeTruthy();
+		const aUid = ( sent.find( ( s ) => s.method === 'POST' )?.body as { entries: EntryInput[] } ).entries[ 0 ].uid;
+
+		reachable = true;
+		await act( async () => {
+			seenUser( 9 ); // keeper B signs in on this phone
+		} );
+		await settle( 15 );
+		const notice = '1 unsent entry from another account on this phone — sign in as that keeper to send it.';
+		expect( screen.getByText( notice ).getAttribute( 'role' ) ).toBe( 'status' );
+		expect( screen.queryByText( /waiting to sync/ ) ).toBeNull();
+		expect( screen.getByText( 'All saved' ) ).toBeTruthy();
+		expect( ( screen.getByRole( 'button', { name: 'Finish game' } ) as HTMLButtonElement ).disabled ).toBe( false );
+
+		await kingsGoal(); // B's own goal goes out at once, alone
+		const posted = sent.filter( ( s ) => s.method === 'POST' && s.path === '/games/101/log' ).slice( 1 );
+		expect( posted ).toHaveLength( 1 );
+		expect( ( posted[ 0 ].body as { entries: EntryInput[] } ).entries.map( ( e ) => e.uid ) ).not.toContain( aUid );
+		expect( ( posted[ 0 ].body as { entries: EntryInput[] } ).entries ).toHaveLength( 1 );
+
+		cleanup();
+		render( <Keep /> );
+		await settle();
+		expect( screen.getByText( notice ) ).toBeTruthy();
 	} );
 } );
 

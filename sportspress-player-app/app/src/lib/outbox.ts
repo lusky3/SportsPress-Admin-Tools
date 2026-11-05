@@ -2,6 +2,7 @@ import { useMemo, useSyncExternalStore } from 'react';
 import { ApiError, apiSend } from '../api';
 import type { EntryInput, GameLog, KeeperEntry, LiveSummary, PostLogResult } from '../types';
 import { getCached, patchCached } from '../useResource';
+import { currentUser, onUserChange } from './account';
 
 /*
  * The timekeeper's outbox. The rule it keeps: a goal a timekeeper tapped is never silently lost,
@@ -19,6 +20,11 @@ import { getCached, patchCached } from '../useResource';
  * - Undo of an entry never sent removes it. Undo of one that was ever sent (the server may have it)
  *   becomes a void: it waits for the acknowledgement, then POSTs /void.
  * Nudges: a new entry, `online`, the tab becoming visible, and a 20 s tick while anything waits.
+ * - Every entry (and so every undo waiting to become a void) belongs to the keeper who made it: the
+ *   server records whoever's session sends it as the author, and only they may undo it. Only the
+ *   signed-in keeper's entries are sent, shown or counted; another account's stay on the phone,
+ *   untouched, until that keeper signs in again. An entry stored before owners existed belongs to
+ *   whoever is signed in when it is first seen, so nothing is stranded.
  */
 
 export interface Queued {
@@ -26,6 +32,8 @@ export interface Queued {
 	/** Send order across reloads. */
 	seq: number;
 	entry: EntryInput;
+	/** The WordPress user who made it. Missing on entries stored before owners existed (see claim). */
+	owner?: number;
 	/** Not yet written to the phone's storage. */
 	saving?: boolean;
 	/** Was in a request at least once: the server may have stored it. */
@@ -43,6 +51,7 @@ export interface Rejected {
 	reason: string;
 	/** The whole request was refused (not this entry): sending it again may work. */
 	whole?: boolean;
+	owner?: number;
 }
 
 /** idle · sending · retrying (server busy or failing) · offline (no answer) · signed_out (stopped). */
@@ -54,6 +63,16 @@ export interface OutboxState {
 	sync: Record<number, SyncState>;
 	/** Entries are not reaching the phone's storage: they live in memory and a reload would lose them. */
 	memoryOnly: boolean;
+	/** The signed-in user (0 = signed out or unknown): only their entries are sent and shown. */
+	user: number;
+}
+
+/** Whether `item` is `user`'s. One with no owner yet is whoever's is signed in (claim stamps it). */
+const owns = ( item: { owner?: number }, user: number ) => ( item.owner ?? user ) === user;
+
+/** Entries on this phone that belong to another account (waiting or parked): never sent from this session. */
+export function unsentElsewhere( state: OutboxState ): number {
+	return state.items.filter( ( i ) => ! owns( i, state.user ) ).length + state.rejected.filter( ( r ) => ! owns( r, state.user ) ).length;
 }
 
 export const BATCH = 50;
@@ -157,6 +176,8 @@ export interface OutboxOptions {
 	/** Pass null for memory on purpose (the demo, no warning). Defaults to the browser's IndexedDB. */
 	idb?: IDBFactory | null;
 	dbName?: string;
+	/** The signed-in user. Defaults to lib/account's currentUser. Call userChanged() when it changes. */
+	user?: () => number;
 }
 
 type AckListener = ( gameId: number, entries: KeeperEntry[], live: LiveSummary ) => void;
@@ -165,8 +186,9 @@ export function createOutbox( options: OutboxOptions = {} ) {
 	const send = options.send ?? ( ( g: number, entries: EntryInput[], signal: AbortSignal ) => apiSend<PostLogResult>( 'POST', `/games/${ g }/log`, { entries }, signal ) );
 	const sendVoid = options.sendVoid ?? ( ( g: number, uid: string, signal: AbortSignal ) => apiSend<VoidResult>( 'POST', `/games/${ g }/log/${ encodeURIComponent( uid ) }/void`, undefined, signal ) );
 	const idb = options.idb === undefined ? ( typeof indexedDB === 'undefined' ? null : indexedDB ) : options.idb;
+	const user = options.user ?? currentUser;
 
-	let state: OutboxState = { items: [], rejected: [], sync: {}, memoryOnly: ! idb && options.idb !== null };
+	let state: OutboxState = { items: [], rejected: [], sync: {}, memoryOnly: ! idb && options.idb !== null, user: user() };
 	let seq = 0;
 	let askedPersist = false;
 	let halted = false;
@@ -238,6 +260,23 @@ export function createOutbox( options: OutboxOptions = {} ) {
 		}
 	}
 
+	/** Give entries stored before owners existed to the signed-in keeper (never to "signed out"), here and in storage. */
+	function claim(): void {
+		const u = user();
+		if ( state.user !== u ) {
+			set( { user: u } );
+		}
+		if ( u <= 0 ) {
+			return;
+		}
+		state.items.filter( ( i ) => i.owner === undefined ).forEach( ( i ) => update( i.entry.uid, { owner: u } ) );
+		const loose = state.rejected.filter( ( r ) => r.owner === undefined );
+		if ( loose.length ) {
+			set( { rejected: state.rejected.map( ( r ) => ( r.owner === undefined ? { ...r, owner: u } : r ) ) } );
+			loose.forEach( ( r ) => void write( 'rejected', r.entry.uid, { ...r, owner: u } ) );
+		}
+	}
+
 	/** Load what an earlier page left behind. Entries added meanwhile are kept, after the loaded ones. */
 	const ready = ( async () => {
 		try {
@@ -255,6 +294,7 @@ export function createOutbox( options: OutboxOptions = {} ) {
 		} catch {
 			set( { memoryOnly: true } );
 		}
+		claim();
 	} )();
 
 	/* Sending. */
@@ -282,7 +322,7 @@ export function createOutbox( options: OutboxOptions = {} ) {
 		// never parked, so "Try again" can never send a goal that was taken back.
 		const now = items.map( ( i ) => state.items.find( ( x ) => x.entry.uid === i.entry.uid ) ?? i );
 		remove( new Set( items.map( ( i ) => i.entry.uid ) ) );
-		const parked = now.filter( ( i ) => ! i.undo && ! i.acked ).map( ( i ) => ( { gameId: i.gameId, entry: i.entry, reason, ...( whole ? { whole } : {} ) } ) );
+		const parked = now.filter( ( i ) => ! i.undo && ! i.acked ).map( ( i ) => ( { gameId: i.gameId, entry: i.entry, reason, ...( whole ? { whole } : {} ), ...( i.owner === undefined ? {} : { owner: i.owner } ) } ) );
 		set( { rejected: [ ...state.rejected, ...parked ] } );
 		parked.forEach( ( r ) => void write( 'rejected', r.entry.uid, r ) );
 	}
@@ -332,7 +372,9 @@ export function createOutbox( options: OutboxOptions = {} ) {
 		retryAt.delete( gameId );
 		try {
 			for ( ;; ) {
-				const mine = state.items.filter( ( i ) => i.gameId === gameId );
+				// Read the user each round: another keeper may sign in while a request is out.
+				claim();
+				const mine = state.items.filter( ( i ) => i.gameId === gameId && owns( i, state.user ) );
 				const batch = mine.filter( ( i ) => ! i.saving && ! i.acked ).slice( 0, BATCH );
 				const undo = mine.find( ( i ) => i.acked && i.undo );
 				if ( ! batch.length && ! undo ) {
@@ -373,7 +415,7 @@ export function createOutbox( options: OutboxOptions = {} ) {
 						} else if ( undo ) {
 							// The server will not void it (the game is final, say): it stays in the log; tell the keeper.
 							remove( new Set( [ undo.entry.uid ] ) );
-							set( { rejected: [ ...state.rejected, { gameId, entry: undo.entry, reason: `void_${ reason }` } ] } );
+							set( { rejected: [ ...state.rejected, { gameId, entry: undo.entry, reason: `void_${ reason }`, ...( undo.owner === undefined ? {} : { owner: undo.owner } ) } ] } );
 						}
 						continue;
 					}
@@ -403,7 +445,8 @@ export function createOutbox( options: OutboxOptions = {} ) {
 	 */
 	function enqueue( gameId: number, entry: Omit<EntryInput, 'uid'> & { uid?: string } ): string {
 		const full = { ...entry, uid: entry.uid || uuid() } as EntryInput;
-		const item: Queued = { gameId, seq: seq++, entry: full };
+		const u = user();
+		const item: Queued = { gameId, seq: seq++, entry: full, ...( u > 0 ? { owner: u } : {} ) };
 		set( { items: [ ...state.items, { ...item, saving: true } ] } );
 		if ( ! askedPersist ) {
 			askedPersist = true;
@@ -450,14 +493,21 @@ export function createOutbox( options: OutboxOptions = {} ) {
 		const r = state.rejected.find( ( x ) => x.entry.uid === uid );
 		if ( r ) {
 			dismiss( uid );
-			const item: Queued = { gameId: r.gameId, seq: seq++, entry: r.entry, attempted: true };
+			const item: Queued = { gameId: r.gameId, seq: seq++, entry: r.entry, attempted: true, ...( r.owner === undefined ? {} : { owner: r.owner } ) };
 			set( { items: [ ...state.items, item ] } );
 			void write( 'queue', uid, item ).then( () => flush( r.gameId, true ) );
 		}
 	}
 
+	/** The signed-in user changed: show their entries, and send them. */
+	function userChanged(): void {
+		claim();
+		void flushAll( true );
+	}
+
 	/** Listen to the browser: online, visible, and a 20 s tick while anything waits. Returns a stop function. */
 	function start(): () => void {
+		const offUser = onUserChange( userChanged );
 		const nudge = () => void flushAll( true );
 		const visible = () => {
 			if ( document.visibilityState === 'visible' ) {
@@ -474,6 +524,7 @@ export function createOutbox( options: OutboxOptions = {} ) {
 		void flushAll( true );
 		return () => {
 			halted = true;
+			offUser();
 			timers.forEach( ( t ) => clearTimeout( t ) );
 			window.removeEventListener( 'online', nudge );
 			document.removeEventListener( 'visibilitychange', visible );
@@ -490,6 +541,7 @@ export function createOutbox( options: OutboxOptions = {} ) {
 		flush,
 		flushAll,
 		start,
+		userChanged,
 		getState: () => state,
 		subscribe( l: () => void ) {
 			listeners.add( l );
@@ -555,17 +607,26 @@ export interface Pending {
 	memoryOnly: boolean;
 }
 
-/** One game's slice of the outbox, kept in step with it. */
-export function usePending( gameId: number ): Pending {
+function useOutboxState(): OutboxState {
 	const box = outbox();
-	const state = useSyncExternalStore( box.subscribe, box.getState, box.getState );
+	return useSyncExternalStore( box.subscribe, box.getState, box.getState );
+}
+
+/** One game's slice of the outbox (the signed-in keeper's entries only), kept in step with it. */
+export function usePending( gameId: number ): Pending {
+	const state = useOutboxState();
 	return useMemo(
 		() => ( {
-			pending: state.items.filter( ( i ) => i.gameId === gameId ),
-			rejected: state.rejected.filter( ( r ) => r.gameId === gameId ),
+			pending: state.items.filter( ( i ) => i.gameId === gameId && owns( i, state.user ) ),
+			rejected: state.rejected.filter( ( r ) => r.gameId === gameId && owns( r, state.user ) ),
 			sync: state.sync[ gameId ] ?? 'idle',
 			memoryOnly: state.memoryOnly,
 		} ),
 		[ state, gameId ]
 	);
+}
+
+/** How many entries on this phone belong to another account (see unsentElsewhere). */
+export function useUnsentElsewhere(): number {
+	return unsentElsewhere( useOutboxState() );
 }

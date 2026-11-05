@@ -3,7 +3,7 @@ import { IDBDatabase, IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api';
 import type { EntryInput, KeeperEntry, PostLogResult } from '../types';
-import { BATCH, STORAGE_TIMEOUT_MS, TIMEOUT_MS, backoff, createOutbox, uuid } from './outbox';
+import { BATCH, STORAGE_TIMEOUT_MS, TIMEOUT_MS, backoff, createOutbox, unsentElsewhere, uuid } from './outbox';
 import type { VoidResult } from './outbox';
 
 type Send = ( gameId: number, entries: EntryInput[], signal: AbortSignal ) => Promise<PostLogResult>;
@@ -375,6 +375,78 @@ describe( 'outbox: storage', () => {
 		box.enqueue( 101, goal( 1 ) );
 		box.enqueue( 101, goal( 2 ) );
 		expect( persist ).toHaveBeenCalledTimes( 1 );
+	} );
+} );
+
+describe( 'outbox: whose entries', () => {
+	it( 'sends only the signed-in keeper’s entries, keeps another keeper’s untouched, and sends them when that keeper is back', async () => {
+		let user = 5;
+		let online = false;
+		const sent: string[] = [];
+		const send = vi.fn<Send>( async ( _g, entries ) => {
+			if ( ! online ) {
+				return offline();
+			}
+			sent.push( ...entries.map( ( e ) => e.uid ) );
+			return ok( entries );
+		} );
+		const box = createOutbox( { send, idb, user: () => user } );
+		const a = box.enqueue( 101, goal( 1 ) );
+		await settle();
+		expect( box.getState().items[ 0 ].owner ).toBe( 5 );
+
+		user = 9; // keeper B signs in on the same phone
+		online = true;
+		box.userChanged();
+		await settle();
+		await box.flushAll( true );
+		expect( sent ).toEqual( [] );
+		expect( box.getState().items.map( ( i ) => i.entry.uid ) ).toEqual( [ a ] );
+		expect( unsentElsewhere( box.getState() ) ).toBe( 1 );
+
+		const b = box.enqueue( 101, goal( 2 ) );
+		await settle();
+		expect( sent ).toEqual( [ b ] );
+		expect( unsentElsewhere( box.getState() ) ).toBe( 1 );
+
+		user = 5; // A is back
+		box.userChanged();
+		await settle();
+		expect( sent ).toEqual( [ b, a ] );
+		expect( box.getState().items ).toEqual( [] );
+	} );
+
+	it( 'gives an entry stored before owners existed to whoever is signed in when it is first seen', async () => {
+		const legacy = createOutbox( { send: offline, idb, user: () => 0 } ); // no owner stamped
+		const uid = legacy.enqueue( 101, goal( 1 ) );
+		await settle();
+		expect( legacy.getState().items[ 0 ].owner ).toBeUndefined();
+
+		const seen = createOutbox( { send: offline, idb, user: () => 7 } );
+		await seen.ready;
+		await settle();
+		expect( seen.getState().items[ 0 ].owner ).toBe( 7 );
+
+		const send = vi.fn<Send>( async ( _g, entries ) => ok( entries ) );
+		const other = createOutbox( { send, idb, user: () => 9 } );
+		await other.ready;
+		await other.flushAll( true );
+		expect( send ).not.toHaveBeenCalled();
+		const owner = createOutbox( { send, idb, user: () => 7 } );
+		await owner.ready;
+		await owner.flushAll( true );
+		expect( send.mock.calls[ 0 ][ 1 ][ 0 ].uid ).toBe( uid );
+	} );
+
+	it( 'keeps a parked entry with its owner, so Try again cannot send it as someone else', async () => {
+		const user = 5;
+		const send = vi.fn<Send>( async () => Promise.reject( new ApiError( 404, 'sppa_not_found', 'x' ) ) );
+		const box = createOutbox( { send, idb: null, user: () => user } );
+		box.enqueue( 101, goal( 1 ) );
+		await settle();
+		expect( box.getState().rejected[ 0 ].owner ).toBe( 5 );
+		box.retry( box.getState().rejected[ 0 ].entry.uid );
+		expect( box.getState().items[ 0 ]?.owner ?? box.getState().rejected[ 0 ]?.owner ).toBe( 5 );
 	} );
 } );
 
