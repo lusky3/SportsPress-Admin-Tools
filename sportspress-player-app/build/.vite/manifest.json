@@ -1,13 +1,13 @@
 {
-  "_UnsentElsewhere-CTB-T812.js": {
-    "file": "assets/UnsentElsewhere-CTB-T812.js",
+  "_UnsentElsewhere-_UXzjfSt.js": {
+    "file": "assets/UnsentElsewhere-_UXzjfSt.js",
     "name": "UnsentElsewhere",
     "imports": [
       "index.html"
     ]
   },
   "index.html": {
-    "file": "assets/index-BGgL9hyF.js",
+    "file": "assets/index-DDG8CN82.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
@@ -16,7 +16,7 @@
       "src/screens/KeepGame.tsx"
     ],
     "css": [
-      "assets/index-rOOI7cEq.css"
+      "assets/index-BE4SAQ2o.css"
     ],
     "assets": [
       "assets/barlow-condensed-latin-800-italic-Cnej2eWp.woff2",
@@ -32,23 +32,23 @@
     "src": "node_modules/@fontsource/barlow-condensed/files/barlow-condensed-latin-800-italic.woff2"
   },
   "src/screens/Keep.tsx": {
-    "file": "assets/Keep-D9p0xW2z.js",
+    "file": "assets/Keep-DSPofmEw.js",
     "name": "Keep",
     "src": "src/screens/Keep.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
-      "_UnsentElsewhere-CTB-T812.js"
+      "_UnsentElsewhere-_UXzjfSt.js"
     ]
   },
   "src/screens/KeepGame.tsx": {
-    "file": "assets/KeepGame-D9FqgL_E.js",
+    "file": "assets/KeepGame-BreCKg4m.js",
     "name": "KeepGame",
     "src": "src/screens/KeepGame.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
-      "_UnsentElsewhere-CTB-T812.js"
+      "_UnsentElsewhere-_UXzjfSt.js"
     ]
   }
 }
