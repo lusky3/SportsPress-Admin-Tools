@@ -281,6 +281,32 @@ sppa_assert( sppa_err( sppa_post_log( array( 'not-an-object' ) ), 'rest_invalid_
 sppa_assert( sppa_err( sppa_post_log( array( sppa_goal( 'g6-aaaaaaaa' ) ), 102 ), 'sppa_called_off', 409 ), 'a called-off game takes no entries' );
 sppa_assert( sppa_err( sppa_post_log( array( sppa_goal( 'g6-aaaaaaaa' ) ), 999 ), 'sppa_not_found', 404 ), 'an unknown game is 404' );
 
+echo "\n=== owner: a sheet opened by another account is refused ===\n\n";
+
+sppa_keeper( 20 );
+$rows_before = count( $log->rows );
+$wrong       = sppa_call( 'post_log', array( 'id' => 101, 'entries' => array( sppa_goal( 'own-wrong-aa' ) ), 'owner' => 21 ) );
+sppa_assert( sppa_err( $wrong, 'sppa_wrong_user', 409 ) && 20 === $wrong->get_error_data()['current_user'], 'owner differs from the signed-in user: 409 sppa_wrong_user with current_user' );
+sppa_assert( $rows_before === count( $log->rows ), 'and nothing is written' );
+$GLOBALS['sppa_lock_held'] = true;
+sppa_assert( sppa_err( sppa_call( 'post_log', array( 'id' => 101, 'entries' => array( sppa_goal( 'own-wrong-aa' ) ), 'owner' => 21 ) ), 'sppa_wrong_user', 409 ), 'the owner check comes before the lock' );
+$GLOBALS['sppa_lock_held'] = false;
+$res = sppa_call( 'post_log', array( 'id' => 101, 'entries' => array( sppa_goal( 'own-right-aa' ) ), 'owner' => 20 ) );
+sppa_assert( ! is_wp_error( $res ) && 'created' === sppa_data( $res )['results'][0]['status'], 'owner equal to the signed-in user: normal' );
+$res = sppa_post_log( array( sppa_goal( 'own-none-aaa' ) ) );
+sppa_assert( ! is_wp_error( $res ) && 'created' === sppa_data( $res )['results'][0]['status'], 'no owner: normal (back-compat)' );
+sppa_assert( sppa_err( sppa_call( 'post_log', array( 'id' => 101, 'entries' => array( sppa_goal( 'own-zero-aa' ) ), 'owner' => 0 ) ), 'rest_invalid_param', 400 ), 'owner below 1 is 400' );
+$void_before = count( array_filter( array_column( $log->rows, 'voided_at' ) ) );
+$wrong       = sppa_call( 'void_entry', array( 'id' => 101, 'uid' => 'own-right-aa', 'owner' => 21 ) );
+sppa_assert( sppa_err( $wrong, 'sppa_wrong_user', 409 ) && 20 === $wrong->get_error_data()['current_user'] && $void_before === count( array_filter( array_column( $log->rows, 'voided_at' ) ) ), 'void with a different owner: 409 and nothing voided' );
+sppa_assert( ! is_wp_error( sppa_call( 'void_entry', array( 'id' => 101, 'uid' => 'own-right-aa', 'owner' => 20 ) ) ), 'void with the matching owner works' );
+sppa_assert( ! is_wp_error( sppa_call( 'void_entry', array( 'id' => 101, 'uid' => 'own-none-aaa' ) ) ), 'void without an owner works' );
+foreach ( array_keys( $log->rows ) as $id ) {
+	if ( 0 === strpos( $log->rows[ $id ]['uid'], 'own-' ) ) {
+		unset( $log->rows[ $id ] ); // Keep the rest of the story as it was.
+	}
+}
+
 echo "\n=== GET /games/{id}/log ===\n\n";
 
 sppa_keeper();

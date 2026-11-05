@@ -160,12 +160,12 @@ class SPPA_REST {
 		// Live scorekeeping.
 		self::route( '/keep/night', 'GET', 'keep_night', $date, 'is_keeper' );
 		self::route( '/games/(?P<id>\d+)/log', 'GET', 'game_log', $id, 'is_keeper' );
-		self::route( '/games/(?P<id>\d+)/log', 'POST', 'post_log', $id + array( 'entries' => self::entries_arg() ), 'is_keeper' );
+		self::route( '/games/(?P<id>\d+)/log', 'POST', 'post_log', $id + array( 'entries' => self::entries_arg() ) + self::owner_arg(), 'is_keeper' );
 		self::route(
 			'/games/(?P<id>\d+)/log/(?P<uid>[A-Za-z0-9-]{8,36})/void',
 			'POST',
 			'void_entry',
-			$id + array(
+			$id + self::owner_arg() + array(
 				'uid' => array(
 					'type'              => 'string',
 					'pattern'           => '^[A-Za-z0-9-]{8,36}$',
@@ -191,6 +191,38 @@ class SPPA_REST {
 		);
 		self::route( '/games/(?P<id>\d+)/reopen', 'POST', 'reopen_game', $id, 'is_organizer' );
 		self::route( '/games/(?P<id>\d+)/live', 'GET', 'live', $id );
+	}
+
+	/**
+	 * The optional `owner` of a log write: the account the sheet was opened by.
+	 * Another tab can sign in as someone else (cookies are shared); the app sends
+	 * its user id so such a write is refused instead of credited to the wrong keeper.
+	 *
+	 * @return array<string,array>
+	 */
+	private static function owner_arg(): array {
+		return array(
+			'owner' => array(
+				'type'    => 'integer',
+				'minimum' => 1,
+			),
+		);
+	}
+
+	/** 409 sppa_wrong_user when the request names an owner other than the signed-in user; else null. */
+	private static function wrong_user( $request ): ?WP_Error {
+		$owner = $request->get_param( 'owner' );
+		if ( null === $owner || (int) $owner === (int) get_current_user_id() ) {
+			return null;
+		}
+		return new WP_Error(
+			'sppa_wrong_user',
+			__( 'You are signed in as a different account than this sheet was opened with. Reload to continue.', 'sportspress-player-app' ),
+			array(
+				'status'       => 409,
+				'current_user' => (int) get_current_user_id(),
+			)
+		);
 	}
 
 	/**
@@ -943,6 +975,10 @@ class SPPA_REST {
 	 * phone can resend its whole outbox safely.
 	 */
 	public static function post_log( $request ) {
+		$wrong = self::wrong_user( $request );
+		if ( $wrong ) {
+			return $wrong;
+		}
 		$v   = self::viewer();
 		$raw = $v['reader']->raw_event( (int) $request['id'] );
 		if ( null === $raw ) {
@@ -1042,6 +1078,10 @@ class SPPA_REST {
 
 	/** POST /games/{id}/log/{uid}/void: undo an entry (own entries; organizers any). */
 	public static function void_entry( $request ) {
+		$wrong = self::wrong_user( $request );
+		if ( $wrong ) {
+			return $wrong;
+		}
 		$v   = self::viewer();
 		$raw = $v['reader']->raw_event( (int) $request['id'] );
 		if ( null === $raw ) {

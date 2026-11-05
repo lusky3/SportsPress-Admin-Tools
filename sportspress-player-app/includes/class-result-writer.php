@@ -67,7 +67,8 @@ class SPPA_Result_Writer {
 
 		$existing = self::existing_result( $event_id, $team_ids );
 		$final    = self::finalized( $event_id );
-		if ( null !== $existing && ! self::is_ours( $event_id, $team_ids, $existing, $final ) && ! $overwrite ) {
+		$replacing = self::replaces_foreign_stats( $event_id, $team_ids, $existing, $final );
+		if ( $replacing && ! $overwrite ) {
 			return new WP_Error(
 				'sppa_result_exists',
 				__( 'This game already has a result. Confirm to replace it.', 'sportspress-player-app' ),
@@ -106,7 +107,7 @@ class SPPA_Result_Writer {
 			update_post_meta( $event_id, 'sp_results', $results );
 		}
 
-		$merged = self::merge_players( $event_id, $team_ids, (array) ( $derived['players'] ?? array() ), $extra_players, (array) ( $final['players'] ?? array() ), self::replaces_foreign_stats( $event_id, $team_ids, $existing, $final ) );
+		$merged = self::merge_players( $event_id, $team_ids, (array) ( $derived['players'] ?? array() ), $extra_players, (array) ( $final['players'] ?? array() ), $replacing );
 		update_post_meta( $event_id, 'sp_players', $merged['players'] );
 		update_post_meta( $event_id, self::LIVE_META, 'final' );
 
@@ -261,9 +262,10 @@ class SPPA_Result_Writer {
 	}
 
 	/**
-	 * Whether a Finish now starts from stats this log did not write: there is no
-	 * record of a previous Finish, or the result and box score are no longer
-	 * the ones it wrote. Then every old g/a/pim of the game's teams is cleared.
+	 * Whether a Finish now replaces a result this log did not write: there is a
+	 * recorded result (not blank) and it is not the one the last Finish wrote.
+	 * It needs the overwrite confirmation, and every old g/a/pim of the game's
+	 * teams is cleared. With no result at all, nothing is replaced.
 	 *
 	 * @param int        $event_id Game.
 	 * @param int[]      $team_ids Home first.
@@ -271,7 +273,7 @@ class SPPA_Result_Writer {
 	 * @param array|null $final    finalized().
 	 */
 	private static function replaces_foreign_stats( int $event_id, array $team_ids, ?array $existing, ?array $final ): bool {
-		return null === $final || null === $existing || ! self::is_ours( $event_id, $team_ids, $existing, $final );
+		return null !== $existing && ! self::is_ours( $event_id, $team_ids, $existing, $final );
 	}
 
 	/**

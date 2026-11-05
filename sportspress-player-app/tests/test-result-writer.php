@@ -329,4 +329,19 @@ $out = SPPA_Result_Writer::apply( 101, sppa_derive( array( array( 'player_id' =>
 $now = get_post_meta( 101, 'sp_players', true );
 sppa_assert( ! is_wp_error( $out ) && 0 === $now[12][52]['a'] && 0 === $now[7][51]['pim'] && 1 === $now[12][50]['g'], 'a re-finish zeroes the previous record\'s absent players' );
 
+echo "\n=== a first finish with no result keeps admin-entered stats ===\n\n";
+
+sppa_writer_fixture();
+update_post_meta( 101, 'sp_players', array( 12 => array( 52 => array( 'number' => '31', 'g' => 2, 'a' => '', 'pim' => 4 ) ) ) );
+$out = SPPA_Result_Writer::apply( 101, sppa_derive( array( array( 'player_id' => 50 ) ) ), false );
+$now = get_post_meta( 101, 'sp_players', true );
+sppa_assert( ! is_wp_error( $out ) && 2 === $now[12][52]['g'] && '' === $now[12][52]['a'] && 4 === $now[12][52]['pim'], 'no existing result: no 409 and stats not in the log are left as they were' );
+
+sppa_writer_fixture();
+update_post_meta( 101, 'sp_results', array( 12 => array( 'goals' => '' ), 7 => array( 'goals' => '' ) ) );
+update_post_meta( 101, 'sp_players', array( 12 => array( 52 => array( 'number' => '31', 'g' => 2, 'a' => '', 'pim' => 4 ) ) ) );
+SPPA_Result_Writer::apply( 101, sppa_derive( array( array( 'player_id' => 50 ) ) ), false );
+$now = get_post_meta( 101, 'sp_players', true );
+sppa_assert( 2 === $now[12][52]['g'] && '' === $now[12][52]['a'], 'blank result placeholders count as no result: no reset' );
+
 sppa_done();

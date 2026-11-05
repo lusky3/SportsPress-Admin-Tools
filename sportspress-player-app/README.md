@@ -205,11 +205,15 @@ recorded an entry are for timekeepers and organizers only.
 |---|---|
 | `GET /keep/night?date=` | timekeepers: the night's games with both rosters and the log summary |
 | `GET /games/{id}/log` | timekeepers: the full log, voided entries included, and the totals |
-| `POST /games/{id}/log` | timekeepers: up to 50 entries, each answered created, duplicate or rejected |
-| `POST /games/{id}/log/{uid}/void` | timekeepers (their own entries); organizers (any) |
+| `POST /games/{id}/log` | timekeepers: up to 50 entries, each answered created, duplicate or rejected; optional `owner` (user id) |
+| `POST /games/{id}/log/{uid}/void` | timekeepers (their own entries); organizers (any); optional `owner` (user id) |
 | `POST /games/{id}/finish` | timekeepers: `{"overwrite": true}` replaces a result someone else recorded |
 | `POST /games/{id}/reopen` | organizers |
 | `GET /games/{id}/live` | the game's players, accepted spares, organizers and timekeepers |
+
+`owner` on a log write is the account the app opened the sheet with. When it is not the signed-in
+user (another tab signed in as someone else), the write is refused with `409 sppa_wrong_user`
+(`current_user` in the error data) before anything is recorded; left out, the write is unchanged.
 
 `/me` adds `is_timekeeper`; `/me/games` and `/ops/night` rows add `live` (status, score, period, or
 null), and `/ops/night` rows add `needs_review_count`.
