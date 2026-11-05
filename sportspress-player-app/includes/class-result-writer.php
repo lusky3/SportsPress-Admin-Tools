@@ -106,7 +106,7 @@ class SPPA_Result_Writer {
 			update_post_meta( $event_id, 'sp_results', $results );
 		}
 
-		$merged = self::merge_players( $event_id, $team_ids, (array) ( $derived['players'] ?? array() ), $extra_players, (array) ( $final['players'] ?? array() ) );
+		$merged = self::merge_players( $event_id, $team_ids, (array) ( $derived['players'] ?? array() ), $extra_players, (array) ( $final['players'] ?? array() ), self::replaces_foreign_stats( $event_id, $team_ids, $existing, $final ) );
 		update_post_meta( $event_id, 'sp_players', $merged['players'] );
 		update_post_meta( $event_id, self::LIVE_META, 'final' );
 
@@ -183,7 +183,7 @@ class SPPA_Result_Writer {
 		}
 		$final   = self::finalized( $event_id );
 		$current = get_post_meta( $event_id, 'sp_players', true );
-		$merged  = self::merge_players( $event_id, $team_ids, (array) ( $derived['players'] ?? array() ), $extra_players, (array) ( $final['players'] ?? array() ) );
+		$merged  = self::merge_players( $event_id, $team_ids, (array) ( $derived['players'] ?? array() ), $extra_players, (array) ( $final['players'] ?? array() ), self::replaces_foreign_stats( $event_id, $team_ids, $existing, $final ) );
 		return $merged['players'] == ( is_array( $current ) ? $current : array() ); // phpcs:ignore Universal.Operators.StrictComparisons.LooseEqual -- stored values may come back as numeric strings.
 	}
 
@@ -261,6 +261,20 @@ class SPPA_Result_Writer {
 	}
 
 	/**
+	 * Whether a Finish now starts from stats this log did not write: there is no
+	 * record of a previous Finish, or the result and box score are no longer
+	 * the ones it wrote. Then every old g/a/pim of the game's teams is cleared.
+	 *
+	 * @param int        $event_id Game.
+	 * @param int[]      $team_ids Home first.
+	 * @param array|null $existing existing_result().
+	 * @param array|null $final    finalized().
+	 */
+	private static function replaces_foreign_stats( int $event_id, array $team_ids, ?array $existing, ?array $final ): bool {
+		return null === $final || null === $existing || ! self::is_ours( $event_id, $team_ids, $existing, $final );
+	}
+
+	/**
 	 * A fingerprint of the g/a/pim of every sp_players row of the game's teams.
 	 *
 	 * @param int   $event_id Game.
@@ -294,15 +308,31 @@ class SPPA_Result_Writer {
 	 * @param array $rows          team id => player id => {g,a,pim}.
 	 * @param array $extra_players team id => player ids allowed besides current players.
 	 * @param array $previous      team id => player ids the last Finish wrote.
+	 * @param bool  $reset_all     Zero g/a/pim of every row of both teams first (not
+	 *                             the reserved player-id-0 row), for a result this
+	 *                             log did not write.
 	 * @return array{players:array,written:array,skipped:array}
 	 */
-	private static function merge_players( int $event_id, array $team_ids, array $rows, array $extra_players, array $previous ): array {
+	private static function merge_players( int $event_id, array $team_ids, array $rows, array $extra_players, array $previous, bool $reset_all = false ): array {
 		$skipped = array();
 		$players = get_post_meta( $event_id, 'sp_players', true );
 		if ( ! is_array( $players ) ) {
 			$players = array();
 		}
 		$slugs = array_values( array_intersect( self::STATS, self::stat_slugs() ) );
+
+		if ( $reset_all ) {
+			foreach ( $team_ids as $team_id ) {
+				foreach ( (array) ( $players[ $team_id ] ?? array() ) as $player_id => $row ) {
+					if ( 0 === (int) $player_id || ! is_array( $row ) ) {
+						continue;
+					}
+					foreach ( $slugs as $slug ) {
+						$players[ $team_id ][ $player_id ][ $slug ] = 0;
+					}
+				}
+			}
+		}
 
 		$ids = array();
 		foreach ( $rows as $team_rows ) {

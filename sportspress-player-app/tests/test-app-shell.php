@@ -262,7 +262,8 @@ add_filter( 'sppa_help_url', function () { return 'https://example.test/help'; }
 $b2 = SPPA_App_Shell::boot_data();
 sppa_assert( 'https://example.test/help' === $b2['helpUrl'], 'helpUrl passes through the sppa_help_url filter' );
 sppa_assert( false !== strpos( $b['loginUrl'], 'wp-login.php' ) && false !== strpos( $b['logoutUrl'], 'action=logout' ) && '' !== $b['accountUrl'], 'login, logout and account URLs are present' );
-sppa_assert( array( 'restRoot', 'nonce', 'ajaxUrl', 'loginUrl', 'logoutUrl', 'accountUrl', 'helpUrl', 'appBase', 'appName', 'siteName' ) === array_keys( $b ), 'boot has exactly the contract keys' );
+sppa_assert( array( 'restRoot', 'nonce', 'ajaxUrl', 'loginUrl', 'logoutUrl', 'accountUrl', 'helpUrl', 'appBase', 'appName', 'siteName', 'userId' ) === array_keys( $b ), 'boot has exactly the contract keys' );
+sppa_assert( is_int( $b['userId'] ) && get_current_user_id() === $b['userId'], 'boot userId is the current user id as an int' );
 $GLOBALS['sppa_filters'] = array();
 
 echo "\n=== handle: service worker and manifest ===\n\n";

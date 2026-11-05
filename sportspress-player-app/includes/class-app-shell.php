@@ -328,7 +328,7 @@ class SPPA_App_Shell {
 	/**
 	 * What the app reads from window.SPPA_BOOT.
 	 *
-	 * @return array<string,string>
+	 * @return array<string,string|int>
 	 */
 	public static function boot_data(): array {
 		$base    = self::base_url();
@@ -344,6 +344,7 @@ class SPPA_App_Shell {
 			'appBase'    => $base,
 			'appName'    => self::app_name(),
 			'siteName'   => (string) get_bloginfo( 'name' ),
+			'userId'     => (int) get_current_user_id(),
 		);
 	}
 
