@@ -12,7 +12,7 @@ echo "\n=== create_sql ===\n\n";
 
 $sql = SPPA_Schema::create_sql( 'wp_', 'DEFAULT CHARACTER SET utf8mb4' );
 
-sppa_assert( 4 === count( $sql ), 'create_sql yields 4 statements' );
+sppa_assert( 5 === count( $sql ), 'create_sql yields 5 statements' );
 
 foreach ( $sql as $i => $statement ) {
 	sppa_assert( 0 === strpos( $statement, 'CREATE TABLE wp_sppa_' ), "statement {$i} starts CREATE TABLE wp_sppa_" );
@@ -26,9 +26,14 @@ foreach ( $sql as $statement ) {
 }
 
 sppa_assert(
-	array( 'wp_sppa_availability', 'wp_sppa_spare_calls', 'wp_sppa_spare_responses', 'wp_sppa_changes' ) === array_keys( $by_table ),
-	'tables are availability, spare_calls, spare_responses, changes in that order'
+	array( 'wp_sppa_availability', 'wp_sppa_spare_calls', 'wp_sppa_spare_responses', 'wp_sppa_changes', 'wp_sppa_game_log' ) === array_keys( $by_table ),
+	'tables are availability, spare_calls, spare_responses, changes, game_log in that order'
 );
+sppa_assert( false !== strpos( $by_table['wp_sppa_game_log'], 'UNIQUE KEY event_uid (event_id,uid)' ), 'game_log: UNIQUE KEY event_uid, so a retried entry cannot be stored twice' );
+sppa_assert( false !== strpos( $by_table['wp_sppa_game_log'], 'KEY event_active (event_id,voided_at)' ), 'game_log: KEY event_active' );
+foreach ( array( 'uid char(36) NOT NULL', 'type varchar(10)', 'clock varchar(8) DEFAULT NULL', 'jersey varchar(6) DEFAULT NULL', 'offense varchar(24) DEFAULT NULL', 'flags varchar(40) DEFAULT NULL', 'text varchar(140) DEFAULT NULL', 'needs_review tinyint(1)', 'recorded_at datetime NOT NULL', 'voided_at datetime DEFAULT NULL' ) as $column ) {
+	sppa_assert( false !== strpos( $by_table['wp_sppa_game_log'], $column ), "game_log: {$column}" );
+}
 sppa_assert( false !== strpos( $by_table['wp_sppa_availability'], 'UNIQUE KEY event_player (event_id,player_id)' ), 'availability: UNIQUE KEY event_player' );
 sppa_assert( false !== strpos( $by_table['wp_sppa_spare_responses'], 'UNIQUE KEY call_user (call_id,user_id)' ), 'spare_responses: UNIQUE KEY call_user' );
 sppa_assert( false !== strpos( $by_table['wp_sppa_changes'], 'KEY event_changed (event_id,changed_at)' ), 'changes: KEY event_changed' );
@@ -59,6 +64,7 @@ sppa_assert(
 		'spare_calls'     => 'wp_sppa_spare_calls',
 		'spare_responses' => 'wp_sppa_spare_responses',
 		'changes'         => 'wp_sppa_changes',
+		'game_log'        => 'wp_sppa_game_log',
 	) === $tables,
 	'tables() maps logical name to prefixed table'
 );
@@ -75,17 +81,17 @@ function dbDelta( $sql ) {
 	return array();
 }
 
-sppa_assert( '1' === SPPA_Schema::DB_VERSION, 'DB_VERSION is 1' );
+sppa_assert( '2' === SPPA_Schema::DB_VERSION, 'DB_VERSION is 2 (the game log)' );
 
 SPPA_Schema::maybe_upgrade();
-sppa_assert( 4 === count( $GLOBALS['sppa_dbdelta'] ), 'first run dbDeltas all four tables' );
-sppa_assert( '1' === get_option( 'sppa_db_version' ), 'first run stores sppa_db_version' );
+sppa_assert( 5 === count( $GLOBALS['sppa_dbdelta'] ), 'first run dbDeltas all five tables' );
+sppa_assert( '2' === get_option( 'sppa_db_version' ), 'first run stores sppa_db_version' );
 
 SPPA_Schema::maybe_upgrade();
-sppa_assert( 4 === count( $GLOBALS['sppa_dbdelta'] ), 'second run at the same version is a no-op' );
+sppa_assert( 5 === count( $GLOBALS['sppa_dbdelta'] ), 'second run at the same version is a no-op' );
 
-update_option( 'sppa_db_version', '0' );
+update_option( 'sppa_db_version', '1' );
 SPPA_Schema::maybe_upgrade();
-sppa_assert( 8 === count( $GLOBALS['sppa_dbdelta'] ), 'an older stored version re-runs dbDelta' );
+sppa_assert( 10 === count( $GLOBALS['sppa_dbdelta'] ) && false !== strpos( end( $GLOBALS['sppa_dbdelta'] ), 'sppa_game_log' ), 'an install at version 1 re-runs dbDelta, which adds the game log' );
 
 sppa_done();

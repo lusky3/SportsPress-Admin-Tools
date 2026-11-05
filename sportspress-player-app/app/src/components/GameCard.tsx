@@ -5,7 +5,8 @@ import { isCalledOff, isPast, venueLine, venueShort } from '../lib/games';
 import { Link } from '../router';
 import type { Game } from '../types';
 import { Crest } from './Crest';
-import { AnswerChip, GameChips, ResultPill } from './StatusChip';
+import { liveText } from '../lib/live';
+import { AnswerChip, GameChips, ResultPill, StatusChip } from './StatusChip';
 
 function opponentName( game: Game ): string {
 	return game.opponent.name || 'Opponent to be set';
@@ -100,7 +101,7 @@ export function GameRow( { game, now, anchor }: { game: Game; now: Date; anchor?
 				</span>
 			</span>
 			<span className="row__side">
-				{ past ? game.result ? <ResultPill result={ game.result } /> : null : off ? null : <span className="row__count">{ game.counts.in } in</span> }
+				{ past ? game.result ? <ResultPill result={ game.result } /> : game.live?.status === 'live' ? <StatusChip label={ liveText( game.live, ! game.is_home ) } tone="ice" /> : null : off ? null : <span className="row__count">{ game.counts.in } in</span> }
 			</span>
 		</Link>
 	);

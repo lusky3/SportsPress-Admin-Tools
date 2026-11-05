@@ -7,13 +7,16 @@ export class ApiError extends Error {
 	readonly code: string;
 	/** `data.reason` from the WP_Error, e.g. 'busy' on a 403 sppa_not_eligible. */
 	readonly reason: string;
+	/** The WP_Error's `data`, e.g. `{ result: { home, away } }` on a 409 sppa_result_exists. */
+	readonly data: Record<string, unknown>;
 
-	constructor( status: number, code: string, message: string, reason = '' ) {
+	constructor( status: number, code: string, message: string, reason = '', data: Record<string, unknown> = {} ) {
 		super( message );
 		this.name = 'ApiError';
 		this.status = status;
 		this.code = code;
 		this.reason = reason;
+		this.data = data;
 	}
 }
 
@@ -126,7 +129,7 @@ async function readError( response: Response ): Promise<ApiError> {
 	} catch {
 		// Not JSON (a proxy error page): fall back to the status.
 	}
-	return new ApiError( response.status, body.code || 'http_error', body.message || response.statusText || 'The request failed.', body.data?.reason || '' );
+	return new ApiError( response.status, body.code || 'http_error', body.message || response.statusText || 'The request failed.', body.data?.reason || '', body.data ?? {} );
 }
 
 interface Raw<T> {
@@ -145,9 +148,9 @@ export function setTransport( send: typeof fetch | undefined ): void {
 	transport = send;
 }
 
-async function once<T>( method: string, path: string, body: unknown, nonceValue: string ): Promise<Raw<T>> {
+async function once<T>( method: string, path: string, body: unknown, nonceValue: string, signal?: AbortSignal ): Promise<Raw<T>> {
 	const headers: Record<string, string> = { Accept: 'application/json', 'X-WP-Nonce': nonceValue };
-	const init: RequestInit = { method, credentials: 'same-origin', headers };
+	const init: RequestInit = { method, credentials: 'same-origin', headers, signal };
 	if ( body !== undefined ) {
 		headers[ 'Content-Type' ] = 'application/json';
 		init.body = JSON.stringify( body );
@@ -171,10 +174,10 @@ async function once<T>( method: string, path: string, body: unknown, nonceValue:
 	}
 }
 
-async function request<T>( method: string, path: string, body?: unknown ): Promise<Raw<T>> {
+async function request<T>( method: string, path: string, body?: unknown, signal?: AbortSignal ): Promise<Raw<T>> {
 	const used = currentNonce();
 	try {
-		return await once<T>( method, path, body, used );
+		return await once<T>( method, path, body, used, signal );
 	} catch ( error ) {
 		if ( ! needsNonce( error ) ) {
 			throw error;
@@ -186,7 +189,7 @@ async function request<T>( method: string, path: string, body?: unknown ): Promi
 		await refreshNonce();
 	}
 	try {
-		return await once<T>( method, path, body, currentNonce() );
+		return await once<T>( method, path, body, currentNonce(), signal );
 	} catch ( error ) {
 		throw needsNonce( error ) ? signedOut() : error;
 	}
@@ -215,9 +218,9 @@ export async function apiGet<T>( path: string ): Promise<T> {
 	return ( await apiGetWithMeta<T>( path ) ).data;
 }
 
-/** POST or PUT a JSON body to `path` and return the JSON. */
-export async function apiSend<T>( method: 'POST' | 'PUT', path: string, body?: unknown ): Promise<T> {
-	return ( await request<T>( method, path, body ) ).data;
+/** POST or PUT a JSON body to `path` and return the JSON. An aborted `signal` fails like no connection (status 0). */
+export async function apiSend<T>( method: 'POST' | 'PUT', path: string, body?: unknown, signal?: AbortSignal ): Promise<T> {
+	return ( await request<T>( method, path, body, signal ) ).data;
 }
 
 /** Test helper: forget the nonce, any refresh in flight, and the offline state. */

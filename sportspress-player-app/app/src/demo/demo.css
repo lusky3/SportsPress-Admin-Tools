@@ -42,12 +42,90 @@ body {
 	align-items: center;
 	justify-content: space-between;
 	gap: 8px;
+	flex-direction: column;
+	align-items: stretch;
+	justify-content: center;
+	gap: 0;
 	min-height: var(--demo-top);
-	padding: env(safe-area-inset-top, 0px) max(12px, env(safe-area-inset-right, 0px)) 0 max(12px, env(safe-area-inset-left, 0px));
+	padding: env(safe-area-inset-top, 0px) max(8px, env(safe-area-inset-right, 0px)) 0 max(10px, env(safe-area-inset-left, 0px));
 	background: var(--ink);
 	color: var(--paper);
 	border-bottom: 1px solid rgb(247 251 252 / 24%);
 	font-family: var(--font-body);
+}
+
+.demo-banner__main {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px;
+	min-height: 52px;
+}
+
+/* The timekeeper's bar has a second row: the offline switch. */
+html.demo-tall {
+	--demo-banner: 100px;
+}
+
+.demo-banner__row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	min-height: 48px;
+	border-top: 1px solid rgb(247 251 252 / 18%);
+	color: var(--chrome-muted);
+	font-size: 0.75rem;
+}
+
+.demo-banner__toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 44px;
+	padding: 0 4px;
+	border: 0;
+	background: none;
+	color: var(--paper);
+	font: inherit;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.demo-banner__knob {
+	position: relative;
+	width: 36px;
+	height: 20px;
+	border: 2px solid var(--chrome-muted);
+	border-radius: 999px;
+}
+
+.demo-banner__knob::after {
+	content: '';
+	position: absolute;
+	top: 2px;
+	left: 2px;
+	width: 12px;
+	height: 12px;
+	border-radius: 50%;
+	background: var(--chrome-muted);
+	transition: transform 120ms ease;
+}
+
+.demo-banner__toggle[aria-pressed='true'] .demo-banner__knob {
+	border-color: var(--ice);
+	background: var(--ice);
+}
+
+.demo-banner__toggle[aria-pressed='true'] .demo-banner__knob::after {
+	background: var(--ink);
+	transform: translateX(16px);
+}
+
+.demo-banner__toggle:focus-visible {
+	outline: 2px solid var(--ice);
+	outline-offset: 2px;
 }
 
 .demo-banner__label {
@@ -82,12 +160,12 @@ body {
 	box-sizing: border-box;
 	min-width: 44px;
 	min-height: 44px;
-	padding: 0 10px;
+	padding: 0 7px;
 	border: 0;
 	background: transparent;
 	color: var(--chrome-muted);
 	font: inherit;
-	font-size: 0.8125rem;
+	font-size: 0.75rem;
 	font-weight: 600;
 	cursor: pointer;
 }

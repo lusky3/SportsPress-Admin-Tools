@@ -8,6 +8,10 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 	exit;
 }
 
+// The timekeeper role grants only this plugin's capability, which nothing
+// checks once the plugin is gone; it goes whether or not data is kept.
+remove_role( 'sppa_timekeeper' );
+
 if ( ! get_option( 'spat_remove_data_on_uninstall', '0' ) ) {
 	return;
 }
@@ -33,6 +37,9 @@ $wpdb->query( // phpcs:ignore WordPress.DB
 delete_metadata( 'user', 0, 'sppa_ical_token', '', true );
 delete_metadata( 'user', 0, 'sppa_spare_prefs', '', true );
 
-// Change-tracking meta on events.
+// Change-tracking and live-scorekeeping meta on events. The results a Finish
+// wrote to SportsPress stay: they are the league's record.
 delete_post_meta_by_key( '_sppa_fingerprint' );
 delete_post_meta_by_key( '_sppa_snapshot' );
+delete_post_meta_by_key( '_sppa_live' );
+delete_post_meta_by_key( '_sppa_finalized' );

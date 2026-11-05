@@ -17,6 +17,10 @@ interface TabBarProps {
 	teamId?: number;
 	/** Adds the Tonight tab. */
 	organizer?: boolean;
+	/** Adds the Score tab (live scorekeeping, for timekeepers and organizers). */
+	keeper?: boolean;
+	/** A timekeeper with no player: Score and Me only. */
+	keeperOnly?: boolean;
 }
 
 function Icon( { d }: { d: string } ) {
@@ -27,7 +31,12 @@ function Icon( { d }: { d: string } ) {
 	);
 }
 
-function tabsFor( teamId: number | undefined, organizer: boolean | undefined ): Tab[] {
+function tabsFor( { teamId, organizer, keeper, keeperOnly }: Omit<TabBarProps, 'current'> ): Tab[] {
+	const keep: Tab = { key: 'keep', label: 'Score', to: '/keep', matches: keeperOnly ? [ '/', '/keep', '/keep/:id' ] : [ '/keep', '/keep/:id' ], icon: <Icon d="M12 21a8 8 0 100-16 8 8 0 000 16zM12 9v4l2.5 2.5M10 2h4" /> };
+	const me: Tab = { key: 'me', label: 'Me', to: '/me', matches: [ '/me' ], icon: <Icon d="M12 12a4 4 0 100-8 4 4 0 000 8zM4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" /> };
+	if ( keeperOnly ) {
+		return [ keep, me ];
+	}
 	const tabs: Tab[] = [
 		{ key: 'next', label: 'Next', to: '/', matches: [ '/' ], icon: <Icon d="M5 12h14M13 6l6 6-6 6" /> },
 		{ key: 'schedule', label: 'Schedule', to: '/schedule', matches: [ '/schedule', '/games/:id' ], icon: <Icon d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4" /> },
@@ -43,19 +52,22 @@ function tabsFor( teamId: number | undefined, organizer: boolean | undefined ): 
 	}
 	tabs.push(
 		{ key: 'spares', label: 'Spares', to: '/spares', matches: [ '/spares' ], icon: <Icon d="M12 3a9 9 0 100 18 9 9 0 000-18zM12 8v8M8 12h8" /> },
-		{ key: 'me', label: 'Me', to: '/me', matches: [ '/me' ], icon: <Icon d="M12 12a4 4 0 100-8 4 4 0 000 8zM4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" /> }
+		me
 	);
 	if ( organizer ) {
 		tabs.push( { key: 'tonight', label: 'Tonight', to: '/tonight', matches: [ '/tonight' ], icon: <Icon d="M20 14.5A8 8 0 019.5 4 8 8 0 1020 14.5z" /> } );
 	}
+	if ( keeper ) {
+		tabs.push( keep );
+	}
 	return tabs;
 }
 
-/** Bottom tab bar, within thumb reach: Next, Schedule, Team, Spares, Me (and Tonight for organizers). */
-export function TabBar( { current, teamId, organizer }: TabBarProps ) {
+/** Bottom tab bar, within thumb reach: Next, Schedule, Team, Spares, Me (Tonight for organizers, Score for timekeepers). */
+export function TabBar( { current, ...who }: TabBarProps ) {
 	return (
 		<nav className="tab-bar" aria-label="Main">
-			{ tabsFor( teamId, organizer ).map( ( tab ) => {
+			{ tabsFor( who ).map( ( tab ) => {
 				const active = tab.matches.includes( current );
 				return (
 					<Link key={ tab.key } to={ tab.to } className={ active ? 'tab-bar__item is-active' : 'tab-bar__item' } aria-current={ active ? 'page' : undefined }>

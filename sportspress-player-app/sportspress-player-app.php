@@ -59,6 +59,10 @@ class SportsPress_Player_App {
 		require_once SPPA_PLUGIN_PATH . 'includes/class-schema.php';
 		SPPA_Schema::maybe_upgrade();
 
+		// The "ARL Timekeeper" role (removed on uninstall, not on deactivation).
+		require_once SPPA_PLUGIN_PATH . 'includes/class-access.php';
+		SPPA_Access::install_role();
+
 		// The app shell (added with the front-end routes) owns the app's rewrites;
 		// register them before flushing so the first request already resolves.
 		if ( file_exists( SPPA_PLUGIN_PATH . 'includes/class-app-shell.php' ) ) {
@@ -179,6 +183,9 @@ class SportsPress_Player_App {
 		require_once SPPA_PLUGIN_PATH . 'includes/class-mailer.php';
 		require_once SPPA_PLUGIN_PATH . 'includes/class-availability.php';
 		require_once SPPA_PLUGIN_PATH . 'includes/class-access.php';
+		require_once SPPA_PLUGIN_PATH . 'includes/class-game-log.php';
+		require_once SPPA_PLUGIN_PATH . 'includes/class-game-log-store.php';
+		require_once SPPA_PLUGIN_PATH . 'includes/class-result-writer.php';
 		require_once SPPA_PLUGIN_PATH . 'includes/class-rest.php';
 		require_once SPPA_PLUGIN_PATH . 'includes/class-app-shell.php';
 
@@ -193,6 +200,9 @@ class SportsPress_Player_App {
 
 		// Tell accepted spares when their game changes (the hook fires from the change log).
 		SPPA_Mailer::register();
+
+		// An update that changed the timekeeper role (or an install that predates it) re-adds it once.
+		add_action( 'init', array( 'SPPA_Access', 'maybe_install_role' ) );
 
 		// Apply any additive schema upgrade for installs that predate the current
 		// DB version (idempotent no-op once versions match).

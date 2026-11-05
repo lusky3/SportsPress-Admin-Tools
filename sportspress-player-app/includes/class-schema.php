@@ -2,7 +2,7 @@
 /**
  * Player App database schema.
  *
- * Four custom tables, created and upgraded with dbDelta() and versioned by the
+ * Five custom tables, created and upgraded with dbDelta() and versioned by the
  * `sppa_db_version` option. Every datetime column holds UTC (gmdate()).
  */
 
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class SPPA_Schema {
 
-	const DB_VERSION        = '1';
+	const DB_VERSION        = '2';
 	const DB_VERSION_OPTION = 'sppa_db_version';
 
 	/**
@@ -23,7 +23,7 @@ class SPPA_Schema {
 	public static function tables(): array {
 		global $wpdb;
 		$out = array();
-		foreach ( array( 'availability', 'spare_calls', 'spare_responses', 'changes' ) as $name ) {
+		foreach ( array( 'availability', 'spare_calls', 'spare_responses', 'changes', 'game_log' ) as $name ) {
 			$out[ $name ] = $wpdb->prefix . 'sppa_' . $name;
 		}
 		return $out;
@@ -91,7 +91,35 @@ class SPPA_Schema {
 	KEY event_changed (event_id,changed_at)
 ) {$charset};";
 
-		return array( $availability, $spare_calls, $spare_responses, $changes );
+		// Live scorekeeping: an append-only log; voiding stamps voided_by/voided_at.
+		// uid is the client's id for the entry, so a retried POST is recognised.
+		$game_log = "CREATE TABLE {$prefix}sppa_game_log (
+	id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	event_id bigint(20) unsigned NOT NULL,
+	uid char(36) NOT NULL,
+	type varchar(10) NOT NULL,
+	team_id bigint(20) unsigned NOT NULL DEFAULT 0,
+	period tinyint(3) unsigned NOT NULL DEFAULT 1,
+	clock varchar(8) DEFAULT NULL,
+	player_id bigint(20) unsigned DEFAULT NULL,
+	assist1_id bigint(20) unsigned DEFAULT NULL,
+	assist2_id bigint(20) unsigned DEFAULT NULL,
+	jersey varchar(6) DEFAULT NULL,
+	minutes tinyint(3) unsigned DEFAULT NULL,
+	offense varchar(24) DEFAULT NULL,
+	flags varchar(40) DEFAULT NULL,
+	text varchar(140) DEFAULT NULL,
+	needs_review tinyint(1) unsigned NOT NULL DEFAULT 0,
+	recorded_by bigint(20) unsigned NOT NULL DEFAULT 0,
+	recorded_at datetime NOT NULL,
+	voided_by bigint(20) unsigned DEFAULT NULL,
+	voided_at datetime DEFAULT NULL,
+	PRIMARY KEY  (id),
+	UNIQUE KEY event_uid (event_id,uid),
+	KEY event_active (event_id,voided_at)
+) {$charset};";
+
+		return array( $availability, $spare_calls, $spare_responses, $changes, $game_log );
 	}
 
 	/**

@@ -26,3 +26,4 @@ The Player App is inert until the "Player App" module is enabled under Settings,
 = 0.1.0 =
 * New: plugin scaffold, database schema, roster reader, event presenter and availability.
 * New: change log for moved or cancelled games, personal calendar feed, spare pool and spare calls with emails.
+* New: live scorekeeping. An "ARL Timekeeper" role logs goals, penalties and periods from the bench (safe to resend, two keepers per game), players in the game see the live score, and Finish game writes the result, outcomes (incl. overtime loss) and player G/A/PIM to SportsPress like a score sheet. A result someone else entered is only replaced after confirmation; organizers can reopen a finished game. Serious penalties are flagged for review only; nothing is emailed.

@@ -56,6 +56,7 @@ function sppa_reset() {
 	$GLOBALS['sppa_mail']       = array(); // wp_mail calls.
 	$GLOBALS['sppa_mail_ok']    = true;
 	$GLOBALS['sppa_lock_calls'] = array(); // SPAT_Lock::with keys, in call order.
+	$GLOBALS['sppa_lock_ttls']  = array(); // and their TTLs.
 	$GLOBALS['sppa_lock_held']  = false;   // true: the lock is held elsewhere.
 	$GLOBALS['sppa_lock_race']  = null;    // callable run after the lock is taken, before the callback.
 	$GLOBALS['sppa_transients']        = array();
@@ -65,6 +66,7 @@ function sppa_reset() {
 	$GLOBALS['sppa_posts_primed']      = array(); // _prime_post_caches / update_object_term_cache id lists.
 	$GLOBALS['sppa_cron']              = array(); // hook => [ time, recurrence ].
 	$GLOBALS['sppa_user_queries']      = array();
+	$GLOBALS['sppa_roles']             = array(); // role => SPPA_Test_Role.
 	$GLOBALS['wpdb']            = new SPPA_Test_WPDB();
 }
 
@@ -190,8 +192,12 @@ class SPPA_Test_WPDB {
 		}
 		$this->insert_id = count( $this->inserts );
 		if ( $this->insert_handler ) {
-			// A stateful fake may keep the row and choose its id.
-			$this->insert_id = (int) call_user_func( $this->insert_handler, $table, $data, $this->insert_id );
+			// A stateful fake may keep the row and choose its id, or refuse it (false, like a unique key).
+			$id = call_user_func( $this->insert_handler, $table, $data, $this->insert_id );
+			if ( false === $id ) {
+				return false;
+			}
+			$this->insert_id = (int) $id;
 		}
 		return 1;
 	}
@@ -584,6 +590,15 @@ function wp_slash( $value ) {
 	return is_array( $value ) ? array_map( 'wp_slash', $value ) : ( is_string( $value ) ? addslashes( $value ) : $value );
 }
 
+function get_post_field( $field, $id ) {
+	$post = get_post( $id );
+	return $post && isset( $post->$field ) ? $post->$field : '';
+}
+
+function sanitize_key( $key ) {
+	return preg_replace( '/[^a-z0-9_\-]/', '', strtolower( (string) $key ) );
+}
+
 function get_post_type( $id ) {
 	$post = get_post( $id );
 	return $post ? $post->post_type : false;
@@ -779,6 +794,39 @@ function wp_mail( $to, $subject, $message, $headers = '' ) {
 	return $GLOBALS['sppa_mail_ok'];
 }
 
+/* Roles: add_role / get_role / remove_role over $GLOBALS['sppa_roles']. */
+class SPPA_Test_Role {
+	public $name;
+	public $display_name;
+	public $capabilities;
+
+	public function __construct( $name, $display_name, array $capabilities ) {
+		$this->name         = $name;
+		$this->display_name = $display_name;
+		$this->capabilities = $capabilities;
+	}
+
+	public function add_cap( $cap, $grant = true ) {
+		$this->capabilities[ $cap ] = $grant;
+	}
+}
+
+function get_role( $role ) {
+	return $GLOBALS['sppa_roles'][ $role ] ?? null;
+}
+
+function add_role( $role, $display_name, $capabilities = array() ) {
+	if ( isset( $GLOBALS['sppa_roles'][ $role ] ) ) {
+		return null; // Like core: an existing role is not replaced.
+	}
+	$GLOBALS['sppa_roles'][ $role ] = new SPPA_Test_Role( $role, $display_name, (array) $capabilities );
+	return $GLOBALS['sppa_roles'][ $role ];
+}
+
+function remove_role( $role ) {
+	unset( $GLOBALS['sppa_roles'][ $role ] );
+}
+
 /* ------------------------------------------------------------------------
  * URLs, escaping and transients (app shell and REST)
  * --------------------------------------------------------------------- */
@@ -820,6 +868,7 @@ if ( ! class_exists( 'SPAT_Lock' ) ) {
 	class SPAT_Lock {
 		public static function with( $key, $ttl_seconds, callable $callback ) {
 			$GLOBALS['sppa_lock_calls'][] = $key;
+			$GLOBALS['sppa_lock_ttls'][]  = $ttl_seconds;
 			if ( $GLOBALS['sppa_lock_held'] ) {
 				return false;
 			}

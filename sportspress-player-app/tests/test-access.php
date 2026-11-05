@@ -8,6 +8,10 @@
 require __DIR__ . '/bootstrap.php';
 require_once dirname( __DIR__ ) . '/includes/class-access.php';
 
+if ( ! defined( 'SPPA_VERSION' ) ) {
+	define( 'SPPA_VERSION', '0.1.0' );
+}
+
 echo "\n=== is_member ===\n\n";
 
 sppa_assert( true === SPPA_Access::is_member( array( 12, 7 ), 7 ), 'a team in the list is a membership' );
@@ -57,5 +61,40 @@ sppa_assert( false === SPPA_Access::can_manage_call( $call, array(), 9, false ),
 sppa_assert( true === SPPA_Access::can_manage_call( $call, array(), 9, true ), 'an organizer may' );
 sppa_assert( false === SPPA_Access::can_manage_call( array( 'team_id' => 12, 'created_by' => 0 ), array(), 0, false ), 'user 0 never matches a call with no creator' );
 sppa_assert( true === SPPA_Access::can_manage_call( array( 'team_id' => '12', 'created_by' => '4' ), array( 3 ), 4, false ), 'string ids from the database still match' );
+
+echo "\n=== live scorekeeping ===\n\n";
+
+sppa_assert( true === SPPA_Access::can_keep_time( true, false, false ), 'the sppa_keep_time capability keeps time' );
+sppa_assert( true === SPPA_Access::can_keep_time( false, true, false ), 'so does edit_others_sp_events' );
+sppa_assert( true === SPPA_Access::can_keep_time( false, false, true ), 'and an organizer' );
+sppa_assert( false === SPPA_Access::can_keep_time( false, false, false ), 'a player does not' );
+sppa_assert( true === SPPA_Access::can_reopen( true ) && false === SPPA_Access::can_reopen( false ), 'only organizers reopen a finished game' );
+sppa_assert( true === SPPA_Access::can_void( 9, 9, false ), 'a keeper may undo their own entry' );
+sppa_assert( false === SPPA_Access::can_void( 9, 10, false ), 'but not another keeper\'s' );
+sppa_assert( true === SPPA_Access::can_void( 9, 10, true ), 'an organizer may undo anyone\'s' );
+sppa_assert( false === SPPA_Access::can_void( 0, 0, false ), 'nobody (user 0) owns an entry' );
+sppa_assert( true === SPPA_Access::can_view_live( array( 12 ), array( 12, 7 ), false, false, false ), 'a member of either team sees the live score' );
+sppa_assert( true === SPPA_Access::can_view_live( array(), array( 12, 7 ), false, true, false ), 'so does an accepted spare' );
+sppa_assert( true === SPPA_Access::can_view_live( array(), array( 12, 7 ), true, false, false ), 'and an organizer' );
+sppa_assert( true === SPPA_Access::can_view_live( array(), array( 12, 7 ), false, false, true ), 'and a timekeeper who plays for neither team' );
+sppa_assert( false === SPPA_Access::can_view_live( array( 9 ), array( 12, 7 ), false, false, false ), 'a player on another team does not' );
+
+echo "\n=== the ARL Timekeeper role ===\n\n";
+
+SPPA_Access::install_role();
+$role = get_role( 'sppa_timekeeper' );
+sppa_assert( $role && 'ARL Timekeeper' === $role->display_name && array( 'read' => true, 'sppa_keep_time' => true ) === $role->capabilities, 'install_role adds "ARL Timekeeper" with read and sppa_keep_time only' );
+$stored = get_option( 'sppa_role_version' );
+sppa_assert( is_string( $stored ) && 0 === strpos( $stored, '0.1.0-' ), 'and remembers the definition it installed' );
+$role->capabilities = array( 'read' => true );
+SPPA_Access::maybe_install_role();
+sppa_assert( array( 'read' => true ) === get_role( 'sppa_timekeeper' )->capabilities, 'maybe_install_role is a no-op while the stored definition is current' );
+update_option( 'sppa_role_version', '0.0.9-deadbeef' );
+SPPA_Access::maybe_install_role();
+sppa_assert( true === get_role( 'sppa_timekeeper' )->capabilities['sppa_keep_time'] && $stored === get_option( 'sppa_role_version' ), 'after an upgrade it gives the existing role its capabilities again' );
+remove_role( 'sppa_timekeeper' );
+update_option( 'sppa_role_version', '' );
+SPPA_Access::maybe_install_role();
+sppa_assert( null !== get_role( 'sppa_timekeeper' ), 'and re-adds a role that went missing' );
 
 sppa_done();

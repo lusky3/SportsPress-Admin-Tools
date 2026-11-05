@@ -1,10 +1,11 @@
-import { useState } from 'react';
 import { goalieLabel } from '../components/CountBar';
+import { DayStepper, useDay } from '../components/DayStepper';
 import { EmptyState } from '../components/EmptyState';
 import { Problem, Skeleton } from '../components/Problem';
-import { GameChips } from '../components/StatusChip';
-import { addDays, leagueDate, longDate, timeLabel } from '../lib/dates';
+import { GameChips, StatusChip } from '../components/StatusChip';
+import { timeLabel } from '../lib/dates';
 import { callLabel, countLabel, isCalledOff, venueShort } from '../lib/games';
+import { liveText } from '../lib/live';
 import { Link } from '../router';
 import type { NightPayload, NightSide } from '../types';
 import { useResource } from '../useResource';
@@ -25,13 +26,11 @@ function Side( { side }: { side: NightSide } ) {
 	);
 }
 
-/** Game-night board for organizers: one day's games, both sides' counts, goalies, open calls, scores in. */
+/** Game-night board for organizers: one day's games, both sides' counts, goalies, open calls, live scores, scores in. */
 export function Tonight() {
-	const today = leagueDate( new Date() );
-	const [ date, setDate ] = useState( today );
+	const day = useDay();
+	const { date } = day;
 	const night = useResource<NightPayload>( `/ops/night?date=${ date }` );
-	const shift = Math.round( ( Date.parse( date ) - Date.parse( today ) ) / 86_400_000 );
-	const title = { [ -1 ]: 'Last night', 0: 'Tonight', 1: 'Tomorrow' }[ shift ] ?? longDate( date );
 	const data = night.data && night.data.date === date ? night.data : undefined;
 	const now = new Date();
 
@@ -53,6 +52,8 @@ export function Tonight() {
 							<span className="board__venue">{ venueShort( game.venue ) }</span>
 							<span className="chips">
 								<GameChips game={ game } />
+								{ game.live ? <StatusChip label={ liveText( game.live ) } tone={ game.live.status === 'live' ? 'ice' : 'plain' } /> : null }
+								{ game.needs_review_count ? <StatusChip label={ `Needs review (${ game.needs_review_count })` } tone="alert" /> : null }
 							</span>
 						</div>
 						<div className="board__sides">
@@ -70,7 +71,7 @@ export function Tonight() {
 								) ) }
 							</ul>
 						) : null }
-						{ game.has_result ? <p className="board__result">Score in ✓</p> : Date.parse( game.start ) < now.getTime() && ! isCalledOff( game ) ? <p className="board__result is-missing">No score yet</p> : null }
+						{ game.has_result ? <p className="board__result">Score in ✓</p> : Date.parse( game.start ) < now.getTime() && ! isCalledOff( game ) && ! game.live ? <p className="board__result is-missing">No score yet</p> : null }
 					</li>
 				) ) }
 			</ul>
@@ -79,23 +80,7 @@ export function Tonight() {
 
 	return (
 		<section className="screen">
-			<header className="night-head">
-				<button type="button" className="stepper" aria-label="Previous day" onClick={ () => setDate( addDays( date, -1 ) ) }>
-					‹
-				</button>
-				<div className="night-head__title">
-					<h1>{ title }</h1>
-					<p className="muted">{ longDate( date ) }</p>
-				</div>
-				<button type="button" className="stepper" aria-label="Next day" onClick={ () => setDate( addDays( date, 1 ) ) }>
-					›
-				</button>
-			</header>
-			{ shift !== 0 ? (
-				<button type="button" className="btn-link" onClick={ () => setDate( today ) }>
-					Back to today
-				</button>
-			) : null }
+			<DayStepper { ...day } />
 			{ body }
 		</section>
 	);

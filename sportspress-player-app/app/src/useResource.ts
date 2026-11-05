@@ -114,6 +114,18 @@ export function setCached<T>( path: string, data: T ): void {
 }
 
 /**
+ * Fold a partial server answer (say, entries just acknowledged) into the cached data. Unlike
+ * setCached this keeps the path loading when a request is in flight, and asks again: that request
+ * may have been answered before the change, so a fresh one replaces it and the full answer still wins.
+ */
+export function patchCached<T>( path: string, data: T ): void {
+	setSlot( path, { data } );
+	if ( pending.has( path ) ) {
+		load( path, true );
+	}
+}
+
+/**
  * Mark cached paths (all, or those starting with `prefix`) stale and refetch the
  * ones a mounted screen is showing. The old data stays on screen until the new
  * response arrives; a response still in flight from before the invalidate is dropped.
