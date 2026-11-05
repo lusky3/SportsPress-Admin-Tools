@@ -10,7 +10,7 @@ vi.mock( './api', async ( importOriginal ) => ( { ...( await importOriginal<type
 const fetchMock = vi.mocked( apiGetWithMeta );
 
 interface Deferred {
-	resolve( data: unknown, savedAt?: Date ): void;
+	resolve( data: unknown, savedAt?: Date, fromCache?: boolean ): void;
 	reject( error: unknown ): void;
 }
 
@@ -21,7 +21,7 @@ function queueRequests(): Deferred[] {
 		() =>
 			new Promise<ApiResult<unknown>>( ( resolve, reject ) => {
 				calls.push( {
-					resolve: ( data, savedAt ) => resolve( { data, savedAt, fromCache: false } ),
+					resolve: ( data, savedAt, fromCache = false ) => resolve( { data, savedAt, fromCache } ),
 					reject,
 				} );
 			} )
@@ -204,7 +204,9 @@ describe( 'refresh', () => {
 		const first = refresh( '/games/9/log' );
 		const second = refresh( '/games/9/log' );
 		expect( fetchMock ).toHaveBeenCalledTimes( 1 );
-		await act( async () => calls[ 0 ].resolve( 'log' ) );
+		await act( () => {
+			calls[ 0 ].resolve( 'log' );
+		} );
 		await expect( Promise.all( [ first, second ] ) ).resolves.toEqual( [ true, true ] );
 	} );
 
@@ -214,10 +216,30 @@ describe( 'refresh', () => {
 		const waiting = refresh( '/games/9/log' );
 		patchCached( '/games/9/log', 'merged' ); // asks again
 		expect( fetchMock ).toHaveBeenCalledTimes( 2 );
-		await act( async () => calls[ 0 ].resolve( 'stale answer' ) );
-		await act( async () => calls[ 1 ].resolve( 'full log' ) );
+		await act( () => {
+			calls[ 0 ].resolve( 'stale answer' );
+		} );
+		await act( () => {
+			calls[ 1 ].resolve( 'full log' );
+		} );
 		await expect( waiting ).resolves.toBe( true );
 		expect( getCached( '/games/9/log' ) ).toBe( 'full log' );
+	} );
+
+	it( 'keeps an acknowledgement merged during a poll when the asking-again is answered from the saved copy', async () => {
+		const calls = queueRequests();
+		setCached( '/games/9/log', 'log before the goal' );
+		const poll = refresh( '/games/9/log' );
+		patchCached( '/games/9/log', 'log with the acknowledged goal' ); // asks again behind the poll
+		expect( fetchMock ).toHaveBeenCalledTimes( 2 );
+		await act( () => {
+			calls[ 0 ].resolve( 'answer from before the goal' );
+		} );
+		await act( () => {
+			calls[ 1 ].resolve( 'older saved copy', undefined, true ); // network too slow: the worker's copy
+		} );
+		await expect( poll ).resolves.toBe( false );
+		expect( getCached( '/games/9/log' ) ).toBe( 'log with the acknowledged goal' );
 	} );
 
 	it( 'never replaces data on screen with a saved copy from the service worker, and reports no fresh data', async () => {

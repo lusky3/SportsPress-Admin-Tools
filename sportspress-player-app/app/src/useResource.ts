@@ -74,7 +74,8 @@ const inflight = new Map<string, Promise<boolean>>();
 
 /** What a superseded request answers to whoever waits on it: the newer request's outcome, if there is one. */
 function successor( path: string ): Promise<boolean> | boolean {
-	return ( pending.has( path ) && inflight.get( path ) ) || true;
+	const newer = pending.has( path ) ? inflight.get( path ) : undefined;
+	return newer ?? true;
 }
 
 /**
@@ -154,7 +155,9 @@ export function setCached<T>( path: string, data: T ): void {
 export function patchCached<T>( path: string, data: T ): void {
 	setSlot( path, { data } );
 	if ( pending.has( path ) ) {
-		load( path, true );
+		// freshOnly: if the network is slow and the service worker answers with its saved copy, that
+		// copy is older than what was just merged; letting it in would drop an acknowledged entry.
+		void load( path, true, true );
 	}
 }
 
@@ -210,7 +213,9 @@ export function useResource<T>( path: string ): Resource<T> {
 		}
 		watchers.set( path, ( watchers.get( path ) ?? 0 ) + 1 );
 		load( path, false );
-		const online = () => load( path, true );
+		const online = () => {
+			void load( path, true );
+		};
 		window.addEventListener( 'online', online );
 		return () => {
 			window.removeEventListener( 'online', online );
