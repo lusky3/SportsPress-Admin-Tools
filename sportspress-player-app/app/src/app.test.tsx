@@ -57,8 +57,8 @@ describe( 'App: another account', () => {
 		fakeStorage();
 		const sent = fakeApi( ( s ) => ( s.path === '/me' ? { body: me( { user: { id: 8, name: 'Kit' } } ) } : s.path === '/me/games' ? { body: { data: [], total: 0, page: 1, total_pages: 1 } } : undefined ) );
 		vi.stubGlobal( 'caches', {
-			keys: async () => [ 'sppa-shell', 'sppa-api' ],
-			delete: async ( name: string ) => deleted.push( name ) > 0,
+			keys: () => Promise.resolve( [ 'sppa-shell', 'sppa-api' ] ),
+			delete: ( name: string ) => Promise.resolve( deleted.push( name ) > 0 ),
 		} );
 		render( <App /> );
 		await settle();

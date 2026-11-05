@@ -43,7 +43,13 @@ export function SavedBeforeSignIn( { name }: { name: string } ) {
 			<p>
 				{ unknown } { one( unknown, 'entry was', 'entries were' ) } saved before sign-in. Send { one( unknown, 'it', 'them' ) } as { name }?
 			</p>
-			<button type="button" className="btn-quiet" onClick={ () => outbox().adopt() }>
+			<button
+				type="button"
+				className="btn-quiet"
+				onClick={ () => {
+					outbox().adopt();
+				} }
+			>
 				Send as { name }
 			</button>
 		</div>
@@ -58,7 +64,13 @@ export function AccountSwitched() {
 	return (
 		<div className="notice rejected" role="alert">
 			<p>Another account is signed in on this phone. Reload to continue.</p>
-			<button type="button" className="btn-quiet" onClick={ () => window.location.reload() }>
+			<button
+				type="button"
+				className="btn-quiet"
+				onClick={ () => {
+					window.location.reload();
+				} }
+			>
 				Reload
 			</button>
 		</div>

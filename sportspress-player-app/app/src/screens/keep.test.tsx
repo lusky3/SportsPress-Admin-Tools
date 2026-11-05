@@ -4,12 +4,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
 import { _resetAccountForTests, seenUser } from '../lib/account';
 import { createOutbox, mergeIntoLog, outbox, setOutbox } from '../lib/outbox';
-import { fakeApi, me } from '../test/fake';
+import { BOOT, fakeApi, me } from '../test/fake';
 import type { Sent } from '../test/fake';
 import type { EntryInput, GameLog, KeeperEntry, KeeperGame } from '../types';
 import { KeepGame, NumberPad } from './KeepGame';
 import { Keep } from './Keep';
 import { Tonight } from './Tonight';
+
+/** Whether a control found by role is disabled. */
+const isDisabled = ( control: HTMLElement ): boolean => control.hasAttribute( 'disabled' );
 
 async function settle( rounds = 8 ) {
 	for ( let i = 0; i < rounds; i++ ) {
@@ -428,13 +431,12 @@ describe( 'game sheet: another keeper’s unsent entries', () => {
 		expect( screen.getByText( warning ).getAttribute( 'role' ) ).toBe( 'status' );
 		expect( screen.queryByText( /waiting to sync/ ) ).toBeNull();
 		expect( screen.getByText( 'All saved' ) ).toBeTruthy();
-		const finish = screen.getByRole( 'button', { name: 'Finish game' } ) as HTMLButtonElement;
-		expect( finish.disabled ).toBe( false ); // a warning, not a block
-		fireEvent.click( finish );
+		expect( isDisabled( screen.getByRole( 'button', { name: 'Finish game' } ) ) ).toBe( false ); // a warning, not a block
+		fireEvent.click( screen.getByRole( 'button', { name: 'Finish game' } ) );
 		await settle();
 		const dialog = screen.getByRole( 'dialog' );
 		expect( within( dialog ).getByText( warning ) ).toBeTruthy();
-		expect( ( within( dialog ).getByRole( 'button', { name: 'Finish game' } ) as HTMLButtonElement ).disabled ).toBe( false );
+		expect( isDisabled( within( dialog ).getByRole( 'button', { name: 'Finish game' } ) ) ).toBe( false );
 		fireEvent.keyDown( window, { key: 'Escape' } );
 
 		await kingsGoal(); // B's own goal goes out at once, alone
@@ -471,7 +473,7 @@ describe( 'game sheet: another keeper’s unsent entries', () => {
 	it( 'asks once before sending entries saved while nobody was signed in, and sends them only when told to', async () => {
 		const sent = fakeApi( ( s ) => ( s.method === 'GET' ? { body: log() } : created( s ) ) );
 		_resetAccountForTests(); // no user known at all
-		window.SPPA_BOOT = { ...window.SPPA_BOOT!, userId: 0 };
+		window.SPPA_BOOT = { ...BOOT, userId: 0 };
 		const box = outbox();
 		box.enqueue( 101, { type: 'goal', team_id: 7, period: 1, player_id: 71 } );
 		box.enqueue( 101, { type: 'goal', team_id: 7, period: 1, player_id: 72 } );
@@ -611,7 +613,9 @@ describe( 'game sheet: two keepers on one game', () => {
 		setVisibility( 'hidden' );
 		await tick( 60_000 );
 		expect( gets( sent ) ).toBe( 2 );
-		await act( async () => setVisibility( 'visible' ) );
+		await act( () => {
+			setVisibility( 'visible' );
+		} );
 		await settle();
 		expect( gets( sent ) ).toBe( 3 );
 
