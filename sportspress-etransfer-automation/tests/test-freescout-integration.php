@@ -334,6 +334,16 @@ class Mini_Where {
 			++$this->pos; // NULL.
 			return $not ? null !== $a : null === $a;
 		}
+		if ( 'IN' === $op ) {
+			++$this->pos; // '('.
+			$hit = false;
+			while ( ')' !== $this->peek() ) {
+				$b   = $this->operand();
+				$hit = $hit || ( null !== $a && 0 === strcasecmp( (string) $a, (string) $b ) );
+			}
+			++$this->pos; // ')'.
+			return $hit;
+		}
 		if ( 'NOT' === $op ) {
 			++$this->pos; // LIKE.
 			$b = $this->operand();
@@ -518,7 +528,9 @@ function wc_get_orders( $args = array() ) {
 		if ( isset( $args['status'] ) && $o->get_status() !== $args['status'] ) {
 			continue;
 		}
-		if ( isset( $args['billing_email'] ) && strcasecmp( $o->email, $args['billing_email'] ) !== 0 ) {
+		// An order whose email is '*' matches any address, so a test can make
+		// the same order come back for two different addresses.
+		if ( isset( $args['billing_email'] ) && '*' !== $o->email && strcasecmp( $o->email, $args['billing_email'] ) !== 0 ) {
 			continue;
 		}
 		$out[] = $o;
@@ -779,7 +791,7 @@ check( 'missing ids give 400', 400 === status_of( $r ) );
 // ---------------------------------------------------------------------------
 echo "provider etransfers\n";
 reset_state();
-$section = SPET_FreeScout_Integration::etransfers_section( array(), 'pat@x.com' );
+$section = SPET_FreeScout_Integration::etransfers_section( array(), array( 'pat@x.com' ) );
 check( 'empty section shape', array( 'transfers' => array(), 'on_hold_orders' => array() ) === $section );
 
 add_log( 1, '2026-10-19 08:00:00', 'Pat Smith', 'Pat@X.com', '325.00', 'REF1', 9001, 'Order matched and completed successfully' );
@@ -788,7 +800,7 @@ add_log( 3, '2026-10-22 09:00:00', 'Pat Smith', 'pat@x.com', '50.00', 'REF3', nu
 add_log( 4, '2026-10-22 10:00:00', 'Someone Else', 'other@x.com', '325.00', 'REF4', null, $UNMATCHED );
 add_log( 5, '2026-10-22 11:00:00', 'Pat Smith', 'pat@x.com', '325.00', null, null, 'Duplicate webhook ignored' );
 add_log( 6, '2026-10-23 11:00:00', 'Pat Smith', 'pat@x.com', '12.00', 'REF6', null, SPET_Database::amount_mismatch_result( 12, 20 ) );
-$section = SPET_FreeScout_Integration::etransfers_section( array(), 'pat@x.com' );
+$section = SPET_FreeScout_Integration::etransfers_section( array(), array( 'pat@x.com' ) );
 $t       = $section['transfers'];
 check( 'transfers: own, visible, reviewable-or-matched rows, newest first', array( 6, 2, 1 ) === array_column( $t, 'log_id' ) );
 check( 'transfers exclude hidden rows', ! in_array( 3, array_column( $t, 'log_id' ), true ) );
@@ -812,7 +824,7 @@ reset_state();
 for ( $i = 1; $i <= 25; $i++ ) {
 	add_log( $i, sprintf( '2026-10-%02d 08:00:00', $i ), 'Pat', 'pat@x.com', '10.00', 'R' . $i, null, $UNMATCHED );
 }
-$t = SPET_FreeScout_Integration::etransfers_section( array(), 'pat@x.com' )['transfers'];
+$t = SPET_FreeScout_Integration::etransfers_section( array(), array( 'pat@x.com' ) )['transfers'];
 check( 'transfers capped at 20, newest first', 20 === count( $t ) && 25 === $t[0]['log_id'] && 6 === $t[19]['log_id'] );
 
 echo "provider: on-hold orders and possible matches\n";
@@ -834,7 +846,7 @@ add_log( 113, '2026-10-20 12:00:00', 'Pat Smith', 'p@x.com', '324.98', 'M', null
 add_log( 114, '2026-10-20 12:00:00', 'Pat Smith', 'p@x.com', '325.02', 'N', null, $UNMATCHED );        // 2 cents off.
 add_log( 111,'2026-10-21 10:00:00', 'Pat Smith', 'p@x.com', '325.00', 'K', 5000, 'Order matched and completed successfully' ); // matched.
 add_log( 112, '2026-10-21 10:00:00', 'Pat Smith', 'p@x.com', '325.00', 'L', null, SPET_Database::HIDDEN_STATUS ); // hidden.
-$section = SPET_FreeScout_Integration::etransfers_section( array(), 'pat@x.com' );
+$section = SPET_FreeScout_Integration::etransfers_section( array(), array( 'pat@x.com' ) );
 check( 'only the customer\'s on-hold orders', array( 5107 ) === array_column( $section['on_hold_orders'], 'order_id' ) );
 $o = $section['on_hold_orders'][0];
 check( 'order row shape', '2026-10-20T10:00:00Z' === $o['at'] && '325.00' === $o['total'] && isset( $o['possible_matches'] ) );
@@ -850,7 +862,7 @@ check(
 	) === $o['possible_matches'][0]
 );
 $GLOBALS['wpdb']->rows = array_diff_key( $GLOBALS['wpdb']->rows, array_flip( array( 106, 107, 108, 109 ) ) );
-$o = SPET_FreeScout_Integration::etransfers_section( array(), 'pat@x.com' )['on_hold_orders'][0];
+$o = SPET_FreeScout_Integration::etransfers_section( array(), array( 'pat@x.com' ) )['on_hold_orders'][0];
 check( 'window edges: -2d1h and +15d excluded, +13d23h included', array( 101, 103, 104 ) === array_column( $o['possible_matches'], 'log_id' ) );
 // A busy registration week: more same-amount transfers in the window than the
 // candidate cap, all newer than the nearest one. The nearest must still win.
@@ -860,9 +872,41 @@ add_log( 500, '2026-10-20 11:00:00', 'Near', 'n@x.com', '325.00', 'NEAR', null, 
 for ( $i = 0; $i < 60; $i++ ) {
 	add_log( 600 + $i, gmdate( 'Y-m-d H:i:s', strtotime( '2026-10-26 00:00:00 UTC' ) + $i * 3600 ), 'Other', 'o@x.com', '325.00', 'O' . $i, null, $UNMATCHED ); // +6d..+8d.
 }
-$o = SPET_FreeScout_Integration::etransfers_section( array(), 'pat@x.com' )['on_hold_orders'][0];
+$o = SPET_FreeScout_Integration::etransfers_section( array(), array( 'pat@x.com' ) )['on_hold_orders'][0];
 check( 'more candidates than the cap: the nearest transfer is still first', 500 === ( $o['possible_matches'][0]['log_id'] ?? null ) );
 check( 'more candidates than the cap: then the next nearest', array( 500, 600, 601, 602, 603 ) === array_column( $o['possible_matches'], 'log_id' ) );
+
+echo "provider: several addresses\n";
+reset_state();
+add_log( 1, '2026-10-21 08:00:00', 'Pat Smith', 'pat@x.com', '325.00', 'P1', null, $UNMATCHED );
+add_log( 2, '2026-10-22 08:00:00', 'Pat Smith', 'Pat.Work@Y.com', '325.00', 'P2', null, $UNMATCHED ); // secondary address.
+add_log( 3, '2026-10-23 08:00:00', 'Stranger', 'stranger@z.com', '325.00', 'S3', null, $UNMATCHED );
+add_log( 4, '2026-10-19 08:00:00', 'Pat Smith', 'pat.work@y.com', '50.00', 'P4', 9001, 'Order matched and completed successfully' );
+$GLOBALS['orders'][5107] = new Mock_WC_Order( 5107, '325.00', 'on-hold', 'pat@x.com', $ts_order );
+$GLOBALS['orders'][5110] = new Mock_WC_Order( 5110, '40.00', 'on-hold', 'Pat.Work@y.com', $ts_order + 3600 );
+$GLOBALS['orders'][5109] = new Mock_WC_Order( 5109, '325.00', 'on-hold', 'stranger@z.com', $ts_order + 7200 );
+$section = SPET_FreeScout_Integration::etransfers_section( array(), array( 'pat@x.com', 'pat.work@y.com' ) );
+check( 'transfers: sent from any of the addresses, newest first', array( 2, 1, 4 ) === array_column( $section['transfers'], 'log_id' ) );
+check( 'transfers: a transfer from neither address is left out', ! in_array( 3, array_column( $section['transfers'], 'log_id' ), true ) );
+check( 'transfers say which address sent them', 'Pat.Work@Y.com' === $section['transfers'][0]['from_email'] );
+check( 'on-hold orders: billed to any of the addresses, newest first', array( 5110, 5107 ) === array_column( $section['on_hold_orders'], 'order_id' ) );
+check( 'on-hold orders: possible matches are still by amount and date, nearest first', array( 1, 2, 3 ) === array_column( $section['on_hold_orders'][1]['possible_matches'], 'log_id' ) );
+$twice = SPET_FreeScout_Integration::etransfers_section( array(), array( 'pat@x.com', 'PAT@X.com' ) );
+check( 'the same address twice (any case): the transfer is listed once', array( 1 ) === array_column( $twice['transfers'], 'log_id' ) );
+check( 'the same address twice (any case): the order is listed once', array( 5107 ) === array_column( $twice['on_hold_orders'], 'order_id' ) );
+$GLOBALS['orders'][5111] = new Mock_WC_Order( 5111, '60.00', 'on-hold', '*', $ts_order + 1800 ); // Returned for every address.
+$merged = array_column( SPET_FreeScout_Integration::etransfers_section( array(), array( 'pat@x.com', 'pat.work@y.com' ) )['on_hold_orders'], 'order_id' );
+check( 'an order returned for two different addresses is listed once', array( 5110, 5111, 5107 ) === $merged );
+unset( $GLOBALS['orders'][5111] );
+$none = SPET_FreeScout_Integration::etransfers_section( array(), array( 'nobody@example.com', 'else@example.com' ) );
+check( 'addresses with nothing give the empty shape', array( 'transfers' => array(), 'on_hold_orders' => array() ) === $none );
+reset_state();
+for ( $i = 0; $i < 15; $i++ ) {
+	$GLOBALS['orders'][ 6000 + $i ] = new Mock_WC_Order( 6000 + $i, '10.00', 'on-hold', 'a@x.com', $ts_order + 2 * $i );
+	$GLOBALS['orders'][ 6100 + $i ] = new Mock_WC_Order( 6100 + $i, '10.00', 'on-hold', 'b@x.com', $ts_order + 2 * $i + 1 );
+}
+$capped = array_column( SPET_FreeScout_Integration::etransfers_section( array(), array( 'a@x.com', 'b@x.com' ) )['on_hold_orders'], 'order_id' );
+check( 'on-hold orders across addresses capped at 20, the newest overall', 20 === count( $capped ) && 6114 === $capped[0] && 6014 === $capped[1] && 6005 === $capped[19] );
 
 // ---------------------------------------------------------------------------
 echo "query etransfers.search\n";

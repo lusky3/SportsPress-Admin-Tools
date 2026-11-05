@@ -146,13 +146,15 @@ class Fake_WPDB {
 	public $fail_hook = null;
 	/** @var callable|null Fires once, after the next get_row() returns its snapshot. */
 	public $after_get = null;
-	private $last_args = array();
+	private $last_args  = array();
+	private $last_query = '';
 
 	public function prepare( $query, ...$args ) { // phpcs:ignore
 		if ( 1 === count( $args ) && is_array( $args[0] ) ) {
 			$args = $args[0];
 		}
-		$this->last_args = $args;
+		$this->last_args  = $args;
+		$this->last_query = $query;
 		return $query;
 	}
 
@@ -167,14 +169,15 @@ class Fake_WPDB {
 		return $snapshot;
 	}
 
-	/** Emulates the email + status IN (...) ORDER BY season, id query. */
+	/** Emulates the email IN (...) AND status IN (...) ORDER BY season, id query. */
 	public function get_results() { // phpcs:ignore
-		$args     = $this->last_args;
-		$email    = array_shift( $args );
+		$args = $this->last_args;
+		preg_match( '/email IN \(([^)]*)\)/', $this->last_query, $m );
+		$emails   = array_splice( $args, 0, substr_count( $m[1] ?? '', '%s' ) );
 		$statuses = $args;
 		$out      = array();
 		foreach ( $this->rows as $row ) {
-			if ( $row->email === $email && in_array( $row->status, $statuses, true ) ) {
+			if ( in_array( $row->email, $emails, true ) && in_array( $row->status, $statuses, true ) ) {
 				$out[] = clone $row;
 			}
 		}
@@ -342,7 +345,7 @@ put(
 		),
 	)
 );
-$section = $f::waitlist_section( array(), 'sam@example.com' );
+$section = $f::waitlist_section( array(), array( 'sam@example.com' ) );
 $ids     = array_column( $section['entries'], 'id' );
 assert_test( array( 8, 5, 7, 9 ) === $ids, 'season then id order; cancelled and other emails excluded; expired included' );
 $by = array();
@@ -350,15 +353,45 @@ foreach ( $section['entries'] as $e ) {
 	$by[ $e['id'] ] = $e;
 }
 assert_test(
-	array( 'id', 'season', 'position', 'status', 'created_at', 'offered_at', 'expires_at', 'has_target' ) === array_keys( $by[7] ),
+	array( 'id', 'season', 'position', 'status', 'created_at', 'offered_at', 'expires_at', 'has_target', 'email', 'name' ) === array_keys( $by[7] ),
 	'entry has exactly the contract fields'
 );
+assert_test( 'sam@example.com' === $by[7]['email'] && 'Sam Player' === $by[7]['name'], 'each entry says which address and registrant it is under' );
 assert_test( '2026-10-25T18:00:00Z' === $by[7]['offered_at'] && '2026-10-27T18:00:00Z' === $by[7]['expires_at'], 'dates are ISO UTC' );
 assert_test( '2026-08-03T12:00:00Z' === $by[7]['created_at'], 'created_at is ISO UTC' );
 assert_test( null === $by[5]['offered_at'] && null === $by[5]['expires_at'], 'unset dates are null' );
 assert_test( true === $by[7]['has_target'] && false === $by[5]['has_target'], 'has_target is target_product_id > 0' );
 assert_test( 'goalie' === $by[7]['position'] && 'offered' === $by[7]['status'] && 'S2026' === $by[7]['season'], 'season, position, status carried through' );
-assert_test( array( 'entries' => array() ) === $f::waitlist_section( array(), 'nobody@example.com' ), 'no entries gives an empty list' );
+assert_test( array( 'entries' => array() ) === $f::waitlist_section( array(), array( 'nobody@example.com' ) ), 'no entries gives an empty list' );
+
+echo "\n=== provider: several addresses ===\n\n";
+
+put(
+	array(
+		entry( array( 'id' => 21 ) ),
+		entry(
+			array(
+				'id'     => 22,
+				'season' => 'S2025',
+				'name'   => 'Alex Player',
+				'email'  => 'parent@example.com',
+			)
+		),
+		entry(
+			array(
+				'id'    => 23,
+				'email' => 'stranger@example.com',
+			)
+		),
+	)
+);
+$multi = $f::waitlist_section( array(), array( 'sam@example.com', 'Parent@Example.com' ) );
+assert_test( array( 22, 21 ) === array_column( $multi['entries'], 'id' ), 'entries under any of the addresses, season then id order' );
+assert_test( ! in_array( 23, array_column( $multi['entries'], 'id' ), true ), 'an entry under none of the addresses is left out' );
+assert_test( 'parent@example.com' === $multi['entries'][0]['email'] && 'Alex Player' === $multi['entries'][0]['name'], 'an entry under the secondary address names that address and its registrant' );
+$twice = $f::waitlist_section( array(), array( 'sam@example.com', 'SAM@example.com' ) );
+assert_test( array( 21 ) === array_column( $twice['entries'], 'id' ), 'an entry matching two addresses appears once' );
+assert_test( array() === SPLM_Waitlist_Database::find_for_emails_with_statuses( array(), array( 'queued' ) ), 'no addresses: nothing, no query' );
 
 echo "\n=== waitlist.offer ===\n\n";
 

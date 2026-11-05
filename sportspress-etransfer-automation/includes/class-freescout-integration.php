@@ -53,15 +53,19 @@ class SPET_FreeScout_Integration {
 	/**
 	 * Build sections.etransfers.
 	 *
-	 * @param int[]  $player_ids Resolved player ids (unused).
-	 * @param string $email      Lower-cased customer email.
+	 * Transfers sent from any of the customer's addresses, and on-hold orders
+	 * billed to any of them, each listed once.
+	 *
+	 * @param int[]    $player_ids Resolved player ids (unused).
+	 * @param string[] $emails     The customer's lower-cased addresses.
 	 * @return array
 	 */
-	public static function etransfers_section( array $player_ids, string $email ): array {
+	public static function etransfers_section( array $player_ids, array $emails ): array {
 		unset( $player_ids );
+		$emails = array_values( array_unique( array_map( 'strtolower', array_map( 'strval', $emails ) ) ) );
 
 		$transfers = array();
-		foreach ( SPET_Database::get_customer_etransfer_logs( $email, self::TRANSFER_LIMIT ) as $row ) {
+		foreach ( SPET_Database::get_customer_etransfer_logs( $emails, self::TRANSFER_LIMIT ) as $row ) {
 			$order_id    = (int) $row->order_id;
 			$transfers[] = array(
 				'log_id'     => (int) $row->id,
@@ -76,18 +80,8 @@ class SPET_FreeScout_Integration {
 		}
 
 		$on_hold = array();
-		$orders  = wc_get_orders(
-			array(
-				'billing_email' => $email,
-				'status'        => 'on-hold',
-				'limit'         => self::ORDER_LIMIT,
-				'orderby'       => 'date',
-				'order'         => 'DESC',
-			)
-		);
-		foreach ( (array) $orders as $order ) {
-			$created   = $order->get_date_created();
-			$timestamp = $created ? (int) $created->getTimestamp() : 0;
+		foreach ( self::on_hold_orders( $emails ) as $order ) {
+			$timestamp = self::created_at( $order );
 			$total     = (float) $order->get_total();
 
 			$on_hold[] = array(
@@ -102,6 +96,51 @@ class SPET_FreeScout_Integration {
 			'transfers'      => $transfers,
 			'on_hold_orders' => $on_hold,
 		);
+	}
+
+	/**
+	 * The newest ORDER_LIMIT on-hold orders billed to any of the addresses,
+	 * each once. One query per address (at most five) rather than one with a
+	 * list, so it does not depend on how the order store handles an array
+	 * billing_email.
+	 *
+	 * @param string[] $emails Addresses.
+	 * @return WC_Order[] Newest first.
+	 */
+	private static function on_hold_orders( array $emails ): array {
+		$orders = array();
+		foreach ( $emails as $email ) {
+			$found = wc_get_orders(
+				array(
+					'billing_email' => $email,
+					'status'        => 'on-hold',
+					'limit'         => self::ORDER_LIMIT,
+					'orderby'       => 'date',
+					'order'         => 'DESC',
+				)
+			);
+			foreach ( (array) $found as $order ) {
+				$orders[ (int) $order->get_id() ] = $order;
+			}
+		}
+
+		$orders = array_values( $orders );
+		usort(
+			$orders,
+			function ( $a, $b ) {
+				return self::created_at( $b ) <=> self::created_at( $a );
+			}
+		);
+		return array_slice( $orders, 0, self::ORDER_LIMIT );
+	}
+
+	/**
+	 * @param WC_Order $order Order.
+	 * @return int Creation timestamp, 0 when unknown.
+	 */
+	private static function created_at( $order ): int {
+		$created = $order->get_date_created();
+		return $created ? (int) $created->getTimestamp() : 0;
 	}
 
 	/**
