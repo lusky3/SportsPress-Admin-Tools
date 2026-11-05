@@ -2,8 +2,8 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
-import { seenUser } from '../lib/account';
-import { createOutbox, mergeIntoLog, setOutbox } from '../lib/outbox';
+import { _resetAccountForTests, seenUser } from '../lib/account';
+import { createOutbox, mergeIntoLog, outbox, setOutbox } from '../lib/outbox';
 import { fakeApi, me } from '../test/fake';
 import type { Sent } from '../test/fake';
 import type { EntryInput, GameLog, KeeperEntry, KeeperGame } from '../types';
@@ -424,11 +424,18 @@ describe( 'game sheet: another keeper’s unsent entries', () => {
 			seenUser( 9 ); // keeper B signs in on this phone
 		} );
 		await settle( 15 );
-		const notice = '1 unsent entry from another account on this phone — sign in as that keeper to send it.';
-		expect( screen.getByText( notice ).getAttribute( 'role' ) ).toBe( 'status' );
+		const warning = '1 entry for this game from another keeper hasn’t been sent — finishing now leaves it out. Sign in as them first.';
+		expect( screen.getByText( warning ).getAttribute( 'role' ) ).toBe( 'status' );
 		expect( screen.queryByText( /waiting to sync/ ) ).toBeNull();
 		expect( screen.getByText( 'All saved' ) ).toBeTruthy();
-		expect( ( screen.getByRole( 'button', { name: 'Finish game' } ) as HTMLButtonElement ).disabled ).toBe( false );
+		const finish = screen.getByRole( 'button', { name: 'Finish game' } ) as HTMLButtonElement;
+		expect( finish.disabled ).toBe( false ); // a warning, not a block
+		fireEvent.click( finish );
+		await settle();
+		const dialog = screen.getByRole( 'dialog' );
+		expect( within( dialog ).getByText( warning ) ).toBeTruthy();
+		expect( ( within( dialog ).getByRole( 'button', { name: 'Finish game' } ) as HTMLButtonElement ).disabled ).toBe( false );
+		fireEvent.keyDown( window, { key: 'Escape' } );
 
 		await kingsGoal(); // B's own goal goes out at once, alone
 		const posted = sent.filter( ( s ) => s.method === 'POST' && s.path === '/games/101/log' ).slice( 1 );
@@ -439,7 +446,76 @@ describe( 'game sheet: another keeper’s unsent entries', () => {
 		cleanup();
 		render( <Keep /> );
 		await settle();
-		expect( screen.getByText( notice ) ).toBeTruthy();
+		expect( screen.getByText( '1 unsent entry from another account on this phone — sign in as that keeper to send it.' ) ).toBeTruthy();
+	} );
+
+	it( 'says when another account’s parked entries need fixing by that keeper, not a sign-in', async () => {
+		fakeApi( ( s ) => {
+			if ( s.method === 'GET' ) {
+				return { body: { data: [], total: 0, page: 1, total_pages: 1, date: '2026-11-04' } };
+			}
+			const entries = ( s.body as { entries: EntryInput[] } ).entries;
+			return { body: { results: entries.map( ( e ) => ( { uid: e.uid, status: 'rejected', reason: 'invalid_clock' } ) ), live: null } };
+		} );
+		outbox().enqueue( 101, { type: 'goal', team_id: 7, period: 1, player_id: 71 } );
+		await settle();
+		await act( async () => {
+			seenUser( 9 );
+		} );
+		render( <Keep /> );
+		await settle();
+		expect( screen.getByText( '1 entry from another account on this phone needs fixing by that keeper.' ) ).toBeTruthy();
+		expect( screen.queryByText( /sign in as that keeper to send/ ) ).toBeNull();
+	} );
+
+	it( 'asks once before sending entries saved while nobody was signed in, and sends them only when told to', async () => {
+		const sent = fakeApi( ( s ) => ( s.method === 'GET' ? { body: log() } : created( s ) ) );
+		_resetAccountForTests(); // no user known at all
+		window.SPPA_BOOT = { ...window.SPPA_BOOT!, userId: 0 };
+		const box = outbox();
+		box.enqueue( 101, { type: 'goal', team_id: 7, period: 1, player_id: 71 } );
+		box.enqueue( 101, { type: 'goal', team_id: 7, period: 1, player_id: 72 } );
+		await act( async () => {
+			seenUser( 5 );
+		} );
+		await settle();
+		expect( box.getState().items.map( ( i ) => i.owner ) ).toEqual( [ 0, 0 ] );
+		expect( sent.filter( ( s ) => s.method === 'POST' ) ).toHaveLength( 0 );
+		render( <KeepGame id="101" me={ me( { is_timekeeper: true } ) } /> );
+		await settle();
+		expect( screen.getByText( '2 entries were saved before sign-in. Send them as Sam Lee?' ) ).toBeTruthy();
+		fireEvent.click( screen.getByRole( 'button', { name: 'Send as Sam Lee' } ) );
+		await settle();
+		const posts = sent.filter( ( s ) => s.method === 'POST' );
+		expect( posts ).toHaveLength( 1 );
+		expect( posts[ 0 ].body ).toMatchObject( { owner: 5 } );
+		expect( ( posts[ 0 ].body as { entries: EntryInput[] } ).entries ).toHaveLength( 2 );
+		expect( screen.queryByText( /saved before sign-in/ ) ).toBeNull();
+	} );
+
+	it( 'stops and asks for a reload when the server says another account is signed in (no resend under it)', async () => {
+		const sent = fakeApi( ( s ) => {
+			if ( s.method === 'GET' ) {
+				return { body: log() };
+			}
+			return { status: 409, body: { code: 'sppa_wrong_user', message: 'x', data: { status: 409, current_user: 9 } } };
+		} );
+		render( <KeepGame id="101" me={ me( { is_timekeeper: true } ) } /> );
+		await settle();
+		await kingsGoal();
+		await settle();
+		const posts = () => sent.filter( ( s ) => s.method === 'POST' );
+		expect( posts() ).toHaveLength( 1 );
+		expect( ( posts()[ 0 ].body as { owner: number } ).owner ).toBe( 5 );
+		expect( screen.getByText( 'Another account is signed in on this phone. Reload to continue.' ) ).toBeTruthy();
+		expect( screen.queryByRole( 'button', { name: 'Goal' } ) ).toBeNull(); // blocked
+		await act( async () => {
+			window.dispatchEvent( new Event( 'online' ) );
+		} );
+		await settle();
+		expect( posts() ).toHaveLength( 1 );
+		expect( outbox().getState().items ).toHaveLength( 1 ); // kept, untouched
+		expect( screen.getByRole( 'button', { name: 'Reload' } ) ).toBeTruthy();
 	} );
 } );
 

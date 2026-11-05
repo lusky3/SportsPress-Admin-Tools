@@ -6,11 +6,12 @@ import { boot } from '../boot';
 import { Crest } from '../components/Crest';
 import { Problem, Skeleton } from '../components/Problem';
 import { TwoTap } from '../components/TwoTap';
-import { UnsentElsewhere } from '../components/UnsentElsewhere';
+import { AccountSwitched, SavedBeforeSignIn, unsentForGameText, useUnsentForGame } from '../components/UnsentElsewhere';
+import { currentUser, markSwitched } from '../lib/account';
 import { errorText } from '../lib/errors';
 import { isCalledOff } from '../lib/games';
 import { FLAGS, OFFENSES, byNumber, deriveScore, entryLine, matchRoster, normalizeClock, offense, periodLabel } from '../lib/live';
-import { mergeIntoLog, outbox, usePending } from '../lib/outbox';
+import { mergeIntoLog, outbox, usePending, useSwitched } from '../lib/outbox';
 import type { Queued, Rejected, VoidResult } from '../lib/outbox';
 import { Link } from '../router';
 import type { EntryInput, GameLog, GoalFlag, Me, OffenseKey, RosterPlayer, SavedResult, Score, TeamSide } from '../types';
@@ -513,11 +514,24 @@ export function KeepGame( { id, me }: { id: string; me: Me } ) {
 		return { n, numbers };
 	}, [ d ] );
 
+	const switched = useSwitched();
+	const elsewhere = useUnsentForGame( gameId );
+
 	const back = (
 		<Link to="/keep" className="back">
 			<span aria-hidden="true">‹</span> Games
 		</Link>
 	);
+
+	if ( switched ) {
+		// The server refused this page's sign-in: nothing can be recorded until a reload.
+		return (
+			<section className="screen">
+				{ back }
+				<AccountSwitched />
+			</section>
+		);
+	}
 
 	if ( ! d ) {
 		return (
@@ -597,10 +611,15 @@ export function KeepGame( { id, me }: { id: string; me: Me } ) {
 			return;
 		}
 		try {
-			const res = await apiSend<VoidResult>( 'POST', `${ path }/${ encodeURIComponent( r.uid ) }/void` );
+			const owner = currentUser();
+			const res = await apiSend<VoidResult>( 'POST', `${ path }/${ encodeURIComponent( r.uid ) }/void`, owner > 0 ? { owner } : undefined );
 			mergeIntoLog( gameId, [ res.entry ], res.live );
 			announce( 'Voided' );
 		} catch ( e ) {
+			if ( e instanceof ApiError && e.code === 'sppa_wrong_user' ) {
+				markSwitched(); // another account is signed in: the sheet asks for a reload
+				return;
+			}
 			setNote( errorText( e, 'That didn’t void. Try again.', { sppa_log_locked: 'Someone else is saving to this game. Try again in a moment.' } ) );
 		}
 	};
@@ -706,7 +725,12 @@ export function KeepGame( { id, me }: { id: string; me: Me } ) {
 				</div>
 			) : null }
 
-			<UnsentElsewhere />
+			{ elsewhere ? (
+				<p className="notice" role="status">
+					{ unsentForGameText( elsewhere ) }
+				</p>
+			) : null }
+			<SavedBeforeSignIn name={ me.user.name } />
 			{ out.memoryOnly ? <p className="notice">This phone isn’t saving entries to its storage. Keep this page open until everything syncs.</p> : null }
 			{ out.rejected.map( ( r ) => (
 				<div key={ r.entry.uid } className="notice rejected">
@@ -814,6 +838,7 @@ export function KeepGame( { id, me }: { id: string; me: Me } ) {
 								</p>
 								<p className="muted">{ checking ? 'Checking the latest log…' : `${ t.goals } ${ plural( t.goals, 'goal', 'goals' ) } · ${ t.penalties } ${ plural( t.penalties, 'penalty', 'penalties' ) } · ${ t.pim.home + t.pim.away } PIM` }</p>
 								{ changed ? <p className="notice">Another keeper changed this log since you opened it. Check the score above before you finish.</p> : null }
+								{ elsewhere ? <p className="notice">{ unsentForGameText( elsewhere ) }</p> : null }
 								<p>{ d.entries.some( ( e ) => ! e.voided ) ? 'This writes the score and stats to the league site.' : 'Nothing has been logged, so this finishes 0–0.' }</p>
 							</>
 						) }

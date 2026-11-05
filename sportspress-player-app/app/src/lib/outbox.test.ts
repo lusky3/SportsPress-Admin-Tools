@@ -5,9 +5,10 @@ import { ApiError } from '../api';
 import type { EntryInput, KeeperEntry, PostLogResult } from '../types';
 import { BATCH, STORAGE_TIMEOUT_MS, TIMEOUT_MS, backoff, createOutbox, unsentElsewhere, uuid } from './outbox';
 import type { VoidResult } from './outbox';
+import { _resetAccountForTests, isSwitched } from './account';
 
-type Send = ( gameId: number, entries: EntryInput[], signal: AbortSignal ) => Promise<PostLogResult>;
-type SendVoid = ( gameId: number, uid: string, signal: AbortSignal ) => Promise<VoidResult>;
+type Send = ( gameId: number, entries: EntryInput[], signal: AbortSignal, owner?: number ) => Promise<PostLogResult>;
+type SendVoid = ( gameId: number, uid: string, signal: AbortSignal, owner?: number ) => Promise<VoidResult>;
 
 const goal = ( n: number ): Omit<EntryInput, 'uid'> => ( { type: 'goal', team_id: 12, period: 1, player_id: 50 + n } );
 const ok = ( entries: EntryInput[], status: 'created' | 'duplicate' = 'created' ): PostLogResult => ( { results: entries.map( ( e ) => ( { uid: e.uid, status } ) ), live: null } );
@@ -28,6 +29,7 @@ beforeEach( () => {
 } );
 
 afterEach( () => {
+	_resetAccountForTests();
 	vi.useRealTimers();
 	vi.restoreAllMocks();
 	vi.unstubAllGlobals();
@@ -262,7 +264,7 @@ describe( 'outbox: undo', () => {
 		online = true;
 		await box.flushAll( true );
 		await settle();
-		expect( sendVoid ).toHaveBeenCalledWith( 101, uid, expect.anything() );
+		expect( sendVoid ).toHaveBeenCalledWith( 101, uid, expect.anything(), undefined ); // nobody signed in: no owner named
 		expect( box.getState().items ).toEqual( [] );
 	} );
 
@@ -348,7 +350,7 @@ describe( 'outbox: storage', () => {
 		await third.ready;
 		await third.flushAll( true );
 		expect( send.mock.calls[ 0 ][ 1 ].map( ( e ) => e.uid ) ).toEqual( [ a, b ] );
-		expect( sendVoid ).toHaveBeenCalledWith( 101, b, expect.anything() );
+		expect( sendVoid ).toHaveBeenCalledWith( 101, b, expect.anything(), undefined );
 		await settle();
 		const fourth = createOutbox( { send, idb } );
 		await fourth.ready;
@@ -402,12 +404,12 @@ describe( 'outbox: whose entries', () => {
 		await box.flushAll( true );
 		expect( sent ).toEqual( [] );
 		expect( box.getState().items.map( ( i ) => i.entry.uid ) ).toEqual( [ a ] );
-		expect( unsentElsewhere( box.getState() ) ).toBe( 1 );
+		expect( unsentElsewhere( box.getState() ).waiting ).toBe( 1 );
 
 		const b = box.enqueue( 101, goal( 2 ) );
 		await settle();
 		expect( sent ).toEqual( [ b ] );
-		expect( unsentElsewhere( box.getState() ) ).toBe( 1 );
+		expect( unsentElsewhere( box.getState() ).waiting ).toBe( 1 );
 
 		user = 5; // A is back
 		box.userChanged();
@@ -417,10 +419,23 @@ describe( 'outbox: whose entries', () => {
 	} );
 
 	it( 'gives an entry stored before owners existed to whoever is signed in when it is first seen', async () => {
-		const legacy = createOutbox( { send: offline, idb, user: () => 0 } ); // no owner stamped
+		const legacy = createOutbox( { send: offline, idb, user: () => 5 } );
 		const uid = legacy.enqueue( 101, goal( 1 ) );
 		await settle();
-		expect( legacy.getState().items[ 0 ].owner ).toBeUndefined();
+		// Rewrite the stored record the way an older app saved it: no owner at all.
+		await new Promise<void>( ( resolve, reject ) => {
+			const open = idb.open( 'sppa-outbox', 1 );
+			open.onsuccess = () => {
+				const tx = open.result.transaction( 'queue', 'readwrite' );
+				const { owner: _owner, ...old } = legacy.getState().items[ 0 ];
+				tx.objectStore( 'queue' ).put( { ...old, saving: undefined }, uid );
+				tx.oncomplete = () => {
+					open.result.close();
+					resolve();
+				};
+				tx.onerror = () => reject( tx.error );
+			};
+		} );
 
 		const seen = createOutbox( { send: offline, idb, user: () => 7 } );
 		await seen.ready;
@@ -439,14 +454,100 @@ describe( 'outbox: whose entries', () => {
 	} );
 
 	it( 'keeps a parked entry with its owner, so Try again cannot send it as someone else', async () => {
-		const user = 5;
+		let user = 5;
 		const send = vi.fn<Send>( async () => Promise.reject( new ApiError( 404, 'sppa_not_found', 'x' ) ) );
 		const box = createOutbox( { send, idb: null, user: () => user } );
 		box.enqueue( 101, goal( 1 ) );
 		await settle();
 		expect( box.getState().rejected[ 0 ].owner ).toBe( 5 );
+		expect( unsentElsewhere( box.getState() ) ).toEqual( { waiting: 0, parked: 0, unknown: 0 } );
+
+		user = 9;
+		box.userChanged();
+		expect( unsentElsewhere( box.getState() ) ).toEqual( { waiting: 0, parked: 1, unknown: 0 } );
 		box.retry( box.getState().rejected[ 0 ].entry.uid );
-		expect( box.getState().items[ 0 ]?.owner ?? box.getState().rejected[ 0 ]?.owner ).toBe( 5 );
+		await settle();
+		expect( send ).toHaveBeenCalledTimes( 1 ); // only A's original attempt
+		expect( box.getState().items ).toHaveLength( 1 );
+		expect( box.getState().items[ 0 ].owner ).toBe( 5 );
+	} );
+
+	it( 'names the owner on every send and void, so the server can refuse another account', async () => {
+		let online = false;
+		const send = vi.fn<Send>( async ( _g, entries ) => ( online ? ok( entries ) : offline() ) );
+		const sendVoid = vi.fn<SendVoid>( voided );
+		const box = createOutbox( { send, sendVoid, idb: null, user: () => 5 } );
+		const uid = box.enqueue( 101, goal( 1 ) );
+		await settle();
+		box.discard( uid );
+		online = true;
+		await box.flushAll( true );
+		await settle();
+		expect( send.mock.calls.map( ( c ) => c[ 3 ] ) ).toEqual( [ 5, 5 ] );
+		expect( sendVoid.mock.calls[ 0 ][ 3 ] ).toBe( 5 );
+	} );
+
+	it( 'stops everything on sppa_wrong_user: nothing parked, dropped or sent again, and after a reload the entries are another account’s', async () => {
+		const serverUser = 9; // keeper B signed in from another tab: the cookie is B's now
+		const send = vi.fn<Send>( async ( _g, entries, _s, owner ) => ( owner === serverUser ? ok( entries ) : Promise.reject( new ApiError( 409, 'sppa_wrong_user', 'x', '', { current_user: serverUser } ) ) ) );
+		const box = createOutbox( { send, idb, user: () => 5 } );
+		const a = box.enqueue( 101, goal( 1 ) );
+		await settle();
+		expect( send ).toHaveBeenCalledTimes( 1 );
+		expect( isSwitched() ).toBe( true );
+		vi.useFakeTimers( { toFake: [ 'setTimeout', 'clearTimeout', 'Date' ] } );
+		const b = box.enqueue( 101, goal( 2 ) );
+		await vi.advanceTimersByTimeAsync( 100 );
+		await box.flushAll( true );
+		await vi.advanceTimersByTimeAsync( 120_000 );
+		vi.useRealTimers();
+		await settle();
+		expect( send ).toHaveBeenCalledTimes( 1 ); // never again, under anyone
+		expect( box.getState().items.map( ( i ) => [ i.entry.uid, i.owner ] ) ).toEqual( [
+			[ a, 5 ],
+			[ b, 5 ],
+		] );
+		expect( box.getState().rejected ).toEqual( [] );
+
+		// Reload: the shell now names B.
+		_resetAccountForTests();
+		const reloaded = createOutbox( { send, idb, user: () => 9 } );
+		await reloaded.ready;
+		await reloaded.flushAll( true );
+		expect( send ).toHaveBeenCalledTimes( 1 );
+		expect( reloaded.getState().items ).toHaveLength( 2 );
+		expect( unsentElsewhere( reloaded.getState() ) ).toEqual( { waiting: 2, parked: 0, unknown: 0 } );
+		expect( unsentElsewhere( reloaded.getState(), 101 ).waiting ).toBe( 2 );
+		expect( unsentElsewhere( reloaded.getState(), 102 ).waiting ).toBe( 0 );
+	} );
+
+	it( 'gives an entry made while signed out to the last known keeper', async () => {
+		const box = createOutbox( { send: offline, idb: null, user: () => 0, lastKnown: () => 5 } );
+		box.enqueue( 101, goal( 1 ) );
+		expect( box.getState().items[ 0 ].owner ).toBe( 5 );
+	} );
+
+	it( 'asks before sending an entry saved while nobody was known, instead of adopting it', async () => {
+		let user = 0;
+		const send = vi.fn<Send>( async ( _g, entries ) => ( user ? ok( entries ) : offline() ) );
+		const box = createOutbox( { send, idb, user: () => user, lastKnown: () => 0 } );
+		box.enqueue( 101, goal( 1 ) );
+		await settle();
+		expect( box.getState().items[ 0 ].owner ).toBe( 0 );
+		send.mockClear();
+
+		user = 7;
+		box.userChanged();
+		await settle();
+		expect( send ).not.toHaveBeenCalled();
+		expect( unsentElsewhere( box.getState() ) ).toEqual( { waiting: 0, parked: 0, unknown: 1 } );
+		expect( unsentElsewhere( box.getState(), 101 ).unknown ).toBe( 1 );
+
+		box.adopt();
+		await settle();
+		expect( send ).toHaveBeenCalledTimes( 1 );
+		expect( send.mock.calls[ 0 ][ 3 ] ).toBe( 7 );
+		expect( box.getState().items ).toEqual( [] );
 	} );
 } );
 

@@ -155,8 +155,15 @@ number; the goal still counts for the team but no player gets it.
 
 Entries waiting on a phone belong to the timekeeper who tapped them. If another timekeeper signs in
 on that phone, those entries are not sent, shown or counted from the new sign-in, and they do not hold
-up Finish. They stay on the phone, and the Score list and game sheet say how many wait. They send
-when the timekeeper who made them signs in again.
+up Finish. They stay on the phone and send when the timekeeper who made them signs in again. The
+Score list says how many wait, and which need fixing by that timekeeper. The game sheet and the
+Finish prompt warn that finishing now leaves them out. Entries tapped while nobody was signed in go
+to the last timekeeper the phone knew. If the phone knew nobody, the next timekeeper is asked once
+whether to send them as their own.
+
+Every send names the timekeeper it belongs to. If another account has signed in on the phone (in
+another tab, say), the server refuses it before writing anything (`409 sppa_wrong_user`). The app
+then stops sending, keeps every entry as it is, and asks for a reload.
 
 With two timekeepers on one game, an open game sheet fetches the full log every 10 seconds while it
 is on screen (at once when the phone comes back to it or gets a connection back), so the other

@@ -53,6 +53,41 @@ export function currentUser(): number {
 	return current ?? bootUserId();
 }
 
+/** The last user this phone ran for, even while signed out now (0 when nobody is known). */
+export function lastKnownUser(): number {
+	const id = current ?? stored();
+	return id && id > 0 ? id : 0;
+}
+
+/*
+ * Another account under this page. The server refuses a write whose `owner` is not the signed-in
+ * user (409 sppa_wrong_user): someone signed in as someone else in another tab, and the cookie is
+ * theirs now. Nothing more is sent from this page; a reload reads the shell's userId again.
+ */
+let switched = false;
+const switchListeners = new Set<() => void>();
+
+/** The server said another account is signed in: stop sending until the page is reloaded. */
+export function markSwitched(): void {
+	if ( ! switched ) {
+		switched = true;
+		for ( const listener of [ ...switchListeners ] ) {
+			listener();
+		}
+	}
+}
+
+export function isSwitched(): boolean {
+	return switched;
+}
+
+export function onSwitched( listener: () => void ): () => void {
+	switchListeners.add( listener );
+	return () => {
+		switchListeners.delete( listener );
+	};
+}
+
 /** Listen for the current user changing (another keeper signed in). Returns the unsubscribe function. */
 export function onUserChange( listener: () => void ): () => void {
 	listeners.add( listener );
@@ -111,4 +146,5 @@ onSignedOut( () => {
 export function _resetAccountForTests( last?: number ): void {
 	memory = last;
 	current = undefined;
+	switched = false;
 }
