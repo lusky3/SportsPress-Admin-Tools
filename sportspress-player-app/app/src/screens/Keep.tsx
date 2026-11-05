@@ -2,12 +2,13 @@ import { DayStepper, useDay } from '../components/DayStepper';
 import { EmptyState } from '../components/EmptyState';
 import { Problem, Skeleton } from '../components/Problem';
 import { StatusChip } from '../components/StatusChip';
+import { AccountSwitched, SavedBeforeSignIn, UnsentElsewhere } from '../components/UnsentElsewhere';
 import { timeLabel } from '../lib/dates';
 import { venueShort } from '../lib/games';
 import { liveText } from '../lib/live';
 import { Link } from '../router';
-import type { KeeperNight } from '../types';
-import { useResource } from '../useResource';
+import type { KeeperNight, Me } from '../types';
+import { getCached, useResource } from '../useResource';
 
 /** Score: the day's games a timekeeper can record, with where each one stands. */
 export function Keep() {
@@ -53,6 +54,9 @@ export function Keep() {
 		<section className="screen">
 			<p className="kicker">Score</p>
 			<DayStepper { ...day } />
+			<AccountSwitched />
+			<UnsentElsewhere />
+			<SavedBeforeSignIn name={ getCached<Me>( '/me' )?.user.name ?? 'yourself' } />
 			{ body }
 		</section>
 	);

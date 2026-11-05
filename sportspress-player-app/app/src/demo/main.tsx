@@ -6,6 +6,7 @@ import '../styles/screens.css';
 import './demo.css';
 import { App } from '../App';
 import { setTransport } from '../api';
+import { checkBootUser } from '../lib/account';
 import { setOutbox } from '../lib/outbox';
 import { navigate } from '../router';
 import { _resetResourcesForTests as forgetEverything } from '../useResource';
@@ -30,7 +31,10 @@ window.SPPA_BOOT = {
 	appBase: '/',
 	appName: 'My ARL',
 	siteName: 'ARL',
+	userId: 9000, // stable, so the account check never fires; each persona's /me names its own user
 };
+
+void checkBootUser(); // the real start-up path; in the demo it only remembers the id
 
 let server: ReturnType<typeof createDemoServer>;
 

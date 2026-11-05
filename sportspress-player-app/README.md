@@ -153,6 +153,24 @@ shootout goal adds nothing to a player's goals, and the shootout winner gets one
 score, as SportsPress records it. A player who is not on the team's list can be logged by jersey
 number; the goal still counts for the team but no player gets it.
 
+Entries waiting on a phone belong to the timekeeper who tapped them. If another timekeeper signs in
+on that phone, those entries are not sent, shown or counted from the new sign-in, and they do not hold
+up Finish. They stay on the phone and send when the timekeeper who made them signs in again. The
+Score list says how many wait, and which need fixing by that timekeeper. The game sheet and the
+Finish prompt warn that finishing now leaves them out. Entries tapped while nobody was signed in go
+to the last timekeeper the phone knew. If the phone knew nobody, the next timekeeper is asked once
+whether to send them as their own.
+
+Every send names the timekeeper it belongs to. If another account has signed in on the phone (in
+another tab, say), the server refuses it before writing anything (`409 sppa_wrong_user`). The app
+then stops sending, keeps every entry as it is, and asks for a reload.
+
+With two timekeepers on one game, an open game sheet fetches the full log every 10 seconds while it
+is on screen (at once when the phone comes back to it or gets a connection back), so the other
+timekeeper's entries show up without a tap. It stops while the sheet is hidden, offline or final,
+and waits longer after errors. Entries still waiting on this phone stay on the sheet and in the score
+until the server has them.
+
 **Penalties.** The offense list is Minor (2), Double minor (4), Major (5), Misconduct (10), Game
 misconduct (10), Gross misconduct (10), Match (5), Fighting (5), Ejection (10) and Other (2), in
 minutes by default; a timekeeper can change the minutes (1 to 20). Game misconduct, gross
@@ -194,11 +212,15 @@ recorded an entry are for timekeepers and organizers only.
 |---|---|
 | `GET /keep/night?date=` | timekeepers: the night's games with both rosters and the log summary |
 | `GET /games/{id}/log` | timekeepers: the full log, voided entries included, and the totals |
-| `POST /games/{id}/log` | timekeepers: up to 50 entries, each answered created, duplicate or rejected |
-| `POST /games/{id}/log/{uid}/void` | timekeepers (their own entries); organizers (any) |
+| `POST /games/{id}/log` | timekeepers: up to 50 entries, each answered created, duplicate or rejected; optional `owner` (user id) |
+| `POST /games/{id}/log/{uid}/void` | timekeepers (their own entries); organizers (any); optional `owner` (user id) |
 | `POST /games/{id}/finish` | timekeepers: `{"overwrite": true}` replaces a result someone else recorded |
 | `POST /games/{id}/reopen` | organizers |
 | `GET /games/{id}/live` | the game's players, accepted spares, organizers and timekeepers |
+
+`owner` on a log write is the account the app opened the sheet with. When it is not the signed-in
+user (another tab signed in as someone else), the write is refused with `409 sppa_wrong_user`
+(`current_user` in the error data) before anything is recorded; left out, the write is unchanged.
 
 `/me` adds `is_timekeeper`; `/me/games` and `/ops/night` rows add `live` (status, score, period, or
 null), and `/ops/night` rows add `needs_review_count`.
@@ -229,6 +251,15 @@ null), and `/ops/night` rows add `needs_review_count`.
 - **What is stored.** Availability, spare calls and responses, a log of game changes, each user's
   calendar token and spare preferences, a fingerprint of each game used to detect changes, and the
   live scorekeeping log (entries with the timekeeper who recorded or voided them).
+- **Saved replies on a shared phone.** For offline use, the app's service worker keeps the page and
+  the last answer to each request on the phone. The app's own Sign out deletes them. The app also
+  remembers which user it last ran for and deletes them when that changes: when it opens for
+  someone else or signed out, when the account it loads is not the one it remembers, and when the
+  server says the session has ended. The limit: if someone signs out through WordPress or My Account
+  instead, their saved replies stay on the phone until the app is next opened with a connection.
+  Opened offline before then, it can still show the last person's schedule and calendar link. Scores
+  a timekeeper has not sent yet are never deleted by this. They stay with the timekeeper who
+  tapped them (see **The log**).
 - **Uninstall.** Deactivating removes no data, only the `/my-arl/` routes and the scheduled
   baseline job (turning the module off drops the routes too). Deleting the plugin removes its data only if
   **Remove Data on Uninstall** is on in SportsPress Admin Tools settings (the

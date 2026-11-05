@@ -174,7 +174,30 @@ async function once<T>( method: string, path: string, body: unknown, nonceValue:
 	}
 }
 
+const sessionLost = new Set<() => void>();
+
+/** Listen for the server saying the session is gone (signed_out after the nonce retry). Returns the unsubscribe function. */
+export function onSignedOut( callback: () => void ): () => void {
+	sessionLost.add( callback );
+	return () => {
+		sessionLost.delete( callback );
+	};
+}
+
 async function request<T>( method: string, path: string, body?: unknown, signal?: AbortSignal ): Promise<Raw<T>> {
+	try {
+		return await requestOnce<T>( method, path, body, signal );
+	} catch ( error ) {
+		if ( error instanceof ApiError && error.code === 'signed_out' ) {
+			for ( const listener of [ ...sessionLost ] ) {
+				listener();
+			}
+		}
+		throw error;
+	}
+}
+
+async function requestOnce<T>( method: string, path: string, body?: unknown, signal?: AbortSignal ): Promise<Raw<T>> {
 	const used = currentNonce();
 	try {
 		return await once<T>( method, path, body, used, signal );

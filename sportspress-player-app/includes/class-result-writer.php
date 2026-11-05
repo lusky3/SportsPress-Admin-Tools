@@ -49,25 +49,16 @@ class SPPA_Result_Writer {
 	 *                        ot_loss_team, written, skipped_players[], finalized}
 	 */
 	public static function apply( int $event_id, array $derived, bool $overwrite, array $extra_players = array() ) {
-		$post = get_post( $event_id );
-		if ( ! $post || 'sp_event' !== $post->post_type ) {
-			return new WP_Error( 'sppa_not_found', __( 'Not found.', 'sportspress-player-app' ), array( 'status' => 404 ) );
-		}
-		if ( self::is_called_off( $event_id, $post ) ) {
-			return new WP_Error( 'sppa_called_off', __( 'This game is postponed or cancelled, so it cannot take a result.', 'sportspress-player-app' ), array( 'status' => 409 ) );
+		$post  = get_post( $event_id );
+		$error = self::unwritable( $event_id, $post );
+		if ( $error ) {
+			return $error;
 		}
 		$team_ids = self::team_ids( $event_id );
-		if ( count( $team_ids ) < 2 ) {
-			return new WP_Error( 'sppa_no_teams', __( 'This game does not have two teams.', 'sportspress-player-app' ), array( 'status' => 409 ) );
-		}
-		if ( ! class_exists( 'SP_Event' ) ) {
-			return new WP_Error( 'sppa_no_sportspress', __( 'SportsPress is not available, so the result cannot be written.', 'sportspress-player-app' ), array( 'status' => 500 ) );
-		}
-		list( $home, $away ) = $team_ids;
-
-		$existing = self::existing_result( $event_id, $team_ids );
-		$final    = self::finalized( $event_id );
-		if ( null !== $existing && ! self::is_ours( $event_id, $team_ids, $existing, $final ) && ! $overwrite ) {
+		$existing  = self::existing_result( $event_id, $team_ids );
+		$final     = self::finalized( $event_id );
+		$replacing = self::replaces_foreign_stats( $event_id, $team_ids, $existing, $final );
+		if ( $replacing && ! $overwrite ) {
 			return new WP_Error(
 				'sppa_result_exists',
 				__( 'This game already has a result. Confirm to replace it.', 'sportspress-player-app' ),
@@ -78,35 +69,11 @@ class SPPA_Result_Writer {
 			);
 		}
 
-		$score = array(
-			'home' => max( 0, (int) ( $derived['score'][ $home ] ?? 0 ) ),
-			'away' => max( 0, (int) ( $derived['score'][ $away ] ?? 0 ) ),
-		);
-
-		// Score and outcomes, through SportsPress's own method.
-		$event = new SP_Event( $event_id );
-		$event->update_main_results(
-			array(
-				$home => $score['home'],
-				$away => $score['away'],
-			)
-		);
-
-		// The overtime-loss outcome, exactly as the score-sheet writer stamps it.
+		$score    = self::write_score( $event_id, $team_ids, $derived );
 		$ot_loser = (int) ( $derived['ot_loss_team'] ?? 0 );
-		if ( in_array( $ot_loser, $team_ids, true ) ) {
-			$results = get_post_meta( $event_id, 'sp_results', true );
-			if ( ! is_array( $results ) ) {
-				$results = array();
-			}
-			if ( ! isset( $results[ $ot_loser ] ) || ! is_array( $results[ $ot_loser ] ) ) {
-				$results[ $ot_loser ] = array();
-			}
-			$results[ $ot_loser ]['outcome'] = array( 'overtimeloss' );
-			update_post_meta( $event_id, 'sp_results', $results );
-		}
+		self::stamp_overtime_loss( $event_id, $team_ids, $ot_loser );
 
-		$merged = self::merge_players( $event_id, $team_ids, (array) ( $derived['players'] ?? array() ), $extra_players, (array) ( $final['players'] ?? array() ) );
+		$merged = self::merge_players( $event_id, $team_ids, (array) ( $derived['players'] ?? array() ), $extra_players, (array) ( $final['players'] ?? array() ), $replacing );
 		update_post_meta( $event_id, 'sp_players', $merged['players'] );
 		update_post_meta( $event_id, self::LIVE_META, 'final' );
 
@@ -117,15 +84,7 @@ class SPPA_Result_Writer {
 		// Recorded after the hooks, so what they leave in sp_players is what "ours" means.
 		$written   = $merged['written'];
 		$skipped   = $merged['skipped'];
-		$finalized = array(
-			'by'         => (int) get_current_user_id(),
-			'at'         => gmdate( 'Y-m-d H:i:s' ),
-			'home'       => $score['home'],
-			'away'       => $score['away'],
-			'players'    => $written,
-			'stats_hash' => self::stats_hash( $event_id, $team_ids ),
-		);
-		update_post_meta( $event_id, self::FINAL_META, $finalized );
+		$finalized = self::record_finish( $event_id, $team_ids, $score, $written );
 
 		return array(
 			'event_id'        => $event_id,
@@ -137,6 +96,80 @@ class SPPA_Result_Writer {
 			'skipped_players' => $skipped,
 			'finalized'       => $finalized,
 		);
+	}
+
+	/**
+	 * Write the score and outcomes through SportsPress's own method.
+	 *
+	 * @return array{home:int,away:int}
+	 */
+	private static function write_score( int $event_id, array $team_ids, array $derived ): array {
+		list( $home, $away ) = $team_ids;
+		$score               = array(
+			'home' => max( 0, (int) ( $derived['score'][ $home ] ?? 0 ) ),
+			'away' => max( 0, (int) ( $derived['score'][ $away ] ?? 0 ) ),
+		);
+		$event               = new SP_Event( $event_id );
+		$event->update_main_results(
+			array(
+				$home => $score['home'],
+				$away => $score['away'],
+			)
+		);
+		return $score;
+	}
+
+	/** Store the record of this Finish (_sppa_finalized) and return it. */
+	private static function record_finish( int $event_id, array $team_ids, array $score, array $written ): array {
+		$finalized = array(
+			'by'         => (int) get_current_user_id(),
+			'at'         => gmdate( 'Y-m-d H:i:s' ),
+			'home'       => $score['home'],
+			'away'       => $score['away'],
+			'players'    => $written,
+			'stats_hash' => self::stats_hash( $event_id, $team_ids ),
+		);
+		update_post_meta( $event_id, self::FINAL_META, $finalized );
+		return $finalized;
+	}
+
+	/**
+	 * Why a game cannot take a result (not an event, called off, not two teams,
+	 * SportsPress missing), or null when it can.
+	 *
+	 * @param int            $event_id Game.
+	 * @param WP_Post|object $post     get_post() of the game.
+	 */
+	private static function unwritable( int $event_id, $post ): ?WP_Error {
+		if ( ! $post || 'sp_event' !== $post->post_type ) {
+			return new WP_Error( 'sppa_not_found', __( 'Not found.', 'sportspress-player-app' ), array( 'status' => 404 ) );
+		}
+		if ( self::is_called_off( $event_id, $post ) ) {
+			return new WP_Error( 'sppa_called_off', __( 'This game is postponed or cancelled, so it cannot take a result.', 'sportspress-player-app' ), array( 'status' => 409 ) );
+		}
+		if ( count( self::team_ids( $event_id ) ) < 2 ) {
+			return new WP_Error( 'sppa_no_teams', __( 'This game does not have two teams.', 'sportspress-player-app' ), array( 'status' => 409 ) );
+		}
+		if ( ! class_exists( 'SP_Event' ) ) {
+			return new WP_Error( 'sppa_no_sportspress', __( 'SportsPress is not available, so the result cannot be written.', 'sportspress-player-app' ), array( 'status' => 500 ) );
+		}
+		return null;
+	}
+
+	/** The overtime-loss outcome, exactly as the score-sheet writer stamps it (nothing when the loser is not in the event). */
+	private static function stamp_overtime_loss( int $event_id, array $team_ids, int $ot_loser ): void {
+		if ( ! in_array( $ot_loser, $team_ids, true ) ) {
+			return;
+		}
+		$results = get_post_meta( $event_id, 'sp_results', true );
+		if ( ! is_array( $results ) ) {
+			$results = array();
+		}
+		if ( ! isset( $results[ $ot_loser ] ) || ! is_array( $results[ $ot_loser ] ) ) {
+			$results[ $ot_loser ] = array();
+		}
+		$results[ $ot_loser ]['outcome'] = array( 'overtimeloss' );
+		update_post_meta( $event_id, 'sp_results', $results );
 	}
 
 	/**
@@ -183,7 +216,7 @@ class SPPA_Result_Writer {
 		}
 		$final   = self::finalized( $event_id );
 		$current = get_post_meta( $event_id, 'sp_players', true );
-		$merged  = self::merge_players( $event_id, $team_ids, (array) ( $derived['players'] ?? array() ), $extra_players, (array) ( $final['players'] ?? array() ) );
+		$merged  = self::merge_players( $event_id, $team_ids, (array) ( $derived['players'] ?? array() ), $extra_players, (array) ( $final['players'] ?? array() ), self::replaces_foreign_stats( $event_id, $team_ids, $existing, $final ) );
 		return $merged['players'] == ( is_array( $current ) ? $current : array() ); // phpcs:ignore Universal.Operators.StrictComparisons.LooseEqual -- stored values may come back as numeric strings.
 	}
 
@@ -261,6 +294,21 @@ class SPPA_Result_Writer {
 	}
 
 	/**
+	 * Whether a Finish now replaces a result this log did not write: there is a
+	 * recorded result (not blank) and it is not the one the last Finish wrote.
+	 * It needs the overwrite confirmation, and every old g/a/pim of the game's
+	 * teams is cleared. With no result at all, nothing is replaced.
+	 *
+	 * @param int        $event_id Game.
+	 * @param int[]      $team_ids Home first.
+	 * @param array|null $existing existing_result().
+	 * @param array|null $final    finalized().
+	 */
+	private static function replaces_foreign_stats( int $event_id, array $team_ids, ?array $existing, ?array $final ): bool {
+		return null !== $existing && ! self::is_ours( $event_id, $team_ids, $existing, $final );
+	}
+
+	/**
 	 * A fingerprint of the g/a/pim of every sp_players row of the game's teams.
 	 *
 	 * @param int   $event_id Game.
@@ -294,25 +342,22 @@ class SPPA_Result_Writer {
 	 * @param array $rows          team id => player id => {g,a,pim}.
 	 * @param array $extra_players team id => player ids allowed besides current players.
 	 * @param array $previous      team id => player ids the last Finish wrote.
+	 * @param bool  $reset_all     Zero g/a/pim of every row of both teams first (not
+	 *                             the reserved player-id-0 row), for a result this
+	 *                             log did not write.
 	 * @return array{players:array,written:array,skipped:array}
 	 */
-	private static function merge_players( int $event_id, array $team_ids, array $rows, array $extra_players, array $previous ): array {
-		$skipped = array();
+	private static function merge_players( int $event_id, array $team_ids, array $rows, array $extra_players, array $previous, bool $reset_all = false ): array {
 		$players = get_post_meta( $event_id, 'sp_players', true );
-		if ( ! is_array( $players ) ) {
-			$players = array();
+		$players = is_array( $players ) ? $players : array();
+		$slugs   = array_values( array_intersect( self::STATS, self::stat_slugs() ) );
+		if ( $reset_all ) {
+			$players = self::reset_stats_for_teams( $players, $team_ids, $slugs );
 		}
-		$slugs = array_values( array_intersect( self::STATS, self::stat_slugs() ) );
-
-		$ids = array();
-		foreach ( $rows as $team_rows ) {
-			$ids = array_merge( $ids, array_keys( (array) $team_rows ) );
-		}
-		if ( $ids && function_exists( '_prime_post_caches' ) ) {
-			_prime_post_caches( array_values( array_unique( array_map( 'intval', $ids ) ) ), false, true );
-		}
+		self::prime_player_caches( $rows );
 
 		$written = array();
+		$skipped = array();
 		foreach ( $rows as $team_id => $team_rows ) {
 			$team_id = (int) $team_id;
 			foreach ( (array) $team_rows as $player_id => $stats ) {
@@ -326,43 +371,95 @@ class SPPA_Result_Writer {
 					);
 					continue;
 				}
-				if ( ! isset( $players[ $team_id ] ) || ! is_array( $players[ $team_id ] ) ) {
-					$players[ $team_id ] = array();
-				}
-				// Seed SportsPress's row keys only for a new row; an existing lineup row keeps them.
-				if ( ! isset( $players[ $team_id ][ $player_id ] ) || ! is_array( $players[ $team_id ][ $player_id ] ) ) {
-					$players[ $team_id ][ $player_id ] = array(
-						'number'   => (string) get_post_meta( $player_id, 'sp_number', true ),
-						'position' => '',
-						'status'   => 'lineup',
-						'sub'      => 0,
-					);
-				}
-				foreach ( $slugs as $slug ) {
-					$players[ $team_id ][ $player_id ][ $slug ] = max( self::STAT_MIN, min( self::STAT_MAX, (int) ( $stats[ $slug ] ?? 0 ) ) );
-				}
+				$players               = self::apply_player_totals( $players, $team_id, $player_id, (array) $stats, $slugs );
 				$written[ $team_id ][] = $player_id;
 			}
 		}
 
-		foreach ( $previous as $team_id => $player_ids ) {
-			foreach ( (array) $player_ids as $player_id ) {
-				$team_id   = (int) $team_id;
-				$player_id = (int) $player_id;
-				if ( in_array( $player_id, $written[ $team_id ] ?? array(), true ) || ! is_array( $players[ $team_id ][ $player_id ] ?? null ) ) {
-					continue;
-				}
-				foreach ( $slugs as $slug ) {
-					$players[ $team_id ][ $player_id ][ $slug ] = 0;
-				}
-			}
-		}
-
 		return array(
-			'players' => $players,
+			'players' => self::zero_absent_previous( $players, $previous, $written, $slugs ),
 			'written' => $written,
 			'skipped' => $skipped,
 		);
+	}
+
+	/**
+	 * Zero the given stat slugs of every row of the given teams, keeping every
+	 * other field; the reserved player-id-0 row and teams outside the list stay.
+	 *
+	 * @param array    $players  sp_players.
+	 * @param int[]    $team_ids Teams to reset.
+	 * @param string[] $slugs    Stat slugs.
+	 */
+	private static function reset_stats_for_teams( array $players, array $team_ids, array $slugs ): array {
+		foreach ( $team_ids as $team_id ) {
+			foreach ( (array) ( $players[ $team_id ] ?? array() ) as $player_id => $row ) {
+				if ( 0 !== (int) $player_id && is_array( $row ) ) {
+					$players[ $team_id ][ $player_id ] = self::with_stats( $row, $slugs, array() );
+				}
+			}
+		}
+		return $players;
+	}
+
+	/** Warm the post cache for every player the log mentions. */
+	private static function prime_player_caches( array $rows ): void {
+		$ids = array();
+		foreach ( $rows as $team_rows ) {
+			$ids = array_merge( $ids, array_keys( (array) $team_rows ) );
+		}
+		if ( $ids && function_exists( '_prime_post_caches' ) ) {
+			_prime_post_caches( array_values( array_unique( array_map( 'intval', $ids ) ) ), false, true );
+		}
+	}
+
+	/** A player's totals written into their row (seeded when new), clamped to the stat range. */
+	private static function apply_player_totals( array $players, int $team_id, int $player_id, array $stats, array $slugs ): array {
+		$row = $players[ $team_id ][ $player_id ] ?? null;
+		if ( ! is_array( $row ) ) {
+			$row = self::seed_row( $player_id );
+		}
+		$players[ $team_id ]               = is_array( $players[ $team_id ] ?? null ) ? $players[ $team_id ] : array();
+		$players[ $team_id ][ $player_id ] = self::with_stats( $row, $slugs, $stats );
+		return $players;
+	}
+
+	/** SportsPress's row keys for a player new to the box score; an existing lineup row keeps its own. */
+	private static function seed_row( int $player_id ): array {
+		return array(
+			'number'   => (string) get_post_meta( $player_id, 'sp_number', true ),
+			'position' => '',
+			'status'   => 'lineup',
+			'sub'      => 0,
+		);
+	}
+
+	/** The row with each slug set to the clamped value in $stats (0 when absent). */
+	private static function with_stats( array $row, array $slugs, array $stats ): array {
+		foreach ( $slugs as $slug ) {
+			$row[ $slug ] = self::clamp_stat( $stats[ $slug ] ?? 0 );
+		}
+		return $row;
+	}
+
+	/** A stat as an int within STAT_MIN..STAT_MAX. */
+	private static function clamp_stat( $value ): int {
+		return max( self::STAT_MIN, min( self::STAT_MAX, (int) $value ) );
+	}
+
+	/** Players the last Finish wrote who are not in this write (their entry was voided) go back to zero. */
+	private static function zero_absent_previous( array $players, array $previous, array $written, array $slugs ): array {
+		foreach ( $previous as $team_id => $player_ids ) {
+			$team_id = (int) $team_id;
+			foreach ( (array) $player_ids as $player_id ) {
+				$player_id = (int) $player_id;
+				$row       = $players[ $team_id ][ $player_id ] ?? null;
+				if ( is_array( $row ) && ! in_array( $player_id, $written[ $team_id ] ?? array(), true ) ) {
+					$players[ $team_id ][ $player_id ] = self::with_stats( $row, $slugs, array() );
+				}
+			}
+		}
+		return $players;
 	}
 
 	/** Why a player's stats cannot be written for a team ('' when they can). */

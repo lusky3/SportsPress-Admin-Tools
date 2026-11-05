@@ -1,7 +1,9 @@
 import { useMemo, useSyncExternalStore } from 'react';
 import { ApiError, apiSend } from '../api';
 import type { EntryInput, GameLog, KeeperEntry, LiveSummary, PostLogResult } from '../types';
-import { getCached, patchCached } from '../useResource';
+import { getCached, isWatched, patchCached, refresh } from '../useResource';
+import { currentUser, isSwitched, lastKnownUser, markSwitched, onSwitched, onUserChange } from './account';
+import { deriveScore } from './live';
 
 /*
  * The timekeeper's outbox. The rule it keeps: a goal a timekeeper tapped is never silently lost,
@@ -19,6 +21,17 @@ import { getCached, patchCached } from '../useResource';
  * - Undo of an entry never sent removes it. Undo of one that was ever sent (the server may have it)
  *   becomes a void: it waits for the acknowledgement, then POSTs /void.
  * Nudges: a new entry, `online`, the tab becoming visible, and a 20 s tick while anything waits.
+ * - Every entry (and so every undo waiting to become a void) belongs to the keeper who made it: the
+ *   server records whoever's session sends it as the author, and only they may undo it. Only the
+ *   signed-in keeper's entries are sent, shown or counted; another account's stay on the phone,
+ *   untouched, until that keeper signs in again. An entry stored before owners existed belongs to
+ *   whoever is signed in when it is first seen, so nothing is stranded. One made while nobody is
+ *   signed in goes to the last keeper this phone knew, or failing that to owner 0 ("unknown"),
+ *   which is sent only once a signed-in keeper agrees (adopt).
+ * - Every send and void names its owner. If the server's signed-in user is someone else (another
+ *   tab signed in as another keeper, so a refreshed nonce is theirs), it answers 409
+ *   sppa_wrong_user before writing anything: nothing more is sent from this page, nothing is parked
+ *   or dropped, and the sheet asks for a reload.
  */
 
 export interface Queued {
@@ -26,6 +39,8 @@ export interface Queued {
 	/** Send order across reloads. */
 	seq: number;
 	entry: EntryInput;
+	/** The WordPress user who made it; 0 = nobody was known (see adopt). Missing on entries stored before owners existed (see claim). */
+	owner?: number;
 	/** Not yet written to the phone's storage. */
 	saving?: boolean;
 	/** Was in a request at least once: the server may have stored it. */
@@ -43,6 +58,7 @@ export interface Rejected {
 	reason: string;
 	/** The whole request was refused (not this entry): sending it again may work. */
 	whole?: boolean;
+	owner?: number;
 }
 
 /** idle · sending · retrying (server busy or failing) · offline (no answer) · signed_out (stopped). */
@@ -54,6 +70,36 @@ export interface OutboxState {
 	sync: Record<number, SyncState>;
 	/** Entries are not reaching the phone's storage: they live in memory and a reload would lose them. */
 	memoryOnly: boolean;
+	/** The signed-in user (0 = signed out or unknown): only their entries are sent and shown. */
+	user: number;
+}
+
+/**
+ * Whether `item` is `user`'s. One with no owner (stored before owners existed) is whoever's is signed
+ * in (claim stamps it). Owner 0 means "made while nobody was known": it waits for a keeper to say
+ * yes (adopt) rather than going to whoever signs in next.
+ */
+const owns = ( item: { owner?: number }, user: number ) => ( item.owner ?? user ) === user;
+
+export interface Elsewhere {
+	/** Another account's entries waiting to send: they send when that keeper signs in here. */
+	waiting: number;
+	/** Another account's entries the server refused: that keeper has to fix them. */
+	parked: number;
+	/** Entries made while nobody was known: they send once the signed-in keeper agrees (adopt). */
+	unknown: number;
+}
+
+/** Entries on this phone that this session will not send (all games, or one): see Elsewhere. */
+export function unsentElsewhere( state: OutboxState, gameId?: number ): Elsewhere {
+	const here = ( x: { gameId: number; owner?: number } ) => ( gameId === undefined || x.gameId === gameId ) && ! owns( x, state.user );
+	const items = state.items.filter( here );
+	const rejected = state.rejected.filter( here );
+	return {
+		waiting: items.filter( ( i ) => i.owner !== 0 ).length,
+		parked: rejected.filter( ( r ) => r.owner !== 0 ).length,
+		unknown: items.filter( ( i ) => i.owner === 0 ).length + rejected.filter( ( r ) => r.owner === 0 ).length,
+	};
 }
 
 export const BATCH = 50;
@@ -152,21 +198,28 @@ export interface VoidResult {
 }
 
 export interface OutboxOptions {
-	send?: ( gameId: number, entries: EntryInput[], signal: AbortSignal ) => Promise<PostLogResult>;
-	sendVoid?: ( gameId: number, uid: string, signal: AbortSignal ) => Promise<VoidResult>;
+	/** `owner` (when known) goes in the body: the server refuses it with 409 sppa_wrong_user if someone else is signed in. */
+	send?: ( gameId: number, entries: EntryInput[], signal: AbortSignal, owner?: number ) => Promise<PostLogResult>;
+	sendVoid?: ( gameId: number, uid: string, signal: AbortSignal, owner?: number ) => Promise<VoidResult>;
 	/** Pass null for memory on purpose (the demo, no warning). Defaults to the browser's IndexedDB. */
 	idb?: IDBFactory | null;
 	dbName?: string;
+	/** The signed-in user. Defaults to lib/account's currentUser. Call userChanged() when it changes. */
+	user?: () => number;
+	/** Who an entry made while nobody is signed in belongs to. Defaults to lib/account's lastKnownUser. */
+	lastKnown?: () => number;
 }
 
 type AckListener = ( gameId: number, entries: KeeperEntry[], live: LiveSummary ) => void;
 
 export function createOutbox( options: OutboxOptions = {} ) {
-	const send = options.send ?? ( ( g: number, entries: EntryInput[], signal: AbortSignal ) => apiSend<PostLogResult>( 'POST', `/games/${ g }/log`, { entries }, signal ) );
-	const sendVoid = options.sendVoid ?? ( ( g: number, uid: string, signal: AbortSignal ) => apiSend<VoidResult>( 'POST', `/games/${ g }/log/${ encodeURIComponent( uid ) }/void`, undefined, signal ) );
+	const send = options.send ?? ( ( g: number, entries: EntryInput[], signal: AbortSignal, owner?: number ) => apiSend<PostLogResult>( 'POST', `/games/${ g }/log`, owner ? { entries, owner } : { entries }, signal ) );
+	const sendVoid = options.sendVoid ?? ( ( g: number, uid: string, signal: AbortSignal, owner?: number ) => apiSend<VoidResult>( 'POST', `/games/${ g }/log/${ encodeURIComponent( uid ) }/void`, owner ? { owner } : undefined, signal ) );
+	const lastKnown = options.lastKnown ?? lastKnownUser;
 	const idb = options.idb === undefined ? ( typeof indexedDB === 'undefined' ? null : indexedDB ) : options.idb;
+	const user = options.user ?? currentUser;
 
-	let state: OutboxState = { items: [], rejected: [], sync: {}, memoryOnly: ! idb && options.idb !== null };
+	let state: OutboxState = { items: [], rejected: [], sync: {}, memoryOnly: ! idb && options.idb !== null, user: user() };
 	let seq = 0;
 	let askedPersist = false;
 	let halted = false;
@@ -238,6 +291,27 @@ export function createOutbox( options: OutboxOptions = {} ) {
 		}
 	}
 
+	/** Give every entry whose owner is `from` (undefined or 0) to user `u`, here and in storage. */
+	function giveTo( from: number | undefined, u: number ): void {
+		state.items.filter( ( i ) => i.owner === from ).forEach( ( i ) => update( i.entry.uid, { owner: u } ) );
+		const loose = state.rejected.filter( ( r ) => r.owner === from );
+		if ( loose.length ) {
+			set( { rejected: state.rejected.map( ( r ) => ( r.owner === from ? { ...r, owner: u } : r ) ) } );
+			loose.forEach( ( r ) => void write( 'rejected', r.entry.uid, { ...r, owner: u } ) );
+		}
+	}
+
+	/** Give entries stored before owners existed to the signed-in keeper (never to "signed out"). */
+	function claim(): void {
+		const u = user();
+		if ( state.user !== u ) {
+			set( { user: u } );
+		}
+		if ( u > 0 ) {
+			giveTo( undefined, u );
+		}
+	}
+
 	/** Load what an earlier page left behind. Entries added meanwhile are kept, after the loaded ones. */
 	const ready = ( async () => {
 		try {
@@ -255,6 +329,7 @@ export function createOutbox( options: OutboxOptions = {} ) {
 		} catch {
 			set( { memoryOnly: true } );
 		}
+		claim();
 	} )();
 
 	/* Sending. */
@@ -282,7 +357,7 @@ export function createOutbox( options: OutboxOptions = {} ) {
 		// never parked, so "Try again" can never send a goal that was taken back.
 		const now = items.map( ( i ) => state.items.find( ( x ) => x.entry.uid === i.entry.uid ) ?? i );
 		remove( new Set( items.map( ( i ) => i.entry.uid ) ) );
-		const parked = now.filter( ( i ) => ! i.undo && ! i.acked ).map( ( i ) => ( { gameId: i.gameId, entry: i.entry, reason, ...( whole ? { whole } : {} ) } ) );
+		const parked = now.filter( ( i ) => ! i.undo && ! i.acked ).map( ( i ) => ( { gameId: i.gameId, entry: i.entry, reason, ...( whole ? { whole } : {} ), ...( i.owner === undefined ? {} : { owner: i.owner } ) } ) );
 		set( { rejected: [ ...state.rejected, ...parked ] } );
 		parked.forEach( ( r ) => void write( 'rejected', r.entry.uid, r ) );
 	}
@@ -324,7 +399,8 @@ export function createOutbox( options: OutboxOptions = {} ) {
 	 */
 	async function flush( gameId: number, nudge = false ): Promise<void> {
 		await ready;
-		if ( halted || running.has( gameId ) || ( ! nudge && ( state.sync[ gameId ] === 'signed_out' || ( retryAt.get( gameId ) ?? 0 ) > Date.now() ) ) ) {
+		// After 409 sppa_wrong_user nothing more leaves this page: the cookie is another account's.
+		if ( halted || isSwitched() || running.has( gameId ) || ( ! nudge &&( state.sync[ gameId ] === 'signed_out' || ( retryAt.get( gameId ) ?? 0 ) > Date.now() ) ) ) {
 			return;
 		}
 		running.add( gameId );
@@ -332,12 +408,16 @@ export function createOutbox( options: OutboxOptions = {} ) {
 		retryAt.delete( gameId );
 		try {
 			for ( ;; ) {
-				const mine = state.items.filter( ( i ) => i.gameId === gameId );
+				// Read the user each round: another keeper may sign in while a request is out.
+				claim();
+				const mine = state.items.filter( ( i ) => i.gameId === gameId && owns( i, state.user ) );
 				const batch = mine.filter( ( i ) => ! i.saving && ! i.acked ).slice( 0, BATCH );
 				const undo = mine.find( ( i ) => i.acked && i.undo );
 				if ( ! batch.length && ! undo ) {
 					break;
 				}
+				// Name the owner so the server refuses the write if another account's cookie is on it.
+				const owner = state.user > 0 ? state.user : undefined;
 				setSync( gameId, 'sending' );
 				try {
 					if ( batch.length ) {
@@ -346,14 +426,15 @@ export function createOutbox( options: OutboxOptions = {} ) {
 							send(
 								gameId,
 								batch.map( ( i ) => i.entry ),
-								signal
+								signal,
+								owner
 							)
 						);
 						if ( ! answer( batch, res ) ) {
 							throw new ApiError( 502, 'bad_response', 'The answer named none of the entries.' );
 						}
 					} else if ( undo ) {
-						const res = await timed( ( signal ) => sendVoid( gameId, undo.entry.uid, signal ) );
+						const res = await timed( ( signal ) => sendVoid( gameId, undo.entry.uid, signal, owner ) );
 						remove( new Set( [ undo.entry.uid ] ) );
 						for ( const l of [ ...ackListeners ] ) {
 							l( gameId, [ res.entry ], res.live );
@@ -366,6 +447,13 @@ export function createOutbox( options: OutboxOptions = {} ) {
 						setSync( gameId, 'signed_out' );
 						return;
 					}
+					if ( e.code === 'sppa_wrong_user' ) {
+						// Another account is signed in (another tab). Not parked, not dropped, not retried:
+						// every entry stays as it is until a reload reads who this page is for.
+						markSwitched();
+						setSync( gameId, 'idle' );
+						return;
+					}
 					if ( PERMANENT.has( e.code ) ) {
 						const reason = e.code.replace( /^sppa_/, '' );
 						if ( batch.length ) {
@@ -373,7 +461,7 @@ export function createOutbox( options: OutboxOptions = {} ) {
 						} else if ( undo ) {
 							// The server will not void it (the game is final, say): it stays in the log; tell the keeper.
 							remove( new Set( [ undo.entry.uid ] ) );
-							set( { rejected: [ ...state.rejected, { gameId, entry: undo.entry, reason: `void_${ reason }` } ] } );
+							set( { rejected: [ ...state.rejected, { gameId, entry: undo.entry, reason: `void_${ reason }`, ...( undo.owner === undefined ? {} : { owner: undo.owner } ) } ] } );
 						}
 						continue;
 					}
@@ -403,7 +491,10 @@ export function createOutbox( options: OutboxOptions = {} ) {
 	 */
 	function enqueue( gameId: number, entry: Omit<EntryInput, 'uid'> & { uid?: string } ): string {
 		const full = { ...entry, uid: entry.uid || uuid() } as EntryInput;
-		const item: Queued = { gameId, seq: seq++, entry: full };
+		// Nobody signed in right now: the last keeper this phone knew; failing that 0, "unknown",
+		// which waits for a keeper to agree (adopt) instead of going to whoever signs in next.
+		const u = user() > 0 ? user() : lastKnown();
+		const item: Queued = { gameId, seq: seq++, entry: full, owner: u > 0 ? u : 0 };
 		set( { items: [ ...state.items, { ...item, saving: true } ] } );
 		if ( ! askedPersist ) {
 			askedPersist = true;
@@ -450,14 +541,30 @@ export function createOutbox( options: OutboxOptions = {} ) {
 		const r = state.rejected.find( ( x ) => x.entry.uid === uid );
 		if ( r ) {
 			dismiss( uid );
-			const item: Queued = { gameId: r.gameId, seq: seq++, entry: r.entry, attempted: true };
+			const item: Queued = { gameId: r.gameId, seq: seq++, entry: r.entry, attempted: true, ...( r.owner === undefined ? {} : { owner: r.owner } ) };
 			set( { items: [ ...state.items, item ] } );
 			void write( 'queue', uid, item ).then( () => flush( r.gameId, true ) );
 		}
 	}
 
+	/** The signed-in user changed: show their entries, and send them. */
+	function userChanged(): void {
+		claim();
+		void flushAll( true );
+	}
+
+	/** The signed-in keeper agreed to send the entries saved while nobody was known (owner 0) as theirs. */
+	function adopt(): void {
+		const u = user();
+		if ( u > 0 ) {
+			giveTo( 0, u );
+			void flushAll( true );
+		}
+	}
+
 	/** Listen to the browser: online, visible, and a 20 s tick while anything waits. Returns a stop function. */
 	function start(): () => void {
+		const offUser = onUserChange( userChanged );
 		const nudge = () => void flushAll( true );
 		const visible = () => {
 			if ( document.visibilityState === 'visible' ) {
@@ -474,6 +581,7 @@ export function createOutbox( options: OutboxOptions = {} ) {
 		void flushAll( true );
 		return () => {
 			halted = true;
+			offUser();
 			timers.forEach( ( t ) => clearTimeout( t ) );
 			window.removeEventListener( 'online', nudge );
 			document.removeEventListener( 'visibilitychange', visible );
@@ -490,6 +598,8 @@ export function createOutbox( options: OutboxOptions = {} ) {
 		flush,
 		flushAll,
 		start,
+		userChanged,
+		adopt,
 		getState: () => state,
 		subscribe( l: () => void ) {
 			listeners.add( l );
@@ -522,8 +632,15 @@ export function mergeIntoLog( gameId: number, entries: KeeperEntry[], live: Live
 	const fresh = new Map( entries.map( ( e ) => [ e.uid, e ] ) );
 	const kept = cur.entries.map( ( e ) => fresh.get( e.uid ) ?? e );
 	const added = entries.filter( ( e ) => ! cur.entries.some( ( c ) => c.uid === e.uid ) ).reverse();
+	const merged = [ ...added, ...kept ];
 	// patch, not replace: a reload in flight (the Finish sheet's) must still land with the server's totals.
-	patchCached( path, { ...cur, ...( live ?? {} ), entries: [ ...added, ...kept ] } );
+	patchCached( path, { ...cur, ...( live ?? {} ), entries: merged } );
+	// The server's score counts entries this sheet has not seen (another keeper's): fetch the whole
+	// log now, or a goal waiting here would be added to a score missing theirs and it would drop.
+	const derived = live ? deriveScore( merged, cur.game.home.id, cur.game.away.id ) : undefined;
+	if ( live && derived && ( derived.home !== live.score.home || derived.away !== live.score.away ) && isWatched( path ) ) {
+		void refresh( path );
+	}
 }
 
 let shared: Outbox | undefined;
@@ -555,17 +672,32 @@ export interface Pending {
 	memoryOnly: boolean;
 }
 
-/** One game's slice of the outbox, kept in step with it. */
-export function usePending( gameId: number ): Pending {
+function useOutboxState(): OutboxState {
 	const box = outbox();
-	const state = useSyncExternalStore( box.subscribe, box.getState, box.getState );
+	return useSyncExternalStore( box.subscribe, box.getState, box.getState );
+}
+
+/** One game's slice of the outbox (the signed-in keeper's entries only), kept in step with it. */
+export function usePending( gameId: number ): Pending {
+	const state = useOutboxState();
 	return useMemo(
 		() => ( {
-			pending: state.items.filter( ( i ) => i.gameId === gameId ),
-			rejected: state.rejected.filter( ( r ) => r.gameId === gameId ),
+			pending: state.items.filter( ( i ) => i.gameId === gameId && owns( i, state.user ) ),
+			rejected: state.rejected.filter( ( r ) => r.gameId === gameId && owns( r, state.user ) ),
 			sync: state.sync[ gameId ] ?? 'idle',
 			memoryOnly: state.memoryOnly,
 		} ),
 		[ state, gameId ]
 	);
+}
+
+/** How many entries on this phone belong to another account (see unsentElsewhere). */
+export function useUnsentElsewhere( gameId?: number ): Elsewhere {
+	const state = useOutboxState();
+	return useMemo( () => unsentElsewhere( state, gameId ), [ state, gameId ] );
+}
+
+/** Whether the server said another account is signed in on this page (see lib/account). */
+export function useSwitched(): boolean {
+	return useSyncExternalStore( onSwitched, isSwitched, isSwitched );
 }

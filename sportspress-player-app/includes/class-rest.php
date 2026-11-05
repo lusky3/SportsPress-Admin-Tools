@@ -160,12 +160,12 @@ class SPPA_REST {
 		// Live scorekeeping.
 		self::route( '/keep/night', 'GET', 'keep_night', $date, 'is_keeper' );
 		self::route( '/games/(?P<id>\d+)/log', 'GET', 'game_log', $id, 'is_keeper' );
-		self::route( '/games/(?P<id>\d+)/log', 'POST', 'post_log', $id + array( 'entries' => self::entries_arg() ), 'is_keeper' );
+		self::route( '/games/(?P<id>\d+)/log', 'POST', 'post_log', $id + array( 'entries' => self::entries_arg() ) + self::owner_arg(), 'is_keeper' );
 		self::route(
 			'/games/(?P<id>\d+)/log/(?P<uid>[A-Za-z0-9-]{8,36})/void',
 			'POST',
 			'void_entry',
-			$id + array(
+			$id + self::owner_arg() + array(
 				'uid' => array(
 					'type'              => 'string',
 					'pattern'           => '^[A-Za-z0-9-]{8,36}$',
@@ -191,6 +191,38 @@ class SPPA_REST {
 		);
 		self::route( '/games/(?P<id>\d+)/reopen', 'POST', 'reopen_game', $id, 'is_organizer' );
 		self::route( '/games/(?P<id>\d+)/live', 'GET', 'live', $id );
+	}
+
+	/**
+	 * The optional `owner` of a log write: the account the sheet was opened by.
+	 * Another tab can sign in as someone else (cookies are shared); the app sends
+	 * its user id so such a write is refused instead of credited to the wrong keeper.
+	 *
+	 * @return array<string,array>
+	 */
+	private static function owner_arg(): array {
+		return array(
+			'owner' => array(
+				'type'    => 'integer',
+				'minimum' => 1,
+			),
+		);
+	}
+
+	/** 409 sppa_wrong_user when the request names an owner other than the signed-in user; else null. */
+	private static function wrong_user( $request ): ?WP_Error {
+		$owner = $request->get_param( 'owner' );
+		if ( null === $owner || (int) $owner === (int) get_current_user_id() ) {
+			return null;
+		}
+		return new WP_Error(
+			'sppa_wrong_user',
+			__( 'You are signed in as a different account than this sheet was opened with. Reload to continue.', 'sportspress-player-app' ),
+			array(
+				'status'       => 409,
+				'current_user' => (int) get_current_user_id(),
+			)
+		);
 	}
 
 	/**
@@ -943,16 +975,18 @@ class SPPA_REST {
 	 * phone can resend its whole outbox safely.
 	 */
 	public static function post_log( $request ) {
+		$wrong = self::wrong_user( $request );
+		if ( $wrong ) {
+			return $wrong;
+		}
 		$v   = self::viewer();
 		$raw = $v['reader']->raw_event( (int) $request['id'] );
 		if ( null === $raw ) {
 			return self::not_found();
 		}
-		if ( SPPA_Event_Presenter::is_called_off( SPPA_Event_Presenter::present( $raw, 0 )['status'] ) ) {
-			return self::called_off();
-		}
-		if ( count( $raw['team_ids'] ) < 2 ) {
-			return new WP_Error( 'sppa_no_teams', __( 'This game does not have two teams.', 'sportspress-player-app' ), array( 'status' => 409 ) );
+		$refusal = self::log_refusal( $raw );
+		if ( $refusal ) {
+			return $refusal;
 		}
 
 		$event_id = (int) $raw['id'];
@@ -961,31 +995,9 @@ class SPPA_REST {
 			'rosters'   => self::keeper_rosters( $v['reader'], $raw ),
 			'finalized' => false, // Checked under the lock below.
 		);
-		$results  = array();
-		$valid    = array();
-		foreach ( array_values( (array) $request->get_param( 'entries' ) ) as $i => $in ) {
-			$in    = is_array( $in ) ? $in : array();
-			$check = SPPA_Game_Log::validate( $in, $ctx );
-			if ( $check['ok'] ) {
-				$valid[ $i ]   = $check['entry'];
-				$results[ $i ] = null;
-				continue;
-			}
-			// An entry stored earlier may no longer pass (a roster changed): it is still a duplicate.
-			$uid           = is_string( $in['uid'] ?? null ) ? $in['uid'] : '';
-			$stored        = self::is_uid( $uid ) ? SPPA_Game_Log_Store::find( $event_id, $uid ) : null;
-			$results[ $i ] = null === $stored
-				? array(
-					'uid'    => $uid,
-					'status' => 'rejected',
-					'reason' => $check['reason'],
-				)
-				: array(
-					'uid'    => $uid,
-					'status' => 'duplicate',
-					'entry'  => $stored,
-				);
-		}
+		$checked  = self::check_entries( $event_id, array_values( (array) $request->get_param( 'entries' ) ), $ctx );
+		$results  = $checked['results'];
+		$valid    = $checked['valid'];
 
 		// A finished game takes no new entries except from an organizer; resent ones are still acknowledged.
 		$organizer = $v['organizer'];
@@ -994,15 +1006,7 @@ class SPPA_REST {
 			array_values( $valid ),
 			$v['user_id'],
 			function () use ( $event_id, $organizer, $valid ) {
-				if ( $organizer || ! SPPA_Result_Writer::is_final( $event_id ) ) {
-					return null;
-				}
-				foreach ( $valid as $entry ) {
-					if ( null === SPPA_Game_Log_Store::find( $event_id, $entry['uid'] ) ) {
-						return self::finalized_error();
-					}
-				}
-				return null;
+				return self::finalized_refusal( $event_id, $organizer, $valid );
 			}
 		);
 		if ( is_wp_error( $stored ) ) {
@@ -1017,7 +1021,72 @@ class SPPA_REST {
 		if ( $created ) {
 			SPPA_Result_Writer::mark_live( $event_id );
 		}
+		return self::log_response( $event_id, $raw, $v, $results );
+	}
 
+	/** Why a game takes no log entries (called off, not two teams), or null. */
+	private static function log_refusal( array $raw ): ?WP_Error {
+		if ( SPPA_Event_Presenter::is_called_off( SPPA_Event_Presenter::present( $raw, 0 )['status'] ) ) {
+			return self::called_off();
+		}
+		if ( count( $raw['team_ids'] ) < 2 ) {
+			return new WP_Error( 'sppa_no_teams', __( 'This game does not have two teams.', 'sportspress-player-app' ), array( 'status' => 409 ) );
+		}
+		return null;
+	}
+
+	/**
+	 * Validate the posted entries. A rejected entry that is already stored (a
+	 * roster changed since) is still a duplicate.
+	 *
+	 * @return array{valid:array,results:array} Valid entries and the per-entry answers (null for a valid one), by position.
+	 */
+	private static function check_entries( int $event_id, array $entries, array $ctx ): array {
+		$results = array();
+		$valid   = array();
+		foreach ( $entries as $i => $in ) {
+			$in    = is_array( $in ) ? $in : array();
+			$check = SPPA_Game_Log::validate( $in, $ctx );
+			if ( $check['ok'] ) {
+				$valid[ $i ]   = $check['entry'];
+				$results[ $i ] = null;
+				continue;
+			}
+			$uid           = is_string( $in['uid'] ?? null ) ? $in['uid'] : '';
+			$stored        = self::is_uid( $uid ) ? SPPA_Game_Log_Store::find( $event_id, $uid ) : null;
+			$results[ $i ] = null === $stored
+				? array(
+					'uid'    => $uid,
+					'status' => 'rejected',
+					'reason' => $check['reason'],
+				)
+				: array(
+					'uid'    => $uid,
+					'status' => 'duplicate',
+					'entry'  => $stored,
+				);
+		}
+		return array(
+			'valid'   => $valid,
+			'results' => $results,
+		);
+	}
+
+	/** The error for a new entry on a finished game from a non-organizer; null when allowed (resent entries are always fine). */
+	private static function finalized_refusal( int $event_id, bool $organizer, array $valid ): ?WP_Error {
+		if ( $organizer || ! SPPA_Result_Writer::is_final( $event_id ) ) {
+			return null;
+		}
+		foreach ( $valid as $entry ) {
+			if ( null === SPPA_Game_Log_Store::find( $event_id, $entry['uid'] ) ) {
+				return self::finalized_error();
+			}
+		}
+		return null;
+	}
+
+	/** The response of a log POST: every entry's answer and the live summary. */
+	private static function log_response( int $event_id, array $raw, array $v, array $results ): WP_REST_Response {
 		$all     = SPPA_Game_Log_Store::all( $event_id );
 		$derived = SPPA_Game_Log::derive( $all, $raw['team_ids'] );
 		$status  = self::log_status( $event_id, (bool) $all );
@@ -1042,6 +1111,10 @@ class SPPA_REST {
 
 	/** POST /games/{id}/log/{uid}/void: undo an entry (own entries; organizers any). */
 	public static function void_entry( $request ) {
+		$wrong = self::wrong_user( $request );
+		if ( $wrong ) {
+			return $wrong;
+		}
 		$v   = self::viewer();
 		$raw = $v['reader']->raw_event( (int) $request['id'] );
 		if ( null === $raw ) {

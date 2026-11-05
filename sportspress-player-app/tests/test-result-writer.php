@@ -280,4 +280,68 @@ update_post_meta( 101, '_sppa_live', 'final' );
 SPPA_Result_Writer::mark_live( 101 );
 sppa_assert( 'final' === SPPA_Result_Writer::status( 101 ), 'and a final game stays final' );
 
+echo "\n=== a confirmed replacement resets old player stats ===\n\n";
+
+function sppa_external_result_fixture() {
+	sppa_writer_fixture();
+	update_post_meta( 101, 'sp_results', array( 12 => array( 'goals' => '3' ), 7 => array( 'goals' => '3' ) ) );
+	update_post_meta(
+		101,
+		'sp_players',
+		array(
+			12 => array(
+				0  => array( 'number' => '', 'g' => 5 ),
+				50 => array( 'number' => '9', 'position' => 'F', 'status' => 'lineup', 'sub' => 0, 'g' => 0, 'a' => 0, 'pim' => 0 ),
+				77 => array( 'number' => '31', 'position' => 'D', 'status' => 'lineup', 'sub' => 0, 'g' => 2, 'a' => 1, 'pim' => 4, 'ga' => 7 ),
+			),
+			7  => array(
+				51 => array( 'number' => '1', 'status' => 'sub', 'sub' => 1, 'g' => 1, 'a' => 3, 'pim' => 2 ),
+			),
+			31 => array(
+				55 => array( 'g' => 9, 'a' => 9, 'pim' => 9 ),
+			),
+		)
+	);
+}
+
+sppa_external_result_fixture();
+$before = get_post_meta( 101, 'sp_players', true );
+$out    = SPPA_Result_Writer::apply( 101, sppa_derive( $game ), false );
+sppa_assert( is_wp_error( $out ) && 409 === $out->get_error_data()['status'] && $before === get_post_meta( 101, 'sp_players', true ), 'an external result without overwrite is 409 and sp_players is unchanged' );
+$out = SPPA_Result_Writer::apply( 101, sppa_derive( $game ), true );
+$now = get_post_meta( 101, 'sp_players', true );
+sppa_assert( ! is_wp_error( $out ), 'the confirmed replacement succeeds' );
+sppa_assert( 0 === $now[12][77]['g'] && 0 === $now[12][77]['a'] && 0 === $now[12][77]['pim'], 'a player with old stats who is not in the new log is zeroed' );
+sppa_assert( '31' === $now[12][77]['number'] && 'D' === $now[12][77]['position'] && 'lineup' === $now[12][77]['status'] && 7 === $now[12][77]['ga'], 'and keeps number, position, status and other slugs' );
+sppa_assert( 0 === $now[7][51]['g'] && 0 === $now[7][51]['a'] && 2 === $now[7][51]['pim'] && 'sub' === $now[7][51]['status'] && 1 === $now[7][51]['sub'], 'the other team too: absent stats zeroed, a logged penalty written, other fields kept' );
+sppa_assert( 2 === $now[12][50]['g'] && 0 === $now[12][50]['pim'] && 1 === $now[7][53]['g'], 'players in the log get the log totals' );
+sppa_assert( array( 'number' => '', 'g' => 5 ) === $now[12][0], 'the reserved player-id-0 row is untouched' );
+sppa_assert( array( 'g' => 9, 'a' => 9, 'pim' => 9 ) === $now[31][55], 'a team that is not in the event is untouched' );
+$first = $now;
+SPPA_Result_Writer::apply( 101, sppa_derive( $game ), false );
+sppa_assert( $first === get_post_meta( 101, 'sp_players', true ), 'finishing again is idempotent' );
+
+echo "\n=== a re-finish of our own result still zeroes only what it wrote ===\n\n";
+
+sppa_writer_fixture();
+SPPA_Result_Writer::apply( 101, sppa_derive( $game ), false );
+$out = SPPA_Result_Writer::apply( 101, sppa_derive( array( array( 'player_id' => 50 ), array( 'team_id' => 7, 'player_id' => 53 ) ) ), false );
+$now = get_post_meta( 101, 'sp_players', true );
+sppa_assert( ! is_wp_error( $out ) && 0 === $now[12][52]['a'] && 0 === $now[7][51]['pim'] && 1 === $now[12][50]['g'], 'a re-finish zeroes the previous record\'s absent players' );
+
+echo "\n=== a first finish with no result keeps admin-entered stats ===\n\n";
+
+sppa_writer_fixture();
+update_post_meta( 101, 'sp_players', array( 12 => array( 52 => array( 'number' => '31', 'g' => 2, 'a' => '', 'pim' => 4 ) ) ) );
+$out = SPPA_Result_Writer::apply( 101, sppa_derive( array( array( 'player_id' => 50 ) ) ), false );
+$now = get_post_meta( 101, 'sp_players', true );
+sppa_assert( ! is_wp_error( $out ) && 2 === $now[12][52]['g'] && '' === $now[12][52]['a'] && 4 === $now[12][52]['pim'], 'no existing result: no 409 and stats not in the log are left as they were' );
+
+sppa_writer_fixture();
+update_post_meta( 101, 'sp_results', array( 12 => array( 'goals' => '' ), 7 => array( 'goals' => '' ) ) );
+update_post_meta( 101, 'sp_players', array( 12 => array( 52 => array( 'number' => '31', 'g' => 2, 'a' => '', 'pim' => 4 ) ) ) );
+SPPA_Result_Writer::apply( 101, sppa_derive( array( array( 'player_id' => 50 ) ) ), false );
+$now = get_post_meta( 101, 'sp_players', true );
+sppa_assert( 2 === $now[12][52]['g'] && '' === $now[12][52]['a'], 'blank result placeholders count as no result: no reset' );
+
 sppa_done();

@@ -69,32 +69,66 @@ function toApiError( error: unknown ): ApiError {
 	return error instanceof ApiError ? error : new ApiError( 0, 'unknown', error instanceof Error ? error.message : 'Something went wrong.' );
 }
 
-/** Fetch a path. Unless `force`, join a request that is already on its way. */
-function load( path: string, force: boolean ): void {
+/** The request in flight per path, so a caller can wait for it (see refresh). */
+const inflight = new Map<string, Promise<boolean>>();
+
+/** What a superseded request answers to whoever waits on it: the newer request's outcome, if there is one. */
+function successor( path: string ): Promise<boolean> | boolean {
+	const newer = pending.has( path ) ? inflight.get( path ) : undefined;
+	return newer ?? true;
+}
+
+/**
+ * Fetch a path. Unless `force`, join a request that is already on its way. Resolves true when
+ * fresh data landed. With `freshOnly`, a saved copy from the service worker does not replace data
+ * already on screen (it may be older than what this page has merged since).
+ */
+function load( path: string, force: boolean, freshOnly = false ): Promise<boolean> {
 	if ( ! force && pending.has( path ) ) {
-		return;
+		return inflight.get( path ) ?? Promise.resolve( false );
 	}
 	const generation = supersede( path );
 	pending.add( path );
 	setSlot( path, { loading: true, error: undefined } );
 
-	apiGetWithMeta<unknown>( path ).then(
+	const request = apiGetWithMeta<unknown>( path ).then(
 		( result ) => {
 			if ( generations.get( path ) !== generation ) {
-				return; // a newer request (or an invalidate) owns this path now
+				return successor( path ); // a newer request (or an invalidate) owns this path now
 			}
 			pending.delete( path );
+			if ( freshOnly && result.fromCache && getSlot( path ).data !== undefined ) {
+				setSlot( path, { loading: false } );
+				return false;
+			}
 			const savedAt = result.savedAt ?? ( result.fromCache ? undefined : new Date() );
 			setSlot( path, { data: result.data, savedAt, error: undefined, loading: false, stale: false } );
+			return true;
 		},
 		( error: unknown ) => {
 			if ( generations.get( path ) !== generation ) {
-				return;
+				return successor( path );
 			}
 			pending.delete( path );
 			setSlot( path, { error: toApiError( error ), loading: false } );
+			return false;
 		}
 	);
+	inflight.set( path, request );
+	return request;
+}
+
+/**
+ * Fetch a path again behind what is on screen, joining a request already out (one at a time).
+ * Resolves true when fresh data landed; a failure or a saved copy leaves the data as it was.
+ */
+export function refresh( path: string ): Promise<boolean> {
+	return load( path, false, true );
+}
+
+/** Whether a mounted screen shows this path. */
+export function isWatched( path: string ): boolean {
+	return ( watchers.get( path ) ?? 0 ) > 0;
 }
 
 /** The cached data for a path, if any. Stale data is still returned. */
@@ -121,7 +155,9 @@ export function setCached<T>( path: string, data: T ): void {
 export function patchCached<T>( path: string, data: T ): void {
 	setSlot( path, { data } );
 	if ( pending.has( path ) ) {
-		load( path, true );
+		// freshOnly: if the network is slow and the service worker answers with its saved copy, that
+		// copy is older than what was just merged; letting it in would drop an acknowledged entry.
+		void load( path, true, true );
 	}
 }
 
@@ -139,6 +175,20 @@ export function invalidate( prefix = '' ): void {
 		supersede( path );
 		setSlot( path, { stale: true, loading: false } );
 		if ( ( watchers.get( path ) ?? 0 ) > 0 ) {
+			load( path, true );
+		}
+	}
+}
+
+/**
+ * Drop every path's data (another account's, see lib/account.ts). Requests in flight still land,
+ * so a screen waiting on one gets its answer or its error. With `reload`, the paths a mounted
+ * screen shows are fetched again at once.
+ */
+export function forgetData( reload: boolean ): void {
+	for ( const path of [ ...slots.keys() ] ) {
+		setSlot( path, { data: undefined, savedAt: undefined, stale: false } );
+		if ( reload && ( watchers.get( path ) ?? 0 ) > 0 ) {
 			load( path, true );
 		}
 	}
@@ -163,7 +213,9 @@ export function useResource<T>( path: string ): Resource<T> {
 		}
 		watchers.set( path, ( watchers.get( path ) ?? 0 ) + 1 );
 		load( path, false );
-		const online = () => load( path, true );
+		const online = () => {
+			void load( path, true );
+		};
 		window.addEventListener( 'online', online );
 		return () => {
 			window.removeEventListener( 'online', online );
@@ -190,6 +242,7 @@ export function _resetResourcesForTests(): void {
 	slots.clear();
 	generations.clear();
 	pending.clear();
+	inflight.clear();
 	watchers.clear();
 	listeners.clear();
 }
