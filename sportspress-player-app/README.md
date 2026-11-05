@@ -229,6 +229,14 @@ null), and `/ops/night` rows add `needs_review_count`.
 - **What is stored.** Availability, spare calls and responses, a log of game changes, each user's
   calendar token and spare preferences, a fingerprint of each game used to detect changes, and the
   live scorekeeping log (entries with the timekeeper who recorded or voided them).
+- **Saved replies on a shared phone.** For offline use, the app's service worker keeps the page and
+  the last answer to each request on the phone. The app's own Sign out deletes them. The app also
+  remembers which user it last ran for and deletes them when that changes: when it opens for
+  someone else or signed out, when the account it loads is not the one it remembers, and when the
+  server says the session has ended. The limit: if someone signs out through WordPress or My Account
+  instead, their saved replies stay on the phone until the app is next opened with a connection.
+  Opened offline before then, it can still show the last person's schedule and calendar link. Scores
+  a timekeeper has not sent yet are never deleted by this.
 - **Uninstall.** Deactivating removes no data, only the `/my-arl/` routes and the scheduled
   baseline job (turning the module off drops the routes too). Deleting the plugin removes its data only if
   **Remove Data on Uninstall** is on in SportsPress Admin Tools settings (the

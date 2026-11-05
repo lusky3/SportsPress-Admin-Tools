@@ -145,6 +145,20 @@ export function invalidate( prefix = '' ): void {
 }
 
 /**
+ * Drop every path's data (another account's, see lib/account.ts). Requests in flight still land,
+ * so a screen waiting on one gets its answer or its error. With `reload`, the paths a mounted
+ * screen shows are fetched again at once.
+ */
+export function forgetData( reload: boolean ): void {
+	for ( const path of [ ...slots.keys() ] ) {
+		setSlot( path, { data: undefined, savedAt: undefined, stale: false } );
+		if ( reload && ( watchers.get( path ) ?? 0 ) > 0 ) {
+			load( path, true );
+		}
+	}
+}
+
+/**
  * GET `path` from the REST API and keep the result in step with the screen.
  * Results are cached in memory by path; a cached copy shows straight away and
  * is refreshed behind it. Refetches when the path changes, on reload(), after

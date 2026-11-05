@@ -15,6 +15,11 @@ export interface SppaBoot {
 	/** The name players see, 'My ARL' unless the site changed it. */
 	appName: string;
 	siteName: string;
+	/**
+	 * The signed-in WordPress user, 0 when signed out. An older shell leaves it out: read it as 0
+	 * (lib/account.ts tells the two apart, so an older shell never clears the saved replies).
+	 */
+	userId?: number;
 }
 
 declare global {
@@ -35,8 +40,15 @@ const DEV_BOOT: SppaBoot = {
 	appBase: '/',
 	appName: 'My ARL',
 	siteName: 'ARL',
+	userId: 0,
 };
 
 export function boot(): SppaBoot {
 	return ( typeof window !== 'undefined' && window.SPPA_BOOT ) || DEV_BOOT;
+}
+
+/** The signed-in user the shell named, 0 when signed out or not named. */
+export function bootUserId(): number {
+	const id = boot().userId;
+	return typeof id === 'number' && id > 0 ? id : 0;
 }

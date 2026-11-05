@@ -5,16 +5,20 @@ import './styles/app.css';
 import './styles/screens.css';
 import { App } from './App';
 import { boot } from './boot';
+import { checkBootUser } from './lib/account';
 import { watchInstall } from './lib/install';
 
 // The install prompt fires once, early; hold it for the tip on Next and Me.
 watchInstall();
 
-createRoot( document.getElementById( 'root' ) as HTMLElement ).render(
-	<StrictMode>
-		<App />
-	</StrictMode>
-);
+// Clear another account's saved replies before the first request can be answered from them.
+void checkBootUser().finally( () => {
+	createRoot( document.getElementById( 'root' ) as HTMLElement ).render(
+		<StrictMode>
+			<App />
+		</StrictMode>
+	);
+} );
 
 // The worker is served by the PHP shell at {appBase}sw (no .js: nginx answers any *.js URL
 // as a static file before WordPress sees it) and controls the app's base only.

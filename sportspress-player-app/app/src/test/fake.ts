@@ -1,6 +1,7 @@
 /* Shared fixtures for screen tests: a boot object, a fetch stub routed by path, and API shapes. */
 import { vi } from 'vitest';
 import { _resetApiForTests } from '../api';
+import { _resetAccountForTests } from '../lib/account';
 import type { Game, GameDetail, Me, SpareCall } from '../types';
 import { _resetResourcesForTests } from '../useResource';
 
@@ -15,7 +16,25 @@ export const BOOT = {
 	appBase: '/my-arl/',
 	appName: 'My ARL',
 	siteName: 'ARL',
+	userId: 5,
 };
+
+/** A Storage stand-in (Node's own `localStorage` global shadows jsdom's in vitest). */
+export function fakeStorage(): Storage {
+	const items = new Map<string, string>();
+	const storage = {
+		getItem: ( k: string ) => items.get( k ) ?? null,
+		setItem: ( k: string, v: string ) => void items.set( k, String( v ) ),
+		removeItem: ( k: string ) => void items.delete( k ),
+		clear: () => items.clear(),
+		key: ( i: number ) => [ ...items.keys() ][ i ] ?? null,
+		get length() {
+			return items.size;
+		},
+	};
+	vi.stubGlobal( 'localStorage', storage );
+	return storage;
+}
 
 export interface Sent {
 	method: string;
@@ -31,6 +50,12 @@ export function fakeApi( handler: Handler ): Sent[] {
 	window.SPPA_BOOT = { ...BOOT };
 	_resetApiForTests();
 	_resetResourcesForTests();
+	_resetAccountForTests( 5 ); // a returning user (me()'s id): nothing to clear
+	try {
+		localStorage.removeItem( 'sppa_uid' );
+	} catch {
+		// Node's own localStorage global may be missing here: the account falls back to memory.
+	}
 	vi.stubGlobal(
 		'fetch',
 		vi.fn( async ( url: string, init: RequestInit = {} ) => {

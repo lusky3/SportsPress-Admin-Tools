@@ -1,6 +1,7 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { OfflineBanner } from './components/OfflineBanner';
+import { seenUser } from './lib/account';
 import { Problem, SignedOut, Skeleton } from './components/Problem';
 import { TabBar } from './components/TabBar';
 import { useRoute } from './router';
@@ -54,6 +55,14 @@ export function App() {
 	const route = useRoute();
 	const me = useResource<Me>( '/me' );
 	const m = me.data;
+	const userId = m?.user.id;
+
+	// Saved replies from another account are cleared as soon as /me says who this is.
+	useEffect( () => {
+		if ( userId !== undefined ) {
+			seenUser( userId );
+		}
+	}, [ userId ] );
 
 	let body: ReactNode;
 	if ( me.error?.code === 'signed_out' ) {
