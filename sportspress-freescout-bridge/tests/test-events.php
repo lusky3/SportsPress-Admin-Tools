@@ -1,10 +1,10 @@
 <?php
 /**
- * Standalone tests for SPAT_FreeScout_Events: the outbox, the signed cron
+ * Standalone tests for SPFB_Events: the outbox, the signed cron
  * sender with retries, the sweep, the hook listeners and the settings
  * sanitiser.
  *
- * Usage: php test-freescout-events.php
+ * Usage: php test-events.php
  */
 
 define( 'ABSPATH', dirname( __FILE__ ) . '/' );
@@ -159,13 +159,13 @@ class SPAT_Logger {
 	}
 }
 
-// Stand-in for the real schema class: only the lazily-created outbox matters.
-class SPAT_Database {
-	public static function create_outbox_table() {
-		++$GLOBALS['wpdb']->create_calls;
-		if ( $GLOBALS['wpdb']->creation_works ) {
-			$GLOBALS['wpdb']->table_exists = true;
-		}
+// Stand-in for WordPress's dbDelta(): SPFB_Events::create_table() hands it the
+// CREATE TABLE statement for the lazily-created outbox.
+function dbDelta( $sql ) {
+	++$GLOBALS['wpdb']->create_calls;
+	$GLOBALS['t_dbdelta_sql'][] = $sql;
+	if ( $GLOBALS['wpdb']->creation_works ) {
+		$GLOBALS['wpdb']->table_exists = true;
 	}
 }
 
@@ -189,6 +189,9 @@ class Mock_WPDB {
 		return addcslashes( $text, '_%\\' );
 	}
 
+	public function get_charset_collate() {
+		return 'DEFAULT CHARACTER SET utf8mb4';
+	}
 	public function prepare( $query, ...$args ) {
 		foreach ( $args as $arg ) {
 			$replacement = is_int( $arg ) ? (string) $arg : "'" . $arg . "'";
@@ -307,9 +310,9 @@ $GLOBALS['wpdb'] = new Mock_WPDB();
 $wpdb            = $GLOBALS['wpdb'];
 
 require_once dirname( __DIR__ ) . '/includes/class-signed-request.php';
-require_once dirname( __DIR__ ) . '/includes/class-freescout-rest.php';
+require_once dirname( __DIR__ ) . '/includes/class-rest.php';
 require_once dirname( __DIR__ ) . '/includes/class-admin.php';
-require_once dirname( __DIR__ ) . '/includes/class-freescout-events.php';
+require_once dirname( __DIR__ ) . '/includes/class-events.php';
 
 $passed = 0;
 $failed = 0;
@@ -329,9 +332,9 @@ const T_URL    = 'https://helpdesk.example.com/spatbridge/events';
 
 function configure( $enabled = '1', $url = T_URL, $secret = T_SECRET ) {
 	$GLOBALS['t_options'] = array(
-		SPAT_FreeScout_REST::EVENTS_ENABLED_OPTION => $enabled,
-		SPAT_FreeScout_REST::EVENTS_URL_OPTION     => $url,
-		SPAT_FreeScout_REST::SECRET_OPTION         => $secret,
+		SPFB_REST::EVENTS_ENABLED_OPTION => $enabled,
+		SPFB_REST::EVENTS_URL_OPTION     => $url,
+		SPFB_REST::SECRET_OPTION         => $secret,
 	);
 }
 function reset_state() {
@@ -365,7 +368,7 @@ function only_row() {
 	return $rows[0] ?? null;
 }
 function new_events() {
-	return new SPAT_FreeScout_Events();
+	return new SPFB_Events();
 }
 
 // ===========================================================================
@@ -395,7 +398,9 @@ reset_state();
 $wpdb->table_exists = false;
 $id = new_events()->enqueue( 'registration.reversed', '', array( 'order_id' => 1 ) );
 assert_test( '' !== $id && 1 === $wpdb->create_calls, 'a missing table is created on first enqueue' );
-assert_test( '1' === get_option( SPAT_FreeScout_Events::TABLE_READY_OPTION ), 'readiness is cached in an option' );
+$expected_sql = "CREATE TABLE wp_spat_freescout_outbox ( id bigint(20) unsigned NOT NULL AUTO_INCREMENT, event_id char(36) NOT NULL, type varchar(64) NOT NULL, email varchar(191) NOT NULL DEFAULT '', payload longtext NOT NULL, status varchar(10) NOT NULL DEFAULT 'pending', attempts tinyint(3) unsigned NOT NULL DEFAULT 0, next_attempt_at datetime NOT NULL, last_error varchar(255) NOT NULL DEFAULT '', created_at datetime NOT NULL, updated_at datetime NOT NULL, PRIMARY KEY (id), UNIQUE KEY event_id (event_id), KEY status_next (status, next_attempt_at) ) DEFAULT CHARACTER SET utf8mb4;";
+assert_test( $expected_sql === preg_replace( '/\s+/', ' ', $GLOBALS['t_dbdelta_sql'][0] ?? '' ), 'the outbox schema is exactly the one SportsPress Admin Tools created' );
+assert_test( '1' === get_option( SPFB_Events::TABLE_READY_OPTION ), 'readiness is cached in an option' );
 $shows = $wpdb->show_calls;
 new_events()->enqueue( 'registration.reversed', '', array( 'order_id' => 2 ) );
 assert_test( $shows === $wpdb->show_calls && 1 === $wpdb->create_calls, 'no further SHOW TABLES or create once cached' );
@@ -418,10 +423,10 @@ assert_test( T_URL === $url && 10 === $args['timeout'], 'POSTs to the configured
 assert_test( $args['body'] === row_of( $id )['payload'], 'sends the stored JSON body' );
 assert_test( 'application/json' === $args['headers']['Content-Type'], 'Content-Type is application/json' );
 assert_test(
-	true === SPAT_Signed_Request::verify( $args['headers']['X-SPAT-Timestamp'], $args['headers']['X-SPAT-Signature'], $args['body'], T_SECRET ),
-	'the headers verify with SPAT_Signed_Request::verify'
+	true === SPFB_Signed_Request::verify( $args['headers']['X-SPAT-Timestamp'], $args['headers']['X-SPAT-Signature'], $args['body'], T_SECRET ),
+	'the headers verify with SPFB_Signed_Request::verify'
 );
-assert_test( false === ( SPAT_Signed_Request::verify( $args['headers']['X-SPAT-Timestamp'], $args['headers']['X-SPAT-Signature'], $args['body'], 'another-secret-another-secret-12345' ) === true ), 'and fail with a different secret' );
+assert_test( false === ( SPFB_Signed_Request::verify( $args['headers']['X-SPAT-Timestamp'], $args['headers']['X-SPAT-Signature'], $args['body'], 'another-secret-another-secret-12345' ) === true ), 'and fail with a different secret' );
 $ev->send( $id );
 assert_test( 1 === count( $GLOBALS['t_posts'] ), 'a sent row is not sent again' );
 
@@ -609,7 +614,7 @@ $GLOBALS['t_recurring']['spat_freescout_events_sweep']  = 'daily';
 $GLOBALS['t_recurring']['spat_freescout_events_rescue'] = 'hourly';
 wp_schedule_single_event( time(), 'spat_freescout_send', array( 'a' ) );
 wp_schedule_single_event( time() + 60, 'spat_freescout_send', array( 'b' ) );
-SPAT_FreeScout_Events::unschedule_all();
+SPFB_Events::unschedule_all();
 assert_test( in_array( 'spat_freescout_events_sweep', $GLOBALS['t_cleared'], true ) && in_array( 'spat_freescout_events_rescue', $GLOBALS['t_cleared'], true ), 'clears the sweep and the rescue' );
 assert_test( array( 'spat_freescout_send' ) === $GLOBALS['t_unscheduled'] && array() === $GLOBALS['t_scheduled'], 'unschedules every queued send, whatever its args' );
 
@@ -666,7 +671,7 @@ assert_test( $count === count( $wpdb->rows ), 'withdrawn, removed and unknown wa
 echo "\n=== A broken outbox never reaches the caller ===\n";
 $wpdb->table_exists   = false;
 $wpdb->creation_works = false;
-$GLOBALS['t_options'][ SPAT_FreeScout_Events::TABLE_READY_OPTION ] = '';
+$GLOBALS['t_options'][ SPFB_Events::TABLE_READY_OPTION ] = '';
 $threw = false;
 try {
 	do_action_test( 'spr_registration_reversed', 77 );
@@ -738,42 +743,41 @@ assert_test( isset( $wpdb->rows['pending-ancient'] ), 'pending rows are never pu
 // ===========================================================================
 echo "\n=== Status line ===\n";
 reset_state();
-$GLOBALS['t_options'][ SPAT_FreeScout_Events::TABLE_READY_OPTION ] = '1';
+$GLOBALS['t_options'][ SPFB_Events::TABLE_READY_OPTION ] = '1';
 $mk( 'a', 'pending', $now, $now );
 $mk( 'b', 'failed', $now, $now - 100 );
 $wpdb->rows['b']['last_error'] = 'HTTP 400';
 $mk( 'c', 'sent', $now, $now );
-$s = SPAT_FreeScout_Events::status();
+$s = SPFB_Events::status();
 assert_test( 1 === $s['pending'] && 1 === $s['failed'] && 'HTTP 400' === $s['last_error'], 'status reports pending, failed and the last error' );
 $wpdb->rows = array();
-$GLOBALS['t_options'][ SPAT_FreeScout_Events::TABLE_READY_OPTION ] = '';
-assert_test( array( 'pending' => 0, 'failed' => 0, 'last_error' => '' ) === SPAT_FreeScout_Events::status(), 'status is all zeros while the table is not known to exist' );
+$GLOBALS['t_options'][ SPFB_Events::TABLE_READY_OPTION ] = '';
+assert_test( array( 'pending' => 0, 'failed' => 0, 'last_error' => '' ) === SPFB_Events::status(), 'status is all zeros while the table is not known to exist' );
 
 // ===========================================================================
 echo "\n=== Insert failure re-checks the table ===\n";
 reset_state();
 new_events()->enqueue( 'registration.reversed', '', array( 'order_id' => 1 ) );
-assert_test( '1' === get_option( SPAT_FreeScout_Events::TABLE_READY_OPTION ), 'ready option set after a good insert' );
+assert_test( '1' === get_option( SPFB_Events::TABLE_READY_OPTION ), 'ready option set after a good insert' );
 $wpdb->fail_insert = true;
 assert_test( '' === new_events()->enqueue( 'registration.reversed', '', array( 'order_id' => 2 ) ), 'a failed insert returns an empty id' );
-assert_test( false === get_option( SPAT_FreeScout_Events::TABLE_READY_OPTION ), 'and clears the ready option so the next call re-checks' );
+assert_test( false === get_option( SPFB_Events::TABLE_READY_OPTION ), 'and clears the ready option so the next call re-checks' );
 $wpdb->fail_insert = false;
 
 echo "\n=== Settings sanitisers ===\n";
 $old = 'https://old.example.com/spatbridge/events';
-$GLOBALS['t_options'][ SPAT_FreeScout_REST::EVENTS_URL_OPTION ] = $old;
+$GLOBALS['t_options'][ SPFB_REST::EVENTS_URL_OPTION ] = $old;
 $GLOBALS['t_errors'] = array();
-assert_test( T_URL === SPAT_Admin::sanitize_freescout_events_url( '  ' . T_URL . ' ' ), 'an https URL is accepted and trimmed' );
-assert_test( 'http://freescout-web/spatbridge/events' === SPAT_Admin::sanitize_freescout_events_url( 'http://freescout-web/spatbridge/events' ), 'an http URL is accepted' );
+assert_test( T_URL === SPFB_Admin::sanitize_events_url( '  ' . T_URL . ' ' ), 'an https URL is accepted and trimmed' );
+assert_test( 'http://freescout-web/spatbridge/events' === SPFB_Admin::sanitize_events_url( 'http://freescout-web/spatbridge/events' ), 'an http URL is accepted' );
 assert_test( array() === $GLOBALS['t_errors'], 'valid URLs raise no notice' );
-assert_test( '' === SPAT_Admin::sanitize_freescout_events_url( '' ), 'blank clears the URL' );
-assert_test( '' === SPAT_Admin::sanitize_freescout_events_url( null ), 'a non-string clears the URL' );
+assert_test( '' === SPFB_Admin::sanitize_events_url( '' ), 'blank clears the URL' );
+assert_test( '' === SPFB_Admin::sanitize_events_url( null ), 'a non-string clears the URL' );
 assert_test( 'http://helpdesk.example.com/events' === esc_url_raw( 'helpdesk.example.com/events' ), 'sanity: the esc_url_raw mock prepends http:// like the real one' );
 foreach ( array( 'ftp://x.example.com/e', 'javascript:alert(1)', 'helpdesk.example.com/events', '//helpdesk.example.com/events' ) as $bad ) {
 	$GLOBALS['t_errors'] = array();
-	assert_test( $old === SPAT_Admin::sanitize_freescout_events_url( $bad ) && 1 === count( $GLOBALS['t_errors'] ), "'$bad' is refused, the stored URL kept, with a notice" );
+	assert_test( $old === SPFB_Admin::sanitize_events_url( $bad ) && 1 === count( $GLOBALS['t_errors'] ), "'$bad' is refused, the stored URL kept, with a notice" );
 }
-assert_test( '1' === SPAT_Admin::sanitize_checkbox_flag( '1' ) && '0' === SPAT_Admin::sanitize_checkbox_flag( null ), 'the enabled checkbox coerces to 1/0' );
 
 echo "\n=== spawn_cron is skipped when WP-Cron is disabled ===\n";
 reset_state();

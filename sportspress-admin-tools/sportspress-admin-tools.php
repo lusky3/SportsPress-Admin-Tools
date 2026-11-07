@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SportsPress Admin Tools
  * Description: Administrative tools for SportsPress
- * Version: 1.2.1
+ * Version: 1.3.0
  * Author: Cody (lusky3)
  * Text Domain: sportspress-admin-tools
  * Requires at least: 5.0
@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // Define plugin constants
 define( 'SPAT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPAT_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPAT_VERSION', '1.2.1' );
+define( 'SPAT_VERSION', '1.3.0' );
 
 // Native WordPress updates, served from this repository's releases.
 //
@@ -90,8 +90,36 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 		public function __construct() {
 			spl_autoload_register( array( __CLASS__, 'autoload' ) );
 			add_action( 'plugins_loaded', array( $this, 'init' ) );
+			// wp_loaded: after every plugin's plugins_loaded, so the FreeScout
+			// Bridge plugin (priority 20) has booted if it is going to.
+			add_action( 'wp_loaded', array( $this, 'clear_orphaned_freescout_cron' ) );
 			register_activation_hook( __FILE__, array( $this, 'activate' ) );
-			register_deactivation_hook( __FILE__, array( $this, 'deactivate' ) );
+		}
+
+		/**
+		 * The FreeScout bridge moved to the SportsPress FreeScout Bridge plugin
+		 * in 1.3.0. A site that updates this plugin without installing that one
+		 * keeps the bridge's old cron entries, which would fire into nothing.
+		 * Clear them, but only when the bridge plugin is not running: its
+		 * SPFB_Events owns these same hook names.
+		 */
+		public function clear_orphaned_freescout_cron(): void {
+			// Maintenance path only, like the schema checks: not every front-end request.
+			if ( ! ( is_admin() || wp_doing_cron() ) || class_exists( 'SPFB_Events', false ) ) {
+				return;
+			}
+			$recurring = array( 'spat_freescout_events_sweep', 'spat_freescout_events_rescue' );
+			$scheduled = false;
+			foreach ( $recurring as $hook ) {
+				if ( wp_next_scheduled( $hook ) ) {
+					$scheduled = true;
+					wp_clear_scheduled_hook( $hook );
+				}
+			}
+			// Queued sends carry args, so they are removed by hook, not by args.
+			if ( $scheduled || wp_next_scheduled( 'spat_freescout_send' ) ) {
+				wp_unschedule_hook( 'spat_freescout_send' );
+			}
 		}
 
 		public static function autoload( $class ): void {
@@ -104,12 +132,6 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 			// Load core classes needed everywhere
 			require_once SPAT_PLUGIN_PATH . 'includes/class-database.php';
 			require_once SPAT_PLUGIN_PATH . 'includes/class-plugin-manager.php';
-			require_once SPAT_PLUGIN_PATH . 'includes/class-signed-request.php';
-			require_once SPAT_PLUGIN_PATH . 'includes/class-freescout-rest.php';
-			require_once SPAT_PLUGIN_PATH . 'includes/class-freescout-actions.php';
-			( new SPAT_FreeScout_REST() )->register();
-			require_once SPAT_PLUGIN_PATH . 'includes/class-freescout-events.php';
-			( new SPAT_FreeScout_Events() )->register();
 
 			// Schema migration and one-time backfills are maintenance work that only
 			// needs to happen where an operator or the scheduler can observe it.
@@ -250,15 +272,6 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 
 			// Note: child plugins should not depend on a parent-fired activation signal;
 			// they perform their own setup on their own activation hook.
-		}
-
-		/**
-		 * Stop the FreeScout cron events. Queued outbox rows are kept; the
-		 * rescue is scheduled again on the next load after reactivation.
-		 */
-		public function deactivate(): void {
-			require_once SPAT_PLUGIN_PATH . 'includes/class-freescout-events.php';
-			SPAT_FreeScout_Events::unschedule_all();
 		}
 	}
 

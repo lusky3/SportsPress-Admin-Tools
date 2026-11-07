@@ -4,7 +4,7 @@ This file provides guidance to coding agents (Claude Code, etc.) when working wi
 
 ## Repository Layout
 
-A monorepo of nine independent WordPress plugins targeting SportsPress. One is the parent framework; the others register with it as child plugins.
+A monorepo of ten independent WordPress plugins targeting SportsPress. One is the parent framework; the others register with it as child plugins.
 
 | Directory | Prefix | Role |
 |-----------|--------|------|
@@ -17,6 +17,7 @@ A monorepo of nine independent WordPress plugins targeting SportsPress. One is t
 | `sportspress-league-manager/` | `SPLM_` | React/`@wordpress/scripts` admin SPA gated by `manage_sportspress` (see Capability Model) |
 | `sportspress-score-sheets/` | `SPSS_` | Photos of hand-filled score sheets → pluggable recognition → review → results applied to SportsPress events; `spss/v1` ingest endpoints |
 | `sportspress-player-app/` | `SPPA_` | Installable player/game-night PWA, "My ARL" by default, at `/my-arl/` (Vite + React in `app/`, committed `build/`): schedule, availability, spare calls, calendar feed; `sppa/v1` REST API. See `sportspress-player-app/README.md` |
+| `sportspress-freescout-bridge/` | `SPFB_` | The FreeScout bridge: signed `spat/v1/freescout` REST routes (customer sidebar data and previewed actions) and the event outbox sent to FreeScout through WP-Cron. Settings are their own SPAT tab. Dormant while `sportspress-admin-tools` is older than 1.3.0, which still shipped the bridge. See `sportspress-freescout-bridge/README.md` |
 
 Each plugin has its own `readme.txt`, `uninstall.php`, and `tests/` directory.
 
@@ -42,7 +43,7 @@ When adding a new child module, follow the bootstrap pattern in `sportspress-sch
 
 Every AJAX/REST handler must call both `check_ajax_referer()` and `current_user_can()` before doing work. See `phpcs.xml` — the WordPress security sniffs are excluded due to false-positive noise, so capability/nonce checks are enforced by review and `AUDIT-REPORT.md`, not by phpcs.
 
-Exception: the server-to-server `spat/v1/freescout/*` REST routes have no cookie session, so they use `permission_callback => '__return_true'` and authenticate in `SPAT_FreeScout_REST::guard()` (HMAC signature + timestamp window + rate limit); actions then check the mapped WordPress user's capability.
+Exception: the server-to-server `spat/v1/freescout/*` REST routes have no cookie session, so they use `permission_callback => '__return_true'` and authenticate in `SPFB_REST::guard()` (`sportspress-freescout-bridge`; the `spat/v1` namespace is kept for compatibility) (HMAC signature + timestamp window + rate limit); actions then check the mapped WordPress user's capability.
 
 ### Security checklist (every form submission / AJAX / REST handler)
 
@@ -229,6 +230,8 @@ Delivered work whose specs have been removed (kept here as a short record):
 - **Schedule Generator** phases 2 (configuration manager, presets, change history) & 3 (matchup generation, slot allocator, statistics, SportsPress import, progress/cancel) — fully shipped. Deliberately descoped: PDF report export, drag-and-drop post-generation editing, interactive conflict-resolution chooser.
 - **Schedule Generator UI enhancements** — config clone, import preview modal, export filters, statistics panel, format detection. Outstanding items were QA/accessibility/docs process only (see `specs/spsg-qa-audit/`), not missing features.
 - **Player App** (`sportspress-player-app/`, module id `player_app`) — installable player and game-night app, shown to players as "My ARL" at `/my-arl/` by default (the `sppa_app_name` option and `sppa_base_path` filter change the name and URL base); supersedes the never-built `dashboard-gaps-player-portal` spec (a `sportspress-player-portal` plugin with WooCommerce My-Account tabs), whose spec directory is removed. The player-facing schedule lives in the Player App, and the My Account pages stay in the Blueline theme.
+
+- **FreeScout bridge** (`sportspress-freescout-bridge/`, module id `freescout_bridge`) — moved out of `sportspress-admin-tools` in 1.3.0 (admin-tools 1.2.x shipped it as `SPAT_FreeScout_*`). Every public identifier is unchanged: the `spat_freescout_*` options and `spat_freescout_outbox` table, the cron hooks, the `spat/v1/freescout` routes, the `spat_freescout_providers` / `_actions` / `_queries` filters and the `X-SPAT-Signature` header; only the classes are renamed (`SPFB_REST`, `SPFB_Actions`, `SPFB_Events`, `SPFB_Signed_Request`, `SPFB_Admin`). Child plugins keep contributing through the filters; none of them depends on the bridge's classes. Activating the plugin adds its module to `spat_enabled_modules`. It boots on `plugins_loaded` priority 20 and does nothing (notice only) while `SPAT_FreeScout_REST` exists, so on production it can be installed before admin-tools 1.3.0 arrives. League Manager's own waitlist secret is separate and stays in League Manager.
 
 ## Codebase Discovery (codebase-memory-mcp)
 

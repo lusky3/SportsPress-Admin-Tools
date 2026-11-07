@@ -13,8 +13,9 @@ Namespaces in use:
 - `spet/v1` — `sportspress-etransfer-automation` (webhook only).
 - `spss/v1` — `sportspress-score-sheets`: `/ingest` and `/twilio` (HMAC- and Twilio-signed
   senders) plus the review-dashboard routes (`/sheets`, `/events`), gated by `manage_sportspress`.
-- `spat/v1` — `sportspress-admin-tools`: the `freescout/*` routes, which authenticate in
-  `SPAT_FreeScout_REST::guard()` (HMAC + timestamp window) rather than by cookie.
+- `spat/v1` — `sportspress-freescout-bridge`: the `freescout/*` routes, which authenticate in
+  `SPFB_REST::guard()` (HMAC + timestamp window) rather than by cookie. The routes were served by
+  `sportspress-admin-tools` up to 1.2.x; the namespace is kept so FreeScout needs no change.
 - `sppa/v1` — `sportspress-player-app`: the player-scoped API behind the Player App ("My ARL", at `/my-arl/` by default). Every route
   requires a logged-in user, and cookie requests must send `X-WP-Nonce`; the `/ops/*` routes
   additionally require `manage_sportspress`. Lists use the wrapped shape below, writes return

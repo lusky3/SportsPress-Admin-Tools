@@ -5,7 +5,7 @@
  *
  * Features register handlers through the `spat_freescout_actions` and
  * `spat_freescout_queries` filters. Signature checks happen earlier, in
- * SPAT_FreeScout_REST::guard().
+ * SPFB_REST::guard().
  *
  * @author Cody (lusky3)
  */
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class SPAT_FreeScout_Actions {
+class SPFB_Actions {
 
 	const IDEMPOTENCY_PREFIX = 'spat_fs_idem_';
 	const KEY_PATTERN        = '/^[A-Za-z0-9-]{8,64}$/';

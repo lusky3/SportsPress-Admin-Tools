@@ -1,8 +1,8 @@
 <?php
 /**
- * Standalone tests for SPAT_FreeScout_REST
+ * Standalone tests for SPFB_REST
  *
- * Usage: php test-freescout-rest.php
+ * Usage: php test-rest.php
  */
 
 define( 'ABSPATH', dirname( __FILE__ ) . '/' );
@@ -110,7 +110,7 @@ class SPAT_Player {
 }
 
 require_once dirname( __DIR__ ) . '/includes/class-signed-request.php';
-require_once dirname( __DIR__ ) . '/includes/class-freescout-rest.php';
+require_once dirname( __DIR__ ) . '/includes/class-rest.php';
 
 $passed = 0;
 $failed = 0;
@@ -140,13 +140,13 @@ function signed_request( string $body, string $secret, ?string $ts = null ): WP_
 		$body,
 		array(
 			'x-spat-timestamp' => $ts,
-			'x-spat-signature' => SPAT_Signed_Request::sign( $ts, $body, $secret ),
+			'x-spat-signature' => SPFB_Signed_Request::sign( $ts, $body, $secret ),
 		)
 	);
 }
 
 $secret = str_repeat( 's', 32 );
-$rest   = new SPAT_FreeScout_REST();
+$rest   = new SPFB_REST();
 
 echo "route registration\n";
 $rest->register_routes();

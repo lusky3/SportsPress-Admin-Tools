@@ -26,6 +26,7 @@ function check( $condition, $message ) {
 $plugins = array(
 	'sportspress-admin-tools/sportspress-admin-tools.php',
 	'sportspress-player-app/sportspress-player-app.php',
+	'sportspress-freescout-bridge/sportspress-freescout-bridge.php',
 	'sportspress-etransfer-automation/sportspress-etransfer-automation.php',
 	'sportspress-events-manager/sportspress-events-manager.php',
 	'sportspress-league-manager/sportspress-league-manager.php',
@@ -47,6 +48,7 @@ update_option(
 		'player_registration',
 		'events_management',
 		'player_profile_picture',
+		'freescout_bridge',
 	)
 );
 
@@ -74,6 +76,7 @@ if ( defined( 'SPAT_CONTRACT_VERSION' ) ) {
 	foreach ( array(
 		'sportspress-player-tools/sportspress-player-tools.php',
 		'sportspress-player-registration/sportspress-player-registration.php',
+		'sportspress-freescout-bridge/sportspress-freescout-bridge.php',
 	) as $file ) {
 		$src = file_get_contents( WP_PLUGIN_DIR . '/' . $file );
 		if ( preg_match( "/SPAT_CONTRACT_VERSION,\s*'([^']+)'/", $src, $m ) ) {

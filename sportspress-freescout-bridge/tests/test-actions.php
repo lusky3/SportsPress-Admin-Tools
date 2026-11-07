@@ -1,9 +1,9 @@
 <?php
 /**
  * Standalone tests for the FreeScout action and query routes
- * (SPAT_FreeScout_REST::handle_action/handle_query + SPAT_FreeScout_Actions).
+ * (SPFB_REST::handle_action/handle_query + SPFB_Actions).
  *
- * Usage: php test-freescout-actions.php
+ * Usage: php test-actions.php
  */
 
 define( 'ABSPATH', dirname( __FILE__ ) . '/' );
@@ -158,8 +158,8 @@ class SPAT_Logger {
 }
 
 require_once dirname( __DIR__ ) . '/includes/class-signed-request.php';
-require_once dirname( __DIR__ ) . '/includes/class-freescout-rest.php';
-require_once dirname( __DIR__ ) . '/includes/class-freescout-actions.php';
+require_once dirname( __DIR__ ) . '/includes/class-rest.php';
+require_once dirname( __DIR__ ) . '/includes/class-actions.php';
 
 $passed = 0;
 $failed = 0;
@@ -189,7 +189,7 @@ function signed_request( string $body, string $secret ): WP_REST_Request {
 		$body,
 		array(
 			'x-spat-timestamp' => $ts,
-			'x-spat-signature' => SPAT_Signed_Request::sign( $ts, $body, $secret ),
+			'x-spat-signature' => SPFB_Signed_Request::sign( $ts, $body, $secret ),
 		)
 	);
 }
@@ -217,7 +217,7 @@ function action_body( array $over = array() ): string {
 
 $secret = str_repeat( 's', 32 );
 $GLOBALS['spat_options']['spat_freescout_secret'] = $secret;
-$rest = new SPAT_FreeScout_REST();
+$rest = new SPFB_REST();
 
 $GLOBALS['spat_users']['agent@x.com'] = new WP_User( 42 );
 $GLOBALS['spat_caps'][42]             = array( 'manage_woocommerce' );
@@ -240,7 +240,7 @@ $GLOBALS['spat_filters']['spat_freescout_actions'][] = function ( $a ) {
 			if ( 'reenter' === $GLOBALS['handler_mode'] ) {
 				// A duplicate POST with the same key arrives while this one runs.
 				$GLOBALS['handler_mode'] = 'ok';
-				$GLOBALS['reentry']      = SPAT_FreeScout_Actions::dispatch( json_decode( action_body(), true ) );
+				$GLOBALS['reentry']      = SPFB_Actions::dispatch( json_decode( action_body(), true ) );
 			}
 			if ( 'error_nostatus' === $GLOBALS['handler_mode'] ) {
 				return new WP_Error( 'demo_bad', 'Nope.' );
@@ -316,7 +316,7 @@ check(
 );
 check( 'defaults for requires_confirm and data', array() === $data['requires_confirm'] && array() === $data['data'] && false === $data['replayed'] && 'Did it' === $data['summary'] );
 check( 'stored 24 h under hashed key', DAY_IN_SECONDS === ( $GLOBALS['spat_ttls'][ 'spat_fs_idem_' . hash( 'sha256', 'idem-key-1' ) ] ?? null ) );
-check( 'a real run claims the key with SPAT_Lock', array( array( 'fs_idem_' . hash( 'sha256', 'idem-key-1' ), SPAT_FreeScout_Actions::RUN_LOCK_TTL ) ) === SPAT_Lock::$acquired );
+check( 'a real run claims the key with SPAT_Lock', array( array( 'fs_idem_' . hash( 'sha256', 'idem-key-1' ), SPFB_Actions::RUN_LOCK_TTL ) ) === SPAT_Lock::$acquired );
 check( 'and releases it afterwards', array() === SPAT_Lock::$held );
 
 echo "idempotent replay\n";
@@ -410,7 +410,7 @@ $GLOBALS['handler_mode']    = 'ok';
 SPAT_Lock::$held            = array();
 SPAT_Lock::$acquired        = array();
 function dispatch_with( array $over ) {
-	return SPAT_FreeScout_Actions::dispatch( array_merge( json_decode( action_body(), true ), $over ) );
+	return SPFB_Actions::dispatch( array_merge( json_decode( action_body(), true ), $over ) );
 }
 function is_bad_request( $res, string $message ): bool {
 	return 'spat_freescout_bad_request' === code_of( $res ) && 400 === status_of( $res ) && $message === $res->get_error_message();
@@ -474,7 +474,7 @@ $body['actor'] = array(
 	'email' => '  AGENT@x.COM ',
 	'name'  => '  Cody  ',
 );
-$res = SPAT_FreeScout_Actions::dispatch( $body );
+$res = SPFB_Actions::dispatch( $body );
 check( 'email is trimmed and lowercased for the lookup', ! is_wp_error( $res ) && 42 === ( $GLOBALS['handler_calls'][0][2] ?? null ) );
 check( 'missing params default to an empty array; name is trimmed', array( array(), false, 42, array( 'email' => 'agent@x.com', 'name' => 'Cody' ) ) === array_slice( $GLOBALS['handler_calls'][0] ?? array(), 0, 4 ) );
 $GLOBALS['spat_transients'] = array();
@@ -551,12 +551,12 @@ array_pop( $GLOBALS['spat_filters']['spat_freescout_actions'] );
 
 echo "query characterization\n";
 $need_fqp = 'A feature, a query and params are required.';
-check( 'query without feature gives 400', is_bad_request( SPAT_FreeScout_Actions::query( array( 'query' => 'search', 'params' => array() ) ), $need_fqp ) );
-check( 'query with non-string query gives 400', is_bad_request( SPAT_FreeScout_Actions::query( array( 'feature' => 'demo', 'query' => 3, 'params' => array() ) ), $need_fqp ) );
-check( 'query with non-array params gives 400', is_bad_request( SPAT_FreeScout_Actions::query( array( 'feature' => 'demo', 'query' => 'search', 'params' => 'x' ) ), $need_fqp ) );
-$res = SPAT_FreeScout_Actions::query( array( 'feature' => 'demo', 'query' => 'search' ) );
+check( 'query without feature gives 400', is_bad_request( SPFB_Actions::query( array( 'query' => 'search', 'params' => array() ) ), $need_fqp ) );
+check( 'query with non-string query gives 400', is_bad_request( SPFB_Actions::query( array( 'feature' => 'demo', 'query' => 3, 'params' => array() ) ), $need_fqp ) );
+check( 'query with non-array params gives 400', is_bad_request( SPFB_Actions::query( array( 'feature' => 'demo', 'query' => 'search', 'params' => 'x' ) ), $need_fqp ) );
+$res = SPFB_Actions::query( array( 'feature' => 'demo', 'query' => 'search' ) );
 check( 'query params default to an empty array', array( 'results' => array( array( 'q' => '' ) ) ) === $res );
-$res = SPAT_FreeScout_Actions::query( array( 'feature' => 'demo', 'query' => 'nope', 'params' => array() ) );
+$res = SPFB_Actions::query( array( 'feature' => 'demo', 'query' => 'nope', 'params' => array() ) );
 check( 'unknown query message', 'Unknown query.' === $res->get_error_message() );
 $GLOBALS['spat_filters']['spat_freescout_queries'][] = function ( $q ) {
 	$q['demo.throws'] = function () {
@@ -568,17 +568,17 @@ $GLOBALS['spat_filters']['spat_freescout_queries'][] = function ( $q ) {
 	return $q;
 };
 $GLOBALS['spat_logged'] = array();
-$res                    = SPAT_FreeScout_Actions::query( array( 'feature' => 'demo', 'query' => 'throws', 'params' => array() ) );
+$res                    = SPFB_Actions::query( array( 'feature' => 'demo', 'query' => 'throws', 'params' => array() ) );
 check( 'a throwing query gives 500 query_failed', 'spat_freescout_query_failed' === code_of( $res ) && 500 === status_of( $res ) && 'The query failed in WordPress. Check the SPAT logs.' === $res->get_error_message() );
 check( 'and is logged with feature.query and the message', array( array( 'freescout', 'Query "demo.throws" failed: boom' ) ) === $GLOBALS['spat_logged'] );
-$res = SPAT_FreeScout_Actions::query( array( 'feature' => 'demo', 'query' => 'scalar', 'params' => array() ) );
+$res = SPFB_Actions::query( array( 'feature' => 'demo', 'query' => 'scalar', 'params' => array() ) );
 check( 'a non-array query result becomes empty results', array( 'results' => array() ) === $res );
 $GLOBALS['spat_filters']['spat_freescout_queries'] = array(
 	function () {
 		return 'not-an-array';
 	},
 );
-$res = SPAT_FreeScout_Actions::query( array( 'feature' => 'demo', 'query' => 'search', 'params' => array() ) );
+$res = SPFB_Actions::query( array( 'feature' => 'demo', 'query' => 'search', 'params' => array() ) );
 check( 'a non-array query registry gives 404', 'spat_freescout_unknown_query' === code_of( $res ) && 404 === status_of( $res ) );
 
 echo "idempotency key bound to its request\n";

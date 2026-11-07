@@ -1,6 +1,6 @@
 <?php
 /**
- * Standalone tests for SPAT_Signed_Request
+ * Standalone tests for SPFB_Signed_Request
  *
  * Usage: php test-signed-request.php
  */
@@ -87,48 +87,48 @@ $ts     = 1790000000;
 $sig    = hash_hmac( 'sha256', $ts . '.' . $raw, $secret );
 
 echo "sign\n";
-check( 'sign matches hash_hmac of ts.raw', SPAT_Signed_Request::sign( (string) $ts, $raw, $secret ) === $sig );
+check( 'sign matches hash_hmac of ts.raw', SPFB_Signed_Request::sign( (string) $ts, $raw, $secret ) === $sig );
 
 echo "verify\n";
-check( 'valid at now = ts', true === SPAT_Signed_Request::verify( (string) $ts, $sig, $raw, $secret, $ts ) );
-check( 'valid at now = ts + 300', true === SPAT_Signed_Request::verify( (string) $ts, $sig, $raw, $secret, $ts + 300 ) );
-check( 'valid at now = ts - 300', true === SPAT_Signed_Request::verify( (string) $ts, $sig, $raw, $secret, $ts - 300 ) );
-$r = SPAT_Signed_Request::verify( (string) $ts, $sig, $raw, $secret, $ts + 301 );
+check( 'valid at now = ts', true === SPFB_Signed_Request::verify( (string) $ts, $sig, $raw, $secret, $ts ) );
+check( 'valid at now = ts + 300', true === SPFB_Signed_Request::verify( (string) $ts, $sig, $raw, $secret, $ts + 300 ) );
+check( 'valid at now = ts - 300', true === SPFB_Signed_Request::verify( (string) $ts, $sig, $raw, $secret, $ts - 300 ) );
+$r = SPFB_Signed_Request::verify( (string) $ts, $sig, $raw, $secret, $ts + 301 );
 check( 'expired at ts + 301', 'spat_freescout_request_expired' === error_code_of( $r ) );
 check( 'expired status 403', is_wp_error( $r ) && 403 === $r->get_error_data()['status'] );
-$r = SPAT_Signed_Request::verify( (string) $ts, $sig, $raw, $secret, $ts - 301 );
+$r = SPFB_Signed_Request::verify( (string) $ts, $sig, $raw, $secret, $ts - 301 );
 check( 'expired at ts - 301', 'spat_freescout_request_expired' === error_code_of( $r ) );
-$r = SPAT_Signed_Request::verify( 'abc', $sig, $raw, $secret, $ts );
+$r = SPFB_Signed_Request::verify( 'abc', $sig, $raw, $secret, $ts );
 check( 'non-numeric timestamp is expired', 'spat_freescout_request_expired' === error_code_of( $r ) );
-$r = SPAT_Signed_Request::verify( '', $sig, $raw, $secret, $ts );
+$r = SPFB_Signed_Request::verify( '', $sig, $raw, $secret, $ts );
 check( 'empty timestamp is missing_timestamp', 'spat_freescout_missing_timestamp' === error_code_of( $r ) );
 check( 'missing status 403', is_wp_error( $r ) && 403 === $r->get_error_data()['status'] );
-$r = SPAT_Signed_Request::verify( (string) $ts, $sig, '{"email":"x@y.z"}', $secret, $ts );
+$r = SPFB_Signed_Request::verify( (string) $ts, $sig, '{"email":"x@y.z"}', $secret, $ts );
 check( 'tampered body is invalid_signature', 'spat_freescout_invalid_signature' === error_code_of( $r ) );
 check( 'invalid status 403', is_wp_error( $r ) && 403 === $r->get_error_data()['status'] );
-$r = SPAT_Signed_Request::verify( (string) $ts, '', $raw, $secret, $ts );
+$r = SPFB_Signed_Request::verify( (string) $ts, '', $raw, $secret, $ts );
 check( 'empty signature is invalid_signature', 'spat_freescout_invalid_signature' === error_code_of( $r ) );
-$r = SPAT_Signed_Request::verify( (string) $ts, strtoupper( $sig ), $raw, $secret, $ts );
+$r = SPFB_Signed_Request::verify( (string) $ts, strtoupper( $sig ), $raw, $secret, $ts );
 check( 'upper-case signature rejected', 'spat_freescout_invalid_signature' === error_code_of( $r ) );
 
 echo "rate_limited\n";
 $_SERVER['REMOTE_ADDR'] = '203.0.113.9';
-check( 'call 1 allowed', false === SPAT_Signed_Request::rate_limited( 't_', 3 ) );
-check( 'call 2 allowed', false === SPAT_Signed_Request::rate_limited( 't_', 3 ) );
-check( 'call 3 allowed', false === SPAT_Signed_Request::rate_limited( 't_', 3 ) );
-check( 'call 4 limited', true === SPAT_Signed_Request::rate_limited( 't_', 3 ) );
-check( 'other prefix has own bucket', false === SPAT_Signed_Request::rate_limited( 'u_', 3 ) );
+check( 'call 1 allowed', false === SPFB_Signed_Request::rate_limited( 't_', 3 ) );
+check( 'call 2 allowed', false === SPFB_Signed_Request::rate_limited( 't_', 3 ) );
+check( 'call 3 allowed', false === SPFB_Signed_Request::rate_limited( 't_', 3 ) );
+check( 'call 4 limited', true === SPFB_Signed_Request::rate_limited( 't_', 3 ) );
+check( 'other prefix has own bucket', false === SPFB_Signed_Request::rate_limited( 'u_', 3 ) );
 $_SERVER['REMOTE_ADDR'] = '203.0.113.10';
-check( 'other IP has own bucket', false === SPAT_Signed_Request::rate_limited( 't_', 3 ) );
+check( 'other IP has own bucket', false === SPFB_Signed_Request::rate_limited( 't_', 3 ) );
 
 echo "rate_limited with a persistent object cache\n";
 $GLOBALS['spat_ext_cache']  = true;
 $GLOBALS['spat_transients'] = array();
 $_SERVER['REMOTE_ADDR']     = '203.0.113.11';
-check( 'cache: call 1 allowed', false === SPAT_Signed_Request::rate_limited( 'c_', 3 ) );
-check( 'cache: call 2 allowed', false === SPAT_Signed_Request::rate_limited( 'c_', 3 ) );
-check( 'cache: call 3 allowed', false === SPAT_Signed_Request::rate_limited( 'c_', 3 ) );
-check( 'cache: call 4 limited', true === SPAT_Signed_Request::rate_limited( 'c_', 3 ) );
+check( 'cache: call 1 allowed', false === SPFB_Signed_Request::rate_limited( 'c_', 3 ) );
+check( 'cache: call 2 allowed', false === SPFB_Signed_Request::rate_limited( 'c_', 3 ) );
+check( 'cache: call 3 allowed', false === SPFB_Signed_Request::rate_limited( 'c_', 3 ) );
+check( 'cache: call 4 limited', true === SPFB_Signed_Request::rate_limited( 'c_', 3 ) );
 $counts = array_values( $GLOBALS['spat_cache']['spat_rate_limit'] ?? array() );
 check( 'cache: counted with an atomic increment, no transient written', array( 4 ) === $counts && array() === $GLOBALS['spat_transients'] );
 $GLOBALS['spat_ext_cache'] = false;

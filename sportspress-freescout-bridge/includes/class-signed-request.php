@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Scheme: lower-case hex sha256 HMAC over "<timestamp>.<raw-body>", sent with
  * an epoch-seconds timestamp that must fall within a symmetric window.
  */
-final class SPAT_Signed_Request {
+final class SPFB_Signed_Request {
 
 	/**
 	 * Compute the signature for a request.

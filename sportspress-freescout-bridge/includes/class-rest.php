@@ -2,7 +2,7 @@
 /**
  * REST routes the FreeScout bridge calls to show league data in a ticket.
  *
- * Authentication is the shared-secret HMAC (SPAT_Signed_Request), not a WP
+ * Authentication is the shared-secret HMAC (SPFB_Signed_Request), not a WP
  * session, so the routes are public at the permission_callback level.
  *
  * @author Cody (lusky3)
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class SPAT_FreeScout_REST {
+class SPFB_REST {
 
 	const SECRET_OPTION = 'spat_freescout_secret';
 
@@ -135,10 +135,10 @@ class SPAT_FreeScout_REST {
 	}
 
 	/**
-	 * Guard, decode the body, then hand it to SPAT_FreeScout_Actions.
+	 * Guard, decode the body, then hand it to SPFB_Actions.
 	 *
 	 * @param WP_REST_Request $request Request.
-	 * @param string          $method  SPAT_FreeScout_Actions method.
+	 * @param string          $method  SPFB_Actions method.
 	 * @return WP_REST_Response|WP_Error
 	 */
 	private function run_actions_call( $request, string $method ) {
@@ -152,7 +152,7 @@ class SPAT_FreeScout_REST {
 			return new WP_Error( 'spat_freescout_bad_request', 'A JSON body is required.', array( 'status' => 400 ) );
 		}
 
-		$result = SPAT_FreeScout_Actions::$method( $body );
+		$result = SPFB_Actions::$method( $body );
 		return is_wp_error( $result ) ? $result : new WP_REST_Response( $result, 200 );
 	}
 
@@ -168,7 +168,7 @@ class SPAT_FreeScout_REST {
 			return new WP_Error( 'spat_freescout_not_configured', 'FreeScout integration is not configured.', array( 'status' => 503 ) );
 		}
 
-		$verified = SPAT_Signed_Request::verify(
+		$verified = SPFB_Signed_Request::verify(
 			(string) $request->get_header( 'x-spat-timestamp' ),
 			(string) $request->get_header( 'x-spat-signature' ),
 			(string) $request->get_body(),
@@ -178,7 +178,7 @@ class SPAT_FreeScout_REST {
 			return $verified;
 		}
 
-		if ( SPAT_Signed_Request::rate_limited( 'spat_rl_freescout_', 60 ) ) {
+		if ( SPFB_Signed_Request::rate_limited( 'spat_rl_freescout_', 60 ) ) {
 			return new WP_Error( 'spat_freescout_rate_limited', 'Too many requests.', array( 'status' => 429 ) );
 		}
 

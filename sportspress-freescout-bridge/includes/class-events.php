@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class SPAT_FreeScout_Events {
+class SPFB_Events {
 
 	const SEND_HOOK   = 'spat_freescout_send';
 	const SWEEP_HOOK  = 'spat_freescout_events_sweep';
@@ -53,6 +53,42 @@ class SPAT_FreeScout_Events {
 	public static function table(): string {
 		global $wpdb;
 		return $wpdb->prefix . 'spat_freescout_outbox';
+	}
+
+	/**
+	 * Create the FreeScout event outbox. Called lazily by ensure_table(): the
+	 * schema is not tied to a plugin migration, so an installed site gets the
+	 * table the first time it is needed. dbDelta is idempotent, which makes
+	 * calling this twice harmless. Same table and schema SportsPress Admin
+	 * Tools created before 1.3.0.
+	 */
+	public static function create_table(): void {
+		global $wpdb;
+
+		$table_name      = $wpdb->prefix . 'spat_freescout_outbox';
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// All datetimes are UTC. email is 191 so the column could be indexed on
+		// utf8mb4 without a prefix; status+next_attempt_at serves the sweep.
+		$sql = "CREATE TABLE $table_name (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            event_id char(36) NOT NULL,
+            type varchar(64) NOT NULL,
+            email varchar(191) NOT NULL DEFAULT '',
+            payload longtext NOT NULL,
+            status varchar(10) NOT NULL DEFAULT 'pending',
+            attempts tinyint(3) unsigned NOT NULL DEFAULT 0,
+            next_attempt_at datetime NOT NULL,
+            last_error varchar(255) NOT NULL DEFAULT '',
+            created_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY event_id (event_id),
+            KEY status_next (status, next_attempt_at)
+        ) $charset_collate;";
+
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta( $sql );
 	}
 
 	/**
@@ -112,19 +148,19 @@ class SPAT_FreeScout_Events {
 	 * Events are on, and both the endpoint URL and a usable secret are set.
 	 */
 	public static function is_active(): bool {
-		return '1' === (string) get_option( SPAT_FreeScout_REST::EVENTS_ENABLED_OPTION, '0' )
+		return '1' === (string) get_option( SPFB_REST::EVENTS_ENABLED_OPTION, '0' )
 			&& '' !== self::url()
 			&& '' !== self::secret();
 	}
 
 	private static function url(): string {
-		$url = trim( (string) get_option( SPAT_FreeScout_REST::EVENTS_URL_OPTION, '' ) );
+		$url = trim( (string) get_option( SPFB_REST::EVENTS_URL_OPTION, '' ) );
 		return preg_match( '#^https?://#i', $url ) ? $url : '';
 	}
 
 	private static function secret(): string {
-		$secret = (string) get_option( SPAT_FreeScout_REST::SECRET_OPTION, '' );
-		return strlen( $secret ) >= SPAT_FreeScout_REST::MIN_SECRET_LENGTH ? $secret : '';
+		$secret = (string) get_option( SPFB_REST::SECRET_OPTION, '' );
+		return strlen( $secret ) >= SPFB_REST::MIN_SECRET_LENGTH ? $secret : '';
 	}
 
 	// -----------------------------------------------------------------------
@@ -411,7 +447,7 @@ class SPAT_FreeScout_Events {
 				'headers'     => array(
 					'Content-Type'     => 'application/json',
 					'X-SPAT-Timestamp' => $timestamp,
-					'X-SPAT-Signature' => SPAT_Signed_Request::sign( $timestamp, $body, $secret ),
+					'X-SPAT-Signature' => SPFB_Signed_Request::sign( $timestamp, $body, $secret ),
 				),
 				'body'        => $body,
 			)
@@ -611,7 +647,7 @@ class SPAT_FreeScout_Events {
 		};
 
 		if ( ! $exists() ) {
-			SPAT_Database::create_outbox_table();
+			self::create_table();
 			if ( ! $exists() ) {
 				return false;
 			}
