@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - '**/*.php'
+      - '.github/workflows/wp-plugin-check.yml'
   pull_request:
     branches: [main]
     paths:
       - '**/*.php'
+      - '.github/workflows/wp-plugin-check.yml'
 
 # Least-privilege default token: this workflow only needs to read the repo.
 permissions:
