@@ -39,13 +39,16 @@ jobs:
       # plugin) are activated, and the whole suite is mapped into the site so
       # `wp plugin check` can analyse each plugin — active or not — with the
       # parent present.
+      # Plugin Check is pinned: `latest-stable` let a new release (2.2.0 added the
+      # React usage check) turn CI red with no change in this repo. Bump the
+      # version below deliberately; Dependabot cannot see it.
       - name: Configure wp-env
         run: |
           cat > .wp-env.json <<'JSON'
           {
             "plugins": [
               "./sportspress-admin-tools",
-              "https://downloads.wordpress.org/plugin/plugin-check.latest-stable.zip"
+              "https://downloads.wordpress.org/plugin/plugin-check.2.2.0.zip"
             ],
             "mappings": {
               "wp-content/plugins/sportspress-player-app": "./sportspress-player-app",
@@ -69,18 +72,30 @@ jobs:
       # tests/ and docs/ are out of scope, and so are
       # Player App's un-built app/ source and node_modules/ (its .distignore keeps
       # them out of the zip; the committed build/ is what ships and is checked).
+      #
+      # Player App only: inlined_react_dom is ignored. Its build/ bundles React
+      # 19.3.1 on purpose: the app is a standalone PWA served by its own shell
+      # (includes/class-app-shell.php), where WordPress's scripts are never
+      # loaded, so there is no wp.element React to externalize to. The check
+      # misreads the bundle as pre-React-19 (it carries React 19's own
+      # "19.3.1" version guard). Every other check still runs on it.
       - name: Run Plugin Check on all suite plugins
         run: |
           set -uo pipefail
           plugins="sportspress-admin-tools sportspress-player-app sportspress-etransfer-automation sportspress-events-manager sportspress-league-manager sportspress-player-registration sportspress-player-tools sportspress-schedule-generator sportspress-score-sheets"
           fail=0
           for p in $plugins; do
+            ignore_codes=""
+            if [ "$p" = "sportspress-player-app" ]; then
+              ignore_codes="inlined_react_dom"
+            fi
             echo "::group::Plugin Check: $p"
             out=$(npx --yes @wordpress/env@11.12.0 run cli wp plugin check "$p" \
               --categories=general \
               --exclude-directories=tests,docs,app,node_modules \
               --ignore-warnings \
               --exclude-checks=i18n_usage \
+              ${ignore_codes:+--ignore-codes=$ignore_codes} \
               --format=csv 2>/dev/null)
             echo "$out"
             if printf '%s\n' "$out" | grep -q ',ERROR,'; then
