@@ -33,6 +33,15 @@
     "katex": ">=0.18.2",
     "markdownlint-cli": {
       "js-yaml": ">=5.4.1"
+    },
+    "eslint-plugin-import": {
+      "minimatch": "^3.1.4"
+    },
+    "eslint-plugin-jsx-a11y": {
+      "minimatch": "^3.1.4"
+    },
+    "eslint-plugin-react": {
+      "minimatch": "^3.1.4"
     }
   }
 }
