@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SportsPress Admin Tools
  * Description: Administrative tools for SportsPress
- * Version: 1.2.1
+ * Version: 1.3.0
  * Author: Cody (lusky3)
  * Text Domain: sportspress-admin-tools
  * Requires at least: 5.0
@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // Define plugin constants
 define( 'SPAT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPAT_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPAT_VERSION', '1.2.1' );
+define( 'SPAT_VERSION', '1.3.0' );
 
 // Native WordPress updates, served from this repository's releases.
 //
@@ -91,7 +91,6 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 			spl_autoload_register( array( __CLASS__, 'autoload' ) );
 			add_action( 'plugins_loaded', array( $this, 'init' ) );
 			register_activation_hook( __FILE__, array( $this, 'activate' ) );
-			register_deactivation_hook( __FILE__, array( $this, 'deactivate' ) );
 		}
 
 		public static function autoload( $class ): void {
@@ -104,12 +103,6 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 			// Load core classes needed everywhere
 			require_once SPAT_PLUGIN_PATH . 'includes/class-database.php';
 			require_once SPAT_PLUGIN_PATH . 'includes/class-plugin-manager.php';
-			require_once SPAT_PLUGIN_PATH . 'includes/class-signed-request.php';
-			require_once SPAT_PLUGIN_PATH . 'includes/class-freescout-rest.php';
-			require_once SPAT_PLUGIN_PATH . 'includes/class-freescout-actions.php';
-			( new SPAT_FreeScout_REST() )->register();
-			require_once SPAT_PLUGIN_PATH . 'includes/class-freescout-events.php';
-			( new SPAT_FreeScout_Events() )->register();
 
 			// Schema migration and one-time backfills are maintenance work that only
 			// needs to happen where an operator or the scheduler can observe it.
@@ -250,15 +243,6 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 
 			// Note: child plugins should not depend on a parent-fired activation signal;
 			// they perform their own setup on their own activation hook.
-		}
-
-		/**
-		 * Stop the FreeScout cron events. Queued outbox rows are kept; the
-		 * rescue is scheduled again on the next load after reactivation.
-		 */
-		public function deactivate(): void {
-			require_once SPAT_PLUGIN_PATH . 'includes/class-freescout-events.php';
-			SPAT_FreeScout_Events::unschedule_all();
 		}
 	}
 
