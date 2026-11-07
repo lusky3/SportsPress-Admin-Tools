@@ -5,7 +5,7 @@ Requires at least: 5.0
 Tested up to: 6.9
 Requires PHP: 8.1
 Requires Plugins: sportspress-admin-tools
-Stable tag: 1.6.0
+Stable tag: 1.6.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -42,6 +42,9 @@ CSV files must have "Team" and "Name" columns. Player names are automatically cl
 Yes. The batch list creator supports both "Create new" and "Update existing" modes. Update mode finds lists matching team and season, then replaces players.
 
 == Changelog ==
+
+= 1.6.1 =
+* Fix: the captain "C" badge shows on a team's player list again. It was added through a hook that current SportsPress no longer fires, so no list showed it. It is now added through the player list's table data, and the original hook still works on older SportsPress.
 
 = 1.6.0 =
 * New: the FreeScout ticket sidebar shows the customer's player card: team, division, number, position, skill level, captain, next game and WordPress account.

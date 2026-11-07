@@ -25,6 +25,10 @@ class SPT_Player_Modifications {
 		// PT2/F13: same fix for the captain meta box, which only applies to sp_list.
 		add_action( 'save_post_sp_list', array( $this, 'save_captain_meta' ) );
 		add_filter( 'sportspress_list_player_name', array( $this, 'add_captain_indicator' ), 10, 3 );
+		// SportsPress builds a player list's name cells with get_the_title() and does
+		// not fire the filter above, so the badge is also added to the table data
+		// the player list template does filter.
+		add_filter( 'sportspress_player_list_data', array( $this, 'add_captain_to_list_data' ), 10, 2 );
 		add_action( 'wp_enqueue_scripts', array( $this, 'add_captain_css' ) );
 
 		// PT3/F3: surface invalid-email feedback after save_email_meta() rejects a write.
@@ -200,10 +204,28 @@ class SPT_Player_Modifications {
 		}
 	}
 
+	/**
+	 * Put the captain badge on the captain's row of a player list's table data.
+	 *
+	 * @param array $data    Rows keyed by player ID (row 0 holds the column labels).
+	 * @param int   $list_id The sp_list being rendered.
+	 * @return array
+	 */
+	public function add_captain_to_list_data( $data, $list_id ) {
+		$captain_id = (int) get_post_meta( $list_id, 'spt_captain', true );
+
+		if ( $captain_id > 0 && is_array( $data ) && isset( $data[ $captain_id ]['name'] ) ) {
+			$data[ $captain_id ]['name'] = $this->add_captain_indicator( $data[ $captain_id ]['name'], $captain_id, $list_id );
+		}
+
+		return $data;
+	}
+
 	public function add_captain_indicator( $name, $player_id, $list_id ) {
 		$captain_id = get_post_meta( $list_id, 'spt_captain', true );
 
-		if ( $captain_id && (int) $captain_id === (int) $player_id ) {
+		// A name that already carries the badge (both hooks fired) is left alone.
+		if ( $captain_id && (int) $captain_id === (int) $player_id && false === strpos( $name, 'spt-captain-indicator' ) ) {
 			$indicator_text = apply_filters( 'spt_captain_indicator_text', 'C' );
 			$name .= ' <span class="spt-captain-indicator" title="' . esc_attr__( 'Captain', 'sportspress-player-tools' ) . '">' . esc_html( $indicator_text ) . '</span>';
 
