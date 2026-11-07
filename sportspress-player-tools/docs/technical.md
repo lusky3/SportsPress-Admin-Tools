@@ -124,6 +124,8 @@ spt_captain => 103396
 - Filter: `sportspress_list_player_name`
 - Adds `<span class="spt-captain-indicator">C</span>` after captain's name
 - Customizable via `spt_captain_indicator_text` filter
+- SportsPress Pro 2.7.31 does not fire `sportspress_list_player_name`; the badge is also added through `sportspress_player_list_data` (core player list template)
+- Themes with their own roster markup: `apply_filters( 'spt_roster_captain_indicator', '', $player_id, $list_id )` returns the badge for the list's captain and `''` for everyone else
 
 ### Player Email
 

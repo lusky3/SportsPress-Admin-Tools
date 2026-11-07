@@ -85,6 +85,19 @@ cb_assert( 1 === substr_count( $twice[22]['name'], 'spt-captain-indicator' ), 'a
 $via_old = $mods->add_captain_indicator( $out[22]['name'], 22, 500 );
 cb_assert( 1 === substr_count( $via_old, 'spt-captain-indicator' ), 'the original filter does not double it either' );
 
+// The slot a theme with its own roster markup asks for.
+$slot = $GLOBALS['cb_filters']['spt_roster_captain_indicator'] ?? array();
+cb_assert(
+	1 === count( $slot ) && array( $mods, 'roster_captain_indicator' ) == $slot[0][0] && 3 === $slot[0][2],
+	'spt_roster_captain_indicator is registered with player and list arguments'
+);
+$html = $mods->roster_captain_indicator( '', 22, 500 );
+cb_assert( 0 === strpos( $html, '<span class="spt-captain-indicator"' ) && false !== strpos( $html, '>C</span>' ), 'the captain gets the badge markup, with no name attached' );
+cb_assert( '' === $mods->roster_captain_indicator( '', 11, 500 ), 'a player who is not the captain gets nothing' );
+cb_assert( '' === $mods->roster_captain_indicator( '', 22, 501 ), 'a list with no captain gives nothing' );
+cb_assert( 'x' === $mods->roster_captain_indicator( 'x', 11, 500 ), 'markup passed in is returned unchanged when there is no badge' );
+cb_assert( 1 === substr_count( $mods->roster_captain_indicator( '', 22, 500 ), 'spt-captain-indicator' ), 'the badge appears once' );
+
 // No captain / captain not on this list's table / unexpected data.
 $none = $mods->add_captain_to_list_data( $data, 501 );
 cb_assert( $data === $none, 'a list with no captain is returned unchanged' );

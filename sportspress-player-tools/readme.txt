@@ -44,7 +44,7 @@ Yes. The batch list creator supports both "Create new" and "Update existing" mod
 == Changelog ==
 
 = 1.6.1 =
-* Fix: the captain "C" badge shows on a team's player list again. It was added through a hook that current SportsPress no longer fires, so no list showed it. It is now added through the player list's table data, and the original hook still works on older SportsPress.
+* Fix: the captain "C" badge was added through a hook that current SportsPress does not fire, so no list showed it. It is now also added through the player list's table data, and a theme that prints its own roster can ask for the badge with the new `spt_roster_captain_indicator` filter: `apply_filters( 'spt_roster_captain_indicator', '', $player_id, $list_id )`. The original hook still works on older SportsPress.
 
 = 1.6.0 =
 * New: the FreeScout ticket sidebar shows the customer's player card: team, division, number, position, skill level, captain, next game and WordPress account.

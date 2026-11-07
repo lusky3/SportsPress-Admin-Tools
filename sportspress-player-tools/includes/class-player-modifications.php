@@ -29,6 +29,9 @@ class SPT_Player_Modifications {
 		// not fire the filter above, so the badge is also added to the table data
 		// the player list template does filter.
 		add_filter( 'sportspress_player_list_data', array( $this, 'add_captain_to_list_data' ), 10, 2 );
+		// For themes that print their own roster markup (and strip tags from the
+		// name): they ask for the badge here instead of relying on either hook above.
+		add_filter( 'spt_roster_captain_indicator', array( $this, 'roster_captain_indicator' ), 10, 3 );
 		add_action( 'wp_enqueue_scripts', array( $this, 'add_captain_css' ) );
 
 		// PT3/F3: surface invalid-email feedback after save_email_meta() rejects a write.
@@ -219,6 +222,24 @@ class SPT_Player_Modifications {
 		}
 
 		return $data;
+	}
+
+	/**
+	 * The captain badge for one player on one list, for a theme's own roster markup.
+	 *
+	 * A theme prints `apply_filters( 'spt_roster_captain_indicator', '', $player_id, $list_id )`
+	 * next to the player's name; this answers with the badge when that player is the
+	 * list's captain, and with the value it was given otherwise.
+	 *
+	 * @param string $html      Markup so far (normally '').
+	 * @param int    $player_id Player post ID.
+	 * @param int    $list_id   The sp_list the roster row belongs to.
+	 * @return string
+	 */
+	public function roster_captain_indicator( $html, $player_id, $list_id ) {
+		$badge = trim( $this->add_captain_indicator( '', $player_id, $list_id ) );
+
+		return '' === $badge ? $html : $html . $badge;
 	}
 
 	public function add_captain_indicator( $name, $player_id, $list_id ) {
