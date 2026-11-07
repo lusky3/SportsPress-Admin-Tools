@@ -27,6 +27,7 @@ composer.json
 composer.lock
 package.json
 package-lock.json
+osv-scanner.toml
 phpcs.xml
 phpunit.xml
 phpunit.xml.dist
