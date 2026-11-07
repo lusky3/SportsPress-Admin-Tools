@@ -206,7 +206,7 @@ class SPT_Player_Modifications {
 
 		$captain_id = intval( $_POST['spt_captain'] );
 
-		if ( $this->captain_box_untouched( $captain_id ) ) {
+		if ( $this->captain_box_untouched( $captain_id, wp_unslash( $_POST['spt_captain_shown'] ?? null ) ) ) {
 			return;
 		}
 
@@ -226,14 +226,14 @@ class SPT_Player_Modifications {
 	 * same save, which can carry last season's captain onto the list
 	 * (SPT_Captain_Carryover); a blank box rendered before that must not wipe it.
 	 * Forms without the field (older cached screens) count as touched, which keeps
-	 * the old behaviour. The caller has already verified the nonce.
+	 * the old behaviour.
 	 *
-	 * @param int $captain_id Captain ID submitted (0 for none).
+	 * @param int   $captain_id Captain ID submitted (0 for none).
+	 * @param mixed $shown      The box's raw `spt_captain_shown` value, null when absent.
 	 * @return bool
 	 */
-	private function captain_box_untouched( $captain_id ) {
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- verified in save_captain_meta().
-		return isset( $_POST['spt_captain_shown'] ) && intval( $_POST['spt_captain_shown'] ) === $captain_id;
+	private function captain_box_untouched( $captain_id, $shown ) {
+		return null !== $shown && intval( sanitize_text_field( (string) $shown ) ) === $captain_id;
 	}
 
 	/**
