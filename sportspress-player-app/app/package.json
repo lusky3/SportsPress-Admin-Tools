@@ -36,5 +36,9 @@
     "vite-plugin-singlefile": "2.3.4",
     "vitest": "4.1.12",
     "workbox-build": "7.4.1"
+  },
+  "overrides": {
+    "minimatch": "^11.0.1",
+    "glob": "^14.0.2"
   }
 }
