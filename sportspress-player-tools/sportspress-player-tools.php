@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SportsPress Player Tools (Child Plugin)
  * Description: Child plugin for SportsPress Admin Tools - Player Tools modules
- * Version: 1.6.0
+ * Version: 1.6.1
  * Author: Cody (lusky3)
  * Text Domain: sportspress-player-tools
  * License: GPL v2 or later
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'SPT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SPT_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'SPT_VERSION', '1.6.0' );
+define( 'SPT_VERSION', '1.6.1' );
 
 // Native WordPress updates, served from this repository's releases.
 //
@@ -43,6 +43,9 @@ class SportsPress_Player_Tools {
 
 	/** @var SPT_Player_Modifications|null */
 	private $player_modifications;
+
+	/** @var SPT_Captain_Carryover|null */
+	private $captain_carryover;
 
 	/** @var SPT_Player_Profile_Picture|null */
 	private $player_profile_picture;
@@ -215,6 +218,8 @@ class SportsPress_Player_Tools {
 	private function load_player_modifications( $enabled_modules ) {
 		require_once SPT_PLUGIN_PATH . 'includes/class-player-modifications.php';
 		$this->player_modifications = new SPT_Player_Modifications();
+		require_once SPT_PLUGIN_PATH . 'includes/class-captain-carryover.php';
+		$this->captain_carryover = new SPT_Captain_Carryover();
 
 		if ( SPAT_Plugin_Manager::is_module_enabled( 'player_modifications' ) ) {
 			require_once SPT_PLUGIN_PATH . 'includes/class-freescout-provider.php';

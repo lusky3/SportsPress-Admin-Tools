@@ -25,6 +25,13 @@ class SPT_Player_Modifications {
 		// PT2/F13: same fix for the captain meta box, which only applies to sp_list.
 		add_action( 'save_post_sp_list', array( $this, 'save_captain_meta' ) );
 		add_filter( 'sportspress_list_player_name', array( $this, 'add_captain_indicator' ), 10, 3 );
+		// SportsPress builds a player list's name cells with get_the_title() and does
+		// not fire the filter above, so the badge is also added to the table data
+		// the player list template does filter.
+		add_filter( 'sportspress_player_list_data', array( $this, 'add_captain_to_list_data' ), 10, 2 );
+		// For themes that print their own roster markup (and strip tags from the
+		// name): they ask for the badge here instead of relying on either hook above.
+		add_filter( 'spt_roster_captain_indicator', array( $this, 'roster_captain_indicator' ), 10, 3 );
 		add_action( 'wp_enqueue_scripts', array( $this, 'add_captain_css' ) );
 
 		// PT3/F3: surface invalid-email feedback after save_email_meta() rejects a write.
@@ -175,35 +182,102 @@ class SPT_Player_Modifications {
 		}
 
 		echo '</select>';
+		// What the box showed, so saving the list without touching the box leaves
+		// the captain alone (see save_captain_meta()).
+		echo '<input type="hidden" name="spt_captain_shown" value="' . esc_attr( (string) $captain_id ) . '" />';
 	}
 
 	public function save_captain_meta( $post_id ) {
-		if ( ! isset( $_POST['spt_captain_meta_nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['spt_captain_meta_nonce'] ) ), 'spt_captain_meta' ) ) {
+		$verified = isset( $_POST['spt_captain_meta_nonce'] )
+			&& wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['spt_captain_meta_nonce'] ) ), 'spt_captain_meta' );
+
+		if ( ! $verified || ! $this->may_edit_list( $post_id ) || ! isset( $_POST['spt_captain'] ) ) {
 			return;
 		}
 
-		if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
+		$captain_id = intval( $_POST['spt_captain'] );
+
+		if ( $this->captain_box_untouched( $captain_id, wp_unslash( $_POST['spt_captain_shown'] ?? null ) ) ) {
 			return;
 		}
 
-		if ( ! current_user_can( 'edit_post', $post_id ) ) {
-			return;
+		if ( $captain_id ) {
+			update_post_meta( $post_id, 'spt_captain', $captain_id );
+		} else {
+			delete_post_meta( $post_id, 'spt_captain' );
+		}
+		// A captain chosen or cleared by hand is final: never carried over again.
+		update_post_meta( $post_id, '_spt_captain_carried', '1' );
+	}
+
+	/**
+	 * Whether this save may change the list's captain: not an autosave, and the
+	 * user can edit the list.
+	 *
+	 * @param int $post_id List post ID.
+	 * @return bool
+	 */
+	private function may_edit_list( $post_id ) {
+		return ! ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) && current_user_can( 'edit_post', $post_id );
+	}
+
+	/**
+	 * Whether the Captain Selection box was saved with the value it showed.
+	 *
+	 * An untouched box is not a decision. SportsPress re-adds every player on the
+	 * same save, which can carry last season's captain onto the list
+	 * (SPT_Captain_Carryover); a blank box rendered before that must not wipe it.
+	 * Forms without the field (older cached screens) count as touched, which keeps
+	 * the old behaviour.
+	 *
+	 * @param int   $captain_id Captain ID submitted (0 for none).
+	 * @param mixed $shown      The box's raw `spt_captain_shown` value, null when absent.
+	 * @return bool
+	 */
+	private function captain_box_untouched( $captain_id, $shown ) {
+		return null !== $shown && intval( sanitize_text_field( (string) $shown ) ) === $captain_id;
+	}
+
+	/**
+	 * Put the captain badge on the captain's row of a player list's table data.
+	 *
+	 * @param array $data    Rows keyed by player ID (row 0 holds the column labels).
+	 * @param int   $list_id The sp_list being rendered.
+	 * @return array
+	 */
+	public function add_captain_to_list_data( $data, $list_id ) {
+		$captain_id = (int) get_post_meta( $list_id, 'spt_captain', true );
+
+		if ( $captain_id > 0 && is_array( $data ) && isset( $data[ $captain_id ]['name'] ) ) {
+			$data[ $captain_id ]['name'] = $this->add_captain_indicator( $data[ $captain_id ]['name'], $captain_id, $list_id );
 		}
 
-		if ( isset( $_POST['spt_captain'] ) ) {
-			$captain_id = intval( $_POST['spt_captain'] );
-			if ( $captain_id ) {
-				update_post_meta( $post_id, 'spt_captain', $captain_id );
-			} else {
-				delete_post_meta( $post_id, 'spt_captain' );
-			}
-		}
+		return $data;
+	}
+
+	/**
+	 * The captain badge for one player on one list, for a theme's own roster markup.
+	 *
+	 * A theme prints `apply_filters( 'spt_roster_captain_indicator', '', $player_id, $list_id )`
+	 * next to the player's name; this answers with the badge when that player is the
+	 * list's captain, and with the value it was given otherwise.
+	 *
+	 * @param string $html      Markup so far (normally '').
+	 * @param int    $player_id Player post ID.
+	 * @param int    $list_id   The sp_list the roster row belongs to.
+	 * @return string
+	 */
+	public function roster_captain_indicator( $html, $player_id, $list_id ) {
+		$badge = trim( $this->add_captain_indicator( '', $player_id, $list_id ) );
+
+		return '' === $badge ? $html : $html . $badge;
 	}
 
 	public function add_captain_indicator( $name, $player_id, $list_id ) {
 		$captain_id = get_post_meta( $list_id, 'spt_captain', true );
 
-		if ( $captain_id && (int) $captain_id === (int) $player_id ) {
+		// A name that already carries the badge (both hooks fired) is left alone.
+		if ( $captain_id && (int) $captain_id === (int) $player_id && false === strpos( $name, 'spt-captain-indicator' ) ) {
 			$indicator_text = apply_filters( 'spt_captain_indicator_text', 'C' );
 			$name .= ' <span class="spt-captain-indicator" title="' . esc_attr__( 'Captain', 'sportspress-player-tools' ) . '">' . esc_html( $indicator_text ) . '</span>';
 

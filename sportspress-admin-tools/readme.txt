@@ -4,7 +4,7 @@ Tags: sportspress, automation, sports
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 8.1
-Stable tag: 1.2.0
+Stable tag: 1.2.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -31,6 +31,9 @@ Each child plugin registers with this parent and loads only when its module is e
 2. Activate the plugin through the 'Plugins' screen in WordPress
 
 == Changelog ==
+
+= 1.2.1 =
+* Change: the Health dashboard lists the Player App among the child plugins.
 
 = 1.2.0 =
 * New: FreeScout bridge. A signed REST API (`spat/v1/freescout`) lets the FreeScout "ARL League" module show a customer's league details on a helpdesk ticket and act on them. Every action is previewed before it runs, runs as the agent's own WordPress account with that account's permissions, and is safe to retry.
