@@ -44,6 +44,9 @@ class SportsPress_Player_Tools {
 	/** @var SPT_Player_Modifications|null */
 	private $player_modifications;
 
+	/** @var SPT_Captain_Carryover|null */
+	private $captain_carryover;
+
 	/** @var SPT_Player_Profile_Picture|null */
 	private $player_profile_picture;
 
@@ -216,7 +219,7 @@ class SportsPress_Player_Tools {
 		require_once SPT_PLUGIN_PATH . 'includes/class-player-modifications.php';
 		$this->player_modifications = new SPT_Player_Modifications();
 		require_once SPT_PLUGIN_PATH . 'includes/class-captain-carryover.php';
-		new SPT_Captain_Carryover();
+		$this->captain_carryover = new SPT_Captain_Carryover();
 
 		if ( SPAT_Plugin_Manager::is_module_enabled( 'player_modifications' ) ) {
 			require_once SPT_PLUGIN_PATH . 'includes/class-freescout-provider.php';

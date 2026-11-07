@@ -188,19 +188,10 @@ class SPT_Player_Modifications {
 	}
 
 	public function save_captain_meta( $post_id ) {
-		if ( ! isset( $_POST['spt_captain_meta_nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['spt_captain_meta_nonce'] ) ), 'spt_captain_meta' ) ) {
-			return;
-		}
+		$verified = isset( $_POST['spt_captain_meta_nonce'] )
+			&& wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['spt_captain_meta_nonce'] ) ), 'spt_captain_meta' );
 
-		if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
-			return;
-		}
-
-		if ( ! current_user_can( 'edit_post', $post_id ) ) {
-			return;
-		}
-
-		if ( ! isset( $_POST['spt_captain'] ) ) {
+		if ( ! $verified || ! $this->may_edit_list( $post_id ) || ! isset( $_POST['spt_captain'] ) ) {
 			return;
 		}
 
@@ -217,6 +208,17 @@ class SPT_Player_Modifications {
 		}
 		// A captain chosen or cleared by hand is final: never carried over again.
 		update_post_meta( $post_id, '_spt_captain_carried', '1' );
+	}
+
+	/**
+	 * Whether this save may change the list's captain: not an autosave, and the
+	 * user can edit the list.
+	 *
+	 * @param int $post_id List post ID.
+	 * @return bool
+	 */
+	private function may_edit_list( $post_id ) {
+		return ! ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) && current_user_can( 'edit_post', $post_id );
 	}
 
 	/**
