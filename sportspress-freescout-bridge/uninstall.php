@@ -12,6 +12,13 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 	exit;
 }
 
+// While SportsPress Admin Tools older than 1.3.0 still ships the live bridge, it
+// owns the cron jobs, the outbox table and the options. Touch none of them.
+if ( class_exists( 'SPAT_FreeScout_REST', false ) ) {
+	delete_option( 'spfb_module_seeded' );
+	return;
+}
+
 // Stop the sweep, the rescue and any queued sends whether or not data is
 // removed, so no orphaned cron events outlive the plugin.
 require_once __DIR__ . '/includes/class-events.php';

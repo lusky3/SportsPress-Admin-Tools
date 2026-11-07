@@ -36,6 +36,7 @@ Each child plugin registers with this parent and loads only when its module is e
 * Change: the FreeScout bridge moved into its own plugin, SportsPress FreeScout Bridge. Install and activate it BEFORE updating to this version: it stays dormant until then, so the bridge keeps working with no gap. The REST routes, options, outbox table, cron jobs and filters are unchanged; nothing needs to be reconfigured.
 * Change: the FreeScout settings moved from the General tab to a FreeScout Bridge tab provided by that plugin.
 * Change: uninstalling no longer removes the FreeScout secret, outbox table and cron jobs; the new plugin's uninstall does.
+* Change: on a site without the FreeScout Bridge plugin, the old FreeScout cron entries are cleared on the next admin or cron request.
 
 = 1.2.1 =
 * Change: the Health dashboard lists the Player App among the child plugins.

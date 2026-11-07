@@ -90,7 +90,36 @@ if ( ! class_exists( 'SportsPressAdminTools' ) ) {
 		public function __construct() {
 			spl_autoload_register( array( __CLASS__, 'autoload' ) );
 			add_action( 'plugins_loaded', array( $this, 'init' ) );
+			// wp_loaded: after every plugin's plugins_loaded, so the FreeScout
+			// Bridge plugin (priority 20) has booted if it is going to.
+			add_action( 'wp_loaded', array( $this, 'clear_orphaned_freescout_cron' ) );
 			register_activation_hook( __FILE__, array( $this, 'activate' ) );
+		}
+
+		/**
+		 * The FreeScout bridge moved to the SportsPress FreeScout Bridge plugin
+		 * in 1.3.0. A site that updates this plugin without installing that one
+		 * keeps the bridge's old cron entries, which would fire into nothing.
+		 * Clear them, but only when the bridge plugin is not running: its
+		 * SPFB_Events owns these same hook names.
+		 */
+		public function clear_orphaned_freescout_cron(): void {
+			// Maintenance path only, like the schema checks: not every front-end request.
+			if ( ! ( is_admin() || wp_doing_cron() ) || class_exists( 'SPFB_Events', false ) ) {
+				return;
+			}
+			$recurring = array( 'spat_freescout_events_sweep', 'spat_freescout_events_rescue' );
+			$scheduled = false;
+			foreach ( $recurring as $hook ) {
+				if ( wp_next_scheduled( $hook ) ) {
+					$scheduled = true;
+					wp_clear_scheduled_hook( $hook );
+				}
+			}
+			// Queued sends carry args, so they are removed by hook, not by args.
+			if ( $scheduled || wp_next_scheduled( 'spat_freescout_send' ) ) {
+				wp_unschedule_hook( 'spat_freescout_send' );
+			}
 		}
 
 		public static function autoload( $class ): void {

@@ -39,6 +39,10 @@ While SportsPress Admin Tools is older than 1.3.0 it still carries its own copy 
 plugin detects that and stays dormant (registers no routes, cron or settings) and shows a notice. Install
 and activate this plugin first, then update SportsPress Admin Tools; the bridge changes hands with no gap.
 
+## Uninstalling
+
+Uninstall this plugin before SportsPress Admin Tools if you want its data (secret, settings, outbox table) removed: the "remove data on uninstall" choice is stored by the parent and is deleted with it.
+
 ## Development
 
 ```bash

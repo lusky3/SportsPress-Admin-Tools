@@ -28,6 +28,10 @@ Activating the plugin turns the "FreeScout Bridge" module on.
 2. Install and activate this plugin. It does nothing while the installed SportsPress Admin Tools is older than 1.3.0, because that version and earlier still carry their own copy of the bridge; it takes over once the parent is updated.
 3. Open the FreeScout Bridge tab under Settings, SportsPress Admin Tools and check the shared secret and events URL.
 
+= Uninstalling =
+
+Uninstall this plugin before SportsPress Admin Tools if you want its data (secret, settings, outbox table) removed: the "remove data on uninstall" choice is stored by the parent and goes with it.
+
 == Changelog ==
 
 = 1.0.0 =
