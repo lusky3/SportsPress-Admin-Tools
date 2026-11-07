@@ -171,6 +171,21 @@ class SportsPress_FreeScout_Bridge {
 			return;
 		}
 		$loaded = true;
+
+		require_once SPFB_PLUGIN_PATH . 'includes/class-signed-request.php';
+		require_once SPFB_PLUGIN_PATH . 'includes/class-rest.php';
+		require_once SPFB_PLUGIN_PATH . 'includes/class-actions.php';
+		require_once SPFB_PLUGIN_PATH . 'includes/class-events.php';
+
+		$this->rest = new SPFB_REST();
+		$this->rest->register();
+		$this->events = new SPFB_Events();
+		$this->events->register();
+
+		if ( is_admin() ) {
+			require_once SPFB_PLUGIN_PATH . 'includes/class-admin.php';
+			$this->admin = new SPFB_Admin();
+		}
 	}
 
 	private function check_parent_plugin() {
