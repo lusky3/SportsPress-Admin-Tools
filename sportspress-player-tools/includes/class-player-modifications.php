@@ -182,6 +182,9 @@ class SPT_Player_Modifications {
 		}
 
 		echo '</select>';
+		// What the box showed, so saving the list without touching the box leaves
+		// the captain alone (see save_captain_meta()).
+		echo '<input type="hidden" name="spt_captain_shown" value="' . esc_attr( (string) $captain_id ) . '" />';
 	}
 
 	public function save_captain_meta( $post_id ) {
@@ -197,14 +200,40 @@ class SPT_Player_Modifications {
 			return;
 		}
 
-		if ( isset( $_POST['spt_captain'] ) ) {
-			$captain_id = intval( $_POST['spt_captain'] );
-			if ( $captain_id ) {
-				update_post_meta( $post_id, 'spt_captain', $captain_id );
-			} else {
-				delete_post_meta( $post_id, 'spt_captain' );
-			}
+		if ( ! isset( $_POST['spt_captain'] ) ) {
+			return;
 		}
+
+		$captain_id = intval( $_POST['spt_captain'] );
+
+		if ( $this->captain_box_untouched( $captain_id ) ) {
+			return;
+		}
+
+		if ( $captain_id ) {
+			update_post_meta( $post_id, 'spt_captain', $captain_id );
+		} else {
+			delete_post_meta( $post_id, 'spt_captain' );
+		}
+		// A captain chosen or cleared by hand is final: never carried over again.
+		update_post_meta( $post_id, '_spt_captain_carried', '1' );
+	}
+
+	/**
+	 * Whether the Captain Selection box was saved with the value it showed.
+	 *
+	 * An untouched box is not a decision. SportsPress re-adds every player on the
+	 * same save, which can carry last season's captain onto the list
+	 * (SPT_Captain_Carryover); a blank box rendered before that must not wipe it.
+	 * Forms without the field (older cached screens) count as touched, which keeps
+	 * the old behaviour. The caller has already verified the nonce.
+	 *
+	 * @param int $captain_id Captain ID submitted (0 for none).
+	 * @return bool
+	 */
+	private function captain_box_untouched( $captain_id ) {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- verified in save_captain_meta().
+		return isset( $_POST['spt_captain_shown'] ) && intval( $_POST['spt_captain_shown'] ) === $captain_id;
 	}
 
 	/**

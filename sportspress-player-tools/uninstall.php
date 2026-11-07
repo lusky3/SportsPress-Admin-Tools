@@ -35,6 +35,7 @@ $wpdb->delete( $wpdb->postmeta, array( 'meta_key' => 'spt_email' ) );
 // REST endpoint.
 $wpdb->delete( $wpdb->postmeta, array( 'meta_key' => 'spt_captain' ) );
 $wpdb->delete( $wpdb->postmeta, array( 'meta_key' => 'sp_captain' ) );
+$wpdb->delete( $wpdb->postmeta, array( 'meta_key' => '_spt_captain_carried' ) );
 
 // Remove skill level meta
 $wpdb->delete( $wpdb->postmeta, array( 'meta_key' => 'spt_skill_level' ) );

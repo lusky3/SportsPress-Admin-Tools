@@ -18,8 +18,9 @@ function add_action( ...$args ) {}
 function add_filter( $tag, $callback, $priority = 10, $args = 1 ) {
 	$GLOBALS['cb_filters'][ $tag ][] = array( $callback, $priority, $args );
 }
+$GLOBALS['cb_values'] = array(); // tag => value a test makes that filter return
 function apply_filters( $tag, $value ) {
-	return $value;
+	return array_key_exists( $tag, $GLOBALS['cb_values'] ) ? $GLOBALS['cb_values'][ $tag ] : $value;
 }
 function __( $text ) {
 	return $text;
@@ -97,6 +98,10 @@ cb_assert( '' === $mods->roster_captain_indicator( '', 11, 500 ), 'a player who 
 cb_assert( '' === $mods->roster_captain_indicator( '', 22, 501 ), 'a list with no captain gives nothing' );
 cb_assert( 'x' === $mods->roster_captain_indicator( 'x', 11, 500 ), 'markup passed in is returned unchanged when there is no badge' );
 cb_assert( 1 === substr_count( $mods->roster_captain_indicator( '', 22, 500 ), 'spt-captain-indicator' ), 'the badge appears once' );
+$GLOBALS['cb_values']['spt_captain_indicator_text'] = 'CAP';
+$custom = $mods->roster_captain_indicator( '', 22, 500 );
+cb_assert( false !== strpos( $custom, '>CAP</span>' ) && false === strpos( $custom, '>C</span>' ), 'custom indicator text (spt_captain_indicator_text) reaches the theme filter' );
+$GLOBALS['cb_values'] = array();
 
 // No captain / captain not on this list's table / unexpected data.
 $none = $mods->add_captain_to_list_data( $data, 501 );

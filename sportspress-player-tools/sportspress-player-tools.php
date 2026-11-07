@@ -215,6 +215,8 @@ class SportsPress_Player_Tools {
 	private function load_player_modifications( $enabled_modules ) {
 		require_once SPT_PLUGIN_PATH . 'includes/class-player-modifications.php';
 		$this->player_modifications = new SPT_Player_Modifications();
+		require_once SPT_PLUGIN_PATH . 'includes/class-captain-carryover.php';
+		new SPT_Captain_Carryover();
 
 		if ( SPAT_Plugin_Manager::is_module_enabled( 'player_modifications' ) ) {
 			require_once SPT_PLUGIN_PATH . 'includes/class-freescout-provider.php';

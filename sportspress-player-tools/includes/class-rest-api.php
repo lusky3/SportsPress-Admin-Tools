@@ -542,6 +542,9 @@ class SPPT_REST_API {
 				delete_post_meta( $list_id, 'spt_captain' );
 			}
 		}
+		// A captain chosen or cleared by hand is final: SPT_Captain_Carryover never
+		// puts last season's captain back on this list.
+		update_post_meta( $list_id, '_spt_captain_carried', '1' );
 
 		return new WP_REST_Response(
 			array(

@@ -126,6 +126,8 @@ spt_captain => 103396
 - Customizable via `spt_captain_indicator_text` filter
 - SportsPress Pro 2.7.31 does not fire `sportspress_list_player_name`; the badge is also added through `sportspress_player_list_data` (core player list template)
 - Themes with their own roster markup: `apply_filters( 'spt_roster_captain_indicator', '', $player_id, $list_id )` returns the badge for the list's captain and `''` for everyone else
+- Carried to the next season's list by `SPT_Captain_Carryover` (`added_post_meta` on `sp_player`): when last season's captain is added to a list with no captain. Once per list (`_spt_captain_carried`); a captain set or cleared by hand (meta box or `/rosters/set-captain`) is final
+- The meta box saves only when its value is changed (`spt_captain_shown` holds what it showed)
 
 ### Player Email
 
