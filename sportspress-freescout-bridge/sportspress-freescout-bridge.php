@@ -33,6 +33,8 @@ define( 'SPFB_MODULE_ID', 'freescout_bridge' );
  */
 define( 'SPFB_SEEDED_OPTION', 'spfb_module_seeded' );
 
+require_once SPFB_PLUGIN_PATH . 'includes/class-notices.php';
+
 // Native WordPress updates, served from this repository's releases. Deferred to
 // plugins_loaded because the updater lives in the parent plugin and WordPress
 // does not guarantee plugin load order.
@@ -96,7 +98,7 @@ class SportsPress_FreeScout_Bridge {
 
 	public function init() {
 		if ( $this->is_dormant() ) {
-			add_action( 'admin_notices', array( $this, 'dormant_notice' ) );
+			add_action( 'admin_notices', array( 'SPFB_Notices', 'dormant' ) );
 			return;
 		}
 
@@ -117,7 +119,7 @@ class SportsPress_FreeScout_Bridge {
 
 		$this->seed_module_once();
 
-		if ( $this->module_enabled() ) {
+		if ( in_array( SPFB_MODULE_ID, (array) get_option( 'spat_enabled_modules', array() ), true ) ) {
 			$this->load_functionality();
 		}
 	}
@@ -128,19 +130,6 @@ class SportsPress_FreeScout_Bridge {
 	 */
 	public function is_dormant(): bool {
 		return class_exists( 'SPAT_FreeScout_REST', false );
-	}
-
-	public function dormant_notice() {
-		if ( ! current_user_can( 'manage_options' ) ) {
-			return;
-		}
-		echo '<div class="notice notice-info"><p>';
-		echo esc_html__( 'FreeScout Bridge is installed and will take over when SportsPress Admin Tools is updated to 1.3.0.', 'sportspress-freescout-bridge' );
-		echo '</p></div>';
-	}
-
-	private function module_enabled(): bool {
-		return in_array( SPFB_MODULE_ID, (array) get_option( 'spat_enabled_modules', array() ), true );
 	}
 
 	private function enable_module() {
@@ -190,30 +179,18 @@ class SportsPress_FreeScout_Bridge {
 
 	private function check_parent_plugin() {
 		if ( ! class_exists( 'SPAT_Plugin_Manager' ) ) {
-			add_action( 'admin_notices', array( $this, 'parent_plugin_missing_notice' ) );
+			add_action( 'admin_notices', array( 'SPFB_Notices', 'parent_missing' ) );
 			return false;
 		}
 
 		// The bridge reads SPAT_Player, SPAT_Lock, SPAT_Logger and SPAT_VERSION
 		// from the parent; require a declared contract version that has them.
 		if ( ! defined( 'SPAT_CONTRACT_VERSION' ) || version_compare( SPAT_CONTRACT_VERSION, '1.2.0', '<' ) ) {
-			add_action( 'admin_notices', array( $this, 'parent_version_notice' ) );
+			add_action( 'admin_notices', array( 'SPFB_Notices', 'parent_outdated' ) );
 			return false;
 		}
 
 		return true;
-	}
-
-	public function parent_plugin_missing_notice() {
-		echo '<div class="notice notice-error"><p>';
-		echo esc_html__( 'SportsPress FreeScout Bridge requires SportsPress Admin Tools to be installed and activated.', 'sportspress-freescout-bridge' );
-		echo '</p></div>';
-	}
-
-	public function parent_version_notice() {
-		echo '<div class="notice notice-error"><p>';
-		echo esc_html__( 'SportsPress FreeScout Bridge requires a newer version of SportsPress Admin Tools. Please update the parent plugin.', 'sportspress-freescout-bridge' );
-		echo '</p></div>';
 	}
 }
 

@@ -50,6 +50,15 @@ function is_admin() {
 function current_user_can( $cap ) {
 	return $GLOBALS['t_can_manage'];
 }
+function esc_attr( $text ) {
+	return $text;
+}
+function esc_html( $text ) {
+	return $text;
+}
+function __( $text, $domain = 'default' ) {
+	return $text;
+}
 function esc_html__( $text, $domain = 'default' ) {
 	return $text;
 }
@@ -105,9 +114,9 @@ function fresh_request( array $options ) {
 	$GLOBALS['t_is_admin']    = false;
 }
 
-function notice_output( SportsPress_FreeScout_Bridge $plugin ): string {
+function notice_output(): string {
 	ob_start();
-	$plugin->dormant_notice();
+	SPFB_Notices::dormant();
 	return (string) ob_get_clean();
 }
 
@@ -174,9 +183,10 @@ assert_test( array() === $GLOBALS['t_scheduled'] && array() === $GLOBALS['t_clea
 assert_test( empty( $GLOBALS['t_actions']['spat_admin_init_settings'] ) && empty( $GLOBALS['t_actions']['spat_admin_page_tabs'] ), 'registers no settings' );
 assert_test( ! isset( $GLOBALS['t_options'][ SPFB_SEEDED_OPTION ] ), 'and does not seed anything' );
 assert_test( 1 === count( $GLOBALS['t_actions']['admin_notices'] ?? array() ), 'adds a single admin notice' );
-assert_test( false !== strpos( notice_output( $dormant ), 'will take over when SportsPress Admin Tools is updated to 1.3.0' ), 'the notice says it will take over at 1.3.0' );
+assert_test( array( 'SPFB_Notices', 'dormant' ) === ( $GLOBALS['t_actions']['admin_notices'][0][0] ?? null ), 'and it is the dormant notice' );
+assert_test( false !== strpos( notice_output(), 'will take over when SportsPress Admin Tools is updated to 1.3.0' ), 'the notice says it will take over at 1.3.0' );
 $GLOBALS['t_can_manage'] = false;
-assert_test( '' === notice_output( $dormant ), 'the notice is only for users who can manage options' );
+assert_test( '' === notice_output(), 'the notice is only for users who can manage options' );
 
 fresh_request( array() );
 call_user_func( $GLOBALS['t_hooks']['deactivate'][1] );
