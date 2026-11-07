@@ -54,6 +54,7 @@ jobs:
             ],
             "mappings": {
               "wp-content/plugins/sportspress-player-app": "./sportspress-player-app",
+              "wp-content/plugins/sportspress-freescout-bridge": "./sportspress-freescout-bridge",
               "wp-content/plugins/sportspress-etransfer-automation": "./sportspress-etransfer-automation",
               "wp-content/plugins/sportspress-events-manager": "./sportspress-events-manager",
               "wp-content/plugins/sportspress-league-manager": "./sportspress-league-manager",
@@ -84,7 +85,7 @@ jobs:
       - name: Run Plugin Check on all suite plugins
         run: |
           set -uo pipefail
-          plugins="sportspress-admin-tools sportspress-player-app sportspress-etransfer-automation sportspress-events-manager sportspress-league-manager sportspress-player-registration sportspress-player-tools sportspress-schedule-generator sportspress-score-sheets"
+          plugins="sportspress-admin-tools sportspress-player-app sportspress-freescout-bridge sportspress-etransfer-automation sportspress-events-manager sportspress-league-manager sportspress-player-registration sportspress-player-tools sportspress-schedule-generator sportspress-score-sheets"
           fail=0
           for p in $plugins; do
             ignore_codes=""

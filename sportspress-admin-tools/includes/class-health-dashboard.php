@@ -130,6 +130,10 @@ class SPAT_Health_Dashboard {
 				'name' => 'Player App',
 				'module' => 'player_app',
 			),
+			'sportspress-freescout-bridge/sportspress-freescout-bridge.php' => array(
+				'name' => 'FreeScout Bridge',
+				'module' => 'freescout_bridge',
+			),
 		);
 
 		$child_plugins = $this->merge_registered_plugins( $child_plugins );
