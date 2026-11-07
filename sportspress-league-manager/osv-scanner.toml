@@ -35,3 +35,22 @@ Revisit on expiry: check whether @wordpress/scripts has moved off adm-zip or
 a patched release exists. If neither, re-date this entry with a fresh
 assessment rather than removing the expiry.
 """
+
+[[IgnoredVulns]]
+id = "GHSA-gcqx-w48m-w2h4" # deepmerge prototype pollution
+ignoreUntil = 2027-02-05
+reason = """
+Prototype pollution in deepmerge@4.3.1, reachable only through
+@svgr/plugin-svgo, which @wordpress/scripts pulls in at build time. No fixed
+version of deepmerge exists, so a dependency bump cannot resolve it.
+
+Not shipped: dev-only (dev: true in package-lock.json); .distignore strips
+node_modules and the package manifests from the packaged plugin.
+
+Not exploitable here: deepmerge only merges svgo/SVGR configuration that is
+committed to this repo during `npm run build`. It never processes untrusted
+input and never runs on a WordPress site.
+
+Revisit on expiry: check whether a patched deepmerge exists or
+@svgr/plugin-svgo has dropped it.
+"""

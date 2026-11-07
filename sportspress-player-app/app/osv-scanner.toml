@@ -1,0 +1,26 @@
+# OSV-Scanner config -- https://google.github.io/osv-scanner/configuration/
+#
+# OSV-Scanner looks for `osv-scanner.toml` in the SAME DIRECTORY as the
+# lockfile being scanned; it does not walk up. Keep this file next to
+# package-lock.json. Every entry MUST carry an `ignoreUntil` date so the
+# decision is re-examined on a known day.
+
+[[IgnoredVulns]]
+id = "GHSA-gcqx-w48m-w2h4" # deepmerge prototype pollution
+ignoreUntil = 2027-02-05
+reason = """
+Prototype pollution in deepmerge@4.3.1, reachable only through
+@rollup/plugin-node-resolve (via vite-plugin-pwa / workbox-build) during the
+PWA build. No fixed version of deepmerge exists, so a dependency bump cannot
+resolve it.
+
+Not shipped: dev-only (dev: true in package-lock.json); the distributed
+artifact is the compiled build/ bundle, never node_modules.
+
+Not exploitable here: deepmerge only merges bundler configuration committed
+to this repo during `npm run build`. It never processes untrusted input and
+never runs in the browser or on a WordPress site.
+
+Revisit on expiry: check whether a patched deepmerge exists or
+@rollup/plugin-node-resolve has dropped it.
+"""
