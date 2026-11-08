@@ -97,7 +97,7 @@ class SPFB_REST {
 			try {
 				$sections[ $key ] = call_user_func( $provider, $player_ids, $email );
 			} catch ( Throwable $e ) {
-				SPAT_Logger::error( 'freescout', sprintf( 'Provider "%s" failed: %s', $key, $e->getMessage() ) );
+				SPAT_Logger::error( 'freescout', sprintf( 'Provider "%s" failed', $key ), array( 'error' => $e->getMessage() ) );
 				$missing[ $key ] = 'error';
 			}
 		}

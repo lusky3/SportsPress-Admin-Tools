@@ -14,6 +14,8 @@
 - **[player-registration]** A waitlist product is never a registration item: it sits in the Registration category, so a completed waitlist order would have registered the person as a player.
 
 ### Changed
+- **[freescout-bridge]** With verbose logging off, the bridge's error logs no longer include exception text or other detail (event ids, types, remote responses, database errors): the message is a fixed description and the detail is passed as log context, which SPAT's logger writes only when verbose logging is on.
+- **[admin-tools]** Uninstalling admin-tools keeps the `spat_remove_data_on_uninstall` option while another installed plugin still declares `Requires Plugins: sportspress-admin-tools`, so any child plugin's "remove data" uninstall now works whichever order the plugins are uninstalled in.
 - **[admin-tools]** The FreeScout bridge is no longer part of admin-tools (1.3.0): its REST routes, event outbox and cron jobs now come from `sportspress-freescout-bridge`, with the same options, table, hooks and routes. The FreeScout settings moved from a section of the General tab to a FreeScout Bridge tab (same fields, same saved values). Uninstalling admin-tools no longer removes the FreeScout secret, outbox table or cron events; the new plugin's uninstall does. The Health dashboard lists the new plugin.
 - **[admin-tools]** The Health dashboard lists the Player App among the child plugins (added with the Player App, now released as admin-tools 1.2.1).
 - **[league-manager]** The order that puts someone on the waitlist is completed automatically once their entry is recorded (no customer email). Only orders made up entirely of waitlist products with a recorded entry are touched. Disable with the `splm_waitlist_auto_complete_orders` filter.

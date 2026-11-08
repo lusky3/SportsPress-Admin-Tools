@@ -98,7 +98,7 @@ class WP_REST_Request {
 
 class SPAT_Logger {
 	public static function error( $tag, $message, $context = array() ) {
-		$GLOBALS['spat_logged'][] = array( $tag, $message );
+		$GLOBALS['spat_logged'][] = array( $tag, $message, $context );
 	}
 }
 
@@ -212,6 +212,7 @@ check( 'throwing provider is missing=error and absent from sections', 'error' ==
 check( 'unregistered known keys are missing=not_registered', 'not_registered' === ( $data['missing']['etransfers'] ?? '' ) && 'not_registered' === ( $data['missing']['waitlist'] ?? '' ) );
 check( 'missing holds exactly the three problem keys', 3 === count( $data['missing'] ?? array() ) );
 check( 'throw is logged', 1 === count( $GLOBALS['spat_logged'] ) );
+check( 'the provider exception text is in the log context, not the message', 'Provider "registration" failed' === ( $GLOBALS['spat_logged'][0][1] ?? '' ) && array( 'error' => 'boom' ) === ( $GLOBALS['spat_logged'][0][2] ?? null ) );
 
 echo "ping\n";
 $GLOBALS['spat_options']['spat_enabled_modules'] = array( 'player_registration', 'player_modifications' );

@@ -154,8 +154,8 @@ class Mock_Order {
 }
 
 class SPAT_Logger {
-	public static function error( $tag, $message ) {
-		$GLOBALS['t_logged'][] = array( $tag, $message );
+	public static function error( $tag, $message, $context = array() ) {
+		$GLOBALS['t_logged'][] = array( $tag, $message, $context );
 	}
 }
 
@@ -488,8 +488,12 @@ $wpdb->fail_update = true;
 $ev->send( $id );
 assert_test(
 	1 === count( $GLOBALS['t_logged'] ) && 'freescout-events' === $GLOBALS['t_logged'][0][0]
-	&& false !== strpos( $GLOBALS['t_logged'][0][1], $id ) && false !== strpos( $GLOBALS['t_logged'][0][1], 'Deadlock found' ),
-	'a failed row update is logged with the event id and the DB error'
+	&& $id === ( $GLOBALS['t_logged'][0][2]['event_id'] ?? '' ) && false !== strpos( (string) ( $GLOBALS['t_logged'][0][2]['error'] ?? '' ), 'Deadlock found' ),
+	'a failed row update is logged with the event id and the DB error in the context'
+);
+assert_test(
+	false === strpos( $GLOBALS['t_logged'][0][1], $id ) && false === strpos( $GLOBALS['t_logged'][0][1], 'Deadlock found' ),
+	'and neither is in the message, which verbose-off logging always writes'
 );
 
 echo "\n=== Send: permanent failure and guards ===\n";

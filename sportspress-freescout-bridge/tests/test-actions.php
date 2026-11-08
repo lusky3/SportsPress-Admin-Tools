@@ -153,7 +153,7 @@ class SPAT_Lock {
 
 class SPAT_Logger {
 	public static function error( $tag, $message, $context = array() ) {
-		$GLOBALS['spat_logged'][] = array( $tag, $message );
+		$GLOBALS['spat_logged'][] = array( $tag, $message, $context );
 	}
 }
 
@@ -377,6 +377,7 @@ $res                        = $rest->handle_action( signed_request( action_body(
 check( 'throw gives 500 action_failed', 'spat_freescout_action_failed' === code_of( $res ) && 500 === status_of( $res ) );
 check( 'fixed message', 'The action failed in WordPress. Check the SPAT logs.' === $res->get_error_message() );
 check( 'throw is logged', 1 === count( $GLOBALS['spat_logged'] ) );
+check( 'the action exception text is in the log context, not the message', false === strpos( $GLOBALS['spat_logged'][0][1] ?? '', 'boom' ) && 'kaboom' === ( $GLOBALS['spat_logged'][0][2]['error'] ?? '' ) );
 check( 'previous user restored after throw', 7 === $GLOBALS['spat_current'] );
 check( 'failure is not stored', array() === idem_keys() );
 check( 'the lock is released after a throw', array() === SPAT_Lock::$held );
@@ -570,7 +571,7 @@ $GLOBALS['spat_filters']['spat_freescout_queries'][] = function ( $q ) {
 $GLOBALS['spat_logged'] = array();
 $res                    = SPFB_Actions::query( array( 'feature' => 'demo', 'query' => 'throws', 'params' => array() ) );
 check( 'a throwing query gives 500 query_failed', 'spat_freescout_query_failed' === code_of( $res ) && 500 === status_of( $res ) && 'The query failed in WordPress. Check the SPAT logs.' === $res->get_error_message() );
-check( 'and is logged with feature.query and the message', array( array( 'freescout', 'Query "demo.throws" failed: boom' ) ) === $GLOBALS['spat_logged'] );
+check( 'and is logged with feature.query; the exception text goes to context, not the message', array( array( 'freescout', 'Query "demo.throws" failed', array( 'error' => 'boom' ) ) ) === $GLOBALS['spat_logged'] );
 $res = SPFB_Actions::query( array( 'feature' => 'demo', 'query' => 'scalar', 'params' => array() ) );
 check( 'a non-array query result becomes empty results', array( 'results' => array() ) === $res );
 $GLOBALS['spat_filters']['spat_freescout_queries'] = array(

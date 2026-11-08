@@ -236,7 +236,11 @@ class SPFB_Actions {
 				)
 			);
 		} catch ( Throwable $e ) {
-			SPAT_Logger::error( 'freescout', sprintf( 'Action "%s.%s" failed: %s', $request['feature'], $request['action'], $e->getMessage() ) );
+			SPAT_Logger::error(
+				'freescout',
+				sprintf( 'Action "%s.%s" failed', $request['feature'], $request['action'] ),
+				array( 'error' => $e->getMessage() )
+			);
 			return new WP_Error( 'spat_freescout_action_failed', 'The action failed in WordPress. Check the SPAT logs.', array( 'status' => 500 ) );
 		} finally {
 			wp_set_current_user( $previous );
@@ -305,7 +309,11 @@ class SPFB_Actions {
 		try {
 			$results = call_user_func( $handler, $params );
 		} catch ( Throwable $e ) {
-			SPAT_Logger::error( 'freescout', sprintf( 'Query "%s.%s" failed: %s', $feature, $query, $e->getMessage() ) );
+			SPAT_Logger::error(
+				'freescout',
+				sprintf( 'Query "%s.%s" failed', $feature, $query ),
+				array( 'error' => $e->getMessage() )
+			);
 			return new WP_Error( 'spat_freescout_query_failed', 'The query failed in WordPress. Check the SPAT logs.', array( 'status' => 500 ) );
 		}
 
