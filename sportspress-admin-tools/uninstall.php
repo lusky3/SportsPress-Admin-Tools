@@ -10,6 +10,31 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 	exit;
 }
 
+/**
+ * Whether another installed plugin still declares "Requires Plugins:
+ * sportspress-admin-tools". Such a child reads spat_remove_data_on_uninstall in
+ * its own uninstall, so the opt-in must outlive this plugin until it is gone.
+ *
+ * @return bool
+ */
+if ( ! function_exists( 'spat_uninstall_children_remain' ) ) {
+	function spat_uninstall_children_remain(): bool {
+		if ( ! function_exists( 'get_plugins' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		}
+		foreach ( get_plugins() as $file => $data ) {
+			if ( 0 === strpos( $file, 'sportspress-admin-tools/' ) ) {
+				continue;
+			}
+			$required = array_map( 'trim', explode( ',', (string) ( $data['RequiresPlugins'] ?? '' ) ) );
+			if ( in_array( 'sportspress-admin-tools', $required, true ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+}
+
 // Check if user wants to remove data
 if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 	global $wpdb;
@@ -20,7 +45,6 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 		'spat_registration_logs',
 		'spat_role_logs',
 		'spat_temp_data',
-		'spat_freescout_outbox',
 	);
 
 	foreach ( $tables as $table ) {
@@ -55,12 +79,14 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 		'spat_notify_payment_unmatched',
 		'spat_notify_player_registered',
 		'spat_notify_schedule_generated',
-		// FreeScout bridge: the shared HMAC secret, and events.
-		'spat_freescout_secret',
-		'spat_freescout_events_url',
-		'spat_freescout_events_enabled',
-		'spat_freescout_outbox_ready',
 	);
+
+	// The opt-in stays while a child plugin that reads it is still installed;
+	// that child's own uninstall then removes its data. With no child left
+	// the option goes as before.
+	if ( spat_uninstall_children_remain() ) {
+		$options = array_diff( $options, array( 'spat_remove_data_on_uninstall' ) );
+	}
 
 	// Remove options. delete_option returns false when the row was already absent — not an error worth logging.
 	foreach ( $options as $option ) {
@@ -91,26 +117,8 @@ if ( get_option( 'spat_remove_data_on_uninstall', '0' ) === '1' ) {
 		)
 	);
 
-	// FreeScout transients, keyed by hash: stored action responses for
-	// idempotency (spat_fs_idem_*, SPAT_FreeScout_Actions::IDEMPOTENCY_PREFIX)
-	// and the per-IP rate-limit buckets (spat_rl_freescout_*).
-	foreach ( array( 'spat_fs_idem_', 'spat_rl_freescout_' ) as $transient_prefix ) {
-		$wpdb->query(
-			$wpdb->prepare(
-				"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
-				'_transient_' . $wpdb->esc_like( $transient_prefix ) . '%',
-				'_transient_timeout_' . $wpdb->esc_like( $transient_prefix ) . '%'
-			)
-		);
-	}
-
 	// Named transients: health-dashboard caches and the dbDelta retry throttle.
 	delete_transient( 'spat_table_status' );
 	delete_transient( 'spat_status_snapshot' );
 	delete_transient( 'spat_db_migrate_attempted' );
 }
-
-// FreeScout events: stop the sweep, the rescue and any queued sends whether or
-// not data is removed, so no orphaned cron events outlive the plugin.
-require_once __DIR__ . '/includes/class-freescout-events.php';
-SPAT_FreeScout_Events::unschedule_all();

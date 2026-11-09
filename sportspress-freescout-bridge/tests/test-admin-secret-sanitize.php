@@ -1,9 +1,9 @@
 <?php
 /**
- * Standalone tests for SPAT_Admin::sanitize_freescout_secret(), the
+ * Standalone tests for SPFB_Admin::sanitize_secret(), the
  * sanitize_callback of the FreeScout shared secret setting.
  *
- * Usage: php test-admin-freescout-secret-sanitize.php
+ * Usage: php test-admin-secret-sanitize.php
  */
 
 define( 'ABSPATH', dirname( __FILE__ ) . '/' );
@@ -21,7 +21,7 @@ function __( $text ) {
 	return $text;
 }
 
-require_once dirname( __DIR__ ) . '/includes/class-freescout-rest.php';
+require_once dirname( __DIR__ ) . '/includes/class-rest.php';
 require_once dirname( __DIR__ ) . '/includes/class-admin.php';
 
 $passed = 0;
@@ -38,13 +38,13 @@ function assert_test( $cond, $name ) {
 }
 function sanitize_secret( $value ) {
 	$GLOBALS['t_settings_errors'] = array();
-	return SPAT_Admin::sanitize_freescout_secret( $value );
+	return SPFB_Admin::sanitize_secret( $value );
 }
 
 $old  = str_repeat( 'a', 40 );
 $good = '0123456789abcdef0123456789abcdef'; // exactly 32.
 
-$GLOBALS['t_options'][ SPAT_FreeScout_REST::SECRET_OPTION ] = $old;
+$GLOBALS['t_options'][ SPFB_REST::SECRET_OPTION ] = $old;
 
 echo "=== Blank keeps the stored secret ===\n";
 assert_test( $old === sanitize_secret( '' ), 'empty submission keeps the stored secret' );
@@ -56,7 +56,7 @@ echo "\n=== Too short is refused with a notice ===\n";
 assert_test( $old === sanitize_secret( 'short-secret' ), 'a secret under 32 characters keeps the stored secret' );
 assert_test(
 	1 === count( $GLOBALS['t_settings_errors'] )
-	&& SPAT_FreeScout_REST::SECRET_OPTION === $GLOBALS['t_settings_errors'][0]['setting']
+	&& SPFB_REST::SECRET_OPTION === $GLOBALS['t_settings_errors'][0]['setting']
 	&& 'error' === $GLOBALS['t_settings_errors'][0]['type']
 	&& false !== strpos( $GLOBALS['t_settings_errors'][0]['message'], '32' ),
 	'one error notice naming the 32-character minimum'

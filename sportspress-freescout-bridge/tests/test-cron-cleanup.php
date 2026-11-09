@@ -5,7 +5,7 @@
  * admin chose to remove data; and an uninstall that removes data deletes the
  * FreeScout options (secret included) and transients.
  *
- * Usage: php test-freescout-cron-cleanup.php
+ * Usage: php test-cron-cleanup.php
  */
 
 define( 'ABSPATH', __DIR__ . '/' );
@@ -16,7 +16,7 @@ $GLOBALS['t_unscheduled'] = array();
 $GLOBALS['t_options']     = array();
 
 function plugin_dir_url( $file ) {
-	return 'https://example.test/wp-content/plugins/sportspress-admin-tools/';
+	return 'https://example.test/wp-content/plugins/sportspress-freescout-bridge/';
 }
 function plugin_dir_path( $file ) {
 	return dirname( $file ) . '/';
@@ -62,7 +62,7 @@ function all_cleared(): bool {
 }
 
 echo "=== Deactivation ===\n";
-require dirname( __DIR__ ) . '/sportspress-admin-tools.php';
+require dirname( __DIR__ ) . '/sportspress-freescout-bridge.php';
 assert_test( isset( $GLOBALS['t_hooks']['deactivate'] ) && is_callable( $GLOBALS['t_hooks']['deactivate'] ), 'a deactivation hook is registered' );
 if ( is_callable( $GLOBALS['t_hooks']['deactivate'] ?? null ) ) {
 	call_user_func( $GLOBALS['t_hooks']['deactivate'] );
@@ -73,7 +73,7 @@ echo "\n=== Uninstall without removing data ===\n";
 $GLOBALS['t_cleared']     = array();
 $GLOBALS['t_unscheduled'] = array();
 $GLOBALS['t_options']     = array( 'spat_remove_data_on_uninstall' => '0' );
-define( 'WP_UNINSTALL_PLUGIN', 'sportspress-admin-tools/sportspress-admin-tools.php' );
+define( 'WP_UNINSTALL_PLUGIN', 'sportspress-freescout-bridge/sportspress-freescout-bridge.php' );
 require dirname( __DIR__ ) . '/uninstall.php';
 assert_test( all_cleared(), 'uninstall clears the FreeScout cron events even when data is kept' );
 

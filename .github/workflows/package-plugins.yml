@@ -86,7 +86,7 @@ jobs:
             fi
           done
 
-      # The in-plugin updater reads this. One release tag carries nine
+      # The in-plugin updater reads this. One release tag carries ten
       # independently-versioned plugins, so a plugin cannot learn its own
       # version from the tag it appears in — the manifest is where that
       # question is answered. Built from the same parsing the release guard

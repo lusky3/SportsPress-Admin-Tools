@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class SPAT_FreeScout_Events {
+class SPFB_Events {
 
 	const SEND_HOOK   = 'spat_freescout_send';
 	const SWEEP_HOOK  = 'spat_freescout_events_sweep';
@@ -53,6 +53,42 @@ class SPAT_FreeScout_Events {
 	public static function table(): string {
 		global $wpdb;
 		return $wpdb->prefix . 'spat_freescout_outbox';
+	}
+
+	/**
+	 * Create the FreeScout event outbox. Called lazily by ensure_table(): the
+	 * schema is not tied to a plugin migration, so an installed site gets the
+	 * table the first time it is needed. dbDelta is idempotent, which makes
+	 * calling this twice harmless. Same table and schema SportsPress Admin
+	 * Tools created before 1.3.0.
+	 */
+	public static function create_table(): void {
+		global $wpdb;
+
+		$table_name      = $wpdb->prefix . 'spat_freescout_outbox';
+		$charset_collate = $wpdb->get_charset_collate();
+
+		// All datetimes are UTC. email is 191 so the column could be indexed on
+		// utf8mb4 without a prefix; status+next_attempt_at serves the sweep.
+		$sql = "CREATE TABLE $table_name (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            event_id char(36) NOT NULL,
+            type varchar(64) NOT NULL,
+            email varchar(191) NOT NULL DEFAULT '',
+            payload longtext NOT NULL,
+            status varchar(10) NOT NULL DEFAULT 'pending',
+            attempts tinyint(3) unsigned NOT NULL DEFAULT 0,
+            next_attempt_at datetime NOT NULL,
+            last_error varchar(255) NOT NULL DEFAULT '',
+            created_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY event_id (event_id),
+            KEY status_next (status, next_attempt_at)
+        ) $charset_collate;";
+
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta( $sql );
 	}
 
 	/**
@@ -112,19 +148,19 @@ class SPAT_FreeScout_Events {
 	 * Events are on, and both the endpoint URL and a usable secret are set.
 	 */
 	public static function is_active(): bool {
-		return '1' === (string) get_option( SPAT_FreeScout_REST::EVENTS_ENABLED_OPTION, '0' )
+		return '1' === (string) get_option( SPFB_REST::EVENTS_ENABLED_OPTION, '0' )
 			&& '' !== self::url()
 			&& '' !== self::secret();
 	}
 
 	private static function url(): string {
-		$url = trim( (string) get_option( SPAT_FreeScout_REST::EVENTS_URL_OPTION, '' ) );
+		$url = trim( (string) get_option( SPFB_REST::EVENTS_URL_OPTION, '' ) );
 		return preg_match( '#^https?://#i', $url ) ? $url : '';
 	}
 
 	private static function secret(): string {
-		$secret = (string) get_option( SPAT_FreeScout_REST::SECRET_OPTION, '' );
-		return strlen( $secret ) >= SPAT_FreeScout_REST::MIN_SECRET_LENGTH ? $secret : '';
+		$secret = (string) get_option( SPFB_REST::SECRET_OPTION, '' );
+		return strlen( $secret ) >= SPFB_REST::MIN_SECRET_LENGTH ? $secret : '';
 	}
 
 	// -----------------------------------------------------------------------
@@ -253,7 +289,7 @@ class SPAT_FreeScout_Events {
 		try {
 			$fn();
 		} catch ( \Throwable $e ) {
-			self::log_error( 'Could not queue a FreeScout event: ' . $e->getMessage() );
+			self::log_error( 'Could not queue a FreeScout event.', array( 'error' => $e->getMessage() ) );
 		}
 	}
 
@@ -285,7 +321,7 @@ class SPAT_FreeScout_Events {
 		global $wpdb;
 
 		if ( ! self::ensure_table() ) {
-			self::log_error( 'FreeScout outbox table is missing and could not be created; event dropped: ' . $type );
+			self::log_error( 'FreeScout outbox table is missing and could not be created; event dropped.', array( 'type' => $type ) );
 			return '';
 		}
 
@@ -320,7 +356,7 @@ class SPAT_FreeScout_Events {
 		);
 		if ( ! $inserted ) {
 			delete_option( self::TABLE_READY_OPTION ); // Re-check the table next time.
-			self::log_error( 'Could not insert a FreeScout event into the outbox: ' . $type );
+			self::log_error( 'Could not insert a FreeScout event into the outbox.', array( 'type' => $type ) );
 			return '';
 		}
 
@@ -379,7 +415,7 @@ class SPAT_FreeScout_Events {
 			}
 			$this->deliver( $row, $url, $secret );
 		} catch ( \Throwable $e ) {
-			self::log_error( 'FreeScout event send aborted: ' . $e->getMessage() );
+			self::log_error( 'FreeScout event send aborted.', array( 'error' => $e->getMessage() ) );
 			if ( $row ) {
 				// Counts as an attempt, so a deterministic throw still gives up.
 				$this->retry_or_fail( $row, 'Exception: ' . $e->getMessage() );
@@ -411,7 +447,7 @@ class SPAT_FreeScout_Events {
 				'headers'     => array(
 					'Content-Type'     => 'application/json',
 					'X-SPAT-Timestamp' => $timestamp,
-					'X-SPAT-Signature' => SPAT_Signed_Request::sign( $timestamp, $body, $secret ),
+					'X-SPAT-Signature' => SPFB_Signed_Request::sign( $timestamp, $body, $secret ),
 				),
 				'body'        => $body,
 			)
@@ -473,7 +509,14 @@ class SPAT_FreeScout_Events {
 				'last_error' => $error,
 			)
 		);
-		self::log_error( sprintf( 'FreeScout event %s (%s) failed permanently: %s', $row->event_id, $row->type, $error ) );
+		self::log_error(
+			'A FreeScout event failed permanently.',
+			array(
+				'event_id' => $row->event_id,
+				'type'     => $row->type,
+				'error'    => $error,
+			)
+		);
 	}
 
 	private function update_row( string $event_id, array $fields ): void {
@@ -490,7 +533,13 @@ class SPAT_FreeScout_Events {
 		// A lost write leaves the row 'sending'; the hourly rescue hands it back,
 		// so this is only logged.
 		if ( false === $wpdb->update( self::table(), $fields, array( 'event_id' => $event_id ), $formats, array( '%s' ) ) ) {
-			self::log_error( sprintf( 'Could not update FreeScout event %s: %s', $event_id, (string) $wpdb->last_error ) );
+			self::log_error(
+				'Could not update a FreeScout event.',
+				array(
+					'event_id' => $event_id,
+					'error'    => (string) $wpdb->last_error,
+				)
+			);
 		}
 	}
 
@@ -530,7 +579,13 @@ class SPAT_FreeScout_Events {
 			)
 		);
 		if ( $given_up ) {
-			self::log_error( sprintf( '%d FreeScout event(s) failed permanently: %s on the last attempt.', (int) $given_up, $error ) );
+			self::log_error(
+				'FreeScout event(s) failed permanently on the last attempt.',
+				array(
+					'count' => (int) $given_up,
+					'error' => $error,
+				)
+			);
 		}
 
 		$wpdb->query(
@@ -611,7 +666,7 @@ class SPAT_FreeScout_Events {
 		};
 
 		if ( ! $exists() ) {
-			SPAT_Database::create_outbox_table();
+			self::create_table();
 			if ( ! $exists() ) {
 				return false;
 			}
@@ -654,9 +709,9 @@ class SPAT_FreeScout_Events {
 		return $out;
 	}
 
-	private static function log_error( string $message ): void {
+	private static function log_error( string $message, array $context = array() ): void {
 		if ( class_exists( 'SPAT_Logger' ) ) {
-			SPAT_Logger::error( 'freescout-events', $message );
+			SPAT_Logger::error( 'freescout-events', $message, $context );
 		}
 	}
 }

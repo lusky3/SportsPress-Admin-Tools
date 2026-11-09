@@ -5,7 +5,7 @@
  *
  * Features register handlers through the `spat_freescout_actions` and
  * `spat_freescout_queries` filters. Signature checks happen earlier, in
- * SPAT_FreeScout_REST::guard().
+ * SPFB_REST::guard().
  *
  * @author Cody (lusky3)
  */
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class SPAT_FreeScout_Actions {
+class SPFB_Actions {
 
 	const IDEMPOTENCY_PREFIX = 'spat_fs_idem_';
 	const KEY_PATTERN        = '/^[A-Za-z0-9-]{8,64}$/';
@@ -236,7 +236,11 @@ class SPAT_FreeScout_Actions {
 				)
 			);
 		} catch ( Throwable $e ) {
-			SPAT_Logger::error( 'freescout', sprintf( 'Action "%s.%s" failed: %s', $request['feature'], $request['action'], $e->getMessage() ) );
+			SPAT_Logger::error(
+				'freescout',
+				sprintf( 'Action "%s.%s" failed', $request['feature'], $request['action'] ),
+				array( 'error' => $e->getMessage() )
+			);
 			return new WP_Error( 'spat_freescout_action_failed', 'The action failed in WordPress. Check the SPAT logs.', array( 'status' => 500 ) );
 		} finally {
 			wp_set_current_user( $previous );
@@ -305,7 +309,11 @@ class SPAT_FreeScout_Actions {
 		try {
 			$results = call_user_func( $handler, $params );
 		} catch ( Throwable $e ) {
-			SPAT_Logger::error( 'freescout', sprintf( 'Query "%s.%s" failed: %s', $feature, $query, $e->getMessage() ) );
+			SPAT_Logger::error(
+				'freescout',
+				sprintf( 'Query "%s.%s" failed', $feature, $query ),
+				array( 'error' => $e->getMessage() )
+			);
 			return new WP_Error( 'spat_freescout_query_failed', 'The query failed in WordPress. Check the SPAT logs.', array( 'status' => 500 ) );
 		}
 
